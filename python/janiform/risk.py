@@ -4,6 +4,10 @@ from typing import TYPE_CHECKING, Any, Optional
 
 from .contracts import (
     ContractModel,
+    MeanReversionAnchorModelKind,
+    MeanReversionBoundaryState,
+    MeanReversionFittedParameters,
+    MeanReversionRuntimeIntervalAnchors,
     ValidationErrorFactory,
     parse_json_object,
     require_mapping,
@@ -65,6 +69,23 @@ def _parse_hawkes_excitation_state(
     from .simulation import HawkesExcitationState
 
     return HawkesExcitationState.from_mapping(raw_payload, field_path=field_path)
+
+
+def _validate_flat_runtime_anchors(
+    runtime_interval_anchors: MeanReversionRuntimeIntervalAnchors,
+    expected_anchor_value: float,
+) -> None:
+    for interval_index, observed_anchor_value in enumerate(
+        runtime_interval_anchors.end_anchor_values
+    ):
+        if abs(observed_anchor_value - expected_anchor_value) > _MEAN_REVERSION_ALIGNMENT_TOLERANCE:
+            raise _risk_error(
+                f"model_inputs.mean_reversion_runtime_interval_anchors.end_anchor_values[{interval_index}]",
+                (
+                    f"must equal constant anchor value {expected_anchor_value}, "
+                    f"found {observed_anchor_value}"
+                ),
+            )
 
 SUFFICIENT_STATISTICS_RISK_INTERVAL_FACTOR_POLICY = (
     "explicit_interval_aligned_s_h_and_news_intensity_inputs_without_implicit_resampling.v1"
@@ -140,13 +161,18 @@ SUFFICIENT_STATISTICS_RISK_PATH_REQUIRED_DIAGNOSTICS_FIELDS: tuple[str, ...] = (
     "cumulative_open_jump_return",
     "cumulative_closed_gap_return",
     "cumulative_total_return",
+    "cumulative_observed_return",
     "max_abs_total_return",
+    "max_abs_deviation_from_anchor",
+    "terminal_observed_log_price",
+    "terminal_deviation_from_anchor",
 )
 SUFFICIENT_STATISTICS_RISK_PATH_ARTIFACT_WORKFLOW_TAGS: tuple[str, ...] = (
     "calibration",
     "validation",
 )
 DEFAULT_INTRADAY_RISK_INTERVAL_DELTA = 1.0
+_MEAN_REVERSION_ALIGNMENT_TOLERANCE = 1e-12
 RISK_VALIDATION_ERROR_ID = "risk.validation.contract"
 
 SufficientStatisticsRiskValidationFailure = ContractValidationFailure
@@ -347,6 +373,64 @@ class SufficientStatisticsRiskModelInputs(ContractModel):
     equation_specification: SufficientStatisticsRiskEquationSpecification
     nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration
     initial_excitation_state: HawkesExcitationState
+    mean_reversion_fitted_parameters: MeanReversionFittedParameters
+    mean_reversion_runtime_interval_anchors: MeanReversionRuntimeIntervalAnchors
+    initial_mean_reversion_boundary_state: MeanReversionBoundaryState
+
+    def __post_init__(self) -> None:
+        if (
+            abs(
+                self.initial_mean_reversion_boundary_state.anchor_value
+                - self.mean_reversion_runtime_interval_anchors.start_anchor_value
+            )
+            > _MEAN_REVERSION_ALIGNMENT_TOLERANCE
+        ):
+            raise _risk_error(
+                "model_inputs.initial_mean_reversion_boundary_state.anchor_value",
+                (
+                    "must match model_inputs.mean_reversion_runtime_interval_anchors."
+                    f"start_anchor_value ({self.mean_reversion_runtime_interval_anchors.start_anchor_value})"
+                ),
+            )
+
+        match self.mean_reversion_fitted_parameters.anchor_model.anchor_model_kind:
+            case MeanReversionAnchorModelKind.DISABLED:
+                if self.mean_reversion_fitted_parameters.kappa != 0.0:
+                    raise _risk_error(
+                        "model_inputs.mean_reversion_fitted_parameters.kappa",
+                        "must be 0.0 when anchor_model_kind=disabled",
+                    )
+
+                _validate_flat_runtime_anchors(
+                    self.mean_reversion_runtime_interval_anchors,
+                    self.mean_reversion_runtime_interval_anchors.start_anchor_value,
+                )
+            case MeanReversionAnchorModelKind.CONSTANT:
+                expected_anchor_value = self.mean_reversion_fitted_parameters.anchor_model.anchor_value
+                if expected_anchor_value is None:
+                    raise _risk_error(
+                        "model_inputs.mean_reversion_fitted_parameters.anchor_model.anchor_value",
+                        "is required when anchor_model_kind=constant",
+                    )
+
+                if (
+                    abs(
+                        self.mean_reversion_runtime_interval_anchors.start_anchor_value
+                        - expected_anchor_value
+                    )
+                    > _MEAN_REVERSION_ALIGNMENT_TOLERANCE
+                ):
+                    raise _risk_error(
+                        "model_inputs.mean_reversion_runtime_interval_anchors.start_anchor_value",
+                        f"must equal constant anchor value {expected_anchor_value}",
+                    )
+
+                _validate_flat_runtime_anchors(
+                    self.mean_reversion_runtime_interval_anchors,
+                    expected_anchor_value,
+                )
+            case MeanReversionAnchorModelKind.DETERMINISTIC_INTERVAL_GRID:
+                return
 
     @staticmethod
     def from_mapping(raw_payload: dict[str, Any] | Any) -> SufficientStatisticsRiskModelInputs:
@@ -382,6 +466,33 @@ class SufficientStatisticsRiskModelInputs(ContractModel):
                     ),
                     field_path="model_inputs.initial_excitation_state",
                 ),
+                mean_reversion_fitted_parameters=MeanReversionFittedParameters.from_mapping(
+                    require_mapping(
+                        raw_payload,
+                        "mean_reversion_fitted_parameters",
+                        "model_inputs.mean_reversion_fitted_parameters",
+                        RISK_ERROR_FACTORY,
+                    ),
+                    field_path="model_inputs.mean_reversion_fitted_parameters",
+                ),
+                mean_reversion_runtime_interval_anchors=MeanReversionRuntimeIntervalAnchors.from_mapping(
+                    require_mapping(
+                        raw_payload,
+                        "mean_reversion_runtime_interval_anchors",
+                        "model_inputs.mean_reversion_runtime_interval_anchors",
+                        RISK_ERROR_FACTORY,
+                    ),
+                    field_path="model_inputs.mean_reversion_runtime_interval_anchors",
+                ),
+                initial_mean_reversion_boundary_state=MeanReversionBoundaryState.from_mapping(
+                    require_mapping(
+                        raw_payload,
+                        "initial_mean_reversion_boundary_state",
+                        "model_inputs.initial_mean_reversion_boundary_state",
+                        RISK_ERROR_FACTORY,
+                    ),
+                    field_path="model_inputs.initial_mean_reversion_boundary_state",
+                ),
             )
         except JaniformValidationError as e:
             raise _risk_error(e.failure.field_path, e.failure.message) from e
@@ -414,6 +525,22 @@ class SufficientStatisticsRiskRunRequest(ContractModel):
                 "horizon_interval_count",
                 f"must not exceed available interval factors count ({available_interval_count})",
             )
+
+        runtime_interval_anchors = self.model_inputs.mean_reversion_runtime_interval_anchors
+        if len(runtime_interval_anchors.end_anchor_values) != self.horizon_interval_count:
+            raise _risk_error(
+                "model_inputs.mean_reversion_runtime_interval_anchors.end_anchor_values",
+                f"must contain {self.horizon_interval_count} values",
+            )
+
+        for interval_index, observed_interval_delta in enumerate(
+            runtime_interval_anchors.interval_deltas[: self.horizon_interval_count]
+        ):
+            if abs(observed_interval_delta - self.interval_delta) > _MEAN_REVERSION_ALIGNMENT_TOLERANCE:
+                raise _risk_error(
+                    f"model_inputs.mean_reversion_runtime_interval_anchors.interval_deltas[{interval_index}]",
+                    f"must equal interval_delta ({self.interval_delta}), found {observed_interval_delta}",
+                )
 
     @staticmethod
     def from_mapping(raw_payload: dict[str, Any] | Any) -> SufficientStatisticsRiskRunRequest:
@@ -542,6 +669,27 @@ class SufficientStatisticsRiskPathRecord(ContractModel):
     interval_index: int
     sufficient_statistics: SufficientStatisticsIntervalStatistics
     return_components: SufficientStatisticsRiskReturnComponents
+    core_total_return: float
+    observed_interval_return: float
+    observed_log_price_end: float
+    anchor_value_end: float
+    deviation_from_anchor_end: float
+
+    def __post_init__(self) -> None:
+        if self.core_total_return != self.return_components.total_return:
+            raise _risk_error(
+                "core_total_return",
+                (
+                    "must equal return_components.total_return "
+                    f"({self.return_components.total_return}), found {self.core_total_return}"
+                ),
+            )
+
+        MeanReversionBoundaryState(
+            observed_log_price=self.observed_log_price_end,
+            anchor_value=self.anchor_value_end,
+            deviation=self.deviation_from_anchor_end,
+        )
 
     @staticmethod
     def from_mapping(
@@ -594,6 +742,31 @@ class SufficientStatisticsRiskPathRecord(ContractModel):
                 ),
                 field_path=f"{field_path}.return_components",
             ),
+            core_total_return=require_positive_or_negative(
+                raw_payload,
+                "core_total_return",
+                f"{field_path}.core_total_return",
+            ),
+            observed_interval_return=require_positive_or_negative(
+                raw_payload,
+                "observed_interval_return",
+                f"{field_path}.observed_interval_return",
+            ),
+            observed_log_price_end=require_positive_or_negative(
+                raw_payload,
+                "observed_log_price_end",
+                f"{field_path}.observed_log_price_end",
+            ),
+            anchor_value_end=require_positive_or_negative(
+                raw_payload,
+                "anchor_value_end",
+                f"{field_path}.anchor_value_end",
+            ),
+            deviation_from_anchor_end=require_positive_or_negative(
+                raw_payload,
+                "deviation_from_anchor_end",
+                f"{field_path}.deviation_from_anchor_end",
+            ),
         )
 
 
@@ -637,7 +810,11 @@ class SufficientStatisticsRiskPathDiagnostics(ContractModel):
     cumulative_open_jump_return: float
     cumulative_closed_gap_return: float
     cumulative_total_return: float
+    cumulative_observed_return: float
     max_abs_total_return: float
+    max_abs_deviation_from_anchor: float
+    terminal_observed_log_price: float
+    terminal_deviation_from_anchor: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -804,7 +981,9 @@ def _build_risk_path_diagnostics(
     cumulative_open_jump_return: float = 0.0
     cumulative_closed_gap_return: float = 0.0
     cumulative_total_return: float = 0.0
+    cumulative_observed_return: float = 0.0
     max_abs_total_return: float = 0.0
+    max_abs_deviation_from_anchor: float = 0.0
 
     for record in records:
         cumulative_a_plus += record.sufficient_statistics.a_plus
@@ -815,7 +994,12 @@ def _build_risk_path_diagnostics(
         cumulative_open_jump_return += record.return_components.open_jump_return
         cumulative_closed_gap_return += record.return_components.closed_gap_return
         cumulative_total_return += record.return_components.total_return
+        cumulative_observed_return += record.observed_interval_return
         max_abs_total_return = max(max_abs_total_return, abs(record.return_components.total_return))
+        max_abs_deviation_from_anchor = max(
+            max_abs_deviation_from_anchor,
+            abs(record.deviation_from_anchor_end),
+        )
 
     first_interval_index: Optional[int] = records[0].interval_index if records else None
     last_interval_index: Optional[int] = records[-1].interval_index if records else None
@@ -833,7 +1017,11 @@ def _build_risk_path_diagnostics(
         cumulative_open_jump_return=cumulative_open_jump_return,
         cumulative_closed_gap_return=cumulative_closed_gap_return,
         cumulative_total_return=cumulative_total_return,
+        cumulative_observed_return=cumulative_observed_return,
         max_abs_total_return=max_abs_total_return,
+        max_abs_deviation_from_anchor=max_abs_deviation_from_anchor,
+        terminal_observed_log_price=records[-1].observed_log_price_end,
+        terminal_deviation_from_anchor=records[-1].deviation_from_anchor_end,
     )
 
 
@@ -1074,9 +1262,41 @@ def _validate_path_diagnostics(
     )
     validate_exact_number(
         raw_payload,
+        "cumulative_observed_return",
+        "diagnostics.cumulative_observed_return",
+        expected_diagnostics.cumulative_observed_return,
+        RISK_ERROR_FACTORY,
+        context_suffix=f"simulated_interval_count={simulated_interval_count}",
+    )
+    validate_exact_number(
+        raw_payload,
         "max_abs_total_return",
         "diagnostics.max_abs_total_return",
         expected_diagnostics.max_abs_total_return,
+        RISK_ERROR_FACTORY,
+        context_suffix=f"simulated_interval_count={simulated_interval_count}",
+    )
+    validate_exact_number(
+        raw_payload,
+        "max_abs_deviation_from_anchor",
+        "diagnostics.max_abs_deviation_from_anchor",
+        expected_diagnostics.max_abs_deviation_from_anchor,
+        RISK_ERROR_FACTORY,
+        context_suffix=f"simulated_interval_count={simulated_interval_count}",
+    )
+    validate_exact_number(
+        raw_payload,
+        "terminal_observed_log_price",
+        "diagnostics.terminal_observed_log_price",
+        expected_diagnostics.terminal_observed_log_price,
+        RISK_ERROR_FACTORY,
+        context_suffix=f"simulated_interval_count={simulated_interval_count}",
+    )
+    validate_exact_number(
+        raw_payload,
+        "terminal_deviation_from_anchor",
+        "diagnostics.terminal_deviation_from_anchor",
+        expected_diagnostics.terminal_deviation_from_anchor,
         RISK_ERROR_FACTORY,
         context_suffix=f"simulated_interval_count={simulated_interval_count}",
     )

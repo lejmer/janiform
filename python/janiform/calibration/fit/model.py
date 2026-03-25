@@ -49,7 +49,12 @@ from ..._workflow_outputs import (
     write_simulation_artifacts,
 )
 from ..._workflow_progress import JaniformOutputController
-from ...contracts import MeanReversionFittedParameters, serialize_pretty_json
+from ...contracts import (
+    MeanReversionBoundaryState,
+    MeanReversionFittedParameters,
+    MeanReversionRuntimeIntervalAnchors,
+    serialize_pretty_json,
+)
 from ...calendar import CalendarRegistry
 from ...calendar import MarketState
 from ...hourly_factors import (
@@ -552,6 +557,14 @@ def _prepare_model_simulation_inputs(
 
     match simulation_kind:
         case "coarse_interval":
+            mean_reversion_runtime_interval_anchors = MeanReversionRuntimeIntervalAnchors(
+                interval_alignment_policy="explicit_runtime_interval_grid_alignment.v1",
+                start_anchor_value=0.0,
+                end_anchor_values=tuple(0.0 for _ in range(horizon_interval_count)),
+                interval_deltas=tuple(
+                    runtime_factors.interval_delta for _ in range(horizon_interval_count)
+                ),
+            )
             coarse_request = CoarseSimulationRunRequest.from_runtime_inputs(
                 seed=seed,
                 start_time_utc=start_time_utc,
@@ -564,6 +577,13 @@ def _prepare_model_simulation_inputs(
                     ),
                     nig_shared_plus_shift_configuration=runtime_factors.nig_shared_plus_shift_configuration,
                     initial_excitation_state=effective_initial_state,
+                    mean_reversion_fitted_parameters=MeanReversionFittedParameters.disabled(),
+                    mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
+                    initial_mean_reversion_boundary_state=MeanReversionBoundaryState(
+                        observed_log_price=0.0,
+                        anchor_value=0.0,
+                        deviation=0.0,
+                    ),
                 ),
                 interval_factors=SufficientStatisticsRiskIntervalFactors(
                     interval_delta=runtime_factors.interval_delta,

@@ -2,7 +2,8 @@ use chrono::{DateTime, Utc};
 use serde_json::Value;
 
 use crate::{
-    SEEDED_TICK_EVENT_DEBUG_TRACE_CHUNK_SCHEMA_VERSION,
+    MeanReversionAnchorModel, MeanReversionBoundaryState, MeanReversionFittedParameters,
+    MeanReversionRuntimeIntervalAnchors, SEEDED_TICK_EVENT_DEBUG_TRACE_CHUNK_SCHEMA_VERSION,
     SEEDED_TICK_EVENT_DEBUG_TRACE_CHUNKING_POLICY,
     SEEDED_TICK_EVENT_DEBUG_TRACE_METADATA_SCHEMA_VERSION,
     SEEDED_TICK_EVENT_DEBUG_TRACE_RECORD_SCHEMA_VERSION,
@@ -14,9 +15,7 @@ use crate::{
     SEEDED_TICK_EVENT_RECORD_SCHEMA_VERSION, SEEDED_TICK_EVENT_SIDE_ENCODING_POLICY,
     SEEDED_TICK_EVENT_STATE_SNAPSHOT_CAPTURE_POINT_POLICY,
     SEEDED_TICK_EVENT_STATE_SNAPSHOT_SCHEMA_VERSION,
-    SEEDED_TICK_EVENT_TAPE_METADATA_SCHEMA_VERSION, MeanReversionAnchorModel,
-    MeanReversionBoundaryState, MeanReversionFittedParameters,
-    MeanReversionRuntimeIntervalAnchors,
+    SEEDED_TICK_EVENT_TAPE_METADATA_SCHEMA_VERSION,
     SEEDED_TICK_EVENT_TIMESTAMP_REPRESENTATION_POLICY, SeededTickEventDebugTraceTransitionKind,
     SeededTickEventSide, SeededTickEventStateSnapshotCapture,
     SeededTickSimulationDebugTraceOptions, SeededTickSimulationModelInputs,
@@ -1139,13 +1138,7 @@ fn seeded_simulation_positive_kappa_pulls_constant_anchor_path_toward_anchor() {
     let mut zero_kappa_model_inputs = one_interval_model_inputs(0.5, 0.5, 0.0);
     zero_kappa_model_inputs.hourly_factor_contract.s_h = vec![0.0];
     zero_kappa_model_inputs.hourly_factor_contract.nu_h = vec![0.0];
-    configure_mean_reversion_runtime_inputs(
-        &mut zero_kappa_model_inputs,
-        0.0,
-        2.0,
-        &[2.0],
-        3.0,
-    );
+    configure_mean_reversion_runtime_inputs(&mut zero_kappa_model_inputs, 0.0, 2.0, &[2.0], 3.0);
 
     let mut positive_kappa_model_inputs = zero_kappa_model_inputs.clone();
     configure_mean_reversion_runtime_inputs(
@@ -3025,8 +3018,8 @@ fn one_interval_model_inputs(
         metadata: HourlyFactorMaterializationMetadata {
             seasonality_materialization_method: DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD
                 .to_string(),
-            news_intensity_materialization_method:
-                DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD.to_string(),
+            news_intensity_materialization_method: DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD
+                .to_string(),
             interval_boundary_policy: HOURLY_FACTOR_INTERVAL_BOUNDARY_POLICY,
             interval_alignment_policy: HOURLY_FACTOR_INTERVAL_ALIGNMENT_POLICY,
             timezone_transition_policy: HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY,
@@ -3223,6 +3216,7 @@ fn override_hourly_factor_contract(
     news_intensity_factors: &[f64],
 ) {
     let hourly_factor_contract = &mut model_inputs.hourly_factor_contract;
+
     hourly_factor_contract.request_start_utc_nanos = interval_start_utc_nanos[0];
     hourly_factor_contract.request_end_utc_nanos =
         interval_end_utc_nanos[interval_end_utc_nanos.len() - 1];
@@ -3262,6 +3256,7 @@ fn override_hourly_factor_contract(
         mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state,
     ) = disabled_mean_reversion_runtime_inputs(hourly_factor_contract);
+
     model_inputs.mean_reversion_fitted_parameters = mean_reversion_fitted_parameters;
     model_inputs.mean_reversion_runtime_interval_anchors = mean_reversion_runtime_interval_anchors;
     model_inputs.initial_mean_reversion_boundary_state = initial_mean_reversion_boundary_state;
@@ -3305,8 +3300,8 @@ fn valid_model_inputs() -> SeededTickSimulationModelInputs {
         metadata: HourlyFactorMaterializationMetadata {
             seasonality_materialization_method: DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD
                 .to_string(),
-            news_intensity_materialization_method:
-                DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD.to_string(),
+            news_intensity_materialization_method: DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD
+                .to_string(),
             interval_boundary_policy: HOURLY_FACTOR_INTERVAL_BOUNDARY_POLICY,
             interval_alignment_policy: HOURLY_FACTOR_INTERVAL_ALIGNMENT_POLICY,
             timezone_transition_policy: HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY,
@@ -3365,9 +3360,9 @@ fn valid_model_inputs() -> SeededTickSimulationModelInputs {
 fn disabled_mean_reversion_runtime_inputs(
     hourly_factor_contract: &HourlyFactorContractOutput,
 ) -> (
-        MeanReversionFittedParameters,
-        MeanReversionRuntimeIntervalAnchors,
-        MeanReversionBoundaryState,
+    MeanReversionFittedParameters,
+    MeanReversionRuntimeIntervalAnchors,
+    MeanReversionBoundaryState,
 ) {
     let interval_deltas = hourly_factor_contract
         .interval_start_utc_nanos
@@ -3406,34 +3401,47 @@ fn configure_mean_reversion_runtime_inputs(
             .expect("constant mean-reversion anchor should construct")
     } else {
         MeanReversionAnchorModel::deterministic_interval_grid(
-            model_inputs.hourly_factor_contract.interval_start_utc_nanos.clone(),
-            model_inputs.hourly_factor_contract.interval_end_utc_nanos.clone(),
+            model_inputs
+                .hourly_factor_contract
+                .interval_start_utc_nanos
+                .clone(),
+            model_inputs
+                .hourly_factor_contract
+                .interval_end_utc_nanos
+                .clone(),
             end_anchor_values.to_vec(),
             HOURLY_FACTOR_INTERVAL_ALIGNMENT_POLICY,
         )
         .expect("deterministic-grid mean-reversion anchor should construct")
     };
 
-    model_inputs.mean_reversion_fitted_parameters = MeanReversionFittedParameters::try_new(
-        kappa,
-        anchor_model,
-    )
-    .expect("mean-reversion fitted parameters should construct");
-    model_inputs.mean_reversion_runtime_interval_anchors = MeanReversionRuntimeIntervalAnchors::try_new(
-        HOURLY_FACTOR_INTERVAL_ALIGNMENT_POLICY,
-        start_anchor_value,
-        end_anchor_values.to_vec(),
-        model_inputs
-            .hourly_factor_contract
-            .interval_start_utc_nanos
-            .iter()
-            .zip(model_inputs.hourly_factor_contract.interval_end_utc_nanos.iter())
-            .map(|(interval_start_utc_nanos, interval_end_utc_nanos)| {
-                (*interval_end_utc_nanos - *interval_start_utc_nanos) as f64 / ONE_HOUR_NANOS as f64
-            })
-            .collect(),
-    )
-    .expect("mean-reversion runtime interval anchors should construct");
+    model_inputs.mean_reversion_fitted_parameters =
+        MeanReversionFittedParameters::try_new(kappa, anchor_model)
+            .expect("mean-reversion fitted parameters should construct");
+
+    model_inputs.mean_reversion_runtime_interval_anchors =
+        MeanReversionRuntimeIntervalAnchors::try_new(
+            HOURLY_FACTOR_INTERVAL_ALIGNMENT_POLICY,
+            start_anchor_value,
+            end_anchor_values.to_vec(),
+            model_inputs
+                .hourly_factor_contract
+                .interval_start_utc_nanos
+                .iter()
+                .zip(
+                    model_inputs
+                        .hourly_factor_contract
+                        .interval_end_utc_nanos
+                        .iter(),
+                )
+                .map(|(interval_start_utc_nanos, interval_end_utc_nanos)| {
+                    (*interval_end_utc_nanos - *interval_start_utc_nanos) as f64
+                        / ONE_HOUR_NANOS as f64
+                })
+                .collect(),
+        )
+        .expect("mean-reversion runtime interval anchors should construct");
+
     model_inputs.initial_mean_reversion_boundary_state = MeanReversionBoundaryState::try_new(
         initial_observed_log_price,
         start_anchor_value,

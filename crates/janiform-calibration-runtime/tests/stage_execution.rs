@@ -3,27 +3,24 @@ use support::shared::{
     CALIBRATION_HAWKES_STAGE_EXECUTION_REPORT_SCHEMA_VERSION,
     CALIBRATION_RETURN_COMPONENTS_STAGE_EXECUTION_REPORT_SCHEMA_VERSION,
     CALIBRATION_SEASONALITY_STAGE_DEFAULT_ESTIMATOR_VERSION,
-    CALIBRATION_SEASONALITY_STAGE_EXECUTION_REPORT_SCHEMA_VERSION,
-    CalibrationExecutionMode, CalibrationRunSeedSettings, CalibrationRunSpec,
-    CalibrationStage, CalibrationStageExecutionStatus, CalibrationStageSeedOverride,
-    CalibrationStageSolverSettings, HawkesStageExecutionFailure,
-    HawkesStageExecutionInput, JointRefinementStageExecutionInput,
+    CALIBRATION_SEASONALITY_STAGE_EXECUTION_REPORT_SCHEMA_VERSION, CalibrationExecutionMode,
+    CalibrationRunSeedSettings, CalibrationRunSpec, CalibrationStage,
+    CalibrationStageExecutionStatus, CalibrationStageSeedOverride, CalibrationStageSolverSettings,
+    HawkesKernelValidationStatus, HawkesStageExecutionFailure, HawkesStageExecutionInput,
+    HawkesStructuredAlphaParameterization, JointRefinementStageExecutionInput,
     JointRefinementStageHawkesInput, JointRefinementStageReturnComponentsInput,
     JointRefinementStageSeasonalityFactorsInput, ReturnComponentsStageActivityInput,
     ReturnComponentsStageExecutionFailure, ReturnComponentsStageExecutionInput,
-    SeasonalityStageExecutionFailure, SeasonalityStageExecutionInput,
-    HawkesKernelValidationStatus, HawkesStructuredAlphaParameterization, build_data_inputs,
+    SeasonalityStageExecutionFailure, SeasonalityStageExecutionInput, build_data_inputs,
     build_hawkes_stage_run_spec, build_hawkes_stage_success_payload,
     build_return_components_stage_pipeline_run_spec,
     build_return_components_stage_standalone_run_spec, build_run_contract_with_mode_and_resume,
     build_seasonality_stage_run_spec, build_seasonality_stage_success_payload,
-    build_solver_settings, calibration_stage_test_registry,
-    calibration_stage_timestamp_fixture, hawkes_stage_candidate_fixture,
-    hawkes_stage_constraint_violating_candidate_fixture,
-    return_components_stage_candidate_generation_fixture,
-    run_hawkes_calibration_stage, run_joint_refinement_calibration_stage,
-    run_return_components_calibration_stage, run_seasonality_calibration_stage,
-    timestamp_input_record,
+    build_solver_settings, calibration_stage_test_registry, calibration_stage_timestamp_fixture,
+    hawkes_stage_candidate_fixture, hawkes_stage_constraint_violating_candidate_fixture,
+    return_components_stage_candidate_generation_fixture, run_hawkes_calibration_stage,
+    run_joint_refinement_calibration_stage, run_return_components_calibration_stage,
+    run_seasonality_calibration_stage, timestamp_input_record,
 };
 
 #[test]
@@ -683,8 +680,8 @@ fn hawkes_stage_objective_terms_change_with_candidate_implied_metrics() {
         (high_loss.implied_metrics.runtime_effective_branching_margin
             - (1.0
                 - high_loss
-                .implied_metrics
-                .max_runtime_effective_branching_ratio)
+                    .implied_metrics
+                    .max_runtime_effective_branching_ratio)
                 .max(0.0_f64))
         .abs()
             < 1.0e-12

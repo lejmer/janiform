@@ -2,9 +2,8 @@ mod support;
 
 use chrono::{DateTime, Utc};
 use janiform_engine_simulation::{
-    MeanReversionBoundaryState, MeanReversionFittedParameters,
-    MeanReversionRuntimeIntervalAnchors, SEEDED_TICK_EVENT_ORDERING_POLICY,
-    SeededTickEventDebugTraceRecord,
+    MeanReversionBoundaryState, MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors,
+    SEEDED_TICK_EVENT_ORDERING_POLICY, SeededTickEventDebugTraceRecord,
     SeededTickEventDebugTraceTransitionKind, SeededTickEventRecord, SeededTickEventSide,
     SeededTickSimulationDebugTraceOptions, SeededTickSimulationModelInputs,
     SeededTickSimulationRunConfig, SeededTickSimulationRunOptions, SeededTickSimulationRunResult,
@@ -1519,13 +1518,8 @@ fn build_one_interval_ordering_model_inputs(
     start_time_utc_nanos: i64,
     news_intensity: f64,
 ) -> SeededTickSimulationModelInputs {
-    let hourly_factor_contract = build_uniform_factor_contract(
-        start_time_utc_nanos,
-        ONE_HOUR_NANOS,
-        1,
-        1.0,
-        news_intensity,
-    );
+    let hourly_factor_contract =
+        build_uniform_factor_contract(start_time_utc_nanos, ONE_HOUR_NANOS, 1, 1.0, news_intensity);
 
     let (
         mean_reversion_fitted_parameters,
@@ -1570,13 +1564,8 @@ fn build_one_interval_ordering_model_inputs(
 fn build_two_interval_boundary_adjacent_model_inputs(
     start_time_utc_nanos: i64,
 ) -> SeededTickSimulationModelInputs {
-    let hourly_factor_contract = build_uniform_factor_contract(
-        start_time_utc_nanos,
-        ONE_HOUR_NANOS,
-        2,
-        1.0,
-        0.0,
-    );
+    let hourly_factor_contract =
+        build_uniform_factor_contract(start_time_utc_nanos, ONE_HOUR_NANOS, 2, 1.0, 0.0);
 
     let (
         mean_reversion_fitted_parameters,

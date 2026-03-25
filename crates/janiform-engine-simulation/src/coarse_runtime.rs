@@ -17,6 +17,7 @@ use janiform_foundations::randomness::{
 use janiform_model_kernels::hawkes::{
     HawkesTransitionError, HawkesTransitionStep, evolve_hawkes_state,
 };
+use janiform_model_kernels::mean_reversion::evolve_mean_reversion_boundary_state_on_interval_grid;
 use janiform_model_kernels::news::{
     NewsArrivalComponent, NewsMarkInterfaceError, NewsProcessConfigurationError,
     SharedNewsAccumulatorState, SharedNewsEventDispatchError, SharedNewsEventTimestampedInput,
@@ -56,9 +57,11 @@ where
         .map_err(|source| CoarseSimulationRunError::InvalidRunRequest { source })?;
 
     let model_inputs = &run_request.model_inputs;
+
     let calendar_registry = model_inputs
         .load_calendar_registry()
         .map_err(|source| CoarseSimulationRunError::CalendarRegistryLoadFailure { source })?;
+
     let kernel_parameters = model_inputs
         .risk_model_inputs
         .equation_specification
@@ -68,27 +71,44 @@ where
         .nig_shared_plus_shift_configuration
         .derive_driver_parameters()
         .map_err(|source| CoarseSimulationRunError::InvalidNigDriverConfiguration { source })?;
+
     let interval_delta_nanos = run_request
         .interval_delta_nanos()
         .map_err(|source| CoarseSimulationRunError::InvalidIntervalDelta { source })?;
+
     let mut terminal_state = model_inputs.risk_model_inputs.initial_excitation_state;
+
+    let mut observed_boundary_state = model_inputs
+        .risk_model_inputs
+        .initial_mean_reversion_boundary_state
+        .clone();
+
     let mut next_known_news_timestamp_position = 0usize;
+
     let mut records: Vec<CoarseSimulationPathRecord> =
         Vec::with_capacity(run_request.horizon_interval_count);
+
+    let mean_reversion_kappa = model_inputs
+        .risk_model_inputs
+        .mean_reversion_fitted_parameters
+        .kappa;
 
     for interval_index in 0..run_request.horizon_interval_count {
         let interval_start_utc_nanos = run_request
             .start_time_utc_nanos
             .checked_add((interval_index as i64).saturating_mul(interval_delta_nanos))
             .ok_or(CoarseSimulationRunError::IntervalBoundaryOverflow { interval_index })?;
+
         let interval_end_utc_nanos = interval_start_utc_nanos
             .checked_add(interval_delta_nanos)
             .ok_or(CoarseSimulationRunError::IntervalBoundaryOverflow { interval_index })?;
+
         let interval_settings = adaptive_transform_slice_settings(
             kernel_parameters.lambda_bar,
             run_request.interval_factors.s_h[interval_index],
             run_request.interval_delta,
         );
+
         let current_statistics_context = SufficientStatisticsTransformSliceContext::try_new(
             interval_index,
             run_request.interval_factors.s_h[interval_index],
@@ -102,6 +122,7 @@ where
                 source,
             },
         )?;
+
         let solved_transform_slices = solve_sufficient_statistics_transform_slices(
             model_inputs.risk_model_inputs.equation_specification,
             current_statistics_context,
@@ -113,12 +134,14 @@ where
                 source,
             },
         )?;
+
         let interval_statistics_seed =
             janiform_foundations::randomness::derive_simulation_substream_seed(
                 run_request.seed,
                 SimulationRandomnessSubstreamDomain::CoarseStatisticsSampling,
                 interval_index as u64,
             );
+
         let sampled_statistics =
             sample_interval_statistics_from_transform_slices_with_randomness_factory(
                 interval_statistics_seed,
@@ -137,6 +160,7 @@ where
             .arrivals
             .known
             .scheduled_event_timestamps_utc_nanos;
+
         let (
             interval_known_news_start_position,
             interval_known_news_end_position,
@@ -175,6 +199,7 @@ where
             SimulationRandomnessSubstreamDomain::CoarseTradingTimeReturn,
             interval_index as u64,
         );
+
         let return_decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
             a_plus: sampled_statistics.a_plus,
             a_minus: sampled_statistics.a_minus,
@@ -217,12 +242,38 @@ where
             source,
         })?;
 
+        let updated_observed_boundary_state =
+            evolve_mean_reversion_boundary_state_on_interval_grid(
+                observed_boundary_state.clone(),
+                mean_reversion_kappa,
+                run_request.interval_delta,
+                total_return,
+                model_inputs
+                    .risk_model_inputs
+                    .mean_reversion_runtime_interval_anchors
+                    .end_anchor_values[interval_index],
+            )
+            .map_err(|source| {
+                CoarseSimulationRunError::MeanReversionBoundaryStateUpdateFailure {
+                    interval_index,
+                    source,
+                }
+            })?;
+
+        let observed_interval_return = updated_observed_boundary_state.observed_log_price
+            - observed_boundary_state.observed_log_price;
+
         let path_record = CoarseSimulationPathRecord::try_new(
             interval_index,
             interval_start_utc_nanos,
             interval_end_utc_nanos,
             sampled_statistics,
             return_components,
+            total_return,
+            observed_interval_return,
+            updated_observed_boundary_state.observed_log_price,
+            updated_observed_boundary_state.anchor_value,
+            updated_observed_boundary_state.deviation,
         )
         .map_err(|source| CoarseSimulationRunError::InvalidPathRecord {
             interval_index,
@@ -230,6 +281,7 @@ where
         })?;
 
         records.push(path_record);
+        observed_boundary_state = updated_observed_boundary_state;
 
         let boundary_update_snapshot = SufficientStatisticsBoundaryStateUpdateSnapshot::new(
             interval_index,
@@ -237,6 +289,7 @@ where
             terminal_state,
             sampled_statistics,
         );
+
         let state_after_count_update = update_boundary_state_from_interval_statistics(
             kernel_parameters,
             boundary_update_snapshot,
@@ -329,6 +382,10 @@ pub enum CoarseSimulationRunError {
     InvalidPathRecord {
         interval_index: usize,
         source: super::coarse::CoarseSimulationPathRecordError,
+    },
+    MeanReversionBoundaryStateUpdateFailure {
+        interval_index: usize,
+        source: janiform_model_kernels::mean_reversion::MeanReversionBoundaryStateEvolutionError,
     },
     BoundaryStateUpdateFailure {
         interval_index: usize,
@@ -448,6 +505,13 @@ impl Display for CoarseSimulationRunError {
                 formatter,
                 "interval {interval_index} path record is invalid: {source}"
             ),
+            Self::MeanReversionBoundaryStateUpdateFailure {
+                interval_index,
+                source,
+            } => write!(
+                formatter,
+                "interval {interval_index} mean-reversion observed-state update failed: {source}"
+            ),
             Self::BoundaryStateUpdateFailure {
                 interval_index,
                 source,
@@ -489,6 +553,7 @@ impl Error for CoarseSimulationRunError {
             Self::TradingTimeSamplingFailure { source, .. } => Some(source),
             Self::InvalidReturnComponents { source, .. } => Some(source),
             Self::InvalidPathRecord { source, .. } => Some(source),
+            Self::MeanReversionBoundaryStateUpdateFailure { source, .. } => Some(source),
             Self::BoundaryStateUpdateFailure { source, .. } => Some(source),
             Self::NewsBoundaryStateUpdateFailure { source, .. } => Some(source),
             Self::InvalidPathArtifact { source } => Some(source),
@@ -546,7 +611,9 @@ where
 
     let mut event_inputs: Vec<SharedNewsEventTimestampedInput> =
         Vec::with_capacity(interval_known_news_timestamp_slice.len());
+
     let mut next_generation_order = 0_u64;
+
     let mark_pipeline = model_inputs
         .news_process_configuration
         .default_mark_pipeline();
@@ -577,6 +644,7 @@ where
         run_request.interval_factors.nu_h_surprise[interval_index] * run_request.interval_delta;
     let interval_surprise_news_count =
         sample_count_from_expectation(interval_surprise_expected_count, &mut news_count_stream);
+
     let interval_duration_nanos = interval_end_utc_nanos - interval_start_utc_nanos;
 
     for _ in 0..interval_surprise_news_count {

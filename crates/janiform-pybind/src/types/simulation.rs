@@ -236,10 +236,7 @@ impl PySeededFinePathChunkColumns {
 
     #[getter]
     fn anchor_value(&self) -> PyResult<Vec<f64>> {
-        simulation_chunk_getter(
-            "reading seeded fine-path anchor values",
-            &self.anchor_value,
-        )
+        simulation_chunk_getter("reading seeded fine-path anchor values", &self.anchor_value)
     }
 
     #[getter]
@@ -353,11 +350,7 @@ impl PySeededFinePathChunkColumns {
                             .len()
                             .saturating_mul(size_of::<f64>()),
                     )
-                    .saturating_add(
-                        self.anchor_value
-                            .len()
-                            .saturating_mul(size_of::<f64>()),
-                    )
+                    .saturating_add(self.anchor_value.len().saturating_mul(size_of::<f64>()))
                     .saturating_add(
                         self.deviation_from_anchor
                             .len()

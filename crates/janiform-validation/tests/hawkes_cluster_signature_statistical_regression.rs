@@ -5,10 +5,9 @@ use std::fs;
 
 use chrono::{DateTime, Utc};
 use janiform_engine_simulation::{
-    MeanReversionBoundaryState, MeanReversionFittedParameters,
-    MeanReversionRuntimeIntervalAnchors, SeededTickEventRecord, SeededTickEventSide,
-    SeededTickSimulationModelInputs, SeededTickSimulationRunConfig,
-    run_seeded_tick_event_simulation,
+    MeanReversionBoundaryState, MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors,
+    SeededTickEventRecord, SeededTickEventSide, SeededTickSimulationModelInputs,
+    SeededTickSimulationRunConfig, run_seeded_tick_event_simulation,
 };
 use janiform_market_time::calendar::{ExchangeCalendarRegistry, ExchangeCalendarRegistryLoader};
 use janiform_market_time::hourly_factors::{
@@ -1346,17 +1345,17 @@ fn build_run_config(
             kernel_parameters,
             initial_excitation_state,
             mean_reversion_fitted_parameters: MeanReversionFittedParameters::disabled(),
-            mean_reversion_runtime_interval_anchors:
-                MeanReversionRuntimeIntervalAnchors::try_new(
-                    hourly_factor_contract.metadata.interval_alignment_policy,
-                    0.0,
-                    vec![0.0; interval_count],
-                    vec![interval_duration_nanos as f64 / ONE_HOUR_NANOS as f64; interval_count],
-                )
-                .expect("disabled mean-reversion runtime anchors should construct"),
-            initial_mean_reversion_boundary_state:
-                MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0)
-                    .expect("disabled mean-reversion boundary state should construct"),
+            mean_reversion_runtime_interval_anchors: MeanReversionRuntimeIntervalAnchors::try_new(
+                hourly_factor_contract.metadata.interval_alignment_policy,
+                0.0,
+                vec![0.0; interval_count],
+                vec![interval_duration_nanos as f64 / ONE_HOUR_NANOS as f64; interval_count],
+            )
+            .expect("disabled mean-reversion runtime anchors should construct"),
+            initial_mean_reversion_boundary_state: MeanReversionBoundaryState::try_new(
+                0.0, 0.0, 0.0,
+            )
+            .expect("disabled mean-reversion boundary state should construct"),
             hourly_factor_contract,
             calendar_registry: build_seeded_simulation_calendar_registry(),
             nig_shared_plus_shift_configuration: valid_nig_shared_plus_shift_configuration(),

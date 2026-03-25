@@ -28,8 +28,10 @@ from ..shared.errors import (
 )
 from ...contracts import (
     ContractModel,
+    MeanReversionBoundaryState,
     parse_json_object,
     require_datetime_utc,
+    require_finite_number,
     require_mapping,
     require_non_empty_string,
     require_non_negative_integer,
@@ -78,6 +80,11 @@ COARSE_SIMULATION_REQUIRED_RECORD_FIELDS: tuple[str, ...] = (
     "interval_end_utc_nanos",
     "sufficient_statistics",
     "return_components",
+    "core_total_return",
+    "observed_interval_return",
+    "observed_log_price_end",
+    "anchor_value_end",
+    "deviation_from_anchor_end",
 )
 COARSE_SIMULATION_REQUIRED_PROVENANCE_FIELDS: tuple[str, ...] = (
     "schema_version",
@@ -109,8 +116,14 @@ COARSE_SIMULATION_REQUIRED_DIAGNOSTICS_FIELDS: tuple[str, ...] = (
     "cumulative_open_jump_return",
     "cumulative_closed_gap_return",
     "cumulative_total_return",
+    "cumulative_observed_return",
     "max_abs_total_return",
+    "max_abs_deviation_from_anchor",
+    "terminal_observed_log_price",
+    "terminal_deviation_from_anchor",
 )
+
+_MEAN_REVERSION_ALIGNMENT_TOLERANCE = 1e-12
 
 _SUFFICIENT_STATISTICS_RISK_INTERVAL_FACTOR_POLICY = (
     "explicit_interval_aligned_s_h_and_news_intensity_inputs_without_implicit_resampling.v1"
@@ -250,6 +263,22 @@ class CoarseSimulationRunRequest(ContractModel):
                 f"must not exceed available interval factors count ({len(self.interval_factors.s_h)})",
             )
 
+        runtime_interval_anchors = self.model_inputs.risk_model_inputs.mean_reversion_runtime_interval_anchors
+        if len(runtime_interval_anchors.end_anchor_values) != self.horizon_interval_count:
+            raise _simulation_error(
+                "model_inputs.risk_model_inputs.mean_reversion_runtime_interval_anchors.end_anchor_values",
+                f"must contain {self.horizon_interval_count} values",
+            )
+
+        for interval_index, observed_interval_delta in enumerate(
+            runtime_interval_anchors.interval_deltas[: self.horizon_interval_count]
+        ):
+            if abs(observed_interval_delta - self.interval_delta) > _MEAN_REVERSION_ALIGNMENT_TOLERANCE:
+                raise _simulation_error(
+                    f"model_inputs.risk_model_inputs.mean_reversion_runtime_interval_anchors.interval_deltas[{interval_index}]",
+                    f"must equal interval_delta ({self.interval_delta}), found {observed_interval_delta}",
+                )
+
     @staticmethod
     def from_runtime_inputs(
         *,
@@ -343,6 +372,11 @@ class CoarseSimulationPathRecord(ContractModel):
     interval_end_utc_nanos: int
     sufficient_statistics: Any
     return_components: Any
+    core_total_return: float
+    observed_interval_return: float
+    observed_log_price_end: float
+    anchor_value_end: float
+    deviation_from_anchor_end: float
 
     def __post_init__(self) -> None:
         if self.schema_version != COARSE_SIMULATION_PATH_RECORD_SCHEMA_VERSION:
@@ -356,6 +390,21 @@ class CoarseSimulationPathRecord(ContractModel):
                 "interval_end_utc_nanos",
                 "must be strictly greater than interval_start_utc_nanos",
             )
+
+        if self.core_total_return != self.return_components.total_return:
+            raise _simulation_error(
+                "core_total_return",
+                (
+                    "must equal return_components.total_return "
+                    f"({self.return_components.total_return}), found {self.core_total_return}"
+                ),
+            )
+
+        MeanReversionBoundaryState(
+            observed_log_price=self.observed_log_price_end,
+            anchor_value=self.anchor_value_end,
+            deviation=self.deviation_from_anchor_end,
+        )
 
     @staticmethod
     def from_mapping(
@@ -429,6 +478,36 @@ class CoarseSimulationPathRecord(ContractModel):
             ),
             sufficient_statistics=sufficient_statistics,
             return_components=return_components,
+            core_total_return=require_finite_number(
+                raw_payload,
+                "core_total_return",
+                f"{field_path}.core_total_return",
+                SIMULATION_ERROR_FACTORY,
+            ),
+            observed_interval_return=require_finite_number(
+                raw_payload,
+                "observed_interval_return",
+                f"{field_path}.observed_interval_return",
+                SIMULATION_ERROR_FACTORY,
+            ),
+            observed_log_price_end=require_finite_number(
+                raw_payload,
+                "observed_log_price_end",
+                f"{field_path}.observed_log_price_end",
+                SIMULATION_ERROR_FACTORY,
+            ),
+            anchor_value_end=require_finite_number(
+                raw_payload,
+                "anchor_value_end",
+                f"{field_path}.anchor_value_end",
+                SIMULATION_ERROR_FACTORY,
+            ),
+            deviation_from_anchor_end=require_finite_number(
+                raw_payload,
+                "deviation_from_anchor_end",
+                f"{field_path}.deviation_from_anchor_end",
+                SIMULATION_ERROR_FACTORY,
+            ),
         )
 
 
@@ -478,7 +557,11 @@ class CoarseSimulationPathDiagnostics(ContractModel):
     cumulative_open_jump_return: float
     cumulative_closed_gap_return: float
     cumulative_total_return: float
+    cumulative_observed_return: float
     max_abs_total_return: float
+    max_abs_deviation_from_anchor: float
+    terminal_observed_log_price: float
+    terminal_deviation_from_anchor: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -681,7 +764,9 @@ def _build_coarse_simulation_path_diagnostics(
     cumulative_open_jump_return = 0.0
     cumulative_closed_gap_return = 0.0
     cumulative_total_return = 0.0
+    cumulative_observed_return = 0.0
     max_abs_total_return = 0.0
+    max_abs_deviation_from_anchor = 0.0
 
     for record in records:
         cumulative_a_plus += record.sufficient_statistics.a_plus
@@ -692,7 +777,12 @@ def _build_coarse_simulation_path_diagnostics(
         cumulative_open_jump_return += record.return_components.open_jump_return
         cumulative_closed_gap_return += record.return_components.closed_gap_return
         cumulative_total_return += record.return_components.total_return
+        cumulative_observed_return += record.observed_interval_return
         max_abs_total_return = max(max_abs_total_return, abs(record.return_components.total_return))
+        max_abs_deviation_from_anchor = max(
+            max_abs_deviation_from_anchor,
+            abs(record.deviation_from_anchor_end),
+        )
 
     return CoarseSimulationPathDiagnostics(
         schema_version=COARSE_SIMULATION_PATH_DIAGNOSTICS_SCHEMA_VERSION,
@@ -709,7 +799,11 @@ def _build_coarse_simulation_path_diagnostics(
         cumulative_open_jump_return=cumulative_open_jump_return,
         cumulative_closed_gap_return=cumulative_closed_gap_return,
         cumulative_total_return=cumulative_total_return,
+        cumulative_observed_return=cumulative_observed_return,
         max_abs_total_return=max_abs_total_return,
+        max_abs_deviation_from_anchor=max_abs_deviation_from_anchor,
+        terminal_observed_log_price=records[-1].observed_log_price_end,
+        terminal_deviation_from_anchor=records[-1].deviation_from_anchor_end,
     )
 
 
@@ -995,9 +1089,41 @@ def _validate_coarse_path_diagnostics(
     )
     validate_exact_number(
         raw_payload,
+        "cumulative_observed_return",
+        "diagnostics.cumulative_observed_return",
+        expected_diagnostics.cumulative_observed_return,
+        SIMULATION_ERROR_FACTORY,
+        context_suffix=f"simulated_interval_count={simulated_interval_count}",
+    )
+    validate_exact_number(
+        raw_payload,
         "max_abs_total_return",
         "diagnostics.max_abs_total_return",
         expected_diagnostics.max_abs_total_return,
+        SIMULATION_ERROR_FACTORY,
+        context_suffix=f"simulated_interval_count={simulated_interval_count}",
+    )
+    validate_exact_number(
+        raw_payload,
+        "max_abs_deviation_from_anchor",
+        "diagnostics.max_abs_deviation_from_anchor",
+        expected_diagnostics.max_abs_deviation_from_anchor,
+        SIMULATION_ERROR_FACTORY,
+        context_suffix=f"simulated_interval_count={simulated_interval_count}",
+    )
+    validate_exact_number(
+        raw_payload,
+        "terminal_observed_log_price",
+        "diagnostics.terminal_observed_log_price",
+        expected_diagnostics.terminal_observed_log_price,
+        SIMULATION_ERROR_FACTORY,
+        context_suffix=f"simulated_interval_count={simulated_interval_count}",
+    )
+    validate_exact_number(
+        raw_payload,
+        "terminal_deviation_from_anchor",
+        "diagnostics.terminal_deviation_from_anchor",
+        expected_diagnostics.terminal_deviation_from_anchor,
         SIMULATION_ERROR_FACTORY,
         context_suffix=f"simulated_interval_count={simulated_interval_count}",
     )

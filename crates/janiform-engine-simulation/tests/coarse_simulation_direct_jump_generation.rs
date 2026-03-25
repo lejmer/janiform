@@ -13,6 +13,9 @@ use janiform_market_time::calendar::{
 use janiform_model_kernels::hawkes::{
     HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
 };
+use janiform_model_kernels::mean_reversion::{
+    MeanReversionBoundaryState, MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors,
+};
 use janiform_model_kernels::news::{
     CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
     GammaSeverityMarkConfiguration, KnownNewsArrivalConfiguration, NewsArrivalConfiguration,
@@ -210,6 +213,8 @@ fn coarse_simulation_surfaces_transform_slice_solver_failures() {
             .expect("solver-failure kernel parameters should construct"),
             GammaSeverityMarkConfiguration::try_new(1.8, 0.7)
                 .expect("solver-failure gamma configuration should construct"),
+            1,
+            1.0,
         ),
         build_news_process_configuration(
             vec![],
@@ -268,6 +273,8 @@ fn coarse_simulation_surfaces_boundary_state_update_failures() {
             .expect("boundary-failure kernel parameters should construct"),
             GammaSeverityMarkConfiguration::try_new(1.8, 1.0e-308)
                 .expect("boundary-failure gamma configuration should construct"),
+            1,
+            1.0,
         ),
         build_news_process_configuration(
             vec![1_704_206_700_000_000_000],
@@ -362,7 +369,11 @@ fn build_run_request(
         seed,
         start_time_utc_nanos,
         interval_delta,
-        build_model_inputs(known_news_timestamps_utc_nanos),
+        build_model_inputs(
+            known_news_timestamps_utc_nanos,
+            horizon_interval_count,
+            interval_delta,
+        ),
         SufficientStatisticsRiskIntervalFactors::try_new(
             vec![1.0; horizon_interval_count],
             nu_h_known,
@@ -391,7 +402,11 @@ fn build_run_request_with_model_inputs(
     .expect("run request should construct")
 }
 
-fn build_model_inputs(known_news_timestamps_utc_nanos: Vec<i64>) -> CoarseSimulationModelInputs {
+fn build_model_inputs(
+    known_news_timestamps_utc_nanos: Vec<i64>,
+    interval_count: usize,
+    interval_delta: f64,
+) -> CoarseSimulationModelInputs {
     build_model_inputs_with_components(
         build_risk_model_inputs(
             HawkesKernelParameters::try_new(
@@ -413,6 +428,8 @@ fn build_model_inputs(known_news_timestamps_utc_nanos: Vec<i64>) -> CoarseSimula
             .expect("kernel parameters should construct"),
             GammaSeverityMarkConfiguration::try_new(1.8, 0.7)
                 .expect("gamma severity configuration should construct"),
+            interval_count,
+            interval_delta,
         ),
         build_news_process_configuration(
             known_news_timestamps_utc_nanos,
@@ -440,6 +457,8 @@ fn build_model_inputs_with_components(
 fn build_risk_model_inputs(
     kernel_parameters: HawkesKernelParameters,
     gamma_severity_configuration: GammaSeverityMarkConfiguration,
+    interval_count: usize,
+    interval_delta: f64,
 ) -> SufficientStatisticsRiskModelInputs {
     SufficientStatisticsRiskModelInputs::try_new(
         ExponentialAffineTransformEquationSpecification::try_new(
@@ -450,6 +469,16 @@ fn build_risk_model_inputs(
         NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
             .expect("nig configuration should construct"),
         default_initial_excitation_state(),
+        MeanReversionFittedParameters::disabled(),
+        MeanReversionRuntimeIntervalAnchors::try_new(
+            "explicit_runtime_interval_grid_alignment.v1",
+            0.0,
+            vec![0.0; interval_count],
+            vec![interval_delta; interval_count],
+        )
+        .expect("disabled mean-reversion runtime anchors should construct"),
+        MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0)
+            .expect("disabled mean-reversion boundary state should construct"),
     )
     .expect("risk model inputs should construct")
 }

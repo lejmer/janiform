@@ -10,9 +10,7 @@ use janiform::simulation::{
     run_seeded_tick_event_simulation as run_seeded_tick_event_simulation_core,
 };
 use pyo3::prelude::{Bound, Py, PyErr, PyResult, Python};
-use pyo3::types::{
-    PyAny, PyAnyMethods, PyMapping, PyMappingMethods, PyModule, PyModuleMethods,
-};
+use pyo3::types::{PyAny, PyAnyMethods, PyMapping, PyMappingMethods, PyModule, PyModuleMethods};
 use pyo3::{pyfunction, wrap_pyfunction};
 
 use super::calendar::parse_timestamp_utc;
@@ -85,9 +83,7 @@ fn run_seeded_tick_event_simulation(
         ))
     })?;
     let parsed_mean_reversion_fitted_parameters =
-        parse_seeded_simulation_mean_reversion_fitted_parameters(
-            mean_reversion_fitted_parameters,
-        )?;
+        parse_seeded_simulation_mean_reversion_fitted_parameters(mean_reversion_fitted_parameters)?;
     let parsed_mean_reversion_runtime_interval_anchors =
         parse_seeded_simulation_mean_reversion_runtime_interval_anchors(
             mean_reversion_runtime_interval_anchors,
@@ -118,10 +114,8 @@ fn run_seeded_tick_event_simulation(
             news_process_configuration: parsed_news_process_configuration,
             initial_excitation_state: parsed_initial_excitation_state,
             mean_reversion_fitted_parameters: parsed_mean_reversion_fitted_parameters,
-            mean_reversion_runtime_interval_anchors:
-                parsed_mean_reversion_runtime_interval_anchors,
-            initial_mean_reversion_boundary_state:
-                parsed_initial_mean_reversion_boundary_state,
+            mean_reversion_runtime_interval_anchors: parsed_mean_reversion_runtime_interval_anchors,
+            initial_mean_reversion_boundary_state: parsed_initial_mean_reversion_boundary_state,
             hourly_factor_contract: hourly_factor_contract.output.clone(),
             calendar_registry: hourly_factor_contract.calendar_registry.clone(),
         },
@@ -175,11 +169,13 @@ fn parse_seeded_simulation_mean_reversion_runtime_interval_anchors(
             ))
         })?;
 
-    parsed_runtime_interval_anchors.validate().map_err(|source| {
-        SeasonalityInputValidationError::new_err(format!(
-            "mean_reversion_runtime_interval_anchors failed validation: {source}"
-        ))
-    })?;
+    parsed_runtime_interval_anchors
+        .validate()
+        .map_err(|source| {
+            SeasonalityInputValidationError::new_err(format!(
+                "mean_reversion_runtime_interval_anchors failed validation: {source}"
+            ))
+        })?;
 
     Ok(parsed_runtime_interval_anchors)
 }

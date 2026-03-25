@@ -43,7 +43,7 @@ pub(crate) const SUFFICIENT_STATISTICS_RISK_PATH_REQUIRED_PROVENANCE_FIELDS: [&s
     "batch_seed_partition_policy",
     "artifact_workflow_tags",
 ];
-pub(crate) const SUFFICIENT_STATISTICS_RISK_PATH_REQUIRED_DIAGNOSTICS_FIELDS: [&str; 13] = [
+pub(crate) const SUFFICIENT_STATISTICS_RISK_PATH_REQUIRED_DIAGNOSTICS_FIELDS: [&str; 17] = [
     "schema_version",
     "simulated_interval_count",
     "first_interval_index",
@@ -56,7 +56,11 @@ pub(crate) const SUFFICIENT_STATISTICS_RISK_PATH_REQUIRED_DIAGNOSTICS_FIELDS: [&
     "cumulative_open_jump_return",
     "cumulative_closed_gap_return",
     "cumulative_total_return",
+    "cumulative_observed_return",
     "max_abs_total_return",
+    "max_abs_deviation_from_anchor",
+    "terminal_observed_log_price",
+    "terminal_deviation_from_anchor",
 ];
 pub(crate) const SUFFICIENT_STATISTICS_RISK_PATH_ARTIFACT_WORKFLOW_TAGS: [&str; 2] =
     ["calibration", "validation"];

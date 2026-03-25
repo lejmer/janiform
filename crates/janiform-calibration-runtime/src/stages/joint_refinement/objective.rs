@@ -1,11 +1,13 @@
 use std::cmp::Ordering;
 
-use janiform_foundations::numeric::{compute_finite_quantile_or_zero, standardized_path_distance};
+use janiform_foundations::numeric::{
+    bowley_skewness_from_sorted, central_skewness_or_zero, relative_rmse, sorted_finite_values,
+    standardized_path_distance,
+};
 
 use crate::stages::joint_metrics::{
     JointRefinementBusinessTimeBucketReturnScaleSummaries, JointRefinementReturnScaleSummary,
-    log_ratio_distance, normalized_profile_distance, relative_rmse,
-    zero_aware_normalized_bucket_value,
+    log_ratio_distance, normalized_profile_distance, zero_aware_normalized_bucket_value,
 };
 use crate::stages::return_components::{
     ContinuousLikelihoodFidelityTier, evaluate_configuration_likelihood_objective,
@@ -79,6 +81,7 @@ fn build_joint_candidate_evaluation(
     solver_settings: &CalibrationOptimizerSettings,
 ) -> JointRefinementCandidateEvaluation {
     let parameter_bits = ordered_parameter_bits(parameter_vector);
+
     let Some(fitted_parameters) = parameter_vector_to_fitted_parameters(parameter_vector, context)
     else {
         return invalid_candidate_evaluation(
@@ -134,6 +137,7 @@ fn build_joint_candidate_evaluation_for_fitted_parameters(
             context.observed_data.observed_open_event_rate_per_hour,
             context.observed_data.fallback_sell_share_proxy,
         );
+
     let observed_tick_sample = rescale_continuous_return_calibration_sample_business_time_scales(
         &context
             .observed_data
@@ -178,6 +182,7 @@ fn build_joint_candidate_evaluation_for_fitted_parameters(
         JointRefinementFidelityTier::Local => vec![context.local_simulation_seed],
         JointRefinementFidelityTier::Final => context.final_simulation_seeds.clone(),
     };
+
     let seed_summaries = with_joint_refinement_thread_pool(context, || {
         simulation_seeds
             .par_iter()
@@ -199,6 +204,7 @@ fn build_joint_candidate_evaluation_for_fitted_parameters(
             "simulate_seed_summary_failed",
         );
     }
+
     let resolved_seed_summaries = seed_summaries.into_iter().flatten().collect::<Vec<_>>();
 
     let raw_aggregated_return_shape_fit = average_seed_score(
@@ -245,6 +251,7 @@ fn build_joint_candidate_evaluation_for_fitted_parameters(
             .iter()
             .map(|seed_summary| activity_level_fit(seed_summary, &context.observed_data)),
     );
+
     let raw_rv_activity_coupling_fit =
         average_seed_score(resolved_seed_summaries.iter().map(|seed_summary| {
             rv_activity_coupling_fit(
@@ -264,6 +271,7 @@ fn build_joint_candidate_evaluation_for_fitted_parameters(
         JointRefinementFidelityTier::Local => &context.local_baseline_buckets,
         JointRefinementFidelityTier::Final => &context.final_baseline_buckets,
     };
+
     let normalized_aggregated_likelihood_fit = normalize_bucket(
         raw_aggregated_likelihood_fit,
         baseline_buckets.aggregated_likelihood_fit,
@@ -573,8 +581,8 @@ pub(super) fn return_asymmetry_horizon_fit(
 
     root_mean_square(
         [
-            signed_metric_distance(candidate_central_skewness, observed_central_skewness),
-            signed_metric_distance(candidate_bowley_skewness, observed_bowley_skewness),
+            (candidate_central_skewness - observed_central_skewness).abs(),
+            (candidate_bowley_skewness - observed_bowley_skewness).abs(),
         ]
         .as_slice(),
     )
@@ -740,6 +748,7 @@ fn business_time_return_scale_fit(
         seed_summary.simulated_5m_business_time_return_scale_summaries,
         observed_data.observed_5m_business_time_return_scale_summaries,
     );
+
     root_mean_square([fit_5m, fit_15m].as_slice())
 }
 
@@ -794,6 +803,7 @@ fn return_scale_horizon_fit(
         observed_summary.absolute_return_quantile_q90,
         JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR,
     );
+
     root_mean_square([mean_abs_fit, realized_variance_fit, tail_fit].as_slice())
 }
 
@@ -821,6 +831,7 @@ fn activity_shape_fit(
         seed_summary.simulated_hourly_tick_counts.as_slice(),
         observed_data.observed_hourly_tick_counts.as_slice(),
     );
+
     root_mean_square([profile_fit, path_fit].as_slice())
 }
 
@@ -830,10 +841,13 @@ fn activity_level_fit(
 ) -> f64 {
     let candidate_counts = seed_summary.simulated_hourly_tick_counts.as_slice();
     let observed_counts = observed_data.observed_hourly_tick_counts.as_slice();
+
     let candidate_total = candidate_counts.iter().sum::<f64>();
     let observed_total = observed_counts.iter().sum::<f64>();
+
     let candidate_mean = candidate_total / candidate_counts.len().max(1) as f64;
     let observed_mean = observed_total / observed_counts.len().max(1) as f64;
+
     let candidate_peak = candidate_counts.iter().copied().fold(0.0, f64::max);
     let observed_peak = observed_counts.iter().copied().fold(0.0, f64::max);
 
@@ -867,11 +881,10 @@ fn rv_activity_coupling_fit(
 ) -> f64 {
     root_mean_square(
         [
-            signed_metric_distance(candidate_metric.correlation, observed_metric.correlation),
-            signed_metric_distance(
-                candidate_metric.standardized_path_distance,
-                observed_metric.standardized_path_distance,
-            ),
+            (candidate_metric.correlation - observed_metric.correlation).abs(),
+            (candidate_metric.standardized_path_distance
+                - observed_metric.standardized_path_distance)
+                .abs(),
         ]
         .as_slice(),
     )
@@ -889,45 +902,56 @@ fn build_joint_objective_term_diagnostics(
         .observed_hourly_tick_counts
         .iter()
         .sum::<f64>();
+
     let observed_mean_hourly_tick_count = observed_total_hourly_tick_count
         / observed_data.observed_hourly_tick_counts.len().max(1) as f64;
+
     let observed_peak_hourly_tick_count = observed_data
         .observed_hourly_tick_counts
         .iter()
         .copied()
         .fold(0.0, f64::max);
+
     let observed_peak_hourly_tick_share = observed_peak_hourly_tick_count
         / observed_total_hourly_tick_count.max(JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR);
+
     let observed_return_scale_summary = observed_data.observed_15m_return_scale_summary;
     let observed_tick_return_scale_summary = observed_data.observed_tick_return_scale_summary;
+
     let observed_return_shape_skewness =
         skewness_or_zero(observed_data.observed_15m_shape_returns.as_slice());
+
     let observed_return_shape_bowley_skewness =
         bowley_skewness_or_zero(observed_data.observed_15m_shape_returns.as_slice());
+
     let observed_tick_shape_skewness =
         skewness_or_zero(observed_data.observed_tick_shape_returns.as_slice());
+
     let observed_tick_shape_bowley_skewness =
         bowley_skewness_or_zero(observed_data.observed_tick_shape_returns.as_slice());
+
     let observed_rv_activity_metric = observed_data.observed_15m_rv_activity_metric;
     let observed_log_price_span = observed_data.observed_log_price_span;
 
     let simulated_total_hourly_tick_count =
-        average_value(seed_summaries.iter().map(|seed_summary| {
+        average_seed_score(seed_summaries.iter().map(|seed_summary| {
             seed_summary
                 .simulated_hourly_tick_counts
                 .iter()
                 .sum::<f64>()
         }));
+
     let simulated_mean_hourly_tick_count =
-        average_value(seed_summaries.iter().map(|seed_summary| {
+        average_seed_score(seed_summaries.iter().map(|seed_summary| {
             let total_hourly_tick_count = seed_summary
                 .simulated_hourly_tick_counts
                 .iter()
                 .sum::<f64>();
             total_hourly_tick_count / seed_summary.simulated_hourly_tick_counts.len().max(1) as f64
         }));
+
     let simulated_peak_hourly_tick_share =
-        average_value(seed_summaries.iter().map(|seed_summary| {
+        average_seed_score(seed_summaries.iter().map(|seed_summary| {
             let total_hourly_tick_count = seed_summary
                 .simulated_hourly_tick_counts
                 .iter()
@@ -940,57 +964,68 @@ fn build_joint_objective_term_diagnostics(
             peak_hourly_tick_count
                 / total_hourly_tick_count.max(JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR)
         }));
+
     let simulated_realized_variance_15m =
-        average_value(seed_summaries.iter().map(|seed_summary| {
+        average_seed_score(seed_summaries.iter().map(|seed_summary| {
             seed_summary
                 .simulated_15m_return_scale_summary
                 .realized_variance
         }));
+
     let simulated_mean_absolute_return_15m =
-        average_value(seed_summaries.iter().map(|seed_summary| {
+        average_seed_score(seed_summaries.iter().map(|seed_summary| {
             seed_summary
                 .simulated_15m_return_scale_summary
                 .mean_absolute_return
         }));
+
     let simulated_realized_variance_tick =
-        average_value(seed_summaries.iter().map(|seed_summary| {
+        average_seed_score(seed_summaries.iter().map(|seed_summary| {
             seed_summary
                 .simulated_tick_return_scale_summary
                 .realized_variance
         }));
+
     let simulated_mean_absolute_return_tick =
-        average_value(seed_summaries.iter().map(|seed_summary| {
+        average_seed_score(seed_summaries.iter().map(|seed_summary| {
             seed_summary
                 .simulated_tick_return_scale_summary
                 .mean_absolute_return
         }));
+
     let simulated_return_shape_skewness =
-        average_value(seed_summaries.iter().map(|seed_summary| {
+        average_seed_score(seed_summaries.iter().map(|seed_summary| {
             skewness_or_zero(seed_summary.simulated_15m_shape_returns.as_slice())
         }));
+
     let simulated_return_shape_bowley_skewness =
-        average_value(seed_summaries.iter().map(|seed_summary| {
+        average_seed_score(seed_summaries.iter().map(|seed_summary| {
             bowley_skewness_or_zero(seed_summary.simulated_15m_shape_returns.as_slice())
         }));
-    let simulated_tick_shape_skewness = average_value(seed_summaries.iter().map(|seed_summary| {
-        skewness_or_zero(seed_summary.simulated_tick_shape_returns.as_slice())
-    }));
+
+    let simulated_tick_shape_skewness =
+        average_seed_score(seed_summaries.iter().map(|seed_summary| {
+            skewness_or_zero(seed_summary.simulated_tick_shape_returns.as_slice())
+        }));
+
     let simulated_tick_shape_bowley_skewness =
-        average_value(seed_summaries.iter().map(|seed_summary| {
+        average_seed_score(seed_summaries.iter().map(|seed_summary| {
             bowley_skewness_or_zero(seed_summary.simulated_tick_shape_returns.as_slice())
         }));
-    let simulated_rv_activity_correlation = average_value(
+
+    let simulated_rv_activity_correlation = average_seed_score(
         seed_summaries
             .iter()
             .map(|seed_summary| seed_summary.simulated_15m_rv_activity_metric.correlation),
     );
+
     let simulated_rv_activity_path_distance =
-        average_value(seed_summaries.iter().map(|seed_summary| {
+        average_seed_score(seed_summaries.iter().map(|seed_summary| {
             seed_summary
                 .simulated_15m_rv_activity_metric
                 .standardized_path_distance
         }));
-    let simulated_log_price_span = average_value(seed_summaries.iter().map(|seed_summary| {
+    let simulated_log_price_span = average_seed_score(seed_summaries.iter().map(|seed_summary| {
         compute_cumulative_log_price_span(seed_summary.simulated_15m_intervals.as_slice())
     }));
 
@@ -1106,6 +1141,7 @@ fn build_positive_joint_objective_term(
     let uncertainty_scale = observed_value
         .abs()
         .max(JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR);
+
     crate::stages::joint_refinement::contracts::JointRefinementStageObjectiveTermDiagnostic {
         metric_id: metric_id.to_string(),
         target_id: target_id.to_string(),
@@ -1132,6 +1168,7 @@ fn build_signed_joint_objective_term(
         .abs()
         .max(simulated_value.abs())
         .max(JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR);
+
     crate::stages::joint_refinement::contracts::JointRefinementStageObjectiveTermDiagnostic {
         metric_id: metric_id.to_string(),
         target_id: target_id.to_string(),
@@ -1139,73 +1176,20 @@ fn build_signed_joint_objective_term(
         observed_value,
         simulated_value,
         uncertainty_scale,
-        normalized_error: signed_metric_distance(simulated_value, observed_value)
-            / uncertainty_scale,
-    }
-}
-
-fn average_value(values: impl Iterator<Item = f64>) -> f64 {
-    let mut total = 0.0;
-    let mut count = 0usize;
-    for value in values {
-        total += value;
-        count += 1;
-    }
-    if count == 0 {
-        0.0
-    } else {
-        total / count as f64
+        normalized_error: (simulated_value - observed_value).abs() / uncertainty_scale,
     }
 }
 
 fn skewness_or_zero(values: &[f64]) -> f64 {
-    let finite_values = values
-        .iter()
-        .copied()
-        .filter(|value| value.is_finite())
-        .collect::<Vec<_>>();
-    if finite_values.len() < 2 {
-        return 0.0;
-    }
-    let mean = finite_values.iter().sum::<f64>() / finite_values.len() as f64;
-    let centered_values = finite_values
-        .iter()
-        .map(|value| *value - mean)
-        .collect::<Vec<_>>();
-    let variance = centered_values
-        .iter()
-        .map(|value| value * value)
-        .sum::<f64>()
-        / centered_values.len() as f64;
-    let standard_deviation = variance.sqrt();
-    if standard_deviation <= JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR {
-        return 0.0;
-    }
-    centered_values
-        .iter()
-        .map(|value| (value / standard_deviation).powi(3))
-        .sum::<f64>()
-        / centered_values.len() as f64
+    central_skewness_or_zero(values, JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR)
 }
 
 fn bowley_skewness_or_zero(values: &[f64]) -> f64 {
-    let finite_values = values
-        .iter()
-        .copied()
-        .filter(|value| value.is_finite())
-        .collect::<Vec<_>>();
-    if finite_values.len() < 4 {
-        return 0.0;
-    }
-    let q1 = compute_finite_quantile_or_zero(finite_values.as_slice(), 0.25);
-    let q2 = compute_finite_quantile_or_zero(finite_values.as_slice(), 0.50);
-    let q3 = compute_finite_quantile_or_zero(finite_values.as_slice(), 0.75);
-    let denominator = (q3 - q1).abs().max(JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR);
-    ((q3 + q1) - 2.0 * q2) / denominator
-}
-
-fn signed_metric_distance(candidate_value: f64, observed_value: f64) -> f64 {
-    (candidate_value - observed_value).abs()
+    bowley_skewness_from_sorted(
+        sorted_finite_values(values).as_slice(),
+        JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR,
+    )
+    .unwrap_or(0.0)
 }
 
 fn violates_runtime_seasonality_scaled_stationarity(

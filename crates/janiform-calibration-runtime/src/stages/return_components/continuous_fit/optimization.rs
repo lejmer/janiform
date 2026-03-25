@@ -2,6 +2,9 @@ use std::collections::BTreeSet;
 
 use janiform_calibration_artifacts::CalibrationOptimizerSettings;
 use janiform_foundations::low_discrepancy::van_der_corput;
+use janiform_foundations::numeric::{
+    sample_adjusted_excess_kurtosis, sample_adjusted_skewness, sample_standard_deviation,
+};
 use janiform_foundations::vector_math::vector4_subtract;
 use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
@@ -10,10 +13,7 @@ use super::super::contracts::{
     ReturnComponentsStageObservedSignalSummaryStatistics,
     ReturnComponentsStageReturnDistributionDiagnostic,
 };
-use super::super::execution::{
-    arithmetic_mean_signed, sample_adjusted_excess_kurtosis, sample_adjusted_skewness,
-    sample_standard_deviation,
-};
+use super::super::execution::arithmetic_mean_signed;
 use super::bounds::{
     build_moment_seed_candidates, build_search_regimes_from_moment_seeds,
     configuration_from_shape_search_point, theoretical_search_bounds,
@@ -48,6 +48,7 @@ pub(crate) fn build_nig_search_candidates(
     solver_settings: &CalibrationOptimizerSettings,
 ) -> Vec<OptimizedNigCandidate> {
     let optimizer_context = build_continuous_return_optimizer_context(calibration_sample);
+
     let broad_candidate_count = solver_settings.max_iterations.clamp(
         RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_MIN_BROAD_CANDIDATE_COUNT,
         RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_MAX_BROAD_CANDIDATE_COUNT,
@@ -57,42 +58,51 @@ pub(crate) fn build_nig_search_candidates(
         let moment_candidate_count = broad_candidate_count
             .saturating_mul(RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_MOMENT_SEED_CANDIDATE_MULTIPLIER)
             .max(RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_MIN_MOMENT_SEED_CANDIDATE_COUNT);
+
         let theoretical_search_bounds =
             theoretical_search_bounds(calibration_sample.observed_profile, moment_candidate_count);
+
         let moment_seed_candidates = build_moment_seed_candidates(
             &optimizer_context,
             calibration_sample,
             theoretical_search_bounds,
             moment_candidate_count,
         );
+
         let broad_search_regimes = build_search_regimes_from_moment_seeds(
             &optimizer_context,
             moment_seed_candidates.as_slice(),
             theoretical_search_bounds,
         );
         let search_bounds = search_bounds_from_regimes(broad_search_regimes.as_slice());
+
         let broad_search_points =
             build_broad_search_points(broad_search_regimes.as_slice(), broad_candidate_count);
+
         let broad_scored_candidates = score_search_points(
             &optimizer_context,
             broad_search_points.as_slice(),
             ContinuousLikelihoodFidelityTier::Seed,
         );
+
         let seed_candidates = build_basin_seed_candidates(
             broad_scored_candidates.as_slice(),
             broad_search_regimes.as_slice(),
         );
+
         let optimized_seed_candidates = optimize_seed_candidates(
             &optimizer_context,
             seed_candidates.as_slice(),
             search_bounds,
             solver_settings,
         );
+
         let retained_basin_candidates = retain_distinct_basin_candidates(
             optimized_seed_candidates,
             search_bounds,
             RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_ELITE_COUNT,
         );
+
         let basin_diagnostics = build_optimizer_basin_diagnostics(
             retained_basin_candidates.as_slice(),
             calibration_sample,
@@ -109,6 +119,7 @@ pub(crate) fn build_nig_search_candidates(
                 },
             })
             .collect();
+
         optimized_candidates.sort_by(|left, right| {
             left.optimizer_diagnostic
                 .final_objective_score
@@ -226,11 +237,13 @@ pub(super) fn build_profiled_search_regime(
         seed_search_point,
         ContinuousLikelihoodFidelityTier::Local,
     )?;
+
     let seed_profile_score = profile_likelihood_score(seed_evaluation.objective);
     let profile_score_threshold = seed_profile_score
         + profile_likelihood_score_threshold(optimizer_context.local_member_indices.len());
 
     let seed_vector = search_point_to_vector(seed_search_point);
+
     let mut lower_bounds = [0.0; 4];
     let mut upper_bounds = [0.0; 4];
 
@@ -364,6 +377,7 @@ fn profiled_coordinate_bound(
         vector_to_search_point(seed_vector),
         ContinuousLikelihoodFidelityTier::Local,
     )?;
+
     let seed_profile_score = profile_likelihood_score(seed_evaluation.objective);
 
     let mut accepted_coordinate = seed_vector[coordinate_index];
@@ -372,6 +386,7 @@ fn profiled_coordinate_bound(
     for scan_step_index in 1..=RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_PROFILE_SCAN_STEP_COUNT {
         let scan_fraction = scan_step_index as f64
             / RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_PROFILE_SCAN_STEP_COUNT as f64;
+
         let candidate_coordinate = match scan_direction {
             ScanDirection::Lower | ScanDirection::Upper => {
                 seed_vector[coordinate_index]
@@ -387,6 +402,7 @@ fn profiled_coordinate_bound(
             vector_to_search_point(candidate_vector),
             ContinuousLikelihoodFidelityTier::Local,
         );
+
         let candidate_profile_score = candidate_evaluation
             .map(|evaluation| profile_likelihood_score(evaluation.objective))
             .unwrap_or(f64::INFINITY);
@@ -402,10 +418,12 @@ fn profiled_coordinate_bound(
     let Some(mut rejected_coordinate) = rejected_coordinate else {
         return Some(coordinate_bound);
     };
+
     let mut accepted_coordinate = accepted_coordinate;
 
     for _ in 0..RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_PROFILE_BISECTION_STEP_COUNT {
         let midpoint_coordinate = 0.5 * (accepted_coordinate + rejected_coordinate);
+
         let mut candidate_vector = seed_vector;
         candidate_vector[coordinate_index] = midpoint_coordinate;
 
@@ -414,6 +432,7 @@ fn profiled_coordinate_bound(
             vector_to_search_point(candidate_vector),
             ContinuousLikelihoodFidelityTier::Local,
         );
+
         let candidate_profile_score = candidate_evaluation
             .map(|evaluation| profile_likelihood_score(evaluation.objective))
             .unwrap_or(f64::INFINITY);
@@ -467,6 +486,7 @@ fn build_basin_seed_candidates(
     broad_search_regimes: &[NigSearchRegime],
 ) -> Vec<SeededNigCandidate> {
     let mut ranked_candidates = scored_candidates.to_vec();
+
     ranked_candidates.sort_by(|left, right| {
         left.objective_score
             .total_cmp(&right.objective_score)
@@ -532,6 +552,7 @@ fn build_basin_seed_candidates(
         if retained_candidates.len() >= RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_ELITE_COUNT {
             break;
         }
+
         let regime_index =
             nearest_search_regime_index(scored_candidate.search_point, broad_search_regimes);
         if !retained_regimes.insert(regime_index) {
@@ -707,6 +728,7 @@ fn evaluate_cached_search_point(
         sell_relative_coordinate_bits: shape_search_point.sell_relative_coordinate.to_bits(),
         log_delta_offset_bits: shape_search_point.log_delta_offset.to_bits(),
     };
+
     if let Ok(cache_guard) = optimizer_context.cache.lock() {
         if let Some(cached_value) = cache_guard.get(&cache_key) {
             return *cached_value;
@@ -773,6 +795,7 @@ fn nearest_search_regime_index(
     search_regimes: &[NigSearchRegime],
 ) -> usize {
     let search_point_vector = search_point_to_vector(search_point);
+
     let mut nearest_regime_index = 0usize;
     let mut nearest_distance = f64::INFINITY;
 
@@ -813,6 +836,7 @@ fn optimize_seed_candidates(
                 seed_candidate.scored_candidate.search_point,
                 ContinuousLikelihoodFidelityTier::Full,
             )?;
+
             let local_outcome = optimize_local_search_point(
                 optimizer_context,
                 seed_candidate.scored_candidate.search_point,
@@ -825,6 +849,7 @@ fn optimize_seed_candidates(
                 local_outcome.best_point,
                 ContinuousLikelihoodFidelityTier::Full,
             )?;
+
             let (final_search_point, final_evaluation) =
                 if local_final_evaluation.objective.shifted_objective_score
                     < seed_final_evaluation.objective.shifted_objective_score
@@ -897,7 +922,9 @@ fn retain_distinct_basin_candidates(
         }) {
             continue;
         }
+
         retained_candidates.push(optimized_candidate);
+
         if retained_candidates.len() >= maximum_basin_count {
             break;
         }
@@ -919,7 +946,9 @@ fn build_optimizer_basin_diagnostics(
                 calibration_sample,
                 stage_seed,
             );
+
             let fitted_profile = build_distribution_profile(fitted_returns.as_slice());
+
             let profile_fit_breakdown = distribution_profile_fit_breakdown(
                 fitted_profile,
                 calibration_sample.observed_profile,
@@ -961,6 +990,7 @@ fn basin_search_points_overlap(
 ) -> bool {
     let left_vector = search_point_to_vector(left);
     let right_vector = search_point_to_vector(right);
+
     let mut maximum_normalized_distance: f64 = 0.0;
 
     for coordinate_index in 0..4 {
@@ -995,6 +1025,7 @@ fn optimize_local_search_point(
     let mut best_vector = current_vector;
     let mut best_evaluation = current_evaluation;
     let mut local_evaluation_count = 1usize;
+
     let local_evaluation_budget = solver_settings.max_iterations.clamp(
         RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_MIN_BROAD_CANDIDATE_COUNT,
         RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_MAX_BROAD_CANDIDATE_COUNT,
@@ -1006,10 +1037,13 @@ fn optimize_local_search_point(
             .abs()
             .max(solver_settings.absolute_tolerance)
     });
+
     let step_floor = solver_settings
         .absolute_tolerance
         .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER);
+
     let mut step_radii: [f64; 4] = coordinate_spans.map(|span| (span * 0.18).max(step_floor));
+
     let search_directions: [[f64; 4]; 10] = [
         [1.0, 0.0, 0.0, 0.0],
         [0.0, 1.0, 0.0, 0.0],
@@ -1077,6 +1111,7 @@ fn optimize_local_search_point(
                     .map(|evaluation| (candidate_vector, evaluation))
                 })
                 .collect();
+
         local_evaluation_count += candidate_evaluations.len();
 
         let best_neighbor = candidate_evaluations.into_iter().min_by(|left, right| {
@@ -1099,8 +1134,10 @@ fn optimize_local_search_point(
                 - neighbor_evaluation.objective.shifted_objective_score;
             if improvement > objective_tolerance {
                 let displacement = vector4_subtract(neighbor_vector, current_vector);
+
                 current_vector = neighbor_vector;
                 current_evaluation = neighbor_evaluation;
+
                 if current_evaluation.objective.shifted_objective_score
                     < best_evaluation.objective.shifted_objective_score
                 {
@@ -1117,7 +1154,9 @@ fn optimize_local_search_point(
                             (step_radii[coordinate_index] * 0.92).max(step_floor);
                     }
                 }
+
                 shrink_only_cycle_count = 0;
+
                 continue;
             }
         }
@@ -1125,6 +1164,7 @@ fn optimize_local_search_point(
         for coordinate_index in 0..4 {
             step_radii[coordinate_index] = (step_radii[coordinate_index] * 0.5).max(step_floor);
         }
+
         shrink_only_cycle_count += 1;
 
         let maximum_radius = step_radii.iter().copied().fold(0.0, f64::max);

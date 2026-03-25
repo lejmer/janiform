@@ -56,6 +56,11 @@ struct SufficientStatisticsRiskPathRecordPayload {
     interval_index: usize,
     sufficient_statistics: SufficientStatisticsIntervalStatistics,
     return_components: SufficientStatisticsRiskReturnComponents,
+    core_total_return: f64,
+    observed_interval_return: f64,
+    observed_log_price_end: f64,
+    anchor_value_end: f64,
+    deviation_from_anchor_end: f64,
 }
 
 impl<'de> Deserialize<'de> for SufficientStatisticsRiskPathRecord {
@@ -78,6 +83,11 @@ impl<'de> Deserialize<'de> for SufficientStatisticsRiskPathRecord {
             payload.interval_index,
             payload.sufficient_statistics,
             payload.return_components,
+            payload.core_total_return,
+            payload.observed_interval_return,
+            payload.observed_log_price_end,
+            payload.anchor_value_end,
+            payload.deviation_from_anchor_end,
         )
         .map_err(serde::de::Error::custom)
     }
@@ -147,7 +157,11 @@ struct SufficientStatisticsRiskPathDiagnosticsPayload {
     cumulative_open_jump_return: f64,
     cumulative_closed_gap_return: f64,
     cumulative_total_return: f64,
+    cumulative_observed_return: f64,
     max_abs_total_return: f64,
+    max_abs_deviation_from_anchor: f64,
+    terminal_observed_log_price: f64,
+    terminal_deviation_from_anchor: f64,
 }
 
 impl<'de> Deserialize<'de> for SufficientStatisticsRiskPath {
@@ -406,10 +420,34 @@ fn validate_path_diagnostics_payload(
             expected.cumulative_total_return, payload.cumulative_total_return
         ));
     }
+    if payload.cumulative_observed_return != expected.cumulative_observed_return {
+        return Err(format!(
+            "diagnostics.cumulative_observed_return must be {}, found {}",
+            expected.cumulative_observed_return, payload.cumulative_observed_return
+        ));
+    }
     if payload.max_abs_total_return != expected.max_abs_total_return {
         return Err(format!(
             "diagnostics.max_abs_total_return must be {}, found {}",
             expected.max_abs_total_return, payload.max_abs_total_return
+        ));
+    }
+    if payload.max_abs_deviation_from_anchor != expected.max_abs_deviation_from_anchor {
+        return Err(format!(
+            "diagnostics.max_abs_deviation_from_anchor must be {}, found {}",
+            expected.max_abs_deviation_from_anchor, payload.max_abs_deviation_from_anchor
+        ));
+    }
+    if payload.terminal_observed_log_price != expected.terminal_observed_log_price {
+        return Err(format!(
+            "diagnostics.terminal_observed_log_price must be {}, found {}",
+            expected.terminal_observed_log_price, payload.terminal_observed_log_price
+        ));
+    }
+    if payload.terminal_deviation_from_anchor != expected.terminal_deviation_from_anchor {
+        return Err(format!(
+            "diagnostics.terminal_deviation_from_anchor must be {}, found {}",
+            expected.terminal_deviation_from_anchor, payload.terminal_deviation_from_anchor
         ));
     }
 

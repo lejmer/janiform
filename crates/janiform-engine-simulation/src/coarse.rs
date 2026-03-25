@@ -23,6 +23,7 @@ use crate::risk::{
     SufficientStatisticsRiskReturnComponentsError,
 };
 use janiform_model_kernels::hawkes::HawkesExcitationState;
+use janiform_model_kernels::mean_reversion::MeanReversionBoundaryStateValidationError;
 use janiform_model_kernels::news::{NewsProcessConfiguration, NewsProcessConfigurationError};
 
 use super::runtime::compute_max_effective_endogenous_branching_ratio;
@@ -30,6 +31,7 @@ use super::runtime::compute_max_effective_endogenous_branching_ratio;
 const ONE_HOUR_NANOS: i64 = 3_600_000_000_000;
 const ONE_SECOND_NANOS: i64 = 1_000_000_000;
 const INTERVAL_DELTA_NANOS_TOLERANCE: f64 = 0.5;
+const MEAN_REVERSION_ALIGNMENT_TOLERANCE: f64 = 1.0e-12;
 
 pub const COARSE_SIMULATION_RUN_REQUEST_SCHEMA_VERSION: &str =
     "simulation.coarse_interval.run_request.v1";
@@ -69,13 +71,18 @@ const COARSE_SIMULATION_PATH_REQUIRED_FIELDS: [&str; 13] = [
     "terminal_excitation_state",
     "records",
 ];
-const COARSE_SIMULATION_PATH_RECORD_REQUIRED_FIELDS: [&str; 6] = [
+const COARSE_SIMULATION_PATH_RECORD_REQUIRED_FIELDS: [&str; 11] = [
     "schema_version",
     "interval_index",
     "interval_start_utc_nanos",
     "interval_end_utc_nanos",
     "sufficient_statistics",
     "return_components",
+    "core_total_return",
+    "observed_interval_return",
+    "observed_log_price_end",
+    "anchor_value_end",
+    "deviation_from_anchor_end",
 ];
 const COARSE_SIMULATION_PATH_REQUIRED_PROVENANCE_FIELDS: [&str; 13] = [
     "schema_version",
@@ -92,7 +99,7 @@ const COARSE_SIMULATION_PATH_REQUIRED_PROVENANCE_FIELDS: [&str; 13] = [
     "interval_return_component_routing_policy",
     "batch_seed_partition_policy",
 ];
-const COARSE_SIMULATION_PATH_REQUIRED_DIAGNOSTICS_FIELDS: [&str; 15] = [
+const COARSE_SIMULATION_PATH_REQUIRED_DIAGNOSTICS_FIELDS: [&str; 19] = [
     "schema_version",
     "simulated_interval_count",
     "first_interval_index",
@@ -107,7 +114,11 @@ const COARSE_SIMULATION_PATH_REQUIRED_DIAGNOSTICS_FIELDS: [&str; 15] = [
     "cumulative_open_jump_return",
     "cumulative_closed_gap_return",
     "cumulative_total_return",
+    "cumulative_observed_return",
     "max_abs_total_return",
+    "max_abs_deviation_from_anchor",
+    "terminal_observed_log_price",
+    "terminal_deviation_from_anchor",
 ];
 
 /// Simulation-specific coarse model inputs that extend the shared risk sampler state
@@ -357,6 +368,39 @@ impl CoarseSimulationRunRequest {
             );
         }
 
+        let runtime_interval_anchors = &self
+            .model_inputs
+            .risk_model_inputs
+            .mean_reversion_runtime_interval_anchors;
+        if runtime_interval_anchors.end_anchor_values.len() != self.horizon_interval_count {
+            return Err(
+                CoarseSimulationRunRequestError::MeanReversionRuntimeAnchorIntervalCountMismatch {
+                    expected_interval_count: self.horizon_interval_count,
+                    observed_interval_count: runtime_interval_anchors.end_anchor_values.len(),
+                },
+            );
+        }
+
+        for (interval_index, observed_interval_delta) in runtime_interval_anchors
+            .interval_deltas
+            .iter()
+            .copied()
+            .take(self.horizon_interval_count)
+            .enumerate()
+        {
+            if (observed_interval_delta - self.interval_delta).abs()
+                > MEAN_REVERSION_ALIGNMENT_TOLERANCE
+            {
+                return Err(
+                    CoarseSimulationRunRequestError::MeanReversionRuntimeAnchorIntervalDeltaMismatch {
+                        interval_index,
+                        expected_interval_delta: self.interval_delta,
+                        observed_interval_delta,
+                    },
+                );
+            }
+        }
+
         if let Some((
             max_seasonality_factor,
             spectral_radius_alpha_over_beta,
@@ -429,6 +473,15 @@ pub enum CoarseSimulationRunRequestError {
         requested_interval_count: usize,
         available_interval_count: usize,
     },
+    MeanReversionRuntimeAnchorIntervalCountMismatch {
+        expected_interval_count: usize,
+        observed_interval_count: usize,
+    },
+    MeanReversionRuntimeAnchorIntervalDeltaMismatch {
+        interval_index: usize,
+        expected_interval_delta: f64,
+        observed_interval_delta: f64,
+    },
     SeasonalityScaledEndogenousInstability {
         max_seasonality_factor: f64,
         spectral_radius_alpha_over_beta: f64,
@@ -484,6 +537,21 @@ impl Display for CoarseSimulationRunRequestError {
                 formatter,
                 "horizon_interval_count ({requested_interval_count}) exceeds available interval_factors entries ({available_interval_count})"
             ),
+            Self::MeanReversionRuntimeAnchorIntervalCountMismatch {
+                expected_interval_count,
+                observed_interval_count,
+            } => write!(
+                formatter,
+                "model_inputs.risk_model_inputs.mean_reversion_runtime_interval_anchors.end_anchor_values must contain {expected_interval_count} entries for the requested horizon, found {observed_interval_count}"
+            ),
+            Self::MeanReversionRuntimeAnchorIntervalDeltaMismatch {
+                interval_index,
+                expected_interval_delta,
+                observed_interval_delta,
+            } => write!(
+                formatter,
+                "model_inputs.risk_model_inputs.mean_reversion_runtime_interval_anchors.interval_deltas[{interval_index}] must equal interval_delta ({expected_interval_delta}), found {observed_interval_delta}"
+            ),
             Self::SeasonalityScaledEndogenousInstability {
                 max_seasonality_factor,
                 spectral_radius_alpha_over_beta,
@@ -503,7 +571,14 @@ impl Error for CoarseSimulationRunRequestError {
             Self::InvalidHorizonTimeIndex { source } => Some(source),
             Self::InvalidModelInputs { source } => Some(source),
             Self::InvalidIntervalFactors { source } => Some(source),
-            _ => None,
+            Self::MeanReversionRuntimeAnchorIntervalCountMismatch { .. }
+            | Self::MeanReversionRuntimeAnchorIntervalDeltaMismatch { .. }
+            | Self::SeasonalityScaledEndogenousInstability { .. }
+            | Self::InvalidSchemaVersion { .. }
+            | Self::InvalidStartTimeUtcNanos { .. }
+            | Self::InvalidHorizonIntervalCount { .. }
+            | Self::IntervalDeltaFactorMismatch { .. }
+            | Self::HorizonExceedsAvailableIntervals { .. } => None,
         }
     }
 }
@@ -518,15 +593,26 @@ pub struct CoarseSimulationPathRecord {
     pub interval_end_utc_nanos: i64,
     pub sufficient_statistics: SufficientStatisticsIntervalStatistics,
     pub return_components: SufficientStatisticsRiskReturnComponents,
+    pub core_total_return: f64,
+    pub observed_interval_return: f64,
+    pub observed_log_price_end: f64,
+    pub anchor_value_end: f64,
+    pub deviation_from_anchor_end: f64,
 }
 
 impl CoarseSimulationPathRecord {
+    #[allow(clippy::too_many_arguments)]
     pub fn try_new(
         interval_index: usize,
         interval_start_utc_nanos: i64,
         interval_end_utc_nanos: i64,
         sufficient_statistics: SufficientStatisticsIntervalStatistics,
         return_components: SufficientStatisticsRiskReturnComponents,
+        core_total_return: f64,
+        observed_interval_return: f64,
+        observed_log_price_end: f64,
+        anchor_value_end: f64,
+        deviation_from_anchor_end: f64,
     ) -> Result<Self, CoarseSimulationPathRecordError> {
         let record = Self {
             schema_version: COARSE_SIMULATION_PATH_RECORD_SCHEMA_VERSION.to_string(),
@@ -535,8 +621,15 @@ impl CoarseSimulationPathRecord {
             interval_end_utc_nanos,
             sufficient_statistics,
             return_components,
+            core_total_return,
+            observed_interval_return,
+            observed_log_price_end,
+            anchor_value_end,
+            deviation_from_anchor_end,
         };
+
         record.validate()?;
+
         Ok(record)
     }
 
@@ -558,6 +651,27 @@ impl CoarseSimulationPathRecord {
             CoarseSimulationPathRecordError::InvalidReturnComponents { source }
         })?;
 
+        if self.core_total_return != self.return_components.total_return {
+            return Err(CoarseSimulationPathRecordError::CoreTotalReturnMismatch {
+                expected_core_total_return: self.return_components.total_return,
+                observed_core_total_return: self.core_total_return,
+            });
+        }
+        if !self.observed_interval_return.is_finite() {
+            return Err(
+                CoarseSimulationPathRecordError::InvalidObservedIntervalReturn {
+                    value: self.observed_interval_return,
+                },
+            );
+        }
+
+        janiform_model_kernels::mean_reversion::MeanReversionBoundaryState::try_new(
+            self.observed_log_price_end,
+            self.anchor_value_end,
+            self.deviation_from_anchor_end,
+        )
+        .map_err(CoarseSimulationPathRecordError::InvalidObservedBoundaryState)?;
+
         Ok(())
     }
 }
@@ -572,6 +686,14 @@ pub enum CoarseSimulationPathRecordError {
     InvalidReturnComponents {
         source: SufficientStatisticsRiskReturnComponentsError,
     },
+    CoreTotalReturnMismatch {
+        expected_core_total_return: f64,
+        observed_core_total_return: f64,
+    },
+    InvalidObservedIntervalReturn {
+        value: f64,
+    },
+    InvalidObservedBoundaryState(MeanReversionBoundaryStateValidationError),
 }
 
 impl Display for CoarseSimulationPathRecordError {
@@ -592,6 +714,23 @@ impl Display for CoarseSimulationPathRecordError {
             Self::InvalidReturnComponents { source } => {
                 write!(formatter, "return_components is invalid: {source}")
             }
+            Self::CoreTotalReturnMismatch {
+                expected_core_total_return,
+                observed_core_total_return,
+            } => write!(
+                formatter,
+                "core_total_return must equal return_components.total_return ({expected_core_total_return}), found {observed_core_total_return}"
+            ),
+            Self::InvalidObservedIntervalReturn { value } => write!(
+                formatter,
+                "observed_interval_return must be finite, found {value}"
+            ),
+            Self::InvalidObservedBoundaryState(source) => {
+                write!(
+                    formatter,
+                    "observed end-of-interval boundary state is invalid: {source}"
+                )
+            }
         }
     }
 }
@@ -603,6 +742,10 @@ impl Error for CoarseSimulationPathRecordError {
             Self::InvalidIntervalBounds(source) => Some(source),
             Self::InvalidSufficientStatistics { source } => Some(source),
             Self::InvalidReturnComponents { source } => Some(source),
+            Self::InvalidObservedBoundaryState(source) => Some(source),
+            Self::CoreTotalReturnMismatch { .. } | Self::InvalidObservedIntervalReturn { .. } => {
+                None
+            }
         }
     }
 }
@@ -659,7 +802,11 @@ pub struct CoarseSimulationPathDiagnostics {
     pub cumulative_open_jump_return: f64,
     pub cumulative_closed_gap_return: f64,
     pub cumulative_total_return: f64,
+    pub cumulative_observed_return: f64,
     pub max_abs_total_return: f64,
+    pub max_abs_deviation_from_anchor: f64,
+    pub terminal_observed_log_price: f64,
+    pub terminal_deviation_from_anchor: f64,
 }
 
 /// Canonical time-indexed coarse simulation path artifact.
@@ -1373,11 +1520,14 @@ fn derive_coarse_simulation_path_diagnostics(
     let mut cumulative_open_jump_return = 0.0;
     let mut cumulative_closed_gap_return = 0.0;
     let mut cumulative_total_return = 0.0;
+    let mut cumulative_observed_return = 0.0;
     let mut max_abs_total_return: f64 = 0.0;
+    let mut max_abs_deviation_from_anchor: f64 = 0.0;
 
     for record in records {
         cumulative_a_plus += record.sufficient_statistics.a_plus;
         cumulative_a_minus += record.sufficient_statistics.a_minus;
+
         cumulative_n_plus = cumulative_n_plus
             .checked_add(record.sufficient_statistics.n_plus)
             .ok_or(CoarseSimulationPathError::InvalidDiagnostics {
@@ -1392,12 +1542,17 @@ fn derive_coarse_simulation_path_diagnostics(
                 expected: "finite cumulative count".to_string(),
                 actual: "overflow".to_string(),
             })?;
+
         cumulative_trading_time_return += record.return_components.trading_time_return;
         cumulative_open_jump_return += record.return_components.open_jump_return;
         cumulative_closed_gap_return += record.return_components.closed_gap_return;
         cumulative_total_return += record.return_components.total_return;
+        cumulative_observed_return += record.observed_interval_return;
+
         max_abs_total_return =
             max_abs_total_return.max(record.return_components.total_return.abs());
+        max_abs_deviation_from_anchor =
+            max_abs_deviation_from_anchor.max(record.deviation_from_anchor_end.abs());
     }
 
     Ok(CoarseSimulationPathDiagnostics {
@@ -1415,7 +1570,11 @@ fn derive_coarse_simulation_path_diagnostics(
         cumulative_open_jump_return,
         cumulative_closed_gap_return,
         cumulative_total_return,
+        cumulative_observed_return,
         max_abs_total_return,
+        max_abs_deviation_from_anchor,
+        terminal_observed_log_price: last_record.observed_log_price_end,
+        terminal_deviation_from_anchor: last_record.deviation_from_anchor_end,
     })
 }
 
@@ -1427,6 +1586,7 @@ fn derive_path_end_time_utc_nanos(
 ) -> Result<i64, CoarseSimulationPathError> {
     let interval_delta_nanos = interval_delta_to_nanos(interval_delta)
         .map_err(|source| CoarseSimulationPathError::InvalidIntervalDelta { source })?;
+
     if simulated_interval_count == 0 {
         return Err(CoarseSimulationPathError::InvalidSimulatedIntervalCount { value: 0 });
     }
@@ -1657,9 +1817,29 @@ fn validate_diagnostics(
         &expected.cumulative_total_return.to_string(),
     )?;
     validate_diagnostics_field(
+        "diagnostics.cumulative_observed_return",
+        &diagnostics.cumulative_observed_return.to_string(),
+        &expected.cumulative_observed_return.to_string(),
+    )?;
+    validate_diagnostics_field(
         "diagnostics.max_abs_total_return",
         &diagnostics.max_abs_total_return.to_string(),
         &expected.max_abs_total_return.to_string(),
+    )?;
+    validate_diagnostics_field(
+        "diagnostics.max_abs_deviation_from_anchor",
+        &diagnostics.max_abs_deviation_from_anchor.to_string(),
+        &expected.max_abs_deviation_from_anchor.to_string(),
+    )?;
+    validate_diagnostics_field(
+        "diagnostics.terminal_observed_log_price",
+        &diagnostics.terminal_observed_log_price.to_string(),
+        &expected.terminal_observed_log_price.to_string(),
+    )?;
+    validate_diagnostics_field(
+        "diagnostics.terminal_deviation_from_anchor",
+        &diagnostics.terminal_deviation_from_anchor.to_string(),
+        &expected.terminal_deviation_from_anchor.to_string(),
     )?;
 
     Ok(())
@@ -1677,6 +1857,7 @@ fn validate_metadata_field(
             actual: actual.to_string(),
         });
     }
+
     Ok(())
 }
 
@@ -1692,6 +1873,7 @@ fn validate_metadata_list_field(
             actual: format!("{actual:?}"),
         });
     }
+
     Ok(())
 }
 
@@ -1707,6 +1889,7 @@ fn validate_provenance_field(
             actual: actual.to_string(),
         });
     }
+
     Ok(())
 }
 
@@ -1722,6 +1905,7 @@ fn validate_diagnostics_field(
             actual: actual.to_string(),
         });
     }
+
     Ok(())
 }
 
@@ -1738,8 +1922,12 @@ mod tests {
         SufficientStatisticsIntervalStatistics, SufficientStatisticsRiskIntervalFactors,
         SufficientStatisticsRiskModelInputs, SufficientStatisticsRiskReturnComponents,
     };
-    use janiform_model_kernels::hawkes::{HawkesKernelLoadings, HawkesKernelParameters};
     use janiform_model_kernels::hawkes::HawkesExcitationState;
+    use janiform_model_kernels::hawkes::{HawkesKernelLoadings, HawkesKernelParameters};
+    use janiform_model_kernels::mean_reversion::{
+        MeanReversionBoundaryState, MeanReversionFittedParameters,
+        MeanReversionRuntimeIntervalAnchors,
+    };
     use janiform_model_kernels::news::{
         CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
         GammaSeverityMarkConfiguration, KnownNewsArrivalConfiguration, NewsArrivalConfiguration,
@@ -1862,7 +2050,12 @@ mod tests {
                 "interval_start_utc_nanos",
                 "interval_end_utc_nanos",
                 "sufficient_statistics",
-                "return_components"
+                "return_components",
+                "core_total_return",
+                "observed_interval_return",
+                "observed_log_price_end",
+                "anchor_value_end",
+                "deviation_from_anchor_end"
             ])
         );
     }
@@ -2015,6 +2208,11 @@ mod tests {
                 .expect("statistics should be valid"),
             SufficientStatisticsRiskReturnComponents::try_new(0.04, -0.03, 0.01, 0.0, -0.02, -0.01)
                 .expect("return components should be valid"),
+            -0.01,
+            -0.01,
+            -0.01,
+            0.0,
+            -0.01,
         )
         .expect("record should be valid");
         let second_record = CoarseSimulationPathRecord::try_new(
@@ -2025,6 +2223,11 @@ mod tests {
                 .expect("statistics should be valid"),
             SufficientStatisticsRiskReturnComponents::try_new(0.01, -0.01, 0.0, 0.01, 0.0, 0.01)
                 .expect("return components should be valid"),
+            0.01,
+            0.01,
+            0.0,
+            0.0,
+            0.0,
         )
         .expect("record should be valid");
 
@@ -2067,19 +2270,32 @@ mod tests {
             },
         )
         .expect("kernel parameters should construct");
+
         let equation_specification = ExponentialAffineTransformEquationSpecification::try_new(
             hawkes_kernel_parameters,
             GammaSeverityMarkConfiguration::try_new(1.8, 0.7)
                 .expect("gamma marks should construct"),
         )
         .expect("equation specification should construct");
+
         let risk_model_inputs = SufficientStatisticsRiskModelInputs::try_new(
             equation_specification,
             NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
                 .expect("nig configuration should construct"),
             build_initial_state(),
+            MeanReversionFittedParameters::disabled(),
+            MeanReversionRuntimeIntervalAnchors::try_new(
+                "explicit_runtime_interval_grid_alignment.v1",
+                0.0,
+                vec![0.0; 2],
+                vec![1.0; 2],
+            )
+            .expect("disabled mean-reversion runtime anchors should construct"),
+            MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0)
+                .expect("disabled mean-reversion boundary state should construct"),
         )
         .expect("risk model inputs should construct");
+
         CoarseSimulationModelInputs::try_new(
             risk_model_inputs,
             build_news_process_configuration(),

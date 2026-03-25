@@ -1,10 +1,10 @@
 mod support;
-use support::shared::{
-    build_run_contract_with_mode_and_resume, calibration_stage_test_registry, staged_run_inputs,
-};
 use janiform_calibration_artifacts::CalibrationExecutionMode;
 use janiform_calibration_runtime::{
     CalibrationStageExecutionStatus, run_staged_calibration_with_checkpointing,
+};
+use support::shared::{
+    build_run_contract_with_mode_and_resume, calibration_stage_test_registry, staged_run_inputs,
 };
 
 #[test]

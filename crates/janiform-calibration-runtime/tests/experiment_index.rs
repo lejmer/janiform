@@ -1,10 +1,9 @@
 mod support;
 use support::shared::{
     CALIBRATION_RUN_CONTRACT_SCHEMA_VERSION,
-    CALIBRATION_SEASONALITY_STAGE_DEFAULT_ESTIMATOR_VERSION,
-    CalibrationArtifactManifest, CalibrationArtifactManifestMetricStatus,
-    CalibrationArtifactManifestMetricStatusCount, CalibrationArtifactRunPreparationMode,
-    CalibrationArtifactRunWriter, CalibrationExecutionMode,
+    CALIBRATION_SEASONALITY_STAGE_DEFAULT_ESTIMATOR_VERSION, CalibrationArtifactManifest,
+    CalibrationArtifactManifestMetricStatus, CalibrationArtifactManifestMetricStatusCount,
+    CalibrationArtifactRunPreparationMode, CalibrationArtifactRunWriter, CalibrationExecutionMode,
     CalibrationExperimentIndexLookupRequest, CalibrationStageParameterArtifact,
     CalibrationStagedRunStageReport, CalibrationValidationMetricArtifact,
     CalibrationValidationMetricArtifactRole::Diagnostics,
@@ -16,26 +15,26 @@ use support::shared::{
     build_validation_metric_artifact_fixture, calibration_experiment_index_path_for_root,
     calibration_stage_test_registry, calibration_stage_timestamp_fixture, fs,
     hawkes_stage_candidate_fixture, load_calibration_experiment_index_from_disk,
-    lookup_calibration_experiment_index_records,
-    persist_calibration_artifact_manifest_to_disk,
+    lookup_calibration_experiment_index_records, persist_calibration_artifact_manifest_to_disk,
     persist_calibration_artifact_manifest_to_run_directory,
     persist_calibration_dataset_snapshot_artifact_to_run_directory,
     persist_calibration_stage_parameter_artifact_to_run_directory,
     persist_calibration_validation_metric_artifact_to_disk,
     rebuild_calibration_experiment_index_from_disk,
-    return_components_stage_candidate_generation_fixture,
-    run_hawkes_calibration_stage, run_return_components_calibration_stage,
-    run_seasonality_calibration_stage, temporary_checkpoint_directory,
-    update_calibration_experiment_index_for_run, utc_nanos,
+    return_components_stage_candidate_generation_fixture, run_hawkes_calibration_stage,
+    run_return_components_calibration_stage, run_seasonality_calibration_stage,
+    temporary_checkpoint_directory, update_calibration_experiment_index_for_run, utc_nanos,
 };
 
 #[test]
 fn experiment_index_commit_flow_creates_and_updates_run_records() {
     let persistence_root_directory = temporary_checkpoint_directory("experiment-index-commit");
+
     let committed_at = Utc
         .with_ymd_and_hms(2026, 3, 5, 12, 0, 0)
         .single()
         .expect("fixture timestamp should be valid");
+
     let fixture = commit_indexed_run(
         persistence_root_directory.as_path(),
         "run-index-001",
@@ -57,11 +56,13 @@ fn experiment_index_commit_flow_creates_and_updates_run_records() {
         CalibrationArtifactManifestMetricStatus::Fail
     );
 
-    let mut updated_manifest = fixture.manifest.clone();
     let updated_committed_at = Utc
         .with_ymd_and_hms(2026, 3, 6, 9, 15, 0)
         .single()
         .expect("fixture timestamp should be valid");
+
+    let mut updated_manifest = fixture.manifest.clone();
+
     updated_manifest.index_metadata.committed_at_utc = "2026-03-06T09:15:00.000000000Z".to_string();
     updated_manifest.index_metadata.committed_at_unix_nanos = updated_committed_at
         .timestamp_nanos_opt()
@@ -304,6 +305,7 @@ fn commit_indexed_run(
             calibration_stage_timestamp_fixture(),
         ),
     );
+
     let hawkes_report = run_hawkes_calibration_stage(
         &run_contract.run_spec,
         &calendar_registry,
@@ -316,6 +318,7 @@ fn commit_indexed_run(
             hawkes_stage_candidate_fixture(),
         ),
     );
+
     let return_components_report = run_return_components_calibration_stage(
         &run_contract.run_spec,
         &calendar_registry,
@@ -342,6 +345,7 @@ fn commit_indexed_run(
         &CalibrationStagedRunStageReport::ReturnComponents(return_components_report),
     )
     .expect("return-components artifact should build");
+
     let joint_refinement_report = build_joint_refinement_stage_success_report();
     let joint_refinement_artifact = build_calibration_stage_parameter_artifact(
         &run_contract,
@@ -425,15 +429,18 @@ fn build_diagnostics_artifact(
     let mut metric_collections = build_validation_metric_artifact_fixture()
         .metric_collections
         .clone();
+
     metric_collections[0].collection_id = format!("diagnostics.{run_id}");
     metric_collections[0].status =
         lookup_metric_status_to_validation_metric_status(diagnostics_overall_status);
 
     let mut passing_metric = metric_collections[0].metrics[0].clone();
+
     passing_metric.metric_id = format!("activity_clustering.{run_id}");
     passing_metric.status = CalibrationValidationMetricStatus::Pass;
 
     let mut outcome_metric = metric_collections[0].metrics[0].clone();
+
     outcome_metric.metric_id = failing_metric_id.to_string();
     outcome_metric.status =
         lookup_metric_status_to_validation_metric_status(diagnostics_overall_status);

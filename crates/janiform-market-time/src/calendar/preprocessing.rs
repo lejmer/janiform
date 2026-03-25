@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 
 use chrono::{Datelike, Timelike};
 use chrono_tz::Tz;
+use janiform_foundations::time::{ONE_HOUR_NANOS, floor_to_hour_utc_nanos};
 
 use crate::calendar::definition::resolve_market_state_for_definition_at_local;
 use crate::calendar::errors::TimestampEventPreprocessingError;
@@ -26,7 +27,6 @@ struct AcceptedPreprocessedTimestampEventRow {
 
 const OPEN_MARKET_STATE_CODE: u8 = 1;
 const CLOSED_MARKET_STATE_CODE: u8 = 0;
-const ONE_HOUR_NANOS: i64 = 3_600_000_000_000;
 
 pub(crate) fn preprocess_timestamp_events(
     definition: &ExchangeCalendarDefinition,
@@ -148,10 +148,6 @@ fn market_state_to_code(market_state: MarketState) -> u8 {
         MarketState::Open => OPEN_MARKET_STATE_CODE,
         MarketState::Closed => CLOSED_MARKET_STATE_CODE,
     }
-}
-
-fn floor_to_hour_utc_nanos(timestamp_utc_nanos: i64) -> i64 {
-    timestamp_utc_nanos.div_euclid(ONE_HOUR_NANOS) * ONE_HOUR_NANOS
 }
 
 fn build_hour_bucket_diagnostics(
