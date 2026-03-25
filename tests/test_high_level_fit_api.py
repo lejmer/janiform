@@ -36,6 +36,7 @@ from janiform.calibration.market_data import (
 )
 from janiform.calibration.staged import StagedCalibrationResponse, validate_staged_calibration_response
 from janiform.calendar import CalendarRegistry, MarketState
+from janiform.hourly_factors import HourlyFactorContract
 from janiform.simulation import SeededTickEventSide
 from tests.calibration_test_support import build_disabled_mean_reversion_fitted_parameters_payload
 
@@ -857,6 +858,120 @@ def test_high_level_model_coarse_simulation_skips_seeded_contract_preparation(
     assert observed.raw_result is coarse_result
 
 
+def test_high_level_model_simulation_materializes_mean_reversion_runtime_inputs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _build_full_workflow_model(
+        tmp_path,
+        monkeypatch,
+        run_id="high-level-model-mean-reversion-runtime-inputs",
+    )
+
+    mean_reversion_payload = MeanReversionFittedParameters(
+        kappa=0.25,
+        anchor_model=MeanReversionAnchorModel.deterministic_interval_grid(
+            source_interval_start_utc_nanos=(
+                datetime_to_utc_nanos(datetime(2026, 2, 2, 15, 0, tzinfo=UTC)),
+                datetime_to_utc_nanos(datetime(2026, 2, 2, 16, 0, tzinfo=UTC)),
+                datetime_to_utc_nanos(datetime(2026, 2, 2, 17, 0, tzinfo=UTC)),
+            ),
+            source_interval_end_utc_nanos=(
+                datetime_to_utc_nanos(datetime(2026, 2, 2, 16, 0, tzinfo=UTC)),
+                datetime_to_utc_nanos(datetime(2026, 2, 2, 17, 0, tzinfo=UTC)),
+                datetime_to_utc_nanos(datetime(2026, 2, 2, 18, 0, tzinfo=UTC)),
+            ),
+            anchor_values=(0.25, 0.5, 0.75),
+            source_alignment_policy="piecewise_constant_utc_interval_grid.v1",
+        ),
+    ).to_payload()
+
+    model.parameters["return_components"]["fitted_parameters"][
+        "mean_reversion_fitted_parameters"
+    ] = mean_reversion_payload
+    model.parameters["joint_refinement"]["fitted_parameters"]["return_components_fitted_parameters"][
+        "mean_reversion_fitted_parameters"
+    ] = mean_reversion_payload
+    model.parameters["joint_refinement"]["baseline_return_components_fitted_parameters"][
+        "mean_reversion_fitted_parameters"
+    ] = mean_reversion_payload
+
+    captured_requests: dict[str, Any] = {}
+    coarse_result = object()
+    seeded_result = object()
+
+    monkeypatch.setattr(
+        fit_model_module,
+        "load_hourly_factor_contract_for_simulation",
+        lambda **kwargs: _build_test_hourly_factor_contract(
+            start_time_utc=kwargs["range_start_utc"],
+            interval_end_times_utc=(
+                datetime(2026, 2, 2, 16, 30, tzinfo=UTC),
+                datetime(2026, 2, 2, 17, 30, tzinfo=UTC),
+            ),
+        ),
+    )
+    monkeypatch.setattr(
+        fit_model_module,
+        "run_seeded_tick_event_simulation",
+        lambda request: _capture_request(captured_requests, "seeded", request, seeded_result),
+    )
+    monkeypatch.setattr(
+        fit_model_module,
+        "run_coarse_simulation",
+        lambda request: _capture_request(captured_requests, "coarse", request, coarse_result),
+    )
+    monkeypatch.setattr(
+        fit_model_module,
+        "_build_high_level_simulation_result",
+        lambda **kwargs: JaniformSimulationResult(
+            simulation_kind=(
+                "seeded_tick"
+                if kwargs["simulation_result"] is seeded_result
+                else "coarse_interval"
+            ),
+            metadata={},
+            provenance={},
+            diagnostics={},
+            raw_result=kwargs["simulation_result"],
+        ),
+    )
+
+    model.simulate(
+        seed=17,
+        start_time_utc=datetime(2026, 2, 2, 15, 30, tzinfo=UTC),
+        horizon_interval_count=2,
+    )
+    model.simulate(
+        seed=17,
+        start_time_utc=datetime(2026, 2, 2, 15, 30, tzinfo=UTC),
+        horizon_interval_count=2,
+        interval=timedelta(minutes=30),
+    )
+
+    seeded_request = captured_requests["seeded"]
+    coarse_request = captured_requests["coarse"]
+
+    assert seeded_request.mean_reversion_fitted_parameters.to_payload() == mean_reversion_payload
+    assert seeded_request.mean_reversion_runtime_interval_anchors.start_anchor_value == pytest.approx(0.25)
+    assert seeded_request.mean_reversion_runtime_interval_anchors.end_anchor_values == pytest.approx(
+        (0.5, 0.75)
+    )
+    assert seeded_request.initial_mean_reversion_boundary_state.observed_log_price == pytest.approx(0.0)
+    assert seeded_request.initial_mean_reversion_boundary_state.anchor_value == pytest.approx(0.25)
+    assert seeded_request.initial_mean_reversion_boundary_state.deviation == pytest.approx(-0.25)
+
+    coarse_model_inputs = coarse_request.model_inputs.risk_model_inputs
+    assert coarse_model_inputs.mean_reversion_fitted_parameters.to_payload() == mean_reversion_payload
+    assert coarse_model_inputs.mean_reversion_runtime_interval_anchors.start_anchor_value == pytest.approx(0.25)
+    assert coarse_model_inputs.mean_reversion_runtime_interval_anchors.end_anchor_values == pytest.approx(
+        (0.5, 0.5)
+    )
+    assert coarse_model_inputs.initial_mean_reversion_boundary_state.observed_log_price == pytest.approx(0.0)
+    assert coarse_model_inputs.initial_mean_reversion_boundary_state.anchor_value == pytest.approx(0.25)
+    assert coarse_model_inputs.initial_mean_reversion_boundary_state.deviation == pytest.approx(-0.25)
+
+
 def test_high_level_simulation_result_exposes_tabular_exports(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1015,17 +1130,17 @@ def test_persist_coarse_simulation_suppresses_closed_fx_weekend_rows() -> None:
             SimpleNamespace(
                 interval_start_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 6, 18, 45, tzinfo=UTC)),
                 interval_end_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 6, 19, 0, tzinfo=UTC)),
-                return_components=SimpleNamespace(total_return=0.01),
+                observed_log_price_end=0.01,
             ),
             SimpleNamespace(
                 interval_start_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 8, 20, 45, tzinfo=UTC)),
                 interval_end_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 8, 21, 0, tzinfo=UTC)),
-                return_components=SimpleNamespace(total_return=0.02),
+                observed_log_price_end=999.0,
             ),
             SimpleNamespace(
                 interval_start_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 8, 21, 0, tzinfo=UTC)),
                 interval_end_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 8, 21, 15, tzinfo=UTC)),
-                return_components=SimpleNamespace(total_return=0.03),
+                observed_log_price_end=0.05,
             ),
         )
     )
@@ -1046,7 +1161,7 @@ def test_persist_coarse_simulation_suppresses_closed_fx_weekend_rows() -> None:
     assert [row["mid_price"] for row in sink.rows] == pytest.approx(
         [
             math.exp(0.01),
-            math.exp(0.06),
+            math.exp(0.05),
         ]
     )
 
@@ -1676,6 +1791,65 @@ def _build_full_workflow_model(
         tick_data_path=tick_data_path,
         tick_data_format=CalibrationInputFileFormat.CSV,
     )
+
+
+def _build_test_hourly_factor_contract(
+    *,
+    start_time_utc: datetime,
+    interval_end_times_utc: tuple[datetime, ...],
+) -> HourlyFactorContract:
+    interval_start_utc_nanos = [
+        datetime_to_utc_nanos(start_time_utc),
+        *[
+            datetime_to_utc_nanos(timestamp_utc)
+            for timestamp_utc in interval_end_times_utc[:-1]
+        ],
+    ]
+    interval_end_utc_nanos = [
+        datetime_to_utc_nanos(timestamp_utc)
+        for timestamp_utc in interval_end_times_utc
+    ]
+    interval_duration_nanos = interval_end_utc_nanos[0] - interval_start_utc_nanos[0]
+
+    return HourlyFactorContract(
+        SimpleNamespace(
+            schema_version="seasonality.hourly_factor.contract.v1",
+            exchange_code="XNYS",
+            exchange_timezone_name="America/New_York",
+            request_start_utc_nanos=interval_start_utc_nanos[0],
+            request_end_utc_nanos=interval_end_utc_nanos[-1],
+            interval_duration_nanos=interval_duration_nanos,
+            interval_indices=list(range(len(interval_end_times_utc))),
+            interval_start_utc_nanos=interval_start_utc_nanos,
+            interval_end_utc_nanos=interval_end_utc_nanos,
+            interval_start_exchange_local=[],
+            interval_end_exchange_local=[],
+            s_h=[1.0 for _ in interval_end_times_utc],
+            nu_h=[0.0 for _ in interval_end_times_utc],
+            interval_count=len(interval_end_times_utc),
+            first_interval_start_utc_nanos=interval_start_utc_nanos[0],
+            last_interval_end_utc_nanos=interval_end_utc_nanos[-1],
+            skipped_local_hour_interval_count=0,
+            repeated_local_hour_interval_count=0,
+            interval_boundary_policy="start_time_utc_anchor_plus_fixed_interval_delta_half_open_utc_boundaries.v1",
+            interval_alignment_policy="explicit_runtime_interval_grid_alignment.v1",
+            timezone_transition_policy="utc_monotonic_without_local_gap_backfill.v1",
+            spring_forward_policy="skip_missing_local_hour_without_synthetic_bucket.v1",
+            fall_back_policy="retain_both_utc_hours_with_distinct_utc_boundaries.v1",
+            seasonality_materialization_method="test.seasonality",
+            news_intensity_materialization_method="test.news_intensity",
+        )
+    )
+
+
+def _capture_request(
+    captured_requests: dict[str, Any],
+    key: str,
+    request: Any,
+    result: Any,
+) -> Any:
+    captured_requests[key] = request
+    return result
 
 
 def _successful_staged_runner_payload(run_id: str) -> tuple[StagedCalibrationResponse, dict[str, Any]]:

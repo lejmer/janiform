@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale_and_docs.v1",
-  "approved_snapshot_sha256": "26bf85efda04185dcc9efc368bac2917110a200ebe45807c121b6e3ca11dc5c6",
+  "approved_snapshot_sha256": "3d6c532819eec4f7b38ad93f055ae06c08c0d00866b2b42679d1696fb911de13",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -518,6 +518,15 @@
       "rationale": "Seeded simulation now requires explicit mean-reversion runtime inputs, publishes observed-state fine-path and event-tape fields, and re-exports the disabled seeded mean-reversion helper from the public simulation packages, so the approved snapshot must record the updated request and record contracts instead of preserving the pre-anchor-deviation surface.",
       "snapshot_sha256": "26bf85efda04185dcc9efc368bac2917110a200ebe45807c121b6e3ca11dc5c6",
       "summary": "Approve the seeded simulation observed-state contract rollout in the public Python API snapshot."
+    },
+    {
+      "approved_on": "2026-03-25",
+      "docs_updated": [
+        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+      ],
+      "rationale": "The anchor-deviation rollout now surfaces observed-state end-of-interval fields on the public coarse simulation and sufficient-statistics risk contracts, so the approved Python API snapshot must record those fields explicitly instead of preserving the earlier core-return-only shapes.",
+      "snapshot_sha256": "3d6c532819eec4f7b38ad93f055ae06c08c0d00866b2b42679d1696fb911de13",
+      "summary": "Approve observed-state coarse simulation and risk contract fields in the public Python API snapshot."
     }
   ],
   "public_api_surface_document_version": "python.public_api_surface_map.pre_v0_1.milestone_2",

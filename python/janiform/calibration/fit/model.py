@@ -1,8 +1,9 @@
+import json
+from bisect import bisect_right
 from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta
-import json
 from pathlib import Path
 from typing import Any, NoReturn, Optional, cast
 
@@ -98,11 +99,12 @@ from ...simulation import (
     run_coarse_simulation,
     run_seeded_tick_event_simulation,
 )
-from ...simulation.seeded.contracts import build_disabled_seeded_mean_reversion_runtime_inputs
 
 
 _HIGH_LEVEL_MODEL_PERSISTENCE_SCHEMA_VERSION = "calibration.high_level.model.v1"
 _DEFAULT_HIGH_LEVEL_SIMULATION_INTERVAL = "1h"
+_MEAN_REVERSION_RUNTIME_INTERVAL_ALIGNMENT_POLICY = "explicit_runtime_interval_grid_alignment.v1"
+_MEAN_REVERSION_DETERMINISTIC_SOURCE_ALIGNMENT_POLICY = "piecewise_constant_utc_interval_grid.v1"
 
 
 @dataclass(frozen=True, slots=True)
@@ -115,6 +117,7 @@ class _PreparedModelSimulationInputs:
 class _PreparedModelRuntimeFactors:
     calendar_registry: CalendarRegistry
     exchange_code: str
+    interval_duration_nanos: int
     interval_delta: float
     range_end_utc: datetime
     kernel_parameters: HawkesKernelParameters
@@ -557,13 +560,22 @@ def _prepare_model_simulation_inputs(
 
     match simulation_kind:
         case "coarse_interval":
-            mean_reversion_runtime_interval_anchors = MeanReversionRuntimeIntervalAnchors(
-                interval_alignment_policy="explicit_runtime_interval_grid_alignment.v1",
-                start_anchor_value=0.0,
-                end_anchor_values=tuple(0.0 for _ in range(horizon_interval_count)),
+            (
+                mean_reversion_fitted_parameters,
+                mean_reversion_runtime_interval_anchors,
+                initial_mean_reversion_boundary_state,
+            ) = _prepare_model_mean_reversion_runtime_inputs(
+                model,
+                start_time_utc=start_time_utc,
+                interval_end_times_utc=_build_runtime_interval_end_times_utc(
+                    start_time_utc=start_time_utc,
+                    interval_duration_nanos=runtime_factors.interval_duration_nanos,
+                    horizon_interval_count=horizon_interval_count,
+                ),
                 interval_deltas=tuple(
                     runtime_factors.interval_delta for _ in range(horizon_interval_count)
                 ),
+                interval_alignment_policy=_MEAN_REVERSION_RUNTIME_INTERVAL_ALIGNMENT_POLICY,
             )
             coarse_request = CoarseSimulationRunRequest.from_runtime_inputs(
                 seed=seed,
@@ -577,13 +589,9 @@ def _prepare_model_simulation_inputs(
                     ),
                     nig_shared_plus_shift_configuration=runtime_factors.nig_shared_plus_shift_configuration,
                     initial_excitation_state=effective_initial_state,
-                    mean_reversion_fitted_parameters=MeanReversionFittedParameters.disabled(),
+                    mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
                     mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
-                    initial_mean_reversion_boundary_state=MeanReversionBoundaryState(
-                        observed_log_price=0.0,
-                        anchor_value=0.0,
-                        deviation=0.0,
-                    ),
+                    initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
                 ),
                 interval_factors=SufficientStatisticsRiskIntervalFactors(
                     interval_delta=runtime_factors.interval_delta,
@@ -628,8 +636,18 @@ def _prepare_model_simulation_inputs(
                 mean_reversion_fitted_parameters,
                 mean_reversion_runtime_interval_anchors,
                 initial_mean_reversion_boundary_state,
-            ) = build_disabled_seeded_mean_reversion_runtime_inputs(
-                hourly_factor_contract=hourly_factor_contract,
+            ) = _prepare_model_mean_reversion_runtime_inputs(
+                model,
+                start_time_utc=start_time_utc,
+                interval_end_times_utc=tuple(
+                    _runtime_datetime_from_utc_nanos(timestamp_utc_nanos)
+                    for timestamp_utc_nanos in hourly_factor_contract.interval_end_utc_nanos
+                ),
+                interval_deltas=tuple(
+                    hourly_factor_contract.interval_duration_nanos / 3_600_000_000_000.0
+                    for _ in range(hourly_factor_contract.interval_count)
+                ),
+                interval_alignment_policy=hourly_factor_contract.interval_alignment_policy,
             )
 
             seeded_request = SeededTickSimulationRequest.from_runtime_inputs(
@@ -658,6 +676,162 @@ def _prepare_model_simulation_inputs(
         coarse_request=coarse_request,
         seeded_request=seeded_request,
     )
+
+
+def _prepare_model_mean_reversion_runtime_inputs(
+    model: JaniformModel,
+    *,
+    start_time_utc: datetime,
+    interval_end_times_utc: tuple[datetime, ...],
+    interval_deltas: tuple[float, ...],
+    interval_alignment_policy: str,
+) -> tuple[
+    MeanReversionFittedParameters,
+    MeanReversionRuntimeIntervalAnchors,
+    MeanReversionBoundaryState,
+]:
+    fitted_parameters = _mean_reversion_fitted_parameters(model)
+    runtime_interval_anchors = _materialize_model_mean_reversion_runtime_interval_anchors(
+        fitted_parameters=fitted_parameters,
+        start_time_utc=start_time_utc,
+        interval_end_times_utc=interval_end_times_utc,
+        interval_deltas=interval_deltas,
+        interval_alignment_policy=interval_alignment_policy,
+    )
+    initial_boundary_state = MeanReversionBoundaryState(
+        observed_log_price=0.0,
+        anchor_value=runtime_interval_anchors.start_anchor_value,
+        deviation=-runtime_interval_anchors.start_anchor_value,
+    )
+
+    return fitted_parameters, runtime_interval_anchors, initial_boundary_state
+
+
+def _materialize_model_mean_reversion_runtime_interval_anchors(
+    *,
+    fitted_parameters: MeanReversionFittedParameters,
+    start_time_utc: datetime,
+    interval_end_times_utc: tuple[datetime, ...],
+    interval_deltas: tuple[float, ...],
+    interval_alignment_policy: str,
+) -> MeanReversionRuntimeIntervalAnchors:
+    if len(interval_end_times_utc) != len(interval_deltas):
+        raise RuntimeError(
+            "JaniformModel mean reversion runtime anchor materialization requires one interval "
+            "end timestamp per interval delta"
+        )
+
+    return MeanReversionRuntimeIntervalAnchors(
+        interval_alignment_policy=interval_alignment_policy,
+        start_anchor_value=_materialize_mean_reversion_anchor_value(
+            fitted_parameters=fitted_parameters,
+            boundary_time_utc=start_time_utc,
+        ),
+        end_anchor_values=tuple(
+            _materialize_mean_reversion_anchor_value(
+                fitted_parameters=fitted_parameters,
+                boundary_time_utc=boundary_time_utc,
+            )
+            for boundary_time_utc in interval_end_times_utc
+        ),
+        interval_deltas=interval_deltas,
+    )
+
+
+def _materialize_mean_reversion_anchor_value(
+    *,
+    fitted_parameters: MeanReversionFittedParameters,
+    boundary_time_utc: datetime,
+) -> float:
+    normalized_boundary_time_utc = _normalize_runtime_utc_timestamp(
+        boundary_time_utc,
+        field_name="boundary_time_utc",
+    )
+    anchor_model = fitted_parameters.anchor_model
+
+    match anchor_model.anchor_model_kind:
+        case "disabled":
+            return 0.0
+        case "constant":
+            anchor_value = anchor_model.anchor_value
+            if anchor_value is None:
+                raise RuntimeError(
+                    "JaniformModel mean reversion constant anchor is missing anchor_value"
+                )
+
+            return anchor_value
+        case "deterministic_interval_grid":
+            source_alignment_policy = anchor_model.source_alignment_policy
+            if source_alignment_policy != _MEAN_REVERSION_DETERMINISTIC_SOURCE_ALIGNMENT_POLICY:
+                raise RuntimeError(
+                    "JaniformModel deterministic mean reversion anchor model must use "
+                    f"`{_MEAN_REVERSION_DETERMINISTIC_SOURCE_ALIGNMENT_POLICY}`"
+                )
+
+            return _materialize_deterministic_interval_grid_anchor_value(
+                fitted_parameters=fitted_parameters,
+                boundary_time_utc=normalized_boundary_time_utc,
+            )
+        case _:
+            raise RuntimeError("JaniformModel mean reversion anchor model kind is unsupported")
+
+
+def _materialize_deterministic_interval_grid_anchor_value(
+    *,
+    fitted_parameters: MeanReversionFittedParameters,
+    boundary_time_utc: datetime,
+) -> float:
+    anchor_model = fitted_parameters.anchor_model
+    boundary_time_utc_nanos = datetime_to_utc_nanos(boundary_time_utc)
+    source_interval_start_utc_nanos = anchor_model.source_interval_start_utc_nanos
+    source_interval_end_utc_nanos = anchor_model.source_interval_end_utc_nanos
+
+    interval_index = bisect_right(source_interval_start_utc_nanos, boundary_time_utc_nanos) - 1
+    if interval_index >= 0 and boundary_time_utc_nanos < source_interval_end_utc_nanos[interval_index]:
+        return anchor_model.anchor_values[interval_index]
+
+    if (
+        source_interval_end_utc_nanos
+        and interval_index == len(source_interval_end_utc_nanos) - 1
+        and boundary_time_utc_nanos == source_interval_end_utc_nanos[interval_index]
+    ):
+        return anchor_model.anchor_values[interval_index]
+
+    raise RuntimeError(
+        "JaniformModel deterministic mean reversion anchor grid does not cover runtime boundary "
+        f"{boundary_time_utc.isoformat()}"
+    )
+
+
+def _build_runtime_interval_end_times_utc(
+    *,
+    start_time_utc: datetime,
+    interval_duration_nanos: int,
+    horizon_interval_count: int,
+) -> tuple[datetime, ...]:
+    interval_duration = timedelta(seconds=interval_duration_nanos / 1_000_000_000)
+    return tuple(
+        start_time_utc + interval_duration * interval_index
+        for interval_index in range(1, horizon_interval_count + 1)
+    )
+
+
+def _mean_reversion_fitted_parameters(model: JaniformModel) -> MeanReversionFittedParameters:
+    return MeanReversionFittedParameters.from_mapping(
+        dict(
+            _require_payload_mapping(
+                _return_components_fitted_parameters_payload(model),
+                "mean_reversion_fitted_parameters",
+                "return_components.fitted_parameters.mean_reversion_fitted_parameters",
+            )
+        ),
+        field_path="return_components.fitted_parameters.mean_reversion_fitted_parameters",
+    )
+
+
+def _runtime_datetime_from_utc_nanos(timestamp_utc_nanos: int) -> datetime:
+    seconds, nanos_remainder = divmod(timestamp_utc_nanos, 1_000_000_000)
+    return datetime.fromtimestamp(seconds, tz=UTC) + timedelta(microseconds=nanos_remainder / 1000.0)
 
 
 def _prepare_model_pricing_execution_input(
@@ -807,6 +981,7 @@ def _prepare_model_runtime_factors(
     return _PreparedModelRuntimeFactors(
         calendar_registry=calendar_registry,
         exchange_code=exchange_code,
+        interval_duration_nanos=interval_duration_nanos,
         interval_delta=interval_delta,
         range_end_utc=range_end_utc,
         kernel_parameters=HawkesKernelParameters.from_mapping(

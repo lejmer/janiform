@@ -70,6 +70,9 @@ from janiform.simulation import (
     HawkesKernelLoadings,
     HawkesKernelParameters,
     KnownNewsArrivalConfiguration,
+    MeanReversionBoundaryState,
+    MeanReversionFittedParameters,
+    MeanReversionRuntimeIntervalAnchors,
     NewsArrivalConfiguration,
     NewsComponentMarkScaleConfiguration,
     NewsProcessConfiguration,
@@ -294,12 +297,20 @@ def build_simulation_news_source() -> HourlyNewsIntensityProviderExplicitSource:
 
 
 def build_coarse_simulation_request(calendar_registry: CalendarRegistry) -> CoarseSimulationRunRequest:
+    horizon_interval_count = 3
+    interval_delta = 1.0
+    mean_reversion_runtime_interval_anchors = MeanReversionRuntimeIntervalAnchors(
+        interval_alignment_policy="explicit_runtime_interval_grid_alignment.v1",
+        start_anchor_value=0.0,
+        end_anchor_values=tuple(0.0 for _ in range(horizon_interval_count)),
+        interval_deltas=tuple(interval_delta for _ in range(horizon_interval_count)),
+    )
     request_payload: dict[str, Any] = {
         "schema_version": "simulation.coarse_interval.run_request.v1",
         "seed": 3_010,
         "start_time_utc_nanos": int(SIMULATION_RANGE_START_UTC.timestamp()) * 1_000_000_000,
-        "horizon_interval_count": 3,
-        "interval_delta": 1.0,
+        "horizon_interval_count": horizon_interval_count,
+        "interval_delta": interval_delta,
         "model_inputs": {
             "risk_model_inputs": {
                 "equation_specification": {
@@ -317,6 +328,15 @@ def build_coarse_simulation_request(calendar_registry: CalendarRegistry) -> Coar
                     delta_beta=-0.2,
                 ).to_payload(),
                 "initial_excitation_state": build_initial_excitation_state().to_payload(),
+                "mean_reversion_fitted_parameters": MeanReversionFittedParameters.disabled().to_payload(),
+                "mean_reversion_runtime_interval_anchors": (
+                    mean_reversion_runtime_interval_anchors.to_payload()
+                ),
+                "initial_mean_reversion_boundary_state": MeanReversionBoundaryState(
+                    observed_log_price=0.0,
+                    anchor_value=mean_reversion_runtime_interval_anchors.start_anchor_value,
+                    deviation=0.0,
+                ).to_payload(),
             },
             "news_process_configuration": NewsProcessConfiguration(
                 schema_version="news.process.configuration.v1",
@@ -354,7 +374,7 @@ def build_coarse_simulation_request(calendar_registry: CalendarRegistry) -> Coar
             "exchange_code": "XNYS",
         },
         "interval_factors": {
-            "interval_delta": 1.0,
+            "interval_delta": interval_delta,
             "s_h": [1.0, 0.9, 1.1],
             "nu_h_known": [1.0, 1.0, 0.0],
             "nu_h_surprise": [0.1, 0.2, 0.1],
