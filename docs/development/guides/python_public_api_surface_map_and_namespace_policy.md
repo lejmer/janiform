@@ -136,6 +136,7 @@ from janiform.contracts import MeanReversionFittedParameters
   - Ownership: vanilla option pricing contracts, execution input, and runtime factor loading
 - `janiform.risk`
   - Ownership: sufficient-statistics risk workflow contracts
+  - Observed-state policy: public risk path records and diagnostics distinguish core Janiform interval returns from observed log-price state, anchor state, and deviation-from-anchor summaries
 - `janiform.calibration`
   - Ownership: curated convenience surface for high-level fitting, market-data calibration, staged execution, and preset-facing calibration objects
 - `janiform.calendar`
@@ -160,6 +161,7 @@ from janiform.contracts import MeanReversionFittedParameters
 
 - `janiform.simulation.coarse`
   - Ownership: coarse-interval simulation request and path contracts, news-process configuration, and coarse execution entrypoints
+  - Observed-state policy: coarse path records and diagnostics expose both core interval return totals and observed-state end-of-interval fields so downstream exports and analytics do not reconstruct prices from core returns alone
   - Root coexistence policy: common coarse workflow symbols are also re-exported from `janiform.simulation` as curated convenience imports
 - `janiform.simulation.seeded`
   - Ownership: seeded-tick simulation request and response contracts, seeded-tick execution entrypoints, and seeded-tick workflow-specific record types

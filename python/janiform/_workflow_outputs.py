@@ -318,9 +318,7 @@ def persist_coarse_simulation(
 
     try:
         record_batch: list[dict[str, Any]] = []
-        cumulative_log_return = 0.0
         for record in simulation_result.records:
-            cumulative_log_return += record.return_components.total_return
             if not _coarse_interval_is_open(
                 interval_start_utc_nanos=record.interval_start_utc_nanos,
                 calendar_registry=calendar_registry,
@@ -336,7 +334,7 @@ def persist_coarse_simulation(
                         output_path=resolved_output_path,
                     ),
                     timestamp_column=preferences.timestamp_column,
-                    price_value=preferences.reference_price * math.exp(cumulative_log_return),
+                    price_value=preferences.reference_price * math.exp(record.observed_log_price_end),
                     side_value=None,
                     preferences=preferences,
                 )

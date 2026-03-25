@@ -6354,10 +6354,13 @@
           "field_names": [
             "equation_specification",
             "nig_shared_plus_shift_configuration",
-            "initial_excitation_state"
+            "initial_excitation_state",
+            "mean_reversion_fitted_parameters",
+            "mean_reversion_runtime_interval_anchors",
+            "initial_mean_reversion_boundary_state"
           ],
           "kind": "contract_model",
-          "signature": "(equation_specification: 'SufficientStatisticsRiskEquationSpecification', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', initial_excitation_state: 'HawkesExcitationState') -> 'None'"
+          "signature": "(equation_specification: 'SufficientStatisticsRiskEquationSpecification', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', initial_excitation_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState') -> 'None'"
         },
         "SufficientStatisticsRiskPath": {
           "field_names": [
@@ -6390,10 +6393,14 @@
             "cumulative_open_jump_return",
             "cumulative_closed_gap_return",
             "cumulative_total_return",
-            "max_abs_total_return"
+            "cumulative_observed_return",
+            "max_abs_total_return",
+            "max_abs_deviation_from_anchor",
+            "terminal_observed_log_price",
+            "terminal_deviation_from_anchor"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: 'str', simulated_interval_count: 'int', first_interval_index: 'Optional[int]', last_interval_index: 'Optional[int]', cumulative_a_plus: 'float', cumulative_a_minus: 'float', cumulative_n_plus: 'int', cumulative_n_minus: 'int', cumulative_trading_time_return: 'float', cumulative_open_jump_return: 'float', cumulative_closed_gap_return: 'float', cumulative_total_return: 'float', max_abs_total_return: 'float') -> 'None'"
+          "signature": "(schema_version: 'str', simulated_interval_count: 'int', first_interval_index: 'Optional[int]', last_interval_index: 'Optional[int]', cumulative_a_plus: 'float', cumulative_a_minus: 'float', cumulative_n_plus: 'int', cumulative_n_minus: 'int', cumulative_trading_time_return: 'float', cumulative_open_jump_return: 'float', cumulative_closed_gap_return: 'float', cumulative_total_return: 'float', cumulative_observed_return: 'float', max_abs_total_return: 'float', max_abs_deviation_from_anchor: 'float', terminal_observed_log_price: 'float', terminal_deviation_from_anchor: 'float') -> 'None'"
         },
         "SufficientStatisticsRiskPathOutputSchemaMetadata": {
           "field_names": [
@@ -6429,10 +6436,15 @@
           "field_names": [
             "interval_index",
             "sufficient_statistics",
-            "return_components"
+            "return_components",
+            "core_total_return",
+            "observed_interval_return",
+            "observed_log_price_end",
+            "anchor_value_end",
+            "deviation_from_anchor_end"
           ],
           "kind": "contract_model",
-          "signature": "(interval_index: 'int', sufficient_statistics: 'SufficientStatisticsIntervalStatistics', return_components: 'SufficientStatisticsRiskReturnComponents') -> 'None'"
+          "signature": "(interval_index: 'int', sufficient_statistics: 'SufficientStatisticsIntervalStatistics', return_components: 'SufficientStatisticsRiskReturnComponents', core_total_return: 'float', observed_interval_return: 'float', observed_log_price_end: 'float', anchor_value_end: 'float', deviation_from_anchor_end: 'float') -> 'None'"
         },
         "SufficientStatisticsRiskReturnComponents": {
           "field_names": [
@@ -7035,10 +7047,14 @@
             "cumulative_open_jump_return",
             "cumulative_closed_gap_return",
             "cumulative_total_return",
-            "max_abs_total_return"
+            "cumulative_observed_return",
+            "max_abs_total_return",
+            "max_abs_deviation_from_anchor",
+            "terminal_observed_log_price",
+            "terminal_deviation_from_anchor"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: 'str', simulated_interval_count: 'int', first_interval_index: 'int', last_interval_index: 'int', first_interval_start_utc_nanos: 'int', last_interval_end_utc_nanos: 'int', cumulative_a_plus: 'float', cumulative_a_minus: 'float', cumulative_n_plus: 'int', cumulative_n_minus: 'int', cumulative_trading_time_return: 'float', cumulative_open_jump_return: 'float', cumulative_closed_gap_return: 'float', cumulative_total_return: 'float', max_abs_total_return: 'float') -> 'None'"
+          "signature": "(schema_version: 'str', simulated_interval_count: 'int', first_interval_index: 'int', last_interval_index: 'int', first_interval_start_utc_nanos: 'int', last_interval_end_utc_nanos: 'int', cumulative_a_plus: 'float', cumulative_a_minus: 'float', cumulative_n_plus: 'int', cumulative_n_minus: 'int', cumulative_trading_time_return: 'float', cumulative_open_jump_return: 'float', cumulative_closed_gap_return: 'float', cumulative_total_return: 'float', cumulative_observed_return: 'float', max_abs_total_return: 'float', max_abs_deviation_from_anchor: 'float', terminal_observed_log_price: 'float', terminal_deviation_from_anchor: 'float') -> 'None'"
         },
         "CoarseSimulationPathOutputSchemaMetadata": {
           "field_names": [
@@ -7081,10 +7097,15 @@
             "interval_start_utc_nanos",
             "interval_end_utc_nanos",
             "sufficient_statistics",
-            "return_components"
+            "return_components",
+            "core_total_return",
+            "observed_interval_return",
+            "observed_log_price_end",
+            "anchor_value_end",
+            "deviation_from_anchor_end"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: 'str', interval_index: 'int', interval_start_utc_nanos: 'int', interval_end_utc_nanos: 'int', sufficient_statistics: 'Any', return_components: 'Any') -> 'None'"
+          "signature": "(schema_version: 'str', interval_index: 'int', interval_start_utc_nanos: 'int', interval_end_utc_nanos: 'int', sufficient_statistics: 'Any', return_components: 'Any', core_total_return: 'float', observed_interval_return: 'float', observed_log_price_end: 'float', anchor_value_end: 'float', deviation_from_anchor_end: 'float') -> 'None'"
         },
         "CoarseSimulationRunRequest": {
           "field_names": [
@@ -7712,10 +7733,14 @@
             "cumulative_open_jump_return",
             "cumulative_closed_gap_return",
             "cumulative_total_return",
-            "max_abs_total_return"
+            "cumulative_observed_return",
+            "max_abs_total_return",
+            "max_abs_deviation_from_anchor",
+            "terminal_observed_log_price",
+            "terminal_deviation_from_anchor"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: 'str', simulated_interval_count: 'int', first_interval_index: 'int', last_interval_index: 'int', first_interval_start_utc_nanos: 'int', last_interval_end_utc_nanos: 'int', cumulative_a_plus: 'float', cumulative_a_minus: 'float', cumulative_n_plus: 'int', cumulative_n_minus: 'int', cumulative_trading_time_return: 'float', cumulative_open_jump_return: 'float', cumulative_closed_gap_return: 'float', cumulative_total_return: 'float', max_abs_total_return: 'float') -> 'None'"
+          "signature": "(schema_version: 'str', simulated_interval_count: 'int', first_interval_index: 'int', last_interval_index: 'int', first_interval_start_utc_nanos: 'int', last_interval_end_utc_nanos: 'int', cumulative_a_plus: 'float', cumulative_a_minus: 'float', cumulative_n_plus: 'int', cumulative_n_minus: 'int', cumulative_trading_time_return: 'float', cumulative_open_jump_return: 'float', cumulative_closed_gap_return: 'float', cumulative_total_return: 'float', cumulative_observed_return: 'float', max_abs_total_return: 'float', max_abs_deviation_from_anchor: 'float', terminal_observed_log_price: 'float', terminal_deviation_from_anchor: 'float') -> 'None'"
         },
         "CoarseSimulationPathOutputSchemaMetadata": {
           "field_names": [
@@ -7758,10 +7783,15 @@
             "interval_start_utc_nanos",
             "interval_end_utc_nanos",
             "sufficient_statistics",
-            "return_components"
+            "return_components",
+            "core_total_return",
+            "observed_interval_return",
+            "observed_log_price_end",
+            "anchor_value_end",
+            "deviation_from_anchor_end"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: 'str', interval_index: 'int', interval_start_utc_nanos: 'int', interval_end_utc_nanos: 'int', sufficient_statistics: 'Any', return_components: 'Any') -> 'None'"
+          "signature": "(schema_version: 'str', interval_index: 'int', interval_start_utc_nanos: 'int', interval_end_utc_nanos: 'int', sufficient_statistics: 'Any', return_components: 'Any', core_total_return: 'float', observed_interval_return: 'float', observed_log_price_end: 'float', anchor_value_end: 'float', deviation_from_anchor_end: 'float') -> 'None'"
         },
         "CoarseSimulationRunRequest": {
           "field_names": [
