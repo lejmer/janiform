@@ -413,6 +413,9 @@ fn flatten_stage_report_for_python(
         CalibrationStagedRunStageReport::ReturnComponents(stage_report) => {
             ("return_components", serde_json::to_value(stage_report)?)
         }
+        CalibrationStagedRunStageReport::MeanReversion(stage_report) => {
+            ("mean_reversion", serde_json::to_value(stage_report)?)
+        }
         CalibrationStagedRunStageReport::JointRefinement(stage_report) => {
             ("joint_refinement", serde_json::to_value(stage_report)?)
         }

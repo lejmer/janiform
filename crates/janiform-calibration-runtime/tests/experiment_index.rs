@@ -11,7 +11,8 @@ use support::shared::{
     HawkesStageExecutionInput, ReturnComponentsStageExecutionInput, SeasonalityStageExecutionInput,
     TimeZone, Utc, build_calibration_artifact_manifest,
     build_calibration_dataset_snapshot_artifact, build_calibration_stage_parameter_artifact,
-    build_joint_refinement_stage_success_report, build_run_contract_with_mode_and_resume,
+    build_joint_refinement_stage_success_report, build_mean_reversion_stage_success_report,
+    build_run_contract_with_mode_and_resume,
     build_validation_metric_artifact_fixture, calibration_experiment_index_path_for_root,
     calibration_stage_test_registry, calibration_stage_timestamp_fixture, fs,
     hawkes_stage_candidate_fixture, load_calibration_experiment_index_from_disk,
@@ -347,6 +348,12 @@ fn commit_indexed_run(
     .expect("return-components artifact should build");
 
     let joint_refinement_report = build_joint_refinement_stage_success_report();
+    let mean_reversion_report = build_mean_reversion_stage_success_report();
+    let mean_reversion_artifact = build_calibration_stage_parameter_artifact(
+        &run_contract,
+        &CalibrationStagedRunStageReport::MeanReversion(mean_reversion_report),
+    )
+    .expect("mean-reversion artifact should build");
     let joint_refinement_artifact = build_calibration_stage_parameter_artifact(
         &run_contract,
         &CalibrationStagedRunStageReport::JointRefinement(joint_refinement_report),
@@ -357,6 +364,7 @@ fn commit_indexed_run(
         seasonality_artifact,
         hawkes_artifact,
         return_components_artifact,
+        mean_reversion_artifact,
         joint_refinement_artifact,
     ];
 

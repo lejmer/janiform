@@ -239,6 +239,8 @@ pub struct CalibrationArtifactManifestModelVersion {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub return_components_stage_output_schema_version: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mean_reversion_stage_output_schema_version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub joint_refinement_stage_output_schema_version: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub seasonality_estimator_version: Option<String>,
@@ -273,6 +275,10 @@ impl CalibrationArtifactManifestModelVersion {
             (
                 "index_metadata.model_version.return_components_stage_output_schema_version",
                 self.return_components_stage_output_schema_version.as_ref(),
+            ),
+            (
+                "index_metadata.model_version.mean_reversion_stage_output_schema_version",
+                self.mean_reversion_stage_output_schema_version.as_ref(),
             ),
             (
                 "index_metadata.model_version.joint_refinement_stage_output_schema_version",

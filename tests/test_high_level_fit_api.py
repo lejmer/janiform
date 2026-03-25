@@ -424,6 +424,7 @@ def test_high_level_model_summary_exposes_fitted_parameters_and_provenance(
 
     assert "hawkes" in summary["fitted_parameters"]
     assert "return_components" in summary["fitted_parameters"]
+    assert "mean_reversion" in summary["fitted_parameters"]
     assert (
         summary["preset_provenance"]["known_news"]["selected_preset"]["preset_name"]
         == "none"
@@ -469,6 +470,10 @@ def test_high_level_model_save_and_load_roundtrip_preserves_deterministic_metada
         ]
         == build_disabled_mean_reversion_fitted_parameters_payload()
     )
+    assert (
+        persisted_payload["parameters"]["mean_reversion"]["fitted_parameters"]
+        == build_disabled_mean_reversion_fitted_parameters_payload()
+    )
     assert "timestamp_utc_nanos" not in persisted_payload["parameters"]["seasonality"]
     assert "normalized_combined_factor_by_event" not in persisted_payload["parameters"]["seasonality"]
     assert first_path.read_text(encoding="utf-8").startswith("{\n  ")
@@ -498,6 +503,7 @@ def test_high_level_model_save_and_load_roundtrip_preserves_deterministic_mean_r
     model.parameters["return_components"]["fitted_parameters"][
         "mean_reversion_fitted_parameters"
     ] = mean_reversion_payload
+    model.parameters["mean_reversion"]["fitted_parameters"] = mean_reversion_payload
     model.parameters["joint_refinement"]["fitted_parameters"]["return_components_fitted_parameters"][
         "mean_reversion_fitted_parameters"
     ] = mean_reversion_payload
@@ -515,6 +521,9 @@ def test_high_level_model_save_and_load_roundtrip_preserves_deterministic_mean_r
             "mean_reversion_fitted_parameters"
         ]
         == mean_reversion_payload
+    )
+    assert (
+        loaded_model.parameters["mean_reversion"]["fitted_parameters"] == mean_reversion_payload
     )
     assert (
         loaded_model.parameters["joint_refinement"]["fitted_parameters"][
@@ -889,6 +898,7 @@ def test_high_level_model_simulation_materializes_mean_reversion_runtime_inputs(
     model.parameters["return_components"]["fitted_parameters"][
         "mean_reversion_fitted_parameters"
     ] = mean_reversion_payload
+    model.parameters["mean_reversion"]["fitted_parameters"] = mean_reversion_payload
     model.parameters["joint_refinement"]["fitted_parameters"]["return_components_fitted_parameters"][
         "mean_reversion_fitted_parameters"
     ] = mean_reversion_payload
@@ -1693,6 +1703,7 @@ def test_high_level_fit_report_returns_success_details_with_model(
         "seasonality",
         "hawkes",
         "return_components",
+        "mean_reversion",
         "joint_refinement",
     ]
 
@@ -2025,6 +2036,38 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                         },
                         "mean_reversion_fitted_parameters": build_disabled_mean_reversion_fitted_parameters_payload(),
                     },
+                },
+            },
+            {
+                "stage_report_kind": "mean_reversion",
+                "stage": "mean_reversion",
+                "status": "success",
+                "run_id": run_id,
+                "execution_mode": "memory",
+                "handoff_policy": "explicit_run_spec_handoffs_mode_aware_transport.v1",
+                "fitted_stage_payload": {
+                    "schema_version": "calibration.stage_output.mean_reversion.v1",
+                    "fitted_parameters": build_disabled_mean_reversion_fitted_parameters_payload(),
+                    "diagnostics": {
+                        "chosen_anchor_family": "disabled",
+                        "calibration_grid": {
+                            "calibration_grid_kind": "synthetic_daily_close_grid.v1",
+                            "calibration_grid_interval_hours": 24.0,
+                            "source_observation_count": 4,
+                            "retained_observation_count": 0,
+                            "coverage_ratio": 0.0,
+                        },
+                        "anchor_parameter_estimates": {
+                            "anchor_model_kind": "disabled",
+                        },
+                        "phi": 1.0,
+                        "kappa": 0.0,
+                        "deviation_sample_count": 0,
+                        "regression_pair_count": 0,
+                        "stage_decision_reason": "requested_mean_reversion_disabled.v1",
+                    },
+                    "return_components_input_transport": "in_memory_output",
+                    "return_components_selected_candidate_id": "return_candidate_balanced",
                 },
             },
             {

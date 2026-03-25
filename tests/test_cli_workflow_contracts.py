@@ -964,6 +964,7 @@ def test_market_data_calibration_cli_maps_flags_to_summary_contract(
         "seasonality",
         "hawkes",
         "return_components",
+        "mean_reversion",
         "joint_refinement",
     ]
     assert "known_news_overlay_derivation" in summary_payload["diagnostics_summary"]["executed_preprocessing_steps"]

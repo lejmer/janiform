@@ -94,6 +94,10 @@ pub(crate) fn build_solver_settings_for_all_stages() -> Vec<CalibrationStageSolv
             optimizer_settings: build_solver_settings(),
         },
         CalibrationStageSolverSettings {
+            stage: CalibrationStage::MeanReversion,
+            optimizer_settings: build_solver_settings(),
+        },
+        CalibrationStageSolverSettings {
             stage: CalibrationStage::JointRefinement,
             optimizer_settings: build_joint_refinement_solver_settings(),
         },
@@ -133,6 +137,7 @@ pub(crate) fn build_valid_run_spec_with_mode(
             CalibrationStage::Seasonality,
             CalibrationStage::Hawkes,
             CalibrationStage::ReturnComponents,
+            CalibrationStage::MeanReversion,
             CalibrationStage::JointRefinement,
         ],
         build_seed_settings(),
@@ -217,6 +222,9 @@ pub(crate) fn build_valid_artifact_manifest() -> CalibrationArtifactManifest {
                 return_components_stage_output_schema_version: Some(
                     CALIBRATION_RETURN_COMPONENTS_STAGE_OUTPUT_SCHEMA_VERSION.to_string(),
                 ),
+                mean_reversion_stage_output_schema_version: Some(
+                    CALIBRATION_MEAN_REVERSION_STAGE_OUTPUT_SCHEMA_VERSION.to_string(),
+                ),
                 joint_refinement_stage_output_schema_version: Some(
                     CALIBRATION_JOINT_REFINEMENT_STAGE_OUTPUT_SCHEMA_VERSION.to_string(),
                 ),
@@ -293,6 +301,12 @@ pub(crate) fn build_validation_metric_artifact_fixture() -> CalibrationValidatio
                 artifact_reference: "artifact://return_components/run-001".to_string(),
                 stage_output_schema_version:
                     CALIBRATION_RETURN_COMPONENTS_STAGE_EXECUTION_REPORT_SCHEMA_VERSION.to_string(),
+            },
+            CalibrationValidationMetricStageOutputLink {
+                stage: CalibrationStage::MeanReversion,
+                artifact_reference: "artifact://mean_reversion/run-001".to_string(),
+                stage_output_schema_version:
+                    CALIBRATION_MEAN_REVERSION_STAGE_EXECUTION_REPORT_SCHEMA_VERSION.to_string(),
             },
             CalibrationValidationMetricStageOutputLink {
                 stage: CalibrationStage::JointRefinement,
@@ -388,6 +402,12 @@ pub(crate) fn build_validation_metric_manifest_fixture() -> CalibrationArtifactM
                 stage: Some(CalibrationStage::ReturnComponents),
             },
             CalibrationArtifactReference {
+                artifact_id: "mean_reversion_stage_output".to_string(),
+                artifact_kind: CalibrationArtifactKind::StageOutput,
+                artifact_reference: "artifact://mean_reversion/run-001".to_string(),
+                stage: Some(CalibrationStage::MeanReversion),
+            },
+            CalibrationArtifactReference {
                 artifact_id: "joint_refinement_stage_output".to_string(),
                 artifact_kind: CalibrationArtifactKind::StageOutput,
                 artifact_reference: "artifact://joint_refinement/run-001".to_string(),
@@ -421,6 +441,7 @@ pub(crate) fn build_run_contract_with_mode_and_resume(
                 CalibrationStage::Seasonality,
                 CalibrationStage::Hawkes,
                 CalibrationStage::ReturnComponents,
+                CalibrationStage::MeanReversion,
                 CalibrationStage::JointRefinement,
             ],
             build_seed_settings(),
@@ -451,12 +472,20 @@ pub(crate) fn default_stage_graph() -> CalibrationStageGraph {
             depends_on: CalibrationStage::Hawkes,
         },
         CalibrationStageDependency {
+            stage: CalibrationStage::MeanReversion,
+            depends_on: CalibrationStage::ReturnComponents,
+        },
+        CalibrationStageDependency {
             stage: CalibrationStage::JointRefinement,
             depends_on: CalibrationStage::Hawkes,
         },
         CalibrationStageDependency {
             stage: CalibrationStage::JointRefinement,
             depends_on: CalibrationStage::ReturnComponents,
+        },
+        CalibrationStageDependency {
+            stage: CalibrationStage::JointRefinement,
+            depends_on: CalibrationStage::MeanReversion,
         },
     ])
 }
@@ -761,6 +790,7 @@ fn checkpoint_reference(run_id: &str, stage: CalibrationStage) -> String {
         CalibrationStage::Seasonality => "seasonality",
         CalibrationStage::Hawkes => "hawkes",
         CalibrationStage::ReturnComponents => "return_components",
+        CalibrationStage::MeanReversion => "mean_reversion",
         CalibrationStage::JointRefinement => "joint_refinement",
     };
 

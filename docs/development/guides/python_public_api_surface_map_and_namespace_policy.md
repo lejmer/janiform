@@ -205,7 +205,7 @@ from janiform.contracts import MeanReversionFittedParameters
   - Optimizer-setting policy: stage solver settings are the explicit low-level boundary for shared
     execution controls such as candidate-search CPU count
 - `janiform.calibration.staged.inputs`
-  - Ownership: staged execution input contracts and stage-specific input payload models
+  - Ownership: staged execution input contracts and stage-specific input payload models, including the lower-frequency mean-reversion observation grid used by the anchor-deviation stage
 - `janiform.calibration.staged.request`
   - Ownership: staged calibration request contract
 - `janiform.calibration.staged.results`
@@ -269,7 +269,12 @@ The default full staged calibration path now executes:
 - `seasonality`
 - `hawkes`
 - `return_components`
+- `mean_reversion`
 - `joint_refinement`
+
+Advanced staged execution inputs must provide `mean_reversion_stage_input` whenever
+`selected_stages` contains `mean_reversion`. That stage-specific payload owns the lower-frequency
+observed log-price calibration grid and does not reuse the return-components evidence model.
 
 The supported calibration ownership modules are:
 

@@ -671,10 +671,11 @@
             "seasonality_stage_input",
             "hawkes_candidate_inputs",
             "return_components_candidate_generation_input",
+            "mean_reversion_stage_input",
             "runtime_resources"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: 'str', request: 'StagedCalibrationRequest', seasonality_stage_input: 'Optional[CalibrationSeasonalityStageExecutionInput]' = None, hawkes_candidate_inputs: 'Optional[tuple[CalibrationHawkesStageCandidateInput, ...]]' = None, return_components_candidate_generation_input: 'Optional[CalibrationReturnComponentsStageCandidateGenerationInput]' = None, runtime_resources: 'Optional[CalibrationStagedExecutionRuntimeResources]' = None) -> 'None'"
+          "signature": "(schema_version: 'str', request: 'StagedCalibrationRequest', seasonality_stage_input: 'Optional[CalibrationSeasonalityStageExecutionInput]' = None, hawkes_candidate_inputs: 'Optional[tuple[CalibrationHawkesStageCandidateInput, ...]]' = None, return_components_candidate_generation_input: 'Optional[CalibrationReturnComponentsStageCandidateGenerationInput]' = None, mean_reversion_stage_input: 'Optional[CalibrationMeanReversionStageExecutionInput]' = None, runtime_resources: 'Optional[CalibrationStagedExecutionRuntimeResources]' = None) -> 'None'"
         },
         "StagedCalibrationRequest": {
           "field_names": [
@@ -3092,6 +3093,8 @@
         "CalibrationHawkesStructuredRhoSelfDominancePolicy",
         "CalibrationIntradaySeasonalityEstimatorSettings",
         "CalibrationIntradaySmoothingKernel",
+        "CalibrationMeanReversionStageExecutionInput",
+        "CalibrationMeanReversionStageObservation",
         "CalibrationObjectiveTermInput",
         "CalibrationOptimizerSettings",
         "CalibrationResumeSettings",
@@ -3348,6 +3351,27 @@
             }
           ]
         },
+        "CalibrationMeanReversionStageExecutionInput": {
+          "field_names": [
+            "requested_anchor_model_kind",
+            "calibration_grid_kind",
+            "calibration_grid_interval_hours",
+            "source_observation_count",
+            "coverage_ratio",
+            "observations",
+            "disabled_stage_reason"
+          ],
+          "kind": "contract_model",
+          "signature": "(requested_anchor_model_kind: 'MeanReversionAnchorModelKind', calibration_grid_kind: 'str', calibration_grid_interval_hours: 'float', source_observation_count: 'int', coverage_ratio: 'float', observations: 'tuple[CalibrationMeanReversionStageObservation, ...]' = (), disabled_stage_reason: 'Optional[str]' = None) -> 'None'"
+        },
+        "CalibrationMeanReversionStageObservation": {
+          "field_names": [
+            "observation_timestamp_utc_nanos",
+            "observed_log_price"
+          ],
+          "kind": "contract_model",
+          "signature": "(observation_timestamp_utc_nanos: 'int', observed_log_price: 'float') -> 'None'"
+        },
         "CalibrationObjectiveTermInput": {
           "field_names": [
             "term_id",
@@ -3558,6 +3582,10 @@
               "value": "return_components"
             },
             {
+              "name": "MEAN_REVERSION",
+              "value": "mean_reversion"
+            },
+            {
               "name": "JOINT_REFINEMENT",
               "value": "joint_refinement"
             }
@@ -3667,10 +3695,11 @@
             "seasonality_stage_input",
             "hawkes_candidate_inputs",
             "return_components_candidate_generation_input",
+            "mean_reversion_stage_input",
             "runtime_resources"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: 'str', request: 'StagedCalibrationRequest', seasonality_stage_input: 'Optional[CalibrationSeasonalityStageExecutionInput]' = None, hawkes_candidate_inputs: 'Optional[tuple[CalibrationHawkesStageCandidateInput, ...]]' = None, return_components_candidate_generation_input: 'Optional[CalibrationReturnComponentsStageCandidateGenerationInput]' = None, runtime_resources: 'Optional[CalibrationStagedExecutionRuntimeResources]' = None) -> 'None'"
+          "signature": "(schema_version: 'str', request: 'StagedCalibrationRequest', seasonality_stage_input: 'Optional[CalibrationSeasonalityStageExecutionInput]' = None, hawkes_candidate_inputs: 'Optional[tuple[CalibrationHawkesStageCandidateInput, ...]]' = None, return_components_candidate_generation_input: 'Optional[CalibrationReturnComponentsStageCandidateGenerationInput]' = None, mean_reversion_stage_input: 'Optional[CalibrationMeanReversionStageExecutionInput]' = None, runtime_resources: 'Optional[CalibrationStagedExecutionRuntimeResources]' = None) -> 'None'"
         },
         "StagedCalibrationRequest": {
           "field_names": [
@@ -3896,6 +3925,10 @@
               "value": "return_components"
             },
             {
+              "name": "MEAN_REVERSION",
+              "value": "mean_reversion"
+            },
+            {
               "name": "JOINT_REFINEMENT",
               "value": "joint_refinement"
             }
@@ -3973,6 +4006,8 @@
         "CalibrationHawkesStructuredRhoSelfDominancePolicy",
         "CalibrationIntradaySeasonalityEstimatorSettings",
         "CalibrationIntradaySmoothingKernel",
+        "CalibrationMeanReversionStageExecutionInput",
+        "CalibrationMeanReversionStageObservation",
         "CalibrationObjectiveTermInput",
         "CalibrationReturnComponentsCloseOpenGapDetectionPolicy",
         "CalibrationReturnComponentsDetectedIntradayJumpCandidate",
@@ -4133,6 +4168,27 @@
               "value": "uniform"
             }
           ]
+        },
+        "CalibrationMeanReversionStageExecutionInput": {
+          "field_names": [
+            "requested_anchor_model_kind",
+            "calibration_grid_kind",
+            "calibration_grid_interval_hours",
+            "source_observation_count",
+            "coverage_ratio",
+            "observations",
+            "disabled_stage_reason"
+          ],
+          "kind": "contract_model",
+          "signature": "(requested_anchor_model_kind: 'MeanReversionAnchorModelKind', calibration_grid_kind: 'str', calibration_grid_interval_hours: 'float', source_observation_count: 'int', coverage_ratio: 'float', observations: 'tuple[CalibrationMeanReversionStageObservation, ...]' = (), disabled_stage_reason: 'Optional[str]' = None) -> 'None'"
+        },
+        "CalibrationMeanReversionStageObservation": {
+          "field_names": [
+            "observation_timestamp_utc_nanos",
+            "observed_log_price"
+          ],
+          "kind": "contract_model",
+          "signature": "(observation_timestamp_utc_nanos: 'int', observed_log_price: 'float') -> 'None'"
         },
         "CalibrationObjectiveTermInput": {
           "field_names": [
@@ -4316,10 +4372,11 @@
             "seasonality_stage_input",
             "hawkes_candidate_inputs",
             "return_components_candidate_generation_input",
+            "mean_reversion_stage_input",
             "runtime_resources"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: 'str', request: 'StagedCalibrationRequest', seasonality_stage_input: 'Optional[CalibrationSeasonalityStageExecutionInput]' = None, hawkes_candidate_inputs: 'Optional[tuple[CalibrationHawkesStageCandidateInput, ...]]' = None, return_components_candidate_generation_input: 'Optional[CalibrationReturnComponentsStageCandidateGenerationInput]' = None, runtime_resources: 'Optional[CalibrationStagedExecutionRuntimeResources]' = None) -> 'None'"
+          "signature": "(schema_version: 'str', request: 'StagedCalibrationRequest', seasonality_stage_input: 'Optional[CalibrationSeasonalityStageExecutionInput]' = None, hawkes_candidate_inputs: 'Optional[tuple[CalibrationHawkesStageCandidateInput, ...]]' = None, return_components_candidate_generation_input: 'Optional[CalibrationReturnComponentsStageCandidateGenerationInput]' = None, mean_reversion_stage_input: 'Optional[CalibrationMeanReversionStageExecutionInput]' = None, runtime_resources: 'Optional[CalibrationStagedExecutionRuntimeResources]' = None) -> 'None'"
         },
         "deserialize_staged_calibration_execution_input": {
           "kind": "function",

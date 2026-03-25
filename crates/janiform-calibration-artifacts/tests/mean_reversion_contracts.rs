@@ -3,13 +3,29 @@ mod support;
 use std::f64::NAN;
 
 use janiform_calibration_artifacts::CalibrationExecutionMode;
+use janiform_model_kernels::mean_reversion::MeanReversionAnchorModelKind;
 use support::shared::{
+    CalibrationRunContract,
+    CalibrationRunSeedSettings,
+    CalibrationRunSpec,
+    CalibrationStage,
+    CalibrationStageGraph,
+    CalibrationStageHandoffTransport,
+    CalibrationStageParameterArtifactInput,
+    CalibrationStageParameterBuildMetadata,
+    CalibrationStageSolverSettings,
+    MeanReversionStageCalibrationGrid,
+    MeanReversionStageDiagnostics,
+    MeanReversionStageParameterArtifactInput,
+    build_calibration_stage_parameter_artifact,
+    build_data_inputs,
     MeanReversionAnchorModel, MeanReversionBoundaryState, MeanReversionFittedParameters,
     MeanReversionRuntimeIntervalAnchors,
     build_deterministic_interval_grid_mean_reversion_parameters,
-    build_return_components_stage_parameter_artifact_fixture,
-    build_run_contract_with_mode_and_resume, load_calibration_stage_parameter_artifact_from_disk,
-    persist_calibration_stage_parameter_artifact_to_run_directory, temporary_checkpoint_directory,
+    build_solver_settings,
+    load_calibration_stage_parameter_artifact_from_disk,
+    persist_calibration_stage_parameter_artifact_to_run_directory, resolve_calibration_stage_seed_metadata,
+    stage_solver_settings_for_stage, temporary_checkpoint_directory,
 };
 
 #[test]
@@ -98,14 +114,73 @@ fn mean_reversion_boundary_state_rejects_invariant_drift() {
 
 #[test]
 fn calibration_stage_parameter_artifact_persistence_round_trips_mean_reversion_block() {
-    let run_contract = build_run_contract_with_mode_and_resume(
+    let run_spec = CalibrationRunSpec::try_new(
         "run-mean-reversion-artifact",
+        build_data_inputs(),
         CalibrationExecutionMode::Disk,
-        None,
-    );
+        vec![CalibrationStage::MeanReversion],
+        CalibrationRunSeedSettings::try_new(17, vec![])
+            .expect("mean-reversion seed settings should validate"),
+        vec![CalibrationStageSolverSettings {
+            stage: CalibrationStage::MeanReversion,
+            optimizer_settings: build_solver_settings(),
+        }],
+    )
+    .expect("mean-reversion run spec should validate");
+    let run_contract = CalibrationRunContract::try_new(run_spec, CalibrationStageGraph::new(vec![]))
+        .expect("mean-reversion run contract should validate");
 
     let run_directory = temporary_checkpoint_directory("mean-reversion-stage-parameter");
-    let artifact = build_return_components_stage_parameter_artifact_fixture(&run_contract);
+    let stage_seed_metadata =
+        resolve_calibration_stage_seed_metadata(&run_contract.run_spec, CalibrationStage::MeanReversion);
+    let solver_settings =
+        stage_solver_settings_for_stage(&run_contract.run_spec, CalibrationStage::MeanReversion)
+            .expect("mean-reversion solver settings should exist");
+    let fitted_parameters = build_deterministic_interval_grid_mean_reversion_parameters();
+    let diagnostics = MeanReversionStageDiagnostics {
+        chosen_anchor_family: MeanReversionAnchorModelKind::DeterministicIntervalGrid,
+        calibration_grid: MeanReversionStageCalibrationGrid {
+            calibration_grid_kind: "synthetic_daily_close_grid.v1".to_string(),
+            calibration_grid_interval_hours: 24.0,
+            source_observation_count: 4,
+            retained_observation_count: 4,
+            coverage_ratio: 1.0,
+        },
+        anchor_parameter_estimates: fitted_parameters.anchor_model.clone(),
+        phi: 0.85,
+        kappa: fitted_parameters.kappa,
+        deviation_sample_count: 4,
+        regression_pair_count: 3,
+        stage_decision_reason: "deterministic_interval_anchor_fitted_from_local_median_log_price_levels.v1"
+            .to_string(),
+    };
+    let artifact = build_calibration_stage_parameter_artifact(
+        &run_contract,
+        CalibrationStageParameterArtifactInput::MeanReversion(
+            MeanReversionStageParameterArtifactInput {
+                metadata: CalibrationStageParameterBuildMetadata {
+                    stage_output_schema_version:
+                        janiform_calibration_artifacts::CALIBRATION_MEAN_REVERSION_STAGE_OUTPUT_SCHEMA_VERSION
+                            .to_string(),
+                    run_global_seed: stage_seed_metadata.run_global_seed,
+                    stage_seed: stage_seed_metadata.stage_seed,
+                    stage_seed_source: stage_seed_metadata.stage_seed_source,
+                    stage_seed_derivation_policy:
+                        janiform_calibration_artifacts::CALIBRATION_STAGE_SEED_DERIVATION_POLICY
+                            .to_string(),
+                    solver_settings,
+                },
+                fitted_parameters: fitted_parameters.clone(),
+                diagnostics,
+                return_components_input_transport: CalibrationStageHandoffTransport::InMemoryOutput,
+                return_components_selected_candidate_id: Some(
+                    "return_candidate_balanced".to_string(),
+                ),
+                return_components_artifact_reference: None,
+            },
+        ),
+    )
+    .expect("mean-reversion stage parameter artifact should build");
 
     let artifact_path = persist_calibration_stage_parameter_artifact_to_run_directory(
         run_directory.as_path(),

@@ -481,12 +481,20 @@ fn calibration_run_contract_captures_solver_settings_for_auditability() {
             depends_on: CalibrationStage::Hawkes,
         },
         CalibrationStageDependency {
+            stage: CalibrationStage::MeanReversion,
+            depends_on: CalibrationStage::ReturnComponents,
+        },
+        CalibrationStageDependency {
             stage: CalibrationStage::JointRefinement,
             depends_on: CalibrationStage::Hawkes,
         },
         CalibrationStageDependency {
             stage: CalibrationStage::JointRefinement,
             depends_on: CalibrationStage::ReturnComponents,
+        },
+        CalibrationStageDependency {
+            stage: CalibrationStage::JointRefinement,
+            depends_on: CalibrationStage::MeanReversion,
         },
     ]);
 
@@ -510,6 +518,7 @@ fn calibration_run_contract_captures_solver_settings_for_auditability() {
             CalibrationStage::Seasonality,
             CalibrationStage::Hawkes,
             CalibrationStage::ReturnComponents,
+            CalibrationStage::MeanReversion,
             CalibrationStage::JointRefinement,
         ]
     );
@@ -519,7 +528,7 @@ fn calibration_run_contract_captures_solver_settings_for_auditability() {
         serialized["stage_solver_settings"]
             .as_array()
             .map(|v| v.len()),
-        Some(4)
+        Some(5)
     );
     assert_eq!(
         serialized["stage_solver_settings"][0]["optimizer_settings"]["solver_name"],

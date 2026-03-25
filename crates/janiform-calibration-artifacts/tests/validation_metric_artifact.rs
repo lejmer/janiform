@@ -41,7 +41,7 @@ fn validation_metric_artifact_round_trip_preserves_machine_readable_metadata() {
         artifact.manifest_link.artifact_reference,
         calibration_artifact_manifest_reference("run-001")
     );
-    assert_eq!(artifact.stage_output_links.len(), 4);
+    assert_eq!(artifact.stage_output_links.len(), 5);
     assert_eq!(artifact.metric_collections.len(), 1);
     assert_eq!(
         artifact.output_schema_metadata.artifact_role_vocabulary,

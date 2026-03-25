@@ -46,6 +46,7 @@
         "seasonality",
         "hawkes",
         "return_components",
+        "mean_reversion",
         "joint_refinement"
       ],
       "expect_experiment_index_record": true,

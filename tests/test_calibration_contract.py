@@ -249,6 +249,33 @@ def test_staged_calibration_execution_input_requires_explicit_selected_stage_inp
     assert "required when selected_stages contains seasonality" in captured_error.value.failure.message
 
 
+def test_staged_calibration_execution_input_requires_mean_reversion_stage_input_when_selected(
+) -> None:
+    execution_input_payload = build_valid_execution_input_payload()
+    del execution_input_payload["mean_reversion_stage_input"]
+
+    with pytest.raises(CalibrationValidationError) as captured_error:
+        validate_staged_calibration_execution_input(execution_input_payload)
+
+    assert captured_error.value.failure.field_path == "mean_reversion_stage_input"
+    assert "required when selected_stages contains mean_reversion" in captured_error.value.failure.message
+
+
+def test_staged_calibration_execution_input_rejects_non_positive_mean_reversion_grid_interval(
+) -> None:
+    execution_input_payload = build_valid_execution_input_payload()
+    execution_input_payload["mean_reversion_stage_input"]["calibration_grid_interval_hours"] = 0.0
+
+    with pytest.raises(CalibrationValidationError) as captured_error:
+        validate_staged_calibration_execution_input(execution_input_payload)
+
+    assert (
+        captured_error.value.failure.field_path
+        == "mean_reversion_stage_input.calibration_grid_interval_hours"
+    )
+    assert captured_error.value.failure.message == "must be strictly positive"
+
+
 def test_staged_calibration_execution_input_requires_disk_runtime_resources_for_disk_mode() -> None:
     execution_input_payload = build_valid_execution_input_payload()
     execution_input_payload["request"]["execution_mode"] = "disk"

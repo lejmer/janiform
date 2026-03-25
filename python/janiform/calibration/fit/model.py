@@ -817,6 +817,15 @@ def _build_runtime_interval_end_times_utc(
 
 
 def _mean_reversion_fitted_parameters(model: JaniformModel) -> MeanReversionFittedParameters:
+    raw_mean_reversion = model.parameters.get("mean_reversion")
+    if isinstance(raw_mean_reversion, Mapping):
+        fitted_parameters = raw_mean_reversion.get("fitted_parameters")
+        if isinstance(fitted_parameters, Mapping):
+            return MeanReversionFittedParameters.from_mapping(
+                dict(fitted_parameters),
+                field_path="mean_reversion.fitted_parameters",
+            )
+
     return MeanReversionFittedParameters.from_mapping(
         dict(
             _require_payload_mapping(
@@ -1844,6 +1853,18 @@ def _extract_model_parameters(stage_report_payloads: tuple[dict[str, Any], ...])
                             cast(dict[str, Any], fitted_stage_payload.get("fitted_parameters", {}))
                         ),
                     }
+            case "mean_reversion":
+                fitted_stage_payload = stage_report.get("fitted_stage_payload")
+                if isinstance(fitted_stage_payload, Mapping):
+                    parameters["mean_reversion"] = {
+                        "schema_version": fitted_stage_payload.get("schema_version"),
+                        "fitted_parameters": deepcopy(
+                            cast(dict[str, Any], fitted_stage_payload.get("fitted_parameters", {}))
+                        ),
+                        "diagnostics": deepcopy(
+                            cast(dict[str, Any], fitted_stage_payload.get("diagnostics", {}))
+                        ),
+                    }
             case "joint_refinement":
                 fitted_stage_payload = stage_report.get("fitted_stage_payload")
                 if isinstance(fitted_stage_payload, Mapping):
@@ -2113,6 +2134,15 @@ def _normalize_model_parameters(raw_parameters: Mapping[str, Any]) -> dict[str, 
 
 
 def _normalize_mean_reversion_model_parameters(parameters: dict[str, Any]) -> None:
+    raw_mean_reversion = parameters.get("mean_reversion")
+    if isinstance(raw_mean_reversion, Mapping):
+        fitted_parameters = raw_mean_reversion.get("fitted_parameters")
+        if isinstance(fitted_parameters, Mapping):
+            raw_mean_reversion["fitted_parameters"] = MeanReversionFittedParameters.from_mapping(
+                dict(fitted_parameters),
+                field_path="parameters.mean_reversion.fitted_parameters",
+            ).to_payload()
+
     raw_return_components = parameters.get("return_components")
     if isinstance(raw_return_components, Mapping):
         fitted_parameters = raw_return_components.get("fitted_parameters")

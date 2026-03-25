@@ -1,5 +1,6 @@
 use super::{
     CALIBRATION_HAWKES_STAGE_OUTPUT_SCHEMA_VERSION,
+    CALIBRATION_MEAN_REVERSION_STAGE_OUTPUT_SCHEMA_VERSION,
     CALIBRATION_RETURN_COMPONENTS_STAGE_OUTPUT_SCHEMA_VERSION,
     CalibrationInMemoryStagePayloadState, CalibrationStageParameterArtifact,
     CalibrationStageParameterPayload, CalibrationStagedRunStageReport,
@@ -80,6 +81,21 @@ pub(super) fn restore_in_memory_payload_state_from_stage_parameter_artifact(
                 },
             );
         }
+        CalibrationStageParameterPayload::MeanReversion(payload) => {
+            payload_state.mean_reversion_stage_payload =
+                Some(crate::stages::mean_reversion::MeanReversionStageFittedPayload {
+                    schema_version: CALIBRATION_MEAN_REVERSION_STAGE_OUTPUT_SCHEMA_VERSION,
+                    fitted_parameters: payload.fitted_parameters.clone(),
+                    diagnostics: payload.diagnostics.clone(),
+                    return_components_input_transport: payload.return_components_input_transport,
+                    return_components_selected_candidate_id: payload
+                        .return_components_selected_candidate_id
+                        .clone(),
+                    return_components_artifact_reference: payload
+                        .return_components_artifact_reference
+                        .clone(),
+                });
+        }
         CalibrationStageParameterPayload::JointRefinement(payload) => {
             payload_state.joint_refinement_stage_payload =
                 Some(crate::stages::joint_refinement::JointRefinementStageFittedPayload {
@@ -120,6 +136,9 @@ pub(super) fn update_in_memory_payload_state(
         }
         CalibrationStagedRunStageReport::ReturnComponents(report) => {
             payload_state.return_components_stage_payload = report.fitted_stage_payload.clone();
+        }
+        CalibrationStagedRunStageReport::MeanReversion(report) => {
+            payload_state.mean_reversion_stage_payload = report.fitted_stage_payload.clone();
         }
         CalibrationStagedRunStageReport::JointRefinement(report) => {
             payload_state.joint_refinement_stage_payload = report.fitted_stage_payload.clone();
