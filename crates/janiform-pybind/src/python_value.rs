@@ -1,18 +1,20 @@
+use pyo3::IntoPyObject;
 use pyo3::prelude::{Bound, Py, PyErr, PyResult, Python};
 use pyo3::types::{
     PyAny, PyAnyMethods, PyBool, PyDict, PyDictMethods, PyFloat, PyInt, PyList, PyListMethods,
     PyString, PyStringMethods, PyTuple, PyTupleMethods,
 };
-use pyo3::IntoPyObject;
 use serde_json::{Map, Number, Value};
 
 pub(crate) fn py_any_to_json_value(value: &Bound<'_, PyAny>) -> PyResult<Value> {
     if value.is_none() {
         return Ok(Value::Null);
     }
+
     if let Ok(boolean_value) = value.downcast::<PyBool>() {
         return Ok(Value::Bool(boolean_value.extract::<bool>()?));
     }
+
     if let Ok(integer_value) = value.downcast::<PyInt>() {
         if let Ok(parsed_value) = integer_value.extract::<i64>() {
             return Ok(Value::Number(Number::from(parsed_value)));
@@ -21,20 +23,26 @@ pub(crate) fn py_any_to_json_value(value: &Bound<'_, PyAny>) -> PyResult<Value> 
             return Ok(Value::Number(Number::from(parsed_value)));
         }
     }
+
     if let Ok(float_value) = value.downcast::<PyFloat>() {
         let parsed_value = float_value.extract::<f64>()?;
+
         let number = Number::from_f64(parsed_value).ok_or_else(|| {
             PyErr::new::<pyo3::exceptions::PyValueError, _>(
                 "floating-point payload values must be finite",
             )
         })?;
+
         return Ok(Value::Number(number));
     }
+
     if let Ok(string_value) = value.downcast::<PyString>() {
         return Ok(Value::String(string_value.to_str()?.to_owned()));
     }
+
     if let Ok(dict_value) = value.downcast::<PyDict>() {
         let mut mapped_value = Map::with_capacity(dict_value.len());
+
         for (raw_key, raw_item) in dict_value.iter() {
             let key = raw_key
                 .downcast::<PyString>()
@@ -47,20 +55,27 @@ pub(crate) fn py_any_to_json_value(value: &Bound<'_, PyAny>) -> PyResult<Value> 
                 .to_owned();
             mapped_value.insert(key, py_any_to_json_value(&raw_item)?);
         }
+
         return Ok(Value::Object(mapped_value));
     }
+
     if let Ok(list_value) = value.downcast::<PyList>() {
         let mut items = Vec::with_capacity(list_value.len());
+
         for raw_item in list_value.iter() {
             items.push(py_any_to_json_value(&raw_item)?);
         }
+
         return Ok(Value::Array(items));
     }
+
     if let Ok(tuple_value) = value.downcast::<PyTuple>() {
         let mut items = Vec::with_capacity(tuple_value.len());
+
         for raw_item in tuple_value.iter() {
             items.push(py_any_to_json_value(&raw_item)?);
         }
+
         return Ok(Value::Array(items));
     }
 

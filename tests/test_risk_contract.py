@@ -22,6 +22,7 @@ from janiform.risk import (
     validate_sufficient_statistics_risk_run_request,
 )
 from janiform.simulation import HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters
+from tests.simulation_test_support import build_disabled_mean_reversion_runtime_contracts
 
 
 def test_risk_run_request_model_construction_and_serialization_roundtrip() -> None:
@@ -49,6 +50,14 @@ def test_risk_run_request_accepts_sub_hour_interval_when_interval_factors_are_co
     request_payload = _valid_run_request_payload()
     request_payload["interval_delta"] = 0.5
     request_payload["interval_factors"]["interval_delta"] = 0.5
+    (
+        _mean_reversion_fitted_parameters,
+        mean_reversion_runtime_interval_anchors,
+        _initial_mean_reversion_boundary_state,
+    ) = build_disabled_mean_reversion_runtime_contracts(interval_count=2, interval_delta_hours=0.5)
+    request_payload["model_inputs"]["mean_reversion_runtime_interval_anchors"] = (
+        mean_reversion_runtime_interval_anchors.to_payload()
+    )
 
     validated_request = validate_sufficient_statistics_risk_run_request(request_payload)
 
@@ -146,7 +155,11 @@ def test_risk_path_diagnostics_schema_exposes_required_field_lists() -> None:
         "cumulative_open_jump_return",
         "cumulative_closed_gap_return",
         "cumulative_total_return",
+        "cumulative_observed_return",
         "max_abs_total_return",
+        "max_abs_deviation_from_anchor",
+        "terminal_observed_log_price",
+        "terminal_deviation_from_anchor",
     )
 
 
@@ -202,7 +215,11 @@ def test_risk_path_rejects_mismatched_diagnostics_with_context() -> None:
         "cumulative_open_jump_return": 0.0,
         "cumulative_closed_gap_return": -0.02,
         "cumulative_total_return": -0.01,
+        "cumulative_observed_return": -0.01,
         "max_abs_total_return": 0.01,
+        "max_abs_deviation_from_anchor": 0.01,
+        "terminal_observed_log_price": -0.01,
+        "terminal_deviation_from_anchor": -0.01,
     }
 
     with pytest.raises(SufficientStatisticsRiskValidationError) as captured_error:
@@ -223,6 +240,12 @@ def test_risk_path_metadata_is_deterministic_across_repeated_validations() -> No
 
 
 def _valid_run_request_model() -> SufficientStatisticsRiskRunRequest:
+    (
+        mean_reversion_fitted_parameters,
+        mean_reversion_runtime_interval_anchors,
+        initial_mean_reversion_boundary_state,
+    ) = build_disabled_mean_reversion_runtime_contracts(interval_count=2)
+
     return SufficientStatisticsRiskRunRequest(
         seed=17,
         horizon_interval_count=2,
@@ -263,6 +286,9 @@ def _valid_run_request_model() -> SufficientStatisticsRiskRunRequest:
                 y_minus_plus=0.3,
                 y_minus_minus=0.4,
             ),
+            mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
+            mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
+            initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
         ),
         interval_factors=SufficientStatisticsRiskIntervalFactors(
             interval_delta=1.0,
@@ -315,6 +341,11 @@ def _valid_path_payload() -> dict[str, Any]:
                             "closed_gap_return": -0.02,
                             "total_return": 0.0,
                         },
+                        "core_total_return": 0.0,
+                        "observed_interval_return": 0.0,
+                        "observed_log_price_end": 0.0,
+                        "anchor_value_end": 0.0,
+                        "deviation_from_anchor_end": 0.0,
                     }
                 ],
             }
@@ -353,6 +384,11 @@ def _valid_path_payload() -> dict[str, Any]:
                             "closed_gap_return": -0.02,
                             "total_return": 0.0,
                         },
+                        "core_total_return": 0.0,
+                        "observed_interval_return": 0.0,
+                        "observed_log_price_end": 0.0,
+                        "anchor_value_end": 0.0,
+                        "deviation_from_anchor_end": 0.0,
                     }
                 ],
             }
@@ -391,6 +427,11 @@ def _valid_path_payload() -> dict[str, Any]:
                             "closed_gap_return": -0.02,
                             "total_return": 0.0,
                         },
+                        "core_total_return": 0.0,
+                        "observed_interval_return": 0.0,
+                        "observed_log_price_end": 0.0,
+                        "anchor_value_end": 0.0,
+                        "deviation_from_anchor_end": 0.0,
                     }
                 ],
             }
@@ -427,6 +468,11 @@ def _valid_path_payload() -> dict[str, Any]:
                     closed_gap_return=-0.02,
                     total_return=0.0,
                 ),
+                core_total_return=0.0,
+                observed_interval_return=0.0,
+                observed_log_price_end=0.0,
+                anchor_value_end=0.0,
+                deviation_from_anchor_end=0.0,
             ),
         ),
     )

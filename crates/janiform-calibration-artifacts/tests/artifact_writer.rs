@@ -1,16 +1,14 @@
 mod support;
-use support::shared::{PathBuf, fs, temporary_checkpoint_directory};
 use janiform_calibration_artifacts::{
-    CALIBRATION_ARTIFACT_ATOMIC_COMMIT_POLICY,
-    CALIBRATION_ARTIFACT_PARTIAL_WRITE_RECOVERY_POLICY,
-    CALIBRATION_ARTIFACT_ROOT_CONFIGURATION_POLICY,
-    CALIBRATION_ARTIFACT_STORAGE_LAYOUT_POLICY, CalibrationArtifactRunPreparationMode,
-    CalibrationArtifactRunWriter, CalibrationStage, calibration_artifact_manifest_path,
-    calibration_checkpoint_run_directory, calibration_committed_artifact_run_directory,
-    calibration_dataset_snapshot_artifact_path, calibration_experiment_index_path_for_root,
-    calibration_last_success_checkpoint_path, calibration_stage_checkpoint_path,
-    calibration_stage_parameter_artifact_path,
+    CALIBRATION_ARTIFACT_ATOMIC_COMMIT_POLICY, CALIBRATION_ARTIFACT_PARTIAL_WRITE_RECOVERY_POLICY,
+    CALIBRATION_ARTIFACT_ROOT_CONFIGURATION_POLICY, CALIBRATION_ARTIFACT_STORAGE_LAYOUT_POLICY,
+    CalibrationArtifactRunPreparationMode, CalibrationArtifactRunWriter, CalibrationStage,
+    calibration_artifact_manifest_path, calibration_checkpoint_run_directory,
+    calibration_committed_artifact_run_directory, calibration_dataset_snapshot_artifact_path,
+    calibration_experiment_index_path_for_root, calibration_last_success_checkpoint_path,
+    calibration_stage_checkpoint_path, calibration_stage_parameter_artifact_path,
 };
+use support::shared::{PathBuf, fs, temporary_checkpoint_directory};
 
 #[test]
 fn calibration_artifact_storage_layout_paths_are_deterministic() {

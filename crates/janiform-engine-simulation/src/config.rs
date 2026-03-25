@@ -2,8 +2,8 @@
 
 use chrono::{DateTime, Utc};
 use janiform_model_kernels::mean_reversion::{
-    MeanReversionAnchorModelKind, MeanReversionBoundaryState,
-    MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors,
+    MeanReversionAnchorModelKind, MeanReversionBoundaryState, MeanReversionFittedParameters,
+    MeanReversionRuntimeIntervalAnchors,
 };
 use serde::Serialize;
 
@@ -276,16 +276,14 @@ impl SeededTickSimulationRunConfig {
             .mean_reversion_runtime_interval_anchors
             .validate()
             .map_err(|source| {
-                SeededTickSimulationRunError::InvalidMeanReversionRuntimeIntervalAnchors {
-                    source,
-                }
+                SeededTickSimulationRunError::InvalidMeanReversionRuntimeIntervalAnchors { source }
             })?;
         self.model_inputs
             .initial_mean_reversion_boundary_state
             .validate()
-            .map_err(|source| {
-                SeededTickSimulationRunError::InvalidMeanReversionBoundaryState { source }
-            })?;
+            .map_err(
+                |source| SeededTickSimulationRunError::InvalidMeanReversionBoundaryState { source },
+            )?;
 
         let runtime_interval_anchors = &self.model_inputs.mean_reversion_runtime_interval_anchors;
         if runtime_interval_anchors.end_anchor_values.len() != self.horizon_interval_count {
@@ -370,9 +368,7 @@ impl SeededTickSimulationRunConfig {
                     .mean_reversion_fitted_parameters
                     .anchor_model
                     .anchor_value
-                    .ok_or(
-                        SeededTickSimulationRunError::MeanReversionConstantAnchorMissingValue,
-                    )?;
+                    .ok_or(SeededTickSimulationRunError::MeanReversionConstantAnchorMissingValue)?;
 
                 if (runtime_interval_anchors.start_anchor_value - expected_anchor_value).abs()
                     > MEAN_REVERSION_ALIGNMENT_TOLERANCE
@@ -425,6 +421,7 @@ impl SeededTickSimulationRunConfig {
             .map_err(
                 |source| SeededTickSimulationRunError::InvalidNewsProcessConfiguration { source },
             )?;
+
         validate_known_scheduled_news_timestamps(
             &self
                 .model_inputs

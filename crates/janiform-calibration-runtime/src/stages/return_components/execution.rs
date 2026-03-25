@@ -1,7 +1,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use chrono::{DateTime, Duration, Utc};
-use janiform_foundations::numeric::arithmetic_mean_or_zero as arithmetic_mean;
+use chrono::{DateTime, Utc};
+use janiform_foundations::numeric::{
+    arithmetic_mean_or_zero as arithmetic_mean, sample_adjusted_excess_kurtosis,
+    sample_adjusted_skewness, sample_standard_deviation,
+};
 
 use crate::calendar::{ExchangeCalendarRegistry, MarketState};
 use crate::optimizer_adapter::{
@@ -68,9 +71,8 @@ use super::contracts::{
     ReturnComponentsStageJumpDiagnostic, ReturnComponentsStageObjectiveScoringPolicy,
     ReturnComponentsStageObservedSignalSummaryStatistics,
     ReturnComponentsStagePriceRangeSanityDiagnostic, ReturnComponentsStagePriceRangeSanityPolicy,
-    ReturnComponentsStageQuantileBinningPolicy,
-    ReturnComponentsStageReturnDistributionDiagnostic, ReturnComponentsStageSignalSourceWindow,
-    ReturnComponentsStageSurpriseArrivalDiagnostic,
+    ReturnComponentsStageQuantileBinningPolicy, ReturnComponentsStageReturnDistributionDiagnostic,
+    ReturnComponentsStageSignalSourceWindow, ReturnComponentsStageSurpriseArrivalDiagnostic,
     ReturnComponentsStageSurpriseEpisodeSelectionPolicy, ReturnComponentsSurpriseJumpEpisode,
     ReturnComponentsSurpriseNewsArrivalCandidateFamily,
 };
@@ -84,6 +86,7 @@ use super::signal_partition_fit;
 use super::surprise_episode_selection_fit;
 use super::surprise_intensity_fit;
 use crate::shock_mark_fitting::fit_shared_news_mark_law_from_shock_samples;
+use crate::temporal::contains_timestamp_in_symmetric_minute_window;
 
 struct ReturnComponentsStageCandidateGenerationOutput {
     candidate_inputs: Vec<ReturnComponentsStageCandidateInput>,
@@ -276,6 +279,7 @@ pub fn run_return_components_calibration_stage(
         );
     let mut adapter_candidate_inputs =
         Vec::with_capacity(generated_candidates.candidate_inputs.len());
+
     for candidate_input in &generated_candidates.candidate_inputs {
         if !seen_candidate_ids.insert(candidate_input.candidate_id.clone()) {
             return build_return_components_stage_failure_report(
@@ -299,8 +303,8 @@ pub fn run_return_components_calibration_stage(
         let constraint_violations =
             collect_return_components_stage_constraint_violations(candidate_input);
         let external_constraint_violation_count = constraint_violations.len();
-        external_constraint_diagnostics.push(constraint_violations);
 
+        external_constraint_diagnostics.push(constraint_violations);
         adapter_candidate_inputs.push(CalibrationOptimizerAdapterCandidateInput {
             candidate_id: candidate_input.candidate_id.clone(),
             objective_terms: candidate_input.objective_terms.clone(),
@@ -443,6 +447,7 @@ pub fn run_return_components_calibration_stage(
     let selected_candidate_input =
         &generated_candidates.candidate_inputs[selected_candidate_position];
     let selected_candidate_diagnostic = &candidate_diagnostics[selected_candidate_position];
+
     let nig_configuration = match NigSharedPlusShiftConfiguration::try_new(
         selected_candidate_input
             .nig_shared_plus_shift_configuration
@@ -614,6 +619,7 @@ pub(crate) fn prepare_observed_signal_inputs_for_joint_refinement(
         calendar_registry,
         candidate_generation_input,
     )?;
+
     let fitted_signal_partition_layer = signal_partition_fit::fit_signal_partition_layer(
         prepared_candidate_generation_input
             .candidate_generation_input
@@ -628,6 +634,7 @@ pub(crate) fn prepare_observed_signal_inputs_for_joint_refinement(
                 .as_slice(),
             fitted_signal_partition_layer.continuous_return_filter_threshold,
         );
+
     let sorted_signals = sort_candidate_generation_signals(
         &prepared_candidate_generation_input.candidate_generation_input,
         prepared_candidate_generation_input
@@ -636,6 +643,7 @@ pub(crate) fn prepare_observed_signal_inputs_for_joint_refinement(
         fitted_signal_partition_layer,
         &fitted_surprise_episode_selection_layer,
     );
+
     let (_, continuous_return_calibration_sample) = summarize_candidate_generation_signals(
         &prepared_candidate_generation_input.candidate_generation_input,
         &sorted_signals,
@@ -703,6 +711,7 @@ pub fn evaluate_return_components_exact_candidate(
             representative_interarrival_hours: context.representative_interarrival_hours,
         }
     });
+
     let fitted_signal_partition_layer = signal_partition_fit::fit_signal_partition_layer(
         candidate_generation_input
             .observed_open_session_returns
@@ -715,14 +724,17 @@ pub fn evaluate_return_components_exact_candidate(
                 .as_slice(),
             fitted_signal_partition_layer.continuous_return_filter_threshold,
         );
+
     let sorted_signals = sort_candidate_generation_signals(
         &candidate_generation_input,
         &[],
         fitted_signal_partition_layer,
         &fitted_surprise_episode_selection_layer,
     );
+
     let continuous_fit_business_time_scales =
         derive_continuous_fit_business_time_scales(&sorted_signals, activity_calibration_context);
+
     let continuous_return_calibration_sample =
         continuous_fit::build_continuous_return_calibration_sample(
             &sorted_signals,
@@ -768,13 +780,16 @@ pub fn evaluate_return_components_exact_candidate(
             .surprise_component_mark_scales
             .activity_coupling_scale,
     };
+
     let fitted_diagnostic_policy = diagnostic_policy_fit::fit_diagnostic_policy(
         RETURN_COMPONENTS_STAGE_SHOCK_EVIDENCE_MIN_COUNT,
     );
+
     let fitted_objective_scoring_policy =
         objective_scoring_policy_fit::fit_objective_scoring_policy(
             RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER,
         );
+
     let jump_diagnostic = build_jump_diagnostic(
         &fitted_diagnostic_policy,
         observed_summary_statistics,
@@ -798,7 +813,9 @@ pub fn evaluate_return_components_exact_candidate(
         observed_summary_statistics,
         &activity_coupling_family,
     );
+
     let fitted_price_range_sanity_policy = price_range_policy_fit::fit_price_range_sanity_policy();
+
     let price_range_sanity_diagnostic = build_price_range_sanity_diagnostic(
         &fitted_diagnostic_policy,
         observed_summary_statistics,
@@ -808,6 +825,7 @@ pub fn evaluate_return_components_exact_candidate(
         candidate_generation_input.shared_mark_law_template,
         &fitted_price_range_sanity_policy,
     );
+
     let objective_metric_buckets = objective_scoring_policy_fit::score_candidate_metric_buckets(
         &fitted_objective_scoring_policy,
         continuous_return_evaluation.objective_score,
@@ -818,15 +836,18 @@ pub fn evaluate_return_components_exact_candidate(
         &price_range_sanity_diagnostic,
         fitted_diagnostic_policy.shock_evidence_min_count,
     );
+
     let dominant_scale_driver =
         objective_scoring_policy_fit::dominant_scale_driver_from_metric_buckets(
             &fitted_objective_scoring_policy,
             objective_metric_buckets,
         );
+
     let raw_objective_value = objective_scoring_policy_fit::weighted_objective_value(
         candidate_generation_input.objective_metric_weights,
         objective_metric_buckets,
     );
+
     let constraint_violations =
         collect_return_components_exact_candidate_constraint_violations(&fitted_parameters);
 
@@ -876,6 +897,7 @@ fn generate_return_components_stage_candidate_inputs(
             .observed_open_session_returns
             .as_slice(),
     );
+
     let fitted_surprise_episode_selection_layer =
         surprise_episode_selection_fit::fit_surprise_episode_selection_layer(
             candidate_generation_input
@@ -892,6 +914,7 @@ fn generate_return_components_stage_candidate_inputs(
         fitted_signal_partition_layer,
         &fitted_surprise_episode_selection_layer,
     );
+
     let (summary_statistics, continuous_return_calibration_sample) =
         summarize_candidate_generation_signals(
             candidate_generation_input,
@@ -903,6 +926,7 @@ fn generate_return_components_stage_candidate_inputs(
         sorted_signals.surprise_open_jump_magnitudes.as_slice(),
         sorted_signals.combined_gap_magnitudes.as_slice(),
     );
+
     let fitted_surprise_arrival_layer = surprise_intensity_fit::fit_surprise_news_arrival_layer(
         sorted_signals.source_window.window_start_utc_nanos,
         sorted_signals.source_window.window_end_utc_nanos,
@@ -982,6 +1006,7 @@ pub(crate) fn resolve_activity_calibration_context(
         .candidate_diagnostics
         .iter()
         .find(|candidate| candidate.candidate_id == hawkes_payload.selected_candidate_id)?;
+
     let modeled_open_event_rate_per_hour = selected_candidate
         .implied_metrics
         .model_implied_open_event_rate_per_hour;
@@ -1081,6 +1106,7 @@ fn sort_candidate_generation_signals(
     let combined_gap_magnitudes = {
         let mut magnitudes =
             Vec::with_capacity(known_return_samples.len() + close_open_gap_candidates.len());
+
         magnitudes.extend(
             known_return_samples
                 .iter()
@@ -1091,6 +1117,7 @@ fn sort_candidate_generation_signals(
                 .iter()
                 .map(|candidate| candidate.gap_return.abs()),
         );
+
         magnitudes
     };
 
@@ -1122,6 +1149,7 @@ fn sort_candidate_generation_signals(
                         <= fitted_signal_partition_layer.continuous_return_filter_threshold
             })
             .collect();
+
     if continuous_fit_returns.is_empty() {
         continuous_fit_returns = observed_open_session_returns
             .iter()
@@ -1173,23 +1201,28 @@ fn summarize_candidate_generation_signals(
         .source_window
         .duration_hours()
         .max(f64::EPSILON);
+
     let continuous_fit_business_time_scales =
         derive_continuous_fit_business_time_scales(sorted_signals, activity_calibration_context);
+
     let continuous_return_calibration_sample =
         continuous_fit::build_continuous_return_calibration_sample(
             sorted_signals,
             continuous_fit_business_time_scales.as_slice(),
             candidate_generation_input.open_session_sell_share_proxy,
         );
+
     let mean_continuous_business_time_scale =
         continuous_fit::mean_continuous_return_calibration_business_time_scale(
             &continuous_return_calibration_sample,
         )
         .max(1.0e-8);
+
     let continuous_distribution =
         continuous_fit::summarize_observed_continuous_return_calibration_sample(
             &continuous_return_calibration_sample,
         );
+
     let observed_log_price_span = compute_observed_log_price_span(
         sorted_signals
             .observed_open_session_returns
@@ -1209,6 +1242,7 @@ fn summarize_candidate_generation_signals(
             .collect::<Vec<_>>()
             .as_slice(),
     );
+
     let known_activity_coupling_target = arithmetic_mean(
         &sorted_signals
             .known_return_samples
@@ -1218,6 +1252,7 @@ fn summarize_candidate_generation_signals(
             })
             .collect::<Vec<_>>(),
     );
+
     let surprise_activity_coupling_target = arithmetic_mean(
         &sorted_signals
             .selected_surprise_jump_episodes
@@ -1478,12 +1513,16 @@ fn derive_continuous_fit_business_time_scales(
     let representative_interarrival_hours = activity_calibration_context
         .representative_interarrival_hours
         .max(1.0e-8);
+
     let maximum_elapsed_hours = representative_interarrival_hours * 8.0;
+
     let fallback_business_time_scale = (activity_calibration_context
         .modeled_open_event_rate_per_hour
         * representative_interarrival_hours)
         .max(1.0e-8);
+
     let mut business_time_scale_by_timestamp = BTreeMap::new();
+
     let mut previous_timestamp_utc_nanos: Option<i64> = None;
 
     for observation in &sorted_signals.observed_open_session_returns {
@@ -1498,6 +1537,7 @@ fn derive_continuous_fit_business_time_scales(
                     && *elapsed_hours_value <= maximum_elapsed_hours
             })
             .unwrap_or(representative_interarrival_hours);
+
         let business_time_scale = (activity_calibration_context.modeled_open_event_rate_per_hour
             * elapsed_hours)
             .max(1.0e-8);
@@ -1526,6 +1566,7 @@ fn shared_mark_law_mean_abs_jump_multiplier(
     let severity_scale_proxy = (shared_mark_law_template.gamma_severity_marks.shape_k
         * shared_mark_law_template.gamma_severity_marks.scale_theta)
         .sqrt();
+
     let base_shock_mean_absolute_value = shared_mark_law_template
         .double_exponential_base_shock
         .probability_positive
@@ -1566,6 +1607,7 @@ pub(super) fn summarize_return_distribution(
             Some(*value / business_time_scale.max(1.0e-8))
         })
         .collect();
+
     let normalized_variance_values: Vec<f64> = values
         .iter()
         .zip(business_time_scales.iter())
@@ -1597,8 +1639,10 @@ fn compute_observed_log_price_span(timestamped_returns: &[(i64, f64)]) -> f64 {
     sorted_returns.sort_by_key(|(timestamp_utc_nanos, _)| *timestamp_utc_nanos);
 
     let mut cumulative_return = 0.0_f64;
+
     let mut minimum_cumulative_return = 0.0_f64;
     let mut maximum_cumulative_return = 0.0_f64;
+
     for (_, return_increment) in sorted_returns {
         cumulative_return += return_increment;
         minimum_cumulative_return = minimum_cumulative_return.min(cumulative_return);
@@ -1613,18 +1657,11 @@ fn is_within_known_news_exclusion_window(
     known_news_timestamps: &[i64],
     exclusion_window_minutes: i64,
 ) -> bool {
-    if known_news_timestamps.is_empty() {
-        return false;
-    }
-
-    let window_nanos = Duration::minutes(exclusion_window_minutes)
-        .num_nanoseconds()
-        .expect("known-news exclusion window must fit in i64");
-    let lower_bound = candidate_timestamp_utc_nanos - window_nanos;
-    let upper_bound = candidate_timestamp_utc_nanos + window_nanos;
-    let lower_index = known_news_timestamps.partition_point(|timestamp| *timestamp < lower_bound);
-
-    lower_index < known_news_timestamps.len() && known_news_timestamps[lower_index] <= upper_bound
+    contains_timestamp_in_symmetric_minute_window(
+        known_news_timestamps,
+        candidate_timestamp_utc_nanos,
+        exclusion_window_minutes,
+    )
 }
 
 pub(crate) fn prepare_candidate_generation_input(
@@ -1640,6 +1677,7 @@ pub(crate) fn prepare_candidate_generation_input(
             .observed_open_session_returns
             .as_slice(),
     );
+
     let derived_close_open_gap_candidates = derive_close_open_gap_candidates(
         exchange_code,
         calendar_registry,
@@ -1649,12 +1687,14 @@ pub(crate) fn prepare_candidate_generation_input(
             .as_slice(),
         candidate_generation_input.close_open_gap_detection_policy,
     )?;
+
     let close_open_gap_detection_filter = format!(
         "derive_close_open_log_gap_candidates_abs_gt_{:.6}",
         candidate_generation_input
             .close_open_gap_detection_policy
             .material_gap_absolute_return_tolerance
     );
+
     let fitted_surprise_episode_selection_layer =
         surprise_episode_selection_fit::fit_surprise_episode_selection_layer(
             candidate_generation_input
@@ -1662,6 +1702,7 @@ pub(crate) fn prepare_candidate_generation_input(
                 .as_slice(),
             fitted_signal_partition_layer.continuous_return_filter_threshold,
         );
+
     let open_shock_returns: Vec<f64> = candidate_generation_input
         .realized_known_news_return_samples
         .iter()
@@ -1673,6 +1714,7 @@ pub(crate) fn prepare_candidate_generation_input(
                 .map(|episode| episode.cumulative_jump_return),
         )
         .collect();
+
     let gap_returns: Vec<f64> = candidate_generation_input
         .realized_known_news_return_samples
         .iter()
@@ -1683,6 +1725,7 @@ pub(crate) fn prepare_candidate_generation_input(
                 .map(|candidate| candidate.gap_return),
         )
         .collect();
+
     let fallback_absolute_returns: Vec<f64> = candidate_generation_input
         .observed_open_session_returns
         .iter()
@@ -1696,6 +1739,7 @@ pub(crate) fn prepare_candidate_generation_input(
                 }),
         )
         .collect();
+
     candidate_generation_input.shared_mark_law_template =
         fit_shared_news_mark_law_from_shock_samples(
             open_shock_returns.as_slice(),
@@ -1724,6 +1768,7 @@ fn derive_close_open_gap_candidates(
 
     for observed_boundary in observed_close_open_boundary_observations {
         observed_boundary.validate(source_window)?;
+
         validate_close_open_boundary_transition(
             exchange_code,
             calendar_registry,
@@ -1742,7 +1787,9 @@ fn derive_close_open_gap_candidates(
             gap_return,
             post_shock_activity_lift: observed_boundary.post_shock_activity_lift,
         };
+
         derived_candidate.validate(source_window)?;
+
         derived_close_open_gap_candidates.push(derived_candidate);
     }
 
@@ -1762,6 +1809,7 @@ fn validate_close_open_boundary_transition(
     )?;
     let close_boundary_state =
         resolve_market_state_at_nanos(calendar_registry, exchange_code, close_timestamp_utc_nanos)?;
+
     if close_previous_state != MarketState::Open || close_boundary_state != MarketState::Closed {
         return Err(
             ReturnComponentsStageCandidateGenerationInputError::InvalidCloseBoundaryTransition {
@@ -1780,6 +1828,7 @@ fn validate_close_open_boundary_transition(
     )?;
     let open_boundary_state =
         resolve_market_state_at_nanos(calendar_registry, exchange_code, open_timestamp_utc_nanos)?;
+
     if open_previous_state != MarketState::Closed || open_boundary_state != MarketState::Open {
         return Err(
             ReturnComponentsStageCandidateGenerationInputError::InvalidOpenBoundaryTransition {
@@ -1839,12 +1888,14 @@ fn enumerate_candidate_inputs(
     let surprise_arrival_family = &candidate_family_sets.fitted_surprise_arrival_layer;
     let return_jump_family = &candidate_family_sets.fitted_return_jump_mark_layer;
     let activity_coupling_family = &candidate_family_sets.fitted_activity_coupling_layer;
+
     let candidate_families = ReturnComponentsStageCandidateFamilies {
         known_news_arrival_controls: known_arrival_family.clone(),
         surprise_news_arrival_controls: surprise_arrival_family.clone(),
         return_jump_mark_scale_controls: *return_jump_family,
         news_to_hawkes_activity_coupling_controls: *activity_coupling_family,
     };
+
     let return_distribution_diagnostic = continuous_return_evaluation.diagnostic;
     let jump_diagnostic = build_jump_diagnostic(
         fitted_diagnostic_policy,
@@ -1878,6 +1929,7 @@ fn enumerate_candidate_inputs(
         candidate_generation_input.shared_mark_law_template,
         fitted_price_range_sanity_policy,
     );
+
     let objective_metric_buckets = objective_scoring_policy_fit::score_candidate_metric_buckets(
         fitted_objective_scoring_policy,
         continuous_return_evaluation.objective_score,
@@ -1888,11 +1940,13 @@ fn enumerate_candidate_inputs(
         &price_range_sanity_diagnostic,
         fitted_diagnostic_policy.shock_evidence_min_count,
     );
+
     let dominant_scale_driver =
         objective_scoring_policy_fit::dominant_scale_driver_from_metric_buckets(
             fitted_objective_scoring_policy,
             objective_metric_buckets,
         );
+
     let objective_terms = objective_scoring_policy_fit::build_candidate_objective_terms(
         candidate_generation_input.objective_metric_weights,
         objective_metric_buckets,
@@ -2118,13 +2172,16 @@ fn build_price_range_sanity_diagnostic(
     let effective_mean_business_time_scale = summary_statistics
         .mean_continuous_business_time_scale
         .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER);
+
     let continuous_reference_span = price_range_sanity_policy.continuous_reference_span_multiplier
         * return_distribution_diagnostic.fitted_return_volatility
         * (effective_continuous_sample_count as f64 * effective_mean_business_time_scale)
             .sqrt()
             .max(1.0);
+
     let fitted_mean_abs_jump_return =
         fitted_mean_abs_jump_return(shared_mark_law_template, return_jump_family);
+
     let fitted_reference_log_price_span = continuous_reference_span
         + (summary_statistics.known_realized_sample_count as f64
             + surprise_arrival_family.baseline_intensity
@@ -2137,8 +2194,10 @@ fn build_price_range_sanity_diagnostic(
         } else {
             0.0
         };
+
     let expansion_ratio =
         fitted_reference_log_price_span / summary_statistics.observed_log_price_span.max(1.0e-8);
+
     let is_flagged = expansion_ratio > price_range_sanity_policy.threshold_ratio;
 
     ReturnComponentsStagePriceRangeSanityDiagnostic {
@@ -2170,9 +2229,12 @@ pub(super) fn theoretical_net_process_moments(
         configuration.delta,
         configuration.mu,
     )?;
+
     let sell_weight = open_session_sell_share_proxy.clamp(0.0, 1.0);
     let buy_weight = 1.0 - sell_weight;
+
     let mean_return = buy_weight * buy_unit_cumulants.0 - sell_weight * sell_unit_cumulants.0;
+
     let variance = buy_weight * buy_unit_cumulants.1 + sell_weight * sell_unit_cumulants.1;
     if !variance.is_finite() || variance <= 1.0e-12 {
         return None;
@@ -2191,7 +2253,9 @@ fn nig_unit_cumulants(alpha: f64, beta: f64, delta: f64, mu: f64) -> Option<(f64
     if !gamma_squared.is_finite() || gamma_squared <= 0.0 {
         return None;
     }
+
     let gamma = gamma_squared.sqrt();
+
     let kappa_1 = mu + delta * beta / gamma;
     let kappa_2 = delta * alpha * alpha / gamma.powi(3);
     let kappa_3 = 3.0 * delta * beta * alpha * alpha / gamma.powi(5);
@@ -2211,107 +2275,6 @@ pub(super) fn arithmetic_mean_signed(values: &[f64]) -> f64 {
     }
 
     finite_values.iter().sum::<f64>() / finite_values.len() as f64
-}
-
-pub(super) fn sample_standard_deviation(values: &[f64]) -> f64 {
-    let finite_values: Vec<f64> = values
-        .iter()
-        .copied()
-        .filter(|value| value.is_finite())
-        .collect();
-    if finite_values.len() < 2 {
-        return finite_values.first().copied().unwrap_or(0.0).abs();
-    }
-
-    let sample_mean = arithmetic_mean_signed(finite_values.as_slice());
-    let sum_squared_deviation = finite_values
-        .iter()
-        .map(|value| {
-            let centered_value = *value - sample_mean;
-            centered_value * centered_value
-        })
-        .sum::<f64>();
-
-    (sum_squared_deviation / (finite_values.len() - 1) as f64)
-        .max(0.0)
-        .sqrt()
-}
-
-pub(super) fn sample_adjusted_skewness(values: &[f64]) -> Option<f64> {
-    let finite_values: Vec<f64> = values
-        .iter()
-        .copied()
-        .filter(|value| value.is_finite())
-        .collect();
-    let sample_count = finite_values.len();
-    if sample_count < 3 {
-        return None;
-    }
-
-    let sample_mean = arithmetic_mean_signed(finite_values.as_slice());
-    let (sum_squared_deviation, sum_cubed_deviation) =
-        finite_values
-            .iter()
-            .fold((0.0, 0.0), |(running_sum2, running_sum3), value| {
-                let centered_value = *value - sample_mean;
-                (
-                    running_sum2 + centered_value * centered_value,
-                    running_sum3 + centered_value * centered_value * centered_value,
-                )
-            });
-    let variance_population = sum_squared_deviation / sample_count as f64;
-    if !variance_population.is_finite() || variance_population <= 1.0e-12 {
-        return Some(0.0);
-    }
-
-    let unadjusted_skewness =
-        (sum_cubed_deviation / sample_count as f64) / variance_population.powf(1.5);
-    if !unadjusted_skewness.is_finite() {
-        return None;
-    }
-
-    let adjustment =
-        ((sample_count * (sample_count - 1)) as f64).sqrt() / (sample_count - 2) as f64;
-    Some(adjustment * unadjusted_skewness)
-}
-
-pub(super) fn sample_adjusted_excess_kurtosis(values: &[f64]) -> Option<f64> {
-    let finite_values: Vec<f64> = values
-        .iter()
-        .copied()
-        .filter(|value| value.is_finite())
-        .collect();
-    let sample_count = finite_values.len();
-    if sample_count < 4 {
-        return None;
-    }
-
-    let sample_mean = arithmetic_mean_signed(finite_values.as_slice());
-    let (sum_squared_deviation, sum_fourth_deviation) =
-        finite_values
-            .iter()
-            .fold((0.0, 0.0), |(running_sum2, running_sum4), value| {
-                let centered_value = *value - sample_mean;
-                let centered_square = centered_value * centered_value;
-                (
-                    running_sum2 + centered_square,
-                    running_sum4 + centered_square * centered_square,
-                )
-            });
-    let variance_population = sum_squared_deviation / sample_count as f64;
-    if !variance_population.is_finite() || variance_population <= 1.0e-12 {
-        return Some(0.0);
-    }
-
-    let unadjusted_excess_kurtosis = (sum_fourth_deviation / sample_count as f64)
-        / (variance_population * variance_population)
-        - 3.0;
-    if !unadjusted_excess_kurtosis.is_finite() {
-        return None;
-    }
-
-    let n = sample_count as f64;
-    Some(((n - 1.0) / ((n - 2.0) * (n - 3.0))) * ((n + 1.0) * unadjusted_excess_kurtosis + 6.0))
 }
 
 pub(super) fn round_positive_candidate_value(value: f64) -> f64 {
@@ -2439,6 +2402,7 @@ fn collect_return_components_exact_candidate_constraint_violations(
             ),
         });
     }
+
     if fitted_parameters
         .surprise_deterministic_intensity_profile
         .weekly_hour_utc_multipliers
@@ -2454,6 +2418,7 @@ fn collect_return_components_exact_candidate_constraint_violations(
             ),
         });
     }
+
     for (bucket_index, multiplier) in fitted_parameters
         .surprise_deterministic_intensity_profile
         .weekly_hour_utc_multipliers
@@ -2558,21 +2523,18 @@ mod tests {
         RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER,
         RETURN_COMPONENTS_STAGE_SHOCK_EVIDENCE_MIN_COUNT,
         ReturnComponentsActivityCouplingCandidateFamily,
-        ReturnComponentsCloseOpenGapDetectionPolicy,
-        ReturnComponentsDetectedIntradayJumpCandidate,
+        ReturnComponentsCloseOpenGapDetectionPolicy, ReturnComponentsDetectedIntradayJumpCandidate,
         ReturnComponentsObservedCloseOpenBoundaryObservation,
         ReturnComponentsObservedOpenSessionReturn,
         ReturnComponentsReturnJumpMarkScaleCandidateFamily,
         ReturnComponentsStageCandidateGenerationInput,
-        ReturnComponentsStageCandidateGenerationInputError,
-        ReturnComponentsStageFittedParameters,
+        ReturnComponentsStageCandidateGenerationInputError, ReturnComponentsStageFittedParameters,
         ReturnComponentsStageObservedSignalSummaryStatistics,
         ReturnComponentsStageSignalSourceWindow, ReturnComponentsStageSortedSignalInputs,
-        ReturnComponentsSurpriseNewsArrivalCandidateFamily,
-        build_activity_coupling_diagnostic, build_gap_diagnostic, build_jump_diagnostic,
-        build_price_range_sanity_diagnostic, build_surprise_arrival_diagnostic,
-        default_surprise_deterministic_intensity_profile, derive_close_open_gap_candidates,
-        evaluate_return_components_exact_candidate, sample_standard_deviation,
+        ReturnComponentsSurpriseNewsArrivalCandidateFamily, build_activity_coupling_diagnostic,
+        build_gap_diagnostic, build_jump_diagnostic, build_price_range_sanity_diagnostic,
+        build_surprise_arrival_diagnostic, default_surprise_deterministic_intensity_profile,
+        derive_close_open_gap_candidates, evaluate_return_components_exact_candidate,
         sort_candidate_generation_signals, summarize_candidate_generation_signals,
         summarize_return_distribution,
     };
@@ -2588,6 +2550,7 @@ mod tests {
     use crate::stages::return_components::signal_partition_fit;
     use crate::stages::return_components::surprise_episode_selection_fit;
     use janiform_calibration_artifacts::CalibrationOptimizerSettings;
+    use janiform_foundations::numeric::sample_standard_deviation;
     use janiform_model_kernels::news::{
         CoupledGapMarkConfiguration, KnownNewsArrivalConfiguration, NewsArrivalConfiguration,
         NewsComponentMarkScaleConfiguration, NewsProcessConfiguration,
@@ -2737,6 +2700,7 @@ mod tests {
             known_news_coverage_ratio: 1.0,
             surprise_arrival_intensity_per_hour: 0.0,
         };
+
         let sorted_signals = ReturnComponentsStageSortedSignalInputs {
             known_return_samples: Vec::new(),
             observed_open_session_returns: vec![
@@ -2775,11 +2739,13 @@ mod tests {
             combined_gap_magnitudes: Vec::new(),
             source_window: test_source_window(),
         };
+
         let calibration_sample = continuous_fit::build_continuous_return_calibration_sample(
             &sorted_signals,
             &[1.0, 1.0],
             summary_statistics.open_session_sell_share_proxy,
         );
+
         let solver_settings =
             CalibrationOptimizerSettings::try_new("adaptive_search", 32, 1, 1.0e-8, 1.0e-8, 1.0)
                 .expect("solver settings should validate");
@@ -2890,6 +2856,7 @@ mod tests {
                 .observed_open_session_returns
                 .as_slice(),
         );
+
         let fitted_surprise_episode_selection_layer =
             surprise_episode_selection_fit::fit_surprise_episode_selection_layer(
                 candidate_generation_input
@@ -2897,12 +2864,14 @@ mod tests {
                     .as_slice(),
                 fitted_signal_partition_layer.continuous_return_filter_threshold,
             );
+
         let sorted_signals = sort_candidate_generation_signals(
             &candidate_generation_input,
             &[],
             fitted_signal_partition_layer,
             &fitted_surprise_episode_selection_layer,
         );
+
         let retained_non_zero_returns: Vec<f64> = sorted_signals
             .continuous_fit_returns
             .iter()
@@ -2936,6 +2905,7 @@ mod tests {
             ],
             1.0e-4,
         );
+
         let episodes = fitted_layer.surprise_jump_episodes;
 
         assert_eq!(episodes.len(), 2);
@@ -2999,6 +2969,7 @@ mod tests {
                 price_range_sanity_fit_weight: 0.1,
             },
         };
+
         let fitted_parameters = ReturnComponentsStageFittedParameters {
             nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration {
                 alpha: 100.0,
@@ -3031,11 +3002,13 @@ mod tests {
                 default_surprise_deterministic_intensity_profile(),
             mean_reversion_fitted_parameters: MeanReversionFittedParameters::disabled(),
         };
+
         let fitted_signal_partition_layer = signal_partition_fit::fit_signal_partition_layer(
             candidate_generation_input
                 .observed_open_session_returns
                 .as_slice(),
         );
+
         let fitted_surprise_episode_selection_layer =
             surprise_episode_selection_fit::fit_surprise_episode_selection_layer(
                 candidate_generation_input
@@ -3043,17 +3016,20 @@ mod tests {
                     .as_slice(),
                 fitted_signal_partition_layer.continuous_return_filter_threshold,
             );
+
         let sorted_signals = sort_candidate_generation_signals(
             &candidate_generation_input,
             &[],
             fitted_signal_partition_layer,
             &fitted_surprise_episode_selection_layer,
         );
+
         let (summary_statistics, calibration_sample) = summarize_candidate_generation_signals(
             &candidate_generation_input,
             &sorted_signals,
             None,
         );
+
         let exact_evaluation = evaluate_return_components_exact_candidate(
             candidate_generation_input.clone(),
             None,
@@ -3062,12 +3038,14 @@ mod tests {
             17,
         )
         .expect("exact evaluation should succeed");
+
         let continuous_evaluation = continuous_fit::evaluate_continuous_nig_candidate(
             fitted_parameters.nig_shared_plus_shift_configuration,
             &calibration_sample,
             summary_statistics,
             17,
         );
+
         let surprise_arrival_family = ReturnComponentsSurpriseNewsArrivalCandidateFamily {
             baseline_intensity: fitted_parameters
                 .news_process_configuration
@@ -3082,6 +3060,7 @@ mod tests {
                 .surprise_deterministic_intensity_profile
                 .profile_resolution_hours,
         };
+
         let return_jump_family = ReturnComponentsReturnJumpMarkScaleCandidateFamily {
             sigma_g: fitted_parameters
                 .news_process_configuration
@@ -3089,6 +3068,7 @@ mod tests {
                 .coupled_gap_marks
                 .sigma_g,
         };
+
         let activity_coupling_family = ReturnComponentsActivityCouplingCandidateFamily {
             known_activity_coupling_scale: fitted_parameters
                 .news_process_configuration
@@ -3099,13 +3079,16 @@ mod tests {
                 .surprise_component_mark_scales
                 .activity_coupling_scale,
         };
+
         let fitted_diagnostic_policy = diagnostic_policy_fit::fit_diagnostic_policy(
             RETURN_COMPONENTS_STAGE_SHOCK_EVIDENCE_MIN_COUNT,
         );
+
         let fitted_objective_scoring_policy =
             objective_scoring_policy_fit::fit_objective_scoring_policy(
                 RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER,
             );
+
         let expected_jump_diagnostic = build_jump_diagnostic(
             &fitted_diagnostic_policy,
             summary_statistics,
@@ -3129,8 +3112,10 @@ mod tests {
             summary_statistics,
             &activity_coupling_family,
         );
+
         let fitted_price_range_sanity_policy =
             price_range_policy_fit::fit_price_range_sanity_policy();
+
         let expected_price_range_sanity_diagnostic = build_price_range_sanity_diagnostic(
             &fitted_diagnostic_policy,
             summary_statistics,
@@ -3140,6 +3125,7 @@ mod tests {
             candidate_generation_input.shared_mark_law_template,
             &fitted_price_range_sanity_policy,
         );
+
         let expected_buckets = objective_scoring_policy_fit::score_candidate_metric_buckets(
             &fitted_objective_scoring_policy,
             continuous_evaluation.objective_score,

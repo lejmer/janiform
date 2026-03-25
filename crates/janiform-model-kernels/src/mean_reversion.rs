@@ -1,6 +1,7 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
+use janiform_foundations::numeric::validate_finite_number;
 use serde::{Deserialize, Serialize};
 
 const BOUNDARY_STATE_INVARIANT_TOLERANCE: f64 = 1e-12;
@@ -101,7 +102,7 @@ impl MeanReversionAnchorModel {
                 validate_finite_number(anchor_value, "anchor_value").map_err(|source| {
                     MeanReversionAnchorModelValidationError::NonFiniteField {
                         field: source.field,
-                        value: source.value,
+                        value: source.value.to_string(),
                     }
                 })?;
                 validate_absent_deterministic_interval_grid(self)?;
@@ -175,7 +176,8 @@ impl MeanReversionAnchorModel {
 
                 let mut previous_interval_end_utc_nanos: Option<i64> = None;
                 for interval_index in 0..expected_length {
-                    let interval_start_utc_nanos = self.source_interval_start_utc_nanos[interval_index];
+                    let interval_start_utc_nanos =
+                        self.source_interval_start_utc_nanos[interval_index];
 
                     let interval_end_utc_nanos = self.source_interval_end_utc_nanos[interval_index];
                     if interval_end_utc_nanos <= interval_start_utc_nanos {
@@ -204,7 +206,7 @@ impl MeanReversionAnchorModel {
                         .map_err(|source| {
                             MeanReversionAnchorModelValidationError::NonFiniteField {
                                 field: source.field,
-                                value: source.value,
+                                value: source.value.to_string(),
                             }
                         })?;
 
@@ -237,7 +239,10 @@ impl MeanReversionFittedParameters {
         kappa: f64,
         anchor_model: MeanReversionAnchorModel,
     ) -> Result<Self, MeanReversionFittedParametersValidationError> {
-        let fitted_parameters = Self { kappa, anchor_model };
+        let fitted_parameters = Self {
+            kappa,
+            anchor_model,
+        };
         fitted_parameters.validate()?;
         Ok(fitted_parameters)
     }
@@ -253,9 +258,9 @@ impl MeanReversionFittedParameters {
             });
         }
 
-        self.anchor_model.validate().map_err(
-            MeanReversionFittedParametersValidationError::InvalidAnchorModel,
-        )?;
+        self.anchor_model
+            .validate()
+            .map_err(MeanReversionFittedParametersValidationError::InvalidAnchorModel)?;
 
         Ok(())
     }
@@ -297,31 +302,31 @@ impl MeanReversionRuntimeIntervalAnchors {
             );
         }
 
-        validate_finite_number(self.start_anchor_value, "start_anchor_value")
-            .map_err(|source| {
-                MeanReversionRuntimeIntervalAnchorsValidationError::NonFiniteField {
-                    field: source.field,
-                    value: source.value,
-                }
-            })?;
+        validate_finite_number(self.start_anchor_value, "start_anchor_value").map_err(
+            |source| MeanReversionRuntimeIntervalAnchorsValidationError::NonFiniteField {
+                field: source.field,
+                value: source.value.to_string(),
+            },
+        )?;
 
         let expected_length = self.end_anchor_values.len();
         if self.interval_deltas.len() != expected_length {
-            return Err(MeanReversionRuntimeIntervalAnchorsValidationError::LengthMismatch {
-                expected: expected_length,
-                found: self.interval_deltas.len(),
-                field: "interval_deltas",
-            });
+            return Err(
+                MeanReversionRuntimeIntervalAnchorsValidationError::LengthMismatch {
+                    expected: expected_length,
+                    found: self.interval_deltas.len(),
+                    field: "interval_deltas",
+                },
+            );
         }
 
         for (interval_index, anchor_value) in self.end_anchor_values.iter().enumerate() {
-            validate_finite_number(*anchor_value, "end_anchor_values")
-                .map_err(|source| {
-                    MeanReversionRuntimeIntervalAnchorsValidationError::NonFiniteField {
-                        field: source.field,
-                        value: source.value,
-                    }
-                })?;
+            validate_finite_number(*anchor_value, "end_anchor_values").map_err(|source| {
+                MeanReversionRuntimeIntervalAnchorsValidationError::NonFiniteField {
+                    field: source.field,
+                    value: source.value.to_string(),
+                }
+            })?;
 
             let interval_delta = self.interval_deltas[interval_index];
             if !interval_delta.is_finite() || interval_delta <= 0.0 {
@@ -365,34 +370,145 @@ impl MeanReversionBoundaryState {
     }
 
     pub fn validate(&self) -> Result<(), MeanReversionBoundaryStateValidationError> {
-        validate_finite_number(self.observed_log_price, "observed_log_price")
-            .map_err(|source| MeanReversionBoundaryStateValidationError::NonFiniteField {
+        validate_finite_number(self.observed_log_price, "observed_log_price").map_err(
+            |source| MeanReversionBoundaryStateValidationError::NonFiniteField {
                 field: source.field,
-                value: source.value,
-            })?;
-        validate_finite_number(self.anchor_value, "anchor_value")
-            .map_err(|source| MeanReversionBoundaryStateValidationError::NonFiniteField {
+                value: source.value.to_string(),
+            },
+        )?;
+        validate_finite_number(self.anchor_value, "anchor_value").map_err(|source| {
+            MeanReversionBoundaryStateValidationError::NonFiniteField {
                 field: source.field,
-                value: source.value,
-            })?;
-        validate_finite_number(self.deviation, "deviation")
-            .map_err(|source| MeanReversionBoundaryStateValidationError::NonFiniteField {
+                value: source.value.to_string(),
+            }
+        })?;
+        validate_finite_number(self.deviation, "deviation").map_err(|source| {
+            MeanReversionBoundaryStateValidationError::NonFiniteField {
                 field: source.field,
-                value: source.value,
-            })?;
+                value: source.value.to_string(),
+            }
+        })?;
 
         let expected_deviation = self.observed_log_price - self.anchor_value;
         if (self.deviation - expected_deviation).abs() > BOUNDARY_STATE_INVARIANT_TOLERANCE {
-            return Err(MeanReversionBoundaryStateValidationError::DeviationInvariantViolation {
-                observed_log_price: self.observed_log_price,
-                anchor_value: self.anchor_value,
-                deviation: self.deviation,
-                expected_deviation,
-            });
+            return Err(
+                MeanReversionBoundaryStateValidationError::DeviationInvariantViolation {
+                    observed_log_price: self.observed_log_price,
+                    anchor_value: self.anchor_value,
+                    deviation: self.deviation,
+                    expected_deviation,
+                },
+            );
         }
 
         Ok(())
     }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum MeanReversionBoundaryStateEvolutionError {
+    InvalidBoundaryState {
+        source: MeanReversionBoundaryStateValidationError,
+    },
+    InvalidKappa {
+        value: f64,
+    },
+    InvalidIntervalDelta {
+        value: f64,
+    },
+    InvalidCoreTotalReturn {
+        value: f64,
+    },
+    InvalidIntervalEndAnchorValue {
+        value: f64,
+    },
+}
+
+impl Display for MeanReversionBoundaryStateEvolutionError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidBoundaryState { source } => {
+                write!(formatter, "boundary_state is invalid: {source}")
+            }
+            Self::InvalidKappa { value } => {
+                write!(
+                    formatter,
+                    "kappa must be a finite non-negative number, found {value}"
+                )
+            }
+            Self::InvalidIntervalDelta { value } => write!(
+                formatter,
+                "interval_delta must be a finite strictly positive number, found {value}"
+            ),
+            Self::InvalidCoreTotalReturn { value } => write!(
+                formatter,
+                "core_total_return must be a finite number, found {value}"
+            ),
+            Self::InvalidIntervalEndAnchorValue { value } => write!(
+                formatter,
+                "interval_end_anchor_value must be a finite number, found {value}"
+            ),
+        }
+    }
+}
+
+impl Error for MeanReversionBoundaryStateEvolutionError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::InvalidBoundaryState { source } => Some(source),
+            Self::InvalidKappa { .. }
+            | Self::InvalidIntervalDelta { .. }
+            | Self::InvalidCoreTotalReturn { .. }
+            | Self::InvalidIntervalEndAnchorValue { .. } => None,
+        }
+    }
+}
+
+/// Apply the canonical interval-grid anchor-deviation update and return the new boundary state.
+pub fn evolve_mean_reversion_boundary_state_on_interval_grid(
+    boundary_state: MeanReversionBoundaryState,
+    kappa: f64,
+    interval_delta: f64,
+    core_total_return: f64,
+    interval_end_anchor_value: f64,
+) -> Result<MeanReversionBoundaryState, MeanReversionBoundaryStateEvolutionError> {
+    boundary_state.validate().map_err(|source| {
+        MeanReversionBoundaryStateEvolutionError::InvalidBoundaryState { source }
+    })?;
+
+    if !kappa.is_finite() || kappa < 0.0 {
+        return Err(MeanReversionBoundaryStateEvolutionError::InvalidKappa { value: kappa });
+    }
+    if !interval_delta.is_finite() || interval_delta <= 0.0 {
+        return Err(
+            MeanReversionBoundaryStateEvolutionError::InvalidIntervalDelta {
+                value: interval_delta,
+            },
+        );
+    }
+    if !core_total_return.is_finite() {
+        return Err(
+            MeanReversionBoundaryStateEvolutionError::InvalidCoreTotalReturn {
+                value: core_total_return,
+            },
+        );
+    }
+    if !interval_end_anchor_value.is_finite() {
+        return Err(
+            MeanReversionBoundaryStateEvolutionError::InvalidIntervalEndAnchorValue {
+                value: interval_end_anchor_value,
+            },
+        );
+    }
+
+    let deviation = (-kappa * interval_delta).exp() * boundary_state.deviation
+        + core_total_return
+        + boundary_state.anchor_value
+        - interval_end_anchor_value;
+    let observed_log_price = interval_end_anchor_value + deviation;
+
+    MeanReversionBoundaryState::try_new(observed_log_price, interval_end_anchor_value, deviation)
+        .map_err(|source| MeanReversionBoundaryStateEvolutionError::InvalidBoundaryState { source })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -453,7 +569,10 @@ impl Display for MeanReversionAnchorModelValidationError {
                 field,
                 expected,
                 found,
-            } => write!(formatter, "{field} must contain {expected} values, found {found}"),
+            } => write!(
+                formatter,
+                "{field} must contain {expected} values, found {found}"
+            ),
             Self::InvalidIntervalBoundary {
                 interval_index,
                 start_utc_nanos,
@@ -489,7 +608,10 @@ impl Display for MeanReversionFittedParametersValidationError {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::InvalidKappa { value } => {
-                write!(formatter, "kappa must be a finite non-negative number, found {value}")
+                write!(
+                    formatter,
+                    "kappa must be a finite non-negative number, found {value}"
+                )
             }
             Self::InvalidAnchorModel(source) => {
                 write!(formatter, "anchor_model is invalid: {source}")
@@ -522,13 +644,19 @@ impl Display for MeanReversionRuntimeIntervalAnchorsValidationError {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::EmptyIntervalAlignmentPolicy => {
-                write!(formatter, "interval_alignment_policy must be a non-empty string")
+                write!(
+                    formatter,
+                    "interval_alignment_policy must be a non-empty string"
+                )
             }
             Self::LengthMismatch {
                 field,
                 expected,
                 found,
-            } => write!(formatter, "{field} must contain {expected} values, found {found}"),
+            } => write!(
+                formatter,
+                "{field} must contain {expected} values, found {found}"
+            ),
             Self::InvalidIntervalDelta {
                 interval_index,
                 value,
@@ -609,24 +737,4 @@ fn validate_absent_deterministic_interval_grid(
     }
 
     Ok(())
-}
-
-fn validate_finite_number(
-    value: f64,
-    field: &'static str,
-) -> Result<(), MeanReversionNumericValidationError> {
-    if !value.is_finite() {
-        return Err(MeanReversionNumericValidationError {
-            field,
-            value: value.to_string(),
-        });
-    }
-
-    Ok(())
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct MeanReversionNumericValidationError {
-    field: &'static str,
-    value: String,
 }

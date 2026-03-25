@@ -35,6 +35,7 @@ from janiform.simulation import (
     validate_coarse_simulation_path,
     validate_coarse_simulation_run_request,
 )
+from tests.simulation_test_support import build_disabled_mean_reversion_runtime_contracts
 
 
 def test_coarse_simulation_run_request_roundtrip_serialization(
@@ -94,6 +95,12 @@ def test_coarse_simulation_python_wrapper_matches_native_json_bridge(
 
 
 def _build_coarse_run_request(calendar_registry) -> CoarseSimulationRunRequest:
+    (
+        mean_reversion_fitted_parameters,
+        mean_reversion_runtime_interval_anchors,
+        initial_mean_reversion_boundary_state,
+    ) = build_disabled_mean_reversion_runtime_contracts(interval_count=1, interval_delta_hours=0.5)
+
     return CoarseSimulationRunRequest.from_runtime_inputs(
         seed=3_010,
         start_time_utc=datetime.fromtimestamp(1704205800, tz=UTC),
@@ -135,6 +142,9 @@ def _build_coarse_run_request(calendar_registry) -> CoarseSimulationRunRequest:
                 y_minus_plus=0.15,
                 y_minus_minus=0.25,
             ),
+            mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
+            mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
+            initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
         ),
         interval_factors=SufficientStatisticsRiskIntervalFactors(
             interval_delta=0.5,

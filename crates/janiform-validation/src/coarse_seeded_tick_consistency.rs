@@ -7,6 +7,7 @@ use janiform_engine_simulation::{
     CoarseSimulationPath, SeededTickEventDebugTraceRecord, SeededTickEventDebugTraceTransitionKind,
     SeededTickSimulationRunConfig, SeededTickSimulationRunResult,
 };
+use janiform_foundations::numeric::arithmetic_mean_or_zero;
 use janiform_model_kernels::hawkes::HawkesExcitationState;
 use serde::Serialize;
 
@@ -90,7 +91,11 @@ pub struct SeededTickCoarseComparableIntervalRecord {
     pub trading_time_return: f64,
     pub open_jump_return: f64,
     pub closed_gap_return: f64,
-    pub total_return: f64,
+    pub core_total_return: f64,
+    pub observed_interval_return: f64,
+    pub observed_log_price_end: f64,
+    pub anchor_value_end: f64,
+    pub deviation_from_anchor_end: f64,
     pub terminal_excitation_state: HawkesExcitationState,
 }
 
@@ -107,7 +112,11 @@ pub struct SeededTickCoarseComparablePathDiagnostics {
     pub cumulative_trading_time_return: f64,
     pub cumulative_open_jump_return: f64,
     pub cumulative_closed_gap_return: f64,
-    pub cumulative_total_return: f64,
+    pub cumulative_core_total_return: f64,
+    pub cumulative_observed_return: f64,
+    pub max_abs_deviation_from_anchor: f64,
+    pub terminal_observed_log_price: f64,
+    pub terminal_deviation_from_anchor: f64,
 }
 
 /// Coarse-comparable path reconstructed from a seeded-tick run on a finer grid.
@@ -890,6 +899,7 @@ fn build_statistical_checks(
         .iter()
         .map(|paired_path| paired_path.coarse_path.diagnostics.cumulative_a_plus)
         .collect::<Vec<_>>();
+
     let fine_cumulative_a_plus = scenario
         .paired_paths
         .iter()
@@ -900,11 +910,13 @@ fn build_statistical_checks(
                 .cumulative_a_plus
         })
         .collect::<Vec<_>>();
+
     let coarse_cumulative_a_minus = scenario
         .paired_paths
         .iter()
         .map(|paired_path| paired_path.coarse_path.diagnostics.cumulative_a_minus)
         .collect::<Vec<_>>();
+
     let fine_cumulative_a_minus = scenario
         .paired_paths
         .iter()
@@ -915,11 +927,13 @@ fn build_statistical_checks(
                 .cumulative_a_minus
         })
         .collect::<Vec<_>>();
+
     let coarse_cumulative_n_plus = scenario
         .paired_paths
         .iter()
         .map(|paired_path| paired_path.coarse_path.diagnostics.cumulative_n_plus as f64)
         .collect::<Vec<_>>();
+
     let fine_cumulative_n_plus = scenario
         .paired_paths
         .iter()
@@ -930,11 +944,13 @@ fn build_statistical_checks(
                 .cumulative_n_plus as f64
         })
         .collect::<Vec<_>>();
+
     let coarse_cumulative_n_minus = scenario
         .paired_paths
         .iter()
         .map(|paired_path| paired_path.coarse_path.diagnostics.cumulative_n_minus as f64)
         .collect::<Vec<_>>();
+
     let fine_cumulative_n_minus = scenario
         .paired_paths
         .iter()
@@ -945,6 +961,7 @@ fn build_statistical_checks(
                 .cumulative_n_minus as f64
         })
         .collect::<Vec<_>>();
+
     let coarse_open_jump = scenario
         .paired_paths
         .iter()
@@ -955,6 +972,7 @@ fn build_statistical_checks(
                 .cumulative_open_jump_return
         })
         .collect::<Vec<_>>();
+
     let fine_open_jump = scenario
         .paired_paths
         .iter()
@@ -965,6 +983,7 @@ fn build_statistical_checks(
                 .cumulative_open_jump_return
         })
         .collect::<Vec<_>>();
+
     let coarse_closed_gap = scenario
         .paired_paths
         .iter()
@@ -975,6 +994,7 @@ fn build_statistical_checks(
                 .cumulative_closed_gap_return
         })
         .collect::<Vec<_>>();
+
     let fine_closed_gap = scenario
         .paired_paths
         .iter()
@@ -985,6 +1005,7 @@ fn build_statistical_checks(
                 .cumulative_closed_gap_return
         })
         .collect::<Vec<_>>();
+
     let coarse_trading_time = scenario
         .paired_paths
         .iter()
@@ -995,6 +1016,7 @@ fn build_statistical_checks(
                 .cumulative_trading_time_return
         })
         .collect::<Vec<_>>();
+
     let fine_trading_time = scenario
         .paired_paths
         .iter()
@@ -1005,21 +1027,90 @@ fn build_statistical_checks(
                 .cumulative_trading_time_return
         })
         .collect::<Vec<_>>();
-    let coarse_total_return = scenario
+
+    let coarse_core_total_return = scenario
         .paired_paths
         .iter()
         .map(|paired_path| paired_path.coarse_path.diagnostics.cumulative_total_return)
         .collect::<Vec<_>>();
-    let fine_total_return = scenario
+
+    let fine_core_total_return = scenario
         .paired_paths
         .iter()
         .map(|paired_path| {
             paired_path
                 .aggregated_fine_path
                 .diagnostics
-                .cumulative_total_return
+                .cumulative_core_total_return
         })
         .collect::<Vec<_>>();
+
+    let coarse_observed_return = scenario
+        .paired_paths
+        .iter()
+        .map(|paired_path| {
+            paired_path
+                .coarse_path
+                .diagnostics
+                .cumulative_observed_return
+        })
+        .collect::<Vec<_>>();
+
+    let fine_observed_return = scenario
+        .paired_paths
+        .iter()
+        .map(|paired_path| {
+            paired_path
+                .aggregated_fine_path
+                .diagnostics
+                .cumulative_observed_return
+        })
+        .collect::<Vec<_>>();
+
+    let coarse_terminal_observed_log_price = scenario
+        .paired_paths
+        .iter()
+        .map(|paired_path| {
+            paired_path
+                .coarse_path
+                .diagnostics
+                .terminal_observed_log_price
+        })
+        .collect::<Vec<_>>();
+
+    let fine_terminal_observed_log_price = scenario
+        .paired_paths
+        .iter()
+        .map(|paired_path| {
+            paired_path
+                .aggregated_fine_path
+                .diagnostics
+                .terminal_observed_log_price
+        })
+        .collect::<Vec<_>>();
+
+    let coarse_terminal_deviation_from_anchor = scenario
+        .paired_paths
+        .iter()
+        .map(|paired_path| {
+            paired_path
+                .coarse_path
+                .diagnostics
+                .terminal_deviation_from_anchor
+        })
+        .collect::<Vec<_>>();
+
+    let fine_terminal_deviation_from_anchor = scenario
+        .paired_paths
+        .iter()
+        .map(|paired_path| {
+            paired_path
+                .aggregated_fine_path
+                .diagnostics
+                .terminal_deviation_from_anchor
+        })
+        .collect::<Vec<_>>();
+
     let terminal_state_l1_distances = scenario
         .paired_paths
         .iter()
@@ -1082,21 +1173,42 @@ fn build_statistical_checks(
             thresholds.closed_gap_wasserstein_distance_tolerance,
         ),
         build_wasserstein_check(
-            "total_return_cumulative_wasserstein_distance",
+            "core_total_return_cumulative_wasserstein_distance",
             CoarseSeededTickDiagnosticBucket::SufficientStatisticsSampling,
-            &coarse_total_return,
-            &fine_total_return,
+            &coarse_core_total_return,
+            &fine_core_total_return,
             thresholds.total_return_wasserstein_distance_tolerance,
+        ),
+        build_wasserstein_check(
+            "observed_return_cumulative_wasserstein_distance",
+            CoarseSeededTickDiagnosticBucket::StateCarryover,
+            &coarse_observed_return,
+            &fine_observed_return,
+            thresholds.total_return_wasserstein_distance_tolerance,
+        ),
+        build_mean_delta_check(
+            "terminal_observed_log_price_mean_distance",
+            CoarseSeededTickDiagnosticBucket::StateCarryover,
+            &coarse_terminal_observed_log_price,
+            &fine_terminal_observed_log_price,
+            thresholds.terminal_state_l1_mean_tolerance,
+        ),
+        build_mean_delta_check(
+            "terminal_deviation_from_anchor_mean_distance",
+            CoarseSeededTickDiagnosticBucket::StateCarryover,
+            &coarse_terminal_deviation_from_anchor,
+            &fine_terminal_deviation_from_anchor,
+            thresholds.terminal_state_l1_mean_tolerance,
         ),
         CoarseSeededTickStatisticalCheck {
             check_id: "terminal_state_l1_mean_distance",
             expectation_class: CoarseSeededTickExpectationClass::Approximate,
             diagnostic_bucket: CoarseSeededTickDiagnosticBucket::StateCarryover,
-            coarse_reference_value: calculate_mean(&terminal_state_l1_distances),
+            coarse_reference_value: arithmetic_mean_or_zero(&terminal_state_l1_distances),
             fine_reference_value: 0.0,
-            observed_distance: calculate_mean(&terminal_state_l1_distances),
+            observed_distance: arithmetic_mean_or_zero(&terminal_state_l1_distances),
             tolerance: thresholds.terminal_state_l1_mean_tolerance,
-            passed: calculate_mean(&terminal_state_l1_distances)
+            passed: arithmetic_mean_or_zero(&terminal_state_l1_distances)
                 <= thresholds.terminal_state_l1_mean_tolerance,
         },
     ]
@@ -1109,8 +1221,9 @@ fn build_mean_delta_check(
     fine_values: &[f64],
     tolerance: f64,
 ) -> CoarseSeededTickStatisticalCheck {
-    let coarse_mean = calculate_mean(coarse_values);
-    let fine_mean = calculate_mean(fine_values);
+    let coarse_mean = arithmetic_mean_or_zero(coarse_values);
+    let fine_mean = arithmetic_mean_or_zero(fine_values);
+
     let observed_distance = (coarse_mean - fine_mean).abs();
 
     CoarseSeededTickStatisticalCheck {
@@ -1132,8 +1245,9 @@ fn build_wasserstein_check(
     fine_values: &[f64],
     tolerance: f64,
 ) -> CoarseSeededTickStatisticalCheck {
-    let coarse_mean = calculate_mean(coarse_values);
-    let fine_mean = calculate_mean(fine_values);
+    let coarse_mean = arithmetic_mean_or_zero(coarse_values);
+    let fine_mean = arithmetic_mean_or_zero(fine_values);
+
     let observed_distance = calculate_wasserstein_distance(coarse_values, fine_values);
 
     CoarseSeededTickStatisticalCheck {
@@ -1163,10 +1277,6 @@ fn calculate_wasserstein_distance(left: &[f64], right: &[f64]) -> f64 {
         / ordered_left.len() as f64
 }
 
-fn calculate_mean(values: &[f64]) -> f64 {
-    values.iter().sum::<f64>() / values.len() as f64
-}
-
 fn reconstruct_fine_interval_records(
     run_config: &SeededTickSimulationRunConfig,
     run_result: &SeededTickSimulationRunResult,
@@ -1177,11 +1287,13 @@ fn reconstruct_fine_interval_records(
     let lambda_bar = kernel_parameters.lambda_bar;
     let beta = kernel_parameters.beta;
     let contract = &run_config.model_inputs.hourly_factor_contract;
+
     let fine_path_by_transition_index = run_result
         .fine_path
         .iter()
-        .map(|record| (record.transition_index, &record.return_components))
+        .map(|record| (record.transition_index, record))
         .collect::<std::collections::BTreeMap<_, _>>();
+
     let mut interval_trace_records: Vec<Vec<&SeededTickEventDebugTraceRecord>> =
         (0..horizon_interval_count).map(|_| Vec::new()).collect();
 
@@ -1199,8 +1311,15 @@ fn reconstruct_fine_interval_records(
     }
 
     let mut interval_start_state = run_config.model_inputs.initial_excitation_state;
+
     let mut cumulative_open_jump_return = 0.0;
     let mut cumulative_closed_gap_return = 0.0;
+
+    let mut previous_observed_log_price = run_config
+        .model_inputs
+        .initial_mean_reversion_boundary_state
+        .observed_log_price;
+
     let mut fine_records = Vec::with_capacity(horizon_interval_count);
 
     for interval_index in 0..horizon_interval_count {
@@ -1214,17 +1333,20 @@ fn reconstruct_fine_interval_records(
         let interval_start_utc_nanos = contract.interval_start_utc_nanos[interval_index];
         let interval_end_utc_nanos = contract.interval_end_utc_nanos[interval_index];
         let seasonality_factor = contract.s_h[interval_index];
+
         let mut current_state = interval_start_state;
+
         let mut a_plus = 0.0;
         let mut a_minus = 0.0;
         let mut n_plus = 0_u64;
         let mut n_minus = 0_u64;
+
         let mut buy_side_return = 0.0;
         let mut sell_side_return = 0.0;
         let mut trading_time_return = 0.0;
         let mut open_jump_return = 0.0;
         let mut closed_gap_return = 0.0;
-        let mut total_return = 0.0;
+        let mut core_total_return = 0.0;
 
         for trace_record in trace_records {
             let elapsed_hours = trace_record.elapsed_hours_since_previous_update;
@@ -1257,7 +1379,7 @@ fn reconstruct_fine_interval_records(
                 | SeededTickEventDebugTraceTransitionKind::IntervalBoundaryDrift => {}
             }
 
-            let return_components = fine_path_by_transition_index
+            let fine_path_record = fine_path_by_transition_index
                 .get(&trace_record.transition_index)
                 .copied()
                 .ok_or(
@@ -1265,12 +1387,13 @@ fn reconstruct_fine_interval_records(
                         transition_index: trace_record.transition_index,
                     },
                 )?;
-            buy_side_return += return_components.buy_side_return;
-            sell_side_return += return_components.sell_side_return;
-            trading_time_return += return_components.trading_time_return;
-            open_jump_return += return_components.open_jump_return;
-            closed_gap_return += return_components.closed_gap_return;
-            total_return += return_components.total_return;
+
+            buy_side_return += fine_path_record.return_components.buy_side_return;
+            sell_side_return += fine_path_record.return_components.sell_side_return;
+            trading_time_return += fine_path_record.return_components.trading_time_return;
+            open_jump_return += fine_path_record.return_components.open_jump_return;
+            closed_gap_return += fine_path_record.return_components.closed_gap_return;
+            core_total_return += fine_path_record.return_components.total_return;
 
             current_state = snapshot_to_excitation_state(trace_record.state_after_transition);
         }
@@ -1307,6 +1430,20 @@ fn reconstruct_fine_interval_records(
         cumulative_closed_gap_return =
             boundary_trace_record.cumulative_closed_window_gap_g_t_increment;
 
+        let boundary_fine_path_record = fine_path_by_transition_index
+            .get(&boundary_trace_record.transition_index)
+            .copied()
+            .ok_or(
+                SeededTickCoarseAggregationError::MissingFinePathTransitionRecord {
+                    transition_index: boundary_trace_record.transition_index,
+                },
+            )?;
+
+        let observed_interval_return =
+            boundary_fine_path_record.observed_log_price - previous_observed_log_price;
+
+        previous_observed_log_price = boundary_fine_path_record.observed_log_price;
+
         fine_records.push(SeededTickCoarseComparableIntervalRecord {
             interval_index,
             interval_start_utc_nanos,
@@ -1328,7 +1465,11 @@ fn reconstruct_fine_interval_records(
             } else {
                 closed_gap_return
             },
-            total_return,
+            core_total_return,
+            observed_interval_return,
+            observed_log_price_end: boundary_fine_path_record.observed_log_price,
+            anchor_value_end: boundary_fine_path_record.anchor_value,
+            deviation_from_anchor_end: boundary_fine_path_record.deviation_from_anchor,
             terminal_excitation_state: current_state,
         });
 
@@ -1348,7 +1489,9 @@ fn aggregate_fine_records_to_coarse_records(
     for coarse_interval_index in 0..coarse_interval_count {
         let fine_start = coarse_interval_index * fine_subinterval_count_per_coarse_interval;
         let fine_end = fine_start + fine_subinterval_count_per_coarse_interval;
+
         let fine_window = &fine_records[fine_start..fine_end];
+
         let first_record = &fine_window[0];
         let last_record = &fine_window[fine_window.len() - 1];
 
@@ -1386,7 +1529,17 @@ fn aggregate_fine_records_to_coarse_records(
                 .iter()
                 .map(|record| record.closed_gap_return)
                 .sum(),
-            total_return: fine_window.iter().map(|record| record.total_return).sum(),
+            core_total_return: fine_window
+                .iter()
+                .map(|record| record.core_total_return)
+                .sum(),
+            observed_interval_return: fine_window
+                .iter()
+                .map(|record| record.observed_interval_return)
+                .sum(),
+            observed_log_price_end: last_record.observed_log_price_end,
+            anchor_value_end: last_record.anchor_value_end,
+            deviation_from_anchor_end: last_record.deviation_from_anchor_end,
             terminal_excitation_state: last_record.terminal_excitation_state,
         });
     }
@@ -1417,19 +1570,30 @@ fn derive_seeded_tick_comparable_diagnostics(
             .sum(),
         cumulative_open_jump_return: records.iter().map(|record| record.open_jump_return).sum(),
         cumulative_closed_gap_return: records.iter().map(|record| record.closed_gap_return).sum(),
-        cumulative_total_return: records.iter().map(|record| record.total_return).sum(),
+        cumulative_core_total_return: records.iter().map(|record| record.core_total_return).sum(),
+        cumulative_observed_return: records
+            .iter()
+            .map(|record| record.observed_interval_return)
+            .sum(),
+        max_abs_deviation_from_anchor: records
+            .iter()
+            .map(|record| record.deviation_from_anchor_end.abs())
+            .fold(0.0, f64::max),
+        terminal_observed_log_price: records[records.len() - 1].observed_log_price_end,
+        terminal_deviation_from_anchor: records[records.len() - 1].deviation_from_anchor_end,
     }
 }
 
-fn flatten_trace_records<'a>(
-    debug_trace: &'a janiform_engine_simulation::SeededTickEventDebugTraceOutput,
-) -> Vec<&'a SeededTickEventDebugTraceRecord> {
+fn flatten_trace_records(
+    debug_trace: &janiform_engine_simulation::SeededTickEventDebugTraceOutput,
+) -> Vec<&SeededTickEventDebugTraceRecord> {
     let mut trace_records = debug_trace
         .trace_chunks
         .iter()
         .flat_map(|trace_chunk| trace_chunk.records.iter())
         .collect::<Vec<_>>();
     trace_records.sort_by_key(|trace_record| trace_record.transition_index);
+
     trace_records
 }
 
@@ -1438,6 +1602,7 @@ fn derive_uniform_interval_delta_hours(
     horizon_interval_count: usize,
 ) -> Result<f64, SeededTickCoarseAggregationError> {
     let contract = &run_config.model_inputs.hourly_factor_contract;
+
     let first_interval_delta_nanos =
         contract.interval_end_utc_nanos[0] - contract.interval_start_utc_nanos[0];
     if first_interval_delta_nanos <= 0 {
@@ -1489,6 +1654,7 @@ fn resolve_interval_ratio(
 
     let implied_ratio = coarse_interval_delta / fine_interval_delta;
     let rounded_ratio = implied_ratio.round();
+
     if rounded_ratio < 1.0 || (implied_ratio - rounded_ratio).abs() > INTERVAL_RATIO_TOLERANCE {
         return Err(
             SeededTickCoarseAggregationError::CoarseFineIntervalRatioMismatch {
@@ -1516,6 +1682,7 @@ fn integrate_side_intensity(
 
     let integrated_decay_weight = (1.0 - (-beta * elapsed_hours).exp()) / beta;
     let deseasonalized_baseline = lambda_bar * elapsed_hours;
+
     let endogenous_component = if plus_side {
         (state.y_plus_plus + state.y_plus_minus) * integrated_decay_weight
     } else {

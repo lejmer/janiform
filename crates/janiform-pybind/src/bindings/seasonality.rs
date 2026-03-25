@@ -11,10 +11,8 @@ use janiform::seasonality::{
     generate_seasonality_diagnostics_report as generate_seasonality_diagnostics_report_core,
 };
 use pyo3::prelude::{Bound, PyErr, PyResult, Python};
-use pyo3::types::{
-    PyAny, PyAnyMethods, PyMapping, PyMappingMethods, PyModule, PyModuleMethods,
-};
 use pyo3::pyfunction;
+use pyo3::types::{PyAny, PyAnyMethods, PyMapping, PyMappingMethods, PyModule, PyModuleMethods};
 use serde_json::to_string as serialize_to_json_string;
 
 use super::calendar::parse_timestamp_utc_from_python;

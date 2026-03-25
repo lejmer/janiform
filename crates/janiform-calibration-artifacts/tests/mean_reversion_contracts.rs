@@ -2,14 +2,15 @@ mod support;
 
 use std::f64::NAN;
 
+use janiform_calibration_artifacts::CalibrationExecutionMode;
 use support::shared::{
     MeanReversionAnchorModel, MeanReversionBoundaryState, MeanReversionFittedParameters,
-    MeanReversionRuntimeIntervalAnchors, build_deterministic_interval_grid_mean_reversion_parameters,
-    build_return_components_stage_parameter_artifact_fixture, build_run_contract_with_mode_and_resume,
-    load_calibration_stage_parameter_artifact_from_disk,
+    MeanReversionRuntimeIntervalAnchors,
+    build_deterministic_interval_grid_mean_reversion_parameters,
+    build_return_components_stage_parameter_artifact_fixture,
+    build_run_contract_with_mode_and_resume, load_calibration_stage_parameter_artifact_from_disk,
     persist_calibration_stage_parameter_artifact_to_run_directory, temporary_checkpoint_directory,
 };
-use janiform_calibration_artifacts::CalibrationExecutionMode;
 
 #[test]
 fn mean_reversion_fitted_parameters_round_trip_serialization_preserves_contract_fields() {
@@ -23,8 +24,8 @@ fn mean_reversion_fitted_parameters_round_trip_serialization_preserves_contract_
         serde_json::json!("deterministic_interval_grid")
     );
 
-    let parsed: MeanReversionFittedParameters =
-        serde_json::from_value(serialized).expect("mean reversion fitted parameters should deserialize");
+    let parsed: MeanReversionFittedParameters = serde_json::from_value(serialized)
+        .expect("mean reversion fitted parameters should deserialize");
     assert_eq!(parsed, fitted_parameters);
 
     fitted_parameters
@@ -42,7 +43,11 @@ fn mean_reversion_fitted_parameters_reject_negative_kappa() {
     let error = fitted_parameters
         .validate()
         .expect_err("negative kappa must fail validation");
-    assert!(error.to_string().contains("kappa must be a finite non-negative number"));
+    assert!(
+        error
+            .to_string()
+            .contains("kappa must be a finite non-negative number")
+    );
 }
 
 #[test]
@@ -55,9 +60,11 @@ fn mean_reversion_anchor_model_rejects_non_finite_anchor_values() {
     )
     .expect_err("non-finite anchor values must fail validation");
 
-    assert!(anchor_model
-        .to_string()
-        .contains("anchor_values must be a finite number"));
+    assert!(
+        anchor_model
+            .to_string()
+            .contains("anchor_values must be a finite number")
+    );
 }
 
 #[test]
@@ -72,8 +79,8 @@ fn mean_reversion_runtime_interval_anchors_validate_alignment_metadata() {
 
     let serialized = serde_json::to_string(&runtime_interval_anchors)
         .expect("runtime interval anchors should serialize");
-    let parsed: MeanReversionRuntimeIntervalAnchors =
-        serde_json::from_str(serialized.as_str()).expect("runtime interval anchors should deserialize");
+    let parsed: MeanReversionRuntimeIntervalAnchors = serde_json::from_str(serialized.as_str())
+        .expect("runtime interval anchors should deserialize");
     assert_eq!(parsed, runtime_interval_anchors);
 }
 
@@ -82,15 +89,20 @@ fn mean_reversion_boundary_state_rejects_invariant_drift() {
     let error = MeanReversionBoundaryState::try_new(5.0, 1.5, 3.7)
         .expect_err("boundary state must reject deviation drift");
 
-    assert!(error
-        .to_string()
-        .contains("deviation must equal observed_log_price - anchor_value"));
+    assert!(
+        error
+            .to_string()
+            .contains("deviation must equal observed_log_price - anchor_value")
+    );
 }
 
 #[test]
 fn calibration_stage_parameter_artifact_persistence_round_trips_mean_reversion_block() {
-    let run_contract =
-        build_run_contract_with_mode_and_resume("run-mean-reversion-artifact", CalibrationExecutionMode::Disk, None);
+    let run_contract = build_run_contract_with_mode_and_resume(
+        "run-mean-reversion-artifact",
+        CalibrationExecutionMode::Disk,
+        None,
+    );
 
     let run_directory = temporary_checkpoint_directory("mean-reversion-stage-parameter");
     let artifact = build_return_components_stage_parameter_artifact_fixture(&run_contract);
@@ -101,8 +113,9 @@ fn calibration_stage_parameter_artifact_persistence_round_trips_mean_reversion_b
     )
     .expect("stage parameter artifact should persist");
 
-    let loaded_artifact = load_calibration_stage_parameter_artifact_from_disk(artifact_path.as_path())
-        .expect("stage parameter artifact should reload");
+    let loaded_artifact =
+        load_calibration_stage_parameter_artifact_from_disk(artifact_path.as_path())
+            .expect("stage parameter artifact should reload");
 
     assert_eq!(loaded_artifact, artifact);
 }

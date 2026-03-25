@@ -1,9 +1,13 @@
 use chrono::{DateTime, Datelike, Duration, Timelike, Utc};
 use janiform_engine_simulation::{
-    MeanReversionBoundaryState, MeanReversionFittedParameters,
-    MeanReversionRuntimeIntervalAnchors, SeededTickEventStateSnapshotCapture,
-    SeededTickSimulationModelInputs, SeededTickSimulationRunConfig,
-    SeededTickSimulationRunOptions, run_seeded_tick_event_simulation,
+    MeanReversionBoundaryState, MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors,
+    SeededTickEventStateSnapshotCapture, SeededTickSimulationModelInputs,
+    SeededTickSimulationRunConfig, SeededTickSimulationRunOptions,
+    run_seeded_tick_event_simulation,
+};
+use janiform_foundations::time::{
+    FIFTEEN_MINUTES_NANOS, FIVE_MINUTES_NANOS, ONE_HOUR_NANOS, ceil_to_hour_utc_nanos,
+    floor_to_hour_utc_nanos,
 };
 use janiform_market_time::hourly_factors::{
     HourlyFactorProviderRequest, HourlyNewsIntensityFactorSource, HourlySeasonalityFactorSource,
@@ -39,11 +43,10 @@ use crate::stages::return_components::{
 };
 
 use super::execution::{
-    JOINT_REFINEMENT_FIFTEEN_MINUTES_NANOS, JOINT_REFINEMENT_FIVE_MINUTES_NANOS,
-    JOINT_REFINEMENT_HAWKES_SCALE_LOG_BOUND, JOINT_REFINEMENT_ONE_HOUR_NANOS,
-    JointRefinementActiveParameterLayout, JointRefinementContext, JointRefinementObservedData,
-    JointRefinementSeedSummary, JointRefinementSeedSummaryCacheKey, build_halton_restart_id,
-    clamp_in_place, deduplicate_restart_seed_candidates, floor_to_hour, halton_parameter_vector,
+    JOINT_REFINEMENT_HAWKES_SCALE_LOG_BOUND, JointRefinementActiveParameterLayout,
+    JointRefinementContext, JointRefinementObservedData, JointRefinementSeedSummary,
+    JointRefinementSeedSummaryCacheKey, build_halton_restart_id, clamp_in_place,
+    deduplicate_restart_seed_candidates, halton_parameter_vector,
 };
 use janiform_calibration_artifacts::{
     CalibrationOptimizerSettings, JointRefinementStageFittedParameters,
@@ -197,7 +200,7 @@ pub(super) fn build_observed_data(
         candidate_generation_input
             .observed_open_session_returns
             .as_slice(),
-        JOINT_REFINEMENT_FIVE_MINUTES_NANOS,
+        FIVE_MINUTES_NANOS,
     );
     let observed_15m_intervals = build_observed_open_session_interval_observations(
         calendar_registry,
@@ -206,7 +209,7 @@ pub(super) fn build_observed_data(
         candidate_generation_input
             .observed_open_session_returns
             .as_slice(),
-        JOINT_REFINEMENT_FIFTEEN_MINUTES_NANOS,
+        FIFTEEN_MINUTES_NANOS,
     );
     let observed_hourly_intervals = build_observed_open_session_interval_observations(
         calendar_registry,
@@ -215,7 +218,7 @@ pub(super) fn build_observed_data(
         candidate_generation_input
             .observed_open_session_returns
             .as_slice(),
-        JOINT_REFINEMENT_ONE_HOUR_NANOS,
+        ONE_HOUR_NANOS,
     );
 
     let observed_15m_rv_activity_metric =
@@ -289,18 +292,19 @@ pub(super) fn build_observed_data(
     );
     let observed_hourly_tick_counts = tick_count_series(observed_hourly_intervals.as_slice());
 
-    let hourly_simulation_start_utc =
-        DateTime::<Utc>::from_timestamp_nanos(floor_to_hour(source_window.window_start_utc_nanos));
-    let hourly_simulation_end_utc =
-        DateTime::<Utc>::from_timestamp_nanos(ceil_to_hour(source_window.window_end_utc_nanos));
+    let hourly_simulation_start_utc = DateTime::<Utc>::from_timestamp_nanos(
+        floor_to_hour_utc_nanos(source_window.window_start_utc_nanos),
+    );
+    let hourly_simulation_end_utc = DateTime::<Utc>::from_timestamp_nanos(ceil_to_hour_utc_nanos(
+        source_window.window_end_utc_nanos,
+    ));
     let hourly_simulation_interval_count = ((hourly_simulation_end_utc
         .timestamp_nanos_opt()
         .unwrap_or(source_window.window_end_utc_nanos)
         - hourly_simulation_start_utc
             .timestamp_nanos_opt()
             .unwrap_or(source_window.window_start_utc_nanos))
-    .div_euclid(JOINT_REFINEMENT_ONE_HOUR_NANOS))
-        as usize;
+    .div_euclid(ONE_HOUR_NANOS)) as usize;
 
     let surprise_multiplier_by_hour_index = build_surprise_multipliers_by_hour_index(
         hourly_simulation_start_utc,
@@ -839,7 +843,7 @@ pub(super) fn build_surprise_multipliers_by_hour_index(
     build_surprise_multipliers_for_interval_grid(
         hourly_simulation_start_utc,
         hourly_simulation_interval_count,
-        JOINT_REFINEMENT_ONE_HOUR_NANOS,
+        ONE_HOUR_NANOS,
         return_components_fitted_parameters
             .surprise_deterministic_intensity_profile
             .weekly_hour_utc_multipliers
@@ -874,15 +878,6 @@ pub(super) fn build_surprise_multipliers_for_interval_grid(
         .collect()
 }
 
-pub(super) fn ceil_to_hour(timestamp_utc_nanos: i64) -> i64 {
-    let remainder = timestamp_utc_nanos.rem_euclid(JOINT_REFINEMENT_ONE_HOUR_NANOS);
-    if remainder == 0 {
-        timestamp_utc_nanos
-    } else {
-        timestamp_utc_nanos.saturating_add(JOINT_REFINEMENT_ONE_HOUR_NANOS - remainder)
-    }
-}
-
 pub(super) fn build_seed_summary_for_candidate_seed(
     calendar_registry: &ExchangeCalendarRegistry,
     context: &JointRefinementContext,
@@ -893,7 +888,7 @@ pub(super) fn build_seed_summary_for_candidate_seed(
         build_surprise_multipliers_for_interval_grid(
             context.observed_data.hourly_simulation_start_utc,
             context.observed_data.hourly_simulation_interval_count,
-            JOINT_REFINEMENT_ONE_HOUR_NANOS,
+            ONE_HOUR_NANOS,
             context
                 .observed_data
                 .surprise_weekly_hour_utc_multipliers
@@ -905,7 +900,7 @@ pub(super) fn build_seed_summary_for_candidate_seed(
             exchange_code: context.exchange_code.as_str(),
             range_start_utc: context.observed_data.hourly_simulation_start_utc,
             range_end_utc: context.observed_data.hourly_simulation_end_utc,
-            interval_duration_nanos: JOINT_REFINEMENT_ONE_HOUR_NANOS,
+            interval_duration_nanos: ONE_HOUR_NANOS,
             seasonality_source: Some(HourlySeasonalityFactorSource::Explicit {
                 hourly_factors: context.runtime_hourly_seasonality_factors.as_slice(),
                 materialization_method:
@@ -960,13 +955,15 @@ pub(super) fn build_seed_summary_for_candidate_seed(
                         vec![0.0; context.observed_data.hourly_simulation_interval_count],
                         vec![
                             hourly_factor_contract.interval_duration_nanos as f64
-                                / JOINT_REFINEMENT_ONE_HOUR_NANOS as f64;
+                                / ONE_HOUR_NANOS as f64;
                             context.observed_data.hourly_simulation_interval_count
                         ],
                     )
                     .ok()?,
-                initial_mean_reversion_boundary_state:
-                    MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0).ok()?,
+                initial_mean_reversion_boundary_state: MeanReversionBoundaryState::try_new(
+                    0.0, 0.0, 0.0,
+                )
+                .ok()?,
                 hourly_factor_contract,
                 calendar_registry: calendar_registry.clone(),
             },
@@ -991,8 +988,8 @@ pub(super) fn build_seed_summary_for_candidate_seed(
                 .observed_data
                 .simulated_15m_interval_template
                 .as_slice(),
-            JOINT_REFINEMENT_FIVE_MINUTES_NANOS,
-            JOINT_REFINEMENT_FIFTEEN_MINUTES_NANOS,
+            FIVE_MINUTES_NANOS,
+            FIFTEEN_MINUTES_NANOS,
         );
 
     let simulated_hourly_intervals =
@@ -1002,7 +999,7 @@ pub(super) fn build_seed_summary_for_candidate_seed(
                 .observed_data
                 .simulated_hourly_interval_template
                 .as_slice(),
-            JOINT_REFINEMENT_ONE_HOUR_NANOS,
+            ONE_HOUR_NANOS,
         );
 
     let simulated_5m_log_returns = simulated_5m_intervals

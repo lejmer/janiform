@@ -138,10 +138,15 @@ where
     let mut pending_open_jump_return = 0.0_f64;
     let mut pending_closed_gap_return = 0.0_f64;
 
-    let mean_reversion_kappa = run_config.model_inputs.mean_reversion_fitted_parameters.kappa;
+    let mean_reversion_kappa = run_config
+        .model_inputs
+        .mean_reversion_fitted_parameters
+        .kappa;
 
     let mut observed_state = SeededObservedState::from_boundary_state(
-        &run_config.model_inputs.initial_mean_reversion_boundary_state,
+        &run_config
+            .model_inputs
+            .initial_mean_reversion_boundary_state,
     );
 
     let mut debug_trace_collector = run_config.options.debug_trace_enabled.then(|| {
@@ -568,7 +573,8 @@ impl SeededObservedState {
             + core_total_return_increment;
 
         Self {
-            cumulative_core_log_return: self.cumulative_core_log_return + core_total_return_increment,
+            cumulative_core_log_return: self.cumulative_core_log_return
+                + core_total_return_increment,
             observed_log_price: self.anchor_value + deviation_from_anchor,
             anchor_value: self.anchor_value,
             deviation_from_anchor,

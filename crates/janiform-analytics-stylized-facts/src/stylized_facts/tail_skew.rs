@@ -4,7 +4,11 @@ use std::collections::BTreeSet;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
-use janiform_foundations::numeric::{compute_probability_weighted_moment, compute_sorted_quantile};
+use janiform_foundations::numeric::{
+    bowley_skewness_from_sorted, compute_sorted_quantile, l_moment_lambda2_from_sorted,
+    l_moment_tau3_from_sorted, sample_adjusted_excess_kurtosis, sample_adjusted_skewness,
+    sample_variance, sorted_finite_values,
+};
 use serde::Serialize;
 
 use super::diagnostics_shared::{
@@ -44,9 +48,6 @@ const RETURNS_CENTRAL_EXCESS_KURTOSIS_METRIC_NAME: &str = "Returns Central Exces
 const LEFT_TAIL_QUANTILE_LEVEL: f64 = 0.05;
 const RIGHT_TAIL_QUANTILE_LEVEL: f64 = 0.95;
 const EXTREME_RIGHT_TAIL_QUANTILE_LEVEL: f64 = 0.99;
-const LOWER_QUARTILE_LEVEL: f64 = 0.25;
-const MEDIAN_QUANTILE_LEVEL: f64 = 0.50;
-const UPPER_QUARTILE_LEVEL: f64 = 0.75;
 const MINIMUM_DENOMINATOR_MAGNITUDE: f64 = 1e-12;
 
 pub const TAIL_SKEW_DIAGNOSTICS_REPORT_SCHEMA_VERSION: &str =
@@ -1112,7 +1113,7 @@ fn compute_abs_quantile_shape_ratio_q99_q95(interval_returns: &[f64]) -> TailSke
 fn compute_left_tail_expected_shortfall_to_var_ratio(
     interval_returns: &[f64],
 ) -> TailSkewMetricComputation {
-    let mut sorted_returns = sorted_finite_returns(interval_returns);
+    let sorted_returns = sorted_finite_values(interval_returns);
 
     if sorted_returns.is_empty() {
         return TailSkewMetricComputation {
@@ -1121,8 +1122,6 @@ fn compute_left_tail_expected_shortfall_to_var_ratio(
             tail_observation_count: 0,
         };
     }
-
-    sorted_returns.sort_by(f64::total_cmp);
     let left_tail_var = compute_sorted_quantile(&sorted_returns, LEFT_TAIL_QUANTILE_LEVEL);
 
     let left_tail_values: Vec<f64> = sorted_returns
@@ -1153,7 +1152,7 @@ fn compute_left_tail_expected_shortfall_to_var_ratio(
 }
 
 fn compute_bowley_skewness_quantile(interval_returns: &[f64]) -> TailSkewMetricComputation {
-    let mut sorted_returns = sorted_finite_returns(interval_returns);
+    let sorted_returns = sorted_finite_values(interval_returns);
 
     if sorted_returns.is_empty() {
         return TailSkewMetricComputation {
@@ -1162,20 +1161,7 @@ fn compute_bowley_skewness_quantile(interval_returns: &[f64]) -> TailSkewMetricC
             tail_observation_count: 0,
         };
     }
-
-    sorted_returns.sort_by(f64::total_cmp);
-
-    let lower_quartile = compute_sorted_quantile(&sorted_returns, LOWER_QUARTILE_LEVEL);
-    let median = compute_sorted_quantile(&sorted_returns, MEDIAN_QUANTILE_LEVEL);
-    let upper_quartile = compute_sorted_quantile(&sorted_returns, UPPER_QUARTILE_LEVEL);
-    let denominator = upper_quartile - lower_quartile;
-
-    let value = if !denominator.is_finite() || denominator.abs() <= MINIMUM_DENOMINATOR_MAGNITUDE {
-        None
-    } else {
-        let skewness = (upper_quartile + lower_quartile - 2.0 * median) / denominator;
-        skewness.is_finite().then_some(skewness)
-    };
+    let value = bowley_skewness_from_sorted(&sorted_returns, MINIMUM_DENOMINATOR_MAGNITUDE);
 
     TailSkewMetricComputation {
         value,
@@ -1187,7 +1173,7 @@ fn compute_bowley_skewness_quantile(interval_returns: &[f64]) -> TailSkewMetricC
 fn compute_signed_tail_expected_shortfall_imbalance(
     interval_returns: &[f64],
 ) -> TailSkewMetricComputation {
-    let mut sorted_returns = sorted_finite_returns(interval_returns);
+    let sorted_returns = sorted_finite_values(interval_returns);
 
     if sorted_returns.is_empty() {
         return TailSkewMetricComputation {
@@ -1196,9 +1182,6 @@ fn compute_signed_tail_expected_shortfall_imbalance(
             tail_observation_count: 0,
         };
     }
-
-    sorted_returns.sort_by(f64::total_cmp);
-
     let left_tail_var = compute_sorted_quantile(&sorted_returns, LEFT_TAIL_QUANTILE_LEVEL);
     let right_tail_var = compute_sorted_quantile(&sorted_returns, RIGHT_TAIL_QUANTILE_LEVEL);
 
@@ -1244,7 +1227,7 @@ fn compute_signed_tail_expected_shortfall_imbalance(
 }
 
 fn compute_l_moment_lambda2(interval_returns: &[f64]) -> TailSkewMetricComputation {
-    let mut sorted_returns = sorted_finite_returns(interval_returns);
+    let sorted_returns = sorted_finite_values(interval_returns);
 
     if sorted_returns.len() < 2 {
         return TailSkewMetricComputation {
@@ -1253,10 +1236,7 @@ fn compute_l_moment_lambda2(interval_returns: &[f64]) -> TailSkewMetricComputati
             tail_observation_count: 0,
         };
     }
-
-    sorted_returns.sort_by(f64::total_cmp);
-
-    let value = compute_l_moment_lambda2_from_sorted(&sorted_returns);
+    let value = l_moment_lambda2_from_sorted(&sorted_returns);
 
     TailSkewMetricComputation {
         value,
@@ -1266,7 +1246,7 @@ fn compute_l_moment_lambda2(interval_returns: &[f64]) -> TailSkewMetricComputati
 }
 
 fn compute_l_moment_tau3(interval_returns: &[f64]) -> TailSkewMetricComputation {
-    let mut sorted_returns = sorted_finite_returns(interval_returns);
+    let sorted_returns = sorted_finite_values(interval_returns);
 
     if sorted_returns.len() < 3 {
         return TailSkewMetricComputation {
@@ -1275,10 +1255,7 @@ fn compute_l_moment_tau3(interval_returns: &[f64]) -> TailSkewMetricComputation 
             tail_observation_count: 0,
         };
     }
-
-    sorted_returns.sort_by(f64::total_cmp);
-
-    let value = compute_l_moment_tau3_from_sorted(&sorted_returns);
+    let value = l_moment_tau3_from_sorted(&sorted_returns, MINIMUM_DENOMINATOR_MAGNITUDE);
 
     TailSkewMetricComputation {
         value,
@@ -1288,7 +1265,7 @@ fn compute_l_moment_tau3(interval_returns: &[f64]) -> TailSkewMetricComputation 
 }
 
 fn compute_central_variance(interval_returns: &[f64]) -> TailSkewMetricComputation {
-    let value = compute_sample_variance(interval_returns);
+    let value = sample_variance(interval_returns);
 
     TailSkewMetricComputation {
         value,
@@ -1298,7 +1275,7 @@ fn compute_central_variance(interval_returns: &[f64]) -> TailSkewMetricComputati
 }
 
 fn compute_central_skewness(interval_returns: &[f64]) -> TailSkewMetricComputation {
-    let value = compute_adjusted_central_skewness(interval_returns);
+    let value = sample_adjusted_skewness(interval_returns);
 
     TailSkewMetricComputation {
         value,
@@ -1308,156 +1285,11 @@ fn compute_central_skewness(interval_returns: &[f64]) -> TailSkewMetricComputati
 }
 
 fn compute_central_excess_kurtosis(interval_returns: &[f64]) -> TailSkewMetricComputation {
-    let value = compute_adjusted_central_excess_kurtosis(interval_returns);
+    let value = sample_adjusted_excess_kurtosis(interval_returns);
 
     TailSkewMetricComputation {
         value,
         effective_sample_count: interval_returns.len().saturating_sub(3),
         tail_observation_count: 0,
     }
-}
-
-fn compute_l_moment_lambda2_from_sorted(sorted_returns: &[f64]) -> Option<f64> {
-    let probability_weighted_moment_0 = compute_probability_weighted_moment(sorted_returns, 0)?;
-    let probability_weighted_moment_1 = compute_probability_weighted_moment(sorted_returns, 1)?;
-
-    let lambda2 = 2.0 * probability_weighted_moment_1 - probability_weighted_moment_0;
-
-    lambda2.is_finite().then_some(lambda2)
-}
-
-fn compute_l_moment_tau3_from_sorted(sorted_returns: &[f64]) -> Option<f64> {
-    let probability_weighted_moment_0 = compute_probability_weighted_moment(sorted_returns, 0)?;
-    let probability_weighted_moment_1 = compute_probability_weighted_moment(sorted_returns, 1)?;
-    let probability_weighted_moment_2 = compute_probability_weighted_moment(sorted_returns, 2)?;
-
-    let lambda2 = 2.0 * probability_weighted_moment_1 - probability_weighted_moment_0;
-    if !lambda2.is_finite() || lambda2.abs() <= MINIMUM_DENOMINATOR_MAGNITUDE {
-        return None;
-    }
-
-    let lambda3 = 6.0 * probability_weighted_moment_2 - 6.0 * probability_weighted_moment_1
-        + probability_weighted_moment_0;
-    if !lambda3.is_finite() {
-        return None;
-    }
-
-    let tau3 = lambda3 / lambda2;
-    tau3.is_finite().then_some(tau3)
-}
-
-fn compute_sample_variance(interval_returns: &[f64]) -> Option<f64> {
-    let finite_returns = sorted_finite_returns(interval_returns);
-    if finite_returns.len() < 2 {
-        return None;
-    }
-
-    let sample_mean = finite_returns.iter().sum::<f64>() / finite_returns.len() as f64;
-
-    let sum_squared_deviation = finite_returns
-        .iter()
-        .map(|return_value| {
-            let centered_value = *return_value - sample_mean;
-            centered_value * centered_value
-        })
-        .sum::<f64>();
-
-    let variance = sum_squared_deviation / (finite_returns.len() - 1) as f64;
-    variance.is_finite().then_some(variance)
-}
-
-fn compute_adjusted_central_skewness(interval_returns: &[f64]) -> Option<f64> {
-    let finite_returns = sorted_finite_returns(interval_returns);
-    let sample_count = finite_returns.len();
-    if sample_count < 3 {
-        return None;
-    }
-
-    let sample_mean = finite_returns.iter().sum::<f64>() / sample_count as f64;
-
-    let (sum_squared_deviation, sum_cubed_deviation) =
-        finite_returns
-            .iter()
-            .fold((0.0, 0.0), |(running_sum2, running_sum3), return_value| {
-                let centered_value = *return_value - sample_mean;
-                (
-                    running_sum2 + centered_value * centered_value,
-                    running_sum3 + centered_value * centered_value * centered_value,
-                )
-            });
-
-    let variance_population = sum_squared_deviation / sample_count as f64;
-    if !variance_population.is_finite() || variance_population <= MINIMUM_DENOMINATOR_MAGNITUDE {
-        return Some(0.0);
-    }
-
-    let third_central_moment = sum_cubed_deviation / sample_count as f64;
-    if !third_central_moment.is_finite() {
-        return None;
-    }
-
-    let unadjusted_skewness = third_central_moment / variance_population.powf(1.5);
-    if !unadjusted_skewness.is_finite() {
-        return None;
-    }
-
-    let adjustment =
-        ((sample_count * (sample_count - 1)) as f64).sqrt() / (sample_count - 2) as f64;
-    let adjusted_skewness = adjustment * unadjusted_skewness;
-
-    adjusted_skewness.is_finite().then_some(adjusted_skewness)
-}
-
-fn compute_adjusted_central_excess_kurtosis(interval_returns: &[f64]) -> Option<f64> {
-    let finite_returns = sorted_finite_returns(interval_returns);
-    let sample_count = finite_returns.len();
-    if sample_count < 4 {
-        return None;
-    }
-
-    let sample_mean = finite_returns.iter().sum::<f64>() / sample_count as f64;
-
-    let (sum_squared_deviation, sum_fourth_deviation) =
-        finite_returns
-            .iter()
-            .fold((0.0, 0.0), |(running_sum2, running_sum4), return_value| {
-                let centered_value = *return_value - sample_mean;
-                let centered_square = centered_value * centered_value;
-                (
-                    running_sum2 + centered_square,
-                    running_sum4 + centered_square * centered_square,
-                )
-            });
-
-    let variance_population = sum_squared_deviation / sample_count as f64;
-    if !variance_population.is_finite() || variance_population <= MINIMUM_DENOMINATOR_MAGNITUDE {
-        return Some(0.0);
-    }
-
-    let fourth_central_moment = sum_fourth_deviation / sample_count as f64;
-    if !fourth_central_moment.is_finite() {
-        return None;
-    }
-
-    let unadjusted_excess_kurtosis =
-        fourth_central_moment / (variance_population * variance_population) - 3.0;
-    if !unadjusted_excess_kurtosis.is_finite() {
-        return None;
-    }
-
-    let n = sample_count as f64;
-    let adjusted_excess_kurtosis =
-        ((n - 1.0) / ((n - 2.0) * (n - 3.0))) * ((n + 1.0) * unadjusted_excess_kurtosis + 6.0);
-
-    adjusted_excess_kurtosis
-        .is_finite()
-        .then_some(adjusted_excess_kurtosis)
-}
-
-fn sorted_finite_returns(interval_returns: &[f64]) -> Vec<f64> {
-    interval_returns
-        .iter()
-        .copied()
-        .filter(|value| value.is_finite())
-        .collect()
 }

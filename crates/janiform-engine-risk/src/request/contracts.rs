@@ -9,6 +9,8 @@ use super::constants::{
 };
 use super::errors::SufficientStatisticsRiskRunRequestError;
 
+const MEAN_REVERSION_ALIGNMENT_TOLERANCE: f64 = 1.0e-12;
+
 /// Public run request contract for sufficient-statistics risk simulation.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct SufficientStatisticsRiskRunRequest {
@@ -79,6 +81,39 @@ impl SufficientStatisticsRiskRunRequest {
                     available_interval_count,
                 },
             );
+        }
+
+        let runtime_interval_anchors = &self.model_inputs.mean_reversion_runtime_interval_anchors;
+        if runtime_interval_anchors.end_anchor_values.len() != self.horizon_interval_count {
+            return Err(
+                SufficientStatisticsRiskRunRequestError::MeanReversionRuntimeAnchorIntervalCountMismatch {
+                    expected_interval_count: self.horizon_interval_count,
+                    observed_interval_count: runtime_interval_anchors.end_anchor_values.len(),
+                },
+            );
+        }
+
+        for (interval_index, observed_interval_delta) in runtime_interval_anchors
+            .interval_deltas
+            .iter()
+            .copied()
+            .enumerate()
+        {
+            if (observed_interval_delta - self.interval_delta).abs()
+                > MEAN_REVERSION_ALIGNMENT_TOLERANCE
+            {
+                return Err(
+                    SufficientStatisticsRiskRunRequestError::MeanReversionRuntimeAnchorIntervalDeltaMismatch {
+                        interval_index,
+                        expected_interval_delta: self.interval_delta,
+                        observed_interval_delta,
+                    },
+                );
+            }
+
+            if interval_index + 1 == self.horizon_interval_count {
+                break;
+            }
         }
 
         Ok(())

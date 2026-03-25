@@ -7,7 +7,8 @@ use super::shared::{
     CalibrationReturnComponentsObservedCloseOpenBoundaryObservation,
     CalibrationReturnComponentsSignalSourceWindow, Duration, ExchangeCalendarDefinition,
     KNOWN_NEWS_EXCLUSION_WINDOW_MINUTES, KnownNewsResolutionSummary, MarketState, OpenTickRecord,
-    PartitionPointIndex, ResolvedKnownNewsRecord, Tz, count_timestamps_in_half_open_interval,
+    PartitionPointIndex, ResolvedKnownNewsRecord, Tz,
+    contains_timestamp_in_symmetric_minute_window, count_timestamps_in_half_open_interval,
     datetime_from_nanos, round_to,
 };
 
@@ -189,16 +190,11 @@ pub(super) fn is_within_known_news_exclusion_window(
         return false;
     }
 
-    let window_nanos = Duration::minutes(KNOWN_NEWS_EXCLUSION_WINDOW_MINUTES)
-        .num_nanoseconds()
-        .expect("known-news exclusion window must fit in i64");
-
-    let lower_bound = candidate_timestamp_utc_nanos - window_nanos;
-    let upper_bound = candidate_timestamp_utc_nanos + window_nanos;
-
-    let lower_index = known_news_timestamps.partition_point(|timestamp| *timestamp < lower_bound);
-
-    lower_index < known_news_timestamps.len() && known_news_timestamps[lower_index] <= upper_bound
+    contains_timestamp_in_symmetric_minute_window(
+        known_news_timestamps,
+        candidate_timestamp_utc_nanos,
+        KNOWN_NEWS_EXCLUSION_WINDOW_MINUTES,
+    )
 }
 
 pub(super) fn boundary_observation_for_event(

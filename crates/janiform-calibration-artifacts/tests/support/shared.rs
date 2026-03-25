@@ -576,11 +576,9 @@ pub(crate) fn build_return_components_stage_parameter_artifact_fixture(
         &run_contract.run_spec,
         CalibrationStage::ReturnComponents,
     );
-    let solver_settings = stage_solver_settings_for_stage(
-        &run_contract.run_spec,
-        CalibrationStage::ReturnComponents,
-    )
-    .expect("return-components solver settings should exist");
+    let solver_settings =
+        stage_solver_settings_for_stage(&run_contract.run_spec, CalibrationStage::ReturnComponents)
+            .expect("return-components solver settings should exist");
 
     let fitted_parameters = ReturnComponentsStageFittedParameters {
         nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration {
@@ -668,8 +666,7 @@ pub(crate) fn build_return_components_stage_parameter_artifact_fixture(
                 selected_candidate_id: "return_candidate_balanced".to_string(),
                 fitted_parameters,
                 candidate_generation_policy:
-                    "return_components.candidate_generation.layered_family_search.v1"
-                        .to_string(),
+                    "return_components.candidate_generation.layered_family_search.v1".to_string(),
                 objective_weighting_policy:
                     "return_components.objective_weighting.weighted_metric_sum.v1".to_string(),
                 objective_metric_bucket_policy:

@@ -350,10 +350,22 @@ fn aggregate_fine_records_to_coarse_interval(
             .map(|record| record.return_components.total_return)
             .sum(),
     };
+    let last_record = &fine_records[fine_records.len() - 1];
 
     SufficientStatisticsRiskPathRecord::try_new(
         coarse_interval_index,
         aggregated_statistics,
         aggregated_return_components,
+        fine_records
+            .iter()
+            .map(|record| record.core_total_return)
+            .sum(),
+        fine_records
+            .iter()
+            .map(|record| record.observed_interval_return)
+            .sum(),
+        last_record.observed_log_price_end,
+        last_record.anchor_value_end,
+        last_record.deviation_from_anchor_end,
     )
 }

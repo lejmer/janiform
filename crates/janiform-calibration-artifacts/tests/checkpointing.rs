@@ -1,11 +1,11 @@
 mod support;
-use support::shared::{
-    build_single_stage_disk_run_contract, build_stage_checkpoint_metadata_fixture, fs,
-    temporary_checkpoint_directory,
-};
 use janiform_calibration_artifacts::{
     CALIBRATION_SEASONALITY_STAGE_OUTPUT_SCHEMA_VERSION, CalibrationStage,
     load_stage_checkpoint_from_disk, persist_stage_checkpoint_to_disk,
+};
+use support::shared::{
+    build_single_stage_disk_run_contract, build_stage_checkpoint_metadata_fixture, fs,
+    temporary_checkpoint_directory,
 };
 
 #[test]
