@@ -3,10 +3,11 @@ mod support;
 use janiform_affine_oracle::affine_oracle::ExponentialAffineTransformNewsIntensityInput;
 use janiform_calibration_runtime::build_option_surface_calibration_observation_from_pricing_hooks;
 use janiform_engine_pricing::{
-    FourierInversionEngineSettings, VanillaOptionPayoffConfiguration, VanillaOptionPayoffType,
-    VanillaOptionPricingDiagnostics, VanillaOptionPricingMarketInputs,
-    VanillaOptionPricingModelParameters, VanillaOptionPricingOptionalOutputSelection,
-    VanillaOptionPricingRequest, VanillaOptionPricingResponse, build_pricing_transform_input,
+    AnchoredVanillaOptionPricingBoundaryInput, FourierInversionEngineSettings,
+    VanillaOptionPayoffConfiguration, VanillaOptionPayoffType, VanillaOptionPricingDiagnostics,
+    VanillaOptionPricingMarketInputs, VanillaOptionPricingModelParameters,
+    VanillaOptionPricingOptionalOutputSelection, VanillaOptionPricingRequest,
+    VanillaOptionPricingResponse, build_pricing_transform_input,
     build_vanilla_option_pricing_run_result, price_vanilla_option_via_fourier_inversion,
     solve_exponential_affine_transform,
 };
@@ -63,22 +64,29 @@ fn pricing_run_output_hooks_are_directly_consumable_by_calibration_adapter() {
             .expect("NIG shared-plus-shift configuration should construct"),
     )
     .expect("pricing model parameters should construct");
+
     let pricing_request = VanillaOptionPricingRequest::try_new(
         market_inputs,
         VanillaOptionPayoffConfiguration {
             payoff_type: VanillaOptionPayoffType::Call,
         },
-        HawkesExcitationState {
-            y_plus_plus: 0.2,
-            y_plus_minus: 0.1,
-            y_minus_plus: 0.3,
-            y_minus_minus: 0.4,
-        },
+        AnchoredVanillaOptionPricingBoundaryInput::disabled(
+            1.0,
+            HawkesExcitationState {
+                y_plus_plus: 0.2,
+                y_plus_minus: 0.1,
+                y_minus_plus: 0.3,
+                y_minus_minus: 0.4,
+            },
+            0.0,
+        )
+        .expect("disabled anchored boundary input should construct"),
         model_parameters,
     )
     .expect("pricing request should construct");
+
     let transform_input = build_pricing_transform_input(
-        pricing_request,
+        &pricing_request,
         ComplexScalar::new(0.2, -0.1),
         ComplexScalar::new(0.3, 0.05),
         ComplexScalar::new(1.0, 0.0),
@@ -88,6 +96,7 @@ fn pricing_run_output_hooks_are_directly_consumable_by_calibration_adapter() {
             .expect("pricing-hook test news intensity should construct"),
     )
     .expect("pricing transform input should construct");
+
     let transform_diagnostics = solve_exponential_affine_transform(transform_input)
         .expect("transform solve should succeed");
 
@@ -102,6 +111,7 @@ fn pricing_run_output_hooks_are_directly_consumable_by_calibration_adapter() {
     )
     .expect("Fourier pricing run should succeed")
     .diagnostics;
+
     let numeric_quality = integration_diagnostics.numeric_quality_diagnostics;
 
     let run_output = build_vanilla_option_pricing_run_result(

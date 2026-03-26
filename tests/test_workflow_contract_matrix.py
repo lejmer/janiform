@@ -21,6 +21,7 @@ from janiform.hourly_factors import (
     HourlySeasonalityProviderExplicitSource,
 )
 from janiform.pricing import (
+    AnchoredVanillaOptionPricingBoundaryInput,
     GammaSeverityMarkConfiguration,
     NigSharedPlusShiftConfiguration,
     VanillaOptionPayoffConfiguration,
@@ -606,11 +607,15 @@ def _valid_pricing_execution_input() -> VanillaOptionPricingExecutionInput:
                 dividend_yield=0.01,
             ),
             payoff=VanillaOptionPayoffConfiguration(payoff_type=VanillaOptionPayoffType.CALL),
-            boundary_state=HawkesExcitationState(
-                y_plus_plus=0.0,
-                y_plus_minus=0.0,
-                y_minus_plus=0.0,
-                y_minus_minus=0.0,
+            boundary_input=AnchoredVanillaOptionPricingBoundaryInput.disabled(
+                interval_delta=1.0,
+                hawkes_boundary_state=HawkesExcitationState(
+                    y_plus_plus=0.0,
+                    y_plus_minus=0.0,
+                    y_minus_plus=0.0,
+                    y_minus_minus=0.0,
+                ),
+                observed_log_price=0.0,
             ),
             model_parameters=VanillaOptionPricingModelParameters(
                 hawkes_kernel_parameters=HawkesKernelParameters(

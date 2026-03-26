@@ -4,7 +4,16 @@ from typing import Any
 import pytest
 
 from janiform.pricing import (
+    AnchoredLocalTiltAdmissibilityStatus,
+    AnchoredLocalTiltBoundaryStateSummary,
+    AnchoredLocalTiltDomainStatus,
+    AnchoredLocalTiltSolveDiagnostics,
+    AnchoredVanillaOptionPricingBoundaryInput,
     GammaSeverityMarkConfiguration,
+    MeanReversionAnchorModel,
+    MeanReversionBoundaryState,
+    MeanReversionFittedParameters,
+    MeanReversionRuntimeIntervalAnchors,
     NigSharedPlusShiftConfiguration,
     VanillaOptionPayoffConfiguration,
     VanillaOptionPayoffType,
@@ -51,7 +60,10 @@ def test_vanilla_option_request_accepts_explicit_non_hourly_interval_delta() -> 
     request = VanillaOptionPricingRequest(
         market_inputs=_valid_request_model().market_inputs,
         payoff=_valid_request_model().payoff,
-        boundary_state=_valid_request_model().boundary_state,
+        boundary_input=_disabled_boundary_input(
+            interval_delta=0.5,
+            hawkes_boundary_state=_valid_request_model().boundary_input.hawkes_boundary_state,
+        ),
         model_parameters=_valid_request_model().model_parameters,
         interval_delta=0.5,
     )
@@ -102,12 +114,12 @@ def test_vanilla_option_request_rejects_incomplete_payload_with_structured_error
 
 def test_vanilla_option_request_rejects_negative_boundary_state_with_structured_error() -> None:
     request_payload = _valid_request_payload()
-    request_payload["boundary_state"]["y_plus_plus"] = -0.25
+    request_payload["boundary_input"]["hawkes_boundary_state"]["y_plus_plus"] = -0.25
 
     with pytest.raises(VanillaOptionPricingValidationError) as captured_error:
         validate_vanilla_option_pricing_request(request_payload)
 
-    assert captured_error.value.failure.field_path == "boundary_state.y_plus_plus"
+    assert captured_error.value.failure.field_path == "boundary_input.hawkes_boundary_state.y_plus_plus"
     assert captured_error.value.failure.message == "must be non-negative"
 
 
@@ -181,6 +193,102 @@ def test_vanilla_option_pricing_execution_input_rejects_missing_surprise_news_in
     assert captured_error.value.failure.message == "is required"
 
 
+def test_anchored_boundary_input_roundtrip_and_validation() -> None:
+    boundary_input = AnchoredVanillaOptionPricingBoundaryInput(
+        interval_index=0,
+        hawkes_boundary_state=HawkesExcitationState(
+            y_plus_plus=0.1,
+            y_plus_minus=0.0,
+            y_minus_plus=0.2,
+            y_minus_minus=0.3,
+        ),
+        mean_reversion_fitted_parameters=MeanReversionFittedParameters(
+            kappa=0.4,
+            anchor_model=MeanReversionAnchorModel.constant(0.0),
+        ),
+        mean_reversion_runtime_interval_anchors=MeanReversionRuntimeIntervalAnchors(
+            interval_alignment_policy="pricing_constant_anchor_interval_grid.v1",
+            start_anchor_value=0.0,
+            end_anchor_values=(0.0,),
+            interval_deltas=(0.5,),
+        ),
+        observed_boundary_state=MeanReversionBoundaryState(
+            observed_log_price=0.15,
+            anchor_value=0.0,
+            deviation=0.15,
+        ),
+    )
+
+    round_tripped = AnchoredVanillaOptionPricingBoundaryInput.from_mapping(
+        json.loads(boundary_input.to_json()),
+        field_path="boundary_input",
+    )
+
+    assert round_tripped == boundary_input
+    assert round_tripped.observed_return_adjustment < 0.0
+
+
+def test_anchored_boundary_input_rejects_misaligned_observed_anchor() -> None:
+    boundary_payload = _disabled_boundary_input(
+        interval_delta=1.0,
+        hawkes_boundary_state=HawkesExcitationState(
+            y_plus_plus=0.0,
+            y_plus_minus=0.0,
+            y_minus_plus=0.0,
+            y_minus_minus=0.0,
+        ),
+    ).to_payload()
+    boundary_payload["observed_boundary_state"]["anchor_value"] = 0.5
+    boundary_payload["observed_boundary_state"]["observed_log_price"] = 0.5
+
+    with pytest.raises(VanillaOptionPricingValidationError) as captured_error:
+        AnchoredVanillaOptionPricingBoundaryInput.from_mapping(
+            boundary_payload,
+            field_path="boundary_input",
+        )
+
+    assert captured_error.value.failure.field_path == "boundary_input.observed_boundary_state.anchor_value"
+
+
+def test_anchored_local_tilt_diagnostics_roundtrip() -> None:
+    diagnostics = AnchoredLocalTiltSolveDiagnostics(
+        boundary_state_summary=AnchoredLocalTiltBoundaryStateSummary(
+            interval_index=0,
+            hawkes_boundary_state=HawkesExcitationState(
+                y_plus_plus=0.0,
+                y_plus_minus=0.0,
+                y_minus_plus=0.0,
+                y_minus_minus=0.0,
+            ),
+            observed_boundary_state=MeanReversionBoundaryState(
+                observed_log_price=0.1,
+                anchor_value=0.0,
+                deviation=0.1,
+            ),
+            current_anchor_value=0.0,
+            next_anchor_value=0.0,
+            interval_delta=0.5,
+            kappa=0.4,
+            deviation_decay_factor=0.8187307530779818,
+        ),
+        target_log_moment_exponent=0.02,
+        observed_log_moment_exponent=0.02,
+        theta=-0.05,
+        residual=0.0,
+        absolute_residual=0.0,
+        tolerance=1.0e-8,
+        domain_status=AnchoredLocalTiltDomainStatus.IN_DOMAIN,
+        admissibility_status=AnchoredLocalTiltAdmissibilityStatus.ADMISSIBLE,
+        policy="solve_state_dependent_local_tilt_against_observed_anchor_adjusted_interval_return_target.v1",
+    )
+
+    round_tripped = AnchoredLocalTiltSolveDiagnostics.from_mapping(
+        json.loads(diagnostics.to_json())
+    )
+
+    assert round_tripped == diagnostics
+
+
 def test_run_vanilla_option_pricing_executes_native_workflow_with_optional_outputs() -> None:
     run_result = run_vanilla_option_pricing(_valid_runtime_execution_input_model())
 
@@ -224,11 +332,14 @@ def _valid_request_model() -> VanillaOptionPricingRequest:
             dividend_yield=0.01,
         ),
         payoff=VanillaOptionPayoffConfiguration(payoff_type=VanillaOptionPayoffType.CALL),
-        boundary_state=HawkesExcitationState(
-            y_plus_plus=0.2,
-            y_plus_minus=0.1,
-            y_minus_plus=0.3,
-            y_minus_minus=0.4,
+        boundary_input=_disabled_boundary_input(
+            interval_delta=1.0,
+            hawkes_boundary_state=HawkesExcitationState(
+                y_plus_plus=0.2,
+                y_plus_minus=0.1,
+                y_minus_plus=0.3,
+                y_minus_minus=0.4,
+            ),
         ),
         model_parameters=VanillaOptionPricingModelParameters(
             hawkes_kernel_parameters=HawkesKernelParameters(
@@ -289,11 +400,14 @@ def _valid_runtime_execution_input_model() -> VanillaOptionPricingExecutionInput
                 dividend_yield=0.01,
             ),
             payoff=VanillaOptionPayoffConfiguration(payoff_type=VanillaOptionPayoffType.CALL),
-            boundary_state=HawkesExcitationState(
-                y_plus_plus=0.0,
-                y_plus_minus=0.0,
-                y_minus_plus=0.0,
-                y_minus_minus=0.0,
+            boundary_input=_disabled_boundary_input(
+                interval_delta=1.0,
+                hawkes_boundary_state=HawkesExcitationState(
+                    y_plus_plus=0.0,
+                    y_plus_minus=0.0,
+                    y_minus_plus=0.0,
+                    y_minus_minus=0.0,
+                ),
             ),
             model_parameters=_valid_request_model().model_parameters,
         ),
@@ -324,3 +438,15 @@ def _valid_response_payload() -> dict[str, Any]:
             "boundary_state_norm": 0.55,
         },
     }
+
+
+def _disabled_boundary_input(
+    *,
+    interval_delta: float,
+    hawkes_boundary_state: HawkesExcitationState,
+) -> AnchoredVanillaOptionPricingBoundaryInput:
+    return AnchoredVanillaOptionPricingBoundaryInput.disabled(
+        interval_delta=interval_delta,
+        hawkes_boundary_state=hawkes_boundary_state,
+        observed_log_price=0.0,
+    )

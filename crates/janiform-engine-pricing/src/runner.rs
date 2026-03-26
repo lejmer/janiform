@@ -122,7 +122,7 @@ impl Error for VanillaOptionPricingIntervalFactorsError {
 }
 
 /// Canonical execution input for the orchestrated vanilla pricing workflow.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct VanillaOptionPricingExecutionInput {
     pub request: VanillaOptionPricingRequest,
     pub interval_factors: VanillaOptionPricingIntervalFactors,
@@ -152,7 +152,7 @@ impl VanillaOptionPricingExecutionInput {
         Ok(execution_input)
     }
 
-    pub fn validate(self) -> Result<(), VanillaOptionPricingExecutionInputError> {
+    pub fn validate(&self) -> Result<(), VanillaOptionPricingExecutionInputError> {
         self.request
             .validate()
             .map_err(|source| VanillaOptionPricingExecutionInputError::InvalidRequest { source })?;
@@ -214,23 +214,43 @@ pub fn run_vanilla_option_pricing(
         .map_err(|source| VanillaOptionPricingRunError::InvalidExecutionInput { source })?;
 
     let pricing_request = execution_input.request;
+
+    let observed_return_adjustment = pricing_request
+        .boundary_input
+        .observed_return_adjustment()
+        .map_err(|source| VanillaOptionPricingRunError::InvalidExecutionInput {
+            source: VanillaOptionPricingExecutionInputError::InvalidRequest {
+                source: VanillaOptionPricingRequestError::InvalidBoundaryInput { source },
+            },
+        })?;
+    if observed_return_adjustment.abs() > 1.0e-12 {
+        return Err(VanillaOptionPricingRunError::UnsupportedAnchoredObservedReturn {
+            observed_return_adjustment,
+            interval_index: pricing_request.boundary_input.interval_index,
+        });
+    }
+
     let market_inputs = pricing_request.market_inputs;
     let payoff = pricing_request.payoff;
     let interval_factors = execution_input.interval_factors;
     let output_selection = execution_input.optional_output_selection;
+
     let driver_parameters = pricing_request
         .model_parameters
         .nig_shared_plus_shift_configuration
         .derive_driver_parameters()
         .map_err(|source| VanillaOptionPricingRunError::InvalidDriverParameters { source })?;
+
     let news_intensity = interval_factors.news_intensity_input().map_err(|source| {
         VanillaOptionPricingRunError::InvalidExecutionInput {
             source: VanillaOptionPricingExecutionInputError::InvalidIntervalFactors { source },
         }
     })?;
+
     let representative_transform_diagnostics: RefCell<
         Option<ExponentialAffineTransformIntegrationResult>,
     > = RefCell::new(None);
+
     let deferred_characteristic_function_error: RefCell<Option<VanillaOptionPricingRunError>> =
         RefCell::new(None);
 
@@ -239,7 +259,7 @@ pub fn run_vanilla_option_pricing(
         payoff,
         FourierInversionEngineSettings::default(),
         |argument| match evaluate_pricing_log_return_characteristic_function(
-            pricing_request,
+            &pricing_request,
             driver_parameters,
             interval_factors,
             news_intensity,
@@ -267,8 +287,11 @@ pub fn run_vanilla_option_pricing(
 
     let pricing_result = pricing_result
         .map_err(|source| VanillaOptionPricingRunError::FourierPricingFailure { source })?;
-    let response = build_pricing_response(pricing_request, pricing_result)?;
+
+    let response = build_pricing_response(&pricing_request, pricing_result)?;
+
     let representative_transform_diagnostics = representative_transform_diagnostics.into_inner();
+
     let transform_diagnostics_source = if output_selection.include_transform_diagnostics
         || output_selection.include_calibration_hooks
     {
@@ -291,16 +314,20 @@ pub fn run_vanilla_option_pricing(
 }
 
 fn build_pricing_response(
-    pricing_request: VanillaOptionPricingRequest,
+    pricing_request: &VanillaOptionPricingRequest,
     pricing_result: FourierInversionPricingResult,
 ) -> Result<VanillaOptionPricingResponse, VanillaOptionPricingRunError> {
     let market_inputs = pricing_request.market_inputs;
+
     let forward_price = market_inputs.spot
         * ((market_inputs.risk_free_rate - market_inputs.dividend_yield)
             * market_inputs.maturity_interval)
             .exp();
+
     let discount_factor = (-market_inputs.risk_free_rate * market_inputs.maturity_interval).exp();
-    let boundary_state = pricing_request.boundary_state;
+
+    let boundary_state = pricing_request.boundary_input.hawkes_boundary_state;
+
     let boundary_state_norm = (boundary_state.y_plus_plus * boundary_state.y_plus_plus
         + boundary_state.y_plus_minus * boundary_state.y_plus_minus
         + boundary_state.y_minus_plus * boundary_state.y_minus_plus
@@ -320,7 +347,7 @@ fn build_pricing_response(
 }
 
 fn evaluate_pricing_log_return_characteristic_function(
-    pricing_request: VanillaOptionPricingRequest,
+    pricing_request: &VanillaOptionPricingRequest,
     driver_parameters: janiform_model_kernels::nig::NigBuySellDriverParameters,
     interval_factors: VanillaOptionPricingIntervalFactors,
     news_intensity: ExponentialAffineTransformNewsIntensityInput,
@@ -343,10 +370,12 @@ fn evaluate_pricing_log_return_characteristic_function(
     .map_err(
         |source| VanillaOptionPricingRunError::TransformInputBuildFailure { argument, source },
     )?;
+
     let transform_diagnostics =
         solve_exponential_affine_transform(transform_input).map_err(|source| {
             VanillaOptionPricingRunError::TransformSolveFailure { argument, source }
         })?;
+
     let transform_output = transform_diagnostics.output.ok_or(
         VanillaOptionPricingRunError::MissingTransformOutput {
             argument,
@@ -407,6 +436,10 @@ pub enum VanillaOptionPricingRunError {
     InvalidRunResult {
         source: VanillaOptionPricingRunResultBuildError,
     },
+    UnsupportedAnchoredObservedReturn {
+        observed_return_adjustment: f64,
+        interval_index: usize,
+    },
 }
 
 impl Display for VanillaOptionPricingRunError {
@@ -460,6 +493,13 @@ impl Display for VanillaOptionPricingRunError {
             Self::InvalidRunResult { source } => {
                 write!(formatter, "pricing run result payload is invalid: {source}")
             }
+            Self::UnsupportedAnchoredObservedReturn {
+                observed_return_adjustment,
+                interval_index,
+            } => write!(
+                formatter,
+                "pricing execution requires state-dependent anchored pricing for interval_index={interval_index} because the observed-return adjustment is {observed_return_adjustment}"
+            ),
         }
     }
 }
@@ -476,6 +516,7 @@ impl Error for VanillaOptionPricingRunError {
             Self::InvalidResponseDiagnostics { source } => Some(source),
             Self::InvalidResponse { source } => Some(source),
             Self::InvalidRunResult { source } => Some(source),
+            Self::UnsupportedAnchoredObservedReturn { .. } => None,
             _ => None,
         }
     }
@@ -500,7 +541,7 @@ impl<'de> Deserialize<'de> for VanillaOptionPricingIntervalFactors {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct VanillaOptionPricingExecutionInputPayload {
     request: VanillaOptionPricingRequest,
@@ -515,6 +556,7 @@ impl<'de> Deserialize<'de> for VanillaOptionPricingExecutionInput {
         D: serde::Deserializer<'de>,
     {
         let payload = VanillaOptionPricingExecutionInputPayload::deserialize(deserializer)?;
+
         Self::try_new(
             payload.request,
             payload.interval_factors,

@@ -8,6 +8,7 @@ The contract is for public pricing payloads only:
 
 - request market and model inputs
 - requested vanilla payoff configuration
+- anchored pricing boundary input with Hawkes and observed-state state
 - optional pricing interval length `interval_delta` (`Delta`)
 - response price and non-engine-specific diagnostics
 
@@ -81,6 +82,11 @@ versions and required-field metadata.
 
 The canonical Rust types are in `janiform::pricing`:
 
+- `AnchoredVanillaOptionPricingBoundaryInput`
+- `AnchoredLocalTiltBoundaryStateSummary`
+- `AnchoredLocalTiltDomainStatus`
+- `AnchoredLocalTiltAdmissibilityStatus`
+- `AnchoredLocalTiltSolveDiagnostics`
 - `VanillaOptionPayoffType`
 - `VanillaOptionPayoffConfiguration`
 - `VanillaOptionPricingMarketInputs`
@@ -95,11 +101,12 @@ The canonical Rust types are in `janiform::pricing`:
 
 Validation entrypoints:
 
+- `AnchoredVanillaOptionPricingBoundaryInput::try_new`
 - `VanillaOptionPricingRequest::try_new`
 - `VanillaOptionPricingResponse::try_new`
 - `VanillaOptionPricingIntervalFactors::try_new`
 - `VanillaOptionPricingExecutionInput::try_new`
-- `validate_pricing_martingale_condition_under_esscher_tilt`
+- `solve_anchored_local_pricing_tilt`
 - `run_vanilla_option_pricing`
 
 Structured request validation errors:
@@ -107,8 +114,19 @@ Structured request validation errors:
 - `VanillaOptionPricingRequestError`
   - `InvalidMarketInputs`
   - `InvalidIntervalDelta`
-  - `InvalidBoundaryStateComponent`
+  - `InvalidBoundaryInput`
+  - `BoundaryIntervalDeltaMismatch`
   - `InvalidModelParameters`
+
+Anchored boundary-input validation errors:
+
+- `AnchoredVanillaOptionPricingBoundaryInputError`
+  - invalid Hawkes state component
+  - invalid mean-reversion fitted parameters
+  - invalid runtime anchor alignment
+  - invalid observed-state payload
+  - disabled-anchor payload with nonzero `kappa`
+  - inconsistent interval index, current anchor, or observed anchor alignment
 
 Structured response validation errors:
 
@@ -116,18 +134,95 @@ Structured response validation errors:
   - `InvalidPrice`
   - `InvalidDiagnostics`
 
-Risk-neutral martingale validation errors:
+Anchored local-tilt solve errors:
 
-- `PricingMartingaleConditionValidationError`
-  - `InvalidMarketInputs`
+- `AnchoredLocalTiltSolveError`
+  - `InvalidPricingRequest`
   - `InvalidReturnDecomposition`
   - `BuySideEsscherTransformFailure`
   - `SellSideEsscherTransformFailure`
-  - `InvalidMartingaleInput`
-  - `MartingaleConditionViolation`
+  - `NonFiniteTransformInput`
+  - `OutOfDomainStateRequest`
+  - `InvalidTolerance`
+  - `NoAdmissibleLocalTilt`
 
 All request and response payloads are serializable and deserializable through `serde`.
 Deserialization is validation-aware and rejects malformed or incomplete payloads.
+
+## Anchored Boundary Input Semantics
+
+`VanillaOptionPricingRequest` now carries `boundary_input` instead of a Hawkes-only
+`boundary_state`. The canonical boundary payload augments the existing pricing-side Hawkes state
+with the observed anchor-deviation state required by the anchored martingale condition:
+
+- `interval_index`
+- `hawkes_boundary_state`
+- `mean_reversion_fitted_parameters`
+- `mean_reversion_runtime_interval_anchors`
+- `observed_boundary_state`
+
+The request contract validates the interval-grid alignment implied by that state:
+
+- `interval_delta` must match the runtime anchor interval at `interval_index`
+- the observed boundary anchor must equal the current runtime anchor for that interval
+- disabled mean reversion remains the nested case and therefore requires `kappa = 0` with flat
+  runtime anchors
+
+The executable observed-return adjustment is derived from the boundary input as:
+
+```latex
+\[
+(a_{h+1} - a_h) + (\phi_h - 1) D_h,
+\qquad
+\phi_h = e^{-\kappa \Delta_h}.
+\]
+```
+
+## Anchored Local Pricing Measure
+
+The canonical local pricing state is:
+
+```latex
+\[
+Z_h = (Y_h, D_h),
+\]
+```
+
+where `Y_h` is the existing Janiform boundary state used by the core transform and `D_h` is the
+observed deviation from anchor at the boundary.
+
+The public contract exposes one state-dependent local tilt solve through
+`solve_anchored_local_pricing_tilt`. It keeps the existing Janiform core transform for `R_h`, but
+enforces the anchored observed-return martingale condition:
+
+```latex
+\[
+K_h^P(1 + \theta_h(Z_h) \mid Z_h) - K_h^P(\theta_h(Z_h) \mid Z_h)
+=
+(r - q)\Delta_h - (a_{h+1} - a_h) - (\phi_h - 1) D_h.
+\]
+```
+
+The solve policy is explicit:
+
+- derive the admissible `theta` interval from the exact buy-side and sell-side NIG Esscher domains
+- evaluate the log-moment equation on the pure-imaginary axis as a real quantity instead of using
+  complex-to-real coercion tolerances
+- when multiple admissible roots exist, choose the admissible solution with the smallest
+  `|theta|`
+
+Successful solves emit `AnchoredLocalTiltSolveDiagnostics`, including:
+
+- a boundary-state summary
+- the target log-moment exponent
+- the solved `theta`
+- the residual and absolute residual
+- domain and admissibility status
+- the policy identifier
+
+Current pricing-engine execution still rejects anchored observed-return adjustments that require a
+multi-interval anchored pricer. That rejection now happens explicitly at the executable contract
+boundary instead of silently reusing the old state-independent Esscher logic.
 
 ## Interval Delta Semantics
 
@@ -149,6 +244,16 @@ Deserialization is validation-aware and rejects malformed or incomplete payloads
 
 The Python-facing contract is in `janiform.pricing`:
 
+- `AnchoredVanillaOptionPricingBoundaryInput` (frozen dataclass)
+- `AnchoredLocalTiltBoundaryStateSummary` (frozen dataclass)
+- `AnchoredLocalTiltDomainStatus`
+- `AnchoredLocalTiltAdmissibilityStatus`
+- `AnchoredLocalTiltSolveDiagnostics` (frozen dataclass)
+- `MeanReversionAnchorModelKind`
+- `MeanReversionAnchorModel` (frozen dataclass)
+- `MeanReversionFittedParameters` (frozen dataclass)
+- `MeanReversionRuntimeIntervalAnchors` (frozen dataclass)
+- `MeanReversionBoundaryState` (frozen dataclass)
 - `VanillaOptionPayoffType`
 - `VanillaOptionPricingRequest` (frozen dataclass)
 - `VanillaOptionPricingResponse` (frozen dataclass)
@@ -174,6 +279,10 @@ Validation and serialization helpers:
 - `serialize_vanilla_option_pricing_run_result`
 - `deserialize_vanilla_option_pricing_run_result`
 - `run_vanilla_option_pricing`
+
+The Python request contract mirrors the Rust request surface exactly. Anchored pricing payloads
+must therefore be supplied through `boundary_input`, and local tilt diagnostics serialize with the
+same deterministic anchored-state fields used by the Rust contract.
 
 Python validation emits one structured failure with:
 

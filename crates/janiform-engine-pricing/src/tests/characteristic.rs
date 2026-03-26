@@ -1,12 +1,17 @@
 use crate::{
-    PRICING_MARTINGALE_CONDITION_VALIDATION_POLICY, PricingMartingaleConditionValidationError,
-    RETURN_CHARACTERISTIC_FUNCTION_COMPOSITION_POLICY,
+    AnchoredLocalTiltSolveError, AnchoredVanillaOptionPricingBoundaryInput,
+    PRICING_LOCAL_ANCHORED_TILT_SOLVE_POLICY, RETURN_CHARACTERISTIC_FUNCTION_COMPOSITION_POLICY,
     RETURN_CHARACTERISTIC_FUNCTION_DOMAIN_GUARD_POLICY, ReturnCharacteristicFunctionAssemblyError,
-    VanillaOptionPricingMarketInputs, compose_nig_trading_time_exponent,
+    VanillaOptionPayoffConfiguration, VanillaOptionPayoffType, VanillaOptionPricingMarketInputs,
+    VanillaOptionPricingRequest, compose_nig_trading_time_exponent,
     compose_total_return_characteristic_function,
     compose_total_return_characteristic_function_from_oracle_output,
-    compose_total_return_characteristic_function_with_edge_mode,
-    validate_pricing_martingale_condition_under_esscher_tilt,
+    compose_total_return_characteristic_function_with_edge_mode, solve_anchored_local_pricing_tilt,
+};
+use janiform_model_kernels::hawkes::HawkesExcitationState;
+use janiform_model_kernels::mean_reversion::{
+    MeanReversionAnchorModel, MeanReversionBoundaryState, MeanReversionFittedParameters,
+    MeanReversionRuntimeIntervalAnchors,
 };
 use janiform_affine_oracle::affine_oracle::{
     ExponentialAffineTransformDVector, ExponentialAffineTransformOutput,
@@ -17,10 +22,14 @@ use janiform_model_kernels::return_decomposition::{
     ReturnDecomposition, ReturnDecompositionEdgeMode, ReturnDecompositionInput,
 };
 use janiform_model_kernels::risk_neutral::{
-    NigEsscherTransformationInput, transform_nig_characteristic_exponent_under_esscher_tilt,
+    evaluate_nig_esscher_log_moment_exponent_for_pure_imaginary_argument,
 };
 
-use super::support::{assert_complex_close, oracle_output_with_transform_value};
+use super::support::{
+    assert_complex_close, disabled_boundary_input, oracle_output_with_transform_value,
+    valid_model_parameters,
+};
+
 #[test]
 fn pricing_path_preserves_sell_side_minus_u_sign_handling() {
     let driver_parameters = NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
@@ -784,7 +793,7 @@ fn full_characteristic_function_regression_guard_detects_sell_side_sign_inversio
 }
 
 #[test]
-fn pricing_martingale_validation_accepts_matching_esscher_target() {
+fn anchored_local_tilt_solver_accepts_kappa_zero_nested_case() {
     let driver_parameters = NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
         .expect("valid shared-plus-shift payload should construct")
         .derive_driver_parameters()
@@ -799,59 +808,159 @@ fn pricing_martingale_validation_accepts_matching_esscher_target() {
     .expect("valid return decomposition payload should construct");
 
     let theta = -0.05;
-    let maturity_interval = 0.5;
 
-    let buy_side_log_moment_exponent = transform_nig_characteristic_exponent_under_esscher_tilt(
-        NigEsscherTransformationInput::new(
-            driver_parameters.buy_side_parameters,
-            ComplexScalar::new(0.0, -1.0),
-            theta,
+    let request = pricing_request_for_local_tilt(
+        return_decomposition,
+        theta,
+        disabled_boundary_input(
+            0.5,
+            HawkesExcitationState {
+                y_plus_plus: 0.2,
+                y_plus_minus: 0.1,
+                y_minus_plus: 0.3,
+                y_minus_minus: 0.4,
+            },
         ),
-    )
-    .expect("buy-side transformed exponent should construct")
-    .transformed_exponent;
-    let sell_side_log_moment_exponent = transform_nig_characteristic_exponent_under_esscher_tilt(
-        NigEsscherTransformationInput::new(
-            driver_parameters.sell_side_parameters,
-            ComplexScalar::new(0.0, 1.0),
-            theta,
-        ),
-    )
-    .expect("sell-side transformed exponent should construct")
-    .transformed_exponent;
-    let combined = buy_side_log_moment_exponent
-        .scale(return_decomposition.a_plus)
-        .add(sell_side_log_moment_exponent.scale(return_decomposition.a_minus));
+    );
 
-    let market_inputs = VanillaOptionPricingMarketInputs::try_new(
-        101.0,
-        100.0,
-        maturity_interval,
-        combined.real / maturity_interval,
-        0.0,
-    )
-    .expect("market inputs should construct");
-    let tolerance = combined.imaginary.abs() + 1.0e-12;
-
-    let report = validate_pricing_martingale_condition_under_esscher_tilt(
+    let diagnostics = solve_anchored_local_pricing_tilt(
         driver_parameters,
         return_decomposition,
-        market_inputs,
-        theta,
-        tolerance,
+        request,
+        1.0e-8,
     )
-    .expect("matching target should satisfy martingale validation");
+    .expect("kappa=0 nested case should solve");
 
-    assert_eq!(
-        report.policy,
-        PRICING_MARTINGALE_CONDITION_VALIDATION_POLICY
-    );
-    assert!(report.martingale_condition.is_satisfied);
-    assert!(report.martingale_condition.residual_norm <= report.martingale_condition.tolerance);
+    assert_eq!(diagnostics.policy, PRICING_LOCAL_ANCHORED_TILT_SOLVE_POLICY);
+    assert!(diagnostics.absolute_residual <= diagnostics.tolerance);
 }
 
 #[test]
-fn pricing_martingale_validation_rejects_mismatched_target() {
+fn anchored_local_tilt_solver_accepts_positive_kappa_with_zero_deviation() {
+    let driver_parameters = NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
+        .expect("valid shared-plus-shift payload should construct")
+        .derive_driver_parameters()
+        .expect("valid shared-plus-shift payload should derive drivers");
+
+    let return_decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
+        a_plus: 1.0,
+        a_minus: 0.8,
+        open_jump: 0.0,
+        closed_gap: 0.0,
+    })
+    .expect("valid return decomposition payload should construct");
+
+    let theta = -0.04;
+
+    let boundary_input = AnchoredVanillaOptionPricingBoundaryInput::try_new(
+        0,
+        HawkesExcitationState {
+            y_plus_plus: 0.0,
+            y_plus_minus: 0.0,
+            y_minus_plus: 0.0,
+            y_minus_minus: 0.0,
+        },
+        MeanReversionFittedParameters::try_new(
+            0.7,
+            MeanReversionAnchorModel::constant(0.0).expect("constant anchor should construct"),
+        )
+        .expect("mean reversion parameters should construct"),
+        MeanReversionRuntimeIntervalAnchors::try_new(
+            "pricing_constant_anchor_interval_grid.v1",
+            0.0,
+            vec![0.0],
+            vec![0.5],
+        )
+        .expect("runtime interval anchors should construct"),
+        MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0)
+            .expect("observed boundary state should construct"),
+    )
+    .expect("anchored pricing boundary input should construct");
+
+    let request = pricing_request_for_local_tilt(return_decomposition, theta, boundary_input);
+
+    let diagnostics = solve_anchored_local_pricing_tilt(
+        driver_parameters,
+        return_decomposition,
+        request,
+        1.0e-8,
+    )
+    .expect("positive-kappa zero-deviation case should solve");
+
+    assert!(diagnostics.absolute_residual <= diagnostics.tolerance);
+    assert_eq!(diagnostics.boundary_state_summary.observed_boundary_state.deviation, 0.0);
+}
+
+#[test]
+fn anchored_local_tilt_solver_accepts_positive_kappa_with_non_zero_deviation() {
+    let driver_parameters = NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
+        .expect("valid shared-plus-shift payload should construct")
+        .derive_driver_parameters()
+        .expect("valid shared-plus-shift payload should derive drivers");
+
+    let return_decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
+        a_plus: 0.9,
+        a_minus: 0.6,
+        open_jump: 0.0,
+        closed_gap: 0.0,
+    })
+    .expect("valid return decomposition payload should construct");
+
+    let theta = -0.03;
+    let kappa: f64 = 0.8;
+    let deviation: f64 = 0.15;
+    let interval_delta: f64 = 0.5;
+
+    let target_shift = ((-kappa * interval_delta).exp() - 1.0) * deviation;
+
+    let request = pricing_request_for_local_tilt(
+        return_decomposition,
+        theta,
+        AnchoredVanillaOptionPricingBoundaryInput::try_new(
+            0,
+            HawkesExcitationState {
+                y_plus_plus: 0.1,
+                y_plus_minus: 0.0,
+                y_minus_plus: 0.0,
+                y_minus_minus: 0.1,
+            },
+            MeanReversionFittedParameters::try_new(
+                kappa,
+                MeanReversionAnchorModel::constant(0.0).expect("constant anchor should construct"),
+            )
+            .expect("mean reversion parameters should construct"),
+            MeanReversionRuntimeIntervalAnchors::try_new(
+                "pricing_constant_anchor_interval_grid.v1",
+                0.0,
+                vec![0.0],
+                vec![interval_delta],
+            )
+            .expect("runtime interval anchors should construct"),
+            MeanReversionBoundaryState::try_new(deviation, 0.0, deviation)
+                .expect("observed boundary state should construct"),
+        )
+        .expect("anchored pricing boundary input should construct"),
+    );
+
+    let diagnostics = solve_anchored_local_pricing_tilt(
+        driver_parameters,
+        return_decomposition,
+        request,
+        1.0e-8,
+    )
+    .expect("positive-kappa non-zero-deviation case should solve");
+
+    assert_eq!(
+        diagnostics.target_log_moment_exponent,
+        diagnostics.observed_log_moment_exponent - diagnostics.residual
+    );
+    assert!((diagnostics.boundary_state_summary.deviation_decay_factor - (-kappa * interval_delta).exp()).abs() < 1.0e-12);
+    assert!((target_shift - ((-kappa * interval_delta).exp() - 1.0) * deviation).abs() < 1.0e-12);
+    assert!(diagnostics.absolute_residual <= diagnostics.tolerance);
+}
+
+#[test]
+fn anchored_local_tilt_solver_rejects_inadmissible_states() {
     let driver_parameters = NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
         .expect("valid shared-plus-shift payload should construct")
         .derive_driver_parameters()
@@ -865,53 +974,79 @@ fn pricing_martingale_validation_rejects_mismatched_target() {
     })
     .expect("valid return decomposition payload should construct");
 
-    let error = validate_pricing_martingale_condition_under_esscher_tilt(
-        driver_parameters,
-        return_decomposition,
-        VanillaOptionPricingMarketInputs::try_new(101.0, 100.0, 0.5, 0.25, 0.01)
+    let request = VanillaOptionPricingRequest::try_new_with_interval_delta(
+        VanillaOptionPricingMarketInputs::try_new(101.0, 100.0, 1.0, 25.0, -25.0)
             .expect("market inputs should construct"),
-        -0.05,
-        1.0e-8,
+        VanillaOptionPayoffConfiguration {
+            payoff_type: VanillaOptionPayoffType::Call,
+        },
+        disabled_boundary_input(
+            0.5,
+            HawkesExcitationState {
+                y_plus_plus: 0.0,
+                y_plus_minus: 0.0,
+                y_minus_plus: 0.0,
+                y_minus_minus: 0.0,
+            },
+        ),
+        valid_model_parameters(),
+        0.5,
     )
-    .expect_err("mismatched target should fail martingale validation");
+    .expect("request should construct");
+
+    let error = solve_anchored_local_pricing_tilt(driver_parameters, return_decomposition, request, 1.0e-8)
+        .expect_err("inadmissible target should fail");
 
     assert!(matches!(
         error,
-        PricingMartingaleConditionValidationError::MartingaleConditionViolation {
-            residual_norm,
-            tolerance,
-            ..
-        } if residual_norm > tolerance
+        AnchoredLocalTiltSolveError::NoAdmissibleLocalTilt { .. }
     ));
 }
 
-#[test]
-fn pricing_martingale_validation_rejects_invalid_transform_parameter() {
+fn pricing_request_for_local_tilt(
+    return_decomposition: ReturnDecomposition,
+    theta: f64,
+    boundary_input: AnchoredVanillaOptionPricingBoundaryInput,
+) -> VanillaOptionPricingRequest {
     let driver_parameters = NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
         .expect("valid shared-plus-shift payload should construct")
         .derive_driver_parameters()
         .expect("valid shared-plus-shift payload should derive drivers");
+    let buy_side_log_moment_exponent =
+        evaluate_nig_esscher_log_moment_exponent_for_pure_imaginary_argument(
+            driver_parameters.buy_side_parameters,
+            -1.0,
+            theta,
+        )
+        .expect("buy-side transformed exponent should construct");
+    let sell_side_log_moment_exponent =
+        evaluate_nig_esscher_log_moment_exponent_for_pure_imaginary_argument(
+            driver_parameters.sell_side_parameters,
+            1.0,
+            theta,
+        )
+        .expect("sell-side transformed exponent should construct");
 
-    let return_decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
-        a_plus: 1.0,
-        a_minus: 1.0,
-        open_jump: 0.0,
-        closed_gap: 0.0,
-    })
-    .expect("valid return decomposition payload should construct");
+    let combined = return_decomposition.a_plus.mul_add(
+        buy_side_log_moment_exponent,
+        return_decomposition.a_minus * sell_side_log_moment_exponent,
+    );
 
-    let error = validate_pricing_martingale_condition_under_esscher_tilt(
-        driver_parameters,
-        return_decomposition,
-        VanillaOptionPricingMarketInputs::try_new(101.0, 100.0, 0.5, 0.03, 0.01)
+    let target_adjustment = boundary_input
+        .observed_return_adjustment()
+        .expect("boundary input should provide observed-return adjustment");
+
+    let risk_free_rate = (combined + target_adjustment) / 0.5;
+
+    VanillaOptionPricingRequest::try_new_with_interval_delta(
+        VanillaOptionPricingMarketInputs::try_new(101.0, 100.0, 1.0, risk_free_rate, 0.0)
             .expect("market inputs should construct"),
-        f64::NAN,
-        1.0e-6,
+        VanillaOptionPayoffConfiguration {
+            payoff_type: VanillaOptionPayoffType::Call,
+        },
+        boundary_input,
+        valid_model_parameters(),
+        0.5,
     )
-    .expect_err("non-finite theta should fail transform validation");
-
-    assert!(matches!(
-        error,
-        PricingMartingaleConditionValidationError::BuySideEsscherTransformFailure { .. }
-    ));
+    .expect("request should construct")
 }
