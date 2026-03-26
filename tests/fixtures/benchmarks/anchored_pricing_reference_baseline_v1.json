@@ -1,0 +1,112 @@
+{
+  "schema_version": "benchmark.anchored_pricing_reference.baseline.v1",
+  "baseline_id": "anchored_pricing_native_vs_seeded_reference_baseline",
+  "baseline_version": "1.0.0",
+  "source_policy_id": "anchored_pricing_native_vs_simulation_policy_v1",
+  "source_policy_version": "1.0.0",
+  "reference_construction_policy": "one_interval_zero_factor_seeded_reference_with_zero_monte_carlo_variance.v1",
+  "regression_tolerances": {
+    "native_price_absolute_tolerance": 1e-9,
+    "native_minus_simulation_gap_absolute_tolerance": 1e-9
+  },
+  "cases": [
+    {
+      "scenario_id": "disabled_nested_case",
+      "anchor_model_kind": "disabled",
+      "outcome_kind": "success",
+      "kappa": 0.0,
+      "observed_boundary_state": {
+        "observed_log_price": 0.0,
+        "anchor_value": 0.0,
+        "deviation": 0.0
+      },
+      "current_anchor_value": 0.0,
+      "next_anchor_value": 0.0,
+      "observed_return_adjustment": 0.0,
+      "simulation_reference_price": 20.0,
+      "native_price": 19.992052790042695,
+      "native_minus_simulation_absolute_gap": 0.00794720995730458,
+      "local_martingale_diagnostic_mode": "nested_transition_measure_zero_observed_return_adjustment.v1",
+      "local_tilt_solve_count": 0,
+      "deviation_grid_node_count": 1,
+      "refined_deviation_grid_node_count": 1,
+      "interval_count": 1,
+      "maximum_tail_probability_mass": 0.0,
+      "maximum_row_probability_mass_error": 0.0,
+      "integration_numeric_quality_is_poor": false,
+      "integration_convergence_check_passed": true,
+      "integration_truncation_check_passed": true
+    },
+    {
+      "scenario_id": "constant_anchor_zero_deviation",
+      "anchor_model_kind": "constant",
+      "outcome_kind": "success",
+      "kappa": 0.35,
+      "observed_boundary_state": {
+        "observed_log_price": 0.25,
+        "anchor_value": 0.25,
+        "deviation": 0.0
+      },
+      "current_anchor_value": 0.25,
+      "next_anchor_value": 0.25,
+      "observed_return_adjustment": 0.0,
+      "simulation_reference_price": 20.0,
+      "native_price": 19.992052790042695,
+      "native_minus_simulation_absolute_gap": 0.00794720995730458,
+      "local_martingale_diagnostic_mode": "nested_transition_measure_zero_observed_return_adjustment.v1",
+      "local_tilt_solve_count": 0,
+      "deviation_grid_node_count": 1,
+      "refined_deviation_grid_node_count": 1,
+      "interval_count": 1,
+      "maximum_tail_probability_mass": 0.0,
+      "maximum_row_probability_mass_error": 0.0,
+      "integration_numeric_quality_is_poor": false,
+      "integration_convergence_check_passed": true,
+      "integration_truncation_check_passed": true
+    },
+    {
+      "scenario_id": "deterministic_flat_anchor_zero_deviation",
+      "anchor_model_kind": "deterministic_interval_grid",
+      "outcome_kind": "success",
+      "kappa": 0.35,
+      "observed_boundary_state": {
+        "observed_log_price": 0.25,
+        "anchor_value": 0.25,
+        "deviation": 0.0
+      },
+      "current_anchor_value": 0.25,
+      "next_anchor_value": 0.25,
+      "observed_return_adjustment": 0.0,
+      "simulation_reference_price": 20.0,
+      "native_price": 19.992052790042695,
+      "native_minus_simulation_absolute_gap": 0.00794720995730458,
+      "local_martingale_diagnostic_mode": "nested_transition_measure_zero_observed_return_adjustment.v1",
+      "local_tilt_solve_count": 0,
+      "deviation_grid_node_count": 1,
+      "refined_deviation_grid_node_count": 1,
+      "interval_count": 1,
+      "maximum_tail_probability_mass": 0.0,
+      "maximum_row_probability_mass_error": 0.0,
+      "integration_numeric_quality_is_poor": false,
+      "integration_convergence_check_passed": true,
+      "integration_truncation_check_passed": true
+    },
+    {
+      "scenario_id": "constant_anchor_positive_deviation_admissibility_failure",
+      "anchor_model_kind": "constant",
+      "outcome_kind": "expected_failure",
+      "kappa": 0.35,
+      "observed_boundary_state": {
+        "observed_log_price": 0.01,
+        "anchor_value": 0.0,
+        "deviation": 0.01
+      },
+      "current_anchor_value": 0.0,
+      "next_anchor_value": 0.0,
+      "observed_return_adjustment": -0.0029531191028128656,
+      "local_martingale_diagnostic_mode": "anchored_local_tilt_admissibility_failure_expected.v1",
+      "expected_error_substring": "anchored local tilt solve failed",
+      "expected_error_detail_substring": "no admissible theta"
+    }
+  ]
+}

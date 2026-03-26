@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale_and_docs.v1",
-  "approved_snapshot_sha256": "8b5bc5fa04c955ff18184a18e0154682236fd84e26b1593fb7e1740defe1b098",
+  "approved_snapshot_sha256": "822725a4d5ec5b574c634ea5ef67ef37ac409fb11fafc728f32faf0ca3a63d4c",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -557,6 +557,16 @@
       "rationale": "Anchored vanilla pricing now accepts interval-aligned execution factors across the full pricing horizon and surfaces anchored recursion diagnostics in the optional run output, so the approved Python snapshot must record the new execution-input and run-diagnostics shapes.",
       "snapshot_sha256": "8b5bc5fa04c955ff18184a18e0154682236fd84e26b1593fb7e1740defe1b098",
       "summary": "Approve interval-aligned pricing execution inputs and anchored recursion run diagnostics."
+    },
+    {
+      "approved_on": "2026-03-26",
+      "docs_updated": [
+        "README.md",
+        "docs/development/guides/cli_command_reference_and_examples.md"
+      ],
+      "rationale": "High-level market-data calibration now exposes an explicit mean-reversion configuration on the public request and estimator surfaces, so callers can request anchor estimation from JaniformEstimator and janiform fit without assembling staged mean-reversion inputs by hand.",
+      "snapshot_sha256": "822725a4d5ec5b574c634ea5ef67ef37ac409fb11fafc728f32faf0ca3a63d4c",
+      "summary": "Add an explicit high-level mean-reversion calibration configuration to market-data requests and JaniformEstimator."
     }
   ],
   "public_api_surface_document_version": "python.public_api_surface_map.pre_v0_1.milestone_2",

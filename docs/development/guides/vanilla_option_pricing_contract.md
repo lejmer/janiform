@@ -286,6 +286,30 @@ The Python request contract mirrors the Rust request surface exactly. Anchored p
 must therefore be supplied through `boundary_input`, and local tilt diagnostics serialize with the
 same deterministic anchored-state fields used by the Rust contract.
 
+## High-Level Anchored Workflow
+
+The shipped mean-reverting pricing workflow is anchored pricing.
+
+High-level Python preparation uses `janiform.calibration.fit.model.JaniformModel.price_option(...)`
+to derive interval-aligned pricing factors from a persisted fitted model. That high-level method
+prepares the canonical `VanillaOptionPricingExecutionInput` and then calls
+`run_vanilla_option_pricing`.
+
+High-level boundary-input rules are:
+
+- disabled mean reversion remains the nested case and may omit `observed_boundary_state`
+- enabled mean reversion requires an explicit `observed_boundary_state: MeanReversionBoundaryState`
+- the high-level API and CLI never invent missing observed anchor or deviation state
+- CLI surface: `janiform price --observed-boundary-state-json PATH`
+
+The returned `VanillaOptionPricingRunResult.run_diagnostics.anchored_recursion` payload is the
+public diagnostics surface for anchored-engine numerical quality. It includes:
+
+- deviation-grid metadata
+- refinement deltas between the base and refined deviation grids
+- per-interval diagnostics, including local tilt solve diagnostics, anchor alignment, and expected
+  Hawkes-state carryover summaries
+
 Python validation emits one structured failure with:
 
 - `error_id`
@@ -319,3 +343,12 @@ The fixture defines:
 Rust regression entrypoint:
 
 - `cargo test -p janiform --test pricing_benchmark_validation_regression`
+
+Anchored native-pricer versus simulation validation is governed separately from the default Rust
+and Python test suites. Expensive Monte Carlo or seeded-simulation comparison workflows must run
+only through explicitly invoked governance or benchmark paths.
+
+Anchored governance entrypoints:
+
+- `cargo test -p janiform-validation --test anchored_pricing_governance_fixture_contract`
+- `cargo test -p janiform-validation --test anchored_pricing_native_vs_seeded_reference -- --ignored --nocapture`

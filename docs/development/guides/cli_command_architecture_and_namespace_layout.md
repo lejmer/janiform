@@ -310,15 +310,26 @@ Output:
 ### `janiform price`
 
 Required arguments:
-- `--execution-input-json`: `VanillaOptionPricingExecutionInput` JSON object
+- `--model-path`: persisted `JaniformModel`
+- `--valuation-time-utc`
+- `--spot`
+- `--strike`
+- `--maturity-interval`
 
 Behavior:
-- The command validates the execution input directly against the Python pricing contract.
-- Interval factors keep `nu_h_known` and `nu_h_surprise` separate.
+- The command prepares pricing inputs from the persisted fitted model and the requested valuation
+  timestamp.
+- Mean-reverting models require explicit observed boundary state through
+  `--observed-boundary-state-json`. The CLI never invents anchored observed state.
+- Disabled mean reversion remains the nested case and therefore does not require
+  `--observed-boundary-state-json`.
 
 Output:
-- `--output json` writes deterministic JSON for `pricing.vanilla_option.run_result.v1` to stdout.
-- `--output human` writes a concise completion summary with price and delta.
+- `--output json` writes deterministic JSON for the high-level pricing workflow result, including
+  the canonical `pricing.vanilla_option.run_result.v1` response and optional anchored recursion
+  diagnostics when requested.
+- `--output human` writes a concise completion summary with price and anchored-diagnostics metadata
+  when available.
 
 ### `janiform hourly-factors materialize-seasonality`
 

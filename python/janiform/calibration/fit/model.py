@@ -378,6 +378,7 @@ class JaniformModel:
         risk_free_rate: float = 0.0,
         dividend_yield: float = 0.0,
         boundary_state: Optional[HawkesExcitationState] = None,
+        observed_boundary_state: Optional[MeanReversionBoundaryState] = None,
         include_transform_diagnostics: bool = False,
         include_integration_quality_diagnostics: bool = False,
         include_calibration_hooks: bool = False,
@@ -395,6 +396,7 @@ class JaniformModel:
             risk_free_rate=risk_free_rate,
             dividend_yield=dividend_yield,
             boundary_state=boundary_state,
+            observed_boundary_state=observed_boundary_state,
             include_transform_diagnostics=include_transform_diagnostics,
             include_integration_quality_diagnostics=include_integration_quality_diagnostics,
             include_calibration_hooks=include_calibration_hooks,
@@ -855,6 +857,7 @@ def _prepare_model_pricing_execution_input(
     risk_free_rate: float,
     dividend_yield: float,
     boundary_state: Optional[HawkesExcitationState],
+    observed_boundary_state: Optional[MeanReversionBoundaryState],
     include_transform_diagnostics: bool,
     include_integration_quality_diagnostics: bool,
     include_calibration_hooks: bool,
@@ -910,6 +913,12 @@ def _prepare_model_pricing_execution_input(
         ),
         interval_alignment_policy=_MEAN_REVERSION_RUNTIME_INTERVAL_ALIGNMENT_POLICY,
     )
+    effective_observed_boundary_state = _resolve_model_pricing_observed_boundary_state(
+        mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
+        runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
+        observed_boundary_state=observed_boundary_state,
+        default_observed_boundary_state=initial_mean_reversion_boundary_state,
+    )
 
     return VanillaOptionPricingExecutionInput(
         request=VanillaOptionPricingRequest(
@@ -926,7 +935,7 @@ def _prepare_model_pricing_execution_input(
                 hawkes_boundary_state=effective_boundary_state,
                 mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
                 mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
-                observed_boundary_state=initial_mean_reversion_boundary_state,
+                observed_boundary_state=effective_observed_boundary_state,
             ),
             model_parameters=VanillaOptionPricingModelParameters(
                 hawkes_kernel_parameters=runtime_factors.kernel_parameters,
@@ -948,6 +957,30 @@ def _prepare_model_pricing_execution_input(
             include_calibration_hooks=include_calibration_hooks,
         ),
     )
+
+
+def _resolve_model_pricing_observed_boundary_state(
+    *,
+    mean_reversion_fitted_parameters: MeanReversionFittedParameters,
+    runtime_interval_anchors: MeanReversionRuntimeIntervalAnchors,
+    observed_boundary_state: Optional[MeanReversionBoundaryState],
+    default_observed_boundary_state: MeanReversionBoundaryState,
+) -> MeanReversionBoundaryState:
+    if observed_boundary_state is not None:
+        return observed_boundary_state
+
+    match mean_reversion_fitted_parameters.anchor_model.anchor_model_kind:
+        case "disabled":
+            return default_observed_boundary_state
+        case _:
+            raise _calibration_error(
+                "observed_boundary_state",
+                (
+                    "is required when model mean reversion is enabled for pricing. "
+                    "Pass an explicit MeanReversionBoundaryState aligned with the valuation boundary anchor "
+                    f"{runtime_interval_anchors.start_anchor_value}."
+                ),
+            )
 
 
 def _prepare_model_runtime_factors(

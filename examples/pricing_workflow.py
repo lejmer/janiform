@@ -26,6 +26,10 @@ def run_example() -> dict[str, Any]:
         "request_summary": {
             "interval_delta": request.interval_delta,
             "payoff_type": request.payoff.payoff_type.value,
+            "anchor_model_kind": (
+                request.boundary_input.mean_reversion_fitted_parameters.anchor_model.anchor_model_kind.value
+            ),
+            "observed_boundary_deviation": request.boundary_input.observed_boundary_state.deviation,
             "nu_h_known": execution_input.interval_factors[0].nu_h_known,
             "nu_h_surprise": execution_input.interval_factors[0].nu_h_surprise,
         },
@@ -35,6 +39,11 @@ def run_example() -> dict[str, Any]:
             "forward_price": round(run_result.response.diagnostics.forward_price, 6),
             "run_diagnostics_included": run_result.run_diagnostics is not None,
             "calibration_hooks_included": run_result.calibration_hooks is not None,
+            "anchored_recursion_interval_count": (
+                0
+                if run_result.run_diagnostics is None
+                else len(run_result.run_diagnostics.anchored_recursion["interval_diagnostics"])
+            ),
         },
     }
 

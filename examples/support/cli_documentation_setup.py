@@ -244,6 +244,16 @@ def write_cli_documentation_inputs(output_directory: Path) -> dict[str, str]:
         interval_factors=build_pricing_interval_factors(),
         optional_output_selection=build_pricing_optional_output_selection(),
     )
+    observed_boundary_state_path = output_directory / "observed_boundary_state.json"
+    observed_boundary_state_path.write_text(
+        json.dumps(
+            pricing_execution_input.request.boundary_input.observed_boundary_state.to_payload(),
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     pricing_execution_input_path = output_directory / "pricing_execution_input.json"
     pricing_execution_input_path.write_text(
         json.dumps(pricing_execution_input.to_payload(), indent=2, sort_keys=True) + "\n",
@@ -297,6 +307,7 @@ def write_cli_documentation_inputs(output_directory: Path) -> dict[str, str]:
             hourly_factor_seasonality_materialization_input_path
         ),
         "known_news_csv": str(market_data_paths["known_news"]),
+        "observed_boundary_state_json": str(observed_boundary_state_path),
         "option_surface_parquet": str(market_data_paths["option_surface"]),
         "pricing_execution_input_json": str(pricing_execution_input_path),
         "session_definition_json": str(market_data_paths["session_definition"]),

@@ -14,8 +14,10 @@ from ..staged.contracts import (
 )
 from ...contracts import (
     ContractModel,
+    MeanReversionAnchorModelKind,
     require_mapping,
     require_non_empty_string,
+    require_positive_finite_number,
     require_string,
 )
 
@@ -55,6 +57,64 @@ class CalibrationOptionQuoteInputPolicy(StrEnum):
     MID_PRICE_COLUMN = "mid_price_column"
     BID_ASK_MIDPOINT = "bid_ask_midpoint"
     IMPLIED_VOLATILITY_COLUMN = "implied_volatility_column"
+
+
+@dataclass(frozen=True, slots=True)
+class CalibrationMeanReversionConfiguration(ContractModel):
+    anchor_model_kind: MeanReversionAnchorModelKind
+    calibration_grid_interval_hours: Optional[float] = None
+
+    def __post_init__(self) -> None:
+        if self.calibration_grid_interval_hours is not None and self.calibration_grid_interval_hours <= 0.0:
+            raise _calibration_error(
+                "calibration_grid_interval_hours",
+                "must be strictly positive when provided",
+            )
+        if (
+            self.anchor_model_kind == MeanReversionAnchorModelKind.DISABLED
+            and self.calibration_grid_interval_hours is not None
+        ):
+            raise _calibration_error(
+                "calibration_grid_interval_hours",
+                "must be omitted when anchor_model_kind is disabled",
+            )
+
+    @property
+    def enabled(self) -> bool:
+        return self.anchor_model_kind != MeanReversionAnchorModelKind.DISABLED
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> CalibrationMeanReversionConfiguration:
+        if not isinstance(raw_payload, dict):
+            raise _calibration_error(field_path, "must be an object")
+
+        calibration_grid_interval_hours = (
+            require_positive_finite_number(
+                raw_payload,
+                "calibration_grid_interval_hours",
+                f"{field_path}.calibration_grid_interval_hours",
+                CALIBRATION_ERROR_FACTORY,
+            )
+            if "calibration_grid_interval_hours" in raw_payload
+            and raw_payload["calibration_grid_interval_hours"] is not None
+            else None
+        )
+
+        return CalibrationMeanReversionConfiguration(
+            anchor_model_kind=MeanReversionAnchorModelKind(
+                require_string(
+                    raw_payload,
+                    "anchor_model_kind",
+                    f"{field_path}.anchor_model_kind",
+                    CALIBRATION_ERROR_FACTORY,
+                )
+            ),
+            calibration_grid_interval_hours=calibration_grid_interval_hours,
+        )
 
 
 @dataclass(frozen=True, slots=True)

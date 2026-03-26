@@ -62,9 +62,19 @@ janiform fit inspect data/eurusd_ticks.csv --market eurusd_spot --output json
 ```python
 from datetime import UTC, datetime
 
-from janiform.calibration import JaniformEstimator
+from janiform.calibration import (
+    CalibrationMeanReversionConfiguration,
+    JaniformEstimator,
+    MeanReversionAnchorModelKind,
+)
+from janiform.contracts import MeanReversionBoundaryState
 
-model = JaniformEstimator(market_profile="eurusd_spot").fit(
+model = JaniformEstimator(
+    market_profile="eurusd_spot",
+    mean_reversion=CalibrationMeanReversionConfiguration(
+        anchor_model_kind=MeanReversionAnchorModelKind.CONSTANT,
+    ),
+).fit(
     tick_data_path="data/eurusd_ticks.csv",
 )
 
@@ -74,7 +84,28 @@ simulation = model.simulate(
     horizon_interval_count=8,
 )
 pandas_frame = simulation.to_pandas()
+
+pricing_result = model.price_option(
+    valuation_time_utc=datetime(2026, 2, 2, 14, 30, tzinfo=UTC),
+    spot=1.0850,
+    strike=1.0900,
+    maturity_interval=1.0,
+    observed_boundary_state=MeanReversionBoundaryState(
+        observed_log_price=0.0,
+        anchor_value=0.0,
+        deviation=0.0,
+    ),
+)
 ```
+
+When the fitted model enables mean reversion, `JaniformModel.price_option(...)` requires an
+explicit `observed_boundary_state`. The high-level API and CLI do not invent that anchored pricing
+state for you.
+
+High-level mean-reversion calibration stays disabled unless you request it explicitly through
+`JaniformEstimator(mean_reversion=...)` or `janiform fit --mean-reversion-anchor-model ...`.
+When you omit `calibration_grid_interval_hours`, the high-level market-data translation derives it
+from the median spacing of retained session-open boundary observations.
 
 Set `JaniformEstimator(cpu_count=...)` or `janiform fit --cpu-count ...` when you want to
 control how many CPU cores staged calibration uses while evaluating candidate parameter sets.

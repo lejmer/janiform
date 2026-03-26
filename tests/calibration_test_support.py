@@ -42,7 +42,7 @@ from janiform.calibration.staged import (
     StagedCalibrationExecutionInput,
     StagedCalibrationRequest,
 )
-from janiform.contracts import MeanReversionAnchorModelKind
+from janiform.contracts import MeanReversionAnchorModel, MeanReversionAnchorModelKind, MeanReversionFittedParameters
 from janiform.pricing import GammaSeverityMarkConfiguration
 
 
@@ -53,6 +53,62 @@ def build_disabled_mean_reversion_fitted_parameters_payload() -> dict[str, Any]:
             "anchor_model_kind": "disabled",
         },
     }
+
+
+def build_constant_mean_reversion_fitted_parameters_payload(
+    *,
+    kappa: float,
+    anchor_value: float,
+) -> dict[str, Any]:
+    return MeanReversionFittedParameters(
+        kappa=kappa,
+        anchor_model=MeanReversionAnchorModel.constant(anchor_value),
+    ).to_payload()
+
+
+def update_model_mean_reversion_payload(model: Any, mean_reversion_payload: dict[str, Any]) -> None:
+    model.parameters["return_components"]["fitted_parameters"][
+        "mean_reversion_fitted_parameters"
+    ] = mean_reversion_payload
+    model.parameters["mean_reversion"]["fitted_parameters"] = mean_reversion_payload
+
+    joint_refinement_parameters = model.parameters.get("joint_refinement")
+
+    if isinstance(joint_refinement_parameters, dict):
+        fitted_parameters = joint_refinement_parameters.get("fitted_parameters")
+        if isinstance(fitted_parameters, dict):
+            return_components_fitted_parameters = fitted_parameters.get(
+                "return_components_fitted_parameters"
+            )
+            if isinstance(return_components_fitted_parameters, dict):
+                return_components_fitted_parameters["mean_reversion_fitted_parameters"] = (
+                    mean_reversion_payload
+                )
+
+        baseline_return_components = joint_refinement_parameters.get(
+            "baseline_return_components_fitted_parameters"
+        )
+        if isinstance(baseline_return_components, dict):
+            baseline_return_components["mean_reversion_fitted_parameters"] = mean_reversion_payload
+
+
+def build_deterministic_interval_grid_mean_reversion_fitted_parameters_payload(
+    *,
+    kappa: float,
+    source_interval_start_utc_nanos: tuple[int, ...],
+    source_interval_end_utc_nanos: tuple[int, ...],
+    anchor_values: tuple[float, ...],
+    source_alignment_policy: str,
+) -> dict[str, Any]:
+    return MeanReversionFittedParameters(
+        kappa=kappa,
+        anchor_model=MeanReversionAnchorModel.deterministic_interval_grid(
+            source_interval_start_utc_nanos=source_interval_start_utc_nanos,
+            source_interval_end_utc_nanos=source_interval_end_utc_nanos,
+            anchor_values=anchor_values,
+            source_alignment_policy=source_alignment_policy,
+        ),
+    ).to_payload()
 
 
 def build_valid_execution_input_model(

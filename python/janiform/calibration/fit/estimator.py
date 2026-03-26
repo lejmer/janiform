@@ -29,6 +29,7 @@ from ..market_data.contracts import (
     CalibrationInputFileReference,
     CalibrationKnownNewsColumnMapping,
     CalibrationKnownNewsInput,
+    CalibrationMeanReversionConfiguration,
     CalibrationMarketDataColumnMapping,
     CalibrationMarketDataNormalizationPolicy,
     CalibrationMarketDataOutputPreferences,
@@ -108,6 +109,7 @@ class JaniformEstimator:
         normalization_policy: Optional[CalibrationMarketDataNormalizationPolicy] = None,
         option_surface_column_mapping: Optional[CalibrationOptionSurfaceColumnMapping] = None,
         output_preferences: Optional[CalibrationMarketDataOutputPreferences] = None,
+        mean_reversion: Optional[CalibrationMeanReversionConfiguration] = None,
         market_profile: Optional[str | MarketProfileReference] = None,
         session: Optional[str | Path | SessionPresetReference] = None,
         known_news: Optional[str | KnownNewsPresetReference] = None,
@@ -126,6 +128,11 @@ class JaniformEstimator:
             )
         if cpu_count is not None and cpu_count <= 0:
             raise _calibration_error("cpu_count", "must be strictly positive when provided")
+        if mean_reversion is not None and not isinstance(mean_reversion, CalibrationMeanReversionConfiguration):
+            raise _calibration_error(
+                "mean_reversion",
+                "must be a CalibrationMeanReversionConfiguration when provided",
+            )
 
         self._workflow_scope: CalibrationMarketDataWorkflowScope = workflow_scope
         self._tick_data_column_mapping: Optional[CalibrationTickDataColumnMapping] = (
@@ -142,6 +149,7 @@ class JaniformEstimator:
             if output_preferences is None
             else output_preferences
         )
+        self._mean_reversion: Optional[CalibrationMeanReversionConfiguration] = mean_reversion
         self._registry: PresetRegistry = PresetRegistry() if registry is None else registry
         self._cpu_count: int = max(1, os.cpu_count() or 1) if cpu_count is None else cpu_count
         self._exchange_code: Optional[str] = exchange_code
@@ -378,6 +386,7 @@ class JaniformEstimator:
             output_preferences=self._output_preferences,
             option_surface_source=option_surface_source,
             known_news_inputs=known_news_input,
+            mean_reversion=self._mean_reversion,
         )
 
     def _prepare_fit_workflow(

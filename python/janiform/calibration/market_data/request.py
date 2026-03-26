@@ -6,6 +6,7 @@ from .contracts import (
     CalibrationInputFileFormat,
     CalibrationInputFileReference,
     CalibrationKnownNewsInput,
+    CalibrationMeanReversionConfiguration,
     CalibrationMarketDataColumnMapping,
     CalibrationMarketDataNormalizationPolicy,
     CalibrationMarketDataOutputPreferences,
@@ -38,6 +39,7 @@ class MarketDataCalibrationRequest(ContractModel):
     output_preferences: CalibrationMarketDataOutputPreferences
     option_surface_source: Optional[CalibrationInputFileReference] = None
     known_news_inputs: Optional[CalibrationKnownNewsInput] = None
+    mean_reversion: Optional[CalibrationMeanReversionConfiguration] = None
 
     def __post_init__(self) -> None:
         if self.schema_version != CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION:
@@ -45,10 +47,13 @@ class MarketDataCalibrationRequest(ContractModel):
                 "schema_version",
                 f"must be `{CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION}`",
             )
+
         if not self.run_id.strip():
             raise _calibration_error("run_id", "must be a non-empty string")
+
         if self.tick_data_source.file_format not in (CalibrationInputFileFormat.CSV, CalibrationInputFileFormat.PARQUET):
             raise _calibration_error("tick_data_source.file_format", "must be one of: csv, parquet")
+
         if (
             self.option_surface_source is not None
             and self.option_surface_source.file_format not in (CalibrationInputFileFormat.CSV, CalibrationInputFileFormat.PARQUET)
@@ -70,6 +75,16 @@ class MarketDataCalibrationRequest(ContractModel):
             known_news_inputs=self.known_news_inputs,
             known_news_column_mapping=self.column_mapping.known_news,
         )
+
+        if (
+            self.workflow_scope == CalibrationMarketDataWorkflowScope.SEASONALITY_ONLY
+            and self.mean_reversion is not None
+            and self.mean_reversion.enabled
+        ):
+            raise _calibration_error(
+                "mean_reversion",
+                "must be omitted or disabled when workflow_scope is seasonality_only",
+            )
 
     @staticmethod
     def from_mapping(raw_payload: dict[str, Any] | Any) -> MarketDataCalibrationRequest:
@@ -126,6 +141,14 @@ class MarketDataCalibrationRequest(ContractModel):
                     field_path="known_news_inputs",
                 )
                 if "known_news_inputs" in raw_payload and raw_payload["known_news_inputs"] is not None
+                else None
+            ),
+            mean_reversion=(
+                CalibrationMeanReversionConfiguration.from_mapping(
+                    require_mapping(raw_payload, "mean_reversion", "mean_reversion", CALIBRATION_ERROR_FACTORY),
+                    field_path="mean_reversion",
+                )
+                if "mean_reversion" in raw_payload and raw_payload["mean_reversion"] is not None
                 else None
             ),
         )

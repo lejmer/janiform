@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+import math
 from pathlib import Path
 from typing import Any, Optional
 
@@ -17,6 +18,7 @@ from janiform.calibration.market_data import (
     CalibrationInputFileReference,
     CalibrationKnownNewsColumnMapping,
     CalibrationKnownNewsInput,
+    CalibrationMeanReversionConfiguration,
     CalibrationMarketDataColumnMapping,
     CalibrationMarketDataNormalizationPolicy,
     CalibrationMarketDataOutputPreferences,
@@ -30,6 +32,7 @@ from janiform.calibration.market_data import (
     prepare_market_data_calibration,
     run_market_data_calibration,
 )
+from janiform.contracts import MeanReversionAnchorModelKind
 from janiform.calibration.staged import (
     CalibrationExecutionMode,
     CalibrationStage,
@@ -192,6 +195,133 @@ def test_translate_market_data_request_derives_boundaries_known_news_and_diagnos
     assert boundary_observation.open_timestamp_utc_nanos == _utc_nanos("2026-02-04T14:30:00Z")
     assert boundary_observation.close_price == pytest.approx(102.0)
     assert boundary_observation.open_price == pytest.approx(90.0)
+
+
+def test_translate_market_data_request_materializes_explicit_mean_reversion_from_boundary_opens(
+    tmp_path: Path,
+    calendar_registry_json: str,
+) -> None:
+    session_definition_path = _write_session_definition(tmp_path, calendar_registry_json)
+
+    tick_data_path = tmp_path / "ticks.csv"
+    tick_data_path.write_text(
+        "\n".join(
+            [
+                "timestamp_utc,trade_price,trade_sign",
+                "2026-02-02T14:30:00Z,100.0,buy",
+                "2026-02-02T20:59:00Z,101.0,sell",
+                "2026-02-03T14:30:00Z,102.0,buy",
+                "2026-02-03T20:59:00Z,103.0,sell",
+                "2026-02-04T14:30:00Z,104.0,buy",
+                "2026-02-04T20:59:00Z,105.0,sell",
+                "2026-02-05T14:30:00Z,106.0,buy",
+                "2026-02-05T20:59:00Z,107.0,sell",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    request = _build_market_data_request(
+        session_definition_path=session_definition_path,
+        tick_data_path=tick_data_path,
+        workflow_scope=CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE,
+        tick_column_mapping=CalibrationTickDataColumnMapping(
+            timestamp_column="timestamp_utc",
+            price_column="trade_price",
+            trade_sign_column="trade_sign",
+        ),
+        normalization_policy=CalibrationMarketDataNormalizationPolicy(
+            timestamp_timezone="UTC",
+            sort_records_by_timestamp=True,
+            tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
+        ),
+        mean_reversion=CalibrationMeanReversionConfiguration(
+            anchor_model_kind=MeanReversionAnchorModelKind.CONSTANT,
+        ),
+    )
+
+    translation = translate_market_data_request_to_staged_execution_input(request)
+
+    mean_reversion_stage_input = translation.execution_input.mean_reversion_stage_input
+    assert mean_reversion_stage_input is not None
+    assert mean_reversion_stage_input.requested_anchor_model_kind == MeanReversionAnchorModelKind.CONSTANT
+    assert mean_reversion_stage_input.source_observation_count == len(mean_reversion_stage_input.observations)
+    assert mean_reversion_stage_input.coverage_ratio == pytest.approx(1.0)
+    assert mean_reversion_stage_input.calibration_grid_interval_hours == pytest.approx(24.0)
+    assert mean_reversion_stage_input.calibration_grid_kind.startswith(
+        "market_data_session_open_boundary_observation_grid.v1"
+    )
+    assert tuple(
+        observation.observation_timestamp_utc_nanos
+        for observation in mean_reversion_stage_input.observations
+    ) == (
+        _utc_nanos("2026-02-04T14:30:00Z"),
+        _utc_nanos("2026-02-05T14:30:00Z"),
+    )
+    assert tuple(
+        observation.observed_log_price
+        for observation in mean_reversion_stage_input.observations
+    ) == pytest.approx(
+        (
+            math.log(104.0),
+            math.log(106.0),
+        )
+    )
+
+
+def test_translate_market_data_request_honors_explicit_mean_reversion_grid_interval_override(
+    tmp_path: Path,
+    calendar_registry_json: str,
+) -> None:
+    session_definition_path = _write_session_definition(tmp_path, calendar_registry_json)
+
+    tick_data_path = tmp_path / "ticks.csv"
+    tick_data_path.write_text(
+        "\n".join(
+            [
+                "timestamp_utc,trade_price,trade_sign",
+                "2026-02-02T14:30:00Z,100.0,buy",
+                "2026-02-02T20:59:00Z,101.0,sell",
+                "2026-02-03T14:30:00Z,102.0,buy",
+                "2026-02-03T20:59:00Z,103.0,sell",
+                "2026-02-04T14:30:00Z,104.0,buy",
+                "2026-02-04T20:59:00Z,105.0,sell",
+                "2026-02-05T14:30:00Z,106.0,buy",
+                "2026-02-05T20:59:00Z,107.0,sell",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    request = _build_market_data_request(
+        session_definition_path=session_definition_path,
+        tick_data_path=tick_data_path,
+        workflow_scope=CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE,
+        tick_column_mapping=CalibrationTickDataColumnMapping(
+            timestamp_column="timestamp_utc",
+            price_column="trade_price",
+            trade_sign_column="trade_sign",
+        ),
+        normalization_policy=CalibrationMarketDataNormalizationPolicy(
+            timestamp_timezone="UTC",
+            sort_records_by_timestamp=True,
+            tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
+        ),
+        mean_reversion=CalibrationMeanReversionConfiguration(
+            anchor_model_kind=MeanReversionAnchorModelKind.DETERMINISTIC_INTERVAL_GRID,
+            calibration_grid_interval_hours=36.0,
+        ),
+    )
+
+    translation = translate_market_data_request_to_staged_execution_input(request)
+
+    mean_reversion_stage_input = translation.execution_input.mean_reversion_stage_input
+    assert mean_reversion_stage_input is not None
+    assert mean_reversion_stage_input.requested_anchor_model_kind == (
+        MeanReversionAnchorModelKind.DETERMINISTIC_INTERVAL_GRID
+    )
+    assert mean_reversion_stage_input.calibration_grid_interval_hours == pytest.approx(36.0)
+    assert "explicit_mean_reversion_grid_interval_hours.v1" in mean_reversion_stage_input.calibration_grid_kind
 
 
 def test_translate_market_data_request_infers_session_without_manual_definition(
@@ -847,6 +977,7 @@ def _build_market_data_request(
     known_news_column_mapping: Optional[CalibrationKnownNewsColumnMapping] = None,
     option_surface_source: Optional[CalibrationInputFileReference] = None,
     option_surface_column_mapping: Optional[CalibrationOptionSurfaceColumnMapping] = None,
+    mean_reversion: Optional[CalibrationMeanReversionConfiguration] = None,
     exchange_code: str = "XNYS",
     session_timezone: Optional[str] = "America/New_York",
 ) -> MarketDataCalibrationRequest:
@@ -885,6 +1016,7 @@ def _build_market_data_request(
         ),
         option_surface_source=option_surface_source,
         known_news_inputs=known_news_inputs,
+        mean_reversion=mean_reversion,
     )
 
 

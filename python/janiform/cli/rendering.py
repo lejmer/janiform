@@ -365,11 +365,34 @@ def _render_simulation_coarse_interval_human_output(response_payload: dict[str, 
 
 def _render_price_human_output(run_result_payload: dict[str, Any]) -> str:
     response_payload = cast(dict[str, Any], run_result_payload["response"])
-    return (
-        "price completed:\n"
-        f"run_id={run_result_payload['run_id']} price={response_payload['price']} "
-        f"primary_output={run_result_payload['primary_output_path']}\n"
+    lines = [
+        "price completed:",
+        (
+            f"run_id={run_result_payload['run_id']} price={response_payload['price']} "
+            f"primary_output={run_result_payload['primary_output_path']}"
+        ),
+    ]
+
+    run_diagnostics = cast(Optional[dict[str, Any]], run_result_payload.get("run_diagnostics"))
+    anchored_recursion = (
+        cast(Optional[dict[str, Any]], run_diagnostics.get("anchored_recursion"))
+        if isinstance(run_diagnostics, dict)
+        else None
     )
+    if isinstance(anchored_recursion, dict):
+        interval_diagnostics = anchored_recursion.get("interval_diagnostics")
+        interval_count = len(interval_diagnostics) if isinstance(interval_diagnostics, list) else 0
+        lines.append(
+            (
+                "anchored_diagnostics: "
+                f"deviation_grid_node_count={anchored_recursion.get('deviation_grid_node_count')} "
+                "refined_deviation_grid_node_count="
+                f"{anchored_recursion.get('refined_deviation_grid_node_count')} "
+                f"interval_count={interval_count}"
+            )
+        )
+
+    return "\n".join(lines) + "\n"
 
 
 def _render_seasonality_preprocess_timestamps_human_output(payload: dict[str, Any]) -> str:

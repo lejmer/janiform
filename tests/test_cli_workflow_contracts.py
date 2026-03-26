@@ -31,7 +31,11 @@ from janiform.simulation import (
     CoarseSimulationRunRequest,
     SeededTickSimulationRequest,
 )
-from tests.calibration_test_support import build_valid_execution_input_model
+from tests.calibration_test_support import (
+    build_constant_mean_reversion_fitted_parameters_payload,
+    build_valid_execution_input_model,
+    update_model_mean_reversion_payload,
+)
 from tests.cli_test_support import (
     build_coarse_simulation_request as _build_coarse_simulation_request,
     build_simulation_request as _build_simulation_request,
@@ -99,6 +103,7 @@ def test_price_cli_help_documents_model_driven_workflow_contract() -> None:
 
     assert "--output {human,json}" in help_output
     assert "--model-path PATH" in help_output
+    assert "--observed-boundary-state-json PATH" in help_output
     assert "--valuation-time-utc VALUATION_TIME_UTC" in help_output
     assert "--spot SPOT" in help_output
     assert "--strike STRIKE" in help_output
@@ -1676,6 +1681,85 @@ def test_price_cli_maps_model_and_flags_to_runtime_contract(
     assert command_output["response"]["price"] >= 0.0
 
 
+def test_price_cli_passes_observed_boundary_state_json_to_high_level_model(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    model_path = _write_saved_anchored_price_model(tmp_path)
+    observed_boundary_state_path = _write_json_path(
+        tmp_path / "observed_boundary_state.json",
+        pricing_module.MeanReversionBoundaryState(
+            observed_log_price=0.25,
+            anchor_value=0.25,
+            deviation=0.0,
+        ).to_payload(),
+    )
+    captured_arguments: dict[str, Any] = {}
+    original_price_option = cli_pricing_commands_module.JaniformModel.price_option
+
+    def capturing_price_option(
+        self: calibration_module.JaniformModel,
+        **pricing_arguments: Any,
+    ) -> pricing_module.VanillaOptionPricingRunResult:
+        captured_arguments.update(pricing_arguments)
+        return original_price_option(self, **pricing_arguments)
+
+    monkeypatch.setattr(cli_pricing_commands_module.JaniformModel, "price_option", capturing_price_option)
+
+    exit_code, stdout_text, stderr_text = _invoke_cli(
+        [
+            "price",
+            "--model-path",
+            str(model_path),
+            "--observed-boundary-state-json",
+            str(observed_boundary_state_path),
+            "--valuation-time-utc",
+            "2026-02-02T15:00:00Z",
+            "--spot",
+            "101.0",
+            "--strike",
+            "100.0",
+            "--maturity-interval",
+            "1.0",
+            "--output",
+            "json",
+        ]
+    )
+
+    assert exit_code == int(cli_module.CliExitCode.SUCCESS), stderr_text
+    assert captured_arguments["observed_boundary_state"] == pricing_module.MeanReversionBoundaryState(
+        observed_log_price=0.25,
+        anchor_value=0.25,
+        deviation=0.0,
+    )
+    command_output = orjson.loads(stdout_text)
+    assert command_output["response"]["price"] >= 0.0
+
+
+def test_price_cli_requires_observed_boundary_state_for_anchored_models(tmp_path: Path) -> None:
+    model_path = _write_saved_anchored_price_model(tmp_path)
+
+    exit_code, stdout_text, stderr_text = _invoke_cli(
+        [
+            "price",
+            "--model-path",
+            str(model_path),
+            "--valuation-time-utc",
+            "2026-02-02T15:00:00Z",
+            "--spot",
+            "101.0",
+            "--strike",
+            "100.0",
+            "--maturity-interval",
+            "1.0",
+        ]
+    )
+
+    assert exit_code == int(cli_module.CliExitCode.VALIDATION_ERROR)
+    assert "price run_id:" in stdout_text
+    assert "observed_boundary_state" in stderr_text
+
+
 def _write_saved_price_model(tmp_path: Path) -> Path:
     helper_monkeypatch = pytest.MonkeyPatch()
     try:
@@ -1689,6 +1773,27 @@ def _write_saved_price_model(tmp_path: Path) -> Path:
         helper_monkeypatch.undo()
 
     model_path = tmp_path / "workflow-contract-price-model.json"
+    model.save(model_path)
+    return model_path
+
+
+def _write_saved_anchored_price_model(tmp_path: Path) -> Path:
+    helper_monkeypatch = pytest.MonkeyPatch()
+    try:
+        helper_monkeypatch.chdir(tmp_path)
+        model = _build_full_workflow_model(
+            tmp_path,
+            helper_monkeypatch,
+            run_id="workflow-contract-anchored-price-model",
+        )
+    finally:
+        helper_monkeypatch.undo()
+
+    update_model_mean_reversion_payload(
+        model,
+        build_constant_mean_reversion_fitted_parameters_payload(kappa=0.35, anchor_value=0.25),
+    )
+    model_path = tmp_path / "workflow-contract-anchored-price-model.json"
     model.save(model_path)
     return model_path
 
