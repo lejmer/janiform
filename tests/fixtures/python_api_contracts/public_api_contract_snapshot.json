@@ -6000,7 +6000,17 @@
     },
     "janiform.pricing": {
       "exports": [
+        "AnchoredLocalTiltAdmissibilityStatus",
+        "AnchoredLocalTiltBoundaryStateSummary",
+        "AnchoredLocalTiltDomainStatus",
+        "AnchoredLocalTiltSolveDiagnostics",
+        "AnchoredVanillaOptionPricingBoundaryInput",
         "GammaSeverityMarkConfiguration",
+        "MeanReversionAnchorModel",
+        "MeanReversionAnchorModelKind",
+        "MeanReversionBoundaryState",
+        "MeanReversionFittedParameters",
+        "MeanReversionRuntimeIntervalAnchors",
         "NigSharedPlusShiftConfiguration",
         "VanillaOptionPayoffConfiguration",
         "VanillaOptionPayoffType",
@@ -6057,6 +6067,77 @@
         }
       ],
       "symbols": {
+        "AnchoredLocalTiltAdmissibilityStatus": {
+          "kind": "enum",
+          "members": [
+            {
+              "name": "ADMISSIBLE",
+              "value": "admissible"
+            },
+            {
+              "name": "NO_ADMISSIBLE_LOCAL_TILT",
+              "value": "no_admissible_local_tilt"
+            }
+          ]
+        },
+        "AnchoredLocalTiltBoundaryStateSummary": {
+          "field_names": [
+            "interval_index",
+            "hawkes_boundary_state",
+            "observed_boundary_state",
+            "current_anchor_value",
+            "next_anchor_value",
+            "interval_delta",
+            "kappa",
+            "deviation_decay_factor"
+          ],
+          "kind": "contract_model",
+          "signature": "(interval_index: 'int', hawkes_boundary_state: 'HawkesExcitationState', observed_boundary_state: 'MeanReversionBoundaryState', current_anchor_value: 'float', next_anchor_value: 'float', interval_delta: 'float', kappa: 'float', deviation_decay_factor: 'float') -> 'None'"
+        },
+        "AnchoredLocalTiltDomainStatus": {
+          "kind": "enum",
+          "members": [
+            {
+              "name": "IN_DOMAIN",
+              "value": "in_domain"
+            },
+            {
+              "name": "NON_FINITE_TRANSFORM_INPUT",
+              "value": "non_finite_transform_input"
+            },
+            {
+              "name": "OUT_OF_DOMAIN_STATE_REQUEST",
+              "value": "out_of_domain_state_request"
+            }
+          ]
+        },
+        "AnchoredLocalTiltSolveDiagnostics": {
+          "field_names": [
+            "boundary_state_summary",
+            "target_log_moment_exponent",
+            "observed_log_moment_exponent",
+            "theta",
+            "residual",
+            "absolute_residual",
+            "tolerance",
+            "domain_status",
+            "admissibility_status",
+            "policy"
+          ],
+          "kind": "contract_model",
+          "signature": "(boundary_state_summary: 'AnchoredLocalTiltBoundaryStateSummary', target_log_moment_exponent: 'float', observed_log_moment_exponent: 'float', theta: 'float', residual: 'float', absolute_residual: 'float', tolerance: 'float', domain_status: 'AnchoredLocalTiltDomainStatus', admissibility_status: 'AnchoredLocalTiltAdmissibilityStatus', policy: 'str') -> 'None'"
+        },
+        "AnchoredVanillaOptionPricingBoundaryInput": {
+          "field_names": [
+            "interval_index",
+            "hawkes_boundary_state",
+            "mean_reversion_fitted_parameters",
+            "mean_reversion_runtime_interval_anchors",
+            "observed_boundary_state"
+          ],
+          "kind": "contract_model",
+          "signature": "(interval_index: 'int', hawkes_boundary_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', observed_boundary_state: 'MeanReversionBoundaryState') -> 'None'"
+        },
         "GammaSeverityMarkConfiguration": {
           "field_names": [
             "shape_k",
@@ -6064,6 +6145,62 @@
           ],
           "kind": "contract_model",
           "signature": "(shape_k: 'float', scale_theta: 'float') -> 'None'"
+        },
+        "MeanReversionAnchorModel": {
+          "field_names": [
+            "anchor_model_kind",
+            "anchor_value",
+            "source_interval_start_utc_nanos",
+            "source_interval_end_utc_nanos",
+            "anchor_values",
+            "source_alignment_policy"
+          ],
+          "kind": "contract_model",
+          "signature": "(anchor_model_kind: 'MeanReversionAnchorModelKind', anchor_value: 'Optional[float]' = None, source_interval_start_utc_nanos: 'tuple[int, ...]' = (), source_interval_end_utc_nanos: 'tuple[int, ...]' = (), anchor_values: 'tuple[float, ...]' = (), source_alignment_policy: 'Optional[str]' = None) -> 'None'"
+        },
+        "MeanReversionAnchorModelKind": {
+          "kind": "enum",
+          "members": [
+            {
+              "name": "DISABLED",
+              "value": "disabled"
+            },
+            {
+              "name": "CONSTANT",
+              "value": "constant"
+            },
+            {
+              "name": "DETERMINISTIC_INTERVAL_GRID",
+              "value": "deterministic_interval_grid"
+            }
+          ]
+        },
+        "MeanReversionBoundaryState": {
+          "field_names": [
+            "observed_log_price",
+            "anchor_value",
+            "deviation"
+          ],
+          "kind": "contract_model",
+          "signature": "(observed_log_price: 'float', anchor_value: 'float', deviation: 'float') -> 'None'"
+        },
+        "MeanReversionFittedParameters": {
+          "field_names": [
+            "kappa",
+            "anchor_model"
+          ],
+          "kind": "contract_model",
+          "signature": "(kappa: 'float', anchor_model: 'MeanReversionAnchorModel') -> 'None'"
+        },
+        "MeanReversionRuntimeIntervalAnchors": {
+          "field_names": [
+            "interval_alignment_policy",
+            "start_anchor_value",
+            "end_anchor_values",
+            "interval_deltas"
+          ],
+          "kind": "contract_model",
+          "signature": "(interval_alignment_policy: 'str', start_anchor_value: 'float', end_anchor_values: 'tuple[float, ...]', interval_deltas: 'tuple[float, ...]') -> 'None'"
         },
         "NigSharedPlusShiftConfiguration": {
           "field_names": [
@@ -6173,12 +6310,12 @@
           "field_names": [
             "market_inputs",
             "payoff",
-            "boundary_state",
+            "boundary_input",
             "model_parameters",
             "interval_delta"
           ],
           "kind": "contract_model",
-          "signature": "(market_inputs: 'VanillaOptionPricingMarketInputs', payoff: 'VanillaOptionPayoffConfiguration', boundary_state: 'HawkesExcitationState', model_parameters: 'VanillaOptionPricingModelParameters', interval_delta: 'float' = 1.0) -> 'None'"
+          "signature": "(market_inputs: 'VanillaOptionPricingMarketInputs', payoff: 'VanillaOptionPayoffConfiguration', boundary_input: 'AnchoredVanillaOptionPricingBoundaryInput', model_parameters: 'VanillaOptionPricingModelParameters', interval_delta: 'float' = 1.0) -> 'None'"
         },
         "VanillaOptionPricingResponse": {
           "field_names": [

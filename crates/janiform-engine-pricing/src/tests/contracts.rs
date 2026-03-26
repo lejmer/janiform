@@ -21,13 +21,14 @@ use janiform_model_kernels::hawkes::HawkesExcitationState;
 use super::support::{
     build_reference_integration_diagnostics_source, build_reference_market_inputs,
     build_reference_pricing_response, build_reference_transform_diagnostics_source,
-    build_valid_vanilla_option_request, valid_model_parameters,
+    build_valid_vanilla_option_request, disabled_boundary_input, valid_model_parameters,
 };
 #[test]
 fn vanilla_option_request_roundtrip_serialization_preserves_contract_fields() {
     let request = build_valid_vanilla_option_request();
 
-    let serialized_value = serde_json::to_value(request).expect("request payload should serialize");
+    let serialized_value =
+        serde_json::to_value(&request).expect("request payload should serialize");
     let parsed_request: VanillaOptionPricingRequest = serde_json::from_value(serialized_value)
         .expect("serialized request payload should deserialize");
 
@@ -51,11 +52,31 @@ fn vanilla_option_request_deserialization_defaults_interval_delta_to_hourly() {
         "payoff": {
             "payoff_type": "call"
         },
-        "boundary_state": {
-            "y_plus_plus": 0.2,
-            "y_plus_minus": 0.1,
-            "y_minus_plus": 0.3,
-            "y_minus_minus": 0.4
+        "boundary_input": {
+            "interval_index": 0,
+            "hawkes_boundary_state": {
+                "y_plus_plus": 0.2,
+                "y_plus_minus": 0.1,
+                "y_minus_plus": 0.3,
+                "y_minus_minus": 0.4
+            },
+            "mean_reversion_fitted_parameters": {
+                "kappa": 0.0,
+                "anchor_model": {
+                    "anchor_model_kind": "disabled"
+                }
+            },
+            "mean_reversion_runtime_interval_anchors": {
+                "interval_alignment_policy": "pricing_disabled_flat_anchor_interval_grid.v1",
+                "start_anchor_value": 0.0,
+                "end_anchor_values": [0.0],
+                "interval_deltas": [1.0]
+            },
+            "observed_boundary_state": {
+                "observed_log_price": 0.0,
+                "anchor_value": 0.0,
+                "deviation": 0.0
+            }
         },
         "model_parameters": {
             "hawkes_kernel_parameters": {
@@ -106,12 +127,15 @@ fn vanilla_option_request_accepts_explicit_non_hourly_interval_delta() {
         VanillaOptionPayoffConfiguration {
             payoff_type: VanillaOptionPayoffType::Call,
         },
-        HawkesExcitationState {
-            y_plus_plus: 0.2,
-            y_plus_minus: 0.1,
-            y_minus_plus: 0.3,
-            y_minus_minus: 0.4,
-        },
+        disabled_boundary_input(
+            0.5,
+            HawkesExcitationState {
+                y_plus_plus: 0.2,
+                y_plus_minus: 0.1,
+                y_minus_plus: 0.3,
+                y_minus_minus: 0.4,
+            },
+        ),
         valid_model_parameters(),
         0.5,
     )
@@ -131,7 +155,7 @@ fn vanilla_option_pricing_execution_input_roundtrip_serialization_preserves_spli
     .expect("execution input should construct");
 
     let serialized_value =
-        serde_json::to_value(execution_input).expect("execution input payload should serialize");
+        serde_json::to_value(&execution_input).expect("execution input payload should serialize");
     let parsed_execution_input: VanillaOptionPricingExecutionInput =
         serde_json::from_value(serialized_value)
             .expect("serialized execution input should deserialize");
@@ -187,12 +211,15 @@ fn vanilla_option_request_rejects_non_positive_interval_delta() {
         VanillaOptionPayoffConfiguration {
             payoff_type: VanillaOptionPayoffType::Call,
         },
-        HawkesExcitationState {
-            y_plus_plus: 0.2,
-            y_plus_minus: 0.1,
-            y_minus_plus: 0.3,
-            y_minus_minus: 0.4,
-        },
+        disabled_boundary_input(
+            1.0,
+            HawkesExcitationState {
+                y_plus_plus: 0.2,
+                y_plus_minus: 0.1,
+                y_minus_plus: 0.3,
+                y_minus_minus: 0.4,
+            },
+        ),
         valid_model_parameters(),
         0.0,
     )
@@ -230,12 +257,15 @@ fn vanilla_option_request_rejects_invalid_market_input_with_structured_error() {
         VanillaOptionPayoffConfiguration {
             payoff_type: VanillaOptionPayoffType::Call,
         },
-        HawkesExcitationState {
-            y_plus_plus: 0.2,
-            y_plus_minus: 0.1,
-            y_minus_plus: 0.3,
-            y_minus_minus: 0.4,
-        },
+        disabled_boundary_input(
+            1.0,
+            HawkesExcitationState {
+                y_plus_plus: 0.2,
+                y_plus_minus: 0.1,
+                y_minus_plus: 0.3,
+                y_minus_minus: 0.4,
+            },
+        ),
         valid_model_parameters(),
     )
     .expect_err("negative strike should fail request validation");
@@ -250,110 +280,29 @@ fn vanilla_option_request_rejects_invalid_market_input_with_structured_error() {
 
 #[test]
 fn vanilla_option_request_deserialize_rejects_invalid_boundary_state_with_actionable_error() {
-    let invalid_payload = json!({
-        "market_inputs": {
-            "spot": 101.0,
-            "strike": 100.0,
-            "maturity_interval": 0.5,
-            "risk_free_rate": 0.02,
-            "dividend_yield": 0.01
-        },
-        "payoff": {
-            "payoff_type": "put"
-        },
-        "boundary_state": {
-            "y_plus_plus": -0.1,
-            "y_plus_minus": 0.2,
-            "y_minus_plus": 0.3,
-            "y_minus_minus": 0.4
-        },
-        "model_parameters": {
-            "hawkes_kernel_parameters": {
-                "lambda_bar": 0.8,
-                "beta": 1.6,
-                "alpha": {
-                    "plus_plus": 0.2,
-                    "plus_minus": 0.1,
-                    "minus_plus": 0.1,
-                    "minus_minus": 0.25
-                },
-                "rho": {
-                    "plus_plus": 0.1,
-                    "plus_minus": 0.05,
-                    "minus_plus": 0.05,
-                    "minus_minus": 0.1
-                }
-            },
-            "gamma_severity_mark_configuration": {
-                "shape_k": 1.8,
-                "scale_theta": 0.7
-            },
-            "nig_shared_plus_shift_configuration": {
-                "alpha": 2.3,
-                "beta_0": -0.8,
-                "delta": 0.7,
-                "mu": 0.1,
-                "delta_beta": -0.2
-            }
-        }
-    });
+    let mut invalid_payload =
+        serde_json::to_value(build_valid_vanilla_option_request()).expect("request should serialize");
+
+    invalid_payload["payoff"]["payoff_type"] = json!("put");
+    invalid_payload["boundary_input"]["hawkes_boundary_state"]["y_plus_plus"] = json!(-0.1);
 
     let error = serde_json::from_value::<VanillaOptionPricingRequest>(invalid_payload)
         .expect_err("invalid boundary state should fail request deserialization");
     let error_message = error.to_string();
 
-    assert!(error_message.contains("boundary_state.y_plus_plus"));
+    assert!(error_message.contains("boundary_input.hawkes_boundary_state.y_plus_plus"));
     assert!(error_message.contains("non-negative"));
 }
 
 #[test]
 fn vanilla_option_request_deserialize_rejects_incomplete_payload() {
-    let incomplete_payload = json!({
-        "market_inputs": {
-            "spot": 101.0,
-            "maturity_interval": 0.5,
-            "risk_free_rate": 0.02,
-            "dividend_yield": 0.01
-        },
-        "payoff": {
-            "payoff_type": "call"
-        },
-        "boundary_state": {
-            "y_plus_plus": 0.1,
-            "y_plus_minus": 0.2,
-            "y_minus_plus": 0.3,
-            "y_minus_minus": 0.4
-        },
-        "model_parameters": {
-            "hawkes_kernel_parameters": {
-                "lambda_bar": 0.8,
-                "beta": 1.6,
-                "alpha": {
-                    "plus_plus": 0.2,
-                    "plus_minus": 0.1,
-                    "minus_plus": 0.1,
-                    "minus_minus": 0.25
-                },
-                "rho": {
-                    "plus_plus": 0.1,
-                    "plus_minus": 0.05,
-                    "minus_plus": 0.05,
-                    "minus_minus": 0.1
-                }
-            },
-            "gamma_severity_mark_configuration": {
-                "shape_k": 1.8,
-                "scale_theta": 0.7
-            },
-            "nig_shared_plus_shift_configuration": {
-                "alpha": 2.3,
-                "beta_0": -0.8,
-                "delta": 0.7,
-                "mu": 0.1,
-                "delta_beta": -0.2
-            }
-        }
-    });
+    let mut incomplete_payload =
+        serde_json::to_value(build_valid_vanilla_option_request()).expect("request should serialize");
+
+    incomplete_payload["market_inputs"]
+        .as_object_mut()
+        .expect("market_inputs should be an object")
+        .remove("strike");
 
     let error = serde_json::from_value::<VanillaOptionPricingRequest>(incomplete_payload)
         .expect_err("incomplete request payload should fail deserialization");

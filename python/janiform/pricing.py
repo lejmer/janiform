@@ -1,16 +1,23 @@
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
+from math import exp
 from types import ModuleType
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
 from .contracts import (
     ContractModel,
+    MeanReversionAnchorModel,
+    MeanReversionAnchorModelKind,
+    MeanReversionBoundaryState,
+    MeanReversionFittedParameters,
+    MeanReversionRuntimeIntervalAnchors,
     ValidationErrorFactory,
     parse_json_object,
     require_finite_number,
     require_mapping,
+    require_non_negative_integer,
     require_non_negative_finite_number,
     require_non_negative_finite_scalar,
     require_positive_finite_number,
@@ -87,6 +94,10 @@ PRICING_EXECUTION_ERROR_ID = "pricing.execution.run_failed"
 PRICING_INTEGRATION_NATIVE_MODULE_ERROR_ID = "pricing.integration.native_module_unavailable"
 PRICING_INTEGRATION_RESPONSE_ERROR_ID = "pricing.integration.invalid_native_response"
 PRICING_INTEGRATION_HOURLY_FACTOR_ERROR_ID = "pricing.integration.hourly_factor_contract_unavailable"
+PRICING_LOCAL_ANCHORED_TILT_SOLVE_POLICY = (
+    "solve_state_dependent_local_tilt_against_observed_anchor_adjusted_interval_return_target.v1"
+)
+_PRICING_MEAN_REVERSION_ALIGNMENT_TOLERANCE = 1e-12
 
 VanillaOptionPricingValidationFailure = ContractValidationFailure
 
@@ -207,6 +218,23 @@ def require_boolean(
         raise _pricing_error(field_path, "must be a boolean")
 
     return raw_value
+
+
+def _validate_flat_runtime_anchors(
+    runtime_interval_anchors: MeanReversionRuntimeIntervalAnchors,
+    expected_anchor_value: float,
+) -> None:
+    for interval_index, observed_anchor_value in enumerate(
+        runtime_interval_anchors.end_anchor_values
+    ):
+        if (
+            abs(observed_anchor_value - expected_anchor_value)
+            > _PRICING_MEAN_REVERSION_ALIGNMENT_TOLERANCE
+        ):
+            raise _pricing_error(
+                f"boundary_input.mean_reversion_runtime_interval_anchors.end_anchor_values[{interval_index}]",
+                f"must equal {expected_anchor_value}, found {observed_anchor_value}",
+            )
 
 
 class VanillaOptionPayoffType(StrEnum):
@@ -501,12 +529,411 @@ class VanillaOptionPricingModelParameters(ContractModel):
 
 
 @dataclass(frozen=True, slots=True)
+class AnchoredVanillaOptionPricingBoundaryInput(ContractModel):
+    interval_index: int
+    hawkes_boundary_state: HawkesExcitationState
+    mean_reversion_fitted_parameters: MeanReversionFittedParameters
+    mean_reversion_runtime_interval_anchors: MeanReversionRuntimeIntervalAnchors
+    observed_boundary_state: MeanReversionBoundaryState
+
+    def __post_init__(self) -> None:
+        from .simulation import HawkesExcitationState
+
+        if not isinstance(self.hawkes_boundary_state, HawkesExcitationState):
+            raise _pricing_error(
+                "boundary_input.hawkes_boundary_state",
+                "must be a HawkesExcitationState",
+            )
+
+        if not isinstance(
+            self.mean_reversion_fitted_parameters,
+            MeanReversionFittedParameters,
+        ):
+            raise _pricing_error(
+                "boundary_input.mean_reversion_fitted_parameters",
+                "must be a MeanReversionFittedParameters",
+            )
+
+        if not isinstance(
+            self.mean_reversion_runtime_interval_anchors,
+            MeanReversionRuntimeIntervalAnchors,
+        ):
+            raise _pricing_error(
+                "boundary_input.mean_reversion_runtime_interval_anchors",
+                "must be a MeanReversionRuntimeIntervalAnchors",
+            )
+
+        if not isinstance(self.observed_boundary_state, MeanReversionBoundaryState):
+            raise _pricing_error(
+                "boundary_input.observed_boundary_state",
+                "must be a MeanReversionBoundaryState",
+            )
+
+        if self.interval_index < 0:
+            raise _pricing_error("boundary_input.interval_index", "must be non-negative")
+
+        available_interval_count = len(self.mean_reversion_runtime_interval_anchors.end_anchor_values)
+        if self.interval_index >= available_interval_count:
+            raise _pricing_error(
+                "boundary_input.interval_index",
+                f"must be less than {available_interval_count}",
+            )
+
+        match self.mean_reversion_fitted_parameters.anchor_model.anchor_model_kind:
+            case MeanReversionAnchorModelKind.DISABLED:
+                if self.mean_reversion_fitted_parameters.kappa != 0.0:
+                    raise _pricing_error(
+                        "boundary_input.mean_reversion_fitted_parameters.kappa",
+                        "must be 0.0 when anchor_model_kind=disabled",
+                    )
+
+                _validate_flat_runtime_anchors(
+                    self.mean_reversion_runtime_interval_anchors,
+                    self.mean_reversion_runtime_interval_anchors.start_anchor_value,
+                )
+            case MeanReversionAnchorModelKind.CONSTANT:
+                expected_anchor_value = (
+                    self.mean_reversion_fitted_parameters.anchor_model.anchor_value
+                )
+                if expected_anchor_value is None:
+                    raise _pricing_error(
+                        "boundary_input.mean_reversion_fitted_parameters.anchor_model.anchor_value",
+                        "is required when anchor_model_kind=constant",
+                    )
+
+                if (
+                    abs(
+                        self.mean_reversion_runtime_interval_anchors.start_anchor_value
+                        - expected_anchor_value
+                    )
+                    > _PRICING_MEAN_REVERSION_ALIGNMENT_TOLERANCE
+                ):
+                    raise _pricing_error(
+                        "boundary_input.mean_reversion_runtime_interval_anchors.start_anchor_value",
+                        f"must equal {expected_anchor_value}",
+                    )
+
+                _validate_flat_runtime_anchors(
+                    self.mean_reversion_runtime_interval_anchors,
+                    expected_anchor_value,
+                )
+            case MeanReversionAnchorModelKind.DETERMINISTIC_INTERVAL_GRID:
+                pass
+
+        if (
+            abs(self.observed_boundary_state.anchor_value - self.current_anchor_value)
+            > _PRICING_MEAN_REVERSION_ALIGNMENT_TOLERANCE
+        ):
+            raise _pricing_error(
+                "boundary_input.observed_boundary_state.anchor_value",
+                f"must equal the current interval anchor {self.current_anchor_value}",
+            )
+
+    @property
+    def current_anchor_value(self) -> float:
+        if self.interval_index == 0:
+            return self.mean_reversion_runtime_interval_anchors.start_anchor_value
+
+        return self.mean_reversion_runtime_interval_anchors.end_anchor_values[self.interval_index - 1]
+
+    @property
+    def next_anchor_value(self) -> float:
+        return self.mean_reversion_runtime_interval_anchors.end_anchor_values[self.interval_index]
+
+    @property
+    def interval_delta(self) -> float:
+        return self.mean_reversion_runtime_interval_anchors.interval_deltas[self.interval_index]
+
+    @property
+    def deviation_decay_factor(self) -> float:
+        return exp(-self.mean_reversion_fitted_parameters.kappa * self.interval_delta)
+
+    @property
+    def observed_return_adjustment(self) -> float:
+        return (
+            self.next_anchor_value
+            - self.current_anchor_value
+            + (self.deviation_decay_factor - 1.0) * self.observed_boundary_state.deviation
+        )
+
+    @staticmethod
+    def disabled(
+        *,
+        interval_delta: float,
+        hawkes_boundary_state: HawkesExcitationState,
+        observed_log_price: float = 0.0,
+    ) -> AnchoredVanillaOptionPricingBoundaryInput:
+        return AnchoredVanillaOptionPricingBoundaryInput(
+            interval_index=0,
+            hawkes_boundary_state=hawkes_boundary_state,
+            mean_reversion_fitted_parameters=MeanReversionFittedParameters.disabled(),
+            mean_reversion_runtime_interval_anchors=MeanReversionRuntimeIntervalAnchors(
+                interval_alignment_policy="pricing_disabled_flat_anchor_interval_grid.v1",
+                start_anchor_value=0.0,
+                end_anchor_values=(0.0,),
+                interval_deltas=(interval_delta,),
+            ),
+            observed_boundary_state=MeanReversionBoundaryState(
+                observed_log_price=observed_log_price,
+                anchor_value=0.0,
+                deviation=observed_log_price,
+            ),
+        )
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> AnchoredVanillaOptionPricingBoundaryInput:
+        if not isinstance(raw_payload, dict):
+            raise _pricing_error(field_path, "must be an object")
+
+        try:
+            return AnchoredVanillaOptionPricingBoundaryInput(
+                interval_index=require_non_negative_integer(
+                    raw_payload,
+                    "interval_index",
+                    f"{field_path}.interval_index",
+                    PRICING_ERROR_FACTORY,
+                ),
+                hawkes_boundary_state=_parse_hawkes_excitation_state(
+                    require_mapping(
+                        raw_payload,
+                        "hawkes_boundary_state",
+                        f"{field_path}.hawkes_boundary_state",
+                        PRICING_ERROR_FACTORY,
+                    ),
+                    field_path=f"{field_path}.hawkes_boundary_state",
+                ),
+                mean_reversion_fitted_parameters=MeanReversionFittedParameters.from_mapping(
+                    require_mapping(
+                        raw_payload,
+                        "mean_reversion_fitted_parameters",
+                        f"{field_path}.mean_reversion_fitted_parameters",
+                        PRICING_ERROR_FACTORY,
+                    ),
+                    field_path=f"{field_path}.mean_reversion_fitted_parameters",
+                ),
+                mean_reversion_runtime_interval_anchors=MeanReversionRuntimeIntervalAnchors.from_mapping(
+                    require_mapping(
+                        raw_payload,
+                        "mean_reversion_runtime_interval_anchors",
+                        f"{field_path}.mean_reversion_runtime_interval_anchors",
+                        PRICING_ERROR_FACTORY,
+                    ),
+                    field_path=f"{field_path}.mean_reversion_runtime_interval_anchors",
+                ),
+                observed_boundary_state=MeanReversionBoundaryState.from_mapping(
+                    require_mapping(
+                        raw_payload,
+                        "observed_boundary_state",
+                        f"{field_path}.observed_boundary_state",
+                        PRICING_ERROR_FACTORY,
+                    ),
+                    field_path=f"{field_path}.observed_boundary_state",
+                ),
+            )
+        except JaniformValidationError as e:
+            raise _pricing_error(e.failure.field_path, e.failure.message) from e
+        except ValueError as e:
+            raise _pricing_error(field_path, str(e)) from e
+
+
+class AnchoredLocalTiltDomainStatus(StrEnum):
+    IN_DOMAIN = 'in_domain'
+    NON_FINITE_TRANSFORM_INPUT = 'non_finite_transform_input'
+    OUT_OF_DOMAIN_STATE_REQUEST = 'out_of_domain_state_request'
+
+
+class AnchoredLocalTiltAdmissibilityStatus(StrEnum):
+    ADMISSIBLE = 'admissible'
+    NO_ADMISSIBLE_LOCAL_TILT = 'no_admissible_local_tilt'
+
+
+@dataclass(frozen=True, slots=True)
+class AnchoredLocalTiltBoundaryStateSummary(ContractModel):
+    interval_index: int
+    hawkes_boundary_state: HawkesExcitationState
+    observed_boundary_state: MeanReversionBoundaryState
+    current_anchor_value: float
+    next_anchor_value: float
+    interval_delta: float
+    kappa: float
+    deviation_decay_factor: float
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> AnchoredLocalTiltBoundaryStateSummary:
+        if not isinstance(raw_payload, dict):
+            raise _pricing_error(field_path, "must be an object")
+
+        return AnchoredLocalTiltBoundaryStateSummary(
+            interval_index=require_non_negative_integer(
+                raw_payload,
+                "interval_index",
+                f"{field_path}.interval_index",
+                PRICING_ERROR_FACTORY,
+            ),
+            hawkes_boundary_state=_parse_hawkes_excitation_state(
+                require_mapping(
+                    raw_payload,
+                    "hawkes_boundary_state",
+                    f"{field_path}.hawkes_boundary_state",
+                    PRICING_ERROR_FACTORY,
+                ),
+                field_path=f"{field_path}.hawkes_boundary_state",
+            ),
+            observed_boundary_state=MeanReversionBoundaryState.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "observed_boundary_state",
+                    f"{field_path}.observed_boundary_state",
+                    PRICING_ERROR_FACTORY,
+                ),
+                field_path=f"{field_path}.observed_boundary_state",
+            ),
+            current_anchor_value=require_finite_number(
+                raw_payload,
+                "current_anchor_value",
+                f"{field_path}.current_anchor_value",
+                PRICING_ERROR_FACTORY,
+            ),
+            next_anchor_value=require_finite_number(
+                raw_payload,
+                "next_anchor_value",
+                f"{field_path}.next_anchor_value",
+                PRICING_ERROR_FACTORY,
+            ),
+            interval_delta=require_positive_finite_number(
+                raw_payload,
+                "interval_delta",
+                f"{field_path}.interval_delta",
+                PRICING_ERROR_FACTORY,
+            ),
+            kappa=require_non_negative_finite_number(
+                raw_payload,
+                "kappa",
+                f"{field_path}.kappa",
+                PRICING_ERROR_FACTORY,
+            ),
+            deviation_decay_factor=require_finite_number(
+                raw_payload,
+                "deviation_decay_factor",
+                f"{field_path}.deviation_decay_factor",
+                PRICING_ERROR_FACTORY,
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class AnchoredLocalTiltSolveDiagnostics(ContractModel):
+    boundary_state_summary: AnchoredLocalTiltBoundaryStateSummary
+    target_log_moment_exponent: float
+    observed_log_moment_exponent: float
+    theta: float
+    residual: float
+    absolute_residual: float
+    tolerance: float
+    domain_status: AnchoredLocalTiltDomainStatus
+    admissibility_status: AnchoredLocalTiltAdmissibilityStatus
+    policy: str
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str = "anchored_local_tilt_solve_diagnostics",
+    ) -> AnchoredLocalTiltSolveDiagnostics:
+        if not isinstance(raw_payload, dict):
+            raise _pricing_error(field_path, "must be an object")
+
+        try:
+            return AnchoredLocalTiltSolveDiagnostics(
+                boundary_state_summary=AnchoredLocalTiltBoundaryStateSummary.from_mapping(
+                    require_mapping(
+                        raw_payload,
+                        "boundary_state_summary",
+                        f"{field_path}.boundary_state_summary",
+                        PRICING_ERROR_FACTORY,
+                    ),
+                    field_path=f"{field_path}.boundary_state_summary",
+                ),
+                target_log_moment_exponent=require_finite_number(
+                    raw_payload,
+                    "target_log_moment_exponent",
+                    f"{field_path}.target_log_moment_exponent",
+                    PRICING_ERROR_FACTORY,
+                ),
+                observed_log_moment_exponent=require_finite_number(
+                    raw_payload,
+                    "observed_log_moment_exponent",
+                    f"{field_path}.observed_log_moment_exponent",
+                    PRICING_ERROR_FACTORY,
+                ),
+                theta=require_finite_number(
+                    raw_payload,
+                    "theta",
+                    f"{field_path}.theta",
+                    PRICING_ERROR_FACTORY,
+                ),
+                residual=require_finite_number(
+                    raw_payload,
+                    "residual",
+                    f"{field_path}.residual",
+                    PRICING_ERROR_FACTORY,
+                ),
+                absolute_residual=require_non_negative_finite_number(
+                    raw_payload,
+                    "absolute_residual",
+                    f"{field_path}.absolute_residual",
+                    PRICING_ERROR_FACTORY,
+                ),
+                tolerance=require_positive_finite_number(
+                    raw_payload,
+                    "tolerance",
+                    f"{field_path}.tolerance",
+                    PRICING_ERROR_FACTORY,
+                ),
+                domain_status=AnchoredLocalTiltDomainStatus(
+                    require_string(
+                        raw_payload,
+                        "domain_status",
+                        f"{field_path}.domain_status",
+                        PRICING_ERROR_FACTORY,
+                    )
+                ),
+                admissibility_status=AnchoredLocalTiltAdmissibilityStatus(
+                    require_string(
+                        raw_payload,
+                        "admissibility_status",
+                        f"{field_path}.admissibility_status",
+                        PRICING_ERROR_FACTORY,
+                    )
+                ),
+                policy=require_string(
+                    raw_payload,
+                    "policy",
+                    f"{field_path}.policy",
+                    PRICING_ERROR_FACTORY,
+                ),
+            )
+        except JaniformValidationError as e:
+            raise _pricing_error(e.failure.field_path, e.failure.message) from e
+        except ValueError as e:
+            raise _pricing_error(field_path, str(e)) from e
+
+
+@dataclass(frozen=True, slots=True)
 class VanillaOptionPricingRequest(ContractModel):
     """Typed pricing request with hourly intraday default `interval_delta=1.0`."""
 
     market_inputs: VanillaOptionPricingMarketInputs
     payoff: VanillaOptionPayoffConfiguration
-    boundary_state: HawkesExcitationState
+    boundary_input: AnchoredVanillaOptionPricingBoundaryInput
     model_parameters: VanillaOptionPricingModelParameters
     interval_delta: float = DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA
 
@@ -516,6 +943,25 @@ class VanillaOptionPricingRequest(ContractModel):
             "interval_delta",
             PRICING_ERROR_FACTORY,
         )
+
+        if not isinstance(self.boundary_input, AnchoredVanillaOptionPricingBoundaryInput):
+            raise _pricing_error(
+                "boundary_input",
+                "must be an AnchoredVanillaOptionPricingBoundaryInput",
+            )
+
+        if (
+            abs(self.boundary_input.interval_delta - self.interval_delta)
+            > _PRICING_MEAN_REVERSION_ALIGNMENT_TOLERANCE
+        ):
+            raise _pricing_error(
+                "interval_delta",
+                (
+                    "must match boundary_input.mean_reversion_runtime_interval_anchors."
+                    f"interval_deltas[{self.boundary_input.interval_index}] "
+                    f"({self.boundary_input.interval_delta})"
+                ),
+            )
 
     @staticmethod
     def from_mapping(raw_payload: dict[str, Any] | Any) -> VanillaOptionPricingRequest:
@@ -543,9 +989,9 @@ class VanillaOptionPricingRequest(ContractModel):
                     require_mapping(raw_payload, "payoff", "payoff", PRICING_ERROR_FACTORY),
                     field_path="payoff",
                 ),
-                boundary_state=_parse_hawkes_excitation_state(
-                    require_mapping(raw_payload, "boundary_state", "boundary_state", PRICING_ERROR_FACTORY),
-                    field_path="boundary_state",
+                boundary_input=AnchoredVanillaOptionPricingBoundaryInput.from_mapping(
+                    require_mapping(raw_payload, "boundary_input", "boundary_input", PRICING_ERROR_FACTORY),
+                    field_path="boundary_input",
                 ),
                 model_parameters=VanillaOptionPricingModelParameters.from_mapping(
                     require_mapping(raw_payload, "model_parameters", "model_parameters", PRICING_ERROR_FACTORY),
@@ -739,6 +1185,7 @@ class VanillaOptionPricingExecutionInput(ContractModel):
             raise _pricing_error("request", "must be a VanillaOptionPricingRequest")
         if not isinstance(self.interval_factors, VanillaOptionPricingIntervalFactors):
             raise _pricing_error("interval_factors", "must be VanillaOptionPricingIntervalFactors")
+
         if not isinstance(
             self.optional_output_selection,
             VanillaOptionPricingOptionalOutputSelection,
@@ -1294,6 +1741,16 @@ def run_vanilla_option_pricing(
 
 __all__ = [
     "GammaSeverityMarkConfiguration",
+    "AnchoredLocalTiltAdmissibilityStatus",
+    "AnchoredLocalTiltBoundaryStateSummary",
+    "AnchoredLocalTiltDomainStatus",
+    "AnchoredLocalTiltSolveDiagnostics",
+    "AnchoredVanillaOptionPricingBoundaryInput",
+    "MeanReversionAnchorModel",
+    "MeanReversionAnchorModelKind",
+    "MeanReversionBoundaryState",
+    "MeanReversionFittedParameters",
+    "MeanReversionRuntimeIntervalAnchors",
     "NigSharedPlusShiftConfiguration",
     "VanillaOptionPricingCalibrationHooks",
     "VanillaOptionPricingExecutionInput",

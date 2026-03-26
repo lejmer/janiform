@@ -7,6 +7,8 @@ pub const VANILLA_OPTION_REQUEST_VALIDATION_POLICY: &str =
 pub const VANILLA_OPTION_RESPONSE_VALIDATION_POLICY: &str =
     "validate_non_negative_price_and_finite_diagnostics_payload_before_response_publication.v1";
 pub const PRICING_MARTINGALE_CONDITION_VALIDATION_POLICY: &str = "trading_time_log_moment_under_esscher_tilt_must_match_r_minus_q_maturity_target_within_tolerance.v1";
+pub const PRICING_LOCAL_ANCHORED_TILT_SOLVE_POLICY: &str =
+    "solve_state_dependent_local_tilt_on_exact_nig_domain_with_pure_imaginary_real_log_moment_evaluation_and_nearest_zero_admissible_root_selection.v1";
 pub const FOURIER_INVERSION_ENGINE_POLICY: &str =
     "carr_madan_damped_call_inversion_with_put_call_parity_extension.v1";
 pub const FOURIER_INVERSION_CONTOUR_POLICY: &str =

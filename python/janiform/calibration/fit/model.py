@@ -66,6 +66,7 @@ from ...hourly_factors import (
     materialize_hourly_news_intensity_factors,
 )
 from ...pricing import (
+    AnchoredVanillaOptionPricingBoundaryInput,
     GammaSeverityMarkConfiguration,
     NigSharedPlusShiftConfiguration,
     VanillaOptionPayoffConfiguration,
@@ -881,6 +882,18 @@ def _prepare_model_pricing_execution_input(
         _zero_hawkes_excitation_state() if boundary_state is None else boundary_state
     )
 
+    (
+        mean_reversion_fitted_parameters,
+        mean_reversion_runtime_interval_anchors,
+        initial_mean_reversion_boundary_state,
+    ) = _prepare_model_mean_reversion_runtime_inputs(
+        model,
+        start_time_utc=valuation_time_utc,
+        interval_end_times_utc=(runtime_factors.range_end_utc,),
+        interval_deltas=(runtime_factors.interval_delta,),
+        interval_alignment_policy=_MEAN_REVERSION_RUNTIME_INTERVAL_ALIGNMENT_POLICY,
+    )
+
     return VanillaOptionPricingExecutionInput(
         request=VanillaOptionPricingRequest(
             market_inputs=VanillaOptionPricingMarketInputs(
@@ -891,7 +904,13 @@ def _prepare_model_pricing_execution_input(
                 dividend_yield=dividend_yield,
             ),
             payoff=VanillaOptionPayoffConfiguration(payoff_type=normalized_payoff_type),
-            boundary_state=effective_boundary_state,
+            boundary_input=AnchoredVanillaOptionPricingBoundaryInput(
+                interval_index=0,
+                hawkes_boundary_state=effective_boundary_state,
+                mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
+                mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
+                observed_boundary_state=initial_mean_reversion_boundary_state,
+            ),
             model_parameters=VanillaOptionPricingModelParameters(
                 hawkes_kernel_parameters=runtime_factors.kernel_parameters,
                 gamma_severity_mark_configuration=runtime_factors.gamma_severity_mark_configuration,

@@ -133,7 +133,8 @@ from janiform.contracts import MeanReversionFittedParameters
 - `janiform.simulation`
   - Ownership: curated convenience surface for seeded-tick and coarse-interval simulation workflows
 - `janiform.pricing`
-  - Ownership: vanilla option pricing contracts, execution input, and runtime factor loading
+  - Ownership: vanilla option pricing contracts, anchored boundary-state pricing diagnostics, and runtime factor loading
+  - Anchored pricing policy: the module re-exports the canonical anchor-deviation pricing boundary input and local state-dependent tilt diagnostics alongside the shared mean-reversion contracts required to build that request surface
 - `janiform.risk`
   - Ownership: sufficient-statistics risk workflow contracts
   - Observed-state policy: public risk path records and diagnostics distinguish core Janiform interval returns from observed log-price state, anchor state, and deviation-from-anchor summaries

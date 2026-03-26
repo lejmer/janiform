@@ -1,6 +1,7 @@
 use crate::{
-    FourierInversionDiagnostics, FourierInversionEngineSettings, VanillaOptionPayoffConfiguration,
-    VanillaOptionPayoffType, VanillaOptionPricingDiagnostics, VanillaOptionPricingMarketInputs,
+    AnchoredVanillaOptionPricingBoundaryInput, FourierInversionDiagnostics,
+    FourierInversionEngineSettings, VanillaOptionPayoffConfiguration, VanillaOptionPayoffType,
+    VanillaOptionPricingDiagnostics, VanillaOptionPricingMarketInputs,
     VanillaOptionPricingModelParameters, VanillaOptionPricingRequest, VanillaOptionPricingResponse,
     build_pricing_transform_input, price_vanilla_option_via_fourier_inversion,
     solve_exponential_affine_transform,
@@ -23,15 +24,26 @@ pub(super) fn build_valid_vanilla_option_request() -> VanillaOptionPricingReques
         VanillaOptionPayoffConfiguration {
             payoff_type: VanillaOptionPayoffType::Call,
         },
-        HawkesExcitationState {
-            y_plus_plus: 0.2,
-            y_plus_minus: 0.1,
-            y_minus_plus: 0.3,
-            y_minus_minus: 0.4,
-        },
+        disabled_boundary_input(
+            1.0,
+            HawkesExcitationState {
+                y_plus_plus: 0.2,
+                y_plus_minus: 0.1,
+                y_minus_plus: 0.3,
+                y_minus_minus: 0.4,
+            },
+        ),
         valid_model_parameters(),
     )
     .expect("request should construct")
+}
+
+pub(super) fn disabled_boundary_input(
+    interval_delta: f64,
+    hawkes_boundary_state: HawkesExcitationState,
+) -> AnchoredVanillaOptionPricingBoundaryInput {
+    AnchoredVanillaOptionPricingBoundaryInput::disabled(interval_delta, hawkes_boundary_state, 0.0)
+        .expect("disabled pricing boundary input should construct")
 }
 
 pub(super) fn valid_model_parameters() -> VanillaOptionPricingModelParameters {
@@ -91,7 +103,7 @@ pub(super) fn build_reference_pricing_response(
 pub(super) fn build_reference_transform_diagnostics_source()
 -> ExponentialAffineTransformIntegrationResult {
     let transform_input = build_pricing_transform_input(
-        build_valid_vanilla_option_request(),
+        &build_valid_vanilla_option_request(),
         ComplexScalar::new(0.2, -0.1),
         ComplexScalar::new(0.3, 0.05),
         ComplexScalar::new(1.0, 0.0),

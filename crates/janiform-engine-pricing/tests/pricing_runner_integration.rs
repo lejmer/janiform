@@ -1,5 +1,6 @@
 use janiform_engine_pricing::{
-    VanillaOptionPayoffConfiguration, VanillaOptionPayoffType, VanillaOptionPricingExecutionInput,
+    AnchoredVanillaOptionPricingBoundaryInput, VanillaOptionPayoffConfiguration,
+    VanillaOptionPayoffType, VanillaOptionPricingExecutionInput,
     VanillaOptionPricingIntervalFactors, VanillaOptionPricingMarketInputs,
     VanillaOptionPricingModelParameters, VanillaOptionPricingOptionalOutputSelection,
     VanillaOptionPricingRequest, VanillaOptionPricingRunResult, run_vanilla_option_pricing,
@@ -19,12 +20,17 @@ fn vanilla_option_pricing_runner_executes_public_workflow_with_optional_outputs(
             VanillaOptionPayoffConfiguration {
                 payoff_type: VanillaOptionPayoffType::Call,
             },
-            HawkesExcitationState {
-                y_plus_plus: 0.0,
-                y_plus_minus: 0.0,
-                y_minus_plus: 0.0,
-                y_minus_minus: 0.0,
-            },
+            AnchoredVanillaOptionPricingBoundaryInput::disabled(
+                1.0,
+                HawkesExcitationState {
+                    y_plus_plus: 0.0,
+                    y_plus_minus: 0.0,
+                    y_minus_plus: 0.0,
+                    y_minus_minus: 0.0,
+                },
+                0.0,
+            )
+            .expect("disabled boundary input should construct"),
             valid_model_parameters(),
         )
         .expect("pricing request should construct"),
