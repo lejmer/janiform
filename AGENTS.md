@@ -1,5 +1,7 @@
 # AGENTS Guidelines
 
+First and foremost: Do not introduce undocumented numerical heuristics, magic constants, or solver policies; every numeric decision must be mathematically derived, data-derived, or explicitly specified and documented in a named contract or policy. This applies to epsilons (floating-point thresholds) as well. Sometimes, the data is itself very small, so usually there is no good "one size fits all"-epsilon value. Avoid them entirely when possible.
+
 ## Scope and Goals
 - Ensure safe, minimal, high‑quality changes that keep tests green, without cheating.
 - Follow the style and architectural conventions of this repo.
