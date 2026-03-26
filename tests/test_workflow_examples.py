@@ -109,6 +109,8 @@ def test_pricing_example_runs_with_deterministic_summary() -> None:
         "request_summary": {
             "interval_delta": 1.0,
             "payoff_type": "call",
+            "anchor_model_kind": "constant",
+            "observed_boundary_deviation": 0.0,
             "nu_h_known": 0.01,
             "nu_h_surprise": 0.02,
         },
@@ -118,6 +120,7 @@ def test_pricing_example_runs_with_deterministic_summary() -> None:
             "forward_price": 102.015067,
             "run_diagnostics_included": True,
             "calibration_hooks_included": True,
+            "anchored_recursion_interval_count": 1,
         },
     }
 

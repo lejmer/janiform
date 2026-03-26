@@ -228,6 +228,17 @@ def test_anchored_boundary_input_roundtrip_and_validation() -> None:
     assert round_tripped.observed_return_adjustment < 0.0
 
 
+def test_anchored_vanilla_option_request_roundtrip_preserves_observed_boundary_contract() -> None:
+    request = _anchored_request_model()
+
+    serialized_request = serialize_vanilla_option_pricing_request(request)
+    deserialized_request = deserialize_vanilla_option_pricing_request(serialized_request)
+
+    assert deserialized_request == request
+    assert deserialized_request.boundary_input.mean_reversion_fitted_parameters.kappa == pytest.approx(0.35)
+    assert deserialized_request.boundary_input.observed_boundary_state.deviation == pytest.approx(0.15)
+
+
 def test_anchored_boundary_input_rejects_misaligned_observed_anchor() -> None:
     boundary_payload = _disabled_boundary_input(
         interval_delta=1.0,
@@ -322,6 +333,21 @@ def test_vanilla_option_pricing_run_result_roundtrip_preserves_required_schema_f
     )
 
 
+def test_anchored_pricing_run_result_roundtrip_preserves_anchored_recursion_diagnostics() -> None:
+    run_result = run_vanilla_option_pricing(_anchored_runtime_execution_input_model())
+
+    serialized_run_result = serialize_vanilla_option_pricing_run_result(run_result)
+    deserialized_run_result = deserialize_vanilla_option_pricing_run_result(serialized_run_result)
+
+    assert deserialized_run_result == run_result
+    assert deserialized_run_result.run_diagnostics is not None
+    assert deserialized_run_result.run_diagnostics.anchored_recursion is not None
+    assert (
+        deserialized_run_result.run_diagnostics.anchored_recursion["refined_deviation_grid_node_count"]
+        >= deserialized_run_result.run_diagnostics.anchored_recursion["deviation_grid_node_count"]
+    )
+
+
 def _valid_request_model() -> VanillaOptionPricingRequest:
     return VanillaOptionPricingRequest(
         market_inputs=VanillaOptionPricingMarketInputs(
@@ -412,6 +438,90 @@ def _valid_runtime_execution_input_model() -> VanillaOptionPricingExecutionInput
                 ),
             ),
             model_parameters=_valid_request_model().model_parameters,
+        ),
+        interval_factors=(
+            VanillaOptionPricingIntervalFactors(
+                s_h=1.0,
+                nu_h_known=0.0,
+                nu_h_surprise=0.0,
+            ),
+        ),
+        optional_output_selection=VanillaOptionPricingOptionalOutputSelection(
+            include_transform_diagnostics=True,
+            include_integration_quality_diagnostics=True,
+            include_calibration_hooks=True,
+        ),
+    )
+
+
+def _anchored_request_model() -> VanillaOptionPricingRequest:
+    return VanillaOptionPricingRequest(
+        market_inputs=VanillaOptionPricingMarketInputs(
+            spot=101.0,
+            strike=100.0,
+            maturity_interval=1.0,
+            risk_free_rate=0.02,
+            dividend_yield=0.01,
+        ),
+        payoff=VanillaOptionPayoffConfiguration(payoff_type=VanillaOptionPayoffType.CALL),
+        boundary_input=AnchoredVanillaOptionPricingBoundaryInput(
+            interval_index=0,
+            hawkes_boundary_state=HawkesExcitationState(
+                y_plus_plus=0.0,
+                y_plus_minus=0.0,
+                y_minus_plus=0.0,
+                y_minus_minus=0.0,
+            ),
+            mean_reversion_fitted_parameters=MeanReversionFittedParameters(
+                kappa=0.35,
+                anchor_model=MeanReversionAnchorModel.constant(0.25),
+            ),
+            mean_reversion_runtime_interval_anchors=MeanReversionRuntimeIntervalAnchors(
+                interval_alignment_policy="pricing_constant_anchor_interval_grid.v1",
+                start_anchor_value=0.25,
+                end_anchor_values=(0.25,),
+                interval_deltas=(1.0,),
+            ),
+            observed_boundary_state=MeanReversionBoundaryState(
+                observed_log_price=0.4,
+                anchor_value=0.25,
+                deviation=0.15,
+            ),
+        ),
+        model_parameters=_valid_request_model().model_parameters,
+    )
+
+
+def _anchored_runtime_execution_input_model() -> VanillaOptionPricingExecutionInput:
+    return VanillaOptionPricingExecutionInput(
+        request=VanillaOptionPricingRequest(
+            market_inputs=_anchored_request_model().market_inputs,
+            payoff=_anchored_request_model().payoff,
+            boundary_input=AnchoredVanillaOptionPricingBoundaryInput(
+                interval_index=0,
+                hawkes_boundary_state=HawkesExcitationState(
+                    y_plus_plus=0.0,
+                    y_plus_minus=0.0,
+                    y_minus_plus=0.0,
+                    y_minus_minus=0.0,
+                ),
+                mean_reversion_fitted_parameters=MeanReversionFittedParameters(
+                    kappa=0.35,
+                    anchor_model=MeanReversionAnchorModel.constant(0.25),
+                ),
+                mean_reversion_runtime_interval_anchors=MeanReversionRuntimeIntervalAnchors(
+                    interval_alignment_policy="pricing_constant_anchor_interval_grid.v1",
+                    start_anchor_value=0.25,
+                    end_anchor_values=(0.25,),
+                    interval_deltas=(1.0,),
+                ),
+                observed_boundary_state=MeanReversionBoundaryState(
+                    observed_log_price=0.25,
+                    anchor_value=0.25,
+                    deviation=0.0,
+                ),
+            ),
+            model_parameters=_anchored_request_model().model_parameters,
         ),
         interval_factors=(
             VanillaOptionPricingIntervalFactors(

@@ -129,10 +129,15 @@ price columns, and uses the selected market profile for timezone, session, and k
 Use `--explain` to show the inferred choices on a successful fit, or `janiform fit inspect` to
 preview the inferred configuration without running calibration.
 
+High-level mean-reversion calibration is opt-in. Use `--mean-reversion-anchor-model` to request
+anchor estimation on the canonical session-open boundary observation grid, and optionally provide
+`--mean-reversion-grid-interval-hours` when you want to override the default median-spacing
+derivation policy for the lower-frequency calibration interval.
+
 ### Synopsis
 
 ```text
-janiform fit [PATH] [--market MARKET] [--run-id RUN_ID] [--workflow-scope {seasonality_only,full_without_option_surface,full_with_option_surface}] [--tick-data-path PATH] [--tick-data-format {csv,parquet}] [--tick-timestamp-column TICK_TIMESTAMP_COLUMN] [--timestamp-timezone TIMESTAMP_TIMEZONE] [--tick-data-provenance-label TICK_DATA_PROVENANCE_LABEL] [--tick-price-input-policy {explicit_price_column,bid_ask_midpoint}] [--tick-price-column TICK_PRICE_COLUMN] [--tick-trade-sign-column TICK_TRADE_SIGN_COLUMN] [--tick-bid-column TICK_BID_COLUMN] [--tick-ask-column TICK_ASK_COLUMN] [--duplicate-record-policy {keep_first,keep_last}] [--session-preset SESSION_PRESET] [--known-news KNOWN_NEWS] [--session-json PATH] [--known-news-json PATH] [--exchange-code EXCHANGE_CODE] [--session-timezone SESSION_TIMEZONE] [--explain] [--silent] [--option-surface-path PATH] [--option-surface-format {csv,parquet}] [--option-surface-provenance-label OPTION_SURFACE_PROVENANCE_LABEL] [--option-quote-input-policy {mid_price_column,bid_ask_midpoint,implied_volatility_column}] [--option-quote-timestamp-column OPTION_QUOTE_TIMESTAMP_COLUMN] [--option-expiry-column OPTION_EXPIRY_COLUMN] [--option-strike-column OPTION_STRIKE_COLUMN] [--option-type-column OPTION_TYPE_COLUMN] [--option-mid-price-column OPTION_MID_PRICE_COLUMN] [--option-bid-column OPTION_BID_COLUMN] [--option-ask-column OPTION_ASK_COLUMN] [--option-implied-volatility-column OPTION_IMPLIED_VOLATILITY_COLUMN] [--execution-mode {disk,memory}] [--disk-checkpoint-directory DIRECTORY] [--emit-derived-staged-execution-input] [--omit-input-provenance-report] [--output-dir DIRECTORY] [--output {human,json}]
+janiform fit [PATH] [--market MARKET] [--run-id RUN_ID] [--workflow-scope {seasonality_only,full_without_option_surface,full_with_option_surface}] [--tick-data-path PATH] [--tick-data-format {csv,parquet}] [--tick-timestamp-column TICK_TIMESTAMP_COLUMN] [--timestamp-timezone TIMESTAMP_TIMEZONE] [--tick-data-provenance-label TICK_DATA_PROVENANCE_LABEL] [--tick-price-input-policy {explicit_price_column,bid_ask_midpoint}] [--tick-price-column TICK_PRICE_COLUMN] [--tick-trade-sign-column TICK_TRADE_SIGN_COLUMN] [--tick-bid-column TICK_BID_COLUMN] [--tick-ask-column TICK_ASK_COLUMN] [--duplicate-record-policy {keep_first,keep_last}] [--session-preset SESSION_PRESET] [--known-news KNOWN_NEWS] [--session-json PATH] [--known-news-json PATH] [--exchange-code EXCHANGE_CODE] [--session-timezone SESSION_TIMEZONE] [--mean-reversion-anchor-model {disabled,constant,deterministic_interval_grid}] [--mean-reversion-grid-interval-hours FLOAT] [--explain] [--silent] [--option-surface-path PATH] [--option-surface-format {csv,parquet}] [--option-surface-provenance-label OPTION_SURFACE_PROVENANCE_LABEL] [--option-quote-input-policy {mid_price_column,bid_ask_midpoint,implied_volatility_column}] [--option-quote-timestamp-column OPTION_QUOTE_TIMESTAMP_COLUMN] [--option-expiry-column OPTION_EXPIRY_COLUMN] [--option-strike-column OPTION_STRIKE_COLUMN] [--option-type-column OPTION_TYPE_COLUMN] [--option-mid-price-column OPTION_MID_PRICE_COLUMN] [--option-bid-column OPTION_BID_COLUMN] [--option-ask-column OPTION_ASK_COLUMN] [--option-implied-volatility-column OPTION_IMPLIED_VOLATILITY_COLUMN] [--execution-mode {disk,memory}] [--disk-checkpoint-directory DIRECTORY] [--emit-derived-staged-execution-input] [--omit-input-provenance-report] [--output-dir DIRECTORY] [--output {human,json}]
 ```
 
 ### Example
@@ -140,6 +145,7 @@ janiform fit [PATH] [--market MARKET] [--run-id RUN_ID] [--workflow-scope {seaso
 ```bash
 janiform fit tmp/cli-docs/data/ticks.csv \
   --market us_equity_cash \
+  --mean-reversion-anchor-model constant \
   --explain \
   --output-dir tmp/cli-docs/fitted_run \
   --output human
@@ -342,7 +348,7 @@ janiform seasonality preprocess-timestamps \
 ### Synopsis
 
 ```text
-janiform price --model-path PATH --valuation-time-utc VALUATION_TIME_UTC --spot FLOAT --strike FLOAT --maturity-interval FLOAT [--payoff-type {call,put}] [--risk-free-rate FLOAT] [--dividend-yield FLOAT] [--output-path PATH] [--silent] [--output {human,json}]
+janiform price --model-path PATH --valuation-time-utc VALUATION_TIME_UTC --spot FLOAT --strike FLOAT --maturity-interval FLOAT [--payoff-type {call,put}] [--risk-free-rate FLOAT] [--dividend-yield FLOAT] [--observed-boundary-state-json PATH] [--output-path PATH] [--silent] [--output {human,json}]
 ```
 
 ### Options
@@ -352,13 +358,20 @@ janiform price --model-path PATH --valuation-time-utc VALUATION_TIME_UTC --spot 
 - `--spot`: spot price
 - `--strike`: option strike
 - `--maturity-interval`: maturity in model time units
+- `--observed-boundary-state-json`: optional `MeanReversionBoundaryState` payload for anchored
+  pricing. Required when the persisted model enables mean reversion because the CLI never invents
+  observed pricing state.
 - `--output {human,json}`: operator summary or machine-readable result
 
-### Example
+When the fitted model uses disabled mean reversion, `janiform price` can omit
+`--observed-boundary-state-json` and will price the nested non-anchored case.
+
+### Example: Anchored Pricing With Explicit Observed Boundary State
 
 ```bash
 janiform price \
   --model-path tmp/cli-docs/fitted_run/model.json \
+  --observed-boundary-state-json tmp/cli-docs/observed_boundary_state.json \
   --valuation-time-utc 2026-02-02T15:00:00Z \
   --spot 100.0 \
   --strike 105.0 \

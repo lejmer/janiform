@@ -129,6 +129,7 @@
         "CalibrationMarketDataNormalizationPolicy",
         "CalibrationMarketDataOutputPreferences",
         "CalibrationMarketDataWorkflowScope",
+        "CalibrationMeanReversionConfiguration",
         "CalibrationOptionQuoteInputPolicy",
         "CalibrationOptionSurfaceColumnMapping",
         "CalibrationTickDataColumnMapping",
@@ -318,6 +319,14 @@
             }
           ]
         },
+        "CalibrationMeanReversionConfiguration": {
+          "field_names": [
+            "anchor_model_kind",
+            "calibration_grid_interval_hours"
+          ],
+          "kind": "contract_model",
+          "signature": "(anchor_model_kind: 'MeanReversionAnchorModelKind', calibration_grid_interval_hours: 'Optional[float]' = None) -> 'None'"
+        },
         "CalibrationOptionQuoteInputPolicy": {
           "kind": "enum",
           "members": [
@@ -403,7 +412,7 @@
         },
         "JaniformEstimator": {
           "base_classes": [],
-          "constructor_signature": "(*, workflow_scope: 'CalibrationMarketDataWorkflowScope' = <CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE: 'full_without_option_surface'>, tick_data_column_mapping: 'Optional[CalibrationTickDataColumnMapping]' = None, normalization_policy: 'Optional[CalibrationMarketDataNormalizationPolicy]' = None, option_surface_column_mapping: 'Optional[CalibrationOptionSurfaceColumnMapping]' = None, output_preferences: 'Optional[CalibrationMarketDataOutputPreferences]' = None, market_profile: 'Optional[str | MarketProfileReference]' = None, session: 'Optional[str | Path | SessionPresetReference]' = None, known_news: 'Optional[str | KnownNewsPresetReference]' = None, exchange_code: 'Optional[str]' = None, session_timezone: 'Optional[str]' = None, registry: 'Optional[PresetRegistry]' = None, cpu_count: 'Optional[int]' = None, silent: 'bool' = False) -> 'None'",
+          "constructor_signature": "(*, workflow_scope: 'CalibrationMarketDataWorkflowScope' = <CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE: 'full_without_option_surface'>, tick_data_column_mapping: 'Optional[CalibrationTickDataColumnMapping]' = None, normalization_policy: 'Optional[CalibrationMarketDataNormalizationPolicy]' = None, option_surface_column_mapping: 'Optional[CalibrationOptionSurfaceColumnMapping]' = None, output_preferences: 'Optional[CalibrationMarketDataOutputPreferences]' = None, mean_reversion: 'Optional[CalibrationMeanReversionConfiguration]' = None, market_profile: 'Optional[str | MarketProfileReference]' = None, session: 'Optional[str | Path | SessionPresetReference]' = None, known_news: 'Optional[str | KnownNewsPresetReference]' = None, exchange_code: 'Optional[str]' = None, session_timezone: 'Optional[str]' = None, registry: 'Optional[PresetRegistry]' = None, cpu_count: 'Optional[int]' = None, silent: 'bool' = False) -> 'None'",
           "kind": "class",
           "origin_module": "janiform.calibration.fit.estimator",
           "qualname": "JaniformEstimator"
@@ -477,10 +486,11 @@
             "normalization_policy",
             "output_preferences",
             "option_surface_source",
-            "known_news_inputs"
+            "known_news_inputs",
+            "mean_reversion"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: 'str', run_id: 'str', tick_data_source: 'CalibrationInputFileReference', session_configuration: 'CalibrationSessionConfigurationInput', column_mapping: 'CalibrationMarketDataColumnMapping', workflow_scope: 'CalibrationMarketDataWorkflowScope', normalization_policy: 'CalibrationMarketDataNormalizationPolicy', output_preferences: 'CalibrationMarketDataOutputPreferences', option_surface_source: 'Optional[CalibrationInputFileReference]' = None, known_news_inputs: 'Optional[CalibrationKnownNewsInput]' = None) -> 'None'"
+          "signature": "(schema_version: 'str', run_id: 'str', tick_data_source: 'CalibrationInputFileReference', session_configuration: 'CalibrationSessionConfigurationInput', column_mapping: 'CalibrationMarketDataColumnMapping', workflow_scope: 'CalibrationMarketDataWorkflowScope', normalization_policy: 'CalibrationMarketDataNormalizationPolicy', output_preferences: 'CalibrationMarketDataOutputPreferences', option_surface_source: 'Optional[CalibrationInputFileReference]' = None, known_news_inputs: 'Optional[CalibrationKnownNewsInput]' = None, mean_reversion: 'Optional[CalibrationMeanReversionConfiguration]' = None) -> 'None'"
         },
         "MarketDataSessionRecurringClosedWindow": {
           "field_names": [
@@ -748,7 +758,7 @@
       "symbols": {
         "JaniformEstimator": {
           "base_classes": [],
-          "constructor_signature": "(*, workflow_scope: 'CalibrationMarketDataWorkflowScope' = <CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE: 'full_without_option_surface'>, tick_data_column_mapping: 'Optional[CalibrationTickDataColumnMapping]' = None, normalization_policy: 'Optional[CalibrationMarketDataNormalizationPolicy]' = None, option_surface_column_mapping: 'Optional[CalibrationOptionSurfaceColumnMapping]' = None, output_preferences: 'Optional[CalibrationMarketDataOutputPreferences]' = None, market_profile: 'Optional[str | MarketProfileReference]' = None, session: 'Optional[str | Path | SessionPresetReference]' = None, known_news: 'Optional[str | KnownNewsPresetReference]' = None, exchange_code: 'Optional[str]' = None, session_timezone: 'Optional[str]' = None, registry: 'Optional[PresetRegistry]' = None, cpu_count: 'Optional[int]' = None, silent: 'bool' = False) -> 'None'",
+          "constructor_signature": "(*, workflow_scope: 'CalibrationMarketDataWorkflowScope' = <CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE: 'full_without_option_surface'>, tick_data_column_mapping: 'Optional[CalibrationTickDataColumnMapping]' = None, normalization_policy: 'Optional[CalibrationMarketDataNormalizationPolicy]' = None, option_surface_column_mapping: 'Optional[CalibrationOptionSurfaceColumnMapping]' = None, output_preferences: 'Optional[CalibrationMarketDataOutputPreferences]' = None, mean_reversion: 'Optional[CalibrationMeanReversionConfiguration]' = None, market_profile: 'Optional[str | MarketProfileReference]' = None, session: 'Optional[str | Path | SessionPresetReference]' = None, known_news: 'Optional[str | KnownNewsPresetReference]' = None, exchange_code: 'Optional[str]' = None, session_timezone: 'Optional[str]' = None, registry: 'Optional[PresetRegistry]' = None, cpu_count: 'Optional[int]' = None, silent: 'bool' = False) -> 'None'",
           "kind": "class",
           "origin_module": "janiform.calibration.fit.estimator",
           "qualname": "JaniformEstimator"
@@ -803,7 +813,7 @@
       "symbols": {
         "JaniformEstimator": {
           "base_classes": [],
-          "constructor_signature": "(*, workflow_scope: 'CalibrationMarketDataWorkflowScope' = <CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE: 'full_without_option_surface'>, tick_data_column_mapping: 'Optional[CalibrationTickDataColumnMapping]' = None, normalization_policy: 'Optional[CalibrationMarketDataNormalizationPolicy]' = None, option_surface_column_mapping: 'Optional[CalibrationOptionSurfaceColumnMapping]' = None, output_preferences: 'Optional[CalibrationMarketDataOutputPreferences]' = None, market_profile: 'Optional[str | MarketProfileReference]' = None, session: 'Optional[str | Path | SessionPresetReference]' = None, known_news: 'Optional[str | KnownNewsPresetReference]' = None, exchange_code: 'Optional[str]' = None, session_timezone: 'Optional[str]' = None, registry: 'Optional[PresetRegistry]' = None, cpu_count: 'Optional[int]' = None, silent: 'bool' = False) -> 'None'",
+          "constructor_signature": "(*, workflow_scope: 'CalibrationMarketDataWorkflowScope' = <CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE: 'full_without_option_surface'>, tick_data_column_mapping: 'Optional[CalibrationTickDataColumnMapping]' = None, normalization_policy: 'Optional[CalibrationMarketDataNormalizationPolicy]' = None, option_surface_column_mapping: 'Optional[CalibrationOptionSurfaceColumnMapping]' = None, output_preferences: 'Optional[CalibrationMarketDataOutputPreferences]' = None, mean_reversion: 'Optional[CalibrationMeanReversionConfiguration]' = None, market_profile: 'Optional[str | MarketProfileReference]' = None, session: 'Optional[str | Path | SessionPresetReference]' = None, known_news: 'Optional[str | KnownNewsPresetReference]' = None, exchange_code: 'Optional[str]' = None, session_timezone: 'Optional[str]' = None, registry: 'Optional[PresetRegistry]' = None, cpu_count: 'Optional[int]' = None, silent: 'bool' = False) -> 'None'",
           "kind": "class",
           "origin_module": "janiform.calibration.fit.estimator",
           "public_methods": {
@@ -890,6 +900,7 @@
         "CalibrationMarketDataNormalizationPolicy",
         "CalibrationMarketDataOutputPreferences",
         "CalibrationMarketDataWorkflowScope",
+        "CalibrationMeanReversionConfiguration",
         "CalibrationOptionQuoteInputPolicy",
         "CalibrationOptionSurfaceColumnMapping",
         "CalibrationSessionConfigurationInput",
@@ -1030,6 +1041,14 @@
             }
           ]
         },
+        "CalibrationMeanReversionConfiguration": {
+          "field_names": [
+            "anchor_model_kind",
+            "calibration_grid_interval_hours"
+          ],
+          "kind": "contract_model",
+          "signature": "(anchor_model_kind: 'MeanReversionAnchorModelKind', calibration_grid_interval_hours: 'Optional[float]' = None) -> 'None'"
+        },
         "CalibrationOptionQuoteInputPolicy": {
           "kind": "enum",
           "members": [
@@ -1145,10 +1164,11 @@
             "normalization_policy",
             "output_preferences",
             "option_surface_source",
-            "known_news_inputs"
+            "known_news_inputs",
+            "mean_reversion"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: 'str', run_id: 'str', tick_data_source: 'CalibrationInputFileReference', session_configuration: 'CalibrationSessionConfigurationInput', column_mapping: 'CalibrationMarketDataColumnMapping', workflow_scope: 'CalibrationMarketDataWorkflowScope', normalization_policy: 'CalibrationMarketDataNormalizationPolicy', output_preferences: 'CalibrationMarketDataOutputPreferences', option_surface_source: 'Optional[CalibrationInputFileReference]' = None, known_news_inputs: 'Optional[CalibrationKnownNewsInput]' = None) -> 'None'"
+          "signature": "(schema_version: 'str', run_id: 'str', tick_data_source: 'CalibrationInputFileReference', session_configuration: 'CalibrationSessionConfigurationInput', column_mapping: 'CalibrationMarketDataColumnMapping', workflow_scope: 'CalibrationMarketDataWorkflowScope', normalization_policy: 'CalibrationMarketDataNormalizationPolicy', output_preferences: 'CalibrationMarketDataOutputPreferences', option_surface_source: 'Optional[CalibrationInputFileReference]' = None, known_news_inputs: 'Optional[CalibrationKnownNewsInput]' = None, mean_reversion: 'Optional[CalibrationMeanReversionConfiguration]' = None) -> 'None'"
         },
         "MarketDataCalibrationSourceSummary": {
           "field_names": [
@@ -1490,10 +1510,11 @@
             "normalization_policy",
             "output_preferences",
             "option_surface_source",
-            "known_news_inputs"
+            "known_news_inputs",
+            "mean_reversion"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: 'str', run_id: 'str', tick_data_source: 'CalibrationInputFileReference', session_configuration: 'CalibrationSessionConfigurationInput', column_mapping: 'CalibrationMarketDataColumnMapping', workflow_scope: 'CalibrationMarketDataWorkflowScope', normalization_policy: 'CalibrationMarketDataNormalizationPolicy', output_preferences: 'CalibrationMarketDataOutputPreferences', option_surface_source: 'Optional[CalibrationInputFileReference]' = None, known_news_inputs: 'Optional[CalibrationKnownNewsInput]' = None) -> 'None'"
+          "signature": "(schema_version: 'str', run_id: 'str', tick_data_source: 'CalibrationInputFileReference', session_configuration: 'CalibrationSessionConfigurationInput', column_mapping: 'CalibrationMarketDataColumnMapping', workflow_scope: 'CalibrationMarketDataWorkflowScope', normalization_policy: 'CalibrationMarketDataNormalizationPolicy', output_preferences: 'CalibrationMarketDataOutputPreferences', option_surface_source: 'Optional[CalibrationInputFileReference]' = None, known_news_inputs: 'Optional[CalibrationKnownNewsInput]' = None, mean_reversion: 'Optional[CalibrationMeanReversionConfiguration]' = None) -> 'None'"
         },
         "deserialize_market_data_calibration_request": {
           "kind": "function",

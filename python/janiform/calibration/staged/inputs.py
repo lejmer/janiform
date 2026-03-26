@@ -1255,6 +1255,7 @@ class CalibrationReturnComponentsObservedCloseOpenBoundaryObservation(ContractMo
 
         require_positive_finite_number({"close_price": self.close_price}, "close_price", "close_price", CALIBRATION_ERROR_FACTORY)
         require_positive_finite_number({"open_price": self.open_price}, "open_price", "open_price", CALIBRATION_ERROR_FACTORY)
+
         if self.post_shock_activity_lift < 0.0:
             raise _calibration_error("post_shock_activity_lift", "must be non-negative")
 

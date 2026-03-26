@@ -260,6 +260,15 @@ The default high-level path is:
 - `JaniformEstimator.fit(...) -> JaniformModel`
 - optional `JaniformFitReport`
 
+The high-level runtime methods on `JaniformModel` are:
+
+- `JaniformModel.simulate(...)`
+- `JaniformModel.price_option(...)`
+
+When the fitted model enables mean reversion, `JaniformModel.price_option(...)` requires an
+explicit `observed_boundary_state: MeanReversionBoundaryState`. The high-level API keeps anchored
+pricing state explicit and does not synthesize missing observed-state boundary inputs.
+
 The advanced staged-calibration entrypoint is:
 
 - `run_staged_calibration`

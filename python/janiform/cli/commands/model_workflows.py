@@ -69,6 +69,7 @@ from ..rendering import (
 from ...calibration import (
     CalibrationDuplicateRecordPolicy,
     CalibrationInputFileFormat,
+    CalibrationMeanReversionConfiguration,
     CalibrationMarketDataNormalizationPolicy,
     CalibrationMarketDataOutputPreferences,
     CalibrationMarketDataWorkflowScope,
@@ -83,6 +84,7 @@ from ...calibration import (
     KnownNewsExplicitConfiguration,
     KnownNewsPresetReference,
     MarketProfileReference,
+    MeanReversionAnchorModelKind,
     PresetCategory,
     PresetReferenceUsageMode,
     PresetRegistry,
@@ -458,6 +460,12 @@ def _configure_cli_fit_command(
         entrypoint=entrypoint,
         error_id=error_id,
     )
+    mean_reversion = _build_mean_reversion_configuration_from_arguments(
+        command_arguments,
+        workflow_scope=workflow_scope,
+        entrypoint=entrypoint,
+        error_id=error_id,
+    )
 
     preliminary_estimator = JaniformEstimator(
         workflow_scope=workflow_scope,
@@ -493,6 +501,7 @@ def _configure_cli_fit_command(
         normalization_policy=input_inference.normalization_policy,
         option_surface_column_mapping=option_surface_column_mapping,
         output_preferences=output_preferences,
+        mean_reversion=mean_reversion,
         market_profile=market_profile,
         session=session_reference,
         known_news=known_news_reference,
@@ -1222,6 +1231,56 @@ def _reject_orphan_market_data_arguments(
             raise ValueError(message)
 
 
+def _build_mean_reversion_configuration_from_arguments(
+    command_arguments: CliCommandArguments,
+    *,
+    workflow_scope: CalibrationMarketDataWorkflowScope,
+    entrypoint: str,
+    error_id: str,
+) -> Optional[CalibrationMeanReversionConfiguration]:
+    raw_anchor_model = cast(Optional[str], command_arguments.get("mean_reversion_anchor_model"))
+    raw_grid_interval_hours = cast(Optional[float], command_arguments.get("mean_reversion_grid_interval_hours"))
+
+    if raw_anchor_model is None:
+        if raw_grid_interval_hours is not None:
+            raise _cli_validation_error(
+                "mean_reversion_grid_interval_hours",
+                "--mean-reversion-grid-interval-hours requires --mean-reversion-anchor-model",
+                error_id=error_id,
+                entrypoint=entrypoint,
+            )
+        return None
+
+    anchor_model_kind = MeanReversionAnchorModelKind(raw_anchor_model)
+    if workflow_scope == CalibrationMarketDataWorkflowScope.SEASONALITY_ONLY:
+        raise _cli_validation_error(
+            "mean_reversion_anchor_model",
+            "--mean-reversion-anchor-model is not supported when --workflow-scope is seasonality_only",
+            error_id=error_id,
+            entrypoint=entrypoint,
+        )
+    if anchor_model_kind == MeanReversionAnchorModelKind.DISABLED and raw_grid_interval_hours is not None:
+        raise _cli_validation_error(
+            "mean_reversion_grid_interval_hours",
+            "--mean-reversion-grid-interval-hours must be omitted when --mean-reversion-anchor-model is disabled",
+            error_id=error_id,
+            entrypoint=entrypoint,
+        )
+
+    try:
+        return CalibrationMeanReversionConfiguration(
+            anchor_model_kind=anchor_model_kind,
+            calibration_grid_interval_hours=raw_grid_interval_hours,
+        )
+    except Exception as e:
+        raise _cli_validation_error(
+            "mean_reversion_anchor_model",
+            str(e),
+            error_id=error_id,
+            entrypoint=entrypoint,
+        ) from e
+
+
 def _build_fit_group(*, environment: Optional[Mapping[str, str]] = None) -> click.Group:
     @click.group(
         cls=JaniformGroup,
@@ -1457,6 +1516,22 @@ def _model_workflow_fit_options(
                 "Default: all available logical CPUs."
             ),
             value_type=int,
+        ),
+        command_option(
+            "--mean-reversion-anchor-model",
+            choice_options=tuple(anchor_model_kind.value for anchor_model_kind in MeanReversionAnchorModelKind),
+            help_text=(
+                "Enable high-level mean-reversion calibration with the selected anchor family. "
+                "Omit to leave the mean-reversion stage disabled by default."
+            ),
+        ),
+        command_option(
+            "--mean-reversion-grid-interval-hours",
+            help_text=(
+                "Optional calibration-grid interval in hours for high-level mean-reversion calibration. "
+                "Default: derived from retained session-open boundary observations."
+            ),
+            value_type=float,
         ),
         *(
             [

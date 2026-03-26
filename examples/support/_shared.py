@@ -54,6 +54,7 @@ from janiform.hourly_factors import (
 from janiform.pricing import (
     AnchoredVanillaOptionPricingBoundaryInput,
     GammaSeverityMarkConfiguration,
+    MeanReversionAnchorModel,
     NigSharedPlusShiftConfiguration,
     VanillaOptionPayoffConfiguration,
     VanillaOptionPayoffType,
@@ -395,15 +396,29 @@ def build_pricing_request() -> VanillaOptionPricingRequest:
             dividend_yield=0.01,
         ),
         payoff=VanillaOptionPayoffConfiguration(payoff_type=VanillaOptionPayoffType.CALL),
-        boundary_input=AnchoredVanillaOptionPricingBoundaryInput.disabled(
-            interval_delta=1.0,
+        boundary_input=AnchoredVanillaOptionPricingBoundaryInput(
+            interval_index=0,
             hawkes_boundary_state=HawkesExcitationState(
                 y_plus_plus=0.0,
                 y_plus_minus=0.0,
                 y_minus_plus=0.0,
                 y_minus_minus=0.0,
             ),
-            observed_log_price=0.0,
+            mean_reversion_fitted_parameters=MeanReversionFittedParameters(
+                kappa=0.35,
+                anchor_model=MeanReversionAnchorModel.constant(0.25),
+            ),
+            mean_reversion_runtime_interval_anchors=MeanReversionRuntimeIntervalAnchors(
+                interval_alignment_policy="pricing_constant_anchor_interval_grid.v1",
+                start_anchor_value=0.25,
+                end_anchor_values=(0.25,),
+                interval_deltas=(1.0,),
+            ),
+            observed_boundary_state=MeanReversionBoundaryState(
+                observed_log_price=0.25,
+                anchor_value=0.25,
+                deviation=0.0,
+            ),
         ),
         model_parameters=VanillaOptionPricingModelParameters(
             hawkes_kernel_parameters=HawkesKernelParameters(

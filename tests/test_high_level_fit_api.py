@@ -14,12 +14,13 @@ from pyarrow import parquet
 import janiform.calibration.fit.estimator as fit_estimator_module
 import janiform.calibration.fit.model as fit_model_module
 import janiform.calibration.market_data.ingestion as market_data_ingestion_module
+from janiform._timestamps import datetime_to_utc_nanos
 from janiform.calibration import (
     CalibrationValidationError,
     MeanReversionAnchorModel,
+    MeanReversionAnchorModelKind,
     MeanReversionFittedParameters,
 )
-from janiform._timestamps import datetime_to_utc_nanos
 from janiform.calibration.fit import (
     JaniformEstimator,
     JaniformFitReport,
@@ -29,6 +30,7 @@ from janiform.calibration.fit import (
 from janiform.calibration.market_data import (
     CalibrationDuplicateRecordPolicy,
     CalibrationInputFileFormat,
+    CalibrationMeanReversionConfiguration,
     CalibrationMarketDataNormalizationPolicy,
     CalibrationMarketDataWorkflowScope,
     CalibrationTickDataColumnMapping,
@@ -36,9 +38,15 @@ from janiform.calibration.market_data import (
 )
 from janiform.calibration.staged import StagedCalibrationResponse, validate_staged_calibration_response
 from janiform.calendar import CalendarRegistry, MarketState
+from janiform.contracts import MeanReversionBoundaryState
 from janiform.hourly_factors import HourlyFactorContract
 from janiform.simulation import SeededTickEventSide
-from tests.calibration_test_support import build_disabled_mean_reversion_fitted_parameters_payload
+from tests.calibration_test_support import (
+    build_constant_mean_reversion_fitted_parameters_payload,
+    build_deterministic_interval_grid_mean_reversion_fitted_parameters_payload,
+    build_disabled_mean_reversion_fitted_parameters_payload,
+    update_model_mean_reversion_payload,
+)
 
 
 def test_janiform_estimator_fit_returns_model_for_default_high_level_workflow(
@@ -178,6 +186,65 @@ def test_prepare_fit_workflow_uses_column_only_parquet_schema_discovery(
             option_surface_format=CalibrationInputFileFormat.PARQUET,
             option_surface_provenance_label="option_surface",
         )
+
+
+def test_prepare_fit_workflow_passes_explicit_mean_reversion_request_to_translation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tick_data_path = tmp_path / "ticks.csv"
+    tick_data_path.write_text(
+        "\n".join(
+            [
+                "timestamp_utc,trade_price,trade_sign",
+                "2026-02-02T14:30:00Z,100.0,buy",
+                "2026-02-02T15:00:00Z,101.0,sell",
+                "2026-02-02T20:59:00Z,102.0,buy",
+                "2026-02-03T14:30:00Z,99.0,sell",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    class _StopAfterTranslation(Exception):
+        pass
+
+    captured_request: dict[str, Any] = {}
+
+    def _capture_request(request, **kwargs):
+        captured_request["request"] = request
+        del kwargs
+        raise _StopAfterTranslation()
+
+    monkeypatch.setattr(
+        fit_estimator_module,
+        "translate_market_data_request_to_staged_execution_input",
+        _capture_request,
+    )
+
+    estimator = JaniformEstimator(
+        market_profile="us_equity_cash",
+        mean_reversion=CalibrationMeanReversionConfiguration(
+            anchor_model_kind=MeanReversionAnchorModelKind.CONSTANT,
+            calibration_grid_interval_hours=36.0,
+        ),
+    )
+
+    with pytest.raises(_StopAfterTranslation):
+        estimator._prepare_fit_workflow(
+            run_id="high-level-mean-reversion-request",
+            tick_data_path=tick_data_path,
+            tick_data_format=CalibrationInputFileFormat.CSV,
+            tick_data_provenance_label="tick_data",
+            option_surface_path=None,
+            option_surface_format=CalibrationInputFileFormat.PARQUET,
+            option_surface_provenance_label="option_surface",
+        )
+
+    request = captured_request["request"]
+    assert request.mean_reversion is not None
+    assert request.mean_reversion.anchor_model_kind == MeanReversionAnchorModelKind.CONSTANT
+    assert request.mean_reversion.calibration_grid_interval_hours == pytest.approx(36.0)
 
 
 def test_prepare_model_runtime_factors_uses_fitted_surprise_intensity_profile(
@@ -1432,6 +1499,178 @@ def test_high_level_model_price_option_dispatches_through_canonical_pricing_runn
 
     assert observed_result is pricing_result
     assert captured_execution_inputs == [prepared_execution_input]
+
+
+def test_high_level_model_price_option_requires_explicit_observed_boundary_state_for_enabled_mean_reversion(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _build_full_workflow_model(
+        tmp_path,
+        monkeypatch,
+        run_id="high-level-model-pricing-anchored-required-boundary",
+    )
+    update_model_mean_reversion_payload(
+        model,
+        build_constant_mean_reversion_fitted_parameters_payload(kappa=0.35, anchor_value=0.25),
+    )
+
+    with pytest.raises(CalibrationValidationError) as captured_error:
+        model.price_option(
+            valuation_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
+            spot=100.0,
+            strike=105.0,
+            maturity_interval=4.0,
+        )
+
+    assert captured_error.value.failure.field_path == "observed_boundary_state"
+    assert "is required when model mean reversion is enabled for pricing" in captured_error.value.failure.message
+
+
+def test_high_level_model_price_option_passes_explicit_observed_boundary_state_to_anchored_pricer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _build_full_workflow_model(
+        tmp_path,
+        monkeypatch,
+        run_id="high-level-model-pricing-anchored-boundary",
+    )
+    mean_reversion_payload = build_constant_mean_reversion_fitted_parameters_payload(
+        kappa=0.35,
+        anchor_value=0.25,
+    )
+    update_model_mean_reversion_payload(model, mean_reversion_payload)
+    captured_execution_inputs: list[Any] = []
+    pricing_result = object()
+    observed_boundary_state = MeanReversionBoundaryState(
+        observed_log_price=0.4,
+        anchor_value=0.25,
+        deviation=0.15,
+    )
+
+    monkeypatch.setattr(
+        fit_model_module,
+        "run_vanilla_option_pricing",
+        lambda execution_input: captured_execution_inputs.append(execution_input) or pricing_result,
+    )
+
+    observed_result = model.price_option(
+        valuation_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
+        spot=100.0,
+        strike=105.0,
+        maturity_interval=4.0,
+        observed_boundary_state=observed_boundary_state,
+    )
+
+    assert observed_result is pricing_result
+    assert len(captured_execution_inputs) == 1
+    pricing_boundary_input = captured_execution_inputs[0].request.boundary_input
+    assert pricing_boundary_input.mean_reversion_fitted_parameters.to_payload() == mean_reversion_payload
+    assert pricing_boundary_input.observed_boundary_state == observed_boundary_state
+    assert pricing_boundary_input.mean_reversion_runtime_interval_anchors.start_anchor_value == pytest.approx(0.25)
+
+
+def test_high_level_model_price_option_end_to_end_supports_disabled_mean_reversion_without_observed_boundary_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _build_full_workflow_model(
+        tmp_path,
+        monkeypatch,
+        run_id="high-level-model-pricing-disabled-end-to-end",
+    )
+
+    pricing_result = model.price_option(
+        valuation_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
+        spot=100.0,
+        strike=105.0,
+        maturity_interval=1.0,
+        include_transform_diagnostics=True,
+        include_integration_quality_diagnostics=True,
+    )
+
+    assert pricing_result.response.price >= 0.0
+    assert pricing_result.run_diagnostics is not None
+    assert pricing_result.run_diagnostics.anchored_recursion is not None
+
+
+def test_high_level_model_price_option_end_to_end_supports_constant_anchor_mean_reversion(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _build_full_workflow_model(
+        tmp_path,
+        monkeypatch,
+        run_id="high-level-model-pricing-constant-anchor-end-to-end",
+    )
+    update_model_mean_reversion_payload(
+        model,
+        build_constant_mean_reversion_fitted_parameters_payload(kappa=0.35, anchor_value=0.25),
+    )
+
+    pricing_result = model.price_option(
+        valuation_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
+        spot=100.0,
+        strike=105.0,
+        maturity_interval=1.0,
+        observed_boundary_state=MeanReversionBoundaryState(
+            observed_log_price=0.25,
+            anchor_value=0.25,
+            deviation=0.0,
+        ),
+        include_transform_diagnostics=True,
+        include_integration_quality_diagnostics=True,
+    )
+
+    assert pricing_result.response.price >= 0.0
+    assert pricing_result.run_diagnostics is not None
+    assert pricing_result.run_diagnostics.anchored_recursion is not None
+
+
+def test_high_level_model_price_option_end_to_end_supports_deterministic_anchor_mean_reversion(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _build_full_workflow_model(
+        tmp_path,
+        monkeypatch,
+        run_id="high-level-model-pricing-deterministic-anchor-end-to-end",
+    )
+    update_model_mean_reversion_payload(
+        model,
+        build_deterministic_interval_grid_mean_reversion_fitted_parameters_payload(
+            kappa=0.25,
+            source_interval_start_utc_nanos=(
+                datetime_to_utc_nanos(datetime(2026, 2, 2, 15, 0, tzinfo=UTC)),
+                datetime_to_utc_nanos(datetime(2026, 2, 2, 16, 0, tzinfo=UTC)),
+            ),
+            source_interval_end_utc_nanos=(
+                datetime_to_utc_nanos(datetime(2026, 2, 2, 16, 0, tzinfo=UTC)),
+                datetime_to_utc_nanos(datetime(2026, 2, 2, 17, 0, tzinfo=UTC)),
+            ),
+            anchor_values=(0.25, 0.25),
+            source_alignment_policy="piecewise_constant_utc_interval_grid.v1",
+        ),
+    )
+
+    pricing_result = model.price_option(
+        valuation_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
+        spot=100.0,
+        strike=105.0,
+        maturity_interval=1.0,
+        observed_boundary_state=MeanReversionBoundaryState(
+            observed_log_price=0.25,
+            anchor_value=0.25,
+            deviation=0.0,
+        ),
+        include_transform_diagnostics=True,
+        include_integration_quality_diagnostics=True,
+    )
+
+    assert pricing_result.response.price >= 0.0
+    assert pricing_result.run_diagnostics is not None
+    assert pricing_result.run_diagnostics.anchored_recursion is not None
 
 
 def test_high_level_fit_routes_through_prepared_staged_runner(

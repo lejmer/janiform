@@ -1,12 +1,14 @@
 import os
 
+import math
 from dataclasses import dataclass
-from datetime import datetime
+from statistics import median
 from types import ModuleType
 from typing import Any, Optional
 
 from .contracts import (
     CalibrationInputFileFormat,
+    CalibrationMeanReversionConfiguration,
     CalibrationMarketDataNormalizationPolicy,
     CalibrationMarketDataWorkflowScope,
 )
@@ -38,6 +40,7 @@ from ..staged.inputs import (
     CalibrationHawkesStageCandidateInput,
     CalibrationMeanReversionStageExecutionInput,
     CalibrationMeanReversionStageObservation,
+    CalibrationReturnComponentsObservedCloseOpenBoundaryObservation,
     CalibrationReturnComponentsStageCandidateGenerationInput,
     CalibrationSeasonalityStageExecutionInput,
     CalibrationStagedExecutionRuntimeResources,
@@ -51,6 +54,19 @@ from ...calendar import CalendarRegistry
 
 CALIBRATION_MARKET_DATA_TRANSLATION_ERROR_ID = "calibration.validation.market_data_translation"
 CALIBRATION_MARKET_DATA_TRANSLATION_ENTRYPOINT = "market_data_translation"
+_MEAN_REVERSION_BOUNDARY_OPEN_GRID_KIND = "market_data_session_open_boundary_observation_grid.v1"
+_MEAN_REVERSION_BOUNDARY_OPEN_ALIGNMENT_POLICY = "next_session_open_boundary_log_price.v1"
+_MEAN_REVERSION_DISABLED_DEFAULT_REASON = (
+    "market_data_translation_defaults_mean_reversion_stage_to_disabled_until_explicitly_requested.v1"
+)
+_MEAN_REVERSION_DISABLED_INTERVAL_DERIVATION_REASON = (
+    "mean_reversion_grid_interval_could_not_be_derived_from_boundary_open_observations.v1"
+)
+_MEAN_REVERSION_INTERVAL_DERIVATION_POLICY = (
+    "median_boundary_open_spacing_hours_from_retained_observations.v1"
+)
+_MEAN_REVERSION_INTERVAL_OVERRIDE_POLICY = "explicit_mean_reversion_grid_interval_hours.v1"
+_MEAN_REVERSION_EXPLICIT_DISABLED_REASON = "requested_mean_reversion_disabled.v1"
 
 
 @dataclass(frozen=True, slots=True)
@@ -250,7 +266,8 @@ def _translate_market_data_request_from_source_files(
         return_components_candidate_generation_input=(
             native_loading_output.preprocessing_output.return_components_candidate_generation_input
         ),
-        mean_reversion_stage_input=_default_mean_reversion_stage_input(
+        mean_reversion_stage_input=_mean_reversion_stage_input_from_request(
+            request=normalized_request,
             selected_stages=selected_stages,
             preprocessing_output=native_loading_output.preprocessing_output,
         ),
@@ -853,32 +870,136 @@ def _selected_stages_for_scope(
             )
 
 
-def _default_mean_reversion_stage_input(
+def _mean_reversion_stage_input_from_request(
     *,
+    request: MarketDataCalibrationRequest,
     selected_stages: tuple[CalibrationStage, ...],
     preprocessing_output: _MarketDataPreprocessingOutput,
 ) -> Optional[CalibrationMeanReversionStageExecutionInput]:
     if CalibrationStage.MEAN_REVERSION not in selected_stages:
         return None
 
-    observation_count = (
-        len(preprocessing_output.return_components_candidate_generation_input.observed_open_session_returns)
-        if preprocessing_output.return_components_candidate_generation_input is not None
-        else 0
+    mean_reversion_configuration = request.mean_reversion
+    if mean_reversion_configuration is None:
+        observation_count = (
+            len(preprocessing_output.return_components_candidate_generation_input.observed_open_session_returns)
+            if preprocessing_output.return_components_candidate_generation_input is not None
+            else 0
+        )
+
+        return CalibrationMeanReversionStageExecutionInput(
+            requested_anchor_model_kind=MeanReversionAnchorModelKind.DISABLED,
+            calibration_grid_kind="market_data_translation_disabled_mean_reversion_grid.v1",
+            calibration_grid_interval_hours=24.0,
+            source_observation_count=observation_count,
+            coverage_ratio=0.0,
+            observations=(),
+            disabled_stage_reason=_MEAN_REVERSION_DISABLED_DEFAULT_REASON,
+        )
+
+    return _enabled_mean_reversion_stage_input(
+        mean_reversion_configuration=mean_reversion_configuration,
+        preprocessing_output=preprocessing_output,
     )
 
-    return CalibrationMeanReversionStageExecutionInput(
-        requested_anchor_model_kind=MeanReversionAnchorModelKind.DISABLED,
-        calibration_grid_kind="market_data_translation_disabled_mean_reversion_grid.v1",
-        calibration_grid_interval_hours=24.0,
-        source_observation_count=observation_count,
-        coverage_ratio=0.0,
-        observations=(),
-        disabled_stage_reason=(
-            "market_data_translation_defaults_mean_reversion_stage_to_disabled_until_"
-            "explicit_lower_frequency_grid_materialization_is_requested.v1"
-        ),
+
+def _enabled_mean_reversion_stage_input(
+    *,
+    mean_reversion_configuration: CalibrationMeanReversionConfiguration,
+    preprocessing_output: _MarketDataPreprocessingOutput,
+) -> CalibrationMeanReversionStageExecutionInput:
+    if not mean_reversion_configuration.enabled:
+        observation_count = (
+            len(preprocessing_output.return_components_candidate_generation_input.observed_open_session_returns)
+            if preprocessing_output.return_components_candidate_generation_input is not None
+            else 0
+        )
+        return CalibrationMeanReversionStageExecutionInput(
+            requested_anchor_model_kind=MeanReversionAnchorModelKind.DISABLED,
+            calibration_grid_kind="market_data_translation_disabled_mean_reversion_grid.v1",
+            calibration_grid_interval_hours=24.0,
+            source_observation_count=observation_count,
+            coverage_ratio=0.0,
+            observations=(),
+            disabled_stage_reason=_MEAN_REVERSION_EXPLICIT_DISABLED_REASON,
+        )
+
+    boundary_observations = (
+        ()
+        if preprocessing_output.return_components_candidate_generation_input is None
+        else preprocessing_output
+        .return_components_candidate_generation_input
+        .observed_close_open_boundary_observations
     )
+    observations = _mean_reversion_observations_from_boundary_opens(boundary_observations)
+
+    derived_interval_hours = _derive_mean_reversion_grid_interval_hours_from_observations(observations)
+    calibration_grid_interval_hours = (
+        mean_reversion_configuration.calibration_grid_interval_hours
+        if mean_reversion_configuration.calibration_grid_interval_hours is not None
+        else derived_interval_hours
+    )
+
+    interval_policy = (
+        _MEAN_REVERSION_INTERVAL_OVERRIDE_POLICY
+        if mean_reversion_configuration.calibration_grid_interval_hours is not None
+        else _MEAN_REVERSION_INTERVAL_DERIVATION_POLICY
+    )
+
+    if calibration_grid_interval_hours is None:
+        return CalibrationMeanReversionStageExecutionInput(
+            requested_anchor_model_kind=MeanReversionAnchorModelKind.DISABLED,
+            calibration_grid_kind=_MEAN_REVERSION_BOUNDARY_OPEN_GRID_KIND,
+            calibration_grid_interval_hours=24.0,
+            source_observation_count=len(boundary_observations),
+            coverage_ratio=0.0,
+            observations=(),
+            disabled_stage_reason=_MEAN_REVERSION_DISABLED_INTERVAL_DERIVATION_REASON,
+        )
+
+    return CalibrationMeanReversionStageExecutionInput(
+        requested_anchor_model_kind=mean_reversion_configuration.anchor_model_kind,
+        calibration_grid_kind=(
+            f"{_MEAN_REVERSION_BOUNDARY_OPEN_GRID_KIND}:{_MEAN_REVERSION_BOUNDARY_OPEN_ALIGNMENT_POLICY}:"
+            f"{interval_policy}"
+        ),
+        calibration_grid_interval_hours=calibration_grid_interval_hours,
+        source_observation_count=len(boundary_observations),
+        coverage_ratio=(
+            len(observations) / len(boundary_observations)
+            if len(boundary_observations) > 0
+            else 0.0
+        ),
+        observations=observations,
+        disabled_stage_reason=None,
+    )
+
+
+def _mean_reversion_observations_from_boundary_opens(
+    boundary_observations: tuple[CalibrationReturnComponentsObservedCloseOpenBoundaryObservation, ...],
+) -> tuple[CalibrationMeanReversionStageObservation, ...]:
+    return tuple(
+        CalibrationMeanReversionStageObservation(
+            observation_timestamp_utc_nanos=boundary_observation.open_timestamp_utc_nanos,
+            observed_log_price=math.log(boundary_observation.open_price),
+        )
+        for boundary_observation in boundary_observations
+    )
+
+
+def _derive_mean_reversion_grid_interval_hours_from_observations(
+    observations: tuple[CalibrationMeanReversionStageObservation, ...],
+) -> Optional[float]:
+    positive_interval_hours = tuple(
+        (next_observation.observation_timestamp_utc_nanos - current_observation.observation_timestamp_utc_nanos)
+        / 3_600_000_000_000.0
+        for current_observation, next_observation in zip(observations, observations[1:])
+        if next_observation.observation_timestamp_utc_nanos > current_observation.observation_timestamp_utc_nanos
+    )
+    if len(positive_interval_hours) == 0:
+        return None
+
+    return float(median(positive_interval_hours))
 
 
 def _build_dataset_reference(run_id: str, dataset_role: str, provenance_label: str) -> str:

@@ -16,6 +16,7 @@ from janiform.calibration.market_data import (
     CalibrationInputFileReference,
     CalibrationKnownNewsColumnMapping,
     CalibrationKnownNewsInput,
+    CalibrationMeanReversionConfiguration,
     CalibrationMarketDataColumnMapping,
     CalibrationMarketDataNormalizationPolicy,
     CalibrationMarketDataOutputPreferences,
@@ -121,6 +122,34 @@ def test_market_data_calibration_request_rejects_unsupported_tick_data_file_form
 
     assert captured_error.value.failure.field_path == "tick_data_source.file_format"
     assert captured_error.value.failure.message == "must be one of: csv, parquet"
+
+
+def test_market_data_calibration_request_roundtrip_preserves_mean_reversion_configuration() -> None:
+    request = _valid_market_data_request_model()
+
+    assert request.mean_reversion is not None
+    assert request.mean_reversion.anchor_model_kind == MeanReversionAnchorModelKind.CONSTANT
+    assert request.mean_reversion.calibration_grid_interval_hours == pytest.approx(24.0)
+
+    serialized_request = serialize_market_data_calibration_request(request)
+    deserialized_request = deserialize_market_data_calibration_request(serialized_request)
+
+    assert deserialized_request == request
+
+
+def test_market_data_calibration_request_rejects_enabled_mean_reversion_for_seasonality_only() -> None:
+    request_payload = _valid_market_data_request_payload()
+    request_payload["workflow_scope"] = CalibrationMarketDataWorkflowScope.SEASONALITY_ONLY.value
+    request_payload["normalization_policy"]["tick_price_input_policy"] = None
+    request_payload["normalization_policy"]["option_quote_input_policy"] = None
+    del request_payload["option_surface_source"]
+    del request_payload["column_mapping"]["option_surface"]
+
+    with pytest.raises(CalibrationValidationError) as captured_error:
+        validate_market_data_calibration_request(request_payload)
+
+    assert captured_error.value.failure.field_path == "mean_reversion"
+    assert "seasonality_only" in captured_error.value.failure.message
 
 
 def test_market_data_calibration_request_requires_bid_and_ask_mapping_for_tick_midpoint_policy() -> None:
@@ -536,6 +565,10 @@ def _valid_market_data_request_model() -> MarketDataCalibrationRequest:
                 provenance_label="known-news-calendar",
             ),
             calendar_timezone="UTC",
+        ),
+        mean_reversion=CalibrationMeanReversionConfiguration(
+            anchor_model_kind=MeanReversionAnchorModelKind.CONSTANT,
+            calibration_grid_interval_hours=24.0,
         ),
     )
 

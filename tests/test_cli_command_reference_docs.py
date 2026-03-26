@@ -115,12 +115,15 @@ def test_cli_command_reference_doc_stays_aligned_with_cli_help_output() -> None:
         "--metric-catalog-json PATH",
         "--comparison-request-json PATH",
         "--market MARKET",
+        "--mean-reversion-anchor-model {disabled,constant,deterministic_interval_grid}",
+        "--mean-reversion-grid-interval-hours FLOAT",
         "--session-preset SESSION_PRESET",
         "--known-news KNOWN_NEWS",
         "--session-json PATH",
         "--known-news-json PATH",
         "--output-dir DIRECTORY",
         "--model-path PATH",
+        "--observed-boundary-state-json PATH",
         "--output-path PATH",
     )
     for expected_text in shared_expectations:
@@ -129,6 +132,8 @@ def test_cli_command_reference_doc_stays_aligned_with_cli_help_output() -> None:
     assert "--category {session,known-news,market-profile}" in presets_list_help
     assert "{session,known-news,market-profile}" in presets_show_help
     assert "--market MARKET" in fit_help
+    assert "--mean-reversion-anchor-model {disabled,constant,deterministic_interval_grid}" in fit_help
+    assert "--mean-reversion-grid-interval-hours MEAN_REVERSION_GRID_INTERVAL_HOURS" in fit_help
     assert "--session-preset SESSION_PRESET" in fit_help
     assert "--known-news KNOWN_NEWS" in fit_help
     assert "--output-dir DIRECTORY" in fit_help

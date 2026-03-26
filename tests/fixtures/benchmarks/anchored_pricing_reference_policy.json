@@ -1,0 +1,25 @@
+{
+  "schema_version": "benchmark.anchored_pricing_reference.policy.v1",
+  "policy_id": "anchored_pricing_native_vs_simulation_policy_v1",
+  "policy_version": "1.0.0",
+  "governance_scope_policy": "explicitly_invoked_anchor_deviation_native_vs_simulation_validation_only.v1",
+  "simulation_reference": {
+    "simulation_engine": "seeded_tick",
+    "discounted_payoff_estimator": "discounted_terminal_observed_log_price_payoff_mean.v1",
+    "path_count": 1024,
+    "confidence_multiple": 6.0
+  },
+  "diagnostic_requirements": {
+    "observed_state_boundary_input_required": true,
+    "anchor_alignment_required": true,
+    "local_martingale_diagnostics_required": true,
+    "deviation_refinement_diagnostics_required": true,
+    "anchored_engine_numeric_quality_required": true
+  },
+  "scenario_ids": [
+    "disabled_nested_case",
+    "constant_anchor_zero_deviation",
+    "deterministic_flat_anchor_zero_deviation",
+    "constant_anchor_positive_deviation_admissibility_failure"
+  ]
+}

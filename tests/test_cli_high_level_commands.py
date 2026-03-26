@@ -42,6 +42,8 @@ def test_fit_help_documents_default_workflow_and_expert_subcommands() -> None:
     assert "--session-json PATH" in help_output
     assert "--known-news KNOWN_NEWS" in help_output
     assert "--known-news-json PATH" in help_output
+    assert "--mean-reversion-anchor-model" in help_output
+    assert "--mean-reversion-grid-interval-hours" in help_output
     assert "--output-dir DIRECTORY" in help_output
 
 
@@ -164,6 +166,81 @@ def test_fit_outputs_resolved_configuration_and_provenance(
     persisted_report = orjson.loads((run_directory / "fit_report.json").read_text(encoding="utf-8"))
     assert "execution_input" not in persisted_report
     assert "stage_report_payloads" not in persisted_report
+
+
+def test_fit_cli_enables_explicit_mean_reversion_calibration(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tick_data_path = _write_tick_data(
+        tmp_path / "ticks.csv",
+        rows=(
+            "2026-02-02T14:30:00Z,100.0,buy",
+            "2026-02-02T20:59:00Z,101.0,sell",
+            "2026-02-03T14:30:00Z,102.0,buy",
+            "2026-02-03T20:59:00Z,103.0,sell",
+            "2026-02-04T14:30:00Z,104.0,buy",
+            "2026-02-04T20:59:00Z,105.0,sell",
+            "2026-02-05T14:30:00Z,106.0,buy",
+            "2026-02-05T20:59:00Z,107.0,sell",
+        ),
+    )
+
+    captured_stage_input: dict[str, Any] = {}
+
+    def _capture_execution_input(execution_input, **kwargs):
+        captured_stage_input["mean_reversion_stage_input"] = execution_input.mean_reversion_stage_input
+        del kwargs
+        return _successful_full_model_staged_runner_payload(execution_input.request.run_id)
+
+    monkeypatch.setattr(
+        fit_estimator_module,
+        "_run_staged_calibration_with_raw_payload",
+        _capture_execution_input,
+    )
+
+    exit_code, stdout, stderr = invoke_cli(
+        [
+            "fit",
+            "--run-id",
+            "cli-fit-mean-reversion",
+            "--workflow-scope",
+            "full_without_option_surface",
+            "--tick-data-path",
+            str(tick_data_path),
+            "--tick-data-format",
+            "csv",
+            "--tick-timestamp-column",
+            "timestamp_utc",
+            "--tick-price-column",
+            "trade_price",
+            "--tick-trade-sign-column",
+            "trade_sign",
+            "--tick-price-input-policy",
+            "explicit_price_column",
+            "--timestamp-timezone",
+            "UTC",
+            "--market",
+            "us_equity_cash",
+            "--known-news",
+            "none",
+            "--mean-reversion-anchor-model",
+            "constant",
+            "--mean-reversion-grid-interval-hours",
+            "36",
+            "--output",
+            "json",
+        ]
+    )
+
+    assert exit_code == int(cli_module.CliExitCode.SUCCESS), stderr
+    payload = orjson.loads(stdout)
+    assert payload["run_id"] == "cli-fit-mean-reversion"
+
+    mean_reversion_stage_input = captured_stage_input["mean_reversion_stage_input"]
+    assert mean_reversion_stage_input is not None
+    assert mean_reversion_stage_input.requested_anchor_model_kind.value == "constant"
+    assert mean_reversion_stage_input.calibration_grid_interval_hours == pytest.approx(36.0)
 
 
 def test_fit_supports_beginner_positional_tick_path_and_inferred_defaults(
