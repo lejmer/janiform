@@ -1,16 +1,15 @@
 use crate::{
-    AnchoredVanillaOptionPricingBoundaryInput, FourierInversionDiagnostics,
-    FourierInversionEngineSettings, VanillaOptionPayoffConfiguration, VanillaOptionPayoffType,
-    VanillaOptionPricingDiagnostics, VanillaOptionPricingMarketInputs,
-    VanillaOptionPricingModelParameters, VanillaOptionPricingRequest, VanillaOptionPricingResponse,
     build_pricing_transform_input, price_vanilla_option_via_fourier_inversion,
-    solve_exponential_affine_transform,
+    solve_exponential_affine_transform, AnchoredVanillaOptionPricingBoundaryInput,
+    FourierInversionDiagnostics, FourierInversionEngineSettings, VanillaOptionPayoffConfiguration,
+    VanillaOptionPayoffType, VanillaOptionPricingDiagnostics, VanillaOptionPricingMarketInputs,
+    VanillaOptionPricingModelParameters, VanillaOptionPricingRequest, VanillaOptionPricingResponse,
 };
 use janiform_affine_oracle::affine_oracle::{
     ExponentialAffineTransformDVector, ExponentialAffineTransformIntegrationResult,
     ExponentialAffineTransformNewsIntensityInput, ExponentialAffineTransformOutput,
 };
-use janiform_foundations::complex_math::{ComplexScalar, complex_exponential};
+use janiform_foundations::complex_math::{complex_exponential, ComplexScalar};
 use janiform_model_kernels::hawkes::{
     HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
 };
@@ -19,7 +18,7 @@ use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 
 pub(super) fn build_valid_vanilla_option_request() -> VanillaOptionPricingRequest {
     VanillaOptionPricingRequest::try_new(
-        VanillaOptionPricingMarketInputs::try_new(101.0, 100.0, 0.5, 0.02, 0.01)
+        VanillaOptionPricingMarketInputs::try_new(101.0, 100.0, 1.0, 0.02, 0.01)
             .expect("market inputs should construct"),
         VanillaOptionPayoffConfiguration {
             payoff_type: VanillaOptionPayoffType::Call,
@@ -100,8 +99,8 @@ pub(super) fn build_reference_pricing_response(
     .expect("reference response should construct")
 }
 
-pub(super) fn build_reference_transform_diagnostics_source()
--> ExponentialAffineTransformIntegrationResult {
+pub(super) fn build_reference_transform_diagnostics_source(
+) -> ExponentialAffineTransformIntegrationResult {
     let transform_input = build_pricing_transform_input(
         &build_valid_vanilla_option_request(),
         ComplexScalar::new(0.2, -0.1),

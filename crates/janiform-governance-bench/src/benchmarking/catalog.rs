@@ -4,6 +4,7 @@ use std::fmt::{Display, Formatter};
 
 use serde::{Deserialize, Serialize};
 
+use janiform_foundations::numeric::{validate_non_negative_number, validate_positive_number};
 use janiform_model_kernels::hawkes::HawkesExcitationState;
 
 pub const BENCHMARK_SCENARIO_CATALOG_SCHEMA_VERSION: &str = "benchmark.scenario.catalog.v1";
@@ -585,17 +586,13 @@ fn validate_positive_finite_field(
     field_name: &'static str,
     value: f64,
 ) -> Result<(), BenchmarkScenarioCatalogLoadError> {
-    if value.is_finite() && value > 0.0 {
-        return Ok(());
-    }
-
-    Err(
+    validate_positive_number(value, field_name).map_err(|source| {
         BenchmarkScenarioCatalogLoadError::InvalidPositiveFiniteValue {
             profile_id: profile.profile_id.clone(),
-            field_name,
-            value,
-        },
-    )
+            field_name: source.field,
+            value: source.value,
+        }
+    })
 }
 
 fn validate_non_negative_finite_field(
@@ -603,17 +600,13 @@ fn validate_non_negative_finite_field(
     field_name: &'static str,
     value: f64,
 ) -> Result<(), BenchmarkScenarioCatalogLoadError> {
-    if value.is_finite() && value >= 0.0 {
-        return Ok(());
-    }
-
-    Err(
+    validate_non_negative_number(value, field_name).map_err(|source| {
         BenchmarkScenarioCatalogLoadError::InvalidNonNegativeFiniteValue {
             profile_id: profile.profile_id.clone(),
-            field_name,
-            value,
-        },
-    )
+            field_name: source.field,
+            value: source.value,
+        }
+    })
 }
 
 fn validate_positive_count_field(

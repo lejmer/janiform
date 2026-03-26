@@ -406,6 +406,7 @@ def _build_pricing_direct_run_result_payload(calendar_registry, tmp_path: Path) 
                     "schema_version",
                     "transform",
                     "integration_quality",
+                    "anchored_recursion",
                 ],
                 "required_calibration_hooks_fields": [
                     "schema_version",
@@ -647,10 +648,12 @@ def _valid_pricing_execution_input() -> VanillaOptionPricingExecutionInput:
                 ),
             ),
         ),
-        interval_factors=VanillaOptionPricingIntervalFactors(
-            s_h=1.0,
-            nu_h_known=0.0,
-            nu_h_surprise=0.0,
+        interval_factors=(
+            VanillaOptionPricingIntervalFactors(
+                s_h=1.0,
+                nu_h_known=0.0,
+                nu_h_surprise=0.0,
+            ),
         ),
         optional_output_selection=VanillaOptionPricingOptionalOutputSelection(
             include_transform_diagnostics=True,

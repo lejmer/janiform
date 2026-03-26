@@ -24,8 +24,9 @@ The orchestrated pricing path uses:
 - `VanillaOptionPricingOptionalOutputSelection`
 - `run_vanilla_option_pricing`
 
-`VanillaOptionPricingIntervalFactors` carries the current interval inputs needed by the native
-runner:
+`VanillaOptionPricingExecutionInput.interval_factors` is an interval-aligned tuple covering the
+entire requested pricing horizon. Each `VanillaOptionPricingIntervalFactors` entry carries the
+single-interval inputs needed by the native runner:
 
 - `s_h`
 - `nu_h_known`
@@ -73,6 +74,7 @@ These optional outputs can include:
 
 - transform diagnostics (`ExponentialAffineTransformIntegrationResult`)
 - Fourier integration quality diagnostics (`FourierInversionDiagnostics`)
+- anchored recursion diagnostics (`AnchoredPricingRecursionDiagnostics`)
 - calibration hooks (`VanillaOptionPricingCalibrationHooks`)
 
 See `docs/development/guides/pricing_diagnostics_and_calibration_hooks_schema.md` for full schema
@@ -220,9 +222,9 @@ Successful solves emit `AnchoredLocalTiltSolveDiagnostics`, including:
 - domain and admissibility status
 - the policy identifier
 
-Current pricing-engine execution still rejects anchored observed-return adjustments that require a
-multi-interval anchored pricer. That rejection now happens explicitly at the executable contract
-boundary instead of silently reusing the old state-independent Esscher logic.
+Current pricing-engine execution propagates European continuation values across the deviation state
+on the canonical interval grid. The nested non-anchored case remains a special case inside that
+engine when the observed-return adjustment is exactly zero for the local boundary state.
 
 ## Interval Delta Semantics
 

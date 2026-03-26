@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale_and_docs.v1",
-  "approved_snapshot_sha256": "acb3778034012161c69dd7f52e8ea9a536cf484cdd41f77a135352e831fa352c",
+  "approved_snapshot_sha256": "8b5bc5fa04c955ff18184a18e0154682236fd84e26b1593fb7e1740defe1b098",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -547,6 +547,16 @@
       "rationale": "The pricing contract now exposes one canonical anchored boundary input and state-dependent local tilt diagnostic surface, so the approved Python API snapshot must replace the old Hawkes-only pricing request field and include the shared mean-reversion pricing contracts re-exported from janiform.pricing.",
       "snapshot_sha256": "acb3778034012161c69dd7f52e8ea9a536cf484cdd41f77a135352e831fa352c",
       "summary": "Replace the Hawkes-only pricing boundary request with anchored pricing contracts and local tilt diagnostics."
+    },
+    {
+      "approved_on": "2026-03-26",
+      "docs_updated": [
+        "docs/development/guides/vanilla_option_pricing_contract.md",
+        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+      ],
+      "rationale": "Anchored vanilla pricing now accepts interval-aligned execution factors across the full pricing horizon and surfaces anchored recursion diagnostics in the optional run output, so the approved Python snapshot must record the new execution-input and run-diagnostics shapes.",
+      "snapshot_sha256": "8b5bc5fa04c955ff18184a18e0154682236fd84e26b1593fb7e1740defe1b098",
+      "summary": "Approve interval-aligned pricing execution inputs and anchored recursion run diagnostics."
     }
   ],
   "public_api_surface_document_version": "python.public_api_surface_map.pre_v0_1.milestone_2",

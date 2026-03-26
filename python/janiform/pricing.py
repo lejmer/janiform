@@ -76,6 +76,7 @@ VANILLA_OPTION_PRICING_RUN_DIAGNOSTICS_REQUIRED_FIELDS: tuple[str, ...] = (
     "schema_version",
     "transform",
     "integration_quality",
+    "anchored_recursion",
 )
 VANILLA_OPTION_PRICING_CALIBRATION_HOOKS_REQUIRED_FIELDS: tuple[str, ...] = (
     "schema_version",
@@ -1175,7 +1176,7 @@ class VanillaOptionPricingIntervalFactors(ContractModel):
 @dataclass(frozen=True, slots=True)
 class VanillaOptionPricingExecutionInput(ContractModel):
     request: VanillaOptionPricingRequest
-    interval_factors: VanillaOptionPricingIntervalFactors
+    interval_factors: tuple[VanillaOptionPricingIntervalFactors, ...]
     optional_output_selection: VanillaOptionPricingOptionalOutputSelection = (
         VanillaOptionPricingOptionalOutputSelection()
     )
@@ -1183,8 +1184,18 @@ class VanillaOptionPricingExecutionInput(ContractModel):
     def __post_init__(self) -> None:
         if not isinstance(self.request, VanillaOptionPricingRequest):
             raise _pricing_error("request", "must be a VanillaOptionPricingRequest")
-        if not isinstance(self.interval_factors, VanillaOptionPricingIntervalFactors):
-            raise _pricing_error("interval_factors", "must be VanillaOptionPricingIntervalFactors")
+        if not isinstance(self.interval_factors, tuple) or not self.interval_factors:
+            raise _pricing_error(
+                "interval_factors",
+                "must be a non-empty tuple of VanillaOptionPricingIntervalFactors",
+            )
+
+        for interval_index, interval_factors in enumerate(self.interval_factors):
+            if not isinstance(interval_factors, VanillaOptionPricingIntervalFactors):
+                raise _pricing_error(
+                    f"interval_factors[{interval_index}]",
+                    "must be VanillaOptionPricingIntervalFactors",
+                )
 
         if not isinstance(
             self.optional_output_selection,
@@ -1216,13 +1227,23 @@ class VanillaOptionPricingExecutionInput(ContractModel):
             else VanillaOptionPricingOptionalOutputSelection()
         )
 
+        raw_interval_factors = raw_payload.get("interval_factors")
+
+        if not isinstance(raw_interval_factors, list):
+            raise _pricing_error("interval_factors", "must be an array")
+        if not raw_interval_factors:
+            raise _pricing_error("interval_factors", "must contain at least one interval")
+
         return VanillaOptionPricingExecutionInput(
             request=VanillaOptionPricingRequest.from_mapping(
                 require_mapping(raw_payload, "request", "request", PRICING_ERROR_FACTORY)
             ),
-            interval_factors=VanillaOptionPricingIntervalFactors.from_mapping(
-                require_mapping(raw_payload, "interval_factors", "interval_factors", PRICING_ERROR_FACTORY),
-                field_path="interval_factors",
+            interval_factors=tuple(
+                VanillaOptionPricingIntervalFactors.from_mapping(
+                    interval_factor_payload,
+                    field_path=f"interval_factors[{interval_index}]",
+                )
+                for interval_index, interval_factor_payload in enumerate(raw_interval_factors)
             ),
             optional_output_selection=optional_output_selection,
         )
@@ -1313,6 +1334,7 @@ class VanillaOptionPricingRunDiagnostics(ContractModel):
     schema_version: str
     transform: Optional[dict[str, Any]]
     integration_quality: Optional[dict[str, Any]]
+    anchored_recursion: Optional[dict[str, Any]]
 
     @staticmethod
     def from_mapping(
@@ -1335,6 +1357,8 @@ class VanillaOptionPricingRunDiagnostics(ContractModel):
             raise _pricing_error(f"{field_path}.transform", "is required")
         if "integration_quality" not in raw_payload:
             raise _pricing_error(f"{field_path}.integration_quality", "is required")
+        if "anchored_recursion" not in raw_payload:
+            raise _pricing_error(f"{field_path}.anchored_recursion", "is required")
 
         raw_transform = raw_payload["transform"]
         transform = (
@@ -1361,16 +1385,35 @@ class VanillaOptionPricingRunDiagnostics(ContractModel):
                 "must be an object or null",
             )
 
-        if transform is None and integration_quality is None:
+        raw_anchored_recursion = raw_payload["anchored_recursion"]
+        anchored_recursion = (
+            dict(raw_anchored_recursion)
+            if isinstance(raw_anchored_recursion, dict)
+            else None
+            if raw_anchored_recursion is None
+            else None
+        )
+
+        if raw_anchored_recursion is not None and anchored_recursion is None:
+            raise _pricing_error(
+                f"{field_path}.anchored_recursion",
+                "must be an object or null",
+            )
+
+        if transform is None and integration_quality is None and anchored_recursion is None:
             raise _pricing_error(
                 field_path,
-                "must include transform diagnostics, integration quality diagnostics, or both",
+                (
+                    "must include transform diagnostics, integration quality diagnostics, "
+                    "anchored recursion diagnostics, or any non-empty combination of them"
+                ),
             )
 
         return VanillaOptionPricingRunDiagnostics(
             schema_version=VANILLA_OPTION_PRICING_RUN_DIAGNOSTICS_SCHEMA_VERSION,
             transform=transform,
             integration_quality=integration_quality,
+            anchored_recursion=anchored_recursion,
         )
 
 

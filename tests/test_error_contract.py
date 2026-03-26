@@ -780,10 +780,12 @@ def _valid_pricing_execution_input() -> VanillaOptionPricingExecutionInput:
                 ),
             ),
         ),
-        interval_factors=VanillaOptionPricingIntervalFactors(
-            s_h=1.1,
-            nu_h_known=0.03,
-            nu_h_surprise=0.05,
+        interval_factors=(
+            VanillaOptionPricingIntervalFactors(
+                s_h=1.1,
+                nu_h_known=0.03,
+                nu_h_surprise=0.05,
+            ),
         ),
         optional_output_selection=VanillaOptionPricingOptionalOutputSelection(
             include_transform_diagnostics=True,

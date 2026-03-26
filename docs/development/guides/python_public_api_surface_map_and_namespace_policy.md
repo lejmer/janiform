@@ -135,6 +135,7 @@ from janiform.contracts import MeanReversionFittedParameters
 - `janiform.pricing`
   - Ownership: vanilla option pricing contracts, anchored boundary-state pricing diagnostics, and runtime factor loading
   - Anchored pricing policy: the module re-exports the canonical anchor-deviation pricing boundary input and local state-dependent tilt diagnostics alongside the shared mean-reversion contracts required to build that request surface
+  - Execution contract policy: `VanillaOptionPricingExecutionInput` carries an interval-aligned tuple of pricing factors for the requested horizon, and optional run diagnostics may include anchored recursion state-propagation output
 - `janiform.risk`
   - Ownership: sufficient-statistics risk workflow contracts
   - Observed-state policy: public risk path records and diagnostics distinguish core Janiform interval returns from observed log-price state, anchor state, and deviation-from-anchor summaries

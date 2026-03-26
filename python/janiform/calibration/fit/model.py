@@ -859,10 +859,21 @@ def _prepare_model_pricing_execution_input(
     include_integration_quality_diagnostics: bool,
     include_calibration_hooks: bool,
 ) -> VanillaOptionPricingExecutionInput:
+    horizon_interval_count_float = maturity_interval / 1.0
+    horizon_interval_count = int(horizon_interval_count_float)
+    if (
+        horizon_interval_count <= 0
+        or float(horizon_interval_count) != horizon_interval_count_float
+    ):
+        raise _calibration_error(
+            "maturity_interval",
+            "must be a positive exact multiple of the pricing runtime interval 1.0",
+        )
+
     runtime_factors = _prepare_model_runtime_factors(
         model,
         start_time_utc=valuation_time_utc,
-        horizon_interval_count=1,
+        horizon_interval_count=horizon_interval_count,
         interval="1h",
     )
 
@@ -889,8 +900,14 @@ def _prepare_model_pricing_execution_input(
     ) = _prepare_model_mean_reversion_runtime_inputs(
         model,
         start_time_utc=valuation_time_utc,
-        interval_end_times_utc=(runtime_factors.range_end_utc,),
-        interval_deltas=(runtime_factors.interval_delta,),
+        interval_end_times_utc=_build_runtime_interval_end_times_utc(
+            start_time_utc=valuation_time_utc,
+            interval_duration_nanos=runtime_factors.interval_duration_nanos,
+            horizon_interval_count=horizon_interval_count,
+        ),
+        interval_deltas=tuple(
+            runtime_factors.interval_delta for _ in range(horizon_interval_count)
+        ),
         interval_alignment_policy=_MEAN_REVERSION_RUNTIME_INTERVAL_ALIGNMENT_POLICY,
     )
 
@@ -917,10 +934,13 @@ def _prepare_model_pricing_execution_input(
                 nig_shared_plus_shift_configuration=runtime_factors.nig_shared_plus_shift_configuration,
             ),
         ),
-        interval_factors=VanillaOptionPricingIntervalFactors(
-            s_h=runtime_factors.seasonality_hourly_factors[0],
-            nu_h_known=runtime_factors.known_component_nu_h[0],
-            nu_h_surprise=runtime_factors.surprise_component_nu_h[0],
+        interval_factors=tuple(
+            VanillaOptionPricingIntervalFactors(
+                s_h=runtime_factors.seasonality_hourly_factors[interval_index],
+                nu_h_known=runtime_factors.known_component_nu_h[interval_index],
+                nu_h_surprise=runtime_factors.surprise_component_nu_h[interval_index],
+            )
+            for interval_index in range(horizon_interval_count)
         ),
         optional_output_selection=VanillaOptionPricingOptionalOutputSelection(
             include_transform_diagnostics=include_transform_diagnostics,
