@@ -6,7 +6,14 @@ Finish the mean-reversion rollout by wiring anchored pricing through the high-le
 After the new measure and engine land, the public workflow must make anchored pricing practically usable. This issue replaces the old documentation-refresh-only endgame with validation and surface work centered on the anchored pricing implementation that actually ships.
 
 ### Required validation updates
-- Add anchored-pricing validation suites that compare native prices against seeded or coarse simulation estimates on synthetic scenarios where the Monte Carlo error is controlled.
+- Add anchored-pricing validation harnesses that compare native prices against seeded or coarse simulation estimates on synthetic scenarios where the Monte Carlo error is controlled.
+- Treat pricer-versus-Monte-Carlo validation as a governed benchmark or regression workflow, not as part of the default Rust or Python test suites.
+- Keep the default Rust and Python suites limited to fast checks such as:
+  - contract validation
+  - fixture and policy loading
+  - report serialization
+  - baseline or tolerance comparison logic
+  - bounded anchored-pricing smoke cases with deterministic fixtures
 - Extend pricing regression fixtures and governance harnesses so they understand:
   - observed-state boundary input
   - anchor alignment
@@ -44,6 +51,7 @@ After the new measure and engine land, the public workflow must make anchored pr
 ### Acceptance Criteria
 - High-level anchored pricing works end to end for supported configurations and required boundary inputs.
 - Validation harnesses compare anchored prices against simulation-based references and surface meaningful diagnostics.
+- The default Rust and Python suites remain within the project runtime budget because expensive Monte Carlo pricing validation runs only through explicit governance or benchmark workflows.
 - Public docs no longer describe anchored pricing as unsupported or gated behind a structured rejection.
 - Examples demonstrate anchored pricing without relying on hidden conversational context.
 - All docs and fixtures describe the same augmented-state pricing semantics as the implemented engine.
@@ -52,6 +60,7 @@ After the new measure and engine land, the public workflow must make anchored pr
 - High-level model tests showing anchored fitted models reach the anchored pricer rather than failing at the old gate.
 - Python contract tests for anchored pricing request and response payloads.
 - Validation adapter tests for new anchored-pricing diagnostic fields and reports.
+- Fixture, policy, and baseline-comparison tests for the anchored-pricing governance harness without rerunning the full Monte Carlo workload.
 
 ### Integration tests
 - End-to-end anchored pricing workflow examples for:
@@ -59,7 +68,9 @@ After the new measure and engine land, the public workflow must make anchored pr
   - constant-anchor mean reversion
   - deterministic interval-grid anchor mean reversion
 - Documentation regression tests if command-reference or example snapshots exist for the updated surfaces.
+- Any full pricer-versus-Monte-Carlo execution must live in a separate explicitly invoked governance or benchmark path rather than in the always-on integration suites.
 
 ### Notes/Constraints
 - Do not defer docs and validation to a later cleanup. They must land in the same change set that makes anchored pricing usable.
 - Keep the docs implementation-facing and precise. The target reader must be able to reconstruct the anchored pricing workflow without relying on earlier conversational context.
+- Protect the standing runtime budget for the default Rust and Python suites. Heavy statistical validation belongs in governed harnesses with explicit invocation and checked artifacts.
