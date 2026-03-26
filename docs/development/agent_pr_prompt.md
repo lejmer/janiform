@@ -1,4 +1,4 @@
-Please write a PR of your implementation of the Issue.
+Please write a PR of your full implementation of the Issue.
 
 Include a "Change Summary" section, and a "Related Issues" section.
 
