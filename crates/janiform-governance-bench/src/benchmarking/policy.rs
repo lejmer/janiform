@@ -3,6 +3,7 @@ use std::fmt::{Display, Formatter};
 
 use serde::{Deserialize, Serialize};
 
+use janiform_foundations::numeric::{validate_non_negative_number, validate_positive_number};
 use janiform_model_kernels::hawkes::{
     HawkesKernelLoadings, HawkesKernelParameterError, HawkesKernelParameters,
 };
@@ -542,30 +543,22 @@ fn validate_positive_finite_policy_field(
     field_name: &'static str,
     value: f64,
 ) -> Result<(), OraclePricerRiskBenchmarkPolicyValidationError> {
-    if !value.is_finite() || value <= 0.0 {
-        return Err(
-            OraclePricerRiskBenchmarkPolicyValidationError::InvalidPositiveFiniteField {
-                field_name,
-                value,
-            },
-        );
-    }
-
-    Ok(())
+    validate_positive_number(value, field_name).map_err(|source| {
+        OraclePricerRiskBenchmarkPolicyValidationError::InvalidPositiveFiniteField {
+            field_name: source.field,
+            value: source.value,
+        }
+    })
 }
 
 fn validate_non_negative_finite_policy_field(
     field_name: &'static str,
     value: f64,
 ) -> Result<(), OraclePricerRiskBenchmarkPolicyValidationError> {
-    if !value.is_finite() || value < 0.0 {
-        return Err(
-            OraclePricerRiskBenchmarkPolicyValidationError::InvalidNonNegativeFiniteField {
-                field_name,
-                value,
-            },
-        );
-    }
-
-    Ok(())
+    validate_non_negative_number(value, field_name).map_err(|source| {
+        OraclePricerRiskBenchmarkPolicyValidationError::InvalidNonNegativeFiniteField {
+            field_name: source.field,
+            value: source.value,
+        }
+    })
 }

@@ -332,7 +332,7 @@ def test_cli_command_reference_doc_examples_smoke_for_primary_workflows(
             "--strike",
             "105.0",
             "--maturity-interval",
-            "4.0",
+            "1.0",
             "--output",
             "json",
         ]

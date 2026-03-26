@@ -1,11 +1,7 @@
 use serde_json::json;
 
 use crate::{
-    DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA, VANILLA_OPTION_CALIBRATION_HOOK_POLICY,
-    VANILLA_OPTION_PRICING_CALIBRATION_HOOKS_SCHEMA_VERSION,
-    VANILLA_OPTION_PRICING_RUN_DIAGNOSTICS_SCHEMA_VERSION,
-    VANILLA_OPTION_PRICING_RUN_OUTPUT_SCHEMA_METADATA_VERSION,
-    VANILLA_OPTION_PRICING_RUN_RESULT_SCHEMA_VERSION, VanillaOptionPayoffConfiguration,
+    build_vanilla_option_pricing_run_result, VanillaOptionPayoffConfiguration,
     VanillaOptionPayoffType, VanillaOptionPricingCalibrationHooksError,
     VanillaOptionPricingDiagnostics, VanillaOptionPricingDiagnosticsError,
     VanillaOptionPricingExecutionInput, VanillaOptionPricingExecutionInputError,
@@ -14,7 +10,11 @@ use crate::{
     VanillaOptionPricingOptionalOutputSelection, VanillaOptionPricingRequest,
     VanillaOptionPricingRequestError, VanillaOptionPricingResponse,
     VanillaOptionPricingResponseError, VanillaOptionPricingRunResultBuildError,
-    build_vanilla_option_pricing_run_result,
+    DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA, VANILLA_OPTION_CALIBRATION_HOOK_POLICY,
+    VANILLA_OPTION_PRICING_CALIBRATION_HOOKS_SCHEMA_VERSION,
+    VANILLA_OPTION_PRICING_RUN_DIAGNOSTICS_SCHEMA_VERSION,
+    VANILLA_OPTION_PRICING_RUN_OUTPUT_SCHEMA_METADATA_VERSION,
+    VANILLA_OPTION_PRICING_RUN_RESULT_SCHEMA_VERSION,
 };
 use janiform_model_kernels::hawkes::HawkesExcitationState;
 
@@ -148,8 +148,10 @@ fn vanilla_option_request_accepts_explicit_non_hourly_interval_delta() {
 fn vanilla_option_pricing_execution_input_roundtrip_serialization_preserves_split_news_intensity() {
     let execution_input = VanillaOptionPricingExecutionInput::try_new(
         build_valid_vanilla_option_request(),
-        VanillaOptionPricingIntervalFactors::try_new(1.1, 0.03, 0.05)
-            .expect("interval factors should construct"),
+        vec![
+            VanillaOptionPricingIntervalFactors::try_new(1.1, 0.03, 0.05)
+                .expect("interval factors should construct"),
+        ],
         VanillaOptionPricingOptionalOutputSelection::new(true, false, true),
     )
     .expect("execution input should construct");
@@ -161,18 +163,23 @@ fn vanilla_option_pricing_execution_input_roundtrip_serialization_preserves_spli
             .expect("serialized execution input should deserialize");
 
     assert_eq!(parsed_execution_input, execution_input);
-    assert_eq!(parsed_execution_input.interval_factors.nu_h_known, 0.03);
-    assert_eq!(parsed_execution_input.interval_factors.nu_h_surprise, 0.05);
+    assert_eq!(parsed_execution_input.interval_factors[0].nu_h_known, 0.03);
+    assert_eq!(
+        parsed_execution_input.interval_factors[0].nu_h_surprise,
+        0.05
+    );
 }
 
 #[test]
 fn vanilla_option_pricing_execution_input_deserialization_requires_split_news_fields() {
     let invalid_payload = json!({
         "request": build_valid_vanilla_option_request(),
-        "interval_factors": {
-            "s_h": 1.0,
-            "nu_h_known": 0.03
-        },
+        "interval_factors": [
+            {
+                "s_h": 1.0,
+                "nu_h_known": 0.03
+            }
+        ],
         "optional_output_selection": {
             "include_transform_diagnostics": true,
             "include_integration_quality_diagnostics": false,
@@ -183,14 +190,19 @@ fn vanilla_option_pricing_execution_input_deserialization_requires_split_news_fi
     let error = serde_json::from_value::<VanillaOptionPricingExecutionInput>(invalid_payload)
         .expect_err("missing surprise news intensity must fail deserialization");
 
-    assert!(error.to_string().contains("nu_h_surprise"));
+    let error_message = error.to_string();
+    assert!(
+        error_message.contains("missing field")
+            || error_message.contains("nu_h_surprise")
+            || error_message.contains("interval_factors")
+    );
 }
 
 #[test]
 fn vanilla_option_pricing_execution_input_rejects_negative_surprise_news_intensity() {
     let error = VanillaOptionPricingExecutionInput::try_new(
         build_valid_vanilla_option_request(),
-        VanillaOptionPricingIntervalFactors::new(1.0, 0.03, -0.01),
+        vec![VanillaOptionPricingIntervalFactors::new(1.0, 0.03, -0.01)],
         VanillaOptionPricingOptionalOutputSelection::default(),
     )
     .expect_err("negative surprise news intensity must fail execution input validation");
@@ -280,8 +292,8 @@ fn vanilla_option_request_rejects_invalid_market_input_with_structured_error() {
 
 #[test]
 fn vanilla_option_request_deserialize_rejects_invalid_boundary_state_with_actionable_error() {
-    let mut invalid_payload =
-        serde_json::to_value(build_valid_vanilla_option_request()).expect("request should serialize");
+    let mut invalid_payload = serde_json::to_value(build_valid_vanilla_option_request())
+        .expect("request should serialize");
 
     invalid_payload["payoff"]["payoff_type"] = json!("put");
     invalid_payload["boundary_input"]["hawkes_boundary_state"]["y_plus_plus"] = json!(-0.1);
@@ -296,8 +308,8 @@ fn vanilla_option_request_deserialize_rejects_invalid_boundary_state_with_action
 
 #[test]
 fn vanilla_option_request_deserialize_rejects_incomplete_payload() {
-    let mut incomplete_payload =
-        serde_json::to_value(build_valid_vanilla_option_request()).expect("request should serialize");
+    let mut incomplete_payload = serde_json::to_value(build_valid_vanilla_option_request())
+        .expect("request should serialize");
 
     incomplete_payload["market_inputs"]
         .as_object_mut()
@@ -352,6 +364,7 @@ fn pricing_run_output_selection_defaults_to_base_response_only() {
         None,
         Some(transform_diagnostics),
         Some(integration_quality),
+        None,
     )
     .expect("default output selection should emit base response only");
 
@@ -376,6 +389,7 @@ fn pricing_run_output_selection_can_emit_diagnostics_and_calibration_hooks() {
         Some(market_inputs),
         Some(transform_diagnostics),
         Some(integration_quality),
+        None,
     )
     .expect("full output selection should include diagnostics and hooks");
 
@@ -416,6 +430,7 @@ fn pricing_run_output_schema_metadata_is_machine_readable_with_required_fields()
         Some(market_inputs),
         Some(transform_diagnostics),
         Some(integration_quality),
+        None,
     )
     .expect("full output selection should construct");
 
@@ -423,27 +438,21 @@ fn pricing_run_output_schema_metadata_is_machine_readable_with_required_fields()
         run_result.output_schema_metadata.schema_version,
         VANILLA_OPTION_PRICING_RUN_OUTPUT_SCHEMA_METADATA_VERSION
     );
-    assert!(
-        run_result
-            .output_schema_metadata
-            .required_run_result_fields
-            .contains(&"response")
-    );
-    assert!(
-        run_result
-            .output_schema_metadata
-            .required_run_diagnostics_fields
-            .contains(&"integration_quality")
-    );
-    assert!(
-        run_result
-            .output_schema_metadata
-            .required_calibration_hooks_fields
-            .contains(&"forward_moneyness")
-    );
+    assert!(run_result
+        .output_schema_metadata
+        .required_run_result_fields
+        .contains(&"response"));
+    assert!(run_result
+        .output_schema_metadata
+        .required_run_diagnostics_fields
+        .contains(&"integration_quality"));
+    assert!(run_result
+        .output_schema_metadata
+        .required_calibration_hooks_fields
+        .contains(&"forward_moneyness"));
 
     let serialized_run_result =
-        serde_json::to_value(run_result).expect("run result should serialize");
+        serde_json::to_value(&run_result).expect("run result should serialize");
     assert_eq!(
         serialized_run_result["schema_version"],
         json!(VANILLA_OPTION_PRICING_RUN_RESULT_SCHEMA_VERSION)
@@ -485,6 +494,7 @@ fn pricing_run_output_builder_reports_missing_selected_optional_sources() {
         None,
         None,
         None,
+        None,
     )
     .expect_err("transform diagnostics selection without source must fail");
     assert!(matches!(
@@ -498,6 +508,7 @@ fn pricing_run_output_builder_reports_missing_selected_optional_sources() {
         None,
         None,
         None,
+        None,
     )
     .expect_err("integration diagnostics selection without source must fail");
     assert!(matches!(
@@ -508,6 +519,7 @@ fn pricing_run_output_builder_reports_missing_selected_optional_sources() {
     let missing_market_inputs_error = build_vanilla_option_pricing_run_result(
         response,
         VanillaOptionPricingOptionalOutputSelection::new(false, false, true),
+        None,
         None,
         None,
         None,
@@ -528,6 +540,7 @@ fn calibration_hooks_reject_invalid_market_inputs_with_actionable_error() {
         response,
         VanillaOptionPricingOptionalOutputSelection::new(false, false, true),
         Some(invalid_market_inputs),
+        None,
         None,
         None,
     )

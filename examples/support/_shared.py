@@ -437,11 +437,13 @@ def build_pricing_request() -> VanillaOptionPricingRequest:
     )
 
 
-def build_pricing_interval_factors() -> VanillaOptionPricingIntervalFactors:
-    return VanillaOptionPricingIntervalFactors(
-        s_h=1.0,
-        nu_h_known=0.01,
-        nu_h_surprise=0.02,
+def build_pricing_interval_factors() -> tuple[VanillaOptionPricingIntervalFactors, ...]:
+    return (
+        VanillaOptionPricingIntervalFactors(
+            s_h=1.0,
+            nu_h_known=0.01,
+            nu_h_surprise=0.02,
+        ),
     )
 
 

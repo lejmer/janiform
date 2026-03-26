@@ -6266,7 +6266,7 @@
             "optional_output_selection"
           ],
           "kind": "contract_model",
-          "signature": "(request: 'VanillaOptionPricingRequest', interval_factors: 'VanillaOptionPricingIntervalFactors', optional_output_selection: 'VanillaOptionPricingOptionalOutputSelection' = VanillaOptionPricingOptionalOutputSelection(include_transform_diagnostics=False, include_integration_quality_diagnostics=False, include_calibration_hooks=False)) -> 'None'"
+          "signature": "(request: 'VanillaOptionPricingRequest', interval_factors: 'tuple[VanillaOptionPricingIntervalFactors, ...]', optional_output_selection: 'VanillaOptionPricingOptionalOutputSelection' = VanillaOptionPricingOptionalOutputSelection(include_transform_diagnostics=False, include_integration_quality_diagnostics=False, include_calibration_hooks=False)) -> 'None'"
         },
         "VanillaOptionPricingIntervalFactors": {
           "field_names": [
@@ -6329,10 +6329,11 @@
           "field_names": [
             "schema_version",
             "transform",
-            "integration_quality"
+            "integration_quality",
+            "anchored_recursion"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: 'str', transform: 'Optional[dict[str, Any]]', integration_quality: 'Optional[dict[str, Any]]') -> 'None'"
+          "signature": "(schema_version: 'str', transform: 'Optional[dict[str, Any]]', integration_quality: 'Optional[dict[str, Any]]', anchored_recursion: 'Optional[dict[str, Any]]') -> 'None'"
         },
         "VanillaOptionPricingRunOutputSchemaMetadata": {
           "field_names": [

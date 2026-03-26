@@ -26,8 +26,8 @@ def run_example() -> dict[str, Any]:
         "request_summary": {
             "interval_delta": request.interval_delta,
             "payoff_type": request.payoff.payoff_type.value,
-            "nu_h_known": execution_input.interval_factors.nu_h_known,
-            "nu_h_surprise": execution_input.interval_factors.nu_h_surprise,
+            "nu_h_known": execution_input.interval_factors[0].nu_h_known,
+            "nu_h_surprise": execution_input.interval_factors[0].nu_h_surprise,
         },
         "run_result_summary": {
             "schema_version": run_result.schema_version,

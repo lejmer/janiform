@@ -120,6 +120,7 @@ fn pricing_run_output_hooks_are_directly_consumable_by_calibration_adapter() {
         Some(market_inputs),
         Some(transform_diagnostics),
         Some(integration_diagnostics),
+        None,
     )
     .expect("run output should include diagnostics and calibration hooks");
 

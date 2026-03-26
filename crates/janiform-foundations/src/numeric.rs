@@ -21,6 +21,60 @@ impl Display for FiniteNumberValidationError {
 
 impl Error for FiniteNumberValidationError {}
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PositiveNumberValidationError {
+    pub field: &'static str,
+    pub value: f64,
+}
+
+impl Display for PositiveNumberValidationError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            formatter,
+            "{} must be finite and strictly positive, found {}",
+            self.field, self.value
+        )
+    }
+}
+
+impl Error for PositiveNumberValidationError {}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct NonNegativeNumberValidationError {
+    pub field: &'static str,
+    pub value: f64,
+}
+
+impl Display for NonNegativeNumberValidationError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            formatter,
+            "{} must be finite and non-negative, found {}",
+            self.field, self.value
+        )
+    }
+}
+
+impl Error for NonNegativeNumberValidationError {}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct NegativeNumberValidationError {
+    pub field: &'static str,
+    pub value: f64,
+}
+
+impl Display for NegativeNumberValidationError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            formatter,
+            "{} must be finite and strictly negative, found {}",
+            self.field, self.value
+        )
+    }
+}
+
+impl Error for NegativeNumberValidationError {}
+
 /// Return the smallest strictly positive normal `f64` value.
 pub fn strictly_positive_machine_value() -> f64 {
     f64::MIN_POSITIVE
@@ -33,6 +87,42 @@ pub fn validate_finite_number(
 ) -> Result<(), FiniteNumberValidationError> {
     if !value.is_finite() {
         return Err(FiniteNumberValidationError { field, value });
+    }
+
+    Ok(())
+}
+
+/// Validate that a numeric field is finite and strictly positive.
+pub fn validate_positive_number(
+    value: f64,
+    field: &'static str,
+) -> Result<(), PositiveNumberValidationError> {
+    if !value.is_finite() || value <= 0.0 {
+        return Err(PositiveNumberValidationError { field, value });
+    }
+
+    Ok(())
+}
+
+/// Validate that a numeric field is finite and non-negative.
+pub fn validate_non_negative_number(
+    value: f64,
+    field: &'static str,
+) -> Result<(), NonNegativeNumberValidationError> {
+    if !value.is_finite() || value < 0.0 {
+        return Err(NonNegativeNumberValidationError { field, value });
+    }
+
+    Ok(())
+}
+
+/// Validate that a numeric field is finite and strictly negative.
+pub fn validate_negative_number(
+    value: f64,
+    field: &'static str,
+) -> Result<(), NegativeNumberValidationError> {
+    if !value.is_finite() || value >= 0.0 {
+        return Err(NegativeNumberValidationError { field, value });
     }
 
     Ok(())
@@ -393,7 +483,11 @@ pub fn compute_sorted_quantile(sorted_values: &[f64], quantile_level: f64) -> f6
 /// Compute an interpolated quantile from an already sorted sample and use zero for empty input.
 pub fn compute_sorted_quantile_or_zero(sorted_values: &[f64], quantile_level: f64) -> f64 {
     let quantile = compute_sorted_quantile(sorted_values, quantile_level);
-    if quantile.is_nan() { 0.0 } else { quantile }
+    if quantile.is_nan() {
+        0.0
+    } else {
+        quantile
+    }
 }
 
 /// Compute the median from an already sorted sample.
@@ -671,7 +765,8 @@ mod tests {
         rolling_sum, root_mean_square_or_infinity, round_positive_to_domain, round_to,
         sample_adjusted_excess_kurtosis, sample_adjusted_skewness, sample_standard_deviation,
         sample_variance, smallest_positive_value, sorted_finite_values, standardized_path_distance,
-        strictly_positive_machine_value, unique_sorted_values, validate_finite_number, z_score,
+        strictly_positive_machine_value, unique_sorted_values, validate_finite_number,
+        validate_negative_number, validate_non_negative_number, validate_positive_number, z_score,
     };
 
     #[test]
@@ -703,6 +798,21 @@ mod tests {
             .expect_err("non-finite values must fail validation");
         assert_eq!(error.field, "field");
         assert!(error.value.is_nan());
+        assert_eq!(validate_positive_number(1.0, "field"), Ok(()));
+        let error = validate_positive_number(0.0, "field")
+            .expect_err("non-positive values must fail validation");
+        assert_eq!(error.field, "field");
+        assert_eq!(error.value, 0.0);
+        assert_eq!(validate_non_negative_number(0.0, "field"), Ok(()));
+        let error = validate_non_negative_number(-1.0, "field")
+            .expect_err("negative values must fail validation");
+        assert_eq!(error.field, "field");
+        assert_eq!(error.value, -1.0);
+        assert_eq!(validate_negative_number(-1.0, "field"), Ok(()));
+        let error = validate_negative_number(0.0, "field")
+            .expect_err("non-negative values must fail validation");
+        assert_eq!(error.field, "field");
+        assert_eq!(error.value, 0.0);
         assert_eq!(coefficient_of_variation(&[2.0, 2.0, 2.0]), 0.0);
         assert_eq!(median_abs(&[-3.0, 1.0, 2.0]), 2.0);
         assert_eq!(median_abs_non_zero(&[0.0, -3.0, 1.0, 2.0]), Some(2.0));

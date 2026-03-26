@@ -1,29 +1,27 @@
 use crate::{
-    AnchoredLocalTiltSolveError, AnchoredVanillaOptionPricingBoundaryInput,
-    PRICING_LOCAL_ANCHORED_TILT_SOLVE_POLICY, RETURN_CHARACTERISTIC_FUNCTION_COMPOSITION_POLICY,
-    RETURN_CHARACTERISTIC_FUNCTION_DOMAIN_GUARD_POLICY, ReturnCharacteristicFunctionAssemblyError,
-    VanillaOptionPayoffConfiguration, VanillaOptionPayoffType, VanillaOptionPricingMarketInputs,
-    VanillaOptionPricingRequest, compose_nig_trading_time_exponent,
-    compose_total_return_characteristic_function,
+    compose_nig_trading_time_exponent, compose_total_return_characteristic_function,
     compose_total_return_characteristic_function_from_oracle_output,
     compose_total_return_characteristic_function_with_edge_mode, solve_anchored_local_pricing_tilt,
+    AnchoredLocalTiltSolveError, AnchoredVanillaOptionPricingBoundaryInput,
+    ReturnCharacteristicFunctionAssemblyError, VanillaOptionPayoffConfiguration,
+    VanillaOptionPayoffType, VanillaOptionPricingMarketInputs, VanillaOptionPricingRequest,
+    PRICING_LOCAL_ANCHORED_TILT_SOLVE_POLICY, RETURN_CHARACTERISTIC_FUNCTION_COMPOSITION_POLICY,
+    RETURN_CHARACTERISTIC_FUNCTION_DOMAIN_GUARD_POLICY,
 };
+use janiform_affine_oracle::affine_oracle::{
+    ExponentialAffineTransformDVector, ExponentialAffineTransformOutput,
+};
+use janiform_foundations::complex_math::{complex_exponential, complex_multiply, ComplexScalar};
 use janiform_model_kernels::hawkes::HawkesExcitationState;
 use janiform_model_kernels::mean_reversion::{
     MeanReversionAnchorModel, MeanReversionBoundaryState, MeanReversionFittedParameters,
     MeanReversionRuntimeIntervalAnchors,
 };
-use janiform_affine_oracle::affine_oracle::{
-    ExponentialAffineTransformDVector, ExponentialAffineTransformOutput,
-};
-use janiform_foundations::complex_math::{ComplexScalar, complex_exponential, complex_multiply};
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 use janiform_model_kernels::return_decomposition::{
     ReturnDecomposition, ReturnDecompositionEdgeMode, ReturnDecompositionInput,
 };
-use janiform_model_kernels::risk_neutral::{
-    evaluate_nig_esscher_log_moment_exponent_for_pure_imaginary_argument,
-};
+use janiform_model_kernels::risk_neutral::evaluate_nig_esscher_log_moment_exponent_for_pure_imaginary_argument;
 
 use super::support::{
     assert_complex_close, disabled_boundary_input, oracle_output_with_transform_value,
@@ -823,13 +821,9 @@ fn anchored_local_tilt_solver_accepts_kappa_zero_nested_case() {
         ),
     );
 
-    let diagnostics = solve_anchored_local_pricing_tilt(
-        driver_parameters,
-        return_decomposition,
-        request,
-        1.0e-8,
-    )
-    .expect("kappa=0 nested case should solve");
+    let diagnostics =
+        solve_anchored_local_pricing_tilt(driver_parameters, return_decomposition, request, 1.0e-8)
+            .expect("kappa=0 nested case should solve");
 
     assert_eq!(diagnostics.policy, PRICING_LOCAL_ANCHORED_TILT_SOLVE_POLICY);
     assert!(diagnostics.absolute_residual <= diagnostics.tolerance);
@@ -879,16 +873,18 @@ fn anchored_local_tilt_solver_accepts_positive_kappa_with_zero_deviation() {
 
     let request = pricing_request_for_local_tilt(return_decomposition, theta, boundary_input);
 
-    let diagnostics = solve_anchored_local_pricing_tilt(
-        driver_parameters,
-        return_decomposition,
-        request,
-        1.0e-8,
-    )
-    .expect("positive-kappa zero-deviation case should solve");
+    let diagnostics =
+        solve_anchored_local_pricing_tilt(driver_parameters, return_decomposition, request, 1.0e-8)
+            .expect("positive-kappa zero-deviation case should solve");
 
     assert!(diagnostics.absolute_residual <= diagnostics.tolerance);
-    assert_eq!(diagnostics.boundary_state_summary.observed_boundary_state.deviation, 0.0);
+    assert_eq!(
+        diagnostics
+            .boundary_state_summary
+            .observed_boundary_state
+            .deviation,
+        0.0
+    );
 }
 
 #[test]
@@ -942,19 +938,20 @@ fn anchored_local_tilt_solver_accepts_positive_kappa_with_non_zero_deviation() {
         .expect("anchored pricing boundary input should construct"),
     );
 
-    let diagnostics = solve_anchored_local_pricing_tilt(
-        driver_parameters,
-        return_decomposition,
-        request,
-        1.0e-8,
-    )
-    .expect("positive-kappa non-zero-deviation case should solve");
+    let diagnostics =
+        solve_anchored_local_pricing_tilt(driver_parameters, return_decomposition, request, 1.0e-8)
+            .expect("positive-kappa non-zero-deviation case should solve");
 
     assert_eq!(
         diagnostics.target_log_moment_exponent,
         diagnostics.observed_log_moment_exponent - diagnostics.residual
     );
-    assert!((diagnostics.boundary_state_summary.deviation_decay_factor - (-kappa * interval_delta).exp()).abs() < 1.0e-12);
+    assert!(
+        (diagnostics.boundary_state_summary.deviation_decay_factor
+            - (-kappa * interval_delta).exp())
+        .abs()
+            < 1.0e-12
+    );
     assert!((target_shift - ((-kappa * interval_delta).exp() - 1.0) * deviation).abs() < 1.0e-12);
     assert!(diagnostics.absolute_residual <= diagnostics.tolerance);
 }
@@ -994,8 +991,9 @@ fn anchored_local_tilt_solver_rejects_inadmissible_states() {
     )
     .expect("request should construct");
 
-    let error = solve_anchored_local_pricing_tilt(driver_parameters, return_decomposition, request, 1.0e-8)
-        .expect_err("inadmissible target should fail");
+    let error =
+        solve_anchored_local_pricing_tilt(driver_parameters, return_decomposition, request, 1.0e-8)
+            .expect_err("inadmissible target should fail");
 
     assert!(matches!(
         error,

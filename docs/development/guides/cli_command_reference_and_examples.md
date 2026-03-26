@@ -362,7 +362,7 @@ janiform price \
   --valuation-time-utc 2026-02-02T15:00:00Z \
   --spot 100.0 \
   --strike 105.0 \
-  --maturity-interval 4.0 \
+  --maturity-interval 1.0 \
   --output json
 ```
 

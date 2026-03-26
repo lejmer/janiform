@@ -178,18 +178,18 @@ def test_vanilla_option_pricing_execution_input_roundtrip_preserves_split_news_i
     )
 
     assert deserialized_execution_input == execution_input
-    assert deserialized_execution_input.interval_factors.nu_h_known == pytest.approx(0.03)
-    assert deserialized_execution_input.interval_factors.nu_h_surprise == pytest.approx(0.05)
+    assert deserialized_execution_input.interval_factors[0].nu_h_known == pytest.approx(0.03)
+    assert deserialized_execution_input.interval_factors[0].nu_h_surprise == pytest.approx(0.05)
 
 
 def test_vanilla_option_pricing_execution_input_rejects_missing_surprise_news_intensity() -> None:
     execution_input_payload = _valid_execution_input_model().to_payload()
-    del execution_input_payload["interval_factors"]["nu_h_surprise"]
+    del execution_input_payload["interval_factors"][0]["nu_h_surprise"]
 
     with pytest.raises(VanillaOptionPricingValidationError) as captured_error:
         validate_vanilla_option_pricing_execution_input(execution_input_payload)
 
-    assert captured_error.value.failure.field_path == "interval_factors.nu_h_surprise"
+    assert captured_error.value.failure.field_path == "interval_factors[0].nu_h_surprise"
     assert captured_error.value.failure.message == "is required"
 
 
@@ -376,10 +376,12 @@ def _valid_request_model() -> VanillaOptionPricingRequest:
 def _valid_execution_input_model() -> VanillaOptionPricingExecutionInput:
     return VanillaOptionPricingExecutionInput(
         request=_valid_request_model(),
-        interval_factors=VanillaOptionPricingIntervalFactors(
-            s_h=1.1,
-            nu_h_known=0.03,
-            nu_h_surprise=0.05,
+        interval_factors=(
+            VanillaOptionPricingIntervalFactors(
+                s_h=1.1,
+                nu_h_known=0.03,
+                nu_h_surprise=0.05,
+            ),
         ),
         optional_output_selection=VanillaOptionPricingOptionalOutputSelection(
             include_transform_diagnostics=True,
@@ -411,10 +413,12 @@ def _valid_runtime_execution_input_model() -> VanillaOptionPricingExecutionInput
             ),
             model_parameters=_valid_request_model().model_parameters,
         ),
-        interval_factors=VanillaOptionPricingIntervalFactors(
-            s_h=1.0,
-            nu_h_known=0.0,
-            nu_h_surprise=0.0,
+        interval_factors=(
+            VanillaOptionPricingIntervalFactors(
+                s_h=1.0,
+                nu_h_known=0.0,
+                nu_h_surprise=0.0,
+            ),
         ),
         optional_output_selection=VanillaOptionPricingOptionalOutputSelection(
             include_transform_diagnostics=True,

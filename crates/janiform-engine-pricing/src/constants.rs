@@ -9,6 +9,12 @@ pub const VANILLA_OPTION_RESPONSE_VALIDATION_POLICY: &str =
 pub const PRICING_MARTINGALE_CONDITION_VALIDATION_POLICY: &str = "trading_time_log_moment_under_esscher_tilt_must_match_r_minus_q_maturity_target_within_tolerance.v1";
 pub const PRICING_LOCAL_ANCHORED_TILT_SOLVE_POLICY: &str =
     "solve_state_dependent_local_tilt_on_exact_nig_domain_with_pure_imaginary_real_log_moment_evaluation_and_nearest_zero_admissible_root_selection.v1";
+pub const ANCHORED_PRICING_DEVIATION_GRID_POLICY: &str =
+    "uniform_terminal_deviation_grid_with_explicit_tail_clamping_and_refinement_comparison.v1";
+pub const ANCHORED_PRICING_CONTINUATION_RECURSION_POLICY: &str =
+    "backward_induction_over_deviation_grid_with_cell_probability_projection_and_linear_boundary_clamping.v1";
+pub const ANCHORED_PRICING_EXPECTED_HAWKES_STATE_UPDATE_POLICY: &str =
+    "deterministic_interval_expected_state_path_from_projected_intensity_counts_and_mean_news_severity_first_moment_updates.v1";
 pub const FOURIER_INVERSION_ENGINE_POLICY: &str =
     "carr_madan_damped_call_inversion_with_put_call_parity_extension.v1";
 pub const FOURIER_INVERSION_CONTOUR_POLICY: &str =
@@ -44,8 +50,12 @@ pub(crate) const VANILLA_OPTION_PRICING_RUN_RESULT_REQUIRED_FIELDS: [&str; 5] = 
     "run_diagnostics",
     "calibration_hooks",
 ];
-pub(crate) const VANILLA_OPTION_PRICING_RUN_DIAGNOSTICS_REQUIRED_FIELDS: [&str; 3] =
-    ["schema_version", "transform", "integration_quality"];
+pub(crate) const VANILLA_OPTION_PRICING_RUN_DIAGNOSTICS_REQUIRED_FIELDS: [&str; 4] = [
+    "schema_version",
+    "transform",
+    "integration_quality",
+    "anchored_recursion",
+];
 pub(crate) const VANILLA_OPTION_PRICING_CALIBRATION_HOOKS_REQUIRED_FIELDS: [&str; 10] = [
     "schema_version",
     "hook_policy",

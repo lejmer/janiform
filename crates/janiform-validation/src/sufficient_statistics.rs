@@ -5,14 +5,15 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 
 use janiform_engine_risk::{
+    derive_sufficient_statistics_batch_path_seed, sample_interval_statistics_from_transform_slices,
+    solve_sufficient_statistics_transform_slices, update_boundary_state_from_interval_statistics,
     SufficientStatisticsBoundaryStateUpdateError, SufficientStatisticsBoundaryStateUpdateSnapshot,
     SufficientStatisticsIntervalStatistics, SufficientStatisticsRiskRunRequest,
     SufficientStatisticsRiskRunRequestError, SufficientStatisticsTransformSliceContext,
     SufficientStatisticsTransformSliceSamplingError, SufficientStatisticsTransformSliceSettings,
     SufficientStatisticsTransformSliceSolveError, SufficientStatisticsTransformSlices,
-    derive_sufficient_statistics_batch_path_seed, sample_interval_statistics_from_transform_slices,
-    solve_sufficient_statistics_transform_slices, update_boundary_state_from_interval_statistics,
 };
+use janiform_foundations::numeric::validate_non_negative_number;
 use janiform_model_kernels::hawkes::HawkesExcitationState;
 use serde::Serialize;
 
@@ -964,14 +965,10 @@ fn validate_non_negative_threshold(
     field_name: &'static str,
     value: f64,
 ) -> Result<(), SufficientStatisticsMultiIntervalValidationThresholdsError> {
-    if !value.is_finite() || value < 0.0 {
-        return Err(
-            SufficientStatisticsMultiIntervalValidationThresholdsError::InvalidThresholdValue {
-                field_name,
-                value,
-            },
-        );
-    }
-
-    Ok(())
+    validate_non_negative_number(value, field_name).map_err(|source| {
+        SufficientStatisticsMultiIntervalValidationThresholdsError::InvalidThresholdValue {
+            field_name: source.field,
+            value: source.value,
+        }
+    })
 }
