@@ -1,8 +1,8 @@
 # Python Public API Surface Map And Namespace Policy
 
-Document version: `python.public_api_surface_map.pre_v0_1.milestone_2`
+Document version: `python.public_api_surface_map.pre_v0_1.control_plane_reset.v1`
 
-Status: active for the current pre-v0.1 milestone on March 13, 2026.
+Status: active for the current pre-v0.1 milestone on March 26, 2026.
 
 ## Purpose
 
@@ -39,6 +39,89 @@ and examples in the same change.
 - Curated convenience imports should reduce friction without hiding the natural domain structure.
 - Public workflow and domain modules should read like a map of the product.
 - Private-by-convention naming is not a substitute for clear package boundaries.
+
+## Boundary policy
+
+Janiform now treats Python as the control plane and Rust as the data plane.
+
+- `config`
+  - Small immutable request, settings, policy, preset, or parameter objects.
+  - Public Python dataclasses and enums are allowed here.
+- `bulk data`
+  - Empirical observations, event tables, candidate sets, lower-frequency grids, interval vectors,
+    and other dataset-sized payloads.
+  - Python tuple-of-record ownership is forbidden on the supported production path.
+  - Public boundaries must use native-owned handles, file references, dataset references, or
+    columnar buffers.
+- `runtime artifact`
+  - Prepared calibration plans, fitted models, lazy simulation paths, priced path views, reusable
+    runtime handles, and artifact-backed execution inputs.
+  - Runtime artifacts may expose lazy accessors and persistence helpers, but they must not eagerly
+    duplicate bulk datasets into Python-owned record tuples.
+- `report`
+  - Diagnostics, provenance, validation summaries, and fit reports.
+  - Reports may contain small tuples and nested summaries, but they must not embed bulk empirical
+    payloads.
+
+## Surface classification map
+
+The following public surface families are intentionally supported and explicitly classified:
+
+| Surface family | Classification |
+| --- | --- |
+| `janiform` | `config` |
+| `janiform.errors` | `report` |
+| `janiform.calendar` | `config`, `runtime artifact` |
+| `janiform.contracts` | `config` |
+| `janiform.hourly_factors` | `config`, `runtime artifact`, `bulk data` |
+| `janiform.seasonality` | `config`, `report`, `bulk data` |
+| `janiform.simulation` | `config`, `runtime artifact` |
+| `janiform.simulation.coarse` | `config`, `runtime artifact` |
+| `janiform.simulation.seeded` | `config`, `runtime artifact` |
+| `janiform.simulation.shared` | `config` |
+| `janiform.pricing` | `config`, `runtime artifact`, `report`, `bulk data` |
+| `janiform.risk` | `config`, `runtime artifact`, `report`, `bulk data` |
+| `janiform.calibration` | `config`, `runtime artifact`, `report` |
+| `janiform.calibration.fit` | `config`, `runtime artifact`, `report` |
+| `janiform.calibration.fit.estimator` | `config`, `runtime artifact` |
+| `janiform.calibration.fit.model` | `runtime artifact` |
+| `janiform.calibration.fit.report` | `report` |
+| `janiform.calibration.market_data` | `config`, `runtime artifact`, `report` |
+| `janiform.calibration.market_data.contracts` | `config` |
+| `janiform.calibration.market_data.request` | `config` |
+| `janiform.calibration.market_data.ingestion` | `report` |
+| `janiform.calibration.market_data.translation` | `runtime artifact`, `report` |
+| `janiform.calibration.market_data.workflow` | `runtime artifact`, `report` |
+| `janiform.calibration.staged` | `config`, `runtime artifact`, `report` |
+| `janiform.calibration.staged.contracts` | `config` |
+| `janiform.calibration.staged.inputs` | `config`, `runtime artifact` |
+| `janiform.calibration.staged.request` | `config` |
+| `janiform.calibration.staged.results` | `runtime artifact`, `report` |
+| `janiform.calibration.staged.runtime` | `runtime artifact` |
+| `janiform.calibration.presets` | `config` |
+| `janiform.calibration.presets.references` | `config` |
+| `janiform.calibration.presets.registry` | `config`, `runtime artifact` |
+| `janiform.calibration.presets.resolution` | `config`, `report` |
+| `janiform.calibration.sessions` | `config`, `report` |
+| `janiform.calibration.sessions.contracts` | `config`, `report` |
+| `janiform.calibration.sessions.resolution` | `runtime artifact` |
+| `janiform.validation` | `runtime artifact`, `report` |
+| `janiform.stylized_facts` | `runtime artifact`, `report` |
+| `janiform.cli` | `config`, `report` |
+| `janiform.cli.commands.calibration` | `config`, `report` |
+| `janiform.cli.commands.development` | `config`, `report` |
+| `janiform.cli.commands.model_workflows` | `config`, `report` |
+| `janiform.cli.commands.simulation` | `config`, `report` |
+
+## Review checklist
+
+Reject a Python public-surface change when any of the following is true:
+
+- it introduces a new tuple-of-record or `Sequence[Mapping[...]]` bulk-evidence contract on the
+  default path
+- it makes a report or runtime artifact eagerly duplicate a native-owned dataset
+- it expands `janiform.contracts` or market-data request modules with data-bearing ownership
+- it makes a CLI default require users to assemble large staged evidence payloads by hand
 
 ## Public package root
 
@@ -195,8 +278,8 @@ from janiform.contracts import MeanReversionFittedParameters
 - `janiform.calibration.market_data.ingestion`
   - Ownership: source-schema inspection helpers and market-data source summary contracts
 - `janiform.calibration.market_data.translation`
-  - Ownership: translation from market-data requests into staged execution inputs
-  - Boundary rule: translation results may expose execution input, diagnostics, provenance, and fit-level summaries, but must not expose a Python-owned full-dataset IR of loaded market-data rows
+  - Ownership: native preparation from market-data requests into prepared calibration handles plus diagnostics and provenance
+  - Boundary rule: translation results may expose a staged request, a native-backed prepared handle, artifact references, diagnostics, provenance, and fit-level summaries, but must not expose a Python-owned full-dataset IR of loaded market-data rows
 - `janiform.calibration.market_data.workflow`
   - Ownership: prepared market-data calibration artifacts and workflow entrypoints
 - `janiform.calibration.staged`
@@ -207,7 +290,7 @@ from janiform.contracts import MeanReversionFittedParameters
   - Optimizer-setting policy: stage solver settings are the explicit low-level boundary for shared
     execution controls such as candidate-search CPU count
 - `janiform.calibration.staged.inputs`
-  - Ownership: staged execution input contracts and stage-specific input payload models, including the lower-frequency mean-reversion observation grid used by the anchor-deviation stage
+  - Ownership: advanced staged execution wrapper contracts that reference prepared payload artifacts and runtime resources
 - `janiform.calibration.staged.request`
   - Ownership: staged calibration request contract
 - `janiform.calibration.staged.results`
@@ -283,9 +366,10 @@ The default full staged calibration path now executes:
 - `mean_reversion`
 - `joint_refinement`
 
-Advanced staged execution inputs must provide `mean_reversion_stage_input` whenever
-`selected_stages` contains `mean_reversion`. That stage-specific payload owns the lower-frequency
-observed log-price calibration grid and does not reuse the return-components evidence model.
+Advanced staged execution inputs are now file-backed wrappers. `StagedCalibrationExecutionInput`
+owns a small declarative staged request plus a `prepared_payload_file` reference and optional
+runtime resources. The bulk evidence and mean-reversion observation grid remain in the prepared
+artifact, not in Python-owned tuples.
 
 The supported calibration ownership modules are:
 
@@ -325,10 +409,9 @@ from janiform.calibration.fit import JaniformEstimator
 from janiform.calibration.fit.model import JaniformModel
 from janiform.calibration.market_data import MarketDataCalibrationRequest
 from janiform.calibration.market_data.translation import (
-    translate_market_data_request_to_staged_execution_input,
+    translate_market_data_request_to_prepared_calibration,
 )
 from janiform.calibration.staged import StagedCalibrationExecutionInput
-from janiform.calibration.staged.inputs import CalibrationSeasonalityStageExecutionInput
 from janiform.calibration.staged.request import StagedCalibrationRequest
 from janiform.calibration.staged.results import StagedCalibrationResponse
 from janiform.calibration.presets import PresetRegistry, SessionPresetReference

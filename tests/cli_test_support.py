@@ -11,7 +11,6 @@ from pyarrow import parquet
 import janiform.cli.command_tree as cli_command_tree_module
 from examples.support._shared import (
     build_coarse_simulation_request as build_example_coarse_simulation_request,
-    build_pricing_interval_factors,
     build_pricing_optional_output_selection,
     build_pricing_request,
 )
@@ -42,12 +41,18 @@ from janiform.simulation import (
     load_hourly_factor_contract_for_simulation,
 )
 from janiform.simulation.seeded.contracts import build_disabled_seeded_mean_reversion_runtime_inputs
+from tests.hourly_factor_contract_test_support import build_hourly_factor_contract
 
 
 def build_pricing_execution_input() -> VanillaOptionPricingExecutionInput:
     return VanillaOptionPricingExecutionInput(
         request=build_pricing_request(),
-        interval_factors=build_pricing_interval_factors(),
+        hourly_factor_contract=build_hourly_factor_contract(
+            request_start_utc_nanos=1_706_882_400_000_000_000,
+            s_h=(1.0,),
+            known_component_nu_h=(0.01,),
+            surprise_component_nu_h=(0.02,),
+        ),
         optional_output_selection=build_pricing_optional_output_selection(),
     )
 

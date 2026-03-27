@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale_and_docs.v1",
-  "approved_snapshot_sha256": "822725a4d5ec5b574c634ea5ef67ef37ac409fb11fafc728f32faf0ca3a63d4c",
+  "approved_snapshot_sha256": "89a2d46feb2407e2f37719d89c51573be79ea2cf8d7d6a8f526191082a50d270",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -567,8 +567,47 @@
       "rationale": "High-level market-data calibration now exposes an explicit mean-reversion configuration on the public request and estimator surfaces, so callers can request anchor estimation from JaniformEstimator and janiform fit without assembling staged mean-reversion inputs by hand.",
       "snapshot_sha256": "822725a4d5ec5b574c634ea5ef67ef37ac409fb11fafc728f32faf0ca3a63d4c",
       "summary": "Add an explicit high-level mean-reversion calibration configuration to market-data requests and JaniformEstimator."
+    },
+    {
+      "approved_on": "2026-03-26",
+      "docs_updated": [
+        "README.md",
+        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md",
+        "docs/development/guides/python_api_contract_compatibility_and_version_guardrails.md",
+        "docs/development/guides/python_control_plane_and_rust_data_plane_boundary.md",
+        "docs/development/guides/cli_command_reference_and_examples.md",
+        "docs/development/guides/cli_command_architecture_and_namespace_layout.md"
+      ],
+      "rationale": "Python now stays config-first while Rust owns calibration evidence preparation, so the approved public surface must replace staged evidence tuples with prepared-handle and artifact-backed runtime boundaries.",
+      "snapshot_sha256": "fe279a5bda09b886940f8106be7bf16ca90ec0f473e12408aa6233f080badfcc",
+      "summary": "Reset calibration public contracts around prepared native artifacts instead of Python-owned staged evidence graphs."
+    },
+    {
+      "approved_on": "2026-03-27",
+      "docs_updated": [
+        "docs/development/guides/python_control_plane_and_rust_data_plane_boundary.md"
+      ],
+      "rationale": "The public calibration preparation contracts now carry concrete `CalibrationStage` tuples and the exported `PreparedCalibrationExecutionHandle` type instead of `Any` or `object`, and the obsolete staged-translation compatibility alias is removed entirely from the estimator path.",
+      "snapshot_sha256": "e559c16885dcdb42d8ffa372f961b5c4a03cc31a09a5f7744d6026a7ed386793",
+      "summary": "Approve the concrete prepared-handle typing cleanup and remove the obsolete staged translation alias."
+    },
+    {
+      "approved_on": "2026-03-27",
+      "docs_updated": [
+        "README.md",
+        "examples/README.md",
+        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md",
+        "docs/development/guides/python_api_contract_compatibility_and_version_guardrails.md",
+        "docs/development/guides/cli_command_reference_and_examples.md",
+        "docs/development/guides/vanilla_option_pricing_contract.md",
+        "docs/development/guides/sufficient_statistics_risk_sampler_contract.md",
+        "docs/development/guides/coarse_simulation_workflow_contract.md"
+      ],
+      "rationale": "Pricing, risk, and coarse simulation now consume native-backed hourly-factor artifacts instead of Python tuple-owned interval-factor contracts, so the approved Python snapshot must remove the old execution-input tuple helpers and record the artifact-backed request fields and signatures.",
+      "snapshot_sha256": "89a2d46feb2407e2f37719d89c51573be79ea2cf8d7d6a8f526191082a50d270",
+      "summary": "Approve the hourly-factor artifact boundary reset for pricing, risk, and coarse simulation."
     }
   ],
-  "public_api_surface_document_version": "python.public_api_surface_map.pre_v0_1.milestone_2",
+  "public_api_surface_document_version": "python.public_api_surface_map.pre_v0_1.control_plane_reset.v1",
   "schema_version": "python.public_api_contract.guardrail_manifest.v1"
 }

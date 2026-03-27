@@ -1286,9 +1286,13 @@ def test_market_data_cli_missing_tick_file_returns_validation_exit_code(
 
     assert exit_code == int(cli_module.CliExitCode.VALIDATION_ERROR)
     assert stdout_text == ""
-    assert 'field_path="tick_data_source.path"' in stderr_text
-    assert f'"path": {json.dumps(str(missing_tick_path))}' in stderr_text
-    assert '"normalization_step": "source_loading"' in stderr_text
+    assert 'field_path="request"' in stderr_text
+    assert "tick_data_source.path" in stderr_text
+    assert "(os error 2)" in stderr_text
+    assert (
+        "No such file or directory" in stderr_text
+        or "The system cannot find the file specified." in stderr_text
+    )
 
 
 def test_market_data_cli_ambiguous_timestamp_reports_file_field_and_normalization_step(
@@ -1336,9 +1340,8 @@ def test_market_data_cli_ambiguous_timestamp_reports_file_field_and_normalizatio
 
     assert exit_code == int(cli_module.CliExitCode.VALIDATION_ERROR)
     assert stdout_text == ""
-    assert 'field_path="tick_data_source.rows[1].timestamp_utc"' in stderr_text
-    assert f'"source_path": {json.dumps(str(market_data_paths["tick_data"]))}' in stderr_text
-    assert '"normalization_step": "timestamp_timezone_normalization"' in stderr_text
+    assert 'field_path="request"' in stderr_text
+    assert str(market_data_paths["tick_data"]) in stderr_text
 
     if _timezone_key_is_available("America/New_York"):
         assert "ambiguous in the configured source timezone" in stderr_text
@@ -1397,10 +1400,9 @@ def test_market_data_cli_missing_required_column_reports_source_file_and_normali
 
     assert exit_code == int(cli_module.CliExitCode.VALIDATION_ERROR)
     assert stdout_text == ""
-    assert 'field_path="column_mapping.tick_data"' in stderr_text
+    assert 'field_path="request"' in stderr_text
     assert "Missing columns: trade_price" in stderr_text
-    assert f'"source_path": {json.dumps(str(market_data_paths["tick_data"]))}' in stderr_text
-    assert '"normalization_step": "column_mapping_validation"' in stderr_text
+    assert str(market_data_paths["tick_data"]) in stderr_text
 
 
 def test_market_data_cli_invalid_session_definition_returns_validation_exit_code(
@@ -1457,7 +1459,8 @@ def test_market_data_cli_invalid_session_definition_returns_validation_exit_code
 
     assert exit_code == int(cli_module.CliExitCode.VALIDATION_ERROR)
     assert stdout_text == ""
-    assert 'field_path="session_configuration.session_definition_source.path"' in stderr_text
+    assert 'field_path="request"' in stderr_text
+    assert "session_configuration.session_definition_source.path" in stderr_text
     assert "valid calendar registry" in stderr_text
 
 
@@ -2068,11 +2071,34 @@ def test_coarse_simulation_cli_rejects_malformed_request_document(tmp_path: Path
             "horizon_interval_count": 1,
             "interval_delta": 1.0,
             "model_inputs": "not-an-object",
-            "interval_factors": {
-                "interval_delta": 1.0,
+            "hourly_factor_contract": {
+                "schema_version": "seasonality.hourly_factor.contract.v1",
+                "exchange_code": "XNYS",
+                "exchange_timezone_name": "America/New_York",
+                "request_start_utc_nanos": _utc_nanos(2026, 2, 2, 14, 0, 0),
+                "request_end_utc_nanos": _utc_nanos(2026, 2, 2, 15, 0, 0),
+                "interval_duration_nanos": 3_600_000_000_000,
+                "interval_indices": [0],
+                "interval_start_utc_nanos": [_utc_nanos(2026, 2, 2, 14, 0, 0)],
+                "interval_end_utc_nanos": [_utc_nanos(2026, 2, 2, 15, 0, 0)],
+                "interval_start_exchange_local": ["2026-02-02T09:00:00-05:00"],
+                "interval_end_exchange_local": ["2026-02-02T10:00:00-05:00"],
                 "s_h": [1.0],
-                "nu_h_known": [0.0],
-                "nu_h_surprise": [0.0],
+                "known_component_nu_h": [0.0],
+                "surprise_component_nu_h": [0.0],
+                "nu_h": [0.0],
+                "interval_count": 1,
+                "first_interval_start_utc_nanos": _utc_nanos(2026, 2, 2, 14, 0, 0),
+                "last_interval_end_utc_nanos": _utc_nanos(2026, 2, 2, 15, 0, 0),
+                "skipped_local_hour_interval_count": 0,
+                "repeated_local_hour_interval_count": 0,
+                "interval_boundary_policy": "start_inclusive_end_exclusive.v1",
+                "interval_alignment_policy": "request_start_anchored_fixed_width_utc_interval_grid.v1",
+                "timezone_transition_policy": "fixed_width_utc_interval_projected_to_exchange_local.v1",
+                "spring_forward_policy": "skip_nonexistent_local_hour_labels.v1",
+                "fall_back_policy": "preserve_repeated_local_hour_labels_with_numeric_utc_offset.v1",
+                "seasonality_materialization_method": "test.explicit_payload.v1",
+                "news_intensity_materialization_method": "test.explicit_payload.v1",
             },
         },
     )
@@ -2116,7 +2142,7 @@ def test_coarse_simulation_cli_rejects_interval_factor_alignment_mismatch(
     assert exit_code == int(cli_module.CliExitCode.VALIDATION_ERROR)
     assert stdout_text == ""
     assert '[simulation.validation.contract]' in stderr_text
-    assert 'field_path="interval_factors.interval_delta"' in stderr_text
+    assert 'field_path="hourly_factor_contract.interval_duration_nanos"' in stderr_text
     assert "must match interval_delta exactly" in stderr_text
 
 
@@ -2242,14 +2268,13 @@ def test_calibration_cli_rejects_disk_checkpoint_directory_in_memory_mode(
     assert 'message="--disk-checkpoint-directory requires --execution-mode disk"' in stderr_text
 
 
-def test_calibration_cli_rejects_malformed_close_open_boundary_observation(
+def test_calibration_cli_rejects_missing_prepared_payload_artifact(
     calendar_registry_json: str,
     tmp_path: Path,
 ) -> None:
     execution_input_payload = build_valid_execution_input_model().to_payload()
-    del execution_input_payload["return_components_candidate_generation_input"][
-        "observed_close_open_boundary_observations"
-    ][0]["open_price"]
+    missing_prepared_payload_path = tmp_path / "missing_prepared_payload.json"
+    execution_input_payload["prepared_payload_file"]["path"] = str(missing_prepared_payload_path)
 
     execution_input_path = _write_json_path(
         tmp_path / "calibration_execution_input.json",
@@ -2275,11 +2300,8 @@ def test_calibration_cli_rejects_malformed_close_open_boundary_observation(
 
     assert exit_code == int(cli_module.CliExitCode.VALIDATION_ERROR)
     assert stdout_text == ""
-    assert (
-        'field_path="return_components_candidate_generation_input.observed_close_open_boundary_observations[0].open_price"'
-        in stderr_text
-    )
-    assert 'message="is required"' in stderr_text
+    assert 'field_path="prepared_payload_file.path"' in stderr_text
+    assert "could not be read" in stderr_text
 
 
 def _write_event_records_document(path: Path, event_records: list[dict[str, Any]]) -> Path:

@@ -484,18 +484,25 @@ fn build_interval_fixture(
         .map(|interval_start| interval_start + fine_interval_delta_nanos)
         .collect::<Vec<_>>();
 
-    let combined_fine_nu_h = fine_interval_start_utc_nanos
+    let fine_nu_known = fine_interval_start_utc_nanos
         .iter()
         .zip(fine_interval_end_utc_nanos.iter())
         .map(|(interval_start, interval_end)| {
-            surprise_intensity
-                + count_timestamps_in_half_open_interval(
-                    known_news_timestamps_utc_nanos,
-                    *interval_start,
-                    *interval_end,
-                ) as f64
-                    / fine_interval_delta
+            count_timestamps_in_half_open_interval(
+                known_news_timestamps_utc_nanos,
+                *interval_start,
+                *interval_end,
+            ) as f64
+                / fine_interval_delta
         })
+        .collect::<Vec<_>>();
+
+    let fine_nu_surprise = vec![surprise_intensity; fine_interval_count];
+
+    let combined_fine_nu_h = fine_nu_known
+        .iter()
+        .zip(fine_nu_surprise.iter())
+        .map(|(known_intensity, surprise_component)| known_intensity + surprise_component)
         .collect::<Vec<_>>();
 
     let coarse_nu_known = (0..coarse_interval_count)
@@ -539,6 +546,8 @@ fn build_interval_fixture(
                 })
                 .collect(),
             s_h: vec![1.0; fine_interval_count],
+            known_component_nu_h: fine_nu_known,
+            surprise_component_nu_h: fine_nu_surprise,
             nu_h: combined_fine_nu_h,
             metadata: HourlyFactorMaterializationMetadata {
                 seasonality_materialization_method: DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD

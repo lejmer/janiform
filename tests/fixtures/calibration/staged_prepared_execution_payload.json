@@ -1,0 +1,277 @@
+{
+  "schema_version": "calibration.orchestration.staged_execution_input.v1",
+  "request": {
+    "run_id": "run-001",
+    "data_inputs": {
+      "exchange_code": "XNYS",
+      "trade_events_data_reference": "dataset://synthetic/trades/v1",
+      "option_surface_data_reference": "dataset://synthetic/options/v1"
+    },
+    "execution_mode": "memory",
+    "selected_stages": [
+      "seasonality",
+      "hawkes",
+      "return_components",
+      "mean_reversion"
+    ],
+    "seed_settings": {
+      "global_seed": 17,
+      "stage_seed_overrides": [
+        {
+          "stage": "seasonality",
+          "seed": 101
+        }
+      ]
+    },
+    "optimizer_settings_by_stage": [
+      {
+        "stage": "seasonality",
+        "optimizer_settings": {
+          "solver_name": "lbfgs",
+          "max_iterations": 250,
+          "cpu_count": 1,
+          "absolute_tolerance": 1e-08,
+          "relative_tolerance": 1e-06,
+          "constraint_penalty_weight": 10.0
+        }
+      },
+      {
+        "stage": "hawkes",
+        "optimizer_settings": {
+          "solver_name": "lbfgs",
+          "max_iterations": 250,
+          "cpu_count": 1,
+          "absolute_tolerance": 1e-08,
+          "relative_tolerance": 1e-06,
+          "constraint_penalty_weight": 10.0
+        }
+      },
+      {
+        "stage": "return_components",
+        "optimizer_settings": {
+          "solver_name": "lbfgs",
+          "max_iterations": 250,
+          "cpu_count": 1,
+          "absolute_tolerance": 1e-08,
+          "relative_tolerance": 1e-06,
+          "constraint_penalty_weight": 10.0
+        }
+      },
+      {
+        "stage": "mean_reversion",
+        "optimizer_settings": {
+          "solver_name": "lbfgs",
+          "max_iterations": 250,
+          "cpu_count": 1,
+          "absolute_tolerance": 1e-08,
+          "relative_tolerance": 1e-06,
+          "constraint_penalty_weight": 10.0
+        }
+      }
+    ],
+    "stage_handoffs": []
+  },
+  "seasonality_stage_input": {
+    "timestamp_event_records": [
+      {
+        "source_record_position": 0,
+        "timestamp_utc_nanos": 1770042600000000000
+      },
+      {
+        "source_record_position": 1,
+        "timestamp_utc_nanos": 1770046200000000000
+      }
+    ],
+    "scheduled_event_overlays": [
+      {
+        "overlay_id": "macro_release",
+        "start_timestamp_utc_nanos": 1770042300000000000,
+        "end_timestamp_utc_nanos": 1770042900000000000,
+        "log_adjustment": 0.05,
+        "precedence": 1,
+        "enabled": true,
+        "source_label": "known_macro_calendar"
+      }
+    ],
+    "settings": {
+      "session_filter": "open_only",
+      "sparse_hour_event_threshold": 1,
+      "intraday_settings": {
+        "minutes_per_bin": 1,
+        "smoothing_kernel": "gaussian",
+        "smoothing_bandwidth_bins": 3.0,
+        "minimum_bin_events": 1,
+        "pseudocount": 1e-06
+      },
+      "day_of_week_settings": {
+        "minimum_bucket_events": 1,
+        "pseudocount": 1e-06
+      },
+      "day_of_year_settings": {
+        "minimum_bucket_events": 1,
+        "pseudocount": 1e-06
+      }
+    }
+  },
+  "hawkes_candidate_inputs": [
+    {
+      "candidate_id": "candidate_stable_low_loss",
+      "lambda_bar": 0.8,
+      "beta": 20.0,
+      "structured_alpha": {
+        "a_self": 0.01,
+        "a_cross": 0.002,
+        "delta_self": 0.001,
+        "delta_cross": 0.0005
+      },
+      "structured_rho": {
+        "r_self": 0.3,
+        "r_cross": 0.08,
+        "delta_self_r": 0.04,
+        "delta_cross_r": 0.05
+      },
+      "self_dominance_policy": {
+        "minimum_self_to_cross_ratio": 1.0
+      },
+      "stability_numeric_tolerance": 0.0,
+      "source_regime": {
+        "observation_duration_hours": 12.0,
+        "open_session_duration_hours": 8.0,
+        "total_tick_count": 95,
+        "open_session_tick_count": 84,
+        "closed_session_tick_count": 11,
+        "open_session_buy_tick_count": 39,
+        "open_session_sell_tick_count": 45,
+        "open_session_mean_interarrival_seconds": 34.0,
+        "open_session_interarrival_coefficient_of_variation": 1.18,
+        "open_session_short_gap_threshold_seconds": 17.0,
+        "open_session_short_gap_ratio": 0.43,
+        "known_news_open_event_count": 2,
+        "open_session_known_news_activity_share": 0.06
+      },
+      "directional_label_diagnostics": {
+        "policy_id": "tick_price_change_with_flat_move_carryover.v1",
+        "first_inferred_trade_sign": "buy",
+        "provided_label_count": 10,
+        "inferred_label_count": 74,
+        "flat_move_carry_count": 9,
+        "price_up_inference_count": 35,
+        "price_down_inference_count": 30
+      }
+    }
+  ],
+  "return_components_candidate_generation_input": {
+    "known_news_calendar": {
+      "source_window": {
+        "window_start_utc_nanos": 1770037200000000000,
+        "window_end_utc_nanos": 1770259200000000000
+      },
+      "scheduled_event_timestamps_utc_nanos": [
+        1770042600000000000,
+        1770120000000000000,
+        1770211200000000000
+      ]
+    },
+    "realized_known_news_return_samples": [
+      {
+        "event_timestamp_utc_nanos": 1770042600000000000,
+        "open_window_jump_return": 0.016,
+        "closed_window_gap_return": -0.009,
+        "post_shock_activity_lift": 1.2
+      },
+      {
+        "event_timestamp_utc_nanos": 1770120000000000000,
+        "open_window_jump_return": -0.012,
+        "closed_window_gap_return": 0.004,
+        "post_shock_activity_lift": 1.05
+      }
+    ],
+    "observed_open_session_returns": [
+      {
+        "return_timestamp_utc_nanos": 1770046200000000000,
+        "log_return": 0.004,
+        "post_shock_activity_lift": 1.0,
+        "sell_share_proxy": 0.48
+      },
+      {
+        "return_timestamp_utc_nanos": 1770048300000000000,
+        "log_return": 0.018,
+        "post_shock_activity_lift": 1.35,
+        "sell_share_proxy": 0.62
+      },
+      {
+        "return_timestamp_utc_nanos": 1770123600000000000,
+        "log_return": -0.006,
+        "post_shock_activity_lift": 0.95,
+        "sell_share_proxy": 0.57
+      }
+    ],
+    "detected_intraday_jump_candidates": [
+      {
+        "jump_timestamp_utc_nanos": 1770048300000000000,
+        "jump_return": 0.018,
+        "post_shock_activity_lift": 1.35
+      }
+    ],
+    "observed_close_open_boundary_observations": [
+      {
+        "close_timestamp_utc_nanos": 1770066000000000000,
+        "close_price": 100.0,
+        "open_timestamp_utc_nanos": 1770215400000000000,
+        "open_price": 98.70858118310978,
+        "post_shock_activity_lift": 1.4
+      }
+    ],
+    "close_open_gap_detection_policy": {
+      "material_gap_absolute_return_tolerance": 0.005
+    },
+    "open_session_sell_share_proxy": 0.52,
+    "shared_mark_law_template": {
+      "gamma_severity_marks": {
+        "shape_k": 1.8,
+        "scale_theta": 0.7
+      },
+      "double_exponential_base_shock": {
+        "probability_positive": 0.45,
+        "eta_plus": 8.0,
+        "eta_minus": 10.0
+      },
+      "coupled_gap_marks": {
+        "sigma_g": 0.22
+      }
+    },
+    "objective_metric_weights": {
+      "continuous_distribution_fit_weight": 1.0,
+      "surprise_arrival_fit_weight": 1.0,
+      "jump_fit_weight": 1.0,
+      "gap_fit_weight": 1.0,
+      "activity_coupling_fit_weight": 1.0,
+      "price_range_sanity_fit_weight": 1.0
+    }
+  },
+  "mean_reversion_stage_input": {
+    "requested_anchor_model_kind": "constant",
+    "calibration_grid_kind": "synthetic_daily_close_grid.v1",
+    "calibration_grid_interval_hours": 24.0,
+    "source_observation_count": 4,
+    "coverage_ratio": 1.0,
+    "observations": [
+      {
+        "observation_timestamp_utc_nanos": 1770042600000000000,
+        "observed_log_price": 4.6
+      },
+      {
+        "observation_timestamp_utc_nanos": 1770129000000000000,
+        "observed_log_price": 4.58
+      },
+      {
+        "observation_timestamp_utc_nanos": 1770215400000000000,
+        "observed_log_price": 4.57
+      },
+      {
+        "observation_timestamp_utc_nanos": 1770301800000000000,
+        "observed_log_price": 4.59
+      }
+    ]
+  }
+}

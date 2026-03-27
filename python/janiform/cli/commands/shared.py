@@ -559,33 +559,7 @@ def _build_timestamp_event_preprocessing_payload(preprocessed_events: object) ->
 
 
 def _build_hourly_factor_contract_payload(contract: HourlyFactorContract) -> dict[str, Any]:
-    return {
-        "schema_version": contract.schema_version,
-        "exchange_code": contract.exchange_code,
-        "exchange_timezone_name": contract.exchange_timezone_name,
-        "request_start_utc_nanos": contract.request_start_utc_nanos,
-        "request_end_utc_nanos": contract.request_end_utc_nanos,
-        "interval_duration_nanos": contract.interval_duration_nanos,
-        "interval_indices": list(contract.interval_indices),
-        "interval_start_utc_nanos": list(contract.interval_start_utc_nanos),
-        "interval_end_utc_nanos": list(contract.interval_end_utc_nanos),
-        "interval_start_exchange_local": list(contract.interval_start_exchange_local),
-        "interval_end_exchange_local": list(contract.interval_end_exchange_local),
-        "s_h": list(contract.s_h),
-        "nu_h": list(contract.nu_h),
-        "interval_count": contract.interval_count,
-        "first_interval_start_utc_nanos": contract.first_interval_start_utc_nanos,
-        "last_interval_end_utc_nanos": contract.last_interval_end_utc_nanos,
-        "skipped_local_hour_interval_count": contract.skipped_local_hour_interval_count,
-        "repeated_local_hour_interval_count": contract.repeated_local_hour_interval_count,
-        "interval_boundary_policy": contract.interval_boundary_policy,
-        "interval_alignment_policy": contract.interval_alignment_policy,
-        "timezone_transition_policy": contract.timezone_transition_policy,
-        "spring_forward_policy": contract.spring_forward_policy,
-        "fall_back_policy": contract.fall_back_policy,
-        "seasonality_materialization_method": contract.seasonality_materialization_method,
-        "news_intensity_materialization_method": contract.news_intensity_materialization_method,
-    }
+    return contract.to_payload()
 
 
 def _build_hourly_seasonality_materialization_payload(

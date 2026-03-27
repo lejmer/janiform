@@ -3014,6 +3014,8 @@ fn one_interval_model_inputs(
         interval_start_exchange_local: vec!["2024-01-22T09:00:00-05:00".to_string()],
         interval_end_exchange_local: vec!["2024-01-22T10:00:00-05:00".to_string()],
         s_h: vec![1.0],
+        known_component_nu_h: vec![0.0],
+        surprise_component_nu_h: vec![news_intensity],
         nu_h: vec![news_intensity],
         metadata: HourlyFactorMaterializationMetadata {
             seasonality_materialization_method: DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD
@@ -3296,6 +3298,8 @@ fn valid_model_inputs() -> SeededTickSimulationModelInputs {
             "2024-01-22T11:00:00-05:00".to_string(),
         ],
         s_h: vec![0.95, 1.05],
+        known_component_nu_h: vec![0.0, 0.0],
+        surprise_component_nu_h: vec![0.02, 0.03],
         nu_h: vec![0.02, 0.03],
         metadata: HourlyFactorMaterializationMetadata {
             seasonality_materialization_method: DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD

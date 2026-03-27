@@ -1017,8 +1017,8 @@ mod tests {
     use super::{
         CALIBRATION_STAGED_EXECUTION_INPUT_SCHEMA_VERSION,
         CalibrationHawkesDirectionalLabelDiagnostics, CalibrationHawkesObservedSourceRegime,
-        CalibrationHawkesStageCandidateInput,
-        CalibrationMeanReversionStageExecutionInput, CalibrationMeanReversionStageObservation,
+        CalibrationHawkesStageCandidateInput, CalibrationMeanReversionStageExecutionInput,
+        CalibrationMeanReversionStageObservation,
         CalibrationReturnComponentsCloseOpenGapDetectionPolicy,
         CalibrationReturnComponentsDetectedIntradayJumpCandidate,
         CalibrationReturnComponentsKnownNewsCalendarInput,

@@ -1,6 +1,5 @@
 use serde::Serialize;
 
-use janiform_foundations::numeric::compute_finite_median_or_zero;
 use janiform_calibration_artifacts::{
     CALIBRATION_MEAN_REVERSION_STAGE_EXECUTION_REPORT_SCHEMA_VERSION,
     CALIBRATION_MEAN_REVERSION_STAGE_HANDOFF_POLICY,
@@ -9,6 +8,7 @@ use janiform_calibration_artifacts::{
     CalibrationStageHandoffTransport, CalibrationStageSeedSource,
     MeanReversionStageCalibrationGrid, MeanReversionStageDiagnostics,
 };
+use janiform_foundations::numeric::compute_finite_median_or_zero;
 use janiform_model_kernels::mean_reversion::{
     MeanReversionAnchorModel, MeanReversionAnchorModelKind, MeanReversionFittedParameters,
 };
@@ -29,12 +29,8 @@ const DETERMINISTIC_ANCHOR_REASON: &str =
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum MeanReversionStageReturnComponentsInput {
-    InMemoryOutput {
-        selected_candidate_id: String,
-    },
-    PersistedArtifactReference {
-        artifact_reference: String,
-    },
+    InMemoryOutput { selected_candidate_id: String },
+    PersistedArtifactReference { artifact_reference: String },
 }
 
 impl MeanReversionStageReturnComponentsInput {
@@ -94,9 +90,7 @@ pub struct MeanReversionStageExecutionMetadata {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "failure_kind", rename_all = "snake_case")]
 pub enum MeanReversionStageExecutionFailure {
-    InvalidRunSpec {
-        error_message: String,
-    },
+    InvalidRunSpec { error_message: String },
     StageIsNotSelectedInRunSpec,
     MissingStageSolverSettings,
 }
@@ -157,7 +151,8 @@ pub fn run_mean_reversion_calibration_stage(
         CalibrationStage::MeanReversion,
     );
 
-    let (fitted_parameters, diagnostics) = estimate_mean_reversion_fitted_parameters(&execution_input);
+    let (fitted_parameters, diagnostics) =
+        estimate_mean_reversion_fitted_parameters(&execution_input);
 
     let (return_components_selected_candidate_id, return_components_artifact_reference) =
         match execution_input
@@ -284,8 +279,9 @@ fn estimate_mean_reversion_fitted_parameters(
                 execution_input.calibration_grid_interval_hours,
             );
 
-            let fitted_parameters = MeanReversionFittedParameters::try_new(kappa, anchor_model.clone())
-                .expect("constant mean reversion fit should validate");
+            let fitted_parameters =
+                MeanReversionFittedParameters::try_new(kappa, anchor_model.clone())
+                    .expect("constant mean reversion fit should validate");
 
             (
                 fitted_parameters,
@@ -313,9 +309,8 @@ fn estimate_mean_reversion_fitted_parameters(
             )
             .expect("deterministic interval-grid anchor fit should validate");
 
-            let boundary_anchor_values = boundary_anchor_values_from_interval_anchors(
-                interval_anchor_values.as_slice(),
-            );
+            let boundary_anchor_values =
+                boundary_anchor_values_from_interval_anchors(interval_anchor_values.as_slice());
 
             let (phi, kappa) = estimate_phi_and_kappa(
                 observation_levels.as_slice(),
@@ -323,8 +318,9 @@ fn estimate_mean_reversion_fitted_parameters(
                 execution_input.calibration_grid_interval_hours,
             );
 
-            let fitted_parameters = MeanReversionFittedParameters::try_new(kappa, anchor_model.clone())
-                .expect("deterministic mean reversion fit should validate");
+            let fitted_parameters =
+                MeanReversionFittedParameters::try_new(kappa, anchor_model.clone())
+                    .expect("deterministic mean reversion fit should validate");
 
             (
                 fitted_parameters,

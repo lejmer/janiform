@@ -94,6 +94,8 @@ pub fn build_hourly_factor_contract(
         interval_start_exchange_local: interval_indexing.interval_start_exchange_local.clone(),
         interval_end_exchange_local: interval_indexing.interval_end_exchange_local.clone(),
         s_h: seasonality_factors.to_vec(),
+        known_component_nu_h: vec![0.0; interval_count],
+        surprise_component_nu_h: news_intensity_factors.to_vec(),
         nu_h: news_intensity_factors.to_vec(),
         metadata: HourlyFactorMaterializationMetadata {
             seasonality_materialization_method: seasonality_materialization_method.to_string(),

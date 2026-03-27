@@ -30,10 +30,10 @@ use support::shared::{
     assert_joint_refinement_optimizer_diagnostics_matches, assert_optimizer_state_matches,
     build_calibration_stage_parameter_artifact, build_joint_refinement_stage_success_report,
     build_mean_reversion_stage_success_report, build_run_contract_with_mode_and_resume,
-    build_stage_output_links,
-    build_validation_metric_artifact_fixture, calibration_stage_test_registry,
-    calibration_stage_timestamp_fixture, fs, hawkes_stage_candidate_fixture, json,
-    return_components_stage_candidate_generation_fixture, temporary_checkpoint_directory,
+    build_stage_output_links, build_validation_metric_artifact_fixture,
+    calibration_stage_test_registry, calibration_stage_timestamp_fixture, fs,
+    hawkes_stage_candidate_fixture, json, return_components_stage_candidate_generation_fixture,
+    temporary_checkpoint_directory,
 };
 
 #[test]
@@ -227,13 +227,14 @@ fn persist_reload_fixture(run_id: &str) -> PersistedReloadFixture {
         &CalibrationStagedRunStageReport::ReturnComponents(return_components_report),
     )
     .expect("return-components artifact should build");
-    let mean_reversion_artifact = build_calibration_stage_parameter_artifact(
-        &run_contract,
-        &CalibrationStagedRunStageReport::MeanReversion(
-            build_mean_reversion_stage_success_report(),
-        ),
-    )
-    .expect("mean-reversion artifact should build");
+    let mean_reversion_artifact =
+        build_calibration_stage_parameter_artifact(
+            &run_contract,
+            &CalibrationStagedRunStageReport::MeanReversion(
+                build_mean_reversion_stage_success_report(),
+            ),
+        )
+        .expect("mean-reversion artifact should build");
     let joint_refinement_artifact = build_calibration_stage_parameter_artifact(
         &run_contract,
         &CalibrationStagedRunStageReport::JointRefinement(joint_refinement_report),

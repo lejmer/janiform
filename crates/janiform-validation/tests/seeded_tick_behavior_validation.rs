@@ -1339,6 +1339,8 @@ fn build_uniform_factor_contract(
         interval_start_exchange_local,
         interval_end_exchange_local,
         s_h: vec![seasonality_factor; interval_count],
+        known_component_nu_h: vec![0.0; interval_count],
+        surprise_component_nu_h: vec![news_intensity; interval_count],
         nu_h: vec![news_intensity; interval_count],
         metadata: HourlyFactorMaterializationMetadata {
             seasonality_materialization_method: DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD

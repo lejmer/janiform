@@ -27,7 +27,6 @@ from janiform.pricing import (
     VanillaOptionPayoffConfiguration,
     VanillaOptionPayoffType,
     VanillaOptionPricingExecutionInput,
-    VanillaOptionPricingIntervalFactors,
     VanillaOptionPricingMarketInputs,
     VanillaOptionPricingModelParameters,
     VanillaOptionPricingOptionalOutputSelection,
@@ -62,6 +61,7 @@ from tests.calibration_test_support import (
     build_valid_execution_input_model,
     build_valid_execution_input_payload,
 )
+from tests.hourly_factor_contract_test_support import build_hourly_factor_contract
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_RESPONSE_SCHEMA_SNAPSHOT_PATH = (
@@ -648,12 +648,11 @@ def _valid_pricing_execution_input() -> VanillaOptionPricingExecutionInput:
                 ),
             ),
         ),
-        interval_factors=(
-            VanillaOptionPricingIntervalFactors(
-                s_h=1.0,
-                nu_h_known=0.0,
-                nu_h_surprise=0.0,
-            ),
+        hourly_factor_contract=build_hourly_factor_contract(
+            request_start_utc_nanos=1_706_882_400_000_000_000,
+            s_h=(1.0,),
+            known_component_nu_h=(0.0,),
+            surprise_component_nu_h=(0.0,),
         ),
         optional_output_selection=VanillaOptionPricingOptionalOutputSelection(
             include_transform_diagnostics=True,

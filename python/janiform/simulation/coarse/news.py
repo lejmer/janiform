@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 from typing import Any, Optional, cast
 
@@ -19,6 +21,7 @@ from ...contracts import (
     require_string,
     serialize_deterministic_json,
 )
+from ..._timestamps import hours_to_exact_nanoseconds
 from ...calendar import CalendarRegistry, CalendarRegistryLoadError
 
 
@@ -34,10 +37,6 @@ COARSE_SIMULATION_INTERVAL_FACTOR_ALIGNMENT_POLICY = (
 COARSE_SIMULATION_COMPATIBLE_INTERVAL_GRID_POLICY = (
     "interval_delta_must_map_to_an_exact_fixed_width_utc_nanosecond_grid.v1"
 )
-_ONE_HOUR_NANOS = 3_600_000_000_000
-_INTERVAL_DELTA_NANOS_TOLERANCE = 0.5
-
-
 def _prefix_nested_field_path(
     field_path: str,
     *,
@@ -56,18 +55,13 @@ def _prefix_nested_field_path(
 
 def _interval_delta_to_nanos(interval_delta: float, *, field_path: str) -> int:
     require_positive_finite_scalar(interval_delta, field_path, SIMULATION_ERROR_FACTORY)
-    interval_delta_nanos = interval_delta * _ONE_HOUR_NANOS
-    rounded_interval_delta_nanos = round(interval_delta_nanos)
-    if (
-        abs(interval_delta_nanos - rounded_interval_delta_nanos) > _INTERVAL_DELTA_NANOS_TOLERANCE
-        or rounded_interval_delta_nanos <= 0
-    ):
+    try:
+        return hours_to_exact_nanoseconds(interval_delta)
+    except ValueError:
         raise _simulation_error(
             field_path,
             "must map to an exact fixed-width UTC nanosecond grid",
         )
-
-    return int(rounded_interval_delta_nanos)
 
 
 def _validate_calendar_registry_artifact_payload(

@@ -32,7 +32,7 @@ from ._shared import (
     build_calendar_registry,
     build_hawkes_kernel_parameters,
     build_initial_excitation_state,
-    build_pricing_interval_factors,
+    build_pricing_hourly_factor_contract,
     build_pricing_optional_output_selection,
     build_pricing_request,
     build_simulation_news_process_configuration,
@@ -241,7 +241,7 @@ def write_cli_documentation_inputs(output_directory: Path) -> dict[str, str]:
 
     pricing_execution_input = VanillaOptionPricingExecutionInput(
         request=build_pricing_request(),
-        interval_factors=build_pricing_interval_factors(),
+        hourly_factor_contract=build_pricing_hourly_factor_contract(),
         optional_output_selection=build_pricing_optional_output_selection(),
     )
     observed_boundary_state_path = output_directory / "observed_boundary_state.json"

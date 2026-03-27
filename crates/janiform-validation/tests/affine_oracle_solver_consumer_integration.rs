@@ -258,12 +258,8 @@ fn build_pricing_request(interval_delta: f64) -> VanillaOptionPricingRequest {
         VanillaOptionPayoffConfiguration {
             payoff_type: VanillaOptionPayoffType::Call,
         },
-        AnchoredVanillaOptionPricingBoundaryInput::disabled(
-            interval_delta,
-            boundary_state,
-            0.0,
-        )
-        .expect("disabled anchored boundary input should construct"),
+        AnchoredVanillaOptionPricingBoundaryInput::disabled(interval_delta, boundary_state, 0.0)
+            .expect("disabled anchored boundary input should construct"),
         model_parameters,
         interval_delta,
     )

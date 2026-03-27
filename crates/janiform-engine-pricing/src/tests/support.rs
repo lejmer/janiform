@@ -1,15 +1,16 @@
 use crate::{
-    build_pricing_transform_input, price_vanilla_option_via_fourier_inversion,
-    solve_exponential_affine_transform, AnchoredVanillaOptionPricingBoundaryInput,
-    FourierInversionDiagnostics, FourierInversionEngineSettings, VanillaOptionPayoffConfiguration,
-    VanillaOptionPayoffType, VanillaOptionPricingDiagnostics, VanillaOptionPricingMarketInputs,
+    AnchoredVanillaOptionPricingBoundaryInput, FourierInversionDiagnostics,
+    FourierInversionEngineSettings, VanillaOptionPayoffConfiguration, VanillaOptionPayoffType,
+    VanillaOptionPricingDiagnostics, VanillaOptionPricingMarketInputs,
     VanillaOptionPricingModelParameters, VanillaOptionPricingRequest, VanillaOptionPricingResponse,
+    build_pricing_transform_input, price_vanilla_option_via_fourier_inversion,
+    solve_exponential_affine_transform,
 };
 use janiform_affine_oracle::affine_oracle::{
     ExponentialAffineTransformDVector, ExponentialAffineTransformIntegrationResult,
     ExponentialAffineTransformNewsIntensityInput, ExponentialAffineTransformOutput,
 };
-use janiform_foundations::complex_math::{complex_exponential, ComplexScalar};
+use janiform_foundations::complex_math::{ComplexScalar, complex_exponential};
 use janiform_model_kernels::hawkes::{
     HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
 };
@@ -99,8 +100,8 @@ pub(super) fn build_reference_pricing_response(
     .expect("reference response should construct")
 }
 
-pub(super) fn build_reference_transform_diagnostics_source(
-) -> ExponentialAffineTransformIntegrationResult {
+pub(super) fn build_reference_transform_diagnostics_source()
+-> ExponentialAffineTransformIntegrationResult {
     let transform_input = build_pricing_transform_input(
         &build_valid_vanilla_option_request(),
         ComplexScalar::new(0.2, -0.1),

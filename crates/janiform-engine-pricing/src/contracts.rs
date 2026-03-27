@@ -934,10 +934,16 @@ impl Display for AnchoredPricingRecursionDiagnosticsError {
                 write!(formatter, "{field} must be finite, found {value}")
             }
             Self::InvalidPositiveField { field, value } => {
-                write!(formatter, "{field} must be finite and strictly positive, found {value}")
+                write!(
+                    formatter,
+                    "{field} must be finite and strictly positive, found {value}"
+                )
             }
             Self::InvalidNonNegativeField { field, value } => {
-                write!(formatter, "{field} must be finite and non-negative, found {value}")
+                write!(
+                    formatter,
+                    "{field} must be finite and non-negative, found {value}"
+                )
             }
             Self::InvalidThetaOrdering {
                 minimum_solved_theta,
@@ -1115,10 +1121,9 @@ impl Display for VanillaOptionPricingRequestError {
                     "interval_delta must be finite and strictly positive, found {value}"
                 )
             }
-            Self::InvalidBoundaryInput { source } => write!(
-                formatter,
-                "boundary_input payload is invalid: {source}"
-            ),
+            Self::InvalidBoundaryInput { source } => {
+                write!(formatter, "boundary_input payload is invalid: {source}")
+            }
             Self::BoundaryIntervalDeltaMismatch {
                 requested_interval_delta,
                 observed_interval_delta,
@@ -1450,7 +1455,10 @@ impl Display for VanillaOptionPricingRunDiagnosticsError {
                 "run diagnostics payload must include transform diagnostics, integration diagnostics, anchored recursion diagnostics, or any non-empty combination of them"
             ),
             Self::InvalidAnchoredRecursion { source } => {
-                write!(formatter, "anchored recursion diagnostics payload is invalid: {source}")
+                write!(
+                    formatter,
+                    "anchored recursion diagnostics payload is invalid: {source}"
+                )
             }
         }
     }

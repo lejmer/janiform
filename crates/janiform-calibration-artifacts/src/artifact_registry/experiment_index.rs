@@ -538,7 +538,9 @@ fn record_matches_lookup_request(
         }
     }
     if let Some(stage_schema_version) = &request.mean_reversion_stage_output_schema_version {
-        if model_version.mean_reversion_stage_output_schema_version.as_ref()
+        if model_version
+            .mean_reversion_stage_output_schema_version
+            .as_ref()
             != Some(stage_schema_version)
         {
             return false;

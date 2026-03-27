@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Any, Optional
 
 __doc__: str
 
@@ -31,6 +31,16 @@ class HourlyFactorProviderMissingInputError(ValueError): ...
 
 
 class HourlyFactorProviderUnsupportedRangeError(ValueError): ...
+
+
+class PreparedCalibrationExecutionHandle:
+    @property
+    def schema_version(self) -> str: ...
+
+    @property
+    def run_id(self) -> str: ...
+
+    def serialize_execution_input_json(self) -> str: ...
 
 
 class TimestampEventPreprocessingResult:
@@ -361,6 +371,12 @@ class HourlyFactorContractResult:
 
     @property
     def s_h(self) -> list[float]: ...
+
+    @property
+    def known_component_nu_h(self) -> list[float]: ...
+
+    @property
+    def surprise_component_nu_h(self) -> list[float]: ...
 
     @property
     def nu_h(self) -> list[float]: ...
@@ -818,11 +834,16 @@ def build_hourly_factor_contract(
     range_start_utc: str,
     range_end_utc: str,
     interval_duration_nanos: int,
-    seasonality_hourly_factors: object,
-    news_intensity_hourly_factors: object,
+    seasonality_hourly_factors: Any,
+    news_intensity_hourly_factors: Any,
     *,
     seasonality_materialization_method: str = "explicit_hourly_input.v1",
     news_intensity_materialization_method: str = "explicit_hourly_input.v1",
+) -> HourlyFactorContractResult: ...
+
+
+def load_hourly_factor_contract_payload(
+    hourly_factor_contract_payload: Any,
 ) -> HourlyFactorContractResult: ...
 
 
@@ -832,8 +853,8 @@ def materialize_hourly_seasonality_factors(
     range_start_utc: str,
     range_end_utc: str,
     interval_duration_nanos: int,
-    source_timestamps_utc: object,
-    source_seasonality_factors: object,
+    source_timestamps_utc: Any,
+    source_seasonality_factors: Any,
     *,
     interpolation_method: str = "previous_observation_carry_forward.v1",
     aggregation_method: str = "mean_of_observations.v1",
@@ -850,8 +871,8 @@ def materialize_hourly_news_intensity_factors(
     interval_duration_nanos: int,
     surprise_baseline_intensity: float,
     *,
-    known_scheduled_event_timestamps_utc: Optional[object] = None,
-    surprise_deterministic_time_multiplier_by_interval_index: Optional[object] = None,
+    known_scheduled_event_timestamps_utc: Optional[Any] = None,
+    surprise_deterministic_time_multiplier_by_interval_index: Optional[Any] = None,
 ) -> HourlyNewsIntensityMaterializationResult: ...
 
 
@@ -862,8 +883,8 @@ def provide_hourly_factor_contract(
     range_end_utc: str,
     interval_duration_nanos: int,
     *,
-    seasonality_source: Optional[object] = None,
-    news_intensity_source: Optional[object] = None,
+    seasonality_source: Optional[Any] = None,
+    news_intensity_source: Optional[Any] = None,
 ) -> HourlyFactorContractResult: ...
 
 
@@ -891,8 +912,10 @@ def run_stylized_fact_horizon_comparison_report_generator(
 
 
 def run_vanilla_option_pricing(
-    execution_input: object,
-) -> object: ...
+    request: Any,
+    hourly_factor_contract: HourlyFactorContractResult,
+    optional_output_selection: Any,
+) -> Any: ...
 
 
 def run_staged_calibration(
@@ -930,6 +953,12 @@ def load_and_preprocess_market_data_translation_request(
 ) -> object: ...
 
 
+def prepare_market_data_calibration_plan(
+    request: object,
+    cpu_count: Optional[int] = None,
+) -> object: ...
+
+
 def resolve_market_data_session_configuration_from_source_file(
     session_configuration: object,
     tick_data_source: object,
@@ -939,7 +968,27 @@ def resolve_market_data_session_configuration_from_source_file(
 
 
 def run_coarse_simulation(
-    run_request: object,
+    seed: int,
+    start_time_utc_nanos: int,
+    horizon_interval_count: int,
+    interval_delta: float,
+    model_inputs: Any,
+    hourly_factor_contract: HourlyFactorContractResult,
+) -> Any: ...
+
+
+def run_prepared_staged_calibration(
+    prepared_handle: PreparedCalibrationExecutionHandle,
+    calendar_registry: CalendarRegistry,
+    memory_checkpoint_store: Optional[CalibrationMemoryCheckpointStore] = None,
+) -> object: ...
+
+
+def run_prepared_staged_calibration_with_events(
+    prepared_handle: PreparedCalibrationExecutionHandle,
+    calendar_registry: CalendarRegistry,
+    event_callback: object,
+    memory_checkpoint_store: Optional[CalibrationMemoryCheckpointStore] = None,
 ) -> object: ...
 
 

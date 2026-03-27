@@ -2,6 +2,10 @@
 
 Janiform is a compact high-frequency asset return model that combines seasonal asymmetric Hawkes trade activity with NIG business-time shocks and marked news jumps (including closed-market gap effects). The Rust core provides the computation engine. The Python package exposes an importable API and CLI via PyO3 bindings.
 
+Python is the control plane. Rust is the data plane. The recommended production path keeps bulk
+empirical calibration evidence in native-backed prepared artifacts rather than Python-owned tuples
+of record dataclasses.
+
 The name *Janiform* comes from the Roman god *Janus* who is a god with two faces (one looking forward, one backward). Janus is also the god of transitions and duality. Asymmetry is built into the model:
 - Two Lévy clocks
 - Two intensities
@@ -114,6 +118,10 @@ The default full calibration workflow now runs five stages in order:
 Successful staged calibration responses expose diagnostic artifacts directly in memory mode
 through `diagnostic_artifact_bundle`, and expose persisted diagnostics in disk mode through
 `diagnostic_artifact_references`.
+
+`JaniformEstimator.fit(...)` and `janiform fit` no longer expose the canonical staged evidence
+graph on the default path. Use `PreparedMarketDataCalibration` or `fit staged` only when you
+intentionally want the advanced artifact-backed orchestration boundary.
 
 ## Developer Environment Setup
 

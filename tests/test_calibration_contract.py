@@ -39,6 +39,7 @@ from janiform.calibration import (
 from janiform.calibration.staged import (
     CalibrationExecutionMode,
     CalibrationOptimizerSettings,
+    CalibrationPreparedExecutionPayloadFileReference,
     CalibrationRunDataInputs,
     CalibrationRunSeedSettings,
     CalibrationStage,
@@ -269,40 +270,40 @@ def test_mean_reversion_anchor_model_rejects_non_finite_anchor_values() -> None:
 
 def test_staged_calibration_execution_input_requires_explicit_selected_stage_inputs() -> None:
     execution_input_payload = build_valid_execution_input_payload()
-    del execution_input_payload["seasonality_stage_input"]
+    del execution_input_payload["prepared_payload_file"]
 
     with pytest.raises(CalibrationValidationError) as captured_error:
         validate_staged_calibration_execution_input(execution_input_payload)
 
-    assert captured_error.value.failure.field_path == "seasonality_stage_input"
-    assert "required when selected_stages contains seasonality" in captured_error.value.failure.message
+    assert captured_error.value.failure.field_path == "prepared_payload_file"
+    assert captured_error.value.failure.message == "is required"
 
 
 def test_staged_calibration_execution_input_requires_mean_reversion_stage_input_when_selected(
 ) -> None:
     execution_input_payload = build_valid_execution_input_payload()
-    del execution_input_payload["mean_reversion_stage_input"]
+    execution_input_payload["prepared_payload_file"] = {
+        "path": "",
+        "file_format": "json",
+    }
 
     with pytest.raises(CalibrationValidationError) as captured_error:
         validate_staged_calibration_execution_input(execution_input_payload)
 
-    assert captured_error.value.failure.field_path == "mean_reversion_stage_input"
-    assert "required when selected_stages contains mean_reversion" in captured_error.value.failure.message
+    assert captured_error.value.failure.field_path == "prepared_payload_file.path"
+    assert "non-empty string" in captured_error.value.failure.message
 
 
 def test_staged_calibration_execution_input_rejects_non_positive_mean_reversion_grid_interval(
 ) -> None:
     execution_input_payload = build_valid_execution_input_payload()
-    execution_input_payload["mean_reversion_stage_input"]["calibration_grid_interval_hours"] = 0.0
+    execution_input_payload["prepared_payload_file"]["file_format"] = "parquet"
 
     with pytest.raises(CalibrationValidationError) as captured_error:
         validate_staged_calibration_execution_input(execution_input_payload)
 
-    assert (
-        captured_error.value.failure.field_path
-        == "mean_reversion_stage_input.calibration_grid_interval_hours"
-    )
-    assert captured_error.value.failure.message == "must be strictly positive"
+    assert captured_error.value.failure.field_path == "prepared_payload_file.file_format"
+    assert "CalibrationPreparedExecutionPayloadFileFormat" in captured_error.value.failure.message
 
 
 def test_staged_calibration_execution_input_requires_disk_runtime_resources_for_disk_mode() -> None:
@@ -319,53 +320,43 @@ def test_staged_calibration_execution_input_requires_disk_runtime_resources_for_
 
 def test_staged_calibration_execution_input_requires_close_open_boundary_price_fields() -> None:
     execution_input_payload = build_valid_execution_input_payload()
-    boundary_observation = execution_input_payload["return_components_candidate_generation_input"][
-        "observed_close_open_boundary_observations"
-    ][0]
-    del boundary_observation["close_price"]
+    execution_input_payload["runtime_resources"] = {
+        "disk_checkpoint_directory": 123,
+    }
 
     with pytest.raises(CalibrationValidationError) as captured_error:
         validate_staged_calibration_execution_input(execution_input_payload)
 
-    assert (
-        captured_error.value.failure.field_path
-        == "return_components_candidate_generation_input.observed_close_open_boundary_observations[0].close_price"
-    )
-    assert captured_error.value.failure.message == "is required"
+    assert captured_error.value.failure.field_path == "runtime_resources.disk_checkpoint_directory"
+    assert captured_error.value.failure.message == "must be a string when provided"
 
 
 def test_staged_calibration_execution_input_requires_close_open_gap_detection_policy() -> None:
     execution_input_payload = build_valid_execution_input_payload()
-    del execution_input_payload["return_components_candidate_generation_input"]["close_open_gap_detection_policy"]
+    execution_input_payload["runtime_resources"] = {
+        "disk_checkpoint_directory": "/tmp/should-not-be-used",
+    }
 
     with pytest.raises(CalibrationValidationError) as captured_error:
         validate_staged_calibration_execution_input(execution_input_payload)
 
-    assert (
-        captured_error.value.failure.field_path
-        == "return_components_candidate_generation_input.close_open_gap_detection_policy"
-    )
-    assert captured_error.value.failure.message == "is required"
+    assert captured_error.value.failure.field_path == "runtime_resources.disk_checkpoint_directory"
+    assert "only supported when execution_mode=disk" in captured_error.value.failure.message
 
 
 def test_staged_calibration_execution_input_allows_empty_known_news_return_samples() -> None:
-    execution_input_payload = build_valid_execution_input_payload()
-    execution_input_payload["return_components_candidate_generation_input"][
-        "realized_known_news_return_samples"
-    ] = []
-
+    execution_input = build_valid_execution_input_model()
     validated_execution_input = validate_staged_calibration_execution_input(
-        execution_input_payload
+        execution_input.to_payload()
     )
 
     assert (
-        validated_execution_input.return_components_candidate_generation_input
-        is not None
+        validated_execution_input.prepared_payload_file
+        == CalibrationPreparedExecutionPayloadFileReference(
+            path=execution_input.prepared_payload_file.path
+        )
     )
-    assert (
-        validated_execution_input.return_components_candidate_generation_input.realized_known_news_return_samples
-        == ()
-    )
+    assert validated_execution_input.runtime_resources is None
 
 
 def test_staged_calibration_response_roundtrip_serialization_is_deterministic() -> None:
@@ -550,7 +541,7 @@ def _valid_market_data_request_model() -> MarketDataCalibrationRequest:
         ),
         output_preferences=CalibrationMarketDataOutputPreferences(
             execution_mode=CalibrationExecutionMode.MEMORY,
-            emit_derived_staged_execution_input=True,
+            emit_derived_staged_execution_input=False,
             emit_input_provenance_report=True,
         ),
         option_surface_source=CalibrationInputFileReference(

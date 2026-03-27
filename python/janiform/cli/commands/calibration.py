@@ -355,6 +355,8 @@ def _build_market_data_calibration_summary_payload(
         "normalization_policy": request.normalization_policy.to_payload(),
         "output_artifact_locations": {
             "disk_checkpoint_directory": request.output_preferences.disk_checkpoint_directory,
+            "prepared_payload_path": prepared_calibration.prepared_payload_path,
+            "staged_execution_input_path": prepared_calibration.staged_execution_input_path,
         },
         "output_emission_policy": {
             "execution_mode": request.output_preferences.execution_mode.value,

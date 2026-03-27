@@ -130,19 +130,33 @@ impl NigEsscherTiltDomain {
 /// Structured validation and evaluation failures for Esscher-transformed exponents.
 #[derive(Debug, Clone, PartialEq)]
 pub enum EsscherTransformError {
-    InvalidPhysicalNigParameters { source: NigParameterError },
-    InvalidTiltedNigParameters { source: NigParameterError },
-    InvalidTheta { value: f64 },
-    InvalidArgument { value: ComplexScalar },
+    InvalidPhysicalNigParameters {
+        source: NigParameterError,
+    },
+    InvalidTiltedNigParameters {
+        source: NigParameterError,
+    },
+    InvalidTheta {
+        value: f64,
+    },
+    InvalidArgument {
+        value: ComplexScalar,
+    },
     PureImaginaryArgumentOutOfDomain {
         theta: f64,
         lower_theta_exclusive: f64,
         upper_theta_exclusive: f64,
         argument_imaginary: f64,
     },
-    NonFinitePhysicalExponentAtShiftedArgument { value: ComplexScalar },
-    NonFinitePhysicalExponentAtAnchorArgument { value: ComplexScalar },
-    NonFiniteTransformedExponent { value: ComplexScalar },
+    NonFinitePhysicalExponentAtShiftedArgument {
+        value: ComplexScalar,
+    },
+    NonFinitePhysicalExponentAtAnchorArgument {
+        value: ComplexScalar,
+    },
+    NonFiniteTransformedExponent {
+        value: ComplexScalar,
+    },
 }
 
 impl Display for EsscherTransformError {
@@ -234,11 +248,10 @@ pub fn evaluate_nig_esscher_log_moment_exponent_for_pure_imaginary_argument(
     validate_theta(theta)?;
     validate_argument(ComplexScalar::new(0.0, argument_imaginary))?;
 
-    let admissible_domain =
-        derive_nig_esscher_tilt_domain_for_pure_imaginary_argument(
-            physical_parameters,
-            argument_imaginary,
-        )?;
+    let admissible_domain = derive_nig_esscher_tilt_domain_for_pure_imaginary_argument(
+        physical_parameters,
+        argument_imaginary,
+    )?;
     if !admissible_domain.contains(theta) {
         return Err(EsscherTransformError::PureImaginaryArgumentOutOfDomain {
             theta,
@@ -275,14 +288,18 @@ pub fn evaluate_nig_esscher_log_moment_exponent_for_pure_imaginary_argument(
     );
 
     if !shifted_exponent.is_finite() {
-        return Err(EsscherTransformError::NonFinitePhysicalExponentAtShiftedArgument {
-            value: ComplexScalar::new(shifted_exponent, 0.0),
-        });
+        return Err(
+            EsscherTransformError::NonFinitePhysicalExponentAtShiftedArgument {
+                value: ComplexScalar::new(shifted_exponent, 0.0),
+            },
+        );
     }
     if !anchor_exponent.is_finite() {
-        return Err(EsscherTransformError::NonFinitePhysicalExponentAtAnchorArgument {
-            value: ComplexScalar::new(anchor_exponent, 0.0),
-        });
+        return Err(
+            EsscherTransformError::NonFinitePhysicalExponentAtAnchorArgument {
+                value: ComplexScalar::new(anchor_exponent, 0.0),
+            },
+        );
     }
 
     let transformed_exponent = shifted_exponent - anchor_exponent;
@@ -487,7 +504,6 @@ fn validate_argument(argument: ComplexScalar) -> Result<(), EsscherTransformErro
     Ok(())
 }
 
-
 #[cfg(test)]
 mod tests {
     use crate::nig::NigParameters;
@@ -565,8 +581,14 @@ mod tests {
             buy_domain.lower_theta_exclusive,
             parameters.beta - parameters.alpha + 1.0
         );
-        assert_eq!(buy_domain.upper_theta_exclusive, parameters.beta + parameters.alpha);
-        assert_eq!(sell_domain.lower_theta_exclusive, parameters.beta - parameters.alpha);
+        assert_eq!(
+            buy_domain.upper_theta_exclusive,
+            parameters.beta + parameters.alpha
+        );
+        assert_eq!(
+            sell_domain.lower_theta_exclusive,
+            parameters.beta - parameters.alpha
+        );
         assert_eq!(
             sell_domain.upper_theta_exclusive,
             parameters.beta + parameters.alpha - 1.0

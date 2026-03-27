@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal, InvalidOperation
 from math import isfinite
 from typing import Optional
 
@@ -34,6 +35,7 @@ _COMMON_TIMESTAMP_FORMATS: tuple[str, ...] = (
     "%Y%m%d%H%M%S",
 )
 _UNIX_EPOCH_UTC = datetime(1970, 1, 1, tzinfo=UTC)
+_NANOS_PER_HOUR = 3_600_000_000_000
 
 
 def datetime_to_utc_nanos(value: datetime) -> int:
@@ -51,6 +53,24 @@ def datetime_to_utc_nanos(value: datetime) -> int:
 
 def datetime_to_utc_microseconds(value: datetime) -> int:
     return datetime_to_utc_nanos(value) // 1_000
+
+
+def hours_to_exact_nanoseconds(value: float) -> int:
+    try:
+        interval_duration_nanos = Decimal(str(value)) * Decimal(_NANOS_PER_HOUR)
+    except InvalidOperation as e:
+        raise ValueError("interval delta must be finite") from e
+
+    if not interval_duration_nanos.is_finite():
+        raise ValueError("interval delta must be finite")
+    if interval_duration_nanos != interval_duration_nanos.to_integral_value():
+        raise ValueError("must map to an exact fixed-width UTC nanosecond grid")
+
+    integer_nanos = int(interval_duration_nanos)
+    if integer_nanos <= 0:
+        raise ValueError("interval delta must be strictly positive")
+
+    return integer_nanos
 
 
 def utc_microseconds_to_datetime(value: int) -> datetime:

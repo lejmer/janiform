@@ -142,7 +142,7 @@ def test_public_api_contract_guardrail_supports_public_domain_submodules() -> No
             ],
             "janiform.calibration.market_data.translation": [
                 "MarketDataTranslationResult",
-                "translate_market_data_request_to_staged_execution_input",
+                "translate_market_data_request_to_prepared_calibration",
             ],
             "janiform.calibration.market_data.workflow": [
                 "PreparedMarketDataCalibration",

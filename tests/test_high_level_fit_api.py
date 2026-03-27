@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import math
 from collections.abc import Mapping
@@ -40,7 +42,7 @@ from janiform.calibration.staged import StagedCalibrationResponse, validate_stag
 from janiform.calendar import CalendarRegistry, MarketState
 from janiform.contracts import MeanReversionBoundaryState
 from janiform.hourly_factors import HourlyFactorContract
-from janiform.simulation import SeededTickEventSide
+from janiform.simulation import SeededTickEventSide, SeededTickEventStateSnapshotCapture
 from tests.calibration_test_support import (
     build_constant_mean_reversion_fitted_parameters_payload,
     build_deterministic_interval_grid_mean_reversion_fitted_parameters_payload,
@@ -117,9 +119,9 @@ def test_janiform_estimator_supports_simple_zero_config_tick_fit(
 
     monkeypatch.setattr(
         fit_estimator_module,
-        "_run_staged_calibration_with_raw_payload",
-        lambda execution_input, **kwargs: _successful_full_model_staged_runner_payload(
-            execution_input.request.run_id
+        "_run_prepared_staged_calibration_with_raw_payload",
+        lambda prepared_handle, **kwargs: _successful_full_model_staged_runner_payload(
+            _prepared_runner_run_id(prepared_handle)
         ),
     )
 
@@ -170,7 +172,7 @@ def test_prepare_fit_workflow_uses_column_only_parquet_schema_discovery(
     monkeypatch.setattr(market_data_ingestion_module.parquet, "read_table", _unexpected_read_table)
     monkeypatch.setattr(
         fit_estimator_module,
-        "translate_market_data_request_to_staged_execution_input",
+        "translate_market_data_request_to_prepared_calibration",
         _stop_after_inference,
     )
 
@@ -218,7 +220,7 @@ def test_prepare_fit_workflow_passes_explicit_mean_reversion_request_to_translat
 
     monkeypatch.setattr(
         fit_estimator_module,
-        "translate_market_data_request_to_staged_execution_input",
+        "translate_market_data_request_to_prepared_calibration",
         _capture_request,
     )
 
@@ -267,23 +269,31 @@ def test_prepare_model_runtime_factors_uses_fitted_surprise_intensity_profile(
 
     monkeypatch.setattr(
         fit_estimator_module,
-        "_run_staged_calibration_with_raw_payload",
-        lambda execution_input, **kwargs: _successful_full_model_staged_runner_payload(
-            execution_input.request.run_id
+        "_run_prepared_staged_calibration_with_raw_payload",
+        lambda prepared_handle, **kwargs: _successful_full_model_staged_runner_payload(
+            _prepared_runner_run_id(prepared_handle)
         ),
     )
 
     estimator = JaniformEstimator(market_profile="us_equity_cash")
     model = estimator.fit(tick_data_path=tick_data_path)
-    runtime_factors = fit_model_module._prepare_model_runtime_factors(
+    prepared_inputs = fit_model_module._prepare_model_simulation_inputs(
         model,
+        seed=17,
         start_time_utc=datetime(2026, 2, 2, 14, 0, tzinfo=UTC),
         horizon_interval_count=2,
         interval="1h",
+        simulation_kind="coarse_interval",
+        initial_excitation_state=None,
+        debug_trace_enabled=False,
+        sample_every_nth_transition=1,
+        max_records_per_chunk=1_000,
+        state_snapshot_capture=SeededTickEventStateSnapshotCapture.DISABLED,
     )
+    assert prepared_inputs.coarse_request is not None
 
-    assert runtime_factors.surprise_component_nu_h[0] == pytest.approx(0.04)
-    assert runtime_factors.surprise_component_nu_h[1] == pytest.approx(0.02)
+    assert prepared_inputs.coarse_request.hourly_factor_contract.surprise_component_nu_h[0] == pytest.approx(0.04)
+    assert prepared_inputs.coarse_request.hourly_factor_contract.surprise_component_nu_h[1] == pytest.approx(0.02)
 
 
 def test_janiform_estimator_preserves_duplicate_ticks_by_default(
@@ -307,9 +317,9 @@ def test_janiform_estimator_preserves_duplicate_ticks_by_default(
 
     monkeypatch.setattr(
         fit_estimator_module,
-        "_run_staged_calibration_with_raw_payload",
-        lambda execution_input, **kwargs: _successful_full_model_staged_runner_payload(
-            execution_input.request.run_id
+        "_run_prepared_staged_calibration_with_raw_payload",
+        lambda prepared_handle, **kwargs: _successful_full_model_staged_runner_payload(
+            _prepared_runner_run_id(prepared_handle)
         ),
     )
 
@@ -765,42 +775,24 @@ def test_high_level_runtime_seasonality_zeroes_closed_intervals_for_coarse_input
         run_id="high-level-model-closed-seasonality-gating",
     )
 
-    runtime_factors = fit_model_module._prepare_model_runtime_factors(
+    prepared_inputs = fit_model_module._prepare_model_simulation_inputs(
         model,
+        seed=17,
         start_time_utc=datetime(2026, 2, 2, 14, 0, tzinfo=UTC),
         horizon_interval_count=4,
         interval="15min",
+        simulation_kind="coarse_interval",
+        initial_excitation_state=None,
+        debug_trace_enabled=False,
+        sample_every_nth_transition=1,
+        max_records_per_chunk=1_000,
+        state_snapshot_capture=SeededTickEventStateSnapshotCapture.DISABLED,
     )
+    assert prepared_inputs.coarse_request is not None
 
-    assert runtime_factors.seasonality_hourly_factors == pytest.approx(
+    assert prepared_inputs.coarse_request.hourly_factor_contract.s_h == pytest.approx(
         (0.0, 0.0, 1.0, 1.0)
     )
-
-
-def test_runtime_coarse_news_intensity_components_scale_known_news_to_per_hour_units() -> None:
-    known_news_timestamp_utc = datetime(2026, 2, 2, 14, 5, tzinfo=UTC)
-    news_materialization = SimpleNamespace(
-        interval_start_utc_nanos=(
-            datetime_to_utc_nanos(datetime(2026, 2, 2, 14, 0, tzinfo=UTC)),
-            datetime_to_utc_nanos(datetime(2026, 2, 2, 14, 15, tzinfo=UTC)),
-        ),
-        interval_end_utc_nanos=(
-            datetime_to_utc_nanos(datetime(2026, 2, 2, 14, 15, tzinfo=UTC)),
-            datetime_to_utc_nanos(datetime(2026, 2, 2, 14, 30, tzinfo=UTC)),
-        ),
-        surprise_component_nu_h=(0.2, 0.3),
-    )
-
-    known_component_nu_h, surprise_component_nu_h = (
-        fit_model_module._normalize_runtime_coarse_news_intensity_components(
-            news_materialization=news_materialization,
-            known_news_event_timestamps_utc=(known_news_timestamp_utc,),
-            interval_delta=0.25,
-        )
-    )
-
-    assert known_component_nu_h == pytest.approx((4.0, 0.0))
-    assert surprise_component_nu_h == pytest.approx((0.2, 0.3))
 
 
 def test_high_level_model_simulate_dispatches_by_interval_mode(
@@ -888,10 +880,6 @@ def test_high_level_model_coarse_simulation_skips_seeded_contract_preparation(
     )
     coarse_result = object()
 
-    def _unexpected_seeded_contract_loader(**kwargs) -> NoReturn:
-        del kwargs
-        raise AssertionError("coarse simulation should not prepare seeded hourly factor inputs")
-
     def _unexpected_seeded_runtime(request: Any) -> NoReturn:
         del request
         raise AssertionError("coarse simulation should not dispatch the seeded runtime")
@@ -899,7 +887,13 @@ def test_high_level_model_coarse_simulation_skips_seeded_contract_preparation(
     monkeypatch.setattr(
         fit_model_module,
         "load_hourly_factor_contract_for_simulation",
-        _unexpected_seeded_contract_loader,
+        lambda **kwargs: _build_test_hourly_factor_contract(
+            start_time_utc=kwargs["range_start_utc"],
+            interval_end_times_utc=(
+                kwargs["range_start_utc"] + timedelta(minutes=15),
+                kwargs["range_start_utc"] + timedelta(minutes=30),
+            ),
+        ),
     )
     monkeypatch.setattr(
         fit_model_module,
@@ -977,16 +971,26 @@ def test_high_level_model_simulation_materializes_mean_reversion_runtime_inputs(
     coarse_result = object()
     seeded_result = object()
 
+    def _build_runtime_hourly_factor_contract(**kwargs: Any) -> HourlyFactorContract:
+        interval_duration_nanos = fit_model_module._parse_interval_duration_nanos(
+            kwargs["interval"],
+            field_name="interval",
+        )
+        interval_duration = timedelta(microseconds=interval_duration_nanos / 1_000)
+        start_time_utc = kwargs["range_start_utc"]
+
+        return _build_test_hourly_factor_contract(
+            start_time_utc=start_time_utc,
+            interval_end_times_utc=(
+                start_time_utc + interval_duration,
+                start_time_utc + (interval_duration * 2),
+            ),
+        )
+
     monkeypatch.setattr(
         fit_model_module,
         "load_hourly_factor_contract_for_simulation",
-        lambda **kwargs: _build_test_hourly_factor_contract(
-            start_time_utc=kwargs["range_start_utc"],
-            interval_end_times_utc=(
-                datetime(2026, 2, 2, 16, 30, tzinfo=UTC),
-                datetime(2026, 2, 2, 17, 30, tzinfo=UTC),
-            ),
-        ),
+        _build_runtime_hourly_factor_contract,
     )
     monkeypatch.setattr(
         fit_model_module,
@@ -1692,15 +1696,15 @@ def test_high_level_fit_routes_through_prepared_staged_runner(
         encoding="utf-8",
     )
 
-    captured_execution_input: dict[str, Any] = {}
+    captured_prepared_handle: dict[str, Any] = {}
 
     def capturing_runner(*args, **kwargs):
-        captured_execution_input["execution_input"] = args[0]
+        captured_prepared_handle["prepared_handle"] = args[0]
         return _successful_staged_runner_payload("high-level-fit-runner-path")
 
     monkeypatch.setattr(
         fit_estimator_module,
-        "_run_staged_calibration_with_raw_payload",
+        "_run_prepared_staged_calibration_with_raw_payload",
         capturing_runner,
     )
 
@@ -1723,8 +1727,11 @@ def test_high_level_fit_routes_through_prepared_staged_runner(
         report=True,
     )
 
-    captured_input = captured_execution_input["execution_input"]
-    assert captured_input == fit_report.execution_input
+    captured_input = captured_prepared_handle["prepared_handle"]
+    assert hasattr(captured_input, "serialize_execution_input_json")
+    assert _prepared_runner_run_id(captured_input) == fit_report.run_id
+    assert fit_report.staged_request.run_id == fit_report.run_id
+    assert "execution_input" not in fit_report.to_payload()
 
 
 def test_high_level_fit_reuses_single_load_and_translation_pass_when_session_is_explicit(
@@ -1747,7 +1754,7 @@ def test_high_level_fit_reuses_single_load_and_translation_pass_when_session_is_
     translate_call_count = 0
     session_resolution_load_count = 0
     original_translate_request = (
-        fit_estimator_module.translate_market_data_request_to_staged_execution_input
+        fit_estimator_module.translate_market_data_request_to_prepared_calibration
     )
     original_session_resolution = (
         fit_estimator_module.resolve_market_data_session_configuration_from_source_file
@@ -1765,7 +1772,7 @@ def test_high_level_fit_reuses_single_load_and_translation_pass_when_session_is_
 
     monkeypatch.setattr(
         fit_estimator_module,
-        "translate_market_data_request_to_staged_execution_input",
+        "translate_market_data_request_to_prepared_calibration",
         counting_translate_request,
     )
     monkeypatch.setattr(
@@ -1775,7 +1782,7 @@ def test_high_level_fit_reuses_single_load_and_translation_pass_when_session_is_
     )
     monkeypatch.setattr(
         fit_estimator_module,
-        "_run_staged_calibration_with_raw_payload",
+        "_run_prepared_staged_calibration_with_raw_payload",
         lambda *args, **kwargs: _successful_staged_runner_payload("high-level-fit-single-pass"),
     )
 
@@ -1852,7 +1859,7 @@ def test_high_level_fit_progress_splits_loading_and_translation_steps(
     )
     monkeypatch.setattr(
         fit_estimator_module,
-        "_run_staged_calibration_with_raw_payload",
+        "_run_prepared_staged_calibration_with_raw_payload",
         lambda *args, **kwargs: _successful_staged_runner_payload("high-level-fit-progress"),
     )
 
@@ -1922,9 +1929,9 @@ def test_high_level_fit_report_returns_success_details_with_model(
     )
     monkeypatch.setattr(
         fit_estimator_module,
-        "_run_staged_calibration_with_raw_payload",
-        lambda execution_input, **kwargs: _successful_full_model_staged_runner_payload(
-            execution_input.request.run_id
+        "_run_prepared_staged_calibration_with_raw_payload",
+        lambda prepared_handle, **kwargs: _successful_full_model_staged_runner_payload(
+            _prepared_runner_run_id(prepared_handle)
         ),
     )
 
@@ -1988,7 +1995,7 @@ def _patch_successful_staged_runner(
 ) -> None:
     monkeypatch.setattr(
         fit_estimator_module,
-        "_run_staged_calibration_with_raw_payload",
+        "_run_prepared_staged_calibration_with_raw_payload",
         lambda *args, **kwargs: _successful_staged_runner_payload(run_id),
     )
 
@@ -2017,7 +2024,7 @@ def _build_full_workflow_model(
 
     monkeypatch.setattr(
         fit_estimator_module,
-        "_run_staged_calibration_with_raw_payload",
+        "_run_prepared_staged_calibration_with_raw_payload",
         lambda *args, **kwargs: _successful_full_model_staged_runner_payload(run_id),
     )
 
@@ -2072,9 +2079,17 @@ def _build_test_hourly_factor_contract(
             interval_indices=list(range(len(interval_end_times_utc))),
             interval_start_utc_nanos=interval_start_utc_nanos,
             interval_end_utc_nanos=interval_end_utc_nanos,
-            interval_start_exchange_local=[],
-            interval_end_exchange_local=[],
+            interval_start_exchange_local=[
+                f"start_{interval_index}"
+                for interval_index in range(len(interval_end_times_utc))
+            ],
+            interval_end_exchange_local=[
+                f"end_{interval_index}"
+                for interval_index in range(len(interval_end_times_utc))
+            ],
             s_h=[1.0 for _ in interval_end_times_utc],
+            known_component_nu_h=[0.0 for _ in interval_end_times_utc],
+            surprise_component_nu_h=[0.0 for _ in interval_end_times_utc],
             nu_h=[0.0 for _ in interval_end_times_utc],
             interval_count=len(interval_end_times_utc),
             first_interval_start_utc_nanos=interval_start_utc_nanos[0],
@@ -2528,3 +2543,8 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
     }
 
     return validate_staged_calibration_response(raw_response), raw_response
+
+
+def _prepared_runner_run_id(prepared_handle: Any) -> str:
+    prepared_payload = json.loads(prepared_handle.serialize_execution_input_json())
+    return str(prepared_payload["request"]["run_id"])

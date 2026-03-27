@@ -1,10 +1,21 @@
-use janiform::calibration::{CalibrationMemoryCheckpointStore, CalibrationStage};
+use janiform::calibration::{
+    CalibrationMemoryCheckpointStore, CalibrationStage, CalibrationStagedExecutionInput,
+};
 use pyo3::exceptions::PyValueError;
 use pyo3::{PyResult, pyclass, pymethods};
 
 #[pyclass(module = "janiform._native", name = "CalibrationMemoryCheckpointStore")]
 pub(crate) struct PyCalibrationMemoryCheckpointStore {
     pub(crate) store: CalibrationMemoryCheckpointStore,
+}
+
+#[pyclass(
+    module = "janiform._native",
+    name = "PreparedCalibrationExecutionHandle"
+)]
+#[derive(Clone)]
+pub(crate) struct PyPreparedCalibrationExecutionHandle {
+    pub(crate) execution_input: CalibrationStagedExecutionInput,
 }
 
 #[pymethods]
@@ -36,6 +47,27 @@ impl PyCalibrationMemoryCheckpointStore {
         self.store
             .last_checkpoint_for_run(run_id)
             .map(|checkpoint| checkpoint.checkpoint_reference.clone())
+    }
+}
+
+#[pymethods]
+impl PyPreparedCalibrationExecutionHandle {
+    #[getter]
+    fn schema_version(&self) -> &str {
+        &self.execution_input.schema_version
+    }
+
+    #[getter]
+    fn run_id(&self) -> &str {
+        &self.execution_input.request.run_id
+    }
+
+    fn serialize_execution_input_json(&self) -> PyResult<String> {
+        serde_json::to_string(&self.execution_input).map_err(|source| {
+            PyValueError::new_err(format!(
+                "failed to serialize prepared calibration execution input: {source}"
+            ))
+        })
     }
 }
 

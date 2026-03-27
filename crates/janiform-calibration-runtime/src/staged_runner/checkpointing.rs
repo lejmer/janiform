@@ -150,10 +150,10 @@ pub(super) fn build_stage_parameter_artifact_input(
             ))
         }
         CalibrationStagedRunStageReport::MeanReversion(report) => {
-            let payload = report
-                .fitted_stage_payload
-                .as_ref()
-                .ok_or_else(|| "successful mean-reversion stage is missing its payload".to_string())?;
+            let payload = report.fitted_stage_payload.as_ref().ok_or_else(|| {
+                "successful mean-reversion stage is missing its payload".to_string()
+            })?;
+
             let metadata = report
                 .metadata
                 .as_ref()

@@ -10,7 +10,7 @@ from ..market_data.workflow import (
 )
 from ..presets.resolution import ResolvedPresetWorkflowConfiguration
 from ..sessions.contracts import MarketDataSessionResolution
-from ..staged.inputs import StagedCalibrationExecutionInput
+from ..staged.request import StagedCalibrationRequest
 from ..staged.results import StagedCalibrationResponse
 
 
@@ -23,7 +23,10 @@ class JaniformFitReport:
     session_resolution: MarketDataSessionResolution
     preparation_diagnostics: MarketDataCalibrationPreparationDiagnostics
     preparation_provenance: MarketDataCalibrationPreparationProvenance
-    execution_input: StagedCalibrationExecutionInput
+    staged_request: StagedCalibrationRequest
+    prepared_data_reference: str | None
+    prepared_payload_path: str | None
+    staged_execution_input_path: str | None
     staged_response: StagedCalibrationResponse
     stage_report_payloads: tuple[dict[str, Any], ...]
 
@@ -38,6 +41,9 @@ class JaniformFitReport:
             "session_resolution": self.session_resolution.to_payload(),
             "preparation_diagnostics": self.preparation_diagnostics.to_payload(),
             "preparation_provenance": self.preparation_provenance.to_payload(),
+            "prepared_data_reference": self.prepared_data_reference,
+            "prepared_payload_path": self.prepared_payload_path,
+            "staged_execution_input_path": self.staged_execution_input_path,
             "staged_response": self.staged_response.to_payload(),
         }
 
@@ -49,9 +55,7 @@ class JaniformFitReport:
             "run_id": self.run_id,
             "workflow_scope": self.workflow_scope.value,
             "success": self.success,
-            "selected_stages": [
-                stage.value for stage in self.execution_input.request.selected_stages
-            ],
+            "selected_stages": [stage.value for stage in self.staged_request.selected_stages],
             "stage_statuses": [
                 {
                     "stage": report.stage.value,

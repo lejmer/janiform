@@ -1,13 +1,13 @@
 use serde_json::json;
 
 use crate::{
-    price_vanilla_option_via_fourier_inversion, FourierInversionContour,
+    FOURIER_INVERSION_DIAGNOSTICS_SCHEMA_VERSION, FourierInversionContour,
     FourierInversionContourError, FourierInversionEngineSettings,
     FourierInversionIntegrationStabilityControls,
     FourierInversionIntegrationStabilityControlsError, FourierInversionNumericQualityGate,
     FourierInversionNumericSettings, FourierInversionPricingError, FourierInversionQuadratureRule,
     VanillaOptionPayoffConfiguration, VanillaOptionPayoffType, VanillaOptionPricingMarketInputs,
-    FOURIER_INVERSION_DIAGNOSTICS_SCHEMA_VERSION,
+    price_vanilla_option_via_fourier_inversion,
 };
 use janiform_foundations::complex_math::ComplexScalar;
 

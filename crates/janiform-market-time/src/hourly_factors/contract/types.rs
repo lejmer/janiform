@@ -1,7 +1,7 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// Audit metadata emitted with hourly factor materialization outputs.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HourlyFactorMaterializationMetadata {
     pub seasonality_materialization_method: String,
     pub news_intensity_materialization_method: String,
@@ -13,7 +13,7 @@ pub struct HourlyFactorMaterializationMetadata {
 }
 
 /// Deterministic diagnostics for hourly factor interval coverage.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HourlyFactorContractDiagnostics {
     pub interval_count: usize,
     pub interval_duration_nanos: i64,
@@ -24,7 +24,7 @@ pub struct HourlyFactorContractDiagnostics {
 }
 
 /// Canonical hourly factor output contract for downstream engines.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct HourlyFactorContractOutput {
     pub schema_version: &'static str,
     pub exchange_code: String,
@@ -38,13 +38,15 @@ pub struct HourlyFactorContractOutput {
     pub interval_start_exchange_local: Vec<String>,
     pub interval_end_exchange_local: Vec<String>,
     pub s_h: Vec<f64>,
+    pub known_component_nu_h: Vec<f64>,
+    pub surprise_component_nu_h: Vec<f64>,
     pub nu_h: Vec<f64>,
     pub metadata: HourlyFactorMaterializationMetadata,
     pub diagnostics: HourlyFactorContractDiagnostics,
 }
 
 /// Audit metadata emitted with hourly seasonality materialization outputs.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HourlySeasonalityMaterializationMetadata {
     pub interpolation_method: &'static str,
     pub aggregation_method: &'static str,
@@ -58,7 +60,7 @@ pub struct HourlySeasonalityMaterializationMetadata {
 }
 
 /// Deterministic diagnostics for hourly seasonality materialization outputs.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HourlySeasonalityMaterializationDiagnostics {
     pub source_point_count: usize,
     pub interval_count: usize,
@@ -71,7 +73,7 @@ pub struct HourlySeasonalityMaterializationDiagnostics {
 }
 
 /// Canonical hourly seasonality output for downstream engines.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct HourlySeasonalityMaterializationOutput {
     pub schema_version: &'static str,
     pub exchange_code: String,
@@ -90,7 +92,7 @@ pub struct HourlySeasonalityMaterializationOutput {
 }
 
 /// Audit metadata emitted with hourly news-intensity materialization outputs.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct HourlyNewsIntensityMaterializationMetadata {
     pub materialization_method: &'static str,
     pub component_aggregation_policy: &'static str,
@@ -107,7 +109,7 @@ pub struct HourlyNewsIntensityMaterializationMetadata {
 }
 
 /// Deterministic diagnostics for hourly news-intensity materialization outputs.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HourlyNewsIntensityMaterializationDiagnostics {
     pub interval_count: usize,
     pub interval_duration_nanos: i64,
@@ -121,7 +123,7 @@ pub struct HourlyNewsIntensityMaterializationDiagnostics {
 }
 
 /// Canonical hourly news-intensity output for downstream engines.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct HourlyNewsIntensityMaterializationOutput {
     pub schema_version: &'static str,
     pub exchange_code: String,

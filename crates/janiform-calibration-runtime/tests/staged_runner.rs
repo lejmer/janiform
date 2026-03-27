@@ -212,7 +212,10 @@ fn staged_runner_reports_run_and_stage_seed_metadata_for_all_stages() {
                 assert_eq!(metadata.run_global_seed, 17);
                 assert_eq!(
                     metadata.stage_seed,
-                    derive_calibration_stage_seed_from_global_seed(17, CalibrationStage::MeanReversion)
+                    derive_calibration_stage_seed_from_global_seed(
+                        17,
+                        CalibrationStage::MeanReversion
+                    )
                 );
                 assert_eq!(
                     metadata.stage_seed_source,
