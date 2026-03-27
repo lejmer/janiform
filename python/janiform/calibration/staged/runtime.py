@@ -1,4 +1,10 @@
-from __future__ import annotations
+"""
+Internal staged-calibration runtime bridge.
+
+The public staged runtime surface is `run_staged_calibration`. Raw payload
+transport and event-stream plumbing stay internal so the supported API remains
+artifact-backed instead of exposing another weak wrapper layer.
+"""
 
 from collections.abc import Callable
 from pathlib import Path
@@ -66,19 +72,7 @@ def _run_native_staged_calibration_with_prepared_handle_and_events(
     return _validate_native_staged_response(raw_response_payload)
 
 
-def _run_staged_calibration_with_raw_payload(
-    execution_input: StagedCalibrationExecutionInput,
-    *,
-    calendar_registry: CalendarRegistry,
-) -> tuple[StagedCalibrationResponse, dict[str, Any]]:
-    return run_staged_calibration_with_raw_payload_and_events(
-        execution_input,
-        calendar_registry=calendar_registry,
-        event_callback=None,
-    )
-
-
-def run_staged_calibration_with_raw_payload_and_events(
+def _run_staged_calibration_with_optional_events(
     execution_input: StagedCalibrationExecutionInput,
     *,
     calendar_registry: CalendarRegistry,
@@ -127,9 +121,10 @@ def run_staged_calibration(
     *,
     calendar_registry: CalendarRegistry,
 ) -> StagedCalibrationResponse:
-    normalized_response, _ = _run_staged_calibration_with_raw_payload(
+    normalized_response, _ = _run_staged_calibration_with_optional_events(
         execution_input,
         calendar_registry=calendar_registry,
+        event_callback=None,
     )
     return normalized_response
 
@@ -207,5 +202,4 @@ def _validate_native_staged_response(
 
 __all__ = [
     "run_staged_calibration",
-    "run_staged_calibration_with_raw_payload_and_events",
 ]

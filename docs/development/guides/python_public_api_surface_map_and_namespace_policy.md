@@ -37,6 +37,7 @@ and examples in the same change.
 - Discoverability is a first-class public API concern.
 - Package decomposition is a first-class public API concern.
 - Curated convenience imports should reduce friction without hiding the natural domain structure.
+- Curated roots should stay small enough that `__all__` reads like an overview, not an index dump.
 - Public workflow and domain modules should read like a map of the product.
 - Private-by-convention naming is not a substitute for clear package boundaries.
 
@@ -104,13 +105,10 @@ The following public surface families are intentionally supported and explicitly
 | `janiform.calibration.presets.resolution` | `config`, `report` |
 | `janiform.calibration.sessions` | `config`, `report` |
 | `janiform.calibration.sessions.contracts` | `config`, `report` |
-| `janiform.calibration.sessions.resolution` | `runtime artifact` |
 | `janiform.validation` | `runtime artifact`, `report` |
 | `janiform.stylized_facts` | `runtime artifact`, `report` |
 | `janiform.cli` | `config`, `report` |
 | `janiform.cli.commands.calibration` | `config`, `report` |
-| `janiform.cli.commands.development` | `config`, `report` |
-| `janiform.cli.commands.model_workflows` | `config`, `report` |
 | `janiform.cli.commands.simulation` | `config`, `report` |
 
 ## Review checklist
@@ -122,6 +120,10 @@ Reject a Python public-surface change when any of the following is true:
 - it makes a report or runtime artifact eagerly duplicate a native-owned dataset
 - it expands `janiform.contracts` or market-data request modules with data-bearing ownership
 - it makes a CLI default require users to assemble large staged evidence payloads by hand
+- it adds a package-root re-export that only forwards to an ownership module without making the
+  root materially clearer for normal users
+- it keeps a public-looking module importable without making it obvious, at the module boundary,
+  whether that module is public ownership surface or internal plumbing
 
 ## Public package root
 
@@ -147,6 +149,11 @@ Expose a symbol from a workflow package root such as `janiform.simulation` or
 
 Curated root exports are convenience imports. They are not a rule that every public symbol must live
 only at the root.
+
+Curated roots should prefer workflow entrypoints, the most common request or result contracts, and a
+small number of cross-cutting shared types. Serialization helpers, schema constants, and advanced
+plumbing contracts should usually stay in ownership modules unless the root is still clearly
+curated after adding them.
 
 ### Public submodule criteria
 
@@ -215,6 +222,7 @@ from janiform.contracts import MeanReversionFittedParameters
 
 - `janiform.simulation`
   - Ownership: curated convenience surface for seeded-tick and coarse-interval simulation workflows
+  - Root-size policy: keep only the common workflow entrypoints, request and response contracts, and the shared inputs needed to construct those workflows from examples or notebooks
 - `janiform.pricing`
   - Ownership: vanilla option pricing contracts, anchored boundary-state pricing diagnostics, and runtime factor loading
   - Anchored pricing policy: the module re-exports the canonical anchor-deviation pricing boundary input and local state-dependent tilt diagnostics alongside the shared mean-reversion contracts required to build that request surface
@@ -224,6 +232,9 @@ from janiform.contracts import MeanReversionFittedParameters
   - Observed-state policy: public risk path records and diagnostics distinguish core Janiform interval returns from observed log-price state, anchor state, and deviation-from-anchor summaries
 - `janiform.calibration`
   - Ownership: curated convenience surface for high-level fitting, market-data calibration, staged execution, and preset-facing calibration objects
+  - Root-size policy: prefer the estimator, main workflow requests and responses, and the small set
+    of preset-facing types used by the high-level path. Leave schema constants, low-level session
+    contracts, and advanced validation helpers in ownership modules
 - `janiform.calendar`
   - Ownership: exchange calendar queries shared across workflows
 - `janiform.hourly_factors`
@@ -239,7 +250,13 @@ from janiform.contracts import MeanReversionFittedParameters
 - `janiform.stylized_facts`
   - Ownership: stylized-fact comparison reporting
 - `janiform.cli`
-  - Ownership: curated CLI entrypoints, command-tree parser construction, and supported command-group organization
+  - Ownership: curated CLI contract constants and supported command-group organization
+  - Root-size policy: the package root should export the supported exit-code enum and
+    the small set of schema, entrypoint, path-policy, and environment-variable constants that are
+    referenced by CLI-facing docs and workflow tests. Command-tree assembly, rendering,
+    configuration loading, path resolution, and document helpers stay in dedicated helper modules
+  - Execution-module policy: the executable process boundary lives in `janiform.__main__`, not in
+    `janiform.cli.__init__`
   - Beginner-path policy: `janiform fit PATH --market MARKET` is the preferred first-time path, with `fit inspect` and `--explain` exposing inferred defaults
 
 ### Public domain submodules
@@ -308,17 +325,15 @@ from janiform.contracts import MeanReversionFittedParameters
   - Ownership: resolved preset workflow configuration and resolution entrypoints
 - `janiform.calibration.sessions`
   - Ownership: market-data session-resolution contracts and session window models
-  - Root coexistence policy: the root re-exports the core session-resolution contracts, while `janiform.calibration.sessions` is the ownership path
+  - Root coexistence policy: session-resolution contracts stay on the ownership path instead of
+    being re-exported from `janiform.calibration`
 - `janiform.calibration.sessions.contracts`
   - Ownership: session-resolution contracts and weekly session window models
-- `janiform.calibration.sessions.resolution`
-  - Ownership: helper-only calendar-registry materialization utilities for explicit or preset-backed session definitions
+  - Internal-helper policy: session-registry materialization and weekly-window derivation stay in
+    `janiform.calibration.sessions._resolution`, which is private implementation plumbing rather
+    than part of the supported import surface
 - `janiform.cli.commands.calibration`
   - Ownership: calibration CLI command handlers and calibration-specific CLI boundary normalization
-- `janiform.cli.commands.development`
-  - Ownership: developer regression command handlers and regression-fixture extraction helpers
-- `janiform.cli.commands.model_workflows`
-  - Ownership: fit and simulate CLI workflow adapters around persisted models and preset-backed model construction
 - `janiform.cli.commands.simulation`
   - Ownership: explicit simulation CLI command handlers
 
@@ -395,7 +410,6 @@ The supported calibration ownership modules are:
 - `janiform.calibration.presets.resolution`
 - `janiform.calibration.sessions`
 - `janiform.calibration.sessions.contracts`
-- `janiform.calibration.sessions.resolution`
 
 The calibration package root is curated convenience surface. It is not the only discoverable map of
 the package anymore.
@@ -438,6 +452,8 @@ pre-v0.1 line:
 - any submodule not listed in this document
 - implementation helpers nested under public packages, such as `janiform.validation.harness`
 - low-level native adapters and boundary plumbing, such as `janiform._native` and `janiform._native_api`
+- non-underscored helper modules that declare themselves internal at the module docstring boundary,
+  such as the CLI command-tree, rendering, configuration, and path helpers
 
 Private modules must not be re-exported from `janiform` or from public module `__all__` lists.
 Underscore-prefixed symbols must not appear in any module `__all__` list unless they are
@@ -459,4 +475,6 @@ double-underscore protocol names such as `__version__`.
 - Does the package layout improve discoverability for both users and maintainers?
 - Are multiple supported import paths intentional and documented rather than accidental?
 - Are private helpers still private instead of becoming a shadow public API through examples or tests?
+- Does each non-underscored helper module say at the module boundary that it is internal?
+- Did this change delete at least as much wrapper or duplicate surface area as it added?
 - Are README, docs, examples, and export guardrails updated in the same change?

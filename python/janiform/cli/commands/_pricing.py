@@ -1,10 +1,12 @@
+"""Internal pricing CLI command assembly."""
+
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Optional, cast
 
 import click
 
-from .shared import _parse_utc_datetime_cli_argument
+from ._shared import parse_utc_datetime_cli_argument
 from .._constants import (
     CLI_PRICE_ENTRYPOINT,
     CLI_PRICE_INTERNAL_ERROR_ID,
@@ -23,19 +25,19 @@ from ..command_runtime import (
     required_datetime_option,
 )
 from ..context import CliCommandContext
-from ..documents import _load_json_document_for_cli_field
-from ..errors import _classify_workflow_command_error
+from .._documents import load_json_document_for_cli_field
+from .._errors import classify_workflow_command_error
 from ..paths import _resolve_path_from_repository_root
-from ..rendering import _render_price_human_output, _write_cli_error, _write_command_output
+from .._rendering import render_price_human_output, write_cli_error, write_command_output
 from ..._workflow_outputs import generate_workflow_run_id, resolve_pricing_artifact_paths
 from ..._workflow_progress import JaniformOutputController
-from ...calibration import JaniformModel
+from ...calibration.fit import JaniformModel
 from ...errors import JaniformError
 from ...pricing import MeanReversionBoundaryState
 from ...pricing import VanillaOptionPayoffType
 
 
-def _run_price_command(
+def run_price_command(
     *,
     cli_context: CliCommandContext,
     output: str,
@@ -59,7 +61,7 @@ def _run_price_command(
         )
         observed_boundary_state = None
         if observed_boundary_state_path is not None:
-            observed_boundary_state_document = _load_json_document_for_cli_field(
+            observed_boundary_state_document = load_json_document_for_cli_field(
                 repository_root=cli_context.repository_root,
                 path=observed_boundary_state_path,
                 context="an observed MeanReversionBoundaryState JSON payload",
@@ -84,7 +86,7 @@ def _run_price_command(
             output_controller.info(f"report path: {artifact_paths.report_path}")
 
         pricing_result = model.price_option(
-            valuation_time_utc=_parse_utc_datetime_cli_argument(
+            valuation_time_utc=parse_utc_datetime_cli_argument(
                 cast(str, command_arguments["valuation_time_utc"]),
                 field_path="valuation_time_utc",
                 error_id=CLI_PRICE_VALIDATION_ERROR_ID,
@@ -106,10 +108,10 @@ def _run_price_command(
             silent=bool(command_arguments.get("silent")) or output == CliOutputMode.JSON.value,
         )
     except JaniformError as e:
-        return _write_cli_error(e)
+        return write_cli_error(e)
     except Exception as e:
-        return _write_cli_error(
-            _classify_workflow_command_error(
+        return write_cli_error(
+            classify_workflow_command_error(
                 e,
                 entrypoint=CLI_PRICE_ENTRYPOINT,
                 validation_error_id=CLI_PRICE_VALIDATION_ERROR_ID,
@@ -135,16 +137,16 @@ def _run_price_command(
     }
 
     if not bool(command_arguments.get("silent")):
-        _write_command_output(
+        write_command_output(
             output,
             json_payload=payload,
-            human_output_factory=lambda: _render_price_human_output(payload),
+            human_output_factory=lambda: render_price_human_output(payload),
         )
 
     return int(CliExitCode.SUCCESS)
 
 
-def _build_price_command(*, environment: Optional[Mapping[str, str]] = None) -> click.Command:
+def build_price_command(*, environment: Optional[Mapping[str, str]] = None) -> click.Command:
     @click.command(
         "price",
         cls=JaniformCommand,
@@ -232,7 +234,7 @@ def _build_price_command(*, environment: Optional[Mapping[str, str]] = None) -> 
     def price(ctx: click.Context, **command_arguments) -> int:
         return invoke_command_handler(
             ctx,
-            handler=_run_price_command,
+            handler=run_price_command,
             command_path=("price",),
             command_arguments=dict(command_arguments),
         )

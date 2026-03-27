@@ -1,3 +1,5 @@
+"""Public staged-calibration ownership surface."""
+
 from .contracts import (
     CALIBRATION_EXECUTION_MODE_DEFAULT_POLICY,
     CALIBRATION_RUN_SPEC_SCHEMA_VERSION,

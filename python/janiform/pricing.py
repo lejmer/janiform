@@ -21,7 +21,6 @@ from .contracts import (
     require_mapping,
     require_non_negative_integer,
     require_non_negative_finite_number,
-    require_non_negative_finite_scalar,
     require_positive_finite_number,
     require_positive_finite_scalar,
     require_string,
@@ -32,12 +31,6 @@ from .contracts import (
 )
 from ._native_api import native_exception_matches, native_module
 from ._timestamps import hours_to_exact_nanoseconds
-from .calendar import (
-    CalendarInvalidTimestampError,
-    CalendarInvalidTimezoneError,
-    CalendarMissingExchangeError,
-    CalendarRegistry,
-)
 from .errors import (
     ContractValidationFailure,
     JaniformErrorDetails,
@@ -48,13 +41,7 @@ from .errors import (
 )
 from .hourly_factors import (
     HourlyFactorContract,
-    HourlyFactorProviderMissingInputError,
-    HourlyFactorProviderUnsupportedRangeError,
-    HourlyNewsIntensityProviderSource,
-    HourlySeasonalityProviderSource,
-    provide_hourly_factor_contract,
 )
-from .seasonality import SeasonalityInputValidationError
 if TYPE_CHECKING:
     from .simulation import HawkesExcitationState, HawkesKernelParameters
 
@@ -97,7 +84,6 @@ PRICING_VALIDATION_ERROR_ID = "pricing.validation.contract"
 PRICING_EXECUTION_ERROR_ID = "pricing.execution.run_failed"
 PRICING_INTEGRATION_NATIVE_MODULE_ERROR_ID = "pricing.integration.native_module_unavailable"
 PRICING_INTEGRATION_RESPONSE_ERROR_ID = "pricing.integration.invalid_native_response"
-PRICING_INTEGRATION_HOURLY_FACTOR_ERROR_ID = "pricing.integration.hourly_factor_contract_unavailable"
 PRICING_LOCAL_ANCHORED_TILT_SOLVE_POLICY = (
     "solve_state_dependent_local_tilt_against_observed_anchor_adjusted_interval_return_target.v1"
 )
@@ -1544,65 +1530,6 @@ def _optional_boolean(
     return raw_value
 
 
-def load_hourly_factor_contract_for_pricing(
-    *,
-    calendar_registry: CalendarRegistry,
-    exchange_code: str,
-    range_start_utc: datetime,
-    range_end_utc: datetime,
-    seasonality_source: HourlySeasonalityProviderSource,
-    news_intensity_source: HourlyNewsIntensityProviderSource,
-    interval_delta: float = DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA,
-) -> HourlyFactorContract:
-    """Load interval-aligned hourly factors for the pricing path."""
-
-    parsed_interval_delta = require_positive_finite_scalar(
-        interval_delta,
-        "interval_delta",
-        PRICING_ERROR_FACTORY,
-    )
-    if parsed_interval_delta != DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA:
-        raise _pricing_error(
-            "interval_delta",
-            (
-                "hourly factor provider supports only interval_delta=1.0 "
-                f"for hourly boundaries, received {parsed_interval_delta}"
-            ),
-        )
-
-    try:
-        return provide_hourly_factor_contract(
-            calendar_registry=calendar_registry,
-            exchange_code=exchange_code,
-            range_start_utc=range_start_utc,
-            range_end_utc=range_end_utc,
-            seasonality_source=seasonality_source,
-            news_intensity_source=news_intensity_source,
-        )
-    except (
-        CalendarInvalidTimestampError,
-        CalendarInvalidTimezoneError,
-        CalendarMissingExchangeError,
-        HourlyFactorProviderMissingInputError,
-        HourlyFactorProviderUnsupportedRangeError,
-        SeasonalityInputValidationError,
-    ) as e:
-        raise _pricing_error(
-            "hourly_factor_contract",
-            str(e),
-            entrypoint="load_hourly_factor_contract_for_pricing",
-            context={"exchange_code": exchange_code},
-        ) from e
-    except ModuleNotFoundError as e:
-        raise _pricing_integration_error(
-            "native hourly-factor support is unavailable",
-            entrypoint="load_hourly_factor_contract_for_pricing",
-            error_id=PRICING_INTEGRATION_HOURLY_FACTOR_ERROR_ID,
-            field_path="hourly_factor_contract",
-            context={"exchange_code": exchange_code},
-        ) from e
-
-
 def validate_vanilla_option_pricing_request(
     raw_request: dict[str, Any] | Any,
 ) -> VanillaOptionPricingRequest:
@@ -1753,7 +1680,6 @@ __all__ = [
     "deserialize_vanilla_option_pricing_request",
     "deserialize_vanilla_option_pricing_response",
     "deserialize_vanilla_option_pricing_run_result",
-    "load_hourly_factor_contract_for_pricing",
     "run_vanilla_option_pricing",
     "serialize_vanilla_option_pricing_request",
     "serialize_vanilla_option_pricing_response",

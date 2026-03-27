@@ -38,6 +38,7 @@ from janiform.calibration.market_data import (
     CalibrationTickDataColumnMapping,
     CalibrationTickPriceInputPolicy,
 )
+from janiform.calibration.presets import PresetCategory
 from janiform.calibration.staged import StagedCalibrationResponse, validate_staged_calibration_response
 from janiform.calendar import CalendarRegistry, MarketState
 from janiform.contracts import MeanReversionBoundaryState
@@ -337,7 +338,10 @@ def test_janiform_estimator_preserves_duplicate_ticks_by_default(
 
 def test_high_level_session_calendar_registry_preserves_fx_weekend_closure() -> None:
     registry = fit_estimator_module.PresetRegistry()
-    _, session_artifact = registry.resolve_session_preset("fx_spot_24_5")
+    _, session_artifact = registry.resolve(
+        category=PresetCategory.SESSION,
+        preset_name="fx_spot_24_5",
+    )
 
     calendar_registry = CalendarRegistry(
         fit_estimator_module._calendar_registry_json_from_session_configuration(
@@ -886,7 +890,7 @@ def test_high_level_model_coarse_simulation_skips_seeded_contract_preparation(
 
     monkeypatch.setattr(
         fit_model_module,
-        "load_hourly_factor_contract_for_simulation",
+        "provide_hourly_factor_contract",
         lambda **kwargs: _build_test_hourly_factor_contract(
             start_time_utc=kwargs["range_start_utc"],
             interval_end_times_utc=(
@@ -989,7 +993,7 @@ def test_high_level_model_simulation_materializes_mean_reversion_runtime_inputs(
 
     monkeypatch.setattr(
         fit_model_module,
-        "load_hourly_factor_contract_for_simulation",
+        "provide_hourly_factor_contract",
         _build_runtime_hourly_factor_contract,
     )
     monkeypatch.setattr(
@@ -1177,7 +1181,10 @@ def test_persist_coarse_simulation_suppresses_closed_fx_weekend_rows() -> None:
     import janiform._workflow_outputs as workflow_outputs_module
 
     registry = fit_estimator_module.PresetRegistry()
-    _, session_artifact = registry.resolve_session_preset("fx_spot_24_5")
+    _, session_artifact = registry.resolve(
+        category=PresetCategory.SESSION,
+        preset_name="fx_spot_24_5",
+    )
     calendar_registry = CalendarRegistry(
         fit_estimator_module._calendar_registry_json_from_session_configuration(
             session_artifact.configuration

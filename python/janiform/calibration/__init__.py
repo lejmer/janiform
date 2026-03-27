@@ -1,3 +1,11 @@
+"""
+Curated public calibration surface.
+
+Use this package root for the high-level fit workflow and the primary
+calibration entrypoints. Detailed request, preset, session, and staged
+contracts live in their ownership submodules.
+"""
+
 from ..contracts import (
     MeanReversionAnchorModel,
     MeanReversionAnchorModelKind,
@@ -6,77 +14,31 @@ from ..contracts import (
 from ._errors import CalibrationValidationError, CalibrationValidationFailure
 from .fit import JaniformEstimator, JaniformFitReport, JaniformModel, JaniformSimulationResult
 from .market_data import (
-    CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION,
-    CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION,
-    CalibrationDuplicateRecordPolicy,
-    CalibrationInputFileFormat,
-    CalibrationKnownNewsColumnMapping,
     CalibrationMeanReversionConfiguration,
-    CalibrationMarketDataNormalizationPolicy,
-    CalibrationMarketDataOutputPreferences,
-    CalibrationMarketDataWorkflowScope,
-    CalibrationOptionQuoteInputPolicy,
-    CalibrationOptionSurfaceColumnMapping,
-    CalibrationTickDataColumnMapping,
-    CalibrationTickPriceInputPolicy,
     MarketDataCalibrationRequest,
     PreparedMarketDataCalibration,
     prepare_market_data_calibration,
     run_market_data_calibration,
-    validate_market_data_calibration_request,
 )
 from .presets import (
     DEFAULT_HIGH_LEVEL_KNOWN_NEWS_PRESET_NAME,
     KnownNewsExplicitConfiguration,
     KnownNewsPresetReference,
     MarketProfileReference,
-    PresetCategory,
-    PresetReferenceUsageMode,
     PresetRegistry,
-    PresetRegistryScope,
     SessionExplicitConfiguration,
     SessionPresetReference,
     resolve_preset_workflow_configuration,
 )
-from .sessions import (
-    CALIBRATION_MARKET_DATA_SESSION_RESOLUTION_SCHEMA_VERSION,
-    MarketDataSessionRecurringClosedWindow,
-    MarketDataSessionRegularWindow,
-    MarketDataSessionResolution,
-)
 from .staged import (
-    CALIBRATION_EXECUTION_MODE_DEFAULT_POLICY,
-    CALIBRATION_RUN_SPEC_SCHEMA_VERSION,
-    CALIBRATION_STAGED_EXECUTION_INPUT_SCHEMA_VERSION,
-    CALIBRATION_STAGED_RUN_REPORT_SCHEMA_VERSION,
-    CalibrationExecutionMode,
     StagedCalibrationExecutionInput,
     StagedCalibrationRequest,
     StagedCalibrationResponse,
     run_staged_calibration,
-    validate_staged_calibration_execution_input,
 )
 
 __all__ = [
-    "CALIBRATION_EXECUTION_MODE_DEFAULT_POLICY",
-    "CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION",
-    "CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION",
-    "CALIBRATION_MARKET_DATA_SESSION_RESOLUTION_SCHEMA_VERSION",
-    "CALIBRATION_RUN_SPEC_SCHEMA_VERSION",
-    "CALIBRATION_STAGED_EXECUTION_INPUT_SCHEMA_VERSION",
-    "CALIBRATION_STAGED_RUN_REPORT_SCHEMA_VERSION",
-    "CalibrationDuplicateRecordPolicy",
-    "CalibrationExecutionMode",
-    "CalibrationInputFileFormat",
-    "CalibrationKnownNewsColumnMapping",
     "CalibrationMeanReversionConfiguration",
-    "CalibrationMarketDataNormalizationPolicy",
-    "CalibrationMarketDataOutputPreferences",
-    "CalibrationMarketDataWorkflowScope",
-    "CalibrationOptionQuoteInputPolicy",
-    "CalibrationOptionSurfaceColumnMapping",
-    "CalibrationTickDataColumnMapping",
-    "CalibrationTickPriceInputPolicy",
     "CalibrationValidationError",
     "CalibrationValidationFailure",
     "DEFAULT_HIGH_LEVEL_KNOWN_NEWS_PRESET_NAME",
@@ -87,17 +49,11 @@ __all__ = [
     "KnownNewsExplicitConfiguration",
     "KnownNewsPresetReference",
     "MarketDataCalibrationRequest",
-    "MarketDataSessionRecurringClosedWindow",
-    "MarketDataSessionRegularWindow",
-    "MarketDataSessionResolution",
     "MarketProfileReference",
     "MeanReversionAnchorModel",
     "MeanReversionAnchorModelKind",
     "MeanReversionFittedParameters",
-    "PresetCategory",
-    "PresetReferenceUsageMode",
     "PresetRegistry",
-    "PresetRegistryScope",
     "PreparedMarketDataCalibration",
     "SessionExplicitConfiguration",
     "SessionPresetReference",
@@ -108,6 +64,4 @@ __all__ = [
     "resolve_preset_workflow_configuration",
     "run_market_data_calibration",
     "run_staged_calibration",
-    "validate_market_data_calibration_request",
-    "validate_staged_calibration_execution_input",
 ]

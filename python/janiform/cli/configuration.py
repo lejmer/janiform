@@ -1,3 +1,5 @@
+"""Internal command-config and environment-default resolution for the CLI."""
+
 import json
 import os
 from collections.abc import Mapping
@@ -16,8 +18,8 @@ from ._constants import (
     CLI_OUTPUT_ENV_VAR,
     CLI_PRIMARY_COMMAND_IDENTIFIERS,
 )
-from .documents import _load_json_document
-from .errors import _cli_validation_error
+from ._documents import load_json_document
+from ._errors import cli_validation_error
 from .paths import _resolve_path_from_repository_root, resolve_repository_root
 
 
@@ -219,7 +221,7 @@ def _build_click_parameter_map(command: click.Command) -> dict[str, click.Option
 
 def _load_cli_command_config_document(config_path: Path) -> dict[str, Any]:
     try:
-        config_document = _load_json_document(config_path, "command config")
+        config_document = load_json_document(config_path, "command config")
     except FileNotFoundError:
         _raise_cli_argument_resolution_error(
             field_path="config_json",
@@ -313,7 +315,7 @@ def _raise_cli_argument_resolution_error(
     message: str,
     context: Optional[dict[str, Any]] = None,
 ) -> None:
-    raise _cli_validation_error(
+    raise cli_validation_error(
         field_path,
         message,
         error_id=CLI_ARGUMENT_RESOLUTION_VALIDATION_ERROR_ID,

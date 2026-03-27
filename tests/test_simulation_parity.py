@@ -4,22 +4,26 @@ from typing import Any, Optional, cast
 from janiform.hourly_factors import (
     HourlyNewsIntensityProviderExplicitSource,
     HourlySeasonalityProviderExplicitSource,
+    provide_hourly_factor_contract,
 )
 from janiform.pricing import GammaSeverityMarkConfiguration, NigSharedPlusShiftConfiguration
-from janiform.simulation import (
+from janiform.simulation.coarse import (
     CoupledGapMarkConfiguration,
     DoubleExponentialBaseShockConfiguration,
-    HawkesExcitationState,
-    HawkesKernelParameters,
     KnownNewsArrivalConfiguration,
     NewsArrivalConfiguration,
     NewsComponentMarkScaleConfiguration,
     NewsProcessConfiguration,
-    SeededTickSimulationRequest,
     SharedNewsMarkLawConfiguration,
     SurpriseNewsArrivalConfiguration,
-    load_hourly_factor_contract_for_simulation,
+)
+from janiform.simulation.seeded import (
+    SeededTickSimulationRequest,
     run_seeded_tick_event_simulation,
+)
+from janiform.simulation.shared import (
+    HawkesExcitationState,
+    HawkesKernelParameters,
 )
 from janiform.simulation.seeded.contracts import build_disabled_seeded_mean_reversion_runtime_inputs
 from tests.fixture_validation import SeededTickSimulationParityCase
@@ -81,7 +85,7 @@ def _run_seeded_case(
     range_start_utc = datetime.fromisoformat(fixture_case["range_start_utc"].replace("Z", "+00:00"))
     range_end_utc = datetime.fromisoformat(fixture_case["range_end_utc"].replace("Z", "+00:00"))
 
-    hourly_factor_contract = load_hourly_factor_contract_for_simulation(
+    hourly_factor_contract = provide_hourly_factor_contract(
         calendar_registry=calendar_registry,
         exchange_code=fixture_case["exchange_code"],
         range_start_utc=range_start_utc,

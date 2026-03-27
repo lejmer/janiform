@@ -18,6 +18,7 @@ from janiform.calendar import CalendarRegistry
 from janiform.hourly_factors import (
     HourlyNewsIntensityProviderExplicitSource,
     HourlySeasonalityProviderExplicitSource,
+    provide_hourly_factor_contract,
 )
 from janiform.pricing import (
     GammaSeverityMarkConfiguration,
@@ -25,20 +26,21 @@ from janiform.pricing import (
     VanillaOptionPricingExecutionInput,
 )
 from janiform.simulation import (
-    CoarseSimulationRunRequest,
-    CoupledGapMarkConfiguration,
-    DoubleExponentialBaseShockConfiguration,
     HawkesExcitationState,
     HawkesKernelLoadings,
     HawkesKernelParameters,
+    SeededTickSimulationRequest,
+)
+from janiform.simulation.coarse import (
+    CoarseSimulationRunRequest,
+    CoupledGapMarkConfiguration,
+    DoubleExponentialBaseShockConfiguration,
     KnownNewsArrivalConfiguration,
     NewsArrivalConfiguration,
     NewsComponentMarkScaleConfiguration,
     NewsProcessConfiguration,
-    SeededTickSimulationRequest,
     SharedNewsMarkLawConfiguration,
     SurpriseNewsArrivalConfiguration,
-    load_hourly_factor_contract_for_simulation,
 )
 from janiform.simulation.seeded.contracts import build_disabled_seeded_mean_reversion_runtime_inputs
 from tests.hourly_factor_contract_test_support import build_hourly_factor_contract
@@ -61,7 +63,7 @@ def build_simulation_request(calendar_registry_json: str) -> SeededTickSimulatio
     calendar_registry = CalendarRegistry(calendar_registry_json)
     start_time_utc = datetime(2026, 2, 2, 14, tzinfo=UTC)
 
-    hourly_factor_contract = load_hourly_factor_contract_for_simulation(
+    hourly_factor_contract = provide_hourly_factor_contract(
         calendar_registry=calendar_registry,
         exchange_code="XNYS",
         range_start_utc=start_time_utc,

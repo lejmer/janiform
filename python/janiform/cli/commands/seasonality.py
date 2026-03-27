@@ -4,15 +4,15 @@ from typing import Optional
 
 import click
 
-from .shared import (
-    _build_calendar_registry_from_document,
-    _build_day_of_week_seasonality_settings,
-    _build_day_of_year_seasonality_settings,
-    _build_intraday_seasonality_settings,
-    _build_timestamp_event_preprocessing_payload,
-    _extract_event_records,
-    _require_non_empty_cli_string,
-    _require_positive_integer_cli_argument,
+from ._shared import (
+    build_calendar_registry_from_document,
+    build_day_of_week_seasonality_settings,
+    build_day_of_year_seasonality_settings,
+    build_intraday_seasonality_settings,
+    build_timestamp_event_preprocessing_payload,
+    extract_event_records,
+    require_non_empty_cli_string,
+    require_positive_integer_cli_argument,
 )
 from ..command_runtime import (
     JaniformCommand,
@@ -35,16 +35,16 @@ from .._constants import (
     CliExitCode,
     CliOutputMode,
 )
-from ..documents import _load_json_document_for_cli_field
-from ..errors import (
-    _classify_seasonality_diagnostics_command_error,
-    _classify_seasonality_preprocess_command_error,
+from .._documents import load_json_document_for_cli_field
+from .._errors import (
+    classify_seasonality_diagnostics_command_error,
+    classify_seasonality_preprocess_command_error,
 )
-from ..rendering import (
-    _render_seasonality_diagnostics_human_output,
-    _render_seasonality_preprocess_timestamps_human_output,
-    _write_cli_error,
-    _write_command_output,
+from .._rendering import (
+    render_seasonality_diagnostics_human_output,
+    render_seasonality_preprocess_timestamps_human_output,
+    write_cli_error,
+    write_command_output,
 )
 from ...errors import JaniformError
 from ...seasonality import (
@@ -73,7 +73,7 @@ def _run_seasonality_preprocess_timestamps_command(
     document_field_path = "event_records_document"
 
     try:
-        event_records_document = _load_json_document_for_cli_field(
+        event_records_document = load_json_document_for_cli_field(
             repository_root=cli_context.repository_root,
             path=event_records_json,
             context="event records",
@@ -81,9 +81,9 @@ def _run_seasonality_preprocess_timestamps_command(
             error_id=CLI_SEASONALITY_PREPROCESS_TIMESTAMPS_VALIDATION_ERROR_ID,
             entrypoint=CLI_SEASONALITY_PREPROCESS_TIMESTAMPS_ENTRYPOINT,
         )
-        event_records = _extract_event_records(event_records_document)
+        event_records = extract_event_records(event_records_document)
         document_field_path = "calendar_registry_document"
-        calendar_registry_document = _load_json_document_for_cli_field(
+        calendar_registry_document = load_json_document_for_cli_field(
             repository_root=cli_context.repository_root,
             path=calendar_registry_json,
             context="calendar registry",
@@ -91,7 +91,7 @@ def _run_seasonality_preprocess_timestamps_command(
             error_id=CLI_SEASONALITY_PREPROCESS_TIMESTAMPS_VALIDATION_ERROR_ID,
             entrypoint=CLI_SEASONALITY_PREPROCESS_TIMESTAMPS_ENTRYPOINT,
         )
-        calendar_registry = _build_calendar_registry_from_document(calendar_registry_document)
+        calendar_registry = build_calendar_registry_from_document(calendar_registry_document)
         document_field_path = "event_records_document"
         preprocessed_events = preprocess_timestamp_events(
             event_records,
@@ -102,22 +102,22 @@ def _run_seasonality_preprocess_timestamps_command(
             sparse_hour_event_threshold=sparse_hour_event_threshold,
         )
     except JaniformError as e:
-        return _write_cli_error(e)
+        return write_cli_error(e)
     except Exception as e:
-        return _write_cli_error(
-            _classify_seasonality_preprocess_command_error(
+        return write_cli_error(
+            classify_seasonality_preprocess_command_error(
                 e,
                 file_field_path="event_records_json",
                 document_field_path=document_field_path,
             )
         )
 
-    payload = _build_timestamp_event_preprocessing_payload(preprocessed_events)
+    payload = build_timestamp_event_preprocessing_payload(preprocessed_events)
 
-    _write_command_output(
+    write_command_output(
         output,
         json_payload=payload,
-        human_output_factory=lambda: _render_seasonality_preprocess_timestamps_human_output(payload),
+        human_output_factory=lambda: render_seasonality_preprocess_timestamps_human_output(payload),
     )
 
     return int(CliExitCode.SUCCESS)
@@ -149,7 +149,7 @@ def _run_seasonality_diagnostics_command(
     document_field_path = "event_records_document"
 
     try:
-        event_records_document = _load_json_document_for_cli_field(
+        event_records_document = load_json_document_for_cli_field(
             repository_root=cli_context.repository_root,
             path=event_records_json,
             context="event records",
@@ -157,9 +157,9 @@ def _run_seasonality_diagnostics_command(
             error_id=CLI_SEASONALITY_DIAGNOSTICS_VALIDATION_ERROR_ID,
             entrypoint=CLI_SEASONALITY_DIAGNOSTICS_ENTRYPOINT,
         )
-        event_records = _extract_event_records(event_records_document)
+        event_records = extract_event_records(event_records_document)
         document_field_path = "calendar_registry_document"
-        calendar_registry_document = _load_json_document_for_cli_field(
+        calendar_registry_document = load_json_document_for_cli_field(
             repository_root=cli_context.repository_root,
             path=calendar_registry_json,
             context="calendar registry",
@@ -167,38 +167,38 @@ def _run_seasonality_diagnostics_command(
             error_id=CLI_SEASONALITY_DIAGNOSTICS_VALIDATION_ERROR_ID,
             entrypoint=CLI_SEASONALITY_DIAGNOSTICS_ENTRYPOINT,
         )
-        calendar_registry = _build_calendar_registry_from_document(calendar_registry_document)
+        calendar_registry = build_calendar_registry_from_document(calendar_registry_document)
         document_field_path = "command_input"
-        normalized_dataset_id = _require_non_empty_cli_string(
+        normalized_dataset_id = require_non_empty_cli_string(
             dataset_id,
             field_path="dataset_id",
             error_id=CLI_SEASONALITY_DIAGNOSTICS_VALIDATION_ERROR_ID,
             entrypoint=CLI_SEASONALITY_DIAGNOSTICS_ENTRYPOINT,
         )
-        normalized_estimator_version = _require_non_empty_cli_string(
+        normalized_estimator_version = require_non_empty_cli_string(
             estimator_version,
             field_path="estimator_version",
             error_id=CLI_SEASONALITY_DIAGNOSTICS_VALIDATION_ERROR_ID,
             entrypoint=CLI_SEASONALITY_DIAGNOSTICS_ENTRYPOINT,
         )
-        validated_sparse_hour_event_threshold = _require_positive_integer_cli_argument(
+        validated_sparse_hour_event_threshold = require_positive_integer_cli_argument(
             sparse_hour_event_threshold,
             field_path="sparse_hour_event_threshold",
             error_id=CLI_SEASONALITY_DIAGNOSTICS_VALIDATION_ERROR_ID,
             entrypoint=CLI_SEASONALITY_DIAGNOSTICS_ENTRYPOINT,
         )
-        intraday_settings = _build_intraday_seasonality_settings(
+        intraday_settings = build_intraday_seasonality_settings(
             intraday_minutes_per_bin=intraday_minutes_per_bin,
             intraday_smoothing_kernel=intraday_smoothing_kernel,
             intraday_smoothing_bandwidth_bins=intraday_smoothing_bandwidth_bins,
             intraday_minimum_bin_events=intraday_minimum_bin_events,
             intraday_pseudocount=intraday_pseudocount,
         )
-        day_of_week_settings = _build_day_of_week_seasonality_settings(
+        day_of_week_settings = build_day_of_week_seasonality_settings(
             day_of_week_minimum_bucket_events=day_of_week_minimum_bucket_events,
             day_of_week_pseudocount=day_of_week_pseudocount,
         )
-        day_of_year_settings = _build_day_of_year_seasonality_settings(
+        day_of_year_settings = build_day_of_year_seasonality_settings(
             day_of_year_minimum_bucket_events=day_of_year_minimum_bucket_events,
             day_of_year_pseudocount=day_of_year_pseudocount,
         )
@@ -231,20 +231,20 @@ def _run_seasonality_diagnostics_command(
             estimator_version=normalized_estimator_version,
         )
     except JaniformError as e:
-        return _write_cli_error(e)
+        return write_cli_error(e)
     except Exception as e:
-        return _write_cli_error(
-            _classify_seasonality_diagnostics_command_error(
+        return write_cli_error(
+            classify_seasonality_diagnostics_command_error(
                 e,
                 file_field_path="event_records_json",
                 document_field_path=document_field_path,
             )
         )
 
-    _write_command_output(
+    write_command_output(
         output,
         json_payload=report,
-        human_output_factory=lambda: _render_seasonality_diagnostics_human_output(
+        human_output_factory=lambda: render_seasonality_diagnostics_human_output(
             report,
             preprocessed_events=preprocessed_events,
             intraday_estimate=intraday_estimate,

@@ -1,10 +1,10 @@
 import json
 from typing import Any
 
+from janiform.hourly_factors import provide_hourly_factor_contract
 from janiform.simulation.seeded import (
     SeededTickSimulationRequest,
     build_disabled_seeded_mean_reversion_runtime_inputs,
-    load_hourly_factor_contract_for_simulation,
     run_seeded_tick_event_simulation,
 )
 
@@ -23,7 +23,7 @@ from .support._shared import (
 
 def run_example() -> dict[str, Any]:
     calendar_registry = build_calendar_registry()
-    hourly_factor_contract = load_hourly_factor_contract_for_simulation(
+    hourly_factor_contract = provide_hourly_factor_contract(
         calendar_registry=calendar_registry,
         exchange_code="XNYS",
         range_start_utc=SIMULATION_RANGE_START_UTC,

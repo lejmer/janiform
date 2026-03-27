@@ -1,7 +1,8 @@
 from dataclasses import dataclass
+from collections.abc import Mapping
 from typing import Any, Optional
 
-from ...contracts import ContractModel, require_non_empty_string
+from ...contracts import ContractModel, require_non_empty_string, require_sequence
 from .._errors import _calibration_error
 
 
@@ -192,6 +193,186 @@ class MarketDataSessionResolution(ContractModel):
                 "confidence_score",
                 "must be between 0.0 and 1.0",
             )
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: Mapping[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> MarketDataSessionResolution:
+        if not isinstance(raw_payload, Mapping):
+            raise _session_resolution_error(field_path, "must be an object")
+
+        return MarketDataSessionResolution(
+            schema_version=require_non_empty_string(
+                raw_payload,
+                "schema_version",
+                f"{field_path}.schema_version",
+                _session_resolution_error,
+            ),
+            resolution_kind=require_non_empty_string(
+                raw_payload,
+                "resolution_kind",
+                f"{field_path}.resolution_kind",
+                _session_resolution_error,
+            ),
+            selected_policy_id=require_non_empty_string(
+                raw_payload,
+                "selected_policy_id",
+                f"{field_path}.selected_policy_id",
+                _session_resolution_error,
+            ),
+            manual_override_applied=_require_session_resolution_boolean(
+                raw_payload,
+                "manual_override_applied",
+                field_path=f"{field_path}.manual_override_applied",
+            ),
+            exchange_code=require_non_empty_string(
+                raw_payload,
+                "exchange_code",
+                f"{field_path}.exchange_code",
+                _session_resolution_error,
+            ),
+            exchange_name=require_non_empty_string(
+                raw_payload,
+                "exchange_name",
+                f"{field_path}.exchange_name",
+                _session_resolution_error,
+            ),
+            resolved_timezone_name=require_non_empty_string(
+                raw_payload,
+                "resolved_timezone_name",
+                f"{field_path}.resolved_timezone_name",
+                _session_resolution_error,
+            ),
+            timezone_source=require_non_empty_string(
+                raw_payload,
+                "timezone_source",
+                f"{field_path}.timezone_source",
+                _session_resolution_error,
+            ),
+            open_session_duration_hours_per_week=_require_session_resolution_number(
+                raw_payload,
+                "open_session_duration_hours_per_week",
+                field_path=f"{field_path}.open_session_duration_hours_per_week",
+            ),
+            confidence_score=_require_session_resolution_number(
+                raw_payload,
+                "confidence_score",
+                field_path=f"{field_path}.confidence_score",
+            ),
+            confidence_label=require_non_empty_string(
+                raw_payload,
+                "confidence_label",
+                f"{field_path}.confidence_label",
+                _session_resolution_error,
+            ),
+            regular_session_windows=tuple(
+                MarketDataSessionRegularWindow.from_mapping(
+                    raw_window,
+                    field_path=f"{field_path}.regular_session_windows[{window_index}]",
+                )
+                for window_index, raw_window in enumerate(
+                    require_sequence(
+                        raw_payload,
+                        "regular_session_windows",
+                        f"{field_path}.regular_session_windows",
+                        _session_resolution_error,
+                    )
+                )
+            ),
+            recurring_closed_windows=tuple(
+                MarketDataSessionRecurringClosedWindow.from_mapping(
+                    raw_window,
+                    field_path=f"{field_path}.recurring_closed_windows[{window_index}]",
+                )
+                for window_index, raw_window in enumerate(
+                    require_sequence(
+                        raw_payload,
+                        "recurring_closed_windows",
+                        f"{field_path}.recurring_closed_windows",
+                        _session_resolution_error,
+                    )
+                )
+            ),
+            reasons=tuple(
+                _require_session_resolution_string_sequence(
+                    raw_payload,
+                    "reasons",
+                    field_path=f"{field_path}.reasons",
+                )
+            ),
+            ambiguity_warnings=tuple(
+                _require_session_resolution_string_sequence(
+                    raw_payload,
+                    "ambiguity_warnings",
+                    field_path=f"{field_path}.ambiguity_warnings",
+                )
+            ),
+            metadata_discrepancies=tuple(
+                _require_session_resolution_string_sequence(
+                    raw_payload,
+                    "metadata_discrepancies",
+                    field_path=f"{field_path}.metadata_discrepancies",
+                )
+            ),
+            resolved_session_definition_json=require_non_empty_string(
+                raw_payload,
+                "resolved_session_definition_json",
+                f"{field_path}.resolved_session_definition_json",
+                _session_resolution_error,
+            ),
+        )
+
+
+def _require_session_resolution_string_sequence(
+    raw_payload: Mapping[str, Any],
+    field_name: str,
+    *,
+    field_path: str,
+) -> list[str]:
+    raw_values = require_sequence(
+        raw_payload,
+        field_name,
+        field_path,
+        _session_resolution_error,
+    )
+    values: list[str] = []
+    for value_index, raw_value in enumerate(raw_values):
+        if not isinstance(raw_value, str):
+            raise _session_resolution_error(
+                f"{field_path}[{value_index}]",
+                "must be a string",
+            )
+        values.append(raw_value)
+
+    return values
+
+
+def _require_session_resolution_boolean(
+    raw_payload: Mapping[str, Any],
+    field_name: str,
+    *,
+    field_path: str,
+) -> bool:
+    raw_value = raw_payload.get(field_name)
+    if not isinstance(raw_value, bool):
+        raise _session_resolution_error(field_path, "must be a boolean")
+
+    return raw_value
+
+
+def _require_session_resolution_number(
+    raw_payload: Mapping[str, Any],
+    field_name: str,
+    *,
+    field_path: str,
+) -> float:
+    raw_value = raw_payload.get(field_name)
+    if not isinstance(raw_value, int | float) or isinstance(raw_value, bool):
+        raise _session_resolution_error(field_path, "must be a number")
+
+    return float(raw_value)
 
 
 __all__ = [

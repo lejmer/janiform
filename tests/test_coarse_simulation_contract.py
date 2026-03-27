@@ -10,20 +10,21 @@ from janiform.risk import (
     SufficientStatisticsRiskModelInputs,
 )
 from janiform.simulation import (
-    COARSE_SIMULATION_PATH_SCHEMA_VERSION,
-    COARSE_SIMULATION_RUN_REQUEST_SCHEMA_VERSION,
-    CoarseSimulationPath,
-    CoarseSimulationRunRequest,
-    CoupledGapMarkConfiguration,
-    DoubleExponentialBaseShockConfiguration,
     HawkesExcitationState,
     HawkesKernelLoadings,
     HawkesKernelParameters,
+    SeededTickSimulationValidationError,
+)
+from janiform.simulation.coarse import (
+    COARSE_SIMULATION_PATH_SCHEMA_VERSION,
+    COARSE_SIMULATION_RUN_REQUEST_SCHEMA_VERSION,
+    CoarseSimulationRunRequest,
+    CoupledGapMarkConfiguration,
+    DoubleExponentialBaseShockConfiguration,
     KnownNewsArrivalConfiguration,
     NewsArrivalConfiguration,
     NewsComponentMarkScaleConfiguration,
     NewsProcessConfiguration,
-    SeededTickSimulationValidationError,
     SharedNewsMarkLawConfiguration,
     SurpriseNewsArrivalConfiguration,
     deserialize_coarse_simulation_path,
