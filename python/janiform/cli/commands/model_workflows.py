@@ -833,7 +833,7 @@ def _build_cli_fit_inspect_payload(
             "session_resolution": prepared_workflow.prepared.session_resolution.to_payload(),
             "preparation_diagnostics": prepared_workflow.prepared.diagnostics.to_payload(),
             "preparation_provenance": prepared_workflow.prepared.provenance.to_payload(),
-            "execution_mode": prepared_workflow.prepared.execution_input.request.execution_mode.value,
+            "execution_mode": prepared_workflow.prepared.staged_request.execution_mode.value,
             "temporary_workspace_materialized": prepared_workflow.temporary_directory is not None,
         }
     finally:

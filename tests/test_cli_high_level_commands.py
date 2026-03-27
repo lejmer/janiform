@@ -108,7 +108,7 @@ def test_fit_outputs_resolved_configuration_and_provenance(
 
     monkeypatch.setattr(
         fit_estimator_module,
-        "_run_staged_calibration_with_raw_payload",
+        "_run_prepared_staged_calibration_with_raw_payload",
         lambda *args, **kwargs: _successful_full_model_staged_runner_payload("cli-fit-success"),
     )
 
@@ -188,14 +188,18 @@ def test_fit_cli_enables_explicit_mean_reversion_calibration(
 
     captured_stage_input: dict[str, Any] = {}
 
-    def _capture_execution_input(execution_input, **kwargs):
-        captured_stage_input["mean_reversion_stage_input"] = execution_input.mean_reversion_stage_input
+    def _capture_execution_input(prepared_handle, **kwargs):
+        captured_stage_input["mean_reversion_stage_input"] = _prepared_payload(prepared_handle)[
+            "mean_reversion_stage_input"
+        ]
         del kwargs
-        return _successful_full_model_staged_runner_payload(execution_input.request.run_id)
+        return _successful_full_model_staged_runner_payload(
+            _prepared_runner_run_id(prepared_handle)
+        )
 
     monkeypatch.setattr(
         fit_estimator_module,
-        "_run_staged_calibration_with_raw_payload",
+        "_run_prepared_staged_calibration_with_raw_payload",
         _capture_execution_input,
     )
 
@@ -239,8 +243,8 @@ def test_fit_cli_enables_explicit_mean_reversion_calibration(
 
     mean_reversion_stage_input = captured_stage_input["mean_reversion_stage_input"]
     assert mean_reversion_stage_input is not None
-    assert mean_reversion_stage_input.requested_anchor_model_kind.value == "constant"
-    assert mean_reversion_stage_input.calibration_grid_interval_hours == pytest.approx(36.0)
+    assert mean_reversion_stage_input["requested_anchor_model_kind"] == "constant"
+    assert mean_reversion_stage_input["calibration_grid_interval_hours"] == pytest.approx(36.0)
 
 
 def test_fit_supports_beginner_positional_tick_path_and_inferred_defaults(
@@ -261,9 +265,9 @@ def test_fit_supports_beginner_positional_tick_path_and_inferred_defaults(
 
     monkeypatch.setattr(
         fit_estimator_module,
-        "_run_staged_calibration_with_raw_payload",
-        lambda execution_input, **kwargs: _successful_full_model_staged_runner_payload(
-            execution_input.request.run_id
+        "_run_prepared_staged_calibration_with_raw_payload",
+        lambda prepared_handle, **kwargs: _successful_full_model_staged_runner_payload(
+            _prepared_runner_run_id(prepared_handle)
         ),
     )
 
@@ -314,9 +318,9 @@ def test_fit_supports_eurusd_market_preset_with_full_day_fx_session_windows(
 
     monkeypatch.setattr(
         fit_estimator_module,
-        "_run_staged_calibration_with_raw_payload",
-        lambda execution_input, **kwargs: _successful_full_model_staged_runner_payload(
-            execution_input.request.run_id
+        "_run_prepared_staged_calibration_with_raw_payload",
+        lambda prepared_handle, **kwargs: _successful_full_model_staged_runner_payload(
+            _prepared_runner_run_id(prepared_handle)
         ),
     )
 
@@ -355,9 +359,9 @@ def test_fit_explain_and_silent_flags_control_success_output(
 
     monkeypatch.setattr(
         fit_estimator_module,
-        "_run_staged_calibration_with_raw_payload",
-        lambda execution_input, **kwargs: _successful_full_model_staged_runner_payload(
-            execution_input.request.run_id
+        "_run_prepared_staged_calibration_with_raw_payload",
+        lambda prepared_handle, **kwargs: _successful_full_model_staged_runner_payload(
+            _prepared_runner_run_id(prepared_handle)
         ),
     )
 
@@ -589,7 +593,7 @@ def test_fit_surfaces_staged_failure_details_in_cli_error(
 
     monkeypatch.setattr(
         fit_estimator_module,
-        "_run_staged_calibration_with_raw_payload",
+        "_run_prepared_staged_calibration_with_raw_payload",
         lambda *args, **kwargs: _failed_return_components_staged_runner_payload("cli-fit-stage-failure"),
     )
 
@@ -646,7 +650,7 @@ def test_fit_prefers_failed_stage_message_over_generic_top_level_failure(
 
     monkeypatch.setattr(
         fit_estimator_module,
-        "_run_staged_calibration_with_raw_payload",
+        "_run_prepared_staged_calibration_with_raw_payload",
         lambda *args, **kwargs: _failed_return_components_with_generic_top_level_staged_runner_payload(
             "cli-fit-generic-top-level"
         ),
@@ -706,7 +710,7 @@ def test_fit_renders_human_error_output_with_labeled_lines(
 
     monkeypatch.setattr(
         fit_estimator_module,
-        "_run_staged_calibration_with_raw_payload",
+        "_run_prepared_staged_calibration_with_raw_payload",
         lambda *args, **kwargs: _failed_return_components_with_generic_top_level_staged_runner_payload(
             "cli-fit-human-error"
         ),
@@ -822,7 +826,7 @@ def _build_full_workflow_model(
 
     monkeypatch.setattr(
         fit_estimator_module,
-        "_run_staged_calibration_with_raw_payload",
+        "_run_prepared_staged_calibration_with_raw_payload",
         lambda *args, **kwargs: _successful_full_model_staged_runner_payload(run_id),
     )
 
@@ -1010,6 +1014,15 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
     }
 
     return validate_staged_calibration_response(raw_response), raw_response
+
+
+def _prepared_runner_run_id(prepared_handle: Any) -> str:
+    prepared_payload = _prepared_payload(prepared_handle)
+    return str(prepared_payload["request"]["run_id"])
+
+
+def _prepared_payload(prepared_handle: Any) -> dict[str, Any]:
+    return dict(orjson.loads(prepared_handle.serialize_execution_input_json()))
 
 
 

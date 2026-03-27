@@ -7,7 +7,7 @@ from janiform.pricing import (
 )
 
 from .support._shared import (
-    build_pricing_interval_factors,
+    build_pricing_hourly_factor_contract,
     build_pricing_optional_output_selection,
     build_pricing_request,
 )
@@ -17,7 +17,7 @@ def run_example() -> dict[str, Any]:
     request = build_pricing_request()
     execution_input = VanillaOptionPricingExecutionInput(
         request=request,
-        interval_factors=build_pricing_interval_factors(),
+        hourly_factor_contract=build_pricing_hourly_factor_contract(),
         optional_output_selection=build_pricing_optional_output_selection(),
     )
     run_result = run_vanilla_option_pricing(execution_input)
@@ -30,8 +30,8 @@ def run_example() -> dict[str, Any]:
                 request.boundary_input.mean_reversion_fitted_parameters.anchor_model.anchor_model_kind.value
             ),
             "observed_boundary_deviation": request.boundary_input.observed_boundary_state.deviation,
-            "nu_h_known": execution_input.interval_factors[0].nu_h_known,
-            "nu_h_surprise": execution_input.interval_factors[0].nu_h_surprise,
+            "nu_h_known": execution_input.hourly_factor_contract.known_component_nu_h[0],
+            "nu_h_surprise": execution_input.hourly_factor_contract.surprise_component_nu_h[0],
         },
         "run_result_summary": {
             "schema_version": run_result.schema_version,

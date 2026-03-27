@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
@@ -29,6 +31,7 @@ from .contracts import (
     validate_required_field_list,
 )
 from ._native_api import native_exception_matches, native_module
+from ._timestamps import hours_to_exact_nanoseconds
 from .calendar import (
     CalendarInvalidTimestampError,
     CalendarInvalidTimezoneError,
@@ -1122,61 +1125,9 @@ class VanillaOptionPricingOptionalOutputSelection(ContractModel):
 
 
 @dataclass(frozen=True, slots=True)
-class VanillaOptionPricingIntervalFactors(ContractModel):
-    """One-interval pricing factors with split known and surprise news intensity."""
-
-    s_h: float
-    nu_h_known: float
-    nu_h_surprise: float
-
-    @property
-    def nu_h(self) -> float:
-        return self.nu_h_known + self.nu_h_surprise
-
-    def __post_init__(self) -> None:
-        require_non_negative_finite_scalar(self.s_h, "s_h", PRICING_ERROR_FACTORY)
-        require_non_negative_finite_scalar(self.nu_h_known, "nu_h_known", PRICING_ERROR_FACTORY)
-        require_non_negative_finite_scalar(
-            self.nu_h_surprise,
-            "nu_h_surprise",
-            PRICING_ERROR_FACTORY,
-        )
-
-    @staticmethod
-    def from_mapping(
-        raw_payload: dict[str, Any] | Any,
-        *,
-        field_path: str,
-    ) -> VanillaOptionPricingIntervalFactors:
-        if not isinstance(raw_payload, dict):
-            raise _pricing_error(field_path, "must be an object")
-
-        return VanillaOptionPricingIntervalFactors(
-            s_h=require_non_negative_finite_number(
-                raw_payload,
-                "s_h",
-                f"{field_path}.s_h",
-                PRICING_ERROR_FACTORY,
-            ),
-            nu_h_known=require_non_negative_finite_number(
-                raw_payload,
-                "nu_h_known",
-                f"{field_path}.nu_h_known",
-                PRICING_ERROR_FACTORY,
-            ),
-            nu_h_surprise=require_non_negative_finite_number(
-                raw_payload,
-                "nu_h_surprise",
-                f"{field_path}.nu_h_surprise",
-                PRICING_ERROR_FACTORY,
-            ),
-        )
-
-
-@dataclass(frozen=True, slots=True)
 class VanillaOptionPricingExecutionInput(ContractModel):
     request: VanillaOptionPricingRequest
-    interval_factors: tuple[VanillaOptionPricingIntervalFactors, ...]
+    hourly_factor_contract: HourlyFactorContract
     optional_output_selection: VanillaOptionPricingOptionalOutputSelection = (
         VanillaOptionPricingOptionalOutputSelection()
     )
@@ -1184,18 +1135,11 @@ class VanillaOptionPricingExecutionInput(ContractModel):
     def __post_init__(self) -> None:
         if not isinstance(self.request, VanillaOptionPricingRequest):
             raise _pricing_error("request", "must be a VanillaOptionPricingRequest")
-        if not isinstance(self.interval_factors, tuple) or not self.interval_factors:
+        if not isinstance(self.hourly_factor_contract, HourlyFactorContract):
             raise _pricing_error(
-                "interval_factors",
-                "must be a non-empty tuple of VanillaOptionPricingIntervalFactors",
+                "hourly_factor_contract",
+                "must be a HourlyFactorContract runtime artifact",
             )
-
-        for interval_index, interval_factors in enumerate(self.interval_factors):
-            if not isinstance(interval_factors, VanillaOptionPricingIntervalFactors):
-                raise _pricing_error(
-                    f"interval_factors[{interval_index}]",
-                    "must be VanillaOptionPricingIntervalFactors",
-                )
 
         if not isinstance(
             self.optional_output_selection,
@@ -1205,48 +1149,60 @@ class VanillaOptionPricingExecutionInput(ContractModel):
                 "optional_output_selection",
                 "must be VanillaOptionPricingOptionalOutputSelection",
             )
-
-    @staticmethod
-    def from_mapping(
-        raw_payload: dict[str, Any] | Any,
-    ) -> VanillaOptionPricingExecutionInput:
-        if not isinstance(raw_payload, dict):
-            raise _pricing_error("vanilla_option_pricing_execution_input", "must be an object")
-
-        optional_output_selection = (
-            VanillaOptionPricingOptionalOutputSelection.from_mapping(
-                require_mapping(
-                    raw_payload,
-                    "optional_output_selection",
-                    "optional_output_selection",
-                    PRICING_ERROR_FACTORY,
-                ),
-                field_path="optional_output_selection",
+        available_interval_count = len(
+            self.request.boundary_input.mean_reversion_runtime_interval_anchors.end_anchor_values
+        ) - self.request.boundary_input.interval_index
+        if self.hourly_factor_contract.interval_count == 0:
+            raise _pricing_error(
+                "hourly_factor_contract.interval_count",
+                "must contain at least one interval",
             )
-            if "optional_output_selection" in raw_payload
-            else VanillaOptionPricingOptionalOutputSelection()
+        if self.hourly_factor_contract.interval_count > available_interval_count:
+            raise _pricing_error(
+                "hourly_factor_contract.interval_count",
+                (
+                    "must not exceed available runtime anchor interval count "
+                    f"({available_interval_count})"
+                ),
+            )
+        try:
+            expected_interval_duration_nanos = hours_to_exact_nanoseconds(self.request.interval_delta)
+        except ValueError as e:
+            raise _pricing_error("request.interval_delta", str(e)) from e
+        if self.hourly_factor_contract.interval_duration_nanos != expected_interval_duration_nanos:
+            raise _pricing_error(
+                "hourly_factor_contract.interval_duration_nanos",
+                (
+                    "must match request.interval_delta exactly under explicit factor alignment "
+                    f"(request.interval_delta={self.request.interval_delta}, "
+                    "hourly_factor_contract.interval_duration_nanos="
+                    f"{self.hourly_factor_contract.interval_duration_nanos})"
+                ),
+            )
+
+        maturity_interval_from_runtime_grid = sum(
+            self.request.boundary_input.mean_reversion_runtime_interval_anchors.interval_deltas[
+                self.request.boundary_input.interval_index:
+                self.request.boundary_input.interval_index
+                + self.hourly_factor_contract.interval_count
+            ]
         )
+        if maturity_interval_from_runtime_grid != self.request.market_inputs.maturity_interval:
+            raise _pricing_error(
+                "hourly_factor_contract.interval_count",
+                (
+                    "must cover a maturity_interval that matches request.market_inputs."
+                    f"maturity_interval ({self.request.market_inputs.maturity_interval}), "
+                    f"found {maturity_interval_from_runtime_grid}"
+                ),
+            )
 
-        raw_interval_factors = raw_payload.get("interval_factors")
-
-        if not isinstance(raw_interval_factors, list):
-            raise _pricing_error("interval_factors", "must be an array")
-        if not raw_interval_factors:
-            raise _pricing_error("interval_factors", "must contain at least one interval")
-
-        return VanillaOptionPricingExecutionInput(
-            request=VanillaOptionPricingRequest.from_mapping(
-                require_mapping(raw_payload, "request", "request", PRICING_ERROR_FACTORY)
-            ),
-            interval_factors=tuple(
-                VanillaOptionPricingIntervalFactors.from_mapping(
-                    interval_factor_payload,
-                    field_path=f"interval_factors[{interval_index}]",
-                )
-                for interval_index, interval_factor_payload in enumerate(raw_interval_factors)
-            ),
-            optional_output_selection=optional_output_selection,
-        )
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "request": self.request.to_payload(),
+            "hourly_factor_contract": self.hourly_factor_contract.to_payload(),
+            "optional_output_selection": self.optional_output_selection.to_payload(),
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -1659,12 +1615,6 @@ def validate_vanilla_option_pricing_response(
     return VanillaOptionPricingResponse.from_mapping(raw_response)
 
 
-def validate_vanilla_option_pricing_execution_input(
-    raw_execution_input: dict[str, Any] | Any,
-) -> VanillaOptionPricingExecutionInput:
-    return VanillaOptionPricingExecutionInput.from_mapping(raw_execution_input)
-
-
 def validate_vanilla_option_pricing_run_result(
     raw_run_result: dict[str, Any] | Any,
 ) -> VanillaOptionPricingRunResult:
@@ -1687,23 +1637,6 @@ def serialize_vanilla_option_pricing_response(response: VanillaOptionPricingResp
 def deserialize_vanilla_option_pricing_response(payload_json: str) -> VanillaOptionPricingResponse:
     raw_payload = parse_json_object(payload_json, "vanilla option response", PRICING_ERROR_FACTORY)
     return validate_vanilla_option_pricing_response(dict(raw_payload))
-
-
-def serialize_vanilla_option_pricing_execution_input(
-    execution_input: VanillaOptionPricingExecutionInput,
-) -> str:
-    return serialize_deterministic_json(execution_input)
-
-
-def deserialize_vanilla_option_pricing_execution_input(
-    payload_json: str,
-) -> VanillaOptionPricingExecutionInput:
-    raw_payload = parse_json_object(
-        payload_json,
-        "vanilla option pricing execution input",
-        PRICING_ERROR_FACTORY,
-    )
-    return validate_vanilla_option_pricing_execution_input(dict(raw_payload))
 
 
 def serialize_vanilla_option_pricing_run_result(run_result: VanillaOptionPricingRunResult) -> str:
@@ -1731,9 +1664,14 @@ def run_vanilla_option_pricing(
     pricing path does not collapse corrected known-surprise news semantics.
     """
 
-    normalized_execution_input = validate_vanilla_option_pricing_execution_input(
-        execution_input.to_payload()
-    )
+    if not isinstance(execution_input, VanillaOptionPricingExecutionInput):
+        raise _pricing_error(
+            "execution_input",
+            "must be a VanillaOptionPricingExecutionInput",
+            entrypoint="run_vanilla_option_pricing",
+        )
+
+    normalized_execution_input = execution_input
 
     try:
         native: ModuleType = native_module()
@@ -1747,7 +1685,9 @@ def run_vanilla_option_pricing(
 
     try:
         raw_run_result = native.run_vanilla_option_pricing(
-            normalized_execution_input.to_payload()
+            normalized_execution_input.request.to_payload(),
+            normalized_execution_input.hourly_factor_contract._native_result,
+            normalized_execution_input.optional_output_selection.to_payload(),
         )
     except Exception as e:
         if native_exception_matches(native, e, "PricingExecutionError"):
@@ -1797,7 +1737,6 @@ __all__ = [
     "NigSharedPlusShiftConfiguration",
     "VanillaOptionPricingCalibrationHooks",
     "VanillaOptionPricingExecutionInput",
-    "VanillaOptionPricingIntervalFactors",
     "VanillaOptionPricingOptionalOutputSelection",
     "VanillaOptionPayoffConfiguration",
     "VanillaOptionPayoffType",
@@ -1811,17 +1750,14 @@ __all__ = [
     "VanillaOptionPricingRunResult",
     "VanillaOptionPricingValidationError",
     "VanillaOptionPricingValidationFailure",
-    "deserialize_vanilla_option_pricing_execution_input",
     "deserialize_vanilla_option_pricing_request",
     "deserialize_vanilla_option_pricing_response",
     "deserialize_vanilla_option_pricing_run_result",
     "load_hourly_factor_contract_for_pricing",
     "run_vanilla_option_pricing",
-    "serialize_vanilla_option_pricing_execution_input",
     "serialize_vanilla_option_pricing_request",
     "serialize_vanilla_option_pricing_response",
     "serialize_vanilla_option_pricing_run_result",
-    "validate_vanilla_option_pricing_execution_input",
     "validate_vanilla_option_pricing_request",
     "validate_vanilla_option_pricing_response",
     "validate_vanilla_option_pricing_run_result",

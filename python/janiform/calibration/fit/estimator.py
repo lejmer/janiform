@@ -1,27 +1,23 @@
 import os
-
 from contextlib import AbstractContextManager, nullcontext, redirect_stdout
+
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC
 from io import StringIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Any, Literal, Optional, overload, cast
+from typing import Any, Literal, Optional, cast, overload
 
 from .input_resolution import (
-    HighLevelFitInference,
     build_fit_inference_payload,
     column_overrides_from_mapping,
     infer_high_level_fit_inputs,
     normalization_overrides_from_policy,
+    HighLevelFitInference,
 )
-from .model import (
-    JaniformModel,
-    _build_model_metadata,
-    _extract_model_parameters,
-    _raw_stage_report_payloads,
-)
+from .model import JaniformModel, _raw_stage_report_payloads, _extract_model_parameters, _build_model_metadata
 from .report import JaniformFitReport
+from .. import MarketDataCalibrationRequest, MarketDataSessionResolution
 from .._errors import _calibration_error
 from ..market_data.contracts import (
     CalibrationExecutionMode,
@@ -29,23 +25,22 @@ from ..market_data.contracts import (
     CalibrationInputFileReference,
     CalibrationKnownNewsColumnMapping,
     CalibrationKnownNewsInput,
-    CalibrationMeanReversionConfiguration,
     CalibrationMarketDataColumnMapping,
     CalibrationMarketDataNormalizationPolicy,
     CalibrationMarketDataOutputPreferences,
     CalibrationMarketDataWorkflowScope,
+    CalibrationMeanReversionConfiguration,
     CalibrationOptionSurfaceColumnMapping,
-    CalibrationSessionConfigurationInput,
     CalibrationTickDataColumnMapping,
+    CalibrationSessionConfigurationInput,
 )
-from ..market_data.request import MarketDataCalibrationRequest
 from ..market_data.translation import (
     resolve_market_data_session_configuration_from_source_file,
-    translate_market_data_request_to_staged_execution_input,
+    translate_market_data_request_to_prepared_calibration,
 )
 from ..market_data.workflow import (
-    PreparedMarketDataCalibration,
     _prepare_market_data_calibration_from_translation_result,
+    PreparedMarketDataCalibration,
 )
 from ..presets.references import (
     KnownNewsExplicitConfiguration,
@@ -59,24 +54,22 @@ from ..presets.references import (
 )
 from ..presets.registry import PresetRegistry
 from ..presets.resolution import (
+    resolve_preset_workflow_configuration,
     ResolvedPresetWorkflowConfiguration,
     ResolvedSessionComponent,
-    resolve_preset_workflow_configuration,
 )
-from ..sessions.contracts import MarketDataSessionResolution
 from ..sessions.resolution import (
-    _SessionTemplate,
     _build_calendar_registry_json_from_windows,
     _build_recurring_closed_windows,
-    _looks_like_continuous_weekday_template,
     _regular_session_windows_from_exchange_artifact,
+    _looks_like_continuous_weekday_template,
+    _SessionTemplate,
 )
-from ..staged.contracts import CalibrationStageExecutionStatus
-from ..staged.runtime import _run_staged_calibration_with_raw_payload
+from ..staged import CalibrationStageExecutionStatus
+from ..staged.runtime import _run_prepared_staged_calibration_with_raw_payload
 from ..._workflow_outputs import write_fit_artifacts
-from ..._workflow_progress import AbstractProgress, JaniformOutputController, NullProgress
+from ..._workflow_progress import JaniformOutputController, AbstractProgress, NullProgress
 from ...calendar import CalendarRegistry
-
 
 _DEFAULT_HIGH_LEVEL_KNOWN_NEWS_COLUMNS = CalibrationKnownNewsColumnMapping(
     event_timestamp_column="event_timestamp_utc",
@@ -247,8 +240,8 @@ class JaniformEstimator:
                     if prepared_workflow.fit_warning is not None:
                         output_controller.warning(prepared_workflow.fit_warning)
                     progress.update(detail="running calibration")
-                    staged_response, raw_response_payload = _run_staged_calibration_with_raw_payload(
-                        prepared_workflow.prepared.execution_input,
+                    staged_response, raw_response_payload = _run_prepared_staged_calibration_with_raw_payload(
+                        prepared_workflow.prepared.prepared_handle,
                         calendar_registry=CalendarRegistry(
                             prepared_workflow.prepared.session_resolution.resolved_session_definition_json
                         ),
@@ -268,7 +261,10 @@ class JaniformEstimator:
             session_resolution=prepared_workflow.prepared.session_resolution,
             preparation_diagnostics=prepared_workflow.prepared.diagnostics,
             preparation_provenance=prepared_workflow.prepared.provenance,
-            execution_input=prepared_workflow.prepared.execution_input,
+            staged_request=prepared_workflow.prepared.staged_request,
+            prepared_data_reference=prepared_workflow.prepared.prepared_data_reference,
+            prepared_payload_path=prepared_workflow.prepared.prepared_payload_path,
+            staged_execution_input_path=prepared_workflow.prepared.staged_execution_input_path,
             staged_response=staged_response,
             stage_report_payloads=_raw_stage_report_payloads(raw_response_payload),
         )
@@ -326,7 +322,6 @@ class JaniformEstimator:
             ),
             resolved_configuration=prepared_workflow.resolved_configuration,
             session_resolution=prepared_workflow.prepared.session_resolution,
-            _execution_input=prepared_workflow.prepared.execution_input,
             _stage_report_payloads=fit_report.stage_report_payloads,
         )
         if output_dir is not None:
@@ -463,7 +458,7 @@ class JaniformEstimator:
             )
             effective_progress.update(detail="loading market data")
             effective_progress.update(detail="translating market data")
-            translation_result = translate_market_data_request_to_staged_execution_input(
+            translation_result = translate_market_data_request_to_prepared_calibration(
                 request,
                 cpu_count=self._cpu_count,
             )
@@ -603,7 +598,7 @@ class JaniformEstimator:
         self,
         *,
         effective_silent: Optional[bool] = None,
-    ) -> AbstractContextManager[object]:
+    ) -> AbstractContextManager[Optional[StringIO]]:
         if self._silent if effective_silent is None else effective_silent:
             return redirect_stdout(StringIO())
 

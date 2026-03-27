@@ -1,8 +1,8 @@
 # Python API Contract Compatibility And Version Guardrails
 
-Document version: `python.api_contract_guardrails.pre_v0_1.v1`
+Document version: `python.api_contract_guardrails.pre_v0_1.control_plane_reset.v1`
 
-Status: active for the current pre-v0.1 milestone on March 13, 2026.
+Status: active for the current pre-v0.1 milestone on March 26, 2026.
 
 ## Purpose
 
@@ -60,6 +60,18 @@ The guardrail manifest records:
 - the public API surface document version
 - a change log entry with date, summary, rationale, and docs updated
 
+## Review checklist for this milestone
+
+Every public-surface review must reject a change that:
+
+- introduces a new Python-owned tuple-of-record bulk evidence boundary
+- adds a new `Sequence[Mapping[...]]` market-data or seasonality ingestion contract on the
+  recommended path
+- makes `PreparedMarketDataCalibration`, `JaniformFitReport`, or staged results embed bulk
+  evidence instead of artifact references, handles, or summaries
+- preserves both the old tuple-heavy contract and the new artifact-backed contract in the same
+  supported surface
+
 ## Verification command
 
 Run:
@@ -79,6 +91,9 @@ When a public contract break is intentional and approved:
 2. If the change adds, removes, or renames a public submodule, update
    `docs/development/guides/python_public_api_surface_map_and_namespace_policy.md` first so the
    snapshot continues to reflect an intentional policy decision.
+   If the change alters the Python control-plane or Rust data-plane split, update
+   `docs/development/guides/python_control_plane_and_rust_data_plane_boundary.md` in the same
+   change.
 3. Regenerate the approved snapshot:
 
 ```bash

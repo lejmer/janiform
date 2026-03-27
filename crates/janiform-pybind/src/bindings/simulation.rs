@@ -1,8 +1,10 @@
 use janiform::hawkes::{HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters};
 use janiform::news::NewsProcessConfiguration;
 use janiform::nig::NigSharedPlusShiftConfiguration;
+use janiform::risk::SufficientStatisticsRiskIntervalFactors;
 use janiform::simulation::{
     CoarseSimulationRunRequest, MeanReversionBoundaryState, MeanReversionFittedParameters,
+    CoarseSimulationModelInputs,
     MeanReversionRuntimeIntervalAnchors, SeededTickEventStateSnapshotCapture,
     SeededTickSimulationDebugTraceOptions, SeededTickSimulationModelInputs,
     SeededTickSimulationRunConfig, SeededTickSimulationRunOptions,
@@ -21,13 +23,37 @@ use crate::python_value::{json_value_to_py_object, py_any_to_json_value};
 use crate::types::{PyHourlyFactorContractResult, PySeededTickSimulationNativeResult};
 
 #[pyfunction]
-fn run_coarse_simulation(py: Python<'_>, run_request: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
-    let run_request: CoarseSimulationRunRequest =
-        serde_json::from_value(py_any_to_json_value(run_request)?).map_err(|source| {
+fn run_coarse_simulation(
+    py: Python<'_>,
+    seed: u64,
+    start_time_utc_nanos: i64,
+    horizon_interval_count: usize,
+    interval_delta: f64,
+    model_inputs: &Bound<'_, PyAny>,
+    hourly_factor_contract: &PyHourlyFactorContractResult,
+) -> PyResult<Py<PyAny>> {
+    let model_inputs: CoarseSimulationModelInputs =
+        serde_json::from_value(py_any_to_json_value(model_inputs)?).map_err(|source| {
             SimulationExecutionError::new_err(format!(
-                "failed to deserialize coarse simulation run request: {source}"
+                "failed to deserialize coarse simulation model inputs: {source}"
             ))
         })?;
+    let interval_factors = SufficientStatisticsRiskIntervalFactors::try_new(
+        hourly_factor_contract.output.s_h.clone(),
+        hourly_factor_contract.output.known_component_nu_h.clone(),
+        hourly_factor_contract.output.surprise_component_nu_h.clone(),
+        Some(interval_delta),
+    )
+    .map_err(|source| SimulationExecutionError::new_err(source.to_string()))?;
+    let run_request = CoarseSimulationRunRequest::try_new(
+        seed,
+        start_time_utc_nanos,
+        horizon_interval_count,
+        interval_delta,
+        model_inputs,
+        interval_factors,
+    )
+    .map_err(|source| SimulationExecutionError::new_err(source.to_string()))?;
     let coarse_path = panic_to_pyresult(
         "running coarse simulation",
         SimulationExecutionError::new_err,
@@ -103,6 +129,14 @@ fn run_seeded_tick_event_simulation(
         },
         state_snapshot_capture: parsed_state_snapshot_capture,
     };
+    let calendar_registry = hourly_factor_contract
+        .calendar_registry
+        .clone()
+        .ok_or_else(|| {
+            SimulationExecutionError::new_err(
+                "seeded tick-event simulation requires a runtime hourly factor contract with calendar registry state",
+            )
+        })?;
 
     let run_config = SeededTickSimulationRunConfig::try_new(
         seed,
@@ -117,7 +151,7 @@ fn run_seeded_tick_event_simulation(
             mean_reversion_runtime_interval_anchors: parsed_mean_reversion_runtime_interval_anchors,
             initial_mean_reversion_boundary_state: parsed_initial_mean_reversion_boundary_state,
             hourly_factor_contract: hourly_factor_contract.output.clone(),
-            calendar_registry: hourly_factor_contract.calendar_registry.clone(),
+            calendar_registry,
         },
         Some(run_options),
     )

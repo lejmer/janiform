@@ -64,8 +64,11 @@ fn mean_reversion_stage_emits_disabled_fit_when_requested() {
         )
     };
 
-    let report =
-        run_mean_reversion_calibration_stage(&run_contract.run_spec, &calendar_registry, execution_input);
+    let report = run_mean_reversion_calibration_stage(
+        &run_contract.run_spec,
+        &calendar_registry,
+        execution_input,
+    );
 
     assert_eq!(report.status, CalibrationStageExecutionStatus::Success);
     let payload = report

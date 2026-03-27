@@ -1,4 +1,5 @@
-from collections.abc import Sequence
+from __future__ import annotations
+
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Optional
 
@@ -25,6 +26,12 @@ from .contracts import (
     validate_required_field_list,
 )
 from .errors import ContractValidationFailure, JaniformValidationError
+from .hourly_factors import (
+    HourlyFactorContract,
+    SeasonalityInputValidationError,
+    load_hourly_factor_contract_payload,
+)
+from ._timestamps import hours_to_exact_nanoseconds
 
 if TYPE_CHECKING:
     from .pricing import GammaSeverityMarkConfiguration, NigSharedPlusShiftConfiguration
@@ -242,133 +249,6 @@ class SufficientStatisticsRiskEquationSpecification(ContractModel):
 
 
 @dataclass(frozen=True, slots=True)
-class SufficientStatisticsRiskIntervalFactors(ContractModel):
-    """Explicit interval factors with separate known and surprise news controls."""
-
-    interval_delta: float = DEFAULT_INTRADAY_RISK_INTERVAL_DELTA
-    s_h: tuple[float, ...] = ()
-    nu_h_known: tuple[float, ...] = ()
-    nu_h_surprise: tuple[float, ...] = ()
-
-    @property
-    def nu_h(self) -> tuple[float, ...]:
-        return tuple(
-            known_value + surprise_value
-            for known_value, surprise_value in zip(self.nu_h_known, self.nu_h_surprise)
-        )
-
-    def __post_init__(self) -> None:
-        require_non_negative_finite_scalar(self.interval_delta, "interval_delta", RISK_ERROR_FACTORY)
-
-        if self.interval_delta <= 0.0:
-            raise _risk_error("interval_delta", "must be strictly positive")
-        if len(self.s_h) == 0:
-            raise _risk_error("s_h", "must contain at least one interval factor")
-        if len(self.nu_h_known) != len(self.s_h):
-            raise _risk_error(
-                "nu_h_known",
-                f"must have the same length as s_h ({len(self.s_h)})",
-            )
-        if len(self.nu_h_surprise) != len(self.s_h):
-            raise _risk_error(
-                "nu_h_surprise",
-                f"must have the same length as s_h ({len(self.s_h)})",
-            )
-
-        for interval_index, value in enumerate(self.s_h):
-            require_non_negative_finite_scalar(value, f"s_h[{interval_index}]", RISK_ERROR_FACTORY)
-        for interval_index, value in enumerate(self.nu_h_known):
-            require_non_negative_finite_scalar(value, f"nu_h_known[{interval_index}]", RISK_ERROR_FACTORY)
-        for interval_index, value in enumerate(self.nu_h_surprise):
-            require_non_negative_finite_scalar(value, f"nu_h_surprise[{interval_index}]", RISK_ERROR_FACTORY)
-
-    @staticmethod
-    def from_mapping(
-        raw_payload: dict[str, Any] | Any,
-        *,
-        field_path: str,
-        requested_interval_delta: float,
-    ) -> SufficientStatisticsRiskIntervalFactors:
-        if not isinstance(raw_payload, dict):
-            raise _risk_error(field_path, "must be an object")
-
-        raw_s_h = require_sequence(raw_payload, "s_h", f"{field_path}.s_h", RISK_ERROR_FACTORY)
-        raw_nu_h_known = require_sequence(
-            raw_payload,
-            "nu_h_known",
-            f"{field_path}.nu_h_known",
-            RISK_ERROR_FACTORY,
-        )
-        raw_nu_h_surprise = require_sequence(
-            raw_payload,
-            "nu_h_surprise",
-            f"{field_path}.nu_h_surprise",
-            RISK_ERROR_FACTORY,
-        )
-
-        if len(raw_s_h) == 0:
-            raise _risk_error(f"{field_path}.s_h", "must contain at least one interval factor")
-        if len(raw_nu_h_known) != len(raw_s_h):
-            raise _risk_error(
-                f"{field_path}.nu_h_known",
-                f"must have the same length as {field_path}.s_h ({len(raw_s_h)})",
-            )
-        if len(raw_nu_h_surprise) != len(raw_s_h):
-            raise _risk_error(
-                f"{field_path}.nu_h_surprise",
-                f"must have the same length as {field_path}.s_h ({len(raw_s_h)})",
-            )
-
-        interval_delta = (
-            require_positive_finite_number(
-                raw_payload,
-                "interval_delta",
-                f"{field_path}.interval_delta",
-                RISK_ERROR_FACTORY,
-            )
-            if "interval_delta" in raw_payload
-            else DEFAULT_INTRADAY_RISK_INTERVAL_DELTA
-        )
-        if interval_delta != requested_interval_delta:
-            raise _risk_error(
-                f"{field_path}.interval_delta",
-                (
-                    "must match interval_delta exactly under explicit factor alignment "
-                    f"without implicit resampling (interval_delta={requested_interval_delta}, "
-                    f"interval_factors.interval_delta={interval_delta})"
-                ),
-            )
-
-        s_h = tuple(
-            require_non_negative_finite_scalar(raw_value, f"{field_path}.s_h[{interval_index}]", RISK_ERROR_FACTORY)
-            for interval_index, raw_value in enumerate(raw_s_h)
-        )
-        nu_h_known = tuple(
-            require_non_negative_finite_scalar(
-                raw_value,
-                f"{field_path}.nu_h_known[{interval_index}]",
-                RISK_ERROR_FACTORY,
-            )
-            for interval_index, raw_value in enumerate(raw_nu_h_known)
-        )
-        nu_h_surprise = tuple(
-            require_non_negative_finite_scalar(
-                raw_value,
-                f"{field_path}.nu_h_surprise[{interval_index}]",
-                RISK_ERROR_FACTORY,
-            )
-            for interval_index, raw_value in enumerate(raw_nu_h_surprise)
-        )
-
-        return SufficientStatisticsRiskIntervalFactors(
-            interval_delta=interval_delta,
-            s_h=s_h,
-            nu_h_known=nu_h_known,
-            nu_h_surprise=nu_h_surprise,
-        )
-
-
-@dataclass(frozen=True, slots=True)
 class SufficientStatisticsRiskModelInputs(ContractModel):
     equation_specification: SufficientStatisticsRiskEquationSpecification
     nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration
@@ -504,7 +384,7 @@ class SufficientStatisticsRiskRunRequest(ContractModel):
     horizon_interval_count: int
     interval_delta: float = DEFAULT_INTRADAY_RISK_INTERVAL_DELTA
     model_inputs: Optional[SufficientStatisticsRiskModelInputs] = None
-    interval_factors: Optional[SufficientStatisticsRiskIntervalFactors] = None
+    hourly_factor_contract: Optional[HourlyFactorContract] = None
 
     def __post_init__(self) -> None:
         if self.seed < 0:
@@ -515,15 +395,29 @@ class SufficientStatisticsRiskRunRequest(ContractModel):
             raise _risk_error("interval_delta", "must be strictly positive")
         if self.model_inputs is None:
             raise _risk_error("model_inputs", "is required")
-        if self.interval_factors is None:
-            raise _risk_error("interval_factors", "is required")
+        if self.hourly_factor_contract is None:
+            raise _risk_error("hourly_factor_contract", "is required")
 
-        available_interval_count = len(self.interval_factors.s_h)
+        available_interval_count = self.hourly_factor_contract.interval_count
+        try:
+            expected_interval_duration_nanos = hours_to_exact_nanoseconds(self.interval_delta)
+        except ValueError as e:
+            raise _risk_error("interval_delta", str(e)) from e
 
         if self.horizon_interval_count > available_interval_count:
             raise _risk_error(
                 "horizon_interval_count",
-                f"must not exceed available interval factors count ({available_interval_count})",
+                f"must not exceed available hourly factor interval count ({available_interval_count})",
+            )
+        if self.hourly_factor_contract.interval_duration_nanos != expected_interval_duration_nanos:
+            raise _risk_error(
+                "hourly_factor_contract.interval_duration_nanos",
+                (
+                    "must match interval_delta exactly under explicit factor alignment without implicit "
+                    f"resampling (interval_delta={self.interval_delta}, "
+                    "hourly_factor_contract.interval_duration_nanos="
+                    f"{self.hourly_factor_contract.interval_duration_nanos})"
+                ),
             )
 
         runtime_interval_anchors = self.model_inputs.mean_reversion_runtime_interval_anchors
@@ -558,6 +452,18 @@ class SufficientStatisticsRiskRunRequest(ContractModel):
             else DEFAULT_INTRADAY_RISK_INTERVAL_DELTA
         )
 
+        try:
+            hourly_factor_contract = load_hourly_factor_contract_payload(
+                require_mapping(
+                    raw_payload,
+                    "hourly_factor_contract",
+                    "hourly_factor_contract",
+                    RISK_ERROR_FACTORY,
+                )
+            )
+        except SeasonalityInputValidationError as e:
+            raise _risk_error("hourly_factor_contract", str(e)) from e
+
         return SufficientStatisticsRiskRunRequest(
             seed=require_non_negative_integer(raw_payload, "seed", "seed", RISK_ERROR_FACTORY),
             horizon_interval_count=require_positive_integer(
@@ -570,12 +476,20 @@ class SufficientStatisticsRiskRunRequest(ContractModel):
             model_inputs=SufficientStatisticsRiskModelInputs.from_mapping(
                 require_mapping(raw_payload, "model_inputs", "model_inputs", RISK_ERROR_FACTORY)
             ),
-            interval_factors=SufficientStatisticsRiskIntervalFactors.from_mapping(
-                require_mapping(raw_payload, "interval_factors", "interval_factors", RISK_ERROR_FACTORY),
-                field_path="interval_factors",
-                requested_interval_delta=interval_delta,
-            ),
+            hourly_factor_contract=hourly_factor_contract,
         )
+
+    def to_payload(self) -> dict[str, Any]:
+        if self.model_inputs is None or self.hourly_factor_contract is None:
+            raise _risk_error("risk_run_request", "must be fully initialized before serialization")
+
+        return {
+            "seed": self.seed,
+            "horizon_interval_count": self.horizon_interval_count,
+            "interval_delta": self.interval_delta,
+            "model_inputs": self.model_inputs.to_payload(),
+            "hourly_factor_contract": self.hourly_factor_contract.to_payload(),
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -1317,7 +1231,7 @@ def validate_sufficient_statistics_risk_path(
 def serialize_sufficient_statistics_risk_run_request(
     request: SufficientStatisticsRiskRunRequest,
 ) -> str:
-    return serialize_deterministic_json(request)
+    return serialize_deterministic_json(request.to_payload())
 
 
 def deserialize_sufficient_statistics_risk_run_request(
@@ -1344,7 +1258,6 @@ __all__ = [
     "SufficientStatisticsIntervalStatistics",
     "SufficientStatisticsRiskPathDiagnostics",
     "SufficientStatisticsRiskEquationSpecification",
-    "SufficientStatisticsRiskIntervalFactors",
     "SufficientStatisticsRiskModelInputs",
     "SufficientStatisticsRiskPath",
     "SufficientStatisticsRiskPathOutputSchemaMetadata",

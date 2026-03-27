@@ -776,6 +776,7 @@ dependencies = [
  "chrono",
  "janiform",
  "pyo3",
+ "serde",
  "serde_json",
 ]
 

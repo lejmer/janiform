@@ -1,10 +1,12 @@
+from __future__ import annotations
+
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 import re
 from types import ModuleType
-from typing import Any, Optional, cast
+from typing import TYPE_CHECKING, Any, Optional, cast
 
 from ._native_api import native_module, remap_native_exception_by_type
 from .calendar import (
@@ -14,6 +16,13 @@ from .calendar import (
     CalendarRegistry,
 )
 from .seasonality import SeasonalityInputValidationError
+
+if TYPE_CHECKING:
+    from ._native import (
+        HourlyFactorContractResult,
+        HourlyNewsIntensityMaterializationResult,
+        HourlySeasonalityMaterializationResult,
+    )
 
 HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION: str = "seasonality.hourly_factor.contract.v1"
 HOURLY_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION: str = "seasonality.hourly_s_h.materialization.v1"
@@ -212,6 +221,8 @@ HOURLY_FACTOR_OUTPUT_SCHEMA: HourlyFactorOutputSchema = HourlyFactorOutputSchema
         "interval_start_exchange_local",
         "interval_end_exchange_local",
         "s_h",
+        "known_component_nu_h",
+        "surprise_component_nu_h",
         "nu_h",
         "interval_count",
         "first_interval_start_utc_nanos",
@@ -243,8 +254,12 @@ HOURLY_FACTOR_OUTPUT_SCHEMA: HourlyFactorOutputSchema = HourlyFactorOutputSchema
 class HourlyFactorContract:
     """Hourly `s_h` and `nu_h` values aligned to deterministic `[start, end)` UTC hour buckets."""
 
-    def __init__(self, native_result: object) -> None:
-        self._native_result: object = native_result
+    def __init__(self, native_result: HourlyFactorContractResult) -> None:
+        _validate_hourly_factor_contract_result(native_result)
+        self._native_result = native_result
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, HourlyFactorContract) and self.to_payload() == other.to_payload()
 
     @property
     def schema_version(self) -> str:
@@ -293,6 +308,14 @@ class HourlyFactorContract:
     @property
     def s_h(self) -> list[float]:
         return cast(list[float], self._native_result.s_h)
+
+    @property
+    def known_component_nu_h(self) -> list[float]:
+        return cast(list[float], self._native_result.known_component_nu_h)
+
+    @property
+    def surprise_component_nu_h(self) -> list[float]:
+        return cast(list[float], self._native_result.surprise_component_nu_h)
 
     @property
     def nu_h(self) -> list[float]:
@@ -345,6 +368,71 @@ class HourlyFactorContract:
     @property
     def news_intensity_materialization_method(self) -> str:
         return cast(str, self._native_result.news_intensity_materialization_method)
+
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "schema_version": self.schema_version,
+            "exchange_code": self.exchange_code,
+            "exchange_timezone_name": self.exchange_timezone_name,
+            "request_start_utc_nanos": self.request_start_utc_nanos,
+            "request_end_utc_nanos": self.request_end_utc_nanos,
+            "interval_duration_nanos": self.interval_duration_nanos,
+            "interval_indices": list(self.interval_indices),
+            "interval_start_utc_nanos": list(self.interval_start_utc_nanos),
+            "interval_end_utc_nanos": list(self.interval_end_utc_nanos),
+            "interval_start_exchange_local": list(self.interval_start_exchange_local),
+            "interval_end_exchange_local": list(self.interval_end_exchange_local),
+            "s_h": list(self.s_h),
+            "known_component_nu_h": list(self.known_component_nu_h),
+            "surprise_component_nu_h": list(self.surprise_component_nu_h),
+            "nu_h": list(self.nu_h),
+            "interval_count": self.interval_count,
+            "first_interval_start_utc_nanos": self.first_interval_start_utc_nanos,
+            "last_interval_end_utc_nanos": self.last_interval_end_utc_nanos,
+            "skipped_local_hour_interval_count": self.skipped_local_hour_interval_count,
+            "repeated_local_hour_interval_count": self.repeated_local_hour_interval_count,
+            "interval_boundary_policy": self.interval_boundary_policy,
+            "interval_alignment_policy": self.interval_alignment_policy,
+            "timezone_transition_policy": self.timezone_transition_policy,
+            "spring_forward_policy": self.spring_forward_policy,
+            "fall_back_policy": self.fall_back_policy,
+            "seasonality_materialization_method": self.seasonality_materialization_method,
+            "news_intensity_materialization_method": self.news_intensity_materialization_method,
+        }
+
+
+def _validate_hourly_factor_contract_result(native_result: HourlyFactorContractResult) -> None:
+    interval_count = int(native_result.interval_count)
+    sequence_lengths = {
+        "interval_indices": len(native_result.interval_indices),
+        "interval_start_utc_nanos": len(native_result.interval_start_utc_nanos),
+        "interval_end_utc_nanos": len(native_result.interval_end_utc_nanos),
+        "interval_start_exchange_local": len(native_result.interval_start_exchange_local),
+        "interval_end_exchange_local": len(native_result.interval_end_exchange_local),
+        "s_h": len(native_result.s_h),
+        "known_component_nu_h": len(native_result.known_component_nu_h),
+        "surprise_component_nu_h": len(native_result.surprise_component_nu_h),
+        "nu_h": len(native_result.nu_h),
+    }
+
+    for field_name, observed_length in sequence_lengths.items():
+        if observed_length != interval_count:
+            raise SeasonalityInputValidationError(
+                (
+                    f"hourly_factor_contract_payload.{field_name} must have length {interval_count} "
+                    f"to match interval_count, found {observed_length}"
+                ),
+            )
+
+    if interval_count > 0:
+        if native_result.first_interval_start_utc_nanos != native_result.interval_start_utc_nanos[0]:
+            raise SeasonalityInputValidationError(
+                "hourly_factor_contract_payload.first_interval_start_utc_nanos must match the first interval start",
+            )
+        if native_result.last_interval_end_utc_nanos != native_result.interval_end_utc_nanos[-1]:
+            raise SeasonalityInputValidationError(
+                "hourly_factor_contract_payload.last_interval_end_utc_nanos must match the last interval end",
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -491,8 +579,8 @@ class HourlySeasonalityMaterializationSettings:
 class HourlySeasonalityMaterialization:
     """Hourly `s_h` values aligned to deterministic `[start, end)` UTC hour buckets."""
 
-    def __init__(self, native_result: object) -> None:
-        self._native_result: object = native_result
+    def __init__(self, native_result: HourlySeasonalityMaterializationResult) -> None:
+        self._native_result = native_result
 
     @property
     def schema_version(self) -> str:
@@ -619,8 +707,8 @@ class HourlyNewsIntensityMaterializationSettings:
 class HourlyNewsIntensityMaterialization:
     """Hourly `nu_h` values aligned to deterministic `[start, end)` UTC hour buckets."""
 
-    def __init__(self, native_result: object) -> None:
-        self._native_result: object = native_result
+    def __init__(self, native_result: HourlyNewsIntensityMaterializationResult) -> None:
+        self._native_result = native_result
 
     @property
     def schema_version(self) -> str:
@@ -791,7 +879,7 @@ def provide_hourly_factor_contract(
     )
 
     try:
-        native_result: object = native.provide_hourly_factor_contract(
+        native_result: HourlyFactorContractResult = native.provide_hourly_factor_contract(
             calendar_registry._native_registry,
             exchange_code,
             normalized_range_start_utc.isoformat(),
@@ -805,6 +893,30 @@ def provide_hourly_factor_contract(
             native,
             e,
             _HOURLY_FACTOR_PROVIDER_NATIVE_EXCEPTION_TYPES,
+        )
+        if mapped_error is not None:
+            raise mapped_error from e
+        raise
+
+    return HourlyFactorContract(native_result)
+
+
+def load_hourly_factor_contract_payload(
+    hourly_factor_contract_payload: dict[str, Any] | Any,
+) -> HourlyFactorContract:
+    if not isinstance(hourly_factor_contract_payload, dict):
+        raise SeasonalityInputValidationError("hourly_factor_contract_payload must be an object")
+
+    native: ModuleType = native_module()
+    try:
+        native_result: HourlyFactorContractResult = native.load_hourly_factor_contract_payload(
+            hourly_factor_contract_payload
+        )
+    except Exception as e:
+        mapped_error = remap_native_exception_by_type(
+            native,
+            e,
+            _HOURLY_FACTOR_NATIVE_EXCEPTION_TYPES,
         )
         if mapped_error is not None:
             raise mapped_error from e
@@ -840,7 +952,7 @@ def build_hourly_factor_contract(
     interval_duration_nanos = _parse_interval_duration_nanos(interval)
 
     try:
-        native_result: object = native.build_hourly_factor_contract(
+        native_result: HourlyFactorContractResult = native.build_hourly_factor_contract(
             calendar_registry._native_registry,
             exchange_code,
             normalized_range_start_utc.isoformat(),
@@ -970,7 +1082,7 @@ def materialize_hourly_seasonality_factors(
     ]
 
     try:
-        native_result: object = native.materialize_hourly_seasonality_factors(
+        native_result: HourlySeasonalityMaterializationResult = native.materialize_hourly_seasonality_factors(
             calendar_registry._native_registry,
             exchange_code,
             normalized_range_start_utc.isoformat(),
@@ -1098,7 +1210,7 @@ def materialize_hourly_news_intensity_factors(
     )
 
     try:
-        native_result: object = native.materialize_hourly_news_intensity_factors(
+        native_result: HourlyNewsIntensityMaterializationResult = native.materialize_hourly_news_intensity_factors(
             calendar_registry._native_registry,
             exchange_code,
             normalized_range_start_utc.isoformat(),
@@ -1255,6 +1367,7 @@ __all__ = [
     "HourlySeasonalityMaterializationSettings",
     "build_hourly_factor_contract",
     "build_runtime_hourly_seasonality_source_from_calibration_payload",
+    "load_hourly_factor_contract_payload",
     "materialize_hourly_news_intensity_factors",
     "materialize_hourly_seasonality_factors",
     "provide_hourly_factor_contract",

@@ -146,7 +146,12 @@ fn anchored_pricing_reference_policy_and_baseline_cover_all_governed_scenarios()
     assert!(!baseline.baseline_id.trim().is_empty());
     assert!(!baseline.baseline_version.trim().is_empty());
     assert!(!baseline.reference_construction_policy.trim().is_empty());
-    assert!(baseline.regression_tolerances.native_price_absolute_tolerance > 0.0);
+    assert!(
+        baseline
+            .regression_tolerances
+            .native_price_absolute_tolerance
+            > 0.0
+    );
     assert!(
         baseline
             .regression_tolerances
@@ -160,11 +165,27 @@ fn anchored_pricing_reference_fixtures_record_required_boundary_and_diagnostic_f
     let policy = load_reference_policy_fixture();
     let baseline = load_reference_baseline_fixture();
 
-    assert!(policy.diagnostic_requirements.observed_state_boundary_input_required);
+    assert!(
+        policy
+            .diagnostic_requirements
+            .observed_state_boundary_input_required
+    );
     assert!(policy.diagnostic_requirements.anchor_alignment_required);
-    assert!(policy.diagnostic_requirements.local_martingale_diagnostics_required);
-    assert!(policy.diagnostic_requirements.deviation_refinement_diagnostics_required);
-    assert!(policy.diagnostic_requirements.anchored_engine_numeric_quality_required);
+    assert!(
+        policy
+            .diagnostic_requirements
+            .local_martingale_diagnostics_required
+    );
+    assert!(
+        policy
+            .diagnostic_requirements
+            .deviation_refinement_diagnostics_required
+    );
+    assert!(
+        policy
+            .diagnostic_requirements
+            .anchored_engine_numeric_quality_required
+    );
 
     for baseline_case in &baseline.cases {
         match baseline_case {

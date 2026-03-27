@@ -27,7 +27,6 @@ from janiform.pricing import (
     VanillaOptionPayoffConfiguration,
     VanillaOptionPayoffType,
     VanillaOptionPricingExecutionInput,
-    VanillaOptionPricingIntervalFactors,
     VanillaOptionPricingMarketInputs,
     VanillaOptionPricingModelParameters,
     VanillaOptionPricingOptionalOutputSelection,
@@ -53,6 +52,7 @@ from janiform.simulation import (
 )
 from janiform.simulation.seeded.contracts import build_disabled_seeded_mean_reversion_runtime_inputs
 from tests.calibration_test_support import build_valid_execution_input_model
+from tests.hourly_factor_contract_test_support import build_hourly_factor_contract
 from tests.simulation_test_support import build_disabled_mean_reversion_runtime_contracts
 
 START_TIME_UTC = datetime(2026, 2, 2, tzinfo=UTC)
@@ -761,7 +761,7 @@ def _valid_pricing_execution_input() -> VanillaOptionPricingExecutionInput:
             ),
             payoff=VanillaOptionPayoffConfiguration(payoff_type=VanillaOptionPayoffType.CALL),
             boundary_input=AnchoredVanillaOptionPricingBoundaryInput.disabled(
-                interval_delta=1.0,
+                interval_delta=0.5,
                 hawkes_boundary_state=_valid_excitation_state(),
                 observed_log_price=0.0,
             ),
@@ -779,13 +779,14 @@ def _valid_pricing_execution_input() -> VanillaOptionPricingExecutionInput:
                     delta_beta=-0.2,
                 ),
             ),
+            interval_delta=0.5,
         ),
-        interval_factors=(
-            VanillaOptionPricingIntervalFactors(
-                s_h=1.1,
-                nu_h_known=0.03,
-                nu_h_surprise=0.05,
-            ),
+        hourly_factor_contract=build_hourly_factor_contract(
+            request_start_utc_nanos=1_706_882_400_000_000_000,
+            interval_duration_nanos=1_800_000_000_000,
+            s_h=(1.1,),
+            known_component_nu_h=(0.03,),
+            surprise_component_nu_h=(0.05,),
         ),
         optional_output_selection=VanillaOptionPricingOptionalOutputSelection(
             include_transform_diagnostics=True,

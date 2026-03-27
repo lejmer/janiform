@@ -5,8 +5,8 @@ use std::fmt::{Display, Formatter};
 use serde::Deserialize;
 use serde::Serialize;
 
-use janiform_foundations::complex_math::complex_multiply;
 use janiform_foundations::complex_math::ComplexScalar;
+use janiform_foundations::complex_math::complex_multiply;
 use janiform_foundations::numeric::validate_positive_number;
 
 use super::constants::{

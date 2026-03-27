@@ -82,8 +82,8 @@ pub(super) fn restore_in_memory_payload_state_from_stage_parameter_artifact(
             );
         }
         CalibrationStageParameterPayload::MeanReversion(payload) => {
-            payload_state.mean_reversion_stage_payload =
-                Some(crate::stages::mean_reversion::MeanReversionStageFittedPayload {
+            payload_state.mean_reversion_stage_payload = Some(
+                crate::stages::mean_reversion::MeanReversionStageFittedPayload {
                     schema_version: CALIBRATION_MEAN_REVERSION_STAGE_OUTPUT_SCHEMA_VERSION,
                     fitted_parameters: payload.fitted_parameters.clone(),
                     diagnostics: payload.diagnostics.clone(),
@@ -94,7 +94,8 @@ pub(super) fn restore_in_memory_payload_state_from_stage_parameter_artifact(
                     return_components_artifact_reference: payload
                         .return_components_artifact_reference
                         .clone(),
-                });
+                },
+            );
         }
         CalibrationStageParameterPayload::JointRefinement(payload) => {
             payload_state.joint_refinement_stage_payload =

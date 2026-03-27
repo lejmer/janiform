@@ -1,14 +1,24 @@
 //! Top-level re-export for calibration artifacts and runtime.
 
+pub use janiform_calibration_artifacts::CalibrationExecutionMode;
+pub use janiform_calibration_artifacts::CalibrationOptimizerSettings;
+pub use janiform_calibration_artifacts::CalibrationRunDataInputs;
+pub use janiform_calibration_artifacts::CalibrationRunSeedSettings;
+pub use janiform_calibration_artifacts::CalibrationRunSpec;
 pub use janiform_calibration_artifacts::CalibrationStage;
+pub use janiform_calibration_artifacts::CalibrationStageSolverSettings;
 pub use janiform_calibration_artifacts::ReturnComponentsStageFittedParameters;
 pub use janiform_calibration_artifacts::SurpriseNewsDeterministicIntensityProfile;
 pub use janiform_calibration_runtime::{
-    CalibrationMemoryCheckpointStore, CalibrationReturnComponentsActivityContextPayload,
+    CALIBRATION_STAGED_EXECUTION_INPUT_SCHEMA_VERSION, CalibrationMeanReversionStageExecutionInput,
+    CalibrationMeanReversionStageObservation, CalibrationMemoryCheckpointStore,
+    CalibrationReturnComponentsActivityContextPayload,
     CalibrationReturnComponentsStageCandidateGenerationInput, CalibrationStagedExecutionInput,
-    CalibrationStagedRunObserverEvent, CalibrationStagedRunReport, CalibrationStagedRunStageReport,
-    MarketDataInputFileReference, MarketDataLoadingOutput, MarketDataLoadingRequest,
-    MarketDataNormalizationPolicy, MarketDataSessionConfiguration,
+    CalibrationStagedExecutionRuntimeResources, CalibrationStagedRunObserverEvent,
+    CalibrationStagedRunReport, CalibrationStagedRunStageReport, MarketDataInputFileReference,
+    MarketDataKnownNewsColumnMapping, MarketDataKnownNewsLoadingInput, MarketDataLoadingOutput,
+    MarketDataLoadingRequest, MarketDataNormalizationPolicy, MarketDataOptionSurfaceColumnMapping,
+    MarketDataOptionSurfaceLoadingInput, MarketDataSessionConfiguration,
     MarketDataSessionResolutionPayload, MarketDataTickDataColumnMapping,
     MarketDataTranslationPreprocessingError, MarketDataTranslationPreprocessingOutput,
     MarketDataTranslationPreprocessingRequest, ReturnComponentsStageExactCandidateEvaluation,

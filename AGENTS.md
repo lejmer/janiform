@@ -8,6 +8,7 @@ First and foremost: Do not introduce undocumented numerical heuristics, magic co
 - Prefer clarity and maintainability over cleverness.
 - Do not introduce global state; use existing services and registries.
 - Implementations are Rust first for most things (unless specified otherwise or obvious from context): Python is just a thin wrapper and the user-facing API.
+- Must work on both Windows and Linux (never hardcode Linux paths)
 
 ## Contract Evolution Policy (Mandatory)
 

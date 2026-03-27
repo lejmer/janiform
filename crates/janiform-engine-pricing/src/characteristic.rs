@@ -29,14 +29,13 @@ use janiform_model_kernels::risk_neutral::{
 };
 
 use super::constants::{
-    PRICING_LOCAL_ANCHORED_TILT_SOLVE_POLICY,
-    RETURN_CHARACTERISTIC_FUNCTION_COMPOSITION_POLICY,
+    PRICING_LOCAL_ANCHORED_TILT_SOLVE_POLICY, RETURN_CHARACTERISTIC_FUNCTION_COMPOSITION_POLICY,
     RETURN_CHARACTERISTIC_FUNCTION_DOMAIN_GUARD_POLICY,
 };
 use super::contracts::{
     AnchoredLocalTiltAdmissibilityStatus, AnchoredLocalTiltBoundaryStateSummary,
-    AnchoredLocalTiltDomainStatus, AnchoredLocalTiltSolveDiagnostics,
-    VanillaOptionPricingRequest, VanillaOptionPricingRequestError,
+    AnchoredLocalTiltDomainStatus, AnchoredLocalTiltSolveDiagnostics, VanillaOptionPricingRequest,
+    VanillaOptionPricingRequestError,
 };
 /// Full return characteristic-function assembly output.
 ///
@@ -324,15 +323,17 @@ fn anchored_boundary_state_summary(
 fn target_log_moment_exponent(
     pricing_request: &VanillaOptionPricingRequest,
 ) -> Result<f64, AnchoredLocalTiltSolveError> {
-    let observed_return_adjustment =
-        pricing_request
-            .boundary_input
-            .observed_return_adjustment()
-            .map_err(|source| AnchoredLocalTiltSolveError::InvalidPricingRequest {
+    let observed_return_adjustment = pricing_request
+        .boundary_input
+        .observed_return_adjustment()
+        .map_err(
+            |source| AnchoredLocalTiltSolveError::InvalidPricingRequest {
                 source: VanillaOptionPricingRequestError::InvalidBoundaryInput { source },
-            })?;
+            },
+        )?;
 
-    Ok((pricing_request.market_inputs.risk_free_rate - pricing_request.market_inputs.dividend_yield)
+    Ok((pricing_request.market_inputs.risk_free_rate
+        - pricing_request.market_inputs.dividend_yield)
         * pricing_request.interval_delta
         - observed_return_adjustment)
 }
@@ -397,19 +398,23 @@ fn anchored_local_tilt_domain(
         driver_parameters.buy_side_parameters,
         BUY_SIDE_OBSERVED_LOG_MOMENT_ARGUMENT_IMAGINARY,
     )
-    .map_err(|source| AnchoredLocalTiltSolveError::BuySideEsscherTransformFailure {
-        theta: f64::NAN,
-        source,
-    })?;
+    .map_err(
+        |source| AnchoredLocalTiltSolveError::BuySideEsscherTransformFailure {
+            theta: f64::NAN,
+            source,
+        },
+    )?;
 
     let sell_side_domain = derive_nig_esscher_tilt_domain_for_pure_imaginary_argument(
         driver_parameters.sell_side_parameters,
         SELL_SIDE_OBSERVED_LOG_MOMENT_ARGUMENT_IMAGINARY,
     )
-    .map_err(|source| AnchoredLocalTiltSolveError::SellSideEsscherTransformFailure {
-        theta: f64::NAN,
-        source,
-    })?;
+    .map_err(
+        |source| AnchoredLocalTiltSolveError::SellSideEsscherTransformFailure {
+            theta: f64::NAN,
+            source,
+        },
+    )?;
 
     Ok(buy_side_domain.intersect(sell_side_domain))
 }
@@ -600,7 +605,8 @@ fn locate_nearest_root_on_side(
 
     let mut same_sign_theta = reference_theta;
 
-    let mut best_theta = if opposite_evaluation.residual.abs() < reference_evaluation.residual.abs() {
+    let mut best_theta = if opposite_evaluation.residual.abs() < reference_evaluation.residual.abs()
+    {
         opposite_theta
     } else {
         reference_theta
@@ -677,9 +683,9 @@ pub fn solve_anchored_local_pricing_tilt(
         .validate()
         .map_err(|source| AnchoredLocalTiltSolveError::InvalidPricingRequest { source })?;
 
-    return_decomposition.validate().map_err(|source| {
-        AnchoredLocalTiltSolveError::InvalidReturnDecomposition { source }
-    })?;
+    return_decomposition
+        .validate()
+        .map_err(|source| AnchoredLocalTiltSolveError::InvalidReturnDecomposition { source })?;
 
     if !tolerance.is_finite() || tolerance <= 0.0 {
         return Err(AnchoredLocalTiltSolveError::InvalidTolerance { value: tolerance });

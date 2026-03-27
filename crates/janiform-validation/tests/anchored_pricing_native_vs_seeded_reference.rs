@@ -4,24 +4,25 @@ use std::fs;
 
 use chrono::{DateTime, Utc};
 use janiform_engine_pricing::{
-    run_vanilla_option_pricing, AnchoredPricingRecursionDiagnostics,
-    AnchoredVanillaOptionPricingBoundaryInput, VanillaOptionPayoffConfiguration,
-    VanillaOptionPayoffType, VanillaOptionPricingExecutionInput,
+    AnchoredPricingRecursionDiagnostics, AnchoredVanillaOptionPricingBoundaryInput,
+    VanillaOptionPayoffConfiguration, VanillaOptionPayoffType, VanillaOptionPricingExecutionInput,
     VanillaOptionPricingIntervalFactors, VanillaOptionPricingMarketInputs,
     VanillaOptionPricingModelParameters, VanillaOptionPricingOptionalOutputSelection,
     VanillaOptionPricingRequest, VanillaOptionPricingRunError, VanillaOptionPricingRunResult,
+    run_vanilla_option_pricing,
 };
 use janiform_engine_simulation::{
     MeanReversionAnchorModel, MeanReversionBoundaryState, MeanReversionFittedParameters,
     MeanReversionRuntimeIntervalAnchors, SeededTickSimulationModelInputs,
     SeededTickSimulationRunConfig, run_seeded_tick_event_simulation,
 };
+use janiform_foundations::time::ONE_HOUR_NANOS;
 use janiform_market_time::calendar::{ExchangeCalendarRegistry, ExchangeCalendarRegistryLoader};
 use janiform_market_time::hourly_factors::{
     DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD, DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD,
-    HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION, HOURLY_FACTOR_INTERVAL_ALIGNMENT_POLICY,
-    HOURLY_FACTOR_INTERVAL_BOUNDARY_POLICY, HOURLY_FACTOR_SPRING_FORWARD_POLICY,
-    HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY, HOURLY_FACTOR_FALL_BACK_POLICY,
+    HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION, HOURLY_FACTOR_FALL_BACK_POLICY,
+    HOURLY_FACTOR_INTERVAL_ALIGNMENT_POLICY, HOURLY_FACTOR_INTERVAL_BOUNDARY_POLICY,
+    HOURLY_FACTOR_SPRING_FORWARD_POLICY, HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY,
     HourlyFactorContractDiagnostics, HourlyFactorContractOutput,
     HourlyFactorMaterializationMetadata,
 };
@@ -34,7 +35,6 @@ use janiform_model_kernels::news::{
     KnownNewsArrivalConfiguration, NewsArrivalConfiguration, NewsComponentMarkScaleConfiguration,
     NewsProcessConfiguration, SharedNewsMarkLawConfiguration, SurpriseNewsArrivalConfiguration,
 };
-use janiform_foundations::time::ONE_HOUR_NANOS;
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 use serde::Deserialize;
 
@@ -195,13 +195,18 @@ fn anchored_pricing_native_prices_match_seeded_reference_baseline() {
 
                 assert!(
                     (observed_native_price - *native_price).abs()
-                        <= baseline.regression_tolerances.native_price_absolute_tolerance,
+                        <= baseline
+                            .regression_tolerances
+                            .native_price_absolute_tolerance,
                     "native anchored price drifted for scenario `{}`: observed={} baseline={}",
                     scenario.scenario_id,
                     observed_native_price,
                     native_price
                 );
-                assert_eq!(observed_simulation_reference_price, *simulation_reference_price);
+                assert_eq!(
+                    observed_simulation_reference_price,
+                    *simulation_reference_price
+                );
                 assert!(
                     (observed_gap - *native_minus_simulation_absolute_gap).abs()
                         <= baseline
@@ -295,7 +300,10 @@ fn assert_anchored_diagnostics_match_baseline(
     maximum_tail_probability_mass: f64,
     maximum_row_probability_mass_error: f64,
 ) {
-    assert_eq!(diagnostics.deviation_grid_node_count, deviation_grid_node_count);
+    assert_eq!(
+        diagnostics.deviation_grid_node_count,
+        deviation_grid_node_count
+    );
     assert_eq!(
         diagnostics.refined_deviation_grid_node_count,
         refined_deviation_grid_node_count
@@ -320,7 +328,10 @@ fn assert_anchored_diagnostics_match_baseline(
         .map(|interval_diagnostics| interval_diagnostics.maximum_row_probability_mass_error)
         .fold(0.0_f64, f64::max);
 
-    assert_eq!(observed_maximum_tail_probability_mass, maximum_tail_probability_mass);
+    assert_eq!(
+        observed_maximum_tail_probability_mass,
+        maximum_tail_probability_mass
+    );
     assert_eq!(
         observed_maximum_row_probability_mass_error,
         maximum_row_probability_mass_error
@@ -344,8 +355,8 @@ fn estimate_seeded_reference_price(scenario: &ScenarioDefinition, path_count: us
         )
         .expect("seeded reference run config should construct");
 
-        let run_result =
-            run_seeded_tick_event_simulation(run_config).expect("seeded reference run should succeed");
+        let run_result = run_seeded_tick_event_simulation(run_config)
+            .expect("seeded reference run should succeed");
 
         let terminal_observed_log_price = run_result
             .fine_path
@@ -353,10 +364,8 @@ fn estimate_seeded_reference_price(scenario: &ScenarioDefinition, path_count: us
             .expect("seeded reference path should include interval-boundary record")
             .observed_log_price;
 
-        let terminal_observed_log_return =
-            terminal_observed_log_price - initial_observed_log_price;
-        let terminal_spot =
-            market_inputs.spot * terminal_observed_log_return.exp();
+        let terminal_observed_log_return = terminal_observed_log_price - initial_observed_log_price;
+        let terminal_spot = market_inputs.spot * terminal_observed_log_return.exp();
 
         let payoff = (terminal_spot - market_inputs.strike).max(0.0);
 
@@ -425,8 +434,10 @@ fn pricing_model_parameters() -> VanillaOptionPricingModelParameters {
 
 fn anchored_boundary_input_for_scenario(
     scenario: &ScenarioDefinition,
-) -> Result<AnchoredVanillaOptionPricingBoundaryInput, janiform_engine_pricing::AnchoredVanillaOptionPricingBoundaryInputError>
-{
+) -> Result<
+    AnchoredVanillaOptionPricingBoundaryInput,
+    janiform_engine_pricing::AnchoredVanillaOptionPricingBoundaryInputError,
+> {
     AnchoredVanillaOptionPricingBoundaryInput::try_new(
         0,
         HawkesExcitationState {
@@ -478,7 +489,9 @@ fn mean_reversion_runtime_interval_anchors_for_scenario(
     .expect("runtime interval anchors should construct")
 }
 
-fn seeded_model_inputs_for_scenario(scenario: &ScenarioDefinition) -> SeededTickSimulationModelInputs {
+fn seeded_model_inputs_for_scenario(
+    scenario: &ScenarioDefinition,
+) -> SeededTickSimulationModelInputs {
     let interval_start_utc_nanos = vec![SYNTHETIC_START_UTC_NANOS];
     let interval_end_utc_nanos = vec![SYNTHETIC_START_UTC_NANOS + ONE_HOUR_NANOS];
 
@@ -512,9 +525,8 @@ fn seeded_model_inputs_for_scenario(scenario: &ScenarioDefinition) -> SeededTick
             y_minus_minus: 0.0,
         },
         mean_reversion_fitted_parameters: mean_reversion_fitted_parameters_for_scenario(scenario),
-        mean_reversion_runtime_interval_anchors: mean_reversion_runtime_interval_anchors_for_scenario(
-            scenario,
-        ),
+        mean_reversion_runtime_interval_anchors:
+            mean_reversion_runtime_interval_anchors_for_scenario(scenario),
         initial_mean_reversion_boundary_state: scenario.observed_boundary_state.clone(),
         hourly_factor_contract: HourlyFactorContractOutput {
             schema_version: HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION,
@@ -529,6 +541,8 @@ fn seeded_model_inputs_for_scenario(scenario: &ScenarioDefinition) -> SeededTick
             interval_start_exchange_local: vec!["2024-01-22T09:00:00-05:00".to_string()],
             interval_end_exchange_local: vec!["2024-01-22T10:00:00-05:00".to_string()],
             s_h: vec![0.0],
+            known_component_nu_h: vec![0.0],
+            surprise_component_nu_h: vec![0.0],
             nu_h: vec![0.0],
             metadata: HourlyFactorMaterializationMetadata {
                 seasonality_materialization_method: DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD
@@ -694,8 +708,10 @@ fn scenario_definition(scenario_id: &str) -> ScenarioDefinition {
 }
 
 fn load_reference_policy_fixture() -> AnchoredPricingReferencePolicy {
-    serde_json::from_str(&load_benchmark_fixture_payload("anchored_pricing_reference_policy.json"))
-        .expect("anchored pricing reference policy should parse")
+    serde_json::from_str(&load_benchmark_fixture_payload(
+        "anchored_pricing_reference_policy.json",
+    ))
+    .expect("anchored pricing reference policy should parse")
 }
 
 fn load_reference_baseline_fixture() -> AnchoredPricingReferenceBaselineArtifact {

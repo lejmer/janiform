@@ -1,8 +1,8 @@
 # CLI Command Reference And Examples
 
-Document version: `cli.command_reference.pre_v0_1.milestone_1`
+Document version: `cli.command_reference.pre_v0_1.control_plane_reset.v1`
 
-Status: active for the current pre-v0.1 milestone on March 8, 2026.
+Status: active for the current pre-v0.1 milestone on March 26, 2026.
 
 ## Purpose
 
@@ -21,8 +21,10 @@ The primary workflow is now:
 2. fit from market data
 3. simulate later from a saved model
 
-The older explicit workflow-boundary contracts are still available under `fit plan`, `fit staged`,
-`simulate coarse-interval`, and `simulate seeded-ticks` when you need that control.
+The older explicit workflow-boundary commands are still available under `fit plan`, `fit staged`,
+`simulate coarse-interval`, and `simulate seeded-ticks` when you need that control. They are now
+artifact-backed. Expert calibration inputs reference prepared payload files instead of embedding
+bulk staged evidence as giant JSON tuples.
 
 ## Shared Setup
 
@@ -50,6 +52,7 @@ The generated files include:
 - `tmp/cli-docs/stylized_fact_comparison_request.json`
 - `tmp/cli-docs/stylized_fact_artifact_export.json`
 - `tmp/cli-docs/calibration_execution_input.json`
+  - expert-only staged wrapper referencing a prepared payload artifact
 - `tmp/cli-docs/data/ticks.csv`
 - `tmp/cli-docs/data/ticks.parquet`
 - `tmp/cli-docs/data/options.parquet`
@@ -76,6 +79,8 @@ The generated files include:
 - The CLI default is `disk` for `fit plan` and `fit staged`.
 - `--disk-checkpoint-directory` is required when the effective fit execution mode is `disk`.
 - The high-level `fit` command defaults to `memory`.
+- `fit`, `fit plan`, and `fit staged` stay config-first.
+  Default users do not assemble staged evidence payloads by hand.
 - The stylized-fact report command defaults to `memory`.
 - Stylized-fact artifact export uses `--artifact-export-json PATH` so the export contract stays the
   same across Python and CLI entrypoints.
@@ -121,6 +126,10 @@ janiform presets export market-profile eurusd_spot --output json
 Use `janiform fit` for the default user workflow. The command resolves the selected market profile,
 session preset or session inference result, and the chosen known-news baseline into one canonical
 resolved configuration with provenance.
+
+The default path prepares calibration natively and keeps empirical evidence in the prepared
+artifact. The emitted fit report and JSON output expose summaries, provenance, and artifact
+references rather than an eager staged evidence graph.
 
 For the beginner path, `janiform fit PATH --market MARKET` is the intended entrypoint. The command
 defaults `workflow_scope` to `full_without_option_surface`, infers `run_id` from the file stem plus
@@ -549,8 +558,9 @@ janiform stylized-facts horizon-comparison \
 
 ## Fit Staged
 
-This is the explicit fit workflow boundary. Use it when you already have a
-`StagedCalibrationExecutionInput` JSON payload and want to run staged orchestration directly.
+This is the explicit fit workflow boundary. Use it when you already have a small
+`StagedCalibrationExecutionInput` wrapper JSON payload that points at a prepared calibration
+artifact and want to run staged orchestration directly.
 
 ### Synopsis
 
@@ -560,7 +570,7 @@ janiform fit staged --execution-input-json PATH --calendar-registry-json PATH [-
 
 ### Options
 
-- `--execution-input-json`: `StagedCalibrationExecutionInput` contract file
+- `--execution-input-json`: `StagedCalibrationExecutionInput` wrapper contract file
 - `--calendar-registry-json`: `calendar.registry.v1` contract file
 - `--execution-mode {disk,memory}`: CLI default is `disk`
 - `--disk-checkpoint-directory`: required when the effective execution mode is `disk`

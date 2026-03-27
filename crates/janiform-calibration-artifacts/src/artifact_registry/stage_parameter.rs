@@ -1284,7 +1284,8 @@ fn build_mean_reversion_stage_parameter_artifact(
                 fitted_parameters: input.fitted_parameters,
                 diagnostics: input.diagnostics,
                 return_components_input_transport: input.return_components_input_transport,
-                return_components_selected_candidate_id: input.return_components_selected_candidate_id,
+                return_components_selected_candidate_id: input
+                    .return_components_selected_candidate_id,
                 return_components_artifact_reference: input.return_components_artifact_reference,
             },
         ),

@@ -1,11 +1,17 @@
 use std::sync::{Arc, Mutex};
 
 use janiform::calibration::{
-    CalibrationReturnComponentsActivityContextPayload,
-    CalibrationReturnComponentsStageCandidateGenerationInput, CalibrationStagedExecutionInput,
-    CalibrationStagedRunObserverEvent, CalibrationStagedRunReport, CalibrationStagedRunStageReport,
-    MarketDataInputFileReference, MarketDataLoadingOutput, MarketDataLoadingRequest,
-    MarketDataNormalizationPolicy, MarketDataSessionConfiguration,
+    CALIBRATION_STAGED_EXECUTION_INPUT_SCHEMA_VERSION, CalibrationExecutionMode,
+    CalibrationMeanReversionStageExecutionInput, CalibrationMeanReversionStageObservation,
+    CalibrationOptimizerSettings, CalibrationReturnComponentsActivityContextPayload,
+    CalibrationReturnComponentsStageCandidateGenerationInput, CalibrationRunDataInputs,
+    CalibrationRunSeedSettings, CalibrationRunSpec, CalibrationStage,
+    CalibrationStageSolverSettings, CalibrationStagedExecutionInput,
+    CalibrationStagedExecutionRuntimeResources, CalibrationStagedRunObserverEvent,
+    CalibrationStagedRunReport, CalibrationStagedRunStageReport, MarketDataInputFileReference,
+    MarketDataKnownNewsColumnMapping, MarketDataKnownNewsLoadingInput, MarketDataLoadingOutput,
+    MarketDataLoadingRequest, MarketDataNormalizationPolicy, MarketDataOptionSurfaceColumnMapping,
+    MarketDataOptionSurfaceLoadingInput, MarketDataSessionConfiguration,
     MarketDataSessionResolutionPayload, MarketDataTickDataColumnMapping,
     MarketDataTranslationPreprocessingOutput, MarketDataTranslationPreprocessingRequest,
     ReturnComponentsStageFittedParameters, ReturnComponentsStageObservedSignalSummaryStatistics,
@@ -16,14 +22,720 @@ use janiform::calibration::{
     run_staged_calibration_from_execution_input,
     run_staged_calibration_from_execution_input_with_observer,
 };
+use janiform::simulation::MeanReversionAnchorModelKind;
 use pyo3::prelude::{Bound, Py, PyResult, Python};
-use pyo3::types::{PyAny, PyModule, PyModuleMethods};
+use pyo3::types::{PyAny, PyDict, PyDictMethods, PyModule, PyModuleMethods};
 use pyo3::{pyfunction, wrap_pyfunction};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::CalibrationExecutionError;
 use crate::python_value::{json_value_to_py_object, py_any_to_json_value};
-use crate::types::{PyCalendarRegistry, PyCalibrationMemoryCheckpointStore};
+use crate::types::{
+    PyCalendarRegistry, PyCalibrationMemoryCheckpointStore, PyPreparedCalibrationExecutionHandle,
+};
+
+const PREPARED_MARKET_DATA_DERIVATION_POLICY_ID: &str =
+    "market_data_loading_and_translation.rust.v1";
+const KNOWN_NEWS_WINDOW_FILTER_POLICY_ID: &str = "known_news_outside_tick_window_are_filtered.v1";
+const KNOWN_NEWS_OVERLAY_POLICY_ID: &str =
+    "known_news_overlays_are_point_anchors_with_zero_log_adjustment.v1";
+const TRADE_LABEL_DERIVATION_POLICY_ID: &str =
+    "unsigned_trade_direction_labels_follow_tick_price_change_with_flat_move_carryover.v1";
+const HAWKES_SEARCH_POLICY_ID: &str = "hawkes_search_family_uses_unsigned_open_session_activity_targets_and_model_implied_fit_terms.v1";
+const RETURN_COMPONENTS_JUMP_POLICY_ID: &str = "surprise_jump_candidates_use_data_driven_material_open_session_return_thresholds_outside_known_news_windows.v1";
+const RETURN_COMPONENTS_BOUNDARY_POLICY_ID: &str =
+    "close_open_boundaries_are_resolved_from_calendar_state_transitions.v1";
+const RETURN_COMPONENTS_CONTINUOUS_FIT_POLICY_ID: &str =
+    "continuous_nig_fit_uses_filtered_observed_open_session_returns_and_stage_search.v1";
+const DEFAULT_SEASONALITY_SESSION_FILTER_POLICY_ID: &str = "seasonality.session_filter=open_only";
+const DEFAULT_SEASONALITY_SPARSE_THRESHOLD_POLICY_ID: &str =
+    "seasonality.sparse_hour_event_threshold=1";
+const DEFAULT_SEASONALITY_INTRADAY_MINUTES_POLICY_ID: &str =
+    "seasonality.intraday.minutes_per_bin=1";
+const DEFAULT_SEASONALITY_INTRADAY_KERNEL_POLICY_ID: &str =
+    "seasonality.intraday.smoothing_kernel=gaussian";
+const DEFAULT_SEASONALITY_INTRADAY_BANDWIDTH_POLICY_ID: &str =
+    "seasonality.intraday.smoothing_bandwidth_bins=3.0";
+const DEFAULT_SEASONALITY_DAY_OF_WEEK_POLICY_ID: &str =
+    "seasonality.day_of_week.minimum_bucket_events=1";
+const DEFAULT_SEASONALITY_DAY_OF_YEAR_POLICY_ID: &str =
+    "seasonality.day_of_year.minimum_bucket_events=1";
+const DEFAULT_KNOWN_NEWS_OVERLAY_POLICY_ID: &str = "known_news_overlay.log_adjustment=0.0";
+const DEFAULT_CLOSE_OPEN_GAP_POLICY_ID: &str = "close_open_gap_detection_policy.material_gap_absolute_return_tolerance=3x_median_abs_intraday_return";
+const DEFAULT_INTRADAY_JUMP_POLICY_ID: &str =
+    "intraday_jump_detection.material_threshold=4x_median_abs_open_return";
+const MEAN_REVERSION_BOUNDARY_OPEN_GRID_KIND: &str =
+    "market_data_session_open_boundary_observation_grid.v1";
+const MEAN_REVERSION_BOUNDARY_OPEN_ALIGNMENT_POLICY: &str =
+    "next_session_open_boundary_log_price.v1";
+const MEAN_REVERSION_DISABLED_DEFAULT_REASON: &str = "market_data_translation_defaults_mean_reversion_stage_to_disabled_until_explicitly_requested.v1";
+const MEAN_REVERSION_DISABLED_INTERVAL_DERIVATION_REASON: &str =
+    "mean_reversion_grid_interval_could_not_be_derived_from_boundary_open_observations.v1";
+const MEAN_REVERSION_INTERVAL_DERIVATION_POLICY: &str =
+    "median_boundary_open_spacing_hours_from_retained_observations.v1";
+const MEAN_REVERSION_INTERVAL_OVERRIDE_POLICY: &str =
+    "explicit_mean_reversion_grid_interval_hours.v1";
+const MEAN_REVERSION_EXPLICIT_DISABLED_REASON: &str = "requested_mean_reversion_disabled.v1";
+const DEFAULT_DISABLED_MEAN_REVERSION_INTERVAL_HOURS: f64 = 24.0;
+const NANOS_PER_HOUR: f64 = 3_600_000_000_000.0;
+const DEFAULT_SEASONALITY_MAX_ITERATIONS: usize = 150;
+const DEFAULT_OTHER_STAGE_MAX_ITERATIONS: usize = 250;
+const DEFAULT_SOLVER_ABSOLUTE_TOLERANCE: f64 = 1.0e-8;
+const DEFAULT_SOLVER_RELATIVE_TOLERANCE: f64 = 1.0e-6;
+const DEFAULT_SOLVER_CONSTRAINT_PENALTY_WEIGHT: f64 = 10.0;
+
+fn _default_enabled_mean_reversion() -> bool {
+    true
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum PythonCalibrationMarketDataWorkflowScope {
+    SeasonalityOnly,
+    FullWithoutOptionSurface,
+    FullWithOptionSurface,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PythonMarketDataColumnMapping {
+    tick_data: MarketDataTickDataColumnMapping,
+    #[serde(default)]
+    option_surface: Option<MarketDataOptionSurfaceColumnMapping>,
+    #[serde(default)]
+    known_news: Option<MarketDataKnownNewsColumnMapping>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PythonMarketDataOutputPreferences {
+    execution_mode: CalibrationExecutionMode,
+    #[serde(default)]
+    disk_checkpoint_directory: Option<String>,
+    #[serde(rename = "emit_derived_staged_execution_input")]
+    _emit_derived_staged_execution_input: bool,
+    #[serde(rename = "emit_input_provenance_report")]
+    _emit_input_provenance_report: bool,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PythonMarketDataKnownNewsInput {
+    calendar_source: MarketDataInputFileReference,
+    #[serde(default)]
+    calendar_timezone: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PythonMeanReversionConfiguration {
+    #[serde(default = "_default_enabled_mean_reversion")]
+    enabled: bool,
+    anchor_model_kind: MeanReversionAnchorModelKind,
+    #[serde(default)]
+    calibration_grid_interval_hours: Option<f64>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PythonMarketDataCalibrationRequest {
+    #[serde(rename = "schema_version")]
+    _schema_version: String,
+    run_id: String,
+    tick_data_source: MarketDataInputFileReference,
+    session_configuration: MarketDataSessionConfiguration,
+    column_mapping: PythonMarketDataColumnMapping,
+    workflow_scope: PythonCalibrationMarketDataWorkflowScope,
+    normalization_policy: MarketDataNormalizationPolicy,
+    output_preferences: PythonMarketDataOutputPreferences,
+    #[serde(default)]
+    option_surface_source: Option<MarketDataInputFileReference>,
+    #[serde(default)]
+    known_news_inputs: Option<PythonMarketDataKnownNewsInput>,
+    #[serde(default)]
+    mean_reversion: Option<PythonMeanReversionConfiguration>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct PreparedMarketDataDiagnostics {
+    workflow_scope: PythonCalibrationMarketDataWorkflowScope,
+    selected_stages: Vec<CalibrationStage>,
+    executed_preprocessing_steps: Vec<String>,
+    tick_record_count: usize,
+    option_surface_record_count: usize,
+    known_news_event_count: usize,
+    known_news_events_outside_source_window_count: usize,
+    session_open_tick_count: usize,
+    session_closed_tick_count: usize,
+    known_news_open_event_count: usize,
+    known_news_closed_event_count: usize,
+    seasonality_overlay_count: usize,
+    hawkes_candidate_count: usize,
+    known_news_return_sample_count: usize,
+    intraday_jump_candidate_count: usize,
+    close_open_boundary_observation_count: usize,
+    material_close_open_gap_count: usize,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct PreparedMarketDataProvenance {
+    tick_data_summary: Value,
+    option_surface_summary: Option<Value>,
+    known_news_summary: Option<Value>,
+    normalization_policy: Value,
+    workflow_scope: PythonCalibrationMarketDataWorkflowScope,
+    selected_stages: Vec<CalibrationStage>,
+    session_definition_path: Option<String>,
+    derived_trade_events_data_reference: String,
+    derived_option_surface_data_reference: Option<String>,
+    derivation_policies: Vec<String>,
+    deterministic_defaults_applied: Vec<String>,
+}
+
+struct PreparedMarketDataPlan {
+    execution_input: CalibrationStagedExecutionInput,
+    diagnostics: PreparedMarketDataDiagnostics,
+    provenance: PreparedMarketDataProvenance,
+    session_resolution: MarketDataSessionResolutionPayload,
+    fit_warning: Option<String>,
+    reference_price: Option<f64>,
+}
+
+fn _selected_stages_for_scope(
+    workflow_scope: PythonCalibrationMarketDataWorkflowScope,
+) -> Vec<CalibrationStage> {
+    match workflow_scope {
+        PythonCalibrationMarketDataWorkflowScope::SeasonalityOnly => {
+            vec![CalibrationStage::Seasonality]
+        }
+        PythonCalibrationMarketDataWorkflowScope::FullWithoutOptionSurface
+        | PythonCalibrationMarketDataWorkflowScope::FullWithOptionSurface => vec![
+            CalibrationStage::Seasonality,
+            CalibrationStage::Hawkes,
+            CalibrationStage::ReturnComponents,
+            CalibrationStage::MeanReversion,
+            CalibrationStage::JointRefinement,
+        ],
+    }
+}
+
+fn _build_dataset_reference(run_id: &str, dataset_role: &str, provenance_label: &str) -> String {
+    format!(
+        "market_data://{}/{}/{}",
+        _sanitize_reference_component(run_id),
+        dataset_role,
+        _sanitize_reference_component(provenance_label)
+    )
+}
+
+fn _sanitize_reference_component(value: &str) -> String {
+    let sanitized = value
+        .trim()
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() {
+                character.to_ascii_lowercase()
+            } else {
+                '_'
+            }
+        })
+        .collect::<String>();
+
+    let trimmed = sanitized.trim_matches('_');
+    if trimmed.is_empty() {
+        "unknown".to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+fn _stable_seed_from_run_id(run_id: &str) -> u64 {
+    run_id
+        .chars()
+        .enumerate()
+        .map(|(character_index, character)| {
+            let position = u64::try_from(character_index + 1).unwrap_or(u64::MAX);
+            position.saturating_mul(u64::from(u32::from(character)))
+        })
+        .sum()
+}
+
+fn _default_solver_settings(
+    stage: CalibrationStage,
+    cpu_count: Option<usize>,
+) -> Result<CalibrationStageSolverSettings, String> {
+    let max_iterations = match stage {
+        CalibrationStage::Seasonality => DEFAULT_SEASONALITY_MAX_ITERATIONS,
+        _ => DEFAULT_OTHER_STAGE_MAX_ITERATIONS,
+    };
+
+    let optimizer_settings = CalibrationOptimizerSettings::try_new(
+        "lbfgs",
+        max_iterations,
+        cpu_count.unwrap_or_else(|| std::thread::available_parallelism().map_or(1, usize::from)),
+        DEFAULT_SOLVER_ABSOLUTE_TOLERANCE,
+        DEFAULT_SOLVER_RELATIVE_TOLERANCE,
+        DEFAULT_SOLVER_CONSTRAINT_PENALTY_WEIGHT,
+    )
+    .map_err(|source| format!("failed to build default optimizer settings: {source}"))?;
+
+    Ok(CalibrationStageSolverSettings {
+        stage,
+        optimizer_settings,
+    })
+}
+
+fn _executed_preprocessing_steps(
+    workflow_scope: PythonCalibrationMarketDataWorkflowScope,
+    option_surface_present: bool,
+    known_news_present: bool,
+) -> Vec<String> {
+    let mut preprocessing_steps = vec![
+        "source_loading".to_string(),
+        "column_mapping_validation".to_string(),
+        "timestamp_timezone_normalization".to_string(),
+        "duplicate_record_resolution".to_string(),
+        "timestamp_sorting".to_string(),
+        "session_state_resolution".to_string(),
+        "workflow_scope_selection".to_string(),
+    ];
+
+    if known_news_present {
+        preprocessing_steps.push("known_news_window_filtering".to_string());
+        preprocessing_steps.push("known_news_overlay_derivation".to_string());
+    }
+
+    if !matches!(
+        workflow_scope,
+        PythonCalibrationMarketDataWorkflowScope::SeasonalityOnly
+    ) {
+        preprocessing_steps.push("hawkes_candidate_generation".to_string());
+        preprocessing_steps.push("return_components_candidate_generation".to_string());
+    }
+
+    if option_surface_present {
+        preprocessing_steps.push("option_surface_quote_normalization".to_string());
+    }
+
+    preprocessing_steps
+}
+
+fn _build_loading_request(
+    request: &PythonMarketDataCalibrationRequest,
+    selected_stages: &[CalibrationStage],
+) -> Result<(MarketDataLoadingRequest, String, Option<String>), String> {
+    let trade_events_data_reference = _build_dataset_reference(
+        request.run_id.as_str(),
+        "ticks",
+        request.tick_data_source.provenance_label.as_str(),
+    );
+
+    let option_surface_data_reference = request.option_surface_source.as_ref().map(|source| {
+        _build_dataset_reference(
+            request.run_id.as_str(),
+            "options",
+            source.provenance_label.as_str(),
+        )
+    });
+
+    let option_surface_input = match (
+        request.option_surface_source.as_ref(),
+        request.column_mapping.option_surface.clone(),
+    ) {
+        (Some(source), Some(column_mapping)) => Some(MarketDataOptionSurfaceLoadingInput {
+            source: source.clone(),
+            column_mapping,
+        }),
+        (None, None) => None,
+        (Some(_), None) => {
+            return Err(
+                "column_mapping.option_surface is required when option_surface_source is provided"
+                    .to_string(),
+            );
+        }
+        (None, Some(_)) => {
+            return Err(
+                "option_surface_source is required when column_mapping.option_surface is provided"
+                    .to_string(),
+            );
+        }
+    };
+
+    let known_news_input = match (
+        request.known_news_inputs.as_ref(),
+        request.column_mapping.known_news.clone(),
+    ) {
+        (Some(input), Some(column_mapping)) => Some(MarketDataKnownNewsLoadingInput {
+            calendar_source: input.calendar_source.clone(),
+            column_mapping,
+            calendar_timezone: input.calendar_timezone.clone(),
+        }),
+        (None, None) => None,
+        (Some(_), None) => {
+            return Err(
+                "column_mapping.known_news is required when known_news_inputs is provided"
+                    .to_string(),
+            );
+        }
+        (None, Some(_)) => {
+            return Err(
+                "known_news_inputs is required when column_mapping.known_news is provided"
+                    .to_string(),
+            );
+        }
+    };
+
+    Ok((
+        MarketDataLoadingRequest {
+            session_configuration: request.session_configuration.clone(),
+            trade_events_data_reference: trade_events_data_reference.clone(),
+            tick_data_source: request.tick_data_source.clone(),
+            tick_data_column_mapping: request.column_mapping.tick_data.clone(),
+            normalization_policy: request.normalization_policy.clone(),
+            option_surface_input,
+            known_news_input,
+            require_hawkes: selected_stages.contains(&CalibrationStage::Hawkes),
+            require_return_components: selected_stages
+                .contains(&CalibrationStage::ReturnComponents),
+        },
+        trade_events_data_reference,
+        option_surface_data_reference,
+    ))
+}
+
+fn _runtime_resources_from_output_preferences(
+    output_preferences: &PythonMarketDataOutputPreferences,
+) -> Option<CalibrationStagedExecutionRuntimeResources> {
+    if output_preferences.execution_mode != CalibrationExecutionMode::Disk {
+        return None;
+    }
+
+    Some(CalibrationStagedExecutionRuntimeResources {
+        disk_checkpoint_directory: output_preferences.disk_checkpoint_directory.clone(),
+    })
+}
+
+fn _mean_reversion_stage_input_from_request(
+    request: &PythonMarketDataCalibrationRequest,
+    selected_stages: &[CalibrationStage],
+    loading_output: &MarketDataLoadingOutput,
+) -> Option<CalibrationMeanReversionStageExecutionInput> {
+    if !selected_stages.contains(&CalibrationStage::MeanReversion) {
+        return None;
+    }
+
+    let return_components_input = loading_output
+        .preprocessing_output
+        .return_components_candidate_generation_input
+        .as_ref();
+
+    let source_observation_count = return_components_input
+        .map(|input| input.observed_open_session_returns.len())
+        .unwrap_or(0);
+
+    let Some(mean_reversion_configuration) = request.mean_reversion.as_ref() else {
+        return Some(CalibrationMeanReversionStageExecutionInput {
+            requested_anchor_model_kind: MeanReversionAnchorModelKind::Disabled,
+            calibration_grid_kind: "market_data_translation_disabled_mean_reversion_grid.v1"
+                .to_string(),
+            calibration_grid_interval_hours: DEFAULT_DISABLED_MEAN_REVERSION_INTERVAL_HOURS,
+            source_observation_count,
+            coverage_ratio: 0.0,
+            observations: Vec::new(),
+            disabled_stage_reason: Some(MEAN_REVERSION_DISABLED_DEFAULT_REASON.to_string()),
+        });
+    };
+
+    if !mean_reversion_configuration.enabled {
+        return Some(CalibrationMeanReversionStageExecutionInput {
+            requested_anchor_model_kind: MeanReversionAnchorModelKind::Disabled,
+            calibration_grid_kind: "market_data_translation_disabled_mean_reversion_grid.v1"
+                .to_string(),
+            calibration_grid_interval_hours: DEFAULT_DISABLED_MEAN_REVERSION_INTERVAL_HOURS,
+            source_observation_count,
+            coverage_ratio: 0.0,
+            observations: Vec::new(),
+            disabled_stage_reason: Some(MEAN_REVERSION_EXPLICIT_DISABLED_REASON.to_string()),
+        });
+    }
+
+    let boundary_observations = return_components_input
+        .map(|input| input.observed_close_open_boundary_observations.as_slice())
+        .unwrap_or(&[]);
+    let observations = boundary_observations
+        .iter()
+        .map(
+            |boundary_observation| CalibrationMeanReversionStageObservation {
+                observation_timestamp_utc_nanos: boundary_observation.open_timestamp_utc_nanos,
+                observed_log_price: boundary_observation.open_price.ln(),
+            },
+        )
+        .collect::<Vec<_>>();
+
+    let derived_interval_hours = _derive_mean_reversion_grid_interval_hours(&observations);
+    let calibration_grid_interval_hours = mean_reversion_configuration
+        .calibration_grid_interval_hours
+        .or(derived_interval_hours);
+
+    let interval_policy = if mean_reversion_configuration
+        .calibration_grid_interval_hours
+        .is_some()
+    {
+        MEAN_REVERSION_INTERVAL_OVERRIDE_POLICY
+    } else {
+        MEAN_REVERSION_INTERVAL_DERIVATION_POLICY
+    };
+
+    let Some(calibration_grid_interval_hours) = calibration_grid_interval_hours else {
+        return Some(CalibrationMeanReversionStageExecutionInput {
+            requested_anchor_model_kind: MeanReversionAnchorModelKind::Disabled,
+            calibration_grid_kind: MEAN_REVERSION_BOUNDARY_OPEN_GRID_KIND.to_string(),
+            calibration_grid_interval_hours: DEFAULT_DISABLED_MEAN_REVERSION_INTERVAL_HOURS,
+            source_observation_count: boundary_observations.len(),
+            coverage_ratio: 0.0,
+            observations: Vec::new(),
+            disabled_stage_reason: Some(
+                MEAN_REVERSION_DISABLED_INTERVAL_DERIVATION_REASON.to_string(),
+            ),
+        });
+    };
+
+    Some(CalibrationMeanReversionStageExecutionInput {
+        requested_anchor_model_kind: mean_reversion_configuration.anchor_model_kind,
+        calibration_grid_kind: format!(
+            "{}:{}:{}",
+            MEAN_REVERSION_BOUNDARY_OPEN_GRID_KIND,
+            MEAN_REVERSION_BOUNDARY_OPEN_ALIGNMENT_POLICY,
+            interval_policy
+        ),
+        calibration_grid_interval_hours,
+        source_observation_count: boundary_observations.len(),
+        coverage_ratio: if boundary_observations.is_empty() {
+            0.0
+        } else {
+            observations.len() as f64 / boundary_observations.len() as f64
+        },
+        observations,
+        disabled_stage_reason: None,
+    })
+}
+
+fn _derive_mean_reversion_grid_interval_hours(
+    observations: &[CalibrationMeanReversionStageObservation],
+) -> Option<f64> {
+    let mut positive_interval_hours = observations
+        .windows(2)
+        .filter_map(|window| {
+            let current_observation = &window[0];
+            let next_observation = &window[1];
+            if next_observation.observation_timestamp_utc_nanos
+                <= current_observation.observation_timestamp_utc_nanos
+            {
+                return None;
+            }
+            Some(
+                (next_observation.observation_timestamp_utc_nanos
+                    - current_observation.observation_timestamp_utc_nanos) as f64
+                    / NANOS_PER_HOUR,
+            )
+        })
+        .collect::<Vec<_>>();
+    if positive_interval_hours.is_empty() {
+        return None;
+    }
+
+    positive_interval_hours.sort_by(|left, right| left.total_cmp(right));
+
+    let midpoint = positive_interval_hours.len() / 2;
+
+    if positive_interval_hours.len() % 2 == 1 {
+        Some(positive_interval_hours[midpoint])
+    } else {
+        Some((positive_interval_hours[midpoint - 1] + positive_interval_hours[midpoint]) / 2.0)
+    }
+}
+
+fn _prepare_market_data_calibration_plan(
+    request: PythonMarketDataCalibrationRequest,
+    cpu_count: Option<usize>,
+) -> Result<PreparedMarketDataPlan, String> {
+    let selected_stages = _selected_stages_for_scope(request.workflow_scope);
+
+    let (loading_request, trade_events_data_reference, option_surface_data_reference) =
+        _build_loading_request(&request, &selected_stages)?;
+
+    let loading_output =
+        load_and_preprocess_market_data_translation_request_native(loading_request)
+            .map_err(|source| source.to_string())?;
+
+    let run_request = CalibrationRunSpec::try_new(
+        request.run_id.clone(),
+        CalibrationRunDataInputs {
+            exchange_code: request.session_configuration.exchange_code.clone(),
+            trade_events_data_reference: trade_events_data_reference.clone(),
+            option_surface_data_reference: option_surface_data_reference.clone(),
+        },
+        request.output_preferences.execution_mode,
+        selected_stages.clone(),
+        CalibrationRunSeedSettings {
+            global_seed: _stable_seed_from_run_id(request.run_id.as_str()),
+            stage_seed_overrides: Vec::new(),
+        },
+        selected_stages
+            .iter()
+            .copied()
+            .map(|stage| _default_solver_settings(stage, cpu_count))
+            .collect::<Result<Vec<_>, _>>()?,
+    )
+    .map_err(|source| format!("failed to build calibration run spec: {source}"))?;
+
+    let execution_input = CalibrationStagedExecutionInput {
+        schema_version: CALIBRATION_STAGED_EXECUTION_INPUT_SCHEMA_VERSION.to_string(),
+        request: run_request,
+        seasonality_stage_input: Some(
+            loading_output
+                .preprocessing_output
+                .seasonality_stage_input
+                .clone(),
+        ),
+        hawkes_candidate_inputs: loading_output
+            .preprocessing_output
+            .hawkes_candidate_inputs
+            .clone(),
+        return_components_candidate_generation_input: loading_output
+            .preprocessing_output
+            .return_components_candidate_generation_input
+            .clone(),
+        mean_reversion_stage_input: _mean_reversion_stage_input_from_request(
+            &request,
+            &selected_stages,
+            &loading_output,
+        ),
+        runtime_resources: _runtime_resources_from_output_preferences(&request.output_preferences),
+    };
+
+    let return_components_input = loading_output
+        .preprocessing_output
+        .return_components_candidate_generation_input
+        .as_ref();
+
+    let diagnostics = PreparedMarketDataDiagnostics {
+        workflow_scope: request.workflow_scope,
+        selected_stages: selected_stages.clone(),
+        executed_preprocessing_steps: _executed_preprocessing_steps(
+            request.workflow_scope,
+            loading_output.option_surface_summary.is_some(),
+            loading_output.known_news_summary.is_some(),
+        ),
+        tick_record_count: loading_output.tick_data_summary.retained_row_count,
+        option_surface_record_count: loading_output
+            .option_surface_summary
+            .as_ref()
+            .map(|summary| summary.retained_row_count)
+            .unwrap_or(0),
+        known_news_event_count: loading_output.preprocessing_output.known_news_event_count,
+        known_news_events_outside_source_window_count: loading_output
+            .preprocessing_output
+            .known_news_events_outside_source_window_count,
+        session_open_tick_count: loading_output.preprocessing_output.session_open_tick_count,
+        session_closed_tick_count: loading_output
+            .preprocessing_output
+            .session_closed_tick_count,
+        known_news_open_event_count: loading_output
+            .preprocessing_output
+            .known_news_open_event_count,
+        known_news_closed_event_count: loading_output
+            .preprocessing_output
+            .known_news_closed_event_count,
+        seasonality_overlay_count: loading_output
+            .preprocessing_output
+            .seasonality_stage_input
+            .scheduled_event_overlays
+            .len(),
+        hawkes_candidate_count: loading_output
+            .preprocessing_output
+            .hawkes_candidate_inputs
+            .as_ref()
+            .map_or(0, Vec::len),
+        known_news_return_sample_count: return_components_input
+            .map(|input| input.realized_known_news_return_samples.len())
+            .unwrap_or(0),
+        intraday_jump_candidate_count: return_components_input
+            .map(|input| input.detected_intraday_jump_candidates.len())
+            .unwrap_or(0),
+        close_open_boundary_observation_count: return_components_input
+            .map(|input| input.observed_close_open_boundary_observations.len())
+            .unwrap_or(0),
+        material_close_open_gap_count: loading_output
+            .preprocessing_output
+            .material_close_open_gap_count,
+    };
+
+    let provenance = PreparedMarketDataProvenance {
+        tick_data_summary: serde_json::to_value(&loading_output.tick_data_summary)
+            .map_err(|source| format!("failed to serialize tick-data summary: {source}"))?,
+        option_surface_summary: loading_output
+            .option_surface_summary
+            .as_ref()
+            .map(serde_json::to_value)
+            .transpose()
+            .map_err(|source| format!("failed to serialize option-surface summary: {source}"))?,
+        known_news_summary: loading_output
+            .known_news_summary
+            .as_ref()
+            .map(serde_json::to_value)
+            .transpose()
+            .map_err(|source| format!("failed to serialize known-news summary: {source}"))?,
+        normalization_policy: serde_json::to_value(&request.normalization_policy)
+            .map_err(|source| format!("failed to serialize normalization policy: {source}"))?,
+        workflow_scope: request.workflow_scope,
+        selected_stages,
+        session_definition_path: if loading_output.session_resolution.manual_override_applied {
+            request
+                .session_configuration
+                .session_definition_source
+                .as_ref()
+                .map(|source| source.path.clone())
+        } else {
+            None
+        },
+        derived_trade_events_data_reference: trade_events_data_reference,
+        derived_option_surface_data_reference: option_surface_data_reference,
+        derivation_policies: vec![
+            loading_output.session_resolution.selected_policy_id.clone(),
+            PREPARED_MARKET_DATA_DERIVATION_POLICY_ID.to_string(),
+            KNOWN_NEWS_WINDOW_FILTER_POLICY_ID.to_string(),
+            KNOWN_NEWS_OVERLAY_POLICY_ID.to_string(),
+            TRADE_LABEL_DERIVATION_POLICY_ID.to_string(),
+            HAWKES_SEARCH_POLICY_ID.to_string(),
+            RETURN_COMPONENTS_JUMP_POLICY_ID.to_string(),
+            RETURN_COMPONENTS_BOUNDARY_POLICY_ID.to_string(),
+            RETURN_COMPONENTS_CONTINUOUS_FIT_POLICY_ID.to_string(),
+        ],
+        deterministic_defaults_applied: vec![
+            DEFAULT_SEASONALITY_SESSION_FILTER_POLICY_ID.to_string(),
+            DEFAULT_SEASONALITY_SPARSE_THRESHOLD_POLICY_ID.to_string(),
+            DEFAULT_SEASONALITY_INTRADAY_MINUTES_POLICY_ID.to_string(),
+            DEFAULT_SEASONALITY_INTRADAY_KERNEL_POLICY_ID.to_string(),
+            DEFAULT_SEASONALITY_INTRADAY_BANDWIDTH_POLICY_ID.to_string(),
+            DEFAULT_SEASONALITY_DAY_OF_WEEK_POLICY_ID.to_string(),
+            DEFAULT_SEASONALITY_DAY_OF_YEAR_POLICY_ID.to_string(),
+            DEFAULT_KNOWN_NEWS_OVERLAY_POLICY_ID.to_string(),
+            DEFAULT_CLOSE_OPEN_GAP_POLICY_ID.to_string(),
+            DEFAULT_INTRADAY_JUMP_POLICY_ID.to_string(),
+        ],
+    };
+
+    Ok(PreparedMarketDataPlan {
+        execution_input,
+        diagnostics,
+        provenance,
+        session_resolution: loading_output.session_resolution,
+        fit_warning: loading_output.fit_warning,
+        reference_price: loading_output.reference_price,
+    })
+}
 
 #[pyfunction]
 #[pyo3(signature = (preprocessing_request, calendar_registry))]
@@ -98,12 +810,14 @@ fn resolve_market_data_session_configuration_from_source_file(
                 "failed to deserialize market-data session configuration: {source}"
             ))
         })?;
+
     let tick_data_source: MarketDataInputFileReference =
         serde_json::from_value(py_any_to_json_value(tick_data_source)?).map_err(|source| {
             CalibrationExecutionError::new_err(format!(
                 "failed to deserialize tick-data source reference: {source}"
             ))
         })?;
+
     let tick_data_column_mapping: MarketDataTickDataColumnMapping = serde_json::from_value(
         py_any_to_json_value(tick_data_column_mapping)?,
     )
@@ -112,6 +826,7 @@ fn resolve_market_data_session_configuration_from_source_file(
             "failed to deserialize tick-data column mapping: {source}"
         ))
     })?;
+
     let normalization_policy: MarketDataNormalizationPolicy =
         serde_json::from_value(py_any_to_json_value(normalization_policy)?).map_err(|source| {
             CalibrationExecutionError::new_err(format!(
@@ -146,6 +861,7 @@ fn market_data_loading_output_to_py_object(
             "failed to serialize market-data loading output: {source}"
         ))
     })?;
+
     json_value_to_py_object(py, &raw_value)
 }
 
@@ -158,6 +874,7 @@ fn market_data_session_resolution_to_py_object(
             "failed to serialize market-data session resolution: {source}"
         ))
     })?;
+
     json_value_to_py_object(py, &raw_value)
 }
 
@@ -170,7 +887,159 @@ fn market_data_translation_preprocessing_output_to_py_object(
             "failed to serialize market-data preprocessing output: {source}"
         ))
     })?;
+
     json_value_to_py_object(py, &raw_value)
+}
+
+#[pyfunction]
+#[pyo3(signature = (request, cpu_count = None))]
+fn prepare_market_data_calibration_plan(
+    py: Python<'_>,
+    request: &Bound<'_, PyAny>,
+    cpu_count: Option<usize>,
+) -> PyResult<Py<PyAny>> {
+    let request: PythonMarketDataCalibrationRequest =
+        serde_json::from_value(py_any_to_json_value(request)?).map_err(|source| {
+            CalibrationExecutionError::new_err(format!(
+                "failed to deserialize market-data calibration request: {source}"
+            ))
+        })?;
+
+    let prepared_plan = py
+        .allow_threads(|| _prepare_market_data_calibration_plan(request, cpu_count))
+        .map_err(CalibrationExecutionError::new_err)?;
+
+    let result = PyDict::new(py);
+
+    let prepared_handle = Py::new(
+        py,
+        PyPreparedCalibrationExecutionHandle {
+            execution_input: prepared_plan.execution_input.clone(),
+        },
+    )?;
+
+    result.set_item("prepared_handle", prepared_handle)?;
+    result.set_item(
+        "staged_request",
+        json_value_to_py_object(
+            py,
+            &serde_json::to_value(&prepared_plan.execution_input.request).map_err(|source| {
+                CalibrationExecutionError::new_err(format!(
+                    "failed to serialize staged request: {source}"
+                ))
+            })?,
+        )?,
+    )?;
+    result.set_item(
+        "diagnostics",
+        json_value_to_py_object(
+            py,
+            &serde_json::to_value(&prepared_plan.diagnostics).map_err(|source| {
+                CalibrationExecutionError::new_err(format!(
+                    "failed to serialize preparation diagnostics: {source}"
+                ))
+            })?,
+        )?,
+    )?;
+    result.set_item(
+        "provenance",
+        json_value_to_py_object(
+            py,
+            &serde_json::to_value(&prepared_plan.provenance).map_err(|source| {
+                CalibrationExecutionError::new_err(format!(
+                    "failed to serialize preparation provenance: {source}"
+                ))
+            })?,
+        )?,
+    )?;
+    result.set_item(
+        "session_resolution",
+        market_data_session_resolution_to_py_object(py, &prepared_plan.session_resolution)?,
+    )?;
+    result.set_item("fit_warning", prepared_plan.fit_warning)?;
+    result.set_item("reference_price", prepared_plan.reference_price)?;
+
+    Ok(result.into_any().unbind())
+}
+
+#[pyfunction]
+#[pyo3(signature = (prepared_handle, calendar_registry, memory_checkpoint_store = None))]
+fn run_prepared_staged_calibration(
+    py: Python<'_>,
+    prepared_handle: &PyPreparedCalibrationExecutionHandle,
+    calendar_registry: &PyCalendarRegistry,
+    memory_checkpoint_store: Option<&mut PyCalibrationMemoryCheckpointStore>,
+) -> PyResult<Py<PyAny>> {
+    let report = py
+        .allow_threads(|| {
+            run_staged_calibration_from_execution_input(
+                prepared_handle.execution_input.clone(),
+                &calendar_registry.registry,
+                memory_checkpoint_store.map(|store| &mut store.store),
+            )
+        })
+        .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
+
+    python_staged_calibration_report_to_py_object(py, &report)
+}
+
+#[pyfunction]
+#[pyo3(signature = (prepared_handle, calendar_registry, event_callback, memory_checkpoint_store = None))]
+fn run_prepared_staged_calibration_with_events(
+    py: Python<'_>,
+    prepared_handle: &PyPreparedCalibrationExecutionHandle,
+    calendar_registry: &PyCalendarRegistry,
+    event_callback: &Bound<'_, PyAny>,
+    memory_checkpoint_store: Option<&mut PyCalibrationMemoryCheckpointStore>,
+) -> PyResult<Py<PyAny>> {
+    let event_callback = event_callback.clone().unbind();
+
+    let callback_error_message = Arc::new(Mutex::new(None::<String>));
+    let callback_error_message_for_observer = Arc::clone(&callback_error_message);
+
+    let report = py
+        .allow_threads(move || {
+            let mut observer = |event: CalibrationStagedRunObserverEvent| {
+                if callback_error_message_for_observer
+                    .lock()
+                    .ok()
+                    .and_then(|guard| guard.clone())
+                    .is_some()
+                {
+                    return;
+                }
+
+                Python::with_gil(|py| {
+                    let callback_result = python_staged_calibration_event_to_py_object(py, &event)
+                        .and_then(|payload| event_callback.call1(py, (payload,)).map(|_| ()));
+                    if let Err(source) = callback_result {
+                        if let Ok(mut guard) = callback_error_message_for_observer.lock() {
+                            if guard.is_none() {
+                                *guard = Some(source.to_string());
+                            }
+                        }
+                    }
+                });
+            };
+
+            run_staged_calibration_from_execution_input_with_observer(
+                prepared_handle.execution_input.clone(),
+                &calendar_registry.registry,
+                memory_checkpoint_store.map(|store| &mut store.store),
+                &mut observer,
+            )
+        })
+        .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
+
+    if let Ok(guard) = callback_error_message.lock() {
+        if let Some(error_message) = guard.as_ref() {
+            return Err(CalibrationExecutionError::new_err(format!(
+                "staged calibration event callback failed: {error_message}"
+            )));
+        }
+    }
+
+    python_staged_calibration_report_to_py_object(py, &report)
 }
 
 #[pyfunction]
@@ -216,7 +1085,9 @@ fn run_staged_calibration_with_events(
                 "failed to deserialize staged calibration execution input: {source}"
             ))
         })?;
+
     let event_callback = event_callback.clone().unbind();
+
     let callback_error_message = Arc::new(Mutex::new(None::<String>));
     let callback_error_message_for_observer = Arc::clone(&callback_error_message);
 
@@ -283,6 +1154,7 @@ fn evaluate_return_components_candidate(
                 ))
             },
         )?;
+
     let observed_summary_statistics: ReturnComponentsStageObservedSignalSummaryStatistics =
         serde_json::from_value(py_any_to_json_value(observed_summary_statistics)?).map_err(
             |source| {
@@ -291,12 +1163,14 @@ fn evaluate_return_components_candidate(
                 ))
             },
         )?;
+
     let fitted_parameters: ReturnComponentsStageFittedParameters =
         serde_json::from_value(py_any_to_json_value(fitted_parameters)?).map_err(|source| {
             CalibrationExecutionError::new_err(format!(
                 "failed to deserialize return-components fitted parameters: {source}"
             ))
         })?;
+
     let activity_context_payload: Option<CalibrationReturnComponentsActivityContextPayload> =
         hawkes_payload
             .map(py_any_to_json_value)
@@ -326,6 +1200,7 @@ fn evaluate_return_components_candidate(
             "failed to serialize return-components exact candidate evaluation: {source}"
         ))
     })?;
+
     json_value_to_py_object(py, &raw_value)
 }
 
@@ -356,6 +1231,7 @@ fn python_staged_calibration_report_to_py_object(
                 "failed to flatten staged calibration report for Python: {source}"
             ))
         })?;
+
     serialized_report.insert(
         "stage_reports".to_string(),
         Value::Array(flattened_stage_reports),
@@ -393,7 +1269,9 @@ fn python_staged_calibration_event_to_py_object(
                 "failed to flatten staged calibration observer event stage report: {source}"
             ))
         })?;
+
         let _ = stage_report;
+
         serialized_event.insert("stage_report".to_string(), flattened_stage_report);
     }
 
@@ -451,6 +1329,15 @@ pub(super) fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
         resolve_market_data_session_configuration_from_source_file,
         module
     )?)?;
+    module.add_function(wrap_pyfunction!(
+        prepare_market_data_calibration_plan,
+        module
+    )?)?;
+    module.add_function(wrap_pyfunction!(run_prepared_staged_calibration, module)?)?;
+    module.add_function(wrap_pyfunction!(
+        run_prepared_staged_calibration_with_events,
+        module
+    )?)?;
     module.add_function(wrap_pyfunction!(run_staged_calibration, module)?)?;
     module.add_function(wrap_pyfunction!(
         run_staged_calibration_with_events,
@@ -460,5 +1347,6 @@ pub(super) fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
         evaluate_return_components_candidate,
         module
     )?)?;
+
     Ok(())
 }

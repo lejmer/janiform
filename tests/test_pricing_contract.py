@@ -19,7 +19,6 @@ from janiform.pricing import (
     VanillaOptionPayoffType,
     VanillaOptionPricingDiagnostics,
     VanillaOptionPricingExecutionInput,
-    VanillaOptionPricingIntervalFactors,
     VanillaOptionPricingMarketInputs,
     VanillaOptionPricingModelParameters,
     VanillaOptionPricingOptionalOutputSelection,
@@ -29,20 +28,18 @@ from janiform.pricing import (
     VanillaOptionPricingRunOutputSchemaMetadata,
     VanillaOptionPricingRunResult,
     VanillaOptionPricingValidationError,
-    deserialize_vanilla_option_pricing_execution_input,
     deserialize_vanilla_option_pricing_request,
     deserialize_vanilla_option_pricing_response,
     deserialize_vanilla_option_pricing_run_result,
     run_vanilla_option_pricing,
-    serialize_vanilla_option_pricing_execution_input,
     serialize_vanilla_option_pricing_request,
     serialize_vanilla_option_pricing_response,
     serialize_vanilla_option_pricing_run_result,
-    validate_vanilla_option_pricing_execution_input,
     validate_vanilla_option_pricing_request,
     validate_vanilla_option_pricing_response,
 )
 from janiform.simulation import HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters
+from tests.hourly_factor_contract_test_support import build_hourly_factor_contract
 
 
 def test_vanilla_option_request_model_construction_and_roundtrip() -> None:
@@ -169,28 +166,29 @@ def test_vanilla_option_response_rejects_negative_price_with_structured_error() 
     assert captured_error.value.failure.message == "must be non-negative"
 
 
-def test_vanilla_option_pricing_execution_input_roundtrip_preserves_split_news_intensity() -> None:
+def test_vanilla_option_pricing_execution_input_keeps_native_hourly_factor_contract() -> None:
     execution_input = _valid_execution_input_model()
 
-    serialized_execution_input = serialize_vanilla_option_pricing_execution_input(execution_input)
-    deserialized_execution_input = deserialize_vanilla_option_pricing_execution_input(
-        serialized_execution_input
-    )
-
-    assert deserialized_execution_input == execution_input
-    assert deserialized_execution_input.interval_factors[0].nu_h_known == pytest.approx(0.03)
-    assert deserialized_execution_input.interval_factors[0].nu_h_surprise == pytest.approx(0.05)
+    assert execution_input.hourly_factor_contract.known_component_nu_h[0] == pytest.approx(0.03)
+    assert execution_input.hourly_factor_contract.surprise_component_nu_h[0] == pytest.approx(0.05)
 
 
-def test_vanilla_option_pricing_execution_input_rejects_missing_surprise_news_intensity() -> None:
-    execution_input_payload = _valid_execution_input_model().to_payload()
-    del execution_input_payload["interval_factors"][0]["nu_h_surprise"]
+def test_vanilla_option_pricing_execution_input_rejects_empty_hourly_factor_contract() -> None:
+    request = _valid_request_model()
 
     with pytest.raises(VanillaOptionPricingValidationError) as captured_error:
-        validate_vanilla_option_pricing_execution_input(execution_input_payload)
+        VanillaOptionPricingExecutionInput(
+            request=request,
+            hourly_factor_contract=build_hourly_factor_contract(
+                request_start_utc_nanos=1_706_882_400_000_000_000,
+                s_h=(),
+                known_component_nu_h=(),
+                surprise_component_nu_h=(),
+            ),
+        )
 
-    assert captured_error.value.failure.field_path == "interval_factors[0].nu_h_surprise"
-    assert captured_error.value.failure.message == "is required"
+    assert captured_error.value.failure.field_path == "hourly_factor_contract.interval_count"
+    assert captured_error.value.failure.message == "must contain at least one interval"
 
 
 def test_anchored_boundary_input_roundtrip_and_validation() -> None:
@@ -401,13 +399,22 @@ def _valid_request_model() -> VanillaOptionPricingRequest:
 
 def _valid_execution_input_model() -> VanillaOptionPricingExecutionInput:
     return VanillaOptionPricingExecutionInput(
-        request=_valid_request_model(),
-        interval_factors=(
-            VanillaOptionPricingIntervalFactors(
-                s_h=1.1,
-                nu_h_known=0.03,
-                nu_h_surprise=0.05,
+        request=VanillaOptionPricingRequest(
+            market_inputs=_valid_request_model().market_inputs,
+            payoff=_valid_request_model().payoff,
+            boundary_input=_disabled_boundary_input(
+                interval_delta=0.5,
+                hawkes_boundary_state=_valid_request_model().boundary_input.hawkes_boundary_state,
             ),
+            model_parameters=_valid_request_model().model_parameters,
+            interval_delta=0.5,
+        ),
+        hourly_factor_contract=build_hourly_factor_contract(
+            request_start_utc_nanos=1_706_882_400_000_000_000,
+            interval_duration_nanos=1_800_000_000_000,
+            s_h=(1.1,),
+            known_component_nu_h=(0.03,),
+            surprise_component_nu_h=(0.05,),
         ),
         optional_output_selection=VanillaOptionPricingOptionalOutputSelection(
             include_transform_diagnostics=True,
@@ -439,12 +446,11 @@ def _valid_runtime_execution_input_model() -> VanillaOptionPricingExecutionInput
             ),
             model_parameters=_valid_request_model().model_parameters,
         ),
-        interval_factors=(
-            VanillaOptionPricingIntervalFactors(
-                s_h=1.0,
-                nu_h_known=0.0,
-                nu_h_surprise=0.0,
-            ),
+        hourly_factor_contract=build_hourly_factor_contract(
+            request_start_utc_nanos=1_706_882_400_000_000_000,
+            s_h=(1.0,),
+            known_component_nu_h=(0.0,),
+            surprise_component_nu_h=(0.0,),
         ),
         optional_output_selection=VanillaOptionPricingOptionalOutputSelection(
             include_transform_diagnostics=True,
@@ -523,12 +529,11 @@ def _anchored_runtime_execution_input_model() -> VanillaOptionPricingExecutionIn
             ),
             model_parameters=_anchored_request_model().model_parameters,
         ),
-        interval_factors=(
-            VanillaOptionPricingIntervalFactors(
-                s_h=1.0,
-                nu_h_known=0.0,
-                nu_h_surprise=0.0,
-            ),
+        hourly_factor_contract=build_hourly_factor_contract(
+            request_start_utc_nanos=1_706_882_400_000_000_000,
+            s_h=(1.0,),
+            known_component_nu_h=(0.0,),
+            surprise_component_nu_h=(0.0,),
         ),
         optional_output_selection=VanillaOptionPricingOptionalOutputSelection(
             include_transform_diagnostics=True,

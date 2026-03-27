@@ -5,7 +5,7 @@
     ],
     "module_name": "janiform"
   },
-  "public_api_surface_document_version": "python.public_api_surface_map.pre_v0_1.milestone_2",
+  "public_api_surface_document_version": "python.public_api_surface_map.pre_v0_1.control_plane_reset.v1",
   "public_modules": {
     "janiform.calendar": {
       "exports": [
@@ -426,12 +426,15 @@
             "session_resolution",
             "preparation_diagnostics",
             "preparation_provenance",
-            "execution_input",
+            "staged_request",
+            "prepared_data_reference",
+            "prepared_payload_path",
+            "staged_execution_input_path",
             "staged_response",
             "stage_report_payloads"
           ],
           "kind": "contract_model",
-          "signature": "(run_id: 'str', workflow_scope: 'CalibrationMarketDataWorkflowScope', success: 'bool', resolved_configuration: 'ResolvedPresetWorkflowConfiguration', session_resolution: 'MarketDataSessionResolution', preparation_diagnostics: 'MarketDataCalibrationPreparationDiagnostics', preparation_provenance: 'MarketDataCalibrationPreparationProvenance', execution_input: 'StagedCalibrationExecutionInput', staged_response: 'StagedCalibrationResponse', stage_report_payloads: 'tuple[dict[str, Any], ...]') -> 'None'"
+          "signature": "(run_id: 'str', workflow_scope: 'CalibrationMarketDataWorkflowScope', success: 'bool', resolved_configuration: 'ResolvedPresetWorkflowConfiguration', session_resolution: 'MarketDataSessionResolution', preparation_diagnostics: 'MarketDataCalibrationPreparationDiagnostics', preparation_provenance: 'MarketDataCalibrationPreparationProvenance', staged_request: 'StagedCalibrationRequest', prepared_data_reference: 'str | None', prepared_payload_path: 'str | None', staged_execution_input_path: 'str | None', staged_response: 'StagedCalibrationResponse', stage_report_payloads: 'tuple[dict[str, Any], ...]') -> 'None'"
         },
         "JaniformModel": {
           "field_names": [
@@ -588,13 +591,18 @@
           "field_names": [
             "schema_version",
             "request",
-            "execution_input",
+            "staged_request",
             "diagnostics",
             "provenance",
-            "session_resolution"
+            "session_resolution",
+            "fit_warning",
+            "reference_price",
+            "prepared_data_reference",
+            "prepared_payload_path",
+            "staged_execution_input_path"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: 'str', request: 'MarketDataCalibrationRequest', execution_input: 'StagedCalibrationExecutionInput', diagnostics: 'MarketDataCalibrationPreparationDiagnostics', provenance: 'MarketDataCalibrationPreparationProvenance', session_resolution: 'MarketDataSessionResolution') -> 'None'"
+          "signature": "(schema_version: 'str', request: 'MarketDataCalibrationRequest', staged_request: 'StagedCalibrationRequest', diagnostics: 'MarketDataCalibrationPreparationDiagnostics', provenance: 'MarketDataCalibrationPreparationProvenance', session_resolution: 'MarketDataSessionResolution', fit_warning: 'Optional[str]' = None, reference_price: 'Optional[float]' = None, prepared_data_reference: 'Optional[str]' = None, prepared_payload_path: 'Optional[str]' = None, staged_execution_input_path: 'Optional[str]' = None) -> 'None'"
         },
         "PresetCategory": {
           "kind": "enum",
@@ -678,14 +686,11 @@
           "field_names": [
             "schema_version",
             "request",
-            "seasonality_stage_input",
-            "hawkes_candidate_inputs",
-            "return_components_candidate_generation_input",
-            "mean_reversion_stage_input",
+            "prepared_payload_file",
             "runtime_resources"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: 'str', request: 'StagedCalibrationRequest', seasonality_stage_input: 'Optional[CalibrationSeasonalityStageExecutionInput]' = None, hawkes_candidate_inputs: 'Optional[tuple[CalibrationHawkesStageCandidateInput, ...]]' = None, return_components_candidate_generation_input: 'Optional[CalibrationReturnComponentsStageCandidateGenerationInput]' = None, mean_reversion_stage_input: 'Optional[CalibrationMeanReversionStageExecutionInput]' = None, runtime_resources: 'Optional[CalibrationStagedExecutionRuntimeResources]' = None) -> 'None'"
+          "signature": "(schema_version: 'str', request: 'StagedCalibrationRequest', prepared_payload_file: 'CalibrationPreparedExecutionPayloadFileReference', runtime_resources: 'Optional[CalibrationStagedExecutionRuntimeResources]' = None) -> 'None'"
         },
         "StagedCalibrationRequest": {
           "field_names": [
@@ -772,12 +777,15 @@
             "session_resolution",
             "preparation_diagnostics",
             "preparation_provenance",
-            "execution_input",
+            "staged_request",
+            "prepared_data_reference",
+            "prepared_payload_path",
+            "staged_execution_input_path",
             "staged_response",
             "stage_report_payloads"
           ],
           "kind": "contract_model",
-          "signature": "(run_id: 'str', workflow_scope: 'CalibrationMarketDataWorkflowScope', success: 'bool', resolved_configuration: 'ResolvedPresetWorkflowConfiguration', session_resolution: 'MarketDataSessionResolution', preparation_diagnostics: 'MarketDataCalibrationPreparationDiagnostics', preparation_provenance: 'MarketDataCalibrationPreparationProvenance', execution_input: 'StagedCalibrationExecutionInput', staged_response: 'StagedCalibrationResponse', stage_report_payloads: 'tuple[dict[str, Any], ...]') -> 'None'"
+          "signature": "(run_id: 'str', workflow_scope: 'CalibrationMarketDataWorkflowScope', success: 'bool', resolved_configuration: 'ResolvedPresetWorkflowConfiguration', session_resolution: 'MarketDataSessionResolution', preparation_diagnostics: 'MarketDataCalibrationPreparationDiagnostics', preparation_provenance: 'MarketDataCalibrationPreparationProvenance', staged_request: 'StagedCalibrationRequest', prepared_data_reference: 'str | None', prepared_payload_path: 'str | None', staged_execution_input_path: 'str | None', staged_response: 'StagedCalibrationResponse', stage_report_payloads: 'tuple[dict[str, Any], ...]') -> 'None'"
         },
         "JaniformModel": {
           "field_names": [
@@ -878,12 +886,15 @@
             "session_resolution",
             "preparation_diagnostics",
             "preparation_provenance",
-            "execution_input",
+            "staged_request",
+            "prepared_data_reference",
+            "prepared_payload_path",
+            "staged_execution_input_path",
             "staged_response",
             "stage_report_payloads"
           ],
           "kind": "contract_model",
-          "signature": "(run_id: 'str', workflow_scope: 'CalibrationMarketDataWorkflowScope', success: 'bool', resolved_configuration: 'ResolvedPresetWorkflowConfiguration', session_resolution: 'MarketDataSessionResolution', preparation_diagnostics: 'MarketDataCalibrationPreparationDiagnostics', preparation_provenance: 'MarketDataCalibrationPreparationProvenance', execution_input: 'StagedCalibrationExecutionInput', staged_response: 'StagedCalibrationResponse', stage_report_payloads: 'tuple[dict[str, Any], ...]') -> 'None'"
+          "signature": "(run_id: 'str', workflow_scope: 'CalibrationMarketDataWorkflowScope', success: 'bool', resolved_configuration: 'ResolvedPresetWorkflowConfiguration', session_resolution: 'MarketDataSessionResolution', preparation_diagnostics: 'MarketDataCalibrationPreparationDiagnostics', preparation_provenance: 'MarketDataCalibrationPreparationProvenance', staged_request: 'StagedCalibrationRequest', prepared_data_reference: 'str | None', prepared_payload_path: 'str | None', staged_execution_input_path: 'str | None', staged_response: 'StagedCalibrationResponse', stage_report_payloads: 'tuple[dict[str, Any], ...]') -> 'None'"
         }
       }
     },
@@ -1134,7 +1145,7 @@
             "material_close_open_gap_count"
           ],
           "kind": "contract_model",
-          "signature": "(workflow_scope: 'CalibrationMarketDataWorkflowScope', selected_stages: 'tuple[Any, ...]', executed_preprocessing_steps: 'tuple[str, ...]', tick_record_count: 'int', option_surface_record_count: 'int', known_news_event_count: 'int', known_news_events_outside_source_window_count: 'int', session_open_tick_count: 'int', session_closed_tick_count: 'int', known_news_open_event_count: 'int', known_news_closed_event_count: 'int', seasonality_overlay_count: 'int', hawkes_candidate_count: 'int', known_news_return_sample_count: 'int', intraday_jump_candidate_count: 'int', close_open_boundary_observation_count: 'int', material_close_open_gap_count: 'int') -> 'None'"
+          "signature": "(workflow_scope: 'CalibrationMarketDataWorkflowScope', selected_stages: 'tuple[CalibrationStage, ...]', executed_preprocessing_steps: 'tuple[str, ...]', tick_record_count: 'int', option_surface_record_count: 'int', known_news_event_count: 'int', known_news_events_outside_source_window_count: 'int', session_open_tick_count: 'int', session_closed_tick_count: 'int', known_news_open_event_count: 'int', known_news_closed_event_count: 'int', seasonality_overlay_count: 'int', hawkes_candidate_count: 'int', known_news_return_sample_count: 'int', intraday_jump_candidate_count: 'int', close_open_boundary_observation_count: 'int', material_close_open_gap_count: 'int') -> 'None'"
         },
         "MarketDataCalibrationPreparationProvenance": {
           "field_names": [
@@ -1151,7 +1162,7 @@
             "deterministic_defaults_applied"
           ],
           "kind": "contract_model",
-          "signature": "(tick_data_summary: 'MarketDataCalibrationSourceSummary', option_surface_summary: 'Optional[MarketDataCalibrationSourceSummary]', known_news_summary: 'Optional[MarketDataCalibrationSourceSummary]', normalization_policy: 'CalibrationMarketDataNormalizationPolicy', workflow_scope: 'CalibrationMarketDataWorkflowScope', selected_stages: 'tuple[Any, ...]', session_definition_path: 'Optional[str]', derived_trade_events_data_reference: 'str', derived_option_surface_data_reference: 'Optional[str]', derivation_policies: 'tuple[str, ...]', deterministic_defaults_applied: 'tuple[str, ...]') -> 'None'"
+          "signature": "(tick_data_summary: 'MarketDataCalibrationSourceSummary', option_surface_summary: 'Optional[MarketDataCalibrationSourceSummary]', known_news_summary: 'Optional[MarketDataCalibrationSourceSummary]', normalization_policy: 'CalibrationMarketDataNormalizationPolicy', workflow_scope: 'CalibrationMarketDataWorkflowScope', selected_stages: 'tuple[CalibrationStage, ...]', session_definition_path: 'Optional[str]', derived_trade_events_data_reference: 'str', derived_option_surface_data_reference: 'Optional[str]', derivation_policies: 'tuple[str, ...]', deterministic_defaults_applied: 'tuple[str, ...]') -> 'None'"
         },
         "MarketDataCalibrationRequest": {
           "field_names": [
@@ -1190,13 +1201,18 @@
           "field_names": [
             "schema_version",
             "request",
-            "execution_input",
+            "staged_request",
             "diagnostics",
             "provenance",
-            "session_resolution"
+            "session_resolution",
+            "fit_warning",
+            "reference_price",
+            "prepared_data_reference",
+            "prepared_payload_path",
+            "staged_execution_input_path"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: 'str', request: 'MarketDataCalibrationRequest', execution_input: 'StagedCalibrationExecutionInput', diagnostics: 'MarketDataCalibrationPreparationDiagnostics', provenance: 'MarketDataCalibrationPreparationProvenance', session_resolution: 'MarketDataSessionResolution') -> 'None'"
+          "signature": "(schema_version: 'str', request: 'MarketDataCalibrationRequest', staged_request: 'StagedCalibrationRequest', diagnostics: 'MarketDataCalibrationPreparationDiagnostics', provenance: 'MarketDataCalibrationPreparationProvenance', session_resolution: 'MarketDataSessionResolution', fit_warning: 'Optional[str]' = None, reference_price: 'Optional[float]' = None, prepared_data_reference: 'Optional[str]' = None, prepared_payload_path: 'Optional[str]' = None, staged_execution_input_path: 'Optional[str]' = None) -> 'None'"
         },
         "deserialize_market_data_calibration_request": {
           "kind": "function",
@@ -1535,16 +1551,10 @@
         "MarketDataTranslationDiagnostics",
         "MarketDataTranslationProvenance",
         "MarketDataTranslationResult",
-        "translate_market_data_request_to_staged_execution_input"
+        "translate_market_data_request_to_prepared_calibration"
       ],
       "module_name": "janiform.calibration.market_data.translation",
-      "schema_identifiers": [
-        {
-          "name": "CALIBRATION_STAGED_EXECUTION_INPUT_SCHEMA_VERSION",
-          "public_exported": false,
-          "value": "calibration.orchestration.staged_execution_input.v1"
-        }
-      ],
+      "schema_identifiers": [],
       "symbols": {
         "MarketDataTranslationDiagnostics": {
           "field_names": [
@@ -1588,18 +1598,18 @@
         },
         "MarketDataTranslationResult": {
           "field_names": [
-            "calendar_registry",
+            "staged_request",
+            "prepared_handle",
             "session_resolution",
-            "execution_input",
             "diagnostics",
             "provenance",
             "fit_warning",
             "reference_price"
           ],
           "kind": "contract_model",
-          "signature": "(calendar_registry: 'CalendarRegistry', session_resolution: 'MarketDataSessionResolution', execution_input: 'StagedCalibrationExecutionInput', diagnostics: 'MarketDataTranslationDiagnostics', provenance: 'MarketDataTranslationProvenance', fit_warning: 'Optional[str]', reference_price: 'Optional[float]') -> 'None'"
+          "signature": "(staged_request: 'StagedCalibrationRequest', prepared_handle: 'PreparedCalibrationExecutionHandle', session_resolution: 'MarketDataSessionResolution', diagnostics: 'MarketDataTranslationDiagnostics', provenance: 'MarketDataTranslationProvenance', fit_warning: 'Optional[str]', reference_price: 'Optional[float]') -> 'None'"
         },
-        "translate_market_data_request_to_staged_execution_input": {
+        "translate_market_data_request_to_prepared_calibration": {
           "kind": "function",
           "signature": "(request: 'MarketDataCalibrationRequest', *, cpu_count: 'int | None' = None) -> 'MarketDataTranslationResult'"
         }
@@ -1644,7 +1654,7 @@
             "material_close_open_gap_count"
           ],
           "kind": "contract_model",
-          "signature": "(workflow_scope: 'CalibrationMarketDataWorkflowScope', selected_stages: 'tuple[Any, ...]', executed_preprocessing_steps: 'tuple[str, ...]', tick_record_count: 'int', option_surface_record_count: 'int', known_news_event_count: 'int', known_news_events_outside_source_window_count: 'int', session_open_tick_count: 'int', session_closed_tick_count: 'int', known_news_open_event_count: 'int', known_news_closed_event_count: 'int', seasonality_overlay_count: 'int', hawkes_candidate_count: 'int', known_news_return_sample_count: 'int', intraday_jump_candidate_count: 'int', close_open_boundary_observation_count: 'int', material_close_open_gap_count: 'int') -> 'None'"
+          "signature": "(workflow_scope: 'CalibrationMarketDataWorkflowScope', selected_stages: 'tuple[CalibrationStage, ...]', executed_preprocessing_steps: 'tuple[str, ...]', tick_record_count: 'int', option_surface_record_count: 'int', known_news_event_count: 'int', known_news_events_outside_source_window_count: 'int', session_open_tick_count: 'int', session_closed_tick_count: 'int', known_news_open_event_count: 'int', known_news_closed_event_count: 'int', seasonality_overlay_count: 'int', hawkes_candidate_count: 'int', known_news_return_sample_count: 'int', intraday_jump_candidate_count: 'int', close_open_boundary_observation_count: 'int', material_close_open_gap_count: 'int') -> 'None'"
         },
         "MarketDataCalibrationPreparationProvenance": {
           "field_names": [
@@ -1661,7 +1671,7 @@
             "deterministic_defaults_applied"
           ],
           "kind": "contract_model",
-          "signature": "(tick_data_summary: 'MarketDataCalibrationSourceSummary', option_surface_summary: 'Optional[MarketDataCalibrationSourceSummary]', known_news_summary: 'Optional[MarketDataCalibrationSourceSummary]', normalization_policy: 'CalibrationMarketDataNormalizationPolicy', workflow_scope: 'CalibrationMarketDataWorkflowScope', selected_stages: 'tuple[Any, ...]', session_definition_path: 'Optional[str]', derived_trade_events_data_reference: 'str', derived_option_surface_data_reference: 'Optional[str]', derivation_policies: 'tuple[str, ...]', deterministic_defaults_applied: 'tuple[str, ...]') -> 'None'"
+          "signature": "(tick_data_summary: 'MarketDataCalibrationSourceSummary', option_surface_summary: 'Optional[MarketDataCalibrationSourceSummary]', known_news_summary: 'Optional[MarketDataCalibrationSourceSummary]', normalization_policy: 'CalibrationMarketDataNormalizationPolicy', workflow_scope: 'CalibrationMarketDataWorkflowScope', selected_stages: 'tuple[CalibrationStage, ...]', session_definition_path: 'Optional[str]', derived_trade_events_data_reference: 'str', derived_option_surface_data_reference: 'Optional[str]', derivation_policies: 'tuple[str, ...]', deterministic_defaults_applied: 'tuple[str, ...]') -> 'None'"
         },
         "MarketDataCalibrationSourceSummary": {
           "field_names": [
@@ -1683,13 +1693,18 @@
           "field_names": [
             "schema_version",
             "request",
-            "execution_input",
+            "staged_request",
             "diagnostics",
             "provenance",
-            "session_resolution"
+            "session_resolution",
+            "fit_warning",
+            "reference_price",
+            "prepared_data_reference",
+            "prepared_payload_path",
+            "staged_execution_input_path"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: 'str', request: 'MarketDataCalibrationRequest', execution_input: 'StagedCalibrationExecutionInput', diagnostics: 'MarketDataCalibrationPreparationDiagnostics', provenance: 'MarketDataCalibrationPreparationProvenance', session_resolution: 'MarketDataSessionResolution') -> 'None'"
+          "signature": "(schema_version: 'str', request: 'MarketDataCalibrationRequest', staged_request: 'StagedCalibrationRequest', diagnostics: 'MarketDataCalibrationPreparationDiagnostics', provenance: 'MarketDataCalibrationPreparationProvenance', session_resolution: 'MarketDataSessionResolution', fit_warning: 'Optional[str]' = None, reference_price: 'Optional[float]' = None, prepared_data_reference: 'Optional[str]' = None, prepared_payload_path: 'Optional[str]' = None, staged_execution_input_path: 'Optional[str]' = None) -> 'None'"
         },
         "prepare_market_data_calibration": {
           "kind": "function",
@@ -3099,42 +3114,16 @@
         "CALIBRATION_STAGED_EXECUTION_INPUT_SCHEMA_VERSION",
         "CALIBRATION_STAGED_RUN_REPORT_SCHEMA_VERSION",
         "CalibrationCheckpointMetadata",
-        "CalibrationCoupledGapMarkConfiguration",
-        "CalibrationDayOfWeekSeasonalityEstimatorSettings",
-        "CalibrationDayOfYearSeasonalityEstimatorSettings",
-        "CalibrationDoubleExponentialBaseShockConfiguration",
         "CalibrationExecutionMode",
         "CalibrationFailureDetails",
         "CalibrationHandoffTransport",
-        "CalibrationHawkesDirectionalLabelDiagnostics",
-        "CalibrationHawkesObservedSourceRegime",
-        "CalibrationHawkesStageCandidateInput",
-        "CalibrationHawkesStructuredAlphaParameterization",
-        "CalibrationHawkesStructuredRhoParameterization",
-        "CalibrationHawkesStructuredRhoSelfDominancePolicy",
-        "CalibrationIntradaySeasonalityEstimatorSettings",
-        "CalibrationIntradaySmoothingKernel",
-        "CalibrationMeanReversionStageExecutionInput",
-        "CalibrationMeanReversionStageObservation",
-        "CalibrationObjectiveTermInput",
         "CalibrationOptimizerSettings",
+        "CalibrationPreparedExecutionPayloadFileFormat",
+        "CalibrationPreparedExecutionPayloadFileReference",
         "CalibrationResumeSettings",
         "CalibrationResumeSource",
-        "CalibrationReturnComponentsCloseOpenGapDetectionPolicy",
-        "CalibrationReturnComponentsDetectedIntradayJumpCandidate",
-        "CalibrationReturnComponentsKnownNewsCalendarInput",
-        "CalibrationReturnComponentsKnownNewsReturnSample",
-        "CalibrationReturnComponentsObjectiveMetricWeights",
-        "CalibrationReturnComponentsObservedCloseOpenBoundaryObservation",
-        "CalibrationReturnComponentsObservedOpenSessionReturn",
-        "CalibrationReturnComponentsSignalSourceWindow",
-        "CalibrationReturnComponentsStageCandidateGenerationInput",
         "CalibrationRunDataInputs",
         "CalibrationRunSeedSettings",
-        "CalibrationScheduledEventOverlay",
-        "CalibrationSeasonalityStageExecutionInput",
-        "CalibrationSeasonalityStageExecutionSettings",
-        "CalibrationSharedNewsMarkLawConfiguration",
         "CalibrationStage",
         "CalibrationStageExecutionStatus",
         "CalibrationStageHandoff",
@@ -3142,8 +3131,6 @@
         "CalibrationStageSeedOverride",
         "CalibrationStageSolverSettings",
         "CalibrationStagedExecutionRuntimeResources",
-        "CalibrationTimestampEventRecord",
-        "CalibrationTimestampEventSessionFilter",
         "CalibrationTradeSign",
         "StagedCalibrationExecutionInput",
         "StagedCalibrationRequest",
@@ -3204,38 +3191,6 @@
           "kind": "contract_model",
           "signature": "(checkpoint_reference: 'str', completed_stage: 'CalibrationStage', completed_stage_position: 'int', execution_mode: 'CalibrationExecutionMode') -> 'None'"
         },
-        "CalibrationCoupledGapMarkConfiguration": {
-          "field_names": [
-            "sigma_g"
-          ],
-          "kind": "contract_model",
-          "signature": "(sigma_g: 'float') -> 'None'"
-        },
-        "CalibrationDayOfWeekSeasonalityEstimatorSettings": {
-          "field_names": [
-            "minimum_bucket_events",
-            "pseudocount"
-          ],
-          "kind": "contract_model",
-          "signature": "(minimum_bucket_events: 'int', pseudocount: 'float') -> 'None'"
-        },
-        "CalibrationDayOfYearSeasonalityEstimatorSettings": {
-          "field_names": [
-            "minimum_bucket_events",
-            "pseudocount"
-          ],
-          "kind": "contract_model",
-          "signature": "(minimum_bucket_events: 'int', pseudocount: 'float') -> 'None'"
-        },
-        "CalibrationDoubleExponentialBaseShockConfiguration": {
-          "field_names": [
-            "probability_positive",
-            "eta_plus",
-            "eta_minus"
-          ],
-          "kind": "contract_model",
-          "signature": "(probability_positive: 'float', eta_plus: 'float', eta_minus: 'float') -> 'None'"
-        },
         "CalibrationExecutionMode": {
           "kind": "enum",
           "members": [
@@ -3274,134 +3229,6 @@
             }
           ]
         },
-        "CalibrationHawkesDirectionalLabelDiagnostics": {
-          "field_names": [
-            "policy_id",
-            "first_inferred_trade_sign",
-            "provided_label_count",
-            "inferred_label_count",
-            "flat_move_carry_count",
-            "price_up_inference_count",
-            "price_down_inference_count"
-          ],
-          "kind": "contract_model",
-          "signature": "(policy_id: 'str', first_inferred_trade_sign: 'CalibrationTradeSign', provided_label_count: 'int', inferred_label_count: 'int', flat_move_carry_count: 'int', price_up_inference_count: 'int', price_down_inference_count: 'int') -> 'None'"
-        },
-        "CalibrationHawkesObservedSourceRegime": {
-          "field_names": [
-            "observation_duration_hours",
-            "open_session_duration_hours",
-            "total_tick_count",
-            "open_session_tick_count",
-            "closed_session_tick_count",
-            "open_session_buy_tick_count",
-            "open_session_sell_tick_count",
-            "open_session_mean_interarrival_seconds",
-            "open_session_interarrival_coefficient_of_variation",
-            "open_session_short_gap_threshold_seconds",
-            "open_session_short_gap_ratio",
-            "known_news_open_event_count",
-            "open_session_known_news_activity_share"
-          ],
-          "kind": "contract_model",
-          "signature": "(observation_duration_hours: 'float', open_session_duration_hours: 'float', total_tick_count: 'int', open_session_tick_count: 'int', closed_session_tick_count: 'int', open_session_buy_tick_count: 'int', open_session_sell_tick_count: 'int', open_session_mean_interarrival_seconds: 'float', open_session_interarrival_coefficient_of_variation: 'float', open_session_short_gap_threshold_seconds: 'float', open_session_short_gap_ratio: 'float', known_news_open_event_count: 'int', open_session_known_news_activity_share: 'float') -> 'None'"
-        },
-        "CalibrationHawkesStageCandidateInput": {
-          "field_names": [
-            "candidate_id",
-            "lambda_bar",
-            "beta",
-            "structured_alpha",
-            "structured_rho",
-            "source_regime",
-            "directional_label_diagnostics",
-            "self_dominance_policy",
-            "stability_numeric_tolerance"
-          ],
-          "kind": "contract_model",
-          "signature": "(candidate_id: 'str', lambda_bar: 'float', beta: 'float', structured_alpha: 'CalibrationHawkesStructuredAlphaParameterization', structured_rho: 'CalibrationHawkesStructuredRhoParameterization', source_regime: 'CalibrationHawkesObservedSourceRegime', directional_label_diagnostics: 'CalibrationHawkesDirectionalLabelDiagnostics', self_dominance_policy: 'Optional[CalibrationHawkesStructuredRhoSelfDominancePolicy]' = None, stability_numeric_tolerance: 'float' = 0.0) -> 'None'"
-        },
-        "CalibrationHawkesStructuredAlphaParameterization": {
-          "field_names": [
-            "a_self",
-            "a_cross",
-            "delta_self",
-            "delta_cross"
-          ],
-          "kind": "contract_model",
-          "signature": "(a_self: 'float', a_cross: 'float', delta_self: 'float', delta_cross: 'float') -> 'None'"
-        },
-        "CalibrationHawkesStructuredRhoParameterization": {
-          "field_names": [
-            "r_self",
-            "r_cross",
-            "delta_self_r",
-            "delta_cross_r"
-          ],
-          "kind": "contract_model",
-          "signature": "(r_self: 'float', r_cross: 'float', delta_self_r: 'float', delta_cross_r: 'float') -> 'None'"
-        },
-        "CalibrationHawkesStructuredRhoSelfDominancePolicy": {
-          "field_names": [
-            "minimum_self_to_cross_ratio"
-          ],
-          "kind": "contract_model",
-          "signature": "(minimum_self_to_cross_ratio: 'float') -> 'None'"
-        },
-        "CalibrationIntradaySeasonalityEstimatorSettings": {
-          "field_names": [
-            "minutes_per_bin",
-            "smoothing_kernel",
-            "smoothing_bandwidth_bins",
-            "minimum_bin_events",
-            "pseudocount"
-          ],
-          "kind": "contract_model",
-          "signature": "(minutes_per_bin: 'int', smoothing_kernel: 'CalibrationIntradaySmoothingKernel', smoothing_bandwidth_bins: 'float', minimum_bin_events: 'int', pseudocount: 'float') -> 'None'"
-        },
-        "CalibrationIntradaySmoothingKernel": {
-          "kind": "enum",
-          "members": [
-            {
-              "name": "GAUSSIAN",
-              "value": "gaussian"
-            },
-            {
-              "name": "UNIFORM",
-              "value": "uniform"
-            }
-          ]
-        },
-        "CalibrationMeanReversionStageExecutionInput": {
-          "field_names": [
-            "requested_anchor_model_kind",
-            "calibration_grid_kind",
-            "calibration_grid_interval_hours",
-            "source_observation_count",
-            "coverage_ratio",
-            "observations",
-            "disabled_stage_reason"
-          ],
-          "kind": "contract_model",
-          "signature": "(requested_anchor_model_kind: 'MeanReversionAnchorModelKind', calibration_grid_kind: 'str', calibration_grid_interval_hours: 'float', source_observation_count: 'int', coverage_ratio: 'float', observations: 'tuple[CalibrationMeanReversionStageObservation, ...]' = (), disabled_stage_reason: 'Optional[str]' = None) -> 'None'"
-        },
-        "CalibrationMeanReversionStageObservation": {
-          "field_names": [
-            "observation_timestamp_utc_nanos",
-            "observed_log_price"
-          ],
-          "kind": "contract_model",
-          "signature": "(observation_timestamp_utc_nanos: 'int', observed_log_price: 'float') -> 'None'"
-        },
-        "CalibrationObjectiveTermInput": {
-          "field_names": [
-            "term_id",
-            "weight",
-            "observed_score"
-          ],
-          "kind": "contract_model",
-          "signature": "(term_id: 'str', weight: 'float', observed_score: 'float') -> 'None'"
-        },
         "CalibrationOptimizerSettings": {
           "field_names": [
             "solver_name",
@@ -3413,6 +3240,23 @@
           ],
           "kind": "contract_model",
           "signature": "(solver_name: 'str', max_iterations: 'int', cpu_count: 'int', absolute_tolerance: 'float', relative_tolerance: 'float', constraint_penalty_weight: 'float') -> 'None'"
+        },
+        "CalibrationPreparedExecutionPayloadFileFormat": {
+          "kind": "enum",
+          "members": [
+            {
+              "name": "JSON",
+              "value": "json"
+            }
+          ]
+        },
+        "CalibrationPreparedExecutionPayloadFileReference": {
+          "field_names": [
+            "path",
+            "file_format"
+          ],
+          "kind": "contract_model",
+          "signature": "(path: 'str', file_format: 'CalibrationPreparedExecutionPayloadFileFormat' = <CalibrationPreparedExecutionPayloadFileFormat.JSON: 'json'>) -> 'None'"
         },
         "CalibrationResumeSettings": {
           "field_names": [
@@ -3436,96 +3280,6 @@
             }
           ]
         },
-        "CalibrationReturnComponentsCloseOpenGapDetectionPolicy": {
-          "field_names": [
-            "material_gap_absolute_return_tolerance"
-          ],
-          "kind": "contract_model",
-          "signature": "(material_gap_absolute_return_tolerance: 'float') -> 'None'"
-        },
-        "CalibrationReturnComponentsDetectedIntradayJumpCandidate": {
-          "field_names": [
-            "jump_timestamp_utc_nanos",
-            "jump_return",
-            "post_shock_activity_lift"
-          ],
-          "kind": "contract_model",
-          "signature": "(jump_timestamp_utc_nanos: 'int', jump_return: 'float', post_shock_activity_lift: 'float') -> 'None'"
-        },
-        "CalibrationReturnComponentsKnownNewsCalendarInput": {
-          "field_names": [
-            "source_window",
-            "scheduled_event_timestamps_utc_nanos"
-          ],
-          "kind": "contract_model",
-          "signature": "(source_window: 'CalibrationReturnComponentsSignalSourceWindow', scheduled_event_timestamps_utc_nanos: 'tuple[int, ...]') -> 'None'"
-        },
-        "CalibrationReturnComponentsKnownNewsReturnSample": {
-          "field_names": [
-            "event_timestamp_utc_nanos",
-            "open_window_jump_return",
-            "closed_window_gap_return",
-            "post_shock_activity_lift"
-          ],
-          "kind": "contract_model",
-          "signature": "(event_timestamp_utc_nanos: 'int', open_window_jump_return: 'float', closed_window_gap_return: 'float', post_shock_activity_lift: 'float') -> 'None'"
-        },
-        "CalibrationReturnComponentsObjectiveMetricWeights": {
-          "field_names": [
-            "continuous_distribution_fit_weight",
-            "surprise_arrival_fit_weight",
-            "jump_fit_weight",
-            "gap_fit_weight",
-            "activity_coupling_fit_weight",
-            "price_range_sanity_fit_weight"
-          ],
-          "kind": "contract_model",
-          "signature": "(continuous_distribution_fit_weight: 'float', surprise_arrival_fit_weight: 'float', jump_fit_weight: 'float', gap_fit_weight: 'float', activity_coupling_fit_weight: 'float', price_range_sanity_fit_weight: 'float') -> 'None'"
-        },
-        "CalibrationReturnComponentsObservedCloseOpenBoundaryObservation": {
-          "field_names": [
-            "close_timestamp_utc_nanos",
-            "close_price",
-            "open_timestamp_utc_nanos",
-            "open_price",
-            "post_shock_activity_lift"
-          ],
-          "kind": "contract_model",
-          "signature": "(close_timestamp_utc_nanos: 'int', close_price: 'float', open_timestamp_utc_nanos: 'int', open_price: 'float', post_shock_activity_lift: 'float') -> 'None'"
-        },
-        "CalibrationReturnComponentsObservedOpenSessionReturn": {
-          "field_names": [
-            "return_timestamp_utc_nanos",
-            "log_return",
-            "post_shock_activity_lift",
-            "sell_share_proxy"
-          ],
-          "kind": "contract_model",
-          "signature": "(return_timestamp_utc_nanos: 'int', log_return: 'float', post_shock_activity_lift: 'float', sell_share_proxy: 'float') -> 'None'"
-        },
-        "CalibrationReturnComponentsSignalSourceWindow": {
-          "field_names": [
-            "window_start_utc_nanos",
-            "window_end_utc_nanos"
-          ],
-          "kind": "contract_model",
-          "signature": "(window_start_utc_nanos: 'int', window_end_utc_nanos: 'int') -> 'None'"
-        },
-        "CalibrationReturnComponentsStageCandidateGenerationInput": {
-          "field_names": [
-            "known_news_calendar",
-            "realized_known_news_return_samples",
-            "observed_open_session_returns",
-            "detected_intraday_jump_candidates",
-            "observed_close_open_boundary_observations",
-            "close_open_gap_detection_policy",
-            "open_session_sell_share_proxy",
-            "shared_mark_law_template",
-            "objective_metric_weights"
-          ],
-          "kind": "contract_model",
-          "signature": "(known_news_calendar: 'CalibrationReturnComponentsKnownNewsCalendarInput', realized_known_news_return_samples: 'tuple[CalibrationReturnComponentsKnownNewsReturnSample, ...]', observed_open_session_returns: 'tuple[CalibrationReturnComponentsObservedOpenSessionReturn, ...]', detected_intraday_jump_candidates: 'tuple[CalibrationReturnComponentsDetectedIntradayJumpCandidate, ...]', observed_close_open_boundary_observations: 'tuple[CalibrationReturnComponentsObservedCloseOpenBoundaryObservation, ...]', close_open_gap_detection_policy: 'CalibrationReturnComponentsCloseOpenGapDetectionPolicy', open_session_sell_share_proxy: 'float', shared_mark_law_template: 'CalibrationSharedNewsMarkLawConfiguration', objective_metric_weights: 'CalibrationReturnComponentsObjectiveMetricWeights') -> 'None'"
-        },
         "CalibrationRunDataInputs": {
           "field_names": [
             "exchange_code",
@@ -3542,50 +3296,6 @@
           ],
           "kind": "contract_model",
           "signature": "(global_seed: 'int', stage_seed_overrides: 'tuple[CalibrationStageSeedOverride, ...]' = ()) -> 'None'"
-        },
-        "CalibrationScheduledEventOverlay": {
-          "field_names": [
-            "overlay_id",
-            "start_timestamp_utc_nanos",
-            "end_timestamp_utc_nanos",
-            "log_adjustment",
-            "precedence",
-            "enabled",
-            "source_label"
-          ],
-          "kind": "contract_model",
-          "signature": "(overlay_id: 'str', start_timestamp_utc_nanos: 'int', end_timestamp_utc_nanos: 'int', log_adjustment: 'float', precedence: 'int', enabled: 'bool', source_label: 'str') -> 'None'"
-        },
-        "CalibrationSeasonalityStageExecutionInput": {
-          "field_names": [
-            "timestamp_event_records",
-            "scheduled_event_overlays",
-            "settings",
-            "dataset_id_override",
-            "estimator_version_override"
-          ],
-          "kind": "contract_model",
-          "signature": "(timestamp_event_records: 'tuple[CalibrationTimestampEventRecord, ...]', scheduled_event_overlays: 'tuple[CalibrationScheduledEventOverlay, ...]' = (), settings: 'Optional[CalibrationSeasonalityStageExecutionSettings]' = None, dataset_id_override: 'Optional[str]' = None, estimator_version_override: 'Optional[str]' = None) -> 'None'"
-        },
-        "CalibrationSeasonalityStageExecutionSettings": {
-          "field_names": [
-            "session_filter",
-            "sparse_hour_event_threshold",
-            "intraday_settings",
-            "day_of_week_settings",
-            "day_of_year_settings"
-          ],
-          "kind": "contract_model",
-          "signature": "(session_filter: 'CalibrationTimestampEventSessionFilter', sparse_hour_event_threshold: 'int', intraday_settings: 'CalibrationIntradaySeasonalityEstimatorSettings', day_of_week_settings: 'CalibrationDayOfWeekSeasonalityEstimatorSettings', day_of_year_settings: 'CalibrationDayOfYearSeasonalityEstimatorSettings') -> 'None'"
-        },
-        "CalibrationSharedNewsMarkLawConfiguration": {
-          "field_names": [
-            "gamma_severity_marks",
-            "double_exponential_base_shock",
-            "coupled_gap_marks"
-          ],
-          "kind": "contract_model",
-          "signature": "(gamma_severity_marks: 'GammaSeverityMarkConfiguration', double_exponential_base_shock: 'CalibrationDoubleExponentialBaseShockConfiguration', coupled_gap_marks: 'CalibrationCoupledGapMarkConfiguration') -> 'None'"
         },
         "CalibrationStage": {
           "kind": "enum",
@@ -3671,31 +3381,6 @@
           "kind": "contract_model",
           "signature": "(disk_checkpoint_directory: 'Optional[str]' = None) -> 'None'"
         },
-        "CalibrationTimestampEventRecord": {
-          "field_names": [
-            "source_record_position",
-            "timestamp_utc_nanos"
-          ],
-          "kind": "contract_model",
-          "signature": "(source_record_position: 'int', timestamp_utc_nanos: 'int') -> 'None'"
-        },
-        "CalibrationTimestampEventSessionFilter": {
-          "kind": "enum",
-          "members": [
-            {
-              "name": "ALL",
-              "value": "all"
-            },
-            {
-              "name": "OPEN_ONLY",
-              "value": "open_only"
-            },
-            {
-              "name": "CLOSED_ONLY",
-              "value": "closed_only"
-            }
-          ]
-        },
         "CalibrationTradeSign": {
           "kind": "enum",
           "members": [
@@ -3713,14 +3398,11 @@
           "field_names": [
             "schema_version",
             "request",
-            "seasonality_stage_input",
-            "hawkes_candidate_inputs",
-            "return_components_candidate_generation_input",
-            "mean_reversion_stage_input",
+            "prepared_payload_file",
             "runtime_resources"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: 'str', request: 'StagedCalibrationRequest', seasonality_stage_input: 'Optional[CalibrationSeasonalityStageExecutionInput]' = None, hawkes_candidate_inputs: 'Optional[tuple[CalibrationHawkesStageCandidateInput, ...]]' = None, return_components_candidate_generation_input: 'Optional[CalibrationReturnComponentsStageCandidateGenerationInput]' = None, mean_reversion_stage_input: 'Optional[CalibrationMeanReversionStageExecutionInput]' = None, runtime_resources: 'Optional[CalibrationStagedExecutionRuntimeResources]' = None) -> 'None'"
+          "signature": "(schema_version: 'str', request: 'StagedCalibrationRequest', prepared_payload_file: 'CalibrationPreparedExecutionPayloadFileReference', runtime_resources: 'Optional[CalibrationStagedExecutionRuntimeResources]' = None) -> 'None'"
         },
         "StagedCalibrationRequest": {
           "field_names": [
@@ -4015,37 +3697,9 @@
     },
     "janiform.calibration.staged.inputs": {
       "exports": [
-        "CalibrationCoupledGapMarkConfiguration",
-        "CalibrationDayOfWeekSeasonalityEstimatorSettings",
-        "CalibrationDayOfYearSeasonalityEstimatorSettings",
-        "CalibrationDoubleExponentialBaseShockConfiguration",
-        "CalibrationHawkesDirectionalLabelDiagnostics",
-        "CalibrationHawkesObservedSourceRegime",
-        "CalibrationHawkesStageCandidateInput",
-        "CalibrationHawkesStructuredAlphaParameterization",
-        "CalibrationHawkesStructuredRhoParameterization",
-        "CalibrationHawkesStructuredRhoSelfDominancePolicy",
-        "CalibrationIntradaySeasonalityEstimatorSettings",
-        "CalibrationIntradaySmoothingKernel",
-        "CalibrationMeanReversionStageExecutionInput",
-        "CalibrationMeanReversionStageObservation",
-        "CalibrationObjectiveTermInput",
-        "CalibrationReturnComponentsCloseOpenGapDetectionPolicy",
-        "CalibrationReturnComponentsDetectedIntradayJumpCandidate",
-        "CalibrationReturnComponentsKnownNewsCalendarInput",
-        "CalibrationReturnComponentsKnownNewsReturnSample",
-        "CalibrationReturnComponentsObjectiveMetricWeights",
-        "CalibrationReturnComponentsObservedCloseOpenBoundaryObservation",
-        "CalibrationReturnComponentsObservedOpenSessionReturn",
-        "CalibrationReturnComponentsSignalSourceWindow",
-        "CalibrationReturnComponentsStageCandidateGenerationInput",
-        "CalibrationScheduledEventOverlay",
-        "CalibrationSeasonalityStageExecutionInput",
-        "CalibrationSeasonalityStageExecutionSettings",
-        "CalibrationSharedNewsMarkLawConfiguration",
+        "CalibrationPreparedExecutionPayloadFileFormat",
+        "CalibrationPreparedExecutionPayloadFileReference",
         "CalibrationStagedExecutionRuntimeResources",
-        "CalibrationTimestampEventRecord",
-        "CalibrationTimestampEventSessionFilter",
         "StagedCalibrationExecutionInput",
         "deserialize_staged_calibration_execution_input",
         "serialize_staged_calibration_execution_input",
@@ -4060,299 +3714,22 @@
         }
       ],
       "symbols": {
-        "CalibrationCoupledGapMarkConfiguration": {
-          "field_names": [
-            "sigma_g"
-          ],
-          "kind": "contract_model",
-          "signature": "(sigma_g: 'float') -> 'None'"
-        },
-        "CalibrationDayOfWeekSeasonalityEstimatorSettings": {
-          "field_names": [
-            "minimum_bucket_events",
-            "pseudocount"
-          ],
-          "kind": "contract_model",
-          "signature": "(minimum_bucket_events: 'int', pseudocount: 'float') -> 'None'"
-        },
-        "CalibrationDayOfYearSeasonalityEstimatorSettings": {
-          "field_names": [
-            "minimum_bucket_events",
-            "pseudocount"
-          ],
-          "kind": "contract_model",
-          "signature": "(minimum_bucket_events: 'int', pseudocount: 'float') -> 'None'"
-        },
-        "CalibrationDoubleExponentialBaseShockConfiguration": {
-          "field_names": [
-            "probability_positive",
-            "eta_plus",
-            "eta_minus"
-          ],
-          "kind": "contract_model",
-          "signature": "(probability_positive: 'float', eta_plus: 'float', eta_minus: 'float') -> 'None'"
-        },
-        "CalibrationHawkesDirectionalLabelDiagnostics": {
-          "field_names": [
-            "policy_id",
-            "first_inferred_trade_sign",
-            "provided_label_count",
-            "inferred_label_count",
-            "flat_move_carry_count",
-            "price_up_inference_count",
-            "price_down_inference_count"
-          ],
-          "kind": "contract_model",
-          "signature": "(policy_id: 'str', first_inferred_trade_sign: 'CalibrationTradeSign', provided_label_count: 'int', inferred_label_count: 'int', flat_move_carry_count: 'int', price_up_inference_count: 'int', price_down_inference_count: 'int') -> 'None'"
-        },
-        "CalibrationHawkesObservedSourceRegime": {
-          "field_names": [
-            "observation_duration_hours",
-            "open_session_duration_hours",
-            "total_tick_count",
-            "open_session_tick_count",
-            "closed_session_tick_count",
-            "open_session_buy_tick_count",
-            "open_session_sell_tick_count",
-            "open_session_mean_interarrival_seconds",
-            "open_session_interarrival_coefficient_of_variation",
-            "open_session_short_gap_threshold_seconds",
-            "open_session_short_gap_ratio",
-            "known_news_open_event_count",
-            "open_session_known_news_activity_share"
-          ],
-          "kind": "contract_model",
-          "signature": "(observation_duration_hours: 'float', open_session_duration_hours: 'float', total_tick_count: 'int', open_session_tick_count: 'int', closed_session_tick_count: 'int', open_session_buy_tick_count: 'int', open_session_sell_tick_count: 'int', open_session_mean_interarrival_seconds: 'float', open_session_interarrival_coefficient_of_variation: 'float', open_session_short_gap_threshold_seconds: 'float', open_session_short_gap_ratio: 'float', known_news_open_event_count: 'int', open_session_known_news_activity_share: 'float') -> 'None'"
-        },
-        "CalibrationHawkesStageCandidateInput": {
-          "field_names": [
-            "candidate_id",
-            "lambda_bar",
-            "beta",
-            "structured_alpha",
-            "structured_rho",
-            "source_regime",
-            "directional_label_diagnostics",
-            "self_dominance_policy",
-            "stability_numeric_tolerance"
-          ],
-          "kind": "contract_model",
-          "signature": "(candidate_id: 'str', lambda_bar: 'float', beta: 'float', structured_alpha: 'CalibrationHawkesStructuredAlphaParameterization', structured_rho: 'CalibrationHawkesStructuredRhoParameterization', source_regime: 'CalibrationHawkesObservedSourceRegime', directional_label_diagnostics: 'CalibrationHawkesDirectionalLabelDiagnostics', self_dominance_policy: 'Optional[CalibrationHawkesStructuredRhoSelfDominancePolicy]' = None, stability_numeric_tolerance: 'float' = 0.0) -> 'None'"
-        },
-        "CalibrationHawkesStructuredAlphaParameterization": {
-          "field_names": [
-            "a_self",
-            "a_cross",
-            "delta_self",
-            "delta_cross"
-          ],
-          "kind": "contract_model",
-          "signature": "(a_self: 'float', a_cross: 'float', delta_self: 'float', delta_cross: 'float') -> 'None'"
-        },
-        "CalibrationHawkesStructuredRhoParameterization": {
-          "field_names": [
-            "r_self",
-            "r_cross",
-            "delta_self_r",
-            "delta_cross_r"
-          ],
-          "kind": "contract_model",
-          "signature": "(r_self: 'float', r_cross: 'float', delta_self_r: 'float', delta_cross_r: 'float') -> 'None'"
-        },
-        "CalibrationHawkesStructuredRhoSelfDominancePolicy": {
-          "field_names": [
-            "minimum_self_to_cross_ratio"
-          ],
-          "kind": "contract_model",
-          "signature": "(minimum_self_to_cross_ratio: 'float') -> 'None'"
-        },
-        "CalibrationIntradaySeasonalityEstimatorSettings": {
-          "field_names": [
-            "minutes_per_bin",
-            "smoothing_kernel",
-            "smoothing_bandwidth_bins",
-            "minimum_bin_events",
-            "pseudocount"
-          ],
-          "kind": "contract_model",
-          "signature": "(minutes_per_bin: 'int', smoothing_kernel: 'CalibrationIntradaySmoothingKernel', smoothing_bandwidth_bins: 'float', minimum_bin_events: 'int', pseudocount: 'float') -> 'None'"
-        },
-        "CalibrationIntradaySmoothingKernel": {
+        "CalibrationPreparedExecutionPayloadFileFormat": {
           "kind": "enum",
           "members": [
             {
-              "name": "GAUSSIAN",
-              "value": "gaussian"
-            },
-            {
-              "name": "UNIFORM",
-              "value": "uniform"
+              "name": "JSON",
+              "value": "json"
             }
           ]
         },
-        "CalibrationMeanReversionStageExecutionInput": {
+        "CalibrationPreparedExecutionPayloadFileReference": {
           "field_names": [
-            "requested_anchor_model_kind",
-            "calibration_grid_kind",
-            "calibration_grid_interval_hours",
-            "source_observation_count",
-            "coverage_ratio",
-            "observations",
-            "disabled_stage_reason"
+            "path",
+            "file_format"
           ],
           "kind": "contract_model",
-          "signature": "(requested_anchor_model_kind: 'MeanReversionAnchorModelKind', calibration_grid_kind: 'str', calibration_grid_interval_hours: 'float', source_observation_count: 'int', coverage_ratio: 'float', observations: 'tuple[CalibrationMeanReversionStageObservation, ...]' = (), disabled_stage_reason: 'Optional[str]' = None) -> 'None'"
-        },
-        "CalibrationMeanReversionStageObservation": {
-          "field_names": [
-            "observation_timestamp_utc_nanos",
-            "observed_log_price"
-          ],
-          "kind": "contract_model",
-          "signature": "(observation_timestamp_utc_nanos: 'int', observed_log_price: 'float') -> 'None'"
-        },
-        "CalibrationObjectiveTermInput": {
-          "field_names": [
-            "term_id",
-            "weight",
-            "observed_score"
-          ],
-          "kind": "contract_model",
-          "signature": "(term_id: 'str', weight: 'float', observed_score: 'float') -> 'None'"
-        },
-        "CalibrationReturnComponentsCloseOpenGapDetectionPolicy": {
-          "field_names": [
-            "material_gap_absolute_return_tolerance"
-          ],
-          "kind": "contract_model",
-          "signature": "(material_gap_absolute_return_tolerance: 'float') -> 'None'"
-        },
-        "CalibrationReturnComponentsDetectedIntradayJumpCandidate": {
-          "field_names": [
-            "jump_timestamp_utc_nanos",
-            "jump_return",
-            "post_shock_activity_lift"
-          ],
-          "kind": "contract_model",
-          "signature": "(jump_timestamp_utc_nanos: 'int', jump_return: 'float', post_shock_activity_lift: 'float') -> 'None'"
-        },
-        "CalibrationReturnComponentsKnownNewsCalendarInput": {
-          "field_names": [
-            "source_window",
-            "scheduled_event_timestamps_utc_nanos"
-          ],
-          "kind": "contract_model",
-          "signature": "(source_window: 'CalibrationReturnComponentsSignalSourceWindow', scheduled_event_timestamps_utc_nanos: 'tuple[int, ...]') -> 'None'"
-        },
-        "CalibrationReturnComponentsKnownNewsReturnSample": {
-          "field_names": [
-            "event_timestamp_utc_nanos",
-            "open_window_jump_return",
-            "closed_window_gap_return",
-            "post_shock_activity_lift"
-          ],
-          "kind": "contract_model",
-          "signature": "(event_timestamp_utc_nanos: 'int', open_window_jump_return: 'float', closed_window_gap_return: 'float', post_shock_activity_lift: 'float') -> 'None'"
-        },
-        "CalibrationReturnComponentsObjectiveMetricWeights": {
-          "field_names": [
-            "continuous_distribution_fit_weight",
-            "surprise_arrival_fit_weight",
-            "jump_fit_weight",
-            "gap_fit_weight",
-            "activity_coupling_fit_weight",
-            "price_range_sanity_fit_weight"
-          ],
-          "kind": "contract_model",
-          "signature": "(continuous_distribution_fit_weight: 'float', surprise_arrival_fit_weight: 'float', jump_fit_weight: 'float', gap_fit_weight: 'float', activity_coupling_fit_weight: 'float', price_range_sanity_fit_weight: 'float') -> 'None'"
-        },
-        "CalibrationReturnComponentsObservedCloseOpenBoundaryObservation": {
-          "field_names": [
-            "close_timestamp_utc_nanos",
-            "close_price",
-            "open_timestamp_utc_nanos",
-            "open_price",
-            "post_shock_activity_lift"
-          ],
-          "kind": "contract_model",
-          "signature": "(close_timestamp_utc_nanos: 'int', close_price: 'float', open_timestamp_utc_nanos: 'int', open_price: 'float', post_shock_activity_lift: 'float') -> 'None'"
-        },
-        "CalibrationReturnComponentsObservedOpenSessionReturn": {
-          "field_names": [
-            "return_timestamp_utc_nanos",
-            "log_return",
-            "post_shock_activity_lift",
-            "sell_share_proxy"
-          ],
-          "kind": "contract_model",
-          "signature": "(return_timestamp_utc_nanos: 'int', log_return: 'float', post_shock_activity_lift: 'float', sell_share_proxy: 'float') -> 'None'"
-        },
-        "CalibrationReturnComponentsSignalSourceWindow": {
-          "field_names": [
-            "window_start_utc_nanos",
-            "window_end_utc_nanos"
-          ],
-          "kind": "contract_model",
-          "signature": "(window_start_utc_nanos: 'int', window_end_utc_nanos: 'int') -> 'None'"
-        },
-        "CalibrationReturnComponentsStageCandidateGenerationInput": {
-          "field_names": [
-            "known_news_calendar",
-            "realized_known_news_return_samples",
-            "observed_open_session_returns",
-            "detected_intraday_jump_candidates",
-            "observed_close_open_boundary_observations",
-            "close_open_gap_detection_policy",
-            "open_session_sell_share_proxy",
-            "shared_mark_law_template",
-            "objective_metric_weights"
-          ],
-          "kind": "contract_model",
-          "signature": "(known_news_calendar: 'CalibrationReturnComponentsKnownNewsCalendarInput', realized_known_news_return_samples: 'tuple[CalibrationReturnComponentsKnownNewsReturnSample, ...]', observed_open_session_returns: 'tuple[CalibrationReturnComponentsObservedOpenSessionReturn, ...]', detected_intraday_jump_candidates: 'tuple[CalibrationReturnComponentsDetectedIntradayJumpCandidate, ...]', observed_close_open_boundary_observations: 'tuple[CalibrationReturnComponentsObservedCloseOpenBoundaryObservation, ...]', close_open_gap_detection_policy: 'CalibrationReturnComponentsCloseOpenGapDetectionPolicy', open_session_sell_share_proxy: 'float', shared_mark_law_template: 'CalibrationSharedNewsMarkLawConfiguration', objective_metric_weights: 'CalibrationReturnComponentsObjectiveMetricWeights') -> 'None'"
-        },
-        "CalibrationScheduledEventOverlay": {
-          "field_names": [
-            "overlay_id",
-            "start_timestamp_utc_nanos",
-            "end_timestamp_utc_nanos",
-            "log_adjustment",
-            "precedence",
-            "enabled",
-            "source_label"
-          ],
-          "kind": "contract_model",
-          "signature": "(overlay_id: 'str', start_timestamp_utc_nanos: 'int', end_timestamp_utc_nanos: 'int', log_adjustment: 'float', precedence: 'int', enabled: 'bool', source_label: 'str') -> 'None'"
-        },
-        "CalibrationSeasonalityStageExecutionInput": {
-          "field_names": [
-            "timestamp_event_records",
-            "scheduled_event_overlays",
-            "settings",
-            "dataset_id_override",
-            "estimator_version_override"
-          ],
-          "kind": "contract_model",
-          "signature": "(timestamp_event_records: 'tuple[CalibrationTimestampEventRecord, ...]', scheduled_event_overlays: 'tuple[CalibrationScheduledEventOverlay, ...]' = (), settings: 'Optional[CalibrationSeasonalityStageExecutionSettings]' = None, dataset_id_override: 'Optional[str]' = None, estimator_version_override: 'Optional[str]' = None) -> 'None'"
-        },
-        "CalibrationSeasonalityStageExecutionSettings": {
-          "field_names": [
-            "session_filter",
-            "sparse_hour_event_threshold",
-            "intraday_settings",
-            "day_of_week_settings",
-            "day_of_year_settings"
-          ],
-          "kind": "contract_model",
-          "signature": "(session_filter: 'CalibrationTimestampEventSessionFilter', sparse_hour_event_threshold: 'int', intraday_settings: 'CalibrationIntradaySeasonalityEstimatorSettings', day_of_week_settings: 'CalibrationDayOfWeekSeasonalityEstimatorSettings', day_of_year_settings: 'CalibrationDayOfYearSeasonalityEstimatorSettings') -> 'None'"
-        },
-        "CalibrationSharedNewsMarkLawConfiguration": {
-          "field_names": [
-            "gamma_severity_marks",
-            "double_exponential_base_shock",
-            "coupled_gap_marks"
-          ],
-          "kind": "contract_model",
-          "signature": "(gamma_severity_marks: 'GammaSeverityMarkConfiguration', double_exponential_base_shock: 'CalibrationDoubleExponentialBaseShockConfiguration', coupled_gap_marks: 'CalibrationCoupledGapMarkConfiguration') -> 'None'"
+          "signature": "(path: 'str', file_format: 'CalibrationPreparedExecutionPayloadFileFormat' = <CalibrationPreparedExecutionPayloadFileFormat.JSON: 'json'>) -> 'None'"
         },
         "CalibrationStagedExecutionRuntimeResources": {
           "field_names": [
@@ -4361,43 +3738,15 @@
           "kind": "contract_model",
           "signature": "(disk_checkpoint_directory: 'Optional[str]' = None) -> 'None'"
         },
-        "CalibrationTimestampEventRecord": {
-          "field_names": [
-            "source_record_position",
-            "timestamp_utc_nanos"
-          ],
-          "kind": "contract_model",
-          "signature": "(source_record_position: 'int', timestamp_utc_nanos: 'int') -> 'None'"
-        },
-        "CalibrationTimestampEventSessionFilter": {
-          "kind": "enum",
-          "members": [
-            {
-              "name": "ALL",
-              "value": "all"
-            },
-            {
-              "name": "OPEN_ONLY",
-              "value": "open_only"
-            },
-            {
-              "name": "CLOSED_ONLY",
-              "value": "closed_only"
-            }
-          ]
-        },
         "StagedCalibrationExecutionInput": {
           "field_names": [
             "schema_version",
             "request",
-            "seasonality_stage_input",
-            "hawkes_candidate_inputs",
-            "return_components_candidate_generation_input",
-            "mean_reversion_stage_input",
+            "prepared_payload_file",
             "runtime_resources"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: 'str', request: 'StagedCalibrationRequest', seasonality_stage_input: 'Optional[CalibrationSeasonalityStageExecutionInput]' = None, hawkes_candidate_inputs: 'Optional[tuple[CalibrationHawkesStageCandidateInput, ...]]' = None, return_components_candidate_generation_input: 'Optional[CalibrationReturnComponentsStageCandidateGenerationInput]' = None, mean_reversion_stage_input: 'Optional[CalibrationMeanReversionStageExecutionInput]' = None, runtime_resources: 'Optional[CalibrationStagedExecutionRuntimeResources]' = None) -> 'None'"
+          "signature": "(schema_version: 'str', request: 'StagedCalibrationRequest', prepared_payload_file: 'CalibrationPreparedExecutionPayloadFileReference', runtime_resources: 'Optional[CalibrationStagedExecutionRuntimeResources]' = None) -> 'None'"
         },
         "deserialize_staged_calibration_execution_input": {
           "kind": "function",
@@ -5628,6 +4977,7 @@
         "HourlySeasonalityProviderSource",
         "build_hourly_factor_contract",
         "build_runtime_hourly_seasonality_source_from_calibration_payload",
+        "load_hourly_factor_contract_payload",
         "materialize_hourly_news_intensity_factors",
         "materialize_hourly_seasonality_factors",
         "provide_hourly_factor_contract"
@@ -5701,6 +5051,8 @@
               "interval_start_exchange_local",
               "interval_end_exchange_local",
               "s_h",
+              "known_component_nu_h",
+              "surprise_component_nu_h",
               "nu_h",
               "interval_count",
               "first_interval_start_utc_nanos",
@@ -5852,9 +5204,12 @@
         },
         "HourlyFactorContract": {
           "base_classes": [],
-          "constructor_signature": "(native_result: 'object') -> 'None'",
+          "constructor_signature": "(native_result: 'HourlyFactorContractResult') -> 'None'",
           "kind": "class",
           "origin_module": "janiform.hourly_factors",
+          "public_methods": {
+            "to_payload": "(self) -> 'dict[str, Any]'"
+          },
           "qualname": "HourlyFactorContract"
         },
         "HourlyFactorOutputSchema": {
@@ -5899,7 +5254,7 @@
         },
         "HourlyNewsIntensityMaterialization": {
           "base_classes": [],
-          "constructor_signature": "(native_result: 'object') -> 'None'",
+          "constructor_signature": "(native_result: 'HourlyNewsIntensityMaterializationResult') -> 'None'",
           "kind": "class",
           "origin_module": "janiform.hourly_factors",
           "qualname": "HourlyNewsIntensityMaterialization"
@@ -5947,7 +5302,7 @@
         },
         "HourlySeasonalityMaterialization": {
           "base_classes": [],
-          "constructor_signature": "(native_result: 'object') -> 'None'",
+          "constructor_signature": "(native_result: 'HourlySeasonalityMaterializationResult') -> 'None'",
           "kind": "class",
           "origin_module": "janiform.hourly_factors",
           "qualname": "HourlySeasonalityMaterialization"
@@ -6005,6 +5360,10 @@
           "kind": "function",
           "signature": "(*, calendar_registry: 'CalendarRegistry', range_start_utc: 'datetime', range_end_utc: 'datetime', interval: 'str | timedelta' = '1h', seasonality_stage_payload: 'Mapping[str, Any]', mean_renormalize: 'bool' = True, settings: 'HourlySeasonalityMaterializationSettings' = HourlySeasonalityMaterializationSettings(interpolation_method='previous_observation_carry_forward.v1', aggregation_method='mean_of_observations.v1', sparse_fallback_policy='global_mean.v1', sparse_hour_minimum_observation_count=1)) -> 'HourlySeasonalityProviderExplicitSource'"
         },
+        "load_hourly_factor_contract_payload": {
+          "kind": "function",
+          "signature": "(hourly_factor_contract_payload: 'dict[str, Any] | Any') -> 'HourlyFactorContract'"
+        },
         "materialize_hourly_news_intensity_factors": {
           "kind": "function",
           "signature": "(*, calendar_registry: 'CalendarRegistry', exchange_code: 'str', range_start_utc: 'datetime', range_end_utc: 'datetime', interval: 'str | timedelta' = '1h', settings: 'HourlyNewsIntensityMaterializationSettings') -> 'HourlyNewsIntensityMaterialization'"
@@ -6038,7 +5397,6 @@
         "VanillaOptionPricingCalibrationHooks",
         "VanillaOptionPricingDiagnostics",
         "VanillaOptionPricingExecutionInput",
-        "VanillaOptionPricingIntervalFactors",
         "VanillaOptionPricingMarketInputs",
         "VanillaOptionPricingModelParameters",
         "VanillaOptionPricingOptionalOutputSelection",
@@ -6049,17 +5407,14 @@
         "VanillaOptionPricingRunResult",
         "VanillaOptionPricingValidationError",
         "VanillaOptionPricingValidationFailure",
-        "deserialize_vanilla_option_pricing_execution_input",
         "deserialize_vanilla_option_pricing_request",
         "deserialize_vanilla_option_pricing_response",
         "deserialize_vanilla_option_pricing_run_result",
         "load_hourly_factor_contract_for_pricing",
         "run_vanilla_option_pricing",
-        "serialize_vanilla_option_pricing_execution_input",
         "serialize_vanilla_option_pricing_request",
         "serialize_vanilla_option_pricing_response",
         "serialize_vanilla_option_pricing_run_result",
-        "validate_vanilla_option_pricing_execution_input",
         "validate_vanilla_option_pricing_request",
         "validate_vanilla_option_pricing_response",
         "validate_vanilla_option_pricing_run_result"
@@ -6283,20 +5638,11 @@
         "VanillaOptionPricingExecutionInput": {
           "field_names": [
             "request",
-            "interval_factors",
+            "hourly_factor_contract",
             "optional_output_selection"
           ],
           "kind": "contract_model",
-          "signature": "(request: 'VanillaOptionPricingRequest', interval_factors: 'tuple[VanillaOptionPricingIntervalFactors, ...]', optional_output_selection: 'VanillaOptionPricingOptionalOutputSelection' = VanillaOptionPricingOptionalOutputSelection(include_transform_diagnostics=False, include_integration_quality_diagnostics=False, include_calibration_hooks=False)) -> 'None'"
-        },
-        "VanillaOptionPricingIntervalFactors": {
-          "field_names": [
-            "s_h",
-            "nu_h_known",
-            "nu_h_surprise"
-          ],
-          "kind": "contract_model",
-          "signature": "(s_h: 'float', nu_h_known: 'float', nu_h_surprise: 'float') -> 'None'"
+          "signature": "(request: 'VanillaOptionPricingRequest', hourly_factor_contract: 'HourlyFactorContract', optional_output_selection: 'VanillaOptionPricingOptionalOutputSelection' = VanillaOptionPricingOptionalOutputSelection(include_transform_diagnostics=False, include_integration_quality_diagnostics=False, include_calibration_hooks=False)) -> 'None'"
         },
         "VanillaOptionPricingMarketInputs": {
           "field_names": [
@@ -6404,10 +5750,6 @@
           "kind": "contract_model",
           "signature": "(error_id: 'str', workflow: 'str', entrypoint: 'str', field_path: 'str', message: 'str', context_items: 'tuple[tuple[str, ErrorContextValue], ...]' = ()) -> 'None'"
         },
-        "deserialize_vanilla_option_pricing_execution_input": {
-          "kind": "function",
-          "signature": "(payload_json: 'str') -> 'VanillaOptionPricingExecutionInput'"
-        },
         "deserialize_vanilla_option_pricing_request": {
           "kind": "function",
           "signature": "(payload_json: 'str') -> 'VanillaOptionPricingRequest'"
@@ -6428,10 +5770,6 @@
           "kind": "function",
           "signature": "(execution_input: 'VanillaOptionPricingExecutionInput') -> 'VanillaOptionPricingRunResult'"
         },
-        "serialize_vanilla_option_pricing_execution_input": {
-          "kind": "function",
-          "signature": "(execution_input: 'VanillaOptionPricingExecutionInput') -> 'str'"
-        },
         "serialize_vanilla_option_pricing_request": {
           "kind": "function",
           "signature": "(request: 'VanillaOptionPricingRequest') -> 'str'"
@@ -6443,10 +5781,6 @@
         "serialize_vanilla_option_pricing_run_result": {
           "kind": "function",
           "signature": "(run_result: 'VanillaOptionPricingRunResult') -> 'str'"
-        },
-        "validate_vanilla_option_pricing_execution_input": {
-          "kind": "function",
-          "signature": "(raw_execution_input: 'dict[str, Any] | Any') -> 'VanillaOptionPricingExecutionInput'"
         },
         "validate_vanilla_option_pricing_request": {
           "kind": "function",
@@ -6470,7 +5804,6 @@
         "SUFFICIENT_STATISTICS_RISK_PATH_PROVENANCE_SCHEMA_VERSION",
         "SufficientStatisticsIntervalStatistics",
         "SufficientStatisticsRiskEquationSpecification",
-        "SufficientStatisticsRiskIntervalFactors",
         "SufficientStatisticsRiskModelInputs",
         "SufficientStatisticsRiskPath",
         "SufficientStatisticsRiskPathDiagnostics",
@@ -6555,16 +5888,6 @@
           ],
           "kind": "contract_model",
           "signature": "(hawkes_kernel_parameters: 'HawkesKernelParameters', gamma_severity_mark_configuration: 'GammaSeverityMarkConfiguration') -> 'None'"
-        },
-        "SufficientStatisticsRiskIntervalFactors": {
-          "field_names": [
-            "interval_delta",
-            "s_h",
-            "nu_h_known",
-            "nu_h_surprise"
-          ],
-          "kind": "contract_model",
-          "signature": "(interval_delta: 'float' = 1.0, s_h: 'tuple[float, ...]' = (), nu_h_known: 'tuple[float, ...]' = (), nu_h_surprise: 'tuple[float, ...]' = ()) -> 'None'"
         },
         "SufficientStatisticsRiskModelInputs": {
           "field_names": [
@@ -6680,10 +6003,10 @@
             "horizon_interval_count",
             "interval_delta",
             "model_inputs",
-            "interval_factors"
+            "hourly_factor_contract"
           ],
           "kind": "contract_model",
-          "signature": "(seed: 'int', horizon_interval_count: 'int', interval_delta: 'float' = 1.0, model_inputs: 'Optional[SufficientStatisticsRiskModelInputs]' = None, interval_factors: 'Optional[SufficientStatisticsRiskIntervalFactors]' = None) -> 'None'"
+          "signature": "(seed: 'int', horizon_interval_count: 'int', interval_delta: 'float' = 1.0, model_inputs: 'Optional[SufficientStatisticsRiskModelInputs]' = None, hourly_factor_contract: 'Optional[HourlyFactorContract]' = None) -> 'None'"
         },
         "SufficientStatisticsRiskValidationError": {
           "base_classes": [
@@ -7331,10 +6654,10 @@
             "horizon_interval_count",
             "interval_delta",
             "model_inputs",
-            "interval_factors"
+            "hourly_factor_contract"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: 'str', seed: 'int', start_time_utc_nanos: 'int', horizon_interval_count: 'int', interval_delta: 'float', model_inputs: 'CoarseSimulationModelInputs', interval_factors: 'Any') -> 'None'"
+          "signature": "(schema_version: 'str', seed: 'int', start_time_utc_nanos: 'int', horizon_interval_count: 'int', interval_delta: 'float', model_inputs: 'CoarseSimulationModelInputs', hourly_factor_contract: 'HourlyFactorContract') -> 'None'"
         },
         "CoupledGapMarkConfiguration": {
           "field_names": [
@@ -7384,7 +6707,7 @@
         },
         "HourlyFactorContract": {
           "base_classes": [],
-          "constructor_signature": "(native_result: 'object') -> 'None'",
+          "constructor_signature": "(native_result: 'HourlyFactorContractResult') -> 'None'",
           "kind": "class",
           "origin_module": "janiform.hourly_factors",
           "qualname": "HourlyFactorContract"
@@ -8017,10 +7340,10 @@
             "horizon_interval_count",
             "interval_delta",
             "model_inputs",
-            "interval_factors"
+            "hourly_factor_contract"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: 'str', seed: 'int', start_time_utc_nanos: 'int', horizon_interval_count: 'int', interval_delta: 'float', model_inputs: 'CoarseSimulationModelInputs', interval_factors: 'Any') -> 'None'"
+          "signature": "(schema_version: 'str', seed: 'int', start_time_utc_nanos: 'int', horizon_interval_count: 'int', interval_delta: 'float', model_inputs: 'CoarseSimulationModelInputs', hourly_factor_contract: 'HourlyFactorContract') -> 'None'"
         },
         "CoupledGapMarkConfiguration": {
           "field_names": [
@@ -8207,7 +7530,7 @@
         },
         "HourlyFactorContract": {
           "base_classes": [],
-          "constructor_signature": "(native_result: 'object') -> 'None'",
+          "constructor_signature": "(native_result: 'HourlyFactorContractResult') -> 'None'",
           "kind": "class",
           "origin_module": "janiform.hourly_factors",
           "qualname": "HourlyFactorContract"

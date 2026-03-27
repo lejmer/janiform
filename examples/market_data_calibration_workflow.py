@@ -104,8 +104,8 @@ def _summarize_market_data_workflow(request: MarketDataCalibrationRequest) -> di
         "material_close_open_gap_count": prepared.diagnostics.material_close_open_gap_count,
         "derived_trade_events_data_reference": prepared.provenance.derived_trade_events_data_reference,
         "derived_option_surface_data_reference": prepared.provenance.derived_option_surface_data_reference,
-        "prepared_execution_mode": prepared.execution_input.request.execution_mode.value,
-        "prepared_stage_count": len(prepared.execution_input.request.selected_stages),
+        "prepared_execution_mode": prepared.staged_request.execution_mode.value,
+        "prepared_stage_count": len(prepared.staged_request.selected_stages),
         "session_resolution_kind": prepared.session_resolution.resolution_kind,
     }
 

@@ -10,7 +10,7 @@ use janiform_affine_oracle::affine_oracle::{
     ExponentialAffineTransformNewsIntensityInput,
     ExponentialAffineTransformNewsIntensityInputError, ExponentialAffineTransformSolverError,
 };
-use janiform_foundations::complex_math::{complex_exponential, complex_multiply, ComplexScalar};
+use janiform_foundations::complex_math::{ComplexScalar, complex_exponential, complex_multiply};
 use janiform_model_kernels::hawkes::{
     HawkesEventSide, HawkesExcitationState, HawkesKernelLoadings,
 };
@@ -21,22 +21,21 @@ use janiform_model_kernels::nig::{
 use janiform_model_kernels::return_decomposition::{ReturnDecomposition, ReturnDecompositionInput};
 
 use super::characteristic::{
-    build_pricing_transform_input, compose_total_return_characteristic_function_from_oracle_output,
+    PricingTransformInputBuildError, build_pricing_transform_input,
+    compose_total_return_characteristic_function_from_oracle_output,
     solve_anchored_local_pricing_tilt, solve_exponential_affine_transform,
-    PricingTransformInputBuildError,
 };
 use super::contracts::{
-    build_vanilla_option_pricing_run_result, AnchoredPricingRecursionDiagnostics,
-    AnchoredPricingRecursionIntervalDiagnostics, AnchoredVanillaOptionPricingBoundaryInput,
-    VanillaOptionPayoffType, VanillaOptionPricingDiagnostics,
-    VanillaOptionPricingOptionalOutputSelection, VanillaOptionPricingRequest,
-    VanillaOptionPricingRequestError, VanillaOptionPricingResponse,
+    AnchoredPricingRecursionDiagnostics, AnchoredPricingRecursionIntervalDiagnostics,
+    AnchoredVanillaOptionPricingBoundaryInput, VanillaOptionPayoffType,
+    VanillaOptionPricingDiagnostics, VanillaOptionPricingOptionalOutputSelection,
+    VanillaOptionPricingRequest, VanillaOptionPricingRequestError, VanillaOptionPricingResponse,
     VanillaOptionPricingResponseError, VanillaOptionPricingRunResult,
-    VanillaOptionPricingRunResultBuildError,
+    VanillaOptionPricingRunResultBuildError, build_vanilla_option_pricing_run_result,
 };
 use super::fourier::{
-    price_vanilla_option_via_fourier_inversion, FourierInversionEngineSettings,
-    FourierInversionPricingError,
+    FourierInversionEngineSettings, FourierInversionPricingError,
+    price_vanilla_option_via_fourier_inversion,
 };
 
 /// One-interval pricing factors required to execute the canonical vanilla pricing workflow.
@@ -1491,22 +1490,24 @@ fn build_single_interval_recursion_diagnostics(
         refined_deviation_grid_node_count,
         0.0,
         0.0,
-        vec![AnchoredPricingRecursionIntervalDiagnostics::try_new(
-            boundary_input.interval_index,
-            current_anchor_value,
-            next_anchor_value,
-            interval_delta,
-            expected_hawkes_boundary_state_before,
-            expected_hawkes_boundary_state_after,
-            maximum_tail_probability_mass,
-            maximum_row_probability_mass_error,
-            minimum_solved_theta,
-            maximum_solved_theta,
-            local_tilt_solve_diagnostics,
-        )
-        .map_err(|source| {
-            VanillaOptionPricingRunError::InvalidAnchoredRecursionDiagnostics { source }
-        })?],
+        vec![
+            AnchoredPricingRecursionIntervalDiagnostics::try_new(
+                boundary_input.interval_index,
+                current_anchor_value,
+                next_anchor_value,
+                interval_delta,
+                expected_hawkes_boundary_state_before,
+                expected_hawkes_boundary_state_after,
+                maximum_tail_probability_mass,
+                maximum_row_probability_mass_error,
+                minimum_solved_theta,
+                maximum_solved_theta,
+                local_tilt_solve_diagnostics,
+            )
+            .map_err(|source| {
+                VanillaOptionPricingRunError::InvalidAnchoredRecursionDiagnostics { source }
+            })?,
+        ],
     )
     .map_err(|source| VanillaOptionPricingRunError::InvalidAnchoredRecursionDiagnostics { source })
 }
@@ -1724,7 +1725,10 @@ impl Display for VanillaOptionPricingRunError {
                 "anchored recursion could not build an observed boundary state for interval_index={interval_index} and deviation={deviation}: {message}"
             ),
             Self::InvalidAnchoredRecursionDiagnostics { source } => {
-                write!(formatter, "anchored recursion diagnostics are invalid: {source}")
+                write!(
+                    formatter,
+                    "anchored recursion diagnostics are invalid: {source}"
+                )
             }
             Self::InvalidGridInterpolationShape {
                 expected_node_count,

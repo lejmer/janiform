@@ -3,6 +3,11 @@ use janiform::hourly_factors::{
     DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD, DEFAULT_SEASONALITY_AGGREGATION_METHOD,
     DEFAULT_SEASONALITY_INTERPOLATION_METHOD, DEFAULT_SEASONALITY_SPARSE_FALLBACK_POLICY,
     DEFAULT_SPARSE_HOUR_MINIMUM_OBSERVATION_COUNT, HourlyFactorContractError,
+    HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION, HOURLY_FACTOR_FALL_BACK_POLICY,
+    HOURLY_FACTOR_INTERVAL_ALIGNMENT_POLICY, HOURLY_FACTOR_INTERVAL_BOUNDARY_POLICY,
+    HOURLY_FACTOR_SPRING_FORWARD_POLICY, HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY,
+    HourlyFactorContractDiagnostics, HourlyFactorContractOutput,
+    HourlyFactorMaterializationMetadata,
     build_hourly_factor_contract as build_hourly_factor_contract_core,
     materialize_hourly_news_intensity_factors as materialize_hourly_news_intensity_factors_core,
     materialize_hourly_seasonality_factors as materialize_hourly_seasonality_factors_core,
@@ -15,6 +20,7 @@ use janiform::hourly_factors::{
 use pyo3::prelude::{Bound, PyErr, PyResult, Python};
 use pyo3::types::{PyAny, PyAnyMethods, PyMapping, PyMappingMethods, PyModule, PyModuleMethods};
 use pyo3::{pyfunction, wrap_pyfunction};
+use serde::Deserialize;
 
 use super::calendar::parse_timestamp_utc;
 use crate::types::{
@@ -52,6 +58,123 @@ pub(super) enum ParsedHourlyProviderNewsIntensitySource {
         surprise_baseline_intensity: f64,
         surprise_deterministic_time_multiplier_by_interval_index: Vec<(u64, f64)>,
     },
+}
+
+#[derive(Deserialize)]
+struct HourlyFactorContractPayload {
+    schema_version: String,
+    exchange_code: String,
+    exchange_timezone_name: String,
+    request_start_utc_nanos: i64,
+    request_end_utc_nanos: i64,
+    interval_duration_nanos: i64,
+    interval_indices: Vec<u64>,
+    interval_start_utc_nanos: Vec<i64>,
+    interval_end_utc_nanos: Vec<i64>,
+    interval_start_exchange_local: Vec<String>,
+    interval_end_exchange_local: Vec<String>,
+    s_h: Vec<f64>,
+    known_component_nu_h: Vec<f64>,
+    surprise_component_nu_h: Vec<f64>,
+    nu_h: Vec<f64>,
+    interval_count: usize,
+    first_interval_start_utc_nanos: i64,
+    last_interval_end_utc_nanos: i64,
+    skipped_local_hour_interval_count: usize,
+    repeated_local_hour_interval_count: usize,
+    interval_boundary_policy: String,
+    interval_alignment_policy: String,
+    timezone_transition_policy: String,
+    spring_forward_policy: String,
+    fall_back_policy: String,
+    seasonality_materialization_method: String,
+    news_intensity_materialization_method: String,
+}
+
+impl TryFrom<HourlyFactorContractPayload> for HourlyFactorContractOutput {
+    type Error = PyErr;
+
+    fn try_from(payload: HourlyFactorContractPayload) -> Result<Self, Self::Error> {
+        validate_exact_hourly_factor_contract_policy(
+            "schema_version",
+            &payload.schema_version,
+            HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION,
+        )?;
+        validate_exact_hourly_factor_contract_policy(
+            "interval_boundary_policy",
+            &payload.interval_boundary_policy,
+            HOURLY_FACTOR_INTERVAL_BOUNDARY_POLICY,
+        )?;
+        validate_exact_hourly_factor_contract_policy(
+            "interval_alignment_policy",
+            &payload.interval_alignment_policy,
+            HOURLY_FACTOR_INTERVAL_ALIGNMENT_POLICY,
+        )?;
+        validate_exact_hourly_factor_contract_policy(
+            "timezone_transition_policy",
+            &payload.timezone_transition_policy,
+            HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY,
+        )?;
+        validate_exact_hourly_factor_contract_policy(
+            "spring_forward_policy",
+            &payload.spring_forward_policy,
+            HOURLY_FACTOR_SPRING_FORWARD_POLICY,
+        )?;
+        validate_exact_hourly_factor_contract_policy(
+            "fall_back_policy",
+            &payload.fall_back_policy,
+            HOURLY_FACTOR_FALL_BACK_POLICY,
+        )?;
+
+        Ok(HourlyFactorContractOutput {
+            schema_version: HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION,
+            exchange_code: payload.exchange_code,
+            exchange_timezone_name: payload.exchange_timezone_name,
+            request_start_utc_nanos: payload.request_start_utc_nanos,
+            request_end_utc_nanos: payload.request_end_utc_nanos,
+            interval_duration_nanos: payload.interval_duration_nanos,
+            interval_indices: payload.interval_indices,
+            interval_start_utc_nanos: payload.interval_start_utc_nanos,
+            interval_end_utc_nanos: payload.interval_end_utc_nanos,
+            interval_start_exchange_local: payload.interval_start_exchange_local,
+            interval_end_exchange_local: payload.interval_end_exchange_local,
+            s_h: payload.s_h,
+            known_component_nu_h: payload.known_component_nu_h,
+            surprise_component_nu_h: payload.surprise_component_nu_h,
+            nu_h: payload.nu_h,
+            metadata: HourlyFactorMaterializationMetadata {
+                seasonality_materialization_method: payload.seasonality_materialization_method,
+                news_intensity_materialization_method: payload.news_intensity_materialization_method,
+                interval_boundary_policy: HOURLY_FACTOR_INTERVAL_BOUNDARY_POLICY,
+                interval_alignment_policy: HOURLY_FACTOR_INTERVAL_ALIGNMENT_POLICY,
+                timezone_transition_policy: HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY,
+                spring_forward_policy: HOURLY_FACTOR_SPRING_FORWARD_POLICY,
+                fall_back_policy: HOURLY_FACTOR_FALL_BACK_POLICY,
+            },
+            diagnostics: HourlyFactorContractDiagnostics {
+                interval_count: payload.interval_count,
+                interval_duration_nanos: payload.interval_duration_nanos,
+                first_interval_start_utc_nanos: payload.first_interval_start_utc_nanos,
+                last_interval_end_utc_nanos: payload.last_interval_end_utc_nanos,
+                skipped_local_hour_interval_count: payload.skipped_local_hour_interval_count,
+                repeated_local_hour_interval_count: payload.repeated_local_hour_interval_count,
+            },
+        })
+    }
+}
+
+fn validate_exact_hourly_factor_contract_policy(
+    field_name: &str,
+    observed_value: &str,
+    expected_value: &str,
+) -> PyResult<()> {
+    if observed_value != expected_value {
+        return Err(SeasonalityInputValidationError::new_err(format!(
+            "hourly_factor_contract payload field `{field_name}` must be `{expected_value}`, received `{observed_value}`"
+        )));
+    }
+
+    Ok(())
 }
 
 #[pyfunction]
@@ -101,7 +224,31 @@ fn build_hourly_factor_contract(
 
     Ok(PyHourlyFactorContractResult {
         output,
-        calendar_registry: calendar_registry.registry.clone(),
+        calendar_registry: Some(calendar_registry.registry.clone()),
+    })
+}
+
+#[pyfunction]
+fn load_hourly_factor_contract_payload(
+    hourly_factor_contract_payload: &Bound<'_, PyAny>,
+) -> PyResult<PyHourlyFactorContractResult> {
+    let payload = serde_json::from_value::<HourlyFactorContractPayload>(
+        crate::python_value::py_any_to_json_value(hourly_factor_contract_payload)?,
+    )
+    .map_err(|source| {
+        SeasonalityInputValidationError::new_err(format!(
+            "hourly_factor_contract payload failed to deserialize: {source}"
+        ))
+    })?;
+    let output = HourlyFactorContractOutput::try_from(payload).map_err(|source| {
+        SeasonalityInputValidationError::new_err(format!(
+            "hourly_factor_contract payload failed to deserialize: {source}"
+        ))
+    })?;
+
+    Ok(PyHourlyFactorContractResult {
+        output,
+        calendar_registry: None,
     })
 }
 
@@ -374,7 +521,7 @@ fn provide_hourly_factor_contract(
 
     Ok(PyHourlyFactorContractResult {
         output,
-        calendar_registry: calendar_registry.registry.clone(),
+        calendar_registry: Some(calendar_registry.registry.clone()),
     })
 }
 
@@ -893,6 +1040,7 @@ fn map_hourly_factor_provider_error(error: HourlyFactorProviderError) -> PyErr {
 
 pub(super) fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(build_hourly_factor_contract, module)?)?;
+    module.add_function(wrap_pyfunction!(load_hourly_factor_contract_payload, module)?)?;
     module.add_function(wrap_pyfunction!(
         materialize_hourly_seasonality_factors,
         module

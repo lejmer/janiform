@@ -1,9 +1,9 @@
 use janiform_engine_pricing::{
-    run_vanilla_option_pricing, AnchoredVanillaOptionPricingBoundaryInput,
-    VanillaOptionPayoffConfiguration, VanillaOptionPayoffType, VanillaOptionPricingExecutionInput,
+    AnchoredVanillaOptionPricingBoundaryInput, VanillaOptionPayoffConfiguration,
+    VanillaOptionPayoffType, VanillaOptionPricingExecutionInput,
     VanillaOptionPricingIntervalFactors, VanillaOptionPricingMarketInputs,
     VanillaOptionPricingModelParameters, VanillaOptionPricingOptionalOutputSelection,
-    VanillaOptionPricingRequest, VanillaOptionPricingRunResult,
+    VanillaOptionPricingRequest, VanillaOptionPricingRunResult, run_vanilla_option_pricing,
 };
 use janiform_model_kernels::hawkes::{
     HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
@@ -38,8 +38,10 @@ fn vanilla_option_pricing_runner_executes_public_workflow_with_optional_outputs(
             valid_model_parameters(),
         )
         .expect("pricing request should construct"),
-        vec![VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
-            .expect("interval factors should construct")],
+        vec![
+            VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
+                .expect("interval factors should construct"),
+        ],
         VanillaOptionPricingOptionalOutputSelection::new(true, true, true),
     )
     .expect("execution input should construct");
@@ -85,8 +87,10 @@ fn vanilla_option_pricing_runner_matches_disabled_case_for_flat_anchor_with_zero
         payoff_type: VanillaOptionPayoffType::Call,
     };
 
-    let interval_factors = vec![VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
-        .expect("interval factors should construct")];
+    let interval_factors = vec![
+        VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
+            .expect("interval factors should construct"),
+    ];
 
     let optional_output_selection =
         VanillaOptionPricingOptionalOutputSelection::new(true, true, true);
@@ -161,9 +165,11 @@ fn vanilla_option_pricing_runner_matches_disabled_case_for_flat_anchor_with_zero
         .expect("anchored recursion diagnostics should be present");
 
     assert_eq!(anchored_recursion.interval_diagnostics.len(), 1);
-    assert!(anchored_recursion.interval_diagnostics[0]
-        .local_tilt_solve_diagnostics
-        .is_empty());
+    assert!(
+        anchored_recursion.interval_diagnostics[0]
+            .local_tilt_solve_diagnostics
+            .is_empty()
+    );
 }
 
 fn valid_model_parameters() -> VanillaOptionPricingModelParameters {

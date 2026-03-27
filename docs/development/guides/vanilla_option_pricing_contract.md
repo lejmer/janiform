@@ -13,27 +13,29 @@ The contract is for public pricing payloads only:
 - response price and non-engine-specific diagnostics
 
 This contract intentionally excludes Fourier integration settings and solver internals.
-Executable interval factors for real pricing runs live in a separate execution contract.
+Executable bulk factor data for real pricing runs lives in a separate native-backed execution
+artifact.
 
 ## Executable Pricing Input
 
 The orchestrated pricing path uses:
 
 - `VanillaOptionPricingExecutionInput`
-- `VanillaOptionPricingIntervalFactors`
+- `HourlyFactorContract`
 - `VanillaOptionPricingOptionalOutputSelection`
 - `run_vanilla_option_pricing`
 
-`VanillaOptionPricingExecutionInput.interval_factors` is an interval-aligned tuple covering the
-entire requested pricing horizon. Each `VanillaOptionPricingIntervalFactors` entry carries the
-single-interval inputs needed by the native runner:
+`VanillaOptionPricingExecutionInput.hourly_factor_contract` is a runtime artifact that keeps the
+interval-aligned factor grid native-backed. The artifact carries the single-interval inputs needed
+by the native runner across the requested pricing horizon:
 
 - `s_h`
-- `nu_h_known`
-- `nu_h_surprise`
+- `known_component_nu_h`
+- `surprise_component_nu_h`
 
 The execution path preserves known-scheduled and surprise news intensity separately and does not
-require callers to collapse them into only one combined `nu_h`.
+require callers to collapse them into only one combined `nu_h`. Python no longer owns the canonical
+pricing factor grid as a tuple of record dataclasses on the supported path.
 
 ## Fourier Integration Stability Controls
 
@@ -96,7 +98,6 @@ The canonical Rust types are in `janiform::pricing`:
 - `VanillaOptionPricingRequest`
 - `VanillaOptionPricingDiagnostics`
 - `VanillaOptionPricingResponse`
-- `VanillaOptionPricingIntervalFactors`
 - `VanillaOptionPricingExecutionInput`
 - `VanillaOptionPricingOptionalOutputSelection`
 - `VanillaOptionPricingRunResult`
@@ -106,7 +107,6 @@ Validation entrypoints:
 - `AnchoredVanillaOptionPricingBoundaryInput::try_new`
 - `VanillaOptionPricingRequest::try_new`
 - `VanillaOptionPricingResponse::try_new`
-- `VanillaOptionPricingIntervalFactors::try_new`
 - `VanillaOptionPricingExecutionInput::try_new`
 - `solve_anchored_local_pricing_tilt`
 - `run_vanilla_option_pricing`
@@ -240,7 +240,7 @@ engine when the observed-return adjustment is exactly zero for the local boundar
   the solver bridge keeps corrected known-versus-surprise news semantics intact.
 - When the caller already materialized split news components through
   `janiform.hourly_factors.materialize_hourly_news_intensity_factors`, those split interval values
-  should be copied into `VanillaOptionPricingIntervalFactors`.
+  should be carried by the shared `HourlyFactorContract` artifact.
 
 ## Python-facing contract
 
@@ -259,7 +259,6 @@ The Python-facing contract is in `janiform.pricing`:
 - `VanillaOptionPayoffType`
 - `VanillaOptionPricingRequest` (frozen dataclass)
 - `VanillaOptionPricingResponse` (frozen dataclass)
-- `VanillaOptionPricingIntervalFactors` (frozen dataclass)
 - `VanillaOptionPricingExecutionInput` (frozen dataclass)
 - `VanillaOptionPricingOptionalOutputSelection` (frozen dataclass)
 - `VanillaOptionPricingRunResult` (frozen dataclass)
@@ -270,14 +269,11 @@ Validation and serialization helpers:
 
 - `validate_vanilla_option_pricing_request`
 - `validate_vanilla_option_pricing_response`
-- `validate_vanilla_option_pricing_execution_input`
 - `validate_vanilla_option_pricing_run_result`
 - `serialize_vanilla_option_pricing_request`
 - `deserialize_vanilla_option_pricing_request`
 - `serialize_vanilla_option_pricing_response`
 - `deserialize_vanilla_option_pricing_response`
-- `serialize_vanilla_option_pricing_execution_input`
-- `deserialize_vanilla_option_pricing_execution_input`
 - `serialize_vanilla_option_pricing_run_result`
 - `deserialize_vanilla_option_pricing_run_result`
 - `run_vanilla_option_pricing`

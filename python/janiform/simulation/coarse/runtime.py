@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from .path import (
     CoarseSimulationPath,
     CoarseSimulationRunRequest,
@@ -19,7 +21,7 @@ def run_coarse_simulation(request: CoarseSimulationRunRequest) -> CoarseSimulati
     if not isinstance(request, CoarseSimulationRunRequest):
         raise _simulation_error("request", "must be a CoarseSimulationRunRequest")
 
-    normalized_request = validate_coarse_simulation_run_request(request.to_payload())
+    normalized_request = request
 
     try:
         native = native_module()
@@ -33,7 +35,12 @@ def run_coarse_simulation(request: CoarseSimulationRunRequest) -> CoarseSimulati
 
     try:
         raw_path = native.run_coarse_simulation(
-            normalized_request.to_payload()
+            normalized_request.seed,
+            normalized_request.start_time_utc_nanos,
+            normalized_request.horizon_interval_count,
+            normalized_request.interval_delta,
+            normalized_request.model_inputs.to_payload(),
+            normalized_request.hourly_factor_contract._native_result,
         )
     except Exception as e:
         if native_exception_matches(native, e, "SimulationExecutionError"):

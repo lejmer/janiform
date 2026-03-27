@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 from bisect import bisect_right
 from collections.abc import Mapping
@@ -37,7 +39,6 @@ from ..sessions.contracts import (
     MarketDataSessionRegularWindow,
     MarketDataSessionResolution,
 )
-from ..staged.inputs import StagedCalibrationExecutionInput
 from ..staged.results import StagedCalibrationResponse
 from ..._timestamps import datetime_to_utc_nanos
 from ..._workflow_outputs import (
@@ -56,14 +57,15 @@ from ...contracts import (
     MeanReversionRuntimeIntervalAnchors,
     serialize_pretty_json,
 )
-from ...calendar import CalendarRegistry
-from ...calendar import MarketState
+from ...calendar import CalendarRegistry, MarketState
 from ...hourly_factors import (
-    HourlyNewsIntensityMaterializationSettings,
+    HourlyFactorContract,
     HourlyNewsIntensityProviderMaterializedSource,
     HourlySeasonalityProviderExplicitSource,
+    HourlySeasonalityProviderMaterializedSource,
+    HourlySeasonalityProviderSource,
+    load_hourly_factor_contract_payload,
     _parse_interval_duration_nanos,
-    materialize_hourly_news_intensity_factors,
 )
 from ...pricing import (
     AnchoredVanillaOptionPricingBoundaryInput,
@@ -72,19 +74,18 @@ from ...pricing import (
     VanillaOptionPayoffConfiguration,
     VanillaOptionPayoffType,
     VanillaOptionPricingExecutionInput,
-    VanillaOptionPricingIntervalFactors,
     VanillaOptionPricingMarketInputs,
     VanillaOptionPricingModelParameters,
     VanillaOptionPricingOptionalOutputSelection,
     VanillaOptionPricingRequest,
     VanillaOptionPricingRunResult,
+    load_hourly_factor_contract_for_pricing,
     run_vanilla_option_pricing,
 )
 from .._errors import _calibration_error
 from ...seasonality import SessionFilter, preprocess_timestamp_events
 from ...risk import (
     SufficientStatisticsRiskEquationSpecification,
-    SufficientStatisticsRiskIntervalFactors,
     SufficientStatisticsRiskModelInputs,
 )
 from ...simulation import (
@@ -125,9 +126,6 @@ class _PreparedModelRuntimeFactors:
     nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration
     gamma_severity_mark_configuration: GammaSeverityMarkConfiguration
     news_process_configuration: NewsProcessConfiguration
-    seasonality_hourly_factors: tuple[float, ...]
-    known_component_nu_h: tuple[float, ...]
-    surprise_component_nu_h: tuple[float, ...]
 
 
 class _MemorySimulationSink:
@@ -261,7 +259,6 @@ class JaniformModel:
     metadata: dict[str, Any]
     resolved_configuration: ResolvedPresetWorkflowConfiguration
     session_resolution: MarketDataSessionResolution
-    _execution_input: Optional[StagedCalibrationExecutionInput] = field(repr=False, compare=False)
     _stage_report_payloads: tuple[dict[str, Any], ...] = field(repr=False, compare=False)
 
     @property
@@ -490,7 +487,6 @@ class JaniformModel:
                 raw_resolved_configuration
             ),
             session_resolution=_market_data_session_resolution_from_mapping(raw_session_resolution),
-            _execution_input=None,
             _stage_report_payloads=(),
         )
 
@@ -580,6 +576,33 @@ def _prepare_model_simulation_inputs(
                 ),
                 interval_alignment_policy=_MEAN_REVERSION_RUNTIME_INTERVAL_ALIGNMENT_POLICY,
             )
+            hourly_factor_contract = load_hourly_factor_contract_for_simulation(
+                calendar_registry=runtime_factors.calendar_registry,
+                exchange_code=runtime_factors.exchange_code,
+                range_start_utc=start_time_utc,
+                range_end_utc=runtime_factors.range_end_utc,
+                interval=interval,
+                seasonality_source=_build_runtime_hourly_seasonality_source_from_model(
+                    model,
+                    calendar_registry=runtime_factors.calendar_registry,
+                    exchange_code=runtime_factors.exchange_code,
+                    range_start_utc=start_time_utc,
+                    range_end_utc=runtime_factors.range_end_utc,
+                    interval=interval,
+                ),
+                news_intensity_source=HourlyNewsIntensityProviderMaterializedSource(
+                    known_scheduled_event_timestamps_utc=_resolved_known_news_event_timestamps(model),
+                    surprise_baseline_intensity=_surprise_baseline_intensity(model),
+                    surprise_deterministic_time_multiplier_by_interval_index=(
+                        _surprise_deterministic_time_multiplier_by_interval_index(
+                            model,
+                            range_start_utc=start_time_utc,
+                            range_end_utc=runtime_factors.range_end_utc,
+                            interval_duration_nanos=_parse_interval_duration_nanos(interval),
+                        )
+                    ),
+                ),
+            )
             coarse_request = CoarseSimulationRunRequest.from_runtime_inputs(
                 seed=seed,
                 start_time_utc=start_time_utc,
@@ -596,11 +619,10 @@ def _prepare_model_simulation_inputs(
                     mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
                     initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
                 ),
-                interval_factors=SufficientStatisticsRiskIntervalFactors(
-                    interval_delta=runtime_factors.interval_delta,
-                    s_h=runtime_factors.seasonality_hourly_factors,
-                    nu_h_known=runtime_factors.known_component_nu_h,
-                    nu_h_surprise=runtime_factors.surprise_component_nu_h,
+                hourly_factor_contract=_zero_closed_coarse_interval_seasonality_factors(
+                    hourly_factor_contract,
+                    calendar_registry=runtime_factors.calendar_registry,
+                    exchange_code=runtime_factors.exchange_code,
                 ),
                 news_process_configuration=runtime_factors.news_process_configuration,
                 calendar_registry=runtime_factors.calendar_registry,
@@ -943,13 +965,31 @@ def _prepare_model_pricing_execution_input(
                 nig_shared_plus_shift_configuration=runtime_factors.nig_shared_plus_shift_configuration,
             ),
         ),
-        interval_factors=tuple(
-            VanillaOptionPricingIntervalFactors(
-                s_h=runtime_factors.seasonality_hourly_factors[interval_index],
-                nu_h_known=runtime_factors.known_component_nu_h[interval_index],
-                nu_h_surprise=runtime_factors.surprise_component_nu_h[interval_index],
-            )
-            for interval_index in range(horizon_interval_count)
+        hourly_factor_contract=load_hourly_factor_contract_for_pricing(
+            calendar_registry=runtime_factors.calendar_registry,
+            exchange_code=runtime_factors.exchange_code,
+            range_start_utc=valuation_time_utc,
+            range_end_utc=runtime_factors.range_end_utc,
+            seasonality_source=_build_runtime_hourly_seasonality_source_from_model(
+                model,
+                calendar_registry=runtime_factors.calendar_registry,
+                exchange_code=runtime_factors.exchange_code,
+                range_start_utc=valuation_time_utc,
+                range_end_utc=runtime_factors.range_end_utc,
+                interval="1h",
+            ),
+            news_intensity_source=HourlyNewsIntensityProviderMaterializedSource(
+                known_scheduled_event_timestamps_utc=_resolved_known_news_event_timestamps(model),
+                surprise_baseline_intensity=_surprise_baseline_intensity(model),
+                surprise_deterministic_time_multiplier_by_interval_index=(
+                    _surprise_deterministic_time_multiplier_by_interval_index(
+                        model,
+                        range_start_utc=valuation_time_utc,
+                        range_end_utc=runtime_factors.range_end_utc,
+                        interval_duration_nanos=runtime_factors.interval_duration_nanos,
+                    )
+                ),
+            ),
         ),
         optional_output_selection=VanillaOptionPricingOptionalOutputSelection(
             include_transform_diagnostics=include_transform_diagnostics,
@@ -1000,34 +1040,6 @@ def _prepare_model_runtime_factors(
 
     calendar_registry = CalendarRegistry(model.session_resolution.resolved_session_definition_json)
     exchange_code = model.session_resolution.exchange_code
-    seasonality_source = _build_runtime_hourly_seasonality_source_from_model(
-        model,
-        calendar_registry=calendar_registry,
-        exchange_code=exchange_code,
-        range_start_utc=start_time_utc,
-        range_end_utc=range_end_utc,
-        interval=interval,
-    )
-    known_news_event_timestamps_utc = _resolved_known_news_event_timestamps(model)
-    news_materialization = materialize_hourly_news_intensity_factors(
-        calendar_registry=calendar_registry,
-        exchange_code=exchange_code,
-        range_start_utc=start_time_utc,
-        range_end_utc=range_end_utc,
-        interval=interval,
-        settings=HourlyNewsIntensityMaterializationSettings(
-            known_scheduled_event_timestamps_utc=known_news_event_timestamps_utc,
-            surprise_baseline_intensity=_surprise_baseline_intensity(model),
-            surprise_deterministic_time_multiplier_by_interval_index=(
-                _surprise_deterministic_time_multiplier_by_interval_index(
-                    model,
-                    range_start_utc=start_time_utc,
-                    range_end_utc=range_end_utc,
-                    interval_duration_nanos=interval_duration_nanos,
-                )
-            ),
-        ),
-    )
     hawkes_fitted_parameters = _hawkes_fitted_parameters_payload(model)
     return_components_fitted_parameters = _return_components_fitted_parameters_payload(model)
     news_process_configuration = NewsProcessConfiguration.from_mapping(
@@ -1042,28 +1054,11 @@ def _prepare_model_runtime_factors(
         "shared_mark_law",
         "return_components.fitted_parameters.news_process_configuration.shared_mark_law",
     )
-
-    interval_delta = interval_duration_nanos / 3_600_000_000_000.0
-    seasonality_hourly_factors = _gate_runtime_seasonality_to_open_intervals(
-        calendar_registry=calendar_registry,
-        exchange_code=exchange_code,
-        range_start_utc=start_time_utc,
-        interval_duration_nanos=interval_duration_nanos,
-        seasonality_hourly_factors=tuple(float(value) for value in seasonality_source.hourly_factors),
-    )
-    known_component_nu_h, surprise_component_nu_h = (
-        _normalize_runtime_coarse_news_intensity_components(
-            news_materialization=news_materialization,
-            known_news_event_timestamps_utc=known_news_event_timestamps_utc,
-            interval_delta=interval_delta,
-        )
-    )
-
     return _PreparedModelRuntimeFactors(
         calendar_registry=calendar_registry,
         exchange_code=exchange_code,
         interval_duration_nanos=interval_duration_nanos,
-        interval_delta=interval_delta,
+        interval_delta=interval_duration_nanos / 3_600_000_000_000.0,
         range_end_utc=range_end_utc,
         kernel_parameters=HawkesKernelParameters.from_mapping(
             _require_payload_mapping(
@@ -1093,79 +1088,6 @@ def _prepare_model_runtime_factors(
             ),
         ),
         news_process_configuration=news_process_configuration,
-        seasonality_hourly_factors=seasonality_hourly_factors,
-        known_component_nu_h=known_component_nu_h,
-        surprise_component_nu_h=surprise_component_nu_h,
-    )
-
-
-def _gate_runtime_seasonality_to_open_intervals(
-    *,
-    calendar_registry: CalendarRegistry,
-    exchange_code: str,
-    range_start_utc: datetime,
-    interval_duration_nanos: int,
-    seasonality_hourly_factors: tuple[float, ...],
-) -> tuple[float, ...]:
-    interval_duration = timedelta(seconds=interval_duration_nanos / 1_000_000_000)
-    gated_hourly_factors: list[float] = []
-    interval_start_utc = _normalize_runtime_utc_timestamp(
-        range_start_utc,
-        field_name="range_start_utc",
-    )
-
-    for hourly_factor in seasonality_hourly_factors:
-        market_state = calendar_registry.resolve_market_state(
-            exchange_code,
-            interval_start_utc,
-        )
-        gated_hourly_factors.append(
-            hourly_factor if market_state == MarketState.OPEN else 0.0
-        )
-        interval_start_utc += interval_duration
-
-    return tuple(gated_hourly_factors)
-
-
-def _normalize_runtime_coarse_news_intensity_components(
-    *,
-    news_materialization: Any,
-    known_news_event_timestamps_utc: tuple[datetime, ...],
-    interval_delta: float,
-) -> tuple[tuple[float, ...], tuple[float, ...]]:
-    known_news_event_timestamps_utc_nanos = tuple(
-        datetime_to_utc_nanos(timestamp_utc)
-        for timestamp_utc in known_news_event_timestamps_utc
-    )
-    known_component_nu_h: list[float] = []
-    surprise_component_nu_h: list[float] = []
-
-    for interval_start_utc_nanos, interval_end_utc_nanos, surprise_component_nu_h_value in zip(
-        news_materialization.interval_start_utc_nanos,
-        news_materialization.interval_end_utc_nanos,
-        news_materialization.surprise_component_nu_h,
-        strict=True,
-    ):
-        known_news_event_count = _count_known_news_events_in_interval(
-            known_news_event_timestamps_utc_nanos,
-            int(interval_start_utc_nanos),
-            int(interval_end_utc_nanos),
-        )
-        known_component_nu_h.append(known_news_event_count / interval_delta)
-        surprise_component_nu_h.append(max(float(surprise_component_nu_h_value), 0.0))
-
-    return tuple(known_component_nu_h), tuple(surprise_component_nu_h)
-
-
-def _count_known_news_events_in_interval(
-    known_news_event_timestamps_utc_nanos: tuple[int, ...],
-    interval_start_utc_nanos: int,
-    interval_end_utc_nanos: int,
-) -> int:
-    return sum(
-        1
-        for timestamp_utc_nanos in known_news_event_timestamps_utc_nanos
-        if interval_start_utc_nanos <= timestamp_utc_nanos < interval_end_utc_nanos
     )
 
 
@@ -1203,7 +1125,7 @@ def _build_runtime_hourly_seasonality_source_from_model(
     range_start_utc: datetime,
     range_end_utc: datetime,
     interval: str | timedelta,
-) -> HourlySeasonalityProviderExplicitSource:
+) -> HourlySeasonalityProviderSource:
     seasonality_parameters = _seasonality_parameters_payload(model)
     if not _contains_structural_seasonality_parameters(seasonality_parameters):
         raise RuntimeError(
@@ -1275,8 +1197,23 @@ def _build_runtime_hourly_seasonality_source_from_model(
             * day_of_year_factors[day_of_year_index]
         )
 
+    mean_renormalized_factors = _mean_renormalize_factors(tuple(hourly_factors))
+
+    if interval_duration_nanos < 3_600_000_000_000:
+        return HourlySeasonalityProviderMaterializedSource(
+            source_timestamps_utc=tuple(
+                record["timestamp"]
+                for record in timestamp_event_records
+            ),
+            source_seasonality_factors=mean_renormalized_factors,
+            interpolation_method="previous_observation_carry_forward.v1",
+            aggregation_method="mean_of_observations.v1",
+            sparse_fallback_policy="global_mean.v1",
+            sparse_hour_minimum_observation_count=1,
+        )
+
     return HourlySeasonalityProviderExplicitSource(
-        hourly_factors=_mean_renormalize_factors(tuple(hourly_factors)),
+        hourly_factors=mean_renormalized_factors,
         materialization_method="runtime_compact_seasonality_parameters_mean_renormalized.v1",
     )
 
@@ -1295,6 +1232,44 @@ def _build_runtime_timestamp_event_records(
         current_timestamp += interval_duration
 
     return event_records
+
+
+def _zero_closed_coarse_interval_seasonality_factors(
+    hourly_factor_contract: HourlyFactorContract,
+    *,
+    calendar_registry: CalendarRegistry,
+    exchange_code: str,
+) -> HourlyFactorContract:
+    if hourly_factor_contract.interval_duration_nanos >= 3_600_000_000_000:
+        return hourly_factor_contract
+
+    payload = hourly_factor_contract.to_payload()
+    gated_seasonality: list[float] = []
+    contains_closed_interval = False
+
+    for interval_start_utc_nanos, seasonality_factor in zip(
+        payload["interval_start_utc_nanos"],
+        payload["s_h"],
+        strict=True,
+    ):
+        if (
+            calendar_registry.resolve_market_state(
+                exchange_code,
+                _runtime_datetime_from_utc_nanos(interval_start_utc_nanos),
+            )
+            == MarketState.OPEN
+        ):
+            gated_seasonality.append(seasonality_factor)
+            continue
+
+        gated_seasonality.append(0.0)
+        contains_closed_interval = True
+
+    if not contains_closed_interval:
+        return hourly_factor_contract
+
+    payload["s_h"] = gated_seasonality
+    return load_hourly_factor_contract_payload(payload)
 
 
 def _seasonality_parameters_payload(model: JaniformModel) -> Mapping[str, Any]:
@@ -2020,7 +1995,7 @@ def _build_model_metadata(
         "workflow_scope": prepared.diagnostics.workflow_scope.value,
         "execution_mode": staged_response.execution_mode.value,
         "selected_stages": [
-            stage.value for stage in prepared.execution_input.request.selected_stages
+            stage.value for stage in prepared.staged_request.selected_stages
         ],
         "market_profile": market_profile_name,
         "session_preset": session_preset_name,

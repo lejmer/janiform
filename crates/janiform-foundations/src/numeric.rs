@@ -483,11 +483,7 @@ pub fn compute_sorted_quantile(sorted_values: &[f64], quantile_level: f64) -> f6
 /// Compute an interpolated quantile from an already sorted sample and use zero for empty input.
 pub fn compute_sorted_quantile_or_zero(sorted_values: &[f64], quantile_level: f64) -> f64 {
     let quantile = compute_sorted_quantile(sorted_values, quantile_level);
-    if quantile.is_nan() {
-        0.0
-    } else {
-        quantile
-    }
+    if quantile.is_nan() { 0.0 } else { quantile }
 }
 
 /// Compute the median from an already sorted sample.

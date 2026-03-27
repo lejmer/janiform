@@ -249,16 +249,16 @@ def test_calibration_example_runs_with_default_and_override_modes(tmp_path: Path
             "request_execution_mode": "memory",
             "response_execution_mode": "memory",
             "status": "success",
-            "stage_count": 3,
-            "checkpoint_count": 3,
+            "stage_count": 4,
+            "checkpoint_count": 4,
         },
         "disk_mode": {
             "request_execution_mode": "disk",
             "response_execution_mode": "disk",
             "status": "success",
-            "stage_count": 3,
-            "checkpoint_count": 3,
-            "checkpoint_file_count": 10,
+            "stage_count": 4,
+            "checkpoint_count": 4,
+            "checkpoint_file_count": 12,
         },
     }
 
