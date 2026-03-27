@@ -108,6 +108,8 @@ state for you.
 
 High-level mean-reversion calibration stays disabled unless you request it explicitly through
 `JaniformEstimator(mean_reversion=...)` or `janiform fit --mean-reversion-anchor-model ...`.
+The calibration workbench uses a separate setup surface and enables mean reversion with constant
+anchoring by default, while still exposing a setup toggle to disable it for a run.
 When you omit `calibration_grid_interval_hours`, the high-level market-data translation derives it
 from the median spacing of retained session-open boundary observations.
 

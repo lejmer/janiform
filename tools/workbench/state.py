@@ -24,6 +24,7 @@ class WorkbenchRunSetup:
     exchange_code: str
     workflow_scope: CalibrationMarketDataWorkflowScope
     output_directory: Path
+    mean_reversion_enabled: bool = True
     file_format: Optional[CalibrationInputFileFormat] = None
     timestamp_column: Optional[str] = None
     tick_price_input_policy: Optional[CalibrationTickPriceInputPolicy] = None

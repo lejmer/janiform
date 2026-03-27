@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Event, Thread
@@ -23,7 +21,9 @@ from janiform.calibration.fit.model import (
 )
 from janiform.calibration.fit.report import JaniformFitReport
 from janiform.calibration.market_data.contracts import (
+    CalibrationMeanReversionConfiguration,
     CalibrationMarketDataNormalizationPolicy,
+    CalibrationMarketDataWorkflowScope,
     CalibrationTickDataColumnMapping,
 )
 from janiform.calibration.staged.contracts import CalibrationStageExecutionStatus
@@ -32,6 +32,7 @@ from janiform.calibration.staged.runtime import (
 )
 from janiform._workflow_outputs import write_fit_artifacts
 from janiform.calendar import CalendarRegistry
+from janiform.contracts import MeanReversionAnchorModelKind
 
 from .artifacts import load_workbench_artifacts
 from .events import WorkbenchEventType, build_workbench_event
@@ -103,6 +104,7 @@ class WorkbenchExecutionWorker(QObject):
                 workflow_scope=self._run_setup.workflow_scope,
                 tick_data_column_mapping=_column_mapping_from_setup(self._run_setup),
                 normalization_policy=_normalization_policy_from_setup(self._run_setup),
+                mean_reversion=_mean_reversion_configuration_from_setup(self._run_setup),
                 exchange_code=self._run_setup.exchange_code,
                 silent=True,
             )
@@ -461,6 +463,20 @@ def _normalization_overrides_from_setup(
         timestamp_timezone=run_setup.timestamp_timezone,
         sort_records_by_timestamp=True,
         tick_price_input_policy=run_setup.tick_price_input_policy,
+    )
+
+
+def _mean_reversion_configuration_from_setup(
+    run_setup: WorkbenchRunSetup,
+) -> Optional[CalibrationMeanReversionConfiguration]:
+    if (
+        not run_setup.mean_reversion_enabled
+        or run_setup.workflow_scope == CalibrationMarketDataWorkflowScope.SEASONALITY_ONLY
+    ):
+        return None
+
+    return CalibrationMeanReversionConfiguration(
+        anchor_model_kind=MeanReversionAnchorModelKind.CONSTANT,
     )
 
 
