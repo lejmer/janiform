@@ -4,14 +4,14 @@ from typing import Any, Optional, cast
 
 import click
 
-from .model_workflows import (
-    _build_cli_preset_registry,
-    _parse_cli_preset_category,
-    _parse_cli_preset_scope,
-    _resolve_named_preset_scope,
-    _resolve_preset_artifact,
+from ._model_workflows import (
+    build_cli_preset_registry,
+    parse_cli_preset_category,
+    parse_cli_preset_scope,
+    resolve_named_preset_scope,
+    resolve_preset_artifact,
 )
-from .shared import _require_non_empty_cli_string
+from ._shared import require_non_empty_cli_string
 from ..context import CliCommandContext
 from ..command_runtime import (
     JaniformCommand,
@@ -41,13 +41,13 @@ from .._constants import (
     CliExitCode,
     CliOutputMode,
 )
-from ..errors import _classify_generic_cli_command_error
-from ..rendering import (
-    _render_presets_export_human_output,
-    _render_presets_list_human_output,
-    _render_presets_show_human_output,
-    _write_cli_error,
-    _write_command_output,
+from .._errors import classify_generic_cli_command_error
+from .._rendering import (
+    render_presets_export_human_output,
+    render_presets_list_human_output,
+    render_presets_show_human_output,
+    write_cli_error,
+    write_command_output,
 )
 from ...calibration.presets import PresetRegistryScope
 from ...errors import JaniformError
@@ -63,14 +63,14 @@ def _run_presets_list_command(
     **_,
 ) -> int:
     try:
-        registry = _build_cli_preset_registry(
+        registry = build_cli_preset_registry(
             cli_context=cli_context,
             user_preset_json=user_preset_json,
             entrypoint=CLI_PRESETS_LIST_ENTRYPOINT,
             error_id=CLI_PRESETS_LIST_VALIDATION_ERROR_ID,
         )
-        parsed_category = _parse_cli_preset_category(category)
-        parsed_scope = _parse_cli_preset_scope(scope)
+        parsed_category = parse_cli_preset_category(category)
+        parsed_scope = parse_cli_preset_scope(scope)
         include_built_in = parsed_scope in (None, PresetRegistryScope.BUILT_IN)
         include_user_registered = parsed_scope in (None, PresetRegistryScope.USER_REGISTERED)
         entries = registry.list_presets(
@@ -87,10 +87,10 @@ def _run_presets_list_command(
             "presets": [entry.to_payload() for entry in entries],
         }
     except JaniformError as e:
-        return _write_cli_error(e)
+        return write_cli_error(e)
     except Exception as e:
-        return _write_cli_error(
-            _classify_generic_cli_command_error(
+        return write_cli_error(
+            classify_generic_cli_command_error(
                 e,
                 entrypoint=CLI_PRESETS_LIST_ENTRYPOINT,
                 validation_error_id=CLI_PRESETS_LIST_VALIDATION_ERROR_ID,
@@ -100,10 +100,10 @@ def _run_presets_list_command(
             )
         )
 
-    _write_command_output(
+    write_command_output(
         output,
         json_payload=payload,
-        human_output_factory=lambda: _render_presets_list_human_output(payload),
+        human_output_factory=lambda: render_presets_list_human_output(payload),
     )
 
     return int(CliExitCode.SUCCESS)
@@ -120,14 +120,14 @@ def _run_presets_show_command(
     **_,
 ) -> int:
     try:
-        registry = _build_cli_preset_registry(
+        registry = build_cli_preset_registry(
             cli_context=cli_context,
             user_preset_json=user_preset_json,
             entrypoint=CLI_PRESETS_SHOW_ENTRYPOINT,
             error_id=CLI_PRESETS_SHOW_VALIDATION_ERROR_ID,
         )
-        parsed_category = _parse_cli_preset_category(category)
-        normalized_preset_name = _require_non_empty_cli_string(
+        parsed_category = parse_cli_preset_category(category)
+        normalized_preset_name = require_non_empty_cli_string(
             preset_name,
             field_path="preset_name",
             error_id=CLI_PRESETS_SHOW_VALIDATION_ERROR_ID,
@@ -136,13 +136,13 @@ def _run_presets_show_command(
         if parsed_category is None:
             raise RuntimeError("preset category is required")
 
-        registry_scope = _resolve_named_preset_scope(
+        registry_scope = resolve_named_preset_scope(
             registry=registry,
             category=parsed_category,
             preset_name=normalized_preset_name,
             raw_scope=scope,
         )
-        artifact = _resolve_preset_artifact(
+        artifact = resolve_preset_artifact(
             registry=registry,
             category=parsed_category,
             preset_name=normalized_preset_name,
@@ -157,10 +157,10 @@ def _run_presets_show_command(
             "artifact": artifact.to_payload(),
         }
     except JaniformError as e:
-        return _write_cli_error(e)
+        return write_cli_error(e)
     except Exception as e:
-        return _write_cli_error(
-            _classify_generic_cli_command_error(
+        return write_cli_error(
+            classify_generic_cli_command_error(
                 e,
                 entrypoint=CLI_PRESETS_SHOW_ENTRYPOINT,
                 validation_error_id=CLI_PRESETS_SHOW_VALIDATION_ERROR_ID,
@@ -170,10 +170,10 @@ def _run_presets_show_command(
             )
         )
 
-    _write_command_output(
+    write_command_output(
         output,
         json_payload=payload,
-        human_output_factory=lambda: _render_presets_show_human_output(payload),
+        human_output_factory=lambda: render_presets_show_human_output(payload),
     )
 
     return int(CliExitCode.SUCCESS)
@@ -190,14 +190,14 @@ def _run_presets_export_command(
     **_,
 ) -> int:
     try:
-        registry = _build_cli_preset_registry(
+        registry = build_cli_preset_registry(
             cli_context=cli_context,
             user_preset_json=user_preset_json,
             entrypoint=CLI_PRESETS_EXPORT_ENTRYPOINT,
             error_id=CLI_PRESETS_EXPORT_VALIDATION_ERROR_ID,
         )
-        parsed_category = _parse_cli_preset_category(category)
-        normalized_preset_name = _require_non_empty_cli_string(
+        parsed_category = parse_cli_preset_category(category)
+        normalized_preset_name = require_non_empty_cli_string(
             preset_name,
             field_path="preset_name",
             error_id=CLI_PRESETS_EXPORT_VALIDATION_ERROR_ID,
@@ -206,7 +206,7 @@ def _run_presets_export_command(
         if parsed_category is None:
             raise RuntimeError("preset category is required")
 
-        registry_scope = _resolve_named_preset_scope(
+        registry_scope = resolve_named_preset_scope(
             registry=registry,
             category=parsed_category,
             preset_name=normalized_preset_name,
@@ -219,10 +219,10 @@ def _run_presets_export_command(
         ).to_payload()
         payload = {**export_payload, "command": CLI_PRESETS_EXPORT_ENTRYPOINT}
     except JaniformError as e:
-        return _write_cli_error(e)
+        return write_cli_error(e)
     except Exception as e:
-        return _write_cli_error(
-            _classify_generic_cli_command_error(
+        return write_cli_error(
+            classify_generic_cli_command_error(
                 e,
                 entrypoint=CLI_PRESETS_EXPORT_ENTRYPOINT,
                 validation_error_id=CLI_PRESETS_EXPORT_VALIDATION_ERROR_ID,
@@ -232,10 +232,10 @@ def _run_presets_export_command(
             )
         )
 
-    _write_command_output(
+    write_command_output(
         output,
         json_payload=payload,
-        human_output_factory=lambda: _render_presets_export_human_output(payload),
+        human_output_factory=lambda: render_presets_export_human_output(payload),
     )
 
     return int(CliExitCode.SUCCESS)

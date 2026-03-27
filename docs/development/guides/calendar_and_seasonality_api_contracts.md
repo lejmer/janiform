@@ -215,8 +215,7 @@ single integration point for hourly factor delivery.
     - `janiform::simulation::load_hourly_factor_contract(...)`
 - Python user-facing API:
   - shared provider entrypoint: `janiform.provide_hourly_factor_contract(...)`
-  - pricing adapter: `janiform.load_hourly_factor_contract_for_pricing(...)`
-  - simulation adapter: `janiform.load_hourly_factor_contract_for_simulation(...)`
+  - canonical provider: `janiform.hourly_factors.provide_hourly_factor_contract(...)`
 
 ## Validation Fallback Policy
 

@@ -292,6 +292,9 @@ python3 scripts/generate_crate_readmes.py
 - Default high-level fitting now lives under `janiform.calibration` through `JaniformEstimator.fit(...)`, which returns a lean `JaniformModel` and can optionally surface a separate `JaniformFitReport`
 - Runtime hourly seasonality reconstructed from calibration output should use `janiform.hourly_factors.build_runtime_hourly_seasonality_source_from_calibration_payload(...)` rather than manual component recomposition in consumers
 - Workflow package roots remain curated convenience surfaces, and natural public domain modules such as `janiform.simulation.seeded` and `janiform.calibration.staged.inputs` are also supported when they make ownership clearer
+- Curated roots are intentionally small. If you need advanced contracts, serialization helpers, or
+  CLI implementation details, import the ownership submodule instead of relying on broad root
+  re-export sets
 
 ## CLI Automation
 

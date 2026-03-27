@@ -4,7 +4,7 @@ from typing import Any, Optional
 
 import click
 
-from .shared import _build_calendar_registry_from_document, _override_calibration_execution_mode
+from ._shared import build_calendar_registry_from_document, override_calibration_execution_mode
 from ..command_runtime import (
     JaniformCommand,
     command_config_option,
@@ -34,23 +34,25 @@ from .._constants import (
     CliExitCode,
     CliOutputMode,
 )
-from ..documents import _load_json_document_for_cli_field
-from ..errors import _classify_market_data_command_error, _classify_workflow_command_error
+from .._documents import load_json_document_for_cli_field
+from .._errors import classify_market_data_command_error, classify_workflow_command_error
 from ..paths import _require_path_argument, _resolve_path_from_repository_root
-from ..rendering import (
-    _render_calibration_staged_human_output,
-    _render_market_data_calibration_human_output,
-    _write_cli_error,
-    _write_command_output,
+from .._rendering import (
+    render_calibration_staged_human_output,
+    render_market_data_calibration_human_output,
+    write_cli_error,
+    write_command_output,
 )
-from ...calibration import (
+from ...calibration.market_data import (
     CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION,
-    CalibrationExecutionMode,
     MarketDataCalibrationRequest,
     PreparedMarketDataCalibration,
     prepare_market_data_calibration,
-    run_staged_calibration,
     validate_market_data_calibration_request,
+)
+from ...calibration.staged import (
+    CalibrationExecutionMode,
+    run_staged_calibration,
     validate_staged_calibration_execution_input,
 )
 from ...errors import JaniformError
@@ -69,14 +71,14 @@ def _run_calibration_market_data_command(
         )
         prepared_calibration = prepare_market_data_calibration(request)
     except JaniformError as e:
-        return _write_cli_error(e)
+        return write_cli_error(e)
     except Exception as e:
-        return _write_cli_error(_classify_market_data_command_error(e))
+        return write_cli_error(classify_market_data_command_error(e))
 
-    _write_command_output(
+    write_command_output(
         output,
         json_payload=_build_market_data_calibration_summary_payload(prepared_calibration),
-        human_output_factory=lambda: _render_market_data_calibration_human_output(prepared_calibration),
+        human_output_factory=lambda: render_market_data_calibration_human_output(prepared_calibration),
     )
 
     return int(CliExitCode.SUCCESS)
@@ -99,7 +101,7 @@ def _run_calibration_staged_command(
     )
 
     try:
-        execution_input_document = _load_json_document_for_cli_field(
+        execution_input_document = load_json_document_for_cli_field(
             repository_root=cli_context.repository_root,
             path=execution_input_json,
             context="calibration execution input",
@@ -107,7 +109,7 @@ def _run_calibration_staged_command(
             error_id=CLI_CALIBRATION_STAGED_VALIDATION_ERROR_ID,
             entrypoint=CLI_CALIBRATION_STAGED_ENTRYPOINT,
         )
-        calendar_registry_document = _load_json_document_for_cli_field(
+        calendar_registry_document = load_json_document_for_cli_field(
             repository_root=cli_context.repository_root,
             path=calendar_registry_json,
             context="calendar registry",
@@ -118,20 +120,20 @@ def _run_calibration_staged_command(
 
         execution_input = validate_staged_calibration_execution_input(execution_input_document)
 
-        normalized_execution_input = _override_calibration_execution_mode(
+        normalized_execution_input = override_calibration_execution_mode(
             execution_input=execution_input,
             execution_mode=CalibrationExecutionMode(execution_mode),
             disk_checkpoint_directory=resolved_disk_checkpoint_directory,
         )
 
-        calendar_registry = _build_calendar_registry_from_document(calendar_registry_document)
+        calendar_registry = build_calendar_registry_from_document(calendar_registry_document)
 
         response = run_staged_calibration(normalized_execution_input, calendar_registry=calendar_registry)
     except JaniformError as e:
-        return _write_cli_error(e)
+        return write_cli_error(e)
     except Exception as e:
-        return _write_cli_error(
-            _classify_workflow_command_error(
+        return write_cli_error(
+            classify_workflow_command_error(
                 e,
                 entrypoint=CLI_CALIBRATION_STAGED_ENTRYPOINT,
                 validation_error_id=CLI_CALIBRATION_STAGED_VALIDATION_ERROR_ID,
@@ -143,10 +145,10 @@ def _run_calibration_staged_command(
 
     payload = response.to_payload()
 
-    _write_command_output(
+    write_command_output(
         output,
         json_payload=payload,
-        human_output_factory=lambda: _render_calibration_staged_human_output(payload),
+        human_output_factory=lambda: render_calibration_staged_human_output(payload),
     )
 
     return int(CliExitCode.SUCCESS)

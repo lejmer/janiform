@@ -5,23 +5,27 @@ from typing import Any, TypedDict, cast
 from janiform.hourly_factors import (
     HourlyNewsIntensityProviderExplicitSource,
     HourlySeasonalityProviderExplicitSource,
+    provide_hourly_factor_contract,
 )
 from janiform.pricing import GammaSeverityMarkConfiguration, NigSharedPlusShiftConfiguration
-from janiform.simulation import (
+from janiform.simulation.coarse import (
     CoupledGapMarkConfiguration,
     DoubleExponentialBaseShockConfiguration,
-    HawkesExcitationState,
-    HawkesKernelParameters,
     KnownNewsArrivalConfiguration,
     NewsArrivalConfiguration,
     NewsComponentMarkScaleConfiguration,
     NewsProcessConfiguration,
-    SeededTickSimulationRequest,
-    SeededTickSimulationResponse,
     SharedNewsMarkLawConfiguration,
     SurpriseNewsArrivalConfiguration,
-    load_hourly_factor_contract_for_simulation,
+)
+from janiform.simulation.seeded import (
+    SeededTickSimulationRequest,
+    SeededTickSimulationResponse,
     run_seeded_tick_event_simulation,
+)
+from janiform.simulation.shared import (
+    HawkesExcitationState,
+    HawkesKernelParameters,
 )
 from janiform.simulation.seeded.contracts import build_disabled_seeded_mean_reversion_runtime_inputs
 
@@ -295,7 +299,7 @@ def _run_seeded_case(
     start_time_utc: datetime = START_TIME_UTC,
 ) -> SeededTickSimulationResponse:
     range_end_utc = start_time_utc + timedelta(hours=horizon_interval_count)
-    hourly_factor_contract = load_hourly_factor_contract_for_simulation(
+    hourly_factor_contract = provide_hourly_factor_contract(
         calendar_registry=calendar_registry,
         exchange_code="XNYS",
         range_start_utc=start_time_utc,

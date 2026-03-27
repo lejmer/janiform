@@ -77,7 +77,7 @@ Validation failures:
 - failure metadata:
   - `workflow="simulation"`
   - `entrypoint="contract"` for request and response model validation
-  - `entrypoint="load_hourly_factor_contract_for_simulation"` for shared hourly-factor loading
+  - shared hourly-factor loading now raises ownership-module provider errors directly
 
 Execution failures:
 
@@ -110,7 +110,7 @@ Validation failures:
 - identifier: `pricing.validation.contract`
 - entrypoints:
   - `contract`
-  - `load_hourly_factor_contract_for_pricing`
+  - `janiform.hourly_factors.provide_hourly_factor_contract`
 
 Integration failures:
 

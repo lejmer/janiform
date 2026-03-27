@@ -27,8 +27,10 @@ from janiform.calibration.presets import (
     SessionPresetArtifact,
     SessionPresetReference,
     UserPresetRegistry,
+    deserialize_preset_artifact,
     serialize_preset_artifact,
 )
+from janiform.contracts import serialize_deterministic_json
 from janiform.calibration.sessions import (
     MarketDataSessionRecurringClosedWindow,
     MarketDataSessionRegularWindow,
@@ -58,7 +60,7 @@ def test_bundled_registry_loads_minimal_v1_preset_set_and_fx_session_hours() -> 
         entry.preset_name for entry in built_in_registry.list_presets(category=PresetCategory.MARKET_PROFILE)
     } == {"btcusd_spot", "eurusd_spot", "us_equity_cash"}
 
-    fx_session = built_in_registry.resolve_session("fx_spot_24_5")
+    fx_session = built_in_registry.resolve(PresetCategory.SESSION, "fx_spot_24_5")
 
     assert fx_session.configuration.timezone_name == "UTC"
     assert fx_session.configuration.recurring_closed_windows == (
@@ -143,8 +145,15 @@ def test_user_registry_can_shadow_built_in_name_without_mutating_built_in_store(
 
     registry.register_user_preset(user_session)
 
-    resolved_scope, resolved_session = registry.resolve_session_preset("XNYS")
-    _, bundled_session = registry.resolve_session_preset("XNYS", registry_scope=PresetRegistryScope.BUILT_IN)
+    resolved_scope, resolved_session = registry.resolve(
+        category=PresetCategory.SESSION,
+        preset_name="XNYS",
+    )
+    _, bundled_session = registry.resolve(
+        category=PresetCategory.SESSION,
+        preset_name="XNYS",
+        registry_scope=PresetRegistryScope.BUILT_IN,
+    )
 
     assert resolved_scope == PresetRegistryScope.USER_REGISTERED
     assert resolved_session.metadata.display_name == "Desk XNYS"
@@ -183,21 +192,29 @@ def test_user_preset_json_load_normalizes_order_and_exports_deterministically() 
         ),
     )
 
-    loaded_artifact = registry.load_user_preset_json(user_known_news.to_json())
-    first_export = registry.export_resolved_preset_json(
-        category=PresetCategory.KNOWN_NEWS,
-        preset_name="desk_macro",
-        registry_scope=PresetRegistryScope.USER_REGISTERED,
+    loaded_artifact = registry.register_user_preset(deserialize_preset_artifact(user_known_news.to_json()))
+    first_export = serialize_deterministic_json(
+        registry.export_resolved_preset(
+            category=PresetCategory.KNOWN_NEWS,
+            preset_name="desk_macro",
+            registry_scope=PresetRegistryScope.USER_REGISTERED,
+        )
     )
-    second_export = registry.export_resolved_preset_json(
-        category=PresetCategory.KNOWN_NEWS,
-        preset_name="desk_macro",
-        registry_scope=PresetRegistryScope.USER_REGISTERED,
+    second_export = serialize_deterministic_json(
+        registry.export_resolved_preset(
+            category=PresetCategory.KNOWN_NEWS,
+            preset_name="desk_macro",
+            registry_scope=PresetRegistryScope.USER_REGISTERED,
+        )
     )
 
     assert first_export == second_export
     assert serialize_preset_artifact(loaded_artifact) == serialize_preset_artifact(
-        registry.user_registered.resolve_known_news("desk_macro")
+        registry.resolve(
+            category=PresetCategory.KNOWN_NEWS,
+            preset_name="desk_macro",
+            registry_scope=PresetRegistryScope.USER_REGISTERED,
+        )[1]
     )
     assert loaded_artifact.metadata.provenance.content_hash is not None
     assert loaded_artifact.configuration.events[0].event_id == "early_event"
@@ -207,7 +224,7 @@ def test_user_preset_json_rejects_malformed_payload_and_dangling_market_profile_
     registry = PresetRegistry(user_registered=UserPresetRegistry())
 
     with pytest.raises(CalibrationValidationError) as malformed_error:
-        registry.load_user_preset_json("[]")
+        registry.register_user_preset(deserialize_preset_artifact("[]"))
 
     assert malformed_error.value.failure.field_path == "preset artifact"
     assert "JSON object" in malformed_error.value.failure.message
@@ -240,7 +257,9 @@ def test_user_preset_json_rejects_malformed_payload_and_dangling_market_profile_
     }
 
     with pytest.raises(CalibrationValidationError) as dangling_error:
-        registry.load_user_preset_json(json.dumps(dangling_profile_payload, sort_keys=True))
+        registry.register_user_preset(
+            deserialize_preset_artifact(json.dumps(dangling_profile_payload, sort_keys=True))
+        )
 
     assert dangling_error.value.failure.field_path == "preset_name"
     assert "missing_news" in dangling_error.value.failure.message
@@ -249,9 +268,11 @@ def test_user_preset_json_rejects_malformed_payload_and_dangling_market_profile_
 def test_market_profile_export_includes_nested_session_and_known_news_artifacts() -> None:
     registry = PresetRegistry()
     export_payload = json.loads(
-        registry.export_resolved_preset_json(
-            category=PresetCategory.MARKET_PROFILE,
-            preset_name="eurusd_spot",
+        serialize_deterministic_json(
+            registry.export_resolved_preset(
+                category=PresetCategory.MARKET_PROFILE,
+                preset_name="eurusd_spot",
+            )
         )
     )
 

@@ -1,3 +1,5 @@
+"""Public market-data calibration ownership surface."""
+
 from .contracts import (
     CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION,
     CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION,

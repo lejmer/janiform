@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale_and_docs.v1",
-  "approved_snapshot_sha256": "89a2d46feb2407e2f37719d89c51573be79ea2cf8d7d6a8f526191082a50d270",
+  "approved_snapshot_sha256": "26d337d09aba5d61793af4c73c017f8aeabea474389e7d3759b5fc675fdcc99a",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -606,6 +606,36 @@
       "rationale": "Pricing, risk, and coarse simulation now consume native-backed hourly-factor artifacts instead of Python tuple-owned interval-factor contracts, so the approved Python snapshot must remove the old execution-input tuple helpers and record the artifact-backed request fields and signatures.",
       "snapshot_sha256": "89a2d46feb2407e2f37719d89c51573be79ea2cf8d7d6a8f526191082a50d270",
       "summary": "Approve the hourly-factor artifact boundary reset for pricing, risk, and coarse simulation."
+    },
+    {
+      "approved_on": "2026-03-27",
+      "docs_updated": [
+        "README.md",
+        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md",
+        "docs/development/guides/python_api_contract_compatibility_and_version_guardrails.md",
+        "docs/development/guides/python_control_plane_and_rust_data_plane_boundary.md"
+      ],
+      "rationale": "The reduction pass now also removes category-specific preset registry passthrough methods that only forwarded into the generic resolver or serializer without adding validation or policy. In-repo callers now use the canonical generic preset operations directly, so the approved snapshot must follow the smaller preset registry surface in addition to the earlier simulation-surface reductions.",
+      "snapshot_sha256": "fc84a697c504c33fcec52b414fd3a34f9da0f27233d39da4ac3367ff5c07640f",
+      "summary": "Approve the preset registry passthrough deletion."
+    },
+    {
+      "approved_on": "2026-03-27",
+      "docs_updated": [
+        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+      ],
+      "rationale": "The high-level model loader now reconstructs resolved preset and session contracts through the canonical ownership modules instead of restating those payload parsers inside janiform.calibration.fit.model, and the session-registry materialization helpers now live behind the private janiform.calibration.sessions._resolution module boundary instead of a public-looking helper module.",
+      "snapshot_sha256": "d79c8175d37a4f48c49de859a31892f4e5d3de2405981a4f7ef3ae9f27044fee",
+      "summary": "Approve the model parser consolidation and the internal sessions helper module rename."
+    },
+    {
+      "approved_on": "2026-03-27",
+      "docs_updated": [
+        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+      ],
+      "rationale": "Helper-only CLI plumbing modules no longer sit on public-looking module paths. The document loader, CLI error normalization, CLI rendering, and the fit, pricing, development, and shared command builders now live behind internal underscore module boundaries, and the public API snapshot must stop treating the old developer and model-workflow command modules as supported public imports.",
+      "snapshot_sha256": "26d337d09aba5d61793af4c73c017f8aeabea474389e7d3759b5fc675fdcc99a",
+      "summary": "Approve the CLI helper-module internalization pass."
     }
   ],
   "public_api_surface_document_version": "python.public_api_surface_map.pre_v0_1.control_plane_reset.v1",

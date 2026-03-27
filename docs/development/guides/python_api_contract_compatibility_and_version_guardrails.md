@@ -17,7 +17,7 @@ For the guardrail snapshot, a breaking change is any change to the approved publ
 - the package-root export set for `janiform`
 - the `__all__` export set of public package roots and public submodules listed in
   `docs/development/guides/python_public_api_surface_map_and_namespace_policy.md`
-  including `janiform.cli` and its supported command and parsing submodules
+  including `janiform.cli` and the supported command modules
   - underscore-prefixed helper names are not public contract exports and must not appear in `__all__`
 - callable signatures for exported public functions
 - constructor-visible field signatures for exported contract models
@@ -71,6 +71,8 @@ Every public-surface review must reject a change that:
   evidence instead of artifact references, handles, or summaries
 - preserves both the old tuple-heavy contract and the new artifact-backed contract in the same
   supported surface
+- adds a new public wrapper whose entire body is payload forwarding or one-line delegation
+- expands a curated package root until it stops reading like a small supported overview
 
 ## Verification command
 

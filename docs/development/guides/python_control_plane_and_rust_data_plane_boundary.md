@@ -27,6 +27,10 @@ This guide defines the implementation boundary for production Janiform workflows
   duplicate bulk evidence payloads.
 - Keep high-level CLI and Python surfaces explicit. They should accept file paths, policies,
   presets, and small config objects, not giant staged evidence JSON documents.
+- Delete Python wrappers that do not add boundary value such as validation, policy injection, type
+  conversion, error mapping, or an intentionally curated public entrypoint.
+- Prefer one canonical Python validation or conversion path per boundary. If two Python helpers do
+  the same normalization or transport work, collapse them.
 
 ## Default calibration path
 
@@ -62,3 +66,5 @@ Reject a change when it:
 - makes a report or runtime artifact eagerly return a full dataset
 - preserves an old tuple-heavy contract alongside a new artifact-backed one
 - introduces a compatibility shim instead of replacing the weak boundary directly
+- adds a forwarding-only Python wrapper instead of calling the shared implementation directly
+- leaves a non-underscored implementation module ambiguous about whether it is public or internal

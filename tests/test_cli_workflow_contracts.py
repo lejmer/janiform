@@ -12,19 +12,20 @@ import janiform.calibration as calibration_module
 import janiform.cli as cli_module
 import janiform.cli.commands.calibration as cli_calibration_commands_module
 import janiform.cli.paths as cli_paths_module
-import janiform.cli.commands.pricing as cli_pricing_commands_module
+import janiform.cli.commands._pricing as cli_pricing_commands_module
 import janiform.cli.commands.simulation as cli_simulation_commands_module
 import janiform.pricing as pricing_module
 import janiform.simulation as simulation_module
 from janiform.calendar import CalendarRegistry
-from janiform.calibration.market_data import CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION
+from janiform.calibration.market_data import (
+    CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION,
+    CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION,
+    CalibrationMarketDataWorkflowScope,
+)
 from janiform.calibration.staged import (
     CalibrationExecutionMode,
     StagedCalibrationExecutionInput,
     StagedCalibrationResponse,
-)
-from janiform.calibration import (
-    CalibrationMarketDataWorkflowScope,
 )
 from janiform.errors import JaniformErrorCategory, JaniformErrorDetails, JaniformExecutionError
 from janiform.simulation import (
@@ -955,7 +956,7 @@ def test_market_data_calibration_cli_maps_flags_to_summary_contract(
     summary_payload = orjson.loads(stdout_text)
     assert summary_payload["schema_version"] == cli_module.CLI_MARKET_DATA_SUMMARY_SCHEMA_VERSION
     assert summary_payload["request_schema_version"] == CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION
-    assert summary_payload["preparation_schema_version"] == calibration_module.CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION
+    assert summary_payload["preparation_schema_version"] == CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION
     assert summary_payload["workflow_scope"] == CalibrationMarketDataWorkflowScope.FULL_WITH_OPTION_SURFACE.value
     assert summary_payload["session_context"]["exchange_code"] == "XNYS"
     assert summary_payload["session_resolution"]["resolution_kind"] == "explicit_override"
@@ -1919,7 +1920,7 @@ def test_calibration_cli_resolves_relative_disk_checkpoint_directory_from_reposi
         repository_root,
         relative_checkpoint_directory,
     )
-    normalized_execution_input = cli_calibration_commands_module._override_calibration_execution_mode(
+    normalized_execution_input = cli_calibration_commands_module.override_calibration_execution_mode(
         execution_input=execution_input,
         execution_mode=CalibrationExecutionMode.DISK,
         disk_checkpoint_directory=resolved_checkpoint_directory,

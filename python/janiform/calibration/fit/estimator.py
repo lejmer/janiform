@@ -17,7 +17,6 @@ from .input_resolution import (
 )
 from .model import JaniformModel, _raw_stage_report_payloads, _extract_model_parameters, _build_model_metadata
 from .report import JaniformFitReport
-from .. import MarketDataCalibrationRequest, MarketDataSessionResolution
 from .._errors import _calibration_error
 from ..market_data.contracts import (
     CalibrationExecutionMode,
@@ -34,6 +33,7 @@ from ..market_data.contracts import (
     CalibrationTickDataColumnMapping,
     CalibrationSessionConfigurationInput,
 )
+from ..market_data.request import MarketDataCalibrationRequest
 from ..market_data.translation import (
     resolve_market_data_session_configuration_from_source_file,
     translate_market_data_request_to_prepared_calibration,
@@ -52,18 +52,19 @@ from ..presets.references import (
     SessionExplicitConfiguration,
     SessionPresetReference,
 )
-from ..presets.registry import PresetRegistry
+from ..presets.registry import PresetCategory, PresetRegistry
 from ..presets.resolution import (
     resolve_preset_workflow_configuration,
     ResolvedPresetWorkflowConfiguration,
     ResolvedSessionComponent,
 )
-from ..sessions.resolution import (
-    _build_calendar_registry_json_from_windows,
-    _build_recurring_closed_windows,
-    _regular_session_windows_from_exchange_artifact,
-    _looks_like_continuous_weekday_template,
-    _SessionTemplate,
+from ..sessions.contracts import MarketDataSessionResolution
+from ..sessions._resolution import (
+    build_calendar_registry_json_from_windows,
+    build_recurring_closed_windows,
+    looks_like_continuous_weekday_template,
+    regular_session_windows_from_exchange_artifact,
+    SessionTemplate,
 )
 from ..staged import CalibrationStageExecutionStatus
 from ..staged.runtime import _run_prepared_staged_calibration_with_raw_payload
@@ -567,8 +568,9 @@ class JaniformEstimator:
                 "is required for named market-profile references",
             )
 
-        _, artifact = self._registry.resolve_market_profile_preset(
-            self._market_profile_reference.preset_name,
+        _, artifact = self._registry.resolve(
+            category=PresetCategory.MARKET_PROFILE,
+            preset_name=self._market_profile_reference.preset_name,
             registry_scope=self._market_profile_reference.registry_scope,
         )
         return artifact.configuration
@@ -740,10 +742,10 @@ def _load_explicit_session_configuration(
             f"explicit session definition does not contain exchange `{target_exchange_code}`",
         )
 
-    regular_session_windows = _regular_session_windows_from_exchange_artifact(exchange_artifact)
+    regular_session_windows = regular_session_windows_from_exchange_artifact(exchange_artifact)
     exchange_name = cast(str, exchange_artifact["exchange_name"])
     timezone_name = cast(str, exchange_artifact["timezone_name"])
-    session_template = _SessionTemplate(
+    session_template = SessionTemplate(
         policy_id="high_level.explicit_session_definition.v1",
         exchange_name=exchange_name,
         timezone_name=timezone_name,
@@ -757,7 +759,7 @@ def _load_explicit_session_configuration(
             cast(dict[str, Any], exchange_artifact["rule_metadata"]).get("early_close_rule_set"),
         ),
         regular_session_windows=regular_session_windows,
-        continuous_weekday_template=_looks_like_continuous_weekday_template(
+        continuous_weekday_template=looks_like_continuous_weekday_template(
             exchange_code=target_exchange_code,
             regular_session_windows=regular_session_windows,
         ),
@@ -768,7 +770,7 @@ def _load_explicit_session_configuration(
         exchange_name=exchange_name,
         timezone_name=timezone_name,
         regular_session_windows=regular_session_windows,
-        recurring_closed_windows=_build_recurring_closed_windows(session_template),
+        recurring_closed_windows=build_recurring_closed_windows(session_template),
     )
 
 
@@ -792,8 +794,9 @@ def _exchange_code_from_session_reference(
                     "named session references require preset_name and registry_scope",
                 )
 
-            _, artifact = registry.resolve_session_preset(
-                session_reference.preset_name,
+            _, artifact = registry.resolve(
+                category=PresetCategory.SESSION,
+                preset_name=session_reference.preset_name,
                 registry_scope=session_reference.registry_scope,
             )
 
@@ -830,8 +833,9 @@ def _exchange_code_from_market_profile_reference(
             "named market-profile references require preset_name and registry_scope",
         )
 
-    _, artifact = registry.resolve_market_profile_preset(
-        market_profile_reference.preset_name,
+    _, artifact = registry.resolve(
+        category=PresetCategory.MARKET_PROFILE,
+        preset_name=market_profile_reference.preset_name,
         registry_scope=market_profile_reference.registry_scope,
     )
 
@@ -878,7 +882,7 @@ def _build_session_configuration_input(
 def _calendar_registry_json_from_session_configuration(
     session_configuration: SessionExplicitConfiguration,
 ) -> str:
-    return _build_calendar_registry_json_from_windows(
+    return build_calendar_registry_json_from_windows(
         exchange_code=session_configuration.exchange_code,
         exchange_name=(
             session_configuration.exchange_name

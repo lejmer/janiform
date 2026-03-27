@@ -6,23 +6,27 @@ import pytest
 
 from janiform.pricing import GammaSeverityMarkConfiguration, NigSharedPlusShiftConfiguration
 from janiform.simulation import (
-    CoupledGapMarkConfiguration,
-    DoubleExponentialBaseShockConfiguration,
     HawkesExcitationState,
     HawkesKernelLoadings,
     HawkesKernelParameters,
-    KnownNewsArrivalConfiguration,
     MeanReversionBoundaryState,
     MeanReversionRuntimeIntervalAnchors,
+    SeededTickEventSide,
+    SeededTickEventStateSnapshotCapture,
+    SeededTickSimulationValidationError,
+)
+from janiform.simulation.coarse import (
+    CoupledGapMarkConfiguration,
+    DoubleExponentialBaseShockConfiguration,
+    KnownNewsArrivalConfiguration,
     NewsArrivalConfiguration,
     NewsComponentMarkScaleConfiguration,
     NewsProcessConfiguration,
-    SeededTickEventSide,
-    SeededTickEventStateSnapshotCapture,
-    SeededTickSimulationRequest,
-    SeededTickSimulationValidationError,
     SharedNewsMarkLawConfiguration,
     SurpriseNewsArrivalConfiguration,
+)
+from janiform.simulation.seeded import (
+    SeededTickSimulationRequest,
     deserialize_seeded_tick_simulation_response,
     run_seeded_tick_event_simulation,
     serialize_seeded_tick_simulation_response,
@@ -212,7 +216,7 @@ def _valid_excitation_state() -> HawkesExcitationState:
 
 
 def _valid_hourly_factor_summary():
-    from janiform.simulation import SeededTickSimulationHourlyFactorSummary
+    from janiform.simulation.seeded import SeededTickSimulationHourlyFactorSummary
 
     return SeededTickSimulationHourlyFactorSummary(
         schema_version="seasonality.hourly_factor.contract.v1",

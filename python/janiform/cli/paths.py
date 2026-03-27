@@ -1,3 +1,5 @@
+"""Internal repository-root and path-resolution helpers for the CLI."""
+
 from pathlib import Path
 from typing import Optional
 

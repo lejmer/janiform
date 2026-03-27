@@ -28,7 +28,7 @@ from janiform.calibration.market_data.contracts import (
 )
 from janiform.calibration.staged.contracts import CalibrationStageExecutionStatus
 from janiform.calibration.staged.runtime import (
-    run_staged_calibration_with_raw_payload_and_events,
+    _run_staged_calibration_with_optional_events,
 )
 from janiform._workflow_outputs import write_fit_artifacts
 from janiform.calendar import CalendarRegistry
@@ -173,7 +173,7 @@ class WorkbenchExecutionWorker(QObject):
             heartbeat_thread: Optional[Thread] = self._start_heartbeat()
 
             staged_response, raw_response_payload = (
-                run_staged_calibration_with_raw_payload_and_events(
+                _run_staged_calibration_with_optional_events(
                     prepared_workflow.prepared.execution_input,
                     calendar_registry=CalendarRegistry(
                         prepared_workflow.prepared.session_resolution.resolved_session_definition_json

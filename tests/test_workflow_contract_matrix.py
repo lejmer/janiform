@@ -19,6 +19,7 @@ from janiform.calibration.staged import (
 from janiform.hourly_factors import (
     HourlyNewsIntensityProviderExplicitSource,
     HourlySeasonalityProviderExplicitSource,
+    provide_hourly_factor_contract,
 )
 from janiform.pricing import (
     AnchoredVanillaOptionPricingBoundaryInput,
@@ -38,23 +39,28 @@ from janiform.pricing import (
     validate_vanilla_option_pricing_run_result,
 )
 from janiform.simulation import (
+    SeededTickEventSide,
+    SeededTickSimulationValidationError,
+)
+from janiform.simulation.coarse import (
     CoupledGapMarkConfiguration,
     DoubleExponentialBaseShockConfiguration,
-    HawkesExcitationState,
-    HawkesKernelLoadings,
-    HawkesKernelParameters,
     KnownNewsArrivalConfiguration,
     NewsArrivalConfiguration,
     NewsComponentMarkScaleConfiguration,
     NewsProcessConfiguration,
-    SeededTickEventSide,
-    SeededTickSimulationValidationError,
-    SeededTickSimulationRequest,
     SharedNewsMarkLawConfiguration,
     SurpriseNewsArrivalConfiguration,
-    load_hourly_factor_contract_for_simulation,
+)
+from janiform.simulation.seeded import (
+    SeededTickSimulationRequest,
     run_seeded_tick_event_simulation,
     validate_seeded_tick_simulation_response,
+)
+from janiform.simulation.shared import (
+    HawkesExcitationState,
+    HawkesKernelLoadings,
+    HawkesKernelParameters,
 )
 from janiform.simulation.seeded.contracts import build_disabled_seeded_mean_reversion_runtime_inputs
 from tests.calibration_test_support import (
@@ -290,7 +296,7 @@ def _build_simulation_boundary_response_payload(calendar_registry, tmp_path: Pat
     del tmp_path
 
     start_time_utc = datetime(2026, 2, 2, 15, tzinfo=UTC)
-    hourly_factor_contract = load_hourly_factor_contract_for_simulation(
+    hourly_factor_contract = provide_hourly_factor_contract(
         calendar_registry=calendar_registry,
         exchange_code="XNYS",
         range_start_utc=start_time_utc,

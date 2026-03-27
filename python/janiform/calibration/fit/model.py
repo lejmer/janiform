@@ -13,30 +13,13 @@ from ..market_data.contracts import CalibrationMarketDataWorkflowScope
 from ..market_data.workflow import (
     PreparedMarketDataCalibration,
 )
-from ..presets.references import (
-    KnownNewsExplicitConfiguration,
-    KnownNewsPresetReference,
-    MarketProfileExplicitConfiguration,
-    MarketProfileKnownNewsPolicy,
-    PresetRegistryScope,
-    SessionExplicitConfiguration,
-)
-from ..presets.registry import PresetCategory
 from ..presets.resolution import (
     DEFAULT_HIGH_LEVEL_KNOWN_NEWS_PRESET_NAME,
-    ResolvedKnownNewsComponent,
-    ResolvedMarketProfileComponent,
-    ResolvedPresetSelection,
     ResolvedPresetWorkflowConfiguration,
-    ResolvedSessionComponent,
-    ResolvedWorkflowComponent,
     ResolvedWorkflowComponentSource,
-    ResolvedWorkflowDiagnostic,
-    ResolvedWorkflowDiagnosticSeverity,
+    ResolvedPresetSelection,
 )
 from ..sessions.contracts import (
-    MarketDataSessionRecurringClosedWindow,
-    MarketDataSessionRegularWindow,
     MarketDataSessionResolution,
 )
 from ..staged.results import StagedCalibrationResponse
@@ -55,6 +38,7 @@ from ...contracts import (
     MeanReversionBoundaryState,
     MeanReversionFittedParameters,
     MeanReversionRuntimeIntervalAnchors,
+    require_non_empty_string,
     serialize_pretty_json,
 )
 from ...calendar import CalendarRegistry, MarketState
@@ -65,6 +49,7 @@ from ...hourly_factors import (
     HourlySeasonalityProviderMaterializedSource,
     HourlySeasonalityProviderSource,
     load_hourly_factor_contract_payload,
+    provide_hourly_factor_contract,
     _parse_interval_duration_nanos,
 )
 from ...pricing import (
@@ -79,7 +64,6 @@ from ...pricing import (
     VanillaOptionPricingOptionalOutputSelection,
     VanillaOptionPricingRequest,
     VanillaOptionPricingRunResult,
-    load_hourly_factor_contract_for_pricing,
     run_vanilla_option_pricing,
 )
 from .._errors import _calibration_error
@@ -88,18 +72,21 @@ from ...risk import (
     SufficientStatisticsRiskEquationSpecification,
     SufficientStatisticsRiskModelInputs,
 )
-from ...simulation import (
+from ...simulation.coarse import (
     CoarseSimulationPath,
     CoarseSimulationRunRequest,
-    HawkesExcitationState,
-    HawkesKernelParameters,
     NewsProcessConfiguration,
-    SeededTickEventStateSnapshotCapture,
+    run_coarse_simulation,
+)
+from ...simulation.seeded import (
     SeededTickSimulationRequest,
     SeededTickSimulationResponse,
-    load_hourly_factor_contract_for_simulation,
-    run_coarse_simulation,
     run_seeded_tick_event_simulation,
+)
+from ...simulation.shared import (
+    HawkesExcitationState,
+    HawkesKernelParameters,
+    SeededTickEventStateSnapshotCapture,
 )
 
 
@@ -479,14 +466,18 @@ class JaniformModel:
             ) from e
 
         return JaniformModel(
-            run_id=_require_model_persistence_string(payload, "run_id"),
+            run_id=require_non_empty_string(payload, "run_id", "run_id", _calibration_error),
             workflow_scope=workflow_scope,
             parameters=_normalize_model_parameters(raw_parameters),
             metadata=deepcopy(raw_metadata),
-            resolved_configuration=_resolved_preset_workflow_configuration_from_mapping(
-                raw_resolved_configuration
+            resolved_configuration=ResolvedPresetWorkflowConfiguration.from_mapping(
+                raw_resolved_configuration,
+                field_path="resolved_configuration",
             ),
-            session_resolution=_market_data_session_resolution_from_mapping(raw_session_resolution),
+            session_resolution=MarketDataSessionResolution.from_mapping(
+                raw_session_resolution,
+                field_path="session_resolution",
+            ),
             _stage_report_payloads=(),
         )
 
@@ -576,7 +567,7 @@ def _prepare_model_simulation_inputs(
                 ),
                 interval_alignment_policy=_MEAN_REVERSION_RUNTIME_INTERVAL_ALIGNMENT_POLICY,
             )
-            hourly_factor_contract = load_hourly_factor_contract_for_simulation(
+            hourly_factor_contract = provide_hourly_factor_contract(
                 calendar_registry=runtime_factors.calendar_registry,
                 exchange_code=runtime_factors.exchange_code,
                 range_start_utc=start_time_utc,
@@ -629,7 +620,7 @@ def _prepare_model_simulation_inputs(
                 exchange_code=runtime_factors.exchange_code,
             )
         case "seeded_tick":
-            hourly_factor_contract = load_hourly_factor_contract_for_simulation(
+            hourly_factor_contract = provide_hourly_factor_contract(
                 calendar_registry=runtime_factors.calendar_registry,
                 exchange_code=runtime_factors.exchange_code,
                 range_start_utc=start_time_utc,
@@ -965,11 +956,12 @@ def _prepare_model_pricing_execution_input(
                 nig_shared_plus_shift_configuration=runtime_factors.nig_shared_plus_shift_configuration,
             ),
         ),
-        hourly_factor_contract=load_hourly_factor_contract_for_pricing(
+        hourly_factor_contract=provide_hourly_factor_contract(
             calendar_registry=runtime_factors.calendar_registry,
             exchange_code=runtime_factors.exchange_code,
             range_start_utc=valuation_time_utc,
             range_end_utc=runtime_factors.range_end_utc,
+            interval="1h",
             seasonality_source=_build_runtime_hourly_seasonality_source_from_model(
                 model,
                 calendar_registry=runtime_factors.calendar_registry,
@@ -1536,17 +1528,6 @@ def _build_model_persistence_payload(model: JaniformModel) -> dict[str, Any]:
     }
 
 
-def _require_model_persistence_string(
-    payload: Mapping[str, Any],
-    field_name: str,
-) -> str:
-    raw_value = payload.get(field_name)
-    if not isinstance(raw_value, str) or not raw_value.strip():
-        raise _calibration_error(field_name, "must be a non-empty string")
-
-    return raw_value
-
-
 def _stage_report_payloads_from_sequence(
     raw_stage_report_payloads: list[Any],
 ) -> tuple[dict[str, Any], ...]:
@@ -1561,284 +1542,6 @@ def _stage_report_payloads_from_sequence(
         payloads.append(deepcopy(raw_stage_report))
 
     return tuple(payloads)
-
-
-def _market_data_session_resolution_from_mapping(
-    raw_payload: Mapping[str, Any],
-) -> MarketDataSessionResolution:
-    return MarketDataSessionResolution(
-        schema_version=_require_model_persistence_string(raw_payload, "schema_version"),
-        resolution_kind=_require_model_persistence_string(raw_payload, "resolution_kind"),
-        selected_policy_id=_require_model_persistence_string(raw_payload, "selected_policy_id"),
-        manual_override_applied=_require_model_persistence_boolean(
-            raw_payload,
-            "manual_override_applied",
-        ),
-        exchange_code=_require_model_persistence_string(raw_payload, "exchange_code"),
-        exchange_name=_require_model_persistence_string(raw_payload, "exchange_name"),
-        resolved_timezone_name=_require_model_persistence_string(raw_payload, "resolved_timezone_name"),
-        timezone_source=_require_model_persistence_string(raw_payload, "timezone_source"),
-        open_session_duration_hours_per_week=_require_model_persistence_float(
-            raw_payload,
-            "open_session_duration_hours_per_week",
-        ),
-        confidence_score=_require_model_persistence_float(raw_payload, "confidence_score"),
-        confidence_label=_require_model_persistence_string(raw_payload, "confidence_label"),
-        regular_session_windows=tuple(
-            MarketDataSessionRegularWindow.from_mapping(
-                raw_window,
-                field_path=f"session_resolution.regular_session_windows[{window_index}]",
-            )
-            for window_index, raw_window in enumerate(
-                _require_model_persistence_sequence(raw_payload, "regular_session_windows")
-            )
-        ),
-        recurring_closed_windows=tuple(
-            MarketDataSessionRecurringClosedWindow.from_mapping(
-                raw_window,
-                field_path=f"session_resolution.recurring_closed_windows[{window_index}]",
-            )
-            for window_index, raw_window in enumerate(
-                _require_model_persistence_sequence(raw_payload, "recurring_closed_windows")
-            )
-        ),
-        reasons=tuple(
-            _require_model_persistence_sequence_of_strings(raw_payload, "reasons")
-        ),
-        ambiguity_warnings=tuple(
-            _require_model_persistence_sequence_of_strings(raw_payload, "ambiguity_warnings")
-        ),
-        metadata_discrepancies=tuple(
-            _require_model_persistence_sequence_of_strings(raw_payload, "metadata_discrepancies")
-        ),
-        resolved_session_definition_json=_require_model_persistence_string(
-            raw_payload,
-            "resolved_session_definition_json",
-        ),
-    )
-
-
-def _resolved_preset_workflow_configuration_from_mapping(
-    raw_payload: Mapping[str, Any],
-) -> ResolvedPresetWorkflowConfiguration:
-    raw_market_profile = raw_payload.get("market_profile")
-
-    return ResolvedPresetWorkflowConfiguration(
-        schema_version=_require_model_persistence_string(raw_payload, "schema_version"),
-        session=_resolved_session_component_from_mapping(
-            _require_model_persistence_mapping(raw_payload, "session")
-        ),
-        known_news=_resolved_known_news_component_from_mapping(
-            _require_model_persistence_mapping(raw_payload, "known_news")
-        ),
-        diagnostics=tuple(
-            _resolved_workflow_diagnostic_from_mapping(raw_diagnostic)
-            for raw_diagnostic in _require_model_persistence_sequence(raw_payload, "diagnostics")
-        ),
-        market_profile=(
-            _resolved_market_profile_component_from_mapping(raw_market_profile)
-            if isinstance(raw_market_profile, Mapping)
-            else None
-        ),
-    )
-
-
-def _resolved_market_profile_component_from_mapping(
-    raw_payload: Mapping[str, Any],
-) -> ResolvedMarketProfileComponent:
-    raw_selected_preset = raw_payload.get("selected_preset")
-
-    return ResolvedMarketProfileComponent(
-        configuration=_market_profile_explicit_configuration_from_mapping(
-            _require_model_persistence_mapping(raw_payload, "configuration")
-        ),
-        source_kind=ResolvedWorkflowComponentSource(
-            _require_model_persistence_string(raw_payload, "source_kind")
-        ),
-        selected_preset=(
-            _resolved_preset_selection_from_mapping(raw_selected_preset)
-            if isinstance(raw_selected_preset, Mapping)
-            else None
-        ),
-        applied_override_fields=tuple(
-            _require_model_persistence_sequence_of_strings(raw_payload, "applied_override_fields")
-        ),
-    )
-
-
-def _resolved_session_component_from_mapping(
-    raw_payload: Mapping[str, Any],
-) -> ResolvedSessionComponent:
-    raw_selected_preset = raw_payload.get("selected_preset")
-    raw_inference_resolution = raw_payload.get("inference_resolution")
-
-    return ResolvedSessionComponent(
-        configuration=SessionExplicitConfiguration.from_mapping(
-            _require_model_persistence_mapping(raw_payload, "configuration"),
-            field_path="resolved_configuration.session.configuration",
-        ),
-        source_kind=ResolvedWorkflowComponentSource(
-            _require_model_persistence_string(raw_payload, "source_kind")
-        ),
-        selected_preset=(
-            _resolved_preset_selection_from_mapping(raw_selected_preset)
-            if isinstance(raw_selected_preset, Mapping)
-            else None
-        ),
-        inferred_from_data=_require_model_persistence_boolean(raw_payload, "inferred_from_data"),
-        inference_resolution=(
-            _market_data_session_resolution_from_mapping(raw_inference_resolution)
-            if isinstance(raw_inference_resolution, Mapping)
-            else None
-        ),
-        applied_override_fields=tuple(
-            _require_model_persistence_sequence_of_strings(raw_payload, "applied_override_fields")
-        ),
-    )
-
-
-def _resolved_known_news_component_from_mapping(
-    raw_payload: Mapping[str, Any],
-) -> ResolvedKnownNewsComponent:
-    raw_selected_preset = raw_payload.get("selected_preset")
-    raw_recommended_reference = raw_payload.get("recommended_reference")
-    raw_recommendation_policy = raw_payload.get("recommendation_policy")
-
-    return ResolvedKnownNewsComponent(
-        configuration=KnownNewsExplicitConfiguration.from_mapping(
-            _require_model_persistence_mapping(raw_payload, "configuration"),
-            field_path="resolved_configuration.known_news.configuration",
-        ),
-        source_kind=ResolvedWorkflowComponentSource(
-            _require_model_persistence_string(raw_payload, "source_kind")
-        ),
-        selected_preset=(
-            _resolved_preset_selection_from_mapping(raw_selected_preset)
-            if isinstance(raw_selected_preset, Mapping)
-            else None
-        ),
-        applied_override_fields=tuple(
-            _require_model_persistence_sequence_of_strings(raw_payload, "applied_override_fields")
-        ),
-        recommended_reference=(
-            KnownNewsPresetReference.from_mapping(
-                raw_recommended_reference,
-                field_path="resolved_configuration.known_news.recommended_reference",
-            )
-            if isinstance(raw_recommended_reference, Mapping)
-            else None
-        ),
-        recommendation_policy=(
-            MarketProfileKnownNewsPolicy(cast(str, raw_recommendation_policy))
-            if isinstance(raw_recommendation_policy, str)
-            else None
-        ),
-        recommendation_applied=_require_model_persistence_boolean(
-            raw_payload,
-            "recommendation_applied",
-        ),
-    )
-
-
-def _resolved_workflow_diagnostic_from_mapping(
-    raw_payload: object,
-) -> ResolvedWorkflowDiagnostic:
-    if not isinstance(raw_payload, Mapping):
-        raise _calibration_error("diagnostics", "must contain objects")
-
-    return ResolvedWorkflowDiagnostic(
-        component=ResolvedWorkflowComponent(
-            _require_model_persistence_string(raw_payload, "component")
-        ),
-        severity=ResolvedWorkflowDiagnosticSeverity(
-            _require_model_persistence_string(raw_payload, "severity")
-        ),
-        code=_require_model_persistence_string(raw_payload, "code"),
-        message=_require_model_persistence_string(raw_payload, "message"),
-    )
-
-
-def _resolved_preset_selection_from_mapping(
-    raw_payload: Mapping[str, Any],
-) -> ResolvedPresetSelection:
-    return ResolvedPresetSelection(
-        category=PresetCategory(_require_model_persistence_string(raw_payload, "category")),
-        registry_scope=PresetRegistryScope(
-            _require_model_persistence_string(raw_payload, "registry_scope")
-        ),
-        preset_name=_require_model_persistence_string(raw_payload, "preset_name"),
-    )
-
-
-def _market_profile_explicit_configuration_from_mapping(
-    raw_payload: Mapping[str, Any],
-) -> MarketProfileExplicitConfiguration:
-    return MarketProfileExplicitConfiguration.from_mapping(
-        raw_payload,
-        field_path="resolved_configuration.market_profile.configuration",
-    )
-
-
-def _require_model_persistence_mapping(
-    payload: Mapping[str, Any],
-    field_name: str,
-) -> Mapping[str, Any]:
-    raw_value = payload.get(field_name)
-    if not isinstance(raw_value, Mapping):
-        raise _calibration_error(field_name, "must be an object")
-
-    return raw_value
-
-
-def _require_model_persistence_sequence(
-    payload: Mapping[str, Any],
-    field_name: str,
-) -> list[Any]:
-    raw_value = payload.get(field_name)
-    if not isinstance(raw_value, list):
-        raise _calibration_error(field_name, "must be a sequence")
-
-    return list(raw_value)
-
-
-def _require_model_persistence_sequence_of_strings(
-    payload: Mapping[str, Any],
-    field_name: str,
-) -> list[str]:
-    raw_values = _require_model_persistence_sequence(payload, field_name)
-    values: list[str] = []
-    for position, raw_value in enumerate(raw_values):
-        if not isinstance(raw_value, str):
-            raise _calibration_error(
-                f"{field_name}[{position}]",
-                "must be a string",
-            )
-
-        values.append(raw_value)
-
-    return values
-
-
-def _require_model_persistence_boolean(
-    payload: Mapping[str, Any],
-    field_name: str,
-) -> bool:
-    raw_value = payload.get(field_name)
-    if not isinstance(raw_value, bool):
-        raise _calibration_error(field_name, "must be a boolean")
-
-    return raw_value
-
-
-def _require_model_persistence_float(
-    payload: Mapping[str, Any],
-    field_name: str,
-) -> float:
-    raw_value = payload.get(field_name)
-    if not isinstance(raw_value, int | float) or isinstance(raw_value, bool):
-        raise _calibration_error(field_name, "must be a number")
-
-    return float(raw_value)
 
 
 def _raw_stage_report_payloads(raw_response_payload: dict[str, Any]) -> tuple[dict[str, Any], ...]:

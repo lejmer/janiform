@@ -30,7 +30,7 @@ dev = [
 ]
 
 [project.scripts]
-janiform = "janiform.cli:main"
+janiform = "janiform.__main__:main"
 
 [tool.maturin]
 bindings = "pyo3"

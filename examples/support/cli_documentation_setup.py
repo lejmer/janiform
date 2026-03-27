@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from janiform.calibration import CalibrationExecutionMode
+from janiform.calibration.staged import CalibrationExecutionMode
 from janiform.hourly_factors import (
     HourlyNewsIntensityMaterialization,
     HourlyNewsIntensityMaterializationSettings,
@@ -12,12 +12,12 @@ from janiform.hourly_factors import (
     HourlySeasonalityMaterializationSettings,
     materialize_hourly_news_intensity_factors,
     materialize_hourly_seasonality_factors,
+    provide_hourly_factor_contract,
 )
 from janiform.pricing import VanillaOptionPricingExecutionInput
 from janiform.simulation import (
     SeededTickSimulationRequest,
     build_disabled_seeded_mean_reversion_runtime_inputs,
-    load_hourly_factor_contract_for_simulation,
 )
 
 from ._shared import (
@@ -195,7 +195,7 @@ def write_cli_documentation_inputs(output_directory: Path) -> dict[str, str]:
         encoding="utf-8",
     )
 
-    hourly_factor_contract = load_hourly_factor_contract_for_simulation(
+    hourly_factor_contract = provide_hourly_factor_contract(
         calendar_registry=calendar_registry,
         exchange_code="XNYS",
         range_start_utc=SIMULATION_RANGE_START_UTC,

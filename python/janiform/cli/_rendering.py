@@ -1,3 +1,5 @@
+"""Internal CLI rendering helpers for JSON and human output modes."""
+
 import json
 import sys
 from collections.abc import Callable
@@ -9,11 +11,11 @@ from ..calibration.presets import DEFAULT_HIGH_LEVEL_KNOWN_NEWS_PRESET_NAME
 from ..errors import JaniformError, JaniformErrorCategory
 
 
-def _write_contract_json(payload: dict[str, Any]) -> None:
+def write_contract_json(payload: dict[str, Any]) -> None:
     sys.stdout.write(f"{json.dumps(payload, sort_keys=True)}\n")
 
 
-def _exit_code_for_error(error: JaniformError) -> CliExitCode:
+def exit_code_for_error(error: JaniformError) -> CliExitCode:
     match error.category:
         case JaniformErrorCategory.VALIDATION:
             return CliExitCode.VALIDATION_ERROR
@@ -23,16 +25,16 @@ def _exit_code_for_error(error: JaniformError) -> CliExitCode:
             return CliExitCode.INTERNAL_ERROR
 
 
-def _write_cli_error(error: JaniformError, *, output: Optional[str] = None) -> int:
+def write_cli_error(error: JaniformError, *, output: Optional[str] = None) -> int:
     if output == CliOutputMode.HUMAN.value:
-        sys.stderr.write(_render_cli_error_human_output(error))
+        sys.stderr.write(render_cli_error_human_output(error))
     else:
         sys.stderr.write(f"{error}\n")
 
-    return int(_exit_code_for_error(error))
+    return int(exit_code_for_error(error))
 
 
-def _render_cli_error_human_output(error: JaniformError) -> str:
+def render_cli_error_human_output(error: JaniformError) -> str:
     details = error.details
 
     lines = [
@@ -45,7 +47,7 @@ def _render_cli_error_human_output(error: JaniformError) -> str:
     if details.field_path is not None:
         lines.append(f"  field: {details.field_path}")
 
-    for field_name, field_value in _ordered_cli_error_context_entries(details.context):
+    for field_name, field_value in ordered_cli_error_context_entries(details.context):
         if field_value is None:
             continue
 
@@ -54,7 +56,7 @@ def _render_cli_error_human_output(error: JaniformError) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _ordered_cli_error_context_entries(context: dict[str, Any]) -> list[tuple[str, Any]]:
+def ordered_cli_error_context_entries(context: dict[str, Any]) -> list[tuple[str, Any]]:
     label_by_field_name = {
         "failed_stage": "failed stage",
         "failure_kind": "failure kind",
@@ -94,7 +96,7 @@ def _ordered_cli_error_context_entries(context: dict[str, Any]) -> list[tuple[st
     return ordered_entries
 
 
-def _write_command_output(
+def write_command_output(
     output: str,
     *,
     json_payload: dict[str, Any],
@@ -103,12 +105,12 @@ def _write_command_output(
     output_mode = CliOutputMode(output)
     match output_mode:
         case CliOutputMode.JSON:
-            _write_contract_json(json_payload)
+            write_contract_json(json_payload)
         case CliOutputMode.HUMAN:
             sys.stdout.write(human_output_factory())
 
 
-def _render_presets_list_human_output(payload: dict[str, Any]) -> str:
+def render_presets_list_human_output(payload: dict[str, Any]) -> str:
     return (
         "preset list completed: "
         f"{payload['preset_count']} presets"
@@ -126,7 +128,7 @@ def _render_presets_list_human_output(payload: dict[str, Any]) -> str:
     )
 
 
-def _render_presets_show_human_output(payload: dict[str, Any]) -> str:
+def render_presets_show_human_output(payload: dict[str, Any]) -> str:
     artifact = cast(dict[str, Any], payload["artifact"])
     metadata = cast(dict[str, Any], artifact["metadata"])
 
@@ -138,7 +140,7 @@ def _render_presets_show_human_output(payload: dict[str, Any]) -> str:
     )
 
 
-def _render_presets_export_human_output(payload: dict[str, Any]) -> str:
+def render_presets_export_human_output(payload: dict[str, Any]) -> str:
     return (
         "preset export completed: "
         f"{payload['requested_category']}:{payload['preset_name']} "
@@ -146,7 +148,7 @@ def _render_presets_export_human_output(payload: dict[str, Any]) -> str:
     )
 
 
-def _render_fit_human_output(payload: dict[str, Any]) -> str:
+def render_fit_human_output(payload: dict[str, Any]) -> str:
     model_summary = cast(dict[str, Any], payload["model_summary"])
 
     lines = [
@@ -166,12 +168,12 @@ def _render_fit_human_output(payload: dict[str, Any]) -> str:
     ]
 
     if bool(payload.get("explain_requested")):
-        lines.extend(_render_input_inference_lines(cast(dict[str, Any], payload["input_inference"])))
+        lines.extend(render_input_inference_lines(cast(dict[str, Any], payload["input_inference"])))
 
     return "\n".join(lines) + "\n"
 
 
-def _render_fit_inspect_human_output(payload: dict[str, Any]) -> str:
+def render_fit_inspect_human_output(payload: dict[str, Any]) -> str:
     lines = [
         (
             "fit inspect completed: "
@@ -181,13 +183,13 @@ def _render_fit_inspect_human_output(payload: dict[str, Any]) -> str:
         ),
         f"tick_data: path={payload['tick_data_path']}",
         f"resolved output directory: {payload['output_directory']}",
-        *_render_input_inference_lines(cast(dict[str, Any], payload["input_inference"])),
+        *render_input_inference_lines(cast(dict[str, Any], payload["input_inference"])),
     ]
 
     return "\n".join(lines) + "\n"
 
 
-def _render_input_inference_lines(input_inference: dict[str, Any]) -> list[str]:
+def render_input_inference_lines(input_inference: dict[str, Any]) -> list[str]:
     tick_price_columns = cast(dict[str, Any], input_inference["tick_price_columns"])
     known_news = cast(dict[str, Any], input_inference["known_news"])
 
@@ -227,7 +229,7 @@ def _render_input_inference_lines(input_inference: dict[str, Any]) -> list[str]:
     ]
 
 
-def _render_simulate_human_output(payload: dict[str, Any]) -> str:
+def render_simulate_human_output(payload: dict[str, Any]) -> str:
     return "\n".join(
         [
             "simulate completed:",
@@ -239,7 +241,7 @@ def _render_simulate_human_output(payload: dict[str, Any]) -> str:
     ) + "\n"
 
 
-def _render_market_data_calibration_human_output(prepared_calibration: object) -> str:
+def render_market_data_calibration_human_output(prepared_calibration: object) -> str:
     request = cast(Any, prepared_calibration).request
 
     selected_stages = ",".join(stage.value for stage in prepared_calibration.diagnostics.selected_stages)
@@ -322,9 +324,9 @@ def _render_market_data_calibration_human_output(prepared_calibration: object) -
             f"timestamp_timezone={request.normalization_policy.timestamp_timezone} "
             f"sort_records_by_timestamp={str(request.normalization_policy.sort_records_by_timestamp).lower()} "
             "duplicate_record_policy="
-            f"{_optional_enum_value(request.normalization_policy.duplicate_record_policy) or 'preserve'} "
-            f"tick_price_input_policy={_optional_enum_value(request.normalization_policy.tick_price_input_policy)} "
-            f"option_quote_input_policy={_optional_enum_value(request.normalization_policy.option_quote_input_policy)}"
+            f"{optional_enum_value(request.normalization_policy.duplicate_record_policy) or 'preserve'} "
+            f"tick_price_input_policy={optional_enum_value(request.normalization_policy.tick_price_input_policy)} "
+            f"option_quote_input_policy={optional_enum_value(request.normalization_policy.option_quote_input_policy)}"
         )
     )
     lines.append(
@@ -340,7 +342,7 @@ def _render_market_data_calibration_human_output(prepared_calibration: object) -
     return "\n".join(lines) + "\n"
 
 
-def _render_simulation_seeded_ticks_human_output(response_payload: dict[str, Any]) -> str:
+def render_simulation_seeded_ticks_human_output(response_payload: dict[str, Any]) -> str:
     diagnostics = cast(dict[str, Any], response_payload["diagnostics"])
     metadata = cast(dict[str, Any], response_payload["metadata"])
 
@@ -352,7 +354,7 @@ def _render_simulation_seeded_ticks_human_output(response_payload: dict[str, Any
     )
 
 
-def _render_simulation_coarse_interval_human_output(response_payload: dict[str, Any]) -> str:
+def render_simulation_coarse_interval_human_output(response_payload: dict[str, Any]) -> str:
     diagnostics = cast(dict[str, Any], response_payload["diagnostics"])
     return (
         "simulate coarse-interval completed: "
@@ -363,7 +365,7 @@ def _render_simulation_coarse_interval_human_output(response_payload: dict[str, 
     )
 
 
-def _render_price_human_output(run_result_payload: dict[str, Any]) -> str:
+def render_price_human_output(run_result_payload: dict[str, Any]) -> str:
     response_payload = cast(dict[str, Any], run_result_payload["response"])
     lines = [
         "price completed:",
@@ -395,7 +397,7 @@ def _render_price_human_output(run_result_payload: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _render_seasonality_preprocess_timestamps_human_output(payload: dict[str, Any]) -> str:
+def render_seasonality_preprocess_timestamps_human_output(payload: dict[str, Any]) -> str:
     lines: list[str] = [
         (
             "seasonality preprocess-timestamps completed: "
@@ -418,7 +420,7 @@ def _render_seasonality_preprocess_timestamps_human_output(payload: dict[str, An
     return "\n".join(lines) + "\n"
 
 
-def _render_seasonality_diagnostics_human_output(
+def render_seasonality_diagnostics_human_output(
     report: dict[str, Any],
     *,
     preprocessed_events: object,
@@ -467,7 +469,7 @@ def _render_seasonality_diagnostics_human_output(
     return "\n".join(lines) + "\n"
 
 
-def _render_hourly_factor_materialize_seasonality_human_output(payload: dict[str, Any]) -> str:
+def render_hourly_factor_materialize_seasonality_human_output(payload: dict[str, Any]) -> str:
     lines: list[str] = [
         (
             "hourly-factors materialize-seasonality completed: "
@@ -488,7 +490,7 @@ def _render_hourly_factor_materialize_seasonality_human_output(payload: dict[str
     return "\n".join(lines) + "\n"
 
 
-def _render_hourly_factor_materialize_news_intensity_human_output(payload: dict[str, Any]) -> str:
+def render_hourly_factor_materialize_news_intensity_human_output(payload: dict[str, Any]) -> str:
     lines: list[str] = [
         (
             "hourly-factors materialize-news-intensity completed: "
@@ -508,7 +510,7 @@ def _render_hourly_factor_materialize_news_intensity_human_output(payload: dict[
     return "\n".join(lines) + "\n"
 
 
-def _render_hourly_factor_build_contract_human_output(payload: dict[str, Any]) -> str:
+def render_hourly_factor_build_contract_human_output(payload: dict[str, Any]) -> str:
     lines: list[str] = [
         (
             "hourly-factors build-contract completed: "
@@ -528,7 +530,7 @@ def _render_hourly_factor_build_contract_human_output(payload: dict[str, Any]) -
     return "\n".join(lines) + "\n"
 
 
-def _render_stylized_facts_horizon_comparison_human_output(
+def render_stylized_facts_horizon_comparison_human_output(
     report_bundle: dict[str, Any],
     *,
     execution_mode: str,
@@ -570,7 +572,7 @@ def _render_stylized_facts_horizon_comparison_human_output(
     return "\n".join(lines) + "\n"
 
 
-def _render_calibration_staged_human_output(response_payload: dict[str, Any]) -> str:
+def render_calibration_staged_human_output(response_payload: dict[str, Any]) -> str:
     return (
         "fit staged completed: "
         f"run_id={response_payload['run_id']} "
@@ -581,7 +583,7 @@ def _render_calibration_staged_human_output(response_payload: dict[str, Any]) ->
     )
 
 
-def _write_deterministic_regression_human_output(report: dict[str, Any]) -> None:
+def write_deterministic_regression_human_output(report: dict[str, Any]) -> None:
     summary = cast(dict[str, int], report["summary"])
     if summary["failed_case_count"] == 0:
         sys.stdout.write(
@@ -609,7 +611,7 @@ def _write_deterministic_regression_human_output(report: dict[str, Any]) -> None
         )
 
 
-def _write_open_closed_gap_human_output(report: dict[str, Any]) -> None:
+def write_open_closed_gap_human_output(report: dict[str, Any]) -> None:
     summary = cast(dict[str, int], report["summary"])
     behavior_diff_report_summary = cast(
         dict[str, int],
@@ -688,5 +690,5 @@ def _write_open_closed_gap_human_output(report: dict[str, Any]) -> None:
                     sys.stderr.write(f"  failure_kind={failure_kind}\n")
 
 
-def _optional_enum_value(value: Optional[StrEnum]) -> str:
+def optional_enum_value(value: Optional[StrEnum]) -> str:
     return value.value if value is not None else "none"
