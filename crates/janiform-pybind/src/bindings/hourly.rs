@@ -2,12 +2,11 @@ use chrono::{DateTime, Utc};
 use janiform::hourly_factors::{
     DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD, DEFAULT_SEASONALITY_AGGREGATION_METHOD,
     DEFAULT_SEASONALITY_INTERPOLATION_METHOD, DEFAULT_SEASONALITY_SPARSE_FALLBACK_POLICY,
-    DEFAULT_SPARSE_HOUR_MINIMUM_OBSERVATION_COUNT, HourlyFactorContractError,
-    HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION, HOURLY_FACTOR_FALL_BACK_POLICY,
-    HOURLY_FACTOR_INTERVAL_ALIGNMENT_POLICY, HOURLY_FACTOR_INTERVAL_BOUNDARY_POLICY,
-    HOURLY_FACTOR_SPRING_FORWARD_POLICY, HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY,
-    HourlyFactorContractDiagnostics, HourlyFactorContractOutput,
-    HourlyFactorMaterializationMetadata,
+    DEFAULT_SPARSE_HOUR_MINIMUM_OBSERVATION_COUNT, HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION,
+    HOURLY_FACTOR_FALL_BACK_POLICY, HOURLY_FACTOR_INTERVAL_ALIGNMENT_POLICY,
+    HOURLY_FACTOR_INTERVAL_BOUNDARY_POLICY, HOURLY_FACTOR_SPRING_FORWARD_POLICY,
+    HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY, HourlyFactorContractDiagnostics,
+    HourlyFactorContractError, HourlyFactorContractOutput, HourlyFactorMaterializationMetadata,
     build_hourly_factor_contract as build_hourly_factor_contract_core,
     materialize_hourly_news_intensity_factors as materialize_hourly_news_intensity_factors_core,
     materialize_hourly_seasonality_factors as materialize_hourly_seasonality_factors_core,
@@ -144,7 +143,8 @@ impl TryFrom<HourlyFactorContractPayload> for HourlyFactorContractOutput {
             nu_h: payload.nu_h,
             metadata: HourlyFactorMaterializationMetadata {
                 seasonality_materialization_method: payload.seasonality_materialization_method,
-                news_intensity_materialization_method: payload.news_intensity_materialization_method,
+                news_intensity_materialization_method: payload
+                    .news_intensity_materialization_method,
                 interval_boundary_policy: HOURLY_FACTOR_INTERVAL_BOUNDARY_POLICY,
                 interval_alignment_policy: HOURLY_FACTOR_INTERVAL_ALIGNMENT_POLICY,
                 timezone_transition_policy: HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY,
@@ -1040,7 +1040,10 @@ fn map_hourly_factor_provider_error(error: HourlyFactorProviderError) -> PyErr {
 
 pub(super) fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(build_hourly_factor_contract, module)?)?;
-    module.add_function(wrap_pyfunction!(load_hourly_factor_contract_payload, module)?)?;
+    module.add_function(wrap_pyfunction!(
+        load_hourly_factor_contract_payload,
+        module
+    )?)?;
     module.add_function(wrap_pyfunction!(
         materialize_hourly_seasonality_factors,
         module

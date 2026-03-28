@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Event, Thread
@@ -23,15 +21,18 @@ from janiform.calibration.fit.model import (
 )
 from janiform.calibration.fit.report import JaniformFitReport
 from janiform.calibration.market_data.contracts import (
+    CalibrationMeanReversionConfiguration,
     CalibrationMarketDataNormalizationPolicy,
+    CalibrationMarketDataWorkflowScope,
     CalibrationTickDataColumnMapping,
 )
 from janiform.calibration.staged.contracts import CalibrationStageExecutionStatus
 from janiform.calibration.staged.runtime import (
-    _run_staged_calibration_with_optional_events,
+    _run_native_staged_calibration_with_prepared_handle_and_events,
 )
 from janiform._workflow_outputs import write_fit_artifacts
 from janiform.calendar import CalendarRegistry
+from janiform.contracts import MeanReversionAnchorModelKind
 
 from .artifacts import load_workbench_artifacts
 from .events import WorkbenchEventType, build_workbench_event
@@ -103,6 +104,7 @@ class WorkbenchExecutionWorker(QObject):
                 workflow_scope=self._run_setup.workflow_scope,
                 tick_data_column_mapping=_column_mapping_from_setup(self._run_setup),
                 normalization_policy=_normalization_policy_from_setup(self._run_setup),
+                mean_reversion=_mean_reversion_configuration_from_setup(self._run_setup),
                 exchange_code=self._run_setup.exchange_code,
                 silent=True,
             )
@@ -173,8 +175,8 @@ class WorkbenchExecutionWorker(QObject):
             heartbeat_thread: Optional[Thread] = self._start_heartbeat()
 
             staged_response, raw_response_payload = (
-                _run_staged_calibration_with_optional_events(
-                    prepared_workflow.prepared.execution_input,
+                _run_native_staged_calibration_with_prepared_handle_and_events(
+                    prepared_workflow.prepared.prepared_handle,
                     calendar_registry=CalendarRegistry(
                         prepared_workflow.prepared.session_resolution.resolved_session_definition_json
                     ),
@@ -195,7 +197,10 @@ class WorkbenchExecutionWorker(QObject):
                 session_resolution=prepared_workflow.prepared.session_resolution,
                 preparation_diagnostics=prepared_workflow.prepared.diagnostics,
                 preparation_provenance=prepared_workflow.prepared.provenance,
-                execution_input=prepared_workflow.prepared.execution_input,
+                staged_request=prepared_workflow.prepared.staged_request,
+                prepared_data_reference=prepared_workflow.prepared.prepared_data_reference,
+                prepared_payload_path=prepared_workflow.prepared.prepared_payload_path,
+                staged_execution_input_path=prepared_workflow.prepared.staged_execution_input_path,
                 staged_response=staged_response,
                 stage_report_payloads=_raw_stage_report_payloads(raw_response_payload),
             )
@@ -251,7 +256,6 @@ class WorkbenchExecutionWorker(QObject):
                 ),
                 resolved_configuration=prepared_workflow.resolved_configuration,
                 session_resolution=prepared_workflow.prepared.session_resolution,
-                _execution_input=prepared_workflow.prepared.execution_input,
                 _stage_report_payloads=fit_report.stage_report_payloads,
             )
 
@@ -461,6 +465,20 @@ def _normalization_overrides_from_setup(
         timestamp_timezone=run_setup.timestamp_timezone,
         sort_records_by_timestamp=True,
         tick_price_input_policy=run_setup.tick_price_input_policy,
+    )
+
+
+def _mean_reversion_configuration_from_setup(
+    run_setup: WorkbenchRunSetup,
+) -> Optional[CalibrationMeanReversionConfiguration]:
+    if (
+        not run_setup.mean_reversion_enabled
+        or run_setup.workflow_scope == CalibrationMarketDataWorkflowScope.SEASONALITY_ONLY
+    ):
+        return None
+
+    return CalibrationMeanReversionConfiguration(
+        anchor_model_kind=run_setup.mean_reversion_anchor_model_kind,
     )
 
 

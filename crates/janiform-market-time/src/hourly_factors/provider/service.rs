@@ -82,50 +82,49 @@ pub fn provide_hourly_factor_contract(
         known_component_nu_h,
         surprise_component_nu_h,
         news_intensity_materialization_method,
-    ) =
-        match resolved_news_intensity_source {
-            HourlyNewsIntensityFactorSource::Explicit {
+    ) = match resolved_news_intensity_source {
+        HourlyNewsIntensityFactorSource::Explicit {
+            hourly_factors,
+            materialization_method,
+        } => {
+            let resampled_hourly_factors = resample_explicit_hourly_factors_to_requested_intervals(
+                range_start_utc,
+                range_end_utc,
+                interval_duration_nanos,
                 hourly_factors,
-                materialization_method,
-            } => {
-                let resampled_hourly_factors = resample_explicit_hourly_factors_to_requested_intervals(
-                    range_start_utc,
-                    range_end_utc,
-                    interval_duration_nanos,
-                    hourly_factors,
-                )
-                .map_err(map_contract_validation_error)?;
-                (
-                    resampled_hourly_factors.clone(),
-                    vec![0.0; resampled_hourly_factors.len()],
-                    resampled_hourly_factors,
-                    materialization_method.to_string(),
-                )
-            }
-            HourlyNewsIntensityFactorSource::Materialized {
+            )
+            .map_err(map_contract_validation_error)?;
+            (
+                resampled_hourly_factors.clone(),
+                vec![0.0; resampled_hourly_factors.len()],
+                resampled_hourly_factors,
+                materialization_method.to_string(),
+            )
+        }
+        HourlyNewsIntensityFactorSource::Materialized {
+            known_scheduled_event_timestamps_utc_nanos,
+            surprise_baseline_intensity,
+            surprise_deterministic_time_multiplier_by_interval_index,
+        } => {
+            let news_materialization_output = materialize_hourly_news_intensity_factors(
+                calendar_registry,
+                exchange_code,
+                range_start_utc,
+                range_end_utc,
+                interval_duration_nanos,
                 known_scheduled_event_timestamps_utc_nanos,
                 surprise_baseline_intensity,
                 surprise_deterministic_time_multiplier_by_interval_index,
-            } => {
-                let news_materialization_output = materialize_hourly_news_intensity_factors(
-                    calendar_registry,
-                    exchange_code,
-                    range_start_utc,
-                    range_end_utc,
-                    interval_duration_nanos,
-                    known_scheduled_event_timestamps_utc_nanos,
-                    surprise_baseline_intensity,
-                    surprise_deterministic_time_multiplier_by_interval_index,
-                )
-                .map_err(map_news_source_error)?;
-                (
-                    news_materialization_output.nu_h,
-                    news_materialization_output.known_component_nu_h,
-                    news_materialization_output.surprise_component_nu_h,
-                    HOURLY_FACTOR_PROVIDER_NEWS_INTENSITY_MATERIALIZATION_METHOD.to_string(),
-                )
-            }
-        };
+            )
+            .map_err(map_news_source_error)?;
+            (
+                news_materialization_output.nu_h,
+                news_materialization_output.known_component_nu_h,
+                news_materialization_output.surprise_component_nu_h,
+                HOURLY_FACTOR_PROVIDER_NEWS_INTENSITY_MATERIALIZATION_METHOD.to_string(),
+            )
+        }
+    };
 
     let mut hourly_factor_contract = build_hourly_factor_contract(
         calendar_registry,

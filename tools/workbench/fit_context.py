@@ -22,6 +22,8 @@ from janiform._timestamps import (
 )
 from janiform.calendar import CalendarRegistry, MarketState
 from janiform.calibration.fit import JaniformModel
+from janiform.calibration.fit.model import _mean_reversion_fitted_parameters
+from janiform.contracts import MeanReversionAnchorModelKind
 
 from .artifacts import WorkbenchArtifacts
 
@@ -66,6 +68,7 @@ class WorkbenchObservedSimulationComparison:
     fit_context: WorkbenchFitContext
     simulation_seed: int
     observed_series: WorkbenchPriceSeries
+    observed_comparison_series: WorkbenchPriceSeries
     simulated_series: WorkbenchPriceSeries
     simulated_seeded_series_15m: WorkbenchPriceSeries
     simulated_coarse_series_15m: WorkbenchPriceSeries
@@ -181,10 +184,37 @@ def build_observed_simulation_comparison_for_fit_context(
     model: JaniformModel,
     seed: int = _DEFAULT_COMPARISON_SIMULATION_SEED,
 ) -> Optional[WorkbenchObservedSimulationComparison]:
-    simulation_start_utc, horizon_interval_count = _simulation_request_window_for_observed_range(
+    deterministic_anchor_coverage_range = _deterministic_mean_reversion_anchor_coverage_range(
+        model
+    )
+    comparison_range = _comparison_range_for_model(
+        model=model,
         observed_range_start_utc=fit_context.observed_range_start_utc,
         observed_range_end_utc=fit_context.observed_range_end_utc,
     )
+    if comparison_range is None:
+        return None
+
+    comparison_range_start_utc, comparison_range_end_utc = comparison_range
+    observed_series = _clip_price_series_to_range(
+        fit_context.observed_tick_series,
+        range_start_utc=comparison_range_start_utc,
+        range_end_utc=comparison_range_end_utc,
+    )
+    if observed_series.timestamp_microseconds_utc.size == 0:
+        return None
+
+    if deterministic_anchor_coverage_range is None:
+        simulation_start_utc, horizon_interval_count = _simulation_request_window_for_observed_range(
+            observed_range_start_utc=comparison_range_start_utc,
+            observed_range_end_utc=comparison_range_end_utc,
+        )
+    else:
+        simulation_start_utc, horizon_interval_count = _deterministic_anchor_simulation_request_window(
+            range_start_utc=comparison_range_start_utc,
+            range_end_utc=comparison_range_end_utc,
+            interval=timedelta(hours=1),
+        )
 
     simulation_result = model.simulate(
         seed=seed,
@@ -196,14 +226,20 @@ def build_observed_simulation_comparison_for_fit_context(
     simulated_series = _series_from_simulation_result(
         simulation_result=simulation_result,
         model=model,
-        range_start_utc=fit_context.observed_range_start_utc,
-        range_end_utc=fit_context.observed_range_end_utc,
+        range_start_utc=comparison_range_start_utc,
+        range_end_utc=comparison_range_end_utc,
     )
 
     coarse_simulation_start_utc, coarse_horizon_interval_count = (
-        _simulation_request_window_for_interval(
-            observed_range_start_utc=fit_context.observed_range_start_utc,
-            observed_range_end_utc=fit_context.observed_range_end_utc,
+        _deterministic_anchor_simulation_request_window(
+            range_start_utc=comparison_range_start_utc,
+            range_end_utc=comparison_range_end_utc,
+            interval=timedelta(minutes=15),
+        )
+        if deterministic_anchor_coverage_range is not None
+        else _simulation_request_window_for_interval(
+            observed_range_start_utc=comparison_range_start_utc,
+            observed_range_end_utc=comparison_range_end_utc,
             interval=timedelta(minutes=15),
         )
     )
@@ -230,39 +266,170 @@ def build_observed_simulation_comparison_for_fit_context(
             interval_start_utc=coarse_simulation_start_utc,
             horizon_interval_count=coarse_horizon_interval_count,
             interval=timedelta(minutes=15),
-            range_start_utc=fit_context.observed_range_start_utc,
-            range_end_utc=fit_context.observed_range_end_utc,
+            range_start_utc=comparison_range_start_utc,
+            range_end_utc=comparison_range_end_utc,
         )
         coarse_simulated_series = _series_from_coarse_raw_result(
             simulation_result=coarse_simulation_result,
             reference_price=reference_price,
             calendar_registry=calendar_registry,
             exchange_code=exchange_code,
-            range_start_utc=fit_context.observed_range_start_utc,
-            range_end_utc=fit_context.observed_range_end_utc,
+            range_start_utc=comparison_range_start_utc,
+            range_end_utc=comparison_range_end_utc,
         )
     else:
         seeded_simulated_series_15m = _series_from_simulation_result(
             simulation_result=simulation_result,
             model=model,
-            range_start_utc=fit_context.observed_range_start_utc,
-            range_end_utc=fit_context.observed_range_end_utc,
+            range_start_utc=comparison_range_start_utc,
+            range_end_utc=comparison_range_end_utc,
         )
         coarse_simulated_series = _series_from_simulation_result(
             simulation_result=coarse_simulation_result,
             model=model,
-            range_start_utc=fit_context.observed_range_start_utc,
-            range_end_utc=fit_context.observed_range_end_utc,
+            range_start_utc=comparison_range_start_utc,
+            range_end_utc=comparison_range_end_utc,
         )
 
     return WorkbenchObservedSimulationComparison(
         fit_context=fit_context,
         simulation_seed=seed,
         observed_series=fit_context.observed_tick_series,
+        observed_comparison_series=observed_series,
         simulated_series=simulated_series,
         simulated_seeded_series_15m=seeded_simulated_series_15m,
         simulated_coarse_series_15m=coarse_simulated_series,
     )
+
+
+def _comparison_range_for_model(
+    *,
+    model: JaniformModel,
+    observed_range_start_utc: datetime,
+    observed_range_end_utc: datetime,
+) -> Optional[tuple[datetime, datetime]]:
+    anchor_coverage_range = _deterministic_mean_reversion_anchor_coverage_range(model)
+    if anchor_coverage_range is None:
+        return observed_range_start_utc, observed_range_end_utc
+
+    coverage_start_utc, coverage_end_utc = anchor_coverage_range
+    comparison_range_start_utc = max(
+        observed_range_start_utc.astimezone(UTC),
+        coverage_start_utc,
+    )
+    comparison_range_end_utc = min(
+        observed_range_end_utc.astimezone(UTC),
+        coverage_end_utc,
+    )
+    if comparison_range_end_utc < comparison_range_start_utc:
+        return None
+
+    return _aligned_deterministic_anchor_comparison_range(
+        range_start_utc=comparison_range_start_utc,
+        range_end_utc=comparison_range_end_utc,
+        interval=timedelta(hours=1),
+    )
+
+
+def _deterministic_mean_reversion_anchor_coverage_range(
+    model: JaniformModel,
+) -> Optional[tuple[datetime, datetime]]:
+    try:
+        fitted_parameters = _mean_reversion_fitted_parameters(model)
+    except (AttributeError, RuntimeError, TypeError, ValueError):
+        return None
+
+    anchor_model = fitted_parameters.anchor_model
+    if anchor_model.anchor_model_kind != MeanReversionAnchorModelKind.DETERMINISTIC_INTERVAL_GRID:
+        return None
+    if (
+        len(anchor_model.source_interval_start_utc_nanos) == 0
+        or len(anchor_model.source_interval_end_utc_nanos) == 0
+    ):
+        return None
+
+    return (
+        datetime.fromtimestamp(anchor_model.source_interval_start_utc_nanos[0] / 1_000_000_000, tz=UTC),
+        datetime.fromtimestamp(anchor_model.source_interval_end_utc_nanos[-1] / 1_000_000_000, tz=UTC),
+    )
+
+
+def _clip_price_series_to_range(
+    series: WorkbenchPriceSeries,
+    *,
+    range_start_utc: datetime,
+    range_end_utc: datetime,
+) -> WorkbenchPriceSeries:
+    range_start_microseconds_utc = datetime_to_utc_microseconds(range_start_utc)
+    range_end_microseconds_utc = datetime_to_utc_microseconds(range_end_utc)
+    in_range_mask = (
+        (series.timestamp_microseconds_utc >= range_start_microseconds_utc)
+        & (series.timestamp_microseconds_utc <= range_end_microseconds_utc)
+    )
+
+    direct_return_timestamps_microseconds_utc = None
+    direct_returns = None
+    if (
+        series.direct_return_timestamps_microseconds_utc is not None
+        and series.direct_returns is not None
+    ):
+        direct_in_range_mask = (
+            (series.direct_return_timestamps_microseconds_utc >= range_start_microseconds_utc)
+            & (series.direct_return_timestamps_microseconds_utc <= range_end_microseconds_utc)
+        )
+        direct_return_timestamps_microseconds_utc = (
+            series.direct_return_timestamps_microseconds_utc[direct_in_range_mask]
+        )
+        direct_returns = series.direct_returns[direct_in_range_mask]
+
+    return WorkbenchPriceSeries(
+        timestamp_microseconds_utc=series.timestamp_microseconds_utc[in_range_mask],
+        prices=series.prices[in_range_mask],
+        direct_return_timestamps_microseconds_utc=direct_return_timestamps_microseconds_utc,
+        direct_returns=direct_returns,
+    )
+
+
+def _aligned_deterministic_anchor_comparison_range(
+    *,
+    range_start_utc: datetime,
+    range_end_utc: datetime,
+    interval: timedelta,
+) -> Optional[tuple[datetime, datetime]]:
+    normalized_start_utc = range_start_utc.astimezone(UTC)
+    normalized_end_utc = range_end_utc.astimezone(UTC)
+    interval_seconds = interval.total_seconds()
+
+    aligned_start_utc = datetime.fromtimestamp(
+        math.ceil(normalized_start_utc.timestamp() / interval_seconds) * interval_seconds,
+        tz=UTC,
+    )
+    aligned_end_utc = datetime.fromtimestamp(
+        math.floor(normalized_end_utc.timestamp() / interval_seconds) * interval_seconds,
+        tz=UTC,
+    )
+    if aligned_end_utc < aligned_start_utc:
+        return None
+
+    return aligned_start_utc, aligned_end_utc
+
+
+def _deterministic_anchor_simulation_request_window(
+    *,
+    range_start_utc: datetime,
+    range_end_utc: datetime,
+    interval: timedelta,
+) -> tuple[datetime, int]:
+    normalized_start_utc = range_start_utc.astimezone(UTC)
+    normalized_end_utc = range_end_utc.astimezone(UTC)
+    if normalized_end_utc < normalized_start_utc:
+        return normalized_start_utc, 1
+
+    horizon_interval_count = max(
+        1,
+        int((normalized_end_utc - normalized_start_utc) / interval),
+    )
+    return normalized_start_utc, horizon_interval_count
 
 
 def _simulation_request_window_for_observed_range(
