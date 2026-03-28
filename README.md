@@ -108,10 +108,14 @@ state for you.
 
 High-level mean-reversion calibration stays disabled unless you request it explicitly through
 `JaniformEstimator(mean_reversion=...)` or `janiform fit --mean-reversion-anchor-model ...`.
-The calibration workbench uses a separate setup surface and enables mean reversion with constant
-anchoring by default, while still exposing a setup toggle to disable it for a run.
+The calibration workbench uses a separate setup surface and enables mean reversion by default
+while still exposing a setup toggle and explicit anchor-family selector for each run.
 When you omit `calibration_grid_interval_hours`, the high-level market-data translation derives it
-from the median spacing of retained session-open boundary observations.
+from the median spacing of retained session-open boundary observations when that spacing is
+observable, and otherwise from the median observed session duration in the dataset.
+Mean-reversion `observed_log_price` and `anchor_value` are expressed in the runtime simulation
+coordinate system `log(price / reference_price)`, where `reference_price` is the simulation output
+reference level stored with the fitted model.
 
 Set `JaniformEstimator(cpu_count=...)` or `janiform fit --cpu-count ...` when you want to
 control how many CPU cores staged calibration uses while evaluating candidate parameter sets.

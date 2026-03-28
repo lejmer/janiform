@@ -3,6 +3,7 @@ use super::contracts::MarketDataTranslationPreprocessingError;
 use super::jump_candidates::derive_intraday_jump_candidates;
 use super::known_news_samples::{activity_lift, derive_known_news_return_samples};
 use super::shared::{
+    BTreeMap, CalibrationMeanReversionStageObservation,
     CalibrationReturnComponentsCloseOpenGapDetectionPolicy,
     CalibrationReturnComponentsDetectedIntradayJumpCandidate,
     CalibrationReturnComponentsKnownNewsCalendarInput,
@@ -129,6 +130,35 @@ pub(super) fn build_return_components_candidate_generation_input(
     };
 
     Ok((candidate_generation_input, material_close_open_gap_count))
+}
+
+pub(super) fn derive_mean_reversion_open_session_grid_inputs(
+    open_price_ticks: &[OpenTickRecord],
+) -> (Vec<CalibrationMeanReversionStageObservation>, Vec<f64>) {
+    let observations = open_price_ticks
+        .iter()
+        .map(|tick| CalibrationMeanReversionStageObservation {
+            observation_timestamp_utc_nanos: tick.timestamp_utc_nanos,
+            observed_log_price: tick.price.ln(),
+        })
+        .collect();
+
+    let mut unique_session_duration_hours: BTreeMap<(i64, i64), f64> = BTreeMap::new();
+    for tick in open_price_ticks {
+        let session_duration_nanos = tick.session_close_utc_nanos - tick.session_open_utc_nanos;
+        if session_duration_nanos <= 0 {
+            continue;
+        }
+
+        unique_session_duration_hours
+            .entry((tick.session_open_utc_nanos, tick.session_close_utc_nanos))
+            .or_insert(session_duration_nanos as f64 / 3_600_000_000_000.0);
+    }
+
+    (
+        observations,
+        unique_session_duration_hours.into_values().collect(),
+    )
 }
 
 pub(super) fn derive_observed_open_session_returns(

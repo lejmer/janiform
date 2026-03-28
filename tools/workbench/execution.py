@@ -478,7 +478,7 @@ def _mean_reversion_configuration_from_setup(
         return None
 
     return CalibrationMeanReversionConfiguration(
-        anchor_model_kind=MeanReversionAnchorModelKind.CONSTANT,
+        anchor_model_kind=run_setup.mean_reversion_anchor_model_kind,
     )
 
 

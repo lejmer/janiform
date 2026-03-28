@@ -25,6 +25,7 @@ from janiform.calibration.market_data.contracts import (
     CalibrationMarketDataWorkflowScope,
     CalibrationTickPriceInputPolicy,
 )
+from janiform.contracts import MeanReversionAnchorModelKind
 
 from .state import WorkbenchRunSetup
 
@@ -42,6 +43,7 @@ class WorkbenchSetupWidget(QWidget):
         self._output_directory_edit = QLineEdit(str((Path.cwd() / ".janiform").resolve()))
         self._workflow_scope_combo = QComboBox()
         self._mean_reversion_checkbox = QCheckBox("Enable mean reversion and anchoring")
+        self._mean_reversion_anchor_combo = QComboBox()
         self._file_format_combo = QComboBox()
         self._timestamp_column_combo = QComboBox()
         self._price_policy_combo = QComboBox()
@@ -51,6 +53,9 @@ class WorkbenchSetupWidget(QWidget):
         self._status_label = QLabel("Select a dataset to infer calibration inputs.")
         self._inference_view = QTextEdit()
         self._preferred_mean_reversion_enabled: bool = True
+        self._preferred_mean_reversion_anchor_model_kind = (
+            MeanReversionAnchorModelKind.CONSTANT
+        )
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -92,8 +97,20 @@ class WorkbenchSetupWidget(QWidget):
         self._mean_reversion_checkbox.setChecked(True)
         self._mean_reversion_checkbox.toggled.connect(self._on_mean_reversion_toggled)
         self._workflow_scope_combo.currentIndexChanged.connect(self._on_workflow_scope_changed)
+        self._mean_reversion_anchor_combo.addItem(
+            "Constant",
+            MeanReversionAnchorModelKind.CONSTANT,
+        )
+        self._mean_reversion_anchor_combo.addItem(
+            "Deterministic Interval Grid",
+            MeanReversionAnchorModelKind.DETERMINISTIC_INTERVAL_GRID,
+        )
+        self._mean_reversion_anchor_combo.currentIndexChanged.connect(
+            self._on_mean_reversion_anchor_changed
+        )
 
         form_layout.addRow("Mean Reversion", self._mean_reversion_checkbox)
+        form_layout.addRow("Anchor Family", self._mean_reversion_anchor_combo)
         form_layout.addRow("Exchange Code", self._exchange_code_edit)
 
         output_row = QWidget()
@@ -247,6 +264,7 @@ class WorkbenchSetupWidget(QWidget):
             workflow_scope=self._workflow_scope_combo.currentData(),
             output_directory=Path(self._output_directory_edit.text().strip()).expanduser().resolve(),
             mean_reversion_enabled=self._mean_reversion_checkbox.isChecked(),
+            mean_reversion_anchor_model_kind=self._mean_reversion_anchor_combo.currentData(),
             file_format=self._file_format_combo.currentData(),
             timestamp_column=self._selected_combo_value(self._timestamp_column_combo),
             tick_price_input_policy=self._price_policy_combo.currentData(),
@@ -290,6 +308,19 @@ class WorkbenchSetupWidget(QWidget):
     def _on_mean_reversion_toggled(self, checked: bool) -> None:
         if self._mean_reversion_checkbox.isEnabled():
             self._preferred_mean_reversion_enabled = checked
+        self._update_mean_reversion_controls()
+
+    def _on_mean_reversion_anchor_changed(self) -> None:
+        anchor_model_kind = self._mean_reversion_anchor_combo.currentData()
+        if isinstance(anchor_model_kind, MeanReversionAnchorModelKind):
+            self._preferred_mean_reversion_anchor_model_kind = anchor_model_kind
+
+    def _update_mean_reversion_controls(self) -> None:
+        anchor_family_enabled = (
+            self._mean_reversion_checkbox.isEnabled()
+            and self._mean_reversion_checkbox.isChecked()
+        )
+        self._mean_reversion_anchor_combo.setEnabled(anchor_family_enabled)
 
     def _on_workflow_scope_changed(self) -> None:
         workflow_scope = self._workflow_scope_combo.currentData()
@@ -302,11 +333,21 @@ class WorkbenchSetupWidget(QWidget):
         if mean_reversion_supported:
             self._mean_reversion_checkbox.setChecked(self._preferred_mean_reversion_enabled)
             self._mean_reversion_checkbox.setToolTip("")
+            self._set_combo_data(
+                self._mean_reversion_anchor_combo,
+                self._preferred_mean_reversion_anchor_model_kind,
+            )
+            self._mean_reversion_anchor_combo.setToolTip("")
+            self._update_mean_reversion_controls()
             return
 
         self._mean_reversion_checkbox.setChecked(False)
         self._mean_reversion_checkbox.setToolTip(
             "Mean reversion and anchoring are unavailable for seasonality-only calibration."
+        )
+        self._mean_reversion_anchor_combo.setEnabled(False)
+        self._mean_reversion_anchor_combo.setToolTip(
+            "Anchor-family selection is unavailable for seasonality-only calibration."
         )
 
 

@@ -16,6 +16,7 @@ pub(super) use crate::execution_bridge::{
     CalibrationDayOfYearSeasonalityEstimatorSettings, CalibrationHawkesDirectionalLabelDiagnostics,
     CalibrationHawkesObservedSourceRegime, CalibrationHawkesStageCandidateInput,
     CalibrationIntradaySeasonalityEstimatorSettings, CalibrationIntradaySmoothingKernel,
+    CalibrationMeanReversionStageObservation,
     CalibrationReturnComponentsCloseOpenGapDetectionPolicy,
     CalibrationReturnComponentsDetectedIntradayJumpCandidate,
     CalibrationReturnComponentsKnownNewsCalendarInput,

@@ -3,11 +3,10 @@ use janiform::news::NewsProcessConfiguration;
 use janiform::nig::NigSharedPlusShiftConfiguration;
 use janiform::risk::SufficientStatisticsRiskIntervalFactors;
 use janiform::simulation::{
-    CoarseSimulationRunRequest, MeanReversionBoundaryState, MeanReversionFittedParameters,
-    CoarseSimulationModelInputs,
-    MeanReversionRuntimeIntervalAnchors, SeededTickEventStateSnapshotCapture,
-    SeededTickSimulationDebugTraceOptions, SeededTickSimulationModelInputs,
-    SeededTickSimulationRunConfig, SeededTickSimulationRunOptions,
+    CoarseSimulationModelInputs, CoarseSimulationRunRequest, MeanReversionBoundaryState,
+    MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors,
+    SeededTickEventStateSnapshotCapture, SeededTickSimulationDebugTraceOptions,
+    SeededTickSimulationModelInputs, SeededTickSimulationRunConfig, SeededTickSimulationRunOptions,
     run_coarse_simulation as run_coarse_simulation_core,
     run_seeded_tick_event_simulation as run_seeded_tick_event_simulation_core,
 };
@@ -41,7 +40,10 @@ fn run_coarse_simulation(
     let interval_factors = SufficientStatisticsRiskIntervalFactors::try_new(
         hourly_factor_contract.output.s_h.clone(),
         hourly_factor_contract.output.known_component_nu_h.clone(),
-        hourly_factor_contract.output.surprise_component_nu_h.clone(),
+        hourly_factor_contract
+            .output
+            .surprise_component_nu_h
+            .clone(),
         Some(interval_delta),
     )
     .map_err(|source| SimulationExecutionError::new_err(source.to_string()))?;

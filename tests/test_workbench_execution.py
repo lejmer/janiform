@@ -25,6 +25,25 @@ def test_workbench_execution_enables_constant_anchor_mean_reversion_by_default()
     assert configuration.calibration_grid_interval_hours is None
 
 
+def test_workbench_execution_honors_selected_mean_reversion_anchor_family() -> None:
+    run_setup = WorkbenchRunSetup(
+        dataset_path=Path("ticks.csv"),
+        exchange_code="FXSPOT",
+        workflow_scope=CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE,
+        output_directory=Path("output"),
+        mean_reversion_anchor_model_kind=MeanReversionAnchorModelKind.DETERMINISTIC_INTERVAL_GRID,
+    )
+
+    configuration = _mean_reversion_configuration_from_setup(run_setup)
+
+    assert configuration is not None
+    assert (
+        configuration.anchor_model_kind
+        == MeanReversionAnchorModelKind.DETERMINISTIC_INTERVAL_GRID
+    )
+    assert configuration.calibration_grid_interval_hours is None
+
+
 def test_workbench_execution_omits_mean_reversion_when_user_turns_it_off() -> None:
     run_setup = WorkbenchRunSetup(
         dataset_path=Path("ticks.csv"),

@@ -4,6 +4,7 @@ use std::fmt::{Display, Formatter};
 
 use crate::execution_bridge::{
     CalibrationHawkesDirectionalLabelDiagnostics, CalibrationHawkesStageCandidateInput,
+    CalibrationMeanReversionStageObservation,
     CalibrationReturnComponentsStageCandidateGenerationInput,
     CalibrationSeasonalityStageExecutionInput,
 };
@@ -52,6 +53,11 @@ pub struct MarketDataTranslationPreprocessingOutput {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub return_components_candidate_generation_input:
         Option<CalibrationReturnComponentsStageCandidateGenerationInput>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mean_reversion_open_session_price_observations:
+        Option<Vec<CalibrationMeanReversionStageObservation>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mean_reversion_observed_session_duration_hours: Option<Vec<f64>>,
     pub session_open_tick_count: usize,
     pub session_closed_tick_count: usize,
     pub known_news_event_count: usize,

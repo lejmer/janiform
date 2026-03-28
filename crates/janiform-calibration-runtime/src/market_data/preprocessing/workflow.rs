@@ -6,7 +6,10 @@ use super::contracts::{
 };
 use super::hawkes_inputs::build_hawkes_candidate_inputs;
 use super::known_news_samples::resolve_known_news_records;
-use super::return_components_inputs::build_return_components_candidate_generation_input;
+use super::return_components_inputs::{
+    build_return_components_candidate_generation_input,
+    derive_mean_reversion_open_session_grid_inputs,
+};
 use super::seasonality_input::build_seasonality_stage_input;
 use super::session_windows::required_definition_and_timezone;
 use super::tick_resolution::preprocess_tick_records;
@@ -53,29 +56,43 @@ pub fn preprocess_market_data_translation_request(
         None
     };
 
-    let (return_components_candidate_generation_input, material_close_open_gap_count) =
-        if request.require_return_components {
-            let output = build_return_components_candidate_generation_input(
-                definition,
-                timezone,
-                request.exchange_code.as_str(),
-                tick_summary.open_price_ticks.as_slice(),
-                tick_summary.open_signed_tick_count,
-                tick_summary.open_session_sell_tick_count,
-                retained_known_news.retained_records.as_slice(),
-                tick_summary.source_window.clone(),
-                request.option_surface_quote_values.as_slice(),
-            )?;
+    let (
+        return_components_candidate_generation_input,
+        mean_reversion_open_session_price_observations,
+        mean_reversion_observed_session_duration_hours,
+        material_close_open_gap_count,
+    ) = if request.require_return_components {
+        let output = build_return_components_candidate_generation_input(
+            definition,
+            timezone,
+            request.exchange_code.as_str(),
+            tick_summary.open_price_ticks.as_slice(),
+            tick_summary.open_signed_tick_count,
+            tick_summary.open_session_sell_tick_count,
+            retained_known_news.retained_records.as_slice(),
+            tick_summary.source_window.clone(),
+            request.option_surface_quote_values.as_slice(),
+        )?;
+        let mean_reversion_grid_inputs = derive_mean_reversion_open_session_grid_inputs(
+            tick_summary.open_price_ticks.as_slice(),
+        );
 
-            (Some(output.0), output.1)
-        } else {
-            (None, 0)
-        };
+        (
+            Some(output.0),
+            Some(mean_reversion_grid_inputs.0),
+            Some(mean_reversion_grid_inputs.1),
+            output.1,
+        )
+    } else {
+        (None, None, None, 0)
+    };
 
     Ok(MarketDataTranslationPreprocessingOutput {
         seasonality_stage_input,
         hawkes_candidate_inputs,
         return_components_candidate_generation_input,
+        mean_reversion_open_session_price_observations,
+        mean_reversion_observed_session_duration_hours,
         session_open_tick_count: tick_summary.session_open_tick_count,
         session_closed_tick_count: tick_summary.session_closed_tick_count,
         known_news_event_count: retained_known_news.retained_records.len(),

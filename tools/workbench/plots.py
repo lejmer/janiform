@@ -30,6 +30,7 @@ from .artifacts import WorkbenchArtifacts, _artifact_list
 from .fit_context import (
     WorkbenchObservedSimulationComparison,
     WorkbenchPriceSeries,
+    _simulation_reference_price,
     build_observed_simulation_comparison,
 )
 
@@ -69,9 +70,15 @@ _MEAN_REVERSION_TAIL_QUANTILE_UPPER_BOUND = 0.98
 @dataclass(frozen=True, slots=True)
 class WorkbenchMeanReversionSeriesAnalysis:
     timestamp_microseconds_utc: NDArray[np.int64]
-    log_prices: NDArray[np.float64]
+    runtime_log_prices: NDArray[np.float64]
     anchor_values: NDArray[np.float64]
     deviations_from_anchor: NDArray[np.float64]
+
+
+@dataclass(frozen=True, slots=True)
+class WorkbenchMeanReversionUnavailableDiagnostics:
+    message: str
+    summary_lines: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -1350,7 +1357,7 @@ def _analysis_for_observed_simulation_comparison(
     if cached_analysis is not None:
         return cached_analysis
 
-    observed_analysis = _build_series_analysis(comparison.observed_series)
+    observed_analysis = _build_series_analysis(comparison.observed_comparison_series)
     simulated_analysis = _build_series_analysis(comparison.simulated_series)
     simulated_seeded_15m_analysis = _build_series_analysis(comparison.simulated_seeded_series_15m)
     simulated_coarse_analysis = _build_series_analysis(comparison.simulated_coarse_series_15m)
@@ -1372,7 +1379,7 @@ def _analysis_for_observed_simulation_comparison(
         available_horizon_minutes=available_horizon_minutes,
         observed_mean_reversion=_build_mean_reversion_series_analysis(
             _comparison_model(comparison),
-            comparison.observed_series,
+            comparison.observed_comparison_series,
         ),
         simulated_mean_reversion=_build_mean_reversion_series_analysis(
             _comparison_model(comparison),
@@ -1478,7 +1485,11 @@ def _build_mean_reversion_series_analysis(
     if fitted_parameters is None or not fitted_parameters.is_enabled:
         return None
 
-    log_prices = np.log(series.prices)
+    reference_price = _simulation_reference_price(model)
+    if not math.isfinite(reference_price) or reference_price <= 0.0:
+        return None
+
+    runtime_log_prices = np.log(series.prices / reference_price)
     anchor_values = np.asarray(
         [
             _materialize_mean_reversion_anchor_value(
@@ -1492,9 +1503,9 @@ def _build_mean_reversion_series_analysis(
 
     return WorkbenchMeanReversionSeriesAnalysis(
         timestamp_microseconds_utc=series.timestamp_microseconds_utc,
-        log_prices=log_prices,
+        runtime_log_prices=runtime_log_prices,
         anchor_values=anchor_values,
-        deviations_from_anchor=log_prices - anchor_values,
+        deviations_from_anchor=runtime_log_prices - anchor_values,
     )
 
 
@@ -1508,6 +1519,160 @@ def _resolve_mean_reversion_fitted_parameters(
         return _mean_reversion_fitted_parameters(model)
     except (AttributeError, RuntimeError, TypeError, ValueError):
         return None
+
+
+def _mean_reversion_unavailable_diagnostics(
+    artifacts: WorkbenchArtifacts,
+    comparison: Optional[Any],
+) -> WorkbenchMeanReversionUnavailableDiagnostics:
+    model = _comparison_model(comparison) if comparison is not None else None
+    fitted_parameters = _resolve_mean_reversion_fitted_parameters(model)
+    diagnostics_payload = _mean_reversion_diagnostics_payload(artifacts, model)
+
+    if fitted_parameters is not None and not fitted_parameters.is_enabled:
+        summary_lines = [
+            "status: fitted mean reversion disabled",
+            (
+                "anchor model kind: "
+                f"{fitted_parameters.anchor_model.anchor_model_kind.value}"
+            ),
+        ]
+        summary_lines.extend(_mean_reversion_diagnostics_summary_lines(diagnostics_payload))
+
+        return WorkbenchMeanReversionUnavailableDiagnostics(
+            message=(
+                "Mean-reversion diagnostics are unavailable because this calibrated "
+                "model disabled anchor-based mean reversion."
+            ),
+            summary_lines=tuple(summary_lines),
+        )
+
+    return WorkbenchMeanReversionUnavailableDiagnostics(
+        message=(
+            "Mean-reversion anchor diagnostics are unavailable because the loaded "
+            "model does not expose an enabled anchor path for both observed and "
+            "simulated series."
+        ),
+        summary_lines=_mean_reversion_diagnostics_summary_lines(diagnostics_payload),
+    )
+
+
+def _mean_reversion_diagnostics_payload(
+    artifacts: WorkbenchArtifacts,
+    model: Any,
+) -> Optional[dict[str, Any]]:
+    model_payload = _mean_reversion_model_payload(model)
+    if model_payload is not None:
+        diagnostics = model_payload.get("diagnostics")
+        if isinstance(diagnostics, dict):
+            return diagnostics
+
+    persisted_model_payload = artifacts.model_payload
+    if isinstance(persisted_model_payload, dict):
+        parameters = persisted_model_payload.get("parameters")
+        if isinstance(parameters, dict):
+            raw_mean_reversion = parameters.get("mean_reversion")
+            if isinstance(raw_mean_reversion, dict):
+                diagnostics = raw_mean_reversion.get("diagnostics")
+                if isinstance(diagnostics, dict):
+                    return diagnostics
+
+    for stage_report in _stage_report_payloads(artifacts):
+        if stage_report.get("stage_report_kind") != "mean_reversion":
+            continue
+
+        fitted_stage_payload = stage_report.get("fitted_stage_payload")
+        if not isinstance(fitted_stage_payload, dict):
+            continue
+
+        diagnostics = fitted_stage_payload.get("diagnostics")
+        if isinstance(diagnostics, dict):
+            return diagnostics
+
+    return None
+
+
+def _mean_reversion_model_payload(model: Any) -> Optional[dict[str, Any]]:
+    if model is None:
+        return None
+
+    try:
+        parameters = model.parameters
+    except AttributeError:
+        return None
+
+    if not isinstance(parameters, dict):
+        return None
+
+    raw_mean_reversion = parameters.get("mean_reversion")
+    if not isinstance(raw_mean_reversion, dict):
+        return None
+
+    return raw_mean_reversion
+
+
+def _mean_reversion_diagnostics_summary_lines(
+    diagnostics_payload: Optional[dict[str, Any]],
+) -> tuple[str, ...]:
+    if diagnostics_payload is None:
+        return ()
+
+    summary_lines: list[str] = []
+
+    chosen_anchor_family = diagnostics_payload.get("chosen_anchor_family")
+    if isinstance(chosen_anchor_family, str):
+        summary_lines.append(f"chosen anchor family: {chosen_anchor_family}")
+
+    anchor_parameter_estimates = diagnostics_payload.get("anchor_parameter_estimates")
+    if isinstance(anchor_parameter_estimates, dict):
+        anchor_model_kind = anchor_parameter_estimates.get("anchor_model_kind")
+        if isinstance(anchor_model_kind, str):
+            summary_lines.append(f"estimated anchor model: {anchor_model_kind}")
+
+    stage_decision_reason = diagnostics_payload.get("stage_decision_reason")
+    if isinstance(stage_decision_reason, str):
+        summary_lines.append(f"stage decision: {stage_decision_reason}")
+
+    calibration_grid = diagnostics_payload.get("calibration_grid")
+    if isinstance(calibration_grid, dict):
+        calibration_grid_kind = calibration_grid.get("calibration_grid_kind")
+        if isinstance(calibration_grid_kind, str):
+            summary_lines.append(f"grid kind: {calibration_grid_kind}")
+
+        calibration_grid_interval_hours = calibration_grid.get("calibration_grid_interval_hours")
+        if isinstance(calibration_grid_interval_hours, int | float):
+            summary_lines.append(
+                "grid interval hours: "
+                f"{float(calibration_grid_interval_hours):.6g}"
+            )
+
+        source_observation_count = calibration_grid.get("source_observation_count")
+        if isinstance(source_observation_count, int):
+            summary_lines.append(f"source observations: {source_observation_count}")
+
+        retained_observation_count = calibration_grid.get("retained_observation_count")
+        if isinstance(retained_observation_count, int):
+            summary_lines.append(f"retained observations: {retained_observation_count}")
+
+        coverage_ratio = calibration_grid.get("coverage_ratio")
+        if isinstance(coverage_ratio, int | float):
+            summary_lines.append(f"coverage ratio: {float(coverage_ratio):.6g}")
+
+    for field_name, label in (
+        ("deviation_sample_count", "deviation samples"),
+        ("regression_pair_count", "regression pairs"),
+        ("kappa", "kappa"),
+        ("phi", "phi"),
+    ):
+        value = diagnostics_payload.get(field_name)
+        if isinstance(value, int):
+            summary_lines.append(f"{label}: {value}")
+            continue
+
+        if isinstance(value, float):
+            summary_lines.append(f"{label}: {value:.6g}")
+
+    return tuple(summary_lines)
 
 
 def _comparison_model(comparison: WorkbenchObservedSimulationComparison) -> Any:
@@ -1786,9 +1951,14 @@ def create_td_sd_mean_reversion_variance_growth_figure(
     observed_mean_reversion = analysis.observed_mean_reversion
     simulated_mean_reversion = analysis.simulated_mean_reversion
     if observed_mean_reversion is None or simulated_mean_reversion is None:
-        _render_unavailable_axes(
-            (variance_axis, summary_axis),
-            "Mean-reversion anchor diagnostics are unavailable because the loaded model does not expose an enabled anchor path for both observed and simulated series.",
+        _render_mean_reversion_unavailable_axes(
+            plot_axis=variance_axis,
+            summary_axis=summary_axis,
+            title="Variance Growth of Deviation from Anchor",
+            diagnostics=_mean_reversion_unavailable_diagnostics(
+                artifacts,
+                comparison,
+            ),
         )
         return figure
 
@@ -1889,9 +2059,14 @@ def create_td_sd_mean_reversion_future_change_figure(
     observed_mean_reversion = analysis.observed_mean_reversion
     simulated_mean_reversion = analysis.simulated_mean_reversion
     if observed_mean_reversion is None or simulated_mean_reversion is None:
-        _render_unavailable_axes(
-            (conditional_axis, summary_axis),
-            "Mean-reversion anchor diagnostics are unavailable because the loaded model does not expose an enabled anchor path for both observed and simulated series.",
+        _render_mean_reversion_unavailable_axes(
+            plot_axis=conditional_axis,
+            summary_axis=summary_axis,
+            title="Conditional Future Change vs Deviation",
+            diagnostics=_mean_reversion_unavailable_diagnostics(
+                artifacts,
+                comparison,
+            ),
         )
         return figure
 
@@ -2011,9 +2186,18 @@ def create_observed_simulated_figure(
 
         return figure
 
+    full_observed_analysis = _build_series_analysis(resolved_comparison.observed_series)
+    if full_observed_analysis.prices.size == 0:
+        _render_unavailable_axes(
+            (price_axis, normalized_axis, return_axis, activity_axis),
+            "Observed-versus-simulated rows could not be normalized into a price series.",
+        )
+
+        return figure
+
     observed_timestamps, observed_prices = _downsample_time_series(
-        analysis.observed.timestamp_microseconds_utc,
-        analysis.observed.prices,
+        full_observed_analysis.timestamp_microseconds_utc,
+        full_observed_analysis.prices,
         max_points=_MAX_PATH_PLOT_POINTS,
     )
     simulated_timestamps, simulated_prices = _downsample_time_series(
@@ -2046,8 +2230,8 @@ def create_observed_simulated_figure(
     normalized_axis.plot(
         observed_timestamps,
         _downsample_time_series(
-            analysis.observed.timestamp_microseconds_utc,
-            analysis.observed.normalized_prices,
+            full_observed_analysis.timestamp_microseconds_utc,
+            full_observed_analysis.normalized_prices,
             max_points=_MAX_PATH_PLOT_POINTS,
         )[1],
         color="#111827",
@@ -2319,9 +2503,20 @@ def create_td_sd_horizon_profile_figure(
 
         return figure
 
+    full_observed_analysis = _build_series_analysis(
+        resolved_comparison.observed_series if resolved_comparison is not None else comparison.observed_series
+    )
+    if full_observed_analysis.prices.size == 0:
+        _render_unavailable_axes(
+            (path_axis, variance_axis, absolute_return_axis, event_count_axis),
+            "Observed-versus-simulated rows could not be normalized into a price series.",
+        )
+
+        return figure
+
     observed_timestamps, observed_normalized_prices = _downsample_time_series(
-        analysis.observed.timestamp_microseconds_utc,
-        analysis.observed.normalized_prices,
+        full_observed_analysis.timestamp_microseconds_utc,
+        full_observed_analysis.normalized_prices,
         max_points=_MAX_PATH_PLOT_POINTS,
     )
     simulated_timestamps, simulated_normalized_prices = _downsample_time_series(
@@ -2870,7 +3065,10 @@ def _conditional_future_change_profile(
     horizon: int,
     shared_bin_edges: Optional[NDArray[np.float64]] = None,
 ) -> WorkbenchConditionalFutureChangeProfile:
-    if series.deviations_from_anchor.size <= horizon or series.log_prices.size <= horizon:
+    if (
+        series.deviations_from_anchor.size <= horizon
+        or series.runtime_log_prices.size <= horizon
+    ):
         return WorkbenchConditionalFutureChangeProfile(
             mean_deviation=np.asarray([], dtype=np.float64),
             mean_future_change=np.asarray([], dtype=np.float64),
@@ -2883,7 +3081,9 @@ def _conditional_future_change_profile(
         )
 
     deviation = series.deviations_from_anchor[:-horizon]
-    future_change = series.log_prices[horizon:] - series.log_prices[:-horizon]
+    future_change = (
+        series.runtime_log_prices[horizon:] - series.runtime_log_prices[:-horizon]
+    )
     if shared_bin_edges is None:
         lower_quantile, upper_quantile = np.quantile(
             deviation,
@@ -3974,6 +4174,44 @@ def _render_unavailable_axes(axes: tuple[Any, ...], message: str) -> None:
         )
         axis.set_xticks([])
         axis.set_yticks([])
+
+
+def _render_mean_reversion_unavailable_axes(
+    *,
+    plot_axis: Any,
+    summary_axis: Any,
+    title: str,
+    diagnostics: WorkbenchMeanReversionUnavailableDiagnostics,
+) -> None:
+    plot_axis.set_title(title)
+    plot_axis.text(
+        0.5,
+        0.5,
+        diagnostics.message,
+        ha="center",
+        va="center",
+        wrap=True,
+        transform=plot_axis.transAxes,
+    )
+    plot_axis.set_xticks([])
+    plot_axis.set_yticks([])
+
+    summary_axis.axis("off")
+    summary_axis.set_title("Calibration Status")
+
+    summary_text = (
+        "\n".join(diagnostics.summary_lines)
+        if diagnostics.summary_lines
+        else "No persisted mean-reversion diagnostics are available for this run."
+    )
+    summary_axis.text(
+        0.0,
+        1.0,
+        summary_text,
+        va="top",
+        family="monospace",
+        transform=summary_axis.transAxes,
+    )
 
 
 def _all_positive(values: list[float]) -> bool:

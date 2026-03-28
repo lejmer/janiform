@@ -1,7 +1,8 @@
+import math
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import pandas
@@ -12,13 +13,17 @@ from pyarrow import parquet
 
 from janiform._timestamps import datetime_to_utc_microseconds
 from janiform.contracts import MeanReversionAnchorModel, MeanReversionFittedParameters
+from tests.calibration_test_support import build_disabled_mean_reversion_fitted_parameters_payload
 from tools.workbench import plots as workbench_plots
 from tools.workbench import load_workbench_artifacts
 from tools.workbench.artifacts import WorkbenchArtifacts
 from tools.workbench.fit_context import (
+    WorkbenchFitContext,
     WorkbenchObservedSimulationComparison,
     WorkbenchPriceSeries,
+    WorkbenchSourceTable,
     build_observed_simulation_comparison,
+    build_observed_simulation_comparison_for_fit_context,
     load_fit_context,
 )
 from tools.workbench.plots import create_message_figure, save_all_figures
@@ -318,6 +323,7 @@ def test_horizon_event_count_distribution_uses_raw_simulated_tick_counts() -> No
         fit_context=SimpleNamespace(),
         simulation_seed=7,
         observed_series=observed_series,
+        observed_comparison_series=observed_series,
         simulated_series=simulated_tick_series,
         simulated_seeded_series_15m=simulated_seeded_15m_series,
         simulated_coarse_series_15m=simulated_seeded_15m_series,
@@ -333,6 +339,156 @@ def test_horizon_event_count_distribution_uses_raw_simulated_tick_counts() -> No
 
     assert axis.boxplot_data == [[2, 1, 2, 1], [3, 2, 3, 1]]
     assert axis.xtick_labels == ["Observed 15m", "Simulated 15m"]
+
+
+def test_workbench_comparison_clips_to_deterministic_anchor_coverage() -> None:
+    captured_simulations: list[dict[str, Any]] = []
+
+    class _FakeSimulationResult:
+        def to_pandas(self) -> Any:
+            return pandas.DataFrame.from_records(
+                [
+                    {
+                        "timestamp_utc": datetime(2026, 2, 2, 16, 0, tzinfo=UTC),
+                        "trade_price": 100.0,
+                    },
+                    {
+                        "timestamp_utc": datetime(2026, 2, 2, 17, 0, tzinfo=UTC),
+                        "trade_price": 100.5,
+                    },
+                    {
+                        "timestamp_utc": datetime(2026, 2, 2, 18, 0, tzinfo=UTC),
+                        "trade_price": 101.0,
+                    },
+                ]
+            )
+
+    deterministic_mean_reversion_payload = MeanReversionFittedParameters(
+        kappa=0.25,
+        anchor_model=MeanReversionAnchorModel.deterministic_interval_grid(
+            source_interval_start_utc_nanos=(
+                int(datetime(2026, 2, 2, 16, 0, tzinfo=UTC).timestamp() * 1_000_000_000) + 119_000,
+                int(datetime(2026, 2, 2, 17, 0, tzinfo=UTC).timestamp() * 1_000_000_000) + 152_000,
+            ),
+            source_interval_end_utc_nanos=(
+                int(datetime(2026, 2, 2, 17, 0, tzinfo=UTC).timestamp() * 1_000_000_000) + 152_000,
+                int(datetime(2026, 2, 2, 18, 0, tzinfo=UTC).timestamp() * 1_000_000_000) + 139_000,
+            ),
+            anchor_values=(0.0, 0.0),
+            source_alignment_policy="piecewise_constant_utc_interval_grid.v1",
+        ),
+    ).to_payload()
+
+    class _FakeModel:
+        metadata = {
+            "input_inference": {
+                "tick_data_format": "csv",
+                "timestamp_column": "timestamp_utc",
+                "timestamp_timezone": "UTC",
+                "tick_price_input_policy": "explicit_price_column",
+                "tick_price_columns": {
+                    "price_column": "trade_price",
+                    "trade_sign_column": None,
+                    "bid_column": None,
+                    "ask_column": None,
+                },
+            },
+            "simulation_output_preferences": {
+                "reference_price": 100.0,
+            },
+        }
+
+        parameters = {
+            "mean_reversion": {
+                "fitted_parameters": deterministic_mean_reversion_payload,
+            }
+        }
+
+        def simulate(
+            self,
+            *,
+            seed: int,
+            start_time_utc: datetime,
+            horizon_interval_count: int,
+            interval: str | None = None,
+            silent: bool,
+        ) -> _FakeSimulationResult:
+            captured_simulations.append(
+                {
+                    "seed": seed,
+                    "start_time_utc": start_time_utc,
+                    "horizon_interval_count": horizon_interval_count,
+                    "interval": interval,
+                    "silent": silent,
+                }
+            )
+            return _FakeSimulationResult()
+
+    observed_series = _price_series_from_records(
+        (
+            ("2026-02-02T15:00:00Z", 99.0),
+            ("2026-02-02T16:00:00Z", 100.0),
+            ("2026-02-02T17:00:00Z", 101.0),
+            ("2026-02-02T18:00:00Z", 102.0),
+            ("2026-02-02T19:00:00Z", 103.0),
+        )
+    )
+    fit_context = WorkbenchFitContext(
+        model=cast(Any, _FakeModel()),
+        fit_report_path=Path("/tmp/deterministic-anchor-fit-report.json"),
+        tick_data_source=WorkbenchSourceTable(
+            source_path=Path("/tmp/source.csv"),
+            file_format="csv",
+            column_names=("timestamp_utc", "trade_price"),
+            source_row_count=5,
+        ),
+        observed_tick_series=observed_series,
+        observed_range_start_utc=datetime(2026, 2, 2, 15, 0, tzinfo=UTC),
+        observed_range_end_utc=datetime(2026, 2, 2, 19, 0, tzinfo=UTC),
+    )
+
+    comparison = build_observed_simulation_comparison_for_fit_context(
+        fit_context,
+        model=cast(Any, fit_context.model),
+        seed=9,
+    )
+
+    assert comparison is not None
+    _assert_price_series(
+        comparison.observed_series,
+        timestamps_utc=(
+            datetime(2026, 2, 2, 15, 0, tzinfo=UTC),
+            datetime(2026, 2, 2, 16, 0, tzinfo=UTC),
+            datetime(2026, 2, 2, 17, 0, tzinfo=UTC),
+            datetime(2026, 2, 2, 18, 0, tzinfo=UTC),
+            datetime(2026, 2, 2, 19, 0, tzinfo=UTC),
+        ),
+        prices=(99.0, 100.0, 101.0, 102.0, 103.0),
+    )
+    _assert_price_series(
+        comparison.observed_comparison_series,
+        timestamps_utc=(
+            datetime(2026, 2, 2, 17, 0, tzinfo=UTC),
+            datetime(2026, 2, 2, 18, 0, tzinfo=UTC),
+        ),
+        prices=(101.0, 102.0),
+    )
+    assert captured_simulations == [
+        {
+            "seed": 9,
+            "start_time_utc": datetime(2026, 2, 2, 17, 0, tzinfo=UTC),
+            "horizon_interval_count": 1,
+            "interval": None,
+            "silent": True,
+        },
+        {
+            "seed": 9,
+            "start_time_utc": datetime(2026, 2, 2, 17, 0, tzinfo=UTC),
+            "horizon_interval_count": 4,
+            "interval": "15m",
+            "silent": True,
+        },
+    ]
 
 
 def test_parameter_objective_figure_clips_extreme_objective_outliers() -> None:
@@ -914,6 +1070,18 @@ def test_mean_reversion_variance_growth_figure_overlays_observed_and_simulated_c
                 ("2026-02-02T16:15:00Z", 1.03),
             )
         ),
+        observed_comparison_series=_price_series_from_records(
+            (
+                ("2026-02-02T14:30:00Z", 1.00),
+                ("2026-02-02T14:45:00Z", 1.05),
+                ("2026-02-02T15:00:00Z", 1.02),
+                ("2026-02-02T15:15:00Z", 1.06),
+                ("2026-02-02T15:30:00Z", 1.03),
+                ("2026-02-02T15:45:00Z", 1.04),
+                ("2026-02-02T16:00:00Z", 1.02),
+                ("2026-02-02T16:15:00Z", 1.03),
+            )
+        ),
         simulated_series=_price_series_from_records(
             (
                 ("2026-02-02T14:30:00Z", 1.00),
@@ -955,6 +1123,106 @@ def test_mean_reversion_variance_growth_figure_overlays_observed_and_simulated_c
     assert variance_axis.get_title() == "Variance Growth of Deviation from Anchor"
 
 
+def test_mean_reversion_series_analysis_uses_reference_price_normalized_log_coordinates() -> None:
+    analysis = workbench_plots._build_mean_reversion_series_analysis(
+        SimpleNamespace(
+            metadata={"simulation_output_preferences": {"reference_price": 100.0}},
+            parameters={
+                "mean_reversion": {
+                    "fitted_parameters": MeanReversionFittedParameters(
+                        kappa=0.4,
+                        anchor_model=MeanReversionAnchorModel.constant(anchor_value=0.0),
+                    ).to_payload()
+                }
+            },
+        ),
+        _price_series_from_records(
+            (
+                ("2026-02-02T14:30:00Z", 100.0),
+                ("2026-02-02T14:45:00Z", 110.0),
+                ("2026-02-02T15:00:00Z", 121.0),
+            )
+        ),
+    )
+
+    assert analysis is not None
+    assert analysis.runtime_log_prices == pytest.approx(
+        np.asarray((0.0, math.log(1.1), math.log(1.21)), dtype=np.float64)
+    )
+    assert analysis.anchor_values == pytest.approx(np.asarray((0.0, 0.0, 0.0), dtype=np.float64))
+    assert analysis.deviations_from_anchor == pytest.approx(
+        np.asarray((0.0, math.log(1.1), math.log(1.21)), dtype=np.float64)
+    )
+
+
+def test_observed_simulated_price_figure_uses_full_observed_path_when_comparison_is_clipped() -> None:
+    artifacts = WorkbenchArtifacts(
+        source_path=Path("/tmp/observed-simulated-full-observed-path"),
+        source_kind="run_directory",
+        metadata={},
+        fit_report_payload=None,
+        model_payload=None,
+        observed_targets={},
+        candidate_frontier={},
+        coarse_tick_consistency={},
+        selection_rationale={},
+        simulation_summary={},
+        search_surface_manifest={},
+        runtime_profile={},
+    )
+    comparison = WorkbenchObservedSimulationComparison(
+        fit_context=SimpleNamespace(model=_mean_reversion_test_model()),
+        simulation_seed=3,
+        observed_series=_price_series_from_records(
+            (
+                ("2026-02-02T14:30:00Z", 100.0),
+                ("2026-02-02T14:45:00Z", 101.0),
+                ("2026-02-02T15:00:00Z", 102.0),
+            )
+        ),
+        observed_comparison_series=_price_series_from_records(
+            (
+                ("2026-02-02T14:45:00Z", 201.0),
+                ("2026-02-02T15:00:00Z", 202.0),
+            )
+        ),
+        simulated_series=_price_series_from_records(
+            (
+                ("2026-02-02T14:45:00Z", 150.0),
+                ("2026-02-02T15:00:00Z", 151.0),
+            )
+        ),
+        simulated_seeded_series_15m=_price_series_from_records(
+            (
+                ("2026-02-02T14:45:00Z", 150.0),
+                ("2026-02-02T15:00:00Z", 151.0),
+            )
+        ),
+        simulated_coarse_series_15m=_price_series_from_records(
+            (
+                ("2026-02-02T14:45:00Z", 150.0),
+                ("2026-02-02T15:00:00Z", 151.0),
+            )
+        ),
+    )
+
+    figure = workbench_plots.create_observed_simulated_figure(artifacts, comparison)
+
+    price_axis = figure.axes[0]
+    observed_line = price_axis.lines[0]
+    simulated_line = price_axis.lines[1]
+
+    assert list(observed_line.get_ydata()) == [100.0, 101.0, 102.0]
+    assert list(simulated_line.get_ydata()) == [150.0, 151.0]
+
+    normalized_axis = figure.axes[1]
+    observed_rebased_line = normalized_axis.lines[0]
+    simulated_rebased_line = normalized_axis.lines[1]
+
+    assert np.allclose(observed_rebased_line.get_ydata(), [100.0, 101.0, 102.0])
+    assert np.allclose(simulated_rebased_line.get_ydata(), [100.0, 100.0 * 151.0 / 150.0])
+
+
 def test_mean_reversion_future_change_figure_uses_restoring_force_overlay() -> None:
     artifacts = WorkbenchArtifacts(
         source_path=Path("/tmp/mean-reversion-future-change"),
@@ -974,6 +1242,26 @@ def test_mean_reversion_future_change_figure_uses_restoring_force_overlay() -> N
         fit_context=SimpleNamespace(model=_mean_reversion_test_model()),
         simulation_seed=11,
         observed_series=_price_series_from_records(
+            (
+                ("2026-02-02T14:30:00Z", 1.00),
+                ("2026-02-02T14:45:00Z", 0.96),
+                ("2026-02-02T15:00:00Z", 0.98),
+                ("2026-02-02T15:15:00Z", 1.01),
+                ("2026-02-02T15:30:00Z", 1.04),
+                ("2026-02-02T15:45:00Z", 1.02),
+                ("2026-02-02T16:00:00Z", 1.00),
+                ("2026-02-02T16:15:00Z", 0.99),
+                ("2026-02-02T16:30:00Z", 1.01),
+                ("2026-02-02T16:45:00Z", 1.03),
+                ("2026-02-02T17:00:00Z", 1.00),
+                ("2026-02-02T17:15:00Z", 0.98),
+                ("2026-02-02T17:30:00Z", 1.00),
+                ("2026-02-02T17:45:00Z", 1.02),
+                ("2026-02-02T18:00:00Z", 1.01),
+                ("2026-02-02T18:15:00Z", 0.99),
+            )
+        ),
+        observed_comparison_series=_price_series_from_records(
             (
                 ("2026-02-02T14:30:00Z", 1.00),
                 ("2026-02-02T14:45:00Z", 0.96),
@@ -1039,6 +1327,164 @@ def test_mean_reversion_future_change_figure_uses_restoring_force_overlay() -> N
 
     assert len(conditional_axis.lines) >= 4
     assert conditional_axis.get_title() == "Conditional Future Change vs Deviation"
+
+
+def test_mean_reversion_variance_growth_figure_reports_disabled_fit_reason() -> None:
+    diagnostics_payload = _disabled_mean_reversion_diagnostics_payload()
+    artifacts = WorkbenchArtifacts(
+        source_path=Path("/tmp/mean-reversion-disabled-variance"),
+        source_kind="run_directory",
+        metadata={},
+        fit_report_payload={
+            "staged_response": {
+                "stage_reports": [
+                    {
+                        "stage_report_kind": "mean_reversion",
+                        "fitted_stage_payload": {
+                            "fitted_parameters": build_disabled_mean_reversion_fitted_parameters_payload(),
+                            "diagnostics": diagnostics_payload,
+                        },
+                    }
+                ]
+            }
+        },
+        model_payload={
+            "parameters": {
+                "mean_reversion": {
+                    "fitted_parameters": build_disabled_mean_reversion_fitted_parameters_payload(),
+                    "diagnostics": diagnostics_payload,
+                }
+            }
+        },
+        observed_targets={},
+        candidate_frontier={},
+        coarse_tick_consistency={},
+        selection_rationale={},
+        simulation_summary={},
+        search_surface_manifest={},
+        runtime_profile={},
+    )
+    comparison = WorkbenchObservedSimulationComparison(
+        fit_context=SimpleNamespace(model=_disabled_mean_reversion_test_model(diagnostics_payload)),
+        simulation_seed=5,
+        observed_series=_price_series_from_records(
+            (
+                ("2026-02-02T14:30:00Z", 1.00),
+                ("2026-02-02T14:45:00Z", 1.01),
+                ("2026-02-02T15:00:00Z", 1.02),
+            )
+        ),
+        observed_comparison_series=_price_series_from_records(
+            (
+                ("2026-02-02T14:30:00Z", 1.00),
+                ("2026-02-02T14:45:00Z", 1.01),
+                ("2026-02-02T15:00:00Z", 1.02),
+            )
+        ),
+        simulated_series=_price_series_from_records(
+            (
+                ("2026-02-02T14:30:00Z", 1.00),
+                ("2026-02-02T14:45:00Z", 1.00),
+                ("2026-02-02T15:00:00Z", 1.01),
+            )
+        ),
+        simulated_seeded_series_15m=_price_series_from_records(
+            (
+                ("2026-02-02T14:45:00Z", 1.00),
+                ("2026-02-02T15:00:00Z", 1.01),
+            )
+        ),
+        simulated_coarse_series_15m=_price_series_from_records(
+            (
+                ("2026-02-02T14:45:00Z", 1.00),
+                ("2026-02-02T15:00:00Z", 1.01),
+            )
+        ),
+    )
+
+    figure = workbench_plots.create_td_sd_mean_reversion_variance_growth_figure(
+        artifacts,
+        comparison,
+    )
+
+    assert figure.axes[0].texts[0].get_text().startswith(
+        "Mean-reversion diagnostics are unavailable because this calibrated model disabled"
+    )
+    assert "stage decision: requested_mean_reversion_disabled.v1" in figure.axes[1].texts[0].get_text()
+    assert "source observations: 4" in figure.axes[1].texts[0].get_text()
+
+
+def test_mean_reversion_future_change_figure_reports_disabled_fit_reason() -> None:
+    diagnostics_payload = _disabled_mean_reversion_diagnostics_payload()
+    artifacts = WorkbenchArtifacts(
+        source_path=Path("/tmp/mean-reversion-disabled-future-change"),
+        source_kind="run_directory",
+        metadata={},
+        fit_report_payload=None,
+        model_payload={
+            "parameters": {
+                "mean_reversion": {
+                    "fitted_parameters": build_disabled_mean_reversion_fitted_parameters_payload(),
+                    "diagnostics": diagnostics_payload,
+                }
+            }
+        },
+        observed_targets={},
+        candidate_frontier={},
+        coarse_tick_consistency={},
+        selection_rationale={},
+        simulation_summary={},
+        search_surface_manifest={},
+        runtime_profile={},
+    )
+    comparison = WorkbenchObservedSimulationComparison(
+        fit_context=SimpleNamespace(model=_disabled_mean_reversion_test_model(diagnostics_payload)),
+        simulation_seed=13,
+        observed_series=_price_series_from_records(
+            (
+                ("2026-02-02T14:30:00Z", 1.00),
+                ("2026-02-02T14:45:00Z", 1.01),
+                ("2026-02-02T15:00:00Z", 1.02),
+            )
+        ),
+        observed_comparison_series=_price_series_from_records(
+            (
+                ("2026-02-02T14:30:00Z", 1.00),
+                ("2026-02-02T14:45:00Z", 1.01),
+                ("2026-02-02T15:00:00Z", 1.02),
+            )
+        ),
+        simulated_series=_price_series_from_records(
+            (
+                ("2026-02-02T14:30:00Z", 1.00),
+                ("2026-02-02T14:45:00Z", 1.00),
+                ("2026-02-02T15:00:00Z", 1.01),
+            )
+        ),
+        simulated_seeded_series_15m=_price_series_from_records(
+            (
+                ("2026-02-02T14:45:00Z", 1.00),
+                ("2026-02-02T15:00:00Z", 1.01),
+            )
+        ),
+        simulated_coarse_series_15m=_price_series_from_records(
+            (
+                ("2026-02-02T14:45:00Z", 1.00),
+                ("2026-02-02T15:00:00Z", 1.01),
+            )
+        ),
+    )
+
+    figure = workbench_plots.create_td_sd_mean_reversion_future_change_figure(
+        artifacts,
+        comparison,
+    )
+
+    assert figure.axes[0].texts[0].get_text().startswith(
+        "Mean-reversion diagnostics are unavailable because this calibrated model disabled"
+    )
+    assert "retained observations: 0" in figure.axes[1].texts[0].get_text()
+    assert "coverage ratio: 0" in figure.axes[1].texts[0].get_text()
 
 
 def test_workbench_fit_context_reads_parquet_ticks_with_column_batches(
@@ -1622,6 +2068,7 @@ def _price_series_from_records(
 
 def _mean_reversion_test_model() -> Any:
     return SimpleNamespace(
+        metadata={"simulation_output_preferences": {"reference_price": 1.0}},
         parameters={
             "mean_reversion": {
                 "fitted_parameters": MeanReversionFittedParameters(
@@ -1631,6 +2078,39 @@ def _mean_reversion_test_model() -> Any:
             }
         }
     )
+
+
+def _disabled_mean_reversion_test_model(diagnostics_payload: dict[str, Any]) -> Any:
+    return SimpleNamespace(
+        metadata={"simulation_output_preferences": {"reference_price": 1.0}},
+        parameters={
+            "mean_reversion": {
+                "fitted_parameters": build_disabled_mean_reversion_fitted_parameters_payload(),
+                "diagnostics": diagnostics_payload,
+            }
+        }
+    )
+
+
+def _disabled_mean_reversion_diagnostics_payload() -> dict[str, Any]:
+    return {
+        "chosen_anchor_family": "disabled",
+        "calibration_grid": {
+            "calibration_grid_kind": "synthetic_daily_close_grid.v1",
+            "calibration_grid_interval_hours": 24.0,
+            "source_observation_count": 4,
+            "retained_observation_count": 0,
+            "coverage_ratio": 0.0,
+        },
+        "anchor_parameter_estimates": {
+            "anchor_model_kind": "disabled",
+        },
+        "phi": 1.0,
+        "kappa": 0.0,
+        "deviation_sample_count": 0,
+        "regression_pair_count": 0,
+        "stage_decision_reason": "requested_mean_reversion_disabled.v1",
+    }
 
 
 class _FakeAxis:

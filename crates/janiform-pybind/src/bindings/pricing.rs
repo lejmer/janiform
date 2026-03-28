@@ -1,6 +1,6 @@
 use janiform::pricing::{
-    VanillaOptionPricingExecutionInput, VanillaOptionPricingOptionalOutputSelection,
-    VanillaOptionPricingRequest, VanillaOptionPricingIntervalFactors,
+    VanillaOptionPricingExecutionInput, VanillaOptionPricingIntervalFactors,
+    VanillaOptionPricingOptionalOutputSelection, VanillaOptionPricingRequest,
     run_vanilla_option_pricing as run_vanilla_option_pricing_core,
 };
 use pyo3::prelude::{Bound, Py, PyResult, Python};
@@ -39,18 +39,23 @@ fn run_vanilla_option_pricing(
         .iter()
         .zip(hourly_factor_contract.output.known_component_nu_h.iter())
         .zip(hourly_factor_contract.output.surprise_component_nu_h.iter())
-        .map(|((seasonality_factor, known_component_nu_h), surprise_component_nu_h)| {
-            VanillaOptionPricingIntervalFactors::try_new(
-                *seasonality_factor,
-                *known_component_nu_h,
-                *surprise_component_nu_h,
-            )
-        })
+        .map(
+            |((seasonality_factor, known_component_nu_h), surprise_component_nu_h)| {
+                VanillaOptionPricingIntervalFactors::try_new(
+                    *seasonality_factor,
+                    *known_component_nu_h,
+                    *surprise_component_nu_h,
+                )
+            },
+        )
         .collect::<Result<Vec<_>, _>>()
         .map_err(|source| PricingExecutionError::new_err(source.to_string()))?;
-    let execution_input =
-        VanillaOptionPricingExecutionInput::try_new(request, interval_factors, optional_output_selection)
-            .map_err(|source| PricingExecutionError::new_err(source.to_string()))?;
+    let execution_input = VanillaOptionPricingExecutionInput::try_new(
+        request,
+        interval_factors,
+        optional_output_selection,
+    )
+    .map_err(|source| PricingExecutionError::new_err(source.to_string()))?;
     let run_result = py
         .allow_threads(|| run_vanilla_option_pricing_core(execution_input))
         .map_err(|source| PricingExecutionError::new_err(source.to_string()))?;
