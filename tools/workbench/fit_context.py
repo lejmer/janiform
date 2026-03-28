@@ -23,7 +23,6 @@ from janiform._timestamps import (
 from janiform.calendar import CalendarRegistry, MarketState
 from janiform.calibration.fit import JaniformModel
 from janiform.calibration.fit.model import _mean_reversion_fitted_parameters
-from janiform.contracts import MeanReversionAnchorModelKind
 
 from .artifacts import WorkbenchArtifacts
 
@@ -184,9 +183,6 @@ def build_observed_simulation_comparison_for_fit_context(
     model: JaniformModel,
     seed: int = _DEFAULT_COMPARISON_SIMULATION_SEED,
 ) -> Optional[WorkbenchObservedSimulationComparison]:
-    deterministic_anchor_coverage_range = _deterministic_mean_reversion_anchor_coverage_range(
-        model
-    )
     comparison_range = _comparison_range_for_model(
         model=model,
         observed_range_start_utc=fit_context.observed_range_start_utc,
@@ -204,17 +200,10 @@ def build_observed_simulation_comparison_for_fit_context(
     if observed_series.timestamp_microseconds_utc.size == 0:
         return None
 
-    if deterministic_anchor_coverage_range is None:
-        simulation_start_utc, horizon_interval_count = _simulation_request_window_for_observed_range(
-            observed_range_start_utc=comparison_range_start_utc,
-            observed_range_end_utc=comparison_range_end_utc,
-        )
-    else:
-        simulation_start_utc, horizon_interval_count = _deterministic_anchor_simulation_request_window(
-            range_start_utc=comparison_range_start_utc,
-            range_end_utc=comparison_range_end_utc,
-            interval=timedelta(hours=1),
-        )
+    simulation_start_utc, horizon_interval_count = _simulation_request_window_for_observed_range(
+        observed_range_start_utc=comparison_range_start_utc,
+        observed_range_end_utc=comparison_range_end_utc,
+    )
 
     simulation_result = model.simulate(
         seed=seed,
@@ -230,18 +219,10 @@ def build_observed_simulation_comparison_for_fit_context(
         range_end_utc=comparison_range_end_utc,
     )
 
-    coarse_simulation_start_utc, coarse_horizon_interval_count = (
-        _deterministic_anchor_simulation_request_window(
-            range_start_utc=comparison_range_start_utc,
-            range_end_utc=comparison_range_end_utc,
-            interval=timedelta(minutes=15),
-        )
-        if deterministic_anchor_coverage_range is not None
-        else _simulation_request_window_for_interval(
-            observed_range_start_utc=comparison_range_start_utc,
-            observed_range_end_utc=comparison_range_end_utc,
-            interval=timedelta(minutes=15),
-        )
+    coarse_simulation_start_utc, coarse_horizon_interval_count = _simulation_request_window_for_interval(
+        observed_range_start_utc=comparison_range_start_utc,
+        observed_range_end_utc=comparison_range_end_utc,
+        interval=timedelta(minutes=15),
     )
 
     coarse_simulation_result = model.simulate(
@@ -308,50 +289,7 @@ def _comparison_range_for_model(
     observed_range_start_utc: datetime,
     observed_range_end_utc: datetime,
 ) -> Optional[tuple[datetime, datetime]]:
-    anchor_coverage_range = _deterministic_mean_reversion_anchor_coverage_range(model)
-    if anchor_coverage_range is None:
-        return observed_range_start_utc, observed_range_end_utc
-
-    coverage_start_utc, coverage_end_utc = anchor_coverage_range
-    comparison_range_start_utc = max(
-        observed_range_start_utc.astimezone(UTC),
-        coverage_start_utc,
-    )
-    comparison_range_end_utc = min(
-        observed_range_end_utc.astimezone(UTC),
-        coverage_end_utc,
-    )
-    if comparison_range_end_utc < comparison_range_start_utc:
-        return None
-
-    return _aligned_deterministic_anchor_comparison_range(
-        range_start_utc=comparison_range_start_utc,
-        range_end_utc=comparison_range_end_utc,
-        interval=timedelta(hours=1),
-    )
-
-
-def _deterministic_mean_reversion_anchor_coverage_range(
-    model: JaniformModel,
-) -> Optional[tuple[datetime, datetime]]:
-    try:
-        fitted_parameters = _mean_reversion_fitted_parameters(model)
-    except (AttributeError, RuntimeError, TypeError, ValueError):
-        return None
-
-    anchor_model = fitted_parameters.anchor_model
-    if anchor_model.anchor_model_kind != MeanReversionAnchorModelKind.DETERMINISTIC_INTERVAL_GRID:
-        return None
-    if (
-        len(anchor_model.source_interval_start_utc_nanos) == 0
-        or len(anchor_model.source_interval_end_utc_nanos) == 0
-    ):
-        return None
-
-    return (
-        datetime.fromtimestamp(anchor_model.source_interval_start_utc_nanos[0] / 1_000_000_000, tz=UTC),
-        datetime.fromtimestamp(anchor_model.source_interval_end_utc_nanos[-1] / 1_000_000_000, tz=UTC),
-    )
+    return observed_range_start_utc, observed_range_end_utc
 
 
 def _clip_price_series_to_range(

@@ -72,22 +72,13 @@ def update_model_mean_reversion_payload(model: Any, mean_reversion_payload: dict
             baseline_return_components["mean_reversion_fitted_parameters"] = mean_reversion_payload
 
 
-def build_deterministic_interval_grid_mean_reversion_fitted_parameters_payload(
+def build_endogenous_mean_reversion_fitted_parameters_payload(
     *,
     kappa: float,
-    source_interval_start_utc_nanos: tuple[int, ...],
-    source_interval_end_utc_nanos: tuple[int, ...],
-    anchor_values: tuple[float, ...],
-    source_alignment_policy: str,
 ) -> dict[str, Any]:
     return MeanReversionFittedParameters(
         kappa=kappa,
-        anchor_model=MeanReversionAnchorModel.deterministic_interval_grid(
-            source_interval_start_utc_nanos=source_interval_start_utc_nanos,
-            source_interval_end_utc_nanos=source_interval_end_utc_nanos,
-            anchor_values=anchor_values,
-            source_alignment_policy=source_alignment_policy,
-        ),
+        anchor_model=MeanReversionAnchorModel.endogenous_core_expectation_one_interval(),
     ).to_payload()
 
 

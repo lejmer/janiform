@@ -65,8 +65,8 @@
       "integration_truncation_check_passed": true
     },
     {
-      "scenario_id": "deterministic_flat_anchor_zero_deviation",
-      "anchor_model_kind": "deterministic_interval_grid",
+      "scenario_id": "endogenous_flat_anchor_zero_deviation",
+      "anchor_model_kind": "constant",
       "outcome_kind": "success",
       "kappa": 0.35,
       "observed_boundary_state": {

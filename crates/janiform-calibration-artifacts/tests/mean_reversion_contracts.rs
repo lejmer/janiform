@@ -12,8 +12,8 @@ use support::shared::{
     MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors,
     MeanReversionStageCalibrationGrid, MeanReversionStageDiagnostics,
     MeanReversionStageParameterArtifactInput, build_calibration_stage_parameter_artifact,
-    build_data_inputs, build_deterministic_interval_grid_mean_reversion_parameters,
-    build_solver_settings, load_calibration_stage_parameter_artifact_from_disk,
+    build_data_inputs, build_endogenous_mean_reversion_parameters, build_solver_settings,
+    load_calibration_stage_parameter_artifact_from_disk,
     persist_calibration_stage_parameter_artifact_to_run_directory,
     resolve_calibration_stage_seed_metadata, stage_solver_settings_for_stage,
     temporary_checkpoint_directory,
@@ -21,14 +21,14 @@ use support::shared::{
 
 #[test]
 fn mean_reversion_fitted_parameters_round_trip_serialization_preserves_contract_fields() {
-    let fitted_parameters = build_deterministic_interval_grid_mean_reversion_parameters();
+    let fitted_parameters = build_endogenous_mean_reversion_parameters();
 
     let serialized = serde_json::to_value(&fitted_parameters)
         .expect("mean reversion fitted parameters should serialize");
     assert_eq!(serialized["kappa"], serde_json::json!(0.25));
     assert_eq!(
         serialized["anchor_model"]["anchor_model_kind"],
-        serde_json::json!("deterministic_interval_grid")
+        serde_json::json!("endogenous_core_expectation_one_interval")
     );
 
     let parsed: MeanReversionFittedParameters = serde_json::from_value(serialized)
@@ -58,19 +58,18 @@ fn mean_reversion_fitted_parameters_reject_negative_kappa() {
 }
 
 #[test]
-fn mean_reversion_anchor_model_rejects_non_finite_anchor_values() {
-    let anchor_model = MeanReversionAnchorModel::deterministic_interval_grid(
-        vec![1, 2],
-        vec![2, 3],
-        vec![1.0, NAN],
-        "piecewise_constant_utc_interval_grid.v1",
-    )
-    .expect_err("non-finite anchor values must fail validation");
+fn endogenous_mean_reversion_anchor_model_rejects_exogenous_anchor_values() {
+    let anchor_model = MeanReversionAnchorModel {
+        anchor_model_kind: MeanReversionAnchorModelKind::EndogenousCoreExpectationOneInterval,
+        anchor_value: Some(NAN),
+    }
+    .validate()
+    .expect_err("endogenous mean-reversion anchor must reject exogenous values");
 
     assert!(
         anchor_model
             .to_string()
-            .contains("anchor_values must be a finite number")
+            .contains("must not set field `anchor_value`")
     );
 }
 
@@ -130,9 +129,9 @@ fn calibration_stage_parameter_artifact_persistence_round_trips_mean_reversion_b
     let solver_settings =
         stage_solver_settings_for_stage(&run_contract.run_spec, CalibrationStage::MeanReversion)
             .expect("mean-reversion solver settings should exist");
-    let fitted_parameters = build_deterministic_interval_grid_mean_reversion_parameters();
+    let fitted_parameters = build_endogenous_mean_reversion_parameters();
     let diagnostics = MeanReversionStageDiagnostics {
-        chosen_anchor_family: MeanReversionAnchorModelKind::DeterministicIntervalGrid,
+        chosen_anchor_family: MeanReversionAnchorModelKind::EndogenousCoreExpectationOneInterval,
         calibration_grid: MeanReversionStageCalibrationGrid {
             calibration_grid_kind: "synthetic_daily_close_grid.v1".to_string(),
             calibration_grid_interval_hours: 24.0,
@@ -146,7 +145,7 @@ fn calibration_stage_parameter_artifact_persistence_round_trips_mean_reversion_b
         deviation_sample_count: 4,
         regression_pair_count: 3,
         stage_decision_reason:
-            "deterministic_interval_anchor_fitted_from_local_median_log_price_levels.v1".to_string(),
+            "endogenous_core_expectation_one_interval_stage_not_yet_implemented.v1".to_string(),
     };
     let artifact = build_calibration_stage_parameter_artifact(
         &run_contract,

@@ -101,10 +101,6 @@ class WorkbenchSetupWidget(QWidget):
             "Constant",
             MeanReversionAnchorModelKind.CONSTANT,
         )
-        self._mean_reversion_anchor_combo.addItem(
-            "Deterministic Interval Grid",
-            MeanReversionAnchorModelKind.DETERMINISTIC_INTERVAL_GRID,
-        )
         self._mean_reversion_anchor_combo.currentIndexChanged.connect(
             self._on_mean_reversion_anchor_changed
         )

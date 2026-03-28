@@ -311,8 +311,6 @@ class SufficientStatisticsRiskModelInputs(ContractModel):
                     self.mean_reversion_runtime_interval_anchors,
                     expected_anchor_value,
                 )
-            case MeanReversionAnchorModelKind.DETERMINISTIC_INTERVAL_GRID:
-                return
 
     @staticmethod
     def from_mapping(raw_payload: dict[str, Any] | Any) -> SufficientStatisticsRiskModelInputs:

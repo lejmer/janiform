@@ -3404,19 +3404,7 @@ fn configure_mean_reversion_runtime_inputs(
         MeanReversionAnchorModel::constant(start_anchor_value)
             .expect("constant mean-reversion anchor should construct")
     } else {
-        MeanReversionAnchorModel::deterministic_interval_grid(
-            model_inputs
-                .hourly_factor_contract
-                .interval_start_utc_nanos
-                .clone(),
-            model_inputs
-                .hourly_factor_contract
-                .interval_end_utc_nanos
-                .clone(),
-            end_anchor_values.to_vec(),
-            HOURLY_FACTOR_INTERVAL_ALIGNMENT_POLICY,
-        )
-        .expect("deterministic-grid mean-reversion anchor should construct")
+        MeanReversionAnchorModel::endogenous_core_expectation_one_interval()
     };
 
     model_inputs.mean_reversion_fitted_parameters =

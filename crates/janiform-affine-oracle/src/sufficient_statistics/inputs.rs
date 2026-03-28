@@ -559,7 +559,6 @@ impl SufficientStatisticsRiskModelInputs {
                     expected_anchor_value,
                 )?;
             }
-            MeanReversionAnchorModelKind::DeterministicIntervalGrid => {}
         }
 
         Ok(())

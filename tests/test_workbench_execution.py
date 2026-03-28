@@ -31,7 +31,7 @@ def test_workbench_execution_honors_selected_mean_reversion_anchor_family() -> N
         exchange_code="FXSPOT",
         workflow_scope=CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE,
         output_directory=Path("output"),
-        mean_reversion_anchor_model_kind=MeanReversionAnchorModelKind.DETERMINISTIC_INTERVAL_GRID,
+        mean_reversion_anchor_model_kind=MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL,
     )
 
     configuration = _mean_reversion_configuration_from_setup(run_setup)
@@ -39,7 +39,7 @@ def test_workbench_execution_honors_selected_mean_reversion_anchor_family() -> N
     assert configuration is not None
     assert (
         configuration.anchor_model_kind
-        == MeanReversionAnchorModelKind.DETERMINISTIC_INTERVAL_GRID
+        == MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL
     )
     assert configuration.calibration_grid_interval_hours is None
 

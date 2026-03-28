@@ -389,7 +389,6 @@ impl SeededTickSimulationRunConfig {
                     MEAN_REVERSION_ALIGNMENT_TOLERANCE,
                 )?;
             }
-            MeanReversionAnchorModelKind::DeterministicIntervalGrid => {}
         }
 
         if let Some((

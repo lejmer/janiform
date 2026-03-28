@@ -19,15 +19,12 @@ use crate::stages::seasonality::CalibrationStageExecutionStatus;
 const MINIMUM_MEAN_REVERSION_OBSERVATION_COUNT: usize = 3;
 const MINIMUM_MEAN_REVERSION_COVERAGE_RATIO: f64 = 0.5;
 const MINIMUM_PHI: f64 = 1.0e-12;
-const DETERMINISTIC_ANCHOR_ALIGNMENT_POLICY: &str = "piecewise_constant_utc_interval_grid.v1";
 const DISABLED_REQUEST_REASON: &str = "requested_mean_reversion_disabled.v1";
 const INSUFFICIENT_SAMPLE_REASON: &str = "insufficient_mean_reversion_observation_count.v1";
 const INSUFFICIENT_COVERAGE_REASON: &str = "insufficient_mean_reversion_grid_coverage.v1";
 const ENDOGENOUS_POLICY_NOT_YET_IMPLEMENTED_REASON: &str =
     "endogenous_core_expectation_one_interval_stage_not_yet_implemented.v1";
 const CONSTANT_ANCHOR_REASON: &str = "constant_anchor_fitted_from_median_log_price_levels.v1";
-const DETERMINISTIC_ANCHOR_REASON: &str =
-    "deterministic_interval_anchor_fitted_from_local_median_log_price_levels.v1";
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum MeanReversionStageReturnComponentsInput {
@@ -300,45 +297,6 @@ fn estimate_mean_reversion_fitted_parameters(
                     deviation_sample_count: observation_levels.len(),
                     regression_pair_count: observation_levels.len().saturating_sub(1),
                     stage_decision_reason: CONSTANT_ANCHOR_REASON.to_string(),
-                },
-            )
-        }
-        MeanReversionAnchorModelKind::DeterministicIntervalGrid => {
-            let interval_anchor_values =
-                smoothed_interval_anchor_values(observation_levels.as_slice());
-
-            let anchor_model = MeanReversionAnchorModel::deterministic_interval_grid(
-                observation_times[..observation_times.len().saturating_sub(1)].to_vec(),
-                observation_times.iter().skip(1).copied().collect(),
-                interval_anchor_values.clone(),
-                DETERMINISTIC_ANCHOR_ALIGNMENT_POLICY,
-            )
-            .expect("deterministic interval-grid anchor fit should validate");
-
-            let boundary_anchor_values =
-                boundary_anchor_values_from_interval_anchors(interval_anchor_values.as_slice());
-
-            let (phi, kappa) = estimate_phi_and_kappa(
-                observation_levels.as_slice(),
-                boundary_anchor_values.as_slice(),
-                execution_input.calibration_grid_interval_hours,
-            );
-
-            let fitted_parameters =
-                MeanReversionFittedParameters::try_new(kappa, anchor_model.clone())
-                    .expect("deterministic mean reversion fit should validate");
-
-            (
-                fitted_parameters,
-                MeanReversionStageDiagnostics {
-                    chosen_anchor_family: MeanReversionAnchorModelKind::DeterministicIntervalGrid,
-                    calibration_grid,
-                    anchor_parameter_estimates: anchor_model,
-                    phi,
-                    kappa,
-                    deviation_sample_count: observation_levels.len(),
-                    regression_pair_count: observation_levels.len().saturating_sub(1),
-                    stage_decision_reason: DETERMINISTIC_ANCHOR_REASON.to_string(),
                 },
             )
         }

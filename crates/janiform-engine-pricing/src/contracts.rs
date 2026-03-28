@@ -2016,7 +2016,6 @@ fn validate_runtime_anchor_alignment(
                 expected_anchor_value,
             )?;
         }
-        MeanReversionAnchorModelKind::DeterministicIntervalGrid => {}
     }
 
     Ok(())

@@ -46,7 +46,7 @@ from janiform.hourly_factors import HourlyFactorContract
 from janiform.simulation import SeededTickEventSide, SeededTickEventStateSnapshotCapture
 from tests.calibration_test_support import (
     build_constant_mean_reversion_fitted_parameters_payload,
-    build_deterministic_interval_grid_mean_reversion_fitted_parameters_payload,
+    build_endogenous_mean_reversion_fitted_parameters_payload,
     build_disabled_mean_reversion_fitted_parameters_payload,
     update_model_mean_reversion_payload,
 )
@@ -561,7 +561,7 @@ def test_high_level_model_save_and_load_roundtrip_preserves_deterministic_metada
     assert first_path.read_text(encoding="utf-8") == second_path.read_text(encoding="utf-8")
 
 
-def test_high_level_model_save_and_load_roundtrip_preserves_deterministic_mean_reversion_block(
+def test_high_level_model_save_and_load_roundtrip_preserves_endogenous_mean_reversion_block(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -573,12 +573,7 @@ def test_high_level_model_save_and_load_roundtrip_preserves_deterministic_mean_r
 
     mean_reversion_payload = MeanReversionFittedParameters(
         kappa=0.25,
-        anchor_model=MeanReversionAnchorModel.deterministic_interval_grid(
-            source_interval_start_utc_nanos=(10, 20),
-            source_interval_end_utc_nanos=(20, 30),
-            anchor_values=(4.2, 4.1),
-            source_alignment_policy="piecewise_constant_utc_interval_grid.v1",
-        ),
+        anchor_model=MeanReversionAnchorModel.endogenous_core_expectation_one_interval(),
     ).to_payload()
 
     model.parameters["return_components"]["fitted_parameters"][
@@ -944,20 +939,7 @@ def test_high_level_model_simulation_materializes_mean_reversion_runtime_inputs(
 
     mean_reversion_payload = MeanReversionFittedParameters(
         kappa=0.25,
-        anchor_model=MeanReversionAnchorModel.deterministic_interval_grid(
-            source_interval_start_utc_nanos=(
-                datetime_to_utc_nanos(datetime(2026, 2, 2, 15, 0, tzinfo=UTC)),
-                datetime_to_utc_nanos(datetime(2026, 2, 2, 16, 0, tzinfo=UTC)),
-                datetime_to_utc_nanos(datetime(2026, 2, 2, 17, 0, tzinfo=UTC)),
-            ),
-            source_interval_end_utc_nanos=(
-                datetime_to_utc_nanos(datetime(2026, 2, 2, 16, 0, tzinfo=UTC)),
-                datetime_to_utc_nanos(datetime(2026, 2, 2, 17, 0, tzinfo=UTC)),
-                datetime_to_utc_nanos(datetime(2026, 2, 2, 18, 0, tzinfo=UTC)),
-            ),
-            anchor_values=(0.25, 0.5, 0.75),
-            source_alignment_policy="piecewise_constant_utc_interval_grid.v1",
-        ),
+        anchor_model=MeanReversionAnchorModel.constant(0.25),
     ).to_payload()
 
     model.parameters["return_components"]["fitted_parameters"][
@@ -1040,7 +1022,7 @@ def test_high_level_model_simulation_materializes_mean_reversion_runtime_inputs(
     assert seeded_request.mean_reversion_fitted_parameters.to_payload() == mean_reversion_payload
     assert seeded_request.mean_reversion_runtime_interval_anchors.start_anchor_value == pytest.approx(0.25)
     assert seeded_request.mean_reversion_runtime_interval_anchors.end_anchor_values == pytest.approx(
-        (0.5, 0.75)
+        (0.25, 0.25)
     )
     assert seeded_request.initial_mean_reversion_boundary_state.observed_log_price == pytest.approx(0.0)
     assert seeded_request.initial_mean_reversion_boundary_state.anchor_value == pytest.approx(0.25)
@@ -1050,7 +1032,7 @@ def test_high_level_model_simulation_materializes_mean_reversion_runtime_inputs(
     assert coarse_model_inputs.mean_reversion_fitted_parameters.to_payload() == mean_reversion_payload
     assert coarse_model_inputs.mean_reversion_runtime_interval_anchors.start_anchor_value == pytest.approx(0.25)
     assert coarse_model_inputs.mean_reversion_runtime_interval_anchors.end_anchor_values == pytest.approx(
-        (0.5, 0.5)
+        (0.25, 0.25)
     )
     assert coarse_model_inputs.initial_mean_reversion_boundary_state.observed_log_price == pytest.approx(0.0)
     assert coarse_model_inputs.initial_mean_reversion_boundary_state.anchor_value == pytest.approx(0.25)
@@ -1639,7 +1621,7 @@ def test_high_level_model_price_option_end_to_end_supports_constant_anchor_mean_
     assert pricing_result.run_diagnostics.anchored_recursion is not None
 
 
-def test_high_level_model_price_option_end_to_end_supports_deterministic_anchor_mean_reversion(
+def test_high_level_model_price_option_end_to_end_supports_constant_anchor_mean_reversion(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1650,18 +1632,9 @@ def test_high_level_model_price_option_end_to_end_supports_deterministic_anchor_
     )
     update_model_mean_reversion_payload(
         model,
-        build_deterministic_interval_grid_mean_reversion_fitted_parameters_payload(
+        build_constant_mean_reversion_fitted_parameters_payload(
             kappa=0.25,
-            source_interval_start_utc_nanos=(
-                datetime_to_utc_nanos(datetime(2026, 2, 2, 15, 0, tzinfo=UTC)),
-                datetime_to_utc_nanos(datetime(2026, 2, 2, 16, 0, tzinfo=UTC)),
-            ),
-            source_interval_end_utc_nanos=(
-                datetime_to_utc_nanos(datetime(2026, 2, 2, 16, 0, tzinfo=UTC)),
-                datetime_to_utc_nanos(datetime(2026, 2, 2, 17, 0, tzinfo=UTC)),
-            ),
-            anchor_values=(0.25, 0.25),
-            source_alignment_policy="piecewise_constant_utc_interval_grid.v1",
+            anchor_value=0.25,
         ),
     )
 

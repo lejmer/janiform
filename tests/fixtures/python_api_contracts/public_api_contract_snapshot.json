@@ -280,18 +280,18 @@
         "MeanReversionAnchorModel": {
           "field_names": [
             "anchor_model_kind",
-            "anchor_value",
-            "source_interval_start_utc_nanos",
-            "source_interval_end_utc_nanos",
-            "anchor_values",
-            "source_alignment_policy"
+            "anchor_value"
           ],
           "kind": "contract_model",
-          "signature": "(anchor_model_kind: 'MeanReversionAnchorModelKind', anchor_value: 'Optional[float]' = None, source_interval_start_utc_nanos: 'tuple[int, ...]' = (), source_interval_end_utc_nanos: 'tuple[int, ...]' = (), anchor_values: 'tuple[float, ...]' = (), source_alignment_policy: 'Optional[str]' = None) -> 'None'"
+          "signature": "(anchor_model_kind: 'MeanReversionAnchorModelKind', anchor_value: 'Optional[float]' = None) -> 'None'"
         },
         "MeanReversionAnchorModelKind": {
           "kind": "enum",
           "members": [
+            {
+              "name": "ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL",
+              "value": "endogenous_core_expectation_one_interval"
+            },
             {
               "name": "DISABLED",
               "value": "disabled"
@@ -299,10 +299,6 @@
             {
               "name": "CONSTANT",
               "value": "constant"
-            },
-            {
-              "name": "DETERMINISTIC_INTERVAL_GRID",
-              "value": "deterministic_interval_grid"
             }
           ]
         },
@@ -3824,18 +3820,18 @@
         "MeanReversionAnchorModel": {
           "field_names": [
             "anchor_model_kind",
-            "anchor_value",
-            "source_interval_start_utc_nanos",
-            "source_interval_end_utc_nanos",
-            "anchor_values",
-            "source_alignment_policy"
+            "anchor_value"
           ],
           "kind": "contract_model",
-          "signature": "(anchor_model_kind: 'MeanReversionAnchorModelKind', anchor_value: 'Optional[float]' = None, source_interval_start_utc_nanos: 'tuple[int, ...]' = (), source_interval_end_utc_nanos: 'tuple[int, ...]' = (), anchor_values: 'tuple[float, ...]' = (), source_alignment_policy: 'Optional[str]' = None) -> 'None'"
+          "signature": "(anchor_model_kind: 'MeanReversionAnchorModelKind', anchor_value: 'Optional[float]' = None) -> 'None'"
         },
         "MeanReversionAnchorModelKind": {
           "kind": "enum",
           "members": [
+            {
+              "name": "ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL",
+              "value": "endogenous_core_expectation_one_interval"
+            },
             {
               "name": "DISABLED",
               "value": "disabled"
@@ -3843,10 +3839,6 @@
             {
               "name": "CONSTANT",
               "value": "constant"
-            },
-            {
-              "name": "DETERMINISTIC_INTERVAL_GRID",
-              "value": "deterministic_interval_grid"
             }
           ]
         },
@@ -4672,18 +4664,18 @@
         "MeanReversionAnchorModel": {
           "field_names": [
             "anchor_model_kind",
-            "anchor_value",
-            "source_interval_start_utc_nanos",
-            "source_interval_end_utc_nanos",
-            "anchor_values",
-            "source_alignment_policy"
+            "anchor_value"
           ],
           "kind": "contract_model",
-          "signature": "(anchor_model_kind: 'MeanReversionAnchorModelKind', anchor_value: 'Optional[float]' = None, source_interval_start_utc_nanos: 'tuple[int, ...]' = (), source_interval_end_utc_nanos: 'tuple[int, ...]' = (), anchor_values: 'tuple[float, ...]' = (), source_alignment_policy: 'Optional[str]' = None) -> 'None'"
+          "signature": "(anchor_model_kind: 'MeanReversionAnchorModelKind', anchor_value: 'Optional[float]' = None) -> 'None'"
         },
         "MeanReversionAnchorModelKind": {
           "kind": "enum",
           "members": [
+            {
+              "name": "ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL",
+              "value": "endogenous_core_expectation_one_interval"
+            },
             {
               "name": "DISABLED",
               "value": "disabled"
@@ -4691,10 +4683,6 @@
             {
               "name": "CONSTANT",
               "value": "constant"
-            },
-            {
-              "name": "DETERMINISTIC_INTERVAL_GRID",
-              "value": "deterministic_interval_grid"
             }
           ]
         },
@@ -5623,18 +5611,18 @@
         "MeanReversionAnchorModel": {
           "field_names": [
             "anchor_model_kind",
-            "anchor_value",
-            "source_interval_start_utc_nanos",
-            "source_interval_end_utc_nanos",
-            "anchor_values",
-            "source_alignment_policy"
+            "anchor_value"
           ],
           "kind": "contract_model",
-          "signature": "(anchor_model_kind: 'MeanReversionAnchorModelKind', anchor_value: 'Optional[float]' = None, source_interval_start_utc_nanos: 'tuple[int, ...]' = (), source_interval_end_utc_nanos: 'tuple[int, ...]' = (), anchor_values: 'tuple[float, ...]' = (), source_alignment_policy: 'Optional[str]' = None) -> 'None'"
+          "signature": "(anchor_model_kind: 'MeanReversionAnchorModelKind', anchor_value: 'Optional[float]' = None) -> 'None'"
         },
         "MeanReversionAnchorModelKind": {
           "kind": "enum",
           "members": [
+            {
+              "name": "ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL",
+              "value": "endogenous_core_expectation_one_interval"
+            },
             {
               "name": "DISABLED",
               "value": "disabled"
@@ -5642,10 +5630,6 @@
             {
               "name": "CONSTANT",
               "value": "constant"
-            },
-            {
-              "name": "DETERMINISTIC_INTERVAL_GRID",
-              "value": "deterministic_interval_grid"
             }
           ]
         },
@@ -6555,18 +6539,18 @@
         "MeanReversionAnchorModel": {
           "field_names": [
             "anchor_model_kind",
-            "anchor_value",
-            "source_interval_start_utc_nanos",
-            "source_interval_end_utc_nanos",
-            "anchor_values",
-            "source_alignment_policy"
+            "anchor_value"
           ],
           "kind": "contract_model",
-          "signature": "(anchor_model_kind: 'MeanReversionAnchorModelKind', anchor_value: 'Optional[float]' = None, source_interval_start_utc_nanos: 'tuple[int, ...]' = (), source_interval_end_utc_nanos: 'tuple[int, ...]' = (), anchor_values: 'tuple[float, ...]' = (), source_alignment_policy: 'Optional[str]' = None) -> 'None'"
+          "signature": "(anchor_model_kind: 'MeanReversionAnchorModelKind', anchor_value: 'Optional[float]' = None) -> 'None'"
         },
         "MeanReversionAnchorModelKind": {
           "kind": "enum",
           "members": [
+            {
+              "name": "ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL",
+              "value": "endogenous_core_expectation_one_interval"
+            },
             {
               "name": "DISABLED",
               "value": "disabled"
@@ -6574,10 +6558,6 @@
             {
               "name": "CONSTANT",
               "value": "constant"
-            },
-            {
-              "name": "DETERMINISTIC_INTERVAL_GRID",
-              "value": "deterministic_interval_grid"
             }
           ]
         },

@@ -64,31 +64,23 @@ def test_workbench_setup_allows_disabling_mean_reversion_before_submit(
         application.processEvents()
 
 
-def test_workbench_setup_submits_selected_mean_reversion_anchor_family(
+def test_workbench_setup_does_not_offer_removed_deterministic_anchor_family(
     tmp_path: Path,
 ) -> None:
     application = QApplication.instance() or QApplication([])
     widget = WorkbenchSetupWidget()
-    submitted_setups: list[WorkbenchRunSetup] = []
     dataset_path = tmp_path / "ticks.csv"
     dataset_path.write_text("timestamp_utc,trade_price\n", encoding="utf-8")
 
     try:
-        widget.setup_submitted.connect(submitted_setups.append)
         widget._dataset_path_edit.setText(str(dataset_path))
-        widget._mean_reversion_anchor_combo.setCurrentIndex(
-            widget._mean_reversion_anchor_combo.findData(
-                MeanReversionAnchorModelKind.DETERMINISTIC_INTERVAL_GRID
-            )
-        )
-
-        widget._submit_setup()
         application.processEvents()
 
-        assert len(submitted_setups) == 1
         assert (
-            submitted_setups[0].mean_reversion_anchor_model_kind
-            == MeanReversionAnchorModelKind.DETERMINISTIC_INTERVAL_GRID
+            widget._mean_reversion_anchor_combo.findData(
+                MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL
+            )
+            == -1
         )
     finally:
         widget.close()

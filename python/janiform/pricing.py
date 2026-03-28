@@ -609,8 +609,6 @@ class AnchoredVanillaOptionPricingBoundaryInput(ContractModel):
                     self.mean_reversion_runtime_interval_anchors,
                     expected_anchor_value,
                 )
-            case MeanReversionAnchorModelKind.DETERMINISTIC_INTERVAL_GRID:
-                pass
 
         if (
             abs(self.observed_boundary_state.anchor_value - self.current_anchor_value)

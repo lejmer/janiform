@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from bisect import bisect_right
 from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
@@ -23,7 +22,6 @@ from ..sessions.contracts import (
     MarketDataSessionResolution,
 )
 from ..staged.results import StagedCalibrationResponse
-from ..._timestamps import datetime_to_utc_nanos
 from ..._workflow_outputs import (
     SimulationArtifactSink,
     generate_workflow_run_id,
@@ -93,7 +91,6 @@ from ...simulation.shared import (
 _HIGH_LEVEL_MODEL_PERSISTENCE_SCHEMA_VERSION = "calibration.high_level.model.v1"
 _DEFAULT_HIGH_LEVEL_SIMULATION_INTERVAL = "1h"
 _MEAN_REVERSION_RUNTIME_INTERVAL_ALIGNMENT_POLICY = "explicit_runtime_interval_grid_alignment.v1"
-_MEAN_REVERSION_DETERMINISTIC_SOURCE_ALIGNMENT_POLICY = "piecewise_constant_utc_interval_grid.v1"
 
 
 @dataclass(frozen=True, slots=True)
@@ -781,47 +778,8 @@ def _materialize_mean_reversion_anchor_value(
                 )
 
             return anchor_value
-        case "deterministic_interval_grid":
-            source_alignment_policy = anchor_model.source_alignment_policy
-            if source_alignment_policy != _MEAN_REVERSION_DETERMINISTIC_SOURCE_ALIGNMENT_POLICY:
-                raise RuntimeError(
-                    "JaniformModel deterministic mean reversion anchor model must use "
-                    f"`{_MEAN_REVERSION_DETERMINISTIC_SOURCE_ALIGNMENT_POLICY}`"
-                )
-
-            return _materialize_deterministic_interval_grid_anchor_value(
-                fitted_parameters=fitted_parameters,
-                boundary_time_utc=normalized_boundary_time_utc,
-            )
         case _:
             raise RuntimeError("JaniformModel mean reversion anchor model kind is unsupported")
-
-
-def _materialize_deterministic_interval_grid_anchor_value(
-    *,
-    fitted_parameters: MeanReversionFittedParameters,
-    boundary_time_utc: datetime,
-) -> float:
-    anchor_model = fitted_parameters.anchor_model
-    boundary_time_utc_nanos = datetime_to_utc_nanos(boundary_time_utc)
-    source_interval_start_utc_nanos = anchor_model.source_interval_start_utc_nanos
-    source_interval_end_utc_nanos = anchor_model.source_interval_end_utc_nanos
-
-    interval_index = bisect_right(source_interval_start_utc_nanos, boundary_time_utc_nanos) - 1
-    if interval_index >= 0 and boundary_time_utc_nanos < source_interval_end_utc_nanos[interval_index]:
-        return anchor_model.anchor_values[interval_index]
-
-    if (
-        source_interval_end_utc_nanos
-        and interval_index == len(source_interval_end_utc_nanos) - 1
-        and boundary_time_utc_nanos == source_interval_end_utc_nanos[interval_index]
-    ):
-        return anchor_model.anchor_values[interval_index]
-
-    raise RuntimeError(
-        "JaniformModel deterministic mean reversion anchor grid does not cover runtime boundary "
-        f"{boundary_time_utc.isoformat()}"
-    )
 
 
 def _build_runtime_interval_end_times_utc(

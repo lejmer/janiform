@@ -54,10 +54,6 @@ fn endogenous_mean_reversion_anchor_model_rejects_exogenous_anchor_values() {
     let anchor_model = MeanReversionAnchorModel {
         anchor_model_kind: janiform_model_kernels::mean_reversion::MeanReversionAnchorModelKind::EndogenousCoreExpectationOneInterval,
         anchor_value: Some(NAN),
-        source_interval_start_utc_nanos: Vec::new(),
-        source_interval_end_utc_nanos: Vec::new(),
-        anchor_values: Vec::new(),
-        source_alignment_policy: None,
     }
     .validate()
     .expect_err("endogenous anchor policy must reject exogenous anchor fields");

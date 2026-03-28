@@ -233,12 +233,7 @@ def test_staged_calibration_execution_input_roundtrip_serialization_is_determini
 def test_mean_reversion_fitted_parameters_roundtrip_serialization_is_deterministic() -> None:
     fitted_parameters = MeanReversionFittedParameters(
         kappa=0.25,
-        anchor_model=MeanReversionAnchorModel.deterministic_interval_grid(
-            source_interval_start_utc_nanos=(10, 20),
-            source_interval_end_utc_nanos=(20, 30),
-            anchor_values=(4.2, 4.1),
-            source_alignment_policy="piecewise_constant_utc_interval_grid.v1",
-        ),
+        anchor_model=MeanReversionAnchorModel.endogenous_core_expectation_one_interval(),
     )
 
     serialized = fitted_parameters.to_json()
@@ -246,7 +241,7 @@ def test_mean_reversion_fitted_parameters_roundtrip_serialization_is_determinist
 
     assert deserialized == fitted_parameters
     assert json.loads(serialized)["anchor_model"]["anchor_model_kind"] == (
-        MeanReversionAnchorModelKind.DETERMINISTIC_INTERVAL_GRID.value
+        MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL.value
     )
 
 
@@ -258,13 +253,14 @@ def test_mean_reversion_fitted_parameters_reject_negative_kappa() -> None:
         )
 
 
-def test_mean_reversion_anchor_model_rejects_non_finite_anchor_values() -> None:
-    with pytest.raises(ValueError, match="anchor_values\\[1\\]: must be a finite number"):
-        MeanReversionAnchorModel.deterministic_interval_grid(
-            source_interval_start_utc_nanos=(10, 20),
-            source_interval_end_utc_nanos=(20, 30),
-            anchor_values=(4.2, float("nan")),
-            source_alignment_policy="piecewise_constant_utc_interval_grid.v1",
+def test_endogenous_mean_reversion_anchor_model_rejects_exogenous_anchor_value() -> None:
+    with pytest.raises(
+        ValueError,
+        match="anchor_value: must be omitted when anchor_model_kind=endogenous_core_expectation_one_interval",
+    ):
+        MeanReversionAnchorModel(
+            anchor_model_kind=MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL,
+            anchor_value=float("nan"),
         )
 
 

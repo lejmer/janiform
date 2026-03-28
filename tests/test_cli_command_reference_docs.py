@@ -115,7 +115,7 @@ def test_cli_command_reference_doc_stays_aligned_with_cli_help_output() -> None:
         "--metric-catalog-json PATH",
         "--comparison-request-json PATH",
         "--market MARKET",
-        "--mean-reversion-anchor-model {disabled,constant,deterministic_interval_grid}",
+        "--mean-reversion-anchor-model {endogenous_core_expectation_one_interval,disabled,constant}",
         "--mean-reversion-grid-interval-hours FLOAT",
         "--session-preset SESSION_PRESET",
         "--known-news KNOWN_NEWS",
@@ -132,7 +132,7 @@ def test_cli_command_reference_doc_stays_aligned_with_cli_help_output() -> None:
     assert "--category {session,known-news,market-profile}" in presets_list_help
     assert "{session,known-news,market-profile}" in presets_show_help
     assert "--market MARKET" in fit_help
-    assert "--mean-reversion-anchor-model {disabled,constant,deterministic_interval_grid}" in fit_help
+    assert "--mean-reversion-anchor-model {endogenous_core_expectation_one_interval,disabled,constant}" in fit_help
     assert "--mean-reversion-grid-interval-hours MEAN_REVERSION_GRID_INTERVAL_HOURS" in fit_help
     assert "--session-preset SESSION_PRESET" in fit_help
     assert "--known-news KNOWN_NEWS" in fit_help

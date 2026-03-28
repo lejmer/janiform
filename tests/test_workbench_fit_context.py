@@ -363,20 +363,9 @@ def test_workbench_comparison_clips_to_deterministic_anchor_coverage() -> None:
                 ]
             )
 
-    deterministic_mean_reversion_payload = MeanReversionFittedParameters(
+    mean_reversion_payload = MeanReversionFittedParameters(
         kappa=0.25,
-        anchor_model=MeanReversionAnchorModel.deterministic_interval_grid(
-            source_interval_start_utc_nanos=(
-                int(datetime(2026, 2, 2, 16, 0, tzinfo=UTC).timestamp() * 1_000_000_000) + 119_000,
-                int(datetime(2026, 2, 2, 17, 0, tzinfo=UTC).timestamp() * 1_000_000_000) + 152_000,
-            ),
-            source_interval_end_utc_nanos=(
-                int(datetime(2026, 2, 2, 17, 0, tzinfo=UTC).timestamp() * 1_000_000_000) + 152_000,
-                int(datetime(2026, 2, 2, 18, 0, tzinfo=UTC).timestamp() * 1_000_000_000) + 139_000,
-            ),
-            anchor_values=(0.0, 0.0),
-            source_alignment_policy="piecewise_constant_utc_interval_grid.v1",
-        ),
+        anchor_model=MeanReversionAnchorModel.constant(anchor_value=0.0),
     ).to_payload()
 
     class _FakeModel:
@@ -400,7 +389,7 @@ def test_workbench_comparison_clips_to_deterministic_anchor_coverage() -> None:
 
         parameters = {
             "mean_reversion": {
-                "fitted_parameters": deterministic_mean_reversion_payload,
+                "fitted_parameters": mean_reversion_payload,
             }
         }
 

@@ -145,7 +145,6 @@ struct AnchoredPricingObservedBoundaryState {
 enum ScenarioAnchorKind {
     Disabled,
     Constant,
-    DeterministicIntervalGrid,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -463,17 +462,6 @@ fn mean_reversion_fitted_parameters_for_scenario(
                 .expect("constant anchor model should construct"),
         )
         .expect("constant fitted parameters should construct"),
-        ScenarioAnchorKind::DeterministicIntervalGrid => MeanReversionFittedParameters::try_new(
-            scenario.kappa,
-            MeanReversionAnchorModel::deterministic_interval_grid(
-                vec![0],
-                vec![1],
-                vec![scenario.current_anchor_value],
-                SYNTHETIC_INTERVAL_ALIGNMENT_POLICY,
-            )
-            .expect("deterministic interval-grid anchor model should construct"),
-        )
-        .expect("deterministic fitted parameters should construct"),
     }
 }
 
@@ -685,13 +673,13 @@ fn scenario_definition(scenario_id: &str) -> ScenarioDefinition {
                 .expect("constant-anchor observed boundary state should construct"),
             kappa: 0.35,
         },
-        "deterministic_flat_anchor_zero_deviation" => ScenarioDefinition {
-            scenario_id: "deterministic_flat_anchor_zero_deviation",
-            anchor_kind: ScenarioAnchorKind::DeterministicIntervalGrid,
+        "endogenous_flat_anchor_zero_deviation" => ScenarioDefinition {
+            scenario_id: "endogenous_flat_anchor_zero_deviation",
+            anchor_kind: ScenarioAnchorKind::Constant,
             current_anchor_value: 0.25,
             next_anchor_value: 0.25,
             observed_boundary_state: MeanReversionBoundaryState::try_new(0.25, 0.25, 0.0)
-                .expect("deterministic-anchor observed boundary state should construct"),
+                .expect("flat-anchor observed boundary state should construct"),
             kappa: 0.35,
         },
         "constant_anchor_positive_deviation_admissibility_failure" => ScenarioDefinition {
