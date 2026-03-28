@@ -11,6 +11,7 @@ from matplotlib.figure import Figure
 from pyarrow import parquet
 
 from janiform._timestamps import datetime_to_utc_microseconds
+from janiform.contracts import MeanReversionAnchorModel, MeanReversionFittedParameters
 from tools.workbench import plots as workbench_plots
 from tools.workbench import load_workbench_artifacts
 from tools.workbench.artifacts import WorkbenchArtifacts
@@ -872,11 +873,172 @@ def test_workbench_plot_export_includes_observed_simulated_comparison(
     assert "simulation_summary" in figure_paths
     assert "td_sd_return_diagnostics" in figure_paths
     assert "td_sd_horizon_profiles" in figure_paths
+    assert "td_sd_mean_reversion_variance_growth" in figure_paths
+    assert "td_sd_mean_reversion_future_change" in figure_paths
     assert "candidate_compare" in figure_paths
 
     assert Path(figure_paths["observed_simulated_comparison"]).is_file()
     assert Path(figure_paths["td_sd_return_diagnostics"]).is_file()
     assert Path(figure_paths["td_sd_horizon_profiles"]).is_file()
+    assert Path(figure_paths["td_sd_mean_reversion_variance_growth"]).is_file()
+    assert Path(figure_paths["td_sd_mean_reversion_future_change"]).is_file()
+
+
+def test_mean_reversion_variance_growth_figure_overlays_observed_and_simulated_curves() -> None:
+    artifacts = WorkbenchArtifacts(
+        source_path=Path("/tmp/mean-reversion-variance-growth"),
+        source_kind="run_directory",
+        metadata={},
+        fit_report_payload=None,
+        model_payload=None,
+        observed_targets={},
+        candidate_frontier={},
+        coarse_tick_consistency={},
+        selection_rationale={},
+        simulation_summary={},
+        search_surface_manifest={},
+        runtime_profile={},
+    )
+    comparison = WorkbenchObservedSimulationComparison(
+        fit_context=SimpleNamespace(model=_mean_reversion_test_model()),
+        simulation_seed=7,
+        observed_series=_price_series_from_records(
+            (
+                ("2026-02-02T14:30:00Z", 1.00),
+                ("2026-02-02T14:45:00Z", 1.05),
+                ("2026-02-02T15:00:00Z", 1.02),
+                ("2026-02-02T15:15:00Z", 1.06),
+                ("2026-02-02T15:30:00Z", 1.03),
+                ("2026-02-02T15:45:00Z", 1.04),
+                ("2026-02-02T16:00:00Z", 1.02),
+                ("2026-02-02T16:15:00Z", 1.03),
+            )
+        ),
+        simulated_series=_price_series_from_records(
+            (
+                ("2026-02-02T14:30:00Z", 1.00),
+                ("2026-02-02T14:45:00Z", 1.03),
+                ("2026-02-02T15:00:00Z", 1.01),
+                ("2026-02-02T15:15:00Z", 1.04),
+                ("2026-02-02T15:30:00Z", 1.02),
+                ("2026-02-02T15:45:00Z", 1.03),
+                ("2026-02-02T16:00:00Z", 1.01),
+                ("2026-02-02T16:15:00Z", 1.02),
+            )
+        ),
+        simulated_seeded_series_15m=_price_series_from_records(
+            (
+                ("2026-02-02T14:45:00Z", 1.03),
+                ("2026-02-02T15:00:00Z", 1.01),
+                ("2026-02-02T15:15:00Z", 1.04),
+                ("2026-02-02T15:30:00Z", 1.02),
+            )
+        ),
+        simulated_coarse_series_15m=_price_series_from_records(
+            (
+                ("2026-02-02T14:45:00Z", 1.03),
+                ("2026-02-02T15:00:00Z", 1.01),
+                ("2026-02-02T15:15:00Z", 1.04),
+                ("2026-02-02T15:30:00Z", 1.02),
+            )
+        ),
+    )
+
+    figure = workbench_plots.create_td_sd_mean_reversion_variance_growth_figure(
+        artifacts,
+        comparison,
+    )
+    variance_axis = figure.axes[0]
+
+    assert len(variance_axis.lines) == 2
+    assert variance_axis.get_xscale() == "log"
+    assert variance_axis.get_title() == "Variance Growth of Deviation from Anchor"
+
+
+def test_mean_reversion_future_change_figure_uses_restoring_force_overlay() -> None:
+    artifacts = WorkbenchArtifacts(
+        source_path=Path("/tmp/mean-reversion-future-change"),
+        source_kind="run_directory",
+        metadata={},
+        fit_report_payload=None,
+        model_payload=None,
+        observed_targets={},
+        candidate_frontier={},
+        coarse_tick_consistency={},
+        selection_rationale={},
+        simulation_summary={},
+        search_surface_manifest={},
+        runtime_profile={},
+    )
+    comparison = WorkbenchObservedSimulationComparison(
+        fit_context=SimpleNamespace(model=_mean_reversion_test_model()),
+        simulation_seed=11,
+        observed_series=_price_series_from_records(
+            (
+                ("2026-02-02T14:30:00Z", 1.00),
+                ("2026-02-02T14:45:00Z", 0.96),
+                ("2026-02-02T15:00:00Z", 0.98),
+                ("2026-02-02T15:15:00Z", 1.01),
+                ("2026-02-02T15:30:00Z", 1.04),
+                ("2026-02-02T15:45:00Z", 1.02),
+                ("2026-02-02T16:00:00Z", 1.00),
+                ("2026-02-02T16:15:00Z", 0.99),
+                ("2026-02-02T16:30:00Z", 1.01),
+                ("2026-02-02T16:45:00Z", 1.03),
+                ("2026-02-02T17:00:00Z", 1.00),
+                ("2026-02-02T17:15:00Z", 0.98),
+                ("2026-02-02T17:30:00Z", 1.00),
+                ("2026-02-02T17:45:00Z", 1.02),
+                ("2026-02-02T18:00:00Z", 1.01),
+                ("2026-02-02T18:15:00Z", 0.99),
+            )
+        ),
+        simulated_series=_price_series_from_records(
+            (
+                ("2026-02-02T14:30:00Z", 1.00),
+                ("2026-02-02T14:45:00Z", 0.98),
+                ("2026-02-02T15:00:00Z", 0.99),
+                ("2026-02-02T15:15:00Z", 1.01),
+                ("2026-02-02T15:30:00Z", 1.02),
+                ("2026-02-02T15:45:00Z", 1.01),
+                ("2026-02-02T16:00:00Z", 1.00),
+                ("2026-02-02T16:15:00Z", 0.99),
+                ("2026-02-02T16:30:00Z", 1.00),
+                ("2026-02-02T16:45:00Z", 1.01),
+                ("2026-02-02T17:00:00Z", 1.00),
+                ("2026-02-02T17:15:00Z", 0.99),
+                ("2026-02-02T17:30:00Z", 1.00),
+                ("2026-02-02T17:45:00Z", 1.01),
+                ("2026-02-02T18:00:00Z", 1.00),
+                ("2026-02-02T18:15:00Z", 0.99),
+            )
+        ),
+        simulated_seeded_series_15m=_price_series_from_records(
+            (
+                ("2026-02-02T14:45:00Z", 0.98),
+                ("2026-02-02T15:00:00Z", 0.99),
+                ("2026-02-02T15:15:00Z", 1.01),
+                ("2026-02-02T15:30:00Z", 1.02),
+            )
+        ),
+        simulated_coarse_series_15m=_price_series_from_records(
+            (
+                ("2026-02-02T14:45:00Z", 0.98),
+                ("2026-02-02T15:00:00Z", 0.99),
+                ("2026-02-02T15:15:00Z", 1.01),
+                ("2026-02-02T15:30:00Z", 1.02),
+            )
+        ),
+    )
+
+    figure = workbench_plots.create_td_sd_mean_reversion_future_change_figure(
+        artifacts,
+        comparison,
+    )
+    conditional_axis = figure.axes[0]
+
+    assert len(conditional_axis.lines) >= 4
+    assert conditional_axis.get_title() == "Conditional Future Change vs Deviation"
 
 
 def test_workbench_fit_context_reads_parquet_ticks_with_column_batches(
@@ -1458,6 +1620,19 @@ def _price_series_from_records(
     )
 
 
+def _mean_reversion_test_model() -> Any:
+    return SimpleNamespace(
+        parameters={
+            "mean_reversion": {
+                "fitted_parameters": MeanReversionFittedParameters(
+                    kappa=0.4,
+                    anchor_model=MeanReversionAnchorModel.constant(anchor_value=0.0),
+                ).to_payload()
+            }
+        }
+    )
+
+
 class _FakeAxis:
     def __init__(self) -> None:
         self.boxplot_data: list[list[int]] = []
@@ -1511,6 +1686,8 @@ def _patch_save_all_figures_for_fast_orchestration(
         "create_td_sd_return_diagnostics_figure",
         "create_td_sd_hourly_profile_figure",
         "create_td_sd_horizon_profile_figure",
+        "create_td_sd_mean_reversion_variance_growth_figure",
+        "create_td_sd_mean_reversion_future_change_figure",
         "create_td_sd_autocorrelation_figure",
         "create_td_sd_summary_statistics_figure",
         "create_candidate_compare_figure",

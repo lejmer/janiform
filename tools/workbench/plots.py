@@ -20,6 +20,11 @@ if "MPLCONFIGDIR" not in os.environ:
 from matplotlib.figure import Figure
 
 from janiform._timestamps import utc_microseconds_to_datetime
+from janiform.calibration.fit.model import (
+    _materialize_mean_reversion_anchor_value,
+    _mean_reversion_fitted_parameters,
+)
+from janiform.contracts import MeanReversionFittedParameters
 
 from .artifacts import WorkbenchArtifacts, _artifact_list
 from .fit_context import (
@@ -54,6 +59,19 @@ _OBSERVED_SIMULATION_ANALYSIS_CACHE: dict[int, WorkbenchObservedSimulationAnalys
 _OBSERVED_SIMULATION_ANALYSIS_CACHE_MAX_ENTRIES = 8
 _MAX_PATH_PLOT_POINTS = 4_000
 _MAX_SCATTER_POINTS = 8_000
+_MEAN_REVERSION_BIN_COUNT_LOWER_BOUND = 5
+_MEAN_REVERSION_BIN_COUNT_UPPER_BOUND = 10
+_MEAN_REVERSION_BIN_MINIMUM_SAMPLE_COUNT = 10
+_MEAN_REVERSION_TAIL_QUANTILE_LOWER_BOUND = 0.02
+_MEAN_REVERSION_TAIL_QUANTILE_UPPER_BOUND = 0.98
+
+
+@dataclass(frozen=True, slots=True)
+class WorkbenchMeanReversionSeriesAnalysis:
+    timestamp_microseconds_utc: NDArray[np.int64]
+    log_prices: NDArray[np.float64]
+    anchor_values: NDArray[np.float64]
+    deviations_from_anchor: NDArray[np.float64]
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,6 +102,8 @@ class WorkbenchObservedSimulationAnalysis:
     simulated_seeded_15m: WorkbenchSeriesAnalysis
     simulated_coarse_15m: WorkbenchSeriesAnalysis
     available_horizon_minutes: tuple[int, ...]
+    observed_mean_reversion: Optional[WorkbenchMeanReversionSeriesAnalysis] = None
+    simulated_mean_reversion: Optional[WorkbenchMeanReversionSeriesAnalysis] = None
 
 
 def create_selected_candidate_diagnostics_figure(artifacts: WorkbenchArtifacts) -> Figure:
@@ -1350,6 +1370,14 @@ def _analysis_for_observed_simulation_comparison(
         simulated_seeded_15m=simulated_seeded_15m_analysis,
         simulated_coarse_15m=simulated_coarse_analysis,
         available_horizon_minutes=available_horizon_minutes,
+        observed_mean_reversion=_build_mean_reversion_series_analysis(
+            _comparison_model(comparison),
+            comparison.observed_series,
+        ),
+        simulated_mean_reversion=_build_mean_reversion_series_analysis(
+            _comparison_model(comparison),
+            comparison.simulated_series,
+        ),
     )
     if len(_OBSERVED_SIMULATION_ANALYSIS_CACHE) >= _OBSERVED_SIMULATION_ANALYSIS_CACHE_MAX_ENTRIES:
         first_cache_key = next(iter(_OBSERVED_SIMULATION_ANALYSIS_CACHE))
@@ -1433,6 +1461,60 @@ def _build_series_analysis(series: WorkbenchPriceSeries) -> WorkbenchSeriesAnaly
         bucket_series_by_horizon=bucket_series_by_horizon,
         rolling_activity_points=rolling_activity_points,
     )
+
+
+def _build_mean_reversion_series_analysis(
+    model: Any,
+    series: WorkbenchPriceSeries,
+) -> Optional[WorkbenchMeanReversionSeriesAnalysis]:
+    if (
+        series.timestamp_microseconds_utc.size == 0
+        or series.prices.size == 0
+        or np.any(series.prices <= 0.0)
+    ):
+        return None
+
+    fitted_parameters = _resolve_mean_reversion_fitted_parameters(model)
+    if fitted_parameters is None or not fitted_parameters.is_enabled:
+        return None
+
+    log_prices = np.log(series.prices)
+    anchor_values = np.asarray(
+        [
+            _materialize_mean_reversion_anchor_value(
+                fitted_parameters=fitted_parameters,
+                boundary_time_utc=utc_microseconds_to_datetime(int(timestamp_microseconds_utc)),
+            )
+            for timestamp_microseconds_utc in series.timestamp_microseconds_utc
+        ],
+        dtype=np.float64,
+    )
+
+    return WorkbenchMeanReversionSeriesAnalysis(
+        timestamp_microseconds_utc=series.timestamp_microseconds_utc,
+        log_prices=log_prices,
+        anchor_values=anchor_values,
+        deviations_from_anchor=log_prices - anchor_values,
+    )
+
+
+def _resolve_mean_reversion_fitted_parameters(
+    model: Any,
+) -> Optional[MeanReversionFittedParameters]:
+    if model is None:
+        return None
+
+    try:
+        return _mean_reversion_fitted_parameters(model)
+    except (AttributeError, RuntimeError, TypeError, ValueError):
+        return None
+
+
+def _comparison_model(comparison: WorkbenchObservedSimulationComparison) -> Any:
+    try:
+        return comparison.fit_context.model
+    except AttributeError:
+        return None
 
 
 def _hourly_event_counts_from_microseconds(
@@ -1680,6 +1762,222 @@ def create_message_figure(title: str, message: str) -> Figure:
     )
     axis.set_xticks([])
     axis.set_yticks([])
+
+    return figure
+
+
+def create_td_sd_mean_reversion_variance_growth_figure(
+    artifacts: WorkbenchArtifacts,
+    comparison: Optional[Any] = None,
+) -> Figure:
+    figure = Figure(figsize=(14, 5), constrained_layout=True)
+
+    variance_axis = figure.add_subplot(1, 2, 1)
+    summary_axis = figure.add_subplot(1, 2, 2)
+
+    analysis = _observed_simulation_analysis_for_plot(artifacts, comparison)
+    if analysis is None:
+        _render_unavailable_axes(
+            (variance_axis, summary_axis),
+            "Observed-versus-simulated comparison is unavailable for this input.",
+        )
+        return figure
+
+    observed_mean_reversion = analysis.observed_mean_reversion
+    simulated_mean_reversion = analysis.simulated_mean_reversion
+    if observed_mean_reversion is None or simulated_mean_reversion is None:
+        _render_unavailable_axes(
+            (variance_axis, summary_axis),
+            "Mean-reversion anchor diagnostics are unavailable because the loaded model does not expose an enabled anchor path for both observed and simulated series.",
+        )
+        return figure
+
+    max_shared_horizon = min(
+        observed_mean_reversion.deviations_from_anchor.size,
+        simulated_mean_reversion.deviations_from_anchor.size,
+    ) - 1
+    horizons = _mean_reversion_log_spaced_horizons(max_shared_horizon)
+    if horizons.size == 0:
+        _render_unavailable_axes(
+            (variance_axis, summary_axis),
+            "Mean-reversion variance growth requires at least two aligned observations in both series.",
+        )
+        return figure
+
+    observed_variance_growth = np.asarray(
+        [
+            _variance_of_deviation_difference(
+                observed_mean_reversion.deviations_from_anchor,
+                int(horizon),
+            )
+            for horizon in horizons
+        ],
+        dtype=np.float64,
+    )
+    simulated_variance_growth = np.asarray(
+        [
+            _variance_of_deviation_difference(
+                simulated_mean_reversion.deviations_from_anchor,
+                int(horizon),
+            )
+            for horizon in horizons
+        ],
+        dtype=np.float64,
+    )
+
+    variance_axis.plot(
+        horizons,
+        observed_variance_growth,
+        color="#111827",
+        marker="o",
+        label="Observed",
+    )
+    variance_axis.plot(
+        horizons,
+        simulated_variance_growth,
+        color="#dc2626",
+        marker="o",
+        label="Simulated",
+    )
+    variance_axis.set_xscale("log")
+    variance_axis.set_title("Variance Growth of Deviation from Anchor")
+    variance_axis.set_xlabel("Horizon (steps)")
+    variance_axis.set_ylabel("Var(D[t+h] - D[t])")
+    variance_axis.grid(alpha=0.3)
+    variance_axis.legend(loc="best")
+
+    summary_axis.axis("off")
+    summary_axis.set_title("Diagnostic Summary")
+    summary_axis.text(
+        0.0,
+        1.0,
+        "\n".join(
+            [
+                f"horizon count: {horizons.size}",
+                f"max shared horizon: {int(horizons[-1])}",
+                f"observed deviation rows: {observed_mean_reversion.deviations_from_anchor.size}",
+                f"simulated deviation rows: {simulated_mean_reversion.deviations_from_anchor.size}",
+                f"observed terminal variance: {observed_variance_growth[-1]:.6g}",
+                f"simulated terminal variance: {simulated_variance_growth[-1]:.6g}",
+            ]
+        ),
+        va="top",
+        family="monospace",
+        transform=summary_axis.transAxes,
+    )
+
+    return figure
+
+
+def create_td_sd_mean_reversion_future_change_figure(
+    artifacts: WorkbenchArtifacts,
+    comparison: Optional[Any] = None,
+) -> Figure:
+    figure = Figure(figsize=(14, 5), constrained_layout=True)
+
+    conditional_axis = figure.add_subplot(1, 2, 1)
+    summary_axis = figure.add_subplot(1, 2, 2)
+
+    analysis = _observed_simulation_analysis_for_plot(artifacts, comparison)
+    if analysis is None:
+        _render_unavailable_axes(
+            (conditional_axis, summary_axis),
+            "Observed-versus-simulated comparison is unavailable for this input.",
+        )
+        return figure
+
+    observed_mean_reversion = analysis.observed_mean_reversion
+    simulated_mean_reversion = analysis.simulated_mean_reversion
+    if observed_mean_reversion is None or simulated_mean_reversion is None:
+        _render_unavailable_axes(
+            (conditional_axis, summary_axis),
+            "Mean-reversion anchor diagnostics are unavailable because the loaded model does not expose an enabled anchor path for both observed and simulated series.",
+        )
+        return figure
+
+    max_shared_horizon = min(
+        observed_mean_reversion.deviations_from_anchor.size,
+        simulated_mean_reversion.deviations_from_anchor.size,
+    ) - 1
+    horizons = _mean_reversion_log_spaced_horizons(max_shared_horizon)
+    if horizons.size == 0:
+        _render_unavailable_axes(
+            (conditional_axis, summary_axis),
+            "Conditional future-change diagnostics require at least two aligned observations in both series.",
+        )
+        return figure
+
+    selected_horizon = int(horizons[len(horizons) // 2])
+    shared_bin_edges = _shared_mean_reversion_bin_edges(
+        observed_mean_reversion,
+        simulated_mean_reversion,
+        horizon=selected_horizon,
+    )
+    observed_conditional = _conditional_future_change_profile(
+        observed_mean_reversion,
+        horizon=selected_horizon,
+        shared_bin_edges=shared_bin_edges,
+    )
+    simulated_conditional = _conditional_future_change_profile(
+        simulated_mean_reversion,
+        horizon=selected_horizon,
+        shared_bin_edges=shared_bin_edges,
+    )
+
+    if (
+        observed_conditional.mean_deviation.size == 0
+        and simulated_conditional.mean_deviation.size == 0
+    ):
+        _render_unavailable_axes(
+            (conditional_axis, summary_axis),
+            "Conditional future-change diagnostics could not form any shared deviation bins with enough samples.",
+        )
+        return figure
+
+    if observed_conditional.mean_deviation.size > 0:
+        conditional_axis.plot(
+            observed_conditional.mean_deviation,
+            observed_conditional.mean_future_change,
+            color="#111827",
+            marker="o",
+            label="Observed",
+        )
+    if simulated_conditional.mean_deviation.size > 0:
+        conditional_axis.plot(
+            simulated_conditional.mean_deviation,
+            simulated_conditional.mean_future_change,
+            color="#dc2626",
+            marker="o",
+            label="Simulated",
+        )
+
+    conditional_axis.axhline(0.0, color="#94a3b8", linestyle="--", linewidth=1.0)
+    conditional_axis.axvline(0.0, color="#94a3b8", linestyle="--", linewidth=1.0)
+    conditional_axis.set_title("Conditional Future Change vs Deviation")
+    conditional_axis.set_xlabel("Deviation from anchor")
+    conditional_axis.set_ylabel(f"Mean future log-price change ({selected_horizon} steps)")
+    conditional_axis.grid(alpha=0.3)
+    conditional_axis.legend(loc="best")
+
+    summary_axis.axis("off")
+    summary_axis.set_title("Diagnostic Summary")
+    summary_axis.text(
+        0.0,
+        1.0,
+        "\n".join(
+            [
+                f"selected horizon: {selected_horizon} steps",
+                f"shared bin count: {max(observed_conditional.shared_bin_edges.size - 1, 0)}",
+                f"minimum samples per bin: {max(observed_conditional.minimum_sample_count, simulated_conditional.minimum_sample_count)}",
+                f"observed plotted bins: {observed_conditional.mean_deviation.size}",
+                f"simulated plotted bins: {simulated_conditional.mean_deviation.size}",
+                f"deviation clip quantiles: [{_MEAN_REVERSION_TAIL_QUANTILE_LOWER_BOUND:.0%}, {_MEAN_REVERSION_TAIL_QUANTILE_UPPER_BOUND:.0%}]",
+            ]
+        ),
+        va="top",
+        family="monospace",
+        transform=summary_axis.transAxes,
+    )
 
     return figure
 
@@ -2349,6 +2647,14 @@ def save_all_figures(artifacts: WorkbenchArtifacts, output_directory: Path) -> d
             artifacts,
             observed_simulation_comparison,
         ),
+        "td_sd_mean_reversion_variance_growth": create_td_sd_mean_reversion_variance_growth_figure(
+            artifacts,
+            observed_simulation_comparison,
+        ),
+        "td_sd_mean_reversion_future_change": create_td_sd_mean_reversion_future_change_figure(
+            artifacts,
+            observed_simulation_comparison,
+        ),
         "td_sd_autocorrelation": create_td_sd_autocorrelation_figure(
             artifacts,
             observed_simulation_comparison,
@@ -2521,6 +2827,182 @@ def _render_hourly_profile(
     axis.set_xticks([0, 4, 8, 12, 16, 20, 23])
     axis.grid(alpha=0.3)
     axis.legend(loc="best")
+
+
+@dataclass(frozen=True, slots=True)
+class WorkbenchConditionalFutureChangeProfile:
+    mean_deviation: NDArray[np.float64]
+    mean_future_change: NDArray[np.float64]
+    shared_bin_edges: NDArray[np.float64]
+    minimum_sample_count: int
+
+
+def _mean_reversion_log_spaced_horizons(max_horizon: int) -> NDArray[np.int64]:
+    if max_horizon < 1:
+        return np.asarray([], dtype=np.int64)
+
+    horizon_count = min(
+        max_horizon,
+        max(2, int(math.ceil(math.log2(max_horizon))) + 1),
+    )
+    return np.unique(
+        np.rint(
+            np.geomspace(
+                1,
+                max_horizon,
+                num=horizon_count,
+            )
+        ).astype(np.int64)
+    )
+
+
+def _variance_of_deviation_difference(
+    deviations_from_anchor: NDArray[np.float64],
+    horizon: int,
+) -> float:
+    deviation_differences = deviations_from_anchor[horizon:] - deviations_from_anchor[:-horizon]
+    return float(np.var(deviation_differences))
+
+
+def _conditional_future_change_profile(
+    series: WorkbenchMeanReversionSeriesAnalysis,
+    *,
+    horizon: int,
+    shared_bin_edges: Optional[NDArray[np.float64]] = None,
+) -> WorkbenchConditionalFutureChangeProfile:
+    if series.deviations_from_anchor.size <= horizon or series.log_prices.size <= horizon:
+        return WorkbenchConditionalFutureChangeProfile(
+            mean_deviation=np.asarray([], dtype=np.float64),
+            mean_future_change=np.asarray([], dtype=np.float64),
+            shared_bin_edges=(
+                np.asarray([], dtype=np.float64)
+                if shared_bin_edges is None
+                else shared_bin_edges
+            ),
+            minimum_sample_count=0,
+        )
+
+    deviation = series.deviations_from_anchor[:-horizon]
+    future_change = series.log_prices[horizon:] - series.log_prices[:-horizon]
+    if shared_bin_edges is None:
+        lower_quantile, upper_quantile = np.quantile(
+            deviation,
+            (
+                _MEAN_REVERSION_TAIL_QUANTILE_LOWER_BOUND,
+                _MEAN_REVERSION_TAIL_QUANTILE_UPPER_BOUND,
+            ),
+        )
+        if not np.isfinite(lower_quantile) or not np.isfinite(upper_quantile) or lower_quantile >= upper_quantile:
+            return WorkbenchConditionalFutureChangeProfile(
+                mean_deviation=np.asarray([], dtype=np.float64),
+                mean_future_change=np.asarray([], dtype=np.float64),
+                shared_bin_edges=np.asarray([], dtype=np.float64),
+                minimum_sample_count=0,
+            )
+
+        bin_count = min(
+            _MEAN_REVERSION_BIN_COUNT_UPPER_BOUND,
+            max(
+                _MEAN_REVERSION_BIN_COUNT_LOWER_BOUND,
+                int(math.floor(math.sqrt(deviation.size))),
+            ),
+        )
+        shared_bin_edges = np.linspace(
+            float(lower_quantile),
+            float(upper_quantile),
+            num=bin_count + 1,
+            dtype=np.float64,
+        )
+
+    if shared_bin_edges.size < 2:
+        return WorkbenchConditionalFutureChangeProfile(
+            mean_deviation=np.asarray([], dtype=np.float64),
+            mean_future_change=np.asarray([], dtype=np.float64),
+            shared_bin_edges=shared_bin_edges,
+            minimum_sample_count=0,
+        )
+
+    inlier_mask = (
+        np.isfinite(deviation)
+        & np.isfinite(future_change)
+        & (deviation >= shared_bin_edges[0])
+        & (deviation <= shared_bin_edges[-1])
+    )
+    clipped_deviation = deviation[inlier_mask]
+    clipped_future_change = future_change[inlier_mask]
+    if clipped_deviation.size == 0:
+        return WorkbenchConditionalFutureChangeProfile(
+            mean_deviation=np.asarray([], dtype=np.float64),
+            mean_future_change=np.asarray([], dtype=np.float64),
+            shared_bin_edges=shared_bin_edges,
+            minimum_sample_count=0,
+        )
+
+    raw_bin_indexes = np.digitize(clipped_deviation, shared_bin_edges, right=False) - 1
+    raw_bin_indexes = np.clip(raw_bin_indexes, 0, shared_bin_edges.size - 2)
+    effective_minimum_sample_count = min(
+        _MEAN_REVERSION_BIN_MINIMUM_SAMPLE_COUNT,
+        max(1, int(clipped_deviation.size // max(shared_bin_edges.size - 1, 1))),
+    )
+
+    mean_deviation_by_bin: list[float] = []
+    mean_future_change_by_bin: list[float] = []
+    for bin_index in range(shared_bin_edges.size - 1):
+        bin_mask = raw_bin_indexes == bin_index
+        if int(np.count_nonzero(bin_mask)) < effective_minimum_sample_count:
+            continue
+
+        mean_deviation_by_bin.append(float(np.mean(clipped_deviation[bin_mask])))
+        mean_future_change_by_bin.append(float(np.mean(clipped_future_change[bin_mask])))
+
+    return WorkbenchConditionalFutureChangeProfile(
+        mean_deviation=np.asarray(mean_deviation_by_bin, dtype=np.float64),
+        mean_future_change=np.asarray(mean_future_change_by_bin, dtype=np.float64),
+        shared_bin_edges=shared_bin_edges,
+        minimum_sample_count=effective_minimum_sample_count,
+    )
+
+
+def _shared_mean_reversion_bin_edges(
+    observed_series: WorkbenchMeanReversionSeriesAnalysis,
+    simulated_series: WorkbenchMeanReversionSeriesAnalysis,
+    *,
+    horizon: int,
+) -> NDArray[np.float64]:
+    observed_deviation = observed_series.deviations_from_anchor[:-horizon]
+    simulated_deviation = simulated_series.deviations_from_anchor[:-horizon]
+    combined_deviation = np.concatenate((observed_deviation, simulated_deviation))
+    if combined_deviation.size == 0:
+        return np.asarray([], dtype=np.float64)
+
+    lower_quantile, upper_quantile = np.quantile(
+        combined_deviation,
+        (
+            _MEAN_REVERSION_TAIL_QUANTILE_LOWER_BOUND,
+            _MEAN_REVERSION_TAIL_QUANTILE_UPPER_BOUND,
+        ),
+    )
+    if not np.isfinite(lower_quantile) or not np.isfinite(upper_quantile) or lower_quantile >= upper_quantile:
+        return np.asarray([], dtype=np.float64)
+
+    target_bin_count = min(
+        _MEAN_REVERSION_BIN_COUNT_UPPER_BOUND,
+        max(
+            _MEAN_REVERSION_BIN_COUNT_LOWER_BOUND,
+            int(math.floor(math.sqrt(combined_deviation.size))),
+        ),
+    )
+    admissible_bin_count = max(
+        1,
+        int(combined_deviation.size // _MEAN_REVERSION_BIN_MINIMUM_SAMPLE_COUNT),
+    )
+    bin_count = min(target_bin_count, admissible_bin_count)
+    return np.linspace(
+        float(lower_quantile),
+        float(upper_quantile),
+        num=bin_count + 1,
+        dtype=np.float64,
+    )
 
 
 def _render_rolling_activity_plot(
@@ -3523,6 +4005,8 @@ __all__ = [
     "create_td_sd_autocorrelation_figure",
     "create_td_sd_horizon_profile_figure",
     "create_td_sd_hourly_profile_figure",
+    "create_td_sd_mean_reversion_future_change_figure",
+    "create_td_sd_mean_reversion_variance_growth_figure",
     "create_td_sd_return_diagnostics_figure",
     "create_td_sd_return_distribution_figure",
     "create_td_sd_summary_statistics_figure",

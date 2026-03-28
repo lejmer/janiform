@@ -28,7 +28,7 @@ from janiform.calibration.market_data.contracts import (
 )
 from janiform.calibration.staged.contracts import CalibrationStageExecutionStatus
 from janiform.calibration.staged.runtime import (
-    _run_staged_calibration_with_optional_events,
+    _run_native_staged_calibration_with_prepared_handle_and_events,
 )
 from janiform._workflow_outputs import write_fit_artifacts
 from janiform.calendar import CalendarRegistry
@@ -175,8 +175,8 @@ class WorkbenchExecutionWorker(QObject):
             heartbeat_thread: Optional[Thread] = self._start_heartbeat()
 
             staged_response, raw_response_payload = (
-                _run_staged_calibration_with_optional_events(
-                    prepared_workflow.prepared.execution_input,
+                _run_native_staged_calibration_with_prepared_handle_and_events(
+                    prepared_workflow.prepared.prepared_handle,
                     calendar_registry=CalendarRegistry(
                         prepared_workflow.prepared.session_resolution.resolved_session_definition_json
                     ),
@@ -197,7 +197,10 @@ class WorkbenchExecutionWorker(QObject):
                 session_resolution=prepared_workflow.prepared.session_resolution,
                 preparation_diagnostics=prepared_workflow.prepared.diagnostics,
                 preparation_provenance=prepared_workflow.prepared.provenance,
-                execution_input=prepared_workflow.prepared.execution_input,
+                staged_request=prepared_workflow.prepared.staged_request,
+                prepared_data_reference=prepared_workflow.prepared.prepared_data_reference,
+                prepared_payload_path=prepared_workflow.prepared.prepared_payload_path,
+                staged_execution_input_path=prepared_workflow.prepared.staged_execution_input_path,
                 staged_response=staged_response,
                 stage_report_payloads=_raw_stage_report_payloads(raw_response_payload),
             )
@@ -253,7 +256,6 @@ class WorkbenchExecutionWorker(QObject):
                 ),
                 resolved_configuration=prepared_workflow.resolved_configuration,
                 session_resolution=prepared_workflow.prepared.session_resolution,
-                _execution_input=prepared_workflow.prepared.execution_input,
                 _stage_report_payloads=fit_report.stage_report_payloads,
             )
 
