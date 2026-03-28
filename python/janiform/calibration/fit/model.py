@@ -766,6 +766,11 @@ def _materialize_mean_reversion_anchor_value(
     anchor_model = fitted_parameters.anchor_model
 
     match anchor_model.anchor_model_kind:
+        case "endogenous_core_expectation_one_interval":
+            raise RuntimeError(
+                "JaniformModel endogenous mean reversion anchor materialization requires "
+                "runtime state recursion and is not available from timestamp-only projection"
+            )
         case "disabled":
             return 0.0
         case "constant":

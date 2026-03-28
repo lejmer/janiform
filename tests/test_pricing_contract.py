@@ -202,10 +202,10 @@ def test_anchored_boundary_input_roundtrip_and_validation() -> None:
         ),
         mean_reversion_fitted_parameters=MeanReversionFittedParameters(
             kappa=0.4,
-            anchor_model=MeanReversionAnchorModel.constant(0.0),
+            anchor_model=MeanReversionAnchorModel.endogenous_core_expectation_one_interval(),
         ),
         mean_reversion_runtime_interval_anchors=MeanReversionRuntimeIntervalAnchors(
-            interval_alignment_policy="pricing_constant_anchor_interval_grid.v1",
+            interval_alignment_policy="pricing_endogenous_anchor_interval_grid.v1",
             start_anchor_value=0.0,
             end_anchor_values=(0.0,),
             interval_deltas=(0.5,),
@@ -224,6 +224,41 @@ def test_anchored_boundary_input_roundtrip_and_validation() -> None:
 
     assert round_tripped == boundary_input
     assert round_tripped.observed_return_adjustment < 0.0
+
+
+def test_anchored_boundary_input_accepts_endogenous_anchor_policy_runtime_artifacts() -> None:
+    boundary_payload = _disabled_boundary_input(
+        interval_delta=1.0,
+        hawkes_boundary_state=HawkesExcitationState(
+            y_plus_plus=0.0,
+            y_plus_minus=0.0,
+            y_minus_plus=0.0,
+            y_minus_minus=0.0,
+        ),
+    ).to_payload()
+    boundary_payload["mean_reversion_fitted_parameters"] = MeanReversionFittedParameters(
+        kappa=0.3,
+        anchor_model=MeanReversionAnchorModel.endogenous_core_expectation_one_interval(),
+    ).to_payload()
+    boundary_payload["mean_reversion_runtime_interval_anchors"] = MeanReversionRuntimeIntervalAnchors(
+        interval_alignment_policy="pricing_endogenous_anchor_interval_grid.v1",
+        start_anchor_value=0.1,
+        end_anchor_values=(0.2,),
+        interval_deltas=(1.0,),
+    ).to_payload()
+    boundary_payload["observed_boundary_state"] = MeanReversionBoundaryState(
+        observed_log_price=0.15,
+        anchor_value=0.1,
+        deviation=0.05,
+    ).to_payload()
+
+    boundary_input = AnchoredVanillaOptionPricingBoundaryInput.from_mapping(
+        boundary_payload,
+        field_path="boundary_input",
+    )
+
+    assert boundary_input.current_anchor_value == pytest.approx(0.1)
+    assert boundary_input.next_anchor_value == pytest.approx(0.2)
 
 
 def test_anchored_vanilla_option_request_roundtrip_preserves_observed_boundary_contract() -> None:

@@ -10,9 +10,9 @@ const BOUNDARY_STATE_INVARIANT_TOLERANCE: f64 = 1e-12;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MeanReversionAnchorModelKind {
+    EndogenousCoreExpectationOneInterval,
     Disabled,
     Constant,
-    DeterministicIntervalGrid,
 }
 
 /// Persisted anchor specification for the observed mean-reversion layer.
@@ -22,25 +22,20 @@ pub struct MeanReversionAnchorModel {
     pub anchor_model_kind: MeanReversionAnchorModelKind,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub anchor_value: Option<f64>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub source_interval_start_utc_nanos: Vec<i64>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub source_interval_end_utc_nanos: Vec<i64>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub anchor_values: Vec<f64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub source_alignment_policy: Option<String>,
 }
 
 impl MeanReversionAnchorModel {
+    pub fn endogenous_core_expectation_one_interval() -> Self {
+        Self {
+            anchor_model_kind: MeanReversionAnchorModelKind::EndogenousCoreExpectationOneInterval,
+            anchor_value: None,
+        }
+    }
+
     pub fn disabled() -> Self {
         Self {
             anchor_model_kind: MeanReversionAnchorModelKind::Disabled,
             anchor_value: None,
-            source_interval_start_utc_nanos: Vec::new(),
-            source_interval_end_utc_nanos: Vec::new(),
-            anchor_values: Vec::new(),
-            source_alignment_policy: None,
         }
     }
 
@@ -48,37 +43,23 @@ impl MeanReversionAnchorModel {
         let anchor_model = Self {
             anchor_model_kind: MeanReversionAnchorModelKind::Constant,
             anchor_value: Some(anchor_value),
-            source_interval_start_utc_nanos: Vec::new(),
-            source_interval_end_utc_nanos: Vec::new(),
-            anchor_values: Vec::new(),
-            source_alignment_policy: None,
         };
         anchor_model.validate()?;
-        Ok(anchor_model)
-    }
-
-    pub fn deterministic_interval_grid(
-        source_interval_start_utc_nanos: Vec<i64>,
-        source_interval_end_utc_nanos: Vec<i64>,
-        anchor_values: Vec<f64>,
-        source_alignment_policy: impl Into<String>,
-    ) -> Result<Self, MeanReversionAnchorModelValidationError> {
-        let anchor_model = Self {
-            anchor_model_kind: MeanReversionAnchorModelKind::DeterministicIntervalGrid,
-            anchor_value: None,
-            source_interval_start_utc_nanos,
-            source_interval_end_utc_nanos,
-            anchor_values,
-            source_alignment_policy: Some(source_alignment_policy.into()),
-        };
-
-        anchor_model.validate()?;
-
         Ok(anchor_model)
     }
 
     pub fn validate(&self) -> Result<(), MeanReversionAnchorModelValidationError> {
         match self.anchor_model_kind {
+            MeanReversionAnchorModelKind::EndogenousCoreExpectationOneInterval => {
+                if self.anchor_value.is_some() {
+                    return Err(
+                        MeanReversionAnchorModelValidationError::UnexpectedFieldForAnchorModelKind {
+                            anchor_model_kind: self.anchor_model_kind,
+                            field: "anchor_value",
+                        },
+                    );
+                }
+            }
             MeanReversionAnchorModelKind::Disabled => {
                 if self.anchor_value.is_some() {
                     return Err(
@@ -88,8 +69,6 @@ impl MeanReversionAnchorModel {
                         },
                     );
                 }
-
-                validate_absent_deterministic_interval_grid(self)?;
             }
             MeanReversionAnchorModelKind::Constant => {
                 let anchor_value = self.anchor_value.ok_or(
@@ -105,113 +84,6 @@ impl MeanReversionAnchorModel {
                         value: source.value.to_string(),
                     }
                 })?;
-                validate_absent_deterministic_interval_grid(self)?;
-            }
-            MeanReversionAnchorModelKind::DeterministicIntervalGrid => {
-                if self.anchor_value.is_some() {
-                    return Err(
-                        MeanReversionAnchorModelValidationError::UnexpectedFieldForAnchorModelKind {
-                            anchor_model_kind: self.anchor_model_kind,
-                            field: "anchor_value",
-                        },
-                    );
-                }
-
-                let source_alignment_policy = self.source_alignment_policy.as_ref().ok_or(
-                    MeanReversionAnchorModelValidationError::MissingFieldForAnchorModelKind {
-                        anchor_model_kind: self.anchor_model_kind,
-                        field: "source_alignment_policy",
-                    },
-                )?;
-                if source_alignment_policy.trim().is_empty() {
-                    return Err(MeanReversionAnchorModelValidationError::EmptyStringField {
-                        field: "source_alignment_policy",
-                    });
-                }
-
-                if self.source_interval_start_utc_nanos.is_empty() {
-                    return Err(
-                        MeanReversionAnchorModelValidationError::MissingFieldForAnchorModelKind {
-                            anchor_model_kind: self.anchor_model_kind,
-                            field: "source_interval_start_utc_nanos",
-                        },
-                    );
-                }
-                if self.source_interval_end_utc_nanos.is_empty() {
-                    return Err(
-                        MeanReversionAnchorModelValidationError::MissingFieldForAnchorModelKind {
-                            anchor_model_kind: self.anchor_model_kind,
-                            field: "source_interval_end_utc_nanos",
-                        },
-                    );
-                }
-                if self.anchor_values.is_empty() {
-                    return Err(
-                        MeanReversionAnchorModelValidationError::MissingFieldForAnchorModelKind {
-                            anchor_model_kind: self.anchor_model_kind,
-                            field: "anchor_values",
-                        },
-                    );
-                }
-
-                let expected_length = self.source_interval_start_utc_nanos.len();
-                if self.source_interval_end_utc_nanos.len() != expected_length {
-                    return Err(
-                        MeanReversionAnchorModelValidationError::DeterministicIntervalGridLengthMismatch {
-                            field: "source_interval_end_utc_nanos",
-                            expected: expected_length,
-                            found: self.source_interval_end_utc_nanos.len(),
-                        },
-                    );
-                }
-                if self.anchor_values.len() != expected_length {
-                    return Err(
-                        MeanReversionAnchorModelValidationError::DeterministicIntervalGridLengthMismatch {
-                            field: "anchor_values",
-                            expected: expected_length,
-                            found: self.anchor_values.len(),
-                        },
-                    );
-                }
-
-                let mut previous_interval_end_utc_nanos: Option<i64> = None;
-                for interval_index in 0..expected_length {
-                    let interval_start_utc_nanos =
-                        self.source_interval_start_utc_nanos[interval_index];
-
-                    let interval_end_utc_nanos = self.source_interval_end_utc_nanos[interval_index];
-                    if interval_end_utc_nanos <= interval_start_utc_nanos {
-                        return Err(
-                            MeanReversionAnchorModelValidationError::InvalidIntervalBoundary {
-                                interval_index,
-                                start_utc_nanos: interval_start_utc_nanos,
-                                end_utc_nanos: interval_end_utc_nanos,
-                            },
-                        );
-                    }
-
-                    if let Some(previous_end_utc_nanos) = previous_interval_end_utc_nanos
-                        && interval_start_utc_nanos < previous_end_utc_nanos
-                    {
-                        return Err(
-                            MeanReversionAnchorModelValidationError::OverlappingIntervalBoundary {
-                                interval_index,
-                                previous_end_utc_nanos,
-                                start_utc_nanos: interval_start_utc_nanos,
-                            },
-                        );
-                    }
-
-                    validate_finite_number(self.anchor_values[interval_index], "anchor_values")
-                        .map_err(|source| {
-                            MeanReversionAnchorModelValidationError::NonFiniteField {
-                                field: source.field,
-                                value: source.value.to_string(),
-                            }
-                        })?;
-
-                    previous_interval_end_utc_nanos = Some(interval_end_utc_nanos);
-                }
             }
         }
 
@@ -422,6 +294,9 @@ pub enum MeanReversionBoundaryStateEvolutionError {
     InvalidIntervalEndAnchorValue {
         value: f64,
     },
+    InvalidAnchorIncrement {
+        value: f64,
+    },
 }
 
 impl Display for MeanReversionBoundaryStateEvolutionError {
@@ -448,6 +323,12 @@ impl Display for MeanReversionBoundaryStateEvolutionError {
                 formatter,
                 "interval_end_anchor_value must be a finite number, found {value}"
             ),
+            Self::InvalidAnchorIncrement { value } => {
+                write!(
+                    formatter,
+                    "anchor_increment must be a finite number, found {value}"
+                )
+            }
         }
     }
 }
@@ -459,7 +340,8 @@ impl Error for MeanReversionBoundaryStateEvolutionError {
             Self::InvalidKappa { .. }
             | Self::InvalidIntervalDelta { .. }
             | Self::InvalidCoreTotalReturn { .. }
-            | Self::InvalidIntervalEndAnchorValue { .. } => None,
+            | Self::InvalidIntervalEndAnchorValue { .. }
+            | Self::InvalidAnchorIncrement { .. } => None,
         }
     }
 }
@@ -511,6 +393,52 @@ pub fn evolve_mean_reversion_boundary_state_on_interval_grid(
         .map_err(|source| MeanReversionBoundaryStateEvolutionError::InvalidBoundaryState { source })
 }
 
+/// Apply the canonical endogenous-anchor update using the one-interval anchor increment.
+pub fn evolve_mean_reversion_boundary_state_with_anchor_increment(
+    boundary_state: MeanReversionBoundaryState,
+    kappa: f64,
+    interval_delta: f64,
+    core_total_return: f64,
+    anchor_increment: f64,
+) -> Result<MeanReversionBoundaryState, MeanReversionBoundaryStateEvolutionError> {
+    boundary_state.validate().map_err(|source| {
+        MeanReversionBoundaryStateEvolutionError::InvalidBoundaryState { source }
+    })?;
+
+    if !kappa.is_finite() || kappa < 0.0 {
+        return Err(MeanReversionBoundaryStateEvolutionError::InvalidKappa { value: kappa });
+    }
+    if !interval_delta.is_finite() || interval_delta <= 0.0 {
+        return Err(
+            MeanReversionBoundaryStateEvolutionError::InvalidIntervalDelta {
+                value: interval_delta,
+            },
+        );
+    }
+    if !core_total_return.is_finite() {
+        return Err(
+            MeanReversionBoundaryStateEvolutionError::InvalidCoreTotalReturn {
+                value: core_total_return,
+            },
+        );
+    }
+    if !anchor_increment.is_finite() {
+        return Err(
+            MeanReversionBoundaryStateEvolutionError::InvalidAnchorIncrement {
+                value: anchor_increment,
+            },
+        );
+    }
+
+    let interval_end_anchor_value = boundary_state.anchor_value + anchor_increment;
+    let deviation = (-kappa * interval_delta).exp() * boundary_state.deviation + core_total_return
+        - anchor_increment;
+    let observed_log_price = interval_end_anchor_value + deviation;
+
+    MeanReversionBoundaryState::try_new(observed_log_price, interval_end_anchor_value, deviation)
+        .map_err(|source| MeanReversionBoundaryStateEvolutionError::InvalidBoundaryState { source })
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MeanReversionAnchorModelValidationError {
     MissingFieldForAnchorModelKind {
@@ -523,21 +451,6 @@ pub enum MeanReversionAnchorModelValidationError {
     },
     EmptyStringField {
         field: &'static str,
-    },
-    DeterministicIntervalGridLengthMismatch {
-        field: &'static str,
-        expected: usize,
-        found: usize,
-    },
-    InvalidIntervalBoundary {
-        interval_index: usize,
-        start_utc_nanos: i64,
-        end_utc_nanos: i64,
-    },
-    OverlappingIntervalBoundary {
-        interval_index: usize,
-        previous_end_utc_nanos: i64,
-        start_utc_nanos: i64,
     },
     NonFiniteField {
         field: &'static str,
@@ -565,30 +478,6 @@ impl Display for MeanReversionAnchorModelValidationError {
             Self::EmptyStringField { field } => {
                 write!(formatter, "{field} must be a non-empty string")
             }
-            Self::DeterministicIntervalGridLengthMismatch {
-                field,
-                expected,
-                found,
-            } => write!(
-                formatter,
-                "{field} must contain {expected} values, found {found}"
-            ),
-            Self::InvalidIntervalBoundary {
-                interval_index,
-                start_utc_nanos,
-                end_utc_nanos,
-            } => write!(
-                formatter,
-                "deterministic interval-grid anchor interval {interval_index} must satisfy end > start, found start={start_utc_nanos} end={end_utc_nanos}"
-            ),
-            Self::OverlappingIntervalBoundary {
-                interval_index,
-                previous_end_utc_nanos,
-                start_utc_nanos,
-            } => write!(
-                formatter,
-                "deterministic interval-grid anchor interval {interval_index} overlaps the previous interval, previous_end={previous_end_utc_nanos} start={start_utc_nanos}"
-            ),
             Self::NonFiniteField { field, value } => {
                 write!(formatter, "{field} must be a finite number, found {value}")
             }
@@ -707,34 +596,3 @@ impl Display for MeanReversionBoundaryStateValidationError {
 }
 
 impl Error for MeanReversionBoundaryStateValidationError {}
-
-fn validate_absent_deterministic_interval_grid(
-    anchor_model: &MeanReversionAnchorModel,
-) -> Result<(), MeanReversionAnchorModelValidationError> {
-    for field in [
-        (
-            "source_interval_start_utc_nanos",
-            !anchor_model.source_interval_start_utc_nanos.is_empty(),
-        ),
-        (
-            "source_interval_end_utc_nanos",
-            !anchor_model.source_interval_end_utc_nanos.is_empty(),
-        ),
-        ("anchor_values", !anchor_model.anchor_values.is_empty()),
-        (
-            "source_alignment_policy",
-            anchor_model.source_alignment_policy.is_some(),
-        ),
-    ] {
-        if field.1 {
-            return Err(
-                MeanReversionAnchorModelValidationError::UnexpectedFieldForAnchorModelKind {
-                    anchor_model_kind: anchor_model.anchor_model_kind,
-                    field: field.0,
-                },
-            );
-        }
-    }
-
-    Ok(())
-}

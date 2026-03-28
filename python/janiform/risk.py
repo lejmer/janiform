@@ -274,6 +274,8 @@ class SufficientStatisticsRiskModelInputs(ContractModel):
             )
 
         match self.mean_reversion_fitted_parameters.anchor_model.anchor_model_kind:
+            case MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL:
+                return
             case MeanReversionAnchorModelKind.DISABLED:
                 if self.mean_reversion_fitted_parameters.kappa != 0.0:
                     raise _risk_error(

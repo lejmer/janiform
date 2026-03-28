@@ -23,6 +23,7 @@ def _mean_reversion_error(field_path: str, message: str) -> ValueError:
 
 
 class MeanReversionAnchorModelKind(StrEnum):
+    ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL = "endogenous_core_expectation_one_interval"
     DISABLED = "disabled"
     CONSTANT = "constant"
     DETERMINISTIC_INTERVAL_GRID = "deterministic_interval_grid"
@@ -39,6 +40,14 @@ class MeanReversionAnchorModel(ContractModel):
 
     def __post_init__(self) -> None:
         match self.anchor_model_kind:
+            case MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL:
+                if self.anchor_value is not None:
+                    raise _mean_reversion_error(
+                        "anchor_value",
+                        "must be omitted when anchor_model_kind=endogenous_core_expectation_one_interval",
+                    )
+
+                _require_absent_deterministic_interval_grid_fields(self, field_path="anchor_model")
             case MeanReversionAnchorModelKind.DISABLED:
                 if self.anchor_value is not None:
                     raise _mean_reversion_error(
@@ -129,6 +138,8 @@ class MeanReversionAnchorModel(ContractModel):
         }
 
         match self.anchor_model_kind:
+            case MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL:
+                return payload
             case MeanReversionAnchorModelKind.DISABLED:
                 return payload
             case MeanReversionAnchorModelKind.CONSTANT:
@@ -148,6 +159,12 @@ class MeanReversionAnchorModel(ContractModel):
     @staticmethod
     def disabled() -> MeanReversionAnchorModel:
         return MeanReversionAnchorModel(anchor_model_kind=MeanReversionAnchorModelKind.DISABLED)
+
+    @staticmethod
+    def endogenous_core_expectation_one_interval() -> MeanReversionAnchorModel:
+        return MeanReversionAnchorModel(
+            anchor_model_kind=MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL
+        )
 
     @staticmethod
     def constant(anchor_value: float) -> MeanReversionAnchorModel:

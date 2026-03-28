@@ -23,6 +23,8 @@ const DETERMINISTIC_ANCHOR_ALIGNMENT_POLICY: &str = "piecewise_constant_utc_inte
 const DISABLED_REQUEST_REASON: &str = "requested_mean_reversion_disabled.v1";
 const INSUFFICIENT_SAMPLE_REASON: &str = "insufficient_mean_reversion_observation_count.v1";
 const INSUFFICIENT_COVERAGE_REASON: &str = "insufficient_mean_reversion_grid_coverage.v1";
+const ENDOGENOUS_POLICY_NOT_YET_IMPLEMENTED_REASON: &str =
+    "endogenous_core_expectation_one_interval_stage_not_yet_implemented.v1";
 const CONSTANT_ANCHOR_REASON: &str = "constant_anchor_fitted_from_median_log_price_levels.v1";
 const DETERMINISTIC_ANCHOR_REASON: &str =
     "deterministic_interval_anchor_fitted_from_local_median_log_price_levels.v1";
@@ -263,6 +265,10 @@ fn estimate_mean_reversion_fitted_parameters(
         .collect();
 
     match execution_input.requested_anchor_model_kind {
+        MeanReversionAnchorModelKind::EndogenousCoreExpectationOneInterval => disabled_stage_fit(
+            calibration_grid,
+            ENDOGENOUS_POLICY_NOT_YET_IMPLEMENTED_REASON.to_string(),
+        ),
         MeanReversionAnchorModelKind::Disabled => {
             disabled_stage_fit(calibration_grid, DISABLED_REQUEST_REASON.to_string())
         }

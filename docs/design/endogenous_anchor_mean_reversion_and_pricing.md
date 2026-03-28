@@ -449,4 +449,4 @@ This document does not define:
 - feedback from observed price or deviation into Hawkes intensities, NIG drivers,
   or news processes
 
-Those are outside the intended Janiform architecture.
+Those are outside the intended Janiform architecture and should never be implemented.

@@ -347,6 +347,7 @@ impl SeededTickSimulationRunConfig {
             .anchor_model
             .anchor_model_kind
         {
+            MeanReversionAnchorModelKind::EndogenousCoreExpectationOneInterval => {}
             MeanReversionAnchorModelKind::Disabled => {
                 if self.model_inputs.mean_reversion_fitted_parameters.kappa != 0.0 {
                     return Err(

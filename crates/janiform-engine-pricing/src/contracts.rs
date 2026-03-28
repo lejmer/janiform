@@ -1975,6 +1975,7 @@ fn validate_runtime_anchor_alignment(
         .anchor_model
         .anchor_model_kind
     {
+        MeanReversionAnchorModelKind::EndogenousCoreExpectationOneInterval => {}
         MeanReversionAnchorModelKind::Disabled => {
             if mean_reversion_fitted_parameters.kappa != 0.0 {
                 return Err(
