@@ -824,15 +824,6 @@ class BuiltInPresetRegistry:
             registry_scope=PresetRegistryScope.BUILT_IN,
         )
 
-    def resolve_session(self, preset_name: str) -> SessionPresetArtifact:
-        return cast(SessionPresetArtifact, self.resolve(PresetCategory.SESSION, preset_name))
-
-    def resolve_known_news(self, preset_name: str) -> KnownNewsPresetArtifact:
-        return cast(KnownNewsPresetArtifact, self.resolve(PresetCategory.KNOWN_NEWS, preset_name))
-
-    def resolve_market_profile(self, preset_name: str) -> MarketProfilePresetArtifact:
-        return cast(MarketProfilePresetArtifact, self.resolve(PresetCategory.MARKET_PROFILE, preset_name))
-
     def export_index_json(self) -> str:
         return serialize_deterministic_json(self._index)
 
@@ -858,15 +849,6 @@ class UserPresetRegistry:
             preset_name=preset_name,
             registry_scope=PresetRegistryScope.USER_REGISTERED,
         )
-
-    def resolve_session(self, preset_name: str) -> SessionPresetArtifact:
-        return cast(SessionPresetArtifact, self.resolve(PresetCategory.SESSION, preset_name))
-
-    def resolve_known_news(self, preset_name: str) -> KnownNewsPresetArtifact:
-        return cast(KnownNewsPresetArtifact, self.resolve(PresetCategory.KNOWN_NEWS, preset_name))
-
-    def resolve_market_profile(self, preset_name: str) -> MarketProfilePresetArtifact:
-        return cast(MarketProfilePresetArtifact, self.resolve(PresetCategory.MARKET_PROFILE, preset_name))
 
     def contains(
         self,
@@ -901,14 +883,6 @@ class PresetRegistry:
     ) -> None:
         self._built_in = built_in if built_in is not None else BuiltInPresetRegistry.load_default()
         self._user_registered = user_registered if user_registered is not None else UserPresetRegistry()
-
-    @property
-    def built_in(self) -> BuiltInPresetRegistry:
-        return self._built_in
-
-    @property
-    def user_registered(self) -> UserPresetRegistry:
-        return self._user_registered
 
     def list_presets(
         self,
@@ -965,48 +939,6 @@ class PresetRegistry:
             self._built_in.resolve(category, preset_name),
         )
 
-    def resolve_session_preset(
-        self,
-        preset_name: str,
-        *,
-        registry_scope: Optional[PresetRegistryScope] = None,
-    ) -> tuple[PresetRegistryScope, SessionPresetArtifact]:
-        resolved_scope, artifact = self.resolve(
-            category=PresetCategory.SESSION,
-            preset_name=preset_name,
-            registry_scope=registry_scope,
-        )
-
-        return resolved_scope, cast(SessionPresetArtifact, artifact)
-
-    def resolve_known_news_preset(
-        self,
-        preset_name: str,
-        *,
-        registry_scope: Optional[PresetRegistryScope] = None,
-    ) -> tuple[PresetRegistryScope, KnownNewsPresetArtifact]:
-        resolved_scope, artifact = self.resolve(
-            category=PresetCategory.KNOWN_NEWS,
-            preset_name=preset_name,
-            registry_scope=registry_scope,
-        )
-
-        return resolved_scope, cast(KnownNewsPresetArtifact, artifact)
-
-    def resolve_market_profile_preset(
-        self,
-        preset_name: str,
-        *,
-        registry_scope: Optional[PresetRegistryScope] = None,
-    ) -> tuple[PresetRegistryScope, MarketProfilePresetArtifact]:
-        resolved_scope, artifact = self.resolve(
-            category=PresetCategory.MARKET_PROFILE,
-            preset_name=preset_name,
-            registry_scope=registry_scope,
-        )
-
-        return resolved_scope, cast(MarketProfilePresetArtifact, artifact)
-
     def register_user_preset(self, artifact: PresetArtifact) -> PresetArtifact:
         normalized_artifact = normalize_preset_artifact(artifact)
         if isinstance(normalized_artifact, MarketProfilePresetArtifact):
@@ -1016,10 +948,6 @@ class PresetRegistry:
             )
 
         return self._user_registered.register_preset(normalized_artifact)
-
-    def load_user_preset_json(self, preset_json: str) -> PresetArtifact:
-        artifact = deserialize_preset_artifact(preset_json)
-        return self.register_user_preset(artifact)
 
     def export_resolved_preset(
         self,
@@ -1059,21 +987,6 @@ class PresetRegistry:
             session_preset=session_artifact,
             known_news_preset=known_news_artifact,
             market_profile_preset=market_profile_artifact,
-        )
-
-    def export_resolved_preset_json(
-        self,
-        *,
-        category: PresetCategory,
-        preset_name: str,
-        registry_scope: Optional[PresetRegistryScope] = None,
-    ) -> str:
-        return serialize_deterministic_json(
-            self.export_resolved_preset(
-                category=category,
-                preset_name=preset_name,
-                registry_scope=registry_scope,
-            )
         )
 
     def _resolve_in_scope(

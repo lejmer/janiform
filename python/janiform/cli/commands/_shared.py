@@ -1,3 +1,5 @@
+"""Internal shared helpers for CLI workflow command implementations."""
+
 import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -11,7 +13,7 @@ from .._constants import (
     CLI_SIMULATION_SEEDED_TICKS_ENTRYPOINT,
     CLI_SIMULATION_SEEDED_TICKS_VALIDATION_ERROR_ID,
 )
-from ..errors import _cli_validation_error
+from .._errors import cli_validation_error
 from ..._timestamps import datetime_to_utc_nanos
 from ...calibration.staged import (
     CalibrationExecutionMode,
@@ -20,7 +22,6 @@ from ...calibration.staged import (
     validate_staged_calibration_execution_input,
 )
 from ...calendar import CalendarRegistry
-from ...errors import ContractValidationFailure, JaniformValidationError
 from ...hourly_factors import (
     DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
     DEFAULT_SEASONALITY_AGGREGATION_METHOD,
@@ -35,6 +36,7 @@ from ...hourly_factors import (
     HourlySeasonalityMaterialization,
     HourlySeasonalityMaterializationSettings,
     HourlySeasonalityProviderExplicitSource,
+    provide_hourly_factor_contract,
 )
 from ...seasonality import (
     DayOfWeekSeasonalityEstimatorSettings,
@@ -45,11 +47,11 @@ from ...seasonality import (
 from ...simulation import (
     SeededTickSimulationHourlyFactorSummary,
     SeededTickSimulationRequest,
-    load_hourly_factor_contract_for_simulation,
 )
+from ...simulation.seeded.contracts import build_endogenous_seeded_mean_reversion_runtime_inputs
 
 
-def _build_intraday_seasonality_settings(
+def build_intraday_seasonality_settings(
     *,
     intraday_minutes_per_bin: int,
     intraday_smoothing_kernel: str,
@@ -58,26 +60,26 @@ def _build_intraday_seasonality_settings(
     intraday_pseudocount: float,
 ) -> IntradaySeasonalityEstimatorSettings:
     return IntradaySeasonalityEstimatorSettings(
-        minutes_per_bin=_require_positive_integer_cli_argument(
+        minutes_per_bin=require_positive_integer_cli_argument(
             intraday_minutes_per_bin,
             field_path="intraday_minutes_per_bin",
             error_id=CLI_SEASONALITY_DIAGNOSTICS_VALIDATION_ERROR_ID,
             entrypoint=CLI_SEASONALITY_DIAGNOSTICS_ENTRYPOINT,
         ),
         smoothing_kernel=IntradaySmoothingKernel(intraday_smoothing_kernel),
-        smoothing_bandwidth_bins=_require_positive_float_cli_argument(
+        smoothing_bandwidth_bins=require_positive_float_cli_argument(
             intraday_smoothing_bandwidth_bins,
             field_path="intraday_smoothing_bandwidth_bins",
             error_id=CLI_SEASONALITY_DIAGNOSTICS_VALIDATION_ERROR_ID,
             entrypoint=CLI_SEASONALITY_DIAGNOSTICS_ENTRYPOINT,
         ),
-        minimum_bin_events=_require_positive_integer_cli_argument(
+        minimum_bin_events=require_positive_integer_cli_argument(
             intraday_minimum_bin_events,
             field_path="intraday_minimum_bin_events",
             error_id=CLI_SEASONALITY_DIAGNOSTICS_VALIDATION_ERROR_ID,
             entrypoint=CLI_SEASONALITY_DIAGNOSTICS_ENTRYPOINT,
         ),
-        pseudocount=_require_positive_float_cli_argument(
+        pseudocount=require_positive_float_cli_argument(
             intraday_pseudocount,
             field_path="intraday_pseudocount",
             error_id=CLI_SEASONALITY_DIAGNOSTICS_VALIDATION_ERROR_ID,
@@ -86,19 +88,19 @@ def _build_intraday_seasonality_settings(
     )
 
 
-def _build_day_of_week_seasonality_settings(
+def build_day_of_week_seasonality_settings(
     *,
     day_of_week_minimum_bucket_events: int,
     day_of_week_pseudocount: float,
 ) -> DayOfWeekSeasonalityEstimatorSettings:
     return DayOfWeekSeasonalityEstimatorSettings(
-        minimum_bucket_events=_require_positive_integer_cli_argument(
+        minimum_bucket_events=require_positive_integer_cli_argument(
             day_of_week_minimum_bucket_events,
             field_path="day_of_week_minimum_bucket_events",
             error_id=CLI_SEASONALITY_DIAGNOSTICS_VALIDATION_ERROR_ID,
             entrypoint=CLI_SEASONALITY_DIAGNOSTICS_ENTRYPOINT,
         ),
-        pseudocount=_require_positive_float_cli_argument(
+        pseudocount=require_positive_float_cli_argument(
             day_of_week_pseudocount,
             field_path="day_of_week_pseudocount",
             error_id=CLI_SEASONALITY_DIAGNOSTICS_VALIDATION_ERROR_ID,
@@ -107,19 +109,19 @@ def _build_day_of_week_seasonality_settings(
     )
 
 
-def _build_day_of_year_seasonality_settings(
+def build_day_of_year_seasonality_settings(
     *,
     day_of_year_minimum_bucket_events: int,
     day_of_year_pseudocount: float,
 ) -> DayOfYearSeasonalityEstimatorSettings:
     return DayOfYearSeasonalityEstimatorSettings(
-        minimum_bucket_events=_require_positive_integer_cli_argument(
+        minimum_bucket_events=require_positive_integer_cli_argument(
             day_of_year_minimum_bucket_events,
             field_path="day_of_year_minimum_bucket_events",
             error_id=CLI_SEASONALITY_DIAGNOSTICS_VALIDATION_ERROR_ID,
             entrypoint=CLI_SEASONALITY_DIAGNOSTICS_ENTRYPOINT,
         ),
-        pseudocount=_require_positive_float_cli_argument(
+        pseudocount=require_positive_float_cli_argument(
             day_of_year_pseudocount,
             field_path="day_of_year_pseudocount",
             error_id=CLI_SEASONALITY_DIAGNOSTICS_VALIDATION_ERROR_ID,
@@ -128,7 +130,7 @@ def _build_day_of_year_seasonality_settings(
     )
 
 
-def _require_non_empty_cli_string(
+def require_non_empty_cli_string(
     value: str,
     *,
     field_path: str,
@@ -138,18 +140,15 @@ def _require_non_empty_cli_string(
     if value.strip():
         return value
 
-    raise JaniformValidationError(
-        ContractValidationFailure.from_context(
-            error_id=error_id,
-            workflow="cli",
-            entrypoint=entrypoint,
-            field_path=field_path,
-            message="must be a non-empty string",
-        )
+    raise cli_validation_error(
+        field_path,
+        "must be a non-empty string",
+        error_id=error_id,
+        entrypoint=entrypoint,
     )
 
 
-def _require_positive_integer_cli_argument(
+def require_positive_integer_cli_argument(
     value: int,
     *,
     field_path: str,
@@ -159,18 +158,15 @@ def _require_positive_integer_cli_argument(
     if value > 0:
         return value
 
-    raise JaniformValidationError(
-        ContractValidationFailure.from_context(
-            error_id=error_id,
-            workflow="cli",
-            entrypoint=entrypoint,
-            field_path=field_path,
-            message="must be strictly positive",
-        )
+    raise cli_validation_error(
+        field_path,
+        "must be strictly positive",
+        error_id=error_id,
+        entrypoint=entrypoint,
     )
 
 
-def _require_positive_float_cli_argument(
+def require_positive_float_cli_argument(
     value: float,
     *,
     field_path: str,
@@ -180,18 +176,15 @@ def _require_positive_float_cli_argument(
     if value > 0.0:
         return value
 
-    raise JaniformValidationError(
-        ContractValidationFailure.from_context(
-            error_id=error_id,
-            workflow="cli",
-            entrypoint=entrypoint,
-            field_path=field_path,
-            message="must be strictly positive",
-        )
+    raise cli_validation_error(
+        field_path,
+        "must be strictly positive",
+        error_id=error_id,
+        entrypoint=entrypoint,
     )
 
 
-def _parse_utc_datetime_cli_argument(
+def parse_utc_datetime_cli_argument(
     value: str,
     *,
     field_path: str,
@@ -201,44 +194,38 @@ def _parse_utc_datetime_cli_argument(
     try:
         parsed_value = datetime.fromisoformat(value)
     except ValueError as e:
-        raise JaniformValidationError(
-            ContractValidationFailure.from_context(
-                error_id=error_id,
-                workflow="cli",
-                entrypoint=entrypoint,
-                field_path=field_path,
-                message="must be a valid ISO 8601 timestamp",
-            )
+        raise cli_validation_error(
+            field_path,
+            "must be a valid ISO 8601 timestamp",
+            error_id=error_id,
+            entrypoint=entrypoint,
         ) from e
 
     if parsed_value.tzinfo is None:
-        raise JaniformValidationError(
-            ContractValidationFailure.from_context(
-                error_id=error_id,
-                workflow="cli",
-                entrypoint=entrypoint,
-                field_path=field_path,
-                message="must be timezone-aware",
-            )
+        raise cli_validation_error(
+            field_path,
+            "must be timezone-aware",
+            error_id=error_id,
+            entrypoint=entrypoint,
         )
 
     return parsed_value.astimezone(UTC)
 
 
-def _extract_hourly_seasonality_materialization_input(
+def extract_hourly_seasonality_materialization_input(
     materialization_input_document: dict[str, Any],
 ) -> tuple[list[datetime], list[float], HourlySeasonalityMaterializationSettings]:
-    source_timestamps_utc = _extract_datetime_sequence_field(
+    source_timestamps_utc = extract_datetime_sequence_field(
         materialization_input_document,
         field_name="source_timestamps_utc",
         field_prefix="hourly seasonality materialization input",
     )
-    source_seasonality_factors = _extract_float_sequence_field(
+    source_seasonality_factors = extract_float_sequence_field(
         materialization_input_document,
         field_name="source_seasonality_factors",
         field_prefix="hourly seasonality materialization input",
     )
-    sparse_hour_minimum_observation_count = _extract_int_field(
+    sparse_hour_minimum_observation_count = extract_int_field(
         materialization_input_document,
         field_name="sparse_hour_minimum_observation_count",
         field_prefix="hourly seasonality materialization input",
@@ -249,19 +236,19 @@ def _extract_hourly_seasonality_materialization_input(
         source_timestamps_utc,
         source_seasonality_factors,
         HourlySeasonalityMaterializationSettings(
-            interpolation_method=_extract_string_field(
+            interpolation_method=extract_string_field(
                 materialization_input_document,
                 field_name="interpolation_method",
                 field_prefix="hourly seasonality materialization input",
                 default=DEFAULT_SEASONALITY_INTERPOLATION_METHOD,
             ),
-            aggregation_method=_extract_string_field(
+            aggregation_method=extract_string_field(
                 materialization_input_document,
                 field_name="aggregation_method",
                 field_prefix="hourly seasonality materialization input",
                 default=DEFAULT_SEASONALITY_AGGREGATION_METHOD,
             ),
-            sparse_fallback_policy=_extract_string_field(
+            sparse_fallback_policy=extract_string_field(
                 materialization_input_document,
                 field_name="sparse_fallback_policy",
                 field_prefix="hourly seasonality materialization input",
@@ -272,7 +259,7 @@ def _extract_hourly_seasonality_materialization_input(
     )
 
 
-def _extract_hourly_news_intensity_materialization_input(
+def extract_hourly_news_intensity_materialization_input(
     materialization_input_document: dict[str, Any],
 ) -> HourlyNewsIntensityMaterializationSettings:
     raw_interval_multipliers = materialization_input_document.get(
@@ -296,7 +283,7 @@ def _extract_hourly_news_intensity_materialization_input(
                     "hourly news-intensity materialization input override keys must be integer strings"
                 ) from e
 
-            surprise_deterministic_time_multiplier_by_interval_index[interval_index] = _coerce_float(
+            surprise_deterministic_time_multiplier_by_interval_index[interval_index] = coerce_float(
                 raw_multiplier,
                 field_name=(
                     "hourly news-intensity materialization input field "
@@ -305,12 +292,12 @@ def _extract_hourly_news_intensity_materialization_input(
             )
 
     return HourlyNewsIntensityMaterializationSettings(
-        known_scheduled_event_timestamps_utc=_extract_datetime_sequence_field(
+        known_scheduled_event_timestamps_utc=extract_datetime_sequence_field(
             materialization_input_document,
             field_name="known_scheduled_event_timestamps_utc",
             field_prefix="hourly news-intensity materialization input",
         ),
-        surprise_baseline_intensity=_extract_required_float_field(
+        surprise_baseline_intensity=extract_required_float_field(
             materialization_input_document,
             field_name="surprise_baseline_intensity",
             field_prefix="hourly news-intensity materialization input",
@@ -321,18 +308,18 @@ def _extract_hourly_news_intensity_materialization_input(
     )
 
 
-def _extract_explicit_hourly_factor_source_document(
+def extract_explicit_hourly_factor_source_document(
     source_document: dict[str, Any],
     *,
     field_prefix: str,
 ) -> tuple[list[float], str]:
     return (
-        _extract_float_sequence_field(
+        extract_float_sequence_field(
             source_document,
             field_name="hourly_factors",
             field_prefix=field_prefix,
         ),
-        _extract_string_field(
+        extract_string_field(
             source_document,
             field_name="materialization_method",
             field_prefix=field_prefix,
@@ -341,14 +328,14 @@ def _extract_explicit_hourly_factor_source_document(
     )
 
 
-def _extract_materialized_hourly_seasonality_source_document(
+def extract_materialized_hourly_seasonality_source_document(
     source_document: dict[str, Any],
     *,
     exchange_code: str,
     range_start_utc: datetime,
     range_end_utc: datetime,
 ) -> tuple[list[float], str]:
-    _validate_hourly_materialization_source_document(
+    validate_hourly_materialization_source_document(
         source_document,
         expected_schema_version=HOURLY_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION,
         exchange_code=exchange_code,
@@ -358,7 +345,7 @@ def _extract_materialized_hourly_seasonality_source_document(
     )
 
     return (
-        _extract_float_sequence_field(
+        extract_float_sequence_field(
             source_document,
             field_name="s_h",
             field_prefix="hourly seasonality materialization source",
@@ -367,14 +354,14 @@ def _extract_materialized_hourly_seasonality_source_document(
     )
 
 
-def _extract_materialized_hourly_news_intensity_source_document(
+def extract_materialized_hourly_news_intensity_source_document(
     source_document: dict[str, Any],
     *,
     exchange_code: str,
     range_start_utc: datetime,
     range_end_utc: datetime,
 ) -> tuple[list[float], str]:
-    _validate_hourly_materialization_source_document(
+    validate_hourly_materialization_source_document(
         source_document,
         expected_schema_version=HOURLY_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION,
         exchange_code=exchange_code,
@@ -384,7 +371,7 @@ def _extract_materialized_hourly_news_intensity_source_document(
     )
 
     return (
-        _extract_float_sequence_field(
+        extract_float_sequence_field(
             source_document,
             field_name="nu_h",
             field_prefix="hourly news-intensity materialization source",
@@ -393,7 +380,7 @@ def _extract_materialized_hourly_news_intensity_source_document(
     )
 
 
-def _validate_hourly_materialization_source_document(
+def validate_hourly_materialization_source_document(
     source_document: dict[str, Any],
     *,
     expected_schema_version: str,
@@ -402,7 +389,7 @@ def _validate_hourly_materialization_source_document(
     range_end_utc: datetime,
     field_prefix: str,
 ) -> None:
-    schema_version = _extract_string_field(
+    schema_version = extract_string_field(
         source_document,
         field_name="schema_version",
         field_prefix=field_prefix,
@@ -410,7 +397,7 @@ def _validate_hourly_materialization_source_document(
     if schema_version != expected_schema_version:
         raise ValueError(f"{field_prefix} must have schema_version {expected_schema_version!r}")
 
-    document_exchange_code = _extract_string_field(
+    document_exchange_code = extract_string_field(
         source_document,
         field_name="exchange_code",
         field_prefix=field_prefix,
@@ -420,7 +407,7 @@ def _validate_hourly_materialization_source_document(
             f"{field_prefix} exchange_code {document_exchange_code!r} does not match {exchange_code!r}"
         )
 
-    range_start_nanos = _extract_int_field(
+    range_start_nanos = extract_int_field(
         source_document,
         field_name="request_start_utc_nanos",
         field_prefix=field_prefix,
@@ -428,7 +415,7 @@ def _validate_hourly_materialization_source_document(
     if range_start_nanos != datetime_to_utc_nanos(range_start_utc):
         raise ValueError(f"{field_prefix} request_start_utc_nanos does not match the requested range_start_utc")
 
-    range_end_nanos = _extract_int_field(
+    range_end_nanos = extract_int_field(
         source_document,
         field_name="request_end_utc_nanos",
         field_prefix=field_prefix,
@@ -437,7 +424,7 @@ def _validate_hourly_materialization_source_document(
         raise ValueError(f"{field_prefix} request_end_utc_nanos does not match the requested range_end_utc")
 
 
-def _extract_datetime_sequence_field(
+def extract_datetime_sequence_field(
     document: dict[str, Any],
     *,
     field_name: str,
@@ -465,7 +452,7 @@ def _extract_datetime_sequence_field(
     return parsed_values
 
 
-def _extract_float_sequence_field(
+def extract_float_sequence_field(
     document: dict[str, Any],
     *,
     field_name: str,
@@ -476,7 +463,7 @@ def _extract_float_sequence_field(
         raise ValueError(f"{field_prefix} must include list field `{field_name}`")
 
     return [
-        _coerce_float(
+        coerce_float(
             raw_value,
             field_name=f"{field_prefix} field `{field_name}`",
         )
@@ -484,7 +471,7 @@ def _extract_float_sequence_field(
     ]
 
 
-def _extract_string_field(
+def extract_string_field(
     document: dict[str, Any],
     *,
     field_name: str,
@@ -498,7 +485,7 @@ def _extract_string_field(
     return raw_value
 
 
-def _extract_int_field(
+def extract_int_field(
     document: dict[str, Any],
     *,
     field_name: str,
@@ -512,7 +499,7 @@ def _extract_int_field(
     return raw_value
 
 
-def _extract_required_float_field(
+def extract_required_float_field(
     document: dict[str, Any],
     *,
     field_name: str,
@@ -521,17 +508,17 @@ def _extract_required_float_field(
     if field_name not in document:
         raise ValueError(f"{field_prefix} must include field `{field_name}`")
 
-    return _coerce_float(document[field_name], field_name=f"{field_prefix} field `{field_name}`")
+    return coerce_float(document[field_name], field_name=f"{field_prefix} field `{field_name}`")
 
 
-def _coerce_float(raw_value: object, *, field_name: str) -> float:
+def coerce_float(raw_value: object, *, field_name: str) -> float:
     if isinstance(raw_value, bool) or not isinstance(raw_value, int | float):
         raise ValueError(f"{field_name} must contain numeric values")
 
     return float(raw_value)
 
 
-def _build_timestamp_event_preprocessing_payload(preprocessed_events: object) -> dict[str, Any]:
+def build_timestamp_event_preprocessing_payload(preprocessed_events: object) -> dict[str, Any]:
     return {
         "schema_version": cast(str, preprocessed_events.schema_version),
         "input_schema_version": cast(str, preprocessed_events.input_schema_version),
@@ -557,37 +544,11 @@ def _build_timestamp_event_preprocessing_payload(preprocessed_events: object) ->
     }
 
 
-def _build_hourly_factor_contract_payload(contract: HourlyFactorContract) -> dict[str, Any]:
-    return {
-        "schema_version": contract.schema_version,
-        "exchange_code": contract.exchange_code,
-        "exchange_timezone_name": contract.exchange_timezone_name,
-        "request_start_utc_nanos": contract.request_start_utc_nanos,
-        "request_end_utc_nanos": contract.request_end_utc_nanos,
-        "interval_duration_nanos": contract.interval_duration_nanos,
-        "interval_indices": list(contract.interval_indices),
-        "interval_start_utc_nanos": list(contract.interval_start_utc_nanos),
-        "interval_end_utc_nanos": list(contract.interval_end_utc_nanos),
-        "interval_start_exchange_local": list(contract.interval_start_exchange_local),
-        "interval_end_exchange_local": list(contract.interval_end_exchange_local),
-        "s_h": list(contract.s_h),
-        "nu_h": list(contract.nu_h),
-        "interval_count": contract.interval_count,
-        "first_interval_start_utc_nanos": contract.first_interval_start_utc_nanos,
-        "last_interval_end_utc_nanos": contract.last_interval_end_utc_nanos,
-        "skipped_local_hour_interval_count": contract.skipped_local_hour_interval_count,
-        "repeated_local_hour_interval_count": contract.repeated_local_hour_interval_count,
-        "interval_boundary_policy": contract.interval_boundary_policy,
-        "interval_alignment_policy": contract.interval_alignment_policy,
-        "timezone_transition_policy": contract.timezone_transition_policy,
-        "spring_forward_policy": contract.spring_forward_policy,
-        "fall_back_policy": contract.fall_back_policy,
-        "seasonality_materialization_method": contract.seasonality_materialization_method,
-        "news_intensity_materialization_method": contract.news_intensity_materialization_method,
-    }
+def build_hourly_factor_contract_payload(contract: HourlyFactorContract) -> dict[str, Any]:
+    return contract.to_payload()
 
 
-def _build_hourly_seasonality_materialization_payload(
+def build_hourly_seasonality_materialization_payload(
     materialization: HourlySeasonalityMaterialization,
 ) -> dict[str, Any]:
     return {
@@ -622,7 +583,7 @@ def _build_hourly_seasonality_materialization_payload(
     }
 
 
-def _build_hourly_news_intensity_materialization_payload(
+def build_hourly_news_intensity_materialization_payload(
     materialization: HourlyNewsIntensityMaterialization,
 ) -> dict[str, Any]:
     return {
@@ -663,19 +624,19 @@ def _build_hourly_news_intensity_materialization_payload(
     }
 
 
-def _build_calendar_registry(calendar_fixture_document: dict[str, Any]) -> CalendarRegistry:
-    return _build_calendar_registry_from_document(calendar_fixture_document)
+def build_calendar_registry(calendar_fixture_document: dict[str, Any]) -> CalendarRegistry:
+    return build_calendar_registry_from_document(calendar_fixture_document)
 
 
-def _build_calendar_registry_from_document(calendar_registry_document: dict[str, Any]) -> CalendarRegistry:
+def build_calendar_registry_from_document(calendar_registry_document: dict[str, Any]) -> CalendarRegistry:
     calendar_registry_payload: dict[str, Any]
     if "calendar_registry" in calendar_registry_document:
-        calendar_registry_payload = _extract_calendar_registry_payload(
+        calendar_registry_payload = extract_calendar_registry_payload(
             calendar_registry_document,
             field_path="calendar_registry",
         )
     else:
-        calendar_registry_payload = _extract_calendar_registry_payload(
+        calendar_registry_payload = extract_calendar_registry_payload(
             calendar_registry_document,
             field_path="calendar_registry_document",
         )
@@ -683,7 +644,7 @@ def _build_calendar_registry_from_document(calendar_registry_document: dict[str,
     return CalendarRegistry(json.dumps(calendar_registry_payload))
 
 
-def _extract_calendar_registry_payload(
+def extract_calendar_registry_payload(
     calendar_registry_document: dict[str, Any],
     *,
     field_path: str,
@@ -699,7 +660,7 @@ def _extract_calendar_registry_payload(
     return cast(dict[str, Any], calendar_registry_payload)
 
 
-def _extract_event_records(event_records_document: dict[str, Any]) -> list[dict[str, Any]]:
+def extract_event_records(event_records_document: dict[str, Any]) -> list[dict[str, Any]]:
     raw_event_records: object = event_records_document.get("event_records")
     if not isinstance(raw_event_records, list):
         raise ValueError("event records document must include list field `event_records`")
@@ -714,7 +675,7 @@ def _extract_event_records(event_records_document: dict[str, Any]) -> list[dict[
     return parsed_event_records
 
 
-def _attach_runtime_hourly_factor_contract(
+def attach_runtime_hourly_factor_contract(
     *,
     request: SeededTickSimulationRequest,
     calendar_registry: CalendarRegistry,
@@ -728,7 +689,7 @@ def _attach_runtime_hourly_factor_contract(
         microseconds=remainder_nanos // 1_000,
     )
 
-    hourly_factor_contract = load_hourly_factor_contract_for_simulation(
+    hourly_factor_contract = provide_hourly_factor_contract(
         calendar_registry=calendar_registry,
         exchange_code=request.hourly_factor_summary.exchange_code,
         range_start_utc=request.start_time_utc,
@@ -746,19 +707,24 @@ def _attach_runtime_hourly_factor_contract(
 
     derived_summary = SeededTickSimulationHourlyFactorSummary.from_contract(hourly_factor_contract)
     if derived_summary != request.hourly_factor_summary:
-        raise JaniformValidationError(
-            ContractValidationFailure.from_context(
-                error_id=CLI_SIMULATION_SEEDED_TICKS_VALIDATION_ERROR_ID,
-                workflow="cli",
-                entrypoint=CLI_SIMULATION_SEEDED_TICKS_ENTRYPOINT,
-                field_path="request_json.hourly_factor_summary",
-                message="request hourly_factor_summary must match the rehydrated hourly factor contract",
-                context={
-                    "derived_interval_count": derived_summary.interval_count,
-                    "request_interval_count": request.hourly_factor_summary.interval_count,
-                },
-            )
+        raise cli_validation_error(
+            "request_json.hourly_factor_summary",
+            "request hourly_factor_summary must match the rehydrated hourly factor contract",
+            error_id=CLI_SIMULATION_SEEDED_TICKS_VALIDATION_ERROR_ID,
+            entrypoint=CLI_SIMULATION_SEEDED_TICKS_ENTRYPOINT,
+            context={
+                "derived_interval_count": derived_summary.interval_count,
+                "request_interval_count": request.hourly_factor_summary.interval_count,
+            },
         )
+
+    (
+        mean_reversion_fitted_parameters,
+        mean_reversion_runtime_interval_anchors,
+        initial_mean_reversion_boundary_state,
+    ) = build_endogenous_seeded_mean_reversion_runtime_inputs(
+        hourly_factor_contract=hourly_factor_contract,
+    )
 
     return SeededTickSimulationRequest.from_runtime_inputs(
         seed=request.seed,
@@ -768,6 +734,9 @@ def _attach_runtime_hourly_factor_contract(
         nig_shared_plus_shift_configuration=request.nig_shared_plus_shift_configuration,
         news_process_configuration=request.news_process_configuration,
         initial_excitation_state=request.initial_excitation_state,
+        mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
+        mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
+        initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
         hourly_factor_contract=hourly_factor_contract,
         debug_trace_enabled=request.debug_trace_enabled,
         sample_every_nth_transition=request.sample_every_nth_transition,
@@ -776,21 +745,18 @@ def _attach_runtime_hourly_factor_contract(
     )
 
 
-def _override_calibration_execution_mode(
+def override_calibration_execution_mode(
     *,
     execution_input: StagedCalibrationExecutionInput,
     execution_mode: CalibrationExecutionMode,
     disk_checkpoint_directory: Optional[Path],
 ) -> StagedCalibrationExecutionInput:
     if execution_mode == CalibrationExecutionMode.MEMORY and disk_checkpoint_directory is not None:
-        raise JaniformValidationError(
-            ContractValidationFailure.from_context(
-                error_id=CLI_CALIBRATION_STAGED_VALIDATION_ERROR_ID,
-                workflow="cli",
-                entrypoint=CLI_CALIBRATION_STAGED_ENTRYPOINT,
-                field_path="disk_checkpoint_directory",
-                message="--disk-checkpoint-directory requires --execution-mode disk",
-            )
+        raise cli_validation_error(
+            "disk_checkpoint_directory",
+            "--disk-checkpoint-directory requires --execution-mode disk",
+            error_id=CLI_CALIBRATION_STAGED_VALIDATION_ERROR_ID,
+            entrypoint=CLI_CALIBRATION_STAGED_ENTRYPOINT,
         )
 
     runtime_resources: Optional[CalibrationStagedExecutionRuntimeResources] = execution_input.runtime_resources
@@ -811,4 +777,3 @@ def _override_calibration_execution_mode(
             "runtime_resources": None if runtime_resources is None else runtime_resources.to_payload(),
         }
     )
-

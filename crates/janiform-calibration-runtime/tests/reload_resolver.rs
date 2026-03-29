@@ -3,25 +3,13 @@ use std::path::Path;
 use serde_json::Value;
 
 mod support;
-use support::shared::{
-    PathBuf, TimeZone, Utc, assert_hawkes_fitted_parameters_match,
-    assert_joint_refinement_fitted_parameters_match,
-    assert_joint_refinement_objective_breakdown_matches,
-    assert_joint_refinement_optimizer_diagnostics_matches, assert_optimizer_state_matches,
-    build_calibration_stage_parameter_artifact, build_joint_refinement_stage_success_report,
-    build_run_contract_with_mode_and_resume, build_stage_output_links,
-    build_validation_metric_artifact_fixture, calibration_stage_test_registry,
-    calibration_stage_timestamp_fixture, fs, hawkes_stage_candidate_fixture, json,
-    return_components_stage_candidate_generation_fixture, temporary_checkpoint_directory,
-};
 use janiform_calibration_artifacts::{
     CALIBRATION_ARTIFACT_MANIFEST_SCHEMA_VERSION, CalibrationArtifactManifest,
     CalibrationArtifactReloadComponent, CalibrationArtifactReloadError,
-    CalibrationArtifactReloadRequest, CalibrationDatasetSnapshotArtifact,
-    CalibrationExecutionMode, CalibrationStage, CalibrationStageParameterArtifact,
-    CalibrationStageParameterPayload, CalibrationValidationMetricArtifact,
-    CalibrationValidationMetricArtifactRole, build_calibration_artifact_manifest,
-    build_calibration_dataset_snapshot_artifact,
+    CalibrationArtifactReloadRequest, CalibrationDatasetSnapshotArtifact, CalibrationExecutionMode,
+    CalibrationStage, CalibrationStageParameterArtifact, CalibrationStageParameterPayload,
+    CalibrationValidationMetricArtifact, CalibrationValidationMetricArtifactRole,
+    build_calibration_artifact_manifest, build_calibration_dataset_snapshot_artifact,
     calibration_artifact_manifest_path, calibration_stage_parameter_artifact_path,
     persist_calibration_artifact_manifest_to_disk,
     persist_calibration_dataset_snapshot_artifact_to_disk,
@@ -34,6 +22,18 @@ use janiform_calibration_runtime::{
     ReturnComponentsStageExecutionInput, SeasonalityStageExecutionInput,
     run_hawkes_calibration_stage, run_return_components_calibration_stage,
     run_seasonality_calibration_stage,
+};
+use support::shared::{
+    PathBuf, TimeZone, Utc, assert_hawkes_fitted_parameters_match,
+    assert_joint_refinement_fitted_parameters_match,
+    assert_joint_refinement_objective_breakdown_matches,
+    assert_joint_refinement_optimizer_diagnostics_matches, assert_optimizer_state_matches,
+    build_calibration_stage_parameter_artifact, build_joint_refinement_stage_success_report,
+    build_mean_reversion_stage_success_report, build_run_contract_with_mode_and_resume,
+    build_stage_output_links, build_validation_metric_artifact_fixture,
+    calibration_stage_test_registry, calibration_stage_timestamp_fixture, fs,
+    hawkes_stage_candidate_fixture, json, return_components_stage_candidate_generation_fixture,
+    temporary_checkpoint_directory,
 };
 
 #[test]
@@ -227,6 +227,14 @@ fn persist_reload_fixture(run_id: &str) -> PersistedReloadFixture {
         &CalibrationStagedRunStageReport::ReturnComponents(return_components_report),
     )
     .expect("return-components artifact should build");
+    let mean_reversion_artifact =
+        build_calibration_stage_parameter_artifact(
+            &run_contract,
+            &CalibrationStagedRunStageReport::MeanReversion(
+                build_mean_reversion_stage_success_report(),
+            ),
+        )
+        .expect("mean-reversion artifact should build");
     let joint_refinement_artifact = build_calibration_stage_parameter_artifact(
         &run_contract,
         &CalibrationStagedRunStageReport::JointRefinement(joint_refinement_report),
@@ -236,6 +244,7 @@ fn persist_reload_fixture(run_id: &str) -> PersistedReloadFixture {
         seasonality_artifact,
         hawkes_artifact,
         return_components_artifact,
+        mean_reversion_artifact,
         joint_refinement_artifact,
     ];
 
@@ -437,6 +446,28 @@ fn assert_stage_artifact_reload_matches(
                 assert_eq!(
                     reloaded_payload.activity_artifact_reference,
                     expected_payload.activity_artifact_reference
+                );
+            }
+            (
+                CalibrationStageParameterPayload::MeanReversion(reloaded_payload),
+                CalibrationStageParameterPayload::MeanReversion(expected_payload),
+            ) => {
+                assert_eq!(
+                    reloaded_payload.fitted_parameters,
+                    expected_payload.fitted_parameters
+                );
+                assert_eq!(reloaded_payload.diagnostics, expected_payload.diagnostics);
+                assert_eq!(
+                    reloaded_payload.return_components_input_transport,
+                    expected_payload.return_components_input_transport
+                );
+                assert_eq!(
+                    reloaded_payload.return_components_selected_candidate_id,
+                    expected_payload.return_components_selected_candidate_id
+                );
+                assert_eq!(
+                    reloaded_payload.return_components_artifact_reference,
+                    expected_payload.return_components_artifact_reference
                 );
             }
             (

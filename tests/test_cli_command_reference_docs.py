@@ -115,12 +115,15 @@ def test_cli_command_reference_doc_stays_aligned_with_cli_help_output() -> None:
         "--metric-catalog-json PATH",
         "--comparison-request-json PATH",
         "--market MARKET",
+        "--mean-reversion-anchor-model {endogenous_core_expectation_one_interval}",
+        "--mean-reversion-grid-interval-hours FLOAT",
         "--session-preset SESSION_PRESET",
         "--known-news KNOWN_NEWS",
         "--session-json PATH",
         "--known-news-json PATH",
         "--output-dir DIRECTORY",
         "--model-path PATH",
+        "--observed-boundary-state-json PATH",
         "--output-path PATH",
     )
     for expected_text in shared_expectations:
@@ -129,6 +132,8 @@ def test_cli_command_reference_doc_stays_aligned_with_cli_help_output() -> None:
     assert "--category {session,known-news,market-profile}" in presets_list_help
     assert "{session,known-news,market-profile}" in presets_show_help
     assert "--market MARKET" in fit_help
+    assert "--mean-reversion-anchor-model {endogenous_core_expectation_one_interval}" in fit_help
+    assert "--mean-reversion-grid-interval-hours MEAN_REVERSION_GRID_INTERVAL_HOURS" in fit_help
     assert "--session-preset SESSION_PRESET" in fit_help
     assert "--known-news KNOWN_NEWS" in fit_help
     assert "--output-dir DIRECTORY" in fit_help
@@ -325,6 +330,8 @@ def test_cli_command_reference_doc_examples_smoke_for_primary_workflows(
             "price",
             "--model-path",
             str(model_path),
+            "--observed-boundary-state-json",
+            documented_paths["observed_boundary_state_json"],
             "--valuation-time-utc",
             "2026-02-02T15:00:00Z",
             "--spot",
@@ -332,7 +339,7 @@ def test_cli_command_reference_doc_examples_smoke_for_primary_workflows(
             "--strike",
             "105.0",
             "--maturity-interval",
-            "4.0",
+            "1.0",
             "--output",
             "json",
         ]

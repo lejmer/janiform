@@ -1,3 +1,5 @@
+"""Internal fit and simulate CLI command-group assembly."""
+
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -15,10 +17,10 @@ from ..._workflow_outputs import (
 from ..._workflow_progress import JaniformOutputController
 from .calibration import _build_fit_plan_command, _build_fit_staged_command
 from .simulation import _build_simulation_coarse_interval_command, _build_simulation_seeded_ticks_command
-from .shared import (
-    _parse_utc_datetime_cli_argument,
-    _require_non_empty_cli_string,
-    _require_positive_integer_cli_argument,
+from ._shared import (
+    parse_utc_datetime_cli_argument,
+    require_non_empty_cli_string,
+    require_positive_integer_cli_argument,
 )
 from ..command_runtime import (
     JaniformCommand,
@@ -56,30 +58,32 @@ from .._constants import (
     CliExitCode,
     CliOutputMode,
 )
-from ..documents import _load_json_document_for_cli_field
-from ..errors import _classify_generic_cli_command_error, _cli_validation_error
+from .._documents import load_json_document_for_cli_field
+from .._errors import classify_generic_cli_command_error, cli_validation_error
 from ..paths import _resolve_path_from_repository_root
-from ..rendering import (
-    _render_fit_human_output,
-    _render_fit_inspect_human_output,
-    _render_simulate_human_output,
-    _write_cli_error,
-    _write_command_output,
+from .._rendering import (
+    render_fit_human_output,
+    render_fit_inspect_human_output,
+    render_simulate_human_output,
+    write_cli_error,
+    write_command_output,
 )
-from ...calibration import (
+from ...calibration.fit import (
+    JaniformEstimator,
+    JaniformFitReport,
+    JaniformModel,
+)
+from ...calibration.market_data import (
     CalibrationDuplicateRecordPolicy,
     CalibrationInputFileFormat,
-    CalibrationMarketDataNormalizationPolicy,
+    CalibrationMeanReversionConfiguration,
     CalibrationMarketDataOutputPreferences,
     CalibrationMarketDataWorkflowScope,
     CalibrationOptionQuoteInputPolicy,
     CalibrationOptionSurfaceColumnMapping,
-    CalibrationTickDataColumnMapping,
     CalibrationTickPriceInputPolicy,
-    CalibrationExecutionMode,
-    JaniformEstimator,
-    JaniformFitReport,
-    JaniformModel,
+)
+from ...calibration.presets import (
     KnownNewsExplicitConfiguration,
     KnownNewsPresetReference,
     MarketProfileReference,
@@ -88,6 +92,7 @@ from ...calibration import (
     PresetRegistry,
     PresetRegistryScope,
     SessionPresetReference,
+    deserialize_preset_artifact,
 )
 from ...calibration.fit.estimator import _load_explicit_session_configuration
 from ...calibration.fit.input_resolution import (
@@ -97,7 +102,9 @@ from ...calibration.fit.input_resolution import (
     build_fit_inference_payload,
     infer_high_level_fit_inputs,
 )
+from ...calibration.staged import CalibrationExecutionMode
 from ...calibration.staged.results import CalibrationFailureDetails
+from ...contracts import MeanReversionAnchorModelKind
 from ...errors import (
     ErrorContextValue,
     JaniformError,
@@ -111,7 +118,7 @@ type CliCommandArguments = dict[str, Any]
 
 
 @dataclass(frozen=True, slots=True)
-class _ConfiguredCliFitCommand:
+class ConfiguredCliFitCommand:
     estimator: JaniformEstimator
     input_inference: HighLevelFitInference
     tick_data_path: Path
@@ -122,14 +129,14 @@ class _ConfiguredCliFitCommand:
     explain_requested: bool
 
 
-def _run_fit_command(
+def run_fit_command(
     *,
     cli_context: CliCommandContext,
     output: str,
     **command_arguments,
 ) -> int:
     try:
-        configured_command = _configure_cli_fit_command(
+        configured_command = configure_cli_fit_command(
             cli_context=cli_context,
             entrypoint=CLI_FIT_ENTRYPOINT,
             error_id=CLI_FIT_VALIDATION_ERROR_ID,
@@ -142,14 +149,14 @@ def _run_fit_command(
             output_controller.info(f"output directory: {configured_command.output_dir}")
             output_controller.info(f"model path: {configured_command.output_dir / 'model.json'}")
 
-        model, fit_report, artifact_paths = _execute_cli_fit(
+        model, fit_report, artifact_paths = execute_cli_fit(
             configured_command=configured_command,
             output=output,
             command_arguments=command_arguments,
             entrypoint=CLI_FIT_ENTRYPOINT,
             error_id=CLI_FIT_INTERNAL_ERROR_ID,
         )
-        payload = _build_cli_fit_result_payload(
+        payload = build_cli_fit_result_payload(
             model=model,
             fit_report=fit_report,
             artifact_paths=artifact_paths,
@@ -158,10 +165,10 @@ def _run_fit_command(
             explain_requested=bool(command_arguments.get("explain")),
         )
     except JaniformError as e:
-        return _write_cli_error(e, output=output)
+        return write_cli_error(e, output=output)
     except Exception as e:
-        return _write_cli_error(
-            _classify_generic_cli_command_error(
+        return write_cli_error(
+            classify_generic_cli_command_error(
                 e,
                 entrypoint=CLI_FIT_ENTRYPOINT,
                 validation_error_id=CLI_FIT_VALIDATION_ERROR_ID,
@@ -173,33 +180,33 @@ def _run_fit_command(
         )
 
     if not bool(command_arguments.get("silent")):
-        _write_command_output(
+        write_command_output(
             output,
             json_payload=payload,
-            human_output_factory=lambda: _render_fit_human_output(payload),
+            human_output_factory=lambda: render_fit_human_output(payload),
         )
 
     return int(CliExitCode.SUCCESS)
 
 
-def _run_fit_inspect_command(
+def run_fit_inspect_command(
     *,
     cli_context: CliCommandContext,
     output: str,
     **command_arguments,
 ) -> int:
     try:
-        payload = _build_cli_fit_inspect_payload(
+        payload = build_cli_fit_inspect_payload(
             cli_context=cli_context,
             entrypoint=CLI_FIT_INSPECT_ENTRYPOINT,
             error_id=CLI_FIT_INSPECT_VALIDATION_ERROR_ID,
             command_arguments=command_arguments,
         )
     except JaniformError as e:
-        return _write_cli_error(e, output=output)
+        return write_cli_error(e, output=output)
     except Exception as e:
-        return _write_cli_error(
-            _classify_generic_cli_command_error(
+        return write_cli_error(
+            classify_generic_cli_command_error(
                 e,
                 entrypoint=CLI_FIT_INSPECT_ENTRYPOINT,
                 validation_error_id=CLI_FIT_INSPECT_VALIDATION_ERROR_ID,
@@ -211,16 +218,16 @@ def _run_fit_inspect_command(
         )
 
     if not bool(command_arguments.get("silent")):
-        _write_command_output(
+        write_command_output(
             output,
             json_payload=payload,
-            human_output_factory=lambda: _render_fit_inspect_human_output(payload),
+            human_output_factory=lambda: render_fit_inspect_human_output(payload),
         )
 
     return int(CliExitCode.SUCCESS)
 
 
-def _run_model_simulate_command(
+def run_model_simulate_command(
     *,
     cli_context: CliCommandContext,
     output: str,
@@ -234,7 +241,7 @@ def _run_model_simulate_command(
 
     try:
         model = JaniformModel.load(model_path)
-        payload = _build_cli_simulate_result_payload(
+        payload = build_cli_simulate_result_payload(
             model=model,
             command_arguments=command_arguments,
             model_path=model_path,
@@ -245,10 +252,10 @@ def _run_model_simulate_command(
             output_mode=output,
         )
     except JaniformError as e:
-        return _write_cli_error(e, output=output)
+        return write_cli_error(e, output=output)
     except RuntimeError as e:
-        return _write_cli_error(
-            _cli_validation_error(
+        return write_cli_error(
+            cli_validation_error(
                 "model_path",
                 str(e),
                 error_id=CLI_HIGH_LEVEL_SIMULATE_VALIDATION_ERROR_ID,
@@ -257,8 +264,8 @@ def _run_model_simulate_command(
             output=output,
         )
     except Exception as e:
-        return _write_cli_error(
-            _classify_generic_cli_command_error(
+        return write_cli_error(
+            classify_generic_cli_command_error(
                 e,
                 entrypoint=CLI_HIGH_LEVEL_SIMULATE_ENTRYPOINT,
                 validation_error_id=CLI_HIGH_LEVEL_SIMULATE_VALIDATION_ERROR_ID,
@@ -270,16 +277,16 @@ def _run_model_simulate_command(
         )
 
     if not bool(command_arguments.get("silent")):
-        _write_command_output(
+        write_command_output(
             output,
             json_payload=payload,
-            human_output_factory=lambda: _render_simulate_human_output(payload),
+            human_output_factory=lambda: render_simulate_human_output(payload),
         )
 
     return int(CliExitCode.SUCCESS)
 
 
-def _build_cli_preset_registry(
+def build_cli_preset_registry(
     *,
     cli_context: CliCommandContext,
     user_preset_json: tuple[Path, ...],
@@ -293,7 +300,7 @@ def _build_cli_preset_registry(
         try:
             preset_json = resolved_path.read_text(encoding="utf-8")
         except FileNotFoundError as e:
-            raise _cli_validation_error(
+            raise cli_validation_error(
                 "user_preset_json",
                 "input file could not be found",
                 error_id=error_id,
@@ -301,7 +308,7 @@ def _build_cli_preset_registry(
                 context={"path": str(resolved_path)},
             ) from e
         except OSError as e:
-            raise _cli_validation_error(
+            raise cli_validation_error(
                 "user_preset_json",
                 f"input file could not be read: {e}",
                 error_id=error_id,
@@ -309,90 +316,83 @@ def _build_cli_preset_registry(
                 context={"path": str(resolved_path)},
             ) from e
 
-        registry.load_user_preset_json(preset_json)
+        registry.register_user_preset(deserialize_preset_artifact(preset_json))
 
     return registry
 
 
-def _parse_cli_preset_category(raw_value: Optional[str]) -> Optional[PresetCategory]:
+def parse_cli_preset_category(raw_value: Optional[str]) -> Optional[PresetCategory]:
     if raw_value is None:
         return None
 
     return PresetCategory(raw_value.replace("-", "_"))
 
 
-def _parse_cli_preset_scope(raw_value: Optional[str]) -> Optional[PresetRegistryScope]:
+def parse_cli_preset_scope(raw_value: Optional[str]) -> Optional[PresetRegistryScope]:
     if raw_value is None or raw_value == "auto":
         return None
 
     return PresetRegistryScope(raw_value)
 
 
-def _resolve_named_preset_scope(
+def resolve_named_preset_scope(
     *,
     registry: PresetRegistry,
     category: PresetCategory,
     preset_name: str,
     raw_scope: Optional[str],
 ) -> PresetRegistryScope:
-    explicit_scope = _parse_cli_preset_scope(raw_scope)
-
-    match category:
-        case PresetCategory.SESSION:
-            resolved_scope, _ = registry.resolve_session_preset(preset_name, registry_scope=explicit_scope)
-        case PresetCategory.KNOWN_NEWS:
-            resolved_scope, _ = registry.resolve_known_news_preset(preset_name, registry_scope=explicit_scope)
-        case PresetCategory.MARKET_PROFILE:
-            resolved_scope, _ = registry.resolve_market_profile_preset(preset_name, registry_scope=explicit_scope)
-
+    explicit_scope = parse_cli_preset_scope(raw_scope)
+    resolved_scope, _ = registry.resolve(
+        category=category,
+        preset_name=preset_name,
+        registry_scope=explicit_scope,
+    )
     return resolved_scope
 
 
-def _resolve_preset_artifact(
+def resolve_preset_artifact(
     *,
     registry: PresetRegistry,
     category: PresetCategory,
     preset_name: str,
     registry_scope: PresetRegistryScope,
 ) -> Any:
-    match category:
-        case PresetCategory.SESSION:
-            _, artifact = registry.resolve_session_preset(preset_name, registry_scope=registry_scope)
-        case PresetCategory.KNOWN_NEWS:
-            _, artifact = registry.resolve_known_news_preset(preset_name, registry_scope=registry_scope)
-        case PresetCategory.MARKET_PROFILE:
-            _, artifact = registry.resolve_market_profile_preset(preset_name, registry_scope=registry_scope)
-
+    _, artifact = registry.resolve(
+        category=category,
+        preset_name=preset_name,
+        registry_scope=registry_scope,
+    )
     return artifact
 
 
-def _configure_cli_fit_command(
+def configure_cli_fit_command(
     *,
     cli_context: CliCommandContext,
     entrypoint: str,
     error_id: str,
     command_arguments: CliCommandArguments,
-) -> _ConfiguredCliFitCommand:
-    registry = _build_cli_preset_registry(
+) -> ConfiguredCliFitCommand:
+    registry = build_cli_preset_registry(
         cli_context=cli_context,
         user_preset_json=cast(tuple[Path, ...], command_arguments.get("user_preset_json", ())),
         entrypoint=entrypoint,
         error_id=error_id,
     )
-    market_profile = _build_market_profile_reference_from_arguments(
+    market_profile = build_market_profile_reference_from_arguments(
         command_arguments,
         registry=registry,
         entrypoint=entrypoint,
         error_id=error_id,
     )
-    session_reference = _build_session_reference_from_arguments(
+    session_reference = build_session_reference_from_arguments(
         command_arguments,
         repository_root=cli_context.repository_root,
         registry=registry,
         entrypoint=entrypoint,
         error_id=error_id,
     )
-    known_news_reference = _build_known_news_reference_from_arguments(
+    known_news_reference = build_known_news_reference_from_arguments(
         command_arguments,
         repository_root=cli_context.repository_root,
         registry=registry,
@@ -400,7 +400,7 @@ def _configure_cli_fit_command(
         error_id=error_id,
     )
 
-    tick_data_path = _resolve_required_tick_data_path(
+    tick_data_path = resolve_required_tick_data_path(
         cli_context=cli_context,
         entrypoint=entrypoint,
         error_id=error_id,
@@ -423,7 +423,7 @@ def _configure_cli_fit_command(
         else cast(str, command_arguments["option_surface_provenance_label"])
     )
 
-    _reject_orphan_market_data_arguments(
+    reject_orphan_market_data_arguments(
         resolved_option_surface_path is not None,
         (
             ("option_surface_format", command_arguments.get("option_surface_format")),
@@ -447,14 +447,20 @@ def _configure_cli_fit_command(
             command_arguments.get("workflow_scope", "full_without_option_surface"),
         )
     )
-    option_surface_column_mapping = _build_option_surface_column_mapping_from_arguments(
+    option_surface_column_mapping = build_option_surface_column_mapping_from_arguments(
         command_arguments,
         entrypoint=entrypoint,
         error_id=error_id,
     )
-    output_preferences = _build_model_workflow_output_preferences_from_arguments(
+    output_preferences = build_model_workflow_output_preferences_from_arguments(
         command_arguments,
         repository_root=cli_context.repository_root,
+        entrypoint=entrypoint,
+        error_id=error_id,
+    )
+    mean_reversion = build_mean_reversion_configuration_from_arguments(
+        command_arguments,
+        workflow_scope=workflow_scope,
         entrypoint=entrypoint,
         error_id=error_id,
     )
@@ -469,7 +475,7 @@ def _configure_cli_fit_command(
         exchange_code=cast(Optional[str], command_arguments.get("exchange_code")),
         session_timezone=cast(Optional[str], command_arguments.get("session_timezone")),
         registry=registry,
-        cpu_count=_cpu_count_from_arguments(
+        cpu_count=cpu_count_from_arguments(
             command_arguments,
             entrypoint=entrypoint,
             error_id=error_id,
@@ -478,12 +484,12 @@ def _configure_cli_fit_command(
     )
     input_inference = infer_high_level_fit_inputs(
         tick_data_path=tick_data_path,
-        tick_data_format=_optional_tick_data_format_from_arguments(command_arguments),
-        tick_data_provenance_label=_tick_data_provenance_label_from_arguments(command_arguments),
+        tick_data_format=optional_tick_data_format_from_arguments(command_arguments),
+        tick_data_provenance_label=tick_data_provenance_label_from_arguments(command_arguments),
         workflow_scope=workflow_scope,
         run_id=cast(Optional[str], command_arguments.get("run_id")),
-        column_overrides=_build_high_level_tick_data_column_overrides_from_arguments(command_arguments),
-        normalization_overrides=_build_high_level_normalization_overrides_from_arguments(command_arguments),
+        column_overrides=build_high_level_tick_data_column_overrides_from_arguments(command_arguments),
+        normalization_overrides=build_high_level_normalization_overrides_from_arguments(command_arguments),
         market_profile_configuration=preliminary_estimator._resolve_market_profile_configuration(),
     )
 
@@ -493,13 +499,14 @@ def _configure_cli_fit_command(
         normalization_policy=input_inference.normalization_policy,
         option_surface_column_mapping=option_surface_column_mapping,
         output_preferences=output_preferences,
+        mean_reversion=mean_reversion,
         market_profile=market_profile,
         session=session_reference,
         known_news=known_news_reference,
         exchange_code=cast(Optional[str], command_arguments.get("exchange_code")),
         session_timezone=cast(Optional[str], command_arguments.get("session_timezone")),
         registry=registry,
-        cpu_count=_cpu_count_from_arguments(
+        cpu_count=cpu_count_from_arguments(
             command_arguments,
             entrypoint=entrypoint,
             error_id=error_id,
@@ -514,7 +521,7 @@ def _configure_cli_fit_command(
         else resolve_fit_artifact_paths(run_id=input_inference.run_id, output_dir=None).run_directory
     )
 
-    return _ConfiguredCliFitCommand(
+    return ConfiguredCliFitCommand(
         estimator=estimator,
         input_inference=input_inference,
         tick_data_path=tick_data_path,
@@ -526,7 +533,7 @@ def _configure_cli_fit_command(
     )
 
 
-def _resolve_required_tick_data_path(
+def resolve_required_tick_data_path(
     *,
     cli_context: CliCommandContext,
     entrypoint: str,
@@ -534,7 +541,7 @@ def _resolve_required_tick_data_path(
     raw_tick_data_path: Optional[Path],
 ) -> Path:
     if raw_tick_data_path is None:
-        raise _cli_validation_error(
+        raise cli_validation_error(
             "tick_data_path",
             "Please provide a tick-data path as `janiform fit PATH ...` or with --tick-data-path.",
             error_id=error_id,
@@ -544,7 +551,7 @@ def _resolve_required_tick_data_path(
     return _resolve_path_from_repository_root(cli_context.repository_root, raw_tick_data_path)
 
 
-def _optional_tick_data_format_from_arguments(
+def optional_tick_data_format_from_arguments(
     command_arguments: CliCommandArguments,
 ) -> Optional[CalibrationInputFileFormat]:
     raw_tick_data_format = cast(Optional[str], command_arguments.get("tick_data_format"))
@@ -554,11 +561,11 @@ def _optional_tick_data_format_from_arguments(
     return CalibrationInputFileFormat(raw_tick_data_format)
 
 
-def _tick_data_provenance_label_from_arguments(command_arguments: CliCommandArguments) -> str:
+def tick_data_provenance_label_from_arguments(command_arguments: CliCommandArguments) -> str:
     return cast(str, command_arguments.get("tick_data_provenance_label", "tick_data"))
 
 
-def _cpu_count_from_arguments(
+def cpu_count_from_arguments(
     command_arguments: CliCommandArguments,
     *,
     entrypoint: str,
@@ -568,7 +575,7 @@ def _cpu_count_from_arguments(
     if raw_cpu_count is None:
         return None
 
-    return _require_positive_integer_cli_argument(
+    return require_positive_integer_cli_argument(
         raw_cpu_count,
         field_path="cpu_count",
         error_id=error_id,
@@ -576,7 +583,7 @@ def _cpu_count_from_arguments(
     )
 
 
-def _build_high_level_tick_data_column_overrides_from_arguments(
+def build_high_level_tick_data_column_overrides_from_arguments(
     parsed_arguments: CliCommandArguments,
 ) -> Optional[HighLevelTickDataColumnOverrides]:
     overrides = HighLevelTickDataColumnOverrides(
@@ -602,7 +609,7 @@ def _build_high_level_tick_data_column_overrides_from_arguments(
     return overrides
 
 
-def _build_high_level_normalization_overrides_from_arguments(
+def build_high_level_normalization_overrides_from_arguments(
     parsed_arguments: CliCommandArguments,
 ) -> Optional[HighLevelNormalizationPolicyOverrides]:
     duplicate_record_policy_raw = cast(Optional[str], parsed_arguments.get("duplicate_record_policy"))
@@ -648,7 +655,7 @@ def _build_high_level_normalization_overrides_from_arguments(
     return overrides
 
 
-def _build_cli_fit_input_inference_payload(prepared_workflow: Any) -> dict[str, Any]:
+def build_cli_fit_input_inference_payload(prepared_workflow: Any) -> dict[str, Any]:
     return build_fit_inference_payload(
         inference=prepared_workflow.input_inference,
         workflow_scope=prepared_workflow.prepared.request.workflow_scope,
@@ -678,9 +685,9 @@ def _build_cli_fit_input_inference_payload(prepared_workflow: Any) -> dict[str, 
     )
 
 
-def _execute_cli_fit(
+def execute_cli_fit(
     *,
-    configured_command: _ConfiguredCliFitCommand,
+    configured_command: ConfiguredCliFitCommand,
     output: str,
     command_arguments: CliCommandArguments,
     entrypoint: str,
@@ -704,7 +711,7 @@ def _execute_cli_fit(
         ),
     )
     if model_result is None:
-        failure_context = _build_cli_fit_failure_context(fit_report)
+        failure_context = build_cli_fit_failure_context(fit_report)
         raise JaniformExecutionError(
             JaniformErrorDetails.from_context(
                 error_id=error_id,
@@ -724,7 +731,7 @@ def _execute_cli_fit(
     return model_result, fit_report, artifact_paths
 
 
-def _build_cli_fit_failure_context(fit_report: JaniformFitReport) -> dict[str, ErrorContextValue]:
+def build_cli_fit_failure_context(fit_report: JaniformFitReport) -> dict[str, ErrorContextValue]:
     failure_context: dict[str, ErrorContextValue] = {
         "run_id": fit_report.run_id,
         "staged_status": fit_report.staged_response.status.value,
@@ -736,7 +743,7 @@ def _build_cli_fit_failure_context(fit_report: JaniformFitReport) -> dict[str, E
         if stage_report.failure is None:
             continue
 
-        if _prefer_cli_fit_failure_details(selected_failure, stage_report.failure):
+        if prefer_cli_fit_failure_details(selected_failure, stage_report.failure):
             selected_failure = stage_report.failure
 
         if failed_stage is None:
@@ -759,7 +766,7 @@ def _build_cli_fit_failure_context(fit_report: JaniformFitReport) -> dict[str, E
     return failure_context
 
 
-def _prefer_cli_fit_failure_details(
+def prefer_cli_fit_failure_details(
     current_failure: Optional[CalibrationFailureDetails],
     candidate_failure: CalibrationFailureDetails,
 ) -> bool:
@@ -785,14 +792,14 @@ def _prefer_cli_fit_failure_details(
     return False
 
 
-def _build_cli_fit_inspect_payload(
+def build_cli_fit_inspect_payload(
     *,
     cli_context: CliCommandContext,
     entrypoint: str,
     error_id: str,
     command_arguments: CliCommandArguments,
 ) -> dict[str, Any]:
-    configured_command = _configure_cli_fit_command(
+    configured_command = configure_cli_fit_command(
         cli_context=cli_context,
         entrypoint=entrypoint,
         error_id=error_id,
@@ -819,12 +826,12 @@ def _build_cli_fit_inspect_payload(
             "output_directory": str(configured_command.output_dir),
             "model_output_path": str(configured_command.output_dir / "model.json"),
             "report_path": str(configured_command.output_dir / "fit_report.json"),
-            "input_inference": _build_cli_fit_input_inference_payload(prepared_workflow),
+            "input_inference": build_cli_fit_input_inference_payload(prepared_workflow),
             "resolved_configuration": prepared_workflow.resolved_configuration.to_payload(),
             "session_resolution": prepared_workflow.prepared.session_resolution.to_payload(),
             "preparation_diagnostics": prepared_workflow.prepared.diagnostics.to_payload(),
             "preparation_provenance": prepared_workflow.prepared.provenance.to_payload(),
-            "execution_mode": prepared_workflow.prepared.execution_input.request.execution_mode.value,
+            "execution_mode": prepared_workflow.prepared.staged_request.execution_mode.value,
             "temporary_workspace_materialized": prepared_workflow.temporary_directory is not None,
         }
     finally:
@@ -832,7 +839,7 @@ def _build_cli_fit_inspect_payload(
             prepared_workflow.temporary_directory.cleanup()
 
 
-def _build_market_profile_reference_from_arguments(
+def build_market_profile_reference_from_arguments(
     command_arguments: CliCommandArguments,
     *,
     registry: PresetRegistry,
@@ -844,7 +851,7 @@ def _build_market_profile_reference_from_arguments(
 
     if market_name is None:
         if raw_scope not in (None, "auto"):
-            raise _cli_validation_error(
+            raise cli_validation_error(
                 "market_scope",
                 "--market-scope requires --market",
                 error_id=error_id,
@@ -853,7 +860,7 @@ def _build_market_profile_reference_from_arguments(
 
         return None
 
-    resolved_scope = _resolve_named_preset_scope(
+    resolved_scope = resolve_named_preset_scope(
         registry=registry,
         category=PresetCategory.MARKET_PROFILE,
         preset_name=market_name,
@@ -866,7 +873,7 @@ def _build_market_profile_reference_from_arguments(
     )
 
 
-def _build_session_reference_from_arguments(
+def build_session_reference_from_arguments(
     command_arguments: CliCommandArguments,
     *,
     repository_root: Path,
@@ -880,7 +887,7 @@ def _build_session_reference_from_arguments(
 
     if session_preset is None and session_json is None:
         if raw_scope not in (None, "auto"):
-            raise _cli_validation_error(
+            raise cli_validation_error(
                 "session_scope",
                 "--session-scope requires --session-preset",
                 error_id=error_id,
@@ -899,7 +906,7 @@ def _build_session_reference_from_arguments(
             ),
         )
 
-    resolved_scope = _resolve_named_preset_scope(
+    resolved_scope = resolve_named_preset_scope(
         registry=registry,
         category=PresetCategory.SESSION,
         preset_name=cast(str, session_preset),
@@ -913,7 +920,7 @@ def _build_session_reference_from_arguments(
     )
 
 
-def _build_known_news_reference_from_arguments(
+def build_known_news_reference_from_arguments(
     command_arguments: CliCommandArguments,
     *,
     repository_root: Path,
@@ -927,7 +934,7 @@ def _build_known_news_reference_from_arguments(
 
     if known_news is None and known_news_json is None:
         if raw_scope not in (None, "auto"):
-            raise _cli_validation_error(
+            raise cli_validation_error(
                 "known_news_scope",
                 "--known-news-scope requires --known-news",
                 error_id=error_id,
@@ -937,7 +944,7 @@ def _build_known_news_reference_from_arguments(
         return None
 
     if known_news_json is not None:
-        explicit_configuration_document = _load_json_document_for_cli_field(
+        explicit_configuration_document = load_json_document_for_cli_field(
             repository_root=repository_root,
             path=known_news_json,
             context="known-news configuration",
@@ -953,7 +960,7 @@ def _build_known_news_reference_from_arguments(
             ),
         )
 
-    resolved_scope = _resolve_named_preset_scope(
+    resolved_scope = resolve_named_preset_scope(
         registry=registry,
         category=PresetCategory.KNOWN_NEWS,
         preset_name=cast(str, known_news),
@@ -966,20 +973,7 @@ def _build_known_news_reference_from_arguments(
         preset_name=cast(str, known_news),
     )
 
-
-def _build_tick_data_column_mapping_from_arguments(
-    parsed_arguments: CliCommandArguments,
-) -> CalibrationTickDataColumnMapping:
-    return CalibrationTickDataColumnMapping(
-        timestamp_column=cast(str, parsed_arguments["tick_timestamp_column"]),
-        price_column=cast(Optional[str], parsed_arguments.get("tick_price_column")),
-        trade_sign_column=cast(Optional[str], parsed_arguments.get("tick_trade_sign_column")),
-        bid_column=cast(Optional[str], parsed_arguments.get("tick_bid_column")),
-        ask_column=cast(Optional[str], parsed_arguments.get("tick_ask_column")),
-    )
-
-
-def _build_option_surface_column_mapping_from_arguments(
+def build_option_surface_column_mapping_from_arguments(
     parsed_arguments: CliCommandArguments,
     *,
     entrypoint: str,
@@ -990,25 +984,25 @@ def _build_option_surface_column_mapping_from_arguments(
         return None
 
     return CalibrationOptionSurfaceColumnMapping(
-        quote_timestamp_column=_require_non_empty_cli_string(
+        quote_timestamp_column=require_non_empty_cli_string(
             cast(str, parsed_arguments["option_quote_timestamp_column"]),
             field_path="option_quote_timestamp_column",
             error_id=error_id,
             entrypoint=entrypoint,
         ),
-        expiry_timestamp_column=_require_non_empty_cli_string(
+        expiry_timestamp_column=require_non_empty_cli_string(
             cast(str, parsed_arguments["option_expiry_column"]),
             field_path="option_expiry_column",
             error_id=error_id,
             entrypoint=entrypoint,
         ),
-        strike_column=_require_non_empty_cli_string(
+        strike_column=require_non_empty_cli_string(
             cast(str, parsed_arguments["option_strike_column"]),
             field_path="option_strike_column",
             error_id=error_id,
             entrypoint=entrypoint,
         ),
-        option_type_column=_require_non_empty_cli_string(
+        option_type_column=require_non_empty_cli_string(
             cast(str, parsed_arguments["option_type_column"]),
             field_path="option_type_column",
             error_id=error_id,
@@ -1020,36 +1014,7 @@ def _build_option_surface_column_mapping_from_arguments(
         implied_volatility_column=cast(Optional[str], parsed_arguments.get("option_implied_volatility_column")),
     )
 
-
-def _build_model_workflow_normalization_policy_from_arguments(
-    parsed_arguments: CliCommandArguments,
-) -> CalibrationMarketDataNormalizationPolicy:
-    duplicate_record_policy_raw = cast(Optional[str], parsed_arguments.get("duplicate_record_policy"))
-    tick_price_input_policy_raw = cast(Optional[str], parsed_arguments.get("tick_price_input_policy"))
-    option_quote_input_policy_raw = cast(Optional[str], parsed_arguments.get("option_quote_input_policy"))
-
-    return CalibrationMarketDataNormalizationPolicy(
-        timestamp_timezone=cast(str, parsed_arguments["timestamp_timezone"]),
-        sort_records_by_timestamp=not bool(parsed_arguments.get("disable_timestamp_sort")),
-        duplicate_record_policy=(
-            CalibrationDuplicateRecordPolicy(duplicate_record_policy_raw)
-            if duplicate_record_policy_raw is not None
-            else None
-        ),
-        tick_price_input_policy=(
-            CalibrationTickPriceInputPolicy(tick_price_input_policy_raw)
-            if tick_price_input_policy_raw is not None
-            else None
-        ),
-        option_quote_input_policy=(
-            CalibrationOptionQuoteInputPolicy(option_quote_input_policy_raw)
-            if option_quote_input_policy_raw is not None
-            else None
-        ),
-    )
-
-
-def _build_model_workflow_output_preferences_from_arguments(
+def build_model_workflow_output_preferences_from_arguments(
     parsed_arguments: CliCommandArguments,
     *,
     repository_root: Path,
@@ -1067,14 +1032,14 @@ def _build_model_workflow_output_preferences_from_arguments(
     )
 
     if selected_execution_mode.value == "disk" and disk_checkpoint_directory is None:
-        raise _cli_validation_error(
+        raise cli_validation_error(
             "disk_checkpoint_directory",
             "--disk-checkpoint-directory is required when --execution-mode disk is selected",
             error_id=error_id,
             entrypoint=entrypoint,
         )
     if selected_execution_mode.value == "memory" and disk_checkpoint_directory is not None:
-        raise _cli_validation_error(
+        raise cli_validation_error(
             "disk_checkpoint_directory",
             "--disk-checkpoint-directory requires --execution-mode disk",
             error_id=error_id,
@@ -1089,7 +1054,7 @@ def _build_model_workflow_output_preferences_from_arguments(
     )
 
 
-def _build_cli_fit_result_payload(
+def build_cli_fit_result_payload(
     *,
     model: JaniformModel,
     fit_report: JaniformFitReport,
@@ -1118,7 +1083,7 @@ def _build_cli_fit_result_payload(
     }
 
 
-def _build_cli_simulate_result_payload(
+def build_cli_simulate_result_payload(
     *,
     model: JaniformModel,
     command_arguments: CliCommandArguments,
@@ -1129,26 +1094,26 @@ def _build_cli_simulate_result_payload(
     error_id: str,
     output_mode: str,
 ) -> dict[str, Any]:
-    start_time_utc = _parse_utc_datetime_cli_argument(
+    start_time_utc = parse_utc_datetime_cli_argument(
         cast(str, command_arguments["start_time_utc"]),
         field_path="start_time_utc",
         error_id=error_id,
         entrypoint=entrypoint,
     )
 
-    horizon_interval_count = _require_positive_integer_cli_argument(
+    horizon_interval_count = require_positive_integer_cli_argument(
         int(cast(int, command_arguments["horizon_interval_count"])),
         field_path="horizon_interval_count",
         error_id=error_id,
         entrypoint=entrypoint,
     )
-    sample_every_nth_transition = _require_positive_integer_cli_argument(
+    sample_every_nth_transition = require_positive_integer_cli_argument(
         int(cast(int, command_arguments["sample_every_nth_transition"])),
         field_path="sample_every_nth_transition",
         error_id=error_id,
         entrypoint=entrypoint,
     )
-    max_records_per_chunk = _require_positive_integer_cli_argument(
+    max_records_per_chunk = require_positive_integer_cli_argument(
         int(cast(int, command_arguments["max_records_per_chunk"])),
         field_path="max_records_per_chunk",
         error_id=error_id,
@@ -1208,7 +1173,7 @@ def _build_cli_simulate_result_payload(
     }
 
 
-def _reject_orphan_market_data_arguments(
+def reject_orphan_market_data_arguments(
     has_primary_path: bool,
     optional_arguments: tuple[tuple[str, Any], ...],
     *,
@@ -1222,7 +1187,55 @@ def _reject_orphan_market_data_arguments(
             raise ValueError(message)
 
 
-def _build_fit_group(*, environment: Optional[Mapping[str, str]] = None) -> click.Group:
+def build_mean_reversion_configuration_from_arguments(
+    command_arguments: CliCommandArguments,
+    *,
+    workflow_scope: CalibrationMarketDataWorkflowScope,
+    entrypoint: str,
+    error_id: str,
+) -> Optional[CalibrationMeanReversionConfiguration]:
+    raw_anchor_model = cast(Optional[str], command_arguments.get("mean_reversion_anchor_model"))
+    raw_grid_interval_hours = cast(Optional[float], command_arguments.get("mean_reversion_grid_interval_hours"))
+
+    if workflow_scope == CalibrationMarketDataWorkflowScope.SEASONALITY_ONLY:
+        if raw_grid_interval_hours is not None:
+            raise cli_validation_error(
+                "mean_reversion_grid_interval_hours",
+                "--mean-reversion-grid-interval-hours is not supported when --workflow-scope is seasonality_only",
+                error_id=error_id,
+                entrypoint=entrypoint,
+            )
+        if raw_anchor_model is None:
+            return None
+
+        raise cli_validation_error(
+            "mean_reversion_anchor_model",
+            "--mean-reversion-anchor-model is not supported when --workflow-scope is seasonality_only",
+            error_id=error_id,
+            entrypoint=entrypoint,
+        )
+
+    anchor_model_kind = (
+        MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL
+        if raw_anchor_model is None
+        else MeanReversionAnchorModelKind(raw_anchor_model)
+    )
+
+    try:
+        return CalibrationMeanReversionConfiguration(
+            anchor_model_kind=anchor_model_kind,
+            calibration_grid_interval_hours=raw_grid_interval_hours,
+        )
+    except Exception as e:
+        raise cli_validation_error(
+            "mean_reversion_anchor_model",
+            str(e),
+            error_id=error_id,
+            entrypoint=entrypoint,
+        ) from e
+
+
+def build_fit_group(*, environment: Optional[Mapping[str, str]] = None) -> click.Group:
     @click.group(
         cls=JaniformGroup,
         command_path=("fit",),
@@ -1234,13 +1247,13 @@ def _build_fit_group(*, environment: Optional[Mapping[str, str]] = None) -> clic
             "use `fit staged` only when you need direct control over the staged execution boundary."
         ),
         invoke_without_command=True,
-        params=_model_workflow_fit_options(enforce_required=False),
+        params=model_workflow_fit_options(enforce_required=False),
     )
     @click.pass_context
     def fit(ctx: click.Context, **command_arguments) -> Optional[int]:
         return invoke_group_default_handler(
             ctx,
-            handler=_run_fit_command,
+            handler=run_fit_command,
             command_path=("fit",),
             command_arguments=dict(command_arguments),
             required_option_names=("tick_data_path",),
@@ -1255,7 +1268,7 @@ def _build_fit_group(*, environment: Optional[Mapping[str, str]] = None) -> clic
         command_path=("fit", "inspect"),
         environment=environment,
         help="Inspect the inferred fit configuration without running calibration.",
-        params=_model_workflow_fit_options(
+        params=model_workflow_fit_options(
             enforce_required=False,
             include_output_dir=True,
             include_explain=False,
@@ -1265,7 +1278,7 @@ def _build_fit_group(*, environment: Optional[Mapping[str, str]] = None) -> clic
     def fit_inspect(ctx: click.Context, **command_arguments) -> int:
         return invoke_command_handler(
             ctx,
-            handler=_run_fit_inspect_command,
+            handler=run_fit_inspect_command,
             command_path=("fit", "inspect"),
             command_arguments=dict(command_arguments),
             exclusivity_groups=(("session_preset", "session_json"), ("known_news", "known_news_json")),
@@ -1278,7 +1291,7 @@ def _build_fit_group(*, environment: Optional[Mapping[str, str]] = None) -> clic
     return fit_group
 
 
-def _build_simulate_group(*, environment: Optional[Mapping[str, str]] = None) -> click.Group:
+def build_simulate_group(*, environment: Optional[Mapping[str, str]] = None) -> click.Group:
     @click.group(
         cls=JaniformGroup,
         command_path=("simulate",),
@@ -1290,7 +1303,7 @@ def _build_simulate_group(*, environment: Optional[Mapping[str, str]] = None) ->
             "or `simulate seeded-ticks` when you need direct control over those explicit contracts."
         ),
         invoke_without_command=True,
-        params=_model_workflow_simulate_options(
+        params=model_workflow_simulate_options(
             require_model_path=True,
             enforce_required=False,
         ),
@@ -1299,7 +1312,7 @@ def _build_simulate_group(*, environment: Optional[Mapping[str, str]] = None) ->
     def simulate(ctx: click.Context, **command_arguments) -> Optional[int]:
         return invoke_group_default_handler(
             ctx,
-            handler=_run_model_simulate_command,
+            handler=run_model_simulate_command,
             command_path=("simulate",),
             command_arguments=dict(command_arguments),
             required_option_names=("model_path", "seed", "start_time_utc", "horizon_interval_count"),
@@ -1313,7 +1326,7 @@ def _build_simulate_group(*, environment: Optional[Mapping[str, str]] = None) ->
     return simulate_group
 
 
-def _model_workflow_fit_options(
+def model_workflow_fit_options(
     *,
     enforce_required: bool = True,
     include_output_dir: bool = True,
@@ -1458,6 +1471,22 @@ def _model_workflow_fit_options(
             ),
             value_type=int,
         ),
+        command_option(
+            "--mean-reversion-anchor-model",
+            choice_options=tuple(anchor_model_kind.value for anchor_model_kind in MeanReversionAnchorModelKind),
+            help_text=(
+                "Optional explicit endogenous anchor policy selector for high-level mean-reversion calibration. "
+                "Default for non-seasonality workflows: endogenous_core_expectation_one_interval."
+            ),
+        ),
+        command_option(
+            "--mean-reversion-grid-interval-hours",
+            help_text=(
+                "Optional calibration-grid interval in hours for high-level mean-reversion calibration. "
+                "Default: derived from retained session-open boundary observations."
+            ),
+            value_type=float,
+        ),
         *(
             [
                 command_option(
@@ -1537,7 +1566,7 @@ def _model_workflow_fit_options(
     ]
 
 
-def _model_workflow_simulate_options(
+def model_workflow_simulate_options(
     *,
     require_model_path: bool,
     include_shared_arguments: bool = True,
@@ -1609,6 +1638,3 @@ def _model_workflow_simulate_options(
     )
 
     return parameters
-
-
-__all__ = []

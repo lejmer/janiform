@@ -6,31 +6,42 @@ import pytest
 
 from janiform.pricing import GammaSeverityMarkConfiguration, NigSharedPlusShiftConfiguration
 from janiform.simulation import (
-    CoupledGapMarkConfiguration,
-    DoubleExponentialBaseShockConfiguration,
     HawkesExcitationState,
     HawkesKernelLoadings,
     HawkesKernelParameters,
-    KnownNewsArrivalConfiguration,
     MeanReversionBoundaryState,
     MeanReversionRuntimeIntervalAnchors,
+    SeededTickEventSide,
+    SeededTickEventStateSnapshotCapture,
+    SeededTickSimulationValidationError,
+)
+from janiform.simulation.coarse import (
+    CoupledGapMarkConfiguration,
+    DoubleExponentialBaseShockConfiguration,
+    KnownNewsArrivalConfiguration,
     NewsArrivalConfiguration,
     NewsComponentMarkScaleConfiguration,
     NewsProcessConfiguration,
-    SeededTickEventSide,
-    SeededTickEventStateSnapshotCapture,
-    SeededTickSimulationRequest,
-    SeededTickSimulationValidationError,
     SharedNewsMarkLawConfiguration,
     SurpriseNewsArrivalConfiguration,
+)
+from janiform.simulation.seeded import (
+    SeededTickSimulationRequest,
     deserialize_seeded_tick_simulation_response,
     run_seeded_tick_event_simulation,
     serialize_seeded_tick_simulation_response,
     validate_seeded_tick_simulation_response,
 )
+from tests.simulation_test_support import build_endogenous_mean_reversion_runtime_contracts
 
 
 def test_simulation_request_model_validates_construction() -> None:
+    (
+        mean_reversion_fitted_parameters,
+        mean_reversion_runtime_interval_anchors,
+        initial_mean_reversion_boundary_state,
+    ) = build_endogenous_mean_reversion_runtime_contracts(interval_count=2)
+
     request = SeededTickSimulationRequest(
         seed=17,
         start_time_utc=datetime(2026, 2, 2, tzinfo=UTC),
@@ -59,6 +70,9 @@ def test_simulation_request_model_validates_construction() -> None:
             y_minus_plus=0.0,
             y_minus_minus=0.0,
         ),
+        mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
+        mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
+        initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
         hourly_factor_summary=_valid_hourly_factor_summary(),
         state_snapshot_capture=SeededTickEventStateSnapshotCapture.POST_EVENT_TRANSITION,
     )
@@ -67,6 +81,12 @@ def test_simulation_request_model_validates_construction() -> None:
 
 
 def test_simulation_request_rejects_non_positive_sampling_stride() -> None:
+    (
+        mean_reversion_fitted_parameters,
+        mean_reversion_runtime_interval_anchors,
+        initial_mean_reversion_boundary_state,
+    ) = build_endogenous_mean_reversion_runtime_contracts(interval_count=2)
+
     with pytest.raises(SeededTickSimulationValidationError) as captured_error:
         SeededTickSimulationRequest(
             seed=17,
@@ -76,6 +96,9 @@ def test_simulation_request_rejects_non_positive_sampling_stride() -> None:
             nig_shared_plus_shift_configuration=_valid_nig_shared_plus_shift_configuration(),
             news_process_configuration=_valid_news_process_configuration(),
             initial_excitation_state=_valid_excitation_state(),
+            mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
+            mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
+            initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
             hourly_factor_summary=_valid_hourly_factor_summary(),
             sample_every_nth_transition=0,
         )
@@ -137,6 +160,12 @@ def test_simulation_response_rejects_invalid_side_with_structured_error() -> Non
 
 
 def test_simulation_entrypoint_rejects_request_without_runtime_hourly_factor_handle() -> None:
+    (
+        mean_reversion_fitted_parameters,
+        mean_reversion_runtime_interval_anchors,
+        initial_mean_reversion_boundary_state,
+    ) = build_endogenous_mean_reversion_runtime_contracts(interval_count=2)
+
     request = SeededTickSimulationRequest(
         seed=17,
         start_time_utc=datetime(2026, 2, 2, tzinfo=UTC),
@@ -145,6 +174,9 @@ def test_simulation_entrypoint_rejects_request_without_runtime_hourly_factor_han
         nig_shared_plus_shift_configuration=_valid_nig_shared_plus_shift_configuration(),
         news_process_configuration=_valid_news_process_configuration(),
         initial_excitation_state=_valid_excitation_state(),
+        mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
+        mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
+        initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
         hourly_factor_summary=_valid_hourly_factor_summary(),
     )
 
@@ -184,7 +216,7 @@ def _valid_excitation_state() -> HawkesExcitationState:
 
 
 def _valid_hourly_factor_summary():
-    from janiform.simulation import SeededTickSimulationHourlyFactorSummary
+    from janiform.simulation.seeded import SeededTickSimulationHourlyFactorSummary
 
     return SeededTickSimulationHourlyFactorSummary(
         schema_version="seasonality.hourly_factor.contract.v1",
@@ -295,7 +327,11 @@ def _valid_response_payload() -> dict[str, Any]:
                     "closed_gap_return": 0.0,
                     "total_return": 0.1,
                 },
-                "cumulative_log_return": 0.1,
+                "core_total_return_increment": 0.1,
+                "observed_log_price": 0.1,
+                "anchor_value": 0.0,
+                "deviation_from_anchor": 0.1,
+                "cumulative_core_log_return": 0.1,
             }
         ],
         "event_tape": [
@@ -303,6 +339,10 @@ def _valid_response_payload() -> dict[str, Any]:
                 "event_index": 0,
                 "timestamp_utc_nanos": 100,
                 "side": SeededTickEventSide.BUY.value,
+                "core_total_return_increment": 0.1,
+                "observed_log_price": 0.1,
+                "anchor_value": 0.0,
+                "deviation_from_anchor": 0.1,
             }
         ],
     }

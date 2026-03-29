@@ -5,7 +5,7 @@ import os
 import tempfile
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Optional, cast
 
@@ -19,12 +19,21 @@ if "MPLCONFIGDIR" not in os.environ:
 
 from matplotlib.figure import Figure
 
-from janiform._timestamps import utc_microseconds_to_datetime
+from janiform._timestamps import datetime_to_utc_microseconds, utc_microseconds_to_datetime
+from janiform.calibration.fit import model as fit_model_runtime
+from janiform.calendar import CalendarRegistry, MarketState
+from janiform.contracts import MeanReversionFittedParameters
+from janiform.hourly_factors import (
+    HourlyNewsIntensityProviderMaterializedSource,
+    provide_hourly_factor_contract,
+)
 
 from .artifacts import WorkbenchArtifacts, _artifact_list
 from .fit_context import (
     WorkbenchObservedSimulationComparison,
     WorkbenchPriceSeries,
+    _simulation_reference_price,
+    _simulation_request_window_for_interval,
     build_observed_simulation_comparison,
 )
 
@@ -54,6 +63,26 @@ _OBSERVED_SIMULATION_ANALYSIS_CACHE: dict[int, WorkbenchObservedSimulationAnalys
 _OBSERVED_SIMULATION_ANALYSIS_CACHE_MAX_ENTRIES = 8
 _MAX_PATH_PLOT_POINTS = 4_000
 _MAX_SCATTER_POINTS = 8_000
+_MEAN_REVERSION_BIN_COUNT_LOWER_BOUND = 5
+_MEAN_REVERSION_BIN_COUNT_UPPER_BOUND = 10
+_MEAN_REVERSION_BIN_MINIMUM_SAMPLE_COUNT = 10
+_MEAN_REVERSION_TAIL_QUANTILE_LOWER_BOUND = 0.02
+_MEAN_REVERSION_TAIL_QUANTILE_UPPER_BOUND = 0.98
+_MEAN_REVERSION_DIAGNOSTIC_INTERVAL_MINUTES = _SUPPORTED_ANALYSIS_HORIZONS_MINUTES[0]
+
+
+@dataclass(frozen=True, slots=True)
+class WorkbenchMeanReversionSeriesAnalysis:
+    timestamp_microseconds_utc: NDArray[np.int64]
+    runtime_log_prices: NDArray[np.float64]
+    anchor_values: NDArray[np.float64]
+    deviations_from_anchor: NDArray[np.float64]
+
+
+@dataclass(frozen=True, slots=True)
+class WorkbenchMeanReversionUnavailableDiagnostics:
+    message: str
+    summary_lines: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,21 +113,40 @@ class WorkbenchObservedSimulationAnalysis:
     simulated_seeded_15m: WorkbenchSeriesAnalysis
     simulated_coarse_15m: WorkbenchSeriesAnalysis
     available_horizon_minutes: tuple[int, ...]
+    observed_mean_reversion: Optional[WorkbenchMeanReversionSeriesAnalysis] = None
+    simulated_mean_reversion: Optional[WorkbenchMeanReversionSeriesAnalysis] = None
 
 
-def create_selected_candidate_diagnostics_figure(artifacts: WorkbenchArtifacts) -> Figure:
-    figure = Figure(figsize=(14, 8), constrained_layout=True)
-    family_axis = figure.add_subplot(2, 2, 1)
-    scatter_axis = figure.add_subplot(2, 2, 2)
-    metric_axis = figure.add_subplot(2, 2, 3)
-    summary_axis = figure.add_subplot(2, 2, 4)
+def create_selected_candidate_diagnostics_figure(
+    artifacts: WorkbenchArtifacts,
+    *,
+    include_summary: bool = True,
+) -> Figure:
+    if include_summary:
+        figure = Figure(figsize=(14, 8), constrained_layout=True)
+        family_axis = figure.add_subplot(2, 2, 1)
+        scatter_axis = figure.add_subplot(2, 2, 2)
+        metric_axis = figure.add_subplot(2, 2, 3)
+        summary_axis = figure.add_subplot(2, 2, 4)
+    else:
+        figure = Figure(figsize=(14, 8), constrained_layout=True)
+        grid_spec = figure.add_gridspec(2, 2, width_ratios=(1.0, 1.45))
+        family_axis = figure.add_subplot(grid_spec[0, 0])
+        metric_axis = figure.add_subplot(grid_spec[1, 0])
+        scatter_axis = figure.add_subplot(grid_spec[:, 1])
+        summary_axis = None
 
     selected_candidate_entry = _selected_candidate_entry(artifacts)
     if selected_candidate_entry is None:
         _render_unavailable_axes(
-            (family_axis, scatter_axis, metric_axis, summary_axis),
+            tuple(
+                axis
+                for axis in (family_axis, scatter_axis, metric_axis, summary_axis)
+                if axis is not None
+            ),
             "Selected candidate diagnostics are unavailable for this run.",
         )
+
         return figure
 
     family_metrics = [
@@ -250,34 +298,46 @@ def create_selected_candidate_diagnostics_figure(artifacts: WorkbenchArtifacts) 
     metric_axis.invert_yaxis()
     metric_axis.grid(axis="x", alpha=0.3)
 
-    summary_axis.set_title("Selection Summary")
-    summary_axis.axis("off")
-
-    decision = artifacts.selection_rationale.get("decision", {})
-
-    summary_axis.text(
-        0.0,
-        1.0,
-        "\n".join(
-            [
-                f"candidate: {selected_candidate_entry.get('candidate_id', 'unknown')}",
-                f"stage: {selected_candidate_entry.get('stage', 'unknown')}",
-                f"tier: {selected_candidate_entry.get('evaluation_tier', 'unknown')}",
-                f"admissible: {selected_candidate_entry.get('admissible', False)}",
-                f"valid: {selected_candidate_entry.get('valid', False)}",
-                f"selection stage: {decision.get('selection_stage', 'unknown')}",
-                f"selection policy: {decision.get('selection_policy', 'unknown')}",
-                f"decisive metrics: {', '.join(_decisive_metric_ids(artifacts)) or 'none'}",
-                f"pareto frontier count: {decision.get('pareto_frontier_count', 'unknown')}",
-                f"admissible count: {decision.get('admissible_candidate_count', 'unknown')}",
-            ]
-        ),
-        va="top",
-        ha="left",
-        family="monospace",
-    )
+    if summary_axis is not None:
+        summary_axis.set_title("Selection Summary")
+        summary_axis.axis("off")
+        summary_axis.text(
+            0.0,
+            1.0,
+            "\n".join(
+                f"{row['field']}: {row['value']}"
+                for row in selected_candidate_summary_rows(artifacts)
+            ),
+            va="top",
+            ha="left",
+            family="monospace",
+        )
 
     return figure
+
+
+def selected_candidate_summary_rows(
+    artifacts: WorkbenchArtifacts,
+) -> list[dict[str, Any]]:
+    selected_candidate_entry = _selected_candidate_entry(artifacts)
+    if selected_candidate_entry is None:
+        return []
+
+    decision = artifacts.selection_rationale.get("decision", {})
+    return _summary_rows_from_pairs(
+        [
+            ("candidate", selected_candidate_entry.get("candidate_id", "unknown")),
+            ("stage", selected_candidate_entry.get("stage", "unknown")),
+            ("tier", selected_candidate_entry.get("evaluation_tier", "unknown")),
+            ("admissible", selected_candidate_entry.get("admissible", False)),
+            ("valid", selected_candidate_entry.get("valid", False)),
+            ("selection stage", decision.get("selection_stage", "unknown")),
+            ("selection policy", decision.get("selection_policy", "unknown")),
+            ("decisive metrics", ", ".join(_decisive_metric_ids(artifacts)) or "none"),
+            ("pareto frontier count", decision.get("pareto_frontier_count", "unknown")),
+            ("admissible count", decision.get("admissible_candidate_count", "unknown")),
+        ]
+    )
 
 
 def create_observed_targets_figure(artifacts: WorkbenchArtifacts) -> Figure:
@@ -676,13 +736,24 @@ def create_run_progress_figure(artifacts: WorkbenchArtifacts) -> Figure:
     return figure
 
 
-def create_consistency_figure(artifacts: WorkbenchArtifacts) -> Figure:
-    figure = Figure(figsize=(15, 8), constrained_layout=True)
-
-    delta_axis = figure.add_subplot(2, 2, 1)
-    scatter_axis = figure.add_subplot(2, 2, 2)
-    heatmap_axis = figure.add_subplot(2, 2, 3)
-    summary_axis = figure.add_subplot(2, 2, 4)
+def create_consistency_figure(
+    artifacts: WorkbenchArtifacts,
+    *,
+    include_summary: bool = True,
+) -> Figure:
+    if include_summary:
+        figure = Figure(figsize=(15, 8), constrained_layout=True)
+        delta_axis = figure.add_subplot(2, 2, 1)
+        scatter_axis = figure.add_subplot(2, 2, 2)
+        heatmap_axis = figure.add_subplot(2, 2, 3)
+        summary_axis = figure.add_subplot(2, 2, 4)
+    else:
+        figure = Figure(figsize=(15, 7), constrained_layout=True)
+        grid_spec = figure.add_gridspec(2, 2)
+        delta_axis = figure.add_subplot(grid_spec[0, 0])
+        scatter_axis = figure.add_subplot(grid_spec[0, 1])
+        heatmap_axis = figure.add_subplot(grid_spec[1, :])
+        summary_axis = None
 
     metrics = sorted(
         _artifact_list(artifacts.coarse_tick_consistency, "metrics"),
@@ -691,7 +762,11 @@ def create_consistency_figure(artifacts: WorkbenchArtifacts) -> Figure:
     )
     if not metrics:
         _render_unavailable_axes(
-            (delta_axis, scatter_axis, heatmap_axis, summary_axis),
+            tuple(
+                axis
+                for axis in (delta_axis, scatter_axis, heatmap_axis, summary_axis)
+                if axis is not None
+            ),
             "Coarse-versus-tick consistency diagnostics are unavailable for this run.",
         )
 
@@ -765,30 +840,44 @@ def create_consistency_figure(artifacts: WorkbenchArtifacts) -> Figure:
 
     heatmap_axis.grid(False)
 
-    summary_axis.set_title("Consistency Summary")
-    summary_axis.axis("off")
-
-    worst_metric = metrics[0]
-
-    mean_delta_by_horizon = _mean_delta_by_horizon(metrics)
-
-    summary_axis.text(
-        0.0,
-        1.0,
-        "\n".join(
-            [
-                f"worst metric: {_metric_label(worst_metric)}",
-                f"worst delta: {float(worst_metric.get('normalized_delta', 0.0)):.3f}",
-                f"metric count: {len(metrics)}",
-                f"mean delta by horizon: {json_like(mean_delta_by_horizon)}",
-            ]
-        ),
-        va="top",
-        ha="left",
-        family="monospace",
-    )
+    if summary_axis is not None:
+        summary_axis.set_title("Consistency Summary")
+        summary_axis.axis("off")
+        summary_axis.text(
+            0.0,
+            1.0,
+            "\n".join(
+                f"{row['field']}: {row['value']}"
+                for row in consistency_summary_rows(artifacts)
+            ),
+            va="top",
+            ha="left",
+            family="monospace",
+        )
 
     return figure
+
+
+def consistency_summary_rows(
+    artifacts: WorkbenchArtifacts,
+) -> list[dict[str, Any]]:
+    metrics = sorted(
+        _artifact_list(artifacts.coarse_tick_consistency, "metrics"),
+        key=lambda metric: float(metric.get("normalized_delta", 0.0)),
+        reverse=True,
+    )
+    if not metrics:
+        return []
+
+    worst_metric = metrics[0]
+    return _summary_rows_from_pairs(
+        [
+            ("worst metric", _metric_label(worst_metric)),
+            ("worst delta", f"{float(worst_metric.get('normalized_delta', 0.0)):.3f}"),
+            ("metric count", len(metrics)),
+            ("mean delta by horizon", json_like(_mean_delta_by_horizon(metrics))),
+        ]
+    )
 
 
 def create_simulation_summary_figure(artifacts: WorkbenchArtifacts) -> Figure:
@@ -983,7 +1072,12 @@ def create_parameter_objective_figure_with_columns(
     for axis, parameter_name in zip(axes.flat, parameter_names, strict=False):
         points = parameter_points[parameter_name]
         admissible_points = [point for point in points if point["admissible"]]
-        rejected_points = [point for point in points if not point["admissible"]]
+        valid_points = [
+            point
+            for point in points
+            if bool(point["valid"]) and not bool(point["admissible"])
+        ]
+        rejected_points = [point for point in points if not bool(point["valid"])]
         y_focus_limits = _parameter_objective_focus_limits(
             [float(point["objective"]) for point in points]
         )
@@ -994,6 +1088,15 @@ def create_parameter_objective_figure_with_columns(
                 admissible_points,
                 color="#1d4ed8",
                 label="admissible",
+                y_focus_limits=y_focus_limits,
+            )
+
+        if valid_points:
+            _render_parameter_objective_points(
+                axis,
+                valid_points,
+                color="#d97706",
+                label="valid",
                 y_focus_limits=y_focus_limits,
             )
 
@@ -1026,7 +1129,7 @@ def create_parameter_objective_figure_with_columns(
                 ),
             )
 
-        if admissible_points or rejected_points:
+        if admissible_points or valid_points or rejected_points:
             axis.legend(loc="best", fontsize="small")
 
     for axis in list(axes.flat)[len(parameter_names):]:
@@ -1166,13 +1269,21 @@ def create_parameter_search_figure(
     *,
     left_parameter: Optional[str] = None,
     right_parameter: Optional[str] = None,
+    include_summary: bool = True,
 ) -> Figure:
-    figure = Figure(figsize=(15, 9), constrained_layout=True)
-
-    admissibility_axis = figure.add_subplot(2, 2, 1)
-    pairwise_axis = figure.add_subplot(2, 2, 2)
-    coverage_axis = figure.add_subplot(2, 2, 3)
-    summary_axis = figure.add_subplot(2, 2, 4)
+    if include_summary:
+        figure = Figure(figsize=(15, 9), constrained_layout=True)
+        admissibility_axis = figure.add_subplot(2, 2, 1)
+        pairwise_axis = figure.add_subplot(2, 2, 2)
+        coverage_axis = figure.add_subplot(2, 2, 3)
+        summary_axis = figure.add_subplot(2, 2, 4)
+    else:
+        figure = Figure(figsize=(15, 7), constrained_layout=True)
+        grid_spec = figure.add_gridspec(2, 2)
+        admissibility_axis = figure.add_subplot(grid_spec[0, 0])
+        pairwise_axis = figure.add_subplot(grid_spec[0, 1])
+        coverage_axis = figure.add_subplot(grid_spec[1, :])
+        summary_axis = None
 
     parameter_points = _parameter_search_points(artifacts)
     parameter_names = sorted(
@@ -1182,7 +1293,11 @@ def create_parameter_search_figure(
     )
     if not parameter_names:
         _render_unavailable_axes(
-            (admissibility_axis, pairwise_axis, coverage_axis, summary_axis),
+            tuple(
+                axis
+                for axis in (admissibility_axis, pairwise_axis, coverage_axis, summary_axis)
+                if axis is not None
+            ),
             "Parameter-search diagnostics are unavailable for this run.",
         )
 
@@ -1291,22 +1406,21 @@ def create_parameter_search_figure(
         pairwise_axis.set_xticks([])
         pairwise_axis.set_yticks([])
 
-    summary_axis.axis("off")
-    summary_axis.set_title("Parameter Search Summary")
-    summary_axis.text(
-        0.0,
-        1.0,
-        "\n".join(
-            [
-                _format_parameter_search_summary(parameter_name, parameter_points[parameter_name])
-                for parameter_name in parameter_names[:8]
-            ]
-        ),
-        va="top",
-        ha="left",
-        family="monospace",
-        transform=summary_axis.transAxes,
-    )
+    if summary_axis is not None:
+        summary_axis.axis("off")
+        summary_axis.set_title("Parameter Search Summary")
+        summary_axis.text(
+            0.0,
+            1.0,
+            "\n".join(
+                _format_parameter_search_summary_row(row)
+                for row in parameter_search_summary_rows(artifacts)
+            ),
+            va="top",
+            ha="left",
+            family="monospace",
+            transform=summary_axis.transAxes,
+        )
 
     return figure
 
@@ -1330,7 +1444,7 @@ def _analysis_for_observed_simulation_comparison(
     if cached_analysis is not None:
         return cached_analysis
 
-    observed_analysis = _build_series_analysis(comparison.observed_series)
+    observed_analysis = _build_series_analysis(comparison.observed_comparison_series)
     simulated_analysis = _build_series_analysis(comparison.simulated_series)
     simulated_seeded_15m_analysis = _build_series_analysis(comparison.simulated_seeded_series_15m)
     simulated_coarse_analysis = _build_series_analysis(comparison.simulated_coarse_series_15m)
@@ -1344,12 +1458,24 @@ def _analysis_for_observed_simulation_comparison(
     if len(available_horizon_minutes) == 0:
         available_horizon_minutes = (15,)
 
+    mean_reversion_interval_series = _mean_reversion_interval_series_for_comparison(
+        comparison
+    )
+
     analysis = WorkbenchObservedSimulationAnalysis(
         observed=observed_analysis,
         simulated=simulated_analysis,
         simulated_seeded_15m=simulated_seeded_15m_analysis,
         simulated_coarse_15m=simulated_coarse_analysis,
         available_horizon_minutes=available_horizon_minutes,
+        observed_mean_reversion=_build_mean_reversion_series_analysis(
+            _comparison_model(comparison),
+            mean_reversion_interval_series[0],
+        ),
+        simulated_mean_reversion=_build_mean_reversion_series_analysis(
+            _comparison_model(comparison),
+            mean_reversion_interval_series[1],
+        ),
     )
     if len(_OBSERVED_SIMULATION_ANALYSIS_CACHE) >= _OBSERVED_SIMULATION_ANALYSIS_CACHE_MAX_ENTRIES:
         first_cache_key = next(iter(_OBSERVED_SIMULATION_ANALYSIS_CACHE))
@@ -1433,6 +1559,433 @@ def _build_series_analysis(series: WorkbenchPriceSeries) -> WorkbenchSeriesAnaly
         bucket_series_by_horizon=bucket_series_by_horizon,
         rolling_activity_points=rolling_activity_points,
     )
+
+
+def _build_mean_reversion_series_analysis(
+    model: Any,
+    series: WorkbenchPriceSeries,
+) -> Optional[WorkbenchMeanReversionSeriesAnalysis]:
+    if (
+        series.timestamp_microseconds_utc.size == 0
+        or series.prices.size == 0
+        or np.any(series.prices <= 0.0)
+    ):
+        return None
+
+    fitted_parameters = _resolve_mean_reversion_fitted_parameters(model)
+    if fitted_parameters is None:
+        return None
+
+    reference_price = _simulation_reference_price(model)
+    if not math.isfinite(reference_price) or reference_price <= 0.0:
+        return None
+
+    runtime_log_prices = np.log(series.prices / reference_price)
+
+    match fitted_parameters.anchor_model.anchor_model_kind.value:
+        case "endogenous_core_expectation_one_interval":
+            anchor_values = _materialize_endogenous_mean_reversion_anchor_values(
+                model,
+                runtime_log_prices=runtime_log_prices,
+                timestamp_microseconds_utc=series.timestamp_microseconds_utc,
+            )
+            if anchor_values is None:
+                return None
+        case _:
+            return None
+
+    if anchor_values.shape != runtime_log_prices.shape:
+        return None
+
+    return WorkbenchMeanReversionSeriesAnalysis(
+        timestamp_microseconds_utc=series.timestamp_microseconds_utc,
+        runtime_log_prices=runtime_log_prices,
+        anchor_values=anchor_values,
+        deviations_from_anchor=runtime_log_prices - anchor_values,
+    )
+
+
+def _resolve_mean_reversion_fitted_parameters(
+    model: Any,
+) -> Optional[MeanReversionFittedParameters]:
+    if model is None:
+        return None
+
+    try:
+        return fit_model_runtime._mean_reversion_fitted_parameters(model)
+    except (AttributeError, RuntimeError, TypeError, ValueError):
+        return None
+
+
+def _mean_reversion_interval_series_for_comparison(
+    comparison: WorkbenchObservedSimulationComparison,
+) -> tuple[WorkbenchPriceSeries, WorkbenchPriceSeries]:
+    diagnostic_interval = timedelta(minutes=_MEAN_REVERSION_DIAGNOSTIC_INTERVAL_MINUTES)
+    model = _comparison_model(comparison)
+
+    observed_series = _regularize_price_series_to_interval_closes(
+        model,
+        comparison.observed_comparison_series,
+        interval=diagnostic_interval,
+    )
+
+    simulated_series = comparison.simulated_seeded_series_15m
+    if simulated_series.timestamp_microseconds_utc.size == 0:
+        simulated_series = _regularize_price_series_to_interval_closes(
+            model,
+            comparison.simulated_series,
+            interval=diagnostic_interval,
+        )
+
+    return observed_series, simulated_series
+
+
+def _regularize_price_series_to_interval_closes(
+    model: Any,
+    series: WorkbenchPriceSeries,
+    *,
+    interval: timedelta,
+) -> WorkbenchPriceSeries:
+    if series.timestamp_microseconds_utc.size == 0 or series.prices.size == 0:
+        return WorkbenchPriceSeries(
+            timestamp_microseconds_utc=np.asarray([], dtype=np.int64),
+            prices=np.asarray([], dtype=np.float64),
+        )
+
+    range_start_utc = utc_microseconds_to_datetime(int(series.timestamp_microseconds_utc[0]))
+    range_end_utc = utc_microseconds_to_datetime(int(series.timestamp_microseconds_utc[-1]))
+
+    aligned_start_utc, horizon_interval_count = _simulation_request_window_for_interval(
+        observed_range_start_utc=range_start_utc,
+        observed_range_end_utc=range_end_utc,
+        interval=interval,
+    )
+
+    next_record_index = 0
+    latest_price = math.nan
+
+    range_start_microseconds_utc = int(series.timestamp_microseconds_utc[0])
+    range_end_microseconds_utc = int(series.timestamp_microseconds_utc[-1])
+
+    interval_end_timestamps_microseconds_utc: list[int] = []
+    close_prices: list[float] = []
+
+    for interval_index in range(horizon_interval_count):
+        interval_start_utc = aligned_start_utc + interval * interval_index
+        interval_end_utc = interval_start_utc + interval
+        interval_end_microseconds_utc = datetime_to_utc_microseconds(interval_end_utc)
+
+        while next_record_index < series.timestamp_microseconds_utc.size:
+            record_timestamp_microseconds_utc = int(series.timestamp_microseconds_utc[next_record_index])
+            if record_timestamp_microseconds_utc > interval_end_microseconds_utc:
+                break
+
+            latest_price = float(series.prices[next_record_index])
+            next_record_index += 1
+
+        if not math.isfinite(latest_price) or latest_price <= 0.0:
+            continue
+        if not _mean_reversion_diagnostic_interval_is_open(model, interval_start_utc):
+            continue
+        if interval_end_microseconds_utc < range_start_microseconds_utc:
+            continue
+        if interval_end_microseconds_utc > range_end_microseconds_utc:
+            continue
+
+        interval_end_timestamps_microseconds_utc.append(interval_end_microseconds_utc)
+        close_prices.append(latest_price)
+
+    return WorkbenchPriceSeries(
+        timestamp_microseconds_utc=np.asarray(
+            interval_end_timestamps_microseconds_utc,
+            dtype=np.int64,
+        ),
+        prices=np.asarray(close_prices, dtype=np.float64),
+    )
+
+
+def _mean_reversion_diagnostic_interval_is_open(
+    model: Any,
+    interval_start_utc: datetime,
+) -> bool:
+    session_resolution = getattr(model, "session_resolution", None)
+    if session_resolution is None:
+        return True
+
+    try:
+        calendar_registry = CalendarRegistry(session_resolution.resolved_session_definition_json)
+        exchange_code = session_resolution.exchange_code
+    except AttributeError:
+        return True
+
+    return calendar_registry.resolve_market_state(exchange_code, interval_start_utc) == MarketState.OPEN
+
+
+def _materialize_endogenous_mean_reversion_anchor_values(
+    model: Any,
+    *,
+    runtime_log_prices: NDArray[np.float64],
+    timestamp_microseconds_utc: NDArray[np.int64],
+) -> Optional[NDArray[np.float64]]:
+    if timestamp_microseconds_utc.size == 0 or runtime_log_prices.size != timestamp_microseconds_utc.size:
+        return None
+    if timestamp_microseconds_utc.size == 1:
+        return np.asarray([float(runtime_log_prices[0])], dtype=np.float64)
+
+    inferred_interval_microseconds = _infer_regularized_interval_microseconds(
+        timestamp_microseconds_utc
+    )
+    if inferred_interval_microseconds is None:
+        return None
+
+    interval = timedelta(microseconds=inferred_interval_microseconds)
+
+    start_time_utc = utc_microseconds_to_datetime(int(timestamp_microseconds_utc[0]))
+    end_time_utc = utc_microseconds_to_datetime(int(timestamp_microseconds_utc[-1]))
+
+    full_interval_count = (
+        int(timestamp_microseconds_utc[-1]) - int(timestamp_microseconds_utc[0])
+    ) // inferred_interval_microseconds
+    if full_interval_count <= 0:
+        return np.asarray([float(runtime_log_prices[0])], dtype=np.float64)
+
+    try:
+        runtime_factors = fit_model_runtime._prepare_model_runtime_factors(
+            model,
+            start_time_utc=start_time_utc,
+            horizon_interval_count=full_interval_count,
+            interval=interval,
+        )
+
+        hourly_factor_contract = provide_hourly_factor_contract(
+            calendar_registry=runtime_factors.calendar_registry,
+            exchange_code=runtime_factors.exchange_code,
+            range_start_utc=start_time_utc,
+            range_end_utc=end_time_utc,
+            interval=interval,
+            seasonality_source=fit_model_runtime._build_runtime_hourly_seasonality_source_from_model(
+                model,
+                calendar_registry=runtime_factors.calendar_registry,
+                exchange_code=runtime_factors.exchange_code,
+                range_start_utc=start_time_utc,
+                range_end_utc=end_time_utc,
+                interval=interval,
+            ),
+            news_intensity_source=HourlyNewsIntensityProviderMaterializedSource(
+                known_scheduled_event_timestamps_utc=fit_model_runtime._resolved_known_news_event_timestamps(
+                    model
+                ),
+                surprise_baseline_intensity=fit_model_runtime._surprise_baseline_intensity(model),
+                surprise_deterministic_time_multiplier_by_interval_index=(
+                    fit_model_runtime._surprise_deterministic_time_multiplier_by_interval_index(
+                        model,
+                        range_start_utc=start_time_utc,
+                        range_end_utc=end_time_utc,
+                        interval_duration_nanos=runtime_factors.interval_duration_nanos,
+                    )
+                ),
+            ),
+        )
+
+        _, runtime_interval_anchors, _ = fit_model_runtime._prepare_model_mean_reversion_runtime_inputs(
+            model,
+            runtime_factors=runtime_factors,
+            hourly_factor_contract=hourly_factor_contract,
+            initial_excitation_state=fit_model_runtime._zero_hawkes_excitation_state(),
+            start_anchor_value=float(runtime_log_prices[0]),
+        )
+    except (AttributeError, RuntimeError, TypeError, ValueError):
+        return None
+
+    anchor_value_by_timestamp_microseconds_utc: dict[int, float] = {
+        int(timestamp_microseconds_utc[0]): float(runtime_interval_anchors.start_anchor_value)
+    }
+    for interval_end_utc_nanos, anchor_value in zip(
+        hourly_factor_contract.interval_end_utc_nanos,
+        runtime_interval_anchors.end_anchor_values,
+        strict=True,
+    ):
+        anchor_value_by_timestamp_microseconds_utc[int(interval_end_utc_nanos // 1_000)] = float(
+            anchor_value
+        )
+
+    try:
+        anchor_values = np.asarray(
+            [
+                anchor_value_by_timestamp_microseconds_utc[int(timestamp_microseconds)]
+                for timestamp_microseconds in timestamp_microseconds_utc
+            ],
+            dtype=np.float64,
+        )
+    except KeyError:
+        return None
+
+    return anchor_values
+
+
+def _infer_regularized_interval_microseconds(
+    timestamp_microseconds_utc: NDArray[np.int64],
+) -> Optional[int]:
+    if timestamp_microseconds_utc.size < 2:
+        return None
+
+    timestamp_differences_microseconds = np.diff(timestamp_microseconds_utc)
+    positive_differences_microseconds = timestamp_differences_microseconds[
+        timestamp_differences_microseconds > 0
+    ]
+    if positive_differences_microseconds.size == 0:
+        return None
+
+    inferred_interval_microseconds = int(np.min(positive_differences_microseconds))
+    if inferred_interval_microseconds <= 0:
+        return None
+
+    if np.any(timestamp_differences_microseconds % inferred_interval_microseconds != 0):
+        return None
+
+    return inferred_interval_microseconds
+
+
+def _mean_reversion_unavailable_diagnostics(
+    artifacts: WorkbenchArtifacts,
+    comparison: Optional[Any],
+) -> WorkbenchMeanReversionUnavailableDiagnostics:
+    model = _comparison_model(comparison) if comparison is not None else None
+    diagnostics_payload = _mean_reversion_diagnostics_payload(artifacts, model)
+
+    return WorkbenchMeanReversionUnavailableDiagnostics(
+        message=(
+            "Mean-reversion anchor diagnostics are unavailable because the loaded "
+            "model does not expose enough runtime inputs to materialize anchor "
+            "values for both observed and simulated series."
+        ),
+        summary_lines=_mean_reversion_diagnostics_summary_lines(diagnostics_payload),
+    )
+
+
+def _mean_reversion_diagnostics_payload(
+    artifacts: WorkbenchArtifacts,
+    model: Any,
+) -> Optional[dict[str, Any]]:
+    model_payload = _mean_reversion_model_payload(model)
+    if model_payload is not None:
+        diagnostics = model_payload.get("diagnostics")
+        if isinstance(diagnostics, dict):
+            return diagnostics
+
+    persisted_model_payload = artifacts.model_payload
+    if isinstance(persisted_model_payload, dict):
+        parameters = persisted_model_payload.get("parameters")
+        if isinstance(parameters, dict):
+            raw_mean_reversion = parameters.get("mean_reversion")
+            if isinstance(raw_mean_reversion, dict):
+                diagnostics = raw_mean_reversion.get("diagnostics")
+                if isinstance(diagnostics, dict):
+                    return diagnostics
+
+    for stage_report in _stage_report_payloads(artifacts):
+        if stage_report.get("stage_report_kind") != "mean_reversion":
+            continue
+
+        fitted_stage_payload = stage_report.get("fitted_stage_payload")
+        if not isinstance(fitted_stage_payload, dict):
+            continue
+
+        diagnostics = fitted_stage_payload.get("diagnostics")
+        if isinstance(diagnostics, dict):
+            return diagnostics
+
+    return None
+
+
+def _mean_reversion_model_payload(model: Any) -> Optional[dict[str, Any]]:
+    if model is None:
+        return None
+
+    try:
+        parameters = model.parameters
+    except AttributeError:
+        return None
+
+    if not isinstance(parameters, dict):
+        return None
+
+    raw_mean_reversion = parameters.get("mean_reversion")
+    if not isinstance(raw_mean_reversion, dict):
+        return None
+
+    return raw_mean_reversion
+
+
+def _mean_reversion_diagnostics_summary_lines(
+    diagnostics_payload: Optional[dict[str, Any]],
+) -> tuple[str, ...]:
+    if diagnostics_payload is None:
+        return ()
+
+    summary_lines: list[str] = []
+
+    chosen_anchor_family = diagnostics_payload.get("chosen_anchor_family")
+    if isinstance(chosen_anchor_family, str):
+        summary_lines.append(f"chosen anchor family: {chosen_anchor_family}")
+
+    anchor_parameter_estimates = diagnostics_payload.get("anchor_parameter_estimates")
+    if isinstance(anchor_parameter_estimates, dict):
+        anchor_model_kind = anchor_parameter_estimates.get("anchor_model_kind")
+        if isinstance(anchor_model_kind, str):
+            summary_lines.append(f"estimated anchor model: {anchor_model_kind}")
+
+    stage_decision_reason = diagnostics_payload.get("stage_decision_reason")
+    if isinstance(stage_decision_reason, str):
+        summary_lines.append(f"stage decision: {stage_decision_reason}")
+
+    calibration_grid = diagnostics_payload.get("calibration_grid")
+    if isinstance(calibration_grid, dict):
+        calibration_grid_kind = calibration_grid.get("calibration_grid_kind")
+        if isinstance(calibration_grid_kind, str):
+            summary_lines.append(f"grid kind: {calibration_grid_kind}")
+
+        calibration_grid_interval_hours = calibration_grid.get("calibration_grid_interval_hours")
+        if isinstance(calibration_grid_interval_hours, int | float):
+            summary_lines.append(
+                "grid interval hours: "
+                f"{float(calibration_grid_interval_hours):.6g}"
+            )
+
+        source_observation_count = calibration_grid.get("source_observation_count")
+        if isinstance(source_observation_count, int):
+            summary_lines.append(f"source observations: {source_observation_count}")
+
+        retained_observation_count = calibration_grid.get("retained_observation_count")
+        if isinstance(retained_observation_count, int):
+            summary_lines.append(f"retained observations: {retained_observation_count}")
+
+        coverage_ratio = calibration_grid.get("coverage_ratio")
+        if isinstance(coverage_ratio, int | float):
+            summary_lines.append(f"coverage ratio: {float(coverage_ratio):.6g}")
+
+    for field_name, label in (
+        ("deviation_sample_count", "deviation samples"),
+        ("regression_pair_count", "regression pairs"),
+        ("kappa", "kappa"),
+        ("phi", "phi"),
+    ):
+        value = diagnostics_payload.get(field_name)
+        if isinstance(value, int):
+            summary_lines.append(f"{label}: {value}")
+            continue
+
+        if isinstance(value, float):
+            summary_lines.append(f"{label}: {value:.6g}")
+
+    return tuple(summary_lines)
+
+
+def _comparison_model(comparison: WorkbenchObservedSimulationComparison) -> Any:
+    try:
+        return comparison.fit_context.model
+    except AttributeError:
+        return None
 
 
 def _hourly_event_counts_from_microseconds(
@@ -1638,6 +2191,7 @@ def _downsample_time_series(
         num=max_points,
         dtype=np.int64,
     )
+
     return (
         tuple(
             utc_microseconds_to_datetime(int(timestamp_microseconds_utc[int(sample_index)]))
@@ -1661,6 +2215,7 @@ def _downsample_point_cloud(
         num=max_points,
         dtype=np.int64,
     )
+
     return points[sample_indexes]
 
 
@@ -1682,6 +2237,433 @@ def create_message_figure(title: str, message: str) -> Figure:
     axis.set_yticks([])
 
     return figure
+
+
+def create_td_sd_mean_reversion_variance_growth_figure(
+    artifacts: WorkbenchArtifacts,
+    comparison: Optional[Any] = None,
+    *,
+    include_summary: bool = True,
+) -> Figure:
+    if include_summary:
+        figure = Figure(figsize=(14, 6), constrained_layout=True)
+
+        grid_spec = figure.add_gridspec(
+            2,
+            2,
+            width_ratios=(2.5, 1.0),
+            height_ratios=(3.0, 1.2),
+        )
+        variance_axis = figure.add_subplot(grid_spec[0, 0])
+        spread_axis = figure.add_subplot(grid_spec[1, 0], sharex=variance_axis)
+        summary_axis = figure.add_subplot(grid_spec[:, 1])
+    else:
+        figure = Figure(figsize=(14, 6), constrained_layout=True)
+
+        grid_spec = figure.add_gridspec(2, 1, height_ratios=(3.0, 1.2))
+        variance_axis = figure.add_subplot(grid_spec[0, 0])
+        spread_axis = figure.add_subplot(grid_spec[1, 0], sharex=variance_axis)
+
+        summary_axis = None
+
+    analysis = _observed_simulation_analysis_for_plot(artifacts, comparison)
+    if analysis is None:
+        _render_unavailable_axes(
+            tuple(
+                axis
+                for axis in (variance_axis, spread_axis, summary_axis)
+                if axis is not None
+            ),
+            "Observed-versus-simulated comparison is unavailable for this input.",
+        )
+
+        return figure
+
+    observed_mean_reversion = analysis.observed_mean_reversion
+    simulated_mean_reversion = analysis.simulated_mean_reversion
+    if observed_mean_reversion is None or simulated_mean_reversion is None:
+        _render_mean_reversion_unavailable_axes(
+            plot_axis=variance_axis,
+            summary_axis=summary_axis,
+            title="Variance Growth of Deviation from Anchor",
+            diagnostics=_mean_reversion_unavailable_diagnostics(
+                artifacts,
+                comparison,
+            ),
+        )
+
+        return figure
+
+    max_shared_horizon = min(
+        observed_mean_reversion.deviations_from_anchor.size,
+        simulated_mean_reversion.deviations_from_anchor.size,
+    ) - 1
+
+    horizons = _mean_reversion_log_spaced_horizons(max_shared_horizon)
+    if horizons.size == 0:
+        _render_unavailable_axes(
+            tuple(
+                axis
+                for axis in (variance_axis, spread_axis, summary_axis)
+                if axis is not None
+            ),
+            "Mean-reversion variance growth requires at least two aligned observations in both series.",
+        )
+        return figure
+
+    observed_variance_growth = np.asarray(
+        [
+            _variance_of_deviation_difference(
+                observed_mean_reversion.deviations_from_anchor,
+                int(horizon),
+            )
+            for horizon in horizons
+        ],
+        dtype=np.float64,
+    )
+    simulated_variance_growth = np.asarray(
+        [
+            _variance_of_deviation_difference(
+                simulated_mean_reversion.deviations_from_anchor,
+                int(horizon),
+            )
+            for horizon in horizons
+        ],
+        dtype=np.float64,
+    )
+
+    variance_growth_spread = simulated_variance_growth - observed_variance_growth
+
+    variance_axis.plot(
+        horizons,
+        simulated_variance_growth,
+        color="#dc2626",
+        marker="o",
+        markerfacecolor="#dc2626",
+        markeredgecolor="#dc2626",
+        linewidth=2.0,
+        label="Simulated",
+    )
+
+    variance_axis.plot(
+        horizons,
+        observed_variance_growth,
+        color="#111827",
+        linestyle="--",
+        marker="o",
+        markerfacecolor="white",
+        markeredgecolor="#111827",
+        markeredgewidth=1.5,
+        linewidth=2.0,
+        zorder=3,
+        label="Observed",
+    )
+
+    variance_axis.set_xscale("log")
+    variance_axis.set_title("Variance Growth of Deviation from Anchor")
+    variance_axis.set_xlabel("Horizon (steps)")
+    variance_axis.set_ylabel("Var(D[t+h] - D[t])")
+    variance_axis.grid(alpha=0.3)
+    variance_axis.legend(loc="best")
+
+    spread_axis.axhline(0.0, color="#9ca3af", linewidth=1.0)
+    spread_axis.plot(
+        horizons,
+        variance_growth_spread,
+        color="#2563eb",
+        marker="o",
+        markerfacecolor="white",
+        markeredgecolor="#2563eb",
+        markeredgewidth=1.2,
+        linewidth=1.8,
+    )
+    spread_axis.set_xscale("log")
+    spread_axis.set_title("Simulated Minus Observed Variance")
+    spread_axis.set_xlabel("Horizon (steps)")
+    spread_axis.set_ylabel("Delta Var")
+    spread_axis.grid(alpha=0.3)
+
+    if summary_axis is not None:
+        summary_axis.axis("off")
+        summary_axis.set_title("Diagnostic Summary")
+        summary_axis.text(
+            0.0,
+            1.0,
+            "\n".join(
+                f"{row['field']}: {row['value']}"
+                for row in mean_reversion_variance_growth_summary_rows(artifacts, comparison)
+            ),
+            va="top",
+            family="monospace",
+            transform=summary_axis.transAxes,
+        )
+
+    return figure
+
+
+def create_td_sd_mean_reversion_future_change_figure(
+    artifacts: WorkbenchArtifacts,
+    comparison: Optional[Any] = None,
+    *,
+    include_summary: bool = True,
+) -> Figure:
+    if include_summary:
+        figure = Figure(figsize=(14, 5), constrained_layout=True)
+        conditional_axis = figure.add_subplot(1, 2, 1)
+        summary_axis = figure.add_subplot(1, 2, 2)
+    else:
+        figure = Figure(figsize=(10, 5), constrained_layout=True)
+        conditional_axis = figure.add_subplot(1, 1, 1)
+        summary_axis = None
+
+    analysis = _observed_simulation_analysis_for_plot(artifacts, comparison)
+    if analysis is None:
+        _render_unavailable_axes(
+            tuple(axis for axis in (conditional_axis, summary_axis) if axis is not None),
+            "Observed-versus-simulated comparison is unavailable for this input.",
+        )
+        return figure
+
+    observed_mean_reversion = analysis.observed_mean_reversion
+    simulated_mean_reversion = analysis.simulated_mean_reversion
+    if observed_mean_reversion is None or simulated_mean_reversion is None:
+        _render_mean_reversion_unavailable_axes(
+            plot_axis=conditional_axis,
+            summary_axis=summary_axis,
+            title="Conditional Future Change vs Deviation",
+            diagnostics=_mean_reversion_unavailable_diagnostics(
+                artifacts,
+                comparison,
+            ),
+        )
+
+        return figure
+
+    max_shared_horizon = min(
+        observed_mean_reversion.deviations_from_anchor.size,
+        simulated_mean_reversion.deviations_from_anchor.size,
+    ) - 1
+
+    horizons = _mean_reversion_log_spaced_horizons(max_shared_horizon)
+    if horizons.size == 0:
+        _render_unavailable_axes(
+            tuple(axis for axis in (conditional_axis, summary_axis) if axis is not None),
+            "Conditional future-change diagnostics require at least two aligned observations in both series.",
+        )
+        return figure
+
+    selected_horizon = int(horizons[len(horizons) // 2])
+
+    shared_bin_edges = _shared_mean_reversion_bin_edges(
+        observed_mean_reversion,
+        simulated_mean_reversion,
+        horizon=selected_horizon,
+    )
+
+    observed_conditional = _conditional_future_change_profile(
+        observed_mean_reversion,
+        horizon=selected_horizon,
+        shared_bin_edges=shared_bin_edges,
+    )
+    simulated_conditional = _conditional_future_change_profile(
+        simulated_mean_reversion,
+        horizon=selected_horizon,
+        shared_bin_edges=shared_bin_edges,
+    )
+
+    if (
+        observed_conditional.mean_deviation.size == 0
+        and simulated_conditional.mean_deviation.size == 0
+    ):
+        _render_unavailable_axes(
+            tuple(axis for axis in (conditional_axis, summary_axis) if axis is not None),
+            "Conditional future-change diagnostics could not form any shared deviation bins with enough samples.",
+        )
+        return figure
+
+    if observed_conditional.mean_deviation.size > 0:
+        conditional_axis.plot(
+            observed_conditional.mean_deviation,
+            observed_conditional.mean_future_change,
+            color="#111827",
+            marker="o",
+            label="Observed",
+        )
+    if simulated_conditional.mean_deviation.size > 0:
+        conditional_axis.plot(
+            simulated_conditional.mean_deviation,
+            simulated_conditional.mean_future_change,
+            color="#dc2626",
+            marker="o",
+            label="Simulated",
+        )
+
+    conditional_axis.axhline(0.0, color="#94a3b8", linestyle="--", linewidth=1.0)
+    conditional_axis.axvline(0.0, color="#94a3b8", linestyle="--", linewidth=1.0)
+    conditional_axis.set_title("Conditional Future Change vs Deviation")
+    conditional_axis.set_xlabel("Deviation from anchor")
+    conditional_axis.set_ylabel(f"Mean future log-price change ({selected_horizon} steps)")
+    conditional_axis.grid(alpha=0.3)
+    conditional_axis.legend(loc="best")
+
+    if summary_axis is not None:
+        summary_axis.axis("off")
+        summary_axis.set_title("Diagnostic Summary")
+        summary_axis.text(
+            0.0,
+            1.0,
+            "\n".join(
+                f"{row['field']}: {row['value']}"
+                for row in mean_reversion_future_change_summary_rows(artifacts, comparison)
+            ),
+            va="top",
+            family="monospace",
+            transform=summary_axis.transAxes,
+        )
+
+    return figure
+
+
+def mean_reversion_variance_growth_summary_rows(
+    artifacts: WorkbenchArtifacts,
+    comparison: Optional[Any] = None,
+) -> list[dict[str, Any]]:
+    analysis = _observed_simulation_analysis_for_plot(artifacts, comparison)
+    if analysis is None:
+        return []
+
+    observed_mean_reversion = analysis.observed_mean_reversion
+    simulated_mean_reversion = analysis.simulated_mean_reversion
+    if observed_mean_reversion is None or simulated_mean_reversion is None:
+        diagnostics = _mean_reversion_unavailable_diagnostics(artifacts, comparison)
+        return _summary_rows_from_pairs(
+            [
+                ("status", diagnostics.message),
+                ("details", " | ".join(diagnostics.summary_lines)),
+            ]
+        )
+
+    max_shared_horizon = min(
+        observed_mean_reversion.deviations_from_anchor.size,
+        simulated_mean_reversion.deviations_from_anchor.size,
+    ) - 1
+
+    horizons = _mean_reversion_log_spaced_horizons(max_shared_horizon)
+    if horizons.size == 0:
+        return _summary_rows_from_pairs(
+            [("status", "Mean-reversion variance growth requires at least two aligned observations in both series.")]
+        )
+
+    observed_variance_growth = np.asarray(
+        [
+            _variance_of_deviation_difference(
+                observed_mean_reversion.deviations_from_anchor,
+                int(horizon),
+            )
+            for horizon in horizons
+        ],
+        dtype=np.float64,
+    )
+    simulated_variance_growth = np.asarray(
+        [
+            _variance_of_deviation_difference(
+                simulated_mean_reversion.deviations_from_anchor,
+                int(horizon),
+            )
+            for horizon in horizons
+        ],
+        dtype=np.float64,
+    )
+
+    variance_growth_spread = simulated_variance_growth - observed_variance_growth
+
+    return _summary_rows_from_pairs(
+        [
+            ("horizon count", int(horizons.size)),
+            ("max shared horizon", int(horizons[-1])),
+            ("observed deviation rows", int(observed_mean_reversion.deviations_from_anchor.size)),
+            ("simulated deviation rows", int(simulated_mean_reversion.deviations_from_anchor.size)),
+            ("observed terminal variance", f"{observed_variance_growth[-1]:.6g}"),
+            ("simulated terminal variance", f"{simulated_variance_growth[-1]:.6g}"),
+            ("max abs variance spread", f"{np.max(np.abs(variance_growth_spread)):.6g}"),
+            ("mean abs variance spread", f"{np.mean(np.abs(variance_growth_spread)):.6g}"),
+        ]
+    )
+
+
+def mean_reversion_future_change_summary_rows(
+    artifacts: WorkbenchArtifacts,
+    comparison: Optional[Any] = None,
+) -> list[dict[str, Any]]:
+    analysis = _observed_simulation_analysis_for_plot(artifacts, comparison)
+    if analysis is None:
+        return []
+
+    observed_mean_reversion = analysis.observed_mean_reversion
+    simulated_mean_reversion = analysis.simulated_mean_reversion
+    if observed_mean_reversion is None or simulated_mean_reversion is None:
+        diagnostics = _mean_reversion_unavailable_diagnostics(artifacts, comparison)
+        return _summary_rows_from_pairs(
+            [
+                ("status", diagnostics.message),
+                ("details", " | ".join(diagnostics.summary_lines)),
+            ]
+        )
+
+    max_shared_horizon = min(
+        observed_mean_reversion.deviations_from_anchor.size,
+        simulated_mean_reversion.deviations_from_anchor.size,
+    ) - 1
+
+    horizons = _mean_reversion_log_spaced_horizons(max_shared_horizon)
+    if horizons.size == 0:
+        return _summary_rows_from_pairs(
+            [("status", "Conditional future-change diagnostics require at least two aligned observations in both series.")]
+        )
+
+    selected_horizon = int(horizons[len(horizons) // 2])
+
+    shared_bin_edges = _shared_mean_reversion_bin_edges(
+        observed_mean_reversion,
+        simulated_mean_reversion,
+        horizon=selected_horizon,
+    )
+
+    observed_conditional = _conditional_future_change_profile(
+        observed_mean_reversion,
+        horizon=selected_horizon,
+        shared_bin_edges=shared_bin_edges,
+    )
+    simulated_conditional = _conditional_future_change_profile(
+        simulated_mean_reversion,
+        horizon=selected_horizon,
+        shared_bin_edges=shared_bin_edges,
+    )
+
+    if (
+        observed_conditional.mean_deviation.size == 0
+        and simulated_conditional.mean_deviation.size == 0
+    ):
+        return _summary_rows_from_pairs(
+            [("status", "Conditional future-change diagnostics could not form any shared deviation bins with enough samples.")]
+        )
+
+    return _summary_rows_from_pairs(
+        [
+            ("selected horizon", f"{selected_horizon} steps"),
+            ("shared bin count", max(int(observed_conditional.shared_bin_edges.size) - 1, 0)),
+            (
+                "minimum samples per bin",
+                max(observed_conditional.minimum_sample_count, simulated_conditional.minimum_sample_count),
+            ),
+            ("observed plotted bins", int(observed_conditional.mean_deviation.size)),
+            ("simulated plotted bins", int(simulated_conditional.mean_deviation.size)),
+            (
+                "deviation clip quantiles",
+                f"[{_MEAN_REVERSION_TAIL_QUANTILE_LOWER_BOUND:.0%}, {_MEAN_REVERSION_TAIL_QUANTILE_UPPER_BOUND:.0%}]",
+            ),
+        ]
+    )
 
 
 def create_observed_simulated_figure(
@@ -1713,9 +2695,18 @@ def create_observed_simulated_figure(
 
         return figure
 
+    full_observed_analysis = _build_series_analysis(resolved_comparison.observed_series)
+    if full_observed_analysis.prices.size == 0:
+        _render_unavailable_axes(
+            (price_axis, normalized_axis, return_axis, activity_axis),
+            "Observed-versus-simulated rows could not be normalized into a price series.",
+        )
+
+        return figure
+
     observed_timestamps, observed_prices = _downsample_time_series(
-        analysis.observed.timestamp_microseconds_utc,
-        analysis.observed.prices,
+        full_observed_analysis.timestamp_microseconds_utc,
+        full_observed_analysis.prices,
         max_points=_MAX_PATH_PLOT_POINTS,
     )
     simulated_timestamps, simulated_prices = _downsample_time_series(
@@ -1748,8 +2739,8 @@ def create_observed_simulated_figure(
     normalized_axis.plot(
         observed_timestamps,
         _downsample_time_series(
-            analysis.observed.timestamp_microseconds_utc,
-            analysis.observed.normalized_prices,
+            full_observed_analysis.timestamp_microseconds_utc,
+            full_observed_analysis.normalized_prices,
             max_points=_MAX_PATH_PLOT_POINTS,
         )[1],
         color="#111827",
@@ -1782,6 +2773,7 @@ def create_observed_simulated_figure(
         observed_label="Observed log returns",
         simulated_label="Simulated log returns",
     )
+
     observed_hourly_counts = analysis.observed.hourly_event_counts
     simulated_hourly_counts = analysis.simulated.hourly_event_counts
 
@@ -1817,20 +2809,34 @@ def create_observed_simulated_figure(
 def create_td_sd_return_distribution_figure(
     artifacts: WorkbenchArtifacts,
     comparison: Optional[Any] = None,
+    *,
+    include_summary: bool = True,
 ) -> Figure:
-    figure = Figure(figsize=(14, 10), constrained_layout=True)
-
-    tick_axis = figure.add_subplot(2, 2, 1)
-    aggregated_axis = figure.add_subplot(2, 2, 2)
-    coarse_axis = figure.add_subplot(2, 2, 3)
-    summary_axis = figure.add_subplot(2, 2, 4)
+    if include_summary:
+        figure = Figure(figsize=(14, 10), constrained_layout=True)
+        tick_axis = figure.add_subplot(2, 2, 1)
+        aggregated_axis = figure.add_subplot(2, 2, 2)
+        coarse_axis = figure.add_subplot(2, 2, 3)
+        summary_axis = figure.add_subplot(2, 2, 4)
+    else:
+        figure = Figure(figsize=(14, 8), constrained_layout=True)
+        grid_spec = figure.add_gridspec(2, 2)
+        tick_axis = figure.add_subplot(grid_spec[0, 0])
+        aggregated_axis = figure.add_subplot(grid_spec[0, 1])
+        coarse_axis = figure.add_subplot(grid_spec[1, :])
+        summary_axis = None
 
     analysis = _observed_simulation_analysis_for_plot(artifacts, comparison)
     if analysis is None:
         _render_unavailable_axes(
-            (tick_axis, aggregated_axis, coarse_axis, summary_axis),
+            tuple(
+                axis
+                for axis in (tick_axis, aggregated_axis, coarse_axis, summary_axis)
+                if axis is not None
+            ),
             "Observed-versus-simulated comparison is unavailable for this input.",
         )
+
         return figure
 
     observed_tick_returns = analysis.observed.returns
@@ -1863,24 +2869,20 @@ def create_td_sd_return_distribution_figure(
         color="#2563eb",
     )
 
-    summary_axis.axis("off")
-    summary_axis.set_title("Distribution Summary")
-    summary_axis.text(
-        0.0,
-        1.0,
-        "\n".join(
-            [
-                _format_distribution_summary("Observed tick", observed_tick_returns),
-                _format_distribution_summary("Simulated tick", simulated_tick_returns),
-                _format_distribution_summary("Observed 15m", observed_aggregated_returns),
-                _format_distribution_summary("Simulated tick 15m", simulated_aggregated_returns),
-                _format_distribution_summary("Simulated coarse 15m", coarse_returns),
-            ]
-        ),
-        va="top",
-        family="monospace",
-        transform=summary_axis.transAxes,
-    )
+    if summary_axis is not None:
+        summary_axis.axis("off")
+        summary_axis.set_title("Distribution Summary")
+        summary_axis.text(
+            0.0,
+            1.0,
+            "\n".join(
+                _format_distribution_summary_row(row)
+                for row in return_distribution_summary_rows(artifacts, comparison)
+            ),
+            va="top",
+            family="monospace",
+            transform=summary_axis.transAxes,
+        )
 
     return figure
 
@@ -2004,8 +3006,9 @@ def create_td_sd_horizon_profile_figure(
     absolute_return_axis = figure.add_subplot(2, 2, 3)
     event_count_axis = figure.add_subplot(2, 2, 4)
 
+    resolved_comparison = _observed_simulation_comparison_for_plot(artifacts, comparison)
     analysis = _observed_simulation_analysis_for_plot(artifacts, comparison)
-    if analysis is None:
+    if analysis is None or resolved_comparison is None:
         _render_unavailable_axes(
             (path_axis, variance_axis, absolute_return_axis, event_count_axis),
             "Observed-versus-simulated comparison is unavailable for this input.",
@@ -2021,9 +3024,20 @@ def create_td_sd_horizon_profile_figure(
 
         return figure
 
+    full_observed_analysis = _build_series_analysis(
+        resolved_comparison.observed_series
+    )
+    if full_observed_analysis.prices.size == 0:
+        _render_unavailable_axes(
+            (path_axis, variance_axis, absolute_return_axis, event_count_axis),
+            "Observed-versus-simulated rows could not be normalized into a price series.",
+        )
+
+        return figure
+
     observed_timestamps, observed_normalized_prices = _downsample_time_series(
-        analysis.observed.timestamp_microseconds_utc,
-        analysis.observed.normalized_prices,
+        full_observed_analysis.timestamp_microseconds_utc,
+        full_observed_analysis.normalized_prices,
         max_points=_MAX_PATH_PLOT_POINTS,
     )
     simulated_timestamps, simulated_normalized_prices = _downsample_time_series(
@@ -2106,18 +3120,31 @@ def create_td_sd_horizon_profile_figure(
 def create_td_sd_autocorrelation_figure(
     artifacts: WorkbenchArtifacts,
     comparison: Optional[Any] = None,
+    *,
+    include_summary: bool = True,
 ) -> Figure:
-    figure = Figure(figsize=(14, 10), constrained_layout=True)
-
-    td_axis = figure.add_subplot(2, 2, 1)
-    sd_tick_axis = figure.add_subplot(2, 2, 2)
-    sd_coarse_axis = figure.add_subplot(2, 2, 3)
-    text_axis = figure.add_subplot(2, 2, 4)
+    if include_summary:
+        figure = Figure(figsize=(14, 10), constrained_layout=True)
+        td_axis = figure.add_subplot(2, 2, 1)
+        sd_tick_axis = figure.add_subplot(2, 2, 2)
+        sd_coarse_axis = figure.add_subplot(2, 2, 3)
+        text_axis = figure.add_subplot(2, 2, 4)
+    else:
+        figure = Figure(figsize=(14, 8), constrained_layout=True)
+        grid_spec = figure.add_gridspec(2, 2)
+        td_axis = figure.add_subplot(grid_spec[0, 0])
+        sd_tick_axis = figure.add_subplot(grid_spec[0, 1])
+        sd_coarse_axis = figure.add_subplot(grid_spec[1, :])
+        text_axis = None
 
     analysis = _observed_simulation_analysis_for_plot(artifacts, comparison)
     if analysis is None:
         _render_unavailable_axes(
-            (td_axis, sd_tick_axis, sd_coarse_axis, text_axis),
+            tuple(
+                axis
+                for axis in (td_axis, sd_tick_axis, sd_coarse_axis, text_axis)
+                if axis is not None
+            ),
             "Observed-versus-simulated comparison is unavailable for this input.",
         )
 
@@ -2135,22 +3162,20 @@ def create_td_sd_autocorrelation_figure(
     _render_autocorrelation(sd_tick_axis, sd_tick_autocorrelation, title="Simulated Tick->15m Squared Return Autocorrelogram")
     _render_autocorrelation(sd_coarse_axis, sd_coarse_autocorrelation, title="Simulated Coarse 15m Squared Return Autocorrelogram")
 
-    text_axis.axis("off")
-    text_axis.set_title("Autocorrelation Summary")
-    text_axis.text(
-        0.0,
-        1.0,
-        "\n".join(
-            [
-                _format_autocorrelation_summary("Observed 15m", td_autocorrelation),
-                _format_autocorrelation_summary("Simulated tick->15m", sd_tick_autocorrelation),
-                _format_autocorrelation_summary("Simulated coarse 15m", sd_coarse_autocorrelation),
-            ]
-        ),
-        va="top",
-        family="monospace",
-        transform=text_axis.transAxes,
-    )
+    if text_axis is not None:
+        text_axis.axis("off")
+        text_axis.set_title("Autocorrelation Summary")
+        text_axis.text(
+            0.0,
+            1.0,
+            "\n".join(
+                _format_autocorrelation_summary_row(row)
+                for row in autocorrelation_summary_rows(artifacts, comparison)
+            ),
+            va="top",
+            family="monospace",
+            transform=text_axis.transAxes,
+        )
 
     return figure
 
@@ -2178,11 +3203,8 @@ def create_td_sd_summary_statistics_figure(
         return figure
 
     summary_lines = [
-        _summary_statistics_line("Observed ticks", analysis.observed.prices),
-        _summary_statistics_line("Observed 15m", analysis.observed.bucket_series_by_horizon[15].returns),
-        _summary_statistics_line("Simulated ticks", analysis.simulated.returns),
-        _summary_statistics_line("Simulated tick 15m", analysis.simulated_seeded_15m.returns),
-        _summary_statistics_line("Simulated coarse 15m", analysis.simulated_coarse_15m.returns),
+        _format_summary_statistics_row(row)
+        for row in summary_statistics_rows(artifacts, comparison)
     ]
 
     axis.set_title("Summary Statistics")
@@ -2198,13 +3220,24 @@ def create_td_sd_summary_statistics_figure(
     return figure
 
 
-def create_candidate_compare_figure(artifacts: WorkbenchArtifacts) -> Figure:
-    figure = Figure(figsize=(15, 8), constrained_layout=True)
-
-    objective_axis = figure.add_subplot(2, 2, 1)
-    coordinate_axis = figure.add_subplot(2, 2, 2)
-    metric_axis = figure.add_subplot(2, 2, 3)
-    summary_axis = figure.add_subplot(2, 2, 4)
+def create_candidate_compare_figure(
+    artifacts: WorkbenchArtifacts,
+    *,
+    include_summary: bool = True,
+) -> Figure:
+    if include_summary:
+        figure = Figure(figsize=(15, 8), constrained_layout=True)
+        objective_axis = figure.add_subplot(2, 2, 1)
+        coordinate_axis = figure.add_subplot(2, 2, 2)
+        metric_axis = figure.add_subplot(2, 2, 3)
+        summary_axis = figure.add_subplot(2, 2, 4)
+    else:
+        figure = Figure(figsize=(15, 7), constrained_layout=True)
+        grid_spec = figure.add_gridspec(2, 2)
+        objective_axis = figure.add_subplot(grid_spec[0, 0])
+        coordinate_axis = figure.add_subplot(grid_spec[0, 1])
+        metric_axis = figure.add_subplot(grid_spec[1, :])
+        summary_axis = None
 
     selected_candidate = _selected_candidate_entry(artifacts)
     frontier_entries = _artifact_list(artifacts.candidate_frontier, "frontier_entries")
@@ -2224,7 +3257,11 @@ def create_candidate_compare_figure(artifacts: WorkbenchArtifacts) -> Figure:
 
     if selected_candidate is None or comparison_candidate is None:
         _render_unavailable_axes(
-            (objective_axis, coordinate_axis, metric_axis, summary_axis),
+            tuple(
+                axis
+                for axis in (objective_axis, coordinate_axis, metric_axis, summary_axis)
+                if axis is not None
+            ),
             "Candidate-compare diagnostics require a selected candidate and at least one comparison candidate.",
         )
 
@@ -2290,28 +3327,55 @@ def create_candidate_compare_figure(artifacts: WorkbenchArtifacts) -> Figure:
     metric_axis.invert_yaxis()
     metric_axis.grid(axis="x", alpha=0.3)
 
-    summary_axis.axis("off")
-    summary_axis.set_title("Candidate Compare Summary")
-    summary_axis.text(
-        0.0,
-        1.0,
-        "\n".join(
-            [
-                f"selected: {selected_candidate.get('candidate_id', 'unknown')}",
-                f"comparison: {comparison_candidate.get('candidate_id', 'unknown')}",
-                f"selected admissible: {bool(selected_candidate.get('admissible'))}",
-                f"comparison admissible: {bool(comparison_candidate.get('admissible'))}",
-                f"selected stage: {selected_candidate.get('stage', 'unknown')}",
-                f"comparison stage: {comparison_candidate.get('stage', 'unknown')}",
-            ]
-        ),
-        va="top",
-        ha="left",
-        family="monospace",
-        transform=summary_axis.transAxes,
-    )
+    if summary_axis is not None:
+        summary_axis.axis("off")
+        summary_axis.set_title("Candidate Compare Summary")
+        summary_axis.text(
+            0.0,
+            1.0,
+            "\n".join(
+                f"{row['field']}: {row['value']}"
+                for row in candidate_compare_summary_rows(artifacts)
+            ),
+            va="top",
+            ha="left",
+            family="monospace",
+            transform=summary_axis.transAxes,
+        )
 
     return figure
+
+
+def candidate_compare_summary_rows(
+    artifacts: WorkbenchArtifacts,
+) -> list[dict[str, Any]]:
+    selected_candidate = _selected_candidate_entry(artifacts)
+    frontier_entries = _artifact_list(artifacts.candidate_frontier, "frontier_entries")
+    alternative_candidates = sorted(
+        [
+            entry
+            for entry in frontier_entries
+            if entry.get("candidate_id") != artifacts.selected_candidate_id
+        ],
+        key=lambda entry: (
+            _candidate_objective_value(entry) if _candidate_objective_value(entry) is not None else float("inf"),
+            str(entry.get("candidate_id", "")),
+        ),
+    )
+    comparison_candidate = alternative_candidates[0] if alternative_candidates else None
+    if selected_candidate is None or comparison_candidate is None:
+        return []
+
+    return _summary_rows_from_pairs(
+        [
+            ("selected", selected_candidate.get("candidate_id", "unknown")),
+            ("comparison", comparison_candidate.get("candidate_id", "unknown")),
+            ("selected admissible", bool(selected_candidate.get("admissible"))),
+            ("comparison admissible", bool(comparison_candidate.get("admissible"))),
+            ("selected stage", selected_candidate.get("stage", "unknown")),
+            ("comparison stage", comparison_candidate.get("stage", "unknown")),
+        ]
+    )
 
 
 def save_all_figures(artifacts: WorkbenchArtifacts, output_directory: Path) -> dict[str, str]:
@@ -2346,6 +3410,14 @@ def save_all_figures(artifacts: WorkbenchArtifacts, output_directory: Path) -> d
             observed_simulation_comparison,
         ),
         "td_sd_horizon_profiles": create_td_sd_horizon_profile_figure(
+            artifacts,
+            observed_simulation_comparison,
+        ),
+        "td_sd_mean_reversion_variance_growth": create_td_sd_mean_reversion_variance_growth_figure(
+            artifacts,
+            observed_simulation_comparison,
+        ),
+        "td_sd_mean_reversion_future_change": create_td_sd_mean_reversion_future_change_figure(
             artifacts,
             observed_simulation_comparison,
         ),
@@ -2502,6 +3574,68 @@ def _format_distribution_summary(label: str, values: NDArray[np.float64]) -> str
     )
 
 
+def return_distribution_summary_rows(
+    artifacts: WorkbenchArtifacts,
+    comparison: Optional[Any] = None,
+) -> list[dict[str, Any]]:
+    analysis = _observed_simulation_analysis_for_plot(artifacts, comparison)
+    if analysis is None:
+        return []
+
+    return [
+        _distribution_summary_row("Observed tick returns", analysis.observed.returns),
+        _distribution_summary_row("Simulated tick returns", analysis.simulated.returns),
+        _distribution_summary_row(
+            "Observed 15m returns",
+            analysis.observed.bucket_series_by_horizon[15].returns,
+        ),
+        _distribution_summary_row(
+            "Simulated tick 15m returns",
+            analysis.simulated_seeded_15m.returns,
+        ),
+        _distribution_summary_row(
+            "Simulated coarse 15m returns",
+            analysis.simulated_coarse_15m.returns,
+        ),
+    ]
+
+
+def _distribution_summary_row(
+    label: str,
+    values: NDArray[np.float64],
+) -> dict[str, Any]:
+    if values.size == 0:
+        return {
+            "series": label,
+            "count": 0,
+            "mean": "",
+            "stdev": "",
+            "min": "",
+            "max": "",
+        }
+
+    return {
+        "series": label,
+        "count": int(values.size),
+        "mean": float(np.mean(values)),
+        "stdev": math.sqrt(max(float(np.var(values)), 0.0)),
+        "min": float(np.min(values)),
+        "max": float(np.max(values)),
+    }
+
+
+def _format_distribution_summary_row(row: dict[str, Any]) -> str:
+    if row.get("count", 0) == 0:
+        return f"{str(row.get('series', 'unknown')):<24} count=0"
+
+    return (
+        f"{str(row.get('series', 'unknown')):<24} count={int(row['count']):>6} "
+        f"mean={float(row['mean']):>10.4g} "
+        f"stdev={float(row['stdev']):>10.4g} "
+        f"min={float(row['min']):>10.4g} max={float(row['max']):>10.4g}"
+    )
+
+
 def _render_hourly_profile(
     axis: Any,
     observed_profile: NDArray[np.float64],
@@ -2521,6 +3655,187 @@ def _render_hourly_profile(
     axis.set_xticks([0, 4, 8, 12, 16, 20, 23])
     axis.grid(alpha=0.3)
     axis.legend(loc="best")
+
+
+@dataclass(frozen=True, slots=True)
+class WorkbenchConditionalFutureChangeProfile:
+    mean_deviation: NDArray[np.float64]
+    mean_future_change: NDArray[np.float64]
+    shared_bin_edges: NDArray[np.float64]
+    minimum_sample_count: int
+
+
+def _mean_reversion_log_spaced_horizons(max_horizon: int) -> NDArray[np.int64]:
+    if max_horizon < 1:
+        return np.asarray([], dtype=np.int64)
+
+    horizon_count = min(
+        max_horizon,
+        max(2, int(math.ceil(math.log2(max_horizon))) + 1),
+    )
+    return np.unique(
+        np.rint(
+            np.geomspace(
+                1,
+                max_horizon,
+                num=horizon_count,
+            )
+        ).astype(np.int64)
+    )
+
+
+def _variance_of_deviation_difference(
+    deviations_from_anchor: NDArray[np.float64],
+    horizon: int,
+) -> float:
+    deviation_differences = deviations_from_anchor[horizon:] - deviations_from_anchor[:-horizon]
+    return float(np.var(deviation_differences))
+
+
+def _conditional_future_change_profile(
+    series: WorkbenchMeanReversionSeriesAnalysis,
+    *,
+    horizon: int,
+    shared_bin_edges: Optional[NDArray[np.float64]] = None,
+) -> WorkbenchConditionalFutureChangeProfile:
+    if (
+        series.deviations_from_anchor.size <= horizon
+        or series.runtime_log_prices.size <= horizon
+    ):
+        return WorkbenchConditionalFutureChangeProfile(
+            mean_deviation=np.asarray([], dtype=np.float64),
+            mean_future_change=np.asarray([], dtype=np.float64),
+            shared_bin_edges=(
+                np.asarray([], dtype=np.float64)
+                if shared_bin_edges is None
+                else shared_bin_edges
+            ),
+            minimum_sample_count=0,
+        )
+
+    deviation = series.deviations_from_anchor[:-horizon]
+    future_change = (
+        series.runtime_log_prices[horizon:] - series.runtime_log_prices[:-horizon]
+    )
+    if shared_bin_edges is None:
+        lower_quantile, upper_quantile = np.quantile(
+            deviation,
+            (
+                _MEAN_REVERSION_TAIL_QUANTILE_LOWER_BOUND,
+                _MEAN_REVERSION_TAIL_QUANTILE_UPPER_BOUND,
+            ),
+        )
+        if not np.isfinite(lower_quantile) or not np.isfinite(upper_quantile) or lower_quantile >= upper_quantile:
+            return WorkbenchConditionalFutureChangeProfile(
+                mean_deviation=np.asarray([], dtype=np.float64),
+                mean_future_change=np.asarray([], dtype=np.float64),
+                shared_bin_edges=np.asarray([], dtype=np.float64),
+                minimum_sample_count=0,
+            )
+
+        bin_count = min(
+            _MEAN_REVERSION_BIN_COUNT_UPPER_BOUND,
+            max(
+                _MEAN_REVERSION_BIN_COUNT_LOWER_BOUND,
+                int(math.floor(math.sqrt(deviation.size))),
+            ),
+        )
+        shared_bin_edges = np.linspace(
+            float(lower_quantile),
+            float(upper_quantile),
+            num=bin_count + 1,
+            dtype=np.float64,
+        )
+
+    if shared_bin_edges.size < 2:
+        return WorkbenchConditionalFutureChangeProfile(
+            mean_deviation=np.asarray([], dtype=np.float64),
+            mean_future_change=np.asarray([], dtype=np.float64),
+            shared_bin_edges=shared_bin_edges,
+            minimum_sample_count=0,
+        )
+
+    inlier_mask = (
+        np.isfinite(deviation)
+        & np.isfinite(future_change)
+        & (deviation >= shared_bin_edges[0])
+        & (deviation <= shared_bin_edges[-1])
+    )
+    clipped_deviation = deviation[inlier_mask]
+    clipped_future_change = future_change[inlier_mask]
+    if clipped_deviation.size == 0:
+        return WorkbenchConditionalFutureChangeProfile(
+            mean_deviation=np.asarray([], dtype=np.float64),
+            mean_future_change=np.asarray([], dtype=np.float64),
+            shared_bin_edges=shared_bin_edges,
+            minimum_sample_count=0,
+        )
+
+    raw_bin_indexes = np.digitize(clipped_deviation, shared_bin_edges, right=False) - 1
+    raw_bin_indexes = np.clip(raw_bin_indexes, 0, shared_bin_edges.size - 2)
+    effective_minimum_sample_count = min(
+        _MEAN_REVERSION_BIN_MINIMUM_SAMPLE_COUNT,
+        max(1, int(clipped_deviation.size // max(shared_bin_edges.size - 1, 1))),
+    )
+
+    mean_deviation_by_bin: list[float] = []
+    mean_future_change_by_bin: list[float] = []
+    for bin_index in range(shared_bin_edges.size - 1):
+        bin_mask = raw_bin_indexes == bin_index
+        if int(np.count_nonzero(bin_mask)) < effective_minimum_sample_count:
+            continue
+
+        mean_deviation_by_bin.append(float(np.mean(clipped_deviation[bin_mask])))
+        mean_future_change_by_bin.append(float(np.mean(clipped_future_change[bin_mask])))
+
+    return WorkbenchConditionalFutureChangeProfile(
+        mean_deviation=np.asarray(mean_deviation_by_bin, dtype=np.float64),
+        mean_future_change=np.asarray(mean_future_change_by_bin, dtype=np.float64),
+        shared_bin_edges=shared_bin_edges,
+        minimum_sample_count=effective_minimum_sample_count,
+    )
+
+
+def _shared_mean_reversion_bin_edges(
+    observed_series: WorkbenchMeanReversionSeriesAnalysis,
+    simulated_series: WorkbenchMeanReversionSeriesAnalysis,
+    *,
+    horizon: int,
+) -> NDArray[np.float64]:
+    observed_deviation = observed_series.deviations_from_anchor[:-horizon]
+    simulated_deviation = simulated_series.deviations_from_anchor[:-horizon]
+    combined_deviation = np.concatenate((observed_deviation, simulated_deviation))
+    if combined_deviation.size == 0:
+        return np.asarray([], dtype=np.float64)
+
+    lower_quantile, upper_quantile = np.quantile(
+        combined_deviation,
+        (
+            _MEAN_REVERSION_TAIL_QUANTILE_LOWER_BOUND,
+            _MEAN_REVERSION_TAIL_QUANTILE_UPPER_BOUND,
+        ),
+    )
+    if not np.isfinite(lower_quantile) or not np.isfinite(upper_quantile) or lower_quantile >= upper_quantile:
+        return np.asarray([], dtype=np.float64)
+
+    target_bin_count = min(
+        _MEAN_REVERSION_BIN_COUNT_UPPER_BOUND,
+        max(
+            _MEAN_REVERSION_BIN_COUNT_LOWER_BOUND,
+            int(math.floor(math.sqrt(combined_deviation.size))),
+        ),
+    )
+    admissible_bin_count = max(
+        1,
+        int(combined_deviation.size // _MEAN_REVERSION_BIN_MINIMUM_SAMPLE_COUNT),
+    )
+    bin_count = min(target_bin_count, admissible_bin_count)
+    return np.linspace(
+        float(lower_quantile),
+        float(upper_quantile),
+        num=bin_count + 1,
+        dtype=np.float64,
+    )
 
 
 def _render_rolling_activity_plot(
@@ -2590,20 +3905,121 @@ def _format_autocorrelation_summary(label: str, values: list[float]) -> str:
     )
 
 
-def _summary_statistics_line(label: str, values: NDArray[np.float64]) -> str:
-    if values.size == 0:
-        return f"{label:<14} count=0"
+def autocorrelation_summary_rows(
+    artifacts: WorkbenchArtifacts,
+    comparison: Optional[Any] = None,
+) -> list[dict[str, Any]]:
+    analysis = _observed_simulation_analysis_for_plot(artifacts, comparison)
+    if analysis is None:
+        return []
 
-    mean_value = float(np.mean(values))
-    variance = float(np.var(values))
-    quantiles = np.quantile(values, np.asarray([0.05, 0.50, 0.95], dtype=np.float64))
+    observed_autocorrelation = _autocorrelation(
+        np.square(analysis.observed.bucket_series_by_horizon[15].returns),
+        lag_count=50,
+    )
+    simulated_tick_autocorrelation = _autocorrelation(
+        np.square(analysis.simulated_seeded_15m.returns),
+        lag_count=50,
+    )
+    simulated_coarse_autocorrelation = _autocorrelation(
+        np.square(analysis.simulated_coarse_15m.returns),
+        lag_count=50,
+    )
+
+    return [
+        _autocorrelation_summary_row("Observed 15m", observed_autocorrelation),
+        _autocorrelation_summary_row("Simulated tick->15m", simulated_tick_autocorrelation),
+        _autocorrelation_summary_row("Simulated coarse 15m", simulated_coarse_autocorrelation),
+    ]
+
+
+def _autocorrelation_summary_row(label: str, values: list[float]) -> dict[str, Any]:
+    return {
+        "series": label,
+        "lag1": values[0] if len(values) >= 1 else "",
+        "lag5": values[4] if len(values) >= 5 else "",
+        "lag10": values[9] if len(values) >= 10 else "",
+    }
+
+
+def _format_autocorrelation_summary_row(row: dict[str, Any]) -> str:
+    lag1 = row.get("lag1", "")
+    if lag1 == "":
+        return f"{str(row.get('series', 'unknown')):<24} no data"
 
     return (
-        f"{label:<14} count={values.size:>6} mean={mean_value:>10.4g} "
-        f"stdev={math.sqrt(max(variance, 0.0)):>10.4g} "
-        f"p05={float(quantiles[0]):>10.4g} "
-        f"p50={float(quantiles[1]):>10.4g} "
-        f"p95={float(quantiles[2]):>10.4g}"
+        f"{str(row.get('series', 'unknown')):<24} "
+        f"lag1={float(row['lag1']):>8.4f} "
+        f"lag5={float(row['lag5']):>8.4f} "
+        f"lag10={float(row['lag10']):>8.4f}"
+    )
+
+
+def summary_statistics_rows(
+    artifacts: WorkbenchArtifacts,
+    comparison: Optional[Any] = None,
+) -> list[dict[str, Any]]:
+    analysis = _observed_simulation_analysis_for_plot(artifacts, comparison)
+    if analysis is None:
+        return []
+
+    return [
+        _summary_statistics_row("Observed tick returns", analysis.observed.returns),
+        _summary_statistics_row(
+            "Observed 15m returns",
+            analysis.observed.bucket_series_by_horizon[15].returns,
+        ),
+        _summary_statistics_row("Simulated tick returns", analysis.simulated.returns),
+        _summary_statistics_row(
+            "Simulated tick 15m returns",
+            analysis.simulated_seeded_15m.returns,
+        ),
+        _summary_statistics_row(
+            "Simulated coarse 15m returns",
+            analysis.simulated_coarse_15m.returns,
+        ),
+    ]
+
+
+def _summary_statistics_row(
+    label: str,
+    values: NDArray[np.float64],
+) -> dict[str, Any]:
+    if values.size == 0:
+        return {
+            "series": label,
+            "count": 0,
+            "mean": "",
+            "stdev": "",
+            "p05": "",
+            "p50": "",
+            "p95": "",
+        }
+
+    quantiles = np.quantile(values, np.asarray([0.05, 0.50, 0.95], dtype=np.float64))
+
+    return {
+        "series": label,
+        "count": int(values.size),
+        "mean": float(np.mean(values)),
+        "stdev": math.sqrt(max(float(np.var(values)), 0.0)),
+        "p05": float(quantiles[0]),
+        "p50": float(quantiles[1]),
+        "p95": float(quantiles[2]),
+    }
+
+
+def _format_summary_statistics_row(row: dict[str, Any]) -> str:
+    if row.get("count", 0) == 0:
+        return f"{str(row.get('series', 'unknown')):<24} count=0"
+
+    return (
+        f"{str(row.get('series', 'unknown')):<24} count={int(row['count']):>6} "
+        f"mean={float(row['mean']):>10.4g} "
+        f"stdev={float(row['stdev']):>10.4g} "
+        f"p05={float(row['p05']):>10.4g} "
+        f"p50={float(row['p50']):>10.4g} "
+        f"p95={float(row['p95']):>10.4g}"
     )
 
 
@@ -2614,6 +4030,18 @@ def _candidate_objective_value(entry: dict[str, Any]) -> Optional[float]:
             return float(value)
 
     return None
+
+
+def _summary_rows_from_pairs(
+    pairs: list[tuple[str, Any]],
+) -> list[dict[str, Any]]:
+    return [
+        {
+            "field": field,
+            "value": value,
+        }
+        for field, value in pairs
+    ]
 
 
 def _coordinate_mapping_from_raw(raw_coordinates: Any) -> dict[str, float]:
@@ -2657,6 +4085,7 @@ def _parameter_search_points(
                 {
                     "value": parameter_value,
                     "objective": objective_value,
+                    "valid": bool(entry.get("valid", entry.get("admissible", False))),
                     "admissible": bool(entry.get("admissible")),
                 }
             )
@@ -2681,6 +4110,7 @@ def _parameter_search_points(
             {
                 "value": float(x_value),
                 "objective": float(objective_value),
+                "valid": bool(surface_point.get("valid", surface_point.get("admissible", False))),
                 "admissible": bool(surface_point.get("admissible")),
             }
         )
@@ -2753,22 +4183,71 @@ def _binned_admissibility(
     return binned_points
 
 
-def _format_parameter_search_summary(
-    parameter_name: str,
-    points: list[dict[str, float | bool]],
-) -> str:
-    values = [float(point["value"]) for point in points]
-    objectives = [float(point["objective"]) for point in points]
-    admissible_count = sum(1 for point in points if bool(point["admissible"]))
+def parameter_search_summary_rows(
+    artifacts: WorkbenchArtifacts,
+) -> list[dict[str, Any]]:
+    parameter_points = _parameter_search_points(artifacts)
 
-    if not values or not objectives:
+    parameter_names = sorted(
+        parameter_points,
+        key=lambda parameter_name: len(parameter_points[parameter_name]),
+        reverse=True,
+    )
+
+    rows: list[dict[str, Any]] = []
+    for parameter_name in parameter_names[:8]:
+        points = parameter_points[parameter_name]
+
+        values = [float(point["value"]) for point in points]
+        objectives = [float(point["objective"]) for point in points]
+        if not values or not objectives:
+            rows.append(
+                {
+                    "parameter": parameter_name,
+                    "count": 0,
+                    "valid_count": 0,
+                    "admissible_count": 0,
+                    "min": "",
+                    "max": "",
+                    "best_objective": "",
+                }
+            )
+            continue
+
+        rows.append(
+            {
+                "parameter": parameter_name,
+                "count": len(points),
+                "valid_count": sum(1 for point in points if bool(point["valid"])),
+                "admissible_count": sum(1 for point in points if bool(point["admissible"])),
+                "min": min(values),
+                "max": max(values),
+                "best_objective": min(objectives),
+            }
+        )
+
+    return rows
+
+
+def _format_parameter_search_summary_row(row: dict[str, Any]) -> str:
+    parameter_name = str(row.get("parameter", "unknown"))
+
+    count = row.get("count", 0)
+    valid_count = row.get("valid_count", 0)
+    admissible_count = row.get("admissible_count", 0)
+    min_value = row.get("min", "")
+    max_value = row.get("max", "")
+    best_objective = row.get("best_objective", "")
+
+    if min_value == "" or max_value == "" or best_objective == "":
         return f"{parameter_name:<24} no data"
 
     return (
-        f"{parameter_name:<24} count={len(points):>5} "
-        f"admissible={admissible_count:>5} "
-        f"min={min(values):>10.4g} max={max(values):>10.4g} "
-        f"best_obj={min(objectives):>10.4g}"
+        f"{parameter_name:<24} count={int(count):>5} "
+        f"valid={int(valid_count):>5} "
+        f"admissible={int(admissible_count):>5} "
+        f"min={float(min_value):>10.4g} max={float(max_value):>10.4g} "
+        f"best_obj={float(best_objective):>10.4g}"
     )
 
 
@@ -2850,8 +4329,10 @@ def _render_ecdf_overlay(
             continue
 
         sample_size = min(values.size, 2_000)
+
         quantile_grid = np.linspace(0.0, 1.0, num=sample_size)
         quantiles = np.quantile(values, quantile_grid)
+
         axis.plot(quantiles, quantile_grid, label=label, color=color)
 
     axis.set_title("Empirical CDF Overlay")
@@ -2892,6 +4373,7 @@ def _render_tail_exceedance(
         )
         axis.set_xticks([])
         axis.set_yticks([])
+
         return
 
     thresholds = np.unique(
@@ -3292,6 +4774,7 @@ def _configure_metric_scatter_axis_scaling(
         smallest_positive_value * 10.0,
         1.0e-6,
     )
+
     scatter_axis.set_xscale("symlog", linthresh=linear_threshold)
     scatter_axis.set_yscale("symlog", linthresh=linear_threshold)
 
@@ -3308,6 +4791,7 @@ def _selected_candidate_entry_uses_legacy_joint_distance_only_metrics(
         for metric in family_metrics
         if isinstance(metric, dict) and _is_legacy_joint_distance_only_metric(metric)
     )
+
     return legacy_joint_metric_count > 0 and legacy_joint_metric_count == len(family_metrics)
 
 
@@ -3494,6 +4978,45 @@ def _render_unavailable_axes(axes: tuple[Any, ...], message: str) -> None:
         axis.set_yticks([])
 
 
+def _render_mean_reversion_unavailable_axes(
+    *,
+    plot_axis: Any,
+    summary_axis: Optional[Any],
+    title: str,
+    diagnostics: WorkbenchMeanReversionUnavailableDiagnostics,
+) -> None:
+    plot_axis.set_title(title)
+    plot_axis.text(
+        0.5,
+        0.5,
+        diagnostics.message,
+        ha="center",
+        va="center",
+        wrap=True,
+        transform=plot_axis.transAxes,
+    )
+    plot_axis.set_xticks([])
+    plot_axis.set_yticks([])
+
+    if summary_axis is not None:
+        summary_axis.axis("off")
+        summary_axis.set_title("Calibration Status")
+
+        summary_text = (
+            "\n".join(diagnostics.summary_lines)
+            if diagnostics.summary_lines
+            else "No persisted mean-reversion diagnostics are available for this run."
+        )
+        summary_axis.text(
+            0.0,
+            1.0,
+            summary_text,
+            va="top",
+            family="monospace",
+            transform=summary_axis.transAxes,
+        )
+
+
 def _all_positive(values: list[float]) -> bool:
     return bool(values) and all(value > 0.0 for value in values)
 
@@ -3523,6 +5046,8 @@ __all__ = [
     "create_td_sd_autocorrelation_figure",
     "create_td_sd_horizon_profile_figure",
     "create_td_sd_hourly_profile_figure",
+    "create_td_sd_mean_reversion_future_change_figure",
+    "create_td_sd_mean_reversion_variance_growth_figure",
     "create_td_sd_return_diagnostics_figure",
     "create_td_sd_return_distribution_figure",
     "create_td_sd_summary_statistics_figure",

@@ -458,6 +458,11 @@ fn build_record(
         interval_index,
         sufficient_statistics,
         return_components,
+        total_return,
+        total_return,
+        total_return,
+        0.0,
+        total_return,
     )
     .expect("risk path record should validate")
 }

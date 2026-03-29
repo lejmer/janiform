@@ -9,9 +9,10 @@ use crate::stages::return_components::{
 };
 use janiform_engine_simulation::{SeededFinePathRecord, SeededFinePathTransitionKind};
 use janiform_foundations::numeric::{
-    arithmetic_mean_or_zero, compute_finite_quantile_or_zero, pearson_correlation,
+    arithmetic_mean_or_zero, compute_finite_quantile_or_zero, pearson_correlation, rolling_sum,
     standardized_path_distance,
 };
+use janiform_foundations::time::{ceil_to_interval_utc_nanos, floor_to_interval_utc_nanos};
 
 pub(crate) const JOINT_REFINEMENT_ROLLING_ACTIVITY_WINDOW_INTERVAL_COUNT: usize = 96;
 const JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR: f64 = 1.0e-8;
@@ -480,27 +481,6 @@ pub(crate) fn normalized_profile_distance(left: &[f64], right: &[f64]) -> f64 {
         / left.len() as f64
 }
 
-pub(crate) fn relative_rmse(left: &[f64], right: &[f64], floor: f64) -> f64 {
-    if left.len() != right.len() || left.is_empty() {
-        return f64::INFINITY;
-    }
-
-    let squared_error_sum = left
-        .iter()
-        .zip(right.iter())
-        .map(|(left_value, right_value)| {
-            let error = left_value - right_value;
-            error * error
-        })
-        .sum::<f64>();
-
-    let rmse = (squared_error_sum / left.len() as f64).sqrt();
-
-    let scale = arithmetic_mean_or_zero(right).abs().max(floor);
-
-    rmse / scale
-}
-
 pub(crate) fn log_ratio_distance(candidate_value: f64, observed_value: f64, floor: f64) -> f64 {
     let safe_floor = floor.abs().max(JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR);
     let candidate = candidate_value.abs().max(safe_floor);
@@ -543,12 +523,12 @@ fn build_open_session_interval_template(
         return Vec::new();
     }
 
-    let aligned_start = source_window
-        .window_start_utc_nanos
-        .div_euclid(interval_duration_nanos)
-        * interval_duration_nanos;
-
-    let aligned_end = ceil_to_interval(source_window.window_end_utc_nanos, interval_duration_nanos);
+    let aligned_start = floor_to_interval_utc_nanos(
+        source_window.window_start_utc_nanos,
+        interval_duration_nanos,
+    );
+    let aligned_end =
+        ceil_to_interval_utc_nanos(source_window.window_end_utc_nanos, interval_duration_nanos);
 
     let mut intervals = Vec::new();
     let mut interval_start_utc_nanos = aligned_start;
@@ -577,7 +557,7 @@ fn build_open_session_interval_template(
     intervals
 }
 
-fn finalize_sell_share_proxies(
+pub(crate) fn finalize_sell_share_proxies(
     intervals: &mut [JointRefinementAggregatedIntervalObservation],
     fallback_sell_share_proxy: f64,
 ) {
@@ -670,33 +650,6 @@ fn resolve_market_state(
         .ok()
 }
 
-fn ceil_to_interval(timestamp_utc_nanos: i64, interval_duration_nanos: i64) -> i64 {
-    let remainder = timestamp_utc_nanos.rem_euclid(interval_duration_nanos);
-
-    if remainder == 0 {
-        timestamp_utc_nanos
-    } else {
-        timestamp_utc_nanos.saturating_add(interval_duration_nanos - remainder)
-    }
-}
-
-fn rolling_sum(values: &[f64], window: usize) -> Vec<f64> {
-    let mut output = Vec::with_capacity(values.len());
-    let mut running_sum = 0.0;
-
-    for (position, value) in values.iter().enumerate() {
-        running_sum += *value;
-
-        if position >= window {
-            running_sum -= values[position - window];
-        }
-
-        output.push(running_sum);
-    }
-
-    output
-}
-
 fn mean_absolute_return_profile_by_utc_hour<I>(timestamped_returns: I) -> Vec<f64>
 where
     I: IntoIterator<Item = (i64, f64)>,
@@ -735,7 +688,7 @@ mod tests {
         aggregate_simulated_path_to_interval_template,
         aggregate_simulated_path_to_interval_templates, business_time_bucket_thresholds,
         interval_index_for_timestamp, log_ratio_distance, mean_absolute_return_by_utc_hour,
-        normalized_profile_distance, relative_rmse, return_scale_summaries_by_business_time_bucket,
+        normalized_profile_distance, return_scale_summaries_by_business_time_bucket,
         return_scale_summary, return_scale_summary_from_returns, rolling_variance_activity_metric,
         sampled_return_values, sampled_trade_returns, scale_normalized_returns,
         zeroed_interval_observation_template,
@@ -745,7 +698,39 @@ mod tests {
         SeededFinePathRecord, SeededFinePathTransitionKind, SeededTickEventSide,
         SeededTickSimulationNewsEventMarketState,
     };
-    use janiform_foundations::numeric::standardized_path_distance;
+    use janiform_foundations::numeric::{relative_rmse, standardized_path_distance};
+
+    fn test_fine_path_record(
+        transition_index: u64,
+        timestamp_utc_nanos: i64,
+        transition_kind: SeededFinePathTransitionKind,
+        side: Option<SeededTickEventSide>,
+        total_return: f64,
+        cumulative_core_log_return: f64,
+    ) -> SeededFinePathRecord {
+        SeededFinePathRecord {
+            transition_index,
+            timestamp_utc_nanos,
+            transition_kind,
+            side,
+            news_arrival_component: None,
+            market_state: SeededTickSimulationNewsEventMarketState::Open,
+            return_components: SufficientStatisticsRiskReturnComponents {
+                buy_side_return: total_return.max(0.0),
+                sell_side_return: total_return.min(0.0),
+                trading_time_return: total_return,
+                open_jump_return: 0.0,
+                closed_gap_return: 0.0,
+                total_return,
+            },
+            core_total_return_increment: total_return,
+            observed_log_price: cumulative_core_log_return,
+            anchor_value: 0.0,
+            deviation_from_anchor: cumulative_core_log_return,
+            cumulative_core_log_return,
+            state_snapshot: None,
+        }
+    }
 
     #[test]
     fn rolling_variance_activity_metric_matches_reference_series_definition() {
@@ -797,42 +782,22 @@ mod tests {
             }]);
 
         let fine_path = vec![
-            SeededFinePathRecord {
-                transition_index: 0,
-                timestamp_utc_nanos: 120,
-                transition_kind: SeededFinePathTransitionKind::BuyTrade,
-                side: Some(SeededTickEventSide::Buy),
-                news_arrival_component: None,
-                market_state: SeededTickSimulationNewsEventMarketState::Open,
-                return_components: SufficientStatisticsRiskReturnComponents {
-                    buy_side_return: 0.01,
-                    sell_side_return: 0.0,
-                    trading_time_return: 0.01,
-                    open_jump_return: 0.0,
-                    closed_gap_return: 0.0,
-                    total_return: 0.01,
-                },
-                cumulative_log_return: 0.01,
-                state_snapshot: None,
-            },
-            SeededFinePathRecord {
-                transition_index: 1,
-                timestamp_utc_nanos: 420,
-                transition_kind: SeededFinePathTransitionKind::SellTrade,
-                side: Some(SeededTickEventSide::Sell),
-                news_arrival_component: None,
-                market_state: SeededTickSimulationNewsEventMarketState::Open,
-                return_components: SufficientStatisticsRiskReturnComponents {
-                    buy_side_return: 0.0,
-                    sell_side_return: -0.02,
-                    trading_time_return: -0.02,
-                    open_jump_return: 0.0,
-                    closed_gap_return: 0.0,
-                    total_return: -0.02,
-                },
-                cumulative_log_return: -0.01,
-                state_snapshot: None,
-            },
+            test_fine_path_record(
+                0,
+                120,
+                SeededFinePathTransitionKind::BuyTrade,
+                Some(SeededTickEventSide::Buy),
+                0.01,
+                0.01,
+            ),
+            test_fine_path_record(
+                1,
+                420,
+                SeededFinePathTransitionKind::SellTrade,
+                Some(SeededTickEventSide::Sell),
+                -0.02,
+                -0.01,
+            ),
         ];
 
         let (five_minute_intervals, fifteen_minute_intervals) =
@@ -877,24 +842,14 @@ mod tests {
             },
         ]);
 
-        let fine_path = vec![SeededFinePathRecord {
-            transition_index: 0,
-            timestamp_utc_nanos: 120,
-            transition_kind: SeededFinePathTransitionKind::BuyTrade,
-            side: Some(SeededTickEventSide::Buy),
-            news_arrival_component: None,
-            market_state: SeededTickSimulationNewsEventMarketState::Open,
-            return_components: SufficientStatisticsRiskReturnComponents {
-                buy_side_return: 0.01,
-                sell_side_return: 0.0,
-                trading_time_return: 0.01,
-                open_jump_return: 0.0,
-                closed_gap_return: 0.0,
-                total_return: 0.01,
-            },
-            cumulative_log_return: 0.01,
-            state_snapshot: None,
-        }];
+        let fine_path = vec![test_fine_path_record(
+            0,
+            120,
+            SeededFinePathTransitionKind::BuyTrade,
+            Some(SeededTickEventSide::Buy),
+            0.01,
+            0.01,
+        )];
 
         let aggregated = aggregate_simulated_path_to_interval_template(
             fine_path.as_slice(),
@@ -910,23 +865,15 @@ mod tests {
     #[test]
     fn sampled_trade_returns_preserve_endpoints_and_requested_count() {
         let fine_path: Vec<SeededFinePathRecord> = (0..6)
-            .map(|position| SeededFinePathRecord {
-                transition_index: position,
-                timestamp_utc_nanos: position as i64,
-                transition_kind: SeededFinePathTransitionKind::BuyTrade,
-                side: Some(SeededTickEventSide::Buy),
-                news_arrival_component: None,
-                market_state: SeededTickSimulationNewsEventMarketState::Open,
-                return_components: SufficientStatisticsRiskReturnComponents {
-                    buy_side_return: position as f64,
-                    sell_side_return: 0.0,
-                    trading_time_return: position as f64,
-                    open_jump_return: 0.0,
-                    closed_gap_return: 0.0,
-                    total_return: position as f64,
-                },
-                cumulative_log_return: position as f64,
-                state_snapshot: None,
+            .map(|position| {
+                test_fine_path_record(
+                    position,
+                    position as i64,
+                    SeededFinePathTransitionKind::BuyTrade,
+                    Some(SeededTickEventSide::Buy),
+                    position as f64,
+                    position as f64,
+                )
             })
             .collect();
 
@@ -997,42 +944,22 @@ mod tests {
         ]);
 
         let fine_path = vec![
-            SeededFinePathRecord {
-                transition_index: 0,
-                timestamp_utc_nanos: 120,
-                transition_kind: SeededFinePathTransitionKind::BuyTrade,
-                side: Some(SeededTickEventSide::Buy),
-                news_arrival_component: None,
-                market_state: SeededTickSimulationNewsEventMarketState::Open,
-                return_components: SufficientStatisticsRiskReturnComponents {
-                    buy_side_return: 0.01,
-                    sell_side_return: 0.0,
-                    trading_time_return: 0.01,
-                    open_jump_return: 0.0,
-                    closed_gap_return: 0.0,
-                    total_return: 0.01,
-                },
-                cumulative_log_return: 0.01,
-                state_snapshot: None,
-            },
-            SeededFinePathRecord {
-                transition_index: 1,
-                timestamp_utc_nanos: 960,
-                transition_kind: SeededFinePathTransitionKind::SellTrade,
-                side: Some(SeededTickEventSide::Sell),
-                news_arrival_component: None,
-                market_state: SeededTickSimulationNewsEventMarketState::Open,
-                return_components: SufficientStatisticsRiskReturnComponents {
-                    buy_side_return: 0.0,
-                    sell_side_return: -0.02,
-                    trading_time_return: -0.02,
-                    open_jump_return: 0.0,
-                    closed_gap_return: 0.0,
-                    total_return: -0.02,
-                },
-                cumulative_log_return: -0.01,
-                state_snapshot: None,
-            },
+            test_fine_path_record(
+                0,
+                120,
+                SeededFinePathTransitionKind::BuyTrade,
+                Some(SeededTickEventSide::Buy),
+                0.01,
+                0.01,
+            ),
+            test_fine_path_record(
+                1,
+                960,
+                SeededFinePathTransitionKind::SellTrade,
+                Some(SeededTickEventSide::Sell),
+                -0.02,
+                -0.01,
+            ),
         ];
 
         let aggregated = aggregate_simulated_path_to_interval_template(

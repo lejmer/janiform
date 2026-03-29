@@ -77,13 +77,11 @@ def test_public_api_contract_snapshot_tracks_supported_cli_modules() -> None:
     assert {
         "janiform.cli",
         "janiform.cli.commands.calibration",
-        "janiform.cli.commands.development",
-        "janiform.cli.commands.model_workflows",
         "janiform.cli.commands.simulation",
     } <= set(current_snapshot["public_modules"])
 
     cli_exports = current_snapshot["public_modules"]["janiform.cli"]["exports"]
-    assert "main" in cli_exports
+    assert "CliExitCode" in cli_exports
     assert "_build_parser" not in cli_exports
 
 
@@ -142,7 +140,7 @@ def test_public_api_contract_guardrail_supports_public_domain_submodules() -> No
             ],
             "janiform.calibration.market_data.translation": [
                 "MarketDataTranslationResult",
-                "translate_market_data_request_to_staged_execution_input",
+                "translate_market_data_request_to_prepared_calibration",
             ],
             "janiform.calibration.market_data.workflow": [
                 "PreparedMarketDataCalibration",
@@ -171,8 +169,6 @@ def test_public_api_contract_guardrail_supports_public_domain_submodules() -> No
                 "MarketDataSessionRegularWindow",
                 "MarketDataSessionResolution",
             ],
-            "janiform.calibration.sessions.resolution": [
-            ],
             "janiform.calibration.staged": [
                 "StagedCalibrationExecutionInput",
                 "run_staged_calibration",
@@ -197,11 +193,10 @@ def test_public_api_contract_guardrail_supports_public_domain_submodules() -> No
                 "run_staged_calibration",
             ],
             "janiform.cli": [
-                "main",
+                "CliExitCode",
+                "CLI_REPOSITORY_RELATIVE_PATH_POLICY",
             ],
             "janiform.cli.commands.calibration": [],
-            "janiform.cli.commands.development": [],
-            "janiform.cli.commands.model_workflows": [],
             "janiform.cli.commands.simulation": [
                 "run_coarse_simulation",
                 "run_seeded_tick_event_simulation",
@@ -229,7 +224,6 @@ def test_public_api_contract_guardrail_supports_public_domain_submodules() -> No
         "janiform.calibration.presets.resolution",
         "janiform.calibration.sessions",
         "janiform.calibration.sessions.contracts",
-        "janiform.calibration.sessions.resolution",
         "janiform.calibration.staged",
         "janiform.calibration.staged.contracts",
         "janiform.calibration.staged.inputs",
@@ -238,8 +232,6 @@ def test_public_api_contract_guardrail_supports_public_domain_submodules() -> No
         "janiform.calibration.staged.runtime",
         "janiform.cli",
         "janiform.cli.commands.calibration",
-        "janiform.cli.commands.development",
-        "janiform.cli.commands.model_workflows",
         "janiform.cli.commands.simulation",
         "janiform.simulation",
         "janiform.simulation.coarse",

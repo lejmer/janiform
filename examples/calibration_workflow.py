@@ -3,7 +3,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
 
-from janiform.calibration import CalibrationExecutionMode, run_staged_calibration
+from janiform.calibration.staged import CalibrationExecutionMode, run_staged_calibration
 
 from .support._shared import build_calendar_registry, build_calibration_execution_input
 

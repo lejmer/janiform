@@ -280,6 +280,7 @@ fn zero_inflated_tick_returns_do_not_label_every_non_zero_move_as_a_jump() {
         same_session_returns.as_slice(),
         open_price_tick_timestamps.as_slice(),
         &[],
+        4.0,
     );
 
     assert_eq!(detected_candidates.len(), 1);

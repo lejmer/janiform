@@ -5,14 +5,12 @@ from io import StringIO
 from pathlib import Path
 from typing import Any, Optional
 
-import orjson
 import pyarrow as pa
 from pyarrow import parquet
 
 import janiform.cli.command_tree as cli_command_tree_module
 from examples.support._shared import (
     build_coarse_simulation_request as build_example_coarse_simulation_request,
-    build_pricing_interval_factors,
     build_pricing_optional_output_selection,
     build_pricing_request,
 )
@@ -20,6 +18,7 @@ from janiform.calendar import CalendarRegistry
 from janiform.hourly_factors import (
     HourlyNewsIntensityProviderExplicitSource,
     HourlySeasonalityProviderExplicitSource,
+    provide_hourly_factor_contract,
 )
 from janiform.pricing import (
     GammaSeverityMarkConfiguration,
@@ -27,27 +26,37 @@ from janiform.pricing import (
     VanillaOptionPricingExecutionInput,
 )
 from janiform.simulation import (
-    CoarseSimulationRunRequest,
-    CoupledGapMarkConfiguration,
-    DoubleExponentialBaseShockConfiguration,
     HawkesExcitationState,
     HawkesKernelLoadings,
     HawkesKernelParameters,
+    SeededTickSimulationRequest,
+)
+from janiform.simulation.coarse import (
+    CoarseSimulationRunRequest,
+    CoupledGapMarkConfiguration,
+    DoubleExponentialBaseShockConfiguration,
     KnownNewsArrivalConfiguration,
     NewsArrivalConfiguration,
     NewsComponentMarkScaleConfiguration,
     NewsProcessConfiguration,
-    SeededTickSimulationRequest,
     SharedNewsMarkLawConfiguration,
     SurpriseNewsArrivalConfiguration,
-    load_hourly_factor_contract_for_simulation,
 )
+from janiform.simulation.seeded.contracts import (
+    build_endogenous_seeded_mean_reversion_runtime_inputs,
+)
+from tests.hourly_factor_contract_test_support import build_hourly_factor_contract
 
 
 def build_pricing_execution_input() -> VanillaOptionPricingExecutionInput:
     return VanillaOptionPricingExecutionInput(
         request=build_pricing_request(),
-        interval_factors=build_pricing_interval_factors(),
+        hourly_factor_contract=build_hourly_factor_contract(
+            request_start_utc_nanos=1_706_882_400_000_000_000,
+            s_h=(1.0,),
+            known_component_nu_h=(0.01,),
+            surprise_component_nu_h=(0.02,),
+        ),
         optional_output_selection=build_pricing_optional_output_selection(),
     )
 
@@ -56,13 +65,21 @@ def build_simulation_request(calendar_registry_json: str) -> SeededTickSimulatio
     calendar_registry = CalendarRegistry(calendar_registry_json)
     start_time_utc = datetime(2026, 2, 2, 14, tzinfo=UTC)
 
-    hourly_factor_contract = load_hourly_factor_contract_for_simulation(
+    hourly_factor_contract = provide_hourly_factor_contract(
         calendar_registry=calendar_registry,
         exchange_code="XNYS",
         range_start_utc=start_time_utc,
         range_end_utc=start_time_utc + timedelta(hours=2),
         seasonality_source=HourlySeasonalityProviderExplicitSource(hourly_factors=(1.0, 0.9)),
         news_intensity_source=HourlyNewsIntensityProviderExplicitSource(hourly_factors=(0.2, 0.1)),
+    )
+
+    (
+        mean_reversion_fitted_parameters,
+        mean_reversion_runtime_interval_anchors,
+        initial_mean_reversion_boundary_state,
+    ) = build_endogenous_seeded_mean_reversion_runtime_inputs(
+        hourly_factor_contract=hourly_factor_contract
     )
 
     return SeededTickSimulationRequest.from_runtime_inputs(
@@ -130,6 +147,9 @@ def build_simulation_request(calendar_registry_json: str) -> SeededTickSimulatio
             ),
         ),
         hourly_factor_contract=hourly_factor_contract,
+        mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
+        mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
+        initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
     )
 
 

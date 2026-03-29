@@ -21,6 +21,7 @@ use janiform_model_kernels::hawkes::{
     HawkesStructuredAlphaParameterization, HawkesStructuredRhoParameterization,
     HawkesStructuredRhoSelfDominancePolicy,
 };
+use janiform_model_kernels::mean_reversion::MeanReversionAnchorModelKind;
 use janiform_model_kernels::news::{
     CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
     GammaSeverityMarkConfiguration, SharedNewsMarkLawConfiguration,
@@ -33,6 +34,9 @@ use super::staged_runner::{
     run_staged_calibration_with_checkpointing_and_observer,
 };
 use super::stages::hawkes::HawkesStageCandidateInput;
+use super::stages::mean_reversion::{
+    MeanReversionStageExecutionInput, MeanReversionStageObservation,
+};
 use super::stages::return_components::{
     ReturnComponentsCloseOpenGapDetectionPolicy, ReturnComponentsDetectedIntradayJumpCandidate,
     ReturnComponentsKnownNewsCalendarInput, ReturnComponentsObservedCloseOpenBoundaryObservation,
@@ -70,6 +74,8 @@ pub struct CalibrationStagedExecutionInput {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub return_components_candidate_generation_input:
         Option<CalibrationReturnComponentsStageCandidateGenerationInput>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mean_reversion_stage_input: Option<CalibrationMeanReversionStageExecutionInput>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub runtime_resources: Option<CalibrationStagedExecutionRuntimeResources>,
 }
@@ -387,6 +393,25 @@ pub struct CalibrationReturnComponentsActivityContextPayload {
     pub candidate_diagnostics: Vec<CalibrationReturnComponentsActivityContextCandidateDiagnostic>,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CalibrationMeanReversionStageObservation {
+    pub observation_timestamp_utc_nanos: i64,
+    pub observed_log_price: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CalibrationMeanReversionStageExecutionInput {
+    pub requested_anchor_model_kind: MeanReversionAnchorModelKind,
+    pub calibration_grid_kind: String,
+    pub calibration_grid_interval_hours: f64,
+    pub source_observation_count: usize,
+    pub coverage_ratio: f64,
+    #[serde(default)]
+    pub observations: Vec<CalibrationMeanReversionStageObservation>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum CalibrationStagedExecutionBridgeError {
     UnsupportedSchemaVersion {
@@ -473,6 +498,7 @@ impl CalibrationStagedExecutionInput {
         let hawkes_selected = selected_stages.contains(&CalibrationStage::Hawkes);
         let return_components_selected =
             selected_stages.contains(&CalibrationStage::ReturnComponents);
+        let mean_reversion_selected = selected_stages.contains(&CalibrationStage::MeanReversion);
 
         if seasonality_selected && self.seasonality_stage_input.is_none() {
             return Err(
@@ -522,6 +548,21 @@ impl CalibrationStagedExecutionInput {
             );
         }
 
+        if mean_reversion_selected && self.mean_reversion_stage_input.is_none() {
+            return Err(
+                CalibrationStagedExecutionBridgeError::MissingStageExecutionInput {
+                    stage: CalibrationStage::MeanReversion,
+                },
+            );
+        }
+        if !mean_reversion_selected && self.mean_reversion_stage_input.is_some() {
+            return Err(
+                CalibrationStagedExecutionBridgeError::UnexpectedStageExecutionInput {
+                    stage: CalibrationStage::MeanReversion,
+                },
+            );
+        }
+
         let disk_checkpoint_directory =
             resolve_disk_checkpoint_directory(request.execution_mode, self.runtime_resources)?;
 
@@ -546,6 +587,9 @@ impl CalibrationStagedExecutionInput {
             return_components_candidate_generation_input: self
                 .return_components_candidate_generation_input
                 .map(CalibrationReturnComponentsStageCandidateGenerationInput::into_core),
+            mean_reversion_stage_input: self
+                .mean_reversion_stage_input
+                .map(CalibrationMeanReversionStageExecutionInput::into_core),
         };
 
         Ok(CalibrationStagedExecutionPlan {
@@ -631,6 +675,14 @@ fn canonical_stage_graph_for_selected_stages(
         CalibrationStageDependency {
             stage: CalibrationStage::JointRefinement,
             depends_on: CalibrationStage::ReturnComponents,
+        },
+        CalibrationStageDependency {
+            stage: CalibrationStage::MeanReversion,
+            depends_on: CalibrationStage::ReturnComponents,
+        },
+        CalibrationStageDependency {
+            stage: CalibrationStage::JointRefinement,
+            depends_on: CalibrationStage::MeanReversion,
         },
     ];
 
@@ -930,12 +982,43 @@ impl CalibrationReturnComponentsActivityContextPayload {
     }
 }
 
+impl CalibrationMeanReversionStageExecutionInput {
+    fn into_core(self) -> MeanReversionStageExecutionInput {
+        MeanReversionStageExecutionInput {
+            return_components_input: None,
+            seasonality_stage_input: None,
+            hawkes_stage_payload: None,
+            return_components_stage_payload: None,
+            requested_anchor_model_kind: self.requested_anchor_model_kind,
+            calibration_grid_kind: self.calibration_grid_kind,
+            calibration_grid_interval_hours: self.calibration_grid_interval_hours,
+            source_observation_count: self.source_observation_count,
+            coverage_ratio: self.coverage_ratio,
+            observations: self
+                .observations
+                .into_iter()
+                .map(CalibrationMeanReversionStageObservation::into_core)
+                .collect(),
+        }
+    }
+}
+
+impl CalibrationMeanReversionStageObservation {
+    fn into_core(self) -> MeanReversionStageObservation {
+        MeanReversionStageObservation {
+            observation_timestamp_utc_nanos: self.observation_timestamp_utc_nanos,
+            observed_log_price: self.observed_log_price,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         CALIBRATION_STAGED_EXECUTION_INPUT_SCHEMA_VERSION,
         CalibrationHawkesDirectionalLabelDiagnostics, CalibrationHawkesObservedSourceRegime,
-        CalibrationHawkesStageCandidateInput,
+        CalibrationHawkesStageCandidateInput, CalibrationMeanReversionStageExecutionInput,
+        CalibrationMeanReversionStageObservation,
         CalibrationReturnComponentsCloseOpenGapDetectionPolicy,
         CalibrationReturnComponentsDetectedIntradayJumpCandidate,
         CalibrationReturnComponentsKnownNewsCalendarInput,
@@ -960,6 +1043,7 @@ mod tests {
         HawkesStructuredAlphaParameterization, HawkesStructuredRhoParameterization,
         HawkesStructuredRhoSelfDominancePolicy,
     };
+    use janiform_model_kernels::mean_reversion::MeanReversionAnchorModelKind;
     use janiform_model_kernels::news::{
         CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
         GammaSeverityMarkConfiguration,
@@ -979,6 +1063,7 @@ mod tests {
                 CalibrationStage::Seasonality,
                 CalibrationStage::Hawkes,
                 CalibrationStage::ReturnComponents,
+                CalibrationStage::MeanReversion,
             ],
             CalibrationRunSeedSettings::try_new(
                 17,
@@ -992,6 +1077,7 @@ mod tests {
                 stage_solver_settings(CalibrationStage::Seasonality),
                 stage_solver_settings(CalibrationStage::Hawkes),
                 stage_solver_settings(CalibrationStage::ReturnComponents),
+                stage_solver_settings(CalibrationStage::MeanReversion),
             ],
         )
         .expect("run spec should validate")
@@ -1137,6 +1223,32 @@ mod tests {
                     },
                 },
             ),
+            mean_reversion_stage_input: Some(CalibrationMeanReversionStageExecutionInput {
+                requested_anchor_model_kind:
+                    MeanReversionAnchorModelKind::EndogenousCoreExpectationOneInterval,
+                calibration_grid_kind: "synthetic_daily_close_grid.v1".to_string(),
+                calibration_grid_interval_hours: 24.0,
+                source_observation_count: 4,
+                coverage_ratio: 1.0,
+                observations: vec![
+                    CalibrationMeanReversionStageObservation {
+                        observation_timestamp_utc_nanos: 1_770_042_600_000_000_000,
+                        observed_log_price: 4.60,
+                    },
+                    CalibrationMeanReversionStageObservation {
+                        observation_timestamp_utc_nanos: 1_770_129_000_000_000_000,
+                        observed_log_price: 4.58,
+                    },
+                    CalibrationMeanReversionStageObservation {
+                        observation_timestamp_utc_nanos: 1_770_215_400_000_000_000,
+                        observed_log_price: 4.57,
+                    },
+                    CalibrationMeanReversionStageObservation {
+                        observation_timestamp_utc_nanos: 1_770_301_800_000_000_000,
+                        observed_log_price: 4.59,
+                    },
+                ],
+            }),
             runtime_resources: match execution_mode {
                 CalibrationExecutionMode::Memory => None,
                 CalibrationExecutionMode::Disk => {
@@ -1198,6 +1310,7 @@ mod tests {
                 CalibrationStage::Seasonality,
                 CalibrationStage::Hawkes,
                 CalibrationStage::ReturnComponents,
+                CalibrationStage::MeanReversion,
             ]
         );
         assert_eq!(

@@ -1,10 +1,4 @@
 mod support;
-use support::shared::{
-    build_data_inputs, build_mode_aware_stage_handoff, build_seed_settings,
-    build_solver_settings, build_solver_settings_for_pre_joint_pipeline,
-    build_solver_settings_for_seasonality_and_hawkes, build_valid_run_spec,
-    build_valid_run_spec_with_mode, json,
-};
 use janiform_calibration_artifacts::{
     CALIBRATION_EXECUTION_MODE_DEFAULT_POLICY, CALIBRATION_RUN_CONTRACT_SCHEMA_VERSION,
     CALIBRATION_RUN_SPEC_SCHEMA_VERSION, CALIBRATION_SOLVER_SETTINGS_CAPTURE_POLICY,
@@ -14,11 +8,15 @@ use janiform_calibration_artifacts::{
     CalibrationRunSeedSettings, CalibrationRunSpec, CalibrationRunSpecError,
     CalibrationRunSpecErrorClassification, CalibrationStage, CalibrationStageDependency,
     CalibrationStageGraph, CalibrationStageGraphError, CalibrationStageHandoff,
-    CalibrationStageHandoffError, CalibrationStageSeedSource,
-    CalibrationStageSolverSettings, default_calibration_execution_mode_for_surface,
-    derive_calibration_stage_seed_from_global_seed,
-    resolve_calibration_execution_mode_for_surface,
-    resolve_calibration_stage_execution_order, resolve_calibration_stage_seed_metadata,
+    CalibrationStageHandoffError, CalibrationStageSeedSource, CalibrationStageSolverSettings,
+    default_calibration_execution_mode_for_surface, derive_calibration_stage_seed_from_global_seed,
+    resolve_calibration_execution_mode_for_surface, resolve_calibration_stage_execution_order,
+    resolve_calibration_stage_seed_metadata,
+};
+use support::shared::{
+    build_data_inputs, build_mode_aware_stage_handoff, build_seed_settings, build_solver_settings,
+    build_solver_settings_for_pre_joint_pipeline, build_solver_settings_for_seasonality_and_hawkes,
+    build_valid_run_spec, build_valid_run_spec_with_mode, json,
 };
 
 #[test]
@@ -483,12 +481,20 @@ fn calibration_run_contract_captures_solver_settings_for_auditability() {
             depends_on: CalibrationStage::Hawkes,
         },
         CalibrationStageDependency {
+            stage: CalibrationStage::MeanReversion,
+            depends_on: CalibrationStage::ReturnComponents,
+        },
+        CalibrationStageDependency {
             stage: CalibrationStage::JointRefinement,
             depends_on: CalibrationStage::Hawkes,
         },
         CalibrationStageDependency {
             stage: CalibrationStage::JointRefinement,
             depends_on: CalibrationStage::ReturnComponents,
+        },
+        CalibrationStageDependency {
+            stage: CalibrationStage::JointRefinement,
+            depends_on: CalibrationStage::MeanReversion,
         },
     ]);
 
@@ -512,6 +518,7 @@ fn calibration_run_contract_captures_solver_settings_for_auditability() {
             CalibrationStage::Seasonality,
             CalibrationStage::Hawkes,
             CalibrationStage::ReturnComponents,
+            CalibrationStage::MeanReversion,
             CalibrationStage::JointRefinement,
         ]
     );
@@ -521,7 +528,7 @@ fn calibration_run_contract_captures_solver_settings_for_auditability() {
         serialized["stage_solver_settings"]
             .as_array()
             .map(|v| v.len()),
-        Some(4)
+        Some(5)
     );
     assert_eq!(
         serialized["stage_solver_settings"][0]["optimizer_settings"]["solver_name"],

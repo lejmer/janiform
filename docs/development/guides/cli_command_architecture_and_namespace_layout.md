@@ -310,15 +310,26 @@ Output:
 ### `janiform price`
 
 Required arguments:
-- `--execution-input-json`: `VanillaOptionPricingExecutionInput` JSON object
+- `--model-path`: persisted `JaniformModel`
+- `--valuation-time-utc`
+- `--spot`
+- `--strike`
+- `--maturity-interval`
 
 Behavior:
-- The command validates the execution input directly against the Python pricing contract.
-- Interval factors keep `nu_h_known` and `nu_h_surprise` separate.
+- The command prepares pricing inputs from the persisted fitted model and the requested valuation
+  timestamp.
+- Mean-reverting models require explicit observed boundary state through
+  `--observed-boundary-state-json`. The CLI never invents anchored observed state.
+- Disabled mean reversion remains the nested case and therefore does not require
+  `--observed-boundary-state-json`.
 
 Output:
-- `--output json` writes deterministic JSON for `pricing.vanilla_option.run_result.v1` to stdout.
-- `--output human` writes a concise completion summary with price and delta.
+- `--output json` writes deterministic JSON for the high-level pricing workflow result, including
+  the canonical `pricing.vanilla_option.run_result.v1` response and optional anchored recursion
+  diagnostics when requested.
+- `--output human` writes a concise completion summary with price and anchored-diagnostics metadata
+  when available.
 
 ### `janiform hourly-factors materialize-seasonality`
 
@@ -463,7 +474,7 @@ Behavior:
 - `--output json` writes deterministic JSON for `cli.calibration.market_data.summary.v1`.
 - The summary schema is intentionally user-facing and includes:
   - `request_schema_version` so downstream tooling can trace back to `calibration.market_data.request.v1`
-  - `preparation_schema_version` so downstream tooling can tie the summary to the prepared staged-input boundary
+  - `preparation_schema_version` so downstream tooling can tie the summary to the prepared artifact boundary
   - `input_files` for tick data, session definitions, and optional known-news or option-surface files
   - `column_mapping` and `normalization_policy`
   - `workflow_scope`, `session_context`, and output artifact targets
@@ -473,12 +484,12 @@ Behavior:
 - The default structured summary does not embed full internal staged execution payload sections like
   `seasonality_stage_input`, but it does expose the selected staged scope for support triage.
 - `--output human` writes a concise operator-oriented summary of the same user-facing metadata.
-- Translation into the canonical staged execution input remains a lower-level step documented separately.
+- Translation into the canonical prepared calibration handle remains a lower-level step documented separately.
 
 ### `janiform fit staged`
 
 Required arguments:
-- `--execution-input-json`: `StagedCalibrationExecutionInput` JSON object
+- `--execution-input-json`: `StagedCalibrationExecutionInput` wrapper JSON object that references a prepared payload artifact
 - `--calendar-registry-json`: `calendar.registry.v1` JSON object or a wrapper object with `calendar_registry`
 
 Optional arguments:

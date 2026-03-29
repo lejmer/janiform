@@ -1,8 +1,8 @@
 # Python Public API Surface Map And Namespace Policy
 
-Document version: `python.public_api_surface_map.pre_v0_1.milestone_2`
+Document version: `python.public_api_surface_map.pre_v0_1.control_plane_reset.v1`
 
-Status: active for the current pre-v0.1 milestone on March 13, 2026.
+Status: active for the current pre-v0.1 milestone on March 26, 2026.
 
 ## Purpose
 
@@ -37,8 +37,93 @@ and examples in the same change.
 - Discoverability is a first-class public API concern.
 - Package decomposition is a first-class public API concern.
 - Curated convenience imports should reduce friction without hiding the natural domain structure.
+- Curated roots should stay small enough that `__all__` reads like an overview, not an index dump.
 - Public workflow and domain modules should read like a map of the product.
 - Private-by-convention naming is not a substitute for clear package boundaries.
+
+## Boundary policy
+
+Janiform now treats Python as the control plane and Rust as the data plane.
+
+- `config`
+  - Small immutable request, settings, policy, preset, or parameter objects.
+  - Public Python dataclasses and enums are allowed here.
+- `bulk data`
+  - Empirical observations, event tables, candidate sets, lower-frequency grids, interval vectors,
+    and other dataset-sized payloads.
+  - Python tuple-of-record ownership is forbidden on the supported production path.
+  - Public boundaries must use native-owned handles, file references, dataset references, or
+    columnar buffers.
+- `runtime artifact`
+  - Prepared calibration plans, fitted models, lazy simulation paths, priced path views, reusable
+    runtime handles, and artifact-backed execution inputs.
+  - Runtime artifacts may expose lazy accessors and persistence helpers, but they must not eagerly
+    duplicate bulk datasets into Python-owned record tuples.
+- `report`
+  - Diagnostics, provenance, validation summaries, and fit reports.
+  - Reports may contain small tuples and nested summaries, but they must not embed bulk empirical
+    payloads.
+
+## Surface classification map
+
+The following public surface families are intentionally supported and explicitly classified:
+
+| Surface family | Classification |
+| --- | --- |
+| `janiform` | `config` |
+| `janiform.errors` | `report` |
+| `janiform.calendar` | `config`, `runtime artifact` |
+| `janiform.contracts` | `config` |
+| `janiform.hourly_factors` | `config`, `runtime artifact`, `bulk data` |
+| `janiform.seasonality` | `config`, `report`, `bulk data` |
+| `janiform.simulation` | `config`, `runtime artifact` |
+| `janiform.simulation.coarse` | `config`, `runtime artifact` |
+| `janiform.simulation.seeded` | `config`, `runtime artifact` |
+| `janiform.simulation.shared` | `config` |
+| `janiform.pricing` | `config`, `runtime artifact`, `report`, `bulk data` |
+| `janiform.risk` | `config`, `runtime artifact`, `report`, `bulk data` |
+| `janiform.calibration` | `config`, `runtime artifact`, `report` |
+| `janiform.calibration.fit` | `config`, `runtime artifact`, `report` |
+| `janiform.calibration.fit.estimator` | `config`, `runtime artifact` |
+| `janiform.calibration.fit.model` | `runtime artifact` |
+| `janiform.calibration.fit.report` | `report` |
+| `janiform.calibration.market_data` | `config`, `runtime artifact`, `report` |
+| `janiform.calibration.market_data.contracts` | `config` |
+| `janiform.calibration.market_data.request` | `config` |
+| `janiform.calibration.market_data.ingestion` | `report` |
+| `janiform.calibration.market_data.translation` | `runtime artifact`, `report` |
+| `janiform.calibration.market_data.workflow` | `runtime artifact`, `report` |
+| `janiform.calibration.staged` | `config`, `runtime artifact`, `report` |
+| `janiform.calibration.staged.contracts` | `config` |
+| `janiform.calibration.staged.inputs` | `config`, `runtime artifact` |
+| `janiform.calibration.staged.request` | `config` |
+| `janiform.calibration.staged.results` | `runtime artifact`, `report` |
+| `janiform.calibration.staged.runtime` | `runtime artifact` |
+| `janiform.calibration.presets` | `config` |
+| `janiform.calibration.presets.references` | `config` |
+| `janiform.calibration.presets.registry` | `config`, `runtime artifact` |
+| `janiform.calibration.presets.resolution` | `config`, `report` |
+| `janiform.calibration.sessions` | `config`, `report` |
+| `janiform.calibration.sessions.contracts` | `config`, `report` |
+| `janiform.validation` | `runtime artifact`, `report` |
+| `janiform.stylized_facts` | `runtime artifact`, `report` |
+| `janiform.cli` | `config`, `report` |
+| `janiform.cli.commands.calibration` | `config`, `report` |
+| `janiform.cli.commands.simulation` | `config`, `report` |
+
+## Review checklist
+
+Reject a Python public-surface change when any of the following is true:
+
+- it introduces a new tuple-of-record or `Sequence[Mapping[...]]` bulk-evidence contract on the
+  default path
+- it makes a report or runtime artifact eagerly duplicate a native-owned dataset
+- it expands `janiform.contracts` or market-data request modules with data-bearing ownership
+- it makes a CLI default require users to assemble large staged evidence payloads by hand
+- it adds a package-root re-export that only forwards to an ownership module without making the
+  root materially clearer for normal users
+- it keeps a public-looking module importable without making it obvious, at the module boundary,
+  whether that module is public ownership surface or internal plumbing
 
 ## Public package root
 
@@ -64,6 +149,11 @@ Expose a symbol from a workflow package root such as `janiform.simulation` or
 
 Curated root exports are convenience imports. They are not a rule that every public symbol must live
 only at the root.
+
+Curated roots should prefer workflow entrypoints, the most common request or result contracts, and a
+small number of cross-cutting shared types. Serialization helpers, schema constants, and advanced
+plumbing contracts should usually stay in ownership modules unless the root is still clearly
+curated after adding them.
 
 ### Public submodule criteria
 
@@ -132,12 +222,19 @@ from janiform.contracts import MeanReversionFittedParameters
 
 - `janiform.simulation`
   - Ownership: curated convenience surface for seeded-tick and coarse-interval simulation workflows
+  - Root-size policy: keep only the common workflow entrypoints, request and response contracts, and the shared inputs needed to construct those workflows from examples or notebooks
 - `janiform.pricing`
-  - Ownership: vanilla option pricing contracts, execution input, and runtime factor loading
+  - Ownership: vanilla option pricing contracts, anchored boundary-state pricing diagnostics, and runtime factor loading
+  - Anchored pricing policy: the module re-exports the canonical anchor-deviation pricing boundary input and local state-dependent tilt diagnostics alongside the shared mean-reversion contracts required to build that request surface
+  - Execution contract policy: `VanillaOptionPricingExecutionInput` carries an interval-aligned tuple of pricing factors for the requested horizon, and optional run diagnostics may include anchored recursion state-propagation output
 - `janiform.risk`
   - Ownership: sufficient-statistics risk workflow contracts
+  - Observed-state policy: public risk path records and diagnostics distinguish core Janiform interval returns from observed log-price state, anchor state, and deviation-from-anchor summaries
 - `janiform.calibration`
   - Ownership: curated convenience surface for high-level fitting, market-data calibration, staged execution, and preset-facing calibration objects
+  - Root-size policy: prefer the estimator, main workflow requests and responses, and the small set
+    of preset-facing types used by the high-level path. Leave schema constants, low-level session
+    contracts, and advanced validation helpers in ownership modules
 - `janiform.calendar`
   - Ownership: exchange calendar queries shared across workflows
 - `janiform.hourly_factors`
@@ -153,16 +250,24 @@ from janiform.contracts import MeanReversionFittedParameters
 - `janiform.stylized_facts`
   - Ownership: stylized-fact comparison reporting
 - `janiform.cli`
-  - Ownership: curated CLI entrypoints, command-tree parser construction, and supported command-group organization
+  - Ownership: curated CLI contract constants and supported command-group organization
+  - Root-size policy: the package root should export the supported exit-code enum and
+    the small set of schema, entrypoint, path-policy, and environment-variable constants that are
+    referenced by CLI-facing docs and workflow tests. Command-tree assembly, rendering,
+    configuration loading, path resolution, and document helpers stay in dedicated helper modules
+  - Execution-module policy: the executable process boundary lives in `janiform.__main__`, not in
+    `janiform.cli.__init__`
   - Beginner-path policy: `janiform fit PATH --market MARKET` is the preferred first-time path, with `fit inspect` and `--explain` exposing inferred defaults
 
 ### Public domain submodules
 
 - `janiform.simulation.coarse`
   - Ownership: coarse-interval simulation request and path contracts, news-process configuration, and coarse execution entrypoints
+  - Observed-state policy: coarse path records and diagnostics expose both core interval return totals and observed-state end-of-interval fields so downstream exports and analytics do not reconstruct prices from core returns alone
   - Root coexistence policy: common coarse workflow symbols are also re-exported from `janiform.simulation` as curated convenience imports
 - `janiform.simulation.seeded`
   - Ownership: seeded-tick simulation request and response contracts, seeded-tick execution entrypoints, and seeded-tick workflow-specific record types
+  - Observed-state policy: the public seeded fine-path and event-tape records expose observed log-price, anchor, deviation, and core-increment fields explicitly, and the package re-exports the endogenous mean-reversion runtime-input helper used by examples and high-level workflow wiring
   - Root coexistence policy: key seeded workflow symbols are also re-exported from `janiform.simulation` as curated convenience imports
 - `janiform.simulation.shared`
   - Ownership: shared Hawkes-state and simulation error contracts used across coarse and seeded workflows
@@ -190,8 +295,8 @@ from janiform.contracts import MeanReversionFittedParameters
 - `janiform.calibration.market_data.ingestion`
   - Ownership: source-schema inspection helpers and market-data source summary contracts
 - `janiform.calibration.market_data.translation`
-  - Ownership: translation from market-data requests into staged execution inputs
-  - Boundary rule: translation results may expose execution input, diagnostics, provenance, and fit-level summaries, but must not expose a Python-owned full-dataset IR of loaded market-data rows
+  - Ownership: native preparation from market-data requests into prepared calibration handles plus diagnostics and provenance
+  - Boundary rule: translation results may expose a staged request, a native-backed prepared handle, artifact references, diagnostics, provenance, and fit-level summaries, but must not expose a Python-owned full-dataset IR of loaded market-data rows
 - `janiform.calibration.market_data.workflow`
   - Ownership: prepared market-data calibration artifacts and workflow entrypoints
 - `janiform.calibration.staged`
@@ -202,7 +307,7 @@ from janiform.contracts import MeanReversionFittedParameters
   - Optimizer-setting policy: stage solver settings are the explicit low-level boundary for shared
     execution controls such as candidate-search CPU count
 - `janiform.calibration.staged.inputs`
-  - Ownership: staged execution input contracts and stage-specific input payload models
+  - Ownership: advanced staged execution wrapper contracts that reference prepared payload artifacts and runtime resources
 - `janiform.calibration.staged.request`
   - Ownership: staged calibration request contract
 - `janiform.calibration.staged.results`
@@ -220,17 +325,15 @@ from janiform.contracts import MeanReversionFittedParameters
   - Ownership: resolved preset workflow configuration and resolution entrypoints
 - `janiform.calibration.sessions`
   - Ownership: market-data session-resolution contracts and session window models
-  - Root coexistence policy: the root re-exports the core session-resolution contracts, while `janiform.calibration.sessions` is the ownership path
+  - Root coexistence policy: session-resolution contracts stay on the ownership path instead of
+    being re-exported from `janiform.calibration`
 - `janiform.calibration.sessions.contracts`
   - Ownership: session-resolution contracts and weekly session window models
-- `janiform.calibration.sessions.resolution`
-  - Ownership: helper-only calendar-registry materialization utilities for explicit or preset-backed session definitions
+  - Internal-helper policy: session-registry materialization and weekly-window derivation stay in
+    `janiform.calibration.sessions._resolution`, which is private implementation plumbing rather
+    than part of the supported import surface
 - `janiform.cli.commands.calibration`
   - Ownership: calibration CLI command handlers and calibration-specific CLI boundary normalization
-- `janiform.cli.commands.development`
-  - Ownership: developer regression command handlers and regression-fixture extraction helpers
-- `janiform.cli.commands.model_workflows`
-  - Ownership: fit and simulate CLI workflow adapters around persisted models and preset-backed model construction
 - `janiform.cli.commands.simulation`
   - Ownership: explicit simulation CLI command handlers
 
@@ -255,6 +358,15 @@ The default high-level path is:
 - `JaniformEstimator.fit(...) -> JaniformModel`
 - optional `JaniformFitReport`
 
+The high-level runtime methods on `JaniformModel` are:
+
+- `JaniformModel.simulate(...)`
+- `JaniformModel.price_option(...)`
+
+When the fitted model enables mean reversion, `JaniformModel.price_option(...)` requires an
+explicit `observed_boundary_state: MeanReversionBoundaryState`. The high-level API keeps anchored
+pricing state explicit and does not synthesize missing observed-state boundary inputs.
+
 The advanced staged-calibration entrypoint is:
 
 - `run_staged_calibration`
@@ -266,7 +378,13 @@ The default full staged calibration path now executes:
 - `seasonality`
 - `hawkes`
 - `return_components`
+- `mean_reversion`
 - `joint_refinement`
+
+Advanced staged execution inputs are now file-backed wrappers. `StagedCalibrationExecutionInput`
+owns a small declarative staged request plus a `prepared_payload_file` reference and optional
+runtime resources. The bulk evidence and mean-reversion observation grid remain in the prepared
+artifact, not in Python-owned tuples.
 
 The supported calibration ownership modules are:
 
@@ -292,7 +410,6 @@ The supported calibration ownership modules are:
 - `janiform.calibration.presets.resolution`
 - `janiform.calibration.sessions`
 - `janiform.calibration.sessions.contracts`
-- `janiform.calibration.sessions.resolution`
 
 The calibration package root is curated convenience surface. It is not the only discoverable map of
 the package anymore.
@@ -306,10 +423,9 @@ from janiform.calibration.fit import JaniformEstimator
 from janiform.calibration.fit.model import JaniformModel
 from janiform.calibration.market_data import MarketDataCalibrationRequest
 from janiform.calibration.market_data.translation import (
-    translate_market_data_request_to_staged_execution_input,
+    translate_market_data_request_to_prepared_calibration,
 )
 from janiform.calibration.staged import StagedCalibrationExecutionInput
-from janiform.calibration.staged.inputs import CalibrationSeasonalityStageExecutionInput
 from janiform.calibration.staged.request import StagedCalibrationRequest
 from janiform.calibration.staged.results import StagedCalibrationResponse
 from janiform.calibration.presets import PresetRegistry, SessionPresetReference
@@ -336,6 +452,8 @@ pre-v0.1 line:
 - any submodule not listed in this document
 - implementation helpers nested under public packages, such as `janiform.validation.harness`
 - low-level native adapters and boundary plumbing, such as `janiform._native` and `janiform._native_api`
+- non-underscored helper modules that declare themselves internal at the module docstring boundary,
+  such as the CLI command-tree, rendering, configuration, and path helpers
 
 Private modules must not be re-exported from `janiform` or from public module `__all__` lists.
 Underscore-prefixed symbols must not appear in any module `__all__` list unless they are
@@ -357,4 +475,6 @@ double-underscore protocol names such as `__version__`.
 - Does the package layout improve discoverability for both users and maintainers?
 - Are multiple supported import paths intentional and documented rather than accidental?
 - Are private helpers still private instead of becoming a shadow public API through examples or tests?
+- Does each non-underscored helper module say at the module boundary that it is internal?
+- Did this change delete at least as much wrapper or duplicate surface area as it added?
 - Are README, docs, examples, and export guardrails updated in the same change?

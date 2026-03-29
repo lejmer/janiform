@@ -2,29 +2,36 @@ from datetime import UTC, datetime, timedelta
 from math import log
 from typing import Any, TypedDict, cast
 
+from janiform._timestamps import ONE_HOUR_NANOS
 from janiform.hourly_factors import (
     HourlyNewsIntensityProviderExplicitSource,
     HourlySeasonalityProviderExplicitSource,
+    provide_hourly_factor_contract,
 )
 from janiform.pricing import GammaSeverityMarkConfiguration, NigSharedPlusShiftConfiguration
-from janiform.simulation import (
+from janiform.simulation.coarse import (
     CoupledGapMarkConfiguration,
     DoubleExponentialBaseShockConfiguration,
-    HawkesExcitationState,
-    HawkesKernelParameters,
     KnownNewsArrivalConfiguration,
     NewsArrivalConfiguration,
     NewsComponentMarkScaleConfiguration,
     NewsProcessConfiguration,
-    SeededTickSimulationRequest,
-    SeededTickSimulationResponse,
     SharedNewsMarkLawConfiguration,
     SurpriseNewsArrivalConfiguration,
-    load_hourly_factor_contract_for_simulation,
+)
+from janiform.simulation.seeded import (
+    SeededTickSimulationRequest,
+    SeededTickSimulationResponse,
     run_seeded_tick_event_simulation,
 )
+from janiform.simulation.shared import (
+    HawkesExcitationState,
+    HawkesKernelParameters,
+)
+from janiform.simulation.seeded.contracts import (
+    build_endogenous_seeded_mean_reversion_runtime_inputs,
+)
 
-ONE_HOUR_NANOS: int = 3_600_000_000_000
 START_TIME_UTC: datetime = datetime(2026, 2, 2, tzinfo=UTC)
 
 
@@ -294,7 +301,7 @@ def _run_seeded_case(
     start_time_utc: datetime = START_TIME_UTC,
 ) -> SeededTickSimulationResponse:
     range_end_utc = start_time_utc + timedelta(hours=horizon_interval_count)
-    hourly_factor_contract = load_hourly_factor_contract_for_simulation(
+    hourly_factor_contract = provide_hourly_factor_contract(
         calendar_registry=calendar_registry,
         exchange_code="XNYS",
         range_start_utc=start_time_utc,
@@ -307,6 +314,14 @@ def _run_seeded_case(
             hourly_factors=[news_intensity] * horizon_interval_count,
             materialization_method="explicit_hourly_input.v1",
         ),
+    )
+
+    (
+        mean_reversion_fitted_parameters,
+        mean_reversion_runtime_interval_anchors,
+        initial_mean_reversion_boundary_state,
+    ) = build_endogenous_seeded_mean_reversion_runtime_inputs(
+        hourly_factor_contract=hourly_factor_contract
     )
 
     request = SeededTickSimulationRequest.from_runtime_inputs(
@@ -359,6 +374,9 @@ def _run_seeded_case(
             "y_minus_minus": 0.0,
         }),
         hourly_factor_contract=hourly_factor_contract,
+        mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
+        mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
+        initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
     )
 
     return run_seeded_tick_event_simulation(request)

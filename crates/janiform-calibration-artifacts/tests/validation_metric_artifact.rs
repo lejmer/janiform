@@ -1,20 +1,21 @@
 mod support;
-use support::shared::{
-    build_validation_metric_artifact_fixture, build_validation_metric_manifest_fixture, fs, json,
-    temporary_checkpoint_directory,
-};
 use janiform_calibration_artifacts::{
     CALIBRATION_ARTIFACT_MANIFEST_SCHEMA_VERSION,
     CALIBRATION_VALIDATION_METRIC_ARTIFACT_OUTPUT_SCHEMA_METADATA_VERSION,
     CALIBRATION_VALIDATION_METRIC_ARTIFACT_SCHEMA_FAMILY,
     CALIBRATION_VALIDATION_METRIC_ARTIFACT_SCHEMA_GENERATION,
     CALIBRATION_VALIDATION_METRIC_ARTIFACT_SCHEMA_VERSION, CalibrationStage,
-    CalibrationValidationMetricArtifact, CalibrationValidationMetricArtifactReferenceIntegrityError,
+    CalibrationValidationMetricArtifact,
+    CalibrationValidationMetricArtifactReferenceIntegrityError,
     CalibrationValidationMetricArtifactRole, CalibrationValidationMetricArtifactValidationError,
     CalibrationValidationMetricManifestLink, CalibrationValidationMetricStatus,
     calibration_artifact_manifest_reference, calibration_validation_metric_artifact_path,
     load_calibration_validation_metric_artifact_from_disk,
     persist_calibration_validation_metric_artifact_to_disk,
+};
+use support::shared::{
+    build_validation_metric_artifact_fixture, build_validation_metric_manifest_fixture, fs, json,
+    temporary_checkpoint_directory,
 };
 
 #[test]
@@ -40,7 +41,7 @@ fn validation_metric_artifact_round_trip_preserves_machine_readable_metadata() {
         artifact.manifest_link.artifact_reference,
         calibration_artifact_manifest_reference("run-001")
     );
-    assert_eq!(artifact.stage_output_links.len(), 4);
+    assert_eq!(artifact.stage_output_links.len(), 5);
     assert_eq!(artifact.metric_collections.len(), 1);
     assert_eq!(
         artifact.output_schema_metadata.artifact_role_vocabulary,

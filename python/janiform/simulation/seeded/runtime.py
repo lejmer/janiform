@@ -1,4 +1,4 @@
-from datetime import UTC, datetime, timedelta
+from datetime import UTC
 from time import perf_counter
 from typing import Any
 
@@ -10,7 +10,6 @@ from .response import SeededTickSimulationResponse
 from ..shared import SeededTickSimulationValidationError
 from ..shared.errors import (
     SIMULATION_ERROR_FACTORY,
-    SIMULATION_INTEGRATION_HOURLY_FACTOR_ERROR_ID,
     SIMULATION_INTEGRATION_NATIVE_MODULE_ERROR_ID,
     SIMULATION_INTEGRATION_RESPONSE_ERROR_ID,
     _simulation_error,
@@ -19,76 +18,6 @@ from ..shared.errors import (
 )
 from ...contracts import require_datetime_utc
 from ..._native_api import native_exception_matches, native_module
-from ...calendar import (
-    CalendarInvalidTimestampError,
-    CalendarInvalidTimezoneError,
-    CalendarMissingExchangeError,
-    CalendarRegistry,
-)
-from ...hourly_factors import (
-    _parse_interval_duration_nanos,
-    HourlyFactorContract,
-    HourlyFactorProviderMissingInputError,
-    HourlyFactorProviderUnsupportedRangeError,
-    HourlyNewsIntensityProviderSource,
-    HourlySeasonalityProviderSource,
-    provide_hourly_factor_contract,
-)
-from ...seasonality import SeasonalityInputValidationError
-
-
-def load_hourly_factor_contract_for_simulation(
-    *,
-    calendar_registry: CalendarRegistry,
-    exchange_code: str,
-    range_start_utc: datetime,
-    range_end_utc: datetime,
-    interval: str | timedelta = "1h",
-    seasonality_source: HourlySeasonalityProviderSource,
-    news_intensity_source: HourlyNewsIntensityProviderSource,
-) -> HourlyFactorContract:
-    """Load interval-aligned factors for the simulation path."""
-    interval_duration_nanos = _parse_interval_duration_nanos(interval)
-    try:
-        return provide_hourly_factor_contract(
-            calendar_registry=calendar_registry,
-            exchange_code=exchange_code,
-            range_start_utc=range_start_utc,
-            range_end_utc=range_end_utc,
-            interval=interval,
-            seasonality_source=seasonality_source,
-            news_intensity_source=news_intensity_source,
-        )
-    except (
-        CalendarInvalidTimestampError,
-        CalendarInvalidTimezoneError,
-        CalendarMissingExchangeError,
-        HourlyFactorProviderMissingInputError,
-        HourlyFactorProviderUnsupportedRangeError,
-        SeasonalityInputValidationError,
-    ) as e:
-        raise _simulation_error(
-            "hourly_factor_contract",
-            str(e),
-            entrypoint="load_hourly_factor_contract_for_simulation",
-            context={
-                "exchange_code": exchange_code,
-                "interval_duration_nanos": interval_duration_nanos,
-            },
-        ) from e
-    except ModuleNotFoundError as e:
-        raise _simulation_integration_error(
-            "native hourly-factor support is unavailable",
-            entrypoint="load_hourly_factor_contract_for_simulation",
-            error_id=SIMULATION_INTEGRATION_HOURLY_FACTOR_ERROR_ID,
-            field_path="hourly_factor_contract",
-            context={
-                "exchange_code": exchange_code,
-                "interval_duration_nanos": interval_duration_nanos,
-            },
-        ) from e
-
-
 def run_seeded_tick_event_simulation(
     request: SeededTickSimulationRequest,
 ) -> SeededTickSimulationResponse:
@@ -107,6 +36,9 @@ def run_seeded_tick_event_simulation(
         nig_shared_plus_shift_configuration=request.nig_shared_plus_shift_configuration,
         news_process_configuration=request.news_process_configuration,
         initial_excitation_state=request.initial_excitation_state,
+        mean_reversion_fitted_parameters=request.mean_reversion_fitted_parameters,
+        mean_reversion_runtime_interval_anchors=request.mean_reversion_runtime_interval_anchors,
+        initial_mean_reversion_boundary_state=request.initial_mean_reversion_boundary_state,
         hourly_factor_summary=request.hourly_factor_summary,
         debug_trace_enabled=request.debug_trace_enabled,
         sample_every_nth_transition=request.sample_every_nth_transition,
@@ -135,6 +67,9 @@ def run_seeded_tick_event_simulation(
             normalized_request.initial_excitation_state.to_payload(),
             normalized_request.hourly_factor_contract._native_result,
             normalized_request.news_process_configuration.to_payload(),
+            normalized_request.mean_reversion_fitted_parameters.to_payload(),
+            normalized_request.mean_reversion_runtime_interval_anchors.to_payload(),
+            normalized_request.initial_mean_reversion_boundary_state.to_payload(),
             debug_trace_enabled=normalized_request.debug_trace_enabled,
             sample_every_nth_transition=normalized_request.sample_every_nth_transition,
             max_records_per_chunk=normalized_request.max_records_per_chunk,
@@ -184,6 +119,5 @@ def run_seeded_tick_event_simulation(
 
 
 __all__ = [
-    "load_hourly_factor_contract_for_simulation",
     "run_seeded_tick_event_simulation",
 ]

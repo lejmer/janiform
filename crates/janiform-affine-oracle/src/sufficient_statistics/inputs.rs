@@ -4,6 +4,12 @@ use crate::affine_oracle::{
     ExponentialAffineTransformEquationSpecification, ExponentialAffineTransformNewsIntensityInput,
 };
 use janiform_model_kernels::hawkes::HawkesExcitationState;
+use janiform_model_kernels::mean_reversion::{
+    MeanReversionAnchorModelKind, MeanReversionBoundaryState,
+    MeanReversionBoundaryStateValidationError, MeanReversionFittedParameters,
+    MeanReversionFittedParametersValidationError, MeanReversionRuntimeIntervalAnchors,
+    MeanReversionRuntimeIntervalAnchorsValidationError,
+};
 use janiform_model_kernels::nig::{
     NigSharedPlusShiftConfiguration, NigSharedPlusShiftConfigurationError,
 };
@@ -13,6 +19,8 @@ use super::constants::{
     SUFFICIENT_STATISTICS_RISK_INTERVAL_FACTOR_POLICY,
 };
 use super::validation::validate_excitation_state;
+
+const MEAN_REVERSION_ALIGNMENT_TOLERANCE: f64 = 1.0e-12;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum SufficientStatisticsRiskIntervalFactorsError {
@@ -307,6 +315,19 @@ pub enum SufficientStatisticsRiskModelInputsError {
         field: &'static str,
         value: f64,
     },
+    InvalidMeanReversionFittedParameters {
+        source: MeanReversionFittedParametersValidationError,
+    },
+    InvalidMeanReversionRuntimeIntervalAnchors {
+        source: MeanReversionRuntimeIntervalAnchorsValidationError,
+    },
+    InvalidMeanReversionBoundaryState {
+        source: MeanReversionBoundaryStateValidationError,
+    },
+    MeanReversionBoundaryStateStartAnchorMismatch {
+        boundary_anchor_value: f64,
+        runtime_start_anchor_value: f64,
+    },
 }
 
 impl std::fmt::Display for SufficientStatisticsRiskModelInputsError {
@@ -326,6 +347,25 @@ impl std::fmt::Display for SufficientStatisticsRiskModelInputsError {
                 formatter,
                 "model_inputs.initial_excitation_state.{field} must be finite and non-negative, found {value}"
             ),
+            Self::InvalidMeanReversionFittedParameters { source } => write!(
+                formatter,
+                "model_inputs.mean_reversion_fitted_parameters is invalid: {source}"
+            ),
+            Self::InvalidMeanReversionRuntimeIntervalAnchors { source } => write!(
+                formatter,
+                "model_inputs.mean_reversion_runtime_interval_anchors is invalid: {source}"
+            ),
+            Self::InvalidMeanReversionBoundaryState { source } => write!(
+                formatter,
+                "model_inputs.initial_mean_reversion_boundary_state is invalid: {source}"
+            ),
+            Self::MeanReversionBoundaryStateStartAnchorMismatch {
+                boundary_anchor_value,
+                runtime_start_anchor_value,
+            } => write!(
+                formatter,
+                "model_inputs.initial_mean_reversion_boundary_state.anchor_value ({boundary_anchor_value}) must match model_inputs.mean_reversion_runtime_interval_anchors.start_anchor_value ({runtime_start_anchor_value})"
+            ),
         }
     }
 }
@@ -335,16 +375,22 @@ impl std::error::Error for SufficientStatisticsRiskModelInputsError {
         match self {
             Self::InvalidEquationSpecification { source } => Some(source),
             Self::InvalidNigSharedPlusShiftConfiguration { source } => Some(source),
+            Self::InvalidMeanReversionFittedParameters { source } => Some(source),
+            Self::InvalidMeanReversionRuntimeIntervalAnchors { source } => Some(source),
+            Self::InvalidMeanReversionBoundaryState { source } => Some(source),
             _ => None,
         }
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct SufficientStatisticsRiskModelInputs {
     pub equation_specification: ExponentialAffineTransformEquationSpecification,
     pub nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,
     pub initial_excitation_state: HawkesExcitationState,
+    pub mean_reversion_fitted_parameters: MeanReversionFittedParameters,
+    pub mean_reversion_runtime_interval_anchors: MeanReversionRuntimeIntervalAnchors,
+    pub initial_mean_reversion_boundary_state: MeanReversionBoundaryState,
 }
 
 impl SufficientStatisticsRiskModelInputs {
@@ -352,17 +398,25 @@ impl SufficientStatisticsRiskModelInputs {
         equation_specification: ExponentialAffineTransformEquationSpecification,
         nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,
         initial_excitation_state: HawkesExcitationState,
+        mean_reversion_fitted_parameters: MeanReversionFittedParameters,
+        mean_reversion_runtime_interval_anchors: MeanReversionRuntimeIntervalAnchors,
+        initial_mean_reversion_boundary_state: MeanReversionBoundaryState,
     ) -> Result<Self, SufficientStatisticsRiskModelInputsError> {
         let model_inputs = Self {
             equation_specification,
             nig_shared_plus_shift_configuration,
             initial_excitation_state,
+            mean_reversion_fitted_parameters,
+            mean_reversion_runtime_interval_anchors,
+            initial_mean_reversion_boundary_state,
         };
+
         model_inputs.validate()?;
+
         Ok(model_inputs)
     }
 
-    pub fn validate(self) -> Result<(), SufficientStatisticsRiskModelInputsError> {
+    pub fn validate(&self) -> Result<(), SufficientStatisticsRiskModelInputsError> {
         self.equation_specification.validate().map_err(|source| {
             SufficientStatisticsRiskModelInputsError::InvalidEquationSpecification { source }
         })?;
@@ -378,6 +432,53 @@ impl SufficientStatisticsRiskModelInputs {
         validate_excitation_state(self.initial_excitation_state).map_err(|(field, value)| {
             SufficientStatisticsRiskModelInputsError::InvalidInitialState { field, value }
         })?;
+
+        self.mean_reversion_fitted_parameters
+            .validate()
+            .map_err(|source| {
+                SufficientStatisticsRiskModelInputsError::InvalidMeanReversionFittedParameters {
+                    source,
+                }
+            })?;
+        self.mean_reversion_runtime_interval_anchors
+            .validate()
+            .map_err(|source| {
+                SufficientStatisticsRiskModelInputsError::InvalidMeanReversionRuntimeIntervalAnchors {
+                    source,
+                }
+            })?;
+        self.initial_mean_reversion_boundary_state
+            .validate()
+            .map_err(|source| {
+                SufficientStatisticsRiskModelInputsError::InvalidMeanReversionBoundaryState {
+                    source,
+                }
+            })?;
+
+        if (self.initial_mean_reversion_boundary_state.anchor_value
+            - self
+                .mean_reversion_runtime_interval_anchors
+                .start_anchor_value)
+            .abs()
+            > MEAN_REVERSION_ALIGNMENT_TOLERANCE
+        {
+            return Err(
+                SufficientStatisticsRiskModelInputsError::MeanReversionBoundaryStateStartAnchorMismatch {
+                    boundary_anchor_value: self.initial_mean_reversion_boundary_state.anchor_value,
+                    runtime_start_anchor_value: self
+                        .mean_reversion_runtime_interval_anchors
+                        .start_anchor_value,
+                },
+            );
+        }
+
+        match self
+            .mean_reversion_fitted_parameters
+            .anchor_model
+            .anchor_model_kind
+        {
+            MeanReversionAnchorModelKind::EndogenousCoreExpectationOneInterval => {}
+        }
 
         Ok(())
     }
@@ -399,6 +500,7 @@ impl<'de> Deserialize<'de> for SufficientStatisticsRiskIntervalFactors {
         D: serde::Deserializer<'de>,
     {
         let payload = SufficientStatisticsRiskIntervalFactorsPayload::deserialize(deserializer)?;
+
         Self::try_new(
             payload.s_h,
             payload.nu_h_known,
@@ -409,12 +511,15 @@ impl<'de> Deserialize<'de> for SufficientStatisticsRiskIntervalFactors {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SufficientStatisticsRiskModelInputsPayload {
     equation_specification: ExponentialAffineTransformEquationSpecification,
     nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,
     initial_excitation_state: HawkesExcitationState,
+    mean_reversion_fitted_parameters: MeanReversionFittedParameters,
+    mean_reversion_runtime_interval_anchors: MeanReversionRuntimeIntervalAnchors,
+    initial_mean_reversion_boundary_state: MeanReversionBoundaryState,
 }
 
 impl<'de> Deserialize<'de> for SufficientStatisticsRiskModelInputs {
@@ -423,10 +528,14 @@ impl<'de> Deserialize<'de> for SufficientStatisticsRiskModelInputs {
         D: serde::Deserializer<'de>,
     {
         let payload = SufficientStatisticsRiskModelInputsPayload::deserialize(deserializer)?;
+
         Self::try_new(
             payload.equation_specification,
             payload.nig_shared_plus_shift_configuration,
             payload.initial_excitation_state,
+            payload.mean_reversion_fitted_parameters,
+            payload.mean_reversion_runtime_interval_anchors,
+            payload.initial_mean_reversion_boundary_state,
         )
         .map_err(serde::de::Error::custom)
     }

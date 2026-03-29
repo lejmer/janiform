@@ -5,10 +5,11 @@ use super::{
     CalibrationStageCheckpointMetadata, CalibrationStageExecutionStatus,
     CalibrationStageSeedSource, HawkesStageCandidateInput, HawkesStageExecutionMetadata,
     HawkesStageExecutionReport, JointRefinementStageExecutionMetadata,
-    JointRefinementStageExecutionReport, ReturnComponentsStageCandidateGenerationInput,
-    ReturnComponentsStageExecutionMetadata, ReturnComponentsStageExecutionReport,
-    SeasonalityStageExecutionInput, SeasonalityStageExecutionMetadata,
-    SeasonalityStageExecutionReport,
+    JointRefinementStageExecutionReport, MeanReversionStageExecutionInput,
+    MeanReversionStageExecutionMetadata, MeanReversionStageExecutionReport,
+    ReturnComponentsStageCandidateGenerationInput, ReturnComponentsStageExecutionMetadata,
+    ReturnComponentsStageExecutionReport, SeasonalityStageExecutionInput,
+    SeasonalityStageExecutionMetadata, SeasonalityStageExecutionReport,
 };
 use serde::Serialize;
 
@@ -18,6 +19,7 @@ pub struct CalibrationStagedRunInputs {
     pub hawkes_candidate_inputs: Option<Vec<HawkesStageCandidateInput>>,
     pub return_components_candidate_generation_input:
         Option<ReturnComponentsStageCandidateGenerationInput>,
+    pub mean_reversion_stage_input: Option<MeanReversionStageExecutionInput>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -30,6 +32,7 @@ pub enum CalibrationStagedRunStageReport {
     Seasonality(SeasonalityStageExecutionReport),
     Hawkes(HawkesStageExecutionReport),
     ReturnComponents(ReturnComponentsStageExecutionReport),
+    MeanReversion(MeanReversionStageExecutionReport),
     JointRefinement(JointRefinementStageExecutionReport),
 }
 
@@ -156,6 +159,32 @@ impl CalibrationStageExecutionMetadataForCheckpoint for JointRefinementStageExec
     }
 }
 
+impl CalibrationStageExecutionMetadataForCheckpoint for MeanReversionStageExecutionMetadata {
+    fn stage_output_schema_version(&self) -> &'static str {
+        self.stage_output_schema_version
+    }
+
+    fn run_global_seed(&self) -> u64 {
+        self.run_global_seed
+    }
+
+    fn stage_seed(&self) -> u64 {
+        self.stage_seed
+    }
+
+    fn stage_seed_source(&self) -> CalibrationStageSeedSource {
+        self.stage_seed_source
+    }
+
+    fn stage_seed_derivation_policy(&self) -> &'static str {
+        self.stage_seed_derivation_policy
+    }
+
+    fn solver_settings(&self) -> &CalibrationOptimizerSettings {
+        &self.solver_settings
+    }
+}
+
 fn checkpoint_components_from_metadata<M: CalibrationStageExecutionMetadataForCheckpoint>(
     metadata: Option<&M>,
 ) -> Option<CalibrationStageCheckpointComponents> {
@@ -175,6 +204,7 @@ impl CalibrationStagedRunStageReport {
             Self::Seasonality(_) => CalibrationStage::Seasonality,
             Self::Hawkes(_) => CalibrationStage::Hawkes,
             Self::ReturnComponents(_) => CalibrationStage::ReturnComponents,
+            Self::MeanReversion(_) => CalibrationStage::MeanReversion,
             Self::JointRefinement(_) => CalibrationStage::JointRefinement,
         }
     }
@@ -184,6 +214,7 @@ impl CalibrationStagedRunStageReport {
             Self::Seasonality(report) => report.status,
             Self::Hawkes(report) => report.status,
             Self::ReturnComponents(report) => report.status,
+            Self::MeanReversion(report) => report.status,
             Self::JointRefinement(report) => report.status,
         }
     }
@@ -195,6 +226,9 @@ impl CalibrationStagedRunStageReport {
             }
             Self::Hawkes(report) => checkpoint_components_from_metadata(report.metadata.as_ref()),
             Self::ReturnComponents(report) => {
+                checkpoint_components_from_metadata(report.metadata.as_ref())
+            }
+            Self::MeanReversion(report) => {
                 checkpoint_components_from_metadata(report.metadata.as_ref())
             }
             Self::JointRefinement(report) => {

@@ -8,25 +8,32 @@ import janiform.calendar as calendar_module
 import janiform.calibration as calibration_module
 import janiform.calibration.staged.runtime as calibration_staged_runtime_module
 import janiform.cli as cli_module
-import janiform.cli.commands.development as cli_development_commands_module
-from janiform.cli.context import CliCommandContext
+import janiform.cli.commands._development as cli_development_commands_module
 import janiform.pricing as pricing_module
 import janiform.simulation as simulation_module
 import janiform.simulation.seeded.runtime as simulation_seeded_runtime_module
-from janiform.calendar import CalendarMissingExchangeError, CalendarRegistry
+from janiform._timestamps import ONE_HOUR_NANOS
+from janiform.calendar import CalendarRegistry
+from janiform.cli.context import CliCommandContext
+from janiform.contracts import (
+    MeanReversionAnchorModel,
+    MeanReversionBoundaryState,
+    MeanReversionFittedParameters,
+)
 from janiform.errors import JaniformExecutionError, JaniformIntegrationError
 from janiform.hourly_factors import (
     HourlyFactorContract,
     HourlyNewsIntensityProviderExplicitSource,
     HourlySeasonalityProviderExplicitSource,
+    provide_hourly_factor_contract,
 )
 from janiform.pricing import (
+    AnchoredVanillaOptionPricingBoundaryInput,
     GammaSeverityMarkConfiguration,
     NigSharedPlusShiftConfiguration,
     VanillaOptionPayoffConfiguration,
     VanillaOptionPayoffType,
     VanillaOptionPricingExecutionInput,
-    VanillaOptionPricingIntervalFactors,
     VanillaOptionPricingMarketInputs,
     VanillaOptionPricingModelParameters,
     VanillaOptionPricingOptionalOutputSelection,
@@ -34,28 +41,42 @@ from janiform.pricing import (
     run_vanilla_option_pricing,
 )
 from janiform.simulation import (
+    SeededTickSimulationValidationError,
+    run_seeded_tick_event_simulation,
+)
+from janiform.simulation.coarse import (
     CoupledGapMarkConfiguration,
     DoubleExponentialBaseShockConfiguration,
-    HawkesExcitationState,
-    HawkesKernelLoadings,
-    HawkesKernelParameters,
     KnownNewsArrivalConfiguration,
     NewsArrivalConfiguration,
     NewsComponentMarkScaleConfiguration,
     NewsProcessConfiguration,
-    SeededTickSimulationRequest,
-    SeededTickSimulationValidationError,
     SharedNewsMarkLawConfiguration,
     SurpriseNewsArrivalConfiguration,
-    load_hourly_factor_contract_for_simulation,
-    run_seeded_tick_event_simulation,
+)
+from janiform.simulation.seeded import SeededTickSimulationRequest
+from janiform.simulation.shared import (
+    HawkesExcitationState,
+    HawkesKernelLoadings,
+    HawkesKernelParameters,
+)
+from janiform.simulation.seeded.contracts import (
+    build_endogenous_seeded_mean_reversion_runtime_inputs,
 )
 from tests.calibration_test_support import build_valid_execution_input_model
+from tests.hourly_factor_contract_test_support import build_hourly_factor_contract
+from tests.simulation_test_support import build_endogenous_mean_reversion_runtime_contracts
 
 START_TIME_UTC = datetime(2026, 2, 2, tzinfo=UTC)
 
 
 def test_validation_error_string_format_is_stable() -> None:
+    (
+        mean_reversion_fitted_parameters,
+        mean_reversion_runtime_interval_anchors,
+        initial_mean_reversion_boundary_state,
+    ) = build_endogenous_mean_reversion_runtime_contracts(interval_count=2)
+
     with pytest.raises(SeededTickSimulationValidationError) as captured_error:
         SeededTickSimulationRequest(
             seed=17,
@@ -101,11 +122,14 @@ def test_validation_error_string_format_is_stable() -> None:
                 ),
             ),
             initial_excitation_state=_valid_excitation_state(),
+            mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
+            mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
+            initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
             hourly_factor_summary=simulation_module.SeededTickSimulationHourlyFactorSummary(
                 schema_version="seasonality.hourly_factor.contract.v1",
                 exchange_code="XNYS",
                 interval_count=2,
-                interval_duration_nanos=3_600_000_000_000,
+                interval_duration_nanos=ONE_HOUR_NANOS,
                 interval_start_utc_nanos=(1, 2),
                 interval_end_utc_nanos=(2, 3),
                 s_h=(1.0, 1.1),
@@ -122,34 +146,6 @@ def test_validation_error_string_format_is_stable() -> None:
         'field_path="sample_every_nth_transition" '
         'message="must be strictly positive"'
     )
-
-
-def test_simulation_hourly_factor_loader_wraps_lower_level_validation_errors(
-    calendar_registry: CalendarRegistry,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    def raising_provider(**_) -> NoReturn:
-        raise CalendarMissingExchangeError("exchange_code is unknown")
-
-    monkeypatch.setattr(simulation_seeded_runtime_module, "provide_hourly_factor_contract", raising_provider)
-
-    with pytest.raises(SeededTickSimulationValidationError) as captured_error:
-        load_hourly_factor_contract_for_simulation(
-            calendar_registry=calendar_registry,
-            exchange_code="XBAD",
-            range_start_utc=START_TIME_UTC,
-            range_end_utc=START_TIME_UTC + timedelta(hours=2),
-            seasonality_source=HourlySeasonalityProviderExplicitSource(hourly_factors=[1.0, 1.0]),
-            news_intensity_source=HourlyNewsIntensityProviderExplicitSource(hourly_factors=[0.1, 0.1]),
-        )
-
-    assert captured_error.value.failure.error_id == "simulation.validation.contract"
-    assert captured_error.value.failure.entrypoint == "load_hourly_factor_contract_for_simulation"
-    assert captured_error.value.failure.field_path == "hourly_factor_contract"
-    assert captured_error.value.failure.context == {
-        "exchange_code": "XBAD",
-        "interval_duration_nanos": 3_600_000_000_000,
-    }
 
 
 def test_simulation_run_maps_missing_native_module_to_integration_error(
@@ -552,11 +548,11 @@ def test_cli_error_output_uses_shared_error_contract(
 
     monkeypatch.setattr(
         cli_development_commands_module,
-        "_load_json_document_for_cli_field",
+        "load_json_document_for_cli_field",
         broken_load_json_document_for_cli_field,
     )
 
-    exit_code = cli_development_commands_module._run_open_closed_gap_leakage_regression_command(
+    exit_code = cli_development_commands_module.run_open_closed_gap_leakage_regression_command(
         cli_context=CliCommandContext(
             command_path=("dev", "regression", "open-closed-gap-leakage"),
             command_identifier=None,
@@ -602,17 +598,17 @@ def test_deterministic_regression_cli_error_output_uses_shared_error_contract(
 
     monkeypatch.setattr(
         cli_development_commands_module,
-        "_load_json_document_for_cli_field",
+        "load_json_document_for_cli_field",
         broken_load_json_document_for_cli_field,
     )
     monkeypatch.setattr(
         cli_development_commands_module,
-        "_build_calendar_registry_from_document",
+        "build_calendar_registry_from_document",
         build_placeholder_calendar_registry,
     )
-    monkeypatch.setattr(cli_development_commands_module, "_extract_calendar_cases", broken_extract_calendar_cases)
+    monkeypatch.setattr(cli_development_commands_module, "extract_calendar_cases", broken_extract_calendar_cases)
 
-    exit_code = cli_development_commands_module._run_deterministic_regression_command(
+    exit_code = cli_development_commands_module.run_deterministic_regression_command(
         cli_context=CliCommandContext(
             command_path=("dev", "regression", "deterministic"),
             command_identifier=None,
@@ -638,7 +634,7 @@ def test_deterministic_regression_cli_error_output_uses_shared_error_contract(
 
 
 def _valid_hourly_factor_contract(calendar_registry: CalendarRegistry) -> HourlyFactorContract:
-    return load_hourly_factor_contract_for_simulation(
+    return provide_hourly_factor_contract(
         calendar_registry=calendar_registry,
         exchange_code="XNYS",
         range_start_utc=START_TIME_UTC,
@@ -649,6 +645,15 @@ def _valid_hourly_factor_contract(calendar_registry: CalendarRegistry) -> Hourly
 
 
 def _valid_simulation_request(calendar_registry: CalendarRegistry) -> SeededTickSimulationRequest:
+    hourly_factor_contract = _valid_hourly_factor_contract(calendar_registry)
+    (
+        mean_reversion_fitted_parameters,
+        mean_reversion_runtime_interval_anchors,
+        initial_mean_reversion_boundary_state,
+    ) = build_endogenous_seeded_mean_reversion_runtime_inputs(
+        hourly_factor_contract=hourly_factor_contract
+    )
+
     return SeededTickSimulationRequest.from_runtime_inputs(
         seed=17,
         start_time_utc=START_TIME_UTC,
@@ -693,7 +698,10 @@ def _valid_simulation_request(calendar_registry: CalendarRegistry) -> SeededTick
             ),
         ),
         initial_excitation_state=_valid_excitation_state(),
-        hourly_factor_contract=_valid_hourly_factor_contract(calendar_registry),
+        hourly_factor_contract=hourly_factor_contract,
+        mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
+        mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
+        initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
     )
 
 
@@ -736,13 +744,23 @@ def _valid_pricing_execution_input() -> VanillaOptionPricingExecutionInput:
                 dividend_yield=0.01,
             ),
             payoff=VanillaOptionPayoffConfiguration(payoff_type=VanillaOptionPayoffType.CALL),
-            boundary_state=_valid_excitation_state(),
+            boundary_input=AnchoredVanillaOptionPricingBoundaryInput(
+                interval_index=0,
+                interval_delta=0.5,
+                hawkes_boundary_state=_valid_excitation_state(),
+                mean_reversion_fitted_parameters=MeanReversionFittedParameters(
+                    kappa=0.0,
+                    anchor_model=MeanReversionAnchorModel.endogenous_core_expectation_one_interval(),
+                ),
+                observed_boundary_state=MeanReversionBoundaryState(
+                    observed_log_price=0.0,
+                    anchor_value=0.0,
+                    deviation=0.0,
+                ),
+            ),
             model_parameters=VanillaOptionPricingModelParameters(
                 hawkes_kernel_parameters=_valid_kernel_parameters(),
-                gamma_severity_mark_configuration=GammaSeverityMarkConfiguration(
-                    shape_k=1.8,
-                    scale_theta=0.7,
-                ),
+                news_process_configuration=_valid_news_process_configuration(),
                 nig_shared_plus_shift_configuration=NigSharedPlusShiftConfiguration(
                     alpha=2.3,
                     beta_0=-0.8,
@@ -751,15 +769,52 @@ def _valid_pricing_execution_input() -> VanillaOptionPricingExecutionInput:
                     delta_beta=-0.2,
                 ),
             ),
+            interval_delta=0.5,
         ),
-        interval_factors=VanillaOptionPricingIntervalFactors(
-            s_h=1.1,
-            nu_h_known=0.03,
-            nu_h_surprise=0.05,
+        hourly_factor_contract=build_hourly_factor_contract(
+            request_start_utc_nanos=1_706_882_400_000_000_000,
+            interval_duration_nanos=1_800_000_000_000,
+            s_h=(1.1,),
+            known_component_nu_h=(0.03,),
+            surprise_component_nu_h=(0.05,),
         ),
         optional_output_selection=VanillaOptionPricingOptionalOutputSelection(
             include_transform_diagnostics=True,
             include_integration_quality_diagnostics=True,
             include_calibration_hooks=True,
+        ),
+    )
+
+
+def _valid_news_process_configuration() -> NewsProcessConfiguration:
+    return NewsProcessConfiguration(
+        schema_version="news.process.configuration.v1",
+        arrivals=NewsArrivalConfiguration(
+            known=KnownNewsArrivalConfiguration(
+                scheduled_event_timestamps_utc_nanos=(),
+            ),
+            surprise=SurpriseNewsArrivalConfiguration(
+                baseline_intensity=0.75,
+            ),
+        ),
+        shared_mark_law=SharedNewsMarkLawConfiguration(
+            gamma_severity_marks=GammaSeverityMarkConfiguration(
+                shape_k=1.8,
+                scale_theta=0.7,
+            ),
+            double_exponential_base_shock=DoubleExponentialBaseShockConfiguration(
+                probability_positive=0.35,
+                eta_plus=2.1,
+                eta_minus=3.0,
+            ),
+            coupled_gap_marks=CoupledGapMarkConfiguration(sigma_g=0.6),
+        ),
+        known_component_mark_scales=NewsComponentMarkScaleConfiguration(
+            activity_coupling_scale=1.0,
+            return_jump_scale=1.0,
+        ),
+        surprise_component_mark_scales=NewsComponentMarkScaleConfiguration(
+            activity_coupling_scale=1.0,
+            return_jump_scale=1.0,
         ),
     )

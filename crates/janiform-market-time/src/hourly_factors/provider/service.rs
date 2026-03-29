@@ -4,6 +4,7 @@ use crate::hourly_factors::{
     materialize_hourly_news_intensity_factors, materialize_hourly_seasonality_factors,
 };
 use chrono::{DateTime, Utc};
+use janiform_foundations::time::ONE_HOUR_NANOS;
 
 use super::constants::{
     HOURLY_FACTOR_PROVIDER_NEWS_INTENSITY_MATERIALIZATION_METHOD,
@@ -77,45 +78,56 @@ pub fn provide_hourly_factor_contract(
             }
         };
 
-    let (news_intensity_hourly_factors, news_intensity_materialization_method) =
-        match resolved_news_intensity_source {
-            HourlyNewsIntensityFactorSource::Explicit {
+    let (
+        news_intensity_hourly_factors,
+        known_component_nu_h,
+        surprise_component_nu_h,
+        news_intensity_materialization_method,
+    ) = match resolved_news_intensity_source {
+        HourlyNewsIntensityFactorSource::Explicit {
+            hourly_factors,
+            materialization_method,
+        } => {
+            let resampled_hourly_factors = resample_explicit_hourly_factors_to_requested_intervals(
+                range_start_utc,
+                range_end_utc,
+                interval_duration_nanos,
                 hourly_factors,
-                materialization_method,
-            } => (
-                resample_explicit_hourly_factors_to_requested_intervals(
-                    range_start_utc,
-                    range_end_utc,
-                    interval_duration_nanos,
-                    hourly_factors,
-                )
-                .map_err(map_contract_validation_error)?,
+            )
+            .map_err(map_contract_validation_error)?;
+            (
+                resampled_hourly_factors.clone(),
+                vec![0.0; resampled_hourly_factors.len()],
+                resampled_hourly_factors,
                 materialization_method.to_string(),
-            ),
-            HourlyNewsIntensityFactorSource::Materialized {
+            )
+        }
+        HourlyNewsIntensityFactorSource::Materialized {
+            known_scheduled_event_timestamps_utc_nanos,
+            surprise_baseline_intensity,
+            surprise_deterministic_time_multiplier_by_interval_index,
+        } => {
+            let news_materialization_output = materialize_hourly_news_intensity_factors(
+                calendar_registry,
+                exchange_code,
+                range_start_utc,
+                range_end_utc,
+                interval_duration_nanos,
                 known_scheduled_event_timestamps_utc_nanos,
                 surprise_baseline_intensity,
                 surprise_deterministic_time_multiplier_by_interval_index,
-            } => {
-                let news_materialization_output = materialize_hourly_news_intensity_factors(
-                    calendar_registry,
-                    exchange_code,
-                    range_start_utc,
-                    range_end_utc,
-                    interval_duration_nanos,
-                    known_scheduled_event_timestamps_utc_nanos,
-                    surprise_baseline_intensity,
-                    surprise_deterministic_time_multiplier_by_interval_index,
-                )
-                .map_err(map_news_source_error)?;
-                (
-                    news_materialization_output.nu_h,
-                    HOURLY_FACTOR_PROVIDER_NEWS_INTENSITY_MATERIALIZATION_METHOD.to_string(),
-                )
-            }
-        };
+            )
+            .map_err(map_news_source_error)?;
+            (
+                news_materialization_output.nu_h,
+                news_materialization_output.known_component_nu_h,
+                news_materialization_output.surprise_component_nu_h,
+                HOURLY_FACTOR_PROVIDER_NEWS_INTENSITY_MATERIALIZATION_METHOD.to_string(),
+            )
+        }
+    };
 
-    build_hourly_factor_contract(
+    let mut hourly_factor_contract = build_hourly_factor_contract(
         calendar_registry,
         exchange_code,
         range_start_utc,
@@ -126,7 +138,11 @@ pub fn provide_hourly_factor_contract(
         &seasonality_materialization_method,
         &news_intensity_materialization_method,
     )
-    .map_err(map_contract_validation_error)
+    .map_err(map_contract_validation_error)?;
+    hourly_factor_contract.known_component_nu_h = known_component_nu_h;
+    hourly_factor_contract.surprise_component_nu_h = surprise_component_nu_h;
+
+    Ok(hourly_factor_contract)
 }
 
 fn map_seasonality_source_error(source: HourlyFactorContractError) -> HourlyFactorProviderError {
@@ -204,8 +220,6 @@ fn resample_explicit_hourly_factors_to_requested_intervals(
             },
         );
     }
-
-    const ONE_HOUR_NANOS: i64 = 3_600_000_000_000;
 
     let canonical_hour_start_utc_nanos =
         range_start_utc_nanos.div_euclid(ONE_HOUR_NANOS) * ONE_HOUR_NANOS;

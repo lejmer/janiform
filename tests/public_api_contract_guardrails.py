@@ -17,7 +17,7 @@ PUBLIC_API_CONTRACT_GUARDRAIL_MANIFEST_SCHEMA_VERSION = "python.public_api_contr
 PUBLIC_API_CONTRACT_APPROVAL_POLICY = (
     "public_api_contract_snapshot_changes_require_explicit_rationale_and_docs.v1"
 )
-PUBLIC_API_SURFACE_DOCUMENT_VERSION = "python.public_api_surface_map.pre_v0_1.milestone_2"
+PUBLIC_API_SURFACE_DOCUMENT_VERSION = "python.public_api_surface_map.pre_v0_1.control_plane_reset.v1"
 PUBLIC_PACKAGE_ROOT_MODULE_NAME = "janiform"
 PUBLIC_CONTRACT_MODULE_NAMES: tuple[str, ...] = (
     "janiform.errors",
@@ -48,7 +48,6 @@ PUBLIC_CONTRACT_MODULE_NAMES: tuple[str, ...] = (
     "janiform.calibration.presets.resolution",
     "janiform.calibration.sessions",
     "janiform.calibration.sessions.contracts",
-    "janiform.calibration.sessions.resolution",
     "janiform.calibration.staged",
     "janiform.calibration.staged.contracts",
     "janiform.calibration.staged.inputs",
@@ -57,8 +56,6 @@ PUBLIC_CONTRACT_MODULE_NAMES: tuple[str, ...] = (
     "janiform.calibration.staged.runtime",
     "janiform.cli",
     "janiform.cli.commands.calibration",
-    "janiform.cli.commands.development",
-    "janiform.cli.commands.model_workflows",
     "janiform.cli.commands.simulation",
     "janiform.validation",
     "janiform.stylized_facts",

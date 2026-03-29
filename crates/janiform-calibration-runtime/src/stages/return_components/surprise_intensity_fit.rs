@@ -1,5 +1,6 @@
 use chrono::{DateTime, Datelike, Duration, Timelike, Utc};
 use janiform_calibration_artifacts::SurpriseNewsDeterministicIntensityProfile;
+use janiform_foundations::time::duration_nanos_to_hours;
 
 use super::constants::{
     RETURN_COMPONENTS_STAGE_SHOCK_EVIDENCE_MIN_COUNT,
@@ -28,7 +29,7 @@ pub(super) fn fit_surprise_news_arrival_layer(
         })
         .count();
     let source_window_duration_hours =
-        (window_end_utc_nanos.saturating_sub(window_start_utc_nanos)) as f64 / 3_600_000_000_000.0;
+        duration_nanos_to_hours(window_end_utc_nanos.saturating_sub(window_start_utc_nanos));
 
     if source_window_duration_hours <= 0.0
         || effective_event_count < RETURN_COMPONENTS_STAGE_SHOCK_EVIDENCE_MIN_COUNT
@@ -183,13 +184,14 @@ fn exposure_hours_by_weekly_bucket(
         };
 
         let segment_end = next_hour_boundary.min(window_end);
-        let segment_duration_hours = (segment_end
-            .timestamp_nanos_opt()
-            .unwrap_or(window_end_utc_nanos)
-            - current
+        let segment_duration_hours = duration_nanos_to_hours(
+            segment_end
                 .timestamp_nanos_opt()
-                .unwrap_or(window_start_utc_nanos)) as f64
-            / 3_600_000_000_000.0;
+                .unwrap_or(window_end_utc_nanos)
+                - current
+                    .timestamp_nanos_opt()
+                    .unwrap_or(window_start_utc_nanos),
+        );
 
         let bucket_index = weekly_hour_bucket_index(
             current

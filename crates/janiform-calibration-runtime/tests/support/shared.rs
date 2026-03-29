@@ -687,6 +687,10 @@ pub(crate) fn build_solver_settings_for_all_stages() -> Vec<CalibrationStageSolv
             optimizer_settings: build_solver_settings(),
         },
         CalibrationStageSolverSettings {
+            stage: CalibrationStage::MeanReversion,
+            optimizer_settings: build_solver_settings(),
+        },
+        CalibrationStageSolverSettings {
             stage: CalibrationStage::JointRefinement,
             optimizer_settings: build_joint_refinement_solver_settings(),
         },
@@ -726,6 +730,7 @@ pub(crate) fn build_valid_run_spec_with_mode(
             CalibrationStage::Seasonality,
             CalibrationStage::Hawkes,
             CalibrationStage::ReturnComponents,
+            CalibrationStage::MeanReversion,
             CalibrationStage::JointRefinement,
         ],
         build_seed_settings(),
@@ -786,6 +791,9 @@ pub(crate) fn build_valid_artifact_manifest() -> CalibrationArtifactManifest {
                 ),
                 return_components_stage_output_schema_version: Some(
                     CALIBRATION_RETURN_COMPONENTS_STAGE_OUTPUT_SCHEMA_VERSION.to_string(),
+                ),
+                mean_reversion_stage_output_schema_version: Some(
+                    CALIBRATION_MEAN_REVERSION_STAGE_OUTPUT_SCHEMA_VERSION.to_string(),
                 ),
                 joint_refinement_stage_output_schema_version: Some(
                     CALIBRATION_JOINT_REFINEMENT_STAGE_OUTPUT_SCHEMA_VERSION.to_string(),
@@ -863,6 +871,12 @@ pub(crate) fn build_validation_metric_artifact_fixture() -> CalibrationValidatio
                 artifact_reference: "artifact://return_components/run-001".to_string(),
                 stage_output_schema_version:
                     CALIBRATION_RETURN_COMPONENTS_STAGE_EXECUTION_REPORT_SCHEMA_VERSION.to_string(),
+            },
+            CalibrationValidationMetricStageOutputLink {
+                stage: CalibrationStage::MeanReversion,
+                artifact_reference: "artifact://mean_reversion/run-001".to_string(),
+                stage_output_schema_version:
+                    CALIBRATION_MEAN_REVERSION_STAGE_EXECUTION_REPORT_SCHEMA_VERSION.to_string(),
             },
             CalibrationValidationMetricStageOutputLink {
                 stage: CalibrationStage::JointRefinement,
@@ -972,6 +986,12 @@ pub(crate) fn build_validation_metric_manifest_fixture() -> CalibrationArtifactM
                 artifact_kind: CalibrationArtifactKind::StageOutput,
                 artifact_reference: "artifact://return_components/run-001".to_string(),
                 stage: Some(CalibrationStage::ReturnComponents),
+            },
+            CalibrationArtifactReference {
+                artifact_id: "mean_reversion_stage_output".to_string(),
+                artifact_kind: CalibrationArtifactKind::StageOutput,
+                artifact_reference: "artifact://mean_reversion/run-001".to_string(),
+                stage: Some(CalibrationStage::MeanReversion),
             },
             CalibrationArtifactReference {
                 artifact_id: "validation_metric_diagnostics".to_string(),
@@ -1262,6 +1282,48 @@ fn stage_parameter_artifact_input(
                 },
             ))
         }
+        CalibrationStagedRunStageReport::MeanReversion(report) => {
+            let payload = report.fitted_stage_payload.as_ref().ok_or(
+                CalibrationStageParameterArtifactBuildError::ValidationFailed {
+                    stage: CalibrationStage::MeanReversion,
+                    error_message: "successful mean-reversion stage is missing its payload"
+                        .to_string(),
+                },
+            )?;
+            let metadata = report.metadata.as_ref().ok_or(
+                CalibrationStageParameterArtifactBuildError::ValidationFailed {
+                    stage: CalibrationStage::MeanReversion,
+                    error_message: "successful mean-reversion stage is missing metadata"
+                        .to_string(),
+                },
+            )?;
+
+            Ok(CalibrationStageParameterArtifactInput::MeanReversion(
+                MeanReversionStageParameterArtifactInput {
+                    metadata: CalibrationStageParameterBuildMetadata {
+                        stage_output_schema_version: metadata
+                            .stage_output_schema_version
+                            .to_string(),
+                        run_global_seed: metadata.run_global_seed,
+                        stage_seed: metadata.stage_seed,
+                        stage_seed_source: metadata.stage_seed_source,
+                        stage_seed_derivation_policy: metadata
+                            .stage_seed_derivation_policy
+                            .to_string(),
+                        solver_settings: metadata.solver_settings.clone(),
+                    },
+                    fitted_parameters: payload.fitted_parameters.clone(),
+                    diagnostics: payload.diagnostics.clone(),
+                    return_components_input_transport: payload.return_components_input_transport,
+                    return_components_selected_candidate_id: payload
+                        .return_components_selected_candidate_id
+                        .clone(),
+                    return_components_artifact_reference: payload
+                        .return_components_artifact_reference
+                        .clone(),
+                },
+            ))
+        }
     }
 }
 
@@ -1279,6 +1341,7 @@ pub(crate) fn build_run_contract_with_mode_and_resume(
                 CalibrationStage::Seasonality,
                 CalibrationStage::Hawkes,
                 CalibrationStage::ReturnComponents,
+                CalibrationStage::MeanReversion,
                 CalibrationStage::JointRefinement,
             ],
             build_seed_settings(),
@@ -1313,6 +1376,7 @@ pub(crate) fn build_run_contract_for_caller_surface(
             CalibrationStage::Seasonality,
             CalibrationStage::Hawkes,
             CalibrationStage::ReturnComponents,
+            CalibrationStage::MeanReversion,
             CalibrationStage::JointRefinement,
         ],
         build_seed_settings(),
@@ -1335,12 +1399,20 @@ pub(crate) fn default_stage_graph() -> CalibrationStageGraph {
             depends_on: CalibrationStage::Hawkes,
         },
         CalibrationStageDependency {
+            stage: CalibrationStage::MeanReversion,
+            depends_on: CalibrationStage::ReturnComponents,
+        },
+        CalibrationStageDependency {
             stage: CalibrationStage::JointRefinement,
             depends_on: CalibrationStage::Hawkes,
         },
         CalibrationStageDependency {
             stage: CalibrationStage::JointRefinement,
             depends_on: CalibrationStage::ReturnComponents,
+        },
+        CalibrationStageDependency {
+            stage: CalibrationStage::JointRefinement,
+            depends_on: CalibrationStage::MeanReversion,
         },
     ])
 }
@@ -1389,6 +1461,44 @@ pub(crate) fn staged_run_inputs(
         } else {
             None
         },
+        mean_reversion_stage_input: if include_return_candidate_generation_input {
+            Some(mean_reversion_stage_execution_fixture())
+        } else {
+            None
+        },
+    }
+}
+
+pub(crate) fn mean_reversion_stage_execution_fixture() -> MeanReversionStageExecutionInput {
+    MeanReversionStageExecutionInput {
+        return_components_input: None,
+        seasonality_stage_input: None,
+        hawkes_stage_payload: None,
+        return_components_stage_payload: None,
+        requested_anchor_model_kind:
+            janiform_model_kernels::mean_reversion::MeanReversionAnchorModelKind::EndogenousCoreExpectationOneInterval,
+        calibration_grid_kind: "synthetic_daily_close_grid.v1".to_string(),
+        calibration_grid_interval_hours: 24.0,
+        source_observation_count: 4,
+        coverage_ratio: 1.0,
+        observations: vec![
+            MeanReversionStageObservation {
+                observation_timestamp_utc_nanos: 1_770_042_600_000_000_000,
+                observed_log_price: 4.60,
+            },
+            MeanReversionStageObservation {
+                observation_timestamp_utc_nanos: 1_770_129_000_000_000_000,
+                observed_log_price: 4.58,
+            },
+            MeanReversionStageObservation {
+                observation_timestamp_utc_nanos: 1_770_215_400_000_000_000,
+                observed_log_price: 4.57,
+            },
+            MeanReversionStageObservation {
+                observation_timestamp_utc_nanos: 1_770_301_800_000_000_000,
+                observed_log_price: 4.59,
+            },
+        ],
     }
 }
 
@@ -1560,6 +1670,49 @@ pub(crate) fn build_return_components_stage_success_payload() -> ReturnComponent
         });
 
     STAGE_SUCCESS_PAYLOAD.clone()
+}
+
+pub(crate) fn build_mean_reversion_stage_success_payload() -> MeanReversionStageFittedPayload {
+    build_mean_reversion_stage_success_report()
+        .fitted_stage_payload
+        .expect("mean-reversion stage fixture should produce fitted payload")
+}
+
+pub(crate) fn build_mean_reversion_stage_success_report() -> MeanReversionStageExecutionReport {
+    static STAGE_SUCCESS_REPORT: LazyLock<MeanReversionStageExecutionReport> =
+        LazyLock::new(|| {
+            let calendar_registry = calibration_stage_test_registry();
+
+            let return_components_payload = build_return_components_stage_success_payload();
+
+            let mut execution_input = mean_reversion_stage_execution_fixture();
+
+            execution_input.seasonality_stage_input = Some(
+                MeanReversionStageSeasonalityInput::from_seasonality_stage_payload(
+                    &build_seasonality_stage_success_payload(),
+                ),
+            );
+            execution_input.hawkes_stage_payload = Some(build_hawkes_stage_success_payload());
+            execution_input.return_components_stage_payload =
+                Some(return_components_payload.clone());
+            execution_input.return_components_input =
+                Some(MeanReversionStageReturnComponentsInput::InMemoryOutput {
+                    selected_candidate_id: return_components_payload.selected_candidate_id.clone(),
+                });
+
+            run_mean_reversion_calibration_stage(
+                &build_run_contract_with_mode_and_resume(
+                    "run-mean-reversion-stage-success",
+                    CalibrationExecutionMode::Memory,
+                    None,
+                )
+                .run_spec,
+                &calendar_registry,
+                execution_input,
+            )
+        });
+
+    STAGE_SUCCESS_REPORT.clone()
 }
 
 pub(crate) fn build_joint_refinement_stage_success_payload() -> JointRefinementStageFittedPayload {

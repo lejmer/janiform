@@ -16,9 +16,13 @@ from janiform.calibration.market_data import (
     CalibrationInputFileReference,
     CalibrationKnownNewsColumnMapping,
     CalibrationKnownNewsInput,
+    CalibrationMeanReversionConfiguration,
     CalibrationMarketDataColumnMapping,
     CalibrationMarketDataNormalizationPolicy,
     CalibrationMarketDataOutputPreferences,
+    CalibrationMarketDataPreprocessingSettings,
+    CalibrationMarketDataReturnComponentsPreprocessingSettings,
+    CalibrationMarketDataSeasonalityPreprocessingSettings,
     CalibrationMarketDataWorkflowScope,
     CalibrationOptionQuoteInputPolicy,
     CalibrationOptionSurfaceColumnMapping,
@@ -38,6 +42,7 @@ from janiform.calibration import (
 from janiform.calibration.staged import (
     CalibrationExecutionMode,
     CalibrationOptimizerSettings,
+    CalibrationPreparedExecutionPayloadFileReference,
     CalibrationRunDataInputs,
     CalibrationRunSeedSettings,
     CalibrationStage,
@@ -55,6 +60,7 @@ from janiform.calibration.staged import (
     validate_staged_calibration_request,
     validate_staged_calibration_response,
 )
+from janiform.seasonality import IntradaySmoothingKernel, SessionFilter
 
 
 def test_market_data_calibration_request_defaults_python_execution_mode_to_memory() -> None:
@@ -121,6 +127,103 @@ def test_market_data_calibration_request_rejects_unsupported_tick_data_file_form
 
     assert captured_error.value.failure.field_path == "tick_data_source.file_format"
     assert captured_error.value.failure.message == "must be one of: csv, parquet"
+
+
+def test_market_data_calibration_request_roundtrip_preserves_mean_reversion_configuration() -> None:
+    request = _valid_market_data_request_model()
+
+    assert request.mean_reversion is not None
+    assert (
+        request.mean_reversion.anchor_model_kind
+        == MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL
+    )
+    assert request.mean_reversion.calibration_grid_interval_hours == pytest.approx(24.0)
+
+    serialized_request = serialize_market_data_calibration_request(request)
+    deserialized_request = deserialize_market_data_calibration_request(serialized_request)
+
+    assert deserialized_request == request
+
+
+def test_market_data_calibration_request_roundtrip_preserves_optimizer_settings_by_stage() -> None:
+    base_request = _valid_market_data_request_model()
+    request = MarketDataCalibrationRequest(
+        schema_version=CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION,
+        run_id="run-001",
+        tick_data_source=base_request.tick_data_source,
+        session_configuration=base_request.session_configuration,
+        column_mapping=base_request.column_mapping,
+        workflow_scope=base_request.workflow_scope,
+        normalization_policy=base_request.normalization_policy,
+        output_preferences=base_request.output_preferences,
+        optimizer_settings_by_stage=(
+            _solver_settings(CalibrationStage.SEASONALITY),
+            _solver_settings(CalibrationStage.HAWKES),
+        ),
+        option_surface_source=base_request.option_surface_source,
+        known_news_inputs=base_request.known_news_inputs,
+        mean_reversion=base_request.mean_reversion,
+    )
+
+    serialized_request = serialize_market_data_calibration_request(request)
+    deserialized_request = deserialize_market_data_calibration_request(serialized_request)
+
+    assert deserialized_request == request
+
+
+def test_market_data_calibration_request_roundtrip_preserves_preprocessing_settings() -> None:
+    base_request = _valid_market_data_request_model()
+    request = MarketDataCalibrationRequest(
+        schema_version=base_request.schema_version,
+        run_id=base_request.run_id,
+        tick_data_source=base_request.tick_data_source,
+        session_configuration=base_request.session_configuration,
+        column_mapping=base_request.column_mapping,
+        workflow_scope=base_request.workflow_scope,
+        normalization_policy=base_request.normalization_policy,
+        output_preferences=base_request.output_preferences,
+        preprocessing_settings=CalibrationMarketDataPreprocessingSettings(
+            seasonality=CalibrationMarketDataSeasonalityPreprocessingSettings(
+                session_filter=SessionFilter.ALL,
+                sparse_hour_event_threshold=2,
+                known_news_overlay_log_adjustment=-0.25,
+                intraday_minutes_per_bin=5,
+                intraday_smoothing_kernel=IntradaySmoothingKernel.UNIFORM,
+                intraday_smoothing_bandwidth_bins=2.5,
+                intraday_minimum_bin_events=3,
+                day_of_week_minimum_bucket_events=4,
+                day_of_year_minimum_bucket_events=5,
+            ),
+            return_components=CalibrationMarketDataReturnComponentsPreprocessingSettings(
+                intraday_jump_threshold_multiplier=6.0,
+                close_open_gap_tolerance_multiplier=2.0,
+            ),
+        ),
+        optimizer_settings_by_stage=base_request.optimizer_settings_by_stage,
+        option_surface_source=base_request.option_surface_source,
+        known_news_inputs=base_request.known_news_inputs,
+        mean_reversion=base_request.mean_reversion,
+    )
+
+    serialized_request = serialize_market_data_calibration_request(request)
+    deserialized_request = deserialize_market_data_calibration_request(serialized_request)
+
+    assert deserialized_request == request
+
+
+def test_market_data_calibration_request_rejects_enabled_mean_reversion_for_seasonality_only() -> None:
+    request_payload = _valid_market_data_request_payload()
+    request_payload["workflow_scope"] = CalibrationMarketDataWorkflowScope.SEASONALITY_ONLY.value
+    request_payload["normalization_policy"]["tick_price_input_policy"] = None
+    request_payload["normalization_policy"]["option_quote_input_policy"] = None
+    del request_payload["option_surface_source"]
+    del request_payload["column_mapping"]["option_surface"]
+
+    with pytest.raises(CalibrationValidationError) as captured_error:
+        validate_market_data_calibration_request(request_payload)
+
+    assert captured_error.value.failure.field_path == "mean_reversion"
+    assert "seasonality_only" in captured_error.value.failure.message
 
 
 def test_market_data_calibration_request_requires_bid_and_ask_mapping_for_tick_midpoint_policy() -> None:
@@ -203,12 +306,7 @@ def test_staged_calibration_execution_input_roundtrip_serialization_is_determini
 def test_mean_reversion_fitted_parameters_roundtrip_serialization_is_deterministic() -> None:
     fitted_parameters = MeanReversionFittedParameters(
         kappa=0.25,
-        anchor_model=MeanReversionAnchorModel.deterministic_interval_grid(
-            source_interval_start_utc_nanos=(10, 20),
-            source_interval_end_utc_nanos=(20, 30),
-            anchor_values=(4.2, 4.1),
-            source_alignment_policy="piecewise_constant_utc_interval_grid.v1",
-        ),
+        anchor_model=MeanReversionAnchorModel.endogenous_core_expectation_one_interval(),
     )
 
     serialized = fitted_parameters.to_json()
@@ -216,7 +314,7 @@ def test_mean_reversion_fitted_parameters_roundtrip_serialization_is_determinist
 
     assert deserialized == fitted_parameters
     assert json.loads(serialized)["anchor_model"]["anchor_model_kind"] == (
-        MeanReversionAnchorModelKind.DETERMINISTIC_INTERVAL_GRID.value
+        MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL.value
     )
 
 
@@ -224,29 +322,56 @@ def test_mean_reversion_fitted_parameters_reject_negative_kappa() -> None:
     with pytest.raises(ValueError, match="kappa: must be non-negative"):
         MeanReversionFittedParameters(
             kappa=-0.01,
-            anchor_model=MeanReversionAnchorModel.disabled(),
+            anchor_model=MeanReversionAnchorModel.endogenous_core_expectation_one_interval(),
         )
 
 
-def test_mean_reversion_anchor_model_rejects_non_finite_anchor_values() -> None:
-    with pytest.raises(ValueError, match="anchor_values\\[1\\]: must be a finite number"):
-        MeanReversionAnchorModel.deterministic_interval_grid(
-            source_interval_start_utc_nanos=(10, 20),
-            source_interval_end_utc_nanos=(20, 30),
-            anchor_values=(4.2, float("nan")),
-            source_alignment_policy="piecewise_constant_utc_interval_grid.v1",
+def test_endogenous_mean_reversion_anchor_model_from_mapping_rejects_unknown_anchor_value() -> None:
+    with pytest.raises(ValueError, match="unsupported field 'anchor_value'"):
+        MeanReversionAnchorModel.from_mapping(
+            {
+                "anchor_model_kind": MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL.value,
+                "anchor_value": 0.0,
+            }
         )
 
 
 def test_staged_calibration_execution_input_requires_explicit_selected_stage_inputs() -> None:
     execution_input_payload = build_valid_execution_input_payload()
-    del execution_input_payload["seasonality_stage_input"]
+    del execution_input_payload["prepared_payload_file"]
 
     with pytest.raises(CalibrationValidationError) as captured_error:
         validate_staged_calibration_execution_input(execution_input_payload)
 
-    assert captured_error.value.failure.field_path == "seasonality_stage_input"
-    assert "required when selected_stages contains seasonality" in captured_error.value.failure.message
+    assert captured_error.value.failure.field_path == "prepared_payload_file"
+    assert captured_error.value.failure.message == "is required"
+
+
+def test_staged_calibration_execution_input_requires_mean_reversion_stage_input_when_selected(
+) -> None:
+    execution_input_payload = build_valid_execution_input_payload()
+    execution_input_payload["prepared_payload_file"] = {
+        "path": "",
+        "file_format": "json",
+    }
+
+    with pytest.raises(CalibrationValidationError) as captured_error:
+        validate_staged_calibration_execution_input(execution_input_payload)
+
+    assert captured_error.value.failure.field_path == "prepared_payload_file.path"
+    assert "non-empty string" in captured_error.value.failure.message
+
+
+def test_staged_calibration_execution_input_rejects_non_positive_mean_reversion_grid_interval(
+) -> None:
+    execution_input_payload = build_valid_execution_input_payload()
+    execution_input_payload["prepared_payload_file"]["file_format"] = "parquet"
+
+    with pytest.raises(CalibrationValidationError) as captured_error:
+        validate_staged_calibration_execution_input(execution_input_payload)
+
+    assert captured_error.value.failure.field_path == "prepared_payload_file.file_format"
+    assert "CalibrationPreparedExecutionPayloadFileFormat" in captured_error.value.failure.message
 
 
 def test_staged_calibration_execution_input_requires_disk_runtime_resources_for_disk_mode() -> None:
@@ -263,53 +388,43 @@ def test_staged_calibration_execution_input_requires_disk_runtime_resources_for_
 
 def test_staged_calibration_execution_input_requires_close_open_boundary_price_fields() -> None:
     execution_input_payload = build_valid_execution_input_payload()
-    boundary_observation = execution_input_payload["return_components_candidate_generation_input"][
-        "observed_close_open_boundary_observations"
-    ][0]
-    del boundary_observation["close_price"]
+    execution_input_payload["runtime_resources"] = {
+        "disk_checkpoint_directory": 123,
+    }
 
     with pytest.raises(CalibrationValidationError) as captured_error:
         validate_staged_calibration_execution_input(execution_input_payload)
 
-    assert (
-        captured_error.value.failure.field_path
-        == "return_components_candidate_generation_input.observed_close_open_boundary_observations[0].close_price"
-    )
-    assert captured_error.value.failure.message == "is required"
+    assert captured_error.value.failure.field_path == "runtime_resources.disk_checkpoint_directory"
+    assert captured_error.value.failure.message == "must be a string when provided"
 
 
 def test_staged_calibration_execution_input_requires_close_open_gap_detection_policy() -> None:
     execution_input_payload = build_valid_execution_input_payload()
-    del execution_input_payload["return_components_candidate_generation_input"]["close_open_gap_detection_policy"]
+    execution_input_payload["runtime_resources"] = {
+        "disk_checkpoint_directory": "/tmp/should-not-be-used",
+    }
 
     with pytest.raises(CalibrationValidationError) as captured_error:
         validate_staged_calibration_execution_input(execution_input_payload)
 
-    assert (
-        captured_error.value.failure.field_path
-        == "return_components_candidate_generation_input.close_open_gap_detection_policy"
-    )
-    assert captured_error.value.failure.message == "is required"
+    assert captured_error.value.failure.field_path == "runtime_resources.disk_checkpoint_directory"
+    assert "only supported when execution_mode=disk" in captured_error.value.failure.message
 
 
 def test_staged_calibration_execution_input_allows_empty_known_news_return_samples() -> None:
-    execution_input_payload = build_valid_execution_input_payload()
-    execution_input_payload["return_components_candidate_generation_input"][
-        "realized_known_news_return_samples"
-    ] = []
-
+    execution_input = build_valid_execution_input_model()
     validated_execution_input = validate_staged_calibration_execution_input(
-        execution_input_payload
+        execution_input.to_payload()
     )
 
     assert (
-        validated_execution_input.return_components_candidate_generation_input
-        is not None
+        validated_execution_input.prepared_payload_file
+        == CalibrationPreparedExecutionPayloadFileReference(
+            path=execution_input.prepared_payload_file.path
+        )
     )
-    assert (
-        validated_execution_input.return_components_candidate_generation_input.realized_known_news_return_samples
-        == ()
-    )
+    assert validated_execution_input.runtime_resources is None
 
 
 def test_staged_calibration_response_roundtrip_serialization_is_deterministic() -> None:
@@ -494,7 +609,7 @@ def _valid_market_data_request_model() -> MarketDataCalibrationRequest:
         ),
         output_preferences=CalibrationMarketDataOutputPreferences(
             execution_mode=CalibrationExecutionMode.MEMORY,
-            emit_derived_staged_execution_input=True,
+            emit_derived_staged_execution_input=False,
             emit_input_provenance_report=True,
         ),
         option_surface_source=CalibrationInputFileReference(
@@ -509,6 +624,10 @@ def _valid_market_data_request_model() -> MarketDataCalibrationRequest:
                 provenance_label="known-news-calendar",
             ),
             calendar_timezone="UTC",
+        ),
+        mean_reversion=CalibrationMeanReversionConfiguration(
+            anchor_model_kind=MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL,
+            calibration_grid_interval_hours=24.0,
         ),
     )
 

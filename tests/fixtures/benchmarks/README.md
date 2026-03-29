@@ -10,6 +10,8 @@ Criterion plus `pytest-benchmark` commands, see
 ## File
 
 - `benchmark_scenario_catalog.json`
+- `anchored_pricing_reference_policy.json`
+- `anchored_pricing_reference_baseline_v1.json`
 - `oracle_pricer_risk_benchmark_policy.json`
 - `coarse_fine_consistency_tolerance_policy.json`
 - `oracle_pricer_risk_performance_baseline_v1.json`
@@ -39,6 +41,22 @@ Criterion plus `pytest-benchmark` commands, see
   - `oracle_solver_probes`: transform probe and factor ranges used in oracle and risk paths
   - `pricing_input_ranges`: pricing workload ranges for market inputs and Fourier settings
   - `seed_partition`: deterministic component seed salts
+- Anchored pricing reference policy fields include:
+  - `schema_version`: `benchmark.anchored_pricing_reference.policy.v1`
+  - `simulation_reference`: explicit seeded-reference engine, payoff estimator, and path-count policy
+  - `diagnostic_requirements`: required observed-boundary, anchor-alignment, local-martingale,
+    refinement, and numeric-quality coverage flags
+  - `scenario_ids`: governed anchored benchmark scenarios that must stay aligned with the checked-in
+    baseline artifact
+- Anchored pricing reference baseline fields include:
+  - `schema_version`: `benchmark.anchored_pricing_reference.baseline.v1`
+  - `source_policy_id` and `source_policy_version`: checked-in linkage to the governing policy
+  - `reference_construction_policy`: explicit statement that the seeded reference uses a zero-factor
+    one-interval synthetic case with zero Monte Carlo variance
+  - `regression_tolerances`: deterministic native-price and native-minus-seeded-gap regression
+    tolerances for the explicitly invoked benchmark path
+  - `cases`: per-scenario anchored boundary inputs, anchor alignment, admissibility expectations,
+    local-martingale diagnostic mode, deviation-grid diagnostics, and numeric-quality summaries
 - Coarse fine consistency tolerance policy fields include:
   - `policy_version` and `change_log`: required version history with rationale metadata
   - `interval_tolerance_bands`: interval-dependent tolerances keyed by `delta_upper_bound`
@@ -117,6 +135,12 @@ harness code changes.
 `real_data_seeded_runtime_benchmark_policy.json` governs the real-data seeded runtime path
 separately from the engine-only benchmark suites so model-regime failures can be distinguished from
 boundary transport, Python materialization, and retained-memory regressions.
+
+`anchored_pricing_reference_policy.json` and
+`anchored_pricing_reference_baseline_v1.json` govern the native-pricer versus seeded-reference
+comparison path for anchored pricing separately from the default Rust and Python suites. The
+expensive execution path is intentionally opt-in and runs only through the ignored Rust validation
+benchmark.
 
 ## Performance baseline ownership
 

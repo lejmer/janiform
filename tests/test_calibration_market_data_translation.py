@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+import math
 from pathlib import Path
 from typing import Any, Optional
 
@@ -7,7 +8,7 @@ import pytest
 from pyarrow import parquet
 
 from janiform.calibration.market_data.translation import (
-    translate_market_data_request_to_staged_execution_input,
+    translate_market_data_request_to_prepared_calibration,
 )
 from janiform.calibration import CalibrationValidationError
 from janiform.calibration.market_data import (
@@ -17,9 +18,13 @@ from janiform.calibration.market_data import (
     CalibrationInputFileReference,
     CalibrationKnownNewsColumnMapping,
     CalibrationKnownNewsInput,
+    CalibrationMeanReversionConfiguration,
     CalibrationMarketDataColumnMapping,
     CalibrationMarketDataNormalizationPolicy,
     CalibrationMarketDataOutputPreferences,
+    CalibrationMarketDataPreprocessingSettings,
+    CalibrationMarketDataReturnComponentsPreprocessingSettings,
+    CalibrationMarketDataSeasonalityPreprocessingSettings,
     CalibrationMarketDataWorkflowScope,
     CalibrationOptionQuoteInputPolicy,
     CalibrationOptionSurfaceColumnMapping,
@@ -30,12 +35,12 @@ from janiform.calibration.market_data import (
     prepare_market_data_calibration,
     run_market_data_calibration,
 )
+from janiform.contracts import MeanReversionAnchorModelKind
 from janiform.calibration.staged import (
     CalibrationExecutionMode,
     CalibrationStage,
-    CalibrationTradeSign,
-    run_staged_calibration,
 )
+from janiform.seasonality import IntradaySmoothingKernel, SessionFilter
 
 
 def test_translate_market_data_request_seasonality_only_selects_only_seasonality_stage(
@@ -71,14 +76,15 @@ def test_translate_market_data_request_seasonality_only_selects_only_seasonality
         ),
     )
 
-    translation = translate_market_data_request_to_staged_execution_input(request)
+    translation = translate_market_data_request_to_prepared_calibration(request)
+    prepared_payload = _prepared_payload(translation)
 
-    assert translation.execution_input.request.selected_stages == (
+    assert translation.staged_request.selected_stages == (
         CalibrationStage.SEASONALITY,
     )
-    assert translation.execution_input.seasonality_stage_input is not None
-    assert translation.execution_input.hawkes_candidate_inputs is None
-    assert translation.execution_input.return_components_candidate_generation_input is None
+    assert "seasonality_stage_input" in prepared_payload
+    assert "hawkes_candidate_inputs" not in prepared_payload
+    assert "return_components_candidate_generation_input" not in prepared_payload
     assert translation.diagnostics.tick_record_count == 3
 
 
@@ -145,15 +151,17 @@ def test_translate_market_data_request_derives_boundaries_known_news_and_diagnos
         ),
     )
 
-    first_translation = translate_market_data_request_to_staged_execution_input(request)
-    second_translation = translate_market_data_request_to_staged_execution_input(request)
+    first_translation = translate_market_data_request_to_prepared_calibration(request)
+    second_translation = translate_market_data_request_to_prepared_calibration(request)
+    first_prepared_payload = _prepared_payload(first_translation)
 
-    assert first_translation.execution_input.to_payload() == second_translation.execution_input.to_payload()
+    assert first_prepared_payload == _prepared_payload(second_translation)
     assert first_translation.diagnostics == second_translation.diagnostics
-    assert first_translation.execution_input.request.selected_stages == (
+    assert first_translation.staged_request.selected_stages == (
         CalibrationStage.SEASONALITY,
         CalibrationStage.HAWKES,
         CalibrationStage.RETURN_COMPONENTS,
+        CalibrationStage.MEAN_REVERSION,
         CalibrationStage.JOINT_REFINEMENT,
     )
     assert first_translation.diagnostics.known_news_event_count == 2
@@ -166,31 +174,384 @@ def test_translate_market_data_request_derives_boundaries_known_news_and_diagnos
         in first_translation.provenance.derivation_policies
     )
 
-    return_components_input = (
-        first_translation.execution_input.return_components_candidate_generation_input
+    return_components_input = first_prepared_payload["return_components_candidate_generation_input"]
+    assert len(return_components_input["realized_known_news_return_samples"]) == 2
+
+    open_sample = return_components_input["realized_known_news_return_samples"][0]
+    closed_sample = return_components_input["realized_known_news_return_samples"][1]
+    assert open_sample["event_timestamp_utc_nanos"] == _utc_nanos("2026-02-02T15:05:00Z")
+    assert open_sample["open_window_jump_return"] == pytest.approx(0.0292703823)
+    assert open_sample["closed_window_gap_return"] == pytest.approx(0.0)
+    assert open_sample["post_shock_activity_lift"] == pytest.approx(1.0)
+    assert closed_sample["event_timestamp_utc_nanos"] == _utc_nanos("2026-02-02T22:00:00Z")
+    assert closed_sample["open_window_jump_return"] == pytest.approx(0.0)
+    assert closed_sample["closed_window_gap_return"] == pytest.approx(-0.12516314295)
+    assert closed_sample["post_shock_activity_lift"] == pytest.approx(1.0)
+
+    assert len(return_components_input["observed_open_session_returns"]) == 4
+    assert return_components_input["open_session_sell_share_proxy"] == pytest.approx(0.5)
+
+    boundary_observation = return_components_input["observed_close_open_boundary_observations"][0]
+    assert boundary_observation["close_timestamp_utc_nanos"] == _utc_nanos("2026-02-02T21:00:00Z")
+    assert boundary_observation["open_timestamp_utc_nanos"] == _utc_nanos("2026-02-04T14:30:00Z")
+    assert boundary_observation["close_price"] == pytest.approx(102.0)
+    assert boundary_observation["open_price"] == pytest.approx(90.0)
+
+
+def test_translate_market_data_request_materializes_mean_reversion_on_interval_grid(
+    tmp_path: Path,
+    calendar_registry_json: str,
+) -> None:
+    session_definition_path = _write_session_definition(tmp_path, calendar_registry_json)
+
+    tick_data_path = tmp_path / "ticks.csv"
+    tick_data_path.write_text(
+        "\n".join(
+            [
+                "timestamp_utc,trade_price,trade_sign",
+                "2026-02-02T14:30:00Z,100.0,buy",
+                "2026-02-02T20:59:00Z,101.0,sell",
+                "2026-02-03T14:30:00Z,102.0,buy",
+                "2026-02-03T20:59:00Z,103.0,sell",
+                "2026-02-04T14:30:00Z,104.0,buy",
+                "2026-02-04T20:59:00Z,105.0,sell",
+                "2026-02-05T14:30:00Z,106.0,buy",
+                "2026-02-05T20:59:00Z,107.0,sell",
+            ]
+        ),
+        encoding="utf-8",
     )
-    assert return_components_input is not None
-    assert len(return_components_input.realized_known_news_return_samples) == 2
 
-    open_sample = return_components_input.realized_known_news_return_samples[0]
-    closed_sample = return_components_input.realized_known_news_return_samples[1]
-    assert open_sample.event_timestamp_utc_nanos == _utc_nanos("2026-02-02T15:05:00Z")
-    assert open_sample.open_window_jump_return == pytest.approx(0.0292703823)
-    assert open_sample.closed_window_gap_return == pytest.approx(0.0)
-    assert open_sample.post_shock_activity_lift == pytest.approx(1.0)
-    assert closed_sample.event_timestamp_utc_nanos == _utc_nanos("2026-02-02T22:00:00Z")
-    assert closed_sample.open_window_jump_return == pytest.approx(0.0)
-    assert closed_sample.closed_window_gap_return == pytest.approx(-0.12516314295)
-    assert closed_sample.post_shock_activity_lift == pytest.approx(1.0)
+    request = _build_market_data_request(
+        session_definition_path=session_definition_path,
+        tick_data_path=tick_data_path,
+        workflow_scope=CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE,
+        tick_column_mapping=CalibrationTickDataColumnMapping(
+            timestamp_column="timestamp_utc",
+            price_column="trade_price",
+            trade_sign_column="trade_sign",
+        ),
+        normalization_policy=CalibrationMarketDataNormalizationPolicy(
+            timestamp_timezone="UTC",
+            sort_records_by_timestamp=True,
+            tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
+        ),
+        mean_reversion=CalibrationMeanReversionConfiguration(
+            anchor_model_kind=MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL,
+        ),
+    )
 
-    assert len(return_components_input.observed_open_session_returns) == 4
-    assert return_components_input.open_session_sell_share_proxy == pytest.approx(0.5)
+    translation = translate_market_data_request_to_prepared_calibration(request)
+    prepared_payload = _prepared_payload(translation)
 
-    boundary_observation = return_components_input.observed_close_open_boundary_observations[0]
-    assert boundary_observation.close_timestamp_utc_nanos == _utc_nanos("2026-02-02T21:00:00Z")
-    assert boundary_observation.open_timestamp_utc_nanos == _utc_nanos("2026-02-04T14:30:00Z")
-    assert boundary_observation.close_price == pytest.approx(102.0)
-    assert boundary_observation.open_price == pytest.approx(90.0)
+    mean_reversion_stage_input = prepared_payload["mean_reversion_stage_input"]
+    assert (
+        mean_reversion_stage_input["requested_anchor_model_kind"]
+        == MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL.value
+    )
+    assert mean_reversion_stage_input["source_observation_count"] == len(
+        mean_reversion_stage_input["observations"]
+    )
+    assert mean_reversion_stage_input["coverage_ratio"] == pytest.approx(1.0)
+    assert mean_reversion_stage_input["calibration_grid_interval_hours"] == pytest.approx(24.0)
+    assert mean_reversion_stage_input["calibration_grid_kind"].startswith(
+        "market_data_open_session_log_price_interval_grid.v1"
+    )
+    assert tuple(
+        observation["observation_timestamp_utc_nanos"]
+        for observation in mean_reversion_stage_input["observations"]
+    ) == (
+        _utc_nanos("2026-02-02T20:59:00Z"),
+        _utc_nanos("2026-02-04T14:30:00Z"),
+    )
+    assert tuple(
+        observation["observed_log_price"]
+        for observation in mean_reversion_stage_input["observations"]
+    ) == pytest.approx(
+        (
+            math.log(101.0 / 107.0),
+            math.log(104.0 / 107.0),
+        )
+    )
+
+
+def test_translate_market_data_request_applies_explicit_preprocessing_settings(
+    tmp_path: Path,
+    calendar_registry_json: str,
+) -> None:
+    session_definition_path = _write_session_definition(tmp_path, calendar_registry_json)
+
+    tick_data_path = tmp_path / "ticks.csv"
+    tick_data_path.write_text(
+        "\n".join(
+            [
+                "timestamp_utc,trade_price,trade_sign",
+                "2026-02-02T14:30:00Z,100.0,buy",
+                "2026-02-02T14:35:00Z,103.0,sell",
+                "2026-02-02T20:59:00Z,101.0,buy",
+                "2026-02-03T14:30:00Z,90.0,sell",
+                "2026-02-03T14:35:00Z,100.0,buy",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    known_news_path = tmp_path / "known_news.csv"
+    known_news_path.write_text(
+        "\n".join(
+            [
+                "event_timestamp_utc,event_code",
+                "2026-02-02T15:00:00Z,macro",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    request = _build_market_data_request(
+        session_definition_path=session_definition_path,
+        tick_data_path=tick_data_path,
+        workflow_scope=CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE,
+        tick_column_mapping=CalibrationTickDataColumnMapping(
+            timestamp_column="timestamp_utc",
+            price_column="trade_price",
+            trade_sign_column="trade_sign",
+        ),
+        normalization_policy=CalibrationMarketDataNormalizationPolicy(
+            timestamp_timezone="UTC",
+            sort_records_by_timestamp=True,
+            tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
+        ),
+        known_news_inputs=CalibrationKnownNewsInput(
+            calendar_source=CalibrationInputFileReference(
+                path=str(known_news_path),
+                file_format=CalibrationInputFileFormat.CSV,
+                provenance_label="known-news",
+            ),
+            calendar_timezone="UTC",
+        ),
+        known_news_column_mapping=CalibrationKnownNewsColumnMapping(
+            event_timestamp_column="event_timestamp_utc",
+            event_identifier_column="event_code",
+        ),
+        preprocessing_settings=CalibrationMarketDataPreprocessingSettings(
+            seasonality=CalibrationMarketDataSeasonalityPreprocessingSettings(
+                session_filter=SessionFilter.ALL,
+                sparse_hour_event_threshold=2,
+                known_news_overlay_log_adjustment=-0.2,
+                intraday_minutes_per_bin=5,
+                intraday_smoothing_kernel=IntradaySmoothingKernel.UNIFORM,
+                intraday_smoothing_bandwidth_bins=2.5,
+                intraday_minimum_bin_events=3,
+                day_of_week_minimum_bucket_events=4,
+                day_of_year_minimum_bucket_events=5,
+            ),
+            return_components=CalibrationMarketDataReturnComponentsPreprocessingSettings(
+                intraday_jump_threshold_multiplier=6.0,
+                close_open_gap_tolerance_multiplier=2.0,
+            ),
+        ),
+    )
+
+    default_request = _build_market_data_request(
+        session_definition_path=session_definition_path,
+        tick_data_path=tick_data_path,
+        workflow_scope=CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE,
+        tick_column_mapping=CalibrationTickDataColumnMapping(
+            timestamp_column="timestamp_utc",
+            price_column="trade_price",
+            trade_sign_column="trade_sign",
+        ),
+        normalization_policy=CalibrationMarketDataNormalizationPolicy(
+            timestamp_timezone="UTC",
+            sort_records_by_timestamp=True,
+            tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
+        ),
+        known_news_inputs=CalibrationKnownNewsInput(
+            calendar_source=CalibrationInputFileReference(
+                path=str(known_news_path),
+                file_format=CalibrationInputFileFormat.CSV,
+                provenance_label="known-news",
+            ),
+            calendar_timezone="UTC",
+        ),
+        known_news_column_mapping=CalibrationKnownNewsColumnMapping(
+            event_timestamp_column="event_timestamp_utc",
+            event_identifier_column="event_code",
+        ),
+    )
+
+    translation = translate_market_data_request_to_prepared_calibration(request)
+    default_translation = translate_market_data_request_to_prepared_calibration(default_request)
+    prepared_payload = _prepared_payload(translation)
+    default_prepared_payload = _prepared_payload(default_translation)
+    seasonality_settings = prepared_payload["seasonality_stage_input"]["settings"]
+    overlay = prepared_payload["seasonality_stage_input"]["scheduled_event_overlays"][0]
+    return_components_input = prepared_payload["return_components_candidate_generation_input"]
+    default_return_components_input = default_prepared_payload[
+        "return_components_candidate_generation_input"
+    ]
+
+    assert seasonality_settings["session_filter"] == "all"
+    assert seasonality_settings["sparse_hour_event_threshold"] == 2
+    assert seasonality_settings["intraday_settings"]["minutes_per_bin"] == 5
+    assert seasonality_settings["intraday_settings"]["smoothing_kernel"] == "uniform"
+    assert seasonality_settings["intraday_settings"]["smoothing_bandwidth_bins"] == pytest.approx(2.5)
+    assert seasonality_settings["intraday_settings"]["minimum_bin_events"] == 3
+    assert seasonality_settings["day_of_week_settings"]["minimum_bucket_events"] == 4
+    assert seasonality_settings["day_of_year_settings"]["minimum_bucket_events"] == 5
+    assert overlay["log_adjustment"] == pytest.approx(-0.2)
+    assert (
+        default_prepared_payload["seasonality_stage_input"]["scheduled_event_overlays"][0][
+            "log_adjustment"
+        ]
+        == pytest.approx(0.0)
+    )
+    assert (
+        return_components_input["close_open_gap_detection_policy"][
+            "material_gap_absolute_return_tolerance"
+        ]
+        == pytest.approx(
+            default_return_components_input["close_open_gap_detection_policy"][
+                "material_gap_absolute_return_tolerance"
+            ]
+            * (2.0 / 3.0),
+            abs=1e-6,
+        )
+    )
+    assert translation.provenance.deterministic_defaults_applied == ()
+
+
+def test_translate_market_data_request_honors_explicit_mean_reversion_grid_interval_override(
+    tmp_path: Path,
+    calendar_registry_json: str,
+) -> None:
+    session_definition_path = _write_session_definition(tmp_path, calendar_registry_json)
+
+    tick_data_path = tmp_path / "ticks.csv"
+    tick_data_path.write_text(
+        "\n".join(
+            [
+                "timestamp_utc,trade_price,trade_sign",
+                "2026-02-02T14:30:00Z,100.0,buy",
+                "2026-02-02T20:59:00Z,101.0,sell",
+                "2026-02-03T14:30:00Z,102.0,buy",
+                "2026-02-03T20:59:00Z,103.0,sell",
+                "2026-02-04T14:30:00Z,104.0,buy",
+                "2026-02-04T20:59:00Z,105.0,sell",
+                "2026-02-05T14:30:00Z,106.0,buy",
+                "2026-02-05T20:59:00Z,107.0,sell",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    request = _build_market_data_request(
+        session_definition_path=session_definition_path,
+        tick_data_path=tick_data_path,
+        workflow_scope=CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE,
+        tick_column_mapping=CalibrationTickDataColumnMapping(
+            timestamp_column="timestamp_utc",
+            price_column="trade_price",
+            trade_sign_column="trade_sign",
+        ),
+        normalization_policy=CalibrationMarketDataNormalizationPolicy(
+            timestamp_timezone="UTC",
+            sort_records_by_timestamp=True,
+            tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
+        ),
+        mean_reversion=CalibrationMeanReversionConfiguration(
+            anchor_model_kind=MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL,
+            calibration_grid_interval_hours=36.0,
+        ),
+    )
+
+    translation = translate_market_data_request_to_prepared_calibration(request)
+    prepared_payload = _prepared_payload(translation)
+
+    mean_reversion_stage_input = prepared_payload["mean_reversion_stage_input"]
+    assert mean_reversion_stage_input["requested_anchor_model_kind"] == (
+        MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL.value
+    )
+    assert mean_reversion_stage_input["calibration_grid_interval_hours"] == pytest.approx(36.0)
+    assert (
+        "explicit_mean_reversion_grid_interval_hours.v1"
+        in mean_reversion_stage_input["calibration_grid_kind"]
+    )
+
+
+def test_translate_market_data_request_derives_fxspot_mean_reversion_interval_from_observed_session_duration(
+    tmp_path: Path,
+) -> None:
+    tick_data_path = tmp_path / "ticks.csv"
+    tick_data_path.write_text(
+        "\n".join(
+            [
+                "timestamp_utc,trade_price,trade_sign",
+                "2026-02-02T00:00:00Z,100.0,buy",
+                "2026-02-02T12:00:00Z,101.0,sell",
+                "2026-02-03T00:00:00Z,102.0,buy",
+                "2026-02-03T12:00:00Z,103.0,sell",
+                "2026-02-04T00:00:00Z,104.0,buy",
+                "2026-02-04T12:00:00Z,105.0,sell",
+                "2026-02-05T00:00:00Z,106.0,buy",
+                "2026-02-05T12:00:00Z,107.0,sell",
+                "2026-02-06T00:00:00Z,108.0,buy",
+                "2026-02-06T18:00:00Z,109.0,sell",
+                "2026-02-08T21:00:00Z,110.0,buy",
+                "2026-02-09T00:00:00Z,111.0,sell",
+                "2026-02-09T12:00:00Z,112.0,buy",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    request = _build_market_data_request(
+        session_definition_path=None,
+        tick_data_path=tick_data_path,
+        workflow_scope=CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE,
+        tick_column_mapping=CalibrationTickDataColumnMapping(
+            timestamp_column="timestamp_utc",
+            price_column="trade_price",
+            trade_sign_column="trade_sign",
+        ),
+        normalization_policy=CalibrationMarketDataNormalizationPolicy(
+            timestamp_timezone="UTC",
+            sort_records_by_timestamp=True,
+            tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
+        ),
+        mean_reversion=CalibrationMeanReversionConfiguration(
+            anchor_model_kind=MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL,
+        ),
+        exchange_code="FXSPOT",
+        session_timezone="UTC",
+    )
+
+    translation = translate_market_data_request_to_prepared_calibration(request)
+    prepared_payload = _prepared_payload(translation)
+
+    mean_reversion_stage_input = prepared_payload["mean_reversion_stage_input"]
+    assert (
+        mean_reversion_stage_input["requested_anchor_model_kind"]
+        == MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL.value
+    )
+    assert mean_reversion_stage_input["calibration_grid_interval_hours"] == pytest.approx(24.0)
+    assert (
+        "median_observed_session_duration_hours_from_retained_open_session_ticks.v1"
+        in mean_reversion_stage_input["calibration_grid_kind"]
+    )
+    assert mean_reversion_stage_input["source_observation_count"] == 6
+    assert mean_reversion_stage_input["coverage_ratio"] == pytest.approx(1.0)
+    assert tuple(
+        observation["observation_timestamp_utc_nanos"]
+        for observation in mean_reversion_stage_input["observations"]
+    ) == (
+        _utc_nanos("2026-02-02T12:00:00Z"),
+        _utc_nanos("2026-02-03T12:00:00Z"),
+        _utc_nanos("2026-02-04T12:00:00Z"),
+        _utc_nanos("2026-02-05T12:00:00Z"),
+        _utc_nanos("2026-02-06T18:00:00Z"),
+        _utc_nanos("2026-02-08T21:00:00Z"),
+    )
 
 
 def test_translate_market_data_request_infers_session_without_manual_definition(
@@ -227,7 +588,7 @@ def test_translate_market_data_request_infers_session_without_manual_definition(
         ),
     )
 
-    translation = translate_market_data_request_to_staged_execution_input(request)
+    translation = translate_market_data_request_to_prepared_calibration(request)
 
     assert translation.session_resolution.resolution_kind == "automatic_inference"
     assert translation.session_resolution.manual_override_applied is False
@@ -275,9 +636,9 @@ def test_translate_market_data_request_rejects_ambiguous_session_inference_witho
     )
 
     with pytest.raises(CalibrationValidationError) as captured_error:
-        translate_market_data_request_to_staged_execution_input(request)
+        translate_market_data_request_to_prepared_calibration(request)
 
-    assert captured_error.value.field_path == "session_configuration"
+    assert captured_error.value.field_path == "request"
     assert "automatic 24/5 session inference is ambiguous" in str(captured_error.value)
 
 
@@ -319,23 +680,19 @@ def test_translate_market_data_request_without_known_news_runs_staged_calibratio
         ),
     )
 
-    translation = translate_market_data_request_to_staged_execution_input(request)
-    return_components_input = (
-        translation.execution_input.return_components_candidate_generation_input
-    )
-    assert return_components_input is not None
-    assert return_components_input.realized_known_news_return_samples == ()
+    translation = translate_market_data_request_to_prepared_calibration(request)
+    prepared_payload = _prepared_payload(translation)
+    return_components_input = prepared_payload["return_components_candidate_generation_input"]
+    assert return_components_input["realized_known_news_return_samples"] == []
 
-    response = run_staged_calibration(
-        translation.execution_input,
-        calendar_registry=translation.calendar_registry,
-    )
+    response = run_market_data_calibration(request)
     assert response.execution_mode == CalibrationExecutionMode.MEMORY
     assert response.status.value == "success"
     assert [report.stage.value for report in response.stage_reports] == [
         "seasonality",
         "hawkes",
         "return_components",
+        "mean_reversion",
         "joint_refinement",
     ]
     assert response.stage_reports[0].status.value == "success"
@@ -343,6 +700,8 @@ def test_translate_market_data_request_without_known_news_runs_staged_calibratio
     assert response.stage_reports[1].failure is None
     assert response.stage_reports[2].status.value == "success"
     assert response.stage_reports[2].failure is None
+    assert response.stage_reports[3].status.value == "success"
+    assert response.stage_reports[3].failure is None
 
 
 def test_translate_market_data_request_scales_nig_candidates_to_tick_return_magnitude(
@@ -382,15 +741,14 @@ def test_translate_market_data_request_scales_nig_candidates_to_tick_return_magn
         ),
     )
 
-    translation = translate_market_data_request_to_staged_execution_input(request)
-    return_components_input = (
-        translation.execution_input.return_components_candidate_generation_input
-    )
-    assert return_components_input is not None
+    translation = translate_market_data_request_to_prepared_calibration(request)
+    return_components_input = _prepared_payload(translation)[
+        "return_components_candidate_generation_input"
+    ]
 
-    assert len(return_components_input.observed_open_session_returns) == 4
-    assert return_components_input.detected_intraday_jump_candidates == ()
-    assert return_components_input.open_session_sell_share_proxy == pytest.approx(0.4)
+    assert len(return_components_input["observed_open_session_returns"]) == 4
+    assert return_components_input["detected_intraday_jump_candidates"] == []
+    assert return_components_input["open_session_sell_share_proxy"] == pytest.approx(0.4)
 
 
 def test_translate_market_data_request_applies_hourly_nig_shape_mass_floor_for_dense_ticks(
@@ -430,14 +788,13 @@ def test_translate_market_data_request_applies_hourly_nig_shape_mass_floor_for_d
         ),
     )
 
-    translation = translate_market_data_request_to_staged_execution_input(request)
-    return_components_input = (
-        translation.execution_input.return_components_candidate_generation_input
-    )
-    assert return_components_input is not None
+    translation = translate_market_data_request_to_prepared_calibration(request)
+    return_components_input = _prepared_payload(translation)[
+        "return_components_candidate_generation_input"
+    ]
 
-    assert len(return_components_input.observed_open_session_returns) == 1199
-    assert return_components_input.open_session_sell_share_proxy == pytest.approx(0.5)
+    assert len(return_components_input["observed_open_session_returns"]) == 1199
+    assert return_components_input["open_session_sell_share_proxy"] == pytest.approx(0.5)
 
 
 def test_translate_market_data_request_preserves_isolated_data_driven_intraday_jump_candidate(
@@ -477,16 +834,15 @@ def test_translate_market_data_request_preserves_isolated_data_driven_intraday_j
         ),
     )
 
-    translation = translate_market_data_request_to_staged_execution_input(request)
-    return_components_input = (
-        translation.execution_input.return_components_candidate_generation_input
-    )
-    assert return_components_input is not None
+    translation = translate_market_data_request_to_prepared_calibration(request)
+    return_components_input = _prepared_payload(translation)[
+        "return_components_candidate_generation_input"
+    ]
 
-    assert len(return_components_input.detected_intraday_jump_candidates) == 1
-    detected_jump_candidate = return_components_input.detected_intraday_jump_candidates[0]
-    assert detected_jump_candidate.jump_timestamp_utc_nanos == _utc_nanos("2026-02-02T14:30:03Z")
-    assert detected_jump_candidate.jump_return > 0.0
+    assert len(return_components_input["detected_intraday_jump_candidates"]) == 1
+    detected_jump_candidate = return_components_input["detected_intraday_jump_candidates"][0]
+    assert detected_jump_candidate["jump_timestamp_utc_nanos"] == _utc_nanos("2026-02-02T14:30:03Z")
+    assert detected_jump_candidate["jump_return"] > 0.0
 
 
 def test_translate_market_data_request_infers_missing_trade_signs_from_price_direction(
@@ -526,29 +882,28 @@ def test_translate_market_data_request_infers_missing_trade_signs_from_price_dir
         ),
     )
 
-    translation = translate_market_data_request_to_staged_execution_input(request)
+    translation = translate_market_data_request_to_prepared_calibration(request)
 
     assert (
         "unsigned_trade_direction_labels_follow_tick_price_change_with_flat_move_carryover.v1"
         in translation.provenance.derivation_policies
     )
 
-    hawkes_candidates = translation.execution_input.hawkes_candidate_inputs
-    assert hawkes_candidates is not None
+    hawkes_candidates = _prepared_payload(translation)["hawkes_candidate_inputs"]
     assert len(hawkes_candidates) > 1
 
-    source_regime = hawkes_candidates[0].source_regime
-    assert source_regime.open_session_tick_count == 5
-    assert source_regime.open_session_buy_tick_count == 3
-    assert source_regime.open_session_sell_tick_count == 2
-    assert source_regime.open_session_known_news_activity_share == pytest.approx(0.0)
+    source_regime = hawkes_candidates[0]["source_regime"]
+    assert source_regime["open_session_tick_count"] == 5
+    assert source_regime["open_session_buy_tick_count"] == 3
+    assert source_regime["open_session_sell_tick_count"] == 2
+    assert source_regime["open_session_known_news_activity_share"] == pytest.approx(0.0)
 
-    label_diagnostics = hawkes_candidates[0].directional_label_diagnostics
-    assert label_diagnostics.policy_id == "tick_price_change_with_flat_move_carryover.v1"
-    assert label_diagnostics.inferred_label_count == 5
-    assert label_diagnostics.price_up_inference_count == 2
-    assert label_diagnostics.price_down_inference_count == 1
-    assert label_diagnostics.flat_move_carry_count == 1
+    label_diagnostics = hawkes_candidates[0]["directional_label_diagnostics"]
+    assert label_diagnostics["policy_id"] == "tick_price_change_with_flat_move_carryover.v1"
+    assert label_diagnostics["inferred_label_count"] == 5
+    assert label_diagnostics["price_up_inference_count"] == 2
+    assert label_diagnostics["price_down_inference_count"] == 1
+    assert label_diagnostics["flat_move_carry_count"] == 1
 
 
 def test_translate_market_data_request_preserves_provided_trade_sign_diagnostics_when_sign_column_has_blanks(
@@ -588,19 +943,18 @@ def test_translate_market_data_request_preserves_provided_trade_sign_diagnostics
         ),
     )
 
-    translation = translate_market_data_request_to_staged_execution_input(request)
+    translation = translate_market_data_request_to_prepared_calibration(request)
 
-    hawkes_candidates = translation.execution_input.hawkes_candidate_inputs
-    assert hawkes_candidates is not None
+    hawkes_candidates = _prepared_payload(translation)["hawkes_candidate_inputs"]
 
-    label_diagnostics = hawkes_candidates[0].directional_label_diagnostics
-    assert label_diagnostics.provided_label_count == 2
-    assert label_diagnostics.inferred_label_count == 3
-    assert label_diagnostics.price_up_inference_count == 2
-    assert label_diagnostics.price_down_inference_count == 1
-    assert label_diagnostics.flat_move_carry_count == 0
-    assert hawkes_candidates[0].source_regime.open_session_buy_tick_count == 3
-    assert hawkes_candidates[0].source_regime.open_session_sell_tick_count == 2
+    label_diagnostics = hawkes_candidates[0]["directional_label_diagnostics"]
+    assert label_diagnostics["provided_label_count"] == 2
+    assert label_diagnostics["inferred_label_count"] == 3
+    assert label_diagnostics["price_up_inference_count"] == 2
+    assert label_diagnostics["price_down_inference_count"] == 1
+    assert label_diagnostics["flat_move_carry_count"] == 0
+    assert hawkes_candidates[0]["source_regime"]["open_session_buy_tick_count"] == 3
+    assert hawkes_candidates[0]["source_regime"]["open_session_sell_tick_count"] == 2
 
 
 def test_prepare_market_data_calibration_returns_public_diagnostics_and_provenance(
@@ -669,11 +1023,16 @@ def test_prepare_market_data_calibration_returns_public_diagnostics_and_provenan
 
     assert prepared.schema_version == CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION
     assert prepared.request.run_id == request.run_id
-    assert prepared.execution_input.request.execution_mode == CalibrationExecutionMode.MEMORY
+    assert prepared.staged_request.execution_mode == CalibrationExecutionMode.MEMORY
+    assert prepared.prepared_data_reference is None
+    assert prepared.prepared_payload_path is None
+    assert prepared.staged_execution_input_path is None
+    assert "execution_input" not in prepared.to_payload()
     assert prepared.diagnostics.selected_stages == (
         CalibrationStage.SEASONALITY,
         CalibrationStage.HAWKES,
         CalibrationStage.RETURN_COMPONENTS,
+        CalibrationStage.MEAN_REVERSION,
         CalibrationStage.JOINT_REFINEMENT,
     )
     assert prepared.diagnostics.executed_preprocessing_steps == (
@@ -697,6 +1056,11 @@ def test_prepare_market_data_calibration_returns_public_diagnostics_and_provenan
     assert prepared.provenance.derived_trade_events_data_reference == (
         "market_data://market_data_translation_run/ticks/ticks_primary"
     )
+    persisted = prepared.persist_prepared_execution_artifacts(tmp_path / "prepared")
+    assert persisted.prepared_payload_path is not None
+    assert persisted.staged_execution_input_path is not None
+    assert Path(persisted.prepared_payload_path).exists()
+    assert Path(persisted.staged_execution_input_path).exists()
 
 
 def test_run_market_data_calibration_executes_market_data_first_workflow(
@@ -741,7 +1105,7 @@ def test_run_market_data_calibration_executes_market_data_first_workflow(
 
     assert response.execution_mode == CalibrationExecutionMode.MEMORY
     assert response.status.value == "success"
-    assert len(response.stage_reports) == 4
+    assert len(response.stage_reports) == 5
     assert response.stage_reports[0].stage == CalibrationStage.SEASONALITY
     assert response.stage_reports[0].status.value == "success"
     assert response.stage_reports[1].stage == CalibrationStage.HAWKES
@@ -750,9 +1114,65 @@ def test_run_market_data_calibration_executes_market_data_first_workflow(
     assert response.stage_reports[2].stage == CalibrationStage.RETURN_COMPONENTS
     assert response.stage_reports[2].status.value == "success"
     assert response.stage_reports[2].failure is None
-    assert response.stage_reports[3].stage == CalibrationStage.JOINT_REFINEMENT
+    assert response.stage_reports[3].stage == CalibrationStage.MEAN_REVERSION
     assert response.stage_reports[3].status.value == "success"
     assert response.stage_reports[3].failure is None
+    assert response.stage_reports[4].stage == CalibrationStage.JOINT_REFINEMENT
+    assert response.stage_reports[4].status.value == "success"
+    assert response.stage_reports[4].failure is None
+
+
+def test_run_market_data_calibration_estimates_endogenous_mean_reversion(
+    tmp_path: Path,
+    calendar_registry_json: str,
+) -> None:
+    session_definition_path = _write_session_definition(tmp_path, calendar_registry_json)
+
+    tick_data_path = tmp_path / "ticks.csv"
+    tick_data_path.write_text(
+        "\n".join(
+            [
+                "timestamp_utc,trade_price,trade_sign",
+                "2026-02-02T14:30:00Z,100.0,buy",
+                "2026-02-02T20:59:00Z,101.0,sell",
+                "2026-02-03T14:30:00Z,102.0,buy",
+                "2026-02-03T20:59:00Z,103.0,sell",
+                "2026-02-04T14:30:00Z,104.0,buy",
+                "2026-02-04T20:59:00Z,105.0,sell",
+                "2026-02-05T14:30:00Z,106.0,buy",
+                "2026-02-05T20:59:00Z,107.0,sell",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    request = _build_market_data_request(
+        session_definition_path=session_definition_path,
+        tick_data_path=tick_data_path,
+        workflow_scope=CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE,
+        tick_column_mapping=CalibrationTickDataColumnMapping(
+            timestamp_column="timestamp_utc",
+            price_column="trade_price",
+            trade_sign_column="trade_sign",
+        ),
+        normalization_policy=CalibrationMarketDataNormalizationPolicy(
+            timestamp_timezone="UTC",
+            sort_records_by_timestamp=True,
+            tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
+        ),
+        mean_reversion=CalibrationMeanReversionConfiguration(
+            anchor_model_kind=MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL,
+        ),
+    )
+
+    response = run_market_data_calibration(request)
+
+    assert response.status.value == "success"
+    assert response.failure is None
+    assert response.stage_reports[3].stage == CalibrationStage.MEAN_REVERSION
+    assert response.stage_reports[3].status.value == "success"
+    assert response.stage_reports[3].failure is None
+    assert len(response.stage_reports) == 5
 
 
 def test_translate_market_data_request_full_with_option_surface_sets_option_reference(
@@ -822,10 +1242,10 @@ def test_translate_market_data_request_full_with_option_surface_sets_option_refe
         ),
     )
 
-    translation = translate_market_data_request_to_staged_execution_input(request)
+    translation = translate_market_data_request_to_prepared_calibration(request)
 
     assert translation.diagnostics.option_surface_record_count == 1
-    assert translation.execution_input.request.data_inputs.option_surface_data_reference is not None
+    assert translation.staged_request.data_inputs.option_surface_data_reference is not None
 
 
 def _build_market_data_request(
@@ -839,6 +1259,8 @@ def _build_market_data_request(
     known_news_column_mapping: Optional[CalibrationKnownNewsColumnMapping] = None,
     option_surface_source: Optional[CalibrationInputFileReference] = None,
     option_surface_column_mapping: Optional[CalibrationOptionSurfaceColumnMapping] = None,
+    mean_reversion: Optional[CalibrationMeanReversionConfiguration] = None,
+    preprocessing_settings: Optional[CalibrationMarketDataPreprocessingSettings] = None,
     exchange_code: str = "XNYS",
     session_timezone: Optional[str] = "America/New_York",
 ) -> MarketDataCalibrationRequest:
@@ -875,8 +1297,10 @@ def _build_market_data_request(
             emit_derived_staged_execution_input=False,
             emit_input_provenance_report=True,
         ),
+        preprocessing_settings=preprocessing_settings,
         option_surface_source=option_surface_source,
         known_news_inputs=known_news_inputs,
+        mean_reversion=mean_reversion,
     )
 
 
@@ -895,3 +1319,7 @@ def _utc_nanos(timestamp_text: str) -> int:
         ((delta.days * 24 * 60 * 60) + delta.seconds) * 1_000_000_000
         + delta.microseconds * 1_000
     )
+
+
+def _prepared_payload(translation_result: Any) -> dict[str, Any]:
+    return translation_result.prepared_payload()

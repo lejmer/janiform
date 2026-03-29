@@ -1,9 +1,10 @@
 import json
 from typing import Any
 
+from janiform.hourly_factors import provide_hourly_factor_contract
 from janiform.simulation.seeded import (
     SeededTickSimulationRequest,
-    load_hourly_factor_contract_for_simulation,
+    build_endogenous_seeded_mean_reversion_runtime_inputs,
     run_seeded_tick_event_simulation,
 )
 
@@ -22,7 +23,7 @@ from .support._shared import (
 
 def run_example() -> dict[str, Any]:
     calendar_registry = build_calendar_registry()
-    hourly_factor_contract = load_hourly_factor_contract_for_simulation(
+    hourly_factor_contract = provide_hourly_factor_contract(
         calendar_registry=calendar_registry,
         exchange_code="XNYS",
         range_start_utc=SIMULATION_RANGE_START_UTC,
@@ -30,6 +31,15 @@ def run_example() -> dict[str, Any]:
         seasonality_source=build_simulation_seasonality_source(),
         news_intensity_source=build_simulation_news_source(),
     )
+
+    (
+        mean_reversion_fitted_parameters,
+        mean_reversion_runtime_interval_anchors,
+        initial_mean_reversion_boundary_state,
+    ) = build_endogenous_seeded_mean_reversion_runtime_inputs(
+        hourly_factor_contract=hourly_factor_contract
+    )
+
     request = SeededTickSimulationRequest.from_runtime_inputs(
         seed=17,
         start_time_utc=SIMULATION_RANGE_START_UTC,
@@ -39,7 +49,11 @@ def run_example() -> dict[str, Any]:
         news_process_configuration=build_simulation_news_process_configuration(),
         initial_excitation_state=build_initial_excitation_state(),
         hourly_factor_contract=hourly_factor_contract,
+        mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
+        mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
+        initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
     )
+
     response = run_seeded_tick_event_simulation(request)
 
     first_transition = response.fine_path[0].to_payload() if response.fine_path else None

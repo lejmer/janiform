@@ -1,25 +1,33 @@
 from datetime import datetime
 from typing import Any, Optional, cast
 
+from janiform._timestamps import ONE_HOUR_NANOS
 from janiform.hourly_factors import (
     HourlyNewsIntensityProviderExplicitSource,
     HourlySeasonalityProviderExplicitSource,
+    provide_hourly_factor_contract,
 )
 from janiform.pricing import GammaSeverityMarkConfiguration, NigSharedPlusShiftConfiguration
-from janiform.simulation import (
+from janiform.simulation.coarse import (
     CoupledGapMarkConfiguration,
     DoubleExponentialBaseShockConfiguration,
-    HawkesExcitationState,
-    HawkesKernelParameters,
     KnownNewsArrivalConfiguration,
     NewsArrivalConfiguration,
     NewsComponentMarkScaleConfiguration,
     NewsProcessConfiguration,
-    SeededTickSimulationRequest,
     SharedNewsMarkLawConfiguration,
     SurpriseNewsArrivalConfiguration,
-    load_hourly_factor_contract_for_simulation,
+)
+from janiform.simulation.seeded import (
+    SeededTickSimulationRequest,
     run_seeded_tick_event_simulation,
+)
+from janiform.simulation.shared import (
+    HawkesExcitationState,
+    HawkesKernelParameters,
+)
+from janiform.simulation.seeded.contracts import (
+    build_endogenous_seeded_mean_reversion_runtime_inputs,
 )
 from tests.fixture_validation import SeededTickSimulationParityCase
 
@@ -80,7 +88,7 @@ def _run_seeded_case(
     range_start_utc = datetime.fromisoformat(fixture_case["range_start_utc"].replace("Z", "+00:00"))
     range_end_utc = datetime.fromisoformat(fixture_case["range_end_utc"].replace("Z", "+00:00"))
 
-    hourly_factor_contract = load_hourly_factor_contract_for_simulation(
+    hourly_factor_contract = provide_hourly_factor_contract(
         calendar_registry=calendar_registry,
         exchange_code=fixture_case["exchange_code"],
         range_start_utc=range_start_utc,
@@ -93,6 +101,14 @@ def _run_seeded_case(
             hourly_factors=fixture_case["news_intensity_hourly_factors"],
             materialization_method="explicit_hourly_input.v1",
         ),
+    )
+
+    (
+        mean_reversion_fitted_parameters,
+        mean_reversion_runtime_interval_anchors,
+        initial_mean_reversion_boundary_state,
+    ) = build_endogenous_seeded_mean_reversion_runtime_inputs(
+        hourly_factor_contract=hourly_factor_contract
     )
 
     request = SeededTickSimulationRequest.from_runtime_inputs(
@@ -140,6 +156,9 @@ def _run_seeded_case(
         ),
         initial_excitation_state=HawkesExcitationState.from_mapping(fixture_case["initial_excitation_state"]),
         hourly_factor_contract=hourly_factor_contract,
+        mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
+        mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
+        initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
     )
 
     return run_seeded_tick_event_simulation(request)
@@ -250,7 +269,7 @@ def _summarize_counts_by_interval(
     range_start_utc_seconds = int(datetime.fromisoformat(range_start_utc.replace("Z", "+00:00")).timestamp())
     range_start_utc_nanos = range_start_utc_seconds * 1_000_000_000
 
-    one_hour_nanos = 3_600_000_000_000
+    one_hour_nanos = ONE_HOUR_NANOS
 
     for timestamp_utc_nanos, side in zip(observed_timestamps, observed_side_sequence):
         interval_index = (timestamp_utc_nanos - range_start_utc_nanos) // one_hour_nanos
@@ -287,7 +306,7 @@ def _has_non_grid_arrival(
 ) -> bool:
     range_start_utc_seconds = int(datetime.fromisoformat(range_start_utc.replace("Z", "+00:00")).timestamp())
     range_start_utc_nanos = range_start_utc_seconds * 1_000_000_000
-    one_hour_nanos = 3_600_000_000_000
+    one_hour_nanos = ONE_HOUR_NANOS
 
     interval_boundaries = {
         range_start_utc_nanos + interval_index * one_hour_nanos

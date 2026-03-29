@@ -32,7 +32,28 @@ def test_package_root_surface_is_intentionally_minimal() -> None:
 
 def test_cli_public_module_is_a_package_with_curated_root_exports() -> None:
     assert hasattr(cli_module, "__path__")
-    assert "main" in cli_module.__all__
+    assert set(cli_module.__all__) == {
+        "CLI_CALIBRATION_DISK_CHECKPOINT_DIRECTORY_ENV_VAR",
+        "CLI_CALIBRATION_EXECUTION_MODE_ENV_VAR",
+        "CLI_CALIBRATION_MARKET_DATA_ENTRYPOINT",
+        "CLI_COMMAND_CONFIG_SCHEMA_VERSION",
+        "CLI_FIT_ENTRYPOINT",
+        "CLI_FIT_INSPECT_ENTRYPOINT",
+        "CLI_FIT_INSPECT_RESULT_SCHEMA_VERSION",
+        "CLI_FIT_RESULT_SCHEMA_VERSION",
+        "CLI_HIGH_LEVEL_SIMULATE_ENTRYPOINT",
+        "CLI_MARKET_DATA_SUMMARY_FIELD_SELECTION_POLICY",
+        "CLI_MARKET_DATA_SUMMARY_SCHEMA_VERSION",
+        "CLI_OUTPUT_ENV_VAR",
+        "CLI_PRESETS_EXPORT_ENTRYPOINT",
+        "CLI_PRESETS_LIST_ENTRYPOINT",
+        "CLI_PRESET_LIST_SCHEMA_VERSION",
+        "CLI_PRICE_RESULT_SCHEMA_VERSION",
+        "CLI_REPOSITORY_RELATIVE_PATH_POLICY",
+        "CLI_SIMULATE_RESULT_SCHEMA_VERSION",
+        "CliExitCode",
+    }
+    assert "main" not in cli_module.__dict__
     assert "_build_parser" not in cli_module.__dict__
     assert "_parse_cli_arguments" not in cli_module.__dict__
 
@@ -40,14 +61,10 @@ def test_cli_public_module_is_a_package_with_curated_root_exports() -> None:
 def test_cli_public_command_submodules_are_supported_domain_imports() -> None:
     cli_commands_module = import_module("janiform.cli.commands")
     cli_calibration_commands_module = import_module("janiform.cli.commands.calibration")
-    cli_development_commands_module = import_module("janiform.cli.commands.development")
-    cli_model_workflow_commands_module = import_module("janiform.cli.commands.model_workflows")
     cli_simulation_commands_module = import_module("janiform.cli.commands.simulation")
 
     assert not hasattr(cli_commands_module, "_run_fit_command")
     assert cli_calibration_commands_module.__all__ == []
-    assert cli_development_commands_module.__all__ == []
-    assert cli_model_workflow_commands_module.__all__ == []
     assert "run_coarse_simulation" in cli_simulation_commands_module.__all__
     assert "run_seeded_tick_event_simulation" in cli_simulation_commands_module.__all__
 
@@ -56,6 +73,44 @@ def test_cli_click_command_tree_helpers_remain_internal() -> None:
     cli_command_tree_module = import_module("janiform.cli.command_tree")
 
     assert not hasattr(cli_command_tree_module, "__all__")
+
+
+def test_public_and_internal_module_intent_is_explicit() -> None:
+    public_modules = (
+        "janiform.calibration",
+        "janiform.calibration.market_data",
+        "janiform.calibration.staged",
+        "janiform.cli",
+        "janiform.simulation",
+        "janiform.simulation.coarse",
+        "janiform.simulation.seeded",
+        "janiform.simulation.shared",
+    )
+    internal_modules = (
+        "janiform.cli.command_tree",
+        "janiform.cli.command_runtime",
+        "janiform.cli.configuration",
+        "janiform.cli.commands._development",
+        "janiform.cli.commands._model_workflows",
+        "janiform.cli.commands._pricing",
+        "janiform.cli.commands._shared",
+        "janiform.cli.context",
+        "janiform.cli._documents",
+        "janiform.cli._errors",
+        "janiform.cli.paths",
+        "janiform.cli._rendering",
+    )
+
+    for module_name in public_modules:
+        module = import_module(module_name)
+        assert isinstance(module.__doc__, str) and module.__doc__.strip()
+        assert "internal" not in module.__doc__.lower()
+        assert "private" not in module.__doc__.lower()
+
+    for module_name in internal_modules:
+        module = import_module(module_name)
+        assert isinstance(module.__doc__, str) and module.__doc__.strip()
+        assert "internal" in module.__doc__.lower() or "private" in module.__doc__.lower()
 
 
 def test_python_package_all_exports_exclude_private_names() -> None:
@@ -100,67 +155,28 @@ def test_python_package_all_exports_exclude_private_names() -> None:
 
 def test_simulation_public_symbols_live_in_simulation_module() -> None:
     expected_exports = {
-        "CalendarRegistry",
-        "COARSE_SIMULATION_ARTIFACT_WORKFLOW_POLICY",
-        "COARSE_SIMULATION_COMPATIBLE_INTERVAL_GRID_POLICY",
-        "COARSE_SIMULATION_ENVIRONMENT_METADATA_POLICY",
-        "COARSE_SIMULATION_INTERVAL_FACTOR_ALIGNMENT_POLICY",
-        "COARSE_SIMULATION_INTERVAL_IDENTIFIER_POLICY",
-        "COARSE_SIMULATION_INTERVAL_TIMING_POLICY",
-        "COARSE_SIMULATION_PATH_DIAGNOSTICS_SCHEMA_VERSION",
-        "COARSE_SIMULATION_PATH_OUTPUT_SCHEMA_METADATA_VERSION",
-        "COARSE_SIMULATION_PATH_PROVENANCE_SCHEMA_VERSION",
-        "COARSE_SIMULATION_PATH_RECORD_SCHEMA_VERSION",
-        "COARSE_SIMULATION_PATH_SCHEMA_VERSION",
-        "COARSE_SIMULATION_RUN_REQUEST_SCHEMA_VERSION",
         "CoarseSimulationModelInputs",
         "CoarseSimulationPath",
-        "CoarseSimulationPathDiagnostics",
-        "CoarseSimulationPathOutputSchemaMetadata",
-        "CoarseSimulationPathProvenance",
-        "CoarseSimulationPathRecord",
         "CoarseSimulationRunRequest",
-        "CoupledGapMarkConfiguration",
-        "DoubleExponentialBaseShockConfiguration",
         "HawkesExcitationState",
         "HawkesKernelLoadings",
         "HawkesKernelParameters",
-        "HourlyFactorContract",
-        "HourlyNewsIntensityProviderSource",
-        "HourlySeasonalityProviderSource",
-        "KnownNewsArrivalConfiguration",
         "MeanReversionAnchorModel",
         "MeanReversionAnchorModelKind",
         "MeanReversionBoundaryState",
         "MeanReversionFittedParameters",
         "MeanReversionRuntimeIntervalAnchors",
-        "NewsArrivalConfiguration",
-        "NewsComponentMarkScaleConfiguration",
         "NewsProcessConfiguration",
-        "SeededTickEventRecord",
         "SeededTickEventSide",
-        "SeededTickEventStateSnapshot",
         "SeededTickEventStateSnapshotCapture",
-        "SeededTickEventTapeMetadata",
         "SeededTickSimulationHourlyFactorSummary",
         "SeededTickSimulationRequest",
         "SeededTickSimulationResponse",
         "SeededTickSimulationValidationError",
         "SeededTickSimulationValidationFailure",
-        "SharedNewsMarkLawConfiguration",
-        "SurpriseNewsArrivalConfiguration",
-        "deserialize_coarse_simulation_path",
-        "deserialize_coarse_simulation_run_request",
-        "deserialize_seeded_tick_simulation_response",
-        "load_hourly_factor_contract_for_simulation",
+        "build_endogenous_seeded_mean_reversion_runtime_inputs",
         "run_coarse_simulation",
         "run_seeded_tick_event_simulation",
-        "serialize_coarse_simulation_path",
-        "serialize_coarse_simulation_run_request",
-        "serialize_seeded_tick_simulation_response",
-        "validate_coarse_simulation_path",
-        "validate_coarse_simulation_run_request",
-        "validate_seeded_tick_simulation_response",
     }
 
     assert expected_exports <= set(simulation_module.__all__)
@@ -192,13 +208,9 @@ def test_simulation_seeded_public_submodule_is_supported_domain_import() -> None
     simulation_seeded_module = import_module("janiform.simulation.seeded")
 
     expected_exports = {
-        "CalendarRegistry",
         "HawkesExcitationState",
         "HawkesKernelLoadings",
         "HawkesKernelParameters",
-        "HourlyFactorContract",
-        "HourlyNewsIntensityProviderSource",
-        "HourlySeasonalityProviderSource",
         "SeededTickEventRecord",
         "SeededTickEventSide",
         "SeededTickEventStateSnapshot",
@@ -211,7 +223,6 @@ def test_simulation_seeded_public_submodule_is_supported_domain_import() -> None
         "SeededTickSimulationValidationError",
         "SeededTickSimulationValidationFailure",
         "deserialize_seeded_tick_simulation_response",
-        "load_hourly_factor_contract_for_simulation",
         "run_seeded_tick_event_simulation",
         "serialize_seeded_tick_simulation_response",
         "validate_seeded_tick_simulation_response",
@@ -314,7 +325,6 @@ def test_pricing_public_symbols_live_in_pricing_module() -> None:
         "NigSharedPlusShiftConfiguration",
         "VanillaOptionPricingCalibrationHooks",
         "VanillaOptionPricingExecutionInput",
-        "VanillaOptionPricingIntervalFactors",
         "VanillaOptionPricingOptionalOutputSelection",
         "VanillaOptionPayoffConfiguration",
         "VanillaOptionPayoffType",
@@ -328,13 +338,9 @@ def test_pricing_public_symbols_live_in_pricing_module() -> None:
         "VanillaOptionPricingRunResult",
         "VanillaOptionPricingValidationError",
         "VanillaOptionPricingValidationFailure",
-        "deserialize_vanilla_option_pricing_execution_input",
-        "load_hourly_factor_contract_for_pricing",
         "run_vanilla_option_pricing",
-        "serialize_vanilla_option_pricing_execution_input",
         "validate_vanilla_option_pricing_request",
         "validate_vanilla_option_pricing_response",
-        "validate_vanilla_option_pricing_execution_input",
         "validate_vanilla_option_pricing_run_result",
         "serialize_vanilla_option_pricing_request",
         "serialize_vanilla_option_pricing_response",
@@ -352,7 +358,6 @@ def test_risk_public_symbols_live_in_risk_module() -> None:
     expected_exports = {
         "SUFFICIENT_STATISTICS_RISK_INTERVAL_FACTOR_POLICY",
         "SufficientStatisticsRiskEquationSpecification",
-        "SufficientStatisticsRiskIntervalFactors",
         "SufficientStatisticsRiskModelInputs",
         "SufficientStatisticsRiskRunRequest",
         "SufficientStatisticsIntervalStatistics",
@@ -441,24 +446,7 @@ def test_calibration_public_symbols_live_in_calibration_module() -> None:
     calibration_module = import_module("janiform.calibration")
 
     expected_exports = {
-        "CALIBRATION_EXECUTION_MODE_DEFAULT_POLICY",
-        "CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION",
-        "CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION",
-        "CALIBRATION_MARKET_DATA_SESSION_RESOLUTION_SCHEMA_VERSION",
-        "CALIBRATION_RUN_SPEC_SCHEMA_VERSION",
-        "CALIBRATION_STAGED_EXECUTION_INPUT_SCHEMA_VERSION",
-        "CALIBRATION_STAGED_RUN_REPORT_SCHEMA_VERSION",
-        "CalibrationDuplicateRecordPolicy",
-        "CalibrationExecutionMode",
-        "CalibrationInputFileFormat",
-        "CalibrationKnownNewsColumnMapping",
-        "CalibrationMarketDataNormalizationPolicy",
-        "CalibrationMarketDataOutputPreferences",
-        "CalibrationMarketDataWorkflowScope",
-        "CalibrationOptionQuoteInputPolicy",
-        "CalibrationOptionSurfaceColumnMapping",
-        "CalibrationTickDataColumnMapping",
-        "CalibrationTickPriceInputPolicy",
+        "CalibrationMeanReversionConfiguration",
         "CalibrationValidationError",
         "CalibrationValidationFailure",
         "DEFAULT_HIGH_LEVEL_KNOWN_NEWS_PRESET_NAME",
@@ -469,17 +457,11 @@ def test_calibration_public_symbols_live_in_calibration_module() -> None:
         "JaniformModel",
         "JaniformSimulationResult",
         "MarketDataCalibrationRequest",
-        "MarketDataSessionRecurringClosedWindow",
-        "MarketDataSessionRegularWindow",
-        "MarketDataSessionResolution",
         "MarketProfileReference",
         "MeanReversionAnchorModel",
         "MeanReversionAnchorModelKind",
         "MeanReversionFittedParameters",
-        "PresetReferenceUsageMode",
-        "PresetCategory",
         "PresetRegistry",
-        "PresetRegistryScope",
         "SessionExplicitConfiguration",
         "SessionPresetReference",
         "StagedCalibrationExecutionInput",
@@ -490,8 +472,6 @@ def test_calibration_public_symbols_live_in_calibration_module() -> None:
         "resolve_preset_workflow_configuration",
         "run_market_data_calibration",
         "run_staged_calibration",
-        "validate_market_data_calibration_request",
-        "validate_staged_calibration_execution_input",
     }
 
     assert set(calibration_module.__all__) == expected_exports
@@ -545,9 +525,13 @@ def test_calibration_market_data_public_submodule_is_supported_domain_import() -
         "CalibrationInputFileReference",
         "CalibrationKnownNewsColumnMapping",
         "CalibrationKnownNewsInput",
+        "CalibrationMeanReversionConfiguration",
         "CalibrationMarketDataColumnMapping",
         "CalibrationMarketDataNormalizationPolicy",
         "CalibrationMarketDataOutputPreferences",
+        "CalibrationMarketDataPreprocessingSettings",
+        "CalibrationMarketDataReturnComponentsPreprocessingSettings",
+        "CalibrationMarketDataSeasonalityPreprocessingSettings",
         "CalibrationMarketDataWorkflowScope",
         "CalibrationOptionQuoteInputPolicy",
         "CalibrationOptionSurfaceColumnMapping",
@@ -580,6 +564,9 @@ def test_calibration_market_data_public_ownership_submodules_are_supported_domai
     assert {
         "CalibrationInputFileReference",
         "CalibrationMarketDataWorkflowScope",
+        "CalibrationMarketDataPreprocessingSettings",
+        "CalibrationMarketDataReturnComponentsPreprocessingSettings",
+        "CalibrationMarketDataSeasonalityPreprocessingSettings",
         "CalibrationSessionConfigurationInput",
     } <= set(calibration_market_data_contracts_module.__all__)
     assert set(calibration_market_data_request_module.__all__) == {
@@ -595,7 +582,8 @@ def test_calibration_market_data_public_ownership_submodules_are_supported_domai
         "MarketDataTranslationDiagnostics",
         "MarketDataTranslationProvenance",
         "MarketDataTranslationResult",
-        "translate_market_data_request_to_staged_execution_input",
+        "resolve_market_data_session_configuration_from_source_file",
+        "translate_market_data_request_to_prepared_calibration",
     }
     assert set(calibration_market_data_workflow_module.__all__) == {
         "MarketDataCalibrationPreparationDiagnostics",
@@ -730,7 +718,6 @@ def test_calibration_sessions_public_submodule_is_supported_domain_import() -> N
 
 def test_calibration_sessions_public_ownership_submodules_are_supported_domain_imports() -> None:
     calibration_sessions_contracts_module = import_module("janiform.calibration.sessions.contracts")
-    calibration_sessions_resolution_module = import_module("janiform.calibration.sessions.resolution")
 
     assert set(calibration_sessions_contracts_module.__all__) == {
         "CALIBRATION_MARKET_DATA_SESSION_RESOLUTION_ENTRYPOINT",
@@ -740,7 +727,6 @@ def test_calibration_sessions_public_ownership_submodules_are_supported_domain_i
         "MarketDataSessionRegularWindow",
         "MarketDataSessionResolution",
     }
-    assert set(calibration_sessions_resolution_module.__all__) == set()
 
 
 def test_calibration_root_and_public_submodules_share_supported_symbols() -> None:
@@ -748,7 +734,6 @@ def test_calibration_root_and_public_submodules_share_supported_symbols() -> Non
     calibration_fit_module = import_module("janiform.calibration.fit")
     calibration_market_data_module = import_module("janiform.calibration.market_data")
     calibration_presets_module = import_module("janiform.calibration.presets")
-    calibration_sessions_module = import_module("janiform.calibration.sessions")
     calibration_staged_module = import_module("janiform.calibration.staged")
 
     assert calibration_module.JaniformEstimator is calibration_fit_module.JaniformEstimator
@@ -757,10 +742,6 @@ def test_calibration_root_and_public_submodules_share_supported_symbols() -> Non
         is calibration_market_data_module.MarketDataCalibrationRequest
     )
     assert calibration_module.PresetRegistry is calibration_presets_module.PresetRegistry
-    assert (
-        calibration_module.MarketDataSessionResolution
-        is calibration_sessions_module.MarketDataSessionResolution
-    )
     assert (
         calibration_module.StagedCalibrationExecutionInput
         is calibration_staged_module.StagedCalibrationExecutionInput
@@ -773,13 +754,10 @@ def test_calibration_root_and_public_ownership_submodules_share_supported_symbol
     calibration_fit_estimator_module = import_module("janiform.calibration.fit.estimator")
     calibration_fit_model_module = import_module("janiform.calibration.fit.model")
     calibration_fit_report_module = import_module("janiform.calibration.fit.report")
-    calibration_market_data_contracts_module = import_module("janiform.calibration.market_data.contracts")
     calibration_market_data_request_module = import_module("janiform.calibration.market_data.request")
     calibration_presets_references_module = import_module("janiform.calibration.presets.references")
     calibration_presets_registry_module = import_module("janiform.calibration.presets.registry")
     calibration_presets_resolution_module = import_module("janiform.calibration.presets.resolution")
-    calibration_sessions_contracts_module = import_module("janiform.calibration.sessions.contracts")
-    calibration_staged_contracts_module = import_module("janiform.calibration.staged.contracts")
     calibration_staged_inputs_module = import_module("janiform.calibration.staged.inputs")
     calibration_staged_request_module = import_module("janiform.calibration.staged.request")
     calibration_staged_results_module = import_module("janiform.calibration.staged.results")
@@ -787,10 +765,6 @@ def test_calibration_root_and_public_ownership_submodules_share_supported_symbol
     assert calibration_module.JaniformEstimator is calibration_fit_estimator_module.JaniformEstimator
     assert calibration_module.JaniformModel is calibration_fit_model_module.JaniformModel
     assert calibration_module.JaniformFitReport is calibration_fit_report_module.JaniformFitReport
-    assert (
-        calibration_module.CalibrationMarketDataWorkflowScope
-        is calibration_market_data_contracts_module.CalibrationMarketDataWorkflowScope
-    )
     assert (
         calibration_module.MarketDataCalibrationRequest
         is calibration_market_data_request_module.MarketDataCalibrationRequest
@@ -801,17 +775,21 @@ def test_calibration_root_and_public_ownership_submodules_share_supported_symbol
         calibration_module.resolve_preset_workflow_configuration
         is calibration_presets_resolution_module.resolve_preset_workflow_configuration
     )
-    assert (
-        calibration_module.MarketDataSessionResolution
-        is calibration_sessions_contracts_module.MarketDataSessionResolution
-    )
-    assert calibration_module.CalibrationExecutionMode is calibration_staged_contracts_module.CalibrationExecutionMode
     assert calibration_module.StagedCalibrationRequest is calibration_staged_request_module.StagedCalibrationRequest
     assert (
         calibration_module.StagedCalibrationExecutionInput
         is calibration_staged_inputs_module.StagedCalibrationExecutionInput
     )
     assert calibration_module.StagedCalibrationResponse is calibration_staged_results_module.StagedCalibrationResponse
+
+    with pytest.raises(AttributeError):
+        calibration_module.CalibrationExecutionMode
+
+    with pytest.raises(AttributeError):
+        calibration_module.CalibrationMarketDataWorkflowScope
+
+    with pytest.raises(AttributeError):
+        calibration_module.MarketDataSessionResolution
 
 
 def test_readme_links_public_api_surface_policy() -> None:

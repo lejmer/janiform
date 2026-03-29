@@ -80,6 +80,10 @@ pub use constants::{
     SEEDED_TICK_EVENT_TIMESTAMP_REPRESENTATION_POLICY,
 };
 pub use error::SeededTickSimulationRunError;
+pub use janiform_model_kernels::mean_reversion::{
+    MeanReversionAnchorModel, MeanReversionAnchorModelKind, MeanReversionBoundaryState,
+    MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors,
+};
 pub use runtime::{
     run_seeded_tick_event_simulation, run_seeded_tick_event_simulation_with_randomness_factory,
 };

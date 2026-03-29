@@ -2,7 +2,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
-from typing import Any, Optional, cast
+from typing import Any, Optional, cast, Final
 
 from ..coarse.news import NewsProcessConfiguration
 from ..shared import (
@@ -15,6 +15,10 @@ from ..shared.contracts import _parse_seeded_tick_state_snapshot_capture
 from ..shared.errors import SIMULATION_ERROR_FACTORY, _simulation_error
 from ...contracts import (
     ContractModel,
+    MeanReversionAnchorModel,
+    MeanReversionBoundaryState,
+    MeanReversionFittedParameters,
+    MeanReversionRuntimeIntervalAnchors,
     require_datetime_utc,
     require_finite_number,
     require_mapping,
@@ -25,10 +29,14 @@ from ...contracts import (
     require_sequence,
     require_string,
 )
+from ..._timestamps import ONE_HOUR_NANOS
 from ...calendar import MarketState
 from ...hourly_factors import HourlyFactorContract
 from ...pricing import NigSharedPlusShiftConfiguration
 from ...risk import SufficientStatisticsRiskReturnComponents
+
+
+_MEAN_REVERSION_ALIGNMENT_TOLERANCE: Final[float] = 1e-12
 
 
 def _parse_nig_shared_plus_shift_configuration(
@@ -244,6 +252,9 @@ class SeededTickSimulationRequest(ContractModel):
     nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration
     news_process_configuration: NewsProcessConfiguration
     initial_excitation_state: HawkesExcitationState
+    mean_reversion_fitted_parameters: MeanReversionFittedParameters
+    mean_reversion_runtime_interval_anchors: MeanReversionRuntimeIntervalAnchors
+    initial_mean_reversion_boundary_state: MeanReversionBoundaryState
     hourly_factor_summary: SeededTickSimulationHourlyFactorSummary
     debug_trace_enabled: bool = False
     sample_every_nth_transition: int = 1
@@ -272,6 +283,31 @@ class SeededTickSimulationRequest(ContractModel):
                 "hourly_factor_summary.interval_count",
                 "must match horizon_interval_count",
             )
+
+        if (
+            len(self.mean_reversion_runtime_interval_anchors.end_anchor_values)
+            != self.horizon_interval_count
+        ):
+            raise _simulation_error(
+                "mean_reversion_runtime_interval_anchors.end_anchor_values",
+                "must contain one end-anchor value per simulated interval",
+            )
+
+        if (
+            abs(
+                self.initial_mean_reversion_boundary_state.anchor_value
+                - self.mean_reversion_runtime_interval_anchors.start_anchor_value
+            )
+            > _MEAN_REVERSION_ALIGNMENT_TOLERANCE
+        ):
+            raise _simulation_error(
+                "initial_mean_reversion_boundary_state.anchor_value",
+                (
+                    "must match "
+                    "mean_reversion_runtime_interval_anchors.start_anchor_value"
+                ),
+            )
+
         if self.sample_every_nth_transition <= 0:
             raise _simulation_error("sample_every_nth_transition", "must be strictly positive")
         if self.max_records_per_chunk <= 0:
@@ -297,6 +333,9 @@ class SeededTickSimulationRequest(ContractModel):
         nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,
         news_process_configuration: NewsProcessConfiguration,
         initial_excitation_state: HawkesExcitationState,
+        mean_reversion_fitted_parameters: MeanReversionFittedParameters,
+        mean_reversion_runtime_interval_anchors: MeanReversionRuntimeIntervalAnchors,
+        initial_mean_reversion_boundary_state: MeanReversionBoundaryState,
         hourly_factor_contract: HourlyFactorContract,
         debug_trace_enabled: bool = False,
         sample_every_nth_transition: int = 1,
@@ -316,6 +355,9 @@ class SeededTickSimulationRequest(ContractModel):
             nig_shared_plus_shift_configuration=nig_shared_plus_shift_configuration,
             news_process_configuration=news_process_configuration,
             initial_excitation_state=initial_excitation_state,
+            mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
+            mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
+            initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
             hourly_factor_summary=SeededTickSimulationHourlyFactorSummary.from_contract(hourly_factor_contract),
             debug_trace_enabled=debug_trace_enabled,
             sample_every_nth_transition=sample_every_nth_transition,
@@ -419,6 +461,33 @@ class SeededTickSimulationRequest(ContractModel):
                 ),
                 field_path="initial_excitation_state",
             ),
+            mean_reversion_fitted_parameters=MeanReversionFittedParameters.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "mean_reversion_fitted_parameters",
+                    "mean_reversion_fitted_parameters",
+                    SIMULATION_ERROR_FACTORY,
+                ),
+                field_path="mean_reversion_fitted_parameters",
+            ),
+            mean_reversion_runtime_interval_anchors=MeanReversionRuntimeIntervalAnchors.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "mean_reversion_runtime_interval_anchors",
+                    "mean_reversion_runtime_interval_anchors",
+                    SIMULATION_ERROR_FACTORY,
+                ),
+                field_path="mean_reversion_runtime_interval_anchors",
+            ),
+            initial_mean_reversion_boundary_state=MeanReversionBoundaryState.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "initial_mean_reversion_boundary_state",
+                    "initial_mean_reversion_boundary_state",
+                    SIMULATION_ERROR_FACTORY,
+                ),
+                field_path="initial_mean_reversion_boundary_state",
+            ),
             hourly_factor_summary=SeededTickSimulationHourlyFactorSummary.from_mapping(
                 require_mapping(
                     raw_payload,
@@ -502,6 +571,10 @@ class SeededTickEventRecord(ContractModel):
     event_index: int
     timestamp_utc_nanos: int
     side: SeededTickEventSide
+    core_total_return_increment: float
+    observed_log_price: float
+    anchor_value: float
+    deviation_from_anchor: float
     state_snapshot: Optional[SeededTickEventStateSnapshot] = None
 
     @staticmethod
@@ -542,6 +615,30 @@ class SeededTickEventRecord(ContractModel):
                 SIMULATION_ERROR_FACTORY,
             ),
             side=side,
+            core_total_return_increment=require_finite_number(
+                raw_payload,
+                "core_total_return_increment",
+                f"{field_path}.core_total_return_increment",
+                SIMULATION_ERROR_FACTORY,
+            ),
+            observed_log_price=require_finite_number(
+                raw_payload,
+                "observed_log_price",
+                f"{field_path}.observed_log_price",
+                SIMULATION_ERROR_FACTORY,
+            ),
+            anchor_value=require_finite_number(
+                raw_payload,
+                "anchor_value",
+                f"{field_path}.anchor_value",
+                SIMULATION_ERROR_FACTORY,
+            ),
+            deviation_from_anchor=require_finite_number(
+                raw_payload,
+                "deviation_from_anchor",
+                f"{field_path}.deviation_from_anchor",
+                SIMULATION_ERROR_FACTORY,
+            ),
             state_snapshot=state_snapshot,
         )
 
@@ -717,7 +814,11 @@ class SeededFinePathRecord(ContractModel):
     news_arrival_component: Optional[SeededFinePathNewsArrivalComponent]
     market_state: MarketState
     return_components: SufficientStatisticsRiskReturnComponents
-    cumulative_log_return: float
+    core_total_return_increment: float
+    observed_log_price: float
+    anchor_value: float
+    deviation_from_anchor: float
+    cumulative_core_log_return: float
     state_snapshot: Optional[SeededTickEventStateSnapshot] = None
 
     @staticmethod
@@ -825,10 +926,34 @@ class SeededFinePathRecord(ContractModel):
                 ),
                 field_path=f"{field_path}.return_components",
             ),
-            cumulative_log_return=require_finite_number(
+            core_total_return_increment=require_finite_number(
                 raw_payload,
-                "cumulative_log_return",
-                f"{field_path}.cumulative_log_return",
+                "core_total_return_increment",
+                f"{field_path}.core_total_return_increment",
+                SIMULATION_ERROR_FACTORY,
+            ),
+            observed_log_price=require_finite_number(
+                raw_payload,
+                "observed_log_price",
+                f"{field_path}.observed_log_price",
+                SIMULATION_ERROR_FACTORY,
+            ),
+            anchor_value=require_finite_number(
+                raw_payload,
+                "anchor_value",
+                f"{field_path}.anchor_value",
+                SIMULATION_ERROR_FACTORY,
+            ),
+            deviation_from_anchor=require_finite_number(
+                raw_payload,
+                "deviation_from_anchor",
+                f"{field_path}.deviation_from_anchor",
+                SIMULATION_ERROR_FACTORY,
+            ),
+            cumulative_core_log_return=require_finite_number(
+                raw_payload,
+                "cumulative_core_log_return",
+                f"{field_path}.cumulative_core_log_return",
                 SIMULATION_ERROR_FACTORY,
             ),
             state_snapshot=state_snapshot,
@@ -854,6 +979,10 @@ def _project_event_tape_from_fine_path(
                 event_index=len(event_records),
                 timestamp_utc_nanos=fine_path_record.timestamp_utc_nanos,
                 side=fine_path_record.side,
+                core_total_return_increment=fine_path_record.core_total_return_increment,
+                observed_log_price=fine_path_record.observed_log_price,
+                anchor_value=fine_path_record.anchor_value,
+                deviation_from_anchor=fine_path_record.deviation_from_anchor,
                 state_snapshot=fine_path_record.state_snapshot,
             )
         )
@@ -1001,11 +1130,42 @@ class SeededTickSimulationDiagnostics(ContractModel):
         )
 
 
+def build_endogenous_seeded_mean_reversion_runtime_inputs(
+    *,
+    hourly_factor_contract: HourlyFactorContract,
+) -> tuple[
+    MeanReversionFittedParameters,
+    MeanReversionRuntimeIntervalAnchors,
+    MeanReversionBoundaryState,
+]:
+    interval_delta_hours = hourly_factor_contract.interval_duration_nanos / ONE_HOUR_NANOS
+    interval_count = hourly_factor_contract.interval_count
+
+    return (
+        MeanReversionFittedParameters(
+            kappa=0.0,
+            anchor_model=MeanReversionAnchorModel.endogenous_core_expectation_one_interval(),
+        ),
+        MeanReversionRuntimeIntervalAnchors(
+            interval_alignment_policy=hourly_factor_contract.interval_alignment_policy,
+            start_anchor_value=0.0,
+            end_anchor_values=tuple(0.0 for _ in range(interval_count)),
+            interval_deltas=tuple(interval_delta_hours for _ in range(interval_count)),
+        ),
+        MeanReversionBoundaryState(
+            observed_log_price=0.0,
+            anchor_value=0.0,
+            deviation=0.0,
+        ),
+    )
+
+
 __all__ = [
     "SEEDED_TICK_SIMULATION_BOUNDARY_TRANSPORT_POLICY",
     "SEEDED_TICK_SIMULATION_DIAGNOSTICS_SCHEMA_VERSION",
     "SEEDED_TICK_SIMULATION_NATIVE_CHUNK_RECORD_COUNT",
     "SEEDED_TICK_SIMULATION_PAYLOAD_TRANSPORT_POLICY",
+    "build_endogenous_seeded_mean_reversion_runtime_inputs",
     "SeededFinePathMetadata",
     "SeededFinePathNewsArrivalComponent",
     "SeededFinePathRecord",

@@ -4,6 +4,7 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 
 use chrono::{DateTime, Utc};
+use janiform_foundations::time::ONE_HOUR_NANOS;
 use janiform_market_time::calendar::{ExchangeCalendarRegistry, MarketState};
 use janiform_market_time::hourly_factors::{
     HourlyFactorProviderError, HourlyFactorProviderRequest, HourlyNewsIntensityFactorSource,
@@ -429,7 +430,7 @@ fn resolve_hourly_factor_contract(
             exchange_code: &hourly_factor_case.exchange_code,
             range_start_utc: hourly_factor_case.range_start_utc,
             range_end_utc: hourly_factor_case.range_end_utc,
-            interval_duration_nanos: 3_600_000_000_000,
+            interval_duration_nanos: ONE_HOUR_NANOS,
             seasonality_source: Some(seasonality_source),
             news_intensity_source: Some(news_intensity_source),
         },

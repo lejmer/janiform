@@ -1,9 +1,11 @@
 use serde::{Deserialize, Serialize};
 
-use crate::MeanReversionFittedParameters;
 use janiform_model_kernels::hawkes::{
     HawkesKernelParameters, HawkesStructuredAlphaParameterization,
     HawkesStructuredRhoParameterization, HawkesStructuredRhoSelfDominancePolicy,
+};
+use janiform_model_kernels::mean_reversion::{
+    MeanReversionAnchorModel, MeanReversionAnchorModelKind, MeanReversionFittedParameters,
 };
 use janiform_model_kernels::news::NewsProcessConfiguration;
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
@@ -44,6 +46,27 @@ pub struct ReturnComponentsStageFittedParameters {
     pub news_process_configuration: NewsProcessConfiguration,
     pub surprise_deterministic_intensity_profile: SurpriseNewsDeterministicIntensityProfile,
     pub mean_reversion_fitted_parameters: MeanReversionFittedParameters,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MeanReversionStageCalibrationGrid {
+    pub calibration_grid_kind: String,
+    pub calibration_grid_interval_hours: f64,
+    pub source_observation_count: usize,
+    pub retained_observation_count: usize,
+    pub coverage_ratio: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MeanReversionStageDiagnostics {
+    pub chosen_anchor_family: MeanReversionAnchorModelKind,
+    pub calibration_grid: MeanReversionStageCalibrationGrid,
+    pub anchor_parameter_estimates: MeanReversionAnchorModel,
+    pub phi: f64,
+    pub kappa: f64,
+    pub deviation_sample_count: usize,
+    pub regression_pair_count: usize,
+    pub stage_decision_reason: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

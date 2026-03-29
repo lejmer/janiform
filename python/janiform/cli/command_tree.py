@@ -1,3 +1,5 @@
+"""Internal Click command-tree assembly for the Janiform CLI."""
+
 from collections.abc import Mapping
 import sys
 from typing import Optional, cast
@@ -5,11 +7,11 @@ from typing import Optional, cast
 import click
 
 from .command_runtime import JaniformGroup
-from .commands.development import _build_development_group
+from .commands._development import build_development_group
 from .commands.hourly_factors import _build_hourly_factors_group
-from .commands.model_workflows import _build_fit_group, _build_simulate_group
+from .commands._model_workflows import build_fit_group, build_simulate_group
 from .commands.presets import _build_presets_group
-from .commands.pricing import _build_price_command
+from .commands._pricing import build_price_command
 from .commands.seasonality import _build_seasonality_group
 from .commands.stylized_facts import _build_stylized_facts_group
 from ._constants import CliExitCode
@@ -42,14 +44,14 @@ def _build_app(*, environment: Optional[Mapping[str, str]] = None) -> click.Comm
             click.echo(ctx.get_help())
 
     for group_builder in (
-        _build_fit_group,
-        _build_simulate_group,
-        _build_price_command,
+        build_fit_group,
+        build_simulate_group,
+        build_price_command,
         _build_presets_group,
         _build_seasonality_group,
         _build_hourly_factors_group,
         _build_stylized_facts_group,
-        _build_development_group,
+        build_development_group,
     ):
         root.add_command(group_builder(environment=environment))
 
@@ -65,6 +67,7 @@ def _invoke_application(
         list(sys.argv[1:] if arguments is None else arguments)
     )
     result = _invoke_click_command(_build_app(environment=environment), effective_arguments)
+
     return int(CliExitCode.SUCCESS if result is None else result)
 
 

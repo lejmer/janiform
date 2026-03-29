@@ -24,9 +24,9 @@ from .._constants import (
     CliExitCode,
     CliOutputMode,
 )
-from ..documents import _load_json_document_for_cli_field
-from ..errors import _classify_workflow_command_error
-from ..rendering import _render_stylized_facts_horizon_comparison_human_output, _write_cli_error, _write_command_output
+from .._documents import load_json_document_for_cli_field
+from .._errors import classify_workflow_command_error
+from .._rendering import render_stylized_facts_horizon_comparison_human_output, write_cli_error, write_command_output
 from ...errors import JaniformError
 from ...stylized_facts import run_stylized_fact_horizon_comparison_report_generator
 
@@ -44,7 +44,7 @@ def _run_stylized_facts_horizon_comparison_command(
     document_field_path = "metric_catalog_document"
 
     try:
-        metric_catalog_document = _load_json_document_for_cli_field(
+        metric_catalog_document = load_json_document_for_cli_field(
             repository_root=cli_context.repository_root,
             path=metric_catalog_json,
             context="stylized-fact metric catalog",
@@ -53,7 +53,7 @@ def _run_stylized_facts_horizon_comparison_command(
             entrypoint=CLI_STYLIZED_FACTS_HORIZON_COMPARISON_ENTRYPOINT,
         )
         document_field_path = "comparison_request_document"
-        comparison_request_document = _load_json_document_for_cli_field(
+        comparison_request_document = load_json_document_for_cli_field(
             repository_root=cli_context.repository_root,
             path=comparison_request_json,
             context="stylized-fact comparison request",
@@ -65,7 +65,7 @@ def _run_stylized_facts_horizon_comparison_command(
         artifact_export_document: Optional[dict[str, Any]] = None
         if artifact_export_json is not None:
             document_field_path = "artifact_export_document"
-            artifact_export_document = _load_json_document_for_cli_field(
+            artifact_export_document = load_json_document_for_cli_field(
                 repository_root=cli_context.repository_root,
                 path=artifact_export_json,
                 context="stylized-fact artifact export config",
@@ -83,10 +83,10 @@ def _run_stylized_facts_horizon_comparison_command(
             artifact_export=artifact_export_document,
         )
     except JaniformError as e:
-        return _write_cli_error(e)
+        return write_cli_error(e)
     except Exception as e:
-        return _write_cli_error(
-            _classify_workflow_command_error(
+        return write_cli_error(
+            classify_workflow_command_error(
                 e,
                 entrypoint=CLI_STYLIZED_FACTS_HORIZON_COMPARISON_ENTRYPOINT,
                 validation_error_id=CLI_STYLIZED_FACTS_HORIZON_COMPARISON_VALIDATION_ERROR_ID,
@@ -96,10 +96,10 @@ def _run_stylized_facts_horizon_comparison_command(
             )
         )
 
-    _write_command_output(
+    write_command_output(
         output,
         json_payload=cast(dict[str, Any], report_bundle),
-        human_output_factory=lambda: _render_stylized_facts_horizon_comparison_human_output(
+        human_output_factory=lambda: render_stylized_facts_horizon_comparison_human_output(
             report_bundle,
             execution_mode=execution_mode,
         ),

@@ -4,6 +4,9 @@ use std::fmt::{Display, Formatter};
 use serde::Serialize;
 
 use janiform_model_kernels::hawkes::HawkesExcitationState;
+use janiform_model_kernels::mean_reversion::{
+    MeanReversionBoundaryState, MeanReversionBoundaryStateValidationError,
+};
 
 use super::super::request::{
     SUFFICIENT_STATISTICS_RISK_INTERVAL_FACTOR_POLICY,
@@ -103,7 +106,11 @@ pub struct SufficientStatisticsRiskPathDiagnostics {
     pub cumulative_open_jump_return: f64,
     pub cumulative_closed_gap_return: f64,
     pub cumulative_total_return: f64,
+    pub cumulative_observed_return: f64,
     pub max_abs_total_return: f64,
+    pub max_abs_deviation_from_anchor: f64,
+    pub terminal_observed_log_price: f64,
+    pub terminal_deviation_from_anchor: f64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -112,21 +119,39 @@ pub struct SufficientStatisticsRiskPathRecord {
     pub interval_index: usize,
     pub sufficient_statistics: SufficientStatisticsIntervalStatistics,
     pub return_components: SufficientStatisticsRiskReturnComponents,
+    pub core_total_return: f64,
+    pub observed_interval_return: f64,
+    pub observed_log_price_end: f64,
+    pub anchor_value_end: f64,
+    pub deviation_from_anchor_end: f64,
 }
 
 impl SufficientStatisticsRiskPathRecord {
+    #[allow(clippy::too_many_arguments)]
     pub fn try_new(
         interval_index: usize,
         sufficient_statistics: SufficientStatisticsIntervalStatistics,
         return_components: SufficientStatisticsRiskReturnComponents,
+        core_total_return: f64,
+        observed_interval_return: f64,
+        observed_log_price_end: f64,
+        anchor_value_end: f64,
+        deviation_from_anchor_end: f64,
     ) -> Result<Self, SufficientStatisticsRiskPathRecordError> {
         let path_record = Self {
             schema_version: SUFFICIENT_STATISTICS_RISK_PATH_RECORD_SCHEMA_VERSION,
             interval_index,
             sufficient_statistics,
             return_components,
+            core_total_return,
+            observed_interval_return,
+            observed_log_price_end,
+            anchor_value_end,
+            deviation_from_anchor_end,
         };
+
         path_record.validate()?;
+
         Ok(path_record)
     }
 
@@ -137,6 +162,33 @@ impl SufficientStatisticsRiskPathRecord {
         self.return_components.validate().map_err(|source| {
             SufficientStatisticsRiskPathRecordError::InvalidReturnComponents { source }
         })?;
+
+        if self.core_total_return != self.return_components.total_return {
+            return Err(
+                SufficientStatisticsRiskPathRecordError::CoreTotalReturnMismatch {
+                    expected_core_total_return: self.return_components.total_return,
+                    observed_core_total_return: self.core_total_return,
+                },
+            );
+        }
+
+        if !self.observed_interval_return.is_finite() {
+            return Err(
+                SufficientStatisticsRiskPathRecordError::InvalidObservedIntervalReturn {
+                    value: self.observed_interval_return,
+                },
+            );
+        }
+
+        MeanReversionBoundaryState::try_new(
+            self.observed_log_price_end,
+            self.anchor_value_end,
+            self.deviation_from_anchor_end,
+        )
+        .map_err(|source| {
+            SufficientStatisticsRiskPathRecordError::InvalidObservedBoundaryState { source }
+        })?;
+
         Ok(())
     }
 }
@@ -149,6 +201,16 @@ pub enum SufficientStatisticsRiskPathRecordError {
     InvalidReturnComponents {
         source: SufficientStatisticsRiskReturnComponentsError,
     },
+    CoreTotalReturnMismatch {
+        expected_core_total_return: f64,
+        observed_core_total_return: f64,
+    },
+    InvalidObservedIntervalReturn {
+        value: f64,
+    },
+    InvalidObservedBoundaryState {
+        source: MeanReversionBoundaryStateValidationError,
+    },
 }
 
 impl Display for SufficientStatisticsRiskPathRecordError {
@@ -160,6 +222,23 @@ impl Display for SufficientStatisticsRiskPathRecordError {
             Self::InvalidReturnComponents { source } => {
                 write!(formatter, "return_components is invalid: {source}")
             }
+            Self::CoreTotalReturnMismatch {
+                expected_core_total_return,
+                observed_core_total_return,
+            } => write!(
+                formatter,
+                "core_total_return must equal return_components.total_return ({expected_core_total_return}), found {observed_core_total_return}"
+            ),
+            Self::InvalidObservedIntervalReturn { value } => write!(
+                formatter,
+                "observed_interval_return must be finite, found {value}"
+            ),
+            Self::InvalidObservedBoundaryState { source } => {
+                write!(
+                    formatter,
+                    "observed end-of-interval boundary state is invalid: {source}"
+                )
+            }
         }
     }
 }
@@ -169,6 +248,10 @@ impl Error for SufficientStatisticsRiskPathRecordError {
         match self {
             Self::InvalidSufficientStatistics { source } => Some(source),
             Self::InvalidReturnComponents { source } => Some(source),
+            Self::InvalidObservedBoundaryState { source } => Some(source),
+            Self::CoreTotalReturnMismatch { .. } | Self::InvalidObservedIntervalReturn { .. } => {
+                None
+            }
         }
     }
 }
@@ -200,6 +283,7 @@ impl SufficientStatisticsRiskPath {
     ) -> Result<Self, SufficientStatisticsRiskPathError> {
         let diagnostics =
             derive_sufficient_statistics_risk_path_diagnostics(simulated_interval_count, &records)?;
+
         let path = Self {
             schema_version: SUFFICIENT_STATISTICS_RISK_PATH_SCHEMA_VERSION,
             run_request_schema_version: SUFFICIENT_STATISTICS_RISK_RUN_REQUEST_SCHEMA_VERSION,
@@ -569,11 +653,15 @@ fn derive_sufficient_statistics_risk_path_diagnostics(
     let mut cumulative_a_minus = 0.0;
     let mut cumulative_n_plus: u64 = 0;
     let mut cumulative_n_minus: u64 = 0;
+
     let mut cumulative_trading_time_return = 0.0;
     let mut cumulative_open_jump_return = 0.0;
     let mut cumulative_closed_gap_return = 0.0;
     let mut cumulative_total_return = 0.0;
+    let mut cumulative_observed_return = 0.0;
+
     let mut max_abs_total_return: f64 = 0.0;
+    let mut max_abs_deviation_from_anchor: f64 = 0.0;
 
     for (record_position, record) in records.iter().enumerate() {
         cumulative_a_plus += record.sufficient_statistics.a_plus;
@@ -670,7 +758,41 @@ fn derive_sufficient_statistics_risk_path_diagnostics(
         }
 
         max_abs_total_return = max_abs_total_return.max(absolute_total_return);
+
+        cumulative_observed_return += record.observed_interval_return;
+        if !cumulative_observed_return.is_finite() {
+            return Err(SufficientStatisticsRiskPathError::InvalidDiagnosticsField {
+                field_path: "diagnostics.cumulative_observed_return".to_string(),
+                expected: "finite cumulative sum".to_string(),
+                actual: format!(
+                    "non-finite value after records[{record_position}].observed_interval_return aggregation"
+                ),
+            });
+        }
+
+        let absolute_deviation_from_anchor = record.deviation_from_anchor_end.abs();
+        if !absolute_deviation_from_anchor.is_finite() {
+            return Err(SufficientStatisticsRiskPathError::InvalidDiagnosticsField {
+                field_path: "diagnostics.max_abs_deviation_from_anchor".to_string(),
+                expected: "finite absolute deviation".to_string(),
+                actual: format!(
+                    "non-finite value at records[{record_position}].deviation_from_anchor_end"
+                ),
+            });
+        }
+
+        max_abs_deviation_from_anchor =
+            max_abs_deviation_from_anchor.max(absolute_deviation_from_anchor);
     }
+
+    let terminal_observed_log_price = records
+        .last()
+        .map(|record| record.observed_log_price_end)
+        .unwrap_or(0.0);
+    let terminal_deviation_from_anchor = records
+        .last()
+        .map(|record| record.deviation_from_anchor_end)
+        .unwrap_or(0.0);
 
     Ok(SufficientStatisticsRiskPathDiagnostics {
         schema_version: SUFFICIENT_STATISTICS_RISK_PATH_DIAGNOSTICS_SCHEMA_VERSION,
@@ -685,7 +807,11 @@ fn derive_sufficient_statistics_risk_path_diagnostics(
         cumulative_open_jump_return,
         cumulative_closed_gap_return,
         cumulative_total_return,
+        cumulative_observed_return,
         max_abs_total_return,
+        max_abs_deviation_from_anchor,
+        terminal_observed_log_price,
+        terminal_deviation_from_anchor,
     })
 }
 
@@ -788,11 +914,47 @@ fn validate_risk_path_diagnostics(
             actual: diagnostics.cumulative_total_return.to_string(),
         });
     }
+    if diagnostics.cumulative_observed_return != expected_diagnostics.cumulative_observed_return {
+        return Err(SufficientStatisticsRiskPathError::InvalidDiagnosticsField {
+            field_path: "diagnostics.cumulative_observed_return".to_string(),
+            expected: expected_diagnostics.cumulative_observed_return.to_string(),
+            actual: diagnostics.cumulative_observed_return.to_string(),
+        });
+    }
     if diagnostics.max_abs_total_return != expected_diagnostics.max_abs_total_return {
         return Err(SufficientStatisticsRiskPathError::InvalidDiagnosticsField {
             field_path: "diagnostics.max_abs_total_return".to_string(),
             expected: expected_diagnostics.max_abs_total_return.to_string(),
             actual: diagnostics.max_abs_total_return.to_string(),
+        });
+    }
+    if diagnostics.max_abs_deviation_from_anchor
+        != expected_diagnostics.max_abs_deviation_from_anchor
+    {
+        return Err(SufficientStatisticsRiskPathError::InvalidDiagnosticsField {
+            field_path: "diagnostics.max_abs_deviation_from_anchor".to_string(),
+            expected: expected_diagnostics
+                .max_abs_deviation_from_anchor
+                .to_string(),
+            actual: diagnostics.max_abs_deviation_from_anchor.to_string(),
+        });
+    }
+    if diagnostics.terminal_observed_log_price != expected_diagnostics.terminal_observed_log_price {
+        return Err(SufficientStatisticsRiskPathError::InvalidDiagnosticsField {
+            field_path: "diagnostics.terminal_observed_log_price".to_string(),
+            expected: expected_diagnostics.terminal_observed_log_price.to_string(),
+            actual: diagnostics.terminal_observed_log_price.to_string(),
+        });
+    }
+    if diagnostics.terminal_deviation_from_anchor
+        != expected_diagnostics.terminal_deviation_from_anchor
+    {
+        return Err(SufficientStatisticsRiskPathError::InvalidDiagnosticsField {
+            field_path: "diagnostics.terminal_deviation_from_anchor".to_string(),
+            expected: expected_diagnostics
+                .terminal_deviation_from_anchor
+                .to_string(),
+            actual: diagnostics.terminal_deviation_from_anchor.to_string(),
         });
     }
 

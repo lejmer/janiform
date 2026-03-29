@@ -1,14 +1,13 @@
 use janiform_foundations::numeric::{
-    arithmetic_mean_or_zero as arithmetic_mean, compute_probability_weighted_moment,
-    compute_sorted_quantile_or_zero as sorted_quantile, root_mean_square_or_infinity,
+    arithmetic_mean_or_zero as arithmetic_mean, bowley_skewness_from_sorted,
+    compute_sorted_quantile_or_zero as sorted_quantile, l_moment_lambda2_from_sorted,
+    l_moment_tau3_from_sorted, root_mean_square_or_infinity, sample_adjusted_excess_kurtosis,
+    sample_adjusted_skewness, sample_standard_deviation, sorted_finite_values,
 };
 
 use super::super::constants::RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER;
 use super::super::contracts::ReturnComponentsStageContinuousDistributionFitBreakdownDiagnostic;
-use super::super::execution::{
-    arithmetic_mean_signed, sample_adjusted_excess_kurtosis, sample_adjusted_skewness,
-    sample_standard_deviation,
-};
+use super::super::execution::arithmetic_mean_signed;
 use super::types::{ContinuousReturnDistributionProfile, ContinuousReturnScaleBucketProfile};
 
 pub(crate) fn distribution_profile_fit_score(
@@ -285,68 +284,16 @@ pub(super) fn build_distribution_profile(returns: &[f64]) -> ContinuousReturnDis
         } else {
             quantile_99_abs / quantile_95_abs
         },
-        bowley_skewness: compute_bowley_skewness_from_sorted(sorted_returns.as_slice())
-            .unwrap_or(0.0),
-        l_moment_lambda2: compute_l_moment_lambda2_from_sorted(sorted_returns.as_slice())
-            .unwrap_or(0.0),
-        l_moment_tau3: compute_l_moment_tau3_from_sorted(sorted_returns.as_slice()).unwrap_or(0.0),
+        bowley_skewness: bowley_skewness_from_sorted(
+            sorted_returns.as_slice(),
+            RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER,
+        )
+        .unwrap_or(0.0),
+        l_moment_lambda2: l_moment_lambda2_from_sorted(sorted_returns.as_slice()).unwrap_or(0.0),
+        l_moment_tau3: l_moment_tau3_from_sorted(
+            sorted_returns.as_slice(),
+            RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER,
+        )
+        .unwrap_or(0.0),
     }
-}
-
-fn sorted_finite_values(values: &[f64]) -> Vec<f64> {
-    let mut sorted_values: Vec<f64> = values
-        .iter()
-        .copied()
-        .filter(|value| value.is_finite())
-        .collect();
-    sorted_values.sort_by(f64::total_cmp);
-    sorted_values
-}
-
-fn compute_bowley_skewness_from_sorted(sorted_returns: &[f64]) -> Option<f64> {
-    if sorted_returns.len() < 3 {
-        return None;
-    }
-
-    let lower_quartile = sorted_quantile(sorted_returns, 0.25);
-    let median = sorted_quantile(sorted_returns, 0.50);
-    let upper_quartile = sorted_quantile(sorted_returns, 0.75);
-
-    let denominator = (upper_quartile - lower_quartile).abs();
-    if denominator <= RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER {
-        return None;
-    }
-
-    let value = (upper_quartile + lower_quartile - 2.0 * median) / denominator;
-    value.is_finite().then_some(value)
-}
-
-fn compute_l_moment_lambda2_from_sorted(sorted_returns: &[f64]) -> Option<f64> {
-    let probability_weighted_moment_0 = compute_probability_weighted_moment(sorted_returns, 0)?;
-    let probability_weighted_moment_1 = compute_probability_weighted_moment(sorted_returns, 1)?;
-    let lambda2 = 2.0 * probability_weighted_moment_1 - probability_weighted_moment_0;
-
-    lambda2.is_finite().then_some(lambda2)
-}
-
-fn compute_l_moment_tau3_from_sorted(sorted_returns: &[f64]) -> Option<f64> {
-    let probability_weighted_moment_0 = compute_probability_weighted_moment(sorted_returns, 0)?;
-    let probability_weighted_moment_1 = compute_probability_weighted_moment(sorted_returns, 1)?;
-    let probability_weighted_moment_2 = compute_probability_weighted_moment(sorted_returns, 2)?;
-
-    let lambda2 = 2.0 * probability_weighted_moment_1 - probability_weighted_moment_0;
-    if !lambda2.is_finite()
-        || lambda2.abs() <= RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER
-    {
-        return None;
-    }
-
-    let lambda3 = 6.0 * probability_weighted_moment_2 - 6.0 * probability_weighted_moment_1
-        + probability_weighted_moment_0;
-    if !lambda3.is_finite() {
-        return None;
-    }
-
-    let tau3 = lambda3 / lambda2;
-    tau3.is_finite().then_some(tau3)
 }

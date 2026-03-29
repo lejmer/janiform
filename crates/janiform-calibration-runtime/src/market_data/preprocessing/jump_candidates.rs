@@ -7,6 +7,7 @@ pub(crate) fn derive_intraday_jump_candidates(
     same_session_returns: &[(i64, f64)],
     open_price_tick_timestamps: &[i64],
     known_news_timestamps: &[i64],
+    threshold_multiplier: f64,
 ) -> Vec<CalibrationReturnComponentsDetectedIntradayJumpCandidate> {
     let candidate_returns: Vec<(i64, f64)> = same_session_returns
         .iter()
@@ -28,7 +29,7 @@ pub(crate) fn derive_intraday_jump_candidates(
         .collect();
     let threshold = median_abs_non_zero(candidate_jump_returns.as_slice())
         .unwrap_or_else(|| median_abs(candidate_jump_returns.as_slice()))
-        * 4.0;
+        * threshold_multiplier;
     let material_candidates: Vec<(i64, f64)> = candidate_returns
         .iter()
         .copied()

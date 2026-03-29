@@ -6,6 +6,10 @@ pub(crate) use std::time::{SystemTime, UNIX_EPOCH};
 
 pub(crate) use chrono::{TimeZone, Utc};
 pub(crate) use janiform_calibration_artifacts::*;
+pub(crate) use janiform_model_kernels::mean_reversion::{
+    MeanReversionAnchorModel, MeanReversionBoundaryState, MeanReversionFittedParameters,
+    MeanReversionRuntimeIntervalAnchors,
+};
 use janiform_model_kernels::news::{
     CoupledGapMarkConfiguration, KnownNewsArrivalConfiguration, NewsArrivalConfiguration,
     NewsComponentMarkScaleConfiguration, NewsProcessConfiguration, SharedNewsMarkLawConfiguration,
@@ -90,6 +94,10 @@ pub(crate) fn build_solver_settings_for_all_stages() -> Vec<CalibrationStageSolv
             optimizer_settings: build_solver_settings(),
         },
         CalibrationStageSolverSettings {
+            stage: CalibrationStage::MeanReversion,
+            optimizer_settings: build_solver_settings(),
+        },
+        CalibrationStageSolverSettings {
             stage: CalibrationStage::JointRefinement,
             optimizer_settings: build_joint_refinement_solver_settings(),
         },
@@ -129,6 +137,7 @@ pub(crate) fn build_valid_run_spec_with_mode(
             CalibrationStage::Seasonality,
             CalibrationStage::Hawkes,
             CalibrationStage::ReturnComponents,
+            CalibrationStage::MeanReversion,
             CalibrationStage::JointRefinement,
         ],
         build_seed_settings(),
@@ -137,25 +146,10 @@ pub(crate) fn build_valid_run_spec_with_mode(
     .expect("run spec should validate")
 }
 
-pub(crate) fn build_deterministic_interval_grid_mean_reversion_parameters()
--> MeanReversionFittedParameters {
+pub(crate) fn build_endogenous_mean_reversion_parameters() -> MeanReversionFittedParameters {
     MeanReversionFittedParameters::try_new(
         0.25,
-        MeanReversionAnchorModel::deterministic_interval_grid(
-            vec![
-                utc_nanos(2026, 3, 2, 14, 0, 0),
-                utc_nanos(2026, 3, 2, 15, 0, 0),
-                utc_nanos(2026, 3, 2, 16, 0, 0),
-            ],
-            vec![
-                utc_nanos(2026, 3, 2, 15, 0, 0),
-                utc_nanos(2026, 3, 2, 16, 0, 0),
-                utc_nanos(2026, 3, 2, 17, 0, 0),
-            ],
-            vec![4.2, 4.1, 4.0],
-            "piecewise_constant_utc_interval_grid.v1",
-        )
-        .expect("deterministic interval-grid anchor should validate"),
+        MeanReversionAnchorModel::endogenous_core_expectation_one_interval(),
     )
     .expect("mean reversion fitted parameters should validate")
 }
@@ -212,6 +206,9 @@ pub(crate) fn build_valid_artifact_manifest() -> CalibrationArtifactManifest {
                 ),
                 return_components_stage_output_schema_version: Some(
                     CALIBRATION_RETURN_COMPONENTS_STAGE_OUTPUT_SCHEMA_VERSION.to_string(),
+                ),
+                mean_reversion_stage_output_schema_version: Some(
+                    CALIBRATION_MEAN_REVERSION_STAGE_OUTPUT_SCHEMA_VERSION.to_string(),
                 ),
                 joint_refinement_stage_output_schema_version: Some(
                     CALIBRATION_JOINT_REFINEMENT_STAGE_OUTPUT_SCHEMA_VERSION.to_string(),
@@ -289,6 +286,12 @@ pub(crate) fn build_validation_metric_artifact_fixture() -> CalibrationValidatio
                 artifact_reference: "artifact://return_components/run-001".to_string(),
                 stage_output_schema_version:
                     CALIBRATION_RETURN_COMPONENTS_STAGE_EXECUTION_REPORT_SCHEMA_VERSION.to_string(),
+            },
+            CalibrationValidationMetricStageOutputLink {
+                stage: CalibrationStage::MeanReversion,
+                artifact_reference: "artifact://mean_reversion/run-001".to_string(),
+                stage_output_schema_version:
+                    CALIBRATION_MEAN_REVERSION_STAGE_EXECUTION_REPORT_SCHEMA_VERSION.to_string(),
             },
             CalibrationValidationMetricStageOutputLink {
                 stage: CalibrationStage::JointRefinement,
@@ -384,6 +387,12 @@ pub(crate) fn build_validation_metric_manifest_fixture() -> CalibrationArtifactM
                 stage: Some(CalibrationStage::ReturnComponents),
             },
             CalibrationArtifactReference {
+                artifact_id: "mean_reversion_stage_output".to_string(),
+                artifact_kind: CalibrationArtifactKind::StageOutput,
+                artifact_reference: "artifact://mean_reversion/run-001".to_string(),
+                stage: Some(CalibrationStage::MeanReversion),
+            },
+            CalibrationArtifactReference {
                 artifact_id: "joint_refinement_stage_output".to_string(),
                 artifact_kind: CalibrationArtifactKind::StageOutput,
                 artifact_reference: "artifact://joint_refinement/run-001".to_string(),
@@ -417,6 +426,7 @@ pub(crate) fn build_run_contract_with_mode_and_resume(
                 CalibrationStage::Seasonality,
                 CalibrationStage::Hawkes,
                 CalibrationStage::ReturnComponents,
+                CalibrationStage::MeanReversion,
                 CalibrationStage::JointRefinement,
             ],
             build_seed_settings(),
@@ -447,12 +457,20 @@ pub(crate) fn default_stage_graph() -> CalibrationStageGraph {
             depends_on: CalibrationStage::Hawkes,
         },
         CalibrationStageDependency {
+            stage: CalibrationStage::MeanReversion,
+            depends_on: CalibrationStage::ReturnComponents,
+        },
+        CalibrationStageDependency {
             stage: CalibrationStage::JointRefinement,
             depends_on: CalibrationStage::Hawkes,
         },
         CalibrationStageDependency {
             stage: CalibrationStage::JointRefinement,
             depends_on: CalibrationStage::ReturnComponents,
+        },
+        CalibrationStageDependency {
+            stage: CalibrationStage::JointRefinement,
+            depends_on: CalibrationStage::MeanReversion,
         },
     ])
 }
@@ -572,11 +590,9 @@ pub(crate) fn build_return_components_stage_parameter_artifact_fixture(
         &run_contract.run_spec,
         CalibrationStage::ReturnComponents,
     );
-    let solver_settings = stage_solver_settings_for_stage(
-        &run_contract.run_spec,
-        CalibrationStage::ReturnComponents,
-    )
-    .expect("return-components solver settings should exist");
+    let solver_settings =
+        stage_solver_settings_for_stage(&run_contract.run_spec, CalibrationStage::ReturnComponents)
+            .expect("return-components solver settings should exist");
 
     let fitted_parameters = ReturnComponentsStageFittedParameters {
         nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration {
@@ -630,7 +646,7 @@ pub(crate) fn build_return_components_stage_parameter_artifact_fixture(
                 .to_string(),
         },
         mean_reversion_fitted_parameters:
-            build_deterministic_interval_grid_mean_reversion_parameters(),
+            build_endogenous_mean_reversion_parameters(),
     };
 
     build_calibration_stage_parameter_artifact(
@@ -664,8 +680,7 @@ pub(crate) fn build_return_components_stage_parameter_artifact_fixture(
                 selected_candidate_id: "return_candidate_balanced".to_string(),
                 fitted_parameters,
                 candidate_generation_policy:
-                    "return_components.candidate_generation.layered_family_search.v1"
-                        .to_string(),
+                    "return_components.candidate_generation.layered_family_search.v1".to_string(),
                 objective_weighting_policy:
                     "return_components.objective_weighting.weighted_metric_sum.v1".to_string(),
                 objective_metric_bucket_policy:
@@ -760,6 +775,7 @@ fn checkpoint_reference(run_id: &str, stage: CalibrationStage) -> String {
         CalibrationStage::Seasonality => "seasonality",
         CalibrationStage::Hawkes => "hawkes",
         CalibrationStage::ReturnComponents => "return_components",
+        CalibrationStage::MeanReversion => "mean_reversion",
         CalibrationStage::JointRefinement => "joint_refinement",
     };
 

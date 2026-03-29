@@ -17,7 +17,9 @@ from janiform.calibration.market_data import (
     CalibrationTickPriceInputPolicy,
 )
 from janiform.calibration.staged import validate_staged_calibration_response
-from tests.calibration_test_support import build_disabled_mean_reversion_fitted_parameters_payload
+from tests.calibration_test_support import (
+    build_zero_kappa_endogenous_mean_reversion_fitted_parameters_payload,
+)
 from tests.cli_test_support import invoke_cli, normalize_help_output, render_help
 
 
@@ -42,6 +44,8 @@ def test_fit_help_documents_default_workflow_and_expert_subcommands() -> None:
     assert "--session-json PATH" in help_output
     assert "--known-news KNOWN_NEWS" in help_output
     assert "--known-news-json PATH" in help_output
+    assert "--mean-reversion-anchor-model" in help_output
+    assert "--mean-reversion-grid-interval-hours" in help_output
     assert "--output-dir DIRECTORY" in help_output
 
 
@@ -106,7 +110,7 @@ def test_fit_outputs_resolved_configuration_and_provenance(
 
     monkeypatch.setattr(
         fit_estimator_module,
-        "_run_staged_calibration_with_raw_payload",
+        "_run_prepared_staged_calibration_with_raw_payload",
         lambda *args, **kwargs: _successful_full_model_staged_runner_payload("cli-fit-success"),
     )
 
@@ -166,6 +170,85 @@ def test_fit_outputs_resolved_configuration_and_provenance(
     assert "stage_report_payloads" not in persisted_report
 
 
+def test_fit_cli_uses_endogenous_mean_reversion_calibration(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tick_data_path = _write_tick_data(
+        tmp_path / "ticks.csv",
+        rows=(
+            "2026-02-02T14:30:00Z,100.0,buy",
+            "2026-02-02T20:59:00Z,101.0,sell",
+            "2026-02-03T14:30:00Z,102.0,buy",
+            "2026-02-03T20:59:00Z,103.0,sell",
+            "2026-02-04T14:30:00Z,104.0,buy",
+            "2026-02-04T20:59:00Z,105.0,sell",
+            "2026-02-05T14:30:00Z,106.0,buy",
+            "2026-02-05T20:59:00Z,107.0,sell",
+        ),
+    )
+
+    captured_stage_input: dict[str, Any] = {}
+
+    def _capture_execution_input(prepared_handle, **kwargs):
+        captured_stage_input["mean_reversion_stage_input"] = _prepared_payload(prepared_handle)[
+            "mean_reversion_stage_input"
+        ]
+        del kwargs
+        return _successful_full_model_staged_runner_payload(
+            _prepared_runner_run_id(prepared_handle)
+        )
+
+    monkeypatch.setattr(
+        fit_estimator_module,
+        "_run_prepared_staged_calibration_with_raw_payload",
+        _capture_execution_input,
+    )
+
+    exit_code, stdout, stderr = invoke_cli(
+        [
+            "fit",
+            "--run-id",
+            "cli-fit-mean-reversion",
+            "--workflow-scope",
+            "full_without_option_surface",
+            "--tick-data-path",
+            str(tick_data_path),
+            "--tick-data-format",
+            "csv",
+            "--tick-timestamp-column",
+            "timestamp_utc",
+            "--tick-price-column",
+            "trade_price",
+            "--tick-trade-sign-column",
+            "trade_sign",
+            "--tick-price-input-policy",
+            "explicit_price_column",
+            "--timestamp-timezone",
+            "UTC",
+            "--market",
+            "us_equity_cash",
+            "--known-news",
+            "none",
+            "--mean-reversion-grid-interval-hours",
+            "36",
+            "--output",
+            "json",
+        ]
+    )
+
+    assert exit_code == int(cli_module.CliExitCode.SUCCESS), stderr
+    payload = orjson.loads(stdout)
+    assert payload["run_id"] == "cli-fit-mean-reversion"
+
+    mean_reversion_stage_input = captured_stage_input["mean_reversion_stage_input"]
+    assert mean_reversion_stage_input is not None
+    assert mean_reversion_stage_input["requested_anchor_model_kind"] == (
+        "endogenous_core_expectation_one_interval"
+    )
+    assert mean_reversion_stage_input["calibration_grid_interval_hours"] == pytest.approx(36.0)
+
+
 def test_fit_supports_beginner_positional_tick_path_and_inferred_defaults(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -184,9 +267,9 @@ def test_fit_supports_beginner_positional_tick_path_and_inferred_defaults(
 
     monkeypatch.setattr(
         fit_estimator_module,
-        "_run_staged_calibration_with_raw_payload",
-        lambda execution_input, **kwargs: _successful_full_model_staged_runner_payload(
-            execution_input.request.run_id
+        "_run_prepared_staged_calibration_with_raw_payload",
+        lambda prepared_handle, **kwargs: _successful_full_model_staged_runner_payload(
+            _prepared_runner_run_id(prepared_handle)
         ),
     )
 
@@ -237,9 +320,9 @@ def test_fit_supports_eurusd_market_preset_with_full_day_fx_session_windows(
 
     monkeypatch.setattr(
         fit_estimator_module,
-        "_run_staged_calibration_with_raw_payload",
-        lambda execution_input, **kwargs: _successful_full_model_staged_runner_payload(
-            execution_input.request.run_id
+        "_run_prepared_staged_calibration_with_raw_payload",
+        lambda prepared_handle, **kwargs: _successful_full_model_staged_runner_payload(
+            _prepared_runner_run_id(prepared_handle)
         ),
     )
 
@@ -278,9 +361,9 @@ def test_fit_explain_and_silent_flags_control_success_output(
 
     monkeypatch.setattr(
         fit_estimator_module,
-        "_run_staged_calibration_with_raw_payload",
-        lambda execution_input, **kwargs: _successful_full_model_staged_runner_payload(
-            execution_input.request.run_id
+        "_run_prepared_staged_calibration_with_raw_payload",
+        lambda prepared_handle, **kwargs: _successful_full_model_staged_runner_payload(
+            _prepared_runner_run_id(prepared_handle)
         ),
     )
 
@@ -512,7 +595,7 @@ def test_fit_surfaces_staged_failure_details_in_cli_error(
 
     monkeypatch.setattr(
         fit_estimator_module,
-        "_run_staged_calibration_with_raw_payload",
+        "_run_prepared_staged_calibration_with_raw_payload",
         lambda *args, **kwargs: _failed_return_components_staged_runner_payload("cli-fit-stage-failure"),
     )
 
@@ -569,7 +652,7 @@ def test_fit_prefers_failed_stage_message_over_generic_top_level_failure(
 
     monkeypatch.setattr(
         fit_estimator_module,
-        "_run_staged_calibration_with_raw_payload",
+        "_run_prepared_staged_calibration_with_raw_payload",
         lambda *args, **kwargs: _failed_return_components_with_generic_top_level_staged_runner_payload(
             "cli-fit-generic-top-level"
         ),
@@ -629,7 +712,7 @@ def test_fit_renders_human_error_output_with_labeled_lines(
 
     monkeypatch.setattr(
         fit_estimator_module,
-        "_run_staged_calibration_with_raw_payload",
+        "_run_prepared_staged_calibration_with_raw_payload",
         lambda *args, **kwargs: _failed_return_components_with_generic_top_level_staged_runner_payload(
             "cli-fit-human-error"
         ),
@@ -745,7 +828,7 @@ def _build_full_workflow_model(
 
     monkeypatch.setattr(
         fit_estimator_module,
-        "_run_staged_calibration_with_raw_payload",
+        "_run_prepared_staged_calibration_with_raw_payload",
         lambda *args, **kwargs: _successful_full_model_staged_runner_payload(run_id),
     )
 
@@ -892,8 +975,40 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                                 "exposure_weighted_mean_one_over_source_window.v1"
                             ),
                         },
-                        "mean_reversion_fitted_parameters": build_disabled_mean_reversion_fitted_parameters_payload(),
+                        "mean_reversion_fitted_parameters": build_zero_kappa_endogenous_mean_reversion_fitted_parameters_payload(),
                     },
+                },
+            },
+            {
+                "stage_report_kind": "mean_reversion",
+                "stage": "mean_reversion",
+                "status": "success",
+                "run_id": run_id,
+                "execution_mode": "memory",
+                "handoff_policy": "explicit_run_spec_handoffs_mode_aware_transport.v1",
+                "fitted_stage_payload": {
+                    "schema_version": "calibration.stage_output.mean_reversion.v1",
+                    "fitted_parameters": build_zero_kappa_endogenous_mean_reversion_fitted_parameters_payload(),
+                    "diagnostics": {
+                        "chosen_anchor_family": "endogenous_core_expectation_one_interval",
+                        "calibration_grid": {
+                            "calibration_grid_kind": "synthetic_daily_close_grid.v1",
+                            "calibration_grid_interval_hours": 24.0,
+                            "source_observation_count": 4,
+                            "retained_observation_count": 0,
+                            "coverage_ratio": 0.0,
+                        },
+                        "anchor_parameter_estimates": {
+                            "anchor_model_kind": "endogenous_core_expectation_one_interval",
+                        },
+                        "phi": 1.0,
+                        "kappa": 0.0,
+                        "deviation_sample_count": 0,
+                        "regression_pair_count": 0,
+                        "stage_decision_reason": "endogenous_anchor_runtime_projection_required.v1",
+                    },
+                    "return_components_input_transport": "in_memory_output",
+                    "return_components_selected_candidate_id": "return_candidate_balanced",
                 },
             },
         ],
@@ -901,6 +1016,15 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
     }
 
     return validate_staged_calibration_response(raw_response), raw_response
+
+
+def _prepared_runner_run_id(prepared_handle: Any) -> str:
+    prepared_payload = _prepared_payload(prepared_handle)
+    return str(prepared_payload["request"]["run_id"])
+
+
+def _prepared_payload(prepared_handle: Any) -> dict[str, Any]:
+    return dict(orjson.loads(prepared_handle.serialize_execution_input_json()))
 
 
 

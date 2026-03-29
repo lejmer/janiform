@@ -1,8 +1,8 @@
 # CLI Command Reference And Examples
 
-Document version: `cli.command_reference.pre_v0_1.milestone_1`
+Document version: `cli.command_reference.pre_v0_1.control_plane_reset.v1`
 
-Status: active for the current pre-v0.1 milestone on March 8, 2026.
+Status: active for the current pre-v0.1 milestone on March 26, 2026.
 
 ## Purpose
 
@@ -21,8 +21,10 @@ The primary workflow is now:
 2. fit from market data
 3. simulate later from a saved model
 
-The older explicit workflow-boundary contracts are still available under `fit plan`, `fit staged`,
-`simulate coarse-interval`, and `simulate seeded-ticks` when you need that control.
+The older explicit workflow-boundary commands are still available under `fit plan`, `fit staged`,
+`simulate coarse-interval`, and `simulate seeded-ticks` when you need that control. They are now
+artifact-backed. Expert calibration inputs reference prepared payload files instead of embedding
+bulk staged evidence as giant JSON tuples.
 
 ## Shared Setup
 
@@ -50,6 +52,7 @@ The generated files include:
 - `tmp/cli-docs/stylized_fact_comparison_request.json`
 - `tmp/cli-docs/stylized_fact_artifact_export.json`
 - `tmp/cli-docs/calibration_execution_input.json`
+  - expert-only staged wrapper referencing a prepared payload artifact
 - `tmp/cli-docs/data/ticks.csv`
 - `tmp/cli-docs/data/ticks.parquet`
 - `tmp/cli-docs/data/options.parquet`
@@ -76,6 +79,8 @@ The generated files include:
 - The CLI default is `disk` for `fit plan` and `fit staged`.
 - `--disk-checkpoint-directory` is required when the effective fit execution mode is `disk`.
 - The high-level `fit` command defaults to `memory`.
+- `fit`, `fit plan`, and `fit staged` stay config-first.
+  Default users do not assemble staged evidence payloads by hand.
 - The stylized-fact report command defaults to `memory`.
 - Stylized-fact artifact export uses `--artifact-export-json PATH` so the export contract stays the
   same across Python and CLI entrypoints.
@@ -122,6 +127,10 @@ Use `janiform fit` for the default user workflow. The command resolves the selec
 session preset or session inference result, and the chosen known-news baseline into one canonical
 resolved configuration with provenance.
 
+The default path prepares calibration natively and keeps empirical evidence in the prepared
+artifact. The emitted fit report and JSON output expose summaries, provenance, and artifact
+references rather than an eager staged evidence graph.
+
 For the beginner path, `janiform fit PATH --market MARKET` is the intended entrypoint. The command
 defaults `workflow_scope` to `full_without_option_surface`, infers `run_id` from the file stem plus
 timestamp, infers the tick-data format from the file extension, auto-detects common timestamp and
@@ -129,10 +138,16 @@ price columns, and uses the selected market profile for timezone, session, and k
 Use `--explain` to show the inferred choices on a successful fit, or `janiform fit inspect` to
 preview the inferred configuration without running calibration.
 
+For non-seasonality workflows, high-level mean-reversion calibration defaults to the canonical
+endogenous anchor policy. Use `--mean-reversion-anchor-model` only when you want to spell that
+policy out explicitly, and optionally provide `--mean-reversion-grid-interval-hours` when you want
+to override the default median-spacing derivation policy for the lower-frequency calibration
+interval.
+
 ### Synopsis
 
 ```text
-janiform fit [PATH] [--market MARKET] [--run-id RUN_ID] [--workflow-scope {seasonality_only,full_without_option_surface,full_with_option_surface}] [--tick-data-path PATH] [--tick-data-format {csv,parquet}] [--tick-timestamp-column TICK_TIMESTAMP_COLUMN] [--timestamp-timezone TIMESTAMP_TIMEZONE] [--tick-data-provenance-label TICK_DATA_PROVENANCE_LABEL] [--tick-price-input-policy {explicit_price_column,bid_ask_midpoint}] [--tick-price-column TICK_PRICE_COLUMN] [--tick-trade-sign-column TICK_TRADE_SIGN_COLUMN] [--tick-bid-column TICK_BID_COLUMN] [--tick-ask-column TICK_ASK_COLUMN] [--duplicate-record-policy {keep_first,keep_last}] [--session-preset SESSION_PRESET] [--known-news KNOWN_NEWS] [--session-json PATH] [--known-news-json PATH] [--exchange-code EXCHANGE_CODE] [--session-timezone SESSION_TIMEZONE] [--explain] [--silent] [--option-surface-path PATH] [--option-surface-format {csv,parquet}] [--option-surface-provenance-label OPTION_SURFACE_PROVENANCE_LABEL] [--option-quote-input-policy {mid_price_column,bid_ask_midpoint,implied_volatility_column}] [--option-quote-timestamp-column OPTION_QUOTE_TIMESTAMP_COLUMN] [--option-expiry-column OPTION_EXPIRY_COLUMN] [--option-strike-column OPTION_STRIKE_COLUMN] [--option-type-column OPTION_TYPE_COLUMN] [--option-mid-price-column OPTION_MID_PRICE_COLUMN] [--option-bid-column OPTION_BID_COLUMN] [--option-ask-column OPTION_ASK_COLUMN] [--option-implied-volatility-column OPTION_IMPLIED_VOLATILITY_COLUMN] [--execution-mode {disk,memory}] [--disk-checkpoint-directory DIRECTORY] [--emit-derived-staged-execution-input] [--omit-input-provenance-report] [--output-dir DIRECTORY] [--output {human,json}]
+janiform fit [PATH] [--market MARKET] [--run-id RUN_ID] [--workflow-scope {seasonality_only,full_without_option_surface,full_with_option_surface}] [--tick-data-path PATH] [--tick-data-format {csv,parquet}] [--tick-timestamp-column TICK_TIMESTAMP_COLUMN] [--timestamp-timezone TIMESTAMP_TIMEZONE] [--tick-data-provenance-label TICK_DATA_PROVENANCE_LABEL] [--tick-price-input-policy {explicit_price_column,bid_ask_midpoint}] [--tick-price-column TICK_PRICE_COLUMN] [--tick-trade-sign-column TICK_TRADE_SIGN_COLUMN] [--tick-bid-column TICK_BID_COLUMN] [--tick-ask-column TICK_ASK_COLUMN] [--duplicate-record-policy {keep_first,keep_last}] [--session-preset SESSION_PRESET] [--known-news KNOWN_NEWS] [--session-json PATH] [--known-news-json PATH] [--exchange-code EXCHANGE_CODE] [--session-timezone SESSION_TIMEZONE] [--mean-reversion-anchor-model {endogenous_core_expectation_one_interval}] [--mean-reversion-grid-interval-hours FLOAT] [--explain] [--silent] [--option-surface-path PATH] [--option-surface-format {csv,parquet}] [--option-surface-provenance-label OPTION_SURFACE_PROVENANCE_LABEL] [--option-quote-input-policy {mid_price_column,bid_ask_midpoint,implied_volatility_column}] [--option-quote-timestamp-column OPTION_QUOTE_TIMESTAMP_COLUMN] [--option-expiry-column OPTION_EXPIRY_COLUMN] [--option-strike-column OPTION_STRIKE_COLUMN] [--option-type-column OPTION_TYPE_COLUMN] [--option-mid-price-column OPTION_MID_PRICE_COLUMN] [--option-bid-column OPTION_BID_COLUMN] [--option-ask-column OPTION_ASK_COLUMN] [--option-implied-volatility-column OPTION_IMPLIED_VOLATILITY_COLUMN] [--execution-mode {disk,memory}] [--disk-checkpoint-directory DIRECTORY] [--emit-derived-staged-execution-input] [--omit-input-provenance-report] [--output-dir DIRECTORY] [--output {human,json}]
 ```
 
 ### Example
@@ -342,7 +357,7 @@ janiform seasonality preprocess-timestamps \
 ### Synopsis
 
 ```text
-janiform price --model-path PATH --valuation-time-utc VALUATION_TIME_UTC --spot FLOAT --strike FLOAT --maturity-interval FLOAT [--payoff-type {call,put}] [--risk-free-rate FLOAT] [--dividend-yield FLOAT] [--output-path PATH] [--silent] [--output {human,json}]
+janiform price --model-path PATH --valuation-time-utc VALUATION_TIME_UTC --spot FLOAT --strike FLOAT --maturity-interval FLOAT [--payoff-type {call,put}] [--risk-free-rate FLOAT] [--dividend-yield FLOAT] [--observed-boundary-state-json PATH] [--output-path PATH] [--silent] [--output {human,json}]
 ```
 
 ### Options
@@ -352,17 +367,21 @@ janiform price --model-path PATH --valuation-time-utc VALUATION_TIME_UTC --spot 
 - `--spot`: spot price
 - `--strike`: option strike
 - `--maturity-interval`: maturity in model time units
+- `--observed-boundary-state-json`: explicit `MeanReversionBoundaryState` payload for anchored
+  pricing. Required for mean-reverting pricing because the CLI never invents observed pricing
+  state.
 - `--output {human,json}`: operator summary or machine-readable result
 
-### Example
+### Example: Anchored Pricing With Explicit Observed Boundary State
 
 ```bash
 janiform price \
   --model-path tmp/cli-docs/fitted_run/model.json \
+  --observed-boundary-state-json tmp/cli-docs/observed_boundary_state.json \
   --valuation-time-utc 2026-02-02T15:00:00Z \
   --spot 100.0 \
   --strike 105.0 \
-  --maturity-interval 4.0 \
+  --maturity-interval 1.0 \
   --output json
 ```
 
@@ -536,8 +555,9 @@ janiform stylized-facts horizon-comparison \
 
 ## Fit Staged
 
-This is the explicit fit workflow boundary. Use it when you already have a
-`StagedCalibrationExecutionInput` JSON payload and want to run staged orchestration directly.
+This is the explicit fit workflow boundary. Use it when you already have a small
+`StagedCalibrationExecutionInput` wrapper JSON payload that points at a prepared calibration
+artifact and want to run staged orchestration directly.
 
 ### Synopsis
 
@@ -547,7 +567,7 @@ janiform fit staged --execution-input-json PATH --calendar-registry-json PATH [-
 
 ### Options
 
-- `--execution-input-json`: `StagedCalibrationExecutionInput` contract file
+- `--execution-input-json`: `StagedCalibrationExecutionInput` wrapper contract file
 - `--calendar-registry-json`: `calendar.registry.v1` contract file
 - `--execution-mode {disk,memory}`: CLI default is `disk`
 - `--disk-checkpoint-directory`: required when the effective execution mode is `disk`

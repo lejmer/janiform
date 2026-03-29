@@ -7,24 +7,24 @@ from janiform._native_api import native_module
 from janiform.pricing import GammaSeverityMarkConfiguration, NigSharedPlusShiftConfiguration
 from janiform.risk import (
     SufficientStatisticsRiskEquationSpecification,
-    SufficientStatisticsRiskIntervalFactors,
     SufficientStatisticsRiskModelInputs,
 )
 from janiform.simulation import (
-    COARSE_SIMULATION_PATH_SCHEMA_VERSION,
-    COARSE_SIMULATION_RUN_REQUEST_SCHEMA_VERSION,
-    CoarseSimulationPath,
-    CoarseSimulationRunRequest,
-    CoupledGapMarkConfiguration,
-    DoubleExponentialBaseShockConfiguration,
     HawkesExcitationState,
     HawkesKernelLoadings,
     HawkesKernelParameters,
+    SeededTickSimulationValidationError,
+)
+from janiform.simulation.coarse import (
+    COARSE_SIMULATION_PATH_SCHEMA_VERSION,
+    COARSE_SIMULATION_RUN_REQUEST_SCHEMA_VERSION,
+    CoarseSimulationRunRequest,
+    CoupledGapMarkConfiguration,
+    DoubleExponentialBaseShockConfiguration,
     KnownNewsArrivalConfiguration,
     NewsArrivalConfiguration,
     NewsComponentMarkScaleConfiguration,
     NewsProcessConfiguration,
-    SeededTickSimulationValidationError,
     SharedNewsMarkLawConfiguration,
     SurpriseNewsArrivalConfiguration,
     deserialize_coarse_simulation_path,
@@ -35,6 +35,8 @@ from janiform.simulation import (
     validate_coarse_simulation_path,
     validate_coarse_simulation_run_request,
 )
+from tests.hourly_factor_contract_test_support import build_hourly_factor_contract
+from tests.simulation_test_support import build_endogenous_mean_reversion_runtime_contracts
 
 
 def test_coarse_simulation_run_request_roundtrip_serialization(
@@ -47,7 +49,7 @@ def test_coarse_simulation_run_request_roundtrip_serialization(
 
     assert deserialized_request == request
     assert json.loads(serialized_request)["schema_version"] == COARSE_SIMULATION_RUN_REQUEST_SCHEMA_VERSION
-    assert json.loads(serialized_request)["interval_factors"]["nu_h_known"] == [2.0]
+    assert json.loads(serialized_request)["hourly_factor_contract"]["known_component_nu_h"] == [2.0]
 
 
 def test_coarse_simulation_run_request_rejects_interval_factor_delta_mismatch(
@@ -61,7 +63,7 @@ def test_coarse_simulation_run_request_rejects_interval_factor_delta_mismatch(
 
     failure = captured_error.value.failure
     assert failure.error_id == "simulation.validation.contract"
-    assert failure.field_path == "interval_factors.interval_delta"
+    assert failure.field_path == "hourly_factor_contract.interval_duration_nanos"
     assert "must match interval_delta exactly" in failure.message
 
 
@@ -87,13 +89,26 @@ def test_coarse_simulation_python_wrapper_matches_native_json_bridge(
 
     wrapped_path = run_coarse_simulation(request)
     native_path = validate_coarse_simulation_path(
-        native_module().run_coarse_simulation(request.to_payload())
+        native_module().run_coarse_simulation(
+            request.seed,
+            request.start_time_utc_nanos,
+            request.horizon_interval_count,
+            request.interval_delta,
+            request.model_inputs.to_payload(),
+            request.hourly_factor_contract._native_result,
+        )
     )
 
     assert wrapped_path == native_path
 
 
 def _build_coarse_run_request(calendar_registry) -> CoarseSimulationRunRequest:
+    (
+        mean_reversion_fitted_parameters,
+        mean_reversion_runtime_interval_anchors,
+        initial_mean_reversion_boundary_state,
+    ) = build_endogenous_mean_reversion_runtime_contracts(interval_count=1, interval_delta_hours=0.5)
+
     return CoarseSimulationRunRequest.from_runtime_inputs(
         seed=3_010,
         start_time_utc=datetime.fromtimestamp(1704205800, tz=UTC),
@@ -135,12 +150,16 @@ def _build_coarse_run_request(calendar_registry) -> CoarseSimulationRunRequest:
                 y_minus_plus=0.15,
                 y_minus_minus=0.25,
             ),
+            mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
+            mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
+            initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
         ),
-        interval_factors=SufficientStatisticsRiskIntervalFactors(
-            interval_delta=0.5,
+        hourly_factor_contract=build_hourly_factor_contract(
+            request_start_utc_nanos=1704205800000000000,
+            interval_duration_nanos=1_800_000_000_000,
             s_h=(2.0,),
-            nu_h_known=(2.0,),
-            nu_h_surprise=(0.0,),
+            known_component_nu_h=(2.0,),
+            surprise_component_nu_h=(0.0,),
         ),
         news_process_configuration=NewsProcessConfiguration(
             schema_version="news.process.configuration.v1",

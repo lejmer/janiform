@@ -1,3 +1,5 @@
+"""Shared public simulation contract types used across workflows."""
+
 from .contracts import (
     HawkesExcitationState,
     HawkesKernelLoadings,

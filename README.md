@@ -2,6 +2,10 @@
 
 Janiform is a compact high-frequency asset return model that combines seasonal asymmetric Hawkes trade activity with NIG business-time shocks and marked news jumps (including closed-market gap effects). The Rust core provides the computation engine. The Python package exposes an importable API and CLI via PyO3 bindings.
 
+Python is the control plane. Rust is the data plane. The recommended production path keeps bulk
+empirical calibration evidence in native-backed prepared artifacts rather than Python-owned tuples
+of record dataclasses.
+
 The name *Janiform* comes from the Roman god *Janus* who is a god with two faces (one looking forward, one backward). Janus is also the god of transitions and duality. Asymmetry is built into the model:
 - Two Lévy clocks
 - Two intensities
@@ -62,9 +66,19 @@ janiform fit inspect data/eurusd_ticks.csv --market eurusd_spot --output json
 ```python
 from datetime import UTC, datetime
 
-from janiform.calibration import JaniformEstimator
+from janiform.calibration import (
+    CalibrationMeanReversionConfiguration,
+    JaniformEstimator,
+    MeanReversionAnchorModelKind,
+)
+from janiform.contracts import MeanReversionBoundaryState
 
-model = JaniformEstimator(market_profile="eurusd_spot").fit(
+model = JaniformEstimator(
+    market_profile="eurusd_spot",
+    mean_reversion=CalibrationMeanReversionConfiguration(
+        anchor_model_kind=MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL,
+    ),
+).fit(
     tick_data_path="data/eurusd_ticks.csv",
 )
 
@@ -74,15 +88,52 @@ simulation = model.simulate(
     horizon_interval_count=8,
 )
 pandas_frame = simulation.to_pandas()
+
+pricing_result = model.price_option(
+    valuation_time_utc=datetime(2026, 2, 2, 14, 30, tzinfo=UTC),
+    spot=1.0850,
+    strike=1.0900,
+    maturity_interval=1.0,
+    observed_boundary_state=MeanReversionBoundaryState(
+        observed_log_price=0.0,
+        anchor_value=0.0,
+        deviation=0.0,
+    ),
+)
 ```
+
+When the fitted model enables mean reversion, `JaniformModel.price_option(...)` requires an
+explicit `observed_boundary_state`. The high-level API and CLI do not invent that anchored pricing
+state for you. Under anchored pricing, the `Q` anchor path is generated internally from the current
+observed boundary state and the model's local tilted recursion.
+
+For non-seasonality workflows, high-level calibration now uses endogenous mean reversion by
+default. Pass `JaniformEstimator(mean_reversion=...)` or `janiform fit --mean-reversion-anchor-model`
+only when you want to make that policy explicit or override the calibration grid interval.
+The calibration workbench still exposes the anchor policy selector, but the full-model path no
+longer offers a disabled mean-reversion branch.
+When you omit `calibration_grid_interval_hours`, the high-level market-data translation derives it
+from the median spacing of retained session-open boundary observations when that spacing is
+observable, and otherwise from the median observed session duration in the dataset.
+Mean-reversion `observed_log_price` and `anchor_value` are expressed in the runtime simulation
+coordinate system `log(price / reference_price)`, where `reference_price` is the simulation output
+reference level stored with the fitted model.
 
 Set `JaniformEstimator(cpu_count=...)` or `janiform fit --cpu-count ...` when you want to
 control how many CPU cores staged calibration uses while evaluating candidate parameter sets.
-The default full calibration workflow now runs four stages in order:
-`seasonality`, `hawkes`, `return_components`, and `joint_refinement`.
+Use `JaniformEstimator(optimizer_settings_by_stage=..., preprocessing_settings=...)` or the
+equivalent `MarketDataCalibrationRequest` fields when you want to override solver tolerances,
+seasonality preprocessing settings, or return-components jump and gap thresholds instead of
+accepting Janiform's built-in defaults.
+The default full calibration workflow now runs five stages in order:
+`seasonality`, `hawkes`, `return_components`, `mean_reversion`, and `joint_refinement`.
 Successful staged calibration responses expose diagnostic artifacts directly in memory mode
 through `diagnostic_artifact_bundle`, and expose persisted diagnostics in disk mode through
 `diagnostic_artifact_references`.
+
+`JaniformEstimator.fit(...)` and `janiform fit` no longer expose the canonical staged evidence
+graph on the default path. Use `PreparedMarketDataCalibration` or `fit staged` only when you
+intentionally want the advanced artifact-backed orchestration boundary.
 
 ## Developer Environment Setup
 
@@ -253,6 +304,9 @@ python3 scripts/generate_crate_readmes.py
 - Default high-level fitting now lives under `janiform.calibration` through `JaniformEstimator.fit(...)`, which returns a lean `JaniformModel` and can optionally surface a separate `JaniformFitReport`
 - Runtime hourly seasonality reconstructed from calibration output should use `janiform.hourly_factors.build_runtime_hourly_seasonality_source_from_calibration_payload(...)` rather than manual component recomposition in consumers
 - Workflow package roots remain curated convenience surfaces, and natural public domain modules such as `janiform.simulation.seeded` and `janiform.calibration.staged.inputs` are also supported when they make ownership clearer
+- Curated roots are intentionally small. If you need advanced contracts, serialization helpers, or
+  CLI implementation details, import the ownership submodule instead of relying on broad root
+  re-export sets
 
 ## CLI Automation
 

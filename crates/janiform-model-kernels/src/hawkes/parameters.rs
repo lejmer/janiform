@@ -4,8 +4,9 @@ use std::fmt::{Display, Formatter};
 use serde::{Deserialize, Serialize};
 
 use super::{
-    HawkesKernelLoadings, HawkesSourceComponents, HawkesStructuredAlphaParameterization,
-    HawkesStructuredRhoParameterization, HawkesStructuredRhoSelfDominancePolicy,
+    HawkesKernelLoadings, HawkesSourceComponents, HawkesSpectralRadiusStabilityCheck,
+    HawkesStructuredAlphaParameterization, HawkesStructuredRhoParameterization,
+    HawkesStructuredRhoSelfDominancePolicy, spectral_radius_stability_check,
 };
 /// Shared-kernel parameter payload for the 4D Hawkes excitation dynamics.
 ///
@@ -74,16 +75,6 @@ pub struct HawkesKernelParameterValidationSummary {
     pub total_check_count: usize,
     pub passed_check_count: usize,
     pub failed_check_count: usize,
-}
-
-/// Machine-readable stability output for the de-seasonalized `Alpha / beta` kernel.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
-pub struct HawkesSpectralRadiusStabilityCheck {
-    pub spectral_radius_alpha_over_beta: f64,
-    pub strict_stationarity_threshold: f64,
-    pub numeric_tolerance: f64,
-    pub effective_stationarity_threshold: f64,
-    pub is_stable: bool,
 }
 
 impl HawkesKernelParameters {
@@ -225,31 +216,13 @@ impl HawkesKernelParameters {
             "set stability.numeric_tolerance to a finite value greater than or equal to 0",
         );
 
-        if beta_is_valid && alpha_is_valid && stability_numeric_tolerance_is_valid {
-            let stability_check =
-                compute_spectral_radius_stability_check(alpha, beta, stability_numeric_tolerance);
-
-            push_validation_check(
-                &mut checks,
-                "stability.alpha_over_beta.spectral_radius",
-                HawkesKernelValidationStatus::from_bool(stability_check.is_stable),
-                HawkesKernelParameterCheckCategory::Stability,
-                "alpha_over_beta.spectral_radius",
-                Some("stability.effective_stationarity_threshold"),
-                HawkesKernelParameterConstraint::SpectralRadiusStrictlyBelowOne,
-                stability_check.spectral_radius_alpha_over_beta,
-                Some(stability_check.effective_stationarity_threshold),
-                "spectral radius must be strictly below the effective stationarity threshold",
-                format!(
-                    "spectral radius={} and effective_threshold={} (strict_threshold={}, numeric_tolerance={})",
-                    stability_check.spectral_radius_alpha_over_beta,
-                    stability_check.effective_stationarity_threshold,
-                    stability_check.strict_stationarity_threshold,
-                    stability_check.numeric_tolerance
-                ),
-                "reduce alpha magnitudes or increase beta so spectral radius(alpha / beta) is below 1",
-            );
-        }
+        push_spectral_radius_stability_validation_check(
+            &mut checks,
+            beta_is_valid && alpha_is_valid && stability_numeric_tolerance_is_valid,
+            alpha,
+            beta,
+            stability_numeric_tolerance,
+        );
 
         HawkesKernelParameterValidationReport::from_checks(checks)
     }
@@ -580,34 +553,13 @@ impl HawkesKernelParameters {
             && derived_alpha_minus_plus_is_valid
             && derived_alpha_minus_minus_is_valid;
 
-        if beta_is_valid && derived_alpha_is_valid && stability_numeric_tolerance_is_valid {
-            let stability_check = compute_spectral_radius_stability_check(
-                derived_alpha,
-                beta,
-                stability_numeric_tolerance,
-            );
-
-            push_validation_check(
-                &mut checks,
-                "stability.alpha_over_beta.spectral_radius",
-                HawkesKernelValidationStatus::from_bool(stability_check.is_stable),
-                HawkesKernelParameterCheckCategory::Stability,
-                "alpha_over_beta.spectral_radius",
-                Some("stability.effective_stationarity_threshold"),
-                HawkesKernelParameterConstraint::SpectralRadiusStrictlyBelowOne,
-                stability_check.spectral_radius_alpha_over_beta,
-                Some(stability_check.effective_stationarity_threshold),
-                "spectral radius must be strictly below the effective stationarity threshold",
-                format!(
-                    "spectral radius={} and effective_threshold={} (strict_threshold={}, numeric_tolerance={})",
-                    stability_check.spectral_radius_alpha_over_beta,
-                    stability_check.effective_stationarity_threshold,
-                    stability_check.strict_stationarity_threshold,
-                    stability_check.numeric_tolerance
-                ),
-                "reduce alpha magnitudes or increase beta so spectral radius(alpha / beta) is below 1",
-            );
-        }
+        push_spectral_radius_stability_validation_check(
+            &mut checks,
+            beta_is_valid && derived_alpha_is_valid && stability_numeric_tolerance_is_valid,
+            derived_alpha,
+            beta,
+            stability_numeric_tolerance,
+        );
 
         let derived_rho_is_valid = derived_rho_plus_plus_is_valid
             && derived_rho_plus_minus_is_valid
@@ -661,9 +613,10 @@ impl HawkesKernelParameters {
             );
         }
 
-        Ok(compute_spectral_radius_stability_check(
+        Ok(spectral_radius_stability_check(
             alpha,
             beta,
+            HAWKES_STRICT_STATIONARITY_THRESHOLD,
             numeric_tolerance,
         ))
     }
@@ -964,6 +917,46 @@ fn push_validation_check(
     });
 }
 
+fn push_spectral_radius_stability_validation_check(
+    checks: &mut Vec<HawkesKernelParameterCheck>,
+    inputs_are_valid: bool,
+    alpha: HawkesKernelLoadings,
+    beta: f64,
+    stability_numeric_tolerance: f64,
+) {
+    if !inputs_are_valid {
+        return;
+    }
+
+    let stability_check = spectral_radius_stability_check(
+        alpha,
+        beta,
+        HAWKES_STRICT_STATIONARITY_THRESHOLD,
+        stability_numeric_tolerance,
+    );
+
+    push_validation_check(
+        checks,
+        "stability.alpha_over_beta.spectral_radius",
+        HawkesKernelValidationStatus::from_bool(stability_check.is_stable),
+        HawkesKernelParameterCheckCategory::Stability,
+        "alpha_over_beta.spectral_radius",
+        Some("stability.effective_stationarity_threshold"),
+        HawkesKernelParameterConstraint::SpectralRadiusStrictlyBelowOne,
+        stability_check.spectral_radius_alpha_over_beta,
+        Some(stability_check.effective_stationarity_threshold),
+        "spectral radius must be strictly below the effective stationarity threshold",
+        format!(
+            "spectral radius={} and effective_threshold={} (strict_threshold={}, numeric_tolerance={})",
+            stability_check.spectral_radius_alpha_over_beta,
+            stability_check.effective_stationarity_threshold,
+            stability_check.strict_stationarity_threshold,
+            stability_check.numeric_tolerance
+        ),
+        "reduce alpha magnitudes or increase beta so spectral radius(alpha / beta) is below 1",
+    );
+}
+
 fn validate_strictly_positive_check(
     checks: &mut Vec<HawkesKernelParameterCheck>,
     check_id: &'static str,
@@ -1189,41 +1182,6 @@ fn map_parameter_violation_to_error_with_stability_tolerance(
             value: violation.value,
         },
     }
-}
-
-fn compute_spectral_radius_stability_check(
-    alpha: HawkesKernelLoadings,
-    beta: f64,
-    numeric_tolerance: f64,
-) -> HawkesSpectralRadiusStabilityCheck {
-    let spectral_radius_alpha_over_beta = compute_spectral_radius_alpha_over_beta(alpha, beta);
-    let effective_stationarity_threshold = HAWKES_STRICT_STATIONARITY_THRESHOLD - numeric_tolerance;
-
-    HawkesSpectralRadiusStabilityCheck {
-        spectral_radius_alpha_over_beta,
-        strict_stationarity_threshold: HAWKES_STRICT_STATIONARITY_THRESHOLD,
-        numeric_tolerance,
-        effective_stationarity_threshold,
-        is_stable: spectral_radius_alpha_over_beta < effective_stationarity_threshold,
-    }
-}
-
-fn compute_spectral_radius_alpha_over_beta(alpha: HawkesKernelLoadings, beta: f64) -> f64 {
-    let scaled_plus_plus = alpha.plus_plus / beta;
-    let scaled_plus_minus = alpha.plus_minus / beta;
-    let scaled_minus_plus = alpha.minus_plus / beta;
-    let scaled_minus_minus = alpha.minus_minus / beta;
-
-    let trace = scaled_plus_plus + scaled_minus_minus;
-    let discriminant = ((scaled_plus_plus - scaled_minus_minus).powi(2)
-        + 4.0 * scaled_plus_minus * scaled_minus_plus)
-        .max(0.0);
-    let square_root_discriminant = discriminant.sqrt();
-
-    let first_eigenvalue = 0.5 * (trace + square_root_discriminant);
-    let second_eigenvalue = 0.5 * (trace - square_root_discriminant);
-
-    first_eigenvalue.abs().max(second_eigenvalue.abs())
 }
 
 pub(crate) fn derive_self_to_cross_ratio(self_loading: f64, cross_loading: f64) -> f64 {

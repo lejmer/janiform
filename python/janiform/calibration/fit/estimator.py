@@ -1,26 +1,21 @@
 import os
-
 from contextlib import AbstractContextManager, nullcontext, redirect_stdout
+
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC
 from io import StringIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Any, Literal, Optional, overload, cast
+from typing import Any, Literal, Optional, cast, overload
 
 from .input_resolution import (
-    HighLevelFitInference,
     build_fit_inference_payload,
     column_overrides_from_mapping,
     infer_high_level_fit_inputs,
     normalization_overrides_from_policy,
+    HighLevelFitInference,
 )
-from .model import (
-    JaniformModel,
-    _build_model_metadata,
-    _extract_model_parameters,
-    _raw_stage_report_payloads,
-)
+from .model import JaniformModel, _raw_stage_report_payloads, _extract_model_parameters, _build_model_metadata
 from .report import JaniformFitReport
 from .._errors import _calibration_error
 from ..market_data.contracts import (
@@ -32,19 +27,21 @@ from ..market_data.contracts import (
     CalibrationMarketDataColumnMapping,
     CalibrationMarketDataNormalizationPolicy,
     CalibrationMarketDataOutputPreferences,
+    CalibrationMarketDataPreprocessingSettings,
     CalibrationMarketDataWorkflowScope,
+    CalibrationMeanReversionConfiguration,
     CalibrationOptionSurfaceColumnMapping,
-    CalibrationSessionConfigurationInput,
     CalibrationTickDataColumnMapping,
+    CalibrationSessionConfigurationInput,
 )
 from ..market_data.request import MarketDataCalibrationRequest
 from ..market_data.translation import (
     resolve_market_data_session_configuration_from_source_file,
-    translate_market_data_request_to_staged_execution_input,
+    translate_market_data_request_to_prepared_calibration,
 )
 from ..market_data.workflow import (
-    PreparedMarketDataCalibration,
     _prepare_market_data_calibration_from_translation_result,
+    PreparedMarketDataCalibration,
 )
 from ..presets.references import (
     KnownNewsExplicitConfiguration,
@@ -56,26 +53,27 @@ from ..presets.references import (
     SessionExplicitConfiguration,
     SessionPresetReference,
 )
-from ..presets.registry import PresetRegistry
+from ..presets.registry import PresetCategory, PresetRegistry
 from ..presets.resolution import (
+    resolve_preset_workflow_configuration,
     ResolvedPresetWorkflowConfiguration,
     ResolvedSessionComponent,
-    resolve_preset_workflow_configuration,
 )
 from ..sessions.contracts import MarketDataSessionResolution
-from ..sessions.resolution import (
-    _SessionTemplate,
-    _build_calendar_registry_json_from_windows,
-    _build_recurring_closed_windows,
-    _looks_like_continuous_weekday_template,
-    _regular_session_windows_from_exchange_artifact,
+from ..sessions._resolution import (
+    build_calendar_registry_json_from_windows,
+    build_recurring_closed_windows,
+    looks_like_continuous_weekday_template,
+    regular_session_windows_from_exchange_artifact,
+    SessionTemplate,
 )
-from ..staged.contracts import CalibrationStageExecutionStatus
-from ..staged.runtime import _run_staged_calibration_with_raw_payload
+from ..staged import CalibrationStageExecutionStatus
+from ..staged import CalibrationStageSolverSettings
+from ..staged.runtime import _run_prepared_staged_calibration_with_raw_payload
 from ..._workflow_outputs import write_fit_artifacts
-from ..._workflow_progress import AbstractProgress, JaniformOutputController, NullProgress
+from ..._workflow_progress import JaniformOutputController, AbstractProgress, NullProgress
 from ...calendar import CalendarRegistry
-
+from ...contracts import MeanReversionAnchorModelKind
 
 _DEFAULT_HIGH_LEVEL_KNOWN_NEWS_COLUMNS = CalibrationKnownNewsColumnMapping(
     event_timestamp_column="event_timestamp_utc",
@@ -85,6 +83,9 @@ _DEFAULT_HIGH_LEVEL_OUTPUT_PREFERENCES = CalibrationMarketDataOutputPreferences(
     execution_mode=CalibrationExecutionMode.MEMORY,
     emit_derived_staged_execution_input=False,
     emit_input_provenance_report=True,
+)
+_DEFAULT_ENDOGENOUS_MEAN_REVERSION_CONFIGURATION = CalibrationMeanReversionConfiguration(
+    anchor_model_kind=MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL,
 )
 
 
@@ -108,6 +109,9 @@ class JaniformEstimator:
         normalization_policy: Optional[CalibrationMarketDataNormalizationPolicy] = None,
         option_surface_column_mapping: Optional[CalibrationOptionSurfaceColumnMapping] = None,
         output_preferences: Optional[CalibrationMarketDataOutputPreferences] = None,
+        optimizer_settings_by_stage: tuple[CalibrationStageSolverSettings, ...] = (),
+        preprocessing_settings: Optional[CalibrationMarketDataPreprocessingSettings] = None,
+        mean_reversion: Optional[CalibrationMeanReversionConfiguration] = None,
         market_profile: Optional[str | MarketProfileReference] = None,
         session: Optional[str | Path | SessionPresetReference] = None,
         known_news: Optional[str | KnownNewsPresetReference] = None,
@@ -126,6 +130,19 @@ class JaniformEstimator:
             )
         if cpu_count is not None and cpu_count <= 0:
             raise _calibration_error("cpu_count", "must be strictly positive when provided")
+        if (
+            preprocessing_settings is not None
+            and not isinstance(preprocessing_settings, CalibrationMarketDataPreprocessingSettings)
+        ):
+            raise _calibration_error(
+                "preprocessing_settings",
+                "must be a CalibrationMarketDataPreprocessingSettings when provided",
+            )
+        if mean_reversion is not None and not isinstance(mean_reversion, CalibrationMeanReversionConfiguration):
+            raise _calibration_error(
+                "mean_reversion",
+                "must be a CalibrationMeanReversionConfiguration when provided",
+            )
 
         self._workflow_scope: CalibrationMarketDataWorkflowScope = workflow_scope
         self._tick_data_column_mapping: Optional[CalibrationTickDataColumnMapping] = (
@@ -142,6 +159,13 @@ class JaniformEstimator:
             if output_preferences is None
             else output_preferences
         )
+        self._optimizer_settings_by_stage: tuple[CalibrationStageSolverSettings, ...] = (
+            optimizer_settings_by_stage
+        )
+        self._preprocessing_settings: Optional[CalibrationMarketDataPreprocessingSettings] = (
+            preprocessing_settings
+        )
+        self._mean_reversion: Optional[CalibrationMeanReversionConfiguration] = mean_reversion
         self._registry: PresetRegistry = PresetRegistry() if registry is None else registry
         self._cpu_count: int = max(1, os.cpu_count() or 1) if cpu_count is None else cpu_count
         self._exchange_code: Optional[str] = exchange_code
@@ -239,8 +263,8 @@ class JaniformEstimator:
                     if prepared_workflow.fit_warning is not None:
                         output_controller.warning(prepared_workflow.fit_warning)
                     progress.update(detail="running calibration")
-                    staged_response, raw_response_payload = _run_staged_calibration_with_raw_payload(
-                        prepared_workflow.prepared.execution_input,
+                    staged_response, raw_response_payload = _run_prepared_staged_calibration_with_raw_payload(
+                        prepared_workflow.prepared.prepared_handle,
                         calendar_registry=CalendarRegistry(
                             prepared_workflow.prepared.session_resolution.resolved_session_definition_json
                         ),
@@ -260,7 +284,10 @@ class JaniformEstimator:
             session_resolution=prepared_workflow.prepared.session_resolution,
             preparation_diagnostics=prepared_workflow.prepared.diagnostics,
             preparation_provenance=prepared_workflow.prepared.provenance,
-            execution_input=prepared_workflow.prepared.execution_input,
+            staged_request=prepared_workflow.prepared.staged_request,
+            prepared_data_reference=prepared_workflow.prepared.prepared_data_reference,
+            prepared_payload_path=prepared_workflow.prepared.prepared_payload_path,
+            staged_execution_input_path=prepared_workflow.prepared.staged_execution_input_path,
             staged_response=staged_response,
             stage_report_payloads=_raw_stage_report_payloads(raw_response_payload),
         )
@@ -318,7 +345,6 @@ class JaniformEstimator:
             ),
             resolved_configuration=prepared_workflow.resolved_configuration,
             session_resolution=prepared_workflow.prepared.session_resolution,
-            _execution_input=prepared_workflow.prepared.execution_input,
             _stage_report_payloads=fit_report.stage_report_payloads,
         )
         if output_dir is not None:
@@ -376,8 +402,19 @@ class JaniformEstimator:
             workflow_scope=self._workflow_scope,
             normalization_policy=normalization_policy,
             output_preferences=self._output_preferences,
+            optimizer_settings_by_stage=self._optimizer_settings_by_stage,
+            preprocessing_settings=self._preprocessing_settings,
             option_surface_source=option_surface_source,
             known_news_inputs=known_news_input,
+            mean_reversion=(
+                None
+                if self._workflow_scope == CalibrationMarketDataWorkflowScope.SEASONALITY_ONLY
+                else (
+                    self._mean_reversion
+                    if self._mean_reversion is not None
+                    else _DEFAULT_ENDOGENOUS_MEAN_REVERSION_CONFIGURATION
+                )
+            ),
         )
 
     def _prepare_fit_workflow(
@@ -454,7 +491,7 @@ class JaniformEstimator:
             )
             effective_progress.update(detail="loading market data")
             effective_progress.update(detail="translating market data")
-            translation_result = translate_market_data_request_to_staged_execution_input(
+            translation_result = translate_market_data_request_to_prepared_calibration(
                 request,
                 cpu_count=self._cpu_count,
             )
@@ -503,6 +540,7 @@ class JaniformEstimator:
             return None
 
         exchange_code = self._resolve_exchange_code_for_inference()
+
         request = MarketDataCalibrationRequest(
             schema_version="calibration.market_data.request.v1",
             run_id=run_id,
@@ -517,8 +555,12 @@ class JaniformEstimator:
             workflow_scope=self._workflow_scope,
             normalization_policy=normalization_policy,
             output_preferences=self._output_preferences,
+            optimizer_settings_by_stage=self._optimizer_settings_by_stage,
+            preprocessing_settings=self._preprocessing_settings,
         )
+
         progress.update(detail="resolving session from market data")
+
         return resolve_market_data_session_configuration_from_source_file(
             session_configuration=request.session_configuration,
             tick_data_source=request.tick_data_source,
@@ -563,8 +605,9 @@ class JaniformEstimator:
                 "is required for named market-profile references",
             )
 
-        _, artifact = self._registry.resolve_market_profile_preset(
-            self._market_profile_reference.preset_name,
+        _, artifact = self._registry.resolve(
+            category=PresetCategory.MARKET_PROFILE,
+            preset_name=self._market_profile_reference.preset_name,
             registry_scope=self._market_profile_reference.registry_scope,
         )
         return artifact.configuration
@@ -594,7 +637,7 @@ class JaniformEstimator:
         self,
         *,
         effective_silent: Optional[bool] = None,
-    ) -> AbstractContextManager[object]:
+    ) -> AbstractContextManager[Optional[StringIO]]:
         if self._silent if effective_silent is None else effective_silent:
             return redirect_stdout(StringIO())
 
@@ -736,10 +779,10 @@ def _load_explicit_session_configuration(
             f"explicit session definition does not contain exchange `{target_exchange_code}`",
         )
 
-    regular_session_windows = _regular_session_windows_from_exchange_artifact(exchange_artifact)
+    regular_session_windows = regular_session_windows_from_exchange_artifact(exchange_artifact)
     exchange_name = cast(str, exchange_artifact["exchange_name"])
     timezone_name = cast(str, exchange_artifact["timezone_name"])
-    session_template = _SessionTemplate(
+    session_template = SessionTemplate(
         policy_id="high_level.explicit_session_definition.v1",
         exchange_name=exchange_name,
         timezone_name=timezone_name,
@@ -753,7 +796,7 @@ def _load_explicit_session_configuration(
             cast(dict[str, Any], exchange_artifact["rule_metadata"]).get("early_close_rule_set"),
         ),
         regular_session_windows=regular_session_windows,
-        continuous_weekday_template=_looks_like_continuous_weekday_template(
+        continuous_weekday_template=looks_like_continuous_weekday_template(
             exchange_code=target_exchange_code,
             regular_session_windows=regular_session_windows,
         ),
@@ -764,7 +807,7 @@ def _load_explicit_session_configuration(
         exchange_name=exchange_name,
         timezone_name=timezone_name,
         regular_session_windows=regular_session_windows,
-        recurring_closed_windows=_build_recurring_closed_windows(session_template),
+        recurring_closed_windows=build_recurring_closed_windows(session_template),
     )
 
 
@@ -788,8 +831,9 @@ def _exchange_code_from_session_reference(
                     "named session references require preset_name and registry_scope",
                 )
 
-            _, artifact = registry.resolve_session_preset(
-                session_reference.preset_name,
+            _, artifact = registry.resolve(
+                category=PresetCategory.SESSION,
+                preset_name=session_reference.preset_name,
                 registry_scope=session_reference.registry_scope,
             )
 
@@ -826,8 +870,9 @@ def _exchange_code_from_market_profile_reference(
             "named market-profile references require preset_name and registry_scope",
         )
 
-    _, artifact = registry.resolve_market_profile_preset(
-        market_profile_reference.preset_name,
+    _, artifact = registry.resolve(
+        category=PresetCategory.MARKET_PROFILE,
+        preset_name=market_profile_reference.preset_name,
         registry_scope=market_profile_reference.registry_scope,
     )
 
@@ -874,7 +919,7 @@ def _build_session_configuration_input(
 def _calendar_registry_json_from_session_configuration(
     session_configuration: SessionExplicitConfiguration,
 ) -> str:
-    return _build_calendar_registry_json_from_windows(
+    return build_calendar_registry_json_from_windows(
         exchange_code=session_configuration.exchange_code,
         exchange_name=(
             session_configuration.exchange_name

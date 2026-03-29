@@ -722,6 +722,25 @@ fn increment_sampling_distribution_sanity_matches_expected_moments() {
     );
 }
 
+#[test]
+fn expected_increment_matches_closed_form_first_moment() {
+    let parameters = NigParameters::try_new(2.3, -0.8, 0.7, 0.1)
+        .expect("interior NIG parameters should construct");
+
+    let business_time_increment_scale = 0.75;
+
+    let gamma = stable_gamma(parameters.alpha, parameters.beta);
+
+    let expected_mean = business_time_increment_scale
+        * (parameters.mu + parameters.delta * parameters.beta / gamma);
+
+    let observed_mean = parameters
+        .expected_increment(business_time_increment_scale)
+        .expect("closed-form first moment should evaluate");
+
+    assert_float_close(observed_mean, expected_mean, 1.0e-12);
+}
+
 fn assert_complex_close(observed: ComplexScalar, expected: ComplexScalar, tolerance: f64) {
     let difference = observed.subtract(expected).norm();
     assert!(

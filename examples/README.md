@@ -77,7 +77,7 @@ PYTHONPATH=python python3 -m examples.pricing_workflow
 
 This example:
 - builds a typed `VanillaOptionPricingRequest`
-- keeps `nu_h_known` and `nu_h_surprise` explicit in `VanillaOptionPricingIntervalFactors`
+- keeps `nu_h_known` and `nu_h_surprise` explicit in a native-backed `HourlyFactorContract`
 - runs `run_vanilla_option_pricing(...)`
 
 Expected summary shape:

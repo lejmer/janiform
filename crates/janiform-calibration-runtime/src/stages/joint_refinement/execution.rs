@@ -20,8 +20,8 @@ use crate::stages::joint_metrics::{
     JointRefinementBusinessTimeBucketReturnScaleSummaries,
     JointRefinementBusinessTimeBucketThresholds, JointRefinementReturnScaleSummary,
     JointRefinementRollingVarianceActivityMetric,
-    build_continuous_calibration_sample_from_aggregated_intervals, return_scale_summary,
-    zeroed_interval_observation_template,
+    build_continuous_calibration_sample_from_aggregated_intervals, finalize_sell_share_proxies,
+    return_scale_summary, zeroed_interval_observation_template,
 };
 use crate::stages::joint_refinement::contracts::{
     JointRefinementStageCandidateDiagnostic, JointRefinementStageCoarseTickConsistencyMetric,
@@ -50,7 +50,9 @@ use janiform_calibration_artifacts::{
     stage_solver_settings_for_stage,
 };
 use janiform_foundations::low_discrepancy::van_der_corput;
+use janiform_foundations::numeric::integer_square_root;
 use janiform_foundations::splitmix64_output_mixer;
+use janiform_foundations::time::{FIVE_MINUTES_NANOS, ONE_HOUR_NANOS};
 use janiform_market_time::calendar::{
     CalendarRuleMetadataArtifact, ExchangeCalendarArtifact, ExchangeCalendarRegistryArtifact,
     RegularSessionArtifact, SessionWindowArtifact,
@@ -59,6 +61,9 @@ use janiform_market_time::hourly_factors::{
     HourlyFactorProviderRequest, HourlyNewsIntensityFactorSource, HourlySeasonalityFactorSource,
 };
 use janiform_model_kernels::hawkes::HawkesExcitationState;
+use janiform_model_kernels::mean_reversion::{
+    MeanReversionBoundaryState, MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors,
+};
 
 use super::objective::{
     compare_joint_restart_outcomes, evaluate_joint_candidate, evaluate_joint_fitted_parameters,
@@ -72,9 +77,6 @@ use super::setup::{
     selected_return_components_candidate, stage_input_to_activity_input,
 };
 
-pub(super) const JOINT_REFINEMENT_FIVE_MINUTES_NANOS: i64 = 5 * 60 * 1_000_000_000;
-pub(super) const JOINT_REFINEMENT_FIFTEEN_MINUTES_NANOS: i64 = 15 * 60 * 1_000_000_000;
-pub(super) const JOINT_REFINEMENT_ONE_HOUR_NANOS: i64 = 60 * 60 * 1_000_000_000;
 pub(super) const JOINT_REFINEMENT_OBJECTIVE_NORMALIZATION_FLOOR: f64 = 1.0e-8;
 pub(super) const JOINT_REFINEMENT_HAWKES_SCALE_LOG_BOUND: f64 = 1.386_294_361_119_890_6;
 const JOINT_REFINEMENT_PARAMETER_BLOCK_COUNT: usize = 3;
@@ -283,6 +285,7 @@ pub fn run_joint_refinement_calibration_stage(
     let activity_context = resolve_activity_calibration_context(&stage_input_to_activity_input(
         &stage_input.hawkes_input,
     ));
+
     let observed_signal_preparation = match prepare_observed_signal_inputs_for_joint_refinement(
         run_spec.data_inputs.exchange_code.as_str(),
         calendar_registry,
@@ -308,6 +311,7 @@ pub fn run_joint_refinement_calibration_stage(
             JointRefinementStageExecutionFailure::MissingHawkesPayload,
         );
     };
+
     let Some(baseline_modeled_open_event_rate_per_hour) =
         stationary_open_event_rate_per_hour(&hawkes_payload.fitted_parameters)
     else {
@@ -318,17 +322,21 @@ pub fn run_joint_refinement_calibration_stage(
     };
 
     let local_simulation_seed = resolved_stage_seed.stage_seed;
+
     let all_final_simulation_seeds = [
         resolved_stage_seed.stage_seed,
         splitmix64_output_mixer(resolved_stage_seed.stage_seed ^ 0xA5A5_A5A5_A5A5_A5A5),
         splitmix64_output_mixer(resolved_stage_seed.stage_seed ^ 0x5A5A_5A5A_5A5A_5A5A),
     ];
+
     let final_simulation_seed_count =
         joint_refinement_final_simulation_seed_count(&stage_solver_settings);
+
     let final_simulation_seeds = all_final_simulation_seeds
         .into_iter()
         .take(final_simulation_seed_count)
         .collect::<Vec<_>>();
+
     let stage_thread_pool = rayon::ThreadPoolBuilder::new()
         .num_threads(stage_solver_settings.cpu_count.max(1))
         .build()
@@ -343,6 +351,7 @@ pub fn run_joint_refinement_calibration_stage(
         &stage_input.candidate_generation_input,
         observed_open_event_rate_per_hour,
     );
+
     let baseline_15m_calibration_sample =
         build_continuous_calibration_sample_from_aggregated_intervals(
             observed_data.observed_15m_intervals.as_slice(),
@@ -350,19 +359,23 @@ pub fn run_joint_refinement_calibration_stage(
             observed_data.observed_open_event_rate_per_hour,
             observed_data.fallback_sell_share_proxy,
         );
+
     let active_parameter_layout =
         build_active_parameter_layout(&return_components_payload.fitted_parameters);
+
     let baseline_parameter_vector = build_baseline_parameter_vector(
         &active_parameter_layout,
         &hawkes_payload.fitted_parameters,
         &return_components_payload.fitted_parameters,
         &baseline_15m_calibration_sample,
     );
+
     let (lower_bounds, upper_bounds) = build_parameter_bounds(
         &active_parameter_layout,
         baseline_parameter_vector.as_slice(),
         &baseline_15m_calibration_sample,
     );
+
     let Some(runtime_hourly_seasonality_range_start_utc_nanos) = observed_data
         .hourly_simulation_start_utc
         .timestamp_nanos_opt()
@@ -376,6 +389,7 @@ pub fn run_joint_refinement_calibration_stage(
             },
         );
     };
+
     let Some(runtime_hourly_seasonality_range_end_utc_nanos) = observed_data
         .hourly_simulation_end_utc
         .timestamp_nanos_opt()
@@ -388,6 +402,7 @@ pub fn run_joint_refinement_calibration_stage(
             },
         );
     };
+
     let runtime_hourly_seasonality_factors =
         match build_runtime_hourly_seasonality_factors_from_components(
             calendar_registry,
@@ -409,7 +424,7 @@ pub fn run_joint_refinement_calibration_stage(
                 .as_slice(),
             runtime_hourly_seasonality_range_start_utc_nanos,
             runtime_hourly_seasonality_range_end_utc_nanos,
-            JOINT_REFINEMENT_ONE_HOUR_NANOS,
+            ONE_HOUR_NANOS,
         ) {
             Ok(values) => values,
             Err(error_message) => {
@@ -508,6 +523,7 @@ pub fn run_joint_refinement_calibration_stage(
         hawkes_fitted_parameters: hawkes_payload.fitted_parameters.clone(),
         return_components_fitted_parameters: return_components_payload.fitted_parameters.clone(),
     };
+
     let baseline_local_evaluation = evaluate_joint_fitted_parameters(
         baseline_fitted_parameters.clone(),
         &bootstrap_context,
@@ -520,7 +536,6 @@ pub fn run_joint_refinement_calibration_stage(
         JointRefinementFidelityTier::Final,
         &stage_solver_settings,
     );
-
     if baseline_local_evaluation.invalid_reason.is_some()
         || baseline_final_evaluation.invalid_reason.is_some()
     {
@@ -574,11 +589,13 @@ pub fn run_joint_refinement_calibration_stage(
         ),
         joint_refinement_budget_schedule(&stage_solver_settings).restart_count,
     );
+
     let restart_outcomes = optimize_restart_seeds(
         restart_seeds.as_slice(),
         &bootstrap_context,
         &stage_solver_settings,
     );
+
     let valid_restart_count = restart_outcomes
         .iter()
         .filter(|restart_outcome| {
@@ -607,13 +624,17 @@ pub fn run_joint_refinement_calibration_stage(
         local_evaluation_count: 0,
         stop_reason: "baseline_seed",
     });
+
     let candidate_frontier =
         build_joint_candidate_frontier_diagnostics(restart_outcomes.as_slice(), &bootstrap_context);
+
     let finalist_seed_summaries = build_joint_finalist_seed_summaries(
         &bootstrap_context,
         &best_restart.final_evaluation.fitted_parameters,
     );
+
     let simulation_summaries = build_joint_simulation_summaries(finalist_seed_summaries.as_slice());
+
     let coarse_tick_consistency = build_joint_coarse_tick_consistency_metrics(
         &bootstrap_context,
         &best_restart.final_evaluation.fitted_parameters,
@@ -704,6 +725,7 @@ fn select_best_restart_outcome<'a>(
     }
 
     let thresholds = joint_refinement_admissibility_thresholds(context);
+
     let pareto_ranks: Vec<usize> = restart_outcomes
         .iter()
         .map(|candidate| {
@@ -716,6 +738,7 @@ fn select_best_restart_outcome<'a>(
                 .count()
         })
         .collect();
+
     let has_admissible_candidate = restart_outcomes.iter().any(|candidate| {
         joint_restart_outcome_is_valid(candidate)
             && joint_restart_outcome_is_admissible(candidate, thresholds)
@@ -726,6 +749,7 @@ fn select_best_restart_outcome<'a>(
         .enumerate()
         .map(|(position, outcome)| (pareto_ranks[position], *outcome))
         .collect();
+
     ranked_candidates.sort_by(|left, right| {
         compare_joint_restart_outcomes(*left, *right, thresholds, has_admissible_candidate)
     });
@@ -775,6 +799,7 @@ pub(super) fn joint_restart_outcome_is_admissible(
     thresholds: JointRefinementAdmissibilityThresholds,
 ) -> bool {
     let breakdown = &restart_outcome.final_evaluation.breakdown;
+
     breakdown.aggregated_likelihood_fit <= thresholds.aggregated_likelihood_fit
         && breakdown.aggregated_return_shape_fit <= thresholds.aggregated_return_shape_fit
         && breakdown.return_asymmetry_fit <= thresholds.return_asymmetry_fit
@@ -826,6 +851,7 @@ fn build_joint_candidate_frontier_diagnostics(
     }
 
     let thresholds = joint_refinement_admissibility_thresholds(context);
+
     let pareto_ranks: Vec<usize> = restart_outcomes
         .iter()
         .map(|candidate| {
@@ -835,6 +861,7 @@ fn build_joint_candidate_frontier_diagnostics(
                 .count()
         })
         .collect();
+
     let has_admissible_candidate = restart_outcomes.iter().any(|candidate| {
         joint_restart_outcome_is_valid(candidate)
             && joint_restart_outcome_is_admissible(candidate, thresholds)
@@ -845,6 +872,7 @@ fn build_joint_candidate_frontier_diagnostics(
         .enumerate()
         .map(|(position, outcome)| (pareto_ranks[position], outcome))
         .collect();
+
     ranked_candidates.sort_by(|left, right| {
         compare_joint_restart_outcomes(*left, *right, thresholds, has_admissible_candidate)
     });
@@ -940,6 +968,7 @@ fn named_joint_parameter_coordinates(
     }
 
     coordinates.sort_by_key(|(index, _)| *index);
+
     coordinates
         .into_iter()
         .filter_map(|(index, label)| {
@@ -990,6 +1019,7 @@ fn build_joint_simulation_summaries(
                 .simulated_5m_return_scale_summary
                 .mean_absolute_return,
         });
+
         summaries.push(JointRefinementStageSimulationSummary {
             simulation_seed: *simulation_seed,
             horizon_label: "15m".to_string(),
@@ -1022,7 +1052,7 @@ fn build_joint_coarse_tick_consistency_metrics(
             context,
             fitted_parameters,
             *simulation_seed,
-            JOINT_REFINEMENT_FIVE_MINUTES_NANOS,
+            FIVE_MINUTES_NANOS,
             context
                 .observed_data
                 .simulated_5m_interval_template
@@ -1035,6 +1065,7 @@ fn build_joint_coarse_tick_consistency_metrics(
                     .simulated_15m_interval_template
                     .as_slice(),
             );
+
             metrics.extend(joint_coarse_tick_metrics_for_horizon(
                 *simulation_seed,
                 "5m",
@@ -1047,6 +1078,7 @@ fn build_joint_coarse_tick_consistency_metrics(
                     .sum::<usize>() as f64,
                 tick_summary.simulated_5m_return_scale_summary,
             ));
+
             metrics.extend(joint_coarse_tick_metrics_for_horizon(
                 *simulation_seed,
                 "15m",
@@ -1118,6 +1150,7 @@ fn build_joint_coarse_interval_observations(
     if template.is_empty() {
         return None;
     }
+
     let interval_count = ((context
         .observed_data
         .hourly_simulation_end_utc
@@ -1127,6 +1160,7 @@ fn build_joint_coarse_interval_observations(
             .hourly_simulation_start_utc
             .timestamp_nanos_opt()?)
     .div_euclid(interval_duration_nanos)) as usize;
+
     let surprise_deterministic_time_multiplier_by_interval_index =
         build_surprise_multipliers_for_interval_grid(
             context.observed_data.hourly_simulation_start_utc,
@@ -1137,6 +1171,7 @@ fn build_joint_coarse_interval_observations(
                 .surprise_weekly_hour_utc_multipliers
                 .as_slice(),
         );
+
     let hourly_factor_contract = load_hourly_factor_contract_for_calibration(
         &context.calendar_registry,
         HourlyFactorProviderRequest {
@@ -1170,7 +1205,8 @@ fn build_joint_coarse_interval_observations(
     )
     .ok()?;
 
-    let interval_delta = interval_duration_nanos as f64 / JOINT_REFINEMENT_ONE_HOUR_NANOS as f64;
+    let interval_delta = interval_duration_nanos as f64 / ONE_HOUR_NANOS as f64;
+
     let interval_factors = build_coarse_interval_factors_from_hourly_contract(
         &hourly_factor_contract,
         fitted_parameters
@@ -1182,7 +1218,14 @@ fn build_joint_coarse_interval_observations(
             .as_slice(),
         interval_delta,
     )?;
-    let model_inputs = build_joint_coarse_model_inputs(context, fitted_parameters)?;
+
+    let model_inputs = build_joint_coarse_model_inputs(
+        context,
+        fitted_parameters,
+        hourly_factor_contract.interval_indices.len(),
+        interval_delta,
+    )?;
+
     let coarse_path = run_coarse_simulation(
         CoarseSimulationRunRequest::try_new(
             simulation_seed,
@@ -1197,6 +1240,7 @@ fn build_joint_coarse_interval_observations(
     .ok()?;
 
     let mut intervals = zeroed_interval_observation_template(template);
+
     let interval_index_by_bounds: BTreeMap<(i64, i64), usize> = intervals
         .iter()
         .enumerate()
@@ -1219,6 +1263,7 @@ fn build_joint_coarse_interval_observations(
             let Some(interval) = intervals.get_mut(*interval_index) else {
                 continue;
             };
+
             interval.log_return += record.return_components.total_return;
             interval.tick_count += (record.sufficient_statistics.n_plus
                 + record.sufficient_statistics.n_minus) as usize;
@@ -1226,7 +1271,7 @@ fn build_joint_coarse_interval_observations(
         }
     }
 
-    finalize_coarse_sell_share_proxies(intervals.as_mut_slice(), 0.5);
+    finalize_sell_share_proxies(intervals.as_mut_slice(), 0.5);
 
     Some(intervals)
 }
@@ -1265,21 +1310,8 @@ fn aggregate_coarse_intervals_to_template(
             source_interval.sell_share_proxy * source_interval.tick_count as f64;
     }
 
-    finalize_coarse_sell_share_proxies(aggregated_intervals.as_mut_slice(), 0.5);
+    finalize_sell_share_proxies(aggregated_intervals.as_mut_slice(), 0.5);
     aggregated_intervals
-}
-
-fn finalize_coarse_sell_share_proxies(
-    intervals: &mut [JointRefinementAggregatedIntervalObservation],
-    fallback_sell_share_proxy: f64,
-) {
-    for interval in intervals {
-        interval.sell_share_proxy = if interval.tick_count == 0 {
-            fallback_sell_share_proxy
-        } else {
-            (interval.sell_share_proxy / interval.tick_count as f64).clamp(0.0, 1.0)
-        };
-    }
 }
 
 fn sum_interval_tick_count(intervals: &[JointRefinementAggregatedIntervalObservation]) -> usize {
@@ -1304,6 +1336,7 @@ fn build_coarse_interval_factors_from_hourly_contract(
                 / interval_delta
         })
         .collect::<Vec<_>>();
+
     let nu_h_surprise = hourly_factor_contract
         .nu_h
         .iter()
@@ -1339,6 +1372,8 @@ fn count_known_news_events(
 fn build_joint_coarse_model_inputs(
     context: &JointRefinementContext,
     fitted_parameters: &JointRefinementStageFittedParameters,
+    interval_count: usize,
+    interval_delta: f64,
 ) -> Option<CoarseSimulationModelInputs> {
     let risk_model_inputs = SufficientStatisticsRiskModelInputs::try_new(
         ExponentialAffineTransformEquationSpecification::try_new(
@@ -1359,6 +1394,16 @@ fn build_joint_coarse_model_inputs(
             y_minus_plus: 0.0,
             y_minus_minus: 0.0,
         },
+        MeanReversionFittedParameters::endogenous_core_expectation_one_interval(0.0)
+            .expect("zero-kappa endogenous mean reversion should validate"),
+        MeanReversionRuntimeIntervalAnchors::try_new(
+            "explicit_runtime_interval_grid_alignment.v1",
+            0.0,
+            vec![0.0; interval_count],
+            vec![interval_delta; interval_count],
+        )
+        .ok()?,
+        MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0).ok()?,
     )
     .ok()?;
 
@@ -1384,6 +1429,7 @@ fn build_exchange_calendar_registry_artifact(
     artifact_anchor_time_utc: DateTime<Utc>,
 ) -> Option<ExchangeCalendarRegistryArtifact> {
     let definition = calendar_registry.get_required(exchange_code).ok()?;
+
     let regular_sessions = definition
         .regular_sessions()
         .iter()
@@ -1514,10 +1560,6 @@ pub(super) fn build_halton_restart_id(position: usize) -> String {
     format!("halton_{position:02}")
 }
 
-fn integer_square_root(value: usize) -> usize {
-    (value as f64).sqrt().floor() as usize
-}
-
 #[derive(Debug, Clone, Copy)]
 struct JointRefinementBudgetSchedule {
     restart_count: usize,
@@ -1530,6 +1572,7 @@ fn joint_refinement_budget_schedule(
 ) -> JointRefinementBudgetSchedule {
     let (base_outer_cycle_count, base_powell_settings) =
         joint_refinement_base_schedule_components(solver_settings);
+
     let restart_count = solver_settings
         .cpu_count
         .max(1)
@@ -1537,13 +1580,17 @@ fn joint_refinement_budget_schedule(
             base_outer_cycle_count * base_powell_settings.evaluation_budget,
         ))
         .max(1);
+
     let total_block_cycle_budget = base_outer_cycle_count * base_powell_settings.evaluation_budget;
+
     let outer_cycle_count = ((base_outer_cycle_count * base_outer_cycle_count)
         / restart_count.max(1))
     .clamp(1, base_outer_cycle_count);
+
     let evaluation_budget = (total_block_cycle_budget
         / (restart_count.max(1) * outer_cycle_count.max(1)))
     .max(base_powell_settings.line_search_evaluation_cap.max(1));
+
     let line_search_evaluation_cap = integer_square_root(evaluation_budget).max(1);
 
     JointRefinementBudgetSchedule {
@@ -1566,6 +1613,7 @@ fn joint_refinement_base_schedule_components(
     let outer_cycle_count = JOINT_REFINEMENT_PARAMETER_BLOCK_COUNT;
     let evaluation_budget = solver_settings.max_iterations.max(outer_cycle_count);
     let line_search_evaluation_cap = integer_square_root(evaluation_budget).max(1);
+
     let max_cycle_count = evaluation_budget
         .div_ceil(line_search_evaluation_cap.max(1))
         .max(1);
@@ -1750,47 +1798,24 @@ pub(super) fn clamp_in_place(values: &mut [f64], lower_bounds: &[f64], upper_bou
     }
 }
 
-pub(super) fn floor_to_hour(timestamp_utc_nanos: i64) -> i64 {
-    timestamp_utc_nanos.div_euclid(JOINT_REFINEMENT_ONE_HOUR_NANOS)
-        * JOINT_REFINEMENT_ONE_HOUR_NANOS
-}
-
-fn raw_bucket_value_from_normalized(value: f64) -> f64 {
-    value
-}
-
 fn baseline_buckets_from_evaluation(
     evaluation: &JointRefinementCandidateEvaluation,
 ) -> JointRefinementBaselineBuckets {
     let breakdown = &evaluation.breakdown;
 
     JointRefinementBaselineBuckets {
-        aggregated_likelihood_fit: raw_bucket_value_from_normalized(
-            breakdown.aggregated_likelihood_fit,
-        ),
-        aggregated_return_shape_fit: raw_bucket_value_from_normalized(
-            breakdown.aggregated_return_shape_fit,
-        ),
-        return_asymmetry_fit: raw_bucket_value_from_normalized(breakdown.return_asymmetry_fit),
-        tick_return_asymmetry_fit: raw_bucket_value_from_normalized(
-            breakdown.tick_return_asymmetry_fit,
-        ),
-        aggregated_return_scale_fit: raw_bucket_value_from_normalized(
-            breakdown.aggregated_return_scale_fit,
-        ),
-        tick_return_scale_fit: raw_bucket_value_from_normalized(breakdown.tick_return_scale_fit),
-        business_time_return_scale_fit: raw_bucket_value_from_normalized(
-            breakdown.business_time_return_scale_fit,
-        ),
-        intraday_return_level_fit: raw_bucket_value_from_normalized(
-            breakdown.intraday_return_level_fit,
-        ),
-        activity_shape_fit: raw_bucket_value_from_normalized(breakdown.activity_shape_fit),
-        activity_level_fit: raw_bucket_value_from_normalized(breakdown.activity_level_fit),
-        rv_activity_coupling_fit: raw_bucket_value_from_normalized(
-            breakdown.rv_activity_coupling_fit,
-        ),
-        price_span_sanity_fit: raw_bucket_value_from_normalized(breakdown.price_span_sanity_fit),
+        aggregated_likelihood_fit: breakdown.aggregated_likelihood_fit,
+        aggregated_return_shape_fit: breakdown.aggregated_return_shape_fit,
+        return_asymmetry_fit: breakdown.return_asymmetry_fit,
+        tick_return_asymmetry_fit: breakdown.tick_return_asymmetry_fit,
+        aggregated_return_scale_fit: breakdown.aggregated_return_scale_fit,
+        tick_return_scale_fit: breakdown.tick_return_scale_fit,
+        business_time_return_scale_fit: breakdown.business_time_return_scale_fit,
+        intraday_return_level_fit: breakdown.intraday_return_level_fit,
+        activity_shape_fit: breakdown.activity_shape_fit,
+        activity_level_fit: breakdown.activity_level_fit,
+        rv_activity_coupling_fit: breakdown.rv_activity_coupling_fit,
+        price_span_sanity_fit: breakdown.price_span_sanity_fit,
     }
 }
 
@@ -1826,8 +1851,8 @@ mod tests {
     };
     use super::{
         JOINT_REFINEMENT_PARAMETER_BLOCK_COUNT, JointRefinementActiveParameterLayout,
-        admissibility_threshold_from_sample_count, integer_square_root,
-        joint_refinement_base_schedule_components, joint_refinement_budget_schedule,
+        admissibility_threshold_from_sample_count, joint_refinement_base_schedule_components,
+        joint_refinement_budget_schedule,
     };
     use crate::stages::joint_metrics::{
         JointRefinementBusinessTimeBucketReturnScaleSummaries, JointRefinementReturnScaleSummary,
@@ -1841,6 +1866,7 @@ mod tests {
     use janiform_calibration_artifacts::{
         CalibrationOptimizerSettings, JointRefinementStageObjectiveBreakdown,
     };
+    use janiform_foundations::numeric::integer_square_root;
 
     fn build_test_solver_settings(cpu_count: usize) -> CalibrationOptimizerSettings {
         CalibrationOptimizerSettings::try_new("joint-test", 256, cpu_count, 1.0e-6, 1.0e-6, 10.0)

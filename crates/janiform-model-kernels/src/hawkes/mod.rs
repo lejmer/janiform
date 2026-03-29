@@ -15,10 +15,12 @@
 //! This module uses explicit named fields for all 4 components to avoid
 //! tuple or matrix-index ambiguity in public core interfaces.
 
+mod analytics;
 mod loadings;
 mod parameters;
 mod state;
 
+pub use analytics::*;
 pub use loadings::*;
 pub use parameters::*;
 pub use state::*;

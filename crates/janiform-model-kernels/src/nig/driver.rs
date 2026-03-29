@@ -1,5 +1,6 @@
 use serde::Serialize;
 
+use janiform_foundations::numeric::validate_negative_number;
 use janiform_foundations::randomness::SimulationRandomnessStream;
 
 use super::constants::{
@@ -26,15 +27,11 @@ pub struct NigSharedPlusShiftConfiguration {
 
 impl NigSharedPlusShiftConfiguration {
     fn validate_delta_beta(delta_beta: f64) -> Result<(), NigSharedPlusShiftConfigurationError> {
-        if !delta_beta.is_finite() || delta_beta >= 0.0 {
-            return Err(
-                NigSharedPlusShiftConfigurationError::DeltaBetaDomainViolation {
-                    value: delta_beta,
-                },
-            );
-        }
-
-        Ok(())
+        validate_negative_number(delta_beta, "delta_beta").map_err(|source| {
+            NigSharedPlusShiftConfigurationError::DeltaBetaDomainViolation {
+                value: source.value,
+            }
+        })
     }
 
     /// Validate and build one canonical shared-plus-shift configuration payload.

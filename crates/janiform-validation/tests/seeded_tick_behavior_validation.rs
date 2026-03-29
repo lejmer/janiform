@@ -2,6 +2,7 @@ mod support;
 
 use chrono::{DateTime, Utc};
 use janiform_engine_simulation::{
+    MeanReversionBoundaryState, MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors,
     SEEDED_TICK_EVENT_ORDERING_POLICY, SeededTickEventDebugTraceRecord,
     SeededTickEventDebugTraceTransitionKind, SeededTickEventRecord, SeededTickEventSide,
     SeededTickSimulationDebugTraceOptions, SeededTickSimulationModelInputs,
@@ -11,6 +12,7 @@ use janiform_engine_simulation::{
 use janiform_foundations::randomness::{
     SimulationRandomnessFactory, SimulationRandomnessStream, SimulationRandomnessSubstreamDomain,
 };
+use janiform_foundations::time::ONE_HOUR_NANOS;
 use janiform_market_time::calendar::{ExchangeCalendarRegistry, ExchangeCalendarRegistryLoader};
 use janiform_market_time::hourly_factors::{
     DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD, DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD,
@@ -36,7 +38,6 @@ use support::hawkes_invariant_catalog::{
 
 const START_TIME_UTC_NANOS: i64 = 1_704_067_200_000_000_000;
 const FIFTEEN_MINUTE_NANOS: i64 = 900_000_000_000;
-const ONE_HOUR_NANOS: i64 = 3_600_000_000_000;
 const ONE_DAY_NANOS: i64 = 86_400_000_000_000;
 const FLOAT_TOLERANCE: f64 = 1e-12;
 const OPEN_MARKET_START_TIME_UTC_NANOS: i64 = 1_705_935_600_000_000_000;
@@ -1257,6 +1258,20 @@ fn build_run_config_with_options(
     news_intensity: f64,
     options: Option<SeededTickSimulationRunOptions>,
 ) -> SeededTickSimulationRunConfig {
+    let hourly_factor_contract = build_uniform_factor_contract(
+        START_TIME_UTC_NANOS,
+        interval_duration_nanos,
+        interval_count,
+        seasonality_factor,
+        news_intensity,
+    );
+
+    let (
+        mean_reversion_fitted_parameters,
+        mean_reversion_runtime_interval_anchors,
+        initial_mean_reversion_boundary_state,
+    ) = disabled_mean_reversion_runtime_inputs(&hourly_factor_contract);
+
     SeededTickSimulationRunConfig::try_new(
         seed,
         DateTime::<Utc>::from_timestamp_nanos(START_TIME_UTC_NANOS),
@@ -1264,13 +1279,10 @@ fn build_run_config_with_options(
         SeededTickSimulationModelInputs {
             kernel_parameters,
             initial_excitation_state,
-            hourly_factor_contract: build_uniform_factor_contract(
-                START_TIME_UTC_NANOS,
-                interval_duration_nanos,
-                interval_count,
-                seasonality_factor,
-                news_intensity,
-            ),
+            mean_reversion_fitted_parameters,
+            mean_reversion_runtime_interval_anchors,
+            initial_mean_reversion_boundary_state,
+            hourly_factor_contract,
             calendar_registry: build_seeded_simulation_calendar_registry(),
             nig_shared_plus_shift_configuration: valid_nig_shared_plus_shift_configuration(),
             news_process_configuration: build_news_process_configuration(Vec::new()),
@@ -1327,6 +1339,8 @@ fn build_uniform_factor_contract(
         interval_start_exchange_local,
         interval_end_exchange_local,
         s_h: vec![seasonality_factor; interval_count],
+        known_component_nu_h: vec![0.0; interval_count],
+        surprise_component_nu_h: vec![news_intensity; interval_count],
         nu_h: vec![news_intensity; interval_count],
         metadata: HourlyFactorMaterializationMetadata {
             seasonality_materialization_method: DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD
@@ -1454,6 +1468,20 @@ fn collect_debug_trace_records(
 fn build_multi_hour_zero_event_carryover_model_inputs(
     interval_count: usize,
 ) -> SeededTickSimulationModelInputs {
+    let hourly_factor_contract = build_uniform_factor_contract(
+        START_TIME_UTC_NANOS,
+        ONE_HOUR_NANOS,
+        interval_count,
+        0.0,
+        0.0,
+    );
+
+    let (
+        mean_reversion_fitted_parameters,
+        mean_reversion_runtime_interval_anchors,
+        initial_mean_reversion_boundary_state,
+    ) = disabled_mean_reversion_runtime_inputs(&hourly_factor_contract);
+
     SeededTickSimulationModelInputs {
         kernel_parameters: HawkesKernelParameters::try_new(
             0.5,
@@ -1478,13 +1506,10 @@ fn build_multi_hour_zero_event_carryover_model_inputs(
             y_minus_plus: 1.2,
             y_minus_minus: 0.4,
         },
-        hourly_factor_contract: build_uniform_factor_contract(
-            START_TIME_UTC_NANOS,
-            ONE_HOUR_NANOS,
-            interval_count,
-            0.0,
-            0.0,
-        ),
+        mean_reversion_fitted_parameters,
+        mean_reversion_runtime_interval_anchors,
+        initial_mean_reversion_boundary_state,
+        hourly_factor_contract,
         calendar_registry: build_seeded_simulation_calendar_registry(),
         nig_shared_plus_shift_configuration: valid_nig_shared_plus_shift_configuration(),
         news_process_configuration: build_news_process_configuration(Vec::new()),
@@ -1495,6 +1520,15 @@ fn build_one_interval_ordering_model_inputs(
     start_time_utc_nanos: i64,
     news_intensity: f64,
 ) -> SeededTickSimulationModelInputs {
+    let hourly_factor_contract =
+        build_uniform_factor_contract(start_time_utc_nanos, ONE_HOUR_NANOS, 1, 1.0, news_intensity);
+
+    let (
+        mean_reversion_fitted_parameters,
+        mean_reversion_runtime_interval_anchors,
+        initial_mean_reversion_boundary_state,
+    ) = disabled_mean_reversion_runtime_inputs(&hourly_factor_contract);
+
     SeededTickSimulationModelInputs {
         kernel_parameters: HawkesKernelParameters::try_new(
             0.5,
@@ -1519,13 +1553,10 @@ fn build_one_interval_ordering_model_inputs(
             y_minus_plus: 0.5,
             y_minus_minus: 0.0,
         },
-        hourly_factor_contract: build_uniform_factor_contract(
-            start_time_utc_nanos,
-            ONE_HOUR_NANOS,
-            1,
-            1.0,
-            news_intensity,
-        ),
+        mean_reversion_fitted_parameters,
+        mean_reversion_runtime_interval_anchors,
+        initial_mean_reversion_boundary_state,
+        hourly_factor_contract,
         calendar_registry: build_seeded_simulation_calendar_registry(),
         nig_shared_plus_shift_configuration: valid_nig_shared_plus_shift_configuration(),
         news_process_configuration: build_news_process_configuration(Vec::new()),
@@ -1535,6 +1566,15 @@ fn build_one_interval_ordering_model_inputs(
 fn build_two_interval_boundary_adjacent_model_inputs(
     start_time_utc_nanos: i64,
 ) -> SeededTickSimulationModelInputs {
+    let hourly_factor_contract =
+        build_uniform_factor_contract(start_time_utc_nanos, ONE_HOUR_NANOS, 2, 1.0, 0.0);
+
+    let (
+        mean_reversion_fitted_parameters,
+        mean_reversion_runtime_interval_anchors,
+        initial_mean_reversion_boundary_state,
+    ) = disabled_mean_reversion_runtime_inputs(&hourly_factor_contract);
+
     SeededTickSimulationModelInputs {
         kernel_parameters: HawkesKernelParameters::try_new(
             0.5,
@@ -1559,17 +1599,39 @@ fn build_two_interval_boundary_adjacent_model_inputs(
             y_minus_plus: 0.0,
             y_minus_minus: 0.0,
         },
-        hourly_factor_contract: build_uniform_factor_contract(
-            start_time_utc_nanos,
-            ONE_HOUR_NANOS,
-            2,
-            1.0,
-            0.0,
-        ),
+        mean_reversion_fitted_parameters,
+        mean_reversion_runtime_interval_anchors,
+        initial_mean_reversion_boundary_state,
+        hourly_factor_contract,
         calendar_registry: build_seeded_simulation_calendar_registry(),
         nig_shared_plus_shift_configuration: valid_nig_shared_plus_shift_configuration(),
         news_process_configuration: build_news_process_configuration(Vec::new()),
     }
+}
+
+fn disabled_mean_reversion_runtime_inputs(
+    hourly_factor_contract: &HourlyFactorContractOutput,
+) -> (
+    MeanReversionFittedParameters,
+    MeanReversionRuntimeIntervalAnchors,
+    MeanReversionBoundaryState,
+) {
+    (
+        MeanReversionFittedParameters::endogenous_core_expectation_one_interval(0.0)
+            .expect("zero-kappa endogenous mean reversion should construct"),
+        MeanReversionRuntimeIntervalAnchors::try_new(
+            hourly_factor_contract.metadata.interval_alignment_policy,
+            0.0,
+            vec![0.0; hourly_factor_contract.interval_indices.len()],
+            vec![
+                hourly_factor_contract.interval_duration_nanos as f64 / ONE_HOUR_NANOS as f64;
+                hourly_factor_contract.interval_indices.len()
+            ],
+        )
+        .expect("disabled mean-reversion runtime anchors should construct"),
+        MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0)
+            .expect("disabled mean-reversion boundary state should construct"),
+    )
 }
 
 fn valid_nig_shared_plus_shift_configuration() -> NigSharedPlusShiftConfiguration {

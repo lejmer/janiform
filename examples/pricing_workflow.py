@@ -7,7 +7,7 @@ from janiform.pricing import (
 )
 
 from .support._shared import (
-    build_pricing_interval_factors,
+    build_pricing_hourly_factor_contract,
     build_pricing_optional_output_selection,
     build_pricing_request,
 )
@@ -17,7 +17,7 @@ def run_example() -> dict[str, Any]:
     request = build_pricing_request()
     execution_input = VanillaOptionPricingExecutionInput(
         request=request,
-        interval_factors=build_pricing_interval_factors(),
+        hourly_factor_contract=build_pricing_hourly_factor_contract(),
         optional_output_selection=build_pricing_optional_output_selection(),
     )
     run_result = run_vanilla_option_pricing(execution_input)
@@ -26,8 +26,12 @@ def run_example() -> dict[str, Any]:
         "request_summary": {
             "interval_delta": request.interval_delta,
             "payoff_type": request.payoff.payoff_type.value,
-            "nu_h_known": execution_input.interval_factors.nu_h_known,
-            "nu_h_surprise": execution_input.interval_factors.nu_h_surprise,
+            "anchor_model_kind": (
+                request.boundary_input.mean_reversion_fitted_parameters.anchor_model.anchor_model_kind.value
+            ),
+            "observed_boundary_deviation": request.boundary_input.observed_boundary_state.deviation,
+            "nu_h_known": execution_input.hourly_factor_contract.known_component_nu_h[0],
+            "nu_h_surprise": execution_input.hourly_factor_contract.surprise_component_nu_h[0],
         },
         "run_result_summary": {
             "schema_version": run_result.schema_version,
@@ -35,6 +39,11 @@ def run_example() -> dict[str, Any]:
             "forward_price": round(run_result.response.diagnostics.forward_price, 6),
             "run_diagnostics_included": run_result.run_diagnostics is not None,
             "calibration_hooks_included": run_result.calibration_hooks is not None,
+            "anchored_recursion_interval_count": (
+                0
+                if run_result.run_diagnostics is None
+                else len(run_result.run_diagnostics.anchored_recursion["interval_diagnostics"])
+            ),
         },
     }
 

@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from janiform.calibration import CalibrationExecutionMode
+from janiform.calibration.staged import CalibrationExecutionMode
 from janiform.hourly_factors import (
     HourlyNewsIntensityMaterialization,
     HourlyNewsIntensityMaterializationSettings,
@@ -12,9 +12,13 @@ from janiform.hourly_factors import (
     HourlySeasonalityMaterializationSettings,
     materialize_hourly_news_intensity_factors,
     materialize_hourly_seasonality_factors,
+    provide_hourly_factor_contract,
 )
 from janiform.pricing import VanillaOptionPricingExecutionInput
-from janiform.simulation import SeededTickSimulationRequest, load_hourly_factor_contract_for_simulation
+from janiform.simulation import (
+    SeededTickSimulationRequest,
+    build_endogenous_seeded_mean_reversion_runtime_inputs,
+)
 
 from ._shared import (
     CALENDAR_REGISTRY_JSON,
@@ -28,7 +32,7 @@ from ._shared import (
     build_calendar_registry,
     build_hawkes_kernel_parameters,
     build_initial_excitation_state,
-    build_pricing_interval_factors,
+    build_pricing_hourly_factor_contract,
     build_pricing_optional_output_selection,
     build_pricing_request,
     build_simulation_news_process_configuration,
@@ -191,7 +195,7 @@ def write_cli_documentation_inputs(output_directory: Path) -> dict[str, str]:
         encoding="utf-8",
     )
 
-    hourly_factor_contract = load_hourly_factor_contract_for_simulation(
+    hourly_factor_contract = provide_hourly_factor_contract(
         calendar_registry=calendar_registry,
         exchange_code="XNYS",
         range_start_utc=SIMULATION_RANGE_START_UTC,
@@ -199,6 +203,15 @@ def write_cli_documentation_inputs(output_directory: Path) -> dict[str, str]:
         seasonality_source=build_simulation_seasonality_source(),
         news_intensity_source=build_simulation_news_source(),
     )
+
+    (
+        mean_reversion_fitted_parameters,
+        mean_reversion_runtime_interval_anchors,
+        initial_mean_reversion_boundary_state,
+    ) = build_endogenous_seeded_mean_reversion_runtime_inputs(
+        hourly_factor_contract=hourly_factor_contract
+    )
+
     simulation_request = SeededTickSimulationRequest.from_runtime_inputs(
         seed=17,
         start_time_utc=SIMULATION_RANGE_START_UTC,
@@ -208,6 +221,9 @@ def write_cli_documentation_inputs(output_directory: Path) -> dict[str, str]:
         news_process_configuration=build_simulation_news_process_configuration(),
         initial_excitation_state=build_initial_excitation_state(),
         hourly_factor_contract=hourly_factor_contract,
+        mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
+        mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
+        initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
     )
     simulation_request_path = output_directory / "simulation_request.json"
     simulation_request_path.write_text(
@@ -227,8 +243,18 @@ def write_cli_documentation_inputs(output_directory: Path) -> dict[str, str]:
 
     pricing_execution_input = VanillaOptionPricingExecutionInput(
         request=build_pricing_request(),
-        interval_factors=build_pricing_interval_factors(),
+        hourly_factor_contract=build_pricing_hourly_factor_contract(),
         optional_output_selection=build_pricing_optional_output_selection(),
+    )
+    observed_boundary_state_path = output_directory / "observed_boundary_state.json"
+    observed_boundary_state_path.write_text(
+        json.dumps(
+            pricing_execution_input.request.boundary_input.observed_boundary_state.to_payload(),
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
     )
     pricing_execution_input_path = output_directory / "pricing_execution_input.json"
     pricing_execution_input_path.write_text(
@@ -283,6 +309,7 @@ def write_cli_documentation_inputs(output_directory: Path) -> dict[str, str]:
             hourly_factor_seasonality_materialization_input_path
         ),
         "known_news_csv": str(market_data_paths["known_news"]),
+        "observed_boundary_state_json": str(observed_boundary_state_path),
         "option_surface_parquet": str(market_data_paths["option_surface"]),
         "pricing_execution_input_json": str(pricing_execution_input_path),
         "session_definition_json": str(market_data_paths["session_definition"]),

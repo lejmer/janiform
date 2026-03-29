@@ -8,6 +8,11 @@ from typing import Any, Optional
 import pytest
 
 from janiform.calibration import CalibrationValidationError
+from janiform.contracts import (
+    MeanReversionAnchorModel,
+    MeanReversionBoundaryState,
+    MeanReversionFittedParameters,
+)
 from janiform.calibration.staged import (
     CALIBRATION_STAGED_RUN_REPORT_SCHEMA_VERSION,
     CalibrationExecutionMode,
@@ -19,14 +24,15 @@ from janiform.calibration.staged import (
 from janiform.hourly_factors import (
     HourlyNewsIntensityProviderExplicitSource,
     HourlySeasonalityProviderExplicitSource,
+    provide_hourly_factor_contract,
 )
 from janiform.pricing import (
+    AnchoredVanillaOptionPricingBoundaryInput,
     GammaSeverityMarkConfiguration,
     NigSharedPlusShiftConfiguration,
     VanillaOptionPayoffConfiguration,
     VanillaOptionPayoffType,
     VanillaOptionPricingExecutionInput,
-    VanillaOptionPricingIntervalFactors,
     VanillaOptionPricingMarketInputs,
     VanillaOptionPricingModelParameters,
     VanillaOptionPricingOptionalOutputSelection,
@@ -38,28 +44,37 @@ from janiform.pricing import (
     validate_vanilla_option_pricing_run_result,
 )
 from janiform.simulation import (
+    SeededTickEventSide,
+    SeededTickSimulationValidationError,
+)
+from janiform.simulation.coarse import (
     CoupledGapMarkConfiguration,
     DoubleExponentialBaseShockConfiguration,
-    HawkesExcitationState,
-    HawkesKernelLoadings,
-    HawkesKernelParameters,
     KnownNewsArrivalConfiguration,
     NewsArrivalConfiguration,
     NewsComponentMarkScaleConfiguration,
     NewsProcessConfiguration,
-    SeededTickEventSide,
-    SeededTickSimulationValidationError,
-    SeededTickSimulationRequest,
     SharedNewsMarkLawConfiguration,
     SurpriseNewsArrivalConfiguration,
-    load_hourly_factor_contract_for_simulation,
+)
+from janiform.simulation.seeded import (
+    SeededTickSimulationRequest,
     run_seeded_tick_event_simulation,
     validate_seeded_tick_simulation_response,
+)
+from janiform.simulation.shared import (
+    HawkesExcitationState,
+    HawkesKernelLoadings,
+    HawkesKernelParameters,
+)
+from janiform.simulation.seeded.contracts import (
+    build_endogenous_seeded_mean_reversion_runtime_inputs,
 )
 from tests.calibration_test_support import (
     build_valid_execution_input_model,
     build_valid_execution_input_payload,
 )
+from tests.hourly_factor_contract_test_support import build_hourly_factor_contract
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_RESPONSE_SCHEMA_SNAPSHOT_PATH = (
@@ -262,7 +277,11 @@ def _build_simulation_direct_response_payload(calendar_registry, tmp_path: Path)
                         "closed_gap_return": 0.0,
                         "total_return": 0.05,
                     },
-                    "cumulative_log_return": 0.05,
+                    "core_total_return_increment": 0.05,
+                    "observed_log_price": 0.05,
+                    "anchor_value": 0.0,
+                    "deviation_from_anchor": 0.05,
+                    "cumulative_core_log_return": 0.05,
                 }
             ],
             "event_tape": [
@@ -270,6 +289,10 @@ def _build_simulation_direct_response_payload(calendar_registry, tmp_path: Path)
                     "event_index": 0,
                     "timestamp_utc_nanos": 100,
                     "side": SeededTickEventSide.BUY.value,
+                    "core_total_return_increment": 0.05,
+                    "observed_log_price": 0.05,
+                    "anchor_value": 0.0,
+                    "deviation_from_anchor": 0.05,
                 }
             ],
         }
@@ -280,7 +303,7 @@ def _build_simulation_boundary_response_payload(calendar_registry, tmp_path: Pat
     del tmp_path
 
     start_time_utc = datetime(2026, 2, 2, 15, tzinfo=UTC)
-    hourly_factor_contract = load_hourly_factor_contract_for_simulation(
+    hourly_factor_contract = provide_hourly_factor_contract(
         calendar_registry=calendar_registry,
         exchange_code="XNYS",
         range_start_utc=start_time_utc,
@@ -294,6 +317,15 @@ def _build_simulation_boundary_response_payload(calendar_registry, tmp_path: Pat
             materialization_method="explicit_hourly_input.v1",
         ),
     )
+
+    (
+        mean_reversion_fitted_parameters,
+        mean_reversion_runtime_interval_anchors,
+        initial_mean_reversion_boundary_state,
+    ) = build_endogenous_seeded_mean_reversion_runtime_inputs(
+        hourly_factor_contract=hourly_factor_contract
+    )
+
     request = SeededTickSimulationRequest.from_runtime_inputs(
         seed=17,
         start_time_utc=start_time_utc,
@@ -339,6 +371,9 @@ def _build_simulation_boundary_response_payload(calendar_registry, tmp_path: Pat
         ),
         initial_excitation_state=_valid_excitation_state(),
         hourly_factor_contract=hourly_factor_contract,
+        mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
+        mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
+        initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
     )
 
     return run_seeded_tick_event_simulation(request).to_payload()
@@ -384,6 +419,7 @@ def _build_pricing_direct_run_result_payload(calendar_registry, tmp_path: Path) 
                     "schema_version",
                     "transform",
                     "integration_quality",
+                    "anchored_recursion",
                 ],
                 "required_calibration_hooks_fields": [
                     "schema_version",
@@ -501,7 +537,11 @@ def _run_simulation_invalid_response_side(calendar_registry) -> None:
                         "closed_gap_return": 0.0,
                         "total_return": 0.05,
                     },
-                    "cumulative_log_return": 0.05,
+                    "core_total_return_increment": 0.05,
+                    "observed_log_price": 0.05,
+                    "anchor_value": 0.0,
+                    "deviation_from_anchor": 0.05,
+                    "cumulative_core_log_return": 0.05,
                 }
             ],
         }
@@ -581,11 +621,24 @@ def _valid_pricing_execution_input() -> VanillaOptionPricingExecutionInput:
                 dividend_yield=0.01,
             ),
             payoff=VanillaOptionPayoffConfiguration(payoff_type=VanillaOptionPayoffType.CALL),
-            boundary_state=HawkesExcitationState(
-                y_plus_plus=0.0,
-                y_plus_minus=0.0,
-                y_minus_plus=0.0,
-                y_minus_minus=0.0,
+            boundary_input=AnchoredVanillaOptionPricingBoundaryInput(
+                interval_index=0,
+                interval_delta=1.0,
+                hawkes_boundary_state=HawkesExcitationState(
+                    y_plus_plus=0.0,
+                    y_plus_minus=0.0,
+                    y_minus_plus=0.0,
+                    y_minus_minus=0.0,
+                ),
+                mean_reversion_fitted_parameters=MeanReversionFittedParameters(
+                    kappa=0.0,
+                    anchor_model=MeanReversionAnchorModel.endogenous_core_expectation_one_interval(),
+                ),
+                observed_boundary_state=MeanReversionBoundaryState(
+                    observed_log_price=0.0,
+                    anchor_value=0.0,
+                    deviation=0.0,
+                ),
             ),
             model_parameters=VanillaOptionPricingModelParameters(
                 hawkes_kernel_parameters=HawkesKernelParameters(
@@ -604,10 +657,7 @@ def _valid_pricing_execution_input() -> VanillaOptionPricingExecutionInput:
                         minus_minus=0.1,
                     ),
                 ),
-                gamma_severity_mark_configuration=GammaSeverityMarkConfiguration(
-                    shape_k=1.8,
-                    scale_theta=0.7,
-                ),
+                news_process_configuration=_valid_news_process_configuration(),
                 nig_shared_plus_shift_configuration=NigSharedPlusShiftConfiguration(
                     alpha=2.3,
                     beta_0=-0.8,
@@ -617,15 +667,50 @@ def _valid_pricing_execution_input() -> VanillaOptionPricingExecutionInput:
                 ),
             ),
         ),
-        interval_factors=VanillaOptionPricingIntervalFactors(
-            s_h=1.0,
-            nu_h_known=0.0,
-            nu_h_surprise=0.0,
+        hourly_factor_contract=build_hourly_factor_contract(
+            request_start_utc_nanos=1_706_882_400_000_000_000,
+            s_h=(1.0,),
+            known_component_nu_h=(0.0,),
+            surprise_component_nu_h=(0.0,),
         ),
         optional_output_selection=VanillaOptionPricingOptionalOutputSelection(
             include_transform_diagnostics=True,
             include_integration_quality_diagnostics=True,
             include_calibration_hooks=True,
+        ),
+    )
+
+
+def _valid_news_process_configuration() -> NewsProcessConfiguration:
+    return NewsProcessConfiguration(
+        schema_version="news.process.configuration.v1",
+        arrivals=NewsArrivalConfiguration(
+            known=KnownNewsArrivalConfiguration(
+                scheduled_event_timestamps_utc_nanos=(),
+            ),
+            surprise=SurpriseNewsArrivalConfiguration(
+                baseline_intensity=0.75,
+            ),
+        ),
+        shared_mark_law=SharedNewsMarkLawConfiguration(
+            gamma_severity_marks=GammaSeverityMarkConfiguration(
+                shape_k=1.8,
+                scale_theta=0.7,
+            ),
+            double_exponential_base_shock=DoubleExponentialBaseShockConfiguration(
+                probability_positive=0.35,
+                eta_plus=2.1,
+                eta_minus=3.0,
+            ),
+            coupled_gap_marks=CoupledGapMarkConfiguration(sigma_g=0.6),
+        ),
+        known_component_mark_scales=NewsComponentMarkScaleConfiguration(
+            activity_coupling_scale=1.0,
+            return_jump_scale=1.0,
+        ),
+        surprise_component_mark_scales=NewsComponentMarkScaleConfiguration(
+            activity_coupling_scale=1.0,
+            return_jump_scale=1.0,
         ),
     )
 

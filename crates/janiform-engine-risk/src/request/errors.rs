@@ -27,6 +27,15 @@ pub enum SufficientStatisticsRiskRunRequestError {
         requested_interval_count: usize,
         available_interval_count: usize,
     },
+    MeanReversionRuntimeAnchorIntervalCountMismatch {
+        expected_interval_count: usize,
+        observed_interval_count: usize,
+    },
+    MeanReversionRuntimeAnchorIntervalDeltaMismatch {
+        interval_index: usize,
+        expected_interval_delta: f64,
+        observed_interval_delta: f64,
+    },
 }
 
 impl Display for SufficientStatisticsRiskRunRequestError {
@@ -59,6 +68,21 @@ impl Display for SufficientStatisticsRiskRunRequestError {
             } => write!(
                 formatter,
                 "horizon_interval_count ({requested_interval_count}) exceeds available interval_factors entries ({available_interval_count})"
+            ),
+            Self::MeanReversionRuntimeAnchorIntervalCountMismatch {
+                expected_interval_count,
+                observed_interval_count,
+            } => write!(
+                formatter,
+                "model_inputs.mean_reversion_runtime_interval_anchors.end_anchor_values must contain {expected_interval_count} entries for the requested horizon, found {observed_interval_count}"
+            ),
+            Self::MeanReversionRuntimeAnchorIntervalDeltaMismatch {
+                interval_index,
+                expected_interval_delta,
+                observed_interval_delta,
+            } => write!(
+                formatter,
+                "model_inputs.mean_reversion_runtime_interval_anchors.interval_deltas[{interval_index}] must equal interval_delta ({expected_interval_delta}), found {observed_interval_delta}"
             ),
         }
     }

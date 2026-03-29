@@ -5,9 +5,10 @@ use janiform_affine_oracle::affine_oracle::{
     solve_exponential_affine_transform_with_optional_settings,
 };
 use janiform_engine_pricing::{
-    DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA, VanillaOptionPayoffConfiguration,
-    VanillaOptionPayoffType, VanillaOptionPricingMarketInputs, VanillaOptionPricingModelParameters,
-    VanillaOptionPricingRequest, build_pricing_transform_input, solve_exponential_affine_transform,
+    AnchoredVanillaOptionPricingBoundaryInput, DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA,
+    VanillaOptionPayoffConfiguration, VanillaOptionPayoffType, VanillaOptionPricingMarketInputs,
+    VanillaOptionPricingModelParameters, VanillaOptionPricingRequest,
+    build_pricing_transform_input, solve_exponential_affine_transform,
     solve_exponential_affine_transform_with_settings,
 };
 use janiform_engine_risk::{
@@ -18,7 +19,15 @@ use janiform_foundations::complex_math::ComplexScalar;
 use janiform_model_kernels::hawkes::{
     HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
 };
-use janiform_model_kernels::news::GammaSeverityMarkConfiguration;
+use janiform_model_kernels::mean_reversion::{
+    MeanReversionBoundaryState, MeanReversionFittedParameters,
+};
+use janiform_model_kernels::news::{
+    CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
+    GammaSeverityMarkConfiguration, KnownNewsArrivalConfiguration, NewsArrivalConfiguration,
+    NewsComponentMarkScaleConfiguration, NewsProcessConfiguration, SharedNewsMarkLawConfiguration,
+    SurpriseNewsArrivalConfiguration,
+};
 
 #[test]
 fn solver_api_contract_is_compatible_across_pricing_and_risk_consumers() {
@@ -124,7 +133,7 @@ fn pricing_pipeline_propagates_interval_delta_to_solver_input() {
     let request_with_non_hourly_delta = build_pricing_request(0.5);
 
     let hourly_transform_input = build_pricing_transform_input(
-        request_with_hourly_default,
+        &request_with_hourly_default,
         ComplexScalar::new(0.2, -0.1),
         ComplexScalar::new(0.3, 0.05),
         ComplexScalar::new(1.0, 0.0),
@@ -134,8 +143,9 @@ fn pricing_pipeline_propagates_interval_delta_to_solver_input() {
             .expect("hourly test news intensity should construct"),
     )
     .expect("hourly pricing transform input should build");
+
     let non_hourly_transform_input = build_pricing_transform_input(
-        request_with_non_hourly_delta,
+        &request_with_non_hourly_delta,
         ComplexScalar::new(0.2, -0.1),
         ComplexScalar::new(0.3, 0.05),
         ComplexScalar::new(1.0, 0.0),
@@ -216,6 +226,13 @@ fn build_transform_input(delta: f64) -> ExponentialAffineTransformInput {
 }
 
 fn build_pricing_request(interval_delta: f64) -> VanillaOptionPricingRequest {
+    let boundary_state = HawkesExcitationState {
+        y_plus_plus: 0.4,
+        y_plus_minus: 0.2,
+        y_minus_plus: 0.3,
+        y_minus_minus: 0.5,
+    };
+
     let model_parameters = VanillaOptionPricingModelParameters::try_new(
         HawkesKernelParameters::try_new(
             0.8,
@@ -234,8 +251,32 @@ fn build_pricing_request(interval_delta: f64) -> VanillaOptionPricingRequest {
             },
         )
         .expect("pricing fixture hawkes kernel parameters should construct"),
-        GammaSeverityMarkConfiguration::try_new(1.8, 0.9)
-            .expect("pricing fixture gamma mark configuration should construct"),
+        NewsProcessConfiguration::try_new(
+            NewsArrivalConfiguration {
+                known: KnownNewsArrivalConfiguration {
+                    scheduled_event_timestamps_utc_nanos: vec![],
+                },
+                surprise: SurpriseNewsArrivalConfiguration {
+                    baseline_intensity: 0.0,
+                },
+            },
+            SharedNewsMarkLawConfiguration {
+                gamma_severity_marks: GammaSeverityMarkConfiguration::new(1.8, 0.9),
+                double_exponential_base_shock: DoubleExponentialBaseShockConfiguration::new(
+                    0.35, 2.1, 3.0,
+                ),
+                coupled_gap_marks: CoupledGapMarkConfiguration::new(0.6),
+            },
+            NewsComponentMarkScaleConfiguration {
+                activity_coupling_scale: 1.0,
+                return_jump_scale: 1.0,
+            },
+            NewsComponentMarkScaleConfiguration {
+                activity_coupling_scale: 1.0,
+                return_jump_scale: 1.0,
+            },
+        )
+        .expect("pricing fixture news process configuration should construct"),
         janiform_model_kernels::nig::NigSharedPlusShiftConfiguration::try_new(
             2.3, -0.8, 0.7, 0.1, -0.2,
         )
@@ -249,12 +290,16 @@ fn build_pricing_request(interval_delta: f64) -> VanillaOptionPricingRequest {
         VanillaOptionPayoffConfiguration {
             payoff_type: VanillaOptionPayoffType::Call,
         },
-        HawkesExcitationState {
-            y_plus_plus: 0.4,
-            y_plus_minus: 0.2,
-            y_minus_plus: 0.3,
-            y_minus_minus: 0.5,
-        },
+        AnchoredVanillaOptionPricingBoundaryInput::try_new(
+            0,
+            boundary_state,
+            MeanReversionFittedParameters::endogenous_core_expectation_one_interval(0.0)
+                .expect("zero-kappa endogenous fitted parameters should construct"),
+            interval_delta,
+            MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0)
+                .expect("zero observed boundary state should construct"),
+        )
+        .expect("endogenous anchored boundary input should construct"),
         model_parameters,
         interval_delta,
     )

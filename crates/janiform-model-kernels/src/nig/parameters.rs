@@ -39,6 +39,39 @@ pub struct NigParameters {
 }
 
 impl NigParameters {
+    /// Evaluate the first moment of one business-time increment.
+    ///
+    /// For increment scale `a`, the mean is:
+    /// `a * (mu + delta * beta / sqrt(alpha^2 - beta^2))`.
+    pub fn expected_increment(
+        self,
+        business_time_increment_scale: f64,
+    ) -> Result<f64, NigIncrementSamplingError> {
+        if !business_time_increment_scale.is_finite() || business_time_increment_scale < 0.0 {
+            return Err(
+                NigIncrementSamplingError::InvalidBusinessTimeIncrementScale {
+                    value: business_time_increment_scale,
+                },
+            );
+        }
+
+        if business_time_increment_scale == 0.0 {
+            return Ok(0.0);
+        }
+
+        let gamma = stable_gamma(self.alpha, self.beta);
+
+        let expected_increment =
+            business_time_increment_scale * (self.mu + self.delta * self.beta / gamma);
+        if !expected_increment.is_finite() {
+            return Err(NigIncrementSamplingError::NonFiniteIncrementDraw {
+                business_time_increment_scale,
+            });
+        }
+
+        Ok(expected_increment)
+    }
+
     /// Evaluate the NIG characteristic exponent for a complex argument.
     ///
     /// Parameter mapping follows the model notation \f$(\alpha,\beta,\delta,\mu)\f$:
@@ -189,6 +222,7 @@ impl NigParameters {
             ComplexScalar::new(alpha_squared, 0.0).subtract(beta_plus_imaginary_argument.square());
 
         radicand_norm = radicand.norm();
+
         radicand_warning_threshold =
             compute_radicand_warning_threshold(self.alpha, beta_plus_imaginary_argument);
 
@@ -206,6 +240,7 @@ impl NigParameters {
         }
 
         let square_root_term = principal_branch_square_root(radicand);
+
         let gamma = stable_gamma(self.alpha, self.beta);
         if !gamma.is_finite() {
             push_guardrail_event(
@@ -238,8 +273,10 @@ impl NigParameters {
         }
 
         let direct_difference = ComplexScalar::new(gamma, 0.0).subtract(square_root_term);
+
         let cancellation_scale = (gamma.abs() + square_root_term.norm()).max(f64::MIN_POSITIVE);
         cancellation_ratio = direct_difference.norm() / cancellation_scale;
+
         let mut gamma_minus_square_root = direct_difference;
 
         if cancellation_ratio <= NIG_CANCELLATION_WARNING_THRESHOLD {
@@ -277,6 +314,7 @@ impl NigParameters {
         let location_term =
             ComplexScalar::new(-self.mu * argument.imaginary, self.mu * argument.real);
         let shape_term = gamma_minus_square_root.scale(self.delta);
+
         let value = location_term.add(shape_term);
 
         if !value.is_finite() {
@@ -343,7 +381,9 @@ impl NigParameters {
 
         let scaled_delta = self.delta * business_time_increment_scale;
         let scaled_mu = self.mu * business_time_increment_scale;
+
         let gamma = stable_gamma(self.alpha, self.beta);
+
         let inverse_gaussian_mean = scaled_delta / gamma;
         let inverse_gaussian_shape = scaled_delta * scaled_delta;
 

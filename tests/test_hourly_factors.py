@@ -3,6 +3,7 @@ from typing import Any
 
 import pytest
 
+from janiform._timestamps import ONE_HOUR_NANOS
 from janiform.calendar import CalendarMissingExchangeError, CalendarRegistry
 from janiform.hourly_factors import (
     DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD,
@@ -29,9 +30,6 @@ from janiform.hourly_factors import (
     materialize_hourly_seasonality_factors,
 )
 from janiform.seasonality import SeasonalityInputValidationError
-
-ONE_HOUR_NANOS: int = 3_600_000_000_000
-
 
 def test_build_hourly_factor_contract_exposes_required_schema_fields_and_types(
     calendar_registry: CalendarRegistry,
@@ -61,6 +59,8 @@ def test_build_hourly_factor_contract_exposes_required_schema_fields_and_types(
     assert isinstance(contract.interval_end_utc_nanos[0], int)
     assert isinstance(contract.interval_start_exchange_local[0], str)
     assert isinstance(contract.s_h[0], float)
+    assert isinstance(contract.known_component_nu_h[0], float)
+    assert isinstance(contract.surprise_component_nu_h[0], float)
     assert isinstance(contract.nu_h[0], float)
     assert isinstance(contract.skipped_local_hour_interval_count, int)
     assert isinstance(contract.repeated_local_hour_interval_count, int)
@@ -545,6 +545,8 @@ def _contract_snapshot(contract: HourlyFactorContract) -> dict[str, Any]:
         "interval_start_exchange_local": list(contract.interval_start_exchange_local),
         "interval_end_exchange_local": list(contract.interval_end_exchange_local),
         "s_h": list(contract.s_h),
+        "known_component_nu_h": list(contract.known_component_nu_h),
+        "surprise_component_nu_h": list(contract.surprise_component_nu_h),
         "nu_h": list(contract.nu_h),
         "interval_count": contract.interval_count,
         "first_interval_start_utc_nanos": contract.first_interval_start_utc_nanos,

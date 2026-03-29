@@ -1,3 +1,5 @@
+"""Public coarse-interval simulation ownership surface."""
+
 from .news import (
     CoupledGapMarkConfiguration,
     DoubleExponentialBaseShockConfiguration,

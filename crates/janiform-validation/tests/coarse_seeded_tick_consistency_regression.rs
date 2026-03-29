@@ -8,7 +8,8 @@ use janiform_engine_risk::{
 };
 use janiform_engine_simulation::{
     CoarseSimulationModelInputs, CoarseSimulationPath, CoarseSimulationPathRecord,
-    CoarseSimulationRunRequest, SeededTickEventStateSnapshotCapture,
+    CoarseSimulationRunRequest, MeanReversionBoundaryState, MeanReversionFittedParameters,
+    MeanReversionRuntimeIntervalAnchors, SeededTickEventStateSnapshotCapture,
     SeededTickSimulationDebugTraceOptions, SeededTickSimulationModelInputs,
     SeededTickSimulationRunConfig, SeededTickSimulationRunOptions, run_coarse_simulation,
     run_seeded_tick_event_simulation,
@@ -36,6 +37,10 @@ use janiform_model_kernels::news::{
     SurpriseNewsArrivalConfiguration,
 };
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
+use janiform_test_support::simulation_regression::{
+    ONE_HOUR_NANOS, count_timestamps_in_half_open_interval, interval_delta_hours_to_nanos,
+    population_standard_deviation, timestamp_utc_nanos,
+};
 use janiform_validation::{
     COARSE_SEEDED_TICK_CONSISTENCY_REPORT_SCHEMA_VERSION,
     COARSE_SEEDED_TICK_CONSISTENCY_THRESHOLDS_SCHEMA_VERSION,
@@ -45,8 +50,6 @@ use janiform_validation::{
     aggregate_seeded_tick_run_to_coarse_comparable_path,
     build_coarse_seeded_tick_consistency_report,
 };
-
-const ONE_HOUR_NANOS: i64 = 3_600_000_000_000;
 
 #[test]
 fn seeded_tick_aggregation_matches_coarse_interval_boundaries_and_routing_presence() {
@@ -123,7 +126,9 @@ fn coarse_seeded_tick_regression_report_passes_for_hourly_and_non_hourly_referen
         total_return_wasserstein_distance_tolerance: 4.0,
         terminal_state_l1_mean_tolerance: 4.0,
     };
+
     let seed_values = [101_u64, 103, 107, 109, 113, 127, 131, 137];
+
     let hourly_scenario = build_scenario_input(
         "hourly_reference",
         "hourly_grid",
@@ -203,6 +208,7 @@ fn coarse_seeded_tick_regression_report_retains_statistical_agreement_with_surpr
         total_return_wasserstein_distance_tolerance: 4.0,
         terminal_state_l1_mean_tolerance: 4.0,
     };
+
     let paired_paths = [151_u64, 157, 163, 167, 173, 179]
         .into_iter()
         .map(|seed| build_paired_path(seed, 1.0, 0.25, 4, 0.25))
@@ -259,12 +265,13 @@ fn coarse_fifteen_minute_returns_do_not_exhibit_surrogate_sampling_dispersion_bl
                 .aggregated_fine_path
                 .records
                 .iter()
-                .map(|record| record.total_return)
+                .map(|record| record.observed_interval_return)
         })
         .collect::<Vec<_>>();
 
-    let coarse_standard_deviation = sample_standard_deviation(&coarse_returns);
-    let aggregated_fine_standard_deviation = sample_standard_deviation(&aggregated_fine_returns);
+    let coarse_standard_deviation = population_standard_deviation(&coarse_returns);
+    let aggregated_fine_standard_deviation =
+        population_standard_deviation(&aggregated_fine_returns);
     let standard_deviation_ratio = coarse_standard_deviation / aggregated_fine_standard_deviation;
 
     assert!(
@@ -276,8 +283,10 @@ fn coarse_fifteen_minute_returns_do_not_exhibit_surrogate_sampling_dispersion_bl
 #[test]
 fn coarse_seeded_tick_regression_report_is_machine_readable_stable_and_diagnostic() {
     let thresholds = CoarseSeededTickConsistencyThresholds::default();
+
     let paired_path = build_paired_path(211, 1.0, 0.25, 4, 0.0);
     let drifted_coarse_path = with_open_jump_override(&paired_path.coarse_path, 0, 0.0);
+
     let failing_report = build_coarse_seeded_tick_consistency_report(
         &[CoarseSeededTickConsistencyScenarioInput {
             scenario_id: "direct_jump_drift".to_string(),
@@ -290,6 +299,7 @@ fn coarse_seeded_tick_regression_report_is_machine_readable_stable_and_diagnosti
         thresholds,
     )
     .expect("failing report should build");
+
     let repeated_report = build_coarse_seeded_tick_consistency_report(
         &[CoarseSeededTickConsistencyScenarioInput {
             scenario_id: "direct_jump_drift".to_string(),
@@ -381,6 +391,7 @@ fn build_paired_path(
         timestamp_utc_nanos("2024-01-22T20:15:00Z"),
         timestamp_utc_nanos("2024-01-22T21:15:00Z"),
     ];
+
     let interval_fixture = build_interval_fixture(
         start_time_utc_nanos,
         coarse_interval_delta,
@@ -389,15 +400,21 @@ fn build_paired_path(
         surprise_intensity,
         &known_news_timestamps_utc_nanos,
     );
+
     let coarse_run_request = CoarseSimulationRunRequest::try_new(
         seed,
         start_time_utc_nanos,
         coarse_interval_count,
         coarse_interval_delta,
-        build_coarse_model_inputs(known_news_timestamps_utc_nanos.clone()),
+        build_coarse_model_inputs(
+            known_news_timestamps_utc_nanos.clone(),
+            coarse_interval_count,
+            coarse_interval_delta,
+        ),
         interval_fixture.coarse_interval_factors,
     )
     .expect("coarse run request should construct");
+
     let coarse_path =
         run_coarse_simulation(coarse_run_request).expect("coarse simulation should run");
 
@@ -419,8 +436,10 @@ fn build_paired_path(
         }),
     )
     .expect("seeded run config should construct");
+
     let seeded_run_result = run_seeded_tick_event_simulation(seeded_run_config.clone())
         .expect("seeded run should complete");
+
     let aggregated_fine_path = aggregate_seeded_tick_run_to_coarse_comparable_path(
         &seeded_run_config,
         &seeded_run_result,
@@ -451,8 +470,9 @@ fn build_interval_fixture(
     let fine_subinterval_count_per_coarse_interval =
         (coarse_interval_delta / fine_interval_delta).round() as usize;
     let fine_interval_count = coarse_interval_count * fine_subinterval_count_per_coarse_interval;
-    let fine_interval_delta_nanos = interval_delta_to_nanos(fine_interval_delta);
-    let coarse_interval_delta_nanos = interval_delta_to_nanos(coarse_interval_delta);
+
+    let fine_interval_delta_nanos = interval_delta_hours_to_nanos(fine_interval_delta);
+    let coarse_interval_delta_nanos = interval_delta_hours_to_nanos(coarse_interval_delta);
 
     let fine_interval_start_utc_nanos = (0..fine_interval_count)
         .map(|interval_index| {
@@ -463,25 +483,34 @@ fn build_interval_fixture(
         .iter()
         .map(|interval_start| interval_start + fine_interval_delta_nanos)
         .collect::<Vec<_>>();
-    let combined_fine_nu_h = fine_interval_start_utc_nanos
+
+    let fine_nu_known = fine_interval_start_utc_nanos
         .iter()
         .zip(fine_interval_end_utc_nanos.iter())
         .map(|(interval_start, interval_end)| {
-            surprise_intensity
-                + count_known_news_events(
-                    known_news_timestamps_utc_nanos,
-                    *interval_start,
-                    *interval_end,
-                ) as f64
-                    / fine_interval_delta
+            count_timestamps_in_half_open_interval(
+                known_news_timestamps_utc_nanos,
+                *interval_start,
+                *interval_end,
+            ) as f64
+                / fine_interval_delta
         })
         .collect::<Vec<_>>();
+
+    let fine_nu_surprise = vec![surprise_intensity; fine_interval_count];
+
+    let combined_fine_nu_h = fine_nu_known
+        .iter()
+        .zip(fine_nu_surprise.iter())
+        .map(|(known_intensity, surprise_component)| known_intensity + surprise_component)
+        .collect::<Vec<_>>();
+
     let coarse_nu_known = (0..coarse_interval_count)
         .map(|interval_index| {
             let interval_start = start_time_utc_nanos
                 + (interval_index as i64).saturating_mul(coarse_interval_delta_nanos);
             let interval_end = interval_start + coarse_interval_delta_nanos;
-            count_known_news_events(
+            count_timestamps_in_half_open_interval(
                 known_news_timestamps_utc_nanos,
                 interval_start,
                 interval_end,
@@ -517,6 +546,8 @@ fn build_interval_fixture(
                 })
                 .collect(),
             s_h: vec![1.0; fine_interval_count],
+            known_component_nu_h: fine_nu_known,
+            surprise_component_nu_h: fine_nu_surprise,
             nu_h: combined_fine_nu_h,
             metadata: HourlyFactorMaterializationMetadata {
                 seasonality_materialization_method: DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD
@@ -550,9 +581,11 @@ fn build_interval_fixture(
 
 fn build_coarse_model_inputs(
     known_news_timestamps_utc_nanos: Vec<i64>,
+    interval_count: usize,
+    interval_delta: f64,
 ) -> CoarseSimulationModelInputs {
     CoarseSimulationModelInputs::try_new(
-        build_risk_model_inputs(),
+        build_risk_model_inputs(interval_count, interval_delta),
         build_news_process_configuration(known_news_timestamps_utc_nanos),
         build_calendar_registry_artifact(),
         "XNYS",
@@ -564,9 +597,18 @@ fn build_seeded_model_inputs(
     hourly_factor_contract: HourlyFactorContractOutput,
     known_news_timestamps_utc_nanos: Vec<i64>,
 ) -> SeededTickSimulationModelInputs {
+    let (
+        mean_reversion_fitted_parameters,
+        mean_reversion_runtime_interval_anchors,
+        initial_mean_reversion_boundary_state,
+    ) = disabled_mean_reversion_runtime_inputs(&hourly_factor_contract);
+
     SeededTickSimulationModelInputs {
         kernel_parameters: build_kernel_parameters(),
         initial_excitation_state: default_initial_excitation_state(),
+        mean_reversion_fitted_parameters,
+        mean_reversion_runtime_interval_anchors,
+        initial_mean_reversion_boundary_state,
         hourly_factor_contract,
         calendar_registry: ExchangeCalendarRegistry::from_artifact(
             build_calendar_registry_artifact(),
@@ -582,7 +624,35 @@ fn build_seeded_model_inputs(
     }
 }
 
-fn build_risk_model_inputs() -> SufficientStatisticsRiskModelInputs {
+fn disabled_mean_reversion_runtime_inputs(
+    hourly_factor_contract: &HourlyFactorContractOutput,
+) -> (
+    MeanReversionFittedParameters,
+    MeanReversionRuntimeIntervalAnchors,
+    MeanReversionBoundaryState,
+) {
+    (
+        MeanReversionFittedParameters::endogenous_core_expectation_one_interval(0.0)
+            .expect("zero-kappa endogenous mean reversion should construct"),
+        MeanReversionRuntimeIntervalAnchors::try_new(
+            hourly_factor_contract.metadata.interval_alignment_policy,
+            0.0,
+            vec![0.0; hourly_factor_contract.interval_indices.len()],
+            vec![
+                hourly_factor_contract.interval_duration_nanos as f64 / ONE_HOUR_NANOS as f64;
+                hourly_factor_contract.interval_indices.len()
+            ],
+        )
+        .expect("disabled mean-reversion runtime anchors should construct"),
+        MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0)
+            .expect("disabled mean-reversion boundary state should construct"),
+    )
+}
+
+fn build_risk_model_inputs(
+    interval_count: usize,
+    interval_delta: f64,
+) -> SufficientStatisticsRiskModelInputs {
     SufficientStatisticsRiskModelInputs::try_new(
         ExponentialAffineTransformEquationSpecification::try_new(
             build_kernel_parameters(),
@@ -593,6 +663,17 @@ fn build_risk_model_inputs() -> SufficientStatisticsRiskModelInputs {
         NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
             .expect("nig configuration should construct"),
         default_initial_excitation_state(),
+        MeanReversionFittedParameters::endogenous_core_expectation_one_interval(0.0)
+            .expect("zero-kappa endogenous mean reversion should construct"),
+        MeanReversionRuntimeIntervalAnchors::try_new(
+            "explicit_runtime_interval_grid_alignment.v1",
+            0.0,
+            vec![0.0; interval_count],
+            vec![interval_delta; interval_count],
+        )
+        .expect("disabled mean-reversion runtime anchors should construct"),
+        MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0)
+            .expect("disabled mean-reversion boundary state should construct"),
     )
     .expect("risk model inputs should construct")
 }
@@ -721,57 +802,20 @@ fn build_calendar_registry_artifact() -> ExchangeCalendarRegistryArtifact {
     }
 }
 
-fn count_known_news_events(
-    known_news_timestamps_utc_nanos: &[i64],
-    interval_start_utc_nanos: i64,
-    interval_end_utc_nanos: i64,
-) -> usize {
-    known_news_timestamps_utc_nanos
-        .iter()
-        .filter(|timestamp_utc_nanos| {
-            **timestamp_utc_nanos >= interval_start_utc_nanos
-                && **timestamp_utc_nanos < interval_end_utc_nanos
-        })
-        .count()
-}
-
-fn interval_delta_to_nanos(interval_delta: f64) -> i64 {
-    (interval_delta * ONE_HOUR_NANOS as f64).round() as i64
-}
-
-fn sample_standard_deviation(values: &[f64]) -> f64 {
-    let mean = values.iter().sum::<f64>() / values.len() as f64;
-    let variance = values
-        .iter()
-        .map(|value| {
-            let centered = value - mean;
-            centered * centered
-        })
-        .sum::<f64>()
-        / values.len() as f64;
-
-    variance.sqrt()
-}
-
-fn timestamp_utc_nanos(raw_timestamp_utc: &str) -> i64 {
-    DateTime::parse_from_rfc3339(raw_timestamp_utc)
-        .expect("fixture timestamp must be RFC3339")
-        .with_timezone(&Utc)
-        .timestamp_nanos_opt()
-        .expect("fixture timestamp must be in nanosecond range")
-}
-
 fn with_open_jump_override(
     coarse_path: &CoarseSimulationPath,
     interval_index: usize,
     open_jump_return: f64,
 ) -> CoarseSimulationPath {
     let mut records = coarse_path.records.clone();
+
     let original_record = &records[interval_index];
     let original_components = original_record.return_components;
+
     let updated_total_return = original_components.trading_time_return
         + open_jump_return
         + original_components.closed_gap_return;
+
     let updated_return_components = SufficientStatisticsRiskReturnComponents::try_new(
         original_components.buy_side_return,
         original_components.sell_side_return,
@@ -781,12 +825,18 @@ fn with_open_jump_override(
         updated_total_return,
     )
     .expect("updated return components should validate");
+
     records[interval_index] = CoarseSimulationPathRecord::try_new(
         original_record.interval_index,
         original_record.interval_start_utc_nanos,
         original_record.interval_end_utc_nanos,
         original_record.sufficient_statistics,
         updated_return_components,
+        updated_total_return,
+        original_record.observed_interval_return,
+        original_record.observed_log_price_end,
+        original_record.anchor_value_end,
+        original_record.deviation_from_anchor_end,
     )
     .expect("updated coarse path record should validate");
 

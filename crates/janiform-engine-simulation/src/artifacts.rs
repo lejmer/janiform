@@ -51,6 +51,10 @@ pub struct SeededTickEventRecord {
     pub event_index: u64,
     pub timestamp_utc_nanos: i64,
     pub side: SeededTickEventSide,
+    pub core_total_return_increment: f64,
+    pub observed_log_price: f64,
+    pub anchor_value: f64,
+    pub deviation_from_anchor: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub state_snapshot: Option<SeededTickEventStateSnapshot>,
 }
@@ -91,7 +95,11 @@ pub struct SeededFinePathRecord {
     pub news_arrival_component: Option<NewsArrivalComponent>,
     pub market_state: SeededTickSimulationNewsEventMarketState,
     pub return_components: SufficientStatisticsRiskReturnComponents,
-    pub cumulative_log_return: f64,
+    pub core_total_return_increment: f64,
+    pub observed_log_price: f64,
+    pub anchor_value: f64,
+    pub deviation_from_anchor: f64,
+    pub cumulative_core_log_return: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub state_snapshot: Option<SeededTickEventStateSnapshot>,
 }
@@ -274,7 +282,7 @@ pub struct SeededTickSimulationRunResult {
     pub event_transition_positions: Vec<usize>,
     pub final_excitation_state: HawkesExcitationState,
     pub news_routing_totals: SeededTickSimulationNewsRoutingTotals,
-    pub cumulative_log_return: f64,
+    pub cumulative_core_log_return: f64,
     pub debug_trace_enabled: bool,
     pub debug_trace_output: Option<SeededTickEventDebugTraceOutput>,
 }
@@ -345,6 +353,10 @@ impl SeededTickSimulationRunResult {
             event_index: event_index as u64,
             timestamp_utc_nanos: fine_path_record.timestamp_utc_nanos,
             side,
+            core_total_return_increment: fine_path_record.core_total_return_increment,
+            observed_log_price: fine_path_record.observed_log_price,
+            anchor_value: fine_path_record.anchor_value,
+            deviation_from_anchor: fine_path_record.deviation_from_anchor,
             state_snapshot: fine_path_record.state_snapshot,
         })
     }

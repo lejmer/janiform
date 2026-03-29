@@ -87,18 +87,14 @@ reconstruction rules beyond the required start anchor.
 
 ## Factor Alignment Rules
 
-The coarse workflow reuses the lower-level deterministic factor payload:
-
-- `SufficientStatisticsRiskIntervalFactors`
+The coarse workflow now reuses the shared native-backed `HourlyFactorContract` artifact.
 
 Alignment is validated by:
 
-- requiring `interval_delta == interval_factors.interval_delta`
-- requiring `horizon_interval_count <= interval_factors.s_h.len()`
-- interpreting `interval_factors` row `0` as aligned to the requested
-  `start_time_utc_nanos`
-- requiring `interval_factors.nu_h_known * Delta` to match the count of known scheduled
-  news timestamps that fall inside each requested interval
+- requiring `hourly_factor_contract.interval_duration_nanos` to match `interval_delta`
+- requiring `horizon_interval_count <= hourly_factor_contract.interval_count`
+- requiring `hourly_factor_contract.first_interval_start_utc_nanos == start_time_utc_nanos`
+- interpreting artifact row `0` as aligned to the requested `start_time_utc_nanos`
 - rejecting implicit factor interpolation or resampling
 
 Policy identifiers:

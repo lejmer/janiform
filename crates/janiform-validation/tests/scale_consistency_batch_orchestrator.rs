@@ -12,6 +12,9 @@ use janiform_engine_risk::{
 use janiform_model_kernels::hawkes::{
     HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
 };
+use janiform_model_kernels::mean_reversion::{
+    MeanReversionBoundaryState, MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors,
+};
 use janiform_model_kernels::news::GammaSeverityMarkConfiguration;
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 use janiform_validation::{
@@ -592,6 +595,17 @@ fn build_model_inputs() -> SufficientStatisticsRiskModelInputs {
             y_minus_plus: 0.03,
             y_minus_minus: 0.04,
         },
+        MeanReversionFittedParameters::endogenous_core_expectation_one_interval(0.0)
+            .expect("zero-kappa endogenous mean reversion should construct"),
+        MeanReversionRuntimeIntervalAnchors::try_new(
+            "explicit_runtime_interval_grid_alignment.v1",
+            0.0,
+            vec![0.0; 2],
+            vec![1.0; 2],
+        )
+        .expect("disabled mean-reversion runtime anchors should construct"),
+        MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0)
+            .expect("disabled mean-reversion boundary state should construct"),
     )
     .expect("model inputs should validate")
 }

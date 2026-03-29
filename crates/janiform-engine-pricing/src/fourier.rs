@@ -7,6 +7,7 @@ use serde::Serialize;
 
 use janiform_foundations::complex_math::ComplexScalar;
 use janiform_foundations::complex_math::complex_multiply;
+use janiform_foundations::numeric::validate_positive_number;
 
 use super::constants::{
     DEFAULT_FOURIER_INVERSION_CONVERGENCE_ABSOLUTE_TOLERANCE,
@@ -323,11 +324,7 @@ impl Display for FourierInversionIntegrationStabilityControlsError {
 impl Error for FourierInversionIntegrationStabilityControlsError {}
 
 fn validate_positive_finite_tolerance(value: f64) -> Result<(), f64> {
-    if !value.is_finite() || value <= 0.0 {
-        return Err(value);
-    }
-
-    Ok(())
+    validate_positive_number(value, "tolerance").map_err(|source| source.value)
 }
 
 /// Full configuration payload for vanilla-option Fourier inversion.

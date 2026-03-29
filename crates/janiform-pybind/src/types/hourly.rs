@@ -9,7 +9,7 @@ use pyo3::{pyclass, pymethods};
 #[derive(Clone)]
 pub(crate) struct PyHourlyFactorContractResult {
     pub(crate) output: HourlyFactorContractOutput,
-    pub(crate) calendar_registry: ExchangeCalendarRegistry,
+    pub(crate) calendar_registry: Option<ExchangeCalendarRegistry>,
 }
 
 #[pyclass(
@@ -90,6 +90,16 @@ impl PyHourlyFactorContractResult {
     #[getter]
     fn s_h(&self) -> Vec<f64> {
         self.output.s_h.clone()
+    }
+
+    #[getter]
+    fn known_component_nu_h(&self) -> Vec<f64> {
+        self.output.known_component_nu_h.clone()
+    }
+
+    #[getter]
+    fn surprise_component_nu_h(&self) -> Vec<f64> {
+        self.output.surprise_component_nu_h.clone()
     }
 
     #[getter]

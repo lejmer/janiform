@@ -60,9 +60,28 @@
                 }
               },
               "type": "object"
+            },
+            {
+              "fields": {
+                "checkpoint_reference": {
+                  "type": "string"
+                },
+                "completed_stage": {
+                  "type": "string",
+                  "value": "mean_reversion"
+                },
+                "completed_stage_position": {
+                  "type": "int"
+                },
+                "execution_mode": {
+                  "type": "string",
+                  "value": "memory"
+                }
+              },
+              "type": "object"
             }
           ],
-          "length": 3,
+          "length": 4,
           "type": "array"
         },
         "execution_mode": {
@@ -183,9 +202,40 @@
                 }
               },
               "type": "object"
+            },
+            {
+              "fields": {
+                "execution_mode": {
+                  "type": "string",
+                  "value": "memory"
+                },
+                "failure": {
+                  "type": "null"
+                },
+                "handoff_policy": {
+                  "type": "string",
+                  "value": "explicit_run_spec_handoffs_mode_aware_transport.v1"
+                },
+                "run_id": {
+                  "type": "string"
+                },
+                "stage": {
+                  "type": "string",
+                  "value": "mean_reversion"
+                },
+                "stage_report_kind": {
+                  "type": "string",
+                  "value": "mean_reversion"
+                },
+                "status": {
+                  "type": "string",
+                  "value": "success"
+                }
+              },
+              "type": "object"
             }
           ],
-          "length": 3,
+          "length": 4,
           "type": "array"
         },
         "started_from_stage": {
@@ -258,9 +308,28 @@
                 }
               },
               "type": "object"
+            },
+            {
+              "fields": {
+                "checkpoint_reference": {
+                  "type": "string"
+                },
+                "completed_stage": {
+                  "type": "string",
+                  "value": "mean_reversion"
+                },
+                "completed_stage_position": {
+                  "type": "int"
+                },
+                "execution_mode": {
+                  "type": "string",
+                  "value": "disk"
+                }
+              },
+              "type": "object"
             }
           ],
-          "length": 3,
+          "length": 4,
           "type": "array"
         },
         "execution_mode": {
@@ -381,9 +450,40 @@
                 }
               },
               "type": "object"
+            },
+            {
+              "fields": {
+                "execution_mode": {
+                  "type": "string",
+                  "value": "disk"
+                },
+                "failure": {
+                  "type": "null"
+                },
+                "handoff_policy": {
+                  "type": "string",
+                  "value": "explicit_run_spec_handoffs_mode_aware_transport.v1"
+                },
+                "run_id": {
+                  "type": "string"
+                },
+                "stage": {
+                  "type": "string",
+                  "value": "mean_reversion"
+                },
+                "stage_report_kind": {
+                  "type": "string",
+                  "value": "mean_reversion"
+                },
+                "status": {
+                  "type": "string",
+                  "value": "success"
+                }
+              },
+              "type": "object"
             }
           ],
-          "length": 3,
+          "length": 4,
           "type": "array"
         },
         "started_from_stage": {
@@ -603,9 +703,13 @@
                 {
                   "type": "string",
                   "value": "integration_quality"
+                },
+                {
+                  "type": "string",
+                  "value": "anchored_recursion"
                 }
               ],
-              "length": 3,
+              "length": 4,
               "type": "array"
             },
             "required_run_result_fields": {
@@ -676,6 +780,112 @@
         },
         "run_diagnostics": {
           "fields": {
+            "anchored_recursion": {
+              "fields": {
+                "continuation_recursion_policy": {
+                  "type": "string"
+                },
+                "deviation_grid_lower_bound": {
+                  "type": "float"
+                },
+                "deviation_grid_node_count": {
+                  "type": "int"
+                },
+                "deviation_grid_policy": {
+                  "type": "string"
+                },
+                "deviation_grid_upper_bound": {
+                  "type": "float"
+                },
+                "expected_hawkes_state_update_policy": {
+                  "type": "string"
+                },
+                "interval_diagnostics": {
+                  "item_profiles": [
+                    {
+                      "fields": {
+                        "current_anchor_value": {
+                          "type": "float"
+                        },
+                        "expected_hawkes_boundary_state_after": {
+                          "fields": {
+                            "y_minus_minus": {
+                              "type": "float"
+                            },
+                            "y_minus_plus": {
+                              "type": "float"
+                            },
+                            "y_plus_minus": {
+                              "type": "float"
+                            },
+                            "y_plus_plus": {
+                              "type": "float"
+                            }
+                          },
+                          "type": "object"
+                        },
+                        "expected_hawkes_boundary_state_before": {
+                          "fields": {
+                            "y_minus_minus": {
+                              "type": "float"
+                            },
+                            "y_minus_plus": {
+                              "type": "float"
+                            },
+                            "y_plus_minus": {
+                              "type": "float"
+                            },
+                            "y_plus_plus": {
+                              "type": "float"
+                            }
+                          },
+                          "type": "object"
+                        },
+                        "interval_delta": {
+                          "type": "float"
+                        },
+                        "interval_index": {
+                          "type": "int"
+                        },
+                        "local_tilt_solve_diagnostics": {
+                          "item_profiles": [],
+                          "length": 0,
+                          "type": "array"
+                        },
+                        "maximum_row_probability_mass_error": {
+                          "type": "float"
+                        },
+                        "maximum_solved_theta": {
+                          "type": "float"
+                        },
+                        "maximum_tail_probability_mass": {
+                          "type": "float"
+                        },
+                        "minimum_solved_theta": {
+                          "type": "float"
+                        },
+                        "next_anchor_value": {
+                          "type": "float"
+                        }
+                      },
+                      "type": "object"
+                    }
+                  ],
+                  "length": 1,
+                  "type": "array"
+                },
+                "refined_deviation_grid_node_count": {
+                  "type": "int"
+                },
+                "refinement_absolute_difference": {
+                  "type": "float"
+                },
+                "refinement_relative_difference": {
+                  "type": "float"
+                }
+              },
+              "type": "object"
+            },
             "integration_quality": {
               "fields": {
                 "absolute_integral_estimate": {
@@ -1086,9 +1296,13 @@
                 {
                   "type": "string",
                   "value": "integration_quality"
+                },
+                {
+                  "type": "string",
+                  "value": "anchored_recursion"
                 }
               ],
-              "length": 3,
+              "length": 4,
               "type": "array"
             },
             "required_run_result_fields": {
@@ -1215,8 +1429,20 @@
           "item_profiles": [
             {
               "fields": {
+                "anchor_value": {
+                  "type": "float"
+                },
+                "core_total_return_increment": {
+                  "type": "float"
+                },
+                "deviation_from_anchor": {
+                  "type": "float"
+                },
                 "event_index": {
                   "type": "int"
+                },
+                "observed_log_price": {
+                  "type": "float"
                 },
                 "side": {
                   "type": "string"
@@ -1274,7 +1500,16 @@
           "item_profiles": [
             {
               "fields": {
-                "cumulative_log_return": {
+                "anchor_value": {
+                  "type": "float"
+                },
+                "core_total_return_increment": {
+                  "type": "float"
+                },
+                "cumulative_core_log_return": {
+                  "type": "float"
+                },
+                "deviation_from_anchor": {
                   "type": "float"
                 },
                 "market_state": {
@@ -1282,6 +1517,9 @@
                 },
                 "news_arrival_component": {
                   "type": "null"
+                },
+                "observed_log_price": {
+                  "type": "float"
                 },
                 "return_components": {
                   "fields": {
@@ -1326,7 +1564,16 @@
             },
             {
               "fields": {
-                "cumulative_log_return": {
+                "anchor_value": {
+                  "type": "float"
+                },
+                "core_total_return_increment": {
+                  "type": "float"
+                },
+                "cumulative_core_log_return": {
+                  "type": "float"
+                },
+                "deviation_from_anchor": {
                   "type": "float"
                 },
                 "market_state": {
@@ -1334,6 +1581,9 @@
                 },
                 "news_arrival_component": {
                   "type": "null"
+                },
+                "observed_log_price": {
+                  "type": "float"
                 },
                 "return_components": {
                   "fields": {
@@ -1468,8 +1718,20 @@
           "item_profiles": [
             {
               "fields": {
+                "anchor_value": {
+                  "type": "float"
+                },
+                "core_total_return_increment": {
+                  "type": "float"
+                },
+                "deviation_from_anchor": {
+                  "type": "float"
+                },
                 "event_index": {
                   "type": "int"
+                },
+                "observed_log_price": {
+                  "type": "float"
                 },
                 "side": {
                   "type": "string"
@@ -1527,7 +1789,16 @@
           "item_profiles": [
             {
               "fields": {
-                "cumulative_log_return": {
+                "anchor_value": {
+                  "type": "float"
+                },
+                "core_total_return_increment": {
+                  "type": "float"
+                },
+                "cumulative_core_log_return": {
+                  "type": "float"
+                },
+                "deviation_from_anchor": {
                   "type": "float"
                 },
                 "market_state": {
@@ -1535,6 +1806,9 @@
                 },
                 "news_arrival_component": {
                   "type": "null"
+                },
+                "observed_log_price": {
+                  "type": "float"
                 },
                 "return_components": {
                   "fields": {

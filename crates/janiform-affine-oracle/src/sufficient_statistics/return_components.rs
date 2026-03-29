@@ -1,3 +1,4 @@
+use janiform_foundations::numeric::validate_finite_number;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -93,10 +94,7 @@ fn validate_finite_component(
     field: &'static str,
     value: f64,
 ) -> Result<(), SufficientStatisticsRiskReturnComponentsError> {
-    if !value.is_finite() {
-        return Err(
-            SufficientStatisticsRiskReturnComponentsError::InvalidFiniteComponent { field, value },
-        );
-    }
-    Ok(())
+    validate_finite_number(value, field).map_err(|_| {
+        SufficientStatisticsRiskReturnComponentsError::InvalidFiniteComponent { field, value }
+    })
 }

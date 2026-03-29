@@ -23,7 +23,7 @@ dD_t = -\kappa D_t\,dt + dX_t^{\mathrm{JF}} - dA_t,
 
 `A_t` is the anchor and `D_t` is deviation from anchor.
 
-To make the rollout executable across seeded simulation, coarse simulation, risk generation, calibration, and exports without blocking on a new continuous-time pricing transform, the project must define one canonical interval-grid execution rule:
+To make the rollout executable across seeded simulation, coarse simulation, risk generation, calibration, exports, and anchored pricing, the project must define one canonical interval-grid execution rule:
 
 For interval `h` with boundaries `t_h` and `t_{h+1}`, interval length `Delta_h = t_{h+1} - t_h`, and piecewise-constant anchor value `a_h` held fixed on `[t_h, t_{h+1})`,
 
@@ -54,6 +54,30 @@ X_{h+1} = a_{h+1} + e^{-\kappa \Delta_h}(X_h - a_h) + R_h.
 \]
 ```
 
+Because the observed interval return now depends on the boundary deviation state, the project must also replace the old core-only pricing stance with an anchored pricing workflow on an augmented state. For one interval,
+
+```latex
+\[
+\Delta X_h
+=
+(a_{h+1} - a_h)
++
+\big(e^{-\kappa \Delta_h} - 1\big)(X_h - a_h)
++
+R_h.
+\]
+```
+
+Let `Y_h` denote the existing Janiform boundary state and let `D_h = X_h - a_h`. The anchored pricing workflow must treat `Z_h = (Y_h, D_h)` as the pricing state, define a state-conditional transform for the core contribution `R_h`, and solve a local risk-neutral tilt `theta_h(Z_h)` that enforces
+
+```latex
+\[
+\mathbb E^Q\!\left[e^{\Delta X_h} \mid Z_h\right] = e^{(r-q)\Delta_h}
+\]
+```
+
+state by state. That local martingale constraint is no longer equivalent to one global Esscher parameter once `kappa > 0`.
+
 The implementation must preserve the existing Janiform core as the innovation generator. No feedback from `X_t` or `D_t` back into Hawkes intensities, NIG drivers, or news processes is allowed in this project.
 
 Definition of Done (Project-level):
@@ -61,14 +85,17 @@ Definition of Done (Project-level):
 - Seeded and coarse simulation paths execute the same interval-grid anchor-deviation semantics and expose observed state in their artifacts.
 - High-level model persistence, runtime preparation, exports, and examples understand the new layer.
 - A dedicated staged calibration step estimates anchor and `kappa` without requiring immediate joint refinement support.
-- Pricing boundaries are hardened so anchored configurations are never priced under the old Esscher-only logic.
+- Anchored pricing contracts include observed-state boundary input, augmented-state diagnostics, and state-dependent martingale-solver outputs.
+- An anchored pricing engine prices European options across one or more intervals without routing anchored configs through the old single-measure Fourier runner.
+- High-level pricing surfaces, validation harnesses, and docs support anchored pricing end to end.
 - Tests, fixtures, and docs are updated in the same PRs as the behavior changes.
 
 Agent implementation notes:
 - Do not add compatibility shims, legacy aliases, or dual old/new payload support. Update in-repo call sites directly in each issue.
 - Keep schema identifiers at `v1`.
 - Prefer explicit interval-grid contracts over implicit materialization rules.
-- If a runtime cannot yet execute anchored pricing correctly, it must reject the configuration with a structured error rather than ignore mean reversion.
+- Do not add hidden fallbacks that strip the mean-reversion layer and then price the remaining core under the old logic.
+- Temporary intermediate work may fail explicitly while the new pricing path is under construction, but the final project state must support anchored configurations rather than gate them away.
 
 ### How it ties into the parent initiative
-This project is the concrete rollout plan for the initiative’s desired outcome. It makes the anchor-deviation layer real in contracts, runtime execution, calibration artifacts, and user-facing outputs while keeping correctness ahead of convenience at every boundary.
+This project is the concrete rollout plan for the initiative’s desired outcome. It makes the anchor-deviation layer real in contracts, runtime execution, calibration artifacts, anchored pricing, and user-facing outputs while replacing the old core-only pricing logic where it is no longer mathematically valid.

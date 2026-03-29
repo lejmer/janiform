@@ -3,10 +3,11 @@ mod support;
 use janiform_affine_oracle::affine_oracle::ExponentialAffineTransformNewsIntensityInput;
 use janiform_calibration_runtime::build_option_surface_calibration_observation_from_pricing_hooks;
 use janiform_engine_pricing::{
-    FourierInversionEngineSettings, VanillaOptionPayoffConfiguration, VanillaOptionPayoffType,
-    VanillaOptionPricingDiagnostics, VanillaOptionPricingMarketInputs,
-    VanillaOptionPricingModelParameters, VanillaOptionPricingOptionalOutputSelection,
-    VanillaOptionPricingRequest, VanillaOptionPricingResponse, build_pricing_transform_input,
+    AnchoredVanillaOptionPricingBoundaryInput, FourierInversionEngineSettings,
+    VanillaOptionPayoffConfiguration, VanillaOptionPayoffType, VanillaOptionPricingDiagnostics,
+    VanillaOptionPricingMarketInputs, VanillaOptionPricingModelParameters,
+    VanillaOptionPricingOptionalOutputSelection, VanillaOptionPricingRequest,
+    VanillaOptionPricingResponse, build_pricing_transform_input,
     build_vanilla_option_pricing_run_result, price_vanilla_option_via_fourier_inversion,
     solve_exponential_affine_transform,
 };
@@ -14,7 +15,15 @@ use janiform_foundations::complex_math::ComplexScalar;
 use janiform_model_kernels::hawkes::{
     HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
 };
-use janiform_model_kernels::news::GammaSeverityMarkConfiguration;
+use janiform_model_kernels::mean_reversion::{
+    MeanReversionBoundaryState, MeanReversionFittedParameters,
+};
+use janiform_model_kernels::news::{
+    CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
+    GammaSeverityMarkConfiguration, KnownNewsArrivalConfiguration, NewsArrivalConfiguration,
+    NewsComponentMarkScaleConfiguration, NewsProcessConfiguration, SharedNewsMarkLawConfiguration,
+    SurpriseNewsArrivalConfiguration,
+};
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 use support::shared::black_scholes_log_return_characteristic_function;
 
@@ -22,11 +31,14 @@ use support::shared::black_scholes_log_return_characteristic_function;
 fn pricing_run_output_hooks_are_directly_consumable_by_calibration_adapter() {
     let market_inputs = VanillaOptionPricingMarketInputs::try_new(101.0, 100.0, 0.5, 0.02, 0.01)
         .expect("market inputs should construct");
+
     let forward_price = market_inputs.spot
         * ((market_inputs.risk_free_rate - market_inputs.dividend_yield)
             * market_inputs.maturity_interval)
             .exp();
+
     let discount_factor = (-market_inputs.risk_free_rate * market_inputs.maturity_interval).exp();
+
     let response = VanillaOptionPricingResponse::try_new(
         12.5,
         VanillaOptionPricingDiagnostics::try_new(
@@ -57,28 +69,63 @@ fn pricing_run_output_hooks_are_directly_consumable_by_calibration_adapter() {
             },
         )
         .expect("kernel parameters should construct"),
-        GammaSeverityMarkConfiguration::try_new(1.8, 0.7)
-            .expect("gamma mark configuration should construct"),
+        NewsProcessConfiguration::try_new(
+            NewsArrivalConfiguration {
+                known: KnownNewsArrivalConfiguration {
+                    scheduled_event_timestamps_utc_nanos: vec![],
+                },
+                surprise: SurpriseNewsArrivalConfiguration {
+                    baseline_intensity: 0.75,
+                },
+            },
+            SharedNewsMarkLawConfiguration {
+                gamma_severity_marks: GammaSeverityMarkConfiguration::new(1.8, 0.7),
+                double_exponential_base_shock: DoubleExponentialBaseShockConfiguration::new(
+                    0.35, 2.1, 3.0,
+                ),
+                coupled_gap_marks: CoupledGapMarkConfiguration::new(0.6),
+            },
+            NewsComponentMarkScaleConfiguration {
+                activity_coupling_scale: 1.0,
+                return_jump_scale: 1.0,
+            },
+            NewsComponentMarkScaleConfiguration {
+                activity_coupling_scale: 1.0,
+                return_jump_scale: 1.0,
+            },
+        )
+        .expect("news process configuration should construct"),
         NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
             .expect("NIG shared-plus-shift configuration should construct"),
     )
     .expect("pricing model parameters should construct");
+
     let pricing_request = VanillaOptionPricingRequest::try_new(
         market_inputs,
         VanillaOptionPayoffConfiguration {
             payoff_type: VanillaOptionPayoffType::Call,
         },
-        HawkesExcitationState {
-            y_plus_plus: 0.2,
-            y_plus_minus: 0.1,
-            y_minus_plus: 0.3,
-            y_minus_minus: 0.4,
-        },
+        AnchoredVanillaOptionPricingBoundaryInput::try_new(
+            0,
+            HawkesExcitationState {
+                y_plus_plus: 0.2,
+                y_plus_minus: 0.1,
+                y_minus_plus: 0.3,
+                y_minus_minus: 0.4,
+            },
+            MeanReversionFittedParameters::endogenous_core_expectation_one_interval(0.0)
+                .expect("zero-kappa endogenous fitted parameters should construct"),
+            1.0,
+            MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0)
+                .expect("zero observed boundary state should construct"),
+        )
+        .expect("endogenous anchored boundary input should construct"),
         model_parameters,
     )
     .expect("pricing request should construct");
+
     let transform_input = build_pricing_transform_input(
-        pricing_request,
+        &pricing_request,
         ComplexScalar::new(0.2, -0.1),
         ComplexScalar::new(0.3, 0.05),
         ComplexScalar::new(1.0, 0.0),
@@ -88,6 +135,7 @@ fn pricing_run_output_hooks_are_directly_consumable_by_calibration_adapter() {
             .expect("pricing-hook test news intensity should construct"),
     )
     .expect("pricing transform input should construct");
+
     let transform_diagnostics = solve_exponential_affine_transform(transform_input)
         .expect("transform solve should succeed");
 
@@ -102,6 +150,7 @@ fn pricing_run_output_hooks_are_directly_consumable_by_calibration_adapter() {
     )
     .expect("Fourier pricing run should succeed")
     .diagnostics;
+
     let numeric_quality = integration_diagnostics.numeric_quality_diagnostics;
 
     let run_output = build_vanilla_option_pricing_run_result(
@@ -110,6 +159,7 @@ fn pricing_run_output_hooks_are_directly_consumable_by_calibration_adapter() {
         Some(market_inputs),
         Some(transform_diagnostics),
         Some(integration_diagnostics),
+        None,
     )
     .expect("run output should include diagnostics and calibration hooks");
 

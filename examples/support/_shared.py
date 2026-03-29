@@ -6,75 +6,58 @@ from typing import Any, Optional
 import pyarrow as pa
 from pyarrow import parquet
 
+from janiform._timestamps import ONE_HOUR_NANOS
 from janiform.calendar import CalendarRegistry
 from janiform.calibration.staged import (
     CALIBRATION_STAGED_EXECUTION_INPUT_SCHEMA_VERSION,
-    CalibrationCoupledGapMarkConfiguration,
-    CalibrationDayOfWeekSeasonalityEstimatorSettings,
-    CalibrationDayOfYearSeasonalityEstimatorSettings,
-    CalibrationDoubleExponentialBaseShockConfiguration,
-    CalibrationHawkesDirectionalLabelDiagnostics,
-    CalibrationHawkesObservedSourceRegime,
     CalibrationExecutionMode,
-    CalibrationHawkesStageCandidateInput,
-    CalibrationHawkesStructuredAlphaParameterization,
-    CalibrationHawkesStructuredRhoParameterization,
-    CalibrationHawkesStructuredRhoSelfDominancePolicy,
-    CalibrationIntradaySeasonalityEstimatorSettings,
-    CalibrationIntradaySmoothingKernel,
     CalibrationOptimizerSettings,
-    CalibrationReturnComponentsCloseOpenGapDetectionPolicy,
-    CalibrationReturnComponentsDetectedIntradayJumpCandidate,
-    CalibrationReturnComponentsKnownNewsCalendarInput,
-    CalibrationReturnComponentsKnownNewsReturnSample,
-    CalibrationReturnComponentsObservedCloseOpenBoundaryObservation,
-    CalibrationReturnComponentsObservedOpenSessionReturn,
-    CalibrationReturnComponentsObjectiveMetricWeights,
-    CalibrationReturnComponentsSignalSourceWindow,
-    CalibrationReturnComponentsStageCandidateGenerationInput,
+    CalibrationPreparedExecutionPayloadFileReference,
     CalibrationRunDataInputs,
     CalibrationRunSeedSettings,
-    CalibrationScheduledEventOverlay,
-    CalibrationSeasonalityStageExecutionInput,
-    CalibrationSeasonalityStageExecutionSettings,
-    CalibrationSharedNewsMarkLawConfiguration,
     CalibrationStage,
     CalibrationStageSeedOverride,
     CalibrationStageSolverSettings,
     CalibrationStagedExecutionRuntimeResources,
-    CalibrationTimestampEventRecord,
-    CalibrationTimestampEventSessionFilter,
     StagedCalibrationExecutionInput,
     StagedCalibrationRequest,
 )
 from janiform.hourly_factors import (
+    HourlyFactorContract,
     HourlyNewsIntensityProviderExplicitSource,
     HourlySeasonalityProviderExplicitSource,
+    load_hourly_factor_contract_payload,
 )
 from janiform.pricing import (
+    AnchoredVanillaOptionPricingBoundaryInput,
     GammaSeverityMarkConfiguration,
+    MeanReversionAnchorModel,
     NigSharedPlusShiftConfiguration,
     VanillaOptionPayoffConfiguration,
     VanillaOptionPayoffType,
-    VanillaOptionPricingIntervalFactors,
     VanillaOptionPricingMarketInputs,
     VanillaOptionPricingModelParameters,
     VanillaOptionPricingOptionalOutputSelection,
     VanillaOptionPricingRequest,
 )
-from janiform.simulation import (
+from janiform.simulation.coarse import (
     CoarseSimulationRunRequest,
     CoupledGapMarkConfiguration,
     DoubleExponentialBaseShockConfiguration,
-    HawkesExcitationState,
-    HawkesKernelLoadings,
-    HawkesKernelParameters,
     KnownNewsArrivalConfiguration,
     NewsArrivalConfiguration,
     NewsComponentMarkScaleConfiguration,
     NewsProcessConfiguration,
     SharedNewsMarkLawConfiguration,
     SurpriseNewsArrivalConfiguration,
+)
+from janiform.simulation.shared import (
+    HawkesExcitationState,
+    HawkesKernelLoadings,
+    HawkesKernelParameters,
+    MeanReversionBoundaryState,
+    MeanReversionFittedParameters,
+    MeanReversionRuntimeIntervalAnchors,
 )
 
 CALENDAR_REGISTRY_JSON: str = json.dumps(
@@ -199,6 +182,13 @@ STYLIZED_FACT_UNCERTAINTY_METHOD_VOCABULARY: tuple[str, ...] = (
     "circular_block_bootstrap",
     "analytical_asymptotic",
 )
+_PREPARED_STAGED_EXECUTION_PAYLOAD_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "tests"
+    / "fixtures"
+    / "calibration"
+    / "staged_prepared_execution_payload.json"
+)
 
 
 def build_calendar_registry() -> CalendarRegistry:
@@ -294,12 +284,20 @@ def build_simulation_news_source() -> HourlyNewsIntensityProviderExplicitSource:
 
 
 def build_coarse_simulation_request(calendar_registry: CalendarRegistry) -> CoarseSimulationRunRequest:
+    horizon_interval_count = 3
+    interval_delta = 1.0
+    mean_reversion_runtime_interval_anchors = MeanReversionRuntimeIntervalAnchors(
+        interval_alignment_policy="explicit_runtime_interval_grid_alignment.v1",
+        start_anchor_value=0.0,
+        end_anchor_values=tuple(0.0 for _ in range(horizon_interval_count)),
+        interval_deltas=tuple(interval_delta for _ in range(horizon_interval_count)),
+    )
     request_payload: dict[str, Any] = {
         "schema_version": "simulation.coarse_interval.run_request.v1",
         "seed": 3_010,
         "start_time_utc_nanos": int(SIMULATION_RANGE_START_UTC.timestamp()) * 1_000_000_000,
-        "horizon_interval_count": 3,
-        "interval_delta": 1.0,
+        "horizon_interval_count": horizon_interval_count,
+        "interval_delta": interval_delta,
         "model_inputs": {
             "risk_model_inputs": {
                 "equation_specification": {
@@ -317,6 +315,18 @@ def build_coarse_simulation_request(calendar_registry: CalendarRegistry) -> Coar
                     delta_beta=-0.2,
                 ).to_payload(),
                 "initial_excitation_state": build_initial_excitation_state().to_payload(),
+                "mean_reversion_fitted_parameters": MeanReversionFittedParameters(
+                    kappa=0.0,
+                    anchor_model=MeanReversionAnchorModel.endogenous_core_expectation_one_interval(),
+                ).to_payload(),
+                "mean_reversion_runtime_interval_anchors": (
+                    mean_reversion_runtime_interval_anchors.to_payload()
+                ),
+                "initial_mean_reversion_boundary_state": MeanReversionBoundaryState(
+                    observed_log_price=0.0,
+                    anchor_value=mean_reversion_runtime_interval_anchors.start_anchor_value,
+                    deviation=0.0,
+                ).to_payload(),
             },
             "news_process_configuration": NewsProcessConfiguration(
                 schema_version="news.process.configuration.v1",
@@ -353,12 +363,13 @@ def build_coarse_simulation_request(calendar_registry: CalendarRegistry) -> Coar
             "calendar_registry_artifact": dict(calendar_registry._registry_payload),
             "exchange_code": "XNYS",
         },
-        "interval_factors": {
-            "interval_delta": 1.0,
-            "s_h": [1.0, 0.9, 1.1],
-            "nu_h_known": [1.0, 1.0, 0.0],
-            "nu_h_surprise": [0.1, 0.2, 0.1],
-        },
+        "hourly_factor_contract": _build_hourly_factor_contract_payload(
+            request_start_utc_nanos=int(SIMULATION_RANGE_START_UTC.timestamp()) * 1_000_000_000,
+            interval_duration_nanos=int(interval_delta * ONE_HOUR_NANOS),
+            s_h=(1.0, 0.9, 1.1),
+            known_component_nu_h=(1.0, 1.0, 0.0),
+            surprise_component_nu_h=(0.1, 0.2, 0.1),
+        ),
     }
 
     return CoarseSimulationRunRequest.from_mapping(request_payload)
@@ -374,11 +385,24 @@ def build_pricing_request() -> VanillaOptionPricingRequest:
             dividend_yield=0.01,
         ),
         payoff=VanillaOptionPayoffConfiguration(payoff_type=VanillaOptionPayoffType.CALL),
-        boundary_state=HawkesExcitationState(
-            y_plus_plus=0.0,
-            y_plus_minus=0.0,
-            y_minus_plus=0.0,
-            y_minus_minus=0.0,
+        boundary_input=AnchoredVanillaOptionPricingBoundaryInput(
+            interval_index=0,
+            hawkes_boundary_state=HawkesExcitationState(
+                y_plus_plus=0.0,
+                y_plus_minus=0.0,
+                y_minus_plus=0.0,
+                y_minus_minus=0.0,
+            ),
+            mean_reversion_fitted_parameters=MeanReversionFittedParameters(
+                kappa=0.35,
+                anchor_model=MeanReversionAnchorModel.endogenous_core_expectation_one_interval(),
+            ),
+            interval_delta=1.0,
+            observed_boundary_state=MeanReversionBoundaryState(
+                observed_log_price=0.25,
+                anchor_value=0.25,
+                deviation=0.0,
+            ),
         ),
         model_parameters=VanillaOptionPricingModelParameters(
             hawkes_kernel_parameters=HawkesKernelParameters(
@@ -397,10 +421,7 @@ def build_pricing_request() -> VanillaOptionPricingRequest:
                     minus_minus=0.1,
                 ),
             ),
-            gamma_severity_mark_configuration=GammaSeverityMarkConfiguration(
-                shape_k=1.8,
-                scale_theta=0.7,
-            ),
+            news_process_configuration=build_simulation_news_process_configuration(),
             nig_shared_plus_shift_configuration=NigSharedPlusShiftConfiguration(
                 alpha=2.3,
                 beta_0=-0.8,
@@ -412,12 +433,76 @@ def build_pricing_request() -> VanillaOptionPricingRequest:
     )
 
 
-def build_pricing_interval_factors() -> VanillaOptionPricingIntervalFactors:
-    return VanillaOptionPricingIntervalFactors(
-        s_h=1.0,
-        nu_h_known=0.01,
-        nu_h_surprise=0.02,
+def build_pricing_hourly_factor_contract() -> HourlyFactorContract:
+    return load_hourly_factor_contract_payload(
+        _build_hourly_factor_contract_payload(
+            request_start_utc_nanos=1706882400000000000,
+            interval_duration_nanos=ONE_HOUR_NANOS,
+            s_h=(1.0,),
+            known_component_nu_h=(0.01,),
+            surprise_component_nu_h=(0.02,),
+        )
     )
+
+
+def _build_hourly_factor_contract_payload(
+    *,
+    request_start_utc_nanos: int,
+    interval_duration_nanos: int,
+    s_h: tuple[float, ...],
+    known_component_nu_h: tuple[float, ...],
+    surprise_component_nu_h: tuple[float, ...],
+) -> dict[str, Any]:
+    interval_count = len(s_h)
+    interval_indices = list(range(interval_count))
+
+    interval_start_utc_nanos = [
+        request_start_utc_nanos + interval_index * interval_duration_nanos
+        for interval_index in interval_indices
+    ]
+    interval_end_utc_nanos = [
+        interval_start_utc_nanos[interval_index] + interval_duration_nanos
+        for interval_index in interval_indices
+    ]
+
+    return {
+        "schema_version": "seasonality.hourly_factor.contract.v1",
+        "exchange_code": "XNYS",
+        "exchange_timezone_name": "America/New_York",
+        "request_start_utc_nanos": request_start_utc_nanos,
+        "request_end_utc_nanos": interval_end_utc_nanos[-1],
+        "interval_duration_nanos": interval_duration_nanos,
+        "interval_indices": interval_indices,
+        "interval_start_utc_nanos": interval_start_utc_nanos,
+        "interval_end_utc_nanos": interval_end_utc_nanos,
+        "interval_start_exchange_local": [
+            f"test_interval_start_{interval_index}"
+            for interval_index in interval_indices
+        ],
+        "interval_end_exchange_local": [
+            f"test_interval_end_{interval_index}"
+            for interval_index in interval_indices
+        ],
+        "s_h": list(s_h),
+        "known_component_nu_h": list(known_component_nu_h),
+        "surprise_component_nu_h": list(surprise_component_nu_h),
+        "nu_h": [
+            known_component_nu_h[interval_index] + surprise_component_nu_h[interval_index]
+            for interval_index in interval_indices
+        ],
+        "interval_count": interval_count,
+        "first_interval_start_utc_nanos": interval_start_utc_nanos[0],
+        "last_interval_end_utc_nanos": interval_end_utc_nanos[-1],
+        "skipped_local_hour_interval_count": 0,
+        "repeated_local_hour_interval_count": 0,
+        "interval_boundary_policy": "start_inclusive_end_exclusive.v1",
+        "interval_alignment_policy": "request_start_anchored_fixed_width_utc_interval_grid.v1",
+        "timezone_transition_policy": "fixed_width_utc_interval_projected_to_exchange_local.v1",
+        "spring_forward_policy": "skip_nonexistent_local_hour_labels.v1",
+        "fall_back_policy": "preserve_repeated_local_hour_labels_with_numeric_utc_offset.v1",
+        "seasonality_materialization_method": "test.explicit_payload.v1",
+        "news_intensity_materialization_method": "test.explicit_payload.v1",
+    }
 
 
 def build_pricing_optional_output_selection() -> VanillaOptionPricingOptionalOutputSelection:
@@ -711,7 +796,7 @@ def _build_stylized_fact_observed_metric(
 
     return {
         "horizon_label": horizon_label,
-        "horizon_duration_nanos": 3_600_000_000_000,
+        "horizon_duration_nanos": ONE_HOUR_NANOS,
         "metric_id": metric_id,
         "metric_name": metric_name,
         "metric_variant": None,
@@ -831,6 +916,7 @@ def build_calibration_request(
             CalibrationStage.SEASONALITY,
             CalibrationStage.HAWKES,
             CalibrationStage.RETURN_COMPONENTS,
+            CalibrationStage.MEAN_REVERSION,
         ),
         "seed_settings": CalibrationRunSeedSettings(
             global_seed=17,
@@ -845,6 +931,7 @@ def build_calibration_request(
             build_calibration_solver_settings(CalibrationStage.SEASONALITY),
             build_calibration_solver_settings(CalibrationStage.HAWKES),
             build_calibration_solver_settings(CalibrationStage.RETURN_COMPONENTS),
+            build_calibration_solver_settings(CalibrationStage.MEAN_REVERSION),
         ),
     }
     if execution_mode is not None:
@@ -868,181 +955,8 @@ def build_calibration_execution_input(
     return StagedCalibrationExecutionInput(
         schema_version=CALIBRATION_STAGED_EXECUTION_INPUT_SCHEMA_VERSION,
         request=request,
-        seasonality_stage_input=CalibrationSeasonalityStageExecutionInput(
-            timestamp_event_records=(
-                CalibrationTimestampEventRecord(
-                    source_record_position=0,
-                    timestamp_utc_nanos=1770042600000000000,
-                ),
-                CalibrationTimestampEventRecord(
-                    source_record_position=1,
-                    timestamp_utc_nanos=1770046200000000000,
-                ),
-            ),
-            scheduled_event_overlays=(
-                CalibrationScheduledEventOverlay(
-                    overlay_id="macro_release",
-                    start_timestamp_utc_nanos=1770042300000000000,
-                    end_timestamp_utc_nanos=1770042900000000000,
-                    log_adjustment=0.05,
-                    precedence=1,
-                    enabled=True,
-                    source_label="known_macro_calendar",
-                ),
-            ),
-            settings=CalibrationSeasonalityStageExecutionSettings(
-                session_filter=CalibrationTimestampEventSessionFilter.OPEN_ONLY,
-                sparse_hour_event_threshold=1,
-                intraday_settings=CalibrationIntradaySeasonalityEstimatorSettings(
-                    minutes_per_bin=1,
-                    smoothing_kernel=CalibrationIntradaySmoothingKernel.GAUSSIAN,
-                    smoothing_bandwidth_bins=3.0,
-                    minimum_bin_events=1,
-                    pseudocount=1e-6,
-                ),
-                day_of_week_settings=CalibrationDayOfWeekSeasonalityEstimatorSettings(
-                    minimum_bucket_events=1,
-                    pseudocount=1e-6,
-                ),
-                day_of_year_settings=CalibrationDayOfYearSeasonalityEstimatorSettings(
-                    minimum_bucket_events=1,
-                    pseudocount=1e-6,
-                ),
-            ),
-        ),
-        hawkes_candidate_inputs=(
-            CalibrationHawkesStageCandidateInput(
-                candidate_id="candidate_stable_low_loss",
-                lambda_bar=0.80,
-                beta=20.0,
-                structured_alpha=CalibrationHawkesStructuredAlphaParameterization(
-                    a_self=0.01,
-                    a_cross=0.002,
-                    delta_self=0.001,
-                    delta_cross=0.0005,
-                ),
-                structured_rho=CalibrationHawkesStructuredRhoParameterization(
-                    r_self=0.30,
-                    r_cross=0.08,
-                    delta_self_r=0.04,
-                    delta_cross_r=0.05,
-                ),
-                self_dominance_policy=CalibrationHawkesStructuredRhoSelfDominancePolicy(
-                    minimum_self_to_cross_ratio=1.0,
-                ),
-                stability_numeric_tolerance=0.0,
-                source_regime=CalibrationHawkesObservedSourceRegime(
-                    observation_duration_hours=12.0,
-                    open_session_duration_hours=8.0,
-                    total_tick_count=95,
-                    open_session_tick_count=84,
-                    closed_session_tick_count=11,
-                    open_session_buy_tick_count=39,
-                    open_session_sell_tick_count=45,
-                    open_session_mean_interarrival_seconds=34.0,
-                    open_session_interarrival_coefficient_of_variation=1.18,
-                    open_session_short_gap_threshold_seconds=17.0,
-                    open_session_short_gap_ratio=0.43,
-                    known_news_open_event_count=2,
-                    open_session_known_news_activity_share=0.06,
-                ),
-                directional_label_diagnostics=CalibrationHawkesDirectionalLabelDiagnostics(
-                    policy_id="tick_price_change_with_flat_move_carryover.v1",
-                    first_inferred_trade_sign="buy",
-                    provided_label_count=10,
-                    inferred_label_count=74,
-                    flat_move_carry_count=9,
-                    price_up_inference_count=35,
-                    price_down_inference_count=30,
-                ),
-            ),
-        ),
-        return_components_candidate_generation_input=CalibrationReturnComponentsStageCandidateGenerationInput(
-            known_news_calendar=CalibrationReturnComponentsKnownNewsCalendarInput(
-                source_window=CalibrationReturnComponentsSignalSourceWindow(
-                    window_start_utc_nanos=1770037200000000000,
-                    window_end_utc_nanos=1770259200000000000,
-                ),
-                scheduled_event_timestamps_utc_nanos=(
-                    1770042600000000000,
-                    1770120000000000000,
-                    1770211200000000000,
-                ),
-            ),
-            realized_known_news_return_samples=(
-                CalibrationReturnComponentsKnownNewsReturnSample(
-                    event_timestamp_utc_nanos=1770042600000000000,
-                    open_window_jump_return=0.016,
-                    closed_window_gap_return=-0.009,
-                    post_shock_activity_lift=1.20,
-                ),
-                CalibrationReturnComponentsKnownNewsReturnSample(
-                    event_timestamp_utc_nanos=1770120000000000000,
-                    open_window_jump_return=-0.012,
-                    closed_window_gap_return=0.004,
-                    post_shock_activity_lift=1.05,
-                ),
-            ),
-            observed_open_session_returns=(
-                CalibrationReturnComponentsObservedOpenSessionReturn(
-                    return_timestamp_utc_nanos=1770046200000000000,
-                    log_return=0.004,
-                    post_shock_activity_lift=1.00,
-                    sell_share_proxy=0.48,
-                ),
-                CalibrationReturnComponentsObservedOpenSessionReturn(
-                    return_timestamp_utc_nanos=1770048300000000000,
-                    log_return=0.018,
-                    post_shock_activity_lift=1.35,
-                    sell_share_proxy=0.62,
-                ),
-                CalibrationReturnComponentsObservedOpenSessionReturn(
-                    return_timestamp_utc_nanos=1770123600000000000,
-                    log_return=-0.006,
-                    post_shock_activity_lift=0.95,
-                    sell_share_proxy=0.57,
-                ),
-            ),
-            detected_intraday_jump_candidates=(
-                CalibrationReturnComponentsDetectedIntradayJumpCandidate(
-                    jump_timestamp_utc_nanos=1770048300000000000,
-                    jump_return=0.018,
-                    post_shock_activity_lift=1.35,
-                ),
-            ),
-            observed_close_open_boundary_observations=(
-                CalibrationReturnComponentsObservedCloseOpenBoundaryObservation(
-                    close_timestamp_utc_nanos=1770066000000000000,
-                    close_price=100.0,
-                    open_timestamp_utc_nanos=1770215400000000000,
-                    open_price=98.70858118310978,
-                    post_shock_activity_lift=1.40,
-                ),
-            ),
-            close_open_gap_detection_policy=CalibrationReturnComponentsCloseOpenGapDetectionPolicy(
-                material_gap_absolute_return_tolerance=0.005,
-            ),
-            open_session_sell_share_proxy=0.52,
-            shared_mark_law_template=CalibrationSharedNewsMarkLawConfiguration(
-                gamma_severity_marks=GammaSeverityMarkConfiguration(
-                    shape_k=1.8,
-                    scale_theta=0.7,
-                ),
-                double_exponential_base_shock=CalibrationDoubleExponentialBaseShockConfiguration(
-                    probability_positive=0.45,
-                    eta_plus=8.0,
-                    eta_minus=10.0,
-                ),
-                coupled_gap_marks=CalibrationCoupledGapMarkConfiguration(sigma_g=0.22),
-            ),
-            objective_metric_weights=CalibrationReturnComponentsObjectiveMetricWeights(
-                continuous_distribution_fit_weight=1.0,
-                surprise_arrival_fit_weight=1.0,
-                jump_fit_weight=1.0,
-                gap_fit_weight=1.0,
-                activity_coupling_fit_weight=1.0,
-                price_range_sanity_fit_weight=1.0,
-            ),
+        prepared_payload_file=CalibrationPreparedExecutionPayloadFileReference(
+            path=str(_PREPARED_STAGED_EXECUTION_PAYLOAD_PATH),
         ),
         runtime_resources=runtime_resources,
     )

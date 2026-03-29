@@ -5,9 +5,11 @@ use std::fs;
 
 use chrono::{DateTime, Utc};
 use janiform_engine_simulation::{
+    MeanReversionBoundaryState, MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors,
     SeededTickEventRecord, SeededTickEventSide, SeededTickSimulationModelInputs,
     SeededTickSimulationRunConfig, run_seeded_tick_event_simulation,
 };
+use janiform_foundations::time::ONE_HOUR_NANOS;
 use janiform_market_time::calendar::{ExchangeCalendarRegistry, ExchangeCalendarRegistryLoader};
 use janiform_market_time::hourly_factors::{
     DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD, DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD,
@@ -44,7 +46,6 @@ const CLUSTER_SIGNATURE_REFERENCE_BANDS_SET_ID: &str =
     "hawkes_cluster_signature_regression_bands_v1";
 
 const START_TIME_UTC_NANOS: i64 = 1_704_067_200_000_000_000;
-
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct ClusteringMetrics {
     mean_fano_factor: f64,
@@ -1328,6 +1329,13 @@ fn build_run_config(
     seasonality_factor: f64,
     news_intensity: f64,
 ) -> SeededTickSimulationRunConfig {
+    let hourly_factor_contract = build_uniform_factor_contract(
+        interval_duration_nanos,
+        interval_count,
+        seasonality_factor,
+        news_intensity,
+    );
+
     SeededTickSimulationRunConfig::try_new(
         seed,
         DateTime::<Utc>::from_timestamp_nanos(START_TIME_UTC_NANOS),
@@ -1335,12 +1343,21 @@ fn build_run_config(
         SeededTickSimulationModelInputs {
             kernel_parameters,
             initial_excitation_state,
-            hourly_factor_contract: build_uniform_factor_contract(
-                interval_duration_nanos,
-                interval_count,
-                seasonality_factor,
-                news_intensity,
-            ),
+            mean_reversion_fitted_parameters:
+                MeanReversionFittedParameters::endogenous_core_expectation_one_interval(0.0)
+                    .expect("zero-kappa endogenous mean reversion should construct"),
+            mean_reversion_runtime_interval_anchors: MeanReversionRuntimeIntervalAnchors::try_new(
+                hourly_factor_contract.metadata.interval_alignment_policy,
+                0.0,
+                vec![0.0; interval_count],
+                vec![interval_duration_nanos as f64 / ONE_HOUR_NANOS as f64; interval_count],
+            )
+            .expect("disabled mean-reversion runtime anchors should construct"),
+            initial_mean_reversion_boundary_state: MeanReversionBoundaryState::try_new(
+                0.0, 0.0, 0.0,
+            )
+            .expect("disabled mean-reversion boundary state should construct"),
+            hourly_factor_contract,
             calendar_registry: build_seeded_simulation_calendar_registry(),
             nig_shared_plus_shift_configuration: valid_nig_shared_plus_shift_configuration(),
             news_process_configuration: build_news_process_configuration(),
@@ -1432,6 +1449,8 @@ fn build_uniform_factor_contract(
         interval_start_exchange_local,
         interval_end_exchange_local,
         s_h: vec![seasonality_factor; interval_count],
+        known_component_nu_h: vec![0.0; interval_count],
+        surprise_component_nu_h: vec![news_intensity; interval_count],
         nu_h: vec![news_intensity; interval_count],
         metadata: HourlyFactorMaterializationMetadata {
             seasonality_materialization_method: DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD

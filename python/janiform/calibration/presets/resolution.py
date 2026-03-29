@@ -1,6 +1,7 @@
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from enum import StrEnum
-from typing import Optional
+from typing import Any, Optional
 
 from .references import (
     KnownNewsConfigurationOverridePatch,
@@ -30,7 +31,7 @@ from .registry import (
 )
 from .._errors import _calibration_error
 from ..sessions.contracts import MarketDataSessionResolution
-from ...contracts import ContractModel
+from ...contracts import ContractModel, require_mapping, require_non_empty_string, require_sequence
 
 DEFAULT_HIGH_LEVEL_KNOWN_NEWS_PRESET_NAME = "none"
 RESOLVED_PRESET_WORKFLOW_CONFIGURATION_SCHEMA_VERSION = (
@@ -66,6 +67,40 @@ class ResolvedPresetSelection(ContractModel):
         if not self.preset_name.strip():
             raise _calibration_error("preset_name", "must be a non-empty string")
 
+    @staticmethod
+    def from_mapping(
+        raw_payload: Mapping[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> ResolvedPresetSelection:
+        if not isinstance(raw_payload, Mapping):
+            raise _calibration_error(field_path, "must be an object")
+
+        return ResolvedPresetSelection(
+            category=PresetCategory(
+                require_non_empty_string(
+                    raw_payload,
+                    "category",
+                    f"{field_path}.category",
+                    _calibration_error,
+                )
+            ),
+            registry_scope=PresetRegistryScope(
+                require_non_empty_string(
+                    raw_payload,
+                    "registry_scope",
+                    f"{field_path}.registry_scope",
+                    _calibration_error,
+                )
+            ),
+            preset_name=require_non_empty_string(
+                raw_payload,
+                "preset_name",
+                f"{field_path}.preset_name",
+                _calibration_error,
+            ),
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class ResolvedWorkflowDiagnostic(ContractModel):
@@ -80,6 +115,46 @@ class ResolvedWorkflowDiagnostic(ContractModel):
         if not self.message.strip():
             raise _calibration_error("message", "must be a non-empty string")
 
+    @staticmethod
+    def from_mapping(
+        raw_payload: Mapping[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> ResolvedWorkflowDiagnostic:
+        if not isinstance(raw_payload, Mapping):
+            raise _calibration_error(field_path, "must be an object")
+
+        return ResolvedWorkflowDiagnostic(
+            component=ResolvedWorkflowComponent(
+                require_non_empty_string(
+                    raw_payload,
+                    "component",
+                    f"{field_path}.component",
+                    _calibration_error,
+                )
+            ),
+            severity=ResolvedWorkflowDiagnosticSeverity(
+                require_non_empty_string(
+                    raw_payload,
+                    "severity",
+                    f"{field_path}.severity",
+                    _calibration_error,
+                )
+            ),
+            code=require_non_empty_string(
+                raw_payload,
+                "code",
+                f"{field_path}.code",
+                _calibration_error,
+            ),
+            message=require_non_empty_string(
+                raw_payload,
+                "message",
+                f"{field_path}.message",
+                _calibration_error,
+            ),
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class ResolvedMarketProfileComponent(ContractModel):
@@ -90,6 +165,52 @@ class ResolvedMarketProfileComponent(ContractModel):
 
     def __post_init__(self) -> None:
         _validate_override_fields(self.applied_override_fields, "market_profile.applied_override_fields")
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: Mapping[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> ResolvedMarketProfileComponent:
+        if not isinstance(raw_payload, Mapping):
+            raise _calibration_error(field_path, "must be an object")
+
+        raw_selected_preset = raw_payload.get("selected_preset")
+
+        return ResolvedMarketProfileComponent(
+            configuration=MarketProfileExplicitConfiguration.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "configuration",
+                    f"{field_path}.configuration",
+                    _calibration_error,
+                ),
+                field_path=f"{field_path}.configuration",
+            ),
+            source_kind=ResolvedWorkflowComponentSource(
+                require_non_empty_string(
+                    raw_payload,
+                    "source_kind",
+                    f"{field_path}.source_kind",
+                    _calibration_error,
+                )
+            ),
+            selected_preset=(
+                ResolvedPresetSelection.from_mapping(
+                    raw_selected_preset,
+                    field_path=f"{field_path}.selected_preset",
+                )
+                if isinstance(raw_selected_preset, Mapping)
+                else None
+            ),
+            applied_override_fields=tuple(
+                _require_string_sequence(
+                    raw_payload,
+                    "applied_override_fields",
+                    field_path=f"{field_path}.applied_override_fields",
+                )
+            ),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,6 +234,66 @@ class ResolvedSessionComponent(ContractModel):
                 "session.inference_resolution",
                 "is only allowed when inferred_from_data is true",
             )
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: Mapping[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> ResolvedSessionComponent:
+        if not isinstance(raw_payload, Mapping):
+            raise _calibration_error(field_path, "must be an object")
+
+        raw_selected_preset = raw_payload.get("selected_preset")
+        raw_inference_resolution = raw_payload.get("inference_resolution")
+
+        return ResolvedSessionComponent(
+            configuration=SessionExplicitConfiguration.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "configuration",
+                    f"{field_path}.configuration",
+                    _calibration_error,
+                ),
+                field_path=f"{field_path}.configuration",
+            ),
+            source_kind=ResolvedWorkflowComponentSource(
+                require_non_empty_string(
+                    raw_payload,
+                    "source_kind",
+                    f"{field_path}.source_kind",
+                    _calibration_error,
+                )
+            ),
+            selected_preset=(
+                ResolvedPresetSelection.from_mapping(
+                    raw_selected_preset,
+                    field_path=f"{field_path}.selected_preset",
+                )
+                if isinstance(raw_selected_preset, Mapping)
+                else None
+            ),
+            inferred_from_data=_require_boolean(
+                raw_payload,
+                "inferred_from_data",
+                field_path=f"{field_path}.inferred_from_data",
+            ),
+            inference_resolution=(
+                MarketDataSessionResolution.from_mapping(
+                    raw_inference_resolution,
+                    field_path=f"{field_path}.inference_resolution",
+                )
+                if isinstance(raw_inference_resolution, Mapping)
+                else None
+            ),
+            applied_override_fields=tuple(
+                _require_string_sequence(
+                    raw_payload,
+                    "applied_override_fields",
+                    field_path=f"{field_path}.applied_override_fields",
+                )
+            ),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -138,6 +319,72 @@ class ResolvedKnownNewsComponent(ContractModel):
                 "is required when recommended_reference is provided",
             )
 
+    @staticmethod
+    def from_mapping(
+        raw_payload: Mapping[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> ResolvedKnownNewsComponent:
+        if not isinstance(raw_payload, Mapping):
+            raise _calibration_error(field_path, "must be an object")
+
+        raw_selected_preset = raw_payload.get("selected_preset")
+        raw_recommended_reference = raw_payload.get("recommended_reference")
+        raw_recommendation_policy = raw_payload.get("recommendation_policy")
+
+        return ResolvedKnownNewsComponent(
+            configuration=KnownNewsExplicitConfiguration.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "configuration",
+                    f"{field_path}.configuration",
+                    _calibration_error,
+                ),
+                field_path=f"{field_path}.configuration",
+            ),
+            source_kind=ResolvedWorkflowComponentSource(
+                require_non_empty_string(
+                    raw_payload,
+                    "source_kind",
+                    f"{field_path}.source_kind",
+                    _calibration_error,
+                )
+            ),
+            selected_preset=(
+                ResolvedPresetSelection.from_mapping(
+                    raw_selected_preset,
+                    field_path=f"{field_path}.selected_preset",
+                )
+                if isinstance(raw_selected_preset, Mapping)
+                else None
+            ),
+            applied_override_fields=tuple(
+                _require_string_sequence(
+                    raw_payload,
+                    "applied_override_fields",
+                    field_path=f"{field_path}.applied_override_fields",
+                )
+            ),
+            recommended_reference=(
+                KnownNewsPresetReference.from_mapping(
+                    raw_recommended_reference,
+                    field_path=f"{field_path}.recommended_reference",
+                )
+                if isinstance(raw_recommended_reference, Mapping)
+                else None
+            ),
+            recommendation_policy=(
+                MarketProfileKnownNewsPolicy(raw_recommendation_policy)
+                if isinstance(raw_recommendation_policy, str)
+                else None
+            ),
+            recommendation_applied=_require_boolean(
+                raw_payload,
+                "recommendation_applied",
+                field_path=f"{field_path}.recommendation_applied",
+            ),
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class ResolvedPresetWorkflowConfiguration(ContractModel):
@@ -153,6 +400,103 @@ class ResolvedPresetWorkflowConfiguration(ContractModel):
                 "schema_version",
                 f"must be `{RESOLVED_PRESET_WORKFLOW_CONFIGURATION_SCHEMA_VERSION}`",
             )
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: Mapping[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> ResolvedPresetWorkflowConfiguration:
+        if not isinstance(raw_payload, Mapping):
+            raise _calibration_error(field_path, "must be an object")
+
+        raw_market_profile = raw_payload.get("market_profile")
+
+        return ResolvedPresetWorkflowConfiguration(
+            schema_version=require_non_empty_string(
+                raw_payload,
+                "schema_version",
+                f"{field_path}.schema_version",
+                _calibration_error,
+            ),
+            session=ResolvedSessionComponent.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "session",
+                    f"{field_path}.session",
+                    _calibration_error,
+                ),
+                field_path=f"{field_path}.session",
+            ),
+            known_news=ResolvedKnownNewsComponent.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "known_news",
+                    f"{field_path}.known_news",
+                    _calibration_error,
+                ),
+                field_path=f"{field_path}.known_news",
+            ),
+            diagnostics=tuple(
+                ResolvedWorkflowDiagnostic.from_mapping(
+                    raw_diagnostic,
+                    field_path=f"{field_path}.diagnostics[{diagnostic_index}]",
+                )
+                for diagnostic_index, raw_diagnostic in enumerate(
+                    require_sequence(
+                        raw_payload,
+                        "diagnostics",
+                        f"{field_path}.diagnostics",
+                        _calibration_error,
+                    )
+                )
+            ),
+            market_profile=(
+                ResolvedMarketProfileComponent.from_mapping(
+                    raw_market_profile,
+                    field_path=f"{field_path}.market_profile",
+                )
+                if isinstance(raw_market_profile, Mapping)
+                else None
+            ),
+        )
+
+
+def _require_string_sequence(
+    raw_payload: Mapping[str, Any],
+    field_name: str,
+    *,
+    field_path: str,
+) -> list[str]:
+    raw_values = require_sequence(
+        raw_payload,
+        field_name,
+        field_path,
+        _calibration_error,
+    )
+    values: list[str] = []
+    for value_index, raw_value in enumerate(raw_values):
+        if not isinstance(raw_value, str):
+            raise _calibration_error(
+                f"{field_path}[{value_index}]",
+                "must be a string",
+            )
+        values.append(raw_value)
+
+    return values
+
+
+def _require_boolean(
+    raw_payload: Mapping[str, Any],
+    field_name: str,
+    *,
+    field_path: str,
+) -> bool:
+    raw_value = raw_payload.get(field_name)
+    if not isinstance(raw_value, bool):
+        raise _calibration_error(field_path, "must be a boolean")
+
+    return raw_value
 
 
 def resolve_preset_workflow_configuration(
@@ -210,8 +554,9 @@ def _resolve_market_profile_component(
                     "named market-profile references require preset_name and registry_scope",
                 )
 
-            _, artifact = registry.resolve_market_profile_preset(
-                normalized_reference.preset_name,
+            _, artifact = registry.resolve(
+                category=PresetCategory.MARKET_PROFILE,
+                preset_name=normalized_reference.preset_name,
                 registry_scope=normalized_reference.registry_scope,
             )
 
@@ -371,8 +716,9 @@ def _resolve_session_component(
                     "named session references require preset_name and registry_scope",
                 )
 
-            _, artifact = registry.resolve_session_preset(
-                normalized_reference.preset_name,
+            _, artifact = registry.resolve(
+                category=PresetCategory.SESSION,
+                preset_name=normalized_reference.preset_name,
                 registry_scope=normalized_reference.registry_scope,
             )
 
@@ -495,8 +841,9 @@ def _resolve_known_news_component(
                     "named known-news references require preset_name and registry_scope",
                 )
 
-            _, artifact = registry.resolve_known_news_preset(
-                normalized_reference.preset_name,
+            _, artifact = registry.resolve(
+                category=PresetCategory.KNOWN_NEWS,
+                preset_name=normalized_reference.preset_name,
                 registry_scope=normalized_reference.registry_scope,
             )
 

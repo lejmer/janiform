@@ -1,5 +1,6 @@
 use super::{
     CALIBRATION_HAWKES_STAGE_OUTPUT_SCHEMA_VERSION,
+    CALIBRATION_MEAN_REVERSION_STAGE_OUTPUT_SCHEMA_VERSION,
     CALIBRATION_RETURN_COMPONENTS_STAGE_OUTPUT_SCHEMA_VERSION,
     CalibrationInMemoryStagePayloadState, CalibrationStageParameterArtifact,
     CalibrationStageParameterPayload, CalibrationStagedRunStageReport,
@@ -25,6 +26,15 @@ pub(super) fn restore_in_memory_payload_state_from_stage_parameter_artifact(
 ) {
     match &artifact.stage_parameters {
         CalibrationStageParameterPayload::Seasonality(payload) => {
+            payload_state.mean_reversion_seasonality_input = Some(
+                crate::stages::mean_reversion::MeanReversionStageSeasonalityInput {
+                    exchange_code: payload.exchange_code.clone(),
+                    intraday_minutes_per_bin: payload.intraday_minutes_per_bin,
+                    intraday_factor_by_bin: payload.intraday_factor_by_bin.clone(),
+                    day_of_week_factor: payload.day_of_week_factor.clone(),
+                    day_of_year_factor: payload.day_of_year_factor.clone(),
+                },
+            );
             payload_state.joint_refinement_seasonality_factors_input =
                 Some(JointRefinementStageSeasonalityFactorsInput {
                     intraday_minutes_per_bin: payload.intraday_minutes_per_bin,
@@ -80,6 +90,22 @@ pub(super) fn restore_in_memory_payload_state_from_stage_parameter_artifact(
                 },
             );
         }
+        CalibrationStageParameterPayload::MeanReversion(payload) => {
+            payload_state.mean_reversion_stage_payload = Some(
+                crate::stages::mean_reversion::MeanReversionStageFittedPayload {
+                    schema_version: CALIBRATION_MEAN_REVERSION_STAGE_OUTPUT_SCHEMA_VERSION,
+                    fitted_parameters: payload.fitted_parameters.clone(),
+                    diagnostics: payload.diagnostics.clone(),
+                    return_components_input_transport: payload.return_components_input_transport,
+                    return_components_selected_candidate_id: payload
+                        .return_components_selected_candidate_id
+                        .clone(),
+                    return_components_artifact_reference: payload
+                        .return_components_artifact_reference
+                        .clone(),
+                },
+            );
+        }
         CalibrationStageParameterPayload::JointRefinement(payload) => {
             payload_state.joint_refinement_stage_payload =
                 Some(crate::stages::joint_refinement::JointRefinementStageFittedPayload {
@@ -110,6 +136,12 @@ pub(super) fn update_in_memory_payload_state(
     match stage_report {
         CalibrationStagedRunStageReport::Seasonality(report) => {
             payload_state.seasonality_stage_payload = report.normalized_stage_payload.clone();
+            payload_state.mean_reversion_seasonality_input = report
+                .normalized_stage_payload
+                .as_ref()
+                .map(
+                    crate::stages::mean_reversion::MeanReversionStageSeasonalityInput::from_seasonality_stage_payload,
+                );
             payload_state.joint_refinement_seasonality_factors_input = report
                 .normalized_stage_payload
                 .as_ref()
@@ -120,6 +152,9 @@ pub(super) fn update_in_memory_payload_state(
         }
         CalibrationStagedRunStageReport::ReturnComponents(report) => {
             payload_state.return_components_stage_payload = report.fitted_stage_payload.clone();
+        }
+        CalibrationStagedRunStageReport::MeanReversion(report) => {
+            payload_state.mean_reversion_stage_payload = report.fitted_stage_payload.clone();
         }
         CalibrationStagedRunStageReport::JointRefinement(report) => {
             payload_state.joint_refinement_stage_payload = report.fitted_stage_payload.clone();

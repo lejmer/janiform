@@ -8,6 +8,9 @@ use janiform_model_kernels::hawkes::{
     HawkesEventSide, HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
     HawkesTransitionError, HawkesTransitionStep, evolve_hawkes_state,
 };
+use janiform_model_kernels::mean_reversion::{
+    MeanReversionBoundaryState, MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors,
+};
 use janiform_model_kernels::news::GammaSeverityMarkConfiguration;
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 use janiform_model_kernels::return_decomposition::{ReturnDecomposition, ReturnDecompositionInput};
@@ -119,14 +122,14 @@ fn interval_factors_reject_inconsistent_total_and_component_news_intensity() {
 
 #[test]
 fn path_round_trip_serialization_preserves_interval_statistics_and_return_components() {
-    let record = SufficientStatisticsRiskPathRecord::try_new(
+    let record = build_risk_path_record(
         0,
         SufficientStatisticsIntervalStatistics::try_new(0.7, 0.5, 3, 2)
             .expect("statistics should be valid"),
         SufficientStatisticsRiskReturnComponents::try_new(0.04, -0.03, 0.01, 0.0, -0.02, -0.01)
             .expect("return components should be valid"),
-    )
-    .expect("record should be valid");
+        -0.01,
+    );
     let path = SufficientStatisticsRiskPath::try_new(
         17,
         1.0,
@@ -178,14 +181,14 @@ fn path_round_trip_serialization_preserves_interval_statistics_and_return_compon
 
 #[test]
 fn risk_path_diagnostics_schema_metadata_exposes_required_fields() {
-    let record = SufficientStatisticsRiskPathRecord::try_new(
+    let record = build_risk_path_record(
         0,
         SufficientStatisticsIntervalStatistics::try_new(0.9, 0.4, 2, 1)
             .expect("statistics should be valid"),
         SufficientStatisticsRiskReturnComponents::try_new(0.03, -0.02, 0.01, 0.0, -0.01, 0.0)
             .expect("return components should be valid"),
-    )
-    .expect("record should be valid");
+        0.0,
+    );
     let path = SufficientStatisticsRiskPath::try_new(
         19,
         1.0,
@@ -228,21 +231,25 @@ fn risk_path_diagnostics_schema_metadata_exposes_required_fields() {
             "cumulative_open_jump_return",
             "cumulative_closed_gap_return",
             "cumulative_total_return",
-            "max_abs_total_return"
+            "cumulative_observed_return",
+            "max_abs_total_return",
+            "max_abs_deviation_from_anchor",
+            "terminal_observed_log_price",
+            "terminal_deviation_from_anchor"
         ])
     );
 }
 
 #[test]
 fn risk_path_deserialization_rejects_incorrect_diagnostics_with_field_context() {
-    let record = SufficientStatisticsRiskPathRecord::try_new(
+    let record = build_risk_path_record(
         0,
         SufficientStatisticsIntervalStatistics::try_new(0.7, 0.5, 3, 2)
             .expect("statistics should be valid"),
         SufficientStatisticsRiskReturnComponents::try_new(0.04, -0.03, 0.01, 0.0, -0.02, -0.01)
             .expect("return components should be valid"),
-    )
-    .expect("record should be valid");
+        -0.01,
+    );
     let path = SufficientStatisticsRiskPath::try_new(
         17,
         1.0,
@@ -267,14 +274,14 @@ fn risk_path_deserialization_rejects_incorrect_diagnostics_with_field_context() 
 
 #[test]
 fn risk_path_metadata_values_are_deterministic_across_repeated_runs() {
-    let record = SufficientStatisticsRiskPathRecord::try_new(
+    let record = build_risk_path_record(
         0,
         SufficientStatisticsIntervalStatistics::try_new(0.7, 0.5, 3, 2)
             .expect("statistics should be valid"),
         SufficientStatisticsRiskReturnComponents::try_new(0.04, -0.03, 0.01, 0.0, -0.02, -0.01)
             .expect("return components should be valid"),
-    )
-    .expect("record should be valid");
+        -0.01,
+    );
     let first_path = SufficientStatisticsRiskPath::try_new(
         17,
         1.0,
@@ -334,7 +341,7 @@ fn run_request_validation_rejects_invalid_values_with_structured_errors() {
         7,
         1,
         0.5,
-        build_model_inputs(),
+        build_model_inputs_for_grid(1, 0.5),
         build_interval_factors(),
     )
     .expect_err("non-hourly interval delta without compatible factor metadata must fail");
@@ -350,7 +357,7 @@ fn run_request_validation_rejects_invalid_values_with_structured_errors() {
         7,
         1,
         0.5,
-        build_model_inputs(),
+        build_model_inputs_for_grid(1, 0.5),
         build_interval_factors_with_interval_delta(0.5),
     )
     .expect("non-hourly interval delta with compatible factor metadata should pass");
@@ -383,43 +390,7 @@ fn deserialization_rejects_incomplete_or_malformed_request_payloads() {
         "seed": 17,
         "horizon_interval_count": 2,
         "interval_delta": 1.0,
-        "model_inputs": {
-            "equation_specification": {
-                "hawkes_kernel_parameters": {
-                    "lambda_bar": 0.8,
-                    "beta": 1.6,
-                    "alpha": {
-                        "plus_plus": 0.2,
-                        "plus_minus": 0.1,
-                        "minus_plus": 0.1,
-                        "minus_minus": 0.25
-                    },
-                    "rho": {
-                        "plus_plus": 0.08,
-                        "plus_minus": 0.04,
-                        "minus_plus": 0.05,
-                        "minus_minus": 0.1
-                    }
-                },
-                "gamma_severity_mark_configuration": {
-                    "shape_k": 1.8,
-                    "scale_theta": 0.7
-                }
-            },
-            "nig_shared_plus_shift_configuration": {
-                "alpha": 2.3,
-                "beta_0": -0.8,
-                "delta": 0.7,
-                "mu": 0.1,
-                "delta_beta": -0.2
-            },
-            "initial_excitation_state": {
-                "y_plus_plus": 0.2,
-                "y_plus_minus": 0.1,
-                "y_minus_plus": 0.3,
-                "y_minus_minus": 0.4
-            }
-        },
+        "model_inputs": build_model_inputs_payload(),
         "interval_factors": {
             "s_h": [1.1, 0.9],
             "nu_h_known": [0.2],
@@ -442,43 +413,7 @@ fn run_request_deserialization_defaults_interval_delta_to_hourly() {
     let payload_without_interval_delta = serde_json::json!({
         "seed": 17,
         "horizon_interval_count": 2,
-        "model_inputs": {
-            "equation_specification": {
-                "hawkes_kernel_parameters": {
-                    "lambda_bar": 0.8,
-                    "beta": 1.6,
-                    "alpha": {
-                        "plus_plus": 0.2,
-                        "plus_minus": 0.1,
-                        "minus_plus": 0.1,
-                        "minus_minus": 0.25
-                    },
-                    "rho": {
-                        "plus_plus": 0.08,
-                        "plus_minus": 0.04,
-                        "minus_plus": 0.05,
-                        "minus_minus": 0.1
-                    }
-                },
-                "gamma_severity_mark_configuration": {
-                    "shape_k": 1.8,
-                    "scale_theta": 0.7
-                }
-            },
-            "nig_shared_plus_shift_configuration": {
-                "alpha": 2.3,
-                "beta_0": -0.8,
-                "delta": 0.7,
-                "mu": 0.1,
-                "delta_beta": -0.2
-            },
-            "initial_excitation_state": {
-                "y_plus_plus": 0.2,
-                "y_plus_minus": 0.1,
-                "y_minus_plus": 0.3,
-                "y_minus_minus": 0.4
-            }
-        },
+        "model_inputs": build_model_inputs_payload(),
         "interval_factors": {
             "s_h": [1.1, 0.9],
             "nu_h_known": [0.12, 0.03],
@@ -500,43 +435,7 @@ fn run_request_deserialization_accepts_component_only_news_intensity_factors() {
     let payload = serde_json::json!({
         "seed": 17,
         "horizon_interval_count": 2,
-        "model_inputs": {
-            "equation_specification": {
-                "hawkes_kernel_parameters": {
-                    "lambda_bar": 0.8,
-                    "beta": 1.6,
-                    "alpha": {
-                        "plus_plus": 0.2,
-                        "plus_minus": 0.1,
-                        "minus_plus": 0.1,
-                        "minus_minus": 0.25
-                    },
-                    "rho": {
-                        "plus_plus": 0.08,
-                        "plus_minus": 0.04,
-                        "minus_plus": 0.05,
-                        "minus_minus": 0.1
-                    }
-                },
-                "gamma_severity_mark_configuration": {
-                    "shape_k": 1.8,
-                    "scale_theta": 0.7
-                }
-            },
-            "nig_shared_plus_shift_configuration": {
-                "alpha": 2.3,
-                "beta_0": -0.8,
-                "delta": 0.7,
-                "mu": 0.1,
-                "delta_beta": -0.2
-            },
-            "initial_excitation_state": {
-                "y_plus_plus": 0.2,
-                "y_plus_minus": 0.1,
-                "y_minus_plus": 0.3,
-                "y_minus_minus": 0.4
-            }
-        },
+        "model_inputs": build_model_inputs_payload(),
         "interval_factors": {
             "s_h": [1.1, 0.9],
             "nu_h_known": [0.12, 0.03],
@@ -556,14 +455,14 @@ fn run_request_deserialization_accepts_component_only_news_intensity_factors() {
 
 #[test]
 fn path_validation_rejects_non_sequential_interval_indices() {
-    let first_record = SufficientStatisticsRiskPathRecord::try_new(
+    let first_record = build_risk_path_record(
         1,
         SufficientStatisticsIntervalStatistics::try_new(0.7, 0.5, 3, 2)
             .expect("statistics should be valid"),
         SufficientStatisticsRiskReturnComponents::try_new(0.04, -0.03, 0.01, 0.0, -0.02, -0.01)
             .expect("return components should be valid"),
-    )
-    .expect("record should be valid");
+        -0.01,
+    );
 
     let error = SufficientStatisticsRiskPath::try_new(
         17,
@@ -1364,13 +1263,54 @@ fn build_equation_specification() -> ExponentialAffineTransformEquationSpecifica
 }
 
 fn build_model_inputs() -> SufficientStatisticsRiskModelInputs {
+    build_model_inputs_for_grid(2, 1.0)
+}
+
+fn build_model_inputs_for_grid(
+    interval_count: usize,
+    interval_delta: f64,
+) -> SufficientStatisticsRiskModelInputs {
     SufficientStatisticsRiskModelInputs::try_new(
         build_equation_specification(),
         NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
             .expect("nig configuration should be valid"),
         build_initial_state(),
+        MeanReversionFittedParameters::endogenous_core_expectation_one_interval(0.0)
+            .expect("zero-kappa endogenous mean reversion should construct"),
+        MeanReversionRuntimeIntervalAnchors::try_new(
+            "explicit_runtime_interval_grid_alignment.v1",
+            0.0,
+            vec![0.0; interval_count],
+            vec![interval_delta; interval_count],
+        )
+        .expect("disabled mean-reversion runtime anchors should construct"),
+        MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0)
+            .expect("disabled mean-reversion boundary state should construct"),
     )
     .expect("model inputs should be valid")
+}
+
+fn build_model_inputs_payload() -> serde_json::Value {
+    serde_json::to_value(build_model_inputs()).expect("model inputs payload should serialize")
+}
+
+fn build_risk_path_record(
+    interval_index: usize,
+    sufficient_statistics: SufficientStatisticsIntervalStatistics,
+    return_components: SufficientStatisticsRiskReturnComponents,
+    observed_log_price_end: f64,
+) -> SufficientStatisticsRiskPathRecord {
+    SufficientStatisticsRiskPathRecord::try_new(
+        interval_index,
+        sufficient_statistics,
+        return_components.clone(),
+        return_components.total_return,
+        observed_log_price_end,
+        observed_log_price_end,
+        0.0,
+        observed_log_price_end,
+    )
+    .expect("record should be valid")
 }
 
 fn valid_nig_driver_parameters() -> janiform_model_kernels::nig::NigBuySellDriverParameters {

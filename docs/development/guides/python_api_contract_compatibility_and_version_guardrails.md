@@ -1,8 +1,8 @@
 # Python API Contract Compatibility And Version Guardrails
 
-Document version: `python.api_contract_guardrails.pre_v0_1.v1`
+Document version: `python.api_contract_guardrails.pre_v0_1.control_plane_reset.v1`
 
-Status: active for the current pre-v0.1 milestone on March 13, 2026.
+Status: active for the current pre-v0.1 milestone on March 26, 2026.
 
 ## Purpose
 
@@ -17,7 +17,7 @@ For the guardrail snapshot, a breaking change is any change to the approved publ
 - the package-root export set for `janiform`
 - the `__all__` export set of public package roots and public submodules listed in
   `docs/development/guides/python_public_api_surface_map_and_namespace_policy.md`
-  including `janiform.cli` and its supported command and parsing submodules
+  including `janiform.cli` and the supported command modules
   - underscore-prefixed helper names are not public contract exports and must not appear in `__all__`
 - callable signatures for exported public functions
 - constructor-visible field signatures for exported contract models
@@ -60,6 +60,20 @@ The guardrail manifest records:
 - the public API surface document version
 - a change log entry with date, summary, rationale, and docs updated
 
+## Review checklist for this milestone
+
+Every public-surface review must reject a change that:
+
+- introduces a new Python-owned tuple-of-record bulk evidence boundary
+- adds a new `Sequence[Mapping[...]]` market-data or seasonality ingestion contract on the
+  recommended path
+- makes `PreparedMarketDataCalibration`, `JaniformFitReport`, or staged results embed bulk
+  evidence instead of artifact references, handles, or summaries
+- preserves both the old tuple-heavy contract and the new artifact-backed contract in the same
+  supported surface
+- adds a new public wrapper whose entire body is payload forwarding or one-line delegation
+- expands a curated package root until it stops reading like a small supported overview
+
 ## Verification command
 
 Run:
@@ -79,6 +93,9 @@ When a public contract break is intentional and approved:
 2. If the change adds, removes, or renames a public submodule, update
    `docs/development/guides/python_public_api_surface_map_and_namespace_policy.md` first so the
    snapshot continues to reflect an intentional policy decision.
+   If the change alters the Python control-plane or Rust data-plane split, update
+   `docs/development/guides/python_control_plane_and_rust_data_plane_boundary.md` in the same
+   change.
 3. Regenerate the approved snapshot:
 
 ```bash

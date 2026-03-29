@@ -1,17 +1,21 @@
+use janiform::affine_oracle::{
+    EndogenousAnchorIntervalFactors, ExponentialAffineTransformEquationSpecification,
+    materialize_endogenous_anchor_path,
+};
 use janiform::hawkes::{HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters};
 use janiform::news::NewsProcessConfiguration;
 use janiform::nig::NigSharedPlusShiftConfiguration;
+use janiform::risk::SufficientStatisticsRiskIntervalFactors;
 use janiform::simulation::{
-    CoarseSimulationRunRequest, SeededTickEventStateSnapshotCapture,
-    SeededTickSimulationDebugTraceOptions, SeededTickSimulationModelInputs,
-    SeededTickSimulationRunConfig, SeededTickSimulationRunOptions,
+    CoarseSimulationModelInputs, CoarseSimulationRunRequest, MeanReversionBoundaryState,
+    MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors,
+    SeededTickEventStateSnapshotCapture, SeededTickSimulationDebugTraceOptions,
+    SeededTickSimulationModelInputs, SeededTickSimulationRunConfig, SeededTickSimulationRunOptions,
     run_coarse_simulation as run_coarse_simulation_core,
     run_seeded_tick_event_simulation as run_seeded_tick_event_simulation_core,
 };
 use pyo3::prelude::{Bound, Py, PyErr, PyResult, Python};
-use pyo3::types::{
-    PyAny, PyAnyMethods, PyMapping, PyMappingMethods, PyModule, PyModuleMethods,
-};
+use pyo3::types::{PyAny, PyAnyMethods, PyMapping, PyMappingMethods, PyModule, PyModuleMethods};
 use pyo3::{pyfunction, wrap_pyfunction};
 
 use super::calendar::parse_timestamp_utc;
@@ -22,13 +26,147 @@ use crate::python_value::{json_value_to_py_object, py_any_to_json_value};
 use crate::types::{PyHourlyFactorContractResult, PySeededTickSimulationNativeResult};
 
 #[pyfunction]
-fn run_coarse_simulation(py: Python<'_>, run_request: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
-    let run_request: CoarseSimulationRunRequest =
-        serde_json::from_value(py_any_to_json_value(run_request)?).map_err(|source| {
-            SimulationExecutionError::new_err(format!(
-                "failed to deserialize coarse simulation run request: {source}"
+#[pyo3(signature = (kernel_parameters, nig_shared_plus_shift_configuration, news_process_configuration, initial_excitation_state, interval_alignment_policy, start_anchor_value, s_h, known_nu_h, surprise_nu_h, interval_deltas))]
+fn materialize_endogenous_mean_reversion_runtime_interval_anchors(
+    py: Python<'_>,
+    kernel_parameters: &Bound<'_, PyAny>,
+    nig_shared_plus_shift_configuration: &Bound<'_, PyAny>,
+    news_process_configuration: &Bound<'_, PyAny>,
+    initial_excitation_state: &Bound<'_, PyAny>,
+    interval_alignment_policy: &str,
+    start_anchor_value: f64,
+    s_h: &Bound<'_, PyAny>,
+    known_nu_h: &Bound<'_, PyAny>,
+    surprise_nu_h: &Bound<'_, PyAny>,
+    interval_deltas: &Bound<'_, PyAny>,
+) -> PyResult<Py<PyAny>> {
+    let parsed_kernel_parameters = parse_seeded_simulation_kernel_parameters(kernel_parameters)?;
+
+    let parsed_nig_shared_plus_shift_configuration =
+        parse_seeded_simulation_nig_shared_plus_shift_configuration(
+            nig_shared_plus_shift_configuration,
+        )?;
+    let parsed_news_process_configuration = serde_json::from_value::<NewsProcessConfiguration>(
+        py_any_to_json_value(news_process_configuration)?,
+    )
+    .map_err(|source| {
+        SeasonalityInputValidationError::new_err(format!(
+            "news_process_configuration failed to deserialize: {source}"
+        ))
+    })?;
+
+    let parsed_initial_excitation_state =
+        parse_seeded_simulation_initial_excitation_state(initial_excitation_state)?;
+
+    let parsed_s_h = parse_required_numeric_sequence(s_h, "s_h")?;
+    let parsed_known_nu_h = parse_required_numeric_sequence(known_nu_h, "known_nu_h")?;
+    let parsed_surprise_nu_h = parse_required_numeric_sequence(surprise_nu_h, "surprise_nu_h")?;
+
+    let parsed_interval_deltas =
+        parse_required_numeric_sequence(interval_deltas, "interval_deltas")?;
+
+    let interval_count = parsed_s_h.len();
+    if parsed_known_nu_h.len() != interval_count
+        || parsed_surprise_nu_h.len() != interval_count
+        || parsed_interval_deltas.len() != interval_count
+    {
+        return Err(SeasonalityInputValidationError::new_err(
+            "endogenous mean-reversion runtime anchor materialization requires `s_h`, `known_nu_h`, `surprise_nu_h`, and `interval_deltas` to have identical lengths",
+        ));
+    }
+
+    let interval_factors: Result<Vec<EndogenousAnchorIntervalFactors>, PyErr> = parsed_s_h
+        .iter()
+        .zip(parsed_known_nu_h.iter())
+        .zip(parsed_surprise_nu_h.iter())
+        .zip(parsed_interval_deltas.iter())
+        .map(
+            |(((seasonality_factor, known_intensity), surprise_intensity), interval_delta)| {
+                EndogenousAnchorIntervalFactors::try_new(
+                    *seasonality_factor,
+                    *known_intensity,
+                    *surprise_intensity,
+                    *interval_delta,
+                )
+                .map_err(|source| {
+                    SeasonalityInputValidationError::new_err(format!(
+                        "endogenous mean-reversion interval factors failed validation: {source}"
+                    ))
+                })
+            },
+        )
+        .collect();
+
+    let interval_factors = interval_factors?;
+
+    let materialization = materialize_endogenous_anchor_path(
+        interval_alignment_policy,
+        start_anchor_value,
+        ExponentialAffineTransformEquationSpecification::new(
+            parsed_kernel_parameters,
+            parsed_news_process_configuration
+                .shared_mark_law
+                .gamma_severity_marks,
+        ),
+        parsed_nig_shared_plus_shift_configuration,
+        &parsed_news_process_configuration,
+        parsed_initial_excitation_state,
+        interval_factors.as_slice(),
+    )
+    .map_err(|source| {
+        SeasonalityInputValidationError::new_err(format!(
+            "endogenous mean-reversion runtime anchor materialization failed: {source}"
+        ))
+    })?;
+
+    let serialized_runtime_interval_anchors =
+        serde_json::to_value(&materialization.runtime_interval_anchors).map_err(|source| {
+            SeasonalityInputValidationError::new_err(format!(
+                "failed to serialize endogenous mean-reversion runtime anchors: {source}"
             ))
         })?;
+
+    json_value_to_py_object(py, &serialized_runtime_interval_anchors)
+}
+
+#[pyfunction]
+fn run_coarse_simulation(
+    py: Python<'_>,
+    seed: u64,
+    start_time_utc_nanos: i64,
+    horizon_interval_count: usize,
+    interval_delta: f64,
+    model_inputs: &Bound<'_, PyAny>,
+    hourly_factor_contract: &PyHourlyFactorContractResult,
+) -> PyResult<Py<PyAny>> {
+    let model_inputs: CoarseSimulationModelInputs =
+        serde_json::from_value(py_any_to_json_value(model_inputs)?).map_err(|source| {
+            SimulationExecutionError::new_err(format!(
+                "failed to deserialize coarse simulation model inputs: {source}"
+            ))
+        })?;
+
+    let interval_factors = SufficientStatisticsRiskIntervalFactors::try_new(
+        hourly_factor_contract.output.s_h.clone(),
+        hourly_factor_contract.output.known_component_nu_h.clone(),
+        hourly_factor_contract
+            .output
+            .surprise_component_nu_h
+            .clone(),
+        Some(interval_delta),
+    )
+    .map_err(|source| SimulationExecutionError::new_err(source.to_string()))?;
+
+    let run_request = CoarseSimulationRunRequest::try_new(
+        seed,
+        start_time_utc_nanos,
+        horizon_interval_count,
+        interval_delta,
+        model_inputs,
+        interval_factors,
+    )
+    .map_err(|source| SimulationExecutionError::new_err(source.to_string()))?;
+
     let coarse_path = panic_to_pyresult(
         "running coarse simulation",
         SimulationExecutionError::new_err,
@@ -48,7 +186,7 @@ fn run_coarse_simulation(py: Python<'_>, run_request: &Bound<'_, PyAny>) -> PyRe
 }
 
 #[pyfunction]
-#[pyo3(signature = (seed, start_time_utc, horizon_interval_count, kernel_parameters, nig_shared_plus_shift_configuration, initial_excitation_state, hourly_factor_contract, news_process_configuration, *, debug_trace_enabled = false, sample_every_nth_transition = 1, max_records_per_chunk = 1024, state_snapshot_capture = "disabled"))]
+#[pyo3(signature = (seed, start_time_utc, horizon_interval_count, kernel_parameters, nig_shared_plus_shift_configuration, initial_excitation_state, hourly_factor_contract, news_process_configuration, mean_reversion_fitted_parameters, mean_reversion_runtime_interval_anchors, initial_mean_reversion_boundary_state, *, debug_trace_enabled = false, sample_every_nth_transition = 1, max_records_per_chunk = 1024, state_snapshot_capture = "disabled"))]
 fn run_seeded_tick_event_simulation(
     py: Python<'_>,
     seed: u64,
@@ -59,19 +197,26 @@ fn run_seeded_tick_event_simulation(
     initial_excitation_state: &Bound<'_, PyAny>,
     hourly_factor_contract: &PyHourlyFactorContractResult,
     news_process_configuration: &Bound<'_, PyAny>,
+    mean_reversion_fitted_parameters: &Bound<'_, PyAny>,
+    mean_reversion_runtime_interval_anchors: &Bound<'_, PyAny>,
+    initial_mean_reversion_boundary_state: &Bound<'_, PyAny>,
     debug_trace_enabled: bool,
     sample_every_nth_transition: u64,
     max_records_per_chunk: usize,
     state_snapshot_capture: &str,
 ) -> PyResult<PySeededTickSimulationNativeResult> {
     let parsed_start_time_utc = parse_timestamp_utc(start_time_utc)?;
+
     let parsed_kernel_parameters = parse_seeded_simulation_kernel_parameters(kernel_parameters)?;
+
     let parsed_nig_shared_plus_shift_configuration =
         parse_seeded_simulation_nig_shared_plus_shift_configuration(
             nig_shared_plus_shift_configuration,
         )?;
+
     let parsed_initial_excitation_state =
         parse_seeded_simulation_initial_excitation_state(initial_excitation_state)?;
+
     let parsed_news_process_configuration = serde_json::from_value::<NewsProcessConfiguration>(
         py_any_to_json_value(news_process_configuration)?,
     )
@@ -80,6 +225,20 @@ fn run_seeded_tick_event_simulation(
             "news_process_configuration failed to deserialize: {source}"
         ))
     })?;
+
+    let parsed_mean_reversion_fitted_parameters =
+        parse_seeded_simulation_mean_reversion_fitted_parameters(mean_reversion_fitted_parameters)?;
+
+    let parsed_mean_reversion_runtime_interval_anchors =
+        parse_seeded_simulation_mean_reversion_runtime_interval_anchors(
+            mean_reversion_runtime_interval_anchors,
+        )?;
+
+    let parsed_initial_mean_reversion_boundary_state =
+        parse_seeded_simulation_mean_reversion_boundary_state(
+            initial_mean_reversion_boundary_state,
+        )?;
+
     let parsed_state_snapshot_capture =
         parse_seeded_simulation_state_snapshot_capture(state_snapshot_capture)?;
 
@@ -92,6 +251,15 @@ fn run_seeded_tick_event_simulation(
         state_snapshot_capture: parsed_state_snapshot_capture,
     };
 
+    let calendar_registry = hourly_factor_contract
+        .calendar_registry
+        .clone()
+        .ok_or_else(|| {
+            SimulationExecutionError::new_err(
+                "seeded tick-event simulation requires a runtime hourly factor contract with calendar registry state",
+            )
+        })?;
+
     let run_config = SeededTickSimulationRunConfig::try_new(
         seed,
         parsed_start_time_utc,
@@ -101,8 +269,11 @@ fn run_seeded_tick_event_simulation(
             nig_shared_plus_shift_configuration: parsed_nig_shared_plus_shift_configuration,
             news_process_configuration: parsed_news_process_configuration,
             initial_excitation_state: parsed_initial_excitation_state,
+            mean_reversion_fitted_parameters: parsed_mean_reversion_fitted_parameters,
+            mean_reversion_runtime_interval_anchors: parsed_mean_reversion_runtime_interval_anchors,
+            initial_mean_reversion_boundary_state: parsed_initial_mean_reversion_boundary_state,
             hourly_factor_contract: hourly_factor_contract.output.clone(),
-            calendar_registry: hourly_factor_contract.calendar_registry.clone(),
+            calendar_registry,
         },
         Some(run_options),
     )
@@ -118,6 +289,92 @@ fn run_seeded_tick_event_simulation(
     )?;
 
     Ok(PySeededTickSimulationNativeResult { output: run_result })
+}
+
+fn parse_seeded_simulation_mean_reversion_fitted_parameters(
+    raw_mean_reversion_fitted_parameters: &Bound<'_, PyAny>,
+) -> PyResult<MeanReversionFittedParameters> {
+    let parsed_parameters = serde_json::from_value::<MeanReversionFittedParameters>(
+        py_any_to_json_value(raw_mean_reversion_fitted_parameters)?,
+    )
+    .map_err(|source| {
+        SeasonalityInputValidationError::new_err(format!(
+            "mean_reversion_fitted_parameters failed to deserialize: {source}"
+        ))
+    })?;
+
+    parsed_parameters.validate().map_err(|source| {
+        SeasonalityInputValidationError::new_err(format!(
+            "mean_reversion_fitted_parameters failed validation: {source}"
+        ))
+    })?;
+
+    Ok(parsed_parameters)
+}
+
+fn parse_seeded_simulation_mean_reversion_runtime_interval_anchors(
+    raw_mean_reversion_runtime_interval_anchors: &Bound<'_, PyAny>,
+) -> PyResult<MeanReversionRuntimeIntervalAnchors> {
+    let parsed_runtime_interval_anchors =
+        serde_json::from_value::<MeanReversionRuntimeIntervalAnchors>(py_any_to_json_value(
+            raw_mean_reversion_runtime_interval_anchors,
+        )?)
+        .map_err(|source| {
+            SeasonalityInputValidationError::new_err(format!(
+                "mean_reversion_runtime_interval_anchors failed to deserialize: {source}"
+            ))
+        })?;
+
+    parsed_runtime_interval_anchors
+        .validate()
+        .map_err(|source| {
+            SeasonalityInputValidationError::new_err(format!(
+                "mean_reversion_runtime_interval_anchors failed validation: {source}"
+            ))
+        })?;
+
+    Ok(parsed_runtime_interval_anchors)
+}
+
+fn parse_seeded_simulation_mean_reversion_boundary_state(
+    raw_initial_mean_reversion_boundary_state: &Bound<'_, PyAny>,
+) -> PyResult<MeanReversionBoundaryState> {
+    let parsed_boundary_state = serde_json::from_value::<MeanReversionBoundaryState>(
+        py_any_to_json_value(raw_initial_mean_reversion_boundary_state)?,
+    )
+    .map_err(|source| {
+        SeasonalityInputValidationError::new_err(format!(
+            "initial_mean_reversion_boundary_state failed to deserialize: {source}"
+        ))
+    })?;
+
+    parsed_boundary_state.validate().map_err(|source| {
+        SeasonalityInputValidationError::new_err(format!(
+            "initial_mean_reversion_boundary_state failed validation: {source}"
+        ))
+    })?;
+
+    Ok(parsed_boundary_state)
+}
+
+fn parse_required_numeric_sequence(
+    raw_sequence: &Bound<'_, PyAny>,
+    context: &str,
+) -> PyResult<Vec<f64>> {
+    let parsed_sequence = serde_json::from_value::<Vec<f64>>(py_any_to_json_value(raw_sequence)?)
+        .map_err(|source| {
+        SeasonalityInputValidationError::new_err(format!(
+            "{context} failed to deserialize as a numeric sequence: {source}"
+        ))
+    })?;
+
+    if parsed_sequence.iter().any(|value| !value.is_finite()) {
+        return Err(SeasonalityInputValidationError::new_err(format!(
+            "{context} must contain only finite numeric values"
+        )));
+    }
+
+    Ok(parsed_sequence)
 }
 
 fn parse_seeded_simulation_kernel_parameters(
@@ -338,6 +595,11 @@ fn map_seeded_tick_simulation_run_error(
 
 pub(super) fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(run_coarse_simulation, module)?)?;
+    module.add_function(wrap_pyfunction!(
+        materialize_endogenous_mean_reversion_runtime_interval_anchors,
+        module
+    )?)?;
     module.add_function(wrap_pyfunction!(run_seeded_tick_event_simulation, module)?)?;
+
     Ok(())
 }

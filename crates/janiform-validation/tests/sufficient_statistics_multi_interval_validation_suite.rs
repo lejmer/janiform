@@ -6,6 +6,9 @@ use janiform_engine_risk::{
 use janiform_model_kernels::hawkes::{
     HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
 };
+use janiform_model_kernels::mean_reversion::{
+    MeanReversionBoundaryState, MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors,
+};
 use janiform_model_kernels::news::GammaSeverityMarkConfiguration;
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 use janiform_validation::{
@@ -284,6 +287,17 @@ fn build_run_request(
             y_minus_plus: 0.26,
             y_minus_minus: 0.37,
         },
+        MeanReversionFittedParameters::endogenous_core_expectation_one_interval(0.0)
+            .expect("zero-kappa endogenous mean reversion should construct"),
+        MeanReversionRuntimeIntervalAnchors::try_new(
+            "explicit_runtime_interval_grid_alignment.v1",
+            0.0,
+            vec![0.0; horizon_interval_count],
+            vec![1.0; horizon_interval_count],
+        )
+        .expect("disabled mean-reversion runtime anchors should construct"),
+        MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0)
+            .expect("disabled mean-reversion boundary state should construct"),
     )
     .expect("fixture model inputs should construct");
 
@@ -309,8 +323,10 @@ fn build_interval_factors(horizon_interval_count: usize) -> (Vec<f64>, Vec<f64>,
 
     for interval_index in 0..horizon_interval_count {
         s_h.push(0.85 + (interval_index % 5) as f64 * 0.05);
+
         let nu_h_total = 0.03 + (interval_index % 4) as f64 * 0.01;
         let known_nu_h = nu_h_total * 0.6;
+
         nu_h_known.push(known_nu_h);
         nu_h_surprise.push(nu_h_total - known_nu_h);
     }

@@ -1,3 +1,5 @@
+"""Internal Click runtime helpers used by the supported CLI commands."""
+
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any, Optional, cast

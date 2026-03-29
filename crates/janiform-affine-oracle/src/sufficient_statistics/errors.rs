@@ -392,6 +392,8 @@ impl Error for SufficientStatisticsTransformSliceExecutionError {
 pub enum SufficientStatisticsIntervalStatisticsError {
     InvalidAPlus { value: f64 },
     InvalidAMinus { value: f64 },
+    NonFiniteStatistic { field: &'static str, value: f64 },
+    NegativeStatistic { field: &'static str, value: f64 },
 }
 
 impl Display for SufficientStatisticsIntervalStatisticsError {
@@ -407,6 +409,18 @@ impl Display for SufficientStatisticsIntervalStatisticsError {
                 write!(
                     formatter,
                     "a_minus must be finite and non-negative, found {value}"
+                )
+            }
+            Self::NonFiniteStatistic { field, value } => {
+                write!(
+                    formatter,
+                    "{field} must be finite and non-negative, found {value}"
+                )
+            }
+            Self::NegativeStatistic { field, value } => {
+                write!(
+                    formatter,
+                    "{field} must be finite and non-negative, found {value}"
                 )
             }
         }

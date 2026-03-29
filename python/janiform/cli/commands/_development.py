@@ -1,10 +1,12 @@
+"""Internal developer-only CLI command-group assembly."""
+
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Optional, cast
 
 import click
 
-from .shared import _build_calendar_registry, _build_calendar_registry_from_document
+from ._shared import build_calendar_registry, build_calendar_registry_from_document
 from ..command_runtime import (
     JaniformCommand,
     JaniformGroup,
@@ -27,19 +29,19 @@ from .._constants import (
     DEFAULT_GAP_BEHAVIOR_FIXTURE_PATH,
     CliOutputMode,
 )
-from ..documents import _load_json_document_for_cli_field
-from ..errors import _classify_open_closed_gap_command_error, _classify_workflow_command_error
-from ..rendering import (
-    _write_cli_error,
-    _write_contract_json,
-    _write_deterministic_regression_human_output,
-    _write_open_closed_gap_human_output,
+from .._documents import load_json_document_for_cli_field
+from .._errors import classify_open_closed_gap_command_error, classify_workflow_command_error
+from .._rendering import (
+    write_cli_error,
+    write_contract_json,
+    write_deterministic_regression_human_output,
+    write_open_closed_gap_human_output,
 )
 from ...errors import JaniformError
 from ...validation import run_deterministic_regression_harness, run_open_closed_gap_leakage_regression_harness
 
 
-def _extract_gap_behavior_cases(gap_behavior_fixture_document: dict[str, Any]) -> list[dict[str, Any]]:
+def extract_gap_behavior_cases(gap_behavior_fixture_document: dict[str, Any]) -> list[dict[str, Any]]:
     raw_cases: object = gap_behavior_fixture_document.get("cases")
     if not isinstance(raw_cases, list):
         raise ValueError("gap behavior fixture must include list field `cases`")
@@ -88,7 +90,7 @@ def _extract_gap_behavior_cases(gap_behavior_fixture_document: dict[str, Any]) -
     return parsed_cases
 
 
-def _extract_calendar_cases(calendar_cases_document: dict[str, Any]) -> list[dict[str, Any]]:
+def extract_calendar_cases(calendar_cases_document: dict[str, Any]) -> list[dict[str, Any]]:
     raw_cases: object = calendar_cases_document.get("cases")
     if not isinstance(raw_cases, list):
         raise ValueError("calendar cases document must include list field `cases`")
@@ -103,7 +105,7 @@ def _extract_calendar_cases(calendar_cases_document: dict[str, Any]) -> list[dic
     return parsed_cases
 
 
-def _extract_seasonality_cases(seasonality_cases_document: dict[str, Any]) -> list[dict[str, Any]]:
+def extract_seasonality_cases(seasonality_cases_document: dict[str, Any]) -> list[dict[str, Any]]:
     raw_cases: object = seasonality_cases_document.get("canonical_output_cases")
     if not isinstance(raw_cases, list):
         raise ValueError("seasonality cases document must include list field `canonical_output_cases`")
@@ -118,7 +120,7 @@ def _extract_seasonality_cases(seasonality_cases_document: dict[str, Any]) -> li
     return parsed_cases
 
 
-def _run_deterministic_regression_command(
+def run_deterministic_regression_command(
     *,
     cli_context: CliCommandContext,
     output: str,
@@ -132,7 +134,7 @@ def _run_deterministic_regression_command(
     document_field_path = "calendar_registry_document"
 
     try:
-        calendar_registry_document = _load_json_document_for_cli_field(
+        calendar_registry_document = load_json_document_for_cli_field(
             repository_root=cli_context.repository_root,
             path=calendar_registry_json,
             context="calendar registry",
@@ -141,7 +143,7 @@ def _run_deterministic_regression_command(
             entrypoint=CLI_DETERMINISTIC_REGRESSION_ENTRYPOINT,
         )
         document_field_path = "calendar_cases_document"
-        calendar_cases_document = _load_json_document_for_cli_field(
+        calendar_cases_document = load_json_document_for_cli_field(
             repository_root=cli_context.repository_root,
             path=calendar_cases_json,
             context="calendar cases",
@@ -150,7 +152,7 @@ def _run_deterministic_regression_command(
             entrypoint=CLI_DETERMINISTIC_REGRESSION_ENTRYPOINT,
         )
         document_field_path = "seasonality_cases_document"
-        seasonality_cases_document = _load_json_document_for_cli_field(
+        seasonality_cases_document = load_json_document_for_cli_field(
             repository_root=cli_context.repository_root,
             path=seasonality_cases_json,
             context="seasonality cases",
@@ -159,11 +161,11 @@ def _run_deterministic_regression_command(
             entrypoint=CLI_DETERMINISTIC_REGRESSION_ENTRYPOINT,
         )
         document_field_path = "calendar_registry_document"
-        calendar_registry = _build_calendar_registry_from_document(calendar_registry_document)
+        calendar_registry = build_calendar_registry_from_document(calendar_registry_document)
         document_field_path = "calendar_cases_document"
-        calendar_cases = _extract_calendar_cases(calendar_cases_document)
+        calendar_cases = extract_calendar_cases(calendar_cases_document)
         document_field_path = "seasonality_cases_document"
-        seasonality_cases = _extract_seasonality_cases(seasonality_cases_document)
+        seasonality_cases = extract_seasonality_cases(seasonality_cases_document)
         report = run_deterministic_regression_harness(
             calendar_registry=calendar_registry,
             calendar_cases=calendar_cases,
@@ -172,10 +174,10 @@ def _run_deterministic_regression_command(
             news_intensity_absolute_tolerance=news_intensity_absolute_tolerance,
         )
     except JaniformError as e:
-        return _write_cli_error(e)
+        return write_cli_error(e)
     except Exception as e:
-        return _write_cli_error(
-            _classify_workflow_command_error(
+        return write_cli_error(
+            classify_workflow_command_error(
                 e,
                 entrypoint=CLI_DETERMINISTIC_REGRESSION_ENTRYPOINT,
                 validation_error_id=CLI_DETERMINISTIC_REGRESSION_VALIDATION_ERROR_ID,
@@ -188,14 +190,14 @@ def _run_deterministic_regression_command(
     failed_case_count = cast(dict[str, int], report["summary"])["failed_case_count"]
 
     if output == "json":
-        _write_contract_json(report)
+        write_contract_json(report)
         return int(CliExitCode.SUCCESS if failed_case_count == 0 else CliExitCode.RUNTIME_ERROR)
 
-    _write_deterministic_regression_human_output(report)
+    write_deterministic_regression_human_output(report)
     return int(CliExitCode.SUCCESS if failed_case_count == 0 else CliExitCode.RUNTIME_ERROR)
 
 
-def _run_open_closed_gap_leakage_regression_command(
+def run_open_closed_gap_leakage_regression_command(
     *,
     cli_context: CliCommandContext,
     output: str,
@@ -205,7 +207,7 @@ def _run_open_closed_gap_leakage_regression_command(
     **_,
 ) -> int:
     try:
-        calendar_fixture_document = _load_json_document_for_cli_field(
+        calendar_fixture_document = load_json_document_for_cli_field(
             repository_root=cli_context.repository_root,
             path=calendar_fixture_path,
             context="calendar fixture",
@@ -213,7 +215,7 @@ def _run_open_closed_gap_leakage_regression_command(
             error_id=CLI_OPEN_CLOSED_GAP_VALIDATION_ERROR_ID,
             entrypoint=CLI_OPEN_CLOSED_GAP_ENTRYPOINT,
         )
-        gap_behavior_fixture_document = _load_json_document_for_cli_field(
+        gap_behavior_fixture_document = load_json_document_for_cli_field(
             repository_root=cli_context.repository_root,
             path=gap_behavior_fixture_path,
             context="open closed gap behavior fixture",
@@ -221,29 +223,29 @@ def _run_open_closed_gap_leakage_regression_command(
             error_id=CLI_OPEN_CLOSED_GAP_VALIDATION_ERROR_ID,
             entrypoint=CLI_OPEN_CLOSED_GAP_ENTRYPOINT,
         )
-        calendar_registry = _build_calendar_registry(calendar_fixture_document)
-        gap_behavior_cases = _extract_gap_behavior_cases(gap_behavior_fixture_document)
+        calendar_registry = build_calendar_registry(calendar_fixture_document)
+        gap_behavior_cases = extract_gap_behavior_cases(gap_behavior_fixture_document)
         report = run_open_closed_gap_leakage_regression_harness(
             calendar_registry=calendar_registry,
             gap_behavior_cases=gap_behavior_cases,
             component_absolute_tolerance=component_absolute_tolerance,
         )
     except JaniformError as e:
-        return _write_cli_error(e)
+        return write_cli_error(e)
     except Exception as e:
-        return _write_cli_error(_classify_open_closed_gap_command_error(e))
+        return write_cli_error(classify_open_closed_gap_command_error(e))
 
     failed_case_count = cast(dict[str, int], report["summary"])["failed_case_count"]
 
     if output == "json":
-        _write_contract_json(report)
+        write_contract_json(report)
         return int(CliExitCode.SUCCESS if failed_case_count == 0 else CliExitCode.RUNTIME_ERROR)
 
-    _write_open_closed_gap_human_output(report)
+    write_open_closed_gap_human_output(report)
     return int(CliExitCode.SUCCESS if failed_case_count == 0 else CliExitCode.RUNTIME_ERROR)
 
 
-def _build_development_group(*, environment: Optional[Mapping[str, str]] = None) -> click.Group:
+def build_development_group(*, environment: Optional[Mapping[str, str]] = None) -> click.Group:
     @click.group(
         cls=JaniformGroup,
         command_path=("dev",),
@@ -305,7 +307,7 @@ def _build_development_group(*, environment: Optional[Mapping[str, str]] = None)
     def deterministic(ctx: click.Context, **command_arguments) -> int:
         return invoke_command_handler(
             ctx,
-            handler=_run_deterministic_regression_command,
+            handler=run_deterministic_regression_command,
             command_path=("dev", "regression", "deterministic"),
             command_arguments=dict(command_arguments),
         )
@@ -340,12 +342,9 @@ def _build_development_group(*, environment: Optional[Mapping[str, str]] = None)
     def open_closed_gap_leakage(ctx: click.Context, **command_arguments) -> int:
         return invoke_command_handler(
             ctx,
-            handler=_run_open_closed_gap_leakage_regression_command,
+            handler=run_open_closed_gap_leakage_regression_command,
             command_path=("dev", "regression", "open-closed-gap-leakage"),
             command_arguments=dict(command_arguments),
         )
 
     return dev
-
-
-__all__ = []

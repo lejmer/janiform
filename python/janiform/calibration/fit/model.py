@@ -1,8 +1,10 @@
+from __future__ import annotations
+
+import json
 from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta
-import json
 from pathlib import Path
 from typing import Any, NoReturn, Optional, cast
 
@@ -10,35 +12,16 @@ from ..market_data.contracts import CalibrationMarketDataWorkflowScope
 from ..market_data.workflow import (
     PreparedMarketDataCalibration,
 )
-from ..presets.references import (
-    KnownNewsExplicitConfiguration,
-    KnownNewsPresetReference,
-    MarketProfileExplicitConfiguration,
-    MarketProfileKnownNewsPolicy,
-    PresetRegistryScope,
-    SessionExplicitConfiguration,
-)
-from ..presets.registry import PresetCategory
 from ..presets.resolution import (
     DEFAULT_HIGH_LEVEL_KNOWN_NEWS_PRESET_NAME,
-    ResolvedKnownNewsComponent,
-    ResolvedMarketProfileComponent,
-    ResolvedPresetSelection,
     ResolvedPresetWorkflowConfiguration,
-    ResolvedSessionComponent,
-    ResolvedWorkflowComponent,
     ResolvedWorkflowComponentSource,
-    ResolvedWorkflowDiagnostic,
-    ResolvedWorkflowDiagnosticSeverity,
+    ResolvedPresetSelection,
 )
 from ..sessions.contracts import (
-    MarketDataSessionRecurringClosedWindow,
-    MarketDataSessionRegularWindow,
     MarketDataSessionResolution,
 )
-from ..staged.inputs import StagedCalibrationExecutionInput
 from ..staged.results import StagedCalibrationResponse
-from ..._timestamps import datetime_to_utc_nanos
 from ..._workflow_outputs import (
     SimulationArtifactSink,
     generate_workflow_run_id,
@@ -49,23 +32,32 @@ from ..._workflow_outputs import (
     write_simulation_artifacts,
 )
 from ..._workflow_progress import JaniformOutputController
-from ...contracts import MeanReversionFittedParameters, serialize_pretty_json
-from ...calendar import CalendarRegistry
-from ...calendar import MarketState
+from ..._timestamps import ONE_HOUR_NANOS, nanoseconds_to_hours
+from ...contracts import (
+    MeanReversionBoundaryState,
+    MeanReversionFittedParameters,
+    MeanReversionRuntimeIntervalAnchors,
+    require_non_empty_string,
+    serialize_pretty_json,
+)
+from ...calendar import CalendarRegistry, MarketState
 from ...hourly_factors import (
-    HourlyNewsIntensityMaterializationSettings,
+    HourlyFactorContract,
     HourlyNewsIntensityProviderMaterializedSource,
     HourlySeasonalityProviderExplicitSource,
+    HourlySeasonalityProviderMaterializedSource,
+    HourlySeasonalityProviderSource,
+    load_hourly_factor_contract_payload,
+    provide_hourly_factor_contract,
     _parse_interval_duration_nanos,
-    materialize_hourly_news_intensity_factors,
 )
 from ...pricing import (
+    AnchoredVanillaOptionPricingBoundaryInput,
     GammaSeverityMarkConfiguration,
     NigSharedPlusShiftConfiguration,
     VanillaOptionPayoffConfiguration,
     VanillaOptionPayoffType,
     VanillaOptionPricingExecutionInput,
-    VanillaOptionPricingIntervalFactors,
     VanillaOptionPricingMarketInputs,
     VanillaOptionPricingModelParameters,
     VanillaOptionPricingOptionalOutputSelection,
@@ -77,26 +69,30 @@ from .._errors import _calibration_error
 from ...seasonality import SessionFilter, preprocess_timestamp_events
 from ...risk import (
     SufficientStatisticsRiskEquationSpecification,
-    SufficientStatisticsRiskIntervalFactors,
     SufficientStatisticsRiskModelInputs,
 )
-from ...simulation import (
+from ...simulation.coarse import (
     CoarseSimulationPath,
     CoarseSimulationRunRequest,
-    HawkesExcitationState,
-    HawkesKernelParameters,
     NewsProcessConfiguration,
-    SeededTickEventStateSnapshotCapture,
+    run_coarse_simulation,
+)
+from ...simulation.seeded import (
     SeededTickSimulationRequest,
     SeededTickSimulationResponse,
-    load_hourly_factor_contract_for_simulation,
-    run_coarse_simulation,
     run_seeded_tick_event_simulation,
 )
+from ...simulation.shared import (
+    HawkesExcitationState,
+    HawkesKernelParameters,
+    SeededTickEventStateSnapshotCapture,
+)
+from ..._native_api import native_module
 
 
 _HIGH_LEVEL_MODEL_PERSISTENCE_SCHEMA_VERSION = "calibration.high_level.model.v1"
 _DEFAULT_HIGH_LEVEL_SIMULATION_INTERVAL = "1h"
+_MEAN_REVERSION_RUNTIME_INTERVAL_ALIGNMENT_POLICY = "explicit_runtime_interval_grid_alignment.v1"
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,15 +105,13 @@ class _PreparedModelSimulationInputs:
 class _PreparedModelRuntimeFactors:
     calendar_registry: CalendarRegistry
     exchange_code: str
+    interval_duration_nanos: int
     interval_delta: float
     range_end_utc: datetime
     kernel_parameters: HawkesKernelParameters
     nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration
     gamma_severity_mark_configuration: GammaSeverityMarkConfiguration
     news_process_configuration: NewsProcessConfiguration
-    seasonality_hourly_factors: tuple[float, ...]
-    known_component_nu_h: tuple[float, ...]
-    surprise_component_nu_h: tuple[float, ...]
 
 
 class _MemorySimulationSink:
@@ -251,7 +245,6 @@ class JaniformModel:
     metadata: dict[str, Any]
     resolved_configuration: ResolvedPresetWorkflowConfiguration
     session_resolution: MarketDataSessionResolution
-    _execution_input: Optional[StagedCalibrationExecutionInput] = field(repr=False, compare=False)
     _stage_report_payloads: tuple[dict[str, Any], ...] = field(repr=False, compare=False)
 
     @property
@@ -368,6 +361,7 @@ class JaniformModel:
         risk_free_rate: float = 0.0,
         dividend_yield: float = 0.0,
         boundary_state: Optional[HawkesExcitationState] = None,
+        observed_boundary_state: Optional[MeanReversionBoundaryState] = None,
         include_transform_diagnostics: bool = False,
         include_integration_quality_diagnostics: bool = False,
         include_calibration_hooks: bool = False,
@@ -385,6 +379,7 @@ class JaniformModel:
             risk_free_rate=risk_free_rate,
             dividend_yield=dividend_yield,
             boundary_state=boundary_state,
+            observed_boundary_state=observed_boundary_state,
             include_transform_diagnostics=include_transform_diagnostics,
             include_integration_quality_diagnostics=include_integration_quality_diagnostics,
             include_calibration_hooks=include_calibration_hooks,
@@ -470,15 +465,18 @@ class JaniformModel:
             ) from e
 
         return JaniformModel(
-            run_id=_require_model_persistence_string(payload, "run_id"),
+            run_id=require_non_empty_string(payload, "run_id", "run_id", _calibration_error),
             workflow_scope=workflow_scope,
             parameters=_normalize_model_parameters(raw_parameters),
             metadata=deepcopy(raw_metadata),
-            resolved_configuration=_resolved_preset_workflow_configuration_from_mapping(
-                raw_resolved_configuration
+            resolved_configuration=ResolvedPresetWorkflowConfiguration.from_mapping(
+                raw_resolved_configuration,
+                field_path="resolved_configuration",
             ),
-            session_resolution=_market_data_session_resolution_from_mapping(raw_session_resolution),
-            _execution_input=None,
+            session_resolution=MarketDataSessionResolution.from_mapping(
+                raw_session_resolution,
+                field_path="session_resolution",
+            ),
             _stage_report_payloads=(),
         )
 
@@ -551,6 +549,45 @@ def _prepare_model_simulation_inputs(
 
     match simulation_kind:
         case "coarse_interval":
+            hourly_factor_contract = provide_hourly_factor_contract(
+                calendar_registry=runtime_factors.calendar_registry,
+                exchange_code=runtime_factors.exchange_code,
+                range_start_utc=start_time_utc,
+                range_end_utc=runtime_factors.range_end_utc,
+                interval=interval,
+                seasonality_source=_build_runtime_hourly_seasonality_source_from_model(
+                    model,
+                    calendar_registry=runtime_factors.calendar_registry,
+                    exchange_code=runtime_factors.exchange_code,
+                    range_start_utc=start_time_utc,
+                    range_end_utc=runtime_factors.range_end_utc,
+                    interval=interval,
+                ),
+                news_intensity_source=HourlyNewsIntensityProviderMaterializedSource(
+                    known_scheduled_event_timestamps_utc=_resolved_known_news_event_timestamps(model),
+                    surprise_baseline_intensity=_surprise_baseline_intensity(model),
+                    surprise_deterministic_time_multiplier_by_interval_index=(
+                        _surprise_deterministic_time_multiplier_by_interval_index(
+                            model,
+                            range_start_utc=start_time_utc,
+                            range_end_utc=runtime_factors.range_end_utc,
+                            interval_duration_nanos=_parse_interval_duration_nanos(interval),
+                        )
+                    ),
+                ),
+            )
+
+            (
+                mean_reversion_fitted_parameters,
+                mean_reversion_runtime_interval_anchors,
+                initial_mean_reversion_boundary_state,
+            ) = _prepare_model_mean_reversion_runtime_inputs(
+                model,
+                runtime_factors=runtime_factors,
+                hourly_factor_contract=hourly_factor_contract,
+                initial_excitation_state=effective_initial_state,
+            )
+
             coarse_request = CoarseSimulationRunRequest.from_runtime_inputs(
                 seed=seed,
                 start_time_utc=start_time_utc,
@@ -563,18 +600,59 @@ def _prepare_model_simulation_inputs(
                     ),
                     nig_shared_plus_shift_configuration=runtime_factors.nig_shared_plus_shift_configuration,
                     initial_excitation_state=effective_initial_state,
+                    mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
+                    mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
+                    initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
                 ),
-                interval_factors=SufficientStatisticsRiskIntervalFactors(
-                    interval_delta=runtime_factors.interval_delta,
-                    s_h=runtime_factors.seasonality_hourly_factors,
-                    nu_h_known=runtime_factors.known_component_nu_h,
-                    nu_h_surprise=runtime_factors.surprise_component_nu_h,
+                hourly_factor_contract=_zero_closed_coarse_interval_seasonality_factors(
+                    hourly_factor_contract,
+                    calendar_registry=runtime_factors.calendar_registry,
+                    exchange_code=runtime_factors.exchange_code,
                 ),
                 news_process_configuration=runtime_factors.news_process_configuration,
                 calendar_registry=runtime_factors.calendar_registry,
                 exchange_code=runtime_factors.exchange_code,
             )
         case "seeded_tick":
+            hourly_factor_contract = provide_hourly_factor_contract(
+                calendar_registry=runtime_factors.calendar_registry,
+                exchange_code=runtime_factors.exchange_code,
+                range_start_utc=start_time_utc,
+                range_end_utc=runtime_factors.range_end_utc,
+                interval=interval,
+                seasonality_source=_build_runtime_hourly_seasonality_source_from_model(
+                    model,
+                    calendar_registry=runtime_factors.calendar_registry,
+                    exchange_code=runtime_factors.exchange_code,
+                    range_start_utc=start_time_utc,
+                    range_end_utc=runtime_factors.range_end_utc,
+                    interval=interval,
+                ),
+                news_intensity_source=HourlyNewsIntensityProviderMaterializedSource(
+                    known_scheduled_event_timestamps_utc=_resolved_known_news_event_timestamps(model),
+                    surprise_baseline_intensity=_surprise_baseline_intensity(model),
+                    surprise_deterministic_time_multiplier_by_interval_index=(
+                        _surprise_deterministic_time_multiplier_by_interval_index(
+                            model,
+                            range_start_utc=start_time_utc,
+                            range_end_utc=runtime_factors.range_end_utc,
+                            interval_duration_nanos=_parse_interval_duration_nanos(interval),
+                        )
+                    ),
+                ),
+            )
+
+            (
+                mean_reversion_fitted_parameters,
+                mean_reversion_runtime_interval_anchors,
+                initial_mean_reversion_boundary_state,
+            ) = _prepare_model_mean_reversion_runtime_inputs(
+                model,
+                runtime_factors=runtime_factors,
+                hourly_factor_contract=hourly_factor_contract,
+                initial_excitation_state=effective_initial_state,
+            )
+
             seeded_request = SeededTickSimulationRequest.from_runtime_inputs(
                 seed=seed,
                 start_time_utc=start_time_utc,
@@ -583,33 +661,10 @@ def _prepare_model_simulation_inputs(
                 nig_shared_plus_shift_configuration=runtime_factors.nig_shared_plus_shift_configuration,
                 news_process_configuration=runtime_factors.news_process_configuration,
                 initial_excitation_state=effective_initial_state,
-                hourly_factor_contract=load_hourly_factor_contract_for_simulation(
-                    calendar_registry=runtime_factors.calendar_registry,
-                    exchange_code=runtime_factors.exchange_code,
-                    range_start_utc=start_time_utc,
-                    range_end_utc=runtime_factors.range_end_utc,
-                    interval=interval,
-                    seasonality_source=_build_runtime_hourly_seasonality_source_from_model(
-                        model,
-                        calendar_registry=runtime_factors.calendar_registry,
-                        exchange_code=runtime_factors.exchange_code,
-                        range_start_utc=start_time_utc,
-                        range_end_utc=runtime_factors.range_end_utc,
-                        interval=interval,
-                    ),
-                    news_intensity_source=HourlyNewsIntensityProviderMaterializedSource(
-                        known_scheduled_event_timestamps_utc=_resolved_known_news_event_timestamps(model),
-                        surprise_baseline_intensity=_surprise_baseline_intensity(model),
-                        surprise_deterministic_time_multiplier_by_interval_index=(
-                            _surprise_deterministic_time_multiplier_by_interval_index(
-                                model,
-                                range_start_utc=start_time_utc,
-                                range_end_utc=runtime_factors.range_end_utc,
-                                interval_duration_nanos=_parse_interval_duration_nanos(interval),
-                            )
-                        ),
-                    ),
-                ),
+                mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
+                mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
+                initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
+                hourly_factor_contract=hourly_factor_contract,
                 debug_trace_enabled=debug_trace_enabled,
                 sample_every_nth_transition=sample_every_nth_transition,
                 max_records_per_chunk=max_records_per_chunk,
@@ -626,6 +681,151 @@ def _prepare_model_simulation_inputs(
     )
 
 
+def _prepare_model_mean_reversion_runtime_inputs(
+    model: JaniformModel,
+    *,
+    runtime_factors: _PreparedModelRuntimeFactors,
+    hourly_factor_contract: HourlyFactorContract,
+    initial_excitation_state: HawkesExcitationState,
+    start_anchor_value: float = 0.0,
+) -> tuple[
+    MeanReversionFittedParameters,
+    MeanReversionRuntimeIntervalAnchors,
+    MeanReversionBoundaryState,
+]:
+    fitted_parameters = _mean_reversion_fitted_parameters(model)
+    runtime_interval_anchors = _materialize_model_mean_reversion_runtime_interval_anchors(
+        fitted_parameters=fitted_parameters,
+        runtime_factors=runtime_factors,
+        hourly_factor_contract=hourly_factor_contract,
+        initial_excitation_state=initial_excitation_state,
+        start_anchor_value=start_anchor_value,
+    )
+
+    anchor_model_kind = fitted_parameters.anchor_model.anchor_model_kind
+    if anchor_model_kind != "endogenous_core_expectation_one_interval":
+        raise RuntimeError(
+            "JaniformModel mean reversion anchor model kind is unsupported"
+        )
+
+    initial_boundary_state = MeanReversionBoundaryState(
+        observed_log_price=runtime_interval_anchors.start_anchor_value,
+        anchor_value=runtime_interval_anchors.start_anchor_value,
+        deviation=0.0,
+    )
+
+    return fitted_parameters, runtime_interval_anchors, initial_boundary_state
+
+
+def _materialize_model_mean_reversion_runtime_interval_anchors(
+    *,
+    fitted_parameters: MeanReversionFittedParameters,
+    runtime_factors: _PreparedModelRuntimeFactors,
+    hourly_factor_contract: HourlyFactorContract,
+    initial_excitation_state: HawkesExcitationState,
+    start_anchor_value: float,
+) -> MeanReversionRuntimeIntervalAnchors:
+    interval_end_times_utc = tuple(
+        _runtime_datetime_from_utc_nanos(timestamp_utc_nanos)
+        for timestamp_utc_nanos in hourly_factor_contract.interval_end_utc_nanos
+    )
+    interval_deltas = tuple(
+        nanoseconds_to_hours(hourly_factor_contract.interval_duration_nanos)
+        for _ in range(hourly_factor_contract.interval_count)
+    )
+
+    if len(interval_end_times_utc) != len(interval_deltas):
+        raise RuntimeError(
+            "JaniformModel mean reversion runtime anchor materialization requires one interval "
+            "end timestamp per interval delta"
+        )
+
+    anchor_model = fitted_parameters.anchor_model
+    match anchor_model.anchor_model_kind:
+        case "endogenous_core_expectation_one_interval":
+            return _materialize_endogenous_model_mean_reversion_runtime_interval_anchors(
+                runtime_factors=runtime_factors,
+                hourly_factor_contract=hourly_factor_contract,
+                initial_excitation_state=initial_excitation_state,
+                interval_alignment_policy=hourly_factor_contract.interval_alignment_policy,
+                start_anchor_value=start_anchor_value,
+            )
+        case _:
+            raise RuntimeError("JaniformModel mean reversion anchor model kind is unsupported")
+
+
+def _materialize_endogenous_model_mean_reversion_runtime_interval_anchors(
+    *,
+    runtime_factors: _PreparedModelRuntimeFactors,
+    hourly_factor_contract: HourlyFactorContract,
+    initial_excitation_state: HawkesExcitationState,
+    interval_alignment_policy: str,
+    start_anchor_value: float,
+) -> MeanReversionRuntimeIntervalAnchors:
+    native = native_module()
+
+    runtime_anchor_payload = native.materialize_endogenous_mean_reversion_runtime_interval_anchors(
+        runtime_factors.kernel_parameters.to_payload(),
+        runtime_factors.nig_shared_plus_shift_configuration.to_payload(),
+        runtime_factors.news_process_configuration.to_payload(),
+        initial_excitation_state.to_payload(),
+        interval_alignment_policy,
+        start_anchor_value,
+        tuple(hourly_factor_contract.s_h),
+        tuple(hourly_factor_contract.known_component_nu_h),
+        tuple(hourly_factor_contract.surprise_component_nu_h),
+        tuple(
+            nanoseconds_to_hours(hourly_factor_contract.interval_duration_nanos)
+            for _ in range(hourly_factor_contract.interval_count)
+        ),
+    )
+
+    return MeanReversionRuntimeIntervalAnchors.from_mapping(
+        dict(cast(Mapping[str, Any], runtime_anchor_payload)),
+        field_path="mean_reversion_runtime_interval_anchors",
+    )
+
+
+def _build_runtime_interval_end_times_utc(
+    *,
+    start_time_utc: datetime,
+    interval_duration_nanos: int,
+    horizon_interval_count: int,
+) -> tuple[datetime, ...]:
+    interval_duration = timedelta(seconds=interval_duration_nanos / 1_000_000_000)
+    return tuple(
+        start_time_utc + interval_duration * interval_index
+        for interval_index in range(1, horizon_interval_count + 1)
+    )
+
+
+def _mean_reversion_fitted_parameters(model: JaniformModel) -> MeanReversionFittedParameters:
+    raw_mean_reversion = model.parameters.get("mean_reversion")
+    if isinstance(raw_mean_reversion, Mapping):
+        fitted_parameters = raw_mean_reversion.get("fitted_parameters")
+        if isinstance(fitted_parameters, Mapping):
+            return MeanReversionFittedParameters.from_mapping(
+                dict(fitted_parameters),
+                field_path="mean_reversion.fitted_parameters",
+            )
+
+    return MeanReversionFittedParameters.from_mapping(
+        dict(
+            _require_payload_mapping(
+                _return_components_fitted_parameters_payload(model),
+                "mean_reversion_fitted_parameters",
+                "return_components.fitted_parameters.mean_reversion_fitted_parameters",
+            )
+        ),
+        field_path="return_components.fitted_parameters.mean_reversion_fitted_parameters",
+    )
+
+
+def _runtime_datetime_from_utc_nanos(timestamp_utc_nanos: int) -> datetime:
+    seconds, nanos_remainder = divmod(timestamp_utc_nanos, 1_000_000_000)
+    return datetime.fromtimestamp(seconds, tz=UTC) + timedelta(microseconds=nanos_remainder / 1000.0)
+
+
 def _prepare_model_pricing_execution_input(
     model: JaniformModel,
     *,
@@ -637,14 +837,26 @@ def _prepare_model_pricing_execution_input(
     risk_free_rate: float,
     dividend_yield: float,
     boundary_state: Optional[HawkesExcitationState],
+    observed_boundary_state: Optional[MeanReversionBoundaryState],
     include_transform_diagnostics: bool,
     include_integration_quality_diagnostics: bool,
     include_calibration_hooks: bool,
 ) -> VanillaOptionPricingExecutionInput:
+    horizon_interval_count_float = maturity_interval / 1.0
+    horizon_interval_count = int(horizon_interval_count_float)
+    if (
+        horizon_interval_count <= 0
+        or float(horizon_interval_count) != horizon_interval_count_float
+    ):
+        raise _calibration_error(
+            "maturity_interval",
+            "must be a positive exact multiple of the pricing runtime interval 1.0",
+        )
+
     runtime_factors = _prepare_model_runtime_factors(
         model,
         start_time_utc=valuation_time_utc,
-        horizon_interval_count=1,
+        horizon_interval_count=horizon_interval_count,
         interval="1h",
     )
 
@@ -664,6 +876,39 @@ def _prepare_model_pricing_execution_input(
         _zero_hawkes_excitation_state() if boundary_state is None else boundary_state
     )
 
+    hourly_factor_contract = provide_hourly_factor_contract(
+        calendar_registry=runtime_factors.calendar_registry,
+        exchange_code=runtime_factors.exchange_code,
+        range_start_utc=valuation_time_utc,
+        range_end_utc=runtime_factors.range_end_utc,
+        interval="1h",
+        seasonality_source=_build_runtime_hourly_seasonality_source_from_model(
+            model,
+            calendar_registry=runtime_factors.calendar_registry,
+            exchange_code=runtime_factors.exchange_code,
+            range_start_utc=valuation_time_utc,
+            range_end_utc=runtime_factors.range_end_utc,
+            interval="1h",
+        ),
+        news_intensity_source=HourlyNewsIntensityProviderMaterializedSource(
+            known_scheduled_event_timestamps_utc=_resolved_known_news_event_timestamps(model),
+            surprise_baseline_intensity=_surprise_baseline_intensity(model),
+            surprise_deterministic_time_multiplier_by_interval_index=(
+                _surprise_deterministic_time_multiplier_by_interval_index(
+                    model,
+                    range_start_utc=valuation_time_utc,
+                    range_end_utc=runtime_factors.range_end_utc,
+                    interval_duration_nanos=runtime_factors.interval_duration_nanos,
+                )
+            ),
+        ),
+    )
+    mean_reversion_fitted_parameters = _mean_reversion_fitted_parameters(model)
+    effective_observed_boundary_state = _resolve_model_pricing_observed_boundary_state(
+        mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
+        observed_boundary_state=observed_boundary_state,
+    )
+
     return VanillaOptionPricingExecutionInput(
         request=VanillaOptionPricingRequest(
             market_inputs=VanillaOptionPricingMarketInputs(
@@ -674,22 +919,41 @@ def _prepare_model_pricing_execution_input(
                 dividend_yield=dividend_yield,
             ),
             payoff=VanillaOptionPayoffConfiguration(payoff_type=normalized_payoff_type),
-            boundary_state=effective_boundary_state,
+            boundary_input=AnchoredVanillaOptionPricingBoundaryInput(
+                interval_index=0,
+                hawkes_boundary_state=effective_boundary_state,
+                mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
+                interval_delta=runtime_factors.interval_delta,
+                observed_boundary_state=effective_observed_boundary_state,
+            ),
             model_parameters=VanillaOptionPricingModelParameters(
                 hawkes_kernel_parameters=runtime_factors.kernel_parameters,
-                gamma_severity_mark_configuration=runtime_factors.gamma_severity_mark_configuration,
+                news_process_configuration=runtime_factors.news_process_configuration,
                 nig_shared_plus_shift_configuration=runtime_factors.nig_shared_plus_shift_configuration,
             ),
         ),
-        interval_factors=VanillaOptionPricingIntervalFactors(
-            s_h=runtime_factors.seasonality_hourly_factors[0],
-            nu_h_known=runtime_factors.known_component_nu_h[0],
-            nu_h_surprise=runtime_factors.surprise_component_nu_h[0],
-        ),
+        hourly_factor_contract=hourly_factor_contract,
         optional_output_selection=VanillaOptionPricingOptionalOutputSelection(
             include_transform_diagnostics=include_transform_diagnostics,
             include_integration_quality_diagnostics=include_integration_quality_diagnostics,
             include_calibration_hooks=include_calibration_hooks,
+        ),
+    )
+
+
+def _resolve_model_pricing_observed_boundary_state(
+    *,
+    mean_reversion_fitted_parameters: MeanReversionFittedParameters,
+    observed_boundary_state: Optional[MeanReversionBoundaryState],
+) -> MeanReversionBoundaryState:
+    if observed_boundary_state is not None:
+        return observed_boundary_state
+
+    raise _calibration_error(
+        "observed_boundary_state",
+        (
+            "is required for pricing. Pass an explicit MeanReversionBoundaryState "
+            "aligned with the valuation boundary anchor."
         ),
     )
 
@@ -711,34 +975,6 @@ def _prepare_model_runtime_factors(
 
     calendar_registry = CalendarRegistry(model.session_resolution.resolved_session_definition_json)
     exchange_code = model.session_resolution.exchange_code
-    seasonality_source = _build_runtime_hourly_seasonality_source_from_model(
-        model,
-        calendar_registry=calendar_registry,
-        exchange_code=exchange_code,
-        range_start_utc=start_time_utc,
-        range_end_utc=range_end_utc,
-        interval=interval,
-    )
-    known_news_event_timestamps_utc = _resolved_known_news_event_timestamps(model)
-    news_materialization = materialize_hourly_news_intensity_factors(
-        calendar_registry=calendar_registry,
-        exchange_code=exchange_code,
-        range_start_utc=start_time_utc,
-        range_end_utc=range_end_utc,
-        interval=interval,
-        settings=HourlyNewsIntensityMaterializationSettings(
-            known_scheduled_event_timestamps_utc=known_news_event_timestamps_utc,
-            surprise_baseline_intensity=_surprise_baseline_intensity(model),
-            surprise_deterministic_time_multiplier_by_interval_index=(
-                _surprise_deterministic_time_multiplier_by_interval_index(
-                    model,
-                    range_start_utc=start_time_utc,
-                    range_end_utc=range_end_utc,
-                    interval_duration_nanos=interval_duration_nanos,
-                )
-            ),
-        ),
-    )
     hawkes_fitted_parameters = _hawkes_fitted_parameters_payload(model)
     return_components_fitted_parameters = _return_components_fitted_parameters_payload(model)
     news_process_configuration = NewsProcessConfiguration.from_mapping(
@@ -753,27 +989,11 @@ def _prepare_model_runtime_factors(
         "shared_mark_law",
         "return_components.fitted_parameters.news_process_configuration.shared_mark_law",
     )
-
-    interval_delta = interval_duration_nanos / 3_600_000_000_000.0
-    seasonality_hourly_factors = _gate_runtime_seasonality_to_open_intervals(
-        calendar_registry=calendar_registry,
-        exchange_code=exchange_code,
-        range_start_utc=start_time_utc,
-        interval_duration_nanos=interval_duration_nanos,
-        seasonality_hourly_factors=tuple(float(value) for value in seasonality_source.hourly_factors),
-    )
-    known_component_nu_h, surprise_component_nu_h = (
-        _normalize_runtime_coarse_news_intensity_components(
-            news_materialization=news_materialization,
-            known_news_event_timestamps_utc=known_news_event_timestamps_utc,
-            interval_delta=interval_delta,
-        )
-    )
-
     return _PreparedModelRuntimeFactors(
         calendar_registry=calendar_registry,
         exchange_code=exchange_code,
-        interval_delta=interval_delta,
+        interval_duration_nanos=interval_duration_nanos,
+        interval_delta=nanoseconds_to_hours(interval_duration_nanos),
         range_end_utc=range_end_utc,
         kernel_parameters=HawkesKernelParameters.from_mapping(
             _require_payload_mapping(
@@ -803,79 +1023,6 @@ def _prepare_model_runtime_factors(
             ),
         ),
         news_process_configuration=news_process_configuration,
-        seasonality_hourly_factors=seasonality_hourly_factors,
-        known_component_nu_h=known_component_nu_h,
-        surprise_component_nu_h=surprise_component_nu_h,
-    )
-
-
-def _gate_runtime_seasonality_to_open_intervals(
-    *,
-    calendar_registry: CalendarRegistry,
-    exchange_code: str,
-    range_start_utc: datetime,
-    interval_duration_nanos: int,
-    seasonality_hourly_factors: tuple[float, ...],
-) -> tuple[float, ...]:
-    interval_duration = timedelta(seconds=interval_duration_nanos / 1_000_000_000)
-    gated_hourly_factors: list[float] = []
-    interval_start_utc = _normalize_runtime_utc_timestamp(
-        range_start_utc,
-        field_name="range_start_utc",
-    )
-
-    for hourly_factor in seasonality_hourly_factors:
-        market_state = calendar_registry.resolve_market_state(
-            exchange_code,
-            interval_start_utc,
-        )
-        gated_hourly_factors.append(
-            hourly_factor if market_state == MarketState.OPEN else 0.0
-        )
-        interval_start_utc += interval_duration
-
-    return tuple(gated_hourly_factors)
-
-
-def _normalize_runtime_coarse_news_intensity_components(
-    *,
-    news_materialization: Any,
-    known_news_event_timestamps_utc: tuple[datetime, ...],
-    interval_delta: float,
-) -> tuple[tuple[float, ...], tuple[float, ...]]:
-    known_news_event_timestamps_utc_nanos = tuple(
-        datetime_to_utc_nanos(timestamp_utc)
-        for timestamp_utc in known_news_event_timestamps_utc
-    )
-    known_component_nu_h: list[float] = []
-    surprise_component_nu_h: list[float] = []
-
-    for interval_start_utc_nanos, interval_end_utc_nanos, surprise_component_nu_h_value in zip(
-        news_materialization.interval_start_utc_nanos,
-        news_materialization.interval_end_utc_nanos,
-        news_materialization.surprise_component_nu_h,
-        strict=True,
-    ):
-        known_news_event_count = _count_known_news_events_in_interval(
-            known_news_event_timestamps_utc_nanos,
-            int(interval_start_utc_nanos),
-            int(interval_end_utc_nanos),
-        )
-        known_component_nu_h.append(known_news_event_count / interval_delta)
-        surprise_component_nu_h.append(max(float(surprise_component_nu_h_value), 0.0))
-
-    return tuple(known_component_nu_h), tuple(surprise_component_nu_h)
-
-
-def _count_known_news_events_in_interval(
-    known_news_event_timestamps_utc_nanos: tuple[int, ...],
-    interval_start_utc_nanos: int,
-    interval_end_utc_nanos: int,
-) -> int:
-    return sum(
-        1
-        for timestamp_utc_nanos in known_news_event_timestamps_utc_nanos
-        if interval_start_utc_nanos <= timestamp_utc_nanos < interval_end_utc_nanos
     )
 
 
@@ -913,7 +1060,7 @@ def _build_runtime_hourly_seasonality_source_from_model(
     range_start_utc: datetime,
     range_end_utc: datetime,
     interval: str | timedelta,
-) -> HourlySeasonalityProviderExplicitSource:
+) -> HourlySeasonalityProviderSource:
     seasonality_parameters = _seasonality_parameters_payload(model)
     if not _contains_structural_seasonality_parameters(seasonality_parameters):
         raise RuntimeError(
@@ -985,8 +1132,23 @@ def _build_runtime_hourly_seasonality_source_from_model(
             * day_of_year_factors[day_of_year_index]
         )
 
+    mean_renormalized_factors = _mean_renormalize_factors(tuple(hourly_factors))
+
+    if interval_duration_nanos < ONE_HOUR_NANOS:
+        return HourlySeasonalityProviderMaterializedSource(
+            source_timestamps_utc=tuple(
+                record["timestamp"]
+                for record in timestamp_event_records
+            ),
+            source_seasonality_factors=mean_renormalized_factors,
+            interpolation_method="previous_observation_carry_forward.v1",
+            aggregation_method="mean_of_observations.v1",
+            sparse_fallback_policy="global_mean.v1",
+            sparse_hour_minimum_observation_count=1,
+        )
+
     return HourlySeasonalityProviderExplicitSource(
-        hourly_factors=_mean_renormalize_factors(tuple(hourly_factors)),
+        hourly_factors=mean_renormalized_factors,
         materialization_method="runtime_compact_seasonality_parameters_mean_renormalized.v1",
     )
 
@@ -1005,6 +1167,44 @@ def _build_runtime_timestamp_event_records(
         current_timestamp += interval_duration
 
     return event_records
+
+
+def _zero_closed_coarse_interval_seasonality_factors(
+    hourly_factor_contract: HourlyFactorContract,
+    *,
+    calendar_registry: CalendarRegistry,
+    exchange_code: str,
+) -> HourlyFactorContract:
+    if hourly_factor_contract.interval_duration_nanos >= ONE_HOUR_NANOS:
+        return hourly_factor_contract
+
+    payload = hourly_factor_contract.to_payload()
+    gated_seasonality: list[float] = []
+    contains_closed_interval = False
+
+    for interval_start_utc_nanos, seasonality_factor in zip(
+        payload["interval_start_utc_nanos"],
+        payload["s_h"],
+        strict=True,
+    ):
+        if (
+            calendar_registry.resolve_market_state(
+                exchange_code,
+                _runtime_datetime_from_utc_nanos(interval_start_utc_nanos),
+            )
+            == MarketState.OPEN
+        ):
+            gated_seasonality.append(seasonality_factor)
+            continue
+
+        gated_seasonality.append(0.0)
+        contains_closed_interval = True
+
+    if not contains_closed_interval:
+        return hourly_factor_contract
+
+    payload["s_h"] = gated_seasonality
+    return load_hourly_factor_contract_payload(payload)
 
 
 def _seasonality_parameters_payload(model: JaniformModel) -> Mapping[str, Any]:
@@ -1271,17 +1471,6 @@ def _build_model_persistence_payload(model: JaniformModel) -> dict[str, Any]:
     }
 
 
-def _require_model_persistence_string(
-    payload: Mapping[str, Any],
-    field_name: str,
-) -> str:
-    raw_value = payload.get(field_name)
-    if not isinstance(raw_value, str) or not raw_value.strip():
-        raise _calibration_error(field_name, "must be a non-empty string")
-
-    return raw_value
-
-
 def _stage_report_payloads_from_sequence(
     raw_stage_report_payloads: list[Any],
 ) -> tuple[dict[str, Any], ...]:
@@ -1296,284 +1485,6 @@ def _stage_report_payloads_from_sequence(
         payloads.append(deepcopy(raw_stage_report))
 
     return tuple(payloads)
-
-
-def _market_data_session_resolution_from_mapping(
-    raw_payload: Mapping[str, Any],
-) -> MarketDataSessionResolution:
-    return MarketDataSessionResolution(
-        schema_version=_require_model_persistence_string(raw_payload, "schema_version"),
-        resolution_kind=_require_model_persistence_string(raw_payload, "resolution_kind"),
-        selected_policy_id=_require_model_persistence_string(raw_payload, "selected_policy_id"),
-        manual_override_applied=_require_model_persistence_boolean(
-            raw_payload,
-            "manual_override_applied",
-        ),
-        exchange_code=_require_model_persistence_string(raw_payload, "exchange_code"),
-        exchange_name=_require_model_persistence_string(raw_payload, "exchange_name"),
-        resolved_timezone_name=_require_model_persistence_string(raw_payload, "resolved_timezone_name"),
-        timezone_source=_require_model_persistence_string(raw_payload, "timezone_source"),
-        open_session_duration_hours_per_week=_require_model_persistence_float(
-            raw_payload,
-            "open_session_duration_hours_per_week",
-        ),
-        confidence_score=_require_model_persistence_float(raw_payload, "confidence_score"),
-        confidence_label=_require_model_persistence_string(raw_payload, "confidence_label"),
-        regular_session_windows=tuple(
-            MarketDataSessionRegularWindow.from_mapping(
-                raw_window,
-                field_path=f"session_resolution.regular_session_windows[{window_index}]",
-            )
-            for window_index, raw_window in enumerate(
-                _require_model_persistence_sequence(raw_payload, "regular_session_windows")
-            )
-        ),
-        recurring_closed_windows=tuple(
-            MarketDataSessionRecurringClosedWindow.from_mapping(
-                raw_window,
-                field_path=f"session_resolution.recurring_closed_windows[{window_index}]",
-            )
-            for window_index, raw_window in enumerate(
-                _require_model_persistence_sequence(raw_payload, "recurring_closed_windows")
-            )
-        ),
-        reasons=tuple(
-            _require_model_persistence_sequence_of_strings(raw_payload, "reasons")
-        ),
-        ambiguity_warnings=tuple(
-            _require_model_persistence_sequence_of_strings(raw_payload, "ambiguity_warnings")
-        ),
-        metadata_discrepancies=tuple(
-            _require_model_persistence_sequence_of_strings(raw_payload, "metadata_discrepancies")
-        ),
-        resolved_session_definition_json=_require_model_persistence_string(
-            raw_payload,
-            "resolved_session_definition_json",
-        ),
-    )
-
-
-def _resolved_preset_workflow_configuration_from_mapping(
-    raw_payload: Mapping[str, Any],
-) -> ResolvedPresetWorkflowConfiguration:
-    raw_market_profile = raw_payload.get("market_profile")
-
-    return ResolvedPresetWorkflowConfiguration(
-        schema_version=_require_model_persistence_string(raw_payload, "schema_version"),
-        session=_resolved_session_component_from_mapping(
-            _require_model_persistence_mapping(raw_payload, "session")
-        ),
-        known_news=_resolved_known_news_component_from_mapping(
-            _require_model_persistence_mapping(raw_payload, "known_news")
-        ),
-        diagnostics=tuple(
-            _resolved_workflow_diagnostic_from_mapping(raw_diagnostic)
-            for raw_diagnostic in _require_model_persistence_sequence(raw_payload, "diagnostics")
-        ),
-        market_profile=(
-            _resolved_market_profile_component_from_mapping(raw_market_profile)
-            if isinstance(raw_market_profile, Mapping)
-            else None
-        ),
-    )
-
-
-def _resolved_market_profile_component_from_mapping(
-    raw_payload: Mapping[str, Any],
-) -> ResolvedMarketProfileComponent:
-    raw_selected_preset = raw_payload.get("selected_preset")
-
-    return ResolvedMarketProfileComponent(
-        configuration=_market_profile_explicit_configuration_from_mapping(
-            _require_model_persistence_mapping(raw_payload, "configuration")
-        ),
-        source_kind=ResolvedWorkflowComponentSource(
-            _require_model_persistence_string(raw_payload, "source_kind")
-        ),
-        selected_preset=(
-            _resolved_preset_selection_from_mapping(raw_selected_preset)
-            if isinstance(raw_selected_preset, Mapping)
-            else None
-        ),
-        applied_override_fields=tuple(
-            _require_model_persistence_sequence_of_strings(raw_payload, "applied_override_fields")
-        ),
-    )
-
-
-def _resolved_session_component_from_mapping(
-    raw_payload: Mapping[str, Any],
-) -> ResolvedSessionComponent:
-    raw_selected_preset = raw_payload.get("selected_preset")
-    raw_inference_resolution = raw_payload.get("inference_resolution")
-
-    return ResolvedSessionComponent(
-        configuration=SessionExplicitConfiguration.from_mapping(
-            _require_model_persistence_mapping(raw_payload, "configuration"),
-            field_path="resolved_configuration.session.configuration",
-        ),
-        source_kind=ResolvedWorkflowComponentSource(
-            _require_model_persistence_string(raw_payload, "source_kind")
-        ),
-        selected_preset=(
-            _resolved_preset_selection_from_mapping(raw_selected_preset)
-            if isinstance(raw_selected_preset, Mapping)
-            else None
-        ),
-        inferred_from_data=_require_model_persistence_boolean(raw_payload, "inferred_from_data"),
-        inference_resolution=(
-            _market_data_session_resolution_from_mapping(raw_inference_resolution)
-            if isinstance(raw_inference_resolution, Mapping)
-            else None
-        ),
-        applied_override_fields=tuple(
-            _require_model_persistence_sequence_of_strings(raw_payload, "applied_override_fields")
-        ),
-    )
-
-
-def _resolved_known_news_component_from_mapping(
-    raw_payload: Mapping[str, Any],
-) -> ResolvedKnownNewsComponent:
-    raw_selected_preset = raw_payload.get("selected_preset")
-    raw_recommended_reference = raw_payload.get("recommended_reference")
-    raw_recommendation_policy = raw_payload.get("recommendation_policy")
-
-    return ResolvedKnownNewsComponent(
-        configuration=KnownNewsExplicitConfiguration.from_mapping(
-            _require_model_persistence_mapping(raw_payload, "configuration"),
-            field_path="resolved_configuration.known_news.configuration",
-        ),
-        source_kind=ResolvedWorkflowComponentSource(
-            _require_model_persistence_string(raw_payload, "source_kind")
-        ),
-        selected_preset=(
-            _resolved_preset_selection_from_mapping(raw_selected_preset)
-            if isinstance(raw_selected_preset, Mapping)
-            else None
-        ),
-        applied_override_fields=tuple(
-            _require_model_persistence_sequence_of_strings(raw_payload, "applied_override_fields")
-        ),
-        recommended_reference=(
-            KnownNewsPresetReference.from_mapping(
-                raw_recommended_reference,
-                field_path="resolved_configuration.known_news.recommended_reference",
-            )
-            if isinstance(raw_recommended_reference, Mapping)
-            else None
-        ),
-        recommendation_policy=(
-            MarketProfileKnownNewsPolicy(cast(str, raw_recommendation_policy))
-            if isinstance(raw_recommendation_policy, str)
-            else None
-        ),
-        recommendation_applied=_require_model_persistence_boolean(
-            raw_payload,
-            "recommendation_applied",
-        ),
-    )
-
-
-def _resolved_workflow_diagnostic_from_mapping(
-    raw_payload: object,
-) -> ResolvedWorkflowDiagnostic:
-    if not isinstance(raw_payload, Mapping):
-        raise _calibration_error("diagnostics", "must contain objects")
-
-    return ResolvedWorkflowDiagnostic(
-        component=ResolvedWorkflowComponent(
-            _require_model_persistence_string(raw_payload, "component")
-        ),
-        severity=ResolvedWorkflowDiagnosticSeverity(
-            _require_model_persistence_string(raw_payload, "severity")
-        ),
-        code=_require_model_persistence_string(raw_payload, "code"),
-        message=_require_model_persistence_string(raw_payload, "message"),
-    )
-
-
-def _resolved_preset_selection_from_mapping(
-    raw_payload: Mapping[str, Any],
-) -> ResolvedPresetSelection:
-    return ResolvedPresetSelection(
-        category=PresetCategory(_require_model_persistence_string(raw_payload, "category")),
-        registry_scope=PresetRegistryScope(
-            _require_model_persistence_string(raw_payload, "registry_scope")
-        ),
-        preset_name=_require_model_persistence_string(raw_payload, "preset_name"),
-    )
-
-
-def _market_profile_explicit_configuration_from_mapping(
-    raw_payload: Mapping[str, Any],
-) -> MarketProfileExplicitConfiguration:
-    return MarketProfileExplicitConfiguration.from_mapping(
-        raw_payload,
-        field_path="resolved_configuration.market_profile.configuration",
-    )
-
-
-def _require_model_persistence_mapping(
-    payload: Mapping[str, Any],
-    field_name: str,
-) -> Mapping[str, Any]:
-    raw_value = payload.get(field_name)
-    if not isinstance(raw_value, Mapping):
-        raise _calibration_error(field_name, "must be an object")
-
-    return raw_value
-
-
-def _require_model_persistence_sequence(
-    payload: Mapping[str, Any],
-    field_name: str,
-) -> list[Any]:
-    raw_value = payload.get(field_name)
-    if not isinstance(raw_value, list):
-        raise _calibration_error(field_name, "must be a sequence")
-
-    return list(raw_value)
-
-
-def _require_model_persistence_sequence_of_strings(
-    payload: Mapping[str, Any],
-    field_name: str,
-) -> list[str]:
-    raw_values = _require_model_persistence_sequence(payload, field_name)
-    values: list[str] = []
-    for position, raw_value in enumerate(raw_values):
-        if not isinstance(raw_value, str):
-            raise _calibration_error(
-                f"{field_name}[{position}]",
-                "must be a string",
-            )
-
-        values.append(raw_value)
-
-    return values
-
-
-def _require_model_persistence_boolean(
-    payload: Mapping[str, Any],
-    field_name: str,
-) -> bool:
-    raw_value = payload.get(field_name)
-    if not isinstance(raw_value, bool):
-        raise _calibration_error(field_name, "must be a boolean")
-
-    return raw_value
-
-
-def _require_model_persistence_float(
-    payload: Mapping[str, Any],
-    field_name: str,
-) -> float:
-    raw_value = payload.get(field_name)
-    if not isinstance(raw_value, int | float) or isinstance(raw_value, bool):
-        raise _calibration_error(field_name, "must be a number")
-
-    return float(raw_value)
 
 
 def _raw_stage_report_payloads(raw_response_payload: dict[str, Any]) -> tuple[dict[str, Any], ...]:
@@ -1633,6 +1544,18 @@ def _extract_model_parameters(stage_report_payloads: tuple[dict[str, Any], ...])
                         "selected_candidate_id": fitted_stage_payload.get("selected_candidate_id"),
                         "fitted_parameters": deepcopy(
                             cast(dict[str, Any], fitted_stage_payload.get("fitted_parameters", {}))
+                        ),
+                    }
+            case "mean_reversion":
+                fitted_stage_payload = stage_report.get("fitted_stage_payload")
+                if isinstance(fitted_stage_payload, Mapping):
+                    parameters["mean_reversion"] = {
+                        "schema_version": fitted_stage_payload.get("schema_version"),
+                        "fitted_parameters": deepcopy(
+                            cast(dict[str, Any], fitted_stage_payload.get("fitted_parameters", {}))
+                        ),
+                        "diagnostics": deepcopy(
+                            cast(dict[str, Any], fitted_stage_payload.get("diagnostics", {}))
                         ),
                     }
             case "joint_refinement":
@@ -1718,7 +1641,7 @@ def _build_model_metadata(
         "workflow_scope": prepared.diagnostics.workflow_scope.value,
         "execution_mode": staged_response.execution_mode.value,
         "selected_stages": [
-            stage.value for stage in prepared.execution_input.request.selected_stages
+            stage.value for stage in prepared.staged_request.selected_stages
         ],
         "market_profile": market_profile_name,
         "session_preset": session_preset_name,
@@ -1842,6 +1765,7 @@ def _seasonality_intraday_minutes_per_bin(seasonality_parameters: Mapping[str, A
         "seasonality.intraday_factor_by_bin",
     )
     inferred_minutes_per_bin, remainder = divmod(1440, len(intraday_factors))
+
     if remainder != 0:
         raise RuntimeError(
             "JaniformModel seasonality parameters must include intraday_minutes_per_bin when "
@@ -1866,6 +1790,7 @@ def _require_payload_numeric_sequence(
             raise RuntimeError(
                 f"JaniformModel payload field `{field_path}[{entry_index}]` must be numeric"
             )
+
         values.append(float(entry_value))
 
     if not values:
@@ -1904,6 +1829,15 @@ def _normalize_model_parameters(raw_parameters: Mapping[str, Any]) -> dict[str, 
 
 
 def _normalize_mean_reversion_model_parameters(parameters: dict[str, Any]) -> None:
+    raw_mean_reversion = parameters.get("mean_reversion")
+    if isinstance(raw_mean_reversion, Mapping):
+        fitted_parameters = raw_mean_reversion.get("fitted_parameters")
+        if isinstance(fitted_parameters, Mapping):
+            raw_mean_reversion["fitted_parameters"] = MeanReversionFittedParameters.from_mapping(
+                dict(fitted_parameters),
+                field_path="parameters.mean_reversion.fitted_parameters",
+            ).to_payload()
+
     raw_return_components = parameters.get("return_components")
     if isinstance(raw_return_components, Mapping):
         fitted_parameters = raw_return_components.get("fitted_parameters")

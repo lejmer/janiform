@@ -11,12 +11,59 @@
 
 \section*{1. Return Process}
 \[
-X_t = L^+_{A_t^+} - L^-_{A_t^-} + M_t + G_t,
+X_t^{\mathrm{JF}} = L^+_{A_t^+} - L^-_{A_t^-} + M_t + G_t,
 \qquad
 A_t^\pm = \int_0^t \lambda_u^\pm\,du.
 \]
 
-\section*{2. Trade Intensities and Hawkes State}
+\section*{2. Observed-State Mean Reversion Layer}
+Let \(\Sigma_h\) denote the structural Janiform boundary state on interval \(h\), and let
+\[
+K_h^P(u \mid \Sigma_h)
+=
+\log \mathbb E^P[e^{u R_h}\mid \Sigma_h]
+\]
+be the one-interval physical log-moment-generating function of the Janiform core contribution \(R_h\).
+
+Define the physical anchor increment
+\[
+\mu_h^P(\Sigma_h)
+=
+\partial_u K_h^P(u \mid \Sigma_h)\big|_{u=0}
+=
+\mathbb E^P[R_h \mid \Sigma_h].
+\]
+
+Let the observed state satisfy
+\[
+X_h = A_h^P + D_h^P,
+\qquad
+\phi_h=e^{-\kappa \Delta_h},
+\qquad
+\kappa \ge 0.
+\]
+
+Then the endogenous-anchor recursions are
+\[
+A_{h+1}^P = A_h^P + \mu_h^P(\Sigma_h),
+\]
+\[
+D_{h+1}^P = \phi_h D_h^P + R_h - \mu_h^P(\Sigma_h),
+\]
+and therefore
+\[
+X_{h+1}
+=
+A_{h+1}^P + D_{h+1}^P
+=
+X_h + (\phi_h - 1)D_h^P + R_h.
+\]
+
+Interval-aligned anchor values used by seeded, coarse, and pricing runtimes are
+materialized execution artifacts generated from this recursion. They are not the
+canonical top-level anchor model family.
+
+\section*{3. Trade Intensities and Hawkes State}
 \[
 \lambda_t^\pm = s(t)\,\tilde{\lambda}_t^\pm,
 \]
@@ -34,7 +81,7 @@ Y_0^{ij}\ge 0,\qquad i,j\in\{+,-\}.
 \]
 \(N_t^\pm\) are counting processes with intensities \(\lambda_t^\pm\).
 
-\section*{3. Deterministic Seasonality and News Intensity}
+\section*{4. Deterministic Seasonality and News Intensity}
 \[
 s(t)=\exp\!\Big(
 f_{\mathrm{intra}}(\mathrm{tod}(t))
@@ -67,7 +114,7 @@ g_{\mathrm{dow}}(\mathrm{dow}(t))
 Arrivals are allowed in both open and closed windows, while direct gap increments remain closed-only in \(G_t\).
 Trade seasonality \(s(t)\) modulates \(\lambda_t^\pm\) only and does not modulate \(\nu_{\mathrm{news}}(t)\).
 
-\section*{4. News Marks, Activity Shock, and Gap Process}
+\section*{5. News Marks, Activity Shock, and Gap Process}
 At news times \(\tau_m^{\mathrm{known}}\) and \(\tau_m^{\mathrm{surprise}}\):
 \[
 U_m\sim\Gamma(k_U,\theta_U),\qquad
@@ -113,7 +160,7 @@ G_t=G_t^{\mathrm{known}}+G_t^{\mathrm{surprise}}.
 Open-window news jumps are applied on the first post-arrival open tick via \(M_t\).
 Closed-window news jumps are applied on the first reopening tick via \(G_t\).
 
-\section*{5. NIG Business-Time Drivers}
+\section*{6. NIG Business-Time Drivers}
 For \(L^\pm\), define exponents \(\psi_\pm\) by
 \[
 \mathbb{E}\!\left[e^{iuL_t^\pm}\right]=\exp\!\left(t\,\psi_\pm(u)\right).
@@ -134,7 +181,7 @@ Conditional characteristic function of \(\Delta X_t=X_{t+\Delta}-X_t\):
 \exp\!\Big(A^+\psi_+(u)+A^-\psi_-(-u)\Big)\,\varphi_{\Delta M+\Delta G}(u).
 \]
 
-\section*{6. Structured Asymmetry and Constraints}
+\section*{7. Structured Asymmetry and Constraints}
 \[
 \alpha_{++}=a_{\mathrm{self}},
 \quad
@@ -175,14 +222,14 @@ impose Hawkes stability:
 where \(\rho(\cdot)\) denotes spectral radius.
 This is a local stationarity condition in business time (on intervals where \(s(t)\) is treated as locally constant), not a global calendar-time stationarity assumption.
 
-\section*{7. Layer Independence Assumption}
+\section*{8. Layer Independence Assumption}
 \[
 \mathcal{L}\ \perp\!\!\!\perp\ \mathcal{H}\ \perp\!\!\!\perp\ \mathcal{N},
 \]
 where \(\mathcal{L}\) is the Lévy layer \((L^+,L^-)\), \(\mathcal{H}\) is the Hawkes-layer primitive innovation source for \(N^\pm\), and \(\mathcal{N}\) is the news layer \(\big(N^{\mathrm{news}},\{U_m,\varepsilon_m\}_{m\ge1}\big)\).
 No additional cross-layer dependence is introduced beyond the explicit coupling through \(dJ_t\) in \(dY_t^{ij}\).
 
-\section*{8. Affine One-Interval Transform}
+\section*{9. Affine One-Interval Transform}
 For piecewise-constant \(s_h,\nu_h\) on \([0,\Delta]\), with \(\nu_h=\nu_h^{\mathrm{known}}+\nu_h^{\mathrm{surprise}}\), define
 \[
 F(u_+,u_-,z_+,z_-\mid \mathbf{Y}_0)
@@ -231,14 +278,52 @@ and domain condition
 \mathbf{D}(\tau)\cdot\mathbf{r}<\frac{1}{\theta_U}\quad\forall\tau\in[0,\Delta].
 \]
 
-\section*{9. Optional Risk-Neutral Esscher Tilt}
+\section*{10. Anchored Local Martingale Equation}
+Under pricing, the augmented state is
+\[
+Z_h=(\Sigma_h,D_h^Q).
+\]
+
+The risk-neutral local transform is
+\[
+K_h^Q(u \mid Z_h)
+=
+K_h^P(u+\theta_h(Z_h)\mid \Sigma_h)-K_h^P(\theta_h(Z_h)\mid \Sigma_h).
+\]
+
+Define the risk-neutral anchor increment by
+\[
+\mu_h^Q(Z_h)
+=
+\partial_u K_h^Q(u \mid Z_h)\big|_{u=0}
+=
+\mathbb E^Q[R_h \mid Z_h].
+\]
+
+Then the risk-neutral deviation recursion is
+\[
+D_{h+1}^Q = e^{-\kappa \Delta_h} D_h^Q + R_h - \mu_h^Q(Z_h),
+\]
+and the one-interval observed return satisfies the local martingale condition
+\[
+K_h^Q(1 \mid Z_h)+\big(e^{-\kappa\Delta_h}-1\big)D_h^Q=(r-q)\Delta_h.
+\]
+
+The pricing engine therefore generates the risk-neutral anchor from the same
+local tilted transform used to price. It does not require the caller to supply
+a future anchor grid.
+
+\section*{11. Optional Risk-Neutral Esscher Tilt}
 \[
 \psi_Q(u)=\psi_P(u+i\theta)-\psi_P(i\theta),
 \qquad
 \mathbb{E}^Q\!\left[e^{X_{t+\Delta}-X_t}\mid\mathcal{F}_t\right]=e^{(r-q)\Delta}.
 \]
+In the anchored setting, the scalar Esscher parameter becomes the local
+state-dependent tilt \(\theta_h(Z_h)\) defined above. The old state-independent
+tilt survives only as the nested non-anchored case.
 
-\section*{10. Final Price Process}
+\section*{12. Final Price Process}
 \[
 X_t=\log\!\left(\frac{S_t}{S_0}\right),
 \qquad

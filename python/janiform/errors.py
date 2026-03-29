@@ -141,13 +141,13 @@ class JaniformIntegrationError(JaniformError):
 def format_janiform_error(details: JaniformErrorDetails) -> str:
     formatted_parts: list[str] = [
         f"[{details.error_id}]",
-        f"category={json.dumps(details.category.value, sort_keys=True)}",
-        f"workflow={json.dumps(details.workflow, sort_keys=True)}",
-        f"entrypoint={json.dumps(details.entrypoint, sort_keys=True)}",
+        f"category={_format_error_string(details.category.value)}",
+        f"workflow={_format_error_string(details.workflow)}",
+        f"entrypoint={_format_error_string(details.entrypoint)}",
     ]
 
     if details.field_path is not None:
-        formatted_parts.append(f"field_path={json.dumps(details.field_path, sort_keys=True)}")
+        formatted_parts.append(f"field_path={_format_error_string(details.field_path)}")
 
     if details.context_items:
         formatted_parts.append(
@@ -158,8 +158,19 @@ def format_janiform_error(details: JaniformErrorDetails) -> str:
             )
         )
 
-    formatted_parts.append(f"message={json.dumps(details.message, sort_keys=True)}")
+    formatted_parts.append(f"message={_format_error_string(details.message)}")
     return " ".join(formatted_parts)
+
+
+def _format_error_string(value: str) -> str:
+    escaped_value = (
+        value.replace('"', '\\"')
+        .replace("\n", "\\n")
+        .replace("\r", "\\r")
+        .replace("\t", "\\t")
+    )
+
+    return f'"{escaped_value}"'
 
 
 def _sorted_context_items(

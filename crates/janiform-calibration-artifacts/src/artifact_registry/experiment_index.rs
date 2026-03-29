@@ -175,6 +175,7 @@ pub struct CalibrationExperimentIndexLookupRequest {
     pub seasonality_stage_output_schema_version: Option<String>,
     pub hawkes_stage_output_schema_version: Option<String>,
     pub return_components_stage_output_schema_version: Option<String>,
+    pub mean_reversion_stage_output_schema_version: Option<String>,
     pub joint_refinement_stage_output_schema_version: Option<String>,
     pub seasonality_estimator_version: Option<String>,
     pub diagnostics_overall_status: Option<CalibrationArtifactManifestMetricStatus>,
@@ -530,6 +531,15 @@ fn record_matches_lookup_request(
     if let Some(stage_schema_version) = &request.return_components_stage_output_schema_version {
         if model_version
             .return_components_stage_output_schema_version
+            .as_ref()
+            != Some(stage_schema_version)
+        {
+            return false;
+        }
+    }
+    if let Some(stage_schema_version) = &request.mean_reversion_stage_output_schema_version {
+        if model_version
+            .mean_reversion_stage_output_schema_version
             .as_ref()
             != Some(stage_schema_version)
         {

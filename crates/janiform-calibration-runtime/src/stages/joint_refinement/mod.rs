@@ -12,3 +12,4 @@ pub use contracts::{
     JointRefinementStageSeasonalityFactorsInput, JointRefinementStageSimulationSummary,
 };
 pub use execution::run_joint_refinement_calibration_stage;
+pub(crate) use setup::build_surprise_multipliers_for_interval_grid;

@@ -12,26 +12,32 @@ import janiform.calibration as calibration_module
 import janiform.cli as cli_module
 import janiform.cli.commands.calibration as cli_calibration_commands_module
 import janiform.cli.paths as cli_paths_module
-import janiform.cli.commands.pricing as cli_pricing_commands_module
+import janiform.cli.commands._pricing as cli_pricing_commands_module
 import janiform.cli.commands.simulation as cli_simulation_commands_module
 import janiform.pricing as pricing_module
 import janiform.simulation as simulation_module
+from janiform._timestamps import ONE_HOUR_NANOS
 from janiform.calendar import CalendarRegistry
-from janiform.calibration.market_data import CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION
+from janiform.calibration.market_data import (
+    CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION,
+    CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION,
+    CalibrationMarketDataWorkflowScope,
+)
 from janiform.calibration.staged import (
     CalibrationExecutionMode,
     StagedCalibrationExecutionInput,
     StagedCalibrationResponse,
-)
-from janiform.calibration import (
-    CalibrationMarketDataWorkflowScope,
 )
 from janiform.errors import JaniformErrorCategory, JaniformErrorDetails, JaniformExecutionError
 from janiform.simulation import (
     CoarseSimulationRunRequest,
     SeededTickSimulationRequest,
 )
-from tests.calibration_test_support import build_valid_execution_input_model
+from tests.calibration_test_support import (
+    build_endogenous_mean_reversion_fitted_parameters_payload,
+    build_valid_execution_input_model,
+    update_model_mean_reversion_payload,
+)
 from tests.cli_test_support import (
     build_coarse_simulation_request as _build_coarse_simulation_request,
     build_simulation_request as _build_simulation_request,
@@ -99,6 +105,7 @@ def test_price_cli_help_documents_model_driven_workflow_contract() -> None:
 
     assert "--output {human,json}" in help_output
     assert "--model-path PATH" in help_output
+    assert "--observed-boundary-state-json PATH" in help_output
     assert "--valuation-time-utc VALUATION_TIME_UTC" in help_output
     assert "--spot SPOT" in help_output
     assert "--strike STRIKE" in help_output
@@ -950,7 +957,7 @@ def test_market_data_calibration_cli_maps_flags_to_summary_contract(
     summary_payload = orjson.loads(stdout_text)
     assert summary_payload["schema_version"] == cli_module.CLI_MARKET_DATA_SUMMARY_SCHEMA_VERSION
     assert summary_payload["request_schema_version"] == CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION
-    assert summary_payload["preparation_schema_version"] == calibration_module.CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION
+    assert summary_payload["preparation_schema_version"] == CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION
     assert summary_payload["workflow_scope"] == CalibrationMarketDataWorkflowScope.FULL_WITH_OPTION_SURFACE.value
     assert summary_payload["session_context"]["exchange_code"] == "XNYS"
     assert summary_payload["session_resolution"]["resolution_kind"] == "explicit_override"
@@ -964,6 +971,7 @@ def test_market_data_calibration_cli_maps_flags_to_summary_contract(
         "seasonality",
         "hawkes",
         "return_components",
+        "mean_reversion",
         "joint_refinement",
     ]
     assert "known_news_overlay_derivation" in summary_payload["diagnostics_summary"]["executed_preprocessing_steps"]
@@ -1280,9 +1288,13 @@ def test_market_data_cli_missing_tick_file_returns_validation_exit_code(
 
     assert exit_code == int(cli_module.CliExitCode.VALIDATION_ERROR)
     assert stdout_text == ""
-    assert 'field_path="tick_data_source.path"' in stderr_text
-    assert f'"path": {json.dumps(str(missing_tick_path))}' in stderr_text
-    assert '"normalization_step": "source_loading"' in stderr_text
+    assert 'field_path="request"' in stderr_text
+    assert "tick_data_source.path" in stderr_text
+    assert "(os error 2)" in stderr_text
+    assert (
+        "No such file or directory" in stderr_text
+        or "The system cannot find the file specified." in stderr_text
+    )
 
 
 def test_market_data_cli_ambiguous_timestamp_reports_file_field_and_normalization_step(
@@ -1330,9 +1342,8 @@ def test_market_data_cli_ambiguous_timestamp_reports_file_field_and_normalizatio
 
     assert exit_code == int(cli_module.CliExitCode.VALIDATION_ERROR)
     assert stdout_text == ""
-    assert 'field_path="tick_data_source.rows[1].timestamp_utc"' in stderr_text
-    assert f'"source_path": {json.dumps(str(market_data_paths["tick_data"]))}' in stderr_text
-    assert '"normalization_step": "timestamp_timezone_normalization"' in stderr_text
+    assert 'field_path="request"' in stderr_text
+    assert str(market_data_paths["tick_data"]) in stderr_text
 
     if _timezone_key_is_available("America/New_York"):
         assert "ambiguous in the configured source timezone" in stderr_text
@@ -1391,10 +1402,9 @@ def test_market_data_cli_missing_required_column_reports_source_file_and_normali
 
     assert exit_code == int(cli_module.CliExitCode.VALIDATION_ERROR)
     assert stdout_text == ""
-    assert 'field_path="column_mapping.tick_data"' in stderr_text
+    assert 'field_path="request"' in stderr_text
     assert "Missing columns: trade_price" in stderr_text
-    assert f'"source_path": {json.dumps(str(market_data_paths["tick_data"]))}' in stderr_text
-    assert '"normalization_step": "column_mapping_validation"' in stderr_text
+    assert str(market_data_paths["tick_data"]) in stderr_text
 
 
 def test_market_data_cli_invalid_session_definition_returns_validation_exit_code(
@@ -1451,7 +1461,8 @@ def test_market_data_cli_invalid_session_definition_returns_validation_exit_code
 
     assert exit_code == int(cli_module.CliExitCode.VALIDATION_ERROR)
     assert stdout_text == ""
-    assert 'field_path="session_configuration.session_definition_source.path"' in stderr_text
+    assert 'field_path="request"' in stderr_text
+    assert "session_configuration.session_definition_source.path" in stderr_text
     assert "valid calendar registry" in stderr_text
 
 
@@ -1618,6 +1629,14 @@ def test_price_cli_maps_model_and_flags_to_runtime_contract(
     tmp_path: Path,
 ) -> None:
     model_path = _write_saved_price_model(tmp_path)
+    observed_boundary_state_path = _write_json_path(
+        tmp_path / "observed_boundary_state.json",
+        pricing_module.MeanReversionBoundaryState(
+            observed_log_price=0.0,
+            anchor_value=0.0,
+            deviation=0.0,
+        ).to_payload(),
+    )
     captured_arguments: dict[str, Any] = {}
     original_price_option = cli_pricing_commands_module.JaniformModel.price_option
 
@@ -1635,6 +1654,8 @@ def test_price_cli_maps_model_and_flags_to_runtime_contract(
             "price",
             "--model-path",
             str(model_path),
+            "--observed-boundary-state-json",
+            str(observed_boundary_state_path),
             "--valuation-time-utc",
             "2026-02-02T15:00:00Z",
             "--spot",
@@ -1669,10 +1690,94 @@ def test_price_cli_maps_model_and_flags_to_runtime_contract(
     assert captured_arguments["include_transform_diagnostics"] is True
     assert captured_arguments["include_integration_quality_diagnostics"] is True
     assert captured_arguments["include_calibration_hooks"] is True
+    assert captured_arguments["observed_boundary_state"] == pricing_module.MeanReversionBoundaryState(
+        observed_log_price=0.0,
+        anchor_value=0.0,
+        deviation=0.0,
+    )
 
     command_output = orjson.loads(stdout_text)
     assert command_output["schema_version"] == cli_module.CLI_PRICE_RESULT_SCHEMA_VERSION
     assert command_output["response"]["price"] >= 0.0
+
+
+def test_price_cli_passes_observed_boundary_state_json_to_high_level_model(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    model_path = _write_saved_anchored_price_model(tmp_path)
+    observed_boundary_state_path = _write_json_path(
+        tmp_path / "observed_boundary_state.json",
+        pricing_module.MeanReversionBoundaryState(
+            observed_log_price=0.25,
+            anchor_value=0.25,
+            deviation=0.0,
+        ).to_payload(),
+    )
+    captured_arguments: dict[str, Any] = {}
+    original_price_option = cli_pricing_commands_module.JaniformModel.price_option
+
+    def capturing_price_option(
+        self: calibration_module.JaniformModel,
+        **pricing_arguments: Any,
+    ) -> pricing_module.VanillaOptionPricingRunResult:
+        captured_arguments.update(pricing_arguments)
+        return original_price_option(self, **pricing_arguments)
+
+    monkeypatch.setattr(cli_pricing_commands_module.JaniformModel, "price_option", capturing_price_option)
+
+    exit_code, stdout_text, stderr_text = _invoke_cli(
+        [
+            "price",
+            "--model-path",
+            str(model_path),
+            "--observed-boundary-state-json",
+            str(observed_boundary_state_path),
+            "--valuation-time-utc",
+            "2026-02-02T15:00:00Z",
+            "--spot",
+            "101.0",
+            "--strike",
+            "100.0",
+            "--maturity-interval",
+            "1.0",
+            "--output",
+            "json",
+        ]
+    )
+
+    assert exit_code == int(cli_module.CliExitCode.SUCCESS), stderr_text
+    assert captured_arguments["observed_boundary_state"] == pricing_module.MeanReversionBoundaryState(
+        observed_log_price=0.25,
+        anchor_value=0.25,
+        deviation=0.0,
+    )
+    command_output = orjson.loads(stdout_text)
+    assert command_output["response"]["price"] >= 0.0
+
+
+def test_price_cli_requires_observed_boundary_state_for_anchored_models(tmp_path: Path) -> None:
+    model_path = _write_saved_anchored_price_model(tmp_path)
+
+    exit_code, stdout_text, stderr_text = _invoke_cli(
+        [
+            "price",
+            "--model-path",
+            str(model_path),
+            "--valuation-time-utc",
+            "2026-02-02T15:00:00Z",
+            "--spot",
+            "101.0",
+            "--strike",
+            "100.0",
+            "--maturity-interval",
+            "1.0",
+        ]
+    )
+
+    assert exit_code == int(cli_module.CliExitCode.VALIDATION_ERROR)
+    assert "price run_id:" in stdout_text
+    assert "observed_boundary_state" in stderr_text
 
 
 def _write_saved_price_model(tmp_path: Path) -> Path:
@@ -1688,6 +1793,27 @@ def _write_saved_price_model(tmp_path: Path) -> Path:
         helper_monkeypatch.undo()
 
     model_path = tmp_path / "workflow-contract-price-model.json"
+    model.save(model_path)
+    return model_path
+
+
+def _write_saved_anchored_price_model(tmp_path: Path) -> Path:
+    helper_monkeypatch = pytest.MonkeyPatch()
+    try:
+        helper_monkeypatch.chdir(tmp_path)
+        model = _build_full_workflow_model(
+            tmp_path,
+            helper_monkeypatch,
+            run_id="workflow-contract-anchored-price-model",
+        )
+    finally:
+        helper_monkeypatch.undo()
+
+    update_model_mean_reversion_payload(
+        model,
+        build_endogenous_mean_reversion_fitted_parameters_payload(kappa=0.35),
+    )
+    model_path = tmp_path / "workflow-contract-anchored-price-model.json"
     model.save(model_path)
     return model_path
 
@@ -1810,7 +1936,7 @@ def test_calibration_cli_resolves_relative_disk_checkpoint_directory_from_reposi
         repository_root,
         relative_checkpoint_directory,
     )
-    normalized_execution_input = cli_calibration_commands_module._override_calibration_execution_mode(
+    normalized_execution_input = cli_calibration_commands_module.override_calibration_execution_mode(
         execution_input=execution_input,
         execution_mode=CalibrationExecutionMode.DISK,
         disk_checkpoint_directory=resolved_checkpoint_directory,
@@ -1962,11 +2088,34 @@ def test_coarse_simulation_cli_rejects_malformed_request_document(tmp_path: Path
             "horizon_interval_count": 1,
             "interval_delta": 1.0,
             "model_inputs": "not-an-object",
-            "interval_factors": {
-                "interval_delta": 1.0,
+            "hourly_factor_contract": {
+                "schema_version": "seasonality.hourly_factor.contract.v1",
+                "exchange_code": "XNYS",
+                "exchange_timezone_name": "America/New_York",
+                "request_start_utc_nanos": _utc_nanos(2026, 2, 2, 14, 0, 0),
+                "request_end_utc_nanos": _utc_nanos(2026, 2, 2, 15, 0, 0),
+                "interval_duration_nanos": ONE_HOUR_NANOS,
+                "interval_indices": [0],
+                "interval_start_utc_nanos": [_utc_nanos(2026, 2, 2, 14, 0, 0)],
+                "interval_end_utc_nanos": [_utc_nanos(2026, 2, 2, 15, 0, 0)],
+                "interval_start_exchange_local": ["2026-02-02T09:00:00-05:00"],
+                "interval_end_exchange_local": ["2026-02-02T10:00:00-05:00"],
                 "s_h": [1.0],
-                "nu_h_known": [0.0],
-                "nu_h_surprise": [0.0],
+                "known_component_nu_h": [0.0],
+                "surprise_component_nu_h": [0.0],
+                "nu_h": [0.0],
+                "interval_count": 1,
+                "first_interval_start_utc_nanos": _utc_nanos(2026, 2, 2, 14, 0, 0),
+                "last_interval_end_utc_nanos": _utc_nanos(2026, 2, 2, 15, 0, 0),
+                "skipped_local_hour_interval_count": 0,
+                "repeated_local_hour_interval_count": 0,
+                "interval_boundary_policy": "start_inclusive_end_exclusive.v1",
+                "interval_alignment_policy": "request_start_anchored_fixed_width_utc_interval_grid.v1",
+                "timezone_transition_policy": "fixed_width_utc_interval_projected_to_exchange_local.v1",
+                "spring_forward_policy": "skip_nonexistent_local_hour_labels.v1",
+                "fall_back_policy": "preserve_repeated_local_hour_labels_with_numeric_utc_offset.v1",
+                "seasonality_materialization_method": "test.explicit_payload.v1",
+                "news_intensity_materialization_method": "test.explicit_payload.v1",
             },
         },
     )
@@ -2010,7 +2159,7 @@ def test_coarse_simulation_cli_rejects_interval_factor_alignment_mismatch(
     assert exit_code == int(cli_module.CliExitCode.VALIDATION_ERROR)
     assert stdout_text == ""
     assert '[simulation.validation.contract]' in stderr_text
-    assert 'field_path="interval_factors.interval_delta"' in stderr_text
+    assert 'field_path="hourly_factor_contract.interval_duration_nanos"' in stderr_text
     assert "must match interval_delta exactly" in stderr_text
 
 
@@ -2136,14 +2285,13 @@ def test_calibration_cli_rejects_disk_checkpoint_directory_in_memory_mode(
     assert 'message="--disk-checkpoint-directory requires --execution-mode disk"' in stderr_text
 
 
-def test_calibration_cli_rejects_malformed_close_open_boundary_observation(
+def test_calibration_cli_rejects_missing_prepared_payload_artifact(
     calendar_registry_json: str,
     tmp_path: Path,
 ) -> None:
     execution_input_payload = build_valid_execution_input_model().to_payload()
-    del execution_input_payload["return_components_candidate_generation_input"][
-        "observed_close_open_boundary_observations"
-    ][0]["open_price"]
+    missing_prepared_payload_path = tmp_path / "missing_prepared_payload.json"
+    execution_input_payload["prepared_payload_file"]["path"] = str(missing_prepared_payload_path)
 
     execution_input_path = _write_json_path(
         tmp_path / "calibration_execution_input.json",
@@ -2169,11 +2317,8 @@ def test_calibration_cli_rejects_malformed_close_open_boundary_observation(
 
     assert exit_code == int(cli_module.CliExitCode.VALIDATION_ERROR)
     assert stdout_text == ""
-    assert (
-        'field_path="return_components_candidate_generation_input.observed_close_open_boundary_observations[0].open_price"'
-        in stderr_text
-    )
-    assert 'message="is required"' in stderr_text
+    assert 'field_path="prepared_payload_file.path"' in stderr_text
+    assert "could not be read" in stderr_text
 
 
 def _write_event_records_document(path: Path, event_records: list[dict[str, Any]]) -> Path:

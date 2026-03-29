@@ -8,6 +8,10 @@ use chrono::{DateTime, Utc};
 use crate::calendar::ExchangeCalendarResolveError;
 use crate::risk::SufficientStatisticsRiskReturnComponentsError;
 use janiform_model_kernels::hawkes::HawkesTransitionError;
+use janiform_model_kernels::mean_reversion::{
+    MeanReversionBoundaryStateValidationError, MeanReversionFittedParametersValidationError,
+    MeanReversionRuntimeIntervalAnchorsValidationError,
+};
 use janiform_model_kernels::news::NewsProcessConfigurationError;
 use janiform_model_kernels::news::{NewsMarkInterfaceError, SharedNewsEventDispatchError};
 use janiform_model_kernels::nig::NigSharedPlusShiftConfigurationError;
@@ -68,6 +72,32 @@ pub enum SeededTickSimulationRunError {
     KnownScheduledNewsTimestampsNotStrictlyIncreasing {
         previous_timestamp_utc_nanos: i64,
         current_timestamp_utc_nanos: i64,
+    },
+    InvalidMeanReversionFittedParameters {
+        source: MeanReversionFittedParametersValidationError,
+    },
+    InvalidMeanReversionRuntimeIntervalAnchors {
+        source: MeanReversionRuntimeIntervalAnchorsValidationError,
+    },
+    InvalidMeanReversionBoundaryState {
+        source: MeanReversionBoundaryStateValidationError,
+    },
+    MeanReversionRuntimeAnchorIntervalCountMismatch {
+        expected_interval_count: usize,
+        observed_interval_count: usize,
+    },
+    MeanReversionRuntimeAnchorAlignmentPolicyMismatch {
+        expected_policy: String,
+        observed_policy: String,
+    },
+    MeanReversionBoundaryStateStartAnchorMismatch {
+        boundary_anchor_value: f64,
+        runtime_start_anchor_value: f64,
+    },
+    MeanReversionRuntimeAnchorIntervalDeltaMismatch {
+        interval_index: usize,
+        expected_interval_delta: f64,
+        observed_interval_delta: f64,
     },
     InvalidNigSharedPlusShiftConfiguration {
         source: NigSharedPlusShiftConfigurationError,
@@ -209,6 +239,47 @@ impl Display for SeededTickSimulationRunError {
                 formatter,
                 "known_scheduled_news_event_timestamps_utc_nanos must be strictly increasing, found previous={previous_timestamp_utc_nanos} and current={current_timestamp_utc_nanos}"
             ),
+            Self::InvalidMeanReversionFittedParameters { source } => write!(
+                formatter,
+                "mean_reversion_fitted_parameters are invalid: {source}"
+            ),
+            Self::InvalidMeanReversionRuntimeIntervalAnchors { source } => write!(
+                formatter,
+                "mean_reversion_runtime_interval_anchors are invalid: {source}"
+            ),
+            Self::InvalidMeanReversionBoundaryState { source } => write!(
+                formatter,
+                "initial_mean_reversion_boundary_state is invalid: {source}"
+            ),
+            Self::MeanReversionRuntimeAnchorIntervalCountMismatch {
+                expected_interval_count,
+                observed_interval_count,
+            } => write!(
+                formatter,
+                "mean_reversion_runtime_interval_anchors.end_anchor_values length must match horizon_interval_count ({expected_interval_count}), found {observed_interval_count}"
+            ),
+            Self::MeanReversionRuntimeAnchorAlignmentPolicyMismatch {
+                expected_policy,
+                observed_policy,
+            } => write!(
+                formatter,
+                "mean_reversion_runtime_interval_anchors.interval_alignment_policy must match hourly_factor_contract.metadata.interval_alignment_policy, expected `{expected_policy}`, found `{observed_policy}`"
+            ),
+            Self::MeanReversionBoundaryStateStartAnchorMismatch {
+                boundary_anchor_value,
+                runtime_start_anchor_value,
+            } => write!(
+                formatter,
+                "initial_mean_reversion_boundary_state.anchor_value must match mean_reversion_runtime_interval_anchors.start_anchor_value, found boundary_anchor_value={boundary_anchor_value} runtime_start_anchor_value={runtime_start_anchor_value}"
+            ),
+            Self::MeanReversionRuntimeAnchorIntervalDeltaMismatch {
+                interval_index,
+                expected_interval_delta,
+                observed_interval_delta,
+            } => write!(
+                formatter,
+                "mean_reversion_runtime_interval_anchors.interval_deltas[{interval_index}] must match the hourly factor interval delta in hours, expected {expected_interval_delta}, found {observed_interval_delta}"
+            ),
             Self::InvalidNigSharedPlusShiftConfiguration { source } => write!(
                 formatter,
                 "nig_shared_plus_shift_configuration is invalid: {source}"
@@ -293,6 +364,9 @@ impl Display for SeededTickSimulationRunError {
 impl Error for SeededTickSimulationRunError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
+            Self::InvalidMeanReversionFittedParameters { source } => Some(source),
+            Self::InvalidMeanReversionRuntimeIntervalAnchors { source } => Some(source),
+            Self::InvalidMeanReversionBoundaryState { source } => Some(source),
             Self::InvalidNigSharedPlusShiftConfiguration { source } => Some(source),
             Self::InvalidNewsProcessConfiguration { source } => Some(source),
             Self::NewsMarkSamplingFailure { source, .. } => Some(source),

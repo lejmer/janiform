@@ -12,7 +12,7 @@ and interval boundary timestamps, see
 The contract covers:
 
 - run request fields for seeded execution and interval settings
-- required model inputs and deterministic interval factors
+- required model inputs and native-backed hourly factor artifacts
 - interval-level output records with sufficient statistics and return components
 - validation behavior for malformed or incomplete payloads
 
@@ -166,6 +166,8 @@ The Python-facing contract is in `janiform.risk`:
 - `SufficientStatisticsRiskValidationError`
 
 The public Python models are frozen dataclasses with deterministic JSON serialization.
+Bulk factor data enters the Python boundary as `HourlyFactorContract`, not as a tuple-owned
+interval-factor dataclass surface.
 
 Validation and serialization helpers:
 
@@ -196,15 +198,10 @@ The interval-factor contract policy identifier is:
   - value:
     `explicit_interval_aligned_s_h_and_news_intensity_inputs_without_implicit_resampling.v1`
 
-The public request model requires explicit aligned vectors for `s_h` and
-component-aware news-intensity inputs:
-
-- `nu_h_known`
-- `nu_h_surprise`
-
-Both vectors must be aligned with `s_h`, finite, and non-negative. The
-contract derives aggregate intensity deterministically per interval as
-`nu_h = nu_h_known + nu_h_surprise` within contract tolerance.
+The public Python run request requires an `HourlyFactorContract` runtime artifact. The artifact
+keeps `s_h`, `known_component_nu_h`, and `surprise_component_nu_h` aligned and native-backed.
+The run request requires exact agreement between `interval_delta` and
+`hourly_factor_contract.interval_duration_nanos`.
 
 The transform-slice context forwards component-aware news-intensity payloads to
 the affine oracle. The affine ODE still consumes only aggregate `total_nu_h`
@@ -249,8 +246,7 @@ are present, they must exactly match canonical deterministic values.
   downstream boundary-state updates).
 - If omitted from run request payloads, it defaults to `1.0` for hourly
   compatibility.
-- `interval_factors.interval_delta` is optional and defaults to `1.0`.
-- The run request requires exact equality between `interval_delta` and
-  `interval_factors.interval_delta`.
+- The run request requires exact equality between `interval_delta` and the
+  `hourly_factor_contract` interval duration.
 - Mismatched interval metadata fails validation with an explicit error.
   Implicit factor interpolation or resampling is not performed.
