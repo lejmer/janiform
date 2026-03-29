@@ -841,6 +841,79 @@ fn hawkes_stage_execution_is_deterministic_under_fixed_seed_and_solver_settings(
 }
 
 #[test]
+fn hawkes_stage_execution_is_deterministic_across_cpu_counts() {
+    let calendar_registry = calibration_stage_test_registry();
+    let seasonality_payload = build_seasonality_stage_success_payload();
+
+    let memory_single_thread_report = run_hawkes_calibration_stage(
+        &hawkes_run_spec_with_cpu_count(CalibrationExecutionMode::Memory, 1),
+        &calendar_registry,
+        HawkesStageExecutionInput::from_in_memory_seasonality_output(
+            seasonality_payload.clone(),
+            hawkes_stage_candidate_fixture(),
+        ),
+    );
+    let memory_multi_thread_report = run_hawkes_calibration_stage(
+        &hawkes_run_spec_with_cpu_count(CalibrationExecutionMode::Memory, 4),
+        &calendar_registry,
+        HawkesStageExecutionInput::from_in_memory_seasonality_output(
+            seasonality_payload.clone(),
+            hawkes_stage_candidate_fixture(),
+        ),
+    );
+    let disk_single_thread_report = run_hawkes_calibration_stage(
+        &hawkes_run_spec_with_cpu_count(CalibrationExecutionMode::Disk, 1),
+        &calendar_registry,
+        HawkesStageExecutionInput::from_persisted_seasonality_artifact_reference(
+            "artifact://seasonality/run-001",
+            seasonality_payload.clone(),
+            hawkes_stage_candidate_fixture(),
+        ),
+    );
+    let disk_multi_thread_report = run_hawkes_calibration_stage(
+        &hawkes_run_spec_with_cpu_count(CalibrationExecutionMode::Disk, 4),
+        &calendar_registry,
+        HawkesStageExecutionInput::from_persisted_seasonality_artifact_reference(
+            "artifact://seasonality/run-001",
+            seasonality_payload,
+            hawkes_stage_candidate_fixture(),
+        ),
+    );
+
+    let memory_single_thread_payload = memory_single_thread_report
+        .fitted_stage_payload
+        .as_ref()
+        .expect("single-thread memory report should include fitted payload");
+    let memory_multi_thread_payload = memory_multi_thread_report
+        .fitted_stage_payload
+        .as_ref()
+        .expect("multi-thread memory report should include fitted payload");
+    let disk_single_thread_payload = disk_single_thread_report
+        .fitted_stage_payload
+        .as_ref()
+        .expect("single-thread disk report should include fitted payload");
+    let disk_multi_thread_payload = disk_multi_thread_report
+        .fitted_stage_payload
+        .as_ref()
+        .expect("multi-thread disk report should include fitted payload");
+
+    assert_eq!(memory_single_thread_payload, memory_multi_thread_payload);
+    assert_eq!(disk_single_thread_payload, disk_multi_thread_payload);
+    assert_eq!(
+        memory_single_thread_payload.selected_candidate_id,
+        disk_multi_thread_payload.selected_candidate_id
+    );
+    assert_eq!(
+        memory_single_thread_payload.fitted_parameters,
+        disk_multi_thread_payload.fitted_parameters
+    );
+    assert_eq!(
+        memory_single_thread_payload.candidate_diagnostics,
+        disk_multi_thread_payload.candidate_diagnostics
+    );
+}
+
+#[test]
 fn return_components_stage_execution_succeeds_for_memory_and_disk_pipeline_handoffs() {
     let hawkes_payload = build_hawkes_stage_success_payload();
     let calendar_registry = calibration_stage_test_registry();
@@ -990,6 +1063,23 @@ fn return_components_stage_execution_succeeds_for_memory_and_disk_pipeline_hando
     assert!(memory_metadata.input_candidate_count > 0);
     assert!(memory_metadata.input_candidate_count <= 10_000);
     assert!(memory_metadata.valid_candidate_count <= memory_metadata.input_candidate_count);
+}
+
+fn hawkes_run_spec_with_cpu_count(
+    execution_mode: CalibrationExecutionMode,
+    cpu_count: usize,
+) -> CalibrationRunSpec {
+    let mut run_spec = build_hawkes_stage_run_spec(execution_mode);
+    let hawkes_solver_settings = run_spec
+        .optimizer_settings_by_stage
+        .iter_mut()
+        .find(|stage_solver_settings| stage_solver_settings.stage == CalibrationStage::Hawkes)
+        .expect("hawkes stage solver settings should exist");
+
+    hawkes_solver_settings.optimizer_settings.cpu_count = cpu_count;
+    run_spec.validate().expect("run spec should remain valid");
+
+    run_spec
 }
 
 #[test]

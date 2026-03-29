@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use super::contracts::{
     HawkesStageCandidateDiagnostic, HawkesStageCandidateInput, HawkesStageExecutionFailure,
@@ -35,6 +35,7 @@ use janiform_model_kernels::hawkes::{
     HawkesStructuredRhoParameterization, spectral_radius_alpha_over_beta,
     stationary_intensity_multipliers,
 };
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct HawkesObservedActivityTargets {
     deseasonalized_open_event_rate_per_hour: f64,
@@ -44,6 +45,51 @@ struct HawkesObservedActivityTargets {
     deseasonalized_short_gap_threshold_seconds: f64,
     deseasonalized_short_gap_ratio: f64,
     deseasonalized_known_news_rate_per_hour: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct HawkesObservedSourceRegimeKey {
+    observation_duration_hours_bits: u64,
+    open_session_duration_hours_bits: u64,
+    total_tick_count: usize,
+    open_session_tick_count: usize,
+    closed_session_tick_count: usize,
+    open_session_buy_tick_count: usize,
+    open_session_sell_tick_count: usize,
+    open_session_mean_interarrival_seconds_bits: u64,
+    open_session_interarrival_coefficient_of_variation_bits: u64,
+    open_session_short_gap_threshold_seconds_bits: u64,
+    open_session_short_gap_ratio_bits: u64,
+    known_news_open_event_count: usize,
+    open_session_known_news_activity_share_bits: u64,
+}
+
+impl From<&HawkesStageObservedSourceRegime> for HawkesObservedSourceRegimeKey {
+    fn from(source_regime: &HawkesStageObservedSourceRegime) -> Self {
+        Self {
+            observation_duration_hours_bits: source_regime.observation_duration_hours.to_bits(),
+            open_session_duration_hours_bits: source_regime.open_session_duration_hours.to_bits(),
+            total_tick_count: source_regime.total_tick_count,
+            open_session_tick_count: source_regime.open_session_tick_count,
+            closed_session_tick_count: source_regime.closed_session_tick_count,
+            open_session_buy_tick_count: source_regime.open_session_buy_tick_count,
+            open_session_sell_tick_count: source_regime.open_session_sell_tick_count,
+            open_session_mean_interarrival_seconds_bits: source_regime
+                .open_session_mean_interarrival_seconds
+                .to_bits(),
+            open_session_interarrival_coefficient_of_variation_bits: source_regime
+                .open_session_interarrival_coefficient_of_variation
+                .to_bits(),
+            open_session_short_gap_threshold_seconds_bits: source_regime
+                .open_session_short_gap_threshold_seconds
+                .to_bits(),
+            open_session_short_gap_ratio_bits: source_regime.open_session_short_gap_ratio.to_bits(),
+            known_news_open_event_count: source_regime.known_news_open_event_count,
+            open_session_known_news_activity_share_bits: source_regime
+                .open_session_known_news_activity_share
+                .to_bits(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -203,11 +249,15 @@ pub fn run_hawkes_calibration_stage(
             }
         };
 
+    let mut observed_activity_targets_by_regime = BTreeMap::new();
+
     let initial_prepared_candidates = match prepare_hawkes_candidates(
         run_spec,
         stage_input.candidate_inputs.as_slice(),
         seasonality_payload,
         max_runtime_hourly_seasonality_factor,
+        stage_solver_settings.cpu_count,
+        &mut observed_activity_targets_by_regime,
     ) {
         Ok(prepared_candidates) => prepared_candidates,
         Err(report) => return report,
@@ -236,6 +286,8 @@ pub fn run_hawkes_calibration_stage(
             refined_candidate_inputs.as_slice(),
             seasonality_payload,
             max_runtime_hourly_seasonality_factor,
+            stage_solver_settings.cpu_count,
+            &mut observed_activity_targets_by_regime,
         ) {
             Ok(prepared_candidates) => prepared_candidates,
             Err(report) => return report,
@@ -516,9 +568,33 @@ fn prepare_hawkes_candidates(
     candidate_inputs: &[HawkesStageCandidateInput],
     seasonality_payload: &SeasonalityStageNormalizedPayload,
     max_runtime_hourly_seasonality_factor: f64,
+    cpu_count: usize,
+    observed_activity_targets_by_regime: &mut BTreeMap<
+        HawkesObservedSourceRegimeKey,
+        HawkesObservedActivityTargets,
+    >,
 ) -> Result<Vec<HawkesPreparedCandidate>, HawkesStageExecutionReport> {
+    let validated_candidate_inputs = validate_hawkes_candidate_inputs(run_spec, candidate_inputs)?;
+    populate_observed_activity_targets_cache(
+        validated_candidate_inputs.as_slice(),
+        seasonality_payload,
+        observed_activity_targets_by_regime,
+    );
+
+    Ok(prepare_hawkes_candidates_from_validated_inputs(
+        validated_candidate_inputs.as_slice(),
+        observed_activity_targets_by_regime,
+        max_runtime_hourly_seasonality_factor,
+        cpu_count,
+    ))
+}
+
+fn validate_hawkes_candidate_inputs<'a>(
+    run_spec: &CalibrationRunSpec,
+    candidate_inputs: &'a [HawkesStageCandidateInput],
+) -> Result<Vec<&'a HawkesStageCandidateInput>, HawkesStageExecutionReport> {
     let mut seen_candidate_ids = BTreeSet::new();
-    let mut prepared_candidates = Vec::with_capacity(candidate_inputs.len());
+    let mut validated_candidate_inputs = Vec::with_capacity(candidate_inputs.len());
 
     for candidate_input in candidate_inputs {
         if !seen_candidate_ids.insert(candidate_input.candidate_id.clone()) {
@@ -540,68 +616,139 @@ fn prepare_hawkes_candidates(
             ));
         }
 
-        let observed_activity_targets = derive_observed_activity_targets(
-            candidate_input.source_regime.clone(),
-            seasonality_payload,
-        );
-        let (adjusted_candidate_input, lambda_bar_scaling_ratio_applied) =
-            adjust_candidate_for_deseasonalized_activity(
-                candidate_input,
-                observed_activity_targets,
-            );
-
-        let validation_report = precheck_structured_hawkes_kernel_parameter_domain(
-            adjusted_candidate_input.lambda_bar,
-            adjusted_candidate_input.beta,
-            adjusted_candidate_input.structured_alpha,
-            adjusted_candidate_input.structured_rho,
-            adjusted_candidate_input.self_dominance_policy,
-            adjusted_candidate_input.stability_numeric_tolerance,
-        );
-
-        let mut external_constraint_violation_count = validation_report.summary.failed_check_count;
-
-        let (objective_terms, objective_term_diagnostics, implied_metrics, mut warnings) =
-            build_candidate_objective_terms(
-                &adjusted_candidate_input,
-                observed_activity_targets,
-                lambda_bar_scaling_ratio_applied,
-                max_runtime_hourly_seasonality_factor,
-                validation_report.derived_alpha,
-                validation_report.derived_rho,
-            );
-
-        if let Some(stationarity_check) =
-            validation_report.derived_alpha.and_then(|derived_alpha| {
-                check_seasonality_scaled_stationarity(
-                    max_runtime_hourly_seasonality_factor,
-                    derived_alpha,
-                    adjusted_candidate_input.beta,
-                )
-            })
-        {
-            external_constraint_violation_count =
-                external_constraint_violation_count.saturating_add(1);
-
-            warnings.push(format!(
-                "seasonality-scaled effective branching ratio {:.6} reaches or exceeds 1.0 with max seasonality factor {:.6}",
-                stationarity_check.effective_branching_ratio,
-                stationarity_check.max_seasonality_factor,
-            ));
-        }
-
-        prepared_candidates.push(HawkesPreparedCandidate {
-            adjusted_candidate_input,
-            validation_report,
-            objective_terms,
-            objective_term_diagnostics,
-            implied_metrics,
-            warnings,
-            external_constraint_violation_count,
-        });
+        validated_candidate_inputs.push(candidate_input);
     }
 
-    Ok(prepared_candidates)
+    Ok(validated_candidate_inputs)
+}
+
+fn populate_observed_activity_targets_cache(
+    validated_candidate_inputs: &[&HawkesStageCandidateInput],
+    seasonality_payload: &SeasonalityStageNormalizedPayload,
+    observed_activity_targets_by_regime: &mut BTreeMap<
+        HawkesObservedSourceRegimeKey,
+        HawkesObservedActivityTargets,
+    >,
+) {
+    for candidate_input in validated_candidate_inputs {
+        let regime_key = HawkesObservedSourceRegimeKey::from(&candidate_input.source_regime);
+        observed_activity_targets_by_regime
+            .entry(regime_key)
+            .or_insert_with(|| {
+                derive_observed_activity_targets(
+                    &candidate_input.source_regime,
+                    seasonality_payload,
+                )
+            });
+    }
+}
+
+fn prepare_hawkes_candidates_from_validated_inputs(
+    validated_candidate_inputs: &[&HawkesStageCandidateInput],
+    observed_activity_targets_by_regime: &BTreeMap<
+        HawkesObservedSourceRegimeKey,
+        HawkesObservedActivityTargets,
+    >,
+    max_runtime_hourly_seasonality_factor: f64,
+    cpu_count: usize,
+) -> Vec<HawkesPreparedCandidate> {
+    with_hawkes_stage_thread_pool(cpu_count, || {
+        validated_candidate_inputs
+            .par_iter()
+            .map(|candidate_input| {
+                let candidate_input = *candidate_input;
+                let regime_key =
+                    HawkesObservedSourceRegimeKey::from(&candidate_input.source_regime);
+                let observed_activity_targets = *observed_activity_targets_by_regime
+                    .get(&regime_key)
+                    .unwrap_or_else(|| {
+                        unreachable!(
+                            "validated Hawkes candidate must have cached observed activity targets"
+                        )
+                    });
+
+                prepare_hawkes_candidate(
+                    candidate_input,
+                    observed_activity_targets,
+                    max_runtime_hourly_seasonality_factor,
+                )
+            })
+            .collect()
+    })
+}
+
+fn prepare_hawkes_candidate(
+    candidate_input: &HawkesStageCandidateInput,
+    observed_activity_targets: HawkesObservedActivityTargets,
+    max_runtime_hourly_seasonality_factor: f64,
+) -> HawkesPreparedCandidate {
+    let (adjusted_candidate_input, lambda_bar_scaling_ratio_applied) =
+        adjust_candidate_for_deseasonalized_activity(candidate_input, observed_activity_targets);
+
+    let validation_report = precheck_structured_hawkes_kernel_parameter_domain(
+        adjusted_candidate_input.lambda_bar,
+        adjusted_candidate_input.beta,
+        adjusted_candidate_input.structured_alpha,
+        adjusted_candidate_input.structured_rho,
+        adjusted_candidate_input.self_dominance_policy,
+        adjusted_candidate_input.stability_numeric_tolerance,
+    );
+
+    let mut external_constraint_violation_count = validation_report.summary.failed_check_count;
+
+    let (objective_terms, objective_term_diagnostics, implied_metrics, mut warnings) =
+        build_candidate_objective_terms(
+            &adjusted_candidate_input,
+            observed_activity_targets,
+            lambda_bar_scaling_ratio_applied,
+            max_runtime_hourly_seasonality_factor,
+            validation_report.derived_alpha,
+            validation_report.derived_rho,
+        );
+
+    if let Some(stationarity_check) = validation_report.derived_alpha.and_then(|derived_alpha| {
+        check_seasonality_scaled_stationarity(
+            max_runtime_hourly_seasonality_factor,
+            derived_alpha,
+            adjusted_candidate_input.beta,
+        )
+    }) {
+        external_constraint_violation_count = external_constraint_violation_count.saturating_add(1);
+
+        warnings.push(format!(
+            "seasonality-scaled effective branching ratio {:.6} reaches or exceeds 1.0 with max seasonality factor {:.6}",
+            stationarity_check.effective_branching_ratio,
+            stationarity_check.max_seasonality_factor,
+        ));
+    }
+
+    HawkesPreparedCandidate {
+        adjusted_candidate_input,
+        validation_report,
+        objective_terms,
+        objective_term_diagnostics,
+        implied_metrics,
+        warnings,
+        external_constraint_violation_count,
+    }
+}
+
+fn with_hawkes_stage_thread_pool<T, F>(cpu_count: usize, operation: F) -> T
+where
+    T: Send,
+    F: FnOnce() -> T + Send,
+{
+    if cpu_count <= 1 {
+        return operation();
+    }
+
+    match rayon::ThreadPoolBuilder::new()
+        .num_threads(cpu_count)
+        .build()
+    {
+        Ok(thread_pool) => thread_pool.install(operation),
+        Err(_) => operation(),
+    }
 }
 
 fn evaluate_prepared_hawkes_candidates(
@@ -972,7 +1119,7 @@ fn invalid_candidate_objective_bundle(
 }
 
 fn derive_observed_activity_targets(
-    source_regime: HawkesStageObservedSourceRegime,
+    source_regime: &HawkesStageObservedSourceRegime,
     seasonality_payload: &SeasonalityStageNormalizedPayload,
 ) -> HawkesObservedActivityTargets {
     const MAX_DESEASONALIZED_GAP_SECONDS: f64 = 3_600.0;
@@ -1357,13 +1504,28 @@ fn build_hawkes_stage_failure_report(
 
 #[cfg(test)]
 mod tests {
-    use super::{HawkesPreparedCandidate, ranked_refinement_seed_indices, refinement_alpha_scales};
+    use std::collections::BTreeMap;
+
+    use super::{
+        HawkesPreparedCandidate, populate_observed_activity_targets_cache,
+        prepare_hawkes_candidates_from_validated_inputs, ranked_refinement_seed_indices,
+        refinement_alpha_scales,
+    };
     use crate::adapters::precheck_structured_hawkes_kernel_parameter_domain;
+    use crate::seasonality::{
+        SeasonalityComponentDiagnosticsSummary, SeasonalityDiagnosticsReportOutput,
+        SeasonalityEstimatorConfigurationMetadata, SeasonalityFitQualityMetrics,
+        SeasonalityInputSnapshotMetadata, SeasonalityReproducibilityMetadata,
+    };
     use crate::stages::hawkes::{
         HawkesStageCandidateDiagnostic, HawkesStageCandidateInput,
         HawkesStageDirectionalLabelDiagnostics, HawkesStageImpliedMetricsDiagnostic,
         HawkesStageObservedSourceRegime,
     };
+    use crate::stages::seasonality::{
+        SeasonalityStageNormalizedPayload, SeasonalityStageOverlayMetadata,
+    };
+    use janiform_calibration_artifacts::SeasonalityStageNormalizationMetadata;
     use janiform_model_kernels::hawkes::{
         HawkesStructuredAlphaParameterization, HawkesStructuredRhoParameterization,
         HawkesStructuredRhoSelfDominancePolicy,
@@ -1398,6 +1560,76 @@ mod tests {
         assert!(alpha_scales.contains(&0.095));
         assert!(alpha_scales.contains(&0.19));
         assert!(alpha_scales.iter().any(|scale| *scale < 0.2));
+    }
+
+    #[test]
+    fn repeated_source_regimes_prepare_in_original_candidate_order() {
+        let candidate_a = test_candidate_input("candidate_a");
+        let candidate_b = test_candidate_input("candidate_b");
+        let validated_candidate_inputs = vec![&candidate_a, &candidate_b];
+        let mut observed_activity_targets_by_regime = BTreeMap::new();
+
+        populate_observed_activity_targets_cache(
+            validated_candidate_inputs.as_slice(),
+            &test_seasonality_payload(),
+            &mut observed_activity_targets_by_regime,
+        );
+
+        assert_eq!(observed_activity_targets_by_regime.len(), 1);
+
+        let prepared_candidates = prepare_hawkes_candidates_from_validated_inputs(
+            validated_candidate_inputs.as_slice(),
+            &observed_activity_targets_by_regime,
+            1.0,
+            1,
+        );
+
+        assert_eq!(prepared_candidates.len(), 2);
+        assert_eq!(
+            prepared_candidates[0].adjusted_candidate_input.candidate_id,
+            "candidate_a"
+        );
+        assert_eq!(
+            prepared_candidates[1].adjusted_candidate_input.candidate_id,
+            "candidate_b"
+        );
+    }
+
+    #[test]
+    fn prepared_candidates_are_identical_across_cpu_counts() {
+        let candidate_a = test_candidate_input("candidate_a");
+        let candidate_b = test_candidate_input("candidate_b");
+        let candidate_c = HawkesStageCandidateInput {
+            candidate_id: "candidate_c".to_string(),
+            source_regime: HawkesStageObservedSourceRegime {
+                open_session_mean_interarrival_seconds: 2.0,
+                ..test_source_regime()
+            },
+            ..test_candidate_input("candidate_c")
+        };
+        let validated_candidate_inputs = vec![&candidate_a, &candidate_b, &candidate_c];
+        let mut observed_activity_targets_by_regime = BTreeMap::new();
+
+        populate_observed_activity_targets_cache(
+            validated_candidate_inputs.as_slice(),
+            &test_seasonality_payload(),
+            &mut observed_activity_targets_by_regime,
+        );
+
+        let single_thread_candidates = prepare_hawkes_candidates_from_validated_inputs(
+            validated_candidate_inputs.as_slice(),
+            &observed_activity_targets_by_regime,
+            1.0,
+            1,
+        );
+        let multi_thread_candidates = prepare_hawkes_candidates_from_validated_inputs(
+            validated_candidate_inputs.as_slice(),
+            &observed_activity_targets_by_regime,
+            1.0,
+            4,
+        );
+
+        assert_eq!(single_thread_candidates, multi_thread_candidates);
     }
 
     fn test_candidate_diagnostic(
@@ -1465,29 +1697,7 @@ mod tests {
 
     fn test_prepared_candidate(candidate_id: &str) -> HawkesPreparedCandidate {
         HawkesPreparedCandidate {
-            adjusted_candidate_input: HawkesStageCandidateInput {
-                candidate_id: candidate_id.to_string(),
-                lambda_bar: 1.0,
-                beta: 10.0,
-                structured_alpha: HawkesStructuredAlphaParameterization {
-                    a_self: 0.1,
-                    a_cross: 0.0,
-                    delta_self: 0.0,
-                    delta_cross: 0.0,
-                },
-                structured_rho: HawkesStructuredRhoParameterization {
-                    r_self: 1.0e-12,
-                    r_cross: 0.0,
-                    delta_self_r: 0.0,
-                    delta_cross_r: 0.0,
-                },
-                self_dominance_policy: Some(HawkesStructuredRhoSelfDominancePolicy {
-                    minimum_self_to_cross_ratio: 1.0,
-                }),
-                stability_numeric_tolerance: 0.0,
-                source_regime: test_source_regime(),
-                directional_label_diagnostics: test_directional_label_diagnostics(),
-            },
+            adjusted_candidate_input: test_candidate_input(candidate_id),
             validation_report: precheck_structured_hawkes_kernel_parameter_domain(
                 1.0,
                 10.0,
@@ -1513,6 +1723,32 @@ mod tests {
             implied_metrics: test_candidate_diagnostic(candidate_id, 0, 0.0, 0.0).implied_metrics,
             warnings: Vec::new(),
             external_constraint_violation_count: 0,
+        }
+    }
+
+    fn test_candidate_input(candidate_id: &str) -> HawkesStageCandidateInput {
+        HawkesStageCandidateInput {
+            candidate_id: candidate_id.to_string(),
+            lambda_bar: 1.0,
+            beta: 10.0,
+            structured_alpha: HawkesStructuredAlphaParameterization {
+                a_self: 0.1,
+                a_cross: 0.0,
+                delta_self: 0.0,
+                delta_cross: 0.0,
+            },
+            structured_rho: HawkesStructuredRhoParameterization {
+                r_self: 1.0e-12,
+                r_cross: 0.0,
+                delta_self_r: 0.0,
+                delta_cross_r: 0.0,
+            },
+            self_dominance_policy: Some(HawkesStructuredRhoSelfDominancePolicy {
+                minimum_self_to_cross_ratio: 1.0,
+            }),
+            stability_numeric_tolerance: 0.0,
+            source_regime: test_source_regime(),
+            directional_label_diagnostics: test_directional_label_diagnostics(),
         }
     }
 
@@ -1543,6 +1779,129 @@ mod tests {
             flat_move_carry_count: 0,
             price_up_inference_count: 0,
             price_down_inference_count: 0,
+        }
+    }
+
+    fn test_seasonality_payload() -> SeasonalityStageNormalizedPayload {
+        SeasonalityStageNormalizedPayload {
+            schema_version: "seasonality.normalized.test.v1",
+            dataset_id: "dataset".to_string(),
+            exchange_code: "XNYS".to_string(),
+            trade_events_data_reference: "memory://trade-events".to_string(),
+            timestamp_event_input_schema_version: "timestamp-input.v1".to_string(),
+            timestamp_event_preprocessed_schema_version: "timestamp-preprocessed.v1".to_string(),
+            intraday_estimate_schema_version: "intraday.v1".to_string(),
+            day_of_week_estimate_schema_version: "day-of-week.v1".to_string(),
+            day_of_year_estimate_schema_version: "day-of-year.v1".to_string(),
+            composition_schema_version: "composition.v1".to_string(),
+            source_record_positions: vec![0, 1, 2],
+            timestamp_utc_nanos: vec![0, 1_000_000_000, 3_000_000_000],
+            exchange_local_minute_of_day: vec![570, 571, 573],
+            exchange_local_day_of_week: vec![1, 1, 1],
+            exchange_local_day_of_year: vec![120, 120, 120],
+            market_state_codes: vec![1, 1, 1],
+            intraday_minutes_per_bin: 60,
+            intraday_factor_by_bin: vec![1.0],
+            day_of_week_factor: vec![1.0; 7],
+            day_of_year_factor: vec![1.0; 366],
+            normalized_combined_log_component_by_event: vec![0.0, 0.0, 0.0],
+            normalized_combined_factor_by_event: vec![1.0, 2.0, 1.0],
+            normalization_metadata: SeasonalityStageNormalizationMetadata {
+                normalization_policy: "mean_factor_anchor.v1".to_string(),
+                fit_window_event_count: 3,
+                target_mean_factor: 1.0,
+                pre_normalization_mean_factor: 1.0,
+                normalization_constant: 1.0,
+                normalization_log_offset: 0.0,
+                post_normalization_mean_factor: 1.0,
+                mean_anchor_tolerance: 1.0e-12,
+            },
+            overlay_metadata: SeasonalityStageOverlayMetadata {
+                overlays_enabled: false,
+                configured_overlay_count: 0,
+                enabled_overlay_count: 0,
+                active_overlay_event_count: 0,
+                precedence_policy: "highest_precedence_wins.v1".to_string(),
+                merge_policy: "equal_precedence_additive.v1".to_string(),
+                window_boundary_policy: "start_inclusive_end_exclusive.v1".to_string(),
+                configured_overlay_ids_in_order: Vec::new(),
+                applied_overlay_ids_in_order: Vec::new(),
+                overlay_source_labels_in_order: Vec::new(),
+            },
+            diagnostics_report: SeasonalityDiagnosticsReportOutput {
+                schema_version: "seasonality.diagnostics.report.v1",
+                dataset_id: "dataset".to_string(),
+                intraday_component_summary: test_component_diagnostics_summary("intraday"),
+                day_of_week_component_summary: test_component_diagnostics_summary("day_of_week"),
+                day_of_year_component_summary: test_component_diagnostics_summary("day_of_year"),
+                overlay_component_summary: None,
+                fit_quality_metrics: SeasonalityFitQualityMetrics {
+                    weighted_mean_absolute_factor_error: 0.0,
+                    weighted_root_mean_squared_factor_error: 0.0,
+                    normalization_anchor_error: 0.0,
+                    combined_factor_mean: 1.0,
+                    combined_factor_standard_deviation: 0.0,
+                    combined_factor_min: 1.0,
+                    combined_factor_max: 2.0,
+                    overlay_active_event_ratio: 0.0,
+                },
+                reproducibility_metadata: SeasonalityReproducibilityMetadata {
+                    estimator_version: "test-estimator".to_string(),
+                    input_snapshot: SeasonalityInputSnapshotMetadata {
+                        input_schema_version: "timestamp-input.v1".to_string(),
+                        preprocessed_schema_version: "timestamp-preprocessed.v1".to_string(),
+                        exchange_code: "XNYS".to_string(),
+                        exchange_timezone_name: "America/New_York".to_string(),
+                        input_event_count: 3,
+                        first_event_timestamp_utc_nanos: 0,
+                        last_event_timestamp_utc_nanos: 3_000_000_000,
+                        snapshot_fingerprint_algorithm: "fnv1a64.v1",
+                        snapshot_fingerprint_hex: "0000000000000000".to_string(),
+                    },
+                    estimator_configuration: SeasonalityEstimatorConfigurationMetadata {
+                        intraday_schema_version: "intraday.v1".to_string(),
+                        day_of_week_schema_version: "day-of-week.v1".to_string(),
+                        day_of_year_schema_version: "day-of-year.v1".to_string(),
+                        composition_schema_version: "composition.v1".to_string(),
+                        intraday_minutes_per_bin: 60,
+                        intraday_smoothing_kernel: "gaussian".to_string(),
+                        intraday_smoothing_bandwidth_bins: 1.0,
+                        intraday_minimum_bin_events: 1,
+                        intraday_pseudocount: 1.0,
+                        day_of_week_minimum_bucket_events: 1,
+                        day_of_week_pseudocount: 1.0,
+                        day_of_year_minimum_bucket_events: 1,
+                        day_of_year_pseudocount: 1.0,
+                        normalization_policy: "mean_factor_anchor.v1".to_string(),
+                        overlay_precedence_policy: "highest_precedence_wins.v1".to_string(),
+                        overlay_merge_policy: "equal_precedence_additive.v1".to_string(),
+                        overlay_window_boundary_policy: "start_inclusive_end_exclusive.v1"
+                            .to_string(),
+                    },
+                },
+            },
+        }
+    }
+
+    fn test_component_diagnostics_summary(
+        component_name: &'static str,
+    ) -> SeasonalityComponentDiagnosticsSummary {
+        SeasonalityComponentDiagnosticsSummary {
+            component_name,
+            component_schema_version: format!("{component_name}.v1"),
+            input_event_count: 3,
+            bucket_count: 1,
+            zero_bucket_count: 0,
+            sparse_bucket_count: 0,
+            fallback_bucket_count: 0,
+            zero_bucket_ratio: 0.0,
+            sparse_bucket_ratio: 0.0,
+            fallback_bucket_ratio: 0.0,
+            mean_factor: 1.0,
+            min_factor: 1.0,
+            max_factor: 1.0,
+            mean_absolute_factor_error: 0.0,
+            root_mean_squared_factor_error: 0.0,
         }
     }
 }

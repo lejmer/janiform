@@ -5,6 +5,16 @@ use janiform_foundations::numeric::{
     standardized_path_distance,
 };
 
+use super::execution::{
+    JOINT_REFINEMENT_OBJECTIVE_NORMALIZATION_FLOOR, JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR,
+    JointRefinementBaselineBuckets, JointRefinementCandidateEvaluation, JointRefinementContext,
+    JointRefinementFidelityTier, JointRefinementObservedData, JointRefinementRestartOutcome,
+    JointRefinementSeedSummary, ordered_parameter_bits,
+};
+use super::setup::{
+    cached_seed_summary_for_candidate_seed, compute_cumulative_log_price_span,
+    parameter_vector_to_fitted_parameters,
+};
 use crate::stages::joint_metrics::{
     JointRefinementBusinessTimeBucketReturnScaleSummaries, JointRefinementReturnScaleSummary,
     log_ratio_distance, normalized_profile_distance, zero_aware_normalized_bucket_value,
@@ -18,18 +28,6 @@ use janiform_calibration_artifacts::{
     JointRefinementStageObjectiveBreakdown,
 };
 use janiform_model_kernels::hawkes::HawkesKernelParameters;
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-
-use super::execution::{
-    JOINT_REFINEMENT_OBJECTIVE_NORMALIZATION_FLOOR, JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR,
-    JointRefinementBaselineBuckets, JointRefinementCandidateEvaluation, JointRefinementContext,
-    JointRefinementFidelityTier, JointRefinementObservedData, JointRefinementRestartOutcome,
-    JointRefinementSeedSummary, ordered_parameter_bits, with_joint_refinement_thread_pool,
-};
-use super::setup::{
-    cached_seed_summary_for_candidate_seed, compute_cumulative_log_price_span,
-    parameter_vector_to_fitted_parameters,
-};
 
 pub(super) use janiform_foundations::numeric::root_mean_square_or_infinity as root_mean_square;
 
@@ -183,19 +181,17 @@ fn build_joint_candidate_evaluation_for_fitted_parameters(
         JointRefinementFidelityTier::Final => context.final_simulation_seeds.clone(),
     };
 
-    let seed_summaries = with_joint_refinement_thread_pool(context, || {
-        simulation_seeds
-            .par_iter()
-            .map(|simulation_seed| {
-                cached_seed_summary_for_candidate_seed(
-                    parameter_bits,
-                    &fitted_parameters,
-                    context,
-                    *simulation_seed,
-                )
-            })
-            .collect::<Vec<_>>()
-    });
+    let seed_summaries = simulation_seeds
+        .iter()
+        .map(|simulation_seed| {
+            cached_seed_summary_for_candidate_seed(
+                parameter_bits,
+                &fitted_parameters,
+                context,
+                *simulation_seed,
+            )
+        })
+        .collect::<Vec<_>>();
     if seed_summaries.iter().any(Option::is_none) {
         return invalid_candidate_evaluation(
             &context.baseline_hawkes_fitted_parameters,

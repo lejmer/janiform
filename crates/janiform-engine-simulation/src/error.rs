@@ -49,6 +49,11 @@ pub enum SeededTickSimulationRunError {
         interval_start_utc_nanos: i64,
         interval_end_utc_nanos: i64,
     },
+    BufferAllocationFailed {
+        buffer_name: &'static str,
+        requested_capacity: usize,
+        detail: String,
+    },
     NonConsecutiveHourlyFactorCoverage {
         previous_interval_index: usize,
         previous_interval_end_utc_nanos: i64,
@@ -202,6 +207,14 @@ impl Display for SeededTickSimulationRunError {
             } => write!(
                 formatter,
                 "hourly_factor_contract interval {interval_index} has invalid bounds, start={interval_start_utc_nanos}, end={interval_end_utc_nanos}"
+            ),
+            Self::BufferAllocationFailed {
+                buffer_name,
+                requested_capacity,
+                detail,
+            } => write!(
+                formatter,
+                "failed to reserve buffer `{buffer_name}` with requested_capacity={requested_capacity}: {detail}"
             ),
             Self::NonConsecutiveHourlyFactorCoverage {
                 previous_interval_index,
