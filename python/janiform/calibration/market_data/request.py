@@ -10,6 +10,7 @@ from .contracts import (
     CalibrationMarketDataColumnMapping,
     CalibrationMarketDataNormalizationPolicy,
     CalibrationMarketDataOutputPreferences,
+    CalibrationMarketDataPreprocessingSettings,
     CalibrationMarketDataWorkflowScope,
     CalibrationSessionConfigurationInput,
     validate_known_news_inputs,
@@ -17,11 +18,13 @@ from .contracts import (
     validate_tick_price_input_policy,
 )
 from .._errors import CALIBRATION_ERROR_FACTORY, _calibration_error
+from ..staged import CalibrationStage, CalibrationStageSolverSettings
 from ...contracts import (
     ContractModel,
     parse_json_object,
     require_mapping,
     require_non_empty_string,
+    require_sequence,
     require_string,
     serialize_deterministic_json,
 )
@@ -37,6 +40,8 @@ class MarketDataCalibrationRequest(ContractModel):
     workflow_scope: CalibrationMarketDataWorkflowScope
     normalization_policy: CalibrationMarketDataNormalizationPolicy
     output_preferences: CalibrationMarketDataOutputPreferences
+    optimizer_settings_by_stage: tuple[CalibrationStageSolverSettings, ...] = ()
+    preprocessing_settings: Optional[CalibrationMarketDataPreprocessingSettings] = None
     option_surface_source: Optional[CalibrationInputFileReference] = None
     known_news_inputs: Optional[CalibrationKnownNewsInput] = None
     mean_reversion: Optional[CalibrationMeanReversionConfiguration] = None
@@ -83,8 +88,37 @@ class MarketDataCalibrationRequest(ContractModel):
         ):
             raise _calibration_error(
                 "mean_reversion",
-                "must be omitted or disabled when workflow_scope is seasonality_only",
+                "must be omitted when workflow_scope is seasonality_only",
             )
+
+        selected_stages = (
+            (CalibrationStage.SEASONALITY,)
+            if self.workflow_scope == CalibrationMarketDataWorkflowScope.SEASONALITY_ONLY
+            else (
+                CalibrationStage.SEASONALITY,
+                CalibrationStage.HAWKES,
+                CalibrationStage.RETURN_COMPONENTS,
+                CalibrationStage.MEAN_REVERSION,
+                CalibrationStage.JOINT_REFINEMENT,
+            )
+        )
+        selected_stage_set = set(selected_stages)
+        configured_stage_set: set[CalibrationStage] = set()
+
+        for stage_settings in self.optimizer_settings_by_stage:
+            if stage_settings.stage in configured_stage_set:
+                raise _calibration_error(
+                    "optimizer_settings_by_stage",
+                    f"contains duplicate stage '{stage_settings.stage.value}'",
+                )
+
+            if stage_settings.stage not in selected_stage_set:
+                raise _calibration_error(
+                    "optimizer_settings_by_stage",
+                    f"contains stage '{stage_settings.stage.value}' outside workflow_scope '{self.workflow_scope.value}'",
+                )
+
+            configured_stage_set.add(stage_settings.stage)
 
     @staticmethod
     def from_mapping(raw_payload: dict[str, Any] | Any) -> MarketDataCalibrationRequest:
@@ -121,6 +155,36 @@ class MarketDataCalibrationRequest(ContractModel):
             output_preferences=CalibrationMarketDataOutputPreferences.from_mapping(
                 require_mapping(raw_payload, "output_preferences", "output_preferences", CALIBRATION_ERROR_FACTORY),
                 field_path="output_preferences",
+            ),
+            optimizer_settings_by_stage=tuple(
+                CalibrationStageSolverSettings.from_mapping(
+                    raw_stage_settings,
+                    field_path=f"optimizer_settings_by_stage[{stage_index}]",
+                )
+                for stage_index, raw_stage_settings in enumerate(
+                    require_sequence(
+                        raw_payload,
+                        "optimizer_settings_by_stage",
+                        "optimizer_settings_by_stage",
+                        CALIBRATION_ERROR_FACTORY,
+                    )
+                    if "optimizer_settings_by_stage" in raw_payload
+                    else ()
+                )
+            ),
+            preprocessing_settings=(
+                CalibrationMarketDataPreprocessingSettings.from_mapping(
+                    require_mapping(
+                        raw_payload,
+                        "preprocessing_settings",
+                        "preprocessing_settings",
+                        CALIBRATION_ERROR_FACTORY,
+                    ),
+                    field_path="preprocessing_settings",
+                )
+                if "preprocessing_settings" in raw_payload
+                and raw_payload["preprocessing_settings"] is not None
+                else None
             ),
             option_surface_source=(
                 CalibrationInputFileReference.from_mapping(

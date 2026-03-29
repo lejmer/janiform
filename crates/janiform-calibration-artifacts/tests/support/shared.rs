@@ -146,25 +146,10 @@ pub(crate) fn build_valid_run_spec_with_mode(
     .expect("run spec should validate")
 }
 
-pub(crate) fn build_deterministic_interval_grid_mean_reversion_parameters()
--> MeanReversionFittedParameters {
+pub(crate) fn build_endogenous_mean_reversion_parameters() -> MeanReversionFittedParameters {
     MeanReversionFittedParameters::try_new(
         0.25,
-        MeanReversionAnchorModel::deterministic_interval_grid(
-            vec![
-                utc_nanos(2026, 3, 2, 14, 0, 0),
-                utc_nanos(2026, 3, 2, 15, 0, 0),
-                utc_nanos(2026, 3, 2, 16, 0, 0),
-            ],
-            vec![
-                utc_nanos(2026, 3, 2, 15, 0, 0),
-                utc_nanos(2026, 3, 2, 16, 0, 0),
-                utc_nanos(2026, 3, 2, 17, 0, 0),
-            ],
-            vec![4.2, 4.1, 4.0],
-            "piecewise_constant_utc_interval_grid.v1",
-        )
-        .expect("deterministic interval-grid anchor should validate"),
+        MeanReversionAnchorModel::endogenous_core_expectation_one_interval(),
     )
     .expect("mean reversion fitted parameters should validate")
 }
@@ -661,7 +646,7 @@ pub(crate) fn build_return_components_stage_parameter_artifact_fixture(
                 .to_string(),
         },
         mean_reversion_fitted_parameters:
-            build_deterministic_interval_grid_mean_reversion_parameters(),
+            build_endogenous_mean_reversion_parameters(),
     };
 
     build_calibration_stage_parameter_artifact(

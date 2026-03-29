@@ -28,6 +28,7 @@ use janiform_foundations::randomness::{
     SimulationRandomnessFactory, SimulationRandomnessStream, SimulationRandomnessSubstreamDomain,
     SplitMix64SimulationRandomnessStream, derive_simulation_substream_seed,
 };
+use janiform_foundations::time::ONE_HOUR_NANOS;
 use janiform_market_time::calendar::{
     ExchangeCalendarRegistry, ExchangeCalendarRegistryLoader, MarketState,
 };
@@ -56,7 +57,6 @@ use janiform_model_kernels::return_decomposition::{
     ReturnDecomposition, ReturnDecompositionEdgeMode, ReturnDecompositionInput,
 };
 
-const ONE_HOUR_NANOS: i64 = 3_600_000_000_000;
 const SEEDED_TEST_START_UTC_NANOS: i64 = 1_705_932_000_000_000_000;
 
 #[test]
@@ -3377,7 +3377,8 @@ fn disabled_mean_reversion_runtime_inputs(
         })
         .collect::<Vec<_>>();
     (
-        MeanReversionFittedParameters::disabled(),
+        MeanReversionFittedParameters::endogenous_core_expectation_one_interval(0.0)
+            .expect("zero-kappa endogenous mean reversion should construct"),
         MeanReversionRuntimeIntervalAnchors::try_new(
             hourly_factor_contract.metadata.interval_alignment_policy,
             0.0,
@@ -3401,22 +3402,9 @@ fn configure_mean_reversion_runtime_inputs(
         .iter()
         .all(|anchor_value| (*anchor_value - start_anchor_value).abs() <= 1.0e-12)
     {
-        MeanReversionAnchorModel::constant(start_anchor_value)
-            .expect("constant mean-reversion anchor should construct")
+        MeanReversionAnchorModel::endogenous_core_expectation_one_interval()
     } else {
-        MeanReversionAnchorModel::deterministic_interval_grid(
-            model_inputs
-                .hourly_factor_contract
-                .interval_start_utc_nanos
-                .clone(),
-            model_inputs
-                .hourly_factor_contract
-                .interval_end_utc_nanos
-                .clone(),
-            end_anchor_values.to_vec(),
-            HOURLY_FACTOR_INTERVAL_ALIGNMENT_POLICY,
-        )
-        .expect("deterministic-grid mean-reversion anchor should construct")
+        MeanReversionAnchorModel::endogenous_core_expectation_one_interval()
     };
 
     model_inputs.mean_reversion_fitted_parameters =

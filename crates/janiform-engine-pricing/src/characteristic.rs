@@ -175,6 +175,14 @@ pub enum AnchoredLocalTiltSolveError {
         theta: f64,
         value: ComplexScalar,
     },
+    TransformEvaluationFailure {
+        theta: f64,
+        message: String,
+    },
+    NonRealObservedLogMomentExponent {
+        theta: f64,
+        value: ComplexScalar,
+    },
     OutOfDomainStateRequest {
         theta: f64,
         argument_imaginary: f64,
@@ -214,6 +222,14 @@ impl Display for AnchoredLocalTiltSolveError {
             Self::NonFiniteTransformInput { theta, value } => write!(
                 formatter,
                 "anchored local tilt solve produced a non-finite transform input at theta={theta}: {value:?}"
+            ),
+            Self::TransformEvaluationFailure { theta, message } => write!(
+                formatter,
+                "anchored local tilt solve could not evaluate the transform at theta={theta}: {message}"
+            ),
+            Self::NonRealObservedLogMomentExponent { theta, value } => write!(
+                formatter,
+                "anchored local tilt solve produced a non-real observed log moment exponent at theta={theta}: {value:?}"
             ),
             Self::OutOfDomainStateRequest {
                 theta,
@@ -255,9 +271,9 @@ impl Error for AnchoredLocalTiltSolveError {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-struct LocalTiltResidualEvaluation {
-    observed_log_moment_exponent: f64,
-    residual: f64,
+pub(crate) struct LocalTiltResidualEvaluation {
+    pub(crate) observed_log_moment_exponent: f64,
+    pub(crate) residual: f64,
 }
 
 const BUY_SIDE_OBSERVED_LOG_MOMENT_ARGUMENT_IMAGINARY: f64 = -1.0;
@@ -280,17 +296,12 @@ pub fn project_hawkes_intensities_coarse_interval(
     )
 }
 
-fn anchored_boundary_state_summary(
+pub(crate) fn anchored_boundary_state_summary(
     pricing_request: &VanillaOptionPricingRequest,
 ) -> Result<AnchoredLocalTiltBoundaryStateSummary, AnchoredLocalTiltSolveError> {
     let boundary_input = &pricing_request.boundary_input;
 
     let current_anchor_value = boundary_input.current_anchor_value().map_err(|source| {
-        AnchoredLocalTiltSolveError::InvalidPricingRequest {
-            source: VanillaOptionPricingRequestError::InvalidBoundaryInput { source },
-        }
-    })?;
-    let next_anchor_value = boundary_input.next_anchor_value().map_err(|source| {
         AnchoredLocalTiltSolveError::InvalidPricingRequest {
             source: VanillaOptionPricingRequestError::InvalidBoundaryInput { source },
         }
@@ -308,24 +319,32 @@ fn anchored_boundary_state_summary(
         }
     })?;
 
+    let local_martingale_deviation_adjustment = boundary_input
+        .local_martingale_deviation_adjustment()
+        .map_err(
+            |source| AnchoredLocalTiltSolveError::InvalidPricingRequest {
+                source: VanillaOptionPricingRequestError::InvalidBoundaryInput { source },
+            },
+        )?;
+
     Ok(AnchoredLocalTiltBoundaryStateSummary {
         interval_index: boundary_input.interval_index,
         hawkes_boundary_state: boundary_input.hawkes_boundary_state,
         observed_boundary_state: boundary_input.observed_boundary_state.clone(),
         current_anchor_value,
-        next_anchor_value,
         interval_delta,
         kappa: boundary_input.mean_reversion_fitted_parameters.kappa,
         deviation_decay_factor,
+        local_martingale_deviation_adjustment,
     })
 }
 
-fn target_log_moment_exponent(
+pub(crate) fn target_log_moment_exponent(
     pricing_request: &VanillaOptionPricingRequest,
 ) -> Result<f64, AnchoredLocalTiltSolveError> {
-    let observed_return_adjustment = pricing_request
+    let local_martingale_deviation_adjustment = pricing_request
         .boundary_input
-        .observed_return_adjustment()
+        .local_martingale_deviation_adjustment()
         .map_err(
             |source| AnchoredLocalTiltSolveError::InvalidPricingRequest {
                 source: VanillaOptionPricingRequestError::InvalidBoundaryInput { source },
@@ -335,7 +354,7 @@ fn target_log_moment_exponent(
     Ok((pricing_request.market_inputs.risk_free_rate
         - pricing_request.market_inputs.dividend_yield)
         * pricing_request.interval_delta
-        - observed_return_adjustment)
+        - local_martingale_deviation_adjustment)
 }
 
 fn evaluate_local_tilt_residual(
@@ -452,12 +471,15 @@ fn map_local_tilt_axis_evaluation_error(
     }
 }
 
-fn build_local_tilt_bracket(
+pub(crate) fn build_local_tilt_bracket_with_residual_evaluator<F>(
     driver_parameters: NigBuySellDriverParameters,
-    return_decomposition: ReturnDecomposition,
     target_log_moment_exponent: f64,
     tolerance: f64,
-) -> Result<(f64, LocalTiltResidualEvaluation), AnchoredLocalTiltSolveError> {
+    mut evaluate_residual: F,
+) -> Result<(f64, LocalTiltResidualEvaluation), AnchoredLocalTiltSolveError>
+where
+    F: FnMut(f64) -> Result<LocalTiltResidualEvaluation, AnchoredLocalTiltSolveError>,
+{
     let admissible_domain = anchored_local_tilt_domain(driver_parameters)?;
 
     let Some(lower_theta) = admissible_domain.interior_lower_bound() else {
@@ -480,48 +502,21 @@ fn build_local_tilt_bracket(
         });
     };
 
-    let lower_evaluation = evaluate_local_tilt_residual(
-        driver_parameters,
-        return_decomposition,
-        target_log_moment_exponent,
-        lower_theta,
-    )?;
-    if lower_evaluation.residual.abs() <= tolerance {
-        return Ok((lower_theta, lower_evaluation));
-    }
-
-    let upper_evaluation = evaluate_local_tilt_residual(
-        driver_parameters,
-        return_decomposition,
-        target_log_moment_exponent,
-        upper_theta,
-    )?;
-    if upper_evaluation.residual.abs() <= tolerance {
-        return Ok((upper_theta, upper_evaluation));
-    }
-
     let reference_theta = nearest_zero_theta_in_domain(admissible_domain)
         .expect("non-empty admissible domain must provide one interior point nearest zero");
 
-    let reference_evaluation = evaluate_local_tilt_residual(
-        driver_parameters,
-        return_decomposition,
-        target_log_moment_exponent,
-        reference_theta,
-    )?;
+    let reference_evaluation = evaluate_residual(reference_theta)?;
     if reference_evaluation.residual.abs() <= tolerance {
         return Ok((reference_theta, reference_evaluation));
     }
 
     let left_candidate = if lower_theta < reference_theta {
         locate_nearest_root_on_side(
-            driver_parameters,
-            return_decomposition,
-            target_log_moment_exponent,
             reference_theta,
             reference_evaluation,
             lower_theta,
             tolerance,
+            &mut evaluate_residual,
         )?
     } else {
         None
@@ -529,13 +524,11 @@ fn build_local_tilt_bracket(
 
     let right_candidate = if upper_theta > reference_theta {
         locate_nearest_root_on_side(
-            driver_parameters,
-            return_decomposition,
-            target_log_moment_exponent,
             reference_theta,
             reference_evaluation,
             upper_theta,
             tolerance,
+            &mut evaluate_residual,
         )?
     } else {
         None
@@ -547,10 +540,31 @@ fn build_local_tilt_bracket(
             target_log_moment_exponent,
             lower_theta,
             upper_theta,
-            lower_residual: lower_evaluation.residual,
-            upper_residual: upper_evaluation.residual,
+            lower_residual: f64::NAN,
+            upper_residual: f64::NAN,
         }),
     }
+}
+
+fn build_local_tilt_bracket(
+    driver_parameters: NigBuySellDriverParameters,
+    return_decomposition: ReturnDecomposition,
+    target_log_moment_exponent: f64,
+    tolerance: f64,
+) -> Result<(f64, LocalTiltResidualEvaluation), AnchoredLocalTiltSolveError> {
+    build_local_tilt_bracket_with_residual_evaluator(
+        driver_parameters,
+        target_log_moment_exponent,
+        tolerance,
+        |theta| {
+            evaluate_local_tilt_residual(
+                driver_parameters,
+                return_decomposition,
+                target_log_moment_exponent,
+                theta,
+            )
+        },
+    )
 }
 
 fn nearest_zero_theta_in_domain(admissible_domain: NigEsscherTiltDomain) -> Option<f64> {
@@ -569,21 +583,22 @@ fn nearest_zero_theta_in_domain(admissible_domain: NigEsscherTiltDomain) -> Opti
 }
 
 fn locate_nearest_root_on_side(
-    driver_parameters: NigBuySellDriverParameters,
-    return_decomposition: ReturnDecomposition,
-    target_log_moment_exponent: f64,
     reference_theta: f64,
     reference_evaluation: LocalTiltResidualEvaluation,
     side_boundary_theta: f64,
     tolerance: f64,
+    evaluate_residual: &mut impl FnMut(
+        f64,
+    ) -> Result<
+        LocalTiltResidualEvaluation,
+        AnchoredLocalTiltSolveError,
+    >,
 ) -> Result<Option<(f64, LocalTiltResidualEvaluation)>, AnchoredLocalTiltSolveError> {
-    let mut opposite_theta = side_boundary_theta;
-    let mut opposite_evaluation = evaluate_local_tilt_residual(
-        driver_parameters,
-        return_decomposition,
-        target_log_moment_exponent,
-        opposite_theta,
-    )?;
+    let Some((mut opposite_theta, mut opposite_evaluation)) =
+        locate_valid_side_evaluation(reference_theta, side_boundary_theta, evaluate_residual)?
+    else {
+        return Ok(None);
+    };
 
     while opposite_evaluation.residual.signum() == reference_evaluation.residual.signum() {
         let midpoint = (reference_theta + opposite_theta) * 0.5;
@@ -592,12 +607,8 @@ fn locate_nearest_root_on_side(
         }
 
         opposite_theta = midpoint;
-        opposite_evaluation = evaluate_local_tilt_residual(
-            driver_parameters,
-            return_decomposition,
-            target_log_moment_exponent,
-            opposite_theta,
-        )?;
+        opposite_evaluation = evaluate_residual(opposite_theta)?;
+
         if opposite_evaluation.residual.abs() <= tolerance {
             return Ok(Some((opposite_theta, opposite_evaluation)));
         }
@@ -625,12 +636,7 @@ fn locate_nearest_root_on_side(
             return Ok(Some((best_theta, best_evaluation)));
         }
 
-        let midpoint_evaluation = evaluate_local_tilt_residual(
-            driver_parameters,
-            return_decomposition,
-            target_log_moment_exponent,
-            midpoint,
-        )?;
+        let midpoint_evaluation = evaluate_residual(midpoint)?;
 
         if midpoint_evaluation.residual.abs() < best_evaluation.residual.abs() {
             best_theta = midpoint;
@@ -646,6 +652,46 @@ fn locate_nearest_root_on_side(
             opposite_theta = midpoint;
         }
     }
+}
+
+fn locate_valid_side_evaluation(
+    reference_theta: f64,
+    side_boundary_theta: f64,
+    evaluate_residual: &mut impl FnMut(
+        f64,
+    ) -> Result<
+        LocalTiltResidualEvaluation,
+        AnchoredLocalTiltSolveError,
+    >,
+) -> Result<Option<(f64, LocalTiltResidualEvaluation)>, AnchoredLocalTiltSolveError> {
+    let mut candidate_theta = side_boundary_theta;
+
+    loop {
+        match evaluate_residual(candidate_theta) {
+            Ok(evaluation) => return Ok(Some((candidate_theta, evaluation))),
+            Err(error) if should_retry_local_tilt_side_evaluation(&error) => {
+                let midpoint = (reference_theta + candidate_theta) * 0.5;
+                if midpoint == reference_theta || midpoint == candidate_theta {
+                    return Ok(None);
+                }
+
+                candidate_theta = midpoint;
+            }
+            Err(error) => return Err(error),
+        }
+    }
+}
+
+fn should_retry_local_tilt_side_evaluation(error: &AnchoredLocalTiltSolveError) -> bool {
+    matches!(
+        error,
+        AnchoredLocalTiltSolveError::BuySideEsscherTransformFailure { .. }
+            | AnchoredLocalTiltSolveError::SellSideEsscherTransformFailure { .. }
+            | AnchoredLocalTiltSolveError::NonFiniteTransformInput { .. }
+            | AnchoredLocalTiltSolveError::TransformEvaluationFailure { .. }
+            | AnchoredLocalTiltSolveError::NonRealObservedLogMomentExponent { .. }
+            | AnchoredLocalTiltSolveError::OutOfDomainStateRequest { .. }
+    )
 }
 
 fn select_preferred_root_candidate(
@@ -758,7 +804,9 @@ pub fn build_pricing_transform_input(
         pricing_request.model_parameters.hawkes_kernel_parameters,
         pricing_request
             .model_parameters
-            .gamma_severity_mark_configuration,
+            .news_process_configuration
+            .shared_mark_law
+            .gamma_severity_marks,
     );
 
     ExponentialAffineTransformInput::try_new(

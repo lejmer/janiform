@@ -12,7 +12,7 @@ from tools.workbench.setup import WorkbenchSetupWidget
 from tools.workbench.state import WorkbenchRunSetup
 
 
-def test_workbench_setup_defaults_mean_reversion_to_enabled_on_calibration_submit(
+def test_workbench_setup_defaults_mean_reversion_to_endogenous_on_calibration_submit(
     tmp_path: Path,
 ) -> None:
     application = QApplication.instance() or QApplication([])
@@ -29,17 +29,16 @@ def test_workbench_setup_defaults_mean_reversion_to_enabled_on_calibration_submi
         application.processEvents()
 
         assert len(submitted_setups) == 1
-        assert submitted_setups[0].mean_reversion_enabled is True
         assert (
             submitted_setups[0].mean_reversion_anchor_model_kind
-            == MeanReversionAnchorModelKind.CONSTANT
+            == MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL
         )
     finally:
         widget.close()
         application.processEvents()
 
 
-def test_workbench_setup_allows_disabling_mean_reversion_before_submit(
+def test_workbench_setup_disables_anchor_family_selection_for_seasonality_only_workflows(
     tmp_path: Path,
 ) -> None:
     application = QApplication.instance() or QApplication([])
@@ -49,46 +48,33 @@ def test_workbench_setup_allows_disabling_mean_reversion_before_submit(
     dataset_path.write_text("timestamp_utc,trade_price\n", encoding="utf-8")
 
     try:
-        widget.setup_submitted.connect(submitted_setups.append)
         widget._dataset_path_edit.setText(str(dataset_path))
-        widget._mean_reversion_checkbox.setChecked(False)
-
-        widget._submit_setup()
+        widget._workflow_scope_combo.setCurrentIndex(1)
         application.processEvents()
 
-        assert len(submitted_setups) == 1
-        assert submitted_setups[0].mean_reversion_enabled is False
         assert widget._mean_reversion_anchor_combo.isEnabled() is False
     finally:
         widget.close()
         application.processEvents()
 
 
-def test_workbench_setup_submits_selected_mean_reversion_anchor_family(
+def test_workbench_setup_does_not_offer_removed_deterministic_anchor_family(
     tmp_path: Path,
 ) -> None:
     application = QApplication.instance() or QApplication([])
     widget = WorkbenchSetupWidget()
-    submitted_setups: list[WorkbenchRunSetup] = []
     dataset_path = tmp_path / "ticks.csv"
     dataset_path.write_text("timestamp_utc,trade_price\n", encoding="utf-8")
 
     try:
-        widget.setup_submitted.connect(submitted_setups.append)
         widget._dataset_path_edit.setText(str(dataset_path))
-        widget._mean_reversion_anchor_combo.setCurrentIndex(
-            widget._mean_reversion_anchor_combo.findData(
-                MeanReversionAnchorModelKind.DETERMINISTIC_INTERVAL_GRID
-            )
-        )
-
-        widget._submit_setup()
         application.processEvents()
 
-        assert len(submitted_setups) == 1
         assert (
-            submitted_setups[0].mean_reversion_anchor_model_kind
-            == MeanReversionAnchorModelKind.DETERMINISTIC_INTERVAL_GRID
+            widget._mean_reversion_anchor_combo.findData(
+                MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL
+            )
+            != -1
         )
     finally:
         widget.close()
@@ -107,9 +93,11 @@ def test_workbench_setup_disables_mean_reversion_for_seasonality_only_scope() ->
         )
         application.processEvents()
 
-        assert widget._mean_reversion_checkbox.isEnabled() is False
-        assert widget._mean_reversion_checkbox.isChecked() is False
         assert widget._mean_reversion_anchor_combo.isEnabled() is False
+        assert (
+            widget._mean_reversion_anchor_combo.toolTip()
+            == "Anchor-family selection is unavailable for seasonality-only calibration."
+        )
 
         widget._workflow_scope_combo.setCurrentIndex(
             widget._workflow_scope_combo.findData(
@@ -118,9 +106,8 @@ def test_workbench_setup_disables_mean_reversion_for_seasonality_only_scope() ->
         )
         application.processEvents()
 
-        assert widget._mean_reversion_checkbox.isEnabled() is True
-        assert widget._mean_reversion_checkbox.isChecked() is True
         assert widget._mean_reversion_anchor_combo.isEnabled() is True
+        assert widget._mean_reversion_anchor_combo.toolTip() == ""
     finally:
         widget.close()
         application.processEvents()

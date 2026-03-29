@@ -15,6 +15,8 @@ mod workflow;
 pub use contracts::{
     MarketDataTranslationKnownNewsRecord, MarketDataTranslationPreprocessingError,
     MarketDataTranslationPreprocessingOutput, MarketDataTranslationPreprocessingRequest,
-    MarketDataTranslationTickRecord,
+    MarketDataTranslationPreprocessingSettings,
+    MarketDataTranslationReturnComponentsPreprocessingSettings,
+    MarketDataTranslationSeasonalityPreprocessingSettings, MarketDataTranslationTickRecord,
 };
 pub use workflow::preprocess_market_data_translation_request;

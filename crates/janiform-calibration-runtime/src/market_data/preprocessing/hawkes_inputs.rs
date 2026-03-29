@@ -9,6 +9,7 @@ use super::shared::{
     coefficient_of_variation, logistic, observation_window_hours, round_positive_to_domain,
     round_to, smallest_positive_value, strictly_positive_machine_value, unique_sorted_values,
 };
+use janiform_model_kernels::hawkes::{HawkesKernelLoadings, stationary_intensity_multipliers};
 
 pub(super) fn build_hawkes_candidate_inputs(
     resolved_ticks: &[ResolvedTickRecord],
@@ -54,6 +55,7 @@ pub(super) fn build_hawkes_candidate_inputs(
         smallest_positive_value(open_interarrival_seconds.as_slice())
             .unwrap_or(strictly_positive_machine_value()),
     );
+
     let short_gap_ratio = if open_interarrival_seconds.is_empty() {
         0.0
     } else {
@@ -131,6 +133,7 @@ pub(super) fn build_hawkes_candidate_inputs(
 
     let mut candidate_inputs: Vec<CalibrationHawkesStageCandidateInput> = Vec::new();
     let mut candidate_index: usize = 0;
+
     for branching_ratio in branching_values {
         for beta in beta_values.iter().copied() {
             for cross_share in cross_shares {
@@ -149,6 +152,7 @@ pub(super) fn build_hawkes_candidate_inputs(
                 for lambda_scale in lambda_scales {
                     let lambda_bar =
                         (matched_lambda_bar * lambda_scale).max(strictly_positive_machine_value());
+
                     for rho_scale in rho_scales {
                         let structured_rho = build_structured_rho_candidate(
                             beta,
@@ -248,6 +252,7 @@ pub(super) fn open_session_transition_metrics(
 
     let mut cumulative_seconds = 0.0;
     let mut same_session_gaps: Vec<f64> = Vec::new();
+
     for (previous_tick, current_tick) in
         open_price_ticks.iter().zip(open_price_ticks.iter().skip(1))
     {
@@ -283,27 +288,18 @@ pub(super) fn matched_lambda_bar_for_observed_open_rate(
     beta: f64,
     structured_alpha: &HawkesStructuredAlphaParameterization,
 ) -> f64 {
-    let alpha_plus_plus = structured_alpha.a_self;
-    let alpha_plus_minus = structured_alpha.a_cross;
-    let alpha_minus_plus = structured_alpha.a_cross + structured_alpha.delta_cross;
-    let alpha_minus_minus = structured_alpha.a_self + structured_alpha.delta_self;
+    let alpha = HawkesKernelLoadings {
+        plus_plus: structured_alpha.a_self,
+        plus_minus: structured_alpha.a_cross,
+        minus_plus: structured_alpha.a_cross + structured_alpha.delta_cross,
+        minus_minus: structured_alpha.a_self + structured_alpha.delta_self,
+    };
 
-    let scaled_plus_plus = alpha_plus_plus / beta;
-    let scaled_plus_minus = alpha_plus_minus / beta;
-    let scaled_minus_plus = alpha_minus_plus / beta;
-    let scaled_minus_minus = alpha_minus_minus / beta;
-
-    let determinant = (1.0 - scaled_plus_plus) * (1.0 - scaled_minus_minus)
-        - scaled_plus_minus * scaled_minus_plus;
-    if determinant <= strictly_positive_machine_value() {
+    let Some(stationary_multipliers) = stationary_intensity_multipliers(alpha, beta) else {
         return (open_session_rate_per_hour / 2.0).max(strictly_positive_machine_value());
-    }
+    };
 
-    let inverse_sum = ((1.0 - scaled_minus_minus)
-        + scaled_plus_minus
-        + scaled_minus_plus
-        + (1.0 - scaled_plus_plus))
-        / determinant;
+    let inverse_sum = stationary_multipliers.total_intensity_multiplier();
     if inverse_sum <= strictly_positive_machine_value() {
         return (open_session_rate_per_hour / 2.0).max(strictly_positive_machine_value());
     }

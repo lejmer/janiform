@@ -2,6 +2,7 @@ from datetime import UTC, datetime, timedelta
 from math import log
 from typing import Any, TypedDict, cast
 
+from janiform._timestamps import ONE_HOUR_NANOS
 from janiform.hourly_factors import (
     HourlyNewsIntensityProviderExplicitSource,
     HourlySeasonalityProviderExplicitSource,
@@ -27,9 +28,10 @@ from janiform.simulation.shared import (
     HawkesExcitationState,
     HawkesKernelParameters,
 )
-from janiform.simulation.seeded.contracts import build_disabled_seeded_mean_reversion_runtime_inputs
+from janiform.simulation.seeded.contracts import (
+    build_endogenous_seeded_mean_reversion_runtime_inputs,
+)
 
-ONE_HOUR_NANOS: int = 3_600_000_000_000
 START_TIME_UTC: datetime = datetime(2026, 2, 2, tzinfo=UTC)
 
 
@@ -318,7 +320,7 @@ def _run_seeded_case(
         mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state,
-    ) = build_disabled_seeded_mean_reversion_runtime_inputs(
+    ) = build_endogenous_seeded_mean_reversion_runtime_inputs(
         hourly_factor_contract=hourly_factor_contract
     )
 

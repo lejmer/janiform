@@ -14,7 +14,8 @@ use janiform::calibration::{
     MarketDataOptionSurfaceLoadingInput, MarketDataSessionConfiguration,
     MarketDataSessionResolutionPayload, MarketDataTickDataColumnMapping,
     MarketDataTranslationPreprocessingOutput, MarketDataTranslationPreprocessingRequest,
-    ReturnComponentsStageFittedParameters, ReturnComponentsStageObservedSignalSummaryStatistics,
+    MarketDataTranslationPreprocessingSettings, ReturnComponentsStageFittedParameters,
+    ReturnComponentsStageObservedSignalSummaryStatistics,
     evaluate_return_components_exact_candidate_from_bridge,
     load_and_preprocess_market_data_translation_request as load_and_preprocess_market_data_translation_request_native,
     preprocess_market_data_translation_request as preprocess_market_data_translation_request_native,
@@ -22,6 +23,7 @@ use janiform::calibration::{
     run_staged_calibration_from_execution_input,
     run_staged_calibration_from_execution_input_with_observer,
 };
+use janiform::hourly_factors::{ONE_HOUR_NANOS_F64, duration_nanos_to_hours};
 use janiform::simulation::MeanReversionAnchorModelKind;
 use pyo3::prelude::{Bound, Py, PyResult, Python};
 use pyo3::types::{PyAny, PyDict, PyDictMethods, PyModule, PyModuleMethods};
@@ -69,26 +71,17 @@ const MEAN_REVERSION_OPEN_SESSION_GRID_KIND: &str =
     "market_data_open_session_log_price_interval_grid.v1";
 const MEAN_REVERSION_OPEN_SESSION_ALIGNMENT_POLICY: &str =
     "last_observed_open_session_log_price_per_complete_utc_interval.v1";
-const MEAN_REVERSION_DISABLED_DEFAULT_REASON: &str = "market_data_translation_defaults_mean_reversion_stage_to_disabled_until_explicitly_requested.v1";
-const MEAN_REVERSION_DISABLED_INTERVAL_DERIVATION_REASON: &str = "mean_reversion_grid_interval_could_not_be_derived_from_observed_boundary_spacing_or_session_duration.v1";
 const MEAN_REVERSION_BOUNDARY_INTERVAL_DERIVATION_POLICY: &str =
     "median_boundary_open_spacing_hours_from_retained_observations.v1";
 const MEAN_REVERSION_SESSION_DURATION_INTERVAL_DERIVATION_POLICY: &str =
     "median_observed_session_duration_hours_from_retained_open_session_ticks.v1";
 const MEAN_REVERSION_INTERVAL_OVERRIDE_POLICY: &str =
     "explicit_mean_reversion_grid_interval_hours.v1";
-const MEAN_REVERSION_EXPLICIT_DISABLED_REASON: &str = "requested_mean_reversion_disabled.v1";
-const DEFAULT_DISABLED_MEAN_REVERSION_INTERVAL_HOURS: f64 = 24.0;
-const NANOS_PER_HOUR: f64 = 3_600_000_000_000.0;
 const DEFAULT_SEASONALITY_MAX_ITERATIONS: usize = 150;
 const DEFAULT_OTHER_STAGE_MAX_ITERATIONS: usize = 250;
 const DEFAULT_SOLVER_ABSOLUTE_TOLERANCE: f64 = 1.0e-8;
 const DEFAULT_SOLVER_RELATIVE_TOLERANCE: f64 = 1.0e-6;
 const DEFAULT_SOLVER_CONSTRAINT_PENALTY_WEIGHT: f64 = 10.0;
-
-fn _default_enabled_mean_reversion() -> bool {
-    true
-}
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -131,8 +124,6 @@ struct PythonMarketDataKnownNewsInput {
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct PythonMeanReversionConfiguration {
-    #[serde(default = "_default_enabled_mean_reversion")]
-    enabled: bool,
     anchor_model_kind: MeanReversionAnchorModelKind,
     #[serde(default)]
     calibration_grid_interval_hours: Option<f64>,
@@ -150,6 +141,10 @@ struct PythonMarketDataCalibrationRequest {
     workflow_scope: PythonCalibrationMarketDataWorkflowScope,
     normalization_policy: MarketDataNormalizationPolicy,
     output_preferences: PythonMarketDataOutputPreferences,
+    #[serde(default)]
+    optimizer_settings_by_stage: Vec<CalibrationStageSolverSettings>,
+    #[serde(default)]
+    preprocessing_settings: Option<MarketDataTranslationPreprocessingSettings>,
     #[serde(default)]
     option_surface_source: Option<MarketDataInputFileReference>,
     #[serde(default)]
@@ -287,6 +282,43 @@ fn _default_solver_settings(
     })
 }
 
+const fn _calibration_stage_name(stage: CalibrationStage) -> &'static str {
+    match stage {
+        CalibrationStage::Seasonality => "seasonality",
+        CalibrationStage::Hawkes => "hawkes",
+        CalibrationStage::ReturnComponents => "return_components",
+        CalibrationStage::MeanReversion => "mean_reversion",
+        CalibrationStage::JointRefinement => "joint_refinement",
+    }
+}
+
+fn _resolve_solver_settings_by_stage(
+    selected_stages: &[CalibrationStage],
+    configured_solver_settings: &[CalibrationStageSolverSettings],
+    cpu_count: Option<usize>,
+) -> Result<Vec<CalibrationStageSolverSettings>, String> {
+    for configured_stage_settings in configured_solver_settings {
+        if !selected_stages.contains(&configured_stage_settings.stage) {
+            return Err(format!(
+                "optimizer_settings_by_stage contains stage '{}' outside the selected workflow scope",
+                _calibration_stage_name(configured_stage_settings.stage)
+            ));
+        }
+    }
+
+    selected_stages
+        .iter()
+        .copied()
+        .map(|stage| {
+            configured_solver_settings
+                .iter()
+                .find(|configured_stage_settings| configured_stage_settings.stage == stage)
+                .cloned()
+                .map_or_else(|| _default_solver_settings(stage, cpu_count), Ok)
+        })
+        .collect()
+}
+
 fn _executed_preprocessing_steps(
     workflow_scope: PythonCalibrationMarketDataWorkflowScope,
     option_surface_present: bool,
@@ -320,6 +352,38 @@ fn _executed_preprocessing_steps(
     }
 
     preprocessing_steps
+}
+
+fn _deterministic_defaults_applied(request: &PythonMarketDataCalibrationRequest) -> Vec<String> {
+    let mut applied_defaults = Vec::new();
+
+    if request
+        .preprocessing_settings
+        .as_ref()
+        .and_then(|settings| settings.seasonality.as_ref())
+        .is_none()
+    {
+        applied_defaults.push(DEFAULT_SEASONALITY_SESSION_FILTER_POLICY_ID.to_string());
+        applied_defaults.push(DEFAULT_SEASONALITY_SPARSE_THRESHOLD_POLICY_ID.to_string());
+        applied_defaults.push(DEFAULT_SEASONALITY_INTRADAY_MINUTES_POLICY_ID.to_string());
+        applied_defaults.push(DEFAULT_SEASONALITY_INTRADAY_KERNEL_POLICY_ID.to_string());
+        applied_defaults.push(DEFAULT_SEASONALITY_INTRADAY_BANDWIDTH_POLICY_ID.to_string());
+        applied_defaults.push(DEFAULT_SEASONALITY_DAY_OF_WEEK_POLICY_ID.to_string());
+        applied_defaults.push(DEFAULT_SEASONALITY_DAY_OF_YEAR_POLICY_ID.to_string());
+        applied_defaults.push(DEFAULT_KNOWN_NEWS_OVERLAY_POLICY_ID.to_string());
+    }
+
+    if request
+        .preprocessing_settings
+        .as_ref()
+        .and_then(|settings| settings.return_components.as_ref())
+        .is_none()
+    {
+        applied_defaults.push(DEFAULT_CLOSE_OPEN_GAP_POLICY_ID.to_string());
+        applied_defaults.push(DEFAULT_INTRADAY_JUMP_POLICY_ID.to_string());
+    }
+
+    applied_defaults
 }
 
 fn _build_loading_request(
@@ -394,6 +458,7 @@ fn _build_loading_request(
             tick_data_source: request.tick_data_source.clone(),
             tick_data_column_mapping: request.column_mapping.tick_data.clone(),
             normalization_policy: request.normalization_policy.clone(),
+            preprocessing_settings: request.preprocessing_settings.clone(),
             option_surface_input,
             known_news_input,
             require_hawkes: selected_stages.contains(&CalibrationStage::Hawkes),
@@ -421,9 +486,9 @@ fn _mean_reversion_stage_input_from_request(
     request: &PythonMarketDataCalibrationRequest,
     selected_stages: &[CalibrationStage],
     loading_output: &MarketDataLoadingOutput,
-) -> Option<CalibrationMeanReversionStageExecutionInput> {
+) -> Result<Option<CalibrationMeanReversionStageExecutionInput>, String> {
     if !selected_stages.contains(&CalibrationStage::MeanReversion) {
-        return None;
+        return Ok(None);
     }
 
     let return_components_input = loading_output
@@ -431,35 +496,14 @@ fn _mean_reversion_stage_input_from_request(
         .return_components_candidate_generation_input
         .as_ref();
 
-    let source_observation_count = return_components_input
-        .map(|input| input.observed_open_session_returns.len())
-        .unwrap_or(0);
-
-    let Some(mean_reversion_configuration) = request.mean_reversion.as_ref() else {
-        return Some(CalibrationMeanReversionStageExecutionInput {
-            requested_anchor_model_kind: MeanReversionAnchorModelKind::Disabled,
-            calibration_grid_kind: "market_data_translation_disabled_mean_reversion_grid.v1"
-                .to_string(),
-            calibration_grid_interval_hours: DEFAULT_DISABLED_MEAN_REVERSION_INTERVAL_HOURS,
-            source_observation_count,
-            coverage_ratio: 0.0,
-            observations: Vec::new(),
-            disabled_stage_reason: Some(MEAN_REVERSION_DISABLED_DEFAULT_REASON.to_string()),
-        });
+    let default_mean_reversion_configuration = PythonMeanReversionConfiguration {
+        anchor_model_kind: MeanReversionAnchorModelKind::EndogenousCoreExpectationOneInterval,
+        calibration_grid_interval_hours: None,
     };
-
-    if !mean_reversion_configuration.enabled {
-        return Some(CalibrationMeanReversionStageExecutionInput {
-            requested_anchor_model_kind: MeanReversionAnchorModelKind::Disabled,
-            calibration_grid_kind: "market_data_translation_disabled_mean_reversion_grid.v1"
-                .to_string(),
-            calibration_grid_interval_hours: DEFAULT_DISABLED_MEAN_REVERSION_INTERVAL_HOURS,
-            source_observation_count,
-            coverage_ratio: 0.0,
-            observations: Vec::new(),
-            disabled_stage_reason: Some(MEAN_REVERSION_EXPLICIT_DISABLED_REASON.to_string()),
-        });
-    }
+    let mean_reversion_configuration = request
+        .mean_reversion
+        .as_ref()
+        .unwrap_or(&default_mean_reversion_configuration);
 
     let boundary_observations = return_components_input
         .map(|input| input.observed_close_open_boundary_observations.as_slice())
@@ -519,21 +563,14 @@ fn _mean_reversion_stage_input_from_request(
         };
 
     let Some(calibration_grid_interval_hours) = calibration_grid_interval_hours else {
-        return Some(CalibrationMeanReversionStageExecutionInput {
-            requested_anchor_model_kind: MeanReversionAnchorModelKind::Disabled,
-            calibration_grid_kind: MEAN_REVERSION_OPEN_SESSION_GRID_KIND.to_string(),
-            calibration_grid_interval_hours: DEFAULT_DISABLED_MEAN_REVERSION_INTERVAL_HOURS,
-            source_observation_count: open_session_price_observations.len(),
-            coverage_ratio: 0.0,
-            observations: Vec::new(),
-            disabled_stage_reason: Some(
-                MEAN_REVERSION_DISABLED_INTERVAL_DERIVATION_REASON.to_string(),
-            ),
-        });
+        return Err(
+            "mean-reversion calibration grid interval could not be derived from retained boundary spacing or observed session durations"
+                .to_string(),
+        );
     };
 
     if open_session_price_observations.is_empty() {
-        return Some(CalibrationMeanReversionStageExecutionInput {
+        return Ok(Some(CalibrationMeanReversionStageExecutionInput {
             requested_anchor_model_kind: mean_reversion_configuration.anchor_model_kind,
             calibration_grid_kind: format!(
                 "{}:{}:{}",
@@ -545,8 +582,7 @@ fn _mean_reversion_stage_input_from_request(
             source_observation_count: 0,
             coverage_ratio: 0.0,
             observations: Vec::new(),
-            disabled_stage_reason: None,
-        });
+        }));
     }
 
     let grid_observations = _mean_reversion_grid_observations_from_open_session_prices(
@@ -554,7 +590,7 @@ fn _mean_reversion_stage_input_from_request(
         calibration_grid_interval_hours,
     );
 
-    Some(CalibrationMeanReversionStageExecutionInput {
+    Ok(Some(CalibrationMeanReversionStageExecutionInput {
         requested_anchor_model_kind: mean_reversion_configuration.anchor_model_kind,
         calibration_grid_kind: format!(
             "{}:{}:{}",
@@ -566,8 +602,7 @@ fn _mean_reversion_stage_input_from_request(
         source_observation_count: grid_observations.source_observation_count,
         coverage_ratio: grid_observations.coverage_ratio,
         observations: grid_observations.observations,
-        disabled_stage_reason: None,
-    })
+    }))
 }
 
 fn _mean_reversion_stage_observations_relative_to_reference_price(
@@ -650,8 +685,10 @@ fn _mean_reversion_grid_observations_from_open_session_prices(
 
     for observation in open_session_price_observations {
         while observation.observation_timestamp_utc_nanos >= interval_end_utc_nanos {
-            if let Some(observation) = pending_observation.take() {
-                observations.push(observation);
+            if let Some(pending_observation) = pending_observation.as_ref() {
+                let mut snapped_observation = pending_observation.clone();
+                snapped_observation.observation_timestamp_utc_nanos = interval_end_utc_nanos;
+                observations.push(snapped_observation);
             }
 
             interval_end_utc_nanos = interval_end_utc_nanos.saturating_add(interval_nanos);
@@ -680,7 +717,7 @@ fn _mean_reversion_grid_observations_from_open_session_prices(
 }
 
 fn _interval_hours_to_nanos(interval_hours: f64) -> Option<i64> {
-    let interval_nanos = interval_hours * NANOS_PER_HOUR;
+    let interval_nanos = interval_hours * ONE_HOUR_NANOS_F64;
     if !interval_nanos.is_finite() || interval_nanos < 1.0 || interval_nanos > i64::MAX as f64 {
         return None;
     }
@@ -701,11 +738,10 @@ fn _derive_mean_reversion_grid_interval_hours_from_boundary_observations(
             {
                 return None;
             }
-            Some(
-                (next_observation.observation_timestamp_utc_nanos
-                    - current_observation.observation_timestamp_utc_nanos) as f64
-                    / NANOS_PER_HOUR,
-            )
+            Some(duration_nanos_to_hours(
+                next_observation.observation_timestamp_utc_nanos
+                    - current_observation.observation_timestamp_utc_nanos,
+            ))
         })
         .collect::<Vec<_>>();
     _median_positive_interval_hours(positive_interval_hours.as_mut_slice())
@@ -738,6 +774,88 @@ fn _median_positive_interval_hours(positive_interval_hours: &mut [f64]) -> Optio
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::{
+        _mean_reversion_grid_observations_from_open_session_prices,
+        CalibrationMeanReversionStageObservation,
+    };
+
+    #[test]
+    fn mean_reversion_grid_observations_snap_to_interval_boundaries() {
+        let grid_observations = _mean_reversion_grid_observations_from_open_session_prices(
+            &[
+                CalibrationMeanReversionStageObservation {
+                    observation_timestamp_utc_nanos: 1_000,
+                    observed_log_price: 0.0,
+                },
+                CalibrationMeanReversionStageObservation {
+                    observation_timestamp_utc_nanos: 86_400_000_020_000,
+                    observed_log_price: 0.1,
+                },
+                CalibrationMeanReversionStageObservation {
+                    observation_timestamp_utc_nanos: 172_800_000_030_000,
+                    observed_log_price: 0.2,
+                },
+            ],
+            24.0,
+        );
+
+        assert_eq!(grid_observations.source_observation_count, 2);
+        assert_eq!(
+            grid_observations
+                .observations
+                .iter()
+                .map(|observation| observation.observation_timestamp_utc_nanos)
+                .collect::<Vec<_>>(),
+            vec![86_400_000_001_000, 172_800_000_001_000]
+        );
+        assert_eq!(
+            grid_observations
+                .observations
+                .iter()
+                .map(|observation| observation.observed_log_price)
+                .collect::<Vec<_>>(),
+            vec![0.0, 0.1]
+        );
+    }
+
+    #[test]
+    fn mean_reversion_grid_observations_carry_forward_last_observed_price_across_empty_intervals() {
+        let grid_observations = _mean_reversion_grid_observations_from_open_session_prices(
+            &[
+                CalibrationMeanReversionStageObservation {
+                    observation_timestamp_utc_nanos: 1_000,
+                    observed_log_price: 0.0,
+                },
+                CalibrationMeanReversionStageObservation {
+                    observation_timestamp_utc_nanos: 259_200_000_020_000,
+                    observed_log_price: 0.3,
+                },
+            ],
+            24.0,
+        );
+
+        assert_eq!(grid_observations.source_observation_count, 3);
+        assert_eq!(
+            grid_observations
+                .observations
+                .iter()
+                .map(|observation| observation.observation_timestamp_utc_nanos)
+                .collect::<Vec<_>>(),
+            vec![86_400_000_001_000, 172_800_000_001_000, 259_200_000_001_000]
+        );
+        assert_eq!(
+            grid_observations
+                .observations
+                .iter()
+                .map(|observation| observation.observed_log_price)
+                .collect::<Vec<_>>(),
+            vec![0.0, 0.0, 0.0]
+        );
+    }
+}
+
 fn _prepare_market_data_calibration_plan(
     request: PythonMarketDataCalibrationRequest,
     cpu_count: Option<usize>,
@@ -764,11 +882,11 @@ fn _prepare_market_data_calibration_plan(
             global_seed: _stable_seed_from_run_id(request.run_id.as_str()),
             stage_seed_overrides: Vec::new(),
         },
-        selected_stages
-            .iter()
-            .copied()
-            .map(|stage| _default_solver_settings(stage, cpu_count))
-            .collect::<Result<Vec<_>, _>>()?,
+        _resolve_solver_settings_by_stage(
+            &selected_stages,
+            &request.optimizer_settings_by_stage,
+            cpu_count,
+        )?,
     )
     .map_err(|source| format!("failed to build calibration run spec: {source}"))?;
 
@@ -793,7 +911,7 @@ fn _prepare_market_data_calibration_plan(
             &request,
             &selected_stages,
             &loading_output,
-        ),
+        )?,
         runtime_resources: _runtime_resources_from_output_preferences(&request.output_preferences),
     };
 
@@ -895,18 +1013,7 @@ fn _prepare_market_data_calibration_plan(
             RETURN_COMPONENTS_BOUNDARY_POLICY_ID.to_string(),
             RETURN_COMPONENTS_CONTINUOUS_FIT_POLICY_ID.to_string(),
         ],
-        deterministic_defaults_applied: vec![
-            DEFAULT_SEASONALITY_SESSION_FILTER_POLICY_ID.to_string(),
-            DEFAULT_SEASONALITY_SPARSE_THRESHOLD_POLICY_ID.to_string(),
-            DEFAULT_SEASONALITY_INTRADAY_MINUTES_POLICY_ID.to_string(),
-            DEFAULT_SEASONALITY_INTRADAY_KERNEL_POLICY_ID.to_string(),
-            DEFAULT_SEASONALITY_INTRADAY_BANDWIDTH_POLICY_ID.to_string(),
-            DEFAULT_SEASONALITY_DAY_OF_WEEK_POLICY_ID.to_string(),
-            DEFAULT_SEASONALITY_DAY_OF_YEAR_POLICY_ID.to_string(),
-            DEFAULT_KNOWN_NEWS_OVERLAY_POLICY_ID.to_string(),
-            DEFAULT_CLOSE_OPEN_GAP_POLICY_ID.to_string(),
-            DEFAULT_INTRADAY_JUMP_POLICY_ID.to_string(),
-        ],
+        deterministic_defaults_applied: _deterministic_defaults_applied(&request),
     };
 
     Ok(PreparedMarketDataPlan {

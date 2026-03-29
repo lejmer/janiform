@@ -4,9 +4,9 @@ use std::fmt::{Display, Formatter};
 
 use crate::execution_bridge::{
     CalibrationHawkesDirectionalLabelDiagnostics, CalibrationHawkesStageCandidateInput,
-    CalibrationMeanReversionStageObservation,
+    CalibrationIntradaySmoothingKernel, CalibrationMeanReversionStageObservation,
     CalibrationReturnComponentsStageCandidateGenerationInput,
-    CalibrationSeasonalityStageExecutionInput,
+    CalibrationSeasonalityStageExecutionInput, CalibrationTimestampEventSessionFilter,
 };
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -23,6 +23,38 @@ pub struct MarketDataTranslationPreprocessingRequest {
     pub directional_label_diagnostics: Option<CalibrationHawkesDirectionalLabelDiagnostics>,
     pub require_hawkes: bool,
     pub require_return_components: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preprocessing_settings: Option<MarketDataTranslationPreprocessingSettings>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MarketDataTranslationPreprocessingSettings {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seasonality: Option<MarketDataTranslationSeasonalityPreprocessingSettings>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub return_components: Option<MarketDataTranslationReturnComponentsPreprocessingSettings>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MarketDataTranslationSeasonalityPreprocessingSettings {
+    pub session_filter: CalibrationTimestampEventSessionFilter,
+    pub sparse_hour_event_threshold: usize,
+    pub known_news_overlay_log_adjustment: f64,
+    pub intraday_minutes_per_bin: u16,
+    pub intraday_smoothing_kernel: CalibrationIntradaySmoothingKernel,
+    pub intraday_smoothing_bandwidth_bins: f64,
+    pub intraday_minimum_bin_events: usize,
+    pub day_of_week_minimum_bucket_events: usize,
+    pub day_of_year_minimum_bucket_events: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MarketDataTranslationReturnComponentsPreprocessingSettings {
+    pub intraday_jump_threshold_multiplier: f64,
+    pub close_open_gap_tolerance_multiplier: f64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

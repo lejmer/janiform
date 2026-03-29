@@ -267,7 +267,7 @@ from janiform.contracts import MeanReversionFittedParameters
   - Root coexistence policy: common coarse workflow symbols are also re-exported from `janiform.simulation` as curated convenience imports
 - `janiform.simulation.seeded`
   - Ownership: seeded-tick simulation request and response contracts, seeded-tick execution entrypoints, and seeded-tick workflow-specific record types
-  - Observed-state policy: the public seeded fine-path and event-tape records expose observed log-price, anchor, deviation, and core-increment fields explicitly, and the package re-exports the disabled mean-reversion runtime-input helper used by examples and high-level workflow wiring
+  - Observed-state policy: the public seeded fine-path and event-tape records expose observed log-price, anchor, deviation, and core-increment fields explicitly, and the package re-exports the endogenous mean-reversion runtime-input helper used by examples and high-level workflow wiring
   - Root coexistence policy: key seeded workflow symbols are also re-exported from `janiform.simulation` as curated convenience imports
 - `janiform.simulation.shared`
   - Ownership: shared Hawkes-state and simulation error contracts used across coarse and seeded workflows

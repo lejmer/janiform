@@ -109,14 +109,14 @@ def test_pricing_example_runs_with_deterministic_summary() -> None:
         "request_summary": {
             "interval_delta": 1.0,
             "payoff_type": "call",
-            "anchor_model_kind": "constant",
+            "anchor_model_kind": "endogenous_core_expectation_one_interval",
             "observed_boundary_deviation": 0.0,
             "nu_h_known": 0.01,
             "nu_h_surprise": 0.02,
         },
         "run_result_summary": {
             "schema_version": "pricing.vanilla_option.run_result.v1",
-            "price": 3.872311,
+            "price": 3.85761,
             "forward_price": 102.015067,
             "run_diagnostics_included": True,
             "calibration_hooks_included": True,

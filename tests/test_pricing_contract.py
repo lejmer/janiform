@@ -9,11 +9,15 @@ from janiform.pricing import (
     AnchoredLocalTiltDomainStatus,
     AnchoredLocalTiltSolveDiagnostics,
     AnchoredVanillaOptionPricingBoundaryInput,
-    GammaSeverityMarkConfiguration,
+    FourierInversionContour,
+    FourierInversionEngineSettings,
+    FourierInversionIntegrationStabilityControls,
+    FourierInversionNumericQualityGate,
+    FourierInversionNumericSettings,
+    FourierInversionQuadratureRule,
     MeanReversionAnchorModel,
     MeanReversionBoundaryState,
     MeanReversionFittedParameters,
-    MeanReversionRuntimeIntervalAnchors,
     NigSharedPlusShiftConfiguration,
     VanillaOptionPayoffConfiguration,
     VanillaOptionPayoffType,
@@ -24,8 +28,6 @@ from janiform.pricing import (
     VanillaOptionPricingOptionalOutputSelection,
     VanillaOptionPricingRequest,
     VanillaOptionPricingResponse,
-    VanillaOptionPricingRunDiagnostics,
-    VanillaOptionPricingRunOutputSchemaMetadata,
     VanillaOptionPricingRunResult,
     VanillaOptionPricingValidationError,
     deserialize_vanilla_option_pricing_request,
@@ -39,6 +41,16 @@ from janiform.pricing import (
     validate_vanilla_option_pricing_response,
 )
 from janiform.simulation import HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters
+from janiform.simulation.coarse import (
+    CoupledGapMarkConfiguration,
+    DoubleExponentialBaseShockConfiguration,
+    KnownNewsArrivalConfiguration,
+    NewsArrivalConfiguration,
+    NewsComponentMarkScaleConfiguration,
+    NewsProcessConfiguration,
+    SharedNewsMarkLawConfiguration,
+    SurpriseNewsArrivalConfiguration,
+)
 from tests.hourly_factor_contract_test_support import build_hourly_factor_contract
 
 
@@ -75,6 +87,35 @@ def test_vanilla_option_request_validation_defaults_interval_delta() -> None:
     validated_request = validate_vanilla_option_pricing_request(request_payload)
 
     assert validated_request.interval_delta == pytest.approx(1.0)
+
+
+def test_vanilla_option_request_roundtrip_preserves_fourier_inversion_settings() -> None:
+    request = VanillaOptionPricingRequest(
+        market_inputs=_valid_request_model().market_inputs,
+        payoff=_valid_request_model().payoff,
+        boundary_input=_valid_request_model().boundary_input,
+        model_parameters=_valid_request_model().model_parameters,
+        fourier_inversion_settings=FourierInversionEngineSettings(
+            contour=FourierInversionContour(damping_factor=1.2),
+            numeric_settings=FourierInversionNumericSettings(
+                integration_upper_bound=80.0,
+                integration_step_count=2_048,
+                quadrature_rule=FourierInversionQuadratureRule.TRAPEZOID,
+            ),
+            stability_controls=FourierInversionIntegrationStabilityControls(
+                convergence_absolute_tolerance=1.0e-6,
+                convergence_relative_tolerance=1.0e-5,
+                terminal_integrand_absolute_tolerance=2.5e-4,
+                terminal_integrand_ratio_tolerance=5.0e-3,
+                quality_gate=FourierInversionNumericQualityGate.ENFORCE_FAILURE,
+            ),
+        ),
+    )
+
+    serialized_request = serialize_vanilla_option_pricing_request(request)
+    deserialized_request = deserialize_vanilla_option_pricing_request(serialized_request)
+
+    assert deserialized_request == request
 
 
 def test_vanilla_option_response_model_construction_and_roundtrip() -> None:
@@ -202,14 +243,9 @@ def test_anchored_boundary_input_roundtrip_and_validation() -> None:
         ),
         mean_reversion_fitted_parameters=MeanReversionFittedParameters(
             kappa=0.4,
-            anchor_model=MeanReversionAnchorModel.constant(0.0),
+            anchor_model=MeanReversionAnchorModel.endogenous_core_expectation_one_interval(),
         ),
-        mean_reversion_runtime_interval_anchors=MeanReversionRuntimeIntervalAnchors(
-            interval_alignment_policy="pricing_constant_anchor_interval_grid.v1",
-            start_anchor_value=0.0,
-            end_anchor_values=(0.0,),
-            interval_deltas=(0.5,),
-        ),
+        interval_delta=0.5,
         observed_boundary_state=MeanReversionBoundaryState(
             observed_log_price=0.15,
             anchor_value=0.0,
@@ -223,7 +259,39 @@ def test_anchored_boundary_input_roundtrip_and_validation() -> None:
     )
 
     assert round_tripped == boundary_input
-    assert round_tripped.observed_return_adjustment < 0.0
+    assert round_tripped.local_martingale_deviation_adjustment < 0.0
+
+
+def test_anchored_boundary_input_accepts_endogenous_anchor_policy_boundary_state() -> None:
+    boundary_payload = _disabled_boundary_input(
+        interval_delta=1.0,
+        hawkes_boundary_state=HawkesExcitationState(
+            y_plus_plus=0.0,
+            y_plus_minus=0.0,
+            y_minus_plus=0.0,
+            y_minus_minus=0.0,
+        ),
+    ).to_payload()
+
+    boundary_payload["mean_reversion_fitted_parameters"] = MeanReversionFittedParameters(
+        kappa=0.3,
+        anchor_model=MeanReversionAnchorModel.endogenous_core_expectation_one_interval(),
+    ).to_payload()
+
+    boundary_payload["observed_boundary_state"] = MeanReversionBoundaryState(
+        observed_log_price=0.15,
+        anchor_value=0.1,
+        deviation=0.05,
+    ).to_payload()
+
+    boundary_input = AnchoredVanillaOptionPricingBoundaryInput.from_mapping(
+        boundary_payload,
+        field_path="boundary_input",
+    )
+
+    assert boundary_input.current_anchor_value == pytest.approx(0.1)
+    assert boundary_input.interval_delta == pytest.approx(1.0)
+    assert boundary_input.local_martingale_deviation_adjustment < 0.0
 
 
 def test_anchored_vanilla_option_request_roundtrip_preserves_observed_boundary_contract() -> None:
@@ -237,7 +305,7 @@ def test_anchored_vanilla_option_request_roundtrip_preserves_observed_boundary_c
     assert deserialized_request.boundary_input.observed_boundary_state.deviation == pytest.approx(0.15)
 
 
-def test_anchored_boundary_input_rejects_misaligned_observed_anchor() -> None:
+def test_anchored_boundary_input_accepts_shifted_observed_anchor_state() -> None:
     boundary_payload = _disabled_boundary_input(
         interval_delta=1.0,
         hawkes_boundary_state=HawkesExcitationState(
@@ -247,16 +315,17 @@ def test_anchored_boundary_input_rejects_misaligned_observed_anchor() -> None:
             y_minus_minus=0.0,
         ),
     ).to_payload()
+
     boundary_payload["observed_boundary_state"]["anchor_value"] = 0.5
     boundary_payload["observed_boundary_state"]["observed_log_price"] = 0.5
 
-    with pytest.raises(VanillaOptionPricingValidationError) as captured_error:
-        AnchoredVanillaOptionPricingBoundaryInput.from_mapping(
-            boundary_payload,
-            field_path="boundary_input",
-        )
+    boundary_input = AnchoredVanillaOptionPricingBoundaryInput.from_mapping(
+        boundary_payload,
+        field_path="boundary_input",
+    )
 
-    assert captured_error.value.failure.field_path == "boundary_input.observed_boundary_state.anchor_value"
+    assert boundary_input.current_anchor_value == pytest.approx(0.5)
+    assert boundary_input.observed_boundary_state.deviation == pytest.approx(0.0)
 
 
 def test_anchored_local_tilt_diagnostics_roundtrip() -> None:
@@ -275,10 +344,10 @@ def test_anchored_local_tilt_diagnostics_roundtrip() -> None:
                 deviation=0.1,
             ),
             current_anchor_value=0.0,
-            next_anchor_value=0.0,
             interval_delta=0.5,
             kappa=0.4,
             deviation_decay_factor=0.8187307530779818,
+            local_martingale_deviation_adjustment=-0.01812692469220182,
         ),
         target_log_moment_exponent=0.02,
         observed_log_moment_exponent=0.02,
@@ -288,7 +357,7 @@ def test_anchored_local_tilt_diagnostics_roundtrip() -> None:
         tolerance=1.0e-8,
         domain_status=AnchoredLocalTiltDomainStatus.IN_DOMAIN,
         admissibility_status=AnchoredLocalTiltAdmissibilityStatus.ADMISSIBLE,
-        policy="solve_state_dependent_local_tilt_against_observed_anchor_adjusted_interval_return_target.v1",
+        policy="solve_state_dependent_local_tilt_against_endogenous_q_martingale_target.v1",
     )
 
     round_tripped = AnchoredLocalTiltSolveDiagnostics.from_mapping(
@@ -364,9 +433,9 @@ def _valid_request_model() -> VanillaOptionPricingRequest:
                 y_minus_plus=0.3,
                 y_minus_minus=0.4,
             ),
-        ),
-        model_parameters=VanillaOptionPricingModelParameters(
-            hawkes_kernel_parameters=HawkesKernelParameters(
+            ),
+            model_parameters=VanillaOptionPricingModelParameters(
+                hawkes_kernel_parameters=HawkesKernelParameters(
                 lambda_bar=0.8,
                 beta=1.6,
                 alpha=HawkesKernelLoadings(
@@ -380,15 +449,12 @@ def _valid_request_model() -> VanillaOptionPricingRequest:
                     plus_minus=0.05,
                     minus_plus=0.05,
                     minus_minus=0.1,
+                    ),
                 ),
-            ),
-            gamma_severity_mark_configuration=GammaSeverityMarkConfiguration(
-                shape_k=1.8,
-                scale_theta=0.7,
-            ),
-            nig_shared_plus_shift_configuration=NigSharedPlusShiftConfiguration(
-                alpha=2.3,
-                beta_0=-0.8,
+                news_process_configuration=_valid_news_process_configuration(),
+                nig_shared_plus_shift_configuration=NigSharedPlusShiftConfiguration(
+                    alpha=2.3,
+                    beta_0=-0.8,
                 delta=0.7,
                 mu=0.1,
                 delta_beta=-0.2,
@@ -480,14 +546,9 @@ def _anchored_request_model() -> VanillaOptionPricingRequest:
             ),
             mean_reversion_fitted_parameters=MeanReversionFittedParameters(
                 kappa=0.35,
-                anchor_model=MeanReversionAnchorModel.constant(0.25),
+                anchor_model=MeanReversionAnchorModel.endogenous_core_expectation_one_interval(),
             ),
-            mean_reversion_runtime_interval_anchors=MeanReversionRuntimeIntervalAnchors(
-                interval_alignment_policy="pricing_constant_anchor_interval_grid.v1",
-                start_anchor_value=0.25,
-                end_anchor_values=(0.25,),
-                interval_deltas=(1.0,),
-            ),
+            interval_delta=1.0,
             observed_boundary_state=MeanReversionBoundaryState(
                 observed_log_price=0.4,
                 anchor_value=0.25,
@@ -513,14 +574,9 @@ def _anchored_runtime_execution_input_model() -> VanillaOptionPricingExecutionIn
                 ),
                 mean_reversion_fitted_parameters=MeanReversionFittedParameters(
                     kappa=0.35,
-                    anchor_model=MeanReversionAnchorModel.constant(0.25),
+                    anchor_model=MeanReversionAnchorModel.endogenous_core_expectation_one_interval(),
                 ),
-                mean_reversion_runtime_interval_anchors=MeanReversionRuntimeIntervalAnchors(
-                    interval_alignment_policy="pricing_constant_anchor_interval_grid.v1",
-                    start_anchor_value=0.25,
-                    end_anchor_values=(0.25,),
-                    interval_deltas=(1.0,),
-                ),
+                interval_delta=1.0,
                 observed_boundary_state=MeanReversionBoundaryState(
                     observed_log_price=0.25,
                     anchor_value=0.25,
@@ -564,8 +620,59 @@ def _disabled_boundary_input(
     interval_delta: float,
     hawkes_boundary_state: HawkesExcitationState,
 ) -> AnchoredVanillaOptionPricingBoundaryInput:
-    return AnchoredVanillaOptionPricingBoundaryInput.disabled(
-        interval_delta=interval_delta,
+    return AnchoredVanillaOptionPricingBoundaryInput(
+        interval_index=0,
         hawkes_boundary_state=hawkes_boundary_state,
-        observed_log_price=0.0,
+        mean_reversion_fitted_parameters=MeanReversionFittedParameters(
+            kappa=0.0,
+            anchor_model=MeanReversionAnchorModel.endogenous_core_expectation_one_interval(),
+        ),
+        interval_delta=interval_delta,
+        observed_boundary_state=MeanReversionBoundaryState(
+            observed_log_price=0.0,
+            anchor_value=0.0,
+            deviation=0.0,
+        ),
+    )
+
+
+def _valid_gamma_severity_mark_configuration() -> Any:
+    from janiform.pricing import GammaSeverityMarkConfiguration
+
+    return GammaSeverityMarkConfiguration(
+        shape_k=1.8,
+        scale_theta=0.7,
+    )
+
+
+def _valid_news_process_configuration() -> NewsProcessConfiguration:
+    return NewsProcessConfiguration(
+        schema_version="news.process.configuration.v1",
+        arrivals=NewsArrivalConfiguration(
+            known=KnownNewsArrivalConfiguration(
+                scheduled_event_timestamps_utc_nanos=(),
+            ),
+            surprise=SurpriseNewsArrivalConfiguration(
+                baseline_intensity=0.75,
+            ),
+        ),
+        shared_mark_law=SharedNewsMarkLawConfiguration(
+            gamma_severity_marks=_valid_gamma_severity_mark_configuration(),
+            double_exponential_base_shock=DoubleExponentialBaseShockConfiguration(
+                probability_positive=0.35,
+                eta_plus=2.1,
+                eta_minus=3.0,
+            ),
+            coupled_gap_marks=CoupledGapMarkConfiguration(
+                sigma_g=0.6,
+            ),
+        ),
+        known_component_mark_scales=NewsComponentMarkScaleConfiguration(
+            activity_coupling_scale=1.0,
+            return_jump_scale=1.0,
+        ),
+        surprise_component_mark_scales=NewsComponentMarkScaleConfiguration(
+            activity_coupling_scale=1.0,
+            return_jump_scale=1.0,
+        ),
     )

@@ -47,6 +47,10 @@ pub(super) use janiform_model_kernels::hawkes::{
 pub(super) use janiform_model_kernels::news::CoupledGapMarkConfiguration;
 
 use super::contracts::{MarketDataTranslationPreprocessingError, MarketDataTranslationTickRecord};
+pub(super) use super::contracts::{
+    MarketDataTranslationReturnComponentsPreprocessingSettings,
+    MarketDataTranslationSeasonalityPreprocessingSettings,
+};
 
 pub(super) const ACTIVITY_LIFT_WINDOW_MINUTES: i64 = 30;
 pub(super) const KNOWN_NEWS_EXCLUSION_WINDOW_MINUTES: i64 = 15;

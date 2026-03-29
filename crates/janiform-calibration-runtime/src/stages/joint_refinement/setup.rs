@@ -58,6 +58,7 @@ pub(super) fn parameter_vector_to_fitted_parameters(
     context: &JointRefinementContext,
 ) -> Option<JointRefinementStageFittedParameters> {
     let mut structured_alpha = context.baseline_hawkes_fitted_parameters.structured_alpha;
+
     let mut news_process_configuration = context
         .baseline_return_components_fitted_parameters
         .news_process_configuration
@@ -169,7 +170,9 @@ pub(super) fn parameter_vector_to_fitted_parameters(
             .baseline_return_components_fitted_parameters
             .surprise_deterministic_intensity_profile
             .clone(),
-        mean_reversion_fitted_parameters: MeanReversionFittedParameters::disabled(),
+        mean_reversion_fitted_parameters:
+            MeanReversionFittedParameters::endogenous_core_expectation_one_interval(0.0)
+                .expect("zero-kappa endogenous mean reversion should validate"),
     };
 
     return_components_fitted_parameters
@@ -234,10 +237,12 @@ pub(super) fn build_observed_data(
         .iter()
         .map(|interval| interval.log_return)
         .collect::<Vec<_>>();
+
     let observed_tick_sample_count = continuous_return_calibration_sample_observed_returns(
         &observed_signal_preparation.continuous_return_calibration_sample,
     )
     .len();
+
     let observed_tick_returns = sampled_observed_tick_returns(
         candidate_generation_input
             .observed_open_session_returns
@@ -248,6 +253,7 @@ pub(super) fn build_observed_data(
     let observed_tick_shape_returns = scale_normalized_returns(observed_tick_returns.as_slice());
     let observed_5m_shape_returns = scale_normalized_returns(observed_5m_log_returns.as_slice());
     let observed_15m_shape_returns = scale_normalized_returns(observed_15m_log_returns.as_slice());
+
     let observed_tick_return_scale_summary =
         return_scale_summary_from_returns(observed_tick_returns.as_slice());
     let observed_5m_return_scale_summary = return_scale_summary(observed_5m_intervals.as_slice());
@@ -290,6 +296,7 @@ pub(super) fn build_observed_data(
             .observed_open_session_returns
             .as_slice(),
     );
+
     let observed_hourly_tick_counts = tick_count_series(observed_hourly_intervals.as_slice());
 
     let hourly_simulation_start_utc = DateTime::<Utc>::from_timestamp_nanos(
@@ -298,6 +305,7 @@ pub(super) fn build_observed_data(
     let hourly_simulation_end_utc = DateTime::<Utc>::from_timestamp_nanos(ceil_to_hour_utc_nanos(
         source_window.window_end_utc_nanos,
     ));
+
     let hourly_simulation_interval_count = ((hourly_simulation_end_utc
         .timestamp_nanos_opt()
         .unwrap_or(source_window.window_end_utc_nanos)
@@ -851,7 +859,7 @@ pub(super) fn build_surprise_multipliers_by_hour_index(
     )
 }
 
-pub(super) fn build_surprise_multipliers_for_interval_grid(
+pub(crate) fn build_surprise_multipliers_for_interval_grid(
     simulation_start_utc: DateTime<Utc>,
     interval_count: usize,
     interval_duration_nanos: i64,
@@ -894,6 +902,7 @@ pub(super) fn build_seed_summary_for_candidate_seed(
                 .surprise_weekly_hour_utc_multipliers
                 .as_slice(),
         );
+
     let hourly_factor_contract = load_hourly_factor_contract_for_calibration(
         calendar_registry,
         HourlyFactorProviderRequest {
@@ -947,7 +956,9 @@ pub(super) fn build_seed_summary_for_candidate_seed(
                     y_minus_plus: 0.0,
                     y_minus_minus: 0.0,
                 },
-                mean_reversion_fitted_parameters: MeanReversionFittedParameters::disabled(),
+                mean_reversion_fitted_parameters:
+                    MeanReversionFittedParameters::endogenous_core_expectation_one_interval(0.0)
+                        .expect("zero-kappa endogenous mean reversion should validate"),
                 mean_reversion_runtime_interval_anchors:
                     MeanReversionRuntimeIntervalAnchors::try_new(
                         hourly_factor_contract.metadata.interval_alignment_policy,

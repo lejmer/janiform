@@ -71,6 +71,19 @@ def require_mapping(
     return cast(Mapping[str, Any], raw_value)
 
 
+def require_only_supported_fields(
+    mapping: Mapping[str, Any],
+    *,
+    supported_fields: tuple[str, ...],
+    field_path: str,
+    error_factory: ValidationErrorFactory,
+) -> None:
+    supported_field_names = set(supported_fields)
+    for field_name in mapping:
+        if field_name not in supported_field_names:
+            raise error_factory(field_path, f"unsupported field '{field_name}'")
+
+
 def require_sequence(
     mapping: Mapping[str, Any],
     field_name: str,

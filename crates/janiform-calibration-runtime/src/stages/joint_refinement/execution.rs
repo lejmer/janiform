@@ -1394,7 +1394,8 @@ fn build_joint_coarse_model_inputs(
             y_minus_plus: 0.0,
             y_minus_minus: 0.0,
         },
-        MeanReversionFittedParameters::disabled(),
+        MeanReversionFittedParameters::endogenous_core_expectation_one_interval(0.0)
+            .expect("zero-kappa endogenous mean reversion should validate"),
         MeanReversionRuntimeIntervalAnchors::try_new(
             "explicit_runtime_interval_grid_alignment.v1",
             0.0,

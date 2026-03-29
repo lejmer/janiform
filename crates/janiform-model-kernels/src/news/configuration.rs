@@ -1,7 +1,9 @@
 use serde::Deserialize;
 use serde::Serialize;
+use statrs::function::gamma::ln_gamma;
 
 use janiform_foundations::randomness::SimulationRandomnessStream;
+use janiform_foundations::time::ONE_HOUR_NANOS_F64;
 
 use super::errors::{
     CoupledGapMarkConstructionError, DoubleExponentialBaseShockSamplingError,
@@ -19,8 +21,6 @@ use super::interface::{
 use super::sampling::{
     sample_exponential_with_rate, sample_gamma_shape_scale, utc_timestamp_from_nanos,
 };
-
-const ONE_HOUR_NANOS: f64 = 3_600_000_000_000.0;
 
 /// Known scheduled-news arrival configuration with explicit UTC anchors.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -162,7 +162,7 @@ impl NewsArrivalConfiguration {
         let interval_duration_in_hours = (intensity_input.interval_end_utc_nanos
             - intensity_input.interval_start_utc_nanos)
             as f64
-            / ONE_HOUR_NANOS;
+            / ONE_HOUR_NANOS_F64;
         let known_component_intensity =
             known_scheduled_arrival_count as f64 / interval_duration_in_hours;
         if !known_component_intensity.is_finite() || known_component_intensity < 0.0 {
@@ -386,6 +386,27 @@ impl GammaSeverityMarkConfiguration {
         Ok(())
     }
 
+    pub fn expected_severity_mark(self) -> Result<f64, NewsMarkConfigurationError> {
+        self.validate()?;
+        Ok(self.shape_k * self.scale_theta)
+    }
+
+    pub fn expected_square_root_severity_mark(self) -> Result<f64, NewsMarkConfigurationError> {
+        self.validate()?;
+
+        let log_expected_square_root =
+            0.5 * self.scale_theta.ln() + ln_gamma(self.shape_k + 0.5) - ln_gamma(self.shape_k);
+
+        let expected_square_root = log_expected_square_root.exp();
+        if !expected_square_root.is_finite() || expected_square_root <= 0.0 {
+            return Err(NewsMarkConfigurationError::InvalidGammaScaleTheta {
+                value: self.scale_theta,
+            });
+        }
+
+        Ok(expected_square_root)
+    }
+
     /// Sample one severity mark `U ~ Gamma(k_U, theta_U)` using shape-scale parameters.
     ///
     /// This API is intentionally independent from news-arrival generation so downstream
@@ -477,6 +498,13 @@ impl DoubleExponentialBaseShockConfiguration {
         Ok(())
     }
 
+    pub fn expected_base_shock_mark(self) -> Result<f64, NewsMarkConfigurationError> {
+        self.validate()?;
+
+        Ok(self.probability_positive / self.eta_plus
+            - (1.0 - self.probability_positive) / self.eta_minus)
+    }
+
     /// Sample one Kou-style base shock mark `epsilon`.
     ///
     /// Policy for v0.1:
@@ -552,6 +580,41 @@ impl CoupledGapMarkConfiguration {
         }
 
         Ok(())
+    }
+
+    pub fn expected_gap_jump_mark(
+        self,
+        expected_square_root_severity_mark: f64,
+        expected_base_shock_mark: f64,
+    ) -> Result<f64, CoupledGapMarkConstructionError> {
+        self.validate()
+            .map_err(|source| CoupledGapMarkConstructionError::InvalidConfiguration { source })?;
+
+        if !expected_square_root_severity_mark.is_finite()
+            || expected_square_root_severity_mark < 0.0
+        {
+            return Err(CoupledGapMarkConstructionError::InvalidSharedSeverityMark {
+                value: expected_square_root_severity_mark,
+            });
+        }
+
+        if !expected_base_shock_mark.is_finite() {
+            return Err(
+                CoupledGapMarkConstructionError::InvalidSharedBaseShockMark {
+                    value: expected_base_shock_mark,
+                },
+            );
+        }
+
+        let expected_gap_jump_mark =
+            self.sigma_g * expected_square_root_severity_mark * expected_base_shock_mark;
+        if !expected_gap_jump_mark.is_finite() {
+            return Err(CoupledGapMarkConstructionError::InvalidConstructedGapMark {
+                value: expected_gap_jump_mark,
+            });
+        }
+
+        Ok(expected_gap_jump_mark)
     }
 
     /// Construct one coupled gap jump mark from shared severity and base-shock marks.

@@ -4,6 +4,7 @@ use std::fmt::{Display, Formatter};
 
 use crate::market_data::preprocessing::{
     MarketDataTranslationPreprocessingError, MarketDataTranslationPreprocessingOutput,
+    MarketDataTranslationPreprocessingSettings,
 };
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -14,6 +15,8 @@ pub struct MarketDataLoadingRequest {
     pub tick_data_source: MarketDataInputFileReference,
     pub tick_data_column_mapping: MarketDataTickDataColumnMapping,
     pub normalization_policy: MarketDataNormalizationPolicy,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preprocessing_settings: Option<MarketDataTranslationPreprocessingSettings>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub option_surface_input: Option<MarketDataOptionSurfaceLoadingInput>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

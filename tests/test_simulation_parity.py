@@ -1,6 +1,7 @@
 from datetime import datetime
 from typing import Any, Optional, cast
 
+from janiform._timestamps import ONE_HOUR_NANOS
 from janiform.hourly_factors import (
     HourlyNewsIntensityProviderExplicitSource,
     HourlySeasonalityProviderExplicitSource,
@@ -25,7 +26,9 @@ from janiform.simulation.shared import (
     HawkesExcitationState,
     HawkesKernelParameters,
 )
-from janiform.simulation.seeded.contracts import build_disabled_seeded_mean_reversion_runtime_inputs
+from janiform.simulation.seeded.contracts import (
+    build_endogenous_seeded_mean_reversion_runtime_inputs,
+)
 from tests.fixture_validation import SeededTickSimulationParityCase
 
 
@@ -104,7 +107,7 @@ def _run_seeded_case(
         mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state,
-    ) = build_disabled_seeded_mean_reversion_runtime_inputs(
+    ) = build_endogenous_seeded_mean_reversion_runtime_inputs(
         hourly_factor_contract=hourly_factor_contract
     )
 
@@ -266,7 +269,7 @@ def _summarize_counts_by_interval(
     range_start_utc_seconds = int(datetime.fromisoformat(range_start_utc.replace("Z", "+00:00")).timestamp())
     range_start_utc_nanos = range_start_utc_seconds * 1_000_000_000
 
-    one_hour_nanos = 3_600_000_000_000
+    one_hour_nanos = ONE_HOUR_NANOS
 
     for timestamp_utc_nanos, side in zip(observed_timestamps, observed_side_sequence):
         interval_index = (timestamp_utc_nanos - range_start_utc_nanos) // one_hour_nanos
@@ -303,7 +306,7 @@ def _has_non_grid_arrival(
 ) -> bool:
     range_start_utc_seconds = int(datetime.fromisoformat(range_start_utc.replace("Z", "+00:00")).timestamp())
     range_start_utc_nanos = range_start_utc_seconds * 1_000_000_000
-    one_hour_nanos = 3_600_000_000_000
+    one_hour_nanos = ONE_HOUR_NANOS
 
     interval_boundaries = {
         range_start_utc_nanos + interval_index * one_hour_nanos

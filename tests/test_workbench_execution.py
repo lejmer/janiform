@@ -10,7 +10,7 @@ from tools.workbench.execution import WorkbenchExecutionWorker, _mean_reversion_
 from tools.workbench.state import WorkbenchRunSetup
 
 
-def test_workbench_execution_enables_constant_anchor_mean_reversion_by_default() -> None:
+def test_workbench_execution_uses_endogenous_mean_reversion_by_default() -> None:
     run_setup = WorkbenchRunSetup(
         dataset_path=Path("ticks.csv"),
         exchange_code="FXSPOT",
@@ -21,7 +21,10 @@ def test_workbench_execution_enables_constant_anchor_mean_reversion_by_default()
     configuration = _mean_reversion_configuration_from_setup(run_setup)
 
     assert configuration is not None
-    assert configuration.anchor_model_kind == MeanReversionAnchorModelKind.CONSTANT
+    assert (
+        configuration.anchor_model_kind
+        == MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL
+    )
     assert configuration.calibration_grid_interval_hours is None
 
 
@@ -31,7 +34,7 @@ def test_workbench_execution_honors_selected_mean_reversion_anchor_family() -> N
         exchange_code="FXSPOT",
         workflow_scope=CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE,
         output_directory=Path("output"),
-        mean_reversion_anchor_model_kind=MeanReversionAnchorModelKind.DETERMINISTIC_INTERVAL_GRID,
+        mean_reversion_anchor_model_kind=MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL,
     )
 
     configuration = _mean_reversion_configuration_from_setup(run_setup)
@@ -39,21 +42,9 @@ def test_workbench_execution_honors_selected_mean_reversion_anchor_family() -> N
     assert configuration is not None
     assert (
         configuration.anchor_model_kind
-        == MeanReversionAnchorModelKind.DETERMINISTIC_INTERVAL_GRID
+        == MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL
     )
     assert configuration.calibration_grid_interval_hours is None
-
-
-def test_workbench_execution_omits_mean_reversion_when_user_turns_it_off() -> None:
-    run_setup = WorkbenchRunSetup(
-        dataset_path=Path("ticks.csv"),
-        exchange_code="FXSPOT",
-        workflow_scope=CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE,
-        output_directory=Path("output"),
-        mean_reversion_enabled=False,
-    )
-
-    assert _mean_reversion_configuration_from_setup(run_setup) is None
 
 
 def test_workbench_execution_omits_mean_reversion_for_seasonality_only_runs() -> None:
@@ -62,7 +53,6 @@ def test_workbench_execution_omits_mean_reversion_for_seasonality_only_runs() ->
         exchange_code="FXSPOT",
         workflow_scope=CalibrationMarketDataWorkflowScope.SEASONALITY_ONLY,
         output_directory=Path("output"),
-        mean_reversion_enabled=True,
     )
 
     assert _mean_reversion_configuration_from_setup(run_setup) is None

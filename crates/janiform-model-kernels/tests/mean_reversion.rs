@@ -1,22 +1,15 @@
-use std::f64::NAN;
-
 use janiform_model_kernels::mean_reversion::{
     MeanReversionAnchorModel, MeanReversionBoundaryState, MeanReversionBoundaryStateEvolutionError,
     MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors,
     evolve_mean_reversion_boundary_state_on_interval_grid,
+    evolve_mean_reversion_boundary_state_with_anchor_increment,
 };
 
 #[test]
 fn mean_reversion_fitted_parameters_round_trip_serialization_preserves_contract_fields() {
     let fitted_parameters = MeanReversionFittedParameters::try_new(
         0.25,
-        MeanReversionAnchorModel::deterministic_interval_grid(
-            vec![1, 2],
-            vec![2, 3],
-            vec![4.1, 4.0],
-            "piecewise_constant_utc_interval_grid.v1",
-        )
-        .expect("deterministic interval-grid anchor model should validate"),
+        MeanReversionAnchorModel::endogenous_core_expectation_one_interval(),
     )
     .expect("mean reversion fitted parameters should validate");
 
@@ -25,7 +18,7 @@ fn mean_reversion_fitted_parameters_round_trip_serialization_preserves_contract_
     assert_eq!(serialized["kappa"], serde_json::json!(0.25));
     assert_eq!(
         serialized["anchor_model"]["anchor_model_kind"],
-        serde_json::json!("deterministic_interval_grid")
+        serde_json::json!("endogenous_core_expectation_one_interval")
     );
 
     let parsed: MeanReversionFittedParameters = serde_json::from_value(serialized)
@@ -41,7 +34,7 @@ fn mean_reversion_fitted_parameters_round_trip_serialization_preserves_contract_
 fn mean_reversion_fitted_parameters_reject_negative_kappa() {
     let fitted_parameters = MeanReversionFittedParameters {
         kappa: -0.01,
-        anchor_model: MeanReversionAnchorModel::disabled(),
+        anchor_model: MeanReversionAnchorModel::endogenous_core_expectation_one_interval(),
     };
 
     let error = fitted_parameters
@@ -55,19 +48,17 @@ fn mean_reversion_fitted_parameters_reject_negative_kappa() {
 }
 
 #[test]
-fn mean_reversion_anchor_model_rejects_non_finite_anchor_values() {
-    let anchor_model = MeanReversionAnchorModel::deterministic_interval_grid(
-        vec![1, 2],
-        vec![2, 3],
-        vec![1.0, NAN],
-        "piecewise_constant_utc_interval_grid.v1",
-    )
-    .expect_err("non-finite anchor values must fail validation");
+fn endogenous_mean_reversion_anchor_model_rejects_exogenous_anchor_values() {
+    let anchor_model = serde_json::from_value::<MeanReversionAnchorModel>(serde_json::json!({
+        "anchor_model_kind": janiform_model_kernels::mean_reversion::MeanReversionAnchorModelKind::EndogenousCoreExpectationOneInterval,
+        "anchor_value": 0.0,
+    }))
+    .expect_err("endogenous anchor policy must reject exogenous anchor fields");
 
     assert!(
         anchor_model
             .to_string()
-            .contains("anchor_values must be a finite number")
+            .contains("unknown field `anchor_value`")
     );
 }
 
@@ -126,5 +117,30 @@ fn mean_reversion_interval_grid_evolution_rejects_invalid_kappa() {
     assert_eq!(
         error,
         MeanReversionBoundaryStateEvolutionError::InvalidKappa { value: -0.1 }
+    );
+}
+
+#[test]
+fn endogenous_anchor_increment_evolution_matches_canonical_recursion() {
+    let boundary_state = MeanReversionBoundaryState::try_new(1.5, 1.0, 0.5)
+        .expect("boundary state should construct");
+
+    let evolved_state = evolve_mean_reversion_boundary_state_with_anchor_increment(
+        boundary_state,
+        0.4,
+        2.0,
+        0.25,
+        0.25,
+    )
+    .expect("endogenous-anchor state update should succeed");
+
+    let expected_anchor_value = 1.25;
+    let expected_deviation = (-0.8_f64).exp() * 0.5 + 0.25 - 0.25;
+
+    assert!((evolved_state.anchor_value - expected_anchor_value).abs() < 1.0e-12);
+    assert!((evolved_state.deviation - expected_deviation).abs() < 1.0e-12);
+    assert!(
+        (evolved_state.observed_log_price - (expected_anchor_value + expected_deviation)).abs()
+            < 1.0e-12
     );
 }

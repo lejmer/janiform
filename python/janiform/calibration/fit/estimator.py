@@ -27,6 +27,7 @@ from ..market_data.contracts import (
     CalibrationMarketDataColumnMapping,
     CalibrationMarketDataNormalizationPolicy,
     CalibrationMarketDataOutputPreferences,
+    CalibrationMarketDataPreprocessingSettings,
     CalibrationMarketDataWorkflowScope,
     CalibrationMeanReversionConfiguration,
     CalibrationOptionSurfaceColumnMapping,
@@ -67,10 +68,12 @@ from ..sessions._resolution import (
     SessionTemplate,
 )
 from ..staged import CalibrationStageExecutionStatus
+from ..staged import CalibrationStageSolverSettings
 from ..staged.runtime import _run_prepared_staged_calibration_with_raw_payload
 from ..._workflow_outputs import write_fit_artifacts
 from ..._workflow_progress import JaniformOutputController, AbstractProgress, NullProgress
 from ...calendar import CalendarRegistry
+from ...contracts import MeanReversionAnchorModelKind
 
 _DEFAULT_HIGH_LEVEL_KNOWN_NEWS_COLUMNS = CalibrationKnownNewsColumnMapping(
     event_timestamp_column="event_timestamp_utc",
@@ -80,6 +83,9 @@ _DEFAULT_HIGH_LEVEL_OUTPUT_PREFERENCES = CalibrationMarketDataOutputPreferences(
     execution_mode=CalibrationExecutionMode.MEMORY,
     emit_derived_staged_execution_input=False,
     emit_input_provenance_report=True,
+)
+_DEFAULT_ENDOGENOUS_MEAN_REVERSION_CONFIGURATION = CalibrationMeanReversionConfiguration(
+    anchor_model_kind=MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL,
 )
 
 
@@ -103,6 +109,8 @@ class JaniformEstimator:
         normalization_policy: Optional[CalibrationMarketDataNormalizationPolicy] = None,
         option_surface_column_mapping: Optional[CalibrationOptionSurfaceColumnMapping] = None,
         output_preferences: Optional[CalibrationMarketDataOutputPreferences] = None,
+        optimizer_settings_by_stage: tuple[CalibrationStageSolverSettings, ...] = (),
+        preprocessing_settings: Optional[CalibrationMarketDataPreprocessingSettings] = None,
         mean_reversion: Optional[CalibrationMeanReversionConfiguration] = None,
         market_profile: Optional[str | MarketProfileReference] = None,
         session: Optional[str | Path | SessionPresetReference] = None,
@@ -122,6 +130,14 @@ class JaniformEstimator:
             )
         if cpu_count is not None and cpu_count <= 0:
             raise _calibration_error("cpu_count", "must be strictly positive when provided")
+        if (
+            preprocessing_settings is not None
+            and not isinstance(preprocessing_settings, CalibrationMarketDataPreprocessingSettings)
+        ):
+            raise _calibration_error(
+                "preprocessing_settings",
+                "must be a CalibrationMarketDataPreprocessingSettings when provided",
+            )
         if mean_reversion is not None and not isinstance(mean_reversion, CalibrationMeanReversionConfiguration):
             raise _calibration_error(
                 "mean_reversion",
@@ -142,6 +158,12 @@ class JaniformEstimator:
             _DEFAULT_HIGH_LEVEL_OUTPUT_PREFERENCES
             if output_preferences is None
             else output_preferences
+        )
+        self._optimizer_settings_by_stage: tuple[CalibrationStageSolverSettings, ...] = (
+            optimizer_settings_by_stage
+        )
+        self._preprocessing_settings: Optional[CalibrationMarketDataPreprocessingSettings] = (
+            preprocessing_settings
         )
         self._mean_reversion: Optional[CalibrationMeanReversionConfiguration] = mean_reversion
         self._registry: PresetRegistry = PresetRegistry() if registry is None else registry
@@ -380,9 +402,19 @@ class JaniformEstimator:
             workflow_scope=self._workflow_scope,
             normalization_policy=normalization_policy,
             output_preferences=self._output_preferences,
+            optimizer_settings_by_stage=self._optimizer_settings_by_stage,
+            preprocessing_settings=self._preprocessing_settings,
             option_surface_source=option_surface_source,
             known_news_inputs=known_news_input,
-            mean_reversion=self._mean_reversion,
+            mean_reversion=(
+                None
+                if self._workflow_scope == CalibrationMarketDataWorkflowScope.SEASONALITY_ONLY
+                else (
+                    self._mean_reversion
+                    if self._mean_reversion is not None
+                    else _DEFAULT_ENDOGENOUS_MEAN_REVERSION_CONFIGURATION
+                )
+            ),
         )
 
     def _prepare_fit_workflow(
@@ -508,6 +540,7 @@ class JaniformEstimator:
             return None
 
         exchange_code = self._resolve_exchange_code_for_inference()
+
         request = MarketDataCalibrationRequest(
             schema_version="calibration.market_data.request.v1",
             run_id=run_id,
@@ -522,8 +555,12 @@ class JaniformEstimator:
             workflow_scope=self._workflow_scope,
             normalization_policy=normalization_policy,
             output_preferences=self._output_preferences,
+            optimizer_settings_by_stage=self._optimizer_settings_by_stage,
+            preprocessing_settings=self._preprocessing_settings,
         )
+
         progress.update(detail="resolving session from market data")
+
         return resolve_market_data_session_configuration_from_source_file(
             session_configuration=request.session_configuration,
             tick_data_source=request.tick_data_source,

@@ -15,6 +15,7 @@ doctest = false
 chrono = { workspace = true }
 janiform-foundations = { path = "../janiform-foundations" }
 serde = { workspace = true }
+statrs = { workspace = true }
 
 [dev-dependencies]
 janiform-test-support = { path = "../janiform-test-support" }

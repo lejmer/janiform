@@ -8,6 +8,11 @@ from typing import Any, Optional
 import pytest
 
 from janiform.calibration import CalibrationValidationError
+from janiform.contracts import (
+    MeanReversionAnchorModel,
+    MeanReversionBoundaryState,
+    MeanReversionFittedParameters,
+)
 from janiform.calibration.staged import (
     CALIBRATION_STAGED_RUN_REPORT_SCHEMA_VERSION,
     CalibrationExecutionMode,
@@ -62,7 +67,9 @@ from janiform.simulation.shared import (
     HawkesKernelLoadings,
     HawkesKernelParameters,
 )
-from janiform.simulation.seeded.contracts import build_disabled_seeded_mean_reversion_runtime_inputs
+from janiform.simulation.seeded.contracts import (
+    build_endogenous_seeded_mean_reversion_runtime_inputs,
+)
 from tests.calibration_test_support import (
     build_valid_execution_input_model,
     build_valid_execution_input_payload,
@@ -315,7 +322,7 @@ def _build_simulation_boundary_response_payload(calendar_registry, tmp_path: Pat
         mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state,
-    ) = build_disabled_seeded_mean_reversion_runtime_inputs(
+    ) = build_endogenous_seeded_mean_reversion_runtime_inputs(
         hourly_factor_contract=hourly_factor_contract
     )
 
@@ -614,7 +621,8 @@ def _valid_pricing_execution_input() -> VanillaOptionPricingExecutionInput:
                 dividend_yield=0.01,
             ),
             payoff=VanillaOptionPayoffConfiguration(payoff_type=VanillaOptionPayoffType.CALL),
-            boundary_input=AnchoredVanillaOptionPricingBoundaryInput.disabled(
+            boundary_input=AnchoredVanillaOptionPricingBoundaryInput(
+                interval_index=0,
                 interval_delta=1.0,
                 hawkes_boundary_state=HawkesExcitationState(
                     y_plus_plus=0.0,
@@ -622,7 +630,15 @@ def _valid_pricing_execution_input() -> VanillaOptionPricingExecutionInput:
                     y_minus_plus=0.0,
                     y_minus_minus=0.0,
                 ),
-                observed_log_price=0.0,
+                mean_reversion_fitted_parameters=MeanReversionFittedParameters(
+                    kappa=0.0,
+                    anchor_model=MeanReversionAnchorModel.endogenous_core_expectation_one_interval(),
+                ),
+                observed_boundary_state=MeanReversionBoundaryState(
+                    observed_log_price=0.0,
+                    anchor_value=0.0,
+                    deviation=0.0,
+                ),
             ),
             model_parameters=VanillaOptionPricingModelParameters(
                 hawkes_kernel_parameters=HawkesKernelParameters(
@@ -641,10 +657,7 @@ def _valid_pricing_execution_input() -> VanillaOptionPricingExecutionInput:
                         minus_minus=0.1,
                     ),
                 ),
-                gamma_severity_mark_configuration=GammaSeverityMarkConfiguration(
-                    shape_k=1.8,
-                    scale_theta=0.7,
-                ),
+                news_process_configuration=_valid_news_process_configuration(),
                 nig_shared_plus_shift_configuration=NigSharedPlusShiftConfiguration(
                     alpha=2.3,
                     beta_0=-0.8,
@@ -664,6 +677,40 @@ def _valid_pricing_execution_input() -> VanillaOptionPricingExecutionInput:
             include_transform_diagnostics=True,
             include_integration_quality_diagnostics=True,
             include_calibration_hooks=True,
+        ),
+    )
+
+
+def _valid_news_process_configuration() -> NewsProcessConfiguration:
+    return NewsProcessConfiguration(
+        schema_version="news.process.configuration.v1",
+        arrivals=NewsArrivalConfiguration(
+            known=KnownNewsArrivalConfiguration(
+                scheduled_event_timestamps_utc_nanos=(),
+            ),
+            surprise=SurpriseNewsArrivalConfiguration(
+                baseline_intensity=0.75,
+            ),
+        ),
+        shared_mark_law=SharedNewsMarkLawConfiguration(
+            gamma_severity_marks=GammaSeverityMarkConfiguration(
+                shape_k=1.8,
+                scale_theta=0.7,
+            ),
+            double_exponential_base_shock=DoubleExponentialBaseShockConfiguration(
+                probability_positive=0.35,
+                eta_plus=2.1,
+                eta_minus=3.0,
+            ),
+            coupled_gap_marks=CoupledGapMarkConfiguration(sigma_g=0.6),
+        ),
+        known_component_mark_scales=NewsComponentMarkScaleConfiguration(
+            activity_coupling_scale=1.0,
+            return_jump_scale=1.0,
+        ),
+        surprise_component_mark_scales=NewsComponentMarkScaleConfiguration(
+            activity_coupling_scale=1.0,
+            return_jump_scale=1.0,
         ),
     )
 

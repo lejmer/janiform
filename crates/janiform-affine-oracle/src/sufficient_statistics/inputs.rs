@@ -328,15 +328,6 @@ pub enum SufficientStatisticsRiskModelInputsError {
         boundary_anchor_value: f64,
         runtime_start_anchor_value: f64,
     },
-    DisabledMeanReversionRequiresZeroKappa {
-        value: f64,
-    },
-    MeanReversionConstantAnchorMissingValue,
-    MeanReversionRuntimeConstantAnchorMismatch {
-        interval_index: Option<usize>,
-        expected_anchor_value: f64,
-        observed_anchor_value: f64,
-    },
 }
 
 impl std::fmt::Display for SufficientStatisticsRiskModelInputsError {
@@ -375,31 +366,6 @@ impl std::fmt::Display for SufficientStatisticsRiskModelInputsError {
                 formatter,
                 "model_inputs.initial_mean_reversion_boundary_state.anchor_value ({boundary_anchor_value}) must match model_inputs.mean_reversion_runtime_interval_anchors.start_anchor_value ({runtime_start_anchor_value})"
             ),
-            Self::DisabledMeanReversionRequiresZeroKappa { value } => write!(
-                formatter,
-                "model_inputs.mean_reversion_fitted_parameters.kappa must be 0.0 when anchor_model_kind=disabled, found {value}"
-            ),
-            Self::MeanReversionConstantAnchorMissingValue => write!(
-                formatter,
-                "model_inputs.mean_reversion_fitted_parameters.anchor_model.anchor_value is required when anchor_model_kind=constant"
-            ),
-            Self::MeanReversionRuntimeConstantAnchorMismatch {
-                interval_index,
-                expected_anchor_value,
-                observed_anchor_value,
-            } => {
-                if let Some(interval_index) = interval_index {
-                    write!(
-                        formatter,
-                        "model_inputs.mean_reversion_runtime_interval_anchors.end_anchor_values[{interval_index}] must equal constant anchor value {expected_anchor_value}, found {observed_anchor_value}"
-                    )
-                } else {
-                    write!(
-                        formatter,
-                        "model_inputs.mean_reversion_runtime_interval_anchors.start_anchor_value must equal constant anchor value {expected_anchor_value}, found {observed_anchor_value}"
-                    )
-                }
-            }
         }
     }
 }
@@ -511,84 +477,11 @@ impl SufficientStatisticsRiskModelInputs {
             .anchor_model
             .anchor_model_kind
         {
-            MeanReversionAnchorModelKind::Disabled => {
-                if self.mean_reversion_fitted_parameters.kappa != 0.0 {
-                    return Err(
-                        SufficientStatisticsRiskModelInputsError::DisabledMeanReversionRequiresZeroKappa {
-                            value: self.mean_reversion_fitted_parameters.kappa,
-                        },
-                    );
-                }
-
-                validate_flat_runtime_anchors(
-                    &self.mean_reversion_runtime_interval_anchors,
-                    self.mean_reversion_runtime_interval_anchors
-                        .start_anchor_value,
-                )?;
-            }
-            MeanReversionAnchorModelKind::Constant => {
-                let expected_anchor_value = self
-                    .mean_reversion_fitted_parameters
-                    .anchor_model
-                    .anchor_value
-                    .ok_or(
-                        SufficientStatisticsRiskModelInputsError::MeanReversionConstantAnchorMissingValue,
-                    )?;
-
-                if (self
-                    .mean_reversion_runtime_interval_anchors
-                    .start_anchor_value
-                    - expected_anchor_value)
-                    .abs()
-                    > MEAN_REVERSION_ALIGNMENT_TOLERANCE
-                {
-                    return Err(
-                        SufficientStatisticsRiskModelInputsError::MeanReversionRuntimeConstantAnchorMismatch {
-                            interval_index: None,
-                            expected_anchor_value,
-                            observed_anchor_value: self
-                                .mean_reversion_runtime_interval_anchors
-                                .start_anchor_value,
-                        },
-                    );
-                }
-
-                validate_flat_runtime_anchors(
-                    &self.mean_reversion_runtime_interval_anchors,
-                    expected_anchor_value,
-                )?;
-            }
-            MeanReversionAnchorModelKind::DeterministicIntervalGrid => {}
+            MeanReversionAnchorModelKind::EndogenousCoreExpectationOneInterval => {}
         }
 
         Ok(())
     }
-}
-
-fn validate_flat_runtime_anchors(
-    runtime_interval_anchors: &MeanReversionRuntimeIntervalAnchors,
-    expected_anchor_value: f64,
-) -> Result<(), SufficientStatisticsRiskModelInputsError> {
-    for (interval_index, observed_anchor_value) in runtime_interval_anchors
-        .end_anchor_values
-        .iter()
-        .copied()
-        .enumerate()
-    {
-        if (observed_anchor_value - expected_anchor_value).abs()
-            > MEAN_REVERSION_ALIGNMENT_TOLERANCE
-        {
-            return Err(
-                SufficientStatisticsRiskModelInputsError::MeanReversionRuntimeConstantAnchorMismatch {
-                    interval_index: Some(interval_index),
-                    expected_anchor_value,
-                    observed_anchor_value,
-                },
-            );
-        }
-    }
-
-    Ok(())
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]

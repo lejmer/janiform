@@ -1,6 +1,7 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
+use janiform_foundations::time::duration_nanos_to_hours;
 use serde::{Deserialize, Serialize};
 
 use crate::calendar::MarketState;
@@ -63,7 +64,7 @@ impl ReturnComponentsStageSignalSourceWindow {
         let duration_nanos = self
             .window_end_utc_nanos
             .saturating_sub(self.window_start_utc_nanos);
-        duration_nanos as f64 / 3_600_000_000_000.0
+        duration_nanos_to_hours(duration_nanos)
     }
 }
 

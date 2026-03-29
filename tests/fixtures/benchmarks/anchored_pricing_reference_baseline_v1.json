@@ -11,8 +11,8 @@
   },
   "cases": [
     {
-      "scenario_id": "disabled_nested_case",
-      "anchor_model_kind": "disabled",
+      "scenario_id": "endogenous_zero_deviation_zero_kappa",
+      "anchor_model_kind": "endogenous_core_expectation_one_interval",
       "outcome_kind": "success",
       "kappa": 0.0,
       "observed_boundary_state": {
@@ -38,8 +38,8 @@
       "integration_truncation_check_passed": true
     },
     {
-      "scenario_id": "constant_anchor_zero_deviation",
-      "anchor_model_kind": "constant",
+      "scenario_id": "endogenous_aligned_anchor_zero_deviation",
+      "anchor_model_kind": "endogenous_core_expectation_one_interval",
       "outcome_kind": "success",
       "kappa": 0.35,
       "observed_boundary_state": {
@@ -65,8 +65,8 @@
       "integration_truncation_check_passed": true
     },
     {
-      "scenario_id": "deterministic_flat_anchor_zero_deviation",
-      "anchor_model_kind": "deterministic_interval_grid",
+      "scenario_id": "endogenous_flat_anchor_zero_deviation",
+      "anchor_model_kind": "endogenous_core_expectation_one_interval",
       "outcome_kind": "success",
       "kappa": 0.35,
       "observed_boundary_state": {
@@ -92,8 +92,8 @@
       "integration_truncation_check_passed": true
     },
     {
-      "scenario_id": "constant_anchor_positive_deviation_admissibility_failure",
-      "anchor_model_kind": "constant",
+      "scenario_id": "endogenous_positive_deviation_admissibility_failure",
+      "anchor_model_kind": "endogenous_core_expectation_one_interval",
       "outcome_kind": "expected_failure",
       "kappa": 0.35,
       "observed_boundary_state": {

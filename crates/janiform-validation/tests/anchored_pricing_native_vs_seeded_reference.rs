@@ -143,9 +143,7 @@ struct AnchoredPricingObservedBoundaryState {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ScenarioAnchorKind {
-    Disabled,
-    Constant,
-    DeterministicIntervalGrid,
+    Endogenous,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -424,8 +422,32 @@ fn pricing_model_parameters() -> VanillaOptionPricingModelParameters {
             },
         )
         .expect("pricing kernel parameters should construct"),
-        janiform_model_kernels::news::GammaSeverityMarkConfiguration::try_new(1.8, 0.7)
-            .expect("pricing gamma severity configuration should construct"),
+        NewsProcessConfiguration::try_new(
+            NewsArrivalConfiguration {
+                known: KnownNewsArrivalConfiguration {
+                    scheduled_event_timestamps_utc_nanos: vec![],
+                },
+                surprise: SurpriseNewsArrivalConfiguration {
+                    baseline_intensity: 0.0,
+                },
+            },
+            SharedNewsMarkLawConfiguration {
+                gamma_severity_marks: NewsGammaSeverityMarkConfiguration::new(1.8, 0.7),
+                double_exponential_base_shock: DoubleExponentialBaseShockConfiguration::new(
+                    0.35, 2.1, 3.0,
+                ),
+                coupled_gap_marks: CoupledGapMarkConfiguration::new(0.6),
+            },
+            NewsComponentMarkScaleConfiguration {
+                activity_coupling_scale: 1.0,
+                return_jump_scale: 1.0,
+            },
+            NewsComponentMarkScaleConfiguration {
+                activity_coupling_scale: 1.0,
+                return_jump_scale: 1.0,
+            },
+        )
+        .expect("pricing news process configuration should construct"),
         NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
             .expect("pricing NIG configuration should construct"),
     )
@@ -447,7 +469,7 @@ fn anchored_boundary_input_for_scenario(
             y_minus_minus: 0.0,
         },
         mean_reversion_fitted_parameters_for_scenario(scenario),
-        mean_reversion_runtime_interval_anchors_for_scenario(scenario),
+        1.0,
         scenario.observed_boundary_state.clone(),
     )
 }
@@ -455,26 +477,13 @@ fn anchored_boundary_input_for_scenario(
 fn mean_reversion_fitted_parameters_for_scenario(
     scenario: &ScenarioDefinition,
 ) -> MeanReversionFittedParameters {
-    match scenario.anchor_kind {
-        ScenarioAnchorKind::Disabled => MeanReversionFittedParameters::disabled(),
-        ScenarioAnchorKind::Constant => MeanReversionFittedParameters::try_new(
-            scenario.kappa,
-            MeanReversionAnchorModel::constant(scenario.current_anchor_value)
-                .expect("constant anchor model should construct"),
-        )
-        .expect("constant fitted parameters should construct"),
-        ScenarioAnchorKind::DeterministicIntervalGrid => MeanReversionFittedParameters::try_new(
-            scenario.kappa,
-            MeanReversionAnchorModel::deterministic_interval_grid(
-                vec![0],
-                vec![1],
-                vec![scenario.current_anchor_value],
-                SYNTHETIC_INTERVAL_ALIGNMENT_POLICY,
-            )
-            .expect("deterministic interval-grid anchor model should construct"),
-        )
-        .expect("deterministic fitted parameters should construct"),
-    }
+    let _ = scenario.anchor_kind;
+
+    MeanReversionFittedParameters::try_new(
+        scenario.kappa,
+        MeanReversionAnchorModel::endogenous_core_expectation_one_interval(),
+    )
+    .expect("endogenous fitted parameters should construct")
 }
 
 fn mean_reversion_runtime_interval_anchors_for_scenario(
@@ -667,36 +676,36 @@ fn build_calendar_registry() -> ExchangeCalendarRegistry {
 
 fn scenario_definition(scenario_id: &str) -> ScenarioDefinition {
     match scenario_id {
-        "disabled_nested_case" => ScenarioDefinition {
-            scenario_id: "disabled_nested_case",
-            anchor_kind: ScenarioAnchorKind::Disabled,
+        "endogenous_zero_deviation_zero_kappa" => ScenarioDefinition {
+            scenario_id: "endogenous_zero_deviation_zero_kappa",
+            anchor_kind: ScenarioAnchorKind::Endogenous,
             current_anchor_value: 0.0,
             next_anchor_value: 0.0,
             observed_boundary_state: MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0)
-                .expect("disabled observed boundary state should construct"),
+                .expect("zero-deviation observed boundary state should construct"),
             kappa: 0.0,
         },
-        "constant_anchor_zero_deviation" => ScenarioDefinition {
-            scenario_id: "constant_anchor_zero_deviation",
-            anchor_kind: ScenarioAnchorKind::Constant,
+        "endogenous_aligned_anchor_zero_deviation" => ScenarioDefinition {
+            scenario_id: "endogenous_aligned_anchor_zero_deviation",
+            anchor_kind: ScenarioAnchorKind::Endogenous,
             current_anchor_value: 0.25,
             next_anchor_value: 0.25,
             observed_boundary_state: MeanReversionBoundaryState::try_new(0.25, 0.25, 0.0)
-                .expect("constant-anchor observed boundary state should construct"),
+                .expect("aligned-anchor observed boundary state should construct"),
             kappa: 0.35,
         },
-        "deterministic_flat_anchor_zero_deviation" => ScenarioDefinition {
-            scenario_id: "deterministic_flat_anchor_zero_deviation",
-            anchor_kind: ScenarioAnchorKind::DeterministicIntervalGrid,
+        "endogenous_flat_anchor_zero_deviation" => ScenarioDefinition {
+            scenario_id: "endogenous_flat_anchor_zero_deviation",
+            anchor_kind: ScenarioAnchorKind::Endogenous,
             current_anchor_value: 0.25,
             next_anchor_value: 0.25,
             observed_boundary_state: MeanReversionBoundaryState::try_new(0.25, 0.25, 0.0)
-                .expect("deterministic-anchor observed boundary state should construct"),
+                .expect("flat-anchor observed boundary state should construct"),
             kappa: 0.35,
         },
-        "constant_anchor_positive_deviation_admissibility_failure" => ScenarioDefinition {
-            scenario_id: "constant_anchor_positive_deviation_admissibility_failure",
-            anchor_kind: ScenarioAnchorKind::Constant,
+        "endogenous_positive_deviation_admissibility_failure" => ScenarioDefinition {
+            scenario_id: "endogenous_positive_deviation_admissibility_failure",
+            anchor_kind: ScenarioAnchorKind::Endogenous,
             current_anchor_value: 0.0,
             next_anchor_value: 0.0,
             observed_boundary_state: MeanReversionBoundaryState::try_new(0.01, 0.0, 0.01)

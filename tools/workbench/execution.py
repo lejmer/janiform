@@ -471,10 +471,7 @@ def _normalization_overrides_from_setup(
 def _mean_reversion_configuration_from_setup(
     run_setup: WorkbenchRunSetup,
 ) -> Optional[CalibrationMeanReversionConfiguration]:
-    if (
-        not run_setup.mean_reversion_enabled
-        or run_setup.workflow_scope == CalibrationMarketDataWorkflowScope.SEASONALITY_ONLY
-    ):
+    if run_setup.workflow_scope == CalibrationMarketDataWorkflowScope.SEASONALITY_ONLY:
         return None
 
     return CalibrationMeanReversionConfiguration(

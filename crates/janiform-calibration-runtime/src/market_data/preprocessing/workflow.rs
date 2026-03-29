@@ -39,6 +39,10 @@ pub fn preprocess_market_data_translation_request(
         tick_summary.timestamp_event_records.clone(),
         retained_known_news.retained_records.as_slice(),
         request.trade_events_data_reference,
+        request
+            .preprocessing_settings
+            .as_ref()
+            .and_then(|settings| settings.seasonality.as_ref()),
     );
 
     let hawkes_candidate_inputs = if request.require_hawkes {
@@ -72,6 +76,10 @@ pub fn preprocess_market_data_translation_request(
             retained_known_news.retained_records.as_slice(),
             tick_summary.source_window.clone(),
             request.option_surface_quote_values.as_slice(),
+            request
+                .preprocessing_settings
+                .as_ref()
+                .and_then(|settings| settings.return_components.as_ref()),
         )?;
         let mean_reversion_grid_inputs = derive_mean_reversion_open_session_grid_inputs(
             tick_summary.open_price_ticks.as_slice(),

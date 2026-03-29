@@ -14,7 +14,15 @@ use janiform_foundations::complex_math::{ComplexScalar, complex_exponential};
 use janiform_model_kernels::hawkes::{
     HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
 };
-use janiform_model_kernels::news::GammaSeverityMarkConfiguration;
+use janiform_model_kernels::mean_reversion::{
+    MeanReversionBoundaryState, MeanReversionFittedParameters,
+};
+use janiform_model_kernels::news::{
+    CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
+    GammaSeverityMarkConfiguration, KnownNewsArrivalConfiguration, NewsArrivalConfiguration,
+    NewsComponentMarkScaleConfiguration, NewsProcessConfiguration, SharedNewsMarkLawConfiguration,
+    SurpriseNewsArrivalConfiguration,
+};
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 
 pub(super) fn build_valid_vanilla_option_request() -> VanillaOptionPricingRequest {
@@ -24,7 +32,7 @@ pub(super) fn build_valid_vanilla_option_request() -> VanillaOptionPricingReques
         VanillaOptionPayoffConfiguration {
             payoff_type: VanillaOptionPayoffType::Call,
         },
-        disabled_boundary_input(
+        endogenous_boundary_input(
             1.0,
             HawkesExcitationState {
                 y_plus_plus: 0.2,
@@ -38,12 +46,27 @@ pub(super) fn build_valid_vanilla_option_request() -> VanillaOptionPricingReques
     .expect("request should construct")
 }
 
+pub(super) fn endogenous_boundary_input(
+    interval_delta: f64,
+    hawkes_boundary_state: HawkesExcitationState,
+) -> AnchoredVanillaOptionPricingBoundaryInput {
+    AnchoredVanillaOptionPricingBoundaryInput::try_new(
+        0,
+        hawkes_boundary_state,
+        MeanReversionFittedParameters::endogenous_core_expectation_one_interval(0.0)
+            .expect("zero-kappa endogenous fitted parameters should construct"),
+        interval_delta,
+        MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0)
+            .expect("zero observed boundary state should construct"),
+    )
+    .expect("endogenous pricing boundary input should construct")
+}
+
 pub(super) fn disabled_boundary_input(
     interval_delta: f64,
     hawkes_boundary_state: HawkesExcitationState,
 ) -> AnchoredVanillaOptionPricingBoundaryInput {
-    AnchoredVanillaOptionPricingBoundaryInput::disabled(interval_delta, hawkes_boundary_state, 0.0)
-        .expect("disabled pricing boundary input should construct")
+    endogenous_boundary_input(interval_delta, hawkes_boundary_state)
 }
 
 pub(super) fn valid_model_parameters() -> VanillaOptionPricingModelParameters {
@@ -65,8 +88,32 @@ pub(super) fn valid_model_parameters() -> VanillaOptionPricingModelParameters {
             },
         )
         .expect("kernel parameters should construct"),
-        GammaSeverityMarkConfiguration::try_new(1.8, 0.7)
-            .expect("gamma severity mark configuration should construct"),
+        NewsProcessConfiguration::try_new(
+            NewsArrivalConfiguration {
+                known: KnownNewsArrivalConfiguration {
+                    scheduled_event_timestamps_utc_nanos: vec![],
+                },
+                surprise: SurpriseNewsArrivalConfiguration {
+                    baseline_intensity: 0.75,
+                },
+            },
+            SharedNewsMarkLawConfiguration {
+                gamma_severity_marks: GammaSeverityMarkConfiguration::new(1.8, 0.7),
+                double_exponential_base_shock: DoubleExponentialBaseShockConfiguration::new(
+                    0.35, 2.1, 3.0,
+                ),
+                coupled_gap_marks: CoupledGapMarkConfiguration::new(0.6),
+            },
+            NewsComponentMarkScaleConfiguration {
+                activity_coupling_scale: 1.0,
+                return_jump_scale: 1.0,
+            },
+            NewsComponentMarkScaleConfiguration {
+                activity_coupling_scale: 1.0,
+                return_jump_scale: 1.0,
+            },
+        )
+        .expect("news process configuration should construct"),
         NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
             .expect("nig shared-plus-shift configuration should construct"),
     )
@@ -85,6 +132,7 @@ pub(super) fn build_reference_pricing_response(
         * ((market_inputs.risk_free_rate - market_inputs.dividend_yield)
             * market_inputs.maturity_interval)
             .exp();
+
     let discount_factor = (-market_inputs.risk_free_rate * market_inputs.maturity_interval).exp();
 
     VanillaOptionPricingResponse::try_new(
@@ -144,6 +192,7 @@ pub(super) fn black_scholes_log_return_characteristic_function(
         - market_inputs.dividend_yield
         - 0.5 * volatility * volatility)
         * market_inputs.maturity_interval;
+
     let imaginary_unit_term = ComplexScalar::new(-argument.imaginary, argument.real);
     let drift_term = imaginary_unit_term.scale(drift);
     let variance_term = argument.square().scale(-0.5 * variance);
@@ -157,12 +206,16 @@ pub(super) fn black_scholes_price(
     payoff_type: VanillaOptionPayoffType,
 ) -> f64 {
     let sigma_square_root_time = volatility * market_inputs.maturity_interval.sqrt();
+
     let log_moneyness = (market_inputs.spot / market_inputs.strike).ln();
+
     let carry = (market_inputs.risk_free_rate - market_inputs.dividend_yield)
         * market_inputs.maturity_interval;
+
     let d1 = (log_moneyness + carry + 0.5 * sigma_square_root_time * sigma_square_root_time)
         / sigma_square_root_time;
     let d2 = d1 - sigma_square_root_time;
+
     let discounted_spot = market_inputs.spot
         * (-market_inputs.dividend_yield * market_inputs.maturity_interval).exp();
     let discounted_strike = market_inputs.strike
@@ -185,6 +238,7 @@ fn standard_normal_cdf(value: f64) -> f64 {
     }
 
     let polynomial_scale = 1.0 / (1.0 + 0.231_641_9 * value);
+
     let polynomial_value = polynomial_scale
         * (0.319_381_53
             + polynomial_scale
@@ -193,6 +247,7 @@ fn standard_normal_cdf(value: f64) -> f64 {
                         * (1.781_477_937
                             + polynomial_scale
                                 * (-1.821_255_978 + polynomial_scale * 1.330_274_429))));
+
     let density = 0.398_942_280_401_432_7 * (-0.5 * value * value).exp();
 
     1.0 - density * polynomial_value

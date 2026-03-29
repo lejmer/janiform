@@ -14,9 +14,11 @@ use super::shared::{
     CalibrationReturnComponentsSignalSourceWindow,
     CalibrationReturnComponentsStageCandidateGenerationInput,
     CalibrationSharedNewsMarkLawConfiguration, CoupledGapMarkConfiguration,
-    ExchangeCalendarDefinition, OpenTickRecord, ResolvedKnownNewsRecord, TradeSign, Tz,
-    arithmetic_mean, fit_shared_news_mark_law_from_shock_samples, median_abs, round_to,
+    ExchangeCalendarDefinition, MarketDataTranslationReturnComponentsPreprocessingSettings,
+    OpenTickRecord, ResolvedKnownNewsRecord, TradeSign, Tz, arithmetic_mean,
+    fit_shared_news_mark_law_from_shock_samples, median_abs, round_to,
 };
+use janiform_foundations::time::duration_nanos_to_hours;
 
 pub(super) fn build_return_components_candidate_generation_input(
     definition: &ExchangeCalendarDefinition,
@@ -28,6 +30,7 @@ pub(super) fn build_return_components_candidate_generation_input(
     retained_known_news: &[ResolvedKnownNewsRecord],
     source_window: CalibrationReturnComponentsSignalSourceWindow,
     _option_surface_quote_values: &[f64],
+    preprocessing_settings: Option<&MarketDataTranslationReturnComponentsPreprocessingSettings>,
 ) -> Result<
     (
         CalibrationReturnComponentsStageCandidateGenerationInput,
@@ -38,6 +41,13 @@ pub(super) fn build_return_components_candidate_generation_input(
     if open_price_ticks.len() < 2 {
         return Err(MarketDataTranslationPreprocessingError::MissingOpenSessionPriceObservations);
     }
+
+    let return_components_settings = preprocessing_settings.cloned().unwrap_or(
+        MarketDataTranslationReturnComponentsPreprocessingSettings {
+            intraday_jump_threshold_multiplier: 4.0,
+            close_open_gap_tolerance_multiplier: 3.0,
+        },
+    );
 
     let open_price_tick_timestamps: Vec<i64> = open_price_ticks
         .iter()
@@ -74,6 +84,7 @@ pub(super) fn build_return_components_candidate_generation_input(
         same_session_returns.as_slice(),
         open_price_tick_timestamps.as_slice(),
         known_news_timestamps.as_slice(),
+        return_components_settings.intraday_jump_threshold_multiplier,
     );
 
     let open_tick_sell_share = if open_signed_tick_count == 0 {
@@ -89,7 +100,8 @@ pub(super) fn build_return_components_candidate_generation_input(
 
     let median_abs_intraday_return = median_abs(intraday_return_values.as_slice());
 
-    let gap_tolerance = median_abs_intraday_return * 3.0;
+    let gap_tolerance =
+        median_abs_intraday_return * return_components_settings.close_open_gap_tolerance_multiplier;
 
     let material_close_open_gap_count = close_open_boundary_observations
         .iter()
@@ -152,7 +164,7 @@ pub(super) fn derive_mean_reversion_open_session_grid_inputs(
 
         unique_session_duration_hours
             .entry((tick.session_open_utc_nanos, tick.session_close_utc_nanos))
-            .or_insert(session_duration_nanos as f64 / 3_600_000_000_000.0);
+            .or_insert(duration_nanos_to_hours(session_duration_nanos));
     }
 
     (

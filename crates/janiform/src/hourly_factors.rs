@@ -1,5 +1,8 @@
 //! Top-level re-export for market-time hourly factor infrastructure.
 
+pub use janiform_foundations::time::{
+    HOURS_PER_NANOSECOND, ONE_HOUR_NANOS, ONE_HOUR_NANOS_F64, duration_nanos_to_hours,
+};
 pub use janiform_market_time::hourly_factors::{
     DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD, DEFAULT_KNOWN_NEWS_CALENDAR_ANCHOR_POLICY,
     DEFAULT_NEWS_INTENSITY_COMPONENT_AGGREGATION_POLICY,

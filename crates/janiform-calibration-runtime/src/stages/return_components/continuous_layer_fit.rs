@@ -58,6 +58,7 @@ pub(crate) fn fit_continuous_return_layer(
 #[cfg(test)]
 mod tests {
     use janiform_calibration_artifacts::CalibrationOptimizerSettings;
+    use janiform_foundations::time::ONE_HOUR_NANOS;
 
     use super::fit_continuous_return_layer;
     use crate::stages::return_components::{
@@ -114,7 +115,7 @@ mod tests {
             combined_gap_magnitudes: Vec::new(),
             source_window: ReturnComponentsStageSignalSourceWindow {
                 window_start_utc_nanos: 0,
-                window_end_utc_nanos: 3_600_000_000_000,
+                window_end_utc_nanos: ONE_HOUR_NANOS,
             },
         };
 

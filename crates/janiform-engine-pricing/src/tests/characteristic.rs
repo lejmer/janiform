@@ -3,8 +3,11 @@ use crate::{
     PRICING_LOCAL_ANCHORED_TILT_SOLVE_POLICY, RETURN_CHARACTERISTIC_FUNCTION_COMPOSITION_POLICY,
     RETURN_CHARACTERISTIC_FUNCTION_DOMAIN_GUARD_POLICY, ReturnCharacteristicFunctionAssemblyError,
     VanillaOptionPayoffConfiguration, VanillaOptionPayoffType, VanillaOptionPricingMarketInputs,
-    VanillaOptionPricingRequest, compose_nig_trading_time_exponent,
-    compose_total_return_characteristic_function,
+    VanillaOptionPricingRequest,
+    characteristic::{
+        LocalTiltResidualEvaluation, build_local_tilt_bracket_with_residual_evaluator,
+    },
+    compose_nig_trading_time_exponent, compose_total_return_characteristic_function,
     compose_total_return_characteristic_function_from_oracle_output,
     compose_total_return_characteristic_function_with_edge_mode, solve_anchored_local_pricing_tilt,
 };
@@ -15,7 +18,6 @@ use janiform_foundations::complex_math::{ComplexScalar, complex_exponential, com
 use janiform_model_kernels::hawkes::HawkesExcitationState;
 use janiform_model_kernels::mean_reversion::{
     MeanReversionAnchorModel, MeanReversionBoundaryState, MeanReversionFittedParameters,
-    MeanReversionRuntimeIntervalAnchors,
 };
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 use janiform_model_kernels::return_decomposition::{
@@ -856,16 +858,10 @@ fn anchored_local_tilt_solver_accepts_positive_kappa_with_zero_deviation() {
         },
         MeanReversionFittedParameters::try_new(
             0.7,
-            MeanReversionAnchorModel::constant(0.0).expect("constant anchor should construct"),
+            MeanReversionAnchorModel::endogenous_core_expectation_one_interval(),
         )
         .expect("mean reversion parameters should construct"),
-        MeanReversionRuntimeIntervalAnchors::try_new(
-            "pricing_constant_anchor_interval_grid.v1",
-            0.0,
-            vec![0.0],
-            vec![0.5],
-        )
-        .expect("runtime interval anchors should construct"),
+        0.5,
         MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0)
             .expect("observed boundary state should construct"),
     )
@@ -922,16 +918,10 @@ fn anchored_local_tilt_solver_accepts_positive_kappa_with_non_zero_deviation() {
             },
             MeanReversionFittedParameters::try_new(
                 kappa,
-                MeanReversionAnchorModel::constant(0.0).expect("constant anchor should construct"),
+                MeanReversionAnchorModel::endogenous_core_expectation_one_interval(),
             )
             .expect("mean reversion parameters should construct"),
-            MeanReversionRuntimeIntervalAnchors::try_new(
-                "pricing_constant_anchor_interval_grid.v1",
-                0.0,
-                vec![0.0],
-                vec![interval_delta],
-            )
-            .expect("runtime interval anchors should construct"),
+            interval_delta,
             MeanReversionBoundaryState::try_new(deviation, 0.0, deviation)
                 .expect("observed boundary state should construct"),
         )
@@ -1001,6 +991,39 @@ fn anchored_local_tilt_solver_rejects_inadmissible_states() {
     ));
 }
 
+#[test]
+fn anchored_local_tilt_bracket_search_shrinks_inward_from_non_admissible_side_boundary() {
+    let driver_parameters = NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
+        .expect("valid shared-plus-shift payload should construct")
+        .derive_driver_parameters()
+        .expect("valid shared-plus-shift payload should derive drivers");
+
+    let (theta, evaluation) = build_local_tilt_bracket_with_residual_evaluator(
+        driver_parameters,
+        -0.5,
+        1.0e-8,
+        |theta| {
+            if theta < -1.5 {
+                return Err(
+                    AnchoredLocalTiltSolveError::NonRealObservedLogMomentExponent {
+                        theta,
+                        value: ComplexScalar::new(0.0, 1.0),
+                    },
+                );
+            }
+
+            Ok(LocalTiltResidualEvaluation {
+                observed_log_moment_exponent: theta,
+                residual: theta + 0.5,
+            })
+        },
+    )
+    .expect("solver should shrink inward from the invalid side boundary and recover the root");
+
+    assert!((theta + 0.5).abs() <= 1.0e-8);
+    assert!(evaluation.residual.abs() <= 1.0e-8);
+}
+
 fn pricing_request_for_local_tilt(
     return_decomposition: ReturnDecomposition,
     theta: f64,
@@ -1031,7 +1054,7 @@ fn pricing_request_for_local_tilt(
     );
 
     let target_adjustment = boundary_input
-        .observed_return_adjustment()
+        .local_martingale_deviation_adjustment()
         .expect("boundary input should provide observed-return adjustment");
 
     let risk_free_rate = (combined + target_adjustment) / 0.5;

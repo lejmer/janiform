@@ -773,6 +773,22 @@ fn gamma_severity_sampler_mean_tracks_shape_scale_expectation() {
 }
 
 #[test]
+fn gamma_severity_expected_moments_match_closed_forms() {
+    let configuration = GammaSeverityMarkConfiguration::try_new(2.4, 0.75)
+        .expect("valid gamma severity configuration should construct");
+
+    let expected_mean = configuration
+        .expected_severity_mark()
+        .expect("closed-form severity mean should evaluate");
+    let expected_square_root_mean = configuration
+        .expected_square_root_severity_mark()
+        .expect("closed-form square-root severity mean should evaluate");
+
+    assert!((expected_mean - 1.8).abs() <= 1.0e-12);
+    assert!((expected_square_root_mean - 1.274009802734663).abs() <= 1.0e-12);
+}
+
+#[test]
 fn double_exponential_base_shock_try_new_rejects_invalid_parameters() {
     let invalid_probability_low = DoubleExponentialBaseShockConfiguration::try_new(0.0, 2.1, 3.0)
         .expect_err("probability_positive must be strictly between 0 and 1");
@@ -918,6 +934,29 @@ fn double_exponential_base_shock_sampler_is_seed_reproducible() {
 
     assert_eq!(first_draws, second_draws);
     assert_ne!(first_draws, different_seed_draws);
+}
+
+#[test]
+fn double_exponential_base_shock_expected_mean_matches_closed_form() {
+    let configuration = DoubleExponentialBaseShockConfiguration::try_new(0.35, 1.2, 2.4)
+        .expect("valid base-shock configuration should construct");
+
+    let expected_mean = configuration
+        .expected_base_shock_mark()
+        .expect("closed-form base-shock mean should evaluate");
+
+    assert!((expected_mean - (0.35 / 1.2 - 0.65 / 2.4)).abs() <= 1.0e-12);
+}
+
+#[test]
+fn coupled_gap_expected_mean_matches_composed_mark_first_moment() {
+    let coupled_gap_configuration = CoupledGapMarkConfiguration::new(0.35);
+
+    let expected_gap_jump_mark = coupled_gap_configuration
+        .expected_gap_jump_mark(1.274009802734663, 0.020833333333333315)
+        .expect("closed-form expected gap jump mark should evaluate");
+
+    assert!((expected_gap_jump_mark - 0.009289654811606908).abs() <= 1.0e-12);
 }
 
 #[test]

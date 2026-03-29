@@ -16,10 +16,9 @@ use janiform_model_kernels::hawkes::{
 use janiform_model_kernels::mean_reversion::{
     MeanReversionAnchorModelKind, MeanReversionBoundaryState,
     MeanReversionBoundaryStateValidationError, MeanReversionFittedParameters,
-    MeanReversionFittedParametersValidationError, MeanReversionRuntimeIntervalAnchors,
-    MeanReversionRuntimeIntervalAnchorsValidationError,
+    MeanReversionFittedParametersValidationError,
 };
-use janiform_model_kernels::news::{GammaSeverityMarkConfiguration, NewsMarkConfigurationError};
+use janiform_model_kernels::news::{NewsProcessConfiguration, NewsProcessConfigurationError};
 use janiform_model_kernels::nig::{
     NigSharedPlusShiftConfiguration, NigSharedPlusShiftConfigurationError,
 };
@@ -37,7 +36,10 @@ use super::constants::{
     VANILLA_OPTION_PRICING_RUN_RESULT_SCHEMA_VERSION, VANILLA_OPTION_REQUEST_VALIDATION_POLICY,
     VANILLA_OPTION_RESPONSE_VALIDATION_POLICY,
 };
-use super::fourier::FourierInversionDiagnostics;
+use super::fourier::{
+    FourierInversionDiagnostics, FourierInversionEngineSettings,
+    FourierInversionEngineSettingsError,
+};
 
 const PRICING_MEAN_REVERSION_ALIGNMENT_TOLERANCE: f64 = 1.0e-12;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -101,7 +103,9 @@ impl VanillaOptionPricingMarketInputs {
             risk_free_rate,
             dividend_yield,
         );
+
         market_inputs.validate()?;
+
         Ok(market_inputs)
     }
 
@@ -176,41 +180,43 @@ impl Display for VanillaOptionPricingMarketInputsError {
 impl Error for VanillaOptionPricingMarketInputsError {}
 
 /// Public model-parameter payload for baseline vanilla option pricing.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct VanillaOptionPricingModelParameters {
     pub hawkes_kernel_parameters: HawkesKernelParameters,
-    pub gamma_severity_mark_configuration: GammaSeverityMarkConfiguration,
+    pub news_process_configuration: NewsProcessConfiguration,
     pub nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,
 }
 
 impl VanillaOptionPricingModelParameters {
     pub const fn new(
         hawkes_kernel_parameters: HawkesKernelParameters,
-        gamma_severity_mark_configuration: GammaSeverityMarkConfiguration,
+        news_process_configuration: NewsProcessConfiguration,
         nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,
     ) -> Self {
         Self {
             hawkes_kernel_parameters,
-            gamma_severity_mark_configuration,
+            news_process_configuration,
             nig_shared_plus_shift_configuration,
         }
     }
 
     pub fn try_new(
         hawkes_kernel_parameters: HawkesKernelParameters,
-        gamma_severity_mark_configuration: GammaSeverityMarkConfiguration,
+        news_process_configuration: NewsProcessConfiguration,
         nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,
     ) -> Result<Self, VanillaOptionPricingModelParametersError> {
         let model_parameters = Self::new(
             hawkes_kernel_parameters,
-            gamma_severity_mark_configuration,
+            news_process_configuration,
             nig_shared_plus_shift_configuration,
         );
+
         model_parameters.validate()?;
+
         Ok(model_parameters)
     }
 
-    pub fn validate(self) -> Result<(), VanillaOptionPricingModelParametersError> {
+    pub fn validate(&self) -> Result<(), VanillaOptionPricingModelParametersError> {
         HawkesKernelParameters::try_new(
             self.hawkes_kernel_parameters.lambda_bar,
             self.hawkes_kernel_parameters.beta,
@@ -221,12 +227,10 @@ impl VanillaOptionPricingModelParameters {
             VanillaOptionPricingModelParametersError::InvalidHawkesKernelParameters { source }
         })?;
 
-        self.gamma_severity_mark_configuration
+        self.news_process_configuration
             .validate()
             .map_err(|source| {
-                VanillaOptionPricingModelParametersError::InvalidGammaSeverityMarkConfiguration {
-                    source,
-                }
+                VanillaOptionPricingModelParametersError::InvalidNewsProcessConfiguration { source }
             })?;
 
         self.nig_shared_plus_shift_configuration
@@ -247,8 +251,8 @@ pub enum VanillaOptionPricingModelParametersError {
     InvalidHawkesKernelParameters {
         source: HawkesKernelParameterError,
     },
-    InvalidGammaSeverityMarkConfiguration {
-        source: NewsMarkConfigurationError,
+    InvalidNewsProcessConfiguration {
+        source: NewsProcessConfigurationError,
     },
     InvalidNigSharedPlusShiftConfiguration {
         source: NigSharedPlusShiftConfigurationError,
@@ -262,9 +266,9 @@ impl Display for VanillaOptionPricingModelParametersError {
                 formatter,
                 "model_parameters.hawkes_kernel_parameters is invalid: {source}"
             ),
-            Self::InvalidGammaSeverityMarkConfiguration { source } => write!(
+            Self::InvalidNewsProcessConfiguration { source } => write!(
                 formatter,
-                "model_parameters.gamma_severity_mark_configuration is invalid: {source}"
+                "model_parameters.news_process_configuration is invalid: {source}"
             ),
             Self::InvalidNigSharedPlusShiftConfiguration { source } => write!(
                 formatter,
@@ -278,7 +282,7 @@ impl Error for VanillaOptionPricingModelParametersError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::InvalidHawkesKernelParameters { source } => Some(source),
-            Self::InvalidGammaSeverityMarkConfiguration { source } => Some(source),
+            Self::InvalidNewsProcessConfiguration { source } => Some(source),
             Self::InvalidNigSharedPlusShiftConfiguration { source } => Some(source),
         }
     }
@@ -290,7 +294,7 @@ pub struct AnchoredVanillaOptionPricingBoundaryInput {
     pub interval_index: usize,
     pub hawkes_boundary_state: HawkesExcitationState,
     pub mean_reversion_fitted_parameters: MeanReversionFittedParameters,
-    pub mean_reversion_runtime_interval_anchors: MeanReversionRuntimeIntervalAnchors,
+    pub interval_delta: f64,
     pub observed_boundary_state: MeanReversionBoundaryState,
 }
 
@@ -299,14 +303,14 @@ impl AnchoredVanillaOptionPricingBoundaryInput {
         interval_index: usize,
         hawkes_boundary_state: HawkesExcitationState,
         mean_reversion_fitted_parameters: MeanReversionFittedParameters,
-        mean_reversion_runtime_interval_anchors: MeanReversionRuntimeIntervalAnchors,
+        interval_delta: f64,
         observed_boundary_state: MeanReversionBoundaryState,
     ) -> Self {
         Self {
             interval_index,
             hawkes_boundary_state,
             mean_reversion_fitted_parameters,
-            mean_reversion_runtime_interval_anchors,
+            interval_delta,
             observed_boundary_state,
         }
     }
@@ -315,53 +319,20 @@ impl AnchoredVanillaOptionPricingBoundaryInput {
         interval_index: usize,
         hawkes_boundary_state: HawkesExcitationState,
         mean_reversion_fitted_parameters: MeanReversionFittedParameters,
-        mean_reversion_runtime_interval_anchors: MeanReversionRuntimeIntervalAnchors,
+        interval_delta: f64,
         observed_boundary_state: MeanReversionBoundaryState,
     ) -> Result<Self, AnchoredVanillaOptionPricingBoundaryInputError> {
         let boundary_input = Self::new(
             interval_index,
             hawkes_boundary_state,
             mean_reversion_fitted_parameters,
-            mean_reversion_runtime_interval_anchors,
+            interval_delta,
             observed_boundary_state,
         );
 
         boundary_input.validate()?;
 
         Ok(boundary_input)
-    }
-
-    pub fn disabled(
-        interval_delta: f64,
-        hawkes_boundary_state: HawkesExcitationState,
-        observed_log_price: f64,
-    ) -> Result<Self, AnchoredVanillaOptionPricingBoundaryInputError> {
-        let observed_boundary_state =
-            MeanReversionBoundaryState::try_new(observed_log_price, 0.0, observed_log_price)
-                .map_err(|source| {
-                    AnchoredVanillaOptionPricingBoundaryInputError::InvalidObservedBoundaryState {
-                        source,
-                    }
-                })?;
-        let mean_reversion_runtime_interval_anchors = MeanReversionRuntimeIntervalAnchors::try_new(
-            "pricing_disabled_flat_anchor_interval_grid.v1",
-            0.0,
-            vec![0.0],
-            vec![interval_delta],
-        )
-        .map_err(|source| {
-            AnchoredVanillaOptionPricingBoundaryInputError::InvalidMeanReversionRuntimeIntervalAnchors {
-                source,
-            }
-        })?;
-
-        Self::try_new(
-            0,
-            hawkes_boundary_state,
-            MeanReversionFittedParameters::disabled(),
-            mean_reversion_runtime_interval_anchors,
-            observed_boundary_state,
-        )
     }
 
     pub fn validate(&self) -> Result<(), AnchoredVanillaOptionPricingBoundaryInputError> {
@@ -379,51 +350,23 @@ impl AnchoredVanillaOptionPricingBoundaryInput {
                     source,
                 }
             })?;
-        self.mean_reversion_runtime_interval_anchors
-            .validate()
-            .map_err(|source| {
-                AnchoredVanillaOptionPricingBoundaryInputError::InvalidMeanReversionRuntimeIntervalAnchors {
-                    source,
-                }
-            })?;
+
         self.observed_boundary_state.validate().map_err(|source| {
             AnchoredVanillaOptionPricingBoundaryInputError::InvalidObservedBoundaryState { source }
         })?;
 
-        validate_runtime_anchor_alignment(
+        if !self.interval_delta.is_finite() || self.interval_delta <= 0.0 {
+            return Err(
+                AnchoredVanillaOptionPricingBoundaryInputError::InvalidIntervalDelta {
+                    value: self.interval_delta,
+                },
+            );
+        }
+
+        validate_observed_anchor_alignment(
             &self.mean_reversion_fitted_parameters,
-            &self.mean_reversion_runtime_interval_anchors,
+            self.observed_boundary_state.clone(),
         )?;
-
-        if self.interval_index
-            >= self
-                .mean_reversion_runtime_interval_anchors
-                .end_anchor_values
-                .len()
-        {
-            return Err(
-                AnchoredVanillaOptionPricingBoundaryInputError::IntervalIndexOutOfRange {
-                    interval_index: self.interval_index,
-                    available_interval_count: self
-                        .mean_reversion_runtime_interval_anchors
-                        .end_anchor_values
-                        .len(),
-                },
-            );
-        }
-
-        let current_anchor_value = self.current_anchor_value()?;
-        if (self.observed_boundary_state.anchor_value - current_anchor_value).abs()
-            > PRICING_MEAN_REVERSION_ALIGNMENT_TOLERANCE
-        {
-            return Err(
-                AnchoredVanillaOptionPricingBoundaryInputError::ObservedAnchorValueMismatch {
-                    interval_index: self.interval_index,
-                    expected_anchor_value: current_anchor_value,
-                    observed_anchor_value: self.observed_boundary_state.anchor_value,
-                },
-            );
-        }
 
         Ok(())
     }
@@ -431,62 +374,11 @@ impl AnchoredVanillaOptionPricingBoundaryInput {
     pub fn current_anchor_value(
         &self,
     ) -> Result<f64, AnchoredVanillaOptionPricingBoundaryInputError> {
-        if self.interval_index
-            >= self
-                .mean_reversion_runtime_interval_anchors
-                .end_anchor_values
-                .len()
-        {
-            return Err(
-                AnchoredVanillaOptionPricingBoundaryInputError::IntervalIndexOutOfRange {
-                    interval_index: self.interval_index,
-                    available_interval_count: self
-                        .mean_reversion_runtime_interval_anchors
-                        .end_anchor_values
-                        .len(),
-                },
-            );
-        }
-
-        Ok(if self.interval_index == 0 {
-            self.mean_reversion_runtime_interval_anchors
-                .start_anchor_value
-        } else {
-            self.mean_reversion_runtime_interval_anchors
-                .end_anchor_values[self.interval_index - 1]
-        })
-    }
-
-    pub fn next_anchor_value(&self) -> Result<f64, AnchoredVanillaOptionPricingBoundaryInputError> {
-        self.mean_reversion_runtime_interval_anchors
-            .end_anchor_values
-            .get(self.interval_index)
-            .copied()
-            .ok_or(
-                AnchoredVanillaOptionPricingBoundaryInputError::IntervalIndexOutOfRange {
-                    interval_index: self.interval_index,
-                    available_interval_count: self
-                        .mean_reversion_runtime_interval_anchors
-                        .end_anchor_values
-                        .len(),
-                },
-            )
+        Ok(self.observed_boundary_state.anchor_value)
     }
 
     pub fn interval_delta(&self) -> Result<f64, AnchoredVanillaOptionPricingBoundaryInputError> {
-        self.mean_reversion_runtime_interval_anchors
-            .interval_deltas
-            .get(self.interval_index)
-            .copied()
-            .ok_or(
-                AnchoredVanillaOptionPricingBoundaryInputError::IntervalIndexOutOfRange {
-                    interval_index: self.interval_index,
-                    available_interval_count: self
-                        .mean_reversion_runtime_interval_anchors
-                        .interval_deltas
-                        .len(),
-                },
-            )
+        Ok(self.interval_delta)
     }
 
     pub fn deviation_decay_factor(
@@ -496,15 +388,12 @@ impl AnchoredVanillaOptionPricingBoundaryInput {
         Ok((-self.mean_reversion_fitted_parameters.kappa * interval_delta).exp())
     }
 
-    pub fn observed_return_adjustment(
+    pub fn local_martingale_deviation_adjustment(
         &self,
     ) -> Result<f64, AnchoredVanillaOptionPricingBoundaryInputError> {
-        let current_anchor_value = self.current_anchor_value()?;
-        let next_anchor_value = self.next_anchor_value()?;
         let deviation_decay_factor = self.deviation_decay_factor()?;
 
-        Ok((next_anchor_value - current_anchor_value)
-            + (deviation_decay_factor - 1.0) * self.observed_boundary_state.deviation)
+        Ok((deviation_decay_factor - 1.0) * self.observed_boundary_state.deviation)
     }
 
     pub fn hawkes_boundary_state_norm(&self) -> f64 {
@@ -525,33 +414,11 @@ pub enum AnchoredVanillaOptionPricingBoundaryInputError {
     InvalidMeanReversionFittedParameters {
         source: MeanReversionFittedParametersValidationError,
     },
-    InvalidMeanReversionRuntimeIntervalAnchors {
-        source: MeanReversionRuntimeIntervalAnchorsValidationError,
-    },
     InvalidObservedBoundaryState {
         source: MeanReversionBoundaryStateValidationError,
     },
-    DisabledAnchorModelRequiresZeroKappa {
+    InvalidIntervalDelta {
         value: f64,
-    },
-    MissingConstantAnchorValue,
-    RuntimeAnchorStartMismatch {
-        expected_anchor_value: f64,
-        observed_anchor_value: f64,
-    },
-    RuntimeAnchorValueMismatch {
-        interval_index: usize,
-        expected_anchor_value: f64,
-        observed_anchor_value: f64,
-    },
-    IntervalIndexOutOfRange {
-        interval_index: usize,
-        available_interval_count: usize,
-    },
-    ObservedAnchorValueMismatch {
-        interval_index: usize,
-        expected_anchor_value: f64,
-        observed_anchor_value: f64,
     },
 }
 
@@ -566,51 +433,13 @@ impl Display for AnchoredVanillaOptionPricingBoundaryInputError {
                 formatter,
                 "boundary_input.mean_reversion_fitted_parameters is invalid: {source}"
             ),
-            Self::InvalidMeanReversionRuntimeIntervalAnchors { source } => write!(
-                formatter,
-                "boundary_input.mean_reversion_runtime_interval_anchors is invalid: {source}"
-            ),
             Self::InvalidObservedBoundaryState { source } => write!(
                 formatter,
                 "boundary_input.observed_boundary_state is invalid: {source}"
             ),
-            Self::DisabledAnchorModelRequiresZeroKappa { value } => write!(
+            Self::InvalidIntervalDelta { value } => write!(
                 formatter,
-                "boundary_input.mean_reversion_fitted_parameters.kappa must equal 0.0 when anchor_model_kind=disabled, found {value}"
-            ),
-            Self::MissingConstantAnchorValue => write!(
-                formatter,
-                "boundary_input.mean_reversion_fitted_parameters.anchor_model.anchor_value is required when anchor_model_kind=constant"
-            ),
-            Self::RuntimeAnchorStartMismatch {
-                expected_anchor_value,
-                observed_anchor_value,
-            } => write!(
-                formatter,
-                "boundary_input.mean_reversion_runtime_interval_anchors.start_anchor_value must equal {expected_anchor_value}, found {observed_anchor_value}"
-            ),
-            Self::RuntimeAnchorValueMismatch {
-                interval_index,
-                expected_anchor_value,
-                observed_anchor_value,
-            } => write!(
-                formatter,
-                "boundary_input.mean_reversion_runtime_interval_anchors.end_anchor_values[{interval_index}] must equal {expected_anchor_value}, found {observed_anchor_value}"
-            ),
-            Self::IntervalIndexOutOfRange {
-                interval_index,
-                available_interval_count,
-            } => write!(
-                formatter,
-                "boundary_input.interval_index must be less than the available interval count {available_interval_count}, found {interval_index}"
-            ),
-            Self::ObservedAnchorValueMismatch {
-                interval_index,
-                expected_anchor_value,
-                observed_anchor_value,
-            } => write!(
-                formatter,
-                "boundary_input.observed_boundary_state.anchor_value must equal the current interval anchor {expected_anchor_value} for interval_index={interval_index}, found {observed_anchor_value}"
+                "boundary_input.interval_delta must be finite and strictly positive, found {value}"
             ),
         }
     }
@@ -620,7 +449,6 @@ impl Error for AnchoredVanillaOptionPricingBoundaryInputError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::InvalidMeanReversionFittedParameters { source } => Some(source),
-            Self::InvalidMeanReversionRuntimeIntervalAnchors { source } => Some(source),
             Self::InvalidObservedBoundaryState { source } => Some(source),
             _ => None,
         }
@@ -652,10 +480,10 @@ pub struct AnchoredLocalTiltBoundaryStateSummary {
     pub hawkes_boundary_state: HawkesExcitationState,
     pub observed_boundary_state: MeanReversionBoundaryState,
     pub current_anchor_value: f64,
-    pub next_anchor_value: f64,
     pub interval_delta: f64,
     pub kappa: f64,
     pub deviation_decay_factor: f64,
+    pub local_martingale_deviation_adjustment: f64,
 }
 
 /// Deterministic diagnostics for one local anchored pricing tilt solve.
@@ -982,6 +810,7 @@ pub struct VanillaOptionPricingRequest {
     pub boundary_input: AnchoredVanillaOptionPricingBoundaryInput,
     pub model_parameters: VanillaOptionPricingModelParameters,
     pub interval_delta: f64,
+    pub fourier_inversion_settings: Option<FourierInversionEngineSettings>,
 }
 
 impl VanillaOptionPricingRequest {
@@ -1013,7 +842,24 @@ impl VanillaOptionPricingRequest {
             boundary_input,
             model_parameters,
             interval_delta,
+            fourier_inversion_settings: None,
         }
+    }
+
+    pub const fn with_fourier_inversion_settings(
+        mut self,
+        fourier_inversion_settings: FourierInversionEngineSettings,
+    ) -> Self {
+        self.fourier_inversion_settings = Some(fourier_inversion_settings);
+        self
+    }
+
+    const fn with_fourier_inversion_settings_option(
+        mut self,
+        fourier_inversion_settings: Option<FourierInversionEngineSettings>,
+    ) -> Self {
+        self.fourier_inversion_settings = fourier_inversion_settings;
+        self
     }
 
     pub fn try_new(
@@ -1079,11 +925,21 @@ impl VanillaOptionPricingRequest {
             VanillaOptionPricingRequestError::InvalidModelParameters { source }
         })?;
 
+        if let Some(fourier_inversion_settings) = self.fourier_inversion_settings {
+            fourier_inversion_settings.validate().map_err(|source| {
+                VanillaOptionPricingRequestError::InvalidFourierInversionSettings { source }
+            })?;
+        }
+
         Ok(())
     }
 
     pub const fn validation_policy() -> &'static str {
         VANILLA_OPTION_REQUEST_VALIDATION_POLICY
+    }
+
+    pub fn resolved_fourier_inversion_settings(&self) -> FourierInversionEngineSettings {
+        self.fourier_inversion_settings.unwrap_or_default()
     }
 }
 
@@ -1106,6 +962,9 @@ pub enum VanillaOptionPricingRequestError {
     },
     InvalidModelParameters {
         source: VanillaOptionPricingModelParametersError,
+    },
+    InvalidFourierInversionSettings {
+        source: FourierInversionEngineSettingsError,
     },
 }
 
@@ -1130,10 +989,16 @@ impl Display for VanillaOptionPricingRequestError {
                 interval_index,
             } => write!(
                 formatter,
-                "interval_delta must match boundary_input.mean_reversion_runtime_interval_anchors.interval_deltas[{interval_index}], found request={requested_interval_delta} boundary_input={observed_interval_delta}"
+                "interval_delta must match boundary_input.interval_delta for interval_index={interval_index}, found request={requested_interval_delta} boundary_input={observed_interval_delta}"
             ),
             Self::InvalidModelParameters { source } => {
                 write!(formatter, "model_parameters payload is invalid: {source}")
+            }
+            Self::InvalidFourierInversionSettings { source } => {
+                write!(
+                    formatter,
+                    "fourier_inversion_settings payload is invalid: {source}"
+                )
             }
         }
     }
@@ -1145,6 +1010,7 @@ impl Error for VanillaOptionPricingRequestError {
             Self::InvalidMarketInputs { source } => Some(source),
             Self::InvalidBoundaryInput { source } => Some(source),
             Self::InvalidModelParameters { source } => Some(source),
+            Self::InvalidFourierInversionSettings { source } => Some(source),
             _ => None,
         }
     }
@@ -1186,7 +1052,9 @@ impl VanillaOptionPricingDiagnostics {
             maturity_interval,
             boundary_state_norm,
         );
+
         diagnostics.validate()?;
+
         Ok(diagnostics)
     }
 
@@ -1273,7 +1141,9 @@ impl VanillaOptionPricingResponse {
         diagnostics: VanillaOptionPricingDiagnostics,
     ) -> Result<Self, VanillaOptionPricingResponseError> {
         let response = Self::new(price, diagnostics);
+
         response.validate()?;
+
         Ok(response)
     }
 
@@ -1416,7 +1286,9 @@ impl VanillaOptionPricingRunDiagnostics {
         anchored_recursion: Option<AnchoredPricingRecursionDiagnostics>,
     ) -> Result<Self, VanillaOptionPricingRunDiagnosticsError> {
         let diagnostics = Self::new(transform, integration_quality, anchored_recursion);
+
         diagnostics.validate()?;
+
         Ok(diagnostics)
     }
 
@@ -1703,6 +1575,7 @@ impl VanillaOptionPricingRunResult {
         calibration_hooks: Option<VanillaOptionPricingCalibrationHooks>,
     ) -> Result<Self, VanillaOptionPricingRunResultError> {
         let run_result = Self::new(response, run_diagnostics, calibration_hooks);
+
         run_result.validate()?;
 
         Ok(run_result)
@@ -1712,6 +1585,7 @@ impl VanillaOptionPricingRunResult {
         self.response
             .validate()
             .map_err(|source| VanillaOptionPricingRunResultError::InvalidResponse { source })?;
+
         if let Some(run_diagnostics) = &self.run_diagnostics {
             run_diagnostics.validate().map_err(|source| {
                 VanillaOptionPricingRunResultError::InvalidRunDiagnostics { source }
@@ -1967,81 +1841,15 @@ fn validate_hawkes_boundary_state_component(
     Ok(())
 }
 
-fn validate_runtime_anchor_alignment(
+fn validate_observed_anchor_alignment(
     mean_reversion_fitted_parameters: &MeanReversionFittedParameters,
-    mean_reversion_runtime_interval_anchors: &MeanReversionRuntimeIntervalAnchors,
+    _observed_boundary_state: MeanReversionBoundaryState,
 ) -> Result<(), AnchoredVanillaOptionPricingBoundaryInputError> {
     match mean_reversion_fitted_parameters
         .anchor_model
         .anchor_model_kind
     {
-        MeanReversionAnchorModelKind::Disabled => {
-            if mean_reversion_fitted_parameters.kappa != 0.0 {
-                return Err(
-                    AnchoredVanillaOptionPricingBoundaryInputError::DisabledAnchorModelRequiresZeroKappa {
-                        value: mean_reversion_fitted_parameters.kappa,
-                    },
-                );
-            }
-
-            validate_flat_runtime_anchors(
-                mean_reversion_runtime_interval_anchors,
-                mean_reversion_runtime_interval_anchors.start_anchor_value,
-            )?;
-        }
-        MeanReversionAnchorModelKind::Constant => {
-            let expected_anchor_value = mean_reversion_fitted_parameters
-                .anchor_model
-                .anchor_value
-                .ok_or(
-                    AnchoredVanillaOptionPricingBoundaryInputError::MissingConstantAnchorValue,
-                )?;
-
-            if (mean_reversion_runtime_interval_anchors.start_anchor_value - expected_anchor_value)
-                .abs()
-                > PRICING_MEAN_REVERSION_ALIGNMENT_TOLERANCE
-            {
-                return Err(
-                    AnchoredVanillaOptionPricingBoundaryInputError::RuntimeAnchorStartMismatch {
-                        expected_anchor_value,
-                        observed_anchor_value: mean_reversion_runtime_interval_anchors
-                            .start_anchor_value,
-                    },
-                );
-            }
-
-            validate_flat_runtime_anchors(
-                mean_reversion_runtime_interval_anchors,
-                expected_anchor_value,
-            )?;
-        }
-        MeanReversionAnchorModelKind::DeterministicIntervalGrid => {}
-    }
-
-    Ok(())
-}
-
-fn validate_flat_runtime_anchors(
-    mean_reversion_runtime_interval_anchors: &MeanReversionRuntimeIntervalAnchors,
-    expected_anchor_value: f64,
-) -> Result<(), AnchoredVanillaOptionPricingBoundaryInputError> {
-    for (interval_index, observed_anchor_value) in mean_reversion_runtime_interval_anchors
-        .end_anchor_values
-        .iter()
-        .copied()
-        .enumerate()
-    {
-        if (observed_anchor_value - expected_anchor_value).abs()
-            > PRICING_MEAN_REVERSION_ALIGNMENT_TOLERANCE
-        {
-            return Err(
-                AnchoredVanillaOptionPricingBoundaryInputError::RuntimeAnchorValueMismatch {
-                    interval_index,
-                    expected_anchor_value,
-                    observed_anchor_value,
-                },
-            );
-        }
+        MeanReversionAnchorModelKind::EndogenousCoreExpectationOneInterval => {}
     }
 
     Ok(())
@@ -2074,11 +1882,11 @@ impl<'de> Deserialize<'de> for VanillaOptionPricingMarketInputs {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct VanillaOptionPricingModelParametersPayload {
     hawkes_kernel_parameters: HawkesKernelParameters,
-    gamma_severity_mark_configuration: GammaSeverityMarkConfiguration,
+    news_process_configuration: NewsProcessConfiguration,
     nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,
 }
 
@@ -2091,7 +1899,7 @@ impl<'de> Deserialize<'de> for VanillaOptionPricingModelParameters {
 
         Self::try_new(
             payload.hawkes_kernel_parameters,
-            payload.gamma_severity_mark_configuration,
+            payload.news_process_configuration,
             payload.nig_shared_plus_shift_configuration,
         )
         .map_err(serde::de::Error::custom)
@@ -2104,7 +1912,7 @@ struct AnchoredVanillaOptionPricingBoundaryInputPayload {
     interval_index: usize,
     hawkes_boundary_state: HawkesExcitationState,
     mean_reversion_fitted_parameters: MeanReversionFittedParameters,
-    mean_reversion_runtime_interval_anchors: MeanReversionRuntimeIntervalAnchors,
+    interval_delta: f64,
     observed_boundary_state: MeanReversionBoundaryState,
 }
 
@@ -2119,7 +1927,7 @@ impl<'de> Deserialize<'de> for AnchoredVanillaOptionPricingBoundaryInput {
             payload.interval_index,
             payload.hawkes_boundary_state,
             payload.mean_reversion_fitted_parameters,
-            payload.mean_reversion_runtime_interval_anchors,
+            payload.interval_delta,
             payload.observed_boundary_state,
         )
         .map_err(serde::de::Error::custom)
@@ -2135,6 +1943,8 @@ struct VanillaOptionPricingRequestPayload {
     model_parameters: VanillaOptionPricingModelParameters,
     #[serde(default = "default_intraday_pricing_interval_delta")]
     interval_delta: f64,
+    #[serde(default)]
+    fourier_inversion_settings: Option<FourierInversionEngineSettings>,
 }
 
 impl<'de> Deserialize<'de> for VanillaOptionPricingRequest {
@@ -2144,14 +1954,19 @@ impl<'de> Deserialize<'de> for VanillaOptionPricingRequest {
     {
         let payload = VanillaOptionPricingRequestPayload::deserialize(deserializer)?;
 
-        Self::try_new_with_interval_delta(
+        let request = Self::new_with_interval_delta(
             payload.market_inputs,
             payload.payoff,
             payload.boundary_input,
             payload.model_parameters,
             payload.interval_delta,
         )
-        .map_err(serde::de::Error::custom)
+        .with_fourier_inversion_settings_option(payload.fourier_inversion_settings);
+
+        request
+            .validate()
+            .map(|()| request)
+            .map_err(serde::de::Error::custom)
     }
 }
 

@@ -171,6 +171,44 @@ pub struct SufficientStatisticsTransformSlices {
     pub n_minus_transform: ComplexScalar,
 }
 
+/// Closed-form one-interval expectations extracted from solved transform slices.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct SufficientStatisticsExpectedIntervalStatistics {
+    pub expected_a_plus: f64,
+    pub expected_a_minus: f64,
+    pub expected_n_plus: f64,
+    pub expected_n_minus: f64,
+}
+
+impl SufficientStatisticsExpectedIntervalStatistics {
+    pub fn try_new(
+        expected_a_plus: f64,
+        expected_a_minus: f64,
+        expected_n_plus: f64,
+        expected_n_minus: f64,
+    ) -> Result<Self, SufficientStatisticsIntervalStatisticsError> {
+        let statistics = Self {
+            expected_a_plus,
+            expected_a_minus,
+            expected_n_plus,
+            expected_n_minus,
+        };
+
+        statistics.validate()?;
+
+        Ok(statistics)
+    }
+
+    pub fn validate(self) -> Result<(), SufficientStatisticsIntervalStatisticsError> {
+        validate_non_negative_finite_statistic("expected_a_plus", self.expected_a_plus)?;
+        validate_non_negative_finite_statistic("expected_a_minus", self.expected_a_minus)?;
+        validate_non_negative_finite_statistic("expected_n_plus", self.expected_n_plus)?;
+        validate_non_negative_finite_statistic("expected_n_minus", self.expected_n_minus)?;
+
+        Ok(())
+    }
+}
+
 impl SufficientStatisticsTransformSlices {
     #[allow(clippy::too_many_arguments)]
     pub fn try_new(
@@ -191,7 +229,9 @@ impl SufficientStatisticsTransformSlices {
             n_plus_transform,
             n_minus_transform,
         };
+
         slices.validate()?;
+
         Ok(slices)
     }
 
@@ -226,7 +266,9 @@ impl SufficientStatisticsStreamingChunkingSettings {
         let settings = Self {
             max_intervals_per_chunk,
         };
+
         settings.validate()?;
+
         Ok(settings)
     }
 
@@ -278,6 +320,7 @@ fn ensure_finite_transform_slice(
             SufficientStatisticsTransformSlicesError::InvalidTransformValue { field, value },
         );
     }
+
     Ok(())
 }
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
@@ -301,7 +344,9 @@ impl SufficientStatisticsIntervalStatistics {
             n_plus,
             n_minus,
         };
+
         interval_statistics.validate()?;
+
         Ok(interval_statistics)
     }
 
@@ -336,6 +381,7 @@ impl<'de> Deserialize<'de> for SufficientStatisticsIntervalStatistics {
         D: serde::Deserializer<'de>,
     {
         let payload = SufficientStatisticsIntervalStatisticsPayload::deserialize(deserializer)?;
+
         Self::try_new(
             payload.a_plus,
             payload.a_minus,
@@ -344,6 +390,24 @@ impl<'de> Deserialize<'de> for SufficientStatisticsIntervalStatistics {
         )
         .map_err(serde::de::Error::custom)
     }
+}
+
+fn validate_non_negative_finite_statistic(
+    field: &'static str,
+    value: f64,
+) -> Result<(), SufficientStatisticsIntervalStatisticsError> {
+    if !value.is_finite() {
+        return Err(
+            SufficientStatisticsIntervalStatisticsError::NonFiniteStatistic { field, value },
+        );
+    }
+    if value < 0.0 {
+        return Err(
+            SufficientStatisticsIntervalStatisticsError::NegativeStatistic { field, value },
+        );
+    }
+
+    Ok(())
 }
 /// Snapshot metadata for one deterministic boundary-state update step.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]

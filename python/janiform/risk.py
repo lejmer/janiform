@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Optional
 
@@ -13,7 +14,6 @@ from .contracts import (
     parse_json_object,
     require_mapping,
     require_non_negative_finite_number,
-    require_non_negative_finite_scalar,
     require_non_negative_integer,
     require_positive_finite_number,
     require_positive_integer,
@@ -77,22 +77,6 @@ def _parse_hawkes_excitation_state(
 
     return HawkesExcitationState.from_mapping(raw_payload, field_path=field_path)
 
-
-def _validate_flat_runtime_anchors(
-    runtime_interval_anchors: MeanReversionRuntimeIntervalAnchors,
-    expected_anchor_value: float,
-) -> None:
-    for interval_index, observed_anchor_value in enumerate(
-        runtime_interval_anchors.end_anchor_values
-    ):
-        if abs(observed_anchor_value - expected_anchor_value) > _MEAN_REVERSION_ALIGNMENT_TOLERANCE:
-            raise _risk_error(
-                f"model_inputs.mean_reversion_runtime_interval_anchors.end_anchor_values[{interval_index}]",
-                (
-                    f"must equal constant anchor value {expected_anchor_value}, "
-                    f"found {observed_anchor_value}"
-                ),
-            )
 
 SUFFICIENT_STATISTICS_RISK_INTERVAL_FACTOR_POLICY = (
     "explicit_interval_aligned_s_h_and_news_intensity_inputs_without_implicit_resampling.v1"
@@ -274,42 +258,7 @@ class SufficientStatisticsRiskModelInputs(ContractModel):
             )
 
         match self.mean_reversion_fitted_parameters.anchor_model.anchor_model_kind:
-            case MeanReversionAnchorModelKind.DISABLED:
-                if self.mean_reversion_fitted_parameters.kappa != 0.0:
-                    raise _risk_error(
-                        "model_inputs.mean_reversion_fitted_parameters.kappa",
-                        "must be 0.0 when anchor_model_kind=disabled",
-                    )
-
-                _validate_flat_runtime_anchors(
-                    self.mean_reversion_runtime_interval_anchors,
-                    self.mean_reversion_runtime_interval_anchors.start_anchor_value,
-                )
-            case MeanReversionAnchorModelKind.CONSTANT:
-                expected_anchor_value = self.mean_reversion_fitted_parameters.anchor_model.anchor_value
-                if expected_anchor_value is None:
-                    raise _risk_error(
-                        "model_inputs.mean_reversion_fitted_parameters.anchor_model.anchor_value",
-                        "is required when anchor_model_kind=constant",
-                    )
-
-                if (
-                    abs(
-                        self.mean_reversion_runtime_interval_anchors.start_anchor_value
-                        - expected_anchor_value
-                    )
-                    > _MEAN_REVERSION_ALIGNMENT_TOLERANCE
-                ):
-                    raise _risk_error(
-                        "model_inputs.mean_reversion_runtime_interval_anchors.start_anchor_value",
-                        f"must equal constant anchor value {expected_anchor_value}",
-                    )
-
-                _validate_flat_runtime_anchors(
-                    self.mean_reversion_runtime_interval_anchors,
-                    expected_anchor_value,
-                )
-            case MeanReversionAnchorModelKind.DETERMINISTIC_INTERVAL_GRID:
+            case MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL:
                 return
 
     @staticmethod

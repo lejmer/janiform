@@ -12,6 +12,7 @@ use janiform_engine_simulation::{
 use janiform_foundations::randomness::{
     SimulationRandomnessFactory, SimulationRandomnessStream, SimulationRandomnessSubstreamDomain,
 };
+use janiform_foundations::time::ONE_HOUR_NANOS;
 use janiform_market_time::calendar::{ExchangeCalendarRegistry, ExchangeCalendarRegistryLoader};
 use janiform_market_time::hourly_factors::{
     DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD, DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD,
@@ -37,7 +38,6 @@ use support::hawkes_invariant_catalog::{
 
 const START_TIME_UTC_NANOS: i64 = 1_704_067_200_000_000_000;
 const FIFTEEN_MINUTE_NANOS: i64 = 900_000_000_000;
-const ONE_HOUR_NANOS: i64 = 3_600_000_000_000;
 const ONE_DAY_NANOS: i64 = 86_400_000_000_000;
 const FLOAT_TOLERANCE: f64 = 1e-12;
 const OPEN_MARKET_START_TIME_UTC_NANOS: i64 = 1_705_935_600_000_000_000;
@@ -1617,7 +1617,8 @@ fn disabled_mean_reversion_runtime_inputs(
     MeanReversionBoundaryState,
 ) {
     (
-        MeanReversionFittedParameters::disabled(),
+        MeanReversionFittedParameters::endogenous_core_expectation_one_interval(0.0)
+            .expect("zero-kappa endogenous mean reversion should construct"),
         MeanReversionRuntimeIntervalAnchors::try_new(
             hourly_factor_contract.metadata.interval_alignment_policy,
             0.0,

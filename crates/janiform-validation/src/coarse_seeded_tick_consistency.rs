@@ -8,12 +8,12 @@ use janiform_engine_simulation::{
     SeededTickSimulationRunConfig, SeededTickSimulationRunResult,
 };
 use janiform_foundations::numeric::arithmetic_mean_or_zero;
+use janiform_foundations::time::duration_nanos_to_hours;
 use janiform_model_kernels::hawkes::HawkesExcitationState;
 use serde::Serialize;
 
 use super::contracts::RegressionCaseStatus;
 
-const HOURS_PER_NANOSECOND: f64 = 1.0 / 3_600_000_000_000.0;
 const INTERVAL_RATIO_TOLERANCE: f64 = 1.0e-9;
 const FLOAT_ZERO_TOLERANCE: f64 = 1.0e-12;
 
@@ -1607,7 +1607,7 @@ fn derive_uniform_interval_delta_hours(
         contract.interval_end_utc_nanos[0] - contract.interval_start_utc_nanos[0];
     if first_interval_delta_nanos <= 0 {
         return Err(SeededTickCoarseAggregationError::InvalidFineIntervalDelta {
-            value: first_interval_delta_nanos as f64 * HOURS_PER_NANOSECOND,
+            value: duration_nanos_to_hours(first_interval_delta_nanos),
         });
     }
 
@@ -1617,15 +1617,15 @@ fn derive_uniform_interval_delta_hours(
         if interval_delta_nanos != first_interval_delta_nanos {
             return Err(
                 SeededTickCoarseAggregationError::CoarseFineIntervalRatioMismatch {
-                    coarse_interval_delta: interval_delta_nanos as f64 * HOURS_PER_NANOSECOND,
-                    fine_interval_delta: first_interval_delta_nanos as f64 * HOURS_PER_NANOSECOND,
+                    coarse_interval_delta: duration_nanos_to_hours(interval_delta_nanos),
+                    fine_interval_delta: duration_nanos_to_hours(first_interval_delta_nanos),
                     implied_ratio: interval_delta_nanos as f64 / first_interval_delta_nanos as f64,
                 },
             );
         }
     }
 
-    let fine_interval_delta = first_interval_delta_nanos as f64 * HOURS_PER_NANOSECOND;
+    let fine_interval_delta = duration_nanos_to_hours(first_interval_delta_nanos);
     if !fine_interval_delta.is_finite() || fine_interval_delta <= 0.0 {
         return Err(SeededTickCoarseAggregationError::InvalidFineIntervalDelta {
             value: fine_interval_delta,

@@ -33,3 +33,8 @@ pub use janiform_affine_oracle::affine_oracle::{
     solve_exponential_affine_transform_with_optional_settings,
     solve_exponential_affine_transform_with_settings,
 };
+pub use janiform_affine_oracle::endogenous_anchor::{
+    EndogenousAnchorIntervalExpectation, EndogenousAnchorIntervalFactors,
+    EndogenousAnchorMaterialization, EndogenousAnchorMaterializationError,
+    materialize_endogenous_anchor_path,
+};

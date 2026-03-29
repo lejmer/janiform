@@ -183,7 +183,7 @@
         },
         "JaniformEstimator": {
           "base_classes": [],
-          "constructor_signature": "(*, workflow_scope: 'CalibrationMarketDataWorkflowScope' = <CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE: 'full_without_option_surface'>, tick_data_column_mapping: 'Optional[CalibrationTickDataColumnMapping]' = None, normalization_policy: 'Optional[CalibrationMarketDataNormalizationPolicy]' = None, option_surface_column_mapping: 'Optional[CalibrationOptionSurfaceColumnMapping]' = None, output_preferences: 'Optional[CalibrationMarketDataOutputPreferences]' = None, mean_reversion: 'Optional[CalibrationMeanReversionConfiguration]' = None, market_profile: 'Optional[str | MarketProfileReference]' = None, session: 'Optional[str | Path | SessionPresetReference]' = None, known_news: 'Optional[str | KnownNewsPresetReference]' = None, exchange_code: 'Optional[str]' = None, session_timezone: 'Optional[str]' = None, registry: 'Optional[PresetRegistry]' = None, cpu_count: 'Optional[int]' = None, silent: 'bool' = False) -> 'None'",
+          "constructor_signature": "(*, workflow_scope: 'CalibrationMarketDataWorkflowScope' = <CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE: 'full_without_option_surface'>, tick_data_column_mapping: 'Optional[CalibrationTickDataColumnMapping]' = None, normalization_policy: 'Optional[CalibrationMarketDataNormalizationPolicy]' = None, option_surface_column_mapping: 'Optional[CalibrationOptionSurfaceColumnMapping]' = None, output_preferences: 'Optional[CalibrationMarketDataOutputPreferences]' = None, optimizer_settings_by_stage: 'tuple[CalibrationStageSolverSettings, ...]' = (), preprocessing_settings: 'Optional[CalibrationMarketDataPreprocessingSettings]' = None, mean_reversion: 'Optional[CalibrationMeanReversionConfiguration]' = None, market_profile: 'Optional[str | MarketProfileReference]' = None, session: 'Optional[str | Path | SessionPresetReference]' = None, known_news: 'Optional[str | KnownNewsPresetReference]' = None, exchange_code: 'Optional[str]' = None, session_timezone: 'Optional[str]' = None, registry: 'Optional[PresetRegistry]' = None, cpu_count: 'Optional[int]' = None, silent: 'bool' = False) -> 'None'",
           "kind": "class",
           "origin_module": "janiform.calibration.fit.estimator",
           "qualname": "JaniformEstimator"
@@ -259,12 +259,14 @@
             "workflow_scope",
             "normalization_policy",
             "output_preferences",
+            "optimizer_settings_by_stage",
+            "preprocessing_settings",
             "option_surface_source",
             "known_news_inputs",
             "mean_reversion"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: 'str', run_id: 'str', tick_data_source: 'CalibrationInputFileReference', session_configuration: 'CalibrationSessionConfigurationInput', column_mapping: 'CalibrationMarketDataColumnMapping', workflow_scope: 'CalibrationMarketDataWorkflowScope', normalization_policy: 'CalibrationMarketDataNormalizationPolicy', output_preferences: 'CalibrationMarketDataOutputPreferences', option_surface_source: 'Optional[CalibrationInputFileReference]' = None, known_news_inputs: 'Optional[CalibrationKnownNewsInput]' = None, mean_reversion: 'Optional[CalibrationMeanReversionConfiguration]' = None) -> 'None'"
+          "signature": "(schema_version: 'str', run_id: 'str', tick_data_source: 'CalibrationInputFileReference', session_configuration: 'CalibrationSessionConfigurationInput', column_mapping: 'CalibrationMarketDataColumnMapping', workflow_scope: 'CalibrationMarketDataWorkflowScope', normalization_policy: 'CalibrationMarketDataNormalizationPolicy', output_preferences: 'CalibrationMarketDataOutputPreferences', optimizer_settings_by_stage: 'tuple[CalibrationStageSolverSettings, ...]' = (), preprocessing_settings: 'Optional[CalibrationMarketDataPreprocessingSettings]' = None, option_surface_source: 'Optional[CalibrationInputFileReference]' = None, known_news_inputs: 'Optional[CalibrationKnownNewsInput]' = None, mean_reversion: 'Optional[CalibrationMeanReversionConfiguration]' = None) -> 'None'"
         },
         "MarketProfileReference": {
           "field_names": [
@@ -279,30 +281,17 @@
         },
         "MeanReversionAnchorModel": {
           "field_names": [
-            "anchor_model_kind",
-            "anchor_value",
-            "source_interval_start_utc_nanos",
-            "source_interval_end_utc_nanos",
-            "anchor_values",
-            "source_alignment_policy"
+            "anchor_model_kind"
           ],
           "kind": "contract_model",
-          "signature": "(anchor_model_kind: 'MeanReversionAnchorModelKind', anchor_value: 'Optional[float]' = None, source_interval_start_utc_nanos: 'tuple[int, ...]' = (), source_interval_end_utc_nanos: 'tuple[int, ...]' = (), anchor_values: 'tuple[float, ...]' = (), source_alignment_policy: 'Optional[str]' = None) -> 'None'"
+          "signature": "(anchor_model_kind: 'MeanReversionAnchorModelKind') -> 'None'"
         },
         "MeanReversionAnchorModelKind": {
           "kind": "enum",
           "members": [
             {
-              "name": "DISABLED",
-              "value": "disabled"
-            },
-            {
-              "name": "CONSTANT",
-              "value": "constant"
-            },
-            {
-              "name": "DETERMINISTIC_INTERVAL_GRID",
-              "value": "deterministic_interval_grid"
+              "name": "ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL",
+              "value": "endogenous_core_expectation_one_interval"
             }
           ]
         },
@@ -435,7 +424,7 @@
       "symbols": {
         "JaniformEstimator": {
           "base_classes": [],
-          "constructor_signature": "(*, workflow_scope: 'CalibrationMarketDataWorkflowScope' = <CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE: 'full_without_option_surface'>, tick_data_column_mapping: 'Optional[CalibrationTickDataColumnMapping]' = None, normalization_policy: 'Optional[CalibrationMarketDataNormalizationPolicy]' = None, option_surface_column_mapping: 'Optional[CalibrationOptionSurfaceColumnMapping]' = None, output_preferences: 'Optional[CalibrationMarketDataOutputPreferences]' = None, mean_reversion: 'Optional[CalibrationMeanReversionConfiguration]' = None, market_profile: 'Optional[str | MarketProfileReference]' = None, session: 'Optional[str | Path | SessionPresetReference]' = None, known_news: 'Optional[str | KnownNewsPresetReference]' = None, exchange_code: 'Optional[str]' = None, session_timezone: 'Optional[str]' = None, registry: 'Optional[PresetRegistry]' = None, cpu_count: 'Optional[int]' = None, silent: 'bool' = False) -> 'None'",
+          "constructor_signature": "(*, workflow_scope: 'CalibrationMarketDataWorkflowScope' = <CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE: 'full_without_option_surface'>, tick_data_column_mapping: 'Optional[CalibrationTickDataColumnMapping]' = None, normalization_policy: 'Optional[CalibrationMarketDataNormalizationPolicy]' = None, option_surface_column_mapping: 'Optional[CalibrationOptionSurfaceColumnMapping]' = None, output_preferences: 'Optional[CalibrationMarketDataOutputPreferences]' = None, optimizer_settings_by_stage: 'tuple[CalibrationStageSolverSettings, ...]' = (), preprocessing_settings: 'Optional[CalibrationMarketDataPreprocessingSettings]' = None, mean_reversion: 'Optional[CalibrationMeanReversionConfiguration]' = None, market_profile: 'Optional[str | MarketProfileReference]' = None, session: 'Optional[str | Path | SessionPresetReference]' = None, known_news: 'Optional[str | KnownNewsPresetReference]' = None, exchange_code: 'Optional[str]' = None, session_timezone: 'Optional[str]' = None, registry: 'Optional[PresetRegistry]' = None, cpu_count: 'Optional[int]' = None, silent: 'bool' = False) -> 'None'",
           "kind": "class",
           "origin_module": "janiform.calibration.fit.estimator",
           "qualname": "JaniformEstimator"
@@ -493,7 +482,7 @@
       "symbols": {
         "JaniformEstimator": {
           "base_classes": [],
-          "constructor_signature": "(*, workflow_scope: 'CalibrationMarketDataWorkflowScope' = <CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE: 'full_without_option_surface'>, tick_data_column_mapping: 'Optional[CalibrationTickDataColumnMapping]' = None, normalization_policy: 'Optional[CalibrationMarketDataNormalizationPolicy]' = None, option_surface_column_mapping: 'Optional[CalibrationOptionSurfaceColumnMapping]' = None, output_preferences: 'Optional[CalibrationMarketDataOutputPreferences]' = None, mean_reversion: 'Optional[CalibrationMeanReversionConfiguration]' = None, market_profile: 'Optional[str | MarketProfileReference]' = None, session: 'Optional[str | Path | SessionPresetReference]' = None, known_news: 'Optional[str | KnownNewsPresetReference]' = None, exchange_code: 'Optional[str]' = None, session_timezone: 'Optional[str]' = None, registry: 'Optional[PresetRegistry]' = None, cpu_count: 'Optional[int]' = None, silent: 'bool' = False) -> 'None'",
+          "constructor_signature": "(*, workflow_scope: 'CalibrationMarketDataWorkflowScope' = <CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE: 'full_without_option_surface'>, tick_data_column_mapping: 'Optional[CalibrationTickDataColumnMapping]' = None, normalization_policy: 'Optional[CalibrationMarketDataNormalizationPolicy]' = None, option_surface_column_mapping: 'Optional[CalibrationOptionSurfaceColumnMapping]' = None, output_preferences: 'Optional[CalibrationMarketDataOutputPreferences]' = None, optimizer_settings_by_stage: 'tuple[CalibrationStageSolverSettings, ...]' = (), preprocessing_settings: 'Optional[CalibrationMarketDataPreprocessingSettings]' = None, mean_reversion: 'Optional[CalibrationMeanReversionConfiguration]' = None, market_profile: 'Optional[str | MarketProfileReference]' = None, session: 'Optional[str | Path | SessionPresetReference]' = None, known_news: 'Optional[str | KnownNewsPresetReference]' = None, exchange_code: 'Optional[str]' = None, session_timezone: 'Optional[str]' = None, registry: 'Optional[PresetRegistry]' = None, cpu_count: 'Optional[int]' = None, silent: 'bool' = False) -> 'None'",
           "kind": "class",
           "origin_module": "janiform.calibration.fit.estimator",
           "public_methods": {
@@ -582,6 +571,9 @@
         "CalibrationMarketDataColumnMapping",
         "CalibrationMarketDataNormalizationPolicy",
         "CalibrationMarketDataOutputPreferences",
+        "CalibrationMarketDataPreprocessingSettings",
+        "CalibrationMarketDataReturnComponentsPreprocessingSettings",
+        "CalibrationMarketDataSeasonalityPreprocessingSettings",
         "CalibrationMarketDataWorkflowScope",
         "CalibrationMeanReversionConfiguration",
         "CalibrationOptionQuoteInputPolicy",
@@ -706,6 +698,37 @@
           ],
           "kind": "contract_model",
           "signature": "(execution_mode: 'CalibrationExecutionMode' = <CalibrationExecutionMode.MEMORY: 'memory'>, disk_checkpoint_directory: 'Optional[str]' = None, emit_derived_staged_execution_input: 'bool' = False, emit_input_provenance_report: 'bool' = True) -> 'None'"
+        },
+        "CalibrationMarketDataPreprocessingSettings": {
+          "field_names": [
+            "seasonality",
+            "return_components"
+          ],
+          "kind": "contract_model",
+          "signature": "(seasonality: 'Optional[CalibrationMarketDataSeasonalityPreprocessingSettings]' = None, return_components: 'Optional[CalibrationMarketDataReturnComponentsPreprocessingSettings]' = None) -> 'None'"
+        },
+        "CalibrationMarketDataReturnComponentsPreprocessingSettings": {
+          "field_names": [
+            "intraday_jump_threshold_multiplier",
+            "close_open_gap_tolerance_multiplier"
+          ],
+          "kind": "contract_model",
+          "signature": "(intraday_jump_threshold_multiplier: 'float' = 4.0, close_open_gap_tolerance_multiplier: 'float' = 3.0) -> 'None'"
+        },
+        "CalibrationMarketDataSeasonalityPreprocessingSettings": {
+          "field_names": [
+            "session_filter",
+            "sparse_hour_event_threshold",
+            "known_news_overlay_log_adjustment",
+            "intraday_minutes_per_bin",
+            "intraday_smoothing_kernel",
+            "intraday_smoothing_bandwidth_bins",
+            "intraday_minimum_bin_events",
+            "day_of_week_minimum_bucket_events",
+            "day_of_year_minimum_bucket_events"
+          ],
+          "kind": "contract_model",
+          "signature": "(session_filter: 'SessionFilter' = <SessionFilter.OPEN_ONLY: 'open_only'>, sparse_hour_event_threshold: 'int' = 1, known_news_overlay_log_adjustment: 'float' = 0.0, intraday_minutes_per_bin: 'int' = 1, intraday_smoothing_kernel: 'IntradaySmoothingKernel' = <IntradaySmoothingKernel.GAUSSIAN: 'gaussian'>, intraday_smoothing_bandwidth_bins: 'float' = 3.0, intraday_minimum_bin_events: 'int' = 1, day_of_week_minimum_bucket_events: 'int' = 1, day_of_year_minimum_bucket_events: 'int' = 1) -> 'None'"
         },
         "CalibrationMarketDataWorkflowScope": {
           "kind": "enum",
@@ -846,12 +869,14 @@
             "workflow_scope",
             "normalization_policy",
             "output_preferences",
+            "optimizer_settings_by_stage",
+            "preprocessing_settings",
             "option_surface_source",
             "known_news_inputs",
             "mean_reversion"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: 'str', run_id: 'str', tick_data_source: 'CalibrationInputFileReference', session_configuration: 'CalibrationSessionConfigurationInput', column_mapping: 'CalibrationMarketDataColumnMapping', workflow_scope: 'CalibrationMarketDataWorkflowScope', normalization_policy: 'CalibrationMarketDataNormalizationPolicy', output_preferences: 'CalibrationMarketDataOutputPreferences', option_surface_source: 'Optional[CalibrationInputFileReference]' = None, known_news_inputs: 'Optional[CalibrationKnownNewsInput]' = None, mean_reversion: 'Optional[CalibrationMeanReversionConfiguration]' = None) -> 'None'"
+          "signature": "(schema_version: 'str', run_id: 'str', tick_data_source: 'CalibrationInputFileReference', session_configuration: 'CalibrationSessionConfigurationInput', column_mapping: 'CalibrationMarketDataColumnMapping', workflow_scope: 'CalibrationMarketDataWorkflowScope', normalization_policy: 'CalibrationMarketDataNormalizationPolicy', output_preferences: 'CalibrationMarketDataOutputPreferences', optimizer_settings_by_stage: 'tuple[CalibrationStageSolverSettings, ...]' = (), preprocessing_settings: 'Optional[CalibrationMarketDataPreprocessingSettings]' = None, option_surface_source: 'Optional[CalibrationInputFileReference]' = None, known_news_inputs: 'Optional[CalibrationKnownNewsInput]' = None, mean_reversion: 'Optional[CalibrationMeanReversionConfiguration]' = None) -> 'None'"
         },
         "MarketDataCalibrationSourceSummary": {
           "field_names": [
@@ -921,6 +946,9 @@
         "CalibrationMarketDataColumnMapping",
         "CalibrationMarketDataNormalizationPolicy",
         "CalibrationMarketDataOutputPreferences",
+        "CalibrationMarketDataPreprocessingSettings",
+        "CalibrationMarketDataReturnComponentsPreprocessingSettings",
+        "CalibrationMarketDataSeasonalityPreprocessingSettings",
         "CalibrationMarketDataWorkflowScope",
         "CalibrationMeanReversionConfiguration",
         "CalibrationOptionQuoteInputPolicy",
@@ -1052,6 +1080,37 @@
           ],
           "kind": "contract_model",
           "signature": "(execution_mode: 'CalibrationExecutionMode' = <CalibrationExecutionMode.MEMORY: 'memory'>, disk_checkpoint_directory: 'Optional[str]' = None, emit_derived_staged_execution_input: 'bool' = False, emit_input_provenance_report: 'bool' = True) -> 'None'"
+        },
+        "CalibrationMarketDataPreprocessingSettings": {
+          "field_names": [
+            "seasonality",
+            "return_components"
+          ],
+          "kind": "contract_model",
+          "signature": "(seasonality: 'Optional[CalibrationMarketDataSeasonalityPreprocessingSettings]' = None, return_components: 'Optional[CalibrationMarketDataReturnComponentsPreprocessingSettings]' = None) -> 'None'"
+        },
+        "CalibrationMarketDataReturnComponentsPreprocessingSettings": {
+          "field_names": [
+            "intraday_jump_threshold_multiplier",
+            "close_open_gap_tolerance_multiplier"
+          ],
+          "kind": "contract_model",
+          "signature": "(intraday_jump_threshold_multiplier: 'float' = 4.0, close_open_gap_tolerance_multiplier: 'float' = 3.0) -> 'None'"
+        },
+        "CalibrationMarketDataSeasonalityPreprocessingSettings": {
+          "field_names": [
+            "session_filter",
+            "sparse_hour_event_threshold",
+            "known_news_overlay_log_adjustment",
+            "intraday_minutes_per_bin",
+            "intraday_smoothing_kernel",
+            "intraday_smoothing_bandwidth_bins",
+            "intraday_minimum_bin_events",
+            "day_of_week_minimum_bucket_events",
+            "day_of_year_minimum_bucket_events"
+          ],
+          "kind": "contract_model",
+          "signature": "(session_filter: 'SessionFilter' = <SessionFilter.OPEN_ONLY: 'open_only'>, sparse_hour_event_threshold: 'int' = 1, known_news_overlay_log_adjustment: 'float' = 0.0, intraday_minutes_per_bin: 'int' = 1, intraday_smoothing_kernel: 'IntradaySmoothingKernel' = <IntradaySmoothingKernel.GAUSSIAN: 'gaussian'>, intraday_smoothing_bandwidth_bins: 'float' = 3.0, intraday_minimum_bin_events: 'int' = 1, day_of_week_minimum_bucket_events: 'int' = 1, day_of_year_minimum_bucket_events: 'int' = 1) -> 'None'"
         },
         "CalibrationMarketDataWorkflowScope": {
           "kind": "enum",
@@ -1220,12 +1279,14 @@
             "workflow_scope",
             "normalization_policy",
             "output_preferences",
+            "optimizer_settings_by_stage",
+            "preprocessing_settings",
             "option_surface_source",
             "known_news_inputs",
             "mean_reversion"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: 'str', run_id: 'str', tick_data_source: 'CalibrationInputFileReference', session_configuration: 'CalibrationSessionConfigurationInput', column_mapping: 'CalibrationMarketDataColumnMapping', workflow_scope: 'CalibrationMarketDataWorkflowScope', normalization_policy: 'CalibrationMarketDataNormalizationPolicy', output_preferences: 'CalibrationMarketDataOutputPreferences', option_surface_source: 'Optional[CalibrationInputFileReference]' = None, known_news_inputs: 'Optional[CalibrationKnownNewsInput]' = None, mean_reversion: 'Optional[CalibrationMeanReversionConfiguration]' = None) -> 'None'"
+          "signature": "(schema_version: 'str', run_id: 'str', tick_data_source: 'CalibrationInputFileReference', session_configuration: 'CalibrationSessionConfigurationInput', column_mapping: 'CalibrationMarketDataColumnMapping', workflow_scope: 'CalibrationMarketDataWorkflowScope', normalization_policy: 'CalibrationMarketDataNormalizationPolicy', output_preferences: 'CalibrationMarketDataOutputPreferences', optimizer_settings_by_stage: 'tuple[CalibrationStageSolverSettings, ...]' = (), preprocessing_settings: 'Optional[CalibrationMarketDataPreprocessingSettings]' = None, option_surface_source: 'Optional[CalibrationInputFileReference]' = None, known_news_inputs: 'Optional[CalibrationKnownNewsInput]' = None, mean_reversion: 'Optional[CalibrationMeanReversionConfiguration]' = None) -> 'None'"
         },
         "deserialize_market_data_calibration_request": {
           "kind": "function",
@@ -3823,30 +3884,17 @@
         },
         "MeanReversionAnchorModel": {
           "field_names": [
-            "anchor_model_kind",
-            "anchor_value",
-            "source_interval_start_utc_nanos",
-            "source_interval_end_utc_nanos",
-            "anchor_values",
-            "source_alignment_policy"
+            "anchor_model_kind"
           ],
           "kind": "contract_model",
-          "signature": "(anchor_model_kind: 'MeanReversionAnchorModelKind', anchor_value: 'Optional[float]' = None, source_interval_start_utc_nanos: 'tuple[int, ...]' = (), source_interval_end_utc_nanos: 'tuple[int, ...]' = (), anchor_values: 'tuple[float, ...]' = (), source_alignment_policy: 'Optional[str]' = None) -> 'None'"
+          "signature": "(anchor_model_kind: 'MeanReversionAnchorModelKind') -> 'None'"
         },
         "MeanReversionAnchorModelKind": {
           "kind": "enum",
           "members": [
             {
-              "name": "DISABLED",
-              "value": "disabled"
-            },
-            {
-              "name": "CONSTANT",
-              "value": "constant"
-            },
-            {
-              "name": "DETERMINISTIC_INTERVAL_GRID",
-              "value": "deterministic_interval_grid"
+              "name": "ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL",
+              "value": "endogenous_core_expectation_one_interval"
             }
           ]
         },
@@ -4533,12 +4581,17 @@
         "AnchoredLocalTiltDomainStatus",
         "AnchoredLocalTiltSolveDiagnostics",
         "AnchoredVanillaOptionPricingBoundaryInput",
+        "FourierInversionContour",
+        "FourierInversionEngineSettings",
+        "FourierInversionIntegrationStabilityControls",
+        "FourierInversionNumericQualityGate",
+        "FourierInversionNumericSettings",
+        "FourierInversionQuadratureRule",
         "GammaSeverityMarkConfiguration",
         "MeanReversionAnchorModel",
         "MeanReversionAnchorModelKind",
         "MeanReversionBoundaryState",
         "MeanReversionFittedParameters",
-        "MeanReversionRuntimeIntervalAnchors",
         "NigSharedPlusShiftConfiguration",
         "VanillaOptionPayoffConfiguration",
         "VanillaOptionPayoffType",
@@ -4609,13 +4662,13 @@
             "hawkes_boundary_state",
             "observed_boundary_state",
             "current_anchor_value",
-            "next_anchor_value",
             "interval_delta",
             "kappa",
-            "deviation_decay_factor"
+            "deviation_decay_factor",
+            "local_martingale_deviation_adjustment"
           ],
           "kind": "contract_model",
-          "signature": "(interval_index: 'int', hawkes_boundary_state: 'HawkesExcitationState', observed_boundary_state: 'MeanReversionBoundaryState', current_anchor_value: 'float', next_anchor_value: 'float', interval_delta: 'float', kappa: 'float', deviation_decay_factor: 'float') -> 'None'"
+          "signature": "(interval_index: 'int', hawkes_boundary_state: 'HawkesExcitationState', observed_boundary_state: 'MeanReversionBoundaryState', current_anchor_value: 'float', interval_delta: 'float', kappa: 'float', deviation_decay_factor: 'float', local_martingale_deviation_adjustment: 'float') -> 'None'"
         },
         "AnchoredLocalTiltDomainStatus": {
           "kind": "enum",
@@ -4655,11 +4708,73 @@
             "interval_index",
             "hawkes_boundary_state",
             "mean_reversion_fitted_parameters",
-            "mean_reversion_runtime_interval_anchors",
+            "interval_delta",
             "observed_boundary_state"
           ],
           "kind": "contract_model",
-          "signature": "(interval_index: 'int', hawkes_boundary_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', observed_boundary_state: 'MeanReversionBoundaryState') -> 'None'"
+          "signature": "(interval_index: 'int', hawkes_boundary_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', interval_delta: 'float', observed_boundary_state: 'MeanReversionBoundaryState') -> 'None'"
+        },
+        "FourierInversionContour": {
+          "field_names": [
+            "damping_factor"
+          ],
+          "kind": "contract_model",
+          "signature": "(damping_factor: 'float' = 1.5) -> 'None'"
+        },
+        "FourierInversionEngineSettings": {
+          "field_names": [
+            "contour",
+            "numeric_settings",
+            "stability_controls"
+          ],
+          "kind": "contract_model",
+          "signature": "(contour: 'FourierInversionContour' = <factory>, numeric_settings: 'FourierInversionNumericSettings' = <factory>, stability_controls: 'FourierInversionIntegrationStabilityControls' = <factory>) -> 'None'"
+        },
+        "FourierInversionIntegrationStabilityControls": {
+          "field_names": [
+            "convergence_absolute_tolerance",
+            "convergence_relative_tolerance",
+            "terminal_integrand_absolute_tolerance",
+            "terminal_integrand_ratio_tolerance",
+            "quality_gate"
+          ],
+          "kind": "contract_model",
+          "signature": "(convergence_absolute_tolerance: 'float' = 1e-05, convergence_relative_tolerance: 'float' = 0.0001, terminal_integrand_absolute_tolerance: 'float' = 0.0005, terminal_integrand_ratio_tolerance: 'float' = 0.01, quality_gate: 'FourierInversionNumericQualityGate' = <FourierInversionNumericQualityGate.DIAGNOSTICS_ONLY: 'diagnostics_only'>) -> 'None'"
+        },
+        "FourierInversionNumericQualityGate": {
+          "kind": "enum",
+          "members": [
+            {
+              "name": "DIAGNOSTICS_ONLY",
+              "value": "diagnostics_only"
+            },
+            {
+              "name": "ENFORCE_FAILURE",
+              "value": "enforce_failure"
+            }
+          ]
+        },
+        "FourierInversionNumericSettings": {
+          "field_names": [
+            "integration_upper_bound",
+            "integration_step_count",
+            "quadrature_rule"
+          ],
+          "kind": "contract_model",
+          "signature": "(integration_upper_bound: 'float' = 150.0, integration_step_count: 'int' = 4096, quadrature_rule: 'FourierInversionQuadratureRule' = <FourierInversionQuadratureRule.MIDPOINT: 'midpoint'>) -> 'None'"
+        },
+        "FourierInversionQuadratureRule": {
+          "kind": "enum",
+          "members": [
+            {
+              "name": "MIDPOINT",
+              "value": "midpoint"
+            },
+            {
+              "name": "TRAPEZOID",
+              "value": "trapezoid"
+            }
+          ]
         },
         "GammaSeverityMarkConfiguration": {
           "field_names": [
@@ -4671,30 +4786,17 @@
         },
         "MeanReversionAnchorModel": {
           "field_names": [
-            "anchor_model_kind",
-            "anchor_value",
-            "source_interval_start_utc_nanos",
-            "source_interval_end_utc_nanos",
-            "anchor_values",
-            "source_alignment_policy"
+            "anchor_model_kind"
           ],
           "kind": "contract_model",
-          "signature": "(anchor_model_kind: 'MeanReversionAnchorModelKind', anchor_value: 'Optional[float]' = None, source_interval_start_utc_nanos: 'tuple[int, ...]' = (), source_interval_end_utc_nanos: 'tuple[int, ...]' = (), anchor_values: 'tuple[float, ...]' = (), source_alignment_policy: 'Optional[str]' = None) -> 'None'"
+          "signature": "(anchor_model_kind: 'MeanReversionAnchorModelKind') -> 'None'"
         },
         "MeanReversionAnchorModelKind": {
           "kind": "enum",
           "members": [
             {
-              "name": "DISABLED",
-              "value": "disabled"
-            },
-            {
-              "name": "CONSTANT",
-              "value": "constant"
-            },
-            {
-              "name": "DETERMINISTIC_INTERVAL_GRID",
-              "value": "deterministic_interval_grid"
+              "name": "ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL",
+              "value": "endogenous_core_expectation_one_interval"
             }
           ]
         },
@@ -4714,16 +4816,6 @@
           ],
           "kind": "contract_model",
           "signature": "(kappa: 'float', anchor_model: 'MeanReversionAnchorModel') -> 'None'"
-        },
-        "MeanReversionRuntimeIntervalAnchors": {
-          "field_names": [
-            "interval_alignment_policy",
-            "start_anchor_value",
-            "end_anchor_values",
-            "interval_deltas"
-          ],
-          "kind": "contract_model",
-          "signature": "(interval_alignment_policy: 'str', start_anchor_value: 'float', end_anchor_values: 'tuple[float, ...]', interval_deltas: 'tuple[float, ...]') -> 'None'"
         },
         "NigSharedPlusShiftConfiguration": {
           "field_names": [
@@ -4805,11 +4897,11 @@
         "VanillaOptionPricingModelParameters": {
           "field_names": [
             "hawkes_kernel_parameters",
-            "gamma_severity_mark_configuration",
+            "news_process_configuration",
             "nig_shared_plus_shift_configuration"
           ],
           "kind": "contract_model",
-          "signature": "(hawkes_kernel_parameters: 'HawkesKernelParameters', gamma_severity_mark_configuration: 'GammaSeverityMarkConfiguration', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration') -> 'None'"
+          "signature": "(hawkes_kernel_parameters: 'HawkesKernelParameters', news_process_configuration: 'NewsProcessConfiguration', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration') -> 'None'"
         },
         "VanillaOptionPricingOptionalOutputSelection": {
           "field_names": [
@@ -4826,10 +4918,11 @@
             "payoff",
             "boundary_input",
             "model_parameters",
-            "interval_delta"
+            "interval_delta",
+            "fourier_inversion_settings"
           ],
           "kind": "contract_model",
-          "signature": "(market_inputs: 'VanillaOptionPricingMarketInputs', payoff: 'VanillaOptionPayoffConfiguration', boundary_input: 'AnchoredVanillaOptionPricingBoundaryInput', model_parameters: 'VanillaOptionPricingModelParameters', interval_delta: 'float' = 1.0) -> 'None'"
+          "signature": "(market_inputs: 'VanillaOptionPricingMarketInputs', payoff: 'VanillaOptionPayoffConfiguration', boundary_input: 'AnchoredVanillaOptionPricingBoundaryInput', model_parameters: 'VanillaOptionPricingModelParameters', interval_delta: 'float' = 1.0, fourier_inversion_settings: 'Optional[FourierInversionEngineSettings]' = None) -> 'None'"
         },
         "VanillaOptionPricingResponse": {
           "field_names": [
@@ -5541,7 +5634,7 @@
         "SeededTickSimulationResponse",
         "SeededTickSimulationValidationError",
         "SeededTickSimulationValidationFailure",
-        "build_disabled_seeded_mean_reversion_runtime_inputs",
+        "build_endogenous_seeded_mean_reversion_runtime_inputs",
         "run_coarse_simulation",
         "run_seeded_tick_event_simulation"
       ],
@@ -5622,30 +5715,17 @@
         },
         "MeanReversionAnchorModel": {
           "field_names": [
-            "anchor_model_kind",
-            "anchor_value",
-            "source_interval_start_utc_nanos",
-            "source_interval_end_utc_nanos",
-            "anchor_values",
-            "source_alignment_policy"
+            "anchor_model_kind"
           ],
           "kind": "contract_model",
-          "signature": "(anchor_model_kind: 'MeanReversionAnchorModelKind', anchor_value: 'Optional[float]' = None, source_interval_start_utc_nanos: 'tuple[int, ...]' = (), source_interval_end_utc_nanos: 'tuple[int, ...]' = (), anchor_values: 'tuple[float, ...]' = (), source_alignment_policy: 'Optional[str]' = None) -> 'None'"
+          "signature": "(anchor_model_kind: 'MeanReversionAnchorModelKind') -> 'None'"
         },
         "MeanReversionAnchorModelKind": {
           "kind": "enum",
           "members": [
             {
-              "name": "DISABLED",
-              "value": "disabled"
-            },
-            {
-              "name": "CONSTANT",
-              "value": "constant"
-            },
-            {
-              "name": "DETERMINISTIC_INTERVAL_GRID",
-              "value": "deterministic_interval_grid"
+              "name": "ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL",
+              "value": "endogenous_core_expectation_one_interval"
             }
           ]
         },
@@ -5784,7 +5864,7 @@
           "kind": "contract_model",
           "signature": "(error_id: 'str', workflow: 'str', entrypoint: 'str', field_path: 'str', message: 'str', context_items: 'tuple[tuple[str, ErrorContextValue], ...]' = ()) -> 'None'"
         },
-        "build_disabled_seeded_mean_reversion_runtime_inputs": {
+        "build_endogenous_seeded_mean_reversion_runtime_inputs": {
           "kind": "function",
           "signature": "(*, hourly_factor_contract: 'HourlyFactorContract') -> 'tuple[MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors, MeanReversionBoundaryState]'"
         },
@@ -6167,7 +6247,7 @@
         "SeededTickSimulationResponse",
         "SeededTickSimulationValidationError",
         "SeededTickSimulationValidationFailure",
-        "build_disabled_seeded_mean_reversion_runtime_inputs",
+        "build_endogenous_seeded_mean_reversion_runtime_inputs",
         "deserialize_seeded_tick_simulation_response",
         "run_seeded_tick_event_simulation",
         "serialize_seeded_tick_simulation_response",
@@ -6482,7 +6562,7 @@
           "kind": "contract_model",
           "signature": "(error_id: 'str', workflow: 'str', entrypoint: 'str', field_path: 'str', message: 'str', context_items: 'tuple[tuple[str, ErrorContextValue], ...]' = ()) -> 'None'"
         },
-        "build_disabled_seeded_mean_reversion_runtime_inputs": {
+        "build_endogenous_seeded_mean_reversion_runtime_inputs": {
           "kind": "function",
           "signature": "(*, hourly_factor_contract: 'HourlyFactorContract') -> 'tuple[MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors, MeanReversionBoundaryState]'"
         },
@@ -6554,30 +6634,17 @@
         },
         "MeanReversionAnchorModel": {
           "field_names": [
-            "anchor_model_kind",
-            "anchor_value",
-            "source_interval_start_utc_nanos",
-            "source_interval_end_utc_nanos",
-            "anchor_values",
-            "source_alignment_policy"
+            "anchor_model_kind"
           ],
           "kind": "contract_model",
-          "signature": "(anchor_model_kind: 'MeanReversionAnchorModelKind', anchor_value: 'Optional[float]' = None, source_interval_start_utc_nanos: 'tuple[int, ...]' = (), source_interval_end_utc_nanos: 'tuple[int, ...]' = (), anchor_values: 'tuple[float, ...]' = (), source_alignment_policy: 'Optional[str]' = None) -> 'None'"
+          "signature": "(anchor_model_kind: 'MeanReversionAnchorModelKind') -> 'None'"
         },
         "MeanReversionAnchorModelKind": {
           "kind": "enum",
           "members": [
             {
-              "name": "DISABLED",
-              "value": "disabled"
-            },
-            {
-              "name": "CONSTANT",
-              "value": "constant"
-            },
-            {
-              "name": "DETERMINISTIC_INTERVAL_GRID",
-              "value": "deterministic_interval_grid"
+              "name": "ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL",
+              "value": "endogenous_core_expectation_one_interval"
             }
           ]
         },

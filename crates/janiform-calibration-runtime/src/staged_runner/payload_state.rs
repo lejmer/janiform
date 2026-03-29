@@ -26,6 +26,15 @@ pub(super) fn restore_in_memory_payload_state_from_stage_parameter_artifact(
 ) {
     match &artifact.stage_parameters {
         CalibrationStageParameterPayload::Seasonality(payload) => {
+            payload_state.mean_reversion_seasonality_input = Some(
+                crate::stages::mean_reversion::MeanReversionStageSeasonalityInput {
+                    exchange_code: payload.exchange_code.clone(),
+                    intraday_minutes_per_bin: payload.intraday_minutes_per_bin,
+                    intraday_factor_by_bin: payload.intraday_factor_by_bin.clone(),
+                    day_of_week_factor: payload.day_of_week_factor.clone(),
+                    day_of_year_factor: payload.day_of_year_factor.clone(),
+                },
+            );
             payload_state.joint_refinement_seasonality_factors_input =
                 Some(JointRefinementStageSeasonalityFactorsInput {
                     intraday_minutes_per_bin: payload.intraday_minutes_per_bin,
@@ -127,6 +136,12 @@ pub(super) fn update_in_memory_payload_state(
     match stage_report {
         CalibrationStagedRunStageReport::Seasonality(report) => {
             payload_state.seasonality_stage_payload = report.normalized_stage_payload.clone();
+            payload_state.mean_reversion_seasonality_input = report
+                .normalized_stage_payload
+                .as_ref()
+                .map(
+                    crate::stages::mean_reversion::MeanReversionStageSeasonalityInput::from_seasonality_stage_payload,
+                );
             payload_state.joint_refinement_seasonality_factors_input = report
                 .normalized_stage_payload
                 .as_ref()

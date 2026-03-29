@@ -20,7 +20,8 @@ use super::constants::{
     TRANSFORM_SLICE_NEGATIVE_EXPECTATION_TOLERANCE, TRANSFORM_SLICE_REAL_PART_TOLERANCE,
 };
 use super::contracts::{
-    SufficientStatisticsBoundaryStateUpdateSnapshot, SufficientStatisticsIntervalStatistics,
+    SufficientStatisticsBoundaryStateUpdateSnapshot,
+    SufficientStatisticsExpectedIntervalStatistics, SufficientStatisticsIntervalStatistics,
     SufficientStatisticsIntervalStatisticsChunk, SufficientStatisticsIntervalStatisticsPathChunk,
     SufficientStatisticsStreamingChunkingSettings, SufficientStatisticsTransformSliceContext,
     SufficientStatisticsTransformSliceSettings, SufficientStatisticsTransformSlices,
@@ -143,11 +144,26 @@ pub fn sample_interval_statistics_from_transform_slices(
 ) -> Result<SufficientStatisticsIntervalStatistics, SufficientStatisticsTransformSliceSamplingError>
 {
     let randomness_factory = SplitMix64SimulationRandomnessFactory;
+
     sample_interval_statistics_from_transform_slices_with_randomness_factory(
         seed,
         slices,
         &randomness_factory,
     )
+}
+
+/// Extract one interval's closed-form expected sufficient statistics from solved transform slices.
+pub fn derive_expected_interval_statistics_from_transform_slices(
+    slices: SufficientStatisticsTransformSlices,
+) -> Result<
+    SufficientStatisticsExpectedIntervalStatistics,
+    SufficientStatisticsTransformSliceSamplingError,
+> {
+    slices.validate().map_err(|source| {
+        SufficientStatisticsTransformSliceSamplingError::InvalidSlices { source }
+    })?;
+
+    derive_expected_interval_statistics_from_validated_transform_slices(slices)
 }
 
 /// Sample one interval's sufficient statistics with an injected randomness factory.
@@ -176,6 +192,7 @@ pub fn sample_interval_statistics_batch_from_transform_slices(
     SufficientStatisticsTransformSliceSamplingError,
 > {
     let randomness_factory = SplitMix64SimulationRandomnessFactory;
+
     sample_interval_statistics_batch_from_transform_slices_with_randomness_factory(
         seed,
         slices_batch,
@@ -230,6 +247,7 @@ where
     C: FnMut(SufficientStatisticsIntervalStatisticsChunk),
 {
     let randomness_factory = SplitMix64SimulationRandomnessFactory;
+
     stream_interval_statistics_from_transform_slices_with_randomness_factory(
         seed,
         slices_batch,
@@ -276,6 +294,7 @@ where
     C: FnMut(SufficientStatisticsIntervalStatisticsPathChunk),
 {
     let randomness_factory = SplitMix64SimulationRandomnessFactory;
+
     stream_interval_statistics_multi_path_batch_from_transform_slices_with_randomness_factory(
         root_seed,
         slices_path_batch,
@@ -306,6 +325,7 @@ where
 
     for (path_index, path_slices) in slices_path_batch.iter().enumerate() {
         let path_seed = derive_sufficient_statistics_batch_path_seed(root_seed, path_index as u64);
+
         stream_interval_statistics_from_transform_slices_with_randomness_factory_internal(
             path_seed,
             path_slices,
@@ -340,6 +360,7 @@ pub fn sample_interval_statistics_multi_path_batch_from_transform_slices(
     SufficientStatisticsTransformSliceExecutionError,
 > {
     let randomness_factory = SplitMix64SimulationRandomnessFactory;
+
     sample_interval_statistics_multi_path_batch_from_transform_slices_with_randomness_factory(
         root_seed,
         slices_path_batch,
@@ -364,6 +385,7 @@ where
     F: SimulationRandomnessFactory,
 {
     let mut sampled_paths = vec![Vec::new(); slices_path_batch.len()];
+
     stream_interval_statistics_multi_path_batch_from_transform_slices_with_randomness_factory(
         root_seed,
         slices_path_batch,
@@ -371,6 +393,7 @@ where
         randomness_factory,
         |path_chunk| sampled_paths[path_chunk.path_index].extend(path_chunk.interval_chunk.records),
     )?;
+
     Ok(sampled_paths)
 }
 
@@ -442,11 +465,13 @@ fn flush_interval_statistics_chunk<C>(
         pending_chunk_records,
         Vec::with_capacity(pending_chunk_records.capacity()),
     );
+
     emit_chunk(SufficientStatisticsIntervalStatisticsChunk {
         chunk_index: *chunk_index,
         start_interval_index: chunk_start_interval_index,
         records,
     });
+
     *chunk_index = chunk_index.saturating_add(1);
 }
 
@@ -514,6 +539,7 @@ fn solve_transform_slice_value(
                 .map(|guard_failure| guard_failure.code),
         },
     )?;
+
     Ok(output.transform_value)
 }
 
@@ -530,8 +556,56 @@ where
         SufficientStatisticsTransformSliceSamplingError::InvalidSlices { source }
     })?;
 
+    let expected_statistics =
+        derive_expected_interval_statistics_from_validated_transform_slices(slices)?;
+
+    let substream_index = derive_transform_slice_sampling_substream_index(
+        slices.context.interval_index as u64,
+        batch_position,
+    );
+
+    let mut n_plus_stream = randomness_factory.create_substream(
+        seed,
+        SimulationRandomnessSubstreamDomain::EndogenousBuyEventCount,
+        substream_index,
+    );
+    let mut n_minus_stream = randomness_factory.create_substream(
+        seed,
+        SimulationRandomnessSubstreamDomain::EndogenousSellEventCount,
+        substream_index,
+    );
+
+    let sampled_n_plus =
+        sample_count_from_expectation(expected_statistics.expected_n_plus, &mut n_plus_stream);
+    let sampled_n_minus =
+        sample_count_from_expectation(expected_statistics.expected_n_minus, &mut n_minus_stream);
+
+    let sampled_a_plus = expected_statistics.expected_a_plus;
+    let sampled_a_minus = expected_statistics.expected_a_minus;
+
+    SufficientStatisticsIntervalStatistics::try_new(
+        sampled_a_plus,
+        sampled_a_minus,
+        sampled_n_plus,
+        sampled_n_minus,
+    )
+    .map_err(|source| {
+        SufficientStatisticsTransformSliceSamplingError::InvalidSampledStatistics {
+            interval_index: slices.context.interval_index,
+            source,
+        }
+    })
+}
+
+fn derive_expected_interval_statistics_from_validated_transform_slices(
+    slices: SufficientStatisticsTransformSlices,
+) -> Result<
+    SufficientStatisticsExpectedIntervalStatistics,
+    SufficientStatisticsTransformSliceSamplingError,
+> {
     let context = slices.context;
     let settings = slices.settings;
+
     let baseline_transform =
         extract_real_transform_value(context, "baseline_transform", slices.baseline_transform)?;
     let a_plus_transform =
@@ -568,30 +642,11 @@ where
         settings.n_minus_z - 1.0,
     )?;
 
-    let substream_index = derive_transform_slice_sampling_substream_index(
-        context.interval_index as u64,
-        batch_position,
-    );
-    let mut n_plus_stream = randomness_factory.create_substream(
-        seed,
-        SimulationRandomnessSubstreamDomain::EndogenousBuyEventCount,
-        substream_index,
-    );
-    let mut n_minus_stream = randomness_factory.create_substream(
-        seed,
-        SimulationRandomnessSubstreamDomain::EndogenousSellEventCount,
-        substream_index,
-    );
-    let sampled_n_plus = sample_count_from_expectation(expected_n_plus, &mut n_plus_stream);
-    let sampled_n_minus = sample_count_from_expectation(expected_n_minus, &mut n_minus_stream);
-    let sampled_a_plus = expected_a_plus;
-    let sampled_a_minus = expected_a_minus;
-
-    SufficientStatisticsIntervalStatistics::try_new(
-        sampled_a_plus,
-        sampled_a_minus,
-        sampled_n_plus,
-        sampled_n_minus,
+    SufficientStatisticsExpectedIntervalStatistics::try_new(
+        expected_a_plus,
+        expected_a_minus,
+        expected_n_plus,
+        expected_n_minus,
     )
     .map_err(|source| {
         SufficientStatisticsTransformSliceSamplingError::InvalidSampledStatistics {
@@ -678,6 +733,7 @@ where
 
     let floored_count = expected_count.floor() as u64;
     let fractional_count = expected_count - floored_count as f64;
+
     let sampled_count = if randomness_stream.next_unit_interval_f64() < fractional_count {
         floored_count.saturating_add(1)
     } else {
@@ -772,6 +828,7 @@ fn apply_endogenous_count_mapped_jump(
         side,
         event_count,
     )?;
+
     let scaled_kernel_parameters = HawkesKernelParameters {
         alpha: scaled_alpha,
         ..kernel_parameters

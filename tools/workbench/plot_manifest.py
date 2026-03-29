@@ -118,7 +118,7 @@ def workbench_plot_manifest() -> tuple[WorkbenchPlotManifestEntry, ...]:
             how_to_read=(
                 "Each subplot shows one scalar parameter against the candidate objective.",
                 "Lower objective values are better.",
-                "Blue points are admissible candidates. Red points are rejected candidates.",
+                "Blue points are admissible candidates. Orange points are valid but inadmissible candidates. Red points are invalid candidates.",
                 "Look for low-objective regions, whether the search visited them often, and whether good regions are narrow or broad.",
             ),
             builder=create_parameter_objective_figure,

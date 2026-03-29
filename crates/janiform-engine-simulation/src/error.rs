@@ -99,15 +99,6 @@ pub enum SeededTickSimulationRunError {
         expected_interval_delta: f64,
         observed_interval_delta: f64,
     },
-    DisabledMeanReversionRequiresZeroKappa {
-        value: f64,
-    },
-    MeanReversionConstantAnchorMissingValue,
-    MeanReversionRuntimeConstantAnchorMismatch {
-        interval_index: Option<usize>,
-        expected_anchor_value: f64,
-        observed_anchor_value: f64,
-    },
     InvalidNigSharedPlusShiftConfiguration {
         source: NigSharedPlusShiftConfigurationError,
     },
@@ -289,31 +280,6 @@ impl Display for SeededTickSimulationRunError {
                 formatter,
                 "mean_reversion_runtime_interval_anchors.interval_deltas[{interval_index}] must match the hourly factor interval delta in hours, expected {expected_interval_delta}, found {observed_interval_delta}"
             ),
-            Self::DisabledMeanReversionRequiresZeroKappa { value } => write!(
-                formatter,
-                "disabled mean-reversion configuration requires kappa=0.0, found {value}"
-            ),
-            Self::MeanReversionConstantAnchorMissingValue => write!(
-                formatter,
-                "constant mean-reversion anchor model must provide anchor_value"
-            ),
-            Self::MeanReversionRuntimeConstantAnchorMismatch {
-                interval_index,
-                expected_anchor_value,
-                observed_anchor_value,
-            } => {
-                if let Some(interval_index) = interval_index {
-                    write!(
-                        formatter,
-                        "mean_reversion_runtime_interval_anchors end anchor at interval {interval_index} must equal the configured constant anchor value {expected_anchor_value}, found {observed_anchor_value}"
-                    )
-                } else {
-                    write!(
-                        formatter,
-                        "mean_reversion_runtime_interval_anchors.start_anchor_value must equal the configured constant anchor value {expected_anchor_value}, found {observed_anchor_value}"
-                    )
-                }
-            }
             Self::InvalidNigSharedPlusShiftConfiguration { source } => write!(
                 formatter,
                 "nig_shared_plus_shift_configuration is invalid: {source}"

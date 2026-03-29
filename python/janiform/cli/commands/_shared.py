@@ -48,7 +48,7 @@ from ...simulation import (
     SeededTickSimulationHourlyFactorSummary,
     SeededTickSimulationRequest,
 )
-from ...simulation.seeded.contracts import build_disabled_seeded_mean_reversion_runtime_inputs
+from ...simulation.seeded.contracts import build_endogenous_seeded_mean_reversion_runtime_inputs
 
 
 def build_intraday_seasonality_settings(
@@ -722,7 +722,7 @@ def attach_runtime_hourly_factor_contract(
         mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state,
-    ) = build_disabled_seeded_mean_reversion_runtime_inputs(
+    ) = build_endogenous_seeded_mean_reversion_runtime_inputs(
         hourly_factor_contract=hourly_factor_contract,
     )
 

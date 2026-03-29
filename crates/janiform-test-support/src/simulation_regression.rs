@@ -1,6 +1,5 @@
 use chrono::{DateTime, Utc};
-
-pub const ONE_HOUR_NANOS: i64 = 3_600_000_000_000;
+pub use janiform_market_time::time::ONE_HOUR_NANOS;
 
 pub fn count_timestamps_in_half_open_interval(
     sorted_timestamps: &[i64],
