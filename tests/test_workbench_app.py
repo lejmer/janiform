@@ -6,6 +6,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PyQt6.QtWidgets import QApplication, QTableWidget, QTabWidget
 from matplotlib.figure import Figure
 
+from tools.workbench import app as workbench_app
 from tools.workbench.app import WorkbenchWindow, _ResponsiveFigureCanvas
 from tools.workbench.artifacts import WorkbenchArtifacts
 
@@ -79,6 +80,52 @@ def test_selected_candidate_plot_uses_native_summary_table_panel() -> None:
         assert summary_table is not None
         assert summary_table.rowCount() >= 1
         assert summary_table.columnCount() == 2
+    finally:
+        window.close()
+        application.processEvents()
+
+
+def test_observed_simulation_comparison_cache_keys_on_selected_seed(
+    monkeypatch,
+) -> None:
+    application = QApplication.instance() or QApplication([])
+    window = WorkbenchWindow()
+    window._artifacts = WorkbenchArtifacts(
+        source_path=Path("/tmp/workbench-seed-cache"),
+        source_kind="run_directory",
+        metadata={},
+        fit_report_payload=None,
+        model_payload=None,
+        observed_targets={},
+        candidate_frontier={},
+        coarse_tick_consistency={},
+        selection_rationale={},
+        simulation_summary={},
+        search_surface_manifest={},
+        runtime_profile={},
+    )
+    captured_seeds: list[int] = []
+
+    monkeypatch.setattr(
+        workbench_app,
+        "build_observed_simulation_comparison",
+        lambda artifacts, *, seed=1: (
+            captured_seeds.append(seed),
+            {"seed": seed},
+        )[1],
+    )
+
+    try:
+        first = window._observed_simulation_comparison_for_current_artifacts()
+        second = window._observed_simulation_comparison_for_current_artifacts()
+
+        window._observed_simulation_seed = 7
+        third = window._observed_simulation_comparison_for_current_artifacts()
+
+        assert first == {"seed": 1}
+        assert second == {"seed": 1}
+        assert third == {"seed": 7}
+        assert captured_seeds == [1, 7]
     finally:
         window.close()
         application.processEvents()

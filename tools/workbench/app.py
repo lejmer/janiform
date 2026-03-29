@@ -115,6 +115,7 @@ class WorkbenchWindow(QMainWindow):
         self._plot_figure_by_task_id: dict[str, Figure] = {}
         self._plot_canvas_ready_by_task_id: dict[str, bool] = {}
         self._observed_simulation_comparison_cache: dict[str, Any] = {}
+        self._observed_simulation_seed: int = 1
         self._inspector_tab_key_by_index: dict[int, str] = {}
         self._inspector_tab_loaded_by_key: dict[str, bool] = {}
         self._candidate_ids_by_row: list[str] = []
@@ -750,6 +751,24 @@ class WorkbenchWindow(QMainWindow):
             self._plot_canvas_ready_by_task_id[task_id] = True
             return
 
+        manifest_entry = self._plot_manifest_by_task_id.get(task_id)
+        if (
+            manifest_entry is not None
+            and manifest_entry.uses_observed_simulation_comparison
+            and self._artifacts is not None
+        ):
+            observed_simulation_comparison = self._observed_simulation_comparison_for_current_artifacts()
+            figure = manifest_entry.builder(self._artifacts, observed_simulation_comparison)
+
+            self._set_widget_contents(
+                plot_container,
+                self._build_plot_tab_contents(task_id, _figure_canvas(figure)),
+            )
+
+            self._plot_canvas_ready_by_task_id[task_id] = True
+
+            return
+
         if task_id == "plot_parameter_search" and self._artifacts is not None:
             self._set_widget_contents(
                 plot_container,
@@ -921,10 +940,11 @@ class WorkbenchWindow(QMainWindow):
         if artifacts is None:
             return None
 
-        cache_key = str(artifacts.source_path)
+        cache_key = f"{artifacts.source_path}:{self._observed_simulation_seed}"
         if cache_key not in self._observed_simulation_comparison_cache:
             self._observed_simulation_comparison_cache[cache_key] = build_observed_simulation_comparison(
-                artifacts
+                artifacts,
+                seed=self._observed_simulation_seed,
             )
 
         return self._observed_simulation_comparison_cache[cache_key]
@@ -958,9 +978,73 @@ class WorkbenchWindow(QMainWindow):
 
         layout.addWidget(header_row)
         layout.addWidget(description_label)
+        if manifest_entry.uses_observed_simulation_comparison:
+            layout.addWidget(self._build_observed_simulation_seed_controls(task_id))
         layout.addWidget(body)
 
         return container
+
+    def _build_observed_simulation_seed_controls(self, task_id: str) -> QWidget:
+        controls = QWidget()
+        controls_layout = QHBoxLayout(controls)
+        controls_layout.setContentsMargins(0, 0, 0, 0)
+
+        controls_layout.addWidget(QLabel("Simulation seed"))
+
+        seed_input = QLineEdit(str(self._observed_simulation_seed))
+        seed_input.setPlaceholderText("1")
+        seed_input.setMaximumWidth(120)
+        controls_layout.addWidget(seed_input)
+
+        resimulate_button = QPushButton("Resimulate")
+        resimulate_button.clicked.connect(
+            lambda _checked=False, task_id=task_id, seed_input=seed_input: self._resimulate_observed_simulation_plots(
+                task_id,
+                seed_input.text(),
+            )
+        )
+
+        controls_layout.addWidget(resimulate_button)
+        controls_layout.addStretch(1)
+
+        return controls
+
+    def _resimulate_observed_simulation_plots(
+        self,
+        task_id: str,
+        raw_seed: str,
+    ) -> None:
+        try:
+            selected_seed = int(raw_seed.strip() or "1")
+        except ValueError:
+            self.statusBar().showMessage("Simulation seed must be an integer.", 5000)
+            return
+
+        self._observed_simulation_seed = selected_seed
+        self._observed_simulation_comparison_cache.clear()
+
+        for manifest_entry in self._plot_manifest_by_task_id.values():
+            if manifest_entry.uses_observed_simulation_comparison:
+                self._plot_canvas_ready_by_task_id[manifest_entry.task_id] = False
+
+        plot_container = self._plot_container_by_task_id.get(task_id)
+        if plot_container is not None:
+            self._set_widget_contents(
+                plot_container,
+                self._build_plot_tab_contents(
+                    task_id,
+                    _build_placeholder_panel(
+                        "Resimulating",
+                        f"Refreshing observed-versus-simulated diagnostics with seed {selected_seed}.",
+                    ),
+                ),
+            )
+
+        self.statusBar().showMessage(
+            f"Observed-versus-simulated plots updated to seed {selected_seed}",
+            5000,
+        )
+        self._render_plot_canvas(task_id)
 
     def _show_plot_help(self, task_id: str) -> None:
         manifest_entry = self._plot_manifest_by_task_id.get(task_id)
