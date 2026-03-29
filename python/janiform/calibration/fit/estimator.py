@@ -36,8 +36,10 @@ from ..market_data.contracts import (
 )
 from ..market_data.request import MarketDataCalibrationRequest
 from ..market_data.translation import (
-    resolve_market_data_session_configuration_from_source_file,
-    translate_market_data_request_to_prepared_calibration,
+    NormalizedMarketDataSource,
+    normalize_market_data_source,
+    resolve_market_data_session,
+    translate_market_data_request_to_prepared_calibration_from_phases,
 )
 from ..market_data.workflow import (
     _prepare_market_data_calibration_from_translation_result,
@@ -58,6 +60,7 @@ from ..presets.resolution import (
     resolve_preset_workflow_configuration,
     ResolvedPresetWorkflowConfiguration,
     ResolvedSessionComponent,
+    ResolvedWorkflowComponentSource,
 )
 from ..sessions.contracts import MarketDataSessionResolution
 from ..sessions._resolution import (
@@ -455,15 +458,25 @@ class JaniformEstimator:
 
         temporary_directory: Optional[TemporaryDirectory[str]] = None
         try:
-            effective_progress.update(detail="resolving session configuration")
+            effective_progress.update(detail="normalize source")
+            normalized_market_data = normalize_market_data_source(
+                tick_data_source=input_inference.tick_data_source,
+                tick_data_column_mapping=input_inference.tick_data_column_mapping,
+                normalization_policy=input_inference.normalization_policy,
+                require_hawkes=(
+                    self._workflow_scope != CalibrationMarketDataWorkflowScope.SEASONALITY_ONLY
+                ),
+            )
+            effective_progress.update(detail="resolve session")
             inferred_session_resolution = self._infer_session_resolution(
                 run_id=input_inference.run_id,
                 tick_data_source=input_inference.tick_data_source,
                 tick_data_column_mapping=input_inference.tick_data_column_mapping,
                 normalization_policy=input_inference.normalization_policy,
+                normalized_market_data=normalized_market_data,
                 progress=effective_progress,
             )
-            effective_progress.update(detail="resolving preset configuration")
+            effective_progress.update(detail="resolve presets")
             resolved_configuration = resolve_preset_workflow_configuration(
                 registry=self._registry,
                 market_profile_reference=self._market_profile_reference,
@@ -479,7 +492,7 @@ class JaniformEstimator:
                 working_directory = Path(temporary_directory.name)
             else:
                 working_directory = None
-            effective_progress.update(detail="building market-data request")
+            effective_progress.update(detail="build market-data request")
             request = self._build_market_data_request(
                 run_id=input_inference.run_id,
                 tick_data_source=input_inference.tick_data_source,
@@ -489,10 +502,16 @@ class JaniformEstimator:
                 normalization_policy=input_inference.normalization_policy,
                 working_directory=working_directory,
             )
-            effective_progress.update(detail="loading market data")
-            effective_progress.update(detail="translating market data")
-            translation_result = translate_market_data_request_to_prepared_calibration(
-                request,
+            effective_progress.update(detail="resolve session")
+            session_resolution = resolve_market_data_session(
+                session_configuration=request.session_configuration,
+                normalized_market_data=normalized_market_data,
+            )
+            effective_progress.update(detail="prepare stage inputs")
+            translation_result = translate_market_data_request_to_prepared_calibration_from_phases(
+                request=request,
+                normalized_market_data=normalized_market_data,
+                session_resolution=session_resolution,
                 cpu_count=self._cpu_count,
             )
             prepared = _prepare_market_data_calibration_from_translation_result(
@@ -534,6 +553,7 @@ class JaniformEstimator:
         tick_data_source: CalibrationInputFileReference,
         tick_data_column_mapping: CalibrationTickDataColumnMapping,
         normalization_policy: CalibrationMarketDataNormalizationPolicy,
+        normalized_market_data: NormalizedMarketDataSource,
         progress: AbstractProgress,
     ) -> Optional[MarketDataSessionResolution]:
         if not self._requires_session_inference():
@@ -561,11 +581,9 @@ class JaniformEstimator:
 
         progress.update(detail="resolving session from market data")
 
-        return resolve_market_data_session_configuration_from_source_file(
+        return resolve_market_data_session(
             session_configuration=request.session_configuration,
-            tick_data_source=request.tick_data_source,
-            tick_data_column_mapping=request.column_mapping.tick_data,
-            normalization_policy=request.normalization_policy,
+            normalized_market_data=normalized_market_data,
         )
 
     def _requires_session_inference(self) -> bool:
@@ -887,6 +905,15 @@ def _build_session_configuration_input(
     *,
     working_directory: Optional[Path],
 ) -> CalibrationSessionConfigurationInput:
+    if (
+        resolved_session.source_kind == ResolvedWorkflowComponentSource.BUILT_IN
+        and len(resolved_session.applied_override_fields) == 0
+    ):
+        return CalibrationSessionConfigurationInput(
+            exchange_code=resolved_session.configuration.exchange_code,
+            session_timezone=resolved_session.configuration.timezone_name,
+        )
+
     if len(resolved_session.applied_override_fields) == 0 and resolved_session.inferred_from_data:
         return CalibrationSessionConfigurationInput(
             exchange_code=resolved_session.configuration.exchange_code,
@@ -974,10 +1001,15 @@ def _resolved_configuration_requires_materialization(
     if len(resolved_configuration.known_news.configuration.events) > 0:
         return True
 
-    return not (
+    session_requires_materialization = not (
         len(resolved_configuration.session.applied_override_fields) == 0
-        and resolved_configuration.session.inferred_from_data
+        and (
+            resolved_configuration.session.inferred_from_data
+            or resolved_configuration.session.source_kind == ResolvedWorkflowComponentSource.BUILT_IN
+        )
     )
+
+    return session_requires_materialization
 
 
 __all__ = ["JaniformEstimator"]

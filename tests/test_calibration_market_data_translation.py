@@ -8,6 +8,7 @@ import pytest
 from pyarrow import parquet
 
 from janiform.calibration.market_data.translation import (
+    resolve_market_data_session,
     translate_market_data_request_to_prepared_calibration,
 )
 from janiform.calibration import CalibrationValidationError
@@ -261,14 +262,16 @@ def test_translate_market_data_request_materializes_mean_reversion_on_interval_g
         observation["observation_timestamp_utc_nanos"]
         for observation in mean_reversion_stage_input["observations"]
     ) == (
-        _utc_nanos("2026-02-02T20:59:00Z"),
+        _utc_nanos("2026-02-03T14:30:00Z"),
         _utc_nanos("2026-02-04T14:30:00Z"),
+        _utc_nanos("2026-02-05T14:30:00Z"),
     )
     assert tuple(
         observation["observed_log_price"]
         for observation in mean_reversion_stage_input["observations"]
     ) == pytest.approx(
         (
+            math.log(101.0 / 107.0),
             math.log(101.0 / 107.0),
             math.log(104.0 / 107.0),
         )
@@ -539,18 +542,19 @@ def test_translate_market_data_request_derives_fxspot_mean_reversion_interval_fr
         "median_observed_session_duration_hours_from_retained_open_session_ticks.v1"
         in mean_reversion_stage_input["calibration_grid_kind"]
     )
-    assert mean_reversion_stage_input["source_observation_count"] == 6
+    assert mean_reversion_stage_input["source_observation_count"] == 7
     assert mean_reversion_stage_input["coverage_ratio"] == pytest.approx(1.0)
     assert tuple(
         observation["observation_timestamp_utc_nanos"]
         for observation in mean_reversion_stage_input["observations"]
     ) == (
-        _utc_nanos("2026-02-02T12:00:00Z"),
-        _utc_nanos("2026-02-03T12:00:00Z"),
-        _utc_nanos("2026-02-04T12:00:00Z"),
-        _utc_nanos("2026-02-05T12:00:00Z"),
-        _utc_nanos("2026-02-06T18:00:00Z"),
-        _utc_nanos("2026-02-08T21:00:00Z"),
+        _utc_nanos("2026-02-03T00:00:00Z"),
+        _utc_nanos("2026-02-04T00:00:00Z"),
+        _utc_nanos("2026-02-05T00:00:00Z"),
+        _utc_nanos("2026-02-06T00:00:00Z"),
+        _utc_nanos("2026-02-07T00:00:00Z"),
+        _utc_nanos("2026-02-08T00:00:00Z"),
+        _utc_nanos("2026-02-09T00:00:00Z"),
     )
 
 
@@ -592,9 +596,7 @@ def test_translate_market_data_request_infers_session_without_manual_definition(
 
     assert translation.session_resolution.resolution_kind == "automatic_inference"
     assert translation.session_resolution.manual_override_applied is False
-    assert translation.session_resolution.selected_policy_id == (
-        "exchange_code_builtin_default.xnys_regular_session.v1"
-    )
+    assert translation.session_resolution.selected_policy_id == "sources.sessions.XNYS.v1"
     assert translation.session_resolution.resolved_timezone_name == "America/New_York"
     assert translation.provenance.session_definition_path is None
     assert len(translation.session_resolution.regular_session_windows) == 5
@@ -638,8 +640,21 @@ def test_translate_market_data_request_rejects_ambiguous_session_inference_witho
     with pytest.raises(CalibrationValidationError) as captured_error:
         translate_market_data_request_to_prepared_calibration(request)
 
-    assert captured_error.value.field_path == "request"
+    assert captured_error.value.field_path == "session_configuration"
     assert "automatic 24/5 session inference is ambiguous" in str(captured_error.value)
+
+
+def test_built_in_session_resolution_does_not_require_source_file_access() -> None:
+    session_resolution = resolve_market_data_session(
+        session_configuration=CalibrationSessionConfigurationInput(
+            exchange_code="FXSPOT",
+            session_timezone="UTC",
+        ),
+    )
+
+    assert session_resolution.exchange_code == "FXSPOT"
+    assert session_resolution.resolved_timezone_name == "UTC"
+    assert session_resolution.selected_policy_id == "sources.sessions.fx_spot_24_5.v1"
 
 
 def test_translate_market_data_request_without_known_news_runs_staged_calibration(

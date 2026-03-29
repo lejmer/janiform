@@ -585,9 +585,14 @@
         "MarketDataCalibrationPreparationProvenance",
         "MarketDataCalibrationRequest",
         "MarketDataCalibrationSourceSummary",
+        "MarketDataSourceProbe",
+        "NormalizedMarketDataSource",
         "PreparedMarketDataCalibration",
         "deserialize_market_data_calibration_request",
+        "normalize_market_data_source",
         "prepare_market_data_calibration",
+        "probe_market_data_source",
+        "resolve_market_data_session",
         "run_market_data_calibration",
         "serialize_market_data_calibration_request",
         "validate_market_data_calibration_request"
@@ -894,6 +899,27 @@
           "kind": "contract_model",
           "signature": "(path: 'str', file_format: 'CalibrationInputFileFormat', provenance_label: 'str', source_row_count: 'int', retained_row_count: 'int', dropped_duplicate_row_count: 'int', sort_records_by_timestamp: 'bool', applied_timestamp_timezone: 'Optional[str]', canonical_value_field: 'Optional[str]' = None, value_mapping_policy: 'Optional[str]' = None) -> 'None'"
         },
+        "MarketDataSourceProbe": {
+          "field_names": [
+            "path",
+            "file_format",
+            "provenance_label",
+            "available_columns",
+            "source_row_count_estimate"
+          ],
+          "kind": "contract_model",
+          "signature": "(path: 'str', file_format: 'CalibrationInputFileFormat', provenance_label: 'str', available_columns: 'tuple[str, ...]', source_row_count_estimate: 'Optional[int]') -> 'None'"
+        },
+        "NormalizedMarketDataSource": {
+          "field_names": [
+            "normalized_handle",
+            "tick_data_summary",
+            "reference_price",
+            "fit_warning"
+          ],
+          "kind": "contract_model",
+          "signature": "(normalized_handle: 'NormalizedMarketDataHandle', tick_data_summary: 'LoadedMarketDataSourceSummary', reference_price: 'Optional[float]', fit_warning: 'Optional[str]') -> 'None'"
+        },
         "PreparedMarketDataCalibration": {
           "field_names": [
             "schema_version",
@@ -915,9 +941,21 @@
           "kind": "function",
           "signature": "(payload_json: 'str') -> 'MarketDataCalibrationRequest'"
         },
+        "normalize_market_data_source": {
+          "kind": "function",
+          "signature": "(*, tick_data_source: 'CalibrationInputFileReference', tick_data_column_mapping: 'CalibrationTickDataColumnMapping', normalization_policy: 'CalibrationMarketDataNormalizationPolicy', require_hawkes: 'bool' = False) -> 'NormalizedMarketDataSource'"
+        },
         "prepare_market_data_calibration": {
           "kind": "function",
           "signature": "(request: 'MarketDataCalibrationRequest') -> 'PreparedMarketDataCalibration'"
+        },
+        "probe_market_data_source": {
+          "kind": "function",
+          "signature": "(*, tick_data_source: 'CalibrationInputFileReference') -> 'MarketDataSourceProbe'"
+        },
+        "resolve_market_data_session": {
+          "kind": "function",
+          "signature": "(*, session_configuration: 'CalibrationSessionConfigurationInput', normalized_market_data: 'Optional[NormalizedMarketDataSource]' = None) -> 'MarketDataSessionResolution'"
         },
         "run_market_data_calibration": {
           "kind": "function",
@@ -1304,15 +1342,31 @@
     },
     "janiform.calibration.market_data.translation": {
       "exports": [
+        "MarketDataSourceProbe",
         "MarketDataTranslationDiagnostics",
         "MarketDataTranslationProvenance",
         "MarketDataTranslationResult",
-        "resolve_market_data_session_configuration_from_source_file",
-        "translate_market_data_request_to_prepared_calibration"
+        "NormalizedMarketDataSource",
+        "normalize_market_data_source",
+        "probe_market_data_source",
+        "resolve_market_data_session",
+        "translate_market_data_request_to_prepared_calibration",
+        "translate_market_data_request_to_prepared_calibration_from_phases"
       ],
       "module_name": "janiform.calibration.market_data.translation",
       "schema_identifiers": [],
       "symbols": {
+        "MarketDataSourceProbe": {
+          "field_names": [
+            "path",
+            "file_format",
+            "provenance_label",
+            "available_columns",
+            "source_row_count_estimate"
+          ],
+          "kind": "contract_model",
+          "signature": "(path: 'str', file_format: 'CalibrationInputFileFormat', provenance_label: 'str', available_columns: 'tuple[str, ...]', source_row_count_estimate: 'Optional[int]') -> 'None'"
+        },
         "MarketDataTranslationDiagnostics": {
           "field_names": [
             "workflow_scope",
@@ -1366,13 +1420,35 @@
           "kind": "contract_model",
           "signature": "(staged_request: 'StagedCalibrationRequest', prepared_handle: 'PreparedCalibrationExecutionHandle', session_resolution: 'MarketDataSessionResolution', diagnostics: 'MarketDataTranslationDiagnostics', provenance: 'MarketDataTranslationProvenance', fit_warning: 'Optional[str]', reference_price: 'Optional[float]') -> 'None'"
         },
-        "resolve_market_data_session_configuration_from_source_file": {
+        "NormalizedMarketDataSource": {
+          "field_names": [
+            "normalized_handle",
+            "tick_data_summary",
+            "reference_price",
+            "fit_warning"
+          ],
+          "kind": "contract_model",
+          "signature": "(normalized_handle: 'NormalizedMarketDataHandle', tick_data_summary: 'LoadedMarketDataSourceSummary', reference_price: 'Optional[float]', fit_warning: 'Optional[str]') -> 'None'"
+        },
+        "normalize_market_data_source": {
           "kind": "function",
-          "signature": "(*, session_configuration: 'CalibrationSessionConfigurationInput', tick_data_source: 'CalibrationInputFileReference', tick_data_column_mapping: 'CalibrationTickDataColumnMapping', normalization_policy: 'CalibrationMarketDataNormalizationPolicy') -> 'MarketDataSessionResolution'"
+          "signature": "(*, tick_data_source: 'CalibrationInputFileReference', tick_data_column_mapping: 'CalibrationTickDataColumnMapping', normalization_policy: 'CalibrationMarketDataNormalizationPolicy', require_hawkes: 'bool' = False) -> 'NormalizedMarketDataSource'"
+        },
+        "probe_market_data_source": {
+          "kind": "function",
+          "signature": "(*, tick_data_source: 'CalibrationInputFileReference') -> 'MarketDataSourceProbe'"
+        },
+        "resolve_market_data_session": {
+          "kind": "function",
+          "signature": "(*, session_configuration: 'CalibrationSessionConfigurationInput', normalized_market_data: 'Optional[NormalizedMarketDataSource]' = None) -> 'MarketDataSessionResolution'"
         },
         "translate_market_data_request_to_prepared_calibration": {
           "kind": "function",
           "signature": "(request: 'MarketDataCalibrationRequest', *, cpu_count: 'int | None' = None) -> 'MarketDataTranslationResult'"
+        },
+        "translate_market_data_request_to_prepared_calibration_from_phases": {
+          "kind": "function",
+          "signature": "(*, request: 'MarketDataCalibrationRequest', normalized_market_data: 'NormalizedMarketDataSource', session_resolution: 'MarketDataSessionResolution', cpu_count: 'int | None' = None) -> 'MarketDataTranslationResult'"
         }
       }
     },
@@ -2754,6 +2830,7 @@
           "field_names": [
             "schema_version",
             "resolution_kind",
+            "provenance_kind",
             "selected_policy_id",
             "manual_override_applied",
             "exchange_code",
@@ -2771,7 +2848,7 @@
             "resolved_session_definition_json"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: 'str', resolution_kind: 'str', selected_policy_id: 'str', manual_override_applied: 'bool', exchange_code: 'str', exchange_name: 'str', resolved_timezone_name: 'str', timezone_source: 'str', open_session_duration_hours_per_week: 'float', confidence_score: 'float', confidence_label: 'str', regular_session_windows: 'tuple[MarketDataSessionRegularWindow, ...]', recurring_closed_windows: 'tuple[MarketDataSessionRecurringClosedWindow, ...]', reasons: 'tuple[str, ...]', ambiguity_warnings: 'tuple[str, ...]', metadata_discrepancies: 'tuple[str, ...]', resolved_session_definition_json: 'str') -> 'None'"
+          "signature": "(schema_version: 'str', resolution_kind: 'str', provenance_kind: 'str', selected_policy_id: 'str', manual_override_applied: 'bool', exchange_code: 'str', exchange_name: 'str', resolved_timezone_name: 'str', timezone_source: 'str', open_session_duration_hours_per_week: 'float', confidence_score: 'float', confidence_label: 'str', regular_session_windows: 'tuple[MarketDataSessionRegularWindow, ...]', recurring_closed_windows: 'tuple[MarketDataSessionRecurringClosedWindow, ...]', reasons: 'tuple[str, ...]', ambiguity_warnings: 'tuple[str, ...]', metadata_discrepancies: 'tuple[str, ...]', resolved_session_definition_json: 'str') -> 'None'"
         }
       }
     },
@@ -2830,6 +2907,7 @@
           "field_names": [
             "schema_version",
             "resolution_kind",
+            "provenance_kind",
             "selected_policy_id",
             "manual_override_applied",
             "exchange_code",
@@ -2847,7 +2925,7 @@
             "resolved_session_definition_json"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: 'str', resolution_kind: 'str', selected_policy_id: 'str', manual_override_applied: 'bool', exchange_code: 'str', exchange_name: 'str', resolved_timezone_name: 'str', timezone_source: 'str', open_session_duration_hours_per_week: 'float', confidence_score: 'float', confidence_label: 'str', regular_session_windows: 'tuple[MarketDataSessionRegularWindow, ...]', recurring_closed_windows: 'tuple[MarketDataSessionRecurringClosedWindow, ...]', reasons: 'tuple[str, ...]', ambiguity_warnings: 'tuple[str, ...]', metadata_discrepancies: 'tuple[str, ...]', resolved_session_definition_json: 'str') -> 'None'"
+          "signature": "(schema_version: 'str', resolution_kind: 'str', provenance_kind: 'str', selected_policy_id: 'str', manual_override_applied: 'bool', exchange_code: 'str', exchange_name: 'str', resolved_timezone_name: 'str', timezone_source: 'str', open_session_duration_hours_per_week: 'float', confidence_score: 'float', confidence_label: 'str', regular_session_windows: 'tuple[MarketDataSessionRegularWindow, ...]', recurring_closed_windows: 'tuple[MarketDataSessionRecurringClosedWindow, ...]', reasons: 'tuple[str, ...]', ambiguity_warnings: 'tuple[str, ...]', metadata_discrepancies: 'tuple[str, ...]', resolved_session_definition_json: 'str') -> 'None'"
         }
       }
     },

@@ -159,7 +159,8 @@ def test_fit_outputs_resolved_configuration_and_provenance(
     assert payload["resolved_configuration"]["session"]["selected_preset"]["preset_name"] == "XNYS"
     assert payload["resolved_configuration"]["known_news"]["selected_preset"]["preset_name"] == "none"
     assert payload["model_summary"]["preset_provenance"]["session"]["inferred_from_data"] is False
-    assert payload["session_resolution"]["resolution_kind"] == "explicit_override"
+    assert payload["session_resolution"]["resolution_kind"] == "automatic_inference"
+    assert payload["session_resolution"]["provenance_kind"] == "bundled_preset"
     assert (run_directory / "model.json").exists()
     assert (run_directory / "fit_report.json").exists()
     assert (run_directory / "run.json").exists()
@@ -434,7 +435,7 @@ def test_fit_inspect_previews_inference(
     assert payload["input_inference"]["tick_data_format"] == "csv"
     assert payload["input_inference"]["timestamp_column"] == "timestamp_utc"
     assert payload["input_inference"]["tick_price_input_policy"] == "explicit_price_column"
-    assert payload["temporary_workspace_materialized"] is True
+    assert payload["temporary_workspace_materialized"] is False
 
 
 def test_simulate_outputs_model_provenance_and_simulation_payload(

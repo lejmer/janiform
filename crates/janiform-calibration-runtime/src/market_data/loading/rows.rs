@@ -61,6 +61,42 @@ pub(super) fn load_source_columns(
     }
 }
 
+pub(super) fn probe_source_row_count_estimate(
+    file_reference: &MarketDataInputFileReference,
+    field_path: &str,
+) -> Result<Option<usize>, MarketDataLoadingError> {
+    match file_reference.file_format {
+        MarketDataInputFileFormat::Csv => Ok(None),
+        MarketDataInputFileFormat::Parquet => {
+            let file =
+                File::open(&file_reference.path).map_err(|error| MarketDataLoadingError::Io {
+                    field_path: format!("{field_path}.path"),
+                    message: error.to_string(),
+                })?;
+
+            let reader = SerializedFileReader::new(file).map_err(|error| {
+                MarketDataLoadingError::Parquet {
+                    field_path: format!("{field_path}.path"),
+                    message: error.to_string(),
+                }
+            })?;
+
+            let row_count = usize::try_from(reader.metadata().file_metadata().num_rows()).map_err(
+                |_| MarketDataLoadingError::Parquet {
+                    field_path: format!("{field_path}.path"),
+                    message: "row-count metadata exceeds the supported usize range".to_string(),
+                },
+            )?;
+
+            Ok(Some(row_count))
+        }
+        MarketDataInputFileFormat::Json => Err(MarketDataLoadingError::InvalidValue {
+            field_path: format!("{field_path}.file_format"),
+            message: "must be one of: csv, parquet".to_string(),
+        }),
+    }
+}
+
 pub(super) fn load_rows(
     file_reference: &MarketDataInputFileReference,
     field_path: &str,

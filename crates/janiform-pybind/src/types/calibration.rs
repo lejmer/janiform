@@ -1,5 +1,6 @@
 use janiform::calibration::{
     CalibrationMemoryCheckpointStore, CalibrationStage, CalibrationStagedExecutionInput,
+    MarketDataNormalizedTickOutput,
 };
 use pyo3::exceptions::PyValueError;
 use pyo3::{PyResult, pyclass, pymethods};
@@ -16,6 +17,12 @@ pub(crate) struct PyCalibrationMemoryCheckpointStore {
 #[derive(Clone)]
 pub(crate) struct PyPreparedCalibrationExecutionHandle {
     pub(crate) execution_input: CalibrationStagedExecutionInput,
+}
+
+#[pyclass(module = "janiform._native", name = "NormalizedMarketDataHandle")]
+#[derive(Clone)]
+pub(crate) struct PyNormalizedMarketDataHandle {
+    pub(crate) normalized_output: MarketDataNormalizedTickOutput,
 }
 
 #[pymethods]
@@ -66,6 +73,17 @@ impl PyPreparedCalibrationExecutionHandle {
         serde_json::to_string(&self.execution_input).map_err(|source| {
             PyValueError::new_err(format!(
                 "failed to serialize prepared calibration execution input: {source}"
+            ))
+        })
+    }
+}
+
+#[pymethods]
+impl PyNormalizedMarketDataHandle {
+    fn serialize_summary_json(&self) -> PyResult<String> {
+        serde_json::to_string(&self.normalized_output.tick_data_summary).map_err(|source| {
+            PyValueError::new_err(format!(
+                "failed to serialize normalized market-data summary: {source}"
             ))
         })
     }

@@ -12,14 +12,17 @@ use janiform::calibration::{
     MarketDataKnownNewsColumnMapping, MarketDataKnownNewsLoadingInput, MarketDataLoadingOutput,
     MarketDataLoadingRequest, MarketDataNormalizationPolicy, MarketDataOptionSurfaceColumnMapping,
     MarketDataOptionSurfaceLoadingInput, MarketDataSessionConfiguration,
-    MarketDataSessionResolutionPayload, MarketDataTickDataColumnMapping,
-    MarketDataTranslationPreprocessingOutput, MarketDataTranslationPreprocessingRequest,
-    MarketDataTranslationPreprocessingSettings, ReturnComponentsStageFittedParameters,
-    ReturnComponentsStageObservedSignalSummaryStatistics,
+    MarketDataSessionResolutionPayload, MarketDataSourceProbePayload,
+    MarketDataTickDataColumnMapping, MarketDataTranslationPreprocessingOutput,
+    MarketDataTranslationPreprocessingRequest, MarketDataTranslationPreprocessingSettings,
+    ReturnComponentsStageFittedParameters, ReturnComponentsStageObservedSignalSummaryStatistics,
     evaluate_return_components_exact_candidate_from_bridge,
     load_and_preprocess_market_data_translation_request as load_and_preprocess_market_data_translation_request_native,
+    normalize_market_data_source as normalize_market_data_source_native,
+    prepare_market_data_loading_from_phases as prepare_market_data_loading_from_phases_native,
+    probe_market_data_source as probe_market_data_source_native,
     preprocess_market_data_translation_request as preprocess_market_data_translation_request_native,
-    resolve_market_data_session_configuration_from_source_file as resolve_market_data_session_configuration_from_source_file_native,
+    resolve_market_data_session_configuration as resolve_market_data_session_configuration_native,
     run_staged_calibration_from_execution_input,
     run_staged_calibration_from_execution_input_with_observer,
 };
@@ -34,7 +37,8 @@ use serde_json::Value;
 use crate::CalibrationExecutionError;
 use crate::python_value::{json_value_to_py_object, py_any_to_json_value};
 use crate::types::{
-    PyCalendarRegistry, PyCalibrationMemoryCheckpointStore, PyPreparedCalibrationExecutionHandle,
+    PyCalendarRegistry, PyCalibrationMemoryCheckpointStore, PyNormalizedMarketDataHandle,
+    PyPreparedCalibrationExecutionHandle,
 };
 
 const PREPARED_MARKET_DATA_DERIVATION_POLICY_ID: &str =
@@ -856,6 +860,31 @@ mod tests {
     }
 }
 
+fn _load_market_data_from_phases(
+    loading_request: MarketDataLoadingRequest,
+) -> Result<MarketDataLoadingOutput, String> {
+    let normalized_tick_output = normalize_market_data_source_native(
+        &loading_request.tick_data_source,
+        &loading_request.tick_data_column_mapping,
+        &loading_request.normalization_policy,
+        loading_request.require_hawkes,
+    )
+    .map_err(|source| format!("failed to normalize market-data source: {source}"))?;
+
+    let session_resolution = resolve_market_data_session_configuration_native(
+        loading_request.session_configuration.clone(),
+        Some(&normalized_tick_output),
+    )
+    .map_err(|source| format!("failed to resolve market-data session: {source}"))?;
+
+    prepare_market_data_loading_from_phases_native(
+        loading_request,
+        normalized_tick_output,
+        session_resolution,
+    )
+    .map_err(|source| format!("failed to prepare market-data calibration inputs: {source}"))
+}
+
 fn _prepare_market_data_calibration_plan(
     request: PythonMarketDataCalibrationRequest,
     cpu_count: Option<usize>,
@@ -865,10 +894,26 @@ fn _prepare_market_data_calibration_plan(
     let (loading_request, trade_events_data_reference, option_surface_data_reference) =
         _build_loading_request(&request, &selected_stages)?;
 
-    let loading_output =
-        load_and_preprocess_market_data_translation_request_native(loading_request)
-            .map_err(|source| source.to_string())?;
+    let loading_output = _load_market_data_from_phases(loading_request)?;
 
+    _prepared_market_data_plan_from_loading_output(
+        request,
+        cpu_count,
+        selected_stages,
+        trade_events_data_reference,
+        option_surface_data_reference,
+        loading_output,
+    )
+}
+
+fn _prepared_market_data_plan_from_loading_output(
+    request: PythonMarketDataCalibrationRequest,
+    cpu_count: Option<usize>,
+    selected_stages: Vec<CalibrationStage>,
+    trade_events_data_reference: String,
+    option_surface_data_reference: Option<String>,
+    loading_output: MarketDataLoadingOutput,
+) -> Result<PreparedMarketDataPlan, String> {
     let run_request = CalibrationRunSpec::try_new(
         request.run_id.clone(),
         CalibrationRunDataInputs {
@@ -1085,21 +1130,38 @@ fn load_and_preprocess_market_data_translation_request(
 }
 
 #[pyfunction]
-#[pyo3(signature = (session_configuration, tick_data_source, tick_data_column_mapping, normalization_policy))]
-fn resolve_market_data_session_configuration_from_source_file(
+#[pyo3(signature = (tick_data_source))]
+fn probe_market_data_source(
     py: Python<'_>,
-    session_configuration: &Bound<'_, PyAny>,
     tick_data_source: &Bound<'_, PyAny>,
-    tick_data_column_mapping: &Bound<'_, PyAny>,
-    normalization_policy: &Bound<'_, PyAny>,
 ) -> PyResult<Py<PyAny>> {
-    let session_configuration: MarketDataSessionConfiguration =
-        serde_json::from_value(py_any_to_json_value(session_configuration)?).map_err(|source| {
+    let tick_data_source: MarketDataInputFileReference =
+        serde_json::from_value(py_any_to_json_value(tick_data_source)?).map_err(|source| {
             CalibrationExecutionError::new_err(format!(
-                "failed to deserialize market-data session configuration: {source}"
+                "failed to deserialize tick-data source reference: {source}"
             ))
         })?;
 
+    let source_probe = py
+        .allow_threads(|| probe_market_data_source_native(&tick_data_source))
+        .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
+
+    market_data_source_probe_to_py_object(py, &source_probe).map_err(|source| {
+        CalibrationExecutionError::new_err(format!(
+            "failed to materialize market-data source probe: {source}"
+        ))
+    })
+}
+
+#[pyfunction]
+#[pyo3(signature = (tick_data_source, tick_data_column_mapping, normalization_policy, require_hawkes = false))]
+fn normalize_market_data_source(
+    py: Python<'_>,
+    tick_data_source: &Bound<'_, PyAny>,
+    tick_data_column_mapping: &Bound<'_, PyAny>,
+    normalization_policy: &Bound<'_, PyAny>,
+    require_hawkes: bool,
+) -> PyResult<Py<PyAny>> {
     let tick_data_source: MarketDataInputFileReference =
         serde_json::from_value(py_any_to_json_value(tick_data_source)?).map_err(|source| {
             CalibrationExecutionError::new_err(format!(
@@ -1123,13 +1185,62 @@ fn resolve_market_data_session_configuration_from_source_file(
             ))
         })?;
 
+    let normalized_output = py
+        .allow_threads(|| {
+            normalize_market_data_source_native(
+                &tick_data_source,
+                &tick_data_column_mapping,
+                &normalization_policy,
+                require_hawkes,
+            )
+        })
+        .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
+
+    let result = PyDict::new(py);
+    let normalized_handle = Py::new(
+        py,
+        PyNormalizedMarketDataHandle {
+            normalized_output: normalized_output.clone(),
+        },
+    )?;
+
+    result.set_item("normalized_handle", normalized_handle)?;
+    result.set_item(
+        "tick_data_summary",
+        json_value_to_py_object(
+            py,
+            &serde_json::to_value(&normalized_output.tick_data_summary).map_err(|source| {
+                CalibrationExecutionError::new_err(format!(
+                    "failed to serialize normalized tick-data summary: {source}"
+                ))
+            })?,
+        )?,
+    )?;
+    result.set_item("reference_price", normalized_output.reference_price)?;
+    result.set_item("fit_warning", normalized_output.fit_warning)?;
+
+    Ok(result.into())
+}
+
+#[pyfunction]
+#[pyo3(signature = (session_configuration, normalized_market_data_handle = None))]
+fn resolve_market_data_session(
+    py: Python<'_>,
+    session_configuration: &Bound<'_, PyAny>,
+    normalized_market_data_handle: Option<&PyNormalizedMarketDataHandle>,
+) -> PyResult<Py<PyAny>> {
+    let session_configuration: MarketDataSessionConfiguration =
+        serde_json::from_value(py_any_to_json_value(session_configuration)?).map_err(|source| {
+            CalibrationExecutionError::new_err(format!(
+                "failed to deserialize market-data session configuration: {source}"
+            ))
+        })?;
+
     let session_resolution = py
         .allow_threads(|| {
-            resolve_market_data_session_configuration_from_source_file_native(
+            resolve_market_data_session_configuration_native(
                 session_configuration,
-                tick_data_source,
-                tick_data_column_mapping,
-                normalization_policy,
+                normalized_market_data_handle.map(|handle| &handle.normalized_output),
             )
         })
         .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
@@ -1141,6 +1252,55 @@ fn resolve_market_data_session_configuration_from_source_file(
     })
 }
 
+#[pyfunction]
+#[pyo3(signature = (request, normalized_market_data_handle, session_resolution, cpu_count = None))]
+fn prepare_market_data_calibration_plan_from_phases(
+    py: Python<'_>,
+    request: &Bound<'_, PyAny>,
+    normalized_market_data_handle: &PyNormalizedMarketDataHandle,
+    session_resolution: &Bound<'_, PyAny>,
+    cpu_count: Option<usize>,
+) -> PyResult<Py<PyAny>> {
+    let request: PythonMarketDataCalibrationRequest =
+        serde_json::from_value(py_any_to_json_value(request)?).map_err(|source| {
+            CalibrationExecutionError::new_err(format!(
+                "failed to deserialize market-data calibration request: {source}"
+            ))
+        })?;
+    let session_resolution: MarketDataSessionResolutionPayload =
+        serde_json::from_value(py_any_to_json_value(session_resolution)?).map_err(|source| {
+            CalibrationExecutionError::new_err(format!(
+                "failed to deserialize market-data session resolution payload: {source}"
+            ))
+        })?;
+
+    let selected_stages = _selected_stages_for_scope(request.workflow_scope);
+    let (loading_request, trade_events_data_reference, option_surface_data_reference) =
+        _build_loading_request(&request, &selected_stages).map_err(CalibrationExecutionError::new_err)?;
+
+    let loading_output = py
+        .allow_threads(|| {
+            prepare_market_data_loading_from_phases_native(
+                loading_request,
+                normalized_market_data_handle.normalized_output.clone(),
+                session_resolution,
+            )
+        })
+        .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
+
+    let prepared_plan = _prepared_market_data_plan_from_loading_output(
+        request,
+        cpu_count,
+        selected_stages,
+        trade_events_data_reference,
+        option_surface_data_reference,
+        loading_output,
+    )
+    .map_err(CalibrationExecutionError::new_err)?;
+
+    prepared_market_data_plan_to_py_object(py, prepared_plan)
+}
+
 fn market_data_loading_output_to_py_object(
     py: Python<'_>,
     loading_output: &MarketDataLoadingOutput,
@@ -1148,6 +1308,19 @@ fn market_data_loading_output_to_py_object(
     let raw_value = serde_json::to_value(loading_output).map_err(|source| {
         CalibrationExecutionError::new_err(format!(
             "failed to serialize market-data loading output: {source}"
+        ))
+    })?;
+
+    json_value_to_py_object(py, &raw_value)
+}
+
+fn market_data_source_probe_to_py_object(
+    py: Python<'_>,
+    source_probe: &MarketDataSourceProbePayload,
+) -> PyResult<Py<PyAny>> {
+    let raw_value = serde_json::to_value(source_probe).map_err(|source| {
+        CalibrationExecutionError::new_err(format!(
+            "failed to serialize market-data source probe: {source}"
         ))
     })?;
 
@@ -1180,24 +1353,10 @@ fn market_data_translation_preprocessing_output_to_py_object(
     json_value_to_py_object(py, &raw_value)
 }
 
-#[pyfunction]
-#[pyo3(signature = (request, cpu_count = None))]
-fn prepare_market_data_calibration_plan(
+fn prepared_market_data_plan_to_py_object(
     py: Python<'_>,
-    request: &Bound<'_, PyAny>,
-    cpu_count: Option<usize>,
+    prepared_plan: PreparedMarketDataPlan,
 ) -> PyResult<Py<PyAny>> {
-    let request: PythonMarketDataCalibrationRequest =
-        serde_json::from_value(py_any_to_json_value(request)?).map_err(|source| {
-            CalibrationExecutionError::new_err(format!(
-                "failed to deserialize market-data calibration request: {source}"
-            ))
-        })?;
-
-    let prepared_plan = py
-        .allow_threads(|| _prepare_market_data_calibration_plan(request, cpu_count))
-        .map_err(CalibrationExecutionError::new_err)?;
-
     let result = PyDict::new(py);
 
     let prepared_handle = Py::new(
@@ -1249,6 +1408,27 @@ fn prepare_market_data_calibration_plan(
     result.set_item("reference_price", prepared_plan.reference_price)?;
 
     Ok(result.into_any().unbind())
+}
+
+#[pyfunction]
+#[pyo3(signature = (request, cpu_count = None))]
+fn prepare_market_data_calibration_plan(
+    py: Python<'_>,
+    request: &Bound<'_, PyAny>,
+    cpu_count: Option<usize>,
+) -> PyResult<Py<PyAny>> {
+    let request: PythonMarketDataCalibrationRequest =
+        serde_json::from_value(py_any_to_json_value(request)?).map_err(|source| {
+            CalibrationExecutionError::new_err(format!(
+                "failed to deserialize market-data calibration request: {source}"
+            ))
+        })?;
+
+    let prepared_plan = py
+        .allow_threads(|| _prepare_market_data_calibration_plan(request, cpu_count))
+        .map_err(CalibrationExecutionError::new_err)?;
+
+    prepared_market_data_plan_to_py_object(py, prepared_plan)
 }
 
 #[pyfunction]
@@ -1614,12 +1794,15 @@ pub(super) fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
         load_and_preprocess_market_data_translation_request,
         module
     )?)?;
+    module.add_function(wrap_pyfunction!(probe_market_data_source, module)?)?;
+    module.add_function(wrap_pyfunction!(normalize_market_data_source, module)?)?;
+    module.add_function(wrap_pyfunction!(resolve_market_data_session, module)?)?;
     module.add_function(wrap_pyfunction!(
-        resolve_market_data_session_configuration_from_source_file,
+        prepare_market_data_calibration_plan,
         module
     )?)?;
     module.add_function(wrap_pyfunction!(
-        prepare_market_data_calibration_plan,
+        prepare_market_data_calibration_plan_from_phases,
         module
     )?)?;
     module.add_function(wrap_pyfunction!(run_prepared_staged_calibration, module)?)?;

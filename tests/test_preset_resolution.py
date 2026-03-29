@@ -284,6 +284,7 @@ def _build_inferred_session_resolution(
     return MarketDataSessionResolution(
         schema_version="calibration.market_data.session_resolution.v1",
         resolution_kind="automatic_inference",
+        provenance_kind="bundled_preset",
         selected_policy_id="exchange_code_builtin_default.xnys_regular_session.v1",
         manual_override_applied=False,
         exchange_code="XNYS",

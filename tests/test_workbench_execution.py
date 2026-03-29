@@ -1,19 +1,21 @@
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-from janiform.calibration.staged.contracts import CalibrationStageExecutionStatus
-from pathlib import Path
-
 from janiform.calibration.market_data.contracts import CalibrationMarketDataWorkflowScope
+from janiform.calibration.staged.contracts import CalibrationStageExecutionStatus
 from janiform.contracts import MeanReversionAnchorModelKind
-from tools.workbench.execution import WorkbenchExecutionWorker, _mean_reversion_configuration_from_setup
+from tools.workbench.execution import (
+    WorkbenchExecutionWorker,
+    _live_stage_report_payload,
+    _mean_reversion_configuration_from_setup,
+)
 from tools.workbench.state import WorkbenchRunSetup
 
 
 def test_workbench_execution_uses_endogenous_mean_reversion_by_default() -> None:
     run_setup = WorkbenchRunSetup(
         dataset_path=Path("ticks.csv"),
-        exchange_code="FXSPOT",
         workflow_scope=CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE,
         output_directory=Path("output"),
     )
@@ -31,7 +33,6 @@ def test_workbench_execution_uses_endogenous_mean_reversion_by_default() -> None
 def test_workbench_execution_honors_selected_mean_reversion_anchor_family() -> None:
     run_setup = WorkbenchRunSetup(
         dataset_path=Path("ticks.csv"),
-        exchange_code="FXSPOT",
         workflow_scope=CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE,
         output_directory=Path("output"),
         mean_reversion_anchor_model_kind=MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL,
@@ -50,7 +51,6 @@ def test_workbench_execution_honors_selected_mean_reversion_anchor_family() -> N
 def test_workbench_execution_omits_mean_reversion_for_seasonality_only_runs() -> None:
     run_setup = WorkbenchRunSetup(
         dataset_path=Path("ticks.csv"),
-        exchange_code="FXSPOT",
         workflow_scope=CalibrationMarketDataWorkflowScope.SEASONALITY_ONLY,
         output_directory=Path("output"),
     )
@@ -63,7 +63,6 @@ def test_workbench_execution_worker_uses_prepared_handle_runner_and_current_fit_
 ) -> None:
     run_setup = WorkbenchRunSetup(
         dataset_path=Path("ticks.csv"),
-        exchange_code="FXSPOT",
         workflow_scope=CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE,
         output_directory=Path("output"),
     )
@@ -188,3 +187,51 @@ def test_workbench_execution_worker_uses_prepared_handle_runner_and_current_fit_
     assert len(completed_results) == 1
     assert completed_results[0].fit_report.staged_request == "staged-request"
     assert completed_results[0].fit_report.prepared_data_reference == "prepared-data-reference"
+
+
+def test_live_stage_report_payload_omits_non_live_stage_reports() -> None:
+    assert _live_stage_report_payload(
+        {
+            "stage_report_kind": "seasonality",
+            "status": "success",
+            "normalized_stage_payload": {
+                "timestamp_utc_nanos": [1, 2, 3],
+            },
+        }
+    ) is None
+
+
+def test_live_stage_report_payload_keeps_candidate_diagnostics_only() -> None:
+    payload = _live_stage_report_payload(
+        {
+            "stage_report_kind": "hawkes",
+            "status": "success",
+            "fitted_stage_payload": {
+                "selected_candidate_id": "hawkes-001",
+                "candidate_diagnostics": [
+                    {
+                        "candidate_id": "hawkes-001",
+                        "penalized_objective_value": 1.25,
+                    }
+                ],
+                "observed_interarrival_times": [1.0, 2.0, 3.0],
+            },
+            "normalized_stage_payload": {
+                "tick_event_timestamps": [1, 2, 3],
+            },
+        }
+    )
+
+    assert payload == {
+        "stage_report_kind": "hawkes",
+        "status": "success",
+        "fitted_stage_payload": {
+            "selected_candidate_id": "hawkes-001",
+            "candidate_diagnostics": [
+                {
+                    "candidate_id": "hawkes-001",
+                    "penalized_objective_value": 1.25,
+                }
+            ],
+        },
+    }

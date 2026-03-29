@@ -30,7 +30,7 @@ from ..staged.request import StagedCalibrationRequest
 from ..._native_api import native_exception_matches, native_module
 
 if TYPE_CHECKING:
-    from ..._native import PreparedCalibrationExecutionHandle
+    from ..._native import NormalizedMarketDataHandle, PreparedCalibrationExecutionHandle
 
 
 CALIBRATION_MARKET_DATA_TRANSLATION_ERROR_ID = "calibration.validation.market_data_translation"
@@ -74,6 +74,23 @@ class MarketDataTranslationProvenance:
 
 
 @dataclass(frozen=True, slots=True)
+class MarketDataSourceProbe:
+    path: str
+    file_format: CalibrationInputFileFormat
+    provenance_label: str
+    available_columns: tuple[str, ...]
+    source_row_count_estimate: Optional[int]
+
+
+@dataclass(frozen=True, slots=True)
+class NormalizedMarketDataSource:
+    normalized_handle: NormalizedMarketDataHandle
+    tick_data_summary: LoadedMarketDataSourceSummary
+    reference_price: Optional[float]
+    fit_warning: Optional[str]
+
+
+@dataclass(frozen=True, slots=True)
 class MarketDataTranslationResult:
     staged_request: StagedCalibrationRequest
     prepared_handle: PreparedCalibrationExecutionHandle
@@ -107,11 +124,42 @@ def translate_market_data_request_to_prepared_calibration(
         raise _translation_error("request", "must be a MarketDataCalibrationRequest")
 
     normalized_request = MarketDataCalibrationRequest.from_mapping(request.to_payload())
+    require_hawkes = normalized_request.workflow_scope != CalibrationMarketDataWorkflowScope.SEASONALITY_ONLY
+    normalized_market_data = normalize_market_data_source(
+        tick_data_source=normalized_request.tick_data_source,
+        tick_data_column_mapping=normalized_request.column_mapping.tick_data,
+        normalization_policy=normalized_request.normalization_policy,
+        require_hawkes=require_hawkes,
+    )
+    session_resolution = resolve_market_data_session(
+        session_configuration=normalized_request.session_configuration,
+        normalized_market_data=normalized_market_data,
+    )
+
+    return translate_market_data_request_to_prepared_calibration_from_phases(
+        request=normalized_request,
+        normalized_market_data=normalized_market_data,
+        session_resolution=session_resolution,
+        cpu_count=cpu_count,
+    )
+
+
+def translate_market_data_request_to_prepared_calibration_from_phases(
+    *,
+    request: MarketDataCalibrationRequest,
+    normalized_market_data: NormalizedMarketDataSource,
+    session_resolution: MarketDataSessionResolution,
+    cpu_count: int | None = None,
+) -> MarketDataTranslationResult:
+    if not isinstance(request, MarketDataCalibrationRequest):
+        raise _translation_error("request", "must be a MarketDataCalibrationRequest")
     native = _native_market_data_module()
 
     try:
-        raw_payload = native.prepare_market_data_calibration_plan(
-            normalized_request.to_payload(),
+        raw_payload = native.prepare_market_data_calibration_plan_from_phases(
+            request.to_payload(),
+            normalized_market_data.normalized_handle,
+            session_resolution.to_payload(),
             cpu_count,
         )
     except Exception as e:
@@ -137,21 +185,97 @@ def translate_market_data_request_to_prepared_calibration(
     return _market_data_translation_result_from_payload(raw_payload)
 
 
-def resolve_market_data_session_configuration_from_source_file(
+def probe_market_data_source(
     *,
-    session_configuration: CalibrationSessionConfigurationInput,
+    tick_data_source: CalibrationInputFileReference,
+) -> MarketDataSourceProbe:
+    native = _native_market_data_module()
+
+    try:
+        raw_payload = native.probe_market_data_source(
+            tick_data_source.to_payload(),
+        )
+    except Exception as e:
+        if native_exception_matches(native, e, "CalibrationExecutionError"):
+            raise _translation_error(
+                "tick_data_source",
+                f"market-data source probe failed: {e}",
+                context={"translation_step": "native_source_probe"},
+            ) from e
+
+        raise _translation_error(
+            "tick_data_source",
+            f"market-data source probe failed: {e}",
+            context={"translation_step": "native_source_probe"},
+        ) from e
+
+    if not isinstance(raw_payload, dict):
+        raise _calibration_integration_error(
+            "market-data source probe returned an invalid response payload",
+            entrypoint=CALIBRATION_MARKET_DATA_TRANSLATION_ENTRYPOINT,
+            error_id=CALIBRATION_INTEGRATION_RESPONSE_ERROR_ID,
+            context={"returned_type": type(raw_payload).__name__},
+        )
+
+    return _market_data_source_probe_from_payload(raw_payload)
+
+
+def normalize_market_data_source(
+    *,
     tick_data_source: CalibrationInputFileReference,
     tick_data_column_mapping: CalibrationTickDataColumnMapping,
     normalization_policy: CalibrationMarketDataNormalizationPolicy,
+    require_hawkes: bool = False,
+) -> NormalizedMarketDataSource:
+    native = _native_market_data_module()
+
+    try:
+        raw_payload = native.normalize_market_data_source(
+            tick_data_source.to_payload(),
+            tick_data_column_mapping.to_payload(),
+            normalization_policy.to_payload(),
+            require_hawkes,
+        )
+    except Exception as e:
+        if native_exception_matches(native, e, "CalibrationExecutionError"):
+            raise _translation_error(
+                "tick_data_source",
+                f"market-data normalization failed: {e}",
+                context={"translation_step": "native_source_normalization"},
+            ) from e
+
+        raise _translation_error(
+            "tick_data_source",
+            f"market-data normalization failed: {e}",
+            context={"translation_step": "native_source_normalization"},
+        ) from e
+
+    if not isinstance(raw_payload, dict):
+        raise _calibration_integration_error(
+            "market-data normalization returned an invalid response payload",
+            entrypoint=CALIBRATION_MARKET_DATA_TRANSLATION_ENTRYPOINT,
+            error_id=CALIBRATION_INTEGRATION_RESPONSE_ERROR_ID,
+            context={"returned_type": type(raw_payload).__name__},
+        )
+
+    return _normalized_market_data_source_from_payload(raw_payload)
+
+
+def resolve_market_data_session(
+    *,
+    session_configuration: CalibrationSessionConfigurationInput,
+    normalized_market_data: Optional[NormalizedMarketDataSource] = None,
 ) -> MarketDataSessionResolution:
     native = _native_market_data_module()
 
     try:
-        raw_payload = native.resolve_market_data_session_configuration_from_source_file(
+        raw_payload = native.resolve_market_data_session(
             session_configuration.to_payload(),
-            tick_data_source.to_payload(),
-            tick_data_column_mapping.to_payload(),
-            normalization_policy.to_payload(),
+            (
+                normalized_market_data.normalized_handle
+                if normalized_market_data is not None
+                else None
+            ),
         )
     except Exception as e:
         if native_exception_matches(native, e, "CalibrationExecutionError"):
@@ -207,6 +331,44 @@ def _market_data_translation_result_from_payload(
         provenance=_market_data_translation_provenance_from_payload(provenance_payload),
         fit_warning=raw_payload.get("fit_warning"),
         reference_price=raw_payload.get("reference_price"),
+    )
+
+
+def _market_data_source_probe_from_payload(
+    raw_payload: dict[str, Any],
+) -> MarketDataSourceProbe:
+    return MarketDataSourceProbe(
+        path=str(raw_payload["path"]),
+        file_format=CalibrationInputFileFormat(raw_payload["file_format"]),
+        provenance_label=str(raw_payload["provenance_label"]),
+        available_columns=tuple(str(column_name) for column_name in raw_payload["available_columns"]),
+        source_row_count_estimate=(
+            int(raw_payload["source_row_count_estimate"])
+            if raw_payload.get("source_row_count_estimate") is not None
+            else None
+        ),
+    )
+
+
+def _normalized_market_data_source_from_payload(
+    raw_payload: dict[str, Any],
+) -> NormalizedMarketDataSource:
+    normalized_handle = raw_payload.get("normalized_handle")
+    if normalized_handle is None:
+        raise _translation_error("normalized_handle", "is required in the native response payload")
+
+    tick_data_summary = raw_payload.get("tick_data_summary")
+    if not isinstance(tick_data_summary, dict):
+        raise _translation_error("tick_data_summary", "must be an object")
+
+    return NormalizedMarketDataSource(
+        normalized_handle=normalized_handle,
+        tick_data_summary=_source_summary_from_payload(
+            tick_data_summary,
+            field_path="tick_data_summary",
+        ),
+        reference_price=raw_payload.get("reference_price"),
+        fit_warning=raw_payload.get("fit_warning"),
     )
 
 
@@ -309,6 +471,7 @@ def _market_data_session_resolution_from_payload(
     return MarketDataSessionResolution(
         schema_version=str(raw_payload["schema_version"]),
         resolution_kind=str(raw_payload["resolution_kind"]),
+        provenance_kind=str(raw_payload["provenance_kind"]),
         selected_policy_id=str(raw_payload["selected_policy_id"]),
         manual_override_applied=bool(raw_payload["manual_override_applied"]),
         exchange_code=str(raw_payload["exchange_code"]),
@@ -367,9 +530,14 @@ def _translation_error(
 
 
 __all__ = [
+    "MarketDataSourceProbe",
     "MarketDataTranslationDiagnostics",
     "MarketDataTranslationProvenance",
     "MarketDataTranslationResult",
-    "resolve_market_data_session_configuration_from_source_file",
+    "NormalizedMarketDataSource",
+    "normalize_market_data_source",
+    "probe_market_data_source",
+    "resolve_market_data_session",
     "translate_market_data_request_to_prepared_calibration",
+    "translate_market_data_request_to_prepared_calibration_from_phases",
 ]

@@ -542,9 +542,14 @@ def test_calibration_market_data_public_submodule_is_supported_domain_import() -
         "MarketDataCalibrationPreparationProvenance",
         "MarketDataCalibrationRequest",
         "MarketDataCalibrationSourceSummary",
+        "MarketDataSourceProbe",
+        "NormalizedMarketDataSource",
         "PreparedMarketDataCalibration",
         "deserialize_market_data_calibration_request",
+        "normalize_market_data_source",
         "prepare_market_data_calibration",
+        "probe_market_data_source",
+        "resolve_market_data_session",
         "run_market_data_calibration",
         "serialize_market_data_calibration_request",
         "validate_market_data_calibration_request",
@@ -579,11 +584,16 @@ def test_calibration_market_data_public_ownership_submodules_are_supported_domai
         "LoadedMarketDataSourceSummary",
     }
     assert set(calibration_market_data_translation_module.__all__) == {
+        "MarketDataSourceProbe",
         "MarketDataTranslationDiagnostics",
         "MarketDataTranslationProvenance",
         "MarketDataTranslationResult",
-        "resolve_market_data_session_configuration_from_source_file",
+        "NormalizedMarketDataSource",
+        "normalize_market_data_source",
+        "probe_market_data_source",
+        "resolve_market_data_session",
         "translate_market_data_request_to_prepared_calibration",
+        "translate_market_data_request_to_prepared_calibration_from_phases",
     }
     assert set(calibration_market_data_workflow_module.__all__) == {
         "MarketDataCalibrationPreparationDiagnostics",

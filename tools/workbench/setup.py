@@ -24,9 +24,10 @@ from janiform.calibration.market_data.contracts import (
     CalibrationMarketDataWorkflowScope,
     CalibrationTickPriceInputPolicy,
 )
+from janiform.calibration.presets.registry import PresetCategory, PresetRegistry
 from janiform.contracts import MeanReversionAnchorModelKind
 
-from .state import WorkbenchRunSetup
+from .state import WorkbenchRunSetup, WorkbenchSessionSource
 
 
 class WorkbenchSetupWidget(QWidget):
@@ -37,8 +38,12 @@ class WorkbenchSetupWidget(QWidget):
         super().__init__()
 
         self._latest_inference: Optional[HighLevelFitInference] = None
+        self._preset_registry = PresetRegistry()
         self._dataset_path_edit = QLineEdit()
-        self._exchange_code_edit = QLineEdit("FXSPOT")
+        self._session_source_mode_combo = QComboBox()
+        self._session_preset_combo = QComboBox()
+        self._session_definition_edit = QLineEdit()
+        self._session_exchange_code_edit = QLineEdit("FXSPOT")
         self._output_directory_edit = QLineEdit(str((Path.cwd() / ".janiform").resolve()))
         self._workflow_scope_combo = QComboBox()
         self._mean_reversion_anchor_combo = QComboBox()
@@ -101,7 +106,26 @@ class WorkbenchSetupWidget(QWidget):
         )
 
         form_layout.addRow("Anchor Family", self._mean_reversion_anchor_combo)
-        form_layout.addRow("Exchange Code", self._exchange_code_edit)
+
+        self._session_source_mode_combo.addItem("Session Preset", "preset")
+        self._session_source_mode_combo.addItem("Session Definition", "definition")
+        self._session_source_mode_combo.addItem("Probe Fallback", "probe_fallback")
+        self._session_source_mode_combo.currentIndexChanged.connect(self._on_session_source_changed)
+        form_layout.addRow("Session Source", self._session_source_mode_combo)
+
+        self._populate_session_preset_combo()
+        form_layout.addRow("Session Preset", self._session_preset_combo)
+
+        session_definition_row = QWidget()
+        session_definition_layout = QHBoxLayout(session_definition_row)
+        session_definition_layout.setContentsMargins(0, 0, 0, 0)
+        session_definition_layout.addWidget(self._session_definition_edit)
+        session_definition_browse = QPushButton("Browse")
+        session_definition_browse.clicked.connect(self._choose_session_definition)
+        session_definition_layout.addWidget(session_definition_browse)
+        form_layout.addRow("Session JSON", session_definition_row)
+
+        form_layout.addRow("Fallback Exchange", self._session_exchange_code_edit)
 
         output_row = QWidget()
         output_layout = QHBoxLayout(output_row)
@@ -148,6 +172,7 @@ class WorkbenchSetupWidget(QWidget):
         root_layout.addWidget(action_row)
 
         self._on_workflow_scope_changed()
+        self._on_session_source_changed()
 
     def set_dataset_path(self, path: Path) -> None:
         self._dataset_path_edit.setText(str(path))
@@ -174,6 +199,16 @@ class WorkbenchSetupWidget(QWidget):
         )
         if selected_directory:
             self._output_directory_edit.setText(selected_directory)
+
+    def _choose_session_definition(self) -> None:
+        selected_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select session definition",
+            str(Path.cwd()),
+            "Session definitions (*.json);;All files (*)",
+        )
+        if selected_path:
+            self._session_definition_edit.setText(selected_path)
 
     def _infer_inputs(self) -> None:
         dataset_path_text = self._dataset_path_edit.text().strip()
@@ -248,11 +283,40 @@ class WorkbenchSetupWidget(QWidget):
             self._status_label.setText("The selected dataset path does not exist.")
             return
 
+        session_source_mode = str(self._session_source_mode_combo.currentData())
+        session_definition_path_text = self._session_definition_edit.text().strip()
+        session_definition_path = (
+            Path(session_definition_path_text).expanduser().resolve()
+            if session_definition_path_text
+            else None
+        )
+        if session_source_mode == "definition" and session_definition_path is None:
+            self._status_label.setText("Select a session-definition JSON file.")
+            return
+        if (
+            session_source_mode == "definition"
+            and session_definition_path is not None
+            and not session_definition_path.exists()
+        ):
+            self._status_label.setText("The selected session-definition path does not exist.")
+            return
+
+        session_source = WorkbenchSessionSource(
+            mode=session_source_mode,
+            preset_name=(
+                self._selected_combo_value(self._session_preset_combo)
+                if session_source_mode == "preset"
+                else None
+            ),
+            definition_path=session_definition_path if session_source_mode == "definition" else None,
+            exchange_code=self._session_exchange_code_edit.text().strip() or "FXSPOT",
+        )
+
         run_setup = WorkbenchRunSetup(
             dataset_path=dataset_path.resolve(),
-            exchange_code=self._exchange_code_edit.text().strip() or "FXSPOT",
             workflow_scope=self._workflow_scope_combo.currentData(),
             output_directory=Path(self._output_directory_edit.text().strip()).expanduser().resolve(),
+            session_source=session_source,
             mean_reversion_anchor_model_kind=self._mean_reversion_anchor_combo.currentData(),
             file_format=self._file_format_combo.currentData(),
             timestamp_column=self._selected_combo_value(self._timestamp_column_combo),
@@ -264,6 +328,19 @@ class WorkbenchSetupWidget(QWidget):
         )
 
         self.setup_submitted.emit(run_setup)
+
+    def _populate_session_preset_combo(self) -> None:
+        self._session_preset_combo.clear()
+        for entry in self._preset_registry.list_presets(category=PresetCategory.SESSION):
+            self._session_preset_combo.addItem(entry.display_name, entry.preset_name)
+
+        self._set_combo_data(self._session_preset_combo, "FXSPOT")
+
+    def _on_session_source_changed(self) -> None:
+        mode = str(self._session_source_mode_combo.currentData())
+        self._session_preset_combo.setEnabled(mode == "preset")
+        self._session_definition_edit.setEnabled(mode == "definition")
+        self._session_exchange_code_edit.setEnabled(mode == "probe_fallback")
 
     def _populate_column_combo(
         self,
