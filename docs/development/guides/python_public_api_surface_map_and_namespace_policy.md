@@ -286,7 +286,7 @@ from janiform.contracts import MeanReversionFittedParameters
 - `janiform.calibration.fit.report`
   - Ownership: high-level fit report contract
 - `janiform.calibration.market_data`
-  - Ownership: market-data request contracts, input normalization policy, preparation diagnostics, and the market-data calibration entrypoints
+  - Ownership: market-data request contracts, source probing, normalization handles, session planning, preparation diagnostics, and the market-data calibration entrypoints
   - Root coexistence policy: the most common market-data calibration entrypoints remain re-exported from `janiform.calibration` for convenience, while `janiform.calibration.market_data` is the ownership path
 - `janiform.calibration.market_data.contracts`
   - Ownership: market-data request and normalization contracts
@@ -295,8 +295,8 @@ from janiform.contracts import MeanReversionFittedParameters
 - `janiform.calibration.market_data.ingestion`
   - Ownership: source-schema inspection helpers and market-data source summary contracts
 - `janiform.calibration.market_data.translation`
-  - Ownership: native preparation from market-data requests into prepared calibration handles plus diagnostics and provenance
-  - Boundary rule: translation results may expose a staged request, a native-backed prepared handle, artifact references, diagnostics, provenance, and fit-level summaries, but must not expose a Python-owned full-dataset IR of loaded market-data rows
+  - Ownership: phased native market-data preparation including source probing, single-pass normalization, session planning, and translation into prepared calibration handles plus diagnostics and provenance
+  - Boundary rule: translation results may expose a staged request, a native-backed normalized market-data handle, a native-backed prepared handle, artifact references, diagnostics, provenance, and fit-level summaries, but must not expose a Python-owned full-dataset IR of loaded market-data rows
 - `janiform.calibration.market_data.workflow`
   - Ownership: prepared market-data calibration artifacts and workflow entrypoints
 - `janiform.calibration.staged`
@@ -423,6 +423,9 @@ from janiform.calibration.fit import JaniformEstimator
 from janiform.calibration.fit.model import JaniformModel
 from janiform.calibration.market_data import MarketDataCalibrationRequest
 from janiform.calibration.market_data.translation import (
+    normalize_market_data_source,
+    probe_market_data_source,
+    resolve_market_data_session,
     translate_market_data_request_to_prepared_calibration,
 )
 from janiform.calibration.staged import StagedCalibrationExecutionInput

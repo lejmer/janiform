@@ -36,6 +36,13 @@ from .workflow import (
     prepare_market_data_calibration,
     run_market_data_calibration,
 )
+from .translation import (
+    MarketDataSourceProbe,
+    NormalizedMarketDataSource,
+    normalize_market_data_source,
+    probe_market_data_source,
+    resolve_market_data_session,
+)
 
 __all__ = [
     "CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION",
@@ -62,9 +69,14 @@ __all__ = [
     "MarketDataCalibrationPreparationProvenance",
     "MarketDataCalibrationRequest",
     "MarketDataCalibrationSourceSummary",
+    "MarketDataSourceProbe",
+    "NormalizedMarketDataSource",
     "PreparedMarketDataCalibration",
     "deserialize_market_data_calibration_request",
+    "normalize_market_data_source",
     "prepare_market_data_calibration",
+    "probe_market_data_source",
+    "resolve_market_data_session",
     "run_market_data_calibration",
     "serialize_market_data_calibration_request",
     "validate_market_data_calibration_request",

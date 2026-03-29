@@ -4,7 +4,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::hash::Hash;
 
-use crate::calendar::ExchangeCalendarRegistry;
 pub(super) use crate::calendar::{
     CalendarRuleMetadataArtifact, ExchangeCalendarArtifact, ExchangeCalendarRegistryArtifact,
     MarketState, RegularSessionArtifact, SessionWindowArtifact, TradingWeekday,
@@ -16,8 +15,8 @@ use crate::market_data::preprocessing::{
 use super::contracts::{
     MarketDataInputFileFormat, MarketDataKnownNewsColumnMapping, MarketDataNormalizationPolicy,
     MarketDataOptionQuoteInputPolicy, MarketDataOptionSurfaceColumnMapping,
-    MarketDataSessionRegularWindowPayload, MarketDataSessionResolutionPayload,
-    MarketDataSourceSummary,
+    MarketDataSessionRecurringClosedWindowPayload, MarketDataSessionRegularWindowPayload,
+    MarketDataSessionResolutionPayload, MarketDataSourceSummary,
 };
 
 pub(super) const COMMON_TIMESTAMP_FORMATS: [&str; 37] = [
@@ -128,19 +127,20 @@ pub(super) struct OptionSurfaceLoadOutput {
 
 #[derive(Debug, Clone)]
 pub(super) struct ResolvedMarketDataSession {
-    pub(super) calendar_registry: ExchangeCalendarRegistry,
     pub(super) session_resolution: MarketDataSessionResolutionPayload,
 }
 
 #[derive(Debug, Clone)]
 pub(super) struct SessionTemplate {
     pub(super) policy_id: String,
+    pub(super) provenance_kind: String,
     pub(super) exchange_name: String,
     pub(super) timezone_name: String,
     pub(super) timezone_source: String,
     pub(super) holiday_calendar_code: String,
     pub(super) early_close_rule_set: Option<String>,
     pub(super) regular_session_windows: Vec<MarketDataSessionRegularWindowPayload>,
+    pub(super) recurring_closed_windows: Vec<MarketDataSessionRecurringClosedWindowPayload>,
     pub(super) continuous_weekday_template: bool,
 }
 

@@ -33,6 +33,8 @@ def test_workbench_setup_defaults_mean_reversion_to_endogenous_on_calibration_su
             submitted_setups[0].mean_reversion_anchor_model_kind
             == MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL
         )
+        assert submitted_setups[0].session_source.mode == "preset"
+        assert submitted_setups[0].session_source.preset_name is not None
     finally:
         widget.close()
         application.processEvents()
@@ -108,6 +110,26 @@ def test_workbench_setup_disables_mean_reversion_for_seasonality_only_scope() ->
 
         assert widget._mean_reversion_anchor_combo.isEnabled() is True
         assert widget._mean_reversion_anchor_combo.toolTip() == ""
+    finally:
+        widget.close()
+        application.processEvents()
+
+
+def test_workbench_setup_enables_probe_fallback_exchange_only_in_probe_mode() -> None:
+    application = QApplication.instance() or QApplication([])
+    widget = WorkbenchSetupWidget()
+
+    try:
+        assert widget._session_preset_combo.isEnabled() is True
+        assert widget._session_exchange_code_edit.isEnabled() is False
+
+        widget._session_source_mode_combo.setCurrentIndex(
+            widget._session_source_mode_combo.findData("probe_fallback")
+        )
+        application.processEvents()
+
+        assert widget._session_preset_combo.isEnabled() is False
+        assert widget._session_exchange_code_edit.isEnabled() is True
     finally:
         widget.close()
         application.processEvents()

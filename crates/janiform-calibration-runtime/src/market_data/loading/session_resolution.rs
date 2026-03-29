@@ -4,12 +4,13 @@ use std::collections::HashSet;
 use crate::calendar::ExchangeCalendarRegistryLoader;
 use crate::market_data::preprocessing::MarketDataTranslationTickRecord;
 
+use super::bundled_sessions::bundled_session_template;
 use super::calendar_materialization::{
     automatic_resolution_reasons, automatic_resolution_warnings, build_calendar_registry_json,
     build_recurring_closed_windows, compute_open_session_duration_hours_per_week,
     confidence_label_for_gap_alignment, confidence_score_for_inference, evaluate_gap_alignment,
     looks_like_continuous_weekday_template, regular_session_windows_from_definition,
-    trading_weekdays, weekday_names,
+    trading_weekdays,
 };
 use super::contracts::{
     MarketDataInputFileFormat, MarketDataInputFileReference, MarketDataLoadingError,
@@ -39,6 +40,44 @@ pub(super) fn resolve_market_data_session_configuration_from_tick_records(
         tick_records,
     )?;
 
+    resolved_market_data_session_from_template(
+        session_configuration,
+        inferred_template,
+        tick_records,
+    )
+}
+
+pub(super) fn try_resolve_market_data_session_configuration_without_tick_records(
+    session_configuration: &MarketDataSessionConfiguration,
+) -> Result<Option<ResolvedMarketDataSession>, MarketDataLoadingError> {
+    if let Some(session_source) = &session_configuration.session_definition_source {
+        return Ok(Some(resolve_explicit_session_definition(
+            session_configuration.exchange_code.as_str(),
+            session_source,
+            session_configuration.session_timezone.as_deref(),
+        )?));
+    }
+
+    let Some(inferred_template) = infer_session_template_without_tick_records(
+        session_configuration.exchange_code.as_str(),
+        session_configuration.session_timezone.as_deref(),
+    )?
+    else {
+        return Ok(None);
+    };
+
+    Ok(Some(resolved_market_data_session_from_template(
+        session_configuration,
+        inferred_template,
+        &[],
+    )?))
+}
+
+fn resolved_market_data_session_from_template(
+    session_configuration: &MarketDataSessionConfiguration,
+    inferred_template: SessionTemplate,
+    tick_records: &[MarketDataTranslationTickRecord],
+) -> Result<ResolvedMarketDataSession, MarketDataLoadingError> {
     let registry_json = build_calendar_registry_json(
         session_configuration.exchange_code.as_str(),
         &inferred_template,
@@ -57,10 +96,10 @@ pub(super) fn resolve_market_data_session_configuration_from_tick_records(
     )?;
 
     Ok(ResolvedMarketDataSession {
-        calendar_registry,
         session_resolution: MarketDataSessionResolutionPayload {
             schema_version: SESSION_RESOLUTION_SCHEMA_VERSION.to_string(),
             resolution_kind: "automatic_inference".to_string(),
+            provenance_kind: inferred_template.provenance_kind.clone(),
             selected_policy_id: inferred_template.policy_id.clone(),
             manual_override_applied: false,
             exchange_code: session_configuration.exchange_code.clone(),
@@ -162,12 +201,14 @@ pub(super) fn resolve_explicit_session_definition(
 
     let session_template = SessionTemplate {
         policy_id: "session_definition_source.calendar_registry_json.v1".to_string(),
+        provenance_kind: "explicit_definition".to_string(),
         exchange_name: exchange_name.clone(),
         timezone_name: resolved_timezone_name.clone(),
         timezone_source: "session_definition_source".to_string(),
         holiday_calendar_code,
         early_close_rule_set,
         regular_session_windows: regular_session_windows.clone(),
+        recurring_closed_windows: Vec::new(),
         continuous_weekday_template: looks_like_continuous_weekday_template(
             exchange_code,
             regular_session_windows.as_slice(),
@@ -175,10 +216,10 @@ pub(super) fn resolve_explicit_session_definition(
     };
 
     Ok(ResolvedMarketDataSession {
-        calendar_registry,
         session_resolution: MarketDataSessionResolutionPayload {
             schema_version: SESSION_RESOLUTION_SCHEMA_VERSION.to_string(),
             resolution_kind: "explicit_override".to_string(),
+            provenance_kind: "explicit_definition".to_string(),
             selected_policy_id: "session_definition_source.calendar_registry_json.v1".to_string(),
             manual_override_applied: true,
             exchange_code: exchange_code.to_string(),
@@ -207,135 +248,10 @@ pub(super) fn infer_session_template(
     configured_session_timezone: Option<&str>,
     tick_records: &[MarketDataTranslationTickRecord],
 ) -> Result<SessionTemplate, MarketDataLoadingError> {
-    match exchange_code {
-        "XNYS" | "XNAS" => {
-            let exchange_name = if exchange_code == "XNYS" {
-                "New York Stock Exchange"
-            } else {
-                "Nasdaq Stock Market"
-            };
-
-            if let Some(timezone_name) = configured_session_timezone {
-                if timezone_name != "America/New_York" {
-                    return Err(MarketDataLoadingError::InvalidValue {
-                        field_path: "session_configuration.session_timezone".to_string(),
-                        message: format!(
-                            "conflicts with the built-in exchange default for {exchange_code}. Provide an explicit session_definition_source to override the default."
-                        ),
-                    });
-                }
-            }
-
-            return Ok(SessionTemplate {
-                policy_id: format!(
-                    "exchange_code_builtin_default.{}_regular_session.v1",
-                    exchange_code.to_ascii_lowercase()
-                ),
-                exchange_name: exchange_name.to_string(),
-                timezone_name: "America/New_York".to_string(),
-                timezone_source: "exchange_code_builtin_default".to_string(),
-                holiday_calendar_code: "US_EQUITIES".to_string(),
-                early_close_rule_set: Some("US_EQUITIES_EARLY_CLOSE".to_string()),
-                regular_session_windows: trading_weekdays()
-                    .iter()
-                    .map(|weekday: &&str| MarketDataSessionRegularWindowPayload {
-                        weekday: weekday.to_string(),
-                        label: "regular".to_string(),
-                        open_time: "09:30".to_string(),
-                        close_time: "16:00".to_string(),
-                    })
-                    .collect(),
-                continuous_weekday_template: false,
-            });
-        }
-        "FXSPOT" => {
-            if let Some(timezone_name) = configured_session_timezone {
-                if timezone_name != "UTC" {
-                    return Err(MarketDataLoadingError::InvalidValue {
-                        field_path: "session_configuration.session_timezone".to_string(),
-                        message: "conflicts with the built-in exchange default for FXSPOT. Provide an explicit session_definition_source to override the default.".to_string(),
-                    });
-                }
-            }
-
-            return Ok(SessionTemplate {
-                policy_id: "exchange_code_builtin_default.fxspot_weekend_window.v1".to_string(),
-                exchange_name: "OTC FX Spot 24/5".to_string(),
-                timezone_name: "UTC".to_string(),
-                timezone_source: "exchange_code_builtin_default".to_string(),
-                holiday_calendar_code: "FX_24_5".to_string(),
-                early_close_rule_set: None,
-                regular_session_windows: vec![
-                    MarketDataSessionRegularWindowPayload {
-                        weekday: "Monday".to_string(),
-                        label: "spot".to_string(),
-                        open_time: "00:00".to_string(),
-                        close_time: "24:00".to_string(),
-                    },
-                    MarketDataSessionRegularWindowPayload {
-                        weekday: "Tuesday".to_string(),
-                        label: "spot".to_string(),
-                        open_time: "00:00".to_string(),
-                        close_time: "24:00".to_string(),
-                    },
-                    MarketDataSessionRegularWindowPayload {
-                        weekday: "Wednesday".to_string(),
-                        label: "spot".to_string(),
-                        open_time: "00:00".to_string(),
-                        close_time: "24:00".to_string(),
-                    },
-                    MarketDataSessionRegularWindowPayload {
-                        weekday: "Thursday".to_string(),
-                        label: "spot".to_string(),
-                        open_time: "00:00".to_string(),
-                        close_time: "24:00".to_string(),
-                    },
-                    MarketDataSessionRegularWindowPayload {
-                        weekday: "Friday".to_string(),
-                        label: "spot".to_string(),
-                        open_time: "00:00".to_string(),
-                        close_time: "19:00".to_string(),
-                    },
-                    MarketDataSessionRegularWindowPayload {
-                        weekday: "Sunday".to_string(),
-                        label: "spot".to_string(),
-                        open_time: "21:00".to_string(),
-                        close_time: "24:00".to_string(),
-                    },
-                ],
-                continuous_weekday_template: false,
-            });
-        }
-        "CRYPTO" => {
-            if let Some(timezone_name) = configured_session_timezone {
-                if timezone_name != "UTC" {
-                    return Err(MarketDataLoadingError::InvalidValue {
-                        field_path: "session_configuration.session_timezone".to_string(),
-                        message: "conflicts with the built-in exchange default for CRYPTO. Provide an explicit session_definition_source to override the default.".to_string(),
-                    });
-                }
-            }
-
-            return Ok(SessionTemplate {
-                policy_id: "exchange_code_builtin_default.crypto_continuous_session.v1".to_string(),
-                exchange_name: "Crypto Spot 24/7".to_string(),
-                timezone_name: "UTC".to_string(),
-                timezone_source: "exchange_code_builtin_default".to_string(),
-                holiday_calendar_code: "CRYPTO_24_7".to_string(),
-                early_close_rule_set: None,
-                regular_session_windows: weekday_names()
-                    .iter()
-                    .map(|weekday: &&str| MarketDataSessionRegularWindowPayload {
-                        weekday: weekday.to_string(),
-                        label: "spot".to_string(),
-                        open_time: "00:00".to_string(),
-                        close_time: "24:00".to_string(),
-                    })
-                    .collect(),
-                continuous_weekday_template: false,
-            });
-        }
-        _ => {}
+    if let Some(template) =
+        infer_session_template_without_tick_records(exchange_code, configured_session_timezone)?
+    {
+        return Ok(template);
     }
 
     if exchange_code.starts_with("FX_") || exchange_code.starts_with("CFD_") {
@@ -361,6 +277,28 @@ pub(super) fn infer_session_template(
     Ok(generic_template)
 }
 
+fn infer_session_template_without_tick_records(
+    exchange_code: &str,
+    configured_session_timezone: Option<&str>,
+) -> Result<Option<SessionTemplate>, MarketDataLoadingError> {
+    let Some(template) = bundled_session_template(exchange_code)? else {
+        return Ok(None);
+    };
+
+    if let Some(timezone_name) = configured_session_timezone {
+        if timezone_name != template.timezone_name {
+            return Err(MarketDataLoadingError::InvalidValue {
+                field_path: "session_configuration.session_timezone".to_string(),
+                message: format!(
+                    "conflicts with the bundled session preset for {exchange_code}. Provide an explicit session_definition_source to override the default."
+                ),
+            });
+        }
+    }
+
+    Ok(Some(template))
+}
+
 pub(super) fn build_generic_24_5_template(
     exchange_code: &str,
     configured_session_timezone: Option<&str>,
@@ -376,6 +314,7 @@ pub(super) fn build_generic_24_5_template(
 
     SessionTemplate {
         policy_id: "recurring_weekly_inactivity.generic_24_5_broker_market.v1".to_string(),
+        provenance_kind: "probe_fallback".to_string(),
         exchange_name,
         timezone_name,
         timezone_source: configured_session_timezone
@@ -392,6 +331,7 @@ pub(super) fn build_generic_24_5_template(
                 close_time: "24:00".to_string(),
             })
             .collect(),
+        recurring_closed_windows: Vec::new(),
         continuous_weekday_template: true,
     }
 }

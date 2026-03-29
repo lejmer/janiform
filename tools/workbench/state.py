@@ -11,6 +11,14 @@ from janiform.contracts import MeanReversionAnchorModelKind
 
 
 @dataclass(frozen=True, slots=True)
+class WorkbenchSessionSource:
+    mode: str = "preset"
+    preset_name: Optional[str] = "XNYS"
+    definition_path: Optional[Path] = None
+    exchange_code: str = "FXSPOT"
+
+
+@dataclass(frozen=True, slots=True)
 class WorkbenchProgressModel:
     label: str
     completed_units: Optional[int] = None
@@ -22,9 +30,9 @@ class WorkbenchProgressModel:
 @dataclass(frozen=True, slots=True)
 class WorkbenchRunSetup:
     dataset_path: Path
-    exchange_code: str
     workflow_scope: CalibrationMarketDataWorkflowScope
     output_directory: Path
+    session_source: WorkbenchSessionSource = field(default_factory=WorkbenchSessionSource)
     mean_reversion_anchor_model_kind: MeanReversionAnchorModelKind = (
         MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL
     )
@@ -143,6 +151,7 @@ __all__ = [
     "WorkbenchPlotState",
     "WorkbenchProgressModel",
     "WorkbenchRunSetup",
+    "WorkbenchSessionSource",
     "WorkbenchRunState",
     "WorkbenchSessionState",
     "WorkbenchSetupState",

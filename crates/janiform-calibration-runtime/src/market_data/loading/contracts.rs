@@ -159,6 +159,31 @@ pub struct MarketDataLoadingOutput {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct MarketDataSourceProbePayload {
+    pub path: String,
+    pub file_format: String,
+    pub provenance_label: String,
+    pub available_columns: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_row_count_estimate: Option<usize>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MarketDataNormalizedTickOutput {
+    pub tick_records: Vec<crate::market_data::preprocessing::MarketDataTranslationTickRecord>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub directional_label_diagnostics:
+        Option<crate::market_data::loading::CalibrationDirectionalLabelDiagnosticsPayload>,
+    pub tick_data_summary: MarketDataSourceSummary,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reference_price: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fit_warning: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct MarketDataSourceSummary {
     pub path: String,
     pub file_format: String,
@@ -180,6 +205,7 @@ pub struct MarketDataSourceSummary {
 pub struct MarketDataSessionResolutionPayload {
     pub schema_version: String,
     pub resolution_kind: String,
+    pub provenance_kind: String,
     pub selected_policy_id: String,
     pub manual_override_applied: bool,
     pub exchange_code: String,

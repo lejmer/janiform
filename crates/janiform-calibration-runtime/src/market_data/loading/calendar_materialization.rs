@@ -67,6 +67,10 @@ pub(super) fn looks_like_continuous_weekday_template(
 pub(super) fn build_recurring_closed_windows(
     session_template: &SessionTemplate,
 ) -> Vec<MarketDataSessionRecurringClosedWindowPayload> {
+    if !session_template.recurring_closed_windows.is_empty() {
+        return session_template.recurring_closed_windows.clone();
+    }
+
     if session_template.continuous_weekday_template {
         return vec![MarketDataSessionRecurringClosedWindowPayload {
             start_weekday: "Saturday".to_string(),

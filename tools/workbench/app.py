@@ -1649,6 +1649,9 @@ class WorkbenchWindow(QMainWindow):
         if not isinstance(stage_report_kind, str):
             return
 
+        if stage_report_kind not in {"hawkes", "return_components", "joint_refinement"}:
+            return
+
         existing_position = next(
             (
                 position

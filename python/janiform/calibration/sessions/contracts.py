@@ -146,6 +146,7 @@ class MarketDataSessionRecurringClosedWindow(ContractModel):
 class MarketDataSessionResolution(ContractModel):
     schema_version: str
     resolution_kind: str
+    provenance_kind: str
     selected_policy_id: str
     manual_override_applied: bool
     exchange_code: str
@@ -171,6 +172,7 @@ class MarketDataSessionResolution(ContractModel):
 
         for field_name, field_value in (
             ("resolution_kind", self.resolution_kind),
+            ("provenance_kind", self.provenance_kind),
             ("selected_policy_id", self.selected_policy_id),
             ("exchange_code", self.exchange_code),
             ("exchange_name", self.exchange_name),
@@ -214,6 +216,12 @@ class MarketDataSessionResolution(ContractModel):
                 raw_payload,
                 "resolution_kind",
                 f"{field_path}.resolution_kind",
+                _session_resolution_error,
+            ),
+            provenance_kind=require_non_empty_string(
+                raw_payload,
+                "provenance_kind",
+                f"{field_path}.provenance_kind",
                 _session_resolution_error,
             ),
             selected_policy_id=require_non_empty_string(

@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, HashSet};
 
 use crate::execution_bridge::CalibrationHawkesDirectionalLabelDiagnostics;
+use crate::calendar::ExchangeCalendarRegistryLoader;
 use crate::market_data::preprocessing::{
     MarketDataTranslationPreprocessingRequest, MarketDataTranslationTickRecord,
     preprocess_market_data_translation_request,
@@ -8,15 +9,21 @@ use crate::market_data::preprocessing::{
 
 use super::contracts::{
     MarketDataDuplicateRecordPolicy, MarketDataInputFileReference, MarketDataLoadingError,
-    MarketDataLoadingOutput, MarketDataLoadingRequest, MarketDataNormalizationPolicy,
-    MarketDataSessionConfiguration, MarketDataSessionResolutionPayload, MarketDataSourceSummary,
+    MarketDataLoadingOutput, MarketDataLoadingRequest, MarketDataNormalizedTickOutput,
+    MarketDataNormalizationPolicy, MarketDataSessionConfiguration,
+    MarketDataSessionResolutionPayload, MarketDataSourceProbePayload, MarketDataSourceSummary,
     MarketDataTickDataColumnMapping, MarketDataTickPriceInputPolicy,
 };
 use super::known_news::load_known_news_records;
 use super::normalization::normalize_tick_row;
 use super::option_surface::load_option_surface_records;
-use super::rows::{load_rows, load_source_columns, validate_columns_exist};
-use super::session_resolution::resolve_market_data_session_configuration_from_tick_records;
+use super::rows::{
+    load_rows, load_source_columns, probe_source_row_count_estimate, validate_columns_exist,
+};
+use super::session_resolution::{
+    resolve_market_data_session_configuration_from_tick_records,
+    try_resolve_market_data_session_configuration_without_tick_records,
+};
 use super::shared::{
     CalibrationDirectionalLabelDiagnosticsPayload, LoadedTickRecord, TickLoadOutput, TradeSign,
     dedup_vec, file_format_string, normalized_float_key,
@@ -25,17 +32,94 @@ use super::shared::{
 pub fn load_and_preprocess_market_data_translation_request(
     request: MarketDataLoadingRequest,
 ) -> Result<MarketDataLoadingOutput, MarketDataLoadingError> {
-    let tick_output = load_tick_records(
+    let normalized_tick_output = normalize_market_data_source(
         &request.tick_data_source,
         &request.tick_data_column_mapping,
         &request.normalization_policy,
         request.require_hawkes,
     )?;
 
-    let resolved_session = resolve_market_data_session_configuration_from_tick_records(
-        &request.session_configuration,
-        tick_output.tick_records.as_slice(),
+    let session_resolution = resolve_market_data_session_configuration(
+        request.session_configuration.clone(),
+        Some(&normalized_tick_output),
     )?;
+
+    prepare_market_data_loading_from_phases(request, normalized_tick_output, session_resolution)
+}
+
+pub fn probe_market_data_source(
+    source: &MarketDataInputFileReference,
+) -> Result<MarketDataSourceProbePayload, MarketDataLoadingError> {
+    Ok(MarketDataSourceProbePayload {
+        path: source.path.clone(),
+        file_format: file_format_string(source.file_format).to_string(),
+        provenance_label: source.provenance_label.clone(),
+        available_columns: load_source_columns(source, "tick_data_source")?,
+        source_row_count_estimate: probe_source_row_count_estimate(source, "tick_data_source")?,
+    })
+}
+
+pub fn normalize_market_data_source(
+    file_reference: &MarketDataInputFileReference,
+    column_mapping: &MarketDataTickDataColumnMapping,
+    normalization_policy: &MarketDataNormalizationPolicy,
+    require_hawkes: bool,
+) -> Result<MarketDataNormalizedTickOutput, MarketDataLoadingError> {
+    let tick_output = load_tick_records(
+        file_reference,
+        column_mapping,
+        normalization_policy,
+        require_hawkes,
+    )?;
+
+    Ok(MarketDataNormalizedTickOutput {
+        tick_records: tick_output.tick_records,
+        directional_label_diagnostics: tick_output.directional_label_diagnostics,
+        tick_data_summary: tick_output.summary,
+        reference_price: tick_output.reference_price,
+        fit_warning: tick_output.fit_warning,
+    })
+}
+
+pub fn resolve_market_data_session_configuration(
+    session_configuration: MarketDataSessionConfiguration,
+    normalized_tick_output: Option<&MarketDataNormalizedTickOutput>,
+) -> Result<MarketDataSessionResolutionPayload, MarketDataLoadingError> {
+    if let Some(resolved_without_tick_records) =
+        try_resolve_market_data_session_configuration_without_tick_records(
+            &session_configuration,
+        )?
+    {
+        return Ok(resolved_without_tick_records.session_resolution);
+    }
+
+    let normalized_tick_output = normalized_tick_output.ok_or_else(|| {
+        MarketDataLoadingError::InvalidValue {
+            field_path: "session_configuration".to_string(),
+            message: "probe-fallback session resolution requires normalized tick records".to_string(),
+        }
+    })?;
+
+    let resolved_session = resolve_market_data_session_configuration_from_tick_records(
+        &session_configuration,
+        normalized_tick_output.tick_records.as_slice(),
+    )?;
+
+    Ok(resolved_session.session_resolution)
+}
+
+pub fn prepare_market_data_loading_from_phases(
+    request: MarketDataLoadingRequest,
+    normalized_tick_output: MarketDataNormalizedTickOutput,
+    session_resolution: MarketDataSessionResolutionPayload,
+) -> Result<MarketDataLoadingOutput, MarketDataLoadingError> {
+    let calendar_registry = ExchangeCalendarRegistryLoader::load_from_json(
+        session_resolution.resolved_session_definition_json.as_str(),
+    )
+    .map_err(|error| MarketDataLoadingError::InvalidValue {
+        field_path: "session_resolution.resolved_session_definition_json".to_string(),
+        message: format!("does not contain a valid calendar registry: {error}"),
+    })?;
 
     let known_news_output = if let Some(known_news_input) = &request.known_news_input {
         Some(load_known_news_records(known_news_input)?)
@@ -55,7 +139,7 @@ pub fn load_and_preprocess_market_data_translation_request(
     let preprocessing_request = MarketDataTranslationPreprocessingRequest {
         exchange_code: request.session_configuration.exchange_code,
         trade_events_data_reference: request.trade_events_data_reference,
-        tick_records: tick_output.tick_records,
+        tick_records: normalized_tick_output.tick_records.clone(),
         known_news_records: known_news_output
             .as_ref()
             .map(|output| output.known_news_records.clone())
@@ -64,58 +148,38 @@ pub fn load_and_preprocess_market_data_translation_request(
             .as_ref()
             .map(|output| output.option_surface_quote_values.clone())
             .unwrap_or_default(),
-        directional_label_diagnostics: tick_output.directional_label_diagnostics.map(
-            |diagnostics| CalibrationHawkesDirectionalLabelDiagnostics {
-                policy_id: diagnostics.policy_id,
-                first_inferred_trade_sign: diagnostics.first_inferred_trade_sign,
-                provided_label_count: diagnostics.provided_label_count,
-                inferred_label_count: diagnostics.inferred_label_count,
-                flat_move_carry_count: diagnostics.flat_move_carry_count,
-                price_up_inference_count: diagnostics.price_up_inference_count,
-                price_down_inference_count: diagnostics.price_down_inference_count,
-            },
-        ),
+        directional_label_diagnostics: normalized_tick_output
+            .directional_label_diagnostics
+            .clone()
+            .map(
+                |diagnostics| CalibrationHawkesDirectionalLabelDiagnostics {
+                    policy_id: diagnostics.policy_id,
+                    first_inferred_trade_sign: diagnostics.first_inferred_trade_sign,
+                    provided_label_count: diagnostics.provided_label_count,
+                    inferred_label_count: diagnostics.inferred_label_count,
+                    flat_move_carry_count: diagnostics.flat_move_carry_count,
+                    price_up_inference_count: diagnostics.price_up_inference_count,
+                    price_down_inference_count: diagnostics.price_down_inference_count,
+                },
+            ),
         require_hawkes: request.require_hawkes,
         require_return_components: request.require_return_components,
         preprocessing_settings: request.preprocessing_settings,
     };
 
-    let preprocessing_output = preprocess_market_data_translation_request(
-        preprocessing_request,
-        &resolved_session.calendar_registry,
-    )
-    .map_err(MarketDataLoadingError::Preprocessing)?;
+    let preprocessing_output =
+        preprocess_market_data_translation_request(preprocessing_request, &calendar_registry)
+            .map_err(MarketDataLoadingError::Preprocessing)?;
 
     Ok(MarketDataLoadingOutput {
-        session_resolution: resolved_session.session_resolution,
+        session_resolution,
         preprocessing_output,
-        tick_data_summary: tick_output.summary,
+        tick_data_summary: normalized_tick_output.tick_data_summary,
         option_surface_summary: option_surface_output.map(|output| output.summary),
         known_news_summary: known_news_output.map(|output| output.summary),
-        reference_price: tick_output.reference_price,
-        fit_warning: tick_output.fit_warning,
+        reference_price: normalized_tick_output.reference_price,
+        fit_warning: normalized_tick_output.fit_warning,
     })
-}
-
-pub fn resolve_market_data_session_configuration_from_source_file(
-    session_configuration: MarketDataSessionConfiguration,
-    tick_data_source: MarketDataInputFileReference,
-    tick_data_column_mapping: MarketDataTickDataColumnMapping,
-    normalization_policy: MarketDataNormalizationPolicy,
-) -> Result<MarketDataSessionResolutionPayload, MarketDataLoadingError> {
-    let tick_output = load_tick_records(
-        &tick_data_source,
-        &tick_data_column_mapping,
-        &normalization_policy,
-        false,
-    )?;
-
-    let resolved_session = resolve_market_data_session_configuration_from_tick_records(
-        &session_configuration,
-        tick_output.tick_records.as_slice(),
-    )?;
-
-    Ok(resolved_session.session_resolution)
 }
 
 fn load_tick_records(

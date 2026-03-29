@@ -1691,6 +1691,7 @@ def _build_model_metadata(
         },
         "session_resolution": {
             "resolution_kind": prepared.session_resolution.resolution_kind,
+            "provenance_kind": prepared.session_resolution.provenance_kind,
             "selected_policy_id": prepared.session_resolution.selected_policy_id,
             "exchange_code": prepared.session_resolution.exchange_code,
             "exchange_name": prepared.session_resolution.exchange_name,

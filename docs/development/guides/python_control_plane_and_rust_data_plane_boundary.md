@@ -37,12 +37,32 @@ This guide defines the implementation boundary for production Janiform workflows
 The supported production path is:
 
 1. `MarketDataCalibrationRequest`
-2. native preparation and translation
-3. `PreparedMarketDataCalibration`
-4. staged execution against the prepared handle or persisted prepared artifact
-5. `JaniformModel` and `JaniformFitReport`
+2. native source probing when needed
+3. native single-pass normalization into a reusable handle
+4. native session planning against presets, explicit definitions, or probe fallback
+5. native preparation and translation from the normalized handle
+6. `PreparedMarketDataCalibration`
+7. staged execution against the prepared handle or persisted prepared artifact
+8. `JaniformModel` and `JaniformFitReport`
 
-The default high-level path must not materialize a canonical Python-owned staged evidence graph.
+The default high-level path must not materialize a canonical Python-owned staged evidence graph,
+and it must not reload the same source file across session planning and stage-input preparation.
+
+Built-in exchange session presets may be bundled as data artifacts and resolved directly from those
+artifacts. They must not require a dataset-sized pre-calibration scan before normalization starts.
+
+## Market-data phase boundary
+
+The public market-data preparation surface may expose the following small or native-backed phase
+outputs:
+
+- `MarketDataSourceProbe`
+- `NormalizedMarketDataSource`
+- `MarketDataSessionResolution`
+- `PreparedMarketDataCalibration`
+
+These phase outputs are public because they improve orchestration and diagnostics while preserving
+the control-plane and data-plane split.
 
 ## Advanced staged path
 

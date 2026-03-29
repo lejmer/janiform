@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale_and_docs.v1",
-  "approved_snapshot_sha256": "3693dc6ffab1c987a12181a52de4dc4cba248dad696df4f21f5976dcf0b03837",
+  "approved_snapshot_sha256": "4a7a5535f48cf3c18c889e1a8f46a6de30cbb5f72ebf80b670b1e37d6a0d0dd7",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -669,6 +669,16 @@
       "rationale": "High-level calibration and pricing now expose explicit solver, preprocessing, and Fourier inversion settings on the public Python request surfaces, so callers can override the previous source-only defaults without rebuilding Janiform.",
       "snapshot_sha256": "3693dc6ffab1c987a12181a52de4dc4cba248dad696df4f21f5976dcf0b03837",
       "summary": "Approve explicit high-level solver, preprocessing, and Fourier inversion settings on the public Python API surface."
+    },
+    {
+      "approved_on": "2026-03-29",
+      "docs_updated": [
+        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md",
+        "docs/development/guides/python_control_plane_and_rust_data_plane_boundary.md"
+      ],
+      "rationale": "Market-data preparation now exposes explicit source-probe, normalization, and session-planning phases on the public Python surface while keeping bulk tick ownership in Rust, and built-in session provenance is now reported directly instead of being obscured behind temporary explicit session-definition files.",
+      "snapshot_sha256": "4a7a5535f48cf3c18c889e1a8f46a6de30cbb5f72ebf80b670b1e37d6a0d0dd7",
+      "summary": "Approve the phase-based market-data preparation surface and bundled session provenance metadata."
     }
   ],
   "public_api_surface_document_version": "python.public_api_surface_map.pre_v0_1.control_plane_reset.v1",

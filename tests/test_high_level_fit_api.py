@@ -182,7 +182,7 @@ def test_prepare_fit_workflow_uses_column_only_parquet_schema_discovery(
     monkeypatch.setattr(market_data_ingestion_module.parquet, "read_table", _unexpected_read_table)
     monkeypatch.setattr(
         fit_estimator_module,
-        "translate_market_data_request_to_prepared_calibration",
+        "translate_market_data_request_to_prepared_calibration_from_phases",
         _stop_after_inference,
     )
 
@@ -230,7 +230,7 @@ def test_prepare_fit_workflow_passes_explicit_mean_reversion_request_to_translat
 
     monkeypatch.setattr(
         fit_estimator_module,
-        "translate_market_data_request_to_prepared_calibration",
+        "translate_market_data_request_to_prepared_calibration_from_phases",
         _capture_request,
     )
 
@@ -292,7 +292,7 @@ def test_prepare_fit_workflow_passes_optimizer_settings_by_stage_to_translation(
 
     monkeypatch.setattr(
         fit_estimator_module,
-        "translate_market_data_request_to_prepared_calibration",
+        "translate_market_data_request_to_prepared_calibration_from_phases",
         _capture_request,
     )
 
@@ -359,7 +359,7 @@ def test_prepare_fit_workflow_passes_preprocessing_settings_to_translation(
 
     monkeypatch.setattr(
         fit_estimator_module,
-        "translate_market_data_request_to_prepared_calibration",
+        "translate_market_data_request_to_prepared_calibration_from_phases",
         _capture_request,
     )
 
@@ -665,7 +665,8 @@ def test_high_level_model_summary_exposes_fitted_parameters_and_provenance(
         "event_count": 0,
         "active": False,
     }
-    assert summary["session_resolution"]["resolution_kind"] == "explicit_override"
+    assert summary["session_resolution"]["resolution_kind"] == "automatic_inference"
+    assert summary["session_resolution"]["provenance_kind"] == "bundled_preset"
     assert summary["fitted_parameter_summary"]["selected_candidate_ids"] == {
         "hawkes": "candidate_stable_low_loss",
         "return_components": "return_candidate_balanced",
@@ -2030,34 +2031,32 @@ def test_high_level_fit_reuses_single_load_and_translation_pass_when_session_is_
         encoding="utf-8",
     )
 
+    normalize_call_count = 0
     translate_call_count = 0
-    session_resolution_load_count = 0
+    original_normalize_source = fit_estimator_module.normalize_market_data_source
     original_translate_request = (
-        fit_estimator_module.translate_market_data_request_to_prepared_calibration
+        fit_estimator_module.translate_market_data_request_to_prepared_calibration_from_phases
     )
-    original_session_resolution = (
-        fit_estimator_module.resolve_market_data_session_configuration_from_source_file
-    )
+
+    def counting_normalize_source(*args, **kwargs):
+        nonlocal normalize_call_count
+        normalize_call_count += 1
+        return original_normalize_source(*args, **kwargs)
 
     def counting_translate_request(*args, **kwargs):
         nonlocal translate_call_count
         translate_call_count += 1
         return original_translate_request(*args, **kwargs)
 
-    def counting_session_resolution(*args, **kwargs):
-        nonlocal session_resolution_load_count
-        session_resolution_load_count += 1
-        return original_session_resolution(*args, **kwargs)
-
     monkeypatch.setattr(
         fit_estimator_module,
-        "translate_market_data_request_to_prepared_calibration",
-        counting_translate_request,
+        "normalize_market_data_source",
+        counting_normalize_source,
     )
     monkeypatch.setattr(
         fit_estimator_module,
-        "resolve_market_data_session_configuration_from_source_file",
-        counting_session_resolution,
+        "translate_market_data_request_to_prepared_calibration_from_phases",
+        counting_translate_request,
     )
     monkeypatch.setattr(
         fit_estimator_module,
@@ -2084,8 +2083,73 @@ def test_high_level_fit_reuses_single_load_and_translation_pass_when_session_is_
         tick_data_format=CalibrationInputFileFormat.CSV,
     )
 
+    assert normalize_call_count == 1
     assert translate_call_count == 1
-    assert session_resolution_load_count == 0
+
+
+def test_high_level_fit_named_built_in_session_does_not_require_materialization(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tick_data_path = tmp_path / "ticks.csv"
+    tick_data_path.write_text(
+        "\n".join(
+            [
+                "timestamp_utc",
+                "2026-02-02T14:30:00Z",
+                "2026-02-02T15:00:00Z",
+                "2026-02-02T20:59:00Z",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    translate_call_count = 0
+    original_translate_request = (
+        fit_estimator_module.translate_market_data_request_to_prepared_calibration_from_phases
+    )
+
+    def counting_translate_request(*args, **kwargs):
+        nonlocal translate_call_count
+        translate_call_count += 1
+        return original_translate_request(*args, **kwargs)
+
+    monkeypatch.setattr(
+        fit_estimator_module,
+        "translate_market_data_request_to_prepared_calibration_from_phases",
+        counting_translate_request,
+    )
+    monkeypatch.setattr(
+        fit_estimator_module,
+        "_run_prepared_staged_calibration_with_raw_payload",
+        lambda *args, **kwargs: _successful_staged_runner_payload("high-level-fit-built-in-session"),
+    )
+
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("TemporaryDirectory should not be used for built-in session presets")
+
+    monkeypatch.setattr(fit_estimator_module, "TemporaryDirectory", fail_if_called)
+
+    estimator = JaniformEstimator(
+        workflow_scope=CalibrationMarketDataWorkflowScope.SEASONALITY_ONLY,
+        tick_data_column_mapping=CalibrationTickDataColumnMapping(
+            timestamp_column="timestamp_utc",
+        ),
+        normalization_policy=CalibrationMarketDataNormalizationPolicy(
+            timestamp_timezone="UTC",
+            sort_records_by_timestamp=True,
+        ),
+        session="XNYS",
+        known_news="none",
+    )
+
+    estimator.fit(
+        run_id="high-level-fit-built-in-session",
+        tick_data_path=tick_data_path,
+        tick_data_format=CalibrationInputFileFormat.CSV,
+    )
+
+    assert translate_call_count == 1
 
 
 def test_high_level_fit_progress_splits_loading_and_translation_steps(
@@ -2165,11 +2229,12 @@ def test_high_level_fit_progress_splits_loading_and_translation_steps(
 
     assert progress_details == [
         "inferring workflow inputs",
-        "resolving session configuration",
-        "resolving preset configuration",
-        "building market-data request",
-        "loading market data",
-        "translating market data",
+        "normalize source",
+        "resolve session",
+        "resolve presets",
+        "build market-data request",
+        "resolve session",
+        "prepare stage inputs",
         "running calibration",
     ]
 

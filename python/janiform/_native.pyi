@@ -43,6 +43,10 @@ class PreparedCalibrationExecutionHandle:
     def serialize_execution_input_json(self) -> str: ...
 
 
+class NormalizedMarketDataHandle:
+    def serialize_summary_json(self) -> str: ...
+
+
 class TimestampEventPreprocessingResult:
     @property
     def schema_version(self) -> str: ...
@@ -953,17 +957,36 @@ def load_and_preprocess_market_data_translation_request(
 ) -> object: ...
 
 
+def probe_market_data_source(
+    tick_data_source: object,
+) -> object: ...
+
+
+def normalize_market_data_source(
+    tick_data_source: object,
+    tick_data_column_mapping: object,
+    normalization_policy: object,
+    require_hawkes: bool = False,
+) -> object: ...
+
+
 def prepare_market_data_calibration_plan(
     request: object,
     cpu_count: Optional[int] = None,
 ) -> object: ...
 
 
-def resolve_market_data_session_configuration_from_source_file(
+def prepare_market_data_calibration_plan_from_phases(
+    request: object,
+    normalized_market_data_handle: NormalizedMarketDataHandle,
+    session_resolution: object,
+    cpu_count: Optional[int] = None,
+) -> object: ...
+
+
+def resolve_market_data_session(
     session_configuration: object,
-    tick_data_source: object,
-    tick_data_column_mapping: object,
-    normalization_policy: object,
+    normalized_market_data_handle: Optional[NormalizedMarketDataHandle] = None,
 ) -> object: ...
 
 

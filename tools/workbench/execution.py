@@ -100,12 +100,27 @@ class WorkbenchExecutionWorker(QObject):
         prepared_workflow: Optional[_PreparedHighLevelFitWorkflow] = None
 
         try:
+            session_argument: Optional[str | Path] = None
+            exchange_code: Optional[str] = None
+            match self._run_setup.session_source.mode:
+                case "preset":
+                    session_argument = self._run_setup.session_source.preset_name or "FXSPOT"
+                case "definition":
+                    session_argument = self._run_setup.session_source.definition_path
+                case "probe_fallback":
+                    exchange_code = self._run_setup.session_source.exchange_code
+                case _:
+                    raise RuntimeError(
+                        f"unsupported workbench session source mode `{self._run_setup.session_source.mode}`"
+                    )
+
             estimator = JaniformEstimator(
                 workflow_scope=self._run_setup.workflow_scope,
                 tick_data_column_mapping=_column_mapping_from_setup(self._run_setup),
                 normalization_policy=_normalization_policy_from_setup(self._run_setup),
                 mean_reversion=_mean_reversion_configuration_from_setup(self._run_setup),
-                exchange_code=self._run_setup.exchange_code,
+                session=session_argument,
+                exchange_code=exchange_code,
                 silent=True,
             )
 
@@ -137,7 +152,7 @@ class WorkbenchExecutionWorker(QObject):
                         known_news_preset_name=None,
                         known_news_recommended_name=None,
                         known_news_recommendation_applied=False,
-                        session_source_kind="automatic",
+                        session_source_kind=_session_source_kind_from_setup(self._run_setup),
                         known_news_source_kind="none",
                     ),
                 },
@@ -383,6 +398,7 @@ class WorkbenchExecutionWorker(QObject):
             case "stage_completed":
                 stage = _coerce_optional_string(raw_event.get("stage"))
                 stage_report = _coerce_optional_payload_dict(raw_event.get("stage_report"))
+                live_stage_report = _live_stage_report_payload(stage_report)
 
                 self._emit_event(
                     WorkbenchEventType.STAGE_COMPLETED,
@@ -392,7 +408,7 @@ class WorkbenchExecutionWorker(QObject):
                         "stage_label": stage or "stage",
                         "detail": _detail_for_stage_completed_event(stage, stage_report),
                         "runtime_seconds": raw_event.get("runtime_seconds"),
-                        "stage_report": stage_report,
+                        "stage_report": live_stage_report,
                     },
                     stage=stage,
                     evaluation_tier=_evaluation_tier_for_stage(stage),
@@ -479,6 +495,18 @@ def _mean_reversion_configuration_from_setup(
     )
 
 
+def _session_source_kind_from_setup(run_setup: WorkbenchRunSetup) -> str:
+    match run_setup.session_source.mode:
+        case "preset":
+            return "named"
+        case "definition":
+            return "explicit"
+        case "probe_fallback":
+            return "automatic"
+        case _:
+            return "automatic"
+
+
 def _coerce_optional_string(value: Any) -> Optional[str]:
     if isinstance(value, str):
         return value
@@ -524,6 +552,45 @@ def _detail_for_failed_native_run(failure_payload: Any) -> str:
             return f"Calibration failed with {failure_kind}"
 
     return "Calibration failed"
+
+
+def _live_stage_report_payload(
+    stage_report: Optional[dict[str, Any]],
+) -> Optional[dict[str, Any]]:
+    if stage_report is None:
+        return None
+
+    stage_report_kind = _coerce_optional_string(stage_report.get("stage_report_kind"))
+    if stage_report_kind not in {"hawkes", "return_components", "joint_refinement"}:
+        return None
+
+    fitted_stage_payload = stage_report.get("fitted_stage_payload")
+    if not isinstance(fitted_stage_payload, dict):
+        return {
+            "stage_report_kind": stage_report_kind,
+            "status": stage_report.get("status"),
+        }
+
+    slim_fitted_stage_payload: dict[str, Any] = {}
+    selected_candidate_id = _coerce_optional_string(
+        fitted_stage_payload.get("selected_candidate_id")
+    )
+    if selected_candidate_id is not None:
+        slim_fitted_stage_payload["selected_candidate_id"] = selected_candidate_id
+
+    candidate_diagnostics = fitted_stage_payload.get("candidate_diagnostics")
+    if isinstance(candidate_diagnostics, list):
+        slim_fitted_stage_payload["candidate_diagnostics"] = candidate_diagnostics
+
+    candidate_frontier = fitted_stage_payload.get("candidate_frontier")
+    if isinstance(candidate_frontier, list):
+        slim_fitted_stage_payload["candidate_frontier"] = candidate_frontier
+
+    return {
+        "stage_report_kind": stage_report_kind,
+        "status": stage_report.get("status"),
+        "fitted_stage_payload": slim_fitted_stage_payload,
+    }
 
 
 __all__ = [

@@ -9,7 +9,8 @@ use pyo3::types::{PyModule, PyModuleMethods};
 
 pub(crate) use calendar::PyCalendarRegistry;
 pub(crate) use calibration::{
-    PyCalibrationMemoryCheckpointStore, PyPreparedCalibrationExecutionHandle,
+    PyCalibrationMemoryCheckpointStore, PyNormalizedMarketDataHandle,
+    PyPreparedCalibrationExecutionHandle,
 };
 pub(crate) use hourly::{
     PyHourlyFactorContractResult, PyHourlyNewsIntensityMaterializationResult,
@@ -27,6 +28,7 @@ pub(crate) use simulation::{
 
 pub(crate) fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PyCalibrationMemoryCheckpointStore>()?;
+    module.add_class::<PyNormalizedMarketDataHandle>()?;
     module.add_class::<PyPreparedCalibrationExecutionHandle>()?;
     module.add_class::<PyCalendarRegistry>()?;
     module.add_class::<PyTimestampEventPreprocessingResult>()?;
