@@ -3,6 +3,7 @@ from typing import Any
 
 import pytest
 
+from janiform._timestamps import ONE_HOUR_NANOS
 from janiform.calendar import CalendarMissingExchangeError, CalendarRegistry
 from janiform.hourly_factors import (
     DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD,
@@ -29,9 +30,6 @@ from janiform.hourly_factors import (
     materialize_hourly_seasonality_factors,
 )
 from janiform.seasonality import SeasonalityInputValidationError
-
-ONE_HOUR_NANOS: int = 3_600_000_000_000
-
 
 def test_build_hourly_factor_contract_exposes_required_schema_fields_and_types(
     calendar_registry: CalendarRegistry,

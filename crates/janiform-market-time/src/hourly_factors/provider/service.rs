@@ -4,6 +4,7 @@ use crate::hourly_factors::{
     materialize_hourly_news_intensity_factors, materialize_hourly_seasonality_factors,
 };
 use chrono::{DateTime, Utc};
+use janiform_foundations::time::ONE_HOUR_NANOS;
 
 use super::constants::{
     HOURLY_FACTOR_PROVIDER_NEWS_INTENSITY_MATERIALIZATION_METHOD,
@@ -219,8 +220,6 @@ fn resample_explicit_hourly_factors_to_requested_intervals(
             },
         );
     }
-
-    const ONE_HOUR_NANOS: i64 = 3_600_000_000_000;
 
     let canonical_hour_start_utc_nanos =
         range_start_utc_nanos.div_euclid(ONE_HOUR_NANOS) * ONE_HOUR_NANOS;

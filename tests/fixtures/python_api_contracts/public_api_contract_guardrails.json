@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale_and_docs.v1",
-  "approved_snapshot_sha256": "26d337d09aba5d61793af4c73c017f8aeabea474389e7d3759b5fc675fdcc99a",
+  "approved_snapshot_sha256": "3693dc6ffab1c987a12181a52de4dc4cba248dad696df4f21f5976dcf0b03837",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -636,6 +636,39 @@
       "rationale": "Helper-only CLI plumbing modules no longer sit on public-looking module paths. The document loader, CLI error normalization, CLI rendering, and the fit, pricing, development, and shared command builders now live behind internal underscore module boundaries, and the public API snapshot must stop treating the old developer and model-workflow command modules as supported public imports.",
       "snapshot_sha256": "26d337d09aba5d61793af4c73c017f8aeabea474389e7d3759b5fc675fdcc99a",
       "summary": "Approve the CLI helper-module internalization pass."
+    },
+    {
+      "approved_on": "2026-03-28",
+      "docs_updated": [
+        "README.md"
+      ],
+      "rationale": "Anchored pricing now derives the Q anchor path internally from the observed boundary state and local tilted recursion, so the public Python pricing contracts remove the caller-supplied runtime anchor grid and carry the full news process configuration on pricing model parameters.",
+      "snapshot_sha256": "151f1688090990f1b795e567e9c4269215c5a4583a077d876c8ad5acfb18878b",
+      "summary": "Replace the pricing runtime-anchor-grid request surface with endogenous Q boundary recursion."
+    },
+    {
+      "approved_on": "2026-03-29",
+      "docs_updated": [
+        "README.md",
+        "docs/design/endogenous_anchor_mean_reversion_and_pricing.md",
+        "docs/development/guides/cli_command_reference_and_examples.md",
+        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md",
+        "docs/development/guides/vanilla_option_pricing_contract.md"
+      ],
+      "rationale": "The canonical mean-reversion surface is now endogenous-only, so the public Python API no longer exposes disabled or constant anchor families and the seeded helper name now matches the runtime-generated anchor policy.",
+      "snapshot_sha256": "17cde437ed5bf98564dec7e988c6fa48701336c44370177776f7ed530af8c9fa",
+      "summary": "Remove legacy mean-reversion anchor families from the approved Python API surface."
+    },
+    {
+      "approved_on": "2026-03-29",
+      "docs_updated": [
+        "README.md",
+        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md",
+        "docs/development/guides/vanilla_option_pricing_contract.md"
+      ],
+      "rationale": "High-level calibration and pricing now expose explicit solver, preprocessing, and Fourier inversion settings on the public Python request surfaces, so callers can override the previous source-only defaults without rebuilding Janiform.",
+      "snapshot_sha256": "3693dc6ffab1c987a12181a52de4dc4cba248dad696df4f21f5976dcf0b03837",
+      "summary": "Approve explicit high-level solver, preprocessing, and Fourier inversion settings on the public Python API surface."
     }
   ],
   "public_api_surface_document_version": "python.public_api_surface_map.pre_v0_1.control_plane_reset.v1",

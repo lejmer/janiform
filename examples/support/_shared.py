@@ -6,6 +6,7 @@ from typing import Any, Optional
 import pyarrow as pa
 from pyarrow import parquet
 
+from janiform._timestamps import ONE_HOUR_NANOS
 from janiform.calendar import CalendarRegistry
 from janiform.calibration.staged import (
     CALIBRATION_STAGED_EXECUTION_INPUT_SCHEMA_VERSION,
@@ -314,7 +315,10 @@ def build_coarse_simulation_request(calendar_registry: CalendarRegistry) -> Coar
                     delta_beta=-0.2,
                 ).to_payload(),
                 "initial_excitation_state": build_initial_excitation_state().to_payload(),
-                "mean_reversion_fitted_parameters": MeanReversionFittedParameters.disabled().to_payload(),
+                "mean_reversion_fitted_parameters": MeanReversionFittedParameters(
+                    kappa=0.0,
+                    anchor_model=MeanReversionAnchorModel.endogenous_core_expectation_one_interval(),
+                ).to_payload(),
                 "mean_reversion_runtime_interval_anchors": (
                     mean_reversion_runtime_interval_anchors.to_payload()
                 ),
@@ -361,7 +365,7 @@ def build_coarse_simulation_request(calendar_registry: CalendarRegistry) -> Coar
         },
         "hourly_factor_contract": _build_hourly_factor_contract_payload(
             request_start_utc_nanos=int(SIMULATION_RANGE_START_UTC.timestamp()) * 1_000_000_000,
-            interval_duration_nanos=int(interval_delta * 3_600_000_000_000),
+            interval_duration_nanos=int(interval_delta * ONE_HOUR_NANOS),
             s_h=(1.0, 0.9, 1.1),
             known_component_nu_h=(1.0, 1.0, 0.0),
             surprise_component_nu_h=(0.1, 0.2, 0.1),
@@ -391,14 +395,9 @@ def build_pricing_request() -> VanillaOptionPricingRequest:
             ),
             mean_reversion_fitted_parameters=MeanReversionFittedParameters(
                 kappa=0.35,
-                anchor_model=MeanReversionAnchorModel.constant(0.25),
+                anchor_model=MeanReversionAnchorModel.endogenous_core_expectation_one_interval(),
             ),
-            mean_reversion_runtime_interval_anchors=MeanReversionRuntimeIntervalAnchors(
-                interval_alignment_policy="pricing_constant_anchor_interval_grid.v1",
-                start_anchor_value=0.25,
-                end_anchor_values=(0.25,),
-                interval_deltas=(1.0,),
-            ),
+            interval_delta=1.0,
             observed_boundary_state=MeanReversionBoundaryState(
                 observed_log_price=0.25,
                 anchor_value=0.25,
@@ -422,10 +421,7 @@ def build_pricing_request() -> VanillaOptionPricingRequest:
                     minus_minus=0.1,
                 ),
             ),
-            gamma_severity_mark_configuration=GammaSeverityMarkConfiguration(
-                shape_k=1.8,
-                scale_theta=0.7,
-            ),
+            news_process_configuration=build_simulation_news_process_configuration(),
             nig_shared_plus_shift_configuration=NigSharedPlusShiftConfiguration(
                 alpha=2.3,
                 beta_0=-0.8,
@@ -441,7 +437,7 @@ def build_pricing_hourly_factor_contract() -> HourlyFactorContract:
     return load_hourly_factor_contract_payload(
         _build_hourly_factor_contract_payload(
             request_start_utc_nanos=1706882400000000000,
-            interval_duration_nanos=3_600_000_000_000,
+            interval_duration_nanos=ONE_HOUR_NANOS,
             s_h=(1.0,),
             known_component_nu_h=(0.01,),
             surprise_component_nu_h=(0.02,),
@@ -800,7 +796,7 @@ def _build_stylized_fact_observed_metric(
 
     return {
         "horizon_label": horizon_label,
-        "horizon_duration_nanos": 3_600_000_000_000,
+        "horizon_duration_nanos": ONE_HOUR_NANOS,
         "metric_id": metric_id,
         "metric_name": metric_name,
         "metric_variant": None,

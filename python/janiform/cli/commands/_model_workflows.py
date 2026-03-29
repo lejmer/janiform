@@ -1197,31 +1197,29 @@ def build_mean_reversion_configuration_from_arguments(
     raw_anchor_model = cast(Optional[str], command_arguments.get("mean_reversion_anchor_model"))
     raw_grid_interval_hours = cast(Optional[float], command_arguments.get("mean_reversion_grid_interval_hours"))
 
-    if raw_anchor_model is None:
+    if workflow_scope == CalibrationMarketDataWorkflowScope.SEASONALITY_ONLY:
         if raw_grid_interval_hours is not None:
             raise cli_validation_error(
                 "mean_reversion_grid_interval_hours",
-                "--mean-reversion-grid-interval-hours requires --mean-reversion-anchor-model",
+                "--mean-reversion-grid-interval-hours is not supported when --workflow-scope is seasonality_only",
                 error_id=error_id,
                 entrypoint=entrypoint,
             )
-        return None
+        if raw_anchor_model is None:
+            return None
 
-    anchor_model_kind = MeanReversionAnchorModelKind(raw_anchor_model)
-    if workflow_scope == CalibrationMarketDataWorkflowScope.SEASONALITY_ONLY:
         raise cli_validation_error(
             "mean_reversion_anchor_model",
             "--mean-reversion-anchor-model is not supported when --workflow-scope is seasonality_only",
             error_id=error_id,
             entrypoint=entrypoint,
         )
-    if anchor_model_kind == MeanReversionAnchorModelKind.DISABLED and raw_grid_interval_hours is not None:
-        raise cli_validation_error(
-            "mean_reversion_grid_interval_hours",
-            "--mean-reversion-grid-interval-hours must be omitted when --mean-reversion-anchor-model is disabled",
-            error_id=error_id,
-            entrypoint=entrypoint,
-        )
+
+    anchor_model_kind = (
+        MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL
+        if raw_anchor_model is None
+        else MeanReversionAnchorModelKind(raw_anchor_model)
+    )
 
     try:
         return CalibrationMeanReversionConfiguration(
@@ -1477,8 +1475,8 @@ def model_workflow_fit_options(
             "--mean-reversion-anchor-model",
             choice_options=tuple(anchor_model_kind.value for anchor_model_kind in MeanReversionAnchorModelKind),
             help_text=(
-                "Enable high-level mean-reversion calibration with the selected anchor family. "
-                "Omit to leave the mean-reversion stage disabled by default."
+                "Optional explicit endogenous anchor policy selector for high-level mean-reversion calibration. "
+                "Default for non-seasonality workflows: endogenous_core_expectation_one_interval."
             ),
         ),
         command_option(

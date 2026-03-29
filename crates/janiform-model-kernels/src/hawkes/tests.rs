@@ -7,7 +7,8 @@ use crate::hawkes::{
     HawkesSeasonalityIntervalError, HawkesSourceComponents, HawkesStructuredAlphaParameterError,
     HawkesStructuredAlphaParameterization, HawkesStructuredRhoParameterError,
     HawkesStructuredRhoParameterization, HawkesStructuredRhoSelfDominancePolicy,
-    HawkesTransitionError, HawkesTransitionStep,
+    HawkesTransitionError, HawkesTransitionStep, spectral_radius_alpha_over_beta,
+    stationary_intensity_multipliers,
 };
 use serde_json::json;
 
@@ -49,6 +50,7 @@ fn shared_decay_drift_matches_closed_form_per_component() {
         y_minus_plus: 0.05,
         y_minus_minus: 2.8,
     };
+
     let beta = 1.7;
     let delta_t = 0.35;
 
@@ -126,7 +128,9 @@ fn intensity_projection_handles_hourly_piecewise_seasonality_edge_values() {
         y_minus_plus: 0.10,
         y_minus_minus: 0.20,
     };
+
     let lambda_bar = 0.40;
+
     let seasonality_factors = [0.25, 1.0, 3.5];
     let expected_scaled_plus = [0.15, 0.60, 2.10];
     let expected_scaled_minus = [0.175, 0.70, 2.45];
@@ -194,6 +198,7 @@ fn hourly_interval_projection_reads_seasonality_from_shared_contract() {
         y_minus_plus: 0.4,
         y_minus_minus: 0.3,
     };
+
     let hourly_factor_contract = build_hourly_factor_contract_with_seasonality(vec![0.8, 1.3, 0.6]);
 
     let projection = state
@@ -234,6 +239,7 @@ fn hourly_interval_projection_rejects_out_of_range_interval_index() {
         y_minus_plus: 0.4,
         y_minus_minus: 0.3,
     };
+
     let hourly_factor_contract = build_hourly_factor_contract_with_seasonality(vec![1.0, 0.9]);
 
     let error = state
@@ -423,6 +429,7 @@ fn exogenous_news_loading_jump_applies_component_wise_rho_scaled_by_severity_mar
         minus_plus: 0.05,
         minus_minus: 0.3,
     };
+
     let severity_mark = 2.5;
 
     let updated_state = state
@@ -523,6 +530,7 @@ fn exogenous_and_endogenous_jumps_compose_with_drift() {
         minus_plus: 0.05,
         minus_minus: 0.12,
     };
+
     let severity_mark = 1.5;
     let decay_factor = (-0.4f64).exp();
 
@@ -567,6 +575,7 @@ fn composed_transition_step_matches_reference_call_order_sequence() {
         y_minus_plus: 3.0,
         y_minus_minus: 4.0,
     };
+
     let kernel_parameters = HawkesKernelParameters::try_new(
         0.75,
         1.0,
@@ -584,6 +593,7 @@ fn composed_transition_step_matches_reference_call_order_sequence() {
         },
     )
     .expect("kernel fixture must be valid");
+
     let transition_step = HawkesTransitionStep::new(0.4, Some(HawkesEventSide::Buy), Some(1.5));
 
     let expected_state = state
@@ -642,10 +652,12 @@ fn composed_transition_sequence_matches_manual_step_iteration() {
         .try_fold(state, |next_state, transition_step| {
             let mut manual_state = next_state
                 .apply_shared_decay_drift(kernel_parameters.beta, transition_step.delta_t);
+
             if let Some(endogenous_event_side) = transition_step.endogenous_event_side {
                 manual_state = manual_state
                     .apply_endogenous_event_jump(endogenous_event_side, kernel_parameters.alpha);
             }
+
             if let Some(exogenous_news_severity_mark) = transition_step.exogenous_news_severity_mark
             {
                 return manual_state
@@ -655,6 +667,7 @@ fn composed_transition_sequence_matches_manual_step_iteration() {
                     )
                     .map_err(|source| HawkesTransitionError::InvalidNewsSeverityMark { source });
             }
+
             Ok(manual_state)
         })
         .expect("manual transition sequence should succeed");
@@ -804,6 +817,57 @@ fn structured_alpha_derivation_accepts_zero_delta_boundary_case() {
     );
     assert_eq!(alpha.minus_minus, alpha.plus_plus);
     assert_eq!(alpha.minus_plus, alpha.plus_minus);
+}
+
+#[test]
+fn stationary_intensity_multipliers_match_closed_form_bivariate_inverse() {
+    let alpha = HawkesKernelLoadings {
+        plus_plus: 0.3,
+        plus_minus: 0.1,
+        minus_plus: 0.2,
+        minus_minus: 0.4,
+    };
+
+    let multipliers = stationary_intensity_multipliers(alpha, 2.0)
+        .expect("stable positive beta kernel should admit stationary multipliers");
+
+    assert_within_tolerance(
+        multipliers.buy_intensity_multiplier,
+        1.259_259_259_259_259_3,
+        1.0e-12,
+        "buy_intensity_multiplier",
+    );
+    assert_within_tolerance(
+        multipliers.sell_intensity_multiplier,
+        1.407_407_407_407_407_4,
+        1.0e-12,
+        "sell_intensity_multiplier",
+    );
+    assert_within_tolerance(
+        multipliers.total_intensity_multiplier(),
+        2.666_666_666_666_666_5,
+        1.0e-12,
+        "total_intensity_multiplier",
+    );
+}
+
+#[test]
+fn spectral_radius_alpha_over_beta_matches_bivariate_eigenvalue_closed_form() {
+    let alpha = HawkesKernelLoadings {
+        plus_plus: 0.3,
+        plus_minus: 0.1,
+        minus_plus: 0.2,
+        minus_minus: 0.4,
+    };
+
+    let spectral_radius = spectral_radius_alpha_over_beta(alpha, 2.0);
+
+    assert_within_tolerance(
+        spectral_radius,
+        0.25,
+        1.0e-12,
+        "spectral_radius_alpha_over_beta",
+    );
 }
 
 #[test]

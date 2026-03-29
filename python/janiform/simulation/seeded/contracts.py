@@ -15,6 +15,7 @@ from ..shared.contracts import _parse_seeded_tick_state_snapshot_capture
 from ..shared.errors import SIMULATION_ERROR_FACTORY, _simulation_error
 from ...contracts import (
     ContractModel,
+    MeanReversionAnchorModel,
     MeanReversionBoundaryState,
     MeanReversionFittedParameters,
     MeanReversionRuntimeIntervalAnchors,
@@ -28,6 +29,7 @@ from ...contracts import (
     require_sequence,
     require_string,
 )
+from ..._timestamps import ONE_HOUR_NANOS
 from ...calendar import MarketState
 from ...hourly_factors import HourlyFactorContract
 from ...pricing import NigSharedPlusShiftConfiguration
@@ -35,7 +37,6 @@ from ...risk import SufficientStatisticsRiskReturnComponents
 
 
 _MEAN_REVERSION_ALIGNMENT_TOLERANCE: Final[float] = 1e-12
-_ONE_HOUR_NANOS: Final[int] = 3_600_000_000_000
 
 
 def _parse_nig_shared_plus_shift_configuration(
@@ -1129,7 +1130,7 @@ class SeededTickSimulationDiagnostics(ContractModel):
         )
 
 
-def build_disabled_seeded_mean_reversion_runtime_inputs(
+def build_endogenous_seeded_mean_reversion_runtime_inputs(
     *,
     hourly_factor_contract: HourlyFactorContract,
 ) -> tuple[
@@ -1137,11 +1138,14 @@ def build_disabled_seeded_mean_reversion_runtime_inputs(
     MeanReversionRuntimeIntervalAnchors,
     MeanReversionBoundaryState,
 ]:
-    interval_delta_hours = hourly_factor_contract.interval_duration_nanos / _ONE_HOUR_NANOS
+    interval_delta_hours = hourly_factor_contract.interval_duration_nanos / ONE_HOUR_NANOS
     interval_count = hourly_factor_contract.interval_count
 
     return (
-        MeanReversionFittedParameters.disabled(),
+        MeanReversionFittedParameters(
+            kappa=0.0,
+            anchor_model=MeanReversionAnchorModel.endogenous_core_expectation_one_interval(),
+        ),
         MeanReversionRuntimeIntervalAnchors(
             interval_alignment_policy=hourly_factor_contract.interval_alignment_policy,
             start_anchor_value=0.0,
@@ -1161,7 +1165,7 @@ __all__ = [
     "SEEDED_TICK_SIMULATION_DIAGNOSTICS_SCHEMA_VERSION",
     "SEEDED_TICK_SIMULATION_NATIVE_CHUNK_RECORD_COUNT",
     "SEEDED_TICK_SIMULATION_PAYLOAD_TRANSPORT_POLICY",
-    "build_disabled_seeded_mean_reversion_runtime_inputs",
+    "build_endogenous_seeded_mean_reversion_runtime_inputs",
     "SeededFinePathMetadata",
     "SeededFinePathNewsArrivalComponent",
     "SeededFinePathRecord",

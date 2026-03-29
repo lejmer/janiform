@@ -76,7 +76,7 @@ from janiform.contracts import MeanReversionBoundaryState
 model = JaniformEstimator(
     market_profile="eurusd_spot",
     mean_reversion=CalibrationMeanReversionConfiguration(
-        anchor_model_kind=MeanReversionAnchorModelKind.CONSTANT,
+        anchor_model_kind=MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL,
     ),
 ).fit(
     tick_data_path="data/eurusd_ticks.csv",
@@ -104,12 +104,14 @@ pricing_result = model.price_option(
 
 When the fitted model enables mean reversion, `JaniformModel.price_option(...)` requires an
 explicit `observed_boundary_state`. The high-level API and CLI do not invent that anchored pricing
-state for you.
+state for you. Under anchored pricing, the `Q` anchor path is generated internally from the current
+observed boundary state and the model's local tilted recursion.
 
-High-level mean-reversion calibration stays disabled unless you request it explicitly through
-`JaniformEstimator(mean_reversion=...)` or `janiform fit --mean-reversion-anchor-model ...`.
-The calibration workbench uses a separate setup surface and enables mean reversion by default
-while still exposing a setup toggle and explicit anchor-family selector for each run.
+For non-seasonality workflows, high-level calibration now uses endogenous mean reversion by
+default. Pass `JaniformEstimator(mean_reversion=...)` or `janiform fit --mean-reversion-anchor-model`
+only when you want to make that policy explicit or override the calibration grid interval.
+The calibration workbench still exposes the anchor policy selector, but the full-model path no
+longer offers a disabled mean-reversion branch.
 When you omit `calibration_grid_interval_hours`, the high-level market-data translation derives it
 from the median spacing of retained session-open boundary observations when that spacing is
 observable, and otherwise from the median observed session duration in the dataset.
@@ -119,6 +121,10 @@ reference level stored with the fitted model.
 
 Set `JaniformEstimator(cpu_count=...)` or `janiform fit --cpu-count ...` when you want to
 control how many CPU cores staged calibration uses while evaluating candidate parameter sets.
+Use `JaniformEstimator(optimizer_settings_by_stage=..., preprocessing_settings=...)` or the
+equivalent `MarketDataCalibrationRequest` fields when you want to override solver tolerances,
+seasonality preprocessing settings, or return-components jump and gap thresholds instead of
+accepting Janiform's built-in defaults.
 The default full calibration workflow now runs five stages in order:
 `seasonality`, `hawkes`, `return_components`, `mean_reversion`, and `joint_refinement`.
 Successful staged calibration responses expose diagnostic artifacts directly in memory mode

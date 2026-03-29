@@ -1472,8 +1472,11 @@ pub(crate) fn staged_run_inputs(
 pub(crate) fn mean_reversion_stage_execution_fixture() -> MeanReversionStageExecutionInput {
     MeanReversionStageExecutionInput {
         return_components_input: None,
+        seasonality_stage_input: None,
+        hawkes_stage_payload: None,
+        return_components_stage_payload: None,
         requested_anchor_model_kind:
-            janiform_model_kernels::mean_reversion::MeanReversionAnchorModelKind::Constant,
+            janiform_model_kernels::mean_reversion::MeanReversionAnchorModelKind::EndogenousCoreExpectationOneInterval,
         calibration_grid_kind: "synthetic_daily_close_grid.v1".to_string(),
         calibration_grid_interval_hours: 24.0,
         source_observation_count: 4,
@@ -1496,7 +1499,6 @@ pub(crate) fn mean_reversion_stage_execution_fixture() -> MeanReversionStageExec
                 observed_log_price: 4.59,
             },
         ],
-        disabled_stage_reason: None,
     }
 }
 
@@ -1680,8 +1682,19 @@ pub(crate) fn build_mean_reversion_stage_success_report() -> MeanReversionStageE
     static STAGE_SUCCESS_REPORT: LazyLock<MeanReversionStageExecutionReport> =
         LazyLock::new(|| {
             let calendar_registry = calibration_stage_test_registry();
+
             let return_components_payload = build_return_components_stage_success_payload();
+
             let mut execution_input = mean_reversion_stage_execution_fixture();
+
+            execution_input.seasonality_stage_input = Some(
+                MeanReversionStageSeasonalityInput::from_seasonality_stage_payload(
+                    &build_seasonality_stage_success_payload(),
+                ),
+            );
+            execution_input.hawkes_stage_payload = Some(build_hawkes_stage_success_payload());
+            execution_input.return_components_stage_payload =
+                Some(return_components_payload.clone());
             execution_input.return_components_input =
                 Some(MeanReversionStageReturnComponentsInput::InMemoryOutput {
                     selected_candidate_id: return_components_payload.selected_candidate_id.clone(),

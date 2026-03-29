@@ -4,6 +4,7 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 
 use chrono::{DateTime, Utc};
+use janiform_foundations::time::ONE_HOUR_NANOS;
 use serde::{Deserialize, Serialize};
 
 use crate::calendar::{
@@ -28,7 +29,6 @@ use janiform_model_kernels::news::{NewsProcessConfiguration, NewsProcessConfigur
 
 use super::runtime::compute_max_effective_endogenous_branching_ratio;
 
-const ONE_HOUR_NANOS: i64 = 3_600_000_000_000;
 const ONE_SECOND_NANOS: i64 = 1_000_000_000;
 const INTERVAL_DELTA_NANOS_TOLERANCE: f64 = 0.5;
 const MEAN_REVERSION_ALIGNMENT_TOLERANCE: f64 = 1.0e-12;
@@ -2283,7 +2283,8 @@ mod tests {
             NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
                 .expect("nig configuration should construct"),
             build_initial_state(),
-            MeanReversionFittedParameters::disabled(),
+            MeanReversionFittedParameters::endogenous_core_expectation_one_interval(0.0)
+                .expect("zero-kappa endogenous mean reversion should construct"),
             MeanReversionRuntimeIntervalAnchors::try_new(
                 "explicit_runtime_interval_grid_alignment.v1",
                 0.0,

@@ -11,8 +11,6 @@ const BOUNDARY_STATE_INVARIANT_TOLERANCE: f64 = 1e-12;
 #[serde(rename_all = "snake_case")]
 pub enum MeanReversionAnchorModelKind {
     EndogenousCoreExpectationOneInterval,
-    Disabled,
-    Constant,
 }
 
 /// Persisted anchor specification for the observed mean-reversion layer.
@@ -20,71 +18,18 @@ pub enum MeanReversionAnchorModelKind {
 #[serde(deny_unknown_fields)]
 pub struct MeanReversionAnchorModel {
     pub anchor_model_kind: MeanReversionAnchorModelKind,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub anchor_value: Option<f64>,
 }
 
 impl MeanReversionAnchorModel {
     pub fn endogenous_core_expectation_one_interval() -> Self {
         Self {
             anchor_model_kind: MeanReversionAnchorModelKind::EndogenousCoreExpectationOneInterval,
-            anchor_value: None,
         }
-    }
-
-    pub fn disabled() -> Self {
-        Self {
-            anchor_model_kind: MeanReversionAnchorModelKind::Disabled,
-            anchor_value: None,
-        }
-    }
-
-    pub fn constant(anchor_value: f64) -> Result<Self, MeanReversionAnchorModelValidationError> {
-        let anchor_model = Self {
-            anchor_model_kind: MeanReversionAnchorModelKind::Constant,
-            anchor_value: Some(anchor_value),
-        };
-        anchor_model.validate()?;
-        Ok(anchor_model)
     }
 
     pub fn validate(&self) -> Result<(), MeanReversionAnchorModelValidationError> {
         match self.anchor_model_kind {
-            MeanReversionAnchorModelKind::EndogenousCoreExpectationOneInterval => {
-                if self.anchor_value.is_some() {
-                    return Err(
-                        MeanReversionAnchorModelValidationError::UnexpectedFieldForAnchorModelKind {
-                            anchor_model_kind: self.anchor_model_kind,
-                            field: "anchor_value",
-                        },
-                    );
-                }
-            }
-            MeanReversionAnchorModelKind::Disabled => {
-                if self.anchor_value.is_some() {
-                    return Err(
-                        MeanReversionAnchorModelValidationError::UnexpectedFieldForAnchorModelKind {
-                            anchor_model_kind: self.anchor_model_kind,
-                            field: "anchor_value",
-                        },
-                    );
-                }
-            }
-            MeanReversionAnchorModelKind::Constant => {
-                let anchor_value = self.anchor_value.ok_or(
-                    MeanReversionAnchorModelValidationError::MissingFieldForAnchorModelKind {
-                        anchor_model_kind: self.anchor_model_kind,
-                        field: "anchor_value",
-                    },
-                )?;
-
-                validate_finite_number(anchor_value, "anchor_value").map_err(|source| {
-                    MeanReversionAnchorModelValidationError::NonFiniteField {
-                        field: source.field,
-                        value: source.value.to_string(),
-                    }
-                })?;
-            }
+            MeanReversionAnchorModelKind::EndogenousCoreExpectationOneInterval => {}
         }
 
         Ok(())
@@ -100,11 +45,13 @@ pub struct MeanReversionFittedParameters {
 }
 
 impl MeanReversionFittedParameters {
-    pub fn disabled() -> Self {
-        Self {
-            kappa: 0.0,
-            anchor_model: MeanReversionAnchorModel::disabled(),
-        }
+    pub fn endogenous_core_expectation_one_interval(
+        kappa: f64,
+    ) -> Result<Self, MeanReversionFittedParametersValidationError> {
+        Self::try_new(
+            kappa,
+            MeanReversionAnchorModel::endogenous_core_expectation_one_interval(),
+        )
     }
 
     pub fn try_new(
@@ -120,7 +67,7 @@ impl MeanReversionFittedParameters {
     }
 
     pub fn is_enabled(&self) -> bool {
-        self.anchor_model.anchor_model_kind != MeanReversionAnchorModelKind::Disabled
+        true
     }
 
     pub fn validate(&self) -> Result<(), MeanReversionFittedParametersValidationError> {

@@ -77,6 +77,7 @@ pub fn load_and_preprocess_market_data_translation_request(
         ),
         require_hawkes: request.require_hawkes,
         require_return_components: request.require_return_components,
+        preprocessing_settings: request.preprocessing_settings,
     };
 
     let preprocessing_output = preprocess_market_data_translation_request(

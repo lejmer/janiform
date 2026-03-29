@@ -32,7 +32,8 @@ use janiform_foundations::numeric::{
 use janiform_model_kernels::hawkes::{
     HawkesKernelLoadings, HawkesKernelParameterValidationReport, HawkesKernelParameters,
     HawkesKernelValidationStatus, HawkesStructuredAlphaParameterization,
-    HawkesStructuredRhoParameterization,
+    HawkesStructuredRhoParameterization, spectral_radius_alpha_over_beta,
+    stationary_intensity_multipliers,
 };
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct HawkesObservedActivityTargets {
@@ -211,6 +212,7 @@ pub fn run_hawkes_calibration_stage(
         Ok(prepared_candidates) => prepared_candidates,
         Err(report) => return report,
     };
+
     let (initial_candidate_diagnostics, initial_optimizer_output) =
         match evaluate_prepared_hawkes_candidates(
             run_spec,
@@ -225,7 +227,9 @@ pub fn run_hawkes_calibration_stage(
         initial_prepared_candidates.as_slice(),
         initial_candidate_diagnostics.as_slice(),
     );
+
     let mut all_prepared_candidates = initial_prepared_candidates.clone();
+
     if !refined_candidate_inputs.is_empty() {
         let refined_prepared_candidates = match prepare_hawkes_candidates(
             run_spec,
@@ -236,6 +240,7 @@ pub fn run_hawkes_calibration_stage(
             Ok(prepared_candidates) => prepared_candidates,
             Err(report) => return report,
         };
+
         all_prepared_candidates.extend(refined_prepared_candidates);
     }
 
@@ -315,7 +320,6 @@ pub fn run_hawkes_calibration_stage(
         selected_candidate_input.stability_numeric_tolerance,
     ) {
         Ok(kernel_parameters) => kernel_parameters,
-
         Err(source) => {
             return build_hawkes_stage_failure_report(
                 run_spec,
@@ -390,8 +394,8 @@ fn build_candidate_objective_terms(
     observed_activity_targets: HawkesObservedActivityTargets,
     lambda_bar_scaling_ratio_applied: f64,
     max_runtime_hourly_seasonality_factor: f64,
-    derived_alpha: Option<janiform_model_kernels::hawkes::HawkesKernelLoadings>,
-    derived_rho: Option<janiform_model_kernels::hawkes::HawkesKernelLoadings>,
+    derived_alpha: Option<HawkesKernelLoadings>,
+    derived_rho: Option<HawkesKernelLoadings>,
 ) -> (
     Vec<CalibrationObjectiveTermInput>,
     Vec<HawkesStageObjectiveTermDiagnostic>,
@@ -545,6 +549,7 @@ fn prepare_hawkes_candidates(
                 candidate_input,
                 observed_activity_targets,
             );
+
         let validation_report = precheck_structured_hawkes_kernel_parameter_domain(
             adjusted_candidate_input.lambda_bar,
             adjusted_candidate_input.beta,
@@ -555,6 +560,7 @@ fn prepare_hawkes_candidates(
         );
 
         let mut external_constraint_violation_count = validation_report.summary.failed_check_count;
+
         let (objective_terms, objective_term_diagnostics, implied_metrics, mut warnings) =
             build_candidate_objective_terms(
                 &adjusted_candidate_input,
@@ -576,6 +582,7 @@ fn prepare_hawkes_candidates(
         {
             external_constraint_violation_count =
                 external_constraint_violation_count.saturating_add(1);
+
             warnings.push(format!(
                 "seasonality-scaled effective branching ratio {:.6} reaches or exceeds 1.0 with max seasonality factor {:.6}",
                 stationarity_check.effective_branching_ratio,
@@ -713,6 +720,7 @@ fn generate_refined_hawkes_candidate_inputs(
     candidate_diagnostics: &[HawkesStageCandidateDiagnostic],
 ) -> Vec<HawkesStageCandidateInput> {
     const MAX_REFINEMENT_SEEDS: usize = 3;
+
     const LAMBDA_SCALES: [f64; 3] = [0.7, 1.0, 1.4];
     const BETA_SCALES: [f64; 3] = [0.7, 1.0, 1.4];
     const RHO_SCALES: [f64; 3] = [0.6, 1.0, 1.6];
@@ -722,13 +730,16 @@ fn generate_refined_hawkes_candidate_inputs(
 
     let mut refinement_candidates = Vec::new();
     let mut seen_ids = BTreeSet::new();
+
     for (seed_rank, candidate_index) in ranked_seed_indices
         .into_iter()
         .take(MAX_REFINEMENT_SEEDS)
         .enumerate()
     {
         let seed_candidate = &prepared_candidates[candidate_index].adjusted_candidate_input;
+
         let alpha_scales = refinement_alpha_scales(&candidate_diagnostics[candidate_index]);
+
         for lambda_scale in LAMBDA_SCALES {
             for beta_scale in BETA_SCALES {
                 for alpha_scale in &alpha_scales {
@@ -805,6 +816,7 @@ fn ranked_refinement_seed_indices(
                 eligible_seed_indices.contains(&candidate_index)
                     && candidate.constraint_violation_count == 0
             });
+
     let minimum_violation_count = eligible_seed_indices
         .iter()
         .map(|candidate_index| candidate_diagnostics[*candidate_index].constraint_violation_count)
@@ -836,6 +848,7 @@ fn ranked_refinement_seed_indices(
             ))
         })
         .collect();
+
     ranked_seed_indices.sort_by(|left, right| {
         left.1
             .cmp(&right.1)
@@ -856,9 +869,11 @@ fn refinement_alpha_scales(candidate_diagnostic: &HawkesStageCandidateDiagnostic
     const MINIMUM_ALPHA_SCALE: f64 = 0.01;
 
     let mut alpha_scales = BASE_ALPHA_SCALES.to_vec();
+
     let effective_branching_ratio = candidate_diagnostic
         .implied_metrics
         .max_runtime_effective_branching_ratio;
+
     if effective_branching_ratio.is_finite() && effective_branching_ratio > 0.0 {
         let targeted_scale = round_to(
             (TARGET_STABILITY_MARGIN / effective_branching_ratio).clamp(MINIMUM_ALPHA_SCALE, 1.0),
@@ -873,6 +888,7 @@ fn refinement_alpha_scales(candidate_diagnostic: &HawkesStageCandidateDiagnostic
 
     alpha_scales.sort_by(|left, right| left.total_cmp(right));
     alpha_scales.dedup_by(|left, right| left.total_cmp(right).is_eq());
+
     alpha_scales
 }
 
@@ -984,6 +1000,7 @@ fn derive_observed_activity_targets(
 
     let mut transformed_open_gaps_seconds: Vec<f64> =
         Vec::with_capacity(open_event_points.len().saturating_sub(1));
+
     let mut same_window_gap_seconds_sum = 0.0;
     let mut seasonality_weighted_gap_seconds_sum = 0.0;
 
@@ -1030,14 +1047,18 @@ fn derive_observed_activity_targets(
         (source_regime.open_session_duration_hours * mean_open_factor).max(1.0e-9);
     let deseasonalized_open_event_rate_per_hour =
         source_regime.open_session_tick_count as f64 / open_factor_exposure_hours;
+
     let deseasonalized_mean_interarrival_seconds =
         arithmetic_mean(transformed_open_gaps_seconds.as_slice())
             .unwrap_or(source_regime.open_session_mean_interarrival_seconds * mean_open_factor)
             .max(1.0e-6);
+
     let deseasonalized_interarrival_coefficient_of_variation =
         coefficient_of_variation(transformed_open_gaps_seconds.as_slice());
+
     let deseasonalized_short_gap_threshold_seconds =
         (deseasonalized_mean_interarrival_seconds * 0.5).clamp(1.0, 300.0);
+
     let deseasonalized_short_gap_ratio = if transformed_open_gaps_seconds.is_empty() {
         0.0
     } else {
@@ -1047,6 +1068,7 @@ fn derive_observed_activity_targets(
             .count() as f64
             / transformed_open_gaps_seconds.len() as f64
     };
+
     let deseasonalized_known_news_rate_per_hour =
         source_regime.known_news_open_event_count as f64 / open_factor_exposure_hours.max(1.0e-9);
 
@@ -1070,10 +1092,11 @@ fn adjust_candidate_for_deseasonalized_activity(
 
 fn check_seasonality_scaled_stationarity(
     max_seasonality_factor: f64,
-    derived_alpha: janiform_model_kernels::hawkes::HawkesKernelLoadings,
+    derived_alpha: HawkesKernelLoadings,
     beta: f64,
 ) -> Option<SeasonalityScaledStationarityCheck> {
     let spectral_radius_alpha_over_beta = spectral_radius_alpha_over_beta(derived_alpha, beta);
+
     let effective_branching_ratio = max_seasonality_factor * spectral_radius_alpha_over_beta;
     if effective_branching_ratio >= 1.0 {
         return Some(SeasonalityScaledStationarityCheck {
@@ -1091,23 +1114,18 @@ fn derive_candidate_implied_metrics(
     observed_activity_targets: HawkesObservedActivityTargets,
     lambda_bar_scaling_ratio_applied: f64,
     max_runtime_hourly_seasonality_factor: f64,
-    derived_alpha: janiform_model_kernels::hawkes::HawkesKernelLoadings,
-    derived_rho: janiform_model_kernels::hawkes::HawkesKernelLoadings,
+    derived_alpha: HawkesKernelLoadings,
+    derived_rho: HawkesKernelLoadings,
 ) -> HawkesStageImpliedMetricsDiagnostic {
-    let scaled_plus_plus = derived_alpha.plus_plus / candidate_input.beta;
-    let scaled_plus_minus = derived_alpha.plus_minus / candidate_input.beta;
-    let scaled_minus_plus = derived_alpha.minus_plus / candidate_input.beta;
-    let scaled_minus_minus = derived_alpha.minus_minus / candidate_input.beta;
+    let stationary_multipliers =
+        stationary_intensity_multipliers(derived_alpha, candidate_input.beta).unwrap_or_else(
+            || unreachable!("validated Hawkes candidate must admit stationary multipliers"),
+        );
 
-    let determinant = (1.0 - scaled_plus_plus) * (1.0 - scaled_minus_minus)
-        - scaled_plus_minus * scaled_minus_plus;
-
-    let stationary_buy_multiplier = ((1.0 - scaled_minus_minus) + scaled_plus_minus) / determinant;
-    let stationary_sell_multiplier = (scaled_minus_plus + (1.0 - scaled_plus_plus)) / determinant;
-
-    let stationary_buy_intensity = candidate_input.lambda_bar * stationary_buy_multiplier.max(0.0);
+    let stationary_buy_intensity =
+        candidate_input.lambda_bar * stationary_multipliers.buy_intensity_multiplier.max(0.0);
     let stationary_sell_intensity =
-        candidate_input.lambda_bar * stationary_sell_multiplier.max(0.0);
+        candidate_input.lambda_bar * stationary_multipliers.sell_intensity_multiplier.max(0.0);
     let stationary_total_intensity = stationary_buy_intensity + stationary_sell_intensity;
 
     let model_implied_open_sell_share = if stationary_total_intensity > 0.0 {
@@ -1118,10 +1136,13 @@ fn derive_candidate_implied_metrics(
 
     let observed_open_event_rate_per_hour =
         observed_open_session_event_rate_per_hour(&candidate_input.source_regime);
+
     let endogenous_branching_ratio =
         spectral_radius_alpha_over_beta(derived_alpha, candidate_input.beta);
+
     let max_runtime_effective_branching_ratio =
         max_runtime_hourly_seasonality_factor * endogenous_branching_ratio;
+
     let self_excitation_ratio =
         (derived_alpha.plus_plus + derived_alpha.minus_minus) / (2.0 * candidate_input.beta);
     let cross_excitation_ratio =
@@ -1215,6 +1236,7 @@ fn push_objective_term(
 ) {
     let absolute_error = (model_implied_value - observed_value).abs();
     let normalized_error = absolute_error / scale.max(1e-9);
+
     let weighted_contribution = weight * normalized_error;
 
     objective_terms.push(CalibrationObjectiveTermInput {
@@ -1222,6 +1244,7 @@ fn push_objective_term(
         weight,
         observed_score: normalized_error,
     });
+
     term_diagnostics.push(HawkesStageObjectiveTermDiagnostic {
         term_id: term_id.to_string(),
         weight,
@@ -1251,49 +1274,18 @@ fn observed_directional_imbalance_magnitude(
         * 2.0
 }
 
-fn spectral_radius_alpha_over_beta(
-    alpha: janiform_model_kernels::hawkes::HawkesKernelLoadings,
-    beta: f64,
-) -> f64 {
-    let scaled_plus_plus = alpha.plus_plus / beta;
-    let scaled_plus_minus = alpha.plus_minus / beta;
-    let scaled_minus_plus = alpha.minus_plus / beta;
-    let scaled_minus_minus = alpha.minus_minus / beta;
-    let trace = scaled_plus_plus + scaled_minus_minus;
-    let discriminant = ((scaled_plus_plus - scaled_minus_minus).powi(2)
-        + 4.0 * scaled_plus_minus * scaled_minus_plus)
-        .sqrt();
-
-    0.5 * (trace + discriminant)
-}
-
 pub(crate) fn stationary_open_event_rate_per_hour(
     fitted_parameters: &HawkesStageFittedParameters,
 ) -> Option<f64> {
     let derived_alpha =
         HawkesKernelLoadings::try_from_structured_alpha(fitted_parameters.structured_alpha).ok()?;
-    let beta = fitted_parameters.kernel_parameters.beta;
-    if !beta.is_finite() || beta <= 0.0 {
-        return None;
-    }
-
-    let scaled_plus_plus = derived_alpha.plus_plus / beta;
-    let scaled_plus_minus = derived_alpha.plus_minus / beta;
-    let scaled_minus_plus = derived_alpha.minus_plus / beta;
-    let scaled_minus_minus = derived_alpha.minus_minus / beta;
-
-    let determinant = (1.0 - scaled_plus_plus) * (1.0 - scaled_minus_minus)
-        - scaled_plus_minus * scaled_minus_plus;
-    if !determinant.is_finite() || determinant.abs() <= f64::EPSILON {
-        return None;
-    }
-
-    let stationary_buy_multiplier = ((1.0 - scaled_minus_minus) + scaled_plus_minus) / determinant;
-    let stationary_sell_multiplier = (scaled_minus_plus + (1.0 - scaled_plus_plus)) / determinant;
+    let stationary_multipliers =
+        stationary_intensity_multipliers(derived_alpha, fitted_parameters.kernel_parameters.beta)?;
 
     Some(
         fitted_parameters.kernel_parameters.lambda_bar
-            * (stationary_buy_multiplier.max(0.0) + stationary_sell_multiplier.max(0.0)),
+            * (stationary_multipliers.buy_intensity_multiplier.max(0.0)
+                + stationary_multipliers.sell_intensity_multiplier.max(0.0)),
     )
 }
 

@@ -1,7 +1,5 @@
 mod support;
 
-use std::f64::NAN;
-
 use janiform_calibration_artifacts::CalibrationExecutionMode;
 use janiform_model_kernels::mean_reversion::MeanReversionAnchorModelKind;
 use support::shared::{
@@ -44,7 +42,7 @@ fn mean_reversion_fitted_parameters_round_trip_serialization_preserves_contract_
 fn mean_reversion_fitted_parameters_reject_negative_kappa() {
     let fitted_parameters = MeanReversionFittedParameters {
         kappa: -0.01,
-        anchor_model: MeanReversionAnchorModel::disabled(),
+        anchor_model: MeanReversionAnchorModel::endogenous_core_expectation_one_interval(),
     };
 
     let error = fitted_parameters
@@ -59,17 +57,16 @@ fn mean_reversion_fitted_parameters_reject_negative_kappa() {
 
 #[test]
 fn endogenous_mean_reversion_anchor_model_rejects_exogenous_anchor_values() {
-    let anchor_model = MeanReversionAnchorModel {
-        anchor_model_kind: MeanReversionAnchorModelKind::EndogenousCoreExpectationOneInterval,
-        anchor_value: Some(NAN),
-    }
-    .validate()
+    let anchor_model = serde_json::from_value::<MeanReversionAnchorModel>(serde_json::json!({
+        "anchor_model_kind": MeanReversionAnchorModelKind::EndogenousCoreExpectationOneInterval,
+        "anchor_value": 0.0,
+    }))
     .expect_err("endogenous mean-reversion anchor must reject exogenous values");
 
     assert!(
         anchor_model
             .to_string()
-            .contains("must not set field `anchor_value`")
+            .contains("unknown field `anchor_value`")
     );
 }
 

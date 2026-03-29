@@ -182,6 +182,14 @@ def _build_coarse_simulation_smoke_invocation(
 
 def _build_price_smoke_invocation(_: str, tmp_path: Path) -> CliSmokeInvocation:
     model_path = _write_price_model(tmp_path, run_id="smoke-price-model")
+    observed_boundary_state_path = write_json_path(
+        tmp_path / "observed_boundary_state.json",
+        {
+            "observed_log_price": 0.0,
+            "anchor_value": 0.0,
+            "deviation": 0.0,
+        },
+    )
     output_path = tmp_path / "pricing.json"
 
     return CliSmokeInvocation(
@@ -189,6 +197,8 @@ def _build_price_smoke_invocation(_: str, tmp_path: Path) -> CliSmokeInvocation:
             "price",
             "--model-path",
             str(model_path),
+            "--observed-boundary-state-json",
+            str(observed_boundary_state_path),
             "--valuation-time-utc",
             "2026-02-02T15:00:00Z",
             "--spot",

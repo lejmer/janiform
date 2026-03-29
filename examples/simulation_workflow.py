@@ -4,7 +4,7 @@ from typing import Any
 from janiform.hourly_factors import provide_hourly_factor_contract
 from janiform.simulation.seeded import (
     SeededTickSimulationRequest,
-    build_disabled_seeded_mean_reversion_runtime_inputs,
+    build_endogenous_seeded_mean_reversion_runtime_inputs,
     run_seeded_tick_event_simulation,
 )
 
@@ -36,7 +36,7 @@ def run_example() -> dict[str, Any]:
         mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state,
-    ) = build_disabled_seeded_mean_reversion_runtime_inputs(
+    ) = build_endogenous_seeded_mean_reversion_runtime_inputs(
         hourly_factor_contract=hourly_factor_contract
     )
 

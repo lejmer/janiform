@@ -3,6 +3,13 @@
 pub const FIVE_MINUTES_NANOS: i64 = 5 * 60 * 1_000_000_000;
 pub const FIFTEEN_MINUTES_NANOS: i64 = 15 * 60 * 1_000_000_000;
 pub const ONE_HOUR_NANOS: i64 = 3_600_000_000_000;
+pub const ONE_HOUR_NANOS_F64: f64 = ONE_HOUR_NANOS as f64;
+pub const HOURS_PER_NANOSECOND: f64 = 1.0 / ONE_HOUR_NANOS_F64;
+
+/// Convert a fixed-width UTC nanosecond duration to hours.
+pub fn duration_nanos_to_hours(duration_nanos: i64) -> f64 {
+    duration_nanos as f64 * HOURS_PER_NANOSECOND
+}
 
 /// Floor a UTC nanosecond timestamp to the containing interval boundary.
 ///
@@ -37,7 +44,7 @@ pub fn ceil_to_hour_utc_nanos(timestamp_utc_nanos: i64) -> i64 {
 mod tests {
     use super::{
         ONE_HOUR_NANOS, ceil_to_hour_utc_nanos, ceil_to_interval_utc_nanos,
-        floor_to_hour_utc_nanos, floor_to_interval_utc_nanos,
+        duration_nanos_to_hours, floor_to_hour_utc_nanos, floor_to_interval_utc_nanos,
     };
 
     #[test]
@@ -63,5 +70,11 @@ mod tests {
             2 * ONE_HOUR_NANOS
         );
         assert_eq!(ceil_to_hour_utc_nanos(ONE_HOUR_NANOS), ONE_HOUR_NANOS);
+    }
+
+    #[test]
+    fn duration_nanos_to_hours_matches_hour_boundary_constant() {
+        assert_eq!(duration_nanos_to_hours(ONE_HOUR_NANOS), 1.0);
+        assert_eq!(duration_nanos_to_hours(ONE_HOUR_NANOS / 4), 0.25);
     }
 }

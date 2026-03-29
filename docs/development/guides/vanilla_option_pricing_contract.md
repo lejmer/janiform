@@ -127,7 +127,6 @@ Anchored boundary-input validation errors:
   - invalid mean-reversion fitted parameters
   - invalid runtime anchor alignment
   - invalid observed-state payload
-  - disabled-anchor payload with nonzero `kappa`
   - inconsistent interval index, current anchor, or observed anchor alignment
 
 Structured response validation errors:
@@ -167,8 +166,8 @@ The request contract validates the interval-grid alignment implied by that state
 
 - `interval_delta` must match the runtime anchor interval at `interval_index`
 - the observed boundary anchor must equal the current runtime anchor for that interval
-- disabled mean reversion remains the nested case and therefore requires `kappa = 0` with flat
-  runtime anchors
+- the anchor path is a runtime artifact, and the pricing recursion generates its `Q` anchor
+  increments internally from the local tilted transform
 
 The executable observed-return adjustment is derived from the boundary input as:
 
@@ -293,8 +292,7 @@ prepares the canonical `VanillaOptionPricingExecutionInput` and then calls
 
 High-level boundary-input rules are:
 
-- disabled mean reversion remains the nested case and may omit `observed_boundary_state`
-- enabled mean reversion requires an explicit `observed_boundary_state: MeanReversionBoundaryState`
+- anchored pricing requires an explicit `observed_boundary_state: MeanReversionBoundaryState`
 - the high-level API and CLI never invent missing observed anchor or deviation state
 - CLI surface: `janiform price --observed-boundary-state-json PATH`
 

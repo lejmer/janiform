@@ -595,7 +595,8 @@ fn build_model_inputs() -> SufficientStatisticsRiskModelInputs {
             y_minus_plus: 0.03,
             y_minus_minus: 0.04,
         },
-        MeanReversionFittedParameters::disabled(),
+        MeanReversionFittedParameters::endogenous_core_expectation_one_interval(0.0)
+            .expect("zero-kappa endogenous mean reversion should construct"),
         MeanReversionRuntimeIntervalAnchors::try_new(
             "explicit_runtime_interval_grid_alignment.v1",
             0.0,

@@ -32,7 +32,7 @@ from janiform.simulation.seeded import (
     serialize_seeded_tick_simulation_response,
     validate_seeded_tick_simulation_response,
 )
-from tests.simulation_test_support import build_disabled_mean_reversion_runtime_contracts
+from tests.simulation_test_support import build_endogenous_mean_reversion_runtime_contracts
 
 
 def test_simulation_request_model_validates_construction() -> None:
@@ -40,7 +40,7 @@ def test_simulation_request_model_validates_construction() -> None:
         mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state,
-    ) = build_disabled_mean_reversion_runtime_contracts(interval_count=2)
+    ) = build_endogenous_mean_reversion_runtime_contracts(interval_count=2)
 
     request = SeededTickSimulationRequest(
         seed=17,
@@ -85,7 +85,7 @@ def test_simulation_request_rejects_non_positive_sampling_stride() -> None:
         mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state,
-    ) = build_disabled_mean_reversion_runtime_contracts(interval_count=2)
+    ) = build_endogenous_mean_reversion_runtime_contracts(interval_count=2)
 
     with pytest.raises(SeededTickSimulationValidationError) as captured_error:
         SeededTickSimulationRequest(
@@ -164,7 +164,7 @@ def test_simulation_entrypoint_rejects_request_without_runtime_hourly_factor_han
         mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state,
-    ) = build_disabled_mean_reversion_runtime_contracts(interval_count=2)
+    ) = build_endogenous_mean_reversion_runtime_contracts(interval_count=2)
 
     request = SeededTickSimulationRequest(
         seed=17,

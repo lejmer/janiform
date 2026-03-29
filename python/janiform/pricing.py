@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime
+from dataclasses import dataclass, field
 from enum import StrEnum
 from math import exp
 from types import ModuleType
@@ -14,7 +13,6 @@ from .contracts import (
     MeanReversionAnchorModelKind,
     MeanReversionBoundaryState,
     MeanReversionFittedParameters,
-    MeanReversionRuntimeIntervalAnchors,
     ValidationErrorFactory,
     parse_json_object,
     require_finite_number,
@@ -22,6 +20,7 @@ from .contracts import (
     require_non_negative_integer,
     require_non_negative_finite_number,
     require_positive_finite_number,
+    require_positive_integer,
     require_positive_finite_scalar,
     require_string,
     serialize_deterministic_json,
@@ -44,6 +43,7 @@ from .hourly_factors import (
 )
 if TYPE_CHECKING:
     from .simulation import HawkesExcitationState, HawkesKernelParameters
+    from .simulation.coarse.news import NewsProcessConfiguration
 
 DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA = 1.0
 VANILLA_OPTION_PRICING_RUN_RESULT_SCHEMA_VERSION = "pricing.vanilla_option.run_result.v1"
@@ -85,7 +85,7 @@ PRICING_EXECUTION_ERROR_ID = "pricing.execution.run_failed"
 PRICING_INTEGRATION_NATIVE_MODULE_ERROR_ID = "pricing.integration.native_module_unavailable"
 PRICING_INTEGRATION_RESPONSE_ERROR_ID = "pricing.integration.invalid_native_response"
 PRICING_LOCAL_ANCHORED_TILT_SOLVE_POLICY = (
-    "solve_state_dependent_local_tilt_against_observed_anchor_adjusted_interval_return_target.v1"
+    "solve_state_dependent_local_tilt_against_endogenous_q_martingale_target.v1"
 )
 _PRICING_MEAN_REVERSION_ALIGNMENT_TOLERANCE = 1e-12
 
@@ -94,6 +94,16 @@ VanillaOptionPricingValidationFailure = ContractValidationFailure
 
 class VanillaOptionPricingValidationError(JaniformValidationError):
     pass
+
+
+class FourierInversionQuadratureRule(StrEnum):
+    MIDPOINT = "midpoint"
+    TRAPEZOID = "trapezoid"
+
+
+class FourierInversionNumericQualityGate(StrEnum):
+    DIAGNOSTICS_ONLY = "diagnostics_only"
+    ENFORCE_FAILURE = "enforce_failure"
 
 
 def _pricing_failure(
@@ -189,10 +199,23 @@ def _parse_hawkes_excitation_state(
     raw_payload: dict[str, Any] | Any,
     *,
     field_path: str,
-) -> Any:
+):
     from .simulation import HawkesExcitationState
 
     return HawkesExcitationState.from_mapping(raw_payload, field_path=field_path)
+
+
+def _parse_news_process_configuration(
+    raw_payload: dict[str, Any] | Any,
+    *,
+    field_path: str,
+):
+    from .simulation.coarse.news import NewsProcessConfiguration
+
+    try:
+        return NewsProcessConfiguration.from_mapping(raw_payload)
+    except JaniformValidationError as e:
+        raise _pricing_error(f"{field_path}.{e.failure.field_path}", e.failure.message) from e
 
 
 def require_boolean(
@@ -208,23 +231,6 @@ def require_boolean(
         raise _pricing_error(field_path, "must be a boolean")
 
     return raw_value
-
-
-def _validate_flat_runtime_anchors(
-    runtime_interval_anchors: MeanReversionRuntimeIntervalAnchors,
-    expected_anchor_value: float,
-) -> None:
-    for interval_index, observed_anchor_value in enumerate(
-        runtime_interval_anchors.end_anchor_values
-    ):
-        if (
-            abs(observed_anchor_value - expected_anchor_value)
-            > _PRICING_MEAN_REVERSION_ALIGNMENT_TOLERANCE
-        ):
-            raise _pricing_error(
-                f"boundary_input.mean_reversion_runtime_interval_anchors.end_anchor_values[{interval_index}]",
-                f"must equal {expected_anchor_value}, found {observed_anchor_value}",
-            )
 
 
 class VanillaOptionPayoffType(StrEnum):
@@ -403,6 +409,7 @@ class VanillaOptionPayoffConfiguration(ContractModel):
             f"{field_path}.payoff_type",
             PRICING_ERROR_FACTORY,
         )
+
         try:
             payoff_type = VanillaOptionPayoffType(raw_payoff_type)
         except ValueError as e:
@@ -472,8 +479,33 @@ class VanillaOptionPricingModelParameters(ContractModel):
     """Model-side pricing inputs across Hawkes, news, and NIG layers."""
 
     hawkes_kernel_parameters: HawkesKernelParameters
-    gamma_severity_mark_configuration: GammaSeverityMarkConfiguration
+    news_process_configuration: NewsProcessConfiguration
     nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration
+
+    def __post_init__(self) -> None:
+        from .simulation import HawkesKernelParameters
+        from .simulation.coarse.news import NewsProcessConfiguration
+
+        if not isinstance(self.hawkes_kernel_parameters, HawkesKernelParameters):
+            raise _pricing_error(
+                "model_parameters.hawkes_kernel_parameters",
+                "must be a HawkesKernelParameters",
+            )
+
+        if not isinstance(self.news_process_configuration, NewsProcessConfiguration):
+            raise _pricing_error(
+                "model_parameters.news_process_configuration",
+                "must be a NewsProcessConfiguration",
+            )
+
+        if not isinstance(
+            self.nig_shared_plus_shift_configuration,
+            NigSharedPlusShiftConfiguration,
+        ):
+            raise _pricing_error(
+                "model_parameters.nig_shared_plus_shift_configuration",
+                "must be a NigSharedPlusShiftConfiguration",
+            )
 
     @staticmethod
     def from_mapping(
@@ -495,14 +527,14 @@ class VanillaOptionPricingModelParameters(ContractModel):
                     ),
                     field_path=f"{field_path}.hawkes_kernel_parameters",
                 ),
-                gamma_severity_mark_configuration=GammaSeverityMarkConfiguration.from_mapping(
+                news_process_configuration=_parse_news_process_configuration(
                     require_mapping(
                         raw_payload,
-                        "gamma_severity_mark_configuration",
-                        f"{field_path}.gamma_severity_mark_configuration",
+                        "news_process_configuration",
+                        f"{field_path}.news_process_configuration",
                         PRICING_ERROR_FACTORY,
                     ),
-                    field_path=f"{field_path}.gamma_severity_mark_configuration",
+                    field_path=f"{field_path}.news_process_configuration",
                 ),
                 nig_shared_plus_shift_configuration=NigSharedPlusShiftConfiguration.from_mapping(
                     require_mapping(
@@ -523,7 +555,7 @@ class AnchoredVanillaOptionPricingBoundaryInput(ContractModel):
     interval_index: int
     hawkes_boundary_state: HawkesExcitationState
     mean_reversion_fitted_parameters: MeanReversionFittedParameters
-    mean_reversion_runtime_interval_anchors: MeanReversionRuntimeIntervalAnchors
+    interval_delta: float
     observed_boundary_state: MeanReversionBoundaryState
 
     def __post_init__(self) -> None:
@@ -544,15 +576,6 @@ class AnchoredVanillaOptionPricingBoundaryInput(ContractModel):
                 "must be a MeanReversionFittedParameters",
             )
 
-        if not isinstance(
-            self.mean_reversion_runtime_interval_anchors,
-            MeanReversionRuntimeIntervalAnchors,
-        ):
-            raise _pricing_error(
-                "boundary_input.mean_reversion_runtime_interval_anchors",
-                "must be a MeanReversionRuntimeIntervalAnchors",
-            )
-
         if not isinstance(self.observed_boundary_state, MeanReversionBoundaryState):
             raise _pricing_error(
                 "boundary_input.observed_boundary_state",
@@ -562,113 +585,27 @@ class AnchoredVanillaOptionPricingBoundaryInput(ContractModel):
         if self.interval_index < 0:
             raise _pricing_error("boundary_input.interval_index", "must be non-negative")
 
-        available_interval_count = len(self.mean_reversion_runtime_interval_anchors.end_anchor_values)
-        if self.interval_index >= available_interval_count:
-            raise _pricing_error(
-                "boundary_input.interval_index",
-                f"must be less than {available_interval_count}",
-            )
+        require_positive_finite_scalar(
+            self.interval_delta,
+            "boundary_input.interval_delta",
+            PRICING_ERROR_FACTORY,
+        )
 
         match self.mean_reversion_fitted_parameters.anchor_model.anchor_model_kind:
             case MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL:
                 pass
-            case MeanReversionAnchorModelKind.DISABLED:
-                if self.mean_reversion_fitted_parameters.kappa != 0.0:
-                    raise _pricing_error(
-                        "boundary_input.mean_reversion_fitted_parameters.kappa",
-                        "must be 0.0 when anchor_model_kind=disabled",
-                    )
-
-                _validate_flat_runtime_anchors(
-                    self.mean_reversion_runtime_interval_anchors,
-                    self.mean_reversion_runtime_interval_anchors.start_anchor_value,
-                )
-            case MeanReversionAnchorModelKind.CONSTANT:
-                expected_anchor_value = (
-                    self.mean_reversion_fitted_parameters.anchor_model.anchor_value
-                )
-                if expected_anchor_value is None:
-                    raise _pricing_error(
-                        "boundary_input.mean_reversion_fitted_parameters.anchor_model.anchor_value",
-                        "is required when anchor_model_kind=constant",
-                    )
-
-                if (
-                    abs(
-                        self.mean_reversion_runtime_interval_anchors.start_anchor_value
-                        - expected_anchor_value
-                    )
-                    > _PRICING_MEAN_REVERSION_ALIGNMENT_TOLERANCE
-                ):
-                    raise _pricing_error(
-                        "boundary_input.mean_reversion_runtime_interval_anchors.start_anchor_value",
-                        f"must equal {expected_anchor_value}",
-                    )
-
-                _validate_flat_runtime_anchors(
-                    self.mean_reversion_runtime_interval_anchors,
-                    expected_anchor_value,
-                )
-
-        if (
-            abs(self.observed_boundary_state.anchor_value - self.current_anchor_value)
-            > _PRICING_MEAN_REVERSION_ALIGNMENT_TOLERANCE
-        ):
-            raise _pricing_error(
-                "boundary_input.observed_boundary_state.anchor_value",
-                f"must equal the current interval anchor {self.current_anchor_value}",
-            )
 
     @property
     def current_anchor_value(self) -> float:
-        if self.interval_index == 0:
-            return self.mean_reversion_runtime_interval_anchors.start_anchor_value
-
-        return self.mean_reversion_runtime_interval_anchors.end_anchor_values[self.interval_index - 1]
-
-    @property
-    def next_anchor_value(self) -> float:
-        return self.mean_reversion_runtime_interval_anchors.end_anchor_values[self.interval_index]
-
-    @property
-    def interval_delta(self) -> float:
-        return self.mean_reversion_runtime_interval_anchors.interval_deltas[self.interval_index]
+        return self.observed_boundary_state.anchor_value
 
     @property
     def deviation_decay_factor(self) -> float:
         return exp(-self.mean_reversion_fitted_parameters.kappa * self.interval_delta)
 
     @property
-    def observed_return_adjustment(self) -> float:
-        return (
-            self.next_anchor_value
-            - self.current_anchor_value
-            + (self.deviation_decay_factor - 1.0) * self.observed_boundary_state.deviation
-        )
-
-    @staticmethod
-    def disabled(
-        *,
-        interval_delta: float,
-        hawkes_boundary_state: HawkesExcitationState,
-        observed_log_price: float = 0.0,
-    ) -> AnchoredVanillaOptionPricingBoundaryInput:
-        return AnchoredVanillaOptionPricingBoundaryInput(
-            interval_index=0,
-            hawkes_boundary_state=hawkes_boundary_state,
-            mean_reversion_fitted_parameters=MeanReversionFittedParameters.disabled(),
-            mean_reversion_runtime_interval_anchors=MeanReversionRuntimeIntervalAnchors(
-                interval_alignment_policy="pricing_disabled_flat_anchor_interval_grid.v1",
-                start_anchor_value=0.0,
-                end_anchor_values=(0.0,),
-                interval_deltas=(interval_delta,),
-            ),
-            observed_boundary_state=MeanReversionBoundaryState(
-                observed_log_price=observed_log_price,
-                anchor_value=0.0,
-                deviation=observed_log_price,
-            ),
-        )
+    def local_martingale_deviation_adjustment(self) -> float:
+        return (self.deviation_decay_factor - 1.0) * self.observed_boundary_state.deviation
 
     @staticmethod
     def from_mapping(
@@ -705,14 +642,11 @@ class AnchoredVanillaOptionPricingBoundaryInput(ContractModel):
                     ),
                     field_path=f"{field_path}.mean_reversion_fitted_parameters",
                 ),
-                mean_reversion_runtime_interval_anchors=MeanReversionRuntimeIntervalAnchors.from_mapping(
-                    require_mapping(
-                        raw_payload,
-                        "mean_reversion_runtime_interval_anchors",
-                        f"{field_path}.mean_reversion_runtime_interval_anchors",
-                        PRICING_ERROR_FACTORY,
-                    ),
-                    field_path=f"{field_path}.mean_reversion_runtime_interval_anchors",
+                interval_delta=require_positive_finite_number(
+                    raw_payload,
+                    "interval_delta",
+                    f"{field_path}.interval_delta",
+                    PRICING_ERROR_FACTORY,
                 ),
                 observed_boundary_state=MeanReversionBoundaryState.from_mapping(
                     require_mapping(
@@ -747,10 +681,10 @@ class AnchoredLocalTiltBoundaryStateSummary(ContractModel):
     hawkes_boundary_state: HawkesExcitationState
     observed_boundary_state: MeanReversionBoundaryState
     current_anchor_value: float
-    next_anchor_value: float
     interval_delta: float
     kappa: float
     deviation_decay_factor: float
+    local_martingale_deviation_adjustment: float
 
     @staticmethod
     def from_mapping(
@@ -792,12 +726,6 @@ class AnchoredLocalTiltBoundaryStateSummary(ContractModel):
                 f"{field_path}.current_anchor_value",
                 PRICING_ERROR_FACTORY,
             ),
-            next_anchor_value=require_finite_number(
-                raw_payload,
-                "next_anchor_value",
-                f"{field_path}.next_anchor_value",
-                PRICING_ERROR_FACTORY,
-            ),
             interval_delta=require_positive_finite_number(
                 raw_payload,
                 "interval_delta",
@@ -814,6 +742,12 @@ class AnchoredLocalTiltBoundaryStateSummary(ContractModel):
                 raw_payload,
                 "deviation_decay_factor",
                 f"{field_path}.deviation_decay_factor",
+                PRICING_ERROR_FACTORY,
+            ),
+            local_martingale_deviation_adjustment=require_finite_number(
+                raw_payload,
+                "local_martingale_deviation_adjustment",
+                f"{field_path}.local_martingale_deviation_adjustment",
                 PRICING_ERROR_FACTORY,
             ),
         )
@@ -918,6 +852,235 @@ class AnchoredLocalTiltSolveDiagnostics(ContractModel):
 
 
 @dataclass(frozen=True, slots=True)
+class FourierInversionContour(ContractModel):
+    damping_factor: float = 1.5
+
+    def __post_init__(self) -> None:
+        require_positive_finite_scalar(
+            self.damping_factor,
+            "damping_factor",
+            PRICING_ERROR_FACTORY,
+        )
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> FourierInversionContour:
+        if not isinstance(raw_payload, dict):
+            raise _pricing_error(field_path, "must be an object")
+
+        return FourierInversionContour(
+            damping_factor=require_positive_finite_number(
+                raw_payload,
+                "damping_factor",
+                f"{field_path}.damping_factor",
+                PRICING_ERROR_FACTORY,
+            )
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class FourierInversionNumericSettings(ContractModel):
+    integration_upper_bound: float = 150.0
+    integration_step_count: int = 4_096
+    quadrature_rule: FourierInversionQuadratureRule = FourierInversionQuadratureRule.MIDPOINT
+
+    def __post_init__(self) -> None:
+        require_positive_finite_scalar(
+            self.integration_upper_bound,
+            "integration_upper_bound",
+            PRICING_ERROR_FACTORY,
+        )
+
+        if not isinstance(self.integration_step_count, int) or isinstance(
+            self.integration_step_count,
+            bool,
+        ):
+            raise _pricing_error(
+                "integration_step_count",
+                "must be an integer",
+            )
+
+        if self.integration_step_count <= 0:
+            raise _pricing_error(
+                "integration_step_count",
+                "must be strictly positive",
+            )
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> FourierInversionNumericSettings:
+        if not isinstance(raw_payload, dict):
+            raise _pricing_error(field_path, "must be an object")
+
+        try:
+            return FourierInversionNumericSettings(
+                integration_upper_bound=require_positive_finite_number(
+                    raw_payload,
+                    "integration_upper_bound",
+                    f"{field_path}.integration_upper_bound",
+                    PRICING_ERROR_FACTORY,
+                ),
+                integration_step_count=require_positive_integer(
+                    raw_payload,
+                    "integration_step_count",
+                    f"{field_path}.integration_step_count",
+                    PRICING_ERROR_FACTORY,
+                ),
+                quadrature_rule=FourierInversionQuadratureRule(
+                    require_string(
+                        raw_payload,
+                        "quadrature_rule",
+                        f"{field_path}.quadrature_rule",
+                        PRICING_ERROR_FACTORY,
+                    )
+                ),
+            )
+        except ValueError as e:
+            raise _pricing_error(f"{field_path}.quadrature_rule", str(e)) from e
+
+
+@dataclass(frozen=True, slots=True)
+class FourierInversionIntegrationStabilityControls(ContractModel):
+    convergence_absolute_tolerance: float = 1.0e-5
+    convergence_relative_tolerance: float = 1.0e-4
+    terminal_integrand_absolute_tolerance: float = 5.0e-4
+    terminal_integrand_ratio_tolerance: float = 1.0e-2
+    quality_gate: FourierInversionNumericQualityGate = FourierInversionNumericQualityGate.DIAGNOSTICS_ONLY
+
+    def __post_init__(self) -> None:
+        require_positive_finite_scalar(
+            self.convergence_absolute_tolerance,
+            "convergence_absolute_tolerance",
+            PRICING_ERROR_FACTORY,
+        )
+        require_positive_finite_scalar(
+            self.convergence_relative_tolerance,
+            "convergence_relative_tolerance",
+            PRICING_ERROR_FACTORY,
+        )
+        require_positive_finite_scalar(
+            self.terminal_integrand_absolute_tolerance,
+            "terminal_integrand_absolute_tolerance",
+            PRICING_ERROR_FACTORY,
+        )
+        require_positive_finite_scalar(
+            self.terminal_integrand_ratio_tolerance,
+            "terminal_integrand_ratio_tolerance",
+            PRICING_ERROR_FACTORY,
+        )
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> FourierInversionIntegrationStabilityControls:
+        if not isinstance(raw_payload, dict):
+            raise _pricing_error(field_path, "must be an object")
+
+        try:
+            return FourierInversionIntegrationStabilityControls(
+                convergence_absolute_tolerance=require_positive_finite_number(
+                    raw_payload,
+                    "convergence_absolute_tolerance",
+                    f"{field_path}.convergence_absolute_tolerance",
+                    PRICING_ERROR_FACTORY,
+                ),
+                convergence_relative_tolerance=require_positive_finite_number(
+                    raw_payload,
+                    "convergence_relative_tolerance",
+                    f"{field_path}.convergence_relative_tolerance",
+                    PRICING_ERROR_FACTORY,
+                ),
+                terminal_integrand_absolute_tolerance=require_positive_finite_number(
+                    raw_payload,
+                    "terminal_integrand_absolute_tolerance",
+                    f"{field_path}.terminal_integrand_absolute_tolerance",
+                    PRICING_ERROR_FACTORY,
+                ),
+                terminal_integrand_ratio_tolerance=require_positive_finite_number(
+                    raw_payload,
+                    "terminal_integrand_ratio_tolerance",
+                    f"{field_path}.terminal_integrand_ratio_tolerance",
+                    PRICING_ERROR_FACTORY,
+                ),
+                quality_gate=FourierInversionNumericQualityGate(
+                    require_string(
+                        raw_payload,
+                        "quality_gate",
+                        f"{field_path}.quality_gate",
+                        PRICING_ERROR_FACTORY,
+                    )
+                ),
+            )
+        except ValueError as e:
+            raise _pricing_error(f"{field_path}.quality_gate", str(e)) from e
+
+
+@dataclass(frozen=True, slots=True)
+class FourierInversionEngineSettings(ContractModel):
+    contour: FourierInversionContour = field(default_factory=FourierInversionContour)
+    numeric_settings: FourierInversionNumericSettings = field(default_factory=FourierInversionNumericSettings)
+    stability_controls: FourierInversionIntegrationStabilityControls = field(
+        default_factory=FourierInversionIntegrationStabilityControls
+    )
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.contour, FourierInversionContour):
+            raise _pricing_error("contour", "must be a FourierInversionContour")
+        if not isinstance(self.numeric_settings, FourierInversionNumericSettings):
+            raise _pricing_error("numeric_settings", "must be a FourierInversionNumericSettings")
+        if not isinstance(
+            self.stability_controls,
+            FourierInversionIntegrationStabilityControls,
+        ):
+            raise _pricing_error(
+                "stability_controls",
+                "must be a FourierInversionIntegrationStabilityControls",
+            )
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> FourierInversionEngineSettings:
+        if not isinstance(raw_payload, dict):
+            raise _pricing_error(field_path, "must be an object")
+
+        return FourierInversionEngineSettings(
+            contour=FourierInversionContour.from_mapping(
+                require_mapping(raw_payload, "contour", f"{field_path}.contour", PRICING_ERROR_FACTORY),
+                field_path=f"{field_path}.contour",
+            ),
+            numeric_settings=FourierInversionNumericSettings.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "numeric_settings",
+                    f"{field_path}.numeric_settings",
+                    PRICING_ERROR_FACTORY,
+                ),
+                field_path=f"{field_path}.numeric_settings",
+            ),
+            stability_controls=FourierInversionIntegrationStabilityControls.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "stability_controls",
+                    f"{field_path}.stability_controls",
+                    PRICING_ERROR_FACTORY,
+                ),
+                field_path=f"{field_path}.stability_controls",
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class VanillaOptionPricingRequest(ContractModel):
     """Typed pricing request with hourly intraday default `interval_delta=1.0`."""
 
@@ -926,6 +1089,7 @@ class VanillaOptionPricingRequest(ContractModel):
     boundary_input: AnchoredVanillaOptionPricingBoundaryInput
     model_parameters: VanillaOptionPricingModelParameters
     interval_delta: float = DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA
+    fourier_inversion_settings: Optional[FourierInversionEngineSettings] = None
 
     def __post_init__(self) -> None:
         require_positive_finite_scalar(
@@ -947,10 +1111,18 @@ class VanillaOptionPricingRequest(ContractModel):
             raise _pricing_error(
                 "interval_delta",
                 (
-                    "must match boundary_input.mean_reversion_runtime_interval_anchors."
-                    f"interval_deltas[{self.boundary_input.interval_index}] "
+                    "must match boundary_input.interval_delta "
                     f"({self.boundary_input.interval_delta})"
                 ),
+            )
+
+        if (
+            self.fourier_inversion_settings is not None
+            and not isinstance(self.fourier_inversion_settings, FourierInversionEngineSettings)
+        ):
+            raise _pricing_error(
+                "fourier_inversion_settings",
+                "must be a FourierInversionEngineSettings when provided",
             )
 
     @staticmethod
@@ -988,6 +1160,20 @@ class VanillaOptionPricingRequest(ContractModel):
                     field_path="model_parameters",
                 ),
                 interval_delta=interval_delta,
+                fourier_inversion_settings=(
+                    FourierInversionEngineSettings.from_mapping(
+                        require_mapping(
+                            raw_payload,
+                            "fourier_inversion_settings",
+                            "fourier_inversion_settings",
+                            PRICING_ERROR_FACTORY,
+                        ),
+                        field_path="fourier_inversion_settings",
+                    )
+                    if "fourier_inversion_settings" in raw_payload
+                    and raw_payload["fourier_inversion_settings"] is not None
+                    else None
+                ),
             )
         except JaniformValidationError as e:
             raise _pricing_error(e.failure.field_path, e.failure.message) from e
@@ -1135,26 +1321,17 @@ class VanillaOptionPricingExecutionInput(ContractModel):
                 "optional_output_selection",
                 "must be VanillaOptionPricingOptionalOutputSelection",
             )
-        available_interval_count = len(
-            self.request.boundary_input.mean_reversion_runtime_interval_anchors.end_anchor_values
-        ) - self.request.boundary_input.interval_index
         if self.hourly_factor_contract.interval_count == 0:
             raise _pricing_error(
                 "hourly_factor_contract.interval_count",
                 "must contain at least one interval",
             )
-        if self.hourly_factor_contract.interval_count > available_interval_count:
-            raise _pricing_error(
-                "hourly_factor_contract.interval_count",
-                (
-                    "must not exceed available runtime anchor interval count "
-                    f"({available_interval_count})"
-                ),
-            )
+
         try:
             expected_interval_duration_nanos = hours_to_exact_nanoseconds(self.request.interval_delta)
         except ValueError as e:
             raise _pricing_error("request.interval_delta", str(e)) from e
+
         if self.hourly_factor_contract.interval_duration_nanos != expected_interval_duration_nanos:
             raise _pricing_error(
                 "hourly_factor_contract.interval_duration_nanos",
@@ -1166,19 +1343,15 @@ class VanillaOptionPricingExecutionInput(ContractModel):
                 ),
             )
 
-        maturity_interval_from_runtime_grid = sum(
-            self.request.boundary_input.mean_reversion_runtime_interval_anchors.interval_deltas[
-                self.request.boundary_input.interval_index:
-                self.request.boundary_input.interval_index
-                + self.hourly_factor_contract.interval_count
-            ]
+        maturity_interval_from_runtime_grid = (
+            self.hourly_factor_contract.interval_count * self.request.interval_delta
         )
         if maturity_interval_from_runtime_grid != self.request.market_inputs.maturity_interval:
             raise _pricing_error(
                 "hourly_factor_contract.interval_count",
                 (
-                    "must cover a maturity_interval that matches request.market_inputs."
-                    f"maturity_interval ({self.request.market_inputs.maturity_interval}), "
+                    "must satisfy interval_count * request.interval_delta = "
+                    f"request.market_inputs.maturity_interval ({self.request.market_inputs.maturity_interval}), "
                     f"found {maturity_interval_from_runtime_grid}"
                 ),
             )
@@ -1650,17 +1823,22 @@ def run_vanilla_option_pricing(
 
 
 __all__ = [
-    "GammaSeverityMarkConfiguration",
     "AnchoredLocalTiltAdmissibilityStatus",
     "AnchoredLocalTiltBoundaryStateSummary",
     "AnchoredLocalTiltDomainStatus",
     "AnchoredLocalTiltSolveDiagnostics",
     "AnchoredVanillaOptionPricingBoundaryInput",
+    "FourierInversionContour",
+    "FourierInversionEngineSettings",
+    "FourierInversionIntegrationStabilityControls",
+    "FourierInversionNumericQualityGate",
+    "FourierInversionNumericSettings",
+    "FourierInversionQuadratureRule",
+    "GammaSeverityMarkConfiguration",
     "MeanReversionAnchorModel",
     "MeanReversionAnchorModelKind",
     "MeanReversionBoundaryState",
     "MeanReversionFittedParameters",
-    "MeanReversionRuntimeIntervalAnchors",
     "NigSharedPlusShiftConfiguration",
     "VanillaOptionPricingCalibrationHooks",
     "VanillaOptionPricingExecutionInput",

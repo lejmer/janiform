@@ -632,7 +632,8 @@ fn disabled_mean_reversion_runtime_inputs(
     MeanReversionBoundaryState,
 ) {
     (
-        MeanReversionFittedParameters::disabled(),
+        MeanReversionFittedParameters::endogenous_core_expectation_one_interval(0.0)
+            .expect("zero-kappa endogenous mean reversion should construct"),
         MeanReversionRuntimeIntervalAnchors::try_new(
             hourly_factor_contract.metadata.interval_alignment_policy,
             0.0,
@@ -662,7 +663,8 @@ fn build_risk_model_inputs(
         NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
             .expect("nig configuration should construct"),
         default_initial_excitation_state(),
-        MeanReversionFittedParameters::disabled(),
+        MeanReversionFittedParameters::endogenous_core_expectation_one_interval(0.0)
+            .expect("zero-kappa endogenous mean reversion should construct"),
         MeanReversionRuntimeIntervalAnchors::try_new(
             "explicit_runtime_interval_grid_alignment.v1",
             0.0,

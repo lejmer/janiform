@@ -1,12 +1,14 @@
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any, Final, Optional
+from typing import Any, Final
 
 from .base import (
     ContractModel,
     require_finite_number,
     require_finite_scalar,
     require_mapping,
+    require_only_supported_fields,
+    require_sequence,
     require_string,
     serialize_deterministic_json,
 )
@@ -21,70 +23,29 @@ def _mean_reversion_error(field_path: str, message: str) -> ValueError:
 
 class MeanReversionAnchorModelKind(StrEnum):
     ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL = "endogenous_core_expectation_one_interval"
-    DISABLED = "disabled"
-    CONSTANT = "constant"
 
 
 @dataclass(frozen=True, slots=True)
 class MeanReversionAnchorModel(ContractModel):
     anchor_model_kind: MeanReversionAnchorModelKind
-    anchor_value: Optional[float] = None
 
     def __post_init__(self) -> None:
         match self.anchor_model_kind:
             case MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL:
-                if self.anchor_value is not None:
-                    raise _mean_reversion_error(
-                        "anchor_value",
-                        "must be omitted when anchor_model_kind=endogenous_core_expectation_one_interval",
-                    )
-            case MeanReversionAnchorModelKind.DISABLED:
-                if self.anchor_value is not None:
-                    raise _mean_reversion_error(
-                        "anchor_value",
-                        "must be omitted when anchor_model_kind=disabled",
-                    )
-            case MeanReversionAnchorModelKind.CONSTANT:
-                if self.anchor_value is None:
-                    raise _mean_reversion_error(
-                        "anchor_value",
-                        "is required when anchor_model_kind=constant",
-                    )
-
-                require_finite_scalar(self.anchor_value, "anchor_value", _mean_reversion_error)
+                return
 
     def to_payload(self) -> dict[str, Any]:
-        payload: dict[str, Any] = {
+        return {
             "anchor_model_kind": self.anchor_model_kind.value,
         }
-
-        match self.anchor_model_kind:
-            case MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL:
-                return payload
-            case MeanReversionAnchorModelKind.DISABLED:
-                return payload
-            case MeanReversionAnchorModelKind.CONSTANT:
-                payload["anchor_value"] = self.anchor_value
-                return payload
 
     def to_json(self) -> str:
         return serialize_deterministic_json(self.to_payload())
 
     @staticmethod
-    def disabled() -> MeanReversionAnchorModel:
-        return MeanReversionAnchorModel(anchor_model_kind=MeanReversionAnchorModelKind.DISABLED)
-
-    @staticmethod
     def endogenous_core_expectation_one_interval() -> MeanReversionAnchorModel:
         return MeanReversionAnchorModel(
             anchor_model_kind=MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL
-        )
-
-    @staticmethod
-    def constant(anchor_value: float) -> MeanReversionAnchorModel:
-        return MeanReversionAnchorModel(
-            anchor_model_kind=MeanReversionAnchorModelKind.CONSTANT,
-            anchor_value=anchor_value,
         )
 
     @staticmethod
@@ -96,6 +57,13 @@ class MeanReversionAnchorModel(ContractModel):
         if not isinstance(raw_payload, dict):
             raise _mean_reversion_error(field_path, "must be an object")
 
+        require_only_supported_fields(
+            raw_payload,
+            supported_fields=("anchor_model_kind",),
+            field_path=field_path,
+            error_factory=_mean_reversion_error,
+        )
+
         anchor_model_kind = MeanReversionAnchorModelKind(
             require_string(
                 raw_payload,
@@ -105,21 +73,8 @@ class MeanReversionAnchorModel(ContractModel):
             )
         )
 
-        raw_anchor_value = raw_payload.get("anchor_value")
-        if raw_anchor_value is not None and isinstance(raw_anchor_value, bool | str):
-            raise _mean_reversion_error(f"{field_path}.anchor_value", "must be a finite number")
-
         return MeanReversionAnchorModel(
             anchor_model_kind=anchor_model_kind,
-            anchor_value=(
-                None
-                if raw_anchor_value is None
-                else require_finite_scalar(
-                    raw_anchor_value,
-                    f"{field_path}.anchor_value",
-                    _mean_reversion_error,
-                )
-            ),
         )
 
 
@@ -144,14 +99,7 @@ class MeanReversionFittedParameters(ContractModel):
 
     @property
     def is_enabled(self) -> bool:
-        return self.anchor_model.anchor_model_kind != MeanReversionAnchorModelKind.DISABLED
-
-    @staticmethod
-    def disabled() -> MeanReversionFittedParameters:
-        return MeanReversionFittedParameters(
-            kappa=0.0,
-            anchor_model=MeanReversionAnchorModel.disabled(),
-        )
+        return True
 
     @staticmethod
     def from_mapping(
@@ -161,6 +109,13 @@ class MeanReversionFittedParameters(ContractModel):
     ) -> MeanReversionFittedParameters:
         if not isinstance(raw_payload, dict):
             raise _mean_reversion_error(field_path, "must be an object")
+
+        require_only_supported_fields(
+            raw_payload,
+            supported_fields=("kappa", "anchor_model"),
+            field_path=field_path,
+            error_factory=_mean_reversion_error,
+        )
 
         return MeanReversionFittedParameters(
             kappa=require_finite_number(

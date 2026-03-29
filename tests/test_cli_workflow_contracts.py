@@ -16,6 +16,7 @@ import janiform.cli.commands._pricing as cli_pricing_commands_module
 import janiform.cli.commands.simulation as cli_simulation_commands_module
 import janiform.pricing as pricing_module
 import janiform.simulation as simulation_module
+from janiform._timestamps import ONE_HOUR_NANOS
 from janiform.calendar import CalendarRegistry
 from janiform.calibration.market_data import (
     CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION,
@@ -33,7 +34,7 @@ from janiform.simulation import (
     SeededTickSimulationRequest,
 )
 from tests.calibration_test_support import (
-    build_constant_mean_reversion_fitted_parameters_payload,
+    build_endogenous_mean_reversion_fitted_parameters_payload,
     build_valid_execution_input_model,
     update_model_mean_reversion_payload,
 )
@@ -1628,6 +1629,14 @@ def test_price_cli_maps_model_and_flags_to_runtime_contract(
     tmp_path: Path,
 ) -> None:
     model_path = _write_saved_price_model(tmp_path)
+    observed_boundary_state_path = _write_json_path(
+        tmp_path / "observed_boundary_state.json",
+        pricing_module.MeanReversionBoundaryState(
+            observed_log_price=0.0,
+            anchor_value=0.0,
+            deviation=0.0,
+        ).to_payload(),
+    )
     captured_arguments: dict[str, Any] = {}
     original_price_option = cli_pricing_commands_module.JaniformModel.price_option
 
@@ -1645,6 +1654,8 @@ def test_price_cli_maps_model_and_flags_to_runtime_contract(
             "price",
             "--model-path",
             str(model_path),
+            "--observed-boundary-state-json",
+            str(observed_boundary_state_path),
             "--valuation-time-utc",
             "2026-02-02T15:00:00Z",
             "--spot",
@@ -1679,6 +1690,11 @@ def test_price_cli_maps_model_and_flags_to_runtime_contract(
     assert captured_arguments["include_transform_diagnostics"] is True
     assert captured_arguments["include_integration_quality_diagnostics"] is True
     assert captured_arguments["include_calibration_hooks"] is True
+    assert captured_arguments["observed_boundary_state"] == pricing_module.MeanReversionBoundaryState(
+        observed_log_price=0.0,
+        anchor_value=0.0,
+        deviation=0.0,
+    )
 
     command_output = orjson.loads(stdout_text)
     assert command_output["schema_version"] == cli_module.CLI_PRICE_RESULT_SCHEMA_VERSION
@@ -1795,7 +1811,7 @@ def _write_saved_anchored_price_model(tmp_path: Path) -> Path:
 
     update_model_mean_reversion_payload(
         model,
-        build_constant_mean_reversion_fitted_parameters_payload(kappa=0.35, anchor_value=0.25),
+        build_endogenous_mean_reversion_fitted_parameters_payload(kappa=0.35),
     )
     model_path = tmp_path / "workflow-contract-anchored-price-model.json"
     model.save(model_path)
@@ -2078,7 +2094,7 @@ def test_coarse_simulation_cli_rejects_malformed_request_document(tmp_path: Path
                 "exchange_timezone_name": "America/New_York",
                 "request_start_utc_nanos": _utc_nanos(2026, 2, 2, 14, 0, 0),
                 "request_end_utc_nanos": _utc_nanos(2026, 2, 2, 15, 0, 0),
-                "interval_duration_nanos": 3_600_000_000_000,
+                "interval_duration_nanos": ONE_HOUR_NANOS,
                 "interval_indices": [0],
                 "interval_start_utc_nanos": [_utc_nanos(2026, 2, 2, 14, 0, 0)],
                 "interval_end_utc_nanos": [_utc_nanos(2026, 2, 2, 15, 0, 0)],

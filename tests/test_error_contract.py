@@ -12,8 +12,14 @@ import janiform.cli.commands._development as cli_development_commands_module
 import janiform.pricing as pricing_module
 import janiform.simulation as simulation_module
 import janiform.simulation.seeded.runtime as simulation_seeded_runtime_module
+from janiform._timestamps import ONE_HOUR_NANOS
 from janiform.calendar import CalendarRegistry
 from janiform.cli.context import CliCommandContext
+from janiform.contracts import (
+    MeanReversionAnchorModel,
+    MeanReversionBoundaryState,
+    MeanReversionFittedParameters,
+)
 from janiform.errors import JaniformExecutionError, JaniformIntegrationError
 from janiform.hourly_factors import (
     HourlyFactorContract,
@@ -54,10 +60,12 @@ from janiform.simulation.shared import (
     HawkesKernelLoadings,
     HawkesKernelParameters,
 )
-from janiform.simulation.seeded.contracts import build_disabled_seeded_mean_reversion_runtime_inputs
+from janiform.simulation.seeded.contracts import (
+    build_endogenous_seeded_mean_reversion_runtime_inputs,
+)
 from tests.calibration_test_support import build_valid_execution_input_model
 from tests.hourly_factor_contract_test_support import build_hourly_factor_contract
-from tests.simulation_test_support import build_disabled_mean_reversion_runtime_contracts
+from tests.simulation_test_support import build_endogenous_mean_reversion_runtime_contracts
 
 START_TIME_UTC = datetime(2026, 2, 2, tzinfo=UTC)
 
@@ -67,7 +75,7 @@ def test_validation_error_string_format_is_stable() -> None:
         mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state,
-    ) = build_disabled_mean_reversion_runtime_contracts(interval_count=2)
+    ) = build_endogenous_mean_reversion_runtime_contracts(interval_count=2)
 
     with pytest.raises(SeededTickSimulationValidationError) as captured_error:
         SeededTickSimulationRequest(
@@ -121,7 +129,7 @@ def test_validation_error_string_format_is_stable() -> None:
                 schema_version="seasonality.hourly_factor.contract.v1",
                 exchange_code="XNYS",
                 interval_count=2,
-                interval_duration_nanos=3_600_000_000_000,
+                interval_duration_nanos=ONE_HOUR_NANOS,
                 interval_start_utc_nanos=(1, 2),
                 interval_end_utc_nanos=(2, 3),
                 s_h=(1.0, 1.1),
@@ -642,7 +650,7 @@ def _valid_simulation_request(calendar_registry: CalendarRegistry) -> SeededTick
         mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state,
-    ) = build_disabled_seeded_mean_reversion_runtime_inputs(
+    ) = build_endogenous_seeded_mean_reversion_runtime_inputs(
         hourly_factor_contract=hourly_factor_contract
     )
 
@@ -736,17 +744,23 @@ def _valid_pricing_execution_input() -> VanillaOptionPricingExecutionInput:
                 dividend_yield=0.01,
             ),
             payoff=VanillaOptionPayoffConfiguration(payoff_type=VanillaOptionPayoffType.CALL),
-            boundary_input=AnchoredVanillaOptionPricingBoundaryInput.disabled(
+            boundary_input=AnchoredVanillaOptionPricingBoundaryInput(
+                interval_index=0,
                 interval_delta=0.5,
                 hawkes_boundary_state=_valid_excitation_state(),
-                observed_log_price=0.0,
+                mean_reversion_fitted_parameters=MeanReversionFittedParameters(
+                    kappa=0.0,
+                    anchor_model=MeanReversionAnchorModel.endogenous_core_expectation_one_interval(),
+                ),
+                observed_boundary_state=MeanReversionBoundaryState(
+                    observed_log_price=0.0,
+                    anchor_value=0.0,
+                    deviation=0.0,
+                ),
             ),
             model_parameters=VanillaOptionPricingModelParameters(
                 hawkes_kernel_parameters=_valid_kernel_parameters(),
-                gamma_severity_mark_configuration=GammaSeverityMarkConfiguration(
-                    shape_k=1.8,
-                    scale_theta=0.7,
-                ),
+                news_process_configuration=_valid_news_process_configuration(),
                 nig_shared_plus_shift_configuration=NigSharedPlusShiftConfiguration(
                     alpha=2.3,
                     beta_0=-0.8,
@@ -768,5 +782,39 @@ def _valid_pricing_execution_input() -> VanillaOptionPricingExecutionInput:
             include_transform_diagnostics=True,
             include_integration_quality_diagnostics=True,
             include_calibration_hooks=True,
+        ),
+    )
+
+
+def _valid_news_process_configuration() -> NewsProcessConfiguration:
+    return NewsProcessConfiguration(
+        schema_version="news.process.configuration.v1",
+        arrivals=NewsArrivalConfiguration(
+            known=KnownNewsArrivalConfiguration(
+                scheduled_event_timestamps_utc_nanos=(),
+            ),
+            surprise=SurpriseNewsArrivalConfiguration(
+                baseline_intensity=0.75,
+            ),
+        ),
+        shared_mark_law=SharedNewsMarkLawConfiguration(
+            gamma_severity_marks=GammaSeverityMarkConfiguration(
+                shape_k=1.8,
+                scale_theta=0.7,
+            ),
+            double_exponential_base_shock=DoubleExponentialBaseShockConfiguration(
+                probability_positive=0.35,
+                eta_plus=2.1,
+                eta_minus=3.0,
+            ),
+            coupled_gap_marks=CoupledGapMarkConfiguration(sigma_g=0.6),
+        ),
+        known_component_mark_scales=NewsComponentMarkScaleConfiguration(
+            activity_coupling_scale=1.0,
+            return_jump_scale=1.0,
+        ),
+        surprise_component_mark_scales=NewsComponentMarkScaleConfiguration(
+            activity_coupling_scale=1.0,
+            return_jump_scale=1.0,
         ),
     )

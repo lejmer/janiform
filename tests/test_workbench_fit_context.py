@@ -13,7 +13,6 @@ from pyarrow import parquet
 
 from janiform._timestamps import datetime_to_utc_microseconds
 from janiform.contracts import MeanReversionAnchorModel, MeanReversionFittedParameters
-from tests.calibration_test_support import build_disabled_mean_reversion_fitted_parameters_payload
 from tools.workbench import plots as workbench_plots
 from tools.workbench import load_workbench_artifacts
 from tools.workbench.artifacts import WorkbenchArtifacts
@@ -341,7 +340,7 @@ def test_horizon_event_count_distribution_uses_raw_simulated_tick_counts() -> No
     assert axis.xtick_labels == ["Observed 15m", "Simulated 15m"]
 
 
-def test_workbench_comparison_clips_to_deterministic_anchor_coverage() -> None:
+def test_workbench_comparison_uses_full_observed_range_without_anchor_clipping() -> None:
     captured_simulations: list[dict[str, Any]] = []
 
     class _FakeSimulationResult:
@@ -365,7 +364,7 @@ def test_workbench_comparison_clips_to_deterministic_anchor_coverage() -> None:
 
     mean_reversion_payload = MeanReversionFittedParameters(
         kappa=0.25,
-        anchor_model=MeanReversionAnchorModel.constant(anchor_value=0.0),
+        anchor_model=MeanReversionAnchorModel.endogenous_core_expectation_one_interval(),
     ).to_payload()
 
     class _FakeModel:
@@ -457,23 +456,26 @@ def test_workbench_comparison_clips_to_deterministic_anchor_coverage() -> None:
     _assert_price_series(
         comparison.observed_comparison_series,
         timestamps_utc=(
+            datetime(2026, 2, 2, 15, 0, tzinfo=UTC),
+            datetime(2026, 2, 2, 16, 0, tzinfo=UTC),
             datetime(2026, 2, 2, 17, 0, tzinfo=UTC),
             datetime(2026, 2, 2, 18, 0, tzinfo=UTC),
+            datetime(2026, 2, 2, 19, 0, tzinfo=UTC),
         ),
-        prices=(101.0, 102.0),
+        prices=(99.0, 100.0, 101.0, 102.0, 103.0),
     )
     assert captured_simulations == [
         {
             "seed": 9,
-            "start_time_utc": datetime(2026, 2, 2, 17, 0, tzinfo=UTC),
-            "horizon_interval_count": 1,
+            "start_time_utc": datetime(2026, 2, 2, 15, 0, tzinfo=UTC),
+            "horizon_interval_count": 5,
             "interval": None,
             "silent": True,
         },
         {
             "seed": 9,
-            "start_time_utc": datetime(2026, 2, 2, 17, 0, tzinfo=UTC),
-            "horizon_interval_count": 4,
+            "start_time_utc": datetime(2026, 2, 2, 15, 0, tzinfo=UTC),
+            "horizon_interval_count": 17,
             "interval": "15m",
             "silent": True,
         },
@@ -1106,13 +1108,15 @@ def test_mean_reversion_variance_growth_figure_overlays_observed_and_simulated_c
         comparison,
     )
     variance_axis = figure.axes[0]
+    summary_axis = figure.axes[1]
 
-    assert len(variance_axis.lines) == 2
-    assert variance_axis.get_xscale() == "log"
+    assert len(variance_axis.lines) == 0
     assert variance_axis.get_title() == "Variance Growth of Deviation from Anchor"
+    assert "Mean-reversion anchor diagnostics are unavailable" in variance_axis.texts[0].get_text()
+    assert summary_axis.get_title() == "Calibration Status"
 
 
-def test_mean_reversion_series_analysis_uses_reference_price_normalized_log_coordinates() -> None:
+def test_mean_reversion_series_analysis_is_unavailable_for_endogenous_anchor_models() -> None:
     analysis = workbench_plots._build_mean_reversion_series_analysis(
         SimpleNamespace(
             metadata={"simulation_output_preferences": {"reference_price": 100.0}},
@@ -1120,7 +1124,7 @@ def test_mean_reversion_series_analysis_uses_reference_price_normalized_log_coor
                 "mean_reversion": {
                     "fitted_parameters": MeanReversionFittedParameters(
                         kappa=0.4,
-                        anchor_model=MeanReversionAnchorModel.constant(anchor_value=0.0),
+                        anchor_model=MeanReversionAnchorModel.endogenous_core_expectation_one_interval(),
                     ).to_payload()
                 }
             },
@@ -1134,14 +1138,7 @@ def test_mean_reversion_series_analysis_uses_reference_price_normalized_log_coor
         ),
     )
 
-    assert analysis is not None
-    assert analysis.runtime_log_prices == pytest.approx(
-        np.asarray((0.0, math.log(1.1), math.log(1.21)), dtype=np.float64)
-    )
-    assert analysis.anchor_values == pytest.approx(np.asarray((0.0, 0.0, 0.0), dtype=np.float64))
-    assert analysis.deviations_from_anchor == pytest.approx(
-        np.asarray((0.0, math.log(1.1), math.log(1.21)), dtype=np.float64)
-    )
+    assert analysis is None
 
 
 def test_observed_simulated_price_figure_uses_full_observed_path_when_comparison_is_clipped() -> None:
@@ -1212,7 +1209,7 @@ def test_observed_simulated_price_figure_uses_full_observed_path_when_comparison
     assert np.allclose(simulated_rebased_line.get_ydata(), [100.0, 100.0 * 151.0 / 150.0])
 
 
-def test_mean_reversion_future_change_figure_uses_restoring_force_overlay() -> None:
+def test_mean_reversion_future_change_figure_is_unavailable_for_endogenous_anchor_models() -> None:
     artifacts = WorkbenchArtifacts(
         source_path=Path("/tmp/mean-reversion-future-change"),
         source_kind="run_directory",
@@ -1313,13 +1310,16 @@ def test_mean_reversion_future_change_figure_uses_restoring_force_overlay() -> N
         comparison,
     )
     conditional_axis = figure.axes[0]
+    summary_axis = figure.axes[1]
 
-    assert len(conditional_axis.lines) >= 4
+    assert len(conditional_axis.lines) == 0
     assert conditional_axis.get_title() == "Conditional Future Change vs Deviation"
+    assert "Mean-reversion anchor diagnostics are unavailable" in conditional_axis.texts[0].get_text()
+    assert summary_axis.get_title() == "Calibration Status"
 
 
-def test_mean_reversion_variance_growth_figure_reports_disabled_fit_reason() -> None:
-    diagnostics_payload = _disabled_mean_reversion_diagnostics_payload()
+def test_mean_reversion_variance_growth_figure_reports_endogenous_diagnostics_summary() -> None:
+    diagnostics_payload = _endogenous_mean_reversion_diagnostics_payload()
     artifacts = WorkbenchArtifacts(
         source_path=Path("/tmp/mean-reversion-disabled-variance"),
         source_kind="run_directory",
@@ -1330,7 +1330,7 @@ def test_mean_reversion_variance_growth_figure_reports_disabled_fit_reason() -> 
                     {
                         "stage_report_kind": "mean_reversion",
                         "fitted_stage_payload": {
-                            "fitted_parameters": build_disabled_mean_reversion_fitted_parameters_payload(),
+                            "fitted_parameters": _endogenous_mean_reversion_fitted_parameters_payload(),
                             "diagnostics": diagnostics_payload,
                         },
                     }
@@ -1340,7 +1340,7 @@ def test_mean_reversion_variance_growth_figure_reports_disabled_fit_reason() -> 
         model_payload={
             "parameters": {
                 "mean_reversion": {
-                    "fitted_parameters": build_disabled_mean_reversion_fitted_parameters_payload(),
+                    "fitted_parameters": _endogenous_mean_reversion_fitted_parameters_payload(),
                     "diagnostics": diagnostics_payload,
                 }
             }
@@ -1354,7 +1354,7 @@ def test_mean_reversion_variance_growth_figure_reports_disabled_fit_reason() -> 
         runtime_profile={},
     )
     comparison = WorkbenchObservedSimulationComparison(
-        fit_context=SimpleNamespace(model=_disabled_mean_reversion_test_model(diagnostics_payload)),
+        fit_context=SimpleNamespace(model=_diagnostic_only_mean_reversion_test_model(diagnostics_payload)),
         simulation_seed=5,
         observed_series=_price_series_from_records(
             (
@@ -1397,14 +1397,14 @@ def test_mean_reversion_variance_growth_figure_reports_disabled_fit_reason() -> 
     )
 
     assert figure.axes[0].texts[0].get_text().startswith(
-        "Mean-reversion diagnostics are unavailable because this calibrated model disabled"
+        "Mean-reversion anchor diagnostics are unavailable because the loaded model"
     )
-    assert "stage decision: requested_mean_reversion_disabled.v1" in figure.axes[1].texts[0].get_text()
+    assert "stage decision: endogenous_anchor_runtime_projection_required.v1" in figure.axes[1].texts[0].get_text()
     assert "source observations: 4" in figure.axes[1].texts[0].get_text()
 
 
-def test_mean_reversion_future_change_figure_reports_disabled_fit_reason() -> None:
-    diagnostics_payload = _disabled_mean_reversion_diagnostics_payload()
+def test_mean_reversion_future_change_figure_reports_endogenous_diagnostics_summary() -> None:
+    diagnostics_payload = _endogenous_mean_reversion_diagnostics_payload()
     artifacts = WorkbenchArtifacts(
         source_path=Path("/tmp/mean-reversion-disabled-future-change"),
         source_kind="run_directory",
@@ -1413,7 +1413,7 @@ def test_mean_reversion_future_change_figure_reports_disabled_fit_reason() -> No
         model_payload={
             "parameters": {
                 "mean_reversion": {
-                    "fitted_parameters": build_disabled_mean_reversion_fitted_parameters_payload(),
+                    "fitted_parameters": _endogenous_mean_reversion_fitted_parameters_payload(),
                     "diagnostics": diagnostics_payload,
                 }
             }
@@ -1427,7 +1427,7 @@ def test_mean_reversion_future_change_figure_reports_disabled_fit_reason() -> No
         runtime_profile={},
     )
     comparison = WorkbenchObservedSimulationComparison(
-        fit_context=SimpleNamespace(model=_disabled_mean_reversion_test_model(diagnostics_payload)),
+        fit_context=SimpleNamespace(model=_diagnostic_only_mean_reversion_test_model(diagnostics_payload)),
         simulation_seed=13,
         observed_series=_price_series_from_records(
             (
@@ -1470,7 +1470,7 @@ def test_mean_reversion_future_change_figure_reports_disabled_fit_reason() -> No
     )
 
     assert figure.axes[0].texts[0].get_text().startswith(
-        "Mean-reversion diagnostics are unavailable because this calibrated model disabled"
+        "Mean-reversion anchor diagnostics are unavailable because the loaded model"
     )
     assert "retained observations: 0" in figure.axes[1].texts[0].get_text()
     assert "coverage ratio: 0" in figure.axes[1].texts[0].get_text()
@@ -2062,28 +2062,28 @@ def _mean_reversion_test_model() -> Any:
             "mean_reversion": {
                 "fitted_parameters": MeanReversionFittedParameters(
                     kappa=0.4,
-                    anchor_model=MeanReversionAnchorModel.constant(anchor_value=0.0),
+                    anchor_model=MeanReversionAnchorModel.endogenous_core_expectation_one_interval(),
                 ).to_payload()
             }
         }
     )
 
 
-def _disabled_mean_reversion_test_model(diagnostics_payload: dict[str, Any]) -> Any:
+def _diagnostic_only_mean_reversion_test_model(diagnostics_payload: dict[str, Any]) -> Any:
     return SimpleNamespace(
         metadata={"simulation_output_preferences": {"reference_price": 1.0}},
         parameters={
             "mean_reversion": {
-                "fitted_parameters": build_disabled_mean_reversion_fitted_parameters_payload(),
+                "fitted_parameters": _endogenous_mean_reversion_fitted_parameters_payload(),
                 "diagnostics": diagnostics_payload,
             }
         }
     )
 
 
-def _disabled_mean_reversion_diagnostics_payload() -> dict[str, Any]:
+def _endogenous_mean_reversion_diagnostics_payload() -> dict[str, Any]:
     return {
-        "chosen_anchor_family": "disabled",
+        "chosen_anchor_family": "endogenous_core_expectation_one_interval",
         "calibration_grid": {
             "calibration_grid_kind": "synthetic_daily_close_grid.v1",
             "calibration_grid_interval_hours": 24.0,
@@ -2092,14 +2092,21 @@ def _disabled_mean_reversion_diagnostics_payload() -> dict[str, Any]:
             "coverage_ratio": 0.0,
         },
         "anchor_parameter_estimates": {
-            "anchor_model_kind": "disabled",
+            "anchor_model_kind": "endogenous_core_expectation_one_interval",
         },
         "phi": 1.0,
         "kappa": 0.0,
         "deviation_sample_count": 0,
         "regression_pair_count": 0,
-        "stage_decision_reason": "requested_mean_reversion_disabled.v1",
+        "stage_decision_reason": "endogenous_anchor_runtime_projection_required.v1",
     }
+
+
+def _endogenous_mean_reversion_fitted_parameters_payload() -> dict[str, Any]:
+    return MeanReversionFittedParameters(
+        kappa=0.0,
+        anchor_model=MeanReversionAnchorModel.endogenous_core_expectation_one_interval(),
+    ).to_payload()
 
 
 class _FakeAxis:

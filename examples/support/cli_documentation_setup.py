@@ -17,7 +17,7 @@ from janiform.hourly_factors import (
 from janiform.pricing import VanillaOptionPricingExecutionInput
 from janiform.simulation import (
     SeededTickSimulationRequest,
-    build_disabled_seeded_mean_reversion_runtime_inputs,
+    build_endogenous_seeded_mean_reversion_runtime_inputs,
 )
 
 from ._shared import (
@@ -203,13 +203,15 @@ def write_cli_documentation_inputs(output_directory: Path) -> dict[str, str]:
         seasonality_source=build_simulation_seasonality_source(),
         news_intensity_source=build_simulation_news_source(),
     )
+
     (
         mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state,
-    ) = build_disabled_seeded_mean_reversion_runtime_inputs(
+    ) = build_endogenous_seeded_mean_reversion_runtime_inputs(
         hourly_factor_contract=hourly_factor_contract
     )
+
     simulation_request = SeededTickSimulationRequest.from_runtime_inputs(
         seed=17,
         start_time_utc=SIMULATION_RANGE_START_UTC,

@@ -35,19 +35,28 @@ from janiform.calibration.market_data import (
     CalibrationMeanReversionConfiguration,
     CalibrationMarketDataNormalizationPolicy,
     CalibrationMarketDataWorkflowScope,
+    CalibrationMarketDataPreprocessingSettings,
+    CalibrationMarketDataReturnComponentsPreprocessingSettings,
+    CalibrationMarketDataSeasonalityPreprocessingSettings,
     CalibrationTickDataColumnMapping,
     CalibrationTickPriceInputPolicy,
 )
 from janiform.calibration.presets import PresetCategory
-from janiform.calibration.staged import StagedCalibrationResponse, validate_staged_calibration_response
+from janiform.calibration.staged import (
+    CalibrationOptimizerSettings,
+    CalibrationStage,
+    CalibrationStageSolverSettings,
+    StagedCalibrationResponse,
+    validate_staged_calibration_response,
+)
 from janiform.calendar import CalendarRegistry, MarketState
 from janiform.contracts import MeanReversionBoundaryState
 from janiform.hourly_factors import HourlyFactorContract
+from janiform.seasonality import IntradaySmoothingKernel, SessionFilter
 from janiform.simulation import SeededTickEventSide, SeededTickEventStateSnapshotCapture
 from tests.calibration_test_support import (
-    build_constant_mean_reversion_fitted_parameters_payload,
     build_endogenous_mean_reversion_fitted_parameters_payload,
-    build_disabled_mean_reversion_fitted_parameters_payload,
+    build_zero_kappa_endogenous_mean_reversion_fitted_parameters_payload,
     update_model_mean_reversion_payload,
 )
 
@@ -228,7 +237,7 @@ def test_prepare_fit_workflow_passes_explicit_mean_reversion_request_to_translat
     estimator = JaniformEstimator(
         market_profile="us_equity_cash",
         mean_reversion=CalibrationMeanReversionConfiguration(
-            anchor_model_kind=MeanReversionAnchorModelKind.CONSTANT,
+            anchor_model_kind=MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL,
             calibration_grid_interval_hours=36.0,
         ),
     )
@@ -246,8 +255,149 @@ def test_prepare_fit_workflow_passes_explicit_mean_reversion_request_to_translat
 
     request = captured_request["request"]
     assert request.mean_reversion is not None
-    assert request.mean_reversion.anchor_model_kind == MeanReversionAnchorModelKind.CONSTANT
+    assert (
+        request.mean_reversion.anchor_model_kind
+        == MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL
+    )
     assert request.mean_reversion.calibration_grid_interval_hours == pytest.approx(36.0)
+
+
+def test_prepare_fit_workflow_passes_optimizer_settings_by_stage_to_translation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tick_data_path = tmp_path / "ticks.csv"
+    tick_data_path.write_text(
+        "\n".join(
+            [
+                "timestamp_utc,trade_price,trade_sign",
+                "2026-02-02T14:30:00Z,100.0,buy",
+                "2026-02-02T15:00:00Z,101.0,sell",
+                "2026-02-02T20:59:00Z,102.0,buy",
+                "2026-02-03T14:30:00Z,99.0,sell",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    class _StopAfterTranslation(Exception):
+        pass
+
+    captured_request: dict[str, Any] = {}
+
+    def _capture_request(request, **kwargs):
+        captured_request["request"] = request
+        del kwargs
+        raise _StopAfterTranslation()
+
+    monkeypatch.setattr(
+        fit_estimator_module,
+        "translate_market_data_request_to_prepared_calibration",
+        _capture_request,
+    )
+
+    optimizer_settings_by_stage = (
+        CalibrationStageSolverSettings(
+            stage=CalibrationStage.HAWKES,
+            optimizer_settings=CalibrationOptimizerSettings(
+                solver_name="lbfgs",
+                max_iterations=321,
+                cpu_count=2,
+                absolute_tolerance=1e-9,
+                relative_tolerance=1e-7,
+                constraint_penalty_weight=15.0,
+            ),
+        ),
+    )
+    estimator = JaniformEstimator(
+        market_profile="us_equity_cash",
+        optimizer_settings_by_stage=optimizer_settings_by_stage,
+    )
+
+    with pytest.raises(_StopAfterTranslation):
+        estimator._prepare_fit_workflow(
+            run_id="high-level-optimizer-settings-request",
+            tick_data_path=tick_data_path,
+            tick_data_format=CalibrationInputFileFormat.CSV,
+            tick_data_provenance_label="tick_data",
+            option_surface_path=None,
+            option_surface_format=CalibrationInputFileFormat.PARQUET,
+            option_surface_provenance_label="option_surface",
+        )
+
+    request = captured_request["request"]
+    assert request.optimizer_settings_by_stage == optimizer_settings_by_stage
+
+
+def test_prepare_fit_workflow_passes_preprocessing_settings_to_translation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tick_data_path = tmp_path / "ticks.csv"
+    tick_data_path.write_text(
+        "\n".join(
+            [
+                "timestamp_utc,trade_price,trade_sign",
+                "2026-02-02T14:30:00Z,100.0,buy",
+                "2026-02-02T15:00:00Z,101.0,sell",
+                "2026-02-02T20:59:00Z,102.0,buy",
+                "2026-02-03T14:30:00Z,99.0,sell",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    class _StopAfterTranslation(Exception):
+        pass
+
+    captured_request: dict[str, Any] = {}
+
+    def _capture_request(request, **kwargs):
+        captured_request["request"] = request
+        del kwargs
+        raise _StopAfterTranslation()
+
+    monkeypatch.setattr(
+        fit_estimator_module,
+        "translate_market_data_request_to_prepared_calibration",
+        _capture_request,
+    )
+
+    preprocessing_settings = CalibrationMarketDataPreprocessingSettings(
+        seasonality=CalibrationMarketDataSeasonalityPreprocessingSettings(
+            session_filter=SessionFilter.ALL,
+            sparse_hour_event_threshold=2,
+            known_news_overlay_log_adjustment=-0.1,
+            intraday_minutes_per_bin=5,
+            intraday_smoothing_kernel=IntradaySmoothingKernel.UNIFORM,
+            intraday_smoothing_bandwidth_bins=2.5,
+            intraday_minimum_bin_events=3,
+            day_of_week_minimum_bucket_events=4,
+            day_of_year_minimum_bucket_events=5,
+        ),
+        return_components=CalibrationMarketDataReturnComponentsPreprocessingSettings(
+            intraday_jump_threshold_multiplier=6.0,
+            close_open_gap_tolerance_multiplier=2.0,
+        ),
+    )
+    estimator = JaniformEstimator(
+        market_profile="us_equity_cash",
+        preprocessing_settings=preprocessing_settings,
+    )
+
+    with pytest.raises(_StopAfterTranslation):
+        estimator._prepare_fit_workflow(
+            run_id="high-level-preprocessing-settings-request",
+            tick_data_path=tick_data_path,
+            tick_data_format=CalibrationInputFileFormat.CSV,
+            tick_data_provenance_label="tick_data",
+            option_surface_path=None,
+            option_surface_format=CalibrationInputFileFormat.PARQUET,
+            option_surface_provenance_label="option_surface",
+        )
+
+    request = captured_request["request"]
+    assert request.preprocessing_settings == preprocessing_settings
 
 
 def test_prepare_model_runtime_factors_uses_fitted_surprise_intensity_profile(
@@ -549,11 +699,11 @@ def test_high_level_model_save_and_load_roundtrip_preserves_deterministic_metada
         persisted_payload["parameters"]["return_components"]["fitted_parameters"][
             "mean_reversion_fitted_parameters"
         ]
-        == build_disabled_mean_reversion_fitted_parameters_payload()
+        == build_zero_kappa_endogenous_mean_reversion_fitted_parameters_payload()
     )
     assert (
         persisted_payload["parameters"]["mean_reversion"]["fitted_parameters"]
-        == build_disabled_mean_reversion_fitted_parameters_payload()
+        == build_zero_kappa_endogenous_mean_reversion_fitted_parameters_payload()
     )
     assert "timestamp_utc_nanos" not in persisted_payload["parameters"]["seasonality"]
     assert "normalized_combined_factor_by_event" not in persisted_payload["parameters"]["seasonality"]
@@ -939,7 +1089,7 @@ def test_high_level_model_simulation_materializes_mean_reversion_runtime_inputs(
 
     mean_reversion_payload = MeanReversionFittedParameters(
         kappa=0.25,
-        anchor_model=MeanReversionAnchorModel.constant(0.25),
+        anchor_model=MeanReversionAnchorModel.endogenous_core_expectation_one_interval(),
     ).to_payload()
 
     model.parameters["return_components"]["fitted_parameters"][
@@ -1018,25 +1168,178 @@ def test_high_level_model_simulation_materializes_mean_reversion_runtime_inputs(
 
     seeded_request = captured_requests["seeded"]
     coarse_request = captured_requests["coarse"]
+    seeded_end_anchor_values = tuple(
+        float(anchor_value)
+        for anchor_value in seeded_request.mean_reversion_runtime_interval_anchors.end_anchor_values
+    )
+    coarse_end_anchor_values = tuple(
+        float(anchor_value)
+        for anchor_value in coarse_request.model_inputs.risk_model_inputs.mean_reversion_runtime_interval_anchors.end_anchor_values
+    )
 
     assert seeded_request.mean_reversion_fitted_parameters.to_payload() == mean_reversion_payload
-    assert seeded_request.mean_reversion_runtime_interval_anchors.start_anchor_value == pytest.approx(0.25)
-    assert seeded_request.mean_reversion_runtime_interval_anchors.end_anchor_values == pytest.approx(
-        (0.25, 0.25)
-    )
+    assert seeded_request.mean_reversion_runtime_interval_anchors.start_anchor_value == pytest.approx(0.0)
+    assert len(seeded_end_anchor_values) == 2
+    assert seeded_end_anchor_values[0] > 0.0
+    assert seeded_end_anchor_values[1] > seeded_end_anchor_values[0]
     assert seeded_request.initial_mean_reversion_boundary_state.observed_log_price == pytest.approx(0.0)
-    assert seeded_request.initial_mean_reversion_boundary_state.anchor_value == pytest.approx(0.25)
-    assert seeded_request.initial_mean_reversion_boundary_state.deviation == pytest.approx(-0.25)
+    assert seeded_request.initial_mean_reversion_boundary_state.anchor_value == pytest.approx(0.0)
+    assert seeded_request.initial_mean_reversion_boundary_state.deviation == pytest.approx(0.0)
 
     coarse_model_inputs = coarse_request.model_inputs.risk_model_inputs
     assert coarse_model_inputs.mean_reversion_fitted_parameters.to_payload() == mean_reversion_payload
-    assert coarse_model_inputs.mean_reversion_runtime_interval_anchors.start_anchor_value == pytest.approx(0.25)
-    assert coarse_model_inputs.mean_reversion_runtime_interval_anchors.end_anchor_values == pytest.approx(
-        (0.25, 0.25)
-    )
+    assert coarse_model_inputs.mean_reversion_runtime_interval_anchors.start_anchor_value == pytest.approx(0.0)
+    assert len(coarse_end_anchor_values) == 2
+    assert coarse_end_anchor_values[0] > 0.0
+    assert coarse_end_anchor_values[1] > coarse_end_anchor_values[0]
     assert coarse_model_inputs.initial_mean_reversion_boundary_state.observed_log_price == pytest.approx(0.0)
-    assert coarse_model_inputs.initial_mean_reversion_boundary_state.anchor_value == pytest.approx(0.25)
-    assert coarse_model_inputs.initial_mean_reversion_boundary_state.deviation == pytest.approx(-0.25)
+    assert coarse_model_inputs.initial_mean_reversion_boundary_state.anchor_value == pytest.approx(0.0)
+    assert coarse_model_inputs.initial_mean_reversion_boundary_state.deviation == pytest.approx(0.0)
+
+
+def test_high_level_model_materializes_endogenous_mean_reversion_runtime_inputs_via_native_recursion(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _build_full_workflow_model(
+        tmp_path,
+        monkeypatch,
+        run_id="high-level-model-endogenous-mean-reversion-runtime-inputs",
+    )
+    mean_reversion_payload = build_endogenous_mean_reversion_fitted_parameters_payload(kappa=0.25)
+
+    update_model_mean_reversion_payload(model, mean_reversion_payload)
+
+    captured_requests: dict[str, Any] = {}
+    captured_native_requests: list[dict[str, Any]] = []
+
+    coarse_result = object()
+    seeded_result = object()
+
+    def _build_runtime_hourly_factor_contract(**kwargs: Any) -> HourlyFactorContract:
+        interval_duration_nanos = fit_model_module._parse_interval_duration_nanos(
+            kwargs["interval"],
+            field_name="interval",
+        )
+        interval_duration = timedelta(microseconds=interval_duration_nanos / 1_000)
+        start_time_utc = kwargs["range_start_utc"]
+
+        return _build_test_hourly_factor_contract(
+            start_time_utc=start_time_utc,
+            interval_end_times_utc=(
+                start_time_utc + interval_duration,
+                start_time_utc + (interval_duration * 2),
+            ),
+        )
+
+    def _materialize_runtime_anchors(
+        kernel_parameters: Any,
+        nig_shared_plus_shift_configuration: Any,
+        news_process_configuration: Any,
+        initial_excitation_state: Any,
+        interval_alignment_policy: str,
+        start_anchor_value: float,
+        s_h: Any,
+        known_nu_h: Any,
+        surprise_nu_h: Any,
+        interval_deltas: Any,
+    ) -> dict[str, Any]:
+        captured_native_requests.append(
+            {
+                "kernel_parameters": kernel_parameters,
+                "nig_shared_plus_shift_configuration": nig_shared_plus_shift_configuration,
+                "news_process_configuration": news_process_configuration,
+                "initial_excitation_state": initial_excitation_state,
+                "interval_alignment_policy": interval_alignment_policy,
+                "start_anchor_value": start_anchor_value,
+                "s_h": tuple(s_h),
+                "known_nu_h": tuple(known_nu_h),
+                "surprise_nu_h": tuple(surprise_nu_h),
+                "interval_deltas": tuple(interval_deltas),
+            }
+        )
+
+        return {
+            "interval_alignment_policy": interval_alignment_policy,
+            "start_anchor_value": start_anchor_value,
+            "end_anchor_values": [0.1, 0.3],
+            "interval_deltas": list(interval_deltas),
+        }
+
+    monkeypatch.setattr(
+        fit_model_module,
+        "provide_hourly_factor_contract",
+        _build_runtime_hourly_factor_contract,
+    )
+    monkeypatch.setattr(
+        fit_model_module,
+        "native_module",
+        lambda: SimpleNamespace(
+            materialize_endogenous_mean_reversion_runtime_interval_anchors=(
+                _materialize_runtime_anchors
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        fit_model_module,
+        "run_seeded_tick_event_simulation",
+        lambda request: _capture_request(captured_requests, "seeded", request, seeded_result),
+    )
+    monkeypatch.setattr(
+        fit_model_module,
+        "run_coarse_simulation",
+        lambda request: _capture_request(captured_requests, "coarse", request, coarse_result),
+    )
+    monkeypatch.setattr(
+        fit_model_module,
+        "_build_high_level_simulation_result",
+        lambda **kwargs: JaniformSimulationResult(
+            simulation_kind=(
+                "seeded_tick"
+                if kwargs["simulation_result"] is seeded_result
+                else "coarse_interval"
+            ),
+            metadata={},
+            provenance={},
+            diagnostics={},
+            raw_result=kwargs["simulation_result"],
+        ),
+    )
+
+    model.simulate(
+        seed=17,
+        start_time_utc=datetime(2026, 2, 2, 15, 30, tzinfo=UTC),
+        horizon_interval_count=2,
+    )
+    model.simulate(
+        seed=17,
+        start_time_utc=datetime(2026, 2, 2, 15, 30, tzinfo=UTC),
+        horizon_interval_count=2,
+        interval=timedelta(minutes=30),
+    )
+
+    seeded_request = captured_requests["seeded"]
+    coarse_request = captured_requests["coarse"]
+
+    assert len(captured_native_requests) == 2
+    assert captured_native_requests[0]["start_anchor_value"] == pytest.approx(0.0)
+    assert captured_native_requests[0]["interval_alignment_policy"] == (
+        "explicit_runtime_interval_grid_alignment.v1"
+    )
+    assert seeded_request.mean_reversion_fitted_parameters.to_payload() == mean_reversion_payload
+    assert seeded_request.mean_reversion_runtime_interval_anchors.start_anchor_value == pytest.approx(0.0)
+    assert seeded_request.mean_reversion_runtime_interval_anchors.end_anchor_values == pytest.approx(
+        (0.1, 0.3)
+    )
+    assert seeded_request.initial_mean_reversion_boundary_state.observed_log_price == pytest.approx(0.0)
+    assert seeded_request.initial_mean_reversion_boundary_state.anchor_value == pytest.approx(0.0)
+    assert seeded_request.initial_mean_reversion_boundary_state.deviation == pytest.approx(0.0)
+
+    coarse_model_inputs = coarse_request.model_inputs.risk_model_inputs
+    assert coarse_model_inputs.mean_reversion_runtime_interval_anchors.end_anchor_values == pytest.approx(
+        (0.1, 0.3)
+    )
+    assert coarse_model_inputs.initial_mean_reversion_boundary_state.deviation == pytest.approx(0.0)
 
 
 def test_high_level_simulation_result_exposes_tabular_exports(
@@ -1057,8 +1360,10 @@ def test_high_level_simulation_result_exposes_tabular_exports(
         exchange_code: Any = None,
     ) -> None:
         del simulation_result
+
         captured_output_paths.append(Path(output_path))
         captured_export_context.append((calendar_registry, exchange_code))
+
         if sink is not None:
             sink.write_records(
                 [
@@ -1310,6 +1615,7 @@ def test_high_level_seeded_simulation_result_preserves_empty_tabular_schema(
         sink: Any = None,
     ) -> None:
         del simulation_result, output_path, preferences
+
         if sink is not None:
             sink.close()
 
@@ -1354,7 +1660,9 @@ def test_high_level_simulation_result_materializes_datetime_timestamps_in_memory
         sink: Any = None,
     ) -> None:
         del simulation_result, preferences
+
         captured_output_paths.append(Path(output_path))
+
         if sink is not None:
             sink.write_records(
                 [
@@ -1468,6 +1776,7 @@ def test_high_level_model_price_option_dispatches_through_canonical_pricing_runn
         monkeypatch,
         run_id="high-level-model-pricing",
     )
+
     prepared_execution_input = object()
     captured_execution_inputs: list[Any] = []
     pricing_result = object()
@@ -1503,9 +1812,10 @@ def test_high_level_model_price_option_requires_explicit_observed_boundary_state
         monkeypatch,
         run_id="high-level-model-pricing-anchored-required-boundary",
     )
+
     update_model_mean_reversion_payload(
         model,
-        build_constant_mean_reversion_fitted_parameters_payload(kappa=0.35, anchor_value=0.25),
+        build_endogenous_mean_reversion_fitted_parameters_payload(kappa=0.35),
     )
 
     with pytest.raises(CalibrationValidationError) as captured_error:
@@ -1517,7 +1827,10 @@ def test_high_level_model_price_option_requires_explicit_observed_boundary_state
         )
 
     assert captured_error.value.failure.field_path == "observed_boundary_state"
-    assert "is required when model mean reversion is enabled for pricing" in captured_error.value.failure.message
+    assert (
+        "is required for pricing. Pass an explicit MeanReversionBoundaryState aligned with the valuation boundary anchor."
+        == captured_error.value.failure.message
+    )
 
 
 def test_high_level_model_price_option_passes_explicit_observed_boundary_state_to_anchored_pricer(
@@ -1529,13 +1842,13 @@ def test_high_level_model_price_option_passes_explicit_observed_boundary_state_t
         monkeypatch,
         run_id="high-level-model-pricing-anchored-boundary",
     )
-    mean_reversion_payload = build_constant_mean_reversion_fitted_parameters_payload(
-        kappa=0.35,
-        anchor_value=0.25,
-    )
+    mean_reversion_payload = build_endogenous_mean_reversion_fitted_parameters_payload(kappa=0.35)
+
     update_model_mean_reversion_payload(model, mean_reversion_payload)
+
     captured_execution_inputs: list[Any] = []
     pricing_result = object()
+
     observed_boundary_state = MeanReversionBoundaryState(
         observed_log_price=0.4,
         anchor_value=0.25,
@@ -1558,37 +1871,58 @@ def test_high_level_model_price_option_passes_explicit_observed_boundary_state_t
 
     assert observed_result is pricing_result
     assert len(captured_execution_inputs) == 1
+
     pricing_boundary_input = captured_execution_inputs[0].request.boundary_input
     assert pricing_boundary_input.mean_reversion_fitted_parameters.to_payload() == mean_reversion_payload
     assert pricing_boundary_input.observed_boundary_state == observed_boundary_state
-    assert pricing_boundary_input.mean_reversion_runtime_interval_anchors.start_anchor_value == pytest.approx(0.25)
+    assert pricing_boundary_input.interval_delta == pytest.approx(1.0)
 
 
-def test_high_level_model_price_option_end_to_end_supports_disabled_mean_reversion_without_observed_boundary_state(
+def test_high_level_model_price_option_passes_endogenous_boundary_state_to_q_pricer(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     model = _build_full_workflow_model(
         tmp_path,
         monkeypatch,
-        run_id="high-level-model-pricing-disabled-end-to-end",
+        run_id="high-level-model-pricing-endogenous-boundary",
+    )
+    mean_reversion_payload = build_endogenous_mean_reversion_fitted_parameters_payload(kappa=0.35)
+
+    update_model_mean_reversion_payload(model, mean_reversion_payload)
+
+    captured_execution_inputs: list[Any] = []
+    pricing_result = object()
+
+    observed_boundary_state = MeanReversionBoundaryState(
+        observed_log_price=0.55,
+        anchor_value=0.4,
+        deviation=0.15,
+    )
+    monkeypatch.setattr(
+        fit_model_module,
+        "run_vanilla_option_pricing",
+        lambda execution_input: captured_execution_inputs.append(execution_input) or pricing_result,
     )
 
-    pricing_result = model.price_option(
+    observed_result = model.price_option(
         valuation_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
         spot=100.0,
         strike=105.0,
-        maturity_interval=1.0,
-        include_transform_diagnostics=True,
-        include_integration_quality_diagnostics=True,
+        maturity_interval=4.0,
+        observed_boundary_state=observed_boundary_state,
     )
 
-    assert pricing_result.response.price >= 0.0
-    assert pricing_result.run_diagnostics is not None
-    assert pricing_result.run_diagnostics.anchored_recursion is not None
+    assert observed_result is pricing_result
+    assert len(captured_execution_inputs) == 1
+
+    pricing_boundary_input = captured_execution_inputs[0].request.boundary_input
+    assert pricing_boundary_input.mean_reversion_fitted_parameters.to_payload() == mean_reversion_payload
+    assert pricing_boundary_input.observed_boundary_state == observed_boundary_state
+    assert pricing_boundary_input.interval_delta == pytest.approx(1.0)
 
 
-def test_high_level_model_price_option_end_to_end_supports_constant_anchor_mean_reversion(
+def test_high_level_model_price_option_end_to_end_supports_endogenous_anchor_mean_reversion(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1597,45 +1931,10 @@ def test_high_level_model_price_option_end_to_end_supports_constant_anchor_mean_
         monkeypatch,
         run_id="high-level-model-pricing-constant-anchor-end-to-end",
     )
+
     update_model_mean_reversion_payload(
         model,
-        build_constant_mean_reversion_fitted_parameters_payload(kappa=0.35, anchor_value=0.25),
-    )
-
-    pricing_result = model.price_option(
-        valuation_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
-        spot=100.0,
-        strike=105.0,
-        maturity_interval=1.0,
-        observed_boundary_state=MeanReversionBoundaryState(
-            observed_log_price=0.25,
-            anchor_value=0.25,
-            deviation=0.0,
-        ),
-        include_transform_diagnostics=True,
-        include_integration_quality_diagnostics=True,
-    )
-
-    assert pricing_result.response.price >= 0.0
-    assert pricing_result.run_diagnostics is not None
-    assert pricing_result.run_diagnostics.anchored_recursion is not None
-
-
-def test_high_level_model_price_option_end_to_end_supports_constant_anchor_mean_reversion(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    model = _build_full_workflow_model(
-        tmp_path,
-        monkeypatch,
-        run_id="high-level-model-pricing-deterministic-anchor-end-to-end",
-    )
-    update_model_mean_reversion_payload(
-        model,
-        build_constant_mean_reversion_fitted_parameters_payload(
-            kappa=0.25,
-            anchor_value=0.25,
-        ),
+        build_endogenous_mean_reversion_fitted_parameters_payload(kappa=0.35),
     )
 
     pricing_result = model.price_option(
@@ -1816,6 +2115,7 @@ def test_high_level_fit_progress_splits_loading_and_translation_steps(
             _ = exc_type
             _ = exc_value
             _ = traceback
+
             return None
 
         def update(self, *, detail: str | None = None) -> None:
@@ -1830,6 +2130,7 @@ def test_high_level_fit_progress_splits_loading_and_translation_steps(
     ) -> _CapturingProgress:
         assert label == "fit"
         assert total_steps == 7
+
         return _CapturingProgress()
 
     monkeypatch.setattr(
@@ -2268,7 +2569,7 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                                 "exposure_weighted_mean_one_over_source_window.v1"
                             ),
                         },
-                        "mean_reversion_fitted_parameters": build_disabled_mean_reversion_fitted_parameters_payload(),
+                        "mean_reversion_fitted_parameters": build_zero_kappa_endogenous_mean_reversion_fitted_parameters_payload(),
                     },
                 },
             },
@@ -2281,9 +2582,9 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                 "handoff_policy": "explicit_run_spec_handoffs_mode_aware_transport.v1",
                 "fitted_stage_payload": {
                     "schema_version": "calibration.stage_output.mean_reversion.v1",
-                    "fitted_parameters": build_disabled_mean_reversion_fitted_parameters_payload(),
+                    "fitted_parameters": build_zero_kappa_endogenous_mean_reversion_fitted_parameters_payload(),
                     "diagnostics": {
-                        "chosen_anchor_family": "disabled",
+                        "chosen_anchor_family": "endogenous_core_expectation_one_interval",
                         "calibration_grid": {
                             "calibration_grid_kind": "synthetic_daily_close_grid.v1",
                             "calibration_grid_interval_hours": 24.0,
@@ -2292,13 +2593,13 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                             "coverage_ratio": 0.0,
                         },
                         "anchor_parameter_estimates": {
-                            "anchor_model_kind": "disabled",
+                            "anchor_model_kind": "endogenous_core_expectation_one_interval",
                         },
                         "phi": 1.0,
                         "kappa": 0.0,
                         "deviation_sample_count": 0,
                         "regression_pair_count": 0,
-                        "stage_decision_reason": "requested_mean_reversion_disabled.v1",
+                        "stage_decision_reason": "endogenous_anchor_runtime_projection_required.v1",
                     },
                     "return_components_input_transport": "in_memory_output",
                     "return_components_selected_candidate_id": "return_candidate_balanced",
@@ -2403,7 +2704,7 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                                     "exposure_weighted_mean_one_over_source_window.v1"
                                 ),
                             },
-                            "mean_reversion_fitted_parameters": build_disabled_mean_reversion_fitted_parameters_payload(),
+                            "mean_reversion_fitted_parameters": build_zero_kappa_endogenous_mean_reversion_fitted_parameters_payload(),
                         },
                     },
                     "baseline_hawkes_fitted_parameters": {
@@ -2494,7 +2795,7 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                                 "exposure_weighted_mean_one_over_source_window.v1"
                             ),
                         },
-                        "mean_reversion_fitted_parameters": build_disabled_mean_reversion_fitted_parameters_payload(),
+                        "mean_reversion_fitted_parameters": build_zero_kappa_endogenous_mean_reversion_fitted_parameters_payload(),
                     },
                     "objective_breakdown": {
                         "aggregated_likelihood_fit": 1.0,

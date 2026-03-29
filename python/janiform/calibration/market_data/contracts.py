@@ -1,7 +1,9 @@
 from dataclasses import dataclass
 from enum import StrEnum
+from math import isfinite
 from typing import Any, Optional, cast
 
+from ...seasonality import IntradaySmoothingKernel, SessionFilter
 from .._errors import (
     CALIBRATION_ERROR_FACTORY,
     _calibration_error,
@@ -15,9 +17,11 @@ from ..staged.contracts import (
 from ...contracts import (
     ContractModel,
     MeanReversionAnchorModelKind,
+    require_finite_number,
     require_mapping,
     require_non_empty_string,
     require_positive_finite_number,
+    require_positive_integer,
     require_string,
 )
 
@@ -70,18 +74,10 @@ class CalibrationMeanReversionConfiguration(ContractModel):
                 "calibration_grid_interval_hours",
                 "must be strictly positive when provided",
             )
-        if (
-            self.anchor_model_kind == MeanReversionAnchorModelKind.DISABLED
-            and self.calibration_grid_interval_hours is not None
-        ):
-            raise _calibration_error(
-                "calibration_grid_interval_hours",
-                "must be omitted when anchor_model_kind is disabled",
-            )
 
     @property
     def enabled(self) -> bool:
-        return self.anchor_model_kind != MeanReversionAnchorModelKind.DISABLED
+        return True
 
     @staticmethod
     def from_mapping(
@@ -114,6 +110,217 @@ class CalibrationMeanReversionConfiguration(ContractModel):
                 )
             ),
             calibration_grid_interval_hours=calibration_grid_interval_hours,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class CalibrationMarketDataSeasonalityPreprocessingSettings(ContractModel):
+    session_filter: SessionFilter = SessionFilter.OPEN_ONLY
+    sparse_hour_event_threshold: int = 1
+    known_news_overlay_log_adjustment: float = 0.0
+    intraday_minutes_per_bin: int = 1
+    intraday_smoothing_kernel: IntradaySmoothingKernel = IntradaySmoothingKernel.GAUSSIAN
+    intraday_smoothing_bandwidth_bins: float = 3.0
+    intraday_minimum_bin_events: int = 1
+    day_of_week_minimum_bucket_events: int = 1
+    day_of_year_minimum_bucket_events: int = 1
+
+    def __post_init__(self) -> None:
+        if self.sparse_hour_event_threshold < 1:
+            raise _calibration_error("sparse_hour_event_threshold", "must be at least 1")
+        if self.intraday_minutes_per_bin < 1:
+            raise _calibration_error("intraday_minutes_per_bin", "must be at least 1")
+        if not isfinite(self.known_news_overlay_log_adjustment):
+            raise _calibration_error(
+                "known_news_overlay_log_adjustment",
+                "must be finite",
+            )
+        if (
+            not isfinite(self.intraday_smoothing_bandwidth_bins)
+            or self.intraday_smoothing_bandwidth_bins <= 0.0
+        ):
+            raise _calibration_error(
+                "intraday_smoothing_bandwidth_bins",
+                "must be finite and strictly positive",
+            )
+        if self.intraday_minimum_bin_events < 1:
+            raise _calibration_error("intraday_minimum_bin_events", "must be at least 1")
+        if self.day_of_week_minimum_bucket_events < 1:
+            raise _calibration_error(
+                "day_of_week_minimum_bucket_events",
+                "must be at least 1",
+            )
+        if self.day_of_year_minimum_bucket_events < 1:
+            raise _calibration_error(
+                "day_of_year_minimum_bucket_events",
+                "must be at least 1",
+            )
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> CalibrationMarketDataSeasonalityPreprocessingSettings:
+        if not isinstance(raw_payload, dict):
+            raise _calibration_error(field_path, "must be an object")
+
+        return CalibrationMarketDataSeasonalityPreprocessingSettings(
+            session_filter=SessionFilter(
+                require_string(
+                    raw_payload,
+                    "session_filter",
+                    f"{field_path}.session_filter",
+                    CALIBRATION_ERROR_FACTORY,
+                )
+            ),
+            sparse_hour_event_threshold=require_positive_integer(
+                raw_payload,
+                "sparse_hour_event_threshold",
+                f"{field_path}.sparse_hour_event_threshold",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            known_news_overlay_log_adjustment=(
+                require_finite_number(
+                    raw_payload,
+                    "known_news_overlay_log_adjustment",
+                    f"{field_path}.known_news_overlay_log_adjustment",
+                    CALIBRATION_ERROR_FACTORY,
+                )
+                if "known_news_overlay_log_adjustment" in raw_payload
+                and raw_payload["known_news_overlay_log_adjustment"] is not None
+                else 0.0
+            ),
+            intraday_minutes_per_bin=require_positive_integer(
+                raw_payload,
+                "intraday_minutes_per_bin",
+                f"{field_path}.intraday_minutes_per_bin",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            intraday_smoothing_kernel=IntradaySmoothingKernel(
+                require_string(
+                    raw_payload,
+                    "intraday_smoothing_kernel",
+                    f"{field_path}.intraday_smoothing_kernel",
+                    CALIBRATION_ERROR_FACTORY,
+                )
+            ),
+            intraday_smoothing_bandwidth_bins=require_positive_finite_number(
+                raw_payload,
+                "intraday_smoothing_bandwidth_bins",
+                f"{field_path}.intraday_smoothing_bandwidth_bins",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            intraday_minimum_bin_events=require_positive_integer(
+                raw_payload,
+                "intraday_minimum_bin_events",
+                f"{field_path}.intraday_minimum_bin_events",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            day_of_week_minimum_bucket_events=require_positive_integer(
+                raw_payload,
+                "day_of_week_minimum_bucket_events",
+                f"{field_path}.day_of_week_minimum_bucket_events",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            day_of_year_minimum_bucket_events=require_positive_integer(
+                raw_payload,
+                "day_of_year_minimum_bucket_events",
+                f"{field_path}.day_of_year_minimum_bucket_events",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class CalibrationMarketDataReturnComponentsPreprocessingSettings(ContractModel):
+    intraday_jump_threshold_multiplier: float = 4.0
+    close_open_gap_tolerance_multiplier: float = 3.0
+
+    def __post_init__(self) -> None:
+        if (
+            not isfinite(self.intraday_jump_threshold_multiplier)
+            or self.intraday_jump_threshold_multiplier <= 0.0
+        ):
+            raise _calibration_error(
+                "intraday_jump_threshold_multiplier",
+                "must be finite and strictly positive",
+            )
+        if (
+            not isfinite(self.close_open_gap_tolerance_multiplier)
+            or self.close_open_gap_tolerance_multiplier <= 0.0
+        ):
+            raise _calibration_error(
+                "close_open_gap_tolerance_multiplier",
+                "must be finite and strictly positive",
+            )
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> CalibrationMarketDataReturnComponentsPreprocessingSettings:
+        if not isinstance(raw_payload, dict):
+            raise _calibration_error(field_path, "must be an object")
+
+        return CalibrationMarketDataReturnComponentsPreprocessingSettings(
+            intraday_jump_threshold_multiplier=require_positive_finite_number(
+                raw_payload,
+                "intraday_jump_threshold_multiplier",
+                f"{field_path}.intraday_jump_threshold_multiplier",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+            close_open_gap_tolerance_multiplier=require_positive_finite_number(
+                raw_payload,
+                "close_open_gap_tolerance_multiplier",
+                f"{field_path}.close_open_gap_tolerance_multiplier",
+                CALIBRATION_ERROR_FACTORY,
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class CalibrationMarketDataPreprocessingSettings(ContractModel):
+    seasonality: Optional[CalibrationMarketDataSeasonalityPreprocessingSettings] = None
+    return_components: Optional[CalibrationMarketDataReturnComponentsPreprocessingSettings] = None
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> CalibrationMarketDataPreprocessingSettings:
+        if not isinstance(raw_payload, dict):
+            raise _calibration_error(field_path, "must be an object")
+
+        return CalibrationMarketDataPreprocessingSettings(
+            seasonality=(
+                CalibrationMarketDataSeasonalityPreprocessingSettings.from_mapping(
+                    require_mapping(
+                        raw_payload,
+                        "seasonality",
+                        f"{field_path}.seasonality",
+                        CALIBRATION_ERROR_FACTORY,
+                    ),
+                    field_path=f"{field_path}.seasonality",
+                )
+                if "seasonality" in raw_payload and raw_payload["seasonality"] is not None
+                else None
+            ),
+            return_components=(
+                CalibrationMarketDataReturnComponentsPreprocessingSettings.from_mapping(
+                    require_mapping(
+                        raw_payload,
+                        "return_components",
+                        f"{field_path}.return_components",
+                        CALIBRATION_ERROR_FACTORY,
+                    ),
+                    field_path=f"{field_path}.return_components",
+                )
+                if "return_components" in raw_payload and raw_payload["return_components"] is not None
+                else None
+            ),
         )
 
 
@@ -704,8 +911,11 @@ __all__ = [
     "CalibrationKnownNewsColumnMapping",
     "CalibrationKnownNewsInput",
     "CalibrationMarketDataColumnMapping",
+    "CalibrationMarketDataPreprocessingSettings",
     "CalibrationMarketDataNormalizationPolicy",
     "CalibrationMarketDataOutputPreferences",
+    "CalibrationMarketDataReturnComponentsPreprocessingSettings",
+    "CalibrationMarketDataSeasonalityPreprocessingSettings",
     "CalibrationMarketDataWorkflowScope",
     "CalibrationMeanReversionConfiguration",
     "CalibrationOptionQuoteInputPolicy",

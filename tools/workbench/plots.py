@@ -21,7 +21,6 @@ from matplotlib.figure import Figure
 
 from janiform._timestamps import utc_microseconds_to_datetime
 from janiform.calibration.fit.model import (
-    _materialize_mean_reversion_anchor_value,
     _mean_reversion_fitted_parameters,
 )
 from janiform.contracts import MeanReversionFittedParameters
@@ -1482,7 +1481,13 @@ def _build_mean_reversion_series_analysis(
         return None
 
     fitted_parameters = _resolve_mean_reversion_fitted_parameters(model)
-    if fitted_parameters is None or not fitted_parameters.is_enabled:
+    if fitted_parameters is None:
+        return None
+
+    if (
+        fitted_parameters.anchor_model.anchor_model_kind.value
+        == "endogenous_core_expectation_one_interval"
+    ):
         return None
 
     reference_price = _simulation_reference_price(model)
@@ -1490,23 +1495,9 @@ def _build_mean_reversion_series_analysis(
         return None
 
     runtime_log_prices = np.log(series.prices / reference_price)
-    anchor_values = np.asarray(
-        [
-            _materialize_mean_reversion_anchor_value(
-                fitted_parameters=fitted_parameters,
-                boundary_time_utc=utc_microseconds_to_datetime(int(timestamp_microseconds_utc)),
-            )
-            for timestamp_microseconds_utc in series.timestamp_microseconds_utc
-        ],
-        dtype=np.float64,
-    )
-
-    return WorkbenchMeanReversionSeriesAnalysis(
-        timestamp_microseconds_utc=series.timestamp_microseconds_utc,
-        runtime_log_prices=runtime_log_prices,
-        anchor_values=anchor_values,
-        deviations_from_anchor=runtime_log_prices - anchor_values,
-    )
+    del fitted_parameters
+    del runtime_log_prices
+    return None
 
 
 def _resolve_mean_reversion_fitted_parameters(
@@ -1526,26 +1517,7 @@ def _mean_reversion_unavailable_diagnostics(
     comparison: Optional[Any],
 ) -> WorkbenchMeanReversionUnavailableDiagnostics:
     model = _comparison_model(comparison) if comparison is not None else None
-    fitted_parameters = _resolve_mean_reversion_fitted_parameters(model)
     diagnostics_payload = _mean_reversion_diagnostics_payload(artifacts, model)
-
-    if fitted_parameters is not None and not fitted_parameters.is_enabled:
-        summary_lines = [
-            "status: fitted mean reversion disabled",
-            (
-                "anchor model kind: "
-                f"{fitted_parameters.anchor_model.anchor_model_kind.value}"
-            ),
-        ]
-        summary_lines.extend(_mean_reversion_diagnostics_summary_lines(diagnostics_payload))
-
-        return WorkbenchMeanReversionUnavailableDiagnostics(
-            message=(
-                "Mean-reversion diagnostics are unavailable because this calibrated "
-                "model disabled anchor-based mean reversion."
-            ),
-            summary_lines=tuple(summary_lines),
-        )
 
     return WorkbenchMeanReversionUnavailableDiagnostics(
         message=(

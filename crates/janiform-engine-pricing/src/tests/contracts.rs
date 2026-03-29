@@ -41,6 +41,9 @@ fn vanilla_option_request_roundtrip_serialization_preserves_contract_fields() {
 
 #[test]
 fn vanilla_option_request_deserialization_defaults_interval_delta_to_hourly() {
+    let model_parameters_payload =
+        serde_json::to_value(valid_model_parameters()).expect("model parameters should serialize");
+
     let payload_without_interval_delta = json!({
         "market_inputs": {
             "spot": 101.0,
@@ -63,50 +66,17 @@ fn vanilla_option_request_deserialization_defaults_interval_delta_to_hourly() {
             "mean_reversion_fitted_parameters": {
                 "kappa": 0.0,
                 "anchor_model": {
-                    "anchor_model_kind": "disabled"
+                    "anchor_model_kind": "endogenous_core_expectation_one_interval"
                 }
             },
-            "mean_reversion_runtime_interval_anchors": {
-                "interval_alignment_policy": "pricing_disabled_flat_anchor_interval_grid.v1",
-                "start_anchor_value": 0.0,
-                "end_anchor_values": [0.0],
-                "interval_deltas": [1.0]
-            },
+            "interval_delta": 1.0,
             "observed_boundary_state": {
                 "observed_log_price": 0.0,
                 "anchor_value": 0.0,
                 "deviation": 0.0
             }
         },
-        "model_parameters": {
-            "hawkes_kernel_parameters": {
-                "lambda_bar": 0.8,
-                "beta": 1.6,
-                "alpha": {
-                    "plus_plus": 0.2,
-                    "plus_minus": 0.1,
-                    "minus_plus": 0.1,
-                    "minus_minus": 0.25
-                },
-                "rho": {
-                    "plus_plus": 0.1,
-                    "plus_minus": 0.05,
-                    "minus_plus": 0.05,
-                    "minus_minus": 0.1
-                }
-            },
-            "gamma_severity_mark_configuration": {
-                "shape_k": 1.8,
-                "scale_theta": 0.7
-            },
-            "nig_shared_plus_shift_configuration": {
-                "alpha": 2.3,
-                "beta_0": -0.8,
-                "delta": 0.7,
-                "mu": 0.1,
-                "delta_beta": -0.2
-            }
-        }
+        "model_parameters": model_parameters_payload
     });
 
     let parsed_request: VanillaOptionPricingRequest =

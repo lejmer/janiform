@@ -410,8 +410,6 @@ pub struct CalibrationMeanReversionStageExecutionInput {
     pub coverage_ratio: f64,
     #[serde(default)]
     pub observations: Vec<CalibrationMeanReversionStageObservation>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub disabled_stage_reason: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -988,6 +986,9 @@ impl CalibrationMeanReversionStageExecutionInput {
     fn into_core(self) -> MeanReversionStageExecutionInput {
         MeanReversionStageExecutionInput {
             return_components_input: None,
+            seasonality_stage_input: None,
+            hawkes_stage_payload: None,
+            return_components_stage_payload: None,
             requested_anchor_model_kind: self.requested_anchor_model_kind,
             calibration_grid_kind: self.calibration_grid_kind,
             calibration_grid_interval_hours: self.calibration_grid_interval_hours,
@@ -998,7 +999,6 @@ impl CalibrationMeanReversionStageExecutionInput {
                 .into_iter()
                 .map(CalibrationMeanReversionStageObservation::into_core)
                 .collect(),
-            disabled_stage_reason: self.disabled_stage_reason,
         }
     }
 }
@@ -1224,7 +1224,8 @@ mod tests {
                 },
             ),
             mean_reversion_stage_input: Some(CalibrationMeanReversionStageExecutionInput {
-                requested_anchor_model_kind: MeanReversionAnchorModelKind::Constant,
+                requested_anchor_model_kind:
+                    MeanReversionAnchorModelKind::EndogenousCoreExpectationOneInterval,
                 calibration_grid_kind: "synthetic_daily_close_grid.v1".to_string(),
                 calibration_grid_interval_hours: 24.0,
                 source_observation_count: 4,
@@ -1247,7 +1248,6 @@ mod tests {
                         observed_log_price: 4.59,
                     },
                 ],
-                disabled_stage_reason: None,
             }),
             runtime_resources: match execution_mode {
                 CalibrationExecutionMode::Memory => None,

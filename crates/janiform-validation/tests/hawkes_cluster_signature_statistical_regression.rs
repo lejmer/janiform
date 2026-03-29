@@ -9,6 +9,7 @@ use janiform_engine_simulation::{
     SeededTickEventRecord, SeededTickEventSide, SeededTickSimulationModelInputs,
     SeededTickSimulationRunConfig, run_seeded_tick_event_simulation,
 };
+use janiform_foundations::time::ONE_HOUR_NANOS;
 use janiform_market_time::calendar::{ExchangeCalendarRegistry, ExchangeCalendarRegistryLoader};
 use janiform_market_time::hourly_factors::{
     DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD, DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD,
@@ -45,8 +46,6 @@ const CLUSTER_SIGNATURE_REFERENCE_BANDS_SET_ID: &str =
     "hawkes_cluster_signature_regression_bands_v1";
 
 const START_TIME_UTC_NANOS: i64 = 1_704_067_200_000_000_000;
-const ONE_HOUR_NANOS: i64 = 3_600_000_000_000;
-
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct ClusteringMetrics {
     mean_fano_factor: f64,
@@ -1344,7 +1343,9 @@ fn build_run_config(
         SeededTickSimulationModelInputs {
             kernel_parameters,
             initial_excitation_state,
-            mean_reversion_fitted_parameters: MeanReversionFittedParameters::disabled(),
+            mean_reversion_fitted_parameters:
+                MeanReversionFittedParameters::endogenous_core_expectation_one_interval(0.0)
+                    .expect("zero-kappa endogenous mean reversion should construct"),
             mean_reversion_runtime_interval_anchors: MeanReversionRuntimeIntervalAnchors::try_new(
                 hourly_factor_contract.metadata.interval_alignment_policy,
                 0.0,

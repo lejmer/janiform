@@ -22,6 +22,9 @@ from janiform.calibration.market_data import (
     CalibrationMarketDataColumnMapping,
     CalibrationMarketDataNormalizationPolicy,
     CalibrationMarketDataOutputPreferences,
+    CalibrationMarketDataPreprocessingSettings,
+    CalibrationMarketDataReturnComponentsPreprocessingSettings,
+    CalibrationMarketDataSeasonalityPreprocessingSettings,
     CalibrationMarketDataWorkflowScope,
     CalibrationOptionQuoteInputPolicy,
     CalibrationOptionSurfaceColumnMapping,
@@ -37,6 +40,7 @@ from janiform.calibration.staged import (
     CalibrationExecutionMode,
     CalibrationStage,
 )
+from janiform.seasonality import IntradaySmoothingKernel, SessionFilter
 
 
 def test_translate_market_data_request_seasonality_only_selects_only_seasonality_stage(
@@ -233,7 +237,7 @@ def test_translate_market_data_request_materializes_mean_reversion_on_interval_g
             tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
         ),
         mean_reversion=CalibrationMeanReversionConfiguration(
-            anchor_model_kind=MeanReversionAnchorModelKind.CONSTANT,
+            anchor_model_kind=MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL,
         ),
     )
 
@@ -241,7 +245,10 @@ def test_translate_market_data_request_materializes_mean_reversion_on_interval_g
     prepared_payload = _prepared_payload(translation)
 
     mean_reversion_stage_input = prepared_payload["mean_reversion_stage_input"]
-    assert mean_reversion_stage_input["requested_anchor_model_kind"] == MeanReversionAnchorModelKind.CONSTANT.value
+    assert (
+        mean_reversion_stage_input["requested_anchor_model_kind"]
+        == MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL.value
+    )
     assert mean_reversion_stage_input["source_observation_count"] == len(
         mean_reversion_stage_input["observations"]
     )
@@ -266,6 +273,152 @@ def test_translate_market_data_request_materializes_mean_reversion_on_interval_g
             math.log(104.0 / 107.0),
         )
     )
+
+
+def test_translate_market_data_request_applies_explicit_preprocessing_settings(
+    tmp_path: Path,
+    calendar_registry_json: str,
+) -> None:
+    session_definition_path = _write_session_definition(tmp_path, calendar_registry_json)
+
+    tick_data_path = tmp_path / "ticks.csv"
+    tick_data_path.write_text(
+        "\n".join(
+            [
+                "timestamp_utc,trade_price,trade_sign",
+                "2026-02-02T14:30:00Z,100.0,buy",
+                "2026-02-02T14:35:00Z,103.0,sell",
+                "2026-02-02T20:59:00Z,101.0,buy",
+                "2026-02-03T14:30:00Z,90.0,sell",
+                "2026-02-03T14:35:00Z,100.0,buy",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    known_news_path = tmp_path / "known_news.csv"
+    known_news_path.write_text(
+        "\n".join(
+            [
+                "event_timestamp_utc,event_code",
+                "2026-02-02T15:00:00Z,macro",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    request = _build_market_data_request(
+        session_definition_path=session_definition_path,
+        tick_data_path=tick_data_path,
+        workflow_scope=CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE,
+        tick_column_mapping=CalibrationTickDataColumnMapping(
+            timestamp_column="timestamp_utc",
+            price_column="trade_price",
+            trade_sign_column="trade_sign",
+        ),
+        normalization_policy=CalibrationMarketDataNormalizationPolicy(
+            timestamp_timezone="UTC",
+            sort_records_by_timestamp=True,
+            tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
+        ),
+        known_news_inputs=CalibrationKnownNewsInput(
+            calendar_source=CalibrationInputFileReference(
+                path=str(known_news_path),
+                file_format=CalibrationInputFileFormat.CSV,
+                provenance_label="known-news",
+            ),
+            calendar_timezone="UTC",
+        ),
+        known_news_column_mapping=CalibrationKnownNewsColumnMapping(
+            event_timestamp_column="event_timestamp_utc",
+            event_identifier_column="event_code",
+        ),
+        preprocessing_settings=CalibrationMarketDataPreprocessingSettings(
+            seasonality=CalibrationMarketDataSeasonalityPreprocessingSettings(
+                session_filter=SessionFilter.ALL,
+                sparse_hour_event_threshold=2,
+                known_news_overlay_log_adjustment=-0.2,
+                intraday_minutes_per_bin=5,
+                intraday_smoothing_kernel=IntradaySmoothingKernel.UNIFORM,
+                intraday_smoothing_bandwidth_bins=2.5,
+                intraday_minimum_bin_events=3,
+                day_of_week_minimum_bucket_events=4,
+                day_of_year_minimum_bucket_events=5,
+            ),
+            return_components=CalibrationMarketDataReturnComponentsPreprocessingSettings(
+                intraday_jump_threshold_multiplier=6.0,
+                close_open_gap_tolerance_multiplier=2.0,
+            ),
+        ),
+    )
+
+    default_request = _build_market_data_request(
+        session_definition_path=session_definition_path,
+        tick_data_path=tick_data_path,
+        workflow_scope=CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE,
+        tick_column_mapping=CalibrationTickDataColumnMapping(
+            timestamp_column="timestamp_utc",
+            price_column="trade_price",
+            trade_sign_column="trade_sign",
+        ),
+        normalization_policy=CalibrationMarketDataNormalizationPolicy(
+            timestamp_timezone="UTC",
+            sort_records_by_timestamp=True,
+            tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
+        ),
+        known_news_inputs=CalibrationKnownNewsInput(
+            calendar_source=CalibrationInputFileReference(
+                path=str(known_news_path),
+                file_format=CalibrationInputFileFormat.CSV,
+                provenance_label="known-news",
+            ),
+            calendar_timezone="UTC",
+        ),
+        known_news_column_mapping=CalibrationKnownNewsColumnMapping(
+            event_timestamp_column="event_timestamp_utc",
+            event_identifier_column="event_code",
+        ),
+    )
+
+    translation = translate_market_data_request_to_prepared_calibration(request)
+    default_translation = translate_market_data_request_to_prepared_calibration(default_request)
+    prepared_payload = _prepared_payload(translation)
+    default_prepared_payload = _prepared_payload(default_translation)
+    seasonality_settings = prepared_payload["seasonality_stage_input"]["settings"]
+    overlay = prepared_payload["seasonality_stage_input"]["scheduled_event_overlays"][0]
+    return_components_input = prepared_payload["return_components_candidate_generation_input"]
+    default_return_components_input = default_prepared_payload[
+        "return_components_candidate_generation_input"
+    ]
+
+    assert seasonality_settings["session_filter"] == "all"
+    assert seasonality_settings["sparse_hour_event_threshold"] == 2
+    assert seasonality_settings["intraday_settings"]["minutes_per_bin"] == 5
+    assert seasonality_settings["intraday_settings"]["smoothing_kernel"] == "uniform"
+    assert seasonality_settings["intraday_settings"]["smoothing_bandwidth_bins"] == pytest.approx(2.5)
+    assert seasonality_settings["intraday_settings"]["minimum_bin_events"] == 3
+    assert seasonality_settings["day_of_week_settings"]["minimum_bucket_events"] == 4
+    assert seasonality_settings["day_of_year_settings"]["minimum_bucket_events"] == 5
+    assert overlay["log_adjustment"] == pytest.approx(-0.2)
+    assert (
+        default_prepared_payload["seasonality_stage_input"]["scheduled_event_overlays"][0][
+            "log_adjustment"
+        ]
+        == pytest.approx(0.0)
+    )
+    assert (
+        return_components_input["close_open_gap_detection_policy"][
+            "material_gap_absolute_return_tolerance"
+        ]
+        == pytest.approx(
+            default_return_components_input["close_open_gap_detection_policy"][
+                "material_gap_absolute_return_tolerance"
+            ]
+            * (2.0 / 3.0),
+            abs=1e-6,
+        )
+    )
+    assert translation.provenance.deterministic_defaults_applied == ()
 
 
 def test_translate_market_data_request_honors_explicit_mean_reversion_grid_interval_override(
@@ -307,7 +460,7 @@ def test_translate_market_data_request_honors_explicit_mean_reversion_grid_inter
             tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
         ),
         mean_reversion=CalibrationMeanReversionConfiguration(
-            anchor_model_kind=MeanReversionAnchorModelKind.CONSTANT,
+            anchor_model_kind=MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL,
             calibration_grid_interval_hours=36.0,
         ),
     )
@@ -317,7 +470,7 @@ def test_translate_market_data_request_honors_explicit_mean_reversion_grid_inter
 
     mean_reversion_stage_input = prepared_payload["mean_reversion_stage_input"]
     assert mean_reversion_stage_input["requested_anchor_model_kind"] == (
-        MeanReversionAnchorModelKind.CONSTANT.value
+        MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL.value
     )
     assert mean_reversion_stage_input["calibration_grid_interval_hours"] == pytest.approx(36.0)
     assert (
@@ -367,7 +520,7 @@ def test_translate_market_data_request_derives_fxspot_mean_reversion_interval_fr
             tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
         ),
         mean_reversion=CalibrationMeanReversionConfiguration(
-            anchor_model_kind=MeanReversionAnchorModelKind.CONSTANT,
+            anchor_model_kind=MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL,
         ),
         exchange_code="FXSPOT",
         session_timezone="UTC",
@@ -377,7 +530,10 @@ def test_translate_market_data_request_derives_fxspot_mean_reversion_interval_fr
     prepared_payload = _prepared_payload(translation)
 
     mean_reversion_stage_input = prepared_payload["mean_reversion_stage_input"]
-    assert mean_reversion_stage_input["requested_anchor_model_kind"] == MeanReversionAnchorModelKind.CONSTANT.value
+    assert (
+        mean_reversion_stage_input["requested_anchor_model_kind"]
+        == MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL.value
+    )
     assert mean_reversion_stage_input["calibration_grid_interval_hours"] == pytest.approx(24.0)
     assert (
         "median_observed_session_duration_hours_from_retained_open_session_ticks.v1"
@@ -966,6 +1122,59 @@ def test_run_market_data_calibration_executes_market_data_first_workflow(
     assert response.stage_reports[4].failure is None
 
 
+def test_run_market_data_calibration_estimates_endogenous_mean_reversion(
+    tmp_path: Path,
+    calendar_registry_json: str,
+) -> None:
+    session_definition_path = _write_session_definition(tmp_path, calendar_registry_json)
+
+    tick_data_path = tmp_path / "ticks.csv"
+    tick_data_path.write_text(
+        "\n".join(
+            [
+                "timestamp_utc,trade_price,trade_sign",
+                "2026-02-02T14:30:00Z,100.0,buy",
+                "2026-02-02T20:59:00Z,101.0,sell",
+                "2026-02-03T14:30:00Z,102.0,buy",
+                "2026-02-03T20:59:00Z,103.0,sell",
+                "2026-02-04T14:30:00Z,104.0,buy",
+                "2026-02-04T20:59:00Z,105.0,sell",
+                "2026-02-05T14:30:00Z,106.0,buy",
+                "2026-02-05T20:59:00Z,107.0,sell",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    request = _build_market_data_request(
+        session_definition_path=session_definition_path,
+        tick_data_path=tick_data_path,
+        workflow_scope=CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE,
+        tick_column_mapping=CalibrationTickDataColumnMapping(
+            timestamp_column="timestamp_utc",
+            price_column="trade_price",
+            trade_sign_column="trade_sign",
+        ),
+        normalization_policy=CalibrationMarketDataNormalizationPolicy(
+            timestamp_timezone="UTC",
+            sort_records_by_timestamp=True,
+            tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
+        ),
+        mean_reversion=CalibrationMeanReversionConfiguration(
+            anchor_model_kind=MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL,
+        ),
+    )
+
+    response = run_market_data_calibration(request)
+
+    assert response.status.value == "success"
+    assert response.failure is None
+    assert response.stage_reports[3].stage == CalibrationStage.MEAN_REVERSION
+    assert response.stage_reports[3].status.value == "success"
+    assert response.stage_reports[3].failure is None
+    assert len(response.stage_reports) == 5
+
+
 def test_translate_market_data_request_full_with_option_surface_sets_option_reference(
     tmp_path: Path,
     calendar_registry_json: str,
@@ -1051,6 +1260,7 @@ def _build_market_data_request(
     option_surface_source: Optional[CalibrationInputFileReference] = None,
     option_surface_column_mapping: Optional[CalibrationOptionSurfaceColumnMapping] = None,
     mean_reversion: Optional[CalibrationMeanReversionConfiguration] = None,
+    preprocessing_settings: Optional[CalibrationMarketDataPreprocessingSettings] = None,
     exchange_code: str = "XNYS",
     session_timezone: Optional[str] = "America/New_York",
 ) -> MarketDataCalibrationRequest:
@@ -1087,6 +1297,7 @@ def _build_market_data_request(
             emit_derived_staged_execution_input=False,
             emit_input_provenance_report=True,
         ),
+        preprocessing_settings=preprocessing_settings,
         option_surface_source=option_surface_source,
         known_news_inputs=known_news_inputs,
         mean_reversion=mean_reversion,

@@ -198,6 +198,12 @@ pub(super) fn run_stage_for_staged_execution(
                 }
             });
 
+            stage_input.seasonality_stage_input =
+                payload_state.mean_reversion_seasonality_input.clone();
+            stage_input.hawkes_stage_payload = payload_state.hawkes_stage_payload.clone();
+            stage_input.return_components_stage_payload =
+                payload_state.return_components_stage_payload.clone();
+
             Ok(CalibrationStagedRunStageReport::MeanReversion(
                 run_mean_reversion_calibration_stage(run_spec, calendar_registry, stage_input),
             ))

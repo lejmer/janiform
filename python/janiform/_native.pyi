@@ -992,6 +992,20 @@ def run_prepared_staged_calibration_with_events(
 ) -> object: ...
 
 
+def materialize_endogenous_mean_reversion_runtime_interval_anchors(
+    kernel_parameters: object,
+    nig_shared_plus_shift_configuration: object,
+    news_process_configuration: object,
+    initial_excitation_state: object,
+    interval_alignment_policy: str,
+    start_anchor_value: float,
+    s_h: object,
+    known_nu_h: object,
+    surprise_nu_h: object,
+    interval_deltas: object,
+) -> object: ...
+
+
 def run_seeded_tick_event_simulation(
     seed: int,
     start_time_utc: str,

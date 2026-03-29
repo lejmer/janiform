@@ -17,7 +17,9 @@ from janiform.calibration.market_data import (
     CalibrationTickPriceInputPolicy,
 )
 from janiform.calibration.staged import validate_staged_calibration_response
-from tests.calibration_test_support import build_disabled_mean_reversion_fitted_parameters_payload
+from tests.calibration_test_support import (
+    build_zero_kappa_endogenous_mean_reversion_fitted_parameters_payload,
+)
 from tests.cli_test_support import invoke_cli, normalize_help_output, render_help
 
 
@@ -168,7 +170,7 @@ def test_fit_outputs_resolved_configuration_and_provenance(
     assert "stage_report_payloads" not in persisted_report
 
 
-def test_fit_cli_enables_explicit_mean_reversion_calibration(
+def test_fit_cli_uses_endogenous_mean_reversion_calibration(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -228,8 +230,6 @@ def test_fit_cli_enables_explicit_mean_reversion_calibration(
             "us_equity_cash",
             "--known-news",
             "none",
-            "--mean-reversion-anchor-model",
-            "constant",
             "--mean-reversion-grid-interval-hours",
             "36",
             "--output",
@@ -243,7 +243,9 @@ def test_fit_cli_enables_explicit_mean_reversion_calibration(
 
     mean_reversion_stage_input = captured_stage_input["mean_reversion_stage_input"]
     assert mean_reversion_stage_input is not None
-    assert mean_reversion_stage_input["requested_anchor_model_kind"] == "constant"
+    assert mean_reversion_stage_input["requested_anchor_model_kind"] == (
+        "endogenous_core_expectation_one_interval"
+    )
     assert mean_reversion_stage_input["calibration_grid_interval_hours"] == pytest.approx(36.0)
 
 
@@ -973,7 +975,7 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                                 "exposure_weighted_mean_one_over_source_window.v1"
                             ),
                         },
-                        "mean_reversion_fitted_parameters": build_disabled_mean_reversion_fitted_parameters_payload(),
+                        "mean_reversion_fitted_parameters": build_zero_kappa_endogenous_mean_reversion_fitted_parameters_payload(),
                     },
                 },
             },
@@ -986,9 +988,9 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                 "handoff_policy": "explicit_run_spec_handoffs_mode_aware_transport.v1",
                 "fitted_stage_payload": {
                     "schema_version": "calibration.stage_output.mean_reversion.v1",
-                    "fitted_parameters": build_disabled_mean_reversion_fitted_parameters_payload(),
+                    "fitted_parameters": build_zero_kappa_endogenous_mean_reversion_fitted_parameters_payload(),
                     "diagnostics": {
-                        "chosen_anchor_family": "disabled",
+                        "chosen_anchor_family": "endogenous_core_expectation_one_interval",
                         "calibration_grid": {
                             "calibration_grid_kind": "synthetic_daily_close_grid.v1",
                             "calibration_grid_interval_hours": 24.0,
@@ -997,13 +999,13 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                             "coverage_ratio": 0.0,
                         },
                         "anchor_parameter_estimates": {
-                            "anchor_model_kind": "disabled",
+                            "anchor_model_kind": "endogenous_core_expectation_one_interval",
                         },
                         "phi": 1.0,
                         "kappa": 0.0,
                         "deviation_sample_count": 0,
                         "regression_pair_count": 0,
-                        "stage_decision_reason": "requested_mean_reversion_disabled.v1",
+                        "stage_decision_reason": "endogenous_anchor_runtime_projection_required.v1",
                     },
                     "return_components_input_transport": "in_memory_output",
                     "return_components_selected_candidate_id": "return_candidate_balanced",

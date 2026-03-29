@@ -1275,7 +1275,8 @@ fn build_model_inputs_for_grid(
         NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
             .expect("nig configuration should be valid"),
         build_initial_state(),
-        MeanReversionFittedParameters::disabled(),
+        MeanReversionFittedParameters::endogenous_core_expectation_one_interval(0.0)
+            .expect("zero-kappa endogenous mean reversion should construct"),
         MeanReversionRuntimeIntervalAnchors::try_new(
             "explicit_runtime_interval_grid_alignment.v1",
             0.0,

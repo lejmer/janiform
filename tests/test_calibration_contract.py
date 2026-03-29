@@ -20,6 +20,9 @@ from janiform.calibration.market_data import (
     CalibrationMarketDataColumnMapping,
     CalibrationMarketDataNormalizationPolicy,
     CalibrationMarketDataOutputPreferences,
+    CalibrationMarketDataPreprocessingSettings,
+    CalibrationMarketDataReturnComponentsPreprocessingSettings,
+    CalibrationMarketDataSeasonalityPreprocessingSettings,
     CalibrationMarketDataWorkflowScope,
     CalibrationOptionQuoteInputPolicy,
     CalibrationOptionSurfaceColumnMapping,
@@ -57,6 +60,7 @@ from janiform.calibration.staged import (
     validate_staged_calibration_request,
     validate_staged_calibration_response,
 )
+from janiform.seasonality import IntradaySmoothingKernel, SessionFilter
 
 
 def test_market_data_calibration_request_defaults_python_execution_mode_to_memory() -> None:
@@ -129,8 +133,77 @@ def test_market_data_calibration_request_roundtrip_preserves_mean_reversion_conf
     request = _valid_market_data_request_model()
 
     assert request.mean_reversion is not None
-    assert request.mean_reversion.anchor_model_kind == MeanReversionAnchorModelKind.CONSTANT
+    assert (
+        request.mean_reversion.anchor_model_kind
+        == MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL
+    )
     assert request.mean_reversion.calibration_grid_interval_hours == pytest.approx(24.0)
+
+    serialized_request = serialize_market_data_calibration_request(request)
+    deserialized_request = deserialize_market_data_calibration_request(serialized_request)
+
+    assert deserialized_request == request
+
+
+def test_market_data_calibration_request_roundtrip_preserves_optimizer_settings_by_stage() -> None:
+    base_request = _valid_market_data_request_model()
+    request = MarketDataCalibrationRequest(
+        schema_version=CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION,
+        run_id="run-001",
+        tick_data_source=base_request.tick_data_source,
+        session_configuration=base_request.session_configuration,
+        column_mapping=base_request.column_mapping,
+        workflow_scope=base_request.workflow_scope,
+        normalization_policy=base_request.normalization_policy,
+        output_preferences=base_request.output_preferences,
+        optimizer_settings_by_stage=(
+            _solver_settings(CalibrationStage.SEASONALITY),
+            _solver_settings(CalibrationStage.HAWKES),
+        ),
+        option_surface_source=base_request.option_surface_source,
+        known_news_inputs=base_request.known_news_inputs,
+        mean_reversion=base_request.mean_reversion,
+    )
+
+    serialized_request = serialize_market_data_calibration_request(request)
+    deserialized_request = deserialize_market_data_calibration_request(serialized_request)
+
+    assert deserialized_request == request
+
+
+def test_market_data_calibration_request_roundtrip_preserves_preprocessing_settings() -> None:
+    base_request = _valid_market_data_request_model()
+    request = MarketDataCalibrationRequest(
+        schema_version=base_request.schema_version,
+        run_id=base_request.run_id,
+        tick_data_source=base_request.tick_data_source,
+        session_configuration=base_request.session_configuration,
+        column_mapping=base_request.column_mapping,
+        workflow_scope=base_request.workflow_scope,
+        normalization_policy=base_request.normalization_policy,
+        output_preferences=base_request.output_preferences,
+        preprocessing_settings=CalibrationMarketDataPreprocessingSettings(
+            seasonality=CalibrationMarketDataSeasonalityPreprocessingSettings(
+                session_filter=SessionFilter.ALL,
+                sparse_hour_event_threshold=2,
+                known_news_overlay_log_adjustment=-0.25,
+                intraday_minutes_per_bin=5,
+                intraday_smoothing_kernel=IntradaySmoothingKernel.UNIFORM,
+                intraday_smoothing_bandwidth_bins=2.5,
+                intraday_minimum_bin_events=3,
+                day_of_week_minimum_bucket_events=4,
+                day_of_year_minimum_bucket_events=5,
+            ),
+            return_components=CalibrationMarketDataReturnComponentsPreprocessingSettings(
+                intraday_jump_threshold_multiplier=6.0,
+                close_open_gap_tolerance_multiplier=2.0,
+            ),
+        ),
+        optimizer_settings_by_stage=base_request.optimizer_settings_by_stage,
+        option_surface_source=base_request.option_surface_source,
+        known_news_inputs=base_request.known_news_inputs,
+        mean_reversion=base_request.mean_reversion,
+    )
 
     serialized_request = serialize_market_data_calibration_request(request)
     deserialized_request = deserialize_market_data_calibration_request(serialized_request)
@@ -249,18 +322,17 @@ def test_mean_reversion_fitted_parameters_reject_negative_kappa() -> None:
     with pytest.raises(ValueError, match="kappa: must be non-negative"):
         MeanReversionFittedParameters(
             kappa=-0.01,
-            anchor_model=MeanReversionAnchorModel.disabled(),
+            anchor_model=MeanReversionAnchorModel.endogenous_core_expectation_one_interval(),
         )
 
 
-def test_endogenous_mean_reversion_anchor_model_rejects_exogenous_anchor_value() -> None:
-    with pytest.raises(
-        ValueError,
-        match="anchor_value: must be omitted when anchor_model_kind=endogenous_core_expectation_one_interval",
-    ):
-        MeanReversionAnchorModel(
-            anchor_model_kind=MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL,
-            anchor_value=float("nan"),
+def test_endogenous_mean_reversion_anchor_model_from_mapping_rejects_unknown_anchor_value() -> None:
+    with pytest.raises(ValueError, match="unsupported field 'anchor_value'"):
+        MeanReversionAnchorModel.from_mapping(
+            {
+                "anchor_model_kind": MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL.value,
+                "anchor_value": 0.0,
+            }
         )
 
 
@@ -554,7 +626,7 @@ def _valid_market_data_request_model() -> MarketDataCalibrationRequest:
             calendar_timezone="UTC",
         ),
         mean_reversion=CalibrationMeanReversionConfiguration(
-            anchor_model_kind=MeanReversionAnchorModelKind.CONSTANT,
+            anchor_model_kind=MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL,
             calibration_grid_interval_hours=24.0,
         ),
     )

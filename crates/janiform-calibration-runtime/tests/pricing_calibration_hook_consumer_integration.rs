@@ -15,7 +15,15 @@ use janiform_foundations::complex_math::ComplexScalar;
 use janiform_model_kernels::hawkes::{
     HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
 };
-use janiform_model_kernels::news::GammaSeverityMarkConfiguration;
+use janiform_model_kernels::mean_reversion::{
+    MeanReversionBoundaryState, MeanReversionFittedParameters,
+};
+use janiform_model_kernels::news::{
+    CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
+    GammaSeverityMarkConfiguration, KnownNewsArrivalConfiguration, NewsArrivalConfiguration,
+    NewsComponentMarkScaleConfiguration, NewsProcessConfiguration, SharedNewsMarkLawConfiguration,
+    SurpriseNewsArrivalConfiguration,
+};
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 use support::shared::black_scholes_log_return_characteristic_function;
 
@@ -23,11 +31,14 @@ use support::shared::black_scholes_log_return_characteristic_function;
 fn pricing_run_output_hooks_are_directly_consumable_by_calibration_adapter() {
     let market_inputs = VanillaOptionPricingMarketInputs::try_new(101.0, 100.0, 0.5, 0.02, 0.01)
         .expect("market inputs should construct");
+
     let forward_price = market_inputs.spot
         * ((market_inputs.risk_free_rate - market_inputs.dividend_yield)
             * market_inputs.maturity_interval)
             .exp();
+
     let discount_factor = (-market_inputs.risk_free_rate * market_inputs.maturity_interval).exp();
+
     let response = VanillaOptionPricingResponse::try_new(
         12.5,
         VanillaOptionPricingDiagnostics::try_new(
@@ -58,8 +69,32 @@ fn pricing_run_output_hooks_are_directly_consumable_by_calibration_adapter() {
             },
         )
         .expect("kernel parameters should construct"),
-        GammaSeverityMarkConfiguration::try_new(1.8, 0.7)
-            .expect("gamma mark configuration should construct"),
+        NewsProcessConfiguration::try_new(
+            NewsArrivalConfiguration {
+                known: KnownNewsArrivalConfiguration {
+                    scheduled_event_timestamps_utc_nanos: vec![],
+                },
+                surprise: SurpriseNewsArrivalConfiguration {
+                    baseline_intensity: 0.75,
+                },
+            },
+            SharedNewsMarkLawConfiguration {
+                gamma_severity_marks: GammaSeverityMarkConfiguration::new(1.8, 0.7),
+                double_exponential_base_shock: DoubleExponentialBaseShockConfiguration::new(
+                    0.35, 2.1, 3.0,
+                ),
+                coupled_gap_marks: CoupledGapMarkConfiguration::new(0.6),
+            },
+            NewsComponentMarkScaleConfiguration {
+                activity_coupling_scale: 1.0,
+                return_jump_scale: 1.0,
+            },
+            NewsComponentMarkScaleConfiguration {
+                activity_coupling_scale: 1.0,
+                return_jump_scale: 1.0,
+            },
+        )
+        .expect("news process configuration should construct"),
         NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
             .expect("NIG shared-plus-shift configuration should construct"),
     )
@@ -70,17 +105,21 @@ fn pricing_run_output_hooks_are_directly_consumable_by_calibration_adapter() {
         VanillaOptionPayoffConfiguration {
             payoff_type: VanillaOptionPayoffType::Call,
         },
-        AnchoredVanillaOptionPricingBoundaryInput::disabled(
-            1.0,
+        AnchoredVanillaOptionPricingBoundaryInput::try_new(
+            0,
             HawkesExcitationState {
                 y_plus_plus: 0.2,
                 y_plus_minus: 0.1,
                 y_minus_plus: 0.3,
                 y_minus_minus: 0.4,
             },
-            0.0,
+            MeanReversionFittedParameters::endogenous_core_expectation_one_interval(0.0)
+                .expect("zero-kappa endogenous fitted parameters should construct"),
+            1.0,
+            MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0)
+                .expect("zero observed boundary state should construct"),
         )
-        .expect("disabled anchored boundary input should construct"),
+        .expect("endogenous anchored boundary input should construct"),
         model_parameters,
     )
     .expect("pricing request should construct");

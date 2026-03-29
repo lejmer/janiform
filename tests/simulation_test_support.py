@@ -1,11 +1,12 @@
 from janiform.simulation import (
+    MeanReversionAnchorModel,
     MeanReversionBoundaryState,
     MeanReversionFittedParameters,
     MeanReversionRuntimeIntervalAnchors,
 )
 
 
-def build_disabled_mean_reversion_runtime_contracts(
+def build_endogenous_mean_reversion_runtime_contracts(
     *,
     interval_count: int,
     start_anchor_value: float = 0.0,
@@ -17,7 +18,10 @@ def build_disabled_mean_reversion_runtime_contracts(
     MeanReversionBoundaryState,
 ]:
     return (
-        MeanReversionFittedParameters.disabled(),
+        MeanReversionFittedParameters(
+            kappa=0.0,
+            anchor_model=MeanReversionAnchorModel.endogenous_core_expectation_one_interval(),
+        ),
         MeanReversionRuntimeIntervalAnchors(
             interval_alignment_policy="explicit_runtime_interval_grid_alignment.v1",
             start_anchor_value=start_anchor_value,

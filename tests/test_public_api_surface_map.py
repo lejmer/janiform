@@ -174,7 +174,7 @@ def test_simulation_public_symbols_live_in_simulation_module() -> None:
         "SeededTickSimulationResponse",
         "SeededTickSimulationValidationError",
         "SeededTickSimulationValidationFailure",
-        "build_disabled_seeded_mean_reversion_runtime_inputs",
+        "build_endogenous_seeded_mean_reversion_runtime_inputs",
         "run_coarse_simulation",
         "run_seeded_tick_event_simulation",
     }
@@ -529,6 +529,9 @@ def test_calibration_market_data_public_submodule_is_supported_domain_import() -
         "CalibrationMarketDataColumnMapping",
         "CalibrationMarketDataNormalizationPolicy",
         "CalibrationMarketDataOutputPreferences",
+        "CalibrationMarketDataPreprocessingSettings",
+        "CalibrationMarketDataReturnComponentsPreprocessingSettings",
+        "CalibrationMarketDataSeasonalityPreprocessingSettings",
         "CalibrationMarketDataWorkflowScope",
         "CalibrationOptionQuoteInputPolicy",
         "CalibrationOptionSurfaceColumnMapping",
@@ -561,6 +564,9 @@ def test_calibration_market_data_public_ownership_submodules_are_supported_domai
     assert {
         "CalibrationInputFileReference",
         "CalibrationMarketDataWorkflowScope",
+        "CalibrationMarketDataPreprocessingSettings",
+        "CalibrationMarketDataReturnComponentsPreprocessingSettings",
+        "CalibrationMarketDataSeasonalityPreprocessingSettings",
         "CalibrationSessionConfigurationInput",
     } <= set(calibration_market_data_contracts_module.__all__)
     assert set(calibration_market_data_request_module.__all__) == {

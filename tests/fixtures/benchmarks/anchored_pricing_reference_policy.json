@@ -17,9 +17,9 @@
     "anchored_engine_numeric_quality_required": true
   },
   "scenario_ids": [
-    "disabled_nested_case",
-    "constant_anchor_zero_deviation",
-    "deterministic_flat_anchor_zero_deviation",
-    "constant_anchor_positive_deviation_admissibility_failure"
+    "endogenous_zero_deviation_zero_kappa",
+    "endogenous_aligned_anchor_zero_deviation",
+    "endogenous_flat_anchor_zero_deviation",
+    "endogenous_positive_deviation_admissibility_failure"
   ]
 }

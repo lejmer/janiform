@@ -42,7 +42,9 @@ from janiform.simulation.coarse import (
     SharedNewsMarkLawConfiguration,
     SurpriseNewsArrivalConfiguration,
 )
-from janiform.simulation.seeded.contracts import build_disabled_seeded_mean_reversion_runtime_inputs
+from janiform.simulation.seeded.contracts import (
+    build_endogenous_seeded_mean_reversion_runtime_inputs,
+)
 from tests.hourly_factor_contract_test_support import build_hourly_factor_contract
 
 
@@ -71,11 +73,12 @@ def build_simulation_request(calendar_registry_json: str) -> SeededTickSimulatio
         seasonality_source=HourlySeasonalityProviderExplicitSource(hourly_factors=(1.0, 0.9)),
         news_intensity_source=HourlyNewsIntensityProviderExplicitSource(hourly_factors=(0.2, 0.1)),
     )
+
     (
         mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state,
-    ) = build_disabled_seeded_mean_reversion_runtime_inputs(
+    ) = build_endogenous_seeded_mean_reversion_runtime_inputs(
         hourly_factor_contract=hourly_factor_contract
     )
 

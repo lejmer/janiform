@@ -328,48 +328,6 @@ def _clip_price_series_to_range(
     )
 
 
-def _aligned_deterministic_anchor_comparison_range(
-    *,
-    range_start_utc: datetime,
-    range_end_utc: datetime,
-    interval: timedelta,
-) -> Optional[tuple[datetime, datetime]]:
-    normalized_start_utc = range_start_utc.astimezone(UTC)
-    normalized_end_utc = range_end_utc.astimezone(UTC)
-    interval_seconds = interval.total_seconds()
-
-    aligned_start_utc = datetime.fromtimestamp(
-        math.ceil(normalized_start_utc.timestamp() / interval_seconds) * interval_seconds,
-        tz=UTC,
-    )
-    aligned_end_utc = datetime.fromtimestamp(
-        math.floor(normalized_end_utc.timestamp() / interval_seconds) * interval_seconds,
-        tz=UTC,
-    )
-    if aligned_end_utc < aligned_start_utc:
-        return None
-
-    return aligned_start_utc, aligned_end_utc
-
-
-def _deterministic_anchor_simulation_request_window(
-    *,
-    range_start_utc: datetime,
-    range_end_utc: datetime,
-    interval: timedelta,
-) -> tuple[datetime, int]:
-    normalized_start_utc = range_start_utc.astimezone(UTC)
-    normalized_end_utc = range_end_utc.astimezone(UTC)
-    if normalized_end_utc < normalized_start_utc:
-        return normalized_start_utc, 1
-
-    horizon_interval_count = max(
-        1,
-        int((normalized_end_utc - normalized_start_utc) / interval),
-    )
-    return normalized_start_utc, horizon_interval_count
-
-
 def _simulation_request_window_for_observed_range(
     *,
     observed_range_start_utc: datetime,

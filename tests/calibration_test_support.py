@@ -26,24 +26,8 @@ _PREPARED_EXECUTION_PAYLOAD_PATH = (
 )
 
 
-def build_disabled_mean_reversion_fitted_parameters_payload() -> dict[str, Any]:
-    return {
-        "kappa": 0.0,
-        "anchor_model": {
-            "anchor_model_kind": "disabled",
-        },
-    }
-
-
-def build_constant_mean_reversion_fitted_parameters_payload(
-    *,
-    kappa: float,
-    anchor_value: float,
-) -> dict[str, Any]:
-    return MeanReversionFittedParameters(
-        kappa=kappa,
-        anchor_model=MeanReversionAnchorModel.constant(anchor_value),
-    ).to_payload()
+def build_zero_kappa_endogenous_mean_reversion_fitted_parameters_payload() -> dict[str, Any]:
+    return build_endogenous_mean_reversion_fitted_parameters_payload(kappa=0.0)
 
 
 def update_model_mean_reversion_payload(model: Any, mean_reversion_payload: dict[str, Any]) -> None:

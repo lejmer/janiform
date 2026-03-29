@@ -348,47 +348,6 @@ impl SeededTickSimulationRunConfig {
             .anchor_model_kind
         {
             MeanReversionAnchorModelKind::EndogenousCoreExpectationOneInterval => {}
-            MeanReversionAnchorModelKind::Disabled => {
-                if self.model_inputs.mean_reversion_fitted_parameters.kappa != 0.0 {
-                    return Err(
-                        SeededTickSimulationRunError::DisabledMeanReversionRequiresZeroKappa {
-                            value: self.model_inputs.mean_reversion_fitted_parameters.kappa,
-                        },
-                    );
-                }
-
-                validate_flat_runtime_anchors(
-                    runtime_interval_anchors,
-                    runtime_interval_anchors.start_anchor_value,
-                    MEAN_REVERSION_ALIGNMENT_TOLERANCE,
-                )?;
-            }
-            MeanReversionAnchorModelKind::Constant => {
-                let expected_anchor_value = self
-                    .model_inputs
-                    .mean_reversion_fitted_parameters
-                    .anchor_model
-                    .anchor_value
-                    .ok_or(SeededTickSimulationRunError::MeanReversionConstantAnchorMissingValue)?;
-
-                if (runtime_interval_anchors.start_anchor_value - expected_anchor_value).abs()
-                    > MEAN_REVERSION_ALIGNMENT_TOLERANCE
-                {
-                    return Err(
-                        SeededTickSimulationRunError::MeanReversionRuntimeConstantAnchorMismatch {
-                            interval_index: None,
-                            expected_anchor_value,
-                            observed_anchor_value: runtime_interval_anchors.start_anchor_value,
-                        },
-                    );
-                }
-
-                validate_flat_runtime_anchors(
-                    runtime_interval_anchors,
-                    expected_anchor_value,
-                    MEAN_REVERSION_ALIGNMENT_TOLERANCE,
-                )?;
-            }
         }
 
         if let Some((
@@ -437,29 +396,4 @@ impl SeededTickSimulationRunConfig {
 
         Ok(())
     }
-}
-
-fn validate_flat_runtime_anchors(
-    runtime_interval_anchors: &MeanReversionRuntimeIntervalAnchors,
-    expected_anchor_value: f64,
-    tolerance: f64,
-) -> Result<(), SeededTickSimulationRunError> {
-    for (interval_index, observed_anchor_value) in runtime_interval_anchors
-        .end_anchor_values
-        .iter()
-        .copied()
-        .enumerate()
-    {
-        if (observed_anchor_value - expected_anchor_value).abs() > tolerance {
-            return Err(
-                SeededTickSimulationRunError::MeanReversionRuntimeConstantAnchorMismatch {
-                    interval_index: Some(interval_index),
-                    expected_anchor_value,
-                    observed_anchor_value,
-                },
-            );
-        }
-    }
-
-    Ok(())
 }

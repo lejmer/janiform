@@ -5,6 +5,7 @@ use janiform_foundations::numeric::{
     arithmetic_mean_or_zero as arithmetic_mean, sample_adjusted_excess_kurtosis,
     sample_adjusted_skewness, sample_standard_deviation,
 };
+use janiform_foundations::time::duration_nanos_to_hours;
 
 use crate::calendar::{ExchangeCalendarRegistry, MarketState};
 use crate::optimizer_adapter::{
@@ -552,7 +553,9 @@ pub fn run_return_components_calibration_stage(
                     .normalization_policy
                     .clone(),
             },
-            mean_reversion_fitted_parameters: MeanReversionFittedParameters::disabled(),
+            mean_reversion_fitted_parameters:
+                MeanReversionFittedParameters::endogenous_core_expectation_one_interval(0.0)
+                    .expect("zero-kappa endogenous mean reversion should validate"),
         },
         candidate_diagnostics,
         candidate_generation_policy: RETURN_COMPONENTS_STAGE_CANDIDATE_GENERATION_POLICY,
@@ -1528,8 +1531,9 @@ fn derive_continuous_fit_business_time_scales(
     for observation in &sorted_signals.observed_open_session_returns {
         let elapsed_hours = previous_timestamp_utc_nanos
             .map(|previous_timestamp_utc_nanos_value| {
-                (observation.return_timestamp_utc_nanos - previous_timestamp_utc_nanos_value) as f64
-                    / 3_600_000_000_000.0
+                duration_nanos_to_hours(
+                    observation.return_timestamp_utc_nanos - previous_timestamp_utc_nanos_value,
+                )
             })
             .filter(|elapsed_hours_value| {
                 elapsed_hours_value.is_finite()
@@ -2328,7 +2332,9 @@ fn collect_return_components_stage_constraint_violations(
             news_process_configuration: candidate_input.news_process_configuration.clone(),
             surprise_deterministic_intensity_profile:
                 default_surprise_deterministic_intensity_profile(),
-            mean_reversion_fitted_parameters: MeanReversionFittedParameters::disabled(),
+            mean_reversion_fitted_parameters:
+                MeanReversionFittedParameters::endogenous_core_expectation_one_interval(0.0)
+                    .expect("zero-kappa endogenous mean reversion should validate"),
         },
     )
 }
@@ -3000,7 +3006,9 @@ mod tests {
             .expect("news process configuration should validate"),
             surprise_deterministic_intensity_profile:
                 default_surprise_deterministic_intensity_profile(),
-            mean_reversion_fitted_parameters: MeanReversionFittedParameters::disabled(),
+            mean_reversion_fitted_parameters:
+                MeanReversionFittedParameters::endogenous_core_expectation_one_interval(0.0)
+                    .expect("zero-kappa endogenous mean reversion should validate"),
         };
 
         let fitted_signal_partition_layer = signal_partition_fit::fit_signal_partition_layer(

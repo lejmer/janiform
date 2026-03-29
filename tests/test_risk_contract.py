@@ -22,7 +22,7 @@ from janiform.risk import (
 )
 from janiform.simulation import HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters
 from tests.hourly_factor_contract_test_support import build_hourly_factor_contract
-from tests.simulation_test_support import build_disabled_mean_reversion_runtime_contracts
+from tests.simulation_test_support import build_endogenous_mean_reversion_runtime_contracts
 
 
 def test_risk_run_request_model_construction_and_serialization_roundtrip() -> None:
@@ -60,7 +60,7 @@ def test_risk_run_request_accepts_sub_hour_interval_when_interval_factors_are_co
         _mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors,
         _initial_mean_reversion_boundary_state,
-    ) = build_disabled_mean_reversion_runtime_contracts(interval_count=2, interval_delta_hours=0.5)
+    ) = build_endogenous_mean_reversion_runtime_contracts(interval_count=2, interval_delta_hours=0.5)
     request_payload["model_inputs"]["mean_reversion_runtime_interval_anchors"] = (
         mean_reversion_runtime_interval_anchors.to_payload()
     )
@@ -250,7 +250,7 @@ def _valid_run_request_model() -> SufficientStatisticsRiskRunRequest:
         mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state,
-    ) = build_disabled_mean_reversion_runtime_contracts(interval_count=2)
+    ) = build_endogenous_mean_reversion_runtime_contracts(interval_count=2)
 
     return SufficientStatisticsRiskRunRequest(
         seed=17,
