@@ -55,7 +55,7 @@ from .candidate_store import (
 )
 from .execution import WorkbenchExecutionResult, WorkbenchExecutionWorker
 from .exporting import WorkbenchPlotExportWorker
-from .fit_context import load_fit_context
+from .fit_context import build_observed_simulation_comparison, load_fit_context
 from .lab import (
     WorkbenchReevaluationRequest,
     WorkbenchReevaluationResult,
@@ -66,11 +66,26 @@ from .loading import WorkbenchLoadWorker, workbench_startup_tasks
 from .parameters import flatten_parameter_tree, parse_parameter_value
 from .plot_manifest import WorkbenchPlotManifestEntry, workbench_plot_manifest
 from .plots import (
+    autocorrelation_summary_rows,
+    candidate_compare_summary_rows,
+    consistency_summary_rows,
     create_observed_simulated_figure,
+    create_candidate_compare_figure,
+    create_consistency_figure,
     create_parameter_objective_figure_with_columns,
     create_parameter_search_figure,
+    create_selected_candidate_diagnostics_figure,
+    create_td_sd_autocorrelation_figure,
     create_td_sd_horizon_profile_figure,
+    create_td_sd_mean_reversion_future_change_figure,
+    create_td_sd_mean_reversion_variance_growth_figure,
     create_td_sd_return_distribution_figure,
+    mean_reversion_future_change_summary_rows,
+    mean_reversion_variance_growth_summary_rows,
+    parameter_search_summary_rows,
+    return_distribution_summary_rows,
+    selected_candidate_summary_rows,
+    summary_statistics_rows,
 )
 from .reducers import apply_workbench_event
 from .setup import WorkbenchSetupWidget
@@ -99,6 +114,7 @@ class WorkbenchWindow(QMainWindow):
         self._plot_image_bytes_by_task_id: dict[str, bytes] = {}
         self._plot_figure_by_task_id: dict[str, Figure] = {}
         self._plot_canvas_ready_by_task_id: dict[str, bool] = {}
+        self._observed_simulation_comparison_cache: dict[str, Any] = {}
         self._inspector_tab_key_by_index: dict[int, str] = {}
         self._inspector_tab_loaded_by_key: dict[str, bool] = {}
         self._candidate_ids_by_row: list[str] = []
@@ -725,6 +741,15 @@ class WorkbenchWindow(QMainWindow):
         if plot_container is None:
             return
 
+        native_panel = self._build_native_plot_panel(task_id)
+        if native_panel is not None:
+            self._set_widget_contents(
+                plot_container,
+                self._build_plot_tab_contents(task_id, native_panel),
+            )
+            self._plot_canvas_ready_by_task_id[task_id] = True
+            return
+
         if task_id == "plot_parameter_search" and self._artifacts is not None:
             self._set_widget_contents(
                 plot_container,
@@ -769,6 +794,140 @@ class WorkbenchWindow(QMainWindow):
         )
 
         self._plot_canvas_ready_by_task_id[task_id] = True
+
+    def _build_native_plot_panel(self, task_id: str) -> Optional[QWidget]:
+        artifacts = self._artifacts
+        if artifacts is None:
+            return None
+
+        match task_id:
+            case "plot_selected_candidate":
+                return _build_plot_with_table_tabs(
+                    chart_widget=_figure_canvas(
+                        create_selected_candidate_diagnostics_figure(
+                            artifacts,
+                            include_summary=False,
+                        )
+                    ),
+                    table_title="Selection Summary",
+                    table_rows=selected_candidate_summary_rows(artifacts),
+                )
+            case "plot_consistency":
+                return _build_plot_with_table_tabs(
+                    chart_widget=_figure_canvas(
+                        create_consistency_figure(
+                            artifacts,
+                            include_summary=False,
+                        )
+                    ),
+                    table_title="Consistency Summary",
+                    table_rows=consistency_summary_rows(artifacts),
+                )
+            case "plot_parameter_search":
+                return _build_plot_with_table_tabs(
+                    chart_widget=_build_parameter_search_plot_panel(artifacts),
+                    table_title="Parameter Search Summary",
+                    table_rows=parameter_search_summary_rows(artifacts),
+                )
+            case "plot_td_sd_return_distributions":
+                observed_simulation_comparison = self._observed_simulation_comparison_for_current_artifacts()
+                return _build_plot_with_table_tabs(
+                    chart_widget=_figure_canvas(
+                        create_td_sd_return_distribution_figure(
+                            artifacts,
+                            observed_simulation_comparison,
+                            include_summary=False,
+                        )
+                    ),
+                    table_title="Distribution Summary",
+                    table_rows=return_distribution_summary_rows(
+                        artifacts,
+                        observed_simulation_comparison,
+                    ),
+                )
+            case "plot_td_sd_autocorrelation":
+                observed_simulation_comparison = self._observed_simulation_comparison_for_current_artifacts()
+                return _build_plot_with_table_tabs(
+                    chart_widget=_figure_canvas(
+                        create_td_sd_autocorrelation_figure(
+                            artifacts,
+                            observed_simulation_comparison,
+                            include_summary=False,
+                        )
+                    ),
+                    table_title="Autocorrelation Summary",
+                    table_rows=autocorrelation_summary_rows(
+                        artifacts,
+                        observed_simulation_comparison,
+                    ),
+                )
+            case "plot_td_sd_mean_reversion_variance_growth":
+                observed_simulation_comparison = self._observed_simulation_comparison_for_current_artifacts()
+                return _build_plot_with_table_tabs(
+                    chart_widget=_figure_canvas(
+                        create_td_sd_mean_reversion_variance_growth_figure(
+                            artifacts,
+                            observed_simulation_comparison,
+                            include_summary=False,
+                        )
+                    ),
+                    table_title="Diagnostic Summary",
+                    table_rows=mean_reversion_variance_growth_summary_rows(
+                        artifacts,
+                        observed_simulation_comparison,
+                    ),
+                )
+            case "plot_td_sd_mean_reversion_future_change":
+                observed_simulation_comparison = self._observed_simulation_comparison_for_current_artifacts()
+                return _build_plot_with_table_tabs(
+                    chart_widget=_figure_canvas(
+                        create_td_sd_mean_reversion_future_change_figure(
+                            artifacts,
+                            observed_simulation_comparison,
+                            include_summary=False,
+                        )
+                    ),
+                    table_title="Diagnostic Summary",
+                    table_rows=mean_reversion_future_change_summary_rows(
+                        artifacts,
+                        observed_simulation_comparison,
+                    ),
+                )
+            case "plot_td_sd_summary_statistics":
+                observed_simulation_comparison = self._observed_simulation_comparison_for_current_artifacts()
+                return _build_plot_table_panel(
+                    "Summary Statistics",
+                    summary_statistics_rows(
+                        artifacts,
+                        observed_simulation_comparison,
+                    ),
+                )
+            case "plot_candidate_compare":
+                return _build_plot_with_table_tabs(
+                    chart_widget=_figure_canvas(
+                        create_candidate_compare_figure(
+                            artifacts,
+                            include_summary=False,
+                        )
+                    ),
+                    table_title="Candidate Compare Summary",
+                    table_rows=candidate_compare_summary_rows(artifacts),
+                )
+            case _:
+                return None
+
+    def _observed_simulation_comparison_for_current_artifacts(self) -> Any:
+        artifacts = self._artifacts
+        if artifacts is None:
+            return None
+
+        cache_key = str(artifacts.source_path)
+        if cache_key not in self._observed_simulation_comparison_cache:
+            self._observed_simulation_comparison_cache[cache_key] = build_observed_simulation_comparison(
+                artifacts
+            )
+
+        return self._observed_simulation_comparison_cache[cache_key]
 
     def _build_plot_tab_contents(self, task_id: str, body: QWidget) -> QWidget:
         manifest_entry = self._plot_manifest_by_task_id.get(task_id)
@@ -920,6 +1079,7 @@ class WorkbenchWindow(QMainWindow):
 
     def _apply_artifacts(self, artifacts: WorkbenchArtifacts) -> None:
         self._artifacts = artifacts
+        self._observed_simulation_comparison_cache.clear()
         self._candidate_store = None
         self._live_stage_report_payloads = []
         self._set_actions_enabled(True)
@@ -1784,15 +1944,32 @@ def _build_placeholder_panel(title: str, detail: str) -> QWidget:
 
 
 def _build_table_tab(rows: list[dict[str, Any]]) -> QWidget:
+    table_widget = _build_table_widget(rows)
+    tab = QWidget()
+
+    layout = QVBoxLayout(tab)
+    layout.addWidget(table_widget)
+
+    return tab
+
+
+def _build_table_widget(rows: list[dict[str, Any]]) -> QTableWidget:
     table_widget = QTableWidget()
 
     flat_rows = [_flatten_mapping(row) for row in rows]
-
-    headers = sorted({key for row in flat_rows for key in row})
+    headers: list[str] = []
+    for row in flat_rows:
+        for key in row:
+            if key not in headers:
+                headers.append(key)
 
     table_widget.setColumnCount(len(headers))
     table_widget.setHorizontalHeaderLabels(headers)
     table_widget.setRowCount(len(flat_rows))
+    table_widget.setSortingEnabled(False)
+    table_widget.setWordWrap(False)
+    table_widget.horizontalHeader().setStretchLastSection(True)
+    table_widget.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
 
     for row_index, row in enumerate(flat_rows):
         for column_index, header in enumerate(headers):
@@ -1800,13 +1977,45 @@ def _build_table_tab(rows: list[dict[str, Any]]) -> QWidget:
             table_widget.setItem(row_index, column_index, item)
 
     table_widget.resizeColumnsToContents()
+    return table_widget
 
-    tab = QWidget()
 
-    layout = QVBoxLayout(tab)
-    layout.addWidget(table_widget)
+def _build_plot_with_table_tabs(
+    *,
+    chart_widget: QWidget,
+    table_title: str,
+    table_rows: list[dict[str, Any]],
+) -> QWidget:
+    tab_widget = QTabWidget()
 
-    return tab
+    tab_widget.addTab(chart_widget, "Chart")
+    tab_widget.addTab(_build_plot_table_panel(table_title, table_rows), "Summary Table")
+
+    return tab_widget
+
+
+def _build_plot_table_panel(
+    title: str,
+    rows: list[dict[str, Any]],
+) -> QWidget:
+    panel = QWidget()
+    layout = QVBoxLayout(panel)
+
+    title_label = QLabel(title)
+    title_label.setWordWrap(True)
+    layout.addWidget(title_label)
+
+    if rows:
+        layout.addWidget(_build_table_widget(rows))
+    else:
+        layout.addWidget(
+            _build_placeholder_panel(
+                "Unavailable",
+                "No summary rows are available for this plot.",
+            )
+        )
+
+    return panel
 
 
 def _build_mapping_table_tab(mapping: dict[str, Any]) -> QWidget:
@@ -1937,7 +2146,12 @@ def _build_live_candidate_search_figure(
 def _build_parameter_search_plot_panel(artifacts: WorkbenchArtifacts) -> QWidget:
     parameter_names = _parameter_names_from_artifacts(artifacts)
     if len(parameter_names) < 2:
-        return _figure_canvas(create_parameter_search_figure(artifacts))
+        return _figure_canvas(
+            create_parameter_search_figure(
+                artifacts,
+                include_summary=False,
+            )
+        )
 
     left_selector = QComboBox()
     right_selector = QComboBox()
@@ -1959,6 +2173,7 @@ def _build_parameter_search_plot_panel(artifacts: WorkbenchArtifacts) -> QWidget
                 artifacts,
                 left_parameter=left_parameter,
                 right_parameter=right_parameter,
+                include_summary=False,
             )
         )
         _replace_widget_contents(canvas_container, self_contained_canvas)

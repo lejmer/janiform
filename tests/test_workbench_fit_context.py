@@ -539,6 +539,62 @@ def test_parameter_objective_figure_clips_extreme_objective_outliers() -> None:
     assert any("rejected clipped: 1 high" == text.get_text() for text in axis.texts)
 
 
+def test_parameter_objective_figure_separates_valid_from_invalid_candidates() -> None:
+    artifacts = WorkbenchArtifacts(
+        source_path=Path("/tmp/parameter-objective-validity-test"),
+        source_kind="run_directory",
+        metadata={},
+        fit_report_payload=None,
+        model_payload=None,
+        observed_targets={},
+        candidate_frontier={
+            "frontier_entries": [
+                {
+                    "candidate_id": "candidate-001",
+                    "stage": "hawkes",
+                    "valid": True,
+                    "admissible": True,
+                    "scalar_tie_break": 0.4,
+                    "canonical_coordinates": {"theta": 0.0},
+                },
+                {
+                    "candidate_id": "candidate-002",
+                    "stage": "hawkes",
+                    "valid": True,
+                    "admissible": False,
+                    "scalar_tie_break": 0.8,
+                    "canonical_coordinates": {"theta": 0.2},
+                },
+                {
+                    "candidate_id": "candidate-003",
+                    "stage": "hawkes",
+                    "valid": False,
+                    "admissible": False,
+                    "scalar_tie_break": 1.0,
+                    "canonical_coordinates": {"theta": 0.4},
+                },
+            ]
+        },
+        coarse_tick_consistency={},
+        selection_rationale={},
+        simulation_summary={},
+        search_surface_manifest={},
+        runtime_profile={},
+    )
+
+    figure = workbench_plots.create_parameter_objective_figure_with_columns(
+        artifacts,
+        column_count=1,
+    )
+    axis = figure.axes[0]
+    legend_labels = [
+        text.get_text()
+        for text in cast(Any, axis.get_legend()).get_texts()
+    ]
+
+    assert legend_labels == ["admissible", "valid", "rejected"]
+
+
 def test_selected_candidate_diagnostics_omits_joint_distance_only_scatter_pairs() -> None:
     artifacts = WorkbenchArtifacts(
         source_path=Path("/tmp/selected-candidate-diagnostics-test"),
@@ -1031,7 +1087,25 @@ def test_workbench_plot_export_includes_observed_simulated_comparison(
     assert Path(figure_paths["td_sd_mean_reversion_future_change"]).is_file()
 
 
-def test_mean_reversion_variance_growth_figure_overlays_observed_and_simulated_curves() -> None:
+def test_mean_reversion_variance_growth_figure_overlays_observed_and_simulated_curves(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        workbench_plots,
+        "_mean_reversion_interval_series_for_comparison",
+        lambda comparison: (
+            comparison.observed_comparison_series,
+            comparison.simulated_series,
+        ),
+    )
+    monkeypatch.setattr(
+        workbench_plots,
+        "_materialize_endogenous_mean_reversion_anchor_values",
+        lambda model, *, runtime_log_prices, timestamp_microseconds_utc: (
+            np.zeros_like(runtime_log_prices, dtype=np.float64)
+        ),
+    )
+
     artifacts = WorkbenchArtifacts(
         source_path=Path("/tmp/mean-reversion-variance-growth"),
         source_kind="run_directory",
@@ -1108,15 +1182,36 @@ def test_mean_reversion_variance_growth_figure_overlays_observed_and_simulated_c
         comparison,
     )
     variance_axis = figure.axes[0]
-    summary_axis = figure.axes[1]
+    spread_axis = figure.axes[1]
+    summary_axis = figure.axes[2]
 
-    assert len(variance_axis.lines) == 0
+    assert len(variance_axis.lines) == 2
     assert variance_axis.get_title() == "Variance Growth of Deviation from Anchor"
-    assert "Mean-reversion anchor diagnostics are unavailable" in variance_axis.texts[0].get_text()
-    assert summary_axis.get_title() == "Calibration Status"
+    assert len(spread_axis.lines) == 2
+    assert spread_axis.get_title() == "Simulated Minus Observed Variance"
+    assert summary_axis.get_title() == "Diagnostic Summary"
+    assert "horizon count:" in summary_axis.texts[0].get_text()
+    assert "max abs variance spread:" in summary_axis.texts[0].get_text()
 
 
-def test_mean_reversion_series_analysis_is_unavailable_for_endogenous_anchor_models() -> None:
+def test_mean_reversion_series_analysis_materializes_endogenous_anchor_values(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        workbench_plots,
+        "_materialize_endogenous_mean_reversion_anchor_values",
+        lambda model, *, runtime_log_prices, timestamp_microseconds_utc: (
+            np.asarray(
+                [
+                    float(runtime_log_prices[0]),
+                    float(runtime_log_prices[1]) - 0.1,
+                    float(runtime_log_prices[2]) - 0.2,
+                ],
+                dtype=np.float64,
+            )
+        ),
+    )
+
     analysis = workbench_plots._build_mean_reversion_series_analysis(
         SimpleNamespace(
             metadata={"simulation_output_preferences": {"reference_price": 100.0}},
@@ -1138,7 +1233,102 @@ def test_mean_reversion_series_analysis_is_unavailable_for_endogenous_anchor_mod
         ),
     )
 
-    assert analysis is None
+    assert analysis is not None
+    assert analysis.anchor_values == pytest.approx(np.log([1.0, 1.1, 1.21]) - [0.0, 0.1, 0.2])
+    assert analysis.deviations_from_anchor == pytest.approx([0.0, 0.1, 0.2])
+
+
+def test_summary_statistics_rows_use_observed_tick_returns_instead_of_prices(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    empty_bucket_series = workbench_plots.WorkbenchBucketSeriesAnalysis(
+        bucket_timestamps_utc=(),
+        close_prices=np.asarray([], dtype=np.float64),
+        returns=np.asarray([], dtype=np.float64),
+        event_counts=np.asarray([], dtype=np.int64),
+    )
+    analysis = workbench_plots.WorkbenchObservedSimulationAnalysis(
+        observed=workbench_plots.WorkbenchSeriesAnalysis(
+            timestamp_microseconds_utc=np.asarray([1, 2, 3], dtype=np.int64),
+            prices=np.asarray([100.0, 200.0, 400.0], dtype=np.float64),
+            normalized_prices=np.asarray([1.0, 2.0, 4.0], dtype=np.float64),
+            returns=np.asarray([0.01, -0.02], dtype=np.float64),
+            hourly_event_counts={},
+            hourly_activity_profile=np.asarray([], dtype=np.float64),
+            hourly_absolute_return_profile=np.asarray([], dtype=np.float64),
+            bucket_series_by_horizon={
+                15: workbench_plots.WorkbenchBucketSeriesAnalysis(
+                    bucket_timestamps_utc=(),
+                    close_prices=np.asarray([], dtype=np.float64),
+                    returns=np.asarray([0.03], dtype=np.float64),
+                    event_counts=np.asarray([], dtype=np.int64),
+                )
+            },
+            rolling_activity_points=np.empty((0, 2), dtype=np.float64),
+        ),
+        simulated=workbench_plots.WorkbenchSeriesAnalysis(
+            timestamp_microseconds_utc=np.asarray([1, 2, 3], dtype=np.int64),
+            prices=np.asarray([100.0, 101.0, 102.0], dtype=np.float64),
+            normalized_prices=np.asarray([1.0, 1.01, 1.02], dtype=np.float64),
+            returns=np.asarray([0.04, 0.05], dtype=np.float64),
+            hourly_event_counts={},
+            hourly_activity_profile=np.asarray([], dtype=np.float64),
+            hourly_absolute_return_profile=np.asarray([], dtype=np.float64),
+            bucket_series_by_horizon={15: empty_bucket_series},
+            rolling_activity_points=np.empty((0, 2), dtype=np.float64),
+        ),
+        simulated_seeded_15m=workbench_plots.WorkbenchSeriesAnalysis(
+            timestamp_microseconds_utc=np.asarray([1, 2], dtype=np.int64),
+            prices=np.asarray([1.0, 1.1], dtype=np.float64),
+            normalized_prices=np.asarray([1.0, 1.1], dtype=np.float64),
+            returns=np.asarray([0.06], dtype=np.float64),
+            hourly_event_counts={},
+            hourly_activity_profile=np.asarray([], dtype=np.float64),
+            hourly_absolute_return_profile=np.asarray([], dtype=np.float64),
+            bucket_series_by_horizon={15: empty_bucket_series},
+            rolling_activity_points=np.empty((0, 2), dtype=np.float64),
+        ),
+        simulated_coarse_15m=workbench_plots.WorkbenchSeriesAnalysis(
+            timestamp_microseconds_utc=np.asarray([1, 2], dtype=np.int64),
+            prices=np.asarray([1.0, 1.1], dtype=np.float64),
+            normalized_prices=np.asarray([1.0, 1.1], dtype=np.float64),
+            returns=np.asarray([0.07], dtype=np.float64),
+            hourly_event_counts={},
+            hourly_activity_profile=np.asarray([], dtype=np.float64),
+            hourly_absolute_return_profile=np.asarray([], dtype=np.float64),
+            bucket_series_by_horizon={15: empty_bucket_series},
+            rolling_activity_points=np.empty((0, 2), dtype=np.float64),
+        ),
+        available_horizon_minutes=(15,),
+    )
+
+    monkeypatch.setattr(
+        workbench_plots,
+        "_observed_simulation_analysis_for_plot",
+        lambda artifacts, comparison: analysis,
+    )
+
+    rows = workbench_plots.summary_statistics_rows(
+        WorkbenchArtifacts(
+            source_path=Path("/tmp/summary-statistics-rows"),
+            source_kind="run_directory",
+            metadata={},
+            fit_report_payload=None,
+            model_payload=None,
+            observed_targets={},
+            candidate_frontier={},
+            coarse_tick_consistency={},
+            selection_rationale={},
+            simulation_summary={},
+            search_surface_manifest={},
+            runtime_profile={},
+        ),
+        cast(Any, object()),
+    )
+
+    assert rows[0]["series"] == "Observed tick returns"
+    assert rows[0]["count"] == 2
+    assert rows[0]["mean"] == pytest.approx(-0.005)
 
 
 def test_observed_simulated_price_figure_uses_full_observed_path_when_comparison_is_clipped() -> None:
@@ -1209,7 +1399,25 @@ def test_observed_simulated_price_figure_uses_full_observed_path_when_comparison
     assert np.allclose(simulated_rebased_line.get_ydata(), [100.0, 100.0 * 151.0 / 150.0])
 
 
-def test_mean_reversion_future_change_figure_is_unavailable_for_endogenous_anchor_models() -> None:
+def test_mean_reversion_future_change_figure_renders_endogenous_mean_reversion_profiles(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        workbench_plots,
+        "_mean_reversion_interval_series_for_comparison",
+        lambda comparison: (
+            comparison.observed_comparison_series,
+            comparison.simulated_series,
+        ),
+    )
+    monkeypatch.setattr(
+        workbench_plots,
+        "_materialize_endogenous_mean_reversion_anchor_values",
+        lambda model, *, runtime_log_prices, timestamp_microseconds_utc: (
+            np.zeros_like(runtime_log_prices, dtype=np.float64)
+        ),
+    )
+
     artifacts = WorkbenchArtifacts(
         source_path=Path("/tmp/mean-reversion-future-change"),
         source_kind="run_directory",
@@ -1312,10 +1520,10 @@ def test_mean_reversion_future_change_figure_is_unavailable_for_endogenous_ancho
     conditional_axis = figure.axes[0]
     summary_axis = figure.axes[1]
 
-    assert len(conditional_axis.lines) == 0
+    assert len(conditional_axis.lines) == 4
     assert conditional_axis.get_title() == "Conditional Future Change vs Deviation"
-    assert "Mean-reversion anchor diagnostics are unavailable" in conditional_axis.texts[0].get_text()
-    assert summary_axis.get_title() == "Calibration Status"
+    assert summary_axis.get_title() == "Diagnostic Summary"
+    assert "selected horizon:" in summary_axis.texts[0].get_text()
 
 
 def test_mean_reversion_variance_growth_figure_reports_endogenous_diagnostics_summary() -> None:
@@ -1397,10 +1605,10 @@ def test_mean_reversion_variance_growth_figure_reports_endogenous_diagnostics_su
     )
 
     assert figure.axes[0].texts[0].get_text().startswith(
-        "Mean-reversion anchor diagnostics are unavailable because the loaded model"
+        "Mean-reversion anchor diagnostics are unavailable because the loaded model does not expose enough runtime inputs"
     )
-    assert "stage decision: endogenous_anchor_runtime_projection_required.v1" in figure.axes[1].texts[0].get_text()
-    assert "source observations: 4" in figure.axes[1].texts[0].get_text()
+    assert "stage decision: endogenous_anchor_runtime_projection_required.v1" in figure.axes[2].texts[0].get_text()
+    assert "source observations: 4" in figure.axes[2].texts[0].get_text()
 
 
 def test_mean_reversion_future_change_figure_reports_endogenous_diagnostics_summary() -> None:
@@ -1470,7 +1678,7 @@ def test_mean_reversion_future_change_figure_reports_endogenous_diagnostics_summ
     )
 
     assert figure.axes[0].texts[0].get_text().startswith(
-        "Mean-reversion anchor diagnostics are unavailable because the loaded model"
+        "Mean-reversion anchor diagnostics are unavailable because the loaded model does not expose enough runtime inputs"
     )
     assert "retained observations: 0" in figure.axes[1].texts[0].get_text()
     assert "coverage ratio: 0" in figure.axes[1].texts[0].get_text()

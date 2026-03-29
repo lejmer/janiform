@@ -685,8 +685,10 @@ fn _mean_reversion_grid_observations_from_open_session_prices(
 
     for observation in open_session_price_observations {
         while observation.observation_timestamp_utc_nanos >= interval_end_utc_nanos {
-            if let Some(observation) = pending_observation.take() {
-                observations.push(observation);
+            if let Some(pending_observation) = pending_observation.as_ref() {
+                let mut snapped_observation = pending_observation.clone();
+                snapped_observation.observation_timestamp_utc_nanos = interval_end_utc_nanos;
+                observations.push(snapped_observation);
             }
 
             interval_end_utc_nanos = interval_end_utc_nanos.saturating_add(interval_nanos);
@@ -769,6 +771,88 @@ fn _median_positive_interval_hours(positive_interval_hours: &mut [f64]) -> Optio
         Some(positive_interval_hours[midpoint])
     } else {
         Some((positive_interval_hours[midpoint - 1] + positive_interval_hours[midpoint]) / 2.0)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        _mean_reversion_grid_observations_from_open_session_prices,
+        CalibrationMeanReversionStageObservation,
+    };
+
+    #[test]
+    fn mean_reversion_grid_observations_snap_to_interval_boundaries() {
+        let grid_observations = _mean_reversion_grid_observations_from_open_session_prices(
+            &[
+                CalibrationMeanReversionStageObservation {
+                    observation_timestamp_utc_nanos: 1_000,
+                    observed_log_price: 0.0,
+                },
+                CalibrationMeanReversionStageObservation {
+                    observation_timestamp_utc_nanos: 86_400_000_020_000,
+                    observed_log_price: 0.1,
+                },
+                CalibrationMeanReversionStageObservation {
+                    observation_timestamp_utc_nanos: 172_800_000_030_000,
+                    observed_log_price: 0.2,
+                },
+            ],
+            24.0,
+        );
+
+        assert_eq!(grid_observations.source_observation_count, 2);
+        assert_eq!(
+            grid_observations
+                .observations
+                .iter()
+                .map(|observation| observation.observation_timestamp_utc_nanos)
+                .collect::<Vec<_>>(),
+            vec![86_400_000_001_000, 172_800_000_001_000]
+        );
+        assert_eq!(
+            grid_observations
+                .observations
+                .iter()
+                .map(|observation| observation.observed_log_price)
+                .collect::<Vec<_>>(),
+            vec![0.0, 0.1]
+        );
+    }
+
+    #[test]
+    fn mean_reversion_grid_observations_carry_forward_last_observed_price_across_empty_intervals() {
+        let grid_observations = _mean_reversion_grid_observations_from_open_session_prices(
+            &[
+                CalibrationMeanReversionStageObservation {
+                    observation_timestamp_utc_nanos: 1_000,
+                    observed_log_price: 0.0,
+                },
+                CalibrationMeanReversionStageObservation {
+                    observation_timestamp_utc_nanos: 259_200_000_020_000,
+                    observed_log_price: 0.3,
+                },
+            ],
+            24.0,
+        );
+
+        assert_eq!(grid_observations.source_observation_count, 3);
+        assert_eq!(
+            grid_observations
+                .observations
+                .iter()
+                .map(|observation| observation.observation_timestamp_utc_nanos)
+                .collect::<Vec<_>>(),
+            vec![86_400_000_001_000, 172_800_000_001_000, 259_200_000_001_000]
+        );
+        assert_eq!(
+            grid_observations
+                .observations
+                .iter()
+                .map(|observation| observation.observed_log_price)
+                .collect::<Vec<_>>(),
+            vec![0.0, 0.0, 0.0]
+        );
     }
 }
 
