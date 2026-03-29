@@ -20,8 +20,8 @@ use janiform::calibration::{
     load_and_preprocess_market_data_translation_request as load_and_preprocess_market_data_translation_request_native,
     normalize_market_data_source as normalize_market_data_source_native,
     prepare_market_data_loading_from_phases as prepare_market_data_loading_from_phases_native,
-    probe_market_data_source as probe_market_data_source_native,
     preprocess_market_data_translation_request as preprocess_market_data_translation_request_native,
+    probe_market_data_source as probe_market_data_source_native,
     resolve_market_data_session_configuration as resolve_market_data_session_configuration_native,
     run_staged_calibration_from_execution_input,
     run_staged_calibration_from_execution_input_with_observer,
@@ -1276,7 +1276,8 @@ fn prepare_market_data_calibration_plan_from_phases(
 
     let selected_stages = _selected_stages_for_scope(request.workflow_scope);
     let (loading_request, trade_events_data_reference, option_surface_data_reference) =
-        _build_loading_request(&request, &selected_stages).map_err(CalibrationExecutionError::new_err)?;
+        _build_loading_request(&request, &selected_stages)
+            .map_err(CalibrationExecutionError::new_err)?;
 
     let loading_output = py
         .allow_threads(|| {

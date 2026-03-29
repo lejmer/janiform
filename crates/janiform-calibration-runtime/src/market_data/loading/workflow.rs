@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, HashSet};
 
-use crate::execution_bridge::CalibrationHawkesDirectionalLabelDiagnostics;
 use crate::calendar::ExchangeCalendarRegistryLoader;
+use crate::execution_bridge::CalibrationHawkesDirectionalLabelDiagnostics;
 use crate::market_data::preprocessing::{
     MarketDataTranslationPreprocessingRequest, MarketDataTranslationTickRecord,
     preprocess_market_data_translation_request,
@@ -9,8 +9,8 @@ use crate::market_data::preprocessing::{
 
 use super::contracts::{
     MarketDataDuplicateRecordPolicy, MarketDataInputFileReference, MarketDataLoadingError,
-    MarketDataLoadingOutput, MarketDataLoadingRequest, MarketDataNormalizedTickOutput,
-    MarketDataNormalizationPolicy, MarketDataSessionConfiguration,
+    MarketDataLoadingOutput, MarketDataLoadingRequest, MarketDataNormalizationPolicy,
+    MarketDataNormalizedTickOutput, MarketDataSessionConfiguration,
     MarketDataSessionResolutionPayload, MarketDataSourceProbePayload, MarketDataSourceSummary,
     MarketDataTickDataColumnMapping, MarketDataTickPriceInputPolicy,
 };
@@ -86,19 +86,17 @@ pub fn resolve_market_data_session_configuration(
     normalized_tick_output: Option<&MarketDataNormalizedTickOutput>,
 ) -> Result<MarketDataSessionResolutionPayload, MarketDataLoadingError> {
     if let Some(resolved_without_tick_records) =
-        try_resolve_market_data_session_configuration_without_tick_records(
-            &session_configuration,
-        )?
+        try_resolve_market_data_session_configuration_without_tick_records(&session_configuration)?
     {
         return Ok(resolved_without_tick_records.session_resolution);
     }
 
-    let normalized_tick_output = normalized_tick_output.ok_or_else(|| {
-        MarketDataLoadingError::InvalidValue {
+    let normalized_tick_output =
+        normalized_tick_output.ok_or_else(|| MarketDataLoadingError::InvalidValue {
             field_path: "session_configuration".to_string(),
-            message: "probe-fallback session resolution requires normalized tick records".to_string(),
-        }
-    })?;
+            message: "probe-fallback session resolution requires normalized tick records"
+                .to_string(),
+        })?;
 
     let resolved_session = resolve_market_data_session_configuration_from_tick_records(
         &session_configuration,
@@ -151,17 +149,15 @@ pub fn prepare_market_data_loading_from_phases(
         directional_label_diagnostics: normalized_tick_output
             .directional_label_diagnostics
             .clone()
-            .map(
-                |diagnostics| CalibrationHawkesDirectionalLabelDiagnostics {
-                    policy_id: diagnostics.policy_id,
-                    first_inferred_trade_sign: diagnostics.first_inferred_trade_sign,
-                    provided_label_count: diagnostics.provided_label_count,
-                    inferred_label_count: diagnostics.inferred_label_count,
-                    flat_move_carry_count: diagnostics.flat_move_carry_count,
-                    price_up_inference_count: diagnostics.price_up_inference_count,
-                    price_down_inference_count: diagnostics.price_down_inference_count,
-                },
-            ),
+            .map(|diagnostics| CalibrationHawkesDirectionalLabelDiagnostics {
+                policy_id: diagnostics.policy_id,
+                first_inferred_trade_sign: diagnostics.first_inferred_trade_sign,
+                provided_label_count: diagnostics.provided_label_count,
+                inferred_label_count: diagnostics.inferred_label_count,
+                flat_move_carry_count: diagnostics.flat_move_carry_count,
+                price_up_inference_count: diagnostics.price_up_inference_count,
+                price_down_inference_count: diagnostics.price_down_inference_count,
+            }),
         require_hawkes: request.require_hawkes,
         require_return_components: request.require_return_components,
         preprocessing_settings: request.preprocessing_settings,

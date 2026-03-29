@@ -1,16 +1,6 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
-use chrono::{DateTime, Utc};
-use janiform_affine_oracle::affine_oracle::ExponentialAffineTransformEquationSpecification;
-use janiform_affine_oracle::sufficient_statistics::{
-    SufficientStatisticsRiskIntervalFactors, SufficientStatisticsRiskModelInputs,
-};
-use janiform_engine_simulation::{
-    CoarseSimulationModelInputs, CoarseSimulationRunRequest, run_coarse_simulation,
-};
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-
 use crate::adapters::load_hourly_factor_contract_for_calibration;
 use crate::calendar::ExchangeCalendarRegistry;
 use crate::optimizer_adapter::CalibrationOptimizerAdapterRunMetadata;
@@ -39,6 +29,11 @@ use crate::stages::seasonality::{
     CalibrationStageExecutionStatus, build_runtime_hourly_seasonality_factors_from_components,
     maximum_realizable_runtime_hourly_seasonality_factor_from_components,
 };
+use chrono::{DateTime, Utc};
+use janiform_affine_oracle::affine_oracle::ExponentialAffineTransformEquationSpecification;
+use janiform_affine_oracle::sufficient_statistics::{
+    SufficientStatisticsRiskIntervalFactors, SufficientStatisticsRiskModelInputs,
+};
 use janiform_calibration_artifacts::{
     CALIBRATION_JOINT_REFINEMENT_STAGE_EXECUTION_REPORT_SCHEMA_VERSION,
     CALIBRATION_JOINT_REFINEMENT_STAGE_HANDOFF_POLICY,
@@ -48,6 +43,9 @@ use janiform_calibration_artifacts::{
     JointRefinementStageObjectiveBreakdown, JointRefinementStageOptimizerDiagnostics,
     ReturnComponentsStageFittedParameters, resolve_calibration_stage_seed_metadata,
     stage_solver_settings_for_stage,
+};
+use janiform_engine_simulation::{
+    CoarseSimulationModelInputs, CoarseSimulationRunRequest, run_coarse_simulation,
 };
 use janiform_foundations::low_discrepancy::van_der_corput;
 use janiform_foundations::numeric::integer_square_root;
@@ -64,6 +62,7 @@ use janiform_model_kernels::hawkes::HawkesExcitationState;
 use janiform_model_kernels::mean_reversion::{
     MeanReversionBoundaryState, MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors,
 };
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use super::objective::{
     compare_joint_restart_outcomes, evaluate_joint_candidate, evaluate_joint_fitted_parameters,

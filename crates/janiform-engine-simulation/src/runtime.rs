@@ -25,6 +25,7 @@ use janiform_model_kernels::news::{
     dispatch_shared_news_events_with_resolved_market_states,
 };
 use janiform_model_kernels::return_decomposition::ReturnDecompositionValidationError;
+use tracing::{debug, error};
 
 use super::artifacts::{
     SeededFinePathMetadata, SeededFinePathRecord, SeededFinePathTransitionKind,
@@ -115,11 +116,22 @@ where
     let (estimated_transition_capacity, estimated_event_capacity) =
         estimate_seeded_result_capacities(&run_config);
 
+    debug!(
+        seed = run_config.seed,
+        horizon_interval_count = run_config.horizon_interval_count,
+        estimated_transition_capacity,
+        estimated_event_capacity,
+        "reserving seeded simulation result buffers"
+    );
+
     let mut fine_path: Vec<SeededFinePathRecord> =
-        Vec::with_capacity(estimated_transition_capacity);
-    let mut public_transition_positions: Vec<usize> =
-        Vec::with_capacity(estimated_transition_capacity);
-    let mut event_transition_positions: Vec<usize> = Vec::with_capacity(estimated_event_capacity);
+        try_reserve_simulation_buffer("fine_path", estimated_transition_capacity)?;
+    let mut public_transition_positions: Vec<usize> = try_reserve_simulation_buffer(
+        "public_transition_positions",
+        estimated_transition_capacity,
+    )?;
+    let mut event_transition_positions: Vec<usize> =
+        try_reserve_simulation_buffer("event_transition_positions", estimated_event_capacity)?;
 
     let mut next_event_index: u64 = 0;
     let mut next_transition_index: u64 = 0;
@@ -149,9 +161,14 @@ where
             .initial_mean_reversion_boundary_state,
     );
 
-    let mut debug_trace_collector = run_config.options.debug_trace_enabled.then(|| {
-        SeededTickEventDebugTraceCollector::new(run_config.options.debug_trace_options, lambda_bar)
-    });
+    let mut debug_trace_collector = if run_config.options.debug_trace_enabled {
+        Some(SeededTickEventDebugTraceCollector::new(
+            run_config.options.debug_trace_options,
+            lambda_bar,
+        )?)
+    } else {
+        None
+    };
 
     for interval_index in 0..run_config.horizon_interval_count {
         let interval_start_utc_nanos = run_config
@@ -332,7 +349,11 @@ where
                     side,
                     ..
                 } => {
-                    event_transition_positions.push(fine_path.len());
+                    push_simulation_buffer_value(
+                        "event_transition_positions",
+                        &mut event_transition_positions,
+                        fine_path.len(),
+                    )?;
                     next_event_index = next_event_index.saturating_add(1);
                     previous_timestamp_utc_nanos = timestamp_utc_nanos;
                     (map_side_to_transition_kind(side), Some(side), None)
@@ -374,10 +395,14 @@ where
             };
 
             if is_public_seeded_fine_path_record(&fine_path_record) {
-                public_transition_positions.push(fine_path.len());
+                push_simulation_buffer_value(
+                    "public_transition_positions",
+                    &mut public_transition_positions,
+                    fine_path.len(),
+                )?;
             }
 
-            fine_path.push(fine_path_record);
+            push_simulation_buffer_value("fine_path", &mut fine_path, fine_path_record)?;
         }
 
         let elapsed_hours_to_interval_end =
@@ -494,8 +519,12 @@ where
             ),
         };
 
-        public_transition_positions.push(fine_path.len());
-        fine_path.push(fine_path_record);
+        push_simulation_buffer_value(
+            "public_transition_positions",
+            &mut public_transition_positions,
+            fine_path.len(),
+        )?;
+        push_simulation_buffer_value("fine_path", &mut fine_path, fine_path_record)?;
 
         next_transition_index = next_transition_index.saturating_add(1);
     }
@@ -1173,13 +1202,19 @@ struct SeededTickEventDebugTraceCollector {
 }
 
 impl SeededTickEventDebugTraceCollector {
-    fn new(options: SeededTickSimulationDebugTraceOptions, lambda_bar: f64) -> Self {
-        Self {
+    fn new(
+        options: SeededTickSimulationDebugTraceOptions,
+        lambda_bar: f64,
+    ) -> Result<Self, SeededTickSimulationRunError> {
+        Ok(Self {
             lambda_bar,
             options,
             trace_chunks: Vec::new(),
-            pending_chunk_records: Vec::with_capacity(options.max_records_per_chunk),
-        }
+            pending_chunk_records: try_reserve_simulation_buffer(
+                "debug_trace_pending_chunk_records",
+                options.max_records_per_chunk,
+            )?,
+        })
     }
 
     fn capture_transition(&mut self, input: SeededTickEventDebugTraceCaptureInput) {
@@ -1317,6 +1352,16 @@ fn is_public_seeded_fine_path_record(record: &SeededFinePathRecord) -> bool {
     )
 }
 
+fn estimate_endogenous_interval_event_capacity(
+    lambda_bar: f64,
+    seasonality_factor: f64,
+    interval_duration_in_hours: f64,
+) -> usize {
+    (2.0 * lambda_bar.max(0.0) * seasonality_factor.max(0.0) * interval_duration_in_hours.max(0.0))
+        .ceil()
+        .min(MAX_STOCHASTIC_UPDATES_PER_INTERVAL as f64) as usize
+}
+
 fn estimate_seeded_result_capacities(run_config: &SeededTickSimulationRunConfig) -> (usize, usize) {
     let known_news_count = run_config
         .model_inputs
@@ -1347,18 +1392,12 @@ fn estimate_seeded_result_capacities(run_config: &SeededTickSimulationRunConfig)
         let interval_news_intensity =
             run_config.model_inputs.hourly_factor_contract.nu_h[interval_index].max(0.0);
 
-        let endogenous_baseline = (2.0
-            * run_config
-                .model_inputs
-                .kernel_parameters
-                .lambda_bar
-                .max(0.0)
-            * seasonality_factor.max(0.0)
-            * interval_duration_in_hours.max(0.0))
-        .ceil();
-
         estimated_endogenous_event_count = estimated_endogenous_event_count.saturating_add(
-            endogenous_baseline.min(MAX_STOCHASTIC_UPDATES_PER_INTERVAL as f64) as usize,
+            estimate_endogenous_interval_event_capacity(
+                run_config.model_inputs.kernel_parameters.lambda_bar,
+                seasonality_factor,
+                interval_duration_in_hours,
+            ),
         );
 
         let surprise_expected_count = interval_news_intensity * interval_duration_in_hours.max(0.0);
@@ -1380,23 +1419,86 @@ fn estimate_seeded_result_capacities(run_config: &SeededTickSimulationRunConfig)
     )
 }
 
+fn try_reserve_simulation_buffer<T>(
+    buffer_name: &'static str,
+    requested_capacity: usize,
+) -> Result<Vec<T>, SeededTickSimulationRunError> {
+    let mut values = Vec::new();
+    values.try_reserve(requested_capacity).map_err(|source| {
+        error!(
+            buffer_name,
+            requested_capacity,
+            error = %source,
+            "failed to reserve simulation buffer"
+        );
+        SeededTickSimulationRunError::BufferAllocationFailed {
+            buffer_name,
+            requested_capacity,
+            detail: source.to_string(),
+        }
+    })?;
+    Ok(values)
+}
+
+fn ensure_simulation_buffer_spare_capacity<T>(
+    buffer_name: &'static str,
+    values: &mut Vec<T>,
+    additional_items: usize,
+) -> Result<(), SeededTickSimulationRunError> {
+    let spare_capacity = values.capacity().saturating_sub(values.len());
+    if spare_capacity >= additional_items {
+        return Ok(());
+    }
+
+    let requested_capacity = additional_items.saturating_sub(spare_capacity);
+    values.try_reserve(requested_capacity).map_err(|source| {
+        error!(
+            buffer_name,
+            requested_capacity,
+            current_len = values.len(),
+            current_capacity = values.capacity(),
+            error = %source,
+            "failed to grow simulation buffer"
+        );
+        SeededTickSimulationRunError::BufferAllocationFailed {
+            buffer_name,
+            requested_capacity,
+            detail: format!(
+                "current_len={}, current_capacity={}, source={source}",
+                values.len(),
+                values.capacity(),
+            ),
+        }
+    })
+}
+
+fn push_simulation_buffer_value<T>(
+    buffer_name: &'static str,
+    values: &mut Vec<T>,
+    value: T,
+) -> Result<(), SeededTickSimulationRunError> {
+    ensure_simulation_buffer_spare_capacity(buffer_name, values, 1)?;
+    values.push(value);
+    Ok(())
+}
+
 fn merge_ordered_interval_updates(
     endogenous_interval_updates: Vec<IntervalStochasticUpdate>,
     exogenous_interval_updates: Vec<IntervalStochasticUpdate>,
-) -> Vec<IntervalStochasticUpdate> {
+) -> Result<Vec<IntervalStochasticUpdate>, SeededTickSimulationRunError> {
     let mut endogenous_iterator = endogenous_interval_updates.into_iter();
     let mut exogenous_iterator = exogenous_interval_updates.into_iter();
 
     let mut next_endogenous = endogenous_iterator.next();
     let mut next_exogenous = exogenous_iterator.next();
 
-    let mut merged_updates: Vec<IntervalStochasticUpdate> = Vec::with_capacity(
-        endogenous_iterator
-            .len()
-            .saturating_add(exogenous_iterator.len())
-            .saturating_add(next_endogenous.is_some() as usize)
-            .saturating_add(next_exogenous.is_some() as usize),
-    );
+    let merged_update_capacity = endogenous_iterator
+        .len()
+        .saturating_add(exogenous_iterator.len())
+        .saturating_add(next_endogenous.is_some() as usize)
+        .saturating_add(next_exogenous.is_some() as usize);
+    let mut merged_updates: Vec<IntervalStochasticUpdate> =
+        try_reserve_simulation_buffer("merged_interval_updates", merged_update_capacity)?;
 
     loop {
         match (&next_endogenous, &next_exogenous) {
@@ -1414,14 +1516,14 @@ fn merge_ordered_interval_updates(
             (Some(_), None) => {
                 merged_updates.push(next_endogenous.take().expect("endogenous update exists"));
                 merged_updates.extend(endogenous_iterator);
-                return merged_updates;
+                return Ok(merged_updates);
             }
             (None, Some(_)) => {
                 merged_updates.push(next_exogenous.take().expect("exogenous update exists"));
                 merged_updates.extend(exogenous_iterator);
-                return merged_updates;
+                return Ok(merged_updates);
             }
-            (None, None) => return merged_updates,
+            (None, None) => return Ok(merged_updates),
         }
     }
 }
@@ -1586,10 +1688,7 @@ where
         &mut endogenous_side_stream,
     )?;
 
-    Ok(merge_ordered_interval_updates(
-        endogenous_interval_updates,
-        exogenous_interval_updates,
-    ))
+    merge_ordered_interval_updates(endogenous_interval_updates, exogenous_interval_updates)
 }
 
 fn schedule_exogenous_interval_news_updates<F>(
@@ -1630,7 +1729,8 @@ where
         },
     )?;
 
-    let mut exogenous_interval_updates = Vec::with_capacity(dispatch_output.records.len());
+    let mut exogenous_interval_updates =
+        try_reserve_simulation_buffer("exogenous_interval_updates", dispatch_output.records.len())?;
     for dispatch_record in dispatch_output.records {
         exogenous_interval_updates.push(IntervalStochasticUpdate::ExogenousNews {
             timestamp_utc_nanos: dispatch_record.event_timestamp_utc_nanos,
@@ -1697,9 +1797,12 @@ where
         &mut news_count_stream,
     );
 
-    let mut event_inputs: Vec<SharedNewsEventTimestampedInput> = Vec::with_capacity(
-        (interval_known_news_event_count + interval_surprise_news_count) as usize,
-    );
+    let event_input_capacity = usize::try_from(
+        interval_known_news_event_count.saturating_add(interval_surprise_news_count),
+    )
+    .unwrap_or(usize::MAX);
+    let mut event_inputs: Vec<SharedNewsEventTimestampedInput> =
+        try_reserve_simulation_buffer("interval_news_event_inputs", event_input_capacity)?;
 
     let mark_pipeline = run_config
         .model_inputs
@@ -1788,7 +1891,18 @@ where
     AcceptanceStream: SimulationRandomnessStream,
     SideStream: SimulationRandomnessStream,
 {
-    let mut endogenous_interval_updates: Vec<IntervalStochasticUpdate> = Vec::new();
+    let interval_duration_in_hours =
+        (interval_end_utc_nanos - interval_start_utc_nanos) as f64 / ONE_HOUR_NANOS as f64;
+    let estimated_endogenous_capacity = estimate_endogenous_interval_event_capacity(
+        kernel_parameters.lambda_bar,
+        interval_seasonality_factor,
+        interval_duration_in_hours,
+    );
+    let mut endogenous_interval_updates: Vec<IntervalStochasticUpdate> =
+        try_reserve_simulation_buffer(
+            "endogenous_interval_updates",
+            estimated_endogenous_capacity,
+        )?;
     let mut simulated_state = interval_start_state;
     let mut simulated_timestamp_utc_nanos = interval_start_utc_nanos;
     let mut next_exogenous_update_position = 0_usize;
@@ -1916,11 +2030,16 @@ where
                 )
                 .map_err(map_transition_error_to_seeded_simulation_run_error)?;
 
-                endogenous_interval_updates.push(IntervalStochasticUpdate::EndogenousEvent {
-                    timestamp_utc_nanos: candidate_timestamp_utc_nanos,
-                    side,
-                    generation_order: endogenous_interval_updates.len() as u64,
-                });
+                let generation_order = endogenous_interval_updates.len() as u64;
+                push_simulation_buffer_value(
+                    "endogenous_interval_updates",
+                    &mut endogenous_interval_updates,
+                    IntervalStochasticUpdate::EndogenousEvent {
+                        timestamp_utc_nanos: candidate_timestamp_utc_nanos,
+                        side,
+                        generation_order,
+                    },
+                )?;
 
                 simulated_state = state_after_event;
             } else {
@@ -2453,8 +2572,9 @@ mod tests {
     use chrono::{TimeZone, Utc};
 
     use super::{
-        SeededSimulationMarketStateResolver, build_interval_open_market_segments,
-        integrate_open_market_elapsed_time_weights,
+        SeededSimulationMarketStateResolver, SeededTickSimulationRunError,
+        build_interval_open_market_segments, ensure_simulation_buffer_spare_capacity,
+        integrate_open_market_elapsed_time_weights, try_reserve_simulation_buffer,
     };
     use crate::calendar::{
         ExchangeCalendarArtifact, ExchangeCalendarRegistry, ExchangeCalendarRegistryArtifact,
@@ -2537,5 +2657,45 @@ mod tests {
 
         assert_eq!(weights.open_elapsed_hours, 0.0);
         assert_eq!(weights.open_decay_weight, 0.0);
+    }
+
+    #[test]
+    fn allocation_failures_are_returned_as_structured_errors() {
+        let error = try_reserve_simulation_buffer::<u8>("test_buffer", usize::MAX)
+            .expect_err("oversized reserve should fail");
+
+        match error {
+            SeededTickSimulationRunError::BufferAllocationFailed {
+                buffer_name,
+                requested_capacity,
+                detail,
+            } => {
+                assert_eq!(buffer_name, "test_buffer");
+                assert_eq!(requested_capacity, usize::MAX);
+                assert!(!detail.is_empty());
+            }
+            _ => panic!("expected buffer allocation failure"),
+        }
+    }
+
+    #[test]
+    fn buffer_growth_failures_are_returned_as_structured_errors() {
+        let mut values = Vec::<u8>::new();
+        let error =
+            ensure_simulation_buffer_spare_capacity("growth_buffer", &mut values, usize::MAX)
+                .expect_err("oversized growth should fail");
+
+        match error {
+            SeededTickSimulationRunError::BufferAllocationFailed {
+                buffer_name,
+                requested_capacity,
+                detail,
+            } => {
+                assert_eq!(buffer_name, "growth_buffer");
+                assert_eq!(requested_capacity, usize::MAX);
+                assert!(!detail.is_empty());
+            }
+            _ => panic!("expected buffer allocation failure"),
+        }
     }
 }

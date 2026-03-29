@@ -12,8 +12,8 @@ mod workflow;
 pub use contracts::{
     MarketDataDuplicateRecordPolicy, MarketDataInputFileFormat, MarketDataInputFileReference,
     MarketDataKnownNewsColumnMapping, MarketDataKnownNewsLoadingInput, MarketDataLoadingError,
-    MarketDataLoadingOutput, MarketDataLoadingRequest, MarketDataNormalizedTickOutput,
-    MarketDataNormalizationPolicy, MarketDataOptionQuoteInputPolicy,
+    MarketDataLoadingOutput, MarketDataLoadingRequest, MarketDataNormalizationPolicy,
+    MarketDataNormalizedTickOutput, MarketDataOptionQuoteInputPolicy,
     MarketDataOptionSurfaceColumnMapping, MarketDataOptionSurfaceLoadingInput,
     MarketDataSessionConfiguration, MarketDataSessionRecurringClosedWindowPayload,
     MarketDataSessionRegularWindowPayload, MarketDataSessionResolutionPayload,

@@ -81,12 +81,13 @@ pub(super) fn probe_source_row_count_estimate(
                 }
             })?;
 
-            let row_count = usize::try_from(reader.metadata().file_metadata().num_rows()).map_err(
-                |_| MarketDataLoadingError::Parquet {
-                    field_path: format!("{field_path}.path"),
-                    message: "row-count metadata exceeds the supported usize range".to_string(),
-                },
-            )?;
+            let row_count =
+                usize::try_from(reader.metadata().file_metadata().num_rows()).map_err(|_| {
+                    MarketDataLoadingError::Parquet {
+                        field_path: format!("{field_path}.path"),
+                        message: "row-count metadata exceeds the supported usize range".to_string(),
+                    }
+                })?;
 
             Ok(Some(row_count))
         }
