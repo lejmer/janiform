@@ -2,7 +2,8 @@
 
 pub(crate) use std::collections::BTreeSet;
 pub(crate) use std::fs;
-pub(crate) use std::path::PathBuf;
+pub(crate) use std::path::{Path, PathBuf};
+pub(crate) use std::process::Command;
 pub(crate) use std::sync::LazyLock;
 pub(crate) use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -32,6 +33,12 @@ pub(crate) use janiform_model_kernels::risk_neutral::{
     EsscherMartingaleConditionInput, NigEsscherTransformationInput,
 };
 pub(crate) use serde_json::json;
+
+const JOINT_REFINEMENT_SUMMARY_SIMULATION_BACKEND_ENV: &str =
+    "JANIFORM_JOINT_REFINEMENT_SUMMARY_SIMULATION_BACKEND";
+const JOINT_REFINEMENT_SUMMARY_SIMULATION_BACKEND_IN_PROCESS: &str = "in_process";
+const JOINT_REFINEMENT_RESTART_POLICY_ENV: &str = "JANIFORM_JOINT_REFINEMENT_RESTART_POLICY";
+const JOINT_REFINEMENT_RESTART_POLICY_CPU_COUNT_LIMITED: &str = "cpu_count_limited";
 
 pub(crate) fn assert_joint_refinement_objective_breakdown_matches(
     actual_breakdown: &JointRefinementStageObjectiveBreakdown,
@@ -1332,20 +1339,75 @@ pub(crate) fn build_run_contract_with_mode_and_resume(
     execution_mode: CalibrationExecutionMode,
     resume_settings: Option<CalibrationResumeSettings>,
 ) -> CalibrationRunContract {
+    build_run_contract_with_stages_and_resume(
+        run_id,
+        execution_mode,
+        vec![
+            CalibrationStage::Seasonality,
+            CalibrationStage::Hawkes,
+            CalibrationStage::ReturnComponents,
+            CalibrationStage::MeanReversion,
+            CalibrationStage::JointRefinement,
+        ],
+        build_solver_settings_for_all_stages(),
+        resume_settings,
+    )
+}
+
+pub(crate) fn build_pre_joint_run_contract_with_mode_and_resume(
+    run_id: &str,
+    execution_mode: CalibrationExecutionMode,
+    resume_settings: Option<CalibrationResumeSettings>,
+) -> CalibrationRunContract {
+    build_run_contract_with_stages_and_resume(
+        run_id,
+        execution_mode,
+        vec![
+            CalibrationStage::Seasonality,
+            CalibrationStage::Hawkes,
+            CalibrationStage::ReturnComponents,
+        ],
+        build_solver_settings_for_pre_joint_pipeline(),
+        resume_settings,
+    )
+}
+
+pub(crate) fn build_through_mean_reversion_run_contract_with_mode_and_resume(
+    run_id: &str,
+    execution_mode: CalibrationExecutionMode,
+    resume_settings: Option<CalibrationResumeSettings>,
+) -> CalibrationRunContract {
+    build_run_contract_with_stages_and_resume(
+        run_id,
+        execution_mode,
+        vec![
+            CalibrationStage::Seasonality,
+            CalibrationStage::Hawkes,
+            CalibrationStage::ReturnComponents,
+            CalibrationStage::MeanReversion,
+        ],
+        build_solver_settings_for_through_mean_reversion_pipeline(),
+        resume_settings,
+    )
+}
+
+fn build_run_contract_with_stages_and_resume(
+    run_id: &str,
+    execution_mode: CalibrationExecutionMode,
+    selected_stages: Vec<CalibrationStage>,
+    solver_settings_by_stage: Vec<CalibrationStageSolverSettings>,
+    resume_settings: Option<CalibrationResumeSettings>,
+) -> CalibrationRunContract {
+    configure_joint_refinement_test_backend();
+
     let run_spec = {
         let builder = CalibrationRunSpec::builder(
             run_id,
             build_data_inputs(),
             execution_mode,
-            vec![
-                CalibrationStage::Seasonality,
-                CalibrationStage::Hawkes,
-                CalibrationStage::ReturnComponents,
-                CalibrationStage::MeanReversion,
-                CalibrationStage::JointRefinement,
-            ],
+            selected_stages,
             build_seed_settings(),
-            build_solver_settings_for_all_stages(),
+            solver_settings_by_stage,
         );
 
         let builder = if let Some(resume_settings) = resume_settings {
@@ -1357,8 +1419,11 @@ pub(crate) fn build_run_contract_with_mode_and_resume(
         builder.build().expect("run spec should validate")
     };
 
-    CalibrationRunContract::try_new(run_spec, default_stage_graph())
-        .expect("run contract should validate")
+    CalibrationRunContract::try_new(
+        run_spec.clone(),
+        stage_graph_for_selected_stages(run_spec.selected_stages.as_slice()),
+    )
+    .expect("run contract should validate")
 }
 
 pub(crate) fn build_run_contract_for_caller_surface(
@@ -1366,12 +1431,10 @@ pub(crate) fn build_run_contract_for_caller_surface(
     caller_surface: CalibrationCallerSurface,
     execution_mode_override: Option<CalibrationExecutionMode>,
 ) -> CalibrationRunContract {
-    let execution_mode =
-        resolve_calibration_execution_mode_for_surface(caller_surface, execution_mode_override);
-    let run_spec = CalibrationRunSpec::try_new(
+    build_run_contract_for_caller_surface_with_stages(
         run_id,
-        build_data_inputs(),
-        execution_mode,
+        caller_surface,
+        execution_mode_override,
         vec![
             CalibrationStage::Seasonality,
             CalibrationStage::Hawkes,
@@ -1379,42 +1442,183 @@ pub(crate) fn build_run_contract_for_caller_surface(
             CalibrationStage::MeanReversion,
             CalibrationStage::JointRefinement,
         ],
-        build_seed_settings(),
         build_solver_settings_for_all_stages(),
+    )
+}
+
+pub(crate) fn build_pre_joint_run_contract_for_caller_surface(
+    run_id: &str,
+    caller_surface: CalibrationCallerSurface,
+    execution_mode_override: Option<CalibrationExecutionMode>,
+) -> CalibrationRunContract {
+    build_run_contract_for_caller_surface_with_stages(
+        run_id,
+        caller_surface,
+        execution_mode_override,
+        vec![
+            CalibrationStage::Seasonality,
+            CalibrationStage::Hawkes,
+            CalibrationStage::ReturnComponents,
+        ],
+        build_solver_settings_for_pre_joint_pipeline(),
+    )
+}
+
+pub(crate) fn build_through_mean_reversion_run_contract_for_caller_surface(
+    run_id: &str,
+    caller_surface: CalibrationCallerSurface,
+    execution_mode_override: Option<CalibrationExecutionMode>,
+) -> CalibrationRunContract {
+    build_run_contract_for_caller_surface_with_stages(
+        run_id,
+        caller_surface,
+        execution_mode_override,
+        vec![
+            CalibrationStage::Seasonality,
+            CalibrationStage::Hawkes,
+            CalibrationStage::ReturnComponents,
+            CalibrationStage::MeanReversion,
+        ],
+        build_solver_settings_for_through_mean_reversion_pipeline(),
+    )
+}
+
+fn build_run_contract_for_caller_surface_with_stages(
+    run_id: &str,
+    caller_surface: CalibrationCallerSurface,
+    execution_mode_override: Option<CalibrationExecutionMode>,
+    selected_stages: Vec<CalibrationStage>,
+    solver_settings_by_stage: Vec<CalibrationStageSolverSettings>,
+) -> CalibrationRunContract {
+    configure_joint_refinement_test_backend();
+
+    let execution_mode =
+        resolve_calibration_execution_mode_for_surface(caller_surface, execution_mode_override);
+    let run_spec = CalibrationRunSpec::try_new(
+        run_id,
+        build_data_inputs(),
+        execution_mode,
+        selected_stages,
+        build_seed_settings(),
+        solver_settings_by_stage,
     )
     .expect("caller-surface run spec should validate");
 
-    CalibrationRunContract::try_new(run_spec, default_stage_graph())
-        .expect("caller-surface run contract should validate")
+    CalibrationRunContract::try_new(
+        run_spec.clone(),
+        stage_graph_for_selected_stages(run_spec.selected_stages.as_slice()),
+    )
+    .expect("caller-surface run contract should validate")
+}
+
+fn configure_joint_refinement_test_backend() {
+    if std::env::var_os(JOINT_REFINEMENT_SUMMARY_SIMULATION_BACKEND_ENV).is_none() {
+        // SAFETY: Test helpers in this module set a single deterministic backend policy for the
+        // current process before invoking the staged runner. All callers use the same value.
+        unsafe {
+            std::env::set_var(
+                JOINT_REFINEMENT_SUMMARY_SIMULATION_BACKEND_ENV,
+                JOINT_REFINEMENT_SUMMARY_SIMULATION_BACKEND_IN_PROCESS,
+            );
+        }
+    }
+    if std::env::var_os(JOINT_REFINEMENT_RESTART_POLICY_ENV).is_none() {
+        // SAFETY: Test helpers in this module set a single deterministic restart policy for the
+        // current process before invoking the staged runner. All callers use the same value.
+        unsafe {
+            std::env::set_var(
+                JOINT_REFINEMENT_RESTART_POLICY_ENV,
+                JOINT_REFINEMENT_RESTART_POLICY_CPU_COUNT_LIMITED,
+            );
+        }
+    }
+}
+
+fn configure_joint_refinement_worker_environment() {
+    configure_joint_refinement_test_backend();
+
+    if std::env::var_os("JANIFORM_JOINT_REFINEMENT_WORKER_EXECUTABLE").is_some() {
+        return;
+    }
+
+    // SAFETY: Test helpers in this module set a single deterministic worker path for the
+    // current process before invoking the staged runner. All callers use the same value.
+    unsafe {
+        std::env::set_var(
+            "JANIFORM_JOINT_REFINEMENT_WORKER_EXECUTABLE",
+            ensure_joint_refinement_worker_executable(),
+        );
+    }
 }
 
 pub(crate) fn default_stage_graph() -> CalibrationStageGraph {
-    CalibrationStageGraph::new(vec![
-        CalibrationStageDependency {
-            stage: CalibrationStage::Hawkes,
-            depends_on: CalibrationStage::Seasonality,
-        },
-        CalibrationStageDependency {
-            stage: CalibrationStage::ReturnComponents,
-            depends_on: CalibrationStage::Hawkes,
-        },
-        CalibrationStageDependency {
-            stage: CalibrationStage::MeanReversion,
-            depends_on: CalibrationStage::ReturnComponents,
-        },
-        CalibrationStageDependency {
-            stage: CalibrationStage::JointRefinement,
-            depends_on: CalibrationStage::Hawkes,
-        },
-        CalibrationStageDependency {
-            stage: CalibrationStage::JointRefinement,
-            depends_on: CalibrationStage::ReturnComponents,
-        },
-        CalibrationStageDependency {
-            stage: CalibrationStage::JointRefinement,
-            depends_on: CalibrationStage::MeanReversion,
-        },
+    stage_graph_for_selected_stages(&[
+        CalibrationStage::Seasonality,
+        CalibrationStage::Hawkes,
+        CalibrationStage::ReturnComponents,
+        CalibrationStage::MeanReversion,
+        CalibrationStage::JointRefinement,
     ])
+}
+
+fn build_solver_settings_for_through_mean_reversion_pipeline() -> Vec<CalibrationStageSolverSettings>
+{
+    vec![
+        CalibrationStageSolverSettings {
+            stage: CalibrationStage::Seasonality,
+            optimizer_settings: build_solver_settings(),
+        },
+        CalibrationStageSolverSettings {
+            stage: CalibrationStage::Hawkes,
+            optimizer_settings: build_solver_settings(),
+        },
+        CalibrationStageSolverSettings {
+            stage: CalibrationStage::ReturnComponents,
+            optimizer_settings: build_solver_settings(),
+        },
+        CalibrationStageSolverSettings {
+            stage: CalibrationStage::MeanReversion,
+            optimizer_settings: build_solver_settings(),
+        },
+    ]
+}
+
+pub(crate) fn stage_graph_for_selected_stages(
+    selected_stages: &[CalibrationStage],
+) -> CalibrationStageGraph {
+    let selected_stage_set: BTreeSet<CalibrationStage> = selected_stages.iter().copied().collect();
+
+    CalibrationStageGraph::new(
+        vec![
+            CalibrationStageDependency {
+                stage: CalibrationStage::Hawkes,
+                depends_on: CalibrationStage::Seasonality,
+            },
+            CalibrationStageDependency {
+                stage: CalibrationStage::ReturnComponents,
+                depends_on: CalibrationStage::Hawkes,
+            },
+            CalibrationStageDependency {
+                stage: CalibrationStage::MeanReversion,
+                depends_on: CalibrationStage::ReturnComponents,
+            },
+            CalibrationStageDependency {
+                stage: CalibrationStage::JointRefinement,
+                depends_on: CalibrationStage::Hawkes,
+            },
+            CalibrationStageDependency {
+                stage: CalibrationStage::JointRefinement,
+                depends_on: CalibrationStage::ReturnComponents,
+            },
+            CalibrationStageDependency {
+                stage: CalibrationStage::JointRefinement,
+                depends_on: CalibrationStage::MeanReversion,
+            },
+        ]
+        .into_iter()
+        .filter(|dependency| selected_stage_set.contains(&dependency.stage))
+        .collect(),
+    )
 }
 
 pub(crate) fn build_mode_aware_stage_handoff(
@@ -1518,6 +1722,113 @@ pub(crate) fn temporary_checkpoint_directory(test_name: &str) -> PathBuf {
         .expect("temporary checkpoint directory should be created");
 
     checkpoint_directory
+}
+
+pub(crate) fn ensure_joint_refinement_worker_executable() -> PathBuf {
+    static WORKER_EXECUTABLE: LazyLock<PathBuf> = LazyLock::new(|| {
+        let manifest_directory = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let workspace_root = manifest_directory
+            .parent()
+            .and_then(|path| path.parent())
+            .expect("workspace root should be resolvable from the crate manifest directory");
+
+        let current_executable =
+            std::env::current_exe().expect("current test executable path should resolve");
+
+        let profile_directory = current_executable
+            .parent()
+            .and_then(|path| path.parent())
+            .expect("cargo profile directory should resolve from the current test executable");
+
+        let worker_executable = profile_directory.join(if cfg!(windows) {
+            "janiform-joint-refinement-worker.exe"
+        } else {
+            "janiform-joint-refinement-worker"
+        });
+
+        if joint_refinement_worker_executable_requires_rebuild(
+            worker_executable.as_path(),
+            workspace_root,
+        ) {
+            let cargo_path = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
+            let build_status = Command::new(cargo_path)
+                .current_dir(workspace_root)
+                .args(["build", "-p", "janiform-joint-refinement-worker"])
+                .status()
+                .expect("worker crate build should launch successfully");
+
+            assert!(
+                build_status.success(),
+                "worker crate build failed with status {build_status}",
+            );
+        }
+
+        assert!(
+            worker_executable.is_file(),
+            "worker executable should exist at {}",
+            worker_executable.display(),
+        );
+
+        worker_executable
+    });
+
+    WORKER_EXECUTABLE.clone()
+}
+
+fn joint_refinement_worker_executable_requires_rebuild(
+    worker_executable: &Path,
+    workspace_root: &Path,
+) -> bool {
+    if !worker_executable.is_file() {
+        return true;
+    }
+
+    let executable_modified =
+        match fs::metadata(worker_executable).and_then(|metadata| metadata.modified()) {
+            Ok(modified) => modified,
+            Err(_) => return true,
+        };
+
+    latest_worker_source_modified_at(workspace_root)
+        .is_none_or(|source_modified| source_modified > executable_modified)
+}
+
+fn latest_worker_source_modified_at(workspace_root: &Path) -> Option<SystemTime> {
+    [
+        workspace_root.join("Cargo.toml"),
+        workspace_root.join("Cargo.lock"),
+        workspace_root.join("crates/janiform-joint-refinement-worker/Cargo.toml"),
+        workspace_root.join("crates/janiform-joint-refinement-worker/src"),
+        workspace_root.join("crates/janiform-calibration-runtime/Cargo.toml"),
+        workspace_root.join("crates/janiform-calibration-runtime/src/stages/joint_refinement"),
+        workspace_root.join("crates/janiform-engine-simulation/Cargo.toml"),
+        workspace_root.join("crates/janiform-engine-simulation/src"),
+    ]
+    .into_iter()
+    .filter_map(|path| latest_path_modified_at(path.as_path()))
+    .max()
+}
+
+fn latest_path_modified_at(path: &Path) -> Option<SystemTime> {
+    let metadata = fs::metadata(path).ok()?;
+    if metadata.is_file() {
+        return metadata.modified().ok();
+    }
+    if !metadata.is_dir() {
+        return None;
+    }
+
+    let mut latest_modified = metadata.modified().ok();
+    let entries = fs::read_dir(path).ok()?;
+    for entry in entries.flatten() {
+        if let Some(entry_modified) = latest_path_modified_at(entry.path().as_path()) {
+            latest_modified = Some(latest_modified.map_or(entry_modified, |current_latest| {
+                current_latest.max(entry_modified)
+            }));
+        }
+    }
+
+    latest_modified
 }
 
 pub(crate) fn build_seasonality_stage_run_spec(
@@ -1701,7 +2012,7 @@ pub(crate) fn build_mean_reversion_stage_success_report() -> MeanReversionStageE
                 });
 
             run_mean_reversion_calibration_stage(
-                &build_run_contract_with_mode_and_resume(
+                &build_through_mean_reversion_run_contract_with_mode_and_resume(
                     "run-mean-reversion-stage-success",
                     CalibrationExecutionMode::Memory,
                     None,
@@ -1724,6 +2035,8 @@ pub(crate) fn build_joint_refinement_stage_success_payload() -> JointRefinementS
 pub(crate) fn build_joint_refinement_stage_success_report() -> JointRefinementStageExecutionReport {
     static STAGE_SUCCESS_REPORT: LazyLock<JointRefinementStageExecutionReport> =
         LazyLock::new(|| {
+            configure_joint_refinement_test_backend();
+
             let calendar_registry = calibration_stage_test_registry();
             let seasonality_payload = build_seasonality_stage_success_payload();
             run_joint_refinement_calibration_stage(

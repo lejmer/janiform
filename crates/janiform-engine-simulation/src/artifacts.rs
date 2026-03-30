@@ -263,6 +263,55 @@ pub struct SeededTickSimulationNativeDiagnostics {
     pub estimated_total_retained_bytes: usize,
 }
 
+/// Visibility flags for one streamed transition emitted by the seeded simulator.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SeededTickSimulationTransitionEmission {
+    pub is_public_fine_path_record: bool,
+    pub is_event_projection_record: bool,
+}
+
+/// Final deterministic metadata produced by one streamed seeded simulation pass.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SeededTickSimulationStreamCompletion {
+    pub schema_version: &'static str,
+    pub determinism_policy: &'static str,
+    pub event_ordering_policy: &'static str,
+    pub randomness_stream_policy: &'static str,
+    pub randomness_substream_derivation_policy: &'static str,
+    pub seed: u64,
+    pub start_time_utc: DateTime<Utc>,
+    pub end_time_utc: DateTime<Utc>,
+    pub simulated_interval_count: usize,
+    pub fine_path_metadata: SeededFinePathMetadata,
+    pub event_tape_metadata: SeededTickEventTapeMetadata,
+    pub final_excitation_state: HawkesExcitationState,
+    pub news_routing_totals: SeededTickSimulationNewsRoutingTotals,
+    pub cumulative_core_log_return: f64,
+    pub debug_trace_enabled: bool,
+    pub debug_trace_output: Option<SeededTickEventDebugTraceOutput>,
+}
+
+/// Consumer interface for streamed deterministic seeded transitions.
+pub trait SeededTickSimulationTransitionConsumer {
+    /// Reserve retained storage using the simulator's deterministic capacity estimate.
+    fn reserve_transition_capacity(
+        &mut self,
+        estimated_transition_capacity: usize,
+        estimated_event_capacity: usize,
+    ) -> Result<(), crate::error::SeededTickSimulationRunError> {
+        let _ = estimated_transition_capacity;
+        let _ = estimated_event_capacity;
+        Ok(())
+    }
+
+    /// Consume one deterministic transition in canonical simulation order.
+    fn consume_transition(
+        &mut self,
+        record: SeededFinePathRecord,
+        emission: SeededTickSimulationTransitionEmission,
+    ) -> Result<(), crate::error::SeededTickSimulationRunError>;
+}
+
 /// Deterministic seeded event-path output object.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SeededTickSimulationRunResult {

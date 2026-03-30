@@ -22,6 +22,7 @@ Criterion plus `pytest-benchmark` commands, see
 - `real_data_seeded_runtime_smoke_fixture.json`
 - `real_data_seeded_runtime_smoke_policy.json`
 - `real_data_seeded_runtime_smoke_baseline_v1.json`
+- `real_data_seeded_runtime_smoke_report.json`
 
 ## Contract
 
@@ -101,6 +102,9 @@ Criterion plus `pytest-benchmark` commands, see
 - Real-data seeded runtime smoke artifacts mirror the same contracts with a much smaller
   checked-in workload so the default Python test suite can validate report and artifact wiring
   without rerunning the full representative benchmark workload.
+- Regenerate `real_data_seeded_runtime_smoke_report.json` with
+  `python3 scripts/generate_real_data_seeded_runtime_smoke_report.py` when the smoke runtime
+  report contract or fixture changes.
 - Regression drift attribution report fields include:
   - `schema_version`: `benchmark.regression_drift_attribution.report.v1`
   - `classification_policy`: explicit drift-category rules for numerical drift, performance drift,

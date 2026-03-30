@@ -28,8 +28,8 @@ Redesign joint refinement so simulation, artifact materialization, and objective
 
 - Add process-isolated heavy simulation workers in core runtime.
     - Add a dedicated Rust worker executable crate for seeded summary simulation requests.
-    - Define a compact request/response contract for one summary simulation job: run config, fitted parameters, summary templates, deterministic seed, and exact summary/failure response.
-    - Parent runtime submits heavy summary jobs to workers over stdio using serialized request/response payloads. Each worker executes one job at a time and returns only the summary object, not a full path.
+    - Define a session contract with `InitializeSession`, `RunCandidate`, and `CloseSession`. Session initialization carries stage-static context. Candidate requests carry only fitted parameters, requested seeds, and requested output shape.
+    - Parent runtime submits heavy summary jobs to workers over stdio using length-delimited binary serde frames. Each worker executes one candidate request at a time and returns only the exact summary payload unless diagnostics are explicitly requested.
     - If a worker exits abnormally or the OS kills it during allocation, the parent surfaces a structured simulation failure for that candidate/seed instead of crashing the host process.
     - Keep worker isolation inside core runtime, not the Python/CLI boundary.
 

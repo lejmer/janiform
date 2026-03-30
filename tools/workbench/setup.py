@@ -27,7 +27,12 @@ from janiform.calibration.market_data.contracts import (
 from janiform.calibration.presets.registry import PresetCategory, PresetRegistry
 from janiform.contracts import MeanReversionAnchorModelKind
 
-from .state import WorkbenchRunSetup, WorkbenchSessionSource
+from .state import (
+    DEFAULT_WORKBENCH_FALLBACK_EXCHANGE_CODE,
+    DEFAULT_WORKBENCH_SESSION_PRESET_NAME,
+    WorkbenchRunSetup,
+    WorkbenchSessionSource,
+)
 
 
 class WorkbenchSetupWidget(QWidget):
@@ -43,7 +48,7 @@ class WorkbenchSetupWidget(QWidget):
         self._session_source_mode_combo = QComboBox()
         self._session_preset_combo = QComboBox()
         self._session_definition_edit = QLineEdit()
-        self._session_exchange_code_edit = QLineEdit("FXSPOT")
+        self._session_exchange_code_edit = QLineEdit(DEFAULT_WORKBENCH_FALLBACK_EXCHANGE_CODE)
         self._output_directory_edit = QLineEdit(str((Path.cwd() / ".janiform").resolve()))
         self._workflow_scope_combo = QComboBox()
         self._mean_reversion_anchor_combo = QComboBox()
@@ -309,7 +314,10 @@ class WorkbenchSetupWidget(QWidget):
                 else None
             ),
             definition_path=session_definition_path if session_source_mode == "definition" else None,
-            exchange_code=self._session_exchange_code_edit.text().strip() or "FXSPOT",
+            exchange_code=(
+                self._session_exchange_code_edit.text().strip()
+                or DEFAULT_WORKBENCH_FALLBACK_EXCHANGE_CODE
+            ),
         )
 
         run_setup = WorkbenchRunSetup(
@@ -334,7 +342,10 @@ class WorkbenchSetupWidget(QWidget):
         for entry in self._preset_registry.list_presets(category=PresetCategory.SESSION):
             self._session_preset_combo.addItem(entry.display_name, entry.preset_name)
 
-        self._set_combo_data(self._session_preset_combo, "FXSPOT")
+        self._set_combo_data(
+            self._session_preset_combo,
+            DEFAULT_WORKBENCH_SESSION_PRESET_NAME,
+        )
 
     def _on_session_source_changed(self) -> None:
         mode = str(self._session_source_mode_combo.currentData())

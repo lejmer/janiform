@@ -34,6 +34,8 @@ use super::artifacts::{
     SeededTickEventDebugTraceTransitionKind, SeededTickEventSide, SeededTickEventStateSnapshot,
     SeededTickEventTapeMetadata, SeededTickSimulationNewsEventMarketState,
     SeededTickSimulationNewsRoutingTotals, SeededTickSimulationRunResult,
+    SeededTickSimulationStreamCompletion, SeededTickSimulationTransitionConsumer,
+    SeededTickSimulationTransitionEmission,
 };
 use super::config::{
     SeededTickEventStateSnapshotCapture, SeededTickSimulationDebugTraceOptions,
@@ -75,6 +77,121 @@ pub fn run_seeded_tick_event_simulation_with_randomness_factory<F>(
 ) -> Result<SeededTickSimulationRunResult, SeededTickSimulationRunError>
 where
     F: SimulationRandomnessFactory,
+{
+    let mut result_builder = SeededTickSimulationResultBuilder::default();
+    let stream_completion = stream_seeded_tick_event_simulation_with_randomness_factory(
+        run_config,
+        randomness_factory,
+        &mut result_builder,
+    )?;
+
+    Ok(result_builder.finish(stream_completion))
+}
+
+#[derive(Debug, Default)]
+struct SeededTickSimulationResultBuilder {
+    fine_path: Vec<SeededFinePathRecord>,
+    public_transition_positions: Vec<usize>,
+    event_transition_positions: Vec<usize>,
+}
+
+impl SeededTickSimulationResultBuilder {
+    fn finish(
+        self,
+        stream_completion: SeededTickSimulationStreamCompletion,
+    ) -> SeededTickSimulationRunResult {
+        SeededTickSimulationRunResult {
+            schema_version: stream_completion.schema_version,
+            determinism_policy: stream_completion.determinism_policy,
+            event_ordering_policy: stream_completion.event_ordering_policy,
+            randomness_stream_policy: stream_completion.randomness_stream_policy,
+            randomness_substream_derivation_policy: stream_completion
+                .randomness_substream_derivation_policy,
+            seed: stream_completion.seed,
+            start_time_utc: stream_completion.start_time_utc,
+            end_time_utc: stream_completion.end_time_utc,
+            simulated_interval_count: stream_completion.simulated_interval_count,
+            fine_path_metadata: stream_completion.fine_path_metadata,
+            fine_path: self.fine_path,
+            public_transition_positions: self.public_transition_positions,
+            event_tape_metadata: stream_completion.event_tape_metadata,
+            event_transition_positions: self.event_transition_positions,
+            final_excitation_state: stream_completion.final_excitation_state,
+            news_routing_totals: stream_completion.news_routing_totals,
+            cumulative_core_log_return: stream_completion.cumulative_core_log_return,
+            debug_trace_enabled: stream_completion.debug_trace_enabled,
+            debug_trace_output: stream_completion.debug_trace_output,
+        }
+    }
+}
+
+impl SeededTickSimulationTransitionConsumer for SeededTickSimulationResultBuilder {
+    fn reserve_transition_capacity(
+        &mut self,
+        estimated_transition_capacity: usize,
+        estimated_event_capacity: usize,
+    ) -> Result<(), SeededTickSimulationRunError> {
+        self.fine_path = try_reserve_simulation_buffer("fine_path", estimated_transition_capacity)?;
+        self.public_transition_positions = try_reserve_simulation_buffer(
+            "public_transition_positions",
+            estimated_transition_capacity,
+        )?;
+        self.event_transition_positions =
+            try_reserve_simulation_buffer("event_transition_positions", estimated_event_capacity)?;
+        Ok(())
+    }
+
+    fn consume_transition(
+        &mut self,
+        record: SeededFinePathRecord,
+        emission: SeededTickSimulationTransitionEmission,
+    ) -> Result<(), SeededTickSimulationRunError> {
+        let transition_position = self.fine_path.len();
+        if emission.is_public_fine_path_record {
+            push_simulation_buffer_value(
+                "public_transition_positions",
+                &mut self.public_transition_positions,
+                transition_position,
+            )?;
+        }
+        if emission.is_event_projection_record {
+            push_simulation_buffer_value(
+                "event_transition_positions",
+                &mut self.event_transition_positions,
+                transition_position,
+            )?;
+        }
+
+        push_simulation_buffer_value("fine_path", &mut self.fine_path, record)
+    }
+}
+
+/// Run deterministic seeded tick-event simulation and stream each transition to a consumer.
+pub fn stream_seeded_tick_event_simulation<C>(
+    run_config: SeededTickSimulationRunConfig,
+    consumer: &mut C,
+) -> Result<SeededTickSimulationStreamCompletion, SeededTickSimulationRunError>
+where
+    C: SeededTickSimulationTransitionConsumer,
+{
+    let randomness_factory = SplitMix64SimulationRandomnessFactory;
+    stream_seeded_tick_event_simulation_with_randomness_factory(
+        run_config,
+        &randomness_factory,
+        consumer,
+    )
+}
+
+/// Run deterministic seeded tick-event simulation with an injected randomness factory and a
+/// streamed transition consumer.
+pub fn stream_seeded_tick_event_simulation_with_randomness_factory<F, C>(
+    run_config: SeededTickSimulationRunConfig,
+    randomness_factory: &F,
+    consumer: &mut C,
+) -> Result<SeededTickSimulationStreamCompletion, SeededTickSimulationRunError>
+where
+    F: SimulationRandomnessFactory,
+    C: SeededTickSimulationTransitionConsumer,
 {
     run_config.validate()?;
 
@@ -123,15 +240,8 @@ where
         estimated_event_capacity,
         "reserving seeded simulation result buffers"
     );
-
-    let mut fine_path: Vec<SeededFinePathRecord> =
-        try_reserve_simulation_buffer("fine_path", estimated_transition_capacity)?;
-    let mut public_transition_positions: Vec<usize> = try_reserve_simulation_buffer(
-        "public_transition_positions",
-        estimated_transition_capacity,
-    )?;
-    let mut event_transition_positions: Vec<usize> =
-        try_reserve_simulation_buffer("event_transition_positions", estimated_event_capacity)?;
+    consumer
+        .reserve_transition_capacity(estimated_transition_capacity, estimated_event_capacity)?;
 
     let mut next_event_index: u64 = 0;
     let mut next_transition_index: u64 = 0;
@@ -349,11 +459,6 @@ where
                     side,
                     ..
                 } => {
-                    push_simulation_buffer_value(
-                        "event_transition_positions",
-                        &mut event_transition_positions,
-                        fine_path.len(),
-                    )?;
                     next_event_index = next_event_index.saturating_add(1);
                     previous_timestamp_utc_nanos = timestamp_utc_nanos;
                     (map_side_to_transition_kind(side), Some(side), None)
@@ -394,15 +499,16 @@ where
                 state_snapshot,
             };
 
-            if is_public_seeded_fine_path_record(&fine_path_record) {
-                push_simulation_buffer_value(
-                    "public_transition_positions",
-                    &mut public_transition_positions,
-                    fine_path.len(),
-                )?;
-            }
+            let emission = SeededTickSimulationTransitionEmission {
+                is_public_fine_path_record: is_public_seeded_fine_path_record(&fine_path_record),
+                is_event_projection_record: matches!(
+                    fine_path_record.transition_kind,
+                    SeededFinePathTransitionKind::BuyTrade
+                        | SeededFinePathTransitionKind::SellTrade
+                ),
+            };
 
-            push_simulation_buffer_value("fine_path", &mut fine_path, fine_path_record)?;
+            consumer.consume_transition(fine_path_record, emission)?;
         }
 
         let elapsed_hours_to_interval_end =
@@ -519,12 +625,13 @@ where
             ),
         };
 
-        push_simulation_buffer_value(
-            "public_transition_positions",
-            &mut public_transition_positions,
-            fine_path.len(),
+        consumer.consume_transition(
+            fine_path_record,
+            SeededTickSimulationTransitionEmission {
+                is_public_fine_path_record: true,
+                is_event_projection_record: false,
+            },
         )?;
-        push_simulation_buffer_value("fine_path", &mut fine_path, fine_path_record)?;
 
         next_transition_index = next_transition_index.saturating_add(1);
     }
@@ -534,7 +641,7 @@ where
         .hourly_factor_contract
         .interval_end_utc_nanos[run_config.horizon_interval_count - 1];
 
-    Ok(SeededTickSimulationRunResult {
+    Ok(SeededTickSimulationStreamCompletion {
         schema_version: SEEDED_TICK_EVENT_PATH_SCHEMA_VERSION,
         determinism_policy: SEEDED_TICK_EVENT_DETERMINISM_POLICY,
         event_ordering_policy: SEEDED_TICK_EVENT_ORDERING_POLICY,
@@ -546,10 +653,7 @@ where
         end_time_utc: DateTime::<Utc>::from_timestamp_nanos(horizon_end_utc_nanos),
         simulated_interval_count: run_config.horizon_interval_count,
         fine_path_metadata,
-        fine_path,
-        public_transition_positions,
         event_tape_metadata,
-        event_transition_positions,
         final_excitation_state: next_state,
         news_routing_totals,
         cumulative_core_log_return: observed_state.cumulative_core_log_return,
@@ -1362,7 +1466,9 @@ fn estimate_endogenous_interval_event_capacity(
         .min(MAX_STOCHASTIC_UPDATES_PER_INTERVAL as f64) as usize
 }
 
-fn estimate_seeded_result_capacities(run_config: &SeededTickSimulationRunConfig) -> (usize, usize) {
+pub fn estimate_seeded_result_capacities(
+    run_config: &SeededTickSimulationRunConfig,
+) -> (usize, usize) {
     let known_news_count = run_config
         .model_inputs
         .news_process_configuration

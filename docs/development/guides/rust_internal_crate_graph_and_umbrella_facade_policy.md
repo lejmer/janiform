@@ -101,6 +101,7 @@ The initial target internal workspace graph is the following:
 | `janiform-engine-simulation` | simulation runtime engine | coarse and seeded simulation execution | `janiform-foundations`, `janiform-model-kernels`, `janiform-affine-oracle`, `janiform-market-time` |
 | `janiform-calibration-artifacts` | calibration contract and artifact crate | run specs, manifests, reload/index helpers, artifact schema ownership | `janiform-foundations`, `janiform-model-kernels`, `janiform-market-time` |
 | `janiform-calibration-runtime` | calibration execution crate | staged execution, objectives, optimizers, runtime orchestration | `janiform-foundations`, `janiform-model-kernels`, `janiform-affine-oracle`, `janiform-market-time`, `janiform-engine-pricing`, `janiform-engine-risk`, `janiform-engine-simulation`, `janiform-calibration-artifacts` |
+| `janiform-joint-refinement-worker` | process-isolated calibration worker crate | joint-refinement summary simulation worker executable | `janiform-calibration-runtime` |
 | `janiform-analytics-stylized-facts` | analytics crate | stylized-fact metrics, comparisons, and reporting | `janiform-foundations`, `janiform-model-kernels`, `janiform-market-time`, `janiform-engine-simulation`, `janiform-calibration-artifacts` |
 | `janiform-validation` | validation crate | regression harnesses, scale consistency, deterministic checks, validation contracts | `janiform-foundations`, `janiform-model-kernels`, `janiform-affine-oracle`, `janiform-market-time`, `janiform-engine-pricing`, `janiform-engine-risk`, `janiform-engine-simulation`, `janiform-calibration-artifacts`, `janiform-analytics-stylized-facts`, `janiform-governance-bench` |
 | `janiform-governance` | governance crate | regression drift attribution, acceptance governance, deterministic regression orchestration, performance baseline ownership | `janiform-foundations`, `janiform-model-kernels`, `janiform-market-time`, `janiform-engine-pricing`, `janiform-engine-risk`, `janiform-engine-simulation`, `janiform-calibration-artifacts`, `janiform-analytics-stylized-facts`, `janiform-validation`, `janiform-governance-bench` |
@@ -202,6 +203,7 @@ The following dependency directions are forbidden unless this policy is explicit
 ### Calibration rules
 
 - `janiform-calibration-runtime` may depend on engines and calibration artifacts
+- `janiform-joint-refinement-worker` may depend on `janiform-calibration-runtime` only
 - `janiform-calibration-artifacts` must stay dependency-light and must not depend on engines,
   validation, or governance
 - calibration runtime must not become the place where governance or benchmark policy leaks into

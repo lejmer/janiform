@@ -34,7 +34,6 @@ from janiform.calibration.market_data import (
     CalibrationTickPriceInputPolicy,
     MarketDataCalibrationRequest,
     prepare_market_data_calibration,
-    run_market_data_calibration,
 )
 from janiform.contracts import MeanReversionAnchorModelKind
 from janiform.calibration.staged import (
@@ -244,6 +243,14 @@ def test_translate_market_data_request_materializes_mean_reversion_on_interval_g
 
     translation = translate_market_data_request_to_prepared_calibration(request)
     prepared_payload = _prepared_payload(translation)
+
+    assert translation.staged_request.selected_stages == (
+        CalibrationStage.SEASONALITY,
+        CalibrationStage.HAWKES,
+        CalibrationStage.RETURN_COMPONENTS,
+        CalibrationStage.MEAN_REVERSION,
+        CalibrationStage.JOINT_REFINEMENT,
+    )
 
     mean_reversion_stage_input = prepared_payload["mean_reversion_stage_input"]
     assert (
@@ -657,7 +664,7 @@ def test_built_in_session_resolution_does_not_require_source_file_access() -> No
     assert session_resolution.selected_policy_id == "sources.sessions.fx_spot_24_5.v1"
 
 
-def test_translate_market_data_request_without_known_news_runs_staged_calibration(
+def test_translate_market_data_request_without_known_news_omits_realized_known_news_samples(
     tmp_path: Path,
     calendar_registry_json: str,
 ) -> None:
@@ -699,24 +706,6 @@ def test_translate_market_data_request_without_known_news_runs_staged_calibratio
     prepared_payload = _prepared_payload(translation)
     return_components_input = prepared_payload["return_components_candidate_generation_input"]
     assert return_components_input["realized_known_news_return_samples"] == []
-
-    response = run_market_data_calibration(request)
-    assert response.execution_mode == CalibrationExecutionMode.MEMORY
-    assert response.status.value == "success"
-    assert [report.stage.value for report in response.stage_reports] == [
-        "seasonality",
-        "hawkes",
-        "return_components",
-        "mean_reversion",
-        "joint_refinement",
-    ]
-    assert response.stage_reports[0].status.value == "success"
-    assert response.stage_reports[1].status.value == "success"
-    assert response.stage_reports[1].failure is None
-    assert response.stage_reports[2].status.value == "success"
-    assert response.stage_reports[2].failure is None
-    assert response.stage_reports[3].status.value == "success"
-    assert response.stage_reports[3].failure is None
 
 
 def test_translate_market_data_request_scales_nig_candidates_to_tick_return_magnitude(
@@ -1043,6 +1032,13 @@ def test_prepare_market_data_calibration_returns_public_diagnostics_and_provenan
     assert prepared.prepared_payload_path is None
     assert prepared.staged_execution_input_path is None
     assert "execution_input" not in prepared.to_payload()
+    assert prepared.staged_request.selected_stages == (
+        CalibrationStage.SEASONALITY,
+        CalibrationStage.HAWKES,
+        CalibrationStage.RETURN_COMPONENTS,
+        CalibrationStage.MEAN_REVERSION,
+        CalibrationStage.JOINT_REFINEMENT,
+    )
     assert prepared.diagnostics.selected_stages == (
         CalibrationStage.SEASONALITY,
         CalibrationStage.HAWKES,
@@ -1050,6 +1046,7 @@ def test_prepare_market_data_calibration_returns_public_diagnostics_and_provenan
         CalibrationStage.MEAN_REVERSION,
         CalibrationStage.JOINT_REFINEMENT,
     )
+    assert prepared.staged_request.selected_stages == prepared.diagnostics.selected_stages
     assert prepared.diagnostics.executed_preprocessing_steps == (
         "source_loading",
         "column_mapping_validation",
@@ -1076,119 +1073,6 @@ def test_prepare_market_data_calibration_returns_public_diagnostics_and_provenan
     assert persisted.staged_execution_input_path is not None
     assert Path(persisted.prepared_payload_path).exists()
     assert Path(persisted.staged_execution_input_path).exists()
-
-
-def test_run_market_data_calibration_executes_market_data_first_workflow(
-    tmp_path: Path,
-    calendar_registry_json: str,
-) -> None:
-    session_definition_path = _write_session_definition(tmp_path, calendar_registry_json)
-
-    tick_data_path = tmp_path / "ticks.csv"
-    tick_data_path.write_text(
-        "\n".join(
-            [
-                "timestamp_utc,trade_price,trade_sign",
-                "2026-02-02T14:30:00Z,100.0,buy",
-                "2026-02-02T15:00:00Z,101.0,buy",
-                "2026-02-02T15:10:00Z,103.0,sell",
-                "2026-02-02T20:59:00Z,102.0,sell",
-                "2026-02-04T14:30:00Z,95.0,buy",
-                "2026-02-04T14:40:00Z,98.0,sell",
-            ]
-        ),
-        encoding="utf-8",
-    )
-
-    request = _build_market_data_request(
-        session_definition_path=session_definition_path,
-        tick_data_path=tick_data_path,
-        workflow_scope=CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE,
-        tick_column_mapping=CalibrationTickDataColumnMapping(
-            timestamp_column="timestamp_utc",
-            price_column="trade_price",
-            trade_sign_column="trade_sign",
-        ),
-        normalization_policy=CalibrationMarketDataNormalizationPolicy(
-            timestamp_timezone="UTC",
-            sort_records_by_timestamp=True,
-            tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
-        ),
-    )
-
-    response = run_market_data_calibration(request)
-
-    assert response.execution_mode == CalibrationExecutionMode.MEMORY
-    assert response.status.value == "success"
-    assert len(response.stage_reports) == 5
-    assert response.stage_reports[0].stage == CalibrationStage.SEASONALITY
-    assert response.stage_reports[0].status.value == "success"
-    assert response.stage_reports[1].stage == CalibrationStage.HAWKES
-    assert response.stage_reports[1].status.value == "success"
-    assert response.stage_reports[1].failure is None
-    assert response.stage_reports[2].stage == CalibrationStage.RETURN_COMPONENTS
-    assert response.stage_reports[2].status.value == "success"
-    assert response.stage_reports[2].failure is None
-    assert response.stage_reports[3].stage == CalibrationStage.MEAN_REVERSION
-    assert response.stage_reports[3].status.value == "success"
-    assert response.stage_reports[3].failure is None
-    assert response.stage_reports[4].stage == CalibrationStage.JOINT_REFINEMENT
-    assert response.stage_reports[4].status.value == "success"
-    assert response.stage_reports[4].failure is None
-
-
-def test_run_market_data_calibration_estimates_endogenous_mean_reversion(
-    tmp_path: Path,
-    calendar_registry_json: str,
-) -> None:
-    session_definition_path = _write_session_definition(tmp_path, calendar_registry_json)
-
-    tick_data_path = tmp_path / "ticks.csv"
-    tick_data_path.write_text(
-        "\n".join(
-            [
-                "timestamp_utc,trade_price,trade_sign",
-                "2026-02-02T14:30:00Z,100.0,buy",
-                "2026-02-02T20:59:00Z,101.0,sell",
-                "2026-02-03T14:30:00Z,102.0,buy",
-                "2026-02-03T20:59:00Z,103.0,sell",
-                "2026-02-04T14:30:00Z,104.0,buy",
-                "2026-02-04T20:59:00Z,105.0,sell",
-                "2026-02-05T14:30:00Z,106.0,buy",
-                "2026-02-05T20:59:00Z,107.0,sell",
-            ]
-        ),
-        encoding="utf-8",
-    )
-
-    request = _build_market_data_request(
-        session_definition_path=session_definition_path,
-        tick_data_path=tick_data_path,
-        workflow_scope=CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE,
-        tick_column_mapping=CalibrationTickDataColumnMapping(
-            timestamp_column="timestamp_utc",
-            price_column="trade_price",
-            trade_sign_column="trade_sign",
-        ),
-        normalization_policy=CalibrationMarketDataNormalizationPolicy(
-            timestamp_timezone="UTC",
-            sort_records_by_timestamp=True,
-            tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
-        ),
-        mean_reversion=CalibrationMeanReversionConfiguration(
-            anchor_model_kind=MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL,
-        ),
-    )
-
-    response = run_market_data_calibration(request)
-
-    assert response.status.value == "success"
-    assert response.failure is None
-    assert response.stage_reports[3].stage == CalibrationStage.MEAN_REVERSION
-    assert response.stage_reports[3].status.value == "success"
-    assert response.stage_reports[3].failure is None
-    assert len(response.stage_reports) == 5
-
 
 def test_translate_market_data_request_full_with_option_surface_sets_option_reference(
     tmp_path: Path,

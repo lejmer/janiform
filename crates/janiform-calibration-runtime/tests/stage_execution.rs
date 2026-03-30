@@ -1,4 +1,6 @@
 mod support;
+use std::sync::{LazyLock, Mutex};
+
 use support::shared::{
     CALIBRATION_HAWKES_STAGE_EXECUTION_REPORT_SCHEMA_VERSION,
     CALIBRATION_RETURN_COMPONENTS_STAGE_EXECUTION_REPORT_SCHEMA_VERSION,
@@ -7,13 +9,13 @@ use support::shared::{
     CalibrationRunSeedSettings, CalibrationRunSpec, CalibrationStage,
     CalibrationStageExecutionStatus, CalibrationStageSeedOverride, CalibrationStageSolverSettings,
     HawkesKernelValidationStatus, HawkesStageExecutionFailure, HawkesStageExecutionInput,
-    HawkesStructuredAlphaParameterization, JointRefinementStageExecutionInput,
-    JointRefinementStageHawkesInput, JointRefinementStageReturnComponentsInput,
-    JointRefinementStageSeasonalityFactorsInput, ReturnComponentsStageActivityInput,
-    ReturnComponentsStageExecutionFailure, ReturnComponentsStageExecutionInput,
-    SeasonalityStageExecutionFailure, SeasonalityStageExecutionInput, build_data_inputs,
-    build_hawkes_stage_run_spec, build_hawkes_stage_success_payload,
-    build_return_components_stage_pipeline_run_spec,
+    HawkesStructuredAlphaParameterization, JointRefinementStageExecutionFailure,
+    JointRefinementStageExecutionInput, JointRefinementStageHawkesInput,
+    JointRefinementStageReturnComponentsInput, JointRefinementStageSeasonalityFactorsInput,
+    ReturnComponentsStageActivityInput, ReturnComponentsStageExecutionFailure,
+    ReturnComponentsStageExecutionInput, SeasonalityStageExecutionFailure,
+    SeasonalityStageExecutionInput, build_data_inputs, build_hawkes_stage_run_spec,
+    build_hawkes_stage_success_payload, build_return_components_stage_pipeline_run_spec,
     build_return_components_stage_standalone_run_spec, build_run_contract_with_mode_and_resume,
     build_seasonality_stage_run_spec, build_seasonality_stage_success_payload,
     build_solver_settings, calibration_stage_test_registry, calibration_stage_timestamp_fixture,
@@ -22,6 +24,15 @@ use support::shared::{
     run_joint_refinement_calibration_stage, run_return_components_calibration_stage,
     run_seasonality_calibration_stage, timestamp_input_record,
 };
+
+const JOINT_REFINEMENT_WORKER_EXECUTABLE_ENV: &str = "JANIFORM_JOINT_REFINEMENT_WORKER_EXECUTABLE";
+const JOINT_REFINEMENT_RESTART_POLICY_ENV: &str = "JANIFORM_JOINT_REFINEMENT_RESTART_POLICY";
+const JOINT_REFINEMENT_RESTART_POLICY_BUDGET_DERIVED: &str = "budget_derived";
+const JOINT_REFINEMENT_SUMMARY_SIMULATION_BACKEND_ENV: &str =
+    "JANIFORM_JOINT_REFINEMENT_SUMMARY_SIMULATION_BACKEND";
+const JOINT_REFINEMENT_SUMMARY_SIMULATION_BACKEND_PROCESS_WORKER: &str = "process_worker";
+
+static JOINT_REFINEMENT_WORKER_ENV_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 #[test]
 fn seasonality_stage_execution_succeeds_for_memory_and_disk_mode_handoffs() {
@@ -334,6 +345,161 @@ fn joint_refinement_stage_execution_succeeds_for_memory_and_disk_mode_handoffs()
         disk_report.status,
         CalibrationStageExecutionStatus::Success,
         "{disk_report:#?}"
+    );
+}
+
+#[test]
+fn joint_refinement_stage_execution_is_deterministic_across_cpu_counts() {
+    with_joint_refinement_restart_policy_override(
+        JOINT_REFINEMENT_RESTART_POLICY_BUDGET_DERIVED,
+        || {
+            let calendar_registry = calibration_stage_test_registry();
+            let seasonality_payload = build_seasonality_stage_success_payload();
+            let hawkes_payload = build_hawkes_stage_success_payload();
+            let return_components_payload = run_return_components_calibration_stage(
+                &build_run_contract_with_mode_and_resume(
+                    "run-joint-stage-cpu-memory",
+                    CalibrationExecutionMode::Memory,
+                    None,
+                )
+                .run_spec,
+                &calendar_registry,
+                ReturnComponentsStageExecutionInput {
+                    activity_input: ReturnComponentsStageActivityInput::InMemoryOutput {
+                        payload: hawkes_payload.clone(),
+                    },
+                    candidate_generation_input:
+                        return_components_stage_candidate_generation_fixture(),
+                },
+            )
+            .fitted_stage_payload
+            .expect("return-components fixture should produce fitted payload");
+
+            let memory_single_thread_report = run_joint_refinement_calibration_stage(
+                &joint_refinement_run_spec_with_cpu_count(CalibrationExecutionMode::Memory, 1),
+                &calendar_registry,
+                JointRefinementStageExecutionInput {
+                    seasonality_factors_input: JointRefinementStageSeasonalityFactorsInput {
+                        intraday_minutes_per_bin: seasonality_payload.intraday_minutes_per_bin,
+                        intraday_factor_by_bin: seasonality_payload.intraday_factor_by_bin.clone(),
+                        day_of_week_factor: seasonality_payload.day_of_week_factor.clone(),
+                        day_of_year_factor: seasonality_payload.day_of_year_factor.clone(),
+                        timestamp_utc_nanos: seasonality_payload.timestamp_utc_nanos.clone(),
+                        normalized_combined_factor_by_event: seasonality_payload
+                            .normalized_combined_factor_by_event
+                            .clone(),
+                    },
+                    hawkes_input: JointRefinementStageHawkesInput::InMemoryOutput {
+                        payload: hawkes_payload.clone(),
+                    },
+                    return_components_input:
+                        JointRefinementStageReturnComponentsInput::InMemoryOutput {
+                            payload: return_components_payload.clone(),
+                        },
+                    candidate_generation_input:
+                        return_components_stage_candidate_generation_fixture(),
+                },
+            );
+            let memory_multi_thread_report = run_joint_refinement_calibration_stage(
+                &joint_refinement_run_spec_with_cpu_count(CalibrationExecutionMode::Memory, 4),
+                &calendar_registry,
+                JointRefinementStageExecutionInput {
+                    seasonality_factors_input: JointRefinementStageSeasonalityFactorsInput {
+                        intraday_minutes_per_bin: seasonality_payload.intraday_minutes_per_bin,
+                        intraday_factor_by_bin: seasonality_payload.intraday_factor_by_bin.clone(),
+                        day_of_week_factor: seasonality_payload.day_of_week_factor.clone(),
+                        day_of_year_factor: seasonality_payload.day_of_year_factor.clone(),
+                        timestamp_utc_nanos: seasonality_payload.timestamp_utc_nanos.clone(),
+                        normalized_combined_factor_by_event: seasonality_payload
+                            .normalized_combined_factor_by_event
+                            .clone(),
+                    },
+                    hawkes_input: JointRefinementStageHawkesInput::InMemoryOutput {
+                        payload: hawkes_payload.clone(),
+                    },
+                    return_components_input:
+                        JointRefinementStageReturnComponentsInput::InMemoryOutput {
+                            payload: return_components_payload.clone(),
+                        },
+                    candidate_generation_input:
+                        return_components_stage_candidate_generation_fixture(),
+                },
+            );
+
+            let memory_single_thread_payload = memory_single_thread_report
+                .fitted_stage_payload
+                .as_ref()
+                .expect("single-thread memory report should include fitted payload");
+            let memory_multi_thread_payload = memory_multi_thread_report
+                .fitted_stage_payload
+                .as_ref()
+                .expect("multi-thread memory report should include fitted payload");
+
+            assert_eq!(memory_single_thread_payload, memory_multi_thread_payload);
+        },
+    );
+}
+
+#[test]
+fn joint_refinement_stage_execution_reports_infrastructure_failure_when_worker_is_unavailable() {
+    with_joint_refinement_worker_executable_override(
+        std::env::temp_dir().join("missing-janiform-joint-refinement-worker"),
+        || {
+            let calendar_registry = calibration_stage_test_registry();
+            let seasonality_payload = build_seasonality_stage_success_payload();
+            let hawkes_payload = build_hawkes_stage_success_payload();
+            let return_components_payload = run_return_components_calibration_stage(
+                &build_run_contract_with_mode_and_resume(
+                    "run-joint-stage-missing-worker",
+                    CalibrationExecutionMode::Memory,
+                    None,
+                )
+                .run_spec,
+                &calendar_registry,
+                ReturnComponentsStageExecutionInput {
+                    activity_input: ReturnComponentsStageActivityInput::InMemoryOutput {
+                        payload: hawkes_payload.clone(),
+                    },
+                    candidate_generation_input:
+                        return_components_stage_candidate_generation_fixture(),
+                },
+            )
+            .fitted_stage_payload
+            .expect("return-components fixture should produce fitted payload");
+
+            let report = run_joint_refinement_calibration_stage(
+                &joint_refinement_run_spec_with_cpu_count(CalibrationExecutionMode::Memory, 1),
+                &calendar_registry,
+                JointRefinementStageExecutionInput {
+                    seasonality_factors_input: JointRefinementStageSeasonalityFactorsInput {
+                        intraday_minutes_per_bin: seasonality_payload.intraday_minutes_per_bin,
+                        intraday_factor_by_bin: seasonality_payload.intraday_factor_by_bin,
+                        day_of_week_factor: seasonality_payload.day_of_week_factor,
+                        day_of_year_factor: seasonality_payload.day_of_year_factor,
+                        timestamp_utc_nanos: seasonality_payload.timestamp_utc_nanos,
+                        normalized_combined_factor_by_event: seasonality_payload
+                            .normalized_combined_factor_by_event,
+                    },
+                    hawkes_input: JointRefinementStageHawkesInput::InMemoryOutput {
+                        payload: hawkes_payload,
+                    },
+                    return_components_input:
+                        JointRefinementStageReturnComponentsInput::InMemoryOutput {
+                            payload: return_components_payload,
+                        },
+                    candidate_generation_input:
+                        return_components_stage_candidate_generation_fixture(),
+                },
+            );
+
+            assert_eq!(report.status, CalibrationStageExecutionStatus::Failure);
+            assert!(matches!(
+                report.failure,
+                Some(JointRefinementStageExecutionFailure::SimulationInfrastructureUnavailable {
+                    ref error_message,
+                }) if error_message.contains("worker executable path does not exist")
+            ));
+        },
     );
 }
 
@@ -1080,6 +1246,111 @@ fn hawkes_run_spec_with_cpu_count(
     run_spec.validate().expect("run spec should remain valid");
 
     run_spec
+}
+
+fn joint_refinement_run_spec_with_cpu_count(
+    execution_mode: CalibrationExecutionMode,
+    cpu_count: usize,
+) -> CalibrationRunSpec {
+    let mut run_spec =
+        build_run_contract_with_mode_and_resume("run-joint-stage-cpu-count", execution_mode, None)
+            .run_spec;
+    let joint_refinement_solver_settings = run_spec
+        .optimizer_settings_by_stage
+        .iter_mut()
+        .find(|stage_solver_settings| {
+            stage_solver_settings.stage == CalibrationStage::JointRefinement
+        })
+        .expect("joint-refinement stage solver settings should exist");
+
+    joint_refinement_solver_settings
+        .optimizer_settings
+        .cpu_count = cpu_count;
+    run_spec.validate().expect("run spec should remain valid");
+
+    run_spec
+}
+
+fn with_joint_refinement_worker_executable_override<T>(
+    worker_executable: std::path::PathBuf,
+    operation: impl FnOnce() -> T,
+) -> T {
+    let _guard = JOINT_REFINEMENT_WORKER_ENV_LOCK
+        .lock()
+        .expect("joint-refinement worker environment lock should be available");
+    let previous_value = std::env::var_os(JOINT_REFINEMENT_WORKER_EXECUTABLE_ENV);
+    let previous_backend_value = std::env::var_os(JOINT_REFINEMENT_SUMMARY_SIMULATION_BACKEND_ENV);
+    // SAFETY: This helper serializes environment mutation through a process-local mutex and
+    // restores the previous value before releasing the lock.
+    unsafe {
+        std::env::set_var(JOINT_REFINEMENT_WORKER_EXECUTABLE_ENV, &worker_executable);
+        std::env::set_var(
+            JOINT_REFINEMENT_SUMMARY_SIMULATION_BACKEND_ENV,
+            JOINT_REFINEMENT_SUMMARY_SIMULATION_BACKEND_PROCESS_WORKER,
+        );
+    }
+
+    let result = operation();
+
+    if let Some(previous_value) = previous_value {
+        // SAFETY: The same mutex guard is still held while restoring the previous value.
+        unsafe {
+            std::env::set_var(JOINT_REFINEMENT_WORKER_EXECUTABLE_ENV, previous_value);
+        }
+    } else {
+        // SAFETY: The same mutex guard is still held while clearing the temporary override.
+        unsafe {
+            std::env::remove_var(JOINT_REFINEMENT_WORKER_EXECUTABLE_ENV);
+        }
+    }
+    if let Some(previous_backend_value) = previous_backend_value {
+        // SAFETY: The same mutex guard is still held while restoring the previous value.
+        unsafe {
+            std::env::set_var(
+                JOINT_REFINEMENT_SUMMARY_SIMULATION_BACKEND_ENV,
+                previous_backend_value,
+            );
+        }
+    } else {
+        // SAFETY: The same mutex guard is still held while clearing the temporary override.
+        unsafe {
+            std::env::remove_var(JOINT_REFINEMENT_SUMMARY_SIMULATION_BACKEND_ENV);
+        }
+    }
+
+    result
+}
+
+fn with_joint_refinement_restart_policy_override<T>(
+    restart_policy: &str,
+    operation: impl FnOnce() -> T,
+) -> T {
+    let _guard = JOINT_REFINEMENT_WORKER_ENV_LOCK
+        .lock()
+        .expect("joint-refinement worker environment lock should be available");
+    let previous_value = std::env::var_os(JOINT_REFINEMENT_RESTART_POLICY_ENV);
+
+    // SAFETY: This helper serializes environment mutation through a process-local mutex and
+    // restores the previous value before releasing the lock.
+    unsafe {
+        std::env::set_var(JOINT_REFINEMENT_RESTART_POLICY_ENV, restart_policy);
+    }
+
+    let result = operation();
+
+    if let Some(previous_value) = previous_value {
+        // SAFETY: The same mutex guard is still held while restoring the previous value.
+        unsafe {
+            std::env::set_var(JOINT_REFINEMENT_RESTART_POLICY_ENV, previous_value);
+        }
+    } else {
+        // SAFETY: The same mutex guard is still held while clearing the temporary override.
+        unsafe {
+            std::env::remove_var(JOINT_REFINEMENT_RESTART_POLICY_ENV);
+        }
+    }
+
+    result
 }
 
 #[test]

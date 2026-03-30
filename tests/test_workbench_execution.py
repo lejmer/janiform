@@ -1,16 +1,18 @@
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, Optional
 
 from janiform.calibration.market_data.contracts import CalibrationMarketDataWorkflowScope
 from janiform.calibration.staged.contracts import CalibrationStageExecutionStatus
 from janiform.contracts import MeanReversionAnchorModelKind
 from tools.workbench.execution import (
+    RESOURCE_SNAPSHOT_INTERVAL_SECONDS,
     WorkbenchExecutionWorker,
+    _detail_for_stage_progress_event,
     _live_stage_report_payload,
     _mean_reversion_configuration_from_setup,
 )
-from tools.workbench.state import WorkbenchRunSetup
+from tools.workbench.state import DEFAULT_WORKBENCH_SESSION_PRESET_NAME, WorkbenchRunSetup
 
 
 def test_workbench_execution_uses_endogenous_mean_reversion_by_default() -> None:
@@ -68,6 +70,7 @@ def test_workbench_execution_worker_uses_prepared_handle_runner_and_current_fit_
     )
     worker = WorkbenchExecutionWorker(run_setup)
     recorded_runner_call: dict[str, Any] = {}
+    recorded_estimator_kwargs: dict[str, Any] = {}
     emitted_errors: list[str] = []
     completed_results: list[Any] = []
 
@@ -104,7 +107,8 @@ def test_workbench_execution_worker_uses_prepared_handle_runner_and_current_fit_
     )
 
     class _FakeEstimator:
-        def __init__(self, **_: Any) -> None:
+        def __init__(self, **kwargs: Any) -> None:
+            recorded_estimator_kwargs.update(kwargs)
             return None
 
         def _resolve_market_profile_configuration(self) -> None:
@@ -183,6 +187,7 @@ def test_workbench_execution_worker_uses_prepared_handle_runner_and_current_fit_
 
     assert emitted_errors == []
     assert recorded_runner_call["prepared_handle"] == "prepared-handle"
+    assert recorded_estimator_kwargs["session"] == DEFAULT_WORKBENCH_SESSION_PRESET_NAME
     assert callable(recorded_runner_call["event_callback"])
     assert len(completed_results) == 1
     assert completed_results[0].fit_report.staged_request == "staged-request"
@@ -235,3 +240,95 @@ def test_live_stage_report_payload_keeps_candidate_diagnostics_only() -> None:
             ],
         },
     }
+
+
+def test_stage_progress_detail_summarizes_joint_refinement_runtime_state() -> None:
+    detail = _detail_for_stage_progress_event(
+        {
+            "stage": "joint_refinement",
+            "progress_phase": "restart_optimization",
+            "completed_units": 3,
+            "total_units": 8,
+            "current_item_label": "halton_03",
+            "valid_completed_units": 2,
+            "cumulative_local_evaluation_count": 117,
+            "best_weighted_objective": 0.123456789,
+        }
+    )
+
+    assert detail == (
+        "joint_refinement restart optimization 3/8 | latest=halton_03 | valid=2 "
+        "| local_evaluations=117 | best_objective=0.123457"
+    )
+
+
+def test_workbench_execution_worker_forwards_stage_progress_native_events() -> None:
+    run_setup = WorkbenchRunSetup(
+        dataset_path=Path("ticks.csv"),
+        workflow_scope=CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE,
+        output_directory=Path("output"),
+    )
+    worker = WorkbenchExecutionWorker(run_setup)
+    emitted_events: list[Any] = []
+    worker.event_emitted.connect(emitted_events.append)
+
+    worker._forward_native_event(
+        {
+            "event_kind": "stage_progress",
+            "stage": "joint_refinement",
+            "progress_phase": "restart_optimization",
+            "completed_units": 2,
+            "total_units": 8,
+            "current_item_label": "activity_aligned",
+        }
+    )
+
+    assert len(emitted_events) == 1
+    emitted_event = emitted_events[0]
+    assert emitted_event.event_type.value == "subtask.started"
+    assert emitted_event.subtask == "joint_refinement.restart_optimization"
+    assert emitted_event.payload["completed_units"] == 2
+    assert emitted_event.payload["total_units"] == 8
+
+
+def test_workbench_execution_heartbeat_uses_resource_snapshot_interval(
+    monkeypatch,
+) -> None:
+    run_setup = WorkbenchRunSetup(
+        dataset_path=Path("ticks.csv"),
+        workflow_scope=CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE,
+        output_directory=Path("output"),
+    )
+    worker = WorkbenchExecutionWorker(run_setup)
+    emitted_events: list[tuple[Any, dict[str, Any]]] = []
+    recorded_sleep_intervals: list[float] = []
+
+    def fake_emit_event(
+        event_type: Any,
+        *,
+        payload: dict[str, Any],
+        stage: Optional[str] = None,
+        subtask: Optional[str] = None,
+        evaluation_tier: Optional[str] = None,
+    ) -> None:
+        _ = stage
+        _ = subtask
+        _ = evaluation_tier
+        emitted_events.append((event_type, payload))
+
+    def fake_sleep(interval_seconds: float) -> None:
+        recorded_sleep_intervals.append(interval_seconds)
+        worker._heartbeat_stop.set()
+
+    monkeypatch.setattr(worker, "_emit_event", fake_emit_event)
+    monkeypatch.setattr("tools.workbench.execution.sleep", fake_sleep)
+
+    heartbeat_thread = worker._start_heartbeat()
+    heartbeat_thread.join(timeout=1.0)
+
+    assert recorded_sleep_intervals == [RESOURCE_SNAPSHOT_INTERVAL_SECONDS]
+    assert len(emitted_events) == 1
+    assert emitted_events[0][0] == "resource.snapshot_recorded" or (
+        emitted_events[0][0].value == "resource.snapshot_recorded"
+    )
+    assert emitted_events[0][1]["worker_count"] == 1

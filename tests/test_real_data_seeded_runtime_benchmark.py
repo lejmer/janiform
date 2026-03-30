@@ -24,7 +24,7 @@ from benches.python.support import (
     load_real_data_seeded_runtime_baseline_from_json,
     load_real_data_seeded_runtime_benchmark_fixture_document,
     load_real_data_seeded_runtime_benchmark_policy_from_json,
-    run_real_data_seeded_runtime_benchmark_fixture,
+    load_real_data_seeded_runtime_benchmark_report_from_json,
 )
 
 
@@ -218,8 +218,9 @@ def test_real_data_seeded_runtime_benchmark_runner_writes_artifacts(
 
 @lru_cache(maxsize=1)
 def _cached_fixture_report(fixtures_root: Path) -> RealDataSeededRuntimeBenchmarkReport:
-    fixture_document = _fixture_document(fixtures_root)
-    return run_real_data_seeded_runtime_benchmark_fixture(fixture_document.fixtures[0])
+    return load_real_data_seeded_runtime_benchmark_report_from_json(
+        _report_path(fixtures_root).read_text(encoding="utf-8")
+    )
 
 
 def _cloned_cached_fixture_report(fixtures_root: Path) -> RealDataSeededRuntimeBenchmarkReport:
@@ -335,6 +336,14 @@ def _fixture_path(fixtures_root: Path) -> Path:
         fixtures_root
         / "benchmarks"
         / "real_data_seeded_runtime_smoke_fixture.json"
+    )
+
+
+def _report_path(fixtures_root: Path) -> Path:
+    return (
+        fixtures_root
+        / "benchmarks"
+        / "real_data_seeded_runtime_smoke_report.json"
     )
 
 

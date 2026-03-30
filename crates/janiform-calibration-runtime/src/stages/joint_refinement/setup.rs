@@ -1,24 +1,15 @@
+use std::sync::mpsc::Sender;
+
 use chrono::{DateTime, Datelike, Duration, Timelike, Utc};
-use janiform_engine_simulation::{
-    MeanReversionBoundaryState, MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors,
-    SeededTickEventStateSnapshotCapture, SeededTickSimulationModelInputs,
-    SeededTickSimulationRunConfig, SeededTickSimulationRunOptions,
-    run_seeded_tick_event_simulation,
-};
+use janiform_engine_simulation::MeanReversionFittedParameters;
 use janiform_foundations::time::{
     FIFTEEN_MINUTES_NANOS, FIVE_MINUTES_NANOS, ONE_HOUR_NANOS, ceil_to_hour_utc_nanos,
     floor_to_hour_utc_nanos,
 };
-use janiform_market_time::hourly_factors::{
-    HourlyFactorProviderRequest, HourlyNewsIntensityFactorSource, HourlySeasonalityFactorSource,
-};
-use janiform_model_kernels::hawkes::{
-    HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
-};
+use janiform_model_kernels::hawkes::{HawkesKernelLoadings, HawkesKernelParameters};
 use janiform_model_kernels::news::SurpriseNewsArrivalConfiguration;
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 
-use crate::adapters::load_hourly_factor_contract_for_calibration;
 use crate::calendar::ExchangeCalendarRegistry;
 use crate::stages::hawkes::HawkesStageFittedPayload;
 use crate::stages::joint_metrics::{
@@ -26,12 +17,10 @@ use crate::stages::joint_metrics::{
     build_continuous_calibration_sample_from_aggregated_intervals,
     build_observed_open_session_interval_observations, business_time_bucket_thresholds,
     mean_absolute_observed_return_by_utc_hour, mean_absolute_return_by_utc_hour,
-    mean_absolute_trade_return_by_utc_hour, return_scale_summaries_by_business_time_bucket,
-    return_scale_summary, return_scale_summary_from_returns, rolling_variance_activity_metric,
-    sampled_return_values, sampled_trade_returns, scale_normalized_returns, tick_count_series,
-    zeroed_interval_observation_template,
+    return_scale_summaries_by_business_time_bucket, return_scale_summary,
+    return_scale_summary_from_returns, rolling_variance_activity_metric, sampled_return_values,
+    scale_normalized_returns, tick_count_series, zeroed_interval_observation_template,
 };
-use crate::stages::joint_refinement::contracts::JointRefinementStageHawkesInput;
 use crate::stages::return_components::{
     NigShapeSearchPoint, ReturnComponentsObservedOpenSessionReturn,
     ReturnComponentsStageCandidateDiagnostic, ReturnComponentsStageCandidateGenerationInput,
@@ -42,12 +31,19 @@ use crate::stages::return_components::{
     nig_search_bounds_for_calibration_sample, nig_search_point_from_configuration,
 };
 
+use super::contracts::{
+    JointRefinementStageHawkesInput, JointRefinementStageProgressPhase,
+    JointRefinementStageProgressUpdate,
+};
 use super::execution::{
     JOINT_REFINEMENT_HAWKES_SCALE_LOG_BOUND, JointRefinementActiveParameterLayout,
     JointRefinementContext, JointRefinementObservedData, JointRefinementSeedSummary,
-    JointRefinementSeedSummaryCacheKey, build_halton_restart_id, clamp_in_place,
-    deduplicate_restart_seed_candidates, halton_parameter_vector,
+    JointRefinementSeedSummaryCacheKey, build_exchange_calendar_registry_artifact,
+    build_halton_restart_id, clamp_in_place, deduplicate_restart_seed_candidates,
+    halton_parameter_vector,
 };
+use super::summary_simulation::JointRefinementSummarySimulationSessionContext;
+use super::worker_runtime::JointRefinementSeedSummaryAcquisitionError;
 use janiform_calibration_artifacts::{
     CalibrationOptimizerSettings, JointRefinementStageFittedParameters,
     ReturnComponentsStageFittedParameters,
@@ -606,9 +602,6 @@ pub(super) fn build_restart_seeds(
     }
 
     deduplicated_candidates
-        .into_iter()
-        .take(target_restart_count)
-        .collect()
 }
 
 fn joint_nig_basin_restart_seeds(
@@ -811,36 +804,129 @@ pub(super) fn compute_cumulative_log_price_span(
     maximum_cumulative_value - minimum_cumulative_value
 }
 
-pub(super) fn cached_seed_summary_for_candidate_seed(
+pub(super) fn build_summary_simulation_session_context(
+    calendar_registry: &ExchangeCalendarRegistry,
+    context: &JointRefinementObservedData,
+    exchange_code: &str,
+    runtime_hourly_seasonality_factors: &[f64],
+) -> Result<JointRefinementSummarySimulationSessionContext, String> {
+    let calendar_registry_artifact = build_exchange_calendar_registry_artifact(
+        calendar_registry,
+        exchange_code,
+        context.hourly_simulation_start_utc,
+    )
+    .ok_or_else(|| "failed to build exchange calendar registry artifact".to_string())?;
+
+    Ok(JointRefinementSummarySimulationSessionContext {
+        calendar_registry_artifact,
+        exchange_code: exchange_code.to_string(),
+        runtime_hourly_seasonality_factors: runtime_hourly_seasonality_factors.to_vec(),
+        hourly_simulation_start_utc_nanos: context
+            .hourly_simulation_start_utc
+            .timestamp_nanos_opt()
+            .ok_or_else(|| {
+                "joint refinement hourly simulation start timestamp is out of range".to_string()
+            })?,
+        hourly_simulation_interval_count: context.hourly_simulation_interval_count,
+        surprise_weekly_hour_utc_multipliers: context.surprise_weekly_hour_utc_multipliers.clone(),
+        simulated_5m_interval_template: context.simulated_5m_interval_template.clone(),
+        simulated_15m_interval_template: context.simulated_15m_interval_template.clone(),
+        simulated_hourly_interval_template: context.simulated_hourly_interval_template.clone(),
+        observed_5m_business_time_bucket_thresholds: context
+            .observed_5m_business_time_bucket_thresholds,
+        observed_15m_business_time_bucket_thresholds: context
+            .observed_15m_business_time_bucket_thresholds,
+        observed_tick_shape_target_count: context.observed_tick_shape_returns.len(),
+    })
+}
+
+pub(super) fn cached_seed_summaries_for_candidate_seeds(
     parameter_bits: Option<&[u64]>,
     fitted_parameters: &JointRefinementStageFittedParameters,
     context: &JointRefinementContext,
-    simulation_seed: u64,
-) -> Option<JointRefinementSeedSummary> {
+    simulation_seeds: &[u64],
+    progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
+    progress_phase: Option<JointRefinementStageProgressPhase>,
+) -> Result<Vec<(u64, JointRefinementSeedSummary)>, String> {
     let cache_key = parameter_bits.map(|bits| JointRefinementSeedSummaryCacheKey {
         parameter_bits: bits.to_vec(),
-        simulation_seed,
+        simulation_seed: 0,
     });
-    if let Some(seed_cache_key) = cache_key.as_ref()
-        && let Ok(cache_guard) = context.seed_summary_cache.lock()
-        && let Some(cached_summary) = cache_guard.get(seed_cache_key)
-    {
-        return cached_summary.clone();
+    let mut resolved_seed_summaries = Vec::with_capacity(simulation_seeds.len());
+    let mut missing_seeds = Vec::new();
+
+    for simulation_seed in simulation_seeds {
+        let per_seed_cache_key =
+            cache_key
+                .as_ref()
+                .map(|candidate_cache_key| JointRefinementSeedSummaryCacheKey {
+                    parameter_bits: candidate_cache_key.parameter_bits.clone(),
+                    simulation_seed: *simulation_seed,
+                });
+
+        if let Some(seed_cache_key) = per_seed_cache_key.as_ref()
+            && let Ok(cache_guard) = context.seed_summary_cache.lock()
+            && let Some(cached_summary) = cache_guard.get(seed_cache_key)
+        {
+            match cached_summary.clone() {
+                Ok(summary) => {
+                    resolved_seed_summaries.push((*simulation_seed, summary));
+                    continue;
+                }
+                Err(error_message) => return Err(error_message),
+            }
+        }
+
+        missing_seeds.push(*simulation_seed);
     }
 
-    let seed_summary = build_seed_summary_for_candidate_seed(
-        &context.calendar_registry,
-        context,
-        fitted_parameters,
-        simulation_seed,
+    let total_units = simulation_seeds.len();
+    let completed_units = resolved_seed_summaries.len();
+
+    emit_seed_summary_progress(
+        progress_sender,
+        progress_phase,
+        completed_units,
+        total_units,
+        None,
     );
-    if let Some(seed_cache_key) = cache_key
-        && let Ok(mut cache_guard) = context.seed_summary_cache.lock()
-    {
-        cache_guard.insert(seed_cache_key, seed_summary.clone());
+
+    if !missing_seeds.is_empty() {
+        let missing_seed_summaries = build_seed_summaries_for_candidate_seeds(
+            context,
+            fitted_parameters,
+            missing_seeds.as_slice(),
+            progress_sender,
+            progress_phase,
+            completed_units,
+            total_units,
+        )?;
+
+        if let Some(candidate_cache_key) = cache_key
+            && let Ok(mut cache_guard) = context.seed_summary_cache.lock()
+        {
+            for (simulation_seed, seed_summary) in &missing_seed_summaries {
+                cache_guard.insert(
+                    JointRefinementSeedSummaryCacheKey {
+                        parameter_bits: candidate_cache_key.parameter_bits.clone(),
+                        simulation_seed: *simulation_seed,
+                    },
+                    Ok(seed_summary.clone()),
+                );
+            }
+        }
+
+        resolved_seed_summaries.extend(missing_seed_summaries);
     }
 
-    seed_summary
+    resolved_seed_summaries.sort_by_key(|(simulation_seed, _)| {
+        simulation_seeds
+            .iter()
+            .position(|candidate_seed| candidate_seed == simulation_seed)
+            .unwrap_or(simulation_seeds.len())
+    });
+
+    Ok(resolved_seed_summaries)
 }
 
 pub(super) fn build_surprise_multipliers_by_hour_index(
@@ -886,199 +972,76 @@ pub(crate) fn build_surprise_multipliers_for_interval_grid(
         .collect()
 }
 
-pub(super) fn build_seed_summary_for_candidate_seed(
-    calendar_registry: &ExchangeCalendarRegistry,
+fn build_seed_summaries_for_candidate_seeds(
     context: &JointRefinementContext,
     fitted_parameters: &JointRefinementStageFittedParameters,
-    simulation_seed: u64,
-) -> Option<JointRefinementSeedSummary> {
-    let surprise_deterministic_time_multiplier_by_interval_index =
-        build_surprise_multipliers_for_interval_grid(
-            context.observed_data.hourly_simulation_start_utc,
-            context.observed_data.hourly_simulation_interval_count,
-            ONE_HOUR_NANOS,
-            context
-                .observed_data
-                .surprise_weekly_hour_utc_multipliers
-                .as_slice(),
+    simulation_seeds: &[u64],
+    progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
+    progress_phase: Option<JointRefinementStageProgressPhase>,
+    completed_units_before_missing: usize,
+    total_units: usize,
+) -> Result<Vec<(u64, JointRefinementSeedSummary)>, String> {
+    let mut completed_units = completed_units_before_missing;
+    let mut seed_summaries = Vec::with_capacity(simulation_seeds.len());
+
+    for simulation_seed in simulation_seeds {
+        let seed_summary = context
+            .summary_simulation_scheduler
+            .run_seed_summary_simulation(fitted_parameters, *simulation_seed)
+            .map_err(|error| match error {
+                JointRefinementSeedSummaryAcquisitionError::SimulationFailure { error_message } => {
+                    error_message
+                }
+                JointRefinementSeedSummaryAcquisitionError::InfrastructureFailure {
+                    error_message,
+                } => {
+                    if let Ok(mut failure_guard) = context.simulation_infrastructure_failure.lock()
+                        && failure_guard.is_none()
+                    {
+                        *failure_guard = Some(error_message.clone());
+                    }
+                    error_message
+                }
+            })?;
+
+        completed_units += 1;
+        emit_seed_summary_progress(
+            progress_sender,
+            progress_phase,
+            completed_units,
+            total_units,
+            Some(*simulation_seed),
         );
+        seed_summaries.push((*simulation_seed, seed_summary));
+    }
 
-    let hourly_factor_contract = load_hourly_factor_contract_for_calibration(
-        calendar_registry,
-        HourlyFactorProviderRequest {
-            exchange_code: context.exchange_code.as_str(),
-            range_start_utc: context.observed_data.hourly_simulation_start_utc,
-            range_end_utc: context.observed_data.hourly_simulation_end_utc,
-            interval_duration_nanos: ONE_HOUR_NANOS,
-            seasonality_source: Some(HourlySeasonalityFactorSource::Explicit {
-                hourly_factors: context.runtime_hourly_seasonality_factors.as_slice(),
-                materialization_method:
-                    "runtime_compact_seasonality_parameters_mean_renormalized.v1",
-            }),
-            news_intensity_source: Some(HourlyNewsIntensityFactorSource::Materialized {
-                known_scheduled_event_timestamps_utc_nanos: fitted_parameters
-                    .return_components_fitted_parameters
-                    .news_process_configuration
-                    .arrivals
-                    .known
-                    .scheduled_event_timestamps_utc_nanos
-                    .as_slice(),
-                surprise_baseline_intensity: fitted_parameters
-                    .return_components_fitted_parameters
-                    .news_process_configuration
-                    .arrivals
-                    .surprise
-                    .baseline_intensity,
-                surprise_deterministic_time_multiplier_by_interval_index:
-                    surprise_deterministic_time_multiplier_by_interval_index.as_slice(),
-            }),
-        },
-    )
-    .ok()?;
+    Ok(seed_summaries)
+}
 
-    let simulation_result = run_seeded_tick_event_simulation(
-        SeededTickSimulationRunConfig::try_new(
-            simulation_seed,
-            context.observed_data.hourly_simulation_start_utc,
-            context.observed_data.hourly_simulation_interval_count,
-            SeededTickSimulationModelInputs {
-                kernel_parameters: fitted_parameters.hawkes_fitted_parameters.kernel_parameters,
-                nig_shared_plus_shift_configuration: fitted_parameters
-                    .return_components_fitted_parameters
-                    .nig_shared_plus_shift_configuration,
-                news_process_configuration: fitted_parameters
-                    .return_components_fitted_parameters
-                    .news_process_configuration
-                    .clone(),
-                initial_excitation_state: HawkesExcitationState {
-                    y_plus_plus: 0.0,
-                    y_plus_minus: 0.0,
-                    y_minus_plus: 0.0,
-                    y_minus_minus: 0.0,
-                },
-                mean_reversion_fitted_parameters:
-                    MeanReversionFittedParameters::endogenous_core_expectation_one_interval(0.0)
-                        .expect("zero-kappa endogenous mean reversion should validate"),
-                mean_reversion_runtime_interval_anchors:
-                    MeanReversionRuntimeIntervalAnchors::try_new(
-                        hourly_factor_contract.metadata.interval_alignment_policy,
-                        0.0,
-                        vec![0.0; context.observed_data.hourly_simulation_interval_count],
-                        vec![
-                            hourly_factor_contract.interval_duration_nanos as f64
-                                / ONE_HOUR_NANOS as f64;
-                            context.observed_data.hourly_simulation_interval_count
-                        ],
-                    )
-                    .ok()?,
-                initial_mean_reversion_boundary_state: MeanReversionBoundaryState::try_new(
-                    0.0, 0.0, 0.0,
-                )
-                .ok()?,
-                hourly_factor_contract,
-                calendar_registry: calendar_registry.clone(),
-            },
-            Some(SeededTickSimulationRunOptions {
-                debug_trace_enabled: false,
-                debug_trace_options: Default::default(),
-                state_snapshot_capture: SeededTickEventStateSnapshotCapture::Disabled,
-            }),
-        )
-        .ok()?,
-    )
-    .ok()?;
+fn emit_seed_summary_progress(
+    progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
+    progress_phase: Option<JointRefinementStageProgressPhase>,
+    completed_units: usize,
+    total_units: usize,
+    simulation_seed: Option<u64>,
+) {
+    let Some(progress_phase) = progress_phase else {
+        return;
+    };
 
-    let (simulated_5m_intervals, simulated_15m_intervals) =
-        crate::stages::joint_metrics::aggregate_simulated_path_to_interval_templates(
-            simulation_result.fine_path.as_slice(),
-            context
-                .observed_data
-                .simulated_5m_interval_template
-                .as_slice(),
-            context
-                .observed_data
-                .simulated_15m_interval_template
-                .as_slice(),
-            FIVE_MINUTES_NANOS,
-            FIFTEEN_MINUTES_NANOS,
-        );
+    let Some(progress_sender) = progress_sender else {
+        return;
+    };
 
-    let simulated_hourly_intervals =
-        crate::stages::joint_metrics::aggregate_simulated_path_to_interval_template(
-            simulation_result.fine_path.as_slice(),
-            context
-                .observed_data
-                .simulated_hourly_interval_template
-                .as_slice(),
-            ONE_HOUR_NANOS,
-        );
-
-    let simulated_5m_log_returns = simulated_5m_intervals
-        .iter()
-        .map(|interval| interval.log_return)
-        .collect::<Vec<_>>();
-    let simulated_15m_log_returns = simulated_15m_intervals
-        .iter()
-        .map(|interval| interval.log_return)
-        .collect::<Vec<_>>();
-    let simulated_tick_returns = sampled_trade_returns(
-        simulation_result.fine_path.as_slice(),
-        context.observed_data.observed_tick_shape_returns.len(),
-    );
-
-    let simulated_tick_shape_returns = scale_normalized_returns(simulated_tick_returns.as_slice());
-    let simulated_5m_shape_returns = scale_normalized_returns(simulated_5m_log_returns.as_slice());
-    let simulated_15m_shape_returns =
-        scale_normalized_returns(simulated_15m_log_returns.as_slice());
-
-    let simulated_tick_return_scale_summary =
-        return_scale_summary_from_returns(simulated_tick_returns.as_slice());
-    let simulated_5m_return_scale_summary = return_scale_summary(simulated_5m_intervals.as_slice());
-    let simulated_15m_return_scale_summary =
-        return_scale_summary(simulated_15m_intervals.as_slice());
-
-    let simulated_5m_business_time_return_scale_summaries =
-        return_scale_summaries_by_business_time_bucket(
-            simulated_5m_intervals.as_slice(),
-            context
-                .observed_data
-                .observed_5m_business_time_bucket_thresholds,
-        );
-    let simulated_15m_business_time_return_scale_summaries =
-        return_scale_summaries_by_business_time_bucket(
-            simulated_15m_intervals.as_slice(),
-            context
-                .observed_data
-                .observed_15m_business_time_bucket_thresholds,
-        );
-
-    let simulated_5m_intraday_mean_absolute_returns =
-        mean_absolute_return_by_utc_hour(simulated_5m_intervals.as_slice());
-    let simulated_15m_intraday_mean_absolute_returns =
-        mean_absolute_return_by_utc_hour(simulated_15m_intervals.as_slice());
-    let simulated_tick_intraday_mean_absolute_returns =
-        mean_absolute_trade_return_by_utc_hour(simulation_result.fine_path.as_slice());
-    let simulated_hourly_tick_counts = tick_count_series(simulated_hourly_intervals.as_slice());
-    let simulated_15m_rv_activity_metric =
-        rolling_variance_activity_metric(simulated_15m_intervals.as_slice());
-
-    Some(JointRefinementSeedSummary {
-        simulated_5m_intervals,
-        simulated_15m_intervals,
-        simulated_tick_shape_returns,
-        simulated_5m_shape_returns,
-        simulated_15m_shape_returns,
-        simulated_tick_return_scale_summary,
-        simulated_5m_return_scale_summary,
-        simulated_15m_return_scale_summary,
-        simulated_5m_business_time_return_scale_summaries,
-        simulated_15m_business_time_return_scale_summaries,
-        simulated_tick_intraday_mean_absolute_returns,
-        simulated_5m_intraday_mean_absolute_returns,
-        simulated_15m_intraday_mean_absolute_returns,
-        simulated_hourly_tick_counts,
-        simulated_15m_rv_activity_metric,
-    })
+    let _ = progress_sender.send(JointRefinementStageProgressUpdate {
+        phase: progress_phase,
+        completed_units,
+        total_units,
+        current_item_label: simulation_seed.map(|value| value.to_string()),
+        valid_completed_units: None,
+        cumulative_local_evaluation_count: None,
+        best_weighted_objective: None,
+    });
 }
 
 pub(super) fn selected_hawkes_observed_open_event_rate_per_hour(

@@ -1,4 +1,5 @@
 use std::cmp::Ordering;
+use std::collections::BTreeMap;
 
 use janiform_foundations::numeric::{
     bowley_skewness_from_sorted, central_skewness_or_zero, relative_rmse, sorted_finite_values,
@@ -12,7 +13,7 @@ use super::execution::{
     JointRefinementSeedSummary, ordered_parameter_bits,
 };
 use super::setup::{
-    cached_seed_summary_for_candidate_seed, compute_cumulative_log_price_span,
+    cached_seed_summaries_for_candidate_seeds, compute_cumulative_log_price_span,
     parameter_vector_to_fitted_parameters,
 };
 use crate::stages::joint_metrics::{
@@ -181,27 +182,28 @@ fn build_joint_candidate_evaluation_for_fitted_parameters(
         JointRefinementFidelityTier::Final => context.final_simulation_seeds.clone(),
     };
 
-    let seed_summaries = simulation_seeds
-        .iter()
-        .map(|simulation_seed| {
-            cached_seed_summary_for_candidate_seed(
-                parameter_bits,
-                &fitted_parameters,
-                context,
-                *simulation_seed,
-            )
-        })
+    let seed_summaries = match cached_seed_summaries_for_candidate_seeds(
+        parameter_bits,
+        &fitted_parameters,
+        context,
+        simulation_seeds.as_slice(),
+        None,
+        None,
+    ) {
+        Ok(seed_summaries) => seed_summaries,
+        Err(error_message) => {
+            return invalid_candidate_evaluation(
+                &context.baseline_hawkes_fitted_parameters,
+                &context.baseline_return_components_fitted_parameters,
+                solver_settings.constraint_penalty_weight,
+                error_message.as_str(),
+            );
+        }
+    };
+    let resolved_seed_summaries = seed_summaries
+        .into_iter()
+        .map(|(_, summary)| summary)
         .collect::<Vec<_>>();
-    if seed_summaries.iter().any(Option::is_none) {
-        return invalid_candidate_evaluation(
-            &context.baseline_hawkes_fitted_parameters,
-            &context.baseline_return_components_fitted_parameters,
-            solver_settings.constraint_penalty_weight,
-            "simulate_seed_summary_failed",
-        );
-    }
-
-    let resolved_seed_summaries = seed_summaries.into_iter().flatten().collect::<Vec<_>>();
 
     let raw_aggregated_return_shape_fit = average_seed_score(
         resolved_seed_summaries
@@ -412,10 +414,24 @@ pub(super) fn compare_joint_restart_outcomes(
     right: (usize, &JointRefinementRestartOutcome),
     thresholds: super::execution::JointRefinementAdmissibilityThresholds,
     has_admissible_candidate: bool,
+    coarse_consistency_by_restart_id: &BTreeMap<
+        String,
+        super::execution::JointRefinementCoarseConsistencySummary,
+    >,
+    coarse_consistency_required: bool,
 ) -> Ordering {
-    let left_admissible = super::execution::joint_restart_outcome_is_admissible(left.1, thresholds);
-    let right_admissible =
-        super::execution::joint_restart_outcome_is_admissible(right.1, thresholds);
+    let left_admissible = super::execution::joint_restart_outcome_is_admissible(
+        left.1,
+        thresholds,
+        coarse_consistency_by_restart_id.get(left.1.restart_id.as_str()),
+        coarse_consistency_required,
+    );
+    let right_admissible = super::execution::joint_restart_outcome_is_admissible(
+        right.1,
+        thresholds,
+        coarse_consistency_by_restart_id.get(right.1.restart_id.as_str()),
+        coarse_consistency_required,
+    );
 
     compare_joint_candidate_breakdowns(
         left.0,

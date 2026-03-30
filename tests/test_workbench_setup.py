@@ -9,7 +9,10 @@ from PyQt6.QtWidgets import QApplication
 from janiform.calibration.market_data.contracts import CalibrationMarketDataWorkflowScope
 from janiform.contracts import MeanReversionAnchorModelKind
 from tools.workbench.setup import WorkbenchSetupWidget
-from tools.workbench.state import WorkbenchRunSetup
+from tools.workbench.state import (
+    DEFAULT_WORKBENCH_SESSION_PRESET_NAME,
+    WorkbenchRunSetup,
+)
 
 
 def test_workbench_setup_defaults_mean_reversion_to_endogenous_on_calibration_submit(
@@ -34,7 +37,21 @@ def test_workbench_setup_defaults_mean_reversion_to_endogenous_on_calibration_su
             == MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL
         )
         assert submitted_setups[0].session_source.mode == "preset"
-        assert submitted_setups[0].session_source.preset_name is not None
+        assert submitted_setups[0].session_source.preset_name == DEFAULT_WORKBENCH_SESSION_PRESET_NAME
+    finally:
+        widget.close()
+        application.processEvents()
+
+
+def test_workbench_setup_defaults_session_preset_to_fx_spot_24_5() -> None:
+    application = QApplication.instance() or QApplication([])
+    widget = WorkbenchSetupWidget()
+
+    try:
+        assert (
+            widget._session_preset_combo.currentData()
+            == DEFAULT_WORKBENCH_SESSION_PRESET_NAME
+        )
     finally:
         widget.close()
         application.processEvents()

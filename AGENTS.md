@@ -110,6 +110,7 @@ Read and follow `docs/development/guides/python_style_guide.md`. Agents must adh
 - Keep the crate graph clean:
   - `core` crate must be pure Rust (no PyO3, no Python-specific types).
   - `pybind` crate owns all PyO3 boundary code and conversions.
+  - `janiform-joint-refinement-worker` owns the process-isolated joint-refinement summary simulation executable used by core runtime.
   - Add other crates if the need arises but don't do it for no good reason. When you do, update this document to list it here.
 - Visibility: default to `pub(crate)`; only make items `pub` when part of a deliberate public API.
 - Prefer small, focused modules; avoid "god modules" and long files.

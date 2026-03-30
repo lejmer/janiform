@@ -63,10 +63,17 @@ def apply_workbench_event(
             )
         case WorkbenchEventType.SUBTASK_STARTED | WorkbenchEventType.SUBTASK_COMPLETED:
             detail = str(event.payload.get("detail", event.subtask or "Working"))
+            completed_units = event.payload.get("completed_units")
+            total_units = event.payload.get("total_units")
+            has_determinate_progress = isinstance(completed_units, int) and isinstance(
+                total_units, int
+            )
             state.run.subprogress = WorkbenchProgressModel(
                 label=event.subtask or "Subtask",
+                completed_units=completed_units if has_determinate_progress else None,
+                total_units=total_units if has_determinate_progress else None,
                 detail=detail,
-                is_indeterminate=True,
+                is_indeterminate=not has_determinate_progress,
             )
             state.session.status_message = detail
         case WorkbenchEventType.RESOURCE_SNAPSHOT_RECORDED:

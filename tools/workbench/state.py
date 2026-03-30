@@ -9,13 +9,16 @@ from janiform.calibration.market_data.contracts import (
 )
 from janiform.contracts import MeanReversionAnchorModelKind
 
+DEFAULT_WORKBENCH_SESSION_PRESET_NAME = "fx_spot_24_5"
+DEFAULT_WORKBENCH_FALLBACK_EXCHANGE_CODE = "FXSPOT"
+
 
 @dataclass(frozen=True, slots=True)
 class WorkbenchSessionSource:
     mode: str = "preset"
-    preset_name: Optional[str] = "XNYS"
+    preset_name: Optional[str] = DEFAULT_WORKBENCH_SESSION_PRESET_NAME
     definition_path: Optional[Path] = None
-    exchange_code: str = "FXSPOT"
+    exchange_code: str = DEFAULT_WORKBENCH_FALLBACK_EXCHANGE_CODE
 
 
 @dataclass(frozen=True, slots=True)
@@ -155,5 +158,7 @@ __all__ = [
     "WorkbenchRunState",
     "WorkbenchSessionState",
     "WorkbenchSetupState",
+    "DEFAULT_WORKBENCH_FALLBACK_EXCHANGE_CODE",
+    "DEFAULT_WORKBENCH_SESSION_PRESET_NAME",
     "build_initial_workbench_state",
 ]

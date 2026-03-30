@@ -72,6 +72,31 @@ def test_workbench_reducer_tracks_live_run_status() -> None:
     assert state.run.current_subtask == "running calibration"
 
 
+def test_workbench_reducer_tracks_determinate_subtask_progress() -> None:
+    state = build_initial_workbench_state(workspace_root=Path.cwd())
+
+    progress_event = build_workbench_event(
+        event_type=WorkbenchEventType.SUBTASK_STARTED,
+        run_id="run-002",
+        sequence_number=1,
+        stage="joint_refinement",
+        subtask="joint_refinement.restart_optimization",
+        payload={
+            "detail": "joint_refinement restart optimization 3/8 | latest=halton_03",
+            "completed_units": 3,
+            "total_units": 8,
+        },
+    )
+
+    apply_workbench_event(state, progress_event)
+
+    assert state.run.current_stage == "joint_refinement"
+    assert state.run.current_subtask == "joint_refinement.restart_optimization"
+    assert state.run.subprogress.completed_units == 3
+    assert state.run.subprogress.total_units == 8
+    assert not state.run.subprogress.is_indeterminate
+
+
 def test_candidate_store_builds_live_snapshots_from_stage_reports() -> None:
     candidate_store = candidate_store_from_stage_report_payloads(
         (
