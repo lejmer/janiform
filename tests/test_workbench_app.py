@@ -3,7 +3,8 @@ from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt6.QtWidgets import QApplication, QTableWidget, QTabWidget
+from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QApplication, QSplitter, QTableWidget, QTabWidget
 from matplotlib.figure import Figure
 
 from tools.workbench import app as workbench_app
@@ -155,7 +156,353 @@ def test_workbench_window_hides_resource_snapshot_events_from_event_table() -> N
 
         assert window._event_table.rowCount() == 1
         assert window._state.run.elapsed_seconds == 12.5
-        assert window._run_elapsed_label.text() == "Elapsed: 12.5s"
+        assert window._run_stage_elapsed_label.text() == "Current stage elapsed: 0.0s"
+        assert window._run_total_elapsed_label.text() == "Total elapsed: 12.5s"
+    finally:
+        window.close()
+        application.processEvents()
+
+
+def test_workbench_window_run_tab_keeps_event_and_activity_tables_side_by_side() -> None:
+    application = QApplication.instance() or QApplication([])
+    window = WorkbenchWindow()
+
+    try:
+        run_tab = window._root_tabs.widget(1)
+        assert run_tab is not None
+
+        run_splitters = run_tab.findChildren(QSplitter)
+        horizontal_splitter = next(
+            splitter
+            for splitter in run_splitters
+            if splitter.orientation() == Qt.Orientation.Horizontal
+        )
+        vertical_splitter = next(
+            splitter
+            for splitter in run_splitters
+            if splitter.orientation() == Qt.Orientation.Vertical
+        )
+
+        event_panel = window._event_table.parentWidget()
+        activity_panel = window._activity_table.parentWidget()
+        live_plot_panel = window._live_run_plot_container.parentWidget()
+
+        assert event_panel is not None
+        assert activity_panel is not None
+        assert live_plot_panel is not None
+        assert horizontal_splitter.indexOf(event_panel) >= 0
+        assert horizontal_splitter.indexOf(activity_panel) >= 0
+        assert vertical_splitter.indexOf(horizontal_splitter) >= 0
+        assert vertical_splitter.indexOf(live_plot_panel) >= 0
+    finally:
+        window.close()
+        application.processEvents()
+
+
+def test_workbench_window_scrolls_event_table_to_latest_row() -> None:
+    application = QApplication.instance() or QApplication([])
+    window = WorkbenchWindow()
+    window.resize(900, 520)
+    window.show()
+    application.processEvents()
+
+    try:
+        for sequence_number in range(1, 41):
+            window._on_execution_event(
+                build_workbench_event(
+                    event_type=WorkbenchEventType.RUN_STARTED,
+                    run_id="run-001",
+                    sequence_number=sequence_number,
+                    payload={"detail": f"Event {sequence_number}"},
+                )
+            )
+
+        application.processEvents()
+        vertical_scroll_bar = window._event_table.verticalScrollBar()
+
+        assert vertical_scroll_bar.maximum() > 0
+        assert vertical_scroll_bar.value() == vertical_scroll_bar.maximum()
+    finally:
+        window.close()
+        application.processEvents()
+
+
+def test_workbench_window_tracks_stage_and_total_progress_separately() -> None:
+    application = QApplication.instance() or QApplication([])
+    window = WorkbenchWindow()
+
+    try:
+        window._on_execution_event(
+            build_workbench_event(
+                event_type=WorkbenchEventType.RUN_STARTED,
+                run_id="run-001",
+                sequence_number=1,
+                payload={
+                    "detail": "Starting calibration",
+                    "stage_sequence": [
+                        "seasonality",
+                        "hawkes",
+                        "return_components",
+                        "mean_reversion",
+                        "joint_refinement",
+                    ],
+                },
+            )
+        )
+        window._on_execution_event(
+            build_workbench_event(
+                event_type=WorkbenchEventType.STAGE_STARTED,
+                run_id="run-001",
+                sequence_number=2,
+                stage="joint_refinement",
+                payload={
+                    "stage_index": 5,
+                    "stage_count": 5,
+                    "stage_label": "joint_refinement",
+                    "detail": "Running joint_refinement",
+                },
+            )
+        )
+        window._on_execution_event(
+            build_workbench_event(
+                event_type=WorkbenchEventType.SUBTASK_STARTED,
+                run_id="run-001",
+                sequence_number=3,
+                stage="joint_refinement",
+                subtask="joint_refinement.restart_optimization",
+                payload={
+                    "detail": "joint_refinement restart optimization 2/8",
+                    "completed_units": 2,
+                    "total_units": 8,
+                },
+            )
+        )
+        window._on_execution_event(
+            build_workbench_event(
+                event_type=WorkbenchEventType.RESOURCE_SNAPSHOT_RECORDED,
+                run_id="run-001",
+                sequence_number=4,
+                stage="joint_refinement",
+                payload={"elapsed_seconds": 42.5, "worker_count": 1},
+            )
+        )
+
+        assert window._run_stage_elapsed_label.text() == "Current stage elapsed: 42.5s"
+        assert window._run_total_elapsed_label.text() == "Total elapsed: 42.5s"
+        assert window._run_stage_progress_bar.maximum() == 8
+        assert window._run_stage_progress_bar.value() == 2
+        assert window._run_total_progress_bar.maximum() == 1000
+        assert window._run_total_progress_bar.value() == 307
+    finally:
+        window.close()
+        application.processEvents()
+
+
+def test_workbench_window_total_progress_does_not_regress_across_joint_refinement_phases() -> None:
+    application = QApplication.instance() or QApplication([])
+    window = WorkbenchWindow()
+
+    try:
+        window._on_execution_event(
+            build_workbench_event(
+                event_type=WorkbenchEventType.RUN_STARTED,
+                run_id="run-001",
+                sequence_number=1,
+                payload={
+                    "detail": "Starting calibration",
+                    "stage_sequence": [
+                        "seasonality",
+                        "hawkes",
+                        "return_components",
+                        "mean_reversion",
+                        "joint_refinement",
+                    ],
+                },
+            )
+        )
+        window._on_execution_event(
+            build_workbench_event(
+                event_type=WorkbenchEventType.STAGE_STARTED,
+                run_id="run-001",
+                sequence_number=2,
+                stage="joint_refinement",
+                payload={
+                    "stage_index": 5,
+                    "stage_count": 5,
+                    "stage_label": "joint_refinement",
+                    "detail": "Running joint_refinement",
+                },
+            )
+        )
+        window._on_execution_event(
+            build_workbench_event(
+                event_type=WorkbenchEventType.SUBTASK_STARTED,
+                run_id="run-001",
+                sequence_number=3,
+                stage="joint_refinement",
+                subtask="joint_refinement.restart_optimization",
+                payload={
+                    "detail": "joint_refinement restart optimization 8/8",
+                    "completed_units": 8,
+                    "total_units": 8,
+                },
+            )
+        )
+        restart_completion_value = window._run_total_progress_bar.value()
+
+        window._on_execution_event(
+            build_workbench_event(
+                event_type=WorkbenchEventType.SUBTASK_STARTED,
+                run_id="run-001",
+                sequence_number=4,
+                stage="joint_refinement",
+                subtask="joint_refinement.coarse_consistency_evaluation",
+                payload={
+                    "detail": "joint_refinement coarse consistency evaluation 0/12",
+                    "completed_units": 0,
+                    "total_units": 12,
+                },
+            )
+        )
+
+        assert restart_completion_value == 634
+        assert window._run_total_progress_bar.value() == restart_completion_value
+    finally:
+        window.close()
+        application.processEvents()
+
+
+def test_workbench_window_total_progress_stays_below_full_until_run_completed() -> None:
+    application = QApplication.instance() or QApplication([])
+    window = WorkbenchWindow()
+
+    try:
+        window._on_execution_event(
+            build_workbench_event(
+                event_type=WorkbenchEventType.RUN_STARTED,
+                run_id="run-001",
+                sequence_number=1,
+                payload={
+                    "detail": "Starting calibration",
+                    "stage_sequence": [
+                        "seasonality",
+                        "hawkes",
+                        "return_components",
+                        "mean_reversion",
+                        "joint_refinement",
+                    ],
+                },
+            )
+        )
+        window._on_execution_event(
+            build_workbench_event(
+                event_type=WorkbenchEventType.STAGE_COMPLETED,
+                run_id="run-001",
+                sequence_number=2,
+                stage="joint_refinement",
+                payload={
+                    "stage_index": 5,
+                    "stage_count": 5,
+                    "stage_label": "joint_refinement",
+                    "detail": "joint_refinement completed",
+                    "runtime_seconds": 120.0,
+                },
+            )
+        )
+
+        assert window._run_total_progress_bar.value() == 990
+
+        window._on_execution_event(
+            build_workbench_event(
+                event_type=WorkbenchEventType.RUN_COMPLETED,
+                run_id="run-001",
+                sequence_number=3,
+                payload={"detail": "Calibration completed"},
+            )
+        )
+
+        assert window._run_total_progress_bar.value() == 1000
+    finally:
+        window.close()
+        application.processEvents()
+
+
+def test_workbench_window_total_elapsed_updates_before_first_backend_heartbeat(
+    monkeypatch,
+) -> None:
+    application = QApplication.instance() or QApplication([])
+    window = WorkbenchWindow()
+    monotonic_values = iter([10.0, 12.3])
+
+    monkeypatch.setattr(workbench_app, "monotonic", lambda: next(monotonic_values))
+
+    try:
+        window._state.run.status = "running"
+        window._start_live_run_elapsed_timer()
+        window._refresh_run_status_panel()
+
+        assert window._run_total_elapsed_label.text() == "Total elapsed: 2.3s"
+    finally:
+        window._stop_live_run_elapsed_timer()
+        window.close()
+        application.processEvents()
+
+
+def test_workbench_window_copies_visible_event_table_to_clipboard() -> None:
+    application = QApplication.instance() or QApplication([])
+    window = WorkbenchWindow()
+
+    run_started_event = build_workbench_event(
+        event_type=WorkbenchEventType.RUN_STARTED,
+        run_id="run-001",
+        sequence_number=1,
+        payload={"detail": "Starting calibration"},
+    )
+
+    try:
+        window._on_execution_event(run_started_event)
+        window._copy_event_table_to_clipboard()
+
+        clipboard_text = application.clipboard().text()
+
+        assert clipboard_text.startswith("Time\tType\tStage\tDetail\n")
+        assert "run.started" in clipboard_text
+        assert "Starting calibration" in clipboard_text
+    finally:
+        window.close()
+        application.processEvents()
+
+
+def test_workbench_window_exports_visible_event_table_to_tsv(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    application = QApplication.instance() or QApplication([])
+    window = WorkbenchWindow()
+
+    run_started_event = build_workbench_event(
+        event_type=WorkbenchEventType.RUN_STARTED,
+        run_id="run-001",
+        sequence_number=1,
+        payload={"detail": "Starting calibration"},
+    )
+    export_path = tmp_path / "event_table.tsv"
+
+    monkeypatch.setattr(
+        workbench_app.QFileDialog,
+        "getSaveFileName",
+        lambda *args, **kwargs: (str(export_path), "Tab-separated values (*.tsv)"),
+    )
+
+    try:
+        window._on_execution_event(run_started_event)
+        window._export_event_table_tsv()
+
+        exported_text = export_path.read_text(encoding="utf-8")
+
+        assert exported_text.startswith("Time\tType\tStage\tDetail\n")
+        assert "run.started" in exported_text
+        assert "Starting calibration" in exported_text
     finally:
         window.close()
         application.processEvents()

@@ -8,6 +8,7 @@ use crate::stages::return_components::{
     ReturnComponentsStageSignalSourceWindow,
     build_continuous_return_calibration_sample_from_components,
 };
+#[cfg(test)]
 use janiform_engine_simulation::{SeededFinePathRecord, SeededFinePathTransitionKind};
 use janiform_foundations::numeric::{
     arithmetic_mean_or_zero, compute_finite_quantile_or_zero, pearson_correlation, rolling_sum,
@@ -55,6 +56,11 @@ pub struct JointRefinementAggregatedIntervalObservation {
     pub sell_share_proxy: f64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) struct JointRefinementIntervalObservationCursor {
+    next_index: usize,
+}
+
 pub(crate) fn build_observed_open_session_interval_observations(
     calendar_registry: &ExchangeCalendarRegistry,
     exchange_code: &str,
@@ -72,6 +78,8 @@ pub(crate) fn build_observed_open_session_interval_observations(
         return intervals;
     }
 
+    let mut cursor = JointRefinementIntervalObservationCursor::default();
+
     for observation in observed_open_session_returns {
         if observation.return_timestamp_utc_nanos < source_window.window_start_utc_nanos
             || observation.return_timestamp_utc_nanos >= source_window.window_end_utc_nanos
@@ -79,20 +87,14 @@ pub(crate) fn build_observed_open_session_interval_observations(
             continue;
         }
 
-        let Some(interval_index) = interval_index_for_timestamp(
-            intervals.as_slice(),
+        accumulate_return_into_intervals_with_cursor(
             observation.return_timestamp_utc_nanos,
-        ) else {
-            continue;
-        };
-
-        let Some(interval) = intervals.get_mut(interval_index) else {
-            continue;
-        };
-
-        interval.log_return += observation.log_return;
-        interval.tick_count += 1;
-        interval.sell_share_proxy += observation.sell_share_proxy;
+            observation.log_return,
+            1,
+            observation.sell_share_proxy,
+            intervals.as_mut_slice(),
+            &mut cursor,
+        );
     }
 
     finalize_sell_share_proxies(&mut intervals, 0.5);
@@ -575,6 +577,7 @@ pub(crate) fn finalize_sell_share_proxies(
     }
 }
 
+#[cfg(test)]
 pub(crate) fn accumulate_fine_path_record_into_intervals(
     record: &SeededFinePathRecord,
     intervals: &mut [JointRefinementAggregatedIntervalObservation],
@@ -604,7 +607,32 @@ pub(crate) fn accumulate_fine_path_record_into_intervals(
         return;
     }
 
-    let Some(interval_index) = interval_index_for_timestamp(intervals, record.timestamp_utc_nanos)
+    let (tick_increment, sell_share_increment) = match record.transition_kind {
+        SeededFinePathTransitionKind::BuyTrade => (1, 0.0),
+        SeededFinePathTransitionKind::SellTrade => (1, 1.0),
+        _ => (0, 0.0),
+    };
+
+    accumulate_return_into_intervals_with_cursor(
+        record.timestamp_utc_nanos,
+        record.return_components.total_return,
+        tick_increment,
+        sell_share_increment,
+        intervals,
+        &mut JointRefinementIntervalObservationCursor::default(),
+    );
+}
+
+pub(crate) fn accumulate_return_into_intervals_with_cursor(
+    timestamp_utc_nanos: i64,
+    log_return: f64,
+    tick_increment: usize,
+    sell_share_increment: f64,
+    intervals: &mut [JointRefinementAggregatedIntervalObservation],
+    cursor: &mut JointRefinementIntervalObservationCursor,
+) {
+    let Some(interval_index) =
+        interval_index_for_timestamp_from_cursor(intervals, timestamp_utc_nanos, cursor)
     else {
         return;
     };
@@ -613,20 +641,9 @@ pub(crate) fn accumulate_fine_path_record_into_intervals(
         return;
     };
 
-    interval.log_return += record.return_components.total_return;
-
-    if matches!(
-        record.transition_kind,
-        SeededFinePathTransitionKind::BuyTrade | SeededFinePathTransitionKind::SellTrade
-    ) {
-        interval.tick_count += 1;
-
-        interval.sell_share_proxy += match record.transition_kind {
-            SeededFinePathTransitionKind::BuyTrade => 0.0,
-            SeededFinePathTransitionKind::SellTrade => 1.0,
-            _ => 0.5,
-        };
-    }
+    interval.log_return += log_return;
+    interval.tick_count += tick_increment;
+    interval.sell_share_proxy += sell_share_increment;
 }
 
 fn interval_index_for_timestamp(
@@ -641,6 +658,55 @@ fn interval_index_for_timestamp(
     (candidate_interval.interval_start_utc_nanos <= timestamp_utc_nanos
         && timestamp_utc_nanos < candidate_interval.interval_end_utc_nanos)
         .then_some(candidate_index)
+}
+
+fn interval_index_for_timestamp_from_cursor(
+    intervals: &[JointRefinementAggregatedIntervalObservation],
+    timestamp_utc_nanos: i64,
+    cursor: &mut JointRefinementIntervalObservationCursor,
+) -> Option<usize> {
+    if intervals.is_empty() {
+        return None;
+    }
+
+    let first_interval_start_utc_nanos = intervals.first()?.interval_start_utc_nanos;
+    let last_interval_end_utc_nanos = intervals.last()?.interval_end_utc_nanos;
+    if timestamp_utc_nanos < first_interval_start_utc_nanos
+        || timestamp_utc_nanos >= last_interval_end_utc_nanos
+    {
+        return None;
+    }
+
+    if cursor.next_index >= intervals.len() {
+        cursor.next_index = intervals.len().saturating_sub(1);
+    }
+
+    if let Some(current_interval) = intervals.get(cursor.next_index) {
+        if current_interval.interval_start_utc_nanos <= timestamp_utc_nanos
+            && timestamp_utc_nanos < current_interval.interval_end_utc_nanos
+        {
+            return Some(cursor.next_index);
+        }
+
+        if timestamp_utc_nanos >= current_interval.interval_end_utc_nanos {
+            while cursor.next_index < intervals.len()
+                && intervals[cursor.next_index].interval_end_utc_nanos <= timestamp_utc_nanos
+            {
+                cursor.next_index += 1;
+            }
+
+            if let Some(advanced_interval) = intervals.get(cursor.next_index)
+                && advanced_interval.interval_start_utc_nanos <= timestamp_utc_nanos
+                && timestamp_utc_nanos < advanced_interval.interval_end_utc_nanos
+            {
+                return Some(cursor.next_index);
+            }
+        }
+    }
+
+    let interval_index = interval_index_for_timestamp(intervals, timestamp_utc_nanos)?;
+    cursor.next_index = interval_index;
+    Some(interval_index)
 }
 
 fn resolve_market_state(
@@ -699,7 +765,8 @@ pub(crate) fn mean_absolute_return_profile_from_hourly_totals(
 mod tests {
     use super::{
         JOINT_REFINEMENT_ROLLING_ACTIVITY_WINDOW_INTERVAL_COUNT,
-        JointRefinementAggregatedIntervalObservation,
+        JointRefinementAggregatedIntervalObservation, JointRefinementIntervalObservationCursor,
+        accumulate_return_into_intervals_with_cursor,
         aggregate_simulated_path_to_interval_template,
         aggregate_simulated_path_to_interval_templates, business_time_bucket_thresholds,
         interval_index_for_timestamp, log_ratio_distance, mean_absolute_return_by_utc_hour,
@@ -1018,6 +1085,114 @@ mod tests {
             interval_index_for_timestamp(template.as_slice(), 960),
             Some(1)
         );
+    }
+
+    #[test]
+    fn cursor_accumulation_matches_binary_search_accumulation_for_monotonic_records() {
+        let mut cursor_intervals = zeroed_interval_observation_template(&[
+            JointRefinementAggregatedIntervalObservation {
+                interval_start_utc_nanos: 0,
+                interval_end_utc_nanos: 10,
+                log_return: 0.0,
+                tick_count: 0,
+                sell_share_proxy: 0.0,
+            },
+            JointRefinementAggregatedIntervalObservation {
+                interval_start_utc_nanos: 10,
+                interval_end_utc_nanos: 20,
+                log_return: 0.0,
+                tick_count: 0,
+                sell_share_proxy: 0.0,
+            },
+            JointRefinementAggregatedIntervalObservation {
+                interval_start_utc_nanos: 20,
+                interval_end_utc_nanos: 30,
+                log_return: 0.0,
+                tick_count: 0,
+                sell_share_proxy: 0.0,
+            },
+        ]);
+        let mut baseline_intervals = cursor_intervals.clone();
+        let mut cursor = JointRefinementIntervalObservationCursor::default();
+
+        for (timestamp_utc_nanos, log_return, tick_increment, sell_share_increment) in [
+            (1_i64, 0.5, 1_usize, 0.0),
+            (8_i64, -0.2, 1_usize, 1.0),
+            (11_i64, 0.3, 0_usize, 0.0),
+            (19_i64, 0.7, 1_usize, 1.0),
+            (21_i64, -0.4, 1_usize, 0.0),
+        ] {
+            accumulate_return_into_intervals_with_cursor(
+                timestamp_utc_nanos,
+                log_return,
+                tick_increment,
+                sell_share_increment,
+                cursor_intervals.as_mut_slice(),
+                &mut cursor,
+            );
+
+            let Some(interval_index) =
+                interval_index_for_timestamp(baseline_intervals.as_slice(), timestamp_utc_nanos)
+            else {
+                continue;
+            };
+            let interval = &mut baseline_intervals[interval_index];
+            interval.log_return += log_return;
+            interval.tick_count += tick_increment;
+            interval.sell_share_proxy += sell_share_increment;
+        }
+
+        assert_eq!(cursor_intervals, baseline_intervals);
+    }
+
+    #[test]
+    fn cursor_accumulation_falls_back_for_out_of_order_records() {
+        let mut intervals = zeroed_interval_observation_template(&[
+            JointRefinementAggregatedIntervalObservation {
+                interval_start_utc_nanos: 0,
+                interval_end_utc_nanos: 10,
+                log_return: 0.0,
+                tick_count: 0,
+                sell_share_proxy: 0.0,
+            },
+            JointRefinementAggregatedIntervalObservation {
+                interval_start_utc_nanos: 10,
+                interval_end_utc_nanos: 20,
+                log_return: 0.0,
+                tick_count: 0,
+                sell_share_proxy: 0.0,
+            },
+            JointRefinementAggregatedIntervalObservation {
+                interval_start_utc_nanos: 20,
+                interval_end_utc_nanos: 30,
+                log_return: 0.0,
+                tick_count: 0,
+                sell_share_proxy: 0.0,
+            },
+        ]);
+        let mut cursor = JointRefinementIntervalObservationCursor::default();
+
+        accumulate_return_into_intervals_with_cursor(
+            22,
+            0.9,
+            1,
+            1.0,
+            intervals.as_mut_slice(),
+            &mut cursor,
+        );
+        accumulate_return_into_intervals_with_cursor(
+            3,
+            -0.4,
+            1,
+            0.0,
+            intervals.as_mut_slice(),
+            &mut cursor,
+        );
+
+        assert_eq!(intervals[0].log_return, -0.4);
+        assert_eq!(intervals[0].tick_count, 1);
+        assert_eq!(intervals[2].log_return, 0.9);
+        assert_eq!(intervals[2].tick_count, 1);
     }
 
     #[test]

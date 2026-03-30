@@ -339,7 +339,12 @@ pub(super) fn run_stage_for_staged_execution(
                             valid_completed_units: progress_update.valid_completed_units,
                             cumulative_local_evaluation_count: progress_update
                                 .cumulative_local_evaluation_count,
+                            current_weighted_objective: progress_update.current_weighted_objective,
                             best_weighted_objective: progress_update.best_weighted_objective,
+                            current_coarse_consistency_fit: progress_update
+                                .current_coarse_consistency_fit,
+                            best_coarse_consistency_fit: progress_update
+                                .best_coarse_consistency_fit,
                         });
                     }
                 };

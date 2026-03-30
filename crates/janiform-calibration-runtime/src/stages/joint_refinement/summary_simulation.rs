@@ -7,8 +7,9 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use crate::adapters::load_hourly_factor_contract_for_calibration;
 use crate::stages::joint_metrics::{
     JointRefinementAggregatedIntervalObservation, JointRefinementBusinessTimeBucketThresholds,
-    accumulate_fine_path_record_into_intervals, finalize_sell_share_proxies,
-    mean_absolute_return_by_utc_hour, mean_absolute_return_profile_from_hourly_totals,
+    JointRefinementIntervalObservationCursor, accumulate_return_into_intervals_with_cursor,
+    finalize_sell_share_proxies, mean_absolute_return_by_utc_hour,
+    mean_absolute_return_profile_from_hourly_totals,
     return_scale_summaries_by_business_time_bucket, return_scale_summary,
     return_scale_summary_from_returns, rolling_variance_activity_metric, sampled_return_values,
     scale_normalized_returns, tick_count_series,
@@ -18,7 +19,7 @@ use janiform_engine_simulation::{
     SeededFinePathRecord, SeededFinePathTransitionKind, SeededTickSimulationTransitionConsumer,
     estimate_seeded_result_capacities, stream_seeded_tick_event_simulation,
 };
-use janiform_foundations::time::{FIFTEEN_MINUTES_NANOS, FIVE_MINUTES_NANOS, ONE_HOUR_NANOS};
+use janiform_foundations::time::ONE_HOUR_NANOS;
 use janiform_market_time::calendar::{ExchangeCalendarRegistry, ExchangeCalendarRegistryArtifact};
 use janiform_market_time::hourly_factors::{
     HourlyFactorContractOutput, HourlyFactorProviderRequest, HourlyNewsIntensityFactorSource,
@@ -221,6 +222,9 @@ pub(crate) struct JointRefinementSummaryCollector {
     simulated_5m_intervals: Vec<JointRefinementAggregatedIntervalObservation>,
     simulated_15m_intervals: Vec<JointRefinementAggregatedIntervalObservation>,
     simulated_hourly_intervals: Vec<JointRefinementAggregatedIntervalObservation>,
+    simulated_5m_cursor: JointRefinementIntervalObservationCursor,
+    simulated_15m_cursor: JointRefinementIntervalObservationCursor,
+    simulated_hourly_cursor: JointRefinementIntervalObservationCursor,
     retained_trade_returns: Vec<f64>,
     trade_absolute_return_sum_by_hour: [f64; 24],
     trade_count_by_hour: [usize; 24],
@@ -236,6 +240,9 @@ impl JointRefinementSummaryCollector {
             simulated_5m_intervals: simulated_5m_interval_template.to_vec(),
             simulated_15m_intervals: simulated_15m_interval_template.to_vec(),
             simulated_hourly_intervals: simulated_hourly_interval_template.to_vec(),
+            simulated_5m_cursor: JointRefinementIntervalObservationCursor::default(),
+            simulated_15m_cursor: JointRefinementIntervalObservationCursor::default(),
+            simulated_hourly_cursor: JointRefinementIntervalObservationCursor::default(),
             retained_trade_returns: Vec::new(),
             trade_absolute_return_sum_by_hour: [0.0; 24],
             trade_count_by_hour: [0; 24],
@@ -347,26 +354,38 @@ impl SeededTickSimulationTransitionConsumer for JointRefinementSummaryCollector 
         record: SeededFinePathRecord,
         _emission: janiform_engine_simulation::SeededTickSimulationTransitionEmission,
     ) -> Result<(), janiform_engine_simulation::SeededTickSimulationRunError> {
-        accumulate_fine_path_record_into_intervals(
-            &record,
+        let (tick_increment, sell_share_increment) = match record.transition_kind {
+            SeededFinePathTransitionKind::BuyTrade => (1, 0.0),
+            SeededFinePathTransitionKind::SellTrade => (1, 1.0),
+            _ => (0, 0.0),
+        };
+
+        accumulate_return_into_intervals_with_cursor(
+            record.timestamp_utc_nanos,
+            record.return_components.total_return,
+            tick_increment,
+            sell_share_increment,
             self.simulated_5m_intervals.as_mut_slice(),
-            FIVE_MINUTES_NANOS,
+            &mut self.simulated_5m_cursor,
         );
-        accumulate_fine_path_record_into_intervals(
-            &record,
+        accumulate_return_into_intervals_with_cursor(
+            record.timestamp_utc_nanos,
+            record.return_components.total_return,
+            tick_increment,
+            sell_share_increment,
             self.simulated_15m_intervals.as_mut_slice(),
-            FIFTEEN_MINUTES_NANOS,
+            &mut self.simulated_15m_cursor,
         );
-        accumulate_fine_path_record_into_intervals(
-            &record,
+        accumulate_return_into_intervals_with_cursor(
+            record.timestamp_utc_nanos,
+            record.return_components.total_return,
+            tick_increment,
+            sell_share_increment,
             self.simulated_hourly_intervals.as_mut_slice(),
-            ONE_HOUR_NANOS,
+            &mut self.simulated_hourly_cursor,
         );
 
-        if matches!(
-            record.transition_kind,
-            SeededFinePathTransitionKind::BuyTrade | SeededFinePathTransitionKind::SellTrade
-        ) {
+        if tick_increment > 0 {
             self.retained_trade_returns
                 .try_reserve(1)
                 .map_err(|source| janiform_engine_simulation::SeededTickSimulationRunError::BufferAllocationFailed {

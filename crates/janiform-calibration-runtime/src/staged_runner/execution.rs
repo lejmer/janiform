@@ -398,6 +398,7 @@ pub fn run_staged_calibration_with_checkpointing_and_observer(
             run_id: run_spec.run_id.clone(),
             execution_mode: run_spec.execution_mode,
             stage_count: execution_stage_order.len(),
+            stage_sequence: execution_stage_order.clone(),
             resumed_from_checkpoint_reference: resumed_from_checkpoint_reference.clone(),
             resumed_from_last_successful_stage,
             started_from_stage,

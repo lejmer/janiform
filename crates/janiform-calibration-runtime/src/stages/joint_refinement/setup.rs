@@ -1043,7 +1043,10 @@ fn emit_seed_summary_progress(
         current_item_label: simulation_seed.map(|value| value.to_string()),
         valid_completed_units: None,
         cumulative_local_evaluation_count: None,
+        current_weighted_objective: None,
         best_weighted_objective: None,
+        current_coarse_consistency_fit: None,
+        best_coarse_consistency_fit: None,
     });
 }
 

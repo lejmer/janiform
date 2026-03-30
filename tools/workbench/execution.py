@@ -383,6 +383,7 @@ class WorkbenchExecutionWorker(QObject):
                     payload={
                         "detail": "Running staged calibration",
                         "stage_count": raw_event.get("stage_count"),
+                        "stage_sequence": raw_event.get("stage_sequence"),
                         "execution_mode": raw_event.get("execution_mode"),
                     },
                 )
@@ -435,7 +436,16 @@ class WorkbenchExecutionWorker(QObject):
                         "cumulative_local_evaluation_count": raw_event.get(
                             "cumulative_local_evaluation_count"
                         ),
+                        "current_weighted_objective": raw_event.get(
+                            "current_weighted_objective"
+                        ),
                         "best_weighted_objective": raw_event.get("best_weighted_objective"),
+                        "current_coarse_consistency_fit": raw_event.get(
+                            "current_coarse_consistency_fit"
+                        ),
+                        "best_coarse_consistency_fit": raw_event.get(
+                            "best_coarse_consistency_fit"
+                        ),
                     },
                     stage=stage,
                     subtask=subtask,
@@ -604,7 +614,10 @@ def _detail_for_stage_progress_event(raw_event: dict[str, Any]) -> str:
     current_item_label = _coerce_optional_string(raw_event.get("current_item_label"))
     valid_completed_units = raw_event.get("valid_completed_units")
     cumulative_local_evaluation_count = raw_event.get("cumulative_local_evaluation_count")
+    current_weighted_objective = raw_event.get("current_weighted_objective")
     best_weighted_objective = raw_event.get("best_weighted_objective")
+    current_coarse_consistency_fit = raw_event.get("current_coarse_consistency_fit")
+    best_coarse_consistency_fit = raw_event.get("best_coarse_consistency_fit")
 
     phase_label = _label_for_stage_progress_phase(progress_phase)
     detail = f"{stage} {phase_label}"
@@ -620,8 +633,14 @@ def _detail_for_stage_progress_event(raw_event: dict[str, Any]) -> str:
         detail_parts.append(f"valid={valid_completed_units}")
     if isinstance(cumulative_local_evaluation_count, int):
         detail_parts.append(f"local_evaluations={cumulative_local_evaluation_count}")
+    if isinstance(current_weighted_objective, int | float):
+        detail_parts.append(f"objective={current_weighted_objective:.6f}")
     if isinstance(best_weighted_objective, int | float):
         detail_parts.append(f"best_objective={best_weighted_objective:.6f}")
+    if isinstance(current_coarse_consistency_fit, int | float):
+        detail_parts.append(f"coarse_fit={current_coarse_consistency_fit:.6f}")
+    if isinstance(best_coarse_consistency_fit, int | float):
+        detail_parts.append(f"best_coarse_fit={best_coarse_consistency_fit:.6f}")
 
     return " | ".join(detail_parts)
 
@@ -630,8 +649,12 @@ def _label_for_stage_progress_phase(progress_phase: Optional[str]) -> str:
     match progress_phase:
         case "restart_optimization":
             return "restart optimization"
+        case "coarse_consistency_evaluation":
+            return "coarse consistency evaluation"
         case "final_seed_evaluation":
             return "final seed evaluation"
+        case "final_assembly":
+            return "final assembly"
         case _:
             return progress_phase or "progress"
 
