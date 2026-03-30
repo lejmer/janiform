@@ -808,6 +808,7 @@ pub(super) fn build_summary_simulation_session_context(
     calendar_registry: &ExchangeCalendarRegistry,
     context: &JointRefinementObservedData,
     exchange_code: &str,
+    known_scheduled_event_timestamps_utc_nanos: &[i64],
     runtime_hourly_seasonality_factors: &[f64],
 ) -> Result<JointRefinementSummarySimulationSessionContext, String> {
     let calendar_registry_artifact = build_exchange_calendar_registry_artifact(
@@ -820,6 +821,8 @@ pub(super) fn build_summary_simulation_session_context(
     Ok(JointRefinementSummarySimulationSessionContext {
         calendar_registry_artifact,
         exchange_code: exchange_code.to_string(),
+        known_scheduled_event_timestamps_utc_nanos: known_scheduled_event_timestamps_utc_nanos
+            .to_vec(),
         runtime_hourly_seasonality_factors: runtime_hourly_seasonality_factors.to_vec(),
         hourly_simulation_start_utc_nanos: context
             .hourly_simulation_start_utc

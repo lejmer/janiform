@@ -1,5 +1,4 @@
 use std::cmp::Ordering;
-use std::collections::BTreeMap;
 
 use janiform_foundations::numeric::{
     bowley_skewness_from_sorted, central_skewness_or_zero, relative_rmse, sorted_finite_values,
@@ -9,8 +8,8 @@ use janiform_foundations::numeric::{
 use super::execution::{
     JOINT_REFINEMENT_OBJECTIVE_NORMALIZATION_FLOOR, JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR,
     JointRefinementBaselineBuckets, JointRefinementCandidateEvaluation, JointRefinementContext,
-    JointRefinementFidelityTier, JointRefinementObservedData, JointRefinementRestartOutcome,
-    JointRefinementSeedSummary, ordered_parameter_bits,
+    JointRefinementFidelityTier, JointRefinementObservedData, JointRefinementSeedSummary,
+    ordered_parameter_bits,
 };
 use super::setup::{
     cached_seed_summaries_for_candidate_seeds, compute_cumulative_log_price_span,
@@ -407,43 +406,6 @@ fn build_joint_candidate_evaluation_for_fitted_parameters(
         },
         invalid_reason: None,
     }
-}
-
-pub(super) fn compare_joint_restart_outcomes(
-    left: (usize, &JointRefinementRestartOutcome),
-    right: (usize, &JointRefinementRestartOutcome),
-    thresholds: super::execution::JointRefinementAdmissibilityThresholds,
-    has_admissible_candidate: bool,
-    coarse_consistency_by_restart_id: &BTreeMap<
-        String,
-        super::execution::JointRefinementCoarseConsistencySummary,
-    >,
-    coarse_consistency_required: bool,
-) -> Ordering {
-    let left_admissible = super::execution::joint_restart_outcome_is_admissible(
-        left.1,
-        thresholds,
-        coarse_consistency_by_restart_id.get(left.1.restart_id.as_str()),
-        coarse_consistency_required,
-    );
-    let right_admissible = super::execution::joint_restart_outcome_is_admissible(
-        right.1,
-        thresholds,
-        coarse_consistency_by_restart_id.get(right.1.restart_id.as_str()),
-        coarse_consistency_required,
-    );
-
-    compare_joint_candidate_breakdowns(
-        left.0,
-        &left.1.final_evaluation.breakdown,
-        left_admissible,
-        left.1.restart_id.as_str(),
-        right.0,
-        &right.1.final_evaluation.breakdown,
-        right_admissible,
-        right.1.restart_id.as_str(),
-        has_admissible_candidate,
-    )
 }
 
 pub(super) fn joint_primary_metrics_from_breakdown(

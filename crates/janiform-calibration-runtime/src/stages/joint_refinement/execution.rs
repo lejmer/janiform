@@ -68,7 +68,7 @@ use janiform_model_kernels::mean_reversion::{
 use serde::{Deserialize, Serialize};
 
 use super::objective::{
-    compare_joint_restart_outcomes, evaluate_joint_candidate, evaluate_joint_fitted_parameters,
+    compare_joint_candidate_breakdowns, evaluate_joint_candidate, evaluate_joint_fitted_parameters,
     joint_primary_metrics_from_breakdown, root_mean_square,
 };
 use super::setup::{
@@ -88,6 +88,7 @@ pub(super) const JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR: f64 = 1.0e-8;
 const JOINT_REFINEMENT_RESTART_POLICY_ENV: &str = "JANIFORM_JOINT_REFINEMENT_RESTART_POLICY";
 const JOINT_REFINEMENT_RESTART_POLICY_BUDGET_DERIVED: &str = "budget_derived";
 const JOINT_REFINEMENT_RESTART_POLICY_CPU_COUNT_LIMITED: &str = "cpu_count_limited";
+const JOINT_REFINEMENT_SELECTION_POLICY: &str = "validity_then_admissibility_with_incumbent_baseline_and_direct_interval_coarse_consistency_then_pareto_then_lexicographic_tie_break.v1";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(super) enum JointRefinementFidelityTier {
@@ -554,6 +555,13 @@ fn run_joint_refinement_calibration_stage_internal(
         calendar_registry,
         &observed_data,
         run_spec.data_inputs.exchange_code.as_str(),
+        return_components_payload
+            .fitted_parameters
+            .news_process_configuration
+            .arrivals
+            .known
+            .scheduled_event_timestamps_utc_nanos
+            .as_slice(),
         runtime_hourly_seasonality_factors.as_slice(),
     ) {
         Ok(session_context) => session_context,
@@ -688,6 +696,14 @@ fn run_joint_refinement_calibration_stage_internal(
         Some(ordered_parameter_bits(baseline_parameter_vector.as_slice()).as_slice()),
         None,
     );
+    let baseline_restart_outcome = JointRefinementRestartOutcome {
+        restart_id: "baseline".to_string(),
+        parameter_vector: baseline_parameter_vector.clone(),
+        local_evaluation: baseline_local_evaluation.clone(),
+        final_evaluation: baseline_final_evaluation.clone(),
+        local_evaluation_count: 0,
+        stop_reason: "baseline_incumbent",
+    };
 
     if let Ok(mut cache_guard) = bootstrap_context.objective_cache.lock() {
         cache_guard.clear();
@@ -750,9 +766,18 @@ fn run_joint_refinement_calibration_stage_internal(
         &bootstrap_context,
         baseline_coarse_consistency_summary.as_ref(),
     );
+    let mut selection_coarse_consistency_by_restart_id = coarse_consistency_by_restart_id.clone();
+    if let Some(summary) = baseline_coarse_consistency_summary {
+        selection_coarse_consistency_by_restart_id
+            .insert(baseline_restart_outcome.restart_id.clone(), summary);
+    }
+
+    let mut selectable_restart_outcomes = Vec::with_capacity(restart_outcomes.len() + 1);
+    selectable_restart_outcomes.push(baseline_restart_outcome.clone());
+    selectable_restart_outcomes.extend(restart_outcomes.iter().cloned());
 
     let best_restart = select_best_restart_outcome(
-        restart_outcomes
+        selectable_restart_outcomes
             .iter()
             .filter(|restart_outcome| {
                 restart_outcome.local_evaluation.invalid_reason.is_none()
@@ -761,23 +786,16 @@ fn run_joint_refinement_calibration_stage_internal(
             .collect::<Vec<_>>()
             .as_slice(),
         &bootstrap_context,
-        &coarse_consistency_by_restart_id,
+        &selection_coarse_consistency_by_restart_id,
         baseline_coarse_consistency_summary.is_some(),
     )
     .cloned()
-    .unwrap_or_else(|| JointRefinementRestartOutcome {
-        restart_id: "baseline".to_string(),
-        parameter_vector: baseline_parameter_vector.clone(),
-        local_evaluation: baseline_local_evaluation.clone(),
-        final_evaluation: baseline_final_evaluation.clone(),
-        local_evaluation_count: 0,
-        stop_reason: "baseline_seed",
-    });
+    .unwrap_or(baseline_restart_outcome);
 
     let candidate_frontier = build_joint_candidate_frontier_diagnostics(
-        restart_outcomes.as_slice(),
+        selectable_restart_outcomes.as_slice(),
         &bootstrap_context,
-        &coarse_consistency_by_restart_id,
+        &selection_coarse_consistency_by_restart_id,
         baseline_coarse_consistency_summary.is_some(),
     );
 
@@ -835,7 +853,7 @@ fn run_joint_refinement_calibration_stage_internal(
                 schema_version: "calibration.optimizer.adapter_run.v1",
                 backend_id: "joint_refinement.block_coordinate_reconciliation.v1".to_string(),
                 random_seed: resolved_stage_seed.stage_seed,
-                selection_policy: "validity_then_admissibility_with_baseline_relative_coarse_consistency_then_pareto_then_lexicographic_tie_break.v1",
+                selection_policy: JOINT_REFINEMENT_SELECTION_POLICY,
                 penalty_policy: "invalid_candidates_are_screened_before_lexicographic_frontier_selection.v1",
                 bounds_policy: "bounded_joint_block_coordinate_refinement.v1",
                 solver_settings: stage_solver_settings.clone(),
@@ -881,45 +899,23 @@ fn select_best_restart_outcome<'a>(
     }
 
     let thresholds = joint_refinement_admissibility_thresholds(context);
-
-    let pareto_ranks: Vec<usize> = restart_outcomes
+    let candidate_states = build_joint_candidate_ordering_states(
+        restart_outcomes,
+        thresholds,
+        coarse_consistency_by_restart_id,
+        coarse_consistency_required,
+    );
+    let has_admissible_candidate = candidate_states
         .iter()
-        .map(|candidate| {
-            1 + restart_outcomes
-                .iter()
-                .filter(|other| {
-                    candidate.restart_id != other.restart_id
-                        && joint_restart_outcome_dominates(other, candidate)
-                })
-                .count()
-        })
-        .collect();
+        .any(|candidate_state| candidate_state.admissible);
 
-    let has_admissible_candidate = restart_outcomes.iter().any(|candidate| {
-        joint_restart_outcome_is_valid(candidate)
-            && joint_restart_outcome_is_admissible(
-                candidate,
-                thresholds,
-                coarse_consistency_by_restart_id.get(candidate.restart_id.as_str()),
-                coarse_consistency_required,
-            )
-    });
-
-    let mut ranked_candidates: Vec<(usize, &JointRefinementRestartOutcome)> = restart_outcomes
+    let mut ranked_candidates = candidate_states
         .iter()
-        .enumerate()
-        .map(|(position, outcome)| (pareto_ranks[position], *outcome))
-        .collect();
+        .map(|candidate_state| (*candidate_state, candidate_state.restart_outcome))
+        .collect::<Vec<_>>();
 
     ranked_candidates.sort_by(|left, right| {
-        compare_joint_restart_outcomes(
-            *left,
-            *right,
-            thresholds,
-            has_admissible_candidate,
-            coarse_consistency_by_restart_id,
-            coarse_consistency_required,
-        )
+        compare_joint_candidate_ordering_states(left.0, right.0, has_admissible_candidate)
     });
 
     ranked_candidates.first().map(|(_, outcome)| *outcome)
@@ -1051,42 +1047,24 @@ fn build_joint_candidate_frontier_diagnostics(
     }
 
     let thresholds = joint_refinement_admissibility_thresholds(context);
-
-    let pareto_ranks: Vec<usize> = restart_outcomes
+    let restart_outcome_refs = restart_outcomes.iter().collect::<Vec<_>>();
+    let candidate_states = build_joint_candidate_ordering_states(
+        restart_outcome_refs.as_slice(),
+        thresholds,
+        coarse_consistency_by_restart_id,
+        coarse_consistency_required,
+    );
+    let has_admissible_candidate = candidate_states
         .iter()
-        .map(|candidate| {
-            1 + restart_outcomes
-                .iter()
-                .filter(|other| joint_restart_outcome_dominates(other, candidate))
-                .count()
-        })
-        .collect();
+        .any(|candidate_state| candidate_state.admissible);
 
-    let has_admissible_candidate = restart_outcomes.iter().any(|candidate| {
-        joint_restart_outcome_is_valid(candidate)
-            && joint_restart_outcome_is_admissible(
-                candidate,
-                thresholds,
-                coarse_consistency_by_restart_id.get(candidate.restart_id.as_str()),
-                coarse_consistency_required,
-            )
-    });
-
-    let mut ranked_candidates: Vec<(usize, &JointRefinementRestartOutcome)> = restart_outcomes
+    let mut ranked_candidates = candidate_states
         .iter()
-        .enumerate()
-        .map(|(position, outcome)| (pareto_ranks[position], outcome))
-        .collect();
+        .map(|candidate_state| (*candidate_state, candidate_state.restart_outcome))
+        .collect::<Vec<_>>();
 
     ranked_candidates.sort_by(|left, right| {
-        compare_joint_restart_outcomes(
-            *left,
-            *right,
-            thresholds,
-            has_admissible_candidate,
-            coarse_consistency_by_restart_id,
-            coarse_consistency_required,
-        )
+        compare_joint_candidate_ordering_states(left.0, right.0, has_admissible_candidate)
     });
 
     let lexicographic_rank_by_restart_id: BTreeMap<&str, usize> = ranked_candidates
@@ -1097,8 +1075,13 @@ fn build_joint_candidate_frontier_diagnostics(
 
     restart_outcomes
         .iter()
-        .enumerate()
-        .map(|(position, outcome)| {
+        .map(|outcome| {
+            let candidate_state = candidate_states
+                .iter()
+                .find(|candidate_state| {
+                    candidate_state.restart_outcome.restart_id == outcome.restart_id
+                })
+                .expect("joint candidate state should exist for every frontier outcome");
             let valid = outcome.local_evaluation.invalid_reason.is_none()
                 && outcome.final_evaluation.invalid_reason.is_none();
             let invalid_reason = outcome
@@ -1110,14 +1093,8 @@ fn build_joint_candidate_frontier_diagnostics(
             JointRefinementStageCandidateDiagnostic {
                 candidate_id: format!("joint_refinement_{}", outcome.restart_id),
                 valid,
-                admissible: valid
-                    && joint_restart_outcome_is_admissible(
-                        outcome,
-                        thresholds,
-                        coarse_consistency_by_restart_id.get(outcome.restart_id.as_str()),
-                        coarse_consistency_required,
-                    ),
-                pareto_rank: pareto_ranks[position],
+                admissible: candidate_state.admissible,
+                pareto_rank: candidate_state.pareto_rank,
                 lexicographic_rank: *lexicographic_rank_by_restart_id
                     .get(outcome.restart_id.as_str())
                     .unwrap_or(&(restart_outcomes.len() + 1)),
@@ -1134,6 +1111,66 @@ fn build_joint_candidate_frontier_diagnostics(
             }
         })
         .collect()
+}
+
+#[derive(Debug, Clone, Copy)]
+struct JointRefinementCandidateOrderingState<'a> {
+    pareto_rank: usize,
+    restart_outcome: &'a JointRefinementRestartOutcome,
+    admissible: bool,
+}
+
+fn build_joint_candidate_ordering_states<'a>(
+    restart_outcomes: &'a [&'a JointRefinementRestartOutcome],
+    thresholds: JointRefinementAdmissibilityThresholds,
+    coarse_consistency_by_restart_id: &BTreeMap<String, JointRefinementCoarseConsistencySummary>,
+    coarse_consistency_required: bool,
+) -> Vec<JointRefinementCandidateOrderingState<'a>> {
+    let pareto_ranks = restart_outcomes
+        .iter()
+        .map(|candidate| {
+            1 + restart_outcomes
+                .iter()
+                .filter(|other| joint_restart_outcome_dominates(other, candidate))
+                .count()
+        })
+        .collect::<Vec<_>>();
+
+    restart_outcomes
+        .iter()
+        .enumerate()
+        .map(
+            |(position, outcome)| JointRefinementCandidateOrderingState {
+                pareto_rank: pareto_ranks[position],
+                restart_outcome: outcome,
+                admissible: joint_restart_outcome_is_valid(outcome)
+                    && joint_restart_outcome_is_admissible(
+                        outcome,
+                        thresholds,
+                        coarse_consistency_by_restart_id.get(outcome.restart_id.as_str()),
+                        coarse_consistency_required,
+                    ),
+            },
+        )
+        .collect()
+}
+
+fn compare_joint_candidate_ordering_states(
+    left: JointRefinementCandidateOrderingState<'_>,
+    right: JointRefinementCandidateOrderingState<'_>,
+    has_admissible_candidate: bool,
+) -> std::cmp::Ordering {
+    compare_joint_candidate_breakdowns(
+        left.pareto_rank,
+        &left.restart_outcome.final_evaluation.breakdown,
+        left.admissible,
+        left.restart_outcome.restart_id.as_str(),
+        right.pareto_rank,
+        &right.restart_outcome.final_evaluation.breakdown,
+        right.admissible,
+        right.restart_outcome.restart_id.as_str(),
+        has_admissible_candidate,
+    )
 }
 
 fn named_joint_parameter_coordinates(
@@ -1263,7 +1300,7 @@ fn build_joint_coarse_tick_consistency_metrics(
     let mut metrics = Vec::new();
 
     for (simulation_seed, tick_summary) in tick_seed_summaries {
-        if let Some(coarse_5m_intervals) = build_joint_coarse_interval_observations(
+        let coarse_5m_intervals = build_joint_coarse_interval_observations(
             context,
             fitted_parameters,
             *simulation_seed,
@@ -1272,44 +1309,58 @@ fn build_joint_coarse_tick_consistency_metrics(
                 .observed_data
                 .simulated_5m_interval_template
                 .as_slice(),
-        ) {
-            let coarse_15m_intervals = aggregate_coarse_intervals_to_template(
-                coarse_5m_intervals.as_slice(),
-                context
-                    .observed_data
-                    .simulated_15m_interval_template
-                    .as_slice(),
-            );
+        );
+        let coarse_15m_intervals = build_joint_coarse_interval_observations(
+            context,
+            fitted_parameters,
+            *simulation_seed,
+            3 * FIVE_MINUTES_NANOS,
+            context
+                .observed_data
+                .simulated_15m_interval_template
+                .as_slice(),
+        );
 
-            metrics.extend(joint_coarse_tick_metrics_for_horizon(
-                *simulation_seed,
-                "5m",
-                sum_interval_tick_count(coarse_5m_intervals.as_slice()) as f64,
-                return_scale_summary(coarse_5m_intervals.as_slice()),
-                tick_summary
-                    .simulated_5m_intervals
-                    .iter()
-                    .map(|interval| interval.tick_count)
-                    .sum::<usize>() as f64,
-                tick_summary.simulated_5m_return_scale_summary,
-            ));
-
-            metrics.extend(joint_coarse_tick_metrics_for_horizon(
-                *simulation_seed,
-                "15m",
-                sum_interval_tick_count(coarse_15m_intervals.as_slice()) as f64,
-                return_scale_summary(coarse_15m_intervals.as_slice()),
-                tick_summary
-                    .simulated_15m_intervals
-                    .iter()
-                    .map(|interval| interval.tick_count)
-                    .sum::<usize>() as f64,
-                tick_summary.simulated_15m_return_scale_summary,
-            ));
-        }
+        extend_joint_coarse_tick_consistency_metrics_for_seed(
+            &mut metrics,
+            *simulation_seed,
+            coarse_5m_intervals.as_deref(),
+            coarse_15m_intervals.as_deref(),
+            tick_summary,
+        );
     }
 
     metrics
+}
+
+fn extend_joint_coarse_tick_consistency_metrics_for_seed(
+    metrics: &mut Vec<JointRefinementStageCoarseTickConsistencyMetric>,
+    simulation_seed: u64,
+    coarse_5m_intervals: Option<&[JointRefinementAggregatedIntervalObservation]>,
+    coarse_15m_intervals: Option<&[JointRefinementAggregatedIntervalObservation]>,
+    tick_summary: &JointRefinementSeedSummary,
+) {
+    if let Some(coarse_5m_intervals) = coarse_5m_intervals {
+        metrics.extend(joint_coarse_tick_metrics_for_horizon(
+            simulation_seed,
+            "5m",
+            sum_interval_tick_count(coarse_5m_intervals) as f64,
+            return_scale_summary(coarse_5m_intervals),
+            sum_interval_tick_count(tick_summary.simulated_5m_intervals.as_slice()) as f64,
+            tick_summary.simulated_5m_return_scale_summary,
+        ));
+    }
+
+    if let Some(coarse_15m_intervals) = coarse_15m_intervals {
+        metrics.extend(joint_coarse_tick_metrics_for_horizon(
+            simulation_seed,
+            "15m",
+            sum_interval_tick_count(coarse_15m_intervals) as f64,
+            return_scale_summary(coarse_15m_intervals),
+            sum_interval_tick_count(tick_summary.simulated_15m_intervals.as_slice()) as f64,
+            tick_summary.simulated_15m_return_scale_summary,
+        ));
+    }
 }
 
 fn build_joint_restart_coarse_consistency_summaries(
@@ -1567,44 +1618,6 @@ fn build_joint_coarse_interval_observations(
     finalize_sell_share_proxies(intervals.as_mut_slice(), 0.5);
 
     Some(intervals)
-}
-
-fn aggregate_coarse_intervals_to_template(
-    source_intervals: &[JointRefinementAggregatedIntervalObservation],
-    template: &[JointRefinementAggregatedIntervalObservation],
-) -> Vec<JointRefinementAggregatedIntervalObservation> {
-    let mut aggregated_intervals = zeroed_interval_observation_template(template);
-    if aggregated_intervals.is_empty() {
-        return aggregated_intervals;
-    }
-
-    let mut target_index = 0usize;
-    for source_interval in source_intervals {
-        while target_index < aggregated_intervals.len()
-            && source_interval.interval_start_utc_nanos
-                >= aggregated_intervals[target_index].interval_end_utc_nanos
-        {
-            target_index += 1;
-        }
-        if target_index >= aggregated_intervals.len() {
-            break;
-        }
-
-        let target_interval = &mut aggregated_intervals[target_index];
-        if source_interval.interval_start_utc_nanos < target_interval.interval_start_utc_nanos
-            || source_interval.interval_end_utc_nanos > target_interval.interval_end_utc_nanos
-        {
-            continue;
-        }
-
-        target_interval.log_return += source_interval.log_return;
-        target_interval.tick_count += source_interval.tick_count;
-        target_interval.sell_share_proxy +=
-            source_interval.sell_share_proxy * source_interval.tick_count as f64;
-    }
-
-    finalize_sell_share_proxies(aggregated_intervals.as_mut_slice(), 0.5);
-    aggregated_intervals
 }
 
 fn sum_interval_tick_count(intervals: &[JointRefinementAggregatedIntervalObservation]) -> usize {
@@ -2320,12 +2333,16 @@ mod tests {
     use super::{
         JOINT_REFINEMENT_PARAMETER_BLOCK_COUNT, JointRefinementActiveParameterLayout,
         JointRefinementAdmissibilityThresholds, JointRefinementCoarseConsistencySummary,
-        admissibility_threshold_from_sample_count, desired_joint_refinement_restart_count,
-        joint_breakdown_is_admissible, joint_refinement_base_schedule_components,
-        joint_refinement_budget_schedule, maximum_parallel_restart_count,
+        JointRefinementSeedSummary, admissibility_threshold_from_sample_count,
+        desired_joint_refinement_restart_count,
+        extend_joint_coarse_tick_consistency_metrics_for_seed, joint_breakdown_is_admissible,
+        joint_refinement_base_schedule_components, joint_refinement_budget_schedule,
+        maximum_parallel_restart_count,
     };
     use crate::stages::joint_metrics::{
+        JointRefinementAggregatedIntervalObservation,
         JointRefinementBusinessTimeBucketReturnScaleSummaries, JointRefinementReturnScaleSummary,
+        JointRefinementRollingVarianceActivityMetric,
     };
     use crate::stages::return_components::{
         ReturnComponentsObservedOpenSessionReturn,
@@ -2432,6 +2449,60 @@ mod tests {
             activity_level_fit: 2.0,
             rv_activity_coupling_fit: 2.0,
             price_span_sanity_fit: 2.0,
+        }
+    }
+
+    fn build_test_interval_observation(
+        interval_start_utc_nanos: i64,
+        interval_end_utc_nanos: i64,
+        log_return: f64,
+        tick_count: usize,
+        sell_share_proxy: f64,
+    ) -> JointRefinementAggregatedIntervalObservation {
+        JointRefinementAggregatedIntervalObservation {
+            interval_start_utc_nanos,
+            interval_end_utc_nanos,
+            log_return,
+            tick_count,
+            sell_share_proxy,
+        }
+    }
+
+    fn build_test_seed_summary(
+        simulated_5m_intervals: Vec<JointRefinementAggregatedIntervalObservation>,
+        simulated_15m_intervals: Vec<JointRefinementAggregatedIntervalObservation>,
+        simulated_5m_return_scale_summary: JointRefinementReturnScaleSummary,
+        simulated_15m_return_scale_summary: JointRefinementReturnScaleSummary,
+    ) -> JointRefinementSeedSummary {
+        JointRefinementSeedSummary {
+            simulated_5m_intervals,
+            simulated_15m_intervals,
+            simulated_tick_shape_returns: vec![0.01, -0.01],
+            simulated_5m_shape_returns: vec![0.02, -0.02],
+            simulated_15m_shape_returns: vec![0.03, -0.03],
+            simulated_tick_return_scale_summary: JointRefinementReturnScaleSummary {
+                mean_absolute_return: 0.01,
+                realized_variance: 0.0001,
+                absolute_return_quantile_q90: 0.02,
+            },
+            simulated_5m_return_scale_summary,
+            simulated_15m_return_scale_summary,
+            simulated_5m_business_time_return_scale_summaries:
+                JointRefinementBusinessTimeBucketReturnScaleSummaries {
+                    bucket_summaries: [None; 4],
+                },
+            simulated_15m_business_time_return_scale_summaries:
+                JointRefinementBusinessTimeBucketReturnScaleSummaries {
+                    bucket_summaries: [None; 4],
+                },
+            simulated_tick_intraday_mean_absolute_returns: vec![0.01; 24],
+            simulated_5m_intraday_mean_absolute_returns: vec![0.02; 24],
+            simulated_15m_intraday_mean_absolute_returns: vec![0.03; 24],
+            simulated_hourly_tick_counts: vec![1.0; 24],
+            simulated_15m_rv_activity_metric: JointRefinementRollingVarianceActivityMetric {
+                correlation: 0.0,
+                standardized_path_distance: 0.0,
+            },
         }
     }
 
@@ -2828,6 +2899,26 @@ mod tests {
     }
 
     #[test]
+    fn admissible_candidate_ordering_rejects_inadmissible_restart_when_available() {
+        let admissible_baseline = build_test_joint_breakdown(1.0, 1.0, 1.2);
+        let inadmissible_restart = build_test_joint_breakdown(0.8, 0.8, 0.7);
+
+        let ordering = compare_joint_candidate_breakdowns(
+            1,
+            &admissible_baseline,
+            true,
+            "baseline",
+            1,
+            &inadmissible_restart,
+            false,
+            "restart_refined",
+            true,
+        );
+
+        assert_eq!(ordering, Ordering::Less);
+    }
+
+    #[test]
     fn coarse_consistency_admissibility_is_baseline_relative() {
         let breakdown = build_test_joint_breakdown(1.0, 1.0, 1.0);
         let metric_count = 24;
@@ -2862,5 +2953,50 @@ mod tests {
             None,
             true,
         ));
+    }
+
+    #[test]
+    fn coarse_tick_consistency_prefers_direct_fifteen_minute_coarse_path() {
+        let tick_summary = build_test_seed_summary(
+            vec![
+                build_test_interval_observation(0, 300, 0.01, 2, 0.5),
+                build_test_interval_observation(300, 600, -0.02, 2, 0.5),
+                build_test_interval_observation(600, 900, 0.03, 2, 0.5),
+            ],
+            vec![build_test_interval_observation(0, 900, 0.02, 7, 0.5)],
+            JointRefinementReturnScaleSummary {
+                mean_absolute_return: 0.02,
+                realized_variance: 0.0004,
+                absolute_return_quantile_q90: 0.03,
+            },
+            JointRefinementReturnScaleSummary {
+                mean_absolute_return: 0.07,
+                realized_variance: 0.0049,
+                absolute_return_quantile_q90: 0.08,
+            },
+        );
+        let coarse_5m_intervals = vec![
+            build_test_interval_observation(0, 300, 0.04, 2, 0.5),
+            build_test_interval_observation(300, 600, 0.04, 2, 0.5),
+            build_test_interval_observation(600, 900, 0.04, 2, 0.5),
+        ];
+        let coarse_15m_intervals = vec![build_test_interval_observation(0, 900, 0.25, 11, 0.5)];
+
+        let mut metrics = Vec::new();
+        extend_joint_coarse_tick_consistency_metrics_for_seed(
+            &mut metrics,
+            17,
+            Some(coarse_5m_intervals.as_slice()),
+            Some(coarse_15m_intervals.as_slice()),
+            &tick_summary,
+        );
+
+        let direct_fifteen_minute_event_count_metric = metrics
+            .iter()
+            .find(|metric| metric.horizon_label == "15m" && metric.metric_id == "event_count")
+            .expect("15m event-count metric should be present");
+
+        assert_eq!(direct_fifteen_minute_event_count_metric.coarse_value, 11.0);
+        assert_eq!(direct_fifteen_minute_event_count_metric.tick_value, 7.0);
     }
 }
