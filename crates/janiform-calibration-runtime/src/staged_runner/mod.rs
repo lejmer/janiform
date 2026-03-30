@@ -19,8 +19,10 @@ pub(super) use crate::stages::hawkes::{
 pub(super) use crate::stages::joint_refinement::{
     JointRefinementStageExecutionInput, JointRefinementStageExecutionMetadata,
     JointRefinementStageExecutionReport, JointRefinementStageHawkesInput,
+    JointRefinementStageProgressPhase, JointRefinementStageProgressUpdate,
     JointRefinementStageReturnComponentsInput, JointRefinementStageSeasonalityFactorsInput,
     run_joint_refinement_calibration_stage,
+    run_joint_refinement_calibration_stage_with_progress_observer,
 };
 pub(super) use crate::stages::mean_reversion::{
     MeanReversionStageExecutionInput, MeanReversionStageExecutionMetadata,

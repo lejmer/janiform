@@ -5,11 +5,12 @@ use super::{
     CalibrationStageCheckpointMetadata, CalibrationStageExecutionStatus,
     CalibrationStageSeedSource, HawkesStageCandidateInput, HawkesStageExecutionMetadata,
     HawkesStageExecutionReport, JointRefinementStageExecutionMetadata,
-    JointRefinementStageExecutionReport, MeanReversionStageExecutionInput,
-    MeanReversionStageExecutionMetadata, MeanReversionStageExecutionReport,
-    ReturnComponentsStageCandidateGenerationInput, ReturnComponentsStageExecutionMetadata,
-    ReturnComponentsStageExecutionReport, SeasonalityStageExecutionInput,
-    SeasonalityStageExecutionMetadata, SeasonalityStageExecutionReport,
+    JointRefinementStageExecutionReport, JointRefinementStageProgressPhase,
+    MeanReversionStageExecutionInput, MeanReversionStageExecutionMetadata,
+    MeanReversionStageExecutionReport, ReturnComponentsStageCandidateGenerationInput,
+    ReturnComponentsStageExecutionMetadata, ReturnComponentsStageExecutionReport,
+    SeasonalityStageExecutionInput, SeasonalityStageExecutionMetadata,
+    SeasonalityStageExecutionReport,
 };
 use serde::Serialize;
 
@@ -342,6 +343,23 @@ pub enum CalibrationStagedRunObserverEvent {
         stage_count: usize,
         runtime_seconds: f64,
         stage_report: CalibrationStagedRunStageReport,
+    },
+    StageProgress {
+        run_id: String,
+        stage: CalibrationStage,
+        stage_index: usize,
+        stage_count: usize,
+        progress_phase: JointRefinementStageProgressPhase,
+        completed_units: usize,
+        total_units: usize,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        current_item_label: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        valid_completed_units: Option<usize>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        cumulative_local_evaluation_count: Option<usize>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        best_weighted_objective: Option<f64>,
     },
     RunCompleted {
         run_id: String,

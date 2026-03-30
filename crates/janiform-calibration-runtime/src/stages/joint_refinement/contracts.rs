@@ -107,6 +107,24 @@ pub struct JointRefinementStageExecutionInput {
     pub candidate_generation_input: ReturnComponentsStageCandidateGenerationInput,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum JointRefinementStageProgressPhase {
+    RestartOptimization,
+    FinalSeedEvaluation,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct JointRefinementStageProgressUpdate {
+    pub phase: JointRefinementStageProgressPhase,
+    pub completed_units: usize,
+    pub total_units: usize,
+    pub current_item_label: Option<String>,
+    pub valid_completed_units: Option<usize>,
+    pub cumulative_local_evaluation_count: Option<usize>,
+    pub best_weighted_objective: Option<f64>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct JointRefinementStageFittedPayload {
     pub schema_version: &'static str,
@@ -196,6 +214,7 @@ pub enum JointRefinementStageExecutionFailure {
     MissingHawkesPayload,
     MissingReturnComponentsPayload,
     InvalidCandidateGenerationInput { error_message: String },
+    SimulationInfrastructureUnavailable { error_message: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]

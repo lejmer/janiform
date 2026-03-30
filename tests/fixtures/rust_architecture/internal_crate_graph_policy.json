@@ -121,6 +121,14 @@
         "janiform-calibration-artifacts"
       ]
     },
+    "janiform-joint-refinement-worker": {
+      "status": "existing",
+      "kind": "production",
+      "layer": "calibration_worker",
+      "allowed_internal_dependencies": [
+        "janiform-calibration-runtime"
+      ]
+    },
     "janiform-analytics-stylized-facts": {
       "status": "existing",
       "kind": "production",

@@ -12,6 +12,7 @@ path = "src/lib.rs"
 doctest = false
 
 [dependencies]
+bincode = { workspace = true }
 chrono = { workspace = true }
 chrono-tz = { workspace = true }
 csv = { workspace = true }
@@ -26,6 +27,7 @@ parquet = { workspace = true }
 rayon = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+sysinfo = { workspace = true }
 
 [dev-dependencies]
 janiform-engine-simulation = { path = "../janiform-engine-simulation" }

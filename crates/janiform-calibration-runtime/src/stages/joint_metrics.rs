@@ -1,4 +1,5 @@
 use chrono::{DateTime, Timelike, Utc};
+use serde::{Deserialize, Serialize};
 
 use crate::calendar::{ExchangeCalendarRegistry, MarketState};
 use crate::stages::return_components::{
@@ -19,39 +20,39 @@ const JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR: f64 = 1.0e-8;
 const JOINT_REFINEMENT_RETURN_SCALE_QUANTILE_Q90: f64 = 0.90;
 const JOINT_REFINEMENT_BUSINESS_TIME_BUCKET_COUNT: usize = 4;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct JointRefinementBusinessTimeBucketThresholds {
-    pub(crate) lower_quartile_cutoff: f64,
-    pub(crate) median_cutoff: f64,
-    pub(crate) upper_quartile_cutoff: f64,
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct JointRefinementBusinessTimeBucketThresholds {
+    pub lower_quartile_cutoff: f64,
+    pub median_cutoff: f64,
+    pub upper_quartile_cutoff: f64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct JointRefinementRollingVarianceActivityMetric {
-    pub(crate) correlation: f64,
-    pub(crate) standardized_path_distance: f64,
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct JointRefinementRollingVarianceActivityMetric {
+    pub correlation: f64,
+    pub standardized_path_distance: f64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct JointRefinementReturnScaleSummary {
-    pub(crate) mean_absolute_return: f64,
-    pub(crate) realized_variance: f64,
-    pub(crate) absolute_return_quantile_q90: f64,
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct JointRefinementReturnScaleSummary {
+    pub mean_absolute_return: f64,
+    pub realized_variance: f64,
+    pub absolute_return_quantile_q90: f64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct JointRefinementBusinessTimeBucketReturnScaleSummaries {
-    pub(crate) bucket_summaries:
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct JointRefinementBusinessTimeBucketReturnScaleSummaries {
+    pub bucket_summaries:
         [Option<JointRefinementReturnScaleSummary>; JOINT_REFINEMENT_BUSINESS_TIME_BUCKET_COUNT],
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct JointRefinementAggregatedIntervalObservation {
-    pub(crate) interval_start_utc_nanos: i64,
-    pub(crate) interval_end_utc_nanos: i64,
-    pub(crate) log_return: f64,
-    pub(crate) tick_count: usize,
-    pub(crate) sell_share_proxy: f64,
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct JointRefinementAggregatedIntervalObservation {
+    pub interval_start_utc_nanos: i64,
+    pub interval_end_utc_nanos: i64,
+    pub log_return: f64,
+    pub tick_count: usize,
+    pub sell_share_proxy: f64,
 }
 
 pub(crate) fn build_observed_open_session_interval_observations(
@@ -113,6 +114,7 @@ pub(crate) fn zeroed_interval_observation_template(
         .collect()
 }
 
+#[cfg(test)]
 pub(crate) fn aggregate_simulated_path_to_interval_templates(
     fine_path: &[SeededFinePathRecord],
     five_minute_template: &[JointRefinementAggregatedIntervalObservation],
@@ -137,6 +139,7 @@ pub(crate) fn aggregate_simulated_path_to_interval_templates(
     )
 }
 
+#[cfg(test)]
 pub(crate) fn aggregate_simulated_path_to_interval_template(
     fine_path: &[SeededFinePathRecord],
     template: &[JointRefinementAggregatedIntervalObservation],
@@ -371,6 +374,7 @@ pub(crate) fn mean_absolute_observed_return_by_utc_hour(
     }))
 }
 
+#[cfg(test)]
 pub(crate) fn mean_absolute_trade_return_by_utc_hour(
     fine_path: &[SeededFinePathRecord],
 ) -> Vec<f64> {
@@ -386,6 +390,7 @@ pub(crate) fn mean_absolute_trade_return_by_utc_hour(
     }))
 }
 
+#[cfg(test)]
 pub(crate) fn sampled_trade_returns(
     fine_path: &[SeededFinePathRecord],
     target_count: usize,
@@ -570,7 +575,7 @@ pub(crate) fn finalize_sell_share_proxies(
     }
 }
 
-fn accumulate_fine_path_record_into_intervals(
+pub(crate) fn accumulate_fine_path_record_into_intervals(
     record: &SeededFinePathRecord,
     intervals: &mut [JointRefinementAggregatedIntervalObservation],
     interval_duration_nanos: i64,
@@ -668,6 +673,16 @@ where
         observation_count_by_hour[hour_index] += 1;
     }
 
+    mean_absolute_return_profile_from_hourly_totals(
+        absolute_return_sum_by_hour,
+        observation_count_by_hour,
+    )
+}
+
+pub(crate) fn mean_absolute_return_profile_from_hourly_totals(
+    absolute_return_sum_by_hour: [f64; 24],
+    observation_count_by_hour: [usize; 24],
+) -> Vec<f64> {
     (0..24)
         .map(|hour_index| {
             if observation_count_by_hour[hour_index] == 0 {

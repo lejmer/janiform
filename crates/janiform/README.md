@@ -22,6 +22,7 @@ This version is `0.1.0`. The source for this crate lives [here](https://github.c
 - [janiform-foundations](https://github.com/lejmer/janiform/blob/main/crates/janiform-foundations): Low-level shared foundation primitives for Janiform.
 - [janiform-governance](https://github.com/lejmer/janiform/blob/main/crates/janiform-governance): Governance and regression orchestration for Janiform.
 - [janiform-governance-bench](https://github.com/lejmer/janiform/blob/main/crates/janiform-governance-bench): Benchmark governance support for Janiform.
+- [janiform-joint-refinement-worker](https://github.com/lejmer/janiform/blob/main/crates/janiform-joint-refinement-worker): Process-isolated joint-refinement summary simulation worker for Janiform.
 - [janiform-market-time](https://github.com/lejmer/janiform/blob/main/crates/janiform-market-time): Shared market-time infrastructure for Janiform.
 - [janiform-model-kernels](https://github.com/lejmer/janiform/blob/main/crates/janiform-model-kernels): Shared model-kernel domains for Janiform.
 - [janiform-pybind](https://github.com/lejmer/janiform/blob/main/crates/janiform-pybind): PyO3 bindings for Janiform.

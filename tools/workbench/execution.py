@@ -36,7 +36,9 @@ from janiform.contracts import MeanReversionAnchorModelKind
 
 from .artifacts import load_workbench_artifacts
 from .events import WorkbenchEventType, build_workbench_event
-from .state import WorkbenchRunSetup
+from .state import DEFAULT_WORKBENCH_SESSION_PRESET_NAME, WorkbenchRunSetup
+
+RESOURCE_SNAPSHOT_INTERVAL_SECONDS: float = 15.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,7 +106,10 @@ class WorkbenchExecutionWorker(QObject):
             exchange_code: Optional[str] = None
             match self._run_setup.session_source.mode:
                 case "preset":
-                    session_argument = self._run_setup.session_source.preset_name or "FXSPOT"
+                    session_argument = (
+                        self._run_setup.session_source.preset_name
+                        or DEFAULT_WORKBENCH_SESSION_PRESET_NAME
+                    )
                 case "definition":
                     session_argument = self._run_setup.session_source.definition_path
                 case "probe_fallback":
@@ -333,7 +338,7 @@ class WorkbenchExecutionWorker(QObject):
                     },
                 )
 
-                sleep(1.0)
+                sleep(RESOURCE_SNAPSHOT_INTERVAL_SECONDS)
 
         thread = Thread(target=emit_heartbeat, daemon=True)
         thread.start()
@@ -411,6 +416,29 @@ class WorkbenchExecutionWorker(QObject):
                         "stage_report": live_stage_report,
                     },
                     stage=stage,
+                    evaluation_tier=_evaluation_tier_for_stage(stage),
+                )
+            case "stage_progress":
+                stage = _coerce_optional_string(raw_event.get("stage"))
+                progress_phase = _coerce_optional_string(raw_event.get("progress_phase"))
+                subtask = _subtask_for_stage_progress_event(stage, progress_phase)
+
+                self._emit_event(
+                    WorkbenchEventType.SUBTASK_STARTED,
+                    payload={
+                        "detail": _detail_for_stage_progress_event(raw_event),
+                        "completed_units": raw_event.get("completed_units"),
+                        "total_units": raw_event.get("total_units"),
+                        "progress_phase": progress_phase,
+                        "current_item_label": raw_event.get("current_item_label"),
+                        "valid_completed_units": raw_event.get("valid_completed_units"),
+                        "cumulative_local_evaluation_count": raw_event.get(
+                            "cumulative_local_evaluation_count"
+                        ),
+                        "best_weighted_objective": raw_event.get("best_weighted_objective"),
+                    },
+                    stage=stage,
+                    subtask=subtask,
                     evaluation_tier=_evaluation_tier_for_stage(stage),
                 )
             case "run_failed":
@@ -552,6 +580,60 @@ def _detail_for_failed_native_run(failure_payload: Any) -> str:
             return f"Calibration failed with {failure_kind}"
 
     return "Calibration failed"
+
+
+def _subtask_for_stage_progress_event(
+    stage: Optional[str],
+    progress_phase: Optional[str],
+) -> str:
+    if stage is None and progress_phase is None:
+        return "stage_progress"
+    if stage is None:
+        return progress_phase or "stage_progress"
+    if progress_phase is None:
+        return stage
+
+    return f"{stage}.{progress_phase}"
+
+
+def _detail_for_stage_progress_event(raw_event: dict[str, Any]) -> str:
+    stage = _coerce_optional_string(raw_event.get("stage")) or "stage"
+    progress_phase = _coerce_optional_string(raw_event.get("progress_phase"))
+    completed_units = raw_event.get("completed_units")
+    total_units = raw_event.get("total_units")
+    current_item_label = _coerce_optional_string(raw_event.get("current_item_label"))
+    valid_completed_units = raw_event.get("valid_completed_units")
+    cumulative_local_evaluation_count = raw_event.get("cumulative_local_evaluation_count")
+    best_weighted_objective = raw_event.get("best_weighted_objective")
+
+    phase_label = _label_for_stage_progress_phase(progress_phase)
+    detail = f"{stage} {phase_label}"
+
+    if isinstance(completed_units, int) and isinstance(total_units, int):
+        detail = f"{detail} {completed_units}/{total_units}"
+
+    detail_parts = [detail]
+
+    if current_item_label is not None:
+        detail_parts.append(f"latest={current_item_label}")
+    if isinstance(valid_completed_units, int):
+        detail_parts.append(f"valid={valid_completed_units}")
+    if isinstance(cumulative_local_evaluation_count, int):
+        detail_parts.append(f"local_evaluations={cumulative_local_evaluation_count}")
+    if isinstance(best_weighted_objective, int | float):
+        detail_parts.append(f"best_objective={best_weighted_objective:.6f}")
+
+    return " | ".join(detail_parts)
+
+
+def _label_for_stage_progress_phase(progress_phase: Optional[str]) -> str:
+    match progress_phase:
+        case "restart_optimization":
+            return "restart optimization"
+        case "final_seed_evaluation":
+            return "final seed evaluation"
+        case _:
+            return progress_phase or "progress"
 
 
 def _live_stage_report_payload(

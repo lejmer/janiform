@@ -1,0 +1,14 @@
+[package]
+name = "janiform-joint-refinement-worker"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Process-isolated joint-refinement summary simulation worker for Janiform."
+
+[[bin]]
+name = "janiform-joint-refinement-worker"
+path = "src/main.rs"
+
+[dependencies]
+janiform-calibration-runtime = { path = "../janiform-calibration-runtime" }
+serde = { workspace = true }

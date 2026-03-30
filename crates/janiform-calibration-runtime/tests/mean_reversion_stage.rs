@@ -12,6 +12,7 @@ use janiform_model_kernels::mean_reversion::MeanReversionAnchorModelKind;
 use support::shared::{
     build_hawkes_stage_success_payload, build_return_components_stage_success_payload,
     build_run_contract_with_mode_and_resume, build_seasonality_stage_success_payload,
+    build_through_mean_reversion_run_contract_with_mode_and_resume,
     calibration_stage_test_registry, staged_run_inputs,
 };
 
@@ -213,7 +214,7 @@ fn mean_reversion_stage_falls_back_to_zero_kappa_endogenous_fit_when_runtime_pro
 
 #[test]
 fn staged_runner_completes_when_mean_reversion_stage_estimates_endogenous_anchor_requests() {
-    let run_contract = build_run_contract_with_mode_and_resume(
+    let run_contract = build_through_mean_reversion_run_contract_with_mode_and_resume(
         "run-mean-reversion-endogenous-success",
         CalibrationExecutionMode::Memory,
         None,
@@ -263,13 +264,13 @@ fn staged_runner_completes_when_mean_reversion_stage_estimates_endogenous_anchor
     );
     assert!(matches!(
         report.stage_reports.last(),
-        Some(CalibrationStagedRunStageReport::JointRefinement(_))
+        Some(CalibrationStagedRunStageReport::MeanReversion(_))
     ));
 }
 
 #[test]
 fn staged_runner_end_to_end_reports_mean_reversion_fit_from_synthetic_levels() {
-    let run_contract = build_run_contract_with_mode_and_resume(
+    let run_contract = build_through_mean_reversion_run_contract_with_mode_and_resume(
         "run-mean-reversion-end-to-end",
         CalibrationExecutionMode::Memory,
         None,

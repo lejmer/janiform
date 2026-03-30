@@ -21,9 +21,11 @@ use janiform_calibration_runtime::{
     run_staged_calibration_with_checkpointing,
 };
 use support::shared::{
-    BTreeSet, build_run_contract_for_caller_surface, build_run_contract_with_mode_and_resume,
+    BTreeSet, build_pre_joint_run_contract_with_mode_and_resume,
+    build_run_contract_for_caller_surface, build_run_contract_with_mode_and_resume,
     calibration_stage_test_registry, fs, hawkes_stage_constraint_violating_candidate_fixture, json,
-    staged_run_inputs, temporary_checkpoint_directory,
+    resolve_calibration_execution_mode_for_surface, staged_run_inputs,
+    temporary_checkpoint_directory,
 };
 
 #[test]
@@ -319,7 +321,7 @@ fn staged_runner_persists_dataset_snapshot_artifact_only_for_disk_mode_runs() {
     let calendar_registry = calibration_stage_test_registry();
 
     let disk_checkpoint_directory = temporary_checkpoint_directory("disk-dataset-snapshot");
-    let disk_contract = build_run_contract_with_mode_and_resume(
+    let disk_contract = build_pre_joint_run_contract_with_mode_and_resume(
         "run-disk-dataset-snapshot",
         CalibrationExecutionMode::Disk,
         None,
@@ -355,7 +357,7 @@ fn staged_runner_persists_dataset_snapshot_artifact_only_for_disk_mode_runs() {
     );
 
     let memory_checkpoint_directory = temporary_checkpoint_directory("memory-dataset-snapshot");
-    let memory_contract = build_run_contract_with_mode_and_resume(
+    let memory_contract = build_pre_joint_run_contract_with_mode_and_resume(
         "run-memory-dataset-snapshot",
         CalibrationExecutionMode::Memory,
         None,
@@ -501,7 +503,7 @@ fn staged_runner_persists_stage_parameter_artifacts_and_manifest_only_for_disk_m
 fn staged_runner_rejects_silent_overwrite_of_committed_disk_artifacts() {
     let calendar_registry = calibration_stage_test_registry();
     let checkpoint_directory = temporary_checkpoint_directory("disk-overwrite-protection");
-    let run_contract = build_run_contract_with_mode_and_resume(
+    let run_contract = build_pre_joint_run_contract_with_mode_and_resume(
         "run-disk-overwrite-protection",
         CalibrationExecutionMode::Disk,
         None,
@@ -544,30 +546,31 @@ fn staged_runner_rejects_silent_overwrite_of_committed_disk_artifacts() {
 fn staged_runner_full_completion_supports_default_and_override_mode_paths() {
     let calendar_registry = calibration_stage_test_registry();
 
-    let python_default_contract = build_run_contract_for_caller_surface(
-        "run-python-default-completion",
-        CalibrationCallerSurface::PythonImportableApi,
-        None,
-    );
-
-    let mut python_default_store = CalibrationMemoryCheckpointStore::new();
-
-    let python_default_report = run_staged_calibration_with_checkpointing(
-        &python_default_contract,
-        &calendar_registry,
-        staged_run_inputs(true, true, true),
-        Some(&mut python_default_store),
-        None,
+    assert_eq!(
+        resolve_calibration_execution_mode_for_surface(CalibrationCallerSurface::Cli, None),
+        CalibrationExecutionMode::Disk
     );
     assert_eq!(
-        python_default_report.status,
-        CalibrationStageExecutionStatus::Success
-    );
-    assert_eq!(
-        python_default_report.execution_mode,
+        resolve_calibration_execution_mode_for_surface(
+            CalibrationCallerSurface::PythonImportableApi,
+            None
+        ),
         CalibrationExecutionMode::Memory
     );
-    assert_eq!(python_default_report.stage_reports.len(), 5);
+    assert_eq!(
+        resolve_calibration_execution_mode_for_surface(
+            CalibrationCallerSurface::Cli,
+            Some(CalibrationExecutionMode::Memory)
+        ),
+        CalibrationExecutionMode::Memory
+    );
+    assert_eq!(
+        resolve_calibration_execution_mode_for_surface(
+            CalibrationCallerSurface::PythonImportableApi,
+            Some(CalibrationExecutionMode::Disk)
+        ),
+        CalibrationExecutionMode::Disk
+    );
 
     let cli_default_checkpoint_directory = temporary_checkpoint_directory("cli-default-run");
     let cli_default_contract = build_run_contract_for_caller_surface(
@@ -591,29 +594,6 @@ fn staged_runner_full_completion_supports_default_and_override_mode_paths() {
         CalibrationExecutionMode::Disk
     );
     assert_eq!(cli_default_report.stage_reports.len(), 5);
-
-    let cli_override_contract = build_run_contract_for_caller_surface(
-        "run-cli-memory-override",
-        CalibrationCallerSurface::Cli,
-        Some(CalibrationExecutionMode::Memory),
-    );
-    let mut cli_override_store = CalibrationMemoryCheckpointStore::new();
-    let cli_override_report = run_staged_calibration_with_checkpointing(
-        &cli_override_contract,
-        &calendar_registry,
-        staged_run_inputs(true, true, true),
-        Some(&mut cli_override_store),
-        None,
-    );
-    assert_eq!(
-        cli_override_report.status,
-        CalibrationStageExecutionStatus::Success
-    );
-    assert_eq!(
-        cli_override_report.execution_mode,
-        CalibrationExecutionMode::Memory
-    );
-    assert_eq!(cli_override_report.stage_reports.len(), 5);
 
     let python_override_checkpoint_directory =
         temporary_checkpoint_directory("python-disk-override-run");

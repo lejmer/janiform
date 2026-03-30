@@ -38,7 +38,7 @@ use support::shared::{
     TimeZone, Utc, assert_hawkes_fitted_parameters_match,
     assert_joint_refinement_fitted_parameters_match, assert_optimizer_state_matches,
     build_calibration_stage_parameter_artifact, build_joint_refinement_stage_success_report,
-    build_mean_reversion_stage_success_report, build_run_contract_for_caller_surface,
+    build_mean_reversion_stage_success_report, build_pre_joint_run_contract_for_caller_surface,
     build_run_contract_with_mode_and_resume, build_stage_output_links,
     build_validation_metric_artifact_fixture, calibration_stage_test_registry,
     calibration_stage_timestamp_fixture, default_calibration_execution_mode_for_surface,
@@ -535,7 +535,7 @@ fn calibration_artifact_regression_enforces_cli_and_import_default_persistence_p
     let calendar_registry = calibration_stage_test_registry();
 
     let cli_directory = temporary_checkpoint_directory("artifact-regression-cli-default");
-    let cli_contract = build_run_contract_for_caller_surface(
+    let cli_contract = build_pre_joint_run_contract_for_caller_surface(
         "run-artifact-regression-cli-default",
         CalibrationCallerSurface::Cli,
         None,
@@ -566,7 +566,7 @@ fn calibration_artifact_regression_enforces_cli_and_import_default_persistence_p
     );
 
     let python_directory = temporary_checkpoint_directory("artifact-regression-python-default");
-    let python_contract = build_run_contract_for_caller_surface(
+    let python_contract = build_pre_joint_run_contract_for_caller_surface(
         "run-artifact-regression-python-default",
         CalibrationCallerSurface::PythonImportableApi,
         None,

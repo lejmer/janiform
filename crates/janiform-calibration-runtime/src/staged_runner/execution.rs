@@ -456,8 +456,11 @@ pub fn run_staged_calibration_with_checkpointing_and_observer(
             run_spec,
             calendar_registry,
             stage,
+            stage_position + 1,
+            execution_stage_order.len(),
             &mut staged_run_inputs,
             &payload_state,
+            &mut observer,
         ) {
             Ok(stage_report) => stage_report,
             Err(failure) => {

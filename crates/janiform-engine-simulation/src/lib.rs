@@ -37,7 +37,8 @@ pub use artifacts::{
     SeededTickEventRecord, SeededTickEventSide, SeededTickEventStateSnapshot,
     SeededTickEventTapeMetadata, SeededTickEventTapeOutput, SeededTickSimulationNativeDiagnostics,
     SeededTickSimulationNewsEventMarketState, SeededTickSimulationNewsRoutingTotals,
-    SeededTickSimulationRunResult,
+    SeededTickSimulationRunResult, SeededTickSimulationStreamCompletion,
+    SeededTickSimulationTransitionConsumer, SeededTickSimulationTransitionEmission,
 };
 pub use coarse::{
     COARSE_SIMULATION_ARTIFACT_WORKFLOW_POLICY, COARSE_SIMULATION_COMPATIBLE_INTERVAL_GRID_POLICY,
@@ -85,7 +86,9 @@ pub use janiform_model_kernels::mean_reversion::{
     MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors,
 };
 pub use runtime::{
-    run_seeded_tick_event_simulation, run_seeded_tick_event_simulation_with_randomness_factory,
+    estimate_seeded_result_capacities, run_seeded_tick_event_simulation,
+    run_seeded_tick_event_simulation_with_randomness_factory, stream_seeded_tick_event_simulation,
+    stream_seeded_tick_event_simulation_with_randomness_factory,
 };
 
 #[cfg(test)]

@@ -2,22 +2,25 @@ use super::payload_state::joint_refinement_seasonality_factors_from_payload;
 use super::{
     CalibrationExecutionMode, CalibrationInMemoryStagePayloadState, CalibrationRunSpec,
     CalibrationStage, CalibrationStageHandoffTransport, CalibrationStagedRunFailure,
-    CalibrationStagedRunInputs, CalibrationStagedRunStageReport, ExchangeCalendarRegistry,
-    HawkesStageExecutionInput, HawkesStageSeasonalityInput, JointRefinementStageExecutionInput,
-    JointRefinementStageHawkesInput, JointRefinementStageReturnComponentsInput,
-    MeanReversionStageReturnComponentsInput, ReturnComponentsStageActivityInput,
-    ReturnComponentsStageExecutionInput, run_hawkes_calibration_stage,
-    run_joint_refinement_calibration_stage, run_mean_reversion_calibration_stage,
-    run_return_components_calibration_stage, run_seasonality_calibration_stage,
-    stage_output_artifact_references_for_stage,
+    CalibrationStagedRunInputs, CalibrationStagedRunObserverEvent, CalibrationStagedRunStageReport,
+    ExchangeCalendarRegistry, HawkesStageExecutionInput, HawkesStageSeasonalityInput,
+    JointRefinementStageExecutionInput, JointRefinementStageHawkesInput,
+    JointRefinementStageReturnComponentsInput, MeanReversionStageReturnComponentsInput,
+    ReturnComponentsStageActivityInput, ReturnComponentsStageExecutionInput,
+    run_hawkes_calibration_stage, run_joint_refinement_calibration_stage_with_progress_observer,
+    run_mean_reversion_calibration_stage, run_return_components_calibration_stage,
+    run_seasonality_calibration_stage, stage_output_artifact_references_for_stage,
 };
 
 pub(super) fn run_stage_for_staged_execution(
     run_spec: &CalibrationRunSpec,
     calendar_registry: &ExchangeCalendarRegistry,
     stage: CalibrationStage,
+    stage_index: usize,
+    stage_count: usize,
     staged_run_inputs: &mut CalibrationStagedRunInputs,
     payload_state: &CalibrationInMemoryStagePayloadState,
+    observer: &mut Option<&mut dyn FnMut(CalibrationStagedRunObserverEvent)>,
 ) -> Result<CalibrationStagedRunStageReport, CalibrationStagedRunFailure> {
     match stage {
         CalibrationStage::Seasonality => {
@@ -304,16 +307,49 @@ pub(super) fn run_stage_for_staged_execution(
                 }
             };
 
+            let stage_input = JointRefinementStageExecutionInput {
+                seasonality_factors_input,
+                hawkes_input,
+                return_components_input,
+                candidate_generation_input,
+            };
+
+            if observer.is_none() {
+                return Ok(CalibrationStagedRunStageReport::JointRefinement(
+                    super::run_joint_refinement_calibration_stage(
+                        run_spec,
+                        calendar_registry,
+                        stage_input,
+                    ),
+                ));
+            }
+
+            let mut progress_forwarder =
+                |progress_update: super::JointRefinementStageProgressUpdate| {
+                    if let Some(observer) = observer.as_deref_mut() {
+                        observer(CalibrationStagedRunObserverEvent::StageProgress {
+                            run_id: run_spec.run_id.clone(),
+                            stage: CalibrationStage::JointRefinement,
+                            stage_index,
+                            stage_count,
+                            progress_phase: progress_update.phase,
+                            completed_units: progress_update.completed_units,
+                            total_units: progress_update.total_units,
+                            current_item_label: progress_update.current_item_label,
+                            valid_completed_units: progress_update.valid_completed_units,
+                            cumulative_local_evaluation_count: progress_update
+                                .cumulative_local_evaluation_count,
+                            best_weighted_objective: progress_update.best_weighted_objective,
+                        });
+                    }
+                };
+
             Ok(CalibrationStagedRunStageReport::JointRefinement(
-                run_joint_refinement_calibration_stage(
+                run_joint_refinement_calibration_stage_with_progress_observer(
                     run_spec,
                     calendar_registry,
-                    JointRefinementStageExecutionInput {
-                        seasonality_factors_input,
-                        hawkes_input,
-                        return_components_input,
-                        candidate_generation_input,
-                    },
+                    stage_input,
+                    Some(&mut progress_forwarder),
                 ),
             ))
         }

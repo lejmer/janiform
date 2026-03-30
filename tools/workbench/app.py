@@ -598,7 +598,8 @@ class WorkbenchWindow(QMainWindow):
     def _on_execution_event(self, event: Any) -> None:
         apply_workbench_event(self._state, event)
 
-        self._append_event_row(event)
+        if self._should_display_execution_event(event):
+            self._append_event_row(event)
         self._refresh_run_status_panel()
         self._apply_live_stage_report_from_event(event)
 
@@ -742,77 +743,94 @@ class WorkbenchWindow(QMainWindow):
         if plot_container is None:
             return
 
-        native_panel = self._build_native_plot_panel(task_id)
-        if native_panel is not None:
-            self._set_widget_contents(
-                plot_container,
-                self._build_plot_tab_contents(task_id, native_panel),
-            )
-            self._plot_canvas_ready_by_task_id[task_id] = True
-            return
+        try:
+            native_panel = self._build_native_plot_panel(task_id)
+            if native_panel is not None:
+                self._set_widget_contents(
+                    plot_container,
+                    self._build_plot_tab_contents(task_id, native_panel),
+                )
+                self._plot_canvas_ready_by_task_id[task_id] = True
+                return
 
-        manifest_entry = self._plot_manifest_by_task_id.get(task_id)
-        if (
-            manifest_entry is not None
-            and manifest_entry.uses_observed_simulation_comparison
-            and self._artifacts is not None
-        ):
-            observed_simulation_comparison = self._observed_simulation_comparison_for_current_artifacts()
-            figure = manifest_entry.builder(self._artifacts, observed_simulation_comparison)
+            manifest_entry = self._plot_manifest_by_task_id.get(task_id)
+            if (
+                manifest_entry is not None
+                and manifest_entry.uses_observed_simulation_comparison
+                and self._artifacts is not None
+            ):
+                observed_simulation_comparison = (
+                    self._observed_simulation_comparison_for_current_artifacts()
+                )
+                figure = manifest_entry.builder(
+                    self._artifacts,
+                    observed_simulation_comparison,
+                )
+
+                self._set_widget_contents(
+                    plot_container,
+                    self._build_plot_tab_contents(task_id, _figure_canvas(figure)),
+                )
+
+                self._plot_canvas_ready_by_task_id[task_id] = True
+
+                return
+
+            if task_id == "plot_parameter_search" and self._artifacts is not None:
+                self._set_widget_contents(
+                    plot_container,
+                    self._build_plot_tab_contents(
+                        task_id,
+                        _build_parameter_search_plot_panel(self._artifacts),
+                    ),
+                )
+
+                self._plot_canvas_ready_by_task_id[task_id] = True
+                return
+
+            if task_id == "plot_parameter_objective" and self._artifacts is not None:
+                self._set_widget_contents(
+                    plot_container,
+                    self._build_plot_tab_contents(
+                        task_id,
+                        _build_parameter_objective_plot_panel(self._artifacts),
+                    ),
+                )
+
+                self._plot_canvas_ready_by_task_id[task_id] = True
+                return
+
+            image_bytes = self._plot_image_bytes_by_task_id.get(task_id)
+            if image_bytes is not None:
+                self._set_widget_contents(
+                    plot_container,
+                    self._build_plot_tab_contents(task_id, _image_canvas(image_bytes)),
+                )
+                self._plot_canvas_ready_by_task_id[task_id] = True
+
+                return
+
+            figure = self._plot_figure_by_task_id.get(task_id)
+            if figure is None:
+                return
 
             self._set_widget_contents(
                 plot_container,
                 self._build_plot_tab_contents(task_id, _figure_canvas(figure)),
             )
-
             self._plot_canvas_ready_by_task_id[task_id] = True
-
-            return
-
-        if task_id == "plot_parameter_search" and self._artifacts is not None:
+        except Exception as error:
             self._set_widget_contents(
                 plot_container,
                 self._build_plot_tab_contents(
                     task_id,
-                    _build_parameter_search_plot_panel(self._artifacts),
+                    _build_placeholder_panel(
+                        "Plot Failed",
+                        _format_plot_render_error(error),
+                    ),
                 ),
             )
-
             self._plot_canvas_ready_by_task_id[task_id] = True
-            return
-
-        if task_id == "plot_parameter_objective" and self._artifacts is not None:
-            self._set_widget_contents(
-                plot_container,
-                self._build_plot_tab_contents(
-                    task_id,
-                    _build_parameter_objective_plot_panel(self._artifacts),
-                ),
-            )
-
-            self._plot_canvas_ready_by_task_id[task_id] = True
-            return
-
-        image_bytes = self._plot_image_bytes_by_task_id.get(task_id)
-        if image_bytes is not None:
-            self._set_widget_contents(
-                plot_container,
-                self._build_plot_tab_contents(task_id, _image_canvas(image_bytes)),
-            )
-            self._plot_canvas_ready_by_task_id[task_id] = True
-
-            return
-
-        figure = self._plot_figure_by_task_id.get(task_id)
-        if figure is None:
-            return
-
-        self._set_widget_contents(
-            plot_container,
-            self._build_plot_tab_contents(task_id, _figure_canvas(figure)),
-        )
-
-        self._plot_canvas_ready_by_task_id[task_id] = True
 
     def _build_native_plot_panel(self, task_id: str) -> Optional[QWidget]:
         artifacts = self._artifacts
@@ -1688,16 +1706,26 @@ class WorkbenchWindow(QMainWindow):
 
     def _refresh_run_status_panel(self) -> None:
         run_state = self._state.run
+        subprogress = run_state.subprogress
 
         self._run_status_label.setText(
             f"Status: {run_state.status} | Run ID: {run_state.run_id or 'pending'}"
         )
         self._run_stage_label.setText(
-            f"Stage: {run_state.current_stage or 'idle'} | Subtask: {run_state.current_subtask or 'idle'}"
+            f"Stage: {run_state.current_stage or 'idle'} | Subtask: {run_state.current_subtask or 'idle'}\n"
+            f"Detail: {subprogress.detail or 'idle'}"
         )
         self._run_elapsed_label.setText(f"Elapsed: {run_state.elapsed_seconds:.1f}s")
 
-        if run_state.status == "running":
+        if (
+            run_state.status == "running"
+            and subprogress.total_units is not None
+            and subprogress.completed_units is not None
+            and subprogress.total_units > 0
+        ):
+            self._run_progress_bar.setRange(0, subprogress.total_units)
+            self._run_progress_bar.setValue(subprogress.completed_units)
+        elif run_state.status == "running":
             self._run_progress_bar.setRange(0, 0)
         else:
             self._run_progress_bar.setRange(0, 1)
@@ -1727,6 +1755,9 @@ class WorkbenchWindow(QMainWindow):
             self._event_table.setItem(row_index, column_index, QTableWidgetItem(value))
 
         self._event_table.resizeColumnsToContents()
+
+    def _should_display_execution_event(self, event: Any) -> bool:
+        return getattr(event, "event_type", None) != WorkbenchEventType.RESOURCE_SNAPSHOT_RECORDED
 
     def _reset_loader_task_states(self) -> None:
         self._artifact_materialization_timer.stop()
@@ -2028,6 +2059,20 @@ def _build_placeholder_panel(title: str, detail: str) -> QWidget:
     layout.addWidget(detail_label)
 
     return widget
+
+
+def _format_plot_render_error(error: BaseException) -> str:
+    error_chain: list[str] = []
+    current_error: Optional[BaseException] = error
+
+    while current_error is not None and len(error_chain) < 3:
+        error_chain.append(f"{type(current_error).__name__}: {current_error}")
+        current_error = current_error.__cause__
+
+    if len(error_chain) == 1:
+        return error_chain[0]
+
+    return "\nCaused by:\n".join(error_chain)
 
 
 def _build_table_tab(rows: list[dict[str, Any]]) -> QWidget:

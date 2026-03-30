@@ -1016,6 +1016,18 @@ def load_real_data_seeded_runtime_benchmark_policy_from_json(
     return RealDataSeededRuntimeBenchmarkPolicy.from_mapping(dict(raw_payload))
 
 
+def load_real_data_seeded_runtime_benchmark_report_from_json(
+    payload_json: str,
+) -> RealDataSeededRuntimeBenchmarkReport:
+    raw_payload = parse_json_object(
+        payload_json,
+        "real-data seeded runtime benchmark report",
+        _benchmark_error,
+    )
+
+    return _benchmark_report_from_mapping(dict(raw_payload))
+
+
 def load_real_data_seeded_runtime_baseline_from_json(
     payload_json: str,
 ) -> RealDataSeededRuntimeBenchmarkBaselineArtifact:
@@ -1774,6 +1786,335 @@ def _baseline_from_mapping(
     return baseline
 
 
+def _benchmark_report_from_mapping(
+    raw_payload: dict[str, Any],
+) -> RealDataSeededRuntimeBenchmarkReport:
+    raw_output_schema_metadata = raw_payload.get("output_schema_metadata")
+    if not isinstance(raw_output_schema_metadata, dict):
+        raise _benchmark_error("output_schema_metadata", "must be an object")
+
+    raw_provenance = raw_payload.get("provenance")
+    if not isinstance(raw_provenance, dict):
+        raise _benchmark_error("provenance", "must be an object")
+
+    raw_access_pattern_reports = require_sequence(
+        raw_payload,
+        "access_pattern_reports",
+        "access_pattern_reports",
+        _benchmark_error,
+    )
+
+    report = RealDataSeededRuntimeBenchmarkReport(
+        schema_version=require_non_empty_string(
+            raw_payload,
+            "schema_version",
+            "schema_version",
+            _benchmark_error,
+        ),
+        fixture_id=require_non_empty_string(
+            raw_payload,
+            "fixture_id",
+            "fixture_id",
+            _benchmark_error,
+        ),
+        fixture_version=require_non_empty_string(
+            raw_payload,
+            "fixture_version",
+            "fixture_version",
+            _benchmark_error,
+        ),
+        output_schema_metadata=_benchmark_report_output_schema_metadata_from_mapping(
+            raw_output_schema_metadata,
+            field_path="output_schema_metadata",
+        ),
+        provenance=_benchmark_report_provenance_from_mapping(
+            raw_provenance,
+            field_path="provenance",
+        ),
+        observed_source_tick_count=require_non_negative_integer(
+            raw_payload,
+            "observed_source_tick_count",
+            "observed_source_tick_count",
+            _benchmark_error,
+        ),
+        source_open_session_duration_hours=require_positive_finite_number(
+            raw_payload,
+            "source_open_session_duration_hours",
+            "source_open_session_duration_hours",
+            _benchmark_error,
+        ),
+        observed_open_event_rate_per_hour=require_positive_finite_number(
+            raw_payload,
+            "observed_open_event_rate_per_hour",
+            "observed_open_event_rate_per_hour",
+            _benchmark_error,
+        ),
+        calibrated_expected_event_count_over_observation_window=_optional_non_negative_number(
+            raw_payload,
+            "calibrated_expected_event_count_over_observation_window",
+            "calibrated_expected_event_count_over_observation_window",
+        ),
+        calibrated_open_event_rate_per_hour=_optional_non_negative_number(
+            raw_payload,
+            "calibrated_open_event_rate_per_hour",
+            "calibrated_open_event_rate_per_hour",
+        ),
+        coarse_generated_event_count=require_non_negative_integer(
+            raw_payload,
+            "coarse_generated_event_count",
+            "coarse_generated_event_count",
+            _benchmark_error,
+        ),
+        seeded_transition_count=require_non_negative_integer(
+            raw_payload,
+            "seeded_transition_count",
+            "seeded_transition_count",
+            _benchmark_error,
+        ),
+        seeded_event_count=require_non_negative_integer(
+            raw_payload,
+            "seeded_event_count",
+            "seeded_event_count",
+            _benchmark_error,
+        ),
+        native_runtime_seconds=require_non_negative_finite_number(
+            raw_payload,
+            "native_runtime_seconds",
+            "native_runtime_seconds",
+            _benchmark_error,
+        ),
+        python_response_construction_seconds=require_non_negative_finite_number(
+            raw_payload,
+            "python_response_construction_seconds",
+            "python_response_construction_seconds",
+            _benchmark_error,
+        ),
+        python_materialization_seconds=require_non_negative_finite_number(
+            raw_payload,
+            "python_materialization_seconds",
+            "python_materialization_seconds",
+            _benchmark_error,
+        ),
+        boundary_transport_bytes=require_non_negative_integer(
+            raw_payload,
+            "boundary_transport_bytes",
+            "boundary_transport_bytes",
+            _benchmark_error,
+        ),
+        native_estimated_retained_bytes=require_non_negative_integer(
+            raw_payload,
+            "native_estimated_retained_bytes",
+            "native_estimated_retained_bytes",
+            _benchmark_error,
+        ),
+        materialized_transition_count=require_non_negative_integer(
+            raw_payload,
+            "materialized_transition_count",
+            "materialized_transition_count",
+            _benchmark_error,
+        ),
+        materialized_event_count=require_non_negative_integer(
+            raw_payload,
+            "materialized_event_count",
+            "materialized_event_count",
+            _benchmark_error,
+        ),
+        access_pattern_reports=tuple(
+            _access_pattern_report_from_mapping(
+                cast(dict[str, Any], raw_access_pattern_report),
+                field_path=f"access_pattern_reports[{access_pattern_index}]",
+            )
+            for access_pattern_index, raw_access_pattern_report in enumerate(
+                raw_access_pattern_reports
+            )
+        ),
+    )
+
+    report.validate()
+    return report
+
+
+def _benchmark_report_output_schema_metadata_from_mapping(
+    raw_payload: dict[str, Any],
+    *,
+    field_path: str,
+) -> RealDataSeededRuntimeBenchmarkReportOutputSchemaMetadata:
+    raw_required_report_fields = require_sequence(
+        raw_payload,
+        "required_report_fields",
+        f"{field_path}.required_report_fields",
+        _benchmark_error,
+    )
+    raw_required_access_pattern_fields = require_sequence(
+        raw_payload,
+        "required_access_pattern_fields",
+        f"{field_path}.required_access_pattern_fields",
+        _benchmark_error,
+    )
+    raw_required_provenance_fields = require_sequence(
+        raw_payload,
+        "required_provenance_fields",
+        f"{field_path}.required_provenance_fields",
+        _benchmark_error,
+    )
+
+    return RealDataSeededRuntimeBenchmarkReportOutputSchemaMetadata(
+        required_report_fields=tuple(
+            require_non_empty_string(
+                {"value": raw_field_name},
+                "value",
+                f"{field_path}.required_report_fields[{field_index}]",
+                _benchmark_error,
+            )
+            for field_index, raw_field_name in enumerate(raw_required_report_fields)
+        ),
+        required_access_pattern_fields=tuple(
+            require_non_empty_string(
+                {"value": raw_field_name},
+                "value",
+                f"{field_path}.required_access_pattern_fields[{field_index}]",
+                _benchmark_error,
+            )
+            for field_index, raw_field_name in enumerate(raw_required_access_pattern_fields)
+        ),
+        required_provenance_fields=tuple(
+            require_non_empty_string(
+                {"value": raw_field_name},
+                "value",
+                f"{field_path}.required_provenance_fields[{field_index}]",
+                _benchmark_error,
+            )
+            for field_index, raw_field_name in enumerate(raw_required_provenance_fields)
+        ),
+    )
+
+
+def _benchmark_report_provenance_from_mapping(
+    raw_payload: dict[str, Any],
+    *,
+    field_path: str,
+) -> RealDataSeededRuntimeBenchmarkProvenance:
+    raw_materialization_access_pattern_ids = require_sequence(
+        raw_payload,
+        "materialization_access_pattern_ids",
+        f"{field_path}.materialization_access_pattern_ids",
+        _benchmark_error,
+    )
+
+    return RealDataSeededRuntimeBenchmarkProvenance(
+        dataset_source_policy=require_non_empty_string(
+            raw_payload,
+            "dataset_source_policy",
+            f"{field_path}.dataset_source_policy",
+            _benchmark_error,
+        ),
+        unsigned_market_data_policy=require_non_empty_string(
+            raw_payload,
+            "unsigned_market_data_policy",
+            f"{field_path}.unsigned_market_data_policy",
+            _benchmark_error,
+        ),
+        source_tick_data_path=require_non_empty_string(
+            raw_payload,
+            "source_tick_data_path",
+            f"{field_path}.source_tick_data_path",
+            _benchmark_error,
+        ),
+        source_tick_data_format=require_non_empty_string(
+            raw_payload,
+            "source_tick_data_format",
+            f"{field_path}.source_tick_data_format",
+            _benchmark_error,
+        ),
+        source_tick_data_row_offset=require_non_negative_integer(
+            raw_payload,
+            "source_tick_data_row_offset",
+            f"{field_path}.source_tick_data_row_offset",
+            _benchmark_error,
+        ),
+        source_tick_data_row_count=require_positive_integer(
+            raw_payload,
+            "source_tick_data_row_count",
+            f"{field_path}.source_tick_data_row_count",
+            _benchmark_error,
+        ),
+        source_timestamp_column=require_non_empty_string(
+            raw_payload,
+            "source_timestamp_column",
+            f"{field_path}.source_timestamp_column",
+            _benchmark_error,
+        ),
+        source_price_column=require_non_empty_string(
+            raw_payload,
+            "source_price_column",
+            f"{field_path}.source_price_column",
+            _benchmark_error,
+        ),
+        source_trade_sign_column=_optional_non_empty_string(
+            raw_payload,
+            "source_trade_sign_column",
+            f"{field_path}.source_trade_sign_column",
+        ),
+        market_profile=require_non_empty_string(
+            raw_payload,
+            "market_profile",
+            f"{field_path}.market_profile",
+            _benchmark_error,
+        ),
+        execution_mode=require_non_empty_string(
+            raw_payload,
+            "execution_mode",
+            f"{field_path}.execution_mode",
+            _benchmark_error,
+        ),
+        simulation_seed=require_non_negative_integer(
+            raw_payload,
+            "simulation_seed",
+            f"{field_path}.simulation_seed",
+            _benchmark_error,
+        ),
+        simulation_start_time_utc=require_non_empty_string(
+            raw_payload,
+            "simulation_start_time_utc",
+            f"{field_path}.simulation_start_time_utc",
+            _benchmark_error,
+        ),
+        coarse_interval=require_non_empty_string(
+            raw_payload,
+            "coarse_interval",
+            f"{field_path}.coarse_interval",
+            _benchmark_error,
+        ),
+        coarse_horizon_interval_count=require_positive_integer(
+            raw_payload,
+            "coarse_horizon_interval_count",
+            f"{field_path}.coarse_horizon_interval_count",
+            _benchmark_error,
+        ),
+        seeded_horizon_interval_count=require_positive_integer(
+            raw_payload,
+            "seeded_horizon_interval_count",
+            f"{field_path}.seeded_horizon_interval_count",
+            _benchmark_error,
+        ),
+        materialization_access_pattern_ids=tuple(
+            require_non_empty_string(
+                {"value": raw_pattern_id},
+                "value",
+                f"{field_path}.materialization_access_pattern_ids[{pattern_index}]",
+                _benchmark_error,
+            )
+            for pattern_index, raw_pattern_id in enumerate(raw_materialization_access_pattern_ids)
+        ),
+        memory_metric_semantics=require_non_empty_string(
+            raw_payload,
+            "memory_metric_semantics",
+            f"{field_path}.memory_metric_semantics",
+            _benchmark_error,
+        ),
+    )
+
+
 def _baseline_record_from_mapping(
     raw_payload: dict[str, Any] | Any,
     *,
@@ -2013,6 +2354,7 @@ __all__ = [
     "load_real_data_seeded_runtime_baseline_from_json",
     "load_real_data_seeded_runtime_benchmark_fixture_document",
     "load_real_data_seeded_runtime_benchmark_policy_from_json",
+    "load_real_data_seeded_runtime_benchmark_report_from_json",
     "render_real_data_seeded_runtime_comparison_summary_markdown",
     "run_real_data_seeded_runtime_benchmark_fixture",
     "serialize_real_data_seeded_runtime_baseline_to_json",

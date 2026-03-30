@@ -9,6 +9,7 @@ from matplotlib.figure import Figure
 from tools.workbench import app as workbench_app
 from tools.workbench.app import WorkbenchWindow, _ResponsiveFigureCanvas
 from tools.workbench.artifacts import WorkbenchArtifacts
+from tools.workbench.events import WorkbenchEventType, build_workbench_event
 
 
 def test_responsive_figure_canvas_resizes_figure_to_widget_viewport() -> None:
@@ -126,6 +127,35 @@ def test_observed_simulation_comparison_cache_keys_on_selected_seed(
         assert second == {"seed": 1}
         assert third == {"seed": 7}
         assert captured_seeds == [1, 7]
+    finally:
+        window.close()
+        application.processEvents()
+
+
+def test_workbench_window_hides_resource_snapshot_events_from_event_table() -> None:
+    application = QApplication.instance() or QApplication([])
+    window = WorkbenchWindow()
+
+    run_started_event = build_workbench_event(
+        event_type=WorkbenchEventType.RUN_STARTED,
+        run_id="run-001",
+        sequence_number=1,
+        payload={"detail": "Starting calibration"},
+    )
+    resource_event = build_workbench_event(
+        event_type=WorkbenchEventType.RESOURCE_SNAPSHOT_RECORDED,
+        run_id="run-001",
+        sequence_number=2,
+        payload={"elapsed_seconds": 12.5, "worker_count": 1},
+    )
+
+    try:
+        window._on_execution_event(run_started_event)
+        window._on_execution_event(resource_event)
+
+        assert window._event_table.rowCount() == 1
+        assert window._state.run.elapsed_seconds == 12.5
+        assert window._run_elapsed_label.text() == "Elapsed: 12.5s"
     finally:
         window.close()
         application.processEvents()

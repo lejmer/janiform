@@ -73,6 +73,7 @@ fn rust_internal_crate_graph_policy_document_contains_required_sections_and_rule
         "janiform-engine-simulation",
         "janiform-calibration-artifacts",
         "janiform-calibration-runtime",
+        "janiform-joint-refinement-worker",
         "janiform-analytics-stylized-facts",
         "janiform-validation",
         "janiform-governance",
@@ -123,6 +124,7 @@ fn rust_internal_crate_graph_policy_fixture_declares_required_crates_and_facade_
         "janiform-engine-simulation",
         "janiform-calibration-artifacts",
         "janiform-calibration-runtime",
+        "janiform-joint-refinement-worker",
         "janiform-analytics-stylized-facts",
         "janiform-validation",
         "janiform-governance",
@@ -175,6 +177,10 @@ fn rust_internal_crate_graph_policy_fixture_declares_required_crates_and_facade_
     assert_eq!(policy.crates["janiform-engine-risk"].status, "existing");
     assert_eq!(
         policy.crates["janiform-engine-simulation"].status,
+        "existing"
+    );
+    assert_eq!(
+        policy.crates["janiform-joint-refinement-worker"].status,
         "existing"
     );
     assert_eq!(policy.crates["janiform-pybind"].status, "existing");
