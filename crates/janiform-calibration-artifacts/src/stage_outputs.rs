@@ -88,12 +88,49 @@ pub struct JointRefinementStageObjectiveBreakdown {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct JointRefinementStageLabeledCount {
+    pub label: String,
+    pub count: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct JointRefinementStageRestartDiagnostics {
+    pub restart_count: usize,
+    pub valid_restart_count: usize,
+    pub invalid_restart_count: usize,
+    pub unique_terminal_candidate_count: usize,
+    pub terminal_collision_count: usize,
+    pub terminal_collision_share: f64,
+    pub stop_reason_frequencies: Vec<JointRefinementStageLabeledCount>,
+    pub invalid_reason_frequencies: Vec<JointRefinementStageLabeledCount>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct JointRefinementStageRuntimeProfile {
+    pub restart_optimization_wall_clock_millis: u64,
+    pub coarse_consistency_wall_clock_millis: u64,
+    pub final_seed_evaluation_wall_clock_millis: u64,
+    pub final_assembly_wall_clock_millis: u64,
+    pub objective_cache_hit_count: usize,
+    pub objective_cache_miss_count: usize,
+    pub deterministic_cache_hit_count: usize,
+    pub deterministic_cache_miss_count: usize,
+    pub seed_summary_cache_hit_count: usize,
+    pub seed_summary_cache_miss_count: usize,
+    pub invalid_candidate_evaluation_count: usize,
+    pub cumulative_deterministic_evaluation_millis: u64,
+    pub cumulative_seed_summary_simulation_millis: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct JointRefinementStageOptimizerDiagnostics {
     pub local_objective: f64,
     pub final_objective: f64,
     pub local_evaluation_count: usize,
     pub final_simulation_seeds: Vec<u64>,
     pub stop_reason: String,
+    pub restart_diagnostics: JointRefinementStageRestartDiagnostics,
+    pub runtime_profile: JointRefinementStageRuntimeProfile,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

@@ -1,7 +1,9 @@
 use std::collections::BTreeMap;
 use std::env;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
 use crate::adapters::load_hourly_factor_contract_for_calibration;
 use crate::calendar::ExchangeCalendarRegistry;
@@ -43,9 +45,10 @@ use janiform_calibration_artifacts::{
     CALIBRATION_JOINT_REFINEMENT_STAGE_OUTPUT_SCHEMA_VERSION,
     CALIBRATION_STAGE_SEED_DERIVATION_POLICY, CalibrationOptimizerSettings, CalibrationRunSpec,
     CalibrationStage, HawkesStageFittedParameters, JointRefinementStageFittedParameters,
-    JointRefinementStageObjectiveBreakdown, JointRefinementStageOptimizerDiagnostics,
-    ReturnComponentsStageFittedParameters, resolve_calibration_stage_seed_metadata,
-    stage_solver_settings_for_stage,
+    JointRefinementStageLabeledCount, JointRefinementStageObjectiveBreakdown,
+    JointRefinementStageOptimizerDiagnostics, JointRefinementStageRestartDiagnostics,
+    JointRefinementStageRuntimeProfile, ReturnComponentsStageFittedParameters,
+    resolve_calibration_stage_seed_metadata, stage_solver_settings_for_stage,
 };
 use janiform_engine_simulation::{
     CoarseSimulationModelInputs, CoarseSimulationRunRequest, run_coarse_simulation,
@@ -103,9 +106,116 @@ pub(super) struct JointRefinementObjectiveCacheKey {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub(super) struct JointRefinementDeterministicCacheKey {
+    pub(super) parameter_bits: Vec<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(super) struct JointRefinementDeterministicEvaluation {
+    pub(super) modeled_open_event_rate_per_hour: f64,
+    pub(super) raw_aggregated_likelihood_fit: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub(super) struct JointRefinementSeedSummaryCacheKey {
     pub(super) parameter_bits: Vec<u64>,
     pub(super) simulation_seed: u64,
+}
+
+#[derive(Debug, Default)]
+pub(super) struct JointRefinementProfilingState {
+    objective_cache_hit_count: AtomicUsize,
+    objective_cache_miss_count: AtomicUsize,
+    deterministic_cache_hit_count: AtomicUsize,
+    deterministic_cache_miss_count: AtomicUsize,
+    seed_summary_cache_hit_count: AtomicUsize,
+    seed_summary_cache_miss_count: AtomicUsize,
+    invalid_candidate_evaluation_count: AtomicUsize,
+    cumulative_deterministic_evaluation_millis: AtomicU64,
+    cumulative_seed_summary_simulation_millis: AtomicU64,
+}
+
+impl JointRefinementProfilingState {
+    pub(super) fn record_objective_cache_hit(&self) {
+        self.objective_cache_hit_count
+            .fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub(super) fn record_objective_cache_miss(&self) {
+        self.objective_cache_miss_count
+            .fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub(super) fn record_deterministic_cache_hit(&self) {
+        self.deterministic_cache_hit_count
+            .fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub(super) fn record_deterministic_cache_miss(&self) {
+        self.deterministic_cache_miss_count
+            .fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub(super) fn record_seed_summary_cache_hit(&self) {
+        self.seed_summary_cache_hit_count
+            .fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub(super) fn record_seed_summary_cache_miss(&self, miss_count: usize) {
+        self.seed_summary_cache_miss_count
+            .fetch_add(miss_count, Ordering::Relaxed);
+    }
+
+    pub(super) fn record_invalid_candidate_evaluation(&self) {
+        self.invalid_candidate_evaluation_count
+            .fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub(super) fn record_deterministic_evaluation_duration(&self, elapsed_millis: u64) {
+        self.cumulative_deterministic_evaluation_millis
+            .fetch_add(elapsed_millis, Ordering::Relaxed);
+    }
+
+    pub(super) fn record_seed_summary_simulation_duration(&self, elapsed_millis: u64) {
+        self.cumulative_seed_summary_simulation_millis
+            .fetch_add(elapsed_millis, Ordering::Relaxed);
+    }
+
+    pub(super) fn snapshot_runtime_profile(
+        &self,
+        restart_optimization_wall_clock_millis: u64,
+        coarse_consistency_wall_clock_millis: u64,
+        final_seed_evaluation_wall_clock_millis: u64,
+        final_assembly_wall_clock_millis: u64,
+    ) -> JointRefinementStageRuntimeProfile {
+        JointRefinementStageRuntimeProfile {
+            restart_optimization_wall_clock_millis,
+            coarse_consistency_wall_clock_millis,
+            final_seed_evaluation_wall_clock_millis,
+            final_assembly_wall_clock_millis,
+            objective_cache_hit_count: self.objective_cache_hit_count.load(Ordering::Relaxed),
+            objective_cache_miss_count: self.objective_cache_miss_count.load(Ordering::Relaxed),
+            deterministic_cache_hit_count: self
+                .deterministic_cache_hit_count
+                .load(Ordering::Relaxed),
+            deterministic_cache_miss_count: self
+                .deterministic_cache_miss_count
+                .load(Ordering::Relaxed),
+            seed_summary_cache_hit_count: self.seed_summary_cache_hit_count.load(Ordering::Relaxed),
+            seed_summary_cache_miss_count: self
+                .seed_summary_cache_miss_count
+                .load(Ordering::Relaxed),
+            invalid_candidate_evaluation_count: self
+                .invalid_candidate_evaluation_count
+                .load(Ordering::Relaxed),
+            cumulative_deterministic_evaluation_millis: self
+                .cumulative_deterministic_evaluation_millis
+                .load(Ordering::Relaxed),
+            cumulative_seed_summary_simulation_millis: self
+                .cumulative_seed_summary_simulation_millis
+                .load(Ordering::Relaxed),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -198,6 +308,11 @@ pub(super) struct JointRefinementContext {
     pub(super) final_baseline_buckets: JointRefinementBaselineBuckets,
     pub(super) objective_cache:
         Arc<Mutex<BTreeMap<JointRefinementObjectiveCacheKey, JointRefinementCandidateEvaluation>>>,
+    pub(super) deterministic_evaluation_cache: Arc<
+        Mutex<
+            BTreeMap<JointRefinementDeterministicCacheKey, JointRefinementDeterministicEvaluation>,
+        >,
+    >,
     pub(super) seed_summary_cache: Arc<
         Mutex<
             BTreeMap<
@@ -206,6 +321,7 @@ pub(super) struct JointRefinementContext {
             >,
         >,
     >,
+    pub(super) profiling_state: Arc<JointRefinementProfilingState>,
 }
 
 #[derive(Debug, Clone)]
@@ -596,6 +712,7 @@ fn run_joint_refinement_calibration_stage_internal(
         }
     };
 
+    let profiling_state = Arc::new(JointRefinementProfilingState::default());
     let mut bootstrap_context = JointRefinementContext {
         stage_thread_pool,
         summary_simulation_scheduler,
@@ -644,22 +761,27 @@ fn run_joint_refinement_calibration_stage_internal(
             price_span_sanity_fit: 1.0,
         },
         objective_cache: Arc::new(Mutex::new(BTreeMap::new())),
+        deterministic_evaluation_cache: Arc::new(Mutex::new(BTreeMap::new())),
         seed_summary_cache: Arc::new(Mutex::new(BTreeMap::new())),
+        profiling_state,
     };
 
     let baseline_fitted_parameters = JointRefinementStageFittedParameters {
         hawkes_fitted_parameters: hawkes_payload.fitted_parameters.clone(),
         return_components_fitted_parameters: return_components_payload.fitted_parameters.clone(),
     };
+    let baseline_parameter_bits = ordered_parameter_bits(baseline_parameter_vector.as_slice());
 
     let baseline_local_evaluation = evaluate_joint_fitted_parameters(
         baseline_fitted_parameters.clone(),
+        Some(baseline_parameter_bits.as_slice()),
         &bootstrap_context,
         JointRefinementFidelityTier::Local,
         &stage_solver_settings,
     );
     let baseline_final_evaluation = evaluate_joint_fitted_parameters(
         baseline_fitted_parameters,
+        Some(baseline_parameter_bits.as_slice()),
         &bootstrap_context,
         JointRefinementFidelityTier::Final,
         &stage_solver_settings,
@@ -699,7 +821,7 @@ fn run_joint_refinement_calibration_stage_internal(
     let baseline_coarse_consistency_artifacts = build_joint_candidate_coarse_consistency_artifacts(
         &bootstrap_context,
         &baseline_final_evaluation.fitted_parameters,
-        Some(ordered_parameter_bits(baseline_parameter_vector.as_slice()).as_slice()),
+        Some(baseline_parameter_bits.as_slice()),
         None,
     );
     let baseline_coarse_consistency_summary = baseline_coarse_consistency_artifacts
@@ -743,6 +865,7 @@ fn run_joint_refinement_calibration_stage_internal(
     let budget_schedule =
         joint_refinement_budget_schedule(&stage_solver_settings, restart_seeds.len());
 
+    let restart_optimization_started_at = Instant::now();
     let restart_outcomes = optimize_restart_seeds(
         restart_seeds.as_slice(),
         &bootstrap_context,
@@ -750,6 +873,7 @@ fn run_joint_refinement_calibration_stage_internal(
         budget_schedule,
         progress_sender.as_ref(),
     );
+    let restart_optimization_wall_clock_millis = elapsed_millis(restart_optimization_started_at);
     if let Some(error_message) = simulation_infrastructure_failure_message(&bootstrap_context) {
         return build_joint_refinement_stage_failure_report(
             run_spec,
@@ -775,6 +899,7 @@ fn run_joint_refinement_calibration_stage_internal(
         })
         .collect::<Vec<_>>();
 
+    let coarse_consistency_started_at = Instant::now();
     let coarse_consistency_artifacts_by_restart_id =
         build_joint_restart_coarse_consistency_artifacts(
             valid_restart_outcome_refs.as_slice(),
@@ -782,6 +907,7 @@ fn run_joint_refinement_calibration_stage_internal(
             baseline_coarse_consistency_summary.as_ref(),
             progress_sender.as_ref(),
         );
+    let coarse_consistency_wall_clock_millis = elapsed_millis(coarse_consistency_started_at);
     let coarse_consistency_by_restart_id = coarse_consistency_artifacts_by_restart_id
         .iter()
         .map(|(restart_id, artifacts)| (restart_id.clone(), artifacts.summary))
@@ -812,21 +938,26 @@ fn run_joint_refinement_calibration_stage_internal(
     .cloned()
     .unwrap_or_else(|| baseline_restart_outcome.clone());
 
+    let candidate_frontier_started_at = Instant::now();
     let candidate_frontier = build_joint_candidate_frontier_diagnostics(
         selectable_restart_outcomes.as_slice(),
         &bootstrap_context,
         &selection_coarse_consistency_by_restart_id,
         baseline_coarse_consistency_summary.is_some(),
     );
+    let candidate_frontier_wall_clock_millis = elapsed_millis(candidate_frontier_started_at);
     emit_final_assembly_progress(progress_sender.as_ref(), 1, 3, "candidate_frontier");
 
+    let final_seed_evaluation_started_at = Instant::now();
     let finalist_seed_summaries = build_joint_finalist_seed_summaries(
         &bootstrap_context,
         Some(ordered_parameter_bits(best_restart.parameter_vector.as_slice()).as_slice()),
         &best_restart.final_evaluation.fitted_parameters,
         progress_sender.as_ref(),
     );
+    let final_seed_evaluation_wall_clock_millis = elapsed_millis(final_seed_evaluation_started_at);
 
+    let remaining_final_assembly_started_at = Instant::now();
     let simulation_summaries = build_joint_simulation_summaries(finalist_seed_summaries.as_slice());
     emit_final_assembly_progress(progress_sender.as_ref(), 2, 3, "simulation_summaries");
 
@@ -856,6 +987,16 @@ fn run_joint_refinement_calibration_stage_internal(
     };
     emit_final_assembly_progress(progress_sender.as_ref(), 3, 3, "coarse_tick_consistency");
 
+    let final_assembly_wall_clock_millis =
+        candidate_frontier_wall_clock_millis + elapsed_millis(remaining_final_assembly_started_at);
+    let restart_diagnostics = build_joint_restart_diagnostics(restart_outcomes.as_slice());
+    let runtime_profile = bootstrap_context.profiling_state.snapshot_runtime_profile(
+        restart_optimization_wall_clock_millis,
+        coarse_consistency_wall_clock_millis,
+        final_seed_evaluation_wall_clock_millis,
+        final_assembly_wall_clock_millis,
+    );
+
     let fitted_stage_payload = JointRefinementStageFittedPayload {
         schema_version: CALIBRATION_JOINT_REFINEMENT_STAGE_OUTPUT_SCHEMA_VERSION,
         selected_candidate_id: format!("joint_refinement_{}", best_restart.restart_id),
@@ -871,6 +1012,8 @@ fn run_joint_refinement_calibration_stage_internal(
             local_evaluation_count: best_restart.local_evaluation_count,
             final_simulation_seeds: bootstrap_context.final_simulation_seeds.clone(),
             stop_reason: best_restart.stop_reason.to_string(),
+            restart_diagnostics,
+            runtime_profile,
         },
         candidate_frontier,
         simulation_summaries,
@@ -915,6 +1058,76 @@ fn run_joint_refinement_calibration_stage_internal(
         }),
         failure: None,
     }
+}
+
+fn elapsed_millis(started_at: Instant) -> u64 {
+    started_at.elapsed().as_millis().min(u128::from(u64::MAX)) as u64
+}
+
+fn build_joint_restart_diagnostics(
+    restart_outcomes: &[JointRefinementRestartOutcome],
+) -> JointRefinementStageRestartDiagnostics {
+    let restart_count = restart_outcomes.len();
+    let valid_restart_count = restart_outcomes
+        .iter()
+        .filter(|restart_outcome| joint_restart_outcome_is_valid(restart_outcome))
+        .count();
+    let invalid_restart_count = restart_count.saturating_sub(valid_restart_count);
+
+    let terminal_candidate_counts = restart_outcomes.iter().fold(
+        BTreeMap::<Vec<u64>, usize>::new(),
+        |mut counts, restart_outcome| {
+            *counts
+                .entry(ordered_parameter_bits(
+                    restart_outcome.parameter_vector.as_slice(),
+                ))
+                .or_default() += 1;
+            counts
+        },
+    );
+    let unique_terminal_candidate_count = terminal_candidate_counts.len();
+    let terminal_collision_count = restart_count.saturating_sub(unique_terminal_candidate_count);
+    let terminal_collision_share = if restart_count == 0 {
+        0.0
+    } else {
+        terminal_collision_count as f64 / restart_count as f64
+    };
+
+    JointRefinementStageRestartDiagnostics {
+        restart_count,
+        valid_restart_count,
+        invalid_restart_count,
+        unique_terminal_candidate_count,
+        terminal_collision_count,
+        terminal_collision_share,
+        stop_reason_frequencies: build_labeled_count_frequencies(
+            restart_outcomes
+                .iter()
+                .map(|restart_outcome| restart_outcome.stop_reason.to_string()),
+        ),
+        invalid_reason_frequencies: build_labeled_count_frequencies(
+            restart_outcomes.iter().filter_map(|restart_outcome| {
+                restart_outcome
+                    .final_evaluation
+                    .invalid_reason
+                    .clone()
+                    .or_else(|| restart_outcome.local_evaluation.invalid_reason.clone())
+            }),
+        ),
+    }
+}
+
+fn build_labeled_count_frequencies(
+    labels: impl Iterator<Item = String>,
+) -> Vec<JointRefinementStageLabeledCount> {
+    labels
+        .fold(BTreeMap::<String, usize>::new(), |mut counts, label| {
+            *counts.entry(label).or_default() += 1;
+            counts
+        })
+        .into_iter()
+        .map(|(label, count)| JointRefinementStageLabeledCount { label, count })
+        .collect()
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -2484,16 +2697,17 @@ fn optimize_parameter_block(
 
     let mut evaluate_block = |block_vector: &[f64]| -> Option<f64> {
         let full_vector = substitute_block(current_vector, block_indices, block_vector);
-        Some(
-            evaluate_joint_candidate(
-                full_vector.as_slice(),
-                context,
-                JointRefinementFidelityTier::Local,
-                solver_settings,
-            )
-            .breakdown
-            .weighted_objective,
-        )
+        let candidate_evaluation = evaluate_joint_candidate(
+            full_vector.as_slice(),
+            context,
+            JointRefinementFidelityTier::Local,
+            solver_settings,
+        );
+        if candidate_evaluation.invalid_reason.is_some() {
+            return None;
+        }
+
+        Some(candidate_evaluation.breakdown.weighted_objective)
     };
 
     let optimizer_result = optimize_bounded_powell(

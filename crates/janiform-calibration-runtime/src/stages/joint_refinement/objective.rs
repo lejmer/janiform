@@ -8,6 +8,7 @@ use janiform_foundations::numeric::{
 use super::execution::{
     JOINT_REFINEMENT_OBJECTIVE_NORMALIZATION_FLOOR, JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR,
     JointRefinementBaselineBuckets, JointRefinementCandidateEvaluation, JointRefinementContext,
+    JointRefinementDeterministicCacheKey, JointRefinementDeterministicEvaluation,
     JointRefinementFidelityTier, JointRefinementObservedData, JointRefinementSeedSummary,
     ordered_parameter_bits,
 };
@@ -44,8 +45,10 @@ pub(super) fn evaluate_joint_candidate(
     if let Ok(cache_guard) = context.objective_cache.lock()
         && let Some(cached_value) = cache_guard.get(&cache_key)
     {
+        context.profiling_state.record_objective_cache_hit();
         return cached_value.clone();
     }
+    context.profiling_state.record_objective_cache_miss();
 
     let candidate_evaluation =
         build_joint_candidate_evaluation(parameter_vector, context, fidelity_tier, solver_settings);
@@ -59,13 +62,14 @@ pub(super) fn evaluate_joint_candidate(
 
 pub(super) fn evaluate_joint_fitted_parameters(
     fitted_parameters: JointRefinementStageFittedParameters,
+    parameter_bits: Option<&[u64]>,
     context: &JointRefinementContext,
     fidelity_tier: JointRefinementFidelityTier,
     solver_settings: &CalibrationOptimizerSettings,
 ) -> JointRefinementCandidateEvaluation {
     build_joint_candidate_evaluation_for_fitted_parameters(
         fitted_parameters,
-        None,
+        parameter_bits,
         context,
         fidelity_tier,
         solver_settings,
@@ -83,6 +87,7 @@ fn build_joint_candidate_evaluation(
     let Some(fitted_parameters) = parameter_vector_to_fitted_parameters(parameter_vector, context)
     else {
         return invalid_candidate_evaluation(
+            context,
             &context.baseline_hawkes_fitted_parameters,
             &context.baseline_return_components_fitted_parameters,
             solver_settings.constraint_penalty_weight,
@@ -108,6 +113,7 @@ fn build_joint_candidate_evaluation_for_fitted_parameters(
 ) -> JointRefinementCandidateEvaluation {
     if violates_runtime_seasonality_scaled_stationarity(&fitted_parameters, context) {
         return invalid_candidate_evaluation(
+            context,
             &context.baseline_hawkes_fitted_parameters,
             &context.baseline_return_components_fitted_parameters,
             solver_settings.constraint_penalty_weight,
@@ -115,66 +121,9 @@ fn build_joint_candidate_evaluation_for_fitted_parameters(
         );
     }
 
-    let modeled_open_event_rate_per_hour =
-        crate::stages::hawkes::stationary_open_event_rate_per_hour(
-            &fitted_parameters.hawkes_fitted_parameters,
-        )
-        .unwrap_or(context.observed_data.observed_open_event_rate_per_hour);
-
-    let observed_5m_sample =
-        crate::stages::joint_metrics::build_continuous_calibration_sample_from_aggregated_intervals(
-            context.observed_data.observed_5m_intervals.as_slice(),
-            modeled_open_event_rate_per_hour,
-            context.observed_data.observed_open_event_rate_per_hour,
-            context.observed_data.fallback_sell_share_proxy,
-        );
-    let observed_15m_sample =
-        crate::stages::joint_metrics::build_continuous_calibration_sample_from_aggregated_intervals(
-            context.observed_data.observed_15m_intervals.as_slice(),
-            modeled_open_event_rate_per_hour,
-            context.observed_data.observed_open_event_rate_per_hour,
-            context.observed_data.fallback_sell_share_proxy,
-        );
-
-    let observed_tick_sample = rescale_continuous_return_calibration_sample_business_time_scales(
-        &context
-            .observed_data
-            .observed_tick_continuous_return_calibration_sample,
-        modeled_open_event_rate_per_hour
-            / context
-                .baseline_modeled_open_event_rate_per_hour
-                .max(1.0e-8),
-    );
-
-    let raw_aggregated_likelihood_fit = [
-        evaluate_configuration_likelihood_objective(
-            fitted_parameters
-                .return_components_fitted_parameters
-                .nig_shared_plus_shift_configuration,
-            &observed_tick_sample,
-            ContinuousLikelihoodFidelityTier::Full,
-        )
-        .shifted_objective_score,
-        evaluate_configuration_likelihood_objective(
-            fitted_parameters
-                .return_components_fitted_parameters
-                .nig_shared_plus_shift_configuration,
-            &observed_5m_sample,
-            ContinuousLikelihoodFidelityTier::Full,
-        )
-        .shifted_objective_score,
-        evaluate_configuration_likelihood_objective(
-            fitted_parameters
-                .return_components_fitted_parameters
-                .nig_shared_plus_shift_configuration,
-            &observed_15m_sample,
-            ContinuousLikelihoodFidelityTier::Full,
-        )
-        .shifted_objective_score,
-    ]
-    .into_iter()
-    .sum::<f64>()
-        / 3.0;
+    let deterministic_evaluation =
+        resolve_deterministic_evaluation(&fitted_parameters, parameter_bits, context);
+    let raw_aggregated_likelihood_fit = deterministic_evaluation.raw_aggregated_likelihood_fit;
 
     let simulation_seeds = match fidelity_tier {
         JointRefinementFidelityTier::Local => vec![context.local_simulation_seed],
@@ -192,6 +141,7 @@ fn build_joint_candidate_evaluation_for_fitted_parameters(
         Ok(seed_summaries) => seed_summaries,
         Err(error_message) => {
             return invalid_candidate_evaluation(
+                context,
                 &context.baseline_hawkes_fitted_parameters,
                 &context.baseline_return_components_fitted_parameters,
                 solver_settings.constraint_penalty_weight,
@@ -580,11 +530,16 @@ fn average_seed_score(values: impl Iterator<Item = f64>) -> f64 {
 }
 
 fn invalid_candidate_evaluation(
+    context: &JointRefinementContext,
     baseline_hawkes_fitted_parameters: &janiform_calibration_artifacts::HawkesStageFittedParameters,
     baseline_return_components_fitted_parameters: &janiform_calibration_artifacts::ReturnComponentsStageFittedParameters,
     constraint_penalty_weight: f64,
     reason: &str,
 ) -> JointRefinementCandidateEvaluation {
+    context
+        .profiling_state
+        .record_invalid_candidate_evaluation();
+
     JointRefinementCandidateEvaluation {
         fitted_parameters: JointRefinementStageFittedParameters {
             hawkes_fitted_parameters: baseline_hawkes_fitted_parameters.clone(),
@@ -610,6 +565,110 @@ fn invalid_candidate_evaluation(
         },
         invalid_reason: Some(reason.to_string()),
     }
+}
+
+fn resolve_deterministic_evaluation(
+    fitted_parameters: &JointRefinementStageFittedParameters,
+    parameter_bits: Option<&[u64]>,
+    context: &JointRefinementContext,
+) -> JointRefinementDeterministicEvaluation {
+    let cache_key = parameter_bits.map(|bits| JointRefinementDeterministicCacheKey {
+        parameter_bits: bits.to_vec(),
+    });
+
+    if let Some(deterministic_cache_key) = cache_key.as_ref()
+        && let Ok(cache_guard) = context.deterministic_evaluation_cache.lock()
+        && let Some(cached_value) = cache_guard.get(deterministic_cache_key)
+    {
+        context.profiling_state.record_deterministic_cache_hit();
+        return cached_value.clone();
+    }
+
+    context.profiling_state.record_deterministic_cache_miss();
+    let deterministic_evaluation_started_at = std::time::Instant::now();
+
+    let modeled_open_event_rate_per_hour =
+        crate::stages::hawkes::stationary_open_event_rate_per_hour(
+            &fitted_parameters.hawkes_fitted_parameters,
+        )
+        .unwrap_or(context.observed_data.observed_open_event_rate_per_hour);
+
+    let observed_5m_sample =
+        crate::stages::joint_metrics::build_continuous_calibration_sample_from_aggregated_intervals(
+            context.observed_data.observed_5m_intervals.as_slice(),
+            modeled_open_event_rate_per_hour,
+            context.observed_data.observed_open_event_rate_per_hour,
+            context.observed_data.fallback_sell_share_proxy,
+        );
+    let observed_15m_sample =
+        crate::stages::joint_metrics::build_continuous_calibration_sample_from_aggregated_intervals(
+            context.observed_data.observed_15m_intervals.as_slice(),
+            modeled_open_event_rate_per_hour,
+            context.observed_data.observed_open_event_rate_per_hour,
+            context.observed_data.fallback_sell_share_proxy,
+        );
+
+    let observed_tick_sample = rescale_continuous_return_calibration_sample_business_time_scales(
+        &context
+            .observed_data
+            .observed_tick_continuous_return_calibration_sample,
+        modeled_open_event_rate_per_hour
+            / context
+                .baseline_modeled_open_event_rate_per_hour
+                .max(1.0e-8),
+    );
+
+    let raw_aggregated_likelihood_fit = [
+        evaluate_configuration_likelihood_objective(
+            fitted_parameters
+                .return_components_fitted_parameters
+                .nig_shared_plus_shift_configuration,
+            &observed_tick_sample,
+            ContinuousLikelihoodFidelityTier::Full,
+        )
+        .shifted_objective_score,
+        evaluate_configuration_likelihood_objective(
+            fitted_parameters
+                .return_components_fitted_parameters
+                .nig_shared_plus_shift_configuration,
+            &observed_5m_sample,
+            ContinuousLikelihoodFidelityTier::Full,
+        )
+        .shifted_objective_score,
+        evaluate_configuration_likelihood_objective(
+            fitted_parameters
+                .return_components_fitted_parameters
+                .nig_shared_plus_shift_configuration,
+            &observed_15m_sample,
+            ContinuousLikelihoodFidelityTier::Full,
+        )
+        .shifted_objective_score,
+    ]
+    .into_iter()
+    .sum::<f64>()
+        / 3.0;
+
+    let deterministic_evaluation = JointRefinementDeterministicEvaluation {
+        modeled_open_event_rate_per_hour,
+        raw_aggregated_likelihood_fit,
+    };
+
+    context
+        .profiling_state
+        .record_deterministic_evaluation_duration(
+            deterministic_evaluation_started_at
+                .elapsed()
+                .as_millis()
+                .min(u128::from(u64::MAX)) as u64,
+        );
+
+    if let Some(deterministic_cache_key) = cache_key
+        && let Ok(mut cache_guard) = context.deterministic_evaluation_cache.lock()
+    {
+        cache_guard.insert(deterministic_cache_key, deterministic_evaluation.clone());
+    }
+
+    deterministic_evaluation
 }
 
 fn baseline_bucket_values_are_unity(baseline_buckets: &JointRefinementBaselineBuckets) -> bool {
