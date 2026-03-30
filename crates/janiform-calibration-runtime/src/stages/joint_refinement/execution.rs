@@ -2605,6 +2605,16 @@ fn optimize_single_restart(
 
         current_vector = updated_nig_vector;
         evaluation_count += nig_evaluations;
+        if nig_stop_reason == "invalid_step" {
+            return build_short_circuited_restart_outcome(
+                restart_id,
+                current_vector,
+                context,
+                solver_settings,
+                evaluation_count,
+                nig_stop_reason,
+            );
+        }
 
         let (updated_hawkes_vector, hawkes_stop_reason, hawkes_evaluations) =
             optimize_parameter_block(
@@ -2617,6 +2627,16 @@ fn optimize_single_restart(
 
         current_vector = updated_hawkes_vector;
         evaluation_count += hawkes_evaluations;
+        if hawkes_stop_reason == "invalid_step" {
+            return build_short_circuited_restart_outcome(
+                restart_id,
+                current_vector,
+                context,
+                solver_settings,
+                evaluation_count,
+                hawkes_stop_reason,
+            );
+        }
 
         let (updated_coupling_vector, coupling_stop_reason, coupling_evaluations) =
             optimize_parameter_block(
@@ -2629,6 +2649,16 @@ fn optimize_single_restart(
 
         current_vector = updated_coupling_vector;
         evaluation_count += coupling_evaluations;
+        if coupling_stop_reason == "invalid_step" {
+            return build_short_circuited_restart_outcome(
+                restart_id,
+                current_vector,
+                context,
+                solver_settings,
+                evaluation_count,
+                coupling_stop_reason,
+            );
+        }
 
         stop_reason =
             select_restart_stop_reason(hawkes_stop_reason, nig_stop_reason, coupling_stop_reason);
@@ -2643,6 +2673,17 @@ fn optimize_single_restart(
         JointRefinementFidelityTier::Local,
         solver_settings,
     );
+    if local_evaluation.invalid_reason.is_some() {
+        return JointRefinementRestartOutcome {
+            restart_id: restart_id.to_string(),
+            parameter_vector: current_vector,
+            final_evaluation: local_evaluation.clone(),
+            local_evaluation,
+            local_evaluation_count: evaluation_count,
+            stop_reason,
+        };
+    }
+
     let final_evaluation = evaluate_joint_candidate(
         current_vector.as_slice(),
         context,
@@ -2655,6 +2696,31 @@ fn optimize_single_restart(
         parameter_vector: current_vector,
         local_evaluation,
         final_evaluation,
+        local_evaluation_count: evaluation_count,
+        stop_reason,
+    }
+}
+
+fn build_short_circuited_restart_outcome(
+    restart_id: &str,
+    current_vector: Vec<f64>,
+    context: &JointRefinementContext,
+    solver_settings: &CalibrationOptimizerSettings,
+    evaluation_count: usize,
+    stop_reason: &'static str,
+) -> JointRefinementRestartOutcome {
+    let local_evaluation = evaluate_joint_candidate(
+        current_vector.as_slice(),
+        context,
+        JointRefinementFidelityTier::Local,
+        solver_settings,
+    );
+
+    JointRefinementRestartOutcome {
+        restart_id: restart_id.to_string(),
+        parameter_vector: current_vector,
+        final_evaluation: local_evaluation.clone(),
+        local_evaluation,
         local_evaluation_count: evaluation_count,
         stop_reason,
     }
