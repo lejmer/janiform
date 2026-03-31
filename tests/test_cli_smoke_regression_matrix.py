@@ -187,6 +187,7 @@ def _build_price_smoke_invocation(_: str, tmp_path: Path) -> CliSmokeInvocation:
         {
             "observed_log_price": 0.0,
             "anchor_value": 0.0,
+            "pressure_state": 0.0,
             "deviation": 0.0,
         },
     )

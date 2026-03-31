@@ -25,12 +25,15 @@ def build_endogenous_mean_reversion_runtime_contracts(
         MeanReversionRuntimeIntervalAnchors(
             interval_alignment_policy="explicit_runtime_interval_grid_alignment.v1",
             start_anchor_value=start_anchor_value,
+            start_pressure_state=0.0,
             end_anchor_values=tuple(start_anchor_value for _ in range(interval_count)),
+            end_pressure_states=tuple(0.0 for _ in range(interval_count)),
             interval_deltas=tuple(interval_delta_hours for _ in range(interval_count)),
         ),
         MeanReversionBoundaryState(
             observed_log_price=observed_log_price,
             anchor_value=start_anchor_value,
+            pressure_state=0.0,
             deviation=observed_log_price - start_anchor_value,
         ),
     )

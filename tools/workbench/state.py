@@ -37,7 +37,7 @@ class WorkbenchRunSetup:
     output_directory: Path
     session_source: WorkbenchSessionSource = field(default_factory=WorkbenchSessionSource)
     mean_reversion_anchor_model_kind: MeanReversionAnchorModelKind = (
-        MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL
+        MeanReversionAnchorModelKind.ENDOGENOUS_CORE_PRESSURE_LEVEL
     )
     file_format: Optional[CalibrationInputFileFormat] = None
     timestamp_column: Optional[str] = None

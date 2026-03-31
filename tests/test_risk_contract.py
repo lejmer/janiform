@@ -351,6 +351,7 @@ def _valid_path_payload() -> dict[str, Any]:
                         "observed_interval_return": 0.0,
                         "observed_log_price_end": 0.0,
                         "anchor_value_end": 0.0,
+                        "pressure_state_end": 0.0,
                         "deviation_from_anchor_end": 0.0,
                     }
                 ],
@@ -394,6 +395,7 @@ def _valid_path_payload() -> dict[str, Any]:
                         "observed_interval_return": 0.0,
                         "observed_log_price_end": 0.0,
                         "anchor_value_end": 0.0,
+                        "pressure_state_end": 0.0,
                         "deviation_from_anchor_end": 0.0,
                     }
                 ],
@@ -437,6 +439,7 @@ def _valid_path_payload() -> dict[str, Any]:
                         "observed_interval_return": 0.0,
                         "observed_log_price_end": 0.0,
                         "anchor_value_end": 0.0,
+                        "pressure_state_end": 0.0,
                         "deviation_from_anchor_end": 0.0,
                     }
                 ],
@@ -478,6 +481,7 @@ def _valid_path_payload() -> dict[str, Any]:
                 observed_interval_return=0.0,
                 observed_log_price_end=0.0,
                 anchor_value_end=0.0,
+                pressure_state_end=0.0,
                 deviation_from_anchor_end=0.0,
             ),
         ),

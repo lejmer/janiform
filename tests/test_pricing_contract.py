@@ -249,6 +249,7 @@ def test_anchored_boundary_input_roundtrip_and_validation() -> None:
         observed_boundary_state=MeanReversionBoundaryState(
             observed_log_price=0.15,
             anchor_value=0.0,
+            pressure_state=0.0,
             deviation=0.15,
         ),
     )
@@ -281,6 +282,7 @@ def test_anchored_boundary_input_accepts_endogenous_anchor_policy_boundary_state
     boundary_payload["observed_boundary_state"] = MeanReversionBoundaryState(
         observed_log_price=0.15,
         anchor_value=0.1,
+        pressure_state=0.0,
         deviation=0.05,
     ).to_payload()
 
@@ -341,6 +343,7 @@ def test_anchored_local_tilt_diagnostics_roundtrip() -> None:
             observed_boundary_state=MeanReversionBoundaryState(
                 observed_log_price=0.1,
                 anchor_value=0.0,
+                pressure_state=0.0,
                 deviation=0.1,
             ),
             current_anchor_value=0.0,
@@ -552,6 +555,7 @@ def _anchored_request_model() -> VanillaOptionPricingRequest:
             observed_boundary_state=MeanReversionBoundaryState(
                 observed_log_price=0.4,
                 anchor_value=0.25,
+                pressure_state=0.0,
                 deviation=0.15,
             ),
         ),
@@ -580,6 +584,7 @@ def _anchored_runtime_execution_input_model() -> VanillaOptionPricingExecutionIn
                 observed_boundary_state=MeanReversionBoundaryState(
                     observed_log_price=0.25,
                     anchor_value=0.25,
+                    pressure_state=0.0,
                     deviation=0.0,
                 ),
             ),
@@ -631,6 +636,7 @@ def _disabled_boundary_input(
         observed_boundary_state=MeanReversionBoundaryState(
             observed_log_price=0.0,
             anchor_value=0.0,
+            pressure_state=0.0,
             deviation=0.0,
         ),
     )

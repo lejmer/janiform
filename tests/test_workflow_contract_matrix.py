@@ -637,6 +637,7 @@ def _valid_pricing_execution_input() -> VanillaOptionPricingExecutionInput:
                 observed_boundary_state=MeanReversionBoundaryState(
                     observed_log_price=0.0,
                     anchor_value=0.0,
+                    pressure_state=0.0,
                     deviation=0.0,
                 ),
             ),

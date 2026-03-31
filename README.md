@@ -76,7 +76,7 @@ from janiform.contracts import MeanReversionBoundaryState
 model = JaniformEstimator(
     market_profile="eurusd_spot",
     mean_reversion=CalibrationMeanReversionConfiguration(
-        anchor_model_kind=MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL,
+        anchor_model_kind=MeanReversionAnchorModelKind.ENDOGENOUS_CORE_PRESSURE_LEVEL,
     ),
 ).fit(
     tick_data_path="data/eurusd_ticks.csv",
@@ -97,6 +97,7 @@ pricing_result = model.price_option(
     observed_boundary_state=MeanReversionBoundaryState(
         observed_log_price=0.0,
         anchor_value=0.0,
+        pressure_state=0.0,
         deviation=0.0,
     ),
 )
@@ -117,7 +118,8 @@ from the median spacing of retained session-open boundary observations when that
 observable, and otherwise from the median observed session duration in the dataset.
 Mean-reversion `observed_log_price` and `anchor_value` are expressed in the runtime simulation
 coordinate system `log(price / reference_price)`, where `reference_price` is the simulation output
-reference level stored with the fitted model.
+reference level stored with the fitted model. `MeanReversionBoundaryState` also carries the
+endogenous pressure-state coordinate used by the pressure-to-level anchor law.
 
 Set `JaniformEstimator(cpu_count=...)` or `janiform fit --cpu-count ...` when you want to
 control how many CPU cores staged calibration uses while evaluating candidate parameter sets.

@@ -289,7 +289,9 @@ def build_coarse_simulation_request(calendar_registry: CalendarRegistry) -> Coar
     mean_reversion_runtime_interval_anchors = MeanReversionRuntimeIntervalAnchors(
         interval_alignment_policy="explicit_runtime_interval_grid_alignment.v1",
         start_anchor_value=0.0,
+        start_pressure_state=0.0,
         end_anchor_values=tuple(0.0 for _ in range(horizon_interval_count)),
+        end_pressure_states=tuple(0.0 for _ in range(horizon_interval_count)),
         interval_deltas=tuple(interval_delta for _ in range(horizon_interval_count)),
     )
     request_payload: dict[str, Any] = {
@@ -325,6 +327,7 @@ def build_coarse_simulation_request(calendar_registry: CalendarRegistry) -> Coar
                 "initial_mean_reversion_boundary_state": MeanReversionBoundaryState(
                     observed_log_price=0.0,
                     anchor_value=mean_reversion_runtime_interval_anchors.start_anchor_value,
+                    pressure_state=mean_reversion_runtime_interval_anchors.start_pressure_state,
                     deviation=0.0,
                 ).to_payload(),
             },
@@ -401,6 +404,7 @@ def build_pricing_request() -> VanillaOptionPricingRequest:
             observed_boundary_state=MeanReversionBoundaryState(
                 observed_log_price=0.25,
                 anchor_value=0.25,
+                pressure_state=0.0,
                 deviation=0.0,
             ),
         ),

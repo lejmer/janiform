@@ -125,7 +125,9 @@ def test_mean_reversion_runtime_interval_anchors_roundtrip_serialization_is_dete
     interval_anchors = MeanReversionRuntimeIntervalAnchors(
         interval_alignment_policy="explicit_runtime_interval_grid_alignment.v1",
         start_anchor_value=4.2,
+        start_pressure_state=0.0,
         end_anchor_values=(4.1, 4.0),
+        end_pressure_states=(0.0, 0.0),
         interval_deltas=(1.0, 1.0),
     )
 
@@ -143,6 +145,7 @@ def test_mean_reversion_boundary_state_rejects_observed_anchor_invariant_drift()
         MeanReversionBoundaryState(
             observed_log_price=5.0,
             anchor_value=1.5,
+            pressure_state=0.0,
             deviation=3.7,
         )
 
