@@ -257,9 +257,14 @@ class SufficientStatisticsRiskModelInputs(ContractModel):
                 ),
             )
 
-        match self.mean_reversion_fitted_parameters.anchor_model.anchor_model_kind:
-            case MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL:
-                return
+        if (
+            self.mean_reversion_fitted_parameters.anchor_model.anchor_model_kind
+            != MeanReversionAnchorModelKind.ENDOGENOUS_CORE_PRESSURE_LEVEL
+        ):
+            raise _risk_error(
+                "model_inputs.mean_reversion_fitted_parameters.anchor_model.anchor_model_kind",
+                "must be endogenous_core_pressure_level",
+            )
 
     @staticmethod
     def from_mapping(raw_payload: dict[str, Any] | Any) -> SufficientStatisticsRiskModelInputs:

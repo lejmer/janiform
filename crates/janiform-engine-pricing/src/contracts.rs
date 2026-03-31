@@ -1849,7 +1849,7 @@ fn validate_observed_anchor_alignment(
         .anchor_model
         .anchor_model_kind
     {
-        MeanReversionAnchorModelKind::EndogenousCoreExpectationOneInterval => {}
+        MeanReversionAnchorModelKind::EndogenousCorePressureLevel => {}
     }
 
     Ok(())

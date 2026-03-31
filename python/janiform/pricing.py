@@ -591,9 +591,14 @@ class AnchoredVanillaOptionPricingBoundaryInput(ContractModel):
             PRICING_ERROR_FACTORY,
         )
 
-        match self.mean_reversion_fitted_parameters.anchor_model.anchor_model_kind:
-            case MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL:
-                pass
+        if (
+            self.mean_reversion_fitted_parameters.anchor_model.anchor_model_kind
+            != MeanReversionAnchorModelKind.ENDOGENOUS_CORE_PRESSURE_LEVEL
+        ):
+            raise _pricing_error(
+                "boundary_input.mean_reversion_fitted_parameters.anchor_model.anchor_model_kind",
+                "must be endogenous_core_pressure_level",
+            )
 
     @property
     def current_anchor_value(self) -> float:

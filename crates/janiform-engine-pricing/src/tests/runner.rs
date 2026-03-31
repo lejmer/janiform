@@ -26,10 +26,10 @@ fn nested_transition_measure_detection_accepts_disabled_multi_interval_boundary(
                 y_minus_plus: 0.0,
                 y_minus_minus: 0.0,
             },
-            MeanReversionFittedParameters::endogenous_core_expectation_one_interval(0.0)
-                .expect("zero-kappa endogenous mean reversion should construct"),
+            MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
+                .expect("zero-gain mean reversion should construct"),
             1.0,
-            MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0)
+            MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0, 0.0)
                 .expect("observed boundary state should construct"),
         )
         .expect("boundary input should construct"),
@@ -61,11 +61,11 @@ fn nested_transition_measure_detection_rejects_nonzero_local_martingale_deviatio
             },
             MeanReversionFittedParameters::try_new(
                 0.5,
-                MeanReversionAnchorModel::endogenous_core_expectation_one_interval(),
+                MeanReversionAnchorModel::zero_gain_endogenous_core_pressure_level(),
             )
             .expect("mean-reversion fitted parameters should construct"),
             1.0,
-            MeanReversionBoundaryState::try_new(0.2, 0.0, 0.2)
+            MeanReversionBoundaryState::try_new(0.2, 0.0, 0.0, 0.2)
                 .expect("observed boundary state should construct"),
         )
         .expect("boundary input should construct"),

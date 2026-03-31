@@ -71,7 +71,7 @@ fn mean_reversion_stage_estimates_endogenous_anchor_decay_from_structural_recurs
         &run_contract.run_spec,
         &calendar_registry,
         direct_stage_input(
-            MeanReversionAnchorModelKind::EndogenousCoreExpectationOneInterval,
+            MeanReversionAnchorModelKind::EndogenousCorePressureLevel,
             synthetic_constant_anchor_observations(),
         ),
     );
@@ -83,13 +83,15 @@ fn mean_reversion_stage_estimates_endogenous_anchor_decay_from_structural_recurs
         .expect("endogenous anchor fit should emit a fitted payload");
     assert_eq!(
         payload.diagnostics.chosen_anchor_family,
-        MeanReversionAnchorModelKind::EndogenousCoreExpectationOneInterval
+        MeanReversionAnchorModelKind::EndogenousCorePressureLevel
     );
     assert!(payload.fitted_parameters.kappa >= 0.0);
-    assert_eq!(
-        payload.diagnostics.stage_decision_reason,
-        "endogenous_anchor_core_expectation_one_interval_first_observation_boundary_anchor_zero_hawkes_state.v1"
-    );
+    assert!(payload
+        .diagnostics
+        .stage_decision_reason
+        .contains(
+            "endogenous_core_pressure_level_profiled_over_pressure_persistence_and_phi_reference.v1"
+        ));
 }
 
 #[test]
@@ -125,7 +127,7 @@ fn mean_reversion_stage_accepts_flat_levels_under_endogenous_anchor_estimation()
         &run_contract.run_spec,
         &calendar_registry,
         direct_stage_input(
-            MeanReversionAnchorModelKind::EndogenousCoreExpectationOneInterval,
+            MeanReversionAnchorModelKind::EndogenousCorePressureLevel,
             observations,
         ),
     );
@@ -135,9 +137,9 @@ fn mean_reversion_stage_accepts_flat_levels_under_endogenous_anchor_estimation()
         .expect("flat levels should emit a fitted payload under endogenous estimation");
     assert_eq!(
         payload.diagnostics.chosen_anchor_family,
-        MeanReversionAnchorModelKind::EndogenousCoreExpectationOneInterval
+        MeanReversionAnchorModelKind::EndogenousCorePressureLevel
     );
-    assert!(payload.diagnostics.phi.is_finite());
+    assert!(payload.diagnostics.phi_reference.is_finite());
     assert!(payload.fitted_parameters.kappa.is_finite());
 }
 
@@ -155,7 +157,7 @@ fn mean_reversion_stage_reports_endogenous_anchor_fit_from_synthetic_levels() {
         &run_contract.run_spec,
         &calendar_registry,
         direct_stage_input(
-            MeanReversionAnchorModelKind::EndogenousCoreExpectationOneInterval,
+            MeanReversionAnchorModelKind::EndogenousCorePressureLevel,
             synthetic_constant_anchor_observations(),
         ),
     );
@@ -166,9 +168,9 @@ fn mean_reversion_stage_reports_endogenous_anchor_fit_from_synthetic_levels() {
 
     assert_eq!(
         payload.diagnostics.chosen_anchor_family,
-        MeanReversionAnchorModelKind::EndogenousCoreExpectationOneInterval
+        MeanReversionAnchorModelKind::EndogenousCorePressureLevel
     );
-    assert!(payload.diagnostics.phi.is_finite());
+    assert!(payload.diagnostics.phi_reference.is_finite());
     assert!(payload.fitted_parameters.kappa.is_finite());
 }
 
@@ -187,7 +189,7 @@ fn mean_reversion_stage_falls_back_to_zero_kappa_endogenous_fit_when_runtime_pro
         &run_contract.run_spec,
         &calendar_registry,
         direct_stage_input(
-            MeanReversionAnchorModelKind::EndogenousCoreExpectationOneInterval,
+            MeanReversionAnchorModelKind::EndogenousCorePressureLevel,
             Vec::new(),
         ),
     );
@@ -200,15 +202,50 @@ fn mean_reversion_stage_falls_back_to_zero_kappa_endogenous_fit_when_runtime_pro
 
     assert_eq!(
         payload.diagnostics.chosen_anchor_family,
-        MeanReversionAnchorModelKind::EndogenousCoreExpectationOneInterval
+        MeanReversionAnchorModelKind::EndogenousCorePressureLevel
     );
     assert_eq!(payload.fitted_parameters.kappa, 0.0);
-    assert_eq!(payload.diagnostics.phi, 1.0);
+    assert_eq!(payload.diagnostics.phi_reference, 1.0);
     assert_eq!(payload.diagnostics.deviation_sample_count, 0);
     assert_eq!(payload.diagnostics.regression_pair_count, 0);
     assert_eq!(
         payload.diagnostics.stage_decision_reason,
         "endogenous_anchor_runtime_projection_required.v1"
+    );
+}
+
+#[test]
+fn mean_reversion_stage_profiles_slow_anchor_against_immediate_anchor() {
+    let run_contract = build_run_contract_with_mode_and_resume(
+        "run-mean-reversion-slow-anchor-profile",
+        CalibrationExecutionMode::Memory,
+        None,
+    );
+
+    let calendar_registry = calibration_stage_test_registry();
+
+    let report = run_mean_reversion_calibration_stage(
+        &run_contract.run_spec,
+        &calendar_registry,
+        direct_stage_input(
+            MeanReversionAnchorModelKind::EndogenousCorePressureLevel,
+            synthetic_constant_anchor_observations(),
+        ),
+    );
+
+    let payload = report
+        .fitted_stage_payload
+        .expect("slow anchor profile fit should emit a fitted payload");
+
+    assert_eq!(payload.diagnostics.evaluated_candidates.len(), 4);
+    assert!(payload
+        .diagnostics
+        .evaluated_candidates
+        .iter()
+        .any(|candidate| candidate.candidate_family == "endogenous_core_pressure_level_mean_reversion"));
+    assert_eq!(
+        payload.diagnostics.model_selection_policy,
+        "gaussian_quasi_likelihood_bic_with_endogenous_core_pressure_level_candidate_family_profile.v1"
     );
 }
 
@@ -231,7 +268,7 @@ fn staged_runner_completes_when_mean_reversion_stage_estimates_endogenous_anchor
         .expect("mean-reversion stage input fixture should exist");
 
     mean_reversion_input.requested_anchor_model_kind =
-        MeanReversionAnchorModelKind::EndogenousCoreExpectationOneInterval;
+        MeanReversionAnchorModelKind::EndogenousCorePressureLevel;
     mean_reversion_input.source_observation_count = 4;
     mean_reversion_input.coverage_ratio = 1.0;
     mean_reversion_input.observations = synthetic_constant_anchor_observations();
@@ -287,7 +324,7 @@ fn staged_runner_end_to_end_reports_mean_reversion_fit_from_synthetic_levels() {
         .expect("mean-reversion stage input fixture should exist");
 
     mean_reversion_input.requested_anchor_model_kind =
-        MeanReversionAnchorModelKind::EndogenousCoreExpectationOneInterval;
+        MeanReversionAnchorModelKind::EndogenousCorePressureLevel;
     mean_reversion_input.source_observation_count = 4;
     mean_reversion_input.coverage_ratio = 1.0;
     mean_reversion_input.observations = synthetic_constant_anchor_observations();
@@ -327,13 +364,15 @@ fn staged_runner_end_to_end_reports_mean_reversion_fit_from_synthetic_levels() {
     );
     assert_eq!(
         payload.diagnostics.chosen_anchor_family,
-        MeanReversionAnchorModelKind::EndogenousCoreExpectationOneInterval
+        MeanReversionAnchorModelKind::EndogenousCorePressureLevel
     );
-    assert_eq!(
-        payload.diagnostics.stage_decision_reason,
-        "endogenous_anchor_core_expectation_one_interval_first_observation_boundary_anchor_zero_hawkes_state.v1"
-    );
-    assert!(payload.diagnostics.phi.is_finite());
+    assert!(payload
+        .diagnostics
+        .stage_decision_reason
+        .contains(
+            "endogenous_core_pressure_level_profiled_over_pressure_persistence_and_phi_reference.v1"
+        ));
+    assert!(payload.diagnostics.phi_reference.is_finite());
     assert!(payload.diagnostics.kappa.is_finite());
     assert!(payload.fitted_parameters.kappa.is_finite());
 }

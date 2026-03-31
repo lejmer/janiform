@@ -71,7 +71,7 @@ const COARSE_SIMULATION_PATH_REQUIRED_FIELDS: [&str; 13] = [
     "terminal_excitation_state",
     "records",
 ];
-const COARSE_SIMULATION_PATH_RECORD_REQUIRED_FIELDS: [&str; 11] = [
+const COARSE_SIMULATION_PATH_RECORD_REQUIRED_FIELDS: [&str; 12] = [
     "schema_version",
     "interval_index",
     "interval_start_utc_nanos",
@@ -82,6 +82,7 @@ const COARSE_SIMULATION_PATH_RECORD_REQUIRED_FIELDS: [&str; 11] = [
     "observed_interval_return",
     "observed_log_price_end",
     "anchor_value_end",
+    "pressure_state_end",
     "deviation_from_anchor_end",
 ];
 const COARSE_SIMULATION_PATH_REQUIRED_PROVENANCE_FIELDS: [&str; 13] = [
@@ -597,6 +598,7 @@ pub struct CoarseSimulationPathRecord {
     pub observed_interval_return: f64,
     pub observed_log_price_end: f64,
     pub anchor_value_end: f64,
+    pub pressure_state_end: f64,
     pub deviation_from_anchor_end: f64,
 }
 
@@ -612,6 +614,7 @@ impl CoarseSimulationPathRecord {
         observed_interval_return: f64,
         observed_log_price_end: f64,
         anchor_value_end: f64,
+        pressure_state_end: f64,
         deviation_from_anchor_end: f64,
     ) -> Result<Self, CoarseSimulationPathRecordError> {
         let record = Self {
@@ -625,6 +628,7 @@ impl CoarseSimulationPathRecord {
             observed_interval_return,
             observed_log_price_end,
             anchor_value_end,
+            pressure_state_end,
             deviation_from_anchor_end,
         };
 
@@ -668,6 +672,7 @@ impl CoarseSimulationPathRecord {
         janiform_model_kernels::mean_reversion::MeanReversionBoundaryState::try_new(
             self.observed_log_price_end,
             self.anchor_value_end,
+            self.pressure_state_end,
             self.deviation_from_anchor_end,
         )
         .map_err(CoarseSimulationPathRecordError::InvalidObservedBoundaryState)?;
@@ -2055,6 +2060,7 @@ mod tests {
                 "observed_interval_return",
                 "observed_log_price_end",
                 "anchor_value_end",
+                "pressure_state_end",
                 "deviation_from_anchor_end"
             ])
         );
@@ -2212,6 +2218,7 @@ mod tests {
             -0.01,
             -0.01,
             0.0,
+            0.0,
             -0.01,
         )
         .expect("record should be valid");
@@ -2225,6 +2232,7 @@ mod tests {
                 .expect("return components should be valid"),
             0.01,
             0.01,
+            0.0,
             0.0,
             0.0,
             0.0,
@@ -2283,16 +2291,18 @@ mod tests {
             NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
                 .expect("nig configuration should construct"),
             build_initial_state(),
-            MeanReversionFittedParameters::endogenous_core_expectation_one_interval(0.0)
-                .expect("zero-kappa endogenous mean reversion should construct"),
+            MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
+                .expect("zero-gain mean reversion should construct"),
             MeanReversionRuntimeIntervalAnchors::try_new(
                 "explicit_runtime_interval_grid_alignment.v1",
                 0.0,
+                0.0,
+                vec![0.0; 2],
                 vec![0.0; 2],
                 vec![1.0; 2],
             )
             .expect("disabled mean-reversion runtime anchors should construct"),
-            MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0)
+            MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0, 0.0)
                 .expect("disabled mean-reversion boundary state should construct"),
         )
         .expect("risk model inputs should construct");

@@ -1212,7 +1212,7 @@ def build_mean_reversion_configuration_from_arguments(
         )
 
     anchor_model_kind = (
-        MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL
+        MeanReversionAnchorModelKind.ENDOGENOUS_CORE_PRESSURE_LEVEL
         if raw_anchor_model is None
         else MeanReversionAnchorModelKind(raw_anchor_model)
     )
@@ -1472,7 +1472,7 @@ def model_workflow_fit_options(
             choice_options=tuple(anchor_model_kind.value for anchor_model_kind in MeanReversionAnchorModelKind),
             help_text=(
                 "Optional explicit endogenous anchor policy selector for high-level mean-reversion calibration. "
-                "Default for non-seasonality workflows: endogenous_core_expectation_one_interval."
+                "Default for non-seasonality workflows: endogenous_core_pressure_level."
             ),
         ),
         command_option(

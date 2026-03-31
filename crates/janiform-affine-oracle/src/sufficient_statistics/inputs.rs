@@ -471,13 +471,29 @@ impl SufficientStatisticsRiskModelInputs {
                 },
             );
         }
+        if (self.initial_mean_reversion_boundary_state.pressure_state
+            - self
+                .mean_reversion_runtime_interval_anchors
+                .start_pressure_state)
+            .abs()
+            > MEAN_REVERSION_ALIGNMENT_TOLERANCE
+        {
+            return Err(
+                SufficientStatisticsRiskModelInputsError::MeanReversionBoundaryStateStartAnchorMismatch {
+                    boundary_anchor_value: self.initial_mean_reversion_boundary_state.pressure_state,
+                    runtime_start_anchor_value: self
+                        .mean_reversion_runtime_interval_anchors
+                        .start_pressure_state,
+                },
+            );
+        }
 
         match self
             .mean_reversion_fitted_parameters
             .anchor_model
             .anchor_model_kind
         {
-            MeanReversionAnchorModelKind::EndogenousCoreExpectationOneInterval => {}
+            MeanReversionAnchorModelKind::EndogenousCorePressureLevel => {}
         }
 
         Ok(())

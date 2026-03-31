@@ -85,8 +85,11 @@ pub use constants::{
 };
 pub use error::SeededTickSimulationRunError;
 pub use janiform_model_kernels::mean_reversion::{
-    MeanReversionAnchorModel, MeanReversionAnchorModelKind, MeanReversionBoundaryState,
+    MeanReversionAnchorModel, MeanReversionAnchorModelKind,
+    MeanReversionAnchorPathMaterializationError, MeanReversionBoundaryState,
     MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors,
+    evolve_mean_reversion_pressure_state,
+    materialize_mean_reversion_runtime_interval_anchors_from_core_expected_increments,
 };
 pub use progress::{SimulationProgressEvent, SimulationProgressPhase};
 pub use runtime::{

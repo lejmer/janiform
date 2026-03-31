@@ -36,10 +36,10 @@ fn vanilla_option_pricing_runner_executes_public_workflow_with_optional_outputs(
                     y_minus_plus: 0.0,
                     y_minus_minus: 0.0,
                 },
-                MeanReversionFittedParameters::endogenous_core_expectation_one_interval(0.0)
-                    .expect("zero-kappa endogenous fit should construct"),
+                MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
+                    .expect("zero-gain mean reversion fit should construct"),
                 1.0,
-                MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0)
+                MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0, 0.0)
                     .expect("zero observed boundary state should construct"),
             )
             .expect("endogenous boundary input should construct"),
@@ -110,10 +110,10 @@ fn vanilla_option_pricing_runner_matches_zero_anchor_and_shifted_anchor_for_zero
         AnchoredVanillaOptionPricingBoundaryInput::try_new(
             0,
             hawkes_boundary_state,
-            MeanReversionFittedParameters::endogenous_core_expectation_one_interval(0.0)
-                .expect("zero-kappa endogenous fit should construct"),
+            MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
+                .expect("zero-gain mean reversion fit should construct"),
             1.0,
-            MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0)
+            MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0, 0.0)
                 .expect("zero observed boundary state should construct"),
         )
         .expect("zero-anchor boundary input should construct"),
@@ -129,11 +129,11 @@ fn vanilla_option_pricing_runner_matches_zero_anchor_and_shifted_anchor_for_zero
             hawkes_boundary_state,
             MeanReversionFittedParameters::try_new(
                 0.0,
-                MeanReversionAnchorModel::endogenous_core_expectation_one_interval(),
+                MeanReversionAnchorModel::zero_gain_endogenous_core_pressure_level(),
             )
             .expect("flat zero-kappa fitted parameters should construct"),
             1.0,
-            MeanReversionBoundaryState::try_new(0.0, 0.25, -0.25)
+            MeanReversionBoundaryState::try_new(0.0, 0.25, 0.0, -0.25)
                 .expect("observed boundary state should construct"),
         )
         .expect("flat-anchor boundary input should construct"),

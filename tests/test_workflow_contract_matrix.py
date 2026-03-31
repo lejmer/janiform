@@ -632,7 +632,7 @@ def _valid_pricing_execution_input() -> VanillaOptionPricingExecutionInput:
                 ),
                 mean_reversion_fitted_parameters=MeanReversionFittedParameters(
                     kappa=0.0,
-                    anchor_model=MeanReversionAnchorModel.endogenous_core_expectation_one_interval(),
+                    anchor_model=MeanReversionAnchorModel.zero_gain_endogenous_core_pressure_level(),
                 ),
                 observed_boundary_state=MeanReversionBoundaryState(
                     observed_log_price=0.0,

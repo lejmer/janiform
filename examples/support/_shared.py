@@ -317,7 +317,7 @@ def build_coarse_simulation_request(calendar_registry: CalendarRegistry) -> Coar
                 "initial_excitation_state": build_initial_excitation_state().to_payload(),
                 "mean_reversion_fitted_parameters": MeanReversionFittedParameters(
                     kappa=0.0,
-                    anchor_model=MeanReversionAnchorModel.endogenous_core_expectation_one_interval(),
+                    anchor_model=MeanReversionAnchorModel.zero_gain_endogenous_core_pressure_level(),
                 ).to_payload(),
                 "mean_reversion_runtime_interval_anchors": (
                     mean_reversion_runtime_interval_anchors.to_payload()
@@ -395,7 +395,7 @@ def build_pricing_request() -> VanillaOptionPricingRequest:
             ),
             mean_reversion_fitted_parameters=MeanReversionFittedParameters(
                 kappa=0.35,
-                anchor_model=MeanReversionAnchorModel.endogenous_core_expectation_one_interval(),
+                anchor_model=MeanReversionAnchorModel.zero_gain_endogenous_core_pressure_level(),
             ),
             interval_delta=1.0,
             observed_boundary_state=MeanReversionBoundaryState(

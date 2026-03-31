@@ -347,7 +347,7 @@ impl SeededTickSimulationRunConfig {
             .anchor_model
             .anchor_model_kind
         {
-            MeanReversionAnchorModelKind::EndogenousCoreExpectationOneInterval => {}
+            MeanReversionAnchorModelKind::EndogenousCorePressureLevel => {}
         }
 
         if let Some((

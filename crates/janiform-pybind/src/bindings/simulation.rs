@@ -15,6 +15,7 @@ use janiform::simulation::{
     SeededTickSimulationModelInputs, SeededTickSimulationRunConfig, SeededTickSimulationRunOptions,
     SimulationProgressEvent, run_coarse_simulation as run_coarse_simulation_core,
     run_coarse_simulation_with_observer as run_coarse_simulation_core_with_observer,
+    materialize_mean_reversion_runtime_interval_anchors_from_core_expected_increments,
     run_seeded_tick_event_simulation as run_seeded_tick_event_simulation_core,
     run_seeded_tick_event_simulation_with_observer as run_seeded_tick_event_simulation_core_with_observer,
 };
@@ -31,13 +32,14 @@ use crate::python_value::{json_value_to_py_object, py_any_to_json_value};
 use crate::types::{PyHourlyFactorContractResult, PySeededTickSimulationNativeResult};
 
 #[pyfunction]
-#[pyo3(signature = (kernel_parameters, nig_shared_plus_shift_configuration, news_process_configuration, initial_excitation_state, interval_alignment_policy, start_anchor_value, s_h, known_nu_h, surprise_nu_h, interval_deltas))]
+#[pyo3(signature = (kernel_parameters, nig_shared_plus_shift_configuration, news_process_configuration, initial_excitation_state, mean_reversion_fitted_parameters, interval_alignment_policy, start_anchor_value, s_h, known_nu_h, surprise_nu_h, interval_deltas))]
 fn materialize_endogenous_mean_reversion_runtime_interval_anchors(
     py: Python<'_>,
     kernel_parameters: &Bound<'_, PyAny>,
     nig_shared_plus_shift_configuration: &Bound<'_, PyAny>,
     news_process_configuration: &Bound<'_, PyAny>,
     initial_excitation_state: &Bound<'_, PyAny>,
+    mean_reversion_fitted_parameters: &Bound<'_, PyAny>,
     interval_alignment_policy: &str,
     start_anchor_value: f64,
     s_h: &Bound<'_, PyAny>,
@@ -62,6 +64,8 @@ fn materialize_endogenous_mean_reversion_runtime_interval_anchors(
 
     let parsed_initial_excitation_state =
         parse_seeded_simulation_initial_excitation_state(initial_excitation_state)?;
+    let parsed_mean_reversion_fitted_parameters =
+        parse_seeded_simulation_mean_reversion_fitted_parameters(mean_reversion_fitted_parameters)?;
 
     let parsed_s_h = parse_required_numeric_sequence(s_h, "s_h")?;
     let parsed_known_nu_h = parse_required_numeric_sequence(known_nu_h, "known_nu_h")?;
@@ -124,8 +128,28 @@ fn materialize_endogenous_mean_reversion_runtime_interval_anchors(
         ))
     })?;
 
+    let core_expected_increments: Vec<f64> = materialization
+        .interval_expectations
+        .iter()
+        .map(|expectation| expectation.core_expected_increment)
+        .collect();
+    let runtime_interval_anchors =
+        materialize_mean_reversion_runtime_interval_anchors_from_core_expected_increments(
+            interval_alignment_policy,
+            start_anchor_value,
+            0.0,
+            &parsed_mean_reversion_fitted_parameters.anchor_model,
+            core_expected_increments.as_slice(),
+            &parsed_interval_deltas,
+        )
+        .map_err(|source| {
+            SeasonalityInputValidationError::new_err(format!(
+                "endogenous mean-reversion runtime anchor materialization failed: {source}"
+            ))
+        })?;
+
     let serialized_runtime_interval_anchors =
-        serde_json::to_value(&materialization.runtime_interval_anchors).map_err(|source| {
+        serde_json::to_value(&runtime_interval_anchors).map_err(|source| {
             SeasonalityInputValidationError::new_err(format!(
                 "failed to serialize endogenous mean-reversion runtime anchors: {source}"
             ))

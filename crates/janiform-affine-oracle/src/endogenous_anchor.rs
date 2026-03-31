@@ -458,7 +458,9 @@ pub fn materialize_endogenous_anchor_path(
     let runtime_interval_anchors = MeanReversionRuntimeIntervalAnchors::try_new(
         interval_alignment_policy,
         start_anchor_value,
+        0.0,
         end_anchor_values,
+        vec![0.0; interval_deltas.len()],
         interval_deltas,
     )
     .map_err(

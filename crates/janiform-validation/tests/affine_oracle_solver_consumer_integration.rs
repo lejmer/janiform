@@ -293,10 +293,10 @@ fn build_pricing_request(interval_delta: f64) -> VanillaOptionPricingRequest {
         AnchoredVanillaOptionPricingBoundaryInput::try_new(
             0,
             boundary_state,
-            MeanReversionFittedParameters::endogenous_core_expectation_one_interval(0.0)
+            MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
                 .expect("zero-kappa endogenous fitted parameters should construct"),
             interval_delta,
-            MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0)
+            MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0, 0.0)
                 .expect("zero observed boundary state should construct"),
         )
         .expect("endogenous anchored boundary input should construct"),

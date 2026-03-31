@@ -1225,7 +1225,7 @@ mod tests {
             ),
             mean_reversion_stage_input: Some(CalibrationMeanReversionStageExecutionInput {
                 requested_anchor_model_kind:
-                    MeanReversionAnchorModelKind::EndogenousCoreExpectationOneInterval,
+                    MeanReversionAnchorModelKind::EndogenousCorePressureLevel,
                 calibration_grid_kind: "synthetic_daily_close_grid.v1".to_string(),
                 calibration_grid_interval_hours: 24.0,
                 source_observation_count: 4,

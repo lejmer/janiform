@@ -53,10 +53,10 @@ pub(super) fn endogenous_boundary_input(
     AnchoredVanillaOptionPricingBoundaryInput::try_new(
         0,
         hawkes_boundary_state,
-        MeanReversionFittedParameters::endogenous_core_expectation_one_interval(0.0)
-            .expect("zero-kappa endogenous fitted parameters should construct"),
+        MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
+            .expect("zero-gain mean reversion parameters should construct"),
         interval_delta,
-        MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0)
+        MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0, 0.0)
             .expect("zero observed boundary state should construct"),
     )
     .expect("endogenous pricing boundary input should construct")

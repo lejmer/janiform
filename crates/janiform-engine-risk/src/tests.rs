@@ -1275,16 +1275,18 @@ fn build_model_inputs_for_grid(
         NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
             .expect("nig configuration should be valid"),
         build_initial_state(),
-        MeanReversionFittedParameters::endogenous_core_expectation_one_interval(0.0)
-            .expect("zero-kappa endogenous mean reversion should construct"),
+        MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
+            .expect("zero-gain mean reversion should construct"),
         MeanReversionRuntimeIntervalAnchors::try_new(
             "explicit_runtime_interval_grid_alignment.v1",
             0.0,
+            0.0,
+            vec![0.0; interval_count],
             vec![0.0; interval_count],
             vec![interval_delta; interval_count],
         )
         .expect("disabled mean-reversion runtime anchors should construct"),
-        MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0)
+        MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0, 0.0)
             .expect("disabled mean-reversion boundary state should construct"),
     )
     .expect("model inputs should be valid")
@@ -1307,6 +1309,7 @@ fn build_risk_path_record(
         return_components.total_return,
         observed_log_price_end,
         observed_log_price_end,
+        0.0,
         0.0,
         observed_log_price_end,
     )

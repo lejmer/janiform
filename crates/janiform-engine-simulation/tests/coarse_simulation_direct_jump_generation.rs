@@ -469,16 +469,18 @@ fn build_risk_model_inputs(
         NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
             .expect("nig configuration should construct"),
         default_initial_excitation_state(),
-        MeanReversionFittedParameters::endogenous_core_expectation_one_interval(0.0)
-            .expect("zero-kappa endogenous mean reversion should construct"),
+        MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
+            .expect("zero-gain mean reversion should construct"),
         MeanReversionRuntimeIntervalAnchors::try_new(
             "explicit_runtime_interval_grid_alignment.v1",
             0.0,
+            0.0,
+            vec![0.0; interval_count],
             vec![0.0; interval_count],
             vec![interval_delta; interval_count],
         )
         .expect("disabled mean-reversion runtime anchors should construct"),
-        MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0)
+        MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0, 0.0)
             .expect("disabled mean-reversion boundary state should construct"),
     )
     .expect("risk model inputs should construct")

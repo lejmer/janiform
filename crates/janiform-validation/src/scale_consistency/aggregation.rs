@@ -366,6 +366,7 @@ fn aggregate_fine_records_to_coarse_interval(
             .sum(),
         last_record.observed_log_price_end,
         last_record.anchor_value_end,
+        last_record.pressure_state_end,
         last_record.deviation_from_anchor_end,
     )
 }

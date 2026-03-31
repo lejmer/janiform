@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any, Final
+from typing import Any, Final, Self
 
 from .base import (
     ContractModel,
@@ -22,30 +22,79 @@ def _mean_reversion_error(field_path: str, message: str) -> ValueError:
 
 
 class MeanReversionAnchorModelKind(StrEnum):
-    ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL = "endogenous_core_expectation_one_interval"
+    ENDOGENOUS_CORE_PRESSURE_LEVEL = "endogenous_core_pressure_level"
 
 
 @dataclass(frozen=True, slots=True)
 class MeanReversionAnchorModel(ContractModel):
     anchor_model_kind: MeanReversionAnchorModelKind
+    reference_interval_hours: float
+    pressure_persistence_per_reference_interval: float
+    pressure_level_gain: float
 
     def __post_init__(self) -> None:
-        match self.anchor_model_kind:
-            case MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL:
-                return
+        require_finite_scalar(
+            self.reference_interval_hours,
+            "reference_interval_hours",
+            _mean_reversion_error,
+        )
+        if self.reference_interval_hours <= 0.0:
+            raise _mean_reversion_error(
+                "reference_interval_hours",
+                "must be strictly positive",
+            )
+
+        require_finite_scalar(
+            self.pressure_persistence_per_reference_interval,
+            "pressure_persistence_per_reference_interval",
+            _mean_reversion_error,
+        )
+        if not 0.0 <= self.pressure_persistence_per_reference_interval <= 1.0:
+            raise _mean_reversion_error(
+                "pressure_persistence_per_reference_interval",
+                "must lie in the unit interval",
+            )
+
+        require_finite_scalar(
+            self.pressure_level_gain,
+            "pressure_level_gain",
+            _mean_reversion_error,
+        )
 
     def to_payload(self) -> dict[str, Any]:
         return {
             "anchor_model_kind": self.anchor_model_kind.value,
+            "reference_interval_hours": self.reference_interval_hours,
+            "pressure_persistence_per_reference_interval": self.pressure_persistence_per_reference_interval,
+            "pressure_level_gain": self.pressure_level_gain,
         }
 
     def to_json(self) -> str:
         return serialize_deterministic_json(self.to_payload())
 
     @staticmethod
-    def endogenous_core_expectation_one_interval() -> MeanReversionAnchorModel:
+    def endogenous_core_pressure_level(
+        *,
+        reference_interval_hours: float,
+        pressure_persistence_per_reference_interval: float,
+        pressure_level_gain: float,
+    ) -> Self:
         return MeanReversionAnchorModel(
-            anchor_model_kind=MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL
+            anchor_model_kind=MeanReversionAnchorModelKind.ENDOGENOUS_CORE_PRESSURE_LEVEL,
+            reference_interval_hours=reference_interval_hours,
+            pressure_persistence_per_reference_interval=pressure_persistence_per_reference_interval,
+            pressure_level_gain=pressure_level_gain,
+        )
+
+    @staticmethod
+    def zero_gain_endogenous_core_pressure_level(
+        *,
+        reference_interval_hours: float = 1.0,
+    ) -> Self:
+        return MeanReversionAnchorModel.endogenous_core_pressure_level(
+            reference_interval_hours=reference_interval_hours,
+            pressure_persistence_per_reference_interval=0.0,
+            pressure_level_gain=0.0,
         )
 
     @staticmethod
@@ -53,28 +102,49 @@ class MeanReversionAnchorModel(ContractModel):
         raw_payload: dict[str, Any] | Any,
         *,
         field_path: str = "anchor_model",
-    ) -> MeanReversionAnchorModel:
+    ) -> Self:
         if not isinstance(raw_payload, dict):
             raise _mean_reversion_error(field_path, "must be an object")
 
         require_only_supported_fields(
             raw_payload,
-            supported_fields=("anchor_model_kind",),
+            supported_fields=(
+                "anchor_model_kind",
+                "reference_interval_hours",
+                "pressure_persistence_per_reference_interval",
+                "pressure_level_gain",
+            ),
             field_path=field_path,
             error_factory=_mean_reversion_error,
         )
 
-        anchor_model_kind = MeanReversionAnchorModelKind(
-            require_string(
-                raw_payload,
-                "anchor_model_kind",
-                f"{field_path}.anchor_model_kind",
-                _mean_reversion_error,
-            )
-        )
-
         return MeanReversionAnchorModel(
-            anchor_model_kind=anchor_model_kind,
+            anchor_model_kind=MeanReversionAnchorModelKind(
+                require_string(
+                    raw_payload,
+                    "anchor_model_kind",
+                    f"{field_path}.anchor_model_kind",
+                    _mean_reversion_error,
+                )
+            ),
+            reference_interval_hours=require_finite_number(
+                raw_payload,
+                "reference_interval_hours",
+                f"{field_path}.reference_interval_hours",
+                _mean_reversion_error,
+            ),
+            pressure_persistence_per_reference_interval=require_finite_number(
+                raw_payload,
+                "pressure_persistence_per_reference_interval",
+                f"{field_path}.pressure_persistence_per_reference_interval",
+                _mean_reversion_error,
+            ),
+            pressure_level_gain=require_finite_number(
+                raw_payload,
+                "pressure_level_gain",
+                f"{field_path}.pressure_level_gain",
+                _mean_reversion_error,
+            ),
         )
 
 
@@ -102,11 +172,24 @@ class MeanReversionFittedParameters(ContractModel):
         return True
 
     @staticmethod
+    def flat_anchor_mean_reversion(
+        *,
+        kappa: float,
+        reference_interval_hours: float = 1.0,
+    ) -> Self:
+        return MeanReversionFittedParameters(
+            kappa=kappa,
+            anchor_model=MeanReversionAnchorModel.zero_gain_endogenous_core_pressure_level(
+                reference_interval_hours=reference_interval_hours,
+            ),
+        )
+
+    @staticmethod
     def from_mapping(
         raw_payload: dict[str, Any] | Any,
         *,
         field_path: str = "mean_reversion_fitted_parameters",
-    ) -> MeanReversionFittedParameters:
+    ) -> Self:
         if not isinstance(raw_payload, dict):
             raise _mean_reversion_error(field_path, "must be an object")
 
@@ -140,7 +223,9 @@ class MeanReversionFittedParameters(ContractModel):
 class MeanReversionRuntimeIntervalAnchors(ContractModel):
     interval_alignment_policy: str
     start_anchor_value: float
+    start_pressure_state: float
     end_anchor_values: tuple[float, ...]
+    end_pressure_states: tuple[float, ...]
     interval_deltas: tuple[float, ...]
 
     def __post_init__(self) -> None:
@@ -155,11 +240,22 @@ class MeanReversionRuntimeIntervalAnchors(ContractModel):
             "start_anchor_value",
             _mean_reversion_error,
         )
+        require_finite_scalar(
+            self.start_pressure_state,
+            "start_pressure_state",
+            _mean_reversion_error,
+        )
 
-        if len(self.end_anchor_values) != len(self.interval_deltas):
+        expected_length = len(self.end_anchor_values)
+        if len(self.end_pressure_states) != expected_length:
+            raise _mean_reversion_error(
+                "end_pressure_states",
+                f"must contain {expected_length} values",
+            )
+        if len(self.interval_deltas) != expected_length:
             raise _mean_reversion_error(
                 "interval_deltas",
-                f"must contain {len(self.end_anchor_values)} values",
+                f"must contain {expected_length} values",
             )
 
         for interval_index, anchor_value in enumerate(self.end_anchor_values):
@@ -168,15 +264,17 @@ class MeanReversionRuntimeIntervalAnchors(ContractModel):
                 f"end_anchor_values[{interval_index}]",
                 _mean_reversion_error,
             )
-
+            require_finite_scalar(
+                self.end_pressure_states[interval_index],
+                f"end_pressure_states[{interval_index}]",
+                _mean_reversion_error,
+            )
             interval_delta = self.interval_deltas[interval_index]
-
             require_finite_scalar(
                 interval_delta,
                 f"interval_deltas[{interval_index}]",
                 _mean_reversion_error,
             )
-
             if interval_delta <= 0.0:
                 raise _mean_reversion_error(
                     f"interval_deltas[{interval_index}]",
@@ -188,7 +286,7 @@ class MeanReversionRuntimeIntervalAnchors(ContractModel):
         raw_payload: dict[str, Any] | Any,
         *,
         field_path: str = "mean_reversion_runtime_interval_anchors",
-    ) -> MeanReversionRuntimeIntervalAnchors:
+    ) -> Self:
         if not isinstance(raw_payload, dict):
             raise _mean_reversion_error(field_path, "must be an object")
 
@@ -205,10 +303,21 @@ class MeanReversionRuntimeIntervalAnchors(ContractModel):
                 f"{field_path}.start_anchor_value",
                 _mean_reversion_error,
             ),
+            start_pressure_state=require_finite_number(
+                raw_payload,
+                "start_pressure_state",
+                f"{field_path}.start_pressure_state",
+                _mean_reversion_error,
+            ),
             end_anchor_values=_numeric_sequence(
                 raw_payload,
                 "end_anchor_values",
                 f"{field_path}.end_anchor_values",
+            ),
+            end_pressure_states=_numeric_sequence(
+                raw_payload,
+                "end_pressure_states",
+                f"{field_path}.end_pressure_states",
             ),
             interval_deltas=_numeric_sequence(
                 raw_payload,
@@ -222,6 +331,7 @@ class MeanReversionRuntimeIntervalAnchors(ContractModel):
 class MeanReversionBoundaryState(ContractModel):
     observed_log_price: float
     anchor_value: float
+    pressure_state: float
     deviation: float
 
     def __post_init__(self) -> None:
@@ -233,6 +343,11 @@ class MeanReversionBoundaryState(ContractModel):
         require_finite_scalar(
             self.anchor_value,
             "anchor_value",
+            _mean_reversion_error,
+        )
+        require_finite_scalar(
+            self.pressure_state,
+            "pressure_state",
             _mean_reversion_error,
         )
         require_finite_scalar(
@@ -253,7 +368,7 @@ class MeanReversionBoundaryState(ContractModel):
         raw_payload: dict[str, Any] | Any,
         *,
         field_path: str = "mean_reversion_boundary_state",
-    ) -> MeanReversionBoundaryState:
+    ) -> Self:
         if not isinstance(raw_payload, dict):
             raise _mean_reversion_error(field_path, "must be an object")
 
@@ -270,6 +385,12 @@ class MeanReversionBoundaryState(ContractModel):
                 f"{field_path}.anchor_value",
                 _mean_reversion_error,
             ),
+            pressure_state=require_finite_number(
+                raw_payload,
+                "pressure_state",
+                f"{field_path}.pressure_state",
+                _mean_reversion_error,
+            ),
             deviation=require_finite_number(
                 raw_payload,
                 "deviation",
@@ -277,6 +398,7 @@ class MeanReversionBoundaryState(ContractModel):
                 _mean_reversion_error,
             ),
         )
+
 
 def _numeric_sequence(
     raw_payload: dict[str, Any],
@@ -294,7 +416,6 @@ def _numeric_sequence(
     )
 
     values: list[float] = []
-
     for entry_index, raw_value in enumerate(raw_values):
         values.append(
             require_finite_scalar(

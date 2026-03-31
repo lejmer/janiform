@@ -168,8 +168,8 @@ pub(super) fn parameter_vector_to_fitted_parameters(
             .surprise_deterministic_intensity_profile
             .clone(),
         mean_reversion_fitted_parameters:
-            MeanReversionFittedParameters::endogenous_core_expectation_one_interval(0.0)
-                .expect("zero-kappa endogenous mean reversion should validate"),
+            MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
+                .expect("zero-gain mean reversion should validate"),
     };
 
     return_components_fitted_parameters

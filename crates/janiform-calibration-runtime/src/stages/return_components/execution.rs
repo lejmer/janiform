@@ -554,8 +554,8 @@ pub fn run_return_components_calibration_stage(
                     .clone(),
             },
             mean_reversion_fitted_parameters:
-                MeanReversionFittedParameters::endogenous_core_expectation_one_interval(0.0)
-                    .expect("zero-kappa endogenous mean reversion should validate"),
+                MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
+                    .expect("zero-gain mean reversion should validate"),
         },
         candidate_diagnostics,
         candidate_generation_policy: RETURN_COMPONENTS_STAGE_CANDIDATE_GENERATION_POLICY,
@@ -2333,8 +2333,8 @@ fn collect_return_components_stage_constraint_violations(
             surprise_deterministic_intensity_profile:
                 default_surprise_deterministic_intensity_profile(),
             mean_reversion_fitted_parameters:
-                MeanReversionFittedParameters::endogenous_core_expectation_one_interval(0.0)
-                    .expect("zero-kappa endogenous mean reversion should validate"),
+                MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
+                    .expect("zero-gain mean reversion should validate"),
         },
     )
 }
@@ -3007,8 +3007,8 @@ mod tests {
             surprise_deterministic_intensity_profile:
                 default_surprise_deterministic_intensity_profile(),
             mean_reversion_fitted_parameters:
-                MeanReversionFittedParameters::endogenous_core_expectation_one_interval(0.0)
-                    .expect("zero-kappa endogenous mean reversion should validate"),
+                MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
+                    .expect("zero-gain mean reversion should validate"),
         };
 
         let fitted_signal_partition_layer = signal_partition_fit::fit_signal_partition_layer(

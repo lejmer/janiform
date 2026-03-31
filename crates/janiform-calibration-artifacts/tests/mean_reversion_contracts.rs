@@ -9,6 +9,7 @@ use support::shared::{
     CalibrationStageSolverSettings, MeanReversionAnchorModel, MeanReversionBoundaryState,
     MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors,
     MeanReversionStageCalibrationGrid, MeanReversionStageDiagnostics,
+    MeanReversionStageCandidateDiagnostics,
     MeanReversionStageParameterArtifactInput, build_calibration_stage_parameter_artifact,
     build_data_inputs, build_endogenous_mean_reversion_parameters, build_solver_settings,
     load_calibration_stage_parameter_artifact_from_disk,
@@ -26,7 +27,7 @@ fn mean_reversion_fitted_parameters_round_trip_serialization_preserves_contract_
     assert_eq!(serialized["kappa"], serde_json::json!(0.25));
     assert_eq!(
         serialized["anchor_model"]["anchor_model_kind"],
-        serde_json::json!("endogenous_core_expectation_one_interval")
+        serde_json::json!("endogenous_core_pressure_level")
     );
 
     let parsed: MeanReversionFittedParameters = serde_json::from_value(serialized)
@@ -42,7 +43,7 @@ fn mean_reversion_fitted_parameters_round_trip_serialization_preserves_contract_
 fn mean_reversion_fitted_parameters_reject_negative_kappa() {
     let fitted_parameters = MeanReversionFittedParameters {
         kappa: -0.01,
-        anchor_model: MeanReversionAnchorModel::endogenous_core_expectation_one_interval(),
+        anchor_model: MeanReversionAnchorModel::zero_gain_endogenous_core_pressure_level(),
     };
 
     let error = fitted_parameters
@@ -58,7 +59,10 @@ fn mean_reversion_fitted_parameters_reject_negative_kappa() {
 #[test]
 fn endogenous_mean_reversion_anchor_model_rejects_exogenous_anchor_values() {
     let anchor_model = serde_json::from_value::<MeanReversionAnchorModel>(serde_json::json!({
-        "anchor_model_kind": MeanReversionAnchorModelKind::EndogenousCoreExpectationOneInterval,
+        "anchor_model_kind": MeanReversionAnchorModelKind::EndogenousCorePressureLevel,
+        "reference_interval_hours": 24.0,
+        "pressure_persistence_per_reference_interval": 0.5,
+        "pressure_level_gain": 1.0,
         "anchor_value": 0.0,
     }))
     .expect_err("endogenous mean-reversion anchor must reject exogenous values");
@@ -75,7 +79,9 @@ fn mean_reversion_runtime_interval_anchors_validate_alignment_metadata() {
     let runtime_interval_anchors = MeanReversionRuntimeIntervalAnchors::try_new(
         "explicit_runtime_interval_grid_alignment.v1",
         4.2,
+        0.3,
         vec![4.1, 4.0],
+        vec![0.2, 0.1],
         vec![1.0, 1.0],
     )
     .expect("runtime interval anchors should validate");
@@ -89,7 +95,7 @@ fn mean_reversion_runtime_interval_anchors_validate_alignment_metadata() {
 
 #[test]
 fn mean_reversion_boundary_state_rejects_invariant_drift() {
-    let error = MeanReversionBoundaryState::try_new(5.0, 1.5, 3.7)
+    let error = MeanReversionBoundaryState::try_new(5.0, 1.5, 0.0, 3.7)
         .expect_err("boundary state must reject deviation drift");
 
     assert!(
@@ -128,7 +134,8 @@ fn calibration_stage_parameter_artifact_persistence_round_trips_mean_reversion_b
             .expect("mean-reversion solver settings should exist");
     let fitted_parameters = build_endogenous_mean_reversion_parameters();
     let diagnostics = MeanReversionStageDiagnostics {
-        chosen_anchor_family: MeanReversionAnchorModelKind::EndogenousCoreExpectationOneInterval,
+        chosen_anchor_family: MeanReversionAnchorModelKind::EndogenousCorePressureLevel,
+        selected_candidate_family: "endogenous_core_pressure_level_mean_reversion".to_string(),
         calibration_grid: MeanReversionStageCalibrationGrid {
             calibration_grid_kind: "synthetic_daily_close_grid.v1".to_string(),
             calibration_grid_interval_hours: 24.0,
@@ -137,12 +144,41 @@ fn calibration_stage_parameter_artifact_persistence_round_trips_mean_reversion_b
             coverage_ratio: 1.0,
         },
         anchor_parameter_estimates: fitted_parameters.anchor_model.clone(),
-        phi: 0.85,
+        anchor_origin_level: Some(4.2),
+        phi_reference: 0.85,
         kappa: fitted_parameters.kappa,
+        residual_sum_of_squares: 0.2,
+        quasi_log_likelihood: Some(-1.5),
+        information_criterion_bic: Some(5.0),
+        model_selection_policy:
+            "gaussian_quasi_likelihood_bic_with_endogenous_core_pressure_level_candidate_family_profile.v1".to_string(),
         deviation_sample_count: 4,
         regression_pair_count: 3,
+        least_squares_rank: 2,
+        evaluated_candidates: vec![MeanReversionStageCandidateDiagnostics {
+            candidate_family: "endogenous_core_pressure_level_mean_reversion".to_string(),
+            anchor_model: fitted_parameters.anchor_model.clone(),
+            anchor_origin_level: Some(4.2),
+            phi_reference: 0.85,
+            kappa: fitted_parameters.kappa,
+            residual_sum_of_squares: 0.2,
+            quasi_log_likelihood: Some(-1.5),
+            information_criterion_bic: Some(5.0),
+            parameter_count: 4,
+            least_squares_rank: 2,
+            deviation_sample_count: 4,
+            regression_pair_count: 3,
+            core_expected_increments: vec![0.1, 0.1, 0.1],
+            pressure_state_path: vec![0.0, 0.1, 0.15, 0.175],
+            boundary_anchor_values: vec![4.2, 4.3, 4.4, 4.5],
+            deviations: vec![0.0, -0.1, -0.2, -0.3],
+            residuals: vec![-0.1, -0.115, -0.13],
+            stage_decision_reason:
+                "endogenous_core_pressure_level_stage_contract_roundtrip_fixture.v1"
+                    .to_string(),
+        }],
         stage_decision_reason:
-            "endogenous_core_expectation_one_interval_stage_not_yet_implemented.v1".to_string(),
+            "endogenous_core_pressure_level_stage_contract_roundtrip_fixture.v1".to_string(),
     };
     let artifact = build_calibration_stage_parameter_artifact(
         &run_contract,

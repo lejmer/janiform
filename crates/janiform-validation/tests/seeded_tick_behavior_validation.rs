@@ -1617,11 +1617,13 @@ fn disabled_mean_reversion_runtime_inputs(
     MeanReversionBoundaryState,
 ) {
     (
-        MeanReversionFittedParameters::endogenous_core_expectation_one_interval(0.0)
+        MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
             .expect("zero-kappa endogenous mean reversion should construct"),
         MeanReversionRuntimeIntervalAnchors::try_new(
             hourly_factor_contract.metadata.interval_alignment_policy,
             0.0,
+            0.0,
+            vec![0.0; hourly_factor_contract.interval_indices.len()],
             vec![0.0; hourly_factor_contract.interval_indices.len()],
             vec![
                 hourly_factor_contract.interval_duration_nanos as f64 / ONE_HOUR_NANOS as f64;
@@ -1629,7 +1631,7 @@ fn disabled_mean_reversion_runtime_inputs(
             ],
         )
         .expect("disabled mean-reversion runtime anchors should construct"),
-        MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0)
+        MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0, 0.0)
             .expect("disabled mean-reversion boundary state should construct"),
     )
 }

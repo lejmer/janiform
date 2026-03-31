@@ -243,7 +243,7 @@ def test_anchored_boundary_input_roundtrip_and_validation() -> None:
         ),
         mean_reversion_fitted_parameters=MeanReversionFittedParameters(
             kappa=0.4,
-            anchor_model=MeanReversionAnchorModel.endogenous_core_expectation_one_interval(),
+            anchor_model=MeanReversionAnchorModel.zero_gain_endogenous_core_pressure_level(),
         ),
         interval_delta=0.5,
         observed_boundary_state=MeanReversionBoundaryState(
@@ -275,7 +275,7 @@ def test_anchored_boundary_input_accepts_endogenous_anchor_policy_boundary_state
 
     boundary_payload["mean_reversion_fitted_parameters"] = MeanReversionFittedParameters(
         kappa=0.3,
-        anchor_model=MeanReversionAnchorModel.endogenous_core_expectation_one_interval(),
+        anchor_model=MeanReversionAnchorModel.zero_gain_endogenous_core_pressure_level(),
     ).to_payload()
 
     boundary_payload["observed_boundary_state"] = MeanReversionBoundaryState(
@@ -546,7 +546,7 @@ def _anchored_request_model() -> VanillaOptionPricingRequest:
             ),
             mean_reversion_fitted_parameters=MeanReversionFittedParameters(
                 kappa=0.35,
-                anchor_model=MeanReversionAnchorModel.endogenous_core_expectation_one_interval(),
+                anchor_model=MeanReversionAnchorModel.zero_gain_endogenous_core_pressure_level(),
             ),
             interval_delta=1.0,
             observed_boundary_state=MeanReversionBoundaryState(
@@ -574,7 +574,7 @@ def _anchored_runtime_execution_input_model() -> VanillaOptionPricingExecutionIn
                 ),
                 mean_reversion_fitted_parameters=MeanReversionFittedParameters(
                     kappa=0.35,
-                    anchor_model=MeanReversionAnchorModel.endogenous_core_expectation_one_interval(),
+                    anchor_model=MeanReversionAnchorModel.zero_gain_endogenous_core_pressure_level(),
                 ),
                 interval_delta=1.0,
                 observed_boundary_state=MeanReversionBoundaryState(
@@ -625,7 +625,7 @@ def _disabled_boundary_input(
         hawkes_boundary_state=hawkes_boundary_state,
         mean_reversion_fitted_parameters=MeanReversionFittedParameters(
             kappa=0.0,
-            anchor_model=MeanReversionAnchorModel.endogenous_core_expectation_one_interval(),
+            anchor_model=MeanReversionAnchorModel.zero_gain_endogenous_core_pressure_level(),
         ),
         interval_delta=interval_delta,
         observed_boundary_state=MeanReversionBoundaryState(

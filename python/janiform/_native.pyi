@@ -1021,6 +1021,7 @@ def materialize_endogenous_mean_reversion_runtime_interval_anchors(
     nig_shared_plus_shift_configuration: object,
     news_process_configuration: object,
     initial_excitation_state: object,
+    mean_reversion_fitted_parameters: object,
     interval_alignment_policy: str,
     start_anchor_value: float,
     s_h: object,

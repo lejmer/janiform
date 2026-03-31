@@ -1583,7 +1583,7 @@ def _build_mean_reversion_series_analysis(
     runtime_log_prices = np.log(series.prices / reference_price)
 
     match fitted_parameters.anchor_model.anchor_model_kind.value:
-        case "endogenous_core_expectation_one_interval":
+        case "endogenous_core_pressure_level":
             anchor_values = _materialize_endogenous_mean_reversion_anchor_values(
                 model,
                 runtime_log_prices=runtime_log_prices,

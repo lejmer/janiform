@@ -858,11 +858,11 @@ fn anchored_local_tilt_solver_accepts_positive_kappa_with_zero_deviation() {
         },
         MeanReversionFittedParameters::try_new(
             0.7,
-            MeanReversionAnchorModel::endogenous_core_expectation_one_interval(),
+            MeanReversionAnchorModel::zero_gain_endogenous_core_pressure_level(),
         )
         .expect("mean reversion parameters should construct"),
         0.5,
-        MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0)
+        MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0, 0.0)
             .expect("observed boundary state should construct"),
     )
     .expect("anchored pricing boundary input should construct");
@@ -918,11 +918,11 @@ fn anchored_local_tilt_solver_accepts_positive_kappa_with_non_zero_deviation() {
             },
             MeanReversionFittedParameters::try_new(
                 kappa,
-                MeanReversionAnchorModel::endogenous_core_expectation_one_interval(),
+                MeanReversionAnchorModel::zero_gain_endogenous_core_pressure_level(),
             )
             .expect("mean reversion parameters should construct"),
             interval_delta,
-            MeanReversionBoundaryState::try_new(deviation, 0.0, deviation)
+            MeanReversionBoundaryState::try_new(deviation, 0.0, 0.0, deviation)
                 .expect("observed boundary state should construct"),
         )
         .expect("anchored pricing boundary input should construct"),

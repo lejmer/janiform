@@ -62,7 +62,7 @@ def build_endogenous_mean_reversion_fitted_parameters_payload(
 ) -> dict[str, Any]:
     return MeanReversionFittedParameters(
         kappa=kappa,
-        anchor_model=MeanReversionAnchorModel.endogenous_core_expectation_one_interval(),
+        anchor_model=MeanReversionAnchorModel.zero_gain_endogenous_core_pressure_level(),
     ).to_payload()
 
 

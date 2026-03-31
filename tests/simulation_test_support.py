@@ -20,7 +20,7 @@ def build_endogenous_mean_reversion_runtime_contracts(
     return (
         MeanReversionFittedParameters(
             kappa=0.0,
-            anchor_model=MeanReversionAnchorModel.endogenous_core_expectation_one_interval(),
+            anchor_model=MeanReversionAnchorModel.zero_gain_endogenous_core_pressure_level(),
         ),
         MeanReversionRuntimeIntervalAnchors(
             interval_alignment_policy="explicit_runtime_interval_grid_alignment.v1",
