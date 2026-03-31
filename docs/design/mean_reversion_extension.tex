@@ -94,13 +94,6 @@
         X_h = A_h^P + D_h^P.
     \]
 
-    Define the centered core innovation
-    \[
-        \xi_h^P = R_h - \mu_h^P(\Sigma_h),
-        \qquad
-        \mathbb E^P[\xi_h^P \mid \Sigma_h] = 0.
-    \]
-
     Let
     \[
         \phi_h = e^{-\kappa \Delta_h},
@@ -149,7 +142,7 @@
         K_h^P(\theta_h(Z_h) \mid \Sigma_h).
     \]
 
-    Define the risk-neutral anchor increment by the first moment of the tilted
+    Define the risk-neutral expected core increment by the first moment of the tilted
     core law:
     \[
         \mu_h^Q(Z_h)
@@ -180,15 +173,7 @@
     \[
         \Delta X_h
         =
-        \mu_h^Q(Z_h)
-        +
-        (\phi_h - 1) D_h^Q
-        +
-        \xi_h^Q,
-    \]
-    where
-    \[
-        \xi_h^Q = R_h - \mu_h^Q(Z_h).
+        (\phi_h - 1) D_h^Q + R_h.
     \]
 
     The local risk-neutral martingale condition is therefore

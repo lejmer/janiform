@@ -253,7 +253,7 @@ tilt. The risk-neutral state is therefore
 
 ```latex
 \[
-Z_h = (\Sigma_h, D_h^Q).
+Z_h = (\Sigma_h, p_h^Q, D_h^Q).
 \]
 ```
 
@@ -271,11 +271,12 @@ K_h^P\big(\theta_h(Z_h) \mid \Sigma_h\big).
 ```
 
 This is the local state-dependent Esscher transform already implied by the
-anchored pricing design, but now it also generates the anchor drift under `Q`.
+anchored pricing design, but now it also drives the deterministic pressure and
+anchor recursion under `Q`.
 
-### Risk-neutral anchor increment
+### Risk-neutral expected core increment
 
-Define the canonical risk-neutral anchor increment by the first moment of the
+Define the canonical risk-neutral expected core increment by the first moment of the
 tilted core law:
 
 ```latex
