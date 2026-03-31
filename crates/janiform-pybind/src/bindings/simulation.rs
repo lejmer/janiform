@@ -1,3 +1,5 @@
+use std::sync::{Arc, Mutex};
+
 use janiform::affine_oracle::{
     EndogenousAnchorIntervalFactors, ExponentialAffineTransformEquationSpecification,
     materialize_endogenous_anchor_path,
@@ -11,12 +13,15 @@ use janiform::simulation::{
     MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors,
     SeededTickEventStateSnapshotCapture, SeededTickSimulationDebugTraceOptions,
     SeededTickSimulationModelInputs, SeededTickSimulationRunConfig, SeededTickSimulationRunOptions,
-    run_coarse_simulation as run_coarse_simulation_core,
+    SimulationProgressEvent, run_coarse_simulation as run_coarse_simulation_core,
+    run_coarse_simulation_with_observer as run_coarse_simulation_core_with_observer,
     run_seeded_tick_event_simulation as run_seeded_tick_event_simulation_core,
+    run_seeded_tick_event_simulation_with_observer as run_seeded_tick_event_simulation_core_with_observer,
 };
 use pyo3::prelude::{Bound, Py, PyErr, PyResult, Python};
 use pyo3::types::{PyAny, PyAnyMethods, PyMapping, PyMappingMethods, PyModule, PyModuleMethods};
 use pyo3::{pyfunction, wrap_pyfunction};
+use serde_json::Value;
 
 use super::calendar::parse_timestamp_utc;
 use crate::SeasonalityInputValidationError;
@@ -130,6 +135,7 @@ fn materialize_endogenous_mean_reversion_runtime_interval_anchors(
 }
 
 #[pyfunction]
+#[pyo3(signature = (seed, start_time_utc_nanos, horizon_interval_count, interval_delta, model_inputs, hourly_factor_contract, event_callback = None))]
 fn run_coarse_simulation(
     py: Python<'_>,
     seed: u64,
@@ -138,6 +144,7 @@ fn run_coarse_simulation(
     interval_delta: f64,
     model_inputs: &Bound<'_, PyAny>,
     hourly_factor_contract: &PyHourlyFactorContractResult,
+    event_callback: Option<&Bound<'_, PyAny>>,
 ) -> PyResult<Py<PyAny>> {
     let model_inputs: CoarseSimulationModelInputs =
         serde_json::from_value(py_any_to_json_value(model_inputs)?).map_err(|source| {
@@ -167,14 +174,57 @@ fn run_coarse_simulation(
     )
     .map_err(|source| SimulationExecutionError::new_err(source.to_string()))?;
 
+    let callback_error_message = Arc::new(Mutex::new(None::<String>));
+    let callback_error_message_for_observer = Arc::clone(&callback_error_message);
+    let event_callback = event_callback.map(|callback| callback.clone().unbind());
+
     let coarse_path = panic_to_pyresult(
         "running coarse simulation",
         SimulationExecutionError::new_err,
         || {
-            py.allow_threads(|| run_coarse_simulation_core(run_request))
-                .map_err(|source| SimulationExecutionError::new_err(source.to_string()))
+            py.allow_threads(move || match event_callback {
+                None => run_coarse_simulation_core(run_request)
+                    .map_err(|source| SimulationExecutionError::new_err(source.to_string())),
+                Some(event_callback) => {
+                    let mut observer = |event: SimulationProgressEvent| {
+                        if callback_error_message_for_observer
+                            .lock()
+                            .ok()
+                            .and_then(|guard| guard.clone())
+                            .is_some()
+                        {
+                            return;
+                        }
+
+                        Python::with_gil(|py| {
+                            let callback_result = python_simulation_progress_event_to_py_object(
+                                py, &event,
+                            )
+                            .and_then(|payload| event_callback.call1(py, (payload,)).map(|_| ()));
+                            if let Err(source) = callback_result {
+                                if let Ok(mut guard) = callback_error_message_for_observer.lock() {
+                                    if guard.is_none() {
+                                        *guard = Some(source.to_string());
+                                    }
+                                }
+                            }
+                        });
+                    };
+
+                    run_coarse_simulation_core_with_observer(run_request, &mut observer)
+                        .map_err(|source| SimulationExecutionError::new_err(source.to_string()))
+                }
+            })
         },
     )?;
+
+    if let Ok(guard) = callback_error_message.lock() {
+        if let Some(error_message) = guard.as_ref() {
+            return Err(SimulationExecutionError::new_err(format!(
+                "simulation progress callback failed: {error_message}"
+            )));
+        }
+    }
 
     let serialized_coarse_path = serde_json::to_value(&coarse_path).map_err(|source| {
         SimulationExecutionError::new_err(format!(
@@ -186,7 +236,7 @@ fn run_coarse_simulation(
 }
 
 #[pyfunction]
-#[pyo3(signature = (seed, start_time_utc, horizon_interval_count, kernel_parameters, nig_shared_plus_shift_configuration, initial_excitation_state, hourly_factor_contract, news_process_configuration, mean_reversion_fitted_parameters, mean_reversion_runtime_interval_anchors, initial_mean_reversion_boundary_state, *, debug_trace_enabled = false, sample_every_nth_transition = 1, max_records_per_chunk = 1024, state_snapshot_capture = "disabled"))]
+#[pyo3(signature = (seed, start_time_utc, horizon_interval_count, kernel_parameters, nig_shared_plus_shift_configuration, initial_excitation_state, hourly_factor_contract, news_process_configuration, mean_reversion_fitted_parameters, mean_reversion_runtime_interval_anchors, initial_mean_reversion_boundary_state, *, debug_trace_enabled = false, sample_every_nth_transition = 1, max_records_per_chunk = 1024, state_snapshot_capture = "disabled", event_callback = None))]
 fn run_seeded_tick_event_simulation(
     py: Python<'_>,
     seed: u64,
@@ -204,6 +254,7 @@ fn run_seeded_tick_event_simulation(
     sample_every_nth_transition: u64,
     max_records_per_chunk: usize,
     state_snapshot_capture: &str,
+    event_callback: Option<&Bound<'_, PyAny>>,
 ) -> PyResult<PySeededTickSimulationNativeResult> {
     let parsed_start_time_utc = parse_timestamp_utc(start_time_utc)?;
 
@@ -279,16 +330,79 @@ fn run_seeded_tick_event_simulation(
     )
     .map_err(map_seeded_tick_simulation_run_error)?;
 
+    let callback_error_message = Arc::new(Mutex::new(None::<String>));
+    let callback_error_message_for_observer = Arc::clone(&callback_error_message);
+    let event_callback = event_callback.map(|callback| callback.clone().unbind());
+
     let run_result = panic_to_pyresult(
         "running seeded tick-event simulation",
         SimulationExecutionError::new_err,
         || {
-            py.allow_threads(|| run_seeded_tick_event_simulation_core(run_config))
-                .map_err(map_seeded_tick_simulation_run_error)
+            py.allow_threads(move || match event_callback {
+                None => run_seeded_tick_event_simulation_core(run_config)
+                    .map_err(map_seeded_tick_simulation_run_error),
+                Some(event_callback) => {
+                    let mut observer = |event: SimulationProgressEvent| {
+                        if callback_error_message_for_observer
+                            .lock()
+                            .ok()
+                            .and_then(|guard| guard.clone())
+                            .is_some()
+                        {
+                            return;
+                        }
+
+                        Python::with_gil(|py| {
+                            let callback_result = python_simulation_progress_event_to_py_object(
+                                py, &event,
+                            )
+                            .and_then(|payload| event_callback.call1(py, (payload,)).map(|_| ()));
+                            if let Err(source) = callback_result {
+                                if let Ok(mut guard) = callback_error_message_for_observer.lock() {
+                                    if guard.is_none() {
+                                        *guard = Some(source.to_string());
+                                    }
+                                }
+                            }
+                        });
+                    };
+
+                    run_seeded_tick_event_simulation_core_with_observer(run_config, &mut observer)
+                        .map_err(map_seeded_tick_simulation_run_error)
+                }
+            })
         },
     )?;
 
+    if let Ok(guard) = callback_error_message.lock() {
+        if let Some(error_message) = guard.as_ref() {
+            return Err(SimulationExecutionError::new_err(format!(
+                "simulation progress callback failed: {error_message}"
+            )));
+        }
+    }
+
     Ok(PySeededTickSimulationNativeResult { output: run_result })
+}
+
+fn python_simulation_progress_event_to_py_object(
+    py: Python<'_>,
+    event: &SimulationProgressEvent,
+) -> PyResult<Py<PyAny>> {
+    let serialized_event = match serde_json::to_value(event).map_err(|source| {
+        SimulationExecutionError::new_err(format!(
+            "failed to serialize simulation progress event: {source}"
+        ))
+    })? {
+        Value::Object(object) => Value::Object(object),
+        _ => {
+            return Err(SimulationExecutionError::new_err(
+                "failed to serialize simulation progress event: expected a JSON object",
+            ));
+        }
+    };
+
+    json_value_to_py_object(py, &serialized_event)
 }
 
 fn parse_seeded_simulation_mean_reversion_fitted_parameters(

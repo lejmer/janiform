@@ -17,7 +17,7 @@ from .input_resolution import (
 )
 from .model import JaniformModel, _raw_stage_report_payloads, _extract_model_parameters, _build_model_metadata
 from .report import JaniformFitReport
-from .._errors import _calibration_error
+from .._errors import _calibration_error, _calibration_execution_error
 from ..market_data.contracts import (
     CalibrationExecutionMode,
     CalibrationInputFileFormat,
@@ -73,8 +73,14 @@ from ..sessions._resolution import (
 from ..staged import CalibrationStageExecutionStatus
 from ..staged import CalibrationStageSolverSettings
 from ..staged.runtime import _run_prepared_staged_calibration_with_raw_payload
+from ..staged.results import build_staged_failure_context, format_staged_failure_summary
 from ..._workflow_outputs import write_fit_artifacts
-from ..._workflow_progress import JaniformOutputController, AbstractProgress, NullProgress
+from ..._workflow_progress import (
+    AbstractProgress,
+    JaniformOutputController,
+    NullProgress,
+    WorkflowProgressMode,
+)
 from ...calendar import CalendarRegistry
 from ...contracts import MeanReversionAnchorModelKind
 
@@ -243,7 +249,14 @@ class JaniformEstimator:
             )
 
         effective_silent = self._silent if silent is None else silent
-        output_controller = JaniformOutputController(silent=effective_silent)
+        output_controller = JaniformOutputController(
+            suppress_info_output=effective_silent,
+            default_progress_mode=(
+                WorkflowProgressMode.NONE
+                if effective_silent
+                else WorkflowProgressMode.HUMAN
+            ),
+        )
         prepared_workflow: Optional[_PreparedHighLevelFitWorkflow] = None
 
         with self._stdout_suppression_context(effective_silent=effective_silent):
@@ -299,13 +312,10 @@ class JaniformEstimator:
             if report:
                 return None, fit_report
 
-            failure_kind = (
-                staged_response.failure.failure_kind
-                if staged_response.failure is not None
-                else "fit_failed"
-            )
-            raise RuntimeError(
-                f"Janiform fit failed for run_id `{prepared_workflow.run_id}` with failure_kind `{failure_kind}`"
+            raise _calibration_execution_error(
+                format_staged_failure_summary(staged_response),
+                entrypoint="fit",
+                context=build_staged_failure_context(staged_response),
             )
 
         model = JaniformModel(

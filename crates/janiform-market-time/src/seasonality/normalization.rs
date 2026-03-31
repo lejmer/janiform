@@ -1,4 +1,5 @@
 use super::composition::SeasonalityNormalizationMetadata;
+use super::numerics::stable_mean_f64;
 use super::{
     IDENTIFIABILITY_MEAN_ANCHOR_TOLERANCE, IDENTIFIABILITY_NORMALIZATION_POLICY,
     IDENTIFIABILITY_TARGET_MEAN_FACTOR,
@@ -55,8 +56,9 @@ pub(super) fn normalize_seasonality_factors_for_identifiability(
         }
     }
 
-    let pre_normalization_mean_factor =
-        factor_by_event.iter().sum::<f64>() / factor_by_event.len() as f64;
+    // Use compensated summation so long fit windows do not trip the identifiability guard due
+    // to accumulation order alone.
+    let pre_normalization_mean_factor = stable_mean_f64(factor_by_event);
     if !pre_normalization_mean_factor.is_finite() || pre_normalization_mean_factor <= 0.0 {
         return Err(SeasonalityNormalizationError::UnstableNormalizationConstant);
     }
@@ -100,8 +102,7 @@ pub(super) fn normalize_seasonality_factors_for_identifiability(
         }
     }
 
-    let post_normalization_mean_factor =
-        normalized_factor_by_event.iter().sum::<f64>() / normalized_factor_by_event.len() as f64;
+    let post_normalization_mean_factor = stable_mean_f64(&normalized_factor_by_event);
     if !post_normalization_mean_factor.is_finite()
         || (post_normalization_mean_factor - IDENTIFIABILITY_TARGET_MEAN_FACTOR).abs()
             > IDENTIFIABILITY_MEAN_ANCHOR_TOLERANCE

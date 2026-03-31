@@ -24,6 +24,7 @@ use support::shared::{
     BTreeSet, build_pre_joint_run_contract_with_mode_and_resume,
     build_run_contract_for_caller_surface, build_run_contract_with_mode_and_resume,
     calibration_stage_test_registry, fs, hawkes_stage_constraint_violating_candidate_fixture, json,
+    normalize_joint_refinement_runtime_profile_for_reproducibility,
     resolve_calibration_execution_mode_for_surface, staged_run_inputs,
     temporary_checkpoint_directory,
 };
@@ -663,7 +664,8 @@ fn staged_runner_stage_abort_failure_report_exposes_schema_and_triage_metadata()
     assert_eq!(
         report.failure,
         Some(CalibrationStagedRunFailure::StageExecutionFailed {
-            stage: CalibrationStage::Hawkes
+            stage: CalibrationStage::Hawkes,
+            error_message: None,
         })
     );
     assert_eq!(report.stage_reports.len(), 2);
@@ -1147,6 +1149,18 @@ fn staged_runner_rejects_incompatible_checkpoints_and_mode_specific_runtime_requ
 fn normalized_report_for_reproducibility(
     mut report: CalibrationStagedRunReport,
 ) -> CalibrationStagedRunReport {
+    for stage_report in &mut report.stage_reports {
+        if let CalibrationStagedRunStageReport::JointRefinement(joint_refinement_report) =
+            stage_report
+            && let Some(fitted_stage_payload) =
+                joint_refinement_report.fitted_stage_payload.as_mut()
+        {
+            normalize_joint_refinement_runtime_profile_for_reproducibility(
+                &mut fitted_stage_payload.optimizer_diagnostics.runtime_profile,
+            );
+        }
+    }
+
     if let Some(bundle) = report.diagnostic_artifact_bundle.as_mut() {
         for entry in &mut bundle.runtime_profile.entries {
             entry.elapsed_seconds = 0.0;

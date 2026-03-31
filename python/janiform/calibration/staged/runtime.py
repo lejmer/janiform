@@ -162,17 +162,21 @@ def _native_module_for_staged_runtime() -> ModuleType:
 
 
 def _raise_staged_execution_error(native: ModuleType, error: Exception) -> None:
+    error_context = {
+        "source_exception_type": type(error).__name__,
+        "source_error_message": str(error),
+    }
     if native_exception_matches(native, error, "CalibrationExecutionError"):
         raise _calibration_execution_error(
             "staged calibration failed during native execution",
             entrypoint="run_staged_calibration",
-            context={"source_exception_type": type(error).__name__},
+            context=error_context,
         ) from error
 
     raise _calibration_execution_error(
         "staged calibration failed during native execution",
         entrypoint="run_staged_calibration",
-        context={"source_exception_type": type(error).__name__},
+        context=error_context,
     ) from error
 
 

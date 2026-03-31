@@ -256,6 +256,25 @@ def simulation_output_preferences_from_model(model: JaniformModel) -> Simulation
     )
 
 
+def simulation_output_price_column(preferences: SimulationOutputPreferences) -> str:
+    match preferences.tick_price_input_policy:
+        case "bid_ask_midpoint":
+            return "mid_price"
+        case _:
+            return preferences.price_column or "price"
+
+
+def simulation_output_columns(preferences: SimulationOutputPreferences) -> tuple[str, ...]:
+    columns = [preferences.timestamp_column, simulation_output_price_column(preferences)]
+    if (
+        preferences.tick_price_input_policy == "explicit_price_column"
+        and preferences.trade_sign_column is not None
+    ):
+        columns.append(preferences.trade_sign_column)
+
+    return tuple(columns)
+
+
 def persist_seeded_tick_simulation(
     *,
     simulation_result: SeededTickSimulationResponse,
@@ -267,7 +286,7 @@ def persist_seeded_tick_simulation(
 
     effective_sink = sink or _build_simulation_sink(
         output_path=resolved_output_path,
-        columns=_seeded_tick_output_columns(preferences),
+        columns=simulation_output_columns(preferences),
     )
 
     try:
@@ -313,7 +332,7 @@ def persist_coarse_simulation(
 
     effective_sink = sink or _build_simulation_sink(
         output_path=resolved_output_path,
-        columns=_seeded_tick_output_columns(preferences),
+        columns=simulation_output_columns(preferences),
     )
 
     try:
@@ -449,21 +468,6 @@ def _file_format_for_simulation_path(output_path: Path, default_file_format: str
     return suffix
 
 
-def _seeded_tick_output_columns(preferences: SimulationOutputPreferences) -> tuple[str, ...]:
-    columns = [preferences.timestamp_column]
-    match preferences.tick_price_input_policy:
-        case "explicit_price_column":
-            columns.append(preferences.price_column or "price")
-            if preferences.trade_sign_column is not None:
-                columns.append(preferences.trade_sign_column)
-        case "bid_ask_midpoint":
-            columns.append("mid_price")
-        case _:
-            columns.append(preferences.price_column or "price")
-
-    return tuple(columns)
-
-
 def _seeded_tick_output_row(
     *,
     timestamp_value: datetime | str,
@@ -474,17 +478,14 @@ def _seeded_tick_output_row(
 ) -> dict[str, Any]:
     output_row: dict[str, Any] = {
         timestamp_column: timestamp_value,
+        simulation_output_price_column(preferences): price_value,
     }
 
-    match preferences.tick_price_input_policy:
-        case "explicit_price_column":
-            output_row[preferences.price_column or "price"] = price_value
-            if preferences.trade_sign_column is not None:
-                output_row[preferences.trade_sign_column] = side_value
-        case "bid_ask_midpoint":
-            output_row["mid_price"] = price_value
-        case _:
-            output_row[preferences.price_column or "price"] = price_value
+    if (
+        preferences.tick_price_input_policy == "explicit_price_column"
+        and preferences.trade_sign_column is not None
+    ):
+        output_row[preferences.trade_sign_column] = side_value
 
     return output_row
 
@@ -595,6 +596,8 @@ __all__ = [
     "resolve_fit_artifact_paths",
     "resolve_pricing_artifact_paths",
     "resolve_simulation_artifact_paths",
+    "simulation_output_columns",
+    "simulation_output_price_column",
     "simulation_output_preferences_from_model",
     "write_fit_artifacts",
     "write_json_document",

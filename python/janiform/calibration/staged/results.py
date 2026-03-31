@@ -282,6 +282,110 @@ def validate_staged_calibration_response(raw_response: dict[str, Any] | Any) -> 
     return StagedCalibrationResponse.from_mapping(raw_response)
 
 
+def prefer_calibration_failure_details(
+    current_failure: Optional[CalibrationFailureDetails],
+    candidate_failure: CalibrationFailureDetails,
+) -> bool:
+    if current_failure is None:
+        return True
+
+    current_has_error_message = current_failure.error_message is not None
+    candidate_has_error_message = candidate_failure.error_message is not None
+
+    if candidate_has_error_message and not current_has_error_message:
+        return True
+    if current_has_error_message and not candidate_has_error_message:
+        return False
+
+    current_is_generic = current_failure.failure_kind == "stage_execution_failed"
+    candidate_is_generic = candidate_failure.failure_kind == "stage_execution_failed"
+
+    if current_is_generic and not candidate_is_generic:
+        return True
+    if candidate_is_generic and not current_is_generic:
+        return False
+
+    return False
+
+
+def select_staged_failure_details(
+    response: StagedCalibrationResponse,
+) -> tuple[Optional[CalibrationFailureDetails], Optional[CalibrationStage]]:
+    selected_failure = response.failure
+    failed_stage = (
+        selected_failure.stage
+        if selected_failure is not None and selected_failure.stage is not None
+        else None
+    )
+
+    for stage_report in reversed(response.stage_reports):
+        if stage_report.failure is None:
+            continue
+
+        if prefer_calibration_failure_details(selected_failure, stage_report.failure):
+            selected_failure = stage_report.failure
+
+        if failed_stage is None:
+            failed_stage = stage_report.stage
+
+    return selected_failure, failed_stage
+
+
+def build_staged_failure_context(
+    response: StagedCalibrationResponse,
+) -> dict[str, str]:
+    failure_context: dict[str, str] = {
+        "run_id": response.run_id,
+        "staged_status": response.status.value,
+    }
+    selected_failure, failed_stage = select_staged_failure_details(response)
+    if selected_failure is None:
+        return failure_context
+
+    failure_context["failure_kind"] = selected_failure.failure_kind
+
+    if failed_stage is not None:
+        failure_context["failed_stage"] = failed_stage.value
+    if selected_failure.error_message is not None:
+        failure_context["failure_error_message"] = selected_failure.error_message
+    if selected_failure.checkpoint_reference is not None:
+        failure_context["checkpoint_reference"] = selected_failure.checkpoint_reference
+    if selected_failure.artifact_reference is not None:
+        failure_context["artifact_reference"] = selected_failure.artifact_reference
+
+    return failure_context
+
+
+def format_calibration_failure_summary(
+    failure: Optional[CalibrationFailureDetails],
+    *,
+    failed_stage: Optional[CalibrationStage] = None,
+) -> str:
+    if failure is None:
+        return "Calibration failed"
+
+    stage_label = failed_stage.value if failed_stage is not None else None
+    failure_kind = failure.failure_kind
+    error_message = failure.error_message
+
+    if stage_label is not None and error_message is not None:
+        return f"Calibration failed at {stage_label} with {failure_kind}: {error_message}"
+    if stage_label is not None:
+        return f"Calibration failed at {stage_label} with {failure_kind}"
+    if error_message is not None:
+        return f"Calibration failed with {failure_kind}: {error_message}"
+
+    return f"Calibration failed with {failure_kind}"
+
+
+def format_staged_failure_summary(response: StagedCalibrationResponse) -> str:
+    selected_failure, failed_stage = select_staged_failure_details(response)
+    return format_calibration_failure_summary(
+        selected_failure,
+        failed_stage=failed_stage,
+    )
+
+
 def serialize_staged_calibration_response(response: StagedCalibrationResponse) -> str:
     return serialize_deterministic_json(response)
 
@@ -297,7 +401,12 @@ __all__ = [
     'CalibrationFailureDetails',
     'CalibrationStageReport',
     'StagedCalibrationResponse',
+    'build_staged_failure_context',
     'deserialize_staged_calibration_response',
+    'format_calibration_failure_summary',
+    'format_staged_failure_summary',
+    'prefer_calibration_failure_details',
+    'select_staged_failure_details',
     'serialize_staged_calibration_response',
     'validate_staged_calibration_response',
 ]

@@ -1,11 +1,13 @@
 from datetime import UTC
 from time import perf_counter
-from typing import Any
+from collections.abc import Callable
+from typing import Any, Optional
 
 from .contracts import (
     SEEDED_TICK_SIMULATION_NATIVE_CHUNK_RECORD_COUNT,
     SeededTickSimulationRequest,
 )
+from ..progress import SimulationProgressEvent, simulation_progress_event_from_mapping
 from .response import SeededTickSimulationResponse
 from ..shared import SeededTickSimulationValidationError
 from ..shared.errors import (
@@ -18,8 +20,12 @@ from ..shared.errors import (
 )
 from ...contracts import require_datetime_utc
 from ..._native_api import native_exception_matches, native_module
+
+
 def run_seeded_tick_event_simulation(
     request: SeededTickSimulationRequest,
+    *,
+    progress_callback: Optional[Callable[[SimulationProgressEvent], None]] = None,
 ) -> SeededTickSimulationResponse:
     if not isinstance(request, SeededTickSimulationRequest):
         raise _simulation_error("request", "must be a SeededTickSimulationRequest")
@@ -58,6 +64,21 @@ def run_seeded_tick_event_simulation(
 
     try:
         native_run_started = perf_counter()
+        def native_progress_callback(raw_event: dict[str, Any]) -> None:
+            if progress_callback is None:
+                return
+
+            progress_callback(simulation_progress_event_from_mapping(raw_event))
+
+        native_run_kwargs: dict[str, Any] = {
+            "debug_trace_enabled": normalized_request.debug_trace_enabled,
+            "sample_every_nth_transition": normalized_request.sample_every_nth_transition,
+            "max_records_per_chunk": normalized_request.max_records_per_chunk,
+            "state_snapshot_capture": normalized_request.state_snapshot_capture.value,
+        }
+        if progress_callback is not None:
+            native_run_kwargs["event_callback"] = native_progress_callback
+
         native_result: Any = native.run_seeded_tick_event_simulation(
             normalized_request.seed,
             normalized_request.start_time_utc.astimezone(UTC).isoformat(),
@@ -70,10 +91,7 @@ def run_seeded_tick_event_simulation(
             normalized_request.mean_reversion_fitted_parameters.to_payload(),
             normalized_request.mean_reversion_runtime_interval_anchors.to_payload(),
             normalized_request.initial_mean_reversion_boundary_state.to_payload(),
-            debug_trace_enabled=normalized_request.debug_trace_enabled,
-            sample_every_nth_transition=normalized_request.sample_every_nth_transition,
-            max_records_per_chunk=normalized_request.max_records_per_chunk,
-            state_snapshot_capture=normalized_request.state_snapshot_capture.value,
+            **native_run_kwargs,
         )
         native_runtime_seconds = perf_counter() - native_run_started
     except Exception as e:

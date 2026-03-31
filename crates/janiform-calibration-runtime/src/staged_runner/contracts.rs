@@ -290,6 +290,8 @@ pub enum CalibrationStagedRunFailure {
     },
     StageExecutionFailed {
         stage: CalibrationStage,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error_message: Option<String>,
     },
 }
 

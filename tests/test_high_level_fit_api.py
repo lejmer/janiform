@@ -972,12 +972,12 @@ def test_high_level_model_simulate_dispatches_by_interval_mode(
     monkeypatch.setattr(
         fit_model_module,
         "run_coarse_simulation",
-        lambda request: captured_calls.append(("coarse", request)) or coarse_result,
+        lambda request, **kwargs: captured_calls.append(("coarse", request)) or coarse_result,
     )
     monkeypatch.setattr(
         fit_model_module,
         "run_seeded_tick_event_simulation",
-        lambda request: captured_calls.append(("ticks", request)) or tick_result,
+        lambda request, **kwargs: captured_calls.append(("ticks", request)) or tick_result,
     )
     monkeypatch.setattr(
         fit_model_module,
@@ -1019,6 +1019,101 @@ def test_high_level_model_simulate_dispatches_by_interval_mode(
     ]
 
 
+def test_high_level_model_simulate_forwards_progress_events_to_callback_and_renderer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _build_full_workflow_model(
+        tmp_path,
+        monkeypatch,
+        run_id="high-level-model-progress",
+    )
+
+    prepared_inputs = fit_model_module._PreparedModelSimulationInputs(
+        coarse_request=None,
+        seeded_request=object(),
+    )
+    simulated_result = object()
+    observed_progress_updates: list[tuple[str | None, int | None, int | None]] = []
+    observed_callback_events: list[tuple[str, int, int]] = []
+
+    class _CapturingProgress:
+        def __enter__(self) -> Self:
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback) -> None:
+            _ = exc_type
+            _ = exc_value
+            _ = traceback
+            return None
+
+        def update(
+            self,
+            *,
+            detail: str | None = None,
+            completed_units: int | None = None,
+            total_units: int | None = None,
+        ) -> None:
+            observed_progress_updates.append((detail, completed_units, total_units))
+
+    monkeypatch.setattr(
+        fit_model_module,
+        "_prepare_model_simulation_inputs",
+        lambda *args, **kwargs: prepared_inputs,
+    )
+    monkeypatch.setattr(
+        fit_model_module.JaniformOutputController,
+        "progress",
+        lambda self, label, total_steps=None: _CapturingProgress(),
+    )
+
+    def fake_seeded_runtime(
+        request: Any,
+        *,
+        progress_callback: Any = None,
+    ) -> Any:
+        del request
+        assert progress_callback is not None
+        progress_callback(
+            fit_model_module.SimulationProgressEvent(
+                phase="seeded_tick_intervals",
+                completed_units=2,
+                total_units=5,
+            )
+        )
+        return simulated_result
+
+    monkeypatch.setattr(
+        fit_model_module,
+        "run_seeded_tick_event_simulation",
+        fake_seeded_runtime,
+    )
+    monkeypatch.setattr(
+        fit_model_module,
+        "_build_high_level_simulation_result",
+        lambda **kwargs: JaniformSimulationResult(
+            simulation_kind="seeded_tick",
+            metadata={},
+            provenance={},
+            diagnostics={},
+            raw_result=kwargs["simulation_result"],
+        ),
+    )
+
+    result = model.simulate(
+        seed=17,
+        start_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
+        horizon_interval_count=5,
+        progress_callback=lambda event: observed_callback_events.append(
+            (event.detail, event.completed_units, event.total_units)
+        ),
+    )
+
+    assert result.raw_result is simulated_result
+    assert observed_progress_updates == [("seeded tick path generation", 2, 5)]
+    assert observed_callback_events == [("seeded tick path generation", 2, 5)]
+
+
 def test_high_level_model_coarse_simulation_skips_seeded_contract_preparation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1030,8 +1125,9 @@ def test_high_level_model_coarse_simulation_skips_seeded_contract_preparation(
     )
     coarse_result = object()
 
-    def _unexpected_seeded_runtime(request: Any) -> NoReturn:
+    def _unexpected_seeded_runtime(request: Any, **kwargs: Any) -> NoReturn:
         del request
+        del kwargs
         raise AssertionError("coarse simulation should not dispatch the seeded runtime")
 
     monkeypatch.setattr(
@@ -1053,7 +1149,7 @@ def test_high_level_model_coarse_simulation_skips_seeded_contract_preparation(
     monkeypatch.setattr(
         fit_model_module,
         "run_coarse_simulation",
-        lambda request: coarse_result,
+        lambda request, **kwargs: coarse_result,
     )
     monkeypatch.setattr(
         fit_model_module,
@@ -1132,12 +1228,22 @@ def test_high_level_model_simulation_materializes_mean_reversion_runtime_inputs(
     monkeypatch.setattr(
         fit_model_module,
         "run_seeded_tick_event_simulation",
-        lambda request: _capture_request(captured_requests, "seeded", request, seeded_result),
+        lambda request, **kwargs: _capture_request(
+            captured_requests,
+            "seeded",
+            request,
+            seeded_result,
+        ),
     )
     monkeypatch.setattr(
         fit_model_module,
         "run_coarse_simulation",
-        lambda request: _capture_request(captured_requests, "coarse", request, coarse_result),
+        lambda request, **kwargs: _capture_request(
+            captured_requests,
+            "coarse",
+            request,
+            coarse_result,
+        ),
     )
     monkeypatch.setattr(
         fit_model_module,
@@ -1284,12 +1390,22 @@ def test_high_level_model_materializes_endogenous_mean_reversion_runtime_inputs_
     monkeypatch.setattr(
         fit_model_module,
         "run_seeded_tick_event_simulation",
-        lambda request: _capture_request(captured_requests, "seeded", request, seeded_result),
+        lambda request, **kwargs: _capture_request(
+            captured_requests,
+            "seeded",
+            request,
+            seeded_result,
+        ),
     )
     monkeypatch.setattr(
         fit_model_module,
         "run_coarse_simulation",
-        lambda request: _capture_request(captured_requests, "coarse", request, coarse_result),
+        lambda request, **kwargs: _capture_request(
+            captured_requests,
+            "coarse",
+            request,
+            coarse_result,
+        ),
     )
     monkeypatch.setattr(
         fit_model_module,

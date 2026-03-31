@@ -573,14 +573,33 @@ def render_stylized_facts_horizon_comparison_human_output(
 
 
 def render_calibration_staged_human_output(response_payload: dict[str, Any]) -> str:
-    return (
-        "fit staged completed: "
+    status = cast(str, response_payload["status"])
+    failure = cast(Optional[dict[str, Any]], response_payload.get("failure"))
+    prefix = "fit staged completed" if status == "success" else "fit staged failed"
+    line = (
+        f"{prefix}: "
         f"run_id={response_payload['run_id']} "
         f"execution_mode={response_payload['execution_mode']} "
-        f"status={response_payload['status']} "
+        f"status={status} "
         f"stage_report_count={len(cast(list[dict[str, Any]], response_payload['stage_reports']))} "
-        f"checkpoint_count={len(cast(list[dict[str, Any]], response_payload['emitted_checkpoints']))}\n"
+        f"checkpoint_count={len(cast(list[dict[str, Any]], response_payload['emitted_checkpoints']))}"
     )
+
+    if failure is None:
+        return line + "\n"
+
+    failure_kind = cast(Optional[str], failure.get("failure_kind"))
+    failed_stage = cast(Optional[str], failure.get("stage"))
+    error_message = cast(Optional[str], failure.get("error_message"))
+
+    if failed_stage is not None:
+        line += f" failed_stage={failed_stage}"
+    if failure_kind is not None:
+        line += f" failure_kind={failure_kind}"
+    if error_message is not None:
+        line += f" error_message={error_message}"
+
+    return line + "\n"
 
 
 def write_deterministic_regression_human_output(report: dict[str, Any]) -> None:

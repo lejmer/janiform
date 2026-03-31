@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import Future, ProcessPoolExecutor
 from collections.abc import Callable
 from dataclasses import dataclass
 import multiprocessing
@@ -13,6 +13,7 @@ from PyQt6.QtCore import QObject, pyqtSignal
 from matplotlib.figure import Figure
 
 from .artifacts import WorkbenchArtifacts, load_workbench_artifacts
+from .fit_context import WorkbenchComparisonBuildProgress, build_observed_simulation_comparison
 from .plot_manifest import workbench_plot_manifest
 from .process_pool import await_future_result, terminate_process_pool
 from .rendering import render_plot_png_bytes
@@ -46,6 +47,12 @@ _BUILD_SUMMARY_TASK = WorkbenchTaskDefinition(
     detail="Preparing summary and inspection tabs.",
 )
 
+_BUILD_COMPARISON_TASK = WorkbenchTaskDefinition(
+    task_id="build_comparison",
+    title="Build comparison cache",
+    detail="Simulating the full observed range and caching comparison data for all plot tabs.",
+)
+
 _PLOT_DEFINITIONS: tuple[WorkbenchPlotDefinition, ...] = tuple(
     WorkbenchPlotDefinition(
         task_id=manifest_entry.task_id,
@@ -62,6 +69,7 @@ def workbench_startup_tasks() -> tuple[WorkbenchTaskDefinition, ...]:
     return (
         _LOAD_ARTIFACTS_TASK,
         _BUILD_SUMMARY_TASK,
+        _BUILD_COMPARISON_TASK,
         *(
             WorkbenchTaskDefinition(
                 task_id=plot_definition.task_id,
@@ -84,6 +92,7 @@ def _load_artifacts_in_subprocess(input_path: Path) -> WorkbenchArtifacts:
 class WorkbenchLoadWorker(QObject):
     activity_changed = pyqtSignal(str, str)
     task_state_changed = pyqtSignal(str, str, int, int)
+    task_progress_changed = pyqtSignal(str, int, int, str)
     artifacts_ready = pyqtSignal(object)
     plot_ready = pyqtSignal(str, object)
     error_raised = pyqtSignal(str)
@@ -157,7 +166,50 @@ class WorkbenchLoadWorker(QObject):
                 total_task_count,
             )
 
-            completed_task_count = 2
+            self._emit_activity(
+                task_title=_BUILD_COMPARISON_TASK.title,
+                detail=_BUILD_COMPARISON_TASK.detail,
+            )
+
+            self.task_state_changed.emit(
+                _BUILD_COMPARISON_TASK.task_id,
+                "running",
+                2,
+                total_task_count,
+            )
+
+            def emit_comparison_progress(progress: WorkbenchComparisonBuildProgress) -> None:
+                self._emit_activity(
+                    task_title=_BUILD_COMPARISON_TASK.title,
+                    detail=(
+                        f"{progress.detail} "
+                        f"({progress.completed_units}/{progress.total_units})"
+                    ),
+                )
+                self.task_progress_changed.emit(
+                    _BUILD_COMPARISON_TASK.title,
+                    progress.completed_units,
+                    progress.total_units,
+                    progress.detail,
+                )
+
+            comparison = build_observed_simulation_comparison(
+                artifacts,
+                progress_callback=emit_comparison_progress,
+            )
+            if self._cancel_requested.is_set():
+                return
+
+            _ = comparison
+
+            self.task_state_changed.emit(
+                _BUILD_COMPARISON_TASK.task_id,
+                "completed",
+                3,
+                total_task_count,
+            )
+
+            completed_task_count = 3
             for plot_definition in _PLOT_DEFINITIONS:
                 if self._cancel_requested.is_set():
                     return

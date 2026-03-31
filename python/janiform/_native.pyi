@@ -997,6 +997,7 @@ def run_coarse_simulation(
     interval_delta: float,
     model_inputs: Any,
     hourly_factor_contract: HourlyFactorContractResult,
+    event_callback: Optional[object] = None,
 ) -> Any: ...
 
 
@@ -1046,4 +1047,5 @@ def run_seeded_tick_event_simulation(
     sample_every_nth_transition: int = 1,
     max_records_per_chunk: int = 1024,
     state_snapshot_capture: str = "disabled",
+    event_callback: Optional[object] = None,
 ) -> SeededTickSimulationNativeResult: ...

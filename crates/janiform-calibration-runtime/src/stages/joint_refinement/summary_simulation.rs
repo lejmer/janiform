@@ -1,7 +1,7 @@
 use std::io::{Read, Write};
 use std::mem::size_of;
 
-use chrono::{DateTime, Duration, Timelike, Utc};
+use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::adapters::load_hourly_factor_contract_for_calibration;
@@ -336,16 +336,20 @@ impl SeededTickSimulationTransitionConsumer for JointRefinementSummaryCollector 
         _estimated_transition_capacity: usize,
         estimated_event_capacity: usize,
     ) -> Result<(), janiform_engine_simulation::SeededTickSimulationRunError> {
-        self.retained_trade_returns = Vec::new();
-        self.retained_trade_returns
-            .try_reserve(estimated_event_capacity)
-            .map_err(|source| {
-                janiform_engine_simulation::SeededTickSimulationRunError::BufferAllocationFailed {
-                    buffer_name: "joint_refinement.retained_trade_returns",
-                    requested_capacity: estimated_event_capacity,
-                    detail: source.to_string(),
-                }
-            })?;
+        self.retained_trade_returns.clear();
+        let additional_capacity =
+            estimated_event_capacity.saturating_sub(self.retained_trade_returns.capacity());
+        if additional_capacity > 0 {
+            self.retained_trade_returns
+                .try_reserve(additional_capacity)
+                .map_err(|source| {
+                    janiform_engine_simulation::SeededTickSimulationRunError::BufferAllocationFailed {
+                        buffer_name: "joint_refinement.retained_trade_returns",
+                        requested_capacity: estimated_event_capacity,
+                        detail: source.to_string(),
+                    }
+                })?;
+        }
         Ok(())
     }
 
@@ -386,19 +390,23 @@ impl SeededTickSimulationTransitionConsumer for JointRefinementSummaryCollector 
         );
 
         if tick_increment > 0 {
-            self.retained_trade_returns
-                .try_reserve(1)
-                .map_err(|source| janiform_engine_simulation::SeededTickSimulationRunError::BufferAllocationFailed {
-                    buffer_name: "joint_refinement.retained_trade_returns",
-                    requested_capacity: 1,
-                    detail: source.to_string(),
-                })?;
+            if self.retained_trade_returns.len() == self.retained_trade_returns.capacity() {
+                self.retained_trade_returns
+                    .try_reserve(1)
+                    .map_err(|source| janiform_engine_simulation::SeededTickSimulationRunError::BufferAllocationFailed {
+                        buffer_name: "joint_refinement.retained_trade_returns",
+                        requested_capacity: self.retained_trade_returns.len().saturating_add(1),
+                        detail: source.to_string(),
+                    })?;
+            }
 
             self.retained_trade_returns
                 .push(record.return_components.total_return);
 
-            let hour_index =
-                DateTime::<Utc>::from_timestamp_nanos(record.timestamp_utc_nanos).hour() as usize;
+            let hour_index = record
+                .timestamp_utc_nanos
+                .div_euclid(ONE_HOUR_NANOS)
+                .rem_euclid(24) as usize;
 
             self.trade_absolute_return_sum_by_hour[hour_index] +=
                 record.return_components.total_return.abs();

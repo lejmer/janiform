@@ -1,4 +1,5 @@
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
+from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import Optional
 
@@ -10,6 +11,7 @@ from ..command_runtime import (
     command_config_option,
     invoke_command_handler,
     output_option,
+    progress_option,
     required_json_path_option,
 )
 from ..context import CliCommandContext
@@ -20,6 +22,7 @@ from .._constants import (
     CLI_SIMULATION_SEEDED_TICKS_ENTRYPOINT,
     CLI_SIMULATION_SEEDED_TICKS_INTERNAL_ERROR_ID,
     CLI_SIMULATION_SEEDED_TICKS_VALIDATION_ERROR_ID,
+    CliProgressMode,
     CliExitCode,
     CliOutputMode,
 )
@@ -32,22 +35,69 @@ from .._rendering import (
     write_command_output,
 )
 from ...errors import JaniformError
+from ..._workflow_progress import JaniformOutputController, NullProgress, WorkflowProgressMode
 from ...simulation import (
     CoarseSimulationRunRequest,
     SeededTickSimulationRequest,
+    SimulationProgressEvent,
     run_coarse_simulation,
     run_seeded_tick_event_simulation,
 )
+
+
+def _build_simulation_output_controller(
+    *,
+    output: str,
+    progress: str,
+) -> JaniformOutputController:
+    resolved_progress_mode = WorkflowProgressMode(progress)
+    if resolved_progress_mode is WorkflowProgressMode.AUTO:
+        resolved_progress_mode = (
+            WorkflowProgressMode.HUMAN
+            if output == CliOutputMode.HUMAN.value
+            else WorkflowProgressMode.NONE
+        )
+
+    return JaniformOutputController(
+        suppress_info_output=output == CliOutputMode.JSON.value,
+        progress_mode=resolved_progress_mode,
+        default_progress_mode=resolved_progress_mode,
+    )
+
+
+def _simulation_progress_callback(
+    progress_controller: JaniformOutputController,
+) -> tuple[
+    Optional[Callable[[SimulationProgressEvent], None]],
+    AbstractContextManager[None],
+]:
+    progress = progress_controller.progress("simulate")
+    if isinstance(progress, NullProgress):
+        return None, progress
+
+    def callback(event: SimulationProgressEvent) -> None:
+        progress.update(
+            detail=event.detail,
+            completed_units=event.completed_units,
+            total_units=event.total_units,
+        )
+
+    return callback, progress
 
 
 def _run_simulation_coarse_interval_command(
     *,
     cli_context: CliCommandContext,
     output: str,
+    progress: str,
     request_json: Path,
     **_,
 ) -> int:
     try:
+        output_controller = _build_simulation_output_controller(output=output, progress=progress)
+
+        progress_callback, progress_scope = _simulation_progress_callback(output_controller)
+
         request_document = load_json_document_for_cli_field(
             repository_root=cli_context.repository_root,
             path=request_json,
@@ -56,8 +106,17 @@ def _run_simulation_coarse_interval_command(
             error_id=CLI_SIMULATION_COARSE_INTERVAL_VALIDATION_ERROR_ID,
             entrypoint=CLI_SIMULATION_COARSE_INTERVAL_ENTRYPOINT,
         )
+
         request = CoarseSimulationRunRequest.from_mapping(request_document)
-        response = run_coarse_simulation(request)
+
+        with progress_scope:
+            if progress_callback is None:
+                response = run_coarse_simulation(request)
+            else:
+                response = run_coarse_simulation(
+                    request,
+                    progress_callback=progress_callback,
+                )
     except JaniformError as e:
         return write_cli_error(e)
     except Exception as e:
@@ -87,11 +146,16 @@ def _run_simulation_seeded_ticks_command(
     *,
     cli_context: CliCommandContext,
     output: str,
+    progress: str,
     request_json: Path,
     calendar_registry_json: Path,
     **_,
 ) -> int:
     try:
+        output_controller = _build_simulation_output_controller(output=output, progress=progress)
+
+        progress_callback, progress_scope = _simulation_progress_callback(output_controller)
+
         request_document = load_json_document_for_cli_field(
             repository_root=cli_context.repository_root,
             path=request_json,
@@ -100,6 +164,7 @@ def _run_simulation_seeded_ticks_command(
             error_id=CLI_SIMULATION_SEEDED_TICKS_VALIDATION_ERROR_ID,
             entrypoint=CLI_SIMULATION_SEEDED_TICKS_ENTRYPOINT,
         )
+
         calendar_registry_document = load_json_document_for_cli_field(
             repository_root=cli_context.repository_root,
             path=calendar_registry_json,
@@ -108,13 +173,24 @@ def _run_simulation_seeded_ticks_command(
             error_id=CLI_SIMULATION_SEEDED_TICKS_VALIDATION_ERROR_ID,
             entrypoint=CLI_SIMULATION_SEEDED_TICKS_ENTRYPOINT,
         )
+
         request = SeededTickSimulationRequest.from_mapping(request_document)
+
         calendar_registry = build_calendar_registry_from_document(calendar_registry_document)
+
         request_with_runtime_contract = attach_runtime_hourly_factor_contract(
             request=request,
             calendar_registry=calendar_registry,
         )
-        response = run_seeded_tick_event_simulation(request_with_runtime_contract)
+
+        with progress_scope:
+            if progress_callback is None:
+                response = run_seeded_tick_event_simulation(request_with_runtime_contract)
+            else:
+                response = run_seeded_tick_event_simulation(
+                    request_with_runtime_contract,
+                    progress_callback=progress_callback,
+                )
     except JaniformError as e:
         return write_cli_error(e)
     except Exception as e:
@@ -156,6 +232,7 @@ def _build_simulation_coarse_interval_command(
         params=[
             command_config_option(),
             output_option(default_output_mode=CliOutputMode.JSON),
+            progress_option(default_progress_mode=CliProgressMode.AUTO),
             required_json_path_option(
                 "--request-json",
                 contract_label="a coarse-interval simulation request JSON object",
@@ -194,6 +271,7 @@ def _build_simulation_seeded_ticks_command(
         params=[
             command_config_option(),
             output_option(default_output_mode=CliOutputMode.JSON),
+            progress_option(default_progress_mode=CliProgressMode.AUTO),
             required_json_path_option(
                 "--request-json",
                 contract_label="a seeded-tick simulation request JSON object",

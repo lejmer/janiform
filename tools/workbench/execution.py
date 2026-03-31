@@ -27,12 +27,12 @@ from janiform.calibration.market_data.contracts import (
     CalibrationTickDataColumnMapping,
 )
 from janiform.calibration.staged.contracts import CalibrationStageExecutionStatus
+from janiform.calibration.staged.results import format_staged_failure_summary
 from janiform.calibration.staged.runtime import (
     _run_native_staged_calibration_with_prepared_handle_and_events,
 )
 from janiform._workflow_outputs import write_fit_artifacts
 from janiform.calendar import CalendarRegistry
-from janiform.contracts import MeanReversionAnchorModelKind
 
 from .artifacts import load_workbench_artifacts
 from .events import WorkbenchEventType, build_workbench_event
@@ -104,6 +104,7 @@ class WorkbenchExecutionWorker(QObject):
         try:
             session_argument: Optional[str | Path] = None
             exchange_code: Optional[str] = None
+
             match self._run_setup.session_source.mode:
                 case "preset":
                     session_argument = (
@@ -226,14 +227,9 @@ class WorkbenchExecutionWorker(QObject):
             )
 
             if staged_response.status != CalibrationStageExecutionStatus.SUCCESS:
-                failure_kind = (
-                    staged_response.failure.failure_kind
-                    if staged_response.failure is not None
-                    else "fit_failed"
-                )
-
                 raise RuntimeError(
-                    f"Janiform fit failed for run_id `{prepared_workflow.run_id}` with failure_kind `{failure_kind}`"
+                    f"Janiform fit failed for run_id `{prepared_workflow.run_id}`: "
+                    f"{format_staged_failure_summary(staged_response)}"
                 )
 
             model = JaniformModel(
@@ -585,7 +581,20 @@ def _detail_for_stage_completed_event(
 
 def _detail_for_failed_native_run(failure_payload: Any) -> str:
     if isinstance(failure_payload, dict):
+        failed_stage = _coerce_optional_string(failure_payload.get("stage"))
         failure_kind = _coerce_optional_string(failure_payload.get("failure_kind"))
+        error_message = _coerce_optional_string(failure_payload.get("error_message"))
+
+        if failed_stage is not None and error_message is not None and failure_kind is not None:
+            return f"Calibration failed at {failed_stage} with {failure_kind}: {error_message}"
+        if failed_stage is not None and error_message is not None:
+            return f"Calibration failed at {failed_stage}: {error_message}"
+        if error_message is not None and failure_kind is not None:
+            return f"Calibration failed with {failure_kind}: {error_message}"
+        if failed_stage is not None and failure_kind is not None:
+            return f"Calibration failed at {failed_stage} with {failure_kind}"
+        if error_message is not None:
+            return f"Calibration failed: {error_message}"
         if failure_kind is not None:
             return f"Calibration failed with {failure_kind}"
 

@@ -26,6 +26,7 @@ use janiform_model_kernels::news::{
 use janiform_model_kernels::return_decomposition::{ReturnDecomposition, ReturnDecompositionInput};
 
 use super::coarse::{CoarseSimulationPath, CoarseSimulationPathError, CoarseSimulationPathRecord};
+use super::progress::{SimulationProgressEvent, SimulationProgressPhase, emit_progress_event};
 use super::runtime::{
     build_timestamped_news_event_input, derive_known_news_interval_slice_bounds,
     sample_count_from_expectation, sample_interval_timestamp_utc_nanos,
@@ -44,10 +45,48 @@ pub fn run_coarse_simulation(
     run_coarse_simulation_with_randomness_factory(run_request, &randomness_factory)
 }
 
+pub fn run_coarse_simulation_with_observer(
+    run_request: CoarseSimulationRunRequest,
+    observer: &mut dyn FnMut(SimulationProgressEvent),
+) -> Result<CoarseSimulationPath, CoarseSimulationRunError> {
+    let randomness_factory = SplitMix64SimulationRandomnessFactory;
+    run_coarse_simulation_with_randomness_factory_and_observer(
+        run_request,
+        &randomness_factory,
+        observer,
+    )
+}
+
 /// Run deterministic coarse-interval simulation with an injected randomness factory.
 pub fn run_coarse_simulation_with_randomness_factory<F>(
     run_request: CoarseSimulationRunRequest,
     randomness_factory: &F,
+) -> Result<CoarseSimulationPath, CoarseSimulationRunError>
+where
+    F: SimulationRandomnessFactory,
+{
+    run_coarse_simulation_with_randomness_factory_internal(run_request, randomness_factory, None)
+}
+
+pub fn run_coarse_simulation_with_randomness_factory_and_observer<F>(
+    run_request: CoarseSimulationRunRequest,
+    randomness_factory: &F,
+    observer: &mut dyn FnMut(SimulationProgressEvent),
+) -> Result<CoarseSimulationPath, CoarseSimulationRunError>
+where
+    F: SimulationRandomnessFactory,
+{
+    run_coarse_simulation_with_randomness_factory_internal(
+        run_request,
+        randomness_factory,
+        Some(observer),
+    )
+}
+
+fn run_coarse_simulation_with_randomness_factory_internal<F>(
+    run_request: CoarseSimulationRunRequest,
+    randomness_factory: &F,
+    mut observer: Option<&mut dyn FnMut(SimulationProgressEvent)>,
 ) -> Result<CoarseSimulationPath, CoarseSimulationRunError>
 where
     F: SimulationRandomnessFactory,
@@ -92,6 +131,15 @@ where
         .risk_model_inputs
         .mean_reversion_fitted_parameters
         .kappa;
+
+    emit_progress_event(
+        &mut observer,
+        SimulationProgressEvent::new(
+            SimulationProgressPhase::CoarseIntervals,
+            0,
+            run_request.horizon_interval_count,
+        ),
+    );
 
     for interval_index in 0..run_request.horizon_interval_count {
         let interval_start_utc_nanos = run_request
@@ -307,6 +355,15 @@ where
             interval_index,
             interval_direct_jump_totals.activity_coupling_j_t_increment,
         )?;
+
+        emit_progress_event(
+            &mut observer,
+            SimulationProgressEvent::new(
+                SimulationProgressPhase::CoarseIntervals,
+                interval_index + 1,
+                run_request.horizon_interval_count,
+            ),
+        );
     }
 
     CoarseSimulationPath::try_new(

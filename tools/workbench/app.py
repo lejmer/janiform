@@ -179,6 +179,7 @@ class WorkbenchWindow(QMainWindow):
         self._activity_title_label = QLabel()
         self._activity_detail_label = QLabel()
         self._overall_progress_bar = QProgressBar()
+        self._current_task_progress_bar = QProgressBar()
         self._activity_table = QTableWidget()
         self._run_status_label = QLabel()
         self._run_stage_label = QLabel()
@@ -373,10 +374,13 @@ class WorkbenchWindow(QMainWindow):
         )
         self._overall_progress_bar.setRange(0, len(workbench_startup_tasks()))
         self._overall_progress_bar.setValue(0)
+        self._current_task_progress_bar.setRange(0, 1)
+        self._current_task_progress_bar.setValue(0)
 
         layout.addWidget(self._activity_title_label)
         layout.addWidget(self._activity_detail_label)
         layout.addWidget(self._overall_progress_bar)
+        layout.addWidget(self._current_task_progress_bar)
 
         self._activity_table.setColumnCount(3)
         self._activity_table.setHorizontalHeaderLabels(["State", "Task", "Detail"])
@@ -678,6 +682,7 @@ class WorkbenchWindow(QMainWindow):
         self._load_thread.started.connect(self._load_worker.run)
         self._load_worker.activity_changed.connect(self._on_activity_changed)
         self._load_worker.task_state_changed.connect(self._on_task_state_changed)
+        self._load_worker.task_progress_changed.connect(self._on_task_progress_changed)
         self._load_worker.artifacts_ready.connect(self._on_artifacts_ready)
         self._load_worker.plot_ready.connect(self._on_plot_ready)
         self._load_worker.error_raised.connect(self._on_load_error)
@@ -744,6 +749,7 @@ class WorkbenchWindow(QMainWindow):
         self._activity_table.resizeColumnsToContents()
 
         if state == "running":
+            self._current_task_progress_bar.setRange(0, 0)
             plot_container = self._plot_container_by_task_id.get(task_id)
             task_detail = self._activity_table.item(row_index, 2)
             if plot_container is not None and task_detail is not None:
@@ -754,6 +760,22 @@ class WorkbenchWindow(QMainWindow):
                         _build_placeholder_panel("Loading", task_detail.text()),
                     ),
                 )
+        elif state == "completed":
+            self._current_task_progress_bar.setRange(0, 1)
+            self._current_task_progress_bar.setValue(1)
+
+    def _on_task_progress_changed(
+        self,
+        task_title: str,
+        completed_units: int,
+        total_units: int,
+        detail: str,
+    ) -> None:
+        self._current_task_progress_bar.setRange(0, total_units)
+        self._current_task_progress_bar.setValue(completed_units)
+        self.statusBar().showMessage(
+            f"{task_title}: {detail} ({completed_units}/{total_units})"
+        )
 
     def _on_artifacts_ready(self, artifacts: WorkbenchArtifacts) -> None:
         self._apply_artifacts(artifacts)
@@ -1978,6 +2000,8 @@ class WorkbenchWindow(QMainWindow):
             self._activity_table.setItem(row_index, 0, QTableWidgetItem("queued"))
 
         self._overall_progress_bar.setValue(0)
+        self._current_task_progress_bar.setRange(0, 1)
+        self._current_task_progress_bar.setValue(0)
         self._activity_title_label.setText("Queued")
         self._activity_detail_label.setText("Preparing diagnostics and plots.")
 

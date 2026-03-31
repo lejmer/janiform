@@ -18,11 +18,14 @@ use janiform_calibration_artifacts::{
     persist_calibration_stage_parameter_artifact_to_run_directory,
     persist_stage_checkpoint_to_disk, resolve_calibration_stage_execution_order,
 };
+use serde::Serialize;
+use serde_json::Value;
 
 use super::checkpointing::{build_stage_checkpoint_metadata, build_stage_parameter_artifact_input};
 use super::contracts::{
     CalibrationStagedRunFailure, CalibrationStagedRunInputs, CalibrationStagedRunObserverEvent,
-    CalibrationStagedRunReport, calibration_last_success_checkpoint_reference,
+    CalibrationStagedRunReport, CalibrationStagedRunStageReport,
+    calibration_last_success_checkpoint_reference,
 };
 use super::dispatch::{expected_stage_output_artifact_reference, run_stage_for_staged_execution};
 use super::observer::emit_observer_event;
@@ -515,7 +518,10 @@ pub fn run_staged_calibration_with_checkpointing_and_observer(
         stage_reports.push(stage_report.clone());
 
         if stage_status == CalibrationStageExecutionStatus::Failure {
-            let failure = CalibrationStagedRunFailure::StageExecutionFailed { stage };
+            let failure = CalibrationStagedRunFailure::StageExecutionFailed {
+                stage,
+                error_message: stage_execution_error_message(&stage_report),
+            };
             let failure_report = build_staged_run_failure_report(
                 run_contract,
                 stage_reports,
@@ -825,6 +831,41 @@ pub fn run_staged_calibration_with_checkpointing_and_observer(
     );
 
     report
+}
+
+fn stage_execution_error_message(stage_report: &CalibrationStagedRunStageReport) -> Option<String> {
+    match stage_report {
+        CalibrationStagedRunStageReport::Seasonality(report) => {
+            serialized_failure_error_message(report.failure.as_ref())
+        }
+        CalibrationStagedRunStageReport::Hawkes(report) => {
+            serialized_failure_error_message(report.failure.as_ref())
+        }
+        CalibrationStagedRunStageReport::ReturnComponents(report) => {
+            serialized_failure_error_message(report.failure.as_ref())
+        }
+        CalibrationStagedRunStageReport::MeanReversion(report) => {
+            serialized_failure_error_message(report.failure.as_ref())
+        }
+        CalibrationStagedRunStageReport::JointRefinement(report) => {
+            serialized_failure_error_message(report.failure.as_ref())
+        }
+    }
+}
+
+fn serialized_failure_error_message<T>(failure: Option<&T>) -> Option<String>
+where
+    T: Serialize,
+{
+    let serialized_failure = serde_json::to_value(failure).ok()?;
+    let Value::Object(serialized_failure_object) = serialized_failure else {
+        return None;
+    };
+
+    serialized_failure_object
+        .get("error_message")
+        .and_then(Value::as_str)
+        .map(ToString::to_string)
 }
 
 fn validate_run_contract_for_staged_execution(

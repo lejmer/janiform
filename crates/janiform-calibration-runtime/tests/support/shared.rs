@@ -40,6 +40,17 @@ const JOINT_REFINEMENT_SUMMARY_SIMULATION_BACKEND_IN_PROCESS: &str = "in_process
 const JOINT_REFINEMENT_RESTART_POLICY_ENV: &str = "JANIFORM_JOINT_REFINEMENT_RESTART_POLICY";
 const JOINT_REFINEMENT_RESTART_POLICY_CPU_COUNT_LIMITED: &str = "cpu_count_limited";
 
+pub(crate) fn normalize_joint_refinement_runtime_profile_for_reproducibility(
+    runtime_profile: &mut JointRefinementStageRuntimeProfile,
+) {
+    runtime_profile.restart_optimization_wall_clock_millis = 0;
+    runtime_profile.coarse_consistency_wall_clock_millis = 0;
+    runtime_profile.final_seed_evaluation_wall_clock_millis = 0;
+    runtime_profile.final_assembly_wall_clock_millis = 0;
+    runtime_profile.cumulative_deterministic_evaluation_millis = 0;
+    runtime_profile.cumulative_seed_summary_simulation_millis = 0;
+}
+
 pub(crate) fn assert_joint_refinement_objective_breakdown_matches(
     actual_breakdown: &JointRefinementStageObjectiveBreakdown,
     expected_breakdown: &JointRefinementStageObjectiveBreakdown,

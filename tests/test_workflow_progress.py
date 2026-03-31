@@ -44,6 +44,50 @@ def test_spinner_progress_writes_distinct_stage_rows_and_total_summary(
     ]
 
 
+def test_spinner_progress_renders_determinate_counts_with_spinner_friendly_layout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stream = io.StringIO()
+    monotonic_values = iter((0.0, 0.0, 0.0, 761.0, 761.0, 761.0, 761.0))
+
+    class _DummyThread:
+        def __init__(self, *, target: Any, daemon: bool) -> None:
+            self._target = target
+            self._daemon = daemon
+
+        def start(self) -> None:
+            return None
+
+        def join(self, timeout: float) -> None:
+            _ = timeout
+
+    monkeypatch.setattr(workflow_progress_module, "Thread", _DummyThread)
+    monkeypatch.setattr(workflow_progress_module, "monotonic", lambda: next(monotonic_values))
+
+    with workflow_progress_module.SpinnerProgress(
+        label="simulate",
+        stream=stream,
+        enabled=True,
+    ) as progress:
+        progress.update(
+            detail="seeded tick path generation",
+            completed_units=0,
+            total_units=240,
+        )
+        progress.update(
+            detail="seeded tick path generation",
+            completed_units=89,
+            total_units=240,
+        )
+
+    rendered_lines = _render_terminal_output(stream.getvalue())
+
+    assert rendered_lines == [
+        "✓ simulate [37% 89/240] seeded tick path generation [12:41, ETA 21:31]",
+        "done simulate total [12:41]",
+    ]
+
+
 def _render_terminal_output(raw_output: str) -> list[str]:
     rendered_lines: list[str] = []
     current_line: list[str] = []

@@ -12,9 +12,11 @@ from ._constants import (
     CLI_OUTPUT_MODE_CHOICES,
     CLI_OUTPUT_MODE_HELP,
     CLI_PATH_METAVAR,
+    CLI_PROGRESS_MODE_CHOICES,
     CLI_PRESET_SCOPE_CHOICES,
     CLI_REPOSITORY_RELATIVE_PATH_POLICY,
     CLI_PRIMARY_COMMAND_IDENTIFIERS,
+    CliProgressMode,
     CliOutputMode,
 )
 from .configuration import build_click_default_map
@@ -231,6 +233,20 @@ def output_option(*, default_output_mode: CliOutputMode) -> click.Option:
         choice_options=CLI_OUTPUT_MODE_CHOICES,
         default=default_output_mode.value,
         help_text=f"{CLI_OUTPUT_MODE_HELP} Default: {default_output_mode.value}.",
+        show_default=False,
+    )
+
+
+def progress_option(*, default_progress_mode: CliProgressMode) -> click.Option:
+    return command_option(
+        "--progress",
+        choice_options=CLI_PROGRESS_MODE_CHOICES,
+        default=default_progress_mode.value,
+        help_text=(
+            "Progress rendering mode. Use human for an operator-oriented spinner and determinate "
+            "status line, jsonl for structured progress events on stderr, none to disable "
+            "progress output, or auto to follow the command output mode."
+        ),
         show_default=False,
     )
 
