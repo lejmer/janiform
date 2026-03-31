@@ -23,6 +23,7 @@ use janiform_foundations::matrix2::solve_two_by_two_linear_source_system;
 use janiform_model_kernels::hawkes::HawkesExcitationState;
 use janiform_model_kernels::mean_reversion::{
     MeanReversionBoundaryState, MeanReversionRuntimeIntervalAnchors,
+    evolve_mean_reversion_boundary_state_with_endogenous_pressure,
 };
 use janiform_model_kernels::nig::{
     NigBuySellDriverParameters, NigSharedPlusShiftConfigurationError,
@@ -953,6 +954,11 @@ fn evaluate_total_observed_log_return_characteristic_function(
         } else {
             runtime_anchors.end_anchor_values[reverse_interval_index - 1]
         };
+        let current_pressure_state = if reverse_interval_index == 0 {
+            runtime_anchors.start_pressure_state
+        } else {
+            runtime_anchors.end_pressure_states[reverse_interval_index - 1]
+        };
 
         let next_anchor_value = runtime_anchors.end_anchor_values[reverse_interval_index];
 
@@ -975,6 +981,7 @@ fn evaluate_total_observed_log_return_characteristic_function(
                 global_interval_index,
                 expected_hawkes_state_before,
                 current_anchor_value,
+                current_pressure_state,
                 *deviation,
                 interval_delta,
             )?;
@@ -1172,17 +1179,12 @@ fn build_pricing_risk_neutral_anchor_materialization(
     interval_factors: &[VanillaOptionPricingIntervalFactors],
     driver_parameters: NigBuySellDriverParameters,
 ) -> Result<RiskNeutralAnchorMaterialization, VanillaOptionPricingRunError> {
-    let mut current_anchor_value = pricing_request
-        .boundary_input
-        .observed_boundary_state
-        .anchor_value;
-    let mut current_deviation = pricing_request
-        .boundary_input
-        .observed_boundary_state
-        .deviation;
+    let mut current_boundary_state =
+        pricing_request.boundary_input.observed_boundary_state.clone();
     let mut current_hawkes_state = pricing_request.boundary_input.hawkes_boundary_state;
 
     let mut end_anchor_values = Vec::with_capacity(interval_factors.len());
+    let mut end_pressure_states = Vec::with_capacity(interval_factors.len());
     let mut interval_deltas = Vec::with_capacity(interval_factors.len());
     let mut expected_hawkes_state_path = Vec::with_capacity(interval_factors.len() + 1);
 
@@ -1193,8 +1195,9 @@ fn build_pricing_risk_neutral_anchor_materialization(
             pricing_request,
             pricing_request.boundary_input.interval_index + interval_index,
             current_hawkes_state,
-            current_anchor_value,
-            current_deviation,
+            current_boundary_state.anchor_value,
+            current_boundary_state.pressure_state,
+            current_boundary_state.deviation,
             pricing_request.interval_delta,
         )?;
 
@@ -1214,16 +1217,18 @@ fn build_pricing_risk_neutral_anchor_materialization(
             local_tilt_diagnostics.theta,
         )?;
 
-        current_anchor_value += local_expectations.core_expected_increment;
-        current_deviation *= local_boundary_input
-            .deviation_decay_factor()
-            .map_err(
-                |source| VanillaOptionPricingRunError::InvalidExecutionInput {
-                    source: VanillaOptionPricingExecutionInputError::InvalidRequest {
-                        source: VanillaOptionPricingRequestError::InvalidBoundaryInput { source },
-                    },
-                },
-            )?;
+        current_boundary_state = evolve_mean_reversion_boundary_state_with_endogenous_pressure(
+            current_boundary_state,
+            &pricing_request
+                .boundary_input
+                .mean_reversion_fitted_parameters,
+            pricing_request.interval_delta,
+            local_expectations.core_expected_increment,
+            local_expectations.core_expected_increment,
+        )
+        .map_err(|source| VanillaOptionPricingRunError::EndogenousAnchorMaterializationFailure {
+            message: source.to_string(),
+        })?;
 
         current_hawkes_state = evolve_expected_hawkes_state_under_local_measure(
             pricing_request,
@@ -1231,7 +1236,8 @@ fn build_pricing_risk_neutral_anchor_materialization(
             local_expectations,
         )?;
 
-        end_anchor_values.push(current_anchor_value);
+        end_anchor_values.push(current_boundary_state.anchor_value);
+        end_pressure_states.push(current_boundary_state.pressure_state);
         interval_deltas.push(pricing_request.interval_delta);
         expected_hawkes_state_path.push(current_hawkes_state);
     }
@@ -1242,7 +1248,12 @@ fn build_pricing_risk_neutral_anchor_materialization(
             .boundary_input
             .observed_boundary_state
             .anchor_value,
+        pricing_request
+            .boundary_input
+            .observed_boundary_state
+            .pressure_state,
         end_anchor_values,
+        end_pressure_states,
         interval_deltas,
     )
     .map_err(|source| {
@@ -1707,18 +1718,21 @@ fn build_local_boundary_input(
     interval_index: usize,
     hawkes_boundary_state: HawkesExcitationState,
     anchor_value: f64,
+    pressure_state: f64,
     deviation: f64,
     interval_delta: f64,
 ) -> Result<AnchoredVanillaOptionPricingBoundaryInput, VanillaOptionPricingRunError> {
-    let observed_boundary_state =
-        MeanReversionBoundaryState::try_new(anchor_value + deviation, anchor_value, deviation)
-            .map_err(|source| {
-                VanillaOptionPricingRunError::InvalidObservedBoundaryStateDuringRecursion {
-                    interval_index,
-                    deviation,
-                    message: source.to_string(),
-                }
-            })?;
+    let observed_boundary_state = MeanReversionBoundaryState::try_new(
+        anchor_value + deviation,
+        anchor_value,
+        pressure_state,
+        deviation,
+    )
+    .map_err(|source| VanillaOptionPricingRunError::InvalidObservedBoundaryStateDuringRecursion {
+        interval_index,
+        deviation,
+        message: source.to_string(),
+    })?;
 
     AnchoredVanillaOptionPricingBoundaryInput::try_new(
         interval_index,

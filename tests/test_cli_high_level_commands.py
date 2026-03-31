@@ -175,6 +175,8 @@ def test_fit_cli_uses_endogenous_mean_reversion_calibration(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.chdir(tmp_path)
+
     tick_data_path = _write_tick_data(
         tmp_path / "ticks.csv",
         rows=(
@@ -245,7 +247,7 @@ def test_fit_cli_uses_endogenous_mean_reversion_calibration(
     mean_reversion_stage_input = captured_stage_input["mean_reversion_stage_input"]
     assert mean_reversion_stage_input is not None
     assert mean_reversion_stage_input["requested_anchor_model_kind"] == (
-        "endogenous_core_expectation_one_interval"
+        "endogenous_core_pressure_level"
     )
     assert mean_reversion_stage_input["calibration_grid_interval_hours"] == pytest.approx(36.0)
 
@@ -991,7 +993,8 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                     "schema_version": "calibration.stage_output.mean_reversion.v1",
                     "fitted_parameters": build_zero_kappa_endogenous_mean_reversion_fitted_parameters_payload(),
                     "diagnostics": {
-                        "chosen_anchor_family": "endogenous_core_expectation_one_interval",
+                        "chosen_anchor_family": "endogenous_core_pressure_level",
+                        "selected_candidate_family": "random_walk_null",
                         "calibration_grid": {
                             "calibration_grid_kind": "synthetic_daily_close_grid.v1",
                             "calibration_grid_interval_hours": 24.0,
@@ -1000,12 +1003,48 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                             "coverage_ratio": 0.0,
                         },
                         "anchor_parameter_estimates": {
-                            "anchor_model_kind": "endogenous_core_expectation_one_interval",
+                            "anchor_model_kind": "endogenous_core_pressure_level",
+                            "reference_interval_hours": 24.0,
+                            "pressure_persistence_per_reference_interval": 0.0,
+                            "pressure_level_gain": 0.0,
                         },
-                        "phi": 1.0,
+                        "anchor_origin_level": None,
+                        "phi_reference": 1.0,
                         "kappa": 0.0,
+                        "residual_sum_of_squares": 0.0,
+                        "quasi_log_likelihood": None,
+                        "information_criterion_bic": None,
+                        "model_selection_policy": "gaussian_quasi_likelihood_bic_with_endogenous_core_pressure_level_candidate_family_profile.v1",
                         "deviation_sample_count": 0,
                         "regression_pair_count": 0,
+                        "least_squares_rank": 0,
+                        "evaluated_candidates": [
+                            {
+                                "candidate_family": "random_walk_null",
+                                "anchor_model": {
+                                    "anchor_model_kind": "endogenous_core_pressure_level",
+                                    "reference_interval_hours": 24.0,
+                                    "pressure_persistence_per_reference_interval": 0.0,
+                                    "pressure_level_gain": 0.0,
+                                },
+                                "anchor_origin_level": None,
+                                "phi_reference": 1.0,
+                                "kappa": 0.0,
+                                "residual_sum_of_squares": 0.0,
+                                "quasi_log_likelihood": None,
+                                "information_criterion_bic": None,
+                                "parameter_count": 0,
+                                "least_squares_rank": 0,
+                                "deviation_sample_count": 0,
+                                "regression_pair_count": 0,
+                                "core_expected_increments": [],
+                                "pressure_state_path": [],
+                                "boundary_anchor_values": [],
+                                "deviations": [],
+                                "residuals": [],
+                                "stage_decision_reason": "endogenous_anchor_runtime_projection_required.v1",
+                            }
+                        ],
                         "stage_decision_reason": "endogenous_anchor_runtime_projection_required.v1",
                     },
                     "return_components_input_transport": "in_memory_output",

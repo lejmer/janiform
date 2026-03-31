@@ -449,11 +449,13 @@ fn run_fixture_case(
                 y_minus_minus: fixture_case.initial_excitation_state.y_minus_minus,
             },
             mean_reversion_fitted_parameters:
-                MeanReversionFittedParameters::endogenous_core_expectation_one_interval(0.0)
+                MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
                     .expect("zero-kappa endogenous mean reversion should construct"),
             mean_reversion_runtime_interval_anchors: MeanReversionRuntimeIntervalAnchors::try_new(
                 hourly_factor_contract.metadata.interval_alignment_policy,
                 0.0,
+                0.0,
+                vec![0.0; fixture_case.horizon_interval_count],
                 vec![0.0; fixture_case.horizon_interval_count],
                 vec![
                     hourly_factor_contract.interval_duration_nanos as f64 / ONE_HOUR_NANOS as f64;
@@ -464,7 +466,7 @@ fn run_fixture_case(
                 format!("invalid disabled mean-reversion runtime anchors: {source}")
             })?,
             initial_mean_reversion_boundary_state: MeanReversionBoundaryState::try_new(
-                0.0, 0.0, 0.0,
+                0.0, 0.0, 0.0, 0.0,
             )
             .map_err(|source| {
                 format!("invalid disabled mean-reversion boundary state: {source}")

@@ -257,9 +257,14 @@ class SufficientStatisticsRiskModelInputs(ContractModel):
                 ),
             )
 
-        match self.mean_reversion_fitted_parameters.anchor_model.anchor_model_kind:
-            case MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL:
-                return
+        if (
+            self.mean_reversion_fitted_parameters.anchor_model.anchor_model_kind
+            != MeanReversionAnchorModelKind.ENDOGENOUS_CORE_PRESSURE_LEVEL
+        ):
+            raise _risk_error(
+                "model_inputs.mean_reversion_fitted_parameters.anchor_model.anchor_model_kind",
+                "must be endogenous_core_pressure_level",
+            )
 
     @staticmethod
     def from_mapping(raw_payload: dict[str, Any] | Any) -> SufficientStatisticsRiskModelInputs:
@@ -536,6 +541,7 @@ class SufficientStatisticsRiskPathRecord(ContractModel):
     observed_interval_return: float
     observed_log_price_end: float
     anchor_value_end: float
+    pressure_state_end: float
     deviation_from_anchor_end: float
 
     def __post_init__(self) -> None:
@@ -551,6 +557,7 @@ class SufficientStatisticsRiskPathRecord(ContractModel):
         MeanReversionBoundaryState(
             observed_log_price=self.observed_log_price_end,
             anchor_value=self.anchor_value_end,
+            pressure_state=self.pressure_state_end,
             deviation=self.deviation_from_anchor_end,
         )
 
@@ -624,6 +631,11 @@ class SufficientStatisticsRiskPathRecord(ContractModel):
                 raw_payload,
                 "anchor_value_end",
                 f"{field_path}.anchor_value_end",
+            ),
+            pressure_state_end=require_positive_or_negative(
+                raw_payload,
+                "pressure_state_end",
+                f"{field_path}.pressure_state_end",
             ),
             deviation_from_anchor_end=require_positive_or_negative(
                 raw_payload,

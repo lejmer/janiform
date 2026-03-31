@@ -123,6 +123,7 @@ pub struct SufficientStatisticsRiskPathRecord {
     pub observed_interval_return: f64,
     pub observed_log_price_end: f64,
     pub anchor_value_end: f64,
+    pub pressure_state_end: f64,
     pub deviation_from_anchor_end: f64,
 }
 
@@ -136,6 +137,7 @@ impl SufficientStatisticsRiskPathRecord {
         observed_interval_return: f64,
         observed_log_price_end: f64,
         anchor_value_end: f64,
+        pressure_state_end: f64,
         deviation_from_anchor_end: f64,
     ) -> Result<Self, SufficientStatisticsRiskPathRecordError> {
         let path_record = Self {
@@ -147,6 +149,7 @@ impl SufficientStatisticsRiskPathRecord {
             observed_interval_return,
             observed_log_price_end,
             anchor_value_end,
+            pressure_state_end,
             deviation_from_anchor_end,
         };
 
@@ -183,6 +186,7 @@ impl SufficientStatisticsRiskPathRecord {
         MeanReversionBoundaryState::try_new(
             self.observed_log_price_end,
             self.anchor_value_end,
+            self.pressure_state_end,
             self.deviation_from_anchor_end,
         )
         .map_err(|source| {

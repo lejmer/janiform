@@ -12,7 +12,7 @@
   "cases": [
     {
       "scenario_id": "endogenous_zero_deviation_zero_kappa",
-      "anchor_model_kind": "endogenous_core_expectation_one_interval",
+      "anchor_model_kind": "endogenous_core_pressure_level",
       "outcome_kind": "success",
       "kappa": 0.0,
       "observed_boundary_state": {
@@ -39,7 +39,7 @@
     },
     {
       "scenario_id": "endogenous_aligned_anchor_zero_deviation",
-      "anchor_model_kind": "endogenous_core_expectation_one_interval",
+      "anchor_model_kind": "endogenous_core_pressure_level",
       "outcome_kind": "success",
       "kappa": 0.35,
       "observed_boundary_state": {
@@ -66,7 +66,7 @@
     },
     {
       "scenario_id": "endogenous_flat_anchor_zero_deviation",
-      "anchor_model_kind": "endogenous_core_expectation_one_interval",
+      "anchor_model_kind": "endogenous_core_pressure_level",
       "outcome_kind": "success",
       "kappa": 0.35,
       "observed_boundary_state": {
@@ -93,7 +93,7 @@
     },
     {
       "scenario_id": "endogenous_positive_deviation_admissibility_failure",
-      "anchor_model_kind": "endogenous_core_expectation_one_interval",
+      "anchor_model_kind": "endogenous_core_pressure_level",
       "outcome_kind": "expected_failure",
       "kappa": 0.35,
       "observed_boundary_state": {

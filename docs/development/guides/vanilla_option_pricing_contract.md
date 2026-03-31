@@ -293,7 +293,7 @@ prepares the canonical `VanillaOptionPricingExecutionInput` and then calls
 High-level boundary-input rules are:
 
 - anchored pricing requires an explicit `observed_boundary_state: MeanReversionBoundaryState`
-- the high-level API and CLI never invent missing observed anchor or deviation state
+- the high-level API and CLI never invent missing observed anchor, pressure, or deviation state
 - CLI surface: `janiform price --observed-boundary-state-json PATH`
 
 The returned `VanillaOptionPricingRunResult.run_diagnostics.anchored_recursion` payload is the

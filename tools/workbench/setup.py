@@ -61,7 +61,7 @@ class WorkbenchSetupWidget(QWidget):
         self._status_label = QLabel("Select a dataset to infer calibration inputs.")
         self._inference_view = QTextEdit()
         self._preferred_mean_reversion_anchor_model_kind = (
-            MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL
+            MeanReversionAnchorModelKind.ENDOGENOUS_CORE_PRESSURE_LEVEL
         )
         self._build_ui()
 
@@ -103,8 +103,8 @@ class WorkbenchSetupWidget(QWidget):
 
         self._workflow_scope_combo.currentIndexChanged.connect(self._on_workflow_scope_changed)
         self._mean_reversion_anchor_combo.addItem(
-            "Endogenous Core Expectation",
-            MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL,
+            "Endogenous Core Pressure Level",
+            MeanReversionAnchorModelKind.ENDOGENOUS_CORE_PRESSURE_LEVEL,
         )
         self._mean_reversion_anchor_combo.currentIndexChanged.connect(
             self._on_mean_reversion_anchor_changed

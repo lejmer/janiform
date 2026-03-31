@@ -483,7 +483,10 @@ def test_calibration_run_maps_native_execution_failure_to_execution_error(
     assert captured_error.value.error_id == "calibration.execution.run_failed"
     assert captured_error.value.workflow == "calibration"
     assert captured_error.value.entrypoint == "run_staged_calibration"
-    assert captured_error.value.context == {"source_exception_type": "NativeExecutionError"}
+    assert captured_error.value.context == {
+        "source_exception_type": "NativeExecutionError",
+        "source_error_message": "native calibration failed",
+    }
 
 
 def test_calibration_run_maps_invalid_native_response_to_integration_error(
@@ -750,11 +753,12 @@ def _valid_pricing_execution_input() -> VanillaOptionPricingExecutionInput:
                 hawkes_boundary_state=_valid_excitation_state(),
                 mean_reversion_fitted_parameters=MeanReversionFittedParameters(
                     kappa=0.0,
-                    anchor_model=MeanReversionAnchorModel.endogenous_core_expectation_one_interval(),
+                    anchor_model=MeanReversionAnchorModel.zero_gain_endogenous_core_pressure_level(),
                 ),
                 observed_boundary_state=MeanReversionBoundaryState(
                     observed_log_price=0.0,
                     anchor_value=0.0,
+                    pressure_state=0.0,
                     deviation=0.0,
                 ),
             ),

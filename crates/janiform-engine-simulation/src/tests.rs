@@ -3412,16 +3412,18 @@ fn disabled_mean_reversion_runtime_inputs(
         })
         .collect::<Vec<_>>();
     (
-        MeanReversionFittedParameters::endogenous_core_expectation_one_interval(0.0)
-            .expect("zero-kappa endogenous mean reversion should construct"),
+        MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
+            .expect("zero-gain mean reversion should construct"),
         MeanReversionRuntimeIntervalAnchors::try_new(
             hourly_factor_contract.metadata.interval_alignment_policy,
             0.0,
+            0.0,
+            vec![0.0; hourly_factor_contract.interval_indices.len()],
             vec![0.0; hourly_factor_contract.interval_indices.len()],
             interval_deltas,
         )
         .expect("disabled mean-reversion runtime anchors should construct"),
-        MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0)
+        MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0, 0.0)
             .expect("disabled mean-reversion boundary state should construct"),
     )
 }
@@ -3437,9 +3439,9 @@ fn configure_mean_reversion_runtime_inputs(
         .iter()
         .all(|anchor_value| (*anchor_value - start_anchor_value).abs() <= 1.0e-12)
     {
-        MeanReversionAnchorModel::endogenous_core_expectation_one_interval()
+        MeanReversionAnchorModel::zero_gain_endogenous_core_pressure_level()
     } else {
-        MeanReversionAnchorModel::endogenous_core_expectation_one_interval()
+        MeanReversionAnchorModel::zero_gain_endogenous_core_pressure_level()
     };
 
     model_inputs.mean_reversion_fitted_parameters =
@@ -3450,7 +3452,9 @@ fn configure_mean_reversion_runtime_inputs(
         MeanReversionRuntimeIntervalAnchors::try_new(
             HOURLY_FACTOR_INTERVAL_ALIGNMENT_POLICY,
             start_anchor_value,
+            0.0,
             end_anchor_values.to_vec(),
+            vec![0.0; end_anchor_values.len()],
             model_inputs
                 .hourly_factor_contract
                 .interval_start_utc_nanos
@@ -3472,6 +3476,7 @@ fn configure_mean_reversion_runtime_inputs(
     model_inputs.initial_mean_reversion_boundary_state = MeanReversionBoundaryState::try_new(
         initial_observed_log_price,
         start_anchor_value,
+        0.0,
         initial_observed_log_price - start_anchor_value,
     )
     .expect("mean-reversion boundary state should construct");

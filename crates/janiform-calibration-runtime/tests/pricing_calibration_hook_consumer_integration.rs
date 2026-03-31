@@ -113,10 +113,10 @@ fn pricing_run_output_hooks_are_directly_consumable_by_calibration_adapter() {
                 y_minus_plus: 0.3,
                 y_minus_minus: 0.4,
             },
-            MeanReversionFittedParameters::endogenous_core_expectation_one_interval(0.0)
-                .expect("zero-kappa endogenous fitted parameters should construct"),
+            MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
+                .expect("zero-gain mean reversion parameters should construct"),
             1.0,
-            MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0)
+            MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0, 0.0)
                 .expect("zero observed boundary state should construct"),
         )
         .expect("endogenous anchored boundary input should construct"),

@@ -91,6 +91,7 @@ COARSE_SIMULATION_REQUIRED_RECORD_FIELDS: tuple[str, ...] = (
     "observed_interval_return",
     "observed_log_price_end",
     "anchor_value_end",
+    "pressure_state_end",
     "deviation_from_anchor_end",
 )
 COARSE_SIMULATION_REQUIRED_PROVENANCE_FIELDS: tuple[str, ...] = (
@@ -408,6 +409,7 @@ class CoarseSimulationPathRecord(ContractModel):
     observed_interval_return: float
     observed_log_price_end: float
     anchor_value_end: float
+    pressure_state_end: float
     deviation_from_anchor_end: float
 
     def __post_init__(self) -> None:
@@ -435,6 +437,7 @@ class CoarseSimulationPathRecord(ContractModel):
         MeanReversionBoundaryState(
             observed_log_price=self.observed_log_price_end,
             anchor_value=self.anchor_value_end,
+            pressure_state=self.pressure_state_end,
             deviation=self.deviation_from_anchor_end,
         )
 
@@ -532,6 +535,12 @@ class CoarseSimulationPathRecord(ContractModel):
                 raw_payload,
                 "anchor_value_end",
                 f"{field_path}.anchor_value_end",
+                SIMULATION_ERROR_FACTORY,
+            ),
+            pressure_state_end=require_finite_number(
+                raw_payload,
+                "pressure_state_end",
+                f"{field_path}.pressure_state_end",
                 SIMULATION_ERROR_FACTORY,
             ),
             deviation_from_anchor_end=require_finite_number(

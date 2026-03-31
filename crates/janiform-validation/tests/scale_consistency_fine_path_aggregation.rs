@@ -277,6 +277,7 @@ fn build_record(
         total_return,
         total_return,
         0.0,
+        0.0,
         total_return,
     )
     .expect("fixture record should validate")

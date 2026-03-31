@@ -6,8 +6,10 @@ This document defines the canonical endogenous-anchor version of the Janiform
 mean-reversion layer.
 
 It replaces the exogenous-anchor interpretation where the fitted model stores a
-future anchor path or requires the caller to supply one. Janiform must remain a
-self-contained generative and pricing model. The anchor therefore has to be
+future anchor path or requires the caller to supply one. It also replaces the
+older integrated endogenous-anchor law that accumulated the one-interval
+expected core return directly into the equilibrium level. Janiform must remain
+a self-contained generative and pricing model. The anchor therefore has to be
 generated from Janiform's own state under both the physical measure `P` and the
 risk-neutral measure `Q`.
 
@@ -15,14 +17,17 @@ risk-neutral measure `Q`.
 
 The anchor is not an externally supplied future curve.
 
-The canonical anchor is instead the model-generated predictable level implied by
-the current Janiform state and the relevant measure.
+The canonical anchor is instead the model-generated equilibrium level implied by
+the current Janiform state, a deterministic endogenous pressure state, and the
+relevant measure.
 
 For implementation purposes:
 
 - the fitted model persists the mean-reversion speed `kappa`
-- the fitted model persists the anchor-generation policy
-- the runtime materializes interval-aligned anchor values from the model state
+- the fitted model persists the anchor-generation policy and its deterministic
+  pressure-state parameters
+- the runtime materializes interval-aligned anchor values and pressure states
+  from the model state
 - the pricing engine materializes risk-neutral anchor values from the
   risk-neutral state recursion
 
@@ -62,6 +67,7 @@ X_h = A_h^\star + D_h^\star,
 where:
 
 - `X_h` is observed log price at the interval boundary
+- `p_h^\star` is the deterministic endogenous pressure state under measure `star`
 - `A_h^\star` is the anchor level under measure `star`
 - `D_h^\star` is deviation from anchor under measure `star`
 - `star` is either `P` or `Q`
@@ -72,12 +78,14 @@ The risk-neutral measure uses the augmented pricing state
 
 ```latex
 \[
-Z_h = (\Sigma_h, D_h^Q).
+Z_h = (\Sigma_h, p_h^Q, D_h^Q).
 \]
 ```
 
 The deviation enters the `Q` state because the local pricing tilt depends on the
-current deviation.
+current deviation. The pressure state enters because the anchor recursion now
+evolves through a deterministic filtered pressure coordinate rather than from a
+direct expected-return integrator.
 
 ## Core interval contribution
 
@@ -109,7 +117,7 @@ physical conditional law of `R_h` depends on `Sigma_h` and not on `D_h`.
 
 ### Predictable core increment
 
-Define the canonical physical anchor increment as the conditional first moment
+Define the canonical physical expected core increment as the conditional first moment
 of the Janiform core contribution:
 
 ```latex
@@ -122,7 +130,7 @@ of the Janiform core contribution:
 \]
 ```
 
-This is the anchor increment generator. It is produced by the model itself from
+This is the endogenous pressure signal. It is produced by the model itself from
 the current Janiform state.
 
 If the implementation evaluates the first moment by decomposition rather than by
@@ -148,23 +156,50 @@ This is where news effects are already baked into the anchor. News contributes:
 - directly through `M` and `G`
 - indirectly through future Hawkes activity via the `J_t` coupling
 
-### Anchor and deviation recursions under `P`
+### Pressure, anchor, and deviation recursions under `P`
 
-Define the physical anchor recursion:
+Let `Delta_ref > 0` be the persisted reference interval, let
+`psi_ref in [0, 1]` be the persisted pressure persistence per reference
+interval, let `c` be the persisted pressure-to-level gain, and define:
 
 ```latex
 \[
-A_{h+1}^P = A_h^P + \mu_h^P(\Sigma_h).
+\psi_h = \psi_{\mathrm{ref}}^{\Delta_h / \Delta_{\mathrm{ref}}}.
 \]
 ```
 
-Define the centered core innovation:
+Define the deterministic physical pressure state:
 
 ```latex
 \[
-\xi_h^P = R_h - \mu_h^P(\Sigma_h),
+p_0^P = 0,
 \qquad
-\mathbb E^P[\xi_h^P \mid \Sigma_h] = 0.
+p_{h+1}^P = \psi_h p_h^P + (1 - \psi_h)\mu_h^P(\Sigma_h).
+\]
+```
+
+Define the physical equilibrium level:
+
+```latex
+\[
+A_h^P = a_0^P + c p_h^P.
+\]
+```
+
+Equivalently, the runtime can evolve the anchor directly from the current
+boundary state:
+
+```latex
+\[
+A_{h+1}^P = A_h^P + c\big(p_{h+1}^P - p_h^P\big).
+\]
+```
+
+Let
+
+```latex
+\[
+\phi_h = e^{-\kappa \Delta_h}.
 \]
 ```
 
@@ -172,17 +207,11 @@ Then the canonical physical deviation recursion is:
 
 ```latex
 \[
-D_{h+1}^P = \phi_h D_h^P + \xi_h^P,
-\qquad
-\phi_h = e^{-\kappa \Delta_h}.
-\]
-```
-
-Equivalently:
-
-```latex
-\[
-D_{h+1}^P = e^{-\kappa \Delta_h} D_h^P + R_h - \mu_h^P(\Sigma_h).
+D_{h+1}^P
+=
+\phi_h D_h^P + R_h + A_h^P - A_{h+1}^P
+=
+e^{-\kappa \Delta_h} D_h^P + R_h - c\big(p_{h+1}^P - p_h^P\big).
 \]
 ```
 
@@ -205,8 +234,9 @@ anchor endogenous.
 
 Under `P`:
 
-- the anchor level moves by the model-implied predictable core increment
-- deviation contains the unpredictable part of the core contribution
+- the model-implied expected core increment drives a slow deterministic pressure
+  state
+- the anchor level moves only when that pressure state changes
 - `kappa` governs how aggressively observed price is pulled back toward the
   endogenous anchor
 
@@ -223,7 +253,7 @@ tilt. The risk-neutral state is therefore
 
 ```latex
 \[
-Z_h = (\Sigma_h, D_h^Q).
+Z_h = (\Sigma_h, p_h^Q, D_h^Q).
 \]
 ```
 
@@ -241,11 +271,12 @@ K_h^P\big(\theta_h(Z_h) \mid \Sigma_h\big).
 ```
 
 This is the local state-dependent Esscher transform already implied by the
-anchored pricing design, but now it also generates the anchor drift under `Q`.
+anchored pricing design, but now it also drives the deterministic pressure and
+anchor recursion under `Q`.
 
-### Risk-neutral anchor increment
+### Risk-neutral expected core increment
 
-Define the canonical risk-neutral anchor increment by the first moment of the
+Define the canonical risk-neutral expected core increment by the first moment of the
 tilted core law:
 
 ```latex
@@ -258,19 +289,17 @@ tilted core law:
 \]
 ```
 
-Then define:
+Then define the risk-neutral pressure recursion:
 
 ```latex
 \[
-A_{h+1}^Q = A_h^Q + \mu_h^Q(Z_h),
+p_{h+1}^Q = \psi_h p_h^Q + (1 - \psi_h)\mu_h^Q(Z_h).
 \]
 ```
 
 ```latex
 \[
-\xi_h^Q = R_h - \mu_h^Q(Z_h),
-\qquad
-\mathbb E^Q[\xi_h^Q \mid Z_h] = 0.
+A_{h+1}^Q = A_h^Q + c\big(p_{h+1}^Q - p_h^Q\big).
 \]
 ```
 
@@ -278,15 +307,11 @@ The risk-neutral deviation recursion is:
 
 ```latex
 \[
-D_{h+1}^Q = \phi_h D_h^Q + \xi_h^Q.
-\]
-```
-
-Equivalently:
-
-```latex
-\[
-D_{h+1}^Q = e^{-\kappa \Delta_h} D_h^Q + R_h - \mu_h^Q(Z_h).
+D_{h+1}^Q
+=
+\phi_h D_h^Q + R_h + A_h^Q - A_{h+1}^Q
+=
+e^{-\kappa \Delta_h} D_h^Q + R_h - c\big(p_{h+1}^Q - p_h^Q\big).
 \]
 ```
 
@@ -299,16 +324,13 @@ is
 \[
 \Delta X_h
 =
-\mu_h^Q(Z_h)
-+
-\big(\phi_h - 1\big) D_h^Q
-+
-\xi_h^Q.
+\big(\phi_h - 1\big) D_h^Q + R_h.
 \]
 ```
 
-Since `xi_h^Q = R_h - mu_h^Q(Z_h)`, the exponential moment of the observed
-return depends on `K_h^Q(1 | Z_h)` rather than explicitly on the anchor drift.
+The anchor increment cancels algebraically in the observed-return identity, so
+the exponential moment of the observed return depends on `K_h^Q(1 | Z_h)`
+rather than explicitly on the pressure-to-level anchor drift.
 
 The canonical local martingale equation is therefore:
 
@@ -331,11 +353,12 @@ they come from.
 
 The canonical runtime materialization rule is:
 
-1. start from a validated boundary state `(X_0, A_0, D_0, Sigma_0)`
+1. start from a validated boundary state `(X_0, A_0, p_0, D_0, Sigma_0)`
 2. compute `mu_h^star` from the current state under the relevant measure
-3. update `A_{h+1}^star = A_h^star + mu_h^star`
-4. record the resulting interval-aligned anchor values
-5. use those materialized values in seeded, coarse, export, and diagnostic
+3. update `p_{h+1}^star = psi_h p_h^star + (1 - psi_h) mu_h^star`
+4. update `A_{h+1}^star = A_h^star + c (p_{h+1}^star - p_h^star)`
+5. record the resulting interval-aligned anchor values and pressure states
+6. use those materialized values in seeded, coarse, export, and diagnostic
    artifacts as needed
 
 This means `MeanReversionRuntimeIntervalAnchors` remains a valid execution
@@ -366,15 +389,10 @@ caller-supplied future path.
 The canonical fitted mean-reversion block should therefore contain:
 
 - `kappa`
-- an anchor policy selector identifying the endogenous anchor rule
-- any additional parameters strictly required by that anchor policy
-
-The canonical physical anchor policy for the first implementation should be:
-
-- `endogenous_core_expectation_one_interval`
-
-This means the anchor increment is the one-interval conditional expected core
-increment under `P`.
+- `anchor_model_kind = endogenous_core_pressure_level`
+- `reference_interval_hours`
+- `pressure_persistence_per_reference_interval`
+- `pressure_level_gain`
 
 Later policies may be added only if they remain fully model-generated. For
 example a finite-horizon endogenous anchor based on a multi-interval forward
@@ -386,8 +404,11 @@ appear as fitted-model families at all once this rewrite lands.
 Runtime contracts may still carry:
 
 - interval-aligned start anchor
+- interval-aligned start pressure state
 - interval-aligned end anchors by interval
+- interval-aligned end pressure states by interval
 - boundary anchor value
+- boundary pressure state
 - boundary deviation
 
 Those are execution artifacts and diagnostics, not the top-level anchor model.
@@ -402,7 +423,9 @@ The pricing engine should instead:
 
 - accept the current observed boundary state
 - accept the current structural Janiform state
-- generate local `Q` anchor increments from the tilted transform
+- generate local `Q` expected core increments from the tilted transform
+- evolve pressure state and anchor value internally from that expected
+  increment sequence
 - materialize any interval-aligned `Q` anchor values internally for diagnostics
   and recursion
 
@@ -412,20 +435,18 @@ Calibration for the endogenous-anchor model should proceed in stages.
 
 1. Fit the Janiform core as before.
 2. Recover structural states `Sigma_h` on the calibration grid.
-3. Compute the physical anchor increments `mu_h^P(Sigma_h)` from the fitted core.
-4. Build the endogenous anchor path recursively.
-5. Recover the deviation path `D_h^P = X_h - A_h^P`.
-6. Fit `kappa` from the deviation recursion
-
-```latex
-\[
-D_{h+1}^P = e^{-\kappa \Delta_h} D_h^P + \xi_h^P.
-\]
-```
+3. Compute the physical expected core increments `mu_h^P(Sigma_h)` from the
+   fitted core.
+4. Build the pressure state path for candidate `psi_ref` values.
+5. Fit the nuisance anchor-origin level and pressure-to-level gain for each
+   candidate together with the deviation persistence.
+6. Select among full pressure-to-level mean reversion, pressure-to-level
+   without mean reversion, flat-anchor mean reversion, and random-walk null by
+   one shared information criterion.
 
 The calibration stage must not ask the user to provide an external anchor path
 for future use. Any boundary anchor needed at runtime must come from the fitted
-state and the model's own anchor recursion.
+state and the model's own pressure-to-level anchor recursion.
 
 ## Implementation requirements
 

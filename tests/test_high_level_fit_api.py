@@ -237,7 +237,7 @@ def test_prepare_fit_workflow_passes_explicit_mean_reversion_request_to_translat
     estimator = JaniformEstimator(
         market_profile="us_equity_cash",
         mean_reversion=CalibrationMeanReversionConfiguration(
-            anchor_model_kind=MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL,
+            anchor_model_kind=MeanReversionAnchorModelKind.ENDOGENOUS_CORE_PRESSURE_LEVEL,
             calibration_grid_interval_hours=36.0,
         ),
     )
@@ -257,7 +257,7 @@ def test_prepare_fit_workflow_passes_explicit_mean_reversion_request_to_translat
     assert request.mean_reversion is not None
     assert (
         request.mean_reversion.anchor_model_kind
-        == MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL
+        == MeanReversionAnchorModelKind.ENDOGENOUS_CORE_PRESSURE_LEVEL
     )
     assert request.mean_reversion.calibration_grid_interval_hours == pytest.approx(36.0)
 
@@ -724,7 +724,7 @@ def test_high_level_model_save_and_load_roundtrip_preserves_endogenous_mean_reve
 
     mean_reversion_payload = MeanReversionFittedParameters(
         kappa=0.25,
-        anchor_model=MeanReversionAnchorModel.endogenous_core_expectation_one_interval(),
+        anchor_model=MeanReversionAnchorModel.zero_gain_endogenous_core_pressure_level(),
     ).to_payload()
 
     model.parameters["return_components"]["fitted_parameters"][
@@ -1186,7 +1186,7 @@ def test_high_level_model_simulation_materializes_mean_reversion_runtime_inputs(
 
     mean_reversion_payload = MeanReversionFittedParameters(
         kappa=0.25,
-        anchor_model=MeanReversionAnchorModel.endogenous_core_expectation_one_interval(),
+        anchor_model=MeanReversionAnchorModel.zero_gain_endogenous_core_pressure_level(),
     ).to_payload()
 
     model.parameters["return_components"]["fitted_parameters"][
@@ -1287,18 +1287,17 @@ def test_high_level_model_simulation_materializes_mean_reversion_runtime_inputs(
     assert seeded_request.mean_reversion_fitted_parameters.to_payload() == mean_reversion_payload
     assert seeded_request.mean_reversion_runtime_interval_anchors.start_anchor_value == pytest.approx(0.0)
     assert len(seeded_end_anchor_values) == 2
-    assert seeded_end_anchor_values[0] > 0.0
-    assert seeded_end_anchor_values[1] > seeded_end_anchor_values[0]
+    assert seeded_end_anchor_values == pytest.approx((0.0, 0.0))
     assert seeded_request.initial_mean_reversion_boundary_state.observed_log_price == pytest.approx(0.0)
     assert seeded_request.initial_mean_reversion_boundary_state.anchor_value == pytest.approx(0.0)
+    assert seeded_request.initial_mean_reversion_boundary_state.pressure_state == pytest.approx(0.0)
     assert seeded_request.initial_mean_reversion_boundary_state.deviation == pytest.approx(0.0)
 
     coarse_model_inputs = coarse_request.model_inputs.risk_model_inputs
     assert coarse_model_inputs.mean_reversion_fitted_parameters.to_payload() == mean_reversion_payload
     assert coarse_model_inputs.mean_reversion_runtime_interval_anchors.start_anchor_value == pytest.approx(0.0)
     assert len(coarse_end_anchor_values) == 2
-    assert coarse_end_anchor_values[0] > 0.0
-    assert coarse_end_anchor_values[1] > coarse_end_anchor_values[0]
+    assert coarse_end_anchor_values == pytest.approx((0.0, 0.0))
     assert coarse_model_inputs.initial_mean_reversion_boundary_state.observed_log_price == pytest.approx(0.0)
     assert coarse_model_inputs.initial_mean_reversion_boundary_state.anchor_value == pytest.approx(0.0)
     assert coarse_model_inputs.initial_mean_reversion_boundary_state.deviation == pytest.approx(0.0)
@@ -1344,6 +1343,7 @@ def test_high_level_model_materializes_endogenous_mean_reversion_runtime_inputs_
         nig_shared_plus_shift_configuration: Any,
         news_process_configuration: Any,
         initial_excitation_state: Any,
+        mean_reversion_fitted_parameters: Any,
         interval_alignment_policy: str,
         start_anchor_value: float,
         s_h: Any,
@@ -1357,6 +1357,7 @@ def test_high_level_model_materializes_endogenous_mean_reversion_runtime_inputs_
                 "nig_shared_plus_shift_configuration": nig_shared_plus_shift_configuration,
                 "news_process_configuration": news_process_configuration,
                 "initial_excitation_state": initial_excitation_state,
+                "mean_reversion_fitted_parameters": mean_reversion_fitted_parameters,
                 "interval_alignment_policy": interval_alignment_policy,
                 "start_anchor_value": start_anchor_value,
                 "s_h": tuple(s_h),
@@ -1369,7 +1370,9 @@ def test_high_level_model_materializes_endogenous_mean_reversion_runtime_inputs_
         return {
             "interval_alignment_policy": interval_alignment_policy,
             "start_anchor_value": start_anchor_value,
+            "start_pressure_state": 0.0,
             "end_anchor_values": [0.1, 0.3],
+            "end_pressure_states": [0.0, 0.0],
             "interval_deltas": list(interval_deltas),
         }
 
@@ -1448,13 +1451,26 @@ def test_high_level_model_materializes_endogenous_mean_reversion_runtime_inputs_
     assert seeded_request.mean_reversion_runtime_interval_anchors.end_anchor_values == pytest.approx(
         (0.1, 0.3)
     )
+    assert seeded_request.mean_reversion_runtime_interval_anchors.start_pressure_state == pytest.approx(
+        0.0
+    )
+    assert seeded_request.mean_reversion_runtime_interval_anchors.end_pressure_states == pytest.approx(
+        (0.0, 0.0)
+    )
     assert seeded_request.initial_mean_reversion_boundary_state.observed_log_price == pytest.approx(0.0)
     assert seeded_request.initial_mean_reversion_boundary_state.anchor_value == pytest.approx(0.0)
+    assert seeded_request.initial_mean_reversion_boundary_state.pressure_state == pytest.approx(0.0)
     assert seeded_request.initial_mean_reversion_boundary_state.deviation == pytest.approx(0.0)
 
     coarse_model_inputs = coarse_request.model_inputs.risk_model_inputs
     assert coarse_model_inputs.mean_reversion_runtime_interval_anchors.end_anchor_values == pytest.approx(
         (0.1, 0.3)
+    )
+    assert coarse_model_inputs.mean_reversion_runtime_interval_anchors.end_pressure_states == pytest.approx(
+        (0.0, 0.0)
+    )
+    assert coarse_model_inputs.initial_mean_reversion_boundary_state.pressure_state == pytest.approx(
+        0.0
     )
     assert coarse_model_inputs.initial_mean_reversion_boundary_state.deviation == pytest.approx(0.0)
 
@@ -1969,6 +1985,7 @@ def test_high_level_model_price_option_passes_explicit_observed_boundary_state_t
     observed_boundary_state = MeanReversionBoundaryState(
         observed_log_price=0.4,
         anchor_value=0.25,
+        pressure_state=0.0,
         deviation=0.15,
     )
 
@@ -2014,6 +2031,7 @@ def test_high_level_model_price_option_passes_endogenous_boundary_state_to_q_pri
     observed_boundary_state = MeanReversionBoundaryState(
         observed_log_price=0.55,
         anchor_value=0.4,
+        pressure_state=0.0,
         deviation=0.15,
     )
     monkeypatch.setattr(
@@ -2062,6 +2080,7 @@ def test_high_level_model_price_option_end_to_end_supports_endogenous_anchor_mea
         observed_boundary_state=MeanReversionBoundaryState(
             observed_log_price=0.25,
             anchor_value=0.25,
+            pressure_state=0.0,
             deviation=0.0,
         ),
         include_transform_diagnostics=True,
@@ -2765,7 +2784,8 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                     "schema_version": "calibration.stage_output.mean_reversion.v1",
                     "fitted_parameters": build_zero_kappa_endogenous_mean_reversion_fitted_parameters_payload(),
                     "diagnostics": {
-                        "chosen_anchor_family": "endogenous_core_expectation_one_interval",
+                        "chosen_anchor_family": "endogenous_core_pressure_level",
+                        "selected_candidate_family": "random_walk_null",
                         "calibration_grid": {
                             "calibration_grid_kind": "synthetic_daily_close_grid.v1",
                             "calibration_grid_interval_hours": 24.0,
@@ -2774,12 +2794,48 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                             "coverage_ratio": 0.0,
                         },
                         "anchor_parameter_estimates": {
-                            "anchor_model_kind": "endogenous_core_expectation_one_interval",
+                            "anchor_model_kind": "endogenous_core_pressure_level",
+                            "reference_interval_hours": 24.0,
+                            "pressure_persistence_per_reference_interval": 0.0,
+                            "pressure_level_gain": 0.0,
                         },
-                        "phi": 1.0,
+                        "anchor_origin_level": None,
+                        "phi_reference": 1.0,
                         "kappa": 0.0,
+                        "residual_sum_of_squares": 0.0,
+                        "quasi_log_likelihood": None,
+                        "information_criterion_bic": None,
+                        "model_selection_policy": "gaussian_quasi_likelihood_bic_with_endogenous_core_pressure_level_candidate_family_profile.v1",
                         "deviation_sample_count": 0,
                         "regression_pair_count": 0,
+                        "least_squares_rank": 0,
+                        "evaluated_candidates": [
+                            {
+                                "candidate_family": "random_walk_null",
+                                "anchor_model": {
+                                    "anchor_model_kind": "endogenous_core_pressure_level",
+                                    "reference_interval_hours": 24.0,
+                                    "pressure_persistence_per_reference_interval": 0.0,
+                                    "pressure_level_gain": 0.0,
+                                },
+                                "anchor_origin_level": None,
+                                "phi_reference": 1.0,
+                                "kappa": 0.0,
+                                "residual_sum_of_squares": 0.0,
+                                "quasi_log_likelihood": None,
+                                "information_criterion_bic": None,
+                                "parameter_count": 0,
+                                "least_squares_rank": 0,
+                                "deviation_sample_count": 0,
+                                "regression_pair_count": 0,
+                                "core_expected_increments": [],
+                                "pressure_state_path": [],
+                                "boundary_anchor_values": [],
+                                "deviations": [],
+                                "residuals": [],
+                                "stage_decision_reason": "endogenous_anchor_runtime_projection_required.v1",
+                            }
+                        ],
                         "stage_decision_reason": "endogenous_anchor_runtime_projection_required.v1",
                     },
                     "return_components_input_transport": "in_memory_output",

@@ -1648,6 +1648,7 @@ def test_price_cli_maps_model_and_flags_to_runtime_contract(
         pricing_module.MeanReversionBoundaryState(
             observed_log_price=0.0,
             anchor_value=0.0,
+            pressure_state=0.0,
             deviation=0.0,
         ).to_payload(),
     )
@@ -1707,6 +1708,7 @@ def test_price_cli_maps_model_and_flags_to_runtime_contract(
     assert captured_arguments["observed_boundary_state"] == pricing_module.MeanReversionBoundaryState(
         observed_log_price=0.0,
         anchor_value=0.0,
+        pressure_state=0.0,
         deviation=0.0,
     )
 
@@ -1719,12 +1721,15 @@ def test_price_cli_passes_observed_boundary_state_json_to_high_level_model(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    monkeypatch.chdir(tmp_path)
+
     model_path = _write_saved_anchored_price_model(tmp_path)
     observed_boundary_state_path = _write_json_path(
         tmp_path / "observed_boundary_state.json",
         pricing_module.MeanReversionBoundaryState(
             observed_log_price=0.25,
             anchor_value=0.25,
+            pressure_state=0.0,
             deviation=0.0,
         ).to_payload(),
     )
@@ -1764,13 +1769,19 @@ def test_price_cli_passes_observed_boundary_state_json_to_high_level_model(
     assert captured_arguments["observed_boundary_state"] == pricing_module.MeanReversionBoundaryState(
         observed_log_price=0.25,
         anchor_value=0.25,
+        pressure_state=0.0,
         deviation=0.0,
     )
     command_output = orjson.loads(stdout_text)
     assert command_output["response"]["price"] >= 0.0
 
 
-def test_price_cli_requires_observed_boundary_state_for_anchored_models(tmp_path: Path) -> None:
+def test_price_cli_requires_observed_boundary_state_for_anchored_models(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
     model_path = _write_saved_anchored_price_model(tmp_path)
 
     exit_code, stdout_text, stderr_text = _invoke_cli(

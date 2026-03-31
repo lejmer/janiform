@@ -250,7 +250,7 @@
     }
   },
   "mean_reversion_stage_input": {
-    "requested_anchor_model_kind": "endogenous_core_expectation_one_interval",
+    "requested_anchor_model_kind": "endogenous_core_pressure_level",
     "calibration_grid_kind": "synthetic_daily_close_grid.v1",
     "calibration_grid_interval_hours": 24.0,
     "source_observation_count": 4,

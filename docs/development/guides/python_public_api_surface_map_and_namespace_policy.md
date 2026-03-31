@@ -223,13 +223,14 @@ from janiform.contracts import MeanReversionFittedParameters
 - `janiform.simulation`
   - Ownership: curated convenience surface for seeded-tick and coarse-interval simulation workflows
   - Root-size policy: keep only the common workflow entrypoints, request and response contracts, and the shared inputs needed to construct those workflows from examples or notebooks
+  - Progress policy: long-running public simulation entrypoints may expose typed progress callbacks when the progress contract is shared across seeded and coarse workflows
 - `janiform.pricing`
   - Ownership: vanilla option pricing contracts, anchored boundary-state pricing diagnostics, and runtime factor loading
-  - Anchored pricing policy: the module re-exports the canonical anchor-deviation pricing boundary input and local state-dependent tilt diagnostics alongside the shared mean-reversion contracts required to build that request surface
+  - Anchored pricing policy: the module re-exports the canonical pressure-aware pricing boundary input and local state-dependent tilt diagnostics alongside the shared mean-reversion contracts required to build that request surface
   - Execution contract policy: `VanillaOptionPricingExecutionInput` carries an interval-aligned tuple of pricing factors for the requested horizon, and optional run diagnostics may include anchored recursion state-propagation output
 - `janiform.risk`
   - Ownership: sufficient-statistics risk workflow contracts
-  - Observed-state policy: public risk path records and diagnostics distinguish core Janiform interval returns from observed log-price state, anchor state, and deviation-from-anchor summaries
+  - Observed-state policy: public risk path records and diagnostics distinguish core Janiform interval returns from observed log-price state, anchor state, pressure state, and deviation-from-anchor summaries
 - `janiform.calibration`
   - Ownership: curated convenience surface for high-level fitting, market-data calibration, staged execution, and preset-facing calibration objects
   - Root-size policy: prefer the estimator, main workflow requests and responses, and the small set
@@ -240,7 +241,7 @@ from janiform.contracts import MeanReversionFittedParameters
 - `janiform.hourly_factors`
   - Ownership: interval-aligned `s_h` and `nu_h` contract materialization shared by simulation and pricing
 - `janiform.contracts`
-  - Ownership: shared contract primitives and cross-cutting domain contracts, including anchor-deviation mean reversion
+  - Ownership: shared contract primitives and cross-cutting domain contracts, including pressure-to-level mean reversion
 - `janiform.seasonality`
   - Ownership: deterministic seasonality estimation and composition
 - `janiform.validation`
@@ -263,11 +264,11 @@ from janiform.contracts import MeanReversionFittedParameters
 
 - `janiform.simulation.coarse`
   - Ownership: coarse-interval simulation request and path contracts, news-process configuration, and coarse execution entrypoints
-  - Observed-state policy: coarse path records and diagnostics expose both core interval return totals and observed-state end-of-interval fields so downstream exports and analytics do not reconstruct prices from core returns alone
+  - Observed-state policy: coarse path records and diagnostics expose both core interval return totals and observed-state end-of-interval fields, including pressure state, so downstream exports and analytics do not reconstruct prices from core returns alone
   - Root coexistence policy: common coarse workflow symbols are also re-exported from `janiform.simulation` as curated convenience imports
 - `janiform.simulation.seeded`
   - Ownership: seeded-tick simulation request and response contracts, seeded-tick execution entrypoints, and seeded-tick workflow-specific record types
-  - Observed-state policy: the public seeded fine-path and event-tape records expose observed log-price, anchor, deviation, and core-increment fields explicitly, and the package re-exports the endogenous mean-reversion runtime-input helper used by examples and high-level workflow wiring
+  - Observed-state policy: the public seeded fine-path and event-tape records expose observed log-price, anchor, pressure-state, deviation, and core-increment fields explicitly, and the package re-exports the endogenous mean-reversion runtime-input helper used by examples and high-level workflow wiring
   - Root coexistence policy: key seeded workflow symbols are also re-exported from `janiform.simulation` as curated convenience imports
 - `janiform.simulation.shared`
   - Ownership: shared Hawkes-state and simulation error contracts used across coarse and seeded workflows
@@ -365,7 +366,8 @@ The high-level runtime methods on `JaniformModel` are:
 
 When the fitted model enables mean reversion, `JaniformModel.price_option(...)` requires an
 explicit `observed_boundary_state: MeanReversionBoundaryState`. The high-level API keeps anchored
-pricing state explicit and does not synthesize missing observed-state boundary inputs.
+pricing state explicit and does not synthesize missing observed-state boundary inputs. The boundary
+state now carries observed log price, anchor value, pressure state, and deviation.
 
 The advanced staged-calibration entrypoint is:
 

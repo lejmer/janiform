@@ -135,7 +135,7 @@ def test_market_data_calibration_request_roundtrip_preserves_mean_reversion_conf
     assert request.mean_reversion is not None
     assert (
         request.mean_reversion.anchor_model_kind
-        == MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL
+        == MeanReversionAnchorModelKind.ENDOGENOUS_CORE_PRESSURE_LEVEL
     )
     assert request.mean_reversion.calibration_grid_interval_hours == pytest.approx(24.0)
 
@@ -306,7 +306,7 @@ def test_staged_calibration_execution_input_roundtrip_serialization_is_determini
 def test_mean_reversion_fitted_parameters_roundtrip_serialization_is_deterministic() -> None:
     fitted_parameters = MeanReversionFittedParameters(
         kappa=0.25,
-        anchor_model=MeanReversionAnchorModel.endogenous_core_expectation_one_interval(),
+        anchor_model=MeanReversionAnchorModel.zero_gain_endogenous_core_pressure_level(),
     )
 
     serialized = fitted_parameters.to_json()
@@ -314,7 +314,7 @@ def test_mean_reversion_fitted_parameters_roundtrip_serialization_is_determinist
 
     assert deserialized == fitted_parameters
     assert json.loads(serialized)["anchor_model"]["anchor_model_kind"] == (
-        MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL.value
+        MeanReversionAnchorModelKind.ENDOGENOUS_CORE_PRESSURE_LEVEL.value
     )
 
 
@@ -322,7 +322,7 @@ def test_mean_reversion_fitted_parameters_reject_negative_kappa() -> None:
     with pytest.raises(ValueError, match="kappa: must be non-negative"):
         MeanReversionFittedParameters(
             kappa=-0.01,
-            anchor_model=MeanReversionAnchorModel.endogenous_core_expectation_one_interval(),
+            anchor_model=MeanReversionAnchorModel.zero_gain_endogenous_core_pressure_level(),
         )
 
 
@@ -330,7 +330,7 @@ def test_endogenous_mean_reversion_anchor_model_from_mapping_rejects_unknown_anc
     with pytest.raises(ValueError, match="unsupported field 'anchor_value'"):
         MeanReversionAnchorModel.from_mapping(
             {
-                "anchor_model_kind": MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL.value,
+                "anchor_model_kind": MeanReversionAnchorModelKind.ENDOGENOUS_CORE_PRESSURE_LEVEL.value,
                 "anchor_value": 0.0,
             }
         )
@@ -626,7 +626,7 @@ def _valid_market_data_request_model() -> MarketDataCalibrationRequest:
             calendar_timezone="UTC",
         ),
         mean_reversion=CalibrationMeanReversionConfiguration(
-            anchor_model_kind=MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL,
+            anchor_model_kind=MeanReversionAnchorModelKind.ENDOGENOUS_CORE_PRESSURE_LEVEL,
             calibration_grid_interval_hours=24.0,
         ),
     )

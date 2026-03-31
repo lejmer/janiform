@@ -712,7 +712,9 @@ def _prepare_model_mean_reversion_runtime_inputs(
     )
 
     anchor_model_kind = fitted_parameters.anchor_model.anchor_model_kind
-    if anchor_model_kind != "endogenous_core_expectation_one_interval":
+    if anchor_model_kind not in {
+        "endogenous_core_pressure_level",
+    }:
         raise RuntimeError(
             "JaniformModel mean reversion anchor model kind is unsupported"
         )
@@ -720,6 +722,7 @@ def _prepare_model_mean_reversion_runtime_inputs(
     initial_boundary_state = MeanReversionBoundaryState(
         observed_log_price=runtime_interval_anchors.start_anchor_value,
         anchor_value=runtime_interval_anchors.start_anchor_value,
+        pressure_state=runtime_interval_anchors.start_pressure_state,
         deviation=0.0,
     )
 
@@ -751,8 +754,9 @@ def _materialize_model_mean_reversion_runtime_interval_anchors(
 
     anchor_model = fitted_parameters.anchor_model
     match anchor_model.anchor_model_kind:
-        case "endogenous_core_expectation_one_interval":
+        case "endogenous_core_pressure_level":
             return _materialize_endogenous_model_mean_reversion_runtime_interval_anchors(
+                fitted_parameters=fitted_parameters,
                 runtime_factors=runtime_factors,
                 hourly_factor_contract=hourly_factor_contract,
                 initial_excitation_state=initial_excitation_state,
@@ -765,6 +769,7 @@ def _materialize_model_mean_reversion_runtime_interval_anchors(
 
 def _materialize_endogenous_model_mean_reversion_runtime_interval_anchors(
     *,
+    fitted_parameters: MeanReversionFittedParameters,
     runtime_factors: _PreparedModelRuntimeFactors,
     hourly_factor_contract: HourlyFactorContract,
     initial_excitation_state: HawkesExcitationState,
@@ -778,6 +783,7 @@ def _materialize_endogenous_model_mean_reversion_runtime_interval_anchors(
         runtime_factors.nig_shared_plus_shift_configuration.to_payload(),
         runtime_factors.news_process_configuration.to_payload(),
         initial_excitation_state.to_payload(),
+        fitted_parameters.to_payload(),
         interval_alignment_policy,
         start_anchor_value,
         tuple(hourly_factor_contract.s_h),

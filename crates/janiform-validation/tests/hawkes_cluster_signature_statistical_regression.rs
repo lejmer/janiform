@@ -1344,17 +1344,19 @@ fn build_run_config(
             kernel_parameters,
             initial_excitation_state,
             mean_reversion_fitted_parameters:
-                MeanReversionFittedParameters::endogenous_core_expectation_one_interval(0.0)
+                MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
                     .expect("zero-kappa endogenous mean reversion should construct"),
             mean_reversion_runtime_interval_anchors: MeanReversionRuntimeIntervalAnchors::try_new(
                 hourly_factor_contract.metadata.interval_alignment_policy,
                 0.0,
+                0.0,
+                vec![0.0; interval_count],
                 vec![0.0; interval_count],
                 vec![interval_duration_nanos as f64 / ONE_HOUR_NANOS as f64; interval_count],
             )
             .expect("disabled mean-reversion runtime anchors should construct"),
             initial_mean_reversion_boundary_state: MeanReversionBoundaryState::try_new(
-                0.0, 0.0, 0.0,
+                0.0, 0.0, 0.0, 0.0,
             )
             .expect("disabled mean-reversion boundary state should construct"),
             hourly_factor_contract,

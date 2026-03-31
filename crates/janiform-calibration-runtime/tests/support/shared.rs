@@ -1812,7 +1812,7 @@ pub(crate) fn mean_reversion_stage_execution_fixture() -> MeanReversionStageExec
         hawkes_stage_payload: None,
         return_components_stage_payload: None,
         requested_anchor_model_kind:
-            janiform_model_kernels::mean_reversion::MeanReversionAnchorModelKind::EndogenousCoreExpectationOneInterval,
+            janiform_model_kernels::mean_reversion::MeanReversionAnchorModelKind::EndogenousCorePressureLevel,
         calibration_grid_kind: "synthetic_daily_close_grid.v1".to_string(),
         calibration_grid_interval_hours: 24.0,
         source_observation_count: 4,

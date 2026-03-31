@@ -34,7 +34,7 @@ def test_workbench_setup_defaults_mean_reversion_to_endogenous_on_calibration_su
         assert len(submitted_setups) == 1
         assert (
             submitted_setups[0].mean_reversion_anchor_model_kind
-            == MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL
+            == MeanReversionAnchorModelKind.ENDOGENOUS_CORE_PRESSURE_LEVEL
         )
         assert submitted_setups[0].session_source.mode == "preset"
         assert submitted_setups[0].session_source.preset_name == DEFAULT_WORKBENCH_SESSION_PRESET_NAME
@@ -91,7 +91,7 @@ def test_workbench_setup_does_not_offer_removed_deterministic_anchor_family(
 
         assert (
             widget._mean_reversion_anchor_combo.findData(
-                MeanReversionAnchorModelKind.ENDOGENOUS_CORE_EXPECTATION_ONE_INTERVAL
+                MeanReversionAnchorModelKind.ENDOGENOUS_CORE_PRESSURE_LEVEL
             )
             != -1
         )

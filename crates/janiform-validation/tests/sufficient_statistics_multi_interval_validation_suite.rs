@@ -287,16 +287,18 @@ fn build_run_request(
             y_minus_plus: 0.26,
             y_minus_minus: 0.37,
         },
-        MeanReversionFittedParameters::endogenous_core_expectation_one_interval(0.0)
+        MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
             .expect("zero-kappa endogenous mean reversion should construct"),
         MeanReversionRuntimeIntervalAnchors::try_new(
             "explicit_runtime_interval_grid_alignment.v1",
             0.0,
+            0.0,
+            vec![0.0; horizon_interval_count],
             vec![0.0; horizon_interval_count],
             vec![1.0; horizon_interval_count],
         )
         .expect("disabled mean-reversion runtime anchors should construct"),
-        MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0)
+        MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0, 0.0)
             .expect("disabled mean-reversion boundary state should construct"),
     )
     .expect("fixture model inputs should construct");

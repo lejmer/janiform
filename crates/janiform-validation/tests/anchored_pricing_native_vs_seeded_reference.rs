@@ -481,7 +481,7 @@ fn mean_reversion_fitted_parameters_for_scenario(
 
     MeanReversionFittedParameters::try_new(
         scenario.kappa,
-        MeanReversionAnchorModel::endogenous_core_expectation_one_interval(),
+        MeanReversionAnchorModel::zero_gain_endogenous_core_pressure_level(),
     )
     .expect("endogenous fitted parameters should construct")
 }
@@ -492,7 +492,9 @@ fn mean_reversion_runtime_interval_anchors_for_scenario(
     MeanReversionRuntimeIntervalAnchors::try_new(
         SYNTHETIC_INTERVAL_ALIGNMENT_POLICY,
         scenario.current_anchor_value,
+        0.0,
         vec![scenario.next_anchor_value],
+        vec![0.0],
         vec![1.0],
     )
     .expect("runtime interval anchors should construct")
@@ -681,7 +683,7 @@ fn scenario_definition(scenario_id: &str) -> ScenarioDefinition {
             anchor_kind: ScenarioAnchorKind::Endogenous,
             current_anchor_value: 0.0,
             next_anchor_value: 0.0,
-            observed_boundary_state: MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0)
+            observed_boundary_state: MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0, 0.0)
                 .expect("zero-deviation observed boundary state should construct"),
             kappa: 0.0,
         },
@@ -690,7 +692,7 @@ fn scenario_definition(scenario_id: &str) -> ScenarioDefinition {
             anchor_kind: ScenarioAnchorKind::Endogenous,
             current_anchor_value: 0.25,
             next_anchor_value: 0.25,
-            observed_boundary_state: MeanReversionBoundaryState::try_new(0.25, 0.25, 0.0)
+            observed_boundary_state: MeanReversionBoundaryState::try_new(0.25, 0.25, 0.0, 0.0)
                 .expect("aligned-anchor observed boundary state should construct"),
             kappa: 0.35,
         },
@@ -699,7 +701,7 @@ fn scenario_definition(scenario_id: &str) -> ScenarioDefinition {
             anchor_kind: ScenarioAnchorKind::Endogenous,
             current_anchor_value: 0.25,
             next_anchor_value: 0.25,
-            observed_boundary_state: MeanReversionBoundaryState::try_new(0.25, 0.25, 0.0)
+            observed_boundary_state: MeanReversionBoundaryState::try_new(0.25, 0.25, 0.0, 0.0)
                 .expect("flat-anchor observed boundary state should construct"),
             kappa: 0.35,
         },
@@ -708,7 +710,7 @@ fn scenario_definition(scenario_id: &str) -> ScenarioDefinition {
             anchor_kind: ScenarioAnchorKind::Endogenous,
             current_anchor_value: 0.0,
             next_anchor_value: 0.0,
-            observed_boundary_state: MeanReversionBoundaryState::try_new(0.01, 0.0, 0.01)
+            observed_boundary_state: MeanReversionBoundaryState::try_new(0.01, 0.0, 0.0, 0.01)
                 .expect("positive-deviation observed boundary state should construct"),
             kappa: 0.35,
         },

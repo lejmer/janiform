@@ -60,6 +60,7 @@ struct SufficientStatisticsRiskPathRecordPayload {
     observed_interval_return: f64,
     observed_log_price_end: f64,
     anchor_value_end: f64,
+    pressure_state_end: f64,
     deviation_from_anchor_end: f64,
 }
 
@@ -87,6 +88,7 @@ impl<'de> Deserialize<'de> for SufficientStatisticsRiskPathRecord {
             payload.observed_interval_return,
             payload.observed_log_price_end,
             payload.anchor_value_end,
+            payload.pressure_state_end,
             payload.deviation_from_anchor_end,
         )
         .map_err(serde::de::Error::custom)

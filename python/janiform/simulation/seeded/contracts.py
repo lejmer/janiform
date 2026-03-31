@@ -1144,17 +1144,22 @@ def build_endogenous_seeded_mean_reversion_runtime_inputs(
     return (
         MeanReversionFittedParameters(
             kappa=0.0,
-            anchor_model=MeanReversionAnchorModel.endogenous_core_expectation_one_interval(),
+            anchor_model=MeanReversionAnchorModel.zero_gain_endogenous_core_pressure_level(
+                reference_interval_hours=interval_delta_hours,
+            ),
         ),
         MeanReversionRuntimeIntervalAnchors(
             interval_alignment_policy=hourly_factor_contract.interval_alignment_policy,
             start_anchor_value=0.0,
+            start_pressure_state=0.0,
             end_anchor_values=tuple(0.0 for _ in range(interval_count)),
+            end_pressure_states=tuple(0.0 for _ in range(interval_count)),
             interval_deltas=tuple(interval_delta_hours for _ in range(interval_count)),
         ),
         MeanReversionBoundaryState(
             observed_log_price=0.0,
             anchor_value=0.0,
+            pressure_state=0.0,
             deviation=0.0,
         ),
     )

@@ -300,6 +300,10 @@ where
                     .risk_model_inputs
                     .mean_reversion_runtime_interval_anchors
                     .end_anchor_values[interval_index],
+                model_inputs
+                    .risk_model_inputs
+                    .mean_reversion_runtime_interval_anchors
+                    .end_pressure_states[interval_index],
             )
             .map_err(|source| {
                 CoarseSimulationRunError::MeanReversionBoundaryStateUpdateFailure {
@@ -321,6 +325,7 @@ where
             observed_interval_return,
             updated_observed_boundary_state.observed_log_price,
             updated_observed_boundary_state.anchor_value,
+            updated_observed_boundary_state.pressure_state,
             updated_observed_boundary_state.deviation,
         )
         .map_err(|source| CoarseSimulationRunError::InvalidPathRecord {

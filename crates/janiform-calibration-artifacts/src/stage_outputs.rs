@@ -60,12 +60,44 @@ pub struct MeanReversionStageCalibrationGrid {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MeanReversionStageDiagnostics {
     pub chosen_anchor_family: MeanReversionAnchorModelKind,
+    pub selected_candidate_family: String,
     pub calibration_grid: MeanReversionStageCalibrationGrid,
     pub anchor_parameter_estimates: MeanReversionAnchorModel,
-    pub phi: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub anchor_origin_level: Option<f64>,
+    pub phi_reference: f64,
     pub kappa: f64,
+    pub residual_sum_of_squares: f64,
+    pub quasi_log_likelihood: Option<f64>,
+    pub information_criterion_bic: Option<f64>,
+    pub model_selection_policy: String,
     pub deviation_sample_count: usize,
     pub regression_pair_count: usize,
+    pub least_squares_rank: usize,
+    pub evaluated_candidates: Vec<MeanReversionStageCandidateDiagnostics>,
+    pub stage_decision_reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MeanReversionStageCandidateDiagnostics {
+    pub candidate_family: String,
+    pub anchor_model: MeanReversionAnchorModel,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub anchor_origin_level: Option<f64>,
+    pub phi_reference: f64,
+    pub kappa: f64,
+    pub residual_sum_of_squares: f64,
+    pub quasi_log_likelihood: Option<f64>,
+    pub information_criterion_bic: Option<f64>,
+    pub parameter_count: usize,
+    pub least_squares_rank: usize,
+    pub deviation_sample_count: usize,
+    pub regression_pair_count: usize,
+    pub core_expected_increments: Vec<f64>,
+    pub pressure_state_path: Vec<f64>,
+    pub boundary_anchor_values: Vec<f64>,
+    pub deviations: Vec<f64>,
+    pub residuals: Vec<f64>,
     pub stage_decision_reason: String,
 }
 

@@ -109,7 +109,7 @@ def test_pricing_example_runs_with_deterministic_summary() -> None:
         "request_summary": {
             "interval_delta": 1.0,
             "payoff_type": "call",
-            "anchor_model_kind": "endogenous_core_expectation_one_interval",
+            "anchor_model_kind": "endogenous_core_pressure_level",
             "observed_boundary_deviation": 0.0,
             "nu_h_known": 0.01,
             "nu_h_surprise": 0.02,

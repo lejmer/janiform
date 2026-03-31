@@ -501,7 +501,7 @@ fn _mean_reversion_stage_input_from_request(
         .as_ref();
 
     let default_mean_reversion_configuration = PythonMeanReversionConfiguration {
-        anchor_model_kind: MeanReversionAnchorModelKind::EndogenousCoreExpectationOneInterval,
+        anchor_model_kind: MeanReversionAnchorModelKind::EndogenousCorePressureLevel,
         calibration_grid_interval_hours: None,
     };
     let mean_reversion_configuration = request

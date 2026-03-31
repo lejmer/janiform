@@ -632,11 +632,13 @@ fn disabled_mean_reversion_runtime_inputs(
     MeanReversionBoundaryState,
 ) {
     (
-        MeanReversionFittedParameters::endogenous_core_expectation_one_interval(0.0)
+        MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
             .expect("zero-kappa endogenous mean reversion should construct"),
         MeanReversionRuntimeIntervalAnchors::try_new(
             hourly_factor_contract.metadata.interval_alignment_policy,
             0.0,
+            0.0,
+            vec![0.0; hourly_factor_contract.interval_indices.len()],
             vec![0.0; hourly_factor_contract.interval_indices.len()],
             vec![
                 hourly_factor_contract.interval_duration_nanos as f64 / ONE_HOUR_NANOS as f64;
@@ -644,7 +646,7 @@ fn disabled_mean_reversion_runtime_inputs(
             ],
         )
         .expect("disabled mean-reversion runtime anchors should construct"),
-        MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0)
+        MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0, 0.0)
             .expect("disabled mean-reversion boundary state should construct"),
     )
 }
@@ -663,16 +665,18 @@ fn build_risk_model_inputs(
         NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
             .expect("nig configuration should construct"),
         default_initial_excitation_state(),
-        MeanReversionFittedParameters::endogenous_core_expectation_one_interval(0.0)
+        MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
             .expect("zero-kappa endogenous mean reversion should construct"),
         MeanReversionRuntimeIntervalAnchors::try_new(
             "explicit_runtime_interval_grid_alignment.v1",
             0.0,
+            0.0,
+            vec![0.0; interval_count],
             vec![0.0; interval_count],
             vec![interval_delta; interval_count],
         )
         .expect("disabled mean-reversion runtime anchors should construct"),
-        MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0)
+        MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0, 0.0)
             .expect("disabled mean-reversion boundary state should construct"),
     )
     .expect("risk model inputs should construct")
@@ -836,6 +840,7 @@ fn with_open_jump_override(
         original_record.observed_interval_return,
         original_record.observed_log_price_end,
         original_record.anchor_value_end,
+        original_record.pressure_state_end,
         original_record.deviation_from_anchor_end,
     )
     .expect("updated coarse path record should validate");

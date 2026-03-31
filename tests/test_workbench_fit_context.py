@@ -692,7 +692,7 @@ def test_workbench_comparison_uses_full_observed_range_without_anchor_clipping()
 
     mean_reversion_payload = MeanReversionFittedParameters(
         kappa=0.25,
-        anchor_model=MeanReversionAnchorModel.endogenous_core_expectation_one_interval(),
+        anchor_model=MeanReversionAnchorModel.zero_gain_endogenous_core_pressure_level(),
     ).to_payload()
 
     class _FakeModel:
@@ -1694,7 +1694,7 @@ def test_mean_reversion_series_analysis_materializes_endogenous_anchor_values(
                 "mean_reversion": {
                     "fitted_parameters": MeanReversionFittedParameters(
                         kappa=0.4,
-                        anchor_model=MeanReversionAnchorModel.endogenous_core_expectation_one_interval(),
+                        anchor_model=MeanReversionAnchorModel.zero_gain_endogenous_core_pressure_level(),
                     ).to_payload()
                 }
             },
@@ -2745,7 +2745,7 @@ def _mean_reversion_test_model() -> Any:
             "mean_reversion": {
                 "fitted_parameters": MeanReversionFittedParameters(
                     kappa=0.4,
-                    anchor_model=MeanReversionAnchorModel.endogenous_core_expectation_one_interval(),
+                    anchor_model=MeanReversionAnchorModel.zero_gain_endogenous_core_pressure_level(),
                 ).to_payload()
             }
         }
@@ -2766,7 +2766,8 @@ def _diagnostic_only_mean_reversion_test_model(diagnostics_payload: dict[str, An
 
 def _endogenous_mean_reversion_diagnostics_payload() -> dict[str, Any]:
     return {
-        "chosen_anchor_family": "endogenous_core_expectation_one_interval",
+        "chosen_anchor_family": "endogenous_core_pressure_level",
+        "selected_candidate_family": "random_walk_null",
         "calibration_grid": {
             "calibration_grid_kind": "synthetic_daily_close_grid.v1",
             "calibration_grid_interval_hours": 24.0,
@@ -2775,12 +2776,48 @@ def _endogenous_mean_reversion_diagnostics_payload() -> dict[str, Any]:
             "coverage_ratio": 0.0,
         },
         "anchor_parameter_estimates": {
-            "anchor_model_kind": "endogenous_core_expectation_one_interval",
+            "anchor_model_kind": "endogenous_core_pressure_level",
+            "reference_interval_hours": 24.0,
+            "pressure_persistence_per_reference_interval": 0.0,
+            "pressure_level_gain": 0.0,
         },
-        "phi": 1.0,
+        "anchor_origin_level": None,
+        "phi_reference": 1.0,
         "kappa": 0.0,
+        "residual_sum_of_squares": 0.0,
+        "quasi_log_likelihood": None,
+        "information_criterion_bic": None,
+        "model_selection_policy": "gaussian_quasi_likelihood_bic_with_endogenous_core_pressure_level_candidate_family_profile.v1",
         "deviation_sample_count": 0,
         "regression_pair_count": 0,
+        "least_squares_rank": 0,
+        "evaluated_candidates": [
+            {
+                "candidate_family": "random_walk_null",
+                "anchor_model": {
+                    "anchor_model_kind": "endogenous_core_pressure_level",
+                    "reference_interval_hours": 24.0,
+                    "pressure_persistence_per_reference_interval": 0.0,
+                    "pressure_level_gain": 0.0,
+                },
+                "anchor_origin_level": None,
+                "phi_reference": 1.0,
+                "kappa": 0.0,
+                "residual_sum_of_squares": 0.0,
+                "quasi_log_likelihood": None,
+                "information_criterion_bic": None,
+                "parameter_count": 0,
+                "least_squares_rank": 0,
+                "deviation_sample_count": 0,
+                "regression_pair_count": 0,
+                "core_expected_increments": [],
+                "pressure_state_path": [],
+                "boundary_anchor_values": [],
+                "deviations": [],
+                "residuals": [],
+                "stage_decision_reason": "endogenous_anchor_runtime_projection_required.v1",
+            }
+        ],
         "stage_decision_reason": "endogenous_anchor_runtime_projection_required.v1",
     }
 
@@ -2788,7 +2825,7 @@ def _endogenous_mean_reversion_diagnostics_payload() -> dict[str, Any]:
 def _endogenous_mean_reversion_fitted_parameters_payload() -> dict[str, Any]:
     return MeanReversionFittedParameters(
         kappa=0.0,
-        anchor_model=MeanReversionAnchorModel.endogenous_core_expectation_one_interval(),
+        anchor_model=MeanReversionAnchorModel.zero_gain_endogenous_core_pressure_level(),
     ).to_payload()
 
 

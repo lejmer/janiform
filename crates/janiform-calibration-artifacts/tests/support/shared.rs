@@ -149,7 +149,7 @@ pub(crate) fn build_valid_run_spec_with_mode(
 pub(crate) fn build_endogenous_mean_reversion_parameters() -> MeanReversionFittedParameters {
     MeanReversionFittedParameters::try_new(
         0.25,
-        MeanReversionAnchorModel::endogenous_core_expectation_one_interval(),
+        MeanReversionAnchorModel::endogenous_core_pressure_level(24.0, 0.5, 1.25),
     )
     .expect("mean reversion fitted parameters should validate")
 }
