@@ -244,9 +244,23 @@ class CliOutputMode(StrEnum):
     JSON = 'json'
 
 
+class CliProgressMode(StrEnum):
+    AUTO = 'auto'
+    HUMAN = 'human'
+    JSONL = 'jsonl'
+    NONE = 'none'
+
+
 CLI_OUTPUT_MODE_CHOICES: tuple[str, str] = (
     CliOutputMode.HUMAN.value,
     CliOutputMode.JSON.value,
+)
+
+CLI_PROGRESS_MODE_CHOICES: tuple[str, str, str, str] = (
+    CliProgressMode.AUTO.value,
+    CliProgressMode.HUMAN.value,
+    CliProgressMode.JSONL.value,
+    CliProgressMode.NONE.value,
 )
 
 __all__ = [
@@ -296,6 +310,7 @@ __all__ = [
     "CLI_OPEN_CLOSED_GAP_INTERNAL_ERROR_ID",
     "CLI_OPEN_CLOSED_GAP_VALIDATION_ERROR_ID",
     "CLI_OUTPUT_ENV_VAR",
+    "CLI_PROGRESS_MODE_CHOICES",
     "CLI_OUTPUT_MODE_CHOICES",
     "CLI_OUTPUT_MODE_HELP",
     "CLI_PATH_METAVAR",
@@ -346,6 +361,7 @@ __all__ = [
     "CLI_STYLIZED_FACTS_HORIZON_COMPARISON_INTERNAL_ERROR_ID",
     "CLI_STYLIZED_FACTS_HORIZON_COMPARISON_VALIDATION_ERROR_ID",
     "CliExitCode",
+    "CliProgressMode",
     "CliOutputMode",
     "DEFAULT_CALENDAR_FIXTURE_PATH",
     "DEFAULT_GAP_BEHAVIOR_FIXTURE_PATH",

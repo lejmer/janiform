@@ -7,6 +7,7 @@ use super::{
     estimate_day_of_week_seasonality, estimate_day_of_year_seasonality,
     estimate_intraday_seasonality, generate_seasonality_diagnostics_batch_report,
     generate_seasonality_diagnostics_report, normalize_seasonality_factors_for_identifiability,
+    numerics::stable_sum_f64,
 };
 
 #[test]
@@ -555,6 +556,19 @@ fn seasonality_normalization_rejects_invalid_inputs_and_degenerate_windows() {
         invalid_log_component_result,
         Err(SeasonalityNormalizationError::InvalidInputLogComponent { record_position: 1 })
     );
+}
+
+#[test]
+fn seasonality_stable_sum_recovers_small_positive_increments_after_large_prefix() {
+    let mut values = vec![(1_u64 << 53) as f64];
+    values.extend(std::iter::repeat_n(1.0, 1_024));
+
+    let naive_sum = values.iter().sum::<f64>();
+    let stable_sum = stable_sum_f64(&values);
+    let expected_sum = ((1_u64 << 53) as f64) + 1_024.0;
+
+    assert!(stable_sum > naive_sum);
+    assert_eq!(stable_sum, expected_sum);
 }
 
 #[test]

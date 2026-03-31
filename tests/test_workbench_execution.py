@@ -262,6 +262,38 @@ def test_stage_progress_detail_summarizes_joint_refinement_runtime_state() -> No
     )
 
 
+def test_stage_progress_detail_labels_post_restart_joint_refinement_phases() -> None:
+    coarse_detail = _detail_for_stage_progress_event(
+        {
+            "stage": "joint_refinement",
+            "progress_phase": "coarse_consistency_evaluation",
+            "completed_units": 7,
+            "total_units": 12,
+            "current_item_label": "halton_07",
+            "current_weighted_objective": 0.117,
+            "best_weighted_objective": 0.101,
+            "current_coarse_consistency_fit": 1.042,
+            "best_coarse_consistency_fit": 0.998,
+        }
+    )
+    final_detail = _detail_for_stage_progress_event(
+        {
+            "stage": "joint_refinement",
+            "progress_phase": "final_assembly",
+            "completed_units": 2,
+            "total_units": 3,
+            "current_item_label": "simulation_summaries",
+        }
+    )
+
+    assert coarse_detail == (
+        "joint_refinement coarse consistency evaluation 7/12 | latest=halton_07 "
+        "| objective=0.117000 | best_objective=0.101000 | coarse_fit=1.042000 "
+        "| best_coarse_fit=0.998000"
+    )
+    assert final_detail == "joint_refinement final assembly 2/3 | latest=simulation_summaries"
+
+
 def test_workbench_execution_worker_forwards_stage_progress_native_events() -> None:
     run_setup = WorkbenchRunSetup(
         dataset_path=Path("ticks.csv"),
@@ -289,6 +321,43 @@ def test_workbench_execution_worker_forwards_stage_progress_native_events() -> N
     assert emitted_event.subtask == "joint_refinement.restart_optimization"
     assert emitted_event.payload["completed_units"] == 2
     assert emitted_event.payload["total_units"] == 8
+
+
+def test_workbench_execution_worker_forwards_run_started_stage_sequence() -> None:
+    run_setup = WorkbenchRunSetup(
+        dataset_path=Path("ticks.csv"),
+        workflow_scope=CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE,
+        output_directory=Path("output"),
+    )
+    worker = WorkbenchExecutionWorker(run_setup)
+    emitted_events: list[Any] = []
+    worker.event_emitted.connect(emitted_events.append)
+
+    worker._forward_native_event(
+        {
+            "event_kind": "run_started",
+            "stage_count": 5,
+            "stage_sequence": [
+                "seasonality",
+                "hawkes",
+                "return_components",
+                "mean_reversion",
+                "joint_refinement",
+            ],
+            "execution_mode": "memory",
+        }
+    )
+
+    assert len(emitted_events) == 1
+    emitted_event = emitted_events[0]
+    assert emitted_event.event_type.value == "run.started"
+    assert emitted_event.payload["stage_sequence"] == [
+        "seasonality",
+        "hawkes",
+        "return_components",
+        "mean_reversion",
+        "joint_refinement",
+    ]
 
 
 def test_workbench_execution_heartbeat_uses_resource_snapshot_interval(

@@ -14,7 +14,7 @@ from ..._workflow_outputs import (
     resolve_simulation_artifact_paths,
     simulation_output_preferences_from_model,
 )
-from ..._workflow_progress import JaniformOutputController
+from ..._workflow_progress import JaniformOutputController, WorkflowProgressMode
 from .calibration import _build_fit_plan_command, _build_fit_staged_command
 from .simulation import _build_simulation_coarse_interval_command, _build_simulation_seeded_ticks_command
 from ._shared import (
@@ -31,6 +31,7 @@ from ..command_runtime import (
     invoke_group_default_handler,
     optional_path_option,
     output_option,
+    progress_option,
     preset_scope_option,
     required_datetime_option,
     user_preset_json_option,
@@ -55,6 +56,7 @@ from .._constants import (
     CLI_HIGH_LEVEL_SIMULATE_INTERNAL_ERROR_ID,
     CLI_HIGH_LEVEL_SIMULATE_VALIDATION_ERROR_ID,
     CLI_SIMULATE_RESULT_SCHEMA_VERSION,
+    CliProgressMode,
     CliExitCode,
     CliOutputMode,
 )
@@ -103,7 +105,7 @@ from ...calibration.fit.input_resolution import (
     infer_high_level_fit_inputs,
 )
 from ...calibration.staged import CalibrationExecutionMode
-from ...calibration.staged.results import CalibrationFailureDetails
+from ...calibration.staged.results import build_staged_failure_context
 from ...contracts import MeanReversionAnchorModelKind
 from ...errors import (
     ErrorContextValue,
@@ -115,6 +117,47 @@ from ...errors import (
 
 
 type CliCommandArguments = dict[str, Any]
+
+
+def _default_workflow_progress_mode_for_output_mode(output_mode: str) -> WorkflowProgressMode:
+    if output_mode == CliOutputMode.HUMAN.value:
+        return WorkflowProgressMode.HUMAN
+
+    return WorkflowProgressMode.NONE
+
+
+def _resolved_cli_progress_mode(
+    *,
+    output_mode: str,
+    command_arguments: CliCommandArguments,
+) -> WorkflowProgressMode:
+    if bool(command_arguments.get("silent")):
+        return WorkflowProgressMode.NONE
+
+    requested_progress_mode = WorkflowProgressMode(
+        cast(str, command_arguments.get("progress", CliProgressMode.AUTO.value))
+    )
+    if requested_progress_mode is WorkflowProgressMode.AUTO:
+        return _default_workflow_progress_mode_for_output_mode(output_mode)
+
+    return requested_progress_mode
+
+
+def _build_cli_output_controller(
+    *,
+    output_mode: str,
+    command_arguments: CliCommandArguments,
+) -> JaniformOutputController:
+    silent = bool(command_arguments.get("silent"))
+    progress_mode = _resolved_cli_progress_mode(
+        output_mode=output_mode,
+        command_arguments=command_arguments,
+    )
+    return JaniformOutputController(
+        suppress_info_output=silent or output_mode == CliOutputMode.JSON.value,
+        progress_mode=progress_mode,
+        default_progress_mode=progress_mode,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -142,7 +185,10 @@ def run_fit_command(
             error_id=CLI_FIT_VALIDATION_ERROR_ID,
             command_arguments=command_arguments,
         )
-        output_controller = JaniformOutputController(silent=bool(command_arguments.get("silent")))
+        output_controller = _build_cli_output_controller(
+            output_mode=output,
+            command_arguments=command_arguments,
+        )
         if output == CliOutputMode.HUMAN.value and not bool(command_arguments.get("silent")):
             output_controller.info(f"fit run_id: {configured_command.input_inference.run_id}")
             output_controller.info(f"tick data: {configured_command.tick_data_path}")
@@ -732,64 +778,7 @@ def execute_cli_fit(
 
 
 def build_cli_fit_failure_context(fit_report: JaniformFitReport) -> dict[str, ErrorContextValue]:
-    failure_context: dict[str, ErrorContextValue] = {
-        "run_id": fit_report.run_id,
-        "staged_status": fit_report.staged_response.status.value,
-    }
-    selected_failure = fit_report.staged_response.failure
-    failed_stage = selected_failure.stage.value if selected_failure is not None and selected_failure.stage is not None else None
-
-    for stage_report in reversed(fit_report.staged_response.stage_reports):
-        if stage_report.failure is None:
-            continue
-
-        if prefer_cli_fit_failure_details(selected_failure, stage_report.failure):
-            selected_failure = stage_report.failure
-
-        if failed_stage is None:
-            failed_stage = stage_report.stage.value
-
-    if selected_failure is None:
-        return failure_context
-
-    failure_context["failure_kind"] = selected_failure.failure_kind
-
-    if failed_stage is not None:
-        failure_context["failed_stage"] = failed_stage
-    if selected_failure.error_message is not None:
-        failure_context["failure_error_message"] = selected_failure.error_message
-    if selected_failure.checkpoint_reference is not None:
-        failure_context["checkpoint_reference"] = selected_failure.checkpoint_reference
-    if selected_failure.artifact_reference is not None:
-        failure_context["artifact_reference"] = selected_failure.artifact_reference
-
-    return failure_context
-
-
-def prefer_cli_fit_failure_details(
-    current_failure: Optional[CalibrationFailureDetails],
-    candidate_failure: CalibrationFailureDetails,
-) -> bool:
-    if current_failure is None:
-        return True
-
-    current_has_error_message = current_failure.error_message is not None
-    candidate_has_error_message = candidate_failure.error_message is not None
-
-    if candidate_has_error_message and not current_has_error_message:
-        return True
-    if current_has_error_message and not candidate_has_error_message:
-        return False
-
-    current_is_generic = current_failure.failure_kind == "stage_execution_failed"
-    candidate_is_generic = candidate_failure.failure_kind == "stage_execution_failed"
-
-    if current_is_generic and not candidate_is_generic:
-        return True
-    if candidate_is_generic and not current_is_generic:
-        return False
-
-    return False
+    return build_staged_failure_context(fit_report.staged_response)
 
 
 def build_cli_fit_inspect_payload(
@@ -1136,8 +1125,14 @@ def build_cli_simulate_result_payload(
         interval_label=None if interval_value is None else interval_value,
     )
 
-    execution_silent = bool(command_arguments.get("silent")) or output_mode == CliOutputMode.JSON.value
-    output_controller = JaniformOutputController(silent=bool(command_arguments.get("silent")))
+    resolved_progress_mode = _resolved_cli_progress_mode(
+        output_mode=output_mode,
+        command_arguments=command_arguments,
+    )
+    output_controller = _build_cli_output_controller(
+        output_mode=output_mode,
+        command_arguments=command_arguments,
+    )
     if output_mode == CliOutputMode.HUMAN.value and not bool(command_arguments.get("silent")):
         output_controller.info(f"simulate run_id: {simulation_run_id}")
         output_controller.info(f"model path: {model_path}")
@@ -1153,7 +1148,8 @@ def build_cli_simulate_result_payload(
         debug_trace_enabled=bool(command_arguments.get("debug_trace_enabled")),
         sample_every_nth_transition=sample_every_nth_transition,
         max_records_per_chunk=max_records_per_chunk,
-        silent=execution_silent,
+        silent=bool(command_arguments.get("silent")),
+        progress_mode=resolved_progress_mode,
     )
 
     return {
@@ -1576,6 +1572,7 @@ def model_workflow_simulate_options(
     if include_shared_arguments:
         parameters.append(command_config_option())
         parameters.append(output_option(default_output_mode=CliOutputMode.HUMAN))
+        parameters.append(progress_option(default_progress_mode=CliProgressMode.AUTO))
 
     if require_model_path:
         parameters.append(

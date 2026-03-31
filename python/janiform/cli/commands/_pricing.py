@@ -30,7 +30,7 @@ from .._errors import classify_workflow_command_error
 from ..paths import _resolve_path_from_repository_root
 from .._rendering import render_price_human_output, write_cli_error, write_command_output
 from ..._workflow_outputs import generate_workflow_run_id, resolve_pricing_artifact_paths
-from ..._workflow_progress import JaniformOutputController
+from ..._workflow_progress import JaniformOutputController, WorkflowProgressMode
 from ...calibration.fit import JaniformModel
 from ...errors import JaniformError
 from ...pricing import MeanReversionBoundaryState
@@ -78,7 +78,20 @@ def run_price_command(
             output_path=resolved_output_path,
         )
 
-        output_controller = JaniformOutputController(silent=bool(command_arguments.get("silent")))
+        output_controller = JaniformOutputController(
+            suppress_info_output=bool(command_arguments.get("silent"))
+            or output == CliOutputMode.JSON.value,
+            progress_mode=(
+                WorkflowProgressMode.NONE
+                if bool(command_arguments.get("silent")) or output == CliOutputMode.JSON.value
+                else WorkflowProgressMode.HUMAN
+            ),
+            default_progress_mode=(
+                WorkflowProgressMode.NONE
+                if bool(command_arguments.get("silent")) or output == CliOutputMode.JSON.value
+                else WorkflowProgressMode.HUMAN
+            ),
+        )
         if output == CliOutputMode.HUMAN.value and not bool(command_arguments.get("silent")):
             output_controller.info(f"price run_id: {pricing_run_id}")
             output_controller.info(f"model path: {resolved_model_path}")
@@ -105,7 +118,12 @@ def run_price_command(
             ),
             include_calibration_hooks=bool(command_arguments.get("include_calibration_hooks")),
             output_path=artifact_paths.primary_output_path,
-            silent=bool(command_arguments.get("silent")) or output == CliOutputMode.JSON.value,
+            silent=bool(command_arguments.get("silent")),
+            progress_mode=(
+                WorkflowProgressMode.NONE
+                if output == CliOutputMode.JSON.value
+                else WorkflowProgressMode.HUMAN
+            ),
         )
     except JaniformError as e:
         return write_cli_error(e)

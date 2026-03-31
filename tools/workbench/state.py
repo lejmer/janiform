@@ -74,7 +74,11 @@ class WorkbenchRunState:
     status: str = "idle"
     started_at_utc: Optional[str] = None
     finished_at_utc: Optional[str] = None
+    stage_sequence: tuple[str, ...] = ()
     elapsed_seconds: float = 0.0
+    current_stage_elapsed_seconds: float = 0.0
+    current_stage_started_elapsed_seconds: Optional[float] = None
+    current_stage_is_complete: bool = False
     estimated_remaining_seconds: Optional[float] = None
     current_stage: Optional[str] = None
     current_subtask: Optional[str] = None

@@ -6,6 +6,7 @@ mod diagnostics;
 mod discrete;
 mod intraday;
 mod normalization;
+mod numerics;
 
 pub use calendar_buckets::{
     DayOfWeekSeasonalityDiagnostics, DayOfWeekSeasonalityEstimateOutput,

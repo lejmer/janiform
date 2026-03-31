@@ -290,6 +290,8 @@ pub enum CalibrationStagedRunFailure {
     },
     StageExecutionFailed {
         stage: CalibrationStage,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error_message: Option<String>,
     },
 }
 
@@ -323,6 +325,7 @@ pub enum CalibrationStagedRunObserverEvent {
         run_id: String,
         execution_mode: CalibrationExecutionMode,
         stage_count: usize,
+        stage_sequence: Vec<CalibrationStage>,
         #[serde(skip_serializing_if = "Option::is_none")]
         resumed_from_checkpoint_reference: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -359,7 +362,13 @@ pub enum CalibrationStagedRunObserverEvent {
         #[serde(skip_serializing_if = "Option::is_none")]
         cumulative_local_evaluation_count: Option<usize>,
         #[serde(skip_serializing_if = "Option::is_none")]
+        current_weighted_objective: Option<f64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         best_weighted_objective: Option<f64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        current_coarse_consistency_fit: Option<f64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        best_coarse_consistency_fit: Option<f64>,
     },
     RunCompleted {
         run_id: String,

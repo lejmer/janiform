@@ -40,6 +40,17 @@ const JOINT_REFINEMENT_SUMMARY_SIMULATION_BACKEND_IN_PROCESS: &str = "in_process
 const JOINT_REFINEMENT_RESTART_POLICY_ENV: &str = "JANIFORM_JOINT_REFINEMENT_RESTART_POLICY";
 const JOINT_REFINEMENT_RESTART_POLICY_CPU_COUNT_LIMITED: &str = "cpu_count_limited";
 
+pub(crate) fn normalize_joint_refinement_runtime_profile_for_reproducibility(
+    runtime_profile: &mut JointRefinementStageRuntimeProfile,
+) {
+    runtime_profile.restart_optimization_wall_clock_millis = 0;
+    runtime_profile.coarse_consistency_wall_clock_millis = 0;
+    runtime_profile.final_seed_evaluation_wall_clock_millis = 0;
+    runtime_profile.final_assembly_wall_clock_millis = 0;
+    runtime_profile.cumulative_deterministic_evaluation_millis = 0;
+    runtime_profile.cumulative_seed_summary_simulation_millis = 0;
+}
+
 pub(crate) fn assert_joint_refinement_objective_breakdown_matches(
     actual_breakdown: &JointRefinementStageObjectiveBreakdown,
     expected_breakdown: &JointRefinementStageObjectiveBreakdown,
@@ -143,6 +154,127 @@ pub(crate) fn assert_joint_refinement_optimizer_diagnostics_matches(
     assert_eq!(
         actual_diagnostics.stop_reason, expected_diagnostics.stop_reason,
         "{context} stop_reason drifted"
+    );
+    assert_joint_refinement_restart_diagnostics_match(
+        &actual_diagnostics.restart_diagnostics,
+        &expected_diagnostics.restart_diagnostics,
+        &format!("{context} restart_diagnostics"),
+    );
+    assert_joint_refinement_runtime_profile_matches(
+        &actual_diagnostics.runtime_profile,
+        &expected_diagnostics.runtime_profile,
+        &format!("{context} runtime_profile"),
+    );
+}
+
+fn assert_joint_refinement_restart_diagnostics_match(
+    actual_diagnostics: &JointRefinementStageRestartDiagnostics,
+    expected_diagnostics: &JointRefinementStageRestartDiagnostics,
+    context: &str,
+) {
+    assert_eq!(
+        actual_diagnostics.restart_count, expected_diagnostics.restart_count,
+        "{context} restart_count drifted"
+    );
+    assert_eq!(
+        actual_diagnostics.valid_restart_count, expected_diagnostics.valid_restart_count,
+        "{context} valid_restart_count drifted"
+    );
+    assert_eq!(
+        actual_diagnostics.invalid_restart_count, expected_diagnostics.invalid_restart_count,
+        "{context} invalid_restart_count drifted"
+    );
+    assert_eq!(
+        actual_diagnostics.unique_terminal_candidate_count,
+        expected_diagnostics.unique_terminal_candidate_count,
+        "{context} unique_terminal_candidate_count drifted"
+    );
+    assert_eq!(
+        actual_diagnostics.terminal_collision_count, expected_diagnostics.terminal_collision_count,
+        "{context} terminal_collision_count drifted"
+    );
+    assert_f64_within_one_ulp(
+        actual_diagnostics.terminal_collision_share,
+        expected_diagnostics.terminal_collision_share,
+        &format!("{context} terminal_collision_share"),
+    );
+    assert_eq!(
+        actual_diagnostics.stop_reason_frequencies, expected_diagnostics.stop_reason_frequencies,
+        "{context} stop_reason_frequencies drifted"
+    );
+    assert_eq!(
+        actual_diagnostics.invalid_reason_frequencies,
+        expected_diagnostics.invalid_reason_frequencies,
+        "{context} invalid_reason_frequencies drifted"
+    );
+}
+
+fn assert_joint_refinement_runtime_profile_matches(
+    actual_profile: &JointRefinementStageRuntimeProfile,
+    expected_profile: &JointRefinementStageRuntimeProfile,
+    context: &str,
+) {
+    assert_eq!(
+        actual_profile.restart_optimization_wall_clock_millis,
+        expected_profile.restart_optimization_wall_clock_millis,
+        "{context} restart_optimization_wall_clock_millis drifted"
+    );
+    assert_eq!(
+        actual_profile.coarse_consistency_wall_clock_millis,
+        expected_profile.coarse_consistency_wall_clock_millis,
+        "{context} coarse_consistency_wall_clock_millis drifted"
+    );
+    assert_eq!(
+        actual_profile.final_seed_evaluation_wall_clock_millis,
+        expected_profile.final_seed_evaluation_wall_clock_millis,
+        "{context} final_seed_evaluation_wall_clock_millis drifted"
+    );
+    assert_eq!(
+        actual_profile.final_assembly_wall_clock_millis,
+        expected_profile.final_assembly_wall_clock_millis,
+        "{context} final_assembly_wall_clock_millis drifted"
+    );
+    assert_eq!(
+        actual_profile.objective_cache_hit_count, expected_profile.objective_cache_hit_count,
+        "{context} objective_cache_hit_count drifted"
+    );
+    assert_eq!(
+        actual_profile.objective_cache_miss_count, expected_profile.objective_cache_miss_count,
+        "{context} objective_cache_miss_count drifted"
+    );
+    assert_eq!(
+        actual_profile.deterministic_cache_hit_count,
+        expected_profile.deterministic_cache_hit_count,
+        "{context} deterministic_cache_hit_count drifted"
+    );
+    assert_eq!(
+        actual_profile.deterministic_cache_miss_count,
+        expected_profile.deterministic_cache_miss_count,
+        "{context} deterministic_cache_miss_count drifted"
+    );
+    assert_eq!(
+        actual_profile.seed_summary_cache_hit_count, expected_profile.seed_summary_cache_hit_count,
+        "{context} seed_summary_cache_hit_count drifted"
+    );
+    assert_eq!(
+        actual_profile.seed_summary_cache_miss_count,
+        expected_profile.seed_summary_cache_miss_count,
+        "{context} seed_summary_cache_miss_count drifted"
+    );
+    assert_eq!(
+        actual_profile.invalid_candidate_evaluation_count,
+        expected_profile.invalid_candidate_evaluation_count,
+        "{context} invalid_candidate_evaluation_count drifted"
+    );
+    assert_eq!(
+        actual_profile.cumulative_deterministic_evaluation_millis,
+        expected_profile.cumulative_deterministic_evaluation_millis,
+        "{context} cumulative_deterministic_evaluation_millis drifted"
+    );
+    assert_eq!(
+        actual_profile.cumulative_seed_summary_simulation_millis,
+        expected_profile.cumulative_seed_summary_simulation_millis,
+        "{context} cumulative_seed_summary_simulation_millis drifted"
     );
 }
 

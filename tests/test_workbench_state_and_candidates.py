@@ -97,6 +97,87 @@ def test_workbench_reducer_tracks_determinate_subtask_progress() -> None:
     assert not state.run.subprogress.is_indeterminate
 
 
+def test_workbench_reducer_tracks_stage_elapsed_and_total_progress() -> None:
+    state = build_initial_workbench_state(workspace_root=Path.cwd())
+
+    apply_workbench_event(
+        state,
+        build_workbench_event(
+            event_type=WorkbenchEventType.RUN_STARTED,
+            run_id="run-003",
+            sequence_number=1,
+            payload={"detail": "Starting calibration"},
+        ),
+    )
+    apply_workbench_event(
+        state,
+        build_workbench_event(
+            event_type=WorkbenchEventType.STAGE_STARTED,
+            run_id="run-003",
+            sequence_number=2,
+            stage="joint_refinement",
+            payload={
+                "stage_index": 3,
+                "stage_count": 5,
+                "stage_label": "joint_refinement",
+                "detail": "Running joint_refinement",
+            },
+        ),
+    )
+    apply_workbench_event(
+        state,
+        build_workbench_event(
+            event_type=WorkbenchEventType.SUBTASK_STARTED,
+            run_id="run-003",
+            sequence_number=3,
+            stage="joint_refinement",
+            subtask="joint_refinement.restart_optimization",
+            payload={
+                "detail": "joint_refinement restart optimization 2/8",
+                "completed_units": 2,
+                "total_units": 8,
+            },
+        ),
+    )
+    apply_workbench_event(
+        state,
+        build_workbench_event(
+            event_type=WorkbenchEventType.RESOURCE_SNAPSHOT_RECORDED,
+            run_id="run-003",
+            sequence_number=4,
+            stage="joint_refinement",
+            payload={"elapsed_seconds": 42.5, "worker_count": 1},
+        ),
+    )
+
+    assert state.run.current_stage_elapsed_seconds == 42.5
+    assert state.run.overall_progress.completed_units == 2
+    assert state.run.overall_progress.total_units == 5
+    assert not state.run.current_stage_is_complete
+
+    apply_workbench_event(
+        state,
+        build_workbench_event(
+            event_type=WorkbenchEventType.STAGE_COMPLETED,
+            run_id="run-003",
+            sequence_number=5,
+            stage="joint_refinement",
+            payload={
+                "stage_index": 3,
+                "stage_count": 5,
+                "stage_label": "joint_refinement",
+                "detail": "Completed joint_refinement",
+                "runtime_seconds": 45.0,
+            },
+        ),
+    )
+
+    assert state.run.current_stage_elapsed_seconds == 45.0
+    assert state.run.overall_progress.completed_units == 3
+    assert state.run.overall_progress.total_units == 5
+    assert state.run.current_stage_is_complete
+
+
 def test_candidate_store_builds_live_snapshots_from_stage_reports() -> None:
     candidate_store = candidate_store_from_stage_report_payloads(
         (

@@ -1,7 +1,9 @@
 use std::collections::BTreeMap;
 use std::env;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
 use crate::adapters::load_hourly_factor_contract_for_calibration;
 use crate::calendar::ExchangeCalendarRegistry;
@@ -43,9 +45,10 @@ use janiform_calibration_artifacts::{
     CALIBRATION_JOINT_REFINEMENT_STAGE_OUTPUT_SCHEMA_VERSION,
     CALIBRATION_STAGE_SEED_DERIVATION_POLICY, CalibrationOptimizerSettings, CalibrationRunSpec,
     CalibrationStage, HawkesStageFittedParameters, JointRefinementStageFittedParameters,
-    JointRefinementStageObjectiveBreakdown, JointRefinementStageOptimizerDiagnostics,
-    ReturnComponentsStageFittedParameters, resolve_calibration_stage_seed_metadata,
-    stage_solver_settings_for_stage,
+    JointRefinementStageLabeledCount, JointRefinementStageObjectiveBreakdown,
+    JointRefinementStageOptimizerDiagnostics, JointRefinementStageRestartDiagnostics,
+    JointRefinementStageRuntimeProfile, ReturnComponentsStageFittedParameters,
+    resolve_calibration_stage_seed_metadata, stage_solver_settings_for_stage,
 };
 use janiform_engine_simulation::{
     CoarseSimulationModelInputs, CoarseSimulationRunRequest, run_coarse_simulation,
@@ -68,7 +71,7 @@ use janiform_model_kernels::mean_reversion::{
 use serde::{Deserialize, Serialize};
 
 use super::objective::{
-    compare_joint_restart_outcomes, evaluate_joint_candidate, evaluate_joint_fitted_parameters,
+    compare_joint_candidate_breakdowns, evaluate_joint_candidate, evaluate_joint_fitted_parameters,
     joint_primary_metrics_from_breakdown, root_mean_square,
 };
 use super::setup::{
@@ -88,6 +91,7 @@ pub(super) const JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR: f64 = 1.0e-8;
 const JOINT_REFINEMENT_RESTART_POLICY_ENV: &str = "JANIFORM_JOINT_REFINEMENT_RESTART_POLICY";
 const JOINT_REFINEMENT_RESTART_POLICY_BUDGET_DERIVED: &str = "budget_derived";
 const JOINT_REFINEMENT_RESTART_POLICY_CPU_COUNT_LIMITED: &str = "cpu_count_limited";
+const JOINT_REFINEMENT_SELECTION_POLICY: &str = "validity_then_admissibility_with_incumbent_baseline_and_direct_interval_coarse_consistency_then_pareto_then_lexicographic_tie_break.v1";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(super) enum JointRefinementFidelityTier {
@@ -102,9 +106,116 @@ pub(super) struct JointRefinementObjectiveCacheKey {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub(super) struct JointRefinementDeterministicCacheKey {
+    pub(super) parameter_bits: Vec<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(super) struct JointRefinementDeterministicEvaluation {
+    pub(super) modeled_open_event_rate_per_hour: f64,
+    pub(super) raw_aggregated_likelihood_fit: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub(super) struct JointRefinementSeedSummaryCacheKey {
     pub(super) parameter_bits: Vec<u64>,
     pub(super) simulation_seed: u64,
+}
+
+#[derive(Debug, Default)]
+pub(super) struct JointRefinementProfilingState {
+    objective_cache_hit_count: AtomicUsize,
+    objective_cache_miss_count: AtomicUsize,
+    deterministic_cache_hit_count: AtomicUsize,
+    deterministic_cache_miss_count: AtomicUsize,
+    seed_summary_cache_hit_count: AtomicUsize,
+    seed_summary_cache_miss_count: AtomicUsize,
+    invalid_candidate_evaluation_count: AtomicUsize,
+    cumulative_deterministic_evaluation_millis: AtomicU64,
+    cumulative_seed_summary_simulation_millis: AtomicU64,
+}
+
+impl JointRefinementProfilingState {
+    pub(super) fn record_objective_cache_hit(&self) {
+        self.objective_cache_hit_count
+            .fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub(super) fn record_objective_cache_miss(&self) {
+        self.objective_cache_miss_count
+            .fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub(super) fn record_deterministic_cache_hit(&self) {
+        self.deterministic_cache_hit_count
+            .fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub(super) fn record_deterministic_cache_miss(&self) {
+        self.deterministic_cache_miss_count
+            .fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub(super) fn record_seed_summary_cache_hit(&self) {
+        self.seed_summary_cache_hit_count
+            .fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub(super) fn record_seed_summary_cache_miss(&self, miss_count: usize) {
+        self.seed_summary_cache_miss_count
+            .fetch_add(miss_count, Ordering::Relaxed);
+    }
+
+    pub(super) fn record_invalid_candidate_evaluation(&self) {
+        self.invalid_candidate_evaluation_count
+            .fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub(super) fn record_deterministic_evaluation_duration(&self, elapsed_millis: u64) {
+        self.cumulative_deterministic_evaluation_millis
+            .fetch_add(elapsed_millis, Ordering::Relaxed);
+    }
+
+    pub(super) fn record_seed_summary_simulation_duration(&self, elapsed_millis: u64) {
+        self.cumulative_seed_summary_simulation_millis
+            .fetch_add(elapsed_millis, Ordering::Relaxed);
+    }
+
+    pub(super) fn snapshot_runtime_profile(
+        &self,
+        restart_optimization_wall_clock_millis: u64,
+        coarse_consistency_wall_clock_millis: u64,
+        final_seed_evaluation_wall_clock_millis: u64,
+        final_assembly_wall_clock_millis: u64,
+    ) -> JointRefinementStageRuntimeProfile {
+        JointRefinementStageRuntimeProfile {
+            restart_optimization_wall_clock_millis,
+            coarse_consistency_wall_clock_millis,
+            final_seed_evaluation_wall_clock_millis,
+            final_assembly_wall_clock_millis,
+            objective_cache_hit_count: self.objective_cache_hit_count.load(Ordering::Relaxed),
+            objective_cache_miss_count: self.objective_cache_miss_count.load(Ordering::Relaxed),
+            deterministic_cache_hit_count: self
+                .deterministic_cache_hit_count
+                .load(Ordering::Relaxed),
+            deterministic_cache_miss_count: self
+                .deterministic_cache_miss_count
+                .load(Ordering::Relaxed),
+            seed_summary_cache_hit_count: self.seed_summary_cache_hit_count.load(Ordering::Relaxed),
+            seed_summary_cache_miss_count: self
+                .seed_summary_cache_miss_count
+                .load(Ordering::Relaxed),
+            invalid_candidate_evaluation_count: self
+                .invalid_candidate_evaluation_count
+                .load(Ordering::Relaxed),
+            cumulative_deterministic_evaluation_millis: self
+                .cumulative_deterministic_evaluation_millis
+                .load(Ordering::Relaxed),
+            cumulative_seed_summary_simulation_millis: self
+                .cumulative_seed_summary_simulation_millis
+                .load(Ordering::Relaxed),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -197,6 +308,11 @@ pub(super) struct JointRefinementContext {
     pub(super) final_baseline_buckets: JointRefinementBaselineBuckets,
     pub(super) objective_cache:
         Arc<Mutex<BTreeMap<JointRefinementObjectiveCacheKey, JointRefinementCandidateEvaluation>>>,
+    pub(super) deterministic_evaluation_cache: Arc<
+        Mutex<
+            BTreeMap<JointRefinementDeterministicCacheKey, JointRefinementDeterministicEvaluation>,
+        >,
+    >,
     pub(super) seed_summary_cache: Arc<
         Mutex<
             BTreeMap<
@@ -205,6 +321,7 @@ pub(super) struct JointRefinementContext {
             >,
         >,
     >,
+    pub(super) profiling_state: Arc<JointRefinementProfilingState>,
 }
 
 #[derive(Debug, Clone)]
@@ -225,11 +342,24 @@ pub(super) struct JointRefinementRestartOutcome {
     pub(super) stop_reason: &'static str,
 }
 
+#[derive(Debug, Clone)]
+struct JointRefinementRestartOutcomeGroup<'a> {
+    parameter_bits: Vec<u64>,
+    representative: &'a JointRefinementRestartOutcome,
+    restart_outcomes: Vec<&'a JointRefinementRestartOutcome>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(super) struct JointRefinementCoarseConsistencySummary {
     raw_fit: f64,
     normalized_fit: f64,
     admissibility_threshold: f64,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct JointRefinementCoarseConsistencyArtifacts {
+    summary: JointRefinementCoarseConsistencySummary,
+    metrics: Vec<JointRefinementStageCoarseTickConsistencyMetric>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -554,6 +684,13 @@ fn run_joint_refinement_calibration_stage_internal(
         calendar_registry,
         &observed_data,
         run_spec.data_inputs.exchange_code.as_str(),
+        return_components_payload
+            .fitted_parameters
+            .news_process_configuration
+            .arrivals
+            .known
+            .scheduled_event_timestamps_utc_nanos
+            .as_slice(),
         runtime_hourly_seasonality_factors.as_slice(),
     ) {
         Ok(session_context) => session_context,
@@ -581,6 +718,8 @@ fn run_joint_refinement_calibration_stage_internal(
             );
         }
     };
+
+    let profiling_state = Arc::new(JointRefinementProfilingState::default());
 
     let mut bootstrap_context = JointRefinementContext {
         stage_thread_pool,
@@ -630,7 +769,9 @@ fn run_joint_refinement_calibration_stage_internal(
             price_span_sanity_fit: 1.0,
         },
         objective_cache: Arc::new(Mutex::new(BTreeMap::new())),
+        deterministic_evaluation_cache: Arc::new(Mutex::new(BTreeMap::new())),
         seed_summary_cache: Arc::new(Mutex::new(BTreeMap::new())),
+        profiling_state,
     };
 
     let baseline_fitted_parameters = JointRefinementStageFittedParameters {
@@ -638,18 +779,24 @@ fn run_joint_refinement_calibration_stage_internal(
         return_components_fitted_parameters: return_components_payload.fitted_parameters.clone(),
     };
 
+    let baseline_parameter_bits = ordered_parameter_bits(baseline_parameter_vector.as_slice());
+
     let baseline_local_evaluation = evaluate_joint_fitted_parameters(
         baseline_fitted_parameters.clone(),
+        Some(baseline_parameter_bits.as_slice()),
         &bootstrap_context,
         JointRefinementFidelityTier::Local,
         &stage_solver_settings,
     );
+
     let baseline_final_evaluation = evaluate_joint_fitted_parameters(
         baseline_fitted_parameters,
+        Some(baseline_parameter_bits.as_slice()),
         &bootstrap_context,
         JointRefinementFidelityTier::Final,
         &stage_solver_settings,
     );
+
     if let Some(error_message) = simulation_infrastructure_failure_message(&bootstrap_context) {
         return build_joint_refinement_stage_failure_report(
             run_spec,
@@ -658,6 +805,7 @@ fn run_joint_refinement_calibration_stage_internal(
             },
         );
     }
+
     if baseline_local_evaluation.invalid_reason.is_some()
         || baseline_final_evaluation.invalid_reason.is_some()
     {
@@ -682,17 +830,23 @@ fn run_joint_refinement_calibration_stage_internal(
     bootstrap_context.final_baseline_buckets =
         baseline_buckets_from_evaluation(&baseline_final_evaluation);
 
-    let baseline_coarse_consistency_summary = build_joint_candidate_coarse_consistency_summary(
+    let baseline_coarse_consistency_artifacts = build_joint_candidate_coarse_consistency_artifacts(
         &bootstrap_context,
         &baseline_final_evaluation.fitted_parameters,
-        Some(ordered_parameter_bits(baseline_parameter_vector.as_slice()).as_slice()),
+        Some(baseline_parameter_bits.as_slice()),
         None,
     );
 
+    let baseline_restart_outcome = JointRefinementRestartOutcome {
+        restart_id: "baseline".to_string(),
+        parameter_vector: baseline_parameter_vector.clone(),
+        local_evaluation: baseline_local_evaluation.clone(),
+        final_evaluation: baseline_final_evaluation.clone(),
+        local_evaluation_count: 0,
+        stop_reason: "baseline_incumbent",
+    };
+
     if let Ok(mut cache_guard) = bootstrap_context.objective_cache.lock() {
-        cache_guard.clear();
-    }
-    if let Ok(mut cache_guard) = bootstrap_context.seed_summary_cache.lock() {
         cache_guard.clear();
     }
 
@@ -718,9 +872,11 @@ fn run_joint_refinement_calibration_stage_internal(
         ),
         desired_joint_refinement_restart_count(&stage_solver_settings),
     );
+
     let budget_schedule =
         joint_refinement_budget_schedule(&stage_solver_settings, restart_seeds.len());
 
+    let restart_optimization_started_at = Instant::now();
     let restart_outcomes = optimize_restart_seeds(
         restart_seeds.as_slice(),
         &bootstrap_context,
@@ -728,6 +884,9 @@ fn run_joint_refinement_calibration_stage_internal(
         budget_schedule,
         progress_sender.as_ref(),
     );
+
+    let restart_optimization_wall_clock_millis = elapsed_millis(restart_optimization_started_at);
+
     if let Some(error_message) = simulation_infrastructure_failure_message(&bootstrap_context) {
         return build_joint_refinement_stage_failure_report(
             run_spec,
@@ -745,54 +904,102 @@ fn run_joint_refinement_calibration_stage_internal(
         })
         .count();
 
-    let coarse_consistency_by_restart_id = build_joint_restart_coarse_consistency_summaries(
-        restart_outcomes.as_slice(),
-        &bootstrap_context,
-        baseline_coarse_consistency_summary.as_ref(),
-    );
+    let mut selectable_restart_outcomes = Vec::with_capacity(restart_outcomes.len() + 1);
 
-    let best_restart = select_best_restart_outcome(
-        restart_outcomes
-            .iter()
-            .filter(|restart_outcome| {
-                restart_outcome.local_evaluation.invalid_reason.is_none()
-                    && restart_outcome.final_evaluation.invalid_reason.is_none()
-            })
-            .collect::<Vec<_>>()
-            .as_slice(),
-        &bootstrap_context,
-        &coarse_consistency_by_restart_id,
-        baseline_coarse_consistency_summary.is_some(),
-    )
-    .cloned()
-    .unwrap_or_else(|| JointRefinementRestartOutcome {
-        restart_id: "baseline".to_string(),
-        parameter_vector: baseline_parameter_vector.clone(),
-        local_evaluation: baseline_local_evaluation.clone(),
-        final_evaluation: baseline_final_evaluation.clone(),
-        local_evaluation_count: 0,
-        stop_reason: "baseline_seed",
-    });
+    selectable_restart_outcomes.push(baseline_restart_outcome.clone());
+    selectable_restart_outcomes.extend(restart_outcomes.iter().cloned());
 
+    let valid_selectable_restart_outcome_refs = selectable_restart_outcomes
+        .iter()
+        .filter(|restart_outcome| {
+            restart_outcome.local_evaluation.invalid_reason.is_none()
+                && restart_outcome.final_evaluation.invalid_reason.is_none()
+        })
+        .collect::<Vec<_>>();
+
+    let coarse_consistency_started_at = Instant::now();
+
+    let (best_restart, coarse_consistency_artifacts_by_restart_id) =
+        select_best_restart_outcome_with_lazy_coarse_consistency(
+            valid_selectable_restart_outcome_refs.as_slice(),
+            &bootstrap_context,
+            baseline_coarse_consistency_artifacts.as_ref(),
+            progress_sender.as_ref(),
+        );
+    let coarse_consistency_wall_clock_millis = elapsed_millis(coarse_consistency_started_at);
+
+    let selection_coarse_consistency_by_restart_id = coarse_consistency_artifacts_by_restart_id
+        .iter()
+        .map(|(restart_id, artifacts)| (restart_id.clone(), artifacts.summary))
+        .collect::<BTreeMap<_, _>>();
+
+    let best_restart = best_restart
+        .cloned()
+        .unwrap_or_else(|| baseline_restart_outcome.clone());
+
+    let candidate_frontier_started_at = Instant::now();
     let candidate_frontier = build_joint_candidate_frontier_diagnostics(
-        restart_outcomes.as_slice(),
+        selectable_restart_outcomes.as_slice(),
         &bootstrap_context,
-        &coarse_consistency_by_restart_id,
-        baseline_coarse_consistency_summary.is_some(),
+        &selection_coarse_consistency_by_restart_id,
+        baseline_coarse_consistency_artifacts.is_some(),
     );
+
+    let candidate_frontier_wall_clock_millis = elapsed_millis(candidate_frontier_started_at);
+
+    emit_final_assembly_progress(progress_sender.as_ref(), 1, 3, "candidate_frontier");
+
+    let final_seed_evaluation_started_at = Instant::now();
 
     let finalist_seed_summaries = build_joint_finalist_seed_summaries(
         &bootstrap_context,
+        Some(ordered_parameter_bits(best_restart.parameter_vector.as_slice()).as_slice()),
         &best_restart.final_evaluation.fitted_parameters,
         progress_sender.as_ref(),
     );
 
+    let final_seed_evaluation_wall_clock_millis = elapsed_millis(final_seed_evaluation_started_at);
+
+    let remaining_final_assembly_started_at = Instant::now();
+
     let simulation_summaries = build_joint_simulation_summaries(finalist_seed_summaries.as_slice());
 
-    let coarse_tick_consistency = build_joint_coarse_tick_consistency_metrics(
-        &bootstrap_context,
-        &best_restart.final_evaluation.fitted_parameters,
-        finalist_seed_summaries.as_slice(),
+    emit_final_assembly_progress(progress_sender.as_ref(), 2, 3, "simulation_summaries");
+
+    let coarse_tick_consistency = if best_restart.restart_id == baseline_restart_outcome.restart_id
+    {
+        baseline_coarse_consistency_artifacts
+            .as_ref()
+            .map(|artifacts| artifacts.metrics.clone())
+            .unwrap_or_else(|| {
+                build_joint_coarse_tick_consistency_metrics(
+                    &bootstrap_context,
+                    &best_restart.final_evaluation.fitted_parameters,
+                    finalist_seed_summaries.as_slice(),
+                )
+            })
+    } else {
+        coarse_consistency_artifacts_by_restart_id
+            .get(best_restart.restart_id.as_str())
+            .map(|artifacts| artifacts.metrics.clone())
+            .unwrap_or_else(|| {
+                build_joint_coarse_tick_consistency_metrics(
+                    &bootstrap_context,
+                    &best_restart.final_evaluation.fitted_parameters,
+                    finalist_seed_summaries.as_slice(),
+                )
+            })
+    };
+    emit_final_assembly_progress(progress_sender.as_ref(), 3, 3, "coarse_tick_consistency");
+
+    let final_assembly_wall_clock_millis =
+        candidate_frontier_wall_clock_millis + elapsed_millis(remaining_final_assembly_started_at);
+    let restart_diagnostics = build_joint_restart_diagnostics(restart_outcomes.as_slice());
+    let runtime_profile = bootstrap_context.profiling_state.snapshot_runtime_profile(
+        restart_optimization_wall_clock_millis,
+        coarse_consistency_wall_clock_millis,
+        final_seed_evaluation_wall_clock_millis,
+        final_assembly_wall_clock_millis,
     );
 
     let fitted_stage_payload = JointRefinementStageFittedPayload {
@@ -810,6 +1017,8 @@ fn run_joint_refinement_calibration_stage_internal(
             local_evaluation_count: best_restart.local_evaluation_count,
             final_simulation_seeds: bootstrap_context.final_simulation_seeds.clone(),
             stop_reason: best_restart.stop_reason.to_string(),
+            restart_diagnostics,
+            runtime_profile,
         },
         candidate_frontier,
         simulation_summaries,
@@ -835,7 +1044,7 @@ fn run_joint_refinement_calibration_stage_internal(
                 schema_version: "calibration.optimizer.adapter_run.v1",
                 backend_id: "joint_refinement.block_coordinate_reconciliation.v1".to_string(),
                 random_seed: resolved_stage_seed.stage_seed,
-                selection_policy: "validity_then_admissibility_with_baseline_relative_coarse_consistency_then_pareto_then_lexicographic_tie_break.v1",
+                selection_policy: JOINT_REFINEMENT_SELECTION_POLICY,
                 penalty_policy: "invalid_candidates_are_screened_before_lexicographic_frontier_selection.v1",
                 bounds_policy: "bounded_joint_block_coordinate_refinement.v1",
                 solver_settings: stage_solver_settings.clone(),
@@ -856,6 +1065,76 @@ fn run_joint_refinement_calibration_stage_internal(
     }
 }
 
+fn elapsed_millis(started_at: Instant) -> u64 {
+    started_at.elapsed().as_millis().min(u128::from(u64::MAX)) as u64
+}
+
+fn build_joint_restart_diagnostics(
+    restart_outcomes: &[JointRefinementRestartOutcome],
+) -> JointRefinementStageRestartDiagnostics {
+    let restart_count = restart_outcomes.len();
+    let valid_restart_count = restart_outcomes
+        .iter()
+        .filter(|restart_outcome| joint_restart_outcome_is_valid(restart_outcome))
+        .count();
+    let invalid_restart_count = restart_count.saturating_sub(valid_restart_count);
+
+    let terminal_candidate_counts = restart_outcomes.iter().fold(
+        BTreeMap::<Vec<u64>, usize>::new(),
+        |mut counts, restart_outcome| {
+            *counts
+                .entry(ordered_parameter_bits(
+                    restart_outcome.parameter_vector.as_slice(),
+                ))
+                .or_default() += 1;
+            counts
+        },
+    );
+    let unique_terminal_candidate_count = terminal_candidate_counts.len();
+    let terminal_collision_count = restart_count.saturating_sub(unique_terminal_candidate_count);
+    let terminal_collision_share = if restart_count == 0 {
+        0.0
+    } else {
+        terminal_collision_count as f64 / restart_count as f64
+    };
+
+    JointRefinementStageRestartDiagnostics {
+        restart_count,
+        valid_restart_count,
+        invalid_restart_count,
+        unique_terminal_candidate_count,
+        terminal_collision_count,
+        terminal_collision_share,
+        stop_reason_frequencies: build_labeled_count_frequencies(
+            restart_outcomes
+                .iter()
+                .map(|restart_outcome| restart_outcome.stop_reason.to_string()),
+        ),
+        invalid_reason_frequencies: build_labeled_count_frequencies(
+            restart_outcomes.iter().filter_map(|restart_outcome| {
+                restart_outcome
+                    .final_evaluation
+                    .invalid_reason
+                    .clone()
+                    .or_else(|| restart_outcome.local_evaluation.invalid_reason.clone())
+            }),
+        ),
+    }
+}
+
+fn build_labeled_count_frequencies(
+    labels: impl Iterator<Item = String>,
+) -> Vec<JointRefinementStageLabeledCount> {
+    labels
+        .fold(BTreeMap::<String, usize>::new(), |mut counts, label| {
+            *counts.entry(label).or_default() += 1;
+            counts
+        })
+        .into_iter()
+        .map(|(label, count)| JointRefinementStageLabeledCount { label, count })
+        .collect()
+}
+
 #[derive(Debug, Clone, Copy)]
 pub(super) struct JointRefinementAdmissibilityThresholds {
     aggregated_likelihood_fit: f64,
@@ -868,61 +1147,6 @@ pub(super) struct JointRefinementAdmissibilityThresholds {
     activity_level_fit: f64,
     rv_activity_coupling_fit: f64,
     price_span_sanity_fit: f64,
-}
-
-fn select_best_restart_outcome<'a>(
-    restart_outcomes: &'a [&'a JointRefinementRestartOutcome],
-    context: &JointRefinementContext,
-    coarse_consistency_by_restart_id: &BTreeMap<String, JointRefinementCoarseConsistencySummary>,
-    coarse_consistency_required: bool,
-) -> Option<&'a JointRefinementRestartOutcome> {
-    if restart_outcomes.is_empty() {
-        return None;
-    }
-
-    let thresholds = joint_refinement_admissibility_thresholds(context);
-
-    let pareto_ranks: Vec<usize> = restart_outcomes
-        .iter()
-        .map(|candidate| {
-            1 + restart_outcomes
-                .iter()
-                .filter(|other| {
-                    candidate.restart_id != other.restart_id
-                        && joint_restart_outcome_dominates(other, candidate)
-                })
-                .count()
-        })
-        .collect();
-
-    let has_admissible_candidate = restart_outcomes.iter().any(|candidate| {
-        joint_restart_outcome_is_valid(candidate)
-            && joint_restart_outcome_is_admissible(
-                candidate,
-                thresholds,
-                coarse_consistency_by_restart_id.get(candidate.restart_id.as_str()),
-                coarse_consistency_required,
-            )
-    });
-
-    let mut ranked_candidates: Vec<(usize, &JointRefinementRestartOutcome)> = restart_outcomes
-        .iter()
-        .enumerate()
-        .map(|(position, outcome)| (pareto_ranks[position], *outcome))
-        .collect();
-
-    ranked_candidates.sort_by(|left, right| {
-        compare_joint_restart_outcomes(
-            *left,
-            *right,
-            thresholds,
-            has_admissible_candidate,
-            coarse_consistency_by_restart_id,
-            coarse_consistency_required,
-        )
-    });
-
-    ranked_candidates.first().map(|(_, outcome)| *outcome)
 }
 
 fn joint_refinement_admissibility_thresholds(
@@ -1040,6 +1264,92 @@ fn joint_restart_outcome_primary_metrics(
     joint_primary_metrics_from_breakdown(&restart_outcome.final_evaluation.breakdown)
 }
 
+fn build_joint_restart_outcome_groups<'a>(
+    restart_outcomes: &[&'a JointRefinementRestartOutcome],
+) -> Vec<JointRefinementRestartOutcomeGroup<'a>> {
+    let grouped_restart_outcomes = restart_outcomes.iter().copied().fold(
+        BTreeMap::<Vec<u64>, Vec<&JointRefinementRestartOutcome>>::new(),
+        |mut grouped_restart_outcomes, restart_outcome| {
+            grouped_restart_outcomes
+                .entry(ordered_parameter_bits(
+                    restart_outcome.parameter_vector.as_slice(),
+                ))
+                .or_default()
+                .push(restart_outcome);
+            grouped_restart_outcomes
+        },
+    );
+
+    grouped_restart_outcomes
+        .into_iter()
+        .filter_map(|(parameter_bits, grouped_restart_outcomes)| {
+            let representative = grouped_restart_outcomes
+                .iter()
+                .copied()
+                .min_by(|left, right| left.restart_id.cmp(&right.restart_id))?;
+            Some(JointRefinementRestartOutcomeGroup {
+                parameter_bits,
+                representative,
+                restart_outcomes: grouped_restart_outcomes,
+            })
+        })
+        .collect()
+}
+
+fn assign_coarse_consistency_artifacts_to_restart_group(
+    coarse_consistency_artifacts_by_restart_id: &mut BTreeMap<
+        String,
+        JointRefinementCoarseConsistencyArtifacts,
+    >,
+    restart_group: &JointRefinementRestartOutcomeGroup<'_>,
+    artifacts: &JointRefinementCoarseConsistencyArtifacts,
+) {
+    for restart_outcome in &restart_group.restart_outcomes {
+        coarse_consistency_artifacts_by_restart_id
+            .insert(restart_outcome.restart_id.clone(), artifacts.clone());
+    }
+}
+
+fn select_best_restart_outcome_without_admissibility<'a>(
+    restart_outcomes: &[&'a JointRefinementRestartOutcome],
+) -> Option<&'a JointRefinementRestartOutcome> {
+    if restart_outcomes.is_empty() {
+        return None;
+    }
+
+    let pareto_ranks = restart_outcomes
+        .iter()
+        .map(|candidate| {
+            1 + restart_outcomes
+                .iter()
+                .filter(|other| joint_restart_outcome_dominates(other, candidate))
+                .count()
+        })
+        .collect::<Vec<_>>();
+
+    let mut ranked_candidates = restart_outcomes
+        .iter()
+        .enumerate()
+        .map(|(position, restart_outcome)| (pareto_ranks[position], *restart_outcome))
+        .collect::<Vec<_>>();
+
+    ranked_candidates.sort_by(|left, right| {
+        compare_joint_candidate_breakdowns(
+            left.0,
+            &left.1.final_evaluation.breakdown,
+            false,
+            left.1.restart_id.as_str(),
+            right.0,
+            &right.1.final_evaluation.breakdown,
+            false,
+            right.1.restart_id.as_str(),
+            false,
+        )
+    });
+
+    ranked_candidates.first().map(|(_, outcome)| *outcome)
+}
+
 fn build_joint_candidate_frontier_diagnostics(
     restart_outcomes: &[JointRefinementRestartOutcome],
     context: &JointRefinementContext,
@@ -1052,41 +1362,26 @@ fn build_joint_candidate_frontier_diagnostics(
 
     let thresholds = joint_refinement_admissibility_thresholds(context);
 
-    let pareto_ranks: Vec<usize> = restart_outcomes
-        .iter()
-        .map(|candidate| {
-            1 + restart_outcomes
-                .iter()
-                .filter(|other| joint_restart_outcome_dominates(other, candidate))
-                .count()
-        })
-        .collect();
+    let restart_outcome_refs = restart_outcomes.iter().collect::<Vec<_>>();
 
-    let has_admissible_candidate = restart_outcomes.iter().any(|candidate| {
-        joint_restart_outcome_is_valid(candidate)
-            && joint_restart_outcome_is_admissible(
-                candidate,
-                thresholds,
-                coarse_consistency_by_restart_id.get(candidate.restart_id.as_str()),
-                coarse_consistency_required,
-            )
-    });
+    let candidate_states = build_joint_candidate_ordering_states(
+        restart_outcome_refs.as_slice(),
+        thresholds,
+        coarse_consistency_by_restart_id,
+        coarse_consistency_required,
+    );
 
-    let mut ranked_candidates: Vec<(usize, &JointRefinementRestartOutcome)> = restart_outcomes
+    let has_admissible_candidate = candidate_states
         .iter()
-        .enumerate()
-        .map(|(position, outcome)| (pareto_ranks[position], outcome))
-        .collect();
+        .any(|candidate_state| candidate_state.admissible);
+
+    let mut ranked_candidates = candidate_states
+        .iter()
+        .map(|candidate_state| (*candidate_state, candidate_state.restart_outcome))
+        .collect::<Vec<_>>();
 
     ranked_candidates.sort_by(|left, right| {
-        compare_joint_restart_outcomes(
-            *left,
-            *right,
-            thresholds,
-            has_admissible_candidate,
-            coarse_consistency_by_restart_id,
-            coarse_consistency_required,
-        )
+        compare_joint_candidate_ordering_states(left.0, right.0, has_admissible_candidate)
     });
 
     let lexicographic_rank_by_restart_id: BTreeMap<&str, usize> = ranked_candidates
@@ -1097,10 +1392,17 @@ fn build_joint_candidate_frontier_diagnostics(
 
     restart_outcomes
         .iter()
-        .enumerate()
-        .map(|(position, outcome)| {
+        .map(|outcome| {
+            let candidate_state = candidate_states
+                .iter()
+                .find(|candidate_state| {
+                    candidate_state.restart_outcome.restart_id == outcome.restart_id
+                })
+                .expect("joint candidate state should exist for every frontier outcome");
+
             let valid = outcome.local_evaluation.invalid_reason.is_none()
                 && outcome.final_evaluation.invalid_reason.is_none();
+
             let invalid_reason = outcome
                 .final_evaluation
                 .invalid_reason
@@ -1110,14 +1412,8 @@ fn build_joint_candidate_frontier_diagnostics(
             JointRefinementStageCandidateDiagnostic {
                 candidate_id: format!("joint_refinement_{}", outcome.restart_id),
                 valid,
-                admissible: valid
-                    && joint_restart_outcome_is_admissible(
-                        outcome,
-                        thresholds,
-                        coarse_consistency_by_restart_id.get(outcome.restart_id.as_str()),
-                        coarse_consistency_required,
-                    ),
-                pareto_rank: pareto_ranks[position],
+                admissible: candidate_state.admissible,
+                pareto_rank: candidate_state.pareto_rank,
                 lexicographic_rank: *lexicographic_rank_by_restart_id
                     .get(outcome.restart_id.as_str())
                     .unwrap_or(&(restart_outcomes.len() + 1)),
@@ -1134,6 +1430,66 @@ fn build_joint_candidate_frontier_diagnostics(
             }
         })
         .collect()
+}
+
+#[derive(Debug, Clone, Copy)]
+struct JointRefinementCandidateOrderingState<'a> {
+    pareto_rank: usize,
+    restart_outcome: &'a JointRefinementRestartOutcome,
+    admissible: bool,
+}
+
+fn build_joint_candidate_ordering_states<'a>(
+    restart_outcomes: &'a [&'a JointRefinementRestartOutcome],
+    thresholds: JointRefinementAdmissibilityThresholds,
+    coarse_consistency_by_restart_id: &BTreeMap<String, JointRefinementCoarseConsistencySummary>,
+    coarse_consistency_required: bool,
+) -> Vec<JointRefinementCandidateOrderingState<'a>> {
+    let pareto_ranks = restart_outcomes
+        .iter()
+        .map(|candidate| {
+            1 + restart_outcomes
+                .iter()
+                .filter(|other| joint_restart_outcome_dominates(other, candidate))
+                .count()
+        })
+        .collect::<Vec<_>>();
+
+    restart_outcomes
+        .iter()
+        .enumerate()
+        .map(
+            |(position, outcome)| JointRefinementCandidateOrderingState {
+                pareto_rank: pareto_ranks[position],
+                restart_outcome: outcome,
+                admissible: joint_restart_outcome_is_valid(outcome)
+                    && joint_restart_outcome_is_admissible(
+                        outcome,
+                        thresholds,
+                        coarse_consistency_by_restart_id.get(outcome.restart_id.as_str()),
+                        coarse_consistency_required,
+                    ),
+            },
+        )
+        .collect()
+}
+
+fn compare_joint_candidate_ordering_states(
+    left: JointRefinementCandidateOrderingState<'_>,
+    right: JointRefinementCandidateOrderingState<'_>,
+    has_admissible_candidate: bool,
+) -> std::cmp::Ordering {
+    compare_joint_candidate_breakdowns(
+        left.pareto_rank,
+        &left.restart_outcome.final_evaluation.breakdown,
+        left.admissible,
+        left.restart_outcome.restart_id.as_str(),
+        right.pareto_rank,
+        &right.restart_outcome.final_evaluation.breakdown,
+        right.admissible,
+        right.restart_outcome.restart_id.as_str(),
+        has_admissible_candidate,
+    )
 }
 
 fn named_joint_parameter_coordinates(
@@ -1200,11 +1556,12 @@ fn named_joint_parameter_coordinates(
 
 fn build_joint_finalist_seed_summaries(
     context: &JointRefinementContext,
+    parameter_bits: Option<&[u64]>,
     fitted_parameters: &JointRefinementStageFittedParameters,
     progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
 ) -> Vec<(u64, JointRefinementSeedSummary)> {
     cached_seed_summaries_for_candidate_seeds(
-        None,
+        parameter_bits,
         fitted_parameters,
         context,
         context.final_simulation_seeds.as_slice(),
@@ -1263,7 +1620,7 @@ fn build_joint_coarse_tick_consistency_metrics(
     let mut metrics = Vec::new();
 
     for (simulation_seed, tick_summary) in tick_seed_summaries {
-        if let Some(coarse_5m_intervals) = build_joint_coarse_interval_observations(
+        let coarse_5m_intervals = build_joint_coarse_interval_observations(
             context,
             fitted_parameters,
             *simulation_seed,
@@ -1272,78 +1629,269 @@ fn build_joint_coarse_tick_consistency_metrics(
                 .observed_data
                 .simulated_5m_interval_template
                 .as_slice(),
-        ) {
-            let coarse_15m_intervals = aggregate_coarse_intervals_to_template(
-                coarse_5m_intervals.as_slice(),
-                context
-                    .observed_data
-                    .simulated_15m_interval_template
-                    .as_slice(),
-            );
+        );
+        let coarse_15m_intervals = build_joint_coarse_interval_observations(
+            context,
+            fitted_parameters,
+            *simulation_seed,
+            3 * FIVE_MINUTES_NANOS,
+            context
+                .observed_data
+                .simulated_15m_interval_template
+                .as_slice(),
+        );
 
-            metrics.extend(joint_coarse_tick_metrics_for_horizon(
-                *simulation_seed,
-                "5m",
-                sum_interval_tick_count(coarse_5m_intervals.as_slice()) as f64,
-                return_scale_summary(coarse_5m_intervals.as_slice()),
-                tick_summary
-                    .simulated_5m_intervals
-                    .iter()
-                    .map(|interval| interval.tick_count)
-                    .sum::<usize>() as f64,
-                tick_summary.simulated_5m_return_scale_summary,
-            ));
-
-            metrics.extend(joint_coarse_tick_metrics_for_horizon(
-                *simulation_seed,
-                "15m",
-                sum_interval_tick_count(coarse_15m_intervals.as_slice()) as f64,
-                return_scale_summary(coarse_15m_intervals.as_slice()),
-                tick_summary
-                    .simulated_15m_intervals
-                    .iter()
-                    .map(|interval| interval.tick_count)
-                    .sum::<usize>() as f64,
-                tick_summary.simulated_15m_return_scale_summary,
-            ));
-        }
+        extend_joint_coarse_tick_consistency_metrics_for_seed(
+            &mut metrics,
+            *simulation_seed,
+            coarse_5m_intervals.as_deref(),
+            coarse_15m_intervals.as_deref(),
+            tick_summary,
+        );
     }
 
     metrics
 }
 
-fn build_joint_restart_coarse_consistency_summaries(
-    restart_outcomes: &[JointRefinementRestartOutcome],
-    context: &JointRefinementContext,
-    baseline_summary: Option<&JointRefinementCoarseConsistencySummary>,
-) -> BTreeMap<String, JointRefinementCoarseConsistencySummary> {
-    let Some(baseline_summary) = baseline_summary else {
-        return BTreeMap::new();
-    };
+fn extend_joint_coarse_tick_consistency_metrics_for_seed(
+    metrics: &mut Vec<JointRefinementStageCoarseTickConsistencyMetric>,
+    simulation_seed: u64,
+    coarse_5m_intervals: Option<&[JointRefinementAggregatedIntervalObservation]>,
+    coarse_15m_intervals: Option<&[JointRefinementAggregatedIntervalObservation]>,
+    tick_summary: &JointRefinementSeedSummary,
+) {
+    if let Some(coarse_5m_intervals) = coarse_5m_intervals {
+        metrics.extend(joint_coarse_tick_metrics_for_horizon(
+            simulation_seed,
+            "5m",
+            sum_interval_tick_count(coarse_5m_intervals) as f64,
+            return_scale_summary(coarse_5m_intervals),
+            sum_interval_tick_count(tick_summary.simulated_5m_intervals.as_slice()) as f64,
+            tick_summary.simulated_5m_return_scale_summary,
+        ));
+    }
 
-    restart_outcomes
-        .iter()
-        .filter(|restart_outcome| joint_restart_outcome_is_valid(restart_outcome))
-        .filter_map(|restart_outcome| {
-            build_joint_candidate_coarse_consistency_summary(
-                context,
-                &restart_outcome.final_evaluation.fitted_parameters,
-                Some(
-                    ordered_parameter_bits(restart_outcome.parameter_vector.as_slice()).as_slice(),
-                ),
-                Some(baseline_summary.raw_fit),
-            )
-            .map(|summary| (restart_outcome.restart_id.clone(), summary))
-        })
-        .collect()
+    if let Some(coarse_15m_intervals) = coarse_15m_intervals {
+        metrics.extend(joint_coarse_tick_metrics_for_horizon(
+            simulation_seed,
+            "15m",
+            sum_interval_tick_count(coarse_15m_intervals) as f64,
+            return_scale_summary(coarse_15m_intervals),
+            sum_interval_tick_count(tick_summary.simulated_15m_intervals.as_slice()) as f64,
+            tick_summary.simulated_15m_return_scale_summary,
+        ));
+    }
 }
 
-fn build_joint_candidate_coarse_consistency_summary(
+fn select_best_restart_outcome_with_lazy_coarse_consistency<'a>(
+    restart_outcomes: &'a [&'a JointRefinementRestartOutcome],
+    context: &JointRefinementContext,
+    baseline_artifacts: Option<&JointRefinementCoarseConsistencyArtifacts>,
+    progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
+) -> (
+    Option<&'a JointRefinementRestartOutcome>,
+    BTreeMap<String, JointRefinementCoarseConsistencyArtifacts>,
+) {
+    let Some(baseline_artifacts) = baseline_artifacts else {
+        return (
+            select_best_restart_outcome_without_admissibility(restart_outcomes),
+            BTreeMap::new(),
+        );
+    };
+
+    let restart_groups = build_joint_restart_outcome_groups(restart_outcomes);
+
+    let representative_restart_outcomes = restart_groups
+        .iter()
+        .map(|restart_group| restart_group.representative)
+        .collect::<Vec<_>>();
+
+    let optimistic_thresholds = joint_refinement_admissibility_thresholds(context);
+
+    let optimistic_coarse_consistency_by_restart_id =
+        BTreeMap::<String, JointRefinementCoarseConsistencySummary>::new();
+
+    let optimistic_candidate_states = build_joint_candidate_ordering_states(
+        representative_restart_outcomes.as_slice(),
+        optimistic_thresholds,
+        &optimistic_coarse_consistency_by_restart_id,
+        false,
+    );
+
+    let has_optimistically_admissible_candidate = optimistic_candidate_states
+        .iter()
+        .any(|candidate_state| candidate_state.admissible);
+
+    let mut ranked_restart_groups = optimistic_candidate_states
+        .iter()
+        .filter(|candidate_state| candidate_state.admissible)
+        .map(|candidate_state| {
+            let restart_group = restart_groups
+                .iter()
+                .find(|restart_group| {
+                    restart_group.representative.restart_id
+                        == candidate_state.restart_outcome.restart_id
+                })
+                .expect("joint restart group should exist for every optimistic candidate");
+            (*candidate_state, restart_group)
+        })
+        .collect::<Vec<_>>();
+
+    ranked_restart_groups.sort_by(|left, right| {
+        compare_joint_candidate_ordering_states(
+            left.0,
+            right.0,
+            has_optimistically_admissible_candidate,
+        )
+    });
+
+    let total_ranked_restart_groups = ranked_restart_groups.len();
+
+    let mut coarse_consistency_artifacts_by_restart_id = BTreeMap::new();
+    let mut coarse_consistency_artifacts_by_parameter_bits =
+        BTreeMap::<Vec<u64>, JointRefinementCoarseConsistencyArtifacts>::new();
+
+    for restart_group in &restart_groups {
+        if restart_group
+            .restart_outcomes
+            .iter()
+            .any(|restart_outcome| restart_outcome.restart_id == "baseline")
+        {
+            coarse_consistency_artifacts_by_parameter_bits.insert(
+                restart_group.parameter_bits.clone(),
+                baseline_artifacts.clone(),
+            );
+            assign_coarse_consistency_artifacts_to_restart_group(
+                &mut coarse_consistency_artifacts_by_restart_id,
+                restart_group,
+                baseline_artifacts,
+            );
+        }
+    }
+
+    emit_coarse_consistency_progress(
+        progress_sender,
+        0,
+        total_ranked_restart_groups,
+        None,
+        None,
+        None,
+        None,
+        None,
+    );
+
+    let mut completed_units = 0usize;
+    let mut best_weighted_objective = None::<f64>;
+    let mut best_coarse_consistency_fit = None::<f64>;
+
+    for (_, restart_group) in ranked_restart_groups {
+        let current_weighted_objective = restart_group
+            .representative
+            .final_evaluation
+            .breakdown
+            .weighted_objective;
+        best_weighted_objective = Some(match best_weighted_objective {
+            Some(current_best) => current_best.min(current_weighted_objective),
+            None => current_weighted_objective,
+        });
+
+        let current_artifacts = coarse_consistency_artifacts_by_parameter_bits
+            .get(&restart_group.parameter_bits)
+            .cloned()
+            .or_else(|| {
+                let resolved_artifacts = build_joint_candidate_coarse_consistency_artifacts(
+                    context,
+                    &restart_group
+                        .representative
+                        .final_evaluation
+                        .fitted_parameters,
+                    Some(restart_group.parameter_bits.as_slice()),
+                    Some(baseline_artifacts.summary.raw_fit),
+                )?;
+
+                coarse_consistency_artifacts_by_parameter_bits.insert(
+                    restart_group.parameter_bits.clone(),
+                    resolved_artifacts.clone(),
+                );
+
+                Some(resolved_artifacts)
+            });
+
+        let current_coarse_consistency_fit = current_artifacts
+            .as_ref()
+            .map(|artifacts| artifacts.summary.normalized_fit);
+
+        completed_units += 1;
+
+        if let Some(artifacts) = current_artifacts.as_ref() {
+            best_coarse_consistency_fit = Some(match best_coarse_consistency_fit {
+                Some(current_best) => current_best.min(artifacts.summary.normalized_fit),
+                None => artifacts.summary.normalized_fit,
+            });
+
+            assign_coarse_consistency_artifacts_to_restart_group(
+                &mut coarse_consistency_artifacts_by_restart_id,
+                restart_group,
+                artifacts,
+            );
+        }
+
+        emit_coarse_consistency_progress(
+            progress_sender,
+            completed_units,
+            total_ranked_restart_groups,
+            Some(restart_group.representative.restart_id.as_str()),
+            Some(current_weighted_objective),
+            best_weighted_objective,
+            current_coarse_consistency_fit,
+            best_coarse_consistency_fit,
+        );
+
+        if let Some(artifacts) = current_artifacts.as_ref()
+            && artifacts.summary.normalized_fit <= artifacts.summary.admissibility_threshold
+        {
+            return (
+                Some(restart_group.representative),
+                coarse_consistency_artifacts_by_restart_id,
+            );
+        }
+    }
+
+    let selected_restart_outcome = select_best_restart_outcome_without_admissibility(
+        representative_restart_outcomes.as_slice(),
+    );
+    if let Some(selected_restart_outcome) = selected_restart_outcome
+        && let Some(selected_restart_group) = restart_groups.iter().find(|restart_group| {
+            restart_group.representative.restart_id == selected_restart_outcome.restart_id
+        })
+        && !coarse_consistency_artifacts_by_restart_id
+            .contains_key(selected_restart_outcome.restart_id.as_str())
+        && let Some(selected_artifacts) = build_joint_candidate_coarse_consistency_artifacts(
+            context,
+            &selected_restart_outcome.final_evaluation.fitted_parameters,
+            Some(selected_restart_group.parameter_bits.as_slice()),
+            Some(baseline_artifacts.summary.raw_fit),
+        )
+    {
+        assign_coarse_consistency_artifacts_to_restart_group(
+            &mut coarse_consistency_artifacts_by_restart_id,
+            selected_restart_group,
+            &selected_artifacts,
+        );
+    }
+
+    (
+        selected_restart_outcome,
+        coarse_consistency_artifacts_by_restart_id,
+    )
+}
+
+fn build_joint_candidate_coarse_consistency_artifacts(
     context: &JointRefinementContext,
     fitted_parameters: &JointRefinementStageFittedParameters,
     parameter_bits: Option<&[u64]>,
     baseline_raw_fit: Option<f64>,
-) -> Option<JointRefinementCoarseConsistencySummary> {
+) -> Option<JointRefinementCoarseConsistencyArtifacts> {
     let finalist_seed_summaries = cached_seed_summaries_for_candidate_seeds(
         parameter_bits,
         fitted_parameters,
@@ -1359,18 +1907,22 @@ fn build_joint_candidate_coarse_consistency_summary(
         fitted_parameters,
         finalist_seed_summaries.as_slice(),
     );
+
     let raw_fit = joint_coarse_tick_consistency_fit(coarse_tick_consistency.as_slice())?;
 
-    Some(JointRefinementCoarseConsistencySummary {
-        raw_fit,
-        normalized_fit: crate::stages::joint_metrics::zero_aware_normalized_bucket_value(
+    Some(JointRefinementCoarseConsistencyArtifacts {
+        summary: JointRefinementCoarseConsistencySummary {
             raw_fit,
-            baseline_raw_fit.unwrap_or(raw_fit),
-            JOINT_REFINEMENT_OBJECTIVE_NORMALIZATION_FLOOR,
-        ),
-        admissibility_threshold: admissibility_threshold_from_sample_count(
-            coarse_tick_consistency.len(),
-        ),
+            normalized_fit: crate::stages::joint_metrics::zero_aware_normalized_bucket_value(
+                raw_fit,
+                baseline_raw_fit.unwrap_or(raw_fit),
+                JOINT_REFINEMENT_OBJECTIVE_NORMALIZATION_FLOOR,
+            ),
+            admissibility_threshold: admissibility_threshold_from_sample_count(
+                coarse_tick_consistency.len(),
+            ),
+        },
+        metrics: coarse_tick_consistency,
     })
 }
 
@@ -1569,44 +2121,6 @@ fn build_joint_coarse_interval_observations(
     Some(intervals)
 }
 
-fn aggregate_coarse_intervals_to_template(
-    source_intervals: &[JointRefinementAggregatedIntervalObservation],
-    template: &[JointRefinementAggregatedIntervalObservation],
-) -> Vec<JointRefinementAggregatedIntervalObservation> {
-    let mut aggregated_intervals = zeroed_interval_observation_template(template);
-    if aggregated_intervals.is_empty() {
-        return aggregated_intervals;
-    }
-
-    let mut target_index = 0usize;
-    for source_interval in source_intervals {
-        while target_index < aggregated_intervals.len()
-            && source_interval.interval_start_utc_nanos
-                >= aggregated_intervals[target_index].interval_end_utc_nanos
-        {
-            target_index += 1;
-        }
-        if target_index >= aggregated_intervals.len() {
-            break;
-        }
-
-        let target_interval = &mut aggregated_intervals[target_index];
-        if source_interval.interval_start_utc_nanos < target_interval.interval_start_utc_nanos
-            || source_interval.interval_end_utc_nanos > target_interval.interval_end_utc_nanos
-        {
-            continue;
-        }
-
-        target_interval.log_return += source_interval.log_return;
-        target_interval.tick_count += source_interval.tick_count;
-        target_interval.sell_share_proxy +=
-            source_interval.sell_share_proxy * source_interval.tick_count as f64;
-    }
-
-    finalize_sell_share_proxies(aggregated_intervals.as_mut_slice(), 0.5);
-    aggregated_intervals
-}
-
 fn sum_interval_tick_count(intervals: &[JointRefinementAggregatedIntervalObservation]) -> usize {
     intervals.iter().map(|interval| interval.tick_count).sum()
 }
@@ -1784,7 +2298,10 @@ fn optimize_restart_seeds(
             current_item_label: None,
             valid_completed_units: Some(0),
             cumulative_local_evaluation_count: Some(0),
+            current_weighted_objective: None,
             best_weighted_objective: None,
+            current_coarse_consistency_fit: None,
+            best_coarse_consistency_fit: None,
         },
     );
 
@@ -1828,7 +2345,15 @@ fn optimize_restart_seeds(
                     current_item_label: Some(restart_outcome.restart_id.clone()),
                     valid_completed_units: Some(valid_completed_units),
                     cumulative_local_evaluation_count: Some(cumulative_local_evaluation_count),
+                    current_weighted_objective: Some(
+                        restart_outcome
+                            .final_evaluation
+                            .breakdown
+                            .weighted_objective,
+                    ),
                     best_weighted_objective,
+                    current_coarse_consistency_fit: None,
+                    best_coarse_consistency_fit: None,
                 },
             );
 
@@ -1898,7 +2423,15 @@ fn optimize_restart_seeds(
                         current_item_label: Some(restart_outcome.restart_id.clone()),
                         valid_completed_units: Some(valid_completed_units),
                         cumulative_local_evaluation_count: Some(cumulative_local_evaluation_count),
+                        current_weighted_objective: Some(
+                            restart_outcome
+                                .final_evaluation
+                                .breakdown
+                                .weighted_objective,
+                        ),
                         best_weighted_objective,
+                        current_coarse_consistency_fit: None,
+                        best_coarse_consistency_fit: None,
                     },
                 );
 
@@ -1943,6 +2476,56 @@ fn emit_joint_refinement_progress(
     if let Some(progress_sender) = progress_sender {
         let _ = progress_sender.send(progress_update);
     }
+}
+
+fn emit_coarse_consistency_progress(
+    progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
+    completed_units: usize,
+    total_units: usize,
+    current_item_label: Option<&str>,
+    current_weighted_objective: Option<f64>,
+    best_weighted_objective: Option<f64>,
+    current_coarse_consistency_fit: Option<f64>,
+    best_coarse_consistency_fit: Option<f64>,
+) {
+    emit_joint_refinement_progress(
+        progress_sender,
+        JointRefinementStageProgressUpdate {
+            phase: JointRefinementStageProgressPhase::CoarseConsistencyEvaluation,
+            completed_units,
+            total_units,
+            current_item_label: current_item_label.map(str::to_string),
+            valid_completed_units: None,
+            cumulative_local_evaluation_count: None,
+            current_weighted_objective,
+            best_weighted_objective,
+            current_coarse_consistency_fit,
+            best_coarse_consistency_fit,
+        },
+    );
+}
+
+fn emit_final_assembly_progress(
+    progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
+    completed_units: usize,
+    total_units: usize,
+    current_item_label: &str,
+) {
+    emit_joint_refinement_progress(
+        progress_sender,
+        JointRefinementStageProgressUpdate {
+            phase: JointRefinementStageProgressPhase::FinalAssembly,
+            completed_units,
+            total_units,
+            current_item_label: Some(current_item_label.to_string()),
+            valid_completed_units: None,
+            cumulative_local_evaluation_count: None,
+            current_weighted_objective: None,
+            best_weighted_objective: None,
+            current_coarse_consistency_fit: None,
+            best_coarse_consistency_fit: None,
+        },
+    );
 }
 
 pub(super) fn ordered_parameter_bits(parameter_vector: &[f64]) -> Vec<u64> {
@@ -2114,6 +2697,16 @@ fn optimize_single_restart(
 
         current_vector = updated_nig_vector;
         evaluation_count += nig_evaluations;
+        if nig_stop_reason == "invalid_step" {
+            return build_short_circuited_restart_outcome(
+                restart_id,
+                current_vector,
+                context,
+                solver_settings,
+                evaluation_count,
+                nig_stop_reason,
+            );
+        }
 
         let (updated_hawkes_vector, hawkes_stop_reason, hawkes_evaluations) =
             optimize_parameter_block(
@@ -2126,6 +2719,16 @@ fn optimize_single_restart(
 
         current_vector = updated_hawkes_vector;
         evaluation_count += hawkes_evaluations;
+        if hawkes_stop_reason == "invalid_step" {
+            return build_short_circuited_restart_outcome(
+                restart_id,
+                current_vector,
+                context,
+                solver_settings,
+                evaluation_count,
+                hawkes_stop_reason,
+            );
+        }
 
         let (updated_coupling_vector, coupling_stop_reason, coupling_evaluations) =
             optimize_parameter_block(
@@ -2138,6 +2741,16 @@ fn optimize_single_restart(
 
         current_vector = updated_coupling_vector;
         evaluation_count += coupling_evaluations;
+        if coupling_stop_reason == "invalid_step" {
+            return build_short_circuited_restart_outcome(
+                restart_id,
+                current_vector,
+                context,
+                solver_settings,
+                evaluation_count,
+                coupling_stop_reason,
+            );
+        }
 
         stop_reason =
             select_restart_stop_reason(hawkes_stop_reason, nig_stop_reason, coupling_stop_reason);
@@ -2152,6 +2765,17 @@ fn optimize_single_restart(
         JointRefinementFidelityTier::Local,
         solver_settings,
     );
+    if local_evaluation.invalid_reason.is_some() {
+        return JointRefinementRestartOutcome {
+            restart_id: restart_id.to_string(),
+            parameter_vector: current_vector,
+            final_evaluation: local_evaluation.clone(),
+            local_evaluation,
+            local_evaluation_count: evaluation_count,
+            stop_reason,
+        };
+    }
+
     let final_evaluation = evaluate_joint_candidate(
         current_vector.as_slice(),
         context,
@@ -2164,6 +2788,31 @@ fn optimize_single_restart(
         parameter_vector: current_vector,
         local_evaluation,
         final_evaluation,
+        local_evaluation_count: evaluation_count,
+        stop_reason,
+    }
+}
+
+fn build_short_circuited_restart_outcome(
+    restart_id: &str,
+    current_vector: Vec<f64>,
+    context: &JointRefinementContext,
+    solver_settings: &CalibrationOptimizerSettings,
+    evaluation_count: usize,
+    stop_reason: &'static str,
+) -> JointRefinementRestartOutcome {
+    let local_evaluation = evaluate_joint_candidate(
+        current_vector.as_slice(),
+        context,
+        JointRefinementFidelityTier::Local,
+        solver_settings,
+    );
+
+    JointRefinementRestartOutcome {
+        restart_id: restart_id.to_string(),
+        parameter_vector: current_vector,
+        final_evaluation: local_evaluation.clone(),
+        local_evaluation,
         local_evaluation_count: evaluation_count,
         stop_reason,
     }
@@ -2206,16 +2855,17 @@ fn optimize_parameter_block(
 
     let mut evaluate_block = |block_vector: &[f64]| -> Option<f64> {
         let full_vector = substitute_block(current_vector, block_indices, block_vector);
-        Some(
-            evaluate_joint_candidate(
-                full_vector.as_slice(),
-                context,
-                JointRefinementFidelityTier::Local,
-                solver_settings,
-            )
-            .breakdown
-            .weighted_objective,
-        )
+        let candidate_evaluation = evaluate_joint_candidate(
+            full_vector.as_slice(),
+            context,
+            JointRefinementFidelityTier::Local,
+            solver_settings,
+        );
+        if candidate_evaluation.invalid_reason.is_some() {
+            return None;
+        }
+
+        Some(candidate_evaluation.breakdown.weighted_objective)
     };
 
     let optimizer_result = optimize_bounded_powell(
@@ -2320,12 +2970,16 @@ mod tests {
     use super::{
         JOINT_REFINEMENT_PARAMETER_BLOCK_COUNT, JointRefinementActiveParameterLayout,
         JointRefinementAdmissibilityThresholds, JointRefinementCoarseConsistencySummary,
-        admissibility_threshold_from_sample_count, desired_joint_refinement_restart_count,
-        joint_breakdown_is_admissible, joint_refinement_base_schedule_components,
-        joint_refinement_budget_schedule, maximum_parallel_restart_count,
+        JointRefinementSeedSummary, admissibility_threshold_from_sample_count,
+        desired_joint_refinement_restart_count,
+        extend_joint_coarse_tick_consistency_metrics_for_seed, joint_breakdown_is_admissible,
+        joint_refinement_base_schedule_components, joint_refinement_budget_schedule,
+        maximum_parallel_restart_count,
     };
     use crate::stages::joint_metrics::{
+        JointRefinementAggregatedIntervalObservation,
         JointRefinementBusinessTimeBucketReturnScaleSummaries, JointRefinementReturnScaleSummary,
+        JointRefinementRollingVarianceActivityMetric,
     };
     use crate::stages::return_components::{
         ReturnComponentsObservedOpenSessionReturn,
@@ -2432,6 +3086,60 @@ mod tests {
             activity_level_fit: 2.0,
             rv_activity_coupling_fit: 2.0,
             price_span_sanity_fit: 2.0,
+        }
+    }
+
+    fn build_test_interval_observation(
+        interval_start_utc_nanos: i64,
+        interval_end_utc_nanos: i64,
+        log_return: f64,
+        tick_count: usize,
+        sell_share_proxy: f64,
+    ) -> JointRefinementAggregatedIntervalObservation {
+        JointRefinementAggregatedIntervalObservation {
+            interval_start_utc_nanos,
+            interval_end_utc_nanos,
+            log_return,
+            tick_count,
+            sell_share_proxy,
+        }
+    }
+
+    fn build_test_seed_summary(
+        simulated_5m_intervals: Vec<JointRefinementAggregatedIntervalObservation>,
+        simulated_15m_intervals: Vec<JointRefinementAggregatedIntervalObservation>,
+        simulated_5m_return_scale_summary: JointRefinementReturnScaleSummary,
+        simulated_15m_return_scale_summary: JointRefinementReturnScaleSummary,
+    ) -> JointRefinementSeedSummary {
+        JointRefinementSeedSummary {
+            simulated_5m_intervals,
+            simulated_15m_intervals,
+            simulated_tick_shape_returns: vec![0.01, -0.01],
+            simulated_5m_shape_returns: vec![0.02, -0.02],
+            simulated_15m_shape_returns: vec![0.03, -0.03],
+            simulated_tick_return_scale_summary: JointRefinementReturnScaleSummary {
+                mean_absolute_return: 0.01,
+                realized_variance: 0.0001,
+                absolute_return_quantile_q90: 0.02,
+            },
+            simulated_5m_return_scale_summary,
+            simulated_15m_return_scale_summary,
+            simulated_5m_business_time_return_scale_summaries:
+                JointRefinementBusinessTimeBucketReturnScaleSummaries {
+                    bucket_summaries: [None; 4],
+                },
+            simulated_15m_business_time_return_scale_summaries:
+                JointRefinementBusinessTimeBucketReturnScaleSummaries {
+                    bucket_summaries: [None; 4],
+                },
+            simulated_tick_intraday_mean_absolute_returns: vec![0.01; 24],
+            simulated_5m_intraday_mean_absolute_returns: vec![0.02; 24],
+            simulated_15m_intraday_mean_absolute_returns: vec![0.03; 24],
+            simulated_hourly_tick_counts: vec![1.0; 24],
+            simulated_15m_rv_activity_metric: JointRefinementRollingVarianceActivityMetric {
+                correlation: 0.0,
+                standardized_path_distance: 0.0,
+            },
         }
     }
 
@@ -2828,6 +3536,26 @@ mod tests {
     }
 
     #[test]
+    fn admissible_candidate_ordering_rejects_inadmissible_restart_when_available() {
+        let admissible_baseline = build_test_joint_breakdown(1.0, 1.0, 1.2);
+        let inadmissible_restart = build_test_joint_breakdown(0.8, 0.8, 0.7);
+
+        let ordering = compare_joint_candidate_breakdowns(
+            1,
+            &admissible_baseline,
+            true,
+            "baseline",
+            1,
+            &inadmissible_restart,
+            false,
+            "restart_refined",
+            true,
+        );
+
+        assert_eq!(ordering, Ordering::Less);
+    }
+
+    #[test]
     fn coarse_consistency_admissibility_is_baseline_relative() {
         let breakdown = build_test_joint_breakdown(1.0, 1.0, 1.0);
         let metric_count = 24;
@@ -2862,5 +3590,50 @@ mod tests {
             None,
             true,
         ));
+    }
+
+    #[test]
+    fn coarse_tick_consistency_prefers_direct_fifteen_minute_coarse_path() {
+        let tick_summary = build_test_seed_summary(
+            vec![
+                build_test_interval_observation(0, 300, 0.01, 2, 0.5),
+                build_test_interval_observation(300, 600, -0.02, 2, 0.5),
+                build_test_interval_observation(600, 900, 0.03, 2, 0.5),
+            ],
+            vec![build_test_interval_observation(0, 900, 0.02, 7, 0.5)],
+            JointRefinementReturnScaleSummary {
+                mean_absolute_return: 0.02,
+                realized_variance: 0.0004,
+                absolute_return_quantile_q90: 0.03,
+            },
+            JointRefinementReturnScaleSummary {
+                mean_absolute_return: 0.07,
+                realized_variance: 0.0049,
+                absolute_return_quantile_q90: 0.08,
+            },
+        );
+        let coarse_5m_intervals = vec![
+            build_test_interval_observation(0, 300, 0.04, 2, 0.5),
+            build_test_interval_observation(300, 600, 0.04, 2, 0.5),
+            build_test_interval_observation(600, 900, 0.04, 2, 0.5),
+        ];
+        let coarse_15m_intervals = vec![build_test_interval_observation(0, 900, 0.25, 11, 0.5)];
+
+        let mut metrics = Vec::new();
+        extend_joint_coarse_tick_consistency_metrics_for_seed(
+            &mut metrics,
+            17,
+            Some(coarse_5m_intervals.as_slice()),
+            Some(coarse_15m_intervals.as_slice()),
+            &tick_summary,
+        );
+
+        let direct_fifteen_minute_event_count_metric = metrics
+            .iter()
+            .find(|metric| metric.horizon_label == "15m" && metric.metric_id == "event_count")
+            .expect("15m event-count metric should be present");
+
+        assert_eq!(direct_fifteen_minute_event_count_metric.coarse_value, 11.0);
+        assert_eq!(direct_fifteen_minute_event_count_metric.tick_value, 7.0);
     }
 }

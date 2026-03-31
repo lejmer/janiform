@@ -21,6 +21,7 @@ from tools.workbench.fit_context import (
     WorkbenchObservedSimulationComparison,
     WorkbenchPriceSeries,
     WorkbenchSourceTable,
+    _candidate_source_paths,
     build_observed_simulation_comparison,
     build_observed_simulation_comparison_for_fit_context,
     load_fit_context,
@@ -108,7 +109,9 @@ def test_workbench_comparison_reloads_training_ticks_and_simulates_training_wind
             horizon_interval_count: int,
             interval: str | None = None,
             silent: bool,
+            progress_callback: Any = None,
         ) -> _FakeSimulationResult:
+            del progress_callback
             captured_simulations.append(
                 {
                     "seed": seed,
@@ -162,6 +165,329 @@ def test_workbench_comparison_reloads_training_ticks_and_simulates_training_wind
             "silent": True,
         },
     ]
+
+
+def test_workbench_comparison_reuses_persisted_cache_for_same_model_seed_and_range(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tick_data_path = tmp_path / "ticks.csv"
+    tick_data_path.write_text(
+        "\n".join(
+            [
+                "timestamp_utc,trade_price",
+                "2026-02-02T14:30:00Z,100.0",
+                "2026-02-02T15:30:00Z,101.0",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    _write_fit_report(
+        tmp_path / "fit_report.json",
+        tick_data_path=tick_data_path,
+        run_id="fit-context-cache-hit",
+        duplicate_record_policy=None,
+    )
+    (tmp_path / "model.json").write_text("{}", encoding="utf-8")
+
+    captured_simulations: list[dict[str, Any]] = []
+
+    class _FakeSimulationResult:
+        def to_pandas(self) -> Any:
+            return pandas.DataFrame.from_records(
+                [
+                    {
+                        "timestamp_utc": datetime(2026, 2, 2, 14, 30, tzinfo=UTC),
+                        "trade_price": 99.5,
+                    },
+                    {
+                        "timestamp_utc": datetime(2026, 2, 2, 15, 30, tzinfo=UTC),
+                        "trade_price": 100.5,
+                    },
+                ]
+            )
+
+    class _FakeModel:
+        metadata = {
+            "input_inference": {
+                "tick_data_format": "csv",
+                "timestamp_column": "timestamp_utc",
+                "timestamp_timezone": "UTC",
+                "tick_price_input_policy": "explicit_price_column",
+                "tick_price_columns": {
+                    "price_column": "trade_price",
+                    "trade_sign_column": None,
+                    "bid_column": None,
+                    "ask_column": None,
+                },
+            },
+            "simulation_output_preferences": {
+                "reference_price": 100.0,
+            },
+        }
+
+        def simulate(
+            self,
+            *,
+            seed: int,
+            start_time_utc: datetime,
+            horizon_interval_count: int,
+            interval: str | None = None,
+            silent: bool,
+            progress_callback: Any = None,
+        ) -> _FakeSimulationResult:
+            del progress_callback
+            captured_simulations.append(
+                {
+                    "seed": seed,
+                    "start_time_utc": start_time_utc,
+                    "horizon_interval_count": horizon_interval_count,
+                    "interval": interval,
+                    "silent": silent,
+                }
+            )
+            return _FakeSimulationResult()
+
+    fake_model = _FakeModel()
+    monkeypatch.setattr(
+        "tools.workbench.fit_context.JaniformModel.load",
+        lambda path: fake_model,
+    )
+
+    artifacts = load_workbench_artifacts(tmp_path)
+    first = build_observed_simulation_comparison(artifacts, seed=5)
+    second = build_observed_simulation_comparison(artifacts, seed=5)
+
+    assert first is not None
+    assert second is not None
+    assert len(captured_simulations) == 2
+    assert (tmp_path / ".workbench_cache").is_dir()
+    _assert_price_series(
+        second.simulated_series,
+        timestamps_utc=(
+            datetime(2026, 2, 2, 14, 30, tzinfo=UTC),
+            datetime(2026, 2, 2, 15, 30, tzinfo=UTC),
+        ),
+        prices=(99.5, 100.5),
+    )
+
+
+def test_workbench_comparison_cache_does_not_apply_to_edited_models(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tick_data_path = tmp_path / "ticks.csv"
+    tick_data_path.write_text(
+        "\n".join(
+            [
+                "timestamp_utc,trade_price",
+                "2026-02-02T14:30:00Z,100.0",
+                "2026-02-02T15:30:00Z,101.0",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    _write_fit_report(
+        tmp_path / "fit_report.json",
+        tick_data_path=tick_data_path,
+        run_id="fit-context-cache-miss-for-edited-model",
+        duplicate_record_policy=None,
+    )
+    (tmp_path / "model.json").write_text("{}", encoding="utf-8")
+
+    persisted_model_simulations: list[dict[str, Any]] = []
+    edited_model_simulations: list[dict[str, Any]] = []
+
+    class _FakeSimulationResult:
+        def to_pandas(self) -> Any:
+            return pandas.DataFrame.from_records(
+                [
+                    {
+                        "timestamp_utc": datetime(2026, 2, 2, 14, 30, tzinfo=UTC),
+                        "trade_price": 99.5,
+                    },
+                    {
+                        "timestamp_utc": datetime(2026, 2, 2, 15, 30, tzinfo=UTC),
+                        "trade_price": 100.5,
+                    },
+                ]
+            )
+
+    class _PersistedModel:
+        metadata = {
+            "input_inference": {
+                "tick_data_format": "csv",
+                "timestamp_column": "timestamp_utc",
+                "timestamp_timezone": "UTC",
+                "tick_price_input_policy": "explicit_price_column",
+                "tick_price_columns": {
+                    "price_column": "trade_price",
+                    "trade_sign_column": None,
+                    "bid_column": None,
+                    "ask_column": None,
+                },
+            },
+            "simulation_output_preferences": {
+                "reference_price": 100.0,
+            },
+        }
+
+        def simulate(
+            self,
+            *,
+            seed: int,
+            start_time_utc: datetime,
+            horizon_interval_count: int,
+            interval: str | None = None,
+            silent: bool,
+            progress_callback: Any = None,
+        ) -> _FakeSimulationResult:
+            del progress_callback
+            persisted_model_simulations.append(
+                {
+                    "seed": seed,
+                    "start_time_utc": start_time_utc,
+                    "horizon_interval_count": horizon_interval_count,
+                    "interval": interval,
+                    "silent": silent,
+                }
+            )
+            return _FakeSimulationResult()
+
+    class _EditedModel(_PersistedModel):
+        def simulate(
+            self,
+            *,
+            seed: int,
+            start_time_utc: datetime,
+            horizon_interval_count: int,
+            interval: str | None = None,
+            silent: bool,
+            progress_callback: Any = None,
+        ) -> _FakeSimulationResult:
+            del progress_callback
+            edited_model_simulations.append(
+                {
+                    "seed": seed,
+                    "start_time_utc": start_time_utc,
+                    "horizon_interval_count": horizon_interval_count,
+                    "interval": interval,
+                    "silent": silent,
+                }
+            )
+            return _FakeSimulationResult()
+
+    persisted_model = _PersistedModel()
+    monkeypatch.setattr(
+        "tools.workbench.fit_context.JaniformModel.load",
+        lambda path: persisted_model,
+    )
+
+    artifacts = load_workbench_artifacts(tmp_path)
+    fit_context = load_fit_context(artifacts)
+
+    assert fit_context is not None
+
+    first = build_observed_simulation_comparison(artifacts, seed=3)
+    second = build_observed_simulation_comparison_for_fit_context(
+        fit_context,
+        model=cast(Any, _EditedModel()),
+        seed=3,
+    )
+
+    assert first is not None
+    assert second is not None
+    assert len(persisted_model_simulations) == 2
+    assert len(edited_model_simulations) == 2
+
+
+def test_workbench_comparison_uses_canonical_bid_ask_simulation_output_columns(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tick_data_path = tmp_path / "ticks.csv"
+    tick_data_path.write_text(
+        "\n".join(
+            [
+                "datetime,bid_price,ask_price",
+                "2026-02-02T14:30:00Z,100.0,100.2",
+                "2026-02-02T15:30:00Z,101.0,101.2",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    _write_fit_report(
+        tmp_path / "fit_report.json",
+        tick_data_path=tick_data_path,
+        run_id="fit-context-runtime-columns",
+        duplicate_record_policy=None,
+    )
+    (tmp_path / "model.json").write_text("{}", encoding="utf-8")
+
+    class _FakeSimulationResult:
+        def to_pandas(self) -> Any:
+            return pandas.DataFrame.from_records(
+                [
+                    {
+                        "datetime": datetime(2026, 2, 2, 14, 30, tzinfo=UTC),
+                        "mid_price": 99.5,
+                    },
+                    {
+                        "datetime": datetime(2026, 2, 2, 15, 30, tzinfo=UTC),
+                        "mid_price": 100.5,
+                    },
+                ]
+            )
+
+    class _FakeModel:
+        metadata = {
+            "input_inference": {
+                "tick_data_format": "csv",
+                "timestamp_column": "datetime",
+                "timestamp_timezone": "UTC",
+                "tick_price_input_policy": "bid_ask_midpoint",
+                "tick_price_columns": {
+                    "price_column": None,
+                    "trade_sign_column": None,
+                    "bid_column": "bid_price",
+                    "ask_column": "ask_price",
+                },
+            },
+            "simulation_output_preferences": {
+                "reference_price": 100.0,
+            },
+        }
+
+        def simulate(
+            self,
+            *,
+            seed: int,
+            start_time_utc: datetime,
+            horizon_interval_count: int,
+            interval: str | None = None,
+            silent: bool,
+            progress_callback: Any = None,
+        ) -> _FakeSimulationResult:
+            del seed, start_time_utc, horizon_interval_count, interval, progress_callback, silent
+            return _FakeSimulationResult()
+
+    monkeypatch.setattr(
+        "tools.workbench.fit_context.JaniformModel.load",
+        lambda path: _FakeModel(),
+    )
+
+    artifacts = load_workbench_artifacts(tmp_path)
+    comparison = build_observed_simulation_comparison(artifacts, seed=5)
+
+    assert comparison is not None
+    _assert_price_series(
+        comparison.simulated_series,
+        timestamps_utc=(
+            datetime(2026, 2, 2, 14, 30, tzinfo=UTC),
+            datetime(2026, 2, 2, 15, 30, tzinfo=UTC),
+        ),
+        prices=(99.5, 100.5),
+    )
 
 
 def test_workbench_comparison_replays_exact_hour_endpoints_over_covering_hours(
@@ -235,7 +561,9 @@ def test_workbench_comparison_replays_exact_hour_endpoints_over_covering_hours(
             horizon_interval_count: int,
             interval: str | None = None,
             silent: bool,
+            progress_callback: Any = None,
         ) -> _FakeSimulationResult:
+            del progress_callback
             captured_simulations.append(
                 {
                     "seed": seed,
@@ -400,7 +728,9 @@ def test_workbench_comparison_uses_full_observed_range_without_anchor_clipping()
             horizon_interval_count: int,
             interval: str | None = None,
             silent: bool,
+            progress_callback: Any = None,
         ) -> _FakeSimulationResult:
+            del progress_callback
             captured_simulations.append(
                 {
                     "seed": seed,
@@ -480,6 +810,150 @@ def test_workbench_comparison_uses_full_observed_range_without_anchor_clipping()
             "silent": True,
         },
     ]
+
+
+def test_workbench_comparison_uses_full_observed_range_for_large_inputs() -> None:
+    captured_simulations: list[dict[str, Any]] = []
+
+    class _FakeSimulationResult:
+        def to_pandas(self) -> Any:
+            return pandas.DataFrame.from_records(
+                [
+                    {
+                        "timestamp_utc": datetime(2026, 2, 2, 0, 0, tzinfo=UTC),
+                        "trade_price": 100.0,
+                    },
+                    {
+                        "timestamp_utc": datetime(2026, 2, 9, 0, 0, tzinfo=UTC),
+                        "trade_price": 101.0,
+                    },
+                ]
+            )
+
+    class _FakeModel:
+        metadata = {
+            "input_inference": {
+                "tick_data_format": "csv",
+                "timestamp_column": "timestamp_utc",
+                "timestamp_timezone": "UTC",
+                "tick_price_input_policy": "explicit_price_column",
+                "tick_price_columns": {
+                    "price_column": "trade_price",
+                    "trade_sign_column": None,
+                    "bid_column": None,
+                    "ask_column": None,
+                },
+            },
+            "simulation_output_preferences": {
+                "reference_price": 100.0,
+            },
+        }
+
+        def simulate(
+            self,
+            *,
+            seed: int,
+            start_time_utc: datetime,
+            horizon_interval_count: int,
+            interval: str | None = None,
+            silent: bool,
+            progress_callback: Any = None,
+        ) -> _FakeSimulationResult:
+            del progress_callback
+            captured_simulations.append(
+                {
+                    "seed": seed,
+                    "start_time_utc": start_time_utc,
+                    "horizon_interval_count": horizon_interval_count,
+                    "interval": interval,
+                    "silent": silent,
+                }
+            )
+            return _FakeSimulationResult()
+
+    observed_records = tuple(
+        (
+            (
+                datetime(2026, 1, 31, 0, 0, tzinfo=UTC)
+                + pandas.Timedelta(hours=hours_elapsed)
+            )
+            .isoformat()
+            .replace("+00:00", "Z"),
+            100.0 + hours_elapsed * 0.01,
+        )
+        for hours_elapsed in range(24 * 10 + 1)
+    )
+    observed_series = _price_series_from_records(observed_records)
+    fit_context = WorkbenchFitContext(
+        model=cast(Any, _FakeModel()),
+        fit_report_path=Path("/tmp/long-range-fit-report.json"),
+        tick_data_source=WorkbenchSourceTable(
+            source_path=Path("/tmp/source.csv"),
+            file_format="csv",
+            column_names=("timestamp_utc", "trade_price"),
+            source_row_count=len(observed_records),
+        ),
+        observed_tick_series=observed_series,
+        observed_range_start_utc=datetime(2026, 1, 31, 0, 0, tzinfo=UTC),
+        observed_range_end_utc=datetime(2026, 2, 10, 0, 0, tzinfo=UTC),
+    )
+
+    comparison = build_observed_simulation_comparison_for_fit_context(
+        fit_context,
+        model=cast(Any, fit_context.model),
+        seed=11,
+    )
+
+    assert comparison is not None
+    assert comparison.observed_comparison_series.timestamp_microseconds_utc.size == len(observed_records)
+    assert comparison.observed_comparison_series.prices.size == len(observed_records)
+    assert comparison.observed_comparison_series.timestamp_microseconds_utc[0] == (
+        datetime_to_utc_microseconds(datetime(2026, 1, 31, 0, 0, tzinfo=UTC))
+    )
+    assert comparison.observed_comparison_series.timestamp_microseconds_utc[1] == (
+        datetime_to_utc_microseconds(datetime(2026, 1, 31, 1, 0, tzinfo=UTC))
+    )
+    assert comparison.observed_comparison_series.timestamp_microseconds_utc[-1] == (
+        datetime_to_utc_microseconds(datetime(2026, 2, 10, 0, 0, tzinfo=UTC))
+    )
+    assert comparison.observed_comparison_series.prices[0] == 100.0
+    assert comparison.observed_comparison_series.prices[1] == 100.01
+    assert comparison.observed_comparison_series.prices[-1] == 102.4
+    assert captured_simulations == [
+        {
+            "seed": 11,
+            "start_time_utc": datetime(2026, 1, 31, 0, 0, tzinfo=UTC),
+            "horizon_interval_count": 241,
+            "interval": None,
+            "silent": True,
+        },
+        {
+            "seed": 11,
+            "start_time_utc": datetime(2026, 1, 31, 0, 0, tzinfo=UTC),
+            "horizon_interval_count": 961,
+            "interval": "15m",
+            "silent": True,
+        },
+    ]
+
+
+def test_workbench_fit_context_generates_cross_platform_source_path_candidates() -> None:
+    windows_candidates = _candidate_source_paths(
+        r"C:\Users\anton\source\repos\janiform\data\AUDCAD_2025.parquet"
+    )
+    assert Path(
+        "/mnt/c/Users/anton/source/repos/janiform/data/AUDCAD_2025.parquet"
+    ) in windows_candidates
+
+    mount_candidates = _candidate_source_paths(
+        "/mnt/c/Users/anton/source/repos/janiform/data/AUDCAD_2025.parquet"
+    )
+    assert any(
+        str(candidate).lower().startswith("c:")
+        and "Users" in str(candidate)
+        and "AUDCAD_2025.parquet" in str(candidate)
+        for candidate in mount_candidates
+    )
 
 
 def test_parameter_objective_figure_clips_extreme_objective_outliers() -> None:
@@ -964,8 +1438,9 @@ def test_workbench_comparison_builds_seeded_15m_series_from_raw_path(
             horizon_interval_count: int,
             interval: str | None = None,
             silent: bool,
+            progress_callback: Any = None,
         ) -> Any:
-            del seed, start_time_utc, horizon_interval_count, silent
+            del seed, start_time_utc, horizon_interval_count, progress_callback, silent
             if interval == "15m":
                 return _FakeCoarseSimulationResult()
 

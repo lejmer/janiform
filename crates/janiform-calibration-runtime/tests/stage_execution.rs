@@ -10,16 +10,18 @@ use support::shared::{
     CalibrationStageExecutionStatus, CalibrationStageSeedOverride, CalibrationStageSolverSettings,
     HawkesKernelValidationStatus, HawkesStageExecutionFailure, HawkesStageExecutionInput,
     HawkesStructuredAlphaParameterization, JointRefinementStageExecutionFailure,
-    JointRefinementStageExecutionInput, JointRefinementStageHawkesInput,
-    JointRefinementStageReturnComponentsInput, JointRefinementStageSeasonalityFactorsInput,
-    ReturnComponentsStageActivityInput, ReturnComponentsStageExecutionFailure,
-    ReturnComponentsStageExecutionInput, SeasonalityStageExecutionFailure,
-    SeasonalityStageExecutionInput, build_data_inputs, build_hawkes_stage_run_spec,
-    build_hawkes_stage_success_payload, build_return_components_stage_pipeline_run_spec,
+    JointRefinementStageExecutionInput, JointRefinementStageFittedPayload,
+    JointRefinementStageHawkesInput, JointRefinementStageReturnComponentsInput,
+    JointRefinementStageSeasonalityFactorsInput, ReturnComponentsStageActivityInput,
+    ReturnComponentsStageExecutionFailure, ReturnComponentsStageExecutionInput,
+    SeasonalityStageExecutionFailure, SeasonalityStageExecutionInput, build_data_inputs,
+    build_hawkes_stage_run_spec, build_hawkes_stage_success_payload,
+    build_return_components_stage_pipeline_run_spec,
     build_return_components_stage_standalone_run_spec, build_run_contract_with_mode_and_resume,
     build_seasonality_stage_run_spec, build_seasonality_stage_success_payload,
     build_solver_settings, calibration_stage_test_registry, calibration_stage_timestamp_fixture,
     hawkes_stage_candidate_fixture, hawkes_stage_constraint_violating_candidate_fixture,
+    normalize_joint_refinement_runtime_profile_for_reproducibility,
     return_components_stage_candidate_generation_fixture, run_hawkes_calibration_stage,
     run_joint_refinement_calibration_stage, run_return_components_calibration_stage,
     run_seasonality_calibration_stage, timestamp_input_record,
@@ -33,6 +35,15 @@ const JOINT_REFINEMENT_SUMMARY_SIMULATION_BACKEND_ENV: &str =
 const JOINT_REFINEMENT_SUMMARY_SIMULATION_BACKEND_PROCESS_WORKER: &str = "process_worker";
 
 static JOINT_REFINEMENT_WORKER_ENV_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+
+fn normalized_joint_refinement_payload_for_reproducibility(
+    mut payload: JointRefinementStageFittedPayload,
+) -> JointRefinementStageFittedPayload {
+    normalize_joint_refinement_runtime_profile_for_reproducibility(
+        &mut payload.optimizer_diagnostics.runtime_profile,
+    );
+    payload
+}
 
 #[test]
 fn seasonality_stage_execution_succeeds_for_memory_and_disk_mode_handoffs() {
@@ -257,6 +268,9 @@ fn seasonality_stage_execution_neutralizes_under_supported_calendar_components()
 
 #[test]
 fn joint_refinement_stage_execution_succeeds_for_memory_and_disk_mode_handoffs() {
+    let _guard = JOINT_REFINEMENT_WORKER_ENV_LOCK
+        .lock()
+        .expect("joint-refinement worker environment lock should be available");
     let calendar_registry = calibration_stage_test_registry();
     let seasonality_payload = build_seasonality_stage_success_payload();
     let hawkes_payload = build_hawkes_stage_success_payload();
@@ -435,7 +449,14 @@ fn joint_refinement_stage_execution_is_deterministic_across_cpu_counts() {
                 .as_ref()
                 .expect("multi-thread memory report should include fitted payload");
 
-            assert_eq!(memory_single_thread_payload, memory_multi_thread_payload);
+            assert_eq!(
+                normalized_joint_refinement_payload_for_reproducibility(
+                    memory_single_thread_payload.clone()
+                ),
+                normalized_joint_refinement_payload_for_reproducibility(
+                    memory_multi_thread_payload.clone()
+                )
+            );
         },
     );
 }

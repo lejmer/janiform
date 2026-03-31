@@ -111,7 +111,9 @@ pub struct JointRefinementStageExecutionInput {
 #[serde(rename_all = "snake_case")]
 pub enum JointRefinementStageProgressPhase {
     RestartOptimization,
+    CoarseConsistencyEvaluation,
     FinalSeedEvaluation,
+    FinalAssembly,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -122,7 +124,10 @@ pub struct JointRefinementStageProgressUpdate {
     pub current_item_label: Option<String>,
     pub valid_completed_units: Option<usize>,
     pub cumulative_local_evaluation_count: Option<usize>,
+    pub current_weighted_objective: Option<f64>,
     pub best_weighted_objective: Option<f64>,
+    pub current_coarse_consistency_fit: Option<f64>,
+    pub best_coarse_consistency_fit: Option<f64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]

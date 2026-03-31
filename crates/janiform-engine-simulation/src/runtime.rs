@@ -58,6 +58,7 @@ use super::constants::{
     SEEDED_TICK_EVENT_TIMESTAMP_REPRESENTATION_POLICY,
 };
 use super::error::SeededTickSimulationRunError;
+use super::progress::{SimulationProgressEvent, SimulationProgressPhase, emit_progress_event};
 
 /// Run deterministic seeded tick-event simulation using the default splitmix64 randomness policy.
 pub fn run_seeded_tick_event_simulation(
@@ -65,6 +66,18 @@ pub fn run_seeded_tick_event_simulation(
 ) -> Result<SeededTickSimulationRunResult, SeededTickSimulationRunError> {
     let randomness_factory = SplitMix64SimulationRandomnessFactory;
     run_seeded_tick_event_simulation_with_randomness_factory(run_config, &randomness_factory)
+}
+
+pub fn run_seeded_tick_event_simulation_with_observer(
+    run_config: SeededTickSimulationRunConfig,
+    observer: &mut dyn FnMut(SimulationProgressEvent),
+) -> Result<SeededTickSimulationRunResult, SeededTickSimulationRunError> {
+    let randomness_factory = SplitMix64SimulationRandomnessFactory;
+    run_seeded_tick_event_simulation_with_randomness_factory_and_observer(
+        run_config,
+        &randomness_factory,
+        observer,
+    )
 }
 
 /// Run deterministic seeded tick-event simulation with an injected randomness factory.
@@ -78,11 +91,42 @@ pub fn run_seeded_tick_event_simulation_with_randomness_factory<F>(
 where
     F: SimulationRandomnessFactory,
 {
+    run_seeded_tick_event_simulation_with_randomness_factory_internal(
+        run_config,
+        randomness_factory,
+        None,
+    )
+}
+
+pub fn run_seeded_tick_event_simulation_with_randomness_factory_and_observer<F>(
+    run_config: SeededTickSimulationRunConfig,
+    randomness_factory: &F,
+    observer: &mut dyn FnMut(SimulationProgressEvent),
+) -> Result<SeededTickSimulationRunResult, SeededTickSimulationRunError>
+where
+    F: SimulationRandomnessFactory,
+{
+    run_seeded_tick_event_simulation_with_randomness_factory_internal(
+        run_config,
+        randomness_factory,
+        Some(observer),
+    )
+}
+
+fn run_seeded_tick_event_simulation_with_randomness_factory_internal<F>(
+    run_config: SeededTickSimulationRunConfig,
+    randomness_factory: &F,
+    observer: Option<&mut dyn FnMut(SimulationProgressEvent)>,
+) -> Result<SeededTickSimulationRunResult, SeededTickSimulationRunError>
+where
+    F: SimulationRandomnessFactory,
+{
     let mut result_builder = SeededTickSimulationResultBuilder::default();
-    let stream_completion = stream_seeded_tick_event_simulation_with_randomness_factory(
+    let stream_completion = stream_seeded_tick_event_simulation_with_randomness_factory_internal(
         run_config,
         randomness_factory,
         &mut result_builder,
+        observer,
     )?;
 
     Ok(result_builder.finish(stream_completion))
@@ -182,12 +226,65 @@ where
     )
 }
 
+pub fn stream_seeded_tick_event_simulation_with_observer<C>(
+    run_config: SeededTickSimulationRunConfig,
+    consumer: &mut C,
+    observer: &mut dyn FnMut(SimulationProgressEvent),
+) -> Result<SeededTickSimulationStreamCompletion, SeededTickSimulationRunError>
+where
+    C: SeededTickSimulationTransitionConsumer,
+{
+    let randomness_factory = SplitMix64SimulationRandomnessFactory;
+    stream_seeded_tick_event_simulation_with_randomness_factory_and_observer(
+        run_config,
+        &randomness_factory,
+        consumer,
+        observer,
+    )
+}
+
 /// Run deterministic seeded tick-event simulation with an injected randomness factory and a
 /// streamed transition consumer.
 pub fn stream_seeded_tick_event_simulation_with_randomness_factory<F, C>(
     run_config: SeededTickSimulationRunConfig,
     randomness_factory: &F,
     consumer: &mut C,
+) -> Result<SeededTickSimulationStreamCompletion, SeededTickSimulationRunError>
+where
+    F: SimulationRandomnessFactory,
+    C: SeededTickSimulationTransitionConsumer,
+{
+    stream_seeded_tick_event_simulation_with_randomness_factory_internal(
+        run_config,
+        randomness_factory,
+        consumer,
+        None,
+    )
+}
+
+pub fn stream_seeded_tick_event_simulation_with_randomness_factory_and_observer<F, C>(
+    run_config: SeededTickSimulationRunConfig,
+    randomness_factory: &F,
+    consumer: &mut C,
+    observer: &mut dyn FnMut(SimulationProgressEvent),
+) -> Result<SeededTickSimulationStreamCompletion, SeededTickSimulationRunError>
+where
+    F: SimulationRandomnessFactory,
+    C: SeededTickSimulationTransitionConsumer,
+{
+    stream_seeded_tick_event_simulation_with_randomness_factory_internal(
+        run_config,
+        randomness_factory,
+        consumer,
+        Some(observer),
+    )
+}
+
+fn stream_seeded_tick_event_simulation_with_randomness_factory_internal<F, C>(
+    run_config: SeededTickSimulationRunConfig,
+    randomness_factory: &F,
+    consumer: &mut C,
+    mut observer: Option<&mut dyn FnMut(SimulationProgressEvent)>,
 ) -> Result<SeededTickSimulationStreamCompletion, SeededTickSimulationRunError>
 where
     F: SimulationRandomnessFactory,
@@ -242,6 +339,15 @@ where
     );
     consumer
         .reserve_transition_capacity(estimated_transition_capacity, estimated_event_capacity)?;
+
+    emit_progress_event(
+        &mut observer,
+        SimulationProgressEvent::new(
+            SimulationProgressPhase::SeededTickIntervals,
+            0,
+            run_config.horizon_interval_count,
+        ),
+    );
 
     let mut next_event_index: u64 = 0;
     let mut next_transition_index: u64 = 0;
@@ -634,6 +740,15 @@ where
         )?;
 
         next_transition_index = next_transition_index.saturating_add(1);
+
+        emit_progress_event(
+            &mut observer,
+            SimulationProgressEvent::new(
+                SimulationProgressPhase::SeededTickIntervals,
+                interval_index + 1,
+                run_config.horizon_interval_count,
+            ),
+        );
     }
 
     let horizon_end_utc_nanos = run_config

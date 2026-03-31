@@ -20,7 +20,9 @@ use crate::{
     SeededTickEventSide, SeededTickEventStateSnapshotCapture,
     SeededTickSimulationDebugTraceOptions, SeededTickSimulationModelInputs,
     SeededTickSimulationNewsEventMarketState, SeededTickSimulationRunConfig,
-    SeededTickSimulationRunError, SeededTickSimulationRunOptions, run_seeded_tick_event_simulation,
+    SeededTickSimulationRunError, SeededTickSimulationRunOptions, SimulationProgressEvent,
+    SimulationProgressPhase, run_seeded_tick_event_simulation,
+    run_seeded_tick_event_simulation_with_observer,
     run_seeded_tick_event_simulation_with_randomness_factory, sample_nig_trading_time_increment,
     sample_nig_trading_time_increment_with_edge_mode,
 };
@@ -291,6 +293,39 @@ fn seeded_simulation_run_executes_with_valid_config() {
     assert!(first_result.debug_trace_enabled);
     assert!(first_result.event_count() > 0);
     assert!(is_non_decreasing_timestamp_path(&first_result));
+}
+
+#[test]
+fn seeded_simulation_progress_observer_reports_exact_interval_completion() {
+    let run_config = SeededTickSimulationRunConfig::try_new(
+        9_101,
+        DateTime::<Utc>::from_timestamp_nanos(SEEDED_TEST_START_UTC_NANOS),
+        2,
+        valid_model_inputs(),
+        Some(SeededTickSimulationRunOptions {
+            debug_trace_enabled: false,
+            debug_trace_options: SeededTickSimulationDebugTraceOptions::default(),
+            state_snapshot_capture: SeededTickEventStateSnapshotCapture::Disabled,
+        }),
+    )
+    .expect("seeded simulation config should build");
+
+    let mut observed_progress_events: Vec<SimulationProgressEvent> = Vec::new();
+
+    let run_result = run_seeded_tick_event_simulation_with_observer(run_config, &mut |event| {
+        observed_progress_events.push(event);
+    })
+    .expect("seeded simulation with observer should succeed");
+
+    assert_eq!(run_result.simulated_interval_count, 2);
+    assert_eq!(
+        observed_progress_events,
+        vec![
+            SimulationProgressEvent::new(SimulationProgressPhase::SeededTickIntervals, 0, 2),
+            SimulationProgressEvent::new(SimulationProgressPhase::SeededTickIntervals, 1, 2),
+            SimulationProgressEvent::new(SimulationProgressPhase::SeededTickIntervals, 2, 2),
+        ]
+    );
 }
 
 #[test]

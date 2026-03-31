@@ -1,12 +1,13 @@
 import csv
+import hashlib
 import json
 import math
 from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta, tzinfo
 from functools import lru_cache
-from pathlib import Path
-from typing import Any, Optional, cast
+from pathlib import Path, PurePosixPath, PureWindowsPath
+from typing import Any, Callable, Optional, cast
 from zoneinfo import ZoneInfo
 
 import numpy as np
@@ -23,6 +24,7 @@ from janiform._timestamps import (
 from janiform.calendar import CalendarRegistry, MarketState
 from janiform.calibration.fit import JaniformModel
 from janiform.calibration.fit.model import _mean_reversion_fitted_parameters
+from janiform.simulation import SimulationProgressEvent
 
 from .artifacts import WorkbenchArtifacts
 
@@ -32,6 +34,10 @@ _PARQUET_BATCH_SIZE = 65_536
 _CSV_BLOCK_SIZE_BYTES = 1 << 20
 _EMPTY_FLOAT64_ARRAY = np.asarray([], dtype=np.float64)
 _EMPTY_INT64_ARRAY = np.asarray([], dtype=np.int64)
+_WORKBENCH_COMPARISON_RANGE_POLICY = "full_observed_range.v1"
+_WORKBENCH_COMPARISON_CACHE_SCHEMA_VERSION = "workbench.observed_simulation_comparison_cache.v1"
+_WORKBENCH_COMPARISON_CACHE_DIRECTORY_NAME = ".workbench_cache"
+_WORKBENCH_COMPARISON_BUILD_PHASE_COUNT = 5
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,6 +77,13 @@ class WorkbenchObservedSimulationComparison:
     simulated_series: WorkbenchPriceSeries
     simulated_seeded_series_15m: WorkbenchPriceSeries
     simulated_coarse_series_15m: WorkbenchPriceSeries
+
+
+@dataclass(frozen=True, slots=True)
+class WorkbenchComparisonBuildProgress:
+    detail: str
+    completed_units: int
+    total_units: int
 
 
 def load_fit_context(artifacts: WorkbenchArtifacts) -> Optional[WorkbenchFitContext]:
@@ -165,6 +178,7 @@ def build_observed_simulation_comparison(
     artifacts: WorkbenchArtifacts,
     *,
     seed: int = _DEFAULT_COMPARISON_SIMULATION_SEED,
+    progress_callback: Optional[Callable[[WorkbenchComparisonBuildProgress], None]] = None,
 ) -> Optional[WorkbenchObservedSimulationComparison]:
     fit_context = load_fit_context(artifacts)
     if fit_context is None:
@@ -174,6 +188,7 @@ def build_observed_simulation_comparison(
         fit_context,
         model=fit_context.model,
         seed=seed,
+        progress_callback=progress_callback,
     )
 
 
@@ -182,6 +197,7 @@ def build_observed_simulation_comparison_for_fit_context(
     *,
     model: JaniformModel,
     seed: int = _DEFAULT_COMPARISON_SIMULATION_SEED,
+    progress_callback: Optional[Callable[[WorkbenchComparisonBuildProgress], None]] = None,
 ) -> Optional[WorkbenchObservedSimulationComparison]:
     comparison_range = _comparison_range_for_model(
         model=model,
@@ -200,18 +216,70 @@ def build_observed_simulation_comparison_for_fit_context(
     if observed_series.timestamp_microseconds_utc.size == 0:
         return None
 
+    _emit_comparison_build_progress(
+        progress_callback,
+        detail="checking cached simulated comparison",
+        completed_units=0,
+        total_units=_WORKBENCH_COMPARISON_BUILD_PHASE_COUNT,
+    )
+    cached_comparison_series = _load_cached_simulated_comparison_series(
+        fit_context=fit_context,
+        model=model,
+        seed=seed,
+        range_start_utc=comparison_range_start_utc,
+        range_end_utc=comparison_range_end_utc,
+    )
+    if cached_comparison_series is not None:
+        _emit_comparison_build_progress(
+            progress_callback,
+            detail="loaded cached simulated comparison",
+            completed_units=_WORKBENCH_COMPARISON_BUILD_PHASE_COUNT,
+            total_units=_WORKBENCH_COMPARISON_BUILD_PHASE_COUNT,
+        )
+        simulated_series, seeded_simulated_series_15m, coarse_simulated_series = cached_comparison_series
+        return WorkbenchObservedSimulationComparison(
+            fit_context=fit_context,
+            simulation_seed=seed,
+            observed_series=fit_context.observed_tick_series,
+            observed_comparison_series=observed_series,
+            simulated_series=simulated_series,
+            simulated_seeded_series_15m=seeded_simulated_series_15m,
+            simulated_coarse_series_15m=coarse_simulated_series,
+        )
+
     simulation_start_utc, horizon_interval_count = _simulation_request_window_for_observed_range(
         observed_range_start_utc=comparison_range_start_utc,
         observed_range_end_utc=comparison_range_end_utc,
     )
+
+    _emit_comparison_build_progress(
+        progress_callback,
+        detail="simulating seeded ticks",
+        completed_units=1,
+        total_units=_WORKBENCH_COMPARISON_BUILD_PHASE_COUNT,
+    )
+    def emit_seeded_simulation_progress(event: SimulationProgressEvent) -> None:
+        _emit_comparison_build_progress(
+            progress_callback,
+            detail=event.detail,
+            completed_units=event.completed_units,
+            total_units=event.total_units,
+        )
 
     simulation_result = model.simulate(
         seed=seed,
         start_time_utc=simulation_start_utc,
         horizon_interval_count=horizon_interval_count,
         silent=True,
+        progress_callback=emit_seeded_simulation_progress,
     )
 
+    _emit_comparison_build_progress(
+        progress_callback,
+        detail="materializing simulated tick series",
+        completed_units=2,
+        total_units=_WORKBENCH_COMPARISON_BUILD_PHASE_COUNT,
+    )
     simulated_series = _series_from_simulation_result(
         simulation_result=simulation_result,
         model=model,
@@ -225,12 +293,27 @@ def build_observed_simulation_comparison_for_fit_context(
         interval=timedelta(minutes=15),
     )
 
+    _emit_comparison_build_progress(
+        progress_callback,
+        detail="simulating coarse 15 minute intervals",
+        completed_units=3,
+        total_units=_WORKBENCH_COMPARISON_BUILD_PHASE_COUNT,
+    )
+    def emit_coarse_simulation_progress(event: SimulationProgressEvent) -> None:
+        _emit_comparison_build_progress(
+            progress_callback,
+            detail=event.detail,
+            completed_units=event.completed_units,
+            total_units=event.total_units,
+        )
+
     coarse_simulation_result = model.simulate(
         seed=seed,
         start_time_utc=coarse_simulation_start_utc,
         horizon_interval_count=coarse_horizon_interval_count,
         interval="15m",
         silent=True,
+        progress_callback=emit_coarse_simulation_progress,
     )
 
     session_resolution = getattr(model, "session_resolution", None)
@@ -239,6 +322,12 @@ def build_observed_simulation_comparison_for_fit_context(
         exchange_code = session_resolution.exchange_code
         reference_price = _simulation_reference_price(model)
 
+        _emit_comparison_build_progress(
+            progress_callback,
+            detail="assembling simulated comparison series",
+            completed_units=4,
+            total_units=_WORKBENCH_COMPARISON_BUILD_PHASE_COUNT,
+        )
         seeded_simulated_series_15m = _series_from_seeded_raw_result(
             simulation_result=simulation_result,
             reference_price=reference_price,
@@ -259,6 +348,12 @@ def build_observed_simulation_comparison_for_fit_context(
             range_end_utc=comparison_range_end_utc,
         )
     else:
+        _emit_comparison_build_progress(
+            progress_callback,
+            detail="assembling simulated comparison series",
+            completed_units=4,
+            total_units=_WORKBENCH_COMPARISON_BUILD_PHASE_COUNT,
+        )
         seeded_simulated_series_15m = _series_from_simulation_result(
             simulation_result=simulation_result,
             model=model,
@@ -272,6 +367,22 @@ def build_observed_simulation_comparison_for_fit_context(
             range_end_utc=comparison_range_end_utc,
         )
 
+    _write_cached_simulated_comparison_series(
+        fit_context=fit_context,
+        model=model,
+        seed=seed,
+        range_start_utc=comparison_range_start_utc,
+        range_end_utc=comparison_range_end_utc,
+        simulated_series=simulated_series,
+        seeded_simulated_series_15m=seeded_simulated_series_15m,
+        coarse_simulated_series=coarse_simulated_series,
+    )
+    _emit_comparison_build_progress(
+        progress_callback,
+        detail="simulated comparison ready",
+        completed_units=_WORKBENCH_COMPARISON_BUILD_PHASE_COUNT,
+        total_units=_WORKBENCH_COMPARISON_BUILD_PHASE_COUNT,
+    )
     return WorkbenchObservedSimulationComparison(
         fit_context=fit_context,
         simulation_seed=seed,
@@ -283,12 +394,33 @@ def build_observed_simulation_comparison_for_fit_context(
     )
 
 
+def _emit_comparison_build_progress(
+    progress_callback: Optional[Callable[[WorkbenchComparisonBuildProgress], None]],
+    *,
+    detail: str,
+    completed_units: int,
+    total_units: int,
+) -> None:
+    if progress_callback is None:
+        return
+
+    progress_callback(
+        WorkbenchComparisonBuildProgress(
+            detail=detail,
+            completed_units=completed_units,
+            total_units=total_units,
+        )
+    )
+
+
 def _comparison_range_for_model(
     *,
     model: JaniformModel,
     observed_range_start_utc: datetime,
     observed_range_end_utc: datetime,
 ) -> Optional[tuple[datetime, datetime]]:
+    _ = model
+
     return observed_range_start_utc, observed_range_end_utc
 
 
@@ -374,6 +506,167 @@ def _simulation_request_window_for_interval(
     return simulation_start_utc, horizon_interval_count
 
 
+def _load_cached_simulated_comparison_series(
+    *,
+    fit_context: WorkbenchFitContext,
+    model: JaniformModel,
+    seed: int,
+    range_start_utc: datetime,
+    range_end_utc: datetime,
+) -> Optional[tuple[WorkbenchPriceSeries, WorkbenchPriceSeries, WorkbenchPriceSeries]]:
+    cache_path = _simulated_comparison_cache_path(
+        fit_context=fit_context,
+        model=model,
+        seed=seed,
+        range_start_utc=range_start_utc,
+        range_end_utc=range_end_utc,
+    )
+    if cache_path is None or not cache_path.is_file():
+        return None
+
+    try:
+        with np.load(cache_path, allow_pickle=False) as cached_payload:
+            cached_schema_version = str(cached_payload["schema_version"].item())
+            if cached_schema_version != _WORKBENCH_COMPARISON_CACHE_SCHEMA_VERSION:
+                return None
+
+            return (
+                _price_series_from_cached_payload(cached_payload, "simulated"),
+                _price_series_from_cached_payload(cached_payload, "simulated_seeded_15m"),
+                _price_series_from_cached_payload(cached_payload, "simulated_coarse_15m"),
+            )
+    except (KeyError, OSError, ValueError):
+        return None
+
+
+def _write_cached_simulated_comparison_series(
+    *,
+    fit_context: WorkbenchFitContext,
+    model: JaniformModel,
+    seed: int,
+    range_start_utc: datetime,
+    range_end_utc: datetime,
+    simulated_series: WorkbenchPriceSeries,
+    seeded_simulated_series_15m: WorkbenchPriceSeries,
+    coarse_simulated_series: WorkbenchPriceSeries,
+) -> None:
+    cache_path = _simulated_comparison_cache_path(
+        fit_context=fit_context,
+        model=model,
+        seed=seed,
+        range_start_utc=range_start_utc,
+        range_end_utc=range_end_utc,
+    )
+    if cache_path is None:
+        return
+
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_cache_path = cache_path.with_name(f"{cache_path.name}.tmp.npz")
+
+    np.savez_compressed(
+        temporary_cache_path,
+        schema_version=np.asarray(_WORKBENCH_COMPARISON_CACHE_SCHEMA_VERSION),
+        **_cached_payload_for_price_series("simulated", simulated_series),
+        **_cached_payload_for_price_series("simulated_seeded_15m", seeded_simulated_series_15m),
+        **_cached_payload_for_price_series("simulated_coarse_15m", coarse_simulated_series),
+    )
+    temporary_cache_path.replace(cache_path)
+
+
+def _simulated_comparison_cache_path(
+    *,
+    fit_context: WorkbenchFitContext,
+    model: JaniformModel,
+    seed: int,
+    range_start_utc: datetime,
+    range_end_utc: datetime,
+) -> Optional[Path]:
+    if model is not fit_context.model:
+        return None
+
+    fit_report_path = fit_context.fit_report_path
+    model_path = fit_report_path.with_name("model.json")
+    if not fit_report_path.is_file() or not model_path.is_file():
+        return None
+
+    cache_identity = {
+        "schema_version": _WORKBENCH_COMPARISON_CACHE_SCHEMA_VERSION,
+        "seed": seed,
+        "range_start_utc": range_start_utc.isoformat(),
+        "range_end_utc": range_end_utc.isoformat(),
+        "model_path": str(model_path.resolve()),
+        "model_mtime_ns": model_path.stat().st_mtime_ns,
+        "model_size_bytes": model_path.stat().st_size,
+        "fit_report_path": str(fit_report_path.resolve()),
+        "fit_report_mtime_ns": fit_report_path.stat().st_mtime_ns,
+        "fit_report_size_bytes": fit_report_path.stat().st_size,
+    }
+    cache_key = hashlib.sha256(
+        json.dumps(cache_identity, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    return (
+        fit_report_path.parent
+        / _WORKBENCH_COMPARISON_CACHE_DIRECTORY_NAME
+        / f"observed_simulation_comparison_{cache_key}.npz"
+    )
+
+
+def _cached_payload_for_price_series(
+    prefix: str,
+    series: WorkbenchPriceSeries,
+) -> dict[str, NDArray[Any]]:
+    has_direct_returns = (
+        series.direct_return_timestamps_microseconds_utc is not None
+        and series.direct_returns is not None
+    )
+    return {
+        f"{prefix}_timestamp_microseconds_utc": series.timestamp_microseconds_utc,
+        f"{prefix}_prices": series.prices,
+        f"{prefix}_has_direct_returns": np.asarray(1 if has_direct_returns else 0, dtype=np.int8),
+        f"{prefix}_direct_return_timestamps_microseconds_utc": (
+            _EMPTY_INT64_ARRAY
+            if series.direct_return_timestamps_microseconds_utc is None
+            else series.direct_return_timestamps_microseconds_utc
+        ),
+        f"{prefix}_direct_returns": (
+            _EMPTY_FLOAT64_ARRAY
+            if series.direct_returns is None
+            else series.direct_returns
+        ),
+    }
+
+
+def _price_series_from_cached_payload(
+    cached_payload: Any,
+    prefix: str,
+) -> WorkbenchPriceSeries:
+    has_direct_returns = bool(int(cached_payload[f"{prefix}_has_direct_returns"].item()))
+    direct_return_timestamps_microseconds_utc = None
+    direct_returns = None
+    if has_direct_returns:
+        direct_return_timestamps_microseconds_utc = np.asarray(
+            cached_payload[f"{prefix}_direct_return_timestamps_microseconds_utc"],
+            dtype=np.int64,
+        )
+        direct_returns = np.asarray(
+            cached_payload[f"{prefix}_direct_returns"],
+            dtype=np.float64,
+        )
+
+    return WorkbenchPriceSeries(
+        timestamp_microseconds_utc=np.asarray(
+            cached_payload[f"{prefix}_timestamp_microseconds_utc"],
+            dtype=np.int64,
+        ),
+        prices=np.asarray(
+            cached_payload[f"{prefix}_prices"],
+            dtype=np.float64,
+        ),
+        direct_return_timestamps_microseconds_utc=direct_return_timestamps_microseconds_utc,
+        direct_returns=direct_returns,
+    )
+
+
 def _resolve_fit_artifact_paths(source_path: Path) -> Optional[tuple[Path, Path]]:
     candidate_directories: list[Path] = []
     if source_path.is_dir():
@@ -412,7 +705,7 @@ def _load_json_object(path: Path) -> dict[str, Any]:
 
 
 def _load_source_table(raw_summary: dict[str, Any]) -> WorkbenchSourceTable:
-    source_path = Path(cast(str, raw_summary["path"])).expanduser().resolve()
+    source_path = _resolve_source_path(cast(str, raw_summary["path"]))
     file_format = cast(str, raw_summary["file_format"])
 
     return WorkbenchSourceTable(
@@ -425,6 +718,63 @@ def _load_source_table(raw_summary: dict[str, Any]) -> WorkbenchSourceTable:
             raw_summary=raw_summary,
         ),
     )
+
+
+def _resolve_source_path(raw_source_path: str) -> Path:
+    candidate_paths = _candidate_source_paths(raw_source_path)
+
+    for candidate_path in candidate_paths:
+        expanded_candidate_path = candidate_path.expanduser()
+        if expanded_candidate_path.exists():
+            return expanded_candidate_path.resolve()
+
+    return candidate_paths[0].expanduser().resolve()
+
+
+def _candidate_source_paths(raw_source_path: str) -> tuple[Path, ...]:
+    candidate_paths = [Path(raw_source_path).expanduser()]
+
+    translated_windows_mount_path = _translate_windows_source_path_to_mount(raw_source_path)
+    if translated_windows_mount_path is not None:
+        candidate_paths.append(translated_windows_mount_path)
+
+    translated_windows_drive_path = _translate_mount_source_path_to_windows(raw_source_path)
+    if translated_windows_drive_path is not None:
+        candidate_paths.append(translated_windows_drive_path)
+
+    unique_candidate_paths: list[Path] = []
+    seen_candidate_texts: set[str] = set()
+    for candidate_path in candidate_paths:
+        candidate_text = str(candidate_path)
+        if candidate_text in seen_candidate_texts:
+            continue
+        seen_candidate_texts.add(candidate_text)
+        unique_candidate_paths.append(candidate_path)
+
+    return tuple(unique_candidate_paths)
+
+
+def _translate_windows_source_path_to_mount(raw_source_path: str) -> Optional[Path]:
+    windows_path = PureWindowsPath(raw_source_path)
+    drive_letter = windows_path.drive.removesuffix(":")
+    if len(drive_letter) != 1 or windows_path.root == "":
+        return None
+
+    return Path("/mnt", drive_letter.lower(), *windows_path.parts[1:])
+
+
+def _translate_mount_source_path_to_windows(raw_source_path: str) -> Optional[Path]:
+    posix_path = PurePosixPath(raw_source_path)
+    if (
+        len(posix_path.parts) < 4
+        or posix_path.parts[0] != "/"
+        or posix_path.parts[1] != "mnt"
+        or len(posix_path.parts[2]) != 1
+        or not posix_path.parts[2].isalpha()
+    ):
+        return None
+
+    return Path(PureWindowsPath(f"{posix_path.parts[2].upper()}:\\", *posix_path.parts[3:]))
 
 
 def _load_source_column_names(*, source_path: Path, file_format: str) -> tuple[str, ...]:
@@ -668,20 +1018,17 @@ def _series_from_simulation_result(
     if len(frame.index) == 0:
         return _empty_price_series()
 
-    input_inference = cast(dict[str, Any], model.metadata["input_inference"])
-    price_columns = cast(dict[str, Any], input_inference["tick_price_columns"])
-    tick_price_input_policy = cast(Optional[str], input_inference["tick_price_input_policy"])
+    from janiform._workflow_outputs import simulation_output_preferences_from_model
+
+    preferences = simulation_output_preferences_from_model(model)
 
     timestamp_values = _timestamp_values_from_simulation_frame(
         frame=frame,
-        timestamp_column=cast(str, input_inference["timestamp_column"]),
+        preferences=preferences,
     )
     price_values = _price_values_from_simulation_frame(
         frame=frame,
-        price_column=cast(Optional[str], price_columns["price_column"]),
-        bid_column=cast(Optional[str], price_columns["bid_column"]),
-        ask_column=cast(Optional[str], price_columns["ask_column"]),
-        tick_price_input_policy=tick_price_input_policy,
+        preferences=preferences,
     )
 
     if timestamp_values is None or price_values is None:
@@ -831,14 +1178,14 @@ def _series_from_coarse_raw_result(
 def _timestamp_values_from_simulation_frame(
     *,
     frame: Any,
-    timestamp_column: str,
+    preferences: Any,
 ) -> Optional[NDArray[Any]]:
-    for candidate_column in ("timestamp_utc", timestamp_column, "time", "time_microseconds"):
-        if candidate_column in frame.columns:
-            return cast(
-                NDArray[Any],
-                frame[candidate_column].to_numpy(dtype=object, copy=False),
-            )
+    timestamp_column = preferences.timestamp_column
+    if timestamp_column in frame.columns:
+        return cast(
+            NDArray[Any],
+            frame[timestamp_column].to_numpy(dtype=object, copy=False),
+        )
 
     return None
 
@@ -846,66 +1193,20 @@ def _timestamp_values_from_simulation_frame(
 def _price_values_from_simulation_frame(
     *,
     frame: Any,
-    price_column: Optional[str],
-    bid_column: Optional[str],
-    ask_column: Optional[str],
-    tick_price_input_policy: Optional[str],
+    preferences: Any,
 ) -> Optional[tuple[NDArray[np.float64], NDArray[np.bool_]]]:
-    match tick_price_input_policy:
-        case "explicit_price_column":
-            effective_price_column = price_column or "price"
-            if effective_price_column not in frame.columns:
-                return None
+    from janiform._workflow_outputs import simulation_output_price_column
 
-            return _parse_numeric_column(
-                cast(
-                    NDArray[Any],
-                    frame[effective_price_column].to_numpy(dtype=object, copy=False),
-                )
-            )
-        case "bid_ask_midpoint":
-            if bid_column is None or ask_column is None:
-                return None
-            if bid_column not in frame.columns or ask_column not in frame.columns:
-                return None
+    price_column = simulation_output_price_column(preferences)
+    if price_column not in frame.columns:
+        return None
 
-            bid_values, valid_bid_mask = _parse_numeric_column(
-                cast(
-                    NDArray[Any],
-                    frame[bid_column].to_numpy(dtype=object, copy=False),
-                )
-            )
-            ask_values, valid_ask_mask = _parse_numeric_column(
-                cast(
-                    NDArray[Any],
-                    frame[ask_column].to_numpy(dtype=object, copy=False),
-                )
-            )
-
-            valid_price_mask = valid_bid_mask & valid_ask_mask
-            midpoint_values = np.full(valid_price_mask.size, np.nan, dtype=np.float64)
-            midpoint_values[valid_price_mask] = (
-                bid_values[valid_price_mask] + ask_values[valid_price_mask]
-            ) / 2.0
-
-            return midpoint_values, valid_price_mask
-        case _:
-            for candidate_column in (
-                "price",
-                price_column,
-                "mid_price",
-                "close",
-                "trade_price",
-            ):
-                if candidate_column is not None and candidate_column in frame.columns:
-                    return _parse_numeric_column(
-                        cast(
-                            NDArray[Any],
-                            frame[candidate_column].to_numpy(dtype=object, copy=False),
-                        )
-                    )
-
-    return None
+    return _parse_numeric_column(
+        cast(
+            NDArray[Any],
+            frame[price_column].to_numpy(dtype=object, copy=False),
+        )
+    )
 
 
 def _resolve_price_values(
@@ -943,11 +1244,7 @@ def _resolve_price_values(
             resolved_values = np.full(row_count, np.nan, dtype=np.float64)
             resolved_mask = np.zeros(row_count, dtype=bool)
 
-            for candidate_key in dict.fromkeys(
-                value
-                for value in ("price", price_column, "mid_price", "close", "trade_price")
-                if value is not None
-            ):
+            for candidate_key in _candidate_price_resolution_columns(price_column):
                 if candidate_key not in columns:
                     continue
 
@@ -958,6 +1255,16 @@ def _resolve_price_values(
                 resolved_mask[fill_mask] = True
 
             return resolved_values, resolved_mask
+
+
+def _candidate_price_resolution_columns(price_column: Optional[str]) -> tuple[str, ...]:
+    return tuple(
+        dict.fromkeys(
+            value
+            for value in (price_column, "price", "mid_price", "close", "trade_price")
+            if value is not None
+        )
+    )
 
 
 def _simulation_reference_price(model: JaniformModel) -> float:

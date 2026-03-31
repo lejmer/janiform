@@ -27,12 +27,12 @@ from janiform.calibration.market_data.contracts import (
     CalibrationTickDataColumnMapping,
 )
 from janiform.calibration.staged.contracts import CalibrationStageExecutionStatus
+from janiform.calibration.staged.results import format_staged_failure_summary
 from janiform.calibration.staged.runtime import (
     _run_native_staged_calibration_with_prepared_handle_and_events,
 )
 from janiform._workflow_outputs import write_fit_artifacts
 from janiform.calendar import CalendarRegistry
-from janiform.contracts import MeanReversionAnchorModelKind
 
 from .artifacts import load_workbench_artifacts
 from .events import WorkbenchEventType, build_workbench_event
@@ -104,6 +104,7 @@ class WorkbenchExecutionWorker(QObject):
         try:
             session_argument: Optional[str | Path] = None
             exchange_code: Optional[str] = None
+
             match self._run_setup.session_source.mode:
                 case "preset":
                     session_argument = (
@@ -226,14 +227,9 @@ class WorkbenchExecutionWorker(QObject):
             )
 
             if staged_response.status != CalibrationStageExecutionStatus.SUCCESS:
-                failure_kind = (
-                    staged_response.failure.failure_kind
-                    if staged_response.failure is not None
-                    else "fit_failed"
-                )
-
                 raise RuntimeError(
-                    f"Janiform fit failed for run_id `{prepared_workflow.run_id}` with failure_kind `{failure_kind}`"
+                    f"Janiform fit failed for run_id `{prepared_workflow.run_id}`: "
+                    f"{format_staged_failure_summary(staged_response)}"
                 )
 
             model = JaniformModel(
@@ -383,6 +379,7 @@ class WorkbenchExecutionWorker(QObject):
                     payload={
                         "detail": "Running staged calibration",
                         "stage_count": raw_event.get("stage_count"),
+                        "stage_sequence": raw_event.get("stage_sequence"),
                         "execution_mode": raw_event.get("execution_mode"),
                     },
                 )
@@ -435,7 +432,16 @@ class WorkbenchExecutionWorker(QObject):
                         "cumulative_local_evaluation_count": raw_event.get(
                             "cumulative_local_evaluation_count"
                         ),
+                        "current_weighted_objective": raw_event.get(
+                            "current_weighted_objective"
+                        ),
                         "best_weighted_objective": raw_event.get("best_weighted_objective"),
+                        "current_coarse_consistency_fit": raw_event.get(
+                            "current_coarse_consistency_fit"
+                        ),
+                        "best_coarse_consistency_fit": raw_event.get(
+                            "best_coarse_consistency_fit"
+                        ),
                     },
                     stage=stage,
                     subtask=subtask,
@@ -575,7 +581,20 @@ def _detail_for_stage_completed_event(
 
 def _detail_for_failed_native_run(failure_payload: Any) -> str:
     if isinstance(failure_payload, dict):
+        failed_stage = _coerce_optional_string(failure_payload.get("stage"))
         failure_kind = _coerce_optional_string(failure_payload.get("failure_kind"))
+        error_message = _coerce_optional_string(failure_payload.get("error_message"))
+
+        if failed_stage is not None and error_message is not None and failure_kind is not None:
+            return f"Calibration failed at {failed_stage} with {failure_kind}: {error_message}"
+        if failed_stage is not None and error_message is not None:
+            return f"Calibration failed at {failed_stage}: {error_message}"
+        if error_message is not None and failure_kind is not None:
+            return f"Calibration failed with {failure_kind}: {error_message}"
+        if failed_stage is not None and failure_kind is not None:
+            return f"Calibration failed at {failed_stage} with {failure_kind}"
+        if error_message is not None:
+            return f"Calibration failed: {error_message}"
         if failure_kind is not None:
             return f"Calibration failed with {failure_kind}"
 
@@ -604,7 +623,10 @@ def _detail_for_stage_progress_event(raw_event: dict[str, Any]) -> str:
     current_item_label = _coerce_optional_string(raw_event.get("current_item_label"))
     valid_completed_units = raw_event.get("valid_completed_units")
     cumulative_local_evaluation_count = raw_event.get("cumulative_local_evaluation_count")
+    current_weighted_objective = raw_event.get("current_weighted_objective")
     best_weighted_objective = raw_event.get("best_weighted_objective")
+    current_coarse_consistency_fit = raw_event.get("current_coarse_consistency_fit")
+    best_coarse_consistency_fit = raw_event.get("best_coarse_consistency_fit")
 
     phase_label = _label_for_stage_progress_phase(progress_phase)
     detail = f"{stage} {phase_label}"
@@ -620,8 +642,14 @@ def _detail_for_stage_progress_event(raw_event: dict[str, Any]) -> str:
         detail_parts.append(f"valid={valid_completed_units}")
     if isinstance(cumulative_local_evaluation_count, int):
         detail_parts.append(f"local_evaluations={cumulative_local_evaluation_count}")
+    if isinstance(current_weighted_objective, int | float):
+        detail_parts.append(f"objective={current_weighted_objective:.6f}")
     if isinstance(best_weighted_objective, int | float):
         detail_parts.append(f"best_objective={best_weighted_objective:.6f}")
+    if isinstance(current_coarse_consistency_fit, int | float):
+        detail_parts.append(f"coarse_fit={current_coarse_consistency_fit:.6f}")
+    if isinstance(best_coarse_consistency_fit, int | float):
+        detail_parts.append(f"best_coarse_fit={best_coarse_consistency_fit:.6f}")
 
     return " | ".join(detail_parts)
 
@@ -630,8 +658,12 @@ def _label_for_stage_progress_phase(progress_phase: Optional[str]) -> str:
     match progress_phase:
         case "restart_optimization":
             return "restart optimization"
+        case "coarse_consistency_evaluation":
+            return "coarse consistency evaluation"
         case "final_seed_evaluation":
             return "final seed evaluation"
+        case "final_assembly":
+            return "final assembly"
         case _:
             return progress_phase or "progress"
 

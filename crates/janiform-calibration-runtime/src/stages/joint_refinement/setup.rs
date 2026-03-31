@@ -1,4 +1,5 @@
 use std::sync::mpsc::Sender;
+use std::time::Instant;
 
 use chrono::{DateTime, Datelike, Duration, Timelike, Utc};
 use janiform_engine_simulation::MeanReversionFittedParameters;
@@ -808,6 +809,7 @@ pub(super) fn build_summary_simulation_session_context(
     calendar_registry: &ExchangeCalendarRegistry,
     context: &JointRefinementObservedData,
     exchange_code: &str,
+    known_scheduled_event_timestamps_utc_nanos: &[i64],
     runtime_hourly_seasonality_factors: &[f64],
 ) -> Result<JointRefinementSummarySimulationSessionContext, String> {
     let calendar_registry_artifact = build_exchange_calendar_registry_artifact(
@@ -820,6 +822,8 @@ pub(super) fn build_summary_simulation_session_context(
     Ok(JointRefinementSummarySimulationSessionContext {
         calendar_registry_artifact,
         exchange_code: exchange_code.to_string(),
+        known_scheduled_event_timestamps_utc_nanos: known_scheduled_event_timestamps_utc_nanos
+            .to_vec(),
         runtime_hourly_seasonality_factors: runtime_hourly_seasonality_factors.to_vec(),
         hourly_simulation_start_utc_nanos: context
             .hourly_simulation_start_utc
@@ -868,6 +872,7 @@ pub(super) fn cached_seed_summaries_for_candidate_seeds(
             && let Ok(cache_guard) = context.seed_summary_cache.lock()
             && let Some(cached_summary) = cache_guard.get(seed_cache_key)
         {
+            context.profiling_state.record_seed_summary_cache_hit();
             match cached_summary.clone() {
                 Ok(summary) => {
                     resolved_seed_summaries.push((*simulation_seed, summary));
@@ -879,6 +884,10 @@ pub(super) fn cached_seed_summaries_for_candidate_seeds(
 
         missing_seeds.push(*simulation_seed);
     }
+
+    context
+        .profiling_state
+        .record_seed_summary_cache_miss(missing_seeds.len());
 
     let total_units = simulation_seeds.len();
     let completed_units = resolved_seed_summaries.len();
@@ -985,24 +994,31 @@ fn build_seed_summaries_for_candidate_seeds(
     let mut seed_summaries = Vec::with_capacity(simulation_seeds.len());
 
     for simulation_seed in simulation_seeds {
-        let seed_summary = context
+        let seed_summary_started_at = Instant::now();
+        let seed_summary_result = context
             .summary_simulation_scheduler
-            .run_seed_summary_simulation(fitted_parameters, *simulation_seed)
-            .map_err(|error| match error {
-                JointRefinementSeedSummaryAcquisitionError::SimulationFailure { error_message } => {
-                    error_message
+            .run_seed_summary_simulation(fitted_parameters, *simulation_seed);
+        context
+            .profiling_state
+            .record_seed_summary_simulation_duration(
+                seed_summary_started_at
+                    .elapsed()
+                    .as_millis()
+                    .min(u128::from(u64::MAX)) as u64,
+            );
+        let seed_summary = seed_summary_result.map_err(|error| match error {
+            JointRefinementSeedSummaryAcquisitionError::SimulationFailure { error_message } => {
+                error_message
+            }
+            JointRefinementSeedSummaryAcquisitionError::InfrastructureFailure { error_message } => {
+                if let Ok(mut failure_guard) = context.simulation_infrastructure_failure.lock()
+                    && failure_guard.is_none()
+                {
+                    *failure_guard = Some(error_message.clone());
                 }
-                JointRefinementSeedSummaryAcquisitionError::InfrastructureFailure {
-                    error_message,
-                } => {
-                    if let Ok(mut failure_guard) = context.simulation_infrastructure_failure.lock()
-                        && failure_guard.is_none()
-                    {
-                        *failure_guard = Some(error_message.clone());
-                    }
-                    error_message
-                }
-            })?;
+                error_message
+            }
+        })?;
 
         completed_units += 1;
         emit_seed_summary_progress(
@@ -1040,7 +1056,10 @@ fn emit_seed_summary_progress(
         current_item_label: simulation_seed.map(|value| value.to_string()),
         valid_completed_units: None,
         cumulative_local_evaluation_count: None,
+        current_weighted_objective: None,
         best_weighted_objective: None,
+        current_coarse_consistency_fit: None,
+        best_coarse_consistency_fit: None,
     });
 }
 

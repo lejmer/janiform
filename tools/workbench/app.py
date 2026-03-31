@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import json
 import os
 import sys
@@ -7,7 +8,9 @@ import tempfile
 
 from collections.abc import Callable
 from functools import partial
+from io import StringIO
 from pathlib import Path
+from time import monotonic
 from typing import Any, Optional, override
 
 from PyQt6 import sip
@@ -90,7 +93,35 @@ from .plots import (
 from .reducers import apply_workbench_event
 from .setup import WorkbenchSetupWidget
 from .events import WorkbenchEventType
-from .state import WorkbenchAppState, WorkbenchRunSetup, build_initial_workbench_state
+from .state import (
+    WorkbenchAppState,
+    WorkbenchRunSetup,
+    WorkbenchRunState,
+    build_initial_workbench_state,
+)
+
+# UI-only wall-clock weighting policy for live total-progress display.
+# The final stage dominates calibration runtime on production-scale tick datasets,
+# so total progress should reserve most of the bar for joint refinement instead
+# of treating each staged-calibration step as equally expensive.
+WORKBENCH_TOTAL_PROGRESS_STAGE_WEIGHT_POLICY_V1: dict[str, float] = {
+    "seasonality": 0.05,
+    "hawkes": 0.05,
+    "return_components": 0.05,
+    "mean_reversion": 0.05,
+    "joint_refinement": 0.80,
+}
+WORKBENCH_TOTAL_PROGRESS_COMPLETION_RESERVE_V1: float = 0.01
+# UI-only wall-clock weighting policy for the internal joint-refinement phases.
+# Restart optimization and coarse consistency dominate runtime in production
+# calibrations, while finalist seed evaluation and final assembly are usually
+# short tail work that should not consume most of the remaining bar.
+WORKBENCH_JOINT_REFINEMENT_PROGRESS_PHASE_WEIGHT_POLICY_V1: dict[str, float] = {
+    "restart_optimization": 0.55,
+    "coarse_consistency_evaluation": 0.40,
+    "final_seed_evaluation": 0.03,
+    "final_assembly": 0.02,
+}
 
 
 class WorkbenchWindow(QMainWindow):
@@ -125,6 +156,8 @@ class WorkbenchWindow(QMainWindow):
         self._artifact_materialization_steps: list[Callable[[], None]] = []
         self._candidate_population_timer = QTimer(self)
         self._artifact_materialization_timer = QTimer(self)
+        self._run_elapsed_timer = QTimer(self)
+        self._live_run_started_monotonic: Optional[float] = None
         self._load_thread: Optional[QThread] = None
         self._load_worker: Optional[WorkbenchLoadWorker] = None
         self._execution_thread: Optional[QThread] = None
@@ -146,11 +179,16 @@ class WorkbenchWindow(QMainWindow):
         self._activity_title_label = QLabel()
         self._activity_detail_label = QLabel()
         self._overall_progress_bar = QProgressBar()
+        self._current_task_progress_bar = QProgressBar()
         self._activity_table = QTableWidget()
         self._run_status_label = QLabel()
         self._run_stage_label = QLabel()
-        self._run_elapsed_label = QLabel()
-        self._run_progress_bar = QProgressBar()
+        self._run_stage_elapsed_label = QLabel()
+        self._run_total_elapsed_label = QLabel()
+        self._run_stage_progress_bar = QProgressBar()
+        self._run_total_progress_bar = QProgressBar()
+        self._copy_events_button = QPushButton("Copy Events")
+        self._export_events_button = QPushButton("Export Events")
         self._event_table = QTableWidget()
         self._live_run_plot_container = QWidget()
         self._candidate_table = QTableWidget()
@@ -193,6 +231,7 @@ class WorkbenchWindow(QMainWindow):
         self._artifact_materialization_timer.timeout.connect(
             self._run_next_artifact_materialization_step
         )
+        self._run_elapsed_timer.timeout.connect(self._on_run_elapsed_timer_timeout)
         self._root_tabs.currentChanged.connect(self._on_root_tab_changed)
         self._plot_group_tabs.currentChanged.connect(self._on_plot_group_changed)
 
@@ -242,7 +281,22 @@ class WorkbenchWindow(QMainWindow):
         run_tab = QWidget()
         layout = QVBoxLayout(run_tab)
         layout.addWidget(self._build_live_status_panel())
-        layout.addWidget(self._build_activity_panel())
+
+        table_splitter = QSplitter(Qt.Orientation.Horizontal)
+        table_splitter.addWidget(self._build_event_table_panel())
+        table_splitter.addWidget(self._build_activity_panel())
+        table_splitter.setChildrenCollapsible(False)
+        table_splitter.setStretchFactor(0, 1)
+        table_splitter.setStretchFactor(1, 1)
+
+        run_content_splitter = QSplitter(Qt.Orientation.Vertical)
+        run_content_splitter.addWidget(table_splitter)
+        run_content_splitter.addWidget(self._build_live_plot_panel())
+        run_content_splitter.setChildrenCollapsible(False)
+        run_content_splitter.setStretchFactor(0, 1)
+        run_content_splitter.setStretchFactor(1, 2)
+
+        layout.addWidget(run_content_splitter)
 
         return run_tab
 
@@ -252,22 +306,50 @@ class WorkbenchWindow(QMainWindow):
 
         self._run_status_label.setWordWrap(True)
         self._run_stage_label.setWordWrap(True)
-        self._run_elapsed_label.setWordWrap(True)
+        self._run_stage_elapsed_label.setWordWrap(True)
+        self._run_total_elapsed_label.setWordWrap(True)
         self._run_status_label.setText("No calibration is running.")
         self._run_stage_label.setText("Stage: idle")
-        self._run_elapsed_label.setText("Elapsed: 0.0s")
-        self._run_progress_bar.setRange(0, 1)
-        self._run_progress_bar.setValue(0)
+        self._run_stage_elapsed_label.setText("Current stage elapsed: 0.0s")
+        self._run_total_elapsed_label.setText("Total elapsed: 0.0s")
+        self._run_stage_progress_bar.setRange(0, 1)
+        self._run_stage_progress_bar.setValue(0)
+        self._run_total_progress_bar.setRange(0, 1)
+        self._run_total_progress_bar.setValue(0)
 
         layout.addWidget(self._run_status_label)
         layout.addWidget(self._run_stage_label)
-        layout.addWidget(self._run_elapsed_label)
-        layout.addWidget(self._run_progress_bar)
+        layout.addWidget(self._run_stage_elapsed_label)
+        layout.addWidget(self._run_total_elapsed_label)
+        layout.addWidget(QLabel("Current subtask progress"))
+        layout.addWidget(self._run_stage_progress_bar)
+        layout.addWidget(QLabel("Total progress"))
+        layout.addWidget(self._run_total_progress_bar)
+
+        return panel
+
+    def _build_event_table_panel(self) -> QWidget:
+        panel = QWidget()
+        layout = QVBoxLayout(panel)
+
+        event_actions_row = QWidget()
+        event_actions_layout = QHBoxLayout(event_actions_row)
+        event_actions_layout.setContentsMargins(0, 0, 0, 0)
+        event_actions_layout.addStretch(1)
+        event_actions_layout.addWidget(self._copy_events_button)
+        event_actions_layout.addWidget(self._export_events_button)
+        layout.addWidget(event_actions_row)
 
         self._event_table.setColumnCount(4)
         self._event_table.setHorizontalHeaderLabels(["Time", "Type", "Stage", "Detail"])
 
         layout.addWidget(self._event_table)
+
+        return panel
+
+    def _build_live_plot_panel(self) -> QWidget:
+        panel = QWidget()
+        layout = QVBoxLayout(panel)
 
         self._set_widget_contents(
             self._live_run_plot_container,
@@ -292,10 +374,13 @@ class WorkbenchWindow(QMainWindow):
         )
         self._overall_progress_bar.setRange(0, len(workbench_startup_tasks()))
         self._overall_progress_bar.setValue(0)
+        self._current_task_progress_bar.setRange(0, 1)
+        self._current_task_progress_bar.setValue(0)
 
         layout.addWidget(self._activity_title_label)
         layout.addWidget(self._activity_detail_label)
         layout.addWidget(self._overall_progress_bar)
+        layout.addWidget(self._current_task_progress_bar)
 
         self._activity_table.setColumnCount(3)
         self._activity_table.setHorizontalHeaderLabels(["State", "Task", "Detail"])
@@ -496,8 +581,15 @@ class WorkbenchWindow(QMainWindow):
         self._export_summary_action.triggered.connect(self._export_summary_json)
         self._export_frontier_action = export_menu.addAction("Export Frontier JSON")
         self._export_frontier_action.triggered.connect(self._export_frontier_json)
+        self._copy_events_action = export_menu.addAction("Copy Event Table")
+        self._copy_events_action.triggered.connect(self._copy_event_table_to_clipboard)
+        self._export_events_action = export_menu.addAction("Export Event Table TSV")
+        self._export_events_action.triggered.connect(self._export_event_table_tsv)
         self._export_plots_action = export_menu.addAction("Export Plots")
         self._export_plots_action.triggered.connect(self._export_plots)
+
+        self._copy_events_button.clicked.connect(self._copy_event_table_to_clipboard)
+        self._export_events_button.clicked.connect(self._export_event_table_tsv)
 
     def _set_actions_enabled(self, enabled: bool) -> None:
         self._export_summary_action.setEnabled(enabled)
@@ -534,6 +626,7 @@ class WorkbenchWindow(QMainWindow):
         self._open_existing_input(Path(selected_directory))
 
     def _open_existing_input(self, input_path: Path) -> None:
+        self._stop_live_run_elapsed_timer()
         self._state.session.opened_input_path = input_path
         self._root_tabs.setCurrentIndex(1)
         self.statusBar().showMessage(f"Opening {input_path}")
@@ -542,15 +635,18 @@ class WorkbenchWindow(QMainWindow):
 
     def _start_execution(self, run_setup: WorkbenchRunSetup) -> None:
         self._stop_execution_worker()
+        self._start_live_run_elapsed_timer()
 
         self._root_tabs.setCurrentIndex(1)
 
         self._live_stage_report_payloads = []
 
-        self._run_progress_bar.setRange(0, 0)
+        self._run_stage_progress_bar.setRange(0, 0)
+        self._run_total_progress_bar.setRange(0, 0)
         self._run_status_label.setText(f"Starting calibration for {run_setup.dataset_path}")
         self._run_stage_label.setText("Stage: preparing")
-        self._run_elapsed_label.setText("Elapsed: 0.0s")
+        self._run_stage_elapsed_label.setText("Current stage elapsed: 0.0s")
+        self._run_total_elapsed_label.setText("Total elapsed: 0.0s")
 
         self._event_table.setRowCount(0)
 
@@ -586,6 +682,7 @@ class WorkbenchWindow(QMainWindow):
         self._load_thread.started.connect(self._load_worker.run)
         self._load_worker.activity_changed.connect(self._on_activity_changed)
         self._load_worker.task_state_changed.connect(self._on_task_state_changed)
+        self._load_worker.task_progress_changed.connect(self._on_task_progress_changed)
         self._load_worker.artifacts_ready.connect(self._on_artifacts_ready)
         self._load_worker.plot_ready.connect(self._on_plot_ready)
         self._load_worker.error_raised.connect(self._on_load_error)
@@ -597,6 +694,12 @@ class WorkbenchWindow(QMainWindow):
 
     def _on_execution_event(self, event: Any) -> None:
         apply_workbench_event(self._state, event)
+        if getattr(event, "event_type", None) in {
+            WorkbenchEventType.RUN_COMPLETED,
+            WorkbenchEventType.RUN_FAILED,
+        }:
+            self._synchronize_total_elapsed_with_local_stopwatch()
+            self._stop_live_run_elapsed_timer()
 
         if self._should_display_execution_event(event):
             self._append_event_row(event)
@@ -608,6 +711,8 @@ class WorkbenchWindow(QMainWindow):
         if not isinstance(execution_result, WorkbenchExecutionResult):
             return
 
+        self._synchronize_total_elapsed_with_local_stopwatch()
+        self._stop_live_run_elapsed_timer()
         self._apply_artifacts(execution_result.artifacts)
         self._root_tabs.setCurrentIndex(2)
         self.statusBar().showMessage(f"Calibration completed at {execution_result.run_directory}")
@@ -644,6 +749,7 @@ class WorkbenchWindow(QMainWindow):
         self._activity_table.resizeColumnsToContents()
 
         if state == "running":
+            self._current_task_progress_bar.setRange(0, 0)
             plot_container = self._plot_container_by_task_id.get(task_id)
             task_detail = self._activity_table.item(row_index, 2)
             if plot_container is not None and task_detail is not None:
@@ -654,6 +760,22 @@ class WorkbenchWindow(QMainWindow):
                         _build_placeholder_panel("Loading", task_detail.text()),
                     ),
                 )
+        elif state == "completed":
+            self._current_task_progress_bar.setRange(0, 1)
+            self._current_task_progress_bar.setValue(1)
+
+    def _on_task_progress_changed(
+        self,
+        task_title: str,
+        completed_units: int,
+        total_units: int,
+        detail: str,
+    ) -> None:
+        self._current_task_progress_bar.setRange(0, total_units)
+        self._current_task_progress_bar.setValue(completed_units)
+        self.statusBar().showMessage(
+            f"{task_title}: {detail} ({completed_units}/{total_units})"
+        )
 
     def _on_artifacts_ready(self, artifacts: WorkbenchArtifacts) -> None:
         self._apply_artifacts(artifacts)
@@ -1168,6 +1290,8 @@ class WorkbenchWindow(QMainWindow):
                 return
 
     def _on_load_error(self, message: str) -> None:
+        self._synchronize_total_elapsed_with_local_stopwatch()
+        self._stop_live_run_elapsed_timer()
         self.statusBar().showMessage("Workbench loading failed")
         self._state.session.last_error_message = message
         self._run_status_label.setText(f"Failure: {message}")
@@ -1566,6 +1690,7 @@ class WorkbenchWindow(QMainWindow):
     def _shutdown_background_workers(self) -> None:
         self._artifact_materialization_timer.stop()
         self._candidate_population_timer.stop()
+        self._stop_live_run_elapsed_timer()
         self._stop_export_worker()
         self._stop_load_worker()
         self._stop_lab_worker()
@@ -1602,6 +1727,37 @@ class WorkbenchWindow(QMainWindow):
 
         self._execution_worker = None
         self._execution_thread = None
+
+    def _start_live_run_elapsed_timer(self) -> None:
+        self._live_run_started_monotonic = monotonic()
+        self._run_elapsed_timer.start(100)
+
+    def _stop_live_run_elapsed_timer(self) -> None:
+        self._run_elapsed_timer.stop()
+        self._live_run_started_monotonic = None
+
+    def _synchronize_total_elapsed_with_local_stopwatch(self) -> None:
+        local_elapsed_seconds = self._local_live_run_elapsed_seconds()
+        if local_elapsed_seconds is None:
+            return
+
+        self._state.run.elapsed_seconds = max(
+            self._state.run.elapsed_seconds,
+            local_elapsed_seconds,
+        )
+
+    def _local_live_run_elapsed_seconds(self) -> Optional[float]:
+        if self._live_run_started_monotonic is None:
+            return None
+
+        return max(monotonic() - self._live_run_started_monotonic, 0.0)
+
+    def _on_run_elapsed_timer_timeout(self) -> None:
+        if self._state.run.status == "running":
+            self._refresh_run_status_panel()
+            return
+
+        self._stop_live_run_elapsed_timer()
 
     def _stop_export_worker(self) -> None:
         export_worker = self._export_worker
@@ -1707,6 +1863,10 @@ class WorkbenchWindow(QMainWindow):
     def _refresh_run_status_panel(self) -> None:
         run_state = self._state.run
         subprogress = run_state.subprogress
+        total_elapsed_seconds = run_state.elapsed_seconds
+        local_elapsed_seconds = self._local_live_run_elapsed_seconds()
+        if run_state.status == "running" and local_elapsed_seconds is not None:
+            total_elapsed_seconds = max(total_elapsed_seconds, local_elapsed_seconds)
 
         self._run_status_label.setText(
             f"Status: {run_state.status} | Run ID: {run_state.run_id or 'pending'}"
@@ -1715,7 +1875,12 @@ class WorkbenchWindow(QMainWindow):
             f"Stage: {run_state.current_stage or 'idle'} | Subtask: {run_state.current_subtask or 'idle'}\n"
             f"Detail: {subprogress.detail or 'idle'}"
         )
-        self._run_elapsed_label.setText(f"Elapsed: {run_state.elapsed_seconds:.1f}s")
+        self._run_stage_elapsed_label.setText(
+            f"Current stage elapsed: {_format_elapsed_duration(run_state.current_stage_elapsed_seconds)}"
+        )
+        self._run_total_elapsed_label.setText(
+            f"Total elapsed: {_format_elapsed_duration(total_elapsed_seconds)}"
+        )
 
         if (
             run_state.status == "running"
@@ -1723,13 +1888,23 @@ class WorkbenchWindow(QMainWindow):
             and subprogress.completed_units is not None
             and subprogress.total_units > 0
         ):
-            self._run_progress_bar.setRange(0, subprogress.total_units)
-            self._run_progress_bar.setValue(subprogress.completed_units)
+            self._run_stage_progress_bar.setRange(0, subprogress.total_units)
+            self._run_stage_progress_bar.setValue(subprogress.completed_units)
         elif run_state.status == "running":
-            self._run_progress_bar.setRange(0, 0)
+            self._run_stage_progress_bar.setRange(0, 0)
         else:
-            self._run_progress_bar.setRange(0, 1)
-            self._run_progress_bar.setValue(1 if run_state.status == "completed" else 0)
+            self._run_stage_progress_bar.setRange(0, 1)
+            self._run_stage_progress_bar.setValue(1 if run_state.status == "completed" else 0)
+
+        total_progress_fraction = _total_run_progress_fraction(run_state)
+        if total_progress_fraction is None and run_state.status == "running":
+            self._run_total_progress_bar.setRange(0, 0)
+        elif total_progress_fraction is None:
+            self._run_total_progress_bar.setRange(0, 1)
+            self._run_total_progress_bar.setValue(1 if run_state.status == "completed" else 0)
+        else:
+            self._run_total_progress_bar.setRange(0, 1000)
+            self._run_total_progress_bar.setValue(round(total_progress_fraction * 1000))
 
     def _append_event_row(self, event: Any) -> None:
         row_index = self._event_table.rowCount()
@@ -1755,6 +1930,61 @@ class WorkbenchWindow(QMainWindow):
             self._event_table.setItem(row_index, column_index, QTableWidgetItem(value))
 
         self._event_table.resizeColumnsToContents()
+        self._event_table.scrollToBottom()
+
+    def _copy_event_table_to_clipboard(self) -> None:
+        event_table_tsv = self._event_table_tsv()
+        if event_table_tsv is None:
+            self.statusBar().showMessage("No visible events to copy.", 5000)
+            return
+
+        clipboard = QApplication.clipboard()
+        clipboard.setText(event_table_tsv)
+        self.statusBar().showMessage("Copied visible event table to clipboard.", 5000)
+
+    def _export_event_table_tsv(self) -> None:
+        event_table_tsv = self._event_table_tsv()
+        if event_table_tsv is None:
+            self.statusBar().showMessage("No visible events to export.", 5000)
+            return
+
+        selected_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export event table",
+            str((Path.cwd() / "janiform_event_table.tsv").resolve()),
+            "Tab-separated values (*.tsv);;All files (*)",
+        )
+        if not selected_path:
+            return
+
+        destination = Path(selected_path)
+        destination.write_text(event_table_tsv, encoding="utf-8")
+        self.statusBar().showMessage(f"Wrote {destination}", 5000)
+
+    def _event_table_tsv(self) -> Optional[str]:
+        if self._event_table.rowCount() == 0 or self._event_table.columnCount() == 0:
+            return None
+
+        output_buffer = StringIO()
+        writer = csv.writer(output_buffer, delimiter="\t", lineterminator="\n")
+        writer.writerow(
+            [
+                self._event_table.horizontalHeaderItem(column_index).text()
+                for column_index in range(self._event_table.columnCount())
+            ]
+        )
+
+        for row_index in range(self._event_table.rowCount()):
+            writer.writerow(
+                [
+                    self._event_table.item(row_index, column_index).text()
+                    if self._event_table.item(row_index, column_index) is not None
+                    else ""
+                    for column_index in range(self._event_table.columnCount())
+                ]
+            )
+
+        return output_buffer.getvalue()
 
     def _should_display_execution_event(self, event: Any) -> bool:
         return getattr(event, "event_type", None) != WorkbenchEventType.RESOURCE_SNAPSHOT_RECORDED
@@ -1770,6 +2000,8 @@ class WorkbenchWindow(QMainWindow):
             self._activity_table.setItem(row_index, 0, QTableWidgetItem("queued"))
 
         self._overall_progress_bar.setValue(0)
+        self._current_task_progress_bar.setRange(0, 1)
+        self._current_task_progress_bar.setValue(0)
         self._activity_title_label.setText("Queued")
         self._activity_detail_label.setText("Preparing diagnostics and plots.")
 
@@ -1850,7 +2082,8 @@ class WorkbenchWindow(QMainWindow):
             f"Run ID: {run_state.run_id or 'pending'}\n"
             f"Status: {run_state.status}\n"
             f"Current stage: {run_state.current_stage or 'idle'}\n"
-            f"Elapsed: {run_state.elapsed_seconds:.1f}s\n"
+            f"Current stage elapsed: {_format_elapsed_duration(run_state.current_stage_elapsed_seconds)}\n"
+            f"Total elapsed: {_format_elapsed_duration(run_state.elapsed_seconds)}\n"
             f"Observed stage reports: {len(self._live_stage_report_payloads)}\n"
             f"Candidates available: {0 if candidate_store is None else len(candidate_store.candidates)}"
         )
@@ -1867,7 +2100,8 @@ class WorkbenchWindow(QMainWindow):
                     "current_stage": run_state.current_stage,
                     "current_subtask": run_state.current_subtask,
                     "current_evaluation_tier": run_state.current_evaluation_tier,
-                    "elapsed_seconds": run_state.elapsed_seconds,
+                    "current_stage_elapsed_seconds": run_state.current_stage_elapsed_seconds,
+                    "total_elapsed_seconds": run_state.elapsed_seconds,
                     "observed_stage_reports": len(self._live_stage_report_payloads),
                     "candidate_count": 0 if candidate_store is None else len(candidate_store.candidates),
                 }
@@ -2883,6 +3117,154 @@ def _selected_lab_tiers(
         return ("seeded_tick", "coarse_diagnostics", "consistency")
 
     return tuple(tiers)
+
+
+def _format_elapsed_duration(elapsed_seconds: float) -> str:
+    total_seconds = max(float(elapsed_seconds), 0.0)
+    total_minutes, seconds = divmod(total_seconds, 60.0)
+    total_hours, minutes = divmod(int(total_minutes), 60)
+    days, hours = divmod(total_hours, 24)
+
+    if days > 0:
+        return f"{days}d {hours:02d}h {minutes:02d}m {seconds:04.1f}s"
+    if total_hours > 0:
+        return f"{total_hours}h {minutes:02d}m {seconds:04.1f}s"
+    if total_minutes >= 1.0:
+        return f"{int(total_minutes)}m {seconds:04.1f}s"
+    return f"{seconds:.1f}s"
+
+
+def _total_run_progress_fraction(run_state: WorkbenchRunState) -> Optional[float]:
+    if run_state.status == "completed":
+        return 1.0
+
+    stage_index = run_state.stage_progress.completed_units
+    if not isinstance(stage_index, int) or stage_index <= 0:
+        return None
+
+    stage_weights = _stage_weights_for_run_stage_sequence(run_state.stage_sequence)
+    if stage_weights is not None and stage_index <= len(stage_weights):
+        completed_weight = sum(stage_weights[: max(stage_index - 1, 0)])
+        if run_state.current_stage_is_complete:
+            stage_execution_fraction = min(
+                max(completed_weight + stage_weights[stage_index - 1], 0.0),
+                1.0,
+            )
+            return (1.0 - WORKBENCH_TOTAL_PROGRESS_COMPLETION_RESERVE_V1) * stage_execution_fraction
+
+        current_stage_fraction = _current_stage_progress_fraction(run_state)
+        stage_execution_fraction = min(
+            max(completed_weight + current_stage_fraction * stage_weights[stage_index - 1], 0.0),
+            1.0,
+        )
+        return (1.0 - WORKBENCH_TOTAL_PROGRESS_COMPLETION_RESERVE_V1) * stage_execution_fraction
+
+    stage_count = run_state.stage_progress.total_units
+    if not isinstance(stage_count, int) or stage_count <= 0:
+        return None
+
+    if run_state.current_stage_is_complete:
+        return (1.0 - WORKBENCH_TOTAL_PROGRESS_COMPLETION_RESERVE_V1) * min(
+            max(stage_index / stage_count, 0.0),
+            1.0,
+        )
+
+    completed_stage_count = max(stage_index - 1, 0)
+    current_stage_fraction = _current_stage_progress_fraction(run_state)
+    return (1.0 - WORKBENCH_TOTAL_PROGRESS_COMPLETION_RESERVE_V1) * min(
+        max((completed_stage_count + current_stage_fraction) / stage_count, 0.0),
+        1.0,
+    )
+
+
+def _current_stage_progress_fraction(run_state: WorkbenchRunState) -> float:
+    joint_refinement_phase_progress_fraction = _joint_refinement_phase_progress_fraction(run_state)
+    if joint_refinement_phase_progress_fraction is not None:
+        return joint_refinement_phase_progress_fraction
+
+    subprogress_completed_units = run_state.subprogress.completed_units
+    subprogress_total_units = run_state.subprogress.total_units
+    if (
+        isinstance(subprogress_completed_units, int)
+        and isinstance(subprogress_total_units, int)
+        and subprogress_total_units > 0
+    ):
+        return min(
+            max(subprogress_completed_units / subprogress_total_units, 0.0),
+            1.0,
+        )
+
+    return 1.0 if run_state.current_stage_is_complete else 0.0
+
+
+def _joint_refinement_phase_progress_fraction(run_state: WorkbenchRunState) -> Optional[float]:
+    if run_state.current_stage != "joint_refinement":
+        return None
+
+    if run_state.current_stage_is_complete:
+        return 1.0
+
+    current_subtask = run_state.current_subtask
+    if not isinstance(current_subtask, str) or not current_subtask.startswith("joint_refinement."):
+        return 0.0
+
+    progress_phase = current_subtask.split(".", 1)[1]
+    phase_weights = _joint_refinement_phase_weights()
+    if phase_weights is None or progress_phase not in phase_weights:
+        return None
+    phase_names = tuple(phase_weights.keys())
+    phase_index = phase_names.index(progress_phase)
+
+    subprogress_completed_units = run_state.subprogress.completed_units
+    subprogress_total_units = run_state.subprogress.total_units
+    current_phase_fraction = 0.0
+    if (
+        isinstance(subprogress_completed_units, int)
+        and isinstance(subprogress_total_units, int)
+        and subprogress_total_units > 0
+    ):
+        current_phase_fraction = min(
+            max(subprogress_completed_units / subprogress_total_units, 0.0),
+            1.0,
+        )
+
+    completed_phase_weight = sum(
+        phase_weights[phase_name] for phase_name in phase_names[:phase_index]
+    )
+    return completed_phase_weight + current_phase_fraction * phase_weights[progress_phase]
+
+
+def _joint_refinement_phase_weights() -> Optional[dict[str, float]]:
+    total_weight = sum(WORKBENCH_JOINT_REFINEMENT_PROGRESS_PHASE_WEIGHT_POLICY_V1.values())
+    if total_weight <= 0.0:
+        return None
+
+    return {
+        phase_name: phase_weight / total_weight
+        for phase_name, phase_weight in WORKBENCH_JOINT_REFINEMENT_PROGRESS_PHASE_WEIGHT_POLICY_V1.items()
+    }
+
+
+def _stage_weights_for_run_stage_sequence(stage_sequence: tuple[str, ...]) -> Optional[tuple[float, ...]]:
+    if len(stage_sequence) == 0:
+        return None
+
+    raw_stage_weights = [
+        WORKBENCH_TOTAL_PROGRESS_STAGE_WEIGHT_POLICY_V1.get(stage_name)
+        for stage_name in stage_sequence
+    ]
+    if any(weight is None for weight in raw_stage_weights):
+        return None
+
+    total_weight = sum(weight for weight in raw_stage_weights if weight is not None)
+    if total_weight <= 0.0:
+        return None
+
+    return tuple(
+        weight / total_weight
+        for weight in raw_stage_weights
+        if weight is not None
+    )
 
 
 def _lab_result_html(result: WorkbenchReevaluationResult) -> str:

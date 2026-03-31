@@ -22,6 +22,7 @@ mod coarse_runtime;
 mod config;
 mod constants;
 mod error;
+mod progress;
 mod runtime;
 
 pub use api::{
@@ -56,7 +57,9 @@ pub use coarse::{
     CoarseSimulationRunRequestError,
 };
 pub use coarse_runtime::{
-    CoarseSimulationRunError, run_coarse_simulation, run_coarse_simulation_with_randomness_factory,
+    CoarseSimulationRunError, run_coarse_simulation, run_coarse_simulation_with_observer,
+    run_coarse_simulation_with_randomness_factory,
+    run_coarse_simulation_with_randomness_factory_and_observer,
 };
 pub use config::{
     SeededTickEventStateSnapshotCapture, SeededTickSimulationDebugTraceOptions,
@@ -85,10 +88,15 @@ pub use janiform_model_kernels::mean_reversion::{
     MeanReversionAnchorModel, MeanReversionAnchorModelKind, MeanReversionBoundaryState,
     MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors,
 };
+pub use progress::{SimulationProgressEvent, SimulationProgressPhase};
 pub use runtime::{
     estimate_seeded_result_capacities, run_seeded_tick_event_simulation,
-    run_seeded_tick_event_simulation_with_randomness_factory, stream_seeded_tick_event_simulation,
+    run_seeded_tick_event_simulation_with_observer,
+    run_seeded_tick_event_simulation_with_randomness_factory,
+    run_seeded_tick_event_simulation_with_randomness_factory_and_observer,
+    stream_seeded_tick_event_simulation, stream_seeded_tick_event_simulation_with_observer,
     stream_seeded_tick_event_simulation_with_randomness_factory,
+    stream_seeded_tick_event_simulation_with_randomness_factory_and_observer,
 };
 
 #[cfg(test)]

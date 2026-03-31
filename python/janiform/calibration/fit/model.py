@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
@@ -27,11 +28,12 @@ from ..._workflow_outputs import (
     generate_workflow_run_id,
     persist_coarse_simulation,
     persist_seeded_tick_simulation,
+    simulation_output_columns,
     simulation_output_preferences_from_model,
     write_pricing_artifacts,
     write_simulation_artifacts,
 )
-from ..._workflow_progress import JaniformOutputController
+from ..._workflow_progress import JaniformOutputController, WorkflowProgressMode
 from ..._timestamps import ONE_HOUR_NANOS, nanoseconds_to_hours
 from ...contracts import (
     MeanReversionBoundaryState,
@@ -77,6 +79,7 @@ from ...simulation.coarse import (
     NewsProcessConfiguration,
     run_coarse_simulation,
 )
+from ...simulation.progress import SimulationProgressEvent
 from ...simulation.seeded import (
     SeededTickSimulationRequest,
     SeededTickSimulationResponse,
@@ -218,23 +221,7 @@ class JaniformSimulationResult:
         if self._preferences is None:
             raise RuntimeError("simulation exports require output preferences")
 
-        timestamp_column = self._preferences.timestamp_column
-        match self._preferences.tick_price_input_policy:
-            case "explicit_price_column":
-                column_names = [timestamp_column, self._preferences.price_column or "price"]
-                if self._preferences.trade_sign_column is not None:
-                    column_names.append(self._preferences.trade_sign_column)
-                return tuple(column_names)
-            case "bid_ask_midpoint":
-                return (
-                    timestamp_column,
-                    "mid_price",
-                )
-            case _:
-                return (
-                    timestamp_column,
-                    self._preferences.price_column or "price",
-                )
+        return simulation_output_columns(self._preferences)
 
 
 @dataclass(frozen=True, slots=True)
@@ -271,6 +258,8 @@ class JaniformModel:
         max_records_per_chunk: int = 1024,
         state_snapshot_capture: SeededTickEventStateSnapshotCapture = SeededTickEventStateSnapshotCapture.DISABLED,
         silent: bool = False,
+        progress_mode: WorkflowProgressMode | str = WorkflowProgressMode.AUTO,
+        progress_callback: Optional[Callable[[SimulationProgressEvent], None]] = None,
     ) -> JaniformSimulationResult:
         if output_path is not None and sink is not None:
             raise _calibration_error(
@@ -279,7 +268,13 @@ class JaniformModel:
             )
 
         effective_interval = _DEFAULT_HIGH_LEVEL_SIMULATION_INTERVAL if interval is None else interval
-        output_controller = JaniformOutputController(silent=silent)
+        output_controller = JaniformOutputController(
+            suppress_info_output=silent,
+            progress_mode=WorkflowProgressMode.NONE if silent else progress_mode,
+            default_progress_mode=(
+                WorkflowProgressMode.NONE if silent else WorkflowProgressMode.HUMAN
+            ),
+        )
         simulation_kind = "seeded_tick" if interval is None else "coarse_interval"
 
         execution_inputs = _prepare_model_simulation_inputs(
@@ -296,23 +291,30 @@ class JaniformModel:
             state_snapshot_capture=state_snapshot_capture,
         )
         with output_controller.progress("simulate") as progress:
-            if simulation_kind == "seeded_tick":
-                progress.update(detail="simulating seeded ticks")
+            def emit_simulation_progress(event: SimulationProgressEvent) -> None:
+                progress.update(
+                    detail=event.detail,
+                    completed_units=event.completed_units,
+                    total_units=event.total_units,
+                )
+                if progress_callback is not None:
+                    progress_callback(event)
 
+            if simulation_kind == "seeded_tick":
                 if execution_inputs.seeded_request is None:
                     raise RuntimeError("JaniformModel seeded simulation inputs were not prepared")
 
                 raw_simulation_result = run_seeded_tick_event_simulation(
-                    execution_inputs.seeded_request
+                    execution_inputs.seeded_request,
+                    progress_callback=emit_simulation_progress,
                 )
             else:
-                progress.update(detail="simulating coarse intervals")
-
                 if execution_inputs.coarse_request is None:
                     raise RuntimeError("JaniformModel coarse simulation inputs were not prepared")
 
                 raw_simulation_result = run_coarse_simulation(
-                    execution_inputs.coarse_request
+                    execution_inputs.coarse_request,
+                    progress_callback=emit_simulation_progress,
                 )
 
         preferences = simulation_output_preferences_from_model(self)
@@ -367,8 +369,15 @@ class JaniformModel:
         include_calibration_hooks: bool = False,
         output_path: Optional[str | Path] = None,
         silent: bool = False,
+        progress_mode: WorkflowProgressMode | str = WorkflowProgressMode.AUTO,
     ) -> VanillaOptionPricingRunResult:
-        output_controller = JaniformOutputController(silent=silent)
+        output_controller = JaniformOutputController(
+            suppress_info_output=silent,
+            progress_mode=WorkflowProgressMode.NONE if silent else progress_mode,
+            default_progress_mode=(
+                WorkflowProgressMode.NONE if silent else WorkflowProgressMode.HUMAN
+            ),
+        )
         execution_input = _prepare_model_pricing_execution_input(
             self,
             valuation_time_utc=valuation_time_utc,
