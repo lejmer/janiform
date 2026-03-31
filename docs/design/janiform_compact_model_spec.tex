@@ -25,7 +25,7 @@ K_h^P(u \mid \Sigma_h)
 \]
 be the one-interval physical log-moment-generating function of the Janiform core contribution \(R_h\).
 
-Define the physical anchor increment
+Define the physical expected core increment
 \[
 \mu_h^P(\Sigma_h)
 =
@@ -34,21 +34,40 @@ Define the physical anchor increment
 \mathbb E^P[R_h \mid \Sigma_h].
 \]
 
+Let \(\Delta_{\mathrm{ref}} > 0\) be the persisted reference interval, let
+\(\psi_{\mathrm{ref}} \in [0,1]\) be the persisted pressure persistence per
+reference interval, let \(c\) be the persisted pressure-to-level gain, and
+define
+\[
+\psi_h = \psi_{\mathrm{ref}}^{\Delta_h / \Delta_{\mathrm{ref}}}.
+\]
+
 Let the observed state satisfy
 \[
 X_h = A_h^P + D_h^P,
+\qquad
+A_h^P = a_0^P + c\,p_h^P,
+\qquad
+p_0^P = 0,
 \qquad
 \phi_h=e^{-\kappa \Delta_h},
 \qquad
 \kappa \ge 0.
 \]
 
-Then the endogenous-anchor recursions are
+Then the endogenous pressure-to-level recursions are
 \[
-A_{h+1}^P = A_h^P + \mu_h^P(\Sigma_h),
+p_{h+1}^P = \psi_h p_h^P + (1-\psi_h)\mu_h^P(\Sigma_h),
 \]
 \[
-D_{h+1}^P = \phi_h D_h^P + R_h - \mu_h^P(\Sigma_h),
+A_{h+1}^P = A_h^P + c\big(p_{h+1}^P - p_h^P\big),
+\]
+\[
+D_{h+1}^P
+=
+\phi_h D_h^P + R_h + A_h^P - A_{h+1}^P
+=
+\phi_h D_h^P + R_h - c\big(p_{h+1}^P - p_h^P\big),
 \]
 and therefore
 \[
@@ -281,7 +300,7 @@ and domain condition
 \section*{10. Anchored Local Martingale Equation}
 Under pricing, the augmented state is
 \[
-Z_h=(\Sigma_h,D_h^Q).
+Z_h=(\Sigma_h,p_h^Q,D_h^Q).
 \]
 
 The risk-neutral local transform is
@@ -300,18 +319,29 @@ Define the risk-neutral anchor increment by
 \mathbb E^Q[R_h \mid Z_h].
 \]
 
-Then the risk-neutral deviation recursion is
+Then the risk-neutral pressure and anchor recursions are
 \[
-D_{h+1}^Q = e^{-\kappa \Delta_h} D_h^Q + R_h - \mu_h^Q(Z_h),
+p_{h+1}^Q = \psi_h p_h^Q + (1-\psi_h)\mu_h^Q(Z_h),
+\]
+\[
+A_{h+1}^Q = A_h^Q + c\big(p_{h+1}^Q - p_h^Q\big),
+\]
+and the risk-neutral deviation recursion is
+\[
+D_{h+1}^Q
+=
+e^{-\kappa \Delta_h} D_h^Q + R_h + A_h^Q - A_{h+1}^Q
+=
+e^{-\kappa \Delta_h} D_h^Q + R_h - c\big(p_{h+1}^Q - p_h^Q\big),
 \]
 and the one-interval observed return satisfies the local martingale condition
 \[
 K_h^Q(1 \mid Z_h)+\big(e^{-\kappa\Delta_h}-1\big)D_h^Q=(r-q)\Delta_h.
 \]
 
-The pricing engine therefore generates the risk-neutral anchor from the same
-local tilted transform used to price. It does not require the caller to supply
-a future anchor grid.
+The pricing engine therefore generates the risk-neutral pressure state and
+anchor from the same local tilted transform used to price. It does not require
+the caller to supply a future anchor grid.
 
 \section*{11. Optional Risk-Neutral Esscher Tilt}
 \[

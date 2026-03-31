@@ -42,10 +42,10 @@
         \log \mathbb E^P[e^{u R_h}\mid \Sigma_h].
     \]
 
-    \subsection*{11.3. Endogenous Anchor Under \(P\)}
+    \subsection*{11.3. Endogenous Pressure-To-Level Anchor Under \(P\)}
 
-    Define the physical anchor increment by the conditional mean of the core
-    contribution:
+    Define the physical expected core increment by the conditional mean of the
+    core contribution:
     \[
         \mu_h^P(\Sigma_h)
         =
@@ -63,9 +63,28 @@
         \item news-driven Hawkes activity propagation.
     \end{itemize}
 
-    Define the physical anchor recursion
+    Let \(\Delta_{\mathrm{ref}} > 0\) be the persisted reference interval, let
+    \(\psi_{\mathrm{ref}} \in [0,1]\) be the persisted pressure persistence per
+    reference interval, let \(c\) be the persisted pressure-to-level gain, and
+    define
     \[
-        A_{h+1}^P = A_h^P + \mu_h^P(\Sigma_h).
+        \psi_h = \psi_{\mathrm{ref}}^{\Delta_h / \Delta_{\mathrm{ref}}}.
+    \]
+
+    Define the deterministic physical pressure state
+    \[
+        p_0^P = 0,
+        \qquad
+        p_{h+1}^P = \psi_h p_h^P + (1-\psi_h)\mu_h^P(\Sigma_h).
+    \]
+
+    Define the physical equilibrium level
+    \[
+        A_h^P = a_0^P + c\,p_h^P,
+    \]
+    or equivalently the runtime recursion
+    \[
+        A_{h+1}^P = A_h^P + c\big(p_{h+1}^P - p_h^P\big).
     \]
 
     \subsection*{11.4. Deviation Dynamics Under \(P\)}
@@ -91,9 +110,11 @@
 
     The canonical physical deviation recursion is
     \[
-        D_{h+1}^P = \phi_h D_h^P + \xi_h^P
+        D_{h+1}^P
         =
-        e^{-\kappa \Delta_h} D_h^P + R_h - \mu_h^P(\Sigma_h).
+        \phi_h D_h^P + R_h + A_h^P - A_{h+1}^P
+        =
+        e^{-\kappa \Delta_h} D_h^P + R_h - c\big(p_{h+1}^P - p_h^P\big).
     \]
 
     The observed log-price recursion becomes
@@ -105,7 +126,7 @@
         X_h + (\phi_h - 1) D_h^P + R_h.
     \]
 
-    This nests the original model:
+    This preserves the original Janiform observed-price recursion:
     \[
         \kappa = 0 \quad \Rightarrow \quad X_{h+1} = X_h + R_h.
     \]
@@ -115,7 +136,7 @@
     Under pricing, the deviation affects the required local tilt. The
     risk-neutral state is therefore
     \[
-        Z_h = (\Sigma_h, D_h^Q).
+        Z_h = (\Sigma_h, p_h^Q, D_h^Q).
     \]
 
     Define a local state-dependent tilt \(\theta_h(Z_h)\) and the corresponding
@@ -138,12 +159,19 @@
         \mathbb E^Q[R_h \mid Z_h].
     \]
 
-    The risk-neutral anchor and deviation recursions are
+    The risk-neutral pressure and anchor recursions are
     \[
-        A_{h+1}^Q = A_h^Q + \mu_h^Q(Z_h),
+        p_{h+1}^Q = \psi_h p_h^Q + (1-\psi_h)\mu_h^Q(Z_h),
     \]
     \[
-        D_{h+1}^Q = \phi_h D_h^Q + R_h - \mu_h^Q(Z_h).
+        A_{h+1}^Q = A_h^Q + c\big(p_{h+1}^Q - p_h^Q\big),
+    \]
+    \[
+        D_{h+1}^Q
+        =
+        \phi_h D_h^Q + R_h + A_h^Q - A_{h+1}^Q
+        =
+        \phi_h D_h^Q + R_h - c\big(p_{h+1}^Q - p_h^Q\big).
     \]
 
     \subsection*{11.6. Local Martingale Condition}
@@ -174,17 +202,18 @@
 
     \subsection*{11.7. Runtime Materialization}
 
-    The runtime still needs interval-aligned anchor values. The difference is
-    that those values are now materialized from the state recursion rather than
-    persisted as the top-level fitted-model family.
+    The runtime still needs interval-aligned anchor values and pressure states.
+    The difference is that those values are now materialized from the state
+    recursion rather than persisted as the top-level fitted-model family.
 
     For each interval:
     \begin{enumerate}
         \item evaluate \(\mu_h^\star\) from the current state under measure
         \(\star\in\{P,Q\}\),
-        \item update \(A_{h+1}^\star = A_h^\star + \mu_h^\star\),
-        \item record the interval-aligned anchor values for execution artifacts,
-        diagnostics, or exports.
+        \item update \(p_{h+1}^\star = \psi_h p_h^\star + (1-\psi_h)\mu_h^\star\),
+        \item update \(A_{h+1}^\star = A_h^\star + c(p_{h+1}^\star - p_h^\star)\),
+        \item record the interval-aligned pressure and anchor values for
+        execution artifacts, diagnostics, or exports.
     \end{enumerate}
 
     \subsection*{11.8. Calibration Strategy}
@@ -195,13 +224,16 @@
         \item reconstruct the structural states \(\Sigma_h\) on the calibration
         grid,
         \item compute \(\mu_h^P(\Sigma_h)\) from the fitted core,
-        \item build the endogenous physical anchor path recursively,
-        \item recover deviations \(D_h^P = X_h - A_h^P\),
-        \item estimate \(\kappa\) from the deviation recursion.
+        \item build the endogenous pressure state \(p_h^P\) recursively,
+        \item fit the nuisance anchor-origin level \(a_0^P\), the gain \(c\),
+        and the mean-reversion persistence by the one-step recursion,
+        \item select among the nested pressure-to-level and null candidates by
+        one shared information criterion.
     \end{enumerate}
 
     This staged procedure keeps the anchor endogenous while avoiding a user-
-    supplied future anchor path.
+    supplied future anchor path and without forcing the equilibrium level to
+    integrate the one-step expected-return signal directly.
 
     \subsection*{11.9. Identifiability Constraints}
 
@@ -210,6 +242,8 @@
         \item the anchor must be generated from the Janiform state, not provided
         externally as a free future curve,
         \item \(\kappa\) should correspond to slower time scales than Hawkes decay,
+        \item pressure persistence and pressure-to-level gain must be estimated
+        jointly with the deviation recursion rather than hardcoded,
         \item no feedback from \(X_t\) or \(D_t\) into Hawkes intensities, Lévy
         drivers, or news processes is allowed,
         \item no additional jump structure is introduced in the deviation layer.
@@ -222,7 +256,7 @@
     self-contained for both simulation and pricing. It provides:
     \begin{itemize}
         \item a nested generalization of the original model,
-        \item an endogenous anchor generated by the model's own state,
+        \item an endogenous pressure state mapped into equilibrium level,
         \item mean reversion around that endogenous anchor,
         \item risk-neutral consistency without caller-supplied future anchor paths.
     \end{itemize}
