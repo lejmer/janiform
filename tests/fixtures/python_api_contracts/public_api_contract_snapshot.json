@@ -921,7 +921,7 @@
             "fit_warning"
           ],
           "kind": "contract_model",
-          "signature": "(normalized_handle: 'NormalizedMarketDataHandle', tick_data_summary: 'LoadedMarketDataSourceSummary', reference_price: 'Optional[float]', fit_warning: 'Optional[str]') -> 'None'"
+          "signature": "(normalized_handle: 'NormalizedMarketDataHandleProtocol', tick_data_summary: 'LoadedMarketDataSourceSummary', reference_price: 'Optional[float]', fit_warning: 'Optional[str]') -> 'None'"
         },
         "PreparedMarketDataCalibration": {
           "field_names": [
@@ -1421,7 +1421,7 @@
             "reference_price"
           ],
           "kind": "contract_model",
-          "signature": "(staged_request: 'StagedCalibrationRequest', prepared_handle: 'PreparedCalibrationExecutionHandle', session_resolution: 'MarketDataSessionResolution', diagnostics: 'MarketDataTranslationDiagnostics', provenance: 'MarketDataTranslationProvenance', fit_warning: 'Optional[str]', reference_price: 'Optional[float]') -> 'None'"
+          "signature": "(staged_request: 'StagedCalibrationRequest', prepared_handle: 'PreparedCalibrationExecutionHandleProtocol', session_resolution: 'MarketDataSessionResolution', diagnostics: 'MarketDataTranslationDiagnostics', provenance: 'MarketDataTranslationProvenance', fit_warning: 'Optional[str]', reference_price: 'Optional[float]') -> 'None'"
         },
         "NormalizedMarketDataSource": {
           "field_names": [
@@ -1431,7 +1431,7 @@
             "fit_warning"
           ],
           "kind": "contract_model",
-          "signature": "(normalized_handle: 'NormalizedMarketDataHandle', tick_data_summary: 'LoadedMarketDataSourceSummary', reference_price: 'Optional[float]', fit_warning: 'Optional[str]') -> 'None'"
+          "signature": "(normalized_handle: 'NormalizedMarketDataHandleProtocol', tick_data_summary: 'LoadedMarketDataSourceSummary', reference_price: 'Optional[float]', fit_warning: 'Optional[str]') -> 'None'"
         },
         "normalize_market_data_source": {
           "kind": "function",
@@ -4537,7 +4537,7 @@
         },
         "HourlyFactorContract": {
           "base_classes": [],
-          "constructor_signature": "(native_result: 'HourlyFactorContractResult') -> 'None'",
+          "constructor_signature": "(native_result: 'HourlyFactorContractResultProtocol') -> 'None'",
           "kind": "class",
           "origin_module": "janiform.hourly_factors",
           "public_methods": {
@@ -4587,7 +4587,7 @@
         },
         "HourlyNewsIntensityMaterialization": {
           "base_classes": [],
-          "constructor_signature": "(native_result: 'HourlyNewsIntensityMaterializationResult') -> 'None'",
+          "constructor_signature": "(native_result: 'HourlyNewsIntensityMaterializationResultProtocol') -> 'None'",
           "kind": "class",
           "origin_module": "janiform.hourly_factors",
           "qualname": "HourlyNewsIntensityMaterialization"
@@ -4635,7 +4635,7 @@
         },
         "HourlySeasonalityMaterialization": {
           "base_classes": [],
-          "constructor_signature": "(native_result: 'HourlySeasonalityMaterializationResult') -> 'None'",
+          "constructor_signature": "(native_result: 'HourlySeasonalityMaterializationResultProtocol') -> 'None'",
           "kind": "class",
           "origin_module": "janiform.hourly_factors",
           "qualname": "HourlySeasonalityMaterialization"

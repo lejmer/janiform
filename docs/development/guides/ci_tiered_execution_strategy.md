@@ -7,8 +7,8 @@ This guide defines the regression and benchmark CI tiers for Initiative 004 Proj
 | Tier | Workflow | Trigger policy | Expected runtime budget | Merge requirement |
 | --- | --- | --- | --- | --- |
 | Fast deterministic regression | `.github/workflows/ci-fast-regression.yml` | `pull_request`, `push` to `main`, manual dispatch | Target <= 30 minutes on `ubuntu-latest` | Required |
-| Benchmark smoke tier | `.github/workflows/ci-benchmark-tier.yml` | Weekday schedule (`0 6 * * 1-5`) and manual dispatch | Target <= 60 minutes on `ubuntu-latest` | Not required on every commit |
-| Microbenchmark smoke | `.github/workflows/ci-benchmark-tier.yml` | Manual dispatch only | Target <= 30 minutes on `ubuntu-latest` | Never required on every commit |
+| Rust benchmark governance smoke | `.github/workflows/ci-rust-benchmark-governance-smoke.yml` | Manual dispatch | Target <= 60 minutes on `ubuntu-latest` | Not required on every commit |
+| Local Python benchmark workloads | `scripts/python_benchmark_workloads.py` | Local only | Runner-dependent | Never required on every commit |
 
 ## Fast deterministic regression tier
 
@@ -22,40 +22,36 @@ This guide defines the regression and benchmark CI tiers for Initiative 004 Proj
   - `.artifacts/fast-tier/fast_tier_results.json`
   - `.artifacts/fast-tier/parsed_results.json`
 
-## Benchmark smoke tier
+## Rust benchmark governance smoke
 
 - Runs benchmark smoke tests for schema and artifact-hook stability:
   - `cargo test -p janiform-governance-bench --test benchmark_scenario_catalog -- --nocapture`
   - `cargo test -p janiform-governance-bench --test oracle_pricer_risk_benchmark_harness -- --nocapture`
   - `cargo test -p janiform-governance --test performance_baseline_capture_and_storage -- --nocapture`
   - `cargo test -p janiform-governance --test regression_drift_attribution_reports -- --nocapture`
-- Runs the scheduled real-data seeded runtime benchmark workload:
-  - `PYTHONPATH=python:. .venv-linux/bin/python scripts/ci/run_real_data_seeded_runtime_benchmark.py`
-  - fixture: `tests/fixtures/benchmarks/real_data_seeded_runtime_benchmark_fixture.json`
-  - policy: `tests/fixtures/benchmarks/real_data_seeded_runtime_benchmark_policy.json`
-  - baseline: `tests/fixtures/benchmarks/real_data_seeded_runtime_baseline_v1.json`
 - Publishes benchmark logs and artifact index as uploaded workflow artifacts.
-- Publishes real-data seeded runtime benchmark artifacts:
-  - `real_data_seeded_runtime_benchmark_report.json`
-  - `real_data_seeded_runtime_benchmark_comparison.json`
-  - `real_data_seeded_runtime_benchmark_summary.md`
 
-The benchmark smoke tier does not claim production-grade performance representativeness by itself.
+The Rust benchmark governance smoke tier does not claim production-grade performance representativeness by itself.
 Its purpose is to keep benchmark contracts wired and observable without making merge checks slow.
+
+## Local Python benchmark workloads
+
+Run the Python benchmark workloads locally with:
+
+```bash
+python3 scripts/python_benchmark_workloads.py
+```
+
+That script drives:
+
+- the representative real-data seeded runtime benchmark comparison against the checked-in baseline
+- the Rust Criterion bench discovery smoke command
+- the Python `pytest-benchmark` smoke run with benchmark timing disabled
+
+It writes artifacts under `.artifacts/local-python-benchmarks/` by default.
 
 For the real-data seeded runtime path, `native_estimated_retained_bytes` is currently documented and
 enforced as an estimated retained-memory proxy. It is not a portable peak-RSS measurement.
-
-## Microbenchmark smoke
-
-- Validates Criterion bench discovery without treating timings as a merge gate:
-  - `cargo bench -p janiform-governance-bench --bench rust_microbenchmarks -- --list`
-- Validates the Python `pytest-benchmark` suite wiring without recording noisy timing artifacts:
-  - `PYTHONPATH=python:. .venv-linux/bin/pytest --benchmark-disable benches/python/test_microbenchmark_tooling.py benches/python/python_microbenchmarks.py -q`
-
-This job is manual-only. It exists so contributors can verify the microbenchmark suites
-stay runnable in CI-like environments while keeping timing noise out of required pull-request
-checks.
 
 ## Failure diagnostics and links
 

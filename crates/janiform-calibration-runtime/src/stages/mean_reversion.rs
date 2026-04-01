@@ -225,9 +225,9 @@ pub fn run_mean_reversion_calibration_stage(
         &execution_input,
         &solver_settings,
     ) {
-            Ok(result) => result,
-            Err(failure) => return failure_report(run_spec, failure),
-        };
+        Ok(result) => result,
+        Err(failure) => return failure_report(run_spec, failure),
+    };
 
     let (return_components_selected_candidate_id, return_components_artifact_reference) =
         match return_components_input {
@@ -465,7 +465,9 @@ fn estimate_endogenous_mean_reversion_fitted_parameters(
             kappa: selected_candidate.kappa,
             residual_sum_of_squares: selected_candidate.residual_sum_of_squares,
             quasi_log_likelihood: finite_metric_or_none(selected_candidate.quasi_log_likelihood),
-            information_criterion_bic: finite_metric_or_none(selected_candidate.information_criterion_bic),
+            information_criterion_bic: finite_metric_or_none(
+                selected_candidate.information_criterion_bic,
+            ),
             model_selection_policy: ENDOGENOUS_MODEL_SELECTION_POLICY.to_string(),
             deviation_sample_count: selected_candidate.deviations.len(),
             regression_pair_count: selected_candidate.residuals.len(),
@@ -473,15 +475,13 @@ fn estimate_endogenous_mean_reversion_fitted_parameters(
             evaluated_candidates: evaluated_candidates
                 .into_iter()
                 .map(|candidate| {
-                    candidate.into_diagnostics(
-                        calibration_context.core_expected_increments.as_slice(),
-                    )
+                    candidate
+                        .into_diagnostics(calibration_context.core_expected_increments.as_slice())
                 })
                 .collect(),
             stage_decision_reason: format!(
                 "{}|{}",
-                selected_candidate.stage_decision_reason,
-                ENDOGENOUS_MODEL_SELECTION_POLICY
+                selected_candidate.stage_decision_reason, ENDOGENOUS_MODEL_SELECTION_POLICY
             ),
         },
     ))
@@ -677,7 +677,9 @@ fn build_endogenous_mean_reversion_calibration_context(
             .iter()
             .map(|expectation| expectation.core_expected_increment)
             .collect(),
-        interval_deltas: anchor_materialization.runtime_interval_anchors.interval_deltas,
+        interval_deltas: anchor_materialization
+            .runtime_interval_anchors
+            .interval_deltas,
     })
 }
 
@@ -888,7 +890,9 @@ fn evaluate_pressure_to_level_without_mean_reversion_candidate(
     let pressure_column = pressure_state_path
         .iter()
         .zip(pressure_state_path.iter().skip(1))
-        .map(|(current_pressure_state, next_pressure_state)| next_pressure_state - current_pressure_state)
+        .map(|(current_pressure_state, next_pressure_state)| {
+            next_pressure_state - current_pressure_state
+        })
         .collect::<Vec<_>>();
     let least_squares_solution =
         solve_one_column_least_squares(pressure_column.as_slice(), response.as_slice());
@@ -921,8 +925,11 @@ fn profile_flat_anchor_mean_reversion_candidate(
     calibration_grid_interval_hours: f64,
     solver_settings: &CalibrationOptimizerSettings,
 ) -> MeanReversionStageCandidateEvaluation {
-    let phi_boundary_candidate =
-        evaluate_flat_anchor_mean_reversion_candidate(observation_levels, calibration_grid_interval_hours, 1.0);
+    let phi_boundary_candidate = evaluate_flat_anchor_mean_reversion_candidate(
+        observation_levels,
+        calibration_grid_interval_hours,
+        1.0,
+    );
 
     let mut lower_phi_reference = 0.0_f64;
     let mut upper_phi_reference = 1.0_f64;
@@ -997,18 +1004,25 @@ fn evaluate_flat_anchor_mean_reversion_candidate(
     let response = observation_levels
         .iter()
         .zip(observation_levels.iter().skip(1))
-        .map(|(current_observation, next_observation)| next_observation - phi_reference * current_observation)
+        .map(|(current_observation, next_observation)| {
+            next_observation - phi_reference * current_observation
+        })
         .collect::<Vec<_>>();
+
     let intercept_column = vec![1.0 - phi_reference; observation_levels.len().saturating_sub(1)];
+
     let least_squares_solution =
         solve_one_column_least_squares(intercept_column.as_slice(), response.as_slice());
+
     let anchor_origin_level = if phi_reference == 1.0 {
         None
     } else {
         Some(least_squares_solution.first_coefficient)
     };
+
     let anchor_value = anchor_origin_level.unwrap_or(0.0);
     let boundary_anchor_values = vec![anchor_value; observation_levels.len()];
+
     let deviations = observation_levels
         .iter()
         .map(|observation| observation - anchor_value)
@@ -1024,6 +1038,7 @@ fn evaluate_flat_anchor_mean_reversion_candidate(
         .iter()
         .map(|residual| residual * residual)
         .sum::<f64>();
+
     let quasi_log_likelihood =
         gaussian_quasi_log_likelihood(residuals.len(), residual_sum_of_squares);
 
@@ -1063,10 +1078,12 @@ fn evaluate_random_walk_null_candidate(
         .zip(observation_levels.iter().skip(1))
         .map(|(current_observation, next_observation)| next_observation - current_observation)
         .collect::<Vec<_>>();
+
     let residual_sum_of_squares = residuals
         .iter()
         .map(|residual| residual * residual)
         .sum::<f64>();
+
     let quasi_log_likelihood =
         gaussian_quasi_log_likelihood(residuals.len(), residual_sum_of_squares);
 
@@ -1097,7 +1114,10 @@ fn profile_candidate_over_pressure_persistence(
     solver_settings: &CalibrationOptimizerSettings,
     mut evaluate_candidate_at_pressure_persistence: impl FnMut(
         f64,
-    ) -> Result<MeanReversionStageCandidateEvaluation, MeanReversionStageExecutionFailure>,
+    ) -> Result<
+        MeanReversionStageCandidateEvaluation,
+        MeanReversionStageExecutionFailure,
+    >,
 ) -> Result<MeanReversionStageCandidateEvaluation, MeanReversionStageExecutionFailure> {
     let psi_zero_candidate = evaluate_candidate_at_pressure_persistence(0.0)?;
     let psi_one_candidate = evaluate_candidate_at_pressure_persistence(1.0)?;
@@ -1111,8 +1131,7 @@ fn profile_candidate_over_pressure_persistence(
     let mut right_pressure_persistence = lower_pressure_persistence
         + (upper_pressure_persistence - lower_pressure_persistence) / golden_ratio;
 
-    let mut left_candidate =
-        evaluate_candidate_at_pressure_persistence(left_pressure_persistence)?;
+    let mut left_candidate = evaluate_candidate_at_pressure_persistence(left_pressure_persistence)?;
     let mut right_candidate =
         evaluate_candidate_at_pressure_persistence(right_pressure_persistence)?;
 
@@ -1131,8 +1150,7 @@ fn profile_candidate_over_pressure_persistence(
             right_candidate = left_candidate;
             left_pressure_persistence = upper_pressure_persistence
                 - (upper_pressure_persistence - lower_pressure_persistence) / golden_ratio;
-            left_candidate =
-                evaluate_candidate_at_pressure_persistence(left_pressure_persistence)?;
+            left_candidate = evaluate_candidate_at_pressure_persistence(left_pressure_persistence)?;
         } else {
             lower_pressure_persistence = left_pressure_persistence;
             left_pressure_persistence = right_pressure_persistence;
@@ -1208,13 +1226,21 @@ fn build_transition_terms(
     let mut intercept_column = Vec::with_capacity(interval_deltas.len());
     let mut pressure_column = Vec::with_capacity(interval_deltas.len());
 
-    for (((current_observation, next_observation), (current_pressure_state, next_pressure_state)), interval_delta) in observation_levels
+    for (
+        ((current_observation, next_observation), (current_pressure_state, next_pressure_state)),
+        interval_delta,
+    ) in observation_levels
         .iter()
         .zip(observation_levels.iter().skip(1))
-        .zip(pressure_state_path.iter().zip(pressure_state_path.iter().skip(1)))
+        .zip(
+            pressure_state_path
+                .iter()
+                .zip(pressure_state_path.iter().skip(1)),
+        )
         .zip(interval_deltas.iter())
     {
         let phi = phi_reference.powf(interval_delta / calibration_grid_interval_hours);
+
         response.push(next_observation - phi * current_observation);
         intercept_column.push(1.0 - phi);
         pressure_column.push(next_pressure_state - phi * current_pressure_state);
@@ -1246,18 +1272,22 @@ fn assemble_candidate_evaluation(
     base_stage_decision_reason: &str,
 ) -> Result<MeanReversionStageCandidateEvaluation, MeanReversionStageExecutionFailure> {
     let anchor_origin_level_value = anchor_origin_level.unwrap_or(0.0);
+
     let pressure_persistence_per_reference_interval =
         anchor_model.pressure_persistence_per_reference_interval;
+
     let residuals = match pressure_column {
         Some(pressure_column) => response
             .iter()
             .zip(intercept_column.iter())
             .zip(pressure_column.iter())
-            .map(|((current_response, intercept_term), current_pressure_term)| {
-                current_response
-                    - anchor_origin_level_value * intercept_term
-                    - anchor_model.pressure_level_gain * current_pressure_term
-            })
+            .map(
+                |((current_response, intercept_term), current_pressure_term)| {
+                    current_response
+                        - anchor_origin_level_value * intercept_term
+                        - anchor_model.pressure_level_gain * current_pressure_term
+                },
+            )
             .collect::<Vec<_>>(),
         None => response
             .iter()
@@ -1267,10 +1297,12 @@ fn assemble_candidate_evaluation(
             })
             .collect::<Vec<_>>(),
     };
+
     let residual_sum_of_squares = residuals
         .iter()
         .map(|residual| residual * residual)
         .sum::<f64>();
+
     let quasi_log_likelihood =
         gaussian_quasi_log_likelihood(residuals.len(), residual_sum_of_squares);
 
@@ -1291,8 +1323,10 @@ fn assemble_candidate_evaluation(
 
     let mut boundary_anchor_values =
         Vec::with_capacity(runtime_interval_anchors.end_anchor_values.len() + 1);
+
     boundary_anchor_values.push(runtime_interval_anchors.start_anchor_value);
     boundary_anchor_values.extend(runtime_interval_anchors.end_anchor_values);
+
     let deviations = observation_levels
         .iter()
         .zip(boundary_anchor_values.iter())
@@ -1336,6 +1370,7 @@ fn zero_kappa_endogenous_fit(
             )
         }
     };
+
     let fitted_parameters = MeanReversionFittedParameters::try_new(0.0, anchor_model.clone())
         .expect("zero-kappa endogenous mean reversion fit should validate");
 
@@ -1429,19 +1464,15 @@ fn solve_two_column_least_squares(
     second_column: &[f64],
     response: &[f64],
 ) -> MeanReversionLeastSquaresSolution {
-    let first_self_inner_product = first_column
-        .iter()
-        .map(|value| value * value)
-        .sum::<f64>();
-    let second_self_inner_product = second_column
-        .iter()
-        .map(|value| value * value)
-        .sum::<f64>();
+    let first_self_inner_product = first_column.iter().map(|value| value * value).sum::<f64>();
+    let second_self_inner_product = second_column.iter().map(|value| value * value).sum::<f64>();
+
     let cross_inner_product = first_column
         .iter()
         .zip(second_column.iter())
         .map(|(first_value, second_value)| first_value * second_value)
         .sum::<f64>();
+
     let first_response_inner_product = first_column
         .iter()
         .zip(response.iter())
@@ -1539,7 +1570,10 @@ fn kappa_from_phi_reference(phi_reference: f64, calibration_grid_interval_hours:
     }
 }
 
-fn gaussian_quasi_log_likelihood(regression_pair_count: usize, residual_sum_of_squares: f64) -> f64 {
+fn gaussian_quasi_log_likelihood(
+    regression_pair_count: usize,
+    residual_sum_of_squares: f64,
+) -> f64 {
     if regression_pair_count == 0 {
         return f64::NEG_INFINITY;
     }
@@ -1549,6 +1583,7 @@ fn gaussian_quasi_log_likelihood(regression_pair_count: usize, residual_sum_of_s
 
     let pair_count = regression_pair_count as f64;
     let sigma_squared_hat = residual_sum_of_squares / pair_count;
+
     -0.5 * pair_count * (1.0 + (2.0 * std::f64::consts::PI * sigma_squared_hat).ln())
 }
 

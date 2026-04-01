@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 from collections.abc import Mapping
 from typing import Any, Optional

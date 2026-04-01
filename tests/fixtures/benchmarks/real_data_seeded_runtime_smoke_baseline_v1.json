@@ -8,37 +8,37 @@
       "access_pattern_reports": [
         {
           "access_kind": "event_tape_head",
-          "boundary_transport_bytes": 19206,
+          "boundary_transport_bytes": 14707,
           "materialized_event_count": 256,
           "materialized_transition_count": 0,
           "pattern_id": "event_tape_first_chunk",
-          "python_materialization_seconds": 0.0002978770062327385
+          "python_materialization_seconds": 0.0004036270547658205
         },
         {
           "access_kind": "full_seeded_export_to_pandas",
-          "boundary_transport_bytes": 11073040,
+          "boundary_transport_bytes": 2268423,
           "materialized_event_count": 0,
-          "materialized_transition_count": 26954,
+          "materialized_transition_count": 17721,
           "pattern_id": "full_seeded_tick_export",
-          "python_materialization_seconds": 0.21207211789442226
+          "python_materialization_seconds": 0.047382075688801706
         }
       ],
-      "boundary_transport_bytes": 11092246,
-      "calibrated_expected_event_count_over_observation_window": 512.0000001197054,
-      "calibrated_open_event_rate_per_hour": 2048.0000004788217,
-      "coarse_generated_event_count": 26133,
-      "fixture_id": "synthetic_eurusd_parquet_slice_250000_512row_smoke_v1",
+      "boundary_transport_bytes": 2283130,
+      "calibrated_expected_event_count_over_observation_window": 550.4538742996369,
+      "calibrated_open_event_rate_per_hour": 2201.8154971985477,
+      "coarse_generated_event_count": 17480,
+      "fixture_id": "synthetic_eurusd_parquet_slice_240000_512row_smoke_v1",
       "fixture_version": "1.0.0",
       "materialized_event_count": 256,
-      "materialized_transition_count": 26954,
-      "native_estimated_retained_bytes": 4718592,
-      "native_runtime_seconds": 0.010231295018456876,
+      "materialized_transition_count": 17721,
+      "native_estimated_retained_bytes": 6467840,
+      "native_runtime_seconds": 0.022327526938170195,
       "observed_open_event_rate_per_hour": 2048.0,
       "observed_source_tick_count": 512,
-      "python_materialization_seconds": 0.212369994900655,
-      "python_response_construction_seconds": 0.00012002498260699213,
-      "seeded_event_count": 26946,
-      "seeded_transition_count": 26954,
+      "python_materialization_seconds": 0.047785702743567526,
+      "python_response_construction_seconds": 0.00017267698422074318,
+      "seeded_event_count": 17713,
+      "seeded_transition_count": 17721,
       "source_open_session_duration_hours": 0.25
     }
   ],

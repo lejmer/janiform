@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from types import ModuleType
-from typing import TYPE_CHECKING, Any, Optional
+from typing import Any, Optional, cast
 
 from .contracts import (
     CalibrationInputFileFormat,
@@ -28,9 +28,10 @@ from ..sessions.contracts import (
 from ..staged.contracts import CalibrationStage
 from ..staged.request import StagedCalibrationRequest
 from ..._native_api import native_exception_matches, native_module
-
-if TYPE_CHECKING:
-    from ..._native import NormalizedMarketDataHandle, PreparedCalibrationExecutionHandle
+from ..._native_types import (
+    NormalizedMarketDataHandleProtocol,
+    PreparedCalibrationExecutionHandleProtocol,
+)
 
 
 CALIBRATION_MARKET_DATA_TRANSLATION_ERROR_ID = "calibration.validation.market_data_translation"
@@ -84,7 +85,7 @@ class MarketDataSourceProbe:
 
 @dataclass(frozen=True, slots=True)
 class NormalizedMarketDataSource:
-    normalized_handle: NormalizedMarketDataHandle
+    normalized_handle: NormalizedMarketDataHandleProtocol
     tick_data_summary: LoadedMarketDataSourceSummary
     reference_price: Optional[float]
     fit_warning: Optional[str]
@@ -93,7 +94,7 @@ class NormalizedMarketDataSource:
 @dataclass(frozen=True, slots=True)
 class MarketDataTranslationResult:
     staged_request: StagedCalibrationRequest
-    prepared_handle: PreparedCalibrationExecutionHandle
+    prepared_handle: PreparedCalibrationExecutionHandleProtocol
     session_resolution: MarketDataSessionResolution
     diagnostics: MarketDataTranslationDiagnostics
     provenance: MarketDataTranslationProvenance
@@ -325,7 +326,7 @@ def _market_data_translation_result_from_payload(
 
     return MarketDataTranslationResult(
         staged_request=StagedCalibrationRequest.from_mapping(staged_request_payload),
-        prepared_handle=prepared_handle,
+        prepared_handle=cast(PreparedCalibrationExecutionHandleProtocol, prepared_handle),
         session_resolution=_market_data_session_resolution_from_payload(session_resolution_payload),
         diagnostics=_market_data_translation_diagnostics_from_payload(diagnostics_payload),
         provenance=_market_data_translation_provenance_from_payload(provenance_payload),
@@ -362,7 +363,7 @@ def _normalized_market_data_source_from_payload(
         raise _translation_error("tick_data_summary", "must be an object")
 
     return NormalizedMarketDataSource(
-        normalized_handle=normalized_handle,
+        normalized_handle=cast(NormalizedMarketDataHandleProtocol, normalized_handle),
         tick_data_summary=_source_summary_from_payload(
             tick_data_summary,
             field_path="tick_data_summary",

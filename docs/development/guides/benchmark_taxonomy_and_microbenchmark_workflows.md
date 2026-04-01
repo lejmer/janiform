@@ -69,7 +69,7 @@ That layer includes:
 
 - the Rust oracle, pricing, and risk benchmark harness and accepted baselines
 - the real-data seeded runtime benchmark for fit plus simulation plus Python boundary behavior
-- scheduled CI jobs that publish machine-readable artifacts and compare them against checked-in
+- local benchmark runs that publish machine-readable artifacts and compare them against checked-in
   baselines
 
 Those workflows remain the source of truth for end-to-end acceptance checks and regression
@@ -88,18 +88,14 @@ Python microbenchmark workflow:
 
 ```bash
 PYTHONPATH=python:. pytest benches/python/python_microbenchmarks.py --benchmark-only
-PYTHONPATH=python:. pytest benches/python/test_microbenchmark_tooling.py benches/python/python_microbenchmarks.py --benchmark-disable -q
+PYTHONPATH=python:. pytest benches/python/test_microbenchmark_tooling.py benches/python/python_microbenchmarks.py --benchmark-disable
 ```
 
 Workflow acceptance and governance benchmarks:
 
 ```bash
 TMPDIR=/tmp cargo test -p janiform-governance-bench --test oracle_pricer_risk_benchmark_harness -- --nocapture
-PYTHONPATH=python:. python3 scripts/ci/run_real_data_seeded_runtime_benchmark.py \
-  --fixture-path tests/fixtures/benchmarks/real_data_seeded_runtime_benchmark_fixture.json \
-  --policy-path tests/fixtures/benchmarks/real_data_seeded_runtime_benchmark_policy.json \
-  --baseline-path tests/fixtures/benchmarks/real_data_seeded_runtime_baseline_v1.json \
-  --output-dir .artifacts/real-data-seeded-runtime-benchmark
+python3 scripts/python_benchmark_workloads.py
 ```
 
 ## CI Policy
@@ -107,15 +103,15 @@ PYTHONPATH=python:. python3 scripts/ci/run_real_data_seeded_runtime_benchmark.py
 Microbenchmarks are informative local tools. Their timings are intentionally not required
 merge gates on every commit.
 
-The repository keeps lightweight smoke wiring for them in `.github/workflows/ci-benchmark-tier.yml`:
+The repository keeps the Rust governance benchmark smoke tier in
+`.github/workflows/ci-rust-benchmark-governance-smoke.yml`.
 
-- `cargo bench ... -- --list` validates Criterion bench discovery
-- `pytest --benchmark-disable benches/python/test_microbenchmark_tooling.py benches/python/python_microbenchmarks.py -q`
-  validates the Python microbenchmark suite is wired and runnable without pulling benchmark code
-  into the default `tests/` suite
+The Python benchmark workloads are local-only because their representative fixture setup and
+resource usage are too machine-dependent for reliable GitHub-hosted CI execution. Run them with:
 
-That smoke job is manual-only. Scheduled benchmark governance continues to live in the existing
-fixture-driven benchmark jobs.
+```bash
+python3 scripts/python_benchmark_workloads.py
+```
 
 ## Input Provenance
 
@@ -124,7 +120,7 @@ Both microbenchmark suites reuse checked-in deterministic inputs:
 - Rust Criterion benches reuse `benchmark_scenario_catalog.json` and
   `oracle_pricer_risk_benchmark_policy.json`
 - Python `pytest-benchmark` benches reuse
-  `real_data_seeded_runtime_benchmark_fixture.json`
+  `real_data_seeded_runtime_smoke_fixture.json`
 
 This keeps the microbenchmark layer representative enough to be useful while avoiding a second set
 of unrelated benchmark fixtures.

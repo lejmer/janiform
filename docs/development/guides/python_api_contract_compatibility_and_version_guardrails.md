@@ -53,6 +53,10 @@ enum values, constant identifiers, and schema identifiers.
 Signature capture uses stringified annotations rather than evaluated runtime objects so the approved snapshot stays
 stable across supported Python environments, including Linux and Windows developer workflows.
 
+When tracked public signatures need to describe native-owned runtime handles or native result objects,
+they must do so through Janiform-owned protocol boundary types rather than concrete `janiform._native`
+implementation classes.
+
 The guardrail manifest records:
 
 - the approved snapshot hash

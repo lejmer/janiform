@@ -86,12 +86,9 @@ fn mean_reversion_stage_estimates_endogenous_anchor_decay_from_structural_recurs
         MeanReversionAnchorModelKind::EndogenousCorePressureLevel
     );
     assert!(payload.fitted_parameters.kappa >= 0.0);
-    assert!(payload
-        .diagnostics
-        .stage_decision_reason
-        .contains(
-            "endogenous_core_pressure_level_profiled_over_pressure_persistence_and_phi_reference.v1"
-        ));
+    assert!(payload.diagnostics.stage_decision_reason.contains(
+        "endogenous_core_pressure_level_profiled_over_pressure_persistence_and_phi_reference.v1"
+    ));
 }
 
 #[test]
@@ -238,11 +235,14 @@ fn mean_reversion_stage_profiles_slow_anchor_against_immediate_anchor() {
         .expect("slow anchor profile fit should emit a fitted payload");
 
     assert_eq!(payload.diagnostics.evaluated_candidates.len(), 4);
-    assert!(payload
-        .diagnostics
-        .evaluated_candidates
-        .iter()
-        .any(|candidate| candidate.candidate_family == "endogenous_core_pressure_level_mean_reversion"));
+    assert!(
+        payload
+            .diagnostics
+            .evaluated_candidates
+            .iter()
+            .any(|candidate| candidate.candidate_family
+                == "endogenous_core_pressure_level_mean_reversion")
+    );
     assert_eq!(
         payload.diagnostics.model_selection_policy,
         "gaussian_quasi_likelihood_bic_with_endogenous_core_pressure_level_candidate_family_profile.v1"
@@ -366,12 +366,9 @@ fn staged_runner_end_to_end_reports_mean_reversion_fit_from_synthetic_levels() {
         payload.diagnostics.chosen_anchor_family,
         MeanReversionAnchorModelKind::EndogenousCorePressureLevel
     );
-    assert!(payload
-        .diagnostics
-        .stage_decision_reason
-        .contains(
-            "endogenous_core_pressure_level_profiled_over_pressure_persistence_and_phi_reference.v1"
-        ));
+    assert!(payload.diagnostics.stage_decision_reason.contains(
+        "endogenous_core_pressure_level_profiled_over_pressure_persistence_and_phi_reference.v1"
+    ));
     assert!(payload.diagnostics.phi_reference.is_finite());
     assert!(payload.diagnostics.kappa.is_finite());
     assert!(payload.fitted_parameters.kappa.is_finite());

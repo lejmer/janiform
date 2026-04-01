@@ -59,6 +59,9 @@ Janiform now treats Python as the control plane and Rust as the data plane.
     runtime handles, and artifact-backed execution inputs.
   - Runtime artifacts may expose lazy accessors and persistence helpers, but they must not eagerly
     duplicate bulk datasets into Python-owned record tuples.
+  - Public and public-facing signatures must not name concrete `janiform._native` classes.
+    If Python typing needs a native-backed handle or result shape, use a Janiform-owned protocol
+    boundary type instead.
 - `report`
   - Diagnostics, provenance, validation summaries, and fit reports.
   - Reports may contain small tuples and nested summaries, but they must not embed bulk empirical

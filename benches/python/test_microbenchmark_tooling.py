@@ -23,9 +23,9 @@ def test_real_data_seeded_runtime_microbenchmark_case_reuses_checked_in_fixture(
 
     assert (
         microbenchmark_case.fixture.fixture_id
-        == "synthetic_eurusd_parquet_slice_250000_8192row_v1"
+        == "synthetic_eurusd_parquet_slice_240000_512row_smoke_v1"
     )
-    assert microbenchmark_case.observed_source_tick_count == 8192
+    assert microbenchmark_case.observed_source_tick_count == 512
     assert microbenchmark_case.seeded_response.diagnostics.transition_count > 0
     assert microbenchmark_case.seeded_response.diagnostics.event_count > 0
     assert (
@@ -74,7 +74,6 @@ def test_pytest_benchmark_suite_runs_with_disabled_timing() -> None:
             "pytest",
             "--benchmark-disable",
             "benches/python/python_microbenchmarks.py",
-            "-q",
         ],
         check=False,
         capture_output=True,

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Optional
+from typing import Any, Optional
 
 from .contracts import (
     CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION,
@@ -28,15 +28,10 @@ from ..staged.inputs import (
 )
 from ..staged.request import StagedCalibrationRequest
 from ..staged.results import StagedCalibrationResponse
-from ..staged.runtime import (
-    _run_prepared_staged_calibration_with_raw_payload,
-    run_staged_calibration,
-)
+from ..staged.runtime import _run_prepared_staged_calibration_with_raw_payload
+from ..._native_types import PreparedCalibrationExecutionHandleProtocol
 from ...calendar import CalendarRegistry
 from ...contracts import ContractModel, serialize_pretty_json
-
-if TYPE_CHECKING:
-    from ..._native import PreparedCalibrationExecutionHandle
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,7 +97,7 @@ class PreparedMarketDataCalibration(ContractModel):
     prepared_data_reference: Optional[str] = None
     prepared_payload_path: Optional[str] = None
     staged_execution_input_path: Optional[str] = None
-    _prepared_handle: PreparedCalibrationExecutionHandle | None = field(
+    _prepared_handle: Optional[PreparedCalibrationExecutionHandleProtocol] = field(
         repr=False,
         compare=False,
         default=None,
@@ -118,7 +113,10 @@ class PreparedMarketDataCalibration(ContractModel):
             raise _calibration_error("_prepared_handle", "must be provided")
 
     @property
-    def prepared_handle(self) -> PreparedCalibrationExecutionHandle:
+    def prepared_handle(self) -> PreparedCalibrationExecutionHandleProtocol:
+        if self._prepared_handle is None:
+            raise _calibration_error("_prepared_handle", "must be provided")
+
         return self._prepared_handle
 
     def to_payload(self) -> dict[str, Any]:
@@ -145,7 +143,7 @@ class PreparedMarketDataCalibration(ContractModel):
         output_dir.mkdir(parents=True, exist_ok=True)
 
         prepared_payload_path = output_dir / f"{self.request.run_id}.prepared_calibration_payload.json"
-        serialized_payload = self._prepared_handle.serialize_execution_input_json()
+        serialized_payload = self.prepared_handle.serialize_execution_input_json()
         prepared_payload_path.write_text(serialized_payload, encoding="utf-8")
 
         staged_execution_input = StagedCalibrationExecutionInput(
@@ -180,7 +178,7 @@ class PreparedMarketDataCalibration(ContractModel):
             prepared_data_reference=self.prepared_data_reference,
             prepared_payload_path=str(prepared_payload_path),
             staged_execution_input_path=str(staged_execution_input_path),
-            _prepared_handle=self._prepared_handle,
+            _prepared_handle=self.prepared_handle,
         )
 
 
