@@ -101,6 +101,7 @@ REAL_DATA_SEEDED_RUNTIME_REQUIRED_PROVENANCE_FIELDS = (
     "source_price_column",
     "source_trade_sign_column",
     "market_profile",
+    "cpu_count",
     "execution_mode",
     "simulation_seed",
     "simulation_start_time_utc",
@@ -241,6 +242,7 @@ class RealDataSeededRuntimeBenchmarkFixture(ContractModel):
     source_price_column: str
     source_trade_sign_column: Optional[str]
     market_profile: str
+    cpu_count: int
     execution_mode: str
     simulation_seed: int
     simulation_start_time_utc: datetime
@@ -288,6 +290,8 @@ class RealDataSeededRuntimeBenchmarkFixture(ContractModel):
             )
         if not self.market_profile.strip():
             raise _benchmark_error("market_profile", "must be a non-empty string")
+        if self.cpu_count <= 0:
+            raise _benchmark_error("cpu_count", "must be strictly positive")
         if self.execution_mode != "memory":
             raise _benchmark_error("execution_mode", "must be `memory`")
         if self.simulation_seed < 0:
@@ -406,6 +410,12 @@ class RealDataSeededRuntimeBenchmarkFixture(ContractModel):
                 raw_payload,
                 "market_profile",
                 f"{field_path}.market_profile",
+                _benchmark_error,
+            ),
+            cpu_count=require_positive_integer(
+                raw_payload,
+                "cpu_count",
+                f"{field_path}.cpu_count",
                 _benchmark_error,
             ),
             execution_mode=require_non_empty_string(
@@ -808,6 +818,7 @@ class RealDataSeededRuntimeBenchmarkProvenance(ContractModel):
     source_price_column: str
     source_trade_sign_column: Optional[str]
     market_profile: str
+    cpu_count: int
     execution_mode: str
     simulation_seed: int
     simulation_start_time_utc: str
@@ -1129,7 +1140,8 @@ def run_real_data_seeded_runtime_benchmark_fixture(
         )
 
         model, fit_report = JaniformEstimator(
-            market_profile=fixture.market_profile
+            market_profile=fixture.market_profile,
+            cpu_count=fixture.cpu_count,
         ).fit(
             tick_data_path=tick_data_path,
             report=True,
@@ -1212,6 +1224,7 @@ def run_real_data_seeded_runtime_benchmark_fixture(
                 source_price_column=fixture.source_price_column,
                 source_trade_sign_column=fixture.source_trade_sign_column,
                 market_profile=fixture.market_profile,
+                cpu_count=fixture.cpu_count,
                 execution_mode=fixture.execution_mode,
                 simulation_seed=fixture.simulation_seed,
                 simulation_start_time_utc=fixture.simulation_start_time_utc.isoformat(),
@@ -2079,6 +2092,12 @@ def _benchmark_report_provenance_from_mapping(
             raw_payload,
             "market_profile",
             f"{field_path}.market_profile",
+            _benchmark_error,
+        ),
+        cpu_count=require_positive_integer(
+            raw_payload,
+            "cpu_count",
+            f"{field_path}.cpu_count",
             _benchmark_error,
         ),
         execution_mode=require_non_empty_string(

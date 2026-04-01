@@ -11,6 +11,7 @@
       "fixture_id": "synthetic_eurusd_parquet_slice_240000_8192row_v1",
       "fixture_version": "1.0.0",
       "market_profile": "eurusd_spot",
+      "cpu_count": 2,
       "materialization_access_patterns": [
         {
           "access_kind": "event_tape_head",

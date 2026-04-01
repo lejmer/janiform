@@ -231,8 +231,9 @@ def test_real_data_seeded_runtime_fixture_surfaces_staged_fit_failure_details(
     )
 
     class FailingEstimator:
-        def __init__(self, *, market_profile: str) -> None:
+        def __init__(self, *, market_profile: str, cpu_count: int) -> None:
             self.market_profile = market_profile
+            self.cpu_count = cpu_count
 
         def fit(
             self,
@@ -279,6 +280,60 @@ def test_real_data_seeded_runtime_fixture_surfaces_staged_fit_failure_details(
     assert '"run_id": "benchmark-fit-run"' in error_message
     assert '"failed_stage": "joint_refinement"' in error_message
     assert '"failure_kind": "optimizer_failure"' in error_message
+
+
+def test_real_data_seeded_runtime_fixture_uses_explicit_cpu_budget(
+    fixtures_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _fixture_document(fixtures_root).fixtures[0]
+    constructed_cpu_counts: list[int] = []
+
+    monkeypatch.setattr(
+        "benches.python.support.seeded_runtime._write_source_tick_data_slice",
+        lambda *, fixture, output_path: output_path.write_bytes(b"fixture"),
+    )
+
+    class CapturingEstimator:
+        def __init__(self, *, market_profile: str, cpu_count: int) -> None:
+            assert market_profile == fixture.market_profile
+            constructed_cpu_counts.append(cpu_count)
+
+        def fit(
+            self,
+            *,
+            tick_data_path: str | Path,
+            report: bool,
+            silent: bool,
+        ) -> tuple[None, SimpleNamespace]:
+            failure = SimpleNamespace(
+                failure_kind="optimizer_failure",
+                error_message="joint refinement diverged",
+                checkpoint_reference=None,
+                artifact_reference=None,
+            )
+            stage_report = SimpleNamespace(
+                stage=CalibrationStage.JOINT_REFINEMENT,
+                failure=failure,
+            )
+            staged_response = SimpleNamespace(
+                run_id="benchmark-fit-run",
+                status=CalibrationStageExecutionStatus.FAILURE,
+                stage_reports=(stage_report,),
+                failure=None,
+            )
+            fit_report = SimpleNamespace(staged_response=staged_response)
+            return None, fit_report
+
+    monkeypatch.setattr(
+        "benches.python.support.seeded_runtime.JaniformEstimator",
+        CapturingEstimator,
+    )
+
+    with pytest.raises(RuntimeError):
+        run_real_data_seeded_runtime_benchmark_fixture(fixture)
+
+    assert constructed_cpu_counts == [fixture.cpu_count]
 
 
 @lru_cache(maxsize=1)

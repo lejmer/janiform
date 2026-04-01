@@ -86,7 +86,7 @@ Criterion plus `pytest-benchmark` commands, see
   - checked-in training slices must end before `simulation_start_time_utc` so the fit window does
     not overlap the benchmark simulation horizon
   - execution controls for the repaired high-level runtime path:
-    `market_profile`, `coarse_interval`, `coarse_horizon_interval_count`,
+    `market_profile`, `cpu_count`, `coarse_interval`, `coarse_horizon_interval_count`,
     `seeded_horizon_interval_count`, and `simulation_seed`
   - representative Python access patterns used to attribute boundary and
     materialization cost through `materialization_access_patterns`
