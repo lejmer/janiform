@@ -6,10 +6,12 @@ transport and event-stream plumbing stay internal so the supported API remains
 artifact-backed instead of exposing another weak wrapper layer.
 """
 
+from __future__ import annotations
+
 from collections.abc import Callable
 from pathlib import Path
 from types import ModuleType
-from typing import TYPE_CHECKING, Any, Optional
+from typing import Any, Optional
 
 from .inputs import (
     StagedCalibrationExecutionInput,
@@ -25,15 +27,13 @@ from .._errors import (
     _calibration_integration_error,
 )
 from ..._native_api import native_exception_matches, native_module
+from ..._native_types import PreparedCalibrationExecutionHandleProtocol
 from ...calendar import CalendarRegistry
 from ...contracts import parse_json_object
 
-if TYPE_CHECKING:
-    from ..._native import PreparedCalibrationExecutionHandle
-
 
 def _run_prepared_staged_calibration_with_raw_payload(
-    prepared_handle: PreparedCalibrationExecutionHandle,
+    prepared_handle: PreparedCalibrationExecutionHandleProtocol,
     *,
     calendar_registry: CalendarRegistry,
 ) -> tuple[StagedCalibrationResponse, dict[str, Any]]:
@@ -45,7 +45,7 @@ def _run_prepared_staged_calibration_with_raw_payload(
 
 
 def _run_native_staged_calibration_with_prepared_handle_and_events(
-    prepared_handle: PreparedCalibrationExecutionHandle,
+    prepared_handle: PreparedCalibrationExecutionHandleProtocol,
     *,
     calendar_registry: CalendarRegistry,
     event_callback: Optional[Callable[[dict[str, Any]], None]],
