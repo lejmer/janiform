@@ -26,10 +26,10 @@ jobs:
       - name: Run benchmark smoke workloads
         run: |
           mkdir -p .artifacts/benchmark-tier
-          cargo test -p janiform-core --test benchmark_scenario_catalog -- --nocapture | tee .artifacts/benchmark-tier/benchmark_scenario_catalog.log
-          cargo test -p janiform-core --test oracle_pricer_risk_benchmark_harness -- --nocapture | tee .artifacts/benchmark-tier/oracle_pricer_risk_benchmark_harness.log
-          cargo test -p janiform-core --test performance_baseline_capture_and_storage -- --nocapture | tee .artifacts/benchmark-tier/performance_baseline_capture_and_storage.log
-          cargo test -p janiform-core --test regression_drift_attribution_reports -- --nocapture | tee .artifacts/benchmark-tier/regression_drift_attribution_reports.log
+          cargo test -p janiform-governance-bench --test benchmark_scenario_catalog -- --nocapture | tee .artifacts/benchmark-tier/benchmark_scenario_catalog.log
+          cargo test -p janiform-governance-bench --test oracle_pricer_risk_benchmark_harness -- --nocapture | tee .artifacts/benchmark-tier/oracle_pricer_risk_benchmark_harness.log
+          cargo test -p janiform-governance --test performance_baseline_capture_and_storage -- --nocapture | tee .artifacts/benchmark-tier/performance_baseline_capture_and_storage.log
+          cargo test -p janiform-governance --test regression_drift_attribution_reports -- --nocapture | tee .artifacts/benchmark-tier/regression_drift_attribution_reports.log
 
       - name: Build scenario and baseline links
         if: always()
@@ -139,7 +139,7 @@ jobs:
       - name: Run microbenchmark smoke
         run: |
           mkdir -p .artifacts/microbenchmark-smoke
-          TMPDIR=/tmp cargo bench -p janiform-core --bench rust_microbenchmarks -- --list | tee .artifacts/microbenchmark-smoke/rust-bench-list.log
+          TMPDIR=/tmp cargo bench -p janiform-governance-bench --bench rust_microbenchmarks -- --list | tee .artifacts/microbenchmark-smoke/rust-bench-list.log
           PYTHONPATH=python:. .venv-linux/bin/pytest --benchmark-disable benches/python/test_microbenchmark_tooling.py benches/python/python_microbenchmarks.py -q | tee .artifacts/microbenchmark-smoke/python-microbench-smoke.log
 
       - name: Publish microbenchmark smoke summary

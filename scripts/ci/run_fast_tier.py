@@ -32,15 +32,15 @@ def _default_fast_tier_commands() -> list[TierCommand]:
     return [
         TierCommand(
             name="rust_deterministic_regression",
-            command="cargo test -p janiform --test deterministic_regression_harness",
+            command="cargo test -p janiform-governance --test deterministic_regression_harness",
         ),
         TierCommand(
             name="rust_tolerance_regression",
-            command="cargo test -p janiform --test coarse_fine_consistency_regression_harness",
+            command="cargo test -p janiform-validation --test coarse_fine_consistency_regression_harness",
         ),
         TierCommand(
             name="rust_pricing_benchmark_regression",
-            command="cargo test -p janiform --test pricing_benchmark_validation_regression",
+            command="cargo test -p janiform-governance-bench --test pricing_benchmark_validation_regression",
         ),
         TierCommand(
             name="ci_workflow_lint_and_smoke",

@@ -46,7 +46,7 @@ Each case includes:
 
 1. Make the intentional pricer or integration-policy change.
 2. Run:
-   `cargo test -p janiform --test pricing_benchmark_validation_regression -- --nocapture`
+   `cargo test -p janiform-governance-bench --test pricing_benchmark_validation_regression -- --nocapture`
 3. Update expected fixture outputs, tolerance policy, and changelog entry as needed.
 4. Keep existing `fixture_id` values stable. Add new cases instead of renaming existing ones.
 5. Re-run the test command and confirm all checks pass.
