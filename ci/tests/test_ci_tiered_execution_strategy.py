@@ -30,9 +30,18 @@ def test_fast_tier_workflow_has_required_triggers_fields_and_steps() -> None:
     assert "scripts/ci/parse_fast_tier_output.py" in workflow_text
     assert "scripts/ci/write_benchmark_artifact_index.py" in workflow_text
     assert "uses: actions/upload-artifact@v7" in workflow_text
-    assert "deterministic_regression_harness" in runner_script_text
-    assert "coarse_fine_consistency_regression_harness" in runner_script_text
-    assert "pricing_benchmark_validation_regression" in runner_script_text
+    assert (
+        "cargo test -p janiform-governance --test deterministic_regression_harness"
+        in runner_script_text
+    )
+    assert (
+        "cargo test -p janiform-validation --test coarse_fine_consistency_regression_harness"
+        in runner_script_text
+    )
+    assert (
+        "cargo test -p janiform-governance-bench --test pricing_benchmark_validation_regression"
+        in runner_script_text
+    )
 
 
 def test_benchmark_tier_workflow_has_schedule_trigger_and_artifact_hooks() -> None:
