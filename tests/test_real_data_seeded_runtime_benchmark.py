@@ -5,6 +5,7 @@ from copy import deepcopy
 from dataclasses import replace
 from functools import lru_cache
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -25,7 +26,9 @@ from benches.python.support import (
     load_real_data_seeded_runtime_benchmark_fixture_document,
     load_real_data_seeded_runtime_benchmark_policy_from_json,
     load_real_data_seeded_runtime_benchmark_report_from_json,
+    run_real_data_seeded_runtime_benchmark_fixture,
 )
+from janiform.calibration.staged import CalibrationStage, CalibrationStageExecutionStatus
 
 
 def test_real_data_seeded_runtime_fixture_policy_and_baseline_artifacts_load(
@@ -214,6 +217,68 @@ def test_real_data_seeded_runtime_benchmark_runner_writes_artifacts(
     summary_path = tmp_path / "real_data_seeded_runtime_benchmark_summary.md"
     assert summary_path.exists()
     assert "Real-Data Seeded Runtime Benchmark" in summary_path.read_text(encoding="utf-8")
+
+
+def test_real_data_seeded_runtime_fixture_surfaces_staged_fit_failure_details(
+    fixtures_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _fixture_document(fixtures_root).fixtures[0]
+
+    monkeypatch.setattr(
+        "benches.python.support.seeded_runtime._write_source_tick_data_slice",
+        lambda *, fixture, output_path: output_path.write_bytes(b"fixture"),
+    )
+
+    class FailingEstimator:
+        def __init__(self, *, market_profile: str) -> None:
+            self.market_profile = market_profile
+
+        def fit(
+            self,
+            *,
+            tick_data_path: str | Path,
+            report: bool,
+            silent: bool,
+        ) -> tuple[None, SimpleNamespace]:
+            assert report is True
+            assert silent is True
+
+            failure = SimpleNamespace(
+                failure_kind="optimizer_failure",
+                error_message="joint refinement diverged",
+                checkpoint_reference=None,
+                artifact_reference=None,
+            )
+            stage_report = SimpleNamespace(
+                stage=CalibrationStage.JOINT_REFINEMENT,
+                failure=failure,
+            )
+            staged_response = SimpleNamespace(
+                run_id="benchmark-fit-run",
+                status=CalibrationStageExecutionStatus.FAILURE,
+                stage_reports=(stage_report,),
+                failure=None,
+            )
+            fit_report = SimpleNamespace(staged_response=staged_response)
+            return None, fit_report
+
+    monkeypatch.setattr(
+        "benches.python.support.seeded_runtime.JaniformEstimator",
+        FailingEstimator,
+    )
+
+    with pytest.raises(RuntimeError) as error_info:
+        run_real_data_seeded_runtime_benchmark_fixture(fixture)
+
+    error_message = str(error_info.value)
+
+    assert f"fit failed for fixture `{fixture.fixture_id}`" in error_message
+    assert f"source_tick_data_row_offset: {fixture.source_tick_data_row_offset}" in error_message
+    assert "staged_failure_summary: Calibration failed at joint_refinement with optimizer_failure: joint refinement diverged" in error_message
+    assert '"run_id": "benchmark-fit-run"' in error_message
+    assert '"failed_stage": "joint_refinement"' in error_message
+    assert '"failure_kind": "optimizer_failure"' in error_message
 
 
 @lru_cache(maxsize=1)

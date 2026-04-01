@@ -24,6 +24,7 @@ from janiform.contracts import (
 )
 from janiform.calibration import JaniformEstimator
 from janiform.calibration.fit import JaniformFitReport, JaniformSimulationResult
+from janiform.calibration.staged import build_staged_failure_context, format_staged_failure_summary
 from janiform.simulation.seeded import SeededTickSimulationResponse
 
 
@@ -1134,8 +1135,25 @@ def run_real_data_seeded_runtime_benchmark_fixture(
             report=True,
             silent=True,
         )
+
         if model is None:
-            raise RuntimeError(f"fit failed for fixture `{fixture.fixture_id}`")
+            staged_response = fit_report.staged_response
+            failure_summary = format_staged_failure_summary(staged_response)
+            failure_context_json = serialize_pretty_json(
+                build_staged_failure_context(staged_response)
+            )
+
+            raise RuntimeError(
+                (
+                    f"fit failed for fixture `{fixture.fixture_id}`\n"
+                    f"source_tick_data_path: {fixture.source_tick_data_path}\n"
+                    f"source_tick_data_row_offset: {fixture.source_tick_data_row_offset}\n"
+                    f"source_tick_data_row_count: {fixture.source_tick_data_row_count}\n"
+                    f"simulation_start_time_utc: {fixture.simulation_start_time_utc.isoformat()}\n"
+                    f"staged_failure_summary: {failure_summary}\n"
+                    f"staged_failure_context:\n{failure_context_json}"
+                )
+            )
 
         hawkes_candidate = _selected_hawkes_candidate_diagnostics(fit_report)
         observed_source_tick_count = fit_report.preparation_diagnostics.tick_record_count
