@@ -1,7 +1,0 @@
-   Compiling janiform-calibration-runtime v0.1.0 (C:\Users\anton\source\repos\janiform\crates\janiform-calibration-runtime)
-    Finished `test` profile [unoptimized + debuginfo] target(s) in 8.44s
-ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
- Nextest run ID da186e5e-8d0e-4db6-ac5a-3a6efd39d4e7 with nextest profile: ci
-    Starting 158 tests across 12 binaries
-ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-     Summary [ 559.147s] 158 tests run: 158 passed, 0 skipped
