@@ -84,7 +84,7 @@ jobs:
 
       - name: Bootstrap real-data seeded runtime benchmark environment
         run: |
-          TMPDIR=/tmp UV_CACHE_DIR=/tmp/uv ./scripts/bootstrap-linux.sh .venv-linux
+          TMPDIR=/tmp UV_CACHE_DIR=/tmp/uv bash ./scripts/bootstrap-linux.sh .venv-linux
 
       - name: Run real-data seeded runtime benchmark
         run: |
@@ -134,7 +134,7 @@ jobs:
 
       - name: Bootstrap microbenchmark environment
         run: |
-          TMPDIR=/tmp UV_CACHE_DIR=/tmp/uv ./scripts/bootstrap-linux.sh .venv-linux
+          TMPDIR=/tmp UV_CACHE_DIR=/tmp/uv bash ./scripts/bootstrap-linux.sh .venv-linux
 
       - name: Run microbenchmark smoke
         run: |
