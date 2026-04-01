@@ -1179,8 +1179,11 @@ fn build_pricing_risk_neutral_anchor_materialization(
     interval_factors: &[VanillaOptionPricingIntervalFactors],
     driver_parameters: NigBuySellDriverParameters,
 ) -> Result<RiskNeutralAnchorMaterialization, VanillaOptionPricingRunError> {
-    let mut current_boundary_state =
-        pricing_request.boundary_input.observed_boundary_state.clone();
+    let mut current_boundary_state = pricing_request
+        .boundary_input
+        .observed_boundary_state
+        .clone();
+
     let mut current_hawkes_state = pricing_request.boundary_input.hawkes_boundary_state;
 
     let mut end_anchor_values = Vec::with_capacity(interval_factors.len());
@@ -1226,8 +1229,10 @@ fn build_pricing_risk_neutral_anchor_materialization(
             local_expectations.core_expected_increment,
             local_expectations.core_expected_increment,
         )
-        .map_err(|source| VanillaOptionPricingRunError::EndogenousAnchorMaterializationFailure {
-            message: source.to_string(),
+        .map_err(|source| {
+            VanillaOptionPricingRunError::EndogenousAnchorMaterializationFailure {
+                message: source.to_string(),
+            }
         })?;
 
         current_hawkes_state = evolve_expected_hawkes_state_under_local_measure(
@@ -1728,10 +1733,12 @@ fn build_local_boundary_input(
         pressure_state,
         deviation,
     )
-    .map_err(|source| VanillaOptionPricingRunError::InvalidObservedBoundaryStateDuringRecursion {
-        interval_index,
-        deviation,
-        message: source.to_string(),
+    .map_err(|source| {
+        VanillaOptionPricingRunError::InvalidObservedBoundaryStateDuringRecursion {
+            interval_index,
+            deviation,
+            message: source.to_string(),
+        }
     })?;
 
     AnchoredVanillaOptionPricingBoundaryInput::try_new(

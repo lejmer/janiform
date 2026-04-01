@@ -68,15 +68,20 @@ impl MeanReversionAnchorModel {
             self.pressure_persistence_per_reference_interval,
             "pressure_persistence_per_reference_interval",
         )
-        .map_err(|source| MeanReversionAnchorModelValidationError::NonFiniteField {
-            field: source.field,
-            value: source.value.to_string(),
-        })?;
+        .map_err(
+            |source| MeanReversionAnchorModelValidationError::NonFiniteField {
+                field: source.field,
+                value: source.value.to_string(),
+            },
+        )?;
+
         if !(0.0..=1.0).contains(&self.pressure_persistence_per_reference_interval) {
-            return Err(MeanReversionAnchorModelValidationError::OutOfUnitIntervalField {
-                field: "pressure_persistence_per_reference_interval",
-                value: self.pressure_persistence_per_reference_interval,
-            });
+            return Err(
+                MeanReversionAnchorModelValidationError::OutOfUnitIntervalField {
+                    field: "pressure_persistence_per_reference_interval",
+                    value: self.pressure_persistence_per_reference_interval,
+                },
+            );
         }
 
         validate_finite_number(self.pressure_level_gain, "pressure_level_gain").map_err(
@@ -128,8 +133,13 @@ impl MeanReversionFittedParameters {
         kappa: f64,
         anchor_model: MeanReversionAnchorModel,
     ) -> Result<Self, MeanReversionFittedParametersValidationError> {
-        let fitted_parameters = Self { kappa, anchor_model };
+        let fitted_parameters = Self {
+            kappa,
+            anchor_model,
+        };
+
         fitted_parameters.validate()?;
+
         Ok(fitted_parameters)
     }
 
@@ -515,18 +525,9 @@ pub fn evolve_mean_reversion_boundary_state_with_endogenous_pressure(
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum MeanReversionAnchorModelValidationError {
-    NonFiniteField {
-        field: &'static str,
-        value: String,
-    },
-    NonPositiveField {
-        field: &'static str,
-        value: f64,
-    },
-    OutOfUnitIntervalField {
-        field: &'static str,
-        value: f64,
-    },
+    NonFiniteField { field: &'static str, value: String },
+    NonPositiveField { field: &'static str, value: f64 },
+    OutOfUnitIntervalField { field: &'static str, value: f64 },
 }
 
 impl Display for MeanReversionAnchorModelValidationError {
@@ -536,7 +537,10 @@ impl Display for MeanReversionAnchorModelValidationError {
                 write!(formatter, "{field} must be a finite number, found {value}")
             }
             Self::NonPositiveField { field, value } => {
-                write!(formatter, "{field} must be strictly positive, found {value}")
+                write!(
+                    formatter,
+                    "{field} must be strictly positive, found {value}"
+                )
             }
             Self::OutOfUnitIntervalField { field, value } => {
                 write!(formatter, "{field} must lie in [0, 1], found {value}")
@@ -686,7 +690,10 @@ impl Display for MeanReversionAnchorPathMaterializationError {
                 "interval_deltas[{interval_index}] must be finite and strictly positive, found {value}"
             ),
             Self::InvalidRuntimeIntervalAnchors { source } => {
-                write!(formatter, "materialized runtime anchors are invalid: {source}")
+                write!(
+                    formatter,
+                    "materialized runtime anchors are invalid: {source}"
+                )
             }
         }
     }
@@ -712,11 +719,9 @@ pub fn evolve_mean_reversion_pressure_state(
     core_expected_increment: f64,
     interval_delta: f64,
 ) -> Result<f64, MeanReversionPressureStateEvolutionError> {
-    anchor_model
-        .validate()
-        .map_err(|source| MeanReversionPressureStateEvolutionError::InvalidAnchorModel {
-            source,
-        })?;
+    anchor_model.validate().map_err(|source| {
+        MeanReversionPressureStateEvolutionError::InvalidAnchorModel { source }
+    })?;
 
     if !previous_pressure_state.is_finite() {
         return Err(
@@ -733,9 +738,11 @@ pub fn evolve_mean_reversion_pressure_state(
         );
     }
     if !interval_delta.is_finite() || interval_delta <= 0.0 {
-        return Err(MeanReversionPressureStateEvolutionError::InvalidIntervalDelta {
-            value: interval_delta,
-        });
+        return Err(
+            MeanReversionPressureStateEvolutionError::InvalidIntervalDelta {
+                value: interval_delta,
+            },
+        );
     }
 
     let reference_interval_hours = anchor_model.reference_interval_hours;
@@ -755,11 +762,9 @@ pub fn materialize_mean_reversion_runtime_interval_anchors_from_core_expected_in
     core_expected_increments: &[f64],
     interval_deltas: &[f64],
 ) -> Result<MeanReversionRuntimeIntervalAnchors, MeanReversionAnchorPathMaterializationError> {
-    anchor_model
-        .validate()
-        .map_err(|source| MeanReversionAnchorPathMaterializationError::InvalidAnchorModel {
-            source,
-        })?;
+    anchor_model.validate().map_err(|source| {
+        MeanReversionAnchorPathMaterializationError::InvalidAnchorModel { source }
+    })?;
 
     if !start_anchor_value.is_finite() {
         return Err(
@@ -776,11 +781,13 @@ pub fn materialize_mean_reversion_runtime_interval_anchors_from_core_expected_in
         );
     }
     if core_expected_increments.len() != interval_deltas.len() {
-        return Err(MeanReversionAnchorPathMaterializationError::LengthMismatch {
-            field: "interval_deltas",
-            expected: core_expected_increments.len(),
-            found: interval_deltas.len(),
-        });
+        return Err(
+            MeanReversionAnchorPathMaterializationError::LengthMismatch {
+                field: "interval_deltas",
+                expected: core_expected_increments.len(),
+                found: interval_deltas.len(),
+            },
+        );
     }
 
     let mut end_anchor_values = Vec::with_capacity(core_expected_increments.len());
@@ -835,9 +842,11 @@ pub fn materialize_mean_reversion_runtime_interval_anchors_from_core_expected_in
             }
         })?;
 
-        current_anchor_value += anchor_model.pressure_level_gain
-            * (next_pressure_state - current_pressure_state);
+        current_anchor_value +=
+            anchor_model.pressure_level_gain * (next_pressure_state - current_pressure_state);
+
         current_pressure_state = next_pressure_state;
+
         end_anchor_values.push(current_anchor_value);
         end_pressure_states.push(current_pressure_state);
     }
@@ -850,11 +859,9 @@ pub fn materialize_mean_reversion_runtime_interval_anchors_from_core_expected_in
         end_pressure_states,
         interval_deltas.to_vec(),
     )
-    .map_err(
-        |source| MeanReversionAnchorPathMaterializationError::InvalidRuntimeIntervalAnchors {
-            source,
-        },
-    )
+    .map_err(|source| {
+        MeanReversionAnchorPathMaterializationError::InvalidRuntimeIntervalAnchors { source }
+    })
 }
 
 #[derive(Debug, Clone, PartialEq)]

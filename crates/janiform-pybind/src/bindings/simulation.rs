@@ -13,9 +13,10 @@ use janiform::simulation::{
     MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors,
     SeededTickEventStateSnapshotCapture, SeededTickSimulationDebugTraceOptions,
     SeededTickSimulationModelInputs, SeededTickSimulationRunConfig, SeededTickSimulationRunOptions,
-    SimulationProgressEvent, run_coarse_simulation as run_coarse_simulation_core,
-    run_coarse_simulation_with_observer as run_coarse_simulation_core_with_observer,
+    SimulationProgressEvent,
     materialize_mean_reversion_runtime_interval_anchors_from_core_expected_increments,
+    run_coarse_simulation as run_coarse_simulation_core,
+    run_coarse_simulation_with_observer as run_coarse_simulation_core_with_observer,
     run_seeded_tick_event_simulation as run_seeded_tick_event_simulation_core,
     run_seeded_tick_event_simulation_with_observer as run_seeded_tick_event_simulation_core_with_observer,
 };
@@ -148,8 +149,8 @@ fn materialize_endogenous_mean_reversion_runtime_interval_anchors(
             ))
         })?;
 
-    let serialized_runtime_interval_anchors =
-        serde_json::to_value(&runtime_interval_anchors).map_err(|source| {
+    let serialized_runtime_interval_anchors = serde_json::to_value(&runtime_interval_anchors)
+        .map_err(|source| {
             SeasonalityInputValidationError::new_err(format!(
                 "failed to serialize endogenous mean-reversion runtime anchors: {source}"
             ))

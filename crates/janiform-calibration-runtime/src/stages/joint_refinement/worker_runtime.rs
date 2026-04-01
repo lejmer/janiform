@@ -49,6 +49,13 @@ enum JointRefinementSummarySimulationBackend {
     ProcessWorker { worker_executable: PathBuf },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum JointRefinementSummarySimulationBackendPreference {
+    Auto,
+    InProcess,
+    ProcessWorker,
+}
+
 #[derive(Debug)]
 struct JointRefinementSummarySimulationSchedulerState {
     active_job_count: usize,
@@ -65,6 +72,7 @@ impl JointRefinementSummarySimulationScheduler {
     ) -> Result<Self, String> {
         let session_state =
             initialize_joint_refinement_summary_simulation_session(session_context)?;
+
         let backend = resolve_summary_simulation_backend()?;
 
         let (
@@ -166,13 +174,16 @@ impl JointRefinementSummarySimulationScheduler {
         let mut worker =
             self.acquire_worker(dynamic_memory_estimate.estimated_total_retained_bytes as u64)?;
         let run_result = worker.run_candidate(request);
+
         let reusable = matches!(
             &run_result,
             Ok(RunCandidateResponse::ExactSummaryOnly { .. })
                 | Ok(RunCandidateResponse::ExactSummaryWithDiagnostics { .. })
                 | Ok(RunCandidateResponse::SimulationFailure { .. })
         );
+
         self.release_worker(worker, reusable);
+
         run_result
     }
 
@@ -220,6 +231,7 @@ impl JointRefinementSummarySimulationScheduler {
                         },
                     );
                 };
+
                 match spawn_initialized_worker(worker_executable.as_path(), &self.session_context) {
                     Ok((worker, baseline, initialized)) => {
                         state_guard.active_job_count += 1;
@@ -229,6 +241,7 @@ impl JointRefinementSummarySimulationScheduler {
                         state_guard.worker_initialized_session_resident_bytes = state_guard
                             .worker_initialized_session_resident_bytes
                             .max(initialized.saturating_sub(baseline));
+
                         return Ok(worker);
                     }
                     Err(error_message) => {
@@ -255,11 +268,13 @@ impl JointRefinementSummarySimulationScheduler {
     fn release_worker(&self, worker: PersistentSummarySimulationWorker, reusable: bool) {
         if let Ok(mut state_guard) = self.state.lock() {
             state_guard.active_job_count = state_guard.active_job_count.saturating_sub(1);
+
             if reusable {
                 state_guard.idle_workers.push(worker);
             } else {
                 state_guard.total_worker_count = state_guard.total_worker_count.saturating_sub(1);
             }
+
             self.condvar.notify_all();
         }
     }
@@ -399,6 +414,7 @@ impl PersistentSummarySimulationWorker {
             }),
             "summary simulation worker returned malformed close-session output",
         );
+
         if let Ok(JointRefinementSummarySimulationWorkerResponse::CloseSession {
             schema_version,
             ..
@@ -434,6 +450,7 @@ impl PersistentSummarySimulationWorker {
             Ok(Some(status)) => {
                 let mut stderr_message = String::new();
                 let _ = self.stderr.read_to_string(&mut stderr_message);
+
                 format!(
                     "summary simulation worker exited abnormally: status={} stderr={}",
                     status,
@@ -459,40 +476,23 @@ fn spawn_initialized_worker(
 ) -> Result<(PersistentSummarySimulationWorker, u64, u64), String> {
     let mut worker = PersistentSummarySimulationWorker::spawn(worker_executable)?;
     let (baseline, initialized) = worker.initialize_session(session_context)?;
+
     Ok((worker, baseline, initialized))
 }
 
 fn resolve_summary_simulation_backend() -> Result<JointRefinementSummarySimulationBackend, String> {
-    match env::var(JOINT_REFINEMENT_SUMMARY_SIMULATION_BACKEND_ENV) {
-        Ok(value) if value == JOINT_REFINEMENT_SUMMARY_SIMULATION_BACKEND_IN_PROCESS => {
-            Ok(JointRefinementSummarySimulationBackend::InProcess)
-        }
-        Ok(value) if value == JOINT_REFINEMENT_SUMMARY_SIMULATION_BACKEND_PROCESS_WORKER => {
-            Ok(JointRefinementSummarySimulationBackend::ProcessWorker {
-                worker_executable: resolve_worker_executable_path()?,
-            })
-        }
-        Ok(value) => Err(format!(
-            "unsupported joint refinement summary simulation backend `{value}`"
-        )),
-        Err(env::VarError::NotPresent) => {
-            Ok(JointRefinementSummarySimulationBackend::ProcessWorker {
-                worker_executable: resolve_worker_executable_path()?,
-            })
-        }
-        Err(env::VarError::NotUnicode(_)) => Err(
-            "joint refinement summary simulation backend environment is not valid unicode"
-                .to_string(),
-        ),
-    }
+    let worker_executable = resolve_optional_worker_executable_path()?;
+    let backend_preference = resolve_summary_simulation_backend_preference()?;
+
+    resolve_backend_from_preference(backend_preference, worker_executable)
 }
 
-fn resolve_worker_executable_path() -> Result<PathBuf, String> {
+fn resolve_optional_worker_executable_path() -> Result<Option<PathBuf>, String> {
     if let Some(path) = env::var_os(JOINT_REFINEMENT_SUMMARY_SIMULATION_WORKER_EXECUTABLE_ENV) {
         let candidate = PathBuf::from(path);
 
         if candidate.is_file() {
-            return Ok(candidate);
+            return Ok(Some(candidate));
         }
 
         return Err(format!(
@@ -501,25 +501,148 @@ fn resolve_worker_executable_path() -> Result<PathBuf, String> {
         ));
     }
 
-    let current_executable = env::current_exe()
-        .map_err(|source| format!("unable to resolve current executable: {source}"))?;
+    Ok(discover_worker_executable_path())
+}
 
+fn discover_worker_executable_path() -> Option<PathBuf> {
     let executable_name = worker_executable_file_name();
-
-    let search_roots = candidate_search_roots(current_executable.as_path());
+    let current_executable = env::current_exe().ok();
+    let search_roots = candidate_search_roots(current_executable.as_deref());
 
     for root in search_roots {
         let candidate = root.join(executable_name);
         if candidate.is_file() {
-            return Ok(candidate);
+            return Some(candidate);
         }
     }
 
-    Err(format!(
-        "unable to resolve summary simulation worker executable `{}` from {}",
-        executable_name,
-        current_executable.display()
-    ))
+    None
+}
+
+fn unresolved_worker_executable_error_message() -> String {
+    let executable_name = worker_executable_file_name();
+
+    match env::current_exe() {
+        Ok(current_executable) => format!(
+            "unable to resolve summary simulation worker executable `{}` from {}",
+            executable_name,
+            current_executable.display()
+        ),
+        Err(source) => format!(
+            "unable to resolve current executable while locating summary simulation worker executable `{}`: {}",
+            executable_name, source
+        ),
+    }
+}
+
+fn resolve_summary_simulation_backend_preference()
+-> Result<JointRefinementSummarySimulationBackendPreference, String> {
+    match env::var(JOINT_REFINEMENT_SUMMARY_SIMULATION_BACKEND_ENV) {
+        Ok(value) if value == JOINT_REFINEMENT_SUMMARY_SIMULATION_BACKEND_IN_PROCESS => {
+            Ok(JointRefinementSummarySimulationBackendPreference::InProcess)
+        }
+        Ok(value) if value == JOINT_REFINEMENT_SUMMARY_SIMULATION_BACKEND_PROCESS_WORKER => {
+            Ok(JointRefinementSummarySimulationBackendPreference::ProcessWorker)
+        }
+        Ok(value) => Err(format!(
+            "unsupported joint refinement summary simulation backend `{value}`"
+        )),
+        Err(env::VarError::NotPresent) => {
+            Ok(JointRefinementSummarySimulationBackendPreference::Auto)
+        }
+        Err(env::VarError::NotUnicode(_)) => Err(
+            "joint refinement summary simulation backend environment is not valid unicode"
+                .to_string(),
+        ),
+    }
+}
+
+fn candidate_search_roots(current_executable: Option<&Path>) -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+
+    if let Some(current_executable) = current_executable {
+        if let Some(parent) = current_executable.parent() {
+            push_candidate_search_root(&mut roots, parent.to_path_buf());
+
+            if let Some(grandparent) = parent.parent() {
+                push_candidate_search_root(&mut roots, grandparent.to_path_buf());
+            }
+        }
+    }
+
+    append_workspace_target_search_roots(&mut roots);
+
+    roots
+}
+
+fn append_workspace_target_search_roots(roots: &mut Vec<PathBuf>) {
+    if let Some(workspace_root) = workspace_root_from_manifest_directory() {
+        let target_directory = workspace_root.join("target");
+
+        for profile_directory_name in ["debug", "release"] {
+            push_candidate_search_root(roots, target_directory.join(profile_directory_name));
+        }
+    }
+}
+
+#[cfg(test)]
+fn candidate_search_roots_from_current_executable(current_executable: &Path) -> Vec<PathBuf> {
+    candidate_search_roots(Some(current_executable))
+}
+
+fn push_candidate_search_root(roots: &mut Vec<PathBuf>, candidate_root: PathBuf) {
+    if !candidate_root.exists() || fs::metadata(candidate_root.as_path()).is_err() {
+        return;
+    }
+
+    if roots
+        .iter()
+        .any(|existing_root| existing_root == &candidate_root)
+    {
+        return;
+    }
+
+    roots.push(candidate_root);
+}
+
+fn workspace_root_from_manifest_directory() -> Option<PathBuf> {
+    let manifest_directory = Path::new(env!("CARGO_MANIFEST_DIR"));
+    manifest_directory
+        .parent()
+        .and_then(Path::parent)
+        .map(Path::to_path_buf)
+}
+
+fn worker_executable_file_name() -> &'static str {
+    if cfg!(windows) {
+        "janiform-joint-refinement-worker.exe"
+    } else {
+        "janiform-joint-refinement-worker"
+    }
+}
+
+fn resolve_backend_from_preference(
+    backend_preference: JointRefinementSummarySimulationBackendPreference,
+    worker_executable: Option<PathBuf>,
+) -> Result<JointRefinementSummarySimulationBackend, String> {
+    match backend_preference {
+        JointRefinementSummarySimulationBackendPreference::Auto => Ok(match worker_executable {
+            Some(worker_executable) => {
+                JointRefinementSummarySimulationBackend::ProcessWorker { worker_executable }
+            }
+            None => JointRefinementSummarySimulationBackend::InProcess,
+        }),
+        JointRefinementSummarySimulationBackendPreference::InProcess => {
+            Ok(JointRefinementSummarySimulationBackend::InProcess)
+        }
+        JointRefinementSummarySimulationBackendPreference::ProcessWorker => worker_executable
+            .map(
+                |worker_executable| JointRefinementSummarySimulationBackend::ProcessWorker {
+                    worker_executable,
+                },
+            )
+            .ok_or_else(unresolved_worker_executable_error_message),
+    }
 }
 
 fn current_available_memory_bytes() -> Result<u64, String> {
@@ -540,54 +663,6 @@ pub fn current_process_resident_bytes() -> Result<u64, String> {
     Ok(process.memory())
 }
 
-fn candidate_search_roots(current_executable: &Path) -> Vec<PathBuf> {
-    let mut roots = Vec::new();
-    if let Some(parent) = current_executable.parent() {
-        push_candidate_search_root(&mut roots, parent.to_path_buf());
-        if let Some(grandparent) = parent.parent() {
-            push_candidate_search_root(&mut roots, grandparent.to_path_buf());
-        }
-    }
-
-    if let Some(workspace_root) = workspace_root_from_manifest_directory() {
-        let target_directory = workspace_root.join("target");
-        for profile_directory_name in ["debug", "release"] {
-            push_candidate_search_root(&mut roots, target_directory.join(profile_directory_name));
-        }
-    }
-
-    roots
-}
-
-fn push_candidate_search_root(roots: &mut Vec<PathBuf>, candidate_root: PathBuf) {
-    if !candidate_root.exists() || fs::metadata(candidate_root.as_path()).is_err() {
-        return;
-    }
-    if roots
-        .iter()
-        .any(|existing_root| existing_root == &candidate_root)
-    {
-        return;
-    }
-    roots.push(candidate_root);
-}
-
-fn workspace_root_from_manifest_directory() -> Option<PathBuf> {
-    let manifest_directory = Path::new(env!("CARGO_MANIFEST_DIR"));
-    manifest_directory
-        .parent()
-        .and_then(Path::parent)
-        .map(Path::to_path_buf)
-}
-
-fn worker_executable_file_name() -> &'static str {
-    if cfg!(windows) {
-        "janiform-joint-refinement-worker.exe"
-    } else {
-        "janiform-joint-refinement-worker"
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::fs;
@@ -597,7 +672,9 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::{
-        candidate_search_roots, spawn_initialized_worker, workspace_root_from_manifest_directory,
+        JointRefinementSummarySimulationBackend, JointRefinementSummarySimulationBackendPreference,
+        candidate_search_roots_from_current_executable, resolve_backend_from_preference,
+        spawn_initialized_worker, workspace_root_from_manifest_directory,
     };
     use crate::stages::joint_refinement::summary_simulation::tests::joint_refinement_summary_session_context_fixture;
 
@@ -682,11 +759,40 @@ mod tests {
         let workspace_root = workspace_root_from_manifest_directory()
             .expect("workspace root should resolve from the crate manifest directory");
         let expected_profile_directory = workspace_root.join("target").join("debug");
-        let search_roots = candidate_search_roots(simulated_python_executable);
+        let search_roots =
+            candidate_search_roots_from_current_executable(simulated_python_executable);
 
         assert!(
             search_roots.contains(&expected_profile_directory),
             "workspace target profile directory should be searched for the worker executable",
+        );
+    }
+
+    #[test]
+    fn automatic_backend_selection_falls_back_to_in_process_when_worker_is_unavailable() {
+        let backend = resolve_backend_from_preference(
+            JointRefinementSummarySimulationBackendPreference::Auto,
+            None,
+        )
+        .expect("automatic backend selection should succeed");
+
+        assert!(matches!(
+            backend,
+            JointRefinementSummarySimulationBackend::InProcess
+        ));
+    }
+
+    #[test]
+    fn explicit_process_worker_backend_requires_a_worker_executable() {
+        let error = resolve_backend_from_preference(
+            JointRefinementSummarySimulationBackendPreference::ProcessWorker,
+            None,
+        )
+        .expect_err("explicit process-worker backend should require a worker executable");
+
+        assert!(
+            error.contains("summary simulation worker executable"),
+            "{error}"
         );
     }
 }
