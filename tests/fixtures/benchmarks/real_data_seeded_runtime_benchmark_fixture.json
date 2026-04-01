@@ -8,7 +8,7 @@
       "coarse_interval": "1h",
       "description": "Bounded checked-in EUR/USD parquet slice used to benchmark the repaired real-data seeded runtime path.",
       "execution_mode": "memory",
-      "fixture_id": "synthetic_eurusd_parquet_slice_250000_8192row_v1",
+      "fixture_id": "synthetic_eurusd_parquet_slice_240000_8192row_v1",
       "fixture_version": "1.0.0",
       "market_profile": "eurusd_spot",
       "materialization_access_patterns": [
@@ -29,7 +29,7 @@
       "source_tick_data_format": "parquet",
       "source_tick_data_path": "data/Synthetic_EURUSD_Data_1M_ticks.parquet",
       "source_tick_data_row_count": 8192,
-      "source_tick_data_row_offset": 250000,
+      "source_tick_data_row_offset": 240000,
       "source_timestamp_column": "time",
       "source_trade_sign_column": null,
       "tags": [

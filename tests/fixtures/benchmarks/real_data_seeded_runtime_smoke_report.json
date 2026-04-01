@@ -6,27 +6,27 @@
       "materialized_event_count": 256,
       "materialized_transition_count": 0,
       "pattern_id": "event_tape_first_chunk",
-      "python_materialization_seconds": 0.00041873398004099727
+      "python_materialization_seconds": 0.0004036270547658205
     },
     {
       "access_kind": "full_seeded_export_to_pandas",
-      "boundary_transport_bytes": 2132949,
+      "boundary_transport_bytes": 2268423,
       "materialized_event_count": 0,
-      "materialized_transition_count": 16663,
+      "materialized_transition_count": 17721,
       "pattern_id": "full_seeded_tick_export",
-      "python_materialization_seconds": 0.048932819976471364
+      "python_materialization_seconds": 0.047382075688801706
     }
   ],
-  "boundary_transport_bytes": 2147656,
-  "calibrated_expected_event_count_over_observation_window": 495.7218785600035,
-  "calibrated_open_event_rate_per_hour": 1982.887514240014,
-  "coarse_generated_event_count": 16353,
-  "fixture_id": "synthetic_eurusd_parquet_slice_250000_512row_smoke_v1",
+  "boundary_transport_bytes": 2283130,
+  "calibrated_expected_event_count_over_observation_window": 550.4538742996369,
+  "calibrated_open_event_rate_per_hour": 2201.8154971985477,
+  "coarse_generated_event_count": 17480,
+  "fixture_id": "synthetic_eurusd_parquet_slice_240000_512row_smoke_v1",
   "fixture_version": "1.0.0",
   "materialized_event_count": 256,
-  "materialized_transition_count": 16663,
-  "native_estimated_retained_bytes": 5805808,
-  "native_runtime_seconds": 0.022379480011295527,
+  "materialized_transition_count": 17721,
+  "native_estimated_retained_bytes": 6467840,
+  "native_runtime_seconds": 0.022327526938170195,
   "observed_open_event_rate_per_hour": 2048.0,
   "observed_source_tick_count": 512,
   "output_schema_metadata": {
@@ -97,15 +97,15 @@
     "source_tick_data_format": "parquet",
     "source_tick_data_path": "data/Synthetic_EURUSD_Data_1M_ticks.parquet",
     "source_tick_data_row_count": 512,
-    "source_tick_data_row_offset": 250000,
+    "source_tick_data_row_offset": 240000,
     "source_timestamp_column": "time",
     "source_trade_sign_column": null,
     "unsigned_market_data_policy": "checked_in_fixture_omits_trade_sign_column_and_relies_on_unsigned_fit_path.v1"
   },
-  "python_materialization_seconds": 0.04935155395651236,
-  "python_response_construction_seconds": 0.00041840103222057223,
+  "python_materialization_seconds": 0.047785702743567526,
+  "python_response_construction_seconds": 0.00017267698422074318,
   "schema_version": "benchmark.real_data_seeded_runtime.report.v1",
-  "seeded_event_count": 16655,
-  "seeded_transition_count": 16663,
+  "seeded_event_count": 17713,
+  "seeded_transition_count": 17721,
   "source_open_session_duration_hours": 0.25
 }

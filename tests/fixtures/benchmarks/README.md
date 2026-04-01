@@ -83,6 +83,8 @@ Criterion plus `pytest-benchmark` commands, see
     `source_tick_data_row_offset`, `source_tick_data_row_count`,
     `source_timestamp_column`, `source_price_column`, and
     `source_trade_sign_column`
+  - checked-in training slices must end before `simulation_start_time_utc` so the fit window does
+    not overlap the benchmark simulation horizon
   - execution controls for the repaired high-level runtime path:
     `market_profile`, `coarse_interval`, `coarse_horizon_interval_count`,
     `seeded_horizon_interval_count`, and `simulation_seed`

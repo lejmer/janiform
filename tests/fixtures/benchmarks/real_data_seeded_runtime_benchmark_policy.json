@@ -2,7 +2,7 @@
   "comparison_policy": "candidate_vs_accepted_baseline_with_fixture_threshold_classification.v1",
   "fixture_thresholds": [
     {
-      "fixture_id": "synthetic_eurusd_parquet_slice_250000_8192row_v1",
+      "fixture_id": "synthetic_eurusd_parquet_slice_240000_8192row_v1",
       "maximum_boundary_transport_absolute_growth_bytes": 524288,
       "maximum_boundary_transport_relative_growth": 0.15,
       "maximum_coarse_event_rate_ratio_vs_observed_open": 3.5,
