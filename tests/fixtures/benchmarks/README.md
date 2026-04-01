@@ -162,4 +162,4 @@ benchmark.
    change.
 4. Save the updated JSON artifact in this directory and keep prior versions for drift comparisons.
 5. Validate with:
-   `cargo test -p janiform --test performance_baseline_capture_and_storage`.
+   `cargo test -p janiform-governance --test performance_baseline_capture_and_storage`.

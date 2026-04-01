@@ -336,7 +336,7 @@ The fixture defines:
 
 Rust regression entrypoint:
 
-- `cargo test -p janiform --test pricing_benchmark_validation_regression`
+- `cargo test -p janiform-governance-bench --test pricing_benchmark_validation_regression`
 
 Anchored native-pricer versus simulation validation is governed separately from the default Rust
 and Python test suites. Expensive Monte Carlo or seeded-simulation comparison workflows must run
