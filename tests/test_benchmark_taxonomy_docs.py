@@ -26,9 +26,10 @@ def test_benchmark_taxonomy_doc_contains_required_commands_and_terms() -> None:
         "tmpdir=/tmp cargo bench -p janiform-governance-bench --bench rust_microbenchmarks",
         "pythonpath=python:. pytest benches/python/python_microbenchmarks.py --benchmark-only",
         (
-            "pytest --benchmark-disable benches/python/test_microbenchmark_tooling.py "
-            "benches/python/python_microbenchmarks.py -q"
+            "pythonpath=python:. pytest benches/python/test_microbenchmark_tooling.py "
+            "benches/python/python_microbenchmarks.py --benchmark-disable"
         ),
+        "python3 scripts/python_benchmark_workloads.py",
         "microbenchmark",
         "component benchmark",
         "workflow acceptance benchmark",
@@ -41,19 +42,14 @@ def test_benchmark_taxonomy_doc_contains_required_commands_and_terms() -> None:
     assert "source of truth" in lowercase_document
 
 
-def test_ci_tiered_execution_strategy_doc_mentions_manual_microbenchmark_smoke() -> None:
+def test_ci_tiered_execution_strategy_doc_mentions_local_python_benchmark_workloads() -> None:
     document = _ci_tiered_execution_strategy_document_text()
 
-    assert "Microbenchmark smoke" in document
-    assert (
-        "cargo bench -p janiform-governance-bench --bench rust_microbenchmarks -- --list"
-        in document
-    )
-    assert (
-        "PYTHONPATH=python:. .venv-linux/bin/pytest --benchmark-disable benches/python/test_microbenchmark_tooling.py benches/python/python_microbenchmarks.py -q"
-        in document
-    )
-    assert "manual-only" in document
+    assert "Rust benchmark governance smoke" in document
+    assert "Local Python benchmark workloads" in document
+    assert "python3 scripts/python_benchmark_workloads.py" in document
+    assert "Manual dispatch" in document
+    assert "Local only" in document
 
 
 def _benchmark_taxonomy_document_text() -> str:
