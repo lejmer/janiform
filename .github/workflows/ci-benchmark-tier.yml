@@ -1,8 +1,6 @@
 name: ci-benchmark-smoke-tier
 
 on:
-  schedule:
-    - cron: "0 6 * * 1-5"
   workflow_dispatch:
 
 jobs:
