@@ -134,11 +134,15 @@ jobs:
         run: |
           TMPDIR=/tmp UV_CACHE_DIR=/tmp/uv bash ./scripts/bootstrap-linux.sh .venv-linux
 
-      - name: Run microbenchmark smoke
+      - name: Run Rust microbenchmark discovery smoke
         run: |
           mkdir -p .artifacts/microbenchmark-smoke
           TMPDIR=/tmp cargo bench -p janiform-governance-bench --bench rust_microbenchmarks -- --list | tee .artifacts/microbenchmark-smoke/rust-bench-list.log
-          PYTHONPATH=python:. .venv-linux/bin/pytest --benchmark-disable benches/python/test_microbenchmark_tooling.py benches/python/python_microbenchmarks.py -q | tee .artifacts/microbenchmark-smoke/python-microbench-smoke.log
+
+      - name: Run Python microbenchmark smoke
+        run: |
+          mkdir -p .artifacts/microbenchmark-smoke
+          PYTHONPATH=python:. .venv-linux/bin/pytest --benchmark-disable benches/python/test_microbenchmark_tooling.py benches/python/python_microbenchmarks.py | tee .artifacts/microbenchmark-smoke/python-microbench-smoke.log
 
       - name: Publish microbenchmark smoke summary
         if: always()
