@@ -74,7 +74,6 @@ def test_pytest_benchmark_suite_runs_with_disabled_timing() -> None:
             "pytest",
             "--benchmark-disable",
             "benches/python/python_microbenchmarks.py",
-            "-q",
         ],
         check=False,
         capture_output=True,

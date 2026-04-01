@@ -88,7 +88,7 @@ Python microbenchmark workflow:
 
 ```bash
 PYTHONPATH=python:. pytest benches/python/python_microbenchmarks.py --benchmark-only
-PYTHONPATH=python:. pytest benches/python/test_microbenchmark_tooling.py benches/python/python_microbenchmarks.py --benchmark-disable -q
+PYTHONPATH=python:. pytest benches/python/test_microbenchmark_tooling.py benches/python/python_microbenchmarks.py --benchmark-disable
 ```
 
 Workflow acceptance and governance benchmarks:
