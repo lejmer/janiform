@@ -41,6 +41,7 @@ from .errors import (
 from .hourly_factors import (
     HourlyFactorContract,
 )
+
 if TYPE_CHECKING:
     from .simulation import HawkesExcitationState, HawkesKernelParameters
     from .simulation.coarse.news import NewsProcessConfiguration
