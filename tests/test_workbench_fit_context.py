@@ -939,19 +939,19 @@ def test_workbench_comparison_uses_full_observed_range_for_large_inputs() -> Non
 
 def test_workbench_fit_context_generates_cross_platform_source_path_candidates() -> None:
     windows_candidates = _candidate_source_paths(
-        r"C:\Users\anton\source\repos\janiform\data\AUDCAD_2025.parquet"
+        r"/mnt/c/Users/some_user/some_file.parquet"
     )
     assert Path(
-        "/mnt/c/Users/anton/source/repos/janiform/data/AUDCAD_2025.parquet"
+        "/mnt/c/Users/some_user/some_file.parquet"
     ) in windows_candidates
 
     mount_candidates = _candidate_source_paths(
-        "/mnt/c/Users/anton/source/repos/janiform/data/AUDCAD_2025.parquet"
+        "/mnt/c/Users/some_user/some_file.parquet"
     )
     assert any(
         str(candidate).lower().startswith("c:")
         and "Users" in str(candidate)
-        and "AUDCAD_2025.parquet" in str(candidate)
+        and "some_file.parquet" in str(candidate)
         for candidate in mount_candidates
     )
 
