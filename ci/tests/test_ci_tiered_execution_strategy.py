@@ -44,37 +44,55 @@ def test_fast_tier_workflow_has_required_triggers_fields_and_steps() -> None:
     )
 
 
-def test_benchmark_tier_workflow_has_schedule_trigger_and_artifact_hooks() -> None:
-    workflow_path: Path = _project_root() / ".github" / "workflows" / "ci-benchmark-tier.yml"
+def test_rust_benchmark_governance_smoke_workflow_has_manual_trigger_and_artifact_hooks() -> None:
+    workflow_path: Path = (
+        _project_root()
+        / ".github"
+        / "workflows"
+        / "ci-rust-benchmark-governance-smoke.yml"
+    )
     workflow_text: str = _load_workflow_text(workflow_path)
 
-    assert "name: ci-benchmark-smoke-tier" in workflow_text
+    assert "name: ci-rust-benchmark-governance-smoke" in workflow_text
     assert "on:" in workflow_text
-    assert "schedule:" in workflow_text
     assert "workflow_dispatch:" in workflow_text
     assert "pull_request:" not in workflow_text
-    assert "scheduled-benchmark-smoke-workloads:" in workflow_text
+    assert "rust-benchmark-governance-smoke:" in workflow_text
     assert "timeout-minutes: 60" in workflow_text
-    assert "Run benchmark smoke workloads" in workflow_text
+    assert "Run Rust benchmark governance smoke workloads" in workflow_text
     assert "--test benchmark_scenario_catalog" in workflow_text
     assert "--test oracle_pricer_risk_benchmark_harness" in workflow_text
     assert "--test performance_baseline_capture_and_storage" in workflow_text
     assert "--test regression_drift_attribution_reports" in workflow_text
     assert "scripts/ci/write_benchmark_artifact_index.py" in workflow_text
-    assert "real-data-seeded-runtime-benchmark:" in workflow_text
-    assert "Run real-data seeded runtime benchmark" in workflow_text
-    assert "PYTHONPATH=python:. .venv-linux/bin/python scripts/ci/run_real_data_seeded_runtime_benchmark.py" in workflow_text
-    assert "real_data_seeded_runtime_benchmark_summary.md" in workflow_text
-    assert "real-data-seeded-runtime-benchmark-artifacts" in workflow_text
-    assert "microbenchmark-smoke:" in workflow_text
-    assert "if: github.event_name == 'workflow_dispatch'" in workflow_text
-    assert "--bench rust_microbenchmarks -- --list" in workflow_text
-    assert (
-        "PYTHONPATH=python:. .venv-linux/bin/pytest --benchmark-disable benches/python/test_microbenchmark_tooling.py "
-        "benches/python/python_microbenchmarks.py -q"
-    ) in workflow_text
-    assert "microbenchmark-smoke-artifacts" in workflow_text
     assert "uses: actions/upload-artifact@v7" in workflow_text
+
+
+def test_local_python_benchmark_runner_is_documented() -> None:
+    project_root: Path = _project_root()
+    runner_script_path = project_root / "scripts" / "python_benchmark_workloads.py"
+    runner_script_text = _load_workflow_text(runner_script_path)
+    benchmark_taxonomy_guide = _load_workflow_text(
+        project_root
+        / "docs"
+        / "development"
+        / "guides"
+        / "benchmark_taxonomy_and_microbenchmark_workflows.md"
+    )
+    ci_tiering_guide = _load_workflow_text(
+        project_root
+        / "docs"
+        / "development"
+        / "guides"
+        / "ci_tiered_execution_strategy.md"
+    )
+
+    assert "def _run_real_data_seeded_runtime_benchmark(" in runner_script_text
+    assert "def _run_microbenchmark_smoke(" in runner_script_text
+    assert "scripts/ci/run_real_data_seeded_runtime_benchmark.py" in runner_script_text
+    assert "benches/python/python_microbenchmarks.py" in runner_script_text
+    assert "scripts/python_benchmark_workloads.py" in benchmark_taxonomy_guide
+    assert "scripts/python_benchmark_workloads.py" in ci_tiering_guide
 
 
 def test_fast_tier_runner_and_parser_smoke() -> None:

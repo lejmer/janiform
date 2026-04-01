@@ -31,7 +31,7 @@ _CANONICAL_REAL_DATA_SEEDED_RUNTIME_FIXTURE_PATH = (
     / "tests"
     / "fixtures"
     / "benchmarks"
-    / "real_data_seeded_runtime_benchmark_fixture.json"
+    / "real_data_seeded_runtime_smoke_fixture.json"
 )
 
 
@@ -75,6 +75,7 @@ def prepare_real_data_seeded_runtime_microbenchmark_case(
     ) as temp_dir:
         temp_path = Path(temp_dir)
         tick_data_path = temp_path / "source_tick_slice.parquet"
+
         _write_source_tick_data_slice(
             fixture=fixture,
             output_path=tick_data_path,
