@@ -28,4 +28,3 @@ Define the target information architecture for the repository's documentation su
 - Favor stable URLs and durable section names.
 - Avoid mirroring the current repository tree when it produces poor user navigation.
 - Preserve useful history, but do not let historical material masquerade as current guidance.
-- If internal design records remain temporarily under `docs/design/` during migration, that state should be treated as transitional and not as the target architecture.
