@@ -5,7 +5,7 @@ from typing import Any
 import pytest
 
 from janiform.calendar import CalendarRegistry
-from tests.fixture_validation import (
+from tests.support.fixture_validation import (
     CALENDAR_REGRESSION_FIXTURE_SET_ID,
     HOURLY_FACTOR_REGRESSION_FIXTURE_SET_ID,
     OPEN_CLOSED_GAP_BEHAVIOR_FIXTURE_SET_ID,

@@ -2,7 +2,7 @@ from pathlib import Path
 
 from janiform.pricing import run_vanilla_option_pricing
 
-from tests.test_pricing_contract import _anchored_runtime_execution_input_model
+from tests.support.pricing import build_anchored_runtime_execution_input_model
 
 
 def test_resolve_fit_artifact_paths_appends_run_id_to_explicit_output_directory(
@@ -24,7 +24,7 @@ def test_resolve_fit_artifact_paths_appends_run_id_to_explicit_output_directory(
 def test_build_pricing_report_payload_preserves_anchored_pricing_diagnostics(tmp_path: Path) -> None:
     from janiform._workflow_outputs import build_pricing_report_payload
 
-    pricing_result = run_vanilla_option_pricing(_anchored_runtime_execution_input_model())
+    pricing_result = run_vanilla_option_pricing(build_anchored_runtime_execution_input_model())
 
     report_payload = build_pricing_report_payload(
         output_path=tmp_path / "pricing.json",

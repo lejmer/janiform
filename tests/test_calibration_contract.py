@@ -3,7 +3,7 @@ from typing import Any
 
 import orjson
 import pytest
-from tests.calibration_test_support import (
+from tests.support.calibration import (
     build_valid_execution_input_model,
     build_valid_execution_input_payload,
 )

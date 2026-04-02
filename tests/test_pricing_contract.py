@@ -51,7 +51,11 @@ from janiform.simulation.coarse import (
     SharedNewsMarkLawConfiguration,
     SurpriseNewsArrivalConfiguration,
 )
-from tests.hourly_factor_contract_test_support import build_hourly_factor_contract
+from tests.support.hourly_factor_contracts import build_hourly_factor_contract
+from tests.support.pricing import (
+    build_anchored_request_model,
+    build_anchored_runtime_execution_input_model,
+)
 
 
 def test_vanilla_option_request_model_construction_and_roundtrip() -> None:
@@ -297,7 +301,7 @@ def test_anchored_boundary_input_accepts_endogenous_anchor_policy_boundary_state
 
 
 def test_anchored_vanilla_option_request_roundtrip_preserves_observed_boundary_contract() -> None:
-    request = _anchored_request_model()
+    request = build_anchored_request_model()
 
     serialized_request = serialize_vanilla_option_pricing_request(request)
     deserialized_request = deserialize_vanilla_option_pricing_request(serialized_request)
@@ -404,7 +408,7 @@ def test_vanilla_option_pricing_run_result_roundtrip_preserves_required_schema_f
 
 
 def test_anchored_pricing_run_result_roundtrip_preserves_anchored_recursion_diagnostics() -> None:
-    run_result = run_vanilla_option_pricing(_anchored_runtime_execution_input_model())
+    run_result = run_vanilla_option_pricing(build_anchored_runtime_execution_input_model())
 
     serialized_run_result = serialize_vanilla_option_pricing_run_result(run_result)
     deserialized_run_result = deserialize_vanilla_option_pricing_run_result(serialized_run_result)
@@ -514,81 +518,6 @@ def _valid_runtime_execution_input_model() -> VanillaOptionPricingExecutionInput
                 ),
             ),
             model_parameters=_valid_request_model().model_parameters,
-        ),
-        hourly_factor_contract=build_hourly_factor_contract(
-            request_start_utc_nanos=1_706_882_400_000_000_000,
-            s_h=(1.0,),
-            known_component_nu_h=(0.0,),
-            surprise_component_nu_h=(0.0,),
-        ),
-        optional_output_selection=VanillaOptionPricingOptionalOutputSelection(
-            include_transform_diagnostics=True,
-            include_integration_quality_diagnostics=True,
-            include_calibration_hooks=True,
-        ),
-    )
-
-
-def _anchored_request_model() -> VanillaOptionPricingRequest:
-    return VanillaOptionPricingRequest(
-        market_inputs=VanillaOptionPricingMarketInputs(
-            spot=101.0,
-            strike=100.0,
-            maturity_interval=1.0,
-            risk_free_rate=0.02,
-            dividend_yield=0.01,
-        ),
-        payoff=VanillaOptionPayoffConfiguration(payoff_type=VanillaOptionPayoffType.CALL),
-        boundary_input=AnchoredVanillaOptionPricingBoundaryInput(
-            interval_index=0,
-            hawkes_boundary_state=HawkesExcitationState(
-                y_plus_plus=0.0,
-                y_plus_minus=0.0,
-                y_minus_plus=0.0,
-                y_minus_minus=0.0,
-            ),
-            mean_reversion_fitted_parameters=MeanReversionFittedParameters(
-                kappa=0.35,
-                anchor_model=MeanReversionAnchorModel.zero_gain_endogenous_core_pressure_level(),
-            ),
-            interval_delta=1.0,
-            observed_boundary_state=MeanReversionBoundaryState(
-                observed_log_price=0.4,
-                anchor_value=0.25,
-                pressure_state=0.0,
-                deviation=0.15,
-            ),
-        ),
-        model_parameters=_valid_request_model().model_parameters,
-    )
-
-
-def _anchored_runtime_execution_input_model() -> VanillaOptionPricingExecutionInput:
-    return VanillaOptionPricingExecutionInput(
-        request=VanillaOptionPricingRequest(
-            market_inputs=_anchored_request_model().market_inputs,
-            payoff=_anchored_request_model().payoff,
-            boundary_input=AnchoredVanillaOptionPricingBoundaryInput(
-                interval_index=0,
-                hawkes_boundary_state=HawkesExcitationState(
-                    y_plus_plus=0.0,
-                    y_plus_minus=0.0,
-                    y_minus_plus=0.0,
-                    y_minus_minus=0.0,
-                ),
-                mean_reversion_fitted_parameters=MeanReversionFittedParameters(
-                    kappa=0.35,
-                    anchor_model=MeanReversionAnchorModel.zero_gain_endogenous_core_pressure_level(),
-                ),
-                interval_delta=1.0,
-                observed_boundary_state=MeanReversionBoundaryState(
-                    observed_log_price=0.25,
-                    anchor_value=0.25,
-                    pressure_state=0.0,
-                    deviation=0.0,
-                ),
-            ),
-            model_parameters=_anchored_request_model().model_parameters,
         ),
         hourly_factor_contract=build_hourly_factor_contract(
             request_start_utc_nanos=1_706_882_400_000_000_000,

@@ -32,7 +32,7 @@ from janiform.simulation.seeded import (
     serialize_seeded_tick_simulation_response,
     validate_seeded_tick_simulation_response,
 )
-from tests.simulation_test_support import build_endogenous_mean_reversion_runtime_contracts
+from tests.support.simulation import build_endogenous_mean_reversion_runtime_contracts
 
 
 def test_simulation_request_model_validates_construction() -> None:

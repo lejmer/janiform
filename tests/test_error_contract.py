@@ -63,9 +63,9 @@ from janiform.simulation.shared import (
 from janiform.simulation.seeded.contracts import (
     build_endogenous_seeded_mean_reversion_runtime_inputs,
 )
-from tests.calibration_test_support import build_valid_execution_input_model
-from tests.hourly_factor_contract_test_support import build_hourly_factor_contract
-from tests.simulation_test_support import build_endogenous_mean_reversion_runtime_contracts
+from tests.support.calibration import build_valid_execution_input_model
+from tests.support.hourly_factor_contracts import build_hourly_factor_contract
+from tests.support.simulation import build_endogenous_mean_reversion_runtime_contracts
 
 START_TIME_UTC = datetime(2026, 2, 2, tzinfo=UTC)
 

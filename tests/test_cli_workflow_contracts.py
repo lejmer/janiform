@@ -33,12 +33,12 @@ from janiform.simulation import (
     CoarseSimulationRunRequest,
     SeededTickSimulationRequest,
 )
-from tests.calibration_test_support import (
+from tests.support.calibration import (
     build_endogenous_mean_reversion_fitted_parameters_payload,
     build_valid_execution_input_model,
     update_model_mean_reversion_payload,
 )
-from tests.cli_test_support import (
+from tests.support.cli import (
     build_coarse_simulation_request as _build_coarse_simulation_request,
     build_simulation_request as _build_simulation_request,
     invoke_cli as _invoke_cli,
@@ -47,7 +47,7 @@ from tests.cli_test_support import (
     write_json_path as _write_json_path,
     write_market_data_input_files as _write_market_data_input_files,
 )
-from tests.test_cli_high_level_commands import _build_full_workflow_model
+from tests.support.high_level_workflows import build_full_workflow_model
 
 
 def test_simulation_cli_help_documents_required_contract_inputs() -> None:
@@ -1809,7 +1809,7 @@ def _write_saved_price_model(tmp_path: Path) -> Path:
     helper_monkeypatch = pytest.MonkeyPatch()
     try:
         helper_monkeypatch.chdir(tmp_path)
-        model = _build_full_workflow_model(
+        model = build_full_workflow_model(
             tmp_path,
             helper_monkeypatch,
             run_id="workflow-contract-price-model",
@@ -1826,7 +1826,7 @@ def _write_saved_anchored_price_model(tmp_path: Path) -> Path:
     helper_monkeypatch = pytest.MonkeyPatch()
     try:
         helper_monkeypatch.chdir(tmp_path)
-        model = _build_full_workflow_model(
+        model = build_full_workflow_model(
             tmp_path,
             helper_monkeypatch,
             run_id="workflow-contract-anchored-price-model",

@@ -12,7 +12,7 @@ from janiform.calendar import (
     MarketState,
     resolve_market_state,
 )
-from tests.fixture_validation import CalendarRegressionCase, CalendarRegressionFixtureDocument
+from tests.support.fixture_validation import CalendarRegressionCase, CalendarRegressionFixtureDocument
 
 
 def test_calendar_regression_fixture_covers_required_case_tags(

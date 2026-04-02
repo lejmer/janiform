@@ -21,8 +21,8 @@ from janiform.risk import (
     validate_sufficient_statistics_risk_run_request,
 )
 from janiform.simulation import HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters
-from tests.hourly_factor_contract_test_support import build_hourly_factor_contract
-from tests.simulation_test_support import build_endogenous_mean_reversion_runtime_contracts
+from tests.support.hourly_factor_contracts import build_hourly_factor_contract
+from tests.support.simulation import build_endogenous_mean_reversion_runtime_contracts
 
 
 def test_risk_run_request_model_construction_and_serialization_roundtrip() -> None:

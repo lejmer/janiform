@@ -9,11 +9,6 @@ import pyarrow as pa
 from pyarrow import parquet
 
 import janiform.cli.command_tree as cli_command_tree_module
-from examples.support._shared import (
-    build_coarse_simulation_request as build_example_coarse_simulation_request,
-    build_pricing_optional_output_selection,
-    build_pricing_request,
-)
 from janiform.calendar import CalendarRegistry
 from janiform.hourly_factors import (
     HourlyNewsIntensityProviderExplicitSource,
@@ -45,7 +40,12 @@ from janiform.simulation.coarse import (
 from janiform.simulation.seeded.contracts import (
     build_endogenous_seeded_mean_reversion_runtime_inputs,
 )
-from tests.hourly_factor_contract_test_support import build_hourly_factor_contract
+from tests.support.cli_fixtures import (
+    build_coarse_simulation_request as build_fixture_coarse_simulation_request,
+    build_pricing_optional_output_selection,
+    build_pricing_request,
+)
+from tests.support.hourly_factor_contracts import build_hourly_factor_contract
 
 
 def build_pricing_execution_input() -> VanillaOptionPricingExecutionInput:
@@ -154,7 +154,7 @@ def build_simulation_request(calendar_registry_json: str) -> SeededTickSimulatio
 
 
 def build_coarse_simulation_request(calendar_registry_json: str) -> CoarseSimulationRunRequest:
-    return build_example_coarse_simulation_request(CalendarRegistry(calendar_registry_json))
+    return build_fixture_coarse_simulation_request(CalendarRegistry(calendar_registry_json))
 
 
 def invoke_cli(
