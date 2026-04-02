@@ -20,3 +20,4 @@ Build a complete ledger of tracked Markdown files and assign a disposition for e
 - The goal is decision-quality inventory, not prose polish.
 - Keep the ledger easy to diff and maintain during follow-on cleanup work.
 - Keep the ledger in planning rather than at repository root because it is a cleanup-program control document, not a permanent public or contributor-facing policy page.
+- The unit tests added here will be deleted later. They only server as validation in this Issue.
