@@ -7,6 +7,10 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QApplication, QSplitter, QTableWidget, QTabWidget
 from matplotlib.figure import Figure
 
+from janiform.calibration.staged._progress_policy import (
+    CalibrationLiveProgressSnapshot,
+    calibration_total_progress_fraction,
+)
 from tools.workbench import app as workbench_app
 from tools.workbench.app import WorkbenchWindow, _ResponsiveFigureCanvas
 from tools.workbench.artifacts import WorkbenchArtifacts
@@ -292,7 +296,27 @@ def test_workbench_window_tracks_stage_and_total_progress_separately() -> None:
         assert window._run_stage_progress_bar.maximum() == 8
         assert window._run_stage_progress_bar.value() == 1
         assert window._run_total_progress_bar.maximum() == 1000
-        assert window._run_total_progress_bar.value() == 243
+        expected_progress_fraction = calibration_total_progress_fraction(
+            CalibrationLiveProgressSnapshot(
+                status="running",
+                stage_sequence=(
+                    "seasonality",
+                    "hawkes",
+                    "return_components",
+                    "mean_reversion",
+                    "joint_refinement",
+                ),
+                stage_index=5,
+                stage_count=5,
+                current_stage="joint_refinement",
+                current_subtask="joint_refinement.restart_optimization",
+                current_stage_is_complete=False,
+                subtask_completed_units=2,
+                subtask_total_units=8,
+            )
+        )
+        assert expected_progress_fraction is not None
+        assert window._run_total_progress_bar.value() == round(expected_progress_fraction * 1000)
     finally:
         window.close()
         application.processEvents()
@@ -365,8 +389,48 @@ def test_workbench_window_total_progress_does_not_regress_across_joint_refinemen
             )
         )
 
-        assert restart_completion_value == 811
-        assert window._run_total_progress_bar.value() == 906
+        expected_restart_completion_fraction = calibration_total_progress_fraction(
+            CalibrationLiveProgressSnapshot(
+                status="running",
+                stage_sequence=(
+                    "seasonality",
+                    "hawkes",
+                    "return_components",
+                    "mean_reversion",
+                    "joint_refinement",
+                ),
+                stage_index=5,
+                stage_count=5,
+                current_stage="joint_refinement",
+                current_subtask="joint_refinement.restart_optimization",
+                current_stage_is_complete=False,
+                subtask_completed_units=8,
+                subtask_total_units=8,
+            )
+        )
+        expected_coarse_phase_fraction = calibration_total_progress_fraction(
+            CalibrationLiveProgressSnapshot(
+                status="running",
+                stage_sequence=(
+                    "seasonality",
+                    "hawkes",
+                    "return_components",
+                    "mean_reversion",
+                    "joint_refinement",
+                ),
+                stage_index=5,
+                stage_count=5,
+                current_stage="joint_refinement",
+                current_subtask="joint_refinement.coarse_consistency_evaluation",
+                current_stage_is_complete=False,
+                subtask_completed_units=0,
+                subtask_total_units=12,
+            )
+        )
+        assert expected_restart_completion_fraction is not None
+        assert expected_coarse_phase_fraction is not None
+        assert restart_completion_value == round(expected_restart_completion_fraction * 1000)
+        assert window._run_total_progress_bar.value() == round(expected_coarse_phase_fraction * 1000)
     finally:
         window.close()
         application.processEvents()

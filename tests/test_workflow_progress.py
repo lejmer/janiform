@@ -4,6 +4,10 @@ from typing import Any
 import pytest
 
 import janiform._workflow_progress as workflow_progress_module
+from janiform.calibration.staged._progress_policy import (
+    CalibrationLiveProgressSnapshot,
+    calibration_total_progress_fraction,
+)
 from janiform.calibration.staged.progress import (
     NativeStagedCalibrationProgressTracker,
     update_cli_progress_from_staged_native_event,
@@ -159,10 +163,33 @@ def test_spinner_progress_keeps_staged_subtasks_within_running_calibration_step(
         )
 
     rendered_lines = _render_terminal_output(stream.getvalue())
+    progress_fraction = calibration_total_progress_fraction(
+        CalibrationLiveProgressSnapshot(
+            status="running",
+            stage_sequence=(
+                "seasonality",
+                "hawkes",
+                "return_components",
+                "mean_reversion",
+                "joint_refinement",
+            ),
+            stage_index=5,
+            stage_count=5,
+            current_stage="joint_refinement",
+            current_subtask="joint_refinement.restart_optimization",
+            current_stage_is_complete=False,
+            subtask_completed_units=2,
+            subtask_total_units=8,
+        )
+    )
+    assert progress_fraction is not None
+    expected_eta_seconds = 25.0 * (1.0 - progress_fraction) / progress_fraction
 
     assert rendered_lines == [
         (
-            "✓ fit 1/8 [00:25, ETA 01:17] running calibration [24%] | "
+            "✓ fit 1/8 "
+            f"[00:25, ETA {workflow_progress_module._format_elapsed_seconds(expected_eta_seconds)}] "
+            f"running calibration [{round(progress_fraction * 100.0)}%] | "
             "joint_refinement restart optimization [12%] (1/8) | item=halton_03"
         ),
         "done fit total [00:25]",

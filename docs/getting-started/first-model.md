@@ -2,7 +2,8 @@
 
 This walkthrough uses the checked-in synthetic EUR/USD dataset and the high-level Python workflow.
 
-Use [concepts.md](concepts.md) if you want the terms around anchors, reference prices, or seeded ticks defined before running the workflow.
+Use [concepts.md](concepts.md) if you want the terms around anchors, reference prices, or seeded
+ticks defined before running the workflow.
 
 ## Fit
 
@@ -30,9 +31,43 @@ simulation = model.simulate(
 frame = simulation.to_pandas()
 ```
 
+When you already have recent observed continuation trades, pass them through
+`continuation_data`. Janiform estimates the live Hawkes and mean-reversion runtime state before
+continuing the simulation.
+
+```python
+from datetime import UTC, datetime
+
+import pandas
+
+from janiform.calibration import CurrentStateEstimationRequest
+
+simulation = model.simulate(
+    seed=17,
+    start_time_utc=datetime(2026, 2, 2, 15, 0, tzinfo=UTC),
+    horizon_interval_count=4,
+    interval="1h",
+    continuation_data=CurrentStateEstimationRequest(
+        observed_tick_data=pandas.DataFrame(
+            {
+                "timestamp_utc": [
+                    datetime(2026, 2, 2, 14, 30, tzinfo=UTC),
+                    datetime(2026, 2, 2, 14, 45, tzinfo=UTC),
+                ],
+                "trade_price": [1.0845, 1.0850],
+                "trade_sign": ["buy", "sell"],
+            }
+        ),
+    ),
+)
+```
+
 ## Price
 
-`model.price_option(...)` derives the pricing state from the fitted model, the valuation timestamp, and the supplied spot.
+`model.price_option(...)` derives the pricing state from the fitted model, the valuation timestamp,
+and the supplied spot. When you also provide observed continuation trades, Janiform estimates the
+live Hawkes and mean-reversion boundary state from those observations before pricing. Without
+observed data, Janiform falls back to the stationary Hawkes state.
 
 ```python
 from datetime import UTC, datetime
@@ -45,6 +80,40 @@ result = model.price_option(
 )
 ```
 
+To supply observed data explicitly:
+
+```python
+from datetime import UTC, datetime
+
+import pandas
+
+from janiform.calibration import CurrentStateEstimationRequest
+
+result = model.price_option(
+    valuation_time_utc=datetime(2026, 2, 2, 15, 0, tzinfo=UTC),
+    spot=1.0850,
+    strike=1.0900,
+    maturity_interval=1.0,
+    observed_data=CurrentStateEstimationRequest(
+        observed_tick_data=pandas.DataFrame(
+            {
+                "timestamp_utc": [
+                    datetime(2026, 2, 2, 14, 30, tzinfo=UTC),
+                    datetime(2026, 2, 2, 14, 45, tzinfo=UTC),
+                ],
+                "trade_price": [1.0845, 1.0850],
+                "trade_sign": ["buy", "sell"],
+            }
+        ),
+    ),
+)
+```
+
+If you want the derived live state directly, call `model.estimate_current_state(...)` with the same
+request contract.
+
 ## Related Example
 
-[`examples/high_level/synthetic_eurusd_plot.py`](../../examples/high_level/synthetic_eurusd_plot.py) is a good next step when you want the same fit and simulation flow with plotting included. Use [`examples/README.md`](../../examples/README.md) for the grouped example index.
+[`examples/high_level/synthetic_eurusd_plot.py`](../../examples/high_level/synthetic_eurusd_plot.py)
+is a good next step when you want the same fit and simulation flow with plotting included.
+Use [`examples/README.md`](../../examples/README.md) for the grouped example index.

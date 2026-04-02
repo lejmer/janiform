@@ -15,6 +15,7 @@ from pyarrow import parquet
 
 import janiform.calibration.fit.estimator as fit_estimator_module
 import janiform.calibration.fit.model as fit_model_module
+import janiform.calibration.fit.state_estimation as state_estimation_module
 import janiform.calibration.market_data.ingestion as market_data_ingestion_module
 from janiform._timestamps import datetime_to_utc_nanos
 from janiform.calibration import (
@@ -24,6 +25,8 @@ from janiform.calibration import (
     MeanReversionFittedParameters,
 )
 from janiform.calibration.fit import (
+    CurrentStateEstimationRequest,
+    CurrentStateEstimationResult,
     JaniformEstimator,
     JaniformFitReport,
     JaniformModel,
@@ -785,38 +788,42 @@ def test_loaded_high_level_model_runtime_seasonality_prefers_compact_parameters(
         loaded_model.session_resolution.resolved_session_definition_json
     )
 
-    class _FakeTimestampEventPreprocessingResult:
-        exchange_local_minute_of_day = [540, 600]
-        exchange_local_day_of_week = bytes([1, 1])
-        exchange_local_day_of_year = [33, 33]
-
-    def _capture_preprocess_timestamp_events(
-        event_records: list[dict[str, datetime]],
-        *,
+    def _materialize_runtime_structural_seasonality(
+        native_calendar_registry: Any,
         exchange_code: str,
-        calendar_registry: CalendarRegistry,
-        timestamp_field_name: str = "timestamp",
-        session_filter: fit_model_module.SessionFilter = fit_model_module.SessionFilter.OPEN_ONLY,
-        sparse_hour_event_threshold: int = 1,
-    ) -> _FakeTimestampEventPreprocessingResult:
+        range_start_utc: str,
+        range_end_utc: str,
+        interval_duration_nanos: int,
+        intraday_minutes_per_bin: int,
+        intraday_factor_by_bin: tuple[float, ...],
+        day_of_week_factor: tuple[float, ...],
+        day_of_year_factor: tuple[float, ...],
+    ) -> dict[str, Any]:
+        assert native_calendar_registry is calendar_registry._native_registry
         assert exchange_code == loaded_model.session_resolution.exchange_code
-        assert calendar_registry is calendar_registry_instance
-        assert timestamp_field_name == "timestamp"
-        assert session_filter == fit_model_module.SessionFilter.ALL
-        assert sparse_hour_event_threshold == 1
-        assert event_records == [
-            {"timestamp": datetime(2026, 2, 2, 14, tzinfo=UTC)},
-            {"timestamp": datetime(2026, 2, 2, 15, tzinfo=UTC)},
-        ]
-
-        return _FakeTimestampEventPreprocessingResult()
-
-    calendar_registry_instance = calendar_registry
+        assert range_start_utc == "2026-02-02T14:00:00+00:00"
+        assert range_end_utc == "2026-02-02T16:00:00+00:00"
+        assert interval_duration_nanos == 3_600_000_000_000
+        assert intraday_minutes_per_bin == 480
+        assert len(intraday_factor_by_bin) == 3
+        assert len(day_of_week_factor) == 7
+        assert len(day_of_year_factor) == 366
+        return {
+            "interval_start_utc_nanos": [
+                datetime_to_utc_nanos(datetime(2026, 2, 2, 14, tzinfo=UTC)),
+                datetime_to_utc_nanos(datetime(2026, 2, 2, 15, tzinfo=UTC)),
+            ],
+            "seasonality_factors": [1.0, 1.0],
+        }
 
     monkeypatch.setattr(
         fit_model_module,
-        "preprocess_timestamp_events",
-        _capture_preprocess_timestamp_events,
+        "native_module",
+        lambda: SimpleNamespace(
+            materialize_runtime_structural_seasonality=(
+                _materialize_runtime_structural_seasonality
+            )
+        ),
     )
 
     seasonality_source = fit_model_module._build_runtime_hourly_seasonality_source_from_model(
@@ -854,15 +861,42 @@ def test_loaded_high_level_model_runtime_seasonality_infers_intraday_bin_width(
         loaded_model.session_resolution.resolved_session_definition_json
     )
 
-    class _FakeTimestampEventPreprocessingResult:
-        exchange_local_minute_of_day = [540, 600]
-        exchange_local_day_of_week = bytes([1, 1])
-        exchange_local_day_of_year = [33, 33]
+    def _materialize_runtime_structural_seasonality(
+        native_calendar_registry: Any,
+        exchange_code: str,
+        range_start_utc: str,
+        range_end_utc: str,
+        interval_duration_nanos: int,
+        intraday_minutes_per_bin: int,
+        intraday_factor_by_bin: tuple[float, ...],
+        day_of_week_factor: tuple[float, ...],
+        day_of_year_factor: tuple[float, ...],
+    ) -> dict[str, Any]:
+        assert native_calendar_registry is calendar_registry._native_registry
+        assert exchange_code == loaded_model.session_resolution.exchange_code
+        assert range_start_utc == "2026-02-02T14:00:00+00:00"
+        assert range_end_utc == "2026-02-02T16:00:00+00:00"
+        assert interval_duration_nanos == 3_600_000_000_000
+        assert intraday_minutes_per_bin == 480
+        assert len(intraday_factor_by_bin) == 3
+        assert len(day_of_week_factor) == 7
+        assert len(day_of_year_factor) == 366
+        return {
+            "interval_start_utc_nanos": [
+                datetime_to_utc_nanos(datetime(2026, 2, 2, 14, tzinfo=UTC)),
+                datetime_to_utc_nanos(datetime(2026, 2, 2, 15, tzinfo=UTC)),
+            ],
+            "seasonality_factors": [1.0, 1.0],
+        }
 
     monkeypatch.setattr(
         fit_model_module,
-        "preprocess_timestamp_events",
-        lambda *args, **kwargs: _FakeTimestampEventPreprocessingResult(),
+        "native_module",
+        lambda: SimpleNamespace(
+            materialize_runtime_structural_seasonality=(
+                _materialize_runtime_structural_seasonality
+            )
+        ),
     )
 
     seasonality_source = fit_model_module._build_runtime_hourly_seasonality_source_from_model(
@@ -1112,6 +1146,133 @@ def test_high_level_model_simulate_forwards_progress_events_to_callback_and_rend
     assert result.raw_result is simulated_result
     assert observed_progress_updates == [("seeded tick path generation", 2, 5)]
     assert observed_callback_events == [("seeded tick path generation", 2, 5)]
+
+
+def test_high_level_model_simulate_uses_estimated_current_state_when_continuation_data_is_supplied(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _build_full_workflow_model(
+        tmp_path,
+        monkeypatch,
+        run_id="high-level-model-simulate-estimated-current-state",
+    )
+    captured_requests: dict[str, Any] = {}
+    captured_estimation_calls: list[tuple[datetime, CurrentStateEstimationRequest]] = []
+    seeded_result = object()
+    estimated_state = CurrentStateEstimationResult(
+        hawkes_excitation_state=fit_model_module.HawkesExcitationState(
+            y_plus_plus=0.45,
+            y_plus_minus=0.15,
+            y_minus_plus=0.3,
+            y_minus_minus=0.2,
+        ),
+        mean_reversion_boundary_state=MeanReversionBoundaryState(
+            observed_log_price=0.05,
+            anchor_value=0.05,
+            pressure_state=0.0,
+            deviation=0.0,
+        ),
+    )
+    continuation_data = CurrentStateEstimationRequest(
+        observed_tick_data=pandas.DataFrame(
+            {
+                "timestamp_utc": [datetime(2026, 2, 2, 14, 30, tzinfo=UTC)],
+                "trade_price": [100.0],
+                "trade_sign": ["buy"],
+            }
+        ),
+    )
+
+    monkeypatch.setattr(
+        fit_model_module,
+        "estimate_current_state_for_model",
+        lambda model_value, *, state_time_utc, request: (
+            captured_estimation_calls.append((state_time_utc, request)) or estimated_state
+        ),
+    )
+    monkeypatch.setattr(
+        fit_model_module,
+        "provide_hourly_factor_contract",
+        lambda **kwargs: _build_test_hourly_factor_contract(
+            start_time_utc=cast(datetime, kwargs["range_start_utc"]),
+            interval_end_times_utc=(cast(datetime, kwargs["range_end_utc"]),),
+        ),
+    )
+    monkeypatch.setattr(
+        fit_model_module,
+        "run_seeded_tick_event_simulation",
+        lambda request, **kwargs: _capture_request(
+            captured_requests,
+            "seeded",
+            request,
+            seeded_result,
+        ),
+    )
+    monkeypatch.setattr(
+        fit_model_module,
+        "_build_high_level_simulation_result",
+        lambda **kwargs: JaniformSimulationResult(
+            simulation_kind="seeded_tick",
+            metadata={},
+            provenance={},
+            diagnostics={},
+            raw_result=kwargs["simulation_result"],
+        ),
+    )
+
+    model.simulate(
+        seed=17,
+        start_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
+        horizon_interval_count=1,
+        continuation_data=continuation_data,
+    )
+
+    assert captured_estimation_calls == [
+        (datetime(2026, 2, 2, 15, tzinfo=UTC), continuation_data)
+    ]
+    assert captured_requests["seeded"].initial_excitation_state == estimated_state.hawkes_excitation_state
+    assert (
+        captured_requests["seeded"].initial_mean_reversion_boundary_state
+        == estimated_state.mean_reversion_boundary_state
+    )
+
+
+def test_high_level_model_simulate_uses_stationary_hawkes_state_when_no_continuation_data_is_supplied(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _build_full_workflow_model(
+        tmp_path,
+        monkeypatch,
+        run_id="high-level-model-simulate-stationary-default",
+    )
+    prepared_inputs = fit_model_module._prepare_model_simulation_inputs(
+        model,
+        seed=17,
+        start_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
+        horizon_interval_count=1,
+        interval="1h",
+        simulation_kind="seeded_tick",
+        continuation_data=None,
+        initial_excitation_state=None,
+        debug_trace_enabled=False,
+        sample_every_nth_transition=1,
+        max_records_per_chunk=1_000,
+        state_snapshot_capture=SeededTickEventStateSnapshotCapture.DISABLED,
+    )
+    runtime_factors = fit_model_module._prepare_model_runtime_factors(
+        model,
+        start_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
+        horizon_interval_count=1,
+        interval="1h",
+    )
+
+    assert prepared_inputs.seeded_request is not None
+    assert (
+        prepared_inputs.seeded_request.initial_excitation_state
+        == runtime_factors.kernel_parameters.stationary_excitation_state()
+    )
 
 
 def test_high_level_model_coarse_simulation_skips_seeded_contract_preparation(
@@ -1385,6 +1546,15 @@ def test_high_level_model_materializes_endogenous_mean_reversion_runtime_inputs_
         fit_model_module,
         "native_module",
         lambda: SimpleNamespace(
+            materialize_runtime_structural_seasonality=(
+                lambda *args, **kwargs: {
+                    "interval_start_utc_nanos": [
+                        datetime_to_utc_nanos(datetime(2026, 2, 2, 15, 30, tzinfo=UTC)),
+                        datetime_to_utc_nanos(datetime(2026, 2, 2, 16, 30, tzinfo=UTC)),
+                    ],
+                    "seasonality_factors": [1.0, 1.0],
+                }
+            ),
             materialize_endogenous_mean_reversion_runtime_interval_anchors=(
                 _materialize_runtime_anchors
             )
@@ -2008,6 +2178,169 @@ def test_high_level_model_price_option_derives_boundary_state_from_spot_and_mode
     assert pricing_boundary_input.mean_reversion_fitted_parameters.to_payload() == mean_reversion_payload
     assert pricing_boundary_input.observed_boundary_state == derived_boundary_state
     assert pricing_boundary_input.interval_delta == pytest.approx(1.0)
+
+
+def test_high_level_model_estimate_current_state_dispatches_to_native_estimator(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _build_full_workflow_model(
+        tmp_path,
+        monkeypatch,
+        run_id="high-level-model-estimate-current-state",
+    )
+    captured_native_arguments: list[tuple[Any, ...]] = []
+    request = CurrentStateEstimationRequest(
+        observed_tick_data=pandas.DataFrame(
+            {
+                "timestamp_utc": [
+                    datetime(2026, 2, 2, 13, tzinfo=UTC),
+                    datetime(2026, 2, 2, 14, tzinfo=UTC),
+                ],
+                "trade_price": [100.0, 100.5],
+                "trade_sign": ["buy", "sell"],
+            }
+        ),
+        observed_price=100.0,
+    )
+
+    monkeypatch.setattr(
+        state_estimation_module,
+        "native_module",
+        lambda: SimpleNamespace(
+            estimate_current_state_from_observed_data=lambda *args: (
+                captured_native_arguments.append(args)
+                or {
+                    "hawkes_excitation_state": {
+                        "y_plus_plus": 0.2,
+                        "y_plus_minus": 0.1,
+                        "y_minus_plus": 0.1,
+                        "y_minus_minus": 0.25,
+                    },
+                    "mean_reversion_boundary_state": {
+                        "observed_log_price": 0.0,
+                        "anchor_value": 0.0,
+                        "pressure_state": 0.0,
+                        "deviation": 0.0,
+                    },
+                }
+            )
+        ),
+    )
+
+    result = model.estimate_current_state(
+        state_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
+        request=request,
+    )
+
+    assert result == CurrentStateEstimationResult(
+        hawkes_excitation_state=fit_model_module.HawkesExcitationState(
+            y_plus_plus=0.2,
+            y_plus_minus=0.1,
+            y_minus_plus=0.1,
+            y_minus_minus=0.25,
+        ),
+        mean_reversion_boundary_state=MeanReversionBoundaryState(
+            observed_log_price=0.0,
+            anchor_value=0.0,
+            pressure_state=0.0,
+            deviation=0.0,
+        ),
+    )
+    assert len(captured_native_arguments) == 1
+    assert captured_native_arguments[0][2] == datetime_to_utc_nanos(
+        datetime(2026, 2, 2, 15, tzinfo=UTC)
+    )
+    assert captured_native_arguments[0][3] == pytest.approx(
+        fit_model_module._pricing_observed_log_price_from_spot(model, spot=100.0)
+    )
+    assert captured_native_arguments[0][4] == (
+        datetime(2026, 2, 2, 13, tzinfo=UTC).isoformat(),
+        datetime(2026, 2, 2, 14, tzinfo=UTC).isoformat(),
+    )
+    assert captured_native_arguments[0][5] == (100.0, 100.5)
+    assert captured_native_arguments[0][6] == (
+        "buy",
+        "sell",
+    )
+
+
+def test_high_level_model_price_option_uses_estimated_current_state_when_observed_data_is_supplied(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _build_full_workflow_model(
+        tmp_path,
+        monkeypatch,
+        run_id="high-level-model-pricing-estimated-current-state",
+    )
+    estimated_state = CurrentStateEstimationResult(
+        hawkes_excitation_state=fit_model_module.HawkesExcitationState(
+            y_plus_plus=0.45,
+            y_plus_minus=0.15,
+            y_minus_plus=0.3,
+            y_minus_minus=0.2,
+        ),
+        mean_reversion_boundary_state=MeanReversionBoundaryState(
+            observed_log_price=0.05,
+            anchor_value=0.05,
+            pressure_state=0.0,
+            deviation=0.0,
+        ),
+    )
+    observed_data = CurrentStateEstimationRequest(
+        observed_tick_data=pandas.DataFrame(
+            {
+                "timestamp_utc": [datetime(2026, 2, 2, 14, 30, tzinfo=UTC)],
+                "trade_price": [100.0],
+                "trade_sign": ["buy"],
+            }
+        ),
+    )
+    captured_execution_inputs: list[Any] = []
+    captured_estimation_calls: list[tuple[datetime, CurrentStateEstimationRequest]] = []
+    pricing_result = object()
+
+    monkeypatch.setattr(
+        fit_model_module,
+        "estimate_current_state_for_model",
+        lambda model_value, *, state_time_utc, request: (
+            captured_estimation_calls.append((state_time_utc, request)) or estimated_state
+        ),
+    )
+    monkeypatch.setattr(
+        fit_model_module,
+        "run_vanilla_option_pricing",
+        lambda execution_input: captured_execution_inputs.append(execution_input) or pricing_result,
+    )
+
+    observed_result = model.price_option(
+        valuation_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
+        spot=100.0,
+        strike=105.0,
+        maturity_interval=4.0,
+        observed_data=observed_data,
+    )
+
+    assert observed_result is pricing_result
+    assert captured_estimation_calls == [
+        (
+            datetime(2026, 2, 2, 15, tzinfo=UTC),
+            CurrentStateEstimationRequest(
+                observed_tick_data=observed_data.observed_tick_data,
+                tick_data_column_mapping=observed_data.tick_data_column_mapping,
+                observed_price=100.0,
+            ),
+        )
+    ]
+    assert (
+        captured_execution_inputs[0].request.boundary_input.hawkes_boundary_state
+        == estimated_state.hawkes_excitation_state
+    )
+    assert (
+        captured_execution_inputs[0].request.boundary_input.observed_boundary_state
+        == estimated_state.mean_reversion_boundary_state
+    )
 
 
 def test_high_level_model_price_option_uses_stationary_hawkes_boundary_state_by_default(

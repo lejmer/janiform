@@ -2,8 +2,10 @@
 
 ## High-level Goals
 
-First and foremost: Do not introduce undocumented numerical heuristics, magic constants, or solver policies; every numeric decision must be mathematically derived, data-derived, or explicitly specified and documented in a named contract or policy. This applies to epsilons (floating-point thresholds) as well. Sometimes, the data is itself very small, so usually there is no good "one size fits all"-epsilon value. Avoid them entirely when possible.
-
+- First and foremost: Do not introduce undocumented numerical heuristics, magic constants, or solver policies; every numeric decision must be mathematically derived, data-derived, or explicitly specified and documented in a named contract or policy. This applies to epsilons (floating-point thresholds) as well. Sometimes, the data is itself very small, so usually there is no good "one size fits all"-epsilon value. Avoid them entirely when possible.
+- Anything that is core library behavior must be implemented in Rust, not Python.
+- If logic affects model behavior, numerical results, state evolution, calibration outcomes, pricing outputs, simulation paths, or validation decisions, it belongs in Rust unless the task explicitly says otherwise.
+- Python may define user-facing typed contracts, CLI wiring, serialization helpers, and thin boundary adapters, but it must not become a second implementation of model logic.
 - Ensure safe, high‑quality changes that keep tests green, without cheating.
 - Follow the style and architectural conventions of this repo, including where to place blank lines.
 - Prefer clarity and maintainability over cleverness.
@@ -132,6 +134,13 @@ Python is mostly supposed to be a thin wrapper and serves as the user-facing API
 
 In the `python/janiform/` folder where the Python code is located:
 
+- Keep Python as a boundary layer. It is for typed request/response contracts, ergonomic public APIs, CLI orchestration, serialization/deserialization, and error mapping.
+- Do not implement core model behavior in Python. This includes state-estimation algorithms, simulation evolution, pricing recursions, calibration math, optimization logic, statistical transforms, numerical integration, or any other computation that meaningfully determines outputs.
+- If a feature needs new computation, the default is:
+  - Rust owns the algorithm and validation of the computational contract.
+  - PyO3 exposes the native entrypoint.
+  - Python calls into that native entrypoint and converts inputs and outputs.
+- If you are about to add a Python helper that loops over market observations, evolves model state, computes fitted/runtime state, applies numerical recursions, or reconstructs any model boundary condition, stop and move that logic into Rust.
 - Type hints everywhere: functions, attributes, locals (where it matters, which is most of them).
 - Never use quoted / stringed type hints. Repo requires Python >=3.12 and PEP 649 and PEP 749 is accepted in that version.
 - Imports grouped and alphabetized per guide.

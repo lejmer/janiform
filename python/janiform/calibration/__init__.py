@@ -12,7 +12,14 @@ from ..contracts import (
     MeanReversionFittedParameters,
 )
 from ._errors import CalibrationValidationError, CalibrationValidationFailure
-from .fit import JaniformEstimator, JaniformFitReport, JaniformModel, JaniformSimulationResult
+from .fit import (
+    CurrentStateEstimationRequest,
+    CurrentStateEstimationResult,
+    JaniformEstimator,
+    JaniformFitReport,
+    JaniformModel,
+    JaniformSimulationResult,
+)
 from .market_data import (
     CalibrationMeanReversionConfiguration,
     MarketDataCalibrationRequest,
@@ -41,6 +48,8 @@ __all__ = [
     "CalibrationMeanReversionConfiguration",
     "CalibrationValidationError",
     "CalibrationValidationFailure",
+    "CurrentStateEstimationRequest",
+    "CurrentStateEstimationResult",
     "DEFAULT_HIGH_LEVEL_KNOWN_NEWS_PRESET_NAME",
     "JaniformEstimator",
     "JaniformFitReport",

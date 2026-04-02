@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale.v1",
-  "approved_snapshot_sha256": "63ddfcc18c3d85388085d6589a90988dce2344974c5987cddd93491ffbd6ee16",
+  "approved_snapshot_sha256": "89d162b1c5f8bcf71abf1a0934cf0e9aa7cc55012670d994ee1a0adbd1826fc6",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -701,6 +701,26 @@
       "rationale": "Public Python signatures that describe native-backed runtime artifacts now refer to Janiform-owned protocol boundary types instead of concrete janiform._native implementation classes, so the approved snapshot records the supported control-plane contract rather than a private extension-module detail.",
       "snapshot_sha256": "63ddfcc18c3d85388085d6589a90988dce2344974c5987cddd93491ffbd6ee16",
       "summary": "Approve protocol-based native boundary annotations in the public Python API snapshot."
+    },
+    {
+      "approved_on": "2026-04-02",
+      "docs_updated": [
+        "docs/getting-started/first-model.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The high-level fit surface now exposes a public current-state estimation contract and method, and the model-driven price and simulate entrypoints accept observed continuation data so they can derive the live Hawkes boundary state inside Janiform instead of defaulting to synthetic zero or stationary behavior when recent observations are available.",
+      "snapshot_sha256": "f06dd0e0b4687db1759fda9bf6ba49c42417335cbe3956f7b8f00b6e2e37d02f",
+      "summary": "Approve the public fitted-model current-state estimation surface and observed-data high-level defaults."
+    },
+    {
+      "approved_on": "2026-04-02",
+      "docs_updated": [
+        "docs/getting-started/first-model.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The current-state estimation surface now accepts batch tick data that matches the fitted market-data shape instead of row-shaped per-observation Python contracts, and the native boundary consumes aligned timestamp, price, and side columns without per-trade wrapper structs.",
+      "snapshot_sha256": "89d162b1c5f8bcf71abf1a0934cf0e9aa7cc55012670d994ee1a0adbd1826fc6",
+      "summary": "Approve the tabular current-state request surface and remove per-trade observation wrappers."
     }
   ],
   "public_api_surface_document_version": "python.public_api_surface_map.pre_v0_1.control_plane_reset.v1",

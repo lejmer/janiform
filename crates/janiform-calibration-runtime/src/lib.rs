@@ -24,11 +24,13 @@ mod seasonality {
 
 mod adapters;
 mod checkpointing;
+mod current_state;
 mod diagnostics;
 mod execution_bridge;
 mod market_data;
 mod objective;
 mod optimizer_adapter;
+mod runtime_seasonality;
 mod shock_mark_fitting;
 mod staged_runner;
 mod stages;
@@ -36,10 +38,12 @@ mod temporal;
 
 pub use adapters::*;
 pub use checkpointing::*;
+pub use current_state::*;
 pub use execution_bridge::*;
 pub use market_data::*;
 pub use objective::*;
 pub use optimizer_adapter::*;
+pub use runtime_seasonality::*;
 pub use staged_runner::*;
 pub use stages::hawkes::*;
 pub use stages::joint_refinement::*;

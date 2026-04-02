@@ -111,10 +111,10 @@ def successful_full_model_staged_runner_payload(
                             "lambda_bar": 0.8,
                             "beta": 1.6,
                             "alpha": {
-                                "plus_plus": 0.2,
-                                "plus_minus": 0.1,
-                                "minus_plus": 0.1,
-                                "minus_minus": 0.25,
+                                "plus_plus": 0.1,
+                                "plus_minus": 0.05,
+                                "minus_plus": 0.05,
+                                "minus_minus": 0.125,
                             },
                             "rho": {
                                 "plus_plus": 0.08,

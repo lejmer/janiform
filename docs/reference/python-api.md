@@ -12,6 +12,8 @@ Import the module that matches the workflow you want. The package root stays int
 
 Primary high-level fitting surface. Representative public symbols include:
 
+- `CurrentStateEstimationRequest`
+- `CurrentStateEstimationResult`
 - `JaniformEstimator`
 - `JaniformModel`
 - `JaniformFitReport`
@@ -22,6 +24,36 @@ Primary high-level fitting surface. Representative public symbols include:
 - `prepare_market_data_calibration`
 - `run_market_data_calibration`
 - `run_staged_calibration`
+
+The supported fit ownership submodules also include `janiform.calibration.fit.state_estimation`
+for the public current-state estimation contracts used by `JaniformModel.estimate_current_state(...)`.
+
+`JaniformModel` is the canonical high-level runtime surface for fitted models. In addition to
+`fit` persistence helpers, the main runtime entrypoints are:
+
+- `JaniformModel.estimate_current_state(...)`
+- `JaniformModel.price_option(...)`
+- `JaniformModel.simulate(...)`
+
+Current-state estimation is the default live-state path when observed data is supplied:
+
+- `estimate_current_state(...)` derives both the Hawkes excitation state and the mean-reversion
+  boundary state from recent observed tick data
+- `price_option(..., observed_data=...)` uses that estimator automatically before pricing
+- `simulate(..., continuation_data=...)` uses that estimator automatically before continuing the
+  path
+- when no observed data is supplied, Janiform falls back to the stationary Hawkes state
+- an explicit boundary-state override still bypasses estimation
+
+`CurrentStateEstimationRequest` is batch-shaped. It accepts observed tick data as either:
+
+- a pandas `DataFrame`
+- a mapping of column arrays, including numpy arrays
+
+By default, Janiform reads the timestamp, price, and trade-sign columns from the fitted model's
+saved input inference, so users can pass data that looks like the data they fit on without
+restating the column mapping. `tick_data_column_mapping` remains available when an override is
+needed.
 
 ### `janiform.simulation`
 
