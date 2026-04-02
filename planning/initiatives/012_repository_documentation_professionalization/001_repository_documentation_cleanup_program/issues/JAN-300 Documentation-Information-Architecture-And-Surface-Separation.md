@@ -16,8 +16,8 @@ Define the target information architecture for the repository's documentation su
 - The canonical surface split is explicit:
   `docs/` for public docs,
   repository root for contributor governance such as `CONTRIBUTING.md`, `documentation_policy.md`, and `documentation_style_guide.md`,
-  `design/` for internal design records,
-  and `planning/` for initiatives, projects, and issue tracking.
+  `design/` for internal design record.
+- `planning/` is mostly a temporary home for initiatives, projects, and issues. Their canonical home will always be Linear itself.
 - The public docs information architecture chooses concrete homes under `docs/`: `docs/getting-started/`, `docs/concepts/`, `docs/workflows/`, and `docs/reference/`.
 
 ### Unit tests
