@@ -114,6 +114,13 @@ class _PreparedModelSimulationInputs:
 
 
 @dataclass(frozen=True, slots=True)
+class _ResolvedModelSimulationInitialState:
+    excitation_state: HawkesExcitationState
+    mean_reversion_boundary_state: Optional[MeanReversionBoundaryState]
+    start_anchor_value: float
+
+
+@dataclass(frozen=True, slots=True)
 class _PreparedModelRuntimeFactors:
     calendar_registry: CalendarRegistry
     exchange_code: str
@@ -269,6 +276,7 @@ class JaniformModel:
         sink: Optional[SimulationArtifactSink] = None,
         continuation_data: Optional[CurrentStateEstimationRequest] = None,
         initial_excitation_state: Optional[HawkesExcitationState] = None,
+        initial_mean_reversion_boundary_state: Optional[MeanReversionBoundaryState] = None,
         debug_trace_enabled: bool = False,
         sample_every_nth_transition: int = 1,
         max_records_per_chunk: int = 1024,
@@ -302,6 +310,7 @@ class JaniformModel:
             simulation_kind=simulation_kind,
             continuation_data=continuation_data,
             initial_excitation_state=initial_excitation_state,
+            initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
             debug_trace_enabled=debug_trace_enabled,
             sample_every_nth_transition=sample_every_nth_transition,
             max_records_per_chunk=max_records_per_chunk,
@@ -566,6 +575,7 @@ def _prepare_model_simulation_inputs(
     simulation_kind: str,
     continuation_data: Optional[CurrentStateEstimationRequest] = None,
     initial_excitation_state: Optional[HawkesExcitationState],
+    initial_mean_reversion_boundary_state: Optional[MeanReversionBoundaryState] = None,
     debug_trace_enabled: bool,
     sample_every_nth_transition: int,
     max_records_per_chunk: int,
@@ -577,23 +587,21 @@ def _prepare_model_simulation_inputs(
         horizon_interval_count=horizon_interval_count,
         interval=interval,
     )
-    effective_start_anchor_value = 0.0
-    estimated_mean_reversion_boundary_state: Optional[MeanReversionBoundaryState] = None
-    effective_initial_state = (
-        runtime_factors.kernel_parameters.stationary_excitation_state()
-        if initial_excitation_state is None
-        else initial_excitation_state
+    initial_state_resolution = _resolve_model_simulation_initial_state(
+        model,
+        start_time_utc=start_time_utc,
+        continuation_data=continuation_data,
+        default_initial_excitation_state=(
+            runtime_factors.kernel_parameters.stationary_excitation_state()
+        ),
+        initial_excitation_state=initial_excitation_state,
+        initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
     )
-    if initial_excitation_state is None and continuation_data is not None:
-        estimated_current_state = model.estimate_current_state(
-            state_time_utc=start_time_utc,
-            request=continuation_data,
-        )
-        effective_initial_state = estimated_current_state.hawkes_excitation_state
-        estimated_mean_reversion_boundary_state = (
-            estimated_current_state.mean_reversion_boundary_state
-        )
-        effective_start_anchor_value = estimated_mean_reversion_boundary_state.anchor_value
+    effective_initial_state = initial_state_resolution.excitation_state
+    effective_start_anchor_value = initial_state_resolution.start_anchor_value
+    effective_mean_reversion_boundary_state = (
+        initial_state_resolution.mean_reversion_boundary_state
+    )
 
     coarse_request: Optional[CoarseSimulationRunRequest] = None
     seeded_request: Optional[SeededTickSimulationRequest] = None
@@ -639,8 +647,8 @@ def _prepare_model_simulation_inputs(
                 initial_excitation_state=effective_initial_state,
                 start_anchor_value=effective_start_anchor_value,
             )
-            if estimated_mean_reversion_boundary_state is not None:
-                initial_mean_reversion_boundary_state = estimated_mean_reversion_boundary_state
+            if effective_mean_reversion_boundary_state is not None:
+                initial_mean_reversion_boundary_state = effective_mean_reversion_boundary_state
 
             coarse_request = CoarseSimulationRunRequest.from_runtime_inputs(
                 seed=seed,
@@ -707,8 +715,8 @@ def _prepare_model_simulation_inputs(
                 initial_excitation_state=effective_initial_state,
                 start_anchor_value=effective_start_anchor_value,
             )
-            if estimated_mean_reversion_boundary_state is not None:
-                initial_mean_reversion_boundary_state = estimated_mean_reversion_boundary_state
+            if effective_mean_reversion_boundary_state is not None:
+                initial_mean_reversion_boundary_state = effective_mean_reversion_boundary_state
 
             seeded_request = SeededTickSimulationRequest.from_runtime_inputs(
                 seed=seed,
@@ -735,6 +743,56 @@ def _prepare_model_simulation_inputs(
     return _PreparedModelSimulationInputs(
         coarse_request=coarse_request,
         seeded_request=seeded_request,
+    )
+
+
+def _resolve_model_simulation_initial_state(
+    model: JaniformModel,
+    *,
+    start_time_utc: datetime,
+    continuation_data: Optional[CurrentStateEstimationRequest],
+    default_initial_excitation_state: HawkesExcitationState,
+    initial_excitation_state: Optional[HawkesExcitationState],
+    initial_mean_reversion_boundary_state: Optional[MeanReversionBoundaryState],
+) -> _ResolvedModelSimulationInitialState:
+    estimated_current_state: Optional[CurrentStateEstimationResult] = None
+    if continuation_data is not None and (
+        initial_excitation_state is None
+        or initial_mean_reversion_boundary_state is None
+    ):
+        estimated_current_state = model.estimate_current_state(
+            state_time_utc=start_time_utc,
+            request=continuation_data,
+        )
+
+    effective_initial_excitation_state = (
+        default_initial_excitation_state
+        if initial_excitation_state is None and estimated_current_state is None
+        else (
+            cast(CurrentStateEstimationResult, estimated_current_state).hawkes_excitation_state
+            if initial_excitation_state is None
+            else initial_excitation_state
+        )
+    )
+    effective_initial_mean_reversion_boundary_state = (
+        initial_mean_reversion_boundary_state
+        if initial_mean_reversion_boundary_state is not None
+        else (
+            None
+            if estimated_current_state is None
+            else estimated_current_state.mean_reversion_boundary_state
+        )
+    )
+    start_anchor_value = (
+        0.0
+        if effective_initial_mean_reversion_boundary_state is None
+        else effective_initial_mean_reversion_boundary_state.anchor_value
+    )
+
+    return _ResolvedModelSimulationInitialState(
+        excitation_state=effective_initial_excitation_state,
+        mean_reversion_boundary_state=effective_initial_mean_reversion_boundary_state,
+        start_anchor_value=start_anchor_value,
     )
 
 

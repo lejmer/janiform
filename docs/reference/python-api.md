@@ -43,7 +43,11 @@ Current-state estimation is the default live-state path when observed data is su
 - `simulate(..., continuation_data=...)` uses that estimator automatically before continuing the
   path
 - when no observed data is supplied, Janiform falls back to the stationary Hawkes state
-- an explicit boundary-state override still bypasses estimation
+- explicit `initial_excitation_state` and `initial_mean_reversion_boundary_state` overrides remain
+  available for diagnostic workflows
+- `JaniformSimulationResult.to_pandas()`, `to_numpy()`, and `to_parquet(...)` include the simulated
+  boundary-state fields `observed_log_price`, `anchor_value`, `pressure_state`, and
+  `deviation_from_anchor`
 
 `CurrentStateEstimationRequest` is batch-shaped. It accepts observed tick data as either:
 

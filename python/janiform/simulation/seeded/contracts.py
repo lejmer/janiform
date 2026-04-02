@@ -576,6 +576,7 @@ class SeededTickEventRecord(ContractModel):
     core_total_return_increment: float
     observed_log_price: float
     anchor_value: float
+    pressure_state: float
     deviation_from_anchor: float
     state_snapshot: Optional[SeededTickEventStateSnapshot] = None
 
@@ -633,6 +634,12 @@ class SeededTickEventRecord(ContractModel):
                 raw_payload,
                 "anchor_value",
                 f"{field_path}.anchor_value",
+                SIMULATION_ERROR_FACTORY,
+            ),
+            pressure_state=require_finite_number(
+                raw_payload,
+                "pressure_state",
+                f"{field_path}.pressure_state",
                 SIMULATION_ERROR_FACTORY,
             ),
             deviation_from_anchor=require_finite_number(
@@ -819,6 +826,7 @@ class SeededFinePathRecord(ContractModel):
     core_total_return_increment: float
     observed_log_price: float
     anchor_value: float
+    pressure_state: float
     deviation_from_anchor: float
     cumulative_core_log_return: float
     state_snapshot: Optional[SeededTickEventStateSnapshot] = None
@@ -946,6 +954,12 @@ class SeededFinePathRecord(ContractModel):
                 f"{field_path}.anchor_value",
                 SIMULATION_ERROR_FACTORY,
             ),
+            pressure_state=require_finite_number(
+                raw_payload,
+                "pressure_state",
+                f"{field_path}.pressure_state",
+                SIMULATION_ERROR_FACTORY,
+            ),
             deviation_from_anchor=require_finite_number(
                 raw_payload,
                 "deviation_from_anchor",
@@ -984,6 +998,7 @@ def _project_event_tape_from_fine_path(
                 core_total_return_increment=fine_path_record.core_total_return_increment,
                 observed_log_price=fine_path_record.observed_log_price,
                 anchor_value=fine_path_record.anchor_value,
+                pressure_state=fine_path_record.pressure_state,
                 deviation_from_anchor=fine_path_record.deviation_from_anchor,
                 state_snapshot=fine_path_record.state_snapshot,
             )

@@ -333,6 +333,7 @@ def _valid_response_payload() -> dict[str, Any]:
                 "core_total_return_increment": 0.1,
                 "observed_log_price": 0.1,
                 "anchor_value": 0.0,
+                "pressure_state": 0.0,
                 "deviation_from_anchor": 0.1,
                 "cumulative_core_log_return": 0.1,
             }
@@ -345,6 +346,7 @@ def _valid_response_payload() -> dict[str, Any]:
                 "core_total_return_increment": 0.1,
                 "observed_log_price": 0.1,
                 "anchor_value": 0.0,
+                "pressure_state": 0.0,
                 "deviation_from_anchor": 0.1,
             }
         ],

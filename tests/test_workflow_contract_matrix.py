@@ -280,6 +280,7 @@ def _build_simulation_direct_response_payload(calendar_registry, tmp_path: Path)
                     "core_total_return_increment": 0.05,
                     "observed_log_price": 0.05,
                     "anchor_value": 0.0,
+                    "pressure_state": 0.0,
                     "deviation_from_anchor": 0.05,
                     "cumulative_core_log_return": 0.05,
                 }
@@ -292,6 +293,7 @@ def _build_simulation_direct_response_payload(calendar_registry, tmp_path: Path)
                     "core_total_return_increment": 0.05,
                     "observed_log_price": 0.05,
                     "anchor_value": 0.0,
+                    "pressure_state": 0.0,
                     "deviation_from_anchor": 0.05,
                 }
             ],
@@ -540,6 +542,7 @@ def _run_simulation_invalid_response_side(calendar_registry) -> None:
                     "core_total_return_increment": 0.05,
                     "observed_log_price": 0.05,
                     "anchor_value": 0.0,
+                    "pressure_state": 0.0,
                     "deviation_from_anchor": 0.05,
                     "cumulative_core_log_return": 0.05,
                 }

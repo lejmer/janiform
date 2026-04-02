@@ -1444,6 +1444,9 @@
                 "observed_log_price": {
                   "type": "float"
                 },
+                "pressure_state": {
+                  "type": "float"
+                },
                 "side": {
                   "type": "string"
                 },
@@ -1521,6 +1524,9 @@
                 "observed_log_price": {
                   "type": "float"
                 },
+                "pressure_state": {
+                  "type": "float"
+                },
                 "return_components": {
                   "fields": {
                     "buy_side_return": {
@@ -1583,6 +1589,9 @@
                   "type": "null"
                 },
                 "observed_log_price": {
+                  "type": "float"
+                },
+                "pressure_state": {
                   "type": "float"
                 },
                 "return_components": {
@@ -1733,6 +1742,9 @@
                 "observed_log_price": {
                   "type": "float"
                 },
+                "pressure_state": {
+                  "type": "float"
+                },
                 "side": {
                   "type": "string"
                 },
@@ -1808,6 +1820,9 @@
                   "type": "null"
                 },
                 "observed_log_price": {
+                  "type": "float"
+                },
+                "pressure_state": {
                   "type": "float"
                 },
                 "return_components": {
