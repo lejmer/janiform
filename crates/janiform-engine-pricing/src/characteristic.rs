@@ -606,8 +606,14 @@ fn locate_nearest_root_on_side(
             return Ok(None);
         }
 
-        opposite_theta = midpoint;
-        opposite_evaluation = evaluate_residual(opposite_theta)?;
+        let Some((midpoint_theta, midpoint_evaluation)) =
+            locate_valid_side_evaluation(reference_theta, midpoint, evaluate_residual)?
+        else {
+            return Ok(None);
+        };
+
+        opposite_theta = midpoint_theta;
+        opposite_evaluation = midpoint_evaluation;
 
         if opposite_evaluation.residual.abs() <= tolerance {
             return Ok(Some((opposite_theta, opposite_evaluation)));
@@ -636,20 +642,24 @@ fn locate_nearest_root_on_side(
             return Ok(Some((best_theta, best_evaluation)));
         }
 
-        let midpoint_evaluation = evaluate_residual(midpoint)?;
+        let Some((midpoint_theta, midpoint_evaluation)) =
+            locate_valid_side_evaluation(same_sign_theta, midpoint, evaluate_residual)?
+        else {
+            return Ok(Some((best_theta, best_evaluation)));
+        };
 
         if midpoint_evaluation.residual.abs() < best_evaluation.residual.abs() {
-            best_theta = midpoint;
+            best_theta = midpoint_theta;
             best_evaluation = midpoint_evaluation;
         }
         if midpoint_evaluation.residual.abs() <= tolerance {
-            return Ok(Some((midpoint, midpoint_evaluation)));
+            return Ok(Some((midpoint_theta, midpoint_evaluation)));
         }
 
         if midpoint_evaluation.residual.signum() == reference_evaluation.residual.signum() {
-            same_sign_theta = midpoint;
+            same_sign_theta = midpoint_theta;
         } else {
-            opposite_theta = midpoint;
+            opposite_theta = midpoint_theta;
         }
     }
 }

@@ -132,6 +132,36 @@ class HawkesKernelParameters(ContractModel):
                 f"spectral radius(alpha / beta) must be < 1.0, found {spectral_radius}",
             )
 
+    def stationary_excitation_state(self) -> HawkesExcitationState:
+        scaled_plus_plus = self.alpha.plus_plus / self.beta
+        scaled_plus_minus = self.alpha.plus_minus / self.beta
+        scaled_minus_plus = self.alpha.minus_plus / self.beta
+        scaled_minus_minus = self.alpha.minus_minus / self.beta
+
+        determinant = (
+            (1.0 - scaled_plus_plus) * (1.0 - scaled_minus_minus)
+            - scaled_plus_minus * scaled_minus_plus
+        )
+        if determinant == 0.0:
+            raise _simulation_error(
+                "alpha",
+                "stationary Hawkes intensity system must be non-singular",
+            )
+
+        stationary_buy_intensity = self.lambda_bar * (
+            ((1.0 - scaled_minus_minus) + scaled_plus_minus) / determinant
+        )
+        stationary_sell_intensity = self.lambda_bar * (
+            (scaled_minus_plus + (1.0 - scaled_plus_plus)) / determinant
+        )
+
+        return HawkesExcitationState(
+            y_plus_plus=scaled_plus_plus * stationary_buy_intensity,
+            y_plus_minus=scaled_plus_minus * stationary_sell_intensity,
+            y_minus_plus=scaled_minus_plus * stationary_buy_intensity,
+            y_minus_minus=scaled_minus_minus * stationary_sell_intensity,
+        )
+
     @staticmethod
     def from_mapping(
         raw_payload: dict[str, Any] | Any,

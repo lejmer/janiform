@@ -2010,6 +2010,46 @@ def test_high_level_model_price_option_derives_boundary_state_from_spot_and_mode
     assert pricing_boundary_input.interval_delta == pytest.approx(1.0)
 
 
+def test_high_level_model_price_option_uses_stationary_hawkes_boundary_state_by_default(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _build_full_workflow_model(
+        tmp_path,
+        monkeypatch,
+        run_id="high-level-model-pricing-stationary-hawkes-boundary",
+    )
+    pricing_result = object()
+    captured_execution_inputs: list[Any] = []
+
+    monkeypatch.setattr(
+        fit_model_module,
+        "run_vanilla_option_pricing",
+        lambda execution_input: captured_execution_inputs.append(execution_input) or pricing_result,
+    )
+
+    observed_result = model.price_option(
+        valuation_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
+        spot=100.0,
+        strike=105.0,
+        maturity_interval=4.0,
+    )
+
+    runtime_factors = fit_model_module._prepare_model_runtime_factors(
+        model,
+        start_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
+        horizon_interval_count=4,
+        interval="1h",
+    )
+
+    assert observed_result is pricing_result
+    assert len(captured_execution_inputs) == 1
+    assert (
+        captured_execution_inputs[0].request.boundary_input.hawkes_boundary_state
+        == runtime_factors.kernel_parameters.stationary_excitation_state()
+    )
+
+
 def test_high_level_model_price_option_requires_reference_price_to_derive_pricing_state(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -2063,6 +2103,12 @@ def test_high_level_model_price_option_end_to_end_supports_endogenous_anchor_mea
         spot=100.0,
         strike=105.0,
         maturity_interval=1.0,
+        boundary_state=fit_model_module.HawkesExcitationState(
+            y_plus_plus=0.0,
+            y_plus_minus=0.0,
+            y_minus_plus=0.0,
+            y_minus_minus=0.0,
+        ),
         include_transform_diagnostics=True,
         include_integration_quality_diagnostics=True,
     )

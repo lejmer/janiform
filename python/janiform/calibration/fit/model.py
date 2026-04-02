@@ -887,7 +887,9 @@ def _prepare_model_pricing_execution_input(
         ) from e
 
     effective_boundary_state = (
-        _zero_hawkes_excitation_state() if boundary_state is None else boundary_state
+        runtime_factors.kernel_parameters.stationary_excitation_state()
+        if boundary_state is None
+        else boundary_state
     )
 
     hourly_factor_contract = provide_hourly_factor_contract(
