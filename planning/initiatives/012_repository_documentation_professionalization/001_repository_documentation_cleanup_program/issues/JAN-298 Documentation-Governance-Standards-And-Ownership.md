@@ -1,4 +1,4 @@
-## ISSUE-001: Documentation Governance, Standards, And Ownership
+## Documentation Governance, Standards, And Ownership
 
 ### Description
 Define the operating rules for Janiform documentation so the cleanup produces a maintainable system rather than a one-off rewrite. This issue combines the repository documentation policy, audience taxonomy, canonical-source rules, writing standards, review checklist, ownership model, archive or supersession handling, and release-governance expectations.

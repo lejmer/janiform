@@ -1,4 +1,4 @@
-## ISSUE-004: Top-Level Trust Surface Rewrite
+## Top-Level Trust Surface Rewrite
 
 ### Description
 Rewrite the first-contact repository pages so they present Janiform as a professional, externally readable project. This includes `README.md` and any top-level release or changelog entrypoints that a user, reviewer, or due-diligence reader is likely to open first.

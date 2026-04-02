@@ -1,4 +1,4 @@
-## ISSUE-007: Documentation Quality Gates And Executable Examples
+## Documentation Quality Gates And Executable Examples
 
 ### Description
 Add verification that prevents the documentation surface from drifting away from the product. The checks should cover at least Markdown hygiene, internal links, public example validity, and synchronization between documented workflows and the supported CLI or Python APIs.

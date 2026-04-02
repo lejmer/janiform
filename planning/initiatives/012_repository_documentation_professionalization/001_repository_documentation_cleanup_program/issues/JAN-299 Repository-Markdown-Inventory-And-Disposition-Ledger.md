@@ -1,4 +1,4 @@
-## ISSUE-002: Repository Markdown Inventory And Disposition Ledger
+## Repository Markdown Inventory And Disposition Ledger
 
 ### Description
 Build a complete ledger of tracked Markdown files and assign a disposition for each file. The ledger should include file path, audience, owner, current role, target role, canonical status, and migration decision such as keep, rewrite, merge, move, archive, generate, or delete.

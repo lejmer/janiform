@@ -1,4 +1,4 @@
-## ISSUE-006: Local README And Generated Markdown Normalization
+## Local README And Generated Markdown Normalization
 
 ### Description
 Normalize repo-adjacent Markdown surfaces that are not part of the public docs site but still affect professionalism and maintainability. This includes crate READMEs, fixture READMEs, examples READMEs, generated docs, and other local Markdown that users or contributors encounter while working in the repository.

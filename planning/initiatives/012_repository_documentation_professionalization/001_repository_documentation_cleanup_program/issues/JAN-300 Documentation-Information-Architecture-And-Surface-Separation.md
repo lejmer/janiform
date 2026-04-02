@@ -1,4 +1,4 @@
-## ISSUE-003: Documentation Information Architecture And Surface Separation
+## Documentation Information Architecture And Surface Separation
 
 ### Description
 Define the target information architecture for the repository's documentation surfaces and the boundaries between them. The resulting structure should clearly separate public product docs, contributor docs, internal design records, and planning records, and it should organize public docs around onboarding, concepts, workflows, and reference rather than current folder history.

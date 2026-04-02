@@ -1,4 +1,4 @@
-## ISSUE-005: Public Workflow Docs Rewrite And Migration
+## Public Workflow Docs Rewrite And Migration
 
 ### Description
 Rewrite the user-facing workflow documentation so it guides external users from installation to successful use of Janiform without exposing them to internal contract sprawl prematurely. The primary sequence should cover install, first successful market-data calibration, simulation from a fitted model, pricing, output interpretation, and known limitations or assumptions.
