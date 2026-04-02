@@ -53,3 +53,7 @@ Run the relevant suites before opening a pull request.
 - Move machine-readable inputs and outputs into fixtures or test data rather than `docs/`.
 - Update the relevant page in `docs/` when you change setup steps, public workflows, repository layout, or contributor expectations.
 - Run the owned generation scripts when you change preset sources, checked-in crate `README.md` files, public API snapshots, or benchmark smoke artifacts.
+
+## Licensing
+
+Janiform is licensed under `AGPL-3.0-only`. Contributions are made to the repository under that same license unless a separate written agreement says otherwise. See [LICENSE](LICENSE) and [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt).

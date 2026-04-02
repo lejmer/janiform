@@ -6,6 +6,8 @@ build-backend = "maturin"
 name = "janiform"
 description = "Python package and CLI for the Janiform SDE."
 readme = "README.md"
+license = "AGPL-3.0-only"
+license-files = ["LICENSE", "THIRD_PARTY_NOTICES.txt"]
 requires-python = ">=3.12"
 dynamic = ["version"]
 dependencies = [

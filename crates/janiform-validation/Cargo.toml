@@ -3,6 +3,7 @@ name = "janiform-validation"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+license.workspace = true
 description = "Validation and regression domains for Janiform."
 readme = "README.md"
 

@@ -73,6 +73,17 @@ python scripts/update_public_api_contract_snapshot.py
 
 This rewrites `tests/fixtures/python_api_contracts/public_api_contract_snapshot.json`.
 
+### Third-party notices
+
+Regenerate the checked-in Rust third-party notices file after changing the bundled native dependency set:
+
+```bash
+python scripts/generate_third_party_notices.py
+python scripts/generate_third_party_notices.py --check
+```
+
+This rewrites `THIRD_PARTY_NOTICES.txt`.
+
 ### Seeded runtime smoke report
 
 Regenerate the checked-in seeded-runtime smoke report after changing the smoke fixture or the report contract:

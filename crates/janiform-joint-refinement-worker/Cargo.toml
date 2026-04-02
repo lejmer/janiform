@@ -3,6 +3,7 @@ name = "janiform-joint-refinement-worker"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+license.workspace = true
 description = "Process-isolated joint-refinement summary simulation worker for Janiform."
 
 [[bin]]

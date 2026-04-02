@@ -3,6 +3,7 @@ name = "janiform-governance"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+license.workspace = true
 description = "Governance and regression orchestration for Janiform."
 readme = "README.md"
 

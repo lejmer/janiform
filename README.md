@@ -70,3 +70,7 @@ Use [docs/guides/cli-workflows.md](docs/guides/cli-workflows.md) for workflow se
 - [docs/reference/python-api.md](docs/reference/python-api.md)
 - [docs/reference/cli.md](docs/reference/cli.md)
 - [CONTRIBUTING.md](CONTRIBUTING.md)
+
+## License
+
+Janiform is licensed under `AGPL-3.0-only`. See [LICENSE](LICENSE). Release artifacts that bundle the native extension also ship [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt) for the bundled Rust dependency closure.

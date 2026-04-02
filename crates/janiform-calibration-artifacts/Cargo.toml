@@ -3,6 +3,7 @@ name = "janiform-calibration-artifacts"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+license.workspace = true
 description = "Calibration artifact contracts and persistence for Janiform."
 readme = "README.md"
 
