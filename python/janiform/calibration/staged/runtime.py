@@ -6,8 +6,6 @@ transport and event-stream plumbing stay internal so the supported API remains
 artifact-backed instead of exposing another weak wrapper layer.
 """
 
-from __future__ import annotations
-
 from collections.abc import Callable
 from pathlib import Path
 from types import ModuleType
@@ -80,6 +78,7 @@ def _run_staged_calibration_with_optional_events(
 ) -> tuple[StagedCalibrationResponse, dict[str, Any]]:
     if not isinstance(execution_input, StagedCalibrationExecutionInput):
         raise _calibration_error("execution_input", "must be a StagedCalibrationExecutionInput")
+
     if not isinstance(calendar_registry, CalendarRegistry):
         raise _calibration_error("calendar_registry", "must be a CalendarRegistry")
 

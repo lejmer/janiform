@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import csv
 import json
 import os
@@ -48,6 +46,12 @@ if "MPLCONFIGDIR" not in os.environ:
 
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
+
+from janiform.calibration.staged._progress_policy import (
+    CalibrationLiveProgressSnapshot,
+    calibration_total_progress_fraction as _shared_calibration_total_progress_fraction,
+    progress_bar_display_units as _shared_progress_bar_display_units,
+)
 
 from .artifacts import WorkbenchArtifacts, build_summary_payload
 from .candidate_store import (
@@ -99,29 +103,6 @@ from .state import (
     WorkbenchRunState,
     build_initial_workbench_state,
 )
-
-# UI-only wall-clock weighting policy for live total-progress display.
-# The final stage dominates calibration runtime on production-scale tick datasets,
-# so total progress should reserve most of the bar for joint refinement instead
-# of treating each staged-calibration step as equally expensive.
-WORKBENCH_TOTAL_PROGRESS_STAGE_WEIGHT_POLICY_V1: dict[str, float] = {
-    "seasonality": 0.05,
-    "hawkes": 0.05,
-    "return_components": 0.05,
-    "mean_reversion": 0.05,
-    "joint_refinement": 0.80,
-}
-WORKBENCH_TOTAL_PROGRESS_COMPLETION_RESERVE_V1: float = 0.01
-# UI-only wall-clock weighting policy for the internal joint-refinement phases.
-# Restart optimization and coarse consistency dominate runtime in production
-# calibrations, while finalist seed evaluation and final assembly are usually
-# short tail work that should not consume most of the remaining bar.
-WORKBENCH_JOINT_REFINEMENT_PROGRESS_PHASE_WEIGHT_POLICY_V1: dict[str, float] = {
-    "restart_optimization": 0.55,
-    "coarse_consistency_evaluation": 0.40,
-    "final_seed_evaluation": 0.03,
-    "final_assembly": 0.02,
-}
 
 
 class WorkbenchWindow(QMainWindow):
@@ -1888,8 +1869,14 @@ class WorkbenchWindow(QMainWindow):
             and subprogress.completed_units is not None
             and subprogress.total_units > 0
         ):
+            display_units = _shared_progress_bar_display_units(
+                subprogress.completed_units,
+                subprogress.total_units,
+            )
             self._run_stage_progress_bar.setRange(0, subprogress.total_units)
-            self._run_stage_progress_bar.setValue(subprogress.completed_units)
+            self._run_stage_progress_bar.setValue(
+                0 if display_units is None else display_units[0]
+            )
         elif run_state.status == "running":
             self._run_stage_progress_bar.setRange(0, 0)
         else:
@@ -3135,135 +3122,18 @@ def _format_elapsed_duration(elapsed_seconds: float) -> str:
 
 
 def _total_run_progress_fraction(run_state: WorkbenchRunState) -> Optional[float]:
-    if run_state.status == "completed":
-        return 1.0
-
-    stage_index = run_state.stage_progress.completed_units
-    if not isinstance(stage_index, int) or stage_index <= 0:
-        return None
-
-    stage_weights = _stage_weights_for_run_stage_sequence(run_state.stage_sequence)
-    if stage_weights is not None and stage_index <= len(stage_weights):
-        completed_weight = sum(stage_weights[: max(stage_index - 1, 0)])
-        if run_state.current_stage_is_complete:
-            stage_execution_fraction = min(
-                max(completed_weight + stage_weights[stage_index - 1], 0.0),
-                1.0,
-            )
-            return (1.0 - WORKBENCH_TOTAL_PROGRESS_COMPLETION_RESERVE_V1) * stage_execution_fraction
-
-        current_stage_fraction = _current_stage_progress_fraction(run_state)
-        stage_execution_fraction = min(
-            max(completed_weight + current_stage_fraction * stage_weights[stage_index - 1], 0.0),
-            1.0,
+    return _shared_calibration_total_progress_fraction(
+        CalibrationLiveProgressSnapshot(
+            status=run_state.status,
+            stage_sequence=run_state.stage_sequence,
+            stage_index=run_state.stage_progress.completed_units,
+            stage_count=run_state.stage_progress.total_units,
+            current_stage=run_state.current_stage,
+            current_subtask=run_state.current_subtask,
+            current_stage_is_complete=run_state.current_stage_is_complete,
+            subtask_completed_units=run_state.subprogress.completed_units,
+            subtask_total_units=run_state.subprogress.total_units,
         )
-        return (1.0 - WORKBENCH_TOTAL_PROGRESS_COMPLETION_RESERVE_V1) * stage_execution_fraction
-
-    stage_count = run_state.stage_progress.total_units
-    if not isinstance(stage_count, int) or stage_count <= 0:
-        return None
-
-    if run_state.current_stage_is_complete:
-        return (1.0 - WORKBENCH_TOTAL_PROGRESS_COMPLETION_RESERVE_V1) * min(
-            max(stage_index / stage_count, 0.0),
-            1.0,
-        )
-
-    completed_stage_count = max(stage_index - 1, 0)
-    current_stage_fraction = _current_stage_progress_fraction(run_state)
-    return (1.0 - WORKBENCH_TOTAL_PROGRESS_COMPLETION_RESERVE_V1) * min(
-        max((completed_stage_count + current_stage_fraction) / stage_count, 0.0),
-        1.0,
-    )
-
-
-def _current_stage_progress_fraction(run_state: WorkbenchRunState) -> float:
-    joint_refinement_phase_progress_fraction = _joint_refinement_phase_progress_fraction(run_state)
-    if joint_refinement_phase_progress_fraction is not None:
-        return joint_refinement_phase_progress_fraction
-
-    subprogress_completed_units = run_state.subprogress.completed_units
-    subprogress_total_units = run_state.subprogress.total_units
-    if (
-        isinstance(subprogress_completed_units, int)
-        and isinstance(subprogress_total_units, int)
-        and subprogress_total_units > 0
-    ):
-        return min(
-            max(subprogress_completed_units / subprogress_total_units, 0.0),
-            1.0,
-        )
-
-    return 1.0 if run_state.current_stage_is_complete else 0.0
-
-
-def _joint_refinement_phase_progress_fraction(run_state: WorkbenchRunState) -> Optional[float]:
-    if run_state.current_stage != "joint_refinement":
-        return None
-
-    if run_state.current_stage_is_complete:
-        return 1.0
-
-    current_subtask = run_state.current_subtask
-    if not isinstance(current_subtask, str) or not current_subtask.startswith("joint_refinement."):
-        return 0.0
-
-    progress_phase = current_subtask.split(".", 1)[1]
-    phase_weights = _joint_refinement_phase_weights()
-    if phase_weights is None or progress_phase not in phase_weights:
-        return None
-    phase_names = tuple(phase_weights.keys())
-    phase_index = phase_names.index(progress_phase)
-
-    subprogress_completed_units = run_state.subprogress.completed_units
-    subprogress_total_units = run_state.subprogress.total_units
-    current_phase_fraction = 0.0
-    if (
-        isinstance(subprogress_completed_units, int)
-        and isinstance(subprogress_total_units, int)
-        and subprogress_total_units > 0
-    ):
-        current_phase_fraction = min(
-            max(subprogress_completed_units / subprogress_total_units, 0.0),
-            1.0,
-        )
-
-    completed_phase_weight = sum(
-        phase_weights[phase_name] for phase_name in phase_names[:phase_index]
-    )
-    return completed_phase_weight + current_phase_fraction * phase_weights[progress_phase]
-
-
-def _joint_refinement_phase_weights() -> Optional[dict[str, float]]:
-    total_weight = sum(WORKBENCH_JOINT_REFINEMENT_PROGRESS_PHASE_WEIGHT_POLICY_V1.values())
-    if total_weight <= 0.0:
-        return None
-
-    return {
-        phase_name: phase_weight / total_weight
-        for phase_name, phase_weight in WORKBENCH_JOINT_REFINEMENT_PROGRESS_PHASE_WEIGHT_POLICY_V1.items()
-    }
-
-
-def _stage_weights_for_run_stage_sequence(stage_sequence: tuple[str, ...]) -> Optional[tuple[float, ...]]:
-    if len(stage_sequence) == 0:
-        return None
-
-    raw_stage_weights = [
-        WORKBENCH_TOTAL_PROGRESS_STAGE_WEIGHT_POLICY_V1.get(stage_name)
-        for stage_name in stage_sequence
-    ]
-    if any(weight is None for weight in raw_stage_weights):
-        return None
-
-    total_weight = sum(weight for weight in raw_stage_weights if weight is not None)
-    if total_weight <= 0.0:
-        return None
-
-    return tuple(
-        weight / total_weight
-        for weight in raw_stage_weights
-        if weight is not None
     )
 
 

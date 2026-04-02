@@ -16,7 +16,7 @@ Janiform takes its name from Janus, the Roman god traditionally depicted with tw
 ./scripts/bootstrap-linux.sh .venv-linux
 source .venv-linux/bin/activate
 janiform --help
-python -m examples.synthetic_eurusd
+python -m examples.introductory.first_model
 ```
 
 ### Windows PowerShell
@@ -25,7 +25,7 @@ python -m examples.synthetic_eurusd
 ./scripts/bootstrap-win.ps1 .venv
 . .\.venv\Scripts\Activate.ps1
 janiform --help
-python -m examples.synthetic_eurusd
+python -m examples.high_level.synthetic_eurusd_plot
 ```
 
 ## Fastest Python Path
@@ -48,6 +48,7 @@ frame = simulation.to_pandas()
 
 Use [docs/getting-started/first-model.md](docs/getting-started/first-model.md) for the full happy-path workflow and pricing notes.
 Use [docs/getting-started/concepts.md](docs/getting-started/concepts.md) when terms like market profile, seeded ticks, or anchor are unfamiliar.
+Use [examples/README.md](examples/README.md) for the grouped example index.
 
 ## Fastest CLI Path
 

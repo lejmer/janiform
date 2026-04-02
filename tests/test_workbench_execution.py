@@ -4,11 +4,11 @@ from typing import Any, Optional
 
 from janiform.calibration.market_data.contracts import CalibrationMarketDataWorkflowScope
 from janiform.calibration.staged.contracts import CalibrationStageExecutionStatus
+from janiform.calibration.staged.progress import format_staged_progress_event_detail
 from janiform.contracts import MeanReversionAnchorModelKind
 from tools.workbench.execution import (
     RESOURCE_SNAPSHOT_INTERVAL_SECONDS,
     WorkbenchExecutionWorker,
-    _detail_for_stage_progress_event,
     _live_stage_report_payload,
     _mean_reversion_configuration_from_setup,
 )
@@ -243,7 +243,7 @@ def test_live_stage_report_payload_keeps_candidate_diagnostics_only() -> None:
 
 
 def test_stage_progress_detail_summarizes_joint_refinement_runtime_state() -> None:
-    detail = _detail_for_stage_progress_event(
+    detail = format_staged_progress_event_detail(
         {
             "stage": "joint_refinement",
             "progress_phase": "restart_optimization",
@@ -263,7 +263,7 @@ def test_stage_progress_detail_summarizes_joint_refinement_runtime_state() -> No
 
 
 def test_stage_progress_detail_labels_post_restart_joint_refinement_phases() -> None:
-    coarse_detail = _detail_for_stage_progress_event(
+    coarse_detail = format_staged_progress_event_detail(
         {
             "stage": "joint_refinement",
             "progress_phase": "coarse_consistency_evaluation",
@@ -276,7 +276,7 @@ def test_stage_progress_detail_labels_post_restart_joint_refinement_phases() -> 
             "best_coarse_consistency_fit": 0.998,
         }
     )
-    final_detail = _detail_for_stage_progress_event(
+    final_detail = format_staged_progress_event_detail(
         {
             "stage": "joint_refinement",
             "progress_phase": "final_assembly",

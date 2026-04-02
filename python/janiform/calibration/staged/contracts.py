@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, Optional
@@ -65,8 +63,10 @@ class CalibrationRunDataInputs(ContractModel):
     def __post_init__(self) -> None:
         if not self.exchange_code.strip():
             raise _calibration_error("exchange_code", "must be a non-empty string")
+
         if not self.trade_events_data_reference.strip():
             raise _calibration_error("trade_events_data_reference", "must be a non-empty string")
+
         if self.option_surface_data_reference is not None and not self.option_surface_data_reference.strip():
             raise _calibration_error(
                 "option_surface_data_reference",

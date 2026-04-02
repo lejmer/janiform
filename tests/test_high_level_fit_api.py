@@ -2297,7 +2297,19 @@ def test_high_level_fit_progress_splits_loading_and_translation_steps(
 
             return None
 
-        def update(self, *, detail: str | None = None) -> None:
+        def update(
+            self,
+            *,
+            detail: str | None = None,
+            subdetail: str | None = None,
+            completed_units: int | None = None,
+            total_units: int | None = None,
+            reset_progress_units: bool = False,
+        ) -> None:
+            _ = subdetail
+            _ = completed_units
+            _ = total_units
+            _ = reset_progress_units
             if detail is not None:
                 progress_details.append(detail)
 
@@ -2308,7 +2320,7 @@ def test_high_level_fit_progress_splits_loading_and_translation_steps(
         total_steps: int | None = None,
     ) -> _CapturingProgress:
         assert label == "fit"
-        assert total_steps == 7
+        assert total_steps == 8
 
         return _CapturingProgress()
 

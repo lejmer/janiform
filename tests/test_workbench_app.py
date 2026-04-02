@@ -290,9 +290,9 @@ def test_workbench_window_tracks_stage_and_total_progress_separately() -> None:
         assert window._run_stage_elapsed_label.text() == "Current stage elapsed: 42.5s"
         assert window._run_total_elapsed_label.text() == "Total elapsed: 42.5s"
         assert window._run_stage_progress_bar.maximum() == 8
-        assert window._run_stage_progress_bar.value() == 2
+        assert window._run_stage_progress_bar.value() == 1
         assert window._run_total_progress_bar.maximum() == 1000
-        assert window._run_total_progress_bar.value() == 307
+        assert window._run_total_progress_bar.value() == 243
     finally:
         window.close()
         application.processEvents()
@@ -365,8 +365,8 @@ def test_workbench_window_total_progress_does_not_regress_across_joint_refinemen
             )
         )
 
-        assert restart_completion_value == 634
-        assert window._run_total_progress_bar.value() == restart_completion_value
+        assert restart_completion_value == 811
+        assert window._run_total_progress_bar.value() == 906
     finally:
         window.close()
         application.processEvents()

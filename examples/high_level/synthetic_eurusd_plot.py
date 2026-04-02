@@ -1,8 +1,6 @@
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Final
 
-import matplotlib.pyplot as plt
 import pandas as pd
 
 from janiform.calibration import (
@@ -11,10 +9,9 @@ from janiform.calibration import (
     JaniformSimulationResult,
 )
 
+from examples._shared import SYNTHETIC_EURUSD_TICK_DATA_PATH
 
-DATA_PATH: Final[Path] = (
-    Path(__file__).resolve().parents[1] / "data" / "Synthetic_EURUSD_Data_1M_ticks.parquet"
-)
+
 SIMULATION_START_UTC: Final[datetime] = datetime(2023, 3, 28, 19, 0, tzinfo=UTC)
 COARSE_INTERVAL: Final[str] = "15min"
 COARSE_INTERVAL_COUNT: Final[int] = 96 * 7
@@ -24,8 +21,10 @@ PRICE_COLUMN: Final[str] = "close"
 
 
 def main() -> None:
-    estimator = JaniformEstimator(market_profile="eurusd_spot")
-    model: JaniformModel = estimator.fit(tick_data_path=DATA_PATH)
+    import matplotlib.pyplot as plt
+
+    estimator: JaniformEstimator = JaniformEstimator(market_profile="eurusd_spot")
+    model: JaniformModel = estimator.fit(tick_data_path=SYNTHETIC_EURUSD_TICK_DATA_PATH)
     coarse_simulation: JaniformSimulationResult = model.simulate(
         seed=17,
         start_time_utc=SIMULATION_START_UTC,

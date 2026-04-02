@@ -41,7 +41,13 @@ print(simulation.to_pandas().head())
 Start with this example script:
 
 ```bash
-python -m examples.synthetic_eurusd
+python -m examples.introductory.first_model
 ```
 
-`examples.synthetic_eurusd` is a good first example because it fits the sample EUR/USD dataset and plots both coarse and seeded simulation output.
+`examples.introductory.first_model` is the shortest importable example because it fits the sample EUR/USD dataset and returns a pandas-ready simulation frame without plotting dependencies.
+
+When you want the plotting walkthrough, use:
+
+```bash
+python -m examples.high_level.synthetic_eurusd_plot
+```
