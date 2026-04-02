@@ -71,14 +71,24 @@ from ..sessions._resolution import (
     SessionTemplate,
 )
 from ..staged import CalibrationStageExecutionStatus
+from ..staged import runtime as staged_runtime_module
 from ..staged import CalibrationStageSolverSettings
-from ..staged.runtime import _run_prepared_staged_calibration_with_raw_payload
+from ..staged.progress import (
+    NativeStagedCalibrationProgressTracker,
+    update_cli_progress_from_staged_native_event,
+)
+from ..staged.runtime import (
+    _run_native_staged_calibration_with_prepared_handle_and_events,
+    _run_prepared_staged_calibration_with_raw_payload,
+)
 from ..staged.results import build_staged_failure_context, format_staged_failure_summary
 from ..._workflow_outputs import write_fit_artifacts
 from ..._workflow_progress import (
     AbstractProgress,
     JaniformOutputController,
+    JsonLinesProgress,
     NullProgress,
+    SpinnerProgress,
     WorkflowProgressMode,
 )
 from ...calendar import CalendarRegistry
@@ -276,15 +286,44 @@ class JaniformEstimator:
                         option_surface_provenance_label=option_surface_provenance_label,
                         progress=progress,
                     )
+
                     if prepared_workflow.fit_warning is not None:
                         output_controller.warning(prepared_workflow.fit_warning)
+
                     progress.update(detail="running calibration")
-                    staged_response, raw_response_payload = _run_prepared_staged_calibration_with_raw_payload(
-                        prepared_workflow.prepared.prepared_handle,
-                        calendar_registry=CalendarRegistry(
-                            prepared_workflow.prepared.session_resolution.resolved_session_definition_json
-                        ),
+
+                    calendar_registry = CalendarRegistry(
+                        prepared_workflow.prepared.session_resolution.resolved_session_definition_json
                     )
+
+                    uses_default_prepared_runner = (
+                        _run_prepared_staged_calibration_with_raw_payload
+                        is staged_runtime_module._run_prepared_staged_calibration_with_raw_payload
+                    )
+
+                    if (
+                        isinstance(progress, SpinnerProgress | JsonLinesProgress)
+                        and uses_default_prepared_runner
+                    ):
+                        staged_progress_tracker = NativeStagedCalibrationProgressTracker()
+                        staged_response, raw_response_payload = (
+                            _run_native_staged_calibration_with_prepared_handle_and_events(
+                                prepared_workflow.prepared.prepared_handle,
+                                calendar_registry=calendar_registry,
+                                event_callback=lambda raw_event: update_cli_progress_from_staged_native_event(
+                                    progress,
+                                    staged_progress_tracker,
+                                    raw_event,
+                                ),
+                            )
+                        )
+                    else:
+                        staged_response, raw_response_payload = (
+                            _run_prepared_staged_calibration_with_raw_payload(
+                                prepared_workflow.prepared.prepared_handle,
+                                calendar_registry=calendar_registry,
+                            )
+                        )
             finally:
                 if (
                     prepared_workflow is not None
@@ -360,12 +399,14 @@ class JaniformEstimator:
             session_resolution=prepared_workflow.prepared.session_resolution,
             _stage_report_payloads=fit_report.stage_report_payloads,
         )
+
         if output_dir is not None:
             write_fit_artifacts(
                 model=model,
                 fit_report=fit_report,
                 output_dir=output_dir,
             )
+
         if report:
             return model, fit_report
 
@@ -375,7 +416,7 @@ class JaniformEstimator:
         if self._requires_session_inference():
             return 9
 
-        return 7
+        return 8
 
     def _build_market_data_request(
         self,
@@ -396,6 +437,7 @@ class JaniformEstimator:
             resolved_configuration.known_news.configuration,
             working_directory=working_directory,
         )
+
         column_mapping = CalibrationMarketDataColumnMapping(
             tick_data=tick_data_column_mapping,
             option_surface=self._option_surface_column_mapping,
@@ -443,9 +485,11 @@ class JaniformEstimator:
         progress: Optional[AbstractProgress] = None,
     ) -> _PreparedHighLevelFitWorkflow:
         effective_progress = NullProgress() if progress is None else progress
+
         resolved_market_profile_configuration = (
             self._resolve_market_profile_configuration()
         )
+
         input_inference = infer_high_level_fit_inputs(
             tick_data_path=Path(tick_data_path),
             tick_data_format=tick_data_format,
@@ -456,6 +500,7 @@ class JaniformEstimator:
             normalization_overrides=normalization_overrides_from_policy(self._normalization_policy),
             market_profile_configuration=resolved_market_profile_configuration,
         )
+
         option_surface_source = (
             CalibrationInputFileReference(
                 path=str(Path(option_surface_path)),
@@ -469,6 +514,7 @@ class JaniformEstimator:
         temporary_directory: Optional[TemporaryDirectory[str]] = None
         try:
             effective_progress.update(detail="normalize source")
+
             normalized_market_data = normalize_market_data_source(
                 tick_data_source=input_inference.tick_data_source,
                 tick_data_column_mapping=input_inference.tick_data_column_mapping,
@@ -477,7 +523,9 @@ class JaniformEstimator:
                     self._workflow_scope != CalibrationMarketDataWorkflowScope.SEASONALITY_ONLY
                 ),
             )
+
             effective_progress.update(detail="resolve session")
+
             inferred_session_resolution = self._infer_session_resolution(
                 run_id=input_inference.run_id,
                 tick_data_source=input_inference.tick_data_source,
@@ -486,7 +534,9 @@ class JaniformEstimator:
                 normalized_market_data=normalized_market_data,
                 progress=effective_progress,
             )
+
             effective_progress.update(detail="resolve presets")
+
             resolved_configuration = resolve_preset_workflow_configuration(
                 registry=self._registry,
                 market_profile_reference=self._market_profile_reference,
@@ -494,6 +544,7 @@ class JaniformEstimator:
                 known_news_reference=self._known_news_reference,
                 inferred_session_resolution=inferred_session_resolution,
             )
+
             requires_materialization = _resolved_configuration_requires_materialization(
                 resolved_configuration
             )
@@ -502,7 +553,9 @@ class JaniformEstimator:
                 working_directory = Path(temporary_directory.name)
             else:
                 working_directory = None
+
             effective_progress.update(detail="build market-data request")
+
             request = self._build_market_data_request(
                 run_id=input_inference.run_id,
                 tick_data_source=input_inference.tick_data_source,
@@ -512,18 +565,23 @@ class JaniformEstimator:
                 normalization_policy=input_inference.normalization_policy,
                 working_directory=working_directory,
             )
+
             effective_progress.update(detail="resolve session")
+
             session_resolution = resolve_market_data_session(
                 session_configuration=request.session_configuration,
                 normalized_market_data=normalized_market_data,
             )
+
             effective_progress.update(detail="prepare stage inputs")
+
             translation_result = translate_market_data_request_to_prepared_calibration_from_phases(
                 request=request,
                 normalized_market_data=normalized_market_data,
                 session_resolution=session_resolution,
                 cpu_count=self._cpu_count,
             )
+
             prepared = _prepare_market_data_calibration_from_translation_result(
                 request=request,
                 translation_result=translation_result,
@@ -531,6 +589,7 @@ class JaniformEstimator:
         except Exception:
             if temporary_directory is not None:
                 temporary_directory.cleanup()
+
             raise
 
         return _PreparedHighLevelFitWorkflow(
@@ -638,6 +697,7 @@ class JaniformEstimator:
             preset_name=self._market_profile_reference.preset_name,
             registry_scope=self._market_profile_reference.registry_scope,
         )
+
         return artifact.configuration
 
     def _resolve_exchange_code_for_inference(self) -> str:
@@ -677,8 +737,10 @@ def _coerce_market_profile_reference(
 ) -> Optional[MarketProfileReference]:
     if market_profile is None:
         return None
+
     if isinstance(market_profile, MarketProfileReference):
         return market_profile
+
     if isinstance(market_profile, str):
         if not market_profile.strip():
             raise _calibration_error("market_profile", "must be a non-empty string")
@@ -702,6 +764,7 @@ def _coerce_session_reference(
 ) -> Optional[SessionPresetReference]:
     if session is None:
         return None
+
     if isinstance(session, SessionPresetReference):
         return session
 
@@ -735,6 +798,7 @@ def _coerce_known_news_reference(
 ) -> Optional[KnownNewsPresetReference]:
     if known_news is None:
         return None
+
     if isinstance(known_news, KnownNewsPresetReference):
         return known_news
 
@@ -808,8 +872,10 @@ def _load_explicit_session_configuration(
         )
 
     regular_session_windows = regular_session_windows_from_exchange_artifact(exchange_artifact)
+
     exchange_name = cast(str, exchange_artifact["exchange_name"])
     timezone_name = cast(str, exchange_artifact["timezone_name"])
+
     session_template = SessionTemplate(
         policy_id="high_level.explicit_session_definition.v1",
         exchange_name=exchange_name,
@@ -936,6 +1002,7 @@ def _build_session_configuration_input(
             "session_configuration",
             "resolved session materialization requires a working directory",
         )
+
     session_definition_path = working_directory / "resolved-session-definition.json"
     session_definition_path.write_text(
         _calendar_registry_json_from_session_configuration(session_configuration),

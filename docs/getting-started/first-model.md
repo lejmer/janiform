@@ -47,4 +47,4 @@ result = model.price_option(
 
 ## Related Example
 
-[`examples/synthetic_eurusd.py`](../../examples/synthetic_eurusd.py) is a good next step when you want the same fit and simulation flow with plotting included.
+[`examples/high_level/synthetic_eurusd_plot.py`](../../examples/high_level/synthetic_eurusd_plot.py) is a good next step when you want the same fit and simulation flow with plotting included. Use [`examples/README.md`](../../examples/README.md) for the grouped example index.

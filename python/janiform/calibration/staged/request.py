@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from dataclasses import dataclass
 from typing import Any, Optional
 
@@ -43,8 +41,10 @@ class StagedCalibrationRequest(ContractModel):
     def __post_init__(self) -> None:
         if not self.run_id.strip():
             raise _calibration_error("run_id", "must be a non-empty string")
+
         if len(self.selected_stages) == 0:
             raise _calibration_error("selected_stages", "must include at least one calibration stage")
+
         if self.seed_settings is None:
             raise _calibration_error("seed_settings", "is required")
 

@@ -49,8 +49,11 @@ class AbstractProgress(AbstractContextManager[None]):
         self,
         *,
         detail: Optional[str] = None,
+        subdetail: Optional[str] = None,
         completed_units: Optional[int] = None,
         total_units: Optional[int] = None,
+        reset_progress_units: bool = False,
+        progress_fraction: Optional[float] = None,
     ) -> None:
         raise NotImplementedError
 
@@ -61,12 +64,18 @@ class NullProgress(AbstractProgress):
         self,
         *,
         detail: Optional[str] = None,
+        subdetail: Optional[str] = None,
         completed_units: Optional[int] = None,
         total_units: Optional[int] = None,
+        reset_progress_units: bool = False,
+        progress_fraction: Optional[float] = None,
     ) -> None:
         _ = detail
+        _ = subdetail
         _ = completed_units
         _ = total_units
+        _ = reset_progress_units
+        _ = progress_fraction
 
     def __exit__(self, exc_type, exc, exc_tb) -> None:
         return None
@@ -86,8 +95,10 @@ class SpinnerProgress(AbstractProgress):
         self._enabled: bool = enabled
         self._total_steps: Optional[int] = total_steps
         self._detail: Optional[str] = None
+        self._subdetail: Optional[str] = None
         self._completed_units: Optional[int] = None
         self._total_units: Optional[int] = None
+        self._progress_fraction: Optional[float] = None
         self._stage_started_at: Optional[float] = None
         self._current_step_index: int = 0
         self._lock = Lock()
@@ -105,13 +116,23 @@ class SpinnerProgress(AbstractProgress):
         self,
         *,
         detail: Optional[str] = None,
+        subdetail: Optional[str] = None,
         completed_units: Optional[int] = None,
         total_units: Optional[int] = None,
+        reset_progress_units: bool = False,
+        progress_fraction: Optional[float] = None,
     ) -> None:
         if not self._enabled:
             return
 
-        if detail is None and completed_units is None and total_units is None:
+        if (
+            detail is None
+            and subdetail is None
+            and completed_units is None
+            and total_units is None
+            and not reset_progress_units
+            and progress_fraction is None
+        ):
             return
 
         with self._lock:
@@ -121,15 +142,28 @@ class SpinnerProgress(AbstractProgress):
             if detail_changed:
                 self._finalize_current_stage_locked(status="done")
                 self._detail = next_detail
+                self._subdetail = subdetail
                 self._completed_units = completed_units
                 self._total_units = total_units
+                self._progress_fraction = progress_fraction
                 self._current_step_index += 1
                 self._stage_started_at = monotonic()
                 self._render_active_stage_locked(frame=_SPINNER_FRAMES[0])
                 return
 
+            if subdetail is not None:
+                self._subdetail = subdetail
+
+            if reset_progress_units:
+                self._completed_units = None
+                self._total_units = None
+
+            if progress_fraction is not None:
+                self._progress_fraction = progress_fraction
+
             if completed_units is not None:
                 self._completed_units = completed_units
+
             if total_units is not None:
                 self._total_units = total_units
 
@@ -163,7 +197,9 @@ class SpinnerProgress(AbstractProgress):
             self._finalize_current_stage_locked(
                 status="done" if exc_type is None else "failed"
             )
+
             workflow_status = "done" if exc_type is None else "failed"
+
             self._stream.write(f"{workflow_status} {self._label} total [{total_elapsed}]\n")
             self._stream.flush()
 
@@ -178,10 +214,14 @@ class SpinnerProgress(AbstractProgress):
             elapsed_seconds=monotonic() - self._stage_started_at,
             detail=self._detail,
         )
+
         self._write_final_line_locked(line)
+
         self._detail = None
+        self._subdetail = None
         self._completed_units = None
         self._total_units = None
+        self._progress_fraction = None
         self._stage_started_at = None
 
     def _render_active_stage_locked(self, *, frame: str) -> None:
@@ -193,6 +233,7 @@ class SpinnerProgress(AbstractProgress):
             elapsed_seconds=monotonic() - self._stage_started_at,
             detail=self._detail,
         )
+
         self._write_transient_line_locked(line)
 
     def _build_stage_line(
@@ -204,24 +245,60 @@ class SpinnerProgress(AbstractProgress):
     ) -> str:
         progress_segment = self._progress_segment()
         timing_segment = self._timing_segment(elapsed_seconds)
+        if self._progress_fraction is not None:
+            detail_segment = (
+                f"{detail}{progress_segment}"
+                if progress_segment
+                else detail
+            )
+            if self._subdetail is not None:
+                detail_segment = f"{detail_segment} | {self._subdetail}"
+
+            return (
+                f"{indicator} {self._label}{self._step_segment()} "
+                f"{timing_segment} {detail_segment}"
+            )
+
+        detail_segment = (
+            detail
+            if self._subdetail is None
+            else f"{detail} | {self._subdetail}"
+        )
         if progress_segment:
             return (
                 f"{indicator} {self._label}{self._step_segment()}{progress_segment} "
-                f"{detail} {timing_segment}"
+                f"{detail_segment} {timing_segment}"
             )
 
-        return f"{indicator} {self._label}{self._step_segment()} {timing_segment} {detail}"
+        return f"{indicator} {self._label}{self._step_segment()} {timing_segment} {detail_segment}"
 
     def _progress_segment(self) -> str:
+        if self._progress_fraction is not None:
+            progress_percent = round(
+                min(max(self._progress_fraction, 0.0), 1.0) * 100.0
+            )
+
+            return f" [{progress_percent}%]"
+
         if self._completed_units is None or self._total_units is None or self._total_units <= 0:
             return ""
 
         progress_fraction = self._completed_units / self._total_units
         progress_percent = round(progress_fraction * 100.0)
+
         return f" [{progress_percent}% {self._completed_units}/{self._total_units}]"
 
     def _timing_segment(self, elapsed_seconds: float) -> str:
         elapsed = _format_elapsed_seconds(elapsed_seconds)
+
+        if (
+            self._progress_fraction is not None
+            and 0.0 < self._progress_fraction < 1.0
+            and elapsed_seconds > 0.0
+        ):
+            eta_seconds = elapsed_seconds * (1.0 - self._progress_fraction) / self._progress_fraction
+            return f"[{elapsed}, ETA {_format_elapsed_seconds(eta_seconds)}]"
+
         if (
             self._completed_units is None
             or self._total_units is None
@@ -235,6 +312,7 @@ class SpinnerProgress(AbstractProgress):
         rate_units_per_second = self._completed_units / elapsed_seconds
         remaining_units = self._total_units - self._completed_units
         eta_seconds = remaining_units / rate_units_per_second
+
         return f"[{elapsed}, ETA {_format_elapsed_seconds(eta_seconds)}]"
 
     def _step_segment(self) -> str:
@@ -268,8 +346,10 @@ class JsonLinesProgress(AbstractProgress):
         self._stream: TextIO = stream
         self._total_steps: Optional[int] = total_steps
         self._detail: Optional[str] = None
+        self._subdetail: Optional[str] = None
         self._completed_units: Optional[int] = None
         self._total_units: Optional[int] = None
+        self._progress_fraction: Optional[float] = None
         self._stage_started_at: Optional[float] = None
         self._current_step_index: int = 0
         self._total_started_at: float = monotonic()
@@ -279,10 +359,20 @@ class JsonLinesProgress(AbstractProgress):
         self,
         *,
         detail: Optional[str] = None,
+        subdetail: Optional[str] = None,
         completed_units: Optional[int] = None,
         total_units: Optional[int] = None,
+        reset_progress_units: bool = False,
+        progress_fraction: Optional[float] = None,
     ) -> None:
-        if detail is None and completed_units is None and total_units is None:
+        if (
+            detail is None
+            and subdetail is None
+            and completed_units is None
+            and total_units is None
+            and not reset_progress_units
+            and progress_fraction is None
+        ):
             return
 
         next_detail = self._detail if detail is None else detail
@@ -290,13 +380,26 @@ class JsonLinesProgress(AbstractProgress):
 
         if detail_changed:
             self._detail = next_detail
+            self._subdetail = subdetail
             self._completed_units = completed_units
             self._total_units = total_units
+            self._progress_fraction = progress_fraction
             self._current_step_index += 1
             self._stage_started_at = monotonic()
         else:
+            if subdetail is not None:
+                self._subdetail = subdetail
+
+            if reset_progress_units:
+                self._completed_units = None
+                self._total_units = None
+
+            if progress_fraction is not None:
+                self._progress_fraction = progress_fraction
+
             if completed_units is not None:
                 self._completed_units = completed_units
+
             if total_units is not None:
                 self._total_units = total_units
 
@@ -310,15 +413,19 @@ class JsonLinesProgress(AbstractProgress):
             "step_index": self._current_step_index,
             "step_count": self._total_steps,
             "detail": self._detail,
+            "subdetail": self._subdetail,
             "completed_units": self._completed_units,
             "total_units": self._total_units,
+            "progress_fraction": self._progress_fraction,
             "elapsed_seconds": elapsed_seconds,
             "eta_seconds": _estimated_remaining_seconds(
                 elapsed_seconds,
                 self._completed_units,
                 self._total_units,
+                progress_fraction=self._progress_fraction,
             ),
         }
+
         self._stream.write(json.dumps(payload, sort_keys=True) + "\n")
         self._stream.flush()
 
@@ -329,8 +436,10 @@ class JsonLinesProgress(AbstractProgress):
             "status": "done" if exc_type is None else "failed",
             "elapsed_seconds": monotonic() - self._total_started_at,
         }
+
         self._stream.write(json.dumps(payload, sort_keys=True) + "\n")
         self._stream.flush()
+
         return None
 
 
@@ -338,7 +447,16 @@ def _estimated_remaining_seconds(
     elapsed_seconds: float,
     completed_units: Optional[int],
     total_units: Optional[int],
+    *,
+    progress_fraction: Optional[float] = None,
 ) -> Optional[float]:
+    if (
+        progress_fraction is not None
+        and 0.0 < progress_fraction < 1.0
+        and elapsed_seconds > 0.0
+    ):
+        return elapsed_seconds * (1.0 - progress_fraction) / progress_fraction
+
     if (
         completed_units is None
         or total_units is None
@@ -351,6 +469,7 @@ def _estimated_remaining_seconds(
 
     rate_units_per_second = completed_units / elapsed_seconds
     remaining_units = total_units - completed_units
+
     return remaining_units / rate_units_per_second
 
 
