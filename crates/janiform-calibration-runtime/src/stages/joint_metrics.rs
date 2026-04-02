@@ -808,6 +808,7 @@ mod tests {
             core_total_return_increment: total_return,
             observed_log_price: cumulative_core_log_return,
             anchor_value: 0.0,
+            pressure_state: 0.0,
             deviation_from_anchor: cumulative_core_log_return,
             cumulative_core_log_return,
             state_snapshot: None,

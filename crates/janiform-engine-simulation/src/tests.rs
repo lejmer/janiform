@@ -2438,6 +2438,7 @@ fn seeded_simulation_fine_path_schema_exposes_required_priced_fields() {
         "core_total_return_increment",
         "observed_log_price",
         "anchor_value",
+        "pressure_state",
         "deviation_from_anchor",
         "cumulative_core_log_return",
     ] {
@@ -2543,6 +2544,7 @@ fn seeded_simulation_event_tape_schema_exposes_required_and_optional_fields() {
         "core_total_return_increment",
         "observed_log_price",
         "anchor_value",
+        "pressure_state",
         "deviation_from_anchor",
     ] {
         assert!(first_event_without_snapshot.contains_key(required_field));

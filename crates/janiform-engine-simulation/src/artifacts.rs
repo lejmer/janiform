@@ -54,6 +54,7 @@ pub struct SeededTickEventRecord {
     pub core_total_return_increment: f64,
     pub observed_log_price: f64,
     pub anchor_value: f64,
+    pub pressure_state: f64,
     pub deviation_from_anchor: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub state_snapshot: Option<SeededTickEventStateSnapshot>,
@@ -98,6 +99,7 @@ pub struct SeededFinePathRecord {
     pub core_total_return_increment: f64,
     pub observed_log_price: f64,
     pub anchor_value: f64,
+    pub pressure_state: f64,
     pub deviation_from_anchor: f64,
     pub cumulative_core_log_return: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -405,6 +407,7 @@ impl SeededTickSimulationRunResult {
             core_total_return_increment: fine_path_record.core_total_return_increment,
             observed_log_price: fine_path_record.observed_log_price,
             anchor_value: fine_path_record.anchor_value,
+            pressure_state: fine_path_record.pressure_state,
             deviation_from_anchor: fine_path_record.deviation_from_anchor,
             state_snapshot: fine_path_record.state_snapshot,
         })

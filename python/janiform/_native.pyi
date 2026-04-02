@@ -629,6 +629,9 @@ class SeededFinePathChunkColumns:
     def anchor_value(self) -> list[float]: ...
 
     @property
+    def pressure_state(self) -> list[float]: ...
+
+    @property
     def deviation_from_anchor(self) -> list[float]: ...
 
     @property
@@ -674,6 +677,9 @@ class SeededTickEventTapeChunkColumns:
 
     @property
     def anchor_value(self) -> list[float]: ...
+
+    @property
+    def pressure_state(self) -> list[float]: ...
 
     @property
     def deviation_from_anchor(self) -> list[float]: ...

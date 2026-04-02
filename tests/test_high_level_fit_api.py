@@ -1160,6 +1160,7 @@ def test_high_level_model_simulate_uses_estimated_current_state_when_continuatio
     captured_requests: dict[str, Any] = {}
     captured_estimation_calls: list[tuple[datetime, CurrentStateEstimationRequest]] = []
     seeded_result = object()
+    coarse_result = object()
     estimated_state = CurrentStateEstimationResult(
         hawkes_excitation_state=fit_model_module.HawkesExcitationState(
             y_plus_plus=0.45,
@@ -1211,6 +1212,16 @@ def test_high_level_model_simulate_uses_estimated_current_state_when_continuatio
     )
     monkeypatch.setattr(
         fit_model_module,
+        "run_coarse_simulation",
+        lambda request, **kwargs: _capture_request(
+            captured_requests,
+            "coarse",
+            request,
+            coarse_result,
+        ),
+    )
+    monkeypatch.setattr(
+        fit_model_module,
         "_build_high_level_simulation_result",
         lambda **kwargs: JaniformSimulationResult(
             simulation_kind="seeded_tick",
@@ -1227,15 +1238,218 @@ def test_high_level_model_simulate_uses_estimated_current_state_when_continuatio
         horizon_interval_count=1,
         continuation_data=continuation_data,
     )
+    model.simulate(
+        seed=17,
+        start_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
+        horizon_interval_count=1,
+        interval="15min",
+        continuation_data=continuation_data,
+    )
 
     assert captured_estimation_calls == [
-        (datetime(2026, 2, 2, 15, tzinfo=UTC), continuation_data)
+        (datetime(2026, 2, 2, 15, tzinfo=UTC), continuation_data),
+        (datetime(2026, 2, 2, 15, tzinfo=UTC), continuation_data),
     ]
     assert captured_requests["seeded"].initial_excitation_state == estimated_state.hawkes_excitation_state
     assert (
         captured_requests["seeded"].initial_mean_reversion_boundary_state
         == estimated_state.mean_reversion_boundary_state
     )
+    coarse_model_inputs = captured_requests["coarse"].model_inputs.risk_model_inputs
+    assert coarse_model_inputs.initial_excitation_state == estimated_state.hawkes_excitation_state
+    assert (
+        coarse_model_inputs.initial_mean_reversion_boundary_state
+        == estimated_state.mean_reversion_boundary_state
+    )
+
+
+def test_high_level_model_simulate_estimates_mean_reversion_boundary_when_hawkes_override_is_supplied(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _build_full_workflow_model(
+        tmp_path,
+        monkeypatch,
+        run_id="high-level-model-simulate-hawkes-override-with-continuation",
+    )
+    captured_estimation_calls: list[tuple[datetime, CurrentStateEstimationRequest]] = []
+    captured_requests: dict[str, Any] = {}
+    estimated_state = CurrentStateEstimationResult(
+        hawkes_excitation_state=fit_model_module.HawkesExcitationState(
+            y_plus_plus=0.45,
+            y_plus_minus=0.15,
+            y_minus_plus=0.3,
+            y_minus_minus=0.2,
+        ),
+        mean_reversion_boundary_state=MeanReversionBoundaryState(
+            observed_log_price=0.05,
+            anchor_value=0.05,
+            pressure_state=0.1,
+            deviation=0.0,
+        ),
+    )
+    explicit_initial_excitation_state = fit_model_module.HawkesExcitationState(
+        y_plus_plus=0.9,
+        y_plus_minus=0.8,
+        y_minus_plus=0.7,
+        y_minus_minus=0.6,
+    )
+    continuation_data = CurrentStateEstimationRequest(
+        observed_tick_data=pandas.DataFrame(
+            {
+                "timestamp_utc": [datetime(2026, 2, 2, 14, 30, tzinfo=UTC)],
+                "trade_price": [100.0],
+                "trade_sign": ["buy"],
+            }
+        ),
+    )
+
+    monkeypatch.setattr(
+        fit_model_module,
+        "estimate_current_state_for_model",
+        lambda model_value, *, state_time_utc, request: (
+            captured_estimation_calls.append((state_time_utc, request)) or estimated_state
+        ),
+    )
+    monkeypatch.setattr(
+        fit_model_module,
+        "provide_hourly_factor_contract",
+        lambda **kwargs: _build_test_hourly_factor_contract(
+            start_time_utc=cast(datetime, kwargs["range_start_utc"]),
+            interval_end_times_utc=(cast(datetime, kwargs["range_end_utc"]),),
+        ),
+    )
+    monkeypatch.setattr(
+        fit_model_module,
+        "run_seeded_tick_event_simulation",
+        lambda request, **kwargs: _capture_request(
+            captured_requests,
+            "seeded",
+            request,
+            object(),
+        ),
+    )
+    monkeypatch.setattr(
+        fit_model_module,
+        "_build_high_level_simulation_result",
+        lambda **kwargs: JaniformSimulationResult(
+            simulation_kind="seeded_tick",
+            metadata={},
+            provenance={},
+            diagnostics={},
+            raw_result=kwargs["simulation_result"],
+        ),
+    )
+
+    model.simulate(
+        seed=17,
+        start_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
+        horizon_interval_count=1,
+        continuation_data=continuation_data,
+        initial_excitation_state=explicit_initial_excitation_state,
+    )
+
+    assert captured_estimation_calls == [
+        (datetime(2026, 2, 2, 15, tzinfo=UTC), continuation_data)
+    ]
+    assert captured_requests["seeded"].initial_excitation_state == explicit_initial_excitation_state
+    assert (
+        captured_requests["seeded"].initial_mean_reversion_boundary_state
+        == estimated_state.mean_reversion_boundary_state
+    )
+
+
+def test_high_level_model_simulate_uses_explicit_mean_reversion_boundary_override(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _build_full_workflow_model(
+        tmp_path,
+        monkeypatch,
+        run_id="high-level-model-simulate-boundary-override",
+    )
+    captured_estimation_calls: list[tuple[datetime, CurrentStateEstimationRequest]] = []
+    captured_requests: dict[str, Any] = {}
+    estimated_state = CurrentStateEstimationResult(
+        hawkes_excitation_state=fit_model_module.HawkesExcitationState(
+            y_plus_plus=0.45,
+            y_plus_minus=0.15,
+            y_minus_plus=0.3,
+            y_minus_minus=0.2,
+        ),
+        mean_reversion_boundary_state=MeanReversionBoundaryState(
+            observed_log_price=0.05,
+            anchor_value=0.05,
+            pressure_state=0.1,
+            deviation=0.0,
+        ),
+    )
+    explicit_boundary_state = MeanReversionBoundaryState(
+        observed_log_price=0.2,
+        anchor_value=0.2,
+        pressure_state=0.15,
+        deviation=0.0,
+    )
+    continuation_data = CurrentStateEstimationRequest(
+        observed_tick_data=pandas.DataFrame(
+            {
+                "timestamp_utc": [datetime(2026, 2, 2, 14, 30, tzinfo=UTC)],
+                "trade_price": [100.0],
+                "trade_sign": ["buy"],
+            }
+        ),
+    )
+
+    monkeypatch.setattr(
+        fit_model_module,
+        "estimate_current_state_for_model",
+        lambda model_value, *, state_time_utc, request: (
+            captured_estimation_calls.append((state_time_utc, request)) or estimated_state
+        ),
+    )
+    monkeypatch.setattr(
+        fit_model_module,
+        "provide_hourly_factor_contract",
+        lambda **kwargs: _build_test_hourly_factor_contract(
+            start_time_utc=cast(datetime, kwargs["range_start_utc"]),
+            interval_end_times_utc=(cast(datetime, kwargs["range_end_utc"]),),
+        ),
+    )
+    monkeypatch.setattr(
+        fit_model_module,
+        "run_seeded_tick_event_simulation",
+        lambda request, **kwargs: _capture_request(
+            captured_requests,
+            "seeded",
+            request,
+            object(),
+        ),
+    )
+    monkeypatch.setattr(
+        fit_model_module,
+        "_build_high_level_simulation_result",
+        lambda **kwargs: JaniformSimulationResult(
+            simulation_kind="seeded_tick",
+            metadata={},
+            provenance={},
+            diagnostics={},
+            raw_result=kwargs["simulation_result"],
+        ),
+    )
+
+    model.simulate(
+        seed=17,
+        start_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
+        horizon_interval_count=1,
+        continuation_data=continuation_data,
+        initial_mean_reversion_boundary_state=explicit_boundary_state,
+    )
+
+    assert captured_estimation_calls == [
+        (datetime(2026, 2, 2, 15, tzinfo=UTC), continuation_data)
+    ]
+    assert captured_requests["seeded"].initial_excitation_state == estimated_state.hawkes_excitation_state
+    assert captured_requests["seeded"].initial_mean_reversion_boundary_state == explicit_boundary_state
 
 
 def test_high_level_model_simulate_uses_stationary_hawkes_state_when_no_continuation_data_is_supplied(
@@ -1256,6 +1470,7 @@ def test_high_level_model_simulate_uses_stationary_hawkes_state_when_no_continua
         simulation_kind="seeded_tick",
         continuation_data=None,
         initial_excitation_state=None,
+        initial_mean_reversion_boundary_state=None,
         debug_trace_enabled=False,
         sample_every_nth_transition=1,
         max_records_per_chunk=1_000,
@@ -1673,6 +1888,10 @@ def test_high_level_simulation_result_exposes_tabular_exports(
                     {
                         preferences.timestamp_column: "2026-02-02T16:00:00Z",
                         "mid_price": 1.01,
+                        "observed_log_price": 0.01,
+                        "anchor_value": 0.005,
+                        "pressure_state": 0.002,
+                        "deviation_from_anchor": 0.005,
                     }
                 ]
             )
@@ -1711,9 +1930,13 @@ def test_high_level_simulation_result_exposes_tabular_exports(
     assert list(pandas_frame.columns) == [
         "time",
         "mid_price",
+        "observed_log_price",
+        "anchor_value",
+        "pressure_state",
+        "deviation_from_anchor",
     ]
     assert pandas_frame.iloc[0]["mid_price"] == pytest.approx(1.01)
-    assert numpy_array.shape == (1, 2)
+    assert numpy_array.shape == (1, 6)
     assert parquet_path.read_text(encoding="utf-8") == "parquet placeholder"
     assert captured_output_paths[-1] == parquet_path
     assert captured_export_context == [
@@ -1809,16 +2032,25 @@ def test_persist_coarse_simulation_suppresses_closed_fx_weekend_rows() -> None:
                 interval_start_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 6, 18, 45, tzinfo=UTC)),
                 interval_end_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 6, 19, 0, tzinfo=UTC)),
                 observed_log_price_end=0.01,
+                anchor_value_end=0.005,
+                pressure_state_end=0.002,
+                deviation_from_anchor_end=0.005,
             ),
             SimpleNamespace(
                 interval_start_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 8, 20, 45, tzinfo=UTC)),
                 interval_end_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 8, 21, 0, tzinfo=UTC)),
                 observed_log_price_end=999.0,
+                anchor_value_end=999.0,
+                pressure_state_end=999.0,
+                deviation_from_anchor_end=999.0,
             ),
             SimpleNamespace(
                 interval_start_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 8, 21, 0, tzinfo=UTC)),
                 interval_end_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 8, 21, 15, tzinfo=UTC)),
                 observed_log_price_end=0.05,
+                anchor_value_end=0.03,
+                pressure_state_end=0.01,
+                deviation_from_anchor_end=0.02,
             ),
         )
     )
@@ -1842,6 +2074,9 @@ def test_persist_coarse_simulation_suppresses_closed_fx_weekend_rows() -> None:
             math.exp(0.05),
         ]
     )
+    assert [row["anchor_value"] for row in sink.rows] == pytest.approx([0.005, 0.03])
+    assert [row["pressure_state"] for row in sink.rows] == pytest.approx([0.002, 0.01])
+    assert [row["deviation_from_anchor"] for row in sink.rows] == pytest.approx([0.005, 0.02])
 
 
 def test_persist_seeded_tick_simulation_preserves_non_trade_fine_path_rows() -> None:
@@ -1874,11 +2109,17 @@ def test_persist_seeded_tick_simulation_preserves_non_trade_fine_path_rows() -> 
             SimpleNamespace(
                 timestamp_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 2, 15, 0, tzinfo=UTC)),
                 observed_log_price=0.10,
+                anchor_value=0.04,
+                pressure_state=0.01,
+                deviation_from_anchor=0.06,
                 side=SeededTickEventSide.BUY,
             ),
             SimpleNamespace(
                 timestamp_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 2, 15, 15, tzinfo=UTC)),
                 observed_log_price=0.12,
+                anchor_value=0.05,
+                pressure_state=0.02,
+                deviation_from_anchor=0.07,
                 side=None,
             ),
         )
@@ -1905,6 +2146,9 @@ def test_persist_seeded_tick_simulation_preserves_non_trade_fine_path_rows() -> 
         SeededTickEventSide.BUY.value,
         None,
     ]
+    assert [row["anchor_value"] for row in sink.rows] == pytest.approx([0.04, 0.05])
+    assert [row["pressure_state"] for row in sink.rows] == pytest.approx([0.01, 0.02])
+    assert [row["deviation_from_anchor"] for row in sink.rows] == pytest.approx([0.06, 0.07])
 
 
 def test_high_level_seeded_simulation_result_preserves_empty_tabular_schema(
@@ -1945,9 +2189,17 @@ def test_high_level_seeded_simulation_result_preserves_empty_tabular_schema(
     pandas_frame = result.to_pandas()
     numpy_array = result.to_numpy()
 
-    assert list(pandas_frame.columns) == ["timestamp_utc", "trade_price", "trade_sign"]
+    assert list(pandas_frame.columns) == [
+        "timestamp_utc",
+        "trade_price",
+        "trade_sign",
+        "observed_log_price",
+        "anchor_value",
+        "pressure_state",
+        "deviation_from_anchor",
+    ]
     assert pandas_frame.empty
-    assert numpy_array.shape == (0, 3)
+    assert numpy_array.shape == (0, 7)
 
 
 def test_high_level_simulation_result_materializes_datetime_timestamps_in_memory(
@@ -1973,6 +2225,10 @@ def test_high_level_simulation_result_materializes_datetime_timestamps_in_memory
                         "timestamp_utc": datetime(2026, 2, 2, 15, tzinfo=UTC),
                         "trade_price": 101.0,
                         "trade_sign": "buy",
+                        "observed_log_price": 0.01,
+                        "anchor_value": 0.0,
+                        "pressure_state": 0.0,
+                        "deviation_from_anchor": 0.01,
                     }
                 ]
             )
@@ -2017,11 +2273,17 @@ def test_high_level_seeded_simulation_result_exports_full_fine_path_to_tabular_s
                 SimpleNamespace(
                     timestamp_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 2, 15, 0, tzinfo=UTC)),
                     observed_log_price=0.10,
+                    anchor_value=0.04,
+                    pressure_state=0.01,
+                    deviation_from_anchor=0.06,
                     side=SeededTickEventSide.BUY,
                 ),
                 SimpleNamespace(
                     timestamp_utc_nanos=datetime_to_utc_nanos(datetime(2026, 2, 2, 15, 15, tzinfo=UTC)),
                     observed_log_price=0.12,
+                    anchor_value=0.05,
+                    pressure_state=0.02,
+                    deviation_from_anchor=0.07,
                     side=None,
                 ),
             )
@@ -2054,18 +2316,28 @@ def test_high_level_seeded_simulation_result_exports_full_fine_path_to_tabular_s
     )
     assert pandas_frame.iloc[0]["trade_sign"] == "buy"
     assert pandas.isna(pandas_frame.iloc[1]["trade_sign"])
-    assert numpy_array.shape == (2, 3)
+    assert pandas_frame.iloc[0]["pressure_state"] == pytest.approx(0.01)
+    assert pandas_frame.iloc[1]["anchor_value"] == pytest.approx(0.05)
+    assert numpy_array.shape == (2, 7)
     assert list(numpy_array[:, 2]) == ["buy", None]
     assert parquet_rows == [
         {
             "timestamp_utc": datetime(2026, 2, 2, 15, 0, tzinfo=UTC),
             "trade_price": pytest.approx(100.0 * math.exp(0.10)),
             "trade_sign": "buy",
+            "observed_log_price": pytest.approx(0.10),
+            "anchor_value": pytest.approx(0.04),
+            "pressure_state": pytest.approx(0.01),
+            "deviation_from_anchor": pytest.approx(0.06),
         },
         {
             "timestamp_utc": datetime(2026, 2, 2, 15, 15, tzinfo=UTC),
             "trade_price": pytest.approx(100.0 * math.exp(0.12)),
             "trade_sign": None,
+            "observed_log_price": pytest.approx(0.12),
+            "anchor_value": pytest.approx(0.05),
+            "pressure_state": pytest.approx(0.02),
+            "deviation_from_anchor": pytest.approx(0.07),
         },
     ]
 

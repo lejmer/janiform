@@ -308,6 +308,7 @@ def _parse_seeded_fine_path_chunk_columns(
     )
     observed_log_price_column = cast(list[float], chunk_payload.observed_log_price)
     anchor_value_column = cast(list[float], chunk_payload.anchor_value)
+    pressure_state_column = cast(list[float], chunk_payload.pressure_state)
     deviation_from_anchor_column = cast(
         list[float],
         chunk_payload.deviation_from_anchor,
@@ -359,6 +360,7 @@ def _parse_seeded_fine_path_chunk_columns(
         core_total_return_increment_column,
         observed_log_price_column,
         anchor_value_column,
+        pressure_state_column,
         deviation_from_anchor_column,
         cumulative_core_log_return_column,
         state_snapshot_y_plus_plus_column,
@@ -400,6 +402,7 @@ def _parse_seeded_fine_path_chunk_columns(
             core_total_return_increment=core_total_return_increment_column[chunk_offset],
             observed_log_price=observed_log_price_column[chunk_offset],
             anchor_value=anchor_value_column[chunk_offset],
+            pressure_state=pressure_state_column[chunk_offset],
             deviation_from_anchor=deviation_from_anchor_column[chunk_offset],
             cumulative_core_log_return=cumulative_core_log_return_column[chunk_offset],
             state_snapshot=_build_state_snapshot(
@@ -432,6 +435,7 @@ def _parse_seeded_event_tape_chunk_columns(
     )
     observed_log_price_column = cast(list[float], chunk_payload.observed_log_price)
     anchor_value_column = cast(list[float], chunk_payload.anchor_value)
+    pressure_state_column = cast(list[float], chunk_payload.pressure_state)
     deviation_from_anchor_column = cast(
         list[float],
         chunk_payload.deviation_from_anchor,
@@ -470,6 +474,7 @@ def _parse_seeded_event_tape_chunk_columns(
         core_total_return_increment_column,
         observed_log_price_column,
         anchor_value_column,
+        pressure_state_column,
         deviation_from_anchor_column,
         state_snapshot_y_plus_plus_column,
         state_snapshot_y_plus_minus_column,
@@ -487,6 +492,7 @@ def _parse_seeded_event_tape_chunk_columns(
             core_total_return_increment=core_total_return_increment_column[chunk_offset],
             observed_log_price=observed_log_price_column[chunk_offset],
             anchor_value=anchor_value_column[chunk_offset],
+            pressure_state=pressure_state_column[chunk_offset],
             deviation_from_anchor=deviation_from_anchor_column[chunk_offset],
             state_snapshot=_build_state_snapshot(
                 y_plus_plus=state_snapshot_y_plus_plus_column[chunk_offset],

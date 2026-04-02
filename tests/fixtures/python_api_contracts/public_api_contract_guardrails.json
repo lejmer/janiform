@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale.v1",
-  "approved_snapshot_sha256": "89d162b1c5f8bcf71abf1a0934cf0e9aa7cc55012670d994ee1a0adbd1826fc6",
+  "approved_snapshot_sha256": "ef929773f70dc6d1faa3e6ff8769a7f25c52b1f40f215ef39d7b6c11402514a2",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -721,6 +721,15 @@
       "rationale": "The current-state estimation surface now accepts batch tick data that matches the fitted market-data shape instead of row-shaped per-observation Python contracts, and the native boundary consumes aligned timestamp, price, and side columns without per-trade wrapper structs.",
       "snapshot_sha256": "89d162b1c5f8bcf71abf1a0934cf0e9aa7cc55012670d994ee1a0adbd1826fc6",
       "summary": "Approve the tabular current-state request surface and remove per-trade observation wrappers."
+    },
+    {
+      "approved_on": "2026-04-03",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "High-level simulation now treats observed continuation data as the default live-state continuation boundary for both seeded and coarse backends, and the seeded response records the full mean-reversion boundary state including pressure_state so continuation behavior can be inspected from exported simulation outputs.",
+      "snapshot_sha256": "ef929773f70dc6d1faa3e6ff8769a7f25c52b1f40f215ef39d7b6c11402514a2",
+      "summary": "Approve live-state continuation defaults and exported seeded pressure-state boundary fields."
     }
   ],
   "public_api_surface_document_version": "python.public_api_surface_map.pre_v0_1.control_plane_reset.v1",

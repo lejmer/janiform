@@ -27,6 +27,7 @@ pub(crate) struct PySeededFinePathChunkColumns {
     core_total_return_increment: Vec<f64>,
     observed_log_price: Vec<f64>,
     anchor_value: Vec<f64>,
+    pressure_state: Vec<f64>,
     deviation_from_anchor: Vec<f64>,
     cumulative_core_log_return: Vec<f64>,
     state_snapshot_y_plus_plus: Vec<Option<f64>>,
@@ -54,6 +55,7 @@ impl PySeededFinePathChunkColumns {
         let mut core_total_return_increment = Vec::with_capacity(records.len());
         let mut observed_log_price = Vec::with_capacity(records.len());
         let mut anchor_value = Vec::with_capacity(records.len());
+        let mut pressure_state = Vec::with_capacity(records.len());
         let mut deviation_from_anchor = Vec::with_capacity(records.len());
         let mut cumulative_core_log_return = Vec::with_capacity(records.len());
         let mut state_snapshot_y_plus_plus = Vec::with_capacity(records.len());
@@ -87,6 +89,7 @@ impl PySeededFinePathChunkColumns {
             core_total_return_increment.push(record.core_total_return_increment);
             observed_log_price.push(record.observed_log_price);
             anchor_value.push(record.anchor_value);
+            pressure_state.push(record.pressure_state);
             deviation_from_anchor.push(record.deviation_from_anchor);
             cumulative_core_log_return.push(record.cumulative_core_log_return);
 
@@ -117,6 +120,7 @@ impl PySeededFinePathChunkColumns {
             core_total_return_increment,
             observed_log_price,
             anchor_value,
+            pressure_state,
             deviation_from_anchor,
             cumulative_core_log_return,
             state_snapshot_y_plus_plus,
@@ -240,6 +244,14 @@ impl PySeededFinePathChunkColumns {
     }
 
     #[getter]
+    fn pressure_state(&self) -> PyResult<Vec<f64>> {
+        simulation_chunk_getter(
+            "reading seeded fine-path pressure states",
+            &self.pressure_state,
+        )
+    }
+
+    #[getter]
     fn deviation_from_anchor(&self) -> PyResult<Vec<f64>> {
         simulation_chunk_getter(
             "reading seeded fine-path deviations from anchor",
@@ -351,6 +363,7 @@ impl PySeededFinePathChunkColumns {
                             .saturating_mul(size_of::<f64>()),
                     )
                     .saturating_add(self.anchor_value.len().saturating_mul(size_of::<f64>()))
+                    .saturating_add(self.pressure_state.len().saturating_mul(size_of::<f64>()))
                     .saturating_add(
                         self.deviation_from_anchor
                             .len()
@@ -392,6 +405,7 @@ pub(crate) struct PySeededTickEventTapeChunkColumns {
     core_total_return_increment: Vec<f64>,
     observed_log_price: Vec<f64>,
     anchor_value: Vec<f64>,
+    pressure_state: Vec<f64>,
     deviation_from_anchor: Vec<f64>,
     state_snapshot_y_plus_plus: Vec<Option<f64>>,
     state_snapshot_y_plus_minus: Vec<Option<f64>>,
@@ -409,6 +423,7 @@ impl PySeededTickEventTapeChunkColumns {
         let mut core_total_return_increment = Vec::with_capacity(records.len());
         let mut observed_log_price = Vec::with_capacity(records.len());
         let mut anchor_value = Vec::with_capacity(records.len());
+        let mut pressure_state = Vec::with_capacity(records.len());
         let mut deviation_from_anchor = Vec::with_capacity(records.len());
         let mut state_snapshot_y_plus_plus = Vec::with_capacity(records.len());
         let mut state_snapshot_y_plus_minus = Vec::with_capacity(records.len());
@@ -424,6 +439,7 @@ impl PySeededTickEventTapeChunkColumns {
             core_total_return_increment.push(record.core_total_return_increment);
             observed_log_price.push(record.observed_log_price);
             anchor_value.push(record.anchor_value);
+            pressure_state.push(record.pressure_state);
             deviation_from_anchor.push(record.deviation_from_anchor);
 
             push_state_snapshot_columns(
@@ -444,6 +460,7 @@ impl PySeededTickEventTapeChunkColumns {
             core_total_return_increment,
             observed_log_price,
             anchor_value,
+            pressure_state,
             deviation_from_anchor,
             state_snapshot_y_plus_plus,
             state_snapshot_y_plus_minus,
@@ -496,6 +513,14 @@ impl PySeededTickEventTapeChunkColumns {
         simulation_chunk_getter(
             "reading seeded event-tape anchor values",
             &self.anchor_value,
+        )
+    }
+
+    #[getter]
+    fn pressure_state(&self) -> PyResult<Vec<f64>> {
+        simulation_chunk_getter(
+            "reading seeded event-tape pressure states",
+            &self.pressure_state,
         )
     }
 
@@ -582,6 +607,7 @@ impl PySeededTickEventTapeChunkColumns {
                             .saturating_mul(size_of::<f64>()),
                     )
                     .saturating_add(self.anchor_value.len().saturating_mul(size_of::<f64>()))
+                    .saturating_add(self.pressure_state.len().saturating_mul(size_of::<f64>()))
                     .saturating_add(
                         self.deviation_from_anchor
                             .len()

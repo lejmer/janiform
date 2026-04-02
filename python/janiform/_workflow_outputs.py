@@ -274,6 +274,15 @@ def simulation_output_columns(preferences: SimulationOutputPreferences) -> tuple
     ):
         columns.append(preferences.trade_sign_column)
 
+    columns.extend(
+        (
+            "observed_log_price",
+            "anchor_value",
+            "pressure_state",
+            "deviation_from_anchor",
+        )
+    )
+
     return tuple(columns)
 
 
@@ -304,6 +313,10 @@ def persist_seeded_tick_simulation(
                 timestamp_column=preferences.timestamp_column,
                 price_value=preferences.reference_price * math.exp(record.observed_log_price),
                 side_value=None if record.side is None else record.side.value,
+                observed_log_price=record.observed_log_price,
+                anchor_value=record.anchor_value,
+                pressure_state=record.pressure_state,
+                deviation_from_anchor=record.deviation_from_anchor,
                 preferences=preferences,
             )
 
@@ -357,6 +370,10 @@ def persist_coarse_simulation(
                     timestamp_column=preferences.timestamp_column,
                     price_value=preferences.reference_price * math.exp(record.observed_log_price_end),
                     side_value=None,
+                    observed_log_price=record.observed_log_price_end,
+                    anchor_value=record.anchor_value_end,
+                    pressure_state=record.pressure_state_end,
+                    deviation_from_anchor=record.deviation_from_anchor_end,
                     preferences=preferences,
                 )
             )
@@ -476,6 +493,10 @@ def _seeded_tick_output_row(
     timestamp_column: str,
     price_value: float,
     side_value: Optional[str],
+    observed_log_price: float,
+    anchor_value: float,
+    pressure_state: float,
+    deviation_from_anchor: float,
     preferences: SimulationOutputPreferences,
 ) -> dict[str, Any]:
     output_row: dict[str, Any] = {
@@ -488,6 +509,11 @@ def _seeded_tick_output_row(
         and preferences.trade_sign_column is not None
     ):
         output_row[preferences.trade_sign_column] = side_value
+
+    output_row["observed_log_price"] = observed_log_price
+    output_row["anchor_value"] = anchor_value
+    output_row["pressure_state"] = pressure_state
+    output_row["deviation_from_anchor"] = deviation_from_anchor
 
     return output_row
 

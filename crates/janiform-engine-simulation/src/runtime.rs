@@ -417,6 +417,10 @@ where
             .model_inputs
             .mean_reversion_runtime_interval_anchors
             .end_anchor_values[interval_index];
+        let interval_end_pressure_state = run_config
+            .model_inputs
+            .mean_reversion_runtime_interval_anchors
+            .end_pressure_states[interval_index];
 
         let (
             interval_known_news_start_position,
@@ -600,6 +604,7 @@ where
                 core_total_return_increment: total_return,
                 observed_log_price: observed_state.observed_log_price,
                 anchor_value: observed_state.anchor_value,
+                pressure_state: observed_state.pressure_state,
                 deviation_from_anchor: observed_state.deviation_from_anchor,
                 cumulative_core_log_return: observed_state.cumulative_core_log_return,
                 state_snapshot,
@@ -681,7 +686,7 @@ where
                 elapsed_hours_to_interval_end,
                 total_return,
             )
-            .apply_anchor_reset(interval_end_anchor_value);
+            .apply_anchor_reset(interval_end_anchor_value, interval_end_pressure_state);
 
         next_state = evolve_hawkes_state(
             next_state,
@@ -722,6 +727,7 @@ where
             core_total_return_increment: total_return,
             observed_log_price: observed_state.observed_log_price,
             anchor_value: observed_state.anchor_value,
+            pressure_state: observed_state.pressure_state,
             deviation_from_anchor: observed_state.deviation_from_anchor,
             cumulative_core_log_return: observed_state.cumulative_core_log_return,
             state_snapshot: build_event_state_snapshot(
@@ -795,6 +801,7 @@ struct SeededObservedState {
     cumulative_core_log_return: f64,
     observed_log_price: f64,
     anchor_value: f64,
+    pressure_state: f64,
     deviation_from_anchor: f64,
 }
 
@@ -806,6 +813,7 @@ impl SeededObservedState {
             cumulative_core_log_return: 0.0,
             observed_log_price: boundary_state.observed_log_price,
             anchor_value: boundary_state.anchor_value,
+            pressure_state: boundary_state.pressure_state,
             deviation_from_anchor: boundary_state.deviation,
         }
     }
@@ -825,11 +833,16 @@ impl SeededObservedState {
                 + core_total_return_increment,
             observed_log_price: self.anchor_value + deviation_from_anchor,
             anchor_value: self.anchor_value,
+            pressure_state: self.pressure_state,
             deviation_from_anchor,
         }
     }
 
-    fn apply_anchor_reset(self, next_anchor_value: f64) -> Self {
+    fn apply_anchor_reset(
+        self,
+        next_anchor_value: f64,
+        next_pressure_state: f64,
+    ) -> Self {
         let deviation_from_anchor =
             self.deviation_from_anchor + self.anchor_value - next_anchor_value;
 
@@ -837,6 +850,7 @@ impl SeededObservedState {
             cumulative_core_log_return: self.cumulative_core_log_return,
             observed_log_price: next_anchor_value + deviation_from_anchor,
             anchor_value: next_anchor_value,
+            pressure_state: next_pressure_state,
             deviation_from_anchor,
         }
     }
