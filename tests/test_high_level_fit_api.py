@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, NoReturn, Self
+from typing import Any, NoReturn, Self, cast
 
 import pyarrow as pa
 import pandas
@@ -1936,20 +1936,94 @@ def test_high_level_model_price_option_dispatches_through_canonical_pricing_runn
     assert captured_execution_inputs == [prepared_execution_input]
 
 
-def test_high_level_model_price_option_requires_explicit_observed_boundary_state_for_enabled_mean_reversion(
+def test_high_level_model_price_option_derives_boundary_state_from_spot_and_model_reference_price(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     model = _build_full_workflow_model(
         tmp_path,
         monkeypatch,
-        run_id="high-level-model-pricing-anchored-required-boundary",
+        run_id="high-level-model-pricing-derived-boundary",
+    )
+    mean_reversion_payload = build_endogenous_mean_reversion_fitted_parameters_payload(kappa=0.35)
+    derived_boundary_state = MeanReversionBoundaryState(
+        observed_log_price=0.25,
+        anchor_value=0.25,
+        pressure_state=0.1,
+        deviation=0.0,
+    )
+    captured_execution_inputs: list[Any] = []
+    captured_start_anchor_values: list[float] = []
+
+    update_model_mean_reversion_payload(
+        model,
+        mean_reversion_payload,
+    )
+    reference_price = cast(
+        float,
+        cast(
+            dict[str, Any],
+            cast(dict[str, Any], model.metadata["simulation_output_preferences"]),
+        )["reference_price"],
+    )
+    pricing_result = object()
+
+    monkeypatch.setattr(
+        fit_model_module,
+        "_prepare_model_mean_reversion_runtime_inputs",
+        lambda pricing_model, **kwargs: (
+            captured_start_anchor_values.append(cast(float, kwargs["start_anchor_value"]))
+            or (
+                fit_model_module._mean_reversion_fitted_parameters(pricing_model),
+                fit_model_module.MeanReversionRuntimeIntervalAnchors(
+                    interval_alignment_policy="explicit_runtime_interval_grid_alignment.v1",
+                    start_anchor_value=derived_boundary_state.anchor_value,
+                    start_pressure_state=derived_boundary_state.pressure_state,
+                    end_anchor_values=(derived_boundary_state.anchor_value,),
+                    end_pressure_states=(derived_boundary_state.pressure_state,),
+                    interval_deltas=(1.0,),
+                ),
+                derived_boundary_state,
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        fit_model_module,
+        "run_vanilla_option_pricing",
+        lambda execution_input: captured_execution_inputs.append(execution_input) or pricing_result,
     )
 
+    observed_result = model.price_option(
+        valuation_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
+        spot=100.0,
+        strike=105.0,
+        maturity_interval=4.0,
+    )
+
+    assert observed_result is pricing_result
+    assert len(captured_execution_inputs) == 1
+    assert captured_start_anchor_values == [pytest.approx(math.log(100.0 / reference_price))]
+
+    pricing_boundary_input = captured_execution_inputs[0].request.boundary_input
+    assert pricing_boundary_input.mean_reversion_fitted_parameters.to_payload() == mean_reversion_payload
+    assert pricing_boundary_input.observed_boundary_state == derived_boundary_state
+    assert pricing_boundary_input.interval_delta == pytest.approx(1.0)
+
+
+def test_high_level_model_price_option_requires_reference_price_to_derive_pricing_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _build_full_workflow_model(
+        tmp_path,
+        monkeypatch,
+        run_id="high-level-model-pricing-missing-reference-price",
+    )
     update_model_mean_reversion_payload(
         model,
         build_endogenous_mean_reversion_fitted_parameters_payload(kappa=0.35),
     )
+    cast(dict[str, Any], model.metadata["simulation_output_preferences"]).pop("reference_price", None)
 
     with pytest.raises(CalibrationValidationError) as captured_error:
         model.price_option(
@@ -1959,102 +2033,14 @@ def test_high_level_model_price_option_requires_explicit_observed_boundary_state
             maturity_interval=4.0,
         )
 
-    assert captured_error.value.failure.field_path == "observed_boundary_state"
     assert (
-        "is required for pricing. Pass an explicit MeanReversionBoundaryState aligned with the valuation boundary anchor."
-        == captured_error.value.failure.message
+        captured_error.value.failure.field_path
+        == "metadata.simulation_output_preferences.reference_price"
     )
-
-
-def test_high_level_model_price_option_passes_explicit_observed_boundary_state_to_anchored_pricer(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    model = _build_full_workflow_model(
-        tmp_path,
-        monkeypatch,
-        run_id="high-level-model-pricing-anchored-boundary",
+    assert (
+        captured_error.value.failure.message
+        == "must be present so JaniformModel can derive pricing state from spot"
     )
-    mean_reversion_payload = build_endogenous_mean_reversion_fitted_parameters_payload(kappa=0.35)
-
-    update_model_mean_reversion_payload(model, mean_reversion_payload)
-
-    captured_execution_inputs: list[Any] = []
-    pricing_result = object()
-
-    observed_boundary_state = MeanReversionBoundaryState(
-        observed_log_price=0.4,
-        anchor_value=0.25,
-        pressure_state=0.0,
-        deviation=0.15,
-    )
-
-    monkeypatch.setattr(
-        fit_model_module,
-        "run_vanilla_option_pricing",
-        lambda execution_input: captured_execution_inputs.append(execution_input) or pricing_result,
-    )
-
-    observed_result = model.price_option(
-        valuation_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
-        spot=100.0,
-        strike=105.0,
-        maturity_interval=4.0,
-        observed_boundary_state=observed_boundary_state,
-    )
-
-    assert observed_result is pricing_result
-    assert len(captured_execution_inputs) == 1
-
-    pricing_boundary_input = captured_execution_inputs[0].request.boundary_input
-    assert pricing_boundary_input.mean_reversion_fitted_parameters.to_payload() == mean_reversion_payload
-    assert pricing_boundary_input.observed_boundary_state == observed_boundary_state
-    assert pricing_boundary_input.interval_delta == pytest.approx(1.0)
-
-
-def test_high_level_model_price_option_passes_endogenous_boundary_state_to_q_pricer(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    model = _build_full_workflow_model(
-        tmp_path,
-        monkeypatch,
-        run_id="high-level-model-pricing-endogenous-boundary",
-    )
-    mean_reversion_payload = build_endogenous_mean_reversion_fitted_parameters_payload(kappa=0.35)
-
-    update_model_mean_reversion_payload(model, mean_reversion_payload)
-
-    captured_execution_inputs: list[Any] = []
-    pricing_result = object()
-
-    observed_boundary_state = MeanReversionBoundaryState(
-        observed_log_price=0.55,
-        anchor_value=0.4,
-        pressure_state=0.0,
-        deviation=0.15,
-    )
-    monkeypatch.setattr(
-        fit_model_module,
-        "run_vanilla_option_pricing",
-        lambda execution_input: captured_execution_inputs.append(execution_input) or pricing_result,
-    )
-
-    observed_result = model.price_option(
-        valuation_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
-        spot=100.0,
-        strike=105.0,
-        maturity_interval=4.0,
-        observed_boundary_state=observed_boundary_state,
-    )
-
-    assert observed_result is pricing_result
-    assert len(captured_execution_inputs) == 1
-
-    pricing_boundary_input = captured_execution_inputs[0].request.boundary_input
-    assert pricing_boundary_input.mean_reversion_fitted_parameters.to_payload() == mean_reversion_payload
-    assert pricing_boundary_input.observed_boundary_state == observed_boundary_state
-    assert pricing_boundary_input.interval_delta == pytest.approx(1.0)
 
 
 def test_high_level_model_price_option_end_to_end_supports_endogenous_anchor_mean_reversion(
@@ -2077,12 +2063,6 @@ def test_high_level_model_price_option_end_to_end_supports_endogenous_anchor_mea
         spot=100.0,
         strike=105.0,
         maturity_interval=1.0,
-        observed_boundary_state=MeanReversionBoundaryState(
-            observed_log_price=0.25,
-            anchor_value=0.25,
-            pressure_state=0.0,
-            deviation=0.0,
-        ),
         include_transform_diagnostics=True,
         include_integration_quality_diagnostics=True,
     )

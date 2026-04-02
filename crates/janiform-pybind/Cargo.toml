@@ -3,6 +3,7 @@ name = "janiform-pybind"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+license.workspace = true
 description = "PyO3 bindings for Janiform."
 readme = "README.md"
 

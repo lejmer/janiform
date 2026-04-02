@@ -3,6 +3,7 @@ name = "janiform-affine-oracle"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+license.workspace = true
 description = "Shared affine-oracle solver contracts and implementation for Janiform."
 readme = "README.md"
 

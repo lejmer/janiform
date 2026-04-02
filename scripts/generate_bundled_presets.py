@@ -11,7 +11,7 @@ PYTHON_ROOT = REPOSITORY_ROOT / "python"
 if str(PYTHON_ROOT) not in sys.path:
     sys.path.insert(0, str(PYTHON_ROOT))
 
-from janiform._contracts import serialize_deterministic_json
+from janiform.contracts import serialize_deterministic_json
 from janiform.calibration.presets.references import (
     KnownNewsEvent,
     KnownNewsExplicitConfiguration,

@@ -3,6 +3,7 @@ name = "janiform-model-kernels"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+license.workspace = true
 description = "Shared model-kernel domains for Janiform."
 readme = "README.md"
 

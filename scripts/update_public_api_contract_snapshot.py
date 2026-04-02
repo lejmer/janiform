@@ -6,7 +6,7 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
 
-from tests.public_api_contract_guardrails import (
+from tests.support.public_api_contract_guardrails import (
     build_public_api_contract_snapshot,
     compute_public_api_contract_snapshot_sha256,
 )

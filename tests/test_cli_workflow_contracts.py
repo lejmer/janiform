@@ -105,7 +105,6 @@ def test_price_cli_help_documents_model_driven_workflow_contract() -> None:
 
     assert "--output {human,json}" in help_output
     assert "--model-path PATH" in help_output
-    assert "--observed-boundary-state-json PATH" in help_output
     assert "--valuation-time-utc VALUATION_TIME_UTC" in help_output
     assert "--spot SPOT" in help_output
     assert "--strike STRIKE" in help_output
@@ -1643,15 +1642,6 @@ def test_price_cli_maps_model_and_flags_to_runtime_contract(
     tmp_path: Path,
 ) -> None:
     model_path = _write_saved_price_model(tmp_path)
-    observed_boundary_state_path = _write_json_path(
-        tmp_path / "observed_boundary_state.json",
-        pricing_module.MeanReversionBoundaryState(
-            observed_log_price=0.0,
-            anchor_value=0.0,
-            pressure_state=0.0,
-            deviation=0.0,
-        ).to_payload(),
-    )
     captured_arguments: dict[str, Any] = {}
     original_price_option = cli_pricing_commands_module.JaniformModel.price_option
 
@@ -1669,8 +1659,6 @@ def test_price_cli_maps_model_and_flags_to_runtime_contract(
             "price",
             "--model-path",
             str(model_path),
-            "--observed-boundary-state-json",
-            str(observed_boundary_state_path),
             "--valuation-time-utc",
             "2026-02-02T15:00:00Z",
             "--spot",
@@ -1705,34 +1693,20 @@ def test_price_cli_maps_model_and_flags_to_runtime_contract(
     assert captured_arguments["include_transform_diagnostics"] is True
     assert captured_arguments["include_integration_quality_diagnostics"] is True
     assert captured_arguments["include_calibration_hooks"] is True
-    assert captured_arguments["observed_boundary_state"] == pricing_module.MeanReversionBoundaryState(
-        observed_log_price=0.0,
-        anchor_value=0.0,
-        pressure_state=0.0,
-        deviation=0.0,
-    )
+    assert "observed_boundary_state" not in captured_arguments
 
     command_output = orjson.loads(stdout_text)
     assert command_output["schema_version"] == cli_module.CLI_PRICE_RESULT_SCHEMA_VERSION
     assert command_output["response"]["price"] >= 0.0
 
 
-def test_price_cli_passes_observed_boundary_state_json_to_high_level_model(
+def test_price_cli_prices_anchored_model_without_manual_boundary_state_input(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     monkeypatch.chdir(tmp_path)
 
     model_path = _write_saved_anchored_price_model(tmp_path)
-    observed_boundary_state_path = _write_json_path(
-        tmp_path / "observed_boundary_state.json",
-        pricing_module.MeanReversionBoundaryState(
-            observed_log_price=0.25,
-            anchor_value=0.25,
-            pressure_state=0.0,
-            deviation=0.0,
-        ).to_payload(),
-    )
     captured_arguments: dict[str, Any] = {}
     original_price_option = cli_pricing_commands_module.JaniformModel.price_option
 
@@ -1750,8 +1724,6 @@ def test_price_cli_passes_observed_boundary_state_json_to_high_level_model(
             "price",
             "--model-path",
             str(model_path),
-            "--observed-boundary-state-json",
-            str(observed_boundary_state_path),
             "--valuation-time-utc",
             "2026-02-02T15:00:00Z",
             "--spot",
@@ -1766,43 +1738,9 @@ def test_price_cli_passes_observed_boundary_state_json_to_high_level_model(
     )
 
     assert exit_code == int(cli_module.CliExitCode.SUCCESS), stderr_text
-    assert captured_arguments["observed_boundary_state"] == pricing_module.MeanReversionBoundaryState(
-        observed_log_price=0.25,
-        anchor_value=0.25,
-        pressure_state=0.0,
-        deviation=0.0,
-    )
+    assert "observed_boundary_state" not in captured_arguments
     command_output = orjson.loads(stdout_text)
     assert command_output["response"]["price"] >= 0.0
-
-
-def test_price_cli_requires_observed_boundary_state_for_anchored_models(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.chdir(tmp_path)
-
-    model_path = _write_saved_anchored_price_model(tmp_path)
-
-    exit_code, stdout_text, stderr_text = _invoke_cli(
-        [
-            "price",
-            "--model-path",
-            str(model_path),
-            "--valuation-time-utc",
-            "2026-02-02T15:00:00Z",
-            "--spot",
-            "101.0",
-            "--strike",
-            "100.0",
-            "--maturity-interval",
-            "1.0",
-        ]
-    )
-
-    assert exit_code == int(cli_module.CliExitCode.VALIDATION_ERROR)
-    assert "price run_id:" in stdout_text
-    assert "observed_boundary_state" in stderr_text
 
 
 def _write_saved_price_model(tmp_path: Path) -> Path:

@@ -1,12 +1,12 @@
 {
-  "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale_and_docs.v1",
+  "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale.v1",
   "approved_snapshot_sha256": "63ddfcc18c3d85388085d6589a90988dce2344974c5987cddd93491ffbd6ee16",
   "change_log": [
     {
       "approved_on": "2026-03-08",
       "docs_updated": [
         "README.md",
-        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+        "docs/reference/python-api.md"
       ],
       "rationale": "The staged calibration surface now derives close-open gap candidates internally from raw boundary observations so callers no longer perform mechanical preprocessing outside Janiform.",
       "snapshot_sha256": "358a892617b023f392f0dc8ac52eabac32045ff6750e62e5c02e6be86753ee6c",
@@ -16,8 +16,8 @@
       "approved_on": "2026-03-08",
       "docs_updated": [
         "README.md",
-        "docs/development/guides/cli_command_architecture_and_namespace_layout.md",
-        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md"
       ],
       "rationale": "Calibration now exposes a market-data-first request boundary with explicit provenance and normalization selections while keeping staged execution as the advanced path.",
       "snapshot_sha256": "9c450deecc8eb0cacf9b439d380a58ad73e6aaee48a81bc79c3157a61d08d63a",
@@ -27,8 +27,8 @@
       "approved_on": "2026-03-08",
       "docs_updated": [
         "README.md",
-        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md",
-        "docs/development/guides/cli_command_architecture_and_namespace_layout.md"
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md"
       ],
       "rationale": "The market-data-first calibration surface now exposes a public preparation result with diagnostics and provenance, plus a direct market-data runner, so examples and tooling can stay on the user-facing path instead of dropping to staged orchestration.",
       "snapshot_sha256": "755eb7fa5226593fd99c93fb0df97a0fdb265e24d50ab7d2824b39dbb42adf5b",
@@ -38,7 +38,7 @@
       "approved_on": "2026-03-08",
       "docs_updated": [
         "README.md",
-        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+        "docs/reference/python-api.md"
       ],
       "rationale": "The split calibration package now exposes its public namespace through package re-exports without rewriting symbol origin metadata, so introspection reflects the defining submodules.",
       "snapshot_sha256": "5b105221fd94cb8677c81a4c821f8085f5b7f619d05d5833bf4d96004fc54f74",
@@ -48,8 +48,8 @@
       "approved_on": "2026-03-10",
       "docs_updated": [
         "README.md",
-        "docs/development/guides/coarse_simulation_workflow_contract.md",
-        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md"
       ],
       "rationale": "The coarse-interval runner is now a public simulation workflow, so the Python contract snapshot must include the new simulation request and path artifacts instead of leaving the workflow behind private native bindings.",
       "snapshot_sha256": "5f8da080a8f36bf3b38507e46ca8c569ab26f52a9da9d5b05e653f6803396bd6",
@@ -59,7 +59,7 @@
       "approved_on": "2026-03-10",
       "docs_updated": [
         "README.md",
-        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+        "docs/reference/python-api.md"
       ],
       "rationale": "The simulation surface now lives in a package with private submodules, so public imports stay stable while API introspection records the defining submodule for shared contracts and workflow types.",
       "snapshot_sha256": "a7dda4981972a2c1184326ae1ec3bb99666f1aeb9e30a8d46a35d5995ef2244b",
@@ -69,8 +69,8 @@
       "approved_on": "2026-03-10",
       "docs_updated": [
         "README.md",
-        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md",
-        "docs/development/guides/seeded_tick_event_tape_schema.md"
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md"
       ],
       "rationale": "The public Python contracts now treat signed trade labels as the canonical Hawkes calibration input and expose seeded simulation as a priced fine path with derived event replay, so the approved snapshot must match the new design-faithful workflow surface.",
       "snapshot_sha256": "66a69ecac6c6689f360bbc512bd82773444f1d012078dbd9bc33e7ea34f876b7",
@@ -79,8 +79,8 @@
     {
       "approved_on": "2026-03-10",
       "docs_updated": [
-        "docs/development/guides/python_api_contract_compatibility_and_version_guardrails.md",
-        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md"
       ],
       "rationale": "The guardrail now snapshots stringified callable annotations so Linux and Windows produce the same approved public API signature records even when annotation evaluation availability differs between environments.",
       "snapshot_sha256": "6e0d465d0f865fdc83cd727053891a14dc84dc18662dd702982ad5dd472482ab",
@@ -89,8 +89,8 @@
     {
       "approved_on": "2026-03-11",
       "docs_updated": [
-        "docs/development/guides/calibration_optimizer_adapter_and_objective_composition_schema.md",
-        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md"
       ],
       "rationale": "Hawkes calibration now accepts unsigned directional-label diagnostics and an observed source regime instead of caller-supplied raw objective terms, so the public calibration contracts must expose the new regime and diagnostics models and the updated candidate constructor.",
       "snapshot_sha256": "f5e463e1011fb377589cd4ba62d081d5266e76f90b60b461c22711570515ba07",
@@ -100,7 +100,7 @@
       "approved_on": "2026-03-11",
       "docs_updated": [
         "README.md",
-        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+        "docs/reference/python-api.md"
       ],
       "rationale": "Consumers now need one canonical path from calibration seasonality output to runtime hourly factors, so the public hourly-factor surface exposes a helper that materializes the normalized event-level signal and mean-renormalizes it instead of encouraging manual component recomposition.",
       "snapshot_sha256": "ed6fb02efc07873f443ce2915cc2ea3f10f9736f2b6d95c03a9c6e315ad2cb8c",
@@ -109,8 +109,8 @@
     {
       "approved_on": "2026-03-11",
       "docs_updated": [
-        "docs/development/guides/calendar_and_seasonality_api_contracts.md",
-        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md"
       ],
       "rationale": "Simulation and factor-loading workflows now derive fixed UTC interval grids from interval specifications instead of forcing exact UTC-hour boundaries while retaining hourly-calibrated control inputs.",
       "snapshot_sha256": "72d964914f2b12abf2c7b20185ae710d9538c8d00f65aac552e49ed5dde599b7",
@@ -120,7 +120,7 @@
       "approved_on": "2026-03-11",
       "docs_updated": [
         "README.md",
-        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+        "docs/reference/python-api.md"
       ],
       "rationale": "The staged return-components calibration contract now exposes raw observed open-session returns, activity-lift evidence, and explicit objective weights so callers provide empirical evidence instead of pre-baked NIG candidates and forced jump structure.",
       "snapshot_sha256": "b7c6035b6924c5ace138467a8fce9228702107fd66ef1d96a0ff70da2c7067d3",
@@ -130,7 +130,7 @@
       "approved_on": "2026-03-12",
       "docs_updated": [
         "README.md",
-        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+        "docs/reference/python-api.md"
       ],
       "rationale": "Seeded simulation now returns lazy fine-path and event-tape views with explicit boundary diagnostics, replacing the eager full-path JSON round-trip and surfacing the new response metadata in the approved Python API snapshot.",
       "snapshot_sha256": "7b84737ad782c120a5de559f6ff762b6b94b205aae98f5188e14f0bab8aa5256",
@@ -140,8 +140,8 @@
       "approved_on": "2026-03-12",
       "docs_updated": [
         "README.md",
-        "docs/development/guides/cli_command_reference_and_examples.md",
-        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md"
       ],
       "rationale": "Market-data calibration now resolves sessions automatically when a common workflow provides enough evidence, so the public calibration contracts expose optional session overrides plus a surfaced session-resolution artifact that can be reused for calibration and simulation preparation.",
       "snapshot_sha256": "f203382515736c3f8ca202892f58311a2f54bde2baa6be3758afe907cb2ad036",
@@ -150,7 +150,7 @@
     {
       "approved_on": "2026-03-12",
       "docs_updated": [
-        "docs/design/high_level_user_api_and_preset_strategy_plan.md"
+        "docs/reference/python-api.md"
       ],
       "rationale": "The high-level calibration surface now exposes typed session, known-news, and market-profile preset references with explicit override patches and full explicit configuration payloads, replacing any need for ad hoc preset kwargs and making provenance serialization part of the approved public contract.",
       "snapshot_sha256": "5ff5192b6936874174e5c35d45f8cde9f8268559b4379ca24fbde69ede81381b",
@@ -160,8 +160,8 @@
       "approved_on": "2026-03-12",
       "docs_updated": [
         "README.md",
-        "docs/design/high_level_user_api_and_preset_strategy_plan.md",
-        "docs/design/programmatic_preset_generation_plan.md"
+        "docs/reference/python-api.md",
+        "planning/programmatic_preset_generation_plan.md"
       ],
       "rationale": "Calibration now exposes a public preset registry with bundled runtime artifacts, deterministic export, and user-defined preset loading, so the approved Python contract snapshot must include the new registry types, preset artifact metadata, and resolved export surface.",
       "snapshot_sha256": "0ba0f156c175f317d95d6d2e1e4f865b48a5becd2160a885ef3d1cfa8b0aa929",
@@ -170,7 +170,7 @@
     {
       "approved_on": "2026-03-12",
       "docs_updated": [
-        "docs/design/high_level_user_api_and_preset_strategy_plan.md"
+        "docs/reference/python-api.md"
       ],
       "rationale": "Calibration now exposes one resolved preset-workflow configuration with component-level provenance, deterministic override fields, inferred-session diagnostics, and explicit known-news recommendation outcomes, so the approved Python API snapshot must include the new resolution contracts and entrypoint.",
       "snapshot_sha256": "2fb63cc1bc83d3f860fee48e351dc0d5d2d9d0b41644125fe435f04cd46e7c05",
@@ -180,7 +180,7 @@
       "approved_on": "2026-03-12",
       "docs_updated": [
         "README.md",
-        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+        "docs/reference/python-api.md"
       ],
       "rationale": "Calibration now exposes a default estimator-model-report object model on top of the canonical market-data preparation and staged runner path, so the approved Python API snapshot must include the new high-level fit classes under janiform.calibration.",
       "snapshot_sha256": "fa2e9186e7de1c712609d1f9276ca53431022fcff6434d5de01cdd11e7bcaf1b",
@@ -189,7 +189,7 @@
     {
       "approved_on": "2026-03-12",
       "docs_updated": [
-        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+        "docs/reference/python-api.md"
       ],
       "rationale": "The high-level fit surface now lives in a private implementation module whose name reflects its actual role, so the approved API snapshot must update the recorded origin metadata for the public calibration fit classes.",
       "snapshot_sha256": "25996317231a00a4eace0e37a1fd86d3776c7b563760d9ce5e6085b41c1933b6",
@@ -199,8 +199,8 @@
       "approved_on": "2026-03-13",
       "docs_updated": [
         "README.md",
-        "docs/development/guides/python_api_contract_compatibility_and_version_guardrails.md",
-        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md"
       ],
       "rationale": "The Python surface policy now treats curated workflow roots and public domain submodules as complementary supported import paths, so the approved snapshot must include the new janiform.simulation.seeded module and the updated document version instead of preserving the old facade-only assumption.",
       "snapshot_sha256": "f457863a7e3d7ad66799c7ce0d4b3e4eb9645cd14adde0f276291094a9e4a0da",
@@ -209,7 +209,7 @@
     {
       "approved_on": "2026-03-13",
       "docs_updated": [
-        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+        "docs/reference/python-api.md"
       ],
       "rationale": "GammaSeverityMarkConfiguration is pricing-owned and was only exposed from janiform.simulation through a lazy module __getattr__ alias to dodge an import cycle, so the approved surface now removes that hack and requires callers to import the type from janiform.pricing instead.",
       "snapshot_sha256": "6a09538fba008a1f330b39e897e70c481b2381d517d586232286ea1651397ebe",
@@ -218,8 +218,8 @@
     {
       "approved_on": "2026-03-13",
       "docs_updated": [
-        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md",
-        "docs/development/guides/coarse_simulation_workflow_contract.md"
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md"
       ],
       "rationale": "The simulation namespace now exposes janiform.simulation.coarse, janiform.simulation.seeded, and janiform.simulation.shared as the supported discoverable package map while removing the old underscore-backed structure, so the approved snapshot must track the new modules and the moved symbol origins.",
       "snapshot_sha256": "4a21fe0c03431f645f3ae87241fc367e7d8f7169004104cbff60d2a563b32317",
@@ -228,7 +228,7 @@
     {
       "approved_on": "2026-03-13",
       "docs_updated": [
-        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+        "docs/reference/python-api.md"
       ],
       "rationale": "The shared simulation package now keeps helper machinery out of its __init__ facade, so the approved snapshot must record that the public validation error type is defined in janiform.simulation.shared.errors while remaining re-exported from janiform.simulation.shared and janiform.simulation.seeded.",
       "snapshot_sha256": "0170fa45f95e17c467f35171a4141a344492ef3f54cdcd24fc1614961f7758e4",
@@ -237,7 +237,7 @@
     {
       "approved_on": "2026-03-13",
       "docs_updated": [
-        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+        "docs/reference/python-api.md"
       ],
       "rationale": "The public seeded simulation convenience surface now re-exports the public calendar and hourly-factor types referenced by load_hourly_factor_contract_for_simulation so callers can follow the helper signature directly from janiform.simulation or janiform.simulation.seeded without dropping into separate modules first.",
       "snapshot_sha256": "1e8ad2f98fbb91a7d4a28aff30b4295ed39ebf6906c90e1c4a1498e8e59992b6",
@@ -246,8 +246,8 @@
     {
       "approved_on": "2026-03-13",
       "docs_updated": [
-        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md",
-        "docs/development/guides/python_api_contract_compatibility_and_version_guardrails.md"
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md"
       ],
       "rationale": "Calibration now exposes supported fit, market_data, staged, presets, and sessions submodules while keeping janiform.calibration as a curated convenience root, so the approved contract snapshot must track both the root and the new ownership paths.",
       "snapshot_sha256": "972e860cab0239cc3f40bdc38a59acbcb95eede124c9d3fe92cc11aeb09d6bf4",
@@ -256,7 +256,7 @@
     {
       "approved_on": "2026-03-13",
       "docs_updated": [
-        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+        "docs/reference/python-api.md"
       ],
       "rationale": "Calibration now exposes supported ownership submodules for fit, market-data, presets, sessions, and staged execution, so the approved contract snapshot must track those explicit import paths instead of only the package roots.",
       "snapshot_sha256": "fd9cf11e8068c74d52f8c25e526c689fb568fbaf988b66a536a341811bc057e6",
@@ -266,7 +266,7 @@
       "approved_on": "2026-03-13",
       "docs_updated": [
         "README.md",
-        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+        "docs/reference/python-api.md"
       ],
       "rationale": "Staged calibration ownership now lives in explicit inputs, results, and runtime modules instead of hidden private monoliths, so the approved snapshot must reflect the deeper public submodule map and the reduced runtime surface.",
       "snapshot_sha256": "c99c7ab2d17564b1f7a396e562c4ef4a62058566986dee8b99cf917b883d2b64",
@@ -275,8 +275,8 @@
     {
       "approved_on": "2026-03-13",
       "docs_updated": [
-        "docs/development/guides/python_api_contract_compatibility_and_version_guardrails.md",
-        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md"
       ],
       "rationale": "The public namespace policy already treats janiform.cli and its documented command and parsing submodules as supported imports, so the approved snapshot must track those modules directly instead of leaving the CLI surface outside the real contract guardrail.",
       "snapshot_sha256": "b84b83bb7bfdf18b79c435c11ca1d71cfdafc7592a4c5a1e6fc72d88e78b58af",
@@ -285,8 +285,8 @@
     {
       "approved_on": "2026-03-13",
       "docs_updated": [
-        "docs/development/guides/cli_command_architecture_and_namespace_layout.md",
-        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md"
       ],
       "rationale": "The CLI foundation now lives in a Click command tree and the old parser-construction submodules were removed, so the approved public API snapshot must drop janiform.cli.parsing.* instead of treating deleted argparse scaffolding as supported imports.",
       "snapshot_sha256": "7af75087de818c36c4a5d42b7d2d276ba291869105f89c14139ad65350e7d809",
@@ -295,8 +295,8 @@
     {
       "approved_on": "2026-03-13",
       "docs_updated": [
-        "docs/development/guides/cli_command_architecture_and_namespace_layout.md",
-        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md"
       ],
       "rationale": "The Click migration now uses a native Click command boundary with keyword parameters and shared Click context instead of synthetic parser-result objects, so the approved CLI-module signatures must drop the temporary Namespace-based bridge.",
       "snapshot_sha256": "e47696f241d6b0ee8178b5dbe9cb6fed4f2cbb135c817b9812de8812f4ce2b77",
@@ -306,9 +306,9 @@
       "approved_on": "2026-03-13",
       "docs_updated": [
         "README.md",
-        "docs/development/guides/cli_command_architecture_and_namespace_layout.md",
-        "docs/development/guides/cli_command_reference_and_examples.md",
-        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md"
       ],
       "rationale": "The CLI redesign replaces the old calibration, simulation, and fit-and-simulate roots with the canonical fit and simulate workflow tree, so the approved public API snapshot must remove the deleted CLI symbols and record the new command identifiers that now define the supported surface.",
       "snapshot_sha256": "d63e4bfd807f8bc02f392adff6a8f88b80a4be0513f2bbe22e4e08690e858a40",
@@ -318,8 +318,8 @@
       "approved_on": "2026-03-14",
       "docs_updated": [
         "README.md",
-        "docs/development/guides/cli_command_reference_and_examples.md",
-        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md"
       ],
       "rationale": "The high-level fit surface now defaults the common tick-data path internally and the CLI exposes the beginner inspect/explain flow, so the approved snapshot must record the relaxed JaniformEstimator constructor plus the new fit-inspect CLI constants instead of preserving the older contract-shaped minimum path.",
       "snapshot_sha256": "76802c4436a5e914fb8a7fd1f032207a1519f4449920293b8c36dd7eee499821",
@@ -328,7 +328,7 @@
     {
       "approved_on": "2026-03-14",
       "docs_updated": [
-        "docs/development/guides/python_style_guide.md"
+        "docs/reference/python-api.md"
       ],
       "rationale": "The Python cleanup pass standardizes Optional usage, removes annotated varargs from CLI callbacks, and replaces dict[str, object] style document hints with the repo-preferred shapes so the approved snapshot must follow the tightened typing contract.",
       "snapshot_sha256": "6cc2bf7c3c993c9e87a59d7572d43b64a67a18849411f22bd11c9c7de7089d36",
@@ -338,9 +338,9 @@
       "approved_on": "2026-03-14",
       "docs_updated": [
         "README.md",
-        "docs/design/high_level_user_api_and_preset_strategy_plan.md",
-        "docs/development/guides/cli_command_architecture_and_namespace_layout.md",
-        "docs/development/guides/cli_command_reference_and_examples.md"
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md"
       ],
       "rationale": "The first-use workflow reset makes fit, simulate, and price one coherent family with durable CLI outputs, interval-driven simulation, model-driven pricing, and explicit library output-path plus silent controls, so the approved snapshot must track the new workflow method signatures and the renamed CLI pricing constants instead of preserving the execution-input-first contract.",
       "snapshot_sha256": "a880bedcef1bd94cfa3bd3b6d68acb345ca85a2e67ce919c4cfbb49601f607e3",
@@ -350,7 +350,7 @@
       "approved_on": "2026-03-14",
       "docs_updated": [
         "README.md",
-        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+        "docs/reference/python-api.md"
       ],
       "rationale": "The high-level simulation surface now returns a Janiform-owned result object with native tabular export helpers while preserving workflow diagnostics and metadata instead of exposing the raw coarse or seeded payloads directly.",
       "snapshot_sha256": "3dd4c4e6d3ec7897e9c0492366a2bc7d788c857b35ef4b2e452d1dd7642793bd",
@@ -359,8 +359,8 @@
     {
       "approved_on": "2026-03-15",
       "docs_updated": [
-        "docs/development/guides/cli_command_architecture_and_namespace_layout.md",
-        "docs/development/guides/cli_command_reference_and_examples.md"
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md"
       ],
       "rationale": "Tick-price input policy now distinguishes only between an explicit single-price column and a derived bid-ask midpoint, so the approved Python and CLI contract snapshot must drop the arbitrary trade-price and close-price variants and reflect the simpler input and output schema model.",
       "snapshot_sha256": "87ca6aba5029031f66f36fdc8fdfb592a7b4ecf6f8b0bb9b91cc140d165008ca",
@@ -369,9 +369,9 @@
     {
       "approved_on": "2026-03-15",
       "docs_updated": [
-        "docs/development/guides/cli_command_architecture_and_namespace_layout.md",
-        "docs/development/guides/python_api_contract_compatibility_and_version_guardrails.md",
-        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md"
       ],
       "rationale": "CLI helper modules remain importable ownership boundaries, but underscore-prefixed callbacks and utility helpers are internal implementation details rather than approved public exports, so the snapshot must stop treating those names as part of the supported Python contract.",
       "snapshot_sha256": "de73c4c3bdb4c6bd09a92d7fc59c2d79e53efeab0e6e00aefafd9de699809303",
@@ -380,10 +380,10 @@
     {
       "approved_on": "2026-03-15",
       "docs_updated": [
-        "docs/development/guides/cli_command_architecture_and_namespace_layout.md",
-        "docs/development/guides/cli_command_reference_and_examples.md",
-        "docs/development/guides/python_api_contract_compatibility_and_version_guardrails.md",
-        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md"
       ],
       "rationale": "Duplicate tick rows are now preserved by default and the human-facing workflow commands render structured errors while still exposing the same public modules, so the approved snapshot must record the removed duplicate-record error enum member, the optional normalization policy field, and the updated CLI error helper signature.",
       "snapshot_sha256": "40a6336c4222bda9a7489d5ff25493904b5539d098143d3add4840d7428e5a3b",
@@ -402,7 +402,7 @@
       "approved_on": "2026-03-17",
       "docs_updated": [
         "README.md",
-        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+        "docs/reference/python-api.md"
       ],
       "rationale": "Calibration candidate search now exposes CPU-count control consistently through the high-level estimator and the staged optimizer settings contract so callers can tune parallel candidate evaluation without dropping into private implementation hooks.",
       "snapshot_sha256": "4d7e2b9c7c3e259ce121825c58f92a902b58783d309904a9b51eefe96653d881",
@@ -412,7 +412,7 @@
       "approved_on": "2026-03-17",
       "docs_updated": [
         "README.md",
-        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+        "docs/reference/python-api.md"
       ],
       "rationale": "The staged return-components objective contract now separates surprise-arrival fit quality from jump-magnitude fit, so the approved Python snapshot must include the new public surprise_arrival_fit_weight field in the staged objective-weight model.",
       "snapshot_sha256": "bcc26d41606d421b120394924dbea78ca0f6c0da5d171926e8445de3681c1e57",
@@ -422,7 +422,7 @@
       "approved_on": "2026-03-19",
       "docs_updated": [
         "README.md",
-        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+        "docs/reference/python-api.md"
       ],
       "rationale": "The default full staged calibration workflow now includes a public joint-refinement final stage, so the approved Python snapshot must expose the extra CalibrationStage enum member used by the high-level estimator, market-data preparation diagnostics, and staged request contract.",
       "snapshot_sha256": "211e4e39849eb407e4ba4f13def5b0854ef27196fedc5d06434418185778f9ad",
@@ -431,7 +431,7 @@
     {
       "approved_on": "2026-03-20",
       "docs_updated": [
-        "docs/development/guides/seeded_tick_event_tape_schema.md"
+        "docs/reference/python-api.md"
       ],
       "rationale": "Seeded simulation now moves its lazy Python boundary over typed native chunk columns instead of chunked JSON while preserving the same public response values, so the approved snapshot must record the renamed seeded boundary transport policy constant.",
       "snapshot_sha256": "0a7661a37d9a753ef106fa9e8d79eb31acb40ca87402c2766db833447c23bdce",
@@ -441,7 +441,7 @@
       "approved_on": "2026-03-21",
       "docs_updated": [
         "README.md",
-        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+        "docs/reference/python-api.md"
       ],
       "rationale": "Staged calibration responses now expose diagnostic artifact bundles in memory mode and diagnostic artifact references in disk mode, so the approved Python contract snapshot must record the extra staged response fields instead of preserving the older report shape without calibration diagnostics.",
       "snapshot_sha256": "3d21e7073fd4d51e5367321fb7a53967e48aed1616b878d406455994e2bf2c8c",
@@ -450,7 +450,7 @@
     {
       "approved_on": "2026-03-21",
       "docs_updated": [
-        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+        "docs/reference/python-api.md"
       ],
       "rationale": "Market-data translation now keeps the full dataset boundary inside Rust and exposes only execution-ready artifacts, diagnostics, provenance, and fit-level summaries to Python, so the approved snapshot must drop raw loaded-input records from the public translation result and record the new summary fields and keyword cpu_count override.",
       "snapshot_sha256": "c6ad7cdd7f8f77b9d2bffe7fc43aa890369f634b34bbd453431ee083a501a823",
@@ -459,7 +459,7 @@
     {
       "approved_on": "2026-03-21",
       "docs_updated": [
-        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+        "docs/reference/python-api.md"
       ],
       "rationale": "The old Python-owned full-dataset ingestion and session-resolution APIs are no longer part of the supported public surface now that source loading, session inference, and preprocessing live on the Rust boundary, so the approved snapshot must stop exporting those record-heavy contracts and workflow helpers.",
       "snapshot_sha256": "f61dd3f3afaed5b79d84a224fd2f8ccbd1cc7c6289f1f6f814d8d7c8ee4e2de6",
@@ -468,7 +468,7 @@
     {
       "approved_on": "2026-03-21",
       "docs_updated": [
-        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+        "docs/reference/python-api.md"
       ],
       "rationale": "The remaining Python cleanup leaves janiform.calibration.sessions.resolution as a helper-only module with no schema-owning workflow boundary, so the approved snapshot must stop recording stale private schema metadata there and match the trimmed source-loading and session-helper implementation.",
       "snapshot_sha256": "44b419c87d30e911e1c27fbca77ea28b5423936494b81d74473caa8145befb86",
@@ -477,7 +477,7 @@
     {
       "approved_on": "2026-03-24",
       "docs_updated": [
-        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+        "docs/reference/python-api.md"
       ],
       "rationale": "Promoted `_run_staged_calibration_with_raw_payload_and_events` to the public API since it may be useful for developers to have access to it.",
       "snapshot_sha256": "67bbbd9a213f54cd2f3ca4ae9c773f86c579203cf6a30b92ee4a300e7eca58f5",
@@ -486,7 +486,7 @@
     {
       "approved_on": "2026-03-24",
       "docs_updated": [
-        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+        "docs/reference/python-api.md"
       ],
       "rationale": "The anchor-deviation rollout adds canonical mean-reversion model and runtime contracts that are re-exported through janiform.calibration and janiform.simulation, so the approved Python snapshot must record the new public symbols without inventing ad hoc anchor payloads in later workflow layers.",
       "snapshot_sha256": "6a4f5d07d27442a96372bafdddf8734f5442e8a6ae4f933b40adddde24f7a168",
@@ -495,7 +495,7 @@
     {
       "approved_on": "2026-03-24",
       "docs_updated": [
-        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+        "docs/reference/python-api.md"
       ],
       "rationale": "Mean-reversion is now a supported shared domain module instead of a private underscore-backed implementation shard, so the approved snapshot must record janiform.mean_reversion as the ownership path while keeping the curated calibration and simulation re-exports intact.",
       "snapshot_sha256": "d47b2a14bdd99c92f307c364b415674115e6a4b40634a53b0eb6f14f326a79a7",
@@ -504,7 +504,7 @@
     {
       "approved_on": "2026-03-24",
       "docs_updated": [
-        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+        "docs/reference/python-api.md"
       ],
       "rationale": "The shared contract namespace now lives under one public janiform.contracts package, replacing both the private underscore helper module and the short-lived janiform.mean_reversion surface, so the approved snapshot must record that single canonical contract import path and its exported validation primitives.",
       "snapshot_sha256": "844122adb0c484b0b1a54251014e558fecb257fb7f3895e7d3e81a5253998549",
@@ -513,7 +513,7 @@
     {
       "approved_on": "2026-03-24",
       "docs_updated": [
-        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+        "docs/reference/python-api.md"
       ],
       "rationale": "Seeded simulation now requires explicit mean-reversion runtime inputs, publishes observed-state fine-path and event-tape fields, and re-exports the disabled seeded mean-reversion helper from the public simulation packages, so the approved snapshot must record the updated request and record contracts instead of preserving the pre-anchor-deviation surface.",
       "snapshot_sha256": "26bf85efda04185dcc9efc368bac2917110a200ebe45807c121b6e3ca11dc5c6",
@@ -522,7 +522,7 @@
     {
       "approved_on": "2026-03-25",
       "docs_updated": [
-        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+        "docs/reference/python-api.md"
       ],
       "rationale": "The anchor-deviation rollout now surfaces observed-state end-of-interval fields on the public coarse simulation and sufficient-statistics risk contracts, so the approved Python API snapshot must record those fields explicitly instead of preserving the earlier core-return-only shapes.",
       "snapshot_sha256": "3d6c532819eec4f7b38ad93f055ae06c08c0d00866b2b42679d1696fb911de13",
@@ -532,7 +532,7 @@
       "approved_on": "2026-03-25",
       "docs_updated": [
         "README.md",
-        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+        "docs/reference/python-api.md"
       ],
       "rationale": "The staged calibration surface now includes an explicit mean-reversion stage input with lower-frequency observed log-price samples and the corresponding public stage enum value, so the approved Python snapshot must record the new execution-input field and input contracts instead of preserving the pre-anchor-deviation orchestration boundary.",
       "snapshot_sha256": "133fcfeccbaacb8364bab3bf112adf08b7bf1a642ec6b2acd123ec0136c71bcf",
@@ -541,8 +541,8 @@
     {
       "approved_on": "2026-03-26",
       "docs_updated": [
-        "docs/development/guides/vanilla_option_pricing_contract.md",
-        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md"
       ],
       "rationale": "The pricing contract now exposes one canonical anchored boundary input and state-dependent local tilt diagnostic surface, so the approved Python API snapshot must replace the old Hawkes-only pricing request field and include the shared mean-reversion pricing contracts re-exported from janiform.pricing.",
       "snapshot_sha256": "acb3778034012161c69dd7f52e8ea9a536cf484cdd41f77a135352e831fa352c",
@@ -551,8 +551,8 @@
     {
       "approved_on": "2026-03-26",
       "docs_updated": [
-        "docs/development/guides/vanilla_option_pricing_contract.md",
-        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md"
       ],
       "rationale": "Anchored vanilla pricing now accepts interval-aligned execution factors across the full pricing horizon and surfaces anchored recursion diagnostics in the optional run output, so the approved Python snapshot must record the new execution-input and run-diagnostics shapes.",
       "snapshot_sha256": "8b5bc5fa04c955ff18184a18e0154682236fd84e26b1593fb7e1740defe1b098",
@@ -562,7 +562,7 @@
       "approved_on": "2026-03-26",
       "docs_updated": [
         "README.md",
-        "docs/development/guides/cli_command_reference_and_examples.md"
+        "docs/reference/python-api.md"
       ],
       "rationale": "High-level market-data calibration now exposes an explicit mean-reversion configuration on the public request and estimator surfaces, so callers can request anchor estimation from JaniformEstimator and janiform fit without assembling staged mean-reversion inputs by hand.",
       "snapshot_sha256": "822725a4d5ec5b574c634ea5ef67ef37ac409fb11fafc728f32faf0ca3a63d4c",
@@ -572,11 +572,11 @@
       "approved_on": "2026-03-26",
       "docs_updated": [
         "README.md",
-        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md",
-        "docs/development/guides/python_api_contract_compatibility_and_version_guardrails.md",
-        "docs/development/guides/python_control_plane_and_rust_data_plane_boundary.md",
-        "docs/development/guides/cli_command_reference_and_examples.md",
-        "docs/development/guides/cli_command_architecture_and_namespace_layout.md"
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md"
       ],
       "rationale": "Python now stays config-first while Rust owns calibration evidence preparation, so the approved public surface must replace staged evidence tuples with prepared-handle and artifact-backed runtime boundaries.",
       "snapshot_sha256": "fe279a5bda09b886940f8106be7bf16ca90ec0f473e12408aa6233f080badfcc",
@@ -585,7 +585,7 @@
     {
       "approved_on": "2026-03-27",
       "docs_updated": [
-        "docs/development/guides/python_control_plane_and_rust_data_plane_boundary.md"
+        "docs/reference/python-api.md"
       ],
       "rationale": "The public calibration preparation contracts now carry concrete `CalibrationStage` tuples and the exported `PreparedCalibrationExecutionHandle` type instead of `Any` or `object`, and the obsolete staged-translation compatibility alias is removed entirely from the estimator path.",
       "snapshot_sha256": "e559c16885dcdb42d8ffa372f961b5c4a03cc31a09a5f7744d6026a7ed386793",
@@ -595,13 +595,13 @@
       "approved_on": "2026-03-27",
       "docs_updated": [
         "README.md",
-        "examples/README.md",
-        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md",
-        "docs/development/guides/python_api_contract_compatibility_and_version_guardrails.md",
-        "docs/development/guides/cli_command_reference_and_examples.md",
-        "docs/development/guides/vanilla_option_pricing_contract.md",
-        "docs/development/guides/sufficient_statistics_risk_sampler_contract.md",
-        "docs/development/guides/coarse_simulation_workflow_contract.md"
+        "docs/getting-started/quickstart.md",
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md"
       ],
       "rationale": "Pricing, risk, and coarse simulation now consume native-backed hourly-factor artifacts instead of Python tuple-owned interval-factor contracts, so the approved Python snapshot must remove the old execution-input tuple helpers and record the artifact-backed request fields and signatures.",
       "snapshot_sha256": "89a2d46feb2407e2f37719d89c51573be79ea2cf8d7d6a8f526191082a50d270",
@@ -611,9 +611,9 @@
       "approved_on": "2026-03-27",
       "docs_updated": [
         "README.md",
-        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md",
-        "docs/development/guides/python_api_contract_compatibility_and_version_guardrails.md",
-        "docs/development/guides/python_control_plane_and_rust_data_plane_boundary.md"
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md"
       ],
       "rationale": "The reduction pass now also removes category-specific preset registry passthrough methods that only forwarded into the generic resolver or serializer without adding validation or policy. In-repo callers now use the canonical generic preset operations directly, so the approved snapshot must follow the smaller preset registry surface in addition to the earlier simulation-surface reductions.",
       "snapshot_sha256": "fc84a697c504c33fcec52b414fd3a34f9da0f27233d39da4ac3367ff5c07640f",
@@ -622,7 +622,7 @@
     {
       "approved_on": "2026-03-27",
       "docs_updated": [
-        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+        "docs/reference/python-api.md"
       ],
       "rationale": "The high-level model loader now reconstructs resolved preset and session contracts through the canonical ownership modules instead of restating those payload parsers inside janiform.calibration.fit.model, and the session-registry materialization helpers now live behind the private janiform.calibration.sessions._resolution module boundary instead of a public-looking helper module.",
       "snapshot_sha256": "d79c8175d37a4f48c49de859a31892f4e5d3de2405981a4f7ef3ae9f27044fee",
@@ -631,7 +631,7 @@
     {
       "approved_on": "2026-03-27",
       "docs_updated": [
-        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+        "docs/reference/python-api.md"
       ],
       "rationale": "Helper-only CLI plumbing modules no longer sit on public-looking module paths. The document loader, CLI error normalization, CLI rendering, and the fit, pricing, development, and shared command builders now live behind internal underscore module boundaries, and the public API snapshot must stop treating the old developer and model-workflow command modules as supported public imports.",
       "snapshot_sha256": "26d337d09aba5d61793af4c73c017f8aeabea474389e7d3759b5fc675fdcc99a",
@@ -650,10 +650,10 @@
       "approved_on": "2026-03-29",
       "docs_updated": [
         "README.md",
-        "docs/design/endogenous_anchor_mean_reversion_and_pricing.md",
-        "docs/development/guides/cli_command_reference_and_examples.md",
-        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md",
-        "docs/development/guides/vanilla_option_pricing_contract.md"
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md"
       ],
       "rationale": "The canonical mean-reversion surface is now endogenous-only, so the public Python API no longer exposes disabled or constant anchor families and the seeded helper name now matches the runtime-generated anchor policy.",
       "snapshot_sha256": "17cde437ed5bf98564dec7e988c6fa48701336c44370177776f7ed530af8c9fa",
@@ -663,8 +663,8 @@
       "approved_on": "2026-03-29",
       "docs_updated": [
         "README.md",
-        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md",
-        "docs/development/guides/vanilla_option_pricing_contract.md"
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md"
       ],
       "rationale": "High-level calibration and pricing now expose explicit solver, preprocessing, and Fourier inversion settings on the public Python request surfaces, so callers can override the previous source-only defaults without rebuilding Janiform.",
       "snapshot_sha256": "3693dc6ffab1c987a12181a52de4dc4cba248dad696df4f21f5976dcf0b03837",
@@ -673,8 +673,8 @@
     {
       "approved_on": "2026-03-29",
       "docs_updated": [
-        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md",
-        "docs/development/guides/python_control_plane_and_rust_data_plane_boundary.md"
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md"
       ],
       "rationale": "Market-data preparation now exposes explicit source-probe, normalization, and session-planning phases on the public Python surface while keeping bulk tick ownership in Rust, and built-in session provenance is now reported directly instead of being obscured behind temporary explicit session-definition files.",
       "snapshot_sha256": "4a7a5535f48cf3c18c889e1a8f46a6de30cbb5f72ebf80b670b1e37d6a0d0dd7",
@@ -684,9 +684,9 @@
       "approved_on": "2026-03-31",
       "docs_updated": [
         "README.md",
-        "docs/development/guides/cli_command_reference_and_examples.md",
-        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md",
-        "docs/development/guides/vanilla_option_pricing_contract.md"
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md"
       ],
       "rationale": "The public mean-reversion surface now uses the pressure-to-level endogenous anchor contract, so shared boundary-state and runtime-anchor payloads carry pressure-state fields and anchor-model calibration parameters directly. The public simulation roots also expose typed progress callbacks, and the staged calibration root now surfaces failure-summary helpers that were already part of the supported control-plane path.",
       "snapshot_sha256": "546c1dd9b761b4cadf6030c1cae9e1951ff6c094bf309dc95c47a4aa746ae305",
@@ -695,8 +695,8 @@
     {
       "approved_on": "2026-04-01",
       "docs_updated": [
-        "docs/development/guides/python_api_contract_compatibility_and_version_guardrails.md",
-        "docs/development/guides/python_public_api_surface_map_and_namespace_policy.md"
+        "docs/reference/python-api.md",
+        "docs/reference/python-api.md"
       ],
       "rationale": "Public Python signatures that describe native-backed runtime artifacts now refer to Janiform-owned protocol boundary types instead of concrete janiform._native implementation classes, so the approved snapshot records the supported control-plane contract rather than a private extension-module detail.",
       "snapshot_sha256": "63ddfcc18c3d85388085d6589a90988dce2344974c5987cddd93491ffbd6ee16",

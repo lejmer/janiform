@@ -114,8 +114,8 @@ pub struct NigBuySellDriverParameters {
 /// Trading-time characteristic exponent contributions for one return argument.
 ///
 /// Equation reference:
-/// - `docs/design/janiform_compact_model_spec.tex`, Section 5
-/// - `docs/design/janiform_design_brainstorm_notes.md`, Section 2.1
+/// - `design/janiform_compact_model_spec.tex`, Section 5
+/// - `design/archive/janiform_design_brainstorm_notes.md`, Section 2.1
 ///
 /// The canonical return composition sign convention is:
 /// \f[
