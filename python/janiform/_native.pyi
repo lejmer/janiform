@@ -951,7 +951,22 @@ def estimate_current_state_from_observed_data(
     mean_reversion_fitted_parameters: object,
     state_time_utc_nanos: int,
     observed_log_price: float,
-    observations: object,
+    observation_timestamps_utc: object,
+    observation_trade_prices: object,
+    observation_trade_sides: object,
+) -> object: ...
+
+
+def materialize_runtime_structural_seasonality(
+    calendar_registry: CalendarRegistry,
+    exchange_code: str,
+    range_start_utc: str,
+    range_end_utc: str,
+    interval_duration_nanos: int,
+    intraday_minutes_per_bin: int,
+    intraday_factor_by_bin: object,
+    day_of_week_factor: object,
+    day_of_year_factor: object,
 ) -> object: ...
 
 

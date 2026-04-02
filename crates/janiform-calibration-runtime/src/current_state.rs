@@ -11,14 +11,6 @@ use janiform_model_kernels::mean_reversion::{
 };
 use serde::Serialize;
 
-/// One observed signed trade used to reconstruct the current Hawkes state.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct CurrentStateObservation {
-    pub timestamp_utc_nanos: i64,
-    pub trade_price: f64,
-    pub trade_side: HawkesEventSide,
-}
-
 /// Rust-native input for fitted-model current-state estimation.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CurrentStateEstimationInput {
@@ -26,7 +18,9 @@ pub struct CurrentStateEstimationInput {
     pub mean_reversion_fitted_parameters: MeanReversionFittedParameters,
     pub state_time_utc_nanos: i64,
     pub observed_log_price: f64,
-    pub observations: Vec<CurrentStateObservation>,
+    pub observation_timestamp_utc_nanos: Vec<i64>,
+    pub observation_trade_prices: Vec<f64>,
+    pub observation_trade_sides: Vec<HawkesEventSide>,
 }
 
 /// Rust-native output for fitted-model current-state estimation.
@@ -39,6 +33,11 @@ pub struct CurrentStateEstimationOutput {
 #[derive(Debug, Clone, PartialEq)]
 pub enum CurrentStateEstimationError {
     EmptyObservations,
+    ObservationColumnLengthMismatch {
+        timestamp_count: usize,
+        trade_price_count: usize,
+        trade_side_count: usize,
+    },
     InvalidObservedLogPrice {
         value: f64,
     },
@@ -73,6 +72,14 @@ impl Display for CurrentStateEstimationError {
                     "current-state estimation requires at least one observation"
                 )
             }
+            Self::ObservationColumnLengthMismatch {
+                timestamp_count,
+                trade_price_count,
+                trade_side_count,
+            } => write!(
+                formatter,
+                "current-state estimation requires aligned observation columns, received timestamps={timestamp_count}, trade_prices={trade_price_count}, trade_sides={trade_side_count}"
+            ),
             Self::InvalidObservedLogPrice { value } => write!(
                 formatter,
                 "current-state estimation requires a finite observed_log_price, found {value}"
@@ -118,6 +125,7 @@ impl Error for CurrentStateEstimationError {
             Self::InvalidMeanReversionFittedParameters { source } => Some(source),
             Self::InvalidMeanReversionBoundaryState { source } => Some(source),
             Self::EmptyObservations
+            | Self::ObservationColumnLengthMismatch { .. }
             | Self::InvalidObservedLogPrice { .. }
             | Self::InvalidObservationTradePrice { .. }
             | Self::ObservationTimestampOutOfOrder { .. }
@@ -136,8 +144,19 @@ pub fn estimate_current_state_from_observed_data(
             |source| CurrentStateEstimationError::InvalidMeanReversionFittedParameters { source },
         )?;
 
-    if input.observations.is_empty() {
+    if input.observation_timestamp_utc_nanos.is_empty() {
         return Err(CurrentStateEstimationError::EmptyObservations);
+    }
+    if input.observation_timestamp_utc_nanos.len() != input.observation_trade_prices.len()
+        || input.observation_timestamp_utc_nanos.len() != input.observation_trade_sides.len()
+    {
+        return Err(
+            CurrentStateEstimationError::ObservationColumnLengthMismatch {
+                timestamp_count: input.observation_timestamp_utc_nanos.len(),
+                trade_price_count: input.observation_trade_prices.len(),
+                trade_side_count: input.observation_trade_sides.len(),
+            },
+        );
     }
     if !input.observed_log_price.is_finite() {
         return Err(CurrentStateEstimationError::InvalidObservedLogPrice {
@@ -145,13 +164,19 @@ pub fn estimate_current_state_from_observed_data(
         });
     }
 
-    validate_observations(input.state_time_utc_nanos, &input.observations)?;
+    validate_observations(
+        input.state_time_utc_nanos,
+        &input.observation_timestamp_utc_nanos,
+        &input.observation_trade_prices,
+    )?;
 
     let hawkes_excitation_state = replay_hawkes_state(
         input.kernel_parameters,
         input.state_time_utc_nanos,
-        &input.observations,
+        &input.observation_timestamp_utc_nanos,
+        &input.observation_trade_sides,
     );
+
     let mean_reversion_boundary_state = MeanReversionBoundaryState::try_new(
         input.observed_log_price,
         input.observed_log_price,
@@ -168,35 +193,42 @@ pub fn estimate_current_state_from_observed_data(
 
 fn validate_observations(
     state_time_utc_nanos: i64,
-    observations: &[CurrentStateObservation],
+    observation_timestamp_utc_nanos: &[i64],
+    observation_trade_prices: &[f64],
 ) -> Result<(), CurrentStateEstimationError> {
-    let mut previous_timestamp_utc_nanos = observations[0].timestamp_utc_nanos;
+    let mut previous_timestamp_utc_nanos = observation_timestamp_utc_nanos[0];
 
-    for (observation_index, observation) in observations.iter().enumerate() {
-        if !observation.trade_price.is_finite() || observation.trade_price <= 0.0 {
+    for (observation_index, (&timestamp_utc_nanos, &trade_price)) in observation_timestamp_utc_nanos
+        .iter()
+        .zip(observation_trade_prices.iter())
+        .enumerate()
+    {
+        if !trade_price.is_finite() || trade_price <= 0.0 {
             return Err(CurrentStateEstimationError::InvalidObservationTradePrice {
                 observation_index,
-                value: observation.trade_price,
+                value: trade_price,
             });
         }
-        if observation.timestamp_utc_nanos > state_time_utc_nanos {
+
+        if timestamp_utc_nanos > state_time_utc_nanos {
             return Err(CurrentStateEstimationError::ObservationAfterStateTime {
                 state_time_utc_nanos,
                 observation_index,
-                timestamp_utc_nanos: observation.timestamp_utc_nanos,
+                timestamp_utc_nanos,
             });
         }
-        if observation_index > 0 && observation.timestamp_utc_nanos < previous_timestamp_utc_nanos {
+
+        if observation_index > 0 && timestamp_utc_nanos < previous_timestamp_utc_nanos {
             return Err(
                 CurrentStateEstimationError::ObservationTimestampOutOfOrder {
                     observation_index,
                     previous_timestamp_utc_nanos,
-                    timestamp_utc_nanos: observation.timestamp_utc_nanos,
+                    timestamp_utc_nanos,
                 },
             );
         }
 
-        previous_timestamp_utc_nanos = observation.timestamp_utc_nanos;
+        previous_timestamp_utc_nanos = timestamp_utc_nanos;
     }
 
     Ok(())
@@ -205,7 +237,8 @@ fn validate_observations(
 fn replay_hawkes_state(
     kernel_parameters: HawkesKernelParameters,
     state_time_utc_nanos: i64,
-    observations: &[CurrentStateObservation],
+    observation_timestamp_utc_nanos: &[i64],
+    observation_trade_sides: &[HawkesEventSide],
 ) -> HawkesExcitationState {
     let mut current_state = HawkesExcitationState {
         y_plus_plus: 0.0,
@@ -213,18 +246,24 @@ fn replay_hawkes_state(
         y_minus_plus: 0.0,
         y_minus_minus: 0.0,
     };
-    let mut previous_timestamp_utc_nanos = observations[0].timestamp_utc_nanos;
+    let mut previous_timestamp_utc_nanos = observation_timestamp_utc_nanos[0];
 
-    for observation in observations {
+    for (&timestamp_utc_nanos, &trade_side) in observation_timestamp_utc_nanos
+        .iter()
+        .zip(observation_trade_sides.iter())
+    {
         let delta_hours =
-            duration_nanos_to_hours(observation.timestamp_utc_nanos - previous_timestamp_utc_nanos);
+            duration_nanos_to_hours(timestamp_utc_nanos - previous_timestamp_utc_nanos);
+
         current_state = current_state.apply_shared_decay_drift(kernel_parameters.beta, delta_hours);
-        current_state = current_state
-            .apply_endogenous_event_jump(observation.trade_side, kernel_parameters.alpha);
-        previous_timestamp_utc_nanos = observation.timestamp_utc_nanos;
+        current_state =
+            current_state.apply_endogenous_event_jump(trade_side, kernel_parameters.alpha);
+
+        previous_timestamp_utc_nanos = timestamp_utc_nanos;
     }
 
     let trailing_delta_hours =
         duration_nanos_to_hours(state_time_utc_nanos - previous_timestamp_utc_nanos);
+
     current_state.apply_shared_decay_drift(kernel_parameters.beta, trailing_delta_hours)
 }

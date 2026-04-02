@@ -27,7 +27,6 @@ from janiform.calibration import (
 from janiform.calibration.fit import (
     CurrentStateEstimationRequest,
     CurrentStateEstimationResult,
-    CurrentStateObservation,
     JaniformEstimator,
     JaniformFitReport,
     JaniformModel,
@@ -789,38 +788,42 @@ def test_loaded_high_level_model_runtime_seasonality_prefers_compact_parameters(
         loaded_model.session_resolution.resolved_session_definition_json
     )
 
-    class _FakeTimestampEventPreprocessingResult:
-        exchange_local_minute_of_day = [540, 600]
-        exchange_local_day_of_week = bytes([1, 1])
-        exchange_local_day_of_year = [33, 33]
-
-    def _capture_preprocess_timestamp_events(
-        event_records: list[dict[str, datetime]],
-        *,
+    def _materialize_runtime_structural_seasonality(
+        native_calendar_registry: Any,
         exchange_code: str,
-        calendar_registry: CalendarRegistry,
-        timestamp_field_name: str = "timestamp",
-        session_filter: fit_model_module.SessionFilter = fit_model_module.SessionFilter.OPEN_ONLY,
-        sparse_hour_event_threshold: int = 1,
-    ) -> _FakeTimestampEventPreprocessingResult:
+        range_start_utc: str,
+        range_end_utc: str,
+        interval_duration_nanos: int,
+        intraday_minutes_per_bin: int,
+        intraday_factor_by_bin: tuple[float, ...],
+        day_of_week_factor: tuple[float, ...],
+        day_of_year_factor: tuple[float, ...],
+    ) -> dict[str, Any]:
+        assert native_calendar_registry is calendar_registry._native_registry
         assert exchange_code == loaded_model.session_resolution.exchange_code
-        assert calendar_registry is calendar_registry_instance
-        assert timestamp_field_name == "timestamp"
-        assert session_filter == fit_model_module.SessionFilter.ALL
-        assert sparse_hour_event_threshold == 1
-        assert event_records == [
-            {"timestamp": datetime(2026, 2, 2, 14, tzinfo=UTC)},
-            {"timestamp": datetime(2026, 2, 2, 15, tzinfo=UTC)},
-        ]
-
-        return _FakeTimestampEventPreprocessingResult()
-
-    calendar_registry_instance = calendar_registry
+        assert range_start_utc == "2026-02-02T14:00:00+00:00"
+        assert range_end_utc == "2026-02-02T16:00:00+00:00"
+        assert interval_duration_nanos == 3_600_000_000_000
+        assert intraday_minutes_per_bin == 480
+        assert len(intraday_factor_by_bin) == 3
+        assert len(day_of_week_factor) == 7
+        assert len(day_of_year_factor) == 366
+        return {
+            "interval_start_utc_nanos": [
+                datetime_to_utc_nanos(datetime(2026, 2, 2, 14, tzinfo=UTC)),
+                datetime_to_utc_nanos(datetime(2026, 2, 2, 15, tzinfo=UTC)),
+            ],
+            "seasonality_factors": [1.0, 1.0],
+        }
 
     monkeypatch.setattr(
         fit_model_module,
-        "preprocess_timestamp_events",
-        _capture_preprocess_timestamp_events,
+        "native_module",
+        lambda: SimpleNamespace(
+            materialize_runtime_structural_seasonality=(
+                _materialize_runtime_structural_seasonality
+            )
+        ),
     )
 
     seasonality_source = fit_model_module._build_runtime_hourly_seasonality_source_from_model(
@@ -858,15 +861,42 @@ def test_loaded_high_level_model_runtime_seasonality_infers_intraday_bin_width(
         loaded_model.session_resolution.resolved_session_definition_json
     )
 
-    class _FakeTimestampEventPreprocessingResult:
-        exchange_local_minute_of_day = [540, 600]
-        exchange_local_day_of_week = bytes([1, 1])
-        exchange_local_day_of_year = [33, 33]
+    def _materialize_runtime_structural_seasonality(
+        native_calendar_registry: Any,
+        exchange_code: str,
+        range_start_utc: str,
+        range_end_utc: str,
+        interval_duration_nanos: int,
+        intraday_minutes_per_bin: int,
+        intraday_factor_by_bin: tuple[float, ...],
+        day_of_week_factor: tuple[float, ...],
+        day_of_year_factor: tuple[float, ...],
+    ) -> dict[str, Any]:
+        assert native_calendar_registry is calendar_registry._native_registry
+        assert exchange_code == loaded_model.session_resolution.exchange_code
+        assert range_start_utc == "2026-02-02T14:00:00+00:00"
+        assert range_end_utc == "2026-02-02T16:00:00+00:00"
+        assert interval_duration_nanos == 3_600_000_000_000
+        assert intraday_minutes_per_bin == 480
+        assert len(intraday_factor_by_bin) == 3
+        assert len(day_of_week_factor) == 7
+        assert len(day_of_year_factor) == 366
+        return {
+            "interval_start_utc_nanos": [
+                datetime_to_utc_nanos(datetime(2026, 2, 2, 14, tzinfo=UTC)),
+                datetime_to_utc_nanos(datetime(2026, 2, 2, 15, tzinfo=UTC)),
+            ],
+            "seasonality_factors": [1.0, 1.0],
+        }
 
     monkeypatch.setattr(
         fit_model_module,
-        "preprocess_timestamp_events",
-        lambda *args, **kwargs: _FakeTimestampEventPreprocessingResult(),
+        "native_module",
+        lambda: SimpleNamespace(
+            materialize_runtime_structural_seasonality=(
+                _materialize_runtime_structural_seasonality
+            )
+        ),
     )
 
     seasonality_source = fit_model_module._build_runtime_hourly_seasonality_source_from_model(
@@ -1145,12 +1175,12 @@ def test_high_level_model_simulate_uses_estimated_current_state_when_continuatio
         ),
     )
     continuation_data = CurrentStateEstimationRequest(
-        observed_trades=(
-            CurrentStateObservation(
-                timestamp_utc=datetime(2026, 2, 2, 14, 30, tzinfo=UTC),
-                trade_price=100.0,
-                trade_side=SeededTickEventSide.BUY,
-            ),
+        observed_tick_data=pandas.DataFrame(
+            {
+                "timestamp_utc": [datetime(2026, 2, 2, 14, 30, tzinfo=UTC)],
+                "trade_price": [100.0],
+                "trade_sign": ["buy"],
+            }
         ),
     )
 
@@ -1516,6 +1546,15 @@ def test_high_level_model_materializes_endogenous_mean_reversion_runtime_inputs_
         fit_model_module,
         "native_module",
         lambda: SimpleNamespace(
+            materialize_runtime_structural_seasonality=(
+                lambda *args, **kwargs: {
+                    "interval_start_utc_nanos": [
+                        datetime_to_utc_nanos(datetime(2026, 2, 2, 15, 30, tzinfo=UTC)),
+                        datetime_to_utc_nanos(datetime(2026, 2, 2, 16, 30, tzinfo=UTC)),
+                    ],
+                    "seasonality_factors": [1.0, 1.0],
+                }
+            ),
             materialize_endogenous_mean_reversion_runtime_interval_anchors=(
                 _materialize_runtime_anchors
             )
@@ -2152,17 +2191,15 @@ def test_high_level_model_estimate_current_state_dispatches_to_native_estimator(
     )
     captured_native_arguments: list[tuple[Any, ...]] = []
     request = CurrentStateEstimationRequest(
-        observed_trades=(
-            CurrentStateObservation(
-                timestamp_utc=datetime(2026, 2, 2, 13, tzinfo=UTC),
-                trade_price=100.0,
-                trade_side=SeededTickEventSide.BUY,
-            ),
-            CurrentStateObservation(
-                timestamp_utc=datetime(2026, 2, 2, 14, tzinfo=UTC),
-                trade_price=100.5,
-                trade_side=SeededTickEventSide.SELL,
-            ),
+        observed_tick_data=pandas.DataFrame(
+            {
+                "timestamp_utc": [
+                    datetime(2026, 2, 2, 13, tzinfo=UTC),
+                    datetime(2026, 2, 2, 14, tzinfo=UTC),
+                ],
+                "trade_price": [100.0, 100.5],
+                "trade_sign": ["buy", "sell"],
+            }
         ),
         observed_price=100.0,
     )
@@ -2218,16 +2255,13 @@ def test_high_level_model_estimate_current_state_dispatches_to_native_estimator(
         fit_model_module._pricing_observed_log_price_from_spot(model, spot=100.0)
     )
     assert captured_native_arguments[0][4] == (
-        {
-            "timestamp_utc_nanos": datetime_to_utc_nanos(datetime(2026, 2, 2, 13, tzinfo=UTC)),
-            "trade_price": 100.0,
-            "trade_side": "buy",
-        },
-        {
-            "timestamp_utc_nanos": datetime_to_utc_nanos(datetime(2026, 2, 2, 14, tzinfo=UTC)),
-            "trade_price": 100.5,
-            "trade_side": "sell",
-        },
+        datetime(2026, 2, 2, 13, tzinfo=UTC).isoformat(),
+        datetime(2026, 2, 2, 14, tzinfo=UTC).isoformat(),
+    )
+    assert captured_native_arguments[0][5] == (100.0, 100.5)
+    assert captured_native_arguments[0][6] == (
+        "buy",
+        "sell",
     )
 
 
@@ -2255,12 +2289,12 @@ def test_high_level_model_price_option_uses_estimated_current_state_when_observe
         ),
     )
     observed_data = CurrentStateEstimationRequest(
-        observed_trades=(
-            CurrentStateObservation(
-                timestamp_utc=datetime(2026, 2, 2, 14, 30, tzinfo=UTC),
-                trade_price=100.0,
-                trade_side=SeededTickEventSide.BUY,
-            ),
+        observed_tick_data=pandas.DataFrame(
+            {
+                "timestamp_utc": [datetime(2026, 2, 2, 14, 30, tzinfo=UTC)],
+                "trade_price": [100.0],
+                "trade_sign": ["buy"],
+            }
         ),
     )
     captured_execution_inputs: list[Any] = []
@@ -2293,7 +2327,8 @@ def test_high_level_model_price_option_uses_estimated_current_state_when_observe
         (
             datetime(2026, 2, 2, 15, tzinfo=UTC),
             CurrentStateEstimationRequest(
-                observed_trades=observed_data.observed_trades,
+                observed_tick_data=observed_data.observed_tick_data,
+                tick_data_column_mapping=observed_data.tick_data_column_mapping,
                 observed_price=100.0,
             ),
         )

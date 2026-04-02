@@ -1,5 +1,5 @@
 use janiform_calibration_runtime::{
-    CurrentStateEstimationError, CurrentStateEstimationInput, CurrentStateObservation,
+    CurrentStateEstimationError, CurrentStateEstimationInput,
     estimate_current_state_from_observed_data,
 };
 use janiform_foundations::time::ONE_HOUR_NANOS;
@@ -27,28 +27,22 @@ fn current_state_estimation_replays_hawkes_state_and_derives_boundary_from_obser
         },
     )
     .expect("test kernel parameters should be valid");
+
     let mean_reversion_fitted_parameters =
         MeanReversionFittedParameters::endogenous_core_pressure_level(0.25, 1.0, 0.0, 0.0)
             .expect("test mean-reversion fitted parameters should be valid");
+
     let state_time_utc_nanos = 15 * ONE_HOUR_NANOS;
+
     let estimation_output =
         estimate_current_state_from_observed_data(CurrentStateEstimationInput {
             kernel_parameters,
             mean_reversion_fitted_parameters,
             state_time_utc_nanos,
             observed_log_price: 0.05,
-            observations: vec![
-                CurrentStateObservation {
-                    timestamp_utc_nanos: 13 * ONE_HOUR_NANOS,
-                    trade_price: 100.0,
-                    trade_side: HawkesEventSide::Buy,
-                },
-                CurrentStateObservation {
-                    timestamp_utc_nanos: 14 * ONE_HOUR_NANOS,
-                    trade_price: 100.5,
-                    trade_side: HawkesEventSide::Sell,
-                },
-            ],
+            observation_timestamp_utc_nanos: vec![13 * ONE_HOUR_NANOS, 14 * ONE_HOUR_NANOS],
+            observation_trade_prices: vec![100.0, 100.5],
+            observation_trade_sides: vec![HawkesEventSide::Buy, HawkesEventSide::Sell],
         })
         .expect("current-state estimation should succeed");
 
@@ -110,19 +104,19 @@ fn current_state_estimation_rejects_observation_after_requested_state_time() {
         },
     )
     .expect("test kernel parameters should be valid");
+
     let mean_reversion_fitted_parameters =
         MeanReversionFittedParameters::endogenous_core_pressure_level(0.25, 1.0, 0.0, 0.0)
             .expect("test mean-reversion fitted parameters should be valid");
+
     let error = estimate_current_state_from_observed_data(CurrentStateEstimationInput {
         kernel_parameters,
         mean_reversion_fitted_parameters,
         state_time_utc_nanos: 14 * ONE_HOUR_NANOS,
         observed_log_price: 0.05,
-        observations: vec![CurrentStateObservation {
-            timestamp_utc_nanos: 15 * ONE_HOUR_NANOS,
-            trade_price: 100.0,
-            trade_side: HawkesEventSide::Buy,
-        }],
+        observation_timestamp_utc_nanos: vec![15 * ONE_HOUR_NANOS],
+        observation_trade_prices: vec![100.0],
+        observation_trade_sides: vec![HawkesEventSide::Buy],
     })
     .expect_err("observation after state time must fail");
 

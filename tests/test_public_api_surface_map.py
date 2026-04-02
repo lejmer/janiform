@@ -450,7 +450,6 @@ def test_calibration_public_symbols_live_in_calibration_module() -> None:
         "CalibrationValidationFailure",
         "CurrentStateEstimationRequest",
         "CurrentStateEstimationResult",
-        "CurrentStateObservation",
         "DEFAULT_HIGH_LEVEL_KNOWN_NEWS_PRESET_NAME",
         "KnownNewsExplicitConfiguration",
         "KnownNewsPresetReference",
@@ -498,7 +497,6 @@ def test_calibration_fit_public_submodule_is_supported_domain_import() -> None:
     assert set(calibration_fit_module.__all__) == {
         "CurrentStateEstimationRequest",
         "CurrentStateEstimationResult",
-        "CurrentStateObservation",
         "JaniformEstimator",
         "JaniformFitReport",
         "JaniformModel",
@@ -523,7 +521,6 @@ def test_calibration_fit_public_ownership_submodules_are_supported_domain_import
     assert set(calibration_fit_state_estimation_module.__all__) == {
         "CurrentStateEstimationRequest",
         "CurrentStateEstimationResult",
-        "CurrentStateObservation",
     }
 
 

@@ -1,5 +1,6 @@
 use std::sync::{Arc, Mutex};
 
+use chrono::{DateTime, Utc};
 use janiform::calibration::{
     CALIBRATION_STAGED_EXECUTION_INPUT_SCHEMA_VERSION, CalibrationExecutionMode,
     CalibrationMeanReversionStageExecutionInput, CalibrationMeanReversionStageObservation,
@@ -9,7 +10,7 @@ use janiform::calibration::{
     CalibrationStageSolverSettings, CalibrationStagedExecutionInput,
     CalibrationStagedExecutionRuntimeResources, CalibrationStagedRunObserverEvent,
     CalibrationStagedRunReport, CalibrationStagedRunStageReport, CurrentStateEstimationInput,
-    CurrentStateObservation, MarketDataInputFileReference, MarketDataKnownNewsColumnMapping,
+    MarketDataInputFileReference, MarketDataKnownNewsColumnMapping,
     MarketDataKnownNewsLoadingInput, MarketDataLoadingOutput, MarketDataLoadingRequest,
     MarketDataNormalizationPolicy, MarketDataOptionSurfaceColumnMapping,
     MarketDataOptionSurfaceLoadingInput, MarketDataSessionConfiguration,
@@ -17,9 +18,11 @@ use janiform::calibration::{
     MarketDataTickDataColumnMapping, MarketDataTranslationPreprocessingOutput,
     MarketDataTranslationPreprocessingRequest, MarketDataTranslationPreprocessingSettings,
     ReturnComponentsStageFittedParameters, ReturnComponentsStageObservedSignalSummaryStatistics,
+    RuntimeStructuralSeasonalityMaterializationInput,
     estimate_current_state_from_observed_data as estimate_current_state_from_observed_data_core,
     evaluate_return_components_exact_candidate_from_bridge,
     load_and_preprocess_market_data_translation_request as load_and_preprocess_market_data_translation_request_native,
+    materialize_runtime_structural_seasonality as materialize_runtime_structural_seasonality_core,
     normalize_market_data_source as normalize_market_data_source_native,
     prepare_market_data_loading_from_phases as prepare_market_data_loading_from_phases_native,
     preprocess_market_data_translation_request as preprocess_market_data_translation_request_native,
@@ -33,11 +36,12 @@ use janiform::hourly_factors::{ONE_HOUR_NANOS_F64, duration_nanos_to_hours};
 use janiform::simulation::MeanReversionAnchorModelKind;
 use janiform::simulation::MeanReversionFittedParameters;
 use pyo3::prelude::{Bound, Py, PyResult, Python};
-use pyo3::types::{PyAny, PyDict, PyDictMethods, PyModule, PyModuleMethods};
+use pyo3::types::{PyAny, PyAnyMethods, PyDict, PyDictMethods, PyModule, PyModuleMethods};
 use pyo3::{pyfunction, wrap_pyfunction};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use super::calendar::parse_timestamp_utc;
 use crate::CalibrationExecutionError;
 use crate::python_value::{json_value_to_py_object, py_any_to_json_value};
 use crate::types::{
@@ -159,14 +163,6 @@ struct PythonMarketDataCalibrationRequest {
     known_news_inputs: Option<PythonMarketDataKnownNewsInput>,
     #[serde(default)]
     mean_reversion: Option<PythonMeanReversionConfiguration>,
-}
-
-#[derive(Clone, Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct PythonCurrentStateObservation {
-    timestamp_utc_nanos: i64,
-    trade_price: f64,
-    trade_side: String,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -1693,7 +1689,9 @@ fn estimate_current_state_from_observed_data(
     mean_reversion_fitted_parameters: &Bound<'_, PyAny>,
     state_time_utc_nanos: i64,
     observed_log_price: f64,
-    observations: &Bound<'_, PyAny>,
+    observation_timestamps_utc: &Bound<'_, PyAny>,
+    observation_trade_prices: &Bound<'_, PyAny>,
+    observation_trade_sides: &Bound<'_, PyAny>,
 ) -> PyResult<Py<PyAny>> {
     let parsed_kernel_parameters: HawkesKernelParameters =
         serde_json::from_value(py_any_to_json_value(kernel_parameters)?).map_err(|source| {
@@ -1709,27 +1707,53 @@ fn estimate_current_state_from_observed_data(
                 ))
             },
         )?;
-    let parsed_observations: Vec<PythonCurrentStateObservation> =
-        serde_json::from_value(py_any_to_json_value(observations)?).map_err(|source| {
-            CalibrationExecutionError::new_err(format!(
-                "failed to deserialize current-state observations: {source}"
-            ))
+    let parsed_observation_timestamps_utc: Vec<String> =
+        observation_timestamps_utc.extract().map_err(|_| {
+            CalibrationExecutionError::new_err(
+                "current-state observation_timestamps_utc must be an iterable of RFC3339 UTC timestamp strings",
+            )
+        })?;
+    let parsed_observation_trade_prices: Vec<f64> =
+        observation_trade_prices.extract().map_err(|_| {
+            CalibrationExecutionError::new_err(
+                "current-state observation_trade_prices must be an iterable of float values",
+            )
+        })?;
+    let parsed_observation_trade_sides: Vec<String> =
+        observation_trade_sides.extract().map_err(|_| {
+            CalibrationExecutionError::new_err(
+                "current-state observation_trade_sides must be an iterable of trade-side strings",
+            )
         })?;
 
-    let parsed_observations = parsed_observations
-        .into_iter()
-        .map(|observation| {
-            HawkesEventSide::try_from(observation.trade_side.as_str())
-                .map(|trade_side| CurrentStateObservation {
-                    timestamp_utc_nanos: observation.timestamp_utc_nanos,
-                    trade_price: observation.trade_price,
-                    trade_side,
-                })
-                .map_err(|source| {
+    let parsed_observation_timestamp_utc_nanos = parsed_observation_timestamps_utc
+        .iter()
+        .enumerate()
+        .map(|(observation_index, raw_timestamp_utc)| {
+            DateTime::parse_from_rfc3339(raw_timestamp_utc)
+                .map(|timestamp| timestamp.with_timezone(&Utc))
+                .map_err(|_| {
                     CalibrationExecutionError::new_err(format!(
-                        "failed to parse current-state trade_side: {source}"
+                        "current-state observation_timestamps_utc[{observation_index}] must be a RFC3339 timestamp with UTC offset, received `{raw_timestamp_utc}`"
+                    ))
+                })?
+                .timestamp_nanos_opt()
+                .ok_or_else(|| {
+                    CalibrationExecutionError::new_err(format!(
+                        "current-state observation_timestamps_utc[{observation_index}] is outside the supported nanosecond timestamp range"
                     ))
                 })
+        })
+        .collect::<PyResult<Vec<_>>>()?;
+
+    let parsed_observation_trade_sides = parsed_observation_trade_sides
+        .iter()
+        .map(|raw_trade_side: &String| {
+            HawkesEventSide::try_from(raw_trade_side.as_str()).map_err(|source| {
+                CalibrationExecutionError::new_err(format!(
+                    "failed to parse current-state trade_side: {source}"
+                ))
+            })
         })
         .collect::<PyResult<Vec<_>>>()?;
 
@@ -1739,13 +1763,87 @@ fn estimate_current_state_from_observed_data(
             mean_reversion_fitted_parameters: parsed_mean_reversion_fitted_parameters,
             state_time_utc_nanos,
             observed_log_price,
-            observations: parsed_observations,
+            observation_timestamp_utc_nanos: parsed_observation_timestamp_utc_nanos,
+            observation_trade_prices: parsed_observation_trade_prices,
+            observation_trade_sides: parsed_observation_trade_sides,
         })
         .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
 
     let serialized_output = serde_json::to_value(&estimation_output).map_err(|source| {
         CalibrationExecutionError::new_err(format!(
             "failed to serialize current-state estimation output: {source}"
+        ))
+    })?;
+
+    json_value_to_py_object(py, &serialized_output)
+}
+
+#[pyfunction]
+#[pyo3(signature = (calendar_registry, exchange_code, range_start_utc, range_end_utc, interval_duration_nanos, intraday_minutes_per_bin, intraday_factor_by_bin, day_of_week_factor, day_of_year_factor))]
+fn materialize_runtime_structural_seasonality(
+    py: Python<'_>,
+    calendar_registry: &PyCalendarRegistry,
+    exchange_code: &str,
+    range_start_utc: &str,
+    range_end_utc: &str,
+    interval_duration_nanos: i64,
+    intraday_minutes_per_bin: u16,
+    intraday_factor_by_bin: &Bound<'_, PyAny>,
+    day_of_week_factor: &Bound<'_, PyAny>,
+    day_of_year_factor: &Bound<'_, PyAny>,
+) -> PyResult<Py<PyAny>> {
+    let parsed_range_start_utc = parse_timestamp_utc(range_start_utc)?;
+    let parsed_range_end_utc = parse_timestamp_utc(range_end_utc)?;
+    let parsed_intraday_factor_by_bin: Vec<f64> =
+        intraday_factor_by_bin.extract().map_err(|_| {
+            CalibrationExecutionError::new_err(
+                "runtime seasonality intraday_factor_by_bin must be an iterable of float values",
+            )
+        })?;
+    let parsed_day_of_week_factor: Vec<f64> = day_of_week_factor.extract().map_err(|_| {
+        CalibrationExecutionError::new_err(
+            "runtime seasonality day_of_week_factor must be an iterable of float values",
+        )
+    })?;
+    let parsed_day_of_year_factor: Vec<f64> = day_of_year_factor.extract().map_err(|_| {
+        CalibrationExecutionError::new_err(
+            "runtime seasonality day_of_year_factor must be an iterable of float values",
+        )
+    })?;
+
+    let parsed_range_start_utc_nanos =
+        parsed_range_start_utc.timestamp_nanos_opt().ok_or_else(|| {
+            CalibrationExecutionError::new_err(
+                "runtime seasonality range_start_utc is outside the supported nanosecond timestamp range",
+            )
+        })?;
+    let parsed_range_end_utc_nanos = parsed_range_end_utc.timestamp_nanos_opt().ok_or_else(|| {
+        CalibrationExecutionError::new_err(
+            "runtime seasonality range_end_utc is outside the supported nanosecond timestamp range",
+        )
+    })?;
+
+    let materialization = py
+        .allow_threads(|| {
+            materialize_runtime_structural_seasonality_core(
+                &calendar_registry.registry,
+                RuntimeStructuralSeasonalityMaterializationInput {
+                    exchange_code: exchange_code.to_string(),
+                    intraday_minutes_per_bin,
+                    intraday_factor_by_bin: parsed_intraday_factor_by_bin,
+                    day_of_week_factor: parsed_day_of_week_factor,
+                    day_of_year_factor: parsed_day_of_year_factor,
+                    range_start_utc_nanos: parsed_range_start_utc_nanos,
+                    range_end_utc_nanos: parsed_range_end_utc_nanos,
+                    interval_duration_nanos,
+                },
+            )
+        })
+        .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
+
+    let serialized_output = serde_json::to_value(&materialization).map_err(|source| {
+        CalibrationExecutionError::new_err(format!(
+            "failed to serialize runtime structural seasonality materialization: {source}"
         ))
     })?;
 
@@ -1900,6 +1998,10 @@ pub(super) fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
     )?)?;
     module.add_function(wrap_pyfunction!(
         estimate_current_state_from_observed_data,
+        module
+    )?)?;
+    module.add_function(wrap_pyfunction!(
+        materialize_runtime_structural_seasonality,
         module
     )?)?;
 

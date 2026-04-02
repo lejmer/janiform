@@ -15,7 +15,6 @@ from ._errors import CalibrationValidationError, CalibrationValidationFailure
 from .fit import (
     CurrentStateEstimationRequest,
     CurrentStateEstimationResult,
-    CurrentStateObservation,
     JaniformEstimator,
     JaniformFitReport,
     JaniformModel,
@@ -51,7 +50,6 @@ __all__ = [
     "CalibrationValidationFailure",
     "CurrentStateEstimationRequest",
     "CurrentStateEstimationResult",
-    "CurrentStateObservation",
     "DEFAULT_HIGH_LEVEL_KNOWN_NEWS_PRESET_NAME",
     "JaniformEstimator",
     "JaniformFitReport",
