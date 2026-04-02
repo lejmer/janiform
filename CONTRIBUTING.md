@@ -19,7 +19,7 @@ Use this guide when contributing code, tests, documentation, fixtures, or genera
 
 - Keep behavior, contracts, examples, and tests aligned in the same change.
 - Update or regenerate checked-in generated artifacts when their source of truth changes.
-- Prefer shared implementations over local duplication.
+- Prefer shared implementations to local duplication.
 - Keep public APIs intentional. If a change is meant to break an in-repo contract, update all in-repo call sites and docs in the same change.
 
 ## Where Documentation Belongs
