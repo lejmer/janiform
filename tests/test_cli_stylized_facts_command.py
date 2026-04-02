@@ -1,15 +1,15 @@
 import json
+from pathlib import Path
 
 import orjson
-import pytest
 
 import janiform.cli as cli_module
-from examples.support._shared import (
+from tests.support.cli_fixtures import (
     build_stylized_fact_artifact_export_config,
     build_stylized_fact_horizon_comparison_request,
     build_stylized_fact_metric_catalog,
 )
-from tests.cli_test_support import invoke_cli, normalize_help_output, render_help, write_json_path
+from tests.support.cli import invoke_cli, normalize_help_output, render_help, write_json_path
 
 
 def test_stylized_facts_cli_help_documents_report_inputs_and_export_config() -> None:

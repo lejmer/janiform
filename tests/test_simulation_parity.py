@@ -29,7 +29,7 @@ from janiform.simulation.shared import (
 from janiform.simulation.seeded.contracts import (
     build_endogenous_seeded_mean_reversion_runtime_inputs,
 )
-from tests.fixture_validation import SeededTickSimulationParityCase
+from tests.support.fixture_validation import SeededTickSimulationParityCase
 
 
 def test_seeded_tick_simulation_parity_fixture_matches_python_surface(

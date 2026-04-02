@@ -14,7 +14,7 @@ from janiform.validation import (
     VALIDATION_UNSUPPORTED_CALENDAR_SEGMENT_POLICY,
     run_deterministic_regression_harness,
 )
-from tests.fixture_validation import (
+from tests.support.fixture_validation import (
     CalendarRegressionCase,
     HourlyFactorRegressionCanonicalOutputCase,
     HourlyFactorRegressionFixtureDocument,

@@ -7,20 +7,20 @@ from typing import Any
 import pytest
 
 import janiform.cli as cli_module
-from examples.support._shared import (
+from tests.support.cli_fixtures import (
     build_stylized_fact_artifact_export_config,
     build_stylized_fact_horizon_comparison_request,
     build_stylized_fact_metric_catalog,
 )
-from tests.calibration_test_support import build_valid_execution_input_model
-from tests.cli_test_support import (
+from tests.support.calibration import build_valid_execution_input_model
+from tests.support.cli import (
     build_coarse_simulation_request,
     build_simulation_request,
     invoke_cli,
     write_json_path,
     write_market_data_input_files,
 )
-from tests.test_cli_high_level_commands import _build_full_workflow_model
+from tests.support.high_level_workflows import build_full_workflow_model
 
 
 @dataclass(frozen=True, slots=True)
@@ -758,7 +758,7 @@ def _write_price_model(tmp_path: Path, *, run_id: str) -> Path:
     monkeypatch = pytest.MonkeyPatch()
     try:
         monkeypatch.chdir(tmp_path)
-        model = _build_full_workflow_model(
+        model = build_full_workflow_model(
             tmp_path,
             monkeypatch,
             run_id=run_id,

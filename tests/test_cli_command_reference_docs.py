@@ -5,9 +5,9 @@ import orjson
 import pytest
 
 import janiform.cli as cli_module
-from examples.support.cli_documentation_setup import write_cli_documentation_inputs
-from tests.test_cli_high_level_commands import _build_full_workflow_model
-from tests.cli_test_support import invoke_cli, normalize_help_output, render_help
+from tests.support.cli_documentation import write_cli_documentation_inputs
+from tests.support.cli import invoke_cli, normalize_help_output, render_help
+from tests.support.high_level_workflows import build_full_workflow_model
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 CLI_COMMAND_REFERENCE_PATH = (
@@ -315,7 +315,7 @@ def test_cli_command_reference_doc_examples_smoke_for_primary_workflows(
 
     monkeypatch = pytest.MonkeyPatch()
     try:
-        model = _build_full_workflow_model(
+        model = build_full_workflow_model(
             tmp_path,
             monkeypatch,
             run_id="cli-docs-model",

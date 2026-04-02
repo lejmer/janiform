@@ -12,7 +12,7 @@ from janiform.hourly_factors import (
     HOURLY_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION,
     HOURLY_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION,
 )
-from tests.cli_test_support import invoke_cli, normalize_help_output, render_help, write_json_path
+from tests.support.cli import invoke_cli, normalize_help_output, render_help, write_json_path
 
 
 def test_hourly_factors_cli_help_documents_materialization_and_contract_inputs() -> None:

@@ -8,7 +8,7 @@ from janiform.calibration.staged import (
     run_staged_calibration,
     validate_staged_calibration_execution_input,
 )
-from tests.calibration_test_support import build_valid_execution_input_model
+from tests.support.calibration import build_valid_execution_input_model
 
 
 def test_run_staged_calibration_executes_in_memory_mode(calendar_registry) -> None:

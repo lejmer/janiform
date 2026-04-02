@@ -3,7 +3,7 @@ from typing import cast
 import click
 
 from janiform.cli.command_tree import _build_app
-from tests.cli_test_support import render_help
+from tests.support.cli import render_help
 
 
 def test_cli_top_level_help_lists_primary_and_developer_namespaces() -> None:

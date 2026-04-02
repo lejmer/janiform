@@ -16,7 +16,7 @@ from janiform.hourly_factors import (
     provide_hourly_factor_contract,
 )
 from janiform.seasonality import SeasonalityInputValidationError
-from tests.fixture_validation import (
+from tests.support.fixture_validation import (
     HourlyFactorRegressionCanonicalOutputCase,
     HourlyFactorRegressionFixtureDocument,
     HourlyFactorRegressionMissingDataGuardCase,

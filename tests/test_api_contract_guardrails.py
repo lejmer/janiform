@@ -7,7 +7,7 @@ from typing import Any, Optional
 import annotationlib
 import pytest
 
-from tests.public_api_contract_guardrails import (
+from tests.support.public_api_contract_guardrails import (
     PUBLIC_API_CONTRACT_APPROVAL_POLICY,
     PUBLIC_API_CONTRACT_GUARDRAIL_MANIFEST_SCHEMA_VERSION,
     PUBLIC_API_CONTRACT_SNAPSHOT_SCHEMA_VERSION,

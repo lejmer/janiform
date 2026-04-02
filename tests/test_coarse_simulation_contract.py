@@ -35,8 +35,8 @@ from janiform.simulation.coarse import (
     validate_coarse_simulation_path,
     validate_coarse_simulation_run_request,
 )
-from tests.hourly_factor_contract_test_support import build_hourly_factor_contract
-from tests.simulation_test_support import build_endogenous_mean_reversion_runtime_contracts
+from tests.support.hourly_factor_contracts import build_hourly_factor_contract
+from tests.support.simulation import build_endogenous_mean_reversion_runtime_contracts
 
 
 def test_coarse_simulation_run_request_roundtrip_serialization(

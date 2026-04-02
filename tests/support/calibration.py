@@ -22,7 +22,10 @@ from janiform.contracts import (
 
 
 _PREPARED_EXECUTION_PAYLOAD_PATH = (
-    Path(__file__).resolve().parent / "fixtures" / "calibration" / "staged_prepared_execution_payload.json"
+    Path(__file__).resolve().parents[1]
+    / "fixtures"
+    / "calibration"
+    / "staged_prepared_execution_payload.json"
 )
 
 

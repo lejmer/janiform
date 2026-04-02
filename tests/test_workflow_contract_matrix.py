@@ -70,11 +70,11 @@ from janiform.simulation.shared import (
 from janiform.simulation.seeded.contracts import (
     build_endogenous_seeded_mean_reversion_runtime_inputs,
 )
-from tests.calibration_test_support import (
+from tests.support.calibration import (
     build_valid_execution_input_model,
     build_valid_execution_input_payload,
 )
-from tests.hourly_factor_contract_test_support import build_hourly_factor_contract
+from tests.support.hourly_factor_contracts import build_hourly_factor_contract
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_RESPONSE_SCHEMA_SNAPSHOT_PATH = (

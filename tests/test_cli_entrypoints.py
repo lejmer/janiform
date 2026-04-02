@@ -4,7 +4,7 @@ import sys
 import pytest
 
 import janiform.__main__ as janiform_main_module
-from tests.cli_test_support import normalize_help_output, render_help
+from tests.support.cli import normalize_help_output, render_help
 
 
 def test_cli_entrypoints_share_the_same_top_level_help_surface(

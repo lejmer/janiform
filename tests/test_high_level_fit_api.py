@@ -54,7 +54,7 @@ from janiform.contracts import MeanReversionBoundaryState
 from janiform.hourly_factors import HourlyFactorContract
 from janiform.seasonality import IntradaySmoothingKernel, SessionFilter
 from janiform.simulation import SeededTickEventSide, SeededTickEventStateSnapshotCapture
-from tests.calibration_test_support import (
+from tests.support.calibration import (
     build_endogenous_mean_reversion_fitted_parameters_payload,
     build_zero_kappa_endogenous_mean_reversion_fitted_parameters_payload,
     update_model_mean_reversion_payload,

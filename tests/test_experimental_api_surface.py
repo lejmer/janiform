@@ -8,7 +8,7 @@ import janiform.calibration as calibration_module
 import janiform.pricing as pricing_module
 import janiform.simulation as simulation_module
 from janiform._experimental import EXPERIMENTAL_API_ENV_VAR
-from tests.public_api_contract_guardrails import build_public_api_contract_snapshot
+from tests.support.public_api_contract_guardrails import build_public_api_contract_snapshot
 
 
 def _purge_experimental_modules() -> None:

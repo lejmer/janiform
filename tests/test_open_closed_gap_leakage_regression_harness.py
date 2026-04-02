@@ -15,7 +15,7 @@ from janiform.validation import (
     OPEN_CLOSED_GAP_LEAKAGE_REGRESSION_OUTPUT_SCHEMA_METADATA_VERSION,
     run_open_closed_gap_leakage_regression_harness,
 )
-from tests.fixture_validation import OpenClosedGapBehaviorCase
+from tests.support.fixture_validation import OpenClosedGapBehaviorCase
 
 type GapLeakageCaseInput = dict[str, Any]
 
