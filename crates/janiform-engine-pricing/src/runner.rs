@@ -283,7 +283,7 @@ struct LocalTiltedIntervalExpectations {
 #[derive(Debug, Clone, PartialEq)]
 struct AnchoredPricingEngineResult {
     price: f64,
-    anchored_recursion_diagnostics: AnchoredPricingRecursionDiagnostics,
+    anchored_recursion_diagnostics: Option<AnchoredPricingRecursionDiagnostics>,
     representative_transform_diagnostics: Option<ExponentialAffineTransformIntegrationResult>,
     integration_quality_diagnostics: Option<super::fourier::FourierInversionDiagnostics>,
 }
@@ -416,7 +416,7 @@ pub fn run_vanilla_option_pricing(
         Some(pricing_request.market_inputs),
         representative_transform_diagnostics,
         anchored_result.integration_quality_diagnostics,
-        Some(anchored_result.anchored_recursion_diagnostics),
+        anchored_result.anchored_recursion_diagnostics,
     )
     .map_err(|source| VanillaOptionPricingRunError::InvalidRunResult { source })
 }
@@ -636,25 +636,29 @@ fn run_single_interval_nested_fourier_pricing(
 
     let pricing_result = pricing_result
         .map_err(|source| VanillaOptionPricingRunError::FourierPricingFailure { source })?;
-    let risk_neutral_anchor_materialization = build_pricing_risk_neutral_anchor_materialization(
-        pricing_request,
-        &[interval_factors],
-        driver_parameters,
-    )?;
+    let anchored_diagnostics = if output_selection.diagnostics_selected() {
+        let risk_neutral_anchor_materialization = build_pricing_risk_neutral_anchor_materialization(
+            pricing_request,
+            &[interval_factors],
+            driver_parameters,
+        )?;
 
-    let anchored_diagnostics = build_single_interval_recursion_diagnostics(
-        pricing_request.boundary_input.clone(),
-        risk_neutral_anchor_materialization
-            .runtime_interval_anchors
-            .end_anchor_values[0],
-        Vec::new(),
-        0.0,
-        0.0,
-        1,
-        1,
-        pricing_request.boundary_input.hawkes_boundary_state,
-        risk_neutral_anchor_materialization.expected_hawkes_state_path[1],
-    )?;
+        Some(build_single_interval_recursion_diagnostics(
+            pricing_request.boundary_input.clone(),
+            risk_neutral_anchor_materialization
+                .runtime_interval_anchors
+                .end_anchor_values[0],
+            Vec::new(),
+            0.0,
+            0.0,
+            1,
+            1,
+            pricing_request.boundary_input.hawkes_boundary_state,
+            risk_neutral_anchor_materialization.expected_hawkes_state_path[1],
+        )?)
+    } else {
+        None
+    };
 
     let representative_transform_diagnostics = representative_transform_diagnostics.into_inner();
 
@@ -769,7 +773,7 @@ fn run_single_interval_anchored_fourier_pricing(
 
     Ok(AnchoredPricingEngineResult {
         price: pricing_result.price,
-        anchored_recursion_diagnostics: anchored_diagnostics,
+        anchored_recursion_diagnostics: Some(anchored_diagnostics),
         representative_transform_diagnostics: representative_transform_diagnostics.into_inner(),
         integration_quality_diagnostics: Some(pricing_result.diagnostics),
     })
@@ -845,7 +849,7 @@ fn run_multi_interval_anchored_pricing(
 
     Ok(AnchoredPricingEngineResult {
         price: coarse_price,
-        anchored_recursion_diagnostics,
+        anchored_recursion_diagnostics: Some(anchored_recursion_diagnostics),
         representative_transform_diagnostics,
         integration_quality_diagnostics: None,
     })

@@ -1024,6 +1024,72 @@ fn anchored_local_tilt_bracket_search_shrinks_inward_from_non_admissible_side_bo
     assert!(evaluation.residual.abs() <= 1.0e-8);
 }
 
+#[test]
+fn anchored_local_tilt_bracket_search_recovers_from_retryable_invalid_midpoint() {
+    let driver_parameters = NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
+        .expect("valid shared-plus-shift payload should construct")
+        .derive_driver_parameters()
+        .expect("valid shared-plus-shift payload should derive drivers");
+
+    let (theta, evaluation) = build_local_tilt_bracket_with_residual_evaluator(
+        driver_parameters,
+        -0.2,
+        1.0e-8,
+        |theta| {
+            if theta > -0.3 && theta < -0.2 {
+                return Err(
+                    AnchoredLocalTiltSolveError::NonRealObservedLogMomentExponent {
+                        theta,
+                        value: ComplexScalar::new(0.0, 1.0),
+                    },
+                );
+            }
+
+            Ok(LocalTiltResidualEvaluation {
+                observed_log_moment_exponent: theta,
+                residual: theta + 0.2,
+            })
+        },
+    )
+    .expect("solver should shrink inward from a retryable invalid midpoint and recover the root");
+
+    assert!((theta + 0.2).abs() <= 1.0e-8);
+    assert!(evaluation.residual.abs() <= 1.0e-8);
+}
+
+#[test]
+fn anchored_local_tilt_bracket_search_recovers_from_retryable_invalid_midpoint_during_sign_search() {
+    let driver_parameters = NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
+        .expect("valid shared-plus-shift payload should construct")
+        .derive_driver_parameters()
+        .expect("valid shared-plus-shift payload should derive drivers");
+
+    let (theta, evaluation) = build_local_tilt_bracket_with_residual_evaluator(
+        driver_parameters,
+        0.0,
+        1.0e-8,
+        |theta| {
+            if theta > -0.8 && theta < -0.7 {
+                return Err(
+                    AnchoredLocalTiltSolveError::NonRealObservedLogMomentExponent {
+                        theta,
+                        value: ComplexScalar::new(0.0, 1.0),
+                    },
+                );
+            }
+
+            Ok(LocalTiltResidualEvaluation {
+                observed_log_moment_exponent: theta,
+                residual: (theta + 1.4) * (theta + 0.2),
+            })
+        },
+    )
+    .expect("solver should shrink inward from a retryable invalid midpoint during sign search");
+
+    assert!((theta + 0.2).abs() <= 1.0e-8);
+    assert!(evaluation.residual.abs() <= 1.0e-8);
+}
+
 fn pricing_request_for_local_tilt(
     return_decomposition: ReturnDecomposition,
     theta: f64,
