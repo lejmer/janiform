@@ -20,9 +20,9 @@ Define the target information architecture for the repository's documentation su
 - `planning/` is mostly a temporary home for initiatives, projects, and issues. Their canonical home will always be Linear itself.
 - The public docs information architecture chooses concrete homes under `docs/`: `docs/getting-started/`, `docs/concepts/`, `docs/workflows/`, and `docs/reference/`.
 
-### Unit tests
-- Docs build, navigation, or site-map validation checks that all primary sections exist.
-- Published-docs validation ensures planning-only and contributor-only material is not included in the public surface by accident.
+### Validation
+- Review the proposed architecture against the actual repository tree and confirm that every primary docs surface has a concrete home.
+- If a published docs build exists by the time this issue lands, verify that planning-only and contributor-only material is not pulled into the public surface by accident.
 
 ### Notes/Constraints
 - Favor stable URLs and durable section names.

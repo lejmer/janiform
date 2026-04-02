@@ -11,9 +11,9 @@ Rewrite the first-contact repository pages so they present Janiform as a profess
 - The repository front page no longer mixes onboarding material with giant command inventories, planning language, or internal implementation sprawl.
 - Root-level release-facing files have an explicit disposition: `RELEASE.md` and `changelogs/v0.x.md` are either rewritten as real release-process surfaces or removed until the repository is ready to support them.
 
-### Unit tests
-- Link checks validate all top-level links.
-- Smoke checks validate any commands that the top-level quickstart claims are supported.
+### Validation
+- Verify that all top-level links resolve after the rewrite.
+- Run the commands claimed in the root quickstart, or explicitly trim any command that is not being validated.
 
 ### Notes/Constraints
 - Keep the root surface intentionally smaller than the full published docs and use it as a gateway rather than as the entire manual.

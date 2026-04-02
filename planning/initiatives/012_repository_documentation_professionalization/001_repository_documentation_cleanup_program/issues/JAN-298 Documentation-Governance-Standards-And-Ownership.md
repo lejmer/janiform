@@ -13,8 +13,8 @@ Define the operating rules for Janiform documentation so the cleanup produces a 
 - Documentation ownership or stewardship expectations are defined for the main docs areas, along with archive and supersession rules.
 - Contributor and release-readiness guidance explains when docs updates are required and which docs checks are part of normal release quality.
 
-### Unit tests
-- Repository checks validate that the governance artifacts exist and are linked from contributor-facing entrypoints.
+### Validation
+- Before closing the issue, verify that the governance artifacts exist at their agreed locations and are linked from contributor-facing entrypoints.
 
 ### Notes/Constraints
 - Keep the policy and style guide short enough that contributors will actually use them.

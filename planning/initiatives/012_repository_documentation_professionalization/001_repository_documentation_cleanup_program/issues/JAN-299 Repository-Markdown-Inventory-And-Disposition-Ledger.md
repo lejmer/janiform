@@ -12,9 +12,9 @@ Build a complete ledger of tracked Markdown files and assign a disposition for e
 - The ledger is linked from the documentation policy or project docs so future cleanup work has one canonical tracking artifact.
 - The ledger records the current source of truth when a Markdown file is generated from code or scripts.
 
-### Unit tests
-- A repository validation step compares tracked Markdown files against the ledger and fails when a file is missing from the inventory.
-- Validation checks that every ledger entry has a disposition and target category.
+### Validation
+- Before closing the issue, compare the ledger against `git ls-files '*.md'` and confirm that every tracked Markdown file is represented.
+- Spot-check that every ledger row has a disposition, target surface, and source-of-truth note where relevant.
 
 ### Notes/Constraints
 - The goal is decision-quality inventory, not prose polish.

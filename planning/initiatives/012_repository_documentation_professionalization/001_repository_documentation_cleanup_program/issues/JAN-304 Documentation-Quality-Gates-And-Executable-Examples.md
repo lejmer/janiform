@@ -11,7 +11,7 @@ Add verification that prevents the documentation surface from drifting away from
 - Docs failures are visible in normal development and release workflows, not only as occasional manual review findings.
 - Broken links, empty published pages, and stale example references are treated as quality regressions.
 
-### Unit tests
+### Validation
 - Documentation verification commands run successfully in CI.
 - At least one representative market-data calibration path, one simulation path, and one pricing path are exercised by docs-related validation.
 - Checks fail when a published page link target is removed or a documented example command drifts from the supported interface.

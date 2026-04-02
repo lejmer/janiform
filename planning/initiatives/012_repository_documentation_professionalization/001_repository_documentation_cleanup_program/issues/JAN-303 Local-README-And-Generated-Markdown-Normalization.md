@@ -10,8 +10,8 @@ Normalize repo-adjacent Markdown surfaces that are not part of the public docs s
 - Crate READMEs are concise, accurate, and aligned with the public repository entrypoints rather than competing with them.
 - Fixture and support READMEs state purpose, contract, provenance expectations, and update rules where relevant.
 
-### Unit tests
-- Validation checks confirm generated files include generation notices where required.
+### Validation
+- Review a representative sample of crate READMEs, fixture READMEs, and generated Markdown files to confirm that the agreed templates and generation notices are actually being applied.
 
 ### Notes/Constraints
 - Keep local READMEs role-specific and minimal.

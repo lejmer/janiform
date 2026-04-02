@@ -13,10 +13,10 @@ Rewrite the user-facing workflow documentation so it guides external users from 
 - Workflow pages explain assumptions, limitations, and interpretation guidance where those details materially affect financial use.
 - The workflow set includes at least one end-to-end path from raw market data to fitted-model outputs that a new user can actually reproduce.
 
-### Unit tests
-- Public workflow examples are validated through smoke checks, generated examples, or documentation tests where practical.
-- Link checks pass across all migrated workflow pages.
-- At least one docs verification target exercises the primary user journey end to end rather than only isolated commands.
+### Validation
+- Verify that links across the migrated workflow pages resolve correctly.
+- Run or otherwise validate the examples used in the published workflow pages rather than treating them as prose-only illustrations.
+- Confirm that at least one end-to-end market-data-first user journey has been exercised before the issue is closed.
 
 ### Notes/Constraints
 - Market-data-first calibration is the primary onboarding path.
