@@ -7,6 +7,7 @@ Use this page as the contributor entrypoint. Janiform keeps user-facing docs in 
 - [docs/contributing/development-environment.md](docs/contributing/development-environment.md)
 - [docs/contributing/testing-and-verification.md](docs/contributing/testing-and-verification.md)
 - [docs/contributing/repo-layout.md](docs/contributing/repo-layout.md)
+- [docs/contributing/workbench.md](docs/contributing/workbench.md)
 - [docs/contributing/python-style.md](docs/contributing/python-style.md)
 - [RELEASE.md](RELEASE.md)
 
@@ -47,7 +48,7 @@ Run the relevant suites before opening a pull request.
 ## Change Expectations
 
 - Keep code, tests, fixtures, generated artifacts, and docs aligned in the same change.
-- Prefer shared implementations over local duplicates.
+- Prefer shared implementations to local duplicates.
 - Keep the public Python and CLI surfaces intentional.
 - Move machine-readable inputs and outputs into fixtures or test data rather than `docs/`.
 - Update the relevant page in `docs/` when you change setup steps, public workflows, repository layout, or contributor expectations.

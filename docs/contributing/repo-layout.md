@@ -8,6 +8,7 @@
 | `data/` | Checked-in sample and development data |
 | `examples/` | Runnable examples |
 | `scripts/` | Bootstrap, build, test, CI, and generation scripts |
+| `tools/` | Internal contributor tooling such as the calibration workbench |
 | `docs/` | Human-facing documentation |
 | `design/` | Archived theory and design material still needed by the codebase |
 | `presets/` | Bundled preset artifacts |
