@@ -274,6 +274,10 @@ Workspace crate `README.md` files are checked in and generated from Cargo metada
 python3 scripts/generate_crate_readmes.py
 ```
 
+## Contributing
+
+Contributor onboarding and repository documentation rules live in [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## Project Layout
 
 - `crates/janiform/`: Umbrella Rust facade crate
@@ -346,7 +350,6 @@ Supported automation environment variables:
 
 ## Documentation
 
-- Design model and rationale: `docs/design/janiform_design_brainstorm_notes.md`
 - CLI command architecture and namespace layout: `docs/development/guides/cli_command_architecture_and_namespace_layout.md`
 - CLI command reference and practical examples: `docs/development/guides/cli_command_reference_and_examples.md`
 - Python public API surface map and namespace policy: `docs/development/guides/python_public_api_surface_map_and_namespace_policy.md`
@@ -383,6 +386,5 @@ Supported automation environment variables:
 - Validation fallback policy: `docs/development/guides/validation_fallback_policy.md`
 - CI tiered execution strategy: `docs/development/guides/ci_tiered_execution_strategy.md`
 - Python coding conventions: `docs/development/guides/python_style_guide.md`
-- Planning artifacts: `docs/planning/`
 
 The detailed calendar and seasonality sections were moved out of this README into the development guide above to keep the repo root documentation concise.
