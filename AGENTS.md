@@ -170,7 +170,7 @@ In the `python/janiform/` folder where the Python code is located:
 
 ### Python Style Guide
 
-Read and follow `docs/development/guides/python_style_guide.md`. Agents must adhere to it strictly when writing Python code.
+Read and follow `docs/contributing/python-style.md`. Agents must adhere to it strictly when writing Python code.
 
 ## Comments
 Comments should only explain what the code doesn't clearly state, or help us understand the structure when the code is complex or is made up of many steps.

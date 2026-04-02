@@ -14,9 +14,7 @@ from janiform.contracts import ContractModel, serialize_deterministic_json
 
 PUBLIC_API_CONTRACT_SNAPSHOT_SCHEMA_VERSION = "python.public_api_contract.snapshot.v1"
 PUBLIC_API_CONTRACT_GUARDRAIL_MANIFEST_SCHEMA_VERSION = "python.public_api_contract.guardrail_manifest.v1"
-PUBLIC_API_CONTRACT_APPROVAL_POLICY = (
-    "public_api_contract_snapshot_changes_require_explicit_rationale_and_docs.v1"
-)
+PUBLIC_API_CONTRACT_APPROVAL_POLICY = "public_api_contract_snapshot_changes_require_explicit_rationale.v1"
 PUBLIC_API_SURFACE_DOCUMENT_VERSION = "python.public_api_surface_map.pre_v0_1.control_plane_reset.v1"
 PUBLIC_PACKAGE_ROOT_MODULE_NAME = "janiform"
 PUBLIC_CONTRACT_MODULE_NAMES: tuple[str, ...] = (
@@ -178,21 +176,25 @@ def validate_public_api_contract_guardrail_manifest(
     _require_non_empty_string(latest_entry, "summary")
     _require_non_empty_string(latest_entry, "rationale")
 
-    docs_updated = latest_entry.get("docs_updated")
-    if isinstance(docs_updated, list):
-        if len(docs_updated) == 0:
-            raise PublicApiContractGuardrailError(
-                "guardrail manifest latest change_log entry docs_updated must contain at least one path",
-            )
-        for docs_path in docs_updated:
-            if not isinstance(docs_path, str) or not docs_path.strip():
-                raise PublicApiContractGuardrailError(
-                    "guardrail manifest latest change_log entry docs_updated must contain non-empty strings",
-                )
-    else:
+    updated_surfaces = latest_entry.get("updated_surfaces")
+    if updated_surfaces is None:
+        return
+
+    if not isinstance(updated_surfaces, list):
         raise PublicApiContractGuardrailError(
-            "guardrail manifest latest change_log entry docs_updated must be a list",
+            "guardrail manifest latest change_log entry updated_surfaces must be a list when present",
         )
+
+    if len(updated_surfaces) == 0:
+        raise PublicApiContractGuardrailError(
+            "guardrail manifest latest change_log entry updated_surfaces must contain at least one value when present",
+        )
+
+    for surface_name in updated_surfaces:
+        if not isinstance(surface_name, str) or not surface_name.strip():
+            raise PublicApiContractGuardrailError(
+                "guardrail manifest latest change_log entry updated_surfaces must contain non-empty strings",
+            )
 
 
 def _build_root_snapshot(module: ModuleType) -> dict[str, Any]:

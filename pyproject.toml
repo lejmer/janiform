@@ -39,5 +39,8 @@ module-name = "janiform._native"
 python-source = "python"
 
 [tool.pytest.ini_options]
+addopts = [
+    "--benchmark-storage=file://./.pytest_cache/benchmark",
+]
 pythonpath = ["python"]
 testpaths = ["tests"]

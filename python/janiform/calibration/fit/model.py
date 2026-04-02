@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta
+from math import log
 from pathlib import Path
 from typing import Any, NoReturn, Optional, cast
 
@@ -40,6 +41,7 @@ from ...contracts import (
     MeanReversionFittedParameters,
     MeanReversionRuntimeIntervalAnchors,
     require_non_empty_string,
+    require_positive_finite_scalar,
     serialize_pretty_json,
 )
 from ...calendar import CalendarRegistry, MarketState
@@ -363,7 +365,6 @@ class JaniformModel:
         risk_free_rate: float = 0.0,
         dividend_yield: float = 0.0,
         boundary_state: Optional[HawkesExcitationState] = None,
-        observed_boundary_state: Optional[MeanReversionBoundaryState] = None,
         include_transform_diagnostics: bool = False,
         include_integration_quality_diagnostics: bool = False,
         include_calibration_hooks: bool = False,
@@ -388,7 +389,6 @@ class JaniformModel:
             risk_free_rate=risk_free_rate,
             dividend_yield=dividend_yield,
             boundary_state=boundary_state,
-            observed_boundary_state=observed_boundary_state,
             include_transform_diagnostics=include_transform_diagnostics,
             include_integration_quality_diagnostics=include_integration_quality_diagnostics,
             include_calibration_hooks=include_calibration_hooks,
@@ -852,7 +852,6 @@ def _prepare_model_pricing_execution_input(
     risk_free_rate: float,
     dividend_yield: float,
     boundary_state: Optional[HawkesExcitationState],
-    observed_boundary_state: Optional[MeanReversionBoundaryState],
     include_transform_diagnostics: bool,
     include_integration_quality_diagnostics: bool,
     include_calibration_hooks: bool,
@@ -918,10 +917,16 @@ def _prepare_model_pricing_execution_input(
             ),
         ),
     )
-    mean_reversion_fitted_parameters = _mean_reversion_fitted_parameters(model)
-    effective_observed_boundary_state = _resolve_model_pricing_observed_boundary_state(
-        mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
-        observed_boundary_state=observed_boundary_state,
+    (
+        mean_reversion_fitted_parameters,
+        _mean_reversion_runtime_interval_anchors,
+        effective_observed_boundary_state,
+    ) = _prepare_model_mean_reversion_runtime_inputs(
+        model,
+        runtime_factors=runtime_factors,
+        hourly_factor_contract=hourly_factor_contract,
+        initial_excitation_state=effective_boundary_state,
+        start_anchor_value=_pricing_observed_log_price_from_spot(model, spot=spot),
     )
 
     return VanillaOptionPricingExecutionInput(
@@ -956,20 +961,33 @@ def _prepare_model_pricing_execution_input(
     )
 
 
-def _resolve_model_pricing_observed_boundary_state(
-    *,
-    mean_reversion_fitted_parameters: MeanReversionFittedParameters,
-    observed_boundary_state: Optional[MeanReversionBoundaryState],
-) -> MeanReversionBoundaryState:
-    if observed_boundary_state is not None:
-        return observed_boundary_state
+def _pricing_observed_log_price_from_spot(model: JaniformModel, *, spot: float) -> float:
+    normalized_spot = require_positive_finite_scalar(
+        spot,
+        "spot",
+        _calibration_error,
+    )
+    reference_price = _model_reference_price(model)
 
-    raise _calibration_error(
-        "observed_boundary_state",
-        (
-            "is required for pricing. Pass an explicit MeanReversionBoundaryState "
-            "aligned with the valuation boundary anchor."
-        ),
+    return log(normalized_spot / reference_price)
+
+
+def _model_reference_price(model: JaniformModel) -> float:
+    simulation_output_preferences = cast(
+        Mapping[str, Any],
+        model.metadata.get("simulation_output_preferences", {}),
+    )
+    raw_reference_price = simulation_output_preferences.get("reference_price")
+    if raw_reference_price is None:
+        raise _calibration_error(
+            "metadata.simulation_output_preferences.reference_price",
+            "must be present so JaniformModel can derive pricing state from spot",
+        )
+
+    return require_positive_finite_scalar(
+        raw_reference_price,
+        "metadata.simulation_output_preferences.reference_price",
+        _calibration_error,
     )
 
 

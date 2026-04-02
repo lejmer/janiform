@@ -63,8 +63,8 @@ Each `missing_data_guard_cases` entry contains:
 
 The current tolerance values remain exact-equality friendly (`1e-12`) to catch deterministic drift while allowing explicit policy governance.
 
-Validation fallback behavior for incomplete fixture coverage and triage expectations is defined in
-`docs/development/guides/validation_fallback_policy.md`.
+Validation fallback behavior for incomplete fixture coverage and triage expectations is defined by
+the checked-in regression matrix metadata and the consuming test harnesses.
 
 ## Update Process
 

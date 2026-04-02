@@ -3,9 +3,8 @@
 This directory stores versioned benchmark scenario workload profiles shared by coarse-time
 benchmark harnesses.
 
-The microbenchmark layer reuses these checked-in inputs. For benchmark taxonomy guidance and local
-Criterion plus `pytest-benchmark` commands, see
-`docs/development/guides/benchmark_taxonomy_and_microbenchmark_workflows.md`.
+The microbenchmark layer reuses these checked-in inputs. Local benchmark commands and CI workflow
+notes now live in [`docs/contributing/testing-and-verification.md`](../../../docs/contributing/testing-and-verification.md).
 
 ## File
 

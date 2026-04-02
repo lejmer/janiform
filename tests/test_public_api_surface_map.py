@@ -15,7 +15,6 @@ import janiform.simulation as simulation_module
 import janiform.validation as validation_module
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
-README_PATH = REPOSITORY_ROOT / "README.md"
 
 
 def test_package_root_surface_is_intentionally_minimal() -> None:
@@ -801,8 +800,3 @@ def test_calibration_root_and_public_ownership_submodules_share_supported_symbol
     with pytest.raises(AttributeError):
         calibration_module.MarketDataSessionResolution
 
-
-def test_readme_links_public_api_surface_policy() -> None:
-    readme_text = README_PATH.read_text(encoding="utf-8")
-
-    assert "python_public_api_surface_map_and_namespace_policy.md" in readme_text

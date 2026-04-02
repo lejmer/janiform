@@ -36,7 +36,7 @@ def test_public_api_contract_snapshot_matches_checked_in_fixture() -> None:
 
     assert public_api_contract_snapshot_matches_approved(current_snapshot, approved_snapshot), (
         "Public API contract drift detected. "
-        "Update the public contract docs, regenerate the snapshot fixture, and record the rationale "
+        "Regenerate the snapshot fixture and record the rationale "
         "in tests/fixtures/python_api_contracts/public_api_contract_guardrails.json.\n\n"
         + render_public_api_contract_snapshot_diff(approved_snapshot, current_snapshot)
     )
@@ -343,9 +343,6 @@ def _guardrail_manifest_for_snapshot(snapshot: Mapping[str, Any]) -> dict[str, A
                 "approved_on": "2026-03-07",
                 "summary": "Synthetic approval for test coverage.",
                 "rationale": "Synthetic test manifest proving that approved snapshot updates are accepted.",
-                "docs_updated": [
-                    "docs/development/guides/python_api_contract_compatibility_and_version_guardrails.md"
-                ],
             }
         ],
     }

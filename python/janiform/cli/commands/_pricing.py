@@ -25,7 +25,6 @@ from ..command_runtime import (
     required_datetime_option,
 )
 from ..context import CliCommandContext
-from .._documents import load_json_document_for_cli_field
 from .._errors import classify_workflow_command_error
 from ..paths import _resolve_path_from_repository_root
 from .._rendering import render_price_human_output, write_cli_error, write_command_output
@@ -33,7 +32,6 @@ from ..._workflow_outputs import generate_workflow_run_id, resolve_pricing_artif
 from ..._workflow_progress import JaniformOutputController, WorkflowProgressMode
 from ...calibration.fit import JaniformModel
 from ...errors import JaniformError
-from ...pricing import MeanReversionBoundaryState
 from ...pricing import VanillaOptionPayoffType
 
 
@@ -50,29 +48,11 @@ def run_price_command(
         model = JaniformModel.load(resolved_model_path)
         pricing_run_id = generate_workflow_run_id(f"{model.run_id}_price")
         output_path_argument = cast(Optional[Path], command_arguments.get("output_path"))
-        observed_boundary_state_path = cast(
-            Optional[Path],
-            command_arguments.get("observed_boundary_state_json"),
-        )
         resolved_output_path = (
             _resolve_path_from_repository_root(cli_context.repository_root, output_path_argument)
             if output_path_argument is not None
             else None
         )
-        observed_boundary_state = None
-        if observed_boundary_state_path is not None:
-            observed_boundary_state_document = load_json_document_for_cli_field(
-                repository_root=cli_context.repository_root,
-                path=observed_boundary_state_path,
-                context="an observed MeanReversionBoundaryState JSON payload",
-                field_path="observed_boundary_state_json",
-                error_id=CLI_PRICE_VALIDATION_ERROR_ID,
-                entrypoint=CLI_PRICE_ENTRYPOINT,
-            )
-            observed_boundary_state = MeanReversionBoundaryState.from_mapping(
-                observed_boundary_state_document,
-                field_path="observed_boundary_state",
-            )
         artifact_paths = resolve_pricing_artifact_paths(
             run_id=pricing_run_id,
             output_path=resolved_output_path,
@@ -111,7 +91,6 @@ def run_price_command(
             payoff_type=cast(str, command_arguments["payoff_type"]),
             risk_free_rate=float(cast(float, command_arguments["risk_free_rate"])),
             dividend_yield=float(cast(float, command_arguments["dividend_yield"])),
-            observed_boundary_state=observed_boundary_state,
             include_transform_diagnostics=bool(command_arguments.get("include_transform_diagnostics")),
             include_integration_quality_diagnostics=bool(
                 command_arguments.get("include_integration_quality_diagnostics")
@@ -172,6 +151,7 @@ def build_price_command(*, environment: Optional[Mapping[str, str]] = None) -> c
         environment=environment,
         help=(
             "Price a vanilla option from a persisted Janiform model. "
+            "Janiform derives the pricing state from the persisted model and valuation inputs. "
             "The command writes pricing.json, pricing_report.json, and run.json by default."
         ),
         params=[
@@ -213,14 +193,6 @@ def build_price_command(*, environment: Optional[Mapping[str, str]] = None) -> c
                 default=0.0,
                 help_text="Dividend yield. Default: 0.0.",
                 value_type=float,
-            ),
-            optional_path_option(
-                "--observed-boundary-state-json",
-                help_text=(
-                    "Optional MeanReversionBoundaryState JSON payload for anchored pricing. "
-                    "Required when the persisted model enables mean reversion because the CLI "
-                    "does not invent observed pricing state."
-                ),
             ),
             optional_path_option(
                 "--output-path",

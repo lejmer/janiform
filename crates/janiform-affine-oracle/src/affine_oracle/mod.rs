@@ -1,6 +1,6 @@
 //! Exponential-affine one-interval transform equation models and RHS evaluation.
 //!
-//! Equation reference from `docs/design/janiform_compact_model_spec.tex` Section 8:
+//! Equation reference from `design/janiform_compact_model_spec.tex` Section 8:
 //! - `F(u_+, u_-, z_+, z_- | Y_0) = exp(C(Delta) + D(Delta) · y_0)`
 //! - `y_0 = [Y++, Y+-, Y-+, Y--]`
 //! - `k_+ = [alpha_++, 0, alpha_-+, 0]`

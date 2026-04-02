@@ -35,6 +35,4 @@ Each fixture entry defines:
 
 ## Fallback Policy Reference
 
-Shared validation fallback policy and triage guidance are documented in:
-
-- `docs/development/guides/validation_fallback_policy.md`
+Shared validation fallback behavior is encoded in the validation fixtures and consumed directly by the regression harnesses in this repository. Treat the checked-in fixture metadata as the canonical source for fallback and determinism expectations.

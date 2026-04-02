@@ -66,8 +66,8 @@ Rust and Python loaders sort manifest entries lexicographically by `fixture_id` 
 - Fixture files remain immutable for a given `fixture_set_id`; any payload change must update `content_hash` in the shared manifest.
 - The manifest contract is language-neutral and must not include runtime-only fields that only one stack can consume.
 
-Unknown-date and unsupported-segment fallback behavior for validation is defined in
-`docs/development/guides/validation_fallback_policy.md`.
+Unknown-date and unsupported-segment fallback behavior for validation is defined by the checked-in
+fixture metadata and the consuming validation harnesses.
 
 ## Required Coverage Tags
 

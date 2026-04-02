@@ -778,7 +778,7 @@ fn staged_runner_reports_missing_persisted_checkpoint_artifacts_in_disk_mode() {
 #[test]
 fn staged_calibration_failure_playbook_is_machine_readable_and_complete() {
     let playbook_json =
-        include_str!("../../../docs/development/guides/staged_calibration_failure_playbook.json");
+        include_str!("../../../tests/fixtures/calibration/staged_calibration_failure_playbook.json");
     let playbook_value: serde_json::Value =
         serde_json::from_str(playbook_json).expect("playbook JSON should parse");
 
