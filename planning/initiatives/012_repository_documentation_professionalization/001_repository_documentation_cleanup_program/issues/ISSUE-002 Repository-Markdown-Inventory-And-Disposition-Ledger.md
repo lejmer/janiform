@@ -9,6 +9,7 @@ Build a complete ledger of tracked Markdown files and assign a disposition for e
 - The ledger identifies empty, obsolete, duplicated, milestone-specific, or trust-eroding files that should be removed or replaced.
 - The ledger identifies migration targets for content that should move into published docs, contributor docs, or archive locations.
 - The ledger is linked from the documentation policy or project docs so future cleanup work has one canonical tracking artifact.
+- The ledger records the current source of truth when a Markdown file is generated from code or scripts.
 
 ### Unit tests
 - A repository validation step compares tracked Markdown files against the ledger and fails when a file is missing from the inventory.
@@ -16,4 +17,4 @@ Build a complete ledger of tracked Markdown files and assign a disposition for e
 
 ### Notes/Constraints
 - The goal is decision-quality inventory, not prose polish.
-- Generated files may be represented by their source-of-truth workflow if that makes the ledger clearer.
+- Keep the ledger easy to diff and maintain during follow-on cleanup work.

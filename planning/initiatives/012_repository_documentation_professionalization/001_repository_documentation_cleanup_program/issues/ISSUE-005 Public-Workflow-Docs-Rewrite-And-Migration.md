@@ -9,10 +9,13 @@ Rewrite the user-facing workflow documentation so it guides external users from 
 - Deep internal contract or design documents are summarized or linked only where they add real value for advanced users.
 - Existing user-facing content has explicit migration outcomes recorded in the ledger rather than being mechanically copied.
 - Public docs reflect current supported CLI and Python surfaces and do not rely on stale milestone-specific behavior notes.
+- Workflow pages explain assumptions, limitations, and interpretation guidance where those details materially affect financial use.
+- The workflow set includes at least one end-to-end path from raw market data to fitted-model outputs that a new user can actually reproduce.
 
 ### Unit tests
 - Public workflow examples are validated through smoke checks, generated examples, or documentation tests where practical.
 - Link checks pass across all migrated workflow pages.
+- At least one docs verification target exercises the primary user journey end to end rather than only isolated commands.
 
 ### Notes/Constraints
 - Market-data-first calibration is the primary onboarding path.

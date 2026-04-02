@@ -1,4 +1,4 @@
-## ISSUE-009: Documentation Quality Gates And Executable Examples
+## ISSUE-007: Documentation Quality Gates And Executable Examples
 
 ### Description
 Add verification that prevents the documentation surface from drifting away from the product. The checks should cover at least Markdown hygiene, internal links, public example validity, and synchronization between documented workflows and the supported CLI or Python APIs.
@@ -13,6 +13,7 @@ Add verification that prevents the documentation surface from drifting away from
 ### Unit tests
 - Documentation verification commands run successfully in CI.
 - At least one representative market-data calibration path, one simulation path, and one pricing path are exercised by docs-related validation.
+- Checks fail when a published page link target is removed or a documented example command drifts from the supported interface.
 
 ### Notes/Constraints
 - Keep checks targeted enough that they are maintainable.
