@@ -24,6 +24,7 @@ mod seasonality {
 
 mod adapters;
 mod checkpointing;
+mod current_state;
 mod diagnostics;
 mod execution_bridge;
 mod market_data;
@@ -36,6 +37,7 @@ mod temporal;
 
 pub use adapters::*;
 pub use checkpointing::*;
+pub use current_state::*;
 pub use execution_bridge::*;
 pub use market_data::*;
 pub use objective::*;

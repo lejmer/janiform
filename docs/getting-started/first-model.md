@@ -32,7 +32,7 @@ frame = simulation.to_pandas()
 
 ## Price
 
-`model.price_option(...)` derives the pricing state from the fitted model, the valuation timestamp, and the supplied spot.
+`model.price_option(...)` derives the pricing state from the fitted model, the valuation timestamp, and the supplied spot. When you also provide observed continuation trades, Janiform estimates the live Hawkes state from those observations before pricing.
 
 ```python
 from datetime import UTC, datetime

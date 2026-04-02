@@ -118,6 +118,9 @@
         "CalibrationMeanReversionConfiguration",
         "CalibrationValidationError",
         "CalibrationValidationFailure",
+        "CurrentStateEstimationRequest",
+        "CurrentStateEstimationResult",
+        "CurrentStateObservation",
         "DEFAULT_HIGH_LEVEL_KNOWN_NEWS_PRESET_NAME",
         "JaniformEstimator",
         "JaniformFitReport",
@@ -176,6 +179,31 @@
           ],
           "kind": "contract_model",
           "signature": "(error_id: 'str', workflow: 'str', entrypoint: 'str', field_path: 'str', message: 'str', context_items: 'tuple[tuple[str, ErrorContextValue], ...]' = ()) -> 'None'"
+        },
+        "CurrentStateEstimationRequest": {
+          "field_names": [
+            "observed_trades",
+            "observed_price"
+          ],
+          "kind": "contract_model",
+          "signature": "(observed_trades: 'tuple[CurrentStateObservation, ...]', observed_price: 'Optional[float]' = None) -> 'None'"
+        },
+        "CurrentStateEstimationResult": {
+          "field_names": [
+            "hawkes_excitation_state",
+            "mean_reversion_boundary_state"
+          ],
+          "kind": "contract_model",
+          "signature": "(hawkes_excitation_state: 'HawkesExcitationState', mean_reversion_boundary_state: 'MeanReversionBoundaryState') -> 'None'"
+        },
+        "CurrentStateObservation": {
+          "field_names": [
+            "timestamp_utc",
+            "trade_price",
+            "trade_side"
+          ],
+          "kind": "contract_model",
+          "signature": "(timestamp_utc: 'datetime', trade_price: 'float', trade_side: 'SeededTickEventSide') -> 'None'"
         },
         "DEFAULT_HIGH_LEVEL_KNOWN_NEWS_PRESET_NAME": {
           "kind": "constant",
@@ -417,6 +445,9 @@
     },
     "janiform.calibration.fit": {
       "exports": [
+        "CurrentStateEstimationRequest",
+        "CurrentStateEstimationResult",
+        "CurrentStateObservation",
         "JaniformEstimator",
         "JaniformFitReport",
         "JaniformModel",
@@ -425,6 +456,31 @@
       "module_name": "janiform.calibration.fit",
       "schema_identifiers": [],
       "symbols": {
+        "CurrentStateEstimationRequest": {
+          "field_names": [
+            "observed_trades",
+            "observed_price"
+          ],
+          "kind": "contract_model",
+          "signature": "(observed_trades: 'tuple[CurrentStateObservation, ...]', observed_price: 'Optional[float]' = None) -> 'None'"
+        },
+        "CurrentStateEstimationResult": {
+          "field_names": [
+            "hawkes_excitation_state",
+            "mean_reversion_boundary_state"
+          ],
+          "kind": "contract_model",
+          "signature": "(hawkes_excitation_state: 'HawkesExcitationState', mean_reversion_boundary_state: 'MeanReversionBoundaryState') -> 'None'"
+        },
+        "CurrentStateObservation": {
+          "field_names": [
+            "timestamp_utc",
+            "trade_price",
+            "trade_side"
+          ],
+          "kind": "contract_model",
+          "signature": "(timestamp_utc: 'datetime', trade_price: 'float', trade_side: 'SeededTickEventSide') -> 'None'"
+        },
         "JaniformEstimator": {
           "base_classes": [],
           "constructor_signature": "(*, workflow_scope: 'CalibrationMarketDataWorkflowScope' = <CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE: 'full_without_option_surface'>, tick_data_column_mapping: 'Optional[CalibrationTickDataColumnMapping]' = None, normalization_policy: 'Optional[CalibrationMarketDataNormalizationPolicy]' = None, option_surface_column_mapping: 'Optional[CalibrationOptionSurfaceColumnMapping]' = None, output_preferences: 'Optional[CalibrationMarketDataOutputPreferences]' = None, optimizer_settings_by_stage: 'tuple[CalibrationStageSolverSettings, ...]' = (), preprocessing_settings: 'Optional[CalibrationMarketDataPreprocessingSettings]' = None, mean_reversion: 'Optional[CalibrationMeanReversionConfiguration]' = None, market_profile: 'Optional[str | MarketProfileReference]' = None, session: 'Optional[str | Path | SessionPresetReference]' = None, known_news: 'Optional[str | KnownNewsPresetReference]' = None, exchange_code: 'Optional[str]' = None, session_timezone: 'Optional[str]' = None, registry: 'Optional[PresetRegistry]' = None, cpu_count: 'Optional[int]' = None, silent: 'bool' = False) -> 'None'",

@@ -637,11 +637,12 @@ fn run_single_interval_nested_fourier_pricing(
     let pricing_result = pricing_result
         .map_err(|source| VanillaOptionPricingRunError::FourierPricingFailure { source })?;
     let anchored_diagnostics = if output_selection.diagnostics_selected() {
-        let risk_neutral_anchor_materialization = build_pricing_risk_neutral_anchor_materialization(
-            pricing_request,
-            &[interval_factors],
-            driver_parameters,
-        )?;
+        let risk_neutral_anchor_materialization =
+            build_pricing_risk_neutral_anchor_materialization(
+                pricing_request,
+                &[interval_factors],
+                driver_parameters,
+            )?;
 
         Some(build_single_interval_recursion_diagnostics(
             pricing_request.boundary_input.clone(),

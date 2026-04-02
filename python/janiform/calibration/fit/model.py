@@ -93,6 +93,11 @@ from ...simulation.shared import (
     SeededTickEventStateSnapshotCapture,
 )
 from ..._native_api import native_module
+from .state_estimation import (
+    CurrentStateEstimationRequest,
+    CurrentStateEstimationResult,
+    estimate_current_state_for_model,
+)
 
 
 _HIGH_LEVEL_MODEL_PERSISTENCE_SCHEMA_VERSION = "calibration.high_level.model.v1"
@@ -254,6 +259,7 @@ class JaniformModel:
         interval: Optional[str | timedelta] = None,
         output_path: Optional[str | Path] = None,
         sink: Optional[SimulationArtifactSink] = None,
+        continuation_data: Optional[CurrentStateEstimationRequest] = None,
         initial_excitation_state: Optional[HawkesExcitationState] = None,
         debug_trace_enabled: bool = False,
         sample_every_nth_transition: int = 1,
@@ -286,6 +292,7 @@ class JaniformModel:
             horizon_interval_count=horizon_interval_count,
             interval=effective_interval,
             simulation_kind=simulation_kind,
+            continuation_data=continuation_data,
             initial_excitation_state=initial_excitation_state,
             debug_trace_enabled=debug_trace_enabled,
             sample_every_nth_transition=sample_every_nth_transition,
@@ -364,6 +371,7 @@ class JaniformModel:
         payoff_type: VanillaOptionPayoffType | str = VanillaOptionPayoffType.CALL,
         risk_free_rate: float = 0.0,
         dividend_yield: float = 0.0,
+        observed_data: Optional[CurrentStateEstimationRequest] = None,
         boundary_state: Optional[HawkesExcitationState] = None,
         include_transform_diagnostics: bool = False,
         include_integration_quality_diagnostics: bool = False,
@@ -388,6 +396,7 @@ class JaniformModel:
             payoff_type=payoff_type,
             risk_free_rate=risk_free_rate,
             dividend_yield=dividend_yield,
+            observed_data=observed_data,
             boundary_state=boundary_state,
             include_transform_diagnostics=include_transform_diagnostics,
             include_integration_quality_diagnostics=include_integration_quality_diagnostics,
@@ -407,6 +416,18 @@ class JaniformModel:
             )
 
         return pricing_result
+
+    def estimate_current_state(
+        self,
+        *,
+        state_time_utc: datetime,
+        request: CurrentStateEstimationRequest,
+    ) -> CurrentStateEstimationResult:
+        return estimate_current_state_for_model(
+            self,
+            state_time_utc=state_time_utc,
+            request=request,
+        )
 
     def save(self, path: str | Path) -> None:
         model_path = Path(path)
@@ -535,6 +556,7 @@ def _prepare_model_simulation_inputs(
     horizon_interval_count: int,
     interval: str | timedelta,
     simulation_kind: str,
+    continuation_data: Optional[CurrentStateEstimationRequest] = None,
     initial_excitation_state: Optional[HawkesExcitationState],
     debug_trace_enabled: bool,
     sample_every_nth_transition: int,
@@ -547,11 +569,23 @@ def _prepare_model_simulation_inputs(
         horizon_interval_count=horizon_interval_count,
         interval=interval,
     )
+    effective_start_anchor_value = 0.0
+    estimated_mean_reversion_boundary_state: Optional[MeanReversionBoundaryState] = None
     effective_initial_state = (
-        _zero_hawkes_excitation_state()
+        runtime_factors.kernel_parameters.stationary_excitation_state()
         if initial_excitation_state is None
         else initial_excitation_state
     )
+    if initial_excitation_state is None and continuation_data is not None:
+        estimated_current_state = model.estimate_current_state(
+            state_time_utc=start_time_utc,
+            request=continuation_data,
+        )
+        effective_initial_state = estimated_current_state.hawkes_excitation_state
+        estimated_mean_reversion_boundary_state = (
+            estimated_current_state.mean_reversion_boundary_state
+        )
+        effective_start_anchor_value = estimated_mean_reversion_boundary_state.anchor_value
 
     coarse_request: Optional[CoarseSimulationRunRequest] = None
     seeded_request: Optional[SeededTickSimulationRequest] = None
@@ -595,7 +629,10 @@ def _prepare_model_simulation_inputs(
                 runtime_factors=runtime_factors,
                 hourly_factor_contract=hourly_factor_contract,
                 initial_excitation_state=effective_initial_state,
+                start_anchor_value=effective_start_anchor_value,
             )
+            if estimated_mean_reversion_boundary_state is not None:
+                initial_mean_reversion_boundary_state = estimated_mean_reversion_boundary_state
 
             coarse_request = CoarseSimulationRunRequest.from_runtime_inputs(
                 seed=seed,
@@ -660,7 +697,10 @@ def _prepare_model_simulation_inputs(
                 runtime_factors=runtime_factors,
                 hourly_factor_contract=hourly_factor_contract,
                 initial_excitation_state=effective_initial_state,
+                start_anchor_value=effective_start_anchor_value,
             )
+            if estimated_mean_reversion_boundary_state is not None:
+                initial_mean_reversion_boundary_state = estimated_mean_reversion_boundary_state
 
             seeded_request = SeededTickSimulationRequest.from_runtime_inputs(
                 seed=seed,
@@ -851,6 +891,7 @@ def _prepare_model_pricing_execution_input(
     payoff_type: VanillaOptionPayoffType | str,
     risk_free_rate: float,
     dividend_yield: float,
+    observed_data: Optional[CurrentStateEstimationRequest] = None,
     boundary_state: Optional[HawkesExcitationState],
     include_transform_diagnostics: bool,
     include_integration_quality_diagnostics: bool,
@@ -886,12 +927,6 @@ def _prepare_model_pricing_execution_input(
             "must be one of: call, put",
         ) from e
 
-    effective_boundary_state = (
-        runtime_factors.kernel_parameters.stationary_excitation_state()
-        if boundary_state is None
-        else boundary_state
-    )
-
     hourly_factor_contract = provide_hourly_factor_contract(
         calendar_registry=runtime_factors.calendar_registry,
         exchange_code=runtime_factors.exchange_code,
@@ -919,17 +954,43 @@ def _prepare_model_pricing_execution_input(
             ),
         ),
     )
-    (
-        mean_reversion_fitted_parameters,
-        _mean_reversion_runtime_interval_anchors,
-        effective_observed_boundary_state,
-    ) = _prepare_model_mean_reversion_runtime_inputs(
-        model,
-        runtime_factors=runtime_factors,
-        hourly_factor_contract=hourly_factor_contract,
-        initial_excitation_state=effective_boundary_state,
-        start_anchor_value=_pricing_observed_log_price_from_spot(model, spot=spot),
-    )
+    mean_reversion_fitted_parameters = _mean_reversion_fitted_parameters(model)
+    if boundary_state is not None:
+        effective_boundary_state = boundary_state
+        (
+            _derived_mean_reversion_fitted_parameters,
+            _derived_mean_reversion_runtime_interval_anchors,
+            effective_observed_boundary_state,
+        ) = _prepare_model_mean_reversion_runtime_inputs(
+            model,
+            runtime_factors=runtime_factors,
+            hourly_factor_contract=hourly_factor_contract,
+            initial_excitation_state=effective_boundary_state,
+            start_anchor_value=_pricing_observed_log_price_from_spot(model, spot=spot),
+        )
+    elif observed_data is not None:
+        pricing_state = model.estimate_current_state(
+            state_time_utc=valuation_time_utc,
+            request=CurrentStateEstimationRequest(
+                observed_trades=observed_data.observed_trades,
+                observed_price=spot if observed_data.observed_price is None else observed_data.observed_price,
+            ),
+        )
+        effective_boundary_state = pricing_state.hawkes_excitation_state
+        effective_observed_boundary_state = pricing_state.mean_reversion_boundary_state
+    else:
+        effective_boundary_state = runtime_factors.kernel_parameters.stationary_excitation_state()
+        (
+            _derived_mean_reversion_fitted_parameters,
+            _derived_mean_reversion_runtime_interval_anchors,
+            effective_observed_boundary_state,
+        ) = _prepare_model_mean_reversion_runtime_inputs(
+            model,
+            runtime_factors=runtime_factors,
+            hourly_factor_contract=hourly_factor_contract,
+            initial_excitation_state=effective_boundary_state,
+            start_anchor_value=_pricing_observed_log_price_from_spot(model, spot=spot),
+        )
 
     return VanillaOptionPricingExecutionInput(
         request=VanillaOptionPricingRequest(
@@ -1010,7 +1071,6 @@ def _prepare_model_runtime_factors(
 
     calendar_registry = CalendarRegistry(model.session_resolution.resolved_session_definition_json)
     exchange_code = model.session_resolution.exchange_code
-    hawkes_fitted_parameters = _hawkes_fitted_parameters_payload(model)
     return_components_fitted_parameters = _return_components_fitted_parameters_payload(model)
     news_process_configuration = NewsProcessConfiguration.from_mapping(
         _require_payload_mapping(
@@ -1030,14 +1090,7 @@ def _prepare_model_runtime_factors(
         interval_duration_nanos=interval_duration_nanos,
         interval_delta=nanoseconds_to_hours(interval_duration_nanos),
         range_end_utc=range_end_utc,
-        kernel_parameters=HawkesKernelParameters.from_mapping(
-            _require_payload_mapping(
-                hawkes_fitted_parameters,
-                "kernel_parameters",
-                "hawkes.fitted_parameters.kernel_parameters",
-            ),
-            field_path="hawkes.fitted_parameters.kernel_parameters",
-        ),
+        kernel_parameters=_hawkes_kernel_parameters(model),
         nig_shared_plus_shift_configuration=NigSharedPlusShiftConfiguration.from_mapping(
             _require_payload_mapping(
                 return_components_fitted_parameters,
@@ -1077,6 +1130,17 @@ def _zero_hawkes_excitation_state() -> HawkesExcitationState:
         y_plus_minus=0.0,
         y_minus_plus=0.0,
         y_minus_minus=0.0,
+    )
+
+
+def _hawkes_kernel_parameters(model: JaniformModel) -> HawkesKernelParameters:
+    return HawkesKernelParameters.from_mapping(
+        _require_payload_mapping(
+            _hawkes_fitted_parameters_payload(model),
+            "kernel_parameters",
+            "hawkes.fitted_parameters.kernel_parameters",
+        ),
+        field_path="hawkes.fitted_parameters.kernel_parameters",
     )
 
 

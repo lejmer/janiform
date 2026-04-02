@@ -946,6 +946,15 @@ def evaluate_return_components_candidate(
 ) -> object: ...
 
 
+def estimate_current_state_from_observed_data(
+    kernel_parameters: object,
+    mean_reversion_fitted_parameters: object,
+    state_time_utc_nanos: int,
+    observed_log_price: float,
+    observations: object,
+) -> object: ...
+
+
 def preprocess_market_data_translation_request(
     preprocessing_request: object,
     calendar_registry: CalendarRegistry,

@@ -12,6 +12,9 @@ Import the module that matches the workflow you want. The package root stays int
 
 Primary high-level fitting surface. Representative public symbols include:
 
+- `CurrentStateObservation`
+- `CurrentStateEstimationRequest`
+- `CurrentStateEstimationResult`
 - `JaniformEstimator`
 - `JaniformModel`
 - `JaniformFitReport`
@@ -22,6 +25,9 @@ Primary high-level fitting surface. Representative public symbols include:
 - `prepare_market_data_calibration`
 - `run_market_data_calibration`
 - `run_staged_calibration`
+
+The supported fit ownership submodules also include `janiform.calibration.fit.state_estimation`
+for the public current-state estimation contracts used by `JaniformModel.estimate_current_state(...)`.
 
 ### `janiform.simulation`
 

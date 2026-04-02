@@ -15,6 +15,7 @@ from pyarrow import parquet
 
 import janiform.calibration.fit.estimator as fit_estimator_module
 import janiform.calibration.fit.model as fit_model_module
+import janiform.calibration.fit.state_estimation as state_estimation_module
 import janiform.calibration.market_data.ingestion as market_data_ingestion_module
 from janiform._timestamps import datetime_to_utc_nanos
 from janiform.calibration import (
@@ -24,6 +25,9 @@ from janiform.calibration import (
     MeanReversionFittedParameters,
 )
 from janiform.calibration.fit import (
+    CurrentStateEstimationRequest,
+    CurrentStateEstimationResult,
+    CurrentStateObservation,
     JaniformEstimator,
     JaniformFitReport,
     JaniformModel,
@@ -1114,6 +1118,133 @@ def test_high_level_model_simulate_forwards_progress_events_to_callback_and_rend
     assert observed_callback_events == [("seeded tick path generation", 2, 5)]
 
 
+def test_high_level_model_simulate_uses_estimated_current_state_when_continuation_data_is_supplied(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _build_full_workflow_model(
+        tmp_path,
+        monkeypatch,
+        run_id="high-level-model-simulate-estimated-current-state",
+    )
+    captured_requests: dict[str, Any] = {}
+    captured_estimation_calls: list[tuple[datetime, CurrentStateEstimationRequest]] = []
+    seeded_result = object()
+    estimated_state = CurrentStateEstimationResult(
+        hawkes_excitation_state=fit_model_module.HawkesExcitationState(
+            y_plus_plus=0.45,
+            y_plus_minus=0.15,
+            y_minus_plus=0.3,
+            y_minus_minus=0.2,
+        ),
+        mean_reversion_boundary_state=MeanReversionBoundaryState(
+            observed_log_price=0.05,
+            anchor_value=0.05,
+            pressure_state=0.0,
+            deviation=0.0,
+        ),
+    )
+    continuation_data = CurrentStateEstimationRequest(
+        observed_trades=(
+            CurrentStateObservation(
+                timestamp_utc=datetime(2026, 2, 2, 14, 30, tzinfo=UTC),
+                trade_price=100.0,
+                trade_side=SeededTickEventSide.BUY,
+            ),
+        ),
+    )
+
+    monkeypatch.setattr(
+        fit_model_module,
+        "estimate_current_state_for_model",
+        lambda model_value, *, state_time_utc, request: (
+            captured_estimation_calls.append((state_time_utc, request)) or estimated_state
+        ),
+    )
+    monkeypatch.setattr(
+        fit_model_module,
+        "provide_hourly_factor_contract",
+        lambda **kwargs: _build_test_hourly_factor_contract(
+            start_time_utc=cast(datetime, kwargs["range_start_utc"]),
+            interval_end_times_utc=(cast(datetime, kwargs["range_end_utc"]),),
+        ),
+    )
+    monkeypatch.setattr(
+        fit_model_module,
+        "run_seeded_tick_event_simulation",
+        lambda request, **kwargs: _capture_request(
+            captured_requests,
+            "seeded",
+            request,
+            seeded_result,
+        ),
+    )
+    monkeypatch.setattr(
+        fit_model_module,
+        "_build_high_level_simulation_result",
+        lambda **kwargs: JaniformSimulationResult(
+            simulation_kind="seeded_tick",
+            metadata={},
+            provenance={},
+            diagnostics={},
+            raw_result=kwargs["simulation_result"],
+        ),
+    )
+
+    model.simulate(
+        seed=17,
+        start_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
+        horizon_interval_count=1,
+        continuation_data=continuation_data,
+    )
+
+    assert captured_estimation_calls == [
+        (datetime(2026, 2, 2, 15, tzinfo=UTC), continuation_data)
+    ]
+    assert captured_requests["seeded"].initial_excitation_state == estimated_state.hawkes_excitation_state
+    assert (
+        captured_requests["seeded"].initial_mean_reversion_boundary_state
+        == estimated_state.mean_reversion_boundary_state
+    )
+
+
+def test_high_level_model_simulate_uses_stationary_hawkes_state_when_no_continuation_data_is_supplied(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _build_full_workflow_model(
+        tmp_path,
+        monkeypatch,
+        run_id="high-level-model-simulate-stationary-default",
+    )
+    prepared_inputs = fit_model_module._prepare_model_simulation_inputs(
+        model,
+        seed=17,
+        start_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
+        horizon_interval_count=1,
+        interval="1h",
+        simulation_kind="seeded_tick",
+        continuation_data=None,
+        initial_excitation_state=None,
+        debug_trace_enabled=False,
+        sample_every_nth_transition=1,
+        max_records_per_chunk=1_000,
+        state_snapshot_capture=SeededTickEventStateSnapshotCapture.DISABLED,
+    )
+    runtime_factors = fit_model_module._prepare_model_runtime_factors(
+        model,
+        start_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
+        horizon_interval_count=1,
+        interval="1h",
+    )
+
+    assert prepared_inputs.seeded_request is not None
+    assert (
+        prepared_inputs.seeded_request.initial_excitation_state
+        == runtime_factors.kernel_parameters.stationary_excitation_state()
+    )
+
+
 def test_high_level_model_coarse_simulation_skips_seeded_contract_preparation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -2008,6 +2139,173 @@ def test_high_level_model_price_option_derives_boundary_state_from_spot_and_mode
     assert pricing_boundary_input.mean_reversion_fitted_parameters.to_payload() == mean_reversion_payload
     assert pricing_boundary_input.observed_boundary_state == derived_boundary_state
     assert pricing_boundary_input.interval_delta == pytest.approx(1.0)
+
+
+def test_high_level_model_estimate_current_state_dispatches_to_native_estimator(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _build_full_workflow_model(
+        tmp_path,
+        monkeypatch,
+        run_id="high-level-model-estimate-current-state",
+    )
+    captured_native_arguments: list[tuple[Any, ...]] = []
+    request = CurrentStateEstimationRequest(
+        observed_trades=(
+            CurrentStateObservation(
+                timestamp_utc=datetime(2026, 2, 2, 13, tzinfo=UTC),
+                trade_price=100.0,
+                trade_side=SeededTickEventSide.BUY,
+            ),
+            CurrentStateObservation(
+                timestamp_utc=datetime(2026, 2, 2, 14, tzinfo=UTC),
+                trade_price=100.5,
+                trade_side=SeededTickEventSide.SELL,
+            ),
+        ),
+        observed_price=100.0,
+    )
+
+    monkeypatch.setattr(
+        state_estimation_module,
+        "native_module",
+        lambda: SimpleNamespace(
+            estimate_current_state_from_observed_data=lambda *args: (
+                captured_native_arguments.append(args)
+                or {
+                    "hawkes_excitation_state": {
+                        "y_plus_plus": 0.2,
+                        "y_plus_minus": 0.1,
+                        "y_minus_plus": 0.1,
+                        "y_minus_minus": 0.25,
+                    },
+                    "mean_reversion_boundary_state": {
+                        "observed_log_price": 0.0,
+                        "anchor_value": 0.0,
+                        "pressure_state": 0.0,
+                        "deviation": 0.0,
+                    },
+                }
+            )
+        ),
+    )
+
+    result = model.estimate_current_state(
+        state_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
+        request=request,
+    )
+
+    assert result == CurrentStateEstimationResult(
+        hawkes_excitation_state=fit_model_module.HawkesExcitationState(
+            y_plus_plus=0.2,
+            y_plus_minus=0.1,
+            y_minus_plus=0.1,
+            y_minus_minus=0.25,
+        ),
+        mean_reversion_boundary_state=MeanReversionBoundaryState(
+            observed_log_price=0.0,
+            anchor_value=0.0,
+            pressure_state=0.0,
+            deviation=0.0,
+        ),
+    )
+    assert len(captured_native_arguments) == 1
+    assert captured_native_arguments[0][2] == datetime_to_utc_nanos(
+        datetime(2026, 2, 2, 15, tzinfo=UTC)
+    )
+    assert captured_native_arguments[0][3] == pytest.approx(
+        fit_model_module._pricing_observed_log_price_from_spot(model, spot=100.0)
+    )
+    assert captured_native_arguments[0][4] == (
+        {
+            "timestamp_utc_nanos": datetime_to_utc_nanos(datetime(2026, 2, 2, 13, tzinfo=UTC)),
+            "trade_price": 100.0,
+            "trade_side": "buy",
+        },
+        {
+            "timestamp_utc_nanos": datetime_to_utc_nanos(datetime(2026, 2, 2, 14, tzinfo=UTC)),
+            "trade_price": 100.5,
+            "trade_side": "sell",
+        },
+    )
+
+
+def test_high_level_model_price_option_uses_estimated_current_state_when_observed_data_is_supplied(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _build_full_workflow_model(
+        tmp_path,
+        monkeypatch,
+        run_id="high-level-model-pricing-estimated-current-state",
+    )
+    estimated_state = CurrentStateEstimationResult(
+        hawkes_excitation_state=fit_model_module.HawkesExcitationState(
+            y_plus_plus=0.45,
+            y_plus_minus=0.15,
+            y_minus_plus=0.3,
+            y_minus_minus=0.2,
+        ),
+        mean_reversion_boundary_state=MeanReversionBoundaryState(
+            observed_log_price=0.05,
+            anchor_value=0.05,
+            pressure_state=0.0,
+            deviation=0.0,
+        ),
+    )
+    observed_data = CurrentStateEstimationRequest(
+        observed_trades=(
+            CurrentStateObservation(
+                timestamp_utc=datetime(2026, 2, 2, 14, 30, tzinfo=UTC),
+                trade_price=100.0,
+                trade_side=SeededTickEventSide.BUY,
+            ),
+        ),
+    )
+    captured_execution_inputs: list[Any] = []
+    captured_estimation_calls: list[tuple[datetime, CurrentStateEstimationRequest]] = []
+    pricing_result = object()
+
+    monkeypatch.setattr(
+        fit_model_module,
+        "estimate_current_state_for_model",
+        lambda model_value, *, state_time_utc, request: (
+            captured_estimation_calls.append((state_time_utc, request)) or estimated_state
+        ),
+    )
+    monkeypatch.setattr(
+        fit_model_module,
+        "run_vanilla_option_pricing",
+        lambda execution_input: captured_execution_inputs.append(execution_input) or pricing_result,
+    )
+
+    observed_result = model.price_option(
+        valuation_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
+        spot=100.0,
+        strike=105.0,
+        maturity_interval=4.0,
+        observed_data=observed_data,
+    )
+
+    assert observed_result is pricing_result
+    assert captured_estimation_calls == [
+        (
+            datetime(2026, 2, 2, 15, tzinfo=UTC),
+            CurrentStateEstimationRequest(
+                observed_trades=observed_data.observed_trades,
+                observed_price=100.0,
+            ),
+        )
+    ]
+    assert (
+        captured_execution_inputs[0].request.boundary_input.hawkes_boundary_state
+        == estimated_state.hawkes_excitation_state
+    )
+    assert (
+        captured_execution_inputs[0].request.boundary_input.observed_boundary_state
+        == estimated_state.mean_reversion_boundary_state
+    )
 
 
 def test_high_level_model_price_option_uses_stationary_hawkes_boundary_state_by_default(

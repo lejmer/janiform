@@ -8,14 +8,16 @@ use janiform::calibration::{
     CalibrationRunSeedSettings, CalibrationRunSpec, CalibrationStage,
     CalibrationStageSolverSettings, CalibrationStagedExecutionInput,
     CalibrationStagedExecutionRuntimeResources, CalibrationStagedRunObserverEvent,
-    CalibrationStagedRunReport, CalibrationStagedRunStageReport, MarketDataInputFileReference,
-    MarketDataKnownNewsColumnMapping, MarketDataKnownNewsLoadingInput, MarketDataLoadingOutput,
-    MarketDataLoadingRequest, MarketDataNormalizationPolicy, MarketDataOptionSurfaceColumnMapping,
+    CalibrationStagedRunReport, CalibrationStagedRunStageReport, CurrentStateEstimationInput,
+    CurrentStateObservation, MarketDataInputFileReference, MarketDataKnownNewsColumnMapping,
+    MarketDataKnownNewsLoadingInput, MarketDataLoadingOutput, MarketDataLoadingRequest,
+    MarketDataNormalizationPolicy, MarketDataOptionSurfaceColumnMapping,
     MarketDataOptionSurfaceLoadingInput, MarketDataSessionConfiguration,
     MarketDataSessionResolutionPayload, MarketDataSourceProbePayload,
     MarketDataTickDataColumnMapping, MarketDataTranslationPreprocessingOutput,
     MarketDataTranslationPreprocessingRequest, MarketDataTranslationPreprocessingSettings,
     ReturnComponentsStageFittedParameters, ReturnComponentsStageObservedSignalSummaryStatistics,
+    estimate_current_state_from_observed_data as estimate_current_state_from_observed_data_core,
     evaluate_return_components_exact_candidate_from_bridge,
     load_and_preprocess_market_data_translation_request as load_and_preprocess_market_data_translation_request_native,
     normalize_market_data_source as normalize_market_data_source_native,
@@ -26,8 +28,10 @@ use janiform::calibration::{
     run_staged_calibration_from_execution_input,
     run_staged_calibration_from_execution_input_with_observer,
 };
+use janiform::hawkes::{HawkesEventSide, HawkesKernelParameters};
 use janiform::hourly_factors::{ONE_HOUR_NANOS_F64, duration_nanos_to_hours};
 use janiform::simulation::MeanReversionAnchorModelKind;
+use janiform::simulation::MeanReversionFittedParameters;
 use pyo3::prelude::{Bound, Py, PyResult, Python};
 use pyo3::types::{PyAny, PyDict, PyDictMethods, PyModule, PyModuleMethods};
 use pyo3::{pyfunction, wrap_pyfunction};
@@ -155,6 +159,14 @@ struct PythonMarketDataCalibrationRequest {
     known_news_inputs: Option<PythonMarketDataKnownNewsInput>,
     #[serde(default)]
     mean_reversion: Option<PythonMeanReversionConfiguration>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PythonCurrentStateObservation {
+    timestamp_utc_nanos: i64,
+    trade_price: f64,
+    trade_side: String,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -1674,6 +1686,72 @@ fn evaluate_return_components_candidate(
     json_value_to_py_object(py, &raw_value)
 }
 
+#[pyfunction]
+fn estimate_current_state_from_observed_data(
+    py: Python<'_>,
+    kernel_parameters: &Bound<'_, PyAny>,
+    mean_reversion_fitted_parameters: &Bound<'_, PyAny>,
+    state_time_utc_nanos: i64,
+    observed_log_price: f64,
+    observations: &Bound<'_, PyAny>,
+) -> PyResult<Py<PyAny>> {
+    let parsed_kernel_parameters: HawkesKernelParameters =
+        serde_json::from_value(py_any_to_json_value(kernel_parameters)?).map_err(|source| {
+            CalibrationExecutionError::new_err(format!(
+                "failed to deserialize current-state kernel parameters: {source}"
+            ))
+        })?;
+    let parsed_mean_reversion_fitted_parameters: MeanReversionFittedParameters =
+        serde_json::from_value(py_any_to_json_value(mean_reversion_fitted_parameters)?).map_err(
+            |source| {
+                CalibrationExecutionError::new_err(format!(
+                    "failed to deserialize current-state mean-reversion fitted parameters: {source}"
+                ))
+            },
+        )?;
+    let parsed_observations: Vec<PythonCurrentStateObservation> =
+        serde_json::from_value(py_any_to_json_value(observations)?).map_err(|source| {
+            CalibrationExecutionError::new_err(format!(
+                "failed to deserialize current-state observations: {source}"
+            ))
+        })?;
+
+    let parsed_observations = parsed_observations
+        .into_iter()
+        .map(|observation| {
+            HawkesEventSide::try_from(observation.trade_side.as_str())
+                .map(|trade_side| CurrentStateObservation {
+                    timestamp_utc_nanos: observation.timestamp_utc_nanos,
+                    trade_price: observation.trade_price,
+                    trade_side,
+                })
+                .map_err(|source| {
+                    CalibrationExecutionError::new_err(format!(
+                        "failed to parse current-state trade_side: {source}"
+                    ))
+                })
+        })
+        .collect::<PyResult<Vec<_>>>()?;
+
+    let estimation_output =
+        estimate_current_state_from_observed_data_core(CurrentStateEstimationInput {
+            kernel_parameters: parsed_kernel_parameters,
+            mean_reversion_fitted_parameters: parsed_mean_reversion_fitted_parameters,
+            state_time_utc_nanos,
+            observed_log_price,
+            observations: parsed_observations,
+        })
+        .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
+
+    let serialized_output = serde_json::to_value(&estimation_output).map_err(|source| {
+        CalibrationExecutionError::new_err(format!(
+            "failed to serialize current-state estimation output: {source}"
+        ))
+    })?;
+
+    json_value_to_py_object(py, &serialized_output)
+}
+
 fn python_staged_calibration_report_to_py_object(
     py: Python<'_>,
     report: &CalibrationStagedRunReport,
@@ -1818,6 +1896,10 @@ pub(super) fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
     )?)?;
     module.add_function(wrap_pyfunction!(
         evaluate_return_components_candidate,
+        module
+    )?)?;
+    module.add_function(wrap_pyfunction!(
+        estimate_current_state_from_observed_data,
         module
     )?)?;
 
