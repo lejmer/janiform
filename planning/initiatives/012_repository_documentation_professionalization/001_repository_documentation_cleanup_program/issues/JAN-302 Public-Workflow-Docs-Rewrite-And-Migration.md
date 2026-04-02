@@ -5,6 +5,7 @@ Rewrite the user-facing workflow documentation so it guides external users from 
 
 ### Acceptance Criteria
 - Public docs contain a coherent onboarding path for installation, quickstart, market-data-first calibration, simulation, and pricing.
+- The rewritten workflow pages live under the public docs tree in explicit homes: installation and quickstart under `docs/getting-started/`, user journeys under `docs/workflows/`, supporting explanations under `docs/concepts/`, and detailed command or API material under `docs/reference/`.
 - Workflow pages follow a consistent structure covering purpose, prerequisites, minimal inputs, executable examples, expected outputs, and failure modes.
 - Deep internal contract or design documents are summarized or linked only where they add real value for advanced users.
 - Existing user-facing content has explicit migration outcomes recorded in the ledger rather than being mechanically copied.
@@ -20,3 +21,4 @@ Rewrite the user-facing workflow documentation so it guides external users from 
 ### Notes/Constraints
 - Market-data-first calibration is the primary onboarding path.
 - Prefer fewer strong workflow pages over many thin placeholders.
+- Root files such as `README.md` may summarize and link these workflows, but the canonical workflow content lives in `docs/`, not in root Markdown.

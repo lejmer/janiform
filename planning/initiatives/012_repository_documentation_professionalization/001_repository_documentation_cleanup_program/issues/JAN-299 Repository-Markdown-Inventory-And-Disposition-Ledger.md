@@ -4,6 +4,7 @@
 Build a complete ledger of tracked Markdown files and assign a disposition for each file. The ledger should include file path, audience, owner, current role, target role, canonical status, and migration decision such as keep, rewrite, merge, move, archive, generate, or delete.
 
 ### Acceptance Criteria
+- The canonical ledger lives with this project at `planning/initiatives/012_repository_documentation_professionalization/001_repository_documentation_cleanup_program/markdown_inventory_and_disposition_ledger.md`.
 - Every tracked `.md` file in the repository appears in the ledger.
 - The ledger records whether the file is public-facing, contributor-facing, internal-only, planning-only, generated, or archival.
 - The ledger identifies empty, obsolete, duplicated, milestone-specific, or trust-eroding files that should be removed or replaced.
@@ -18,3 +19,4 @@ Build a complete ledger of tracked Markdown files and assign a disposition for e
 ### Notes/Constraints
 - The goal is decision-quality inventory, not prose polish.
 - Keep the ledger easy to diff and maintain during follow-on cleanup work.
+- Keep the ledger in planning rather than at repository root because it is a cleanup-program control document, not a permanent public or contributor-facing policy page.
