@@ -1,10 +1,14 @@
+import argparse
 from datetime import UTC, datetime
 from typing import Final
 
-from janiform.calibration import JaniformEstimator, JaniformModel
+from janiform.calibration import JaniformModel
 from janiform.pricing import VanillaOptionPricingRunResult
 
-from examples._shared import SYNTHETIC_EURUSD_TICK_DATA_PATH
+from examples._shared import (
+    SYNTHETIC_EURUSD_TICK_DATA_PATH,
+    load_or_fit_persisted_example_model,
+)
 
 
 VALUATION_TIME_UTC: Final[datetime] = datetime(2026, 2, 2, 15, 0, tzinfo=UTC)
@@ -14,10 +18,13 @@ MATURITY_INTERVAL: Final[float] = 1.0
 
 
 def main() -> None:
-    estimator: JaniformEstimator = JaniformEstimator(market_profile="eurusd_spot")
-    model: JaniformModel = estimator.fit(
+    arguments = _parse_args()
+    persisted_model = load_or_fit_persisted_example_model(
+        market_profile="eurusd_spot",
         tick_data_path=SYNTHETIC_EURUSD_TICK_DATA_PATH,
+        force_refit=arguments.refit,
     )
+    model: JaniformModel = persisted_model.model
     pricing_result: VanillaOptionPricingRunResult = model.price_option(
         valuation_time_utc=VALUATION_TIME_UTC,
         spot=SPOT,
@@ -25,12 +32,26 @@ def main() -> None:
         maturity_interval=MATURITY_INTERVAL,
     )
 
+    print(
+        f"model cache: {persisted_model.model_path} "
+        f"({'loaded' if persisted_model.loaded_from_cache else 'fit'})"
+    )
     print(f"fitted run id: {model.run_id}")
     print(f"option price: {pricing_result.response.price:.6f}")
     print(
         "pricing diagnostics:",
         pricing_result.response.diagnostics.to_payload(),
     )
+
+
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--refit",
+        action="store_true",
+        help="Rebuild the persisted example model before running the example.",
+    )
+    return parser.parse_args()
 
 
 if __name__ == "__main__":

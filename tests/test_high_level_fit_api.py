@@ -3024,6 +3024,75 @@ def test_high_level_model_price_option_surface_matches_single_option_engine_on_s
             )
 
 
+def test_runtime_pricing_seasonality_source_stays_materialized_for_off_hour_windows(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _build_full_workflow_model(
+        tmp_path,
+        monkeypatch,
+        run_id="high-level-model-off-hour-surface-pricing",
+    )
+    valuation_time_utc = datetime(2026, 2, 2, 15, 34, tzinfo=UTC)
+    runtime_factors = fit_model_module._prepare_model_runtime_factors(
+        model,
+        start_time_utc=valuation_time_utc,
+        horizon_interval_count=2,
+        interval="1h",
+    )
+
+    seasonality_source = fit_model_module._build_runtime_hourly_seasonality_source_from_model(
+        model,
+        calendar_registry=runtime_factors.calendar_registry,
+        exchange_code=runtime_factors.exchange_code,
+        range_start_utc=valuation_time_utc,
+        range_end_utc=runtime_factors.range_end_utc,
+        interval="1h",
+    )
+
+    assert isinstance(
+        seasonality_source,
+        fit_model_module.HourlySeasonalityProviderMaterializedSource,
+    )
+    assert seasonality_source.source_timestamps_utc == (
+        datetime(2026, 2, 2, 15, 34, tzinfo=UTC),
+        datetime(2026, 2, 2, 16, 34, tzinfo=UTC),
+    )
+
+
+def test_runtime_pricing_seasonality_source_uses_explicit_hourly_factors_for_hour_aligned_windows(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _build_full_workflow_model(
+        tmp_path,
+        monkeypatch,
+        run_id="high-level-model-hour-aligned-surface-pricing",
+    )
+    valuation_time_utc = datetime(2026, 2, 2, 15, tzinfo=UTC)
+    runtime_factors = fit_model_module._prepare_model_runtime_factors(
+        model,
+        start_time_utc=valuation_time_utc,
+        horizon_interval_count=2,
+        interval="1h",
+    )
+
+    seasonality_source = fit_model_module._build_runtime_hourly_seasonality_source_from_model(
+        model,
+        calendar_registry=runtime_factors.calendar_registry,
+        exchange_code=runtime_factors.exchange_code,
+        range_start_utc=valuation_time_utc,
+        range_end_utc=runtime_factors.range_end_utc,
+        interval="1h",
+    )
+
+    assert isinstance(
+        seasonality_source,
+        fit_model_module.HourlySeasonalityProviderExplicitSource,
+    )
+    assert tuple(seasonality_source.hourly_factors) == (1.0, 1.0)
+
+
 def test_high_level_fit_routes_through_prepared_staged_runner(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

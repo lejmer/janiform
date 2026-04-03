@@ -38,7 +38,7 @@ from ..._workflow_outputs import (
     write_simulation_artifacts,
 )
 from ..._workflow_progress import JaniformOutputController, WorkflowProgressMode
-from ..._timestamps import ONE_HOUR_NANOS, nanoseconds_to_hours
+from ..._timestamps import ONE_HOUR_NANOS, datetime_to_utc_nanos, nanoseconds_to_hours
 from ...mean_reversion import (
     MeanReversionBoundaryState,
     MeanReversionFittedParameters,
@@ -1669,7 +1669,13 @@ def _build_runtime_hourly_seasonality_source_from_model(
             materialization_method="runtime_compact_seasonality_parameters_mean_renormalized.v1",
         )
 
-    if interval_duration_nanos < ONE_HOUR_NANOS:
+    if (
+        interval_duration_nanos < ONE_HOUR_NANOS
+        or not _runtime_interval_grid_is_hour_aligned(
+            range_start_utc=range_start_utc,
+            range_end_utc=range_end_utc,
+        )
+    ):
         return HourlySeasonalityProviderMaterializedSource(
             source_timestamps_utc=tuple(
                 _runtime_datetime_from_utc_nanos(timestamp_utc_nanos)
@@ -1685,6 +1691,17 @@ def _build_runtime_hourly_seasonality_source_from_model(
     return HourlySeasonalityProviderExplicitSource(
         hourly_factors=seasonality_grid.seasonality_factors,
         materialization_method="runtime_compact_seasonality_parameters_mean_renormalized.v1",
+    )
+
+
+def _runtime_interval_grid_is_hour_aligned(
+    *,
+    range_start_utc: datetime,
+    range_end_utc: datetime,
+) -> bool:
+    return (
+        datetime_to_utc_nanos(range_start_utc) % ONE_HOUR_NANOS == 0
+        and datetime_to_utc_nanos(range_end_utc) % ONE_HOUR_NANOS == 0
     )
 
 
