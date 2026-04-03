@@ -43,7 +43,7 @@ This codebase is pre-v0.1 and has no external users.
     - If you extend a public API, preserve compatibility unless a planned breaking change is explicitly requested.
     - If a breaking public API change is requested, update in-repo call sites and documentation in the same change.
   - If it does not exist, then you may write a new class or function.
-  - If it exists in a different part of the program. For example: a class exists in the world server, but you want to use it in the master server, move it to the shared folder, do **not** import it from the world server.
+  - If it exists in a different part of the project.
 - You may ALWAYS assume that users have **every dependency available**. Do not spend effort on optional dependency fallbacks or missing-package compatibility shims.
 - Naming: clear, descriptive. Avoid cryptic abbreviations and shorthands outside mathy contexts (we hate `idx` and `col`, never use that ever).
 - Change management
