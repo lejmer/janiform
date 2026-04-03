@@ -89,6 +89,10 @@ Vanilla option pricing contracts and runtime entrypoints. Representative public 
 - `run_vanilla_option_pricing`
 - `validate_vanilla_option_pricing_request`
 
+The public contract submodule is:
+
+- `janiform.pricing.contracts`
+
 ### `janiform.risk`
 
 Sufficient-statistics risk path contracts. Representative public symbols include:

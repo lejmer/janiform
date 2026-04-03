@@ -5528,7 +5528,6 @@
         "VanillaOptionPricingRunOutputSchemaMetadata",
         "VanillaOptionPricingRunResult",
         "VanillaOptionPricingValidationError",
-        "VanillaOptionPricingValidationFailure",
         "deserialize_vanilla_option_pricing_request",
         "deserialize_vanilla_option_pricing_response",
         "deserialize_vanilla_option_pricing_run_result",
@@ -5541,6 +5540,423 @@
         "validate_vanilla_option_pricing_run_result"
       ],
       "module_name": "janiform.pricing",
+      "schema_identifiers": [],
+      "symbols": {
+        "AnchoredLocalTiltAdmissibilityStatus": {
+          "kind": "enum",
+          "members": [
+            {
+              "name": "ADMISSIBLE",
+              "value": "admissible"
+            },
+            {
+              "name": "NO_ADMISSIBLE_LOCAL_TILT",
+              "value": "no_admissible_local_tilt"
+            }
+          ]
+        },
+        "AnchoredLocalTiltBoundaryStateSummary": {
+          "field_names": [
+            "interval_index",
+            "hawkes_boundary_state",
+            "observed_boundary_state",
+            "current_anchor_value",
+            "interval_delta",
+            "kappa",
+            "deviation_decay_factor",
+            "local_martingale_deviation_adjustment"
+          ],
+          "kind": "contract_model",
+          "signature": "(interval_index: 'int', hawkes_boundary_state: 'HawkesExcitationState', observed_boundary_state: 'MeanReversionBoundaryState', current_anchor_value: 'float', interval_delta: 'float', kappa: 'float', deviation_decay_factor: 'float', local_martingale_deviation_adjustment: 'float') -> 'None'"
+        },
+        "AnchoredLocalTiltDomainStatus": {
+          "kind": "enum",
+          "members": [
+            {
+              "name": "IN_DOMAIN",
+              "value": "in_domain"
+            },
+            {
+              "name": "NON_FINITE_TRANSFORM_INPUT",
+              "value": "non_finite_transform_input"
+            },
+            {
+              "name": "OUT_OF_DOMAIN_STATE_REQUEST",
+              "value": "out_of_domain_state_request"
+            }
+          ]
+        },
+        "AnchoredLocalTiltSolveDiagnostics": {
+          "field_names": [
+            "boundary_state_summary",
+            "target_log_moment_exponent",
+            "observed_log_moment_exponent",
+            "theta",
+            "residual",
+            "absolute_residual",
+            "tolerance",
+            "domain_status",
+            "admissibility_status",
+            "policy"
+          ],
+          "kind": "contract_model",
+          "signature": "(boundary_state_summary: 'AnchoredLocalTiltBoundaryStateSummary', target_log_moment_exponent: 'float', observed_log_moment_exponent: 'float', theta: 'float', residual: 'float', absolute_residual: 'float', tolerance: 'float', domain_status: 'AnchoredLocalTiltDomainStatus', admissibility_status: 'AnchoredLocalTiltAdmissibilityStatus', policy: 'str') -> 'None'"
+        },
+        "AnchoredVanillaOptionPricingBoundaryInput": {
+          "field_names": [
+            "interval_index",
+            "hawkes_boundary_state",
+            "mean_reversion_fitted_parameters",
+            "interval_delta",
+            "observed_boundary_state"
+          ],
+          "kind": "contract_model",
+          "signature": "(interval_index: 'int', hawkes_boundary_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', interval_delta: 'float', observed_boundary_state: 'MeanReversionBoundaryState') -> 'None'"
+        },
+        "FourierInversionContour": {
+          "field_names": [
+            "damping_factor"
+          ],
+          "kind": "contract_model",
+          "signature": "(damping_factor: 'float' = 1.5) -> 'None'"
+        },
+        "FourierInversionEngineSettings": {
+          "field_names": [
+            "contour",
+            "numeric_settings",
+            "stability_controls"
+          ],
+          "kind": "contract_model",
+          "signature": "(contour: 'FourierInversionContour' = <factory>, numeric_settings: 'FourierInversionNumericSettings' = <factory>, stability_controls: 'FourierInversionIntegrationStabilityControls' = <factory>) -> 'None'"
+        },
+        "FourierInversionIntegrationStabilityControls": {
+          "field_names": [
+            "convergence_absolute_tolerance",
+            "convergence_relative_tolerance",
+            "terminal_integrand_absolute_tolerance",
+            "terminal_integrand_ratio_tolerance",
+            "quality_gate"
+          ],
+          "kind": "contract_model",
+          "signature": "(convergence_absolute_tolerance: 'float' = 1e-05, convergence_relative_tolerance: 'float' = 0.0001, terminal_integrand_absolute_tolerance: 'float' = 0.0005, terminal_integrand_ratio_tolerance: 'float' = 0.01, quality_gate: 'FourierInversionNumericQualityGate' = <FourierInversionNumericQualityGate.DIAGNOSTICS_ONLY: 'diagnostics_only'>) -> 'None'"
+        },
+        "FourierInversionNumericQualityGate": {
+          "kind": "enum",
+          "members": [
+            {
+              "name": "DIAGNOSTICS_ONLY",
+              "value": "diagnostics_only"
+            },
+            {
+              "name": "ENFORCE_FAILURE",
+              "value": "enforce_failure"
+            }
+          ]
+        },
+        "FourierInversionNumericSettings": {
+          "field_names": [
+            "integration_upper_bound",
+            "integration_step_count",
+            "quadrature_rule"
+          ],
+          "kind": "contract_model",
+          "signature": "(integration_upper_bound: 'float' = 150.0, integration_step_count: 'int' = 4096, quadrature_rule: 'FourierInversionQuadratureRule' = <FourierInversionQuadratureRule.MIDPOINT: 'midpoint'>) -> 'None'"
+        },
+        "FourierInversionQuadratureRule": {
+          "kind": "enum",
+          "members": [
+            {
+              "name": "MIDPOINT",
+              "value": "midpoint"
+            },
+            {
+              "name": "TRAPEZOID",
+              "value": "trapezoid"
+            }
+          ]
+        },
+        "GammaSeverityMarkConfiguration": {
+          "field_names": [
+            "shape_k",
+            "scale_theta"
+          ],
+          "kind": "contract_model",
+          "signature": "(shape_k: 'float', scale_theta: 'float') -> 'None'"
+        },
+        "MeanReversionAnchorModel": {
+          "field_names": [
+            "anchor_model_kind",
+            "reference_interval_hours",
+            "pressure_persistence_per_reference_interval",
+            "pressure_level_gain"
+          ],
+          "kind": "contract_model",
+          "signature": "(anchor_model_kind: 'MeanReversionAnchorModelKind', reference_interval_hours: 'float', pressure_persistence_per_reference_interval: 'float', pressure_level_gain: 'float') -> 'None'"
+        },
+        "MeanReversionAnchorModelKind": {
+          "kind": "enum",
+          "members": [
+            {
+              "name": "ENDOGENOUS_CORE_PRESSURE_LEVEL",
+              "value": "endogenous_core_pressure_level"
+            }
+          ]
+        },
+        "MeanReversionBoundaryState": {
+          "field_names": [
+            "observed_log_price",
+            "anchor_value",
+            "pressure_state",
+            "deviation"
+          ],
+          "kind": "contract_model",
+          "signature": "(observed_log_price: 'float', anchor_value: 'float', pressure_state: 'float', deviation: 'float') -> 'None'"
+        },
+        "MeanReversionFittedParameters": {
+          "field_names": [
+            "kappa",
+            "anchor_model"
+          ],
+          "kind": "contract_model",
+          "signature": "(kappa: 'float', anchor_model: 'MeanReversionAnchorModel') -> 'None'"
+        },
+        "NigSharedPlusShiftConfiguration": {
+          "field_names": [
+            "alpha",
+            "beta_0",
+            "delta",
+            "mu",
+            "delta_beta"
+          ],
+          "kind": "contract_model",
+          "signature": "(alpha: 'float', beta_0: 'float', delta: 'float', mu: 'float', delta_beta: 'float') -> 'None'"
+        },
+        "VanillaOptionPayoffConfiguration": {
+          "field_names": [
+            "payoff_type"
+          ],
+          "kind": "contract_model",
+          "signature": "(payoff_type: 'VanillaOptionPayoffType') -> 'None'"
+        },
+        "VanillaOptionPayoffType": {
+          "kind": "enum",
+          "members": [
+            {
+              "name": "CALL",
+              "value": "call"
+            },
+            {
+              "name": "PUT",
+              "value": "put"
+            }
+          ]
+        },
+        "VanillaOptionPricingCalibrationHooks": {
+          "field_names": [
+            "schema_version",
+            "hook_policy",
+            "option_price",
+            "log_moneyness",
+            "forward_moneyness",
+            "maturity_interval",
+            "transform_status",
+            "integration_numeric_quality_is_poor",
+            "integration_convergence_check_passed",
+            "integration_truncation_check_passed"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', hook_policy: 'str', option_price: 'float', log_moneyness: 'float', forward_moneyness: 'float', maturity_interval: 'float', transform_status: 'Optional[str]', integration_numeric_quality_is_poor: 'Optional[bool]', integration_convergence_check_passed: 'Optional[bool]', integration_truncation_check_passed: 'Optional[bool]') -> 'None'"
+        },
+        "VanillaOptionPricingDiagnostics": {
+          "field_names": [
+            "forward_price",
+            "discount_factor",
+            "maturity_interval",
+            "boundary_state_norm"
+          ],
+          "kind": "contract_model",
+          "signature": "(forward_price: 'float', discount_factor: 'float', maturity_interval: 'float', boundary_state_norm: 'float') -> 'None'"
+        },
+        "VanillaOptionPricingExecutionInput": {
+          "field_names": [
+            "request",
+            "hourly_factor_contract",
+            "optional_output_selection"
+          ],
+          "kind": "contract_model",
+          "signature": "(request: 'VanillaOptionPricingRequest', hourly_factor_contract: 'HourlyFactorContract', optional_output_selection: 'VanillaOptionPricingOptionalOutputSelection' = VanillaOptionPricingOptionalOutputSelection(include_transform_diagnostics=False, include_integration_quality_diagnostics=False, include_calibration_hooks=False)) -> 'None'"
+        },
+        "VanillaOptionPricingMarketInputs": {
+          "field_names": [
+            "spot",
+            "strike",
+            "maturity_interval",
+            "risk_free_rate",
+            "dividend_yield"
+          ],
+          "kind": "contract_model",
+          "signature": "(spot: 'float', strike: 'float', maturity_interval: 'float', risk_free_rate: 'float', dividend_yield: 'float') -> 'None'"
+        },
+        "VanillaOptionPricingModelParameters": {
+          "field_names": [
+            "hawkes_kernel_parameters",
+            "news_process_configuration",
+            "nig_shared_plus_shift_configuration"
+          ],
+          "kind": "contract_model",
+          "signature": "(hawkes_kernel_parameters: 'HawkesKernelParameters', news_process_configuration: 'NewsProcessConfiguration', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration') -> 'None'"
+        },
+        "VanillaOptionPricingOptionalOutputSelection": {
+          "field_names": [
+            "include_transform_diagnostics",
+            "include_integration_quality_diagnostics",
+            "include_calibration_hooks"
+          ],
+          "kind": "contract_model",
+          "signature": "(include_transform_diagnostics: 'bool' = False, include_integration_quality_diagnostics: 'bool' = False, include_calibration_hooks: 'bool' = False) -> 'None'"
+        },
+        "VanillaOptionPricingRequest": {
+          "field_names": [
+            "market_inputs",
+            "payoff",
+            "boundary_input",
+            "model_parameters",
+            "interval_delta",
+            "fourier_inversion_settings"
+          ],
+          "kind": "contract_model",
+          "signature": "(market_inputs: 'VanillaOptionPricingMarketInputs', payoff: 'VanillaOptionPayoffConfiguration', boundary_input: 'AnchoredVanillaOptionPricingBoundaryInput', model_parameters: 'VanillaOptionPricingModelParameters', interval_delta: 'float' = 1.0, fourier_inversion_settings: 'Optional[FourierInversionEngineSettings]' = None) -> 'None'"
+        },
+        "VanillaOptionPricingResponse": {
+          "field_names": [
+            "price",
+            "diagnostics"
+          ],
+          "kind": "contract_model",
+          "signature": "(price: 'float', diagnostics: 'VanillaOptionPricingDiagnostics') -> 'None'"
+        },
+        "VanillaOptionPricingRunDiagnostics": {
+          "field_names": [
+            "schema_version",
+            "transform",
+            "integration_quality",
+            "anchored_recursion"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', transform: 'Optional[dict[str, Any]]', integration_quality: 'Optional[dict[str, Any]]', anchored_recursion: 'Optional[dict[str, Any]]') -> 'None'"
+        },
+        "VanillaOptionPricingRunOutputSchemaMetadata": {
+          "field_names": [
+            "schema_version",
+            "run_result_schema_version",
+            "run_diagnostics_schema_version",
+            "calibration_hooks_schema_version",
+            "required_run_result_fields",
+            "required_run_diagnostics_fields",
+            "required_calibration_hooks_fields"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', run_result_schema_version: 'str', run_diagnostics_schema_version: 'str', calibration_hooks_schema_version: 'str', required_run_result_fields: 'tuple[str, ...]', required_run_diagnostics_fields: 'tuple[str, ...]', required_calibration_hooks_fields: 'tuple[str, ...]') -> 'None'"
+        },
+        "VanillaOptionPricingRunResult": {
+          "field_names": [
+            "schema_version",
+            "output_schema_metadata",
+            "response",
+            "run_diagnostics",
+            "calibration_hooks"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', output_schema_metadata: 'VanillaOptionPricingRunOutputSchemaMetadata', response: 'VanillaOptionPricingResponse', run_diagnostics: 'Optional[VanillaOptionPricingRunDiagnostics]', calibration_hooks: 'Optional[VanillaOptionPricingCalibrationHooks]') -> 'None'"
+        },
+        "VanillaOptionPricingValidationError": {
+          "base_classes": [
+            "JaniformValidationError",
+            "JaniformError",
+            "Exception",
+            "BaseException"
+          ],
+          "constructor_signature": "(failure: 'ContractValidationFailure') -> 'None'",
+          "kind": "exception_class",
+          "origin_module": "janiform.pricing.errors",
+          "qualname": "VanillaOptionPricingValidationError"
+        },
+        "deserialize_vanilla_option_pricing_request": {
+          "kind": "function",
+          "signature": "(payload_json: 'str') -> 'VanillaOptionPricingRequest'"
+        },
+        "deserialize_vanilla_option_pricing_response": {
+          "kind": "function",
+          "signature": "(payload_json: 'str') -> 'VanillaOptionPricingResponse'"
+        },
+        "deserialize_vanilla_option_pricing_run_result": {
+          "kind": "function",
+          "signature": "(payload_json: 'str') -> 'VanillaOptionPricingRunResult'"
+        },
+        "run_vanilla_option_pricing": {
+          "kind": "function",
+          "signature": "(execution_input: 'VanillaOptionPricingExecutionInput') -> 'VanillaOptionPricingRunResult'"
+        },
+        "serialize_vanilla_option_pricing_request": {
+          "kind": "function",
+          "signature": "(request: 'VanillaOptionPricingRequest') -> 'str'"
+        },
+        "serialize_vanilla_option_pricing_response": {
+          "kind": "function",
+          "signature": "(response: 'VanillaOptionPricingResponse') -> 'str'"
+        },
+        "serialize_vanilla_option_pricing_run_result": {
+          "kind": "function",
+          "signature": "(run_result: 'VanillaOptionPricingRunResult') -> 'str'"
+        },
+        "validate_vanilla_option_pricing_request": {
+          "kind": "function",
+          "signature": "(raw_request: 'dict[str, Any] | Any') -> 'VanillaOptionPricingRequest'"
+        },
+        "validate_vanilla_option_pricing_response": {
+          "kind": "function",
+          "signature": "(raw_response: 'dict[str, Any] | Any') -> 'VanillaOptionPricingResponse'"
+        },
+        "validate_vanilla_option_pricing_run_result": {
+          "kind": "function",
+          "signature": "(raw_run_result: 'dict[str, Any] | Any') -> 'VanillaOptionPricingRunResult'"
+        }
+      }
+    },
+    "janiform.pricing.contracts": {
+      "exports": [
+        "AnchoredLocalTiltAdmissibilityStatus",
+        "AnchoredLocalTiltBoundaryStateSummary",
+        "AnchoredLocalTiltDomainStatus",
+        "AnchoredLocalTiltSolveDiagnostics",
+        "AnchoredVanillaOptionPricingBoundaryInput",
+        "FourierInversionContour",
+        "FourierInversionEngineSettings",
+        "FourierInversionIntegrationStabilityControls",
+        "FourierInversionNumericQualityGate",
+        "FourierInversionNumericSettings",
+        "FourierInversionQuadratureRule",
+        "GammaSeverityMarkConfiguration",
+        "MeanReversionAnchorModel",
+        "MeanReversionAnchorModelKind",
+        "MeanReversionBoundaryState",
+        "MeanReversionFittedParameters",
+        "NigSharedPlusShiftConfiguration",
+        "VanillaOptionPayoffConfiguration",
+        "VanillaOptionPayoffType",
+        "VanillaOptionPricingCalibrationHooks",
+        "VanillaOptionPricingDiagnostics",
+        "VanillaOptionPricingExecutionInput",
+        "VanillaOptionPricingMarketInputs",
+        "VanillaOptionPricingModelParameters",
+        "VanillaOptionPricingOptionalOutputSelection",
+        "VanillaOptionPricingRequest",
+        "VanillaOptionPricingResponse",
+        "VanillaOptionPricingRunDiagnostics",
+        "VanillaOptionPricingRunOutputSchemaMetadata",
+        "VanillaOptionPricingRunResult"
+      ],
+      "module_name": "janiform.pricing.contracts",
       "schema_identifiers": [
         {
           "name": "VANILLA_OPTION_PRICING_CALIBRATION_HOOKS_SCHEMA_VERSION",
@@ -5890,70 +6306,6 @@
           ],
           "kind": "contract_model",
           "signature": "(schema_version: 'str', output_schema_metadata: 'VanillaOptionPricingRunOutputSchemaMetadata', response: 'VanillaOptionPricingResponse', run_diagnostics: 'Optional[VanillaOptionPricingRunDiagnostics]', calibration_hooks: 'Optional[VanillaOptionPricingCalibrationHooks]') -> 'None'"
-        },
-        "VanillaOptionPricingValidationError": {
-          "base_classes": [
-            "JaniformValidationError",
-            "JaniformError",
-            "Exception",
-            "BaseException"
-          ],
-          "constructor_signature": "(failure: 'ContractValidationFailure') -> 'None'",
-          "kind": "exception_class",
-          "origin_module": "janiform.pricing",
-          "qualname": "VanillaOptionPricingValidationError"
-        },
-        "VanillaOptionPricingValidationFailure": {
-          "field_names": [
-            "error_id",
-            "workflow",
-            "entrypoint",
-            "field_path",
-            "message",
-            "context_items"
-          ],
-          "kind": "contract_model",
-          "signature": "(error_id: 'str', workflow: 'str', entrypoint: 'str', field_path: 'str', message: 'str', context_items: 'tuple[tuple[str, ErrorContextValue], ...]' = ()) -> 'None'"
-        },
-        "deserialize_vanilla_option_pricing_request": {
-          "kind": "function",
-          "signature": "(payload_json: 'str') -> 'VanillaOptionPricingRequest'"
-        },
-        "deserialize_vanilla_option_pricing_response": {
-          "kind": "function",
-          "signature": "(payload_json: 'str') -> 'VanillaOptionPricingResponse'"
-        },
-        "deserialize_vanilla_option_pricing_run_result": {
-          "kind": "function",
-          "signature": "(payload_json: 'str') -> 'VanillaOptionPricingRunResult'"
-        },
-        "run_vanilla_option_pricing": {
-          "kind": "function",
-          "signature": "(execution_input: 'VanillaOptionPricingExecutionInput') -> 'VanillaOptionPricingRunResult'"
-        },
-        "serialize_vanilla_option_pricing_request": {
-          "kind": "function",
-          "signature": "(request: 'VanillaOptionPricingRequest') -> 'str'"
-        },
-        "serialize_vanilla_option_pricing_response": {
-          "kind": "function",
-          "signature": "(response: 'VanillaOptionPricingResponse') -> 'str'"
-        },
-        "serialize_vanilla_option_pricing_run_result": {
-          "kind": "function",
-          "signature": "(run_result: 'VanillaOptionPricingRunResult') -> 'str'"
-        },
-        "validate_vanilla_option_pricing_request": {
-          "kind": "function",
-          "signature": "(raw_request: 'dict[str, Any] | Any') -> 'VanillaOptionPricingRequest'"
-        },
-        "validate_vanilla_option_pricing_response": {
-          "kind": "function",
-          "signature": "(raw_response: 'dict[str, Any] | Any') -> 'VanillaOptionPricingResponse'"
-        },
-        "validate_vanilla_option_pricing_run_result": {
-          "kind": "function",
-          "signature": "(raw_run_result: 'dict[str, Any] | Any') -> 'VanillaOptionPricingRunResult'"
         }
       }
     },

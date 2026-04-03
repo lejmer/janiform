@@ -87,6 +87,8 @@ def test_public_and_internal_module_intent_is_explicit() -> None:
         "janiform.hourly_factors.contracts",
         "janiform.mean_reversion",
         "janiform.mean_reversion.contracts",
+        "janiform.pricing",
+        "janiform.pricing.contracts",
         "janiform.risk",
         "janiform.risk.contracts",
         "janiform.seasonality",
@@ -361,6 +363,8 @@ def test_simulation_root_and_shared_submodule_share_supported_symbols() -> None:
 
 
 def test_pricing_public_symbols_live_in_pricing_module() -> None:
+    assert hasattr(pricing_module, "__path__")
+
     expected_exports = {
         "GammaSeverityMarkConfiguration",
         "NigSharedPlusShiftConfiguration",
@@ -378,7 +382,6 @@ def test_pricing_public_symbols_live_in_pricing_module() -> None:
         "VanillaOptionPricingRunOutputSchemaMetadata",
         "VanillaOptionPricingRunResult",
         "VanillaOptionPricingValidationError",
-        "VanillaOptionPricingValidationFailure",
         "run_vanilla_option_pricing",
         "validate_vanilla_option_pricing_request",
         "validate_vanilla_option_pricing_response",
@@ -393,6 +396,22 @@ def test_pricing_public_symbols_live_in_pricing_module() -> None:
 
     assert expected_exports <= set(pricing_module.__all__)
     assert expected_exports <= set(dir(pricing_module))
+
+
+def test_pricing_contract_submodule_is_supported_domain_import() -> None:
+    pricing_contracts_module = import_module("janiform.pricing.contracts")
+
+    expected_exports = {
+        "GammaSeverityMarkConfiguration",
+        "NigSharedPlusShiftConfiguration",
+        "VanillaOptionPricingRequest",
+        "VanillaOptionPricingResponse",
+        "VanillaOptionPricingRunResult",
+    }
+
+    assert expected_exports <= set(pricing_contracts_module.__all__)
+    assert expected_exports <= set(dir(pricing_contracts_module))
+    assert pricing_module.VanillaOptionPricingRunResult is pricing_contracts_module.VanillaOptionPricingRunResult
 
 
 def test_risk_public_symbols_live_in_risk_module() -> None:

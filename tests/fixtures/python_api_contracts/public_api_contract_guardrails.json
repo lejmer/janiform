@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale.v1",
-  "approved_snapshot_sha256": "e8819ca6af84acdaec92507e757fcc06df65e6934eee4304d7567283d3b8cda6",
+  "approved_snapshot_sha256": "01c0c87b349c0e95f9a3bf9af310e92c242f401dce6cc313c5ac9820cbcec858",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -834,6 +834,19 @@
       "summary": "Remove the redundant risk validation-failure alias.",
       "updated_surfaces": [
         "janiform.risk"
+      ]
+    },
+    {
+      "approved_on": "2026-04-03",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Vanilla-option pricing now follows the same package-owned public-surface pattern as other domains: contract dataclasses live in janiform.pricing.contracts, workflow entrypoints live in janiform.pricing.workflow, and validation errors live in janiform.pricing.errors. The approved snapshot also removes the redundant VanillaOptionPricingValidationFailure alias because it only renamed ContractValidationFailure without adding a distinct pricing-owned type.",
+      "snapshot_sha256": "01c0c87b349c0e95f9a3bf9af310e92c242f401dce6cc313c5ac9820cbcec858",
+      "summary": "Approve the package-owned pricing contracts submodule and split the pricing monolith.",
+      "updated_surfaces": [
+        "janiform.pricing",
+        "janiform.pricing.contracts"
       ]
     }
   ],

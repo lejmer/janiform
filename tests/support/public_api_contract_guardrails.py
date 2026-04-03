@@ -32,6 +32,7 @@ PUBLIC_CONTRACT_MODULE_NAMES: tuple[str, ...] = (
     "janiform.simulation.seeded",
     "janiform.simulation.shared",
     "janiform.pricing",
+    "janiform.pricing.contracts",
     "janiform.risk",
     "janiform.risk.contracts",
     "janiform.calibration",

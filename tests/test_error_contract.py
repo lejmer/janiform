@@ -10,6 +10,7 @@ import janiform.calibration.staged.runtime as calibration_staged_runtime_module
 import janiform.cli as cli_module
 import janiform.cli.commands._development as cli_development_commands_module
 import janiform.pricing as pricing_module
+import janiform.pricing.workflow as pricing_workflow_module
 import janiform.simulation as simulation_module
 import janiform.simulation.seeded.runtime as simulation_seeded_runtime_module
 from janiform._timestamps import ONE_HOUR_NANOS
@@ -361,7 +362,7 @@ def test_pricing_run_maps_missing_native_module_to_integration_error(
     def missing_native_module() -> NoReturn:
         raise ModuleNotFoundError("janiform._native")
 
-    monkeypatch.setattr(pricing_module, "native_module", missing_native_module)
+    monkeypatch.setattr(pricing_workflow_module, "native_module", missing_native_module)
 
     with pytest.raises(JaniformIntegrationError) as captured_error:
         run_vanilla_option_pricing(_valid_pricing_execution_input())
@@ -385,7 +386,7 @@ def test_pricing_run_maps_native_execution_failure_to_execution_error(
         def run_vanilla_option_pricing(*args, **kwargs) -> str:
             raise NativeExecutionError("native pricer failed")
 
-    monkeypatch.setattr(pricing_module, "native_module", lambda: FakeNative())
+    monkeypatch.setattr(pricing_workflow_module, "native_module", lambda: FakeNative())
 
     with pytest.raises(JaniformExecutionError) as captured_error:
         run_vanilla_option_pricing(_valid_pricing_execution_input())
@@ -404,7 +405,7 @@ def test_pricing_run_does_not_raise_attribute_error_when_native_exception_type_i
         def run_vanilla_option_pricing(*args, **kwargs) -> str:
             raise RuntimeError("native pricer failed")
 
-    monkeypatch.setattr(pricing_module, "native_module", lambda: FakeNative())
+    monkeypatch.setattr(pricing_workflow_module, "native_module", lambda: FakeNative())
 
     with pytest.raises(JaniformExecutionError) as captured_error:
         run_vanilla_option_pricing(_valid_pricing_execution_input())
@@ -426,7 +427,7 @@ def test_pricing_run_maps_invalid_native_response_to_integration_error(
         def run_vanilla_option_pricing(*args, **kwargs) -> dict[str, Any]:
             return {}
 
-    monkeypatch.setattr(pricing_module, "native_module", lambda: FakeNative())
+    monkeypatch.setattr(pricing_workflow_module, "native_module", lambda: FakeNative())
 
     with pytest.raises(JaniformIntegrationError) as captured_error:
         run_vanilla_option_pricing(_valid_pricing_execution_input())
