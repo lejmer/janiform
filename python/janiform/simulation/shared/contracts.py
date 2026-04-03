@@ -4,13 +4,6 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, cast
 
-from ...contracts import (
-    MeanReversionAnchorModel,
-    MeanReversionAnchorModelKind,
-    MeanReversionBoundaryState,
-    MeanReversionFittedParameters,
-    MeanReversionRuntimeIntervalAnchors,
-)
 from .errors import SIMULATION_ERROR_FACTORY, _simulation_error
 from ...contracts import (
     ContractModel,
@@ -19,6 +12,13 @@ from ...contracts import (
     require_non_negative_finite_number,
     require_non_negative_finite_scalar,
     require_positive_finite_number,
+)
+from ...mean_reversion import (
+    MeanReversionAnchorModel,
+    MeanReversionAnchorModelKind,
+    MeanReversionBoundaryState,
+    MeanReversionFittedParameters,
+    MeanReversionRuntimeIntervalAnchors,
 )
 
 

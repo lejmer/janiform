@@ -35,7 +35,7 @@ from janiform.calibration.market_data import (
     MarketDataCalibrationRequest,
     prepare_market_data_calibration,
 )
-from janiform.contracts import MeanReversionAnchorModelKind
+from janiform.mean_reversion import MeanReversionAnchorModelKind
 from janiform.calibration.staged import (
     CalibrationExecutionMode,
     CalibrationStage,

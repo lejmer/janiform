@@ -6,11 +6,6 @@ calibration entrypoints. Detailed request, preset, session, and staged
 contracts live in their ownership submodules.
 """
 
-from ..contracts import (
-    MeanReversionAnchorModel,
-    MeanReversionAnchorModelKind,
-    MeanReversionFittedParameters,
-)
 from ._errors import CalibrationValidationError, CalibrationValidationFailure
 from .fit import (
     CurrentStateEstimationRequest,
@@ -75,9 +70,6 @@ __all__ = [
     "KnownNewsPresetReference",
     "MarketDataCalibrationRequest",
     "MarketProfileReference",
-    "MeanReversionAnchorModel",
-    "MeanReversionAnchorModelKind",
-    "MeanReversionFittedParameters",
     "PresetRegistry",
     "PreparedMarketDataCalibration",
     "SessionExplicitConfiguration",

@@ -6,6 +6,7 @@ from math import isfinite
 from typing import Any, Optional, cast
 
 from ...seasonality import IntradaySmoothingKernel, SessionFilter
+from ...mean_reversion import MeanReversionAnchorModelKind
 from .._errors import (
     CALIBRATION_ERROR_FACTORY,
     _calibration_error,
@@ -18,7 +19,6 @@ from ..staged.contracts import (
 )
 from ...contracts import (
     ContractModel,
-    MeanReversionAnchorModelKind,
     require_finite_number,
     require_mapping,
     require_non_empty_string,

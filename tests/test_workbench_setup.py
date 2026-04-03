@@ -7,7 +7,7 @@ from pathlib import Path
 from PyQt6.QtWidgets import QApplication
 
 from janiform.calibration.market_data.contracts import CalibrationMarketDataWorkflowScope
-from janiform.contracts import MeanReversionAnchorModelKind
+from janiform.mean_reversion import MeanReversionAnchorModelKind
 from tools.workbench.setup import WorkbenchSetupWidget
 from tools.workbench.state import (
     DEFAULT_WORKBENCH_SESSION_PRESET_NAME,

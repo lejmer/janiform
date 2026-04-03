@@ -14,12 +14,14 @@ from .contracts.base import (
     require_optional_string_value,
     require_str_enum_value,
 )
-from .contracts import (
-    ContractModel,
+from .mean_reversion import (
     MeanReversionAnchorModel,
     MeanReversionAnchorModelKind,
     MeanReversionBoundaryState,
     MeanReversionFittedParameters,
+)
+from .contracts import (
+    ContractModel,
     ValidationErrorFactory,
     parse_json_object,
     require_finite_number,

@@ -25,7 +25,7 @@ from janiform.calibration.market_data.contracts import (
     CalibrationTickPriceInputPolicy,
 )
 from janiform.calibration.presets.registry import PresetCategory, PresetRegistry
-from janiform.contracts import MeanReversionAnchorModelKind
+from janiform.mean_reversion import MeanReversionAnchorModelKind
 
 from .state import (
     DEFAULT_WORKBENCH_FALLBACK_EXCHANGE_CODE,

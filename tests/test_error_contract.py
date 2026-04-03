@@ -15,7 +15,7 @@ import janiform.simulation.seeded.runtime as simulation_seeded_runtime_module
 from janiform._timestamps import ONE_HOUR_NANOS
 from janiform.calendar import CalendarRegistry
 from janiform.cli.context import CliCommandContext
-from janiform.contracts import (
+from janiform.mean_reversion import (
     MeanReversionAnchorModel,
     MeanReversionBoundaryState,
     MeanReversionFittedParameters,

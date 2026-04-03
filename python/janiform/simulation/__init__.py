@@ -32,7 +32,7 @@ from .seeded import (
     build_endogenous_seeded_mean_reversion_runtime_inputs,
     run_seeded_tick_event_simulation,
 )
-from .shared import (
+from ..mean_reversion import (
     MeanReversionAnchorModel,
     MeanReversionAnchorModelKind,
     MeanReversionBoundaryState,

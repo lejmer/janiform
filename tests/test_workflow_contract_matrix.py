@@ -8,7 +8,7 @@ from typing import Any, Optional
 import pytest
 
 from janiform.calibration import CalibrationValidationError
-from janiform.contracts import (
+from janiform.mean_reversion import (
     MeanReversionAnchorModel,
     MeanReversionBoundaryState,
     MeanReversionFittedParameters,

@@ -12,7 +12,7 @@ from matplotlib.figure import Figure
 from pyarrow import parquet
 
 from janiform._timestamps import datetime_to_utc_microseconds
-from janiform.contracts import MeanReversionAnchorModel, MeanReversionFittedParameters
+from janiform.mean_reversion import MeanReversionAnchorModel, MeanReversionFittedParameters
 from tools.workbench import plots as workbench_plots
 from tools.workbench import load_workbench_artifacts
 from tools.workbench.artifacts import WorkbenchArtifacts

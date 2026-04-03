@@ -106,7 +106,7 @@ from ...calibration.fit.input_resolution import (
 )
 from ...calibration.staged import CalibrationExecutionMode
 from ...calibration.staged.results import build_staged_failure_context
-from ...contracts import MeanReversionAnchorModelKind
+from ...mean_reversion import MeanReversionAnchorModelKind
 from ...errors import (
     ErrorContextValue,
     JaniformError,

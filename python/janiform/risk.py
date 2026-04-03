@@ -4,12 +4,14 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Optional
 
-from .contracts import (
-    ContractModel,
+from .mean_reversion import (
     MeanReversionAnchorModelKind,
     MeanReversionBoundaryState,
     MeanReversionFittedParameters,
     MeanReversionRuntimeIntervalAnchors,
+)
+from .contracts import (
+    ContractModel,
     ValidationErrorFactory,
     parse_json_object,
     require_mapping,

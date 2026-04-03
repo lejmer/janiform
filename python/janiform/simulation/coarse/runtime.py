@@ -7,7 +7,6 @@ from .path import (
     CoarseSimulationPath,
     CoarseSimulationRunRequest,
     validate_coarse_simulation_path,
-    validate_coarse_simulation_run_request,
 )
 from ..progress import SimulationProgressEvent, simulation_progress_event_from_mapping
 from ..shared import SeededTickSimulationValidationError

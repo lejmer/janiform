@@ -5,7 +5,7 @@ from typing import Any, Optional
 from janiform.calibration.market_data.contracts import CalibrationMarketDataWorkflowScope
 from janiform.calibration.staged.contracts import CalibrationStageExecutionStatus
 from janiform.calibration.staged.progress import format_staged_progress_event_detail
-from janiform.contracts import MeanReversionAnchorModelKind
+from janiform.mean_reversion import MeanReversionAnchorModelKind
 from tools.workbench.execution import (
     RESOURCE_SNAPSHOT_INTERVAL_SECONDS,
     WorkbenchExecutionWorker,

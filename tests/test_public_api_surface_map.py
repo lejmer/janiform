@@ -9,6 +9,7 @@ import janiform.cli as cli_module
 import janiform.contracts as contracts_module
 import janiform.errors as errors_module
 import janiform.hourly_factors as hourly_factors_module
+import janiform.mean_reversion as mean_reversion_module
 import janiform.pricing as pricing_module
 import janiform.risk as risk_module
 import janiform.simulation as simulation_module
@@ -80,6 +81,8 @@ def test_public_and_internal_module_intent_is_explicit() -> None:
         "janiform.calibration.market_data",
         "janiform.calibration.staged",
         "janiform.cli",
+        "janiform.mean_reversion",
+        "janiform.mean_reversion.contracts",
         "janiform.simulation",
         "janiform.simulation.coarse",
         "janiform.simulation.seeded",
@@ -189,11 +192,6 @@ def test_simulation_public_module_is_a_package() -> None:
 def test_contracts_public_symbols_live_in_contracts_module() -> None:
     expected_exports = {
         "ContractModel",
-        "MeanReversionAnchorModel",
-        "MeanReversionAnchorModelKind",
-        "MeanReversionBoundaryState",
-        "MeanReversionFittedParameters",
-        "MeanReversionRuntimeIntervalAnchors",
         "ValidationErrorFactory",
         "serialize_deterministic_json",
         "serialize_pretty_json",
@@ -201,6 +199,39 @@ def test_contracts_public_symbols_live_in_contracts_module() -> None:
 
     assert expected_exports <= set(contracts_module.__all__)
     assert expected_exports <= set(dir(contracts_module))
+
+
+def test_mean_reversion_public_symbols_live_in_mean_reversion_module() -> None:
+    expected_exports = {
+        "MeanReversionAnchorModel",
+        "MeanReversionAnchorModelKind",
+        "MeanReversionBoundaryState",
+        "MeanReversionFittedParameters",
+        "MeanReversionRuntimeIntervalAnchors",
+    }
+
+    assert set(mean_reversion_module.__all__) == expected_exports
+    assert expected_exports <= set(dir(mean_reversion_module))
+
+
+def test_mean_reversion_public_contract_submodule_is_supported_domain_import() -> None:
+    mean_reversion_contracts_module = import_module("janiform.mean_reversion.contracts")
+
+    expected_exports = {
+        "MeanReversionAnchorModel",
+        "MeanReversionAnchorModelKind",
+        "MeanReversionBoundaryState",
+        "MeanReversionFittedParameters",
+        "MeanReversionRuntimeIntervalAnchors",
+    }
+
+    assert set(mean_reversion_contracts_module.__all__) == expected_exports
+    assert expected_exports <= set(dir(mean_reversion_contracts_module))
+    assert mean_reversion_module.MeanReversionAnchorModel is mean_reversion_contracts_module.MeanReversionAnchorModel
+    assert (
+        mean_reversion_module.MeanReversionBoundaryState
+        is mean_reversion_contracts_module.MeanReversionBoundaryState
+    )
 
 
 def test_simulation_seeded_public_submodule_is_supported_domain_import() -> None:
@@ -309,7 +340,7 @@ def test_simulation_root_and_shared_submodule_share_supported_symbols() -> None:
 
     assert simulation_module.HawkesKernelParameters is simulation_shared_module.HawkesKernelParameters
     assert simulation_module.HawkesExcitationState is simulation_shared_module.HawkesExcitationState
-    assert contracts_module.MeanReversionAnchorModel is simulation_shared_module.MeanReversionAnchorModel
+    assert mean_reversion_module.MeanReversionAnchorModel is simulation_shared_module.MeanReversionAnchorModel
     assert simulation_module.MeanReversionFittedParameters is simulation_shared_module.MeanReversionFittedParameters
     assert simulation_module.MeanReversionBoundaryState is simulation_shared_module.MeanReversionBoundaryState
     assert (
@@ -399,6 +430,8 @@ def test_private_modules_are_not_exposed_through_public_exports() -> None:
     assert "native_module" not in validation_module.__all__
     assert "harness" not in validation_module.__all__
     assert import_module("janiform.contracts").__name__ == "janiform.contracts"
+    assert import_module("janiform.mean_reversion").__name__ == "janiform.mean_reversion"
+    assert import_module("janiform.mean_reversion.contracts").__name__ == "janiform.mean_reversion.contracts"
     assert import_module("janiform.simulation.coarse").__name__ == "janiform.simulation.coarse"
     assert import_module("janiform.simulation.seeded").__name__ == "janiform.simulation.seeded"
     assert import_module("janiform.simulation.shared").__name__ == "janiform.simulation.shared"
@@ -411,9 +444,6 @@ def test_private_modules_are_not_exposed_through_public_exports() -> None:
 
     with pytest.raises(ModuleNotFoundError):
         import_module("janiform.simulation._shared")
-
-    with pytest.raises(ModuleNotFoundError):
-        import_module("janiform.mean_reversion")
 
     with pytest.raises(ModuleNotFoundError):
         import_module("janiform._mean_reversion")
@@ -467,9 +497,6 @@ def test_calibration_public_symbols_live_in_calibration_module() -> None:
         "JaniformVanillaOptionSurfacePricingRunDiagnostics",
         "MarketDataCalibrationRequest",
         "MarketProfileReference",
-        "MeanReversionAnchorModel",
-        "MeanReversionAnchorModelKind",
-        "MeanReversionFittedParameters",
         "PresetRegistry",
         "SessionExplicitConfiguration",
         "SessionPresetReference",

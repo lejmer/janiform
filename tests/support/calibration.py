@@ -15,7 +15,7 @@ from janiform.calibration.staged import (
     StagedCalibrationExecutionInput,
     StagedCalibrationRequest,
 )
-from janiform.contracts import (
+from janiform.mean_reversion import (
     MeanReversionAnchorModel,
     MeanReversionFittedParameters,
 )

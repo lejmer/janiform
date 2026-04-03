@@ -34,11 +34,6 @@ from janiform.calibration.market_data import (
     serialize_market_data_calibration_request,
     validate_market_data_calibration_request,
 )
-from janiform.calibration import (
-    MeanReversionAnchorModel,
-    MeanReversionAnchorModelKind,
-    MeanReversionFittedParameters,
-)
 from janiform.calibration.staged import (
     CalibrationExecutionMode,
     CalibrationOptimizerSettings,
@@ -59,6 +54,11 @@ from janiform.calibration.staged import (
     validate_staged_calibration_execution_input,
     validate_staged_calibration_request,
     validate_staged_calibration_response,
+)
+from janiform.mean_reversion import (
+    MeanReversionAnchorModel,
+    MeanReversionAnchorModelKind,
+    MeanReversionFittedParameters,
 )
 from janiform.seasonality import IntradaySmoothingKernel, SessionFilter
 

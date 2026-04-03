@@ -1,17 +1,6 @@
 from collections.abc import Mapping, Sequence
 from typing import Any, Optional, cast
 
-from ..contracts.base import (
-    require_field,
-    require_finite_number_sequence,
-    require_finite_scalar,
-    require_mapping,
-    require_non_empty_string,
-    require_non_empty_string_sequence,
-    require_non_negative_finite_scalar,
-    require_non_negative_integer,
-    require_string_sequence,
-)
 from ._errors import VALIDATION_ERROR_FACTORY
 from .enum import (
     DeterministicRegressionCaseKind,
@@ -26,6 +15,17 @@ from .types import (
     RegressionHarnessFallbackPolicy,
     RegressionHarnessSummary,
     RegressionHarnessToleranceConfig,
+)
+from ..contracts.base import (
+    require_field,
+    require_finite_number_sequence,
+    require_finite_scalar,
+    require_mapping,
+    require_non_empty_string,
+    require_non_empty_string_sequence,
+    require_non_negative_finite_scalar,
+    require_non_negative_integer,
+    require_string_sequence,
 )
 from ..seasonality import SeasonalityInputValidationError
 
@@ -358,6 +358,7 @@ def validate_deterministic_harness_report_payload(raw_payload: object) -> Determ
         "deterministic regression harness report.fallback_policy",
         VALIDATION_ERROR_FACTORY,
     )
+
     fallback_policy: RegressionHarnessFallbackPolicy = {
         "schema_version": require_non_empty_string(
             fallback_policy_mapping,
@@ -393,11 +394,13 @@ def validate_deterministic_harness_report_payload(raw_payload: object) -> Determ
             "unexpected deterministic regression harness fallback_policy.schema_version: "
             f"{fallback_policy['schema_version']}",
         )
+
     if fallback_policy["unknown_date_policy"] != VALIDATION_UNKNOWN_DATE_FALLBACK_POLICY:
         raise SeasonalityInputValidationError(
             "unexpected deterministic regression harness fallback_policy.unknown_date_policy: "
             f"{fallback_policy['unknown_date_policy']}",
         )
+
     if (
         fallback_policy["unsupported_exchange_calendar_segment_policy"]
         != VALIDATION_UNSUPPORTED_CALENDAR_SEGMENT_POLICY
@@ -407,6 +410,7 @@ def validate_deterministic_harness_report_payload(raw_payload: object) -> Determ
             "fallback_policy.unsupported_exchange_calendar_segment_policy: "
             f"{fallback_policy['unsupported_exchange_calendar_segment_policy']}",
         )
+
     if (
         fallback_policy["incomplete_fixture_coverage_policy"]
         != VALIDATION_INCOMPLETE_FIXTURE_COVERAGE_POLICY

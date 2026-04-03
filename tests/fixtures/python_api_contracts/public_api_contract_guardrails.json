@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale.v1",
-  "approved_snapshot_sha256": "01a9f35b6a9e55b34cd5aebd6bb7cfda8e8075068a345ca2af8a124cc2ecde6b",
+  "approved_snapshot_sha256": "0c4bd060e62018e4ae7b34e4ae7180fbd48d2caeb798ffc88f5755a839c1c472",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -741,6 +741,26 @@
       "rationale": "Fitted models now expose one canonical multi-node pricing surface for arbitrary option batches and strike-by-expiry grids, so callers stay on Janiform-owned batch and surface contracts instead of managing Python loops over single-node pricing.",
       "snapshot_sha256": "01a9f35b6a9e55b34cd5aebd6bb7cfda8e8075068a345ca2af8a124cc2ecde6b",
       "summary": "Approve the fitted-model batch pricing and option-surface pricing APIs."
+    },
+    {
+      "approved_on": "2026-04-03",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Mean-reversion models are a domain surface used across calibration, pricing, risk, and simulation, so the public Python API now owns them under janiform.mean_reversion and its contracts submodule instead of treating them as generic helpers under janiform.contracts.",
+      "snapshot_sha256": "02c0e7993977faf6bad13a335eccc04de17ca5bc243cdc80b4e7c71c94ea08f0",
+      "summary": "Move mean-reversion contracts from janiform.contracts into the janiform.mean_reversion package."
+    },
+    {
+      "approved_on": "2026-04-03",
+      "docs_updated": [],
+      "rationale": "Mean-reversion contracts remain owned by janiform.mean_reversion, so janiform.calibration no longer republishes them as convenience aliases. The approved public surface now makes that ownership boundary explicit instead of implying the contracts belong to the calibration root.",
+      "snapshot_sha256": "0c4bd060e62018e4ae7b34e4ae7180fbd48d2caeb798ffc88f5755a839c1c472",
+      "summary": "Remove mean-reversion convenience re-exports from janiform.calibration.",
+      "updated_surfaces": [
+        "janiform.calibration",
+        "janiform.mean_reversion"
+      ]
     }
   ],
   "public_api_surface_document_version": "python.public_api_surface_map.pre_v0_1.control_plane_reset.v1",

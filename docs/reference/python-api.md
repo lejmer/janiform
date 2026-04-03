@@ -119,12 +119,20 @@ Regression and behavior-validation entrypoints. Representative public symbols in
 - `run_deterministic_regression_harness`
 - `run_open_closed_gap_leakage_regression_harness`
 
+### `janiform.mean_reversion`
+
+Public mean-reversion domain contracts shared across pricing, calibration, and simulation.
+Representative public symbols include:
+
+- `MeanReversionAnchorModel`
+- `MeanReversionBoundaryState`
+- `MeanReversionFittedParameters`
+- `MeanReversionRuntimeIntervalAnchors`
+
 ### `janiform.contracts`
 
 Shared contract models and serialization helpers. Representative public symbols include:
 
 - `ContractModel`
-- `MeanReversionAnchorModel`
-- `MeanReversionBoundaryState`
 - `serialize_deterministic_json`
 - `serialize_pretty_json`

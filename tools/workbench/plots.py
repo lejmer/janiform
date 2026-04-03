@@ -22,7 +22,7 @@ from matplotlib.figure import Figure
 from janiform._timestamps import datetime_to_utc_microseconds, utc_microseconds_to_datetime
 from janiform.calibration.fit import model as fit_model_runtime
 from janiform.calendar import CalendarRegistry, MarketState
-from janiform.contracts import MeanReversionFittedParameters
+from janiform.mean_reversion import MeanReversionFittedParameters
 from janiform.hourly_factors import (
     HourlyNewsIntensityProviderMaterializedSource,
     provide_hourly_factor_contract,

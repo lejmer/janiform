@@ -92,7 +92,7 @@ from ..._workflow_progress import (
     WorkflowProgressMode,
 )
 from ...calendar import CalendarRegistry
-from ...contracts import MeanReversionAnchorModelKind
+from ...mean_reversion import MeanReversionAnchorModelKind
 
 _DEFAULT_HIGH_LEVEL_KNOWN_NEWS_COLUMNS = CalibrationKnownNewsColumnMapping(
     event_timestamp_column="event_timestamp_utc",

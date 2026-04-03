@@ -89,8 +89,14 @@ def test_public_api_contract_guardrail_supports_public_domain_submodules() -> No
     approved_snapshot = _minimal_snapshot(
         public_modules={
             "janiform.contracts": [
-                "MeanReversionAnchorModel",
                 "ContractModel",
+            ],
+            "janiform.mean_reversion": [
+                "MeanReversionAnchorModel",
+                "MeanReversionFittedParameters",
+            ],
+            "janiform.mean_reversion.contracts": [
+                "MeanReversionAnchorModel",
                 "MeanReversionFittedParameters",
             ],
             "janiform.simulation": ["SeededTickSimulationRequest", "run_seeded_tick_event_simulation"],
@@ -211,6 +217,8 @@ def test_public_api_contract_guardrail_supports_public_domain_submodules() -> No
 
     assert set(approved_snapshot["public_modules"]) == {
         "janiform.contracts",
+        "janiform.mean_reversion",
+        "janiform.mean_reversion.contracts",
         "janiform.calibration",
         "janiform.calibration.fit",
         "janiform.calibration.fit.estimator",

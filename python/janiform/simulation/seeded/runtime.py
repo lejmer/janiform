@@ -7,8 +7,8 @@ from .contracts import (
     SEEDED_TICK_SIMULATION_NATIVE_CHUNK_RECORD_COUNT,
     SeededTickSimulationRequest,
 )
-from ..progress import SimulationProgressEvent, simulation_progress_event_from_mapping
 from .response import SeededTickSimulationResponse
+from ..progress import SimulationProgressEvent, simulation_progress_event_from_mapping
 from ..shared import SeededTickSimulationValidationError
 from ..shared.errors import (
     SIMULATION_ERROR_FACTORY,

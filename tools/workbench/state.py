@@ -7,7 +7,7 @@ from janiform.calibration.market_data.contracts import (
     CalibrationMarketDataWorkflowScope,
     CalibrationTickPriceInputPolicy,
 )
-from janiform.contracts import MeanReversionAnchorModelKind
+from janiform.mean_reversion import MeanReversionAnchorModelKind
 
 DEFAULT_WORKBENCH_SESSION_PRESET_NAME = "fx_spot_24_5"
 DEFAULT_WORKBENCH_FALLBACK_EXCHANGE_CODE = "FXSPOT"

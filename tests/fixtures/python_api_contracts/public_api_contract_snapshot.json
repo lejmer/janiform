@@ -137,9 +137,6 @@
         "KnownNewsPresetReference",
         "MarketDataCalibrationRequest",
         "MarketProfileReference",
-        "MeanReversionAnchorModel",
-        "MeanReversionAnchorModelKind",
-        "MeanReversionFittedParameters",
         "PreparedMarketDataCalibration",
         "PresetRegistry",
         "SessionExplicitConfiguration",
@@ -411,33 +408,6 @@
           ],
           "kind": "contract_model",
           "signature": "(usage_mode: 'PresetReferenceUsageMode', registry_scope: 'Optional[PresetRegistryScope]' = None, preset_name: 'Optional[str]' = None, configuration: 'Optional[MarketProfileExplicitConfiguration]' = None, override_patch: 'Optional[MarketProfileOverridePatch]' = None) -> 'None'"
-        },
-        "MeanReversionAnchorModel": {
-          "field_names": [
-            "anchor_model_kind",
-            "reference_interval_hours",
-            "pressure_persistence_per_reference_interval",
-            "pressure_level_gain"
-          ],
-          "kind": "contract_model",
-          "signature": "(anchor_model_kind: 'MeanReversionAnchorModelKind', reference_interval_hours: 'float', pressure_persistence_per_reference_interval: 'float', pressure_level_gain: 'float') -> 'None'"
-        },
-        "MeanReversionAnchorModelKind": {
-          "kind": "enum",
-          "members": [
-            {
-              "name": "ENDOGENOUS_CORE_PRESSURE_LEVEL",
-              "value": "endogenous_core_pressure_level"
-            }
-          ]
-        },
-        "MeanReversionFittedParameters": {
-          "field_names": [
-            "kappa",
-            "anchor_model"
-          ],
-          "kind": "contract_model",
-          "signature": "(kappa: 'float', anchor_model: 'MeanReversionAnchorModel') -> 'None'"
         },
         "PreparedMarketDataCalibration": {
           "field_names": [
@@ -4362,11 +4332,6 @@
     "janiform.contracts": {
       "exports": [
         "ContractModel",
-        "MeanReversionAnchorModel",
-        "MeanReversionAnchorModelKind",
-        "MeanReversionBoundaryState",
-        "MeanReversionFittedParameters",
-        "MeanReversionRuntimeIntervalAnchors",
         "ValidationErrorFactory",
         "compute_hawkes_alpha_over_beta_spectral_radius",
         "parse_json_object",
@@ -4400,55 +4365,6 @@
           "field_names": [],
           "kind": "contract_model",
           "signature": "()"
-        },
-        "MeanReversionAnchorModel": {
-          "field_names": [
-            "anchor_model_kind",
-            "reference_interval_hours",
-            "pressure_persistence_per_reference_interval",
-            "pressure_level_gain"
-          ],
-          "kind": "contract_model",
-          "signature": "(anchor_model_kind: 'MeanReversionAnchorModelKind', reference_interval_hours: 'float', pressure_persistence_per_reference_interval: 'float', pressure_level_gain: 'float') -> 'None'"
-        },
-        "MeanReversionAnchorModelKind": {
-          "kind": "enum",
-          "members": [
-            {
-              "name": "ENDOGENOUS_CORE_PRESSURE_LEVEL",
-              "value": "endogenous_core_pressure_level"
-            }
-          ]
-        },
-        "MeanReversionBoundaryState": {
-          "field_names": [
-            "observed_log_price",
-            "anchor_value",
-            "pressure_state",
-            "deviation"
-          ],
-          "kind": "contract_model",
-          "signature": "(observed_log_price: 'float', anchor_value: 'float', pressure_state: 'float', deviation: 'float') -> 'None'"
-        },
-        "MeanReversionFittedParameters": {
-          "field_names": [
-            "kappa",
-            "anchor_model"
-          ],
-          "kind": "contract_model",
-          "signature": "(kappa: 'float', anchor_model: 'MeanReversionAnchorModel') -> 'None'"
-        },
-        "MeanReversionRuntimeIntervalAnchors": {
-          "field_names": [
-            "interval_alignment_policy",
-            "start_anchor_value",
-            "start_pressure_state",
-            "end_anchor_values",
-            "end_pressure_states",
-            "interval_deltas"
-          ],
-          "kind": "contract_model",
-          "signature": "(interval_alignment_policy: 'str', start_anchor_value: 'float', start_pressure_state: 'float', end_anchor_values: 'tuple[float, ...]', end_pressure_states: 'tuple[float, ...]', interval_deltas: 'tuple[float, ...]') -> 'None'"
         },
         "ValidationErrorFactory": {
           "kind": "constant",
@@ -5096,6 +5012,130 @@
         "provide_hourly_factor_contract": {
           "kind": "function",
           "signature": "(*, calendar_registry: 'CalendarRegistry', exchange_code: 'str', range_start_utc: 'datetime', range_end_utc: 'datetime', interval: 'str | timedelta' = '1h', seasonality_source: 'Optional[HourlySeasonalityProviderSource]' = None, news_intensity_source: 'Optional[HourlyNewsIntensityProviderSource]' = None) -> 'HourlyFactorContract'"
+        }
+      }
+    },
+    "janiform.mean_reversion": {
+      "exports": [
+        "MeanReversionAnchorModel",
+        "MeanReversionAnchorModelKind",
+        "MeanReversionBoundaryState",
+        "MeanReversionFittedParameters",
+        "MeanReversionRuntimeIntervalAnchors"
+      ],
+      "module_name": "janiform.mean_reversion",
+      "schema_identifiers": [],
+      "symbols": {
+        "MeanReversionAnchorModel": {
+          "field_names": [
+            "anchor_model_kind",
+            "reference_interval_hours",
+            "pressure_persistence_per_reference_interval",
+            "pressure_level_gain"
+          ],
+          "kind": "contract_model",
+          "signature": "(anchor_model_kind: 'MeanReversionAnchorModelKind', reference_interval_hours: 'float', pressure_persistence_per_reference_interval: 'float', pressure_level_gain: 'float') -> 'None'"
+        },
+        "MeanReversionAnchorModelKind": {
+          "kind": "enum",
+          "members": [
+            {
+              "name": "ENDOGENOUS_CORE_PRESSURE_LEVEL",
+              "value": "endogenous_core_pressure_level"
+            }
+          ]
+        },
+        "MeanReversionBoundaryState": {
+          "field_names": [
+            "observed_log_price",
+            "anchor_value",
+            "pressure_state",
+            "deviation"
+          ],
+          "kind": "contract_model",
+          "signature": "(observed_log_price: 'float', anchor_value: 'float', pressure_state: 'float', deviation: 'float') -> 'None'"
+        },
+        "MeanReversionFittedParameters": {
+          "field_names": [
+            "kappa",
+            "anchor_model"
+          ],
+          "kind": "contract_model",
+          "signature": "(kappa: 'float', anchor_model: 'MeanReversionAnchorModel') -> 'None'"
+        },
+        "MeanReversionRuntimeIntervalAnchors": {
+          "field_names": [
+            "interval_alignment_policy",
+            "start_anchor_value",
+            "start_pressure_state",
+            "end_anchor_values",
+            "end_pressure_states",
+            "interval_deltas"
+          ],
+          "kind": "contract_model",
+          "signature": "(interval_alignment_policy: 'str', start_anchor_value: 'float', start_pressure_state: 'float', end_anchor_values: 'tuple[float, ...]', end_pressure_states: 'tuple[float, ...]', interval_deltas: 'tuple[float, ...]') -> 'None'"
+        }
+      }
+    },
+    "janiform.mean_reversion.contracts": {
+      "exports": [
+        "MeanReversionAnchorModel",
+        "MeanReversionAnchorModelKind",
+        "MeanReversionBoundaryState",
+        "MeanReversionFittedParameters",
+        "MeanReversionRuntimeIntervalAnchors"
+      ],
+      "module_name": "janiform.mean_reversion.contracts",
+      "schema_identifiers": [],
+      "symbols": {
+        "MeanReversionAnchorModel": {
+          "field_names": [
+            "anchor_model_kind",
+            "reference_interval_hours",
+            "pressure_persistence_per_reference_interval",
+            "pressure_level_gain"
+          ],
+          "kind": "contract_model",
+          "signature": "(anchor_model_kind: 'MeanReversionAnchorModelKind', reference_interval_hours: 'float', pressure_persistence_per_reference_interval: 'float', pressure_level_gain: 'float') -> 'None'"
+        },
+        "MeanReversionAnchorModelKind": {
+          "kind": "enum",
+          "members": [
+            {
+              "name": "ENDOGENOUS_CORE_PRESSURE_LEVEL",
+              "value": "endogenous_core_pressure_level"
+            }
+          ]
+        },
+        "MeanReversionBoundaryState": {
+          "field_names": [
+            "observed_log_price",
+            "anchor_value",
+            "pressure_state",
+            "deviation"
+          ],
+          "kind": "contract_model",
+          "signature": "(observed_log_price: 'float', anchor_value: 'float', pressure_state: 'float', deviation: 'float') -> 'None'"
+        },
+        "MeanReversionFittedParameters": {
+          "field_names": [
+            "kappa",
+            "anchor_model"
+          ],
+          "kind": "contract_model",
+          "signature": "(kappa: 'float', anchor_model: 'MeanReversionAnchorModel') -> 'None'"
+        },
+        "MeanReversionRuntimeIntervalAnchors": {
+          "field_names": [
+            "interval_alignment_policy",
+            "start_anchor_value",
+            "start_pressure_state",
+            "end_anchor_values",
+            "end_pressure_states",
+            "interval_deltas"
+          ],
+          "kind": "contract_model",
+          "signature": "(interval_alignment_policy: 'str', start_anchor_value: 'float', start_pressure_state: 'float', end_anchor_values: 'tuple[float, ...]', end_pressure_states: 'tuple[float, ...]', interval_deltas: 'tuple[float, ...]') -> 'None'"
         }
       }
     },

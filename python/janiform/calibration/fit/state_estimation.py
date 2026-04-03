@@ -10,8 +10,9 @@ from typing import TYPE_CHECKING, Any, Optional, cast
 import pandas
 
 from ..._native_api import native_module
+from ..._timestamps import datetime_to_utc_nanos
+from ...mean_reversion import MeanReversionBoundaryState
 from ...contracts import (
-    MeanReversionBoundaryState,
     require_datetime_utc,
     require_positive_finite_scalar,
 )
@@ -131,7 +132,7 @@ def estimate_current_state_for_model(
     native_payload = native_module().estimate_current_state_from_observed_data(
         fit_model_module._hawkes_kernel_parameters(model).to_payload(),
         fit_model_module._mean_reversion_fitted_parameters(model).to_payload(),
-        fit_model_module.datetime_to_utc_nanos(state_time_utc),
+        datetime_to_utc_nanos(state_time_utc),
         observed_log_price,
         observed_timestamps_utc,
         observed_trade_prices,
