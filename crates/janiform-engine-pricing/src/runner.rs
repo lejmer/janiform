@@ -16,9 +16,7 @@ use janiform_affine_oracle::sufficient_statistics::{
     SufficientStatisticsTransformSliceSettings, SufficientStatisticsTransformSlices,
     derive_expected_interval_statistics_from_transform_slices,
 };
-use janiform_foundations::complex_math::{
-    ComplexScalar, complex_exponential, complex_log_principal, complex_multiply,
-};
+use janiform_foundations::complex_math::{ComplexScalar, complex_exponential, complex_multiply};
 use janiform_foundations::matrix2::solve_two_by_two_linear_source_system;
 use janiform_model_kernels::hawkes::HawkesExcitationState;
 use janiform_model_kernels::mean_reversion::{
@@ -47,7 +45,6 @@ use super::fourier::{FourierInversionPricingError, price_vanilla_option_via_four
 use super::implied_volatility::invert_vanilla_option_implied_volatility;
 
 const OBSERVED_LOG_MOMENT_ARGUMENT_IMAGINARY: f64 = -1.0;
-const PURE_IMAGINARY_LOG_MOMENT_REAL_PART_TOLERANCE: f64 = 1.0e-8;
 
 /// One-interval pricing factors required to execute the canonical vanilla pricing workflow.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
@@ -562,26 +559,36 @@ fn evaluate_observed_log_moment_exponent_for_tilt(
         }
     })?;
 
-    let log_moment_exponent = complex_log_principal(evaluation.value);
+    recover_pure_imaginary_log_moment_exponent(evaluation.value, theta)
+}
+
+pub(crate) fn recover_pure_imaginary_log_moment_exponent(
+    characteristic_value: ComplexScalar,
+    theta: f64,
+) -> Result<f64, super::characteristic::AnchoredLocalTiltSolveError> {
+    if !characteristic_value.is_finite() {
+        return Err(
+            super::characteristic::AnchoredLocalTiltSolveError::NonFiniteTransformInput {
+                theta,
+                value: characteristic_value,
+            },
+        );
+    }
+
+    // Along the pure-imaginary axis this quantity is an exponential moment,
+    // so the exact value is strictly positive real and the log moment is the
+    // logarithm of the characteristic-factor modulus.
+    let log_moment_exponent = characteristic_value.norm().ln();
     if !log_moment_exponent.is_finite() {
         return Err(
             super::characteristic::AnchoredLocalTiltSolveError::NonFiniteTransformInput {
                 theta,
-                value: log_moment_exponent,
+                value: characteristic_value,
             },
         );
     }
 
-    if log_moment_exponent.imaginary.abs() > PURE_IMAGINARY_LOG_MOMENT_REAL_PART_TOLERANCE {
-        return Err(
-            super::characteristic::AnchoredLocalTiltSolveError::NonRealObservedLogMomentExponent {
-                theta,
-                value: log_moment_exponent,
-            },
-        );
-    }
-
-    Ok(log_moment_exponent.real)
+    Ok(log_moment_exponent)
 }
 
 fn run_single_interval_nested_fourier_pricing(
@@ -1515,7 +1522,7 @@ fn tilted_nig_expected_increment(
     )
 }
 
-fn infer_expected_news_loading_under_local_measure(
+pub(crate) fn infer_expected_news_loading_under_local_measure(
     pricing_request: &VanillaOptionPricingRequest,
     interval_factors: VanillaOptionPricingIntervalFactors,
     expected_statistics: SufficientStatisticsExpectedIntervalStatistics,
@@ -1531,6 +1538,22 @@ fn infer_expected_news_loading_under_local_measure(
             message: source.to_string(),
         }
     })?;
+
+    if pricing_request
+        .model_parameters
+        .news_process_configuration
+        .known_component_mark_scales
+        .activity_coupling_scale
+        == 0.0
+        && pricing_request
+            .model_parameters
+            .news_process_configuration
+            .surprise_component_mark_scales
+            .activity_coupling_scale
+            == 0.0
+    {
+        return Ok(0.0);
+    }
 
     if interval_factors.s_h == 0.0 {
         let expected_severity_mark = pricing_request
