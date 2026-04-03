@@ -21,7 +21,7 @@ janiform --help
 ## Windows
 
 ```powershell
-./scripts/bootstrap-win.ps1 .venv
+./scripts/bootstrap-win.ps1 .venv-win
 . .\.venv\Scripts\Activate.ps1
 janiform --help
 ```
@@ -30,14 +30,14 @@ janiform --help
 
 Use the build scripts when you change Rust or Python code and want to refresh the installed extension.
 
-### Linux and WSL
+### Linux
 
 ```bash
 ./scripts/build-linux.sh .venv-linux
 ```
 
-### Windows PowerShell
+### Windows
 
 ```powershell
-./scripts/build-win.ps1 .venv
+./scripts/build-win.ps1 .venv-win
 ```
