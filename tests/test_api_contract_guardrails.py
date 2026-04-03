@@ -127,7 +127,7 @@ def test_public_api_contract_guardrail_supports_public_domain_submodules() -> No
                 "JaniformModel",
             ],
             "janiform.calibration.fit.pricing": [
-                "JaniformVanillaOptionBatch",
+                "JaniformGroupedVanillaOptionBatch",
                 "JaniformVanillaOptionSurface",
             ],
             "janiform.calibration.fit.report": [

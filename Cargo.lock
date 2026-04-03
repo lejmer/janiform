@@ -702,6 +702,7 @@ dependencies = [
  "janiform-foundations",
  "janiform-market-time",
  "janiform-model-kernels",
+ "rayon",
  "serde",
  "serde_json",
  "statrs",

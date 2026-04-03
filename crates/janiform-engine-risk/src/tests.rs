@@ -1142,11 +1142,12 @@ fn transform_slice_sampling_error_preserves_chunking_validation_source() {
 }
 
 #[test]
-fn transform_slice_sampler_rejects_non_real_transform_inputs_with_context() {
+fn transform_slice_sampler_uses_modulus_for_finite_complex_transform_inputs() {
     let context = build_transform_slice_context(4, 1.2, 0.3, 1.0);
+    let settings = SufficientStatisticsTransformSliceSettings::default();
     let slices = SufficientStatisticsTransformSlices::try_new(
         context,
-        SufficientStatisticsTransformSliceSettings::default(),
+        settings,
         ComplexScalar::new(1.0, 1.0e-3),
         ComplexScalar::new(0.99, 0.0),
         ComplexScalar::new(0.98, 0.0),
@@ -1155,16 +1156,19 @@ fn transform_slice_sampler_rejects_non_real_transform_inputs_with_context() {
     )
     .expect("finite transform payload should construct");
 
-    let error = sample_interval_statistics_from_transform_slices(8, slices)
-        .expect_err("non-real transform slice should fail sampling");
-    assert!(matches!(
-        error,
-        SufficientStatisticsTransformSliceSamplingError::NonRealTransformSlice {
-            interval_index: 4,
-            field: "baseline_transform",
-            ..
-        }
-    ));
+    let sampled_statistics = sample_interval_statistics_from_transform_slices(8, slices)
+        .expect("finite complex transform slice should sample successfully");
+
+    let expected_a_plus =
+        (slices.baseline_transform.norm() - slices.a_plus_transform.norm()) / settings.a_plus_u;
+    let expected_a_minus =
+        (slices.baseline_transform.norm() - slices.a_minus_transform.norm()) / settings.a_minus_u;
+
+    assert!((sampled_statistics.a_plus - expected_a_plus).abs() <= 1.0e-12);
+    assert!((sampled_statistics.a_minus - expected_a_minus).abs() <= 1.0e-12);
+    sampled_statistics
+        .validate()
+        .expect("sampled statistics should remain domain-valid");
 }
 
 #[test]

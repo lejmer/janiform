@@ -22,12 +22,16 @@ from janiform.calibration import CalibrationValidationError
 from janiform.calibration.fit import (
     CurrentStateEstimationRequest,
     CurrentStateEstimationResult,
+    JaniformGroupedVanillaOptionBatch,
+    JaniformGroupedVanillaOptionGroup,
     JaniformEstimator,
     JaniformFitReport,
     JaniformModel,
     JaniformSimulationResult,
-    JaniformVanillaOptionBatch,
-    JaniformVanillaOptionBatchPricingResult,
+    JaniformVanillaOptionGroupedBatchPricingGroupResult,
+    JaniformVanillaOptionGroupedBatchPricingResult,
+    JaniformVanillaOptionMaturityPricingEngineKind,
+    JaniformVanillaOptionMaturitySummary,
     JaniformVanillaOptionSurface,
     JaniformVanillaOptionSurfacePricingResult,
 )
@@ -1148,6 +1152,104 @@ def test_high_level_model_simulate_forwards_progress_events_to_callback_and_rend
     assert result.raw_result is simulated_result
     assert observed_progress_updates == [("seeded tick path generation", 2, 5)]
     assert observed_callback_events == [("seeded tick path generation", 2, 5)]
+
+
+def test_run_model_native_pricing_workflow_reports_native_surface_progress(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    observed_progress_updates: list[tuple[str | None, str | None, int | None, int | None]] = []
+
+    class _CapturingProgress:
+        def update(
+            self,
+            *,
+            detail: str | None = None,
+            subdetail: str | None = None,
+            completed_units: int | None = None,
+            total_units: int | None = None,
+            reset_progress_units: bool = False,
+            progress_fraction: float | None = None,
+        ) -> None:
+            del reset_progress_units, progress_fraction
+            observed_progress_updates.append(
+                (detail, subdetail, completed_units, total_units)
+            )
+
+    class _FakeNativeModule:
+        def run_vanilla_option_surface_pricing_with_events(
+            self,
+            execution_input: dict[str, Any],
+            event_callback: Any,
+        ) -> dict[str, Any]:
+            del execution_input
+            event_callback(
+                {
+                    "phase": "maturity_progress",
+                    "completed_units": 0,
+                    "total_units": 2,
+                    "current_group_index": None,
+                    "current_maturity_index": 0,
+                    "total_maturities": 2,
+                    "current_interval_index": None,
+                    "total_intervals": None,
+                    "current_transition_row_index": None,
+                    "total_transition_rows": None,
+                    "current_strike_index": None,
+                    "total_strikes": None,
+                }
+            )
+            event_callback(
+                {
+                    "phase": "strike_pricing_progress",
+                    "completed_units": 1,
+                    "total_units": 3,
+                    "current_group_index": None,
+                    "current_maturity_index": 1,
+                    "total_maturities": 2,
+                    "current_interval_index": None,
+                    "total_intervals": None,
+                    "current_transition_row_index": None,
+                    "total_transition_rows": None,
+                    "current_strike_index": 1,
+                    "total_strikes": 3,
+                }
+            )
+            return {"result": "ok"}
+
+    monkeypatch.setattr(
+        fit_model_module,
+        "native_module",
+        lambda: _FakeNativeModule(),
+    )
+    monkeypatch.setattr(
+        fit_model_module,
+        "native_exception_matches",
+        lambda native, error, name: False,
+    )
+
+    result = fit_model_module._run_model_native_pricing_workflow(
+        native_method_name="run_vanilla_option_surface_pricing",
+        native_execution_input={"prepared": "surface"},
+        result_parser=lambda payload, field_path: {"payload": payload, "field_path": field_path},
+        entrypoint="JaniformModel.price_option_surface",
+        result_field_path="surface_pricing_result",
+        progress=_CapturingProgress(),
+        progress_detail="running surface pricing workflow",
+    )
+
+    assert result == {
+        "payload": {"result": "ok"},
+        "field_path": "surface_pricing_result",
+    }
+    assert observed_progress_updates == [
+        ("running surface pricing workflow", "maturity 1/2", 0, 2),
+        (
+            "running surface pricing workflow",
+            "maturity 2/2 | strike 2/3",
+            1,
+            3,
+        ),
+    ]
 
 
 def test_high_level_model_simulate_uses_estimated_current_state_when_continuation_data_is_supplied(
@@ -2725,7 +2827,7 @@ def test_high_level_model_price_option_end_to_end_supports_endogenous_anchor_mea
     assert pricing_result.run_diagnostics.anchored_recursion is not None
 
 
-def test_high_level_model_price_options_dispatches_through_batch_pricing_runner(
+def test_high_level_model_price_option_groups_dispatches_through_grouped_batch_pricing_runner(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2734,49 +2836,108 @@ def test_high_level_model_price_options_dispatches_through_batch_pricing_runner(
         monkeypatch,
         run_id="high-level-model-batch-pricing",
     )
-    batch = JaniformVanillaOptionBatch(
+    batch = JaniformGroupedVanillaOptionBatch(
         spot=100.0,
-        strikes=(95.0, 105.0),
-        maturity_intervals=(1.0, 2.0),
-        payoff_types=(VanillaOptionPayoffType.CALL, VanillaOptionPayoffType.PUT),
-        risk_free_rates=(0.01, 0.01),
-        dividend_yields=(0.0, 0.0),
+        groups=(
+            JaniformGroupedVanillaOptionGroup(
+                payoff_type=VanillaOptionPayoffType.CALL,
+                risk_free_rate=0.01,
+                dividend_yield=0.0,
+                strikes=(95.0,),
+                maturity_intervals=(1.0,),
+            ),
+            JaniformGroupedVanillaOptionGroup(
+                payoff_type=VanillaOptionPayoffType.PUT,
+                risk_free_rate=0.01,
+                dividend_yield=0.0,
+                strikes=(105.0,),
+                maturity_intervals=(2.0,),
+            ),
+        ),
     )
     prepared_native_execution_input = {"prepared": "batch"}
-    observed_result = JaniformVanillaOptionBatchPricingResult(
+    observed_result = JaniformVanillaOptionGroupedBatchPricingResult(
         spot=100.0,
-        strikes=(95.0, 105.0),
-        maturity_intervals=(1.0, 2.0),
-        payoff_types=(VanillaOptionPayoffType.CALL, VanillaOptionPayoffType.PUT),
-        risk_free_rates=(0.01, 0.01),
-        dividend_yields=(0.0, 0.0),
-        prices=(10.0, 11.0),
-        implied_volatilities=(0.2, 0.25),
-        implied_volatility_inversion_statuses=(
-            VanillaOptionImpliedVolatilityInversionStatus.SUCCEEDED,
-            VanillaOptionImpliedVolatilityInversionStatus.SUCCEEDED,
+        groups=(
+            JaniformVanillaOptionGroupedBatchPricingGroupResult(
+                payoff_type=VanillaOptionPayoffType.CALL,
+                risk_free_rate=0.01,
+                dividend_yield=0.0,
+                strikes=(95.0,),
+                maturity_intervals=(1.0,),
+                price_grid=((10.0,),),
+                implied_volatility_grid=((0.2,),),
+                implied_volatility_inversion_status_grid=((
+                    VanillaOptionImpliedVolatilityInversionStatus.SUCCEEDED,
+                ),),
+                forward_price_grid=((100.5,),),
+                discount_factor_grid=((0.99,),),
+                boundary_state_norm_grid=((0.0,),),
+                maturity_summaries=(
+                    JaniformVanillaOptionMaturitySummary(
+                        maturity_interval=1.0,
+                        engine_kind=JaniformVanillaOptionMaturityPricingEngineKind.DIRECT_FOURIER,
+                        terminal_anchor_value=None,
+                        deviation_grid_lower_bound=None,
+                        deviation_grid_upper_bound=None,
+                        deviation_grid_node_count=None,
+                        terminal_deviation_nodes=None,
+                        terminal_probability_mass=None,
+                        interval_summaries=(),
+                        representative_transform=None,
+                        integration_quality=None,
+                    ),
+                ),
+            ),
+            JaniformVanillaOptionGroupedBatchPricingGroupResult(
+                payoff_type=VanillaOptionPayoffType.PUT,
+                risk_free_rate=0.01,
+                dividend_yield=0.0,
+                strikes=(105.0,),
+                maturity_intervals=(2.0,),
+                price_grid=((11.0,),),
+                implied_volatility_grid=((0.25,),),
+                implied_volatility_inversion_status_grid=((
+                    VanillaOptionImpliedVolatilityInversionStatus.SUCCEEDED,
+                ),),
+                forward_price_grid=((101.0,),),
+                discount_factor_grid=((0.98,),),
+                boundary_state_norm_grid=((0.0,),),
+                maturity_summaries=(
+                    JaniformVanillaOptionMaturitySummary(
+                        maturity_interval=2.0,
+                        engine_kind=JaniformVanillaOptionMaturityPricingEngineKind.FORWARD_LAW,
+                        terminal_anchor_value=0.0,
+                        deviation_grid_lower_bound=-1.0,
+                        deviation_grid_upper_bound=1.0,
+                        deviation_grid_node_count=3,
+                        terminal_deviation_nodes=(-1.0, 0.0, 1.0),
+                        terminal_probability_mass=(0.25, 0.5, 0.25),
+                        interval_summaries=(),
+                        representative_transform=None,
+                        integration_quality=None,
+                    ),
+                ),
+            ),
         ),
-        forward_prices=(100.5, 101.0),
-        discount_factors=(0.99, 0.98),
-        boundary_state_norms=(0.0, 0.0),
     )
 
     monkeypatch.setattr(
         fit_model_module,
-        "_prepare_model_batch_pricing_native_input",
+        "_prepare_model_grouped_batch_pricing_native_input",
         lambda *args, **kwargs: prepared_native_execution_input,
     )
     monkeypatch.setattr(
         fit_model_module,
-        "_run_model_vanilla_option_batch_pricing",
-        lambda native_execution_input: (
+        "_run_model_vanilla_option_grouped_batch_pricing",
+        lambda native_execution_input, *, progress=None: (
             observed_result
             if native_execution_input is prepared_native_execution_input
             else None
         ),
     )
 
-    result = model.price_options(
+    result = model.price_option_groups(
         valuation_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
         batch=batch,
     )
@@ -2824,6 +2985,34 @@ def test_high_level_model_price_option_surface_dispatches_through_surface_pricin
         forward_price_grid=((100.5, 100.5), (101.0, 101.0)),
         discount_factor_grid=((0.99, 0.99), (0.98, 0.98)),
         boundary_state_norm_grid=((0.0, 0.0), (0.0, 0.0)),
+        maturity_summaries=(
+            JaniformVanillaOptionMaturitySummary(
+                maturity_interval=1.0,
+                engine_kind=JaniformVanillaOptionMaturityPricingEngineKind.DIRECT_FOURIER,
+                terminal_anchor_value=None,
+                deviation_grid_lower_bound=None,
+                deviation_grid_upper_bound=None,
+                deviation_grid_node_count=None,
+                terminal_deviation_nodes=None,
+                terminal_probability_mass=None,
+                interval_summaries=(),
+                representative_transform=None,
+                integration_quality=None,
+            ),
+            JaniformVanillaOptionMaturitySummary(
+                maturity_interval=2.0,
+                engine_kind=JaniformVanillaOptionMaturityPricingEngineKind.FORWARD_LAW,
+                terminal_anchor_value=0.0,
+                deviation_grid_lower_bound=-1.0,
+                deviation_grid_upper_bound=1.0,
+                deviation_grid_node_count=3,
+                terminal_deviation_nodes=(-1.0, 0.0, 1.0),
+                terminal_probability_mass=(0.25, 0.5, 0.25),
+                interval_summaries=(),
+                representative_transform=None,
+                integration_quality=None,
+            ),
+        ),
     )
 
     monkeypatch.setattr(
@@ -2834,7 +3023,7 @@ def test_high_level_model_price_option_surface_dispatches_through_surface_pricin
     monkeypatch.setattr(
         fit_model_module,
         "_run_model_vanilla_option_surface_pricing",
-        lambda native_execution_input: (
+        lambda native_execution_input, *, progress=None: (
             observed_result
             if native_execution_input is prepared_native_execution_input
             else None
@@ -2849,7 +3038,7 @@ def test_high_level_model_price_option_surface_dispatches_through_surface_pricin
     assert result is observed_result
 
 
-def test_high_level_model_price_options_matches_single_option_engine_on_shared_nodes(
+def test_high_level_model_price_option_groups_matches_single_option_engine_on_shared_groups(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2864,78 +3053,78 @@ def test_high_level_model_price_options_matches_single_option_engine_on_shared_n
         y_minus_plus=0.0,
         y_minus_minus=0.0,
     )
-    batch = JaniformVanillaOptionBatch(
+    batch = JaniformGroupedVanillaOptionBatch(
         spot=100.0,
-        strikes=(95.0, 100.0, 105.0),
-        maturity_intervals=(1.0, 1.0, 1.0),
-        payoff_types=(
-            VanillaOptionPayoffType.CALL,
-            VanillaOptionPayoffType.PUT,
-            VanillaOptionPayoffType.CALL,
+        groups=(
+            JaniformGroupedVanillaOptionGroup(
+                payoff_type=VanillaOptionPayoffType.CALL,
+                risk_free_rate=0.01,
+                dividend_yield=0.0,
+                strikes=(95.0, 105.0),
+                maturity_intervals=(1.0,),
+            ),
+            JaniformGroupedVanillaOptionGroup(
+                payoff_type=VanillaOptionPayoffType.PUT,
+                risk_free_rate=0.01,
+                dividend_yield=0.0,
+                strikes=(100.0,),
+                maturity_intervals=(1.0,),
+            ),
         ),
-        risk_free_rates=(0.01, 0.01, 0.01),
-        dividend_yields=(0.0, 0.0, 0.0),
     )
 
-    batch_result = model.price_options(
+    batch_result = model.price_option_groups(
         valuation_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
         batch=batch,
         boundary_state=boundary_state,
         include_transform_diagnostics=True,
         include_integration_quality_diagnostics=True,
-        include_calibration_hooks=True,
     )
 
-    assert isinstance(batch_result, JaniformVanillaOptionBatchPricingResult)
-    assert batch_result.node_count == batch.node_count
+    assert isinstance(batch_result, JaniformVanillaOptionGroupedBatchPricingResult)
+    flattened_specs = [
+        (0, 0, 95.0, VanillaOptionPayoffType.CALL),
+        (0, 1, 105.0, VanillaOptionPayoffType.CALL),
+        (1, 0, 100.0, VanillaOptionPayoffType.PUT),
+    ]
 
-    for node_index in range(batch.node_count):
+    for group_index, strike_index, strike, payoff_type in flattened_specs:
         single_result = model.price_option(
             valuation_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
             spot=batch.spot,
-            strike=batch.strikes[node_index],
-            maturity_interval=batch.maturity_intervals[node_index],
-            payoff_type=batch.payoff_types[node_index],
-            risk_free_rate=batch.risk_free_rates[node_index],
-            dividend_yield=batch.dividend_yields[node_index],
+            strike=strike,
+            maturity_interval=1.0,
+            payoff_type=payoff_type,
+            risk_free_rate=0.01,
+            dividend_yield=0.0,
             boundary_state=boundary_state,
             include_transform_diagnostics=True,
             include_integration_quality_diagnostics=True,
             include_calibration_hooks=True,
         )
 
-        assert batch_result.prices[node_index] == pytest.approx(single_result.response.price)
-        assert batch_result.implied_volatilities[node_index] == pytest.approx(
+        observed_group = batch_result.groups[group_index]
+        assert observed_group.price_grid[0][strike_index] == pytest.approx(single_result.response.price)
+        assert observed_group.implied_volatility_grid[0][strike_index] == pytest.approx(
             cast(float, single_result.response.implied_volatility)
         )
         assert (
-            batch_result.implied_volatility_inversion_statuses[node_index]
+            observed_group.implied_volatility_inversion_status_grid[0][strike_index]
             is single_result.response.implied_volatility_inversion_status
         )
-        assert batch_result.forward_prices[node_index] == pytest.approx(
+        assert observed_group.forward_price_grid[0][strike_index] == pytest.approx(
             single_result.response.diagnostics.forward_price
         )
-        assert batch_result.discount_factors[node_index] == pytest.approx(
+        assert observed_group.discount_factor_grid[0][strike_index] == pytest.approx(
             single_result.response.diagnostics.discount_factor
         )
-        assert batch_result.boundary_state_norms[node_index] == pytest.approx(
+        assert observed_group.boundary_state_norm_grid[0][strike_index] == pytest.approx(
             single_result.response.diagnostics.boundary_state_norm
         )
-        assert batch_result.run_diagnostics is not None
+        assert observed_group.maturity_summaries[0].representative_transform is not None
         assert single_result.run_diagnostics is not None
-        assert (
-            batch_result.run_diagnostics.transform[node_index]
-            == single_result.run_diagnostics.transform
-        )
-        assert (
-            batch_result.run_diagnostics.integration_quality[node_index]
-            == single_result.run_diagnostics.integration_quality
-        )
-        assert batch_result.calibration_hooks is not None
-        assert single_result.calibration_hooks is not None
-        assert batch_result.calibration_hooks.option_prices[node_index] == pytest.approx(
-            single_result.calibration_hooks.option_price
-        )
+        assert observed_group.maturity_summaries[0].representative_transform == single_result.run_diagnostics.transform
+        assert observed_group.maturity_summaries[0].integration_quality == single_result.run_diagnostics.integration_quality
 
 
 def test_high_level_model_price_option_surface_matches_single_option_engine_on_shared_grid(
@@ -2968,7 +3157,6 @@ def test_high_level_model_price_option_surface_matches_single_option_engine_on_s
         boundary_state=boundary_state,
         include_transform_diagnostics=True,
         include_integration_quality_diagnostics=True,
-        include_calibration_hooks=True,
     )
 
     assert isinstance(surface_result, JaniformVanillaOptionSurfacePricingResult)
@@ -3010,17 +3198,15 @@ def test_high_level_model_price_option_surface_matches_single_option_engine_on_s
                 surface_result.boundary_state_norm_grid[maturity_index][strike_index]
                 == pytest.approx(single_result.response.diagnostics.boundary_state_norm)
             )
-            assert surface_result.run_diagnostics is not None
+            assert surface_result.maturity_summaries[maturity_index].representative_transform is not None
             assert single_result.run_diagnostics is not None
             assert (
-                surface_result.run_diagnostics.transform_grid[maturity_index][strike_index]
+                surface_result.maturity_summaries[maturity_index].representative_transform
                 == single_result.run_diagnostics.transform
             )
-            assert surface_result.calibration_hooks is not None
-            assert single_result.calibration_hooks is not None
             assert (
-                surface_result.calibration_hooks.option_price_grid[maturity_index][strike_index]
-                == pytest.approx(single_result.calibration_hooks.option_price)
+                surface_result.maturity_summaries[maturity_index].integration_quality
+                == single_result.run_diagnostics.integration_quality
             )
 
 

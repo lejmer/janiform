@@ -37,7 +37,12 @@ from ..._workflow_outputs import (
     write_pricing_artifacts,
     write_simulation_artifacts,
 )
-from ..._workflow_progress import JaniformOutputController, WorkflowProgressMode
+from ..._workflow_progress import (
+    AbstractProgress,
+    JaniformOutputController,
+    NullProgress,
+    WorkflowProgressMode,
+)
 from ..._timestamps import ONE_HOUR_NANOS, datetime_to_utc_nanos, nanoseconds_to_hours
 from ...mean_reversion import (
     MeanReversionBoundaryState,
@@ -74,6 +79,10 @@ from ...pricing import (
     VanillaOptionPricingRunResult,
     run_vanilla_option_pricing,
 )
+from ...pricing.progress import (
+    PricingProgressEvent,
+    pricing_progress_event_from_mapping,
+)
 from .._errors import (
     CALIBRATION_INTEGRATION_NATIVE_MODULE_ERROR_ID,
     CALIBRATION_INTEGRATION_RESPONSE_ERROR_ID,
@@ -105,9 +114,9 @@ from ...simulation.shared import (
 )
 from ..._native_api import native_exception_matches, native_module
 from .pricing import (
-    JaniformVanillaOptionBatch,
-    JaniformVanillaOptionBatchPricingResult,
+    JaniformGroupedVanillaOptionBatch,
     JaniformVanillaOptionSurface,
+    JaniformVanillaOptionGroupedBatchPricingResult,
     JaniformVanillaOptionSurfacePricingResult,
 )
 from .state_estimation import (
@@ -459,19 +468,19 @@ class JaniformModel:
 
         return pricing_result
 
-    def price_options(
+    def price_option_groups(
         self,
         *,
         valuation_time_utc: datetime,
-        batch: JaniformVanillaOptionBatch,
+        batch: JaniformGroupedVanillaOptionBatch,
         observed_data: Optional[CurrentStateEstimationRequest] = None,
         boundary_state: Optional[HawkesExcitationState] = None,
         include_transform_diagnostics: bool = False,
         include_integration_quality_diagnostics: bool = False,
-        include_calibration_hooks: bool = False,
+        cpu_count: Optional[int] = None,
         silent: bool = False,
         progress_mode: WorkflowProgressMode | str = WorkflowProgressMode.AUTO,
-    ) -> JaniformVanillaOptionBatchPricingResult:
+    ) -> JaniformVanillaOptionGroupedBatchPricingResult:
         output_controller = JaniformOutputController(
             suppress_info_output=silent,
             progress_mode=WorkflowProgressMode.NONE if silent else progress_mode,
@@ -479,7 +488,7 @@ class JaniformModel:
                 WorkflowProgressMode.NONE if silent else WorkflowProgressMode.HUMAN
             ),
         )
-        native_execution_input = _prepare_model_batch_pricing_native_input(
+        native_execution_input = _prepare_model_grouped_batch_pricing_native_input(
             self,
             valuation_time_utc=valuation_time_utc,
             batch=batch,
@@ -487,11 +496,14 @@ class JaniformModel:
             boundary_state=boundary_state,
             include_transform_diagnostics=include_transform_diagnostics,
             include_integration_quality_diagnostics=include_integration_quality_diagnostics,
-            include_calibration_hooks=include_calibration_hooks,
+            cpu_count=cpu_count,
         )
         with output_controller.progress("price") as progress:
-            progress.update(detail="running batch pricing workflow")
-            return _run_model_vanilla_option_batch_pricing(native_execution_input)
+            progress.update(detail="running grouped batch pricing workflow")
+            return _run_model_vanilla_option_grouped_batch_pricing(
+                native_execution_input,
+                progress=progress,
+            )
 
     def price_option_surface(
         self,
@@ -502,7 +514,7 @@ class JaniformModel:
         boundary_state: Optional[HawkesExcitationState] = None,
         include_transform_diagnostics: bool = False,
         include_integration_quality_diagnostics: bool = False,
-        include_calibration_hooks: bool = False,
+        cpu_count: Optional[int] = None,
         silent: bool = False,
         progress_mode: WorkflowProgressMode | str = WorkflowProgressMode.AUTO,
     ) -> JaniformVanillaOptionSurfacePricingResult:
@@ -521,11 +533,14 @@ class JaniformModel:
             boundary_state=boundary_state,
             include_transform_diagnostics=include_transform_diagnostics,
             include_integration_quality_diagnostics=include_integration_quality_diagnostics,
-            include_calibration_hooks=include_calibration_hooks,
+            cpu_count=cpu_count,
         )
         with output_controller.progress("price") as progress:
             progress.update(detail="running surface pricing workflow")
-            return _run_model_vanilla_option_surface_pricing(native_execution_input)
+            return _run_model_vanilla_option_surface_pricing(
+                native_execution_input,
+                progress=progress,
+            )
 
     def estimate_current_state(
         self,
@@ -1232,23 +1247,26 @@ def _pricing_observed_log_price_from_spot(model: JaniformModel, *, spot: float) 
     return log(normalized_spot / reference_price)
 
 
-def _prepare_model_batch_pricing_native_input(
+def _prepare_model_grouped_batch_pricing_native_input(
     model: JaniformModel,
     *,
     valuation_time_utc: datetime,
-    batch: JaniformVanillaOptionBatch,
+    batch: JaniformGroupedVanillaOptionBatch,
     observed_data: Optional[CurrentStateEstimationRequest],
     boundary_state: Optional[HawkesExcitationState],
     include_transform_diagnostics: bool,
     include_integration_quality_diagnostics: bool,
-    include_calibration_hooks: bool,
+    cpu_count: Optional[int],
 ) -> dict[str, Any]:
     interval_counts = tuple(
         _pricing_interval_count_from_maturity_interval(
             maturity_interval,
-            field_path=f"batch.maturity_intervals[{node_index}]",
+            field_path=(
+                f"batch.groups[{group_index}].maturity_intervals[{maturity_index}]"
+            ),
         )
-        for node_index, maturity_interval in enumerate(batch.maturity_intervals)
+        for group_index, group in enumerate(batch.groups)
+        for maturity_index, maturity_interval in enumerate(group.maturity_intervals)
     )
     max_interval_count = max(interval_counts)
     runtime_input = _prepare_model_pricing_runtime_input(
@@ -1271,16 +1289,16 @@ def _prepare_model_batch_pricing_native_input(
         ).to_payload(),
         "model_parameters": runtime_input.model_parameters.to_payload(),
         "interval_delta": runtime_input.runtime_factors.interval_delta,
-        "node_interval_counts": list(interval_counts),
-        "interval_factors": _native_pricing_interval_factors_by_interval_count(
+        "interval_factors": _native_pricing_interval_factors(
             runtime_input.hourly_factor_contract,
-            interval_counts=interval_counts,
+            horizon_interval_count=max_interval_count,
         ),
         "optional_output_selection": VanillaOptionPricingOptionalOutputSelection(
             include_transform_diagnostics=include_transform_diagnostics,
             include_integration_quality_diagnostics=include_integration_quality_diagnostics,
-            include_calibration_hooks=include_calibration_hooks,
+            include_calibration_hooks=False,
         ).to_payload(),
+        "cpu_count": cpu_count,
     }
 
 
@@ -1293,7 +1311,7 @@ def _prepare_model_surface_pricing_native_input(
     boundary_state: Optional[HawkesExcitationState],
     include_transform_diagnostics: bool,
     include_integration_quality_diagnostics: bool,
-    include_calibration_hooks: bool,
+    cpu_count: Optional[int],
 ) -> dict[str, Any]:
     interval_counts = tuple(
         _pricing_interval_count_from_maturity_interval(
@@ -1323,54 +1341,56 @@ def _prepare_model_surface_pricing_native_input(
         ).to_payload(),
         "model_parameters": runtime_input.model_parameters.to_payload(),
         "interval_delta": runtime_input.runtime_factors.interval_delta,
-        "maturity_interval_counts": list(interval_counts),
-        "interval_factors": _native_pricing_interval_factors_by_interval_count(
+        "interval_factors": _native_pricing_interval_factors(
             runtime_input.hourly_factor_contract,
-            interval_counts=interval_counts,
+            horizon_interval_count=max_interval_count,
         ),
         "optional_output_selection": VanillaOptionPricingOptionalOutputSelection(
             include_transform_diagnostics=include_transform_diagnostics,
             include_integration_quality_diagnostics=include_integration_quality_diagnostics,
-            include_calibration_hooks=include_calibration_hooks,
+            include_calibration_hooks=False,
         ).to_payload(),
+        "cpu_count": cpu_count,
     }
 
 
-def _native_pricing_interval_factors_by_interval_count(
+def _native_pricing_interval_factors(
     hourly_factor_contract: HourlyFactorContract,
     *,
-    interval_counts: tuple[int, ...],
+    horizon_interval_count: int,
 ) -> list[dict[str, float]]:
-    interval_factors: list[dict[str, float]] = []
-    for interval_count in interval_counts:
-        interval_factors.extend(
-            {
-                "s_h": float(hourly_factor_contract.s_h[interval_index]),
-                "nu_h_known": float(hourly_factor_contract.known_component_nu_h[interval_index]),
-                "nu_h_surprise": float(
-                    hourly_factor_contract.surprise_component_nu_h[interval_index]
-                ),
-            }
-            for interval_index in range(interval_count)
-        )
-
-    return interval_factors
+    return [
+        {
+            "s_h": float(hourly_factor_contract.s_h[interval_index]),
+            "nu_h_known": float(hourly_factor_contract.known_component_nu_h[interval_index]),
+            "nu_h_surprise": float(
+                hourly_factor_contract.surprise_component_nu_h[interval_index]
+            ),
+        }
+        for interval_index in range(horizon_interval_count)
+    ]
 
 
-def _run_model_vanilla_option_batch_pricing(
+def _run_model_vanilla_option_grouped_batch_pricing(
     native_execution_input: dict[str, Any],
-) -> JaniformVanillaOptionBatchPricingResult:
+    *,
+    progress: Optional[AbstractProgress] = None,
+) -> JaniformVanillaOptionGroupedBatchPricingResult:
     return _run_model_native_pricing_workflow(
-        native_method_name="run_vanilla_option_batch_pricing",
+        native_method_name="run_vanilla_option_grouped_batch_pricing",
         native_execution_input=native_execution_input,
-        result_parser=JaniformVanillaOptionBatchPricingResult.from_mapping,
-        entrypoint="JaniformModel.price_options",
-        result_field_path="batch_pricing_result",
+        result_parser=JaniformVanillaOptionGroupedBatchPricingResult.from_mapping,
+        entrypoint="JaniformModel.price_option_groups",
+        result_field_path="grouped_batch_pricing_result",
+        progress=progress,
+        progress_detail="running grouped batch pricing workflow",
     )
 
 
 def _run_model_vanilla_option_surface_pricing(
     native_execution_input: dict[str, Any],
+    *,
+    progress: Optional[AbstractProgress] = None,
 ) -> JaniformVanillaOptionSurfacePricingResult:
     return _run_model_native_pricing_workflow(
         native_method_name="run_vanilla_option_surface_pricing",
@@ -1378,6 +1398,8 @@ def _run_model_vanilla_option_surface_pricing(
         result_parser=JaniformVanillaOptionSurfacePricingResult.from_mapping,
         entrypoint="JaniformModel.price_option_surface",
         result_field_path="surface_pricing_result",
+        progress=progress,
+        progress_detail="running surface pricing workflow",
     )
 
 
@@ -1388,6 +1410,8 @@ def _run_model_native_pricing_workflow(
     result_parser: Callable[..., Any],
     entrypoint: str,
     result_field_path: str,
+    progress: Optional[AbstractProgress] = None,
+    progress_detail: Optional[str] = None,
 ) -> Any:
     try:
         native = native_module()
@@ -1399,8 +1423,26 @@ def _run_model_native_pricing_workflow(
             context={"module_name": "janiform._native"},
         ) from e
 
+    native_progress_callback: Optional[Callable[[dict[str, Any]], None]] = None
+    if (
+        progress is not None
+        and progress_detail is not None
+        and not isinstance(progress, NullProgress)
+    ):
+        def native_progress_callback(raw_event: dict[str, Any]) -> None:
+            _update_cli_progress_from_pricing_native_event(
+                progress,
+                raw_event,
+                detail=progress_detail,
+            )
+
     try:
-        raw_run_result = getattr(native, native_method_name)(native_execution_input)
+        raw_run_result = _run_native_pricing_workflow_method(
+            native,
+            native_method_name=native_method_name,
+            native_execution_input=native_execution_input,
+            native_progress_callback=native_progress_callback,
+        )
     except Exception as e:
         if native_exception_matches(native, e, "PricingExecutionError"):
             raise _calibration_execution_error(
@@ -1432,6 +1474,52 @@ def _run_model_native_pricing_workflow(
             error_id=CALIBRATION_INTEGRATION_RESPONSE_ERROR_ID,
             context={"source_error_id": e.error_id},
         ) from e
+
+
+def _update_cli_progress_from_pricing_native_event(
+    progress: AbstractProgress,
+    raw_event: dict[str, Any],
+    *,
+    detail: str,
+) -> PricingProgressEvent:
+    event = pricing_progress_event_from_mapping(raw_event)
+
+    progress.update(
+        detail=detail,
+        subdetail=event.subdetail,
+        completed_units=event.completed_units,
+        total_units=event.total_units,
+    )
+
+    return event
+
+
+def _run_native_pricing_workflow_method(
+    native: Any,
+    *,
+    native_method_name: str,
+    native_execution_input: dict[str, Any],
+    native_progress_callback: Optional[Callable[[dict[str, Any]], None]],
+) -> Any:
+    match native_method_name:
+        case "run_vanilla_option_grouped_batch_pricing":
+            if native_progress_callback is None:
+                return native.run_vanilla_option_grouped_batch_pricing(native_execution_input)
+
+            return native.run_vanilla_option_grouped_batch_pricing_with_events(
+                native_execution_input,
+                native_progress_callback,
+            )
+        case "run_vanilla_option_surface_pricing":
+            if native_progress_callback is None:
+                return native.run_vanilla_option_surface_pricing(native_execution_input)
+
+            return native.run_vanilla_option_surface_pricing_with_events(
+                native_execution_input,
+                native_progress_callback,
+            )
+        case _:
+            raise RuntimeError(f"unsupported native pricing method: {native_method_name}")
 
 
 def _model_reference_price(model: JaniformModel) -> float:

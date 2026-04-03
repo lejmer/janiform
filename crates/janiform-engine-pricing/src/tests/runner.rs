@@ -1,8 +1,10 @@
 use crate::{
     AnchoredVanillaOptionPricingBoundaryInput, VanillaOptionPayoffConfiguration,
-    VanillaOptionPayoffType, VanillaOptionPricingIntervalFactors, VanillaOptionPricingMarketInputs,
-    VanillaOptionPricingRequest, infer_expected_news_loading_under_local_measure,
-    recover_pure_imaginary_log_moment_exponent, use_nested_transition_measure_for_local_request,
+    VanillaOptionPayoffType, VanillaOptionPricingExecutionInput,
+    VanillaOptionPricingIntervalFactors, VanillaOptionPricingMarketInputs,
+    VanillaOptionPricingOptionalOutputSelection, VanillaOptionPricingRequest,
+    infer_expected_news_loading_under_local_measure, recover_pure_imaginary_log_moment_exponent,
+    run_vanilla_option_pricing, use_nested_transition_measure_for_local_request,
 };
 use janiform_affine_oracle::sufficient_statistics::SufficientStatisticsExpectedIntervalStatistics;
 use janiform_foundations::complex_math::ComplexScalar;
@@ -11,7 +13,9 @@ use janiform_model_kernels::mean_reversion::{
     MeanReversionAnchorModel, MeanReversionBoundaryState, MeanReversionFittedParameters,
 };
 
-use super::support::valid_model_parameters;
+use crate::runner::resolve_local_transition_theta;
+
+use super::support::{disabled_boundary_input, valid_model_parameters};
 
 #[test]
 fn nested_transition_measure_detection_accepts_disabled_multi_interval_boundary() {
@@ -158,4 +162,93 @@ fn expected_news_loading_inference_short_circuits_when_activity_coupling_is_zero
     .expect("zero activity coupling should not require inferred loading");
 
     assert_eq!(expected_news_loading, 0.0);
+}
+
+#[test]
+fn multi_interval_pricing_accepts_zero_adjustment_nested_anchor_materialization() {
+    let mut model_parameters = valid_model_parameters();
+    model_parameters
+        .news_process_configuration
+        .known_component_mark_scales
+        .activity_coupling_scale = 0.0;
+    model_parameters
+        .news_process_configuration
+        .surprise_component_mark_scales
+        .activity_coupling_scale = 0.0;
+
+    let request = VanillaOptionPricingRequest::try_new(
+        VanillaOptionPricingMarketInputs::try_new(100.0, 100.0, 2.0, 0.02, 0.01)
+            .expect("market inputs should construct"),
+        VanillaOptionPayoffConfiguration {
+            payoff_type: VanillaOptionPayoffType::Call,
+        },
+        disabled_boundary_input(
+            1.0,
+            HawkesExcitationState {
+                y_plus_plus: 0.0,
+                y_plus_minus: 0.0,
+                y_minus_plus: 0.0,
+                y_minus_minus: 0.0,
+            },
+        ),
+        model_parameters,
+    )
+    .expect("pricing request should construct");
+
+    let execution_input = VanillaOptionPricingExecutionInput::try_new(
+        request,
+        vec![
+            VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
+                .expect("first interval factors should construct"),
+            VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
+                .expect("second interval factors should construct"),
+        ],
+        VanillaOptionPricingOptionalOutputSelection::default(),
+    )
+    .expect("execution input should construct");
+
+    let run_result =
+        run_vanilla_option_pricing(execution_input).expect("multi-interval pricing should succeed");
+
+    assert!(run_result.response.price.is_finite());
+    assert!(run_result.response.price >= 0.0);
+}
+
+#[test]
+fn local_transition_theta_short_circuits_to_zero_for_zero_adjustment_requests() {
+    let request = VanillaOptionPricingRequest::try_new(
+        VanillaOptionPricingMarketInputs::try_new(100.0, 100.0, 2.0, 0.02, 0.01)
+            .expect("market inputs should construct"),
+        VanillaOptionPayoffConfiguration {
+            payoff_type: VanillaOptionPayoffType::Call,
+        },
+        disabled_boundary_input(
+            1.0,
+            HawkesExcitationState {
+                y_plus_plus: 0.0,
+                y_plus_minus: 0.0,
+                y_minus_plus: 0.0,
+                y_minus_minus: 0.0,
+            },
+        ),
+        valid_model_parameters(),
+    )
+    .expect("pricing request should construct");
+
+    let interval_factors = VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
+        .expect("interval factors should construct");
+
+    let (theta, diagnostics) = resolve_local_transition_theta(
+        &request,
+        interval_factors,
+        request
+            .model_parameters
+            .nig_shared_plus_shift_configuration
+            .derive_driver_parameters()
+            .expect("driver parameters should derive"),
+    )
+    .expect("zero-adjustment request should resolve transition theta");
+
+    assert_eq!(theta, 0.0);
+    assert_eq!(diagnostics, None);
 }

@@ -12,12 +12,11 @@ from examples._shared import (
 from janiform.calibration import (
     CurrentStateEstimationRequest,
     JaniformModel,
+    JaniformVanillaOptionSurface,
 )
 from janiform.calibration.market_data import CalibrationTickDataColumnMapping
 from janiform.errors import JaniformExecutionError
-from janiform.pricing import (
-    VanillaOptionPayoffType,
-)
+from janiform.pricing import VanillaOptionPayoffType
 
 
 PRICE_COLUMN: Final[str] = "close"
@@ -80,6 +79,21 @@ def _format_float_axis(values: tuple[float, ...]) -> list[str]:
 
 def _fx_strikes_from_spot(spot: float) -> tuple[float, ...]:
     return tuple(spot + PIP_SIZE * pip_offset for pip_offset in STRIKE_OFFSETS_IN_PIPS)
+
+
+def _build_surface(
+    *,
+    spot: float,
+    strikes: tuple[float, ...],
+) -> JaniformVanillaOptionSurface:
+    return JaniformVanillaOptionSurface(
+        spot=spot,
+        strikes=strikes,
+        maturity_intervals=MATURITY_INTERVALS,
+        payoff_type=VanillaOptionPayoffType.CALL,
+        risk_free_rate=RISK_FREE_RATE,
+        dividend_yield=DIVIDEND_YIELD,
+    )
 
 
 def _status_grid_codes(
@@ -151,50 +165,34 @@ def main() -> None:
     inversion_status_rows: list[list[str]] = []
     pricing_failure_messages: list[str] = []
 
-    print("pricing surface nodes...")
+    surface = _build_surface(
+        spot=spot,
+        strikes=strikes,
+    )
 
-    for maturity_interval in MATURITY_INTERVALS:
-        price_row: list[float | None] = []
-        implied_volatility_row: list[float | None] = []
-        inversion_status_row: list[str] = []
-        first_failure_message_for_maturity: str | None = None
-
-        for strike in strikes:
-            try:
-                pricing_result = model.price_option(
-                    valuation_time_utc=valuation_time_utc,
-                    spot=spot,
-                    strike=strike,
-                    maturity_interval=maturity_interval,
-                    payoff_type=VanillaOptionPayoffType.CALL,
-                    risk_free_rate=RISK_FREE_RATE,
-                    dividend_yield=DIVIDEND_YIELD,
-                    observed_data=observed_data,
-                    silent=True,
-                )
-            except JaniformExecutionError as error:
-                price_row.append(None)
-                implied_volatility_row.append(None)
-                inversion_status_row.append("pricing_failed")
-                if first_failure_message_for_maturity is None:
-                    first_failure_message_for_maturity = (
-                        f"maturity {maturity_interval:.1f}, strike {strike:.5f}: {error}"
-                    )
-
-                continue
-
-            price_row.append(pricing_result.response.price)
-            implied_volatility_row.append(pricing_result.response.implied_volatility)
-            inversion_status_row.append(
-                pricing_result.response.implied_volatility_inversion_status.value
+    try:
+        pricing_result = model.price_option_surface(
+            valuation_time_utc=valuation_time_utc,
+            surface=surface,
+            observed_data=observed_data,
+        )
+        price_rows = [list(price_row) for price_row in pricing_result.price_grid]
+        implied_volatility_rows = [
+            list(implied_volatility_row)
+            for implied_volatility_row in pricing_result.implied_volatility_grid
+        ]
+        inversion_status_rows = [
+            [status.value for status in status_row]
+            for status_row in pricing_result.implied_volatility_inversion_status_grid
+        ]
+    except JaniformExecutionError as error:
+        for maturity_interval in MATURITY_INTERVALS:
+            price_rows.append([None for _strike in strikes])
+            implied_volatility_rows.append([None for _strike in strikes])
+            inversion_status_rows.append(["pricing_failed" for _strike in strikes])
+            pricing_failure_messages.append(
+                f"maturity {maturity_interval:.1f}: {error}"
             )
-
-        if first_failure_message_for_maturity is not None:
-            pricing_failure_messages.append(first_failure_message_for_maturity)
-
-        price_rows.append(price_row)
-        implied_volatility_rows.append(implied_volatility_row)
-        inversion_status_rows.append(inversion_status_row)
 
     has_any_implied_volatility_node = any(
         implied_volatility is not None

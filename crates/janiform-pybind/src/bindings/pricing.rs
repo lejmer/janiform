@@ -1,15 +1,20 @@
 use janiform::pricing::{
-    VanillaOptionBatchPricingExecutionInput, VanillaOptionPricingExecutionInput,
-    VanillaOptionPricingIntervalFactors, VanillaOptionPricingOptionalOutputSelection,
-    VanillaOptionPricingRequest, VanillaOptionSurfacePricingExecutionInput,
-    run_vanilla_option_batch_pricing as run_vanilla_option_batch_pricing_core,
+    PricingProgressEvent, VanillaOptionGroupedBatchPricingExecutionInput,
+    VanillaOptionPricingExecutionInput, VanillaOptionPricingIntervalFactors,
+    VanillaOptionPricingOptionalOutputSelection, VanillaOptionPricingRequest,
+    VanillaOptionSurfacePricingExecutionInput,
+    run_vanilla_option_grouped_batch_pricing as run_vanilla_option_grouped_batch_pricing_core,
+    run_vanilla_option_grouped_batch_pricing_with_observer as run_vanilla_option_grouped_batch_pricing_core_with_observer,
     run_vanilla_option_pricing as run_vanilla_option_pricing_core,
     run_vanilla_option_surface_pricing as run_vanilla_option_surface_pricing_core,
+    run_vanilla_option_surface_pricing_with_observer as run_vanilla_option_surface_pricing_core_with_observer,
 };
 use pyo3::prelude::{Bound, Py, PyResult, Python};
 use pyo3::types::PyAny;
 use pyo3::types::{PyModule, PyModuleMethods};
 use pyo3::{pyfunction, wrap_pyfunction};
+use serde_json::Value;
+use std::sync::{Arc, Mutex};
 
 use crate::PricingExecutionError;
 use crate::python_value::{json_value_to_py_object, py_any_to_json_value};
@@ -73,24 +78,92 @@ fn run_vanilla_option_pricing(
 }
 
 #[pyfunction]
-fn run_vanilla_option_batch_pricing(
+fn run_vanilla_option_grouped_batch_pricing(
     py: Python<'_>,
     execution_input: &Bound<'_, PyAny>,
 ) -> PyResult<Py<PyAny>> {
-    let execution_input: VanillaOptionBatchPricingExecutionInput =
+    let execution_input: VanillaOptionGroupedBatchPricingExecutionInput =
         serde_json::from_value(py_any_to_json_value(execution_input)?).map_err(|source| {
             PricingExecutionError::new_err(format!(
-                "failed to deserialize vanilla option batch pricing execution input: {source}"
+                "failed to deserialize vanilla option grouped batch pricing execution input: {source}"
             ))
         })?;
 
     let run_result = py
-        .allow_threads(|| run_vanilla_option_batch_pricing_core(execution_input))
+        .allow_threads(|| run_vanilla_option_grouped_batch_pricing_core(execution_input))
         .map_err(|source| PricingExecutionError::new_err(source.to_string()))?;
 
     let serialized_run_result = serde_json::to_value(&run_result).map_err(|source| {
         PricingExecutionError::new_err(format!(
-            "failed to serialize vanilla option batch pricing run result: {source}"
+            "failed to serialize vanilla option grouped batch pricing run result: {source}"
+        ))
+    })?;
+
+    json_value_to_py_object(py, &serialized_run_result)
+}
+
+#[pyfunction]
+#[pyo3(signature = (execution_input, event_callback))]
+fn run_vanilla_option_grouped_batch_pricing_with_events(
+    py: Python<'_>,
+    execution_input: &Bound<'_, PyAny>,
+    event_callback: &Bound<'_, PyAny>,
+) -> PyResult<Py<PyAny>> {
+    let execution_input: VanillaOptionGroupedBatchPricingExecutionInput =
+        serde_json::from_value(py_any_to_json_value(execution_input)?).map_err(|source| {
+            PricingExecutionError::new_err(format!(
+                "failed to deserialize vanilla option grouped batch pricing execution input: {source}"
+            ))
+        })?;
+
+    let event_callback = event_callback.clone().unbind();
+
+    let callback_error_message = Arc::new(Mutex::new(None::<String>));
+    let callback_error_message_for_observer = Arc::clone(&callback_error_message);
+
+    let run_result = py
+        .allow_threads(move || {
+            let mut observer = |event: PricingProgressEvent| {
+                if callback_error_message_for_observer
+                    .lock()
+                    .ok()
+                    .and_then(|guard| guard.clone())
+                    .is_some()
+                {
+                    return;
+                }
+
+                Python::with_gil(|py| {
+                    let callback_result = python_pricing_progress_event_to_py_object(py, &event)
+                        .and_then(|payload| event_callback.call1(py, (payload,)).map(|_| ()));
+                    if let Err(source) = callback_result {
+                        if let Ok(mut guard) = callback_error_message_for_observer.lock() {
+                            if guard.is_none() {
+                                *guard = Some(source.to_string());
+                            }
+                        }
+                    }
+                });
+            };
+
+            run_vanilla_option_grouped_batch_pricing_core_with_observer(
+                execution_input,
+                Some(&mut observer),
+            )
+        })
+        .map_err(|source| PricingExecutionError::new_err(source.to_string()))?;
+
+    if let Ok(guard) = callback_error_message.lock() {
+        if let Some(error_message) = guard.as_ref() {
+            return Err(PricingExecutionError::new_err(format!(
+                "pricing progress callback failed: {error_message}"
+            )));
+        }
+    }
+
+    let serialized_run_result = serde_json::to_value(&run_result).map_err(|source| {
+        PricingExecutionError::new_err(format!(
+            "failed to serialize vanilla option grouped batch pricing run result: {source}"
         ))
     })?;
 
@@ -122,12 +195,108 @@ fn run_vanilla_option_surface_pricing(
     json_value_to_py_object(py, &serialized_run_result)
 }
 
+#[pyfunction]
+#[pyo3(signature = (execution_input, event_callback))]
+fn run_vanilla_option_surface_pricing_with_events(
+    py: Python<'_>,
+    execution_input: &Bound<'_, PyAny>,
+    event_callback: &Bound<'_, PyAny>,
+) -> PyResult<Py<PyAny>> {
+    let execution_input: VanillaOptionSurfacePricingExecutionInput =
+        serde_json::from_value(py_any_to_json_value(execution_input)?).map_err(|source| {
+            PricingExecutionError::new_err(format!(
+                "failed to deserialize vanilla option surface pricing execution input: {source}"
+            ))
+        })?;
+    let event_callback = event_callback.clone().unbind();
+
+    let callback_error_message = Arc::new(Mutex::new(None::<String>));
+    let callback_error_message_for_observer = Arc::clone(&callback_error_message);
+
+    let run_result = py
+        .allow_threads(move || {
+            let mut observer = |event: PricingProgressEvent| {
+                if callback_error_message_for_observer
+                    .lock()
+                    .ok()
+                    .and_then(|guard| guard.clone())
+                    .is_some()
+                {
+                    return;
+                }
+
+                Python::with_gil(|py| {
+                    let callback_result = python_pricing_progress_event_to_py_object(py, &event)
+                        .and_then(|payload| event_callback.call1(py, (payload,)).map(|_| ()));
+                    if let Err(source) = callback_result {
+                        if let Ok(mut guard) = callback_error_message_for_observer.lock() {
+                            if guard.is_none() {
+                                *guard = Some(source.to_string());
+                            }
+                        }
+                    }
+                });
+            };
+
+            run_vanilla_option_surface_pricing_core_with_observer(
+                execution_input,
+                Some(&mut observer),
+            )
+        })
+        .map_err(|source| PricingExecutionError::new_err(source.to_string()))?;
+
+    if let Ok(guard) = callback_error_message.lock() {
+        if let Some(error_message) = guard.as_ref() {
+            return Err(PricingExecutionError::new_err(format!(
+                "pricing progress callback failed: {error_message}"
+            )));
+        }
+    }
+
+    let serialized_run_result = serde_json::to_value(&run_result).map_err(|source| {
+        PricingExecutionError::new_err(format!(
+            "failed to serialize vanilla option surface pricing run result: {source}"
+        ))
+    })?;
+
+    json_value_to_py_object(py, &serialized_run_result)
+}
+
+fn python_pricing_progress_event_to_py_object(
+    py: Python<'_>,
+    event: &PricingProgressEvent,
+) -> PyResult<Py<PyAny>> {
+    let serialized_event = match serde_json::to_value(event).map_err(|source| {
+        PricingExecutionError::new_err(format!(
+            "failed to serialize pricing progress event: {source}"
+        ))
+    })? {
+        Value::Object(object) => Value::Object(object),
+        _ => {
+            return Err(PricingExecutionError::new_err(
+                "failed to serialize pricing progress event: expected a JSON object",
+            ));
+        }
+    };
+
+    json_value_to_py_object(py, &serialized_event)
+}
+
 pub(super) fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(run_vanilla_option_pricing, module)?)?;
-    module.add_function(wrap_pyfunction!(run_vanilla_option_batch_pricing, module)?)?;
+    module.add_function(wrap_pyfunction!(run_vanilla_option_grouped_batch_pricing, module)?)?;
+    module.add_function(wrap_pyfunction!(
+        run_vanilla_option_grouped_batch_pricing_with_events,
+        module
+    )?)?;
     module.add_function(wrap_pyfunction!(
         run_vanilla_option_surface_pricing,
         module
     )?)?;
+    module.add_function(wrap_pyfunction!(
+        run_vanilla_option_surface_pricing_with_events,
+        module
+    )?)?;
+
     Ok(())
 }

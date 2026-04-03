@@ -290,6 +290,14 @@ def require_integer(
     error_factory: ValidationErrorFactory,
 ) -> int:
     raw_value = require_field(mapping, field_name, field_path, error_factory)
+    return require_integer_value(raw_value, field_path, error_factory)
+
+
+def require_integer_value(
+    raw_value: Any,
+    field_path: str,
+    error_factory: ValidationErrorFactory,
+) -> int:
     if not isinstance(raw_value, int) or isinstance(raw_value, bool):
         raise error_factory(field_path, "must be an integer")
 
@@ -303,6 +311,15 @@ def require_non_negative_integer(
     error_factory: ValidationErrorFactory,
 ) -> int:
     value = require_integer(mapping, field_name, field_path, error_factory)
+    return require_non_negative_integer_value(value, field_path, error_factory)
+
+
+def require_non_negative_integer_value(
+    raw_value: Any,
+    field_path: str,
+    error_factory: ValidationErrorFactory,
+) -> int:
+    value = require_integer_value(raw_value, field_path, error_factory)
     if value < 0:
         raise error_factory(field_path, "must be non-negative")
 
@@ -316,10 +333,52 @@ def require_positive_integer(
     error_factory: ValidationErrorFactory,
 ) -> int:
     value = require_integer(mapping, field_name, field_path, error_factory)
+    return require_positive_integer_value(value, field_path, error_factory)
+
+
+def require_positive_integer_value(
+    raw_value: Any,
+    field_path: str,
+    error_factory: ValidationErrorFactory,
+) -> int:
+    value = require_integer_value(raw_value, field_path, error_factory)
     if value <= 0:
         raise error_factory(field_path, "must be strictly positive")
 
     return value
+
+
+def require_optional_integer_value(
+    raw_value: Any,
+    field_path: str,
+    error_factory: ValidationErrorFactory,
+) -> Optional[int]:
+    if raw_value is None:
+        return None
+
+    return require_integer_value(raw_value, field_path, error_factory)
+
+
+def require_optional_non_negative_integer_value(
+    raw_value: Any,
+    field_path: str,
+    error_factory: ValidationErrorFactory,
+) -> Optional[int]:
+    if raw_value is None:
+        return None
+
+    return require_non_negative_integer_value(raw_value, field_path, error_factory)
+
+
+def require_optional_positive_integer_value(
+    raw_value: Any,
+    field_path: str,
+    error_factory: ValidationErrorFactory,
+) -> Optional[int]:
+    if raw_value is None:
+        return None
+
+    return require_positive_integer_value(raw_value, field_path, error_factory)
 
 
 def require_finite_scalar(

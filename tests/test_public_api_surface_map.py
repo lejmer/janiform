@@ -628,20 +628,21 @@ def test_calibration_public_symbols_live_in_calibration_module() -> None:
         "CurrentStateEstimationRequest",
         "CurrentStateEstimationResult",
         "DEFAULT_HIGH_LEVEL_KNOWN_NEWS_PRESET_NAME",
+        "JaniformGroupedVanillaOptionBatch",
+        "JaniformGroupedVanillaOptionGroup",
         "KnownNewsExplicitConfiguration",
         "KnownNewsPresetReference",
         "JaniformEstimator",
         "JaniformFitReport",
         "JaniformModel",
         "JaniformSimulationResult",
-        "JaniformVanillaOptionBatch",
-        "JaniformVanillaOptionBatchPricingCalibrationHooks",
-        "JaniformVanillaOptionBatchPricingResult",
-        "JaniformVanillaOptionBatchPricingRunDiagnostics",
+        "JaniformVanillaOptionGroupedBatchPricingGroupResult",
+        "JaniformVanillaOptionGroupedBatchPricingResult",
+        "JaniformVanillaOptionMaturityIntervalSummary",
+        "JaniformVanillaOptionMaturityPricingEngineKind",
+        "JaniformVanillaOptionMaturitySummary",
         "JaniformVanillaOptionSurface",
-        "JaniformVanillaOptionSurfacePricingCalibrationHooks",
         "JaniformVanillaOptionSurfacePricingResult",
-        "JaniformVanillaOptionSurfacePricingRunDiagnostics",
         "MarketDataCalibrationRequest",
         "MarketProfileReference",
         "PresetRegistry",
@@ -679,18 +680,19 @@ def test_calibration_fit_public_submodule_is_supported_domain_import() -> None:
     assert set(calibration_fit_module.__all__) == {
         "CurrentStateEstimationRequest",
         "CurrentStateEstimationResult",
+        "JaniformGroupedVanillaOptionBatch",
+        "JaniformGroupedVanillaOptionGroup",
         "JaniformEstimator",
         "JaniformFitReport",
         "JaniformModel",
         "JaniformSimulationResult",
-        "JaniformVanillaOptionBatch",
-        "JaniformVanillaOptionBatchPricingCalibrationHooks",
-        "JaniformVanillaOptionBatchPricingResult",
-        "JaniformVanillaOptionBatchPricingRunDiagnostics",
+        "JaniformVanillaOptionGroupedBatchPricingGroupResult",
+        "JaniformVanillaOptionGroupedBatchPricingResult",
+        "JaniformVanillaOptionMaturityIntervalSummary",
+        "JaniformVanillaOptionMaturityPricingEngineKind",
+        "JaniformVanillaOptionMaturitySummary",
         "JaniformVanillaOptionSurface",
-        "JaniformVanillaOptionSurfacePricingCalibrationHooks",
         "JaniformVanillaOptionSurfacePricingResult",
-        "JaniformVanillaOptionSurfacePricingRunDiagnostics",
     }
 
 
@@ -709,14 +711,15 @@ def test_calibration_fit_public_ownership_submodules_are_supported_domain_import
         "JaniformSimulationResult",
     }
     assert set(calibration_fit_pricing_module.__all__) == {
-        "JaniformVanillaOptionBatch",
-        "JaniformVanillaOptionBatchPricingCalibrationHooks",
-        "JaniformVanillaOptionBatchPricingResult",
-        "JaniformVanillaOptionBatchPricingRunDiagnostics",
+        "JaniformGroupedVanillaOptionBatch",
+        "JaniformGroupedVanillaOptionGroup",
+        "JaniformVanillaOptionGroupedBatchPricingGroupResult",
+        "JaniformVanillaOptionGroupedBatchPricingResult",
+        "JaniformVanillaOptionMaturityIntervalSummary",
+        "JaniformVanillaOptionMaturityPricingEngineKind",
+        "JaniformVanillaOptionMaturitySummary",
         "JaniformVanillaOptionSurface",
-        "JaniformVanillaOptionSurfacePricingCalibrationHooks",
         "JaniformVanillaOptionSurfacePricingResult",
-        "JaniformVanillaOptionSurfacePricingRunDiagnostics",
     }
     assert set(calibration_fit_report_module.__all__) == {"JaniformFitReport"}
     assert set(calibration_fit_state_estimation_module.__all__) == {
@@ -991,8 +994,8 @@ def test_calibration_root_and_public_ownership_submodules_share_supported_symbol
     assert calibration_module.JaniformModel is calibration_fit_model_module.JaniformModel
     assert calibration_module.JaniformFitReport is calibration_fit_report_module.JaniformFitReport
     assert (
-        calibration_module.JaniformVanillaOptionBatch
-        is calibration_fit_pricing_module.JaniformVanillaOptionBatch
+        calibration_module.JaniformGroupedVanillaOptionBatch
+        is calibration_fit_pricing_module.JaniformGroupedVanillaOptionBatch
     )
     assert (
         calibration_module.JaniformVanillaOptionSurface
