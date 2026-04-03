@@ -7,6 +7,7 @@ use janiform_engine_pricing::{
     intraday_black_scholes_log_return_characteristic_function as black_scholes_log_return_characteristic_function,
     intraday_black_scholes_no_arbitrage_price_bounds as no_arbitrage_price_bounds,
     intraday_black_scholes_price as black_scholes_price,
+    INTRADAY_PRICING_HOURS_PER_YEAR,
     FourierInversionContour, FourierInversionDiagnostics, FourierInversionEngineSettings,
     FourierInversionIntegrationStabilityControls, FourierInversionNumericQualityDiagnostics,
     FourierInversionNumericQualityGate, FourierInversionNumericSettings,
@@ -655,10 +656,11 @@ fn pricing_sanity_bounds_and_pathology_flags_hold_for_benchmark_fixture() {
         assert_eq!(call_case.market_inputs, put_case.market_inputs);
 
         let market_inputs = call_case.market_inputs;
-        let discounted_spot = market_inputs.spot
-            * (-market_inputs.dividend_yield * market_inputs.maturity_interval).exp();
-        let discounted_strike = market_inputs.strike
-            * (-market_inputs.risk_free_rate * market_inputs.maturity_interval).exp();
+        let maturity_year_fraction = market_inputs.maturity_interval / INTRADAY_PRICING_HOURS_PER_YEAR;
+        let discounted_spot =
+            market_inputs.spot * (-market_inputs.dividend_yield * maturity_year_fraction).exp();
+        let discounted_strike =
+            market_inputs.strike * (-market_inputs.risk_free_rate * maturity_year_fraction).exp();
         let expected_parity_gap = discounted_spot - discounted_strike;
         let observed_parity_gap = call_price - put_price;
 

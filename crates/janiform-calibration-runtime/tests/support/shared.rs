@@ -10,6 +10,7 @@ pub(crate) use std::time::{SystemTime, UNIX_EPOCH};
 pub(crate) use chrono::{TimeZone, Utc};
 pub(crate) use janiform_calibration_artifacts::*;
 pub(crate) use janiform_calibration_runtime::*;
+pub(crate) use janiform_foundations::complex_math::ComplexScalar;
 pub(crate) use janiform_engine_pricing::{
     intraday_black_scholes_log_return_characteristic_function as black_scholes_log_return_characteristic_function,
     VanillaOptionPricingCalibrationHooks, VanillaOptionPricingMarketInputs,
