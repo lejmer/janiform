@@ -48,6 +48,8 @@ fn pricing_run_output_hooks_are_directly_consumable_by_calibration_adapter() {
             0.55,
         )
         .expect("response diagnostics should construct"),
+        Some(0.2),
+        janiform_engine_pricing::VanillaOptionImpliedVolatilityInversionStatus::Succeeded,
     )
     .expect("response should construct");
 

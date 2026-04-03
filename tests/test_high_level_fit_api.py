@@ -58,7 +58,10 @@ from janiform.mean_reversion import (
     MeanReversionBoundaryState,
     MeanReversionFittedParameters,
 )
-from janiform.pricing import VanillaOptionPayoffType
+from janiform.pricing import (
+    VanillaOptionImpliedVolatilityInversionStatus,
+    VanillaOptionPayoffType,
+)
 from janiform.seasonality import IntradaySmoothingKernel, SessionFilter
 from janiform.simulation import SeededTickEventSide, SeededTickEventStateSnapshotCapture
 from tests.support.calibration import (
@@ -2748,6 +2751,11 @@ def test_high_level_model_price_options_dispatches_through_batch_pricing_runner(
         risk_free_rates=(0.01, 0.01),
         dividend_yields=(0.0, 0.0),
         prices=(10.0, 11.0),
+        implied_volatilities=(0.2, 0.25),
+        implied_volatility_inversion_statuses=(
+            VanillaOptionImpliedVolatilityInversionStatus.SUCCEEDED,
+            VanillaOptionImpliedVolatilityInversionStatus.SUCCEEDED,
+        ),
         forward_prices=(100.5, 101.0),
         discount_factors=(0.99, 0.98),
         boundary_state_norms=(0.0, 0.0),
@@ -2802,6 +2810,17 @@ def test_high_level_model_price_option_surface_dispatches_through_surface_pricin
         risk_free_rate=0.01,
         dividend_yield=0.0,
         price_grid=((10.0, 8.0), (11.0, 9.0)),
+        implied_volatility_grid=((0.2, 0.18), (0.24, 0.21)),
+        implied_volatility_inversion_status_grid=(
+            (
+                VanillaOptionImpliedVolatilityInversionStatus.SUCCEEDED,
+                VanillaOptionImpliedVolatilityInversionStatus.SUCCEEDED,
+            ),
+            (
+                VanillaOptionImpliedVolatilityInversionStatus.SUCCEEDED,
+                VanillaOptionImpliedVolatilityInversionStatus.SUCCEEDED,
+            ),
+        ),
         forward_price_grid=((100.5, 100.5), (101.0, 101.0)),
         discount_factor_grid=((0.99, 0.99), (0.98, 0.98)),
         boundary_state_norm_grid=((0.0, 0.0), (0.0, 0.0)),
@@ -2886,6 +2905,13 @@ def test_high_level_model_price_options_matches_single_option_engine_on_shared_n
         )
 
         assert batch_result.prices[node_index] == pytest.approx(single_result.response.price)
+        assert batch_result.implied_volatilities[node_index] == pytest.approx(
+            cast(float, single_result.response.implied_volatility)
+        )
+        assert (
+            batch_result.implied_volatility_inversion_statuses[node_index]
+            is single_result.response.implied_volatility_inversion_status
+        )
         assert batch_result.forward_prices[node_index] == pytest.approx(
             single_result.response.diagnostics.forward_price
         )
@@ -2966,6 +2992,13 @@ def test_high_level_model_price_option_surface_matches_single_option_engine_on_s
 
             assert surface_result.price_grid[maturity_index][strike_index] == pytest.approx(
                 single_result.response.price
+            )
+            assert surface_result.implied_volatility_grid[maturity_index][strike_index] == pytest.approx(
+                cast(float, single_result.response.implied_volatility)
+            )
+            assert (
+                surface_result.implied_volatility_inversion_status_grid[maturity_index][strike_index]
+                is single_result.response.implied_volatility_inversion_status
             )
             assert surface_result.forward_price_grid[maturity_index][strike_index] == pytest.approx(
                 single_result.response.diagnostics.forward_price

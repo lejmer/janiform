@@ -19,6 +19,7 @@ from janiform.pricing import (
     MeanReversionBoundaryState,
     MeanReversionFittedParameters,
     NigSharedPlusShiftConfiguration,
+    VanillaOptionImpliedVolatilityInversionStatus,
     VanillaOptionPayoffConfiguration,
     VanillaOptionPayoffType,
     VanillaOptionPricingDiagnostics,
@@ -131,6 +132,8 @@ def test_vanilla_option_response_model_construction_and_roundtrip() -> None:
             maturity_interval=0.5,
             boundary_state_norm=0.55,
         ),
+        implied_volatility=0.2,
+        implied_volatility_inversion_status=VanillaOptionImpliedVolatilityInversionStatus.SUCCEEDED,
     )
 
     serialized_response = serialize_vanilla_option_pricing_response(response)
@@ -138,6 +141,7 @@ def test_vanilla_option_response_model_construction_and_roundtrip() -> None:
 
     assert deserialized_response == response
     assert json.loads(serialized_response)["price"] == pytest.approx(12.5)
+    assert json.loads(serialized_response)["implied_volatility"] == pytest.approx(0.2)
 
 
 def test_vanilla_option_request_rejects_incomplete_payload_with_structured_error() -> None:
@@ -209,6 +213,17 @@ def test_vanilla_option_response_rejects_negative_price_with_structured_error() 
     assert captured_error.value.failure.error_id == "pricing.validation.contract"
     assert captured_error.value.failure.field_path == "price"
     assert captured_error.value.failure.message == "must be non-negative"
+
+
+def test_vanilla_option_response_rejects_missing_implied_volatility_for_successful_status() -> None:
+    response_payload = _valid_response_payload()
+    response_payload["implied_volatility"] = None
+
+    with pytest.raises(VanillaOptionPricingValidationError) as captured_error:
+        validate_vanilla_option_pricing_response(response_payload)
+
+    assert captured_error.value.failure.field_path == "vanilla_option_pricing_response.implied_volatility"
+    assert "must be present" in captured_error.value.failure.message
 
 
 def test_vanilla_option_pricing_execution_input_keeps_native_hourly_factor_contract() -> None:
@@ -379,6 +394,11 @@ def test_run_vanilla_option_pricing_executes_native_workflow_with_optional_outpu
 
     assert isinstance(run_result, VanillaOptionPricingRunResult)
     assert run_result.response.price >= 0.0
+    assert run_result.response.implied_volatility is not None
+    assert (
+        run_result.response.implied_volatility_inversion_status
+        is VanillaOptionImpliedVolatilityInversionStatus.SUCCEEDED
+    )
     assert run_result.response.diagnostics.forward_price > 0.0
     assert run_result.run_diagnostics is not None
     assert run_result.run_diagnostics.transform is not None
@@ -546,6 +566,8 @@ def _valid_response_payload() -> dict[str, Any]:
             "maturity_interval": 0.5,
             "boundary_state_norm": 0.55,
         },
+        "implied_volatility": 0.2,
+        "implied_volatility_inversion_status": "succeeded",
     }
 
 

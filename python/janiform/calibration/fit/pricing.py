@@ -20,7 +20,11 @@ from ...contracts import (
     require_positive_finite_scalar,
     require_sequence,
 )
-from ...pricing import VanillaOptionPayoffType
+from ...pricing import (
+    VanillaOptionImpliedVolatilityInversionStatus,
+    VanillaOptionPayoffType,
+)
+from ...pricing.contracts import _validate_implied_volatility_inversion_outcome
 from .._errors import _calibration_error
 
 
@@ -270,6 +274,8 @@ class JaniformVanillaOptionBatchPricingResult(ContractModel):
     risk_free_rates: tuple[float, ...]
     dividend_yields: tuple[float, ...]
     prices: tuple[float, ...]
+    implied_volatilities: tuple[Optional[float], ...]
+    implied_volatility_inversion_statuses: tuple[VanillaOptionImpliedVolatilityInversionStatus, ...]
     forward_prices: tuple[float, ...]
     discount_factors: tuple[float, ...]
     boundary_state_norms: tuple[float, ...]
@@ -286,6 +292,16 @@ class JaniformVanillaOptionBatchPricingResult(ContractModel):
         _validate_aligned_node_count(self.risk_free_rates, node_count, field_path="risk_free_rates")
         _validate_aligned_node_count(self.dividend_yields, node_count, field_path="dividend_yields")
         _validate_aligned_node_count(self.prices, node_count, field_path="prices")
+        _validate_aligned_node_count(
+            self.implied_volatilities,
+            node_count,
+            field_path="implied_volatilities",
+        )
+        _validate_aligned_node_count(
+            self.implied_volatility_inversion_statuses,
+            node_count,
+            field_path="implied_volatility_inversion_statuses",
+        )
         _validate_aligned_node_count(self.forward_prices, node_count, field_path="forward_prices")
         _validate_aligned_node_count(
             self.discount_factors,
@@ -308,6 +324,13 @@ class JaniformVanillaOptionBatchPricingResult(ContractModel):
             raise _calibration_error(
                 "calibration_hooks",
                 f"must contain {node_count} aligned node values",
+            )
+
+        for node_index, implied_volatility in enumerate(self.implied_volatilities):
+            _validate_implied_volatility_inversion_outcome(
+                implied_volatility=implied_volatility,
+                implied_volatility_inversion_status=self.implied_volatility_inversion_statuses[node_index],
+                field_path=f"batch_pricing_result.node[{node_index}]",
             )
 
     @property
@@ -365,6 +388,16 @@ class JaniformVanillaOptionBatchPricingResult(ContractModel):
                 response,
                 field_name="prices",
                 field_path=f"{field_path}.response.prices",
+            ),
+            implied_volatilities=_tuple_of_optional_finite_floats(
+                response,
+                field_name="implied_volatilities",
+                field_path=f"{field_path}.response.implied_volatilities",
+            ),
+            implied_volatility_inversion_statuses=_tuple_of_implied_volatility_inversion_statuses(
+                response,
+                field_name="implied_volatility_inversion_statuses",
+                field_path=f"{field_path}.response.implied_volatility_inversion_statuses",
             ),
             forward_prices=_tuple_of_positive_floats(
                 response,
@@ -653,6 +686,11 @@ class JaniformVanillaOptionSurfacePricingResult(ContractModel):
     risk_free_rate: float
     dividend_yield: float
     price_grid: tuple[tuple[float, ...], ...]
+    implied_volatility_grid: tuple[tuple[Optional[float], ...], ...]
+    implied_volatility_inversion_status_grid: tuple[
+        tuple[VanillaOptionImpliedVolatilityInversionStatus, ...],
+        ...,
+    ]
     forward_price_grid: tuple[tuple[float, ...], ...]
     discount_factor_grid: tuple[tuple[float, ...], ...]
     boundary_state_norm_grid: tuple[tuple[float, ...], ...]
@@ -666,6 +704,16 @@ class JaniformVanillaOptionSurfacePricingResult(ContractModel):
 
         grid_shape = _grid_shape(self.price_grid, field_path="price_grid")
 
+        _validate_matching_grid_shape(
+            self.implied_volatility_grid,
+            grid_shape=grid_shape,
+            field_path="implied_volatility_grid",
+        )
+        _validate_matching_grid_shape(
+            self.implied_volatility_inversion_status_grid,
+            grid_shape=grid_shape,
+            field_path="implied_volatility_inversion_status_grid",
+        )
         _validate_matching_grid_shape(
             self.forward_price_grid,
             grid_shape=grid_shape,
@@ -701,6 +749,19 @@ class JaniformVanillaOptionSurfacePricingResult(ContractModel):
                 "calibration_hooks",
                 f"must have shape {expected_shape}",
             )
+
+        for maturity_index, implied_volatility_row in enumerate(self.implied_volatility_grid):
+            for strike_index, implied_volatility in enumerate(implied_volatility_row):
+                _validate_implied_volatility_inversion_outcome(
+                    implied_volatility=implied_volatility,
+                    implied_volatility_inversion_status=self.implied_volatility_inversion_status_grid[
+                        maturity_index
+                    ][strike_index],
+                    field_path=(
+                        "surface_pricing_result"
+                        f".node[{maturity_index}][{strike_index}]"
+                    ),
+                )
 
     @property
     def shape(self) -> tuple[int, int]:
@@ -762,6 +823,16 @@ class JaniformVanillaOptionSurfacePricingResult(ContractModel):
                 response,
                 field_name="price_grid",
                 field_path=f"{field_path}.response.price_grid",
+            ),
+            implied_volatility_grid=_grid_of_optional_finite_floats(
+                response,
+                field_name="implied_volatility_grid",
+                field_path=f"{field_path}.response.implied_volatility_grid",
+            ),
+            implied_volatility_inversion_status_grid=_grid_of_implied_volatility_inversion_statuses(
+                response,
+                field_name="implied_volatility_inversion_status_grid",
+                field_path=f"{field_path}.response.implied_volatility_inversion_status_grid",
             ),
             forward_price_grid=_grid_of_positive_floats(
                 response,
@@ -857,6 +928,27 @@ def _tuple_of_finite_floats(
     return tuple(normalized)
 
 
+def _tuple_of_optional_finite_floats(
+    raw_payload: dict[str, Any],
+    *,
+    field_name: str,
+    field_path: str,
+) -> tuple[Optional[float], ...]:
+    values = require_sequence(raw_payload, field_name, field_path, _calibration_error)
+    normalized: list[Optional[float]] = []
+    for value_index, value in enumerate(values):
+        normalized.append(
+            require_optional_finite_number(
+                {"value": value},
+                "value",
+                f"{field_path}[{value_index}]",
+                _calibration_error,
+            )
+        )
+
+    return tuple(normalized)
+
+
 def _tuple_of_payoff_types(
     raw_payload: dict[str, Any],
     *,
@@ -939,6 +1031,33 @@ def _tuple_of_optional_booleans(
     return tuple(normalized)
 
 
+def _tuple_of_implied_volatility_inversion_statuses(
+    raw_payload: dict[str, Any],
+    *,
+    field_name: str,
+    field_path: str,
+) -> tuple[VanillaOptionImpliedVolatilityInversionStatus, ...]:
+    values = require_sequence(raw_payload, field_name, field_path, _calibration_error)
+    normalized: list[VanillaOptionImpliedVolatilityInversionStatus] = []
+    for value_index, value in enumerate(values):
+        normalized.append(
+            require_str_enum_value(
+                value,
+                f"{field_path}[{value_index}]",
+                _calibration_error,
+                enum_type=VanillaOptionImpliedVolatilityInversionStatus,
+                allowed_values_message=(
+                    "must be one of: succeeded, "
+                    "price_below_no_arbitrage_lower_bound, "
+                    "price_equals_finite_upper_bound, "
+                    "price_above_finite_upper_bound"
+                ),
+            )
+        )
+
+    return tuple(normalized)
+
+
 def _grid_of_positive_floats(
     raw_payload: dict[str, Any],
     *,
@@ -979,6 +1098,25 @@ def _grid_of_finite_floats(
         field_path=field_path,
         scalar_parser=lambda value, location: require_finite_scalar(
             value,
+            location,
+            _calibration_error,
+        ),
+    )
+
+
+def _grid_of_optional_finite_floats(
+    raw_payload: dict[str, Any],
+    *,
+    field_name: str,
+    field_path: str,
+) -> tuple[tuple[Optional[float], ...], ...]:
+    return _grid_of_scalars(
+        raw_payload,
+        field_name=field_name,
+        field_path=field_path,
+        scalar_parser=lambda value, location: require_optional_finite_number(
+            {"value": value},
+            "value",
             location,
             _calibration_error,
         ),
@@ -1035,6 +1173,31 @@ def _grid_of_optional_booleans(
             value,
             location,
             _calibration_error,
+        ),
+    )
+
+
+def _grid_of_implied_volatility_inversion_statuses(
+    raw_payload: dict[str, Any],
+    *,
+    field_name: str,
+    field_path: str,
+) -> tuple[tuple[VanillaOptionImpliedVolatilityInversionStatus, ...], ...]:
+    return _grid_of_scalars(
+        raw_payload,
+        field_name=field_name,
+        field_path=field_path,
+        scalar_parser=lambda value, location: require_str_enum_value(
+            value,
+            location,
+            _calibration_error,
+            enum_type=VanillaOptionImpliedVolatilityInversionStatus,
+            allowed_values_message=(
+                "must be one of: succeeded, "
+                "price_below_no_arbitrage_lower_bound, "
+                "price_equals_finite_upper_bound, "
+                "price_above_finite_upper_bound"
+            ),
         ),
     )
 

@@ -222,6 +222,8 @@ fn vanilla_option_response_roundtrip_serialization_preserves_contract_fields() {
         12.4,
         VanillaOptionPricingDiagnostics::try_new(104.8, 0.97, 0.5, 0.4)
             .expect("diagnostics should construct"),
+        Some(0.2),
+        crate::VanillaOptionImpliedVolatilityInversionStatus::Succeeded,
     )
     .expect("response should construct");
 
@@ -300,8 +302,13 @@ fn vanilla_option_response_rejects_invalid_price_with_structured_error() {
     let diagnostics = VanillaOptionPricingDiagnostics::try_new(104.8, 0.97, 0.5, 0.4)
         .expect("diagnostics should construct");
 
-    let error = VanillaOptionPricingResponse::try_new(-0.01, diagnostics)
-        .expect_err("negative option prices must fail response validation");
+    let error = VanillaOptionPricingResponse::try_new(
+        -0.01,
+        diagnostics,
+        Some(0.2),
+        crate::VanillaOptionImpliedVolatilityInversionStatus::Succeeded,
+    )
+    .expect_err("negative option prices must fail response validation");
 
     assert!(matches!(
         error,
@@ -313,14 +320,60 @@ fn vanilla_option_response_rejects_invalid_price_with_structured_error() {
 fn vanilla_option_response_rejects_invalid_diagnostics_with_structured_error() {
     let invalid_diagnostics = VanillaOptionPricingDiagnostics::new(0.0, 0.97, 0.5, 0.4);
 
-    let error = VanillaOptionPricingResponse::try_new(1.0, invalid_diagnostics)
-        .expect_err("invalid diagnostics must fail response validation");
+    let error = VanillaOptionPricingResponse::try_new(
+        1.0,
+        invalid_diagnostics,
+        Some(0.2),
+        crate::VanillaOptionImpliedVolatilityInversionStatus::Succeeded,
+    )
+    .expect_err("invalid diagnostics must fail response validation");
 
     assert!(matches!(
         error,
         VanillaOptionPricingResponseError::InvalidDiagnostics {
             source: VanillaOptionPricingDiagnosticsError::InvalidForwardPrice { value }
         } if value == 0.0
+    ));
+}
+
+#[test]
+fn vanilla_option_response_rejects_missing_implied_volatility_for_successful_inversion() {
+    let diagnostics = VanillaOptionPricingDiagnostics::try_new(104.8, 0.97, 0.5, 0.4)
+        .expect("diagnostics should construct");
+
+    let error = VanillaOptionPricingResponse::try_new(
+        1.0,
+        diagnostics,
+        None,
+        crate::VanillaOptionImpliedVolatilityInversionStatus::Succeeded,
+    )
+    .expect_err("successful inversion status must include an implied volatility");
+
+    assert!(matches!(
+        error,
+        VanillaOptionPricingResponseError::MissingImpliedVolatilityForSuccessfulInversion
+    ));
+}
+
+#[test]
+fn vanilla_option_response_rejects_implied_volatility_for_failed_inversion() {
+    let diagnostics = VanillaOptionPricingDiagnostics::try_new(104.8, 0.97, 0.5, 0.4)
+        .expect("diagnostics should construct");
+
+    let error = VanillaOptionPricingResponse::try_new(
+        1.0,
+        diagnostics,
+        Some(0.2),
+        crate::VanillaOptionImpliedVolatilityInversionStatus::PriceAboveFiniteUpperBound,
+    )
+    .expect_err("failed inversion status must not carry an implied volatility");
+
+    assert!(matches!(
+        error,
+        VanillaOptionPricingResponseError::UnexpectedImpliedVolatilityForFailedInversion {
+            status:
+                crate::VanillaOptionImpliedVolatilityInversionStatus::PriceAboveFiniteUpperBound
+        }
     ));
 }
 

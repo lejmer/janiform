@@ -44,6 +44,7 @@ use super::contracts::{
     VanillaOptionPricingRunResultBuildError, build_vanilla_option_pricing_run_result,
 };
 use super::fourier::{FourierInversionPricingError, price_vanilla_option_via_fourier_inversion};
+use super::implied_volatility::invert_vanilla_option_implied_volatility;
 
 const OBSERVED_LOG_MOMENT_ARGUMENT_IMAGINARY: f64 = -1.0;
 const PURE_IMAGINARY_LOG_MOMENT_REAL_PART_TOLERANCE: f64 = 1.0e-8;
@@ -2075,8 +2076,19 @@ fn build_pricing_response(
     )
     .map_err(|source| VanillaOptionPricingRunError::InvalidResponseDiagnostics { source })?;
 
-    VanillaOptionPricingResponse::try_new(price, diagnostics)
-        .map_err(|source| VanillaOptionPricingRunError::InvalidResponse { source })
+    let implied_volatility_outcome = invert_vanilla_option_implied_volatility(
+        market_inputs,
+        pricing_request.payoff.payoff_type,
+        price,
+    );
+
+    VanillaOptionPricingResponse::try_new(
+        price,
+        diagnostics,
+        implied_volatility_outcome.implied_volatility,
+        implied_volatility_outcome.inversion_status,
+    )
+    .map_err(|source| VanillaOptionPricingRunError::InvalidResponse { source })
 }
 
 fn evaluate_pricing_log_return_characteristic_function(

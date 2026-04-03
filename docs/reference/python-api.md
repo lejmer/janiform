@@ -30,7 +30,8 @@ The supported fit ownership submodules also include:
 - `janiform.calibration.fit.state_estimation` for the public current-state estimation contracts
   used by `JaniformModel.estimate_current_state(...)`
 - `janiform.calibration.fit.pricing` for the public batch and surface pricing contracts used by
-  `JaniformModel.price_options(...)` and `JaniformModel.price_option_surface(...)`
+  `JaniformModel.price_options(...)` and `JaniformModel.price_option_surface(...)`, including
+  Janiform-computed implied-volatility fields on the returned pricing artifacts
 
 `JaniformModel` is the canonical high-level runtime surface for fitted models. In addition to
 `fit` persistence helpers, the main runtime entrypoints are:
@@ -85,6 +86,7 @@ Vanilla option pricing contracts and runtime entrypoints. Representative public 
 - `VanillaOptionPricingRequest`
 - `VanillaOptionPricingResponse`
 - `VanillaOptionPricingRunResult`
+- `VanillaOptionImpliedVolatilityInversionStatus`
 - `AnchoredVanillaOptionPricingBoundaryInput`
 - `run_vanilla_option_pricing`
 - `validate_vanilla_option_pricing_request`

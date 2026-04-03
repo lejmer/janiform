@@ -115,7 +115,8 @@ request contract.
 To price several nodes from the same fitted-model snapshot without writing a loop, use
 `model.price_options(...)` with `JaniformVanillaOptionBatch`, or use
 `model.price_option_surface(...)` with `JaniformVanillaOptionSurface` when your nodes form a
-strike-by-expiry grid.
+strike-by-expiry grid. Both workflows return Janiform prices together with Janiform-computed
+implied-volatility outputs.
 
 ## Related Example
 

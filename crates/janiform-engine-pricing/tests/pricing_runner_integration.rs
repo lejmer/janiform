@@ -1,6 +1,7 @@
 use janiform_engine_pricing::{
     AnchoredVanillaOptionPricingBoundaryInput, VanillaOptionBatchPricingExecutionInput,
-    VanillaOptionPayoffConfiguration, VanillaOptionPayoffType, VanillaOptionPricingExecutionInput,
+    VanillaOptionImpliedVolatilityInversionStatus, VanillaOptionPayoffConfiguration,
+    VanillaOptionPayoffType, VanillaOptionPricingExecutionInput,
     VanillaOptionPricingIntervalFactors, VanillaOptionPricingMarketInputs,
     VanillaOptionPricingModelParameters, VanillaOptionPricingOptionalOutputSelection,
     VanillaOptionPricingRequest, VanillaOptionPricingRunResult,
@@ -61,6 +62,11 @@ fn vanilla_option_pricing_runner_executes_public_workflow_with_optional_outputs(
 
     assert!(run_result.response.price.is_finite());
     assert!(run_result.response.price >= 0.0);
+    assert!(run_result.response.implied_volatility.is_some());
+    assert_eq!(
+        run_result.response.implied_volatility_inversion_status,
+        VanillaOptionImpliedVolatilityInversionStatus::Succeeded
+    );
     assert!(run_result.response.diagnostics.forward_price > 0.0);
     assert!(run_result.response.diagnostics.discount_factor > 0.0);
     assert!(run_result.response.diagnostics.boundary_state_norm >= 0.0);
@@ -283,6 +289,14 @@ fn vanilla_option_batch_pricing_matches_single_option_runner_on_shared_nodes() {
             single_result.response.price
         );
         assert_eq!(
+            batch_result.response.implied_volatilities[node_index],
+            single_result.response.implied_volatility
+        );
+        assert_eq!(
+            batch_result.response.implied_volatility_inversion_statuses[node_index],
+            single_result.response.implied_volatility_inversion_status
+        );
+        assert_eq!(
             batch_result.response.forward_prices[node_index],
             single_result.response.diagnostics.forward_price
         );
@@ -388,6 +402,16 @@ fn vanilla_option_surface_pricing_matches_single_option_runner_on_shared_grid() 
             assert_eq!(
                 surface_result.response.price_grid[maturity_index][strike_index],
                 single_result.response.price
+            );
+            assert_eq!(
+                surface_result.response.implied_volatility_grid[maturity_index][strike_index],
+                single_result.response.implied_volatility
+            );
+            assert_eq!(
+                surface_result
+                    .response
+                    .implied_volatility_inversion_status_grid[maturity_index][strike_index],
+                single_result.response.implied_volatility_inversion_status
             );
             assert_eq!(
                 surface_result.response.forward_price_grid[maturity_index][strike_index],

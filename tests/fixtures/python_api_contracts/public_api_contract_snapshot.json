@@ -288,6 +288,8 @@
             "risk_free_rates",
             "dividend_yields",
             "prices",
+            "implied_volatilities",
+            "implied_volatility_inversion_statuses",
             "forward_prices",
             "discount_factors",
             "boundary_state_norms",
@@ -295,7 +297,7 @@
             "calibration_hooks"
           ],
           "kind": "contract_model",
-          "signature": "(spot: 'float', strikes: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]', payoff_types: 'tuple[VanillaOptionPayoffType, ...]', risk_free_rates: 'tuple[float, ...]', dividend_yields: 'tuple[float, ...]', prices: 'tuple[float, ...]', forward_prices: 'tuple[float, ...]', discount_factors: 'tuple[float, ...]', boundary_state_norms: 'tuple[float, ...]', run_diagnostics: 'Optional[JaniformVanillaOptionBatchPricingRunDiagnostics]' = None, calibration_hooks: 'Optional[JaniformVanillaOptionBatchPricingCalibrationHooks]' = None) -> 'None'"
+          "signature": "(spot: 'float', strikes: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]', payoff_types: 'tuple[VanillaOptionPayoffType, ...]', risk_free_rates: 'tuple[float, ...]', dividend_yields: 'tuple[float, ...]', prices: 'tuple[float, ...]', implied_volatilities: 'tuple[Optional[float], ...]', implied_volatility_inversion_statuses: 'tuple[VanillaOptionImpliedVolatilityInversionStatus, ...]', forward_prices: 'tuple[float, ...]', discount_factors: 'tuple[float, ...]', boundary_state_norms: 'tuple[float, ...]', run_diagnostics: 'Optional[JaniformVanillaOptionBatchPricingRunDiagnostics]' = None, calibration_hooks: 'Optional[JaniformVanillaOptionBatchPricingCalibrationHooks]' = None) -> 'None'"
         },
         "JaniformVanillaOptionBatchPricingRunDiagnostics": {
           "field_names": [
@@ -341,6 +343,8 @@
             "risk_free_rate",
             "dividend_yield",
             "price_grid",
+            "implied_volatility_grid",
+            "implied_volatility_inversion_status_grid",
             "forward_price_grid",
             "discount_factor_grid",
             "boundary_state_norm_grid",
@@ -348,7 +352,7 @@
             "calibration_hooks"
           ],
           "kind": "contract_model",
-          "signature": "(spot: 'float', strikes: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]', payoff_type: 'VanillaOptionPayoffType', risk_free_rate: 'float', dividend_yield: 'float', price_grid: 'tuple[tuple[float, ...], ...]', forward_price_grid: 'tuple[tuple[float, ...], ...]', discount_factor_grid: 'tuple[tuple[float, ...], ...]', boundary_state_norm_grid: 'tuple[tuple[float, ...], ...]', run_diagnostics: 'Optional[JaniformVanillaOptionSurfacePricingRunDiagnostics]' = None, calibration_hooks: 'Optional[JaniformVanillaOptionSurfacePricingCalibrationHooks]' = None) -> 'None'"
+          "signature": "(spot: 'float', strikes: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]', payoff_type: 'VanillaOptionPayoffType', risk_free_rate: 'float', dividend_yield: 'float', price_grid: 'tuple[tuple[float, ...], ...]', implied_volatility_grid: 'tuple[tuple[Optional[float], ...], ...]', implied_volatility_inversion_status_grid: 'tuple[tuple[VanillaOptionImpliedVolatilityInversionStatus, ...], ...]', forward_price_grid: 'tuple[tuple[float, ...], ...]', discount_factor_grid: 'tuple[tuple[float, ...], ...]', boundary_state_norm_grid: 'tuple[tuple[float, ...], ...]', run_diagnostics: 'Optional[JaniformVanillaOptionSurfacePricingRunDiagnostics]' = None, calibration_hooks: 'Optional[JaniformVanillaOptionSurfacePricingCalibrationHooks]' = None) -> 'None'"
         },
         "JaniformVanillaOptionSurfacePricingRunDiagnostics": {
           "field_names": [
@@ -638,6 +642,8 @@
             "risk_free_rates",
             "dividend_yields",
             "prices",
+            "implied_volatilities",
+            "implied_volatility_inversion_statuses",
             "forward_prices",
             "discount_factors",
             "boundary_state_norms",
@@ -645,7 +651,7 @@
             "calibration_hooks"
           ],
           "kind": "contract_model",
-          "signature": "(spot: 'float', strikes: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]', payoff_types: 'tuple[VanillaOptionPayoffType, ...]', risk_free_rates: 'tuple[float, ...]', dividend_yields: 'tuple[float, ...]', prices: 'tuple[float, ...]', forward_prices: 'tuple[float, ...]', discount_factors: 'tuple[float, ...]', boundary_state_norms: 'tuple[float, ...]', run_diagnostics: 'Optional[JaniformVanillaOptionBatchPricingRunDiagnostics]' = None, calibration_hooks: 'Optional[JaniformVanillaOptionBatchPricingCalibrationHooks]' = None) -> 'None'"
+          "signature": "(spot: 'float', strikes: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]', payoff_types: 'tuple[VanillaOptionPayoffType, ...]', risk_free_rates: 'tuple[float, ...]', dividend_yields: 'tuple[float, ...]', prices: 'tuple[float, ...]', implied_volatilities: 'tuple[Optional[float], ...]', implied_volatility_inversion_statuses: 'tuple[VanillaOptionImpliedVolatilityInversionStatus, ...]', forward_prices: 'tuple[float, ...]', discount_factors: 'tuple[float, ...]', boundary_state_norms: 'tuple[float, ...]', run_diagnostics: 'Optional[JaniformVanillaOptionBatchPricingRunDiagnostics]' = None, calibration_hooks: 'Optional[JaniformVanillaOptionBatchPricingCalibrationHooks]' = None) -> 'None'"
         },
         "JaniformVanillaOptionBatchPricingRunDiagnostics": {
           "field_names": [
@@ -691,6 +697,8 @@
             "risk_free_rate",
             "dividend_yield",
             "price_grid",
+            "implied_volatility_grid",
+            "implied_volatility_inversion_status_grid",
             "forward_price_grid",
             "discount_factor_grid",
             "boundary_state_norm_grid",
@@ -698,7 +706,7 @@
             "calibration_hooks"
           ],
           "kind": "contract_model",
-          "signature": "(spot: 'float', strikes: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]', payoff_type: 'VanillaOptionPayoffType', risk_free_rate: 'float', dividend_yield: 'float', price_grid: 'tuple[tuple[float, ...], ...]', forward_price_grid: 'tuple[tuple[float, ...], ...]', discount_factor_grid: 'tuple[tuple[float, ...], ...]', boundary_state_norm_grid: 'tuple[tuple[float, ...], ...]', run_diagnostics: 'Optional[JaniformVanillaOptionSurfacePricingRunDiagnostics]' = None, calibration_hooks: 'Optional[JaniformVanillaOptionSurfacePricingCalibrationHooks]' = None) -> 'None'"
+          "signature": "(spot: 'float', strikes: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]', payoff_type: 'VanillaOptionPayoffType', risk_free_rate: 'float', dividend_yield: 'float', price_grid: 'tuple[tuple[float, ...], ...]', implied_volatility_grid: 'tuple[tuple[Optional[float], ...], ...]', implied_volatility_inversion_status_grid: 'tuple[tuple[VanillaOptionImpliedVolatilityInversionStatus, ...], ...]', forward_price_grid: 'tuple[tuple[float, ...], ...]', discount_factor_grid: 'tuple[tuple[float, ...], ...]', boundary_state_norm_grid: 'tuple[tuple[float, ...], ...]', run_diagnostics: 'Optional[JaniformVanillaOptionSurfacePricingRunDiagnostics]' = None, calibration_hooks: 'Optional[JaniformVanillaOptionSurfacePricingCalibrationHooks]' = None) -> 'None'"
         },
         "JaniformVanillaOptionSurfacePricingRunDiagnostics": {
           "field_names": [
@@ -818,6 +826,8 @@
             "risk_free_rates",
             "dividend_yields",
             "prices",
+            "implied_volatilities",
+            "implied_volatility_inversion_statuses",
             "forward_prices",
             "discount_factors",
             "boundary_state_norms",
@@ -825,7 +835,7 @@
             "calibration_hooks"
           ],
           "kind": "contract_model",
-          "signature": "(spot: 'float', strikes: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]', payoff_types: 'tuple[VanillaOptionPayoffType, ...]', risk_free_rates: 'tuple[float, ...]', dividend_yields: 'tuple[float, ...]', prices: 'tuple[float, ...]', forward_prices: 'tuple[float, ...]', discount_factors: 'tuple[float, ...]', boundary_state_norms: 'tuple[float, ...]', run_diagnostics: 'Optional[JaniformVanillaOptionBatchPricingRunDiagnostics]' = None, calibration_hooks: 'Optional[JaniformVanillaOptionBatchPricingCalibrationHooks]' = None) -> 'None'"
+          "signature": "(spot: 'float', strikes: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]', payoff_types: 'tuple[VanillaOptionPayoffType, ...]', risk_free_rates: 'tuple[float, ...]', dividend_yields: 'tuple[float, ...]', prices: 'tuple[float, ...]', implied_volatilities: 'tuple[Optional[float], ...]', implied_volatility_inversion_statuses: 'tuple[VanillaOptionImpliedVolatilityInversionStatus, ...]', forward_prices: 'tuple[float, ...]', discount_factors: 'tuple[float, ...]', boundary_state_norms: 'tuple[float, ...]', run_diagnostics: 'Optional[JaniformVanillaOptionBatchPricingRunDiagnostics]' = None, calibration_hooks: 'Optional[JaniformVanillaOptionBatchPricingCalibrationHooks]' = None) -> 'None'"
         },
         "JaniformVanillaOptionBatchPricingRunDiagnostics": {
           "field_names": [
@@ -871,6 +881,8 @@
             "risk_free_rate",
             "dividend_yield",
             "price_grid",
+            "implied_volatility_grid",
+            "implied_volatility_inversion_status_grid",
             "forward_price_grid",
             "discount_factor_grid",
             "boundary_state_norm_grid",
@@ -878,7 +890,7 @@
             "calibration_hooks"
           ],
           "kind": "contract_model",
-          "signature": "(spot: 'float', strikes: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]', payoff_type: 'VanillaOptionPayoffType', risk_free_rate: 'float', dividend_yield: 'float', price_grid: 'tuple[tuple[float, ...], ...]', forward_price_grid: 'tuple[tuple[float, ...], ...]', discount_factor_grid: 'tuple[tuple[float, ...], ...]', boundary_state_norm_grid: 'tuple[tuple[float, ...], ...]', run_diagnostics: 'Optional[JaniformVanillaOptionSurfacePricingRunDiagnostics]' = None, calibration_hooks: 'Optional[JaniformVanillaOptionSurfacePricingCalibrationHooks]' = None) -> 'None'"
+          "signature": "(spot: 'float', strikes: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]', payoff_type: 'VanillaOptionPayoffType', risk_free_rate: 'float', dividend_yield: 'float', price_grid: 'tuple[tuple[float, ...], ...]', implied_volatility_grid: 'tuple[tuple[Optional[float], ...], ...]', implied_volatility_inversion_status_grid: 'tuple[tuple[VanillaOptionImpliedVolatilityInversionStatus, ...], ...]', forward_price_grid: 'tuple[tuple[float, ...], ...]', discount_factor_grid: 'tuple[tuple[float, ...], ...]', boundary_state_norm_grid: 'tuple[tuple[float, ...], ...]', run_diagnostics: 'Optional[JaniformVanillaOptionSurfacePricingRunDiagnostics]' = None, calibration_hooks: 'Optional[JaniformVanillaOptionSurfacePricingCalibrationHooks]' = None) -> 'None'"
         },
         "JaniformVanillaOptionSurfacePricingRunDiagnostics": {
           "field_names": [
@@ -5488,6 +5500,7 @@
         "MeanReversionBoundaryState",
         "MeanReversionFittedParameters",
         "NigSharedPlusShiftConfiguration",
+        "VanillaOptionImpliedVolatilityInversionStatus",
         "VanillaOptionPayoffConfiguration",
         "VanillaOptionPayoffType",
         "VanillaOptionPricingCalibrationHooks",
@@ -5695,6 +5708,27 @@
           "kind": "contract_model",
           "signature": "(alpha: 'float', beta_0: 'float', delta: 'float', mu: 'float', delta_beta: 'float') -> 'None'"
         },
+        "VanillaOptionImpliedVolatilityInversionStatus": {
+          "kind": "enum",
+          "members": [
+            {
+              "name": "SUCCEEDED",
+              "value": "succeeded"
+            },
+            {
+              "name": "PRICE_BELOW_NO_ARBITRAGE_LOWER_BOUND",
+              "value": "price_below_no_arbitrage_lower_bound"
+            },
+            {
+              "name": "PRICE_EQUALS_FINITE_UPPER_BOUND",
+              "value": "price_equals_finite_upper_bound"
+            },
+            {
+              "name": "PRICE_ABOVE_FINITE_UPPER_BOUND",
+              "value": "price_above_finite_upper_bound"
+            }
+          ]
+        },
         "VanillaOptionPayoffConfiguration": {
           "field_names": [
             "payoff_type"
@@ -5794,10 +5828,12 @@
         "VanillaOptionPricingResponse": {
           "field_names": [
             "price",
-            "diagnostics"
+            "diagnostics",
+            "implied_volatility",
+            "implied_volatility_inversion_status"
           ],
           "kind": "contract_model",
-          "signature": "(price: 'float', diagnostics: 'VanillaOptionPricingDiagnostics') -> 'None'"
+          "signature": "(price: 'float', diagnostics: 'VanillaOptionPricingDiagnostics', implied_volatility: 'Optional[float]', implied_volatility_inversion_status: 'VanillaOptionImpliedVolatilityInversionStatus') -> 'None'"
         },
         "VanillaOptionPricingRunDiagnostics": {
           "field_names": [
@@ -5905,6 +5941,7 @@
         "MeanReversionBoundaryState",
         "MeanReversionFittedParameters",
         "NigSharedPlusShiftConfiguration",
+        "VanillaOptionImpliedVolatilityInversionStatus",
         "VanillaOptionPayoffConfiguration",
         "VanillaOptionPayoffType",
         "VanillaOptionPricingCalibrationHooks",
@@ -6122,6 +6159,27 @@
           "kind": "contract_model",
           "signature": "(alpha: 'float', beta_0: 'float', delta: 'float', mu: 'float', delta_beta: 'float') -> 'None'"
         },
+        "VanillaOptionImpliedVolatilityInversionStatus": {
+          "kind": "enum",
+          "members": [
+            {
+              "name": "SUCCEEDED",
+              "value": "succeeded"
+            },
+            {
+              "name": "PRICE_BELOW_NO_ARBITRAGE_LOWER_BOUND",
+              "value": "price_below_no_arbitrage_lower_bound"
+            },
+            {
+              "name": "PRICE_EQUALS_FINITE_UPPER_BOUND",
+              "value": "price_equals_finite_upper_bound"
+            },
+            {
+              "name": "PRICE_ABOVE_FINITE_UPPER_BOUND",
+              "value": "price_above_finite_upper_bound"
+            }
+          ]
+        },
         "VanillaOptionPayoffConfiguration": {
           "field_names": [
             "payoff_type"
@@ -6221,10 +6279,12 @@
         "VanillaOptionPricingResponse": {
           "field_names": [
             "price",
-            "diagnostics"
+            "diagnostics",
+            "implied_volatility",
+            "implied_volatility_inversion_status"
           ],
           "kind": "contract_model",
-          "signature": "(price: 'float', diagnostics: 'VanillaOptionPricingDiagnostics') -> 'None'"
+          "signature": "(price: 'float', diagnostics: 'VanillaOptionPricingDiagnostics', implied_volatility: 'Optional[float]', implied_volatility_inversion_status: 'VanillaOptionImpliedVolatilityInversionStatus') -> 'None'"
         },
         "VanillaOptionPricingRunDiagnostics": {
           "field_names": [

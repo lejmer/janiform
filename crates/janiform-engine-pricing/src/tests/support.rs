@@ -144,6 +144,8 @@ pub(super) fn build_reference_pricing_response(
             0.55,
         )
         .expect("reference diagnostics should construct"),
+        Some(0.2),
+        crate::VanillaOptionImpliedVolatilityInversionStatus::Succeeded,
     )
     .expect("reference response should construct")
 }

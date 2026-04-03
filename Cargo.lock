@@ -704,6 +704,7 @@ dependencies = [
  "janiform-model-kernels",
  "serde",
  "serde_json",
+ "statrs",
 ]
 
 [[package]]

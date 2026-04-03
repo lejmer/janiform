@@ -14,10 +14,10 @@ use super::runner::{
 };
 use super::{
     AnchoredPricingRecursionDiagnostics, AnchoredVanillaOptionPricingBoundaryInput,
-    VanillaOptionPayoffConfiguration, VanillaOptionPayoffType,
-    VanillaOptionPricingCalibrationHooks, VanillaOptionPricingModelParameters,
-    VanillaOptionPricingOptionalOutputSelection, VanillaOptionPricingRequest,
-    VanillaOptionPricingResponse, VanillaOptionPricingRunResult,
+    VanillaOptionImpliedVolatilityInversionStatus, VanillaOptionPayoffConfiguration,
+    VanillaOptionPayoffType, VanillaOptionPricingCalibrationHooks,
+    VanillaOptionPricingModelParameters, VanillaOptionPricingOptionalOutputSelection,
+    VanillaOptionPricingRequest, VanillaOptionPricingResponse, VanillaOptionPricingRunResult,
 };
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -471,6 +471,8 @@ pub struct VanillaOptionBatchPricingResponse {
     pub risk_free_rates: Vec<f64>,
     pub dividend_yields: Vec<f64>,
     pub prices: Vec<f64>,
+    pub implied_volatilities: Vec<Option<f64>>,
+    pub implied_volatility_inversion_statuses: Vec<VanillaOptionImpliedVolatilityInversionStatus>,
     pub forward_prices: Vec<f64>,
     pub discount_factors: Vec<f64>,
     pub boundary_state_norms: Vec<f64>,
@@ -569,6 +571,10 @@ pub fn run_vanilla_option_batch_pricing(
     let mut interval_factor_offset = 0usize;
 
     let mut prices: Vec<f64> = Vec::with_capacity(request.node_count());
+    let mut implied_volatilities: Vec<Option<f64>> = Vec::with_capacity(request.node_count());
+    let mut implied_volatility_inversion_statuses: Vec<
+        VanillaOptionImpliedVolatilityInversionStatus,
+    > = Vec::with_capacity(request.node_count());
     let mut forward_prices: Vec<f64> = Vec::with_capacity(request.node_count());
     let mut discount_factors: Vec<f64> = Vec::with_capacity(request.node_count());
     let mut boundary_state_norms: Vec<f64> = Vec::with_capacity(request.node_count());
@@ -619,6 +625,8 @@ pub fn run_vanilla_option_batch_pricing(
             optional_output_selection,
             node_index,
             &mut prices,
+            &mut implied_volatilities,
+            &mut implied_volatility_inversion_statuses,
             &mut forward_prices,
             &mut discount_factors,
             &mut boundary_state_norms,
@@ -645,6 +653,8 @@ pub fn run_vanilla_option_batch_pricing(
             risk_free_rates: request.risk_free_rates,
             dividend_yields: request.dividend_yields,
             prices,
+            implied_volatilities,
+            implied_volatility_inversion_statuses,
             forward_prices,
             discount_factors,
             boundary_state_norms,
@@ -1107,6 +1117,9 @@ pub struct VanillaOptionSurfacePricingResponse {
     pub risk_free_rate: f64,
     pub dividend_yield: f64,
     pub price_grid: Vec<Vec<f64>>,
+    pub implied_volatility_grid: Vec<Vec<Option<f64>>>,
+    pub implied_volatility_inversion_status_grid:
+        Vec<Vec<VanillaOptionImpliedVolatilityInversionStatus>>,
     pub forward_price_grid: Vec<Vec<f64>>,
     pub discount_factor_grid: Vec<Vec<f64>>,
     pub boundary_state_norm_grid: Vec<Vec<f64>>,
@@ -1217,6 +1230,11 @@ pub fn run_vanilla_option_surface_pricing(
     let mut interval_factor_offset = 0usize;
 
     let mut price_grid: Vec<Vec<f64>> = Vec::with_capacity(request.maturity_intervals.len());
+    let mut implied_volatility_grid: Vec<Vec<Option<f64>>> =
+        Vec::with_capacity(request.maturity_intervals.len());
+    let mut implied_volatility_inversion_status_grid: Vec<
+        Vec<VanillaOptionImpliedVolatilityInversionStatus>,
+    > = Vec::with_capacity(request.maturity_intervals.len());
     let mut forward_price_grid: Vec<Vec<f64>> =
         Vec::with_capacity(request.maturity_intervals.len());
     let mut discount_factor_grid: Vec<Vec<f64>> =
@@ -1256,6 +1274,11 @@ pub fn run_vanilla_option_surface_pricing(
         interval_factor_offset += interval_count;
 
         let mut price_row: Vec<f64> = Vec::with_capacity(request.strikes.len());
+        let mut implied_volatility_row: Vec<Option<f64>> =
+            Vec::with_capacity(request.strikes.len());
+        let mut implied_volatility_inversion_status_row: Vec<
+            VanillaOptionImpliedVolatilityInversionStatus,
+        > = Vec::with_capacity(request.strikes.len());
         let mut forward_price_row: Vec<f64> = Vec::with_capacity(request.strikes.len());
         let mut discount_factor_row: Vec<f64> = Vec::with_capacity(request.strikes.len());
         let mut boundary_state_norm_row: Vec<f64> = Vec::with_capacity(request.strikes.len());
@@ -1321,6 +1344,8 @@ pub fn run_vanilla_option_surface_pricing(
                 maturity_index,
                 strike_index,
                 &mut price_row,
+                &mut implied_volatility_row,
+                &mut implied_volatility_inversion_status_row,
                 &mut forward_price_row,
                 &mut discount_factor_row,
                 &mut boundary_state_norm_row,
@@ -1339,6 +1364,8 @@ pub fn run_vanilla_option_surface_pricing(
         }
 
         price_grid.push(price_row);
+        implied_volatility_grid.push(implied_volatility_row);
+        implied_volatility_inversion_status_grid.push(implied_volatility_inversion_status_row);
         forward_price_grid.push(forward_price_row);
         discount_factor_grid.push(discount_factor_row);
         boundary_state_norm_grid.push(boundary_state_norm_row);
@@ -1364,6 +1391,8 @@ pub fn run_vanilla_option_surface_pricing(
             risk_free_rate: request.risk_free_rate,
             dividend_yield: request.dividend_yield,
             price_grid,
+            implied_volatility_grid,
+            implied_volatility_inversion_status_grid,
             forward_price_grid,
             discount_factor_grid,
             boundary_state_norm_grid,
@@ -1442,6 +1471,8 @@ fn collect_batch_run_result(
     optional_output_selection: VanillaOptionPricingOptionalOutputSelection,
     node_index: usize,
     prices: &mut Vec<f64>,
+    implied_volatilities: &mut Vec<Option<f64>>,
+    implied_volatility_inversion_statuses: &mut Vec<VanillaOptionImpliedVolatilityInversionStatus>,
     forward_prices: &mut Vec<f64>,
     discount_factors: &mut Vec<f64>,
     boundary_state_norms: &mut Vec<f64>,
@@ -1457,9 +1488,16 @@ fn collect_batch_run_result(
     hook_convergence_check_passed: &mut Vec<Option<bool>>,
     hook_truncation_check_passed: &mut Vec<Option<bool>>,
 ) -> Result<(), VanillaOptionBatchPricingRunError> {
-    let VanillaOptionPricingResponse { price, diagnostics } = run_result.response;
+    let VanillaOptionPricingResponse {
+        price,
+        diagnostics,
+        implied_volatility,
+        implied_volatility_inversion_status,
+    } = run_result.response;
 
     prices.push(price);
+    implied_volatilities.push(implied_volatility);
+    implied_volatility_inversion_statuses.push(implied_volatility_inversion_status);
     forward_prices.push(diagnostics.forward_price);
     discount_factors.push(diagnostics.discount_factor);
     boundary_state_norms.push(diagnostics.boundary_state_norm);
@@ -1506,6 +1544,10 @@ fn collect_surface_run_result(
     maturity_index: usize,
     strike_index: usize,
     price_row: &mut Vec<f64>,
+    implied_volatility_row: &mut Vec<Option<f64>>,
+    implied_volatility_inversion_status_row: &mut Vec<
+        VanillaOptionImpliedVolatilityInversionStatus,
+    >,
     forward_price_row: &mut Vec<f64>,
     discount_factor_row: &mut Vec<f64>,
     boundary_state_norm_row: &mut Vec<f64>,
@@ -1521,9 +1563,16 @@ fn collect_surface_run_result(
     convergence_check_passed_row: &mut Vec<Option<bool>>,
     truncation_check_passed_row: &mut Vec<Option<bool>>,
 ) -> Result<(), VanillaOptionSurfacePricingRunError> {
-    let VanillaOptionPricingResponse { price, diagnostics } = run_result.response;
+    let VanillaOptionPricingResponse {
+        price,
+        diagnostics,
+        implied_volatility,
+        implied_volatility_inversion_status,
+    } = run_result.response;
 
     price_row.push(price);
+    implied_volatility_row.push(implied_volatility);
+    implied_volatility_inversion_status_row.push(implied_volatility_inversion_status);
     forward_price_row.push(diagnostics.forward_price);
     discount_factor_row.push(diagnostics.discount_factor);
     boundary_state_norm_row.push(diagnostics.boundary_state_norm);

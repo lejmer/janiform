@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, Optional
 
 from ..contracts.base import (
     require_boolean,
+    require_optional_finite_number,
     require_optional_boolean_value,
     require_optional_mapping_value,
     require_optional_string_value,
@@ -129,6 +130,13 @@ def _parse_news_process_configuration(
 class VanillaOptionPayoffType(StrEnum):
     CALL = 'call'
     PUT = 'put'
+
+
+class VanillaOptionImpliedVolatilityInversionStatus(StrEnum):
+    SUCCEEDED = "succeeded"
+    PRICE_BELOW_NO_ARBITRAGE_LOWER_BOUND = "price_below_no_arbitrage_lower_bound"
+    PRICE_EQUALS_FINITE_UPPER_BOUND = "price_equals_finite_upper_bound"
+    PRICE_ABOVE_FINITE_UPPER_BOUND = "price_above_finite_upper_bound"
 
 
 @dataclass(frozen=True, slots=True)
@@ -1119,11 +1127,31 @@ class VanillaOptionPricingResponse(ContractModel):
 
     price: float
     diagnostics: VanillaOptionPricingDiagnostics
+    implied_volatility: Optional[float]
+    implied_volatility_inversion_status: VanillaOptionImpliedVolatilityInversionStatus
 
     @staticmethod
     def from_mapping(raw_payload: dict[str, Any] | Any) -> VanillaOptionPricingResponse:
         if not isinstance(raw_payload, dict):
             raise _pricing_error("vanilla_option_pricing_response", "must be an object")
+
+        implied_volatility = require_optional_finite_number(
+            raw_payload,
+            "implied_volatility",
+            "implied_volatility",
+            PRICING_ERROR_FACTORY,
+        )
+        implied_volatility_inversion_status = _require_implied_volatility_inversion_status(
+            raw_payload,
+            field_name="implied_volatility_inversion_status",
+            field_path="implied_volatility_inversion_status",
+        )
+
+        _validate_implied_volatility_inversion_outcome(
+            implied_volatility=implied_volatility,
+            implied_volatility_inversion_status=implied_volatility_inversion_status,
+            field_path="vanilla_option_pricing_response",
+        )
 
         return VanillaOptionPricingResponse(
             price=require_non_negative_finite_number(
@@ -1136,6 +1164,8 @@ class VanillaOptionPricingResponse(ContractModel):
                 require_mapping(raw_payload, "diagnostics", "diagnostics", PRICING_ERROR_FACTORY),
                 field_path="diagnostics",
             ),
+            implied_volatility=implied_volatility,
+            implied_volatility_inversion_status=implied_volatility_inversion_status,
         )
 
 
@@ -1572,6 +1602,56 @@ def _optional_boolean(
     )
 
 
+def _require_implied_volatility_inversion_status(
+    raw_payload: dict[str, Any],
+    *,
+    field_name: str,
+    field_path: str,
+) -> VanillaOptionImpliedVolatilityInversionStatus:
+    return require_str_enum_value(
+        require_string(
+            raw_payload,
+            field_name,
+            field_path,
+            PRICING_ERROR_FACTORY,
+        ),
+        field_path,
+        PRICING_ERROR_FACTORY,
+        enum_type=VanillaOptionImpliedVolatilityInversionStatus,
+        allowed_values_message=(
+            "must be one of: succeeded, price_below_no_arbitrage_lower_bound, "
+            "price_equals_finite_upper_bound, price_above_finite_upper_bound"
+        ),
+    )
+
+
+def _validate_implied_volatility_inversion_outcome(
+    *,
+    implied_volatility: Optional[float],
+    implied_volatility_inversion_status: VanillaOptionImpliedVolatilityInversionStatus,
+    field_path: str,
+) -> None:
+    match implied_volatility_inversion_status:
+        case VanillaOptionImpliedVolatilityInversionStatus.SUCCEEDED:
+            if implied_volatility is None:
+                raise _pricing_error(
+                    f"{field_path}.implied_volatility",
+                    (
+                        "must be present when "
+                        "implied_volatility_inversion_status=succeeded"
+                    ),
+                )
+        case _:
+            if implied_volatility is not None:
+                raise _pricing_error(
+                    f"{field_path}.implied_volatility",
+                    (
+                        "must be omitted when "
+                        "implied_volatility_inversion_status indicates inversion failure"
+                    ),
+                )
+
+
 __all__ = [
     "AnchoredLocalTiltAdmissibilityStatus",
     "AnchoredLocalTiltBoundaryStateSummary",
@@ -1589,6 +1669,7 @@ __all__ = [
     "MeanReversionBoundaryState",
     "MeanReversionFittedParameters",
     "NigSharedPlusShiftConfiguration",
+    "VanillaOptionImpliedVolatilityInversionStatus",
     "VanillaOptionPricingCalibrationHooks",
     "VanillaOptionPricingExecutionInput",
     "VanillaOptionPricingOptionalOutputSelection",
