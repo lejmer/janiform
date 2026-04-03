@@ -1,12 +1,12 @@
 # Janiform
 
-Janiform is a Python package and CLI for fitting, simulating, pricing, and validating a hyperrealistic high-frequency return model backed by a Rust workspace. The public entrypoints are the `janiform` command-line interface and the importable Python modules under `python/janiform/`.
+Janiform is a Python package and CLI for fitting, simulating, pricing, and validating a hyperrealistic high-frequency return model backed by a Rust workspace. Jnaiform comes both as a command-line interface and an importable Python package.
 
 Janiform is pre-v0.1. Install it from a source checkout with the local bootstrap scripts.
 
 ## Why The Name
 
-Janiform takes its name from Janus, the Roman god traditionally depicted with two faces and associated with transitions and thresholds. The model is built around paired and asymmetric structure, including buy and sell excitation and the contrast between open-market moves and closed-market gaps. The `form` part points to the model shape rather than to any one workflow.
+Janiform is named after Janus, the Roman god of duality, transitions, and thresholds. The name reflects the model's paired strucutre, natively incorporating buy and sell forces. The "form" part refers to the mathematical form of the model itself. Janiform is a two-sided functional form with invariant structure under transformation, designed to stay coherent across simulation, aggregation, and pricing.
 
 ## Quickstart
 
