@@ -388,6 +388,8 @@ def _build_pricing_direct_response_payload(calendar_registry, tmp_path: Path) ->
     return validate_vanilla_option_pricing_response(
         {
             "price": 12.5,
+            "implied_volatility": 0.2,
+            "implied_volatility_inversion_status": "succeeded",
             "diagnostics": {
                 "forward_price": 104.3,
                 "discount_factor": 0.97,
@@ -438,6 +440,8 @@ def _build_pricing_direct_run_result_payload(calendar_registry, tmp_path: Path) 
             },
             "response": {
                 "price": 12.5,
+                "implied_volatility": 0.2,
+                "implied_volatility_inversion_status": "succeeded",
                 "diagnostics": {
                     "forward_price": 104.3,
                     "discount_factor": 0.97,

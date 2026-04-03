@@ -593,6 +593,12 @@
           },
           "type": "object"
         },
+        "implied_volatility": {
+          "type": "float"
+        },
+        "implied_volatility_inversion_status": {
+          "type": "string"
+        },
         "price": {
           "type": "float"
         }
@@ -771,6 +777,12 @@
                 }
               },
               "type": "object"
+            },
+            "implied_volatility": {
+              "type": "float"
+            },
+            "implied_volatility_inversion_status": {
+              "type": "string"
             },
             "price": {
               "type": "float"
@@ -1364,6 +1376,12 @@
                 }
               },
               "type": "object"
+            },
+            "implied_volatility": {
+              "type": "float"
+            },
+            "implied_volatility_inversion_status": {
+              "type": "string"
             },
             "price": {
               "type": "float"
