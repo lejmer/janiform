@@ -154,11 +154,10 @@
       "symbols": {
         "CalibrationMeanReversionConfiguration": {
           "field_names": [
-            "anchor_model_kind",
             "calibration_grid_interval_hours"
           ],
           "kind": "contract_model",
-          "signature": "(anchor_model_kind: 'MeanReversionAnchorModelKind', calibration_grid_interval_hours: 'Optional[float]' = None) -> 'None'"
+          "signature": "(calibration_grid_interval_hours: 'Optional[float]' = None) -> 'None'"
         },
         "CalibrationValidationError": {
           "base_classes": [
@@ -1115,11 +1114,10 @@
         },
         "CalibrationMeanReversionConfiguration": {
           "field_names": [
-            "anchor_model_kind",
             "calibration_grid_interval_hours"
           ],
           "kind": "contract_model",
-          "signature": "(anchor_model_kind: 'MeanReversionAnchorModelKind', calibration_grid_interval_hours: 'Optional[float]' = None) -> 'None'"
+          "signature": "(calibration_grid_interval_hours: 'Optional[float]' = None) -> 'None'"
         },
         "CalibrationOptionQuoteInputPolicy": {
           "kind": "enum",
@@ -1530,11 +1528,10 @@
         },
         "CalibrationMeanReversionConfiguration": {
           "field_names": [
-            "anchor_model_kind",
             "calibration_grid_interval_hours"
           ],
           "kind": "contract_model",
-          "signature": "(anchor_model_kind: 'MeanReversionAnchorModelKind', calibration_grid_interval_hours: 'Optional[float]' = None) -> 'None'"
+          "signature": "(calibration_grid_interval_hours: 'Optional[float]' = None) -> 'None'"
         },
         "CalibrationOptionQuoteInputPolicy": {
           "kind": "enum",
@@ -5374,7 +5371,6 @@
     "janiform.mean_reversion": {
       "exports": [
         "MeanReversionAnchorModel",
-        "MeanReversionAnchorModelKind",
         "MeanReversionBoundaryState",
         "MeanReversionFittedParameters",
         "MeanReversionRuntimeIntervalAnchors"
@@ -5384,22 +5380,12 @@
       "symbols": {
         "MeanReversionAnchorModel": {
           "field_names": [
-            "anchor_model_kind",
             "reference_interval_hours",
             "pressure_persistence_per_reference_interval",
             "pressure_level_gain"
           ],
           "kind": "contract_model",
-          "signature": "(anchor_model_kind: 'MeanReversionAnchorModelKind', reference_interval_hours: 'float', pressure_persistence_per_reference_interval: 'float', pressure_level_gain: 'float') -> 'None'"
-        },
-        "MeanReversionAnchorModelKind": {
-          "kind": "enum",
-          "members": [
-            {
-              "name": "ENDOGENOUS_CORE_PRESSURE_LEVEL",
-              "value": "endogenous_core_pressure_level"
-            }
-          ]
+          "signature": "(reference_interval_hours: 'float', pressure_persistence_per_reference_interval: 'float', pressure_level_gain: 'float') -> 'None'"
         },
         "MeanReversionBoundaryState": {
           "field_names": [
@@ -5436,7 +5422,6 @@
     "janiform.mean_reversion.contracts": {
       "exports": [
         "MeanReversionAnchorModel",
-        "MeanReversionAnchorModelKind",
         "MeanReversionBoundaryState",
         "MeanReversionFittedParameters",
         "MeanReversionRuntimeIntervalAnchors"
@@ -5446,22 +5431,12 @@
       "symbols": {
         "MeanReversionAnchorModel": {
           "field_names": [
-            "anchor_model_kind",
             "reference_interval_hours",
             "pressure_persistence_per_reference_interval",
             "pressure_level_gain"
           ],
           "kind": "contract_model",
-          "signature": "(anchor_model_kind: 'MeanReversionAnchorModelKind', reference_interval_hours: 'float', pressure_persistence_per_reference_interval: 'float', pressure_level_gain: 'float') -> 'None'"
-        },
-        "MeanReversionAnchorModelKind": {
-          "kind": "enum",
-          "members": [
-            {
-              "name": "ENDOGENOUS_CORE_PRESSURE_LEVEL",
-              "value": "endogenous_core_pressure_level"
-            }
-          ]
+          "signature": "(reference_interval_hours: 'float', pressure_persistence_per_reference_interval: 'float', pressure_level_gain: 'float') -> 'None'"
         },
         "MeanReversionBoundaryState": {
           "field_names": [
@@ -5510,7 +5485,6 @@
         "FourierInversionQuadratureRule",
         "GammaSeverityMarkConfiguration",
         "MeanReversionAnchorModel",
-        "MeanReversionAnchorModelKind",
         "MeanReversionBoundaryState",
         "MeanReversionFittedParameters",
         "NigSharedPlusShiftConfiguration",
@@ -5685,22 +5659,12 @@
         },
         "MeanReversionAnchorModel": {
           "field_names": [
-            "anchor_model_kind",
             "reference_interval_hours",
             "pressure_persistence_per_reference_interval",
             "pressure_level_gain"
           ],
           "kind": "contract_model",
-          "signature": "(anchor_model_kind: 'MeanReversionAnchorModelKind', reference_interval_hours: 'float', pressure_persistence_per_reference_interval: 'float', pressure_level_gain: 'float') -> 'None'"
-        },
-        "MeanReversionAnchorModelKind": {
-          "kind": "enum",
-          "members": [
-            {
-              "name": "ENDOGENOUS_CORE_PRESSURE_LEVEL",
-              "value": "endogenous_core_pressure_level"
-            }
-          ]
+          "signature": "(reference_interval_hours: 'float', pressure_persistence_per_reference_interval: 'float', pressure_level_gain: 'float') -> 'None'"
         },
         "MeanReversionBoundaryState": {
           "field_names": [
@@ -5938,7 +5902,6 @@
         "FourierInversionQuadratureRule",
         "GammaSeverityMarkConfiguration",
         "MeanReversionAnchorModel",
-        "MeanReversionAnchorModelKind",
         "MeanReversionBoundaryState",
         "MeanReversionFittedParameters",
         "NigSharedPlusShiftConfiguration",
@@ -6123,22 +6086,12 @@
         },
         "MeanReversionAnchorModel": {
           "field_names": [
-            "anchor_model_kind",
             "reference_interval_hours",
             "pressure_persistence_per_reference_interval",
             "pressure_level_gain"
           ],
           "kind": "contract_model",
-          "signature": "(anchor_model_kind: 'MeanReversionAnchorModelKind', reference_interval_hours: 'float', pressure_persistence_per_reference_interval: 'float', pressure_level_gain: 'float') -> 'None'"
-        },
-        "MeanReversionAnchorModelKind": {
-          "kind": "enum",
-          "members": [
-            {
-              "name": "ENDOGENOUS_CORE_PRESSURE_LEVEL",
-              "value": "endogenous_core_pressure_level"
-            }
-          ]
+          "signature": "(reference_interval_hours: 'float', pressure_persistence_per_reference_interval: 'float', pressure_level_gain: 'float') -> 'None'"
         },
         "MeanReversionBoundaryState": {
           "field_names": [
@@ -7289,7 +7242,6 @@
         "HawkesKernelLoadings",
         "HawkesKernelParameters",
         "MeanReversionAnchorModel",
-        "MeanReversionAnchorModelKind",
         "MeanReversionBoundaryState",
         "MeanReversionFittedParameters",
         "MeanReversionRuntimeIntervalAnchors",
@@ -7385,22 +7337,12 @@
         },
         "MeanReversionAnchorModel": {
           "field_names": [
-            "anchor_model_kind",
             "reference_interval_hours",
             "pressure_persistence_per_reference_interval",
             "pressure_level_gain"
           ],
           "kind": "contract_model",
-          "signature": "(anchor_model_kind: 'MeanReversionAnchorModelKind', reference_interval_hours: 'float', pressure_persistence_per_reference_interval: 'float', pressure_level_gain: 'float') -> 'None'"
-        },
-        "MeanReversionAnchorModelKind": {
-          "kind": "enum",
-          "members": [
-            {
-              "name": "ENDOGENOUS_CORE_PRESSURE_LEVEL",
-              "value": "endogenous_core_pressure_level"
-            }
-          ]
+          "signature": "(reference_interval_hours: 'float', pressure_persistence_per_reference_interval: 'float', pressure_level_gain: 'float') -> 'None'"
         },
         "MeanReversionBoundaryState": {
           "field_names": [
@@ -8343,7 +8285,6 @@
         "HawkesKernelLoadings",
         "HawkesKernelParameters",
         "MeanReversionAnchorModel",
-        "MeanReversionAnchorModelKind",
         "MeanReversionBoundaryState",
         "MeanReversionFittedParameters",
         "MeanReversionRuntimeIntervalAnchors",
@@ -8387,22 +8328,12 @@
         },
         "MeanReversionAnchorModel": {
           "field_names": [
-            "anchor_model_kind",
             "reference_interval_hours",
             "pressure_persistence_per_reference_interval",
             "pressure_level_gain"
           ],
           "kind": "contract_model",
-          "signature": "(anchor_model_kind: 'MeanReversionAnchorModelKind', reference_interval_hours: 'float', pressure_persistence_per_reference_interval: 'float', pressure_level_gain: 'float') -> 'None'"
-        },
-        "MeanReversionAnchorModelKind": {
-          "kind": "enum",
-          "members": [
-            {
-              "name": "ENDOGENOUS_CORE_PRESSURE_LEVEL",
-              "value": "endogenous_core_pressure_level"
-            }
-          ]
+          "signature": "(reference_interval_hours: 'float', pressure_persistence_per_reference_interval: 'float', pressure_level_gain: 'float') -> 'None'"
         },
         "MeanReversionBoundaryState": {
           "field_names": [

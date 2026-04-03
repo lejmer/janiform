@@ -55,7 +55,6 @@ from janiform.calendar import CalendarRegistry, MarketState
 from janiform.hourly_factors import HourlyFactorContract
 from janiform.mean_reversion import (
     MeanReversionAnchorModel,
-    MeanReversionAnchorModelKind,
     MeanReversionBoundaryState,
     MeanReversionFittedParameters,
 )
@@ -245,7 +244,6 @@ def test_prepare_fit_workflow_passes_explicit_mean_reversion_request_to_translat
     estimator = JaniformEstimator(
         market_profile="us_equity_cash",
         mean_reversion=CalibrationMeanReversionConfiguration(
-            anchor_model_kind=MeanReversionAnchorModelKind.ENDOGENOUS_CORE_PRESSURE_LEVEL,
             calibration_grid_interval_hours=36.0,
         ),
     )
@@ -263,10 +261,6 @@ def test_prepare_fit_workflow_passes_explicit_mean_reversion_request_to_translat
 
     request = captured_request["request"]
     assert request.mean_reversion is not None
-    assert (
-        request.mean_reversion.anchor_model_kind
-        == MeanReversionAnchorModelKind.ENDOGENOUS_CORE_PRESSURE_LEVEL
-    )
     assert request.mean_reversion.calibration_grid_interval_hours == pytest.approx(36.0)
 
 
@@ -3701,7 +3695,6 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                     "schema_version": "calibration.stage_output.mean_reversion.v1",
                     "fitted_parameters": build_zero_kappa_endogenous_mean_reversion_fitted_parameters_payload(),
                     "diagnostics": {
-                        "chosen_anchor_family": "endogenous_core_pressure_level",
                         "selected_candidate_family": "random_walk_null",
                         "calibration_grid": {
                             "calibration_grid_kind": "synthetic_daily_close_grid.v1",
@@ -3711,7 +3704,6 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                             "coverage_ratio": 0.0,
                         },
                         "anchor_parameter_estimates": {
-                            "anchor_model_kind": "endogenous_core_pressure_level",
                             "reference_interval_hours": 24.0,
                             "pressure_persistence_per_reference_interval": 0.0,
                             "pressure_level_gain": 0.0,
@@ -3730,7 +3722,6 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                             {
                                 "candidate_family": "random_walk_null",
                                 "anchor_model": {
-                                    "anchor_model_kind": "endogenous_core_pressure_level",
                                     "reference_interval_hours": 24.0,
                                     "pressure_persistence_per_reference_interval": 0.0,
                                     "pressure_level_gain": 0.0,

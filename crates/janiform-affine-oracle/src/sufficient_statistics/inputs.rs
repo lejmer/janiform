@@ -5,10 +5,9 @@ use crate::affine_oracle::{
 };
 use janiform_model_kernels::hawkes::HawkesExcitationState;
 use janiform_model_kernels::mean_reversion::{
-    MeanReversionAnchorModelKind, MeanReversionBoundaryState,
-    MeanReversionBoundaryStateValidationError, MeanReversionFittedParameters,
-    MeanReversionFittedParametersValidationError, MeanReversionRuntimeIntervalAnchors,
-    MeanReversionRuntimeIntervalAnchorsValidationError,
+    MeanReversionBoundaryState, MeanReversionBoundaryStateValidationError,
+    MeanReversionFittedParameters, MeanReversionFittedParametersValidationError,
+    MeanReversionRuntimeIntervalAnchors, MeanReversionRuntimeIntervalAnchorsValidationError,
 };
 use janiform_model_kernels::nig::{
     NigSharedPlusShiftConfiguration, NigSharedPlusShiftConfigurationError,
@@ -486,14 +485,6 @@ impl SufficientStatisticsRiskModelInputs {
                         .start_pressure_state,
                 },
             );
-        }
-
-        match self
-            .mean_reversion_fitted_parameters
-            .anchor_model
-            .anchor_model_kind
-        {
-            MeanReversionAnchorModelKind::EndogenousCorePressureLevel => {}
         }
 
         Ok(())

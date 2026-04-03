@@ -2,7 +2,6 @@
 
 from .contracts import (
     MeanReversionAnchorModel,
-    MeanReversionAnchorModelKind,
     MeanReversionBoundaryState,
     MeanReversionFittedParameters,
     MeanReversionRuntimeIntervalAnchors,
@@ -11,7 +10,6 @@ from .contracts import (
 
 __all__ = [
     "MeanReversionAnchorModel",
-    "MeanReversionAnchorModelKind",
     "MeanReversionBoundaryState",
     "MeanReversionFittedParameters",
     "MeanReversionRuntimeIntervalAnchors",

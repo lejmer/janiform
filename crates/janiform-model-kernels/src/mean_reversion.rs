@@ -7,18 +7,10 @@ use serde::{Deserialize, Serialize};
 const BOUNDARY_STATE_INVARIANT_TOLERANCE: f64 = 1e-12;
 const ZERO_GAIN_PRESSURE_LEVEL_REFERENCE_INTERVAL_HOURS: f64 = 1.0;
 
-/// Canonical anchor-family selector for the observed mean-reversion layer.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum MeanReversionAnchorModelKind {
-    EndogenousCorePressureLevel,
-}
-
 /// Persisted anchor specification for the observed mean-reversion layer.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MeanReversionAnchorModel {
-    pub anchor_model_kind: MeanReversionAnchorModelKind,
     pub reference_interval_hours: f64,
     pub pressure_persistence_per_reference_interval: f64,
     pub pressure_level_gain: f64,
@@ -31,7 +23,6 @@ impl MeanReversionAnchorModel {
         pressure_level_gain: f64,
     ) -> Self {
         Self {
-            anchor_model_kind: MeanReversionAnchorModelKind::EndogenousCorePressureLevel,
             reference_interval_hours,
             pressure_persistence_per_reference_interval,
             pressure_level_gain,
@@ -47,10 +38,6 @@ impl MeanReversionAnchorModel {
     }
 
     pub fn validate(&self) -> Result<(), MeanReversionAnchorModelValidationError> {
-        match self.anchor_model_kind {
-            MeanReversionAnchorModelKind::EndogenousCorePressureLevel => {}
-        }
-
         validate_finite_number(self.reference_interval_hours, "reference_interval_hours").map_err(
             |source| MeanReversionAnchorModelValidationError::NonFiniteField {
                 field: source.field,

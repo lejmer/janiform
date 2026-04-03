@@ -1,7 +1,6 @@
 """Public mean-reversion domain contracts shared across pricing, calibration, and simulation."""
 
 from dataclasses import dataclass
-from enum import StrEnum
 from typing import Any, Final, Self
 
 from ..contracts.base import (
@@ -23,13 +22,8 @@ def _mean_reversion_error(field_path: str, message: str) -> ValueError:
     return ValueError(f"{field_path}: {message}")
 
 
-class MeanReversionAnchorModelKind(StrEnum):
-    ENDOGENOUS_CORE_PRESSURE_LEVEL = "endogenous_core_pressure_level"
-
-
 @dataclass(frozen=True, slots=True)
 class MeanReversionAnchorModel(ContractModel):
-    anchor_model_kind: MeanReversionAnchorModelKind
     reference_interval_hours: float
     pressure_persistence_per_reference_interval: float
     pressure_level_gain: float
@@ -65,7 +59,6 @@ class MeanReversionAnchorModel(ContractModel):
 
     def to_payload(self) -> dict[str, Any]:
         return {
-            "anchor_model_kind": self.anchor_model_kind.value,
             "reference_interval_hours": self.reference_interval_hours,
             "pressure_persistence_per_reference_interval": self.pressure_persistence_per_reference_interval,
             "pressure_level_gain": self.pressure_level_gain,
@@ -82,7 +75,6 @@ class MeanReversionAnchorModel(ContractModel):
         pressure_level_gain: float,
     ) -> Self:
         return MeanReversionAnchorModel(
-            anchor_model_kind=MeanReversionAnchorModelKind.ENDOGENOUS_CORE_PRESSURE_LEVEL,
             reference_interval_hours=reference_interval_hours,
             pressure_persistence_per_reference_interval=pressure_persistence_per_reference_interval,
             pressure_level_gain=pressure_level_gain,
@@ -111,7 +103,6 @@ class MeanReversionAnchorModel(ContractModel):
         require_only_supported_fields(
             raw_payload,
             supported_fields=(
-                "anchor_model_kind",
                 "reference_interval_hours",
                 "pressure_persistence_per_reference_interval",
                 "pressure_level_gain",
@@ -121,14 +112,6 @@ class MeanReversionAnchorModel(ContractModel):
         )
 
         return MeanReversionAnchorModel(
-            anchor_model_kind=MeanReversionAnchorModelKind(
-                require_string(
-                    raw_payload,
-                    "anchor_model_kind",
-                    f"{field_path}.anchor_model_kind",
-                    _mean_reversion_error,
-                )
-            ),
             reference_interval_hours=require_finite_number(
                 raw_payload,
                 "reference_interval_hours",
@@ -432,7 +415,6 @@ def _numeric_sequence(
 
 __all__ = [
     "MeanReversionAnchorModel",
-    "MeanReversionAnchorModelKind",
     "MeanReversionBoundaryState",
     "MeanReversionFittedParameters",
     "MeanReversionRuntimeIntervalAnchors",

@@ -17,7 +17,6 @@ from ..contracts.base import (
 )
 from ..mean_reversion import (
     MeanReversionAnchorModel,
-    MeanReversionAnchorModelKind,
     MeanReversionBoundaryState,
     MeanReversionFittedParameters,
 )
@@ -483,15 +482,6 @@ class AnchoredVanillaOptionPricingBoundaryInput(ContractModel):
             "boundary_input.interval_delta",
             PRICING_ERROR_FACTORY,
         )
-
-        if (
-            self.mean_reversion_fitted_parameters.anchor_model.anchor_model_kind
-            != MeanReversionAnchorModelKind.ENDOGENOUS_CORE_PRESSURE_LEVEL
-        ):
-            raise _pricing_error(
-                "boundary_input.mean_reversion_fitted_parameters.anchor_model.anchor_model_kind",
-                "must be endogenous_core_pressure_level",
-            )
 
     @property
     def current_anchor_value(self) -> float:
@@ -1596,7 +1586,6 @@ __all__ = [
     "FourierInversionQuadratureRule",
     "GammaSeverityMarkConfiguration",
     "MeanReversionAnchorModel",
-    "MeanReversionAnchorModelKind",
     "MeanReversionBoundaryState",
     "MeanReversionFittedParameters",
     "NigSharedPlusShiftConfiguration",

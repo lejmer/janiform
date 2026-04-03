@@ -7,7 +7,6 @@ from janiform.calibration.market_data.contracts import (
     CalibrationMarketDataWorkflowScope,
     CalibrationTickPriceInputPolicy,
 )
-from janiform.mean_reversion import MeanReversionAnchorModelKind
 
 DEFAULT_WORKBENCH_SESSION_PRESET_NAME = "fx_spot_24_5"
 DEFAULT_WORKBENCH_FALLBACK_EXCHANGE_CODE = "FXSPOT"
@@ -36,9 +35,6 @@ class WorkbenchRunSetup:
     workflow_scope: CalibrationMarketDataWorkflowScope
     output_directory: Path
     session_source: WorkbenchSessionSource = field(default_factory=WorkbenchSessionSource)
-    mean_reversion_anchor_model_kind: MeanReversionAnchorModelKind = (
-        MeanReversionAnchorModelKind.ENDOGENOUS_CORE_PRESSURE_LEVEL
-    )
     file_format: Optional[CalibrationInputFileFormat] = None
     timestamp_column: Optional[str] = None
     tick_price_input_policy: Optional[CalibrationTickPriceInputPolicy] = None

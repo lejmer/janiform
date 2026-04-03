@@ -9,7 +9,6 @@ from .contracts import (
 )
 from ...mean_reversion import (
     MeanReversionAnchorModel,
-    MeanReversionAnchorModelKind,
     MeanReversionBoundaryState,
     MeanReversionFittedParameters,
     MeanReversionRuntimeIntervalAnchors,
@@ -25,7 +24,6 @@ __all__ = [
     "HawkesKernelLoadings",
     "HawkesKernelParameters",
     "MeanReversionAnchorModel",
-    "MeanReversionAnchorModelKind",
     "MeanReversionBoundaryState",
     "MeanReversionFittedParameters",
     "MeanReversionRuntimeIntervalAnchors",

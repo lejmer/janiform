@@ -66,7 +66,6 @@ fn vanilla_option_request_deserialization_defaults_interval_delta_to_hourly() {
             "mean_reversion_fitted_parameters": {
                 "kappa": 0.0,
                 "anchor_model": {
-                    "anchor_model_kind": "endogenous_core_pressure_level",
                     "reference_interval_hours": 1.0,
                     "pressure_persistence_per_reference_interval": 0.0,
                     "pressure_level_gain": 0.0

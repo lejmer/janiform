@@ -106,7 +106,6 @@ from ...calibration.fit.input_resolution import (
 )
 from ...calibration.staged import CalibrationExecutionMode
 from ...calibration.staged.results import build_staged_failure_context
-from ...mean_reversion import MeanReversionAnchorModelKind
 from ...errors import (
     ErrorContextValue,
     JaniformError,
@@ -1190,7 +1189,6 @@ def build_mean_reversion_configuration_from_arguments(
     entrypoint: str,
     error_id: str,
 ) -> Optional[CalibrationMeanReversionConfiguration]:
-    raw_anchor_model = cast(Optional[str], command_arguments.get("mean_reversion_anchor_model"))
     raw_grid_interval_hours = cast(Optional[float], command_arguments.get("mean_reversion_grid_interval_hours"))
 
     if workflow_scope == CalibrationMarketDataWorkflowScope.SEASONALITY_ONLY:
@@ -1201,30 +1199,15 @@ def build_mean_reversion_configuration_from_arguments(
                 error_id=error_id,
                 entrypoint=entrypoint,
             )
-        if raw_anchor_model is None:
-            return None
-
-        raise cli_validation_error(
-            "mean_reversion_anchor_model",
-            "--mean-reversion-anchor-model is not supported when --workflow-scope is seasonality_only",
-            error_id=error_id,
-            entrypoint=entrypoint,
-        )
-
-    anchor_model_kind = (
-        MeanReversionAnchorModelKind.ENDOGENOUS_CORE_PRESSURE_LEVEL
-        if raw_anchor_model is None
-        else MeanReversionAnchorModelKind(raw_anchor_model)
-    )
+        return None
 
     try:
         return CalibrationMeanReversionConfiguration(
-            anchor_model_kind=anchor_model_kind,
             calibration_grid_interval_hours=raw_grid_interval_hours,
         )
     except Exception as e:
         raise cli_validation_error(
-            "mean_reversion_anchor_model",
+            "mean_reversion_grid_interval_hours",
             str(e),
             error_id=error_id,
             entrypoint=entrypoint,
@@ -1466,14 +1449,6 @@ def model_workflow_fit_options(
                 "Default: all available logical CPUs."
             ),
             value_type=int,
-        ),
-        command_option(
-            "--mean-reversion-anchor-model",
-            choice_options=tuple(anchor_model_kind.value for anchor_model_kind in MeanReversionAnchorModelKind),
-            help_text=(
-                "Optional explicit endogenous anchor policy selector for high-level mean-reversion calibration. "
-                "Default for non-seasonality workflows: endogenous_core_pressure_level."
-            ),
         ),
         command_option(
             "--mean-reversion-grid-interval-hours",

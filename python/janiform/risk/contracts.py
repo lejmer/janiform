@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Optional
 
 from ..mean_reversion import (
-    MeanReversionAnchorModelKind,
     MeanReversionBoundaryState,
     MeanReversionFittedParameters,
     MeanReversionRuntimeIntervalAnchors,
@@ -229,15 +228,6 @@ class SufficientStatisticsRiskModelInputs(ContractModel):
                     "must match model_inputs.mean_reversion_runtime_interval_anchors."
                     f"start_anchor_value ({self.mean_reversion_runtime_interval_anchors.start_anchor_value})"
                 ),
-            )
-
-        if (
-            self.mean_reversion_fitted_parameters.anchor_model.anchor_model_kind
-            != MeanReversionAnchorModelKind.ENDOGENOUS_CORE_PRESSURE_LEVEL
-        ):
-            raise _risk_error(
-                "model_inputs.mean_reversion_fitted_parameters.anchor_model.anchor_model_kind",
-                "must be endogenous_core_pressure_level",
             )
 
     @staticmethod

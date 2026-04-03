@@ -18,8 +18,12 @@ fn mean_reversion_fitted_parameters_round_trip_serialization_preserves_contract_
         .expect("mean reversion fitted parameters should serialize");
     assert_eq!(serialized["kappa"], serde_json::json!(0.25));
     assert_eq!(
-        serialized["anchor_model"]["anchor_model_kind"],
-        serde_json::json!("endogenous_core_pressure_level")
+        serialized["anchor_model"],
+        serde_json::json!({
+            "reference_interval_hours": 24.0,
+            "pressure_persistence_per_reference_interval": 0.5,
+            "pressure_level_gain": 1.25,
+        })
     );
 
     let parsed: MeanReversionFittedParameters = serde_json::from_value(serialized)
@@ -51,7 +55,6 @@ fn mean_reversion_fitted_parameters_reject_negative_kappa() {
 #[test]
 fn endogenous_mean_reversion_anchor_model_rejects_unknown_fields() {
     let anchor_model = serde_json::from_value::<MeanReversionAnchorModel>(serde_json::json!({
-        "anchor_model_kind": janiform_model_kernels::mean_reversion::MeanReversionAnchorModelKind::EndogenousCorePressureLevel,
         "reference_interval_hours": 24.0,
         "pressure_persistence_per_reference_interval": 0.5,
         "pressure_level_gain": 1.0,

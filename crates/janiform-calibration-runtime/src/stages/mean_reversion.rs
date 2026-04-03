@@ -21,7 +21,7 @@ use janiform_market_time::hourly_factors::{
 };
 use janiform_model_kernels::hawkes::HawkesExcitationState;
 use janiform_model_kernels::mean_reversion::{
-    MeanReversionAnchorModel, MeanReversionAnchorModelKind, MeanReversionFittedParameters,
+    MeanReversionAnchorModel, MeanReversionFittedParameters,
     materialize_mean_reversion_runtime_interval_anchors_from_core_expected_increments,
 };
 
@@ -109,7 +109,6 @@ pub struct MeanReversionStageExecutionInput {
     pub seasonality_stage_input: Option<MeanReversionStageSeasonalityInput>,
     pub hawkes_stage_payload: Option<HawkesStageFittedPayload>,
     pub return_components_stage_payload: Option<ReturnComponentsStageFittedPayload>,
-    pub requested_anchor_model_kind: MeanReversionAnchorModelKind,
     pub calibration_grid_kind: String,
     pub calibration_grid_interval_hours: f64,
     pub source_observation_count: usize,
@@ -308,7 +307,6 @@ fn estimate_mean_reversion_fitted_parameters(
         || execution_input.coverage_ratio < MINIMUM_MEAN_REVERSION_COVERAGE_RATIO
     {
         return Ok(zero_kappa_endogenous_fit(
-            execution_input.requested_anchor_model_kind,
             calibration_grid,
             ENDOGENOUS_RUNTIME_PROJECTION_REQUIRED_REASON,
         ));
@@ -456,7 +454,6 @@ fn estimate_endogenous_mean_reversion_fitted_parameters(
     Ok((
         fitted_parameters,
         MeanReversionStageDiagnostics {
-            chosen_anchor_family: selected_candidate.anchor_model.anchor_model_kind,
             selected_candidate_family: selected_candidate.candidate_family.to_string(),
             calibration_grid,
             anchor_parameter_estimates: selected_candidate.anchor_model.clone(),
@@ -1357,19 +1354,14 @@ fn assemble_candidate_evaluation(
 }
 
 fn zero_kappa_endogenous_fit(
-    requested_anchor_model_kind: MeanReversionAnchorModelKind,
     calibration_grid: MeanReversionStageCalibrationGrid,
     stage_decision_reason: &str,
 ) -> (MeanReversionFittedParameters, MeanReversionStageDiagnostics) {
-    let anchor_model = match requested_anchor_model_kind {
-        MeanReversionAnchorModelKind::EndogenousCorePressureLevel => {
-            MeanReversionAnchorModel::endogenous_core_pressure_level(
-                calibration_grid.calibration_grid_interval_hours,
-                0.0,
-                0.0,
-            )
-        }
-    };
+    let anchor_model = MeanReversionAnchorModel::endogenous_core_pressure_level(
+        calibration_grid.calibration_grid_interval_hours,
+        0.0,
+        0.0,
+    );
 
     let fitted_parameters = MeanReversionFittedParameters::try_new(0.0, anchor_model.clone())
         .expect("zero-kappa endogenous mean reversion fit should validate");
@@ -1395,7 +1387,6 @@ fn zero_kappa_endogenous_fit(
     (
         fitted_parameters,
         MeanReversionStageDiagnostics {
-            chosen_anchor_family: requested_anchor_model_kind,
             selected_candidate_family: RANDOM_WALK_NULL_CANDIDATE_FAMILY.to_string(),
             calibration_grid,
             anchor_parameter_estimates: anchor_model,

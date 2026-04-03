@@ -910,14 +910,6 @@ def _prepare_model_mean_reversion_runtime_inputs(
         start_anchor_value=start_anchor_value,
     )
 
-    anchor_model_kind = fitted_parameters.anchor_model.anchor_model_kind
-    if anchor_model_kind not in {
-        "endogenous_core_pressure_level",
-    }:
-        raise RuntimeError(
-            "JaniformModel mean reversion anchor model kind is unsupported"
-        )
-
     initial_boundary_state = MeanReversionBoundaryState(
         observed_log_price=runtime_interval_anchors.start_anchor_value,
         anchor_value=runtime_interval_anchors.start_anchor_value,
@@ -951,19 +943,14 @@ def _materialize_model_mean_reversion_runtime_interval_anchors(
             "end timestamp per interval delta"
         )
 
-    anchor_model = fitted_parameters.anchor_model
-    match anchor_model.anchor_model_kind:
-        case "endogenous_core_pressure_level":
-            return _materialize_endogenous_model_mean_reversion_runtime_interval_anchors(
-                fitted_parameters=fitted_parameters,
-                runtime_factors=runtime_factors,
-                hourly_factor_contract=hourly_factor_contract,
-                initial_excitation_state=initial_excitation_state,
-                interval_alignment_policy=hourly_factor_contract.interval_alignment_policy,
-                start_anchor_value=start_anchor_value,
-            )
-        case _:
-            raise RuntimeError("JaniformModel mean reversion anchor model kind is unsupported")
+    return _materialize_endogenous_model_mean_reversion_runtime_interval_anchors(
+        fitted_parameters=fitted_parameters,
+        runtime_factors=runtime_factors,
+        hourly_factor_contract=hourly_factor_contract,
+        initial_excitation_state=initial_excitation_state,
+        interval_alignment_policy=hourly_factor_contract.interval_alignment_policy,
+        start_anchor_value=start_anchor_value,
+    )
 
 
 def _materialize_endogenous_model_mean_reversion_runtime_interval_anchors(

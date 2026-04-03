@@ -177,7 +177,6 @@ def test_simulation_public_symbols_live_in_simulation_module() -> None:
         "HawkesKernelLoadings",
         "HawkesKernelParameters",
         "MeanReversionAnchorModel",
-        "MeanReversionAnchorModelKind",
         "MeanReversionBoundaryState",
         "MeanReversionFittedParameters",
         "MeanReversionRuntimeIntervalAnchors",
@@ -217,7 +216,6 @@ def test_contracts_public_symbols_live_in_contracts_module() -> None:
 def test_mean_reversion_public_symbols_live_in_mean_reversion_module() -> None:
     expected_exports = {
         "MeanReversionAnchorModel",
-        "MeanReversionAnchorModelKind",
         "MeanReversionBoundaryState",
         "MeanReversionFittedParameters",
         "MeanReversionRuntimeIntervalAnchors",
@@ -232,7 +230,6 @@ def test_mean_reversion_public_contract_submodule_is_supported_domain_import() -
 
     expected_exports = {
         "MeanReversionAnchorModel",
-        "MeanReversionAnchorModelKind",
         "MeanReversionBoundaryState",
         "MeanReversionFittedParameters",
         "MeanReversionRuntimeIntervalAnchors",
@@ -305,7 +302,6 @@ def test_simulation_shared_public_submodule_is_supported_domain_import() -> None
         "HawkesKernelLoadings",
         "HawkesKernelParameters",
         "MeanReversionAnchorModel",
-        "MeanReversionAnchorModelKind",
         "MeanReversionBoundaryState",
         "MeanReversionFittedParameters",
         "MeanReversionRuntimeIntervalAnchors",

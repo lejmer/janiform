@@ -68,7 +68,6 @@ struct AnchoredPricingReferenceRegressionTolerances {
 enum AnchoredPricingReferenceBaselineCase {
     Success {
         scenario_id: String,
-        anchor_model_kind: String,
         kappa: f64,
         observed_boundary_state: AnchoredPricingObservedBoundaryState,
         current_anchor_value: f64,
@@ -90,7 +89,6 @@ enum AnchoredPricingReferenceBaselineCase {
     },
     ExpectedFailure {
         scenario_id: String,
-        anchor_model_kind: String,
         kappa: f64,
         observed_boundary_state: AnchoredPricingObservedBoundaryState,
         current_anchor_value: f64,

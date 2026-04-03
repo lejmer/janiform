@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale.v1",
-  "approved_snapshot_sha256": "01c0c87b349c0e95f9a3bf9af310e92c242f401dce6cc313c5ac9820cbcec858",
+  "approved_snapshot_sha256": "64ae9efa3023d3e64c398bafdfb9ac9b9665c15c7f1f7a867f698d425946d437",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -847,6 +847,25 @@
       "updated_surfaces": [
         "janiform.pricing",
         "janiform.pricing.contracts"
+      ]
+    },
+    {
+      "approved_on": "2026-04-03",
+      "docs_updated": [],
+      "rationale": "The mean-reversion surface has exactly one supported anchor-model shape, so the public Python contracts and calibration configuration no longer carry a selector field or exported kind enum. The approved snapshot must therefore remove those discriminator-shaped fields and signatures from the shared mean-reversion, calibration, pricing, risk, and simulation surfaces instead of preserving a fake extensibility point.",
+      "snapshot_sha256": "64ae9efa3023d3e64c398bafdfb9ac9b9665c15c7f1f7a867f698d425946d437",
+      "summary": "Remove the mean-reversion discriminator and exported kind enum from the public Python API surface.",
+      "updated_surfaces": [
+        "janiform.mean_reversion",
+        "janiform.mean_reversion.contracts",
+        "janiform.calibration.market_data",
+        "janiform.calibration.market_data.contracts",
+        "janiform.pricing",
+        "janiform.pricing.contracts",
+        "janiform.risk",
+        "janiform.risk.contracts",
+        "janiform.simulation",
+        "janiform.simulation.shared"
       ]
     }
   ],
