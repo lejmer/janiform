@@ -4864,7 +4864,7 @@
             "BaseException"
           ],
           "kind": "exception_class",
-          "origin_module": "janiform.hourly_factors.workflow",
+          "origin_module": "janiform.hourly_factors.errors",
           "qualname": "HourlyFactorProviderError"
         },
         "HourlyFactorProviderMissingInputError": {
@@ -4874,7 +4874,7 @@
             "BaseException"
           ],
           "kind": "exception_class",
-          "origin_module": "janiform.hourly_factors.workflow",
+          "origin_module": "janiform.hourly_factors.errors",
           "qualname": "HourlyFactorProviderMissingInputError"
         },
         "HourlyFactorProviderUnsupportedRangeError": {
@@ -4884,7 +4884,7 @@
             "BaseException"
           ],
           "kind": "exception_class",
-          "origin_module": "janiform.hourly_factors.workflow",
+          "origin_module": "janiform.hourly_factors.errors",
           "qualname": "HourlyFactorProviderUnsupportedRangeError"
         },
         "HourlyNewsIntensityMaterialization": {
@@ -5974,7 +5974,6 @@
         "SufficientStatisticsRiskReturnComponents",
         "SufficientStatisticsRiskRunRequest",
         "SufficientStatisticsRiskValidationError",
-        "SufficientStatisticsRiskValidationFailure",
         "deserialize_sufficient_statistics_risk_path",
         "deserialize_sufficient_statistics_risk_run_request",
         "serialize_sufficient_statistics_risk_path",
@@ -5983,6 +5982,234 @@
         "validate_sufficient_statistics_risk_run_request"
       ],
       "module_name": "janiform.risk",
+      "schema_identifiers": [
+        {
+          "name": "SUFFICIENT_STATISTICS_RISK_PATH_DIAGNOSTICS_SCHEMA_VERSION",
+          "public_exported": true,
+          "value": "risk.sufficient_statistics.path_diagnostics.v1"
+        },
+        {
+          "name": "SUFFICIENT_STATISTICS_RISK_PATH_OUTPUT_SCHEMA_METADATA_VERSION",
+          "public_exported": true,
+          "value": "risk.sufficient_statistics.path_output_schema_metadata.v1"
+        },
+        {
+          "name": "SUFFICIENT_STATISTICS_RISK_PATH_PROVENANCE_SCHEMA_VERSION",
+          "public_exported": true,
+          "value": "risk.sufficient_statistics.path_provenance.v1"
+        }
+      ],
+      "symbols": {
+        "SUFFICIENT_STATISTICS_RISK_INTERVAL_FACTOR_POLICY": {
+          "kind": "constant",
+          "value": "explicit_interval_aligned_s_h_and_news_intensity_inputs_without_implicit_resampling.v1"
+        },
+        "SUFFICIENT_STATISTICS_RISK_PATH_DIAGNOSTICS_SCHEMA_VERSION": {
+          "kind": "constant",
+          "value": "risk.sufficient_statistics.path_diagnostics.v1"
+        },
+        "SUFFICIENT_STATISTICS_RISK_PATH_OUTPUT_SCHEMA_METADATA_VERSION": {
+          "kind": "constant",
+          "value": "risk.sufficient_statistics.path_output_schema_metadata.v1"
+        },
+        "SUFFICIENT_STATISTICS_RISK_PATH_PROVENANCE_SCHEMA_VERSION": {
+          "kind": "constant",
+          "value": "risk.sufficient_statistics.path_provenance.v1"
+        },
+        "SufficientStatisticsIntervalStatistics": {
+          "field_names": [
+            "a_plus",
+            "a_minus",
+            "n_plus",
+            "n_minus"
+          ],
+          "kind": "contract_model",
+          "signature": "(a_plus: 'float', a_minus: 'float', n_plus: 'int', n_minus: 'int') -> 'None'"
+        },
+        "SufficientStatisticsRiskEquationSpecification": {
+          "field_names": [
+            "hawkes_kernel_parameters",
+            "gamma_severity_mark_configuration"
+          ],
+          "kind": "contract_model",
+          "signature": "(hawkes_kernel_parameters: 'HawkesKernelParameters', gamma_severity_mark_configuration: 'GammaSeverityMarkConfiguration') -> 'None'"
+        },
+        "SufficientStatisticsRiskModelInputs": {
+          "field_names": [
+            "equation_specification",
+            "nig_shared_plus_shift_configuration",
+            "initial_excitation_state",
+            "mean_reversion_fitted_parameters",
+            "mean_reversion_runtime_interval_anchors",
+            "initial_mean_reversion_boundary_state"
+          ],
+          "kind": "contract_model",
+          "signature": "(equation_specification: 'SufficientStatisticsRiskEquationSpecification', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', initial_excitation_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState') -> 'None'"
+        },
+        "SufficientStatisticsRiskPath": {
+          "field_names": [
+            "schema_version",
+            "run_request_schema_version",
+            "output_schema_metadata",
+            "provenance",
+            "diagnostics",
+            "seed",
+            "interval_delta",
+            "simulated_interval_count",
+            "initial_excitation_state",
+            "terminal_excitation_state",
+            "records"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', run_request_schema_version: 'str', output_schema_metadata: 'SufficientStatisticsRiskPathOutputSchemaMetadata', provenance: 'SufficientStatisticsRiskPathProvenance', diagnostics: 'SufficientStatisticsRiskPathDiagnostics', seed: 'int', interval_delta: 'float', simulated_interval_count: 'int', initial_excitation_state: 'HawkesExcitationState', terminal_excitation_state: 'HawkesExcitationState', records: 'tuple[SufficientStatisticsRiskPathRecord, ...]') -> 'None'"
+        },
+        "SufficientStatisticsRiskPathDiagnostics": {
+          "field_names": [
+            "schema_version",
+            "simulated_interval_count",
+            "first_interval_index",
+            "last_interval_index",
+            "cumulative_a_plus",
+            "cumulative_a_minus",
+            "cumulative_n_plus",
+            "cumulative_n_minus",
+            "cumulative_trading_time_return",
+            "cumulative_open_jump_return",
+            "cumulative_closed_gap_return",
+            "cumulative_total_return",
+            "cumulative_observed_return",
+            "max_abs_total_return",
+            "max_abs_deviation_from_anchor",
+            "terminal_observed_log_price",
+            "terminal_deviation_from_anchor"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', simulated_interval_count: 'int', first_interval_index: 'Optional[int]', last_interval_index: 'Optional[int]', cumulative_a_plus: 'float', cumulative_a_minus: 'float', cumulative_n_plus: 'int', cumulative_n_minus: 'int', cumulative_trading_time_return: 'float', cumulative_open_jump_return: 'float', cumulative_closed_gap_return: 'float', cumulative_total_return: 'float', cumulative_observed_return: 'float', max_abs_total_return: 'float', max_abs_deviation_from_anchor: 'float', terminal_observed_log_price: 'float', terminal_deviation_from_anchor: 'float') -> 'None'"
+        },
+        "SufficientStatisticsRiskPathOutputSchemaMetadata": {
+          "field_names": [
+            "schema_version",
+            "provenance_schema_version",
+            "diagnostics_schema_version",
+            "artifact_workflow_policy",
+            "environment_metadata_policy",
+            "required_path_fields",
+            "required_provenance_fields",
+            "required_diagnostics_fields"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', provenance_schema_version: 'str', diagnostics_schema_version: 'str', artifact_workflow_policy: 'str', environment_metadata_policy: 'str', required_path_fields: 'tuple[str, ...]', required_provenance_fields: 'tuple[str, ...]', required_diagnostics_fields: 'tuple[str, ...]') -> 'None'"
+        },
+        "SufficientStatisticsRiskPathProvenance": {
+          "field_names": [
+            "schema_version",
+            "artifact_workflow_policy",
+            "environment_metadata_policy",
+            "interval_factor_policy",
+            "transform_slice_sampling_policy",
+            "boundary_state_update_policy",
+            "interval_return_generation_policy",
+            "interval_return_component_routing_policy",
+            "batch_seed_partition_policy",
+            "artifact_workflow_tags"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', artifact_workflow_policy: 'str', environment_metadata_policy: 'str', interval_factor_policy: 'str', transform_slice_sampling_policy: 'str', boundary_state_update_policy: 'str', interval_return_generation_policy: 'str', interval_return_component_routing_policy: 'str', batch_seed_partition_policy: 'str', artifact_workflow_tags: 'tuple[str, ...]') -> 'None'"
+        },
+        "SufficientStatisticsRiskPathRecord": {
+          "field_names": [
+            "interval_index",
+            "sufficient_statistics",
+            "return_components",
+            "core_total_return",
+            "observed_interval_return",
+            "observed_log_price_end",
+            "anchor_value_end",
+            "pressure_state_end",
+            "deviation_from_anchor_end"
+          ],
+          "kind": "contract_model",
+          "signature": "(interval_index: 'int', sufficient_statistics: 'SufficientStatisticsIntervalStatistics', return_components: 'SufficientStatisticsRiskReturnComponents', core_total_return: 'float', observed_interval_return: 'float', observed_log_price_end: 'float', anchor_value_end: 'float', pressure_state_end: 'float', deviation_from_anchor_end: 'float') -> 'None'"
+        },
+        "SufficientStatisticsRiskReturnComponents": {
+          "field_names": [
+            "buy_side_return",
+            "sell_side_return",
+            "trading_time_return",
+            "open_jump_return",
+            "closed_gap_return",
+            "total_return"
+          ],
+          "kind": "contract_model",
+          "signature": "(buy_side_return: 'float', sell_side_return: 'float', trading_time_return: 'float', open_jump_return: 'float', closed_gap_return: 'float', total_return: 'float') -> 'None'"
+        },
+        "SufficientStatisticsRiskRunRequest": {
+          "field_names": [
+            "seed",
+            "horizon_interval_count",
+            "interval_delta",
+            "model_inputs",
+            "hourly_factor_contract"
+          ],
+          "kind": "contract_model",
+          "signature": "(seed: 'int', horizon_interval_count: 'int', interval_delta: 'float' = 1.0, model_inputs: 'Optional[SufficientStatisticsRiskModelInputs]' = None, hourly_factor_contract: 'Optional[HourlyFactorContract]' = None) -> 'None'"
+        },
+        "SufficientStatisticsRiskValidationError": {
+          "base_classes": [
+            "JaniformValidationError",
+            "JaniformError",
+            "Exception",
+            "BaseException"
+          ],
+          "constructor_signature": "(failure: 'ContractValidationFailure') -> 'None'",
+          "kind": "exception_class",
+          "origin_module": "janiform.risk.errors",
+          "qualname": "SufficientStatisticsRiskValidationError"
+        },
+        "deserialize_sufficient_statistics_risk_path": {
+          "kind": "function",
+          "signature": "(payload_json: 'str') -> 'SufficientStatisticsRiskPath'"
+        },
+        "deserialize_sufficient_statistics_risk_run_request": {
+          "kind": "function",
+          "signature": "(payload_json: 'str') -> 'SufficientStatisticsRiskRunRequest'"
+        },
+        "serialize_sufficient_statistics_risk_path": {
+          "kind": "function",
+          "signature": "(path: 'SufficientStatisticsRiskPath') -> 'str'"
+        },
+        "serialize_sufficient_statistics_risk_run_request": {
+          "kind": "function",
+          "signature": "(request: 'SufficientStatisticsRiskRunRequest') -> 'str'"
+        },
+        "validate_sufficient_statistics_risk_path": {
+          "kind": "function",
+          "signature": "(raw_path: 'dict[str, Any] | Any') -> 'SufficientStatisticsRiskPath'"
+        },
+        "validate_sufficient_statistics_risk_run_request": {
+          "kind": "function",
+          "signature": "(raw_request: 'dict[str, Any] | Any') -> 'SufficientStatisticsRiskRunRequest'"
+        }
+      }
+    },
+    "janiform.risk.contracts": {
+      "exports": [
+        "SUFFICIENT_STATISTICS_RISK_INTERVAL_FACTOR_POLICY",
+        "SUFFICIENT_STATISTICS_RISK_PATH_DIAGNOSTICS_SCHEMA_VERSION",
+        "SUFFICIENT_STATISTICS_RISK_PATH_OUTPUT_SCHEMA_METADATA_VERSION",
+        "SUFFICIENT_STATISTICS_RISK_PATH_PROVENANCE_SCHEMA_VERSION",
+        "SufficientStatisticsIntervalStatistics",
+        "SufficientStatisticsRiskEquationSpecification",
+        "SufficientStatisticsRiskModelInputs",
+        "SufficientStatisticsRiskPath",
+        "SufficientStatisticsRiskPathDiagnostics",
+        "SufficientStatisticsRiskPathOutputSchemaMetadata",
+        "SufficientStatisticsRiskPathProvenance",
+        "SufficientStatisticsRiskPathRecord",
+        "SufficientStatisticsRiskReturnComponents",
+        "SufficientStatisticsRiskRunRequest"
+      ],
+      "module_name": "janiform.risk.contracts",
       "schema_identifiers": [
         {
           "name": "SUFFICIENT_STATISTICS_RISK_PATH_DIAGNOSTICS_SCHEMA_VERSION",
@@ -6169,54 +6396,6 @@
           ],
           "kind": "contract_model",
           "signature": "(seed: 'int', horizon_interval_count: 'int', interval_delta: 'float' = 1.0, model_inputs: 'Optional[SufficientStatisticsRiskModelInputs]' = None, hourly_factor_contract: 'Optional[HourlyFactorContract]' = None) -> 'None'"
-        },
-        "SufficientStatisticsRiskValidationError": {
-          "base_classes": [
-            "JaniformValidationError",
-            "JaniformError",
-            "Exception",
-            "BaseException"
-          ],
-          "constructor_signature": "(failure: 'ContractValidationFailure') -> 'None'",
-          "kind": "exception_class",
-          "origin_module": "janiform.risk",
-          "qualname": "SufficientStatisticsRiskValidationError"
-        },
-        "SufficientStatisticsRiskValidationFailure": {
-          "field_names": [
-            "error_id",
-            "workflow",
-            "entrypoint",
-            "field_path",
-            "message",
-            "context_items"
-          ],
-          "kind": "contract_model",
-          "signature": "(error_id: 'str', workflow: 'str', entrypoint: 'str', field_path: 'str', message: 'str', context_items: 'tuple[tuple[str, ErrorContextValue], ...]' = ()) -> 'None'"
-        },
-        "deserialize_sufficient_statistics_risk_path": {
-          "kind": "function",
-          "signature": "(payload_json: 'str') -> 'SufficientStatisticsRiskPath'"
-        },
-        "deserialize_sufficient_statistics_risk_run_request": {
-          "kind": "function",
-          "signature": "(payload_json: 'str') -> 'SufficientStatisticsRiskRunRequest'"
-        },
-        "serialize_sufficient_statistics_risk_path": {
-          "kind": "function",
-          "signature": "(path: 'SufficientStatisticsRiskPath') -> 'str'"
-        },
-        "serialize_sufficient_statistics_risk_run_request": {
-          "kind": "function",
-          "signature": "(request: 'SufficientStatisticsRiskRunRequest') -> 'str'"
-        },
-        "validate_sufficient_statistics_risk_path": {
-          "kind": "function",
-          "signature": "(raw_path: 'dict[str, Any] | Any') -> 'SufficientStatisticsRiskPath'"
-        },
-        "validate_sufficient_statistics_risk_run_request": {
-          "kind": "function",
-          "signature": "(raw_request: 'dict[str, Any] | Any') -> 'SufficientStatisticsRiskRunRequest'"
         }
       }
     },

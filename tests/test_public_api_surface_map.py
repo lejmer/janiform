@@ -87,6 +87,8 @@ def test_public_and_internal_module_intent_is_explicit() -> None:
         "janiform.hourly_factors.contracts",
         "janiform.mean_reversion",
         "janiform.mean_reversion.contracts",
+        "janiform.risk",
+        "janiform.risk.contracts",
         "janiform.seasonality",
         "janiform.seasonality.contracts",
         "janiform.simulation",
@@ -394,6 +396,8 @@ def test_pricing_public_symbols_live_in_pricing_module() -> None:
 
 
 def test_risk_public_symbols_live_in_risk_module() -> None:
+    assert hasattr(risk_module, "__path__")
+
     expected_exports = {
         "SUFFICIENT_STATISTICS_RISK_INTERVAL_FACTOR_POLICY",
         "SufficientStatisticsRiskEquationSpecification",
@@ -404,7 +408,6 @@ def test_risk_public_symbols_live_in_risk_module() -> None:
         "SufficientStatisticsRiskPathRecord",
         "SufficientStatisticsRiskPath",
         "SufficientStatisticsRiskValidationError",
-        "SufficientStatisticsRiskValidationFailure",
         "validate_sufficient_statistics_risk_run_request",
         "validate_sufficient_statistics_risk_path",
         "serialize_sufficient_statistics_risk_run_request",
@@ -415,6 +418,22 @@ def test_risk_public_symbols_live_in_risk_module() -> None:
 
     assert expected_exports <= set(risk_module.__all__)
     assert expected_exports <= set(dir(risk_module))
+
+
+def test_risk_contract_submodule_is_supported_domain_import() -> None:
+    risk_contracts_module = import_module("janiform.risk.contracts")
+
+    expected_exports = {
+        "SUFFICIENT_STATISTICS_RISK_INTERVAL_FACTOR_POLICY",
+        "SufficientStatisticsRiskEquationSpecification",
+        "SufficientStatisticsRiskModelInputs",
+        "SufficientStatisticsRiskPath",
+        "SufficientStatisticsRiskRunRequest",
+    }
+
+    assert expected_exports <= set(risk_contracts_module.__all__)
+    assert expected_exports <= set(dir(risk_contracts_module))
+    assert risk_module.SufficientStatisticsRiskPath is risk_contracts_module.SufficientStatisticsRiskPath
 
 
 def test_hourly_factor_support_symbols_live_in_hourly_factor_module() -> None:

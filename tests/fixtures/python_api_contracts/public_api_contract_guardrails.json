@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale.v1",
-  "approved_snapshot_sha256": "d4b0e7e07e3572e077e8baf127f41874b8e39456f258fe931e11a22b13ac4c02",
+  "approved_snapshot_sha256": "e8819ca6af84acdaec92507e757fcc06df65e6934eee4304d7567283d3b8cda6",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -801,6 +801,39 @@
       "updated_surfaces": [
         "janiform.seasonality",
         "janiform.seasonality.contracts"
+      ]
+    },
+    {
+      "approved_on": "2026-04-03",
+      "docs_updated": [],
+      "rationale": "Hourly-factor provider exceptions now follow the same package structure as other domain surfaces by living in janiform.hourly_factors.errors rather than inside the workflow implementation module, so the approved snapshot must record the new owning module for those public error types.",
+      "snapshot_sha256": "e47188f60c140ff7b8b5aadaeaea67a4aea3ee3dc1b75f1fc2621a76dcb317f8",
+      "summary": "Approve package-owned hourly-factor error modules.",
+      "updated_surfaces": [
+        "janiform.hourly_factors"
+      ]
+    },
+    {
+      "approved_on": "2026-04-03",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Sufficient-statistics risk now follows the same package-owned surface pattern as other domains: contract dataclasses live in janiform.risk.contracts, validation errors live in janiform.risk.errors, and workflow serialization and validation entrypoints live outside the contract definitions so the root package is a curated re-export surface instead of one monolithic module.",
+      "snapshot_sha256": "42f67b00fb4031e1be5d5d1245266f1fb042ad60f400b83fc7c77dd914e5dff0",
+      "summary": "Approve the package-owned risk contracts submodule and split the risk monolith.",
+      "updated_surfaces": [
+        "janiform.risk",
+        "janiform.risk.contracts"
+      ]
+    },
+    {
+      "approved_on": "2026-04-03",
+      "docs_updated": [],
+      "rationale": "The risk surface does not own a distinct validation-failure contract and the previous alias only renamed ContractValidationFailure without adding behavior or type distinction, so the approved snapshot now removes that redundant public symbol.",
+      "snapshot_sha256": "e8819ca6af84acdaec92507e757fcc06df65e6934eee4304d7567283d3b8cda6",
+      "summary": "Remove the redundant risk validation-failure alias.",
+      "updated_surfaces": [
+        "janiform.risk"
       ]
     }
   ],

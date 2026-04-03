@@ -98,6 +98,10 @@ Sufficient-statistics risk path contracts. Representative public symbols include
 - `SufficientStatisticsRiskPathDiagnostics`
 - `validate_sufficient_statistics_risk_run_request`
 
+The public contract submodule is:
+
+- `janiform.risk.contracts`
+
 ### `janiform.hourly_factors`
 
 Hourly factor materialization, providers, and contract helpers. Representative public symbols include:
