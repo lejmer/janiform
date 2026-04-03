@@ -1,50 +1,47 @@
+"""Public vanilla-option pricing contracts."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
 from math import exp
-from types import ModuleType
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
-from .contracts import (
-    ContractModel,
+from ..contracts.base import (
+    require_boolean,
+    require_optional_boolean_value,
+    require_optional_mapping_value,
+    require_optional_string_value,
+    require_str_enum_value,
+)
+from ..mean_reversion import (
     MeanReversionAnchorModel,
-    MeanReversionAnchorModelKind,
     MeanReversionBoundaryState,
     MeanReversionFittedParameters,
-    ValidationErrorFactory,
-    parse_json_object,
+)
+from ..contracts import (
+    ContractModel,
     require_finite_number,
     require_mapping,
-    require_non_negative_integer,
     require_non_negative_finite_number,
+    require_non_negative_integer,
     require_positive_finite_number,
-    require_positive_integer,
     require_positive_finite_scalar,
+    require_positive_integer,
     require_string,
-    serialize_deterministic_json,
     serialize_pretty_json,
     validate_exact_string,
     validate_required_field_list,
 )
-from ._native_api import native_exception_matches, native_module
-from ._timestamps import hours_to_exact_nanoseconds
-from .errors import (
-    ContractValidationFailure,
-    JaniformErrorDetails,
-    JaniformErrorCategory,
-    JaniformExecutionError,
-    JaniformIntegrationError,
-    JaniformValidationError,
-)
-from .hourly_factors import (
-    HourlyFactorContract,
-)
+from ..errors import JaniformValidationError
+from ..hourly_factors import HourlyFactorContract
+from .._timestamps import hours_to_exact_nanoseconds
+from .errors import PRICING_ERROR_FACTORY, _pricing_error
 
 if TYPE_CHECKING:
-    from .simulation import HawkesExcitationState, HawkesKernelParameters
-    from .simulation.coarse.news import NewsProcessConfiguration
+    from ..simulation import HawkesExcitationState, HawkesKernelParameters
+    from ..simulation.coarse.news import NewsProcessConfiguration
 
 DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA = 1.0
 VANILLA_OPTION_PRICING_RUN_RESULT_SCHEMA_VERSION = "pricing.vanilla_option.run_result.v1"
@@ -81,21 +78,10 @@ VANILLA_OPTION_PRICING_CALIBRATION_HOOKS_REQUIRED_FIELDS: tuple[str, ...] = (
     "integration_convergence_check_passed",
     "integration_truncation_check_passed",
 )
-PRICING_VALIDATION_ERROR_ID = "pricing.validation.contract"
-PRICING_EXECUTION_ERROR_ID = "pricing.execution.run_failed"
-PRICING_INTEGRATION_NATIVE_MODULE_ERROR_ID = "pricing.integration.native_module_unavailable"
-PRICING_INTEGRATION_RESPONSE_ERROR_ID = "pricing.integration.invalid_native_response"
 PRICING_LOCAL_ANCHORED_TILT_SOLVE_POLICY = (
     "solve_state_dependent_local_tilt_against_endogenous_q_martingale_target.v1"
 )
 _PRICING_MEAN_REVERSION_ALIGNMENT_TOLERANCE = 1e-12
-
-VanillaOptionPricingValidationFailure = ContractValidationFailure
-
-
-class VanillaOptionPricingValidationError(JaniformValidationError):
-    pass
-
 
 class FourierInversionQuadratureRule(StrEnum):
     MIDPOINT = "midpoint"
@@ -107,91 +93,12 @@ class FourierInversionNumericQualityGate(StrEnum):
     ENFORCE_FAILURE = "enforce_failure"
 
 
-def _pricing_failure(
-    field_path: str,
-    message: str,
-    *,
-    entrypoint: str = "contract",
-    error_id: str = PRICING_VALIDATION_ERROR_ID,
-    context: Optional[dict[str, Optional[str | int | float | bool]]] = None,
-) -> VanillaOptionPricingValidationFailure:
-    return VanillaOptionPricingValidationFailure.from_context(
-        error_id=error_id,
-        workflow="pricing",
-        entrypoint=entrypoint,
-        field_path=field_path,
-        message=message,
-        context=context,
-    )
-
-
-def _pricing_error(
-    field_path: str,
-    message: str,
-    *,
-    entrypoint: str = "contract",
-    error_id: str = PRICING_VALIDATION_ERROR_ID,
-    context: Optional[dict[str, Optional[str | int | float | bool]]] = None,
-) -> VanillaOptionPricingValidationError:
-    return VanillaOptionPricingValidationError(
-        _pricing_failure(
-            field_path,
-            message,
-            entrypoint=entrypoint,
-            error_id=error_id,
-            context=context,
-        )
-    )
-
-
-def _pricing_integration_error(
-    message: str,
-    *,
-    entrypoint: str,
-    error_id: str,
-    field_path: Optional[str] = None,
-    context: Optional[dict[str, Optional[str | int | float | bool]]] = None,
-) -> JaniformIntegrationError:
-    return JaniformIntegrationError(
-        JaniformErrorDetails.from_context(
-            error_id=error_id,
-            category=JaniformErrorCategory.INTEGRATION,
-            workflow="pricing",
-            entrypoint=entrypoint,
-            message=message,
-            field_path=field_path,
-            context=context,
-        )
-    )
-
-
-def _pricing_execution_error(
-    message: str,
-    *,
-    entrypoint: str,
-    context: Optional[dict[str, Optional[str | int | float | bool]]] = None,
-) -> JaniformExecutionError:
-    return JaniformExecutionError(
-        JaniformErrorDetails.from_context(
-            error_id=PRICING_EXECUTION_ERROR_ID,
-            category=JaniformErrorCategory.EXECUTION,
-            workflow="pricing",
-            entrypoint=entrypoint,
-            message=message,
-            context=context,
-        )
-    )
-
-
-PRICING_ERROR_FACTORY: ValidationErrorFactory = _pricing_error
-
-
 def _parse_hawkes_kernel_parameters(
     raw_payload: dict[str, Any] | Any,
     *,
     field_path: str,
 ) -> Any:
-    from .simulation import HawkesKernelParameters
+    from ..simulation import HawkesKernelParameters
 
     return HawkesKernelParameters.from_mapping(raw_payload, field_path=field_path)
 
@@ -201,7 +108,7 @@ def _parse_hawkes_excitation_state(
     *,
     field_path: str,
 ):
-    from .simulation import HawkesExcitationState
+    from ..simulation import HawkesExcitationState
 
     return HawkesExcitationState.from_mapping(raw_payload, field_path=field_path)
 
@@ -211,27 +118,12 @@ def _parse_news_process_configuration(
     *,
     field_path: str,
 ):
-    from .simulation.coarse.news import NewsProcessConfiguration
+    from ..simulation.coarse.news import NewsProcessConfiguration
 
     try:
         return NewsProcessConfiguration.from_mapping(raw_payload)
     except JaniformValidationError as e:
         raise _pricing_error(f"{field_path}.{e.failure.field_path}", e.failure.message) from e
-
-
-def require_boolean(
-    mapping: dict[str, Any] | Any,
-    field_name: str,
-    field_path: str,
-) -> bool:
-    if field_name not in mapping:
-        raise _pricing_error(field_path, "is required")
-
-    raw_value = mapping[field_name]
-    if not isinstance(raw_value, bool):
-        raise _pricing_error(field_path, "must be a boolean")
-
-    return raw_value
 
 
 class VanillaOptionPayoffType(StrEnum):
@@ -404,20 +296,19 @@ class VanillaOptionPayoffConfiguration(ContractModel):
         if not isinstance(raw_payload, dict):
             raise _pricing_error(field_path, "must be an object")
 
-        raw_payoff_type = require_string(
-            raw_payload,
-            "payoff_type",
+        payoff_type = require_str_enum_value(
+            require_string(
+                raw_payload,
+                "payoff_type",
+                f"{field_path}.payoff_type",
+                PRICING_ERROR_FACTORY,
+            ),
             f"{field_path}.payoff_type",
             PRICING_ERROR_FACTORY,
+            enum_type=VanillaOptionPayoffType,
+            allowed_values_message="must be one of: call, put",
+            include_received_value=True,
         )
-
-        try:
-            payoff_type = VanillaOptionPayoffType(raw_payoff_type)
-        except ValueError as e:
-            raise _pricing_error(
-                f"{field_path}.payoff_type",
-                f"must be one of: call, put, received '{raw_payoff_type}'",
-            ) from e
 
         return VanillaOptionPayoffConfiguration(payoff_type=payoff_type)
 
@@ -484,8 +375,8 @@ class VanillaOptionPricingModelParameters(ContractModel):
     nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration
 
     def __post_init__(self) -> None:
-        from .simulation import HawkesKernelParameters
-        from .simulation.coarse.news import NewsProcessConfiguration
+        from ..simulation import HawkesKernelParameters
+        from ..simulation.coarse.news import NewsProcessConfiguration
 
         if not isinstance(self.hawkes_kernel_parameters, HawkesKernelParameters):
             raise _pricing_error(
@@ -560,7 +451,7 @@ class AnchoredVanillaOptionPricingBoundaryInput(ContractModel):
     observed_boundary_state: MeanReversionBoundaryState
 
     def __post_init__(self) -> None:
-        from .simulation import HawkesExcitationState
+        from ..simulation import HawkesExcitationState
 
         if not isinstance(self.hawkes_boundary_state, HawkesExcitationState):
             raise _pricing_error(
@@ -591,15 +482,6 @@ class AnchoredVanillaOptionPricingBoundaryInput(ContractModel):
             "boundary_input.interval_delta",
             PRICING_ERROR_FACTORY,
         )
-
-        if (
-            self.mean_reversion_fitted_parameters.anchor_model.anchor_model_kind
-            != MeanReversionAnchorModelKind.ENDOGENOUS_CORE_PRESSURE_LEVEL
-        ):
-            raise _pricing_error(
-                "boundary_input.mean_reversion_fitted_parameters.anchor_model.anchor_model_kind",
-                "must be endogenous_core_pressure_level",
-            )
 
     @property
     def current_anchor_value(self) -> float:
@@ -1288,16 +1170,19 @@ class VanillaOptionPricingOptionalOutputSelection(ContractModel):
                 raw_payload,
                 "include_transform_diagnostics",
                 f"{field_path}.include_transform_diagnostics",
+                PRICING_ERROR_FACTORY,
             ),
             include_integration_quality_diagnostics=require_boolean(
                 raw_payload,
                 "include_integration_quality_diagnostics",
                 f"{field_path}.include_integration_quality_diagnostics",
+                PRICING_ERROR_FACTORY,
             ),
             include_calibration_hooks=require_boolean(
                 raw_payload,
                 "include_calibration_hooks",
                 f"{field_path}.include_calibration_hooks",
+                PRICING_ERROR_FACTORY,
             ),
         )
 
@@ -1481,45 +1366,23 @@ class VanillaOptionPricingRunDiagnostics(ContractModel):
         if "anchored_recursion" not in raw_payload:
             raise _pricing_error(f"{field_path}.anchored_recursion", "is required")
 
-        raw_transform = raw_payload["transform"]
-        transform = (
-            dict(raw_transform)
-            if isinstance(raw_transform, dict)
-            else None
-            if raw_transform is None
-            else None
-        )
-        if raw_transform is not None and transform is None:
-            raise _pricing_error(f"{field_path}.transform", "must be an object or null")
-
-        raw_integration_quality = raw_payload["integration_quality"]
-        integration_quality = (
-            dict(raw_integration_quality)
-            if isinstance(raw_integration_quality, dict)
-            else None
-            if raw_integration_quality is None
-            else None
-        )
-        if raw_integration_quality is not None and integration_quality is None:
-            raise _pricing_error(
-                f"{field_path}.integration_quality",
-                "must be an object or null",
-            )
-
-        raw_anchored_recursion = raw_payload["anchored_recursion"]
-        anchored_recursion = (
-            dict(raw_anchored_recursion)
-            if isinstance(raw_anchored_recursion, dict)
-            else None
-            if raw_anchored_recursion is None
-            else None
+        transform = require_optional_mapping_value(
+            raw_payload["transform"],
+            f"{field_path}.transform",
+            PRICING_ERROR_FACTORY,
         )
 
-        if raw_anchored_recursion is not None and anchored_recursion is None:
-            raise _pricing_error(
-                f"{field_path}.anchored_recursion",
-                "must be an object or null",
-            )
+        integration_quality = require_optional_mapping_value(
+            raw_payload["integration_quality"],
+            f"{field_path}.integration_quality",
+            PRICING_ERROR_FACTORY,
+        )
+
+        anchored_recursion = require_optional_mapping_value(
+            raw_payload["anchored_recursion"],
+            f"{field_path}.anchored_recursion",
+            PRICING_ERROR_FACTORY,
+        )
 
         if transform is None and integration_quality is None and anchored_recursion is None:
             raise _pricing_error(
@@ -1575,9 +1438,11 @@ class VanillaOptionPricingCalibrationHooks(ContractModel):
             PRICING_ERROR_FACTORY,
         )
 
-        transform_status_raw = raw_payload.get("transform_status")
-        if transform_status_raw is not None and not isinstance(transform_status_raw, str):
-            raise _pricing_error(f"{field_path}.transform_status", "must be a string or null")
+        transform_status_raw = require_optional_string_value(
+            raw_payload.get("transform_status"),
+            f"{field_path}.transform_status",
+            PRICING_ERROR_FACTORY,
+        )
 
         return VanillaOptionPricingCalibrationHooks(
             schema_version=VANILLA_OPTION_PRICING_CALIBRATION_HOOKS_SCHEMA_VERSION,
@@ -1700,132 +1565,11 @@ def _optional_boolean(
     if field_name not in raw_payload:
         raise _pricing_error(field_path, "is required")
 
-    raw_value = raw_payload[field_name]
-    if raw_value is None:
-        return None
-    if not isinstance(raw_value, bool):
-        raise _pricing_error(field_path, "must be a boolean or null")
-
-    return raw_value
-
-
-def validate_vanilla_option_pricing_request(
-    raw_request: dict[str, Any] | Any,
-) -> VanillaOptionPricingRequest:
-    return VanillaOptionPricingRequest.from_mapping(raw_request)
-
-
-def validate_vanilla_option_pricing_response(
-    raw_response: dict[str, Any] | Any,
-) -> VanillaOptionPricingResponse:
-    return VanillaOptionPricingResponse.from_mapping(raw_response)
-
-
-def validate_vanilla_option_pricing_run_result(
-    raw_run_result: dict[str, Any] | Any,
-) -> VanillaOptionPricingRunResult:
-    return VanillaOptionPricingRunResult.from_mapping(raw_run_result)
-
-
-def serialize_vanilla_option_pricing_request(request: VanillaOptionPricingRequest) -> str:
-    return serialize_deterministic_json(request)
-
-
-def deserialize_vanilla_option_pricing_request(payload_json: str) -> VanillaOptionPricingRequest:
-    raw_payload = parse_json_object(payload_json, "vanilla option request", PRICING_ERROR_FACTORY)
-    return validate_vanilla_option_pricing_request(dict(raw_payload))
-
-
-def serialize_vanilla_option_pricing_response(response: VanillaOptionPricingResponse) -> str:
-    return serialize_deterministic_json(response)
-
-
-def deserialize_vanilla_option_pricing_response(payload_json: str) -> VanillaOptionPricingResponse:
-    raw_payload = parse_json_object(payload_json, "vanilla option response", PRICING_ERROR_FACTORY)
-    return validate_vanilla_option_pricing_response(dict(raw_payload))
-
-
-def serialize_vanilla_option_pricing_run_result(run_result: VanillaOptionPricingRunResult) -> str:
-    return serialize_deterministic_json(run_result)
-
-
-def deserialize_vanilla_option_pricing_run_result(payload_json: str) -> VanillaOptionPricingRunResult:
-    raw_payload = parse_json_object(
-        payload_json,
-        "vanilla option pricing run result",
+    return require_optional_boolean_value(
+        raw_payload[field_name],
+        field_path,
         PRICING_ERROR_FACTORY,
     )
-    return validate_vanilla_option_pricing_run_result(dict(raw_payload))
-
-
-def run_vanilla_option_pricing(
-    execution_input: VanillaOptionPricingExecutionInput,
-) -> VanillaOptionPricingRunResult:
-    """Run vanilla option pricing from the explicit execution contract.
-
-    Example:
-        run_result = run_vanilla_option_pricing(execution_input)
-
-    The execution input keeps `nu_h_known` and `nu_h_surprise` separate so the
-    pricing path does not collapse corrected known-surprise news semantics.
-    """
-
-    if not isinstance(execution_input, VanillaOptionPricingExecutionInput):
-        raise _pricing_error(
-            "execution_input",
-            "must be a VanillaOptionPricingExecutionInput",
-            entrypoint="run_vanilla_option_pricing",
-        )
-
-    normalized_execution_input = execution_input
-
-    try:
-        native: ModuleType = native_module()
-    except ModuleNotFoundError as e:
-        raise _pricing_integration_error(
-            "native pricing module is unavailable",
-            entrypoint="run_vanilla_option_pricing",
-            error_id=PRICING_INTEGRATION_NATIVE_MODULE_ERROR_ID,
-            context={"module_name": "janiform._native"},
-        ) from e
-
-    try:
-        raw_run_result = native.run_vanilla_option_pricing(
-            normalized_execution_input.request.to_payload(),
-            normalized_execution_input.hourly_factor_contract._native_result,
-            normalized_execution_input.optional_output_selection.to_payload(),
-        )
-    except Exception as e:
-        if native_exception_matches(native, e, "PricingExecutionError"):
-            raise _pricing_execution_error(
-                "vanilla option pricing failed during native execution",
-                entrypoint="run_vanilla_option_pricing",
-                context={"source_exception_type": type(e).__name__},
-            ) from e
-
-        raise _pricing_execution_error(
-            "vanilla option pricing failed during native execution",
-            entrypoint="run_vanilla_option_pricing",
-            context={"source_exception_type": type(e).__name__},
-        ) from e
-
-    if not isinstance(raw_run_result, dict):
-        raise _pricing_integration_error(
-            "native pricing returned an invalid response payload",
-            entrypoint="run_vanilla_option_pricing",
-            error_id=PRICING_INTEGRATION_RESPONSE_ERROR_ID,
-            context={"returned_type": type(raw_run_result).__name__},
-        )
-
-    try:
-        return validate_vanilla_option_pricing_run_result(raw_run_result)
-    except VanillaOptionPricingValidationError as e:
-        raise _pricing_integration_error(
-            "native pricing returned an invalid response payload",
-            entrypoint="run_vanilla_option_pricing",
-            error_id=PRICING_INTEGRATION_RESPONSE_ERROR_ID,
-            context={"source_error_id": e.error_id},
-        ) from e
 
 
 __all__ = [
@@ -1842,7 +1586,6 @@ __all__ = [
     "FourierInversionQuadratureRule",
     "GammaSeverityMarkConfiguration",
     "MeanReversionAnchorModel",
-    "MeanReversionAnchorModelKind",
     "MeanReversionBoundaryState",
     "MeanReversionFittedParameters",
     "NigSharedPlusShiftConfiguration",
@@ -1859,16 +1602,4 @@ __all__ = [
     "VanillaOptionPricingRunDiagnostics",
     "VanillaOptionPricingRunOutputSchemaMetadata",
     "VanillaOptionPricingRunResult",
-    "VanillaOptionPricingValidationError",
-    "VanillaOptionPricingValidationFailure",
-    "deserialize_vanilla_option_pricing_request",
-    "deserialize_vanilla_option_pricing_response",
-    "deserialize_vanilla_option_pricing_run_result",
-    "run_vanilla_option_pricing",
-    "serialize_vanilla_option_pricing_request",
-    "serialize_vanilla_option_pricing_response",
-    "serialize_vanilla_option_pricing_run_result",
-    "validate_vanilla_option_pricing_request",
-    "validate_vanilla_option_pricing_response",
-    "validate_vanilla_option_pricing_run_result",
 ]

@@ -22,7 +22,7 @@ from matplotlib.figure import Figure
 from janiform._timestamps import datetime_to_utc_microseconds, utc_microseconds_to_datetime
 from janiform.calibration.fit import model as fit_model_runtime
 from janiform.calendar import CalendarRegistry, MarketState
-from janiform.contracts import MeanReversionFittedParameters
+from janiform.mean_reversion import MeanReversionFittedParameters
 from janiform.hourly_factors import (
     HourlyNewsIntensityProviderMaterializedSource,
     provide_hourly_factor_contract,
@@ -1582,17 +1582,13 @@ def _build_mean_reversion_series_analysis(
 
     runtime_log_prices = np.log(series.prices / reference_price)
 
-    match fitted_parameters.anchor_model.anchor_model_kind.value:
-        case "endogenous_core_pressure_level":
-            anchor_values = _materialize_endogenous_mean_reversion_anchor_values(
-                model,
-                runtime_log_prices=runtime_log_prices,
-                timestamp_microseconds_utc=series.timestamp_microseconds_utc,
-            )
-            if anchor_values is None:
-                return None
-        case _:
-            return None
+    anchor_values = _materialize_endogenous_mean_reversion_anchor_values(
+        model,
+        runtime_log_prices=runtime_log_prices,
+        timestamp_microseconds_utc=series.timestamp_microseconds_utc,
+    )
+    if anchor_values is None:
+        return None
 
     if anchor_values.shape != runtime_log_prices.shape:
         return None
@@ -1924,16 +1920,6 @@ def _mean_reversion_diagnostics_summary_lines(
         return ()
 
     summary_lines: list[str] = []
-
-    chosen_anchor_family = diagnostics_payload.get("chosen_anchor_family")
-    if isinstance(chosen_anchor_family, str):
-        summary_lines.append(f"chosen anchor family: {chosen_anchor_family}")
-
-    anchor_parameter_estimates = diagnostics_payload.get("anchor_parameter_estimates")
-    if isinstance(anchor_parameter_estimates, dict):
-        anchor_model_kind = anchor_parameter_estimates.get("anchor_model_kind")
-        if isinstance(anchor_model_kind, str):
-            summary_lines.append(f"estimated anchor model: {anchor_model_kind}")
 
     stage_decision_reason = diagnostics_payload.get("stage_decision_reason")
     if isinstance(stage_decision_reason, str):

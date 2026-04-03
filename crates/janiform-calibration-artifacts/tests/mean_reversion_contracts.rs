@@ -1,7 +1,6 @@
 mod support;
 
 use janiform_calibration_artifacts::CalibrationExecutionMode;
-use janiform_model_kernels::mean_reversion::MeanReversionAnchorModelKind;
 use support::shared::{
     CalibrationRunContract, CalibrationRunSeedSettings, CalibrationRunSpec, CalibrationStage,
     CalibrationStageGraph, CalibrationStageHandoffTransport,
@@ -26,8 +25,12 @@ fn mean_reversion_fitted_parameters_round_trip_serialization_preserves_contract_
         .expect("mean reversion fitted parameters should serialize");
     assert_eq!(serialized["kappa"], serde_json::json!(0.25));
     assert_eq!(
-        serialized["anchor_model"]["anchor_model_kind"],
-        serde_json::json!("endogenous_core_pressure_level")
+        serialized["anchor_model"],
+        serde_json::json!({
+            "reference_interval_hours": 24.0,
+            "pressure_persistence_per_reference_interval": 0.5,
+            "pressure_level_gain": 1.25,
+        })
     );
 
     let parsed: MeanReversionFittedParameters = serde_json::from_value(serialized)
@@ -59,7 +62,6 @@ fn mean_reversion_fitted_parameters_reject_negative_kappa() {
 #[test]
 fn endogenous_mean_reversion_anchor_model_rejects_exogenous_anchor_values() {
     let anchor_model = serde_json::from_value::<MeanReversionAnchorModel>(serde_json::json!({
-        "anchor_model_kind": MeanReversionAnchorModelKind::EndogenousCorePressureLevel,
         "reference_interval_hours": 24.0,
         "pressure_persistence_per_reference_interval": 0.5,
         "pressure_level_gain": 1.0,
@@ -134,7 +136,6 @@ fn calibration_stage_parameter_artifact_persistence_round_trips_mean_reversion_b
             .expect("mean-reversion solver settings should exist");
     let fitted_parameters = build_endogenous_mean_reversion_parameters();
     let diagnostics = MeanReversionStageDiagnostics {
-        chosen_anchor_family: MeanReversionAnchorModelKind::EndogenousCorePressureLevel,
         selected_candidate_family: "endogenous_core_pressure_level_mean_reversion".to_string(),
         calibration_grid: MeanReversionStageCalibrationGrid {
             calibration_grid_kind: "synthetic_daily_close_grid.v1".to_string(),

@@ -34,11 +34,6 @@ from janiform.calibration.market_data import (
     serialize_market_data_calibration_request,
     validate_market_data_calibration_request,
 )
-from janiform.calibration import (
-    MeanReversionAnchorModel,
-    MeanReversionAnchorModelKind,
-    MeanReversionFittedParameters,
-)
 from janiform.calibration.staged import (
     CalibrationExecutionMode,
     CalibrationOptimizerSettings,
@@ -59,6 +54,10 @@ from janiform.calibration.staged import (
     validate_staged_calibration_execution_input,
     validate_staged_calibration_request,
     validate_staged_calibration_response,
+)
+from janiform.mean_reversion import (
+    MeanReversionAnchorModel,
+    MeanReversionFittedParameters,
 )
 from janiform.seasonality import IntradaySmoothingKernel, SessionFilter
 
@@ -133,10 +132,6 @@ def test_market_data_calibration_request_roundtrip_preserves_mean_reversion_conf
     request = _valid_market_data_request_model()
 
     assert request.mean_reversion is not None
-    assert (
-        request.mean_reversion.anchor_model_kind
-        == MeanReversionAnchorModelKind.ENDOGENOUS_CORE_PRESSURE_LEVEL
-    )
     assert request.mean_reversion.calibration_grid_interval_hours == pytest.approx(24.0)
 
     serialized_request = serialize_market_data_calibration_request(request)
@@ -311,11 +306,14 @@ def test_mean_reversion_fitted_parameters_roundtrip_serialization_is_determinist
 
     serialized = fitted_parameters.to_json()
     deserialized = MeanReversionFittedParameters.from_mapping(json.loads(serialized))
+    serialized_anchor_model = json.loads(serialized)["anchor_model"]
 
     assert deserialized == fitted_parameters
-    assert json.loads(serialized)["anchor_model"]["anchor_model_kind"] == (
-        MeanReversionAnchorModelKind.ENDOGENOUS_CORE_PRESSURE_LEVEL.value
-    )
+    assert serialized_anchor_model == {
+        "reference_interval_hours": 1.0,
+        "pressure_persistence_per_reference_interval": 0.0,
+        "pressure_level_gain": 0.0,
+    }
 
 
 def test_mean_reversion_fitted_parameters_reject_negative_kappa() -> None:
@@ -326,11 +324,10 @@ def test_mean_reversion_fitted_parameters_reject_negative_kappa() -> None:
         )
 
 
-def test_endogenous_mean_reversion_anchor_model_from_mapping_rejects_unknown_anchor_value() -> None:
+def test_endogenous_mean_reversion_anchor_model_from_mapping_rejects_unknown_fields() -> None:
     with pytest.raises(ValueError, match="unsupported field 'anchor_value'"):
         MeanReversionAnchorModel.from_mapping(
             {
-                "anchor_model_kind": MeanReversionAnchorModelKind.ENDOGENOUS_CORE_PRESSURE_LEVEL.value,
                 "anchor_value": 0.0,
             }
         )
@@ -626,7 +623,6 @@ def _valid_market_data_request_model() -> MarketDataCalibrationRequest:
             calendar_timezone="UTC",
         ),
         mean_reversion=CalibrationMeanReversionConfiguration(
-            anchor_model_kind=MeanReversionAnchorModelKind.ENDOGENOUS_CORE_PRESSURE_LEVEL,
             calibration_grid_interval_hours=24.0,
         ),
     )

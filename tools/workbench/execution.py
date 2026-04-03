@@ -530,9 +530,7 @@ def _mean_reversion_configuration_from_setup(
     if run_setup.workflow_scope == CalibrationMarketDataWorkflowScope.SEASONALITY_ONLY:
         return None
 
-    return CalibrationMeanReversionConfiguration(
-        anchor_model_kind=run_setup.mean_reversion_anchor_model_kind,
-    )
+    return CalibrationMeanReversionConfiguration()
 
 
 def _session_source_kind_from_setup(run_setup: WorkbenchRunSetup) -> str:

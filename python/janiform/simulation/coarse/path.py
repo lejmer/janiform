@@ -28,9 +28,9 @@ from ..shared.errors import (
     SIMULATION_ERROR_FACTORY,
     _simulation_error,
 )
+from ...mean_reversion import MeanReversionBoundaryState
 from ...contracts import (
     ContractModel,
-    MeanReversionBoundaryState,
     parse_json_object,
     require_datetime_utc,
     require_finite_number,

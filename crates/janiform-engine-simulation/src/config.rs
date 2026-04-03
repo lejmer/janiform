@@ -2,8 +2,7 @@
 
 use chrono::{DateTime, Utc};
 use janiform_model_kernels::mean_reversion::{
-    MeanReversionAnchorModelKind, MeanReversionBoundaryState, MeanReversionFittedParameters,
-    MeanReversionRuntimeIntervalAnchors,
+    MeanReversionBoundaryState, MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors,
 };
 use serde::Serialize;
 
@@ -339,15 +338,6 @@ impl SeededTickSimulationRunConfig {
                     },
                 );
             }
-        }
-
-        match self
-            .model_inputs
-            .mean_reversion_fitted_parameters
-            .anchor_model
-            .anchor_model_kind
-        {
-            MeanReversionAnchorModelKind::EndogenousCorePressureLevel => {}
         }
 
         if let Some((

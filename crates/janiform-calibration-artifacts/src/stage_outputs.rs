@@ -5,7 +5,7 @@ use janiform_model_kernels::hawkes::{
     HawkesStructuredRhoParameterization, HawkesStructuredRhoSelfDominancePolicy,
 };
 use janiform_model_kernels::mean_reversion::{
-    MeanReversionAnchorModel, MeanReversionAnchorModelKind, MeanReversionFittedParameters,
+    MeanReversionAnchorModel, MeanReversionFittedParameters,
 };
 use janiform_model_kernels::news::NewsProcessConfiguration;
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
@@ -59,7 +59,6 @@ pub struct MeanReversionStageCalibrationGrid {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MeanReversionStageDiagnostics {
-    pub chosen_anchor_family: MeanReversionAnchorModelKind,
     pub selected_candidate_family: String,
     pub calibration_grid: MeanReversionStageCalibrationGrid,
     pub anchor_parameter_estimates: MeanReversionAnchorModel,

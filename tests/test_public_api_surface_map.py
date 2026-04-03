@@ -9,8 +9,11 @@ import janiform.cli as cli_module
 import janiform.contracts as contracts_module
 import janiform.errors as errors_module
 import janiform.hourly_factors as hourly_factors_module
+import janiform.mean_reversion as mean_reversion_module
 import janiform.pricing as pricing_module
 import janiform.risk as risk_module
+import janiform.seasonality as seasonality_module
+import janiform.stylized_facts as stylized_facts_module
 import janiform.simulation as simulation_module
 import janiform.validation as validation_module
 
@@ -80,10 +83,23 @@ def test_public_and_internal_module_intent_is_explicit() -> None:
         "janiform.calibration.market_data",
         "janiform.calibration.staged",
         "janiform.cli",
+        "janiform.hourly_factors",
+        "janiform.hourly_factors.contracts",
+        "janiform.mean_reversion",
+        "janiform.mean_reversion.contracts",
+        "janiform.pricing",
+        "janiform.pricing.contracts",
+        "janiform.risk",
+        "janiform.risk.contracts",
+        "janiform.seasonality",
+        "janiform.seasonality.contracts",
         "janiform.simulation",
         "janiform.simulation.coarse",
         "janiform.simulation.seeded",
         "janiform.simulation.shared",
+        "janiform.stylized_facts",
+        "janiform.stylized_facts.contracts",
+        "janiform.validation.contracts",
     )
     internal_modules = (
         "janiform.cli.command_tree",
@@ -161,7 +177,6 @@ def test_simulation_public_symbols_live_in_simulation_module() -> None:
         "HawkesKernelLoadings",
         "HawkesKernelParameters",
         "MeanReversionAnchorModel",
-        "MeanReversionAnchorModelKind",
         "MeanReversionBoundaryState",
         "MeanReversionFittedParameters",
         "MeanReversionRuntimeIntervalAnchors",
@@ -189,11 +204,6 @@ def test_simulation_public_module_is_a_package() -> None:
 def test_contracts_public_symbols_live_in_contracts_module() -> None:
     expected_exports = {
         "ContractModel",
-        "MeanReversionAnchorModel",
-        "MeanReversionAnchorModelKind",
-        "MeanReversionBoundaryState",
-        "MeanReversionFittedParameters",
-        "MeanReversionRuntimeIntervalAnchors",
         "ValidationErrorFactory",
         "serialize_deterministic_json",
         "serialize_pretty_json",
@@ -201,6 +211,37 @@ def test_contracts_public_symbols_live_in_contracts_module() -> None:
 
     assert expected_exports <= set(contracts_module.__all__)
     assert expected_exports <= set(dir(contracts_module))
+
+
+def test_mean_reversion_public_symbols_live_in_mean_reversion_module() -> None:
+    expected_exports = {
+        "MeanReversionAnchorModel",
+        "MeanReversionBoundaryState",
+        "MeanReversionFittedParameters",
+        "MeanReversionRuntimeIntervalAnchors",
+    }
+
+    assert set(mean_reversion_module.__all__) == expected_exports
+    assert expected_exports <= set(dir(mean_reversion_module))
+
+
+def test_mean_reversion_public_contract_submodule_is_supported_domain_import() -> None:
+    mean_reversion_contracts_module = import_module("janiform.mean_reversion.contracts")
+
+    expected_exports = {
+        "MeanReversionAnchorModel",
+        "MeanReversionBoundaryState",
+        "MeanReversionFittedParameters",
+        "MeanReversionRuntimeIntervalAnchors",
+    }
+
+    assert set(mean_reversion_contracts_module.__all__) == expected_exports
+    assert expected_exports <= set(dir(mean_reversion_contracts_module))
+    assert mean_reversion_module.MeanReversionAnchorModel is mean_reversion_contracts_module.MeanReversionAnchorModel
+    assert (
+        mean_reversion_module.MeanReversionBoundaryState
+        is mean_reversion_contracts_module.MeanReversionBoundaryState
+    )
 
 
 def test_simulation_seeded_public_submodule_is_supported_domain_import() -> None:
@@ -261,7 +302,6 @@ def test_simulation_shared_public_submodule_is_supported_domain_import() -> None
         "HawkesKernelLoadings",
         "HawkesKernelParameters",
         "MeanReversionAnchorModel",
-        "MeanReversionAnchorModelKind",
         "MeanReversionBoundaryState",
         "MeanReversionFittedParameters",
         "MeanReversionRuntimeIntervalAnchors",
@@ -309,7 +349,7 @@ def test_simulation_root_and_shared_submodule_share_supported_symbols() -> None:
 
     assert simulation_module.HawkesKernelParameters is simulation_shared_module.HawkesKernelParameters
     assert simulation_module.HawkesExcitationState is simulation_shared_module.HawkesExcitationState
-    assert contracts_module.MeanReversionAnchorModel is simulation_shared_module.MeanReversionAnchorModel
+    assert mean_reversion_module.MeanReversionAnchorModel is simulation_shared_module.MeanReversionAnchorModel
     assert simulation_module.MeanReversionFittedParameters is simulation_shared_module.MeanReversionFittedParameters
     assert simulation_module.MeanReversionBoundaryState is simulation_shared_module.MeanReversionBoundaryState
     assert (
@@ -319,6 +359,8 @@ def test_simulation_root_and_shared_submodule_share_supported_symbols() -> None:
 
 
 def test_pricing_public_symbols_live_in_pricing_module() -> None:
+    assert hasattr(pricing_module, "__path__")
+
     expected_exports = {
         "GammaSeverityMarkConfiguration",
         "NigSharedPlusShiftConfiguration",
@@ -336,7 +378,6 @@ def test_pricing_public_symbols_live_in_pricing_module() -> None:
         "VanillaOptionPricingRunOutputSchemaMetadata",
         "VanillaOptionPricingRunResult",
         "VanillaOptionPricingValidationError",
-        "VanillaOptionPricingValidationFailure",
         "run_vanilla_option_pricing",
         "validate_vanilla_option_pricing_request",
         "validate_vanilla_option_pricing_response",
@@ -353,7 +394,25 @@ def test_pricing_public_symbols_live_in_pricing_module() -> None:
     assert expected_exports <= set(dir(pricing_module))
 
 
+def test_pricing_contract_submodule_is_supported_domain_import() -> None:
+    pricing_contracts_module = import_module("janiform.pricing.contracts")
+
+    expected_exports = {
+        "GammaSeverityMarkConfiguration",
+        "NigSharedPlusShiftConfiguration",
+        "VanillaOptionPricingRequest",
+        "VanillaOptionPricingResponse",
+        "VanillaOptionPricingRunResult",
+    }
+
+    assert expected_exports <= set(pricing_contracts_module.__all__)
+    assert expected_exports <= set(dir(pricing_contracts_module))
+    assert pricing_module.VanillaOptionPricingRunResult is pricing_contracts_module.VanillaOptionPricingRunResult
+
+
 def test_risk_public_symbols_live_in_risk_module() -> None:
+    assert hasattr(risk_module, "__path__")
+
     expected_exports = {
         "SUFFICIENT_STATISTICS_RISK_INTERVAL_FACTOR_POLICY",
         "SufficientStatisticsRiskEquationSpecification",
@@ -364,7 +423,6 @@ def test_risk_public_symbols_live_in_risk_module() -> None:
         "SufficientStatisticsRiskPathRecord",
         "SufficientStatisticsRiskPath",
         "SufficientStatisticsRiskValidationError",
-        "SufficientStatisticsRiskValidationFailure",
         "validate_sufficient_statistics_risk_run_request",
         "validate_sufficient_statistics_risk_path",
         "serialize_sufficient_statistics_risk_run_request",
@@ -377,7 +435,25 @@ def test_risk_public_symbols_live_in_risk_module() -> None:
     assert expected_exports <= set(dir(risk_module))
 
 
+def test_risk_contract_submodule_is_supported_domain_import() -> None:
+    risk_contracts_module = import_module("janiform.risk.contracts")
+
+    expected_exports = {
+        "SUFFICIENT_STATISTICS_RISK_INTERVAL_FACTOR_POLICY",
+        "SufficientStatisticsRiskEquationSpecification",
+        "SufficientStatisticsRiskModelInputs",
+        "SufficientStatisticsRiskPath",
+        "SufficientStatisticsRiskRunRequest",
+    }
+
+    assert expected_exports <= set(risk_contracts_module.__all__)
+    assert expected_exports <= set(dir(risk_contracts_module))
+    assert risk_module.SufficientStatisticsRiskPath is risk_contracts_module.SufficientStatisticsRiskPath
+
+
 def test_hourly_factor_support_symbols_live_in_hourly_factor_module() -> None:
+    assert hasattr(hourly_factors_module, "__path__")
+
     expected_exports = {
         "HourlyFactorContract",
         "HourlyNewsIntensityProviderExplicitSource",
@@ -395,10 +471,63 @@ def test_hourly_factor_support_symbols_live_in_hourly_factor_module() -> None:
     assert expected_exports <= set(dir(hourly_factors_module))
 
 
+def test_hourly_factor_contract_submodule_is_supported_domain_import() -> None:
+    hourly_factor_contracts_module = import_module("janiform.hourly_factors.contracts")
+
+    expected_exports = {
+        "HourlyFactorOutputSchema",
+        "HourlyNewsIntensityMaterializationSettings",
+        "HourlyNewsIntensityProviderExplicitSource",
+        "HourlySeasonalityMaterializationSettings",
+        "HourlySeasonalityProviderExplicitSource",
+    }
+
+    assert expected_exports <= set(hourly_factor_contracts_module.__all__)
+    assert expected_exports <= set(dir(hourly_factor_contracts_module))
+    assert (
+        hourly_factors_module.HourlySeasonalityProviderExplicitSource
+        is hourly_factor_contracts_module.HourlySeasonalityProviderExplicitSource
+    )
+
+
+def test_seasonality_public_module_is_a_package_with_curated_exports() -> None:
+    assert hasattr(seasonality_module, "__path__")
+
+    expected_exports = {
+        "IntradaySmoothingKernel",
+        "SessionFilter",
+        "ScheduledEventOverlayDefinition",
+        "preprocess_timestamp_events",
+        "estimate_intraday_seasonality",
+        "generate_seasonality_diagnostics_report",
+    }
+
+    assert expected_exports <= set(seasonality_module.__all__)
+    assert expected_exports <= set(dir(seasonality_module))
+
+
+def test_seasonality_contract_submodule_is_supported_domain_import() -> None:
+    seasonality_contracts_module = import_module("janiform.seasonality.contracts")
+
+    expected_exports = {
+        "IntradaySeasonalityEstimatorSettings",
+        "IntradaySmoothingKernel",
+        "ScheduledEventOverlayDefinition",
+        "SessionFilter",
+        "TimestampEventInputSchema",
+    }
+
+    assert expected_exports <= set(seasonality_contracts_module.__all__)
+    assert expected_exports <= set(dir(seasonality_contracts_module))
+    assert seasonality_module.SessionFilter is seasonality_contracts_module.SessionFilter
+
+
 def test_private_modules_are_not_exposed_through_public_exports() -> None:
     assert "native_module" not in validation_module.__all__
     assert "harness" not in validation_module.__all__
     assert import_module("janiform.contracts").__name__ == "janiform.contracts"
+    assert import_module("janiform.mean_reversion").__name__ == "janiform.mean_reversion"
+    assert import_module("janiform.mean_reversion.contracts").__name__ == "janiform.mean_reversion.contracts"
     assert import_module("janiform.simulation.coarse").__name__ == "janiform.simulation.coarse"
     assert import_module("janiform.simulation.seeded").__name__ == "janiform.simulation.seeded"
     assert import_module("janiform.simulation.shared").__name__ == "janiform.simulation.shared"
@@ -413,9 +542,6 @@ def test_private_modules_are_not_exposed_through_public_exports() -> None:
         import_module("janiform.simulation._shared")
 
     with pytest.raises(ModuleNotFoundError):
-        import_module("janiform.mean_reversion")
-
-    with pytest.raises(ModuleNotFoundError):
         import_module("janiform._mean_reversion")
 
     with pytest.raises(ModuleNotFoundError):
@@ -423,6 +549,57 @@ def test_private_modules_are_not_exposed_through_public_exports() -> None:
 
     with pytest.raises(ModuleNotFoundError):
         import_module("janiform.api")
+
+
+def test_validation_contract_submodule_is_supported_domain_import() -> None:
+    validation_contracts_module = import_module("janiform.validation.contracts")
+
+    expected_exports = {
+        "DeterministicRegressionHarnessReport",
+        "OpenClosedGapLeakageRegressionHarnessReport",
+        "RegressionHarnessFallbackPolicy",
+        "RegressionHarnessSummary",
+    }
+
+    assert expected_exports <= set(validation_contracts_module.__all__)
+    assert expected_exports <= set(dir(validation_contracts_module))
+    assert (
+        validation_module.DeterministicRegressionHarnessReport
+        is validation_contracts_module.DeterministicRegressionHarnessReport
+    )
+
+
+def test_stylized_facts_public_module_is_a_package_with_curated_exports() -> None:
+    assert hasattr(stylized_facts_module, "__path__")
+
+    expected_exports = {
+        "StylizedFactHorizonComparisonReportBundle",
+        "StylizedFactHorizonComparisonReport",
+        "StylizedFactHorizonComparisonTableSummary",
+        "StylizedFactHorizonComparisonPlotPayload",
+        "run_stylized_fact_horizon_comparison_report_generator",
+    }
+
+    assert expected_exports <= set(stylized_facts_module.__all__)
+    assert expected_exports <= set(dir(stylized_facts_module))
+
+
+def test_stylized_facts_contract_submodule_is_supported_domain_import() -> None:
+    stylized_facts_contracts_module = import_module("janiform.stylized_facts.contracts")
+
+    expected_exports = {
+        "StylizedFactDecisionCounts",
+        "StylizedFactHorizonComparisonReport",
+        "StylizedFactHorizonComparisonReportBundle",
+        "StylizedFactMetricComparisonReport",
+    }
+
+    assert expected_exports <= set(stylized_facts_contracts_module.__all__)
+    assert expected_exports <= set(dir(stylized_facts_contracts_module))
+    assert (
+        stylized_facts_module.StylizedFactHorizonComparisonReportBundle
+        is stylized_facts_contracts_module.StylizedFactHorizonComparisonReportBundle
+    )
 
 
 def test_errors_public_symbols_live_in_errors_module() -> None:
@@ -457,11 +634,16 @@ def test_calibration_public_symbols_live_in_calibration_module() -> None:
         "JaniformFitReport",
         "JaniformModel",
         "JaniformSimulationResult",
+        "JaniformVanillaOptionBatch",
+        "JaniformVanillaOptionBatchPricingCalibrationHooks",
+        "JaniformVanillaOptionBatchPricingResult",
+        "JaniformVanillaOptionBatchPricingRunDiagnostics",
+        "JaniformVanillaOptionSurface",
+        "JaniformVanillaOptionSurfacePricingCalibrationHooks",
+        "JaniformVanillaOptionSurfacePricingResult",
+        "JaniformVanillaOptionSurfacePricingRunDiagnostics",
         "MarketDataCalibrationRequest",
         "MarketProfileReference",
-        "MeanReversionAnchorModel",
-        "MeanReversionAnchorModelKind",
-        "MeanReversionFittedParameters",
         "PresetRegistry",
         "SessionExplicitConfiguration",
         "SessionPresetReference",
@@ -501,12 +683,21 @@ def test_calibration_fit_public_submodule_is_supported_domain_import() -> None:
         "JaniformFitReport",
         "JaniformModel",
         "JaniformSimulationResult",
+        "JaniformVanillaOptionBatch",
+        "JaniformVanillaOptionBatchPricingCalibrationHooks",
+        "JaniformVanillaOptionBatchPricingResult",
+        "JaniformVanillaOptionBatchPricingRunDiagnostics",
+        "JaniformVanillaOptionSurface",
+        "JaniformVanillaOptionSurfacePricingCalibrationHooks",
+        "JaniformVanillaOptionSurfacePricingResult",
+        "JaniformVanillaOptionSurfacePricingRunDiagnostics",
     }
 
 
 def test_calibration_fit_public_ownership_submodules_are_supported_domain_imports() -> None:
     calibration_fit_estimator_module = import_module("janiform.calibration.fit.estimator")
     calibration_fit_model_module = import_module("janiform.calibration.fit.model")
+    calibration_fit_pricing_module = import_module("janiform.calibration.fit.pricing")
     calibration_fit_report_module = import_module("janiform.calibration.fit.report")
     calibration_fit_state_estimation_module = import_module(
         "janiform.calibration.fit.state_estimation"
@@ -516,6 +707,16 @@ def test_calibration_fit_public_ownership_submodules_are_supported_domain_import
     assert set(calibration_fit_model_module.__all__) == {
         "JaniformModel",
         "JaniformSimulationResult",
+    }
+    assert set(calibration_fit_pricing_module.__all__) == {
+        "JaniformVanillaOptionBatch",
+        "JaniformVanillaOptionBatchPricingCalibrationHooks",
+        "JaniformVanillaOptionBatchPricingResult",
+        "JaniformVanillaOptionBatchPricingRunDiagnostics",
+        "JaniformVanillaOptionSurface",
+        "JaniformVanillaOptionSurfacePricingCalibrationHooks",
+        "JaniformVanillaOptionSurfacePricingResult",
+        "JaniformVanillaOptionSurfacePricingRunDiagnostics",
     }
     assert set(calibration_fit_report_module.__all__) == {"JaniformFitReport"}
     assert set(calibration_fit_state_estimation_module.__all__) == {
@@ -773,6 +974,7 @@ def test_calibration_root_and_public_ownership_submodules_share_supported_symbol
 
     calibration_fit_estimator_module = import_module("janiform.calibration.fit.estimator")
     calibration_fit_model_module = import_module("janiform.calibration.fit.model")
+    calibration_fit_pricing_module = import_module("janiform.calibration.fit.pricing")
     calibration_fit_report_module = import_module("janiform.calibration.fit.report")
     calibration_fit_state_estimation_module = import_module(
         "janiform.calibration.fit.state_estimation"
@@ -788,6 +990,14 @@ def test_calibration_root_and_public_ownership_submodules_share_supported_symbol
     assert calibration_module.JaniformEstimator is calibration_fit_estimator_module.JaniformEstimator
     assert calibration_module.JaniformModel is calibration_fit_model_module.JaniformModel
     assert calibration_module.JaniformFitReport is calibration_fit_report_module.JaniformFitReport
+    assert (
+        calibration_module.JaniformVanillaOptionBatch
+        is calibration_fit_pricing_module.JaniformVanillaOptionBatch
+    )
+    assert (
+        calibration_module.JaniformVanillaOptionSurface
+        is calibration_fit_pricing_module.JaniformVanillaOptionSurface
+    )
     assert (
         calibration_module.CurrentStateEstimationRequest
         is calibration_fit_state_estimation_module.CurrentStateEstimationRequest

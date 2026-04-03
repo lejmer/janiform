@@ -35,6 +35,10 @@ pricing = model.price_option(
 )
 ```
 
+For multi-node fitted-model pricing, stay on the same high-level surface with
+`model.price_options(...)` or `model.price_option_surface(...)` instead of looping over
+`model.price_option(...)`.
+
 ## When To Drop Lower
 
 - Use `janiform.calibration.staged` when you need explicit staged orchestration contracts.

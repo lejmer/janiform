@@ -1,41 +1,46 @@
+"""Public sufficient-statistics risk contracts."""
+
 from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Optional
 
-from .contracts import (
-    ContractModel,
-    MeanReversionAnchorModelKind,
+from ..mean_reversion import (
     MeanReversionBoundaryState,
     MeanReversionFittedParameters,
     MeanReversionRuntimeIntervalAnchors,
-    ValidationErrorFactory,
-    parse_json_object,
+)
+from ..contracts import (
+    ContractModel,
+    require_finite_number,
     require_mapping,
     require_non_negative_finite_number,
     require_non_negative_integer,
     require_positive_finite_number,
     require_positive_integer,
     require_sequence,
-    serialize_deterministic_json,
     validate_exact_integer,
     validate_exact_number,
     validate_exact_optional_integer,
     validate_exact_string,
     validate_required_field_list,
 )
-from .errors import ContractValidationFailure, JaniformValidationError
-from .hourly_factors import (
+from ..errors import JaniformValidationError
+from ..hourly_factors import (
     HourlyFactorContract,
     SeasonalityInputValidationError,
     load_hourly_factor_contract_payload,
 )
-from ._timestamps import hours_to_exact_nanoseconds
+from .._timestamps import hours_to_exact_nanoseconds
+from .errors import (
+    RISK_ERROR_FACTORY,
+    _risk_error,
+)
 
 if TYPE_CHECKING:
-    from .pricing import GammaSeverityMarkConfiguration, NigSharedPlusShiftConfiguration
-    from .simulation import HawkesExcitationState, HawkesKernelParameters
+    from ..pricing import GammaSeverityMarkConfiguration, NigSharedPlusShiftConfiguration
+    from ..simulation import HawkesExcitationState, HawkesKernelParameters
 
 
 def _parse_gamma_severity_mark_configuration(
@@ -43,7 +48,7 @@ def _parse_gamma_severity_mark_configuration(
     *,
     field_path: str,
 ) -> Any:
-    from .pricing import GammaSeverityMarkConfiguration
+    from ..pricing import GammaSeverityMarkConfiguration
 
     return GammaSeverityMarkConfiguration.from_mapping(raw_payload, field_path=field_path)
 
@@ -53,7 +58,7 @@ def _parse_nig_shared_plus_shift_configuration(
     *,
     field_path: str,
 ) -> Any:
-    from .pricing import NigSharedPlusShiftConfiguration
+    from ..pricing import NigSharedPlusShiftConfiguration
 
     return NigSharedPlusShiftConfiguration.from_mapping(raw_payload, field_path=field_path)
 
@@ -63,7 +68,7 @@ def _parse_hawkes_kernel_parameters(
     *,
     field_path: str,
 ) -> Any:
-    from .simulation import HawkesKernelParameters
+    from ..simulation import HawkesKernelParameters
 
     return HawkesKernelParameters.from_mapping(raw_payload, field_path=field_path)
 
@@ -73,7 +78,7 @@ def _parse_hawkes_excitation_state(
     *,
     field_path: str,
 ) -> Any:
-    from .simulation import HawkesExcitationState
+    from ..simulation import HawkesExcitationState
 
     return HawkesExcitationState.from_mapping(raw_payload, field_path=field_path)
 
@@ -164,38 +169,6 @@ SUFFICIENT_STATISTICS_RISK_PATH_ARTIFACT_WORKFLOW_TAGS: tuple[str, ...] = (
 )
 DEFAULT_INTRADAY_RISK_INTERVAL_DELTA = 1.0
 _MEAN_REVERSION_ALIGNMENT_TOLERANCE = 1e-12
-RISK_VALIDATION_ERROR_ID = "risk.validation.contract"
-
-SufficientStatisticsRiskValidationFailure = ContractValidationFailure
-
-
-class SufficientStatisticsRiskValidationError(JaniformValidationError):
-    pass
-
-
-def _risk_error(
-    field_path: str,
-    message: str,
-    *,
-    entrypoint: str = "contract",
-    error_id: str = RISK_VALIDATION_ERROR_ID,
-    context: Optional[dict[str, Optional[str | int | float | bool]]] = None,
-) -> SufficientStatisticsRiskValidationError:
-    return SufficientStatisticsRiskValidationError(
-        SufficientStatisticsRiskValidationFailure.from_context(
-            error_id=error_id,
-            workflow="risk",
-            entrypoint=entrypoint,
-            field_path=field_path,
-            message=message,
-            context=context,
-        )
-    )
-
-
-RISK_ERROR_FACTORY: ValidationErrorFactory = _risk_error
-
-
 @dataclass(frozen=True, slots=True)
 class SufficientStatisticsRiskEquationSpecification(ContractModel):
     hawkes_kernel_parameters: HawkesKernelParameters
@@ -255,15 +228,6 @@ class SufficientStatisticsRiskModelInputs(ContractModel):
                     "must match model_inputs.mean_reversion_runtime_interval_anchors."
                     f"start_anchor_value ({self.mean_reversion_runtime_interval_anchors.start_anchor_value})"
                 ),
-            )
-
-        if (
-            self.mean_reversion_fitted_parameters.anchor_model.anchor_model_kind
-            != MeanReversionAnchorModelKind.ENDOGENOUS_CORE_PRESSURE_LEVEL
-        ):
-            raise _risk_error(
-                "model_inputs.mean_reversion_fitted_parameters.anchor_model.anchor_model_kind",
-                "must be endogenous_core_pressure_level",
             )
 
     @staticmethod
@@ -509,27 +473,43 @@ class SufficientStatisticsRiskReturnComponents(ContractModel):
             raise _risk_error(field_path, "must be an object")
 
         return SufficientStatisticsRiskReturnComponents(
-            buy_side_return=require_positive_or_negative(raw_payload, "buy_side_return", f"{field_path}.buy_side_return"),
-            sell_side_return=require_positive_or_negative(raw_payload, "sell_side_return", f"{field_path}.sell_side_return"),
-            trading_time_return=require_positive_or_negative(raw_payload, "trading_time_return", f"{field_path}.trading_time_return"),
-            open_jump_return=require_positive_or_negative(raw_payload, "open_jump_return", f"{field_path}.open_jump_return"),
-            closed_gap_return=require_positive_or_negative(raw_payload, "closed_gap_return", f"{field_path}.closed_gap_return"),
-            total_return=require_positive_or_negative(raw_payload, "total_return", f"{field_path}.total_return"),
+            buy_side_return=require_finite_number(
+                raw_payload,
+                "buy_side_return",
+                f"{field_path}.buy_side_return",
+                RISK_ERROR_FACTORY,
+            ),
+            sell_side_return=require_finite_number(
+                raw_payload,
+                "sell_side_return",
+                f"{field_path}.sell_side_return",
+                RISK_ERROR_FACTORY,
+            ),
+            trading_time_return=require_finite_number(
+                raw_payload,
+                "trading_time_return",
+                f"{field_path}.trading_time_return",
+                RISK_ERROR_FACTORY,
+            ),
+            open_jump_return=require_finite_number(
+                raw_payload,
+                "open_jump_return",
+                f"{field_path}.open_jump_return",
+                RISK_ERROR_FACTORY,
+            ),
+            closed_gap_return=require_finite_number(
+                raw_payload,
+                "closed_gap_return",
+                f"{field_path}.closed_gap_return",
+                RISK_ERROR_FACTORY,
+            ),
+            total_return=require_finite_number(
+                raw_payload,
+                "total_return",
+                f"{field_path}.total_return",
+                RISK_ERROR_FACTORY,
+            ),
         )
-
-
-def require_positive_or_negative(raw_payload: dict[str, Any], field_name: str, field_path: str) -> float:
-    return require_positive_or_negative_impl(raw_payload, field_name, field_path)
-
-
-def require_positive_or_negative_impl(raw_payload: dict[str, Any], field_name: str, field_path: str) -> float:
-    return require_positive_or_negative_number(raw_payload, field_name, field_path)
-
-
-def require_positive_or_negative_number(raw_payload: dict[str, Any], field_name: str, field_path: str) -> float:
-    from .contracts import require_finite_number
-
-    return require_finite_number(raw_payload, field_name, field_path, RISK_ERROR_FACTORY)
 
 
 @dataclass(frozen=True, slots=True)
@@ -612,35 +592,41 @@ class SufficientStatisticsRiskPathRecord(ContractModel):
                 ),
                 field_path=f"{field_path}.return_components",
             ),
-            core_total_return=require_positive_or_negative(
+            core_total_return=require_finite_number(
                 raw_payload,
                 "core_total_return",
                 f"{field_path}.core_total_return",
+                RISK_ERROR_FACTORY,
             ),
-            observed_interval_return=require_positive_or_negative(
+            observed_interval_return=require_finite_number(
                 raw_payload,
                 "observed_interval_return",
                 f"{field_path}.observed_interval_return",
+                RISK_ERROR_FACTORY,
             ),
-            observed_log_price_end=require_positive_or_negative(
+            observed_log_price_end=require_finite_number(
                 raw_payload,
                 "observed_log_price_end",
                 f"{field_path}.observed_log_price_end",
+                RISK_ERROR_FACTORY,
             ),
-            anchor_value_end=require_positive_or_negative(
+            anchor_value_end=require_finite_number(
                 raw_payload,
                 "anchor_value_end",
                 f"{field_path}.anchor_value_end",
+                RISK_ERROR_FACTORY,
             ),
-            pressure_state_end=require_positive_or_negative(
+            pressure_state_end=require_finite_number(
                 raw_payload,
                 "pressure_state_end",
                 f"{field_path}.pressure_state_end",
+                RISK_ERROR_FACTORY,
             ),
-            deviation_from_anchor_end=require_positive_or_negative(
+            deviation_from_anchor_end=require_finite_number(
                 raw_payload,
                 "deviation_from_anchor_end",
                 f"{field_path}.deviation_from_anchor_end",
+                RISK_ERROR_FACTORY,
             ),
         )
 
@@ -1177,40 +1163,6 @@ def _validate_path_diagnostics(
     )
 
 
-def validate_sufficient_statistics_risk_run_request(
-    raw_request: dict[str, Any] | Any,
-) -> SufficientStatisticsRiskRunRequest:
-    return SufficientStatisticsRiskRunRequest.from_mapping(raw_request)
-
-
-def validate_sufficient_statistics_risk_path(
-    raw_path: dict[str, Any] | Any,
-) -> SufficientStatisticsRiskPath:
-    return SufficientStatisticsRiskPath.from_mapping(raw_path)
-
-
-def serialize_sufficient_statistics_risk_run_request(
-    request: SufficientStatisticsRiskRunRequest,
-) -> str:
-    return serialize_deterministic_json(request.to_payload())
-
-
-def deserialize_sufficient_statistics_risk_run_request(
-    payload_json: str,
-) -> SufficientStatisticsRiskRunRequest:
-    raw_payload = parse_json_object(payload_json, "risk run request", RISK_ERROR_FACTORY)
-    return validate_sufficient_statistics_risk_run_request(dict(raw_payload))
-
-
-def serialize_sufficient_statistics_risk_path(path: SufficientStatisticsRiskPath) -> str:
-    return serialize_deterministic_json(path)
-
-
-def deserialize_sufficient_statistics_risk_path(payload_json: str) -> SufficientStatisticsRiskPath:
-    raw_payload = parse_json_object(payload_json, "risk path", RISK_ERROR_FACTORY)
-    return validate_sufficient_statistics_risk_path(dict(raw_payload))
-
-
 __all__ = [
     "SUFFICIENT_STATISTICS_RISK_PATH_DIAGNOSTICS_SCHEMA_VERSION",
     "SUFFICIENT_STATISTICS_RISK_PATH_OUTPUT_SCHEMA_METADATA_VERSION",
@@ -1226,12 +1178,4 @@ __all__ = [
     "SufficientStatisticsRiskPathRecord",
     "SufficientStatisticsRiskReturnComponents",
     "SufficientStatisticsRiskRunRequest",
-    "SufficientStatisticsRiskValidationError",
-    "SufficientStatisticsRiskValidationFailure",
-    "deserialize_sufficient_statistics_risk_path",
-    "deserialize_sufficient_statistics_risk_run_request",
-    "serialize_sufficient_statistics_risk_path",
-    "serialize_sufficient_statistics_risk_run_request",
-    "validate_sufficient_statistics_risk_path",
-    "validate_sufficient_statistics_risk_run_request",
 ]

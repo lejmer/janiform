@@ -12,7 +12,7 @@ from matplotlib.figure import Figure
 from pyarrow import parquet
 
 from janiform._timestamps import datetime_to_utc_microseconds
-from janiform.contracts import MeanReversionAnchorModel, MeanReversionFittedParameters
+from janiform.mean_reversion import MeanReversionAnchorModel, MeanReversionFittedParameters
 from tools.workbench import plots as workbench_plots
 from tools.workbench import load_workbench_artifacts
 from tools.workbench.artifacts import WorkbenchArtifacts
@@ -2766,7 +2766,6 @@ def _diagnostic_only_mean_reversion_test_model(diagnostics_payload: dict[str, An
 
 def _endogenous_mean_reversion_diagnostics_payload() -> dict[str, Any]:
     return {
-        "chosen_anchor_family": "endogenous_core_pressure_level",
         "selected_candidate_family": "random_walk_null",
         "calibration_grid": {
             "calibration_grid_kind": "synthetic_daily_close_grid.v1",
@@ -2776,7 +2775,6 @@ def _endogenous_mean_reversion_diagnostics_payload() -> dict[str, Any]:
             "coverage_ratio": 0.0,
         },
         "anchor_parameter_estimates": {
-            "anchor_model_kind": "endogenous_core_pressure_level",
             "reference_interval_hours": 24.0,
             "pressure_persistence_per_reference_interval": 0.0,
             "pressure_level_gain": 0.0,
@@ -2795,7 +2793,6 @@ def _endogenous_mean_reversion_diagnostics_payload() -> dict[str, Any]:
             {
                 "candidate_family": "random_walk_null",
                 "anchor_model": {
-                    "anchor_model_kind": "endogenous_core_pressure_level",
                     "reference_interval_hours": 24.0,
                     "pressure_persistence_per_reference_interval": 0.0,
                     "pressure_level_gain": 0.0,

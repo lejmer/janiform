@@ -33,7 +33,6 @@ use janiform::calibration::{
 };
 use janiform::hawkes::{HawkesEventSide, HawkesKernelParameters};
 use janiform::hourly_factors::{ONE_HOUR_NANOS_F64, duration_nanos_to_hours};
-use janiform::simulation::MeanReversionAnchorModelKind;
 use janiform::simulation::MeanReversionFittedParameters;
 use pyo3::prelude::{Bound, Py, PyResult, Python};
 use pyo3::types::{PyAny, PyAnyMethods, PyDict, PyDictMethods, PyModule, PyModuleMethods};
@@ -136,7 +135,6 @@ struct PythonMarketDataKnownNewsInput {
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct PythonMeanReversionConfiguration {
-    anchor_model_kind: MeanReversionAnchorModelKind,
     #[serde(default)]
     calibration_grid_interval_hours: Option<f64>,
 }
@@ -509,7 +507,6 @@ fn _mean_reversion_stage_input_from_request(
         .as_ref();
 
     let default_mean_reversion_configuration = PythonMeanReversionConfiguration {
-        anchor_model_kind: MeanReversionAnchorModelKind::EndogenousCorePressureLevel,
         calibration_grid_interval_hours: None,
     };
     let mean_reversion_configuration = request
@@ -583,7 +580,6 @@ fn _mean_reversion_stage_input_from_request(
 
     if open_session_price_observations.is_empty() {
         return Ok(Some(CalibrationMeanReversionStageExecutionInput {
-            requested_anchor_model_kind: mean_reversion_configuration.anchor_model_kind,
             calibration_grid_kind: format!(
                 "{}:{}:{}",
                 MEAN_REVERSION_OPEN_SESSION_GRID_KIND,
@@ -603,7 +599,6 @@ fn _mean_reversion_stage_input_from_request(
     );
 
     Ok(Some(CalibrationMeanReversionStageExecutionInput {
-        requested_anchor_model_kind: mean_reversion_configuration.anchor_model_kind,
         calibration_grid_kind: format!(
             "{}:{}:{}",
             MEAN_REVERSION_OPEN_SESSION_GRID_KIND,

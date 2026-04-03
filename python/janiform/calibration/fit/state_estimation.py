@@ -5,15 +5,16 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from math import isfinite
 from typing import TYPE_CHECKING, Any, Optional, cast
 
 import pandas
 
 from ..._native_api import native_module
+from ..._timestamps import datetime_to_utc_nanos
+from ...mean_reversion import MeanReversionBoundaryState
 from ...contracts import (
-    MeanReversionBoundaryState,
     require_datetime_utc,
+    require_positive_finite_scalar,
 )
 from ..market_data.contracts import CalibrationTickDataColumnMapping
 from ...simulation import HawkesExcitationState, SeededTickEventSide
@@ -54,9 +55,10 @@ class CurrentStateEstimationRequest:
             )
 
         if self.observed_price is not None:
-            _require_positive_finite_scalar(
+            require_positive_finite_scalar(
                 self.observed_price,
                 "observed_price",
+                CALIBRATION_ERROR_FACTORY,
             )
 
     def __eq__(self, other: object) -> bool:
@@ -130,7 +132,7 @@ def estimate_current_state_for_model(
     native_payload = native_module().estimate_current_state_from_observed_data(
         fit_model_module._hawkes_kernel_parameters(model).to_payload(),
         fit_model_module._mean_reversion_fitted_parameters(model).to_payload(),
-        fit_model_module.datetime_to_utc_nanos(state_time_utc),
+        datetime_to_utc_nanos(state_time_utc),
         observed_log_price,
         observed_timestamps_utc,
         observed_trade_prices,
@@ -213,9 +215,10 @@ def _extract_observed_tick_data_columns(
             for observation_index, raw_timestamp in enumerate(raw_timestamp_values)
         ),
         tuple(
-            _require_positive_finite_scalar(
+            require_positive_finite_scalar(
                 raw_trade_price,
                 f"observed_tick_data.{column_mapping.price_column}[{observation_index}]",
+                CALIBRATION_ERROR_FACTORY,
             )
             for observation_index, raw_trade_price in enumerate(raw_trade_price_values)
         ),
@@ -326,19 +329,6 @@ def _normalize_observed_trade_side(
             raise _calibration_error(field_path, "must be one of: buy, sell") from e
 
     raise _calibration_error(field_path, "must be a SeededTickEventSide or trade-side string")
-
-
-def _require_positive_finite_scalar(value: Any, field_path: str) -> float:
-    if isinstance(value, bool) or not isinstance(value, int | float):
-        raise _calibration_error(field_path, "must be a positive finite number")
-
-    normalized_value = float(value)
-    if normalized_value <= 0.0 or not isfinite(normalized_value):
-        raise _calibration_error(field_path, "must be a positive finite number")
-
-    return normalized_value
-
-
 __all__ = [
     "CurrentStateEstimationRequest",
     "CurrentStateEstimationResult",

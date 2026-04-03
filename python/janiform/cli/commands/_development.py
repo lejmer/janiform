@@ -187,7 +187,7 @@ def run_deterministic_regression_command(
             )
         )
 
-    failed_case_count = cast(dict[str, int], report["summary"])["failed_case_count"]
+    failed_case_count = report.summary.failed_case_count
 
     if output == "json":
         write_contract_json(report)
@@ -235,7 +235,7 @@ def run_open_closed_gap_leakage_regression_command(
     except Exception as e:
         return write_cli_error(classify_open_closed_gap_command_error(e))
 
-    failed_case_count = cast(dict[str, int], report["summary"])["failed_case_count"]
+    failed_case_count = report.summary.failed_case_count
 
     if output == "json":
         write_contract_json(report)

@@ -84,8 +84,6 @@ enum AnchoredPricingReferenceBaselineCase {
     Success {
         scenario_id: String,
         #[allow(dead_code)]
-        anchor_model_kind: String,
-        #[allow(dead_code)]
         kappa: f64,
         #[allow(dead_code)]
         observed_boundary_state: AnchoredPricingObservedBoundaryState,
@@ -112,8 +110,6 @@ enum AnchoredPricingReferenceBaselineCase {
     },
     ExpectedFailure {
         scenario_id: String,
-        #[allow(dead_code)]
-        anchor_model_kind: String,
         #[allow(dead_code)]
         kappa: f64,
         #[allow(dead_code)]

@@ -4,13 +4,14 @@ from .contracts import (
     HawkesExcitationState,
     HawkesKernelLoadings,
     HawkesKernelParameters,
+    SeededTickEventSide,
+    SeededTickEventStateSnapshotCapture,
+)
+from ...mean_reversion import (
     MeanReversionAnchorModel,
-    MeanReversionAnchorModelKind,
     MeanReversionBoundaryState,
     MeanReversionFittedParameters,
     MeanReversionRuntimeIntervalAnchors,
-    SeededTickEventSide,
-    SeededTickEventStateSnapshotCapture,
 )
 from .errors import (
     SeededTickSimulationValidationError,
@@ -23,7 +24,6 @@ __all__ = [
     "HawkesKernelLoadings",
     "HawkesKernelParameters",
     "MeanReversionAnchorModel",
-    "MeanReversionAnchorModelKind",
     "MeanReversionBoundaryState",
     "MeanReversionFittedParameters",
     "MeanReversionRuntimeIntervalAnchors",

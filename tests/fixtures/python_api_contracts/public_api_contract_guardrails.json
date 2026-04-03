@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale.v1",
-  "approved_snapshot_sha256": "ef929773f70dc6d1faa3e6ff8769a7f25c52b1f40f215ef39d7b6c11402514a2",
+  "approved_snapshot_sha256": "64ae9efa3023d3e64c398bafdfb9ac9b9665c15c7f1f7a867f698d425946d437",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -730,6 +730,143 @@
       "rationale": "High-level simulation now treats observed continuation data as the default live-state continuation boundary for both seeded and coarse backends, and the seeded response records the full mean-reversion boundary state including pressure_state so continuation behavior can be inspected from exported simulation outputs.",
       "snapshot_sha256": "ef929773f70dc6d1faa3e6ff8769a7f25c52b1f40f215ef39d7b6c11402514a2",
       "summary": "Approve live-state continuation defaults and exported seeded pressure-state boundary fields."
+    },
+    {
+      "approved_on": "2026-04-03",
+      "docs_updated": [
+        "docs/getting-started/first-model.md",
+        "docs/guides/python-workflows.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Fitted models now expose one canonical multi-node pricing surface for arbitrary option batches and strike-by-expiry grids, so callers stay on Janiform-owned batch and surface contracts instead of managing Python loops over single-node pricing.",
+      "snapshot_sha256": "01a9f35b6a9e55b34cd5aebd6bb7cfda8e8075068a345ca2af8a124cc2ecde6b",
+      "summary": "Approve the fitted-model batch pricing and option-surface pricing APIs."
+    },
+    {
+      "approved_on": "2026-04-03",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Mean-reversion models are a domain surface used across calibration, pricing, risk, and simulation, so the public Python API now owns them under janiform.mean_reversion and its contracts submodule instead of treating them as generic helpers under janiform.contracts.",
+      "snapshot_sha256": "02c0e7993977faf6bad13a335eccc04de17ca5bc243cdc80b4e7c71c94ea08f0",
+      "summary": "Move mean-reversion contracts from janiform.contracts into the janiform.mean_reversion package."
+    },
+    {
+      "approved_on": "2026-04-03",
+      "docs_updated": [],
+      "rationale": "Mean-reversion contracts remain owned by janiform.mean_reversion, so janiform.calibration no longer republishes them as convenience aliases. The approved public surface now makes that ownership boundary explicit instead of implying the contracts belong to the calibration root.",
+      "snapshot_sha256": "0c4bd060e62018e4ae7b34e4ae7180fbd48d2caeb798ffc88f5755a839c1c472",
+      "summary": "Remove mean-reversion convenience re-exports from janiform.calibration.",
+      "updated_surfaces": [
+        "janiform.calibration",
+        "janiform.mean_reversion"
+      ]
+    },
+    {
+      "approved_on": "2026-04-03",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Stylized-fact and validation report surfaces now use ContractModel dataclasses and package-owned contracts submodules instead of TypedDict artifacts and the validation.types module. The approved snapshot must record the new janiform.stylized_facts package shape, the janiform.stylized_facts.contracts and janiform.validation.contracts submodules, and the dataclass-backed contract signatures that replace the old dict-shaped report models.",
+      "snapshot_sha256": "233d767c87bb8ae5d9bf1bd87d6dcfe2f94e5a8a96c41f23671691cc663ec4ea",
+      "summary": "Approve dataclass report contracts and package-owned stylized-facts and validation contract submodules.",
+      "updated_surfaces": [
+        "janiform.stylized_facts",
+        "janiform.stylized_facts.contracts",
+        "janiform.validation",
+        "janiform.validation.contracts"
+      ]
+    },
+    {
+      "approved_on": "2026-04-03",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Hourly-factor source, settings, and schema dataclasses are now ContractModel contracts owned by a dedicated janiform.hourly_factors.contracts submodule, while the public root stays a curated package that re-exports workflows and artifacts without keeping all implementation and contract types inside one oversized module.",
+      "snapshot_sha256": "4977afb60c4e90793b183f824bb2a01ce2146713166cbe22b9cf4312bb73ffce",
+      "summary": "Approve the package-owned hourly-factor contracts submodule and ContractModel dataclasses.",
+      "updated_surfaces": [
+        "janiform.hourly_factors",
+        "janiform.hourly_factors.contracts"
+      ]
+    },
+    {
+      "approved_on": "2026-04-03",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Seasonality now follows the same package-owned public-surface pattern as other domains: enums and request or schema dataclasses live in janiform.seasonality.contracts, native-result wrappers live in internal artifact modules, and the root package stays a curated re-export surface instead of one monolithic file.",
+      "snapshot_sha256": "d4b0e7e07e3572e077e8baf127f41874b8e39456f258fe931e11a22b13ac4c02",
+      "summary": "Approve the package-owned seasonality contracts submodule and split the seasonality monolith.",
+      "updated_surfaces": [
+        "janiform.seasonality",
+        "janiform.seasonality.contracts"
+      ]
+    },
+    {
+      "approved_on": "2026-04-03",
+      "docs_updated": [],
+      "rationale": "Hourly-factor provider exceptions now follow the same package structure as other domain surfaces by living in janiform.hourly_factors.errors rather than inside the workflow implementation module, so the approved snapshot must record the new owning module for those public error types.",
+      "snapshot_sha256": "e47188f60c140ff7b8b5aadaeaea67a4aea3ee3dc1b75f1fc2621a76dcb317f8",
+      "summary": "Approve package-owned hourly-factor error modules.",
+      "updated_surfaces": [
+        "janiform.hourly_factors"
+      ]
+    },
+    {
+      "approved_on": "2026-04-03",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Sufficient-statistics risk now follows the same package-owned surface pattern as other domains: contract dataclasses live in janiform.risk.contracts, validation errors live in janiform.risk.errors, and workflow serialization and validation entrypoints live outside the contract definitions so the root package is a curated re-export surface instead of one monolithic module.",
+      "snapshot_sha256": "42f67b00fb4031e1be5d5d1245266f1fb042ad60f400b83fc7c77dd914e5dff0",
+      "summary": "Approve the package-owned risk contracts submodule and split the risk monolith.",
+      "updated_surfaces": [
+        "janiform.risk",
+        "janiform.risk.contracts"
+      ]
+    },
+    {
+      "approved_on": "2026-04-03",
+      "docs_updated": [],
+      "rationale": "The risk surface does not own a distinct validation-failure contract and the previous alias only renamed ContractValidationFailure without adding behavior or type distinction, so the approved snapshot now removes that redundant public symbol.",
+      "snapshot_sha256": "e8819ca6af84acdaec92507e757fcc06df65e6934eee4304d7567283d3b8cda6",
+      "summary": "Remove the redundant risk validation-failure alias.",
+      "updated_surfaces": [
+        "janiform.risk"
+      ]
+    },
+    {
+      "approved_on": "2026-04-03",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Vanilla-option pricing now follows the same package-owned public-surface pattern as other domains: contract dataclasses live in janiform.pricing.contracts, workflow entrypoints live in janiform.pricing.workflow, and validation errors live in janiform.pricing.errors. The approved snapshot also removes the redundant VanillaOptionPricingValidationFailure alias because it only renamed ContractValidationFailure without adding a distinct pricing-owned type.",
+      "snapshot_sha256": "01c0c87b349c0e95f9a3bf9af310e92c242f401dce6cc313c5ac9820cbcec858",
+      "summary": "Approve the package-owned pricing contracts submodule and split the pricing monolith.",
+      "updated_surfaces": [
+        "janiform.pricing",
+        "janiform.pricing.contracts"
+      ]
+    },
+    {
+      "approved_on": "2026-04-03",
+      "docs_updated": [],
+      "rationale": "The mean-reversion surface has exactly one supported anchor-model shape, so the public Python contracts and calibration configuration no longer carry a selector field or exported kind enum. The approved snapshot must therefore remove those discriminator-shaped fields and signatures from the shared mean-reversion, calibration, pricing, risk, and simulation surfaces instead of preserving a fake extensibility point.",
+      "snapshot_sha256": "64ae9efa3023d3e64c398bafdfb9ac9b9665c15c7f1f7a867f698d425946d437",
+      "summary": "Remove the mean-reversion discriminator and exported kind enum from the public Python API surface.",
+      "updated_surfaces": [
+        "janiform.mean_reversion",
+        "janiform.mean_reversion.contracts",
+        "janiform.calibration.market_data",
+        "janiform.calibration.market_data.contracts",
+        "janiform.pricing",
+        "janiform.pricing.contracts",
+        "janiform.risk",
+        "janiform.risk.contracts",
+        "janiform.simulation",
+        "janiform.simulation.shared"
+      ]
     }
   ],
   "public_api_surface_document_version": "python.public_api_surface_map.pre_v0_1.control_plane_reset.v1",

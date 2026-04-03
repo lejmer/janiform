@@ -5,7 +5,6 @@ from typing import Any, Optional
 from janiform.calibration.market_data.contracts import CalibrationMarketDataWorkflowScope
 from janiform.calibration.staged.contracts import CalibrationStageExecutionStatus
 from janiform.calibration.staged.progress import format_staged_progress_event_detail
-from janiform.contracts import MeanReversionAnchorModelKind
 from tools.workbench.execution import (
     RESOURCE_SNAPSHOT_INTERVAL_SECONDS,
     WorkbenchExecutionWorker,
@@ -25,28 +24,19 @@ def test_workbench_execution_uses_endogenous_mean_reversion_by_default() -> None
     configuration = _mean_reversion_configuration_from_setup(run_setup)
 
     assert configuration is not None
-    assert (
-        configuration.anchor_model_kind
-        == MeanReversionAnchorModelKind.ENDOGENOUS_CORE_PRESSURE_LEVEL
-    )
     assert configuration.calibration_grid_interval_hours is None
 
 
-def test_workbench_execution_honors_selected_mean_reversion_anchor_family() -> None:
+def test_workbench_execution_builds_mean_reversion_configuration_without_selector() -> None:
     run_setup = WorkbenchRunSetup(
         dataset_path=Path("ticks.csv"),
         workflow_scope=CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE,
         output_directory=Path("output"),
-        mean_reversion_anchor_model_kind=MeanReversionAnchorModelKind.ENDOGENOUS_CORE_PRESSURE_LEVEL,
     )
 
     configuration = _mean_reversion_configuration_from_setup(run_setup)
 
     assert configuration is not None
-    assert (
-        configuration.anchor_model_kind
-        == MeanReversionAnchorModelKind.ENDOGENOUS_CORE_PRESSURE_LEVEL
-    )
     assert configuration.calibration_grid_interval_hours is None
 
 

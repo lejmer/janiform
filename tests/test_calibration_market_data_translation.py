@@ -35,7 +35,6 @@ from janiform.calibration.market_data import (
     MarketDataCalibrationRequest,
     prepare_market_data_calibration,
 )
-from janiform.contracts import MeanReversionAnchorModelKind
 from janiform.calibration.staged import (
     CalibrationExecutionMode,
     CalibrationStage,
@@ -237,7 +236,6 @@ def test_translate_market_data_request_materializes_mean_reversion_on_interval_g
             tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
         ),
         mean_reversion=CalibrationMeanReversionConfiguration(
-            anchor_model_kind=MeanReversionAnchorModelKind.ENDOGENOUS_CORE_PRESSURE_LEVEL,
         ),
     )
 
@@ -253,10 +251,13 @@ def test_translate_market_data_request_materializes_mean_reversion_on_interval_g
     )
 
     mean_reversion_stage_input = prepared_payload["mean_reversion_stage_input"]
-    assert (
-        mean_reversion_stage_input["requested_anchor_model_kind"]
-        == MeanReversionAnchorModelKind.ENDOGENOUS_CORE_PRESSURE_LEVEL.value
-    )
+    assert set(mean_reversion_stage_input) == {
+        "calibration_grid_kind",
+        "calibration_grid_interval_hours",
+        "source_observation_count",
+        "coverage_ratio",
+        "observations",
+    }
     assert mean_reversion_stage_input["source_observation_count"] == len(
         mean_reversion_stage_input["observations"]
     )
@@ -470,7 +471,6 @@ def test_translate_market_data_request_honors_explicit_mean_reversion_grid_inter
             tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
         ),
         mean_reversion=CalibrationMeanReversionConfiguration(
-            anchor_model_kind=MeanReversionAnchorModelKind.ENDOGENOUS_CORE_PRESSURE_LEVEL,
             calibration_grid_interval_hours=36.0,
         ),
     )
@@ -479,9 +479,13 @@ def test_translate_market_data_request_honors_explicit_mean_reversion_grid_inter
     prepared_payload = _prepared_payload(translation)
 
     mean_reversion_stage_input = prepared_payload["mean_reversion_stage_input"]
-    assert mean_reversion_stage_input["requested_anchor_model_kind"] == (
-        MeanReversionAnchorModelKind.ENDOGENOUS_CORE_PRESSURE_LEVEL.value
-    )
+    assert set(mean_reversion_stage_input) == {
+        "calibration_grid_kind",
+        "calibration_grid_interval_hours",
+        "source_observation_count",
+        "coverage_ratio",
+        "observations",
+    }
     assert mean_reversion_stage_input["calibration_grid_interval_hours"] == pytest.approx(36.0)
     assert (
         "explicit_mean_reversion_grid_interval_hours.v1"
@@ -530,7 +534,6 @@ def test_translate_market_data_request_derives_fxspot_mean_reversion_interval_fr
             tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
         ),
         mean_reversion=CalibrationMeanReversionConfiguration(
-            anchor_model_kind=MeanReversionAnchorModelKind.ENDOGENOUS_CORE_PRESSURE_LEVEL,
         ),
         exchange_code="FXSPOT",
         session_timezone="UTC",
@@ -540,10 +543,13 @@ def test_translate_market_data_request_derives_fxspot_mean_reversion_interval_fr
     prepared_payload = _prepared_payload(translation)
 
     mean_reversion_stage_input = prepared_payload["mean_reversion_stage_input"]
-    assert (
-        mean_reversion_stage_input["requested_anchor_model_kind"]
-        == MeanReversionAnchorModelKind.ENDOGENOUS_CORE_PRESSURE_LEVEL.value
-    )
+    assert set(mean_reversion_stage_input) == {
+        "calibration_grid_kind",
+        "calibration_grid_interval_hours",
+        "source_observation_count",
+        "coverage_ratio",
+        "observations",
+    }
     assert mean_reversion_stage_input["calibration_grid_interval_hours"] == pytest.approx(24.0)
     assert (
         "median_observed_session_duration_hours_from_retained_open_session_ticks.v1"

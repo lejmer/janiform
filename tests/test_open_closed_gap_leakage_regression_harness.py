@@ -13,6 +13,7 @@ from janiform.validation import (
     OPEN_CLOSED_GAP_LEAKAGE_REGRESSION_HARNESS_DETERMINISM_POLICY,
     OPEN_CLOSED_GAP_LEAKAGE_REGRESSION_HARNESS_REPORT_SCHEMA_VERSION,
     OPEN_CLOSED_GAP_LEAKAGE_REGRESSION_OUTPUT_SCHEMA_METADATA_VERSION,
+    OpenClosedGapLeakageRegressionCaseReport,
     run_open_closed_gap_leakage_regression_harness,
 )
 from tests.support.fixture_validation import OpenClosedGapBehaviorCase
@@ -32,47 +33,47 @@ def test_open_closed_gap_leakage_regression_harness_matches_shared_fixture_suite
         gap_behavior_cases=gap_behavior_cases,
     )
 
-    summary = cast(dict[str, Any], report["summary"])
-    case_reports: list[dict[str, Any]] = cast(list[dict[str, Any]], report["case_reports"])
+    summary = report.summary
+    case_reports = report.case_reports
 
-    assert report["schema_version"] == OPEN_CLOSED_GAP_LEAKAGE_REGRESSION_HARNESS_REPORT_SCHEMA_VERSION
-    assert report["determinism_policy"] == OPEN_CLOSED_GAP_LEAKAGE_REGRESSION_HARNESS_DETERMINISM_POLICY
-    assert cast(int, summary["total_case_count"]) == len(gap_behavior_cases)
-    assert cast(int, summary["failed_case_count"]) == 0
-    assert cast(int, summary["passed_case_count"]) == cast(int, summary["total_case_count"])
-    assert cast(int, summary["total_semantic_mismatch_failure_count"]) == 0
+    assert report.schema_version == OPEN_CLOSED_GAP_LEAKAGE_REGRESSION_HARNESS_REPORT_SCHEMA_VERSION
+    assert report.determinism_policy == OPEN_CLOSED_GAP_LEAKAGE_REGRESSION_HARNESS_DETERMINISM_POLICY
+    assert summary.total_case_count == len(gap_behavior_cases)
+    assert summary.failed_case_count == 0
+    assert summary.passed_case_count == summary.total_case_count
+    assert summary.total_semantic_mismatch_failure_count == 0
 
-    scenario_class_coverage = cast(dict[str, int], summary["scenario_class_coverage"])
-    assert scenario_class_coverage["known_only_case_count"] >= 1
-    assert scenario_class_coverage["surprise_only_case_count"] >= 1
-    assert scenario_class_coverage["mixed_news_case_count"] >= 1
+    scenario_class_coverage = summary.scenario_class_coverage
+    assert scenario_class_coverage.known_only_case_count >= 1
+    assert scenario_class_coverage.surprise_only_case_count >= 1
+    assert scenario_class_coverage.mixed_news_case_count >= 1
 
-    assert cast(dict[str, Any], report["output_schema_metadata"])["schema_version"] == (
+    assert report.output_schema_metadata.schema_version == (
         OPEN_CLOSED_GAP_LEAKAGE_REGRESSION_OUTPUT_SCHEMA_METADATA_VERSION
     )
-    assert cast(dict[str, Any], report["summary_artifact"])["schema_version"] == (
+    assert report.summary_artifact.schema_version == (
         OPEN_CLOSED_GAP_BEHAVIOR_SUMMARY_ARTIFACT_SCHEMA_VERSION
     )
 
-    behavior_diff_report = cast(dict[str, Any], report["behavior_diff_report"])
-    assert behavior_diff_report["schema_version"] == OPEN_CLOSED_GAP_BEHAVIOR_DIFF_REPORT_SCHEMA_VERSION
-    assert behavior_diff_report["baseline_expected_output_policy"] == (
+    behavior_diff_report = report.behavior_diff_report
+    assert behavior_diff_report.schema_version == OPEN_CLOSED_GAP_BEHAVIOR_DIFF_REPORT_SCHEMA_VERSION
+    assert behavior_diff_report.baseline_expected_output_policy == (
         OPEN_CLOSED_GAP_BEHAVIOR_BASELINE_EXPECTED_OUTPUT_POLICY
     )
 
-    assert all(cast(str, case_report["status"]) == "pass" for case_report in case_reports)
+    assert all(case_report.status == "pass" for case_report in case_reports)
     assert all(
         abs(
-            cast(float, cast(dict[str, Any], case_report["contribution_summary"])["expected_activity_coupling_total"])
-            - cast(float, cast(dict[str, Any], case_report["contribution_summary"])["observed_activity_coupling_total"]),
+            case_report.contribution_summary.expected_activity_coupling_total
+            - case_report.contribution_summary.observed_activity_coupling_total
         ) <= 1e-12
         and abs(
-            cast(float, cast(dict[str, Any], case_report["contribution_summary"])["expected_open_jump_total"])
-            - cast(float, cast(dict[str, Any], case_report["contribution_summary"])["observed_open_jump_total"]),
+            case_report.contribution_summary.expected_open_jump_total
+            - case_report.contribution_summary.observed_open_jump_total
         ) <= 1e-12
         and abs(
-            cast(float, cast(dict[str, Any], case_report["contribution_summary"])["expected_closed_gap_total"])
-            - cast(float, cast(dict[str, Any], case_report["contribution_summary"])["observed_closed_gap_total"]),
+            case_report.contribution_summary.expected_closed_gap_total
+            - case_report.contribution_summary.observed_closed_gap_total
         )
         <= 1e-12
         for case_report in case_reports
@@ -96,48 +97,45 @@ def test_open_closed_gap_leakage_regression_harness_reports_semantic_bucket_for_
         gap_behavior_cases=gap_behavior_cases,
     )
 
-    summary = cast(dict[str, int], report["summary"])
-    assert summary["total_case_count"] == len(gap_behavior_cases)
-    assert summary["failed_case_count"] == 1
-    assert summary["total_semantic_mismatch_failure_count"] == 1
+    assert report.summary.total_case_count == len(gap_behavior_cases)
+    assert report.summary.failed_case_count == 1
+    assert report.summary.total_semantic_mismatch_failure_count == 1
 
     case_report = cast(
-        dict[str, Any],
+        OpenClosedGapLeakageRegressionCaseReport,
         next(
             case_report
-            for case_report in cast(list[dict[str, Any]], report["case_reports"])
-            if cast(str, case_report["fixture_id"]) == OPEN_WINDOW_SCENARIO_ID
+            for case_report in report.case_reports
+            if case_report.fixture_id == OPEN_WINDOW_SCENARIO_ID
         ),
     )
-    assert cast(str, case_report["status"]) == "fail"
-    assert cast(int, case_report["semantic_mismatch_failure_count"]) == 1
-    assert abs(cast(float, case_report["max_absolute_mismatch"]) - 0.19) <= 1e-12
+    assert case_report.status == "fail"
+    assert case_report.semantic_mismatch_failure_count == 1
+    assert abs(case_report.max_absolute_mismatch - 0.19) <= 1e-12
 
-    failures: list[dict[str, Any]] = cast(list[dict[str, Any]], case_report["failures"])
     semantic_failure = cast(
-        dict[str, Any],
+        validation_module.OpenClosedGapLeakageRegressionFailure,
         next(
             failure
-            for failure in failures
-            if cast(str, failure["failure_kind"]) == "semantic_mismatch"
+            for failure in case_report.failures
+            if failure.failure_kind == "semantic_mismatch"
         ),
     )
-    assert semantic_failure["event_id"] == expected_event_id
-    assert semantic_failure["semantic_bucket"] == "closed_gap"
-    assert semantic_failure["mismatch_kind"] == "open_window_closed_gap_leakage"
-    assert abs(cast(float, semantic_failure["absolute_difference"]) - 0.19) <= 1e-12
+    assert semantic_failure.event_id == expected_event_id
+    assert semantic_failure.semantic_bucket == "closed_gap"
+    assert semantic_failure.mismatch_kind == "open_window_closed_gap_leakage"
+    assert abs(cast(float, semantic_failure.absolute_difference) - 0.19) <= 1e-12
 
-    behavior_diff = cast(dict[str, Any], case_report["behavior_diff"])
-    diff_metrics = cast(list[dict[str, Any]], behavior_diff["metrics"])
+    diff_metrics = case_report.behavior_diff.metrics
     closed_gap_diff_metric = next(
         diff_metric
         for diff_metric in diff_metrics
-        if cast(str, diff_metric["metric_id"]) == "closed_gap_g_t_increment_total"
+        if diff_metric.metric_id == "closed_gap_g_t_increment_total"
     )
 
-    assert cast(str, closed_gap_diff_metric["semantic_bucket"]) == "closed_gap"
-    assert cast(bool, closed_gap_diff_metric["regression_detected"])
-    assert abs(cast(float, closed_gap_diff_metric["observed_value"]) - 0.19) <= 1e-12
+    assert closed_gap_diff_metric.semantic_bucket == "closed_gap"
+    assert closed_gap_diff_metric.regression_detected
+    assert abs(closed_gap_diff_metric.observed_value - 0.19) <= 1e-12
 
 
 def test_open_closed_gap_leakage_regression_harness_report_is_repeatable(
@@ -156,7 +154,7 @@ def test_open_closed_gap_leakage_regression_harness_report_is_repeatable(
     )
 
     assert first_report == second_report
-    assert json.dumps(first_report, sort_keys=True) == json.dumps(second_report, sort_keys=True)
+    assert first_report.to_json() == second_report.to_json()
 
 
 def test_open_closed_gap_leakage_regression_harness_rejects_malformed_artifact_payload(
@@ -287,7 +285,7 @@ def test_open_closed_gap_leakage_regression_harness_rejects_invalid_component_vo
         gap_behavior_cases=gap_behavior_cases,
     )
 
-    mutated_report: dict[str, Any] = orjson.loads(json.dumps(valid_report))
+    mutated_report: dict[str, Any] = orjson.loads(valid_report.to_json())
     mutated_report["output_schema_metadata"]["canonical_component_vocabulary"] = [
         "trading_return",
         "open_jump",

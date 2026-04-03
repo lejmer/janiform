@@ -8,11 +8,18 @@ from typing import Any, Optional, cast
 
 from ._constants import CliExitCode, CliOutputMode
 from ..calibration.presets import DEFAULT_HIGH_LEVEL_KNOWN_NEWS_PRESET_NAME
+from ..contracts import ContractModel
 from ..errors import JaniformError, JaniformErrorCategory
+from ..stylized_facts import StylizedFactHorizonComparisonReportBundle
+from ..validation import (
+    DeterministicRegressionHarnessReport,
+    OpenClosedGapLeakageRegressionHarnessReport,
+)
 
 
-def write_contract_json(payload: dict[str, Any]) -> None:
-    sys.stdout.write(f"{json.dumps(payload, sort_keys=True)}\n")
+def write_contract_json(payload: ContractModel | dict[str, Any]) -> None:
+    json_payload = payload.to_payload() if isinstance(payload, ContractModel) else payload
+    sys.stdout.write(f"{json.dumps(json_payload, sort_keys=True)}\n")
 
 
 def exit_code_for_error(error: JaniformError) -> CliExitCode:
@@ -99,7 +106,7 @@ def ordered_cli_error_context_entries(context: dict[str, Any]) -> list[tuple[str
 def write_command_output(
     output: str,
     *,
-    json_payload: dict[str, Any],
+    json_payload: ContractModel | dict[str, Any],
     human_output_factory: Callable[[], str],
 ) -> None:
     output_mode = CliOutputMode(output)
@@ -531,41 +538,41 @@ def render_hourly_factor_build_contract_human_output(payload: dict[str, Any]) ->
 
 
 def render_stylized_facts_horizon_comparison_human_output(
-    report_bundle: dict[str, Any],
+    report_bundle: StylizedFactHorizonComparisonReportBundle,
     *,
     execution_mode: str,
 ) -> str:
-    comparison_report = cast(dict[str, Any], report_bundle["comparison_report"])
-    summary = cast(dict[str, Any], comparison_report["summary"])
+    comparison_report = report_bundle.comparison_report
+    summary = comparison_report.summary
     lines: list[str] = [
         (
             "stylized-facts horizon-comparison completed: "
-            f"schema_version={report_bundle['schema_version']} "
+            f"schema_version={report_bundle.schema_version} "
             f"execution_mode={execution_mode} "
-            f"status={comparison_report['status']} "
-            f"metric_catalog_id={comparison_report['metric_catalog_id']} "
-            f"run_count={summary['total_run_count']} "
-            f"table_row_count={len(cast(list[dict[str, Any]], report_bundle['table_summary']['rows']))}"
+            f"status={comparison_report.status} "
+            f"metric_catalog_id={comparison_report.metric_catalog_id} "
+            f"run_count={summary.total_run_count} "
+            f"table_row_count={len(report_bundle.table_summary.rows)}"
         ),
         (
             "decision_counts: "
-            f"run_pass={summary['run_decision_counts']['pass_count']} "
-            f"run_fail={summary['run_decision_counts']['fail_count']} "
-            f"run_insufficient_data={summary['run_decision_counts']['insufficient_data_count']} "
-            f"metric_pass={summary['metric_decision_counts']['pass_count']} "
-            f"metric_fail={summary['metric_decision_counts']['fail_count']} "
-            f"metric_insufficient_data={summary['metric_decision_counts']['insufficient_data_count']}"
+            f"run_pass={summary.run_decision_counts.pass_count} "
+            f"run_fail={summary.run_decision_counts.fail_count} "
+            f"run_insufficient_data={summary.run_decision_counts.insufficient_data_count} "
+            f"metric_pass={summary.metric_decision_counts.pass_count} "
+            f"metric_fail={summary.metric_decision_counts.fail_count} "
+            f"metric_insufficient_data={summary.metric_decision_counts.insufficient_data_count}"
         ),
     ]
 
-    artifact_export = cast(Optional[dict[str, Any]], report_bundle["artifact_export"])
+    artifact_export = report_bundle.artifact_export
     if artifact_export is not None:
         lines.append(
             (
                 "artifact_export: "
-                f"export_directory={artifact_export['export_directory']} "
-                f"file_stem={artifact_export['file_stem']} "
-                f"exported_file_count={len(cast(list[dict[str, Any]], artifact_export['exported_files']))}"
+                f"export_directory={artifact_export.export_directory} "
+                f"file_stem={artifact_export.file_stem} "
+                f"exported_file_count={len(artifact_export.exported_files)}"
             )
         )
 
@@ -602,108 +609,104 @@ def render_calibration_staged_human_output(response_payload: dict[str, Any]) -> 
     return line + "\n"
 
 
-def write_deterministic_regression_human_output(report: dict[str, Any]) -> None:
-    summary = cast(dict[str, int], report["summary"])
-    if summary["failed_case_count"] == 0:
+def write_deterministic_regression_human_output(report: DeterministicRegressionHarnessReport) -> None:
+    summary = report.summary
+    if summary.failed_case_count == 0:
         sys.stdout.write(
             "deterministic regression passed: "
-            f"{summary['passed_case_count']}/{summary['total_case_count']} cases\n",
+            f"{summary.passed_case_count}/{summary.total_case_count} cases\n",
         )
         return
 
     sys.stderr.write(
         "deterministic regression failed: "
-        f"{summary['failed_case_count']}/{summary['total_case_count']} cases\n",
+        f"{summary.failed_case_count}/{summary.total_case_count} cases\n",
     )
 
-    for case_report in cast(list[dict[str, Any]], report["case_reports"]):
-        if case_report["status"] != "fail":
+    for case_report in report.case_reports:
+        if case_report.status != "fail":
             continue
 
-        failure = cast(Optional[dict[str, Any]], case_report["failure"])
-        failure_kind = failure["failure_kind"] if failure is not None else "unknown"
+        failure = case_report.failure
+        failure_kind = cast(Optional[str], failure.get("failure_kind")) if failure is not None else "unknown"
         sys.stderr.write(
-            f"fixture_id={case_report['fixture_id']} "
-            f"case_kind={case_report['case_kind']} "
+            f"fixture_id={case_report.fixture_id} "
+            f"case_kind={case_report.case_kind} "
             f"failure_kind={failure_kind} "
-            f"summary={case_report['summary']}\n",
+            f"summary={case_report.summary}\n",
         )
 
 
-def write_open_closed_gap_human_output(report: dict[str, Any]) -> None:
-    summary = cast(dict[str, int], report["summary"])
-    behavior_diff_report_summary = cast(
-        dict[str, int],
-        cast(dict[str, Any], report["behavior_diff_report"])["summary"],
-    )
-    if summary["failed_case_count"] == 0:
+def write_open_closed_gap_human_output(report: OpenClosedGapLeakageRegressionHarnessReport) -> None:
+    summary = report.summary
+    behavior_diff_report_summary = report.behavior_diff_report.summary
+    if summary.failed_case_count == 0:
         sys.stdout.write(
             "open closed gap leakage regression passed: "
-            f"{summary['passed_case_count']}/{summary['total_case_count']} scenarios, "
-            f"semantic_mismatches={summary['total_semantic_mismatch_failure_count']}, "
-            f"diff_regression_cases={behavior_diff_report_summary['regression_case_count']}\n",
+            f"{summary.passed_case_count}/{summary.total_case_count} scenarios, "
+            f"semantic_mismatches={summary.total_semantic_mismatch_failure_count}, "
+            f"diff_regression_cases={behavior_diff_report_summary.regression_case_count}\n",
         )
         return
 
     sys.stderr.write(
         "open closed gap leakage regression failed: "
-        f"{summary['failed_case_count']}/{summary['total_case_count']} scenarios, "
-        f"semantic_mismatches={summary['total_semantic_mismatch_failure_count']}\n",
+        f"{summary.failed_case_count}/{summary.total_case_count} scenarios, "
+        f"semantic_mismatches={summary.total_semantic_mismatch_failure_count}\n",
     )
 
-    for case_report in cast(list[dict[str, Any]], report["case_reports"]):
-        if case_report["status"] != "fail":
+    for case_report in report.case_reports:
+        if case_report.status != "fail":
             continue
 
         sys.stderr.write(
-            f"scenario_id={case_report['fixture_id']} exchange_code={case_report['exchange_code']} "
-            f"semantic_mismatch_failure_count={case_report['semantic_mismatch_failure_count']} "
-            f"max_absolute_mismatch={case_report['max_absolute_mismatch']}\n",
+            f"scenario_id={case_report.fixture_id} exchange_code={case_report.exchange_code} "
+            f"semantic_mismatch_failure_count={case_report.semantic_mismatch_failure_count} "
+            f"max_absolute_mismatch={case_report.max_absolute_mismatch}\n",
         )
 
-        contribution_summary = cast(dict[str, Any], case_report["contribution_summary"])
+        contribution_summary = case_report.contribution_summary
 
         sys.stderr.write(
             "  contributions "
-            f"activity_expected={contribution_summary['expected_activity_coupling_total']} "
-            f"activity_observed={contribution_summary['observed_activity_coupling_total']} "
-            f"trading_expected={contribution_summary['expected_trading_return_total']} "
-            f"trading_observed={contribution_summary['observed_trading_return_total']} "
-            f"open_jump_expected={contribution_summary['expected_open_jump_total']} "
-            f"open_jump_observed={contribution_summary['observed_open_jump_total']} "
-            f"closed_gap_expected={contribution_summary['expected_closed_gap_total']} "
-            f"closed_gap_observed={contribution_summary['observed_closed_gap_total']}\n",
+            f"activity_expected={contribution_summary.expected_activity_coupling_total} "
+            f"activity_observed={contribution_summary.observed_activity_coupling_total} "
+            f"trading_expected={contribution_summary.expected_trading_return_total} "
+            f"trading_observed={contribution_summary.observed_trading_return_total} "
+            f"open_jump_expected={contribution_summary.expected_open_jump_total} "
+            f"open_jump_observed={contribution_summary.observed_open_jump_total} "
+            f"closed_gap_expected={contribution_summary.expected_closed_gap_total} "
+            f"closed_gap_observed={contribution_summary.observed_closed_gap_total}\n",
         )
 
-        behavior_diff = cast(dict[str, Any], case_report["behavior_diff"])
-        for diff_metric in cast(list[dict[str, Any]], behavior_diff["metrics"]):
-            if not cast(bool, diff_metric["regression_detected"]):
+        for diff_metric in case_report.behavior_diff.metrics:
+            if not diff_metric.regression_detected:
                 continue
 
             sys.stderr.write(
                 "  diff_regression "
-                f"metric_id={diff_metric['metric_id']} "
-                f"semantic_bucket={diff_metric['semantic_bucket']} "
-                f"expected={diff_metric['expected_value']} "
-                f"observed={diff_metric['observed_value']} "
-                f"absolute_difference={diff_metric['absolute_difference']} "
-                f"absolute_tolerance={diff_metric['absolute_tolerance']}\n",
+                f"metric_id={diff_metric.metric_id} "
+                f"semantic_bucket={diff_metric.semantic_bucket} "
+                f"expected={diff_metric.expected_value} "
+                f"observed={diff_metric.observed_value} "
+                f"absolute_difference={diff_metric.absolute_difference} "
+                f"absolute_tolerance={diff_metric.absolute_tolerance}\n",
             )
 
-        for failure in cast(list[dict[str, Any]], case_report["failures"]):
-            failure_kind = cast(str, failure["failure_kind"])
+        for failure in case_report.failures:
+            failure_kind = failure.failure_kind
             match failure_kind:
                 case "semantic_mismatch":
                     sys.stderr.write(
-                        f"  failure_kind={failure_kind} event_id={failure['event_id']} "
-                        f"event_timestamp_utc={failure['event_timestamp_utc']} "
-                        f"semantic_bucket={failure['semantic_bucket']} "
-                        f"mismatch_kind={failure['mismatch_kind']} "
-                        f"absolute_difference={failure['absolute_difference']}\n",
+                        f"  failure_kind={failure_kind} event_id={failure.event_id} "
+                        f"event_timestamp_utc={failure.event_timestamp_utc} "
+                        f"semantic_bucket={failure.semantic_bucket} "
+                        f"mismatch_kind={failure.mismatch_kind} "
+                        f"absolute_difference={failure.absolute_difference}\n",
                     )
                 case "dispatch_error":
                     sys.stderr.write(
-                        f"  failure_kind={failure_kind} error_message={failure['error_message']}\n",
+                        f"  failure_kind={failure_kind} error_message={failure.error_message}\n",
                     )
                 case _:
                     sys.stderr.write(f"  failure_kind={failure_kind}\n")

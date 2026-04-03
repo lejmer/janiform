@@ -25,14 +25,20 @@ Primary high-level fitting surface. Representative public symbols include:
 - `run_market_data_calibration`
 - `run_staged_calibration`
 
-The supported fit ownership submodules also include `janiform.calibration.fit.state_estimation`
-for the public current-state estimation contracts used by `JaniformModel.estimate_current_state(...)`.
+The supported fit ownership submodules also include:
+
+- `janiform.calibration.fit.state_estimation` for the public current-state estimation contracts
+  used by `JaniformModel.estimate_current_state(...)`
+- `janiform.calibration.fit.pricing` for the public batch and surface pricing contracts used by
+  `JaniformModel.price_options(...)` and `JaniformModel.price_option_surface(...)`
 
 `JaniformModel` is the canonical high-level runtime surface for fitted models. In addition to
 `fit` persistence helpers, the main runtime entrypoints are:
 
 - `JaniformModel.estimate_current_state(...)`
 - `JaniformModel.price_option(...)`
+- `JaniformModel.price_options(...)`
+- `JaniformModel.price_option_surface(...)`
 - `JaniformModel.simulate(...)`
 
 Current-state estimation is the default live-state path when observed data is supplied:
@@ -83,6 +89,10 @@ Vanilla option pricing contracts and runtime entrypoints. Representative public 
 - `run_vanilla_option_pricing`
 - `validate_vanilla_option_pricing_request`
 
+The public contract submodule is:
+
+- `janiform.pricing.contracts`
+
 ### `janiform.risk`
 
 Sufficient-statistics risk path contracts. Representative public symbols include:
@@ -91,6 +101,10 @@ Sufficient-statistics risk path contracts. Representative public symbols include
 - `SufficientStatisticsRiskPath`
 - `SufficientStatisticsRiskPathDiagnostics`
 - `validate_sufficient_statistics_risk_run_request`
+
+The public contract submodule is:
+
+- `janiform.risk.contracts`
 
 ### `janiform.hourly_factors`
 
@@ -103,6 +117,25 @@ Hourly factor materialization, providers, and contract helpers. Representative p
 - `materialize_hourly_seasonality_factors`
 - `materialize_hourly_news_intensity_factors`
 
+The public contract submodule is:
+
+- `janiform.hourly_factors.contracts`
+
+### `janiform.seasonality`
+
+Timestamp preprocessing, seasonality estimation, and diagnostics workflows. Representative public symbols include:
+
+- `SessionFilter`
+- `IntradaySmoothingKernel`
+- `ScheduledEventOverlayDefinition`
+- `preprocess_timestamp_events`
+- `estimate_intraday_seasonality`
+- `generate_seasonality_diagnostics_report`
+
+The public contract submodule is:
+
+- `janiform.seasonality.contracts`
+
 ### `janiform.validation`
 
 Regression and behavior-validation entrypoints. Representative public symbols include:
@@ -113,12 +146,38 @@ Regression and behavior-validation entrypoints. Representative public symbols in
 - `run_deterministic_regression_harness`
 - `run_open_closed_gap_leakage_regression_harness`
 
+The public contract submodule is:
+
+- `janiform.validation.contracts`
+
+### `janiform.stylized_facts`
+
+Stylized-fact reporting workflows and report contracts. Representative public symbols include:
+
+- `StylizedFactHorizonComparisonReport`
+- `StylizedFactHorizonComparisonReportBundle`
+- `StylizedFactHorizonComparisonTableSummary`
+- `StylizedFactHorizonComparisonPlotPayload`
+- `run_stylized_fact_horizon_comparison_report_generator`
+
+The public contract submodule is:
+
+- `janiform.stylized_facts.contracts`
+
+### `janiform.mean_reversion`
+
+Public mean-reversion domain contracts shared across pricing, calibration, and simulation.
+Representative public symbols include:
+
+- `MeanReversionAnchorModel`
+- `MeanReversionBoundaryState`
+- `MeanReversionFittedParameters`
+- `MeanReversionRuntimeIntervalAnchors`
+
 ### `janiform.contracts`
 
 Shared contract models and serialization helpers. Representative public symbols include:
 
 - `ContractModel`
-- `MeanReversionAnchorModel`
-- `MeanReversionBoundaryState`
 - `serialize_deterministic_json`
 - `serialize_pretty_json`

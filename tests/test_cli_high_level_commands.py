@@ -37,7 +37,6 @@ def test_fit_help_documents_default_workflow_and_expert_subcommands() -> None:
     assert "--session-json PATH" in help_output
     assert "--known-news KNOWN_NEWS" in help_output
     assert "--known-news-json PATH" in help_output
-    assert "--mean-reversion-anchor-model" in help_output
     assert "--mean-reversion-grid-interval-hours" in help_output
     assert "--output-dir DIRECTORY" in help_output
 
@@ -239,9 +238,13 @@ def test_fit_cli_uses_endogenous_mean_reversion_calibration(
 
     mean_reversion_stage_input = captured_stage_input["mean_reversion_stage_input"]
     assert mean_reversion_stage_input is not None
-    assert mean_reversion_stage_input["requested_anchor_model_kind"] == (
-        "endogenous_core_pressure_level"
-    )
+    assert set(mean_reversion_stage_input) == {
+        "calibration_grid_kind",
+        "calibration_grid_interval_hours",
+        "source_observation_count",
+        "coverage_ratio",
+        "observations",
+    }
     assert mean_reversion_stage_input["calibration_grid_interval_hours"] == pytest.approx(36.0)
 
 

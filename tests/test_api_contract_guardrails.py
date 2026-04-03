@@ -89,8 +89,14 @@ def test_public_api_contract_guardrail_supports_public_domain_submodules() -> No
     approved_snapshot = _minimal_snapshot(
         public_modules={
             "janiform.contracts": [
-                "MeanReversionAnchorModel",
                 "ContractModel",
+            ],
+            "janiform.mean_reversion": [
+                "MeanReversionAnchorModel",
+                "MeanReversionFittedParameters",
+            ],
+            "janiform.mean_reversion.contracts": [
+                "MeanReversionAnchorModel",
                 "MeanReversionFittedParameters",
             ],
             "janiform.simulation": ["SeededTickSimulationRequest", "run_seeded_tick_event_simulation"],
@@ -119,6 +125,10 @@ def test_public_api_contract_guardrail_supports_public_domain_submodules() -> No
             ],
             "janiform.calibration.fit.model": [
                 "JaniformModel",
+            ],
+            "janiform.calibration.fit.pricing": [
+                "JaniformVanillaOptionBatch",
+                "JaniformVanillaOptionSurface",
             ],
             "janiform.calibration.fit.report": [
                 "JaniformFitReport",
@@ -201,16 +211,35 @@ def test_public_api_contract_guardrail_supports_public_domain_submodules() -> No
                 "run_coarse_simulation",
                 "run_seeded_tick_event_simulation",
             ],
+            "janiform.validation": [
+                "DeterministicRegressionHarnessReport",
+                "run_deterministic_regression_harness",
+            ],
+            "janiform.validation.contracts": [
+                "DeterministicRegressionHarnessReport",
+                "OpenClosedGapLeakageRegressionHarnessReport",
+            ],
+            "janiform.stylized_facts": [
+                "StylizedFactHorizonComparisonReportBundle",
+                "run_stylized_fact_horizon_comparison_report_generator",
+            ],
+            "janiform.stylized_facts.contracts": [
+                "StylizedFactHorizonComparisonReport",
+                "StylizedFactHorizonComparisonReportBundle",
+            ],
         }
     )
     guardrail_manifest = _guardrail_manifest_for_snapshot(approved_snapshot)
 
     assert set(approved_snapshot["public_modules"]) == {
         "janiform.contracts",
+        "janiform.mean_reversion",
+        "janiform.mean_reversion.contracts",
         "janiform.calibration",
         "janiform.calibration.fit",
         "janiform.calibration.fit.estimator",
         "janiform.calibration.fit.model",
+        "janiform.calibration.fit.pricing",
         "janiform.calibration.fit.report",
         "janiform.calibration.market_data",
         "janiform.calibration.market_data.contracts",
@@ -233,6 +262,10 @@ def test_public_api_contract_guardrail_supports_public_domain_submodules() -> No
         "janiform.cli",
         "janiform.cli.commands.calibration",
         "janiform.cli.commands.simulation",
+        "janiform.validation",
+        "janiform.validation.contracts",
+        "janiform.stylized_facts",
+        "janiform.stylized_facts.contracts",
         "janiform.simulation",
         "janiform.simulation.coarse",
         "janiform.simulation.seeded",

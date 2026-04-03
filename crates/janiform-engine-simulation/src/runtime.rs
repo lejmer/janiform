@@ -838,11 +838,7 @@ impl SeededObservedState {
         }
     }
 
-    fn apply_anchor_reset(
-        self,
-        next_anchor_value: f64,
-        next_pressure_state: f64,
-    ) -> Self {
+    fn apply_anchor_reset(self, next_anchor_value: f64, next_pressure_state: f64) -> Self {
         let deviation_from_anchor =
             self.deviation_from_anchor + self.anchor_value - next_anchor_value;
 

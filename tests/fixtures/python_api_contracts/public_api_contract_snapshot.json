@@ -125,13 +125,18 @@
         "JaniformFitReport",
         "JaniformModel",
         "JaniformSimulationResult",
+        "JaniformVanillaOptionBatch",
+        "JaniformVanillaOptionBatchPricingCalibrationHooks",
+        "JaniformVanillaOptionBatchPricingResult",
+        "JaniformVanillaOptionBatchPricingRunDiagnostics",
+        "JaniformVanillaOptionSurface",
+        "JaniformVanillaOptionSurfacePricingCalibrationHooks",
+        "JaniformVanillaOptionSurfacePricingResult",
+        "JaniformVanillaOptionSurfacePricingRunDiagnostics",
         "KnownNewsExplicitConfiguration",
         "KnownNewsPresetReference",
         "MarketDataCalibrationRequest",
         "MarketProfileReference",
-        "MeanReversionAnchorModel",
-        "MeanReversionAnchorModelKind",
-        "MeanReversionFittedParameters",
         "PreparedMarketDataCalibration",
         "PresetRegistry",
         "SessionExplicitConfiguration",
@@ -149,11 +154,10 @@
       "symbols": {
         "CalibrationMeanReversionConfiguration": {
           "field_names": [
-            "anchor_model_kind",
             "calibration_grid_interval_hours"
           ],
           "kind": "contract_model",
-          "signature": "(anchor_model_kind: 'MeanReversionAnchorModelKind', calibration_grid_interval_hours: 'Optional[float]' = None) -> 'None'"
+          "signature": "(calibration_grid_interval_hours: 'Optional[float]' = None) -> 'None'"
         },
         "CalibrationValidationError": {
           "base_classes": [
@@ -249,6 +253,112 @@
           "kind": "contract_model",
           "signature": "(simulation_kind: 'str', metadata: 'dict[str, Any]', provenance: 'dict[str, Any]', diagnostics: 'dict[str, Any]', raw_result: 'CoarseSimulationPath | SeededTickSimulationResponse') -> 'None'"
         },
+        "JaniformVanillaOptionBatch": {
+          "field_names": [
+            "spot",
+            "strikes",
+            "maturity_intervals",
+            "payoff_types",
+            "risk_free_rates",
+            "dividend_yields"
+          ],
+          "kind": "contract_model",
+          "signature": "(spot: 'float', strikes: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]', payoff_types: 'tuple[VanillaOptionPayoffType, ...]', risk_free_rates: 'tuple[float, ...]', dividend_yields: 'tuple[float, ...]') -> 'None'"
+        },
+        "JaniformVanillaOptionBatchPricingCalibrationHooks": {
+          "field_names": [
+            "option_prices",
+            "log_moneyness",
+            "forward_moneyness",
+            "maturity_intervals",
+            "transform_status",
+            "integration_numeric_quality_is_poor",
+            "integration_convergence_check_passed",
+            "integration_truncation_check_passed"
+          ],
+          "kind": "contract_model",
+          "signature": "(option_prices: 'tuple[float, ...]', log_moneyness: 'tuple[float, ...]', forward_moneyness: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]', transform_status: 'tuple[Optional[str], ...]', integration_numeric_quality_is_poor: 'tuple[Optional[bool], ...]', integration_convergence_check_passed: 'tuple[Optional[bool], ...]', integration_truncation_check_passed: 'tuple[Optional[bool], ...]') -> 'None'"
+        },
+        "JaniformVanillaOptionBatchPricingResult": {
+          "field_names": [
+            "spot",
+            "strikes",
+            "maturity_intervals",
+            "payoff_types",
+            "risk_free_rates",
+            "dividend_yields",
+            "prices",
+            "forward_prices",
+            "discount_factors",
+            "boundary_state_norms",
+            "run_diagnostics",
+            "calibration_hooks"
+          ],
+          "kind": "contract_model",
+          "signature": "(spot: 'float', strikes: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]', payoff_types: 'tuple[VanillaOptionPayoffType, ...]', risk_free_rates: 'tuple[float, ...]', dividend_yields: 'tuple[float, ...]', prices: 'tuple[float, ...]', forward_prices: 'tuple[float, ...]', discount_factors: 'tuple[float, ...]', boundary_state_norms: 'tuple[float, ...]', run_diagnostics: 'Optional[JaniformVanillaOptionBatchPricingRunDiagnostics]' = None, calibration_hooks: 'Optional[JaniformVanillaOptionBatchPricingCalibrationHooks]' = None) -> 'None'"
+        },
+        "JaniformVanillaOptionBatchPricingRunDiagnostics": {
+          "field_names": [
+            "transform",
+            "integration_quality",
+            "anchored_recursion"
+          ],
+          "kind": "contract_model",
+          "signature": "(transform: 'tuple[Optional[dict[str, Any]], ...]', integration_quality: 'tuple[Optional[dict[str, Any]], ...]', anchored_recursion: 'tuple[Optional[dict[str, Any]], ...]') -> 'None'"
+        },
+        "JaniformVanillaOptionSurface": {
+          "field_names": [
+            "spot",
+            "strikes",
+            "maturity_intervals",
+            "payoff_type",
+            "risk_free_rate",
+            "dividend_yield"
+          ],
+          "kind": "contract_model",
+          "signature": "(spot: 'float', strikes: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]', payoff_type: 'VanillaOptionPayoffType' = <VanillaOptionPayoffType.CALL: 'call'>, risk_free_rate: 'float' = 0.0, dividend_yield: 'float' = 0.0) -> 'None'"
+        },
+        "JaniformVanillaOptionSurfacePricingCalibrationHooks": {
+          "field_names": [
+            "option_price_grid",
+            "log_moneyness_grid",
+            "forward_moneyness_grid",
+            "maturity_interval_grid",
+            "transform_status_grid",
+            "integration_numeric_quality_is_poor_grid",
+            "integration_convergence_check_passed_grid",
+            "integration_truncation_check_passed_grid"
+          ],
+          "kind": "contract_model",
+          "signature": "(option_price_grid: 'tuple[tuple[float, ...], ...]', log_moneyness_grid: 'tuple[tuple[float, ...], ...]', forward_moneyness_grid: 'tuple[tuple[float, ...], ...]', maturity_interval_grid: 'tuple[tuple[float, ...], ...]', transform_status_grid: 'tuple[tuple[Optional[str], ...], ...]', integration_numeric_quality_is_poor_grid: 'tuple[tuple[Optional[bool], ...], ...]', integration_convergence_check_passed_grid: 'tuple[tuple[Optional[bool], ...], ...]', integration_truncation_check_passed_grid: 'tuple[tuple[Optional[bool], ...], ...]') -> 'None'"
+        },
+        "JaniformVanillaOptionSurfacePricingResult": {
+          "field_names": [
+            "spot",
+            "strikes",
+            "maturity_intervals",
+            "payoff_type",
+            "risk_free_rate",
+            "dividend_yield",
+            "price_grid",
+            "forward_price_grid",
+            "discount_factor_grid",
+            "boundary_state_norm_grid",
+            "run_diagnostics",
+            "calibration_hooks"
+          ],
+          "kind": "contract_model",
+          "signature": "(spot: 'float', strikes: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]', payoff_type: 'VanillaOptionPayoffType', risk_free_rate: 'float', dividend_yield: 'float', price_grid: 'tuple[tuple[float, ...], ...]', forward_price_grid: 'tuple[tuple[float, ...], ...]', discount_factor_grid: 'tuple[tuple[float, ...], ...]', boundary_state_norm_grid: 'tuple[tuple[float, ...], ...]', run_diagnostics: 'Optional[JaniformVanillaOptionSurfacePricingRunDiagnostics]' = None, calibration_hooks: 'Optional[JaniformVanillaOptionSurfacePricingCalibrationHooks]' = None) -> 'None'"
+        },
+        "JaniformVanillaOptionSurfacePricingRunDiagnostics": {
+          "field_names": [
+            "transform_grid",
+            "integration_quality_grid",
+            "anchored_recursion_grid"
+          ],
+          "kind": "contract_model",
+          "signature": "(transform_grid: 'tuple[tuple[Optional[dict[str, Any]], ...], ...]', integration_quality_grid: 'tuple[tuple[Optional[dict[str, Any]], ...], ...]', anchored_recursion_grid: 'tuple[tuple[Optional[dict[str, Any]], ...], ...]') -> 'None'"
+        },
         "KnownNewsExplicitConfiguration": {
           "field_names": [
             "events",
@@ -297,33 +407,6 @@
           ],
           "kind": "contract_model",
           "signature": "(usage_mode: 'PresetReferenceUsageMode', registry_scope: 'Optional[PresetRegistryScope]' = None, preset_name: 'Optional[str]' = None, configuration: 'Optional[MarketProfileExplicitConfiguration]' = None, override_patch: 'Optional[MarketProfileOverridePatch]' = None) -> 'None'"
-        },
-        "MeanReversionAnchorModel": {
-          "field_names": [
-            "anchor_model_kind",
-            "reference_interval_hours",
-            "pressure_persistence_per_reference_interval",
-            "pressure_level_gain"
-          ],
-          "kind": "contract_model",
-          "signature": "(anchor_model_kind: 'MeanReversionAnchorModelKind', reference_interval_hours: 'float', pressure_persistence_per_reference_interval: 'float', pressure_level_gain: 'float') -> 'None'"
-        },
-        "MeanReversionAnchorModelKind": {
-          "kind": "enum",
-          "members": [
-            {
-              "name": "ENDOGENOUS_CORE_PRESSURE_LEVEL",
-              "value": "endogenous_core_pressure_level"
-            }
-          ]
-        },
-        "MeanReversionFittedParameters": {
-          "field_names": [
-            "kappa",
-            "anchor_model"
-          ],
-          "kind": "contract_model",
-          "signature": "(kappa: 'float', anchor_model: 'MeanReversionAnchorModel') -> 'None'"
         },
         "PreparedMarketDataCalibration": {
           "field_names": [
@@ -441,7 +524,15 @@
         "JaniformEstimator",
         "JaniformFitReport",
         "JaniformModel",
-        "JaniformSimulationResult"
+        "JaniformSimulationResult",
+        "JaniformVanillaOptionBatch",
+        "JaniformVanillaOptionBatchPricingCalibrationHooks",
+        "JaniformVanillaOptionBatchPricingResult",
+        "JaniformVanillaOptionBatchPricingRunDiagnostics",
+        "JaniformVanillaOptionSurface",
+        "JaniformVanillaOptionSurfacePricingCalibrationHooks",
+        "JaniformVanillaOptionSurfacePricingResult",
+        "JaniformVanillaOptionSurfacePricingRunDiagnostics"
       ],
       "module_name": "janiform.calibration.fit",
       "schema_identifiers": [],
@@ -511,6 +602,112 @@
           ],
           "kind": "contract_model",
           "signature": "(simulation_kind: 'str', metadata: 'dict[str, Any]', provenance: 'dict[str, Any]', diagnostics: 'dict[str, Any]', raw_result: 'CoarseSimulationPath | SeededTickSimulationResponse') -> 'None'"
+        },
+        "JaniformVanillaOptionBatch": {
+          "field_names": [
+            "spot",
+            "strikes",
+            "maturity_intervals",
+            "payoff_types",
+            "risk_free_rates",
+            "dividend_yields"
+          ],
+          "kind": "contract_model",
+          "signature": "(spot: 'float', strikes: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]', payoff_types: 'tuple[VanillaOptionPayoffType, ...]', risk_free_rates: 'tuple[float, ...]', dividend_yields: 'tuple[float, ...]') -> 'None'"
+        },
+        "JaniformVanillaOptionBatchPricingCalibrationHooks": {
+          "field_names": [
+            "option_prices",
+            "log_moneyness",
+            "forward_moneyness",
+            "maturity_intervals",
+            "transform_status",
+            "integration_numeric_quality_is_poor",
+            "integration_convergence_check_passed",
+            "integration_truncation_check_passed"
+          ],
+          "kind": "contract_model",
+          "signature": "(option_prices: 'tuple[float, ...]', log_moneyness: 'tuple[float, ...]', forward_moneyness: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]', transform_status: 'tuple[Optional[str], ...]', integration_numeric_quality_is_poor: 'tuple[Optional[bool], ...]', integration_convergence_check_passed: 'tuple[Optional[bool], ...]', integration_truncation_check_passed: 'tuple[Optional[bool], ...]') -> 'None'"
+        },
+        "JaniformVanillaOptionBatchPricingResult": {
+          "field_names": [
+            "spot",
+            "strikes",
+            "maturity_intervals",
+            "payoff_types",
+            "risk_free_rates",
+            "dividend_yields",
+            "prices",
+            "forward_prices",
+            "discount_factors",
+            "boundary_state_norms",
+            "run_diagnostics",
+            "calibration_hooks"
+          ],
+          "kind": "contract_model",
+          "signature": "(spot: 'float', strikes: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]', payoff_types: 'tuple[VanillaOptionPayoffType, ...]', risk_free_rates: 'tuple[float, ...]', dividend_yields: 'tuple[float, ...]', prices: 'tuple[float, ...]', forward_prices: 'tuple[float, ...]', discount_factors: 'tuple[float, ...]', boundary_state_norms: 'tuple[float, ...]', run_diagnostics: 'Optional[JaniformVanillaOptionBatchPricingRunDiagnostics]' = None, calibration_hooks: 'Optional[JaniformVanillaOptionBatchPricingCalibrationHooks]' = None) -> 'None'"
+        },
+        "JaniformVanillaOptionBatchPricingRunDiagnostics": {
+          "field_names": [
+            "transform",
+            "integration_quality",
+            "anchored_recursion"
+          ],
+          "kind": "contract_model",
+          "signature": "(transform: 'tuple[Optional[dict[str, Any]], ...]', integration_quality: 'tuple[Optional[dict[str, Any]], ...]', anchored_recursion: 'tuple[Optional[dict[str, Any]], ...]') -> 'None'"
+        },
+        "JaniformVanillaOptionSurface": {
+          "field_names": [
+            "spot",
+            "strikes",
+            "maturity_intervals",
+            "payoff_type",
+            "risk_free_rate",
+            "dividend_yield"
+          ],
+          "kind": "contract_model",
+          "signature": "(spot: 'float', strikes: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]', payoff_type: 'VanillaOptionPayoffType' = <VanillaOptionPayoffType.CALL: 'call'>, risk_free_rate: 'float' = 0.0, dividend_yield: 'float' = 0.0) -> 'None'"
+        },
+        "JaniformVanillaOptionSurfacePricingCalibrationHooks": {
+          "field_names": [
+            "option_price_grid",
+            "log_moneyness_grid",
+            "forward_moneyness_grid",
+            "maturity_interval_grid",
+            "transform_status_grid",
+            "integration_numeric_quality_is_poor_grid",
+            "integration_convergence_check_passed_grid",
+            "integration_truncation_check_passed_grid"
+          ],
+          "kind": "contract_model",
+          "signature": "(option_price_grid: 'tuple[tuple[float, ...], ...]', log_moneyness_grid: 'tuple[tuple[float, ...], ...]', forward_moneyness_grid: 'tuple[tuple[float, ...], ...]', maturity_interval_grid: 'tuple[tuple[float, ...], ...]', transform_status_grid: 'tuple[tuple[Optional[str], ...], ...]', integration_numeric_quality_is_poor_grid: 'tuple[tuple[Optional[bool], ...], ...]', integration_convergence_check_passed_grid: 'tuple[tuple[Optional[bool], ...], ...]', integration_truncation_check_passed_grid: 'tuple[tuple[Optional[bool], ...], ...]') -> 'None'"
+        },
+        "JaniformVanillaOptionSurfacePricingResult": {
+          "field_names": [
+            "spot",
+            "strikes",
+            "maturity_intervals",
+            "payoff_type",
+            "risk_free_rate",
+            "dividend_yield",
+            "price_grid",
+            "forward_price_grid",
+            "discount_factor_grid",
+            "boundary_state_norm_grid",
+            "run_diagnostics",
+            "calibration_hooks"
+          ],
+          "kind": "contract_model",
+          "signature": "(spot: 'float', strikes: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]', payoff_type: 'VanillaOptionPayoffType', risk_free_rate: 'float', dividend_yield: 'float', price_grid: 'tuple[tuple[float, ...], ...]', forward_price_grid: 'tuple[tuple[float, ...], ...]', discount_factor_grid: 'tuple[tuple[float, ...], ...]', boundary_state_norm_grid: 'tuple[tuple[float, ...], ...]', run_diagnostics: 'Optional[JaniformVanillaOptionSurfacePricingRunDiagnostics]' = None, calibration_hooks: 'Optional[JaniformVanillaOptionSurfacePricingCalibrationHooks]' = None) -> 'None'"
+        },
+        "JaniformVanillaOptionSurfacePricingRunDiagnostics": {
+          "field_names": [
+            "transform_grid",
+            "integration_quality_grid",
+            "anchored_recursion_grid"
+          ],
+          "kind": "contract_model",
+          "signature": "(transform_grid: 'tuple[tuple[Optional[dict[str, Any]], ...], ...]', integration_quality_grid: 'tuple[tuple[Optional[dict[str, Any]], ...], ...]', anchored_recursion_grid: 'tuple[tuple[Optional[dict[str, Any]], ...], ...]') -> 'None'"
         }
       }
     },
@@ -569,6 +766,128 @@
           ],
           "kind": "contract_model",
           "signature": "(simulation_kind: 'str', metadata: 'dict[str, Any]', provenance: 'dict[str, Any]', diagnostics: 'dict[str, Any]', raw_result: 'CoarseSimulationPath | SeededTickSimulationResponse') -> 'None'"
+        }
+      }
+    },
+    "janiform.calibration.fit.pricing": {
+      "exports": [
+        "JaniformVanillaOptionBatch",
+        "JaniformVanillaOptionBatchPricingCalibrationHooks",
+        "JaniformVanillaOptionBatchPricingResult",
+        "JaniformVanillaOptionBatchPricingRunDiagnostics",
+        "JaniformVanillaOptionSurface",
+        "JaniformVanillaOptionSurfacePricingCalibrationHooks",
+        "JaniformVanillaOptionSurfacePricingResult",
+        "JaniformVanillaOptionSurfacePricingRunDiagnostics"
+      ],
+      "module_name": "janiform.calibration.fit.pricing",
+      "schema_identifiers": [],
+      "symbols": {
+        "JaniformVanillaOptionBatch": {
+          "field_names": [
+            "spot",
+            "strikes",
+            "maturity_intervals",
+            "payoff_types",
+            "risk_free_rates",
+            "dividend_yields"
+          ],
+          "kind": "contract_model",
+          "signature": "(spot: 'float', strikes: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]', payoff_types: 'tuple[VanillaOptionPayoffType, ...]', risk_free_rates: 'tuple[float, ...]', dividend_yields: 'tuple[float, ...]') -> 'None'"
+        },
+        "JaniformVanillaOptionBatchPricingCalibrationHooks": {
+          "field_names": [
+            "option_prices",
+            "log_moneyness",
+            "forward_moneyness",
+            "maturity_intervals",
+            "transform_status",
+            "integration_numeric_quality_is_poor",
+            "integration_convergence_check_passed",
+            "integration_truncation_check_passed"
+          ],
+          "kind": "contract_model",
+          "signature": "(option_prices: 'tuple[float, ...]', log_moneyness: 'tuple[float, ...]', forward_moneyness: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]', transform_status: 'tuple[Optional[str], ...]', integration_numeric_quality_is_poor: 'tuple[Optional[bool], ...]', integration_convergence_check_passed: 'tuple[Optional[bool], ...]', integration_truncation_check_passed: 'tuple[Optional[bool], ...]') -> 'None'"
+        },
+        "JaniformVanillaOptionBatchPricingResult": {
+          "field_names": [
+            "spot",
+            "strikes",
+            "maturity_intervals",
+            "payoff_types",
+            "risk_free_rates",
+            "dividend_yields",
+            "prices",
+            "forward_prices",
+            "discount_factors",
+            "boundary_state_norms",
+            "run_diagnostics",
+            "calibration_hooks"
+          ],
+          "kind": "contract_model",
+          "signature": "(spot: 'float', strikes: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]', payoff_types: 'tuple[VanillaOptionPayoffType, ...]', risk_free_rates: 'tuple[float, ...]', dividend_yields: 'tuple[float, ...]', prices: 'tuple[float, ...]', forward_prices: 'tuple[float, ...]', discount_factors: 'tuple[float, ...]', boundary_state_norms: 'tuple[float, ...]', run_diagnostics: 'Optional[JaniformVanillaOptionBatchPricingRunDiagnostics]' = None, calibration_hooks: 'Optional[JaniformVanillaOptionBatchPricingCalibrationHooks]' = None) -> 'None'"
+        },
+        "JaniformVanillaOptionBatchPricingRunDiagnostics": {
+          "field_names": [
+            "transform",
+            "integration_quality",
+            "anchored_recursion"
+          ],
+          "kind": "contract_model",
+          "signature": "(transform: 'tuple[Optional[dict[str, Any]], ...]', integration_quality: 'tuple[Optional[dict[str, Any]], ...]', anchored_recursion: 'tuple[Optional[dict[str, Any]], ...]') -> 'None'"
+        },
+        "JaniformVanillaOptionSurface": {
+          "field_names": [
+            "spot",
+            "strikes",
+            "maturity_intervals",
+            "payoff_type",
+            "risk_free_rate",
+            "dividend_yield"
+          ],
+          "kind": "contract_model",
+          "signature": "(spot: 'float', strikes: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]', payoff_type: 'VanillaOptionPayoffType' = <VanillaOptionPayoffType.CALL: 'call'>, risk_free_rate: 'float' = 0.0, dividend_yield: 'float' = 0.0) -> 'None'"
+        },
+        "JaniformVanillaOptionSurfacePricingCalibrationHooks": {
+          "field_names": [
+            "option_price_grid",
+            "log_moneyness_grid",
+            "forward_moneyness_grid",
+            "maturity_interval_grid",
+            "transform_status_grid",
+            "integration_numeric_quality_is_poor_grid",
+            "integration_convergence_check_passed_grid",
+            "integration_truncation_check_passed_grid"
+          ],
+          "kind": "contract_model",
+          "signature": "(option_price_grid: 'tuple[tuple[float, ...], ...]', log_moneyness_grid: 'tuple[tuple[float, ...], ...]', forward_moneyness_grid: 'tuple[tuple[float, ...], ...]', maturity_interval_grid: 'tuple[tuple[float, ...], ...]', transform_status_grid: 'tuple[tuple[Optional[str], ...], ...]', integration_numeric_quality_is_poor_grid: 'tuple[tuple[Optional[bool], ...], ...]', integration_convergence_check_passed_grid: 'tuple[tuple[Optional[bool], ...], ...]', integration_truncation_check_passed_grid: 'tuple[tuple[Optional[bool], ...], ...]') -> 'None'"
+        },
+        "JaniformVanillaOptionSurfacePricingResult": {
+          "field_names": [
+            "spot",
+            "strikes",
+            "maturity_intervals",
+            "payoff_type",
+            "risk_free_rate",
+            "dividend_yield",
+            "price_grid",
+            "forward_price_grid",
+            "discount_factor_grid",
+            "boundary_state_norm_grid",
+            "run_diagnostics",
+            "calibration_hooks"
+          ],
+          "kind": "contract_model",
+          "signature": "(spot: 'float', strikes: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]', payoff_type: 'VanillaOptionPayoffType', risk_free_rate: 'float', dividend_yield: 'float', price_grid: 'tuple[tuple[float, ...], ...]', forward_price_grid: 'tuple[tuple[float, ...], ...]', discount_factor_grid: 'tuple[tuple[float, ...], ...]', boundary_state_norm_grid: 'tuple[tuple[float, ...], ...]', run_diagnostics: 'Optional[JaniformVanillaOptionSurfacePricingRunDiagnostics]' = None, calibration_hooks: 'Optional[JaniformVanillaOptionSurfacePricingCalibrationHooks]' = None) -> 'None'"
+        },
+        "JaniformVanillaOptionSurfacePricingRunDiagnostics": {
+          "field_names": [
+            "transform_grid",
+            "integration_quality_grid",
+            "anchored_recursion_grid"
+          ],
+          "kind": "contract_model",
+          "signature": "(transform_grid: 'tuple[tuple[Optional[dict[str, Any]], ...], ...]', integration_quality_grid: 'tuple[tuple[Optional[dict[str, Any]], ...], ...]', anchored_recursion_grid: 'tuple[tuple[Optional[dict[str, Any]], ...], ...]') -> 'None'"
         }
       }
     },
@@ -795,11 +1114,10 @@
         },
         "CalibrationMeanReversionConfiguration": {
           "field_names": [
-            "anchor_model_kind",
             "calibration_grid_interval_hours"
           ],
           "kind": "contract_model",
-          "signature": "(anchor_model_kind: 'MeanReversionAnchorModelKind', calibration_grid_interval_hours: 'Optional[float]' = None) -> 'None'"
+          "signature": "(calibration_grid_interval_hours: 'Optional[float]' = None) -> 'None'"
         },
         "CalibrationOptionQuoteInputPolicy": {
           "kind": "enum",
@@ -1210,11 +1528,10 @@
         },
         "CalibrationMeanReversionConfiguration": {
           "field_names": [
-            "anchor_model_kind",
             "calibration_grid_interval_hours"
           ],
           "kind": "contract_model",
-          "signature": "(anchor_model_kind: 'MeanReversionAnchorModelKind', calibration_grid_interval_hours: 'Optional[float]' = None) -> 'None'"
+          "signature": "(calibration_grid_interval_hours: 'Optional[float]' = None) -> 'None'"
         },
         "CalibrationOptionQuoteInputPolicy": {
           "kind": "enum",
@@ -4012,11 +4329,6 @@
     "janiform.contracts": {
       "exports": [
         "ContractModel",
-        "MeanReversionAnchorModel",
-        "MeanReversionAnchorModelKind",
-        "MeanReversionBoundaryState",
-        "MeanReversionFittedParameters",
-        "MeanReversionRuntimeIntervalAnchors",
         "ValidationErrorFactory",
         "compute_hawkes_alpha_over_beta_spectral_radius",
         "parse_json_object",
@@ -4051,55 +4363,6 @@
           "kind": "contract_model",
           "signature": "()"
         },
-        "MeanReversionAnchorModel": {
-          "field_names": [
-            "anchor_model_kind",
-            "reference_interval_hours",
-            "pressure_persistence_per_reference_interval",
-            "pressure_level_gain"
-          ],
-          "kind": "contract_model",
-          "signature": "(anchor_model_kind: 'MeanReversionAnchorModelKind', reference_interval_hours: 'float', pressure_persistence_per_reference_interval: 'float', pressure_level_gain: 'float') -> 'None'"
-        },
-        "MeanReversionAnchorModelKind": {
-          "kind": "enum",
-          "members": [
-            {
-              "name": "ENDOGENOUS_CORE_PRESSURE_LEVEL",
-              "value": "endogenous_core_pressure_level"
-            }
-          ]
-        },
-        "MeanReversionBoundaryState": {
-          "field_names": [
-            "observed_log_price",
-            "anchor_value",
-            "pressure_state",
-            "deviation"
-          ],
-          "kind": "contract_model",
-          "signature": "(observed_log_price: 'float', anchor_value: 'float', pressure_state: 'float', deviation: 'float') -> 'None'"
-        },
-        "MeanReversionFittedParameters": {
-          "field_names": [
-            "kappa",
-            "anchor_model"
-          ],
-          "kind": "contract_model",
-          "signature": "(kappa: 'float', anchor_model: 'MeanReversionAnchorModel') -> 'None'"
-        },
-        "MeanReversionRuntimeIntervalAnchors": {
-          "field_names": [
-            "interval_alignment_policy",
-            "start_anchor_value",
-            "start_pressure_state",
-            "end_anchor_values",
-            "end_pressure_states",
-            "interval_deltas"
-          ],
-          "kind": "contract_model",
-          "signature": "(interval_alignment_policy: 'str', start_anchor_value: 'float', start_pressure_state: 'float', end_anchor_values: 'tuple[float, ...]', end_pressure_states: 'tuple[float, ...]', interval_deltas: 'tuple[float, ...]') -> 'None'"
-        },
         "ValidationErrorFactory": {
           "kind": "constant",
           "value": "ValidationErrorFactory"
@@ -4114,7 +4377,7 @@
         },
         "require_datetime_utc": {
           "kind": "function",
-          "signature": "(raw_value: 'object', field_path: 'str', error_factory: 'ValidationErrorFactory') -> 'datetime'"
+          "signature": "(raw_value: 'Any', field_path: 'str', error_factory: 'ValidationErrorFactory') -> 'datetime'"
         },
         "require_field": {
           "kind": "function",
@@ -4126,7 +4389,7 @@
         },
         "require_finite_scalar": {
           "kind": "function",
-          "signature": "(raw_value: 'object', field_path: 'str', error_factory: 'ValidationErrorFactory', *, number_message: 'str' = 'must be a finite number') -> 'float'"
+          "signature": "(raw_value: 'Any', field_path: 'str', error_factory: 'ValidationErrorFactory', *, number_message: 'str' = 'must be a finite number') -> 'float'"
         },
         "require_integer": {
           "kind": "function",
@@ -4146,7 +4409,7 @@
         },
         "require_non_negative_finite_scalar": {
           "kind": "function",
-          "signature": "(raw_value: 'object', field_path: 'str', error_factory: 'ValidationErrorFactory') -> 'float'"
+          "signature": "(raw_value: 'Any', field_path: 'str', error_factory: 'ValidationErrorFactory') -> 'float'"
         },
         "require_non_negative_integer": {
           "kind": "function",
@@ -4158,7 +4421,7 @@
         },
         "require_positive_finite_scalar": {
           "kind": "function",
-          "signature": "(raw_value: 'object', field_path: 'str', error_factory: 'ValidationErrorFactory') -> 'float'"
+          "signature": "(raw_value: 'Any', field_path: 'str', error_factory: 'ValidationErrorFactory') -> 'float'"
         },
         "require_positive_integer": {
           "kind": "function",
@@ -4346,6 +4609,7 @@
         "HourlySeasonalityProviderExplicitSource",
         "HourlySeasonalityProviderMaterializedSource",
         "HourlySeasonalityProviderSource",
+        "SeasonalityInputValidationError",
         "build_hourly_factor_contract",
         "build_runtime_hourly_seasonality_source_from_calibration_payload",
         "load_hourly_factor_contract_payload",
@@ -4577,10 +4841,7 @@
           "base_classes": [],
           "constructor_signature": "(native_result: 'HourlyFactorContractResultProtocol') -> 'None'",
           "kind": "class",
-          "origin_module": "janiform.hourly_factors",
-          "public_methods": {
-            "to_payload": "(self) -> 'dict[str, Any]'"
-          },
+          "origin_module": "janiform.hourly_factors.artifacts",
           "qualname": "HourlyFactorContract"
         },
         "HourlyFactorOutputSchema": {
@@ -4600,7 +4861,7 @@
             "BaseException"
           ],
           "kind": "exception_class",
-          "origin_module": "janiform.hourly_factors",
+          "origin_module": "janiform.hourly_factors.errors",
           "qualname": "HourlyFactorProviderError"
         },
         "HourlyFactorProviderMissingInputError": {
@@ -4610,7 +4871,7 @@
             "BaseException"
           ],
           "kind": "exception_class",
-          "origin_module": "janiform.hourly_factors",
+          "origin_module": "janiform.hourly_factors.errors",
           "qualname": "HourlyFactorProviderMissingInputError"
         },
         "HourlyFactorProviderUnsupportedRangeError": {
@@ -4620,14 +4881,14 @@
             "BaseException"
           ],
           "kind": "exception_class",
-          "origin_module": "janiform.hourly_factors",
+          "origin_module": "janiform.hourly_factors.errors",
           "qualname": "HourlyFactorProviderUnsupportedRangeError"
         },
         "HourlyNewsIntensityMaterialization": {
           "base_classes": [],
           "constructor_signature": "(native_result: 'HourlyNewsIntensityMaterializationResultProtocol') -> 'None'",
           "kind": "class",
-          "origin_module": "janiform.hourly_factors",
+          "origin_module": "janiform.hourly_factors.artifacts",
           "qualname": "HourlyNewsIntensityMaterialization"
         },
         "HourlyNewsIntensityMaterializationOutputSchema": {
@@ -4675,7 +4936,7 @@
           "base_classes": [],
           "constructor_signature": "(native_result: 'HourlySeasonalityMaterializationResultProtocol') -> 'None'",
           "kind": "class",
-          "origin_module": "janiform.hourly_factors",
+          "origin_module": "janiform.hourly_factors.artifacts",
           "qualname": "HourlySeasonalityMaterialization"
         },
         "HourlySeasonalityMaterializationOutputSchema": {
@@ -4723,6 +4984,16 @@
           "kind": "constant",
           "value": "HourlySeasonalityProviderSource"
         },
+        "SeasonalityInputValidationError": {
+          "base_classes": [
+            "SeasonalityPreprocessingError",
+            "Exception",
+            "BaseException"
+          ],
+          "kind": "exception_class",
+          "origin_module": "janiform.seasonality.errors",
+          "qualname": "SeasonalityInputValidationError"
+        },
         "build_hourly_factor_contract": {
           "kind": "function",
           "signature": "(*, calendar_registry: 'CalendarRegistry', exchange_code: 'str', range_start_utc: 'datetime', range_end_utc: 'datetime', interval: 'str | timedelta' = '1h', seasonality_hourly_factors: 'Sequence[float]', news_intensity_hourly_factors: 'Sequence[float]', seasonality_materialization_method: 'str' = 'explicit_hourly_input.v1', news_intensity_materialization_method: 'str' = 'explicit_hourly_input.v1') -> 'HourlyFactorContract'"
@@ -4749,6 +5020,456 @@
         }
       }
     },
+    "janiform.hourly_factors.contracts": {
+      "exports": [
+        "DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD",
+        "DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD",
+        "DEFAULT_SEASONALITY_AGGREGATION_METHOD",
+        "DEFAULT_SEASONALITY_INTERPOLATION_METHOD",
+        "DEFAULT_SEASONALITY_SPARSE_FALLBACK_POLICY",
+        "DEFAULT_SPARSE_HOUR_MINIMUM_OBSERVATION_COUNT",
+        "HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION",
+        "HOURLY_FACTOR_FALL_BACK_POLICY",
+        "HOURLY_FACTOR_OUTPUT_SCHEMA",
+        "HOURLY_FACTOR_SPRING_FORWARD_POLICY",
+        "HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY",
+        "HOURLY_NEWS_INTENSITY_MATERIALIZATION_OUTPUT_SCHEMA",
+        "HOURLY_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION",
+        "HOURLY_SEASONALITY_MATERIALIZATION_OUTPUT_SCHEMA",
+        "HOURLY_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION",
+        "HourlyFactorOutputSchema",
+        "HourlyNewsIntensityMaterializationOutputSchema",
+        "HourlyNewsIntensityMaterializationSettings",
+        "HourlyNewsIntensityProviderExplicitSource",
+        "HourlyNewsIntensityProviderMaterializedSource",
+        "HourlyNewsIntensityProviderSource",
+        "HourlySeasonalityMaterializationOutputSchema",
+        "HourlySeasonalityMaterializationSettings",
+        "HourlySeasonalityProviderExplicitSource",
+        "HourlySeasonalityProviderMaterializedSource",
+        "HourlySeasonalityProviderSource"
+      ],
+      "module_name": "janiform.hourly_factors.contracts",
+      "schema_identifiers": [
+        {
+          "name": "HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION",
+          "public_exported": true,
+          "value": "seasonality.hourly_factor.contract.v1"
+        },
+        {
+          "name": "HOURLY_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION",
+          "public_exported": true,
+          "value": "seasonality.hourly_nu_h.materialization.v1"
+        },
+        {
+          "name": "HOURLY_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION",
+          "public_exported": true,
+          "value": "seasonality.hourly_s_h.materialization.v1"
+        }
+      ],
+      "symbols": {
+        "DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD": {
+          "kind": "constant",
+          "value": "explicit_hourly_input.v1"
+        },
+        "DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD": {
+          "kind": "constant",
+          "value": "known_calendar_anchor_plus_surprise_background_controls.v1"
+        },
+        "DEFAULT_SEASONALITY_AGGREGATION_METHOD": {
+          "kind": "constant",
+          "value": "mean_of_observations.v1"
+        },
+        "DEFAULT_SEASONALITY_INTERPOLATION_METHOD": {
+          "kind": "constant",
+          "value": "previous_observation_carry_forward.v1"
+        },
+        "DEFAULT_SEASONALITY_SPARSE_FALLBACK_POLICY": {
+          "kind": "constant",
+          "value": "global_mean.v1"
+        },
+        "DEFAULT_SPARSE_HOUR_MINIMUM_OBSERVATION_COUNT": {
+          "kind": "constant",
+          "value": 1
+        },
+        "HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION": {
+          "kind": "constant",
+          "value": "seasonality.hourly_factor.contract.v1"
+        },
+        "HOURLY_FACTOR_FALL_BACK_POLICY": {
+          "kind": "constant",
+          "value": "preserve_repeated_local_hour_labels_with_numeric_utc_offset.v1"
+        },
+        "HOURLY_FACTOR_OUTPUT_SCHEMA": {
+          "kind": "constant",
+          "value": {
+            "interval_alignment_policy": "request_start_anchored_fixed_width_utc_interval_grid.v1",
+            "interval_boundary_policy": "start_inclusive_end_exclusive.v1",
+            "required_fields": [
+              "schema_version",
+              "exchange_code",
+              "exchange_timezone_name",
+              "request_start_utc_nanos",
+              "request_end_utc_nanos",
+              "interval_duration_nanos",
+              "interval_indices",
+              "interval_start_utc_nanos",
+              "interval_end_utc_nanos",
+              "interval_start_exchange_local",
+              "interval_end_exchange_local",
+              "s_h",
+              "known_component_nu_h",
+              "surprise_component_nu_h",
+              "nu_h",
+              "interval_count",
+              "first_interval_start_utc_nanos",
+              "last_interval_end_utc_nanos",
+              "skipped_local_hour_interval_count",
+              "repeated_local_hour_interval_count",
+              "interval_boundary_policy",
+              "interval_alignment_policy",
+              "timezone_transition_policy",
+              "spring_forward_policy",
+              "fall_back_policy",
+              "seasonality_materialization_method",
+              "news_intensity_materialization_method"
+            ],
+            "required_metadata_fields": [
+              "seasonality_materialization_method",
+              "news_intensity_materialization_method",
+              "interval_boundary_policy",
+              "interval_alignment_policy",
+              "timezone_transition_policy",
+              "spring_forward_policy",
+              "fall_back_policy"
+            ],
+            "schema_version": "seasonality.hourly_factor.contract.v1"
+          }
+        },
+        "HOURLY_FACTOR_SPRING_FORWARD_POLICY": {
+          "kind": "constant",
+          "value": "skip_nonexistent_local_hour_labels.v1"
+        },
+        "HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY": {
+          "kind": "constant",
+          "value": "fixed_width_utc_interval_projected_to_exchange_local.v1"
+        },
+        "HOURLY_NEWS_INTENSITY_MATERIALIZATION_OUTPUT_SCHEMA": {
+          "kind": "constant",
+          "value": {
+            "interval_alignment_policy": "request_start_anchored_fixed_width_utc_interval_grid.v1",
+            "interval_boundary_policy": "start_inclusive_end_exclusive.v1",
+            "required_fields": [
+              "schema_version",
+              "exchange_code",
+              "exchange_timezone_name",
+              "request_start_utc_nanos",
+              "request_end_utc_nanos",
+              "interval_duration_nanos",
+              "interval_indices",
+              "interval_start_utc_nanos",
+              "interval_end_utc_nanos",
+              "interval_start_exchange_local",
+              "interval_end_exchange_local",
+              "known_component_nu_h",
+              "surprise_component_nu_h",
+              "nu_h",
+              "interval_count",
+              "known_component_non_zero_interval_count",
+              "surprise_component_non_zero_interval_count",
+              "combined_component_non_zero_interval_count",
+              "known_scheduled_arrival_count",
+              "surprise_multiplier_override_interval_count",
+              "skipped_local_hour_interval_count",
+              "repeated_local_hour_interval_count",
+              "materialization_method",
+              "component_aggregation_policy",
+              "arrival_intensity_policy",
+              "known_news_calendar_anchor_policy",
+              "surprise_news_intensity_control_policy",
+              "known_news_calendar_anchor_count",
+              "surprise_baseline_intensity",
+              "interval_boundary_policy",
+              "interval_alignment_policy",
+              "timezone_transition_policy",
+              "spring_forward_policy",
+              "fall_back_policy"
+            ],
+            "required_metadata_fields": [
+              "materialization_method",
+              "component_aggregation_policy",
+              "arrival_intensity_policy",
+              "known_news_calendar_anchor_policy",
+              "surprise_news_intensity_control_policy",
+              "known_news_calendar_anchor_count",
+              "surprise_baseline_intensity",
+              "interval_boundary_policy",
+              "interval_alignment_policy",
+              "timezone_transition_policy",
+              "spring_forward_policy",
+              "fall_back_policy"
+            ],
+            "schema_version": "seasonality.hourly_nu_h.materialization.v1"
+          }
+        },
+        "HOURLY_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION": {
+          "kind": "constant",
+          "value": "seasonality.hourly_nu_h.materialization.v1"
+        },
+        "HOURLY_SEASONALITY_MATERIALIZATION_OUTPUT_SCHEMA": {
+          "kind": "constant",
+          "value": {
+            "interval_alignment_policy": "request_start_anchored_fixed_width_utc_interval_grid.v1",
+            "interval_boundary_policy": "start_inclusive_end_exclusive.v1",
+            "required_fields": [
+              "schema_version",
+              "exchange_code",
+              "exchange_timezone_name",
+              "request_start_utc_nanos",
+              "request_end_utc_nanos",
+              "interval_duration_nanos",
+              "interval_indices",
+              "interval_start_utc_nanos",
+              "interval_end_utc_nanos",
+              "interval_start_exchange_local",
+              "interval_end_exchange_local",
+              "s_h",
+              "source_point_count",
+              "interval_count",
+              "sparse_interval_count",
+              "interpolated_interval_count",
+              "fallback_interval_count",
+              "skipped_local_hour_interval_count",
+              "repeated_local_hour_interval_count",
+              "interpolation_method",
+              "aggregation_method",
+              "sparse_fallback_policy",
+              "sparse_hour_minimum_observation_count",
+              "interval_boundary_policy",
+              "interval_alignment_policy",
+              "timezone_transition_policy",
+              "spring_forward_policy",
+              "fall_back_policy"
+            ],
+            "required_metadata_fields": [
+              "interpolation_method",
+              "aggregation_method",
+              "sparse_fallback_policy",
+              "sparse_hour_minimum_observation_count",
+              "interval_boundary_policy",
+              "interval_alignment_policy",
+              "timezone_transition_policy",
+              "spring_forward_policy",
+              "fall_back_policy"
+            ],
+            "schema_version": "seasonality.hourly_s_h.materialization.v1"
+          }
+        },
+        "HOURLY_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION": {
+          "kind": "constant",
+          "value": "seasonality.hourly_s_h.materialization.v1"
+        },
+        "HourlyFactorOutputSchema": {
+          "field_names": [
+            "schema_version",
+            "required_fields",
+            "interval_boundary_policy",
+            "interval_alignment_policy",
+            "required_metadata_fields"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', required_fields: 'tuple[str, ...]', interval_boundary_policy: 'str', interval_alignment_policy: 'str', required_metadata_fields: 'tuple[str, ...]') -> 'None'"
+        },
+        "HourlyNewsIntensityMaterializationOutputSchema": {
+          "field_names": [
+            "schema_version",
+            "required_fields",
+            "interval_boundary_policy",
+            "interval_alignment_policy",
+            "required_metadata_fields"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', required_fields: 'tuple[str, ...]', interval_boundary_policy: 'str', interval_alignment_policy: 'str', required_metadata_fields: 'tuple[str, ...]') -> 'None'"
+        },
+        "HourlyNewsIntensityMaterializationSettings": {
+          "field_names": [
+            "known_scheduled_event_timestamps_utc",
+            "surprise_baseline_intensity",
+            "surprise_deterministic_time_multiplier_by_interval_index"
+          ],
+          "kind": "contract_model",
+          "signature": "(known_scheduled_event_timestamps_utc: 'Sequence[datetime]', surprise_baseline_intensity: 'float', surprise_deterministic_time_multiplier_by_interval_index: 'Optional[Mapping[int, float]]' = None) -> 'None'"
+        },
+        "HourlyNewsIntensityProviderExplicitSource": {
+          "field_names": [
+            "hourly_factors",
+            "materialization_method"
+          ],
+          "kind": "contract_model",
+          "signature": "(hourly_factors: 'Sequence[float]', materialization_method: 'str' = 'explicit_hourly_input.v1') -> 'None'"
+        },
+        "HourlyNewsIntensityProviderMaterializedSource": {
+          "field_names": [
+            "known_scheduled_event_timestamps_utc",
+            "surprise_baseline_intensity",
+            "surprise_deterministic_time_multiplier_by_interval_index"
+          ],
+          "kind": "contract_model",
+          "signature": "(known_scheduled_event_timestamps_utc: 'Sequence[datetime]', surprise_baseline_intensity: 'float', surprise_deterministic_time_multiplier_by_interval_index: 'Optional[Mapping[int, float]]' = None) -> 'None'"
+        },
+        "HourlyNewsIntensityProviderSource": {
+          "kind": "constant",
+          "value": "HourlyNewsIntensityProviderSource"
+        },
+        "HourlySeasonalityMaterializationOutputSchema": {
+          "field_names": [
+            "schema_version",
+            "required_fields",
+            "interval_boundary_policy",
+            "interval_alignment_policy",
+            "required_metadata_fields"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', required_fields: 'tuple[str, ...]', interval_boundary_policy: 'str', interval_alignment_policy: 'str', required_metadata_fields: 'tuple[str, ...]') -> 'None'"
+        },
+        "HourlySeasonalityMaterializationSettings": {
+          "field_names": [
+            "interpolation_method",
+            "aggregation_method",
+            "sparse_fallback_policy",
+            "sparse_hour_minimum_observation_count"
+          ],
+          "kind": "contract_model",
+          "signature": "(interpolation_method: 'str' = 'previous_observation_carry_forward.v1', aggregation_method: 'str' = 'mean_of_observations.v1', sparse_fallback_policy: 'str' = 'global_mean.v1', sparse_hour_minimum_observation_count: 'int' = 1) -> 'None'"
+        },
+        "HourlySeasonalityProviderExplicitSource": {
+          "field_names": [
+            "hourly_factors",
+            "materialization_method"
+          ],
+          "kind": "contract_model",
+          "signature": "(hourly_factors: 'Sequence[float]', materialization_method: 'str' = 'explicit_hourly_input.v1') -> 'None'"
+        },
+        "HourlySeasonalityProviderMaterializedSource": {
+          "field_names": [
+            "source_timestamps_utc",
+            "source_seasonality_factors",
+            "interpolation_method",
+            "aggregation_method",
+            "sparse_fallback_policy",
+            "sparse_hour_minimum_observation_count"
+          ],
+          "kind": "contract_model",
+          "signature": "(source_timestamps_utc: 'Sequence[datetime]', source_seasonality_factors: 'Sequence[float]', interpolation_method: 'str' = 'previous_observation_carry_forward.v1', aggregation_method: 'str' = 'mean_of_observations.v1', sparse_fallback_policy: 'str' = 'global_mean.v1', sparse_hour_minimum_observation_count: 'int' = 1) -> 'None'"
+        },
+        "HourlySeasonalityProviderSource": {
+          "kind": "constant",
+          "value": "HourlySeasonalityProviderSource"
+        }
+      }
+    },
+    "janiform.mean_reversion": {
+      "exports": [
+        "MeanReversionAnchorModel",
+        "MeanReversionBoundaryState",
+        "MeanReversionFittedParameters",
+        "MeanReversionRuntimeIntervalAnchors"
+      ],
+      "module_name": "janiform.mean_reversion",
+      "schema_identifiers": [],
+      "symbols": {
+        "MeanReversionAnchorModel": {
+          "field_names": [
+            "reference_interval_hours",
+            "pressure_persistence_per_reference_interval",
+            "pressure_level_gain"
+          ],
+          "kind": "contract_model",
+          "signature": "(reference_interval_hours: 'float', pressure_persistence_per_reference_interval: 'float', pressure_level_gain: 'float') -> 'None'"
+        },
+        "MeanReversionBoundaryState": {
+          "field_names": [
+            "observed_log_price",
+            "anchor_value",
+            "pressure_state",
+            "deviation"
+          ],
+          "kind": "contract_model",
+          "signature": "(observed_log_price: 'float', anchor_value: 'float', pressure_state: 'float', deviation: 'float') -> 'None'"
+        },
+        "MeanReversionFittedParameters": {
+          "field_names": [
+            "kappa",
+            "anchor_model"
+          ],
+          "kind": "contract_model",
+          "signature": "(kappa: 'float', anchor_model: 'MeanReversionAnchorModel') -> 'None'"
+        },
+        "MeanReversionRuntimeIntervalAnchors": {
+          "field_names": [
+            "interval_alignment_policy",
+            "start_anchor_value",
+            "start_pressure_state",
+            "end_anchor_values",
+            "end_pressure_states",
+            "interval_deltas"
+          ],
+          "kind": "contract_model",
+          "signature": "(interval_alignment_policy: 'str', start_anchor_value: 'float', start_pressure_state: 'float', end_anchor_values: 'tuple[float, ...]', end_pressure_states: 'tuple[float, ...]', interval_deltas: 'tuple[float, ...]') -> 'None'"
+        }
+      }
+    },
+    "janiform.mean_reversion.contracts": {
+      "exports": [
+        "MeanReversionAnchorModel",
+        "MeanReversionBoundaryState",
+        "MeanReversionFittedParameters",
+        "MeanReversionRuntimeIntervalAnchors"
+      ],
+      "module_name": "janiform.mean_reversion.contracts",
+      "schema_identifiers": [],
+      "symbols": {
+        "MeanReversionAnchorModel": {
+          "field_names": [
+            "reference_interval_hours",
+            "pressure_persistence_per_reference_interval",
+            "pressure_level_gain"
+          ],
+          "kind": "contract_model",
+          "signature": "(reference_interval_hours: 'float', pressure_persistence_per_reference_interval: 'float', pressure_level_gain: 'float') -> 'None'"
+        },
+        "MeanReversionBoundaryState": {
+          "field_names": [
+            "observed_log_price",
+            "anchor_value",
+            "pressure_state",
+            "deviation"
+          ],
+          "kind": "contract_model",
+          "signature": "(observed_log_price: 'float', anchor_value: 'float', pressure_state: 'float', deviation: 'float') -> 'None'"
+        },
+        "MeanReversionFittedParameters": {
+          "field_names": [
+            "kappa",
+            "anchor_model"
+          ],
+          "kind": "contract_model",
+          "signature": "(kappa: 'float', anchor_model: 'MeanReversionAnchorModel') -> 'None'"
+        },
+        "MeanReversionRuntimeIntervalAnchors": {
+          "field_names": [
+            "interval_alignment_policy",
+            "start_anchor_value",
+            "start_pressure_state",
+            "end_anchor_values",
+            "end_pressure_states",
+            "interval_deltas"
+          ],
+          "kind": "contract_model",
+          "signature": "(interval_alignment_policy: 'str', start_anchor_value: 'float', start_pressure_state: 'float', end_anchor_values: 'tuple[float, ...]', end_pressure_states: 'tuple[float, ...]', interval_deltas: 'tuple[float, ...]') -> 'None'"
+        }
+      }
+    },
     "janiform.pricing": {
       "exports": [
         "AnchoredLocalTiltAdmissibilityStatus",
@@ -4764,7 +5485,6 @@
         "FourierInversionQuadratureRule",
         "GammaSeverityMarkConfiguration",
         "MeanReversionAnchorModel",
-        "MeanReversionAnchorModelKind",
         "MeanReversionBoundaryState",
         "MeanReversionFittedParameters",
         "NigSharedPlusShiftConfiguration",
@@ -4782,7 +5502,6 @@
         "VanillaOptionPricingRunOutputSchemaMetadata",
         "VanillaOptionPricingRunResult",
         "VanillaOptionPricingValidationError",
-        "VanillaOptionPricingValidationFailure",
         "deserialize_vanilla_option_pricing_request",
         "deserialize_vanilla_option_pricing_response",
         "deserialize_vanilla_option_pricing_run_result",
@@ -4795,28 +5514,7 @@
         "validate_vanilla_option_pricing_run_result"
       ],
       "module_name": "janiform.pricing",
-      "schema_identifiers": [
-        {
-          "name": "VANILLA_OPTION_PRICING_CALIBRATION_HOOKS_SCHEMA_VERSION",
-          "public_exported": false,
-          "value": "pricing.vanilla_option.calibration_hooks.v1"
-        },
-        {
-          "name": "VANILLA_OPTION_PRICING_RUN_DIAGNOSTICS_SCHEMA_VERSION",
-          "public_exported": false,
-          "value": "pricing.vanilla_option.run_diagnostics.v1"
-        },
-        {
-          "name": "VANILLA_OPTION_PRICING_RUN_OUTPUT_SCHEMA_METADATA_VERSION",
-          "public_exported": false,
-          "value": "pricing.vanilla_option.run_output_schema_metadata.v1"
-        },
-        {
-          "name": "VANILLA_OPTION_PRICING_RUN_RESULT_SCHEMA_VERSION",
-          "public_exported": false,
-          "value": "pricing.vanilla_option.run_result.v1"
-        }
-      ],
+      "schema_identifiers": [],
       "symbols": {
         "AnchoredLocalTiltAdmissibilityStatus": {
           "kind": "enum",
@@ -4961,22 +5659,12 @@
         },
         "MeanReversionAnchorModel": {
           "field_names": [
-            "anchor_model_kind",
             "reference_interval_hours",
             "pressure_persistence_per_reference_interval",
             "pressure_level_gain"
           ],
           "kind": "contract_model",
-          "signature": "(anchor_model_kind: 'MeanReversionAnchorModelKind', reference_interval_hours: 'float', pressure_persistence_per_reference_interval: 'float', pressure_level_gain: 'float') -> 'None'"
-        },
-        "MeanReversionAnchorModelKind": {
-          "kind": "enum",
-          "members": [
-            {
-              "name": "ENDOGENOUS_CORE_PRESSURE_LEVEL",
-              "value": "endogenous_core_pressure_level"
-            }
-          ]
+          "signature": "(reference_interval_hours: 'float', pressure_persistence_per_reference_interval: 'float', pressure_level_gain: 'float') -> 'None'"
         },
         "MeanReversionBoundaryState": {
           "field_names": [
@@ -5154,20 +5842,8 @@
           ],
           "constructor_signature": "(failure: 'ContractValidationFailure') -> 'None'",
           "kind": "exception_class",
-          "origin_module": "janiform.pricing",
+          "origin_module": "janiform.pricing.errors",
           "qualname": "VanillaOptionPricingValidationError"
-        },
-        "VanillaOptionPricingValidationFailure": {
-          "field_names": [
-            "error_id",
-            "workflow",
-            "entrypoint",
-            "field_path",
-            "message",
-            "context_items"
-          ],
-          "kind": "contract_model",
-          "signature": "(error_id: 'str', workflow: 'str', entrypoint: 'str', field_path: 'str', message: 'str', context_items: 'tuple[tuple[str, ErrorContextValue], ...]' = ()) -> 'None'"
         },
         "deserialize_vanilla_option_pricing_request": {
           "kind": "function",
@@ -5211,6 +5887,381 @@
         }
       }
     },
+    "janiform.pricing.contracts": {
+      "exports": [
+        "AnchoredLocalTiltAdmissibilityStatus",
+        "AnchoredLocalTiltBoundaryStateSummary",
+        "AnchoredLocalTiltDomainStatus",
+        "AnchoredLocalTiltSolveDiagnostics",
+        "AnchoredVanillaOptionPricingBoundaryInput",
+        "FourierInversionContour",
+        "FourierInversionEngineSettings",
+        "FourierInversionIntegrationStabilityControls",
+        "FourierInversionNumericQualityGate",
+        "FourierInversionNumericSettings",
+        "FourierInversionQuadratureRule",
+        "GammaSeverityMarkConfiguration",
+        "MeanReversionAnchorModel",
+        "MeanReversionBoundaryState",
+        "MeanReversionFittedParameters",
+        "NigSharedPlusShiftConfiguration",
+        "VanillaOptionPayoffConfiguration",
+        "VanillaOptionPayoffType",
+        "VanillaOptionPricingCalibrationHooks",
+        "VanillaOptionPricingDiagnostics",
+        "VanillaOptionPricingExecutionInput",
+        "VanillaOptionPricingMarketInputs",
+        "VanillaOptionPricingModelParameters",
+        "VanillaOptionPricingOptionalOutputSelection",
+        "VanillaOptionPricingRequest",
+        "VanillaOptionPricingResponse",
+        "VanillaOptionPricingRunDiagnostics",
+        "VanillaOptionPricingRunOutputSchemaMetadata",
+        "VanillaOptionPricingRunResult"
+      ],
+      "module_name": "janiform.pricing.contracts",
+      "schema_identifiers": [
+        {
+          "name": "VANILLA_OPTION_PRICING_CALIBRATION_HOOKS_SCHEMA_VERSION",
+          "public_exported": false,
+          "value": "pricing.vanilla_option.calibration_hooks.v1"
+        },
+        {
+          "name": "VANILLA_OPTION_PRICING_RUN_DIAGNOSTICS_SCHEMA_VERSION",
+          "public_exported": false,
+          "value": "pricing.vanilla_option.run_diagnostics.v1"
+        },
+        {
+          "name": "VANILLA_OPTION_PRICING_RUN_OUTPUT_SCHEMA_METADATA_VERSION",
+          "public_exported": false,
+          "value": "pricing.vanilla_option.run_output_schema_metadata.v1"
+        },
+        {
+          "name": "VANILLA_OPTION_PRICING_RUN_RESULT_SCHEMA_VERSION",
+          "public_exported": false,
+          "value": "pricing.vanilla_option.run_result.v1"
+        }
+      ],
+      "symbols": {
+        "AnchoredLocalTiltAdmissibilityStatus": {
+          "kind": "enum",
+          "members": [
+            {
+              "name": "ADMISSIBLE",
+              "value": "admissible"
+            },
+            {
+              "name": "NO_ADMISSIBLE_LOCAL_TILT",
+              "value": "no_admissible_local_tilt"
+            }
+          ]
+        },
+        "AnchoredLocalTiltBoundaryStateSummary": {
+          "field_names": [
+            "interval_index",
+            "hawkes_boundary_state",
+            "observed_boundary_state",
+            "current_anchor_value",
+            "interval_delta",
+            "kappa",
+            "deviation_decay_factor",
+            "local_martingale_deviation_adjustment"
+          ],
+          "kind": "contract_model",
+          "signature": "(interval_index: 'int', hawkes_boundary_state: 'HawkesExcitationState', observed_boundary_state: 'MeanReversionBoundaryState', current_anchor_value: 'float', interval_delta: 'float', kappa: 'float', deviation_decay_factor: 'float', local_martingale_deviation_adjustment: 'float') -> 'None'"
+        },
+        "AnchoredLocalTiltDomainStatus": {
+          "kind": "enum",
+          "members": [
+            {
+              "name": "IN_DOMAIN",
+              "value": "in_domain"
+            },
+            {
+              "name": "NON_FINITE_TRANSFORM_INPUT",
+              "value": "non_finite_transform_input"
+            },
+            {
+              "name": "OUT_OF_DOMAIN_STATE_REQUEST",
+              "value": "out_of_domain_state_request"
+            }
+          ]
+        },
+        "AnchoredLocalTiltSolveDiagnostics": {
+          "field_names": [
+            "boundary_state_summary",
+            "target_log_moment_exponent",
+            "observed_log_moment_exponent",
+            "theta",
+            "residual",
+            "absolute_residual",
+            "tolerance",
+            "domain_status",
+            "admissibility_status",
+            "policy"
+          ],
+          "kind": "contract_model",
+          "signature": "(boundary_state_summary: 'AnchoredLocalTiltBoundaryStateSummary', target_log_moment_exponent: 'float', observed_log_moment_exponent: 'float', theta: 'float', residual: 'float', absolute_residual: 'float', tolerance: 'float', domain_status: 'AnchoredLocalTiltDomainStatus', admissibility_status: 'AnchoredLocalTiltAdmissibilityStatus', policy: 'str') -> 'None'"
+        },
+        "AnchoredVanillaOptionPricingBoundaryInput": {
+          "field_names": [
+            "interval_index",
+            "hawkes_boundary_state",
+            "mean_reversion_fitted_parameters",
+            "interval_delta",
+            "observed_boundary_state"
+          ],
+          "kind": "contract_model",
+          "signature": "(interval_index: 'int', hawkes_boundary_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', interval_delta: 'float', observed_boundary_state: 'MeanReversionBoundaryState') -> 'None'"
+        },
+        "FourierInversionContour": {
+          "field_names": [
+            "damping_factor"
+          ],
+          "kind": "contract_model",
+          "signature": "(damping_factor: 'float' = 1.5) -> 'None'"
+        },
+        "FourierInversionEngineSettings": {
+          "field_names": [
+            "contour",
+            "numeric_settings",
+            "stability_controls"
+          ],
+          "kind": "contract_model",
+          "signature": "(contour: 'FourierInversionContour' = <factory>, numeric_settings: 'FourierInversionNumericSettings' = <factory>, stability_controls: 'FourierInversionIntegrationStabilityControls' = <factory>) -> 'None'"
+        },
+        "FourierInversionIntegrationStabilityControls": {
+          "field_names": [
+            "convergence_absolute_tolerance",
+            "convergence_relative_tolerance",
+            "terminal_integrand_absolute_tolerance",
+            "terminal_integrand_ratio_tolerance",
+            "quality_gate"
+          ],
+          "kind": "contract_model",
+          "signature": "(convergence_absolute_tolerance: 'float' = 1e-05, convergence_relative_tolerance: 'float' = 0.0001, terminal_integrand_absolute_tolerance: 'float' = 0.0005, terminal_integrand_ratio_tolerance: 'float' = 0.01, quality_gate: 'FourierInversionNumericQualityGate' = <FourierInversionNumericQualityGate.DIAGNOSTICS_ONLY: 'diagnostics_only'>) -> 'None'"
+        },
+        "FourierInversionNumericQualityGate": {
+          "kind": "enum",
+          "members": [
+            {
+              "name": "DIAGNOSTICS_ONLY",
+              "value": "diagnostics_only"
+            },
+            {
+              "name": "ENFORCE_FAILURE",
+              "value": "enforce_failure"
+            }
+          ]
+        },
+        "FourierInversionNumericSettings": {
+          "field_names": [
+            "integration_upper_bound",
+            "integration_step_count",
+            "quadrature_rule"
+          ],
+          "kind": "contract_model",
+          "signature": "(integration_upper_bound: 'float' = 150.0, integration_step_count: 'int' = 4096, quadrature_rule: 'FourierInversionQuadratureRule' = <FourierInversionQuadratureRule.MIDPOINT: 'midpoint'>) -> 'None'"
+        },
+        "FourierInversionQuadratureRule": {
+          "kind": "enum",
+          "members": [
+            {
+              "name": "MIDPOINT",
+              "value": "midpoint"
+            },
+            {
+              "name": "TRAPEZOID",
+              "value": "trapezoid"
+            }
+          ]
+        },
+        "GammaSeverityMarkConfiguration": {
+          "field_names": [
+            "shape_k",
+            "scale_theta"
+          ],
+          "kind": "contract_model",
+          "signature": "(shape_k: 'float', scale_theta: 'float') -> 'None'"
+        },
+        "MeanReversionAnchorModel": {
+          "field_names": [
+            "reference_interval_hours",
+            "pressure_persistence_per_reference_interval",
+            "pressure_level_gain"
+          ],
+          "kind": "contract_model",
+          "signature": "(reference_interval_hours: 'float', pressure_persistence_per_reference_interval: 'float', pressure_level_gain: 'float') -> 'None'"
+        },
+        "MeanReversionBoundaryState": {
+          "field_names": [
+            "observed_log_price",
+            "anchor_value",
+            "pressure_state",
+            "deviation"
+          ],
+          "kind": "contract_model",
+          "signature": "(observed_log_price: 'float', anchor_value: 'float', pressure_state: 'float', deviation: 'float') -> 'None'"
+        },
+        "MeanReversionFittedParameters": {
+          "field_names": [
+            "kappa",
+            "anchor_model"
+          ],
+          "kind": "contract_model",
+          "signature": "(kappa: 'float', anchor_model: 'MeanReversionAnchorModel') -> 'None'"
+        },
+        "NigSharedPlusShiftConfiguration": {
+          "field_names": [
+            "alpha",
+            "beta_0",
+            "delta",
+            "mu",
+            "delta_beta"
+          ],
+          "kind": "contract_model",
+          "signature": "(alpha: 'float', beta_0: 'float', delta: 'float', mu: 'float', delta_beta: 'float') -> 'None'"
+        },
+        "VanillaOptionPayoffConfiguration": {
+          "field_names": [
+            "payoff_type"
+          ],
+          "kind": "contract_model",
+          "signature": "(payoff_type: 'VanillaOptionPayoffType') -> 'None'"
+        },
+        "VanillaOptionPayoffType": {
+          "kind": "enum",
+          "members": [
+            {
+              "name": "CALL",
+              "value": "call"
+            },
+            {
+              "name": "PUT",
+              "value": "put"
+            }
+          ]
+        },
+        "VanillaOptionPricingCalibrationHooks": {
+          "field_names": [
+            "schema_version",
+            "hook_policy",
+            "option_price",
+            "log_moneyness",
+            "forward_moneyness",
+            "maturity_interval",
+            "transform_status",
+            "integration_numeric_quality_is_poor",
+            "integration_convergence_check_passed",
+            "integration_truncation_check_passed"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', hook_policy: 'str', option_price: 'float', log_moneyness: 'float', forward_moneyness: 'float', maturity_interval: 'float', transform_status: 'Optional[str]', integration_numeric_quality_is_poor: 'Optional[bool]', integration_convergence_check_passed: 'Optional[bool]', integration_truncation_check_passed: 'Optional[bool]') -> 'None'"
+        },
+        "VanillaOptionPricingDiagnostics": {
+          "field_names": [
+            "forward_price",
+            "discount_factor",
+            "maturity_interval",
+            "boundary_state_norm"
+          ],
+          "kind": "contract_model",
+          "signature": "(forward_price: 'float', discount_factor: 'float', maturity_interval: 'float', boundary_state_norm: 'float') -> 'None'"
+        },
+        "VanillaOptionPricingExecutionInput": {
+          "field_names": [
+            "request",
+            "hourly_factor_contract",
+            "optional_output_selection"
+          ],
+          "kind": "contract_model",
+          "signature": "(request: 'VanillaOptionPricingRequest', hourly_factor_contract: 'HourlyFactorContract', optional_output_selection: 'VanillaOptionPricingOptionalOutputSelection' = VanillaOptionPricingOptionalOutputSelection(include_transform_diagnostics=False, include_integration_quality_diagnostics=False, include_calibration_hooks=False)) -> 'None'"
+        },
+        "VanillaOptionPricingMarketInputs": {
+          "field_names": [
+            "spot",
+            "strike",
+            "maturity_interval",
+            "risk_free_rate",
+            "dividend_yield"
+          ],
+          "kind": "contract_model",
+          "signature": "(spot: 'float', strike: 'float', maturity_interval: 'float', risk_free_rate: 'float', dividend_yield: 'float') -> 'None'"
+        },
+        "VanillaOptionPricingModelParameters": {
+          "field_names": [
+            "hawkes_kernel_parameters",
+            "news_process_configuration",
+            "nig_shared_plus_shift_configuration"
+          ],
+          "kind": "contract_model",
+          "signature": "(hawkes_kernel_parameters: 'HawkesKernelParameters', news_process_configuration: 'NewsProcessConfiguration', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration') -> 'None'"
+        },
+        "VanillaOptionPricingOptionalOutputSelection": {
+          "field_names": [
+            "include_transform_diagnostics",
+            "include_integration_quality_diagnostics",
+            "include_calibration_hooks"
+          ],
+          "kind": "contract_model",
+          "signature": "(include_transform_diagnostics: 'bool' = False, include_integration_quality_diagnostics: 'bool' = False, include_calibration_hooks: 'bool' = False) -> 'None'"
+        },
+        "VanillaOptionPricingRequest": {
+          "field_names": [
+            "market_inputs",
+            "payoff",
+            "boundary_input",
+            "model_parameters",
+            "interval_delta",
+            "fourier_inversion_settings"
+          ],
+          "kind": "contract_model",
+          "signature": "(market_inputs: 'VanillaOptionPricingMarketInputs', payoff: 'VanillaOptionPayoffConfiguration', boundary_input: 'AnchoredVanillaOptionPricingBoundaryInput', model_parameters: 'VanillaOptionPricingModelParameters', interval_delta: 'float' = 1.0, fourier_inversion_settings: 'Optional[FourierInversionEngineSettings]' = None) -> 'None'"
+        },
+        "VanillaOptionPricingResponse": {
+          "field_names": [
+            "price",
+            "diagnostics"
+          ],
+          "kind": "contract_model",
+          "signature": "(price: 'float', diagnostics: 'VanillaOptionPricingDiagnostics') -> 'None'"
+        },
+        "VanillaOptionPricingRunDiagnostics": {
+          "field_names": [
+            "schema_version",
+            "transform",
+            "integration_quality",
+            "anchored_recursion"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', transform: 'Optional[dict[str, Any]]', integration_quality: 'Optional[dict[str, Any]]', anchored_recursion: 'Optional[dict[str, Any]]') -> 'None'"
+        },
+        "VanillaOptionPricingRunOutputSchemaMetadata": {
+          "field_names": [
+            "schema_version",
+            "run_result_schema_version",
+            "run_diagnostics_schema_version",
+            "calibration_hooks_schema_version",
+            "required_run_result_fields",
+            "required_run_diagnostics_fields",
+            "required_calibration_hooks_fields"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', run_result_schema_version: 'str', run_diagnostics_schema_version: 'str', calibration_hooks_schema_version: 'str', required_run_result_fields: 'tuple[str, ...]', required_run_diagnostics_fields: 'tuple[str, ...]', required_calibration_hooks_fields: 'tuple[str, ...]') -> 'None'"
+        },
+        "VanillaOptionPricingRunResult": {
+          "field_names": [
+            "schema_version",
+            "output_schema_metadata",
+            "response",
+            "run_diagnostics",
+            "calibration_hooks"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', output_schema_metadata: 'VanillaOptionPricingRunOutputSchemaMetadata', response: 'VanillaOptionPricingResponse', run_diagnostics: 'Optional[VanillaOptionPricingRunDiagnostics]', calibration_hooks: 'Optional[VanillaOptionPricingCalibrationHooks]') -> 'None'"
+        }
+      }
+    },
     "janiform.risk": {
       "exports": [
         "SUFFICIENT_STATISTICS_RISK_INTERVAL_FACTOR_POLICY",
@@ -5228,7 +6279,6 @@
         "SufficientStatisticsRiskReturnComponents",
         "SufficientStatisticsRiskRunRequest",
         "SufficientStatisticsRiskValidationError",
-        "SufficientStatisticsRiskValidationFailure",
         "deserialize_sufficient_statistics_risk_path",
         "deserialize_sufficient_statistics_risk_run_request",
         "serialize_sufficient_statistics_risk_path",
@@ -5237,6 +6287,234 @@
         "validate_sufficient_statistics_risk_run_request"
       ],
       "module_name": "janiform.risk",
+      "schema_identifiers": [
+        {
+          "name": "SUFFICIENT_STATISTICS_RISK_PATH_DIAGNOSTICS_SCHEMA_VERSION",
+          "public_exported": true,
+          "value": "risk.sufficient_statistics.path_diagnostics.v1"
+        },
+        {
+          "name": "SUFFICIENT_STATISTICS_RISK_PATH_OUTPUT_SCHEMA_METADATA_VERSION",
+          "public_exported": true,
+          "value": "risk.sufficient_statistics.path_output_schema_metadata.v1"
+        },
+        {
+          "name": "SUFFICIENT_STATISTICS_RISK_PATH_PROVENANCE_SCHEMA_VERSION",
+          "public_exported": true,
+          "value": "risk.sufficient_statistics.path_provenance.v1"
+        }
+      ],
+      "symbols": {
+        "SUFFICIENT_STATISTICS_RISK_INTERVAL_FACTOR_POLICY": {
+          "kind": "constant",
+          "value": "explicit_interval_aligned_s_h_and_news_intensity_inputs_without_implicit_resampling.v1"
+        },
+        "SUFFICIENT_STATISTICS_RISK_PATH_DIAGNOSTICS_SCHEMA_VERSION": {
+          "kind": "constant",
+          "value": "risk.sufficient_statistics.path_diagnostics.v1"
+        },
+        "SUFFICIENT_STATISTICS_RISK_PATH_OUTPUT_SCHEMA_METADATA_VERSION": {
+          "kind": "constant",
+          "value": "risk.sufficient_statistics.path_output_schema_metadata.v1"
+        },
+        "SUFFICIENT_STATISTICS_RISK_PATH_PROVENANCE_SCHEMA_VERSION": {
+          "kind": "constant",
+          "value": "risk.sufficient_statistics.path_provenance.v1"
+        },
+        "SufficientStatisticsIntervalStatistics": {
+          "field_names": [
+            "a_plus",
+            "a_minus",
+            "n_plus",
+            "n_minus"
+          ],
+          "kind": "contract_model",
+          "signature": "(a_plus: 'float', a_minus: 'float', n_plus: 'int', n_minus: 'int') -> 'None'"
+        },
+        "SufficientStatisticsRiskEquationSpecification": {
+          "field_names": [
+            "hawkes_kernel_parameters",
+            "gamma_severity_mark_configuration"
+          ],
+          "kind": "contract_model",
+          "signature": "(hawkes_kernel_parameters: 'HawkesKernelParameters', gamma_severity_mark_configuration: 'GammaSeverityMarkConfiguration') -> 'None'"
+        },
+        "SufficientStatisticsRiskModelInputs": {
+          "field_names": [
+            "equation_specification",
+            "nig_shared_plus_shift_configuration",
+            "initial_excitation_state",
+            "mean_reversion_fitted_parameters",
+            "mean_reversion_runtime_interval_anchors",
+            "initial_mean_reversion_boundary_state"
+          ],
+          "kind": "contract_model",
+          "signature": "(equation_specification: 'SufficientStatisticsRiskEquationSpecification', nig_shared_plus_shift_configuration: 'NigSharedPlusShiftConfiguration', initial_excitation_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', mean_reversion_runtime_interval_anchors: 'MeanReversionRuntimeIntervalAnchors', initial_mean_reversion_boundary_state: 'MeanReversionBoundaryState') -> 'None'"
+        },
+        "SufficientStatisticsRiskPath": {
+          "field_names": [
+            "schema_version",
+            "run_request_schema_version",
+            "output_schema_metadata",
+            "provenance",
+            "diagnostics",
+            "seed",
+            "interval_delta",
+            "simulated_interval_count",
+            "initial_excitation_state",
+            "terminal_excitation_state",
+            "records"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', run_request_schema_version: 'str', output_schema_metadata: 'SufficientStatisticsRiskPathOutputSchemaMetadata', provenance: 'SufficientStatisticsRiskPathProvenance', diagnostics: 'SufficientStatisticsRiskPathDiagnostics', seed: 'int', interval_delta: 'float', simulated_interval_count: 'int', initial_excitation_state: 'HawkesExcitationState', terminal_excitation_state: 'HawkesExcitationState', records: 'tuple[SufficientStatisticsRiskPathRecord, ...]') -> 'None'"
+        },
+        "SufficientStatisticsRiskPathDiagnostics": {
+          "field_names": [
+            "schema_version",
+            "simulated_interval_count",
+            "first_interval_index",
+            "last_interval_index",
+            "cumulative_a_plus",
+            "cumulative_a_minus",
+            "cumulative_n_plus",
+            "cumulative_n_minus",
+            "cumulative_trading_time_return",
+            "cumulative_open_jump_return",
+            "cumulative_closed_gap_return",
+            "cumulative_total_return",
+            "cumulative_observed_return",
+            "max_abs_total_return",
+            "max_abs_deviation_from_anchor",
+            "terminal_observed_log_price",
+            "terminal_deviation_from_anchor"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', simulated_interval_count: 'int', first_interval_index: 'Optional[int]', last_interval_index: 'Optional[int]', cumulative_a_plus: 'float', cumulative_a_minus: 'float', cumulative_n_plus: 'int', cumulative_n_minus: 'int', cumulative_trading_time_return: 'float', cumulative_open_jump_return: 'float', cumulative_closed_gap_return: 'float', cumulative_total_return: 'float', cumulative_observed_return: 'float', max_abs_total_return: 'float', max_abs_deviation_from_anchor: 'float', terminal_observed_log_price: 'float', terminal_deviation_from_anchor: 'float') -> 'None'"
+        },
+        "SufficientStatisticsRiskPathOutputSchemaMetadata": {
+          "field_names": [
+            "schema_version",
+            "provenance_schema_version",
+            "diagnostics_schema_version",
+            "artifact_workflow_policy",
+            "environment_metadata_policy",
+            "required_path_fields",
+            "required_provenance_fields",
+            "required_diagnostics_fields"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', provenance_schema_version: 'str', diagnostics_schema_version: 'str', artifact_workflow_policy: 'str', environment_metadata_policy: 'str', required_path_fields: 'tuple[str, ...]', required_provenance_fields: 'tuple[str, ...]', required_diagnostics_fields: 'tuple[str, ...]') -> 'None'"
+        },
+        "SufficientStatisticsRiskPathProvenance": {
+          "field_names": [
+            "schema_version",
+            "artifact_workflow_policy",
+            "environment_metadata_policy",
+            "interval_factor_policy",
+            "transform_slice_sampling_policy",
+            "boundary_state_update_policy",
+            "interval_return_generation_policy",
+            "interval_return_component_routing_policy",
+            "batch_seed_partition_policy",
+            "artifact_workflow_tags"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', artifact_workflow_policy: 'str', environment_metadata_policy: 'str', interval_factor_policy: 'str', transform_slice_sampling_policy: 'str', boundary_state_update_policy: 'str', interval_return_generation_policy: 'str', interval_return_component_routing_policy: 'str', batch_seed_partition_policy: 'str', artifact_workflow_tags: 'tuple[str, ...]') -> 'None'"
+        },
+        "SufficientStatisticsRiskPathRecord": {
+          "field_names": [
+            "interval_index",
+            "sufficient_statistics",
+            "return_components",
+            "core_total_return",
+            "observed_interval_return",
+            "observed_log_price_end",
+            "anchor_value_end",
+            "pressure_state_end",
+            "deviation_from_anchor_end"
+          ],
+          "kind": "contract_model",
+          "signature": "(interval_index: 'int', sufficient_statistics: 'SufficientStatisticsIntervalStatistics', return_components: 'SufficientStatisticsRiskReturnComponents', core_total_return: 'float', observed_interval_return: 'float', observed_log_price_end: 'float', anchor_value_end: 'float', pressure_state_end: 'float', deviation_from_anchor_end: 'float') -> 'None'"
+        },
+        "SufficientStatisticsRiskReturnComponents": {
+          "field_names": [
+            "buy_side_return",
+            "sell_side_return",
+            "trading_time_return",
+            "open_jump_return",
+            "closed_gap_return",
+            "total_return"
+          ],
+          "kind": "contract_model",
+          "signature": "(buy_side_return: 'float', sell_side_return: 'float', trading_time_return: 'float', open_jump_return: 'float', closed_gap_return: 'float', total_return: 'float') -> 'None'"
+        },
+        "SufficientStatisticsRiskRunRequest": {
+          "field_names": [
+            "seed",
+            "horizon_interval_count",
+            "interval_delta",
+            "model_inputs",
+            "hourly_factor_contract"
+          ],
+          "kind": "contract_model",
+          "signature": "(seed: 'int', horizon_interval_count: 'int', interval_delta: 'float' = 1.0, model_inputs: 'Optional[SufficientStatisticsRiskModelInputs]' = None, hourly_factor_contract: 'Optional[HourlyFactorContract]' = None) -> 'None'"
+        },
+        "SufficientStatisticsRiskValidationError": {
+          "base_classes": [
+            "JaniformValidationError",
+            "JaniformError",
+            "Exception",
+            "BaseException"
+          ],
+          "constructor_signature": "(failure: 'ContractValidationFailure') -> 'None'",
+          "kind": "exception_class",
+          "origin_module": "janiform.risk.errors",
+          "qualname": "SufficientStatisticsRiskValidationError"
+        },
+        "deserialize_sufficient_statistics_risk_path": {
+          "kind": "function",
+          "signature": "(payload_json: 'str') -> 'SufficientStatisticsRiskPath'"
+        },
+        "deserialize_sufficient_statistics_risk_run_request": {
+          "kind": "function",
+          "signature": "(payload_json: 'str') -> 'SufficientStatisticsRiskRunRequest'"
+        },
+        "serialize_sufficient_statistics_risk_path": {
+          "kind": "function",
+          "signature": "(path: 'SufficientStatisticsRiskPath') -> 'str'"
+        },
+        "serialize_sufficient_statistics_risk_run_request": {
+          "kind": "function",
+          "signature": "(request: 'SufficientStatisticsRiskRunRequest') -> 'str'"
+        },
+        "validate_sufficient_statistics_risk_path": {
+          "kind": "function",
+          "signature": "(raw_path: 'dict[str, Any] | Any') -> 'SufficientStatisticsRiskPath'"
+        },
+        "validate_sufficient_statistics_risk_run_request": {
+          "kind": "function",
+          "signature": "(raw_request: 'dict[str, Any] | Any') -> 'SufficientStatisticsRiskRunRequest'"
+        }
+      }
+    },
+    "janiform.risk.contracts": {
+      "exports": [
+        "SUFFICIENT_STATISTICS_RISK_INTERVAL_FACTOR_POLICY",
+        "SUFFICIENT_STATISTICS_RISK_PATH_DIAGNOSTICS_SCHEMA_VERSION",
+        "SUFFICIENT_STATISTICS_RISK_PATH_OUTPUT_SCHEMA_METADATA_VERSION",
+        "SUFFICIENT_STATISTICS_RISK_PATH_PROVENANCE_SCHEMA_VERSION",
+        "SufficientStatisticsIntervalStatistics",
+        "SufficientStatisticsRiskEquationSpecification",
+        "SufficientStatisticsRiskModelInputs",
+        "SufficientStatisticsRiskPath",
+        "SufficientStatisticsRiskPathDiagnostics",
+        "SufficientStatisticsRiskPathOutputSchemaMetadata",
+        "SufficientStatisticsRiskPathProvenance",
+        "SufficientStatisticsRiskPathRecord",
+        "SufficientStatisticsRiskReturnComponents",
+        "SufficientStatisticsRiskRunRequest"
+      ],
+      "module_name": "janiform.risk.contracts",
       "schema_identifiers": [
         {
           "name": "SUFFICIENT_STATISTICS_RISK_PATH_DIAGNOSTICS_SCHEMA_VERSION",
@@ -5423,54 +6701,6 @@
           ],
           "kind": "contract_model",
           "signature": "(seed: 'int', horizon_interval_count: 'int', interval_delta: 'float' = 1.0, model_inputs: 'Optional[SufficientStatisticsRiskModelInputs]' = None, hourly_factor_contract: 'Optional[HourlyFactorContract]' = None) -> 'None'"
-        },
-        "SufficientStatisticsRiskValidationError": {
-          "base_classes": [
-            "JaniformValidationError",
-            "JaniformError",
-            "Exception",
-            "BaseException"
-          ],
-          "constructor_signature": "(failure: 'ContractValidationFailure') -> 'None'",
-          "kind": "exception_class",
-          "origin_module": "janiform.risk",
-          "qualname": "SufficientStatisticsRiskValidationError"
-        },
-        "SufficientStatisticsRiskValidationFailure": {
-          "field_names": [
-            "error_id",
-            "workflow",
-            "entrypoint",
-            "field_path",
-            "message",
-            "context_items"
-          ],
-          "kind": "contract_model",
-          "signature": "(error_id: 'str', workflow: 'str', entrypoint: 'str', field_path: 'str', message: 'str', context_items: 'tuple[tuple[str, ErrorContextValue], ...]' = ()) -> 'None'"
-        },
-        "deserialize_sufficient_statistics_risk_path": {
-          "kind": "function",
-          "signature": "(payload_json: 'str') -> 'SufficientStatisticsRiskPath'"
-        },
-        "deserialize_sufficient_statistics_risk_run_request": {
-          "kind": "function",
-          "signature": "(payload_json: 'str') -> 'SufficientStatisticsRiskRunRequest'"
-        },
-        "serialize_sufficient_statistics_risk_path": {
-          "kind": "function",
-          "signature": "(path: 'SufficientStatisticsRiskPath') -> 'str'"
-        },
-        "serialize_sufficient_statistics_risk_run_request": {
-          "kind": "function",
-          "signature": "(request: 'SufficientStatisticsRiskRunRequest') -> 'str'"
-        },
-        "validate_sufficient_statistics_risk_path": {
-          "kind": "function",
-          "signature": "(raw_path: 'dict[str, Any] | Any') -> 'SufficientStatisticsRiskPath'"
-        },
-        "validate_sufficient_statistics_risk_run_request": {
-          "kind": "function",
-          "signature": "(raw_request: 'dict[str, Any] | Any') -> 'SufficientStatisticsRiskRunRequest'"
         }
       }
     },
@@ -5579,7 +6809,7 @@
           "base_classes": [],
           "constructor_signature": "(native_result: 'object') -> 'None'",
           "kind": "class",
-          "origin_module": "janiform.seasonality",
+          "origin_module": "janiform.seasonality.artifacts",
           "qualname": "DayOfWeekSeasonalityEstimate"
         },
         "DayOfWeekSeasonalityEstimatorSettings": {
@@ -5594,7 +6824,7 @@
           "base_classes": [],
           "constructor_signature": "(native_result: 'object') -> 'None'",
           "kind": "class",
-          "origin_module": "janiform.seasonality",
+          "origin_module": "janiform.seasonality.artifacts",
           "qualname": "DayOfYearSeasonalityEstimate"
         },
         "DayOfYearSeasonalityEstimatorSettings": {
@@ -5609,7 +6839,7 @@
           "base_classes": [],
           "constructor_signature": "(native_result: 'object') -> 'None'",
           "kind": "class",
-          "origin_module": "janiform.seasonality",
+          "origin_module": "janiform.seasonality.artifacts",
           "qualname": "DeterministicSeasonalityComposition"
         },
         "INTRADAY_SEASONALITY_ESTIMATE_SCHEMA_VERSION": {
@@ -5620,7 +6850,7 @@
           "base_classes": [],
           "constructor_signature": "(native_result: 'object') -> 'None'",
           "kind": "class",
-          "origin_module": "janiform.seasonality",
+          "origin_module": "janiform.seasonality.artifacts",
           "qualname": "IntradaySeasonalityEstimate"
         },
         "IntradaySeasonalityEstimatorSettings": {
@@ -5691,7 +6921,7 @@
             "BaseException"
           ],
           "kind": "exception_class",
-          "origin_module": "janiform.seasonality",
+          "origin_module": "janiform.seasonality.errors",
           "qualname": "SeasonalityInputValidationError"
         },
         "SeasonalityPreprocessingError": {
@@ -5700,7 +6930,7 @@
             "BaseException"
           ],
           "kind": "exception_class",
-          "origin_module": "janiform.seasonality",
+          "origin_module": "janiform.seasonality.errors",
           "qualname": "SeasonalityPreprocessingError"
         },
         "SessionFilter": {
@@ -5756,7 +6986,7 @@
           "base_classes": [],
           "constructor_signature": "(native_result: 'object') -> 'None'",
           "kind": "class",
-          "origin_module": "janiform.seasonality",
+          "origin_module": "janiform.seasonality.artifacts",
           "qualname": "TimestampEventPreprocessingResult"
         },
         "compose_deterministic_seasonality_signal": {
@@ -5793,6 +7023,216 @@
         }
       }
     },
+    "janiform.seasonality.contracts": {
+      "exports": [
+        "DAY_OF_WEEK_SEASONALITY_ESTIMATE_SCHEMA_VERSION",
+        "DAY_OF_YEAR_SEASONALITY_ESTIMATE_SCHEMA_VERSION",
+        "DEFAULT_SEASONALITY_ESTIMATOR_VERSION",
+        "DETERMINISTIC_SEASONALITY_COMPOSITION_SCHEMA_VERSION",
+        "DayOfWeekSeasonalityEstimatorSettings",
+        "DayOfYearSeasonalityEstimatorSettings",
+        "INTRADAY_SEASONALITY_ESTIMATE_SCHEMA_VERSION",
+        "IntradaySeasonalityEstimatorSettings",
+        "IntradaySmoothingKernel",
+        "PREPROCESSED_TIMESTAMP_EVENT_SCHEMA_VERSION",
+        "SEASONALITY_DIAGNOSTICS_BATCH_REPORT_SCHEMA_VERSION",
+        "SEASONALITY_DIAGNOSTICS_REPORT_SCHEMA_VERSION",
+        "ScheduledEventOverlayDefinition",
+        "SessionFilter",
+        "TIMESTAMP_EVENT_INPUT_SCHEMA",
+        "TIMESTAMP_EVENT_INPUT_SCHEMA_VERSION",
+        "TimestampEventInputSchema",
+        "load_scheduled_event_overlay_definitions"
+      ],
+      "module_name": "janiform.seasonality.contracts",
+      "schema_identifiers": [
+        {
+          "name": "DAY_OF_WEEK_SEASONALITY_ESTIMATE_SCHEMA_VERSION",
+          "public_exported": true,
+          "value": "seasonality.day_of_week.estimate.v1"
+        },
+        {
+          "name": "DAY_OF_YEAR_SEASONALITY_ESTIMATE_SCHEMA_VERSION",
+          "public_exported": true,
+          "value": "seasonality.day_of_year.estimate.v1"
+        },
+        {
+          "name": "DEFAULT_SEASONALITY_ESTIMATOR_VERSION",
+          "public_exported": true,
+          "value": "seasonality_estimator.v1"
+        },
+        {
+          "name": "DETERMINISTIC_SEASONALITY_COMPOSITION_SCHEMA_VERSION",
+          "public_exported": true,
+          "value": "seasonality.deterministic.composition.v1"
+        },
+        {
+          "name": "INTRADAY_SEASONALITY_ESTIMATE_SCHEMA_VERSION",
+          "public_exported": true,
+          "value": "seasonality.intraday.estimate.v1"
+        },
+        {
+          "name": "PREPROCESSED_TIMESTAMP_EVENT_SCHEMA_VERSION",
+          "public_exported": true,
+          "value": "seasonality.timestamp_event.preprocessed.v1"
+        },
+        {
+          "name": "SEASONALITY_DIAGNOSTICS_BATCH_REPORT_SCHEMA_VERSION",
+          "public_exported": true,
+          "value": "seasonality.diagnostics.batch.v1"
+        },
+        {
+          "name": "SEASONALITY_DIAGNOSTICS_REPORT_SCHEMA_VERSION",
+          "public_exported": true,
+          "value": "seasonality.diagnostics.report.v1"
+        },
+        {
+          "name": "TIMESTAMP_EVENT_INPUT_SCHEMA_VERSION",
+          "public_exported": true,
+          "value": "seasonality.timestamp_event.v1"
+        }
+      ],
+      "symbols": {
+        "DAY_OF_WEEK_SEASONALITY_ESTIMATE_SCHEMA_VERSION": {
+          "kind": "constant",
+          "value": "seasonality.day_of_week.estimate.v1"
+        },
+        "DAY_OF_YEAR_SEASONALITY_ESTIMATE_SCHEMA_VERSION": {
+          "kind": "constant",
+          "value": "seasonality.day_of_year.estimate.v1"
+        },
+        "DEFAULT_SEASONALITY_ESTIMATOR_VERSION": {
+          "kind": "constant",
+          "value": "seasonality_estimator.v1"
+        },
+        "DETERMINISTIC_SEASONALITY_COMPOSITION_SCHEMA_VERSION": {
+          "kind": "constant",
+          "value": "seasonality.deterministic.composition.v1"
+        },
+        "DayOfWeekSeasonalityEstimatorSettings": {
+          "field_names": [
+            "minimum_bucket_events",
+            "pseudocount"
+          ],
+          "kind": "contract_model",
+          "signature": "(minimum_bucket_events: 'int' = 1, pseudocount: 'float' = 1e-06) -> 'None'"
+        },
+        "DayOfYearSeasonalityEstimatorSettings": {
+          "field_names": [
+            "minimum_bucket_events",
+            "pseudocount"
+          ],
+          "kind": "contract_model",
+          "signature": "(minimum_bucket_events: 'int' = 1, pseudocount: 'float' = 1e-06) -> 'None'"
+        },
+        "INTRADAY_SEASONALITY_ESTIMATE_SCHEMA_VERSION": {
+          "kind": "constant",
+          "value": "seasonality.intraday.estimate.v1"
+        },
+        "IntradaySeasonalityEstimatorSettings": {
+          "field_names": [
+            "minutes_per_bin",
+            "smoothing_kernel",
+            "smoothing_bandwidth_bins",
+            "minimum_bin_events",
+            "pseudocount"
+          ],
+          "kind": "contract_model",
+          "signature": "(minutes_per_bin: 'int' = 1, smoothing_kernel: 'IntradaySmoothingKernel' = <IntradaySmoothingKernel.GAUSSIAN: 'gaussian'>, smoothing_bandwidth_bins: 'float' = 3.0, minimum_bin_events: 'int' = 1, pseudocount: 'float' = 1e-06) -> 'None'"
+        },
+        "IntradaySmoothingKernel": {
+          "kind": "enum",
+          "members": [
+            {
+              "name": "GAUSSIAN",
+              "value": "gaussian"
+            },
+            {
+              "name": "UNIFORM",
+              "value": "uniform"
+            }
+          ]
+        },
+        "PREPROCESSED_TIMESTAMP_EVENT_SCHEMA_VERSION": {
+          "kind": "constant",
+          "value": "seasonality.timestamp_event.preprocessed.v1"
+        },
+        "SEASONALITY_DIAGNOSTICS_BATCH_REPORT_SCHEMA_VERSION": {
+          "kind": "constant",
+          "value": "seasonality.diagnostics.batch.v1"
+        },
+        "SEASONALITY_DIAGNOSTICS_REPORT_SCHEMA_VERSION": {
+          "kind": "constant",
+          "value": "seasonality.diagnostics.report.v1"
+        },
+        "ScheduledEventOverlayDefinition": {
+          "field_names": [
+            "overlay_id",
+            "start_timestamp_utc",
+            "end_timestamp_utc",
+            "log_adjustment",
+            "precedence",
+            "enabled",
+            "source_label"
+          ],
+          "kind": "contract_model",
+          "signature": "(overlay_id: 'str', start_timestamp_utc: 'str | datetime', end_timestamp_utc: 'str | datetime', log_adjustment: 'float', precedence: 'int' = 0, enabled: 'bool' = True, source_label: 'str' = 'configuration') -> 'None'"
+        },
+        "SessionFilter": {
+          "kind": "enum",
+          "members": [
+            {
+              "name": "ALL",
+              "value": "all"
+            },
+            {
+              "name": "OPEN_ONLY",
+              "value": "open_only"
+            },
+            {
+              "name": "CLOSED_ONLY",
+              "value": "closed_only"
+            }
+          ]
+        },
+        "TIMESTAMP_EVENT_INPUT_SCHEMA": {
+          "kind": "constant",
+          "value": {
+            "accepted_timestamp_types": [
+              "datetime",
+              "RFC3339 / ISO-8601 string"
+            ],
+            "ordering_policy": "output is sorted by normalized UTC timestamp and then input position",
+            "required_fields": [
+              "timestamp"
+            ],
+            "schema_version": "seasonality.timestamp_event.v1",
+            "timestamp_field_name": "timestamp",
+            "timezone_requirement": "timestamp values must include timezone information"
+          }
+        },
+        "TIMESTAMP_EVENT_INPUT_SCHEMA_VERSION": {
+          "kind": "constant",
+          "value": "seasonality.timestamp_event.v1"
+        },
+        "TimestampEventInputSchema": {
+          "field_names": [
+            "schema_version",
+            "required_fields",
+            "timestamp_field_name",
+            "accepted_timestamp_types",
+            "timezone_requirement",
+            "ordering_policy"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', required_fields: 'tuple[str, ...]', timestamp_field_name: 'str', accepted_timestamp_types: 'tuple[str, ...]', timezone_requirement: 'str', ordering_policy: 'str') -> 'None'"
+        },
+        "load_scheduled_event_overlay_definitions": {
+          "kind": "function",
+          "signature": "(overlay_configuration_records: 'Sequence[Mapping[str, Any]]') -> 'list[ScheduledEventOverlayDefinition]'"
+        }
+      }
+    },
     "janiform.simulation": {
       "exports": [
         "CoarseSimulationModelInputs",
@@ -5802,7 +7242,6 @@
         "HawkesKernelLoadings",
         "HawkesKernelParameters",
         "MeanReversionAnchorModel",
-        "MeanReversionAnchorModelKind",
         "MeanReversionBoundaryState",
         "MeanReversionFittedParameters",
         "MeanReversionRuntimeIntervalAnchors",
@@ -5898,22 +7337,12 @@
         },
         "MeanReversionAnchorModel": {
           "field_names": [
-            "anchor_model_kind",
             "reference_interval_hours",
             "pressure_persistence_per_reference_interval",
             "pressure_level_gain"
           ],
           "kind": "contract_model",
-          "signature": "(anchor_model_kind: 'MeanReversionAnchorModelKind', reference_interval_hours: 'float', pressure_persistence_per_reference_interval: 'float', pressure_level_gain: 'float') -> 'None'"
-        },
-        "MeanReversionAnchorModelKind": {
-          "kind": "enum",
-          "members": [
-            {
-              "name": "ENDOGENOUS_CORE_PRESSURE_LEVEL",
-              "value": "endogenous_core_pressure_level"
-            }
-          ]
+          "signature": "(reference_interval_hours: 'float', pressure_persistence_per_reference_interval: 'float', pressure_level_gain: 'float') -> 'None'"
         },
         "MeanReversionBoundaryState": {
           "field_names": [
@@ -6856,7 +8285,6 @@
         "HawkesKernelLoadings",
         "HawkesKernelParameters",
         "MeanReversionAnchorModel",
-        "MeanReversionAnchorModelKind",
         "MeanReversionBoundaryState",
         "MeanReversionFittedParameters",
         "MeanReversionRuntimeIntervalAnchors",
@@ -6900,22 +8328,12 @@
         },
         "MeanReversionAnchorModel": {
           "field_names": [
-            "anchor_model_kind",
             "reference_interval_hours",
             "pressure_persistence_per_reference_interval",
             "pressure_level_gain"
           ],
           "kind": "contract_model",
-          "signature": "(anchor_model_kind: 'MeanReversionAnchorModelKind', reference_interval_hours: 'float', pressure_persistence_per_reference_interval: 'float', pressure_level_gain: 'float') -> 'None'"
-        },
-        "MeanReversionAnchorModelKind": {
-          "kind": "enum",
-          "members": [
-            {
-              "name": "ENDOGENOUS_CORE_PRESSURE_LEVEL",
-              "value": "endogenous_core_pressure_level"
-            }
-          ]
+          "signature": "(reference_interval_hours: 'float', pressure_persistence_per_reference_interval: 'float', pressure_level_gain: 'float') -> 'None'"
         },
         "MeanReversionBoundaryState": {
           "field_names": [
@@ -7007,13 +8425,26 @@
         "STYLIZED_FACT_HORIZON_COMPARISON_REPORT_BUNDLE_SCHEMA_VERSION",
         "STYLIZED_FACT_HORIZON_COMPARISON_REPORT_SCHEMA_VERSION",
         "STYLIZED_FACT_HORIZON_COMPARISON_TABLE_SUMMARY_SCHEMA_VERSION",
+        "StylizedFactDatasetMetricObservedCounts",
+        "StylizedFactDatasetMetricReport",
+        "StylizedFactDatasetMetricRequiredMinimums",
+        "StylizedFactDatasetMetricSampleCoverage",
+        "StylizedFactDecisionCounts",
         "StylizedFactHorizonComparisonArtifactExportReceipt",
+        "StylizedFactHorizonComparisonHorizonReport",
+        "StylizedFactHorizonComparisonOutputSchemaMetadata",
         "StylizedFactHorizonComparisonPlotPayload",
         "StylizedFactHorizonComparisonPlotPoint",
+        "StylizedFactHorizonComparisonReport",
         "StylizedFactHorizonComparisonReportBundle",
         "StylizedFactHorizonComparisonReportBundleOutputSchemaMetadata",
+        "StylizedFactHorizonComparisonReportSummary",
+        "StylizedFactHorizonComparisonRunReport",
         "StylizedFactHorizonComparisonTableSummary",
         "StylizedFactHorizonComparisonTableSummaryRow",
+        "StylizedFactMetricComparisonReport",
+        "StylizedFactThresholdContext",
+        "StylizedFactUncertaintyContext",
         "build_stylized_fact_plotly_figure",
         "build_stylized_fact_plotly_figure_from_report_bundle",
         "render_stylized_fact_table_markdown",
@@ -7072,77 +8503,638 @@
           "kind": "constant",
           "value": "validation.stylized_fact.horizon_comparison.table_summary.v1"
         },
-        "StylizedFactHorizonComparisonArtifactExportReceipt": {
-          "base_classes": [
-            "dict"
+        "StylizedFactDatasetMetricObservedCounts": {
+          "field_names": [
+            "sample_count",
+            "effective_sample_count",
+            "tail_observation_count"
           ],
-          "kind": "class",
-          "origin_module": "janiform.stylized_facts",
-          "qualname": "StylizedFactHorizonComparisonArtifactExportReceipt"
+          "kind": "contract_model",
+          "signature": "(sample_count: 'int', effective_sample_count: 'int', tail_observation_count: 'int') -> 'None'"
+        },
+        "StylizedFactDatasetMetricReport": {
+          "field_names": [
+            "status",
+            "value",
+            "confidence_interval",
+            "sample_coverage",
+            "observed_counts",
+            "required_minimums",
+            "horizon_coverage_ratio",
+            "insufficiency_reason_codes",
+            "input_present"
+          ],
+          "kind": "contract_model",
+          "signature": "(status: 'str', value: 'Optional[float]', confidence_interval: 'Optional[StylizedFactMetricIntervalBounds]', sample_coverage: 'StylizedFactDatasetMetricSampleCoverage', observed_counts: 'StylizedFactDatasetMetricObservedCounts', required_minimums: 'StylizedFactDatasetMetricRequiredMinimums', horizon_coverage_ratio: 'float', insufficiency_reason_codes: 'list[str]', input_present: 'bool') -> 'None'"
+        },
+        "StylizedFactDatasetMetricRequiredMinimums": {
+          "field_names": [
+            "minimum_sample_count",
+            "minimum_effective_sample_count",
+            "minimum_tail_observation_count",
+            "minimum_horizon_coverage_ratio"
+          ],
+          "kind": "contract_model",
+          "signature": "(minimum_sample_count: 'int', minimum_effective_sample_count: 'int', minimum_tail_observation_count: 'int', minimum_horizon_coverage_ratio: 'float') -> 'None'"
+        },
+        "StylizedFactDatasetMetricSampleCoverage": {
+          "field_names": [
+            "horizon_interval_count",
+            "covered_interval_count"
+          ],
+          "kind": "contract_model",
+          "signature": "(horizon_interval_count: 'int', covered_interval_count: 'int') -> 'None'"
+        },
+        "StylizedFactDecisionCounts": {
+          "field_names": [
+            "pass_count",
+            "fail_count",
+            "insufficient_data_count"
+          ],
+          "kind": "contract_model",
+          "signature": "(pass_count: 'int', fail_count: 'int', insufficient_data_count: 'int') -> 'None'"
+        },
+        "StylizedFactHorizonComparisonArtifactExportReceipt": {
+          "field_names": [
+            "export_directory",
+            "file_stem",
+            "exported_files"
+          ],
+          "kind": "contract_model",
+          "signature": "(export_directory: 'str', file_stem: 'str', exported_files: 'list[StylizedFactHorizonComparisonExportedArtifactFile]') -> 'None'"
+        },
+        "StylizedFactHorizonComparisonHorizonReport": {
+          "field_names": [
+            "horizon_label",
+            "empirical_horizon_duration_nanos",
+            "simulated_horizon_duration_nanos",
+            "alignment_status",
+            "status",
+            "decision_counts",
+            "metrics"
+          ],
+          "kind": "contract_model",
+          "signature": "(horizon_label: 'str', empirical_horizon_duration_nanos: 'int', simulated_horizon_duration_nanos: 'int', alignment_status: 'str', status: 'str', decision_counts: 'StylizedFactDecisionCounts', metrics: 'list[StylizedFactMetricComparisonReport]') -> 'None'"
+        },
+        "StylizedFactHorizonComparisonOutputSchemaMetadata": {
+          "field_names": [
+            "schema_version",
+            "required_batch_report_fields",
+            "required_run_report_fields",
+            "required_horizon_report_fields",
+            "required_metric_report_fields",
+            "required_dataset_metric_fields",
+            "required_decision_count_fields",
+            "decision_state_vocabulary",
+            "horizon_alignment_status_vocabulary",
+            "metric_alignment_status_vocabulary",
+            "dataset_metric_status_vocabulary",
+            "decision_reason_vocabulary",
+            "sample_sufficiency_reason_vocabulary"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', required_batch_report_fields: 'list[str]', required_run_report_fields: 'list[str]', required_horizon_report_fields: 'list[str]', required_metric_report_fields: 'list[str]', required_dataset_metric_fields: 'list[str]', required_decision_count_fields: 'list[str]', decision_state_vocabulary: 'list[str]', horizon_alignment_status_vocabulary: 'list[str]', metric_alignment_status_vocabulary: 'list[str]', dataset_metric_status_vocabulary: 'list[str]', decision_reason_vocabulary: 'list[str]', sample_sufficiency_reason_vocabulary: 'list[str]') -> 'None'"
         },
         "StylizedFactHorizonComparisonPlotPayload": {
-          "base_classes": [
-            "dict"
+          "field_names": [
+            "schema_version",
+            "determinism_policy",
+            "points"
           ],
-          "kind": "class",
-          "origin_module": "janiform.stylized_facts",
-          "qualname": "StylizedFactHorizonComparisonPlotPayload"
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', determinism_policy: 'str', points: 'list[StylizedFactHorizonComparisonPlotPoint]') -> 'None'"
         },
         "StylizedFactHorizonComparisonPlotPoint": {
-          "base_classes": [
-            "dict"
+          "field_names": [
+            "calibration_run_id",
+            "horizon_label",
+            "metric_id",
+            "metric_name",
+            "metric_variant",
+            "metric_class",
+            "status",
+            "absolute_delta",
+            "standardized_delta",
+            "empirical_value",
+            "simulated_value",
+            "empirical_confidence_interval",
+            "simulated_confidence_interval",
+            "empirical_sample_coverage",
+            "simulated_sample_coverage",
+            "empirical_horizon_coverage_ratio",
+            "simulated_horizon_coverage_ratio",
+            "insufficient_data_reasons"
           ],
-          "kind": "class",
-          "origin_module": "janiform.stylized_facts",
-          "qualname": "StylizedFactHorizonComparisonPlotPoint"
+          "kind": "contract_model",
+          "signature": "(calibration_run_id: 'str', horizon_label: 'str', metric_id: 'str', metric_name: 'str', metric_variant: 'Optional[str]', metric_class: 'str', status: 'str', absolute_delta: 'Optional[float]', standardized_delta: 'Optional[float]', empirical_value: 'Optional[float]', simulated_value: 'Optional[float]', empirical_confidence_interval: 'Optional[StylizedFactMetricIntervalBounds]', simulated_confidence_interval: 'Optional[StylizedFactMetricIntervalBounds]', empirical_sample_coverage: 'StylizedFactMetricCoverageSummary', simulated_sample_coverage: 'StylizedFactMetricCoverageSummary', empirical_horizon_coverage_ratio: 'float', simulated_horizon_coverage_ratio: 'float', insufficient_data_reasons: 'StylizedFactMetricInsufficientDataReasons') -> 'None'"
+        },
+        "StylizedFactHorizonComparisonReport": {
+          "field_names": [
+            "schema_version",
+            "decision_policy",
+            "uncertainty_policy",
+            "insufficient_data_status_code",
+            "output_schema_metadata",
+            "metric_catalog_id",
+            "metric_catalog_version",
+            "threshold_policy_id",
+            "status",
+            "summary",
+            "run_reports"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', decision_policy: 'str', uncertainty_policy: 'str', insufficient_data_status_code: 'str', output_schema_metadata: 'StylizedFactHorizonComparisonOutputSchemaMetadata', metric_catalog_id: 'str', metric_catalog_version: 'str', threshold_policy_id: 'str', status: 'str', summary: 'StylizedFactHorizonComparisonReportSummary', run_reports: 'list[StylizedFactHorizonComparisonRunReport]') -> 'None'"
         },
         "StylizedFactHorizonComparisonReportBundle": {
-          "base_classes": [
-            "dict"
+          "field_names": [
+            "schema_version",
+            "determinism_policy",
+            "output_schema_metadata",
+            "comparison_report",
+            "table_summary",
+            "plot_payload",
+            "artifact_export"
           ],
-          "kind": "class",
-          "origin_module": "janiform.stylized_facts",
-          "qualname": "StylizedFactHorizonComparisonReportBundle"
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', determinism_policy: 'str', output_schema_metadata: 'StylizedFactHorizonComparisonReportBundleOutputSchemaMetadata', comparison_report: 'StylizedFactHorizonComparisonReport', table_summary: 'StylizedFactHorizonComparisonTableSummary', plot_payload: 'StylizedFactHorizonComparisonPlotPayload', artifact_export: 'Optional[StylizedFactHorizonComparisonArtifactExportReceipt]') -> 'None'"
         },
         "StylizedFactHorizonComparisonReportBundleOutputSchemaMetadata": {
-          "base_classes": [
-            "dict"
+          "field_names": [
+            "schema_version",
+            "required_bundle_fields",
+            "required_table_summary_fields",
+            "required_table_summary_row_fields",
+            "required_plot_payload_fields",
+            "required_plot_point_fields",
+            "decision_state_vocabulary",
+            "metric_class_vocabulary",
+            "insufficient_data_status_code"
           ],
-          "kind": "class",
-          "origin_module": "janiform.stylized_facts",
-          "qualname": "StylizedFactHorizonComparisonReportBundleOutputSchemaMetadata"
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', required_bundle_fields: 'list[str]', required_table_summary_fields: 'list[str]', required_table_summary_row_fields: 'list[str]', required_plot_payload_fields: 'list[str]', required_plot_point_fields: 'list[str]', decision_state_vocabulary: 'list[str]', metric_class_vocabulary: 'list[str]', insufficient_data_status_code: 'str') -> 'None'"
+        },
+        "StylizedFactHorizonComparisonReportSummary": {
+          "field_names": [
+            "total_run_count",
+            "total_metric_count",
+            "run_decision_counts",
+            "metric_decision_counts"
+          ],
+          "kind": "contract_model",
+          "signature": "(total_run_count: 'int', total_metric_count: 'int', run_decision_counts: 'StylizedFactDecisionCounts', metric_decision_counts: 'StylizedFactDecisionCounts') -> 'None'"
+        },
+        "StylizedFactHorizonComparisonRunReport": {
+          "field_names": [
+            "calibration_run_id",
+            "empirical_dataset_id",
+            "simulated_dataset_id",
+            "status",
+            "decision_counts",
+            "total_horizon_count",
+            "total_metric_count",
+            "horizons"
+          ],
+          "kind": "contract_model",
+          "signature": "(calibration_run_id: 'str', empirical_dataset_id: 'str', simulated_dataset_id: 'str', status: 'str', decision_counts: 'StylizedFactDecisionCounts', total_horizon_count: 'int', total_metric_count: 'int', horizons: 'list[StylizedFactHorizonComparisonHorizonReport]') -> 'None'"
         },
         "StylizedFactHorizonComparisonTableSummary": {
-          "base_classes": [
-            "dict"
+          "field_names": [
+            "schema_version",
+            "determinism_policy",
+            "rows"
           ],
-          "kind": "class",
-          "origin_module": "janiform.stylized_facts",
-          "qualname": "StylizedFactHorizonComparisonTableSummary"
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', determinism_policy: 'str', rows: 'list[StylizedFactHorizonComparisonTableSummaryRow]') -> 'None'"
         },
         "StylizedFactHorizonComparisonTableSummaryRow": {
-          "base_classes": [
-            "dict"
+          "field_names": [
+            "calibration_run_id",
+            "empirical_dataset_id",
+            "simulated_dataset_id",
+            "horizon_label",
+            "metric_id",
+            "metric_name",
+            "metric_variant",
+            "metric_class",
+            "alignment_status",
+            "status",
+            "absolute_delta",
+            "standardized_delta",
+            "empirical_status",
+            "simulated_status",
+            "empirical_value",
+            "simulated_value",
+            "empirical_confidence_interval",
+            "simulated_confidence_interval",
+            "empirical_sample_coverage",
+            "simulated_sample_coverage",
+            "empirical_horizon_coverage_ratio",
+            "simulated_horizon_coverage_ratio",
+            "insufficient_data_reasons",
+            "decision_reason_codes"
           ],
-          "kind": "class",
-          "origin_module": "janiform.stylized_facts",
-          "qualname": "StylizedFactHorizonComparisonTableSummaryRow"
+          "kind": "contract_model",
+          "signature": "(calibration_run_id: 'str', empirical_dataset_id: 'str', simulated_dataset_id: 'str', horizon_label: 'str', metric_id: 'str', metric_name: 'str', metric_variant: 'Optional[str]', metric_class: 'str', alignment_status: 'str', status: 'str', absolute_delta: 'Optional[float]', standardized_delta: 'Optional[float]', empirical_status: 'str', simulated_status: 'str', empirical_value: 'Optional[float]', simulated_value: 'Optional[float]', empirical_confidence_interval: 'Optional[StylizedFactMetricIntervalBounds]', simulated_confidence_interval: 'Optional[StylizedFactMetricIntervalBounds]', empirical_sample_coverage: 'StylizedFactMetricCoverageSummary', simulated_sample_coverage: 'StylizedFactMetricCoverageSummary', empirical_horizon_coverage_ratio: 'float', simulated_horizon_coverage_ratio: 'float', insufficient_data_reasons: 'StylizedFactMetricInsufficientDataReasons', decision_reason_codes: 'list[str]') -> 'None'"
+        },
+        "StylizedFactMetricComparisonReport": {
+          "field_names": [
+            "metric_id",
+            "metric_name",
+            "metric_variant",
+            "alignment_status",
+            "status",
+            "empirical",
+            "simulated",
+            "absolute_delta",
+            "uncertainty_context",
+            "threshold_context",
+            "horizon_label",
+            "decision_reason_codes"
+          ],
+          "kind": "contract_model",
+          "signature": "(metric_id: 'str', metric_name: 'str', metric_variant: 'Optional[str]', alignment_status: 'str', status: 'str', empirical: 'StylizedFactDatasetMetricReport', simulated: 'StylizedFactDatasetMetricReport', absolute_delta: 'Optional[float]', uncertainty_context: 'StylizedFactUncertaintyContext', threshold_context: 'StylizedFactThresholdContext', horizon_label: 'str', decision_reason_codes: 'list[str]') -> 'None'"
+        },
+        "StylizedFactThresholdContext": {
+          "field_names": [
+            "policy_id",
+            "max_absolute_delta",
+            "max_standardized_delta",
+            "absolute_delta_exceeds_threshold",
+            "standardized_delta_exceeds_threshold"
+          ],
+          "kind": "contract_model",
+          "signature": "(policy_id: 'str', max_absolute_delta: 'float', max_standardized_delta: 'float', absolute_delta_exceeds_threshold: 'Optional[bool]', standardized_delta_exceeds_threshold: 'Optional[bool]') -> 'None'"
+        },
+        "StylizedFactUncertaintyContext": {
+          "field_names": [
+            "empirical_interval_half_width",
+            "simulated_interval_half_width",
+            "pooled_interval_half_width",
+            "standardized_delta"
+          ],
+          "kind": "contract_model",
+          "signature": "(empirical_interval_half_width: 'Optional[float]', simulated_interval_half_width: 'Optional[float]', pooled_interval_half_width: 'Optional[float]', standardized_delta: 'Optional[float]') -> 'None'"
         },
         "build_stylized_fact_plotly_figure": {
           "kind": "function",
-          "signature": "(plot_payload: 'Mapping[str, Any]', *, title: 'str' = 'Stylized Fact Absolute Delta By Horizon') -> 'Any'"
+          "signature": "(plot_payload: 'StylizedFactHorizonComparisonPlotPayload', *, title: 'str' = 'Stylized Fact Absolute Delta By Horizon') -> 'Any'"
         },
         "build_stylized_fact_plotly_figure_from_report_bundle": {
           "kind": "function",
-          "signature": "(report_bundle: 'Mapping[str, Any]', *, title: 'str' = 'Stylized Fact Absolute Delta By Horizon') -> 'Any'"
+          "signature": "(report_bundle: 'StylizedFactHorizonComparisonReportBundle', *, title: 'str' = 'Stylized Fact Absolute Delta By Horizon') -> 'Any'"
         },
         "render_stylized_fact_table_markdown": {
           "kind": "function",
-          "signature": "(table_summary: 'Mapping[str, Any]', *, max_rows: 'Optional[int]' = None) -> 'str'"
+          "signature": "(table_summary: 'StylizedFactHorizonComparisonTableSummary', *, max_rows: 'Optional[int]' = None) -> 'str'"
         },
         "run_stylized_fact_horizon_comparison_report_generator": {
           "kind": "function",
           "signature": "(*, metric_catalog: 'Mapping[str, Any]', comparison_request: 'Mapping[str, Any]', execution_mode: 'str' = 'memory', artifact_export: 'Optional[Mapping[str, Any]]' = None) -> 'StylizedFactHorizonComparisonReportBundle'"
+        }
+      }
+    },
+    "janiform.stylized_facts.contracts": {
+      "exports": [
+        "StylizedFactDatasetMetricObservedCounts",
+        "StylizedFactDatasetMetricReport",
+        "StylizedFactDatasetMetricRequiredMinimums",
+        "StylizedFactDatasetMetricSampleCoverage",
+        "StylizedFactDecisionCounts",
+        "StylizedFactHorizonComparisonArtifactExportReceipt",
+        "StylizedFactHorizonComparisonExportedArtifactFile",
+        "StylizedFactHorizonComparisonHorizonReport",
+        "StylizedFactHorizonComparisonOutputSchemaMetadata",
+        "StylizedFactHorizonComparisonPlotPayload",
+        "StylizedFactHorizonComparisonPlotPoint",
+        "StylizedFactHorizonComparisonReport",
+        "StylizedFactHorizonComparisonReportBundle",
+        "StylizedFactHorizonComparisonReportBundleOutputSchemaMetadata",
+        "StylizedFactHorizonComparisonReportSummary",
+        "StylizedFactHorizonComparisonRunReport",
+        "StylizedFactHorizonComparisonTableSummary",
+        "StylizedFactHorizonComparisonTableSummaryRow",
+        "StylizedFactMetricComparisonReport",
+        "StylizedFactMetricCoverageSummary",
+        "StylizedFactMetricInsufficientDataReasons",
+        "StylizedFactMetricIntervalBounds",
+        "StylizedFactThresholdContext",
+        "StylizedFactUncertaintyContext"
+      ],
+      "module_name": "janiform.stylized_facts.contracts",
+      "schema_identifiers": [],
+      "symbols": {
+        "StylizedFactDatasetMetricObservedCounts": {
+          "field_names": [
+            "sample_count",
+            "effective_sample_count",
+            "tail_observation_count"
+          ],
+          "kind": "contract_model",
+          "signature": "(sample_count: 'int', effective_sample_count: 'int', tail_observation_count: 'int') -> 'None'"
+        },
+        "StylizedFactDatasetMetricReport": {
+          "field_names": [
+            "status",
+            "value",
+            "confidence_interval",
+            "sample_coverage",
+            "observed_counts",
+            "required_minimums",
+            "horizon_coverage_ratio",
+            "insufficiency_reason_codes",
+            "input_present"
+          ],
+          "kind": "contract_model",
+          "signature": "(status: 'str', value: 'Optional[float]', confidence_interval: 'Optional[StylizedFactMetricIntervalBounds]', sample_coverage: 'StylizedFactDatasetMetricSampleCoverage', observed_counts: 'StylizedFactDatasetMetricObservedCounts', required_minimums: 'StylizedFactDatasetMetricRequiredMinimums', horizon_coverage_ratio: 'float', insufficiency_reason_codes: 'list[str]', input_present: 'bool') -> 'None'"
+        },
+        "StylizedFactDatasetMetricRequiredMinimums": {
+          "field_names": [
+            "minimum_sample_count",
+            "minimum_effective_sample_count",
+            "minimum_tail_observation_count",
+            "minimum_horizon_coverage_ratio"
+          ],
+          "kind": "contract_model",
+          "signature": "(minimum_sample_count: 'int', minimum_effective_sample_count: 'int', minimum_tail_observation_count: 'int', minimum_horizon_coverage_ratio: 'float') -> 'None'"
+        },
+        "StylizedFactDatasetMetricSampleCoverage": {
+          "field_names": [
+            "horizon_interval_count",
+            "covered_interval_count"
+          ],
+          "kind": "contract_model",
+          "signature": "(horizon_interval_count: 'int', covered_interval_count: 'int') -> 'None'"
+        },
+        "StylizedFactDecisionCounts": {
+          "field_names": [
+            "pass_count",
+            "fail_count",
+            "insufficient_data_count"
+          ],
+          "kind": "contract_model",
+          "signature": "(pass_count: 'int', fail_count: 'int', insufficient_data_count: 'int') -> 'None'"
+        },
+        "StylizedFactHorizonComparisonArtifactExportReceipt": {
+          "field_names": [
+            "export_directory",
+            "file_stem",
+            "exported_files"
+          ],
+          "kind": "contract_model",
+          "signature": "(export_directory: 'str', file_stem: 'str', exported_files: 'list[StylizedFactHorizonComparisonExportedArtifactFile]') -> 'None'"
+        },
+        "StylizedFactHorizonComparisonExportedArtifactFile": {
+          "field_names": [
+            "artifact_kind",
+            "file_name",
+            "absolute_path"
+          ],
+          "kind": "contract_model",
+          "signature": "(artifact_kind: 'str', file_name: 'str', absolute_path: 'str') -> 'None'"
+        },
+        "StylizedFactHorizonComparisonHorizonReport": {
+          "field_names": [
+            "horizon_label",
+            "empirical_horizon_duration_nanos",
+            "simulated_horizon_duration_nanos",
+            "alignment_status",
+            "status",
+            "decision_counts",
+            "metrics"
+          ],
+          "kind": "contract_model",
+          "signature": "(horizon_label: 'str', empirical_horizon_duration_nanos: 'int', simulated_horizon_duration_nanos: 'int', alignment_status: 'str', status: 'str', decision_counts: 'StylizedFactDecisionCounts', metrics: 'list[StylizedFactMetricComparisonReport]') -> 'None'"
+        },
+        "StylizedFactHorizonComparisonOutputSchemaMetadata": {
+          "field_names": [
+            "schema_version",
+            "required_batch_report_fields",
+            "required_run_report_fields",
+            "required_horizon_report_fields",
+            "required_metric_report_fields",
+            "required_dataset_metric_fields",
+            "required_decision_count_fields",
+            "decision_state_vocabulary",
+            "horizon_alignment_status_vocabulary",
+            "metric_alignment_status_vocabulary",
+            "dataset_metric_status_vocabulary",
+            "decision_reason_vocabulary",
+            "sample_sufficiency_reason_vocabulary"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', required_batch_report_fields: 'list[str]', required_run_report_fields: 'list[str]', required_horizon_report_fields: 'list[str]', required_metric_report_fields: 'list[str]', required_dataset_metric_fields: 'list[str]', required_decision_count_fields: 'list[str]', decision_state_vocabulary: 'list[str]', horizon_alignment_status_vocabulary: 'list[str]', metric_alignment_status_vocabulary: 'list[str]', dataset_metric_status_vocabulary: 'list[str]', decision_reason_vocabulary: 'list[str]', sample_sufficiency_reason_vocabulary: 'list[str]') -> 'None'"
+        },
+        "StylizedFactHorizonComparisonPlotPayload": {
+          "field_names": [
+            "schema_version",
+            "determinism_policy",
+            "points"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', determinism_policy: 'str', points: 'list[StylizedFactHorizonComparisonPlotPoint]') -> 'None'"
+        },
+        "StylizedFactHorizonComparisonPlotPoint": {
+          "field_names": [
+            "calibration_run_id",
+            "horizon_label",
+            "metric_id",
+            "metric_name",
+            "metric_variant",
+            "metric_class",
+            "status",
+            "absolute_delta",
+            "standardized_delta",
+            "empirical_value",
+            "simulated_value",
+            "empirical_confidence_interval",
+            "simulated_confidence_interval",
+            "empirical_sample_coverage",
+            "simulated_sample_coverage",
+            "empirical_horizon_coverage_ratio",
+            "simulated_horizon_coverage_ratio",
+            "insufficient_data_reasons"
+          ],
+          "kind": "contract_model",
+          "signature": "(calibration_run_id: 'str', horizon_label: 'str', metric_id: 'str', metric_name: 'str', metric_variant: 'Optional[str]', metric_class: 'str', status: 'str', absolute_delta: 'Optional[float]', standardized_delta: 'Optional[float]', empirical_value: 'Optional[float]', simulated_value: 'Optional[float]', empirical_confidence_interval: 'Optional[StylizedFactMetricIntervalBounds]', simulated_confidence_interval: 'Optional[StylizedFactMetricIntervalBounds]', empirical_sample_coverage: 'StylizedFactMetricCoverageSummary', simulated_sample_coverage: 'StylizedFactMetricCoverageSummary', empirical_horizon_coverage_ratio: 'float', simulated_horizon_coverage_ratio: 'float', insufficient_data_reasons: 'StylizedFactMetricInsufficientDataReasons') -> 'None'"
+        },
+        "StylizedFactHorizonComparisonReport": {
+          "field_names": [
+            "schema_version",
+            "decision_policy",
+            "uncertainty_policy",
+            "insufficient_data_status_code",
+            "output_schema_metadata",
+            "metric_catalog_id",
+            "metric_catalog_version",
+            "threshold_policy_id",
+            "status",
+            "summary",
+            "run_reports"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', decision_policy: 'str', uncertainty_policy: 'str', insufficient_data_status_code: 'str', output_schema_metadata: 'StylizedFactHorizonComparisonOutputSchemaMetadata', metric_catalog_id: 'str', metric_catalog_version: 'str', threshold_policy_id: 'str', status: 'str', summary: 'StylizedFactHorizonComparisonReportSummary', run_reports: 'list[StylizedFactHorizonComparisonRunReport]') -> 'None'"
+        },
+        "StylizedFactHorizonComparisonReportBundle": {
+          "field_names": [
+            "schema_version",
+            "determinism_policy",
+            "output_schema_metadata",
+            "comparison_report",
+            "table_summary",
+            "plot_payload",
+            "artifact_export"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', determinism_policy: 'str', output_schema_metadata: 'StylizedFactHorizonComparisonReportBundleOutputSchemaMetadata', comparison_report: 'StylizedFactHorizonComparisonReport', table_summary: 'StylizedFactHorizonComparisonTableSummary', plot_payload: 'StylizedFactHorizonComparisonPlotPayload', artifact_export: 'Optional[StylizedFactHorizonComparisonArtifactExportReceipt]') -> 'None'"
+        },
+        "StylizedFactHorizonComparisonReportBundleOutputSchemaMetadata": {
+          "field_names": [
+            "schema_version",
+            "required_bundle_fields",
+            "required_table_summary_fields",
+            "required_table_summary_row_fields",
+            "required_plot_payload_fields",
+            "required_plot_point_fields",
+            "decision_state_vocabulary",
+            "metric_class_vocabulary",
+            "insufficient_data_status_code"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', required_bundle_fields: 'list[str]', required_table_summary_fields: 'list[str]', required_table_summary_row_fields: 'list[str]', required_plot_payload_fields: 'list[str]', required_plot_point_fields: 'list[str]', decision_state_vocabulary: 'list[str]', metric_class_vocabulary: 'list[str]', insufficient_data_status_code: 'str') -> 'None'"
+        },
+        "StylizedFactHorizonComparisonReportSummary": {
+          "field_names": [
+            "total_run_count",
+            "total_metric_count",
+            "run_decision_counts",
+            "metric_decision_counts"
+          ],
+          "kind": "contract_model",
+          "signature": "(total_run_count: 'int', total_metric_count: 'int', run_decision_counts: 'StylizedFactDecisionCounts', metric_decision_counts: 'StylizedFactDecisionCounts') -> 'None'"
+        },
+        "StylizedFactHorizonComparisonRunReport": {
+          "field_names": [
+            "calibration_run_id",
+            "empirical_dataset_id",
+            "simulated_dataset_id",
+            "status",
+            "decision_counts",
+            "total_horizon_count",
+            "total_metric_count",
+            "horizons"
+          ],
+          "kind": "contract_model",
+          "signature": "(calibration_run_id: 'str', empirical_dataset_id: 'str', simulated_dataset_id: 'str', status: 'str', decision_counts: 'StylizedFactDecisionCounts', total_horizon_count: 'int', total_metric_count: 'int', horizons: 'list[StylizedFactHorizonComparisonHorizonReport]') -> 'None'"
+        },
+        "StylizedFactHorizonComparisonTableSummary": {
+          "field_names": [
+            "schema_version",
+            "determinism_policy",
+            "rows"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', determinism_policy: 'str', rows: 'list[StylizedFactHorizonComparisonTableSummaryRow]') -> 'None'"
+        },
+        "StylizedFactHorizonComparisonTableSummaryRow": {
+          "field_names": [
+            "calibration_run_id",
+            "empirical_dataset_id",
+            "simulated_dataset_id",
+            "horizon_label",
+            "metric_id",
+            "metric_name",
+            "metric_variant",
+            "metric_class",
+            "alignment_status",
+            "status",
+            "absolute_delta",
+            "standardized_delta",
+            "empirical_status",
+            "simulated_status",
+            "empirical_value",
+            "simulated_value",
+            "empirical_confidence_interval",
+            "simulated_confidence_interval",
+            "empirical_sample_coverage",
+            "simulated_sample_coverage",
+            "empirical_horizon_coverage_ratio",
+            "simulated_horizon_coverage_ratio",
+            "insufficient_data_reasons",
+            "decision_reason_codes"
+          ],
+          "kind": "contract_model",
+          "signature": "(calibration_run_id: 'str', empirical_dataset_id: 'str', simulated_dataset_id: 'str', horizon_label: 'str', metric_id: 'str', metric_name: 'str', metric_variant: 'Optional[str]', metric_class: 'str', alignment_status: 'str', status: 'str', absolute_delta: 'Optional[float]', standardized_delta: 'Optional[float]', empirical_status: 'str', simulated_status: 'str', empirical_value: 'Optional[float]', simulated_value: 'Optional[float]', empirical_confidence_interval: 'Optional[StylizedFactMetricIntervalBounds]', simulated_confidence_interval: 'Optional[StylizedFactMetricIntervalBounds]', empirical_sample_coverage: 'StylizedFactMetricCoverageSummary', simulated_sample_coverage: 'StylizedFactMetricCoverageSummary', empirical_horizon_coverage_ratio: 'float', simulated_horizon_coverage_ratio: 'float', insufficient_data_reasons: 'StylizedFactMetricInsufficientDataReasons', decision_reason_codes: 'list[str]') -> 'None'"
+        },
+        "StylizedFactMetricComparisonReport": {
+          "field_names": [
+            "metric_id",
+            "metric_name",
+            "metric_variant",
+            "alignment_status",
+            "status",
+            "empirical",
+            "simulated",
+            "absolute_delta",
+            "uncertainty_context",
+            "threshold_context",
+            "horizon_label",
+            "decision_reason_codes"
+          ],
+          "kind": "contract_model",
+          "signature": "(metric_id: 'str', metric_name: 'str', metric_variant: 'Optional[str]', alignment_status: 'str', status: 'str', empirical: 'StylizedFactDatasetMetricReport', simulated: 'StylizedFactDatasetMetricReport', absolute_delta: 'Optional[float]', uncertainty_context: 'StylizedFactUncertaintyContext', threshold_context: 'StylizedFactThresholdContext', horizon_label: 'str', decision_reason_codes: 'list[str]') -> 'None'"
+        },
+        "StylizedFactMetricCoverageSummary": {
+          "field_names": [
+            "horizon_interval_count",
+            "covered_interval_count",
+            "sample_count",
+            "effective_sample_count",
+            "tail_observation_count",
+            "minimum_sample_count",
+            "minimum_effective_sample_count",
+            "minimum_tail_observation_count",
+            "minimum_horizon_coverage_ratio_scaled_bps"
+          ],
+          "kind": "contract_model",
+          "signature": "(horizon_interval_count: 'int', covered_interval_count: 'int', sample_count: 'int', effective_sample_count: 'int', tail_observation_count: 'int', minimum_sample_count: 'int', minimum_effective_sample_count: 'int', minimum_tail_observation_count: 'int', minimum_horizon_coverage_ratio_scaled_bps: 'int') -> 'None'"
+        },
+        "StylizedFactMetricInsufficientDataReasons": {
+          "field_names": [
+            "empirical",
+            "simulated"
+          ],
+          "kind": "contract_model",
+          "signature": "(empirical: 'list[str]', simulated: 'list[str]') -> 'None'"
+        },
+        "StylizedFactMetricIntervalBounds": {
+          "field_names": [
+            "lower_bound",
+            "upper_bound",
+            "confidence_level"
+          ],
+          "kind": "contract_model",
+          "signature": "(lower_bound: 'float', upper_bound: 'float', confidence_level: 'float') -> 'None'"
+        },
+        "StylizedFactThresholdContext": {
+          "field_names": [
+            "policy_id",
+            "max_absolute_delta",
+            "max_standardized_delta",
+            "absolute_delta_exceeds_threshold",
+            "standardized_delta_exceeds_threshold"
+          ],
+          "kind": "contract_model",
+          "signature": "(policy_id: 'str', max_absolute_delta: 'float', max_standardized_delta: 'float', absolute_delta_exceeds_threshold: 'Optional[bool]', standardized_delta_exceeds_threshold: 'Optional[bool]') -> 'None'"
+        },
+        "StylizedFactUncertaintyContext": {
+          "field_names": [
+            "empirical_interval_half_width",
+            "simulated_interval_half_width",
+            "pooled_interval_half_width",
+            "standardized_delta"
+          ],
+          "kind": "contract_model",
+          "signature": "(empirical_interval_half_width: 'Optional[float]', simulated_interval_half_width: 'Optional[float]', pooled_interval_half_width: 'Optional[float]', standardized_delta: 'Optional[float]') -> 'None'"
         }
       }
     },
@@ -7227,12 +9219,16 @@
           "value": "validation.deterministic_regression_harness.report.v1"
         },
         "DeterministicRegressionHarnessReport": {
-          "base_classes": [
-            "dict"
+          "field_names": [
+            "schema_version",
+            "determinism_policy",
+            "fallback_policy",
+            "tolerance_config",
+            "summary",
+            "case_reports"
           ],
-          "kind": "class",
-          "origin_module": "janiform.validation.types",
-          "qualname": "DeterministicRegressionHarnessReport"
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', determinism_policy: 'str', fallback_policy: 'RegressionHarnessFallbackPolicy', tolerance_config: 'RegressionHarnessToleranceConfig', summary: 'RegressionHarnessSummary', case_reports: 'list[RegressionCaseReport]') -> 'None'"
         },
         "OPEN_CLOSED_GAP_BEHAVIOR_BASELINE_EXPECTED_OUTPUT_POLICY": {
           "kind": "constant",
@@ -7271,140 +9267,213 @@
           "value": "validation.open_closed_gap_leakage_regression_harness.output_schema_metadata.v1"
         },
         "OpenClosedGapBehaviorContributionSummary": {
-          "base_classes": [
-            "dict"
+          "field_names": [
+            "open_window_event_count",
+            "closed_window_event_count",
+            "expected_activity_coupling_total",
+            "observed_activity_coupling_total",
+            "expected_trading_return_total",
+            "observed_trading_return_total",
+            "expected_open_jump_total",
+            "observed_open_jump_total",
+            "expected_closed_gap_total",
+            "observed_closed_gap_total"
           ],
-          "kind": "class",
-          "origin_module": "janiform.validation.types",
-          "qualname": "OpenClosedGapBehaviorContributionSummary"
+          "kind": "contract_model",
+          "signature": "(open_window_event_count: 'int', closed_window_event_count: 'int', expected_activity_coupling_total: 'float', observed_activity_coupling_total: 'float', expected_trading_return_total: 'float', observed_trading_return_total: 'float', expected_open_jump_total: 'float', observed_open_jump_total: 'float', expected_closed_gap_total: 'float', observed_closed_gap_total: 'float') -> 'None'"
         },
         "OpenClosedGapBehaviorDiffMetric": {
-          "base_classes": [
-            "dict"
+          "field_names": [
+            "metric_id",
+            "semantic_bucket",
+            "expected_value",
+            "observed_value",
+            "absolute_difference",
+            "absolute_tolerance",
+            "regression_detected"
           ],
-          "kind": "class",
-          "origin_module": "janiform.validation.types",
-          "qualname": "OpenClosedGapBehaviorDiffMetric"
+          "kind": "contract_model",
+          "signature": "(metric_id: 'str', semantic_bucket: 'str', expected_value: 'float', observed_value: 'float', absolute_difference: 'float', absolute_tolerance: 'float', regression_detected: 'bool') -> 'None'"
         },
         "OpenClosedGapBehaviorDiffReport": {
-          "base_classes": [
-            "dict"
+          "field_names": [
+            "schema_version",
+            "determinism_policy",
+            "baseline_expected_output_policy",
+            "summary",
+            "scenario_diffs"
           ],
-          "kind": "class",
-          "origin_module": "janiform.validation.types",
-          "qualname": "OpenClosedGapBehaviorDiffReport"
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', determinism_policy: 'str', baseline_expected_output_policy: 'str', summary: 'OpenClosedGapBehaviorDiffReportSummary', scenario_diffs: 'list[OpenClosedGapBehaviorScenarioDiff]') -> 'None'"
         },
         "OpenClosedGapBehaviorDiffReportSummary": {
-          "base_classes": [
-            "dict"
+          "field_names": [
+            "total_case_count",
+            "regression_case_count",
+            "total_regression_metric_count",
+            "trading_return_regression_metric_count",
+            "open_jump_regression_metric_count",
+            "closed_gap_regression_metric_count",
+            "activity_coupling_regression_metric_count"
           ],
-          "kind": "class",
-          "origin_module": "janiform.validation.types",
-          "qualname": "OpenClosedGapBehaviorDiffReportSummary"
+          "kind": "contract_model",
+          "signature": "(total_case_count: 'int', regression_case_count: 'int', total_regression_metric_count: 'int', trading_return_regression_metric_count: 'int', open_jump_regression_metric_count: 'int', closed_gap_regression_metric_count: 'int', activity_coupling_regression_metric_count: 'int') -> 'None'"
         },
         "OpenClosedGapBehaviorScenarioDiff": {
-          "base_classes": [
-            "dict"
+          "field_names": [
+            "fixture_id",
+            "exchange_code",
+            "regression_metric_count",
+            "max_absolute_difference",
+            "metrics"
           ],
-          "kind": "class",
-          "origin_module": "janiform.validation.types",
-          "qualname": "OpenClosedGapBehaviorScenarioDiff"
+          "kind": "contract_model",
+          "signature": "(fixture_id: 'str', exchange_code: 'str', regression_metric_count: 'int', max_absolute_difference: 'float', metrics: 'list[OpenClosedGapBehaviorDiffMetric]') -> 'None'"
         },
         "OpenClosedGapBehaviorScenarioSummaryArtifact": {
-          "base_classes": [
-            "dict"
+          "field_names": [
+            "fixture_id",
+            "exchange_code",
+            "scenario_class",
+            "deterministic_replay_metadata",
+            "issue_traceability",
+            "contributions"
           ],
-          "kind": "class",
-          "origin_module": "janiform.validation.types",
-          "qualname": "OpenClosedGapBehaviorScenarioSummaryArtifact"
+          "kind": "contract_model",
+          "signature": "(fixture_id: 'str', exchange_code: 'str', scenario_class: 'str', deterministic_replay_metadata: 'OpenClosedGapDeterministicReplayMetadata', issue_traceability: 'OpenClosedGapIssueTraceabilityMetadata', contributions: 'OpenClosedGapBehaviorContributionSummary') -> 'None'"
         },
         "OpenClosedGapBehaviorSummaryArtifact": {
-          "base_classes": [
-            "dict"
+          "field_names": [
+            "schema_version",
+            "determinism_policy",
+            "total_case_count",
+            "total_open_window_event_count",
+            "total_closed_window_event_count",
+            "scenario_class_coverage",
+            "scenarios"
           ],
-          "kind": "class",
-          "origin_module": "janiform.validation.types",
-          "qualname": "OpenClosedGapBehaviorSummaryArtifact"
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', determinism_policy: 'str', total_case_count: 'int', total_open_window_event_count: 'int', total_closed_window_event_count: 'int', scenario_class_coverage: 'OpenClosedGapScenarioClassCoverage', scenarios: 'list[OpenClosedGapBehaviorScenarioSummaryArtifact]') -> 'None'"
         },
         "OpenClosedGapLeakageRegressionCaseReport": {
-          "base_classes": [
-            "dict"
+          "field_names": [
+            "fixture_id",
+            "exchange_code",
+            "scenario_class",
+            "deterministic_replay_metadata",
+            "issue_traceability",
+            "status",
+            "summary",
+            "semantic_mismatch_failure_count",
+            "max_absolute_mismatch",
+            "contribution_summary",
+            "behavior_diff",
+            "failures"
           ],
-          "kind": "class",
-          "origin_module": "janiform.validation.types",
-          "qualname": "OpenClosedGapLeakageRegressionCaseReport"
+          "kind": "contract_model",
+          "signature": "(fixture_id: 'str', exchange_code: 'str', scenario_class: 'str', deterministic_replay_metadata: 'OpenClosedGapDeterministicReplayMetadata', issue_traceability: 'OpenClosedGapIssueTraceabilityMetadata', status: 'str', summary: 'str', semantic_mismatch_failure_count: 'int', max_absolute_mismatch: 'float', contribution_summary: 'OpenClosedGapBehaviorContributionSummary', behavior_diff: 'OpenClosedGapBehaviorScenarioDiff', failures: 'list[OpenClosedGapLeakageRegressionFailure]') -> 'None'"
         },
         "OpenClosedGapLeakageRegressionFailure": {
-          "base_classes": [
-            "dict"
+          "field_names": [
+            "failure_kind",
+            "semantic_bucket",
+            "mismatch_kind",
+            "event_id",
+            "event_timestamp_utc",
+            "expected_value",
+            "observed_value",
+            "absolute_difference",
+            "error_message"
           ],
-          "kind": "class",
-          "origin_module": "janiform.validation.types",
-          "qualname": "OpenClosedGapLeakageRegressionFailure"
+          "kind": "contract_model",
+          "signature": "(failure_kind: 'str', semantic_bucket: 'Optional[str]', mismatch_kind: 'Optional[str]', event_id: 'Optional[str]', event_timestamp_utc: 'Optional[str]', expected_value: 'Optional[float]', observed_value: 'Optional[float]', absolute_difference: 'Optional[float]', error_message: 'Optional[str]') -> 'None'"
         },
         "OpenClosedGapLeakageRegressionHarnessReport": {
-          "base_classes": [
-            "dict"
+          "field_names": [
+            "schema_version",
+            "determinism_policy",
+            "output_schema_metadata",
+            "tolerance_config",
+            "summary",
+            "summary_artifact",
+            "behavior_diff_report",
+            "case_reports"
           ],
-          "kind": "class",
-          "origin_module": "janiform.validation.types",
-          "qualname": "OpenClosedGapLeakageRegressionHarnessReport"
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', determinism_policy: 'str', output_schema_metadata: 'OpenClosedGapLeakageRegressionOutputSchemaMetadata', tolerance_config: 'OpenClosedGapLeakageRegressionHarnessToleranceConfig', summary: 'OpenClosedGapLeakageRegressionHarnessSummary', summary_artifact: 'OpenClosedGapBehaviorSummaryArtifact', behavior_diff_report: 'OpenClosedGapBehaviorDiffReport', case_reports: 'list[OpenClosedGapLeakageRegressionCaseReport]') -> 'None'"
         },
         "OpenClosedGapLeakageRegressionHarnessSummary": {
-          "base_classes": [
-            "dict"
+          "field_names": [
+            "total_case_count",
+            "passed_case_count",
+            "failed_case_count",
+            "total_semantic_mismatch_failure_count",
+            "scenario_class_coverage"
           ],
-          "kind": "class",
-          "origin_module": "janiform.validation.types",
-          "qualname": "OpenClosedGapLeakageRegressionHarnessSummary"
+          "kind": "contract_model",
+          "signature": "(total_case_count: 'int', passed_case_count: 'int', failed_case_count: 'int', total_semantic_mismatch_failure_count: 'int', scenario_class_coverage: 'OpenClosedGapScenarioClassCoverage') -> 'None'"
         },
         "OpenClosedGapLeakageRegressionHarnessToleranceConfig": {
-          "base_classes": [
-            "dict"
+          "field_names": [
+            "component_absolute_tolerance"
           ],
-          "kind": "class",
-          "origin_module": "janiform.validation.types",
-          "qualname": "OpenClosedGapLeakageRegressionHarnessToleranceConfig"
+          "kind": "contract_model",
+          "signature": "(component_absolute_tolerance: 'float') -> 'None'"
         },
         "OpenClosedGapLeakageRegressionOutputSchemaMetadata": {
-          "base_classes": [
-            "dict"
+          "field_names": [
+            "schema_version",
+            "summary_artifact_schema_version",
+            "behavior_diff_report_schema_version",
+            "baseline_expected_output_policy",
+            "environment_metadata_policy",
+            "canonical_component_vocabulary",
+            "canonical_semantic_bucket_vocabulary",
+            "required_case_report_fields",
+            "required_summary_artifact_fields",
+            "required_behavior_diff_report_fields",
+            "required_behavior_diff_metric_fields"
           ],
-          "kind": "class",
-          "origin_module": "janiform.validation.types",
-          "qualname": "OpenClosedGapLeakageRegressionOutputSchemaMetadata"
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', summary_artifact_schema_version: 'str', behavior_diff_report_schema_version: 'str', baseline_expected_output_policy: 'str', environment_metadata_policy: 'str', canonical_component_vocabulary: 'list[str]', canonical_semantic_bucket_vocabulary: 'list[str]', required_case_report_fields: 'list[str]', required_summary_artifact_fields: 'list[str]', required_behavior_diff_report_fields: 'list[str]', required_behavior_diff_metric_fields: 'list[str]') -> 'None'"
         },
         "RegressionCaseReport": {
-          "base_classes": [
-            "dict"
+          "field_names": [
+            "fixture_id",
+            "case_kind",
+            "status",
+            "summary",
+            "failure"
           ],
-          "kind": "class",
-          "origin_module": "janiform.validation.types",
-          "qualname": "RegressionCaseReport"
+          "kind": "contract_model",
+          "signature": "(fixture_id: 'str', case_kind: 'str', status: 'str', summary: 'str', failure: 'Optional[dict[str, Any]]') -> 'None'"
         },
         "RegressionHarnessFallbackPolicy": {
-          "base_classes": [
-            "dict"
+          "field_names": [
+            "schema_version",
+            "unknown_date_policy",
+            "unsupported_exchange_calendar_segment_policy",
+            "incomplete_fixture_coverage_policy"
           ],
-          "kind": "class",
-          "origin_module": "janiform.validation.types",
-          "qualname": "RegressionHarnessFallbackPolicy"
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', unknown_date_policy: 'str', unsupported_exchange_calendar_segment_policy: 'str', incomplete_fixture_coverage_policy: 'str') -> 'None'"
         },
         "RegressionHarnessSummary": {
-          "base_classes": [
-            "dict"
+          "field_names": [
+            "total_case_count",
+            "passed_case_count",
+            "failed_case_count"
           ],
-          "kind": "class",
-          "origin_module": "janiform.validation.types",
-          "qualname": "RegressionHarnessSummary"
+          "kind": "contract_model",
+          "signature": "(total_case_count: 'int', passed_case_count: 'int', failed_case_count: 'int') -> 'None'"
         },
         "RegressionHarnessToleranceConfig": {
-          "base_classes": [
-            "dict"
+          "field_names": [
+            "seasonality_absolute_tolerance",
+            "news_intensity_absolute_tolerance"
           ],
-          "kind": "class",
-          "origin_module": "janiform.validation.types",
-          "qualname": "RegressionHarnessToleranceConfig"
+          "kind": "contract_model",
+          "signature": "(seasonality_absolute_tolerance: 'float', news_intensity_absolute_tolerance: 'float') -> 'None'"
         },
         "VALIDATION_FALLBACK_POLICY_SCHEMA_VERSION": {
           "kind": "constant",
@@ -7429,6 +9498,285 @@
         "run_open_closed_gap_leakage_regression_harness": {
           "kind": "function",
           "signature": "(*, calendar_registry: 'CalendarRegistry', gap_behavior_cases: 'Sequence[Mapping[str, Any]]', component_absolute_tolerance: 'float' = 1e-12) -> 'OpenClosedGapLeakageRegressionHarnessReport'"
+        }
+      }
+    },
+    "janiform.validation.contracts": {
+      "exports": [
+        "DeterministicRegressionHarnessReport",
+        "OpenClosedGapBehaviorContributionSummary",
+        "OpenClosedGapBehaviorDiffMetric",
+        "OpenClosedGapBehaviorDiffReport",
+        "OpenClosedGapBehaviorDiffReportSummary",
+        "OpenClosedGapBehaviorScenarioDiff",
+        "OpenClosedGapBehaviorScenarioSummaryArtifact",
+        "OpenClosedGapBehaviorSummaryArtifact",
+        "OpenClosedGapDeterministicReplayMetadata",
+        "OpenClosedGapIssueTraceabilityMetadata",
+        "OpenClosedGapLeakageRegressionCaseReport",
+        "OpenClosedGapLeakageRegressionFailure",
+        "OpenClosedGapLeakageRegressionHarnessReport",
+        "OpenClosedGapLeakageRegressionHarnessSummary",
+        "OpenClosedGapLeakageRegressionHarnessToleranceConfig",
+        "OpenClosedGapLeakageRegressionOutputSchemaMetadata",
+        "OpenClosedGapScenarioClassCoverage",
+        "RegressionCaseReport",
+        "RegressionHarnessFallbackPolicy",
+        "RegressionHarnessSummary",
+        "RegressionHarnessToleranceConfig"
+      ],
+      "module_name": "janiform.validation.contracts",
+      "schema_identifiers": [],
+      "symbols": {
+        "DeterministicRegressionHarnessReport": {
+          "field_names": [
+            "schema_version",
+            "determinism_policy",
+            "fallback_policy",
+            "tolerance_config",
+            "summary",
+            "case_reports"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', determinism_policy: 'str', fallback_policy: 'RegressionHarnessFallbackPolicy', tolerance_config: 'RegressionHarnessToleranceConfig', summary: 'RegressionHarnessSummary', case_reports: 'list[RegressionCaseReport]') -> 'None'"
+        },
+        "OpenClosedGapBehaviorContributionSummary": {
+          "field_names": [
+            "open_window_event_count",
+            "closed_window_event_count",
+            "expected_activity_coupling_total",
+            "observed_activity_coupling_total",
+            "expected_trading_return_total",
+            "observed_trading_return_total",
+            "expected_open_jump_total",
+            "observed_open_jump_total",
+            "expected_closed_gap_total",
+            "observed_closed_gap_total"
+          ],
+          "kind": "contract_model",
+          "signature": "(open_window_event_count: 'int', closed_window_event_count: 'int', expected_activity_coupling_total: 'float', observed_activity_coupling_total: 'float', expected_trading_return_total: 'float', observed_trading_return_total: 'float', expected_open_jump_total: 'float', observed_open_jump_total: 'float', expected_closed_gap_total: 'float', observed_closed_gap_total: 'float') -> 'None'"
+        },
+        "OpenClosedGapBehaviorDiffMetric": {
+          "field_names": [
+            "metric_id",
+            "semantic_bucket",
+            "expected_value",
+            "observed_value",
+            "absolute_difference",
+            "absolute_tolerance",
+            "regression_detected"
+          ],
+          "kind": "contract_model",
+          "signature": "(metric_id: 'str', semantic_bucket: 'str', expected_value: 'float', observed_value: 'float', absolute_difference: 'float', absolute_tolerance: 'float', regression_detected: 'bool') -> 'None'"
+        },
+        "OpenClosedGapBehaviorDiffReport": {
+          "field_names": [
+            "schema_version",
+            "determinism_policy",
+            "baseline_expected_output_policy",
+            "summary",
+            "scenario_diffs"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', determinism_policy: 'str', baseline_expected_output_policy: 'str', summary: 'OpenClosedGapBehaviorDiffReportSummary', scenario_diffs: 'list[OpenClosedGapBehaviorScenarioDiff]') -> 'None'"
+        },
+        "OpenClosedGapBehaviorDiffReportSummary": {
+          "field_names": [
+            "total_case_count",
+            "regression_case_count",
+            "total_regression_metric_count",
+            "trading_return_regression_metric_count",
+            "open_jump_regression_metric_count",
+            "closed_gap_regression_metric_count",
+            "activity_coupling_regression_metric_count"
+          ],
+          "kind": "contract_model",
+          "signature": "(total_case_count: 'int', regression_case_count: 'int', total_regression_metric_count: 'int', trading_return_regression_metric_count: 'int', open_jump_regression_metric_count: 'int', closed_gap_regression_metric_count: 'int', activity_coupling_regression_metric_count: 'int') -> 'None'"
+        },
+        "OpenClosedGapBehaviorScenarioDiff": {
+          "field_names": [
+            "fixture_id",
+            "exchange_code",
+            "regression_metric_count",
+            "max_absolute_difference",
+            "metrics"
+          ],
+          "kind": "contract_model",
+          "signature": "(fixture_id: 'str', exchange_code: 'str', regression_metric_count: 'int', max_absolute_difference: 'float', metrics: 'list[OpenClosedGapBehaviorDiffMetric]') -> 'None'"
+        },
+        "OpenClosedGapBehaviorScenarioSummaryArtifact": {
+          "field_names": [
+            "fixture_id",
+            "exchange_code",
+            "scenario_class",
+            "deterministic_replay_metadata",
+            "issue_traceability",
+            "contributions"
+          ],
+          "kind": "contract_model",
+          "signature": "(fixture_id: 'str', exchange_code: 'str', scenario_class: 'str', deterministic_replay_metadata: 'OpenClosedGapDeterministicReplayMetadata', issue_traceability: 'OpenClosedGapIssueTraceabilityMetadata', contributions: 'OpenClosedGapBehaviorContributionSummary') -> 'None'"
+        },
+        "OpenClosedGapBehaviorSummaryArtifact": {
+          "field_names": [
+            "schema_version",
+            "determinism_policy",
+            "total_case_count",
+            "total_open_window_event_count",
+            "total_closed_window_event_count",
+            "scenario_class_coverage",
+            "scenarios"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', determinism_policy: 'str', total_case_count: 'int', total_open_window_event_count: 'int', total_closed_window_event_count: 'int', scenario_class_coverage: 'OpenClosedGapScenarioClassCoverage', scenarios: 'list[OpenClosedGapBehaviorScenarioSummaryArtifact]') -> 'None'"
+        },
+        "OpenClosedGapDeterministicReplayMetadata": {
+          "field_names": [
+            "replay_baseline_id",
+            "event_calendar_binding_id",
+            "jump_observation_binding_id",
+            "gap_observation_binding_id",
+            "candidate_selection_policy_id",
+            "candidate_selection_rank"
+          ],
+          "kind": "contract_model",
+          "signature": "(replay_baseline_id: 'str', event_calendar_binding_id: 'str', jump_observation_binding_id: 'str', gap_observation_binding_id: 'str', candidate_selection_policy_id: 'str', candidate_selection_rank: 'int') -> 'None'"
+        },
+        "OpenClosedGapIssueTraceabilityMetadata": {
+          "field_names": [
+            "issue_id",
+            "semantic_focus_tags"
+          ],
+          "kind": "contract_model",
+          "signature": "(issue_id: 'str', semantic_focus_tags: 'list[str]') -> 'None'"
+        },
+        "OpenClosedGapLeakageRegressionCaseReport": {
+          "field_names": [
+            "fixture_id",
+            "exchange_code",
+            "scenario_class",
+            "deterministic_replay_metadata",
+            "issue_traceability",
+            "status",
+            "summary",
+            "semantic_mismatch_failure_count",
+            "max_absolute_mismatch",
+            "contribution_summary",
+            "behavior_diff",
+            "failures"
+          ],
+          "kind": "contract_model",
+          "signature": "(fixture_id: 'str', exchange_code: 'str', scenario_class: 'str', deterministic_replay_metadata: 'OpenClosedGapDeterministicReplayMetadata', issue_traceability: 'OpenClosedGapIssueTraceabilityMetadata', status: 'str', summary: 'str', semantic_mismatch_failure_count: 'int', max_absolute_mismatch: 'float', contribution_summary: 'OpenClosedGapBehaviorContributionSummary', behavior_diff: 'OpenClosedGapBehaviorScenarioDiff', failures: 'list[OpenClosedGapLeakageRegressionFailure]') -> 'None'"
+        },
+        "OpenClosedGapLeakageRegressionFailure": {
+          "field_names": [
+            "failure_kind",
+            "semantic_bucket",
+            "mismatch_kind",
+            "event_id",
+            "event_timestamp_utc",
+            "expected_value",
+            "observed_value",
+            "absolute_difference",
+            "error_message"
+          ],
+          "kind": "contract_model",
+          "signature": "(failure_kind: 'str', semantic_bucket: 'Optional[str]', mismatch_kind: 'Optional[str]', event_id: 'Optional[str]', event_timestamp_utc: 'Optional[str]', expected_value: 'Optional[float]', observed_value: 'Optional[float]', absolute_difference: 'Optional[float]', error_message: 'Optional[str]') -> 'None'"
+        },
+        "OpenClosedGapLeakageRegressionHarnessReport": {
+          "field_names": [
+            "schema_version",
+            "determinism_policy",
+            "output_schema_metadata",
+            "tolerance_config",
+            "summary",
+            "summary_artifact",
+            "behavior_diff_report",
+            "case_reports"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', determinism_policy: 'str', output_schema_metadata: 'OpenClosedGapLeakageRegressionOutputSchemaMetadata', tolerance_config: 'OpenClosedGapLeakageRegressionHarnessToleranceConfig', summary: 'OpenClosedGapLeakageRegressionHarnessSummary', summary_artifact: 'OpenClosedGapBehaviorSummaryArtifact', behavior_diff_report: 'OpenClosedGapBehaviorDiffReport', case_reports: 'list[OpenClosedGapLeakageRegressionCaseReport]') -> 'None'"
+        },
+        "OpenClosedGapLeakageRegressionHarnessSummary": {
+          "field_names": [
+            "total_case_count",
+            "passed_case_count",
+            "failed_case_count",
+            "total_semantic_mismatch_failure_count",
+            "scenario_class_coverage"
+          ],
+          "kind": "contract_model",
+          "signature": "(total_case_count: 'int', passed_case_count: 'int', failed_case_count: 'int', total_semantic_mismatch_failure_count: 'int', scenario_class_coverage: 'OpenClosedGapScenarioClassCoverage') -> 'None'"
+        },
+        "OpenClosedGapLeakageRegressionHarnessToleranceConfig": {
+          "field_names": [
+            "component_absolute_tolerance"
+          ],
+          "kind": "contract_model",
+          "signature": "(component_absolute_tolerance: 'float') -> 'None'"
+        },
+        "OpenClosedGapLeakageRegressionOutputSchemaMetadata": {
+          "field_names": [
+            "schema_version",
+            "summary_artifact_schema_version",
+            "behavior_diff_report_schema_version",
+            "baseline_expected_output_policy",
+            "environment_metadata_policy",
+            "canonical_component_vocabulary",
+            "canonical_semantic_bucket_vocabulary",
+            "required_case_report_fields",
+            "required_summary_artifact_fields",
+            "required_behavior_diff_report_fields",
+            "required_behavior_diff_metric_fields"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', summary_artifact_schema_version: 'str', behavior_diff_report_schema_version: 'str', baseline_expected_output_policy: 'str', environment_metadata_policy: 'str', canonical_component_vocabulary: 'list[str]', canonical_semantic_bucket_vocabulary: 'list[str]', required_case_report_fields: 'list[str]', required_summary_artifact_fields: 'list[str]', required_behavior_diff_report_fields: 'list[str]', required_behavior_diff_metric_fields: 'list[str]') -> 'None'"
+        },
+        "OpenClosedGapScenarioClassCoverage": {
+          "field_names": [
+            "known_only_case_count",
+            "surprise_only_case_count",
+            "mixed_news_case_count"
+          ],
+          "kind": "contract_model",
+          "signature": "(known_only_case_count: 'int', surprise_only_case_count: 'int', mixed_news_case_count: 'int') -> 'None'"
+        },
+        "RegressionCaseReport": {
+          "field_names": [
+            "fixture_id",
+            "case_kind",
+            "status",
+            "summary",
+            "failure"
+          ],
+          "kind": "contract_model",
+          "signature": "(fixture_id: 'str', case_kind: 'str', status: 'str', summary: 'str', failure: 'Optional[dict[str, Any]]') -> 'None'"
+        },
+        "RegressionHarnessFallbackPolicy": {
+          "field_names": [
+            "schema_version",
+            "unknown_date_policy",
+            "unsupported_exchange_calendar_segment_policy",
+            "incomplete_fixture_coverage_policy"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', unknown_date_policy: 'str', unsupported_exchange_calendar_segment_policy: 'str', incomplete_fixture_coverage_policy: 'str') -> 'None'"
+        },
+        "RegressionHarnessSummary": {
+          "field_names": [
+            "total_case_count",
+            "passed_case_count",
+            "failed_case_count"
+          ],
+          "kind": "contract_model",
+          "signature": "(total_case_count: 'int', passed_case_count: 'int', failed_case_count: 'int') -> 'None'"
+        },
+        "RegressionHarnessToleranceConfig": {
+          "field_names": [
+            "seasonality_absolute_tolerance",
+            "news_intensity_absolute_tolerance"
+          ],
+          "kind": "contract_model",
+          "signature": "(seasonality_absolute_tolerance: 'float', news_intensity_absolute_tolerance: 'float') -> 'None'"
         }
       }
     }

@@ -18,7 +18,6 @@ from ..staged.contracts import (
 )
 from ...contracts import (
     ContractModel,
-    MeanReversionAnchorModelKind,
     require_finite_number,
     require_mapping,
     require_non_empty_string,
@@ -26,6 +25,7 @@ from ...contracts import (
     require_positive_integer,
     require_string,
 )
+from ...contracts.base import require_only_supported_fields
 
 
 CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION = "calibration.market_data.request.v1"
@@ -67,7 +67,6 @@ class CalibrationOptionQuoteInputPolicy(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class CalibrationMeanReversionConfiguration(ContractModel):
-    anchor_model_kind: MeanReversionAnchorModelKind
     calibration_grid_interval_hours: Optional[float] = None
 
     def __post_init__(self) -> None:
@@ -90,6 +89,13 @@ class CalibrationMeanReversionConfiguration(ContractModel):
         if not isinstance(raw_payload, dict):
             raise _calibration_error(field_path, "must be an object")
 
+        require_only_supported_fields(
+            raw_payload,
+            supported_fields=("calibration_grid_interval_hours",),
+            field_path=field_path,
+            error_factory=_calibration_error,
+        )
+
         calibration_grid_interval_hours = (
             require_positive_finite_number(
                 raw_payload,
@@ -103,14 +109,6 @@ class CalibrationMeanReversionConfiguration(ContractModel):
         )
 
         return CalibrationMeanReversionConfiguration(
-            anchor_model_kind=MeanReversionAnchorModelKind(
-                require_string(
-                    raw_payload,
-                    "anchor_model_kind",
-                    f"{field_path}.anchor_model_kind",
-                    CALIBRATION_ERROR_FACTORY,
-                )
-            ),
             calibration_grid_interval_hours=calibration_grid_interval_hours,
         )
 

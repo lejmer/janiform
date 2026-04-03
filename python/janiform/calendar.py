@@ -1,5 +1,5 @@
 from collections.abc import Mapping, Sequence
-from datetime import UTC, datetime
+from datetime import datetime
 from enum import StrEnum
 from types import ModuleType
 from typing import Any
@@ -7,6 +7,7 @@ from typing import Any
 import orjson
 
 from ._native_api import native_module, remap_native_exception_by_type
+from .contracts.base import require_datetime_instance_utc
 
 
 class CalendarError(Exception):
@@ -45,6 +46,7 @@ class CalendarRegistry:
             registry_payload: Any = orjson.loads(registry_json)
         except orjson.JSONDecodeError as e:
             raise CalendarRegistryLoadError(f"calendar registry payload must be valid JSON: {e.msg}") from e
+
         if not isinstance(registry_payload, dict):
             raise CalendarRegistryLoadError("calendar registry payload must decode to an object")
 
@@ -67,7 +69,11 @@ class CalendarRegistry:
         self._registry_payload: dict[str, Any] = registry_payload
 
     def resolve_market_state(self, exchange_code: str, timestamp_utc: datetime) -> MarketState:
-        normalized_timestamp: datetime = _normalize_utc_timestamp(timestamp_utc)
+        normalized_timestamp = require_datetime_instance_utc(
+            timestamp_utc,
+            "timestamp_utc",
+            _calendar_invalid_timestamp_error,
+        )
         native_timestamp: str = normalized_timestamp.isoformat()
 
         try:
@@ -117,18 +123,11 @@ def resolve_market_state(registry_json: str, exchange_code: str, timestamp_utc: 
     return calendar_registry.resolve_market_state(exchange_code, timestamp_utc)
 
 
-def _normalize_utc_timestamp(timestamp_utc: datetime) -> datetime:
-    if not isinstance(timestamp_utc, datetime):
-        raise CalendarInvalidTimestampError(
-            "timestamp_utc must be a datetime value with timezone information",
-        )
-
-    if timestamp_utc.tzinfo is None:
-        raise CalendarInvalidTimestampError(
-            "timestamp_utc must be timezone-aware",
-        )
-
-    return timestamp_utc.astimezone(UTC)
+def _calendar_invalid_timestamp_error(
+    field_path: str,
+    message: str,
+) -> CalendarInvalidTimestampError:
+    return CalendarInvalidTimestampError(f"{field_path} {message}")
 
 
 __all__ = [

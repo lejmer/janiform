@@ -25,7 +25,6 @@ from janiform.calibration.market_data.contracts import (
     CalibrationTickPriceInputPolicy,
 )
 from janiform.calibration.presets.registry import PresetCategory, PresetRegistry
-from janiform.contracts import MeanReversionAnchorModelKind
 
 from .state import (
     DEFAULT_WORKBENCH_FALLBACK_EXCHANGE_CODE,
@@ -51,7 +50,6 @@ class WorkbenchSetupWidget(QWidget):
         self._session_exchange_code_edit = QLineEdit(DEFAULT_WORKBENCH_FALLBACK_EXCHANGE_CODE)
         self._output_directory_edit = QLineEdit(str((Path.cwd() / ".janiform").resolve()))
         self._workflow_scope_combo = QComboBox()
-        self._mean_reversion_anchor_combo = QComboBox()
         self._file_format_combo = QComboBox()
         self._timestamp_column_combo = QComboBox()
         self._price_policy_combo = QComboBox()
@@ -60,9 +58,6 @@ class WorkbenchSetupWidget(QWidget):
         self._ask_column_combo = QComboBox()
         self._status_label = QLabel("Select a dataset to infer calibration inputs.")
         self._inference_view = QTextEdit()
-        self._preferred_mean_reversion_anchor_model_kind = (
-            MeanReversionAnchorModelKind.ENDOGENOUS_CORE_PRESSURE_LEVEL
-        )
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -102,15 +97,6 @@ class WorkbenchSetupWidget(QWidget):
         form_layout.addRow("Workflow Scope", self._workflow_scope_combo)
 
         self._workflow_scope_combo.currentIndexChanged.connect(self._on_workflow_scope_changed)
-        self._mean_reversion_anchor_combo.addItem(
-            "Endogenous Core Pressure Level",
-            MeanReversionAnchorModelKind.ENDOGENOUS_CORE_PRESSURE_LEVEL,
-        )
-        self._mean_reversion_anchor_combo.currentIndexChanged.connect(
-            self._on_mean_reversion_anchor_changed
-        )
-
-        form_layout.addRow("Anchor Family", self._mean_reversion_anchor_combo)
 
         self._session_source_mode_combo.addItem("Session Preset", "preset")
         self._session_source_mode_combo.addItem("Session Definition", "definition")
@@ -325,7 +311,6 @@ class WorkbenchSetupWidget(QWidget):
             workflow_scope=self._workflow_scope_combo.currentData(),
             output_directory=Path(self._output_directory_edit.text().strip()).expanduser().resolve(),
             session_source=session_source,
-            mean_reversion_anchor_model_kind=self._mean_reversion_anchor_combo.currentData(),
             file_format=self._file_format_combo.currentData(),
             timestamp_column=self._selected_combo_value(self._timestamp_column_combo),
             tick_price_input_policy=self._price_policy_combo.currentData(),
@@ -382,37 +367,8 @@ class WorkbenchSetupWidget(QWidget):
 
         return None
 
-    def _on_mean_reversion_anchor_changed(self) -> None:
-        anchor_model_kind = self._mean_reversion_anchor_combo.currentData()
-        if isinstance(anchor_model_kind, MeanReversionAnchorModelKind):
-            self._preferred_mean_reversion_anchor_model_kind = anchor_model_kind
-
-    def _update_mean_reversion_controls(self) -> None:
-        self._mean_reversion_anchor_combo.setEnabled(
-            self._workflow_scope_combo.currentData()
-            != CalibrationMarketDataWorkflowScope.SEASONALITY_ONLY
-        )
-
     def _on_workflow_scope_changed(self) -> None:
-        workflow_scope = self._workflow_scope_combo.currentData()
-        mean_reversion_supported = (
-            workflow_scope != CalibrationMarketDataWorkflowScope.SEASONALITY_ONLY
-        )
-
-        if mean_reversion_supported:
-            self._set_combo_data(
-                self._mean_reversion_anchor_combo,
-                self._preferred_mean_reversion_anchor_model_kind,
-            )
-            self._mean_reversion_anchor_combo.setToolTip("")
-            self._update_mean_reversion_controls()
-
-            return
-
-        self._mean_reversion_anchor_combo.setEnabled(False)
-        self._mean_reversion_anchor_combo.setToolTip(
-            "Anchor-family selection is unavailable for seasonality-only calibration."
-        )
+        pass
 
 
 __all__ = ["WorkbenchSetupWidget"]

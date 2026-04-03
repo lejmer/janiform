@@ -6,11 +6,6 @@ calibration entrypoints. Detailed request, preset, session, and staged
 contracts live in their ownership submodules.
 """
 
-from ..contracts import (
-    MeanReversionAnchorModel,
-    MeanReversionAnchorModelKind,
-    MeanReversionFittedParameters,
-)
 from ._errors import CalibrationValidationError, CalibrationValidationFailure
 from .fit import (
     CurrentStateEstimationRequest,
@@ -19,6 +14,14 @@ from .fit import (
     JaniformFitReport,
     JaniformModel,
     JaniformSimulationResult,
+    JaniformVanillaOptionBatch,
+    JaniformVanillaOptionBatchPricingCalibrationHooks,
+    JaniformVanillaOptionBatchPricingResult,
+    JaniformVanillaOptionBatchPricingRunDiagnostics,
+    JaniformVanillaOptionSurface,
+    JaniformVanillaOptionSurfacePricingCalibrationHooks,
+    JaniformVanillaOptionSurfacePricingResult,
+    JaniformVanillaOptionSurfacePricingRunDiagnostics,
 )
 from .market_data import (
     CalibrationMeanReversionConfiguration,
@@ -55,13 +58,18 @@ __all__ = [
     "JaniformFitReport",
     "JaniformModel",
     "JaniformSimulationResult",
+    "JaniformVanillaOptionBatch",
+    "JaniformVanillaOptionBatchPricingCalibrationHooks",
+    "JaniformVanillaOptionBatchPricingResult",
+    "JaniformVanillaOptionBatchPricingRunDiagnostics",
+    "JaniformVanillaOptionSurface",
+    "JaniformVanillaOptionSurfacePricingCalibrationHooks",
+    "JaniformVanillaOptionSurfacePricingResult",
+    "JaniformVanillaOptionSurfacePricingRunDiagnostics",
     "KnownNewsExplicitConfiguration",
     "KnownNewsPresetReference",
     "MarketDataCalibrationRequest",
     "MarketProfileReference",
-    "MeanReversionAnchorModel",
-    "MeanReversionAnchorModelKind",
-    "MeanReversionFittedParameters",
     "PresetRegistry",
     "PreparedMarketDataCalibration",
     "SessionExplicitConfiguration",

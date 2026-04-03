@@ -1,7 +1,12 @@
 from enum import StrEnum
-from typing import Optional
+from typing import Any, Optional
 
+from ..contracts.base import (
+    require_non_empty_string,
+    require_non_empty_string_sequence,
+)
 from ..calendar import MarketState
+from ._errors import VALIDATION_ERROR_FACTORY, validation_error
 
 
 class DeterministicRegressionCaseKind(StrEnum):
@@ -130,6 +135,77 @@ def parse_str_enum[T: StrEnum](enum_type: type[T], value: str) -> Optional[T]:
     return None
 
 
+def parse_enum_member[T: StrEnum](
+    value: str,
+    enum_type: type[T],
+    field_path: str,
+    *,
+    error_message: Optional[str] = None,
+) -> T:
+    member = parse_str_enum(enum_type, value)
+    if member is not None:
+        return member
+
+    if error_message is not None:
+        raise validation_error(field_path, error_message.format(value=value))
+
+    raise validation_error(
+        field_path,
+        f"must be one of {list(enum_values(enum_type))}, found `{value}`",
+    )
+
+
+def require_enum_member[T: StrEnum](
+    mapping: dict[str, Any] | Any,
+    field_name: str,
+    context: str,
+    enum_type: type[T],
+    *,
+    error_message: Optional[str] = None,
+) -> T:
+    field_path = f"{context}.{field_name}"
+    value = require_non_empty_string(
+        mapping,
+        field_name,
+        field_path,
+        VALIDATION_ERROR_FACTORY,
+    )
+    return parse_enum_member(
+        value,
+        enum_type,
+        field_path,
+        error_message=error_message,
+    )
+
+
+def require_enum_members_list[T: StrEnum](
+    mapping: dict[str, Any] | Any,
+    field_name: str,
+    context: str,
+    enum_type: type[T],
+    *,
+    error_message: Optional[str] = None,
+) -> list[T]:
+    field_path = f"{context}.{field_name}"
+    values = require_non_empty_string_sequence(
+        mapping,
+        field_name,
+        field_path,
+        VALIDATION_ERROR_FACTORY,
+        require_non_empty_items=True,
+        strip_items=True,
+    )
+    return [
+        parse_enum_member(
+            value,
+            enum_type,
+            f"{field_path}[{value_index}]",
+            error_message=error_message,
+        )
+        for value_index, value in enumerate(values)
+    ]
+
+
 __all__ = [
     "DeterministicRegressionCaseKind",
     "HourlySourceKind",
@@ -153,5 +229,8 @@ __all__ = [
     "StylizedFactTolerancePolicyKind",
     "ValidationFixtureDomain",
     "enum_values",
+    "parse_enum_member",
     "parse_str_enum",
+    "require_enum_member",
+    "require_enum_members_list",
 ]

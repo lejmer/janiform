@@ -21,7 +21,7 @@ from .open_closed_gap import (
     OPEN_CLOSED_GAP_LEAKAGE_REGRESSION_HARNESS_REPORT_SCHEMA_VERSION,
     OPEN_CLOSED_GAP_LEAKAGE_REGRESSION_OUTPUT_SCHEMA_METADATA_VERSION,
 )
-from .types import (
+from .contracts import (
     DeterministicRegressionHarnessReport,
     OpenClosedGapBehaviorContributionSummary,
     OpenClosedGapBehaviorDiffMetric,

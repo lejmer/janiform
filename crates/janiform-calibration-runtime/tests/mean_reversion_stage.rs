@@ -8,7 +8,6 @@ use janiform_calibration_runtime::{
     MeanReversionStageSeasonalityInput, run_mean_reversion_calibration_stage,
     run_staged_calibration_with_checkpointing,
 };
-use janiform_model_kernels::mean_reversion::MeanReversionAnchorModelKind;
 use support::shared::{
     build_hawkes_stage_success_payload, build_return_components_stage_success_payload,
     build_run_contract_with_mode_and_resume, build_seasonality_stage_success_payload,
@@ -34,7 +33,6 @@ fn synthetic_constant_anchor_observations() -> Vec<MeanReversionStageObservation
 }
 
 fn direct_stage_input(
-    requested_anchor_model_kind: MeanReversionAnchorModelKind,
     observations: Vec<MeanReversionStageObservation>,
 ) -> MeanReversionStageExecutionInput {
     MeanReversionStageExecutionInput {
@@ -48,7 +46,6 @@ fn direct_stage_input(
         ),
         hawkes_stage_payload: Some(build_hawkes_stage_success_payload()),
         return_components_stage_payload: Some(build_return_components_stage_success_payload()),
-        requested_anchor_model_kind,
         calibration_grid_kind: "synthetic_daily_close_grid.v1".to_string(),
         calibration_grid_interval_hours: 24.0,
         source_observation_count: observations.len(),
@@ -70,10 +67,7 @@ fn mean_reversion_stage_estimates_endogenous_anchor_decay_from_structural_recurs
     let report = run_mean_reversion_calibration_stage(
         &run_contract.run_spec,
         &calendar_registry,
-        direct_stage_input(
-            MeanReversionAnchorModelKind::EndogenousCorePressureLevel,
-            synthetic_constant_anchor_observations(),
-        ),
+        direct_stage_input(synthetic_constant_anchor_observations()),
     );
 
     assert_eq!(report.status, CalibrationStageExecutionStatus::Success);
@@ -81,10 +75,6 @@ fn mean_reversion_stage_estimates_endogenous_anchor_decay_from_structural_recurs
     let payload = report
         .fitted_stage_payload
         .expect("endogenous anchor fit should emit a fitted payload");
-    assert_eq!(
-        payload.diagnostics.chosen_anchor_family,
-        MeanReversionAnchorModelKind::EndogenousCorePressureLevel
-    );
     assert!(payload.fitted_parameters.kappa >= 0.0);
     assert!(payload.diagnostics.stage_decision_reason.contains(
         "endogenous_core_pressure_level_profiled_over_pressure_persistence_and_phi_reference.v1"
@@ -123,19 +113,12 @@ fn mean_reversion_stage_accepts_flat_levels_under_endogenous_anchor_estimation()
     let report = run_mean_reversion_calibration_stage(
         &run_contract.run_spec,
         &calendar_registry,
-        direct_stage_input(
-            MeanReversionAnchorModelKind::EndogenousCorePressureLevel,
-            observations,
-        ),
+        direct_stage_input(observations),
     );
 
     let payload = report
         .fitted_stage_payload
         .expect("flat levels should emit a fitted payload under endogenous estimation");
-    assert_eq!(
-        payload.diagnostics.chosen_anchor_family,
-        MeanReversionAnchorModelKind::EndogenousCorePressureLevel
-    );
     assert!(payload.diagnostics.phi_reference.is_finite());
     assert!(payload.fitted_parameters.kappa.is_finite());
 }
@@ -153,20 +136,13 @@ fn mean_reversion_stage_reports_endogenous_anchor_fit_from_synthetic_levels() {
     let report = run_mean_reversion_calibration_stage(
         &run_contract.run_spec,
         &calendar_registry,
-        direct_stage_input(
-            MeanReversionAnchorModelKind::EndogenousCorePressureLevel,
-            synthetic_constant_anchor_observations(),
-        ),
+        direct_stage_input(synthetic_constant_anchor_observations()),
     );
 
     let payload = report
         .fitted_stage_payload
         .expect("endogenous-anchor fit should emit a fitted payload");
 
-    assert_eq!(
-        payload.diagnostics.chosen_anchor_family,
-        MeanReversionAnchorModelKind::EndogenousCorePressureLevel
-    );
     assert!(payload.diagnostics.phi_reference.is_finite());
     assert!(payload.fitted_parameters.kappa.is_finite());
 }
@@ -185,10 +161,7 @@ fn mean_reversion_stage_falls_back_to_zero_kappa_endogenous_fit_when_runtime_pro
     let report = run_mean_reversion_calibration_stage(
         &run_contract.run_spec,
         &calendar_registry,
-        direct_stage_input(
-            MeanReversionAnchorModelKind::EndogenousCorePressureLevel,
-            Vec::new(),
-        ),
+        direct_stage_input(Vec::new()),
     );
 
     assert_eq!(report.status, CalibrationStageExecutionStatus::Success);
@@ -197,10 +170,6 @@ fn mean_reversion_stage_falls_back_to_zero_kappa_endogenous_fit_when_runtime_pro
         .fitted_stage_payload
         .expect("runtime-projection fallback should emit a fitted payload");
 
-    assert_eq!(
-        payload.diagnostics.chosen_anchor_family,
-        MeanReversionAnchorModelKind::EndogenousCorePressureLevel
-    );
     assert_eq!(payload.fitted_parameters.kappa, 0.0);
     assert_eq!(payload.diagnostics.phi_reference, 1.0);
     assert_eq!(payload.diagnostics.deviation_sample_count, 0);
@@ -224,10 +193,7 @@ fn mean_reversion_stage_profiles_slow_anchor_against_immediate_anchor() {
     let report = run_mean_reversion_calibration_stage(
         &run_contract.run_spec,
         &calendar_registry,
-        direct_stage_input(
-            MeanReversionAnchorModelKind::EndogenousCorePressureLevel,
-            synthetic_constant_anchor_observations(),
-        ),
+        direct_stage_input(synthetic_constant_anchor_observations()),
     );
 
     let payload = report
@@ -267,8 +233,6 @@ fn staged_runner_completes_when_mean_reversion_stage_estimates_endogenous_anchor
         .as_mut()
         .expect("mean-reversion stage input fixture should exist");
 
-    mean_reversion_input.requested_anchor_model_kind =
-        MeanReversionAnchorModelKind::EndogenousCorePressureLevel;
     mean_reversion_input.source_observation_count = 4;
     mean_reversion_input.coverage_ratio = 1.0;
     mean_reversion_input.observations = synthetic_constant_anchor_observations();
@@ -323,8 +287,6 @@ fn staged_runner_end_to_end_reports_mean_reversion_fit_from_synthetic_levels() {
         .as_mut()
         .expect("mean-reversion stage input fixture should exist");
 
-    mean_reversion_input.requested_anchor_model_kind =
-        MeanReversionAnchorModelKind::EndogenousCorePressureLevel;
     mean_reversion_input.source_observation_count = 4;
     mean_reversion_input.coverage_ratio = 1.0;
     mean_reversion_input.observations = synthetic_constant_anchor_observations();
@@ -361,10 +323,6 @@ fn staged_runner_end_to_end_reports_mean_reversion_fit_from_synthetic_levels() {
             .return_components_selected_candidate_id
             .as_deref()
             .is_some_and(|candidate_id| !candidate_id.is_empty())
-    );
-    assert_eq!(
-        payload.diagnostics.chosen_anchor_family,
-        MeanReversionAnchorModelKind::EndogenousCorePressureLevel
     );
     assert!(payload.diagnostics.stage_decision_reason.contains(
         "endogenous_core_pressure_level_profiled_over_pressure_persistence_and_phi_reference.v1"

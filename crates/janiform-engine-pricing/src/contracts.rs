@@ -14,9 +14,8 @@ use janiform_model_kernels::hawkes::{
     HawkesExcitationState, HawkesKernelParameterError, HawkesKernelParameters,
 };
 use janiform_model_kernels::mean_reversion::{
-    MeanReversionAnchorModelKind, MeanReversionBoundaryState,
-    MeanReversionBoundaryStateValidationError, MeanReversionFittedParameters,
-    MeanReversionFittedParametersValidationError,
+    MeanReversionBoundaryState, MeanReversionBoundaryStateValidationError,
+    MeanReversionFittedParameters, MeanReversionFittedParametersValidationError,
 };
 use janiform_model_kernels::news::{NewsProcessConfiguration, NewsProcessConfigurationError};
 use janiform_model_kernels::nig::{
@@ -1845,12 +1844,7 @@ fn validate_observed_anchor_alignment(
     mean_reversion_fitted_parameters: &MeanReversionFittedParameters,
     _observed_boundary_state: MeanReversionBoundaryState,
 ) -> Result<(), AnchoredVanillaOptionPricingBoundaryInputError> {
-    match mean_reversion_fitted_parameters
-        .anchor_model
-        .anchor_model_kind
-    {
-        MeanReversionAnchorModelKind::EndogenousCorePressureLevel => {}
-    }
+    let _ = mean_reversion_fitted_parameters;
 
     Ok(())
 }
