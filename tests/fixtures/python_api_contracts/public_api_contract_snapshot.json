@@ -4612,6 +4612,7 @@
         "HourlySeasonalityProviderExplicitSource",
         "HourlySeasonalityProviderMaterializedSource",
         "HourlySeasonalityProviderSource",
+        "SeasonalityInputValidationError",
         "build_hourly_factor_contract",
         "build_runtime_hourly_seasonality_source_from_calibration_payload",
         "load_hourly_factor_contract_payload",
@@ -4843,10 +4844,7 @@
           "base_classes": [],
           "constructor_signature": "(native_result: 'HourlyFactorContractResultProtocol') -> 'None'",
           "kind": "class",
-          "origin_module": "janiform.hourly_factors",
-          "public_methods": {
-            "to_payload": "(self) -> 'dict[str, Any]'"
-          },
+          "origin_module": "janiform.hourly_factors.artifacts",
           "qualname": "HourlyFactorContract"
         },
         "HourlyFactorOutputSchema": {
@@ -4866,7 +4864,7 @@
             "BaseException"
           ],
           "kind": "exception_class",
-          "origin_module": "janiform.hourly_factors",
+          "origin_module": "janiform.hourly_factors.workflow",
           "qualname": "HourlyFactorProviderError"
         },
         "HourlyFactorProviderMissingInputError": {
@@ -4876,7 +4874,7 @@
             "BaseException"
           ],
           "kind": "exception_class",
-          "origin_module": "janiform.hourly_factors",
+          "origin_module": "janiform.hourly_factors.workflow",
           "qualname": "HourlyFactorProviderMissingInputError"
         },
         "HourlyFactorProviderUnsupportedRangeError": {
@@ -4886,14 +4884,14 @@
             "BaseException"
           ],
           "kind": "exception_class",
-          "origin_module": "janiform.hourly_factors",
+          "origin_module": "janiform.hourly_factors.workflow",
           "qualname": "HourlyFactorProviderUnsupportedRangeError"
         },
         "HourlyNewsIntensityMaterialization": {
           "base_classes": [],
           "constructor_signature": "(native_result: 'HourlyNewsIntensityMaterializationResultProtocol') -> 'None'",
           "kind": "class",
-          "origin_module": "janiform.hourly_factors",
+          "origin_module": "janiform.hourly_factors.artifacts",
           "qualname": "HourlyNewsIntensityMaterialization"
         },
         "HourlyNewsIntensityMaterializationOutputSchema": {
@@ -4941,7 +4939,7 @@
           "base_classes": [],
           "constructor_signature": "(native_result: 'HourlySeasonalityMaterializationResultProtocol') -> 'None'",
           "kind": "class",
-          "origin_module": "janiform.hourly_factors",
+          "origin_module": "janiform.hourly_factors.artifacts",
           "qualname": "HourlySeasonalityMaterialization"
         },
         "HourlySeasonalityMaterializationOutputSchema": {
@@ -4989,6 +4987,16 @@
           "kind": "constant",
           "value": "HourlySeasonalityProviderSource"
         },
+        "SeasonalityInputValidationError": {
+          "base_classes": [
+            "SeasonalityPreprocessingError",
+            "Exception",
+            "BaseException"
+          ],
+          "kind": "exception_class",
+          "origin_module": "janiform.seasonality",
+          "qualname": "SeasonalityInputValidationError"
+        },
         "build_hourly_factor_contract": {
           "kind": "function",
           "signature": "(*, calendar_registry: 'CalendarRegistry', exchange_code: 'str', range_start_utc: 'datetime', range_end_utc: 'datetime', interval: 'str | timedelta' = '1h', seasonality_hourly_factors: 'Sequence[float]', news_intensity_hourly_factors: 'Sequence[float]', seasonality_materialization_method: 'str' = 'explicit_hourly_input.v1', news_intensity_materialization_method: 'str' = 'explicit_hourly_input.v1') -> 'HourlyFactorContract'"
@@ -5012,6 +5020,354 @@
         "provide_hourly_factor_contract": {
           "kind": "function",
           "signature": "(*, calendar_registry: 'CalendarRegistry', exchange_code: 'str', range_start_utc: 'datetime', range_end_utc: 'datetime', interval: 'str | timedelta' = '1h', seasonality_source: 'Optional[HourlySeasonalityProviderSource]' = None, news_intensity_source: 'Optional[HourlyNewsIntensityProviderSource]' = None) -> 'HourlyFactorContract'"
+        }
+      }
+    },
+    "janiform.hourly_factors.contracts": {
+      "exports": [
+        "DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD",
+        "DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD",
+        "DEFAULT_SEASONALITY_AGGREGATION_METHOD",
+        "DEFAULT_SEASONALITY_INTERPOLATION_METHOD",
+        "DEFAULT_SEASONALITY_SPARSE_FALLBACK_POLICY",
+        "DEFAULT_SPARSE_HOUR_MINIMUM_OBSERVATION_COUNT",
+        "HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION",
+        "HOURLY_FACTOR_FALL_BACK_POLICY",
+        "HOURLY_FACTOR_OUTPUT_SCHEMA",
+        "HOURLY_FACTOR_SPRING_FORWARD_POLICY",
+        "HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY",
+        "HOURLY_NEWS_INTENSITY_MATERIALIZATION_OUTPUT_SCHEMA",
+        "HOURLY_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION",
+        "HOURLY_SEASONALITY_MATERIALIZATION_OUTPUT_SCHEMA",
+        "HOURLY_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION",
+        "HourlyFactorOutputSchema",
+        "HourlyNewsIntensityMaterializationOutputSchema",
+        "HourlyNewsIntensityMaterializationSettings",
+        "HourlyNewsIntensityProviderExplicitSource",
+        "HourlyNewsIntensityProviderMaterializedSource",
+        "HourlyNewsIntensityProviderSource",
+        "HourlySeasonalityMaterializationOutputSchema",
+        "HourlySeasonalityMaterializationSettings",
+        "HourlySeasonalityProviderExplicitSource",
+        "HourlySeasonalityProviderMaterializedSource",
+        "HourlySeasonalityProviderSource"
+      ],
+      "module_name": "janiform.hourly_factors.contracts",
+      "schema_identifiers": [
+        {
+          "name": "HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION",
+          "public_exported": true,
+          "value": "seasonality.hourly_factor.contract.v1"
+        },
+        {
+          "name": "HOURLY_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION",
+          "public_exported": true,
+          "value": "seasonality.hourly_nu_h.materialization.v1"
+        },
+        {
+          "name": "HOURLY_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION",
+          "public_exported": true,
+          "value": "seasonality.hourly_s_h.materialization.v1"
+        }
+      ],
+      "symbols": {
+        "DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD": {
+          "kind": "constant",
+          "value": "explicit_hourly_input.v1"
+        },
+        "DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD": {
+          "kind": "constant",
+          "value": "known_calendar_anchor_plus_surprise_background_controls.v1"
+        },
+        "DEFAULT_SEASONALITY_AGGREGATION_METHOD": {
+          "kind": "constant",
+          "value": "mean_of_observations.v1"
+        },
+        "DEFAULT_SEASONALITY_INTERPOLATION_METHOD": {
+          "kind": "constant",
+          "value": "previous_observation_carry_forward.v1"
+        },
+        "DEFAULT_SEASONALITY_SPARSE_FALLBACK_POLICY": {
+          "kind": "constant",
+          "value": "global_mean.v1"
+        },
+        "DEFAULT_SPARSE_HOUR_MINIMUM_OBSERVATION_COUNT": {
+          "kind": "constant",
+          "value": 1
+        },
+        "HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION": {
+          "kind": "constant",
+          "value": "seasonality.hourly_factor.contract.v1"
+        },
+        "HOURLY_FACTOR_FALL_BACK_POLICY": {
+          "kind": "constant",
+          "value": "preserve_repeated_local_hour_labels_with_numeric_utc_offset.v1"
+        },
+        "HOURLY_FACTOR_OUTPUT_SCHEMA": {
+          "kind": "constant",
+          "value": {
+            "interval_alignment_policy": "request_start_anchored_fixed_width_utc_interval_grid.v1",
+            "interval_boundary_policy": "start_inclusive_end_exclusive.v1",
+            "required_fields": [
+              "schema_version",
+              "exchange_code",
+              "exchange_timezone_name",
+              "request_start_utc_nanos",
+              "request_end_utc_nanos",
+              "interval_duration_nanos",
+              "interval_indices",
+              "interval_start_utc_nanos",
+              "interval_end_utc_nanos",
+              "interval_start_exchange_local",
+              "interval_end_exchange_local",
+              "s_h",
+              "known_component_nu_h",
+              "surprise_component_nu_h",
+              "nu_h",
+              "interval_count",
+              "first_interval_start_utc_nanos",
+              "last_interval_end_utc_nanos",
+              "skipped_local_hour_interval_count",
+              "repeated_local_hour_interval_count",
+              "interval_boundary_policy",
+              "interval_alignment_policy",
+              "timezone_transition_policy",
+              "spring_forward_policy",
+              "fall_back_policy",
+              "seasonality_materialization_method",
+              "news_intensity_materialization_method"
+            ],
+            "required_metadata_fields": [
+              "seasonality_materialization_method",
+              "news_intensity_materialization_method",
+              "interval_boundary_policy",
+              "interval_alignment_policy",
+              "timezone_transition_policy",
+              "spring_forward_policy",
+              "fall_back_policy"
+            ],
+            "schema_version": "seasonality.hourly_factor.contract.v1"
+          }
+        },
+        "HOURLY_FACTOR_SPRING_FORWARD_POLICY": {
+          "kind": "constant",
+          "value": "skip_nonexistent_local_hour_labels.v1"
+        },
+        "HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY": {
+          "kind": "constant",
+          "value": "fixed_width_utc_interval_projected_to_exchange_local.v1"
+        },
+        "HOURLY_NEWS_INTENSITY_MATERIALIZATION_OUTPUT_SCHEMA": {
+          "kind": "constant",
+          "value": {
+            "interval_alignment_policy": "request_start_anchored_fixed_width_utc_interval_grid.v1",
+            "interval_boundary_policy": "start_inclusive_end_exclusive.v1",
+            "required_fields": [
+              "schema_version",
+              "exchange_code",
+              "exchange_timezone_name",
+              "request_start_utc_nanos",
+              "request_end_utc_nanos",
+              "interval_duration_nanos",
+              "interval_indices",
+              "interval_start_utc_nanos",
+              "interval_end_utc_nanos",
+              "interval_start_exchange_local",
+              "interval_end_exchange_local",
+              "known_component_nu_h",
+              "surprise_component_nu_h",
+              "nu_h",
+              "interval_count",
+              "known_component_non_zero_interval_count",
+              "surprise_component_non_zero_interval_count",
+              "combined_component_non_zero_interval_count",
+              "known_scheduled_arrival_count",
+              "surprise_multiplier_override_interval_count",
+              "skipped_local_hour_interval_count",
+              "repeated_local_hour_interval_count",
+              "materialization_method",
+              "component_aggregation_policy",
+              "arrival_intensity_policy",
+              "known_news_calendar_anchor_policy",
+              "surprise_news_intensity_control_policy",
+              "known_news_calendar_anchor_count",
+              "surprise_baseline_intensity",
+              "interval_boundary_policy",
+              "interval_alignment_policy",
+              "timezone_transition_policy",
+              "spring_forward_policy",
+              "fall_back_policy"
+            ],
+            "required_metadata_fields": [
+              "materialization_method",
+              "component_aggregation_policy",
+              "arrival_intensity_policy",
+              "known_news_calendar_anchor_policy",
+              "surprise_news_intensity_control_policy",
+              "known_news_calendar_anchor_count",
+              "surprise_baseline_intensity",
+              "interval_boundary_policy",
+              "interval_alignment_policy",
+              "timezone_transition_policy",
+              "spring_forward_policy",
+              "fall_back_policy"
+            ],
+            "schema_version": "seasonality.hourly_nu_h.materialization.v1"
+          }
+        },
+        "HOURLY_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION": {
+          "kind": "constant",
+          "value": "seasonality.hourly_nu_h.materialization.v1"
+        },
+        "HOURLY_SEASONALITY_MATERIALIZATION_OUTPUT_SCHEMA": {
+          "kind": "constant",
+          "value": {
+            "interval_alignment_policy": "request_start_anchored_fixed_width_utc_interval_grid.v1",
+            "interval_boundary_policy": "start_inclusive_end_exclusive.v1",
+            "required_fields": [
+              "schema_version",
+              "exchange_code",
+              "exchange_timezone_name",
+              "request_start_utc_nanos",
+              "request_end_utc_nanos",
+              "interval_duration_nanos",
+              "interval_indices",
+              "interval_start_utc_nanos",
+              "interval_end_utc_nanos",
+              "interval_start_exchange_local",
+              "interval_end_exchange_local",
+              "s_h",
+              "source_point_count",
+              "interval_count",
+              "sparse_interval_count",
+              "interpolated_interval_count",
+              "fallback_interval_count",
+              "skipped_local_hour_interval_count",
+              "repeated_local_hour_interval_count",
+              "interpolation_method",
+              "aggregation_method",
+              "sparse_fallback_policy",
+              "sparse_hour_minimum_observation_count",
+              "interval_boundary_policy",
+              "interval_alignment_policy",
+              "timezone_transition_policy",
+              "spring_forward_policy",
+              "fall_back_policy"
+            ],
+            "required_metadata_fields": [
+              "interpolation_method",
+              "aggregation_method",
+              "sparse_fallback_policy",
+              "sparse_hour_minimum_observation_count",
+              "interval_boundary_policy",
+              "interval_alignment_policy",
+              "timezone_transition_policy",
+              "spring_forward_policy",
+              "fall_back_policy"
+            ],
+            "schema_version": "seasonality.hourly_s_h.materialization.v1"
+          }
+        },
+        "HOURLY_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION": {
+          "kind": "constant",
+          "value": "seasonality.hourly_s_h.materialization.v1"
+        },
+        "HourlyFactorOutputSchema": {
+          "field_names": [
+            "schema_version",
+            "required_fields",
+            "interval_boundary_policy",
+            "interval_alignment_policy",
+            "required_metadata_fields"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', required_fields: 'tuple[str, ...]', interval_boundary_policy: 'str', interval_alignment_policy: 'str', required_metadata_fields: 'tuple[str, ...]') -> 'None'"
+        },
+        "HourlyNewsIntensityMaterializationOutputSchema": {
+          "field_names": [
+            "schema_version",
+            "required_fields",
+            "interval_boundary_policy",
+            "interval_alignment_policy",
+            "required_metadata_fields"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', required_fields: 'tuple[str, ...]', interval_boundary_policy: 'str', interval_alignment_policy: 'str', required_metadata_fields: 'tuple[str, ...]') -> 'None'"
+        },
+        "HourlyNewsIntensityMaterializationSettings": {
+          "field_names": [
+            "known_scheduled_event_timestamps_utc",
+            "surprise_baseline_intensity",
+            "surprise_deterministic_time_multiplier_by_interval_index"
+          ],
+          "kind": "contract_model",
+          "signature": "(known_scheduled_event_timestamps_utc: 'Sequence[datetime]', surprise_baseline_intensity: 'float', surprise_deterministic_time_multiplier_by_interval_index: 'Optional[Mapping[int, float]]' = None) -> 'None'"
+        },
+        "HourlyNewsIntensityProviderExplicitSource": {
+          "field_names": [
+            "hourly_factors",
+            "materialization_method"
+          ],
+          "kind": "contract_model",
+          "signature": "(hourly_factors: 'Sequence[float]', materialization_method: 'str' = 'explicit_hourly_input.v1') -> 'None'"
+        },
+        "HourlyNewsIntensityProviderMaterializedSource": {
+          "field_names": [
+            "known_scheduled_event_timestamps_utc",
+            "surprise_baseline_intensity",
+            "surprise_deterministic_time_multiplier_by_interval_index"
+          ],
+          "kind": "contract_model",
+          "signature": "(known_scheduled_event_timestamps_utc: 'Sequence[datetime]', surprise_baseline_intensity: 'float', surprise_deterministic_time_multiplier_by_interval_index: 'Optional[Mapping[int, float]]' = None) -> 'None'"
+        },
+        "HourlyNewsIntensityProviderSource": {
+          "kind": "constant",
+          "value": "HourlyNewsIntensityProviderSource"
+        },
+        "HourlySeasonalityMaterializationOutputSchema": {
+          "field_names": [
+            "schema_version",
+            "required_fields",
+            "interval_boundary_policy",
+            "interval_alignment_policy",
+            "required_metadata_fields"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', required_fields: 'tuple[str, ...]', interval_boundary_policy: 'str', interval_alignment_policy: 'str', required_metadata_fields: 'tuple[str, ...]') -> 'None'"
+        },
+        "HourlySeasonalityMaterializationSettings": {
+          "field_names": [
+            "interpolation_method",
+            "aggregation_method",
+            "sparse_fallback_policy",
+            "sparse_hour_minimum_observation_count"
+          ],
+          "kind": "contract_model",
+          "signature": "(interpolation_method: 'str' = 'previous_observation_carry_forward.v1', aggregation_method: 'str' = 'mean_of_observations.v1', sparse_fallback_policy: 'str' = 'global_mean.v1', sparse_hour_minimum_observation_count: 'int' = 1) -> 'None'"
+        },
+        "HourlySeasonalityProviderExplicitSource": {
+          "field_names": [
+            "hourly_factors",
+            "materialization_method"
+          ],
+          "kind": "contract_model",
+          "signature": "(hourly_factors: 'Sequence[float]', materialization_method: 'str' = 'explicit_hourly_input.v1') -> 'None'"
+        },
+        "HourlySeasonalityProviderMaterializedSource": {
+          "field_names": [
+            "source_timestamps_utc",
+            "source_seasonality_factors",
+            "interpolation_method",
+            "aggregation_method",
+            "sparse_fallback_policy",
+            "sparse_hour_minimum_observation_count"
+          ],
+          "kind": "contract_model",
+          "signature": "(source_timestamps_utc: 'Sequence[datetime]', source_seasonality_factors: 'Sequence[float]', interpolation_method: 'str' = 'previous_observation_carry_forward.v1', aggregation_method: 'str' = 'mean_of_observations.v1', sparse_fallback_policy: 'str' = 'global_mean.v1', sparse_hour_minimum_observation_count: 'int' = 1) -> 'None'"
+        },
+        "HourlySeasonalityProviderSource": {
+          "kind": "constant",
+          "value": "HourlySeasonalityProviderSource"
         }
       }
     },

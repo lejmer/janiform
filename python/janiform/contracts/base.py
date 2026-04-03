@@ -384,6 +384,29 @@ def require_finite_number_sequence(
     return normalized_values
 
 
+def require_integer_sequence(
+    mapping: Mapping[str, Any],
+    field_name: str,
+    field_path: str,
+    error_factory: ValidationErrorFactory,
+    *,
+    require_non_empty: bool = False,
+) -> list[int]:
+    raw_values = require_sequence(mapping, field_name, field_path, error_factory)
+
+    normalized_values: list[int] = []
+    for value_index, raw_value in enumerate(raw_values):
+        if not isinstance(raw_value, int) or isinstance(raw_value, bool):
+            raise error_factory(f"{field_path}[{value_index}]", "must be an integer")
+
+        normalized_values.append(raw_value)
+
+    if require_non_empty and not normalized_values:
+        raise error_factory(field_path, "must include at least one value")
+
+    return normalized_values
+
+
 def require_optional_finite_number(
     mapping: Mapping[str, Any],
     field_name: str,

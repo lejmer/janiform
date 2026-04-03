@@ -58,8 +58,8 @@ from ...hourly_factors import (
     HourlySeasonalityProviderSource,
     load_hourly_factor_contract_payload,
     provide_hourly_factor_contract,
-    _parse_interval_duration_nanos,
 )
+from ...hourly_factors.workflow import _parse_interval_duration_nanos
 from ...pricing import (
     AnchoredVanillaOptionPricingBoundaryInput,
     GammaSeverityMarkConfiguration,

@@ -109,6 +109,10 @@ Hourly factor materialization, providers, and contract helpers. Representative p
 - `materialize_hourly_seasonality_factors`
 - `materialize_hourly_news_intensity_factors`
 
+The public contract submodule is:
+
+- `janiform.hourly_factors.contracts`
+
 ### `janiform.validation`
 
 Regression and behavior-validation entrypoints. Representative public symbols include:

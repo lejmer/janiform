@@ -82,6 +82,8 @@ def test_public_and_internal_module_intent_is_explicit() -> None:
         "janiform.calibration.market_data",
         "janiform.calibration.staged",
         "janiform.cli",
+        "janiform.hourly_factors",
+        "janiform.hourly_factors.contracts",
         "janiform.mean_reversion",
         "janiform.mean_reversion.contracts",
         "janiform.simulation",
@@ -413,6 +415,8 @@ def test_risk_public_symbols_live_in_risk_module() -> None:
 
 
 def test_hourly_factor_support_symbols_live_in_hourly_factor_module() -> None:
+    assert hasattr(hourly_factors_module, "__path__")
+
     expected_exports = {
         "HourlyFactorContract",
         "HourlyNewsIntensityProviderExplicitSource",
@@ -428,6 +432,25 @@ def test_hourly_factor_support_symbols_live_in_hourly_factor_module() -> None:
 
     assert expected_exports <= set(hourly_factors_module.__all__)
     assert expected_exports <= set(dir(hourly_factors_module))
+
+
+def test_hourly_factor_contract_submodule_is_supported_domain_import() -> None:
+    hourly_factor_contracts_module = import_module("janiform.hourly_factors.contracts")
+
+    expected_exports = {
+        "HourlyFactorOutputSchema",
+        "HourlyNewsIntensityMaterializationSettings",
+        "HourlyNewsIntensityProviderExplicitSource",
+        "HourlySeasonalityMaterializationSettings",
+        "HourlySeasonalityProviderExplicitSource",
+    }
+
+    assert expected_exports <= set(hourly_factor_contracts_module.__all__)
+    assert expected_exports <= set(dir(hourly_factor_contracts_module))
+    assert (
+        hourly_factors_module.HourlySeasonalityProviderExplicitSource
+        is hourly_factor_contracts_module.HourlySeasonalityProviderExplicitSource
+    )
 
 
 def test_private_modules_are_not_exposed_through_public_exports() -> None:
