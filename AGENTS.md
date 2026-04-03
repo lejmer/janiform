@@ -68,6 +68,8 @@ Implementations are Rust first for most things (unless specified otherwise or ob
 
 In the `crates/` folder where the Rust code is located:
 
+- `mod.rs` and `lib.rs` files must be thin and never include any declarations.
+- Never use wildcard importing (`::*`). Always be explicit with everything you import.
 - When introducing a new concept/feature/API, consider whether:
   - There is an existing crate  that is an appropriate place for your new code to live.
   - It is time to introduce a new crate to the Cargo workspace for your new functionality. Refactor existing code as necessary to make this happen.
@@ -134,6 +136,8 @@ Python is mostly supposed to be a thin wrapper and serves as the user-facing API
 
 In the `python/janiform/` folder where the Python code is located:
 
+- `__init__.py` files must be thin and never include any declarations.
+- Never use wildcard importing (`*`). Always be explicit with everything you import.
 - Keep Python as a boundary layer. It is for typed request/response contracts, ergonomic public APIs, CLI orchestration, serialization/deserialization, and error mapping.
 - Do not implement core model behavior in Python. This includes state-estimation algorithms, simulation evolution, pricing recursions, calibration math, optimization logic, statistical transforms, numerical integration, or any other computation that meaningfully determines outputs.
 - If a feature needs new computation, the default is:
