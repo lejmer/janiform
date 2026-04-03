@@ -72,7 +72,14 @@ from ...pricing import (
     VanillaOptionPricingRunResult,
     run_vanilla_option_pricing,
 )
-from .._errors import _calibration_error
+from .._errors import (
+    CALIBRATION_INTEGRATION_NATIVE_MODULE_ERROR_ID,
+    CALIBRATION_INTEGRATION_RESPONSE_ERROR_ID,
+    CalibrationValidationError,
+    _calibration_error,
+    _calibration_execution_error,
+    _calibration_integration_error,
+)
 from ...risk import (
     SufficientStatisticsRiskEquationSpecification,
     SufficientStatisticsRiskModelInputs,
@@ -94,7 +101,13 @@ from ...simulation.shared import (
     HawkesKernelParameters,
     SeededTickEventStateSnapshotCapture,
 )
-from ..._native_api import native_module
+from ..._native_api import native_exception_matches, native_module
+from .pricing import (
+    JaniformVanillaOptionBatch,
+    JaniformVanillaOptionBatchPricingResult,
+    JaniformVanillaOptionSurface,
+    JaniformVanillaOptionSurfacePricingResult,
+)
 from .state_estimation import (
     CurrentStateEstimationRequest,
     CurrentStateEstimationResult,
@@ -131,6 +144,16 @@ class _PreparedModelRuntimeFactors:
     nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration
     gamma_severity_mark_configuration: GammaSeverityMarkConfiguration
     news_process_configuration: NewsProcessConfiguration
+
+
+@dataclass(frozen=True, slots=True)
+class _PreparedModelPricingRuntimeInput:
+    runtime_factors: _PreparedModelRuntimeFactors
+    hourly_factor_contract: HourlyFactorContract
+    effective_boundary_state: HawkesExcitationState
+    effective_observed_boundary_state: MeanReversionBoundaryState
+    mean_reversion_fitted_parameters: MeanReversionFittedParameters
+    model_parameters: VanillaOptionPricingModelParameters
 
 
 @dataclass(frozen=True, slots=True)
@@ -433,6 +456,74 @@ class JaniformModel:
             )
 
         return pricing_result
+
+    def price_options(
+        self,
+        *,
+        valuation_time_utc: datetime,
+        batch: JaniformVanillaOptionBatch,
+        observed_data: Optional[CurrentStateEstimationRequest] = None,
+        boundary_state: Optional[HawkesExcitationState] = None,
+        include_transform_diagnostics: bool = False,
+        include_integration_quality_diagnostics: bool = False,
+        include_calibration_hooks: bool = False,
+        silent: bool = False,
+        progress_mode: WorkflowProgressMode | str = WorkflowProgressMode.AUTO,
+    ) -> JaniformVanillaOptionBatchPricingResult:
+        output_controller = JaniformOutputController(
+            suppress_info_output=silent,
+            progress_mode=WorkflowProgressMode.NONE if silent else progress_mode,
+            default_progress_mode=(
+                WorkflowProgressMode.NONE if silent else WorkflowProgressMode.HUMAN
+            ),
+        )
+        native_execution_input = _prepare_model_batch_pricing_native_input(
+            self,
+            valuation_time_utc=valuation_time_utc,
+            batch=batch,
+            observed_data=observed_data,
+            boundary_state=boundary_state,
+            include_transform_diagnostics=include_transform_diagnostics,
+            include_integration_quality_diagnostics=include_integration_quality_diagnostics,
+            include_calibration_hooks=include_calibration_hooks,
+        )
+        with output_controller.progress("price") as progress:
+            progress.update(detail="running batch pricing workflow")
+            return _run_model_vanilla_option_batch_pricing(native_execution_input)
+
+    def price_option_surface(
+        self,
+        *,
+        valuation_time_utc: datetime,
+        surface: JaniformVanillaOptionSurface,
+        observed_data: Optional[CurrentStateEstimationRequest] = None,
+        boundary_state: Optional[HawkesExcitationState] = None,
+        include_transform_diagnostics: bool = False,
+        include_integration_quality_diagnostics: bool = False,
+        include_calibration_hooks: bool = False,
+        silent: bool = False,
+        progress_mode: WorkflowProgressMode | str = WorkflowProgressMode.AUTO,
+    ) -> JaniformVanillaOptionSurfacePricingResult:
+        output_controller = JaniformOutputController(
+            suppress_info_output=silent,
+            progress_mode=WorkflowProgressMode.NONE if silent else progress_mode,
+            default_progress_mode=(
+                WorkflowProgressMode.NONE if silent else WorkflowProgressMode.HUMAN
+            ),
+        )
+        native_execution_input = _prepare_model_surface_pricing_native_input(
+            self,
+            valuation_time_utc=valuation_time_utc,
+            surface=surface,
+            observed_data=observed_data,
+            boundary_state=boundary_state,
+            include_transform_diagnostics=include_transform_diagnostics,
+            include_integration_quality_diagnostics=include_integration_quality_diagnostics,
+            include_calibration_hooks=include_calibration_hooks,
+        )
+        with output_controller.progress("price") as progress:
+            progress.update(detail="running surface pricing workflow")
+            return _run_model_vanilla_option_surface_pricing(native_execution_input)
 
     def estimate_current_state(
         self,
@@ -963,22 +1054,17 @@ def _prepare_model_pricing_execution_input(
     include_integration_quality_diagnostics: bool,
     include_calibration_hooks: bool,
 ) -> VanillaOptionPricingExecutionInput:
-    horizon_interval_count_float = maturity_interval / 1.0
-    horizon_interval_count = int(horizon_interval_count_float)
-    if (
-        horizon_interval_count <= 0
-        or float(horizon_interval_count) != horizon_interval_count_float
-    ):
-        raise _calibration_error(
-            "maturity_interval",
-            "must be a positive exact multiple of the pricing runtime interval 1.0",
-        )
-
-    runtime_factors = _prepare_model_runtime_factors(
+    horizon_interval_count = _pricing_interval_count_from_maturity_interval(
+        maturity_interval,
+        field_path="maturity_interval",
+    )
+    runtime_input = _prepare_model_pricing_runtime_input(
         model,
-        start_time_utc=valuation_time_utc,
+        valuation_time_utc=valuation_time_utc,
+        spot=spot,
         horizon_interval_count=horizon_interval_count,
-        interval="1h",
+        observed_data=observed_data,
+        boundary_state=boundary_state,
     )
 
     try:
@@ -988,12 +1074,117 @@ def _prepare_model_pricing_execution_input(
             else VanillaOptionPayoffType(payoff_type)
         )
     except ValueError as e:
-        raise _calibration_error(
-            "payoff_type",
-            "must be one of: call, put",
-        ) from e
+        raise _calibration_error("payoff_type", "must be one of: call, put") from e
 
-    hourly_factor_contract = provide_hourly_factor_contract(
+    return VanillaOptionPricingExecutionInput(
+        request=VanillaOptionPricingRequest(
+            market_inputs=VanillaOptionPricingMarketInputs(
+                spot=spot,
+                strike=strike,
+                maturity_interval=maturity_interval,
+                risk_free_rate=risk_free_rate,
+                dividend_yield=dividend_yield,
+            ),
+            payoff=VanillaOptionPayoffConfiguration(payoff_type=normalized_payoff_type),
+            boundary_input=AnchoredVanillaOptionPricingBoundaryInput(
+                interval_index=0,
+                hawkes_boundary_state=runtime_input.effective_boundary_state,
+                mean_reversion_fitted_parameters=runtime_input.mean_reversion_fitted_parameters,
+                interval_delta=runtime_input.runtime_factors.interval_delta,
+                observed_boundary_state=runtime_input.effective_observed_boundary_state,
+            ),
+            model_parameters=runtime_input.model_parameters,
+        ),
+        hourly_factor_contract=runtime_input.hourly_factor_contract,
+        optional_output_selection=VanillaOptionPricingOptionalOutputSelection(
+            include_transform_diagnostics=include_transform_diagnostics,
+            include_integration_quality_diagnostics=include_integration_quality_diagnostics,
+            include_calibration_hooks=include_calibration_hooks,
+        ),
+    )
+
+
+def _prepare_model_pricing_runtime_input(
+    model: JaniformModel,
+    *,
+    valuation_time_utc: datetime,
+    spot: float,
+    horizon_interval_count: int,
+    observed_data: Optional[CurrentStateEstimationRequest],
+    boundary_state: Optional[HawkesExcitationState],
+) -> _PreparedModelPricingRuntimeInput:
+    runtime_factors = _prepare_model_runtime_factors(
+        model,
+        start_time_utc=valuation_time_utc,
+        horizon_interval_count=horizon_interval_count,
+        interval="1h",
+    )
+    hourly_factor_contract = _build_model_pricing_hourly_factor_contract(
+        model,
+        runtime_factors=runtime_factors,
+        valuation_time_utc=valuation_time_utc,
+    )
+    mean_reversion_fitted_parameters = _mean_reversion_fitted_parameters(model)
+
+    if boundary_state is not None:
+        effective_boundary_state = boundary_state
+        (
+            _derived_mean_reversion_fitted_parameters,
+            _derived_mean_reversion_runtime_interval_anchors,
+            effective_observed_boundary_state,
+        ) = _prepare_model_mean_reversion_runtime_inputs(
+            model,
+            runtime_factors=runtime_factors,
+            hourly_factor_contract=hourly_factor_contract,
+            initial_excitation_state=effective_boundary_state,
+            start_anchor_value=_pricing_observed_log_price_from_spot(model, spot=spot),
+        )
+    elif observed_data is not None:
+        pricing_state = model.estimate_current_state(
+            state_time_utc=valuation_time_utc,
+            request=CurrentStateEstimationRequest(
+                observed_tick_data=observed_data.observed_tick_data,
+                tick_data_column_mapping=observed_data.tick_data_column_mapping,
+                observed_price=spot if observed_data.observed_price is None else observed_data.observed_price,
+            ),
+        )
+        effective_boundary_state = pricing_state.hawkes_excitation_state
+        effective_observed_boundary_state = pricing_state.mean_reversion_boundary_state
+    else:
+        effective_boundary_state = runtime_factors.kernel_parameters.stationary_excitation_state()
+        (
+            _derived_mean_reversion_fitted_parameters,
+            _derived_mean_reversion_runtime_interval_anchors,
+            effective_observed_boundary_state,
+        ) = _prepare_model_mean_reversion_runtime_inputs(
+            model,
+            runtime_factors=runtime_factors,
+            hourly_factor_contract=hourly_factor_contract,
+            initial_excitation_state=effective_boundary_state,
+            start_anchor_value=_pricing_observed_log_price_from_spot(model, spot=spot),
+        )
+
+    return _PreparedModelPricingRuntimeInput(
+        runtime_factors=runtime_factors,
+        hourly_factor_contract=hourly_factor_contract,
+        effective_boundary_state=effective_boundary_state,
+        effective_observed_boundary_state=effective_observed_boundary_state,
+        mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
+        model_parameters=VanillaOptionPricingModelParameters(
+            hawkes_kernel_parameters=runtime_factors.kernel_parameters,
+            news_process_configuration=runtime_factors.news_process_configuration,
+            nig_shared_plus_shift_configuration=runtime_factors.nig_shared_plus_shift_configuration,
+        ),
+    )
+
+
+def _build_model_pricing_hourly_factor_contract(
+    model: JaniformModel,
+    *,
+    runtime_factors: _PreparedModelRuntimeFactors,
+    valuation_time_utc: datetime,
+) -> HourlyFactorContract:
+    return provide_hourly_factor_contract(
         calendar_registry=runtime_factors.calendar_registry,
         exchange_code=runtime_factors.exchange_code,
         range_start_utc=valuation_time_utc,
@@ -1021,77 +1212,24 @@ def _prepare_model_pricing_execution_input(
         ),
     )
 
-    mean_reversion_fitted_parameters = _mean_reversion_fitted_parameters(model)
 
-    if boundary_state is not None:
-        effective_boundary_state = boundary_state
-        (
-            _derived_mean_reversion_fitted_parameters,
-            _derived_mean_reversion_runtime_interval_anchors,
-            effective_observed_boundary_state,
-        ) = _prepare_model_mean_reversion_runtime_inputs(
-            model,
-            runtime_factors=runtime_factors,
-            hourly_factor_contract=hourly_factor_contract,
-            initial_excitation_state=effective_boundary_state,
-            start_anchor_value=_pricing_observed_log_price_from_spot(model, spot=spot),
-        )
-    elif observed_data is not None:
-        pricing_state = model.estimate_current_state(
-            state_time_utc=valuation_time_utc,
-            request=CurrentStateEstimationRequest(
-                observed_tick_data=observed_data.observed_tick_data,
-                tick_data_column_mapping=observed_data.tick_data_column_mapping,
-                observed_price=spot if observed_data.observed_price is None else observed_data.observed_price,
-            ),
+def _pricing_interval_count_from_maturity_interval(
+    maturity_interval: float,
+    *,
+    field_path: str,
+) -> int:
+    horizon_interval_count_float = maturity_interval / 1.0
+    horizon_interval_count = int(horizon_interval_count_float)
+    if (
+        horizon_interval_count <= 0
+        or float(horizon_interval_count) != horizon_interval_count_float
+    ):
+        raise _calibration_error(
+            field_path,
+            "must be a positive exact multiple of the pricing runtime interval 1.0",
         )
 
-        effective_boundary_state = pricing_state.hawkes_excitation_state
-        effective_observed_boundary_state = pricing_state.mean_reversion_boundary_state
-    else:
-        effective_boundary_state = runtime_factors.kernel_parameters.stationary_excitation_state()
-        (
-            _derived_mean_reversion_fitted_parameters,
-            _derived_mean_reversion_runtime_interval_anchors,
-            effective_observed_boundary_state,
-        ) = _prepare_model_mean_reversion_runtime_inputs(
-            model,
-            runtime_factors=runtime_factors,
-            hourly_factor_contract=hourly_factor_contract,
-            initial_excitation_state=effective_boundary_state,
-            start_anchor_value=_pricing_observed_log_price_from_spot(model, spot=spot),
-        )
-
-    return VanillaOptionPricingExecutionInput(
-        request=VanillaOptionPricingRequest(
-            market_inputs=VanillaOptionPricingMarketInputs(
-                spot=spot,
-                strike=strike,
-                maturity_interval=maturity_interval,
-                risk_free_rate=risk_free_rate,
-                dividend_yield=dividend_yield,
-            ),
-            payoff=VanillaOptionPayoffConfiguration(payoff_type=normalized_payoff_type),
-            boundary_input=AnchoredVanillaOptionPricingBoundaryInput(
-                interval_index=0,
-                hawkes_boundary_state=effective_boundary_state,
-                mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
-                interval_delta=runtime_factors.interval_delta,
-                observed_boundary_state=effective_observed_boundary_state,
-            ),
-            model_parameters=VanillaOptionPricingModelParameters(
-                hawkes_kernel_parameters=runtime_factors.kernel_parameters,
-                news_process_configuration=runtime_factors.news_process_configuration,
-                nig_shared_plus_shift_configuration=runtime_factors.nig_shared_plus_shift_configuration,
-            ),
-        ),
-        hourly_factor_contract=hourly_factor_contract,
-        optional_output_selection=VanillaOptionPricingOptionalOutputSelection(
-            include_transform_diagnostics=include_transform_diagnostics,
-            include_integration_quality_diagnostics=include_integration_quality_diagnostics,
-            include_calibration_hooks=include_calibration_hooks,
-        ),
-    )
+    return horizon_interval_count
 
 
 def _pricing_observed_log_price_from_spot(model: JaniformModel, *, spot: float) -> float:
@@ -1103,6 +1241,208 @@ def _pricing_observed_log_price_from_spot(model: JaniformModel, *, spot: float) 
     reference_price = _model_reference_price(model)
 
     return log(normalized_spot / reference_price)
+
+
+def _prepare_model_batch_pricing_native_input(
+    model: JaniformModel,
+    *,
+    valuation_time_utc: datetime,
+    batch: JaniformVanillaOptionBatch,
+    observed_data: Optional[CurrentStateEstimationRequest],
+    boundary_state: Optional[HawkesExcitationState],
+    include_transform_diagnostics: bool,
+    include_integration_quality_diagnostics: bool,
+    include_calibration_hooks: bool,
+) -> dict[str, Any]:
+    interval_counts = tuple(
+        _pricing_interval_count_from_maturity_interval(
+            maturity_interval,
+            field_path=f"batch.maturity_intervals[{node_index}]",
+        )
+        for node_index, maturity_interval in enumerate(batch.maturity_intervals)
+    )
+    max_interval_count = max(interval_counts)
+    runtime_input = _prepare_model_pricing_runtime_input(
+        model,
+        valuation_time_utc=valuation_time_utc,
+        spot=batch.spot,
+        horizon_interval_count=max_interval_count,
+        observed_data=observed_data,
+        boundary_state=boundary_state,
+    )
+
+    return {
+        "request": batch.to_payload(),
+        "boundary_input": AnchoredVanillaOptionPricingBoundaryInput(
+            interval_index=0,
+            hawkes_boundary_state=runtime_input.effective_boundary_state,
+            mean_reversion_fitted_parameters=runtime_input.mean_reversion_fitted_parameters,
+            interval_delta=runtime_input.runtime_factors.interval_delta,
+            observed_boundary_state=runtime_input.effective_observed_boundary_state,
+        ).to_payload(),
+        "model_parameters": runtime_input.model_parameters.to_payload(),
+        "interval_delta": runtime_input.runtime_factors.interval_delta,
+        "node_interval_counts": list(interval_counts),
+        "interval_factors": _native_pricing_interval_factors_by_interval_count(
+            runtime_input.hourly_factor_contract,
+            interval_counts=interval_counts,
+        ),
+        "optional_output_selection": VanillaOptionPricingOptionalOutputSelection(
+            include_transform_diagnostics=include_transform_diagnostics,
+            include_integration_quality_diagnostics=include_integration_quality_diagnostics,
+            include_calibration_hooks=include_calibration_hooks,
+        ).to_payload(),
+    }
+
+
+def _prepare_model_surface_pricing_native_input(
+    model: JaniformModel,
+    *,
+    valuation_time_utc: datetime,
+    surface: JaniformVanillaOptionSurface,
+    observed_data: Optional[CurrentStateEstimationRequest],
+    boundary_state: Optional[HawkesExcitationState],
+    include_transform_diagnostics: bool,
+    include_integration_quality_diagnostics: bool,
+    include_calibration_hooks: bool,
+) -> dict[str, Any]:
+    interval_counts = tuple(
+        _pricing_interval_count_from_maturity_interval(
+            maturity_interval,
+            field_path=f"surface.maturity_intervals[{maturity_index}]",
+        )
+        for maturity_index, maturity_interval in enumerate(surface.maturity_intervals)
+    )
+    max_interval_count = max(interval_counts)
+    runtime_input = _prepare_model_pricing_runtime_input(
+        model,
+        valuation_time_utc=valuation_time_utc,
+        spot=surface.spot,
+        horizon_interval_count=max_interval_count,
+        observed_data=observed_data,
+        boundary_state=boundary_state,
+    )
+
+    return {
+        "request": surface.to_payload(),
+        "boundary_input": AnchoredVanillaOptionPricingBoundaryInput(
+            interval_index=0,
+            hawkes_boundary_state=runtime_input.effective_boundary_state,
+            mean_reversion_fitted_parameters=runtime_input.mean_reversion_fitted_parameters,
+            interval_delta=runtime_input.runtime_factors.interval_delta,
+            observed_boundary_state=runtime_input.effective_observed_boundary_state,
+        ).to_payload(),
+        "model_parameters": runtime_input.model_parameters.to_payload(),
+        "interval_delta": runtime_input.runtime_factors.interval_delta,
+        "maturity_interval_counts": list(interval_counts),
+        "interval_factors": _native_pricing_interval_factors_by_interval_count(
+            runtime_input.hourly_factor_contract,
+            interval_counts=interval_counts,
+        ),
+        "optional_output_selection": VanillaOptionPricingOptionalOutputSelection(
+            include_transform_diagnostics=include_transform_diagnostics,
+            include_integration_quality_diagnostics=include_integration_quality_diagnostics,
+            include_calibration_hooks=include_calibration_hooks,
+        ).to_payload(),
+    }
+
+
+def _native_pricing_interval_factors_by_interval_count(
+    hourly_factor_contract: HourlyFactorContract,
+    *,
+    interval_counts: tuple[int, ...],
+) -> list[dict[str, float]]:
+    interval_factors: list[dict[str, float]] = []
+    for interval_count in interval_counts:
+        interval_factors.extend(
+            {
+                "s_h": float(hourly_factor_contract.s_h[interval_index]),
+                "nu_h_known": float(hourly_factor_contract.known_component_nu_h[interval_index]),
+                "nu_h_surprise": float(
+                    hourly_factor_contract.surprise_component_nu_h[interval_index]
+                ),
+            }
+            for interval_index in range(interval_count)
+        )
+
+    return interval_factors
+
+
+def _run_model_vanilla_option_batch_pricing(
+    native_execution_input: dict[str, Any],
+) -> JaniformVanillaOptionBatchPricingResult:
+    return _run_model_native_pricing_workflow(
+        native_method_name="run_vanilla_option_batch_pricing",
+        native_execution_input=native_execution_input,
+        result_parser=JaniformVanillaOptionBatchPricingResult.from_mapping,
+        entrypoint="JaniformModel.price_options",
+        result_field_path="batch_pricing_result",
+    )
+
+
+def _run_model_vanilla_option_surface_pricing(
+    native_execution_input: dict[str, Any],
+) -> JaniformVanillaOptionSurfacePricingResult:
+    return _run_model_native_pricing_workflow(
+        native_method_name="run_vanilla_option_surface_pricing",
+        native_execution_input=native_execution_input,
+        result_parser=JaniformVanillaOptionSurfacePricingResult.from_mapping,
+        entrypoint="JaniformModel.price_option_surface",
+        result_field_path="surface_pricing_result",
+    )
+
+
+def _run_model_native_pricing_workflow(
+    *,
+    native_method_name: str,
+    native_execution_input: dict[str, Any],
+    result_parser: Callable[..., Any],
+    entrypoint: str,
+    result_field_path: str,
+) -> Any:
+    try:
+        native = native_module()
+    except ModuleNotFoundError as e:
+        raise _calibration_integration_error(
+            "native pricing module is unavailable",
+            entrypoint=entrypoint,
+            error_id=CALIBRATION_INTEGRATION_NATIVE_MODULE_ERROR_ID,
+            context={"module_name": "janiform._native"},
+        ) from e
+
+    try:
+        raw_run_result = getattr(native, native_method_name)(native_execution_input)
+    except Exception as e:
+        if native_exception_matches(native, e, "PricingExecutionError"):
+            raise _calibration_execution_error(
+                "pricing failed during native execution",
+                entrypoint=entrypoint,
+                context={"source_exception_type": type(e).__name__},
+            ) from e
+
+        raise _calibration_execution_error(
+            "pricing failed during native execution",
+            entrypoint=entrypoint,
+            context={"source_exception_type": type(e).__name__},
+        ) from e
+
+    if not isinstance(raw_run_result, dict):
+        raise _calibration_integration_error(
+            "native pricing returned an invalid response payload",
+            entrypoint=entrypoint,
+            error_id=CALIBRATION_INTEGRATION_RESPONSE_ERROR_ID,
+            context={"returned_type": type(raw_run_result).__name__},
+        )
+
+    try:
+        return result_parser(raw_run_result, field_path=result_field_path)
+    except CalibrationValidationError as e:
+        raise _calibration_integration_error(
+            "native pricing returned an invalid response payload",
+            entrypoint=entrypoint,
+            error_id=CALIBRATION_INTEGRATION_RESPONSE_ERROR_ID,
+            context={"source_error_id": e.error_id},
+        ) from e
 
 
 def _model_reference_price(model: JaniformModel) -> float:

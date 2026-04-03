@@ -33,6 +33,7 @@ from .registry import (
 )
 from .._errors import _calibration_error
 from ..sessions.contracts import MarketDataSessionResolution
+from ...contracts.base import require_boolean
 from ...contracts import ContractModel, require_mapping, require_non_empty_string, require_sequence
 
 DEFAULT_HIGH_LEVEL_KNOWN_NEWS_PRESET_NAME = "none"
@@ -275,10 +276,11 @@ class ResolvedSessionComponent(ContractModel):
                 if isinstance(raw_selected_preset, Mapping)
                 else None
             ),
-            inferred_from_data=_require_boolean(
+            inferred_from_data=require_boolean(
                 raw_payload,
                 "inferred_from_data",
-                field_path=f"{field_path}.inferred_from_data",
+                f"{field_path}.inferred_from_data",
+                _calibration_error,
             ),
             inference_resolution=(
                 MarketDataSessionResolution.from_mapping(
@@ -380,10 +382,11 @@ class ResolvedKnownNewsComponent(ContractModel):
                 if isinstance(raw_recommendation_policy, str)
                 else None
             ),
-            recommendation_applied=_require_boolean(
+            recommendation_applied=require_boolean(
                 raw_payload,
                 "recommendation_applied",
-                field_path=f"{field_path}.recommendation_applied",
+                f"{field_path}.recommendation_applied",
+                _calibration_error,
             ),
         )
 
@@ -486,19 +489,6 @@ def _require_string_sequence(
         values.append(raw_value)
 
     return values
-
-
-def _require_boolean(
-    raw_payload: Mapping[str, Any],
-    field_name: str,
-    *,
-    field_path: str,
-) -> bool:
-    raw_value = raw_payload.get(field_name)
-    if not isinstance(raw_value, bool):
-        raise _calibration_error(field_path, "must be a boolean")
-
-    return raw_value
 
 
 def resolve_preset_workflow_configuration(

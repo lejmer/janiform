@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale.v1",
-  "approved_snapshot_sha256": "ef929773f70dc6d1faa3e6ff8769a7f25c52b1f40f215ef39d7b6c11402514a2",
+  "approved_snapshot_sha256": "01a9f35b6a9e55b34cd5aebd6bb7cfda8e8075068a345ca2af8a124cc2ecde6b",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -730,6 +730,17 @@
       "rationale": "High-level simulation now treats observed continuation data as the default live-state continuation boundary for both seeded and coarse backends, and the seeded response records the full mean-reversion boundary state including pressure_state so continuation behavior can be inspected from exported simulation outputs.",
       "snapshot_sha256": "ef929773f70dc6d1faa3e6ff8769a7f25c52b1f40f215ef39d7b6c11402514a2",
       "summary": "Approve live-state continuation defaults and exported seeded pressure-state boundary fields."
+    },
+    {
+      "approved_on": "2026-04-03",
+      "docs_updated": [
+        "docs/getting-started/first-model.md",
+        "docs/guides/python-workflows.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Fitted models now expose one canonical multi-node pricing surface for arbitrary option batches and strike-by-expiry grids, so callers stay on Janiform-owned batch and surface contracts instead of managing Python loops over single-node pricing.",
+      "snapshot_sha256": "01a9f35b6a9e55b34cd5aebd6bb7cfda8e8075068a345ca2af8a124cc2ecde6b",
+      "summary": "Approve the fitted-model batch pricing and option-surface pricing APIs."
     }
   ],
   "public_api_surface_document_version": "python.public_api_surface_map.pre_v0_1.control_plane_reset.v1",

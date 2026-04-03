@@ -457,6 +457,14 @@ def test_calibration_public_symbols_live_in_calibration_module() -> None:
         "JaniformFitReport",
         "JaniformModel",
         "JaniformSimulationResult",
+        "JaniformVanillaOptionBatch",
+        "JaniformVanillaOptionBatchPricingCalibrationHooks",
+        "JaniformVanillaOptionBatchPricingResult",
+        "JaniformVanillaOptionBatchPricingRunDiagnostics",
+        "JaniformVanillaOptionSurface",
+        "JaniformVanillaOptionSurfacePricingCalibrationHooks",
+        "JaniformVanillaOptionSurfacePricingResult",
+        "JaniformVanillaOptionSurfacePricingRunDiagnostics",
         "MarketDataCalibrationRequest",
         "MarketProfileReference",
         "MeanReversionAnchorModel",
@@ -501,12 +509,21 @@ def test_calibration_fit_public_submodule_is_supported_domain_import() -> None:
         "JaniformFitReport",
         "JaniformModel",
         "JaniformSimulationResult",
+        "JaniformVanillaOptionBatch",
+        "JaniformVanillaOptionBatchPricingCalibrationHooks",
+        "JaniformVanillaOptionBatchPricingResult",
+        "JaniformVanillaOptionBatchPricingRunDiagnostics",
+        "JaniformVanillaOptionSurface",
+        "JaniformVanillaOptionSurfacePricingCalibrationHooks",
+        "JaniformVanillaOptionSurfacePricingResult",
+        "JaniformVanillaOptionSurfacePricingRunDiagnostics",
     }
 
 
 def test_calibration_fit_public_ownership_submodules_are_supported_domain_imports() -> None:
     calibration_fit_estimator_module = import_module("janiform.calibration.fit.estimator")
     calibration_fit_model_module = import_module("janiform.calibration.fit.model")
+    calibration_fit_pricing_module = import_module("janiform.calibration.fit.pricing")
     calibration_fit_report_module = import_module("janiform.calibration.fit.report")
     calibration_fit_state_estimation_module = import_module(
         "janiform.calibration.fit.state_estimation"
@@ -516,6 +533,16 @@ def test_calibration_fit_public_ownership_submodules_are_supported_domain_import
     assert set(calibration_fit_model_module.__all__) == {
         "JaniformModel",
         "JaniformSimulationResult",
+    }
+    assert set(calibration_fit_pricing_module.__all__) == {
+        "JaniformVanillaOptionBatch",
+        "JaniformVanillaOptionBatchPricingCalibrationHooks",
+        "JaniformVanillaOptionBatchPricingResult",
+        "JaniformVanillaOptionBatchPricingRunDiagnostics",
+        "JaniformVanillaOptionSurface",
+        "JaniformVanillaOptionSurfacePricingCalibrationHooks",
+        "JaniformVanillaOptionSurfacePricingResult",
+        "JaniformVanillaOptionSurfacePricingRunDiagnostics",
     }
     assert set(calibration_fit_report_module.__all__) == {"JaniformFitReport"}
     assert set(calibration_fit_state_estimation_module.__all__) == {
@@ -773,6 +800,7 @@ def test_calibration_root_and_public_ownership_submodules_share_supported_symbol
 
     calibration_fit_estimator_module = import_module("janiform.calibration.fit.estimator")
     calibration_fit_model_module = import_module("janiform.calibration.fit.model")
+    calibration_fit_pricing_module = import_module("janiform.calibration.fit.pricing")
     calibration_fit_report_module = import_module("janiform.calibration.fit.report")
     calibration_fit_state_estimation_module = import_module(
         "janiform.calibration.fit.state_estimation"
@@ -788,6 +816,14 @@ def test_calibration_root_and_public_ownership_submodules_share_supported_symbol
     assert calibration_module.JaniformEstimator is calibration_fit_estimator_module.JaniformEstimator
     assert calibration_module.JaniformModel is calibration_fit_model_module.JaniformModel
     assert calibration_module.JaniformFitReport is calibration_fit_report_module.JaniformFitReport
+    assert (
+        calibration_module.JaniformVanillaOptionBatch
+        is calibration_fit_pricing_module.JaniformVanillaOptionBatch
+    )
+    assert (
+        calibration_module.JaniformVanillaOptionSurface
+        is calibration_fit_pricing_module.JaniformVanillaOptionSurface
+    )
     assert (
         calibration_module.CurrentStateEstimationRequest
         is calibration_fit_state_estimation_module.CurrentStateEstimationRequest

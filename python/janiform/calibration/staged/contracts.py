@@ -5,9 +5,9 @@ from typing import Any, Optional
 from .._errors import CALIBRATION_ERROR_FACTORY, _calibration_error
 from ...contracts import (
     ContractModel,
-    require_finite_number,
     require_mapping,
     require_non_empty_string,
+    require_non_negative_finite_number,
     require_non_negative_integer,
     require_positive_finite_number,
     require_positive_integer,
@@ -235,20 +235,13 @@ class CalibrationOptimizerSettings(ContractModel):
                 f"{field_path}.relative_tolerance",
                 CALIBRATION_ERROR_FACTORY,
             ),
-            constraint_penalty_weight=_require_positive_or_zero(
+            constraint_penalty_weight=require_non_negative_finite_number(
                 raw_payload,
                 "constraint_penalty_weight",
                 f"{field_path}.constraint_penalty_weight",
+                CALIBRATION_ERROR_FACTORY,
             ),
         )
-
-
-def _require_positive_or_zero(raw_payload: dict[str, Any], field_name: str, field_path: str) -> float:
-    value = require_finite_number(raw_payload, field_name, field_path, CALIBRATION_ERROR_FACTORY)
-    if value < 0.0:
-        raise _calibration_error(field_path, "must be non-negative")
-
-    return value
 
 
 @dataclass(frozen=True, slots=True)

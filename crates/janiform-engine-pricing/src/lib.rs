@@ -5,12 +5,14 @@ mod hourly_factors {
     pub use janiform_market_time::hourly_factors::*;
 }
 
+mod batch;
 mod characteristic;
 mod constants;
 mod contracts;
 mod fourier;
 mod runner;
 
+pub use batch::*;
 pub use characteristic::*;
 pub use constants::*;
 pub use contracts::*;

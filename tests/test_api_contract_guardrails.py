@@ -120,6 +120,10 @@ def test_public_api_contract_guardrail_supports_public_domain_submodules() -> No
             "janiform.calibration.fit.model": [
                 "JaniformModel",
             ],
+            "janiform.calibration.fit.pricing": [
+                "JaniformVanillaOptionBatch",
+                "JaniformVanillaOptionSurface",
+            ],
             "janiform.calibration.fit.report": [
                 "JaniformFitReport",
             ],
@@ -211,6 +215,7 @@ def test_public_api_contract_guardrail_supports_public_domain_submodules() -> No
         "janiform.calibration.fit",
         "janiform.calibration.fit.estimator",
         "janiform.calibration.fit.model",
+        "janiform.calibration.fit.pricing",
         "janiform.calibration.fit.report",
         "janiform.calibration.market_data",
         "janiform.calibration.market_data.contracts",

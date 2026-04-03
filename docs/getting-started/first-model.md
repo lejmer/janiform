@@ -112,6 +112,11 @@ result = model.price_option(
 If you want the derived live state directly, call `model.estimate_current_state(...)` with the same
 request contract.
 
+To price several nodes from the same fitted-model snapshot without writing a loop, use
+`model.price_options(...)` with `JaniformVanillaOptionBatch`, or use
+`model.price_option_surface(...)` with `JaniformVanillaOptionSurface` when your nodes form a
+strike-by-expiry grid.
+
 ## Related Example
 
 [`examples/high_level/synthetic_eurusd_plot.py`](../../examples/high_level/synthetic_eurusd_plot.py)

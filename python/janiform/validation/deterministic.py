@@ -1,18 +1,24 @@
 from collections.abc import Mapping, Sequence
 from typing import Any, Optional, cast
 
-from .enum import DeterministicRegressionCaseKind, HourlySourceKind, MarketState, RegressionStatus
-from .helpers import (
-    require_enum_member,
+from ..contracts.base import (
     require_field,
-    require_float_list,
+    require_finite_number_sequence,
+    require_finite_scalar,
     require_mapping,
     require_non_empty_string,
-    require_non_empty_string_list,
+    require_non_empty_string_sequence,
+    require_non_negative_finite_scalar,
     require_non_negative_integer,
-    require_string_list,
-    validate_finite_float,
-    validate_finite_non_negative_float,
+    require_string_sequence,
+)
+from ._errors import VALIDATION_ERROR_FACTORY
+from .enum import (
+    DeterministicRegressionCaseKind,
+    HourlySourceKind,
+    MarketState,
+    RegressionStatus,
+    require_enum_member,
 )
 from .types import (
     DeterministicRegressionHarnessReport,
@@ -47,9 +53,24 @@ def normalize_calendar_cases(calendar_cases: Sequence[Mapping[str, Any]]) -> lis
 
     for case_position, calendar_case in enumerate(calendar_cases):
         context: str = f"calendar_cases[{case_position}]"
-        fixture_id: str = require_non_empty_string(calendar_case, "fixture_id", context)
-        exchange_code: str = require_non_empty_string(calendar_case, "exchange_code", context)
-        timestamp_utc: str = require_non_empty_string(calendar_case, "timestamp_utc", context)
+        fixture_id: str = require_non_empty_string(
+            calendar_case,
+            "fixture_id",
+            f"{context}.fixture_id",
+            VALIDATION_ERROR_FACTORY,
+        )
+        exchange_code: str = require_non_empty_string(
+            calendar_case,
+            "exchange_code",
+            f"{context}.exchange_code",
+            VALIDATION_ERROR_FACTORY,
+        )
+        timestamp_utc: str = require_non_empty_string(
+            calendar_case,
+            "timestamp_utc",
+            f"{context}.timestamp_utc",
+            VALIDATION_ERROR_FACTORY,
+        )
         expected_state = require_enum_member(
             calendar_case,
             "expected_state",
@@ -77,23 +98,57 @@ def normalize_seasonality_cases(
 
     for case_position, seasonality_case in enumerate(seasonality_cases):
         context: str = f"seasonality_cases[{case_position}]"
-        fixture_id: str = require_non_empty_string(seasonality_case, "fixture_id", context)
-        exchange_code: str = require_non_empty_string(seasonality_case, "exchange_code", context)
-        range_start_utc: str = require_non_empty_string(seasonality_case, "range_start_utc", context)
-        range_end_utc: str = require_non_empty_string(seasonality_case, "range_end_utc", context)
+        fixture_id: str = require_non_empty_string(
+            seasonality_case,
+            "fixture_id",
+            f"{context}.fixture_id",
+            VALIDATION_ERROR_FACTORY,
+        )
+        exchange_code: str = require_non_empty_string(
+            seasonality_case,
+            "exchange_code",
+            f"{context}.exchange_code",
+            VALIDATION_ERROR_FACTORY,
+        )
+        range_start_utc: str = require_non_empty_string(
+            seasonality_case,
+            "range_start_utc",
+            f"{context}.range_start_utc",
+            VALIDATION_ERROR_FACTORY,
+        )
+        range_end_utc: str = require_non_empty_string(
+            seasonality_case,
+            "range_end_utc",
+            f"{context}.range_end_utc",
+            VALIDATION_ERROR_FACTORY,
+        )
 
         seasonality_source: Mapping[str, Any] = require_mapping(
             seasonality_case,
             "seasonality_source",
-            context,
+            f"{context}.seasonality_source",
+            VALIDATION_ERROR_FACTORY,
         )
         news_intensity_source: Mapping[str, Any] = require_mapping(
             seasonality_case,
             "news_intensity_source",
-            context,
+            f"{context}.news_intensity_source",
+            VALIDATION_ERROR_FACTORY,
         )
-        expected_s_h: list[float] = require_float_list(seasonality_case, "expected_s_h", context)
-        expected_nu_h: list[float] = require_float_list(seasonality_case, "expected_nu_h", context)
+        expected_s_h: list[float] = require_finite_number_sequence(
+            seasonality_case,
+            "expected_s_h",
+            f"{context}.expected_s_h",
+            VALIDATION_ERROR_FACTORY,
+            require_non_empty=True,
+        )
+        expected_nu_h: list[float] = require_finite_number_sequence(
+            seasonality_case,
+            "expected_nu_h",
+            f"{context}.expected_nu_h",
+            VALIDATION_ERROR_FACTORY,
+            require_non_empty=True,
+        )
 
         normalized_cases.append(
             {
@@ -128,11 +183,18 @@ def validate_seasonality_source(
         case HourlySourceKind.EXPLICIT:
             return {
                 "source_kind": source_kind.value,
-                "hourly_factors": require_float_list(seasonality_source, "hourly_factors", context),
+                "hourly_factors": require_finite_number_sequence(
+                    seasonality_source,
+                    "hourly_factors",
+                    f"{context}.hourly_factors",
+                    VALIDATION_ERROR_FACTORY,
+                    require_non_empty=True,
+                ),
                 "materialization_method": require_non_empty_string(
                     seasonality_source,
                     "materialization_method",
-                    context,
+                    f"{context}.materialization_method",
+                    VALIDATION_ERROR_FACTORY,
                 ),
             }
         case HourlySourceKind.MATERIALIZED:
@@ -143,35 +205,44 @@ def validate_seasonality_source(
 
             return {
                 "source_kind": source_kind.value,
-                "source_timestamps_utc": require_non_empty_string_list(
+                "source_timestamps_utc": require_non_empty_string_sequence(
                     seasonality_source,
                     "source_timestamps_utc",
-                    context,
+                    f"{context}.source_timestamps_utc",
+                    VALIDATION_ERROR_FACTORY,
+                    require_non_empty_items=True,
+                    strip_items=True,
                 ),
-                "source_seasonality_factors": require_float_list(
+                "source_seasonality_factors": require_finite_number_sequence(
                     seasonality_source,
                     "source_seasonality_factors",
-                    context,
+                    f"{context}.source_seasonality_factors",
+                    VALIDATION_ERROR_FACTORY,
+                    require_non_empty=True,
                 ),
                 "interpolation_method": require_non_empty_string(
                     seasonality_source,
                     "interpolation_method",
-                    context,
+                    f"{context}.interpolation_method",
+                    VALIDATION_ERROR_FACTORY,
                 ),
                 "aggregation_method": require_non_empty_string(
                     seasonality_source,
                     "aggregation_method",
-                    context,
+                    f"{context}.aggregation_method",
+                    VALIDATION_ERROR_FACTORY,
                 ),
                 "sparse_fallback_policy": require_non_empty_string(
                     seasonality_source,
                     "sparse_fallback_policy",
-                    context,
+                    f"{context}.sparse_fallback_policy",
+                    VALIDATION_ERROR_FACTORY,
                 ),
                 "sparse_hour_minimum_observation_count": require_non_negative_integer(
                     seasonality_source,
                     "sparse_hour_minimum_observation_count",
-                    context,
+                    f"{context}.sparse_hour_minimum_observation_count",
+                    VALIDATION_ERROR_FACTORY,
                 ),
             }
 
@@ -193,18 +264,26 @@ def validate_news_intensity_source(
         case HourlySourceKind.EXPLICIT:
             return {
                 "source_kind": source_kind.value,
-                "hourly_factors": require_float_list(news_intensity_source, "hourly_factors", context),
+                "hourly_factors": require_finite_number_sequence(
+                    news_intensity_source,
+                    "hourly_factors",
+                    f"{context}.hourly_factors",
+                    VALIDATION_ERROR_FACTORY,
+                    require_non_empty=True,
+                ),
                 "materialization_method": require_non_empty_string(
                     news_intensity_source,
                     "materialization_method",
-                    context,
+                    f"{context}.materialization_method",
+                    VALIDATION_ERROR_FACTORY,
                 ),
             }
         case HourlySourceKind.MATERIALIZED:
             raw_multiplier_mapping: Mapping[str, Any] = require_mapping(
                 news_intensity_source,
                 "surprise_deterministic_time_multiplier_by_interval_index",
-                context,
+                f"{context}.surprise_deterministic_time_multiplier_by_interval_index",
+                VALIDATION_ERROR_FACTORY,
             )
 
             normalized_multipliers: dict[str, float] = {}
@@ -213,24 +292,33 @@ def validate_news_intensity_source(
                     raise SeasonalityInputValidationError(
                         f"{context}.surprise_deterministic_time_multiplier_by_interval_index keys must be numeric strings",
                     )
-                normalized_multipliers[raw_interval_index] = validate_finite_float(
+                normalized_multipliers[raw_interval_index] = require_finite_scalar(
                     raw_multiplier_value,
                     f"{context}.surprise_deterministic_time_multiplier_by_interval_index['{raw_interval_index}']",
+                    VALIDATION_ERROR_FACTORY,
                 )
 
-            known_scheduled_event_timestamps_utc: list[str] = require_string_list(
+            known_scheduled_event_timestamps_utc: list[str] = require_string_sequence(
                 news_intensity_source,
                 "known_scheduled_event_timestamps_utc",
-                context,
-                require_non_empty=False,
+                f"{context}.known_scheduled_event_timestamps_utc",
+                VALIDATION_ERROR_FACTORY,
+                require_non_empty_items=True,
+                strip_items=True,
             )
 
             return {
                 "source_kind": source_kind.value,
                 "known_scheduled_event_timestamps_utc": known_scheduled_event_timestamps_utc,
-                "surprise_baseline_intensity": validate_finite_float(
-                    require_field(news_intensity_source, "surprise_baseline_intensity", context),
+                "surprise_baseline_intensity": require_finite_scalar(
+                    require_field(
+                        news_intensity_source,
+                        "surprise_baseline_intensity",
+                        f"{context}.surprise_baseline_intensity",
+                        VALIDATION_ERROR_FACTORY,
+                    ),
                     f"{context}.surprise_baseline_intensity",
+                    VALIDATION_ERROR_FACTORY,
                 ),
                 "surprise_deterministic_time_multiplier_by_interval_index": normalized_multipliers,
             }
@@ -245,7 +333,8 @@ def validate_deterministic_harness_report_payload(raw_payload: object) -> Determ
     schema_version: str = require_non_empty_string(
         raw_payload,
         "schema_version",
-        "deterministic regression harness report",
+        "deterministic regression harness report.schema_version",
+        VALIDATION_ERROR_FACTORY,
     )
     if schema_version != DETERMINISTIC_REGRESSION_HARNESS_REPORT_SCHEMA_VERSION:
         raise SeasonalityInputValidationError(
@@ -255,7 +344,8 @@ def validate_deterministic_harness_report_payload(raw_payload: object) -> Determ
     determinism_policy: str = require_non_empty_string(
         raw_payload,
         "determinism_policy",
-        "deterministic regression harness report",
+        "deterministic regression harness report.determinism_policy",
+        VALIDATION_ERROR_FACTORY,
     )
     if determinism_policy != DETERMINISTIC_REGRESSION_HARNESS_DETERMINISM_POLICY:
         raise SeasonalityInputValidationError(
@@ -265,28 +355,36 @@ def validate_deterministic_harness_report_payload(raw_payload: object) -> Determ
     fallback_policy_mapping: Mapping[str, Any] = require_mapping(
         raw_payload,
         "fallback_policy",
-        "deterministic regression harness report",
+        "deterministic regression harness report.fallback_policy",
+        VALIDATION_ERROR_FACTORY,
     )
     fallback_policy: RegressionHarnessFallbackPolicy = {
         "schema_version": require_non_empty_string(
             fallback_policy_mapping,
             "schema_version",
-            "deterministic regression harness report.fallback_policy",
+            "deterministic regression harness report.fallback_policy.schema_version",
+            VALIDATION_ERROR_FACTORY,
         ),
         "unknown_date_policy": require_non_empty_string(
             fallback_policy_mapping,
             "unknown_date_policy",
-            "deterministic regression harness report.fallback_policy",
+            "deterministic regression harness report.fallback_policy.unknown_date_policy",
+            VALIDATION_ERROR_FACTORY,
         ),
         "unsupported_exchange_calendar_segment_policy": require_non_empty_string(
             fallback_policy_mapping,
             "unsupported_exchange_calendar_segment_policy",
-            "deterministic regression harness report.fallback_policy",
+            (
+                "deterministic regression harness report.fallback_policy."
+                "unsupported_exchange_calendar_segment_policy"
+            ),
+            VALIDATION_ERROR_FACTORY,
         ),
         "incomplete_fixture_coverage_policy": require_non_empty_string(
             fallback_policy_mapping,
             "incomplete_fixture_coverage_policy",
-            "deterministic regression harness report.fallback_policy",
+            "deterministic regression harness report.fallback_policy.incomplete_fixture_coverage_policy",
+            VALIDATION_ERROR_FACTORY,
         ),
     }
 
@@ -322,54 +420,64 @@ def validate_deterministic_harness_report_payload(raw_payload: object) -> Determ
     tolerance_config_mapping: Mapping[str, Any] = require_mapping(
         raw_payload,
         "tolerance_config",
-        "deterministic regression harness report",
+        "deterministic regression harness report.tolerance_config",
+        VALIDATION_ERROR_FACTORY,
     )
     tolerance_config: RegressionHarnessToleranceConfig = {
-        "seasonality_absolute_tolerance": validate_finite_non_negative_float(
+        "seasonality_absolute_tolerance": require_non_negative_finite_scalar(
             require_field(
                 tolerance_config_mapping,
                 "seasonality_absolute_tolerance",
-                "deterministic regression harness report.tolerance_config",
+                "deterministic regression harness report.tolerance_config.seasonality_absolute_tolerance",
+                VALIDATION_ERROR_FACTORY,
             ),
             "tolerance_config.seasonality_absolute_tolerance",
+            VALIDATION_ERROR_FACTORY,
         ),
-        "news_intensity_absolute_tolerance": validate_finite_non_negative_float(
+        "news_intensity_absolute_tolerance": require_non_negative_finite_scalar(
             require_field(
                 tolerance_config_mapping,
                 "news_intensity_absolute_tolerance",
-                "deterministic regression harness report.tolerance_config",
+                "deterministic regression harness report.tolerance_config.news_intensity_absolute_tolerance",
+                VALIDATION_ERROR_FACTORY,
             ),
             "tolerance_config.news_intensity_absolute_tolerance",
+            VALIDATION_ERROR_FACTORY,
         ),
     }
 
     summary_mapping: Mapping[str, Any] = require_mapping(
         raw_payload,
         "summary",
-        "deterministic regression harness report",
+        "deterministic regression harness report.summary",
+        VALIDATION_ERROR_FACTORY,
     )
     summary: RegressionHarnessSummary = {
         "total_case_count": require_non_negative_integer(
             summary_mapping,
             "total_case_count",
-            "deterministic regression harness report.summary",
+            "deterministic regression harness report.summary.total_case_count",
+            VALIDATION_ERROR_FACTORY,
         ),
         "passed_case_count": require_non_negative_integer(
             summary_mapping,
             "passed_case_count",
-            "deterministic regression harness report.summary",
+            "deterministic regression harness report.summary.passed_case_count",
+            VALIDATION_ERROR_FACTORY,
         ),
         "failed_case_count": require_non_negative_integer(
             summary_mapping,
             "failed_case_count",
-            "deterministic regression harness report.summary",
+            "deterministic regression harness report.summary.failed_case_count",
+            VALIDATION_ERROR_FACTORY,
         ),
     }
 
     case_reports_raw: object = require_field(
         raw_payload,
         "case_reports",
-        "deterministic regression harness report",
+        "deterministic regression harness report.case_reports",
+        VALIDATION_ERROR_FACTORY,
     )
     if not isinstance(case_reports_raw, list):
         raise SeasonalityInputValidationError(
@@ -401,7 +509,12 @@ def validate_deterministic_harness_report_payload(raw_payload: object) -> Determ
             error_message=f"{case_report_context}.status has unsupported value: {{value}}",
         )
 
-        raw_failure: object = require_field(raw_case_report, "failure", case_report_context)
+        raw_failure: object = require_field(
+            raw_case_report,
+            "failure",
+            f"{case_report_context}.failure",
+            VALIDATION_ERROR_FACTORY,
+        )
         if raw_failure is not None and not isinstance(raw_failure, Mapping):
             raise SeasonalityInputValidationError(
                 f"{case_report_context}.failure must be null or a mapping",
@@ -409,10 +522,20 @@ def validate_deterministic_harness_report_payload(raw_payload: object) -> Determ
 
         case_reports.append(
             {
-                "fixture_id": require_non_empty_string(raw_case_report, "fixture_id", case_report_context),
+                "fixture_id": require_non_empty_string(
+                    raw_case_report,
+                    "fixture_id",
+                    f"{case_report_context}.fixture_id",
+                    VALIDATION_ERROR_FACTORY,
+                ),
                 "case_kind": case_kind.value,
                 "status": status.value,
-                "summary": require_non_empty_string(raw_case_report, "summary", case_report_context),
+                "summary": require_non_empty_string(
+                    raw_case_report,
+                    "summary",
+                    f"{case_report_context}.summary",
+                    VALIDATION_ERROR_FACTORY,
+                ),
                 "failure": cast(Optional[dict[str, Any]], raw_failure),
             },
         )

@@ -928,6 +928,16 @@ def run_vanilla_option_pricing(
 ) -> Any: ...
 
 
+def run_vanilla_option_batch_pricing(
+    execution_input: Any,
+) -> Any: ...
+
+
+def run_vanilla_option_surface_pricing(
+    execution_input: Any,
+) -> Any: ...
+
+
 def run_staged_calibration(
     execution_input: object,
     calendar_registry: CalendarRegistry,

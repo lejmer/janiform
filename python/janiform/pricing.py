@@ -3,10 +3,17 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import StrEnum
 from math import exp
-from types import ModuleType
 from pathlib import Path
+from types import ModuleType
 from typing import TYPE_CHECKING, Any, Optional
 
+from .contracts.base import (
+    require_boolean,
+    require_optional_boolean_value,
+    require_optional_mapping_value,
+    require_optional_string_value,
+    require_str_enum_value,
+)
 from .contracts import (
     ContractModel,
     MeanReversionAnchorModel,
@@ -219,21 +226,6 @@ def _parse_news_process_configuration(
         raise _pricing_error(f"{field_path}.{e.failure.field_path}", e.failure.message) from e
 
 
-def require_boolean(
-    mapping: dict[str, Any] | Any,
-    field_name: str,
-    field_path: str,
-) -> bool:
-    if field_name not in mapping:
-        raise _pricing_error(field_path, "is required")
-
-    raw_value = mapping[field_name]
-    if not isinstance(raw_value, bool):
-        raise _pricing_error(field_path, "must be a boolean")
-
-    return raw_value
-
-
 class VanillaOptionPayoffType(StrEnum):
     CALL = 'call'
     PUT = 'put'
@@ -404,20 +396,19 @@ class VanillaOptionPayoffConfiguration(ContractModel):
         if not isinstance(raw_payload, dict):
             raise _pricing_error(field_path, "must be an object")
 
-        raw_payoff_type = require_string(
-            raw_payload,
-            "payoff_type",
+        payoff_type = require_str_enum_value(
+            require_string(
+                raw_payload,
+                "payoff_type",
+                f"{field_path}.payoff_type",
+                PRICING_ERROR_FACTORY,
+            ),
             f"{field_path}.payoff_type",
             PRICING_ERROR_FACTORY,
+            enum_type=VanillaOptionPayoffType,
+            allowed_values_message="must be one of: call, put",
+            include_received_value=True,
         )
-
-        try:
-            payoff_type = VanillaOptionPayoffType(raw_payoff_type)
-        except ValueError as e:
-            raise _pricing_error(
-                f"{field_path}.payoff_type",
-                f"must be one of: call, put, received '{raw_payoff_type}'",
-            ) from e
 
         return VanillaOptionPayoffConfiguration(payoff_type=payoff_type)
 
@@ -1288,16 +1279,19 @@ class VanillaOptionPricingOptionalOutputSelection(ContractModel):
                 raw_payload,
                 "include_transform_diagnostics",
                 f"{field_path}.include_transform_diagnostics",
+                PRICING_ERROR_FACTORY,
             ),
             include_integration_quality_diagnostics=require_boolean(
                 raw_payload,
                 "include_integration_quality_diagnostics",
                 f"{field_path}.include_integration_quality_diagnostics",
+                PRICING_ERROR_FACTORY,
             ),
             include_calibration_hooks=require_boolean(
                 raw_payload,
                 "include_calibration_hooks",
                 f"{field_path}.include_calibration_hooks",
+                PRICING_ERROR_FACTORY,
             ),
         )
 
@@ -1481,45 +1475,23 @@ class VanillaOptionPricingRunDiagnostics(ContractModel):
         if "anchored_recursion" not in raw_payload:
             raise _pricing_error(f"{field_path}.anchored_recursion", "is required")
 
-        raw_transform = raw_payload["transform"]
-        transform = (
-            dict(raw_transform)
-            if isinstance(raw_transform, dict)
-            else None
-            if raw_transform is None
-            else None
-        )
-        if raw_transform is not None and transform is None:
-            raise _pricing_error(f"{field_path}.transform", "must be an object or null")
-
-        raw_integration_quality = raw_payload["integration_quality"]
-        integration_quality = (
-            dict(raw_integration_quality)
-            if isinstance(raw_integration_quality, dict)
-            else None
-            if raw_integration_quality is None
-            else None
-        )
-        if raw_integration_quality is not None and integration_quality is None:
-            raise _pricing_error(
-                f"{field_path}.integration_quality",
-                "must be an object or null",
-            )
-
-        raw_anchored_recursion = raw_payload["anchored_recursion"]
-        anchored_recursion = (
-            dict(raw_anchored_recursion)
-            if isinstance(raw_anchored_recursion, dict)
-            else None
-            if raw_anchored_recursion is None
-            else None
+        transform = require_optional_mapping_value(
+            raw_payload["transform"],
+            f"{field_path}.transform",
+            PRICING_ERROR_FACTORY,
         )
 
-        if raw_anchored_recursion is not None and anchored_recursion is None:
-            raise _pricing_error(
-                f"{field_path}.anchored_recursion",
-                "must be an object or null",
-            )
+        integration_quality = require_optional_mapping_value(
+            raw_payload["integration_quality"],
+            f"{field_path}.integration_quality",
+            PRICING_ERROR_FACTORY,
+        )
+
+        anchored_recursion = require_optional_mapping_value(
+            raw_payload["anchored_recursion"],
+            f"{field_path}.anchored_recursion",
+            PRICING_ERROR_FACTORY,
+        )
 
         if transform is None and integration_quality is None and anchored_recursion is None:
             raise _pricing_error(
@@ -1575,9 +1547,11 @@ class VanillaOptionPricingCalibrationHooks(ContractModel):
             PRICING_ERROR_FACTORY,
         )
 
-        transform_status_raw = raw_payload.get("transform_status")
-        if transform_status_raw is not None and not isinstance(transform_status_raw, str):
-            raise _pricing_error(f"{field_path}.transform_status", "must be a string or null")
+        transform_status_raw = require_optional_string_value(
+            raw_payload.get("transform_status"),
+            f"{field_path}.transform_status",
+            PRICING_ERROR_FACTORY,
+        )
 
         return VanillaOptionPricingCalibrationHooks(
             schema_version=VANILLA_OPTION_PRICING_CALIBRATION_HOOKS_SCHEMA_VERSION,
@@ -1700,13 +1674,11 @@ def _optional_boolean(
     if field_name not in raw_payload:
         raise _pricing_error(field_path, "is required")
 
-    raw_value = raw_payload[field_name]
-    if raw_value is None:
-        return None
-    if not isinstance(raw_value, bool):
-        raise _pricing_error(field_path, "must be a boolean or null")
-
-    return raw_value
+    return require_optional_boolean_value(
+        raw_payload[field_name],
+        field_path,
+        PRICING_ERROR_FACTORY,
+    )
 
 
 def validate_vanilla_option_pricing_request(

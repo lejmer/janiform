@@ -25,14 +25,20 @@ Primary high-level fitting surface. Representative public symbols include:
 - `run_market_data_calibration`
 - `run_staged_calibration`
 
-The supported fit ownership submodules also include `janiform.calibration.fit.state_estimation`
-for the public current-state estimation contracts used by `JaniformModel.estimate_current_state(...)`.
+The supported fit ownership submodules also include:
+
+- `janiform.calibration.fit.state_estimation` for the public current-state estimation contracts
+  used by `JaniformModel.estimate_current_state(...)`
+- `janiform.calibration.fit.pricing` for the public batch and surface pricing contracts used by
+  `JaniformModel.price_options(...)` and `JaniformModel.price_option_surface(...)`
 
 `JaniformModel` is the canonical high-level runtime surface for fitted models. In addition to
 `fit` persistence helpers, the main runtime entrypoints are:
 
 - `JaniformModel.estimate_current_state(...)`
 - `JaniformModel.price_option(...)`
+- `JaniformModel.price_options(...)`
+- `JaniformModel.price_option_surface(...)`
 - `JaniformModel.simulate(...)`
 
 Current-state estimation is the default live-state path when observed data is supplied:
