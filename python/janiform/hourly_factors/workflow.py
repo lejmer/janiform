@@ -44,6 +44,10 @@ from .contracts import (
     HourlySeasonalityProviderMaterializedSource,
     HourlySeasonalityProviderSource,
 )
+from .errors import (
+    HourlyFactorProviderMissingInputError,
+    HourlyFactorProviderUnsupportedRangeError,
+)
 
 _RUNTIME_CALIBRATION_SEASONALITY_MATERIALIZATION_METHOD: str = (
     "calibration.normalized_event_signal_hourly.v1"
@@ -138,18 +142,6 @@ def _parse_interval_duration_nanos(
         raise SeasonalityInputValidationError(f"{field_name} must be strictly positive")
 
     return interval_duration_nanos
-
-
-class HourlyFactorProviderError(Exception):
-    """Base class for shared hourly factor provider failures."""
-
-
-class HourlyFactorProviderMissingInputError(HourlyFactorProviderError):
-    """Raised when required seasonality or news-intensity source input is missing."""
-
-
-class HourlyFactorProviderUnsupportedRangeError(HourlyFactorProviderError):
-    """Raised when the requested range is unsupported by hourly interval rules."""
 
 
 _HOURLY_FACTOR_NATIVE_EXCEPTION_TYPES: dict[str, type[Exception]] = {
