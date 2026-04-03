@@ -4994,7 +4994,7 @@
             "BaseException"
           ],
           "kind": "exception_class",
-          "origin_module": "janiform.seasonality",
+          "origin_module": "janiform.seasonality.errors",
           "qualname": "SeasonalityInputValidationError"
         },
         "build_hourly_factor_contract": {
@@ -6325,7 +6325,7 @@
           "base_classes": [],
           "constructor_signature": "(native_result: 'object') -> 'None'",
           "kind": "class",
-          "origin_module": "janiform.seasonality",
+          "origin_module": "janiform.seasonality.artifacts",
           "qualname": "DayOfWeekSeasonalityEstimate"
         },
         "DayOfWeekSeasonalityEstimatorSettings": {
@@ -6340,7 +6340,7 @@
           "base_classes": [],
           "constructor_signature": "(native_result: 'object') -> 'None'",
           "kind": "class",
-          "origin_module": "janiform.seasonality",
+          "origin_module": "janiform.seasonality.artifacts",
           "qualname": "DayOfYearSeasonalityEstimate"
         },
         "DayOfYearSeasonalityEstimatorSettings": {
@@ -6355,7 +6355,7 @@
           "base_classes": [],
           "constructor_signature": "(native_result: 'object') -> 'None'",
           "kind": "class",
-          "origin_module": "janiform.seasonality",
+          "origin_module": "janiform.seasonality.artifacts",
           "qualname": "DeterministicSeasonalityComposition"
         },
         "INTRADAY_SEASONALITY_ESTIMATE_SCHEMA_VERSION": {
@@ -6366,7 +6366,7 @@
           "base_classes": [],
           "constructor_signature": "(native_result: 'object') -> 'None'",
           "kind": "class",
-          "origin_module": "janiform.seasonality",
+          "origin_module": "janiform.seasonality.artifacts",
           "qualname": "IntradaySeasonalityEstimate"
         },
         "IntradaySeasonalityEstimatorSettings": {
@@ -6437,7 +6437,7 @@
             "BaseException"
           ],
           "kind": "exception_class",
-          "origin_module": "janiform.seasonality",
+          "origin_module": "janiform.seasonality.errors",
           "qualname": "SeasonalityInputValidationError"
         },
         "SeasonalityPreprocessingError": {
@@ -6446,7 +6446,7 @@
             "BaseException"
           ],
           "kind": "exception_class",
-          "origin_module": "janiform.seasonality",
+          "origin_module": "janiform.seasonality.errors",
           "qualname": "SeasonalityPreprocessingError"
         },
         "SessionFilter": {
@@ -6502,7 +6502,7 @@
           "base_classes": [],
           "constructor_signature": "(native_result: 'object') -> 'None'",
           "kind": "class",
-          "origin_module": "janiform.seasonality",
+          "origin_module": "janiform.seasonality.artifacts",
           "qualname": "TimestampEventPreprocessingResult"
         },
         "compose_deterministic_seasonality_signal": {
@@ -6536,6 +6536,216 @@
         "preprocess_timestamp_events": {
           "kind": "function",
           "signature": "(event_records: 'Sequence[Mapping[str, Any]]', *, exchange_code: 'str', calendar_registry: 'CalendarRegistry', timestamp_field_name: 'str' = 'timestamp', session_filter: 'SessionFilter' = <SessionFilter.OPEN_ONLY: 'open_only'>, sparse_hour_event_threshold: 'int' = 1) -> 'TimestampEventPreprocessingResult'"
+        }
+      }
+    },
+    "janiform.seasonality.contracts": {
+      "exports": [
+        "DAY_OF_WEEK_SEASONALITY_ESTIMATE_SCHEMA_VERSION",
+        "DAY_OF_YEAR_SEASONALITY_ESTIMATE_SCHEMA_VERSION",
+        "DEFAULT_SEASONALITY_ESTIMATOR_VERSION",
+        "DETERMINISTIC_SEASONALITY_COMPOSITION_SCHEMA_VERSION",
+        "DayOfWeekSeasonalityEstimatorSettings",
+        "DayOfYearSeasonalityEstimatorSettings",
+        "INTRADAY_SEASONALITY_ESTIMATE_SCHEMA_VERSION",
+        "IntradaySeasonalityEstimatorSettings",
+        "IntradaySmoothingKernel",
+        "PREPROCESSED_TIMESTAMP_EVENT_SCHEMA_VERSION",
+        "SEASONALITY_DIAGNOSTICS_BATCH_REPORT_SCHEMA_VERSION",
+        "SEASONALITY_DIAGNOSTICS_REPORT_SCHEMA_VERSION",
+        "ScheduledEventOverlayDefinition",
+        "SessionFilter",
+        "TIMESTAMP_EVENT_INPUT_SCHEMA",
+        "TIMESTAMP_EVENT_INPUT_SCHEMA_VERSION",
+        "TimestampEventInputSchema",
+        "load_scheduled_event_overlay_definitions"
+      ],
+      "module_name": "janiform.seasonality.contracts",
+      "schema_identifiers": [
+        {
+          "name": "DAY_OF_WEEK_SEASONALITY_ESTIMATE_SCHEMA_VERSION",
+          "public_exported": true,
+          "value": "seasonality.day_of_week.estimate.v1"
+        },
+        {
+          "name": "DAY_OF_YEAR_SEASONALITY_ESTIMATE_SCHEMA_VERSION",
+          "public_exported": true,
+          "value": "seasonality.day_of_year.estimate.v1"
+        },
+        {
+          "name": "DEFAULT_SEASONALITY_ESTIMATOR_VERSION",
+          "public_exported": true,
+          "value": "seasonality_estimator.v1"
+        },
+        {
+          "name": "DETERMINISTIC_SEASONALITY_COMPOSITION_SCHEMA_VERSION",
+          "public_exported": true,
+          "value": "seasonality.deterministic.composition.v1"
+        },
+        {
+          "name": "INTRADAY_SEASONALITY_ESTIMATE_SCHEMA_VERSION",
+          "public_exported": true,
+          "value": "seasonality.intraday.estimate.v1"
+        },
+        {
+          "name": "PREPROCESSED_TIMESTAMP_EVENT_SCHEMA_VERSION",
+          "public_exported": true,
+          "value": "seasonality.timestamp_event.preprocessed.v1"
+        },
+        {
+          "name": "SEASONALITY_DIAGNOSTICS_BATCH_REPORT_SCHEMA_VERSION",
+          "public_exported": true,
+          "value": "seasonality.diagnostics.batch.v1"
+        },
+        {
+          "name": "SEASONALITY_DIAGNOSTICS_REPORT_SCHEMA_VERSION",
+          "public_exported": true,
+          "value": "seasonality.diagnostics.report.v1"
+        },
+        {
+          "name": "TIMESTAMP_EVENT_INPUT_SCHEMA_VERSION",
+          "public_exported": true,
+          "value": "seasonality.timestamp_event.v1"
+        }
+      ],
+      "symbols": {
+        "DAY_OF_WEEK_SEASONALITY_ESTIMATE_SCHEMA_VERSION": {
+          "kind": "constant",
+          "value": "seasonality.day_of_week.estimate.v1"
+        },
+        "DAY_OF_YEAR_SEASONALITY_ESTIMATE_SCHEMA_VERSION": {
+          "kind": "constant",
+          "value": "seasonality.day_of_year.estimate.v1"
+        },
+        "DEFAULT_SEASONALITY_ESTIMATOR_VERSION": {
+          "kind": "constant",
+          "value": "seasonality_estimator.v1"
+        },
+        "DETERMINISTIC_SEASONALITY_COMPOSITION_SCHEMA_VERSION": {
+          "kind": "constant",
+          "value": "seasonality.deterministic.composition.v1"
+        },
+        "DayOfWeekSeasonalityEstimatorSettings": {
+          "field_names": [
+            "minimum_bucket_events",
+            "pseudocount"
+          ],
+          "kind": "contract_model",
+          "signature": "(minimum_bucket_events: 'int' = 1, pseudocount: 'float' = 1e-06) -> 'None'"
+        },
+        "DayOfYearSeasonalityEstimatorSettings": {
+          "field_names": [
+            "minimum_bucket_events",
+            "pseudocount"
+          ],
+          "kind": "contract_model",
+          "signature": "(minimum_bucket_events: 'int' = 1, pseudocount: 'float' = 1e-06) -> 'None'"
+        },
+        "INTRADAY_SEASONALITY_ESTIMATE_SCHEMA_VERSION": {
+          "kind": "constant",
+          "value": "seasonality.intraday.estimate.v1"
+        },
+        "IntradaySeasonalityEstimatorSettings": {
+          "field_names": [
+            "minutes_per_bin",
+            "smoothing_kernel",
+            "smoothing_bandwidth_bins",
+            "minimum_bin_events",
+            "pseudocount"
+          ],
+          "kind": "contract_model",
+          "signature": "(minutes_per_bin: 'int' = 1, smoothing_kernel: 'IntradaySmoothingKernel' = <IntradaySmoothingKernel.GAUSSIAN: 'gaussian'>, smoothing_bandwidth_bins: 'float' = 3.0, minimum_bin_events: 'int' = 1, pseudocount: 'float' = 1e-06) -> 'None'"
+        },
+        "IntradaySmoothingKernel": {
+          "kind": "enum",
+          "members": [
+            {
+              "name": "GAUSSIAN",
+              "value": "gaussian"
+            },
+            {
+              "name": "UNIFORM",
+              "value": "uniform"
+            }
+          ]
+        },
+        "PREPROCESSED_TIMESTAMP_EVENT_SCHEMA_VERSION": {
+          "kind": "constant",
+          "value": "seasonality.timestamp_event.preprocessed.v1"
+        },
+        "SEASONALITY_DIAGNOSTICS_BATCH_REPORT_SCHEMA_VERSION": {
+          "kind": "constant",
+          "value": "seasonality.diagnostics.batch.v1"
+        },
+        "SEASONALITY_DIAGNOSTICS_REPORT_SCHEMA_VERSION": {
+          "kind": "constant",
+          "value": "seasonality.diagnostics.report.v1"
+        },
+        "ScheduledEventOverlayDefinition": {
+          "field_names": [
+            "overlay_id",
+            "start_timestamp_utc",
+            "end_timestamp_utc",
+            "log_adjustment",
+            "precedence",
+            "enabled",
+            "source_label"
+          ],
+          "kind": "contract_model",
+          "signature": "(overlay_id: 'str', start_timestamp_utc: 'str | datetime', end_timestamp_utc: 'str | datetime', log_adjustment: 'float', precedence: 'int' = 0, enabled: 'bool' = True, source_label: 'str' = 'configuration') -> 'None'"
+        },
+        "SessionFilter": {
+          "kind": "enum",
+          "members": [
+            {
+              "name": "ALL",
+              "value": "all"
+            },
+            {
+              "name": "OPEN_ONLY",
+              "value": "open_only"
+            },
+            {
+              "name": "CLOSED_ONLY",
+              "value": "closed_only"
+            }
+          ]
+        },
+        "TIMESTAMP_EVENT_INPUT_SCHEMA": {
+          "kind": "constant",
+          "value": {
+            "accepted_timestamp_types": [
+              "datetime",
+              "RFC3339 / ISO-8601 string"
+            ],
+            "ordering_policy": "output is sorted by normalized UTC timestamp and then input position",
+            "required_fields": [
+              "timestamp"
+            ],
+            "schema_version": "seasonality.timestamp_event.v1",
+            "timestamp_field_name": "timestamp",
+            "timezone_requirement": "timestamp values must include timezone information"
+          }
+        },
+        "TIMESTAMP_EVENT_INPUT_SCHEMA_VERSION": {
+          "kind": "constant",
+          "value": "seasonality.timestamp_event.v1"
+        },
+        "TimestampEventInputSchema": {
+          "field_names": [
+            "schema_version",
+            "required_fields",
+            "timestamp_field_name",
+            "accepted_timestamp_types",
+            "timezone_requirement",
+            "ordering_policy"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', required_fields: 'tuple[str, ...]', timestamp_field_name: 'str', accepted_timestamp_types: 'tuple[str, ...]', timezone_requirement: 'str', ordering_policy: 'str') -> 'None'"
+        },
+        "load_scheduled_event_overlay_definitions": {
+          "kind": "function",
+          "signature": "(overlay_configuration_records: 'Sequence[Mapping[str, Any]]') -> 'list[ScheduledEventOverlayDefinition]'"
         }
       }
     },

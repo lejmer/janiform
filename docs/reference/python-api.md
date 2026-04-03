@@ -113,6 +113,21 @@ The public contract submodule is:
 
 - `janiform.hourly_factors.contracts`
 
+### `janiform.seasonality`
+
+Timestamp preprocessing, seasonality estimation, and diagnostics workflows. Representative public symbols include:
+
+- `SessionFilter`
+- `IntradaySmoothingKernel`
+- `ScheduledEventOverlayDefinition`
+- `preprocess_timestamp_events`
+- `estimate_intraday_seasonality`
+- `generate_seasonality_diagnostics_report`
+
+The public contract submodule is:
+
+- `janiform.seasonality.contracts`
+
 ### `janiform.validation`
 
 Regression and behavior-validation entrypoints. Representative public symbols include:

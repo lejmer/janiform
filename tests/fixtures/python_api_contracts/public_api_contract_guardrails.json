@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale.v1",
-  "approved_snapshot_sha256": "233d767c87bb8ae5d9bf1bd87d6dcfe2f94e5a8a96c41f23671691cc663ec4ea",
+  "approved_snapshot_sha256": "d4b0e7e07e3572e077e8baf127f41874b8e39456f258fe931e11a22b13ac4c02",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -775,6 +775,32 @@
         "janiform.stylized_facts.contracts",
         "janiform.validation",
         "janiform.validation.contracts"
+      ]
+    },
+    {
+      "approved_on": "2026-04-03",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Hourly-factor source, settings, and schema dataclasses are now ContractModel contracts owned by a dedicated janiform.hourly_factors.contracts submodule, while the public root stays a curated package that re-exports workflows and artifacts without keeping all implementation and contract types inside one oversized module.",
+      "snapshot_sha256": "4977afb60c4e90793b183f824bb2a01ce2146713166cbe22b9cf4312bb73ffce",
+      "summary": "Approve the package-owned hourly-factor contracts submodule and ContractModel dataclasses.",
+      "updated_surfaces": [
+        "janiform.hourly_factors",
+        "janiform.hourly_factors.contracts"
+      ]
+    },
+    {
+      "approved_on": "2026-04-03",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Seasonality now follows the same package-owned public-surface pattern as other domains: enums and request or schema dataclasses live in janiform.seasonality.contracts, native-result wrappers live in internal artifact modules, and the root package stays a curated re-export surface instead of one monolithic file.",
+      "snapshot_sha256": "d4b0e7e07e3572e077e8baf127f41874b8e39456f258fe931e11a22b13ac4c02",
+      "summary": "Approve the package-owned seasonality contracts submodule and split the seasonality monolith.",
+      "updated_surfaces": [
+        "janiform.seasonality",
+        "janiform.seasonality.contracts"
       ]
     }
   ],

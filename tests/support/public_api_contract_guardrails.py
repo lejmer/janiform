@@ -26,6 +26,7 @@ PUBLIC_CONTRACT_MODULE_NAMES: tuple[str, ...] = (
     "janiform.mean_reversion",
     "janiform.mean_reversion.contracts",
     "janiform.seasonality",
+    "janiform.seasonality.contracts",
     "janiform.simulation",
     "janiform.simulation.coarse",
     "janiform.simulation.seeded",

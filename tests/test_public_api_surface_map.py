@@ -12,6 +12,7 @@ import janiform.hourly_factors as hourly_factors_module
 import janiform.mean_reversion as mean_reversion_module
 import janiform.pricing as pricing_module
 import janiform.risk as risk_module
+import janiform.seasonality as seasonality_module
 import janiform.stylized_facts as stylized_facts_module
 import janiform.simulation as simulation_module
 import janiform.validation as validation_module
@@ -86,6 +87,8 @@ def test_public_and_internal_module_intent_is_explicit() -> None:
         "janiform.hourly_factors.contracts",
         "janiform.mean_reversion",
         "janiform.mean_reversion.contracts",
+        "janiform.seasonality",
+        "janiform.seasonality.contracts",
         "janiform.simulation",
         "janiform.simulation.coarse",
         "janiform.simulation.seeded",
@@ -451,6 +454,38 @@ def test_hourly_factor_contract_submodule_is_supported_domain_import() -> None:
         hourly_factors_module.HourlySeasonalityProviderExplicitSource
         is hourly_factor_contracts_module.HourlySeasonalityProviderExplicitSource
     )
+
+
+def test_seasonality_public_module_is_a_package_with_curated_exports() -> None:
+    assert hasattr(seasonality_module, "__path__")
+
+    expected_exports = {
+        "IntradaySmoothingKernel",
+        "SessionFilter",
+        "ScheduledEventOverlayDefinition",
+        "preprocess_timestamp_events",
+        "estimate_intraday_seasonality",
+        "generate_seasonality_diagnostics_report",
+    }
+
+    assert expected_exports <= set(seasonality_module.__all__)
+    assert expected_exports <= set(dir(seasonality_module))
+
+
+def test_seasonality_contract_submodule_is_supported_domain_import() -> None:
+    seasonality_contracts_module = import_module("janiform.seasonality.contracts")
+
+    expected_exports = {
+        "IntradaySeasonalityEstimatorSettings",
+        "IntradaySmoothingKernel",
+        "ScheduledEventOverlayDefinition",
+        "SessionFilter",
+        "TimestampEventInputSchema",
+    }
+
+    assert expected_exports <= set(seasonality_contracts_module.__all__)
+    assert expected_exports <= set(dir(seasonality_contracts_module))
+    assert seasonality_module.SessionFilter is seasonality_contracts_module.SessionFilter
 
 
 def test_private_modules_are_not_exposed_through_public_exports() -> None:
