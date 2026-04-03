@@ -10,7 +10,7 @@ Install Janiform from a source checkout with the bootstrap scripts below. They c
 | Rust | 1.89 or newer |
 | Optional | `uv` for environment management |
 
-## Linux and WSL
+## Linux
 
 ```bash
 ./scripts/bootstrap-linux.sh .venv-linux
@@ -18,7 +18,7 @@ source .venv-linux/bin/activate
 janiform --help
 ```
 
-## Windows PowerShell
+## Windows
 
 ```powershell
 ./scripts/bootstrap-win.ps1 .venv
