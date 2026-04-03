@@ -37,6 +37,8 @@ use super::contracts::{
     AnchoredLocalTiltDomainStatus, AnchoredLocalTiltSolveDiagnostics, VanillaOptionPricingRequest,
     VanillaOptionPricingRequestError,
 };
+use super::time_scaling::intraday_year_fraction;
+
 /// Full return characteristic-function assembly output.
 ///
 /// Equation reference:
@@ -353,7 +355,7 @@ pub(crate) fn target_log_moment_exponent(
 
     Ok((pricing_request.market_inputs.risk_free_rate
         - pricing_request.market_inputs.dividend_yield)
-        * pricing_request.interval_delta
+        * intraday_year_fraction(pricing_request.interval_delta)
         - local_martingale_deviation_adjustment)
 }
 

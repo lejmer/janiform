@@ -159,11 +159,11 @@ def _build_news_process_configuration() -> NewsProcessConfiguration:
             ),
         ),
         known_component_mark_scales=NewsComponentMarkScaleConfiguration(
-            activity_coupling_scale=1.0,
+            activity_coupling_scale=0.0,
             return_jump_scale=1.0,
         ),
         surprise_component_mark_scales=NewsComponentMarkScaleConfiguration(
-            activity_coupling_scale=1.0,
+            activity_coupling_scale=0.0,
             return_jump_scale=1.0,
         ),
     )

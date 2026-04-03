@@ -1,6 +1,7 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 
 use janiform_affine_oracle::affine_oracle::ExponentialAffineTransformIntegrationResult;
@@ -19,13 +20,16 @@ use super::forward_law::{
 };
 use super::fourier::{FourierInversionDiagnostics, FourierInversionEngineSettings};
 use super::implied_volatility::VanillaOptionImpliedVolatilityInversionStatus;
-use super::progress::{PricingProgressEvent, emit_progress_event};
+use super::progress::PricingProgressEvent;
+use super::progress_runtime::PricingProgressReporter;
 use super::runner::{
     VanillaOptionPricingExecutionInput, VanillaOptionPricingIntervalFactors,
     VanillaOptionPricingRunError,
     run_vanilla_option_pricing_with_observer,
 };
-use super::thread_pool::with_pricing_thread_pool;
+use super::thread_pool::{
+    build_pricing_thread_pool, install_pricing_parallelism, resolved_pricing_cpu_count,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -431,10 +435,6 @@ pub fn run_vanilla_option_grouped_batch_pricing_with_observer(
         })?;
 
     let total_groups = execution_input.request.groups.len();
-    emit_progress_event(
-        &mut observer,
-        PricingProgressEvent::group_progress(0, total_groups, Some(0)),
-    );
 
     let driver_parameters = execution_input
         .model_parameters
@@ -446,25 +446,58 @@ pub fn run_vanilla_option_grouped_batch_pricing_with_observer(
 
     let mut groups = Vec::with_capacity(total_groups);
 
-    if observer.is_some() {
+    let pricing_thread_pool = build_pricing_thread_pool(execution_input.cpu_count);
+
+    let progress_reporter = if observer.is_some() {
+        PricingProgressReporter::shared()
+    } else {
+        PricingProgressReporter::disabled()
+    };
+
+    if let Some(observer) = observer.as_deref_mut() {
+        std::thread::scope(|scope| {
+            let worker_progress_reporter = progress_reporter.clone();
+            let execution_input_ref = &execution_input;
+            let groups_ref = &mut groups;
+
+            let worker = scope.spawn(move || {
+                struct FinishOnDrop(PricingProgressReporter);
+
+                impl Drop for FinishOnDrop {
+                    fn drop(&mut self) {
+                        self.0.finish();
+                    }
+                }
+
+                let _finish_guard = FinishOnDrop(worker_progress_reporter.clone());
+
+                run_grouped_batch_body(
+                    execution_input_ref,
+                    total_groups,
+                    driver_parameters,
+                    pricing_thread_pool.as_ref(),
+                    &worker_progress_reporter,
+                    groups_ref,
+                )
+            });
+
+            progress_reporter.poll_until_finished(observer);
+
+            worker.join().map_err(|_| {
+                VanillaOptionGroupedBatchPricingRunError::NodePricingFailure {
+                    message: "pricing progress worker terminated unexpectedly".to_string(),
+                }
+            })?
+        })?;
+    } else {
         run_grouped_batch_body(
             &execution_input,
             total_groups,
             driver_parameters,
-            &mut observer,
+            pricing_thread_pool.as_ref(),
+            &progress_reporter,
             &mut groups,
         )?;
-    } else {
-        with_pricing_thread_pool(execution_input.cpu_count, || {
-            let mut observer = None;
-            run_grouped_batch_body(
-                &execution_input,
-                total_groups,
-                driver_parameters,
-                &mut observer,
-                &mut groups,
-            )
-        })?;
     }
 
     Ok(VanillaOptionGroupedBatchPricingRunResult {
@@ -477,9 +510,16 @@ fn run_grouped_batch_body(
     execution_input: &VanillaOptionGroupedBatchPricingExecutionInput,
     total_groups: usize,
     driver_parameters: NigBuySellDriverParameters,
-    observer: &mut Option<&mut dyn FnMut(PricingProgressEvent)>,
+    pricing_thread_pool: Option<&rayon::ThreadPool>,
+    progress_reporter: &PricingProgressReporter,
     groups: &mut Vec<VanillaOptionGroupedBatchPricingGroupResult>,
 ) -> Result<(), VanillaOptionGroupedBatchPricingRunError> {
+    progress_reporter.emit(PricingProgressEvent::group_progress(
+        0,
+        total_groups,
+        Some(0),
+    ));
+
     for (group_index, group) in execution_input.request.groups.iter().enumerate() {
         let group_result = run_homogeneous_scope(
             execution_input.request.spot,
@@ -491,22 +531,27 @@ fn run_grouped_batch_body(
             execution_input.interval_factors.as_slice(),
             execution_input.optional_output_selection,
             driver_parameters,
-            observer,
+            pricing_thread_pool,
+            execution_input.cpu_count,
+            progress_reporter,
         )
         .map_err(|source| VanillaOptionGroupedBatchPricingRunError::NodePricingFailure {
             message: source,
         })?;
 
         groups.push(group_result);
+
         let next_group_index = if group_index + 1 < total_groups {
             Some(group_index + 1)
         } else {
             None
         };
-        emit_progress_event(
-            observer,
-            PricingProgressEvent::group_progress(group_index + 1, total_groups, next_group_index),
-        );
+
+        progress_reporter.emit(PricingProgressEvent::group_progress(
+            group_index + 1,
+            total_groups,
+            next_group_index,
+        ));
     }
 
     Ok(())
@@ -597,7 +642,9 @@ fn run_homogeneous_scope(
     interval_factors: &[VanillaOptionPricingIntervalFactors],
     optional_output_selection: VanillaOptionPricingOptionalOutputSelection,
     driver_parameters: NigBuySellDriverParameters,
-    observer: &mut Option<&mut dyn FnMut(PricingProgressEvent)>,
+    pricing_thread_pool: Option<&rayon::ThreadPool>,
+    cpu_count: Option<usize>,
+    progress_reporter: &PricingProgressReporter,
 ) -> Result<VanillaOptionGroupedBatchPricingGroupResult, String> {
     let maturity_interval_counts = group
         .maturity_intervals
@@ -606,6 +653,7 @@ fn run_homogeneous_scope(
             pricing_interval_count_from_maturity_interval(*maturity_interval, interval_delta)
         })
         .collect::<Result<Vec<_>, _>>()?;
+
     let mut price_grid = Vec::with_capacity(group.maturity_intervals.len());
     let mut implied_volatility_grid = Vec::with_capacity(group.maturity_intervals.len());
     let mut implied_volatility_inversion_status_grid = Vec::with_capacity(group.maturity_intervals.len());
@@ -615,6 +663,7 @@ fn run_homogeneous_scope(
     let mut maturity_summaries = Vec::with_capacity(group.maturity_intervals.len());
 
     let max_interval_count = maturity_interval_counts.iter().copied().max().unwrap_or(0);
+
     let base_request = base_scope_request(
         spot,
         group.risk_free_rate,
@@ -644,22 +693,21 @@ fn run_homogeneous_scope(
                 filtered_multi_interval_counts.as_slice(),
                 &interval_factors[..max_interval_count],
                 driver_parameters,
-                observer,
+                pricing_thread_pool,
+                cpu_count,
+                progress_reporter,
             )
             .map_err(|source| source.to_string())?,
         )
     };
 
     for (maturity_index, maturity_interval_count) in maturity_interval_counts.iter().enumerate() {
-        emit_progress_event(
-            observer,
-            PricingProgressEvent::maturity_progress(
-                maturity_index,
-                group.maturity_intervals.len(),
-                Some(maturity_index),
-                group.maturity_intervals.len(),
-            ),
-        );
+        progress_reporter.emit(PricingProgressEvent::maturity_progress(
+            maturity_index,
+            group.maturity_intervals.len(),
+            Some(maturity_index),
+            group.maturity_intervals.len(),
+        ));
 
         if *maturity_interval_count == 1 {
             let direct_row = price_direct_fourier_row(
@@ -672,9 +720,12 @@ fn run_homogeneous_scope(
                 fourier_inversion_settings,
                 optional_output_selection,
                 interval_factors[0],
-                observer,
+                pricing_thread_pool,
+                cpu_count,
+                progress_reporter,
             )
             .map_err(|source| source.to_string())?;
+
             price_grid.push(direct_row.price_row);
             implied_volatility_grid.push(direct_row.implied_volatility_row);
             implied_volatility_inversion_status_grid.push(direct_row.status_row);
@@ -682,6 +733,7 @@ fn run_homogeneous_scope(
             discount_factor_grid.push(direct_row.discount_factor_row);
             boundary_state_norm_grid.push(direct_row.boundary_state_norm_row);
             maturity_summaries.push(direct_row.maturity_summary);
+
             continue;
         }
 
@@ -698,13 +750,16 @@ fn run_homogeneous_scope(
                     group.maturity_intervals[maturity_index]
                 )
             })?;
+
         let priced_strikes = price_terminal_snapshot_strikes(
             &base_request,
             terminal_snapshot,
             group.strikes.as_slice(),
             maturity_index,
             group.maturity_intervals.len(),
-            observer,
+            pricing_thread_pool,
+            cpu_count,
+            progress_reporter,
         );
 
         price_grid.push(priced_strikes.iter().map(|node| node.price).collect());
@@ -734,15 +789,12 @@ fn run_homogeneous_scope(
         ));
     }
 
-    emit_progress_event(
-        observer,
-        PricingProgressEvent::maturity_progress(
-            group.maturity_intervals.len(),
-            group.maturity_intervals.len(),
-            None,
-            group.maturity_intervals.len(),
-        ),
-    );
+    progress_reporter.emit(PricingProgressEvent::maturity_progress(
+        group.maturity_intervals.len(),
+        group.maturity_intervals.len(),
+        None,
+        group.maturity_intervals.len(),
+    ));
 
     Ok(VanillaOptionGroupedBatchPricingGroupResult {
         payoff_type: group.payoff_type,
@@ -780,37 +832,17 @@ fn price_direct_fourier_row(
     fourier_inversion_settings: Option<FourierInversionEngineSettings>,
     optional_output_selection: VanillaOptionPricingOptionalOutputSelection,
     interval_factor: VanillaOptionPricingIntervalFactors,
-    observer: &mut Option<&mut dyn FnMut(PricingProgressEvent)>,
+    pricing_thread_pool: Option<&rayon::ThreadPool>,
+    cpu_count: Option<usize>,
+    progress_reporter: &PricingProgressReporter,
 ) -> Result<DirectFourierRow, VanillaOptionPricingRunError> {
-    let mut price_row = Vec::with_capacity(group.strikes.len());
-    let mut implied_volatility_row = Vec::with_capacity(group.strikes.len());
-    let mut status_row = Vec::with_capacity(group.strikes.len());
-    let mut forward_price_row = Vec::with_capacity(group.strikes.len());
-    let mut discount_factor_row = Vec::with_capacity(group.strikes.len());
-    let mut boundary_state_norm_row = Vec::with_capacity(group.strikes.len());
-    let mut representative_transform = None;
-    let mut integration_quality = None;
-    let mut interval_summaries = Vec::new();
-
     let internal_output_selection = VanillaOptionPricingOptionalOutputSelection::new(true, true, false);
 
-    for (strike_index, strike) in group.strikes.iter().enumerate() {
-        emit_progress_event(
-            observer,
-            PricingProgressEvent::strike_pricing_progress(
-                strike_index,
-                group.strikes.len(),
-                Some(maturity_index),
-                Some(group.maturity_intervals.len()),
-                Some(strike_index),
-                group.strikes.len(),
-            ),
-        );
-
+    let solve_strike = |strike: f64| {
         let mut request = VanillaOptionPricingRequest::new_with_interval_delta(
             VanillaOptionPricingMarketInputs::new(
                 spot,
-                *strike,
+                strike,
                 group.maturity_intervals[maturity_index],
                 group.risk_free_rate,
                 group.dividend_yield,
@@ -822,6 +854,7 @@ fn price_direct_fourier_row(
             model_parameters.clone(),
             interval_delta,
         );
+
         if let Some(settings) = fourier_inversion_settings {
             request = request.with_fourier_inversion_settings(settings);
         }
@@ -835,6 +868,54 @@ fn price_direct_fourier_row(
             None,
         )?;
 
+        Ok::<_, VanillaOptionPricingRunError>(run_result)
+    };
+
+    progress_reporter.start_strike_pricing(
+        maturity_index,
+        group.maturity_intervals.len(),
+        group.strikes.len(),
+    );
+
+    let solved_strikes = if resolved_pricing_cpu_count(cpu_count) <= 1 {
+        group
+            .strikes
+            .iter()
+            .copied()
+            .map(|strike| {
+                let run_result = solve_strike(strike)?;
+                progress_reporter.advance_strike_pricing(1);
+                Ok::<_, VanillaOptionPricingRunError>(run_result)
+            })
+            .collect::<Result<Vec<_>, _>>()?
+    } else {
+        install_pricing_parallelism(pricing_thread_pool, || {
+            group
+                .strikes
+                .par_iter()
+                .copied()
+                .map(|strike| {
+                    let run_result = solve_strike(strike)?;
+                    progress_reporter.advance_strike_pricing(1);
+                    Ok::<_, VanillaOptionPricingRunError>(run_result)
+                })
+                .collect::<Result<Vec<_>, _>>()
+        })?
+    };
+
+    progress_reporter.finish_strike_pricing();
+
+    let mut price_row = Vec::with_capacity(group.strikes.len());
+    let mut implied_volatility_row = Vec::with_capacity(group.strikes.len());
+    let mut status_row = Vec::with_capacity(group.strikes.len());
+    let mut forward_price_row = Vec::with_capacity(group.strikes.len());
+    let mut discount_factor_row = Vec::with_capacity(group.strikes.len());
+    let mut boundary_state_norm_row = Vec::with_capacity(group.strikes.len());
+    let mut representative_transform = None;
+    let mut integration_quality = None;
+    let mut interval_summaries = Vec::new();
+
+    for run_result in solved_strikes {
         price_row.push(run_result.response.price);
         implied_volatility_row.push(run_result.response.implied_volatility);
         status_row.push(run_result.response.implied_volatility_inversion_status);
@@ -860,18 +941,6 @@ fn price_direct_fourier_row(
             }
         }
     }
-
-    emit_progress_event(
-        observer,
-        PricingProgressEvent::strike_pricing_progress(
-            group.strikes.len(),
-            group.strikes.len(),
-            Some(maturity_index),
-            Some(group.maturity_intervals.len()),
-            None,
-            group.strikes.len(),
-        ),
-    );
 
     Ok(DirectFourierRow {
         price_row,
@@ -975,6 +1044,7 @@ fn base_scope_request(
         model_parameters,
         interval_delta,
     )?;
+
     if let Some(settings) = fourier_inversion_settings {
         request = request.with_fourier_inversion_settings(settings);
     }
@@ -993,6 +1063,7 @@ fn pricing_interval_count_from_maturity_interval(
             "maturity_interval {maturity_interval} must be a positive exact multiple of interval_delta {interval_delta}"
         ));
     }
+
     Ok(interval_count)
 }
 
@@ -1006,6 +1077,7 @@ fn validate_finite(
             value,
         });
     }
+
     Ok(())
 }
 
@@ -1019,5 +1091,6 @@ fn validate_positive_finite(
             value,
         });
     }
+
     Ok(())
 }

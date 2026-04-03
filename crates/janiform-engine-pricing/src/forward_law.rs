@@ -1,4 +1,4 @@
-use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use janiform_affine_oracle::affine_oracle::ExponentialAffineTransformIntegrationResult;
 use janiform_foundations::complex_math::{ComplexScalar, complex_exponential, complex_multiply};
@@ -11,7 +11,9 @@ use super::contracts::{
 use super::implied_volatility::{
     VanillaOptionImpliedVolatilityInversionOutcome, invert_vanilla_option_implied_volatility,
 };
-use super::progress::{PricingProgressEvent, emit_progress_event};
+use super::probability_projection::probability_mass_from_sampled_cdf_values;
+use super::progress::PricingProgressEvent;
+use super::progress_runtime::PricingProgressReporter;
 use super::runner::{
     DeviationGrid, PricingCharacteristicFunctionEvaluation, RiskNeutralAnchorMaterialization,
     VanillaOptionPricingIntervalFactors, VanillaOptionPricingRunError, build_deviation_grid,
@@ -20,6 +22,10 @@ use super::runner::{
     evaluate_core_log_return_characteristic_function_under_local_measure,
     resolve_local_transition_theta,
 };
+use super::thread_pool::{
+    install_pricing_parallelism, resolved_pricing_cpu_count,
+};
+use super::time_scaling::intraday_year_fraction;
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct ForwardLawTerminalSnapshot {
@@ -52,7 +58,9 @@ pub(crate) fn solve_forward_law_scope(
     maturity_interval_counts: &[usize],
     interval_factors: &[VanillaOptionPricingIntervalFactors],
     driver_parameters: NigBuySellDriverParameters,
-    observer: &mut Option<&mut dyn FnMut(PricingProgressEvent)>,
+    pricing_thread_pool: Option<&rayon::ThreadPool>,
+    cpu_count: Option<usize>,
+    progress_reporter: &PricingProgressReporter,
 ) -> Result<ForwardLawScopeSolution, VanillaOptionPricingRunError> {
     let risk_neutral_anchor_materialization = build_pricing_risk_neutral_anchor_materialization(
         pricing_request,
@@ -62,6 +70,7 @@ pub(crate) fn solve_forward_law_scope(
     )?;
 
     let mut unique_maturity_interval_counts = maturity_interval_counts.to_vec();
+
     unique_maturity_interval_counts.sort_unstable();
     unique_maturity_interval_counts.dedup();
 
@@ -88,7 +97,9 @@ pub(crate) fn solve_forward_law_scope(
         coarse_grid,
         refined_grid,
         unique_maturity_interval_counts.as_slice(),
-        observer,
+        pricing_thread_pool,
+        cpu_count,
+        progress_reporter,
     )?;
 
     let terminal_snapshots = maturity_interval_counts
@@ -120,127 +131,97 @@ pub(crate) fn price_terminal_snapshot_strikes(
     strikes: &[f64],
     maturity_index: usize,
     total_maturities: usize,
-    observer: &mut Option<&mut dyn FnMut(PricingProgressEvent)>,
+    pricing_thread_pool: Option<&rayon::ThreadPool>,
+    cpu_count: Option<usize>,
+    progress_reporter: &PricingProgressReporter,
 ) -> Vec<ForwardPricedStrike> {
     let current_observed_log_price = pricing_request.boundary_input.observed_boundary_state.observed_log_price;
     let payoff_type = pricing_request.payoff.payoff_type;
     let maturity_interval = terminal_snapshot.maturity_interval;
+
+    let maturity_year_fraction = intraday_year_fraction(maturity_interval);
+
     let risk_free_rate = pricing_request.market_inputs.risk_free_rate;
     let dividend_yield = pricing_request.market_inputs.dividend_yield;
+
     let boundary_state = pricing_request.boundary_input.hawkes_boundary_state;
     let boundary_state_norm = (boundary_state.y_plus_plus * boundary_state.y_plus_plus
         + boundary_state.y_plus_minus * boundary_state.y_plus_minus
         + boundary_state.y_minus_plus * boundary_state.y_minus_plus
         + boundary_state.y_minus_minus * boundary_state.y_minus_minus)
         .sqrt();
+
     let forward_price = pricing_request.market_inputs.spot
-        * ((risk_free_rate - dividend_yield) * maturity_interval).exp();
-    let discount_factor = (-risk_free_rate * maturity_interval).exp();
+        * ((risk_free_rate - dividend_yield) * maturity_year_fraction).exp();
+    let discount_factor = (-risk_free_rate * maturity_year_fraction).exp();
 
-    if observer.is_some() {
-        let mut priced_strikes = Vec::with_capacity(strikes.len());
-        for (strike_index, strike) in strikes.iter().enumerate() {
-            emit_progress_event(
-                observer,
-                PricingProgressEvent::strike_pricing_progress(
-                    strike_index,
-                    strikes.len(),
-                    Some(maturity_index),
-                    Some(total_maturities),
-                    Some(strike_index),
-                    strikes.len(),
-                ),
-            );
 
-            let price = discount_factor
-                * terminal_snapshot
-                    .terminal_probability_mass
-                    .iter()
-                    .zip(terminal_snapshot.terminal_deviation_nodes.iter())
-                    .map(|(probability_mass, deviation)| {
-                        let terminal_spot = pricing_request.market_inputs.spot
-                            * (terminal_snapshot.terminal_anchor_value + *deviation
-                                - current_observed_log_price)
-                                .exp();
-                        probability_mass
-                            * payoff_value(payoff_type, terminal_spot, *strike)
-                    })
-                    .sum::<f64>();
+    let price_strike = |strike: f64| {
+        let price = discount_factor
+            * terminal_snapshot
+                .terminal_probability_mass
+                .iter()
+                .zip(terminal_snapshot.terminal_deviation_nodes.iter())
+                .map(|(probability_mass, deviation)| {
+                    let terminal_spot = pricing_request.market_inputs.spot
+                        * (terminal_snapshot.terminal_anchor_value + *deviation
+                            - current_observed_log_price)
+                            .exp();
+                    probability_mass * payoff_value(payoff_type, terminal_spot, strike)
+                })
+                .sum::<f64>();
 
-            let implied_volatility_outcome = invert_vanilla_option_implied_volatility(
-                VanillaOptionPricingMarketInputs::new(
-                    pricing_request.market_inputs.spot,
-                    *strike,
-                    maturity_interval,
-                    risk_free_rate,
-                    dividend_yield,
-                ),
-                payoff_type,
-                price,
-            );
-
-            priced_strikes.push(ForwardPricedStrike {
-                price,
-                implied_volatility_outcome,
-                forward_price,
-                discount_factor,
-                boundary_state_norm,
-            });
-        }
-
-        emit_progress_event(
-            observer,
-            PricingProgressEvent::strike_pricing_progress(
-                strikes.len(),
-                strikes.len(),
-                Some(maturity_index),
-                Some(total_maturities),
-                None,
-                strikes.len(),
+        let implied_volatility_outcome = invert_vanilla_option_implied_volatility(
+            VanillaOptionPricingMarketInputs::new(
+                pricing_request.market_inputs.spot,
+                strike,
+                maturity_interval,
+                risk_free_rate,
+                dividend_yield,
             ),
+            payoff_type,
+            price,
         );
 
-        return priced_strikes;
-    }
 
-    strikes
-        .par_iter()
-        .map(|strike| {
-            let price = discount_factor
-                * terminal_snapshot
-                    .terminal_probability_mass
-                    .iter()
-                    .zip(terminal_snapshot.terminal_deviation_nodes.iter())
-                    .map(|(probability_mass, deviation)| {
-                        let terminal_spot = pricing_request.market_inputs.spot
-                            * (terminal_snapshot.terminal_anchor_value + *deviation
-                                - current_observed_log_price)
-                                .exp();
-                        probability_mass * payoff_value(payoff_type, terminal_spot, *strike)
-                    })
-                    .sum::<f64>();
+        ForwardPricedStrike {
+            price,
+            implied_volatility_outcome,
+            forward_price,
+            discount_factor,
+            boundary_state_norm,
+        }
+    };
 
-            let implied_volatility_outcome = invert_vanilla_option_implied_volatility(
-                VanillaOptionPricingMarketInputs::new(
-                    pricing_request.market_inputs.spot,
-                    *strike,
-                    maturity_interval,
-                    risk_free_rate,
-                    dividend_yield,
-                ),
-                payoff_type,
-                price,
-            );
+    progress_reporter.start_strike_pricing(maturity_index, total_maturities, strikes.len());
 
-            ForwardPricedStrike {
-                price,
-                implied_volatility_outcome,
-                forward_price,
-                discount_factor,
-                boundary_state_norm,
-            }
+    let priced_strikes = if resolved_pricing_cpu_count(cpu_count) <= 1 {
+        strikes
+            .iter()
+            .copied()
+            .map(|strike| {
+                let priced_strike = price_strike(strike);
+                progress_reporter.advance_strike_pricing(1);
+                priced_strike
+            })
+            .collect::<Vec<_>>()
+    } else {
+        install_pricing_parallelism(pricing_thread_pool, || {
+            strikes
+                .par_iter()
+                .copied()
+                .map(|strike| {
+                    let priced_strike = price_strike(strike);
+                    progress_reporter.advance_strike_pricing(1);
+                    priced_strike
+                })
+                .collect::<Vec<_>>()
         })
-        .collect()
+    };
+
+    progress_reporter.finish_strike_pricing();
+
+    priced_strikes
 }
 
 fn build_common_deviation_grid(
@@ -258,12 +239,14 @@ fn build_common_deviation_grid(
         for strike in strikes {
             let strike_request =
                 pricing_request_for_strike(pricing_request, *strike, *maturity_interval_count)?;
+
             let strike_grid = build_deviation_grid(
                 &strike_request,
                 risk_neutral_anchor_materialization,
                 *maturity_interval_count,
                 refined,
             )?;
+
             let strike_step = if strike_grid.node_count <= 1 {
                 0.0
             } else {
@@ -311,9 +294,12 @@ fn propagate_terminal_probability_mass(
     coarse_grid: DeviationGrid,
     refined_grid: DeviationGrid,
     requested_maturity_interval_counts: &[usize],
-    observer: &mut Option<&mut dyn FnMut(PricingProgressEvent)>,
+    pricing_thread_pool: Option<&rayon::ThreadPool>,
+    cpu_count: Option<usize>,
+    progress_reporter: &PricingProgressReporter,
 ) -> Result<Vec<ForwardLawTerminalSnapshot>, VanillaOptionPricingRunError> {
     let nodes = refined_grid.nodes();
+
     let initial_probability_mass = interpolate_initial_probability_mass(
         refined_grid,
         pricing_request.boundary_input.observed_boundary_state.deviation,
@@ -321,21 +307,19 @@ fn propagate_terminal_probability_mass(
 
     let frequency_grid =
         SharedMidpointFrequencyGrid::from_settings(pricing_request.resolved_fourier_inversion_settings());
+
     let mut current_probability_mass = initial_probability_mass;
     let mut interval_diagnostics = Vec::with_capacity(interval_factors.len());
     let mut representative_transform_diagnostics = None;
     let mut terminal_snapshots = Vec::with_capacity(requested_maturity_interval_counts.len());
 
     for (interval_index, interval_factor) in interval_factors.iter().copied().enumerate() {
-        emit_progress_event(
-            observer,
-            PricingProgressEvent::interval_progress(
-                interval_index,
-                interval_factors.len(),
-                Some(interval_index),
-                interval_factors.len(),
-            ),
-        );
+        progress_reporter.emit(PricingProgressEvent::interval_progress(
+            interval_index,
+            interval_factors.len(),
+            Some(interval_index),
+            interval_factors.len(),
+        ));
 
         let transition_matrix = build_transition_matrix(
             pricing_request,
@@ -345,7 +329,9 @@ fn propagate_terminal_probability_mass(
             refined_grid,
             interval_index,
             &frequency_grid,
-            observer,
+            pricing_thread_pool,
+            cpu_count,
+            progress_reporter,
         )?;
 
         let mut next_probability_mass = vec![0.0; nodes.len()];
@@ -358,7 +344,9 @@ fn propagate_terminal_probability_mass(
         }
 
         current_probability_mass = next_probability_mass;
+
         interval_diagnostics.push(transition_matrix.interval_diagnostics);
+
         if representative_transform_diagnostics.is_none() {
             representative_transform_diagnostics =
                 transition_matrix.representative_transform_diagnostics;
@@ -393,15 +381,12 @@ fn propagate_terminal_probability_mass(
         }
     }
 
-    emit_progress_event(
-        observer,
-        PricingProgressEvent::interval_progress(
-            interval_factors.len(),
-            interval_factors.len(),
-            None,
-            interval_factors.len(),
-        ),
-    );
+    progress_reporter.emit(PricingProgressEvent::interval_progress(
+        interval_factors.len(),
+        interval_factors.len(),
+        None,
+        interval_factors.len(),
+    ));
 
     Ok(terminal_snapshots)
 }
@@ -433,8 +418,10 @@ fn interpolate_initial_probability_mass(
     let interpolation_weight = (observed_deviation - lower_node) / step;
 
     let mut probability_mass = vec![0.0; deviation_grid.node_count];
+
     probability_mass[lower_index] = 1.0 - interpolation_weight;
     probability_mass[lower_index + 1] = interpolation_weight;
+
     probability_mass
 }
 
@@ -453,7 +440,9 @@ fn build_transition_matrix(
     deviation_grid: DeviationGrid,
     interval_index: usize,
     frequency_grid: &SharedMidpointFrequencyGrid,
-    observer: &mut Option<&mut dyn FnMut(PricingProgressEvent)>,
+    pricing_thread_pool: Option<&rayon::ThreadPool>,
+    cpu_count: Option<usize>,
+    progress_reporter: &PricingProgressReporter,
 ) -> Result<IntervalTransitionMatrix, VanillaOptionPricingRunError> {
     let nodes = deviation_grid.nodes();
     let boundaries = deviation_grid.boundaries();
@@ -465,97 +454,99 @@ fn build_transition_matrix(
     } else {
         runtime_anchors.end_anchor_values[interval_index - 1]
     };
+
     let current_pressure_state = if interval_index == 0 {
         runtime_anchors.start_pressure_state
     } else {
         runtime_anchors.end_pressure_states[interval_index - 1]
     };
+
     let next_anchor_value = runtime_anchors.end_anchor_values[interval_index];
     let interval_delta = runtime_anchors.interval_deltas[interval_index];
+
     let expected_hawkes_state_before =
         risk_neutral_anchor_materialization.expected_hawkes_state_path[interval_index];
     let expected_hawkes_state_after =
         risk_neutral_anchor_materialization.expected_hawkes_state_path[interval_index + 1];
 
     let solve_row = |deviation: f64| {
-            let local_boundary_input = build_local_boundary_input(
-                pricing_request,
-                global_interval_index,
-                expected_hawkes_state_before,
-                current_anchor_value,
-                current_pressure_state,
-                deviation,
-                interval_delta,
-            )?;
-            let local_request =
-                build_local_pricing_request(pricing_request, local_boundary_input.clone(), interval_delta)?;
-            let (local_transition_theta, _) =
-                resolve_local_transition_theta(&local_request, interval_factor, driver_parameters)?;
-            let local_expectations = derive_local_tilted_interval_expectations(
-                &local_request,
-                driver_parameters,
-                interval_factor,
-                local_transition_theta,
-            )?;
+        let local_boundary_input = build_local_boundary_input(
+            pricing_request,
+            global_interval_index,
+            expected_hawkes_state_before,
+            current_anchor_value,
+            current_pressure_state,
+            deviation,
+            interval_delta,
+        )?;
 
-            let row = transition_probability_row_from_shared_frequency_grid(
-                &local_request,
-                interval_factor,
-                driver_parameters,
-                local_transition_theta,
-                local_expectations.core_expected_increment,
-                &boundaries,
-                frequency_grid,
-            )?;
+        let local_request =
+            build_local_pricing_request(pricing_request, local_boundary_input.clone(), interval_delta)?;
 
-            let row_mass = row.probability_mass.iter().sum::<f64>();
-            let maximum_tail_probability_mass = row.probability_mass[0]
-                .max(row.probability_mass[row.probability_mass.len() - 1]);
-            let probability_mass = row.probability_mass;
+        let (local_transition_theta, _) =
+            resolve_local_transition_theta(&local_request, interval_factor, driver_parameters)?;
 
-            Ok::<_, VanillaOptionPricingRunError>(SolvedTransitionRow {
-                row: probability_mass,
-                maximum_tail_probability_mass,
-                row_probability_mass_error: (row_mass - 1.0).abs(),
-                solved_theta: local_transition_theta,
-                representative_transform_diagnostics: row.representative_transform_diagnostics,
-            })
-        };
+        let local_expectations = derive_local_tilted_interval_expectations(
+            &local_request,
+            driver_parameters,
+            interval_factor,
+            local_transition_theta,
+        )?;
 
-    let row_solutions = if observer.is_some() {
-        let mut solved_rows = Vec::with_capacity(nodes.len());
-        for (row_index, deviation) in nodes.iter().copied().enumerate() {
-            emit_progress_event(
-                observer,
-                PricingProgressEvent::transition_row_progress(
-                    row_index,
-                    nodes.len(),
-                    Some(interval_index),
-                    Some(runtime_anchors.interval_deltas.len()),
-                    Some(row_index),
-                    nodes.len(),
-                ),
-            );
-            solved_rows.push(solve_row(deviation)?);
-        }
-        emit_progress_event(
-            observer,
-            PricingProgressEvent::transition_row_progress(
-                nodes.len(),
-                nodes.len(),
-                Some(interval_index),
-                Some(runtime_anchors.interval_deltas.len()),
-                None,
-                nodes.len(),
-            ),
-        );
-        solved_rows
-    } else {
-        nodes
-            .into_par_iter()
-            .map(solve_row)
-            .collect::<Result<Vec<_>, _>>()?
+        let row = transition_probability_row_from_shared_frequency_grid(
+            &local_request,
+            interval_factor,
+            driver_parameters,
+            local_transition_theta,
+            local_expectations.core_expected_increment,
+            &boundaries,
+            frequency_grid,
+        )?;
+
+        let row_mass = row.probability_mass.iter().sum::<f64>();
+        let maximum_tail_probability_mass = row.probability_mass[0]
+            .max(row.probability_mass[row.probability_mass.len() - 1]);
+        let probability_mass = row.probability_mass;
+
+        Ok::<_, VanillaOptionPricingRunError>(SolvedTransitionRow {
+            row: probability_mass,
+            maximum_tail_probability_mass,
+            row_probability_mass_error: (row_mass - 1.0).abs(),
+            solved_theta: local_transition_theta,
+            representative_transform_diagnostics: row.representative_transform_diagnostics,
+        })
     };
+
+    progress_reporter.start_transition_rows(
+        interval_index,
+        runtime_anchors.interval_deltas.len(),
+        nodes.len(),
+    );
+    let row_solutions = if resolved_pricing_cpu_count(cpu_count) <= 1 {
+        nodes
+            .iter()
+            .copied()
+            .map(|deviation| {
+                let row_solution = solve_row(deviation)?;
+                progress_reporter.advance_transition_rows(1);
+                Ok::<_, VanillaOptionPricingRunError>(row_solution)
+            })
+            .collect::<Result<Vec<_>, _>>()?
+    } else {
+        install_pricing_parallelism(pricing_thread_pool, || {
+            nodes
+                .par_iter()
+                .copied()
+                .map(|deviation| {
+                    let row_solution = solve_row(deviation)?;
+                    progress_reporter.advance_transition_rows(1);
+                    Ok::<_, VanillaOptionPricingRunError>(row_solution)
+                })
+                .collect::<Result<Vec<_>, _>>()
+        })?
+    };
+
+    progress_reporter.finish_transition_rows();
 
     let maximum_tail_probability_mass = row_solutions
         .iter()
@@ -592,9 +583,11 @@ fn build_transition_matrix(
     .map_err(|source| VanillaOptionPricingRunError::InvalidAnchoredRecursionDiagnostics {
         source,
     })?;
+
     let representative_transform_diagnostics = row_solutions
         .iter()
         .find_map(|solution| solution.representative_transform_diagnostics);
+
     let rows = row_solutions
         .into_iter()
         .map(|solution| solution.row)
@@ -648,6 +641,7 @@ fn transition_probability_row_from_shared_frequency_grid(
                 },
             },
         })?;
+
     let news_intensity = interval_factors.news_intensity_input().map_err(|source| {
         VanillaOptionPricingRunError::InvalidExecutionInput {
             source: super::runner::VanillaOptionPricingExecutionInputError::InvalidIntervalFactors {
@@ -669,11 +663,13 @@ fn transition_probability_row_from_shared_frequency_grid(
     )?;
 
     let first_boundary = target_boundaries[0] - shift;
+
     let boundary_step = if target_boundaries.len() <= 1 {
         0.0
     } else {
         target_boundaries[1] - target_boundaries[0]
     };
+
     let (projected_cdf_values, representative_transform_diagnostics) =
         cdf_evaluator.evaluate_uniform_boundaries(
         first_boundary,
@@ -682,14 +678,7 @@ fn transition_probability_row_from_shared_frequency_grid(
         frequency_grid,
     )?;
 
-    let mut row = Vec::with_capacity(projected_cdf_values.len() + 1);
-    row.push(projected_cdf_values[0]);
-
-    for boundary_index in 1..projected_cdf_values.len() {
-        row.push(projected_cdf_values[boundary_index] - projected_cdf_values[boundary_index - 1]);
-    }
-
-    row.push(1.0 - projected_cdf_values[projected_cdf_values.len() - 1]);
+    let row = probability_mass_from_sampled_cdf_values(projected_cdf_values.as_slice());
 
     Ok(TransitionProbabilityRow {
         probability_mass: row,

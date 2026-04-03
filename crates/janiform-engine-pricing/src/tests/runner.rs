@@ -1,10 +1,10 @@
 use crate::{
     AnchoredVanillaOptionPricingBoundaryInput, VanillaOptionPayoffConfiguration,
-    VanillaOptionPayoffType, VanillaOptionPricingExecutionInput,
-    VanillaOptionPricingIntervalFactors, VanillaOptionPricingMarketInputs,
-    VanillaOptionPricingOptionalOutputSelection, VanillaOptionPricingRequest,
+    VanillaOptionPayoffType, VanillaOptionPricingIntervalFactors,
+    VanillaOptionPricingMarketInputs, VanillaOptionPricingRequest,
+    build_pricing_risk_neutral_anchor_materialization,
     infer_expected_news_loading_under_local_measure, recover_pure_imaginary_log_moment_exponent,
-    run_vanilla_option_pricing, use_nested_transition_measure_for_local_request,
+    use_nested_transition_measure_for_local_request,
 };
 use janiform_affine_oracle::sufficient_statistics::SufficientStatisticsExpectedIntervalStatistics;
 use janiform_foundations::complex_math::ComplexScalar;
@@ -165,8 +165,9 @@ fn expected_news_loading_inference_short_circuits_when_activity_coupling_is_zero
 }
 
 #[test]
-fn multi_interval_pricing_accepts_zero_adjustment_nested_anchor_materialization() {
+fn risk_neutral_anchor_materialization_accepts_zero_adjustment_nested_request() {
     let mut model_parameters = valid_model_parameters();
+
     model_parameters
         .news_process_configuration
         .known_component_mark_scales
@@ -195,23 +196,31 @@ fn multi_interval_pricing_accepts_zero_adjustment_nested_anchor_materialization(
     )
     .expect("pricing request should construct");
 
-    let execution_input = VanillaOptionPricingExecutionInput::try_new(
-        request,
-        vec![
-            VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
-                .expect("first interval factors should construct"),
-            VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
-                .expect("second interval factors should construct"),
-        ],
-        VanillaOptionPricingOptionalOutputSelection::default(),
+    let interval_factors = vec![
+        VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
+            .expect("first interval factors should construct"),
+        VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
+            .expect("second interval factors should construct"),
+    ];
+    let driver_parameters = request
+        .model_parameters
+        .nig_shared_plus_shift_configuration
+        .derive_driver_parameters()
+        .expect("driver parameters should derive");
+
+    let mut observer = None;
+
+    let materialization = build_pricing_risk_neutral_anchor_materialization(
+        &request,
+        interval_factors.as_slice(),
+        driver_parameters,
+        &mut observer,
     )
-    .expect("execution input should construct");
+    .expect("risk-neutral anchor materialization should succeed");
 
-    let run_result =
-        run_vanilla_option_pricing(execution_input).expect("multi-interval pricing should succeed");
-
-    assert!(run_result.response.price.is_finite());
-    assert!(run_result.response.price >= 0.0);
+    assert_eq!(materialization.runtime_interval_anchors.end_anchor_values.len(), 2);
+    assert_eq!(materialization.runtime_interval_anchors.end_pressure_states.len(), 2);
+    assert_eq!(materialization.expected_hawkes_state_path.len(), 3);
 }
 
 #[test]

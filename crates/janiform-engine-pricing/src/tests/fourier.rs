@@ -44,7 +44,7 @@ fn fourier_inversion_call_price_matches_black_scholes_sanity_case() {
     .expect("fourier inversion call pricing should succeed");
 
     let expected_call_price =
-        black_scholes_price(market_inputs, volatility, VanillaOptionPayoffType::Call);
+        black_scholes_price(market_inputs, VanillaOptionPayoffType::Call, volatility);
     let absolute_error = (result.price - expected_call_price).abs();
     assert!(
         absolute_error <= 1.0e-3,
@@ -88,7 +88,7 @@ fn fourier_inversion_put_price_matches_black_scholes_sanity_case() {
     .expect("fourier inversion put pricing should succeed");
 
     let expected_put_price =
-        black_scholes_price(market_inputs, volatility, VanillaOptionPayoffType::Put);
+        black_scholes_price(market_inputs, VanillaOptionPayoffType::Put, volatility);
     let absolute_error = (result.price - expected_put_price).abs();
     assert!(
         absolute_error <= 1.0e-3,

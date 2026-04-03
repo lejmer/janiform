@@ -4,6 +4,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 
 use janiform_engine_pricing::{
+    intraday_black_scholes_log_return_characteristic_function as black_scholes_log_return_characteristic_function,
+    intraday_black_scholes_no_arbitrage_price_bounds as no_arbitrage_price_bounds,
+    intraday_black_scholes_price as black_scholes_price,
     FourierInversionContour, FourierInversionDiagnostics, FourierInversionEngineSettings,
     FourierInversionIntegrationStabilityControls, FourierInversionNumericQualityDiagnostics,
     FourierInversionNumericQualityGate, FourierInversionNumericSettings,
@@ -14,10 +17,6 @@ use janiform_engine_pricing::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use support::pricing_reference::{
-    black_scholes_log_return_characteristic_function, black_scholes_price,
-    no_arbitrage_price_bounds,
-};
 use support::validation_fixture::fixtures_root_path;
 
 const PRICING_BENCHMARK_FIXTURE_SCHEMA_VERSION: &str =
@@ -412,8 +411,8 @@ fn pricing_benchmark_fixture_schema_and_metadata_are_valid() {
             // Use Black-Scholes closed form as a stable baseline for fixture values.
             let expected_benchmark_price = black_scholes_price(
                 fixture_case.market_inputs,
-                fixture_case.volatility,
                 fixture_case.payoff_type,
+                fixture_case.volatility,
             );
             assert!(
                 (expected_price - expected_benchmark_price).abs() <= 2.0e-5,

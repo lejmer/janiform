@@ -49,6 +49,8 @@ use super::implied_volatility::invert_vanilla_option_implied_volatility;
 use super::progress::{
     PricingNodeProgress, PricingNodeProgressPhase, emit_node_progress,
 };
+use super::time_scaling::intraday_year_fraction;
+use super::probability_projection::probability_mass_from_sampled_cdf_values;
 
 const OBSERVED_LOG_MOMENT_ARGUMENT_IMAGINARY: f64 = -1.0;
 
@@ -1151,7 +1153,7 @@ fn evaluate_total_observed_log_return_characteristic_function_with_progress(
 
         let mut interval_values: Vec<ComplexScalar> = Vec::with_capacity(nodes.len());
 
-        let mut local_tilt_diagnostics: Vec<super::contracts::AnchoredLocalTiltSolveDiagnostics> =
+        let mut local_tilt_diagnostics: Vec<AnchoredLocalTiltSolveDiagnostics> =
             Vec::with_capacity(nodes.len());
 
         let mut maximum_tail_probability_mass: f64 = 0.0;
@@ -1867,17 +1869,15 @@ fn evolve_expected_hawkes_state_under_local_measure(
     let drifted_state = state_before_update
         .apply_shared_decay_drift(kernel_parameters.beta, pricing_request.interval_delta);
 
-    let post_buy_state = apply_expected_endogenous_jump(
-        drifted_state,
+    let post_buy_state = drifted_state.apply_expected_endogenous_event_jump(
+        janiform_model_kernels::hawkes::HawkesEventSide::Buy,
         kernel_parameters.alpha,
         local_expectations.expected_statistics.expected_n_plus,
-        true,
     );
-    let post_sell_state = apply_expected_endogenous_jump(
-        post_buy_state,
+    let post_sell_state = post_buy_state.apply_expected_endogenous_event_jump(
+        janiform_model_kernels::hawkes::HawkesEventSide::Sell,
         kernel_parameters.alpha,
         local_expectations.expected_statistics.expected_n_minus,
-        false,
     );
 
     post_sell_state
@@ -1890,36 +1890,6 @@ fn evolve_expected_hawkes_state_under_local_measure(
                 message: source.to_string(),
             },
         )
-}
-
-fn apply_expected_endogenous_jump(
-    state: HawkesExcitationState,
-    alpha: janiform_model_kernels::hawkes::HawkesKernelLoadings,
-    expected_count: f64,
-    buy_side: bool,
-) -> HawkesExcitationState {
-    if expected_count == 0.0 {
-        return state;
-    }
-
-    let scaled_alpha = janiform_model_kernels::hawkes::HawkesKernelLoadings {
-        plus_plus: alpha.plus_plus * expected_count,
-        plus_minus: alpha.plus_minus * expected_count,
-        minus_plus: alpha.minus_plus * expected_count,
-        minus_minus: alpha.minus_minus * expected_count,
-    };
-
-    if buy_side {
-        state.apply_endogenous_event_jump(
-            janiform_model_kernels::hawkes::HawkesEventSide::Buy,
-            scaled_alpha,
-        )
-    } else {
-        state.apply_endogenous_event_jump(
-            janiform_model_kernels::hawkes::HawkesEventSide::Sell,
-            scaled_alpha,
-        )
-    }
 }
 
 pub(crate) fn build_local_boundary_input(
@@ -2043,22 +2013,9 @@ fn transition_probability_row(
         )?);
     }
 
-    let mut row = Vec::with_capacity(target_boundaries.len() + 1);
-
-    if projected_cdf_values.is_empty() {
-        row.push(1.0);
-        return Ok(row);
-    }
-
-    row.push(projected_cdf_values[0]);
-
-    for interval_index in 1..projected_cdf_values.len() {
-        row.push(projected_cdf_values[interval_index] - projected_cdf_values[interval_index - 1]);
-    }
-
-    row.push(1.0 - projected_cdf_values[projected_cdf_values.len() - 1]);
-
-    Ok(row)
+    Ok(probability_mass_from_sampled_cdf_values(
+        projected_cdf_values.as_slice(),
+    ))
 }
 
 fn evaluate_shifted_core_cdf_under_local_measure(
@@ -2251,13 +2208,14 @@ fn build_pricing_response(
     price: f64,
 ) -> Result<VanillaOptionPricingResponse, VanillaOptionPricingRunError> {
     let market_inputs = pricing_request.market_inputs;
+    let maturity_year_fraction = intraday_year_fraction(market_inputs.maturity_interval);
 
     let forward_price = market_inputs.spot
         * ((market_inputs.risk_free_rate - market_inputs.dividend_yield)
-            * market_inputs.maturity_interval)
+            * maturity_year_fraction)
             .exp();
 
-    let discount_factor = (-market_inputs.risk_free_rate * market_inputs.maturity_interval).exp();
+    let discount_factor = (-market_inputs.risk_free_rate * maturity_year_fraction).exp();
 
     let boundary_state = pricing_request.boundary_input.hawkes_boundary_state;
     let boundary_state_norm = (boundary_state.y_plus_plus * boundary_state.y_plus_plus

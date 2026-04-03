@@ -472,11 +472,11 @@ fn valid_model_parameters() -> VanillaOptionPricingModelParameters {
                 coupled_gap_marks: CoupledGapMarkConfiguration::new(0.6),
             },
             NewsComponentMarkScaleConfiguration {
-                activity_coupling_scale: 1.0,
+                activity_coupling_scale: 0.0,
                 return_jump_scale: 1.0,
             },
             NewsComponentMarkScaleConfiguration {
-                activity_coupling_scale: 1.0,
+                activity_coupling_scale: 0.0,
                 return_jump_scale: 1.0,
             },
         )

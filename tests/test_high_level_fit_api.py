@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import math
-from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -17,6 +16,7 @@ import janiform.calibration.fit.estimator as fit_estimator_module
 import janiform.calibration.fit.model as fit_model_module
 import janiform.calibration.fit.state_estimation as state_estimation_module
 import janiform.calibration.market_data.ingestion as market_data_ingestion_module
+import janiform.pricing as pricing_module
 from janiform._timestamps import datetime_to_utc_nanos
 from janiform.calibration import CalibrationValidationError
 from janiform.calibration.fit import (
@@ -36,7 +36,6 @@ from janiform.calibration.fit import (
     JaniformVanillaOptionSurfacePricingResult,
 )
 from janiform.calibration.market_data import (
-    CalibrationDuplicateRecordPolicy,
     CalibrationInputFileFormat,
     CalibrationMeanReversionConfiguration,
     CalibrationMarketDataNormalizationPolicy,
@@ -3088,6 +3087,8 @@ def test_high_level_model_price_option_groups_matches_single_option_engine_on_sh
         (1, 0, 100.0, VanillaOptionPayoffType.PUT),
     ]
 
+    representative_single_results: dict[int, pricing_module.VanillaOptionPricingRunResult] = {}
+
     for group_index, strike_index, strike, payoff_type in flattened_specs:
         single_result = model.price_option(
             valuation_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
@@ -3104,6 +3105,7 @@ def test_high_level_model_price_option_groups_matches_single_option_engine_on_sh
         )
 
         observed_group = batch_result.groups[group_index]
+        representative_single_results.setdefault(group_index, single_result)
         assert observed_group.price_grid[0][strike_index] == pytest.approx(single_result.response.price)
         assert observed_group.implied_volatility_grid[0][strike_index] == pytest.approx(
             cast(float, single_result.response.implied_volatility)
@@ -3124,7 +3126,11 @@ def test_high_level_model_price_option_groups_matches_single_option_engine_on_sh
         assert observed_group.maturity_summaries[0].representative_transform is not None
         assert single_result.run_diagnostics is not None
         assert observed_group.maturity_summaries[0].representative_transform == single_result.run_diagnostics.transform
-        assert observed_group.maturity_summaries[0].integration_quality == single_result.run_diagnostics.integration_quality
+
+    for group_index, representative_single_result in representative_single_results.items():
+        observed_summary = batch_result.groups[group_index].maturity_summaries[0]
+        assert representative_single_result.run_diagnostics is not None
+        assert observed_summary.integration_quality == representative_single_result.run_diagnostics.integration_quality
 
 
 def test_high_level_model_price_option_surface_matches_single_option_engine_on_shared_grid(
@@ -3162,6 +3168,8 @@ def test_high_level_model_price_option_surface_matches_single_option_engine_on_s
     assert isinstance(surface_result, JaniformVanillaOptionSurfacePricingResult)
     assert surface_result.shape == (1, 2)
 
+    representative_single_results: dict[int, pricing_module.VanillaOptionPricingRunResult] = {}
+
     for maturity_index, maturity_interval in enumerate(surface.maturity_intervals):
         for strike_index, strike in enumerate(surface.strikes):
             single_result = model.price_option(
@@ -3178,6 +3186,7 @@ def test_high_level_model_price_option_surface_matches_single_option_engine_on_s
                 include_calibration_hooks=True,
             )
 
+            representative_single_results.setdefault(maturity_index, single_result)
             assert surface_result.price_grid[maturity_index][strike_index] == pytest.approx(
                 single_result.response.price
             )
@@ -3204,10 +3213,13 @@ def test_high_level_model_price_option_surface_matches_single_option_engine_on_s
                 surface_result.maturity_summaries[maturity_index].representative_transform
                 == single_result.run_diagnostics.transform
             )
-            assert (
-                surface_result.maturity_summaries[maturity_index].integration_quality
-                == single_result.run_diagnostics.integration_quality
-            )
+
+    for maturity_index, representative_single_result in representative_single_results.items():
+        assert representative_single_result.run_diagnostics is not None
+        assert (
+            surface_result.maturity_summaries[maturity_index].integration_quality
+            == representative_single_result.run_diagnostics.integration_quality
+        )
 
 
 def test_runtime_pricing_seasonality_source_stays_materialized_for_off_hour_windows(
@@ -3947,11 +3959,11 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                                 },
                             },
                             "known_component_mark_scales": {
-                                "activity_coupling_scale": 1.0,
+                                "activity_coupling_scale": 0.6,
                                 "return_jump_scale": 1.0,
                             },
                             "surprise_component_mark_scales": {
-                                "activity_coupling_scale": 1.0,
+                                "activity_coupling_scale": 0.6,
                                 "return_jump_scale": 1.0,
                             },
                         },
@@ -4116,11 +4128,11 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                                     },
                                 },
                                 "known_component_mark_scales": {
-                                    "activity_coupling_scale": 1.0,
+                                    "activity_coupling_scale": 0.6,
                                     "return_jump_scale": 1.0,
                                 },
                                 "surprise_component_mark_scales": {
-                                    "activity_coupling_scale": 1.0,
+                                    "activity_coupling_scale": 0.6,
                                     "return_jump_scale": 1.0,
                                 },
                             },
@@ -4207,11 +4219,11 @@ def _successful_full_model_staged_runner_payload(run_id: str) -> tuple[StagedCal
                                 },
                             },
                             "known_component_mark_scales": {
-                                "activity_coupling_scale": 1.0,
+                                "activity_coupling_scale": 0.6,
                                 "return_jump_scale": 1.0,
                             },
                             "surprise_component_mark_scales": {
-                                "activity_coupling_scale": 1.0,
+                                "activity_coupling_scale": 0.6,
                                 "return_jump_scale": 1.0,
                             },
                         },

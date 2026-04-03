@@ -25,6 +25,7 @@ use super::contracts::{
     VanillaOptionPayoffConfiguration, VanillaOptionPayoffType, VanillaOptionPricingMarketInputs,
     VanillaOptionPricingMarketInputsError,
 };
+use super::time_scaling::intraday_year_fraction;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct FourierInversionProgress {
@@ -691,7 +692,8 @@ where
         });
     }
 
-    let discount_factor = (-market_inputs.risk_free_rate * market_inputs.maturity_interval).exp();
+    let maturity_year_fraction = intraday_year_fraction(market_inputs.maturity_interval);
+    let discount_factor = (-market_inputs.risk_free_rate * maturity_year_fraction).exp();
     if !discount_factor.is_finite() || discount_factor <= 0.0 {
         return Err(FourierInversionPricingError::NonFiniteDiscountFactor {
             value: discount_factor,
@@ -699,7 +701,7 @@ where
     }
 
     let dividend_discount_factor =
-        (-market_inputs.dividend_yield * market_inputs.maturity_interval).exp();
+        (-market_inputs.dividend_yield * maturity_year_fraction).exp();
     if !dividend_discount_factor.is_finite() || dividend_discount_factor <= 0.0 {
         return Err(
             FourierInversionPricingError::NonFiniteDividendDiscountFactor {

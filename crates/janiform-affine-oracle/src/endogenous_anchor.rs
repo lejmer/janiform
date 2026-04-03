@@ -589,17 +589,15 @@ fn expected_next_hawkes_state(
         factors.delta,
     );
 
-    let post_buy_state = apply_expected_endogenous_jump(
-        drifted_state,
+    let post_buy_state = drifted_state.apply_expected_endogenous_event_jump(
+        janiform_model_kernels::hawkes::HawkesEventSide::Buy,
         equation_specification.hawkes_kernel_parameters.alpha,
         expected_statistics.expected_n_plus,
-        true,
     );
-    let post_sell_state = apply_expected_endogenous_jump(
-        post_buy_state,
+    let post_sell_state = post_buy_state.apply_expected_endogenous_event_jump(
+        janiform_model_kernels::hawkes::HawkesEventSide::Sell,
         equation_specification.hawkes_kernel_parameters.alpha,
         expected_statistics.expected_n_minus,
-        false,
     );
 
     let expected_news_loading = expected_scaled_news_arrival_contribution(
@@ -617,36 +615,6 @@ fn expected_next_hawkes_state(
         equation_specification.hawkes_kernel_parameters.rho,
         expected_news_loading,
     )
-}
-
-fn apply_expected_endogenous_jump(
-    state: HawkesExcitationState,
-    alpha: janiform_model_kernels::hawkes::HawkesKernelLoadings,
-    expected_count: f64,
-    buy_side: bool,
-) -> HawkesExcitationState {
-    if expected_count == 0.0 {
-        return state;
-    }
-
-    let scaled_alpha = janiform_model_kernels::hawkes::HawkesKernelLoadings {
-        plus_plus: alpha.plus_plus * expected_count,
-        plus_minus: alpha.plus_minus * expected_count,
-        minus_plus: alpha.minus_plus * expected_count,
-        minus_minus: alpha.minus_minus * expected_count,
-    };
-
-    if buy_side {
-        state.apply_endogenous_event_jump(
-            janiform_model_kernels::hawkes::HawkesEventSide::Buy,
-            scaled_alpha,
-        )
-    } else {
-        state.apply_endogenous_event_jump(
-            janiform_model_kernels::hawkes::HawkesEventSide::Sell,
-            scaled_alpha,
-        )
-    }
 }
 
 #[cfg(test)]

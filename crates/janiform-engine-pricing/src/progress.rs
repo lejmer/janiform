@@ -210,15 +210,6 @@ impl PricingProgressEvent {
     }
 }
 
-pub(crate) fn emit_progress_event(
-    observer: &mut Option<&mut dyn FnMut(PricingProgressEvent)>,
-    event: PricingProgressEvent,
-) {
-    if let Some(observer) = observer.as_deref_mut() {
-        observer(event);
-    }
-}
-
 pub(crate) fn emit_node_progress(
     observer: &mut Option<&mut dyn FnMut(PricingNodeProgress)>,
     event: PricingNodeProgress,

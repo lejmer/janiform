@@ -169,11 +169,11 @@ def successful_full_model_staged_runner_payload(
                                 },
                             },
                             "known_component_mark_scales": {
-                                "activity_coupling_scale": 0.6,
+                                "activity_coupling_scale": 0.0,
                                 "return_jump_scale": 1.2,
                             },
                             "surprise_component_mark_scales": {
-                                "activity_coupling_scale": 0.6,
+                                "activity_coupling_scale": 0.0,
                                 "return_jump_scale": 1.2,
                             },
                         },

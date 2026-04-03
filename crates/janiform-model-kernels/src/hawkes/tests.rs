@@ -416,6 +416,71 @@ fn interleaved_event_jump_sequence_composes_with_drift() {
 }
 
 #[test]
+fn expected_endogenous_event_jump_scales_buy_side_loadings() {
+    let state = HawkesExcitationState {
+        y_plus_plus: 1.0,
+        y_plus_minus: 2.0,
+        y_minus_plus: 3.0,
+        y_minus_minus: 4.0,
+    };
+    let alpha = HawkesKernelLoadings {
+        plus_plus: 0.6,
+        plus_minus: 0.1,
+        minus_plus: 0.2,
+        minus_minus: 0.7,
+    };
+
+    let updated_state =
+        state.apply_expected_endogenous_event_jump(HawkesEventSide::Buy, alpha, 2.5);
+
+    assert_within_tolerance(
+        updated_state.y_plus_plus,
+        1.0 + 0.6 * 2.5,
+        DECAY_TOLERANCE,
+        "y_plus_plus",
+    );
+    assert_within_tolerance(
+        updated_state.y_plus_minus,
+        2.0,
+        DECAY_TOLERANCE,
+        "y_plus_minus",
+    );
+    assert_within_tolerance(
+        updated_state.y_minus_plus,
+        3.0 + 0.2 * 2.5,
+        DECAY_TOLERANCE,
+        "y_minus_plus",
+    );
+    assert_within_tolerance(
+        updated_state.y_minus_minus,
+        4.0,
+        DECAY_TOLERANCE,
+        "y_minus_minus",
+    );
+}
+
+#[test]
+fn expected_endogenous_event_jump_leaves_state_unchanged_for_zero_expected_count() {
+    let state = HawkesExcitationState {
+        y_plus_plus: 1.0,
+        y_plus_minus: 2.0,
+        y_minus_plus: 3.0,
+        y_minus_minus: 4.0,
+    };
+    let alpha = HawkesKernelLoadings {
+        plus_plus: 0.6,
+        plus_minus: 0.1,
+        minus_plus: 0.2,
+        minus_minus: 0.7,
+    };
+
+    let updated_state =
+        state.apply_expected_endogenous_event_jump(HawkesEventSide::Sell, alpha, 0.0);
+
+    assert_eq!(updated_state, state);
+}
+
+#[test]
 fn exogenous_news_loading_jump_applies_component_wise_rho_scaled_by_severity_mark() {
     let state = HawkesExcitationState {
         y_plus_plus: 1.0,
