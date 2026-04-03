@@ -12,6 +12,7 @@ import janiform.hourly_factors as hourly_factors_module
 import janiform.mean_reversion as mean_reversion_module
 import janiform.pricing as pricing_module
 import janiform.risk as risk_module
+import janiform.stylized_facts as stylized_facts_module
 import janiform.simulation as simulation_module
 import janiform.validation as validation_module
 
@@ -87,6 +88,9 @@ def test_public_and_internal_module_intent_is_explicit() -> None:
         "janiform.simulation.coarse",
         "janiform.simulation.seeded",
         "janiform.simulation.shared",
+        "janiform.stylized_facts",
+        "janiform.stylized_facts.contracts",
+        "janiform.validation.contracts",
     )
     internal_modules = (
         "janiform.cli.command_tree",
@@ -453,6 +457,57 @@ def test_private_modules_are_not_exposed_through_public_exports() -> None:
 
     with pytest.raises(ModuleNotFoundError):
         import_module("janiform.api")
+
+
+def test_validation_contract_submodule_is_supported_domain_import() -> None:
+    validation_contracts_module = import_module("janiform.validation.contracts")
+
+    expected_exports = {
+        "DeterministicRegressionHarnessReport",
+        "OpenClosedGapLeakageRegressionHarnessReport",
+        "RegressionHarnessFallbackPolicy",
+        "RegressionHarnessSummary",
+    }
+
+    assert expected_exports <= set(validation_contracts_module.__all__)
+    assert expected_exports <= set(dir(validation_contracts_module))
+    assert (
+        validation_module.DeterministicRegressionHarnessReport
+        is validation_contracts_module.DeterministicRegressionHarnessReport
+    )
+
+
+def test_stylized_facts_public_module_is_a_package_with_curated_exports() -> None:
+    assert hasattr(stylized_facts_module, "__path__")
+
+    expected_exports = {
+        "StylizedFactHorizonComparisonReportBundle",
+        "StylizedFactHorizonComparisonReport",
+        "StylizedFactHorizonComparisonTableSummary",
+        "StylizedFactHorizonComparisonPlotPayload",
+        "run_stylized_fact_horizon_comparison_report_generator",
+    }
+
+    assert expected_exports <= set(stylized_facts_module.__all__)
+    assert expected_exports <= set(dir(stylized_facts_module))
+
+
+def test_stylized_facts_contract_submodule_is_supported_domain_import() -> None:
+    stylized_facts_contracts_module = import_module("janiform.stylized_facts.contracts")
+
+    expected_exports = {
+        "StylizedFactDecisionCounts",
+        "StylizedFactHorizonComparisonReport",
+        "StylizedFactHorizonComparisonReportBundle",
+        "StylizedFactMetricComparisonReport",
+    }
+
+    assert expected_exports <= set(stylized_facts_contracts_module.__all__)
+    assert expected_exports <= set(dir(stylized_facts_contracts_module))
+    assert (
+        stylized_facts_module.StylizedFactHorizonComparisonReportBundle
+        is stylized_facts_contracts_module.StylizedFactHorizonComparisonReportBundle
+    )
 
 
 def test_errors_public_symbols_live_in_errors_module() -> None:

@@ -1,6 +1,6 @@
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Optional, cast
+from typing import Any, Optional
 
 import click
 
@@ -98,7 +98,7 @@ def _run_stylized_facts_horizon_comparison_command(
 
     write_command_output(
         output,
-        json_payload=cast(dict[str, Any], report_bundle),
+        json_payload=report_bundle,
         human_output_factory=lambda: render_stylized_facts_horizon_comparison_human_output(
             report_bundle,
             execution_mode=execution_mode,

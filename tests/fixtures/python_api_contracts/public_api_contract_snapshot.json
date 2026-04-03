@@ -7397,13 +7397,26 @@
         "STYLIZED_FACT_HORIZON_COMPARISON_REPORT_BUNDLE_SCHEMA_VERSION",
         "STYLIZED_FACT_HORIZON_COMPARISON_REPORT_SCHEMA_VERSION",
         "STYLIZED_FACT_HORIZON_COMPARISON_TABLE_SUMMARY_SCHEMA_VERSION",
+        "StylizedFactDatasetMetricObservedCounts",
+        "StylizedFactDatasetMetricReport",
+        "StylizedFactDatasetMetricRequiredMinimums",
+        "StylizedFactDatasetMetricSampleCoverage",
+        "StylizedFactDecisionCounts",
         "StylizedFactHorizonComparisonArtifactExportReceipt",
+        "StylizedFactHorizonComparisonHorizonReport",
+        "StylizedFactHorizonComparisonOutputSchemaMetadata",
         "StylizedFactHorizonComparisonPlotPayload",
         "StylizedFactHorizonComparisonPlotPoint",
+        "StylizedFactHorizonComparisonReport",
         "StylizedFactHorizonComparisonReportBundle",
         "StylizedFactHorizonComparisonReportBundleOutputSchemaMetadata",
+        "StylizedFactHorizonComparisonReportSummary",
+        "StylizedFactHorizonComparisonRunReport",
         "StylizedFactHorizonComparisonTableSummary",
         "StylizedFactHorizonComparisonTableSummaryRow",
+        "StylizedFactMetricComparisonReport",
+        "StylizedFactThresholdContext",
+        "StylizedFactUncertaintyContext",
         "build_stylized_fact_plotly_figure",
         "build_stylized_fact_plotly_figure_from_report_bundle",
         "render_stylized_fact_table_markdown",
@@ -7462,77 +7475,638 @@
           "kind": "constant",
           "value": "validation.stylized_fact.horizon_comparison.table_summary.v1"
         },
-        "StylizedFactHorizonComparisonArtifactExportReceipt": {
-          "base_classes": [
-            "dict"
+        "StylizedFactDatasetMetricObservedCounts": {
+          "field_names": [
+            "sample_count",
+            "effective_sample_count",
+            "tail_observation_count"
           ],
-          "kind": "class",
-          "origin_module": "janiform.stylized_facts",
-          "qualname": "StylizedFactHorizonComparisonArtifactExportReceipt"
+          "kind": "contract_model",
+          "signature": "(sample_count: 'int', effective_sample_count: 'int', tail_observation_count: 'int') -> 'None'"
+        },
+        "StylizedFactDatasetMetricReport": {
+          "field_names": [
+            "status",
+            "value",
+            "confidence_interval",
+            "sample_coverage",
+            "observed_counts",
+            "required_minimums",
+            "horizon_coverage_ratio",
+            "insufficiency_reason_codes",
+            "input_present"
+          ],
+          "kind": "contract_model",
+          "signature": "(status: 'str', value: 'Optional[float]', confidence_interval: 'Optional[StylizedFactMetricIntervalBounds]', sample_coverage: 'StylizedFactDatasetMetricSampleCoverage', observed_counts: 'StylizedFactDatasetMetricObservedCounts', required_minimums: 'StylizedFactDatasetMetricRequiredMinimums', horizon_coverage_ratio: 'float', insufficiency_reason_codes: 'list[str]', input_present: 'bool') -> 'None'"
+        },
+        "StylizedFactDatasetMetricRequiredMinimums": {
+          "field_names": [
+            "minimum_sample_count",
+            "minimum_effective_sample_count",
+            "minimum_tail_observation_count",
+            "minimum_horizon_coverage_ratio"
+          ],
+          "kind": "contract_model",
+          "signature": "(minimum_sample_count: 'int', minimum_effective_sample_count: 'int', minimum_tail_observation_count: 'int', minimum_horizon_coverage_ratio: 'float') -> 'None'"
+        },
+        "StylizedFactDatasetMetricSampleCoverage": {
+          "field_names": [
+            "horizon_interval_count",
+            "covered_interval_count"
+          ],
+          "kind": "contract_model",
+          "signature": "(horizon_interval_count: 'int', covered_interval_count: 'int') -> 'None'"
+        },
+        "StylizedFactDecisionCounts": {
+          "field_names": [
+            "pass_count",
+            "fail_count",
+            "insufficient_data_count"
+          ],
+          "kind": "contract_model",
+          "signature": "(pass_count: 'int', fail_count: 'int', insufficient_data_count: 'int') -> 'None'"
+        },
+        "StylizedFactHorizonComparisonArtifactExportReceipt": {
+          "field_names": [
+            "export_directory",
+            "file_stem",
+            "exported_files"
+          ],
+          "kind": "contract_model",
+          "signature": "(export_directory: 'str', file_stem: 'str', exported_files: 'list[StylizedFactHorizonComparisonExportedArtifactFile]') -> 'None'"
+        },
+        "StylizedFactHorizonComparisonHorizonReport": {
+          "field_names": [
+            "horizon_label",
+            "empirical_horizon_duration_nanos",
+            "simulated_horizon_duration_nanos",
+            "alignment_status",
+            "status",
+            "decision_counts",
+            "metrics"
+          ],
+          "kind": "contract_model",
+          "signature": "(horizon_label: 'str', empirical_horizon_duration_nanos: 'int', simulated_horizon_duration_nanos: 'int', alignment_status: 'str', status: 'str', decision_counts: 'StylizedFactDecisionCounts', metrics: 'list[StylizedFactMetricComparisonReport]') -> 'None'"
+        },
+        "StylizedFactHorizonComparisonOutputSchemaMetadata": {
+          "field_names": [
+            "schema_version",
+            "required_batch_report_fields",
+            "required_run_report_fields",
+            "required_horizon_report_fields",
+            "required_metric_report_fields",
+            "required_dataset_metric_fields",
+            "required_decision_count_fields",
+            "decision_state_vocabulary",
+            "horizon_alignment_status_vocabulary",
+            "metric_alignment_status_vocabulary",
+            "dataset_metric_status_vocabulary",
+            "decision_reason_vocabulary",
+            "sample_sufficiency_reason_vocabulary"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', required_batch_report_fields: 'list[str]', required_run_report_fields: 'list[str]', required_horizon_report_fields: 'list[str]', required_metric_report_fields: 'list[str]', required_dataset_metric_fields: 'list[str]', required_decision_count_fields: 'list[str]', decision_state_vocabulary: 'list[str]', horizon_alignment_status_vocabulary: 'list[str]', metric_alignment_status_vocabulary: 'list[str]', dataset_metric_status_vocabulary: 'list[str]', decision_reason_vocabulary: 'list[str]', sample_sufficiency_reason_vocabulary: 'list[str]') -> 'None'"
         },
         "StylizedFactHorizonComparisonPlotPayload": {
-          "base_classes": [
-            "dict"
+          "field_names": [
+            "schema_version",
+            "determinism_policy",
+            "points"
           ],
-          "kind": "class",
-          "origin_module": "janiform.stylized_facts",
-          "qualname": "StylizedFactHorizonComparisonPlotPayload"
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', determinism_policy: 'str', points: 'list[StylizedFactHorizonComparisonPlotPoint]') -> 'None'"
         },
         "StylizedFactHorizonComparisonPlotPoint": {
-          "base_classes": [
-            "dict"
+          "field_names": [
+            "calibration_run_id",
+            "horizon_label",
+            "metric_id",
+            "metric_name",
+            "metric_variant",
+            "metric_class",
+            "status",
+            "absolute_delta",
+            "standardized_delta",
+            "empirical_value",
+            "simulated_value",
+            "empirical_confidence_interval",
+            "simulated_confidence_interval",
+            "empirical_sample_coverage",
+            "simulated_sample_coverage",
+            "empirical_horizon_coverage_ratio",
+            "simulated_horizon_coverage_ratio",
+            "insufficient_data_reasons"
           ],
-          "kind": "class",
-          "origin_module": "janiform.stylized_facts",
-          "qualname": "StylizedFactHorizonComparisonPlotPoint"
+          "kind": "contract_model",
+          "signature": "(calibration_run_id: 'str', horizon_label: 'str', metric_id: 'str', metric_name: 'str', metric_variant: 'Optional[str]', metric_class: 'str', status: 'str', absolute_delta: 'Optional[float]', standardized_delta: 'Optional[float]', empirical_value: 'Optional[float]', simulated_value: 'Optional[float]', empirical_confidence_interval: 'Optional[StylizedFactMetricIntervalBounds]', simulated_confidence_interval: 'Optional[StylizedFactMetricIntervalBounds]', empirical_sample_coverage: 'StylizedFactMetricCoverageSummary', simulated_sample_coverage: 'StylizedFactMetricCoverageSummary', empirical_horizon_coverage_ratio: 'float', simulated_horizon_coverage_ratio: 'float', insufficient_data_reasons: 'StylizedFactMetricInsufficientDataReasons') -> 'None'"
+        },
+        "StylizedFactHorizonComparisonReport": {
+          "field_names": [
+            "schema_version",
+            "decision_policy",
+            "uncertainty_policy",
+            "insufficient_data_status_code",
+            "output_schema_metadata",
+            "metric_catalog_id",
+            "metric_catalog_version",
+            "threshold_policy_id",
+            "status",
+            "summary",
+            "run_reports"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', decision_policy: 'str', uncertainty_policy: 'str', insufficient_data_status_code: 'str', output_schema_metadata: 'StylizedFactHorizonComparisonOutputSchemaMetadata', metric_catalog_id: 'str', metric_catalog_version: 'str', threshold_policy_id: 'str', status: 'str', summary: 'StylizedFactHorizonComparisonReportSummary', run_reports: 'list[StylizedFactHorizonComparisonRunReport]') -> 'None'"
         },
         "StylizedFactHorizonComparisonReportBundle": {
-          "base_classes": [
-            "dict"
+          "field_names": [
+            "schema_version",
+            "determinism_policy",
+            "output_schema_metadata",
+            "comparison_report",
+            "table_summary",
+            "plot_payload",
+            "artifact_export"
           ],
-          "kind": "class",
-          "origin_module": "janiform.stylized_facts",
-          "qualname": "StylizedFactHorizonComparisonReportBundle"
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', determinism_policy: 'str', output_schema_metadata: 'StylizedFactHorizonComparisonReportBundleOutputSchemaMetadata', comparison_report: 'StylizedFactHorizonComparisonReport', table_summary: 'StylizedFactHorizonComparisonTableSummary', plot_payload: 'StylizedFactHorizonComparisonPlotPayload', artifact_export: 'Optional[StylizedFactHorizonComparisonArtifactExportReceipt]') -> 'None'"
         },
         "StylizedFactHorizonComparisonReportBundleOutputSchemaMetadata": {
-          "base_classes": [
-            "dict"
+          "field_names": [
+            "schema_version",
+            "required_bundle_fields",
+            "required_table_summary_fields",
+            "required_table_summary_row_fields",
+            "required_plot_payload_fields",
+            "required_plot_point_fields",
+            "decision_state_vocabulary",
+            "metric_class_vocabulary",
+            "insufficient_data_status_code"
           ],
-          "kind": "class",
-          "origin_module": "janiform.stylized_facts",
-          "qualname": "StylizedFactHorizonComparisonReportBundleOutputSchemaMetadata"
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', required_bundle_fields: 'list[str]', required_table_summary_fields: 'list[str]', required_table_summary_row_fields: 'list[str]', required_plot_payload_fields: 'list[str]', required_plot_point_fields: 'list[str]', decision_state_vocabulary: 'list[str]', metric_class_vocabulary: 'list[str]', insufficient_data_status_code: 'str') -> 'None'"
+        },
+        "StylizedFactHorizonComparisonReportSummary": {
+          "field_names": [
+            "total_run_count",
+            "total_metric_count",
+            "run_decision_counts",
+            "metric_decision_counts"
+          ],
+          "kind": "contract_model",
+          "signature": "(total_run_count: 'int', total_metric_count: 'int', run_decision_counts: 'StylizedFactDecisionCounts', metric_decision_counts: 'StylizedFactDecisionCounts') -> 'None'"
+        },
+        "StylizedFactHorizonComparisonRunReport": {
+          "field_names": [
+            "calibration_run_id",
+            "empirical_dataset_id",
+            "simulated_dataset_id",
+            "status",
+            "decision_counts",
+            "total_horizon_count",
+            "total_metric_count",
+            "horizons"
+          ],
+          "kind": "contract_model",
+          "signature": "(calibration_run_id: 'str', empirical_dataset_id: 'str', simulated_dataset_id: 'str', status: 'str', decision_counts: 'StylizedFactDecisionCounts', total_horizon_count: 'int', total_metric_count: 'int', horizons: 'list[StylizedFactHorizonComparisonHorizonReport]') -> 'None'"
         },
         "StylizedFactHorizonComparisonTableSummary": {
-          "base_classes": [
-            "dict"
+          "field_names": [
+            "schema_version",
+            "determinism_policy",
+            "rows"
           ],
-          "kind": "class",
-          "origin_module": "janiform.stylized_facts",
-          "qualname": "StylizedFactHorizonComparisonTableSummary"
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', determinism_policy: 'str', rows: 'list[StylizedFactHorizonComparisonTableSummaryRow]') -> 'None'"
         },
         "StylizedFactHorizonComparisonTableSummaryRow": {
-          "base_classes": [
-            "dict"
+          "field_names": [
+            "calibration_run_id",
+            "empirical_dataset_id",
+            "simulated_dataset_id",
+            "horizon_label",
+            "metric_id",
+            "metric_name",
+            "metric_variant",
+            "metric_class",
+            "alignment_status",
+            "status",
+            "absolute_delta",
+            "standardized_delta",
+            "empirical_status",
+            "simulated_status",
+            "empirical_value",
+            "simulated_value",
+            "empirical_confidence_interval",
+            "simulated_confidence_interval",
+            "empirical_sample_coverage",
+            "simulated_sample_coverage",
+            "empirical_horizon_coverage_ratio",
+            "simulated_horizon_coverage_ratio",
+            "insufficient_data_reasons",
+            "decision_reason_codes"
           ],
-          "kind": "class",
-          "origin_module": "janiform.stylized_facts",
-          "qualname": "StylizedFactHorizonComparisonTableSummaryRow"
+          "kind": "contract_model",
+          "signature": "(calibration_run_id: 'str', empirical_dataset_id: 'str', simulated_dataset_id: 'str', horizon_label: 'str', metric_id: 'str', metric_name: 'str', metric_variant: 'Optional[str]', metric_class: 'str', alignment_status: 'str', status: 'str', absolute_delta: 'Optional[float]', standardized_delta: 'Optional[float]', empirical_status: 'str', simulated_status: 'str', empirical_value: 'Optional[float]', simulated_value: 'Optional[float]', empirical_confidence_interval: 'Optional[StylizedFactMetricIntervalBounds]', simulated_confidence_interval: 'Optional[StylizedFactMetricIntervalBounds]', empirical_sample_coverage: 'StylizedFactMetricCoverageSummary', simulated_sample_coverage: 'StylizedFactMetricCoverageSummary', empirical_horizon_coverage_ratio: 'float', simulated_horizon_coverage_ratio: 'float', insufficient_data_reasons: 'StylizedFactMetricInsufficientDataReasons', decision_reason_codes: 'list[str]') -> 'None'"
+        },
+        "StylizedFactMetricComparisonReport": {
+          "field_names": [
+            "metric_id",
+            "metric_name",
+            "metric_variant",
+            "alignment_status",
+            "status",
+            "empirical",
+            "simulated",
+            "absolute_delta",
+            "uncertainty_context",
+            "threshold_context",
+            "horizon_label",
+            "decision_reason_codes"
+          ],
+          "kind": "contract_model",
+          "signature": "(metric_id: 'str', metric_name: 'str', metric_variant: 'Optional[str]', alignment_status: 'str', status: 'str', empirical: 'StylizedFactDatasetMetricReport', simulated: 'StylizedFactDatasetMetricReport', absolute_delta: 'Optional[float]', uncertainty_context: 'StylizedFactUncertaintyContext', threshold_context: 'StylizedFactThresholdContext', horizon_label: 'str', decision_reason_codes: 'list[str]') -> 'None'"
+        },
+        "StylizedFactThresholdContext": {
+          "field_names": [
+            "policy_id",
+            "max_absolute_delta",
+            "max_standardized_delta",
+            "absolute_delta_exceeds_threshold",
+            "standardized_delta_exceeds_threshold"
+          ],
+          "kind": "contract_model",
+          "signature": "(policy_id: 'str', max_absolute_delta: 'float', max_standardized_delta: 'float', absolute_delta_exceeds_threshold: 'Optional[bool]', standardized_delta_exceeds_threshold: 'Optional[bool]') -> 'None'"
+        },
+        "StylizedFactUncertaintyContext": {
+          "field_names": [
+            "empirical_interval_half_width",
+            "simulated_interval_half_width",
+            "pooled_interval_half_width",
+            "standardized_delta"
+          ],
+          "kind": "contract_model",
+          "signature": "(empirical_interval_half_width: 'Optional[float]', simulated_interval_half_width: 'Optional[float]', pooled_interval_half_width: 'Optional[float]', standardized_delta: 'Optional[float]') -> 'None'"
         },
         "build_stylized_fact_plotly_figure": {
           "kind": "function",
-          "signature": "(plot_payload: 'Mapping[str, Any]', *, title: 'str' = 'Stylized Fact Absolute Delta By Horizon') -> 'Any'"
+          "signature": "(plot_payload: 'StylizedFactHorizonComparisonPlotPayload', *, title: 'str' = 'Stylized Fact Absolute Delta By Horizon') -> 'Any'"
         },
         "build_stylized_fact_plotly_figure_from_report_bundle": {
           "kind": "function",
-          "signature": "(report_bundle: 'Mapping[str, Any]', *, title: 'str' = 'Stylized Fact Absolute Delta By Horizon') -> 'Any'"
+          "signature": "(report_bundle: 'StylizedFactHorizonComparisonReportBundle', *, title: 'str' = 'Stylized Fact Absolute Delta By Horizon') -> 'Any'"
         },
         "render_stylized_fact_table_markdown": {
           "kind": "function",
-          "signature": "(table_summary: 'Mapping[str, Any]', *, max_rows: 'Optional[int]' = None) -> 'str'"
+          "signature": "(table_summary: 'StylizedFactHorizonComparisonTableSummary', *, max_rows: 'Optional[int]' = None) -> 'str'"
         },
         "run_stylized_fact_horizon_comparison_report_generator": {
           "kind": "function",
           "signature": "(*, metric_catalog: 'Mapping[str, Any]', comparison_request: 'Mapping[str, Any]', execution_mode: 'str' = 'memory', artifact_export: 'Optional[Mapping[str, Any]]' = None) -> 'StylizedFactHorizonComparisonReportBundle'"
+        }
+      }
+    },
+    "janiform.stylized_facts.contracts": {
+      "exports": [
+        "StylizedFactDatasetMetricObservedCounts",
+        "StylizedFactDatasetMetricReport",
+        "StylizedFactDatasetMetricRequiredMinimums",
+        "StylizedFactDatasetMetricSampleCoverage",
+        "StylizedFactDecisionCounts",
+        "StylizedFactHorizonComparisonArtifactExportReceipt",
+        "StylizedFactHorizonComparisonExportedArtifactFile",
+        "StylizedFactHorizonComparisonHorizonReport",
+        "StylizedFactHorizonComparisonOutputSchemaMetadata",
+        "StylizedFactHorizonComparisonPlotPayload",
+        "StylizedFactHorizonComparisonPlotPoint",
+        "StylizedFactHorizonComparisonReport",
+        "StylizedFactHorizonComparisonReportBundle",
+        "StylizedFactHorizonComparisonReportBundleOutputSchemaMetadata",
+        "StylizedFactHorizonComparisonReportSummary",
+        "StylizedFactHorizonComparisonRunReport",
+        "StylizedFactHorizonComparisonTableSummary",
+        "StylizedFactHorizonComparisonTableSummaryRow",
+        "StylizedFactMetricComparisonReport",
+        "StylizedFactMetricCoverageSummary",
+        "StylizedFactMetricInsufficientDataReasons",
+        "StylizedFactMetricIntervalBounds",
+        "StylizedFactThresholdContext",
+        "StylizedFactUncertaintyContext"
+      ],
+      "module_name": "janiform.stylized_facts.contracts",
+      "schema_identifiers": [],
+      "symbols": {
+        "StylizedFactDatasetMetricObservedCounts": {
+          "field_names": [
+            "sample_count",
+            "effective_sample_count",
+            "tail_observation_count"
+          ],
+          "kind": "contract_model",
+          "signature": "(sample_count: 'int', effective_sample_count: 'int', tail_observation_count: 'int') -> 'None'"
+        },
+        "StylizedFactDatasetMetricReport": {
+          "field_names": [
+            "status",
+            "value",
+            "confidence_interval",
+            "sample_coverage",
+            "observed_counts",
+            "required_minimums",
+            "horizon_coverage_ratio",
+            "insufficiency_reason_codes",
+            "input_present"
+          ],
+          "kind": "contract_model",
+          "signature": "(status: 'str', value: 'Optional[float]', confidence_interval: 'Optional[StylizedFactMetricIntervalBounds]', sample_coverage: 'StylizedFactDatasetMetricSampleCoverage', observed_counts: 'StylizedFactDatasetMetricObservedCounts', required_minimums: 'StylizedFactDatasetMetricRequiredMinimums', horizon_coverage_ratio: 'float', insufficiency_reason_codes: 'list[str]', input_present: 'bool') -> 'None'"
+        },
+        "StylizedFactDatasetMetricRequiredMinimums": {
+          "field_names": [
+            "minimum_sample_count",
+            "minimum_effective_sample_count",
+            "minimum_tail_observation_count",
+            "minimum_horizon_coverage_ratio"
+          ],
+          "kind": "contract_model",
+          "signature": "(minimum_sample_count: 'int', minimum_effective_sample_count: 'int', minimum_tail_observation_count: 'int', minimum_horizon_coverage_ratio: 'float') -> 'None'"
+        },
+        "StylizedFactDatasetMetricSampleCoverage": {
+          "field_names": [
+            "horizon_interval_count",
+            "covered_interval_count"
+          ],
+          "kind": "contract_model",
+          "signature": "(horizon_interval_count: 'int', covered_interval_count: 'int') -> 'None'"
+        },
+        "StylizedFactDecisionCounts": {
+          "field_names": [
+            "pass_count",
+            "fail_count",
+            "insufficient_data_count"
+          ],
+          "kind": "contract_model",
+          "signature": "(pass_count: 'int', fail_count: 'int', insufficient_data_count: 'int') -> 'None'"
+        },
+        "StylizedFactHorizonComparisonArtifactExportReceipt": {
+          "field_names": [
+            "export_directory",
+            "file_stem",
+            "exported_files"
+          ],
+          "kind": "contract_model",
+          "signature": "(export_directory: 'str', file_stem: 'str', exported_files: 'list[StylizedFactHorizonComparisonExportedArtifactFile]') -> 'None'"
+        },
+        "StylizedFactHorizonComparisonExportedArtifactFile": {
+          "field_names": [
+            "artifact_kind",
+            "file_name",
+            "absolute_path"
+          ],
+          "kind": "contract_model",
+          "signature": "(artifact_kind: 'str', file_name: 'str', absolute_path: 'str') -> 'None'"
+        },
+        "StylizedFactHorizonComparisonHorizonReport": {
+          "field_names": [
+            "horizon_label",
+            "empirical_horizon_duration_nanos",
+            "simulated_horizon_duration_nanos",
+            "alignment_status",
+            "status",
+            "decision_counts",
+            "metrics"
+          ],
+          "kind": "contract_model",
+          "signature": "(horizon_label: 'str', empirical_horizon_duration_nanos: 'int', simulated_horizon_duration_nanos: 'int', alignment_status: 'str', status: 'str', decision_counts: 'StylizedFactDecisionCounts', metrics: 'list[StylizedFactMetricComparisonReport]') -> 'None'"
+        },
+        "StylizedFactHorizonComparisonOutputSchemaMetadata": {
+          "field_names": [
+            "schema_version",
+            "required_batch_report_fields",
+            "required_run_report_fields",
+            "required_horizon_report_fields",
+            "required_metric_report_fields",
+            "required_dataset_metric_fields",
+            "required_decision_count_fields",
+            "decision_state_vocabulary",
+            "horizon_alignment_status_vocabulary",
+            "metric_alignment_status_vocabulary",
+            "dataset_metric_status_vocabulary",
+            "decision_reason_vocabulary",
+            "sample_sufficiency_reason_vocabulary"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', required_batch_report_fields: 'list[str]', required_run_report_fields: 'list[str]', required_horizon_report_fields: 'list[str]', required_metric_report_fields: 'list[str]', required_dataset_metric_fields: 'list[str]', required_decision_count_fields: 'list[str]', decision_state_vocabulary: 'list[str]', horizon_alignment_status_vocabulary: 'list[str]', metric_alignment_status_vocabulary: 'list[str]', dataset_metric_status_vocabulary: 'list[str]', decision_reason_vocabulary: 'list[str]', sample_sufficiency_reason_vocabulary: 'list[str]') -> 'None'"
+        },
+        "StylizedFactHorizonComparisonPlotPayload": {
+          "field_names": [
+            "schema_version",
+            "determinism_policy",
+            "points"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', determinism_policy: 'str', points: 'list[StylizedFactHorizonComparisonPlotPoint]') -> 'None'"
+        },
+        "StylizedFactHorizonComparisonPlotPoint": {
+          "field_names": [
+            "calibration_run_id",
+            "horizon_label",
+            "metric_id",
+            "metric_name",
+            "metric_variant",
+            "metric_class",
+            "status",
+            "absolute_delta",
+            "standardized_delta",
+            "empirical_value",
+            "simulated_value",
+            "empirical_confidence_interval",
+            "simulated_confidence_interval",
+            "empirical_sample_coverage",
+            "simulated_sample_coverage",
+            "empirical_horizon_coverage_ratio",
+            "simulated_horizon_coverage_ratio",
+            "insufficient_data_reasons"
+          ],
+          "kind": "contract_model",
+          "signature": "(calibration_run_id: 'str', horizon_label: 'str', metric_id: 'str', metric_name: 'str', metric_variant: 'Optional[str]', metric_class: 'str', status: 'str', absolute_delta: 'Optional[float]', standardized_delta: 'Optional[float]', empirical_value: 'Optional[float]', simulated_value: 'Optional[float]', empirical_confidence_interval: 'Optional[StylizedFactMetricIntervalBounds]', simulated_confidence_interval: 'Optional[StylizedFactMetricIntervalBounds]', empirical_sample_coverage: 'StylizedFactMetricCoverageSummary', simulated_sample_coverage: 'StylizedFactMetricCoverageSummary', empirical_horizon_coverage_ratio: 'float', simulated_horizon_coverage_ratio: 'float', insufficient_data_reasons: 'StylizedFactMetricInsufficientDataReasons') -> 'None'"
+        },
+        "StylizedFactHorizonComparisonReport": {
+          "field_names": [
+            "schema_version",
+            "decision_policy",
+            "uncertainty_policy",
+            "insufficient_data_status_code",
+            "output_schema_metadata",
+            "metric_catalog_id",
+            "metric_catalog_version",
+            "threshold_policy_id",
+            "status",
+            "summary",
+            "run_reports"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', decision_policy: 'str', uncertainty_policy: 'str', insufficient_data_status_code: 'str', output_schema_metadata: 'StylizedFactHorizonComparisonOutputSchemaMetadata', metric_catalog_id: 'str', metric_catalog_version: 'str', threshold_policy_id: 'str', status: 'str', summary: 'StylizedFactHorizonComparisonReportSummary', run_reports: 'list[StylizedFactHorizonComparisonRunReport]') -> 'None'"
+        },
+        "StylizedFactHorizonComparisonReportBundle": {
+          "field_names": [
+            "schema_version",
+            "determinism_policy",
+            "output_schema_metadata",
+            "comparison_report",
+            "table_summary",
+            "plot_payload",
+            "artifact_export"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', determinism_policy: 'str', output_schema_metadata: 'StylizedFactHorizonComparisonReportBundleOutputSchemaMetadata', comparison_report: 'StylizedFactHorizonComparisonReport', table_summary: 'StylizedFactHorizonComparisonTableSummary', plot_payload: 'StylizedFactHorizonComparisonPlotPayload', artifact_export: 'Optional[StylizedFactHorizonComparisonArtifactExportReceipt]') -> 'None'"
+        },
+        "StylizedFactHorizonComparisonReportBundleOutputSchemaMetadata": {
+          "field_names": [
+            "schema_version",
+            "required_bundle_fields",
+            "required_table_summary_fields",
+            "required_table_summary_row_fields",
+            "required_plot_payload_fields",
+            "required_plot_point_fields",
+            "decision_state_vocabulary",
+            "metric_class_vocabulary",
+            "insufficient_data_status_code"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', required_bundle_fields: 'list[str]', required_table_summary_fields: 'list[str]', required_table_summary_row_fields: 'list[str]', required_plot_payload_fields: 'list[str]', required_plot_point_fields: 'list[str]', decision_state_vocabulary: 'list[str]', metric_class_vocabulary: 'list[str]', insufficient_data_status_code: 'str') -> 'None'"
+        },
+        "StylizedFactHorizonComparisonReportSummary": {
+          "field_names": [
+            "total_run_count",
+            "total_metric_count",
+            "run_decision_counts",
+            "metric_decision_counts"
+          ],
+          "kind": "contract_model",
+          "signature": "(total_run_count: 'int', total_metric_count: 'int', run_decision_counts: 'StylizedFactDecisionCounts', metric_decision_counts: 'StylizedFactDecisionCounts') -> 'None'"
+        },
+        "StylizedFactHorizonComparisonRunReport": {
+          "field_names": [
+            "calibration_run_id",
+            "empirical_dataset_id",
+            "simulated_dataset_id",
+            "status",
+            "decision_counts",
+            "total_horizon_count",
+            "total_metric_count",
+            "horizons"
+          ],
+          "kind": "contract_model",
+          "signature": "(calibration_run_id: 'str', empirical_dataset_id: 'str', simulated_dataset_id: 'str', status: 'str', decision_counts: 'StylizedFactDecisionCounts', total_horizon_count: 'int', total_metric_count: 'int', horizons: 'list[StylizedFactHorizonComparisonHorizonReport]') -> 'None'"
+        },
+        "StylizedFactHorizonComparisonTableSummary": {
+          "field_names": [
+            "schema_version",
+            "determinism_policy",
+            "rows"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', determinism_policy: 'str', rows: 'list[StylizedFactHorizonComparisonTableSummaryRow]') -> 'None'"
+        },
+        "StylizedFactHorizonComparisonTableSummaryRow": {
+          "field_names": [
+            "calibration_run_id",
+            "empirical_dataset_id",
+            "simulated_dataset_id",
+            "horizon_label",
+            "metric_id",
+            "metric_name",
+            "metric_variant",
+            "metric_class",
+            "alignment_status",
+            "status",
+            "absolute_delta",
+            "standardized_delta",
+            "empirical_status",
+            "simulated_status",
+            "empirical_value",
+            "simulated_value",
+            "empirical_confidence_interval",
+            "simulated_confidence_interval",
+            "empirical_sample_coverage",
+            "simulated_sample_coverage",
+            "empirical_horizon_coverage_ratio",
+            "simulated_horizon_coverage_ratio",
+            "insufficient_data_reasons",
+            "decision_reason_codes"
+          ],
+          "kind": "contract_model",
+          "signature": "(calibration_run_id: 'str', empirical_dataset_id: 'str', simulated_dataset_id: 'str', horizon_label: 'str', metric_id: 'str', metric_name: 'str', metric_variant: 'Optional[str]', metric_class: 'str', alignment_status: 'str', status: 'str', absolute_delta: 'Optional[float]', standardized_delta: 'Optional[float]', empirical_status: 'str', simulated_status: 'str', empirical_value: 'Optional[float]', simulated_value: 'Optional[float]', empirical_confidence_interval: 'Optional[StylizedFactMetricIntervalBounds]', simulated_confidence_interval: 'Optional[StylizedFactMetricIntervalBounds]', empirical_sample_coverage: 'StylizedFactMetricCoverageSummary', simulated_sample_coverage: 'StylizedFactMetricCoverageSummary', empirical_horizon_coverage_ratio: 'float', simulated_horizon_coverage_ratio: 'float', insufficient_data_reasons: 'StylizedFactMetricInsufficientDataReasons', decision_reason_codes: 'list[str]') -> 'None'"
+        },
+        "StylizedFactMetricComparisonReport": {
+          "field_names": [
+            "metric_id",
+            "metric_name",
+            "metric_variant",
+            "alignment_status",
+            "status",
+            "empirical",
+            "simulated",
+            "absolute_delta",
+            "uncertainty_context",
+            "threshold_context",
+            "horizon_label",
+            "decision_reason_codes"
+          ],
+          "kind": "contract_model",
+          "signature": "(metric_id: 'str', metric_name: 'str', metric_variant: 'Optional[str]', alignment_status: 'str', status: 'str', empirical: 'StylizedFactDatasetMetricReport', simulated: 'StylizedFactDatasetMetricReport', absolute_delta: 'Optional[float]', uncertainty_context: 'StylizedFactUncertaintyContext', threshold_context: 'StylizedFactThresholdContext', horizon_label: 'str', decision_reason_codes: 'list[str]') -> 'None'"
+        },
+        "StylizedFactMetricCoverageSummary": {
+          "field_names": [
+            "horizon_interval_count",
+            "covered_interval_count",
+            "sample_count",
+            "effective_sample_count",
+            "tail_observation_count",
+            "minimum_sample_count",
+            "minimum_effective_sample_count",
+            "minimum_tail_observation_count",
+            "minimum_horizon_coverage_ratio_scaled_bps"
+          ],
+          "kind": "contract_model",
+          "signature": "(horizon_interval_count: 'int', covered_interval_count: 'int', sample_count: 'int', effective_sample_count: 'int', tail_observation_count: 'int', minimum_sample_count: 'int', minimum_effective_sample_count: 'int', minimum_tail_observation_count: 'int', minimum_horizon_coverage_ratio_scaled_bps: 'int') -> 'None'"
+        },
+        "StylizedFactMetricInsufficientDataReasons": {
+          "field_names": [
+            "empirical",
+            "simulated"
+          ],
+          "kind": "contract_model",
+          "signature": "(empirical: 'list[str]', simulated: 'list[str]') -> 'None'"
+        },
+        "StylizedFactMetricIntervalBounds": {
+          "field_names": [
+            "lower_bound",
+            "upper_bound",
+            "confidence_level"
+          ],
+          "kind": "contract_model",
+          "signature": "(lower_bound: 'float', upper_bound: 'float', confidence_level: 'float') -> 'None'"
+        },
+        "StylizedFactThresholdContext": {
+          "field_names": [
+            "policy_id",
+            "max_absolute_delta",
+            "max_standardized_delta",
+            "absolute_delta_exceeds_threshold",
+            "standardized_delta_exceeds_threshold"
+          ],
+          "kind": "contract_model",
+          "signature": "(policy_id: 'str', max_absolute_delta: 'float', max_standardized_delta: 'float', absolute_delta_exceeds_threshold: 'Optional[bool]', standardized_delta_exceeds_threshold: 'Optional[bool]') -> 'None'"
+        },
+        "StylizedFactUncertaintyContext": {
+          "field_names": [
+            "empirical_interval_half_width",
+            "simulated_interval_half_width",
+            "pooled_interval_half_width",
+            "standardized_delta"
+          ],
+          "kind": "contract_model",
+          "signature": "(empirical_interval_half_width: 'Optional[float]', simulated_interval_half_width: 'Optional[float]', pooled_interval_half_width: 'Optional[float]', standardized_delta: 'Optional[float]') -> 'None'"
         }
       }
     },
@@ -7617,12 +8191,16 @@
           "value": "validation.deterministic_regression_harness.report.v1"
         },
         "DeterministicRegressionHarnessReport": {
-          "base_classes": [
-            "dict"
+          "field_names": [
+            "schema_version",
+            "determinism_policy",
+            "fallback_policy",
+            "tolerance_config",
+            "summary",
+            "case_reports"
           ],
-          "kind": "class",
-          "origin_module": "janiform.validation.types",
-          "qualname": "DeterministicRegressionHarnessReport"
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', determinism_policy: 'str', fallback_policy: 'RegressionHarnessFallbackPolicy', tolerance_config: 'RegressionHarnessToleranceConfig', summary: 'RegressionHarnessSummary', case_reports: 'list[RegressionCaseReport]') -> 'None'"
         },
         "OPEN_CLOSED_GAP_BEHAVIOR_BASELINE_EXPECTED_OUTPUT_POLICY": {
           "kind": "constant",
@@ -7661,140 +8239,213 @@
           "value": "validation.open_closed_gap_leakage_regression_harness.output_schema_metadata.v1"
         },
         "OpenClosedGapBehaviorContributionSummary": {
-          "base_classes": [
-            "dict"
+          "field_names": [
+            "open_window_event_count",
+            "closed_window_event_count",
+            "expected_activity_coupling_total",
+            "observed_activity_coupling_total",
+            "expected_trading_return_total",
+            "observed_trading_return_total",
+            "expected_open_jump_total",
+            "observed_open_jump_total",
+            "expected_closed_gap_total",
+            "observed_closed_gap_total"
           ],
-          "kind": "class",
-          "origin_module": "janiform.validation.types",
-          "qualname": "OpenClosedGapBehaviorContributionSummary"
+          "kind": "contract_model",
+          "signature": "(open_window_event_count: 'int', closed_window_event_count: 'int', expected_activity_coupling_total: 'float', observed_activity_coupling_total: 'float', expected_trading_return_total: 'float', observed_trading_return_total: 'float', expected_open_jump_total: 'float', observed_open_jump_total: 'float', expected_closed_gap_total: 'float', observed_closed_gap_total: 'float') -> 'None'"
         },
         "OpenClosedGapBehaviorDiffMetric": {
-          "base_classes": [
-            "dict"
+          "field_names": [
+            "metric_id",
+            "semantic_bucket",
+            "expected_value",
+            "observed_value",
+            "absolute_difference",
+            "absolute_tolerance",
+            "regression_detected"
           ],
-          "kind": "class",
-          "origin_module": "janiform.validation.types",
-          "qualname": "OpenClosedGapBehaviorDiffMetric"
+          "kind": "contract_model",
+          "signature": "(metric_id: 'str', semantic_bucket: 'str', expected_value: 'float', observed_value: 'float', absolute_difference: 'float', absolute_tolerance: 'float', regression_detected: 'bool') -> 'None'"
         },
         "OpenClosedGapBehaviorDiffReport": {
-          "base_classes": [
-            "dict"
+          "field_names": [
+            "schema_version",
+            "determinism_policy",
+            "baseline_expected_output_policy",
+            "summary",
+            "scenario_diffs"
           ],
-          "kind": "class",
-          "origin_module": "janiform.validation.types",
-          "qualname": "OpenClosedGapBehaviorDiffReport"
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', determinism_policy: 'str', baseline_expected_output_policy: 'str', summary: 'OpenClosedGapBehaviorDiffReportSummary', scenario_diffs: 'list[OpenClosedGapBehaviorScenarioDiff]') -> 'None'"
         },
         "OpenClosedGapBehaviorDiffReportSummary": {
-          "base_classes": [
-            "dict"
+          "field_names": [
+            "total_case_count",
+            "regression_case_count",
+            "total_regression_metric_count",
+            "trading_return_regression_metric_count",
+            "open_jump_regression_metric_count",
+            "closed_gap_regression_metric_count",
+            "activity_coupling_regression_metric_count"
           ],
-          "kind": "class",
-          "origin_module": "janiform.validation.types",
-          "qualname": "OpenClosedGapBehaviorDiffReportSummary"
+          "kind": "contract_model",
+          "signature": "(total_case_count: 'int', regression_case_count: 'int', total_regression_metric_count: 'int', trading_return_regression_metric_count: 'int', open_jump_regression_metric_count: 'int', closed_gap_regression_metric_count: 'int', activity_coupling_regression_metric_count: 'int') -> 'None'"
         },
         "OpenClosedGapBehaviorScenarioDiff": {
-          "base_classes": [
-            "dict"
+          "field_names": [
+            "fixture_id",
+            "exchange_code",
+            "regression_metric_count",
+            "max_absolute_difference",
+            "metrics"
           ],
-          "kind": "class",
-          "origin_module": "janiform.validation.types",
-          "qualname": "OpenClosedGapBehaviorScenarioDiff"
+          "kind": "contract_model",
+          "signature": "(fixture_id: 'str', exchange_code: 'str', regression_metric_count: 'int', max_absolute_difference: 'float', metrics: 'list[OpenClosedGapBehaviorDiffMetric]') -> 'None'"
         },
         "OpenClosedGapBehaviorScenarioSummaryArtifact": {
-          "base_classes": [
-            "dict"
+          "field_names": [
+            "fixture_id",
+            "exchange_code",
+            "scenario_class",
+            "deterministic_replay_metadata",
+            "issue_traceability",
+            "contributions"
           ],
-          "kind": "class",
-          "origin_module": "janiform.validation.types",
-          "qualname": "OpenClosedGapBehaviorScenarioSummaryArtifact"
+          "kind": "contract_model",
+          "signature": "(fixture_id: 'str', exchange_code: 'str', scenario_class: 'str', deterministic_replay_metadata: 'OpenClosedGapDeterministicReplayMetadata', issue_traceability: 'OpenClosedGapIssueTraceabilityMetadata', contributions: 'OpenClosedGapBehaviorContributionSummary') -> 'None'"
         },
         "OpenClosedGapBehaviorSummaryArtifact": {
-          "base_classes": [
-            "dict"
+          "field_names": [
+            "schema_version",
+            "determinism_policy",
+            "total_case_count",
+            "total_open_window_event_count",
+            "total_closed_window_event_count",
+            "scenario_class_coverage",
+            "scenarios"
           ],
-          "kind": "class",
-          "origin_module": "janiform.validation.types",
-          "qualname": "OpenClosedGapBehaviorSummaryArtifact"
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', determinism_policy: 'str', total_case_count: 'int', total_open_window_event_count: 'int', total_closed_window_event_count: 'int', scenario_class_coverage: 'OpenClosedGapScenarioClassCoverage', scenarios: 'list[OpenClosedGapBehaviorScenarioSummaryArtifact]') -> 'None'"
         },
         "OpenClosedGapLeakageRegressionCaseReport": {
-          "base_classes": [
-            "dict"
+          "field_names": [
+            "fixture_id",
+            "exchange_code",
+            "scenario_class",
+            "deterministic_replay_metadata",
+            "issue_traceability",
+            "status",
+            "summary",
+            "semantic_mismatch_failure_count",
+            "max_absolute_mismatch",
+            "contribution_summary",
+            "behavior_diff",
+            "failures"
           ],
-          "kind": "class",
-          "origin_module": "janiform.validation.types",
-          "qualname": "OpenClosedGapLeakageRegressionCaseReport"
+          "kind": "contract_model",
+          "signature": "(fixture_id: 'str', exchange_code: 'str', scenario_class: 'str', deterministic_replay_metadata: 'OpenClosedGapDeterministicReplayMetadata', issue_traceability: 'OpenClosedGapIssueTraceabilityMetadata', status: 'str', summary: 'str', semantic_mismatch_failure_count: 'int', max_absolute_mismatch: 'float', contribution_summary: 'OpenClosedGapBehaviorContributionSummary', behavior_diff: 'OpenClosedGapBehaviorScenarioDiff', failures: 'list[OpenClosedGapLeakageRegressionFailure]') -> 'None'"
         },
         "OpenClosedGapLeakageRegressionFailure": {
-          "base_classes": [
-            "dict"
+          "field_names": [
+            "failure_kind",
+            "semantic_bucket",
+            "mismatch_kind",
+            "event_id",
+            "event_timestamp_utc",
+            "expected_value",
+            "observed_value",
+            "absolute_difference",
+            "error_message"
           ],
-          "kind": "class",
-          "origin_module": "janiform.validation.types",
-          "qualname": "OpenClosedGapLeakageRegressionFailure"
+          "kind": "contract_model",
+          "signature": "(failure_kind: 'str', semantic_bucket: 'Optional[str]', mismatch_kind: 'Optional[str]', event_id: 'Optional[str]', event_timestamp_utc: 'Optional[str]', expected_value: 'Optional[float]', observed_value: 'Optional[float]', absolute_difference: 'Optional[float]', error_message: 'Optional[str]') -> 'None'"
         },
         "OpenClosedGapLeakageRegressionHarnessReport": {
-          "base_classes": [
-            "dict"
+          "field_names": [
+            "schema_version",
+            "determinism_policy",
+            "output_schema_metadata",
+            "tolerance_config",
+            "summary",
+            "summary_artifact",
+            "behavior_diff_report",
+            "case_reports"
           ],
-          "kind": "class",
-          "origin_module": "janiform.validation.types",
-          "qualname": "OpenClosedGapLeakageRegressionHarnessReport"
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', determinism_policy: 'str', output_schema_metadata: 'OpenClosedGapLeakageRegressionOutputSchemaMetadata', tolerance_config: 'OpenClosedGapLeakageRegressionHarnessToleranceConfig', summary: 'OpenClosedGapLeakageRegressionHarnessSummary', summary_artifact: 'OpenClosedGapBehaviorSummaryArtifact', behavior_diff_report: 'OpenClosedGapBehaviorDiffReport', case_reports: 'list[OpenClosedGapLeakageRegressionCaseReport]') -> 'None'"
         },
         "OpenClosedGapLeakageRegressionHarnessSummary": {
-          "base_classes": [
-            "dict"
+          "field_names": [
+            "total_case_count",
+            "passed_case_count",
+            "failed_case_count",
+            "total_semantic_mismatch_failure_count",
+            "scenario_class_coverage"
           ],
-          "kind": "class",
-          "origin_module": "janiform.validation.types",
-          "qualname": "OpenClosedGapLeakageRegressionHarnessSummary"
+          "kind": "contract_model",
+          "signature": "(total_case_count: 'int', passed_case_count: 'int', failed_case_count: 'int', total_semantic_mismatch_failure_count: 'int', scenario_class_coverage: 'OpenClosedGapScenarioClassCoverage') -> 'None'"
         },
         "OpenClosedGapLeakageRegressionHarnessToleranceConfig": {
-          "base_classes": [
-            "dict"
+          "field_names": [
+            "component_absolute_tolerance"
           ],
-          "kind": "class",
-          "origin_module": "janiform.validation.types",
-          "qualname": "OpenClosedGapLeakageRegressionHarnessToleranceConfig"
+          "kind": "contract_model",
+          "signature": "(component_absolute_tolerance: 'float') -> 'None'"
         },
         "OpenClosedGapLeakageRegressionOutputSchemaMetadata": {
-          "base_classes": [
-            "dict"
+          "field_names": [
+            "schema_version",
+            "summary_artifact_schema_version",
+            "behavior_diff_report_schema_version",
+            "baseline_expected_output_policy",
+            "environment_metadata_policy",
+            "canonical_component_vocabulary",
+            "canonical_semantic_bucket_vocabulary",
+            "required_case_report_fields",
+            "required_summary_artifact_fields",
+            "required_behavior_diff_report_fields",
+            "required_behavior_diff_metric_fields"
           ],
-          "kind": "class",
-          "origin_module": "janiform.validation.types",
-          "qualname": "OpenClosedGapLeakageRegressionOutputSchemaMetadata"
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', summary_artifact_schema_version: 'str', behavior_diff_report_schema_version: 'str', baseline_expected_output_policy: 'str', environment_metadata_policy: 'str', canonical_component_vocabulary: 'list[str]', canonical_semantic_bucket_vocabulary: 'list[str]', required_case_report_fields: 'list[str]', required_summary_artifact_fields: 'list[str]', required_behavior_diff_report_fields: 'list[str]', required_behavior_diff_metric_fields: 'list[str]') -> 'None'"
         },
         "RegressionCaseReport": {
-          "base_classes": [
-            "dict"
+          "field_names": [
+            "fixture_id",
+            "case_kind",
+            "status",
+            "summary",
+            "failure"
           ],
-          "kind": "class",
-          "origin_module": "janiform.validation.types",
-          "qualname": "RegressionCaseReport"
+          "kind": "contract_model",
+          "signature": "(fixture_id: 'str', case_kind: 'str', status: 'str', summary: 'str', failure: 'Optional[dict[str, Any]]') -> 'None'"
         },
         "RegressionHarnessFallbackPolicy": {
-          "base_classes": [
-            "dict"
+          "field_names": [
+            "schema_version",
+            "unknown_date_policy",
+            "unsupported_exchange_calendar_segment_policy",
+            "incomplete_fixture_coverage_policy"
           ],
-          "kind": "class",
-          "origin_module": "janiform.validation.types",
-          "qualname": "RegressionHarnessFallbackPolicy"
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', unknown_date_policy: 'str', unsupported_exchange_calendar_segment_policy: 'str', incomplete_fixture_coverage_policy: 'str') -> 'None'"
         },
         "RegressionHarnessSummary": {
-          "base_classes": [
-            "dict"
+          "field_names": [
+            "total_case_count",
+            "passed_case_count",
+            "failed_case_count"
           ],
-          "kind": "class",
-          "origin_module": "janiform.validation.types",
-          "qualname": "RegressionHarnessSummary"
+          "kind": "contract_model",
+          "signature": "(total_case_count: 'int', passed_case_count: 'int', failed_case_count: 'int') -> 'None'"
         },
         "RegressionHarnessToleranceConfig": {
-          "base_classes": [
-            "dict"
+          "field_names": [
+            "seasonality_absolute_tolerance",
+            "news_intensity_absolute_tolerance"
           ],
-          "kind": "class",
-          "origin_module": "janiform.validation.types",
-          "qualname": "RegressionHarnessToleranceConfig"
+          "kind": "contract_model",
+          "signature": "(seasonality_absolute_tolerance: 'float', news_intensity_absolute_tolerance: 'float') -> 'None'"
         },
         "VALIDATION_FALLBACK_POLICY_SCHEMA_VERSION": {
           "kind": "constant",
@@ -7819,6 +8470,285 @@
         "run_open_closed_gap_leakage_regression_harness": {
           "kind": "function",
           "signature": "(*, calendar_registry: 'CalendarRegistry', gap_behavior_cases: 'Sequence[Mapping[str, Any]]', component_absolute_tolerance: 'float' = 1e-12) -> 'OpenClosedGapLeakageRegressionHarnessReport'"
+        }
+      }
+    },
+    "janiform.validation.contracts": {
+      "exports": [
+        "DeterministicRegressionHarnessReport",
+        "OpenClosedGapBehaviorContributionSummary",
+        "OpenClosedGapBehaviorDiffMetric",
+        "OpenClosedGapBehaviorDiffReport",
+        "OpenClosedGapBehaviorDiffReportSummary",
+        "OpenClosedGapBehaviorScenarioDiff",
+        "OpenClosedGapBehaviorScenarioSummaryArtifact",
+        "OpenClosedGapBehaviorSummaryArtifact",
+        "OpenClosedGapDeterministicReplayMetadata",
+        "OpenClosedGapIssueTraceabilityMetadata",
+        "OpenClosedGapLeakageRegressionCaseReport",
+        "OpenClosedGapLeakageRegressionFailure",
+        "OpenClosedGapLeakageRegressionHarnessReport",
+        "OpenClosedGapLeakageRegressionHarnessSummary",
+        "OpenClosedGapLeakageRegressionHarnessToleranceConfig",
+        "OpenClosedGapLeakageRegressionOutputSchemaMetadata",
+        "OpenClosedGapScenarioClassCoverage",
+        "RegressionCaseReport",
+        "RegressionHarnessFallbackPolicy",
+        "RegressionHarnessSummary",
+        "RegressionHarnessToleranceConfig"
+      ],
+      "module_name": "janiform.validation.contracts",
+      "schema_identifiers": [],
+      "symbols": {
+        "DeterministicRegressionHarnessReport": {
+          "field_names": [
+            "schema_version",
+            "determinism_policy",
+            "fallback_policy",
+            "tolerance_config",
+            "summary",
+            "case_reports"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', determinism_policy: 'str', fallback_policy: 'RegressionHarnessFallbackPolicy', tolerance_config: 'RegressionHarnessToleranceConfig', summary: 'RegressionHarnessSummary', case_reports: 'list[RegressionCaseReport]') -> 'None'"
+        },
+        "OpenClosedGapBehaviorContributionSummary": {
+          "field_names": [
+            "open_window_event_count",
+            "closed_window_event_count",
+            "expected_activity_coupling_total",
+            "observed_activity_coupling_total",
+            "expected_trading_return_total",
+            "observed_trading_return_total",
+            "expected_open_jump_total",
+            "observed_open_jump_total",
+            "expected_closed_gap_total",
+            "observed_closed_gap_total"
+          ],
+          "kind": "contract_model",
+          "signature": "(open_window_event_count: 'int', closed_window_event_count: 'int', expected_activity_coupling_total: 'float', observed_activity_coupling_total: 'float', expected_trading_return_total: 'float', observed_trading_return_total: 'float', expected_open_jump_total: 'float', observed_open_jump_total: 'float', expected_closed_gap_total: 'float', observed_closed_gap_total: 'float') -> 'None'"
+        },
+        "OpenClosedGapBehaviorDiffMetric": {
+          "field_names": [
+            "metric_id",
+            "semantic_bucket",
+            "expected_value",
+            "observed_value",
+            "absolute_difference",
+            "absolute_tolerance",
+            "regression_detected"
+          ],
+          "kind": "contract_model",
+          "signature": "(metric_id: 'str', semantic_bucket: 'str', expected_value: 'float', observed_value: 'float', absolute_difference: 'float', absolute_tolerance: 'float', regression_detected: 'bool') -> 'None'"
+        },
+        "OpenClosedGapBehaviorDiffReport": {
+          "field_names": [
+            "schema_version",
+            "determinism_policy",
+            "baseline_expected_output_policy",
+            "summary",
+            "scenario_diffs"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', determinism_policy: 'str', baseline_expected_output_policy: 'str', summary: 'OpenClosedGapBehaviorDiffReportSummary', scenario_diffs: 'list[OpenClosedGapBehaviorScenarioDiff]') -> 'None'"
+        },
+        "OpenClosedGapBehaviorDiffReportSummary": {
+          "field_names": [
+            "total_case_count",
+            "regression_case_count",
+            "total_regression_metric_count",
+            "trading_return_regression_metric_count",
+            "open_jump_regression_metric_count",
+            "closed_gap_regression_metric_count",
+            "activity_coupling_regression_metric_count"
+          ],
+          "kind": "contract_model",
+          "signature": "(total_case_count: 'int', regression_case_count: 'int', total_regression_metric_count: 'int', trading_return_regression_metric_count: 'int', open_jump_regression_metric_count: 'int', closed_gap_regression_metric_count: 'int', activity_coupling_regression_metric_count: 'int') -> 'None'"
+        },
+        "OpenClosedGapBehaviorScenarioDiff": {
+          "field_names": [
+            "fixture_id",
+            "exchange_code",
+            "regression_metric_count",
+            "max_absolute_difference",
+            "metrics"
+          ],
+          "kind": "contract_model",
+          "signature": "(fixture_id: 'str', exchange_code: 'str', regression_metric_count: 'int', max_absolute_difference: 'float', metrics: 'list[OpenClosedGapBehaviorDiffMetric]') -> 'None'"
+        },
+        "OpenClosedGapBehaviorScenarioSummaryArtifact": {
+          "field_names": [
+            "fixture_id",
+            "exchange_code",
+            "scenario_class",
+            "deterministic_replay_metadata",
+            "issue_traceability",
+            "contributions"
+          ],
+          "kind": "contract_model",
+          "signature": "(fixture_id: 'str', exchange_code: 'str', scenario_class: 'str', deterministic_replay_metadata: 'OpenClosedGapDeterministicReplayMetadata', issue_traceability: 'OpenClosedGapIssueTraceabilityMetadata', contributions: 'OpenClosedGapBehaviorContributionSummary') -> 'None'"
+        },
+        "OpenClosedGapBehaviorSummaryArtifact": {
+          "field_names": [
+            "schema_version",
+            "determinism_policy",
+            "total_case_count",
+            "total_open_window_event_count",
+            "total_closed_window_event_count",
+            "scenario_class_coverage",
+            "scenarios"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', determinism_policy: 'str', total_case_count: 'int', total_open_window_event_count: 'int', total_closed_window_event_count: 'int', scenario_class_coverage: 'OpenClosedGapScenarioClassCoverage', scenarios: 'list[OpenClosedGapBehaviorScenarioSummaryArtifact]') -> 'None'"
+        },
+        "OpenClosedGapDeterministicReplayMetadata": {
+          "field_names": [
+            "replay_baseline_id",
+            "event_calendar_binding_id",
+            "jump_observation_binding_id",
+            "gap_observation_binding_id",
+            "candidate_selection_policy_id",
+            "candidate_selection_rank"
+          ],
+          "kind": "contract_model",
+          "signature": "(replay_baseline_id: 'str', event_calendar_binding_id: 'str', jump_observation_binding_id: 'str', gap_observation_binding_id: 'str', candidate_selection_policy_id: 'str', candidate_selection_rank: 'int') -> 'None'"
+        },
+        "OpenClosedGapIssueTraceabilityMetadata": {
+          "field_names": [
+            "issue_id",
+            "semantic_focus_tags"
+          ],
+          "kind": "contract_model",
+          "signature": "(issue_id: 'str', semantic_focus_tags: 'list[str]') -> 'None'"
+        },
+        "OpenClosedGapLeakageRegressionCaseReport": {
+          "field_names": [
+            "fixture_id",
+            "exchange_code",
+            "scenario_class",
+            "deterministic_replay_metadata",
+            "issue_traceability",
+            "status",
+            "summary",
+            "semantic_mismatch_failure_count",
+            "max_absolute_mismatch",
+            "contribution_summary",
+            "behavior_diff",
+            "failures"
+          ],
+          "kind": "contract_model",
+          "signature": "(fixture_id: 'str', exchange_code: 'str', scenario_class: 'str', deterministic_replay_metadata: 'OpenClosedGapDeterministicReplayMetadata', issue_traceability: 'OpenClosedGapIssueTraceabilityMetadata', status: 'str', summary: 'str', semantic_mismatch_failure_count: 'int', max_absolute_mismatch: 'float', contribution_summary: 'OpenClosedGapBehaviorContributionSummary', behavior_diff: 'OpenClosedGapBehaviorScenarioDiff', failures: 'list[OpenClosedGapLeakageRegressionFailure]') -> 'None'"
+        },
+        "OpenClosedGapLeakageRegressionFailure": {
+          "field_names": [
+            "failure_kind",
+            "semantic_bucket",
+            "mismatch_kind",
+            "event_id",
+            "event_timestamp_utc",
+            "expected_value",
+            "observed_value",
+            "absolute_difference",
+            "error_message"
+          ],
+          "kind": "contract_model",
+          "signature": "(failure_kind: 'str', semantic_bucket: 'Optional[str]', mismatch_kind: 'Optional[str]', event_id: 'Optional[str]', event_timestamp_utc: 'Optional[str]', expected_value: 'Optional[float]', observed_value: 'Optional[float]', absolute_difference: 'Optional[float]', error_message: 'Optional[str]') -> 'None'"
+        },
+        "OpenClosedGapLeakageRegressionHarnessReport": {
+          "field_names": [
+            "schema_version",
+            "determinism_policy",
+            "output_schema_metadata",
+            "tolerance_config",
+            "summary",
+            "summary_artifact",
+            "behavior_diff_report",
+            "case_reports"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', determinism_policy: 'str', output_schema_metadata: 'OpenClosedGapLeakageRegressionOutputSchemaMetadata', tolerance_config: 'OpenClosedGapLeakageRegressionHarnessToleranceConfig', summary: 'OpenClosedGapLeakageRegressionHarnessSummary', summary_artifact: 'OpenClosedGapBehaviorSummaryArtifact', behavior_diff_report: 'OpenClosedGapBehaviorDiffReport', case_reports: 'list[OpenClosedGapLeakageRegressionCaseReport]') -> 'None'"
+        },
+        "OpenClosedGapLeakageRegressionHarnessSummary": {
+          "field_names": [
+            "total_case_count",
+            "passed_case_count",
+            "failed_case_count",
+            "total_semantic_mismatch_failure_count",
+            "scenario_class_coverage"
+          ],
+          "kind": "contract_model",
+          "signature": "(total_case_count: 'int', passed_case_count: 'int', failed_case_count: 'int', total_semantic_mismatch_failure_count: 'int', scenario_class_coverage: 'OpenClosedGapScenarioClassCoverage') -> 'None'"
+        },
+        "OpenClosedGapLeakageRegressionHarnessToleranceConfig": {
+          "field_names": [
+            "component_absolute_tolerance"
+          ],
+          "kind": "contract_model",
+          "signature": "(component_absolute_tolerance: 'float') -> 'None'"
+        },
+        "OpenClosedGapLeakageRegressionOutputSchemaMetadata": {
+          "field_names": [
+            "schema_version",
+            "summary_artifact_schema_version",
+            "behavior_diff_report_schema_version",
+            "baseline_expected_output_policy",
+            "environment_metadata_policy",
+            "canonical_component_vocabulary",
+            "canonical_semantic_bucket_vocabulary",
+            "required_case_report_fields",
+            "required_summary_artifact_fields",
+            "required_behavior_diff_report_fields",
+            "required_behavior_diff_metric_fields"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', summary_artifact_schema_version: 'str', behavior_diff_report_schema_version: 'str', baseline_expected_output_policy: 'str', environment_metadata_policy: 'str', canonical_component_vocabulary: 'list[str]', canonical_semantic_bucket_vocabulary: 'list[str]', required_case_report_fields: 'list[str]', required_summary_artifact_fields: 'list[str]', required_behavior_diff_report_fields: 'list[str]', required_behavior_diff_metric_fields: 'list[str]') -> 'None'"
+        },
+        "OpenClosedGapScenarioClassCoverage": {
+          "field_names": [
+            "known_only_case_count",
+            "surprise_only_case_count",
+            "mixed_news_case_count"
+          ],
+          "kind": "contract_model",
+          "signature": "(known_only_case_count: 'int', surprise_only_case_count: 'int', mixed_news_case_count: 'int') -> 'None'"
+        },
+        "RegressionCaseReport": {
+          "field_names": [
+            "fixture_id",
+            "case_kind",
+            "status",
+            "summary",
+            "failure"
+          ],
+          "kind": "contract_model",
+          "signature": "(fixture_id: 'str', case_kind: 'str', status: 'str', summary: 'str', failure: 'Optional[dict[str, Any]]') -> 'None'"
+        },
+        "RegressionHarnessFallbackPolicy": {
+          "field_names": [
+            "schema_version",
+            "unknown_date_policy",
+            "unsupported_exchange_calendar_segment_policy",
+            "incomplete_fixture_coverage_policy"
+          ],
+          "kind": "contract_model",
+          "signature": "(schema_version: 'str', unknown_date_policy: 'str', unsupported_exchange_calendar_segment_policy: 'str', incomplete_fixture_coverage_policy: 'str') -> 'None'"
+        },
+        "RegressionHarnessSummary": {
+          "field_names": [
+            "total_case_count",
+            "passed_case_count",
+            "failed_case_count"
+          ],
+          "kind": "contract_model",
+          "signature": "(total_case_count: 'int', passed_case_count: 'int', failed_case_count: 'int') -> 'None'"
+        },
+        "RegressionHarnessToleranceConfig": {
+          "field_names": [
+            "seasonality_absolute_tolerance",
+            "news_intensity_absolute_tolerance"
+          ],
+          "kind": "contract_model",
+          "signature": "(seasonality_absolute_tolerance: 'float', news_intensity_absolute_tolerance: 'float') -> 'None'"
         }
       }
     }

@@ -8,6 +8,7 @@ import janiform.validation as validation_module
 from janiform.seasonality import SeasonalityInputValidationError
 from janiform.validation import (
     DETERMINISTIC_REGRESSION_HARNESS_REPORT_SCHEMA_VERSION,
+    DeterministicRegressionHarnessReport,
     VALIDATION_FALLBACK_POLICY_SCHEMA_VERSION,
     VALIDATION_INCOMPLETE_FIXTURE_COVERAGE_POLICY,
     VALIDATION_UNKNOWN_DATE_FALLBACK_POLICY,
@@ -22,8 +23,6 @@ from tests.support.fixture_validation import (
 )
 
 type HourlyCanonicalOutputCase = HourlyFactorRegressionCanonicalOutputCase
-type RegressionHarnessReport = dict[str, Any]
-
 
 def test_deterministic_regression_harness_matches_shared_fixtures(
     calendar_registry,
@@ -40,27 +39,27 @@ def test_deterministic_regression_harness_matches_shared_fixtures(
         news_intensity_absolute_tolerance=tolerance_config["nu_h_absolute_tolerance"],
     )
 
-    summary: dict[str, int] = cast(dict[str, int], report["summary"])
-    case_reports: list[dict[str, Any]] = cast(list[dict[str, Any]], report["case_reports"])
-    fallback_policy: dict[str, str] = cast(dict[str, str], report["fallback_policy"])
+    summary = report.summary
+    case_reports = report.case_reports
+    fallback_policy = report.fallback_policy
 
-    assert report["schema_version"] == DETERMINISTIC_REGRESSION_HARNESS_REPORT_SCHEMA_VERSION
-    assert fallback_policy["schema_version"] == VALIDATION_FALLBACK_POLICY_SCHEMA_VERSION
-    assert fallback_policy["unknown_date_policy"] == VALIDATION_UNKNOWN_DATE_FALLBACK_POLICY
+    assert report.schema_version == DETERMINISTIC_REGRESSION_HARNESS_REPORT_SCHEMA_VERSION
+    assert fallback_policy.schema_version == VALIDATION_FALLBACK_POLICY_SCHEMA_VERSION
+    assert fallback_policy.unknown_date_policy == VALIDATION_UNKNOWN_DATE_FALLBACK_POLICY
     assert (
-        fallback_policy["unsupported_exchange_calendar_segment_policy"]
+        fallback_policy.unsupported_exchange_calendar_segment_policy
         == VALIDATION_UNSUPPORTED_CALENDAR_SEGMENT_POLICY
     )
     assert (
-        fallback_policy["incomplete_fixture_coverage_policy"]
+        fallback_policy.incomplete_fixture_coverage_policy
         == VALIDATION_INCOMPLETE_FIXTURE_COVERAGE_POLICY
     )
-    assert summary["total_case_count"] == len(calendar_regression_cases) + len(
+    assert summary.total_case_count == len(calendar_regression_cases) + len(
         hourly_factor_regression_canonical_cases,
     )
-    assert summary["failed_case_count"] == 0
-    assert summary["passed_case_count"] == summary["total_case_count"]
-    assert all(cast(str, case_report["status"]) == "pass" for case_report in case_reports)
+    assert summary.failed_case_count == 0
+    assert summary.passed_case_count == summary.total_case_count
+    assert all(case_report.status == "pass" for case_report in case_reports)
 
 
 def test_deterministic_regression_harness_reports_fixture_mismatches(
@@ -93,15 +92,14 @@ def test_deterministic_regression_harness_reports_fixture_mismatches(
         news_intensity_absolute_tolerance=tolerance_config["nu_h_absolute_tolerance"],
     )
 
-    summary: dict[str, int] = cast(dict[str, int], report["summary"])
     calendar_failure_report = _case_report_by_fixture_id(report, calendar_failure_fixture_id)
     seasonality_failure_report = _case_report_by_fixture_id(report, seasonality_failure_fixture_id)
 
-    assert summary["failed_case_count"] == 2
-    assert cast(str, calendar_failure_report["status"]) == "fail"
-    assert cast(dict[str, Any], calendar_failure_report["failure"])["failure_kind"] == "market_state_mismatch"
-    assert cast(str, seasonality_failure_report["status"]) == "fail"
-    assert cast(dict[str, Any], seasonality_failure_report["failure"])["failure_kind"] == (
+    assert report.summary.failed_case_count == 2
+    assert calendar_failure_report.status == "fail"
+    assert cast(dict[str, Any], calendar_failure_report.failure)["failure_kind"] == "market_state_mismatch"
+    assert seasonality_failure_report.status == "fail"
+    assert cast(dict[str, Any], seasonality_failure_report.failure)["failure_kind"] == (
         "factor_tolerance_exceeded"
     )
 
@@ -129,7 +127,7 @@ def test_deterministic_regression_harness_report_is_repeatable(
     )
 
     assert first_report == second_report
-    assert json.dumps(first_report, sort_keys=True) == json.dumps(second_report, sort_keys=True)
+    assert first_report.to_json() == second_report.to_json()
 
 
 def test_deterministic_regression_harness_rejects_invalid_seasonality_timestamp_key(
@@ -174,9 +172,7 @@ def test_deterministic_regression_harness_threshold_boundary_is_inclusive(
         seasonality_absolute_tolerance=seasonality_tolerance,
         news_intensity_absolute_tolerance=tolerance_config["nu_h_absolute_tolerance"],
     )
-    summary: dict[str, int] = cast(dict[str, int], report["summary"])
-
-    assert summary["failed_case_count"] == 0
+    assert report.summary.failed_case_count == 0
 
 
 def test_deterministic_regression_harness_threshold_boundary_fails_when_exceeded(
@@ -198,9 +194,7 @@ def test_deterministic_regression_harness_threshold_boundary_fails_when_exceeded
         seasonality_absolute_tolerance=seasonality_tolerance,
         news_intensity_absolute_tolerance=tolerance_config["nu_h_absolute_tolerance"],
     )
-    summary: dict[str, int] = cast(dict[str, int], report["summary"])
-
-    assert summary["failed_case_count"] == 1
+    assert report.summary.failed_case_count == 1
 
 
 def test_deterministic_regression_harness_unknown_date_uses_regular_schedule_policy(
@@ -218,11 +212,9 @@ def test_deterministic_regression_harness_unknown_date_uses_regular_schedule_pol
         seasonality_cases=[],
     )
 
-    fallback_policy: dict[str, str] = cast(dict[str, str], report["fallback_policy"])
-    summary: dict[str, int] = cast(dict[str, int], report["summary"])
-    assert fallback_policy["unknown_date_policy"] == VALIDATION_UNKNOWN_DATE_FALLBACK_POLICY
-    assert summary["total_case_count"] == 1
-    assert summary["failed_case_count"] == 0
+    assert report.fallback_policy.unknown_date_policy == VALIDATION_UNKNOWN_DATE_FALLBACK_POLICY
+    assert report.summary.total_case_count == 1
+    assert report.summary.failed_case_count == 0
 
 
 def test_deterministic_regression_harness_rejects_malformed_report_payload(
@@ -278,12 +270,11 @@ def test_deterministic_regression_harness_rejects_malformed_report_payload(
 
 
 def _case_report_by_fixture_id(
-    report: RegressionHarnessReport,
+    report: DeterministicRegressionHarnessReport,
     fixture_id: str,
-) -> dict[str, Any]:
-    case_reports: list[dict[str, Any]] = cast(list[dict[str, Any]], report["case_reports"])
-    for case_report in case_reports:
-        if cast(str, case_report["fixture_id"]) == fixture_id:
+) -> validation_module.RegressionCaseReport:
+    for case_report in report.case_reports:
+        if case_report.fixture_id == fixture_id:
             return case_report
 
     raise ValueError(f"missing case report for fixture_id: {fixture_id}")

@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale.v1",
-  "approved_snapshot_sha256": "0c4bd060e62018e4ae7b34e4ae7180fbd48d2caeb798ffc88f5755a839c1c472",
+  "approved_snapshot_sha256": "233d767c87bb8ae5d9bf1bd87d6dcfe2f94e5a8a96c41f23671691cc663ec4ea",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -760,6 +760,21 @@
       "updated_surfaces": [
         "janiform.calibration",
         "janiform.mean_reversion"
+      ]
+    },
+    {
+      "approved_on": "2026-04-03",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Stylized-fact and validation report surfaces now use ContractModel dataclasses and package-owned contracts submodules instead of TypedDict artifacts and the validation.types module. The approved snapshot must record the new janiform.stylized_facts package shape, the janiform.stylized_facts.contracts and janiform.validation.contracts submodules, and the dataclass-backed contract signatures that replace the old dict-shaped report models.",
+      "snapshot_sha256": "233d767c87bb8ae5d9bf1bd87d6dcfe2f94e5a8a96c41f23671691cc663ec4ea",
+      "summary": "Approve dataclass report contracts and package-owned stylized-facts and validation contract submodules.",
+      "updated_surfaces": [
+        "janiform.stylized_facts",
+        "janiform.stylized_facts.contracts",
+        "janiform.validation",
+        "janiform.validation.contracts"
       ]
     }
   ],

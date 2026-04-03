@@ -211,6 +211,22 @@ def test_public_api_contract_guardrail_supports_public_domain_submodules() -> No
                 "run_coarse_simulation",
                 "run_seeded_tick_event_simulation",
             ],
+            "janiform.validation": [
+                "DeterministicRegressionHarnessReport",
+                "run_deterministic_regression_harness",
+            ],
+            "janiform.validation.contracts": [
+                "DeterministicRegressionHarnessReport",
+                "OpenClosedGapLeakageRegressionHarnessReport",
+            ],
+            "janiform.stylized_facts": [
+                "StylizedFactHorizonComparisonReportBundle",
+                "run_stylized_fact_horizon_comparison_report_generator",
+            ],
+            "janiform.stylized_facts.contracts": [
+                "StylizedFactHorizonComparisonReport",
+                "StylizedFactHorizonComparisonReportBundle",
+            ],
         }
     )
     guardrail_manifest = _guardrail_manifest_for_snapshot(approved_snapshot)
@@ -246,6 +262,10 @@ def test_public_api_contract_guardrail_supports_public_domain_submodules() -> No
         "janiform.cli",
         "janiform.cli.commands.calibration",
         "janiform.cli.commands.simulation",
+        "janiform.validation",
+        "janiform.validation.contracts",
+        "janiform.stylized_facts",
+        "janiform.stylized_facts.contracts",
         "janiform.simulation",
         "janiform.simulation.coarse",
         "janiform.simulation.seeded",

@@ -20,6 +20,7 @@ from .calendar import (
     CalendarMissingExchangeError,
     CalendarRegistry,
 )
+from .contracts.base import require_datetime_instance_utc
 from .seasonality import SeasonalityInputValidationError
 
 HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION: str = "seasonality.hourly_factor.contract.v1"
@@ -862,8 +863,16 @@ def provide_hourly_factor_contract(
     """
 
     native: ModuleType = native_module()
-    normalized_range_start_utc = _normalize_utc_timestamp(range_start_utc, field_name="range_start_utc")
-    normalized_range_end_utc = _normalize_utc_timestamp(range_end_utc, field_name="range_end_utc")
+    normalized_range_start_utc = require_datetime_instance_utc(
+        range_start_utc,
+        "range_start_utc",
+        _calendar_invalid_timestamp_error,
+    )
+    normalized_range_end_utc = require_datetime_instance_utc(
+        range_end_utc,
+        "range_end_utc",
+        _calendar_invalid_timestamp_error,
+    )
     interval_duration_nanos = _parse_interval_duration_nanos(interval)
     serialized_seasonality_source = (
         _serialize_seasonality_provider_source(seasonality_source)
@@ -894,6 +903,7 @@ def provide_hourly_factor_contract(
         )
         if mapped_error is not None:
             raise mapped_error from e
+
         raise
 
     return HourlyFactorContract(native_result)
@@ -918,6 +928,7 @@ def load_hourly_factor_contract_payload(
         )
         if mapped_error is not None:
             raise mapped_error from e
+
         raise
 
     return HourlyFactorContract(native_result)
@@ -945,8 +956,16 @@ def build_hourly_factor_contract(
     """
 
     native: ModuleType = native_module()
-    normalized_range_start_utc = _normalize_utc_timestamp(range_start_utc, field_name="range_start_utc")
-    normalized_range_end_utc = _normalize_utc_timestamp(range_end_utc, field_name="range_end_utc")
+    normalized_range_start_utc = require_datetime_instance_utc(
+        range_start_utc,
+        "range_start_utc",
+        _calendar_invalid_timestamp_error,
+    )
+    normalized_range_end_utc = require_datetime_instance_utc(
+        range_end_utc,
+        "range_end_utc",
+        _calendar_invalid_timestamp_error,
+    )
     interval_duration_nanos = _parse_interval_duration_nanos(interval)
 
     try:
@@ -969,6 +988,7 @@ def build_hourly_factor_contract(
         )
         if mapped_error is not None:
             raise mapped_error from e
+
         raise
 
     return HourlyFactorContract(native_result)
@@ -986,7 +1006,11 @@ def _serialize_seasonality_provider_source(
             }
         case HourlySeasonalityProviderMaterializedSource():
             normalized_source_timestamps_utc = [
-                _normalize_utc_timestamp(source_timestamp_utc, field_name="source_timestamps_utc")
+                require_datetime_instance_utc(
+                    source_timestamp_utc,
+                    "source_timestamps_utc",
+                    _calendar_invalid_timestamp_error,
+                )
                 for source_timestamp_utc in seasonality_source.source_timestamps_utc
             ]
             return {
@@ -1022,9 +1046,10 @@ def _serialize_news_intensity_provider_source(
             }
         case HourlyNewsIntensityProviderMaterializedSource():
             normalized_known_scheduled_event_timestamps_utc = [
-                _normalize_utc_timestamp(
+                require_datetime_instance_utc(
                     known_scheduled_event_timestamp_utc,
-                    field_name="known_scheduled_event_timestamps_utc",
+                    "known_scheduled_event_timestamps_utc",
+                    _calendar_invalid_timestamp_error,
                 )
                 for known_scheduled_event_timestamp_utc in news_intensity_source.known_scheduled_event_timestamps_utc
             ]
@@ -1071,11 +1096,23 @@ def materialize_hourly_seasonality_factors(
     """
 
     native: ModuleType = native_module()
-    normalized_range_start_utc = _normalize_utc_timestamp(range_start_utc, field_name="range_start_utc")
-    normalized_range_end_utc = _normalize_utc_timestamp(range_end_utc, field_name="range_end_utc")
+    normalized_range_start_utc = require_datetime_instance_utc(
+        range_start_utc,
+        "range_start_utc",
+        _calendar_invalid_timestamp_error,
+    )
+    normalized_range_end_utc = require_datetime_instance_utc(
+        range_end_utc,
+        "range_end_utc",
+        _calendar_invalid_timestamp_error,
+    )
     interval_duration_nanos = _parse_interval_duration_nanos(interval)
     normalized_source_timestamps_utc = [
-        _normalize_utc_timestamp(source_timestamp_utc, field_name="source_timestamps_utc")
+        require_datetime_instance_utc(
+            source_timestamp_utc,
+            "source_timestamps_utc",
+            _calendar_invalid_timestamp_error,
+        )
         for source_timestamp_utc in source_timestamps_utc
     ]
 
@@ -1103,6 +1140,7 @@ def materialize_hourly_seasonality_factors(
         )
         if mapped_error is not None:
             raise mapped_error from e
+
         raise
 
     return HourlySeasonalityMaterialization(native_result)
@@ -1192,13 +1230,22 @@ def materialize_hourly_news_intensity_factors(
 
     native: ModuleType = native_module()
 
-    normalized_range_start_utc = _normalize_utc_timestamp(range_start_utc, field_name="range_start_utc")
-    normalized_range_end_utc = _normalize_utc_timestamp(range_end_utc, field_name="range_end_utc")
+    normalized_range_start_utc = require_datetime_instance_utc(
+        range_start_utc,
+        "range_start_utc",
+        _calendar_invalid_timestamp_error,
+    )
+    normalized_range_end_utc = require_datetime_instance_utc(
+        range_end_utc,
+        "range_end_utc",
+        _calendar_invalid_timestamp_error,
+    )
     interval_duration_nanos = _parse_interval_duration_nanos(interval)
     normalized_known_scheduled_event_timestamps_utc = [
-        _normalize_utc_timestamp(
+        require_datetime_instance_utc(
             known_scheduled_event_timestamp_utc,
-            field_name="known_scheduled_event_timestamps_utc",
+            "known_scheduled_event_timestamps_utc",
+            _calendar_invalid_timestamp_error,
         )
         for known_scheduled_event_timestamp_utc in settings.known_scheduled_event_timestamps_utc
     ]
@@ -1235,23 +1282,17 @@ def materialize_hourly_news_intensity_factors(
         )
         if mapped_error is not None:
             raise mapped_error from e
+
         raise
 
     return HourlyNewsIntensityMaterialization(native_result)
 
 
-def _normalize_utc_timestamp(timestamp_utc: datetime, *, field_name: str) -> datetime:
-    if not isinstance(timestamp_utc, datetime):
-        raise CalendarInvalidTimestampError(
-            f"{field_name} must be a datetime value with timezone information",
-        )
-
-    if timestamp_utc.tzinfo is None:
-        raise CalendarInvalidTimestampError(
-            f"{field_name} must be timezone-aware",
-        )
-
-    return timestamp_utc.astimezone(UTC)
+def _calendar_invalid_timestamp_error(
+    field_path: str,
+    message: str,
+) -> CalendarInvalidTimestampError:
+    return CalendarInvalidTimestampError(f"{field_path} {message}")
 
 
 def _mean_renormalize_hourly_factors(hourly_factors: Sequence[float]) -> tuple[float, ...]:
@@ -1300,6 +1341,7 @@ def _require_calibration_stage_payload_integer_sequence(
             raise SeasonalityInputValidationError(
                 f"seasonality_stage_payload.{field_name}[{entry_index}] must be an integer",
             )
+
         values.append(entry)
 
     return values
@@ -1324,6 +1366,7 @@ def _require_calibration_stage_payload_numeric_sequence(
             raise SeasonalityInputValidationError(
                 f"seasonality_stage_payload.{field_name}[{entry_index}] must be numeric",
             )
+
         values.append(float(entry))
 
     return values

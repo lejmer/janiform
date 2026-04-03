@@ -9,7 +9,7 @@ from .enum import (
     RegressionStatus,
     require_enum_member,
 )
-from .types import (
+from .contracts import (
     DeterministicRegressionHarnessReport,
     RegressionCaseReport,
     RegressionHarnessFallbackPolicy,
@@ -359,20 +359,20 @@ def validate_deterministic_harness_report_payload(raw_payload: object) -> Determ
         VALIDATION_ERROR_FACTORY,
     )
 
-    fallback_policy: RegressionHarnessFallbackPolicy = {
-        "schema_version": require_non_empty_string(
+    fallback_policy = RegressionHarnessFallbackPolicy(
+        schema_version=require_non_empty_string(
             fallback_policy_mapping,
             "schema_version",
             "deterministic regression harness report.fallback_policy.schema_version",
             VALIDATION_ERROR_FACTORY,
         ),
-        "unknown_date_policy": require_non_empty_string(
+        unknown_date_policy=require_non_empty_string(
             fallback_policy_mapping,
             "unknown_date_policy",
             "deterministic regression harness report.fallback_policy.unknown_date_policy",
             VALIDATION_ERROR_FACTORY,
         ),
-        "unsupported_exchange_calendar_segment_policy": require_non_empty_string(
+        unsupported_exchange_calendar_segment_policy=require_non_empty_string(
             fallback_policy_mapping,
             "unsupported_exchange_calendar_segment_policy",
             (
@@ -381,44 +381,44 @@ def validate_deterministic_harness_report_payload(raw_payload: object) -> Determ
             ),
             VALIDATION_ERROR_FACTORY,
         ),
-        "incomplete_fixture_coverage_policy": require_non_empty_string(
+        incomplete_fixture_coverage_policy=require_non_empty_string(
             fallback_policy_mapping,
             "incomplete_fixture_coverage_policy",
             "deterministic regression harness report.fallback_policy.incomplete_fixture_coverage_policy",
             VALIDATION_ERROR_FACTORY,
         ),
-    }
+    )
 
-    if fallback_policy["schema_version"] != VALIDATION_FALLBACK_POLICY_SCHEMA_VERSION:
+    if fallback_policy.schema_version != VALIDATION_FALLBACK_POLICY_SCHEMA_VERSION:
         raise SeasonalityInputValidationError(
             "unexpected deterministic regression harness fallback_policy.schema_version: "
-            f"{fallback_policy['schema_version']}",
+            f"{fallback_policy.schema_version}",
         )
 
-    if fallback_policy["unknown_date_policy"] != VALIDATION_UNKNOWN_DATE_FALLBACK_POLICY:
+    if fallback_policy.unknown_date_policy != VALIDATION_UNKNOWN_DATE_FALLBACK_POLICY:
         raise SeasonalityInputValidationError(
             "unexpected deterministic regression harness fallback_policy.unknown_date_policy: "
-            f"{fallback_policy['unknown_date_policy']}",
+            f"{fallback_policy.unknown_date_policy}",
         )
 
     if (
-        fallback_policy["unsupported_exchange_calendar_segment_policy"]
+        fallback_policy.unsupported_exchange_calendar_segment_policy
         != VALIDATION_UNSUPPORTED_CALENDAR_SEGMENT_POLICY
     ):
         raise SeasonalityInputValidationError(
             "unexpected deterministic regression harness "
             "fallback_policy.unsupported_exchange_calendar_segment_policy: "
-            f"{fallback_policy['unsupported_exchange_calendar_segment_policy']}",
+            f"{fallback_policy.unsupported_exchange_calendar_segment_policy}",
         )
 
     if (
-        fallback_policy["incomplete_fixture_coverage_policy"]
+        fallback_policy.incomplete_fixture_coverage_policy
         != VALIDATION_INCOMPLETE_FIXTURE_COVERAGE_POLICY
     ):
         raise SeasonalityInputValidationError(
             "unexpected deterministic regression harness "
             "fallback_policy.incomplete_fixture_coverage_policy: "
-            f"{fallback_policy['incomplete_fixture_coverage_policy']}",
+            f"{fallback_policy.incomplete_fixture_coverage_policy}",
         )
 
     tolerance_config_mapping: Mapping[str, Any] = require_mapping(
@@ -427,8 +427,8 @@ def validate_deterministic_harness_report_payload(raw_payload: object) -> Determ
         "deterministic regression harness report.tolerance_config",
         VALIDATION_ERROR_FACTORY,
     )
-    tolerance_config: RegressionHarnessToleranceConfig = {
-        "seasonality_absolute_tolerance": require_non_negative_finite_scalar(
+    tolerance_config = RegressionHarnessToleranceConfig(
+        seasonality_absolute_tolerance=require_non_negative_finite_scalar(
             require_field(
                 tolerance_config_mapping,
                 "seasonality_absolute_tolerance",
@@ -438,7 +438,7 @@ def validate_deterministic_harness_report_payload(raw_payload: object) -> Determ
             "tolerance_config.seasonality_absolute_tolerance",
             VALIDATION_ERROR_FACTORY,
         ),
-        "news_intensity_absolute_tolerance": require_non_negative_finite_scalar(
+        news_intensity_absolute_tolerance=require_non_negative_finite_scalar(
             require_field(
                 tolerance_config_mapping,
                 "news_intensity_absolute_tolerance",
@@ -448,7 +448,7 @@ def validate_deterministic_harness_report_payload(raw_payload: object) -> Determ
             "tolerance_config.news_intensity_absolute_tolerance",
             VALIDATION_ERROR_FACTORY,
         ),
-    }
+    )
 
     summary_mapping: Mapping[str, Any] = require_mapping(
         raw_payload,
@@ -456,26 +456,26 @@ def validate_deterministic_harness_report_payload(raw_payload: object) -> Determ
         "deterministic regression harness report.summary",
         VALIDATION_ERROR_FACTORY,
     )
-    summary: RegressionHarnessSummary = {
-        "total_case_count": require_non_negative_integer(
+    summary = RegressionHarnessSummary(
+        total_case_count=require_non_negative_integer(
             summary_mapping,
             "total_case_count",
             "deterministic regression harness report.summary.total_case_count",
             VALIDATION_ERROR_FACTORY,
         ),
-        "passed_case_count": require_non_negative_integer(
+        passed_case_count=require_non_negative_integer(
             summary_mapping,
             "passed_case_count",
             "deterministic regression harness report.summary.passed_case_count",
             VALIDATION_ERROR_FACTORY,
         ),
-        "failed_case_count": require_non_negative_integer(
+        failed_case_count=require_non_negative_integer(
             summary_mapping,
             "failed_case_count",
             "deterministic regression harness report.summary.failed_case_count",
             VALIDATION_ERROR_FACTORY,
         ),
-    }
+    )
 
     case_reports_raw: object = require_field(
         raw_payload,
@@ -525,30 +525,30 @@ def validate_deterministic_harness_report_payload(raw_payload: object) -> Determ
             )
 
         case_reports.append(
-            {
-                "fixture_id": require_non_empty_string(
+            RegressionCaseReport(
+                fixture_id=require_non_empty_string(
                     raw_case_report,
                     "fixture_id",
                     f"{case_report_context}.fixture_id",
                     VALIDATION_ERROR_FACTORY,
                 ),
-                "case_kind": case_kind.value,
-                "status": status.value,
-                "summary": require_non_empty_string(
+                case_kind=case_kind.value,
+                status=status.value,
+                summary=require_non_empty_string(
                     raw_case_report,
                     "summary",
                     f"{case_report_context}.summary",
                     VALIDATION_ERROR_FACTORY,
                 ),
-                "failure": cast(Optional[dict[str, Any]], raw_failure),
-            },
+                failure=cast(Optional[dict[str, Any]], raw_failure),
+            ),
         )
 
-    return {
-        "schema_version": schema_version,
-        "determinism_policy": determinism_policy,
-        "fallback_policy": fallback_policy,
-        "tolerance_config": tolerance_config,
-        "summary": summary,
-        "case_reports": case_reports,
-    }
+    return DeterministicRegressionHarnessReport(
+        schema_version=schema_version,
+        determinism_policy=determinism_policy,
+        fallback_policy=fallback_policy,
+        tolerance_config=tolerance_config,
+        summary=summary,
+        case_reports=case_reports,
+    )

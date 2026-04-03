@@ -1,4 +1,5 @@
 import json
+from abc import ABC
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import fields, is_dataclass
 from datetime import UTC, datetime
@@ -10,7 +11,7 @@ from typing import Any, Optional, cast
 type ValidationErrorFactory = Callable[[str, str], Exception]
 
 
-class ContractModel:
+class ContractModel(ABC):
     def to_payload(self) -> dict[str, Any]:
         payload = _to_jsonable(self)
         if not isinstance(payload, dict):
@@ -110,6 +111,18 @@ def require_optional_mapping_value(
         raise error_factory(field_path, "must be an object or null")
 
     return dict(raw_value)
+
+
+def require_mapping_value(
+    raw_value: Any,
+    field_path: str,
+    error_factory: ValidationErrorFactory,
+) -> dict[str, Any]:
+    optional_value = require_optional_mapping_value(raw_value, field_path, error_factory)
+    if optional_value is None:
+        raise error_factory(field_path, "must be an object")
+
+    return optional_value
 
 
 def require_optional_string_value(
@@ -459,6 +472,23 @@ def require_positive_finite_scalar(
         raise error_factory(field_path, "must be strictly positive")
 
     return value
+
+
+def require_datetime_instance_utc(
+    raw_value: Any,
+    field_path: str,
+    error_factory: ValidationErrorFactory,
+) -> datetime:
+    if not isinstance(raw_value, datetime):
+        raise error_factory(
+            field_path,
+            "must be a datetime value with timezone information",
+        )
+
+    if raw_value.tzinfo is None:
+        raise error_factory(field_path, "must be timezone-aware")
+
+    return raw_value.astimezone(UTC)
 
 
 def require_datetime_utc(

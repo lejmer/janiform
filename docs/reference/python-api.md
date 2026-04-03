@@ -119,6 +119,24 @@ Regression and behavior-validation entrypoints. Representative public symbols in
 - `run_deterministic_regression_harness`
 - `run_open_closed_gap_leakage_regression_harness`
 
+The public contract submodule is:
+
+- `janiform.validation.contracts`
+
+### `janiform.stylized_facts`
+
+Stylized-fact reporting workflows and report contracts. Representative public symbols include:
+
+- `StylizedFactHorizonComparisonReport`
+- `StylizedFactHorizonComparisonReportBundle`
+- `StylizedFactHorizonComparisonTableSummary`
+- `StylizedFactHorizonComparisonPlotPayload`
+- `run_stylized_fact_horizon_comparison_report_generator`
+
+The public contract submodule is:
+
+- `janiform.stylized_facts.contracts`
+
 ### `janiform.mean_reversion`
 
 Public mean-reversion domain contracts shared across pricing, calibration, and simulation.
