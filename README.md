@@ -10,7 +10,7 @@ Janiform is named after Janus, the Roman god of duality, transitions, and thresh
 
 ## Quickstart
 
-### Linux and WSL
+### Linux
 
 ```bash
 ./scripts/bootstrap-linux.sh .venv-linux
@@ -19,7 +19,7 @@ janiform --help
 python -m examples.introductory.first_model
 ```
 
-### Windows PowerShell
+### Windows
 
 ```powershell
 ./scripts/bootstrap-win.ps1 .venv
