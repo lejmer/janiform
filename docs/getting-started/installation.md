@@ -22,7 +22,7 @@ janiform --help
 
 ```powershell
 ./scripts/bootstrap-win.ps1 .venv-win
-. .\.venv\Scripts\Activate.ps1
+. .\.venv-win\Scripts\Activate.ps1
 janiform --help
 ```
 
