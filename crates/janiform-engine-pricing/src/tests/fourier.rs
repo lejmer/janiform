@@ -12,13 +12,17 @@ use crate::{
 use janiform_foundations::complex_math::ComplexScalar;
 
 use super::support::{black_scholes_log_return_characteristic_function, black_scholes_price};
+
+const ONE_YEAR_IN_HOURS: f64 = 24.0 * 365.25;
+
 #[test]
 fn fourier_inversion_call_price_matches_black_scholes_sanity_case() {
     // Note: This validates Fourier inversion mechanics against a closed-form benchmark and does
     // NOT assume Janiform dynamics are Black-Scholes.
 
-    let market_inputs = VanillaOptionPricingMarketInputs::try_new(100.0, 100.0, 1.0, 0.02, 0.01)
-        .expect("market inputs should construct");
+    let market_inputs =
+        VanillaOptionPricingMarketInputs::try_new(100.0, 100.0, ONE_YEAR_IN_HOURS, 0.02, 0.01)
+            .expect("market inputs should construct");
     let volatility = 0.2;
     let settings = FourierInversionEngineSettings::try_new(
         FourierInversionContour::try_new(1.5).expect("contour settings should construct"),
@@ -44,7 +48,7 @@ fn fourier_inversion_call_price_matches_black_scholes_sanity_case() {
     .expect("fourier inversion call pricing should succeed");
 
     let expected_call_price =
-        black_scholes_price(market_inputs, volatility, VanillaOptionPayoffType::Call);
+        black_scholes_price(market_inputs, VanillaOptionPayoffType::Call, volatility);
     let absolute_error = (result.price - expected_call_price).abs();
     assert!(
         absolute_error <= 1.0e-3,
@@ -61,8 +65,9 @@ fn fourier_inversion_put_price_matches_black_scholes_sanity_case() {
     // Note: This validates Fourier inversion mechanics against a closed-form benchmark and does
     // NOT assume Janiform dynamics are Black-Scholes.
 
-    let market_inputs = VanillaOptionPricingMarketInputs::try_new(100.0, 100.0, 1.0, 0.02, 0.01)
-        .expect("market inputs should construct");
+    let market_inputs =
+        VanillaOptionPricingMarketInputs::try_new(100.0, 100.0, ONE_YEAR_IN_HOURS, 0.02, 0.01)
+            .expect("market inputs should construct");
     let volatility = 0.2;
     let settings = FourierInversionEngineSettings::try_new(
         FourierInversionContour::try_new(1.5).expect("contour settings should construct"),
@@ -88,7 +93,7 @@ fn fourier_inversion_put_price_matches_black_scholes_sanity_case() {
     .expect("fourier inversion put pricing should succeed");
 
     let expected_put_price =
-        black_scholes_price(market_inputs, volatility, VanillaOptionPayoffType::Put);
+        black_scholes_price(market_inputs, VanillaOptionPayoffType::Put, volatility);
     let absolute_error = (result.price - expected_put_price).abs();
     assert!(
         absolute_error <= 1.0e-3,
@@ -109,8 +114,9 @@ fn fourier_inversion_rejects_invalid_integration_settings() {
         FourierInversionContourError::InvalidDampingFactor { value } if value == 0.0
     ));
 
-    let market_inputs = VanillaOptionPricingMarketInputs::try_new(100.0, 100.0, 1.0, 0.02, 0.01)
-        .expect("market inputs should construct");
+    let market_inputs =
+        VanillaOptionPricingMarketInputs::try_new(100.0, 100.0, ONE_YEAR_IN_HOURS, 0.02, 0.01)
+            .expect("market inputs should construct");
     let invalid_settings = FourierInversionEngineSettings::new(
         FourierInversionContour::new(1.0),
         FourierInversionNumericSettings::new(120.0, 0, FourierInversionQuadratureRule::Midpoint),

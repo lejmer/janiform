@@ -2,7 +2,7 @@
 
 ## High-level Goals
 
-- First and foremost: Do not introduce undocumented numerical heuristics, magic constants, or solver policies; every numeric decision must be mathematically derived, data-derived, or explicitly specified and documented in a named contract or policy. This applies to epsilons (floating-point thresholds) as well. Sometimes, the data is itself very small, so usually there is no good "one size fits all"-epsilon value. Avoid them entirely when possible.
+- First and foremost: Do not introduce undocumented numerical heuristics, magic constants, or solver policies. Every numeric decision must be mathematically derived, data-derived, or explicitly specified and documented in a named contract or policy. This applies to epsilons (floating-point thresholds) as well. Sometimes, the data is itself very small, so usually there is no good "one size fits all"-epsilon value. Avoid them entirely when possible.
 - Anything that is core library behavior must be implemented in Rust, not Python.
 - If logic affects model behavior, numerical results, state evolution, calibration outcomes, pricing outputs, simulation paths, or validation decisions, it belongs in Rust unless the task explicitly says otherwise.
 - Python may define user-facing typed contracts, CLI wiring, serialization helpers, and thin boundary adapters, but it must not become a second implementation of model logic.
@@ -43,9 +43,9 @@ This codebase is pre-v0.1 and has no external users.
     - If you extend a public API, preserve compatibility unless a planned breaking change is explicitly requested.
     - If a breaking public API change is requested, update in-repo call sites and documentation in the same change.
   - If it does not exist, then you may write a new class or function.
-  - If it exists in a different part of the program. For example: a class exists in the world server, but you want to use it in the master server, move it to the shared folder, do **not** import it from the world server.
+  - If it exists in a different part of the project.
 - You may ALWAYS assume that users have **every dependency available**. Do not spend effort on optional dependency fallbacks or missing-package compatibility shims.
-- Naming: clear, descriptive; avoid cryptic abbreviations and shorthands outside mathy contexts (we hate `idx` and `col`, never use that ever).
+- Naming: clear, descriptive. Avoid cryptic abbreviations and shorthands outside mathy contexts (we hate `idx` and `col`, never use that ever).
 - Change management
   - NEVER repeat chunks of code for no reason.
   - Do not add consumer-specific passthrough wrappers (for example `*_for_pricing`) unless the adapter adds boundary value in the same change.
@@ -68,6 +68,8 @@ Implementations are Rust first for most things (unless specified otherwise or ob
 
 In the `crates/` folder where the Rust code is located:
 
+- `mod.rs` and `lib.rs` files must be thin and never include any declarations.
+- Never use wildcard importing (`::*`). Always be explicit with everything you import.
 - When introducing a new concept/feature/API, consider whether:
   - There is an existing crate  that is an appropriate place for your new code to live.
   - It is time to introduce a new crate to the Cargo workspace for your new functionality. Refactor existing code as necessary to make this happen.
@@ -77,7 +79,7 @@ In the `crates/` folder where the Rust code is located:
   - Accept `&str` instead of `String` when you don't need ownership.
   - Accept slices `&[T]` instead of `Vec<T>` when you don't need ownership.
 - Avoid unnecessary clones:
-  - Do not `.clone()` "to make the borrow checker happy"; restructure code first.
+  - Do not `.clone()` "to make the borrow checker happy". Restructure code first.
   - If cloning is needed, comment why (e.g., "intentional copy to decouple lifetime / avoid holding lock").
 - Any `.clone()` added in core must be either (a) on a small Copy-ish type, or (b) accompanied by a comment explaining why cloning is the best tradeoff.
 - Prefer iterators to indexing: avoid panics from out-of-bounds indexing.
@@ -87,15 +89,15 @@ In the `crates/` folder where the Rust code is located:
 - Model errors explicitly:
   - Use a crate-local error enum (e.g., `thiserror`) for library layers.
   - Convert to user-facing errors at boundaries (PyO3, CLI).
-- Panics must not cross FFI boundaries; boundary code should catch/avoid panics where possible.
+- Panics must not cross FFI boundaries. Boundary code should catch/avoid panics where possible.
 - Prefer `match` over deep `if/else` ladders when branching on enums/options/results.
 - Use early returns (`return Err(...)`) to keep the happy path left-aligned.
-- Keep functions small; refactor when nesting exceeds ~2–3 levels.
+- Keep functions small. Refactor when nesting exceeds ~2–3 levels.
 - `unsafe` is forbidden.
 - Avoid unchecked conversions/casts unless validated and justified.
 - When writing concurrent code:
   - Do not introduce shared mutability.
-  - Prefer message passing or ownership transfer; if sharing is required:
+  - Prefer message passing or ownership transfer. If sharing is required:
     - Use `Arc<T>` + `Mutex/RwLock` thoughtfully, minimize lock scope, avoid holding locks across await points.
   - No global mutable state. If you truly need a global, use `OnceLock`/`LazyLock` with immutable data and document why.
 - For logging/telemetry, use `tracing` (preferred) or `log`. Do not `println!` in production paths.
@@ -103,24 +105,24 @@ In the `crates/` folder where the Rust code is located:
 - For serialization:
   - Use `serde` derives where sensible and avoid hand-rolled parsers unless truly necessary.
   - Validate external inputs at boundaries. Keep core logic operating on validated, well-typed structures.
-- PyO3 is allowed only in the binding crate; core must remain Python-agnostic.
+- PyO3 is allowed only in the binding crate. Other crates must remain Python-agnostic.
   - Keep boundary code thin:
     - Convert Python inputs to Rust types ASAP.
     - Convert Rust results/errors back to Python at the boundary.
-  - Never hold the GIL longer than necessary; avoid long CPU work while holding GIL.
+  - Never hold the GIL longer than necessary. Avoid long CPU work while holding GIL.
     - Release GIL for heavy work (e.g., `Python::allow_threads`) when safe.
-  - Ensure types exposed to Python are stable and documented; do not leak internal Rust structs by default.
+  - Ensure types exposed to Python are stable and documented. Do not leak internal Rust structs by default.
 
 ### Testing
 
 - Prefer deep equals comparisons whenever possible. Perform `assert_eq!()` on entire objects, rather than individual fields.
-- Avoid mutating process environment in tests; prefer passing environment-derived flags or dependencies from above.
+- Avoid mutating process environment in tests. Prefer passing environment-derived flags or dependencies from above.
 - Prefer fast unit tests in Rust core. Property tests are welcome for tricky invariants.
 - Write tests for:
   - error cases (including conversion/validation)
   - boundary conversions (pybind)
   - numerical stability (if relevant)
-- Benchmarks (criterion) for performance-critical kernels; optimize based on measurement, not vibes.
+- Benchmarks (criterion) for performance-critical kernels. Optimize based on measurement.
 
 ### Dependencies
 
@@ -134,6 +136,8 @@ Python is mostly supposed to be a thin wrapper and serves as the user-facing API
 
 In the `python/janiform/` folder where the Python code is located:
 
+- `__init__.py` files must be thin and never include any declarations.
+- Never use wildcard importing (`*`). Always be explicit with everything you import.
 - Keep Python as a boundary layer. It is for typed request/response contracts, ergonomic public APIs, CLI orchestration, serialization/deserialization, and error mapping.
 - Do not implement core model behavior in Python. This includes state-estimation algorithms, simulation evolution, pricing recursions, calibration math, optimization logic, statistical transforms, numerical integration, or any other computation that meaningfully determines outputs.
 - If a feature needs new computation, the default is:
@@ -147,7 +151,7 @@ In the `python/janiform/` folder where the Python code is located:
 - Use `Any` instead of `object` for most things where inference is hard or impossible. This includes tuples, lists and dicts that take non-builtin types that are hard to infer.
 - Don't be lazy and do `list[Any]` any time we have non-builtin types. That's bad practice. Most of the time types are inferable and should be used explicitly.
 - Never use `object` or `Any` as a cop-out / shortcut to get around specifying a type that is known. Even if it leads to circular imports. Deal with circular imports a different way! Good type hints are a priority! They make bugs less likely.
-- Strings: double quotes for paths/logs/UI; single quotes for enum‑like values and keys.
+- Strings: double quotes for paths/logs/UI. Single quotes for enum‑like values and keys.
 - Enums: use `StrEnum`, `IntEnum`, or `IntFlag`. UPPERCASE members.
 - Control flow: prefer `match` over long if/elif chains where suitable.
 - Exceptions: be specific. Avoid `except Exception:`. Log appropriately.

@@ -2,15 +2,9 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import Any, Optional
 
-from ...contracts.base import (
-    require_optional_boolean_value,
-    require_optional_finite_number,
-    require_optional_mapping_value,
-    require_optional_string_value,
-    require_str_enum_value,
-)
 from ...contracts import (
     ContractModel,
     require_finite_number,
@@ -20,66 +14,92 @@ from ...contracts import (
     require_positive_finite_scalar,
     require_sequence,
 )
-from ...pricing import VanillaOptionPayoffType
+from ...contracts.base import (
+    require_optional_finite_number,
+    require_optional_mapping_value,
+    require_str_enum_value,
+)
+from ...pricing import (
+    VanillaOptionImpliedVolatilityInversionStatus,
+    VanillaOptionPayoffType,
+)
+from ...pricing.contracts import _validate_implied_volatility_inversion_outcome
 from .._errors import _calibration_error
 
 
+class JaniformVanillaOptionMaturityPricingEngineKind(StrEnum):
+    DIRECT_FOURIER = "direct_fourier"
+    FORWARD_LAW = "forward_law"
+
+
 @dataclass(frozen=True, slots=True)
-class JaniformVanillaOptionBatch(ContractModel):
-    spot: float
+class JaniformGroupedVanillaOptionGroup(ContractModel):
+    payoff_type: VanillaOptionPayoffType
+    risk_free_rate: float
+    dividend_yield: float
     strikes: tuple[float, ...]
     maturity_intervals: tuple[float, ...]
-    payoff_types: tuple[VanillaOptionPayoffType, ...]
-    risk_free_rates: tuple[float, ...]
-    dividend_yields: tuple[float, ...]
 
     def __post_init__(self) -> None:
-        require_positive_finite_scalar(self.spot, "spot", _calibration_error)
-        node_count = len(self.strikes)
-        if node_count == 0:
-            raise _calibration_error("strikes", "must contain at least one option node")
+        if len(self.strikes) == 0:
+            raise _calibration_error("strikes", "must contain at least one strike")
 
-        _validate_aligned_node_count(self.maturity_intervals, node_count, field_path="maturity_intervals")
-        _validate_aligned_node_count(self.payoff_types, node_count, field_path="payoff_types")
-        _validate_aligned_node_count(self.risk_free_rates, node_count, field_path="risk_free_rates")
-        _validate_aligned_node_count(self.dividend_yields, node_count, field_path="dividend_yields")
+        if len(self.maturity_intervals) == 0:
+            raise _calibration_error(
+                "maturity_intervals",
+                "must contain at least one maturity interval",
+            )
 
-        for node_index, strike in enumerate(self.strikes):
-            require_positive_finite_scalar(strike, f"strikes[{node_index}]", _calibration_error)
-        for node_index, maturity_interval in enumerate(self.maturity_intervals):
+        require_finite_scalar(self.risk_free_rate, "risk_free_rate", _calibration_error)
+        require_finite_scalar(self.dividend_yield, "dividend_yield", _calibration_error)
+
+        for strike_index, strike in enumerate(self.strikes):
+            require_positive_finite_scalar(
+                strike,
+                f"strikes[{strike_index}]",
+                _calibration_error,
+            )
+
+        for maturity_index, maturity_interval in enumerate(self.maturity_intervals):
             require_positive_finite_scalar(
                 maturity_interval,
-                f"maturity_intervals[{node_index}]",
-                _calibration_error,
-            )
-        for node_index, risk_free_rate in enumerate(self.risk_free_rates):
-            require_finite_scalar(
-                risk_free_rate,
-                f"risk_free_rates[{node_index}]",
-                _calibration_error,
-            )
-        for node_index, dividend_yield in enumerate(self.dividend_yields):
-            require_finite_scalar(
-                dividend_yield,
-                f"dividend_yields[{node_index}]",
+                f"maturity_intervals[{maturity_index}]",
                 _calibration_error,
             )
 
     @property
-    def node_count(self) -> int:
-        return len(self.strikes)
+    def shape(self) -> tuple[int, int]:
+        return len(self.maturity_intervals), len(self.strikes)
 
     @staticmethod
     def from_mapping(
         raw_payload: dict[str, Any] | Any,
         *,
-        field_path: str = "batch",
-    ) -> JaniformVanillaOptionBatch:
+        field_path: str = "group",
+    ) -> JaniformGroupedVanillaOptionGroup:
         if not isinstance(raw_payload, dict):
             raise _calibration_error(field_path, "must be an object")
 
-        return JaniformVanillaOptionBatch(
-            spot=require_positive_finite_scalar(raw_payload.get("spot"), f"{field_path}.spot", _calibration_error),
+        return JaniformGroupedVanillaOptionGroup(
+            payoff_type=require_str_enum_value(
+                raw_payload.get("payoff_type"),
+                f"{field_path}.payoff_type",
+                _calibration_error,
+                enum_type=VanillaOptionPayoffType,
+                allowed_values_message="must be one of: call, put",
+            ),
+            risk_free_rate=require_finite_number(
+                raw_payload,
+                "risk_free_rate",
+                f"{field_path}.risk_free_rate",
+                _calibration_error,
+            ),
+            dividend_yield=require_finite_number(
+                raw_payload,
+                "dividend_yield",
+                f"{field_path}.dividend_yield",
+                _calibration_error,
+            ),
             strikes=_tuple_of_positive_floats(
                 raw_payload,
                 field_name="strikes",
@@ -90,312 +110,515 @@ class JaniformVanillaOptionBatch(ContractModel):
                 field_name="maturity_intervals",
                 field_path=f"{field_path}.maturity_intervals",
             ),
-            payoff_types=_tuple_of_payoff_types(
-                raw_payload,
-                field_name="payoff_types",
-                field_path=f"{field_path}.payoff_types",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class JaniformGroupedVanillaOptionBatch(ContractModel):
+    spot: float
+    groups: tuple[JaniformGroupedVanillaOptionGroup, ...]
+
+    def __post_init__(self) -> None:
+        require_positive_finite_scalar(self.spot, "spot", _calibration_error)
+        if len(self.groups) == 0:
+            raise _calibration_error("groups", "must contain at least one pricing group")
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str = "grouped_batch",
+    ) -> JaniformGroupedVanillaOptionBatch:
+        if not isinstance(raw_payload, dict):
+            raise _calibration_error(field_path, "must be an object")
+
+        raw_groups = require_sequence(
+            raw_payload,
+            "groups",
+            f"{field_path}.groups",
+            _calibration_error,
+        )
+
+        return JaniformGroupedVanillaOptionBatch(
+            spot=require_positive_finite_scalar(
+                raw_payload.get("spot"),
+                f"{field_path}.spot",
+                _calibration_error,
             ),
-            risk_free_rates=_tuple_of_finite_floats(
-                raw_payload,
-                field_name="risk_free_rates",
-                field_path=f"{field_path}.risk_free_rates",
-            ),
-            dividend_yields=_tuple_of_finite_floats(
-                raw_payload,
-                field_name="dividend_yields",
-                field_path=f"{field_path}.dividend_yields",
+            groups=tuple(
+                JaniformGroupedVanillaOptionGroup.from_mapping(
+                    raw_group,
+                    field_path=f"{field_path}.groups[{group_index}]",
+                )
+                for group_index, raw_group in enumerate(raw_groups)
             ),
         )
 
 
 @dataclass(frozen=True, slots=True)
-class JaniformVanillaOptionBatchPricingRunDiagnostics(ContractModel):
-    transform: tuple[Optional[dict[str, Any]], ...]
-    integration_quality: tuple[Optional[dict[str, Any]], ...]
-    anchored_recursion: tuple[Optional[dict[str, Any]], ...]
+class JaniformVanillaOptionMaturityIntervalSummary(ContractModel):
+    interval_index: int
+    current_anchor_value: float
+    next_anchor_value: float
+    interval_delta: float
+    expected_hawkes_boundary_state_before: dict[str, float]
+    expected_hawkes_boundary_state_after: dict[str, float]
+    maximum_tail_probability_mass: float
+    maximum_row_probability_mass_error: float
+    minimum_solved_theta: float
+    maximum_solved_theta: float
 
     def __post_init__(self) -> None:
-        node_count = len(self.transform)
-        _validate_aligned_node_count(
-            self.integration_quality,
-            node_count,
-            field_path="integration_quality",
-        )
-        _validate_aligned_node_count(
-            self.anchored_recursion,
-            node_count,
-            field_path="anchored_recursion",
-        )
+        if self.interval_index < 0:
+            raise _calibration_error("interval_index", "must be non-negative")
 
-    @property
-    def node_count(self) -> int:
-        return len(self.transform)
+        require_finite_scalar(
+            self.current_anchor_value,
+            "current_anchor_value",
+            _calibration_error,
+        )
+        require_finite_scalar(
+            self.next_anchor_value,
+            "next_anchor_value",
+            _calibration_error,
+        )
+        require_positive_finite_scalar(
+            self.interval_delta,
+            "interval_delta",
+            _calibration_error,
+        )
+        require_non_negative_finite_scalar(
+            self.maximum_tail_probability_mass,
+            "maximum_tail_probability_mass",
+            _calibration_error,
+        )
+        require_non_negative_finite_scalar(
+            self.maximum_row_probability_mass_error,
+            "maximum_row_probability_mass_error",
+            _calibration_error,
+        )
+        require_finite_scalar(
+            self.minimum_solved_theta,
+            "minimum_solved_theta",
+            _calibration_error,
+        )
+        require_finite_scalar(
+            self.maximum_solved_theta,
+            "maximum_solved_theta",
+            _calibration_error,
+        )
 
     @staticmethod
     def from_mapping(
         raw_payload: dict[str, Any] | Any,
         *,
         field_path: str,
-    ) -> JaniformVanillaOptionBatchPricingRunDiagnostics:
+    ) -> JaniformVanillaOptionMaturityIntervalSummary:
         if not isinstance(raw_payload, dict):
             raise _calibration_error(field_path, "must be an object")
 
-        return JaniformVanillaOptionBatchPricingRunDiagnostics(
-            transform=_tuple_of_optional_mappings(
-                raw_payload,
-                field_name="transform",
-                field_path=f"{field_path}.transform",
+        return JaniformVanillaOptionMaturityIntervalSummary(
+            interval_index=int(
+                require_non_negative_finite_scalar(
+                    raw_payload.get("interval_index"),
+                    f"{field_path}.interval_index",
+                    _calibration_error,
+                )
             ),
-            integration_quality=_tuple_of_optional_mappings(
+            current_anchor_value=require_finite_number(
                 raw_payload,
-                field_name="integration_quality",
-                field_path=f"{field_path}.integration_quality",
+                "current_anchor_value",
+                f"{field_path}.current_anchor_value",
+                _calibration_error,
             ),
-            anchored_recursion=_tuple_of_optional_mappings(
+            next_anchor_value=require_finite_number(
                 raw_payload,
-                field_name="anchored_recursion",
-                field_path=f"{field_path}.anchored_recursion",
+                "next_anchor_value",
+                f"{field_path}.next_anchor_value",
+                _calibration_error,
+            ),
+            interval_delta=require_positive_finite_scalar(
+                raw_payload.get("interval_delta"),
+                f"{field_path}.interval_delta",
+                _calibration_error,
+            ),
+            expected_hawkes_boundary_state_before=require_mapping(
+                raw_payload,
+                "expected_hawkes_boundary_state_before",
+                f"{field_path}.expected_hawkes_boundary_state_before",
+                _calibration_error,
+            ),
+            expected_hawkes_boundary_state_after=require_mapping(
+                raw_payload,
+                "expected_hawkes_boundary_state_after",
+                f"{field_path}.expected_hawkes_boundary_state_after",
+                _calibration_error,
+            ),
+            maximum_tail_probability_mass=require_non_negative_finite_scalar(
+                raw_payload.get("maximum_tail_probability_mass"),
+                f"{field_path}.maximum_tail_probability_mass",
+                _calibration_error,
+            ),
+            maximum_row_probability_mass_error=require_non_negative_finite_scalar(
+                raw_payload.get("maximum_row_probability_mass_error"),
+                f"{field_path}.maximum_row_probability_mass_error",
+                _calibration_error,
+            ),
+            minimum_solved_theta=require_finite_number(
+                raw_payload,
+                "minimum_solved_theta",
+                f"{field_path}.minimum_solved_theta",
+                _calibration_error,
+            ),
+            maximum_solved_theta=require_finite_number(
+                raw_payload,
+                "maximum_solved_theta",
+                f"{field_path}.maximum_solved_theta",
+                _calibration_error,
             ),
         )
 
 
 @dataclass(frozen=True, slots=True)
-class JaniformVanillaOptionBatchPricingCalibrationHooks(ContractModel):
-    option_prices: tuple[float, ...]
-    log_moneyness: tuple[float, ...]
-    forward_moneyness: tuple[float, ...]
+class JaniformVanillaOptionMaturitySummary(ContractModel):
+    maturity_interval: float
+    engine_kind: JaniformVanillaOptionMaturityPricingEngineKind
+    terminal_anchor_value: Optional[float]
+    deviation_grid_lower_bound: Optional[float]
+    deviation_grid_upper_bound: Optional[float]
+    deviation_grid_node_count: Optional[int]
+    terminal_deviation_nodes: Optional[tuple[float, ...]]
+    terminal_probability_mass: Optional[tuple[float, ...]]
+    interval_summaries: tuple[JaniformVanillaOptionMaturityIntervalSummary, ...]
+    representative_transform: Optional[dict[str, Any]]
+    integration_quality: Optional[dict[str, Any]]
+
+    def __post_init__(self) -> None:
+        require_positive_finite_scalar(
+            self.maturity_interval,
+            "maturity_interval",
+            _calibration_error,
+        )
+
+        if self.deviation_grid_node_count is not None and self.deviation_grid_node_count <= 0:
+            raise _calibration_error(
+                "deviation_grid_node_count",
+                "must be strictly positive when provided",
+            )
+
+        _validate_optional_tuple_pair(
+            self.terminal_deviation_nodes,
+            self.terminal_probability_mass,
+            left_field_path="terminal_deviation_nodes",
+            right_field_path="terminal_probability_mass",
+        )
+
+        if self.terminal_deviation_nodes is not None:
+            _validate_aligned_node_count(
+                self.terminal_deviation_nodes,
+                len(self.terminal_probability_mass or ()),
+                field_path="terminal_deviation_nodes",
+            )
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> JaniformVanillaOptionMaturitySummary:
+        if not isinstance(raw_payload, dict):
+            raise _calibration_error(field_path, "must be an object")
+
+        raw_interval_summaries = require_sequence(
+            raw_payload,
+            "interval_summaries",
+            f"{field_path}.interval_summaries",
+            _calibration_error,
+        )
+
+        raw_deviation_grid_node_count = raw_payload.get("deviation_grid_node_count")
+        deviation_grid_node_count = None
+        if raw_deviation_grid_node_count is not None:
+            deviation_grid_node_count = int(
+                require_positive_finite_scalar(
+                    raw_deviation_grid_node_count,
+                    f"{field_path}.deviation_grid_node_count",
+                    _calibration_error,
+                )
+            )
+
+        return JaniformVanillaOptionMaturitySummary(
+            maturity_interval=require_positive_finite_scalar(
+                raw_payload.get("maturity_interval"),
+                f"{field_path}.maturity_interval",
+                _calibration_error,
+            ),
+            engine_kind=require_str_enum_value(
+                raw_payload.get("engine_kind"),
+                f"{field_path}.engine_kind",
+                _calibration_error,
+                enum_type=JaniformVanillaOptionMaturityPricingEngineKind,
+                allowed_values_message="must be one of: direct_fourier, forward_law",
+            ),
+            terminal_anchor_value=require_optional_finite_number(
+                raw_payload,
+                "terminal_anchor_value",
+                f"{field_path}.terminal_anchor_value",
+                _calibration_error,
+            ),
+            deviation_grid_lower_bound=require_optional_finite_number(
+                raw_payload,
+                "deviation_grid_lower_bound",
+                f"{field_path}.deviation_grid_lower_bound",
+                _calibration_error,
+            ),
+            deviation_grid_upper_bound=require_optional_finite_number(
+                raw_payload,
+                "deviation_grid_upper_bound",
+                f"{field_path}.deviation_grid_upper_bound",
+                _calibration_error,
+            ),
+            deviation_grid_node_count=deviation_grid_node_count,
+            terminal_deviation_nodes=(
+                _tuple_of_finite_floats(
+                    raw_payload,
+                    field_name="terminal_deviation_nodes",
+                    field_path=f"{field_path}.terminal_deviation_nodes",
+                )
+                if raw_payload.get("terminal_deviation_nodes") is not None
+                else None
+            ),
+            terminal_probability_mass=(
+                _tuple_of_non_negative_floats(
+                    raw_payload,
+                    field_name="terminal_probability_mass",
+                    field_path=f"{field_path}.terminal_probability_mass",
+                )
+                if raw_payload.get("terminal_probability_mass") is not None
+                else None
+            ),
+            interval_summaries=tuple(
+                JaniformVanillaOptionMaturityIntervalSummary.from_mapping(
+                    raw_interval_summary,
+                    field_path=f"{field_path}.interval_summaries[{interval_index}]",
+                )
+                for interval_index, raw_interval_summary in enumerate(raw_interval_summaries)
+            ),
+            representative_transform=require_optional_mapping_value(
+                raw_payload.get("representative_transform"),
+                f"{field_path}.representative_transform",
+                _calibration_error,
+            ),
+            integration_quality=require_optional_mapping_value(
+                raw_payload.get("integration_quality"),
+                f"{field_path}.integration_quality",
+                _calibration_error,
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class JaniformVanillaOptionGroupedBatchPricingGroupResult(ContractModel):
+    payoff_type: VanillaOptionPayoffType
+    risk_free_rate: float
+    dividend_yield: float
+    strikes: tuple[float, ...]
     maturity_intervals: tuple[float, ...]
-    transform_status: tuple[Optional[str], ...]
-    integration_numeric_quality_is_poor: tuple[Optional[bool], ...]
-    integration_convergence_check_passed: tuple[Optional[bool], ...]
-    integration_truncation_check_passed: tuple[Optional[bool], ...]
+    price_grid: tuple[tuple[float, ...], ...]
+    implied_volatility_grid: tuple[tuple[Optional[float], ...], ...]
+    implied_volatility_inversion_status_grid: tuple[
+        tuple[VanillaOptionImpliedVolatilityInversionStatus, ...],
+        ...,
+    ]
+    forward_price_grid: tuple[tuple[float, ...], ...]
+    discount_factor_grid: tuple[tuple[float, ...], ...]
+    boundary_state_norm_grid: tuple[tuple[float, ...], ...]
+    maturity_summaries: tuple[JaniformVanillaOptionMaturitySummary, ...]
 
     def __post_init__(self) -> None:
-        node_count = len(self.option_prices)
-        _validate_aligned_node_count(self.log_moneyness, node_count, field_path="log_moneyness")
-        _validate_aligned_node_count(
-            self.forward_moneyness,
-            node_count,
-            field_path="forward_moneyness",
+        require_finite_scalar(self.risk_free_rate, "risk_free_rate", _calibration_error)
+        require_finite_scalar(self.dividend_yield, "dividend_yield", _calibration_error)
+
+        expected_shape = (len(self.maturity_intervals), len(self.strikes))
+        grid_shape = _grid_shape(self.price_grid, field_path="price_grid")
+        if grid_shape != expected_shape:
+            raise _calibration_error(
+                "price_grid",
+                f"must have shape {expected_shape}, found {grid_shape}",
+            )
+
+        _validate_matching_grid_shape(
+            self.implied_volatility_grid,
+            grid_shape=expected_shape,
+            field_path="implied_volatility_grid",
+        )
+        _validate_matching_grid_shape(
+            self.implied_volatility_inversion_status_grid,
+            grid_shape=expected_shape,
+            field_path="implied_volatility_inversion_status_grid",
+        )
+        _validate_matching_grid_shape(
+            self.forward_price_grid,
+            grid_shape=expected_shape,
+            field_path="forward_price_grid",
+        )
+        _validate_matching_grid_shape(
+            self.discount_factor_grid,
+            grid_shape=expected_shape,
+            field_path="discount_factor_grid",
+        )
+        _validate_matching_grid_shape(
+            self.boundary_state_norm_grid,
+            grid_shape=expected_shape,
+            field_path="boundary_state_norm_grid",
         )
         _validate_aligned_node_count(
-            self.maturity_intervals,
-            node_count,
-            field_path="maturity_intervals",
-        )
-        _validate_aligned_node_count(
-            self.transform_status,
-            node_count,
-            field_path="transform_status",
-        )
-        _validate_aligned_node_count(
-            self.integration_numeric_quality_is_poor,
-            node_count,
-            field_path="integration_numeric_quality_is_poor",
-        )
-        _validate_aligned_node_count(
-            self.integration_convergence_check_passed,
-            node_count,
-            field_path="integration_convergence_check_passed",
-        )
-        _validate_aligned_node_count(
-            self.integration_truncation_check_passed,
-            node_count,
-            field_path="integration_truncation_check_passed",
+            self.maturity_summaries,
+            len(self.maturity_intervals),
+            field_path="maturity_summaries",
         )
 
+        for maturity_index, implied_volatility_row in enumerate(self.implied_volatility_grid):
+            for strike_index, implied_volatility in enumerate(implied_volatility_row):
+                _validate_implied_volatility_inversion_outcome(
+                    implied_volatility=implied_volatility,
+                    implied_volatility_inversion_status=self.implied_volatility_inversion_status_grid[
+                        maturity_index
+                    ][strike_index],
+                    field_path=(
+                        "grouped_batch_pricing_result"
+                        f".group_node[{maturity_index}][{strike_index}]"
+                    ),
+                )
+
     @property
-    def node_count(self) -> int:
-        return len(self.option_prices)
+    def shape(self) -> tuple[int, int]:
+        return len(self.maturity_intervals), len(self.strikes)
 
     @staticmethod
     def from_mapping(
         raw_payload: dict[str, Any] | Any,
         *,
         field_path: str,
-    ) -> JaniformVanillaOptionBatchPricingCalibrationHooks:
+    ) -> JaniformVanillaOptionGroupedBatchPricingGroupResult:
         if not isinstance(raw_payload, dict):
             raise _calibration_error(field_path, "must be an object")
 
-        return JaniformVanillaOptionBatchPricingCalibrationHooks(
-            option_prices=_tuple_of_non_negative_floats(
-                raw_payload,
-                field_name="option_prices",
-                field_path=f"{field_path}.option_prices",
+        raw_maturity_summaries = require_sequence(
+            raw_payload,
+            "maturity_summaries",
+            f"{field_path}.maturity_summaries",
+            _calibration_error,
+        )
+
+        return JaniformVanillaOptionGroupedBatchPricingGroupResult(
+            payoff_type=require_str_enum_value(
+                raw_payload.get("payoff_type"),
+                f"{field_path}.payoff_type",
+                _calibration_error,
+                enum_type=VanillaOptionPayoffType,
+                allowed_values_message="must be one of: call, put",
             ),
-            log_moneyness=_tuple_of_finite_floats(
+            risk_free_rate=require_finite_number(
                 raw_payload,
-                field_name="log_moneyness",
-                field_path=f"{field_path}.log_moneyness",
+                "risk_free_rate",
+                f"{field_path}.risk_free_rate",
+                _calibration_error,
             ),
-            forward_moneyness=_tuple_of_positive_floats(
+            dividend_yield=require_finite_number(
                 raw_payload,
-                field_name="forward_moneyness",
-                field_path=f"{field_path}.forward_moneyness",
+                "dividend_yield",
+                f"{field_path}.dividend_yield",
+                _calibration_error,
+            ),
+            strikes=_tuple_of_positive_floats(
+                raw_payload,
+                field_name="strikes",
+                field_path=f"{field_path}.strikes",
             ),
             maturity_intervals=_tuple_of_positive_floats(
                 raw_payload,
                 field_name="maturity_intervals",
                 field_path=f"{field_path}.maturity_intervals",
             ),
-            transform_status=_tuple_of_optional_strings(
+            price_grid=_grid_of_non_negative_floats(
                 raw_payload,
-                field_name="transform_status",
-                field_path=f"{field_path}.transform_status",
+                field_name="price_grid",
+                field_path=f"{field_path}.price_grid",
             ),
-            integration_numeric_quality_is_poor=_tuple_of_optional_booleans(
+            implied_volatility_grid=_grid_of_optional_finite_floats(
                 raw_payload,
-                field_name="integration_numeric_quality_is_poor",
-                field_path=f"{field_path}.integration_numeric_quality_is_poor",
+                field_name="implied_volatility_grid",
+                field_path=f"{field_path}.implied_volatility_grid",
             ),
-            integration_convergence_check_passed=_tuple_of_optional_booleans(
+            implied_volatility_inversion_status_grid=_grid_of_implied_volatility_inversion_statuses(
                 raw_payload,
-                field_name="integration_convergence_check_passed",
-                field_path=f"{field_path}.integration_convergence_check_passed",
+                field_name="implied_volatility_inversion_status_grid",
+                field_path=f"{field_path}.implied_volatility_inversion_status_grid",
             ),
-            integration_truncation_check_passed=_tuple_of_optional_booleans(
+            forward_price_grid=_grid_of_positive_floats(
                 raw_payload,
-                field_name="integration_truncation_check_passed",
-                field_path=f"{field_path}.integration_truncation_check_passed",
+                field_name="forward_price_grid",
+                field_path=f"{field_path}.forward_price_grid",
+            ),
+            discount_factor_grid=_grid_of_positive_floats(
+                raw_payload,
+                field_name="discount_factor_grid",
+                field_path=f"{field_path}.discount_factor_grid",
+            ),
+            boundary_state_norm_grid=_grid_of_non_negative_floats(
+                raw_payload,
+                field_name="boundary_state_norm_grid",
+                field_path=f"{field_path}.boundary_state_norm_grid",
+            ),
+            maturity_summaries=tuple(
+                JaniformVanillaOptionMaturitySummary.from_mapping(
+                    raw_summary,
+                    field_path=f"{field_path}.maturity_summaries[{summary_index}]",
+                )
+                for summary_index, raw_summary in enumerate(raw_maturity_summaries)
             ),
         )
 
 
 @dataclass(frozen=True, slots=True)
-class JaniformVanillaOptionBatchPricingResult(ContractModel):
+class JaniformVanillaOptionGroupedBatchPricingResult(ContractModel):
     spot: float
-    strikes: tuple[float, ...]
-    maturity_intervals: tuple[float, ...]
-    payoff_types: tuple[VanillaOptionPayoffType, ...]
-    risk_free_rates: tuple[float, ...]
-    dividend_yields: tuple[float, ...]
-    prices: tuple[float, ...]
-    forward_prices: tuple[float, ...]
-    discount_factors: tuple[float, ...]
-    boundary_state_norms: tuple[float, ...]
-    run_diagnostics: Optional[JaniformVanillaOptionBatchPricingRunDiagnostics] = None
-    calibration_hooks: Optional[JaniformVanillaOptionBatchPricingCalibrationHooks] = None
+    groups: tuple[JaniformVanillaOptionGroupedBatchPricingGroupResult, ...]
 
     def __post_init__(self) -> None:
         require_positive_finite_scalar(self.spot, "spot", _calibration_error)
-
-        node_count = len(self.strikes)
-
-        _validate_aligned_node_count(self.maturity_intervals, node_count, field_path="maturity_intervals")
-        _validate_aligned_node_count(self.payoff_types, node_count, field_path="payoff_types")
-        _validate_aligned_node_count(self.risk_free_rates, node_count, field_path="risk_free_rates")
-        _validate_aligned_node_count(self.dividend_yields, node_count, field_path="dividend_yields")
-        _validate_aligned_node_count(self.prices, node_count, field_path="prices")
-        _validate_aligned_node_count(self.forward_prices, node_count, field_path="forward_prices")
-        _validate_aligned_node_count(
-            self.discount_factors,
-            node_count,
-            field_path="discount_factors",
-        )
-        _validate_aligned_node_count(
-            self.boundary_state_norms,
-            node_count,
-            field_path="boundary_state_norms",
-        )
-
-        if self.run_diagnostics is not None and self.run_diagnostics.node_count != node_count:
-            raise _calibration_error(
-                "run_diagnostics",
-                f"must contain {node_count} aligned node values",
-            )
-
-        if self.calibration_hooks is not None and self.calibration_hooks.node_count != node_count:
-            raise _calibration_error(
-                "calibration_hooks",
-                f"must contain {node_count} aligned node values",
-            )
-
-    @property
-    def node_count(self) -> int:
-        return len(self.strikes)
+        if len(self.groups) == 0:
+            raise _calibration_error("groups", "must contain at least one pricing result group")
 
     @staticmethod
     def from_mapping(
         raw_payload: dict[str, Any] | Any,
         *,
-        field_path: str = "batch_pricing_result",
-    ) -> JaniformVanillaOptionBatchPricingResult:
+        field_path: str = "grouped_batch_pricing_result",
+    ) -> JaniformVanillaOptionGroupedBatchPricingResult:
         if not isinstance(raw_payload, dict):
             raise _calibration_error(field_path, "must be an object")
 
-        response = require_mapping(
+        raw_groups = require_sequence(
             raw_payload,
-            "response",
-            f"{field_path}.response",
+            "groups",
+            f"{field_path}.groups",
             _calibration_error,
         )
 
-        return JaniformVanillaOptionBatchPricingResult(
+        return JaniformVanillaOptionGroupedBatchPricingResult(
             spot=require_positive_finite_scalar(
-                response.get("spot"),
-                f"{field_path}.response.spot",
+                raw_payload.get("spot"),
+                f"{field_path}.spot",
                 _calibration_error,
             ),
-            strikes=_tuple_of_positive_floats(
-                response,
-                field_name="strikes",
-                field_path=f"{field_path}.response.strikes",
-            ),
-            maturity_intervals=_tuple_of_positive_floats(
-                response,
-                field_name="maturity_intervals",
-                field_path=f"{field_path}.response.maturity_intervals",
-            ),
-            payoff_types=_tuple_of_payoff_types(
-                response,
-                field_name="payoff_types",
-                field_path=f"{field_path}.response.payoff_types",
-            ),
-            risk_free_rates=_tuple_of_finite_floats(
-                response,
-                field_name="risk_free_rates",
-                field_path=f"{field_path}.response.risk_free_rates",
-            ),
-            dividend_yields=_tuple_of_finite_floats(
-                response,
-                field_name="dividend_yields",
-                field_path=f"{field_path}.response.dividend_yields",
-            ),
-            prices=_tuple_of_non_negative_floats(
-                response,
-                field_name="prices",
-                field_path=f"{field_path}.response.prices",
-            ),
-            forward_prices=_tuple_of_positive_floats(
-                response,
-                field_name="forward_prices",
-                field_path=f"{field_path}.response.forward_prices",
-            ),
-            discount_factors=_tuple_of_positive_floats(
-                response,
-                field_name="discount_factors",
-                field_path=f"{field_path}.response.discount_factors",
-            ),
-            boundary_state_norms=_tuple_of_non_negative_floats(
-                response,
-                field_name="boundary_state_norms",
-                field_path=f"{field_path}.response.boundary_state_norms",
-            ),
-            run_diagnostics=(
-                JaniformVanillaOptionBatchPricingRunDiagnostics.from_mapping(
-                    raw_payload["run_diagnostics"],
-                    field_path=f"{field_path}.run_diagnostics",
+            groups=tuple(
+                JaniformVanillaOptionGroupedBatchPricingGroupResult.from_mapping(
+                    raw_group,
+                    field_path=f"{field_path}.groups[{group_index}]",
                 )
-                if "run_diagnostics" in raw_payload and raw_payload["run_diagnostics"] is not None
-                else None
-            ),
-            calibration_hooks=(
-                JaniformVanillaOptionBatchPricingCalibrationHooks.from_mapping(
-                    raw_payload["calibration_hooks"],
-                    field_path=f"{field_path}.calibration_hooks",
-                )
-                if "calibration_hooks" in raw_payload and raw_payload["calibration_hooks"] is not None
-                else None
+                for group_index, raw_group in enumerate(raw_groups)
             ),
         )
 
@@ -411,18 +634,23 @@ class JaniformVanillaOptionSurface(ContractModel):
 
     def __post_init__(self) -> None:
         require_positive_finite_scalar(self.spot, "spot", _calibration_error)
-
         if len(self.strikes) == 0:
             raise _calibration_error("strikes", "must contain at least one strike")
-
         if len(self.maturity_intervals) == 0:
             raise _calibration_error(
                 "maturity_intervals",
                 "must contain at least one maturity interval",
             )
 
+        require_finite_scalar(self.risk_free_rate, "risk_free_rate", _calibration_error)
+        require_finite_scalar(self.dividend_yield, "dividend_yield", _calibration_error)
+
         for strike_index, strike in enumerate(self.strikes):
-            require_positive_finite_scalar(strike, f"strikes[{strike_index}]", _calibration_error)
+            require_positive_finite_scalar(
+                strike,
+                f"strikes[{strike_index}]",
+                _calibration_error,
+            )
 
         for maturity_index, maturity_interval in enumerate(self.maturity_intervals):
             require_positive_finite_scalar(
@@ -430,9 +658,6 @@ class JaniformVanillaOptionSurface(ContractModel):
                 f"maturity_intervals[{maturity_index}]",
                 _calibration_error,
             )
-
-        require_finite_scalar(self.risk_free_rate, "risk_free_rate", _calibration_error)
-        require_finite_scalar(self.dividend_yield, "dividend_yield", _calibration_error)
 
     @property
     def shape(self) -> tuple[int, int]:
@@ -447,16 +672,12 @@ class JaniformVanillaOptionSurface(ContractModel):
         if not isinstance(raw_payload, dict):
             raise _calibration_error(field_path, "must be an object")
 
-        payoff_type = require_str_enum_value(
-            raw_payload.get("payoff_type", VanillaOptionPayoffType.CALL.value),
-            f"{field_path}.payoff_type",
-            _calibration_error,
-            enum_type=VanillaOptionPayoffType,
-            allowed_values_message="must be one of: call, put",
-        )
-
         return JaniformVanillaOptionSurface(
-            spot=require_positive_finite_scalar(raw_payload.get("spot"), f"{field_path}.spot", _calibration_error),
+            spot=require_positive_finite_scalar(
+                raw_payload.get("spot"),
+                f"{field_path}.spot",
+                _calibration_error,
+            ),
             strikes=_tuple_of_positive_floats(
                 raw_payload,
                 field_name="strikes",
@@ -467,7 +688,13 @@ class JaniformVanillaOptionSurface(ContractModel):
                 field_name="maturity_intervals",
                 field_path=f"{field_path}.maturity_intervals",
             ),
-            payoff_type=payoff_type,
+            payoff_type=require_str_enum_value(
+                raw_payload.get("payoff_type", VanillaOptionPayoffType.CALL.value),
+                f"{field_path}.payoff_type",
+                _calibration_error,
+                enum_type=VanillaOptionPayoffType,
+                allowed_values_message="must be one of: call, put",
+            ),
             risk_free_rate=require_optional_finite_number(
                 raw_payload,
                 "risk_free_rate",
@@ -486,165 +713,6 @@ class JaniformVanillaOptionSurface(ContractModel):
 
 
 @dataclass(frozen=True, slots=True)
-class JaniformVanillaOptionSurfacePricingRunDiagnostics(ContractModel):
-    transform_grid: tuple[tuple[Optional[dict[str, Any]], ...], ...]
-    integration_quality_grid: tuple[tuple[Optional[dict[str, Any]], ...], ...]
-    anchored_recursion_grid: tuple[tuple[Optional[dict[str, Any]], ...], ...]
-
-    def __post_init__(self) -> None:
-        grid_shape = _grid_shape(self.transform_grid, field_path="transform_grid")
-
-        _validate_matching_grid_shape(
-            self.integration_quality_grid,
-            grid_shape=grid_shape,
-            field_path="integration_quality_grid",
-        )
-        _validate_matching_grid_shape(
-            self.anchored_recursion_grid,
-            grid_shape=grid_shape,
-            field_path="anchored_recursion_grid",
-        )
-
-    @property
-    def shape(self) -> tuple[int, int]:
-        return _grid_shape(self.transform_grid, field_path="transform_grid")
-
-    @staticmethod
-    def from_mapping(
-        raw_payload: dict[str, Any] | Any,
-        *,
-        field_path: str,
-    ) -> JaniformVanillaOptionSurfacePricingRunDiagnostics:
-        if not isinstance(raw_payload, dict):
-            raise _calibration_error(field_path, "must be an object")
-
-        return JaniformVanillaOptionSurfacePricingRunDiagnostics(
-            transform_grid=_grid_of_optional_mappings(
-                raw_payload,
-                field_name="transform_grid",
-                field_path=f"{field_path}.transform_grid",
-            ),
-            integration_quality_grid=_grid_of_optional_mappings(
-                raw_payload,
-                field_name="integration_quality_grid",
-                field_path=f"{field_path}.integration_quality_grid",
-            ),
-            anchored_recursion_grid=_grid_of_optional_mappings(
-                raw_payload,
-                field_name="anchored_recursion_grid",
-                field_path=f"{field_path}.anchored_recursion_grid",
-            ),
-        )
-
-
-@dataclass(frozen=True, slots=True)
-class JaniformVanillaOptionSurfacePricingCalibrationHooks(ContractModel):
-    option_price_grid: tuple[tuple[float, ...], ...]
-    log_moneyness_grid: tuple[tuple[float, ...], ...]
-    forward_moneyness_grid: tuple[tuple[float, ...], ...]
-    maturity_interval_grid: tuple[tuple[float, ...], ...]
-    transform_status_grid: tuple[tuple[Optional[str], ...], ...]
-    integration_numeric_quality_is_poor_grid: tuple[tuple[Optional[bool], ...], ...]
-    integration_convergence_check_passed_grid: tuple[tuple[Optional[bool], ...], ...]
-    integration_truncation_check_passed_grid: tuple[tuple[Optional[bool], ...], ...]
-
-    def __post_init__(self) -> None:
-        grid_shape = _grid_shape(self.option_price_grid, field_path="option_price_grid")
-
-        _validate_matching_grid_shape(
-            self.log_moneyness_grid,
-            grid_shape=grid_shape,
-            field_path="log_moneyness_grid",
-        )
-        _validate_matching_grid_shape(
-            self.forward_moneyness_grid,
-            grid_shape=grid_shape,
-            field_path="forward_moneyness_grid",
-        )
-        _validate_matching_grid_shape(
-            self.maturity_interval_grid,
-            grid_shape=grid_shape,
-            field_path="maturity_interval_grid",
-        )
-        _validate_matching_grid_shape(
-            self.transform_status_grid,
-            grid_shape=grid_shape,
-            field_path="transform_status_grid",
-        )
-        _validate_matching_grid_shape(
-            self.integration_numeric_quality_is_poor_grid,
-            grid_shape=grid_shape,
-            field_path="integration_numeric_quality_is_poor_grid",
-        )
-        _validate_matching_grid_shape(
-            self.integration_convergence_check_passed_grid,
-            grid_shape=grid_shape,
-            field_path="integration_convergence_check_passed_grid",
-        )
-        _validate_matching_grid_shape(
-            self.integration_truncation_check_passed_grid,
-            grid_shape=grid_shape,
-            field_path="integration_truncation_check_passed_grid",
-        )
-
-    @property
-    def shape(self) -> tuple[int, int]:
-        return _grid_shape(self.option_price_grid, field_path="option_price_grid")
-
-    @staticmethod
-    def from_mapping(
-        raw_payload: dict[str, Any] | Any,
-        *,
-        field_path: str,
-    ) -> JaniformVanillaOptionSurfacePricingCalibrationHooks:
-        if not isinstance(raw_payload, dict):
-            raise _calibration_error(field_path, "must be an object")
-
-        return JaniformVanillaOptionSurfacePricingCalibrationHooks(
-            option_price_grid=_grid_of_non_negative_floats(
-                raw_payload,
-                field_name="option_price_grid",
-                field_path=f"{field_path}.option_price_grid",
-            ),
-            log_moneyness_grid=_grid_of_finite_floats(
-                raw_payload,
-                field_name="log_moneyness_grid",
-                field_path=f"{field_path}.log_moneyness_grid",
-            ),
-            forward_moneyness_grid=_grid_of_positive_floats(
-                raw_payload,
-                field_name="forward_moneyness_grid",
-                field_path=f"{field_path}.forward_moneyness_grid",
-            ),
-            maturity_interval_grid=_grid_of_positive_floats(
-                raw_payload,
-                field_name="maturity_interval_grid",
-                field_path=f"{field_path}.maturity_interval_grid",
-            ),
-            transform_status_grid=_grid_of_optional_strings(
-                raw_payload,
-                field_name="transform_status_grid",
-                field_path=f"{field_path}.transform_status_grid",
-            ),
-            integration_numeric_quality_is_poor_grid=_grid_of_optional_booleans(
-                raw_payload,
-                field_name="integration_numeric_quality_is_poor_grid",
-                field_path=f"{field_path}.integration_numeric_quality_is_poor_grid",
-            ),
-            integration_convergence_check_passed_grid=_grid_of_optional_booleans(
-                raw_payload,
-                field_name="integration_convergence_check_passed_grid",
-                field_path=f"{field_path}.integration_convergence_check_passed_grid",
-            ),
-            integration_truncation_check_passed_grid=_grid_of_optional_booleans(
-                raw_payload,
-                field_name="integration_truncation_check_passed_grid",
-                field_path=f"{field_path}.integration_truncation_check_passed_grid",
-            ),
-        )
-
-
-@dataclass(frozen=True, slots=True)
 class JaniformVanillaOptionSurfacePricingResult(ContractModel):
     spot: float
     strikes: tuple[float, ...]
@@ -653,54 +721,72 @@ class JaniformVanillaOptionSurfacePricingResult(ContractModel):
     risk_free_rate: float
     dividend_yield: float
     price_grid: tuple[tuple[float, ...], ...]
+    implied_volatility_grid: tuple[tuple[Optional[float], ...], ...]
+    implied_volatility_inversion_status_grid: tuple[
+        tuple[VanillaOptionImpliedVolatilityInversionStatus, ...],
+        ...,
+    ]
     forward_price_grid: tuple[tuple[float, ...], ...]
     discount_factor_grid: tuple[tuple[float, ...], ...]
     boundary_state_norm_grid: tuple[tuple[float, ...], ...]
-    run_diagnostics: Optional[JaniformVanillaOptionSurfacePricingRunDiagnostics] = None
-    calibration_hooks: Optional[JaniformVanillaOptionSurfacePricingCalibrationHooks] = None
+    maturity_summaries: tuple[JaniformVanillaOptionMaturitySummary, ...]
 
     def __post_init__(self) -> None:
         require_positive_finite_scalar(self.spot, "spot", _calibration_error)
         require_finite_scalar(self.risk_free_rate, "risk_free_rate", _calibration_error)
         require_finite_scalar(self.dividend_yield, "dividend_yield", _calibration_error)
 
-        grid_shape = _grid_shape(self.price_grid, field_path="price_grid")
-
-        _validate_matching_grid_shape(
-            self.forward_price_grid,
-            grid_shape=grid_shape,
-            field_path="forward_price_grid",
-        )
-        _validate_matching_grid_shape(
-            self.discount_factor_grid,
-            grid_shape=grid_shape,
-            field_path="discount_factor_grid",
-        )
-        _validate_matching_grid_shape(
-            self.boundary_state_norm_grid,
-            grid_shape=grid_shape,
-            field_path="boundary_state_norm_grid",
-        )
-
         expected_shape = (len(self.maturity_intervals), len(self.strikes))
-
+        grid_shape = _grid_shape(self.price_grid, field_path="price_grid")
         if grid_shape != expected_shape:
             raise _calibration_error(
                 "price_grid",
                 f"must have shape {expected_shape}, found {grid_shape}",
             )
 
-        if self.run_diagnostics is not None and self.run_diagnostics.shape != expected_shape:
-            raise _calibration_error(
-                "run_diagnostics",
-                f"must have shape {expected_shape}",
-            )
+        _validate_matching_grid_shape(
+            self.implied_volatility_grid,
+            grid_shape=expected_shape,
+            field_path="implied_volatility_grid",
+        )
+        _validate_matching_grid_shape(
+            self.implied_volatility_inversion_status_grid,
+            grid_shape=expected_shape,
+            field_path="implied_volatility_inversion_status_grid",
+        )
+        _validate_matching_grid_shape(
+            self.forward_price_grid,
+            grid_shape=expected_shape,
+            field_path="forward_price_grid",
+        )
+        _validate_matching_grid_shape(
+            self.discount_factor_grid,
+            grid_shape=expected_shape,
+            field_path="discount_factor_grid",
+        )
+        _validate_matching_grid_shape(
+            self.boundary_state_norm_grid,
+            grid_shape=expected_shape,
+            field_path="boundary_state_norm_grid",
+        )
+        _validate_aligned_node_count(
+            self.maturity_summaries,
+            len(self.maturity_intervals),
+            field_path="maturity_summaries",
+        )
 
-        if self.calibration_hooks is not None and self.calibration_hooks.shape != expected_shape:
-            raise _calibration_error(
-                "calibration_hooks",
-                f"must have shape {expected_shape}",
-            )
+        for maturity_index, implied_volatility_row in enumerate(self.implied_volatility_grid):
+            for strike_index, implied_volatility in enumerate(implied_volatility_row):
+                _validate_implied_volatility_inversion_outcome(
+                    implied_volatility=implied_volatility,
+                    implied_volatility_inversion_status=self.implied_volatility_inversion_status_grid[
+                        maturity_index
+                    ][strike_index],
+                    field_path=(
+                        "surface_pricing_result"
+                        f".node[{maturity_index}][{strike_index}]"
+                    ),
+                )
 
     @property
     def shape(self) -> tuple[int, int]:
@@ -721,12 +807,11 @@ class JaniformVanillaOptionSurfacePricingResult(ContractModel):
             f"{field_path}.response",
             _calibration_error,
         )
-        payoff_type = require_str_enum_value(
-            response.get("payoff_type"),
-            f"{field_path}.response.payoff_type",
+        raw_maturity_summaries = require_sequence(
+            raw_payload,
+            "maturity_summaries",
+            f"{field_path}.maturity_summaries",
             _calibration_error,
-            enum_type=VanillaOptionPayoffType,
-            allowed_values_message="must be one of: call, put",
         )
 
         return JaniformVanillaOptionSurfacePricingResult(
@@ -745,7 +830,13 @@ class JaniformVanillaOptionSurfacePricingResult(ContractModel):
                 field_name="maturity_intervals",
                 field_path=f"{field_path}.response.maturity_intervals",
             ),
-            payoff_type=payoff_type,
+            payoff_type=require_str_enum_value(
+                response.get("payoff_type"),
+                f"{field_path}.response.payoff_type",
+                _calibration_error,
+                enum_type=VanillaOptionPayoffType,
+                allowed_values_message="must be one of: call, put",
+            ),
             risk_free_rate=require_finite_number(
                 response,
                 "risk_free_rate",
@@ -763,6 +854,16 @@ class JaniformVanillaOptionSurfacePricingResult(ContractModel):
                 field_name="price_grid",
                 field_path=f"{field_path}.response.price_grid",
             ),
+            implied_volatility_grid=_grid_of_optional_finite_floats(
+                response,
+                field_name="implied_volatility_grid",
+                field_path=f"{field_path}.response.implied_volatility_grid",
+            ),
+            implied_volatility_inversion_status_grid=_grid_of_implied_volatility_inversion_statuses(
+                response,
+                field_name="implied_volatility_inversion_status_grid",
+                field_path=f"{field_path}.response.implied_volatility_inversion_status_grid",
+            ),
             forward_price_grid=_grid_of_positive_floats(
                 response,
                 field_name="forward_price_grid",
@@ -778,21 +879,12 @@ class JaniformVanillaOptionSurfacePricingResult(ContractModel):
                 field_name="boundary_state_norm_grid",
                 field_path=f"{field_path}.response.boundary_state_norm_grid",
             ),
-            run_diagnostics=(
-                JaniformVanillaOptionSurfacePricingRunDiagnostics.from_mapping(
-                    raw_payload["run_diagnostics"],
-                    field_path=f"{field_path}.run_diagnostics",
+            maturity_summaries=tuple(
+                JaniformVanillaOptionMaturitySummary.from_mapping(
+                    raw_summary,
+                    field_path=f"{field_path}.maturity_summaries[{summary_index}]",
                 )
-                if "run_diagnostics" in raw_payload and raw_payload["run_diagnostics"] is not None
-                else None
-            ),
-            calibration_hooks=(
-                JaniformVanillaOptionSurfacePricingCalibrationHooks.from_mapping(
-                    raw_payload["calibration_hooks"],
-                    field_path=f"{field_path}.calibration_hooks",
-                )
-                if "calibration_hooks" in raw_payload and raw_payload["calibration_hooks"] is not None
-                else None
+                for summary_index, raw_summary in enumerate(raw_maturity_summaries)
             ),
         )
 
@@ -857,88 +949,6 @@ def _tuple_of_finite_floats(
     return tuple(normalized)
 
 
-def _tuple_of_payoff_types(
-    raw_payload: dict[str, Any],
-    *,
-    field_name: str,
-    field_path: str,
-) -> tuple[VanillaOptionPayoffType, ...]:
-    values = require_sequence(raw_payload, field_name, field_path, _calibration_error)
-    normalized: list[VanillaOptionPayoffType] = []
-    for value_index, value in enumerate(values):
-        normalized.append(
-            require_str_enum_value(
-                value,
-                f"{field_path}[{value_index}]",
-                _calibration_error,
-                enum_type=VanillaOptionPayoffType,
-                allowed_values_message="must be one of: call, put",
-            )
-        )
-
-    return tuple(normalized)
-
-
-def _tuple_of_optional_mappings(
-    raw_payload: dict[str, Any],
-    *,
-    field_name: str,
-    field_path: str,
-) -> tuple[Optional[dict[str, Any]], ...]:
-    values = require_sequence(raw_payload, field_name, field_path, _calibration_error)
-    normalized: list[Optional[dict[str, Any]]] = []
-    for value_index, value in enumerate(values):
-        normalized.append(
-            require_optional_mapping_value(
-                value,
-                f"{field_path}[{value_index}]",
-                _calibration_error,
-            )
-        )
-
-    return tuple(normalized)
-
-
-def _tuple_of_optional_strings(
-    raw_payload: dict[str, Any],
-    *,
-    field_name: str,
-    field_path: str,
-) -> tuple[Optional[str], ...]:
-    values = require_sequence(raw_payload, field_name, field_path, _calibration_error)
-    normalized: list[Optional[str]] = []
-    for value_index, value in enumerate(values):
-        normalized.append(
-            require_optional_string_value(
-                value,
-                f"{field_path}[{value_index}]",
-                _calibration_error,
-            )
-        )
-
-    return tuple(normalized)
-
-
-def _tuple_of_optional_booleans(
-    raw_payload: dict[str, Any],
-    *,
-    field_name: str,
-    field_path: str,
-) -> tuple[Optional[bool], ...]:
-    values = require_sequence(raw_payload, field_name, field_path, _calibration_error)
-    normalized: list[Optional[bool]] = []
-    for value_index, value in enumerate(values):
-        normalized.append(
-            require_optional_boolean_value(
-                value,
-                f"{field_path}[{value_index}]",
-                _calibration_error,
-            )
-        )
-
-    return tuple(normalized)
-
-
 def _grid_of_positive_floats(
     raw_payload: dict[str, Any],
     *,
@@ -949,7 +959,11 @@ def _grid_of_positive_floats(
         raw_payload,
         field_name=field_name,
         field_path=field_path,
-        scalar_parser=lambda value, location: require_positive_finite_scalar(value, location, _calibration_error),
+        scalar_parser=lambda value, location: require_positive_finite_scalar(
+            value,
+            location,
+            _calibration_error,
+        ),
     )
 
 
@@ -963,21 +977,7 @@ def _grid_of_non_negative_floats(
         raw_payload,
         field_name=field_name,
         field_path=field_path,
-        scalar_parser=lambda value, location: require_non_negative_finite_scalar(value, location, _calibration_error),
-    )
-
-
-def _grid_of_finite_floats(
-    raw_payload: dict[str, Any],
-    *,
-    field_name: str,
-    field_path: str,
-) -> tuple[tuple[float, ...], ...]:
-    return _grid_of_scalars(
-        raw_payload,
-        field_name=field_name,
-        field_path=field_path,
-        scalar_parser=lambda value, location: require_finite_scalar(
+        scalar_parser=lambda value, location: require_non_negative_finite_scalar(
             value,
             location,
             _calibration_error,
@@ -985,56 +985,46 @@ def _grid_of_finite_floats(
     )
 
 
-def _grid_of_optional_mappings(
+def _grid_of_optional_finite_floats(
     raw_payload: dict[str, Any],
     *,
     field_name: str,
     field_path: str,
-) -> tuple[tuple[Optional[dict[str, Any]], ...], ...]:
+) -> tuple[tuple[Optional[float], ...], ...]:
     return _grid_of_scalars(
         raw_payload,
         field_name=field_name,
         field_path=field_path,
-        scalar_parser=lambda value, location: require_optional_mapping_value(
-            value,
+        scalar_parser=lambda value, location: require_optional_finite_number(
+            {"value": value},
+            "value",
             location,
             _calibration_error,
         ),
     )
 
 
-def _grid_of_optional_strings(
+def _grid_of_implied_volatility_inversion_statuses(
     raw_payload: dict[str, Any],
     *,
     field_name: str,
     field_path: str,
-) -> tuple[tuple[Optional[str], ...], ...]:
+) -> tuple[tuple[VanillaOptionImpliedVolatilityInversionStatus, ...], ...]:
     return _grid_of_scalars(
         raw_payload,
         field_name=field_name,
         field_path=field_path,
-        scalar_parser=lambda value, location: require_optional_string_value(
+        scalar_parser=lambda value, location: require_str_enum_value(
             value,
             location,
             _calibration_error,
-        ),
-    )
-
-
-def _grid_of_optional_booleans(
-    raw_payload: dict[str, Any],
-    *,
-    field_name: str,
-    field_path: str,
-) -> tuple[tuple[Optional[bool], ...], ...]:
-    return _grid_of_scalars(
-        raw_payload,
-        field_name=field_name,
-        field_path=field_path,
-        scalar_parser=lambda value, location: require_optional_boolean_value(
-            value,
-            location,
-            _calibration_error,
+            enum_type=VanillaOptionImpliedVolatilityInversionStatus,
+            allowed_values_message=(
+                "must be one of: succeeded, "
+                "price_below_no_arbitrage_lower_bound, "
+                "price_equals_finite_upper_bound, "
+                "price_above_finite_upper_bound"
+            ),
         ),
     )
 
@@ -1086,6 +1076,20 @@ def _validate_aligned_node_count(
         )
 
 
+def _validate_optional_tuple_pair(
+    left_values: Optional[tuple[Any, ...]],
+    right_values: Optional[tuple[Any, ...]],
+    *,
+    left_field_path: str,
+    right_field_path: str,
+) -> None:
+    if (left_values is None) != (right_values is None):
+        raise _calibration_error(
+            left_field_path if left_values is None else right_field_path,
+            "must be null when the paired terminal distribution field is null",
+        )
+
+
 def _grid_shape(
     values: tuple[tuple[Any, ...], ...],
     *,
@@ -1121,12 +1125,13 @@ def _validate_matching_grid_shape(
 
 
 __all__ = [
-    "JaniformVanillaOptionBatch",
-    "JaniformVanillaOptionBatchPricingCalibrationHooks",
-    "JaniformVanillaOptionBatchPricingResult",
-    "JaniformVanillaOptionBatchPricingRunDiagnostics",
+    "JaniformGroupedVanillaOptionBatch",
+    "JaniformGroupedVanillaOptionGroup",
+    "JaniformVanillaOptionGroupedBatchPricingGroupResult",
+    "JaniformVanillaOptionGroupedBatchPricingResult",
+    "JaniformVanillaOptionMaturityIntervalSummary",
+    "JaniformVanillaOptionMaturityPricingEngineKind",
+    "JaniformVanillaOptionMaturitySummary",
     "JaniformVanillaOptionSurface",
-    "JaniformVanillaOptionSurfacePricingCalibrationHooks",
     "JaniformVanillaOptionSurfacePricingResult",
-    "JaniformVanillaOptionSurfacePricingRunDiagnostics",
 ]

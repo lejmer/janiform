@@ -368,6 +368,40 @@ impl HawkesExcitationState {
         }
     }
 
+    /// Apply the expected endogenous contribution from a side-specific event count.
+    ///
+    /// This scales `alpha` linearly by `expected_count` and then applies the
+    /// corresponding side-specific endogenous jump routing.
+    ///
+    /// Input semantics:
+    /// - `expected_count == 0.0` returns the input state unchanged exactly
+    /// - finite non-negative `expected_count` preserves the same routing as
+    ///   `apply_endogenous_event_jump`
+    pub fn apply_expected_endogenous_event_jump(
+        self,
+        side: HawkesEventSide,
+        alpha: HawkesKernelLoadings,
+        expected_count: f64,
+    ) -> Self {
+        debug_assert!(
+            expected_count.is_finite() && expected_count >= 0.0,
+            "expected_count must be finite and non-negative"
+        );
+
+        if expected_count == 0.0 {
+            return self;
+        }
+
+        let scaled_alpha = HawkesKernelLoadings {
+            plus_plus: alpha.plus_plus * expected_count,
+            plus_minus: alpha.plus_minus * expected_count,
+            minus_plus: alpha.minus_plus * expected_count,
+            minus_minus: alpha.minus_minus * expected_count,
+        };
+
+        self.apply_endogenous_event_jump(side, scaled_alpha)
+    }
+
     /// Parse a string event-side payload and apply endogenous jump routing.
     pub fn apply_endogenous_event_jump_from_payload(
         self,

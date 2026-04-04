@@ -16,9 +16,7 @@ use janiform_affine_oracle::sufficient_statistics::{
     SufficientStatisticsTransformSliceSettings, SufficientStatisticsTransformSlices,
     derive_expected_interval_statistics_from_transform_slices,
 };
-use janiform_foundations::complex_math::{
-    ComplexScalar, complex_exponential, complex_log_principal, complex_multiply,
-};
+use janiform_foundations::complex_math::{ComplexScalar, complex_exponential, complex_multiply};
 use janiform_foundations::matrix2::solve_two_by_two_linear_source_system;
 use janiform_model_kernels::hawkes::HawkesExcitationState;
 use janiform_model_kernels::mean_reversion::{
@@ -43,10 +41,18 @@ use super::contracts::{
     VanillaOptionPricingResponseError, VanillaOptionPricingRunResult,
     VanillaOptionPricingRunResultBuildError, build_vanilla_option_pricing_run_result,
 };
-use super::fourier::{FourierInversionPricingError, price_vanilla_option_via_fourier_inversion};
+use super::fourier::{
+    FourierInversionPricingError, FourierInversionProgress,
+    price_vanilla_option_via_fourier_inversion_with_observer,
+};
+use super::implied_volatility::invert_vanilla_option_implied_volatility;
+use super::progress::{
+    PricingNodeProgress, PricingNodeProgressPhase, emit_node_progress,
+};
+use super::time_scaling::intraday_year_fraction;
+use super::probability_projection::probability_mass_from_sampled_cdf_values;
 
 const OBSERVED_LOG_MOMENT_ARGUMENT_IMAGINARY: f64 = -1.0;
-const PURE_IMAGINARY_LOG_MOMENT_REAL_PART_TOLERANCE: f64 = 1.0e-8;
 
 /// One-interval pricing factors required to execute the canonical vanilla pricing workflow.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
@@ -262,22 +268,22 @@ impl Error for VanillaOptionPricingExecutionInputError {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-struct PricingCharacteristicFunctionEvaluation {
-    value: ComplexScalar,
-    transform_diagnostics: ExponentialAffineTransformIntegrationResult,
+pub(crate) struct PricingCharacteristicFunctionEvaluation {
+    pub(crate) value: ComplexScalar,
+    pub(crate) transform_diagnostics: ExponentialAffineTransformIntegrationResult,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-struct RiskNeutralAnchorMaterialization {
-    runtime_interval_anchors: MeanReversionRuntimeIntervalAnchors,
-    expected_hawkes_state_path: Vec<HawkesExcitationState>,
+pub(crate) struct RiskNeutralAnchorMaterialization {
+    pub(crate) runtime_interval_anchors: MeanReversionRuntimeIntervalAnchors,
+    pub(crate) expected_hawkes_state_path: Vec<HawkesExcitationState>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-struct LocalTiltedIntervalExpectations {
-    expected_statistics: SufficientStatisticsExpectedIntervalStatistics,
-    core_expected_increment: f64,
-    expected_news_loading: f64,
+pub(crate) struct LocalTiltedIntervalExpectations {
+    pub(crate) expected_statistics: SufficientStatisticsExpectedIntervalStatistics,
+    pub(crate) core_expected_increment: f64,
+    pub(crate) expected_news_loading: f64,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -289,14 +295,14 @@ struct AnchoredPricingEngineResult {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-struct DeviationGrid {
-    lower_bound: f64,
-    upper_bound: f64,
-    node_count: usize,
+pub(crate) struct DeviationGrid {
+    pub(crate) lower_bound: f64,
+    pub(crate) upper_bound: f64,
+    pub(crate) node_count: usize,
 }
 
 impl DeviationGrid {
-    fn nodes(self) -> Vec<f64> {
+    pub(crate) fn nodes(self) -> Vec<f64> {
         if self.node_count == 1 {
             return vec![self.lower_bound];
         }
@@ -308,7 +314,7 @@ impl DeviationGrid {
             .collect()
     }
 
-    fn boundaries(self) -> Vec<f64> {
+    pub(crate) fn boundaries(self) -> Vec<f64> {
         let nodes = self.nodes();
         if nodes.len() <= 1 {
             return Vec::new();
@@ -319,7 +325,7 @@ impl DeviationGrid {
             .collect()
     }
 
-    fn interpolate_complex(
+    pub(crate) fn interpolate_complex(
         self,
         values: &[ComplexScalar],
         deviation: f64,
@@ -363,6 +369,13 @@ impl DeviationGrid {
 pub fn run_vanilla_option_pricing(
     execution_input: VanillaOptionPricingExecutionInput,
 ) -> Result<VanillaOptionPricingRunResult, VanillaOptionPricingRunError> {
+    run_vanilla_option_pricing_with_observer(execution_input, None)
+}
+
+pub fn run_vanilla_option_pricing_with_observer(
+    execution_input: VanillaOptionPricingExecutionInput,
+    mut observer: Option<&mut dyn FnMut(PricingNodeProgress)>,
+) -> Result<VanillaOptionPricingRunResult, VanillaOptionPricingRunError> {
     execution_input
         .validate()
         .map_err(|source| VanillaOptionPricingRunError::InvalidExecutionInput { source })?;
@@ -385,18 +398,21 @@ pub fn run_vanilla_option_pricing(
             execution_input.interval_factors[0],
             output_selection,
             driver_parameters,
+            &mut observer,
         )?
     } else if execution_input.interval_factors.len() == 1 {
         run_single_interval_anchored_fourier_pricing(
             &pricing_request,
             execution_input.interval_factors[0],
             driver_parameters,
+            &mut observer,
         )?
     } else {
         run_multi_interval_anchored_pricing(
             &pricing_request,
             &execution_input.interval_factors,
             driver_parameters,
+            &mut observer,
         )?
     };
 
@@ -529,6 +545,21 @@ fn solve_exact_local_pricing_tilt(
     })
 }
 
+pub(crate) fn resolve_local_transition_theta(
+    pricing_request: &VanillaOptionPricingRequest,
+    interval_factors: VanillaOptionPricingIntervalFactors,
+    driver_parameters: NigBuySellDriverParameters,
+) -> Result<(f64, Option<AnchoredLocalTiltSolveDiagnostics>), VanillaOptionPricingRunError> {
+    if use_nested_transition_measure_for_local_request(pricing_request)? {
+        return Ok((0.0, None));
+    }
+
+    let diagnostics =
+        solve_exact_local_pricing_tilt(pricing_request, interval_factors, driver_parameters)?;
+
+    Ok((diagnostics.theta, Some(diagnostics)))
+}
+
 fn evaluate_observed_log_moment_exponent_for_tilt(
     pricing_request: &VanillaOptionPricingRequest,
     driver_parameters: NigBuySellDriverParameters,
@@ -561,26 +592,36 @@ fn evaluate_observed_log_moment_exponent_for_tilt(
         }
     })?;
 
-    let log_moment_exponent = complex_log_principal(evaluation.value);
+    recover_pure_imaginary_log_moment_exponent(evaluation.value, theta)
+}
+
+pub(crate) fn recover_pure_imaginary_log_moment_exponent(
+    characteristic_value: ComplexScalar,
+    theta: f64,
+) -> Result<f64, super::characteristic::AnchoredLocalTiltSolveError> {
+    if !characteristic_value.is_finite() {
+        return Err(
+            super::characteristic::AnchoredLocalTiltSolveError::NonFiniteTransformInput {
+                theta,
+                value: characteristic_value,
+            },
+        );
+    }
+
+    // Along the pure-imaginary axis this quantity is an exponential moment,
+    // so the exact value is strictly positive real and the log moment is the
+    // logarithm of the characteristic-factor modulus.
+    let log_moment_exponent = characteristic_value.norm().ln();
     if !log_moment_exponent.is_finite() {
         return Err(
             super::characteristic::AnchoredLocalTiltSolveError::NonFiniteTransformInput {
                 theta,
-                value: log_moment_exponent,
+                value: characteristic_value,
             },
         );
     }
 
-    if log_moment_exponent.imaginary.abs() > PURE_IMAGINARY_LOG_MOMENT_REAL_PART_TOLERANCE {
-        return Err(
-            super::characteristic::AnchoredLocalTiltSolveError::NonRealObservedLogMomentExponent {
-                theta,
-                value: log_moment_exponent,
-            },
-        );
-    }
-
-    Ok(log_moment_exponent.real)
+    Ok(log_moment_exponent)
 }
 
 fn run_single_interval_nested_fourier_pricing(
@@ -588,6 +629,7 @@ fn run_single_interval_nested_fourier_pricing(
     interval_factors: VanillaOptionPricingIntervalFactors,
     output_selection: VanillaOptionPricingOptionalOutputSelection,
     driver_parameters: NigBuySellDriverParameters,
+    observer: &mut Option<&mut dyn FnMut(PricingNodeProgress)>,
 ) -> Result<AnchoredPricingEngineResult, VanillaOptionPricingRunError> {
     let news_intensity = interval_factors.news_intensity_input().map_err(|source| {
         VanillaOptionPricingRunError::InvalidExecutionInput {
@@ -601,34 +643,53 @@ fn run_single_interval_nested_fourier_pricing(
     let deferred_characteristic_function_error: RefCell<Option<VanillaOptionPricingRunError>> =
         RefCell::new(None);
 
-    let pricing_result = price_vanilla_option_via_fourier_inversion(
-        pricing_request.market_inputs,
-        pricing_request.payoff,
-        pricing_request.resolved_fourier_inversion_settings(),
-        |argument| match evaluate_pricing_log_return_characteristic_function(
-            pricing_request,
-            driver_parameters,
-            interval_factors,
-            news_intensity,
-            argument,
-        ) {
-            Ok(evaluation) => {
-                if representative_transform_diagnostics.borrow().is_none() {
-                    *representative_transform_diagnostics.borrow_mut() =
-                        Some(evaluation.transform_diagnostics);
-                }
-
-                evaluation.value
-            }
-            Err(error) => {
-                if deferred_characteristic_function_error.borrow().is_none() {
-                    *deferred_characteristic_function_error.borrow_mut() = Some(error);
-                }
-
-                ComplexScalar::new(f64::NAN, f64::NAN)
-            }
-        },
+    emit_node_progress(
+        observer,
+        PricingNodeProgress::phase_only(PricingNodeProgressPhase::EvaluatingFourierInversion),
     );
+
+    let pricing_result = {
+        let mut fourier_progress_observer = |progress: FourierInversionProgress| {
+            emit_node_progress(
+                observer,
+                PricingNodeProgress::for_fourier_step(
+                    PricingNodeProgressPhase::EvaluatingFourierInversion,
+                    progress.completed_evaluations,
+                    progress.total_evaluations,
+                ),
+            );
+        };
+
+        price_vanilla_option_via_fourier_inversion_with_observer(
+            pricing_request.market_inputs,
+            pricing_request.payoff,
+            pricing_request.resolved_fourier_inversion_settings(),
+            |argument| match evaluate_pricing_log_return_characteristic_function(
+                pricing_request,
+                driver_parameters,
+                interval_factors,
+                news_intensity,
+                argument,
+            ) {
+                Ok(evaluation) => {
+                    if representative_transform_diagnostics.borrow().is_none() {
+                        *representative_transform_diagnostics.borrow_mut() =
+                            Some(evaluation.transform_diagnostics);
+                    }
+
+                    evaluation.value
+                }
+                Err(error) => {
+                    if deferred_characteristic_function_error.borrow().is_none() {
+                        *deferred_characteristic_function_error.borrow_mut() = Some(error);
+                    }
+
+                    ComplexScalar::new(f64::NAN, f64::NAN)
+                }
+            },
+            Some(&mut fourier_progress_observer),
+        )
+    };
 
     if let Some(error) = deferred_characteristic_function_error.into_inner() {
         return Err(error);
@@ -637,11 +698,20 @@ fn run_single_interval_nested_fourier_pricing(
     let pricing_result = pricing_result
         .map_err(|source| VanillaOptionPricingRunError::FourierPricingFailure { source })?;
     let anchored_diagnostics = if output_selection.diagnostics_selected() {
+        emit_node_progress(
+            observer,
+            PricingNodeProgress::for_interval(
+                PricingNodeProgressPhase::MaterializingRiskNeutralAnchors,
+                0,
+                1,
+            ),
+        );
         let risk_neutral_anchor_materialization =
             build_pricing_risk_neutral_anchor_materialization(
                 pricing_request,
                 &[interval_factors],
                 driver_parameters,
+                observer,
             )?;
 
         Some(build_single_interval_recursion_diagnostics(
@@ -682,6 +752,7 @@ fn run_single_interval_anchored_fourier_pricing(
     pricing_request: &VanillaOptionPricingRequest,
     interval_factors: VanillaOptionPricingIntervalFactors,
     driver_parameters: NigBuySellDriverParameters,
+    observer: &mut Option<&mut dyn FnMut(PricingNodeProgress)>,
 ) -> Result<AnchoredPricingEngineResult, VanillaOptionPricingRunError> {
     let local_boundary_input = pricing_request.boundary_input.clone();
 
@@ -712,36 +783,55 @@ fn run_single_interval_anchored_fourier_pricing(
             },
         )?;
 
-    let pricing_result = price_vanilla_option_via_fourier_inversion(
-        pricing_request.market_inputs,
-        pricing_request.payoff,
-        pricing_request.resolved_fourier_inversion_settings(),
-        |argument| match evaluate_observed_log_return_characteristic_function_under_local_measure(
-            pricing_request,
-            driver_parameters,
-            interval_factors,
-            news_intensity,
-            local_tilt_diagnostics.theta,
-            local_martingale_deviation_adjustment,
-            argument,
-        ) {
-            Ok(evaluation) => {
-                if representative_transform_diagnostics.borrow().is_none() {
-                    *representative_transform_diagnostics.borrow_mut() =
-                        Some(evaluation.transform_diagnostics);
-                }
-
-                evaluation.value
-            }
-            Err(error) => {
-                if deferred_characteristic_function_error.borrow().is_none() {
-                    *deferred_characteristic_function_error.borrow_mut() = Some(error);
-                }
-
-                ComplexScalar::new(f64::NAN, f64::NAN)
-            }
-        },
+    emit_node_progress(
+        observer,
+        PricingNodeProgress::phase_only(PricingNodeProgressPhase::EvaluatingFourierInversion),
     );
+
+    let pricing_result = {
+        let mut fourier_progress_observer = |progress: FourierInversionProgress| {
+            emit_node_progress(
+                observer,
+                PricingNodeProgress::for_fourier_step(
+                    PricingNodeProgressPhase::EvaluatingFourierInversion,
+                    progress.completed_evaluations,
+                    progress.total_evaluations,
+                ),
+            );
+        };
+
+        price_vanilla_option_via_fourier_inversion_with_observer(
+            pricing_request.market_inputs,
+            pricing_request.payoff,
+            pricing_request.resolved_fourier_inversion_settings(),
+            |argument| match evaluate_observed_log_return_characteristic_function_under_local_measure(
+                pricing_request,
+                driver_parameters,
+                interval_factors,
+                news_intensity,
+                local_tilt_diagnostics.theta,
+                local_martingale_deviation_adjustment,
+                argument,
+            ) {
+                Ok(evaluation) => {
+                    if representative_transform_diagnostics.borrow().is_none() {
+                        *representative_transform_diagnostics.borrow_mut() =
+                            Some(evaluation.transform_diagnostics);
+                    }
+
+                    evaluation.value
+                }
+                Err(error) => {
+                    if deferred_characteristic_function_error.borrow().is_none() {
+                        *deferred_characteristic_function_error.borrow_mut() = Some(error);
+                    }
+
+                    ComplexScalar::new(f64::NAN, f64::NAN)
+                }
+            },
+            Some(&mut fourier_progress_observer),
+        )
+    };
 
     if let Some(error) = deferred_characteristic_function_error.into_inner() {
         return Err(error);
@@ -749,10 +839,19 @@ fn run_single_interval_anchored_fourier_pricing(
 
     let pricing_result = pricing_result
         .map_err(|source| VanillaOptionPricingRunError::FourierPricingFailure { source })?;
+    emit_node_progress(
+        observer,
+        PricingNodeProgress::for_interval(
+            PricingNodeProgressPhase::MaterializingRiskNeutralAnchors,
+            0,
+            1,
+        ),
+    );
     let risk_neutral_anchor_materialization = build_pricing_risk_neutral_anchor_materialization(
         pricing_request,
         &[interval_factors],
         driver_parameters,
+        observer,
     )?;
 
     let anchored_diagnostics = build_single_interval_recursion_diagnostics(
@@ -784,11 +883,13 @@ fn run_multi_interval_anchored_pricing(
     pricing_request: &VanillaOptionPricingRequest,
     interval_factors: &[VanillaOptionPricingIntervalFactors],
     driver_parameters: NigBuySellDriverParameters,
+    observer: &mut Option<&mut dyn FnMut(PricingNodeProgress)>,
 ) -> Result<AnchoredPricingEngineResult, VanillaOptionPricingRunError> {
     let risk_neutral_anchor_materialization = build_pricing_risk_neutral_anchor_materialization(
         pricing_request,
         interval_factors,
         driver_parameters,
+        observer,
     )?;
 
     let coarse_grid = build_deviation_grid(
@@ -815,7 +916,10 @@ fn run_multi_interval_anchored_pricing(
         &risk_neutral_anchor_materialization,
         coarse_grid,
         true,
+        PricingNodeProgressPhase::EvaluatingAnchoredRecursion,
+        PricingNodeProgressPhase::EvaluatingFourierInversion,
         &mut representative_transform_diagnostics,
+        observer,
     )?;
 
     let (refined_price, _) = run_anchored_characteristic_pricing(
@@ -825,7 +929,10 @@ fn run_multi_interval_anchored_pricing(
         &risk_neutral_anchor_materialization,
         refined_grid,
         false,
+        PricingNodeProgressPhase::EvaluatingRefinedAnchoredRecursion,
+        PricingNodeProgressPhase::EvaluatingRefinedFourierInversion,
         &mut representative_transform_diagnostics,
+        observer,
     )?;
 
     let refinement_absolute_difference = (coarse_price - refined_price).abs();
@@ -863,49 +970,79 @@ fn run_anchored_characteristic_pricing(
     risk_neutral_anchor_materialization: &RiskNeutralAnchorMaterialization,
     deviation_grid: DeviationGrid,
     collect_diagnostics: bool,
+    recursion_phase: PricingNodeProgressPhase,
+    fourier_phase: PricingNodeProgressPhase,
     representative_transform_diagnostics: &mut Option<ExponentialAffineTransformIntegrationResult>,
+    observer: &mut Option<&mut dyn FnMut(PricingNodeProgress)>,
 ) -> Result<(f64, Vec<AnchoredPricingRecursionIntervalDiagnostics>), VanillaOptionPricingRunError> {
     let representative_transform_diagnostics_cell =
         RefCell::new(*representative_transform_diagnostics);
 
-    let (_, interval_diagnostics) = evaluate_total_observed_log_return_characteristic_function(
-        pricing_request,
-        interval_factors,
-        driver_parameters,
-        risk_neutral_anchor_materialization,
-        deviation_grid,
-        ComplexScalar::new(0.0, 0.0),
-        collect_diagnostics,
-        &mut representative_transform_diagnostics_cell.borrow_mut(),
-    )?;
+    emit_node_progress(
+        observer,
+        PricingNodeProgress::for_interval(recursion_phase, 0, interval_factors.len()),
+    );
 
-    let deferred_characteristic_function_error: RefCell<Option<VanillaOptionPricingRunError>> =
-        RefCell::new(None);
-
-    let price_result = price_vanilla_option_via_fourier_inversion(
-        pricing_request.market_inputs,
-        pricing_request.payoff,
-        pricing_request.resolved_fourier_inversion_settings(),
-        |argument| match evaluate_total_observed_log_return_characteristic_function(
+    let (_, interval_diagnostics) =
+        evaluate_total_observed_log_return_characteristic_function_with_progress(
             pricing_request,
             interval_factors,
             driver_parameters,
             risk_neutral_anchor_materialization,
             deviation_grid,
-            argument,
-            false,
+            ComplexScalar::new(0.0, 0.0),
+            collect_diagnostics,
             &mut representative_transform_diagnostics_cell.borrow_mut(),
-        ) {
-            Ok((value, _)) => value,
-            Err(error) => {
-                if deferred_characteristic_function_error.borrow().is_none() {
-                    *deferred_characteristic_function_error.borrow_mut() = Some(error);
-                }
+            recursion_phase,
+            observer,
+        )?;
 
-                ComplexScalar::new(f64::NAN, f64::NAN)
-            }
-        },
+    let deferred_characteristic_function_error: RefCell<Option<VanillaOptionPricingRunError>> =
+        RefCell::new(None);
+
+    emit_node_progress(
+        observer,
+        PricingNodeProgress::phase_only(fourier_phase),
     );
+
+    let price_result = {
+        let mut fourier_progress_observer = |progress: FourierInversionProgress| {
+            emit_node_progress(
+                observer,
+                PricingNodeProgress::for_fourier_step(
+                    fourier_phase,
+                    progress.completed_evaluations,
+                    progress.total_evaluations,
+                ),
+            );
+        };
+
+        price_vanilla_option_via_fourier_inversion_with_observer(
+            pricing_request.market_inputs,
+            pricing_request.payoff,
+            pricing_request.resolved_fourier_inversion_settings(),
+            |argument| match evaluate_total_observed_log_return_characteristic_function(
+                pricing_request,
+                interval_factors,
+                driver_parameters,
+                risk_neutral_anchor_materialization,
+                deviation_grid,
+                argument,
+                &mut representative_transform_diagnostics_cell.borrow_mut(),
+                recursion_phase,
+            ) {
+                Ok((value, _)) => value,
+                Err(error) => {
+                    if deferred_characteristic_function_error.borrow().is_none() {
+                        *deferred_characteristic_function_error.borrow_mut() = Some(error);
+                    }
+
+                    ComplexScalar::new(f64::NAN, f64::NAN)
+                }
+            },
+            Some(&mut fourier_progress_observer),
+        )
+    };
 
     if let Some(error) = deferred_characteristic_function_error.into_inner() {
         return Err(error);
@@ -926,8 +1063,42 @@ fn evaluate_total_observed_log_return_characteristic_function(
     risk_neutral_anchor_materialization: &RiskNeutralAnchorMaterialization,
     deviation_grid: DeviationGrid,
     argument: ComplexScalar,
+    representative_transform_diagnostics: &mut Option<ExponentialAffineTransformIntegrationResult>,
+    recursion_phase: PricingNodeProgressPhase,
+) -> Result<
+    (
+        ComplexScalar,
+        Vec<AnchoredPricingRecursionIntervalDiagnostics>,
+    ),
+    VanillaOptionPricingRunError,
+> {
+    let mut observer: Option<&mut dyn FnMut(PricingNodeProgress)> = None;
+
+    evaluate_total_observed_log_return_characteristic_function_with_progress(
+        pricing_request,
+        interval_factors,
+        driver_parameters,
+        risk_neutral_anchor_materialization,
+        deviation_grid,
+        argument,
+        false,
+        representative_transform_diagnostics,
+        recursion_phase,
+        &mut observer,
+    )
+}
+
+fn evaluate_total_observed_log_return_characteristic_function_with_progress(
+    pricing_request: &VanillaOptionPricingRequest,
+    interval_factors: &[VanillaOptionPricingIntervalFactors],
+    driver_parameters: NigBuySellDriverParameters,
+    risk_neutral_anchor_materialization: &RiskNeutralAnchorMaterialization,
+    deviation_grid: DeviationGrid,
+    argument: ComplexScalar,
     collect_diagnostics: bool,
     representative_transform_diagnostics: &mut Option<ExponentialAffineTransformIntegrationResult>,
+    recursion_phase: PricingNodeProgressPhase,
+    observer: &mut Option<&mut dyn FnMut(PricingNodeProgress)>,
 ) -> Result<
     (
         ComplexScalar,
@@ -942,8 +1113,19 @@ fn evaluate_total_observed_log_return_characteristic_function(
 
     let mut continuation_values = vec![ComplexScalar::new(1.0, 0.0); nodes.len()];
     let mut interval_diagnostics: Vec<AnchoredPricingRecursionIntervalDiagnostics> = Vec::new();
+    let total_intervals = interval_factors.len();
 
     for reverse_interval_index in (0..interval_factors.len()).rev() {
+        let current_interval_index = total_intervals - reverse_interval_index - 1;
+        emit_node_progress(
+            observer,
+            PricingNodeProgress::for_interval(
+                recursion_phase,
+                current_interval_index,
+                total_intervals,
+            ),
+        );
+
         let global_interval_index =
             pricing_request.boundary_input.interval_index + reverse_interval_index;
 
@@ -971,7 +1153,7 @@ fn evaluate_total_observed_log_return_characteristic_function(
 
         let mut interval_values: Vec<ComplexScalar> = Vec::with_capacity(nodes.len());
 
-        let mut local_tilt_diagnostics: Vec<super::contracts::AnchoredLocalTiltSolveDiagnostics> =
+        let mut local_tilt_diagnostics: Vec<AnchoredLocalTiltSolveDiagnostics> =
             Vec::with_capacity(nodes.len());
 
         let mut maximum_tail_probability_mass: f64 = 0.0;
@@ -997,27 +1179,20 @@ fn evaluate_total_observed_log_return_characteristic_function(
                 interval_delta,
             )?;
 
-            let local_transition_theta =
-                if use_nested_transition_measure_for_local_request(&local_request)? {
-                    minimum_solved_theta = minimum_solved_theta.min(0.0);
-                    maximum_solved_theta = maximum_solved_theta.max(0.0);
-                    0.0
-                } else {
-                    let local_tilt = solve_exact_local_pricing_tilt(
-                        &local_request,
-                        interval_factors,
-                        driver_parameters,
-                    )?;
+            let (local_transition_theta, local_tilt) = resolve_local_transition_theta(
+                &local_request,
+                interval_factors,
+                driver_parameters,
+            )?;
 
-                    minimum_solved_theta = minimum_solved_theta.min(local_tilt.theta);
-                    maximum_solved_theta = maximum_solved_theta.max(local_tilt.theta);
+            minimum_solved_theta = minimum_solved_theta.min(local_transition_theta);
+            maximum_solved_theta = maximum_solved_theta.max(local_transition_theta);
 
-                    if collect_diagnostics {
-                        local_tilt_diagnostics.push(local_tilt.clone());
-                    }
-
-                    local_tilt.theta
-                };
+            if collect_diagnostics {
+                if let Some(local_tilt) = local_tilt {
+                    local_tilt_diagnostics.push(local_tilt);
+                }
+            }
 
             let local_expectations = derive_local_tilted_interval_expectations(
                 &local_request,
@@ -1118,7 +1293,7 @@ pub(crate) fn use_nested_transition_measure_for_local_request(
     Ok(local_martingale_deviation_adjustment == 0.0)
 }
 
-fn build_deviation_grid(
+pub(crate) fn build_deviation_grid(
     pricing_request: &VanillaOptionPricingRequest,
     risk_neutral_anchor_materialization: &RiskNeutralAnchorMaterialization,
     interval_count: usize,
@@ -1179,10 +1354,11 @@ fn build_deviation_grid(
     })
 }
 
-fn build_pricing_risk_neutral_anchor_materialization(
+pub(crate) fn build_pricing_risk_neutral_anchor_materialization(
     pricing_request: &VanillaOptionPricingRequest,
     interval_factors: &[VanillaOptionPricingIntervalFactors],
     driver_parameters: NigBuySellDriverParameters,
+    observer: &mut Option<&mut dyn FnMut(PricingNodeProgress)>,
 ) -> Result<RiskNeutralAnchorMaterialization, VanillaOptionPricingRunError> {
     let mut current_boundary_state = pricing_request
         .boundary_input
@@ -1199,6 +1375,15 @@ fn build_pricing_risk_neutral_anchor_materialization(
     expected_hawkes_state_path.push(current_hawkes_state);
 
     for (interval_index, interval_factor) in interval_factors.iter().copied().enumerate() {
+        emit_node_progress(
+            observer,
+            PricingNodeProgress::for_interval(
+                PricingNodeProgressPhase::MaterializingRiskNeutralAnchors,
+                interval_index,
+                interval_factors.len(),
+            ),
+        );
+
         let local_boundary_input = build_local_boundary_input(
             pricing_request,
             pricing_request.boundary_input.interval_index + interval_index,
@@ -1215,14 +1400,14 @@ fn build_pricing_risk_neutral_anchor_materialization(
             pricing_request.interval_delta,
         )?;
 
-        let local_tilt_diagnostics =
-            solve_exact_local_pricing_tilt(&local_request, interval_factor, driver_parameters)?;
+        let (local_transition_theta, _) =
+            resolve_local_transition_theta(&local_request, interval_factor, driver_parameters)?;
 
         let local_expectations = derive_local_tilted_interval_expectations(
             &local_request,
             driver_parameters,
             interval_factor,
-            local_tilt_diagnostics.theta,
+            local_transition_theta,
         )?;
 
         current_boundary_state = evolve_mean_reversion_boundary_state_with_endogenous_pressure(
@@ -1278,7 +1463,7 @@ fn build_pricing_risk_neutral_anchor_materialization(
     })
 }
 
-fn derive_local_tilted_interval_expectations(
+pub(crate) fn derive_local_tilted_interval_expectations(
     pricing_request: &VanillaOptionPricingRequest,
     driver_parameters: NigBuySellDriverParameters,
     interval_factors: VanillaOptionPricingIntervalFactors,
@@ -1514,7 +1699,7 @@ fn tilted_nig_expected_increment(
     )
 }
 
-fn infer_expected_news_loading_under_local_measure(
+pub(crate) fn infer_expected_news_loading_under_local_measure(
     pricing_request: &VanillaOptionPricingRequest,
     interval_factors: VanillaOptionPricingIntervalFactors,
     expected_statistics: SufficientStatisticsExpectedIntervalStatistics,
@@ -1530,6 +1715,22 @@ fn infer_expected_news_loading_under_local_measure(
             message: source.to_string(),
         }
     })?;
+
+    if pricing_request
+        .model_parameters
+        .news_process_configuration
+        .known_component_mark_scales
+        .activity_coupling_scale
+        == 0.0
+        && pricing_request
+            .model_parameters
+            .news_process_configuration
+            .surprise_component_mark_scales
+            .activity_coupling_scale
+            == 0.0
+    {
+        return Ok(0.0);
+    }
 
     if interval_factors.s_h == 0.0 {
         let expected_severity_mark = pricing_request
@@ -1668,17 +1869,15 @@ fn evolve_expected_hawkes_state_under_local_measure(
     let drifted_state = state_before_update
         .apply_shared_decay_drift(kernel_parameters.beta, pricing_request.interval_delta);
 
-    let post_buy_state = apply_expected_endogenous_jump(
-        drifted_state,
+    let post_buy_state = drifted_state.apply_expected_endogenous_event_jump(
+        janiform_model_kernels::hawkes::HawkesEventSide::Buy,
         kernel_parameters.alpha,
         local_expectations.expected_statistics.expected_n_plus,
-        true,
     );
-    let post_sell_state = apply_expected_endogenous_jump(
-        post_buy_state,
+    let post_sell_state = post_buy_state.apply_expected_endogenous_event_jump(
+        janiform_model_kernels::hawkes::HawkesEventSide::Sell,
         kernel_parameters.alpha,
         local_expectations.expected_statistics.expected_n_minus,
-        false,
     );
 
     post_sell_state
@@ -1693,37 +1892,7 @@ fn evolve_expected_hawkes_state_under_local_measure(
         )
 }
 
-fn apply_expected_endogenous_jump(
-    state: HawkesExcitationState,
-    alpha: janiform_model_kernels::hawkes::HawkesKernelLoadings,
-    expected_count: f64,
-    buy_side: bool,
-) -> HawkesExcitationState {
-    if expected_count == 0.0 {
-        return state;
-    }
-
-    let scaled_alpha = janiform_model_kernels::hawkes::HawkesKernelLoadings {
-        plus_plus: alpha.plus_plus * expected_count,
-        plus_minus: alpha.plus_minus * expected_count,
-        minus_plus: alpha.minus_plus * expected_count,
-        minus_minus: alpha.minus_minus * expected_count,
-    };
-
-    if buy_side {
-        state.apply_endogenous_event_jump(
-            janiform_model_kernels::hawkes::HawkesEventSide::Buy,
-            scaled_alpha,
-        )
-    } else {
-        state.apply_endogenous_event_jump(
-            janiform_model_kernels::hawkes::HawkesEventSide::Sell,
-            scaled_alpha,
-        )
-    }
-}
-
-fn build_local_boundary_input(
+pub(crate) fn build_local_boundary_input(
     pricing_request: &VanillaOptionPricingRequest,
     interval_index: usize,
     hawkes_boundary_state: HawkesExcitationState,
@@ -1765,7 +1934,7 @@ fn build_local_boundary_input(
     })
 }
 
-fn build_local_pricing_request(
+pub(crate) fn build_local_pricing_request(
     pricing_request: &VanillaOptionPricingRequest,
     boundary_input: AnchoredVanillaOptionPricingBoundaryInput,
     interval_delta: f64,
@@ -1844,22 +2013,9 @@ fn transition_probability_row(
         )?);
     }
 
-    let mut row = Vec::with_capacity(target_boundaries.len() + 1);
-
-    if projected_cdf_values.is_empty() {
-        row.push(1.0);
-        return Ok(row);
-    }
-
-    row.push(projected_cdf_values[0]);
-
-    for interval_index in 1..projected_cdf_values.len() {
-        row.push(projected_cdf_values[interval_index] - projected_cdf_values[interval_index - 1]);
-    }
-
-    row.push(1.0 - projected_cdf_values[projected_cdf_values.len() - 1]);
-
-    Ok(row)
+    Ok(probability_mass_from_sampled_cdf_values(
+        projected_cdf_values.as_slice(),
+    ))
 }
 
 fn evaluate_shifted_core_cdf_under_local_measure(
@@ -1909,7 +2065,7 @@ fn evaluate_shifted_core_cdf_under_local_measure(
     Ok((0.5 - integration_step * integral / PI).clamp(0.0, 1.0))
 }
 
-fn evaluate_core_log_return_characteristic_function_under_local_measure(
+pub(crate) fn evaluate_core_log_return_characteristic_function_under_local_measure(
     pricing_request: &VanillaOptionPricingRequest,
     driver_parameters: NigBuySellDriverParameters,
     interval_factors: VanillaOptionPricingIntervalFactors,
@@ -2052,13 +2208,14 @@ fn build_pricing_response(
     price: f64,
 ) -> Result<VanillaOptionPricingResponse, VanillaOptionPricingRunError> {
     let market_inputs = pricing_request.market_inputs;
+    let maturity_year_fraction = intraday_year_fraction(market_inputs.maturity_interval);
 
     let forward_price = market_inputs.spot
         * ((market_inputs.risk_free_rate - market_inputs.dividend_yield)
-            * market_inputs.maturity_interval)
+            * maturity_year_fraction)
             .exp();
 
-    let discount_factor = (-market_inputs.risk_free_rate * market_inputs.maturity_interval).exp();
+    let discount_factor = (-market_inputs.risk_free_rate * maturity_year_fraction).exp();
 
     let boundary_state = pricing_request.boundary_input.hawkes_boundary_state;
     let boundary_state_norm = (boundary_state.y_plus_plus * boundary_state.y_plus_plus
@@ -2075,8 +2232,19 @@ fn build_pricing_response(
     )
     .map_err(|source| VanillaOptionPricingRunError::InvalidResponseDiagnostics { source })?;
 
-    VanillaOptionPricingResponse::try_new(price, diagnostics)
-        .map_err(|source| VanillaOptionPricingRunError::InvalidResponse { source })
+    let implied_volatility_outcome = invert_vanilla_option_implied_volatility(
+        market_inputs,
+        pricing_request.payoff.payoff_type,
+        price,
+    );
+
+    VanillaOptionPricingResponse::try_new(
+        price,
+        diagnostics,
+        implied_volatility_outcome.implied_volatility,
+        implied_volatility_outcome.inversion_status,
+    )
+    .map_err(|source| VanillaOptionPricingRunError::InvalidResponse { source })
 }
 
 fn evaluate_pricing_log_return_characteristic_function(

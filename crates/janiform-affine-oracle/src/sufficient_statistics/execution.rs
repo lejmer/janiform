@@ -17,7 +17,7 @@ use janiform_model_kernels::hawkes::{
 use super::constants::{
     BATCH_SEED_PARTITION_SUBSTREAM_DOMAIN, MAX_INTERVAL_STATISTICS_COUNT,
     SUFFICIENT_STATISTICS_BATCH_SEED_PARTITION_POLICY,
-    TRANSFORM_SLICE_NEGATIVE_EXPECTATION_TOLERANCE, TRANSFORM_SLICE_REAL_PART_TOLERANCE,
+    TRANSFORM_SLICE_NEGATIVE_EXPECTATION_TOLERANCE,
 };
 use super::contracts::{
     SufficientStatisticsBoundaryStateUpdateSnapshot,
@@ -661,18 +661,65 @@ fn extract_real_transform_value(
     field: &'static str,
     value: ComplexScalar,
 ) -> Result<f64, SufficientStatisticsTransformSliceSamplingError> {
-    if value.imaginary.abs() > TRANSFORM_SLICE_REAL_PART_TOLERANCE {
+    if !value.is_finite() {
         return Err(
             SufficientStatisticsTransformSliceSamplingError::NonRealTransformSlice {
                 interval_index: context.interval_index,
                 field,
                 value,
-                tolerance: TRANSFORM_SLICE_REAL_PART_TOLERANCE,
+                tolerance: f64::NAN,
             },
         );
     }
 
-    Ok(value.real)
+    let modulus = value.norm();
+    if !modulus.is_finite() {
+        return Err(
+            SufficientStatisticsTransformSliceSamplingError::NonRealTransformSlice {
+                interval_index: context.interval_index,
+                field,
+                value,
+                tolerance: f64::NAN,
+            },
+        );
+    }
+
+    Ok(modulus)
+}
+
+#[cfg(test)]
+mod tests {
+    use janiform_foundations::complex_math::ComplexScalar;
+    use janiform_model_kernels::hawkes::HawkesExcitationState;
+
+    use super::extract_real_transform_value;
+    use crate::affine_oracle::ExponentialAffineTransformNewsIntensityInput;
+    use crate::sufficient_statistics::SufficientStatisticsTransformSliceContext;
+
+    #[test]
+    fn extract_real_transform_value_uses_modulus_for_positive_transform_values() {
+        let context = SufficientStatisticsTransformSliceContext::try_new(
+            0,
+            1.0,
+            ExponentialAffineTransformNewsIntensityInput::try_new(0.0, 0.0)
+                .expect("news intensity should construct"),
+            1.0,
+            HawkesExcitationState {
+                y_plus_plus: 0.0,
+                y_plus_minus: 0.0,
+                y_minus_plus: 0.0,
+                y_minus_minus: 0.0,
+            },
+        )
+        .expect("slice context should construct");
+
+        let transform_value = ComplexScalar::new(0.9999964795005776, -6.097094342473048e-6);
+        let recovered =
+            extract_real_transform_value(context, "baseline_transform", transform_value)
+                .expect("finite positive transform should recover");
+
+        assert_eq!(recovered, transform_value.norm());
+    }
 }
 
 fn derive_non_negative_expectation(

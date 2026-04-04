@@ -196,6 +196,63 @@ def test_spinner_progress_keeps_staged_subtasks_within_running_calibration_step(
     ]
 
 
+def test_spinner_progress_truncates_long_lines_to_terminal_width(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stream = io.StringIO()
+    monotonic_values = iter((0.0, 0.0, 0.0, 39.0, 39.0, 39.0, 39.0))
+
+    class _DummyThread:
+        def __init__(self, *, target: Any, daemon: bool) -> None:
+            self._target = target
+            self._daemon = daemon
+
+        def start(self) -> None:
+            return None
+
+        def join(self, timeout: float) -> None:
+            _ = timeout
+
+    monkeypatch.setattr(workflow_progress_module, "Thread", _DummyThread)
+    monkeypatch.setattr(workflow_progress_module, "monotonic", lambda: next(monotonic_values))
+    monkeypatch.setattr(
+        workflow_progress_module,
+        "_resolve_stream_render_width",
+        lambda stream: 80,
+    )
+
+    with workflow_progress_module.SpinnerProgress(
+        label="fit",
+        stream=stream,
+        enabled=True,
+        total_steps=8,
+    ) as progress:
+        progress.update(detail="running calibration")
+        progress.update(
+            detail="running calibration",
+            subdetail=(
+                "joint_refinement restart optimization [68%] (34/50) | item=baseline | "
+                "obj=6.843098 | best_obj=5.315629"
+            ),
+            progress_fraction=0.64,
+        )
+
+    rendered_lines = _render_terminal_output(stream.getvalue())
+    expected_eta_seconds = 39.0 * (1.0 - 0.64) / 0.64
+    full_stage_line = (
+        "✓ fit 1/8 "
+        f"[00:39, ETA {workflow_progress_module._format_elapsed_seconds(expected_eta_seconds)}] "
+        "running calibration [64%] | joint_refinement restart optimization [68%] "
+        "(34/50) | item=baseline | obj=6.843098 | best_obj=5.315629"
+    )
+    expected_stage_line = f"{full_stage_line[:77]}..."
+
+    assert rendered_lines == [
+        expected_stage_line,
+        "done fit total [00:39]",
+    ]
+
+
 def _render_terminal_output(raw_output: str) -> list[str]:
     rendered_lines: list[str] = []
     current_line: list[str] = []

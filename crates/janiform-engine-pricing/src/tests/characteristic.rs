@@ -10,6 +10,7 @@ use crate::{
     compose_nig_trading_time_exponent, compose_total_return_characteristic_function,
     compose_total_return_characteristic_function_from_oracle_output,
     compose_total_return_characteristic_function_with_edge_mode, solve_anchored_local_pricing_tilt,
+    time_scaling::intraday_year_fraction,
 };
 use janiform_affine_oracle::affine_oracle::{
     ExponentialAffineTransformDVector, ExponentialAffineTransformOutput,
@@ -1120,7 +1121,8 @@ fn pricing_request_for_local_tilt(
         .local_martingale_deviation_adjustment()
         .expect("boundary input should provide observed-return adjustment");
 
-    let risk_free_rate = (combined + target_adjustment) / 0.5;
+    let interval_delta = 0.5;
+    let risk_free_rate = (combined + target_adjustment) / intraday_year_fraction(interval_delta);
 
     VanillaOptionPricingRequest::try_new_with_interval_delta(
         VanillaOptionPricingMarketInputs::try_new(101.0, 100.0, 1.0, risk_free_rate, 0.0)
@@ -1130,7 +1132,7 @@ fn pricing_request_for_local_tilt(
         },
         boundary_input,
         valid_model_parameters(),
-        0.5,
+        interval_delta,
     )
     .expect("request should construct")
 }

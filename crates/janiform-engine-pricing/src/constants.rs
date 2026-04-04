@@ -8,6 +8,8 @@ pub const VANILLA_OPTION_RESPONSE_VALIDATION_POLICY: &str =
     "validate_non_negative_price_and_finite_diagnostics_payload_before_response_publication.v1";
 pub const PRICING_MARTINGALE_CONDITION_VALIDATION_POLICY: &str = "trading_time_log_moment_under_esscher_tilt_must_match_r_minus_q_maturity_target_within_tolerance.v1";
 pub const PRICING_LOCAL_ANCHORED_TILT_SOLVE_POLICY: &str = "solve_state_dependent_local_tilt_on_exact_nig_domain_with_pure_imaginary_real_log_moment_evaluation_and_nearest_zero_admissible_root_selection.v1";
+pub const INTRADAY_PRICING_CONTINUOUS_RATE_TIME_SCALING_POLICY: &str =
+    "continuous_risk_free_and_dividend_rates_are_annualized_and_scaled_by_interval_hours_over_365_point_25_days.v1";
 pub const ANCHORED_PRICING_DEVIATION_GRID_POLICY: &str =
     "uniform_terminal_deviation_grid_with_explicit_tail_clamping_and_refinement_comparison.v1";
 pub const ANCHORED_PRICING_CONTINUATION_RECURSION_POLICY: &str = "backward_induction_over_deviation_grid_with_cell_probability_projection_and_linear_boundary_clamping.v1";
@@ -39,6 +41,7 @@ pub const VANILLA_OPTION_PRICING_RUN_OUTPUT_SCHEMA_METADATA_VERSION: &str =
 pub const VANILLA_OPTION_CALIBRATION_HOOK_POLICY: &str =
     "derive_option_surface_inputs_from_pricing_response_and_optional_run_diagnostics.v1";
 pub const DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA: f64 = 1.0;
+pub const INTRADAY_PRICING_HOURS_PER_YEAR: f64 = 24.0 * 365.25;
 
 pub(crate) const VANILLA_OPTION_PRICING_RUN_RESULT_REQUIRED_FIELDS: [&str; 5] = [
     "schema_version",

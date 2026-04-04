@@ -25,6 +25,13 @@ use super::contracts::{
     VanillaOptionPayoffConfiguration, VanillaOptionPayoffType, VanillaOptionPricingMarketInputs,
     VanillaOptionPricingMarketInputsError,
 };
+use super::time_scaling::intraday_year_fraction;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct FourierInversionProgress {
+    pub completed_evaluations: usize,
+    pub total_evaluations: usize,
+}
 /// Quadrature rule for Fourier inversion integration.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -652,6 +659,25 @@ pub fn price_vanilla_option_via_fourier_inversion<FCharacteristicFunction>(
 where
     FCharacteristicFunction: Fn(ComplexScalar) -> ComplexScalar,
 {
+    price_vanilla_option_via_fourier_inversion_with_observer(
+        market_inputs,
+        payoff,
+        settings,
+        log_return_characteristic_function,
+        None,
+    )
+}
+
+pub(crate) fn price_vanilla_option_via_fourier_inversion_with_observer<FCharacteristicFunction>(
+    market_inputs: VanillaOptionPricingMarketInputs,
+    payoff: VanillaOptionPayoffConfiguration,
+    settings: FourierInversionEngineSettings,
+    log_return_characteristic_function: FCharacteristicFunction,
+    observer: Option<&mut dyn FnMut(FourierInversionProgress)>,
+) -> Result<FourierInversionPricingResult, FourierInversionPricingError>
+where
+    FCharacteristicFunction: Fn(ComplexScalar) -> ComplexScalar,
+{
     market_inputs
         .validate()
         .map_err(|source| FourierInversionPricingError::InvalidMarketInputs { source })?;
@@ -666,7 +692,8 @@ where
         });
     }
 
-    let discount_factor = (-market_inputs.risk_free_rate * market_inputs.maturity_interval).exp();
+    let maturity_year_fraction = intraday_year_fraction(market_inputs.maturity_interval);
+    let discount_factor = (-market_inputs.risk_free_rate * maturity_year_fraction).exp();
     if !discount_factor.is_finite() || discount_factor <= 0.0 {
         return Err(FourierInversionPricingError::NonFiniteDiscountFactor {
             value: discount_factor,
@@ -674,7 +701,7 @@ where
     }
 
     let dividend_discount_factor =
-        (-market_inputs.dividend_yield * market_inputs.maturity_interval).exp();
+        (-market_inputs.dividend_yield * maturity_year_fraction).exp();
     if !dividend_discount_factor.is_finite() || dividend_discount_factor <= 0.0 {
         return Err(
             FourierInversionPricingError::NonFiniteDividendDiscountFactor {
@@ -689,6 +716,7 @@ where
         log_moneyness,
         discount_factor,
         &log_return_characteristic_function,
+        observer,
     )?;
 
     let price = map_discounted_call_to_vanilla_payoff(
@@ -752,10 +780,14 @@ fn integrate_discounted_call_price_with_fourier_inversion<FCharacteristicFunctio
     log_moneyness: f64,
     discount_factor: f64,
     log_return_characteristic_function: &FCharacteristicFunction,
+    mut observer: Option<&mut dyn FnMut(FourierInversionProgress)>,
 ) -> Result<FourierDiscountedCallIntegrationReport, FourierInversionPricingError>
 where
     FCharacteristicFunction: Fn(ComplexScalar) -> ComplexScalar,
 {
+    let total_evaluations =
+        total_fourier_progress_evaluations(settings.numeric_settings.quadrature_rule, settings);
+
     let full_resolution_statistics = evaluate_fourier_integral_statistics(
         settings.contour.damping_factor,
         settings.numeric_settings.quadrature_rule,
@@ -763,6 +795,9 @@ where
         settings.numeric_settings.integration_step_count,
         log_moneyness,
         log_return_characteristic_function,
+        0,
+        total_evaluations,
+        &mut observer,
     )?;
 
     let numeric_quality_diagnostics = evaluate_fourier_numeric_quality(
@@ -770,6 +805,8 @@ where
         full_resolution_statistics,
         log_moneyness,
         log_return_characteristic_function,
+        total_evaluations,
+        &mut observer,
     )?;
     if numeric_quality_diagnostics.numeric_quality_is_poor
         && settings.stability_controls.quality_gate
@@ -819,6 +856,9 @@ fn evaluate_fourier_integral_statistics<FCharacteristicFunction>(
     integration_step_count: usize,
     log_moneyness: f64,
     log_return_characteristic_function: &FCharacteristicFunction,
+    completed_evaluation_offset: usize,
+    total_evaluations: usize,
+    observer: &mut Option<&mut dyn FnMut(FourierInversionProgress)>,
 ) -> Result<FourierIntegralStatistics, FourierInversionPricingError>
 where
     FCharacteristicFunction: Fn(ComplexScalar) -> ComplexScalar,
@@ -834,6 +874,11 @@ where
     match quadrature_rule {
         FourierInversionQuadratureRule::Midpoint => {
             for step_index in 0..integration_step_count {
+                emit_fourier_inversion_progress(
+                    observer,
+                    completed_evaluation_offset + step_index,
+                    total_evaluations,
+                );
                 let frequency = (step_index as f64 + 0.5) * integration_interval_width;
                 let integrand_value = evaluate_damped_call_fourier_integrand(
                     damping_factor,
@@ -852,6 +897,11 @@ where
         }
         FourierInversionQuadratureRule::Trapezoid => {
             for step_index in 0..=integration_step_count {
+                emit_fourier_inversion_progress(
+                    observer,
+                    completed_evaluation_offset + step_index,
+                    total_evaluations,
+                );
                 let frequency = step_index as f64 * integration_interval_width;
                 let integrand_value = evaluate_damped_call_fourier_integrand(
                     damping_factor,
@@ -905,6 +955,8 @@ fn evaluate_fourier_numeric_quality<FCharacteristicFunction>(
     full_resolution_statistics: FourierIntegralStatistics,
     log_moneyness: f64,
     log_return_characteristic_function: &FCharacteristicFunction,
+    total_evaluations: usize,
+    observer: &mut Option<&mut dyn FnMut(FourierInversionProgress)>,
 ) -> Result<FourierInversionNumericQualityDiagnostics, FourierInversionPricingError>
 where
     FCharacteristicFunction: Fn(ComplexScalar) -> ComplexScalar,
@@ -927,6 +979,9 @@ where
             coarse_step_count,
             log_moneyness,
             log_return_characteristic_function,
+            full_resolution_statistics.integrand_evaluation_count,
+            total_evaluations,
+            observer,
         )?;
         let absolute_difference = (full_resolution_statistics.integral_estimate
             - coarse_resolution_statistics.integral_estimate)
@@ -979,6 +1034,45 @@ where
         insufficient_convergence_resolution,
         numeric_quality_is_poor,
     })
+}
+
+fn total_fourier_progress_evaluations(
+    quadrature_rule: FourierInversionQuadratureRule,
+    settings: FourierInversionEngineSettings,
+) -> usize {
+    let full_resolution_evaluations =
+        quadrature_evaluation_count(quadrature_rule, settings.numeric_settings.integration_step_count);
+    let coarse_step_count = settings.numeric_settings.integration_step_count / 2;
+    let coarse_resolution_evaluations = if coarse_step_count == 0 {
+        0
+    } else {
+        quadrature_evaluation_count(quadrature_rule, coarse_step_count)
+    };
+
+    full_resolution_evaluations + coarse_resolution_evaluations
+}
+
+fn quadrature_evaluation_count(
+    quadrature_rule: FourierInversionQuadratureRule,
+    integration_step_count: usize,
+) -> usize {
+    match quadrature_rule {
+        FourierInversionQuadratureRule::Midpoint => integration_step_count,
+        FourierInversionQuadratureRule::Trapezoid => integration_step_count + 1,
+    }
+}
+
+fn emit_fourier_inversion_progress(
+    observer: &mut Option<&mut dyn FnMut(FourierInversionProgress)>,
+    completed_evaluations: usize,
+    total_evaluations: usize,
+) {
+    if let Some(observer) = observer.as_deref_mut() {
+        observer(FourierInversionProgress {
+            completed_evaluations,
+            total_evaluations,
+        });
+    }
 }
 
 fn evaluate_damped_call_fourier_integrand<FCharacteristicFunction>(

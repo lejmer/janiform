@@ -2,6 +2,11 @@
 
 Run the examples as Python modules from the repository root.
 
+Examples that fit the synthetic EUR/USD sample reuse persisted model artifacts under
+`.artifacts/examples/models/`.
+
+Pass `--refit` to any example that fits a model when you want to rebuild the cached artifact.
+
 ## Introductory
 
 - `python -m examples.introductory.first_model`
@@ -12,6 +17,7 @@ These are the shortest workflows for fitting the checked-in synthetic EUR/USD da
 ## High-Level
 
 - `python -m examples.high_level.synthetic_eurusd_plot`
+- `python -m examples.high_level.synthetic_eurusd_vol_surface`
 - `python -m examples.high_level.market_data_calibration`
 - `python -m examples.high_level.staged_calibration`
 - `python -m examples.high_level.preset_resolution`

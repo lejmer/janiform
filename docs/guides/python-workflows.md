@@ -37,7 +37,8 @@ pricing = model.price_option(
 
 For multi-node fitted-model pricing, stay on the same high-level surface with
 `model.price_options(...)` or `model.price_option_surface(...)` instead of looping over
-`model.price_option(...)`.
+`model.price_option(...)`. Those multi-node results include Janiform-computed implied
+volatilities and aligned inversion-status fields for each node.
 
 ## When To Drop Lower
 

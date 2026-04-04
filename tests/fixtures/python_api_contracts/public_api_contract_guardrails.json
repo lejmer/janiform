@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale.v1",
-  "approved_snapshot_sha256": "64ae9efa3023d3e64c398bafdfb9ac9b9665c15c7f1f7a867f698d425946d437",
+  "approved_snapshot_sha256": "90223e7393914277ab616eb684d5cae64aaafc39886caaea9c9bfffb742a65c0",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -866,6 +866,34 @@
         "janiform.risk.contracts",
         "janiform.simulation",
         "janiform.simulation.shared"
+      ]
+    },
+    {
+      "approved_on": "2026-04-03",
+      "docs_updated": [
+        "docs/getting-started/first-model.md",
+        "docs/guides/python-workflows.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Janiform pricing results now expose package-owned implied-volatility outputs directly on the single-node, batch, and surface pricing contracts, together with explicit inversion-status fields that keep node-level failures aligned inside the same pricing artifacts. The approved snapshot must therefore add the shared inversion-status enum and the new implied-volatility fields across janiform.pricing and janiform.calibration.fit.pricing instead of forcing callers to solve for implied volatility outside Janiform.",
+      "snapshot_sha256": "250f8ddd6643bddf94c791e2998dddd72c3dea3ea1e3cddb54b97f3ce4523e87",
+      "summary": "Approve public implied-volatility outputs on pricing responses and fitted-model pricing surfaces.",
+      "updated_surfaces": [
+        "janiform.pricing",
+        "janiform.pricing.contracts",
+        "janiform.calibration.fit",
+        "janiform.calibration.fit.pricing"
+      ]
+    },
+    {
+      "approved_on": "2026-04-03",
+      "docs_updated": [],
+      "rationale": "Fitted-model pricing now exposes grouped homogeneous batches and maturity summaries as the canonical multi-node surface, while flat arbitrary-node batch contracts and per-node batch diagnostics are removed. The approved snapshot must therefore replace the old fitted-model batch pricing exports with grouped batch request and result contracts, add cpu_count controls on grouped and surface entrypoints, and record the maturity-summary-owned diagnostics surface.",
+      "snapshot_sha256": "90223e7393914277ab616eb684d5cae64aaafc39886caaea9c9bfffb742a65c0",
+      "summary": "Approve grouped fitted-model pricing batches and maturity-summary diagnostics.",
+      "updated_surfaces": [
+        "janiform.calibration.fit",
+        "janiform.calibration.fit.pricing"
       ]
     }
   ],

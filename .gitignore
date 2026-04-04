@@ -237,3 +237,10 @@ pull_requests/
 
 # Scratch files
 scratch/
+
+# LaTeX
+*.aux
+*.fdb_latexmk
+*.fls
+*.pdf
+*.synctex.gz

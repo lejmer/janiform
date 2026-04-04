@@ -1,11 +1,14 @@
 use janiform_engine_pricing::{
-    AnchoredVanillaOptionPricingBoundaryInput, VanillaOptionBatchPricingExecutionInput,
-    VanillaOptionPayoffConfiguration, VanillaOptionPayoffType, VanillaOptionPricingExecutionInput,
+    AnchoredVanillaOptionPricingBoundaryInput, VanillaOptionGroupedBatchGroupRequest,
+    VanillaOptionGroupedBatchPricingExecutionInput, VanillaOptionGroupedBatchPricingRequest,
+    VanillaOptionImpliedVolatilityInversionStatus, VanillaOptionPayoffConfiguration,
+    VanillaOptionPayoffType, VanillaOptionPricingExecutionInput,
     VanillaOptionPricingIntervalFactors, VanillaOptionPricingMarketInputs,
     VanillaOptionPricingModelParameters, VanillaOptionPricingOptionalOutputSelection,
     VanillaOptionPricingRequest, VanillaOptionPricingRunResult,
-    VanillaOptionSurfacePricingExecutionInput, run_vanilla_option_batch_pricing,
-    run_vanilla_option_pricing, run_vanilla_option_surface_pricing,
+    VanillaOptionSurfacePricingExecutionInput, VanillaOptionSurfacePricingRequest,
+    run_vanilla_option_grouped_batch_pricing, run_vanilla_option_pricing,
+    run_vanilla_option_surface_pricing,
 };
 use janiform_model_kernels::hawkes::{
     HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
@@ -61,6 +64,11 @@ fn vanilla_option_pricing_runner_executes_public_workflow_with_optional_outputs(
 
     assert!(run_result.response.price.is_finite());
     assert!(run_result.response.price >= 0.0);
+    assert!(run_result.response.implied_volatility.is_some());
+    assert_eq!(
+        run_result.response.implied_volatility_inversion_status,
+        VanillaOptionImpliedVolatilityInversionStatus::Succeeded
+    );
     assert!(run_result.response.diagnostics.forward_price > 0.0);
     assert!(run_result.response.diagnostics.discount_factor > 0.0);
     assert!(run_result.response.diagnostics.boundary_state_norm >= 0.0);
@@ -185,7 +193,7 @@ fn vanilla_option_pricing_runner_matches_zero_anchor_and_shifted_anchor_for_zero
 }
 
 #[test]
-fn vanilla_option_batch_pricing_matches_single_option_runner_on_shared_nodes() {
+fn vanilla_option_grouped_batch_pricing_matches_single_option_runner_on_shared_groups() {
     let boundary_input = AnchoredVanillaOptionPricingBoundaryInput::try_new(
         0,
         HawkesExcitationState {
@@ -205,33 +213,40 @@ fn vanilla_option_batch_pricing_matches_single_option_runner_on_shared_nodes() {
     let optional_output_selection =
         VanillaOptionPricingOptionalOutputSelection::new(false, false, false);
 
-    let batch_result = run_vanilla_option_batch_pricing(
-        VanillaOptionBatchPricingExecutionInput::try_new(
-            janiform_engine_pricing::VanillaOptionBatchPricingRequest::try_new(
-                101.0,
-                vec![95.0, 105.0],
-                vec![1.0, 1.0],
-                vec![VanillaOptionPayoffType::Call, VanillaOptionPayoffType::Put],
-                vec![0.01, 0.01],
-                vec![0.0, 0.0],
-            )
-            .expect("batch request should construct"),
-            boundary_input.clone(),
-            model_parameters.clone(),
-            1.0,
-            None,
-            vec![1, 1],
-            vec![
-                VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
-                    .expect("interval factors should construct"),
+    let grouped_batch_result = run_vanilla_option_grouped_batch_pricing(
+        VanillaOptionGroupedBatchPricingExecutionInput {
+            request: VanillaOptionGroupedBatchPricingRequest {
+                spot: 101.0,
+                groups: vec![
+                    VanillaOptionGroupedBatchGroupRequest {
+                        payoff_type: VanillaOptionPayoffType::Call,
+                        risk_free_rate: 0.01,
+                        dividend_yield: 0.0,
+                        strikes: vec![95.0],
+                        maturity_intervals: vec![1.0],
+                    },
+                    VanillaOptionGroupedBatchGroupRequest {
+                        payoff_type: VanillaOptionPayoffType::Put,
+                        risk_free_rate: 0.01,
+                        dividend_yield: 0.0,
+                        strikes: vec![105.0],
+                        maturity_intervals: vec![1.0],
+                    },
+                ],
+            },
+            boundary_input: boundary_input.clone(),
+            model_parameters: model_parameters.clone(),
+            interval_delta: 1.0,
+            fourier_inversion_settings: None,
+            interval_factors: vec![
                 VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
                     .expect("interval factors should construct"),
             ],
             optional_output_selection,
-        )
-        .expect("batch execution input should construct"),
+            cpu_count: Some(1),
+        },
     )
-    .expect("batch pricing should succeed");
+    .expect("grouped batch pricing should succeed");
 
     let single_specs = [
         (95.0, 1.0, VanillaOptionPayoffType::Call, 0.01, 0.0),
@@ -279,19 +294,27 @@ fn vanilla_option_batch_pricing_matches_single_option_runner_on_shared_nodes() {
         .expect("single pricing should succeed");
 
         assert_eq!(
-            batch_result.response.prices[node_index],
+            grouped_batch_result.groups[node_index].price_grid[0][0],
             single_result.response.price
         );
         assert_eq!(
-            batch_result.response.forward_prices[node_index],
+            grouped_batch_result.groups[node_index].implied_volatility_grid[0][0],
+            single_result.response.implied_volatility
+        );
+        assert_eq!(
+            grouped_batch_result.groups[node_index].implied_volatility_inversion_status_grid[0][0],
+            single_result.response.implied_volatility_inversion_status
+        );
+        assert_eq!(
+            grouped_batch_result.groups[node_index].forward_price_grid[0][0],
             single_result.response.diagnostics.forward_price
         );
         assert_eq!(
-            batch_result.response.discount_factors[node_index],
+            grouped_batch_result.groups[node_index].discount_factor_grid[0][0],
             single_result.response.diagnostics.discount_factor
         );
         assert_eq!(
-            batch_result.response.boundary_state_norms[node_index],
+            grouped_batch_result.groups[node_index].boundary_state_norm_grid[0][0],
             single_result.response.diagnostics.boundary_state_norm
         );
     }
@@ -319,28 +342,26 @@ fn vanilla_option_surface_pricing_matches_single_option_runner_on_shared_grid() 
         VanillaOptionPricingOptionalOutputSelection::new(true, true, true);
 
     let surface_result = run_vanilla_option_surface_pricing(
-        VanillaOptionSurfacePricingExecutionInput::try_new(
-            janiform_engine_pricing::VanillaOptionSurfacePricingRequest::try_new(
-                101.0,
-                vec![95.0, 105.0],
-                vec![1.0],
-                VanillaOptionPayoffType::Call,
-                0.01,
-                0.0,
-            )
-            .expect("surface request should construct"),
-            boundary_input.clone(),
-            model_parameters.clone(),
-            1.0,
-            None,
-            vec![1],
-            vec![
+        VanillaOptionSurfacePricingExecutionInput {
+            request: VanillaOptionSurfacePricingRequest {
+                spot: 101.0,
+                strikes: vec![95.0, 105.0],
+                maturity_intervals: vec![1.0],
+                payoff_type: VanillaOptionPayoffType::Call,
+                risk_free_rate: 0.01,
+                dividend_yield: 0.0,
+            },
+            boundary_input: boundary_input.clone(),
+            model_parameters: model_parameters.clone(),
+            interval_delta: 1.0,
+            fourier_inversion_settings: None,
+            interval_factors: vec![
                 VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
                     .expect("interval factors should construct"),
             ],
             optional_output_selection,
-        )
-        .expect("surface execution input should construct"),
+            cpu_count: Some(1),
+        },
     )
     .expect("surface pricing should succeed");
 
@@ -388,6 +409,16 @@ fn vanilla_option_surface_pricing_matches_single_option_runner_on_shared_grid() 
             assert_eq!(
                 surface_result.response.price_grid[maturity_index][strike_index],
                 single_result.response.price
+            );
+            assert_eq!(
+                surface_result.response.implied_volatility_grid[maturity_index][strike_index],
+                single_result.response.implied_volatility
+            );
+            assert_eq!(
+                surface_result
+                    .response
+                    .implied_volatility_inversion_status_grid[maturity_index][strike_index],
+                single_result.response.implied_volatility_inversion_status
             );
             assert_eq!(
                 surface_result.response.forward_price_grid[maturity_index][strike_index],
@@ -441,11 +472,11 @@ fn valid_model_parameters() -> VanillaOptionPricingModelParameters {
                 coupled_gap_marks: CoupledGapMarkConfiguration::new(0.6),
             },
             NewsComponentMarkScaleConfiguration {
-                activity_coupling_scale: 1.0,
+                activity_coupling_scale: 0.0,
                 return_jump_scale: 1.0,
             },
             NewsComponentMarkScaleConfiguration {
-                activity_coupling_scale: 1.0,
+                activity_coupling_scale: 0.0,
                 return_jump_scale: 1.0,
             },
         )

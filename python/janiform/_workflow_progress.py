@@ -1,4 +1,5 @@
 import json
+import shutil
 import sys
 from abc import abstractmethod
 from contextlib import AbstractContextManager
@@ -7,11 +8,12 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from threading import Event, Lock, Thread
 from time import monotonic, sleep
-from typing import Optional, TextIO, override
+from typing import Final, Optional, TextIO, override
 
 
-_SPINNER_FRAMES: tuple[str, ...] = ("-", "\\", "|", "/")
-_COMPLETED_STAGE_MARKER = "✓"
+_SPINNER_FRAMES: Final[tuple[str, ...]] = ("-", "\\", "|", "/")
+_COMPLETED_STAGE_MARKER: Final[str] = "✓"
+_ELLIPSIS: Final[str]  = "..."
 
 
 def _format_elapsed_seconds(elapsed_seconds: float) -> str:
@@ -22,6 +24,18 @@ def _format_elapsed_seconds(elapsed_seconds: float) -> str:
         return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
 
     return f"{minutes:02d}:{seconds:02d}"
+
+
+def _resolve_stream_render_width(stream: TextIO) -> Optional[int]:
+    is_tty = getattr(stream, "isatty", None)
+    if not callable(is_tty) or not is_tty():
+        return None
+
+    terminal_size = shutil.get_terminal_size(fallback=(0, 0))
+    if terminal_size.columns <= 0:
+        return None
+
+    return terminal_size.columns
 
 
 class WorkflowProgressMode(StrEnum):
@@ -322,16 +336,34 @@ class SpinnerProgress(AbstractProgress):
         return f" {self._current_step_index}/{self._total_steps}"
 
     def _write_transient_line_locked(self, line: str) -> None:
-        padding = " " * max(0, self._last_rendered_width - len(line))
-        self._stream.write(f"\r{line}{padding}")
+        rendered_line = self._fit_line_to_stream_width(line)
+
+        padding = " " * max(0, self._last_rendered_width - len(rendered_line))
+
+        self._stream.write(f"\r{rendered_line}{padding}")
         self._stream.flush()
-        self._last_rendered_width = len(line)
+
+        self._last_rendered_width = len(rendered_line)
 
     def _write_final_line_locked(self, line: str) -> None:
-        padding = " " * max(0, self._last_rendered_width - len(line))
-        self._stream.write(f"\r{line}{padding}\n")
+        rendered_line = self._fit_line_to_stream_width(line)
+
+        padding = " " * max(0, self._last_rendered_width - len(rendered_line))
+
+        self._stream.write(f"\r{rendered_line}{padding}\n")
         self._stream.flush()
+
         self._last_rendered_width = 0
+
+    def _fit_line_to_stream_width(self, line: str) -> str:
+        render_width = _resolve_stream_render_width(self._stream)
+        if render_width is None or len(line) <= render_width:
+            return line
+
+        if render_width <= len(_ELLIPSIS):
+            return line[:render_width]
+
+        return f"{line[: render_width - len(_ELLIPSIS)]}{_ELLIPSIS}"
 
 
 class JsonLinesProgress(AbstractProgress):

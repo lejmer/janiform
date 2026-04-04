@@ -928,13 +928,25 @@ def run_vanilla_option_pricing(
 ) -> Any: ...
 
 
-def run_vanilla_option_batch_pricing(
+def run_vanilla_option_grouped_batch_pricing(
     execution_input: Any,
+) -> Any: ...
+
+
+def run_vanilla_option_grouped_batch_pricing_with_events(
+    execution_input: Any,
+    event_callback: Any,
 ) -> Any: ...
 
 
 def run_vanilla_option_surface_pricing(
     execution_input: Any,
+) -> Any: ...
+
+
+def run_vanilla_option_surface_pricing_with_events(
+    execution_input: Any,
+    event_callback: Any,
 ) -> Any: ...
 
 
