@@ -1,14 +1,19 @@
 use serde::Serialize;
 
+use janiform_calibration_artifacts::JointRefinementStageOptionCalibrationDiagnostics;
+use janiform_engine_pricing::VanillaOptionPayoffType;
+use janiform_model_kernels::hawkes::HawkesEventSide;
+
 use crate::optimizer_adapter::CalibrationOptimizerAdapterRunMetadata;
 use crate::stages::hawkes::HawkesStageFittedPayload;
+use crate::stages::mean_reversion::MeanReversionStageFittedPayload;
 use crate::stages::return_components::{
     ReturnComponentsStageCandidateGenerationInput, ReturnComponentsStageFittedPayload,
 };
 use crate::stages::seasonality::CalibrationStageExecutionStatus;
 use janiform_calibration_artifacts::{
     CalibrationExecutionMode, CalibrationOptimizerSettings, CalibrationStage,
-    CalibrationStageHandoffTransport, CalibrationStageSeedSource,
+    CalibrationStageHandoffTransport, CalibrationStageSeedSource, JointRefinementStageCarryInput,
     JointRefinementStageFittedParameters, JointRefinementStageObjectiveBreakdown,
     JointRefinementStageOptimizerDiagnostics,
 };
@@ -90,6 +95,44 @@ impl JointRefinementStageReturnComponentsInput {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum JointRefinementStageMeanReversionInput {
+    InMemoryOutput {
+        payload: MeanReversionStageFittedPayload,
+    },
+    PersistedArtifactReference {
+        artifact_reference: String,
+        payload: Option<MeanReversionStageFittedPayload>,
+    },
+}
+
+impl JointRefinementStageMeanReversionInput {
+    pub const fn transport(&self) -> CalibrationStageHandoffTransport {
+        match self {
+            Self::InMemoryOutput { .. } => CalibrationStageHandoffTransport::InMemoryOutput,
+            Self::PersistedArtifactReference { .. } => {
+                CalibrationStageHandoffTransport::PersistedArtifactReference
+            }
+        }
+    }
+
+    pub fn artifact_reference(&self) -> Option<&str> {
+        match self {
+            Self::InMemoryOutput { .. } => None,
+            Self::PersistedArtifactReference {
+                artifact_reference, ..
+            } => Some(artifact_reference.as_str()),
+        }
+    }
+
+    pub fn payload(&self) -> Option<&MeanReversionStageFittedPayload> {
+        match self {
+            Self::InMemoryOutput { payload } => Some(payload),
+            Self::PersistedArtifactReference { payload, .. } => payload.as_ref(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct JointRefinementStageSeasonalityFactorsInput {
     pub intraday_minutes_per_bin: u16,
     pub intraday_factor_by_bin: Vec<f64>,
@@ -100,11 +143,42 @@ pub struct JointRefinementStageSeasonalityFactorsInput {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct JointRefinementStageCurrentStateEstimationInput {
+    pub state_time_utc_nanos: i64,
+    pub observed_spot: f64,
+    pub observed_log_price: f64,
+    pub observation_timestamp_utc_nanos: Vec<i64>,
+    pub observation_trade_prices: Vec<f64>,
+    pub observation_trade_sides: Vec<HawkesEventSide>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct JointRefinementStageOptionSnapshotNode {
+    pub quote_timestamp_utc_nanos: i64,
+    pub expiry_timestamp_utc_nanos: i64,
+    pub strike: f64,
+    pub payoff_type: VanillaOptionPayoffType,
+    pub bid_price: f64,
+    pub ask_price: f64,
+    pub observed_mid_price: f64,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct JointRefinementStageOptionPricingInput {
+    pub valuation_time_utc_nanos: i64,
+    pub carry_input: JointRefinementStageCarryInput,
+    pub current_state_estimation_input: JointRefinementStageCurrentStateEstimationInput,
+    pub option_snapshot_nodes: Vec<JointRefinementStageOptionSnapshotNode>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct JointRefinementStageExecutionInput {
     pub seasonality_factors_input: JointRefinementStageSeasonalityFactorsInput,
     pub hawkes_input: JointRefinementStageHawkesInput,
     pub return_components_input: JointRefinementStageReturnComponentsInput,
+    pub mean_reversion_input: JointRefinementStageMeanReversionInput,
     pub candidate_generation_input: ReturnComponentsStageCandidateGenerationInput,
+    pub option_pricing_input: Option<JointRefinementStageOptionPricingInput>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -144,6 +218,8 @@ pub struct JointRefinementStageFittedPayload {
     pub candidate_frontier: Vec<JointRefinementStageCandidateDiagnostic>,
     pub simulation_summaries: Vec<JointRefinementStageSimulationSummary>,
     pub coarse_tick_consistency: Vec<JointRefinementStageCoarseTickConsistencyMetric>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub option_calibration_diagnostics: Option<JointRefinementStageOptionCalibrationDiagnostics>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -218,6 +294,7 @@ pub enum JointRefinementStageExecutionFailure {
     MissingSeasonalityPayload,
     MissingHawkesPayload,
     MissingReturnComponentsPayload,
+    MissingMeanReversionPayload,
     InvalidCandidateGenerationInput { error_message: String },
     SimulationInfrastructureUnavailable { error_message: String },
 }

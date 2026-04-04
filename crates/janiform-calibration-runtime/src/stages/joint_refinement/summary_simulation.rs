@@ -461,7 +461,9 @@ pub fn initialize_joint_refinement_summary_simulation_session(
             range_end_utc: hourly_simulation_end_utc,
             interval_duration_nanos: ONE_HOUR_NANOS,
             seasonality_source: Some(HourlySeasonalityFactorSource::Explicit {
-                hourly_factors: session_context.runtime_hourly_seasonality_factors.as_slice(),
+                hourly_factors: session_context
+                    .runtime_hourly_seasonality_factors
+                    .as_slice(),
                 materialization_method:
                     "runtime_compact_seasonality_parameters_mean_renormalized.v1",
             }),
@@ -738,7 +740,7 @@ pub(crate) mod tests {
     use std::sync::LazyLock;
     use std::time::SystemTime;
 
-    use chrono::{Duration, TimeZone, Utc};
+    use chrono::{DateTime, Duration};
 
     use super::{
         CloseSessionRequest, InitializeSessionRequest, InitializeSessionResponse,
@@ -797,7 +799,7 @@ pub(crate) mod tests {
         JointRefinementStageFittedParameters,
     };
     use janiform_engine_simulation::run_seeded_tick_event_simulation;
-    use janiform_foundations::time::ONE_HOUR_NANOS;
+    use janiform_foundations::time::{ONE_HOUR_NANOS, utc_nanos};
     use janiform_market_time::hourly_factors::{
         HourlyFactorProviderRequest, HourlyNewsIntensityFactorSource, HourlySeasonalityFactorSource,
     };
@@ -1329,6 +1331,7 @@ pub(crate) mod tests {
                     hawkes_fitted_parameters: hawkes_payload.fitted_parameters,
                     return_components_fitted_parameters: return_components_payload
                         .fitted_parameters,
+                    pricing_block_fitted_parameters: None,
                 },
                 simulation_seed: 101,
             }
@@ -1778,10 +1781,9 @@ pub(crate) mod tests {
     ) -> TimestampEventInputRecord {
         TimestampEventInputRecord {
             source_record_position,
-            timestamp_utc: Utc
-                .with_ymd_and_hms(year, month, day, hour, minute, second)
-                .single()
-                .expect("test timestamp should be valid"),
+            timestamp_utc: DateTime::from_timestamp_nanos(utc_nanos(
+                year, month, day, hour, minute, second,
+            )),
         }
     }
 
@@ -1959,13 +1961,5 @@ pub(crate) mod tests {
                 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
             ),
         }
-    }
-
-    fn utc_nanos(year: i32, month: u32, day: u32, hour: u32, minute: u32, second: u32) -> i64 {
-        Utc.with_ymd_and_hms(year, month, day, hour, minute, second)
-            .single()
-            .expect("fixture timestamp should be valid")
-            .timestamp_nanos_opt()
-            .expect("fixture timestamp nanos should fit in i64")
     }
 }

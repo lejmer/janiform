@@ -6,6 +6,7 @@ pub(crate) use std::time::{SystemTime, UNIX_EPOCH};
 
 pub(crate) use chrono::{TimeZone, Utc};
 pub(crate) use janiform_calibration_artifacts::*;
+pub(crate) use janiform_foundations::time::utc_nanos;
 pub(crate) use janiform_model_kernels::mean_reversion::{
     MeanReversionAnchorModel, MeanReversionBoundaryState, MeanReversionFittedParameters,
     MeanReversionRuntimeIntervalAnchors,
@@ -753,21 +754,6 @@ pub(crate) fn temporary_checkpoint_directory(test_name: &str) -> PathBuf {
         .expect("temporary checkpoint directory should be created");
 
     checkpoint_directory
-}
-
-pub(crate) fn utc_nanos(
-    year: i32,
-    month: u32,
-    day: u32,
-    hour: u32,
-    minute: u32,
-    second: u32,
-) -> i64 {
-    Utc.with_ymd_and_hms(year, month, day, hour, minute, second)
-        .single()
-        .expect("timestamp should be valid")
-        .timestamp_nanos_opt()
-        .expect("timestamp should fit within i64 nanoseconds")
 }
 
 fn checkpoint_reference(run_id: &str, stage: CalibrationStage) -> String {

@@ -4,15 +4,14 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 
 use janiform_engine_pricing::{
-    intraday_black_scholes_log_return_characteristic_function as black_scholes_log_return_characteristic_function,
-    intraday_black_scholes_no_arbitrage_price_bounds as no_arbitrage_price_bounds,
-    intraday_black_scholes_price as black_scholes_price,
-    INTRADAY_PRICING_HOURS_PER_YEAR,
     FourierInversionContour, FourierInversionDiagnostics, FourierInversionEngineSettings,
     FourierInversionIntegrationStabilityControls, FourierInversionNumericQualityDiagnostics,
     FourierInversionNumericQualityGate, FourierInversionNumericSettings,
-    FourierInversionPricingError, FourierInversionQuadratureRule, VanillaOptionPayoffConfiguration,
-    VanillaOptionPayoffType, VanillaOptionPricingMarketInputs,
+    FourierInversionPricingError, FourierInversionQuadratureRule, INTRADAY_PRICING_HOURS_PER_YEAR,
+    VanillaOptionPayoffConfiguration, VanillaOptionPayoffType, VanillaOptionPricingMarketInputs,
+    intraday_black_scholes_log_return_characteristic_function as black_scholes_log_return_characteristic_function,
+    intraday_black_scholes_no_arbitrage_price_bounds as no_arbitrage_price_bounds,
+    intraday_black_scholes_price as black_scholes_price,
     price_vanilla_option_via_fourier_inversion,
 };
 use serde::{Deserialize, Serialize};
@@ -656,7 +655,8 @@ fn pricing_sanity_bounds_and_pathology_flags_hold_for_benchmark_fixture() {
         assert_eq!(call_case.market_inputs, put_case.market_inputs);
 
         let market_inputs = call_case.market_inputs;
-        let maturity_year_fraction = market_inputs.maturity_interval / INTRADAY_PRICING_HOURS_PER_YEAR;
+        let maturity_year_fraction =
+            market_inputs.maturity_interval / INTRADAY_PRICING_HOURS_PER_YEAR;
         let discounted_spot =
             market_inputs.spot * (-market_inputs.dividend_yield * maturity_year_fraction).exp();
         let discounted_strike =

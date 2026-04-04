@@ -1,8 +1,7 @@
 use crate::{
     AnchoredVanillaOptionPricingBoundaryInput, VanillaOptionPayoffConfiguration,
-    VanillaOptionPayoffType, VanillaOptionPricingIntervalFactors,
-    VanillaOptionPricingMarketInputs, VanillaOptionPricingRequest,
-    build_pricing_risk_neutral_anchor_materialization,
+    VanillaOptionPayoffType, VanillaOptionPricingIntervalFactors, VanillaOptionPricingMarketInputs,
+    VanillaOptionPricingRequest, build_pricing_risk_neutral_anchor_materialization,
     infer_expected_news_loading_under_local_measure, recover_pure_imaginary_log_moment_exponent,
     use_nested_transition_measure_for_local_request,
 };
@@ -218,8 +217,20 @@ fn risk_neutral_anchor_materialization_accepts_zero_adjustment_nested_request() 
     )
     .expect("risk-neutral anchor materialization should succeed");
 
-    assert_eq!(materialization.runtime_interval_anchors.end_anchor_values.len(), 2);
-    assert_eq!(materialization.runtime_interval_anchors.end_pressure_states.len(), 2);
+    assert_eq!(
+        materialization
+            .runtime_interval_anchors
+            .end_anchor_values
+            .len(),
+        2
+    );
+    assert_eq!(
+        materialization
+            .runtime_interval_anchors
+            .end_pressure_states
+            .len(),
+        2
+    );
     assert_eq!(materialization.expected_hawkes_state_path.len(), 3);
 }
 

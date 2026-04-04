@@ -7,10 +7,12 @@ mod worker_runtime;
 
 pub use contracts::{
     JointRefinementStageCandidateDiagnostic, JointRefinementStageCoarseTickConsistencyMetric,
-    JointRefinementStageExecutionFailure, JointRefinementStageExecutionInput,
-    JointRefinementStageExecutionMetadata, JointRefinementStageExecutionReport,
-    JointRefinementStageFittedPayload, JointRefinementStageHawkesInput,
-    JointRefinementStageObjectiveTermDiagnostic, JointRefinementStageProgressPhase,
+    JointRefinementStageCurrentStateEstimationInput, JointRefinementStageExecutionFailure,
+    JointRefinementStageExecutionInput, JointRefinementStageExecutionMetadata,
+    JointRefinementStageExecutionReport, JointRefinementStageFittedPayload,
+    JointRefinementStageHawkesInput, JointRefinementStageMeanReversionInput,
+    JointRefinementStageObjectiveTermDiagnostic, JointRefinementStageOptionPricingInput,
+    JointRefinementStageOptionSnapshotNode, JointRefinementStageProgressPhase,
     JointRefinementStageProgressUpdate, JointRefinementStageReturnComponentsInput,
     JointRefinementStageSeasonalityFactorsInput, JointRefinementStageSimulationSummary,
 };

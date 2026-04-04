@@ -1122,6 +1122,7 @@ def _prepare_model_pricing_runtime_input(
         start_time_utc=valuation_time_utc,
         horizon_interval_count=horizon_interval_count,
         interval="1h",
+        prefer_joint_pricing_block=True,
     )
     hourly_factor_contract = _build_model_pricing_hourly_factor_contract(
         model,
@@ -1548,6 +1549,7 @@ def _prepare_model_runtime_factors(
     start_time_utc: datetime,
     horizon_interval_count: int,
     interval: str | timedelta,
+    prefer_joint_pricing_block: bool = False,
 ) -> _PreparedModelRuntimeFactors:
     _require_runtime_ready_model(model)
     _require_timezone_aware_datetime(start_time_utc, field_path="start_time_utc")
@@ -1561,6 +1563,16 @@ def _prepare_model_runtime_factors(
     exchange_code = model.session_resolution.exchange_code
 
     return_components_fitted_parameters = _return_components_fitted_parameters_payload(model)
+
+    nig_configuration_payload = (
+        _pricing_nig_shared_plus_shift_configuration_payload(model)
+        if prefer_joint_pricing_block
+        else _require_payload_mapping(
+            return_components_fitted_parameters,
+            "nig_shared_plus_shift_configuration",
+            "return_components.fitted_parameters.nig_shared_plus_shift_configuration",
+        )
+    )
 
     news_process_configuration = NewsProcessConfiguration.from_mapping(
         _require_payload_mapping(
@@ -1584,11 +1596,7 @@ def _prepare_model_runtime_factors(
         range_end_utc=range_end_utc,
         kernel_parameters=_hawkes_kernel_parameters(model),
         nig_shared_plus_shift_configuration=NigSharedPlusShiftConfiguration.from_mapping(
-            _require_payload_mapping(
-                return_components_fitted_parameters,
-                "nig_shared_plus_shift_configuration",
-                "return_components.fitted_parameters.nig_shared_plus_shift_configuration",
-            ),
+            nig_configuration_payload,
             field_path="return_components.fitted_parameters.nig_shared_plus_shift_configuration",
         ),
         gamma_severity_mark_configuration=GammaSeverityMarkConfiguration.from_mapping(
@@ -1949,6 +1957,26 @@ def _return_components_fitted_parameters_payload(model: JaniformModel) -> Mappin
     return _fitted_parameters_from_model_parameters(model, stage_kind="return_components")
 
 
+def _pricing_nig_shared_plus_shift_configuration_payload(
+    model: JaniformModel,
+) -> Mapping[str, Any]:
+    joint_refinement_parameters = model.parameters.get("joint_refinement")
+    if isinstance(joint_refinement_parameters, Mapping):
+        fitted_parameters = joint_refinement_parameters.get("fitted_parameters")
+        if isinstance(fitted_parameters, Mapping):
+            pricing_block = fitted_parameters.get("pricing_block_fitted_parameters")
+            if isinstance(pricing_block, Mapping):
+                nig_configuration = pricing_block.get("nig_shared_plus_shift_configuration")
+                if isinstance(nig_configuration, Mapping):
+                    return nig_configuration
+
+    return _require_payload_mapping(
+        _return_components_fitted_parameters_payload(model),
+        "nig_shared_plus_shift_configuration",
+        "return_components.fitted_parameters.nig_shared_plus_shift_configuration",
+    )
+
+
 def _fitted_parameters_from_model_parameters(
     model: JaniformModel,
     *,
@@ -2281,6 +2309,15 @@ def _extract_model_parameters(stage_report_payloads: tuple[dict[str, Any], ...])
                                 fitted_stage_payload.get("optimizer_diagnostics", {}),
                             )
                         ),
+                        "option_calibration_diagnostics": deepcopy(
+                            cast(
+                                dict[str, Any],
+                                fitted_stage_payload.get(
+                                    "option_calibration_diagnostics",
+                                    {},
+                                ),
+                            )
+                        ),
                     }
             case _:
                 raise _calibration_error(
@@ -2320,9 +2357,22 @@ def _build_model_metadata(
     )
     known_news_event_count = len(resolved_configuration.known_news.configuration.events)
 
+    calibration_scope = (
+        "joint_option_calibrated"
+        if prepared.diagnostics.workflow_scope
+        == CalibrationMarketDataWorkflowScope.FULL_WITH_OPTION_SURFACE
+        else (
+            "seasonality_only"
+            if prepared.diagnostics.workflow_scope
+            == CalibrationMarketDataWorkflowScope.SEASONALITY_ONLY
+            else "underlying_only"
+        )
+    )
+
     return {
         "run_id": staged_response.run_id,
         "workflow_scope": prepared.diagnostics.workflow_scope.value,
+        "calibration_scope": calibration_scope,
         "execution_mode": staged_response.execution_mode.value,
         "selected_stages": [
             stage.value for stage in prepared.staged_request.selected_stages

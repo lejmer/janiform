@@ -24,8 +24,7 @@ use super::progress::PricingProgressEvent;
 use super::progress_runtime::PricingProgressReporter;
 use super::runner::{
     VanillaOptionPricingExecutionInput, VanillaOptionPricingIntervalFactors,
-    VanillaOptionPricingRunError,
-    run_vanilla_option_pricing_with_observer,
+    VanillaOptionPricingRunError, run_vanilla_option_pricing_with_observer,
 };
 use super::thread_pool::{
     build_pricing_thread_pool, install_pricing_parallelism, resolved_pricing_cpu_count,
@@ -44,7 +43,8 @@ pub struct VanillaOptionMaturityIntervalSummary {
     pub current_anchor_value: f64,
     pub next_anchor_value: f64,
     pub interval_delta: f64,
-    pub expected_hawkes_boundary_state_before: janiform_model_kernels::hawkes::HawkesExcitationState,
+    pub expected_hawkes_boundary_state_before:
+        janiform_model_kernels::hawkes::HawkesExcitationState,
     pub expected_hawkes_boundary_state_after: janiform_model_kernels::hawkes::HawkesExcitationState,
     pub maximum_tail_probability_mass: f64,
     pub maximum_row_probability_mass_error: f64,
@@ -127,14 +127,25 @@ pub enum VanillaOptionGroupedBatchPricingRequestError {
 impl Display for VanillaOptionGroupedBatchPricingRequestError {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::EmptyGroups => write!(formatter, "grouped batch pricing request must contain at least one group"),
-            Self::EmptyStrikeAxis => write!(formatter, "pricing group must contain at least one strike"),
-            Self::EmptyMaturityAxis => write!(formatter, "pricing group must contain at least one maturity_interval"),
+            Self::EmptyGroups => write!(
+                formatter,
+                "grouped batch pricing request must contain at least one group"
+            ),
+            Self::EmptyStrikeAxis => {
+                write!(formatter, "pricing group must contain at least one strike")
+            }
+            Self::EmptyMaturityAxis => write!(
+                formatter,
+                "pricing group must contain at least one maturity_interval"
+            ),
             Self::InvalidFiniteField { field, value } => {
                 write!(formatter, "{field} values must be finite, found {value}")
             }
             Self::InvalidPositiveField { field, value } => {
-                write!(formatter, "{field} values must be finite and strictly positive, found {value}")
+                write!(
+                    formatter,
+                    "{field} values must be finite and strictly positive, found {value}"
+                )
             }
         }
     }
@@ -156,11 +167,9 @@ pub struct VanillaOptionGroupedBatchPricingExecutionInput {
 
 impl VanillaOptionGroupedBatchPricingExecutionInput {
     pub fn validate(&self) -> Result<(), VanillaOptionGroupedBatchPricingExecutionInputError> {
-        self.request
-            .validate()
-            .map_err(|source| VanillaOptionGroupedBatchPricingExecutionInputError::InvalidRequest {
-                source,
-            })?;
+        self.request.validate().map_err(|source| {
+            VanillaOptionGroupedBatchPricingExecutionInputError::InvalidRequest { source }
+        })?;
         self.boundary_input.validate().map_err(|source| {
             VanillaOptionGroupedBatchPricingExecutionInputError::InvalidBoundaryInput { source }
         })?;
@@ -190,9 +199,11 @@ impl VanillaOptionGroupedBatchPricingExecutionInput {
         }
         if let Some(cpu_count) = self.cpu_count {
             if cpu_count == 0 {
-                return Err(VanillaOptionGroupedBatchPricingExecutionInputError::InvalidCpuCount {
-                    value: cpu_count,
-                });
+                return Err(
+                    VanillaOptionGroupedBatchPricingExecutionInputError::InvalidCpuCount {
+                        value: cpu_count,
+                    },
+                );
             }
         }
         if let Some(settings) = self.fourier_inversion_settings {
@@ -226,29 +237,80 @@ impl VanillaOptionGroupedBatchPricingExecutionInput {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum VanillaOptionGroupedBatchPricingExecutionInputError {
-    InvalidRequest { source: VanillaOptionGroupedBatchPricingRequestError },
-    InvalidBoundaryInput { source: super::contracts::AnchoredVanillaOptionPricingBoundaryInputError },
-    InvalidModelParameters { source: super::contracts::VanillaOptionPricingModelParametersError },
-    InvalidFourierInversionSettings { source: super::fourier::FourierInversionEngineSettingsError },
-    InvalidIntervalFactors { source: super::runner::VanillaOptionPricingIntervalFactorsError },
-    BoundaryIntervalDeltaMismatch { request_interval_delta: f64, boundary_interval_delta: f64 },
+    InvalidRequest {
+        source: VanillaOptionGroupedBatchPricingRequestError,
+    },
+    InvalidBoundaryInput {
+        source: super::contracts::AnchoredVanillaOptionPricingBoundaryInputError,
+    },
+    InvalidModelParameters {
+        source: super::contracts::VanillaOptionPricingModelParametersError,
+    },
+    InvalidFourierInversionSettings {
+        source: super::fourier::FourierInversionEngineSettingsError,
+    },
+    InvalidIntervalFactors {
+        source: super::runner::VanillaOptionPricingIntervalFactorsError,
+    },
+    BoundaryIntervalDeltaMismatch {
+        request_interval_delta: f64,
+        boundary_interval_delta: f64,
+    },
     EmptyIntervalFactors,
-    IntervalFactorShapeMismatch { expected_interval_factor_count: usize, found_interval_factor_count: usize },
-    InvalidCpuCount { value: usize },
+    IntervalFactorShapeMismatch {
+        expected_interval_factor_count: usize,
+        found_interval_factor_count: usize,
+    },
+    InvalidCpuCount {
+        value: usize,
+    },
 }
 
 impl Display for VanillaOptionGroupedBatchPricingExecutionInputError {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::InvalidRequest { source } => write!(formatter, "grouped batch pricing request is invalid: {source}"),
-            Self::InvalidBoundaryInput { source } => write!(formatter, "grouped batch pricing boundary_input is invalid: {source}"),
-            Self::InvalidModelParameters { source } => write!(formatter, "grouped batch pricing model_parameters are invalid: {source}"),
-            Self::InvalidFourierInversionSettings { source } => write!(formatter, "grouped batch pricing fourier_inversion_settings are invalid: {source}"),
-            Self::InvalidIntervalFactors { source } => write!(formatter, "grouped batch pricing interval_factors are invalid: {source}"),
-            Self::BoundaryIntervalDeltaMismatch { request_interval_delta, boundary_interval_delta } => write!(formatter, "grouped batch pricing interval_delta {request_interval_delta} must equal boundary_input.interval_delta {boundary_interval_delta}"),
-            Self::EmptyIntervalFactors => write!(formatter, "grouped batch pricing interval_factors must contain at least one interval"),
-            Self::IntervalFactorShapeMismatch { expected_interval_factor_count, found_interval_factor_count } => write!(formatter, "grouped batch pricing interval_factors must contain exactly {expected_interval_factor_count} entries implied by the maximum maturity, found {found_interval_factor_count}"),
-            Self::InvalidCpuCount { value } => write!(formatter, "grouped batch pricing cpu_count must be strictly positive when provided, found {value}"),
+            Self::InvalidRequest { source } => write!(
+                formatter,
+                "grouped batch pricing request is invalid: {source}"
+            ),
+            Self::InvalidBoundaryInput { source } => write!(
+                formatter,
+                "grouped batch pricing boundary_input is invalid: {source}"
+            ),
+            Self::InvalidModelParameters { source } => write!(
+                formatter,
+                "grouped batch pricing model_parameters are invalid: {source}"
+            ),
+            Self::InvalidFourierInversionSettings { source } => write!(
+                formatter,
+                "grouped batch pricing fourier_inversion_settings are invalid: {source}"
+            ),
+            Self::InvalidIntervalFactors { source } => write!(
+                formatter,
+                "grouped batch pricing interval_factors are invalid: {source}"
+            ),
+            Self::BoundaryIntervalDeltaMismatch {
+                request_interval_delta,
+                boundary_interval_delta,
+            } => write!(
+                formatter,
+                "grouped batch pricing interval_delta {request_interval_delta} must equal boundary_input.interval_delta {boundary_interval_delta}"
+            ),
+            Self::EmptyIntervalFactors => write!(
+                formatter,
+                "grouped batch pricing interval_factors must contain at least one interval"
+            ),
+            Self::IntervalFactorShapeMismatch {
+                expected_interval_factor_count,
+                found_interval_factor_count,
+            } => write!(
+                formatter,
+                "grouped batch pricing interval_factors must contain exactly {expected_interval_factor_count} entries implied by the maximum maturity, found {found_interval_factor_count}"
+            ),
+            Self::InvalidCpuCount { value } => write!(
+                formatter,
+                "grouped batch pricing cpu_count must be strictly positive when provided, found {value}"
+            ),
         }
     }
 }
@@ -264,7 +326,8 @@ pub struct VanillaOptionGroupedBatchPricingGroupResult {
     pub maturity_intervals: Vec<f64>,
     pub price_grid: Vec<Vec<f64>>,
     pub implied_volatility_grid: Vec<Vec<Option<f64>>>,
-    pub implied_volatility_inversion_status_grid: Vec<Vec<VanillaOptionImpliedVolatilityInversionStatus>>,
+    pub implied_volatility_inversion_status_grid:
+        Vec<Vec<VanillaOptionImpliedVolatilityInversionStatus>>,
     pub forward_price_grid: Vec<Vec<f64>>,
     pub discount_factor_grid: Vec<Vec<f64>>,
     pub boundary_state_norm_grid: Vec<Vec<f64>>,
@@ -279,17 +342,31 @@ pub struct VanillaOptionGroupedBatchPricingRunResult {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum VanillaOptionGroupedBatchPricingRunError {
-    InvalidExecutionInput { source: VanillaOptionGroupedBatchPricingExecutionInputError },
-    InvalidDriverParameters { source: NigSharedPlusShiftConfigurationError },
-    NodePricingFailure { message: String },
+    InvalidExecutionInput {
+        source: VanillaOptionGroupedBatchPricingExecutionInputError,
+    },
+    InvalidDriverParameters {
+        source: NigSharedPlusShiftConfigurationError,
+    },
+    NodePricingFailure {
+        message: String,
+    },
 }
 
 impl Display for VanillaOptionGroupedBatchPricingRunError {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::InvalidExecutionInput { source } => write!(formatter, "grouped batch pricing execution input is invalid: {source}"),
-            Self::InvalidDriverParameters { source } => write!(formatter, "grouped batch pricing driver parameters are invalid: {source}"),
-            Self::NodePricingFailure { message } => write!(formatter, "grouped batch pricing failed: {message}"),
+            Self::InvalidExecutionInput { source } => write!(
+                formatter,
+                "grouped batch pricing execution input is invalid: {source}"
+            ),
+            Self::InvalidDriverParameters { source } => write!(
+                formatter,
+                "grouped batch pricing driver parameters are invalid: {source}"
+            ),
+            Self::NodePricingFailure { message } => {
+                write!(formatter, "grouped batch pricing failed: {message}")
+            }
         }
     }
 }
@@ -352,7 +429,8 @@ pub struct VanillaOptionSurfacePricingResponse {
     pub dividend_yield: f64,
     pub price_grid: Vec<Vec<f64>>,
     pub implied_volatility_grid: Vec<Vec<Option<f64>>>,
-    pub implied_volatility_inversion_status_grid: Vec<Vec<VanillaOptionImpliedVolatilityInversionStatus>>,
+    pub implied_volatility_inversion_status_grid:
+        Vec<Vec<VanillaOptionImpliedVolatilityInversionStatus>>,
     pub forward_price_grid: Vec<Vec<f64>>,
     pub discount_factor_grid: Vec<Vec<f64>>,
     pub boundary_state_norm_grid: Vec<Vec<f64>>,
@@ -364,21 +442,36 @@ pub struct VanillaOptionSurfacePricingRunResult {
     pub maturity_summaries: Vec<VanillaOptionMaturitySummary>,
 }
 
-pub type VanillaOptionSurfacePricingExecutionInputError = VanillaOptionGroupedBatchPricingExecutionInputError;
+pub type VanillaOptionSurfacePricingExecutionInputError =
+    VanillaOptionGroupedBatchPricingExecutionInputError;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum VanillaOptionSurfacePricingRunError {
-    InvalidExecutionInput { source: VanillaOptionSurfacePricingExecutionInputError },
-    InvalidDriverParameters { source: NigSharedPlusShiftConfigurationError },
-    NodePricingFailure { message: String },
+    InvalidExecutionInput {
+        source: VanillaOptionSurfacePricingExecutionInputError,
+    },
+    InvalidDriverParameters {
+        source: NigSharedPlusShiftConfigurationError,
+    },
+    NodePricingFailure {
+        message: String,
+    },
 }
 
 impl Display for VanillaOptionSurfacePricingRunError {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::InvalidExecutionInput { source } => write!(formatter, "surface pricing execution input is invalid: {source}"),
-            Self::InvalidDriverParameters { source } => write!(formatter, "surface pricing driver parameters are invalid: {source}"),
-            Self::NodePricingFailure { message } => write!(formatter, "surface pricing failed: {message}"),
+            Self::InvalidExecutionInput { source } => write!(
+                formatter,
+                "surface pricing execution input is invalid: {source}"
+            ),
+            Self::InvalidDriverParameters { source } => write!(
+                formatter,
+                "surface pricing driver parameters are invalid: {source}"
+            ),
+            Self::NodePricingFailure { message } => {
+                write!(formatter, "surface pricing failed: {message}")
+            }
         }
     }
 }
@@ -428,11 +521,9 @@ pub fn run_vanilla_option_grouped_batch_pricing_with_observer(
     execution_input: VanillaOptionGroupedBatchPricingExecutionInput,
     mut observer: Option<&mut dyn FnMut(PricingProgressEvent)>,
 ) -> Result<VanillaOptionGroupedBatchPricingRunResult, VanillaOptionGroupedBatchPricingRunError> {
-    execution_input
-        .validate()
-        .map_err(|source| VanillaOptionGroupedBatchPricingRunError::InvalidExecutionInput {
-            source,
-        })?;
+    execution_input.validate().map_err(|source| {
+        VanillaOptionGroupedBatchPricingRunError::InvalidExecutionInput { source }
+    })?;
 
     let total_groups = execution_input.request.groups.len();
 
@@ -440,9 +531,9 @@ pub fn run_vanilla_option_grouped_batch_pricing_with_observer(
         .model_parameters
         .nig_shared_plus_shift_configuration
         .derive_driver_parameters()
-        .map_err(|source| VanillaOptionGroupedBatchPricingRunError::InvalidDriverParameters {
-            source,
-        })?;
+        .map_err(
+            |source| VanillaOptionGroupedBatchPricingRunError::InvalidDriverParameters { source },
+        )?;
 
     let mut groups = Vec::with_capacity(total_groups);
 
@@ -535,8 +626,8 @@ fn run_grouped_batch_body(
             execution_input.cpu_count,
             progress_reporter,
         )
-        .map_err(|source| VanillaOptionGroupedBatchPricingRunError::NodePricingFailure {
-            message: source,
+        .map_err(|source| {
+            VanillaOptionGroupedBatchPricingRunError::NodePricingFailure { message: source }
         })?;
 
         groups.push(group_result);
@@ -569,9 +660,7 @@ pub fn run_vanilla_option_surface_pricing_with_observer(
 ) -> Result<VanillaOptionSurfacePricingRunResult, VanillaOptionSurfacePricingRunError> {
     execution_input
         .validate()
-        .map_err(|source| VanillaOptionSurfacePricingRunError::InvalidExecutionInput {
-            source,
-        })?;
+        .map_err(|source| VanillaOptionSurfacePricingRunError::InvalidExecutionInput { source })?;
 
     let grouped_result = run_vanilla_option_grouped_batch_pricing_with_observer(
         VanillaOptionGroupedBatchPricingExecutionInput {
@@ -623,7 +712,8 @@ pub fn run_vanilla_option_surface_pricing_with_observer(
             dividend_yield: group.dividend_yield,
             price_grid: group.price_grid,
             implied_volatility_grid: group.implied_volatility_grid,
-            implied_volatility_inversion_status_grid: group.implied_volatility_inversion_status_grid,
+            implied_volatility_inversion_status_grid: group
+                .implied_volatility_inversion_status_grid,
             forward_price_grid: group.forward_price_grid,
             discount_factor_grid: group.discount_factor_grid,
             boundary_state_norm_grid: group.boundary_state_norm_grid,
@@ -656,7 +746,8 @@ fn run_homogeneous_scope(
 
     let mut price_grid = Vec::with_capacity(group.maturity_intervals.len());
     let mut implied_volatility_grid = Vec::with_capacity(group.maturity_intervals.len());
-    let mut implied_volatility_inversion_status_grid = Vec::with_capacity(group.maturity_intervals.len());
+    let mut implied_volatility_inversion_status_grid =
+        Vec::with_capacity(group.maturity_intervals.len());
     let mut forward_price_grid = Vec::with_capacity(group.maturity_intervals.len());
     let mut discount_factor_grid = Vec::with_capacity(group.maturity_intervals.len());
     let mut boundary_state_norm_grid = Vec::with_capacity(group.maturity_intervals.len());
@@ -775,8 +866,18 @@ fn run_homogeneous_scope(
                 .map(|node| node.implied_volatility_outcome.inversion_status)
                 .collect(),
         );
-        forward_price_grid.push(priced_strikes.iter().map(|node| node.forward_price).collect());
-        discount_factor_grid.push(priced_strikes.iter().map(|node| node.discount_factor).collect());
+        forward_price_grid.push(
+            priced_strikes
+                .iter()
+                .map(|node| node.forward_price)
+                .collect(),
+        );
+        discount_factor_grid.push(
+            priced_strikes
+                .iter()
+                .map(|node| node.discount_factor)
+                .collect(),
+        );
         boundary_state_norm_grid.push(
             priced_strikes
                 .iter()
@@ -836,7 +937,8 @@ fn price_direct_fourier_row(
     cpu_count: Option<usize>,
     progress_reporter: &PricingProgressReporter,
 ) -> Result<DirectFourierRow, VanillaOptionPricingRunError> {
-    let internal_output_selection = VanillaOptionPricingOptionalOutputSelection::new(true, true, false);
+    let internal_output_selection =
+        VanillaOptionPricingOptionalOutputSelection::new(true, true, false);
 
     let solve_strike = |strike: f64| {
         let mut request = VanillaOptionPricingRequest::new_with_interval_delta(
@@ -964,7 +1066,9 @@ fn price_direct_fourier_row(
             } else {
                 None
             },
-            integration_quality: if optional_output_selection.include_integration_quality_diagnostics {
+            integration_quality: if optional_output_selection
+                .include_integration_quality_diagnostics
+            {
                 integration_quality
             } else {
                 None
@@ -1072,10 +1176,9 @@ fn validate_finite(
     value: f64,
 ) -> Result<(), VanillaOptionGroupedBatchPricingRequestError> {
     if !value.is_finite() {
-        return Err(VanillaOptionGroupedBatchPricingRequestError::InvalidFiniteField {
-            field,
-            value,
-        });
+        return Err(
+            VanillaOptionGroupedBatchPricingRequestError::InvalidFiniteField { field, value },
+        );
     }
 
     Ok(())
@@ -1086,10 +1189,9 @@ fn validate_positive_finite(
     value: f64,
 ) -> Result<(), VanillaOptionGroupedBatchPricingRequestError> {
     if !value.is_finite() || value <= 0.0 {
-        return Err(VanillaOptionGroupedBatchPricingRequestError::InvalidPositiveField {
-            field,
-            value,
-        });
+        return Err(
+            VanillaOptionGroupedBatchPricingRequestError::InvalidPositiveField { field, value },
+        );
     }
 
     Ok(())

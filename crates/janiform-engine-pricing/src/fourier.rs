@@ -700,8 +700,7 @@ where
         });
     }
 
-    let dividend_discount_factor =
-        (-market_inputs.dividend_yield * maturity_year_fraction).exp();
+    let dividend_discount_factor = (-market_inputs.dividend_yield * maturity_year_fraction).exp();
     if !dividend_discount_factor.is_finite() || dividend_discount_factor <= 0.0 {
         return Err(
             FourierInversionPricingError::NonFiniteDividendDiscountFactor {
@@ -1040,9 +1039,13 @@ fn total_fourier_progress_evaluations(
     quadrature_rule: FourierInversionQuadratureRule,
     settings: FourierInversionEngineSettings,
 ) -> usize {
-    let full_resolution_evaluations =
-        quadrature_evaluation_count(quadrature_rule, settings.numeric_settings.integration_step_count);
+    let full_resolution_evaluations = quadrature_evaluation_count(
+        quadrature_rule,
+        settings.numeric_settings.integration_step_count,
+    );
+
     let coarse_step_count = settings.numeric_settings.integration_step_count / 2;
+
     let coarse_resolution_evaluations = if coarse_step_count == 0 {
         0
     } else {

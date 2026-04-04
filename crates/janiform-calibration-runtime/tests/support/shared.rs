@@ -10,11 +10,12 @@ pub(crate) use std::time::{SystemTime, UNIX_EPOCH};
 pub(crate) use chrono::{TimeZone, Utc};
 pub(crate) use janiform_calibration_artifacts::*;
 pub(crate) use janiform_calibration_runtime::*;
-pub(crate) use janiform_foundations::complex_math::ComplexScalar;
 pub(crate) use janiform_engine_pricing::{
-    intraday_black_scholes_log_return_characteristic_function as black_scholes_log_return_characteristic_function,
     VanillaOptionPricingCalibrationHooks, VanillaOptionPricingMarketInputs,
+    intraday_black_scholes_log_return_characteristic_function as black_scholes_log_return_characteristic_function,
 };
+pub(crate) use janiform_foundations::complex_math::ComplexScalar;
+pub(crate) use janiform_foundations::time::utc_nanos;
 pub(crate) use janiform_market_time::calendar::{
     ExchangeCalendarRegistry, ExchangeCalendarRegistryLoader, TimestampEventInputRecord,
 };
@@ -1785,6 +1786,7 @@ pub(crate) fn staged_run_inputs(
         } else {
             None
         },
+        joint_refinement_option_pricing_input: None,
     }
 }
 
@@ -2177,8 +2179,12 @@ pub(crate) fn build_joint_refinement_stage_success_report() -> JointRefinementSt
                         JointRefinementStageReturnComponentsInput::InMemoryOutput {
                             payload: build_return_components_stage_success_payload(),
                         },
+                    mean_reversion_input: JointRefinementStageMeanReversionInput::InMemoryOutput {
+                        payload: build_mean_reversion_stage_success_payload(),
+                    },
                     candidate_generation_input:
                         return_components_stage_candidate_generation_fixture(),
+                    option_pricing_input: None,
                 },
             )
         });
@@ -2379,21 +2385,6 @@ pub(crate) fn return_components_stage_candidate_generation_fixture()
             1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
         ),
     }
-}
-
-pub(crate) fn utc_nanos(
-    year: i32,
-    month: u32,
-    day: u32,
-    hour: u32,
-    minute: u32,
-    second: u32,
-) -> i64 {
-    Utc.with_ymd_and_hms(year, month, day, hour, minute, second)
-        .single()
-        .expect("fixture timestamp should be valid")
-        .timestamp_nanos_opt()
-        .expect("fixture timestamp nanos should fit in i64")
 }
 
 pub(crate) fn calibration_stage_test_registry() -> ExchangeCalendarRegistry {

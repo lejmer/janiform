@@ -2,7 +2,7 @@ import os
 from contextlib import AbstractContextManager, nullcontext, redirect_stdout
 
 from dataclasses import dataclass
-from datetime import UTC
+from datetime import UTC, datetime
 from io import StringIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -20,6 +20,7 @@ from .report import JaniformFitReport
 from .._errors import _calibration_error, _calibration_execution_error
 from ..market_data.contracts import (
     CalibrationExecutionMode,
+    CalibrationFlatCarryInput,
     CalibrationInputFileFormat,
     CalibrationInputFileReference,
     CalibrationKnownNewsColumnMapping,
@@ -108,6 +109,7 @@ _DEFAULT_ENDOGENOUS_MEAN_REVERSION_CONFIGURATION = CalibrationMeanReversionConfi
 @dataclass(frozen=True, slots=True)
 class _PreparedHighLevelFitWorkflow:
     run_id: str
+    workflow_scope: CalibrationMarketDataWorkflowScope
     prepared: PreparedMarketDataCalibration
     resolved_configuration: ResolvedPresetWorkflowConfiguration
     input_inference: HighLevelFitInference
@@ -120,7 +122,7 @@ class JaniformEstimator:
     def __init__(
         self,
         *,
-        workflow_scope: CalibrationMarketDataWorkflowScope = CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE,
+        workflow_scope: Optional[CalibrationMarketDataWorkflowScope] = None,
         tick_data_column_mapping: Optional[CalibrationTickDataColumnMapping] = None,
         normalization_policy: Optional[CalibrationMarketDataNormalizationPolicy] = None,
         option_surface_column_mapping: Optional[CalibrationOptionSurfaceColumnMapping] = None,
@@ -160,7 +162,7 @@ class JaniformEstimator:
                 "must be a CalibrationMeanReversionConfiguration when provided",
             )
 
-        self._workflow_scope: CalibrationMarketDataWorkflowScope = workflow_scope
+        self._workflow_scope_override: Optional[CalibrationMarketDataWorkflowScope] = workflow_scope
         self._tick_data_column_mapping: Optional[CalibrationTickDataColumnMapping] = (
             tick_data_column_mapping
         )
@@ -209,6 +211,8 @@ class JaniformEstimator:
         option_surface_path: Optional[str | Path] = None,
         option_surface_format: CalibrationInputFileFormat = CalibrationInputFileFormat.PARQUET,
         option_surface_provenance_label: str = "option_surface",
+        option_surface_valuation_time_utc: Optional[datetime] = None,
+        carry: Optional[CalibrationFlatCarryInput] = None,
         output_dir: Optional[str | Path] = None,
         silent: Optional[bool] = None,
         report: Literal[False] = False,
@@ -225,6 +229,8 @@ class JaniformEstimator:
         option_surface_path: Optional[str | Path] = None,
         option_surface_format: CalibrationInputFileFormat = CalibrationInputFileFormat.PARQUET,
         option_surface_provenance_label: str = "option_surface",
+        option_surface_valuation_time_utc: Optional[datetime] = None,
+        carry: Optional[CalibrationFlatCarryInput] = None,
         output_dir: Optional[str | Path] = None,
         silent: Optional[bool] = None,
         report: Literal[True],
@@ -240,6 +246,8 @@ class JaniformEstimator:
         option_surface_path: Optional[str | Path] = None,
         option_surface_format: CalibrationInputFileFormat = CalibrationInputFileFormat.PARQUET,
         option_surface_provenance_label: str = "option_surface",
+        option_surface_valuation_time_utc: Optional[datetime] = None,
+        carry: Optional[CalibrationFlatCarryInput] = None,
         output_dir: Optional[str | Path] = None,
         silent: Optional[bool] = None,
         report: bool = False,
@@ -281,6 +289,8 @@ class JaniformEstimator:
                         option_surface_path=option_surface_path,
                         option_surface_format=option_surface_format,
                         option_surface_provenance_label=option_surface_provenance_label,
+                        option_surface_valuation_time_utc=option_surface_valuation_time_utc,
+                        carry=carry,
                         progress=progress,
                     )
 
@@ -330,7 +340,7 @@ class JaniformEstimator:
 
         fit_report = JaniformFitReport(
             run_id=prepared_workflow.run_id,
-            workflow_scope=self._workflow_scope,
+            workflow_scope=prepared_workflow.workflow_scope,
             success=staged_response.status == CalibrationStageExecutionStatus.SUCCESS,
             resolved_configuration=prepared_workflow.resolved_configuration,
             session_resolution=prepared_workflow.prepared.session_resolution,
@@ -356,7 +366,7 @@ class JaniformEstimator:
 
         model = JaniformModel(
             run_id=prepared_workflow.run_id,
-            workflow_scope=self._workflow_scope,
+            workflow_scope=prepared_workflow.workflow_scope,
             parameters=_extract_model_parameters(fit_report.stage_report_payloads),
             metadata=_build_model_metadata(
                 resolved_configuration=prepared_workflow.resolved_configuration,
@@ -365,7 +375,7 @@ class JaniformEstimator:
                 stage_report_payloads=fit_report.stage_report_payloads,
                 input_inference=build_fit_inference_payload(
                     inference=prepared_workflow.input_inference,
-                    workflow_scope=self._workflow_scope,
+                    workflow_scope=prepared_workflow.workflow_scope,
                     market_profile_name=(
                         prepared_workflow.resolved_configuration.market_profile.selected_preset.preset_name
                         if (
@@ -419,8 +429,11 @@ class JaniformEstimator:
         self,
         *,
         run_id: str,
+        workflow_scope: CalibrationMarketDataWorkflowScope,
         tick_data_source: CalibrationInputFileReference,
         option_surface_source: Optional[CalibrationInputFileReference],
+        option_surface_valuation_time_utc: Optional[datetime],
+        carry: Optional[CalibrationFlatCarryInput],
         resolved_configuration: ResolvedPresetWorkflowConfiguration,
         tick_data_column_mapping: CalibrationTickDataColumnMapping,
         normalization_policy: CalibrationMarketDataNormalizationPolicy,
@@ -451,16 +464,18 @@ class JaniformEstimator:
             tick_data_source=tick_data_source,
             session_configuration=session_configuration,
             column_mapping=column_mapping,
-            workflow_scope=self._workflow_scope,
+            workflow_scope=workflow_scope,
             normalization_policy=normalization_policy,
             output_preferences=self._output_preferences,
             optimizer_settings_by_stage=self._optimizer_settings_by_stage,
             preprocessing_settings=self._preprocessing_settings,
             option_surface_source=option_surface_source,
+            option_surface_valuation_time_utc=option_surface_valuation_time_utc,
+            carry=carry,
             known_news_inputs=known_news_input,
             mean_reversion=(
                 None
-                if self._workflow_scope == CalibrationMarketDataWorkflowScope.SEASONALITY_ONLY
+                if workflow_scope == CalibrationMarketDataWorkflowScope.SEASONALITY_ONLY
                 else (
                     self._mean_reversion
                     if self._mean_reversion is not None
@@ -479,9 +494,14 @@ class JaniformEstimator:
         option_surface_path: Optional[str | Path],
         option_surface_format: CalibrationInputFileFormat,
         option_surface_provenance_label: str,
+        option_surface_valuation_time_utc: Optional[datetime],
+        carry: Optional[CalibrationFlatCarryInput],
         progress: Optional[AbstractProgress] = None,
     ) -> _PreparedHighLevelFitWorkflow:
         effective_progress = NullProgress() if progress is None else progress
+        workflow_scope = self._effective_workflow_scope(
+            option_surface_path=option_surface_path,
+        )
 
         resolved_market_profile_configuration = (
             self._resolve_market_profile_configuration()
@@ -491,7 +511,7 @@ class JaniformEstimator:
             tick_data_path=Path(tick_data_path),
             tick_data_format=tick_data_format,
             tick_data_provenance_label=tick_data_provenance_label,
-            workflow_scope=self._workflow_scope,
+            workflow_scope=workflow_scope,
             run_id=run_id,
             column_overrides=column_overrides_from_mapping(self._tick_data_column_mapping),
             normalization_overrides=normalization_overrides_from_policy(self._normalization_policy),
@@ -516,15 +536,14 @@ class JaniformEstimator:
                 tick_data_source=input_inference.tick_data_source,
                 tick_data_column_mapping=input_inference.tick_data_column_mapping,
                 normalization_policy=input_inference.normalization_policy,
-                require_hawkes=(
-                    self._workflow_scope != CalibrationMarketDataWorkflowScope.SEASONALITY_ONLY
-                ),
+                require_hawkes=(workflow_scope != CalibrationMarketDataWorkflowScope.SEASONALITY_ONLY),
             )
 
             effective_progress.update(detail="resolve session")
 
             inferred_session_resolution = self._infer_session_resolution(
                 run_id=input_inference.run_id,
+                workflow_scope=workflow_scope,
                 tick_data_source=input_inference.tick_data_source,
                 tick_data_column_mapping=input_inference.tick_data_column_mapping,
                 normalization_policy=input_inference.normalization_policy,
@@ -555,8 +574,11 @@ class JaniformEstimator:
 
             request = self._build_market_data_request(
                 run_id=input_inference.run_id,
+                workflow_scope=workflow_scope,
                 tick_data_source=input_inference.tick_data_source,
                 option_surface_source=option_surface_source,
+                option_surface_valuation_time_utc=option_surface_valuation_time_utc,
+                carry=carry,
                 resolved_configuration=resolved_configuration,
                 tick_data_column_mapping=input_inference.tick_data_column_mapping,
                 normalization_policy=input_inference.normalization_policy,
@@ -591,6 +613,7 @@ class JaniformEstimator:
 
         return _PreparedHighLevelFitWorkflow(
             run_id=input_inference.run_id,
+            workflow_scope=workflow_scope,
             prepared=prepared,
             resolved_configuration=resolved_configuration,
             input_inference=input_inference,
@@ -612,10 +635,24 @@ class JaniformEstimator:
             timezone_name_hint=self._session_timezone,
         )
 
+    def _effective_workflow_scope(
+        self,
+        *,
+        option_surface_path: Optional[str | Path],
+    ) -> CalibrationMarketDataWorkflowScope:
+        if self._workflow_scope_override is not None:
+            return self._workflow_scope_override
+
+        if option_surface_path is not None:
+            return CalibrationMarketDataWorkflowScope.FULL_WITH_OPTION_SURFACE
+
+        return CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE
+
     def _infer_session_resolution(
         self,
         *,
         run_id: str,
+        workflow_scope: CalibrationMarketDataWorkflowScope,
         tick_data_source: CalibrationInputFileReference,
         tick_data_column_mapping: CalibrationTickDataColumnMapping,
         normalization_policy: CalibrationMarketDataNormalizationPolicy,
@@ -638,7 +675,7 @@ class JaniformEstimator:
             column_mapping=CalibrationMarketDataColumnMapping(
                 tick_data=tick_data_column_mapping,
             ),
-            workflow_scope=self._workflow_scope,
+            workflow_scope=workflow_scope,
             normalization_policy=normalization_policy,
             output_preferences=self._output_preferences,
             optimizer_settings_by_stage=self._optimizer_settings_by_stage,

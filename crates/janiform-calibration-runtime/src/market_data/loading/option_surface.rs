@@ -1,9 +1,9 @@
 use std::collections::HashSet;
 
 use super::contracts::{
-    MarketDataLoadingError, MarketDataNormalizationPolicy, MarketDataOptionQuoteInputPolicy,
-    MarketDataOptionSurfaceColumnMapping, MarketDataOptionSurfaceLoadingInput,
-    MarketDataSourceSummary,
+    MarketDataLoadingError, MarketDataNormalizationPolicy, MarketDataNormalizedOptionSurfaceRecord,
+    MarketDataOptionQuoteInputPolicy, MarketDataOptionSurfaceColumnMapping,
+    MarketDataOptionSurfaceLoadingInput, MarketDataSourceSummary,
 };
 use super::normalization::{
     normalize_option_type, normalize_optional_numeric_value, normalize_required_numeric_value,
@@ -81,6 +81,7 @@ pub(super) fn load_option_surface_records(
 
     Ok(OptionSurfaceLoadOutput {
         option_surface_quote_values: normalized_rows.iter().map(|row| row.quote_value).collect(),
+        option_surface_records: normalized_rows.clone(),
         summary: MarketDataSourceSummary {
             path: option_surface_input.source.path.clone(),
             file_format: file_format_string(option_surface_input.source.file_format).to_string(),
@@ -96,6 +97,26 @@ pub(super) fn load_option_surface_records(
                 .map(option_quote_policy_string),
         },
     })
+}
+
+pub fn materialize_option_surface_records_for_payload(
+    records: &[LoadedOptionSurfaceRecord],
+) -> Vec<MarketDataNormalizedOptionSurfaceRecord> {
+    records
+        .iter()
+        .map(|record| MarketDataNormalizedOptionSurfaceRecord {
+            quote_timestamp_utc_nanos: record.quote_timestamp_utc_nanos,
+            expiry_timestamp_utc_nanos: record.expiry_timestamp_utc_nanos,
+            strike: record.strike,
+            option_type: record.option_type.clone(),
+            quote_value: record.quote_value,
+            mid_price: record.mid_price,
+            bid_price: record.bid_price,
+            ask_price: record.ask_price,
+            implied_volatility: record.implied_volatility,
+            source_row_number: record.source_row_number,
+        })
+        .collect()
 }
 
 pub(super) fn normalize_option_surface_row(
@@ -123,6 +144,7 @@ pub(super) fn normalize_option_surface_row(
         Some(normalization_policy.timestamp_timezone.as_str()),
         source_path,
     )?;
+
     let strike = normalize_required_numeric_value(
         raw_row.get(&column_mapping.strike_column),
         format!("{row_field_path}.{}", column_mapping.strike_column).as_str(),
@@ -130,11 +152,13 @@ pub(super) fn normalize_option_surface_row(
         false,
         false,
     )?;
+
     let option_type = normalize_option_type(
         raw_row.get(&column_mapping.option_type_column),
         format!("{row_field_path}.{}", column_mapping.option_type_column).as_str(),
         source_path,
     )?;
+
     let mid_price = match &column_mapping.mid_price_column {
         Some(column_name) => normalize_optional_numeric_value(
             raw_row.get(column_name),
@@ -165,6 +189,7 @@ pub(super) fn normalize_option_surface_row(
         )?,
         None => None,
     };
+
     let implied_volatility = match &column_mapping.implied_volatility_column {
         Some(column_name) => normalize_optional_numeric_value(
             raw_row.get(column_name),

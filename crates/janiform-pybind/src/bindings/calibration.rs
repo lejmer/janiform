@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex};
 
 use chrono::{DateTime, Utc};
@@ -94,7 +95,7 @@ const DEFAULT_SOLVER_ABSOLUTE_TOLERANCE: f64 = 1.0e-8;
 const DEFAULT_SOLVER_RELATIVE_TOLERANCE: f64 = 1.0e-6;
 const DEFAULT_SOLVER_CONSTRAINT_PENALTY_WEIGHT: f64 = 10.0;
 
-#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 enum PythonCalibrationMarketDataWorkflowScope {
     SeasonalityOnly,
@@ -141,6 +142,15 @@ struct PythonMeanReversionConfiguration {
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
+struct PythonJointCarryInput {
+    #[serde(default)]
+    discount_rate: f64,
+    #[serde(default)]
+    carry_rate: f64,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct PythonMarketDataCalibrationRequest {
     #[serde(rename = "schema_version")]
     _schema_version: String,
@@ -157,6 +167,10 @@ struct PythonMarketDataCalibrationRequest {
     preprocessing_settings: Option<MarketDataTranslationPreprocessingSettings>,
     #[serde(default)]
     option_surface_source: Option<MarketDataInputFileReference>,
+    #[serde(default)]
+    option_surface_valuation_time_utc: Option<String>,
+    #[serde(default)]
+    carry: Option<PythonJointCarryInput>,
     #[serde(default)]
     known_news_inputs: Option<PythonMarketDataKnownNewsInput>,
     #[serde(default)]
@@ -206,6 +220,11 @@ struct PreparedMarketDataPlan {
     session_resolution: MarketDataSessionResolutionPayload,
     fit_warning: Option<String>,
     reference_price: Option<f64>,
+}
+
+struct LoadedMarketDataPhases {
+    normalized_tick_output: janiform::calibration::MarketDataNormalizedTickOutput,
+    loading_output: MarketDataLoadingOutput,
 }
 
 fn _selected_stages_for_scope(
@@ -612,6 +631,253 @@ fn _mean_reversion_stage_input_from_request(
     }))
 }
 
+fn _joint_refinement_option_pricing_input_from_request(
+    request: &PythonMarketDataCalibrationRequest,
+    loading_output: &MarketDataLoadingOutput,
+    normalized_tick_output: &janiform::calibration::MarketDataNormalizedTickOutput,
+) -> Result<Option<janiform::calibration::CalibrationJointRefinementOptionPricingInput>, String> {
+    if request.workflow_scope != PythonCalibrationMarketDataWorkflowScope::FullWithOptionSurface {
+        return Ok(None);
+    }
+
+    let option_snapshot_nodes =
+        _selected_option_snapshot_nodes_from_loading_output(request, loading_output)?;
+
+    let valuation_time_utc_nanos = option_snapshot_nodes
+        .first()
+        .map(|node| node.quote_timestamp_utc_nanos)
+        .ok_or_else(|| {
+            "joint option calibration requires a non-empty option snapshot".to_string()
+        })?;
+
+    let reference_price = loading_output
+        .reference_price
+        .filter(|value| value.is_finite() && *value > 0.0)
+        .ok_or_else(|| {
+            "joint option calibration requires a strictly positive reference price from tick normalization"
+                .to_string()
+        })?;
+
+    let current_state_estimation_input = _joint_option_current_state_estimation_input(
+        valuation_time_utc_nanos,
+        reference_price,
+        normalized_tick_output,
+    )?;
+
+    let carry_input = match request.carry.clone() {
+        Some(carry) => janiform::calibration::CalibrationJointRefinementCarryInput {
+            discount_rate: carry.discount_rate,
+            carry_rate: carry.carry_rate,
+        },
+        None => janiform::calibration::CalibrationJointRefinementCarryInput {
+            discount_rate: 0.0,
+            carry_rate: 0.0,
+        },
+    };
+
+    Ok(Some(
+        janiform::calibration::CalibrationJointRefinementOptionPricingInput {
+            valuation_time_utc_nanos,
+            carry_input,
+            current_state_estimation_input,
+            option_snapshot_nodes,
+        },
+    ))
+}
+
+fn _selected_option_snapshot_nodes_from_loading_output(
+    request: &PythonMarketDataCalibrationRequest,
+    loading_output: &MarketDataLoadingOutput,
+) -> Result<Vec<janiform::calibration::CalibrationJointRefinementOptionSnapshotNode>, String> {
+    let option_surface_records =
+        loading_output
+            .option_surface_records
+            .as_ref()
+            .ok_or_else(|| {
+                "joint option calibration requires normalized option surface records".to_string()
+            })?;
+
+    let requested_valuation_time_utc = request
+        .option_surface_valuation_time_utc
+        .as_deref()
+        .map(parse_timestamp_utc)
+        .transpose()
+        .map_err(|source| {
+            format!(
+                "joint option calibration received invalid option_surface_valuation_time_utc: {source}"
+            )
+        })?;
+
+    let requested_valuation_time_utc_nanos =
+        requested_valuation_time_utc.and_then(|timestamp| timestamp.timestamp_nanos_opt());
+
+    let selected_quote_timestamp_utc_nanos = if let Some(requested_valuation_time_utc_nanos) =
+        requested_valuation_time_utc_nanos
+    {
+        if option_surface_records
+            .iter()
+            .any(|record| record.quote_timestamp_utc_nanos == requested_valuation_time_utc_nanos)
+        {
+            requested_valuation_time_utc_nanos
+        } else {
+            return Err(format!(
+                "joint option calibration could not find option quotes for valuation timestamp {}",
+                request
+                    .option_surface_valuation_time_utc
+                    .clone()
+                    .unwrap_or_else(|| requested_valuation_time_utc_nanos.to_string())
+            ));
+        }
+    } else {
+        let unique_quote_timestamps = option_surface_records
+            .iter()
+            .map(|record| record.quote_timestamp_utc_nanos)
+            .collect::<BTreeSet<_>>();
+        match unique_quote_timestamps.len() {
+                1 => *unique_quote_timestamps
+                    .first()
+                    .ok_or_else(|| "joint option calibration requires option quotes".to_string())?,
+                0 => {
+                    return Err(
+                        "joint option calibration requires option quotes but none were retained"
+                            .to_string(),
+                    )
+                }
+                _ => {
+                    return Err(
+                        "joint option calibration requires option_surface_valuation_time_utc when the option file contains multiple quote timestamps"
+                            .to_string(),
+                    )
+                }
+            }
+    };
+
+    let mut selected_nodes = Vec::new();
+    for record in option_surface_records {
+        if record.quote_timestamp_utc_nanos != selected_quote_timestamp_utc_nanos {
+            continue;
+        }
+
+        let bid_price = record.bid_price.ok_or_else(|| {
+            format!(
+                "joint option calibration requires bid prices for option row {}",
+                record.source_row_number
+            )
+        })?;
+        let ask_price = record.ask_price.ok_or_else(|| {
+            format!(
+                "joint option calibration requires ask prices for option row {}",
+                record.source_row_number
+            )
+        })?;
+        if !bid_price.is_finite() || !ask_price.is_finite() || ask_price <= bid_price {
+            return Err(format!(
+                "joint option calibration requires strictly positive bid/ask width for option row {}",
+                record.source_row_number
+            ));
+        }
+
+        let observed_mid_price = match record.mid_price {
+            Some(mid_price) => mid_price,
+            None => 0.5 * (bid_price + ask_price),
+        };
+        if !observed_mid_price.is_finite() {
+            return Err(format!(
+                "joint option calibration requires finite observed mid prices for option row {}",
+                record.source_row_number
+            ));
+        }
+
+        let payoff_type = match record.option_type.as_str() {
+            "call" => janiform::pricing::VanillaOptionPayoffType::Call,
+            "put" => janiform::pricing::VanillaOptionPayoffType::Put,
+            other => {
+                return Err(format!(
+                    "joint option calibration encountered unsupported option type `{other}` for option row {}",
+                    record.source_row_number
+                ));
+            }
+        };
+
+        selected_nodes.push(
+            janiform::calibration::CalibrationJointRefinementOptionSnapshotNode {
+                quote_timestamp_utc_nanos: record.quote_timestamp_utc_nanos,
+                expiry_timestamp_utc_nanos: record.expiry_timestamp_utc_nanos,
+                strike: record.strike,
+                payoff_type,
+                bid_price,
+                ask_price,
+                observed_mid_price,
+            },
+        );
+    }
+
+    if selected_nodes.is_empty() {
+        return Err(
+            "joint option calibration requires a non-empty selected option snapshot".to_string(),
+        );
+    }
+
+    Ok(selected_nodes)
+}
+
+fn _joint_option_current_state_estimation_input(
+    valuation_time_utc_nanos: i64,
+    reference_price: f64,
+    normalized_tick_output: &janiform::calibration::MarketDataNormalizedTickOutput,
+) -> Result<janiform::calibration::CalibrationJointRefinementCurrentStateEstimationInput, String> {
+    let mut observation_timestamp_utc_nanos = Vec::new();
+    let mut observation_trade_prices = Vec::new();
+    let mut observation_trade_sides = Vec::new();
+
+    for tick_record in &normalized_tick_output.tick_records {
+        if tick_record.timestamp_utc_nanos > valuation_time_utc_nanos {
+            break;
+        }
+
+        let Some(price) = tick_record.price else {
+            continue;
+        };
+        let Some(trade_sign) = tick_record.trade_sign.as_deref() else {
+            continue;
+        };
+
+        let trade_side = match trade_sign {
+            "buy" => "buy",
+            "sell" => "sell",
+            other => {
+                return Err(format!(
+                    "joint option calibration encountered unsupported trade sign `{other}` in retained tick data"
+                ));
+            }
+        };
+
+        observation_timestamp_utc_nanos.push(tick_record.timestamp_utc_nanos);
+        observation_trade_prices.push(price);
+        observation_trade_sides.push(trade_side.to_string());
+    }
+
+    let observed_spot = observation_trade_prices
+        .last()
+        .copied()
+        .ok_or_else(|| {
+            "joint option calibration requires retained priced tick observations at or before the selected valuation timestamp"
+                .to_string()
+        })?;
+    let observed_log_price = (observed_spot / reference_price).ln();
+
+    Ok(
+        janiform::calibration::CalibrationJointRefinementCurrentStateEstimationInput {
+            state_time_utc_nanos: valuation_time_utc_nanos,
+            observed_spot,
+            observed_log_price,
+            observation_timestamp_utc_nanos,
+            observation_trade_prices,
+            observation_trade_sides,
+        },
+    )
+}
+
 fn _mean_reversion_stage_observations_relative_to_reference_price(
     observations: &[CalibrationMeanReversionStageObservation],
     reference_price: Option<f64>,
@@ -623,6 +889,7 @@ fn _mean_reversion_stage_observations_relative_to_reference_price(
     };
 
     let reference_log_price = reference_price.ln();
+
     observations
         .iter()
         .map(|observation| CalibrationMeanReversionStageObservation {
@@ -865,7 +1132,7 @@ mod tests {
 
 fn _load_market_data_from_phases(
     loading_request: MarketDataLoadingRequest,
-) -> Result<MarketDataLoadingOutput, String> {
+) -> Result<LoadedMarketDataPhases, String> {
     let normalized_tick_output = normalize_market_data_source_native(
         &loading_request.tick_data_source,
         &loading_request.tick_data_column_mapping,
@@ -880,12 +1147,17 @@ fn _load_market_data_from_phases(
     )
     .map_err(|source| format!("failed to resolve market-data session: {source}"))?;
 
-    prepare_market_data_loading_from_phases_native(
+    let loading_output = prepare_market_data_loading_from_phases_native(
         loading_request,
-        normalized_tick_output,
+        normalized_tick_output.clone(),
         session_resolution,
     )
-    .map_err(|source| format!("failed to prepare market-data calibration inputs: {source}"))
+    .map_err(|source| format!("failed to prepare market-data calibration inputs: {source}"))?;
+
+    Ok(LoadedMarketDataPhases {
+        normalized_tick_output,
+        loading_output,
+    })
 }
 
 fn _prepare_market_data_calibration_plan(
@@ -897,7 +1169,7 @@ fn _prepare_market_data_calibration_plan(
     let (loading_request, trade_events_data_reference, option_surface_data_reference) =
         _build_loading_request(&request, &selected_stages)?;
 
-    let loading_output = _load_market_data_from_phases(loading_request)?;
+    let loaded_market_data = _load_market_data_from_phases(loading_request)?;
 
     _prepared_market_data_plan_from_loading_output(
         request,
@@ -905,7 +1177,8 @@ fn _prepare_market_data_calibration_plan(
         selected_stages,
         trade_events_data_reference,
         option_surface_data_reference,
-        loading_output,
+        loaded_market_data.normalized_tick_output,
+        loaded_market_data.loading_output,
     )
 }
 
@@ -915,6 +1188,7 @@ fn _prepared_market_data_plan_from_loading_output(
     selected_stages: Vec<CalibrationStage>,
     trade_events_data_reference: String,
     option_surface_data_reference: Option<String>,
+    normalized_tick_output: janiform::calibration::MarketDataNormalizedTickOutput,
     loading_output: MarketDataLoadingOutput,
 ) -> Result<PreparedMarketDataPlan, String> {
     let run_request = CalibrationRunSpec::try_new(
@@ -959,6 +1233,11 @@ fn _prepared_market_data_plan_from_loading_output(
             &request,
             &selected_stages,
             &loading_output,
+        )?,
+        joint_refinement_option_pricing_input: _joint_refinement_option_pricing_input_from_request(
+            &request,
+            &loading_output,
+            &normalized_tick_output,
         )?,
         runtime_resources: _runtime_resources_from_output_preferences(&request.output_preferences),
     };
@@ -1298,6 +1577,7 @@ fn prepare_market_data_calibration_plan_from_phases(
         selected_stages,
         trade_events_data_reference,
         option_surface_data_reference,
+        normalized_market_data_handle.normalized_output.clone(),
         loading_output,
     )
     .map_err(CalibrationExecutionError::new_err)?;

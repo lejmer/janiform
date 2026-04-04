@@ -10,9 +10,11 @@ pub use janiform_calibration_artifacts::CalibrationStageSolverSettings;
 pub use janiform_calibration_artifacts::ReturnComponentsStageFittedParameters;
 pub use janiform_calibration_artifacts::SurpriseNewsDeterministicIntensityProfile;
 pub use janiform_calibration_runtime::{
-    CALIBRATION_STAGED_EXECUTION_INPUT_SCHEMA_VERSION, CalibrationMeanReversionStageExecutionInput,
-    CalibrationMeanReversionStageObservation, CalibrationMemoryCheckpointStore,
-    CalibrationReturnComponentsActivityContextPayload,
+    CALIBRATION_STAGED_EXECUTION_INPUT_SCHEMA_VERSION, CalibrationJointRefinementCarryInput,
+    CalibrationJointRefinementCurrentStateEstimationInput,
+    CalibrationJointRefinementOptionPricingInput, CalibrationJointRefinementOptionSnapshotNode,
+    CalibrationMeanReversionStageExecutionInput, CalibrationMeanReversionStageObservation,
+    CalibrationMemoryCheckpointStore, CalibrationReturnComponentsActivityContextPayload,
     CalibrationReturnComponentsStageCandidateGenerationInput, CalibrationStagedExecutionInput,
     CalibrationStagedExecutionRuntimeResources, CalibrationStagedRunObserverEvent,
     CalibrationStagedRunReport, CalibrationStagedRunStageReport, CurrentStateEstimationError,

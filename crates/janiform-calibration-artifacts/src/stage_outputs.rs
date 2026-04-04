@@ -114,6 +114,7 @@ pub struct JointRefinementStageObjectiveBreakdown {
     pub activity_level_fit: f64,
     pub rv_activity_coupling_fit: f64,
     pub price_span_sanity_fit: f64,
+    pub option_spread_normalized_price_fit: f64,
     pub weighted_objective: f64,
     pub hard_constraint_penalty: f64,
 }
@@ -168,4 +169,53 @@ pub struct JointRefinementStageOptimizerDiagnostics {
 pub struct JointRefinementStageFittedParameters {
     pub hawkes_fitted_parameters: HawkesStageFittedParameters,
     pub return_components_fitted_parameters: ReturnComponentsStageFittedParameters,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pricing_block_fitted_parameters: Option<JointRefinementStagePricingBlockFittedParameters>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct JointRefinementStagePricingBlockFittedParameters {
+    pub nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct JointRefinementStageCarryInput {
+    pub discount_rate: f64,
+    pub carry_rate: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct JointRefinementStageOptionSnapshotMetadata {
+    pub valuation_time_utc_nanos: i64,
+    pub node_count: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct JointRefinementStageOptionNodeDiagnostic {
+    pub quote_timestamp_utc_nanos: i64,
+    pub expiry_timestamp_utc_nanos: i64,
+    pub strike: f64,
+    pub option_type: String,
+    pub bid_price: f64,
+    pub ask_price: f64,
+    pub observed_mid_price: f64,
+    pub model_price: f64,
+    pub spread_normalized_residual: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct JointRefinementStageOptionAggregateDiagnostic {
+    pub bucket_kind: String,
+    pub bucket_label: String,
+    pub node_count: usize,
+    pub mean_absolute_spread_normalized_residual: f64,
+    pub root_mean_square_spread_normalized_residual: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct JointRefinementStageOptionCalibrationDiagnostics {
+    pub snapshot_metadata: JointRefinementStageOptionSnapshotMetadata,
+    pub carry_input: JointRefinementStageCarryInput,
+    pub node_diagnostics: Vec<JointRefinementStageOptionNodeDiagnostic>,
+    pub aggregate_diagnostics: Vec<JointRefinementStageOptionAggregateDiagnostic>,
 }
