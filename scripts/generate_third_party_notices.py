@@ -3,6 +3,7 @@ import fnmatch
 import hashlib
 import json
 import os
+import platform
 import subprocess
 import tempfile
 from collections import defaultdict
@@ -50,66 +51,34 @@ class LegalTextUsage:
     file_name: str
 
 
-def main() -> int:
-    argument_parser = argparse.ArgumentParser(
-        description=(
-            "Generate or validate THIRD_PARTY_NOTICES.txt for the Rust dependency closure "
-            "behind the janiform wheel extension."
-        )
-    )
-    argument_parser.add_argument(
-        "--check",
-        action="store_true",
-        help="Exit with a non-zero status when THIRD_PARTY_NOTICES.txt is out of date.",
-    )
-    argument_parser.add_argument(
-        "--output-path",
-        default=str(DEFAULT_OUTPUT_PATH),
-        help="Path where the generated notices file should be written.",
-    )
-    arguments = argument_parser.parse_args()
-
-    output_path = Path(arguments.output_path)
-    third_party_packages = _collect_third_party_packages()
-    rendered_notices = _render_third_party_notices(third_party_packages)
-
-    if arguments.check:
-        existing = (
-            _normalize_text_newlines(output_path.read_text(encoding="utf-8"))
-            if output_path.exists()
-            else None
-        )
-        if existing != rendered_notices:
-            print(f"{output_path.relative_to(REPOSITORY_ROOT)} is out of date.")
-            print("Regenerate it with `python scripts/generate_third_party_notices.py`.")
-
-            return 1
-
-        return 0
-
-    with output_path.open("w", encoding="utf-8", newline="\n") as output_file:
-        output_file.write(rendered_notices)
-    print(output_path.relative_to(REPOSITORY_ROOT))
-
-    return 0
+@dataclass(frozen=True, slots=True)
+class TargetCfg:
+    target_platform: str
+    bare_flags: frozenset[str]
+    keyed_values: dict[str, frozenset[str]]
 
 
 def _collect_third_party_packages() -> tuple[ThirdPartyPackage, ...]:
+    cargo_environment = _deterministic_cargo_environment()
+    metadata = _load_workspace_cargo_metadata(cargo_environment)
+
     package_by_id: dict[str, dict[str, Any]] = {}
-    workspace_member_ids: set[str] = set()
     reachable_external_ids: set[str] = set()
 
-    for metadata in _load_cargo_metadata_for_supported_targets():
-        package_by_id.update({package["id"]: package for package in metadata["packages"]})
-        workspace_member_ids.update(metadata["workspace_members"])
+    package_by_id.update({package["id"]: package for package in metadata["packages"]})
 
-        resolve_nodes_by_id = {node["id"]: node for node in metadata["resolve"]["nodes"]}
-        root_package = _root_package(metadata["packages"])
+    workspace_member_ids = set(metadata["workspace_members"])
+    resolve_nodes_by_id = {node["id"]: node for node in metadata["resolve"]["nodes"]}
+
+    root_package = _root_package(metadata["packages"])
+
+    for target_cfg in _load_supported_target_cfgs():
         reachable_external_ids.update(
             _reachable_external_dependency_ids(
                 root_package_id=root_package["id"],
                 workspace_member_ids=workspace_member_ids,
                 resolve_nodes_by_id=resolve_nodes_by_id,
+                target_cfg=target_cfg,
             )
         )
 
@@ -142,17 +111,7 @@ def _collect_third_party_packages() -> tuple[ThirdPartyPackage, ...]:
     return tuple(packages)
 
 
-def _load_cargo_metadata_for_supported_targets() -> tuple[dict[str, Any], ...]:
-    cargo_environment = _deterministic_cargo_environment()
-    _prefetch_supported_target_sources(cargo_environment)
-
-    return tuple(
-        _load_cargo_metadata(target_platform, cargo_environment)
-        for target_platform in SUPPORTED_RUNTIME_TARGETS
-    )
-
-
-def _load_cargo_metadata(target_platform: str, cargo_environment: dict[str, str]) -> dict[str, Any]:
+def _load_workspace_cargo_metadata(cargo_environment: dict[str, str]) -> dict[str, Any]:
     result = subprocess.run(
         [
             "cargo",
@@ -160,8 +119,6 @@ def _load_cargo_metadata(target_platform: str, cargo_environment: dict[str, str]
             "--format-version",
             "1",
             "--locked",
-            "--filter-platform",
-            target_platform,
         ],
         capture_output=True,
         check=True,
@@ -175,21 +132,55 @@ def _load_cargo_metadata(target_platform: str, cargo_environment: dict[str, str]
 
 def _deterministic_cargo_environment() -> dict[str, str]:
     cargo_environment = os.environ.copy()
-    THIRD_PARTY_NOTICES_CARGO_HOME.mkdir(parents=True, exist_ok=True)
-    cargo_environment["CARGO_HOME"] = str(THIRD_PARTY_NOTICES_CARGO_HOME)
+    if platform.system() != "Windows":
+        THIRD_PARTY_NOTICES_CARGO_HOME.mkdir(parents=True, exist_ok=True)
+        cargo_environment["CARGO_HOME"] = str(THIRD_PARTY_NOTICES_CARGO_HOME)
+
     return cargo_environment
 
 
-def _prefetch_supported_target_sources(cargo_environment: dict[str, str]) -> None:
-    for target_platform in SUPPORTED_RUNTIME_TARGETS:
-        subprocess.run(
-            ["cargo", "fetch", "--locked", "--target", target_platform],
-            capture_output=True,
-            check=True,
-            cwd=REPOSITORY_ROOT,
-            env=cargo_environment,
-            text=True,
-        )
+def _load_supported_target_cfgs() -> tuple[TargetCfg, ...]:
+    return tuple(_load_target_cfg(target_platform) for target_platform in SUPPORTED_RUNTIME_TARGETS)
+
+
+def _load_target_cfg(target_platform: str) -> TargetCfg:
+    result = subprocess.run(
+        [
+            "rustc",
+            "--print",
+            "cfg",
+            "--target",
+            target_platform,
+        ],
+        capture_output=True,
+        check=True,
+        cwd=REPOSITORY_ROOT,
+        text=True,
+    )
+
+    bare_flags: set[str] = set()
+    keyed_values: dict[str, set[str]] = defaultdict(set)
+
+    for raw_line in result.stdout.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+
+        if "=" not in line:
+            bare_flags.add(line)
+            continue
+
+        key, raw_value = line.split("=", maxsplit=1)
+        keyed_values[key].add(_parse_cfg_string_literal(raw_value))
+
+    return TargetCfg(
+        target_platform=target_platform,
+        bare_flags=frozenset(bare_flags),
+        keyed_values={
+            key: frozenset(values)
+            for key, values in keyed_values.items()
+        },
+    )
 
 
 def _normalize_text_newlines(value: str) -> str:
@@ -209,6 +200,7 @@ def _reachable_external_dependency_ids(
     root_package_id: str,
     workspace_member_ids: set[str],
     resolve_nodes_by_id: dict[str, dict[str, Any]],
+    target_cfg: TargetCfg,
 ) -> set[str]:
     queue = [root_package_id]
     visited = {root_package_id}
@@ -224,7 +216,7 @@ def _reachable_external_dependency_ids(
         for dependency in current_node.get("deps", ()):
             dependency_id = dependency["pkg"]
 
-            if not _dependency_is_runtime_relevant(dependency):
+            if not _dependency_is_runtime_relevant(dependency, target_cfg=target_cfg):
                 continue
             if dependency_id in visited:
                 continue
@@ -238,12 +230,189 @@ def _reachable_external_dependency_ids(
     return reachable_external_ids
 
 
-def _dependency_is_runtime_relevant(dependency: dict[str, Any]) -> bool:
+def _dependency_is_runtime_relevant(
+    dependency: dict[str, Any],
+    *,
+    target_cfg: TargetCfg,
+) -> bool:
     dependency_kinds = dependency.get("dep_kinds", ())
     if len(dependency_kinds) == 0:
         return False
 
-    return any(dependency_kind.get("kind") is None for dependency_kind in dependency_kinds)
+    return any(
+        dependency_kind.get("kind") is None
+        and _dependency_kind_matches_target(
+            dependency_kind.get("target"),
+            target_cfg=target_cfg,
+        )
+        for dependency_kind in dependency_kinds
+    )
+
+
+def _dependency_kind_matches_target(
+    raw_target_expression: Any,
+    *,
+    target_cfg: TargetCfg,
+) -> bool:
+    if raw_target_expression is None:
+        return True
+    if not isinstance(raw_target_expression, str):
+        raise ValueError(f"Unsupported cargo dependency target expression: {raw_target_expression!r}")
+
+    target_expression = raw_target_expression.strip()
+    if not target_expression:
+        return True
+    if not target_expression.startswith("cfg("):
+        return target_expression == target_cfg.target_platform
+
+    parser = _CfgExpressionParser(
+        expression=target_expression,
+        target_cfg=target_cfg,
+    )
+    return parser.parse()
+
+
+def _parse_cfg_string_literal(raw_value: str) -> str:
+    if len(raw_value) < 2 or raw_value[0] != '"' or raw_value[-1] != '"':
+        raise ValueError(f"Unsupported cfg string literal: {raw_value!r}")
+
+    return raw_value[1:-1]
+
+
+class _CfgExpressionParser:
+    def __init__(self, *, expression: str, target_cfg: TargetCfg) -> None:
+        self._expression = expression
+        self._position = 0
+        self._target_cfg = target_cfg
+
+    def parse(self) -> bool:
+        self._consume_whitespace()
+
+        if self._expression.startswith("cfg(", self._position):
+            self._position += 4
+
+            result = self._parse_expression()
+
+            self._consume_whitespace()
+            self._expect(")")
+        else:
+            result = self._parse_expression()
+
+        self._consume_whitespace()
+        if self._position != len(self._expression):
+            raise ValueError(
+                f"Unsupported trailing cfg expression content: {self._expression[self._position:]!r}"
+            )
+
+        return result
+
+    def _parse_expression(self) -> bool:
+        identifier = self._parse_identifier()
+        self._consume_whitespace()
+
+        if identifier == "all":
+            return self._parse_variadic_operator(all)
+        if identifier == "any":
+            return self._parse_variadic_operator(any)
+        if identifier == "not":
+            return self._parse_not_operator()
+
+        return self._parse_predicate(identifier)
+
+    def _parse_variadic_operator(self, reducer: Any) -> bool:
+        self._expect("(")
+        self._consume_whitespace()
+
+        values: list[bool] = []
+
+        if not self._expression.startswith(")", self._position):
+            values.append(self._parse_expression())
+
+            while True:
+                self._consume_whitespace()
+                if self._try_consume(","):
+                    values.append(self._parse_expression())
+                    continue
+                break
+
+        self._consume_whitespace()
+        self._expect(")")
+
+        return reducer(values)
+
+    def _parse_not_operator(self) -> bool:
+        self._expect("(")
+
+        value = self._parse_expression()
+
+        self._consume_whitespace()
+        self._expect(")")
+
+        return not value
+
+    def _parse_predicate(self, identifier: str) -> bool:
+        self._consume_whitespace()
+        if not self._try_consume("="):
+            return identifier in self._target_cfg.bare_flags
+
+        self._consume_whitespace()
+
+        expected_value = self._parse_string_literal()
+
+        return expected_value in self._target_cfg.keyed_values.get(identifier, frozenset())
+
+    def _parse_identifier(self) -> str:
+        self._consume_whitespace()
+
+        start = self._position
+        while self._position < len(self._expression):
+            current_char = self._expression[self._position]
+            if current_char.isalnum() or current_char == "_":
+                self._position += 1
+                continue
+            break
+
+        if start == self._position:
+            raise ValueError(
+                f"Unsupported cfg expression near: {self._expression[self._position:]!r}"
+            )
+
+        return self._expression[start:self._position]
+
+    def _parse_string_literal(self) -> str:
+        if self._position >= len(self._expression) or self._expression[self._position] != '"':
+            raise ValueError(
+                f"Unsupported cfg string literal near: {self._expression[self._position:]!r}"
+            )
+
+        start = self._position
+        self._position += 1
+
+        while self._position < len(self._expression):
+            current_char = self._expression[self._position]
+            self._position += 1
+            if current_char == '"':
+                return self._expression[start + 1:self._position - 1]
+
+        raise ValueError(f"Unterminated cfg string literal in: {self._expression!r}")
+
+    def _consume_whitespace(self) -> None:
+        while self._position < len(self._expression) and self._expression[self._position].isspace():
+            self._position += 1
+
+    def _expect(self, token: str) -> None:
+        if not self._try_consume(token):
+            raise ValueError(
+                f"Expected {token!r} in cfg expression: {self._expression!r}"
+            )
+
+    def _try_consume(self, token: str) -> bool:
+        self._consume_whitespace()
+        if self._expression.startswith(token, self._position):
+            self._position += len(token)
+            return True
+
+        return False
 
 
 def _legal_files_for_package_root(
@@ -407,6 +576,51 @@ def _optional_string(value: Any) -> str | None:
         return value
 
     return None
+
+
+def main() -> int:
+    argument_parser = argparse.ArgumentParser(
+        description=(
+            "Generate or validate THIRD_PARTY_NOTICES.txt for the Rust dependency closure "
+            "behind the janiform wheel extension."
+        )
+    )
+    argument_parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Exit with a non-zero status when THIRD_PARTY_NOTICES.txt is out of date.",
+    )
+    argument_parser.add_argument(
+        "--output-path",
+        default=str(DEFAULT_OUTPUT_PATH),
+        help="Path where the generated notices file should be written.",
+    )
+    arguments = argument_parser.parse_args()
+
+    output_path = Path(arguments.output_path)
+    third_party_packages = _collect_third_party_packages()
+    rendered_notices = _render_third_party_notices(third_party_packages)
+
+    if arguments.check:
+        existing = (
+            _normalize_text_newlines(output_path.read_text(encoding="utf-8"))
+            if output_path.exists()
+            else None
+        )
+        if existing != rendered_notices:
+            print(f"{output_path.relative_to(REPOSITORY_ROOT)} is out of date.")
+            print("Regenerate it with `python scripts/generate_third_party_notices.py`.")
+
+            return 1
+
+        return 0
+
+    with output_path.open("w", encoding="utf-8", newline="\n") as output_file:
+        output_file.write(rendered_notices)
+
+    print(f"Generated: {str(output_path.relative_to(REPOSITORY_ROOT))}")
+
+    return 0
 
 
 if __name__ == "__main__":
