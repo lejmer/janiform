@@ -494,8 +494,8 @@ class JaniformEstimator:
         option_surface_path: Optional[str | Path],
         option_surface_format: CalibrationInputFileFormat,
         option_surface_provenance_label: str,
-        option_surface_valuation_time_utc: Optional[datetime],
-        carry: Optional[CalibrationFlatCarryInput],
+        option_surface_valuation_time_utc: Optional[datetime] = None,
+        carry: Optional[CalibrationFlatCarryInput] = None,
         progress: Optional[AbstractProgress] = None,
     ) -> _PreparedHighLevelFitWorkflow:
         effective_progress = NullProgress() if progress is None else progress

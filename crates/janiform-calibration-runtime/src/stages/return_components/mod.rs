@@ -25,5 +25,43 @@ pub(crate) use continuous_fit::{
     nig_search_bounds_for_calibration_sample, nig_search_point_from_configuration,
     rescale_continuous_return_calibration_sample_business_time_scales,
 };
-pub use contracts::*;
-pub use execution::*;
+pub use contracts::{
+    ReturnComponentsActivityCouplingCandidateFamily, ReturnComponentsCloseOpenGapDetectionPolicy,
+    ReturnComponentsDetectedCloseOpenGapCandidate, ReturnComponentsDetectedIntradayJumpCandidate,
+    ReturnComponentsKnownNewsArrivalCandidateFamily, ReturnComponentsKnownNewsCalendarInput,
+    ReturnComponentsObservedCloseOpenBoundaryObservation,
+    ReturnComponentsObservedOpenSessionReturn, ReturnComponentsRealizedKnownNewsReturnSample,
+    ReturnComponentsReturnJumpMarkScaleCandidateFamily,
+    ReturnComponentsStageActivityCalibrationContextSnapshot,
+    ReturnComponentsStageActivityCouplingDiagnostic, ReturnComponentsStageActivityInput,
+    ReturnComponentsStageCandidateDiagnostic, ReturnComponentsStageCandidateFamilies,
+    ReturnComponentsStageCandidateFamilyCounts, ReturnComponentsStageCandidateGenerationInput,
+    ReturnComponentsStageCandidateGenerationInputError, ReturnComponentsStageCandidateInput,
+    ReturnComponentsStageCandidateInputError, ReturnComponentsStageCandidateProvenance,
+    ReturnComponentsStageCandidateSourceWindow, ReturnComponentsStageConstraintViolationDiagnostic,
+    ReturnComponentsStageContinuousDistributionFitBreakdownDiagnostic,
+    ReturnComponentsStageContinuousOptimizerBasinDiagnostic,
+    ReturnComponentsStageContinuousReturnSampleDiagnostic,
+    ReturnComponentsStageDeterministicSeedMetadata, ReturnComponentsStageDiagnosticPolicy,
+    ReturnComponentsStageExactCandidateEvaluation,
+    ReturnComponentsStageExactCandidateEvaluationError, ReturnComponentsStageExecutionFailure,
+    ReturnComponentsStageExecutionInput, ReturnComponentsStageExecutionMetadata,
+    ReturnComponentsStageExecutionReport, ReturnComponentsStageFittedPayload,
+    ReturnComponentsStageGapDiagnostic, ReturnComponentsStageHandoffOutput,
+    ReturnComponentsStageJumpDiagnostic, ReturnComponentsStageObjectiveMetricBuckets,
+    ReturnComponentsStageObjectiveMetricWeights, ReturnComponentsStageObjectiveScoringPolicy,
+    ReturnComponentsStageObjectiveTermDiagnostic, ReturnComponentsStageObjectiveTermInput,
+    ReturnComponentsStageObservedSignalSummaryStatistics,
+    ReturnComponentsStagePriceRangeSanityDiagnostic, ReturnComponentsStagePriceRangeSanityPolicy,
+    ReturnComponentsStageQuantileBinningPolicy, ReturnComponentsStageReturnDistributionDiagnostic,
+    ReturnComponentsStageSignalSourceWindow, ReturnComponentsStageSurpriseArrivalDiagnostic,
+    ReturnComponentsStageSurpriseEpisodeSelectionPolicy,
+    ReturnComponentsSurpriseNewsArrivalCandidateFamily,
+};
+pub(crate) use execution::{
+    ReturnComponentsStageJointRefinementObservedSignalPreparation,
+    prepare_observed_signal_inputs_for_joint_refinement, resolve_activity_calibration_context,
+};
+pub use execution::{
+    evaluate_return_components_exact_candidate, run_return_components_calibration_stage,
+};

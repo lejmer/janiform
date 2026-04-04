@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale.v1",
-  "approved_snapshot_sha256": "90223e7393914277ab616eb684d5cae64aaafc39886caaea9c9bfffb742a65c0",
+  "approved_snapshot_sha256": "734af8b58e91150f158cf3f88f07b34b2b482a64b04e0302e1a43df80fb3f6d4",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -894,6 +894,21 @@
       "updated_surfaces": [
         "janiform.calibration.fit",
         "janiform.calibration.fit.pricing"
+      ]
+    },
+    {
+      "approved_on": "2026-04-04",
+      "docs_updated": [],
+      "rationale": "High-level fit now infers the workflow scope from the supplied inputs, exposes option-snapshot valuation time and flat carry on the public fit and market-data request boundaries, and exports the flat-carry contract from the public market-data surface. The approved snapshot must therefore replace the old explicit full_without_option_surface estimator constructor default, add the new option-snapshot and carry fields to the market-data request signatures, and record the new CalibrationFlatCarryInput export across the calibration ownership modules.",
+      "snapshot_sha256": "734af8b58e91150f158cf3f88f07b34b2b482a64b04e0302e1a43df80fb3f6d4",
+      "summary": "Approve inferred high-level fit scope and public option-snapshot carry request fields.",
+      "updated_surfaces": [
+        "janiform.calibration",
+        "janiform.calibration.fit",
+        "janiform.calibration.fit.estimator",
+        "janiform.calibration.market_data",
+        "janiform.calibration.market_data.contracts",
+        "janiform.calibration.market_data.request"
       ]
     }
   ],

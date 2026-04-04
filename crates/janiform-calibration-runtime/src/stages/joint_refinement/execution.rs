@@ -4100,7 +4100,7 @@ mod tests {
 
         let primary_metrics = joint_primary_metrics_from_breakdown(&breakdown);
 
-        assert_eq!(primary_metrics.len(), 11);
+        assert_eq!(primary_metrics.len(), 12);
         assert_eq!(primary_metrics[3], 1.7);
         assert_eq!(primary_metrics[5], 1.9);
     }

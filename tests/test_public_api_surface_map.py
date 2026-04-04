@@ -735,6 +735,7 @@ def test_calibration_market_data_public_submodule_is_supported_domain_import() -
         "CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION",
         "CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION",
         "CalibrationDuplicateRecordPolicy",
+        "CalibrationFlatCarryInput",
         "CalibrationInputFileFormat",
         "CalibrationInputFileReference",
         "CalibrationKnownNewsColumnMapping",

@@ -1033,7 +1033,7 @@ pub(crate) fn resolve_activity_calibration_context(
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct ReturnComponentsStageSortedSignalInputs {
+pub(crate) struct ReturnComponentsStageSortedSignalInputs {
     pub(super) known_return_samples: Vec<ReturnComponentsRealizedKnownNewsReturnSample>,
     pub(super) observed_open_session_returns: Vec<ReturnComponentsObservedOpenSessionReturn>,
     pub(super) continuous_fit_returns: Vec<ReturnComponentsObservedOpenSessionReturn>,

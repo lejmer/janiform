@@ -27,7 +27,6 @@ pub struct HawkesStageFittedParameters {
     pub kernel_parameters: HawkesKernelParameters,
     pub structured_alpha: HawkesStructuredAlphaParameterization,
     pub structured_rho: HawkesStructuredRhoParameterization,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub self_dominance_policy: Option<HawkesStructuredRhoSelfDominancePolicy>,
     pub stability_numeric_tolerance: f64,
 }
@@ -169,7 +168,7 @@ pub struct JointRefinementStageOptimizerDiagnostics {
 pub struct JointRefinementStageFittedParameters {
     pub hawkes_fitted_parameters: HawkesStageFittedParameters,
     pub return_components_fitted_parameters: ReturnComponentsStageFittedParameters,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub pricing_block_fitted_parameters: Option<JointRefinementStagePricingBlockFittedParameters>,
 }
 
