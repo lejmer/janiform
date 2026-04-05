@@ -788,27 +788,27 @@ class CalibrationMemoryCheckpointStore:
 def estimate_intraday_seasonality(
     exchange_local_minute_of_day: object,
     *,
-    minutes_per_bin: int = 1,
-    smoothing_kernel: str = "gaussian",
-    smoothing_bandwidth_bins: float = 3.0,
-    minimum_bin_events: int = 1,
-    pseudocount: float = 1e-6,
+    minutes_per_bin: int,
+    smoothing_kernel: str,
+    smoothing_bandwidth_bins: float,
+    minimum_bin_events: int,
+    pseudocount: float,
 ) -> IntradaySeasonalityEstimateResult: ...
 
 
 def estimate_day_of_week_seasonality(
     exchange_local_day_of_week: object,
     *,
-    minimum_bucket_events: int = 1,
-    pseudocount: float = 1e-6,
+    minimum_bucket_events: int,
+    pseudocount: float,
 ) -> DayOfWeekSeasonalityEstimateResult: ...
 
 
 def estimate_day_of_year_seasonality(
     exchange_local_day_of_year: object,
     *,
-    minimum_bucket_events: int = 1,
-    pseudocount: float = 1e-6,
+    minimum_bucket_events: int,
+    pseudocount: float,
 ) -> DayOfYearSeasonalityEstimateResult: ...
 
 
@@ -821,7 +821,7 @@ def compose_deterministic_seasonality_signal(
     day_of_week_log_component: object,
     day_of_year_log_component: object,
     *,
-    intraday_minutes_per_bin: int = 1,
+    intraday_minutes_per_bin: int,
     scheduled_event_overlays: Optional[object] = None,
 ) -> DeterministicSeasonalityCompositionResult: ...
 
@@ -834,7 +834,7 @@ def generate_seasonality_diagnostics_report(
     day_of_year_estimate: DayOfYearSeasonalityEstimateResult,
     composition: DeterministicSeasonalityCompositionResult,
     *,
-    estimator_version: str = "seasonality_estimator.v1",
+    estimator_version: str,
 ) -> str: ...
 
 
@@ -903,8 +903,8 @@ def run_deterministic_regression_harness(
     calendar_cases: object,
     seasonality_cases: object,
     *,
-    seasonality_absolute_tolerance: float = 1e-12,
-    news_intensity_absolute_tolerance: float = 1e-12,
+    seasonality_absolute_tolerance: float,
+    news_intensity_absolute_tolerance: float,
 ) -> str: ...
 
 
@@ -912,7 +912,7 @@ def run_open_closed_gap_leakage_regression_harness(
     calendar_registry: CalendarRegistry,
     gap_behavior_cases: object,
     *,
-    direct_gap_absolute_tolerance: float = 1e-12,
+    component_absolute_tolerance: float,
 ) -> str: ...
 
 
