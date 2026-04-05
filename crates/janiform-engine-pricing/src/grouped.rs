@@ -383,24 +383,20 @@ impl Error for VanillaOptionGroupedBatchPricingRunError {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct VanillaOptionSurfacePricingRequest {
-    pub spot: f64,
-    pub strikes: Vec<f64>,
-    pub maturity_intervals: Vec<f64>,
-    pub payoff_type: VanillaOptionPayoffType,
-    pub risk_free_rate: f64,
-    pub dividend_yield: f64,
+    pub market_inputs: VanillaOptionPricingMarketInputs,
+    pub payoff: VanillaOptionPayoffConfiguration,
 }
 
 impl VanillaOptionSurfacePricingRequest {
     pub fn validate(&self) -> Result<(), VanillaOptionGroupedBatchPricingRequestError> {
         VanillaOptionGroupedBatchPricingRequest {
-            spot: self.spot,
+            spot: self.market_inputs.spot,
             groups: vec![VanillaOptionGroupedBatchGroupRequest {
-                payoff_type: self.payoff_type,
-                risk_free_rate: self.risk_free_rate,
-                dividend_yield: self.dividend_yield,
-                strikes: self.strikes.clone(),
-                maturity_intervals: self.maturity_intervals.clone(),
+                payoff_type: self.payoff.payoff_type,
+                risk_free_rate: self.market_inputs.risk_free_rate,
+                dividend_yield: self.market_inputs.dividend_yield,
+                strikes: self.market_inputs.strikes.clone(),
+                maturity_intervals: self.market_inputs.maturity_intervals.clone(),
             }],
         }
         .validate()
@@ -490,13 +486,13 @@ impl VanillaOptionSurfacePricingExecutionInput {
     pub fn validate(&self) -> Result<(), VanillaOptionSurfacePricingExecutionInputError> {
         VanillaOptionGroupedBatchPricingExecutionInput {
             request: VanillaOptionGroupedBatchPricingRequest {
-                spot: self.request.spot,
+                spot: self.request.market_inputs.spot,
                 groups: vec![VanillaOptionGroupedBatchGroupRequest {
-                    payoff_type: self.request.payoff_type,
-                    risk_free_rate: self.request.risk_free_rate,
-                    dividend_yield: self.request.dividend_yield,
-                    strikes: self.request.strikes.clone(),
-                    maturity_intervals: self.request.maturity_intervals.clone(),
+                    payoff_type: self.request.payoff.payoff_type,
+                    risk_free_rate: self.request.market_inputs.risk_free_rate,
+                    dividend_yield: self.request.market_inputs.dividend_yield,
+                    strikes: self.request.market_inputs.strikes.clone(),
+                    maturity_intervals: self.request.market_inputs.maturity_intervals.clone(),
                 }],
             },
             boundary_input: self.boundary_input.clone(),
@@ -665,13 +661,17 @@ pub fn run_vanilla_option_surface_pricing_with_observer(
     let grouped_result = run_vanilla_option_grouped_batch_pricing_with_observer(
         VanillaOptionGroupedBatchPricingExecutionInput {
             request: VanillaOptionGroupedBatchPricingRequest {
-                spot: execution_input.request.spot,
+                spot: execution_input.request.market_inputs.spot,
                 groups: vec![VanillaOptionGroupedBatchGroupRequest {
-                    payoff_type: execution_input.request.payoff_type,
-                    risk_free_rate: execution_input.request.risk_free_rate,
-                    dividend_yield: execution_input.request.dividend_yield,
-                    strikes: execution_input.request.strikes.clone(),
-                    maturity_intervals: execution_input.request.maturity_intervals.clone(),
+                    payoff_type: execution_input.request.payoff.payoff_type,
+                    risk_free_rate: execution_input.request.market_inputs.risk_free_rate,
+                    dividend_yield: execution_input.request.market_inputs.dividend_yield,
+                    strikes: execution_input.request.market_inputs.strikes.clone(),
+                    maturity_intervals: execution_input
+                        .request
+                        .market_inputs
+                        .maturity_intervals
+                        .clone(),
                 }],
             },
             boundary_input: execution_input.boundary_input,
@@ -942,7 +942,7 @@ fn price_direct_fourier_row(
 
     let solve_strike = |strike: f64| {
         let mut request = VanillaOptionPricingRequest::new_with_interval_delta(
-            VanillaOptionPricingMarketInputs::new(
+            VanillaOptionPricingMarketInputs::new_single_node(
                 spot,
                 strike,
                 group.maturity_intervals[maturity_index],
@@ -1135,7 +1135,7 @@ fn base_scope_request(
     fourier_inversion_settings: Option<FourierInversionEngineSettings>,
 ) -> Result<VanillaOptionPricingRequest, super::contracts::VanillaOptionPricingRequestError> {
     let mut request = VanillaOptionPricingRequest::try_new_with_interval_delta(
-        VanillaOptionPricingMarketInputs::try_new(
+        VanillaOptionPricingMarketInputs::try_new_single_node(
             spot,
             spot,
             maturity_interval,

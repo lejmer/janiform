@@ -27,7 +27,7 @@ use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 
 pub(super) fn build_valid_vanilla_option_request() -> VanillaOptionPricingRequest {
     VanillaOptionPricingRequest::try_new(
-        VanillaOptionPricingMarketInputs::try_new(101.0, 100.0, 1.0, 0.02, 0.01)
+        VanillaOptionPricingMarketInputs::try_new_single_node(101.0, 100.0, 1.0, 0.02, 0.01)
             .expect("market inputs should construct"),
         VanillaOptionPayoffConfiguration {
             payoff_type: VanillaOptionPayoffType::Call,
@@ -121,26 +121,28 @@ pub(super) fn valid_model_parameters() -> VanillaOptionPricingModelParameters {
 }
 
 pub(super) fn build_reference_market_inputs() -> VanillaOptionPricingMarketInputs {
-    VanillaOptionPricingMarketInputs::try_new(100.0, 95.0, 0.5, 0.02, 0.01)
+    VanillaOptionPricingMarketInputs::try_new_single_node(100.0, 95.0, 0.5, 0.02, 0.01)
         .expect("reference market inputs should construct")
 }
 
 pub(super) fn build_reference_pricing_response(
-    market_inputs: VanillaOptionPricingMarketInputs,
+    market_inputs: &VanillaOptionPricingMarketInputs,
 ) -> VanillaOptionPricingResponse {
-    let forward_price = market_inputs.spot
-        * ((market_inputs.risk_free_rate - market_inputs.dividend_yield)
-            * market_inputs.maturity_interval)
-            .exp();
+    let maturity_interval = market_inputs
+        .single_maturity_interval()
+        .expect("reference response requires single-node market inputs");
 
-    let discount_factor = (-market_inputs.risk_free_rate * market_inputs.maturity_interval).exp();
+    let forward_price = market_inputs.spot
+        * ((market_inputs.risk_free_rate - market_inputs.dividend_yield) * maturity_interval).exp();
+
+    let discount_factor = (-market_inputs.risk_free_rate * maturity_interval).exp();
 
     VanillaOptionPricingResponse::try_new(
         12.5,
         VanillaOptionPricingDiagnostics::try_new(
             forward_price,
             discount_factor,
-            market_inputs.maturity_interval,
+            maturity_interval,
             0.55,
         )
         .expect("reference diagnostics should construct"),
@@ -169,7 +171,7 @@ pub(super) fn build_reference_transform_diagnostics_source()
 }
 
 pub(super) fn build_reference_integration_diagnostics_source(
-    market_inputs: VanillaOptionPricingMarketInputs,
+    market_inputs: &VanillaOptionPricingMarketInputs,
 ) -> FourierInversionDiagnostics {
     let result = price_vanilla_option_via_fourier_inversion(
         market_inputs,

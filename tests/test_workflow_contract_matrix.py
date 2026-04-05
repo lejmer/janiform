@@ -197,7 +197,7 @@ def _failure_scenarios() -> tuple[FailureScenario, ...]:
             scenario_id="invalid_request_missing_strike",
             runner=_run_pricing_invalid_request_missing_strike,
             expected_error_id="pricing.validation.contract",
-            expected_field_path="market_inputs.strike",
+            expected_field_path="market_inputs.strikes",
             expected_message_substring="is required",
         ),
         FailureScenario(
@@ -558,7 +558,7 @@ def _run_pricing_invalid_request_missing_strike(calendar_registry) -> None:
     del calendar_registry
 
     request_payload = _valid_pricing_execution_input().request.to_payload()
-    del request_payload["market_inputs"]["strike"]
+    del request_payload["market_inputs"]["strikes"]
 
     VanillaOptionPricingRequest.from_mapping(request_payload)
 
@@ -621,8 +621,8 @@ def _valid_pricing_execution_input() -> VanillaOptionPricingExecutionInput:
         request=VanillaOptionPricingRequest(
             market_inputs=VanillaOptionPricingMarketInputs(
                 spot=101.0,
-                strike=100.0,
-                maturity_interval=1.0,
+                strikes=(100.0,),
+                maturity_intervals=(1.0,),
                 risk_free_rate=0.02,
                 dividend_yield=0.01,
             ),

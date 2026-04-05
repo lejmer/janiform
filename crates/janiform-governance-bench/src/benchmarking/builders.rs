@@ -198,7 +198,7 @@ pub fn build_pricing_market_inputs(
         strike_noise,
     );
 
-    VanillaOptionPricingMarketInputs::try_new(
+    VanillaOptionPricingMarketInputs::try_new_single_node(
         spot,
         strike,
         maturity_interval,

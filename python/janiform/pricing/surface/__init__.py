@@ -1,6 +1,5 @@
 from .contracts import (
     VanillaOptionSurfacePricingExecutionInput,
-    VanillaOptionSurfacePricingMarketInputs,
     VanillaOptionSurfacePricingNodeTable,
     VanillaOptionSurfacePricingRequest,
     VanillaOptionSurfacePricingResponse,
@@ -9,7 +8,6 @@ from .contracts import (
 
 __all__ = [
     "VanillaOptionSurfacePricingExecutionInput",
-    "VanillaOptionSurfacePricingMarketInputs",
     "VanillaOptionSurfacePricingNodeTable",
     "VanillaOptionSurfacePricingRequest",
     "VanillaOptionSurfacePricingResponse",

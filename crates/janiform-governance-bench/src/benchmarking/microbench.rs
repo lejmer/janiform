@@ -117,7 +117,7 @@ pub struct PreparedOracleSolverBenchmarkCase {
     pub solver_settings: ExponentialAffineTransformSolverSettings,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PreparedPricingKernelBenchmarkCase {
     pub profile_id: &'static str,
     pub market_inputs: VanillaOptionPricingMarketInputs,
@@ -196,11 +196,14 @@ impl MicrobenchmarkFixtureSet {
         profile_id: &'static str,
     ) -> Result<PreparedPricingKernelBenchmarkCase, MicrobenchmarkFixtureError> {
         let profile = self.profile(profile_id)?;
+
         let pricing_seed = self.component_seed(
             profile,
             self.policy.seed_partition.pricing_component_seed_salt,
         );
+
         let invocation_seed = derive_invocation_seed(pricing_seed, 1);
+
         let market_inputs = build_pricing_market_inputs(profile, &self.policy, invocation_seed)
             .map_err(
                 |source| MicrobenchmarkFixtureError::InvalidPreparedWorkload {
@@ -210,13 +213,24 @@ impl MicrobenchmarkFixtureSet {
                     },
                 },
             )?;
+
         let engine_settings = build_pricing_engine_settings(profile, &self.policy)
             .map_err(|source| MicrobenchmarkFixtureError::InvalidPreparedWorkload { source })?;
+
         let payoff = VanillaOptionPayoffConfiguration {
             payoff_type: VanillaOptionPayoffType::Call,
         };
         let volatility = interpolate_pricing_volatility(&self.policy, invocation_seed);
-        let maturity_interval = market_inputs.maturity_interval;
+
+        let maturity_interval = market_inputs.single_maturity_interval().map_err(|source| {
+            MicrobenchmarkFixtureError::InvalidPreparedWorkload {
+                source: OraclePricerRiskBenchmarkHarnessError::InvalidPricingMarketInputs {
+                    profile_id: profile.profile_id.clone(),
+                    source,
+                },
+            }
+        })?;
+
         let drift = (market_inputs.risk_free_rate
             - market_inputs.dividend_yield
             - 0.5 * volatility * volatility)

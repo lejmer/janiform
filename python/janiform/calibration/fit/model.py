@@ -1208,8 +1208,8 @@ def _prepare_model_pricing_execution_input(
         request=VanillaOptionPricingRequest(
             market_inputs=VanillaOptionPricingMarketInputs(
                 spot=spot,
-                strike=strike,
-                maturity_interval=maturity_interval,
+                strikes=(strike,),
+                maturity_intervals=(maturity_interval,),
                 risk_free_rate=risk_free_rate,
                 dividend_yield=dividend_yield,
             ),
@@ -1496,12 +1496,16 @@ def _prepare_model_surface_pricing_native_input(
 
     return {
         "request": {
-            "spot": surface.spot,
-            "strikes": list(surface.strikes),
-            "maturity_intervals": list(resolved_surface_maturity_inputs.maturity_intervals),
-            "payoff_type": surface.payoff_type.value,
-            "risk_free_rate": surface.risk_free_rate,
-            "dividend_yield": surface.dividend_yield,
+            "market_inputs": {
+                "spot": surface.spot,
+                "strikes": list(surface.strikes),
+                "maturity_intervals": list(resolved_surface_maturity_inputs.maturity_intervals),
+                "risk_free_rate": surface.risk_free_rate,
+                "dividend_yield": surface.dividend_yield,
+            },
+            "payoff": {
+                "payoff_type": surface.payoff_type.value,
+            },
         },
         "boundary_input": AnchoredVanillaOptionPricingBoundaryInput(
             interval_index=0,

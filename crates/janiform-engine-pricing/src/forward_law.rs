@@ -174,7 +174,7 @@ pub(crate) fn price_terminal_snapshot_strikes(
                 .sum::<f64>();
 
         let implied_volatility_outcome = invert_vanilla_option_implied_volatility(
-            VanillaOptionPricingMarketInputs::new(
+            &VanillaOptionPricingMarketInputs::new_single_node(
                 pricing_request.market_inputs.spot,
                 strike,
                 maturity_interval,
@@ -847,7 +847,7 @@ fn pricing_request_for_strike(
     maturity_interval_count: usize,
 ) -> Result<VanillaOptionPricingRequest, VanillaOptionPricingRunError> {
     let request = VanillaOptionPricingRequest::try_new_with_interval_delta(
-        VanillaOptionPricingMarketInputs::try_new(
+        VanillaOptionPricingMarketInputs::try_new_single_node(
             pricing_request.market_inputs.spot,
             strike,
             pricing_request.interval_delta * maturity_interval_count as f64,

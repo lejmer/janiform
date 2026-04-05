@@ -20,9 +20,15 @@ fn fourier_inversion_call_price_matches_black_scholes_sanity_case() {
     // Note: This validates Fourier inversion mechanics against a closed-form benchmark and does
     // NOT assume Janiform dynamics are Black-Scholes.
 
-    let market_inputs =
-        VanillaOptionPricingMarketInputs::try_new(100.0, 100.0, ONE_YEAR_IN_HOURS, 0.02, 0.01)
-            .expect("market inputs should construct");
+    let market_inputs = VanillaOptionPricingMarketInputs::try_new_single_node(
+        100.0,
+        100.0,
+        ONE_YEAR_IN_HOURS,
+        0.02,
+        0.01,
+    )
+    .expect("market inputs should construct");
+
     let volatility = 0.2;
     let settings = FourierInversionEngineSettings::try_new(
         FourierInversionContour::try_new(1.5).expect("contour settings should construct"),
@@ -36,19 +42,19 @@ fn fourier_inversion_call_price_matches_black_scholes_sanity_case() {
     .expect("engine settings should construct");
 
     let result = price_vanilla_option_via_fourier_inversion(
-        market_inputs,
+        &market_inputs,
         VanillaOptionPayoffConfiguration {
             payoff_type: VanillaOptionPayoffType::Call,
         },
         settings,
         |argument| {
-            black_scholes_log_return_characteristic_function(market_inputs, volatility, argument)
+            black_scholes_log_return_characteristic_function(&market_inputs, volatility, argument)
         },
     )
     .expect("fourier inversion call pricing should succeed");
 
     let expected_call_price =
-        black_scholes_price(market_inputs, VanillaOptionPayoffType::Call, volatility);
+        black_scholes_price(&market_inputs, VanillaOptionPayoffType::Call, volatility);
     let absolute_error = (result.price - expected_call_price).abs();
     assert!(
         absolute_error <= 1.0e-3,
@@ -65,9 +71,15 @@ fn fourier_inversion_put_price_matches_black_scholes_sanity_case() {
     // Note: This validates Fourier inversion mechanics against a closed-form benchmark and does
     // NOT assume Janiform dynamics are Black-Scholes.
 
-    let market_inputs =
-        VanillaOptionPricingMarketInputs::try_new(100.0, 100.0, ONE_YEAR_IN_HOURS, 0.02, 0.01)
-            .expect("market inputs should construct");
+    let market_inputs = VanillaOptionPricingMarketInputs::try_new_single_node(
+        100.0,
+        100.0,
+        ONE_YEAR_IN_HOURS,
+        0.02,
+        0.01,
+    )
+    .expect("market inputs should construct");
+
     let volatility = 0.2;
     let settings = FourierInversionEngineSettings::try_new(
         FourierInversionContour::try_new(1.5).expect("contour settings should construct"),
@@ -81,19 +93,19 @@ fn fourier_inversion_put_price_matches_black_scholes_sanity_case() {
     .expect("engine settings should construct");
 
     let result = price_vanilla_option_via_fourier_inversion(
-        market_inputs,
+        &market_inputs,
         VanillaOptionPayoffConfiguration {
             payoff_type: VanillaOptionPayoffType::Put,
         },
         settings,
         |argument| {
-            black_scholes_log_return_characteristic_function(market_inputs, volatility, argument)
+            black_scholes_log_return_characteristic_function(&market_inputs, volatility, argument)
         },
     )
     .expect("fourier inversion put pricing should succeed");
 
     let expected_put_price =
-        black_scholes_price(market_inputs, VanillaOptionPayoffType::Put, volatility);
+        black_scholes_price(&market_inputs, VanillaOptionPayoffType::Put, volatility);
     let absolute_error = (result.price - expected_put_price).abs();
     assert!(
         absolute_error <= 1.0e-3,
@@ -114,16 +126,22 @@ fn fourier_inversion_rejects_invalid_integration_settings() {
         FourierInversionContourError::InvalidDampingFactor { value } if value == 0.0
     ));
 
-    let market_inputs =
-        VanillaOptionPricingMarketInputs::try_new(100.0, 100.0, ONE_YEAR_IN_HOURS, 0.02, 0.01)
-            .expect("market inputs should construct");
+    let market_inputs = VanillaOptionPricingMarketInputs::try_new_single_node(
+        100.0,
+        100.0,
+        ONE_YEAR_IN_HOURS,
+        0.02,
+        0.01,
+    )
+    .expect("market inputs should construct");
+
     let invalid_settings = FourierInversionEngineSettings::new(
         FourierInversionContour::new(1.0),
         FourierInversionNumericSettings::new(120.0, 0, FourierInversionQuadratureRule::Midpoint),
     );
 
     let error = price_vanilla_option_via_fourier_inversion(
-        market_inputs,
+        &market_inputs,
         VanillaOptionPayoffConfiguration {
             payoff_type: VanillaOptionPayoffType::Call,
         },
@@ -172,8 +190,9 @@ fn fourier_inversion_stability_controls_validate_and_deserialize_with_defaults()
 
 #[test]
 fn fourier_inversion_emits_numeric_quality_diagnostics_for_poor_settings() {
-    let market_inputs = VanillaOptionPricingMarketInputs::try_new(100.0, 100.0, 1.0, 0.02, 0.01)
-        .expect("market inputs should construct");
+    let market_inputs =
+        VanillaOptionPricingMarketInputs::try_new_single_node(100.0, 100.0, 1.0, 0.02, 0.01)
+            .expect("market inputs should construct");
     let volatility = 0.2;
 
     let strict_controls = FourierInversionIntegrationStabilityControls::try_new(
@@ -193,13 +212,13 @@ fn fourier_inversion_emits_numeric_quality_diagnostics_for_poor_settings() {
     .expect("engine settings should construct");
 
     let result = price_vanilla_option_via_fourier_inversion(
-        market_inputs,
+        &market_inputs,
         VanillaOptionPayoffConfiguration {
             payoff_type: VanillaOptionPayoffType::Call,
         },
         poor_settings,
         |argument| {
-            black_scholes_log_return_characteristic_function(market_inputs, volatility, argument)
+            black_scholes_log_return_characteristic_function(&market_inputs, volatility, argument)
         },
     )
     .expect("diagnostics-only quality gate should not fail pricing");
@@ -214,8 +233,9 @@ fn fourier_inversion_emits_numeric_quality_diagnostics_for_poor_settings() {
 
 #[test]
 fn fourier_inversion_quality_gate_can_fail_under_poor_settings() {
-    let market_inputs = VanillaOptionPricingMarketInputs::try_new(100.0, 100.0, 1.0, 0.02, 0.01)
-        .expect("market inputs should construct");
+    let market_inputs =
+        VanillaOptionPricingMarketInputs::try_new_single_node(100.0, 100.0, 1.0, 0.02, 0.01)
+            .expect("market inputs should construct");
     let volatility = 0.2;
 
     let strict_controls = FourierInversionIntegrationStabilityControls::try_new(
@@ -235,13 +255,13 @@ fn fourier_inversion_quality_gate_can_fail_under_poor_settings() {
     .expect("engine settings should construct");
 
     let error = price_vanilla_option_via_fourier_inversion(
-        market_inputs,
+        &market_inputs,
         VanillaOptionPayoffConfiguration {
             payoff_type: VanillaOptionPayoffType::Call,
         },
         poor_settings,
         |argument| {
-            black_scholes_log_return_characteristic_function(market_inputs, volatility, argument)
+            black_scholes_log_return_characteristic_function(&market_inputs, volatility, argument)
         },
     )
     .expect_err("enforced quality gate must fail on poor numeric quality");
@@ -255,8 +275,9 @@ fn fourier_inversion_quality_gate_can_fail_under_poor_settings() {
 
 #[test]
 fn fourier_inversion_quality_diagnostics_converge_on_reference_fixture() {
-    let market_inputs = VanillaOptionPricingMarketInputs::try_new(100.0, 100.0, 1.0, 0.02, 0.01)
-        .expect("market inputs should construct");
+    let market_inputs =
+        VanillaOptionPricingMarketInputs::try_new_single_node(100.0, 100.0, 1.0, 0.02, 0.01)
+            .expect("market inputs should construct");
     let volatility = 0.2;
     let settings = FourierInversionEngineSettings::try_new(
         FourierInversionContour::try_new(1.5).expect("contour settings should construct"),
@@ -270,13 +291,13 @@ fn fourier_inversion_quality_diagnostics_converge_on_reference_fixture() {
     .expect("engine settings should construct");
 
     let result = price_vanilla_option_via_fourier_inversion(
-        market_inputs,
+        &market_inputs,
         VanillaOptionPayoffConfiguration {
             payoff_type: VanillaOptionPayoffType::Call,
         },
         settings,
         |argument| {
-            black_scholes_log_return_characteristic_function(market_inputs, volatility, argument)
+            black_scholes_log_return_characteristic_function(&market_inputs, volatility, argument)
         },
     )
     .expect("reference settings should produce converged diagnostics");
@@ -303,8 +324,9 @@ fn fourier_inversion_quality_diagnostics_converge_on_reference_fixture() {
 
 #[test]
 fn fourier_inversion_surfaces_non_finite_characteristic_function_boundary_failures() {
-    let market_inputs = VanillaOptionPricingMarketInputs::try_new(100.0, 95.0, 0.5, 0.01, 0.0)
-        .expect("market inputs should construct");
+    let market_inputs =
+        VanillaOptionPricingMarketInputs::try_new_single_node(100.0, 95.0, 0.5, 0.01, 0.0)
+            .expect("market inputs should construct");
     let settings = FourierInversionEngineSettings::try_new(
         FourierInversionContour::try_new(1.2).expect("contour settings should construct"),
         FourierInversionNumericSettings::try_new(
@@ -317,7 +339,7 @@ fn fourier_inversion_surfaces_non_finite_characteristic_function_boundary_failur
     .expect("engine settings should construct");
 
     let error = price_vanilla_option_via_fourier_inversion(
-        market_inputs,
+        &market_inputs,
         VanillaOptionPayoffConfiguration {
             payoff_type: VanillaOptionPayoffType::Call,
         },
@@ -339,8 +361,9 @@ fn fourier_inversion_surfaces_non_finite_characteristic_function_boundary_failur
 
 #[test]
 fn fourier_inversion_output_is_deterministic_for_reference_fixture() {
-    let market_inputs = VanillaOptionPricingMarketInputs::try_new(103.0, 100.0, 0.75, 0.03, 0.01)
-        .expect("market inputs should construct");
+    let market_inputs =
+        VanillaOptionPricingMarketInputs::try_new_single_node(103.0, 100.0, 0.75, 0.03, 0.01)
+            .expect("market inputs should construct");
     let volatility = 0.25;
     let settings = FourierInversionEngineSettings::default();
     let payoff = VanillaOptionPayoffConfiguration {
@@ -348,13 +371,13 @@ fn fourier_inversion_output_is_deterministic_for_reference_fixture() {
     };
 
     let first_result =
-        price_vanilla_option_via_fourier_inversion(market_inputs, payoff, settings, |argument| {
-            black_scholes_log_return_characteristic_function(market_inputs, volatility, argument)
+        price_vanilla_option_via_fourier_inversion(&market_inputs, payoff, settings, |argument| {
+            black_scholes_log_return_characteristic_function(&market_inputs, volatility, argument)
         })
         .expect("first deterministic pricing run should succeed");
     let second_result =
-        price_vanilla_option_via_fourier_inversion(market_inputs, payoff, settings, |argument| {
-            black_scholes_log_return_characteristic_function(market_inputs, volatility, argument)
+        price_vanilla_option_via_fourier_inversion(&market_inputs, payoff, settings, |argument| {
+            black_scholes_log_return_characteristic_function(&market_inputs, volatility, argument)
         })
         .expect("second deterministic pricing run should succeed");
 

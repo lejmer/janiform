@@ -47,8 +47,8 @@ fn vanilla_option_request_deserialization_defaults_interval_delta_to_hourly() {
     let payload_without_interval_delta = json!({
         "market_inputs": {
             "spot": 101.0,
-            "strike": 100.0,
-            "maturity_interval": 0.5,
+            "strikes": [100.0],
+            "maturity_intervals": [0.5],
             "risk_free_rate": 0.02,
             "dividend_yield": 0.01
         },
@@ -95,7 +95,7 @@ fn vanilla_option_request_deserialization_defaults_interval_delta_to_hourly() {
 #[test]
 fn vanilla_option_request_accepts_explicit_non_hourly_interval_delta() {
     let request = VanillaOptionPricingRequest::try_new_with_interval_delta(
-        VanillaOptionPricingMarketInputs::try_new(101.0, 100.0, 0.5, 0.02, 0.01)
+        VanillaOptionPricingMarketInputs::try_new_single_node(101.0, 100.0, 0.5, 0.02, 0.01)
             .expect("market inputs should construct"),
         VanillaOptionPayoffConfiguration {
             payoff_type: VanillaOptionPayoffType::Call,
@@ -191,7 +191,7 @@ fn vanilla_option_pricing_execution_input_rejects_negative_surprise_news_intensi
 #[test]
 fn vanilla_option_request_rejects_non_positive_interval_delta() {
     let error = VanillaOptionPricingRequest::try_new_with_interval_delta(
-        VanillaOptionPricingMarketInputs::try_new(101.0, 100.0, 0.5, 0.02, 0.01)
+        VanillaOptionPricingMarketInputs::try_new_single_node(101.0, 100.0, 0.5, 0.02, 0.01)
             .expect("market inputs should construct"),
         VanillaOptionPayoffConfiguration {
             payoff_type: VanillaOptionPayoffType::Call,
@@ -237,7 +237,8 @@ fn vanilla_option_response_roundtrip_serialization_preserves_contract_fields() {
 
 #[test]
 fn vanilla_option_request_rejects_invalid_market_input_with_structured_error() {
-    let market_inputs = VanillaOptionPricingMarketInputs::new(100.0, -90.0, 0.5, 0.02, 0.01);
+    let market_inputs =
+        VanillaOptionPricingMarketInputs::new_single_node(100.0, -90.0, 0.5, 0.02, 0.01);
 
     let error = VanillaOptionPricingRequest::try_new(
         market_inputs,
@@ -260,8 +261,8 @@ fn vanilla_option_request_rejects_invalid_market_input_with_structured_error() {
     assert!(matches!(
         error,
         VanillaOptionPricingRequestError::InvalidMarketInputs {
-            source: VanillaOptionPricingMarketInputsError::InvalidStrike { value }
-        } if value == -90.0
+            source: VanillaOptionPricingMarketInputsError::InvalidStrike { index, value }
+        } if index == 0 && value == -90.0
     ));
 }
 
@@ -289,12 +290,12 @@ fn vanilla_option_request_deserialize_rejects_incomplete_payload() {
     incomplete_payload["market_inputs"]
         .as_object_mut()
         .expect("market_inputs should be an object")
-        .remove("strike");
+        .remove("strikes");
 
     let error = serde_json::from_value::<VanillaOptionPricingRequest>(incomplete_payload)
         .expect_err("incomplete request payload should fail deserialization");
     let error_message = error.to_string();
-    assert!(error_message.contains("missing field `strike`"));
+    assert!(error_message.contains("missing field `strikes`"));
 }
 
 #[test]
@@ -380,9 +381,9 @@ fn vanilla_option_response_rejects_implied_volatility_for_failed_inversion() {
 #[test]
 fn pricing_run_output_selection_defaults_to_base_response_only() {
     let market_inputs = build_reference_market_inputs();
-    let response = build_reference_pricing_response(market_inputs);
+    let response = build_reference_pricing_response(&market_inputs);
     let transform_diagnostics = build_reference_transform_diagnostics_source();
-    let integration_quality = build_reference_integration_diagnostics_source(market_inputs);
+    let integration_quality = build_reference_integration_diagnostics_source(&market_inputs);
 
     let run_result = build_vanilla_option_pricing_run_result(
         response,
@@ -405,9 +406,9 @@ fn pricing_run_output_selection_defaults_to_base_response_only() {
 #[test]
 fn pricing_run_output_selection_can_emit_diagnostics_and_calibration_hooks() {
     let market_inputs = build_reference_market_inputs();
-    let response = build_reference_pricing_response(market_inputs);
+    let response = build_reference_pricing_response(&market_inputs);
     let transform_diagnostics = build_reference_transform_diagnostics_source();
-    let integration_quality = build_reference_integration_diagnostics_source(market_inputs);
+    let integration_quality = build_reference_integration_diagnostics_source(&market_inputs);
 
     let run_result = build_vanilla_option_pricing_run_result(
         response,
@@ -447,9 +448,9 @@ fn pricing_run_output_selection_can_emit_diagnostics_and_calibration_hooks() {
 #[test]
 fn pricing_run_output_schema_metadata_is_machine_readable_with_required_fields() {
     let market_inputs = build_reference_market_inputs();
-    let response = build_reference_pricing_response(market_inputs);
+    let response = build_reference_pricing_response(&market_inputs);
     let transform_diagnostics = build_reference_transform_diagnostics_source();
-    let integration_quality = build_reference_integration_diagnostics_source(market_inputs);
+    let integration_quality = build_reference_integration_diagnostics_source(&market_inputs);
     let run_result = build_vanilla_option_pricing_run_result(
         response,
         VanillaOptionPricingOptionalOutputSelection::new(true, true, true),
@@ -518,7 +519,7 @@ fn pricing_run_output_schema_metadata_is_machine_readable_with_required_fields()
 #[test]
 fn pricing_run_output_builder_reports_missing_selected_optional_sources() {
     let market_inputs = build_reference_market_inputs();
-    let response = build_reference_pricing_response(market_inputs);
+    let response = build_reference_pricing_response(&market_inputs);
 
     let missing_transform_error = build_vanilla_option_pricing_run_result(
         response,
@@ -565,8 +566,9 @@ fn pricing_run_output_builder_reports_missing_selected_optional_sources() {
 
 #[test]
 fn calibration_hooks_reject_invalid_market_inputs_with_actionable_error() {
-    let response = build_reference_pricing_response(build_reference_market_inputs());
-    let invalid_market_inputs = VanillaOptionPricingMarketInputs::new(0.0, 100.0, 0.5, 0.02, 0.01);
+    let response = build_reference_pricing_response(&build_reference_market_inputs());
+    let invalid_market_inputs =
+        VanillaOptionPricingMarketInputs::new_single_node(0.0, 100.0, 0.5, 0.02, 0.01);
 
     let error = build_vanilla_option_pricing_run_result(
         response,
