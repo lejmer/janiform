@@ -23,6 +23,7 @@ def test_fast_tier_workflow_has_required_triggers_fields_and_steps() -> None:
     assert "name: ci-fast-regression" in workflow_text
     assert "on:" in workflow_text
     assert "pull_request:" in workflow_text
+    assert "- develop" in workflow_text
     assert "workflow_dispatch:" in workflow_text
     assert "fast-deterministic-regression:" in workflow_text
     assert "timeout-minutes: 30" in workflow_text
@@ -44,6 +45,46 @@ def test_fast_tier_workflow_has_required_triggers_fields_and_steps() -> None:
     )
 
 
+def test_pr_fast_workflow_has_repository_contract_checks() -> None:
+    workflow_path: Path = _project_root() / ".github" / "workflows" / "ci-pr-fast.yml"
+    workflow_text: str = _load_workflow_text(workflow_path)
+
+    assert "name: ci-pr-fast" in workflow_text
+    assert "pull_request:" in workflow_text
+    assert "push:" in workflow_text
+    assert "- develop" in workflow_text
+    assert "workflow_dispatch:" in workflow_text
+    assert "repository-contracts-fast:" in workflow_text
+    assert "cargo fmt --all -- --check" in workflow_text
+    assert "./scripts/bootstrap-linux.sh .venv-linux" in workflow_text
+    assert "scripts/generate_crate_readmes.py --check" in workflow_text
+    assert "scripts/generate_third_party_notices.py --check" in workflow_text
+    assert "ci/tests/test_ci_tiered_execution_strategy.py" in workflow_text
+    assert "tests/test_api_contract_guardrails.py" in workflow_text
+    assert "tests/test_real_data_seeded_runtime_benchmark.py" in workflow_text
+
+
+def test_platform_workflow_has_linux_full_and_windows_smoke_jobs() -> None:
+    workflow_path: Path = _project_root() / ".github" / "workflows" / "ci-platform.yml"
+    workflow_text: str = _load_workflow_text(workflow_path)
+
+    assert "name: ci-platform" in workflow_text
+    assert "pull_request:" in workflow_text
+    assert "push:" in workflow_text
+    assert "- develop" in workflow_text
+    assert "workflow_dispatch:" in workflow_text
+    assert "linux-full-verification:" in workflow_text
+    assert "windows-build-smoke:" in workflow_text
+    assert "./scripts/bootstrap-linux.sh .venv-linux" in workflow_text
+    assert "./scripts/build-linux.sh .venv-linux" in workflow_text
+    assert "./scripts/test-rust-linux.sh .venv-linux" in workflow_text
+    assert "./scripts/test-python-linux.sh .venv-linux" in workflow_text
+    assert "./scripts/bootstrap-win.ps1 .venv" in workflow_text
+    assert "./scripts/build-win.ps1 .venv" in workflow_text
+    assert "python -m janiform --help" in workflow_text
+    assert "tests/test_public_api_surface_map.py" in workflow_text
+
+
 def test_rust_benchmark_governance_smoke_workflow_has_manual_trigger_and_artifact_hooks() -> None:
     workflow_path: Path = (
         _project_root()
@@ -55,7 +96,9 @@ def test_rust_benchmark_governance_smoke_workflow_has_manual_trigger_and_artifac
 
     assert "name: ci-rust-benchmark-governance-smoke" in workflow_text
     assert "on:" in workflow_text
+    assert "workflow_call:" in workflow_text
     assert "workflow_dispatch:" in workflow_text
+    assert "default: develop" in workflow_text
     assert "pull_request:" not in workflow_text
     assert "rust-benchmark-governance-smoke:" in workflow_text
     assert "timeout-minutes: 60" in workflow_text
@@ -72,27 +115,39 @@ def test_local_python_benchmark_runner_is_documented() -> None:
     project_root: Path = _project_root()
     runner_script_path = project_root / "scripts" / "python_benchmark_workloads.py"
     runner_script_text = _load_workflow_text(runner_script_path)
-    benchmark_taxonomy_guide = _load_workflow_text(
-        project_root
-        / "docs"
-        / "development"
-        / "guides"
-        / "benchmark_taxonomy_and_microbenchmark_workflows.md"
-    )
-    ci_tiering_guide = _load_workflow_text(
-        project_root
-        / "docs"
-        / "development"
-        / "guides"
-        / "ci_tiered_execution_strategy.md"
+    testing_guide = _load_workflow_text(
+        project_root / "docs" / "contributing" / "verification-and-automation.md"
     )
 
     assert "def _run_real_data_seeded_runtime_benchmark(" in runner_script_text
     assert "def _run_microbenchmark_smoke(" in runner_script_text
     assert "scripts/ci/run_real_data_seeded_runtime_benchmark.py" in runner_script_text
     assert "benches/python/python_microbenchmarks.py" in runner_script_text
-    assert "scripts/python_benchmark_workloads.py" in benchmark_taxonomy_guide
-    assert "scripts/python_benchmark_workloads.py" in ci_tiering_guide
+    assert "scripts/python_benchmark_workloads.py" in testing_guide
+    assert "ci-pr-fast" in testing_guide
+    assert "ci-platform" in testing_guide
+    assert "ci-rust-benchmark-governance-smoke" in testing_guide
+    assert "Protect `develop`" in testing_guide
+    assert "stay local-only" in testing_guide
+
+
+def test_release_candidate_workflow_builds_artifacts_and_creates_draft_release() -> None:
+    workflow_path: Path = _project_root() / ".github" / "workflows" / "release-candidate.yml"
+    workflow_text: str = _load_workflow_text(workflow_path)
+
+    assert "name: release-candidate" in workflow_text
+    assert "workflow_dispatch:" in workflow_text
+    assert "tag_name:" in workflow_text
+    assert "target_ref:" in workflow_text
+    assert "default: develop" in workflow_text
+    assert "release-metadata:" in workflow_text
+    assert "linux-release-candidate:" in workflow_text
+    assert "windows-release-candidate:" in workflow_text
+    assert "uses: ./.github/workflows/ci-rust-benchmark-governance-smoke.yml" in workflow_text
+    assert "python -m maturin build --release --out dist" in workflow_text
+    assert "gh release create" in workflow_text
+    assert "gh release upload" in workflow_text
+    assert "actions/download-artifact@v5" in workflow_text
 
 
 def test_fast_tier_runner_and_parser_smoke() -> None:

@@ -4,7 +4,7 @@ This directory stores versioned benchmark scenario workload profiles shared by c
 benchmark harnesses.
 
 The microbenchmark layer reuses these checked-in inputs. Local benchmark commands and CI workflow
-notes now live in [`docs/contributing/testing-and-verification.md`](../../../docs/contributing/testing-and-verification.md).
+notes now live in [`docs/contributing/verification-and-automation.md`](../../../docs/contributing/verification-and-automation.md).
 
 ## File
 
