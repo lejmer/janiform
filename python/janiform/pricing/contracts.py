@@ -31,6 +31,7 @@ from ..contracts import (
     require_positive_finite_number,
     require_positive_finite_scalar,
     require_positive_integer,
+    require_sequence,
     require_string,
     serialize_pretty_json,
     validate_exact_string,
@@ -137,6 +138,29 @@ class VanillaOptionImpliedVolatilityInversionStatus(StrEnum):
     PRICE_BELOW_NO_ARBITRAGE_LOWER_BOUND = "price_below_no_arbitrage_lower_bound"
     PRICE_EQUALS_FINITE_UPPER_BOUND = "price_equals_finite_upper_bound"
     PRICE_ABOVE_FINITE_UPPER_BOUND = "price_above_finite_upper_bound"
+
+
+def _tuple_of_positive_floats(
+    raw_payload: dict[str, Any],
+    *,
+    field_name: str,
+    field_path: str,
+) -> tuple[float, ...]:
+    values = require_sequence(
+        raw_payload,
+        field_name,
+        field_path,
+        PRICING_ERROR_FACTORY,
+    )
+
+    return tuple(
+        require_positive_finite_scalar(
+            value,
+            f"{field_path}[{value_index}]",
+            PRICING_ERROR_FACTORY,
+        )
+        for value_index, value in enumerate(values)
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -325,13 +349,82 @@ class VanillaOptionPayoffConfiguration(ContractModel):
 
 @dataclass(frozen=True, slots=True)
 class VanillaOptionPricingMarketInputs(ContractModel):
-    """Market inputs required for one vanilla option valuation."""
+    """Market inputs required for one pricing scope."""
 
     spot: float
-    strike: float
-    maturity_interval: float
+    strikes: tuple[float, ...]
+    maturity_intervals: tuple[float, ...]
     risk_free_rate: float
     dividend_yield: float
+
+    def __post_init__(self) -> None:
+        require_positive_finite_scalar(self.spot, "spot", PRICING_ERROR_FACTORY)
+        require_finite_number(
+            {"risk_free_rate": self.risk_free_rate},
+            "risk_free_rate",
+            "risk_free_rate",
+            PRICING_ERROR_FACTORY,
+        )
+        require_finite_number(
+            {"dividend_yield": self.dividend_yield},
+            "dividend_yield",
+            "dividend_yield",
+            PRICING_ERROR_FACTORY,
+        )
+
+        if len(self.strikes) == 0:
+            raise _pricing_error("strikes", "must contain at least one strike")
+        if len(self.maturity_intervals) == 0:
+            raise _pricing_error(
+                "maturity_intervals",
+                "must contain at least one maturity interval",
+            )
+
+        for strike_index, strike in enumerate(self.strikes):
+            require_positive_finite_scalar(
+                strike,
+                f"strikes[{strike_index}]",
+                PRICING_ERROR_FACTORY,
+            )
+
+        for maturity_index, maturity_interval in enumerate(self.maturity_intervals):
+            require_positive_finite_scalar(
+                maturity_interval,
+                f"maturity_intervals[{maturity_index}]",
+                PRICING_ERROR_FACTORY,
+            )
+
+    @property
+    def shape(self) -> tuple[int, int]:
+        return len(self.maturity_intervals), len(self.strikes)
+
+    @property
+    def single_strike(self) -> float:
+        if len(self.strikes) != 1 or len(self.maturity_intervals) != 1:
+            raise _pricing_error(
+                "market_inputs",
+                (
+                    "single-option pricing requires exactly one strike and one maturity "
+                    f"interval, found strikes={len(self.strikes)} "
+                    f"maturity_intervals={len(self.maturity_intervals)}"
+                ),
+            )
+
+        return self.strikes[0]
+
+    @property
+    def single_maturity_interval(self) -> float:
+        if len(self.strikes) != 1 or len(self.maturity_intervals) != 1:
+            raise _pricing_error(
+                "market_inputs",
+                (
+                    "single-option pricing requires exactly one strike and one maturity "
+                    f"interval, found strikes={len(self.strikes)} "
+                    f"maturity_intervals={len(self.maturity_intervals)}"
+                ),
+            )
+
+        return self.maturity_intervals[0]
 
     @staticmethod
     def from_mapping(
@@ -349,17 +442,15 @@ class VanillaOptionPricingMarketInputs(ContractModel):
                 f"{field_path}.spot",
                 PRICING_ERROR_FACTORY,
             ),
-            strike=require_positive_finite_number(
+            strikes=_tuple_of_positive_floats(
                 raw_payload,
-                "strike",
-                f"{field_path}.strike",
-                PRICING_ERROR_FACTORY,
+                field_name="strikes",
+                field_path=f"{field_path}.strikes",
             ),
-            maturity_interval=require_positive_finite_number(
+            maturity_intervals=_tuple_of_positive_floats(
                 raw_payload,
-                "maturity_interval",
-                f"{field_path}.maturity_interval",
-                PRICING_ERROR_FACTORY,
+                field_name="maturity_intervals",
+                field_path=f"{field_path}.maturity_intervals",
             ),
             risk_free_rate=require_finite_number(
                 raw_payload,
@@ -998,6 +1089,15 @@ class VanillaOptionPricingRequest(ContractModel):
             PRICING_ERROR_FACTORY,
         )
 
+        if not isinstance(self.market_inputs, VanillaOptionPricingMarketInputs):
+            raise _pricing_error(
+                "market_inputs",
+                "must be a VanillaOptionPricingMarketInputs",
+            )
+
+        _ = self.market_inputs.single_strike
+        _ = self.market_inputs.single_maturity_interval
+
         if not isinstance(self.boundary_input, AnchoredVanillaOptionPricingBoundaryInput):
             raise _pricing_error(
                 "boundary_input",
@@ -1275,12 +1375,14 @@ class VanillaOptionPricingExecutionInput(ContractModel):
         maturity_interval_from_runtime_grid = (
             self.hourly_factor_contract.interval_count * self.request.interval_delta
         )
-        if maturity_interval_from_runtime_grid != self.request.market_inputs.maturity_interval:
+        requested_maturity_interval = self.request.market_inputs.single_maturity_interval
+        if maturity_interval_from_runtime_grid != requested_maturity_interval:
             raise _pricing_error(
                 "hourly_factor_contract.interval_count",
                 (
                     "must satisfy interval_count * request.interval_delta = "
-                    f"request.market_inputs.maturity_interval ({self.request.market_inputs.maturity_interval}), "
+                    "request.market_inputs.single_maturity_interval "
+                    f"({requested_maturity_interval}), "
                     f"found {maturity_interval_from_runtime_grid}"
                 ),
             )
@@ -1662,7 +1764,6 @@ def _validate_implied_volatility_inversion_outcome(
 
 from .surface.contracts import (
     VanillaOptionSurfacePricingExecutionInput,
-    VanillaOptionSurfacePricingMarketInputs,
     VanillaOptionSurfacePricingNodeTable,
     VanillaOptionSurfacePricingRequest,
     VanillaOptionSurfacePricingResponse,
@@ -1702,7 +1803,6 @@ __all__ = [
     "VanillaOptionPricingRunOutputSchemaMetadata",
     "VanillaOptionPricingRunResult",
     "VanillaOptionSurfacePricingExecutionInput",
-    "VanillaOptionSurfacePricingMarketInputs",
     "VanillaOptionSurfacePricingNodeTable",
     "VanillaOptionSurfacePricingRequest",
     "VanillaOptionSurfacePricingResponse",

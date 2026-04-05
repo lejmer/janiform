@@ -2842,7 +2842,7 @@ def test_high_level_model_price_option_resolves_expiry_timestamp_date_and_tenor_
         "run_vanilla_option_pricing",
         lambda execution_input: (
             captured_maturity_intervals.append(
-                execution_input.request.market_inputs.maturity_interval
+                execution_input.request.market_inputs.single_maturity_interval
             )
             or object()
         ),
@@ -2944,7 +2944,7 @@ def test_high_level_surface_pricing_resolves_mixed_maturity_axes_to_native_reque
         cpu_count=None,
     )
 
-    assert native_execution_input["request"]["maturity_intervals"] == [1.0, 24.0]
+    assert native_execution_input["request"]["market_inputs"]["maturity_intervals"] == [1.0, 24.0]
 
 
 def test_high_level_model_price_option_groups_dispatches_through_grouped_batch_pricing_runner(

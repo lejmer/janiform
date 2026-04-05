@@ -190,8 +190,8 @@ def build_pricing_request() -> VanillaOptionPricingRequest:
     return VanillaOptionPricingRequest(
         market_inputs=VanillaOptionPricingMarketInputs(
             spot=101.0,
-            strike=100.0,
-            maturity_interval=1.0,
+            strikes=(100.0,),
+            maturity_intervals=(1.0,),
             risk_free_rate=0.02,
             dividend_yield=0.01,
         ),

@@ -13,7 +13,6 @@ from janiform.pricing import (
     VanillaOptionPricingOptionalOutputSelection,
     VanillaOptionPricingRequest,
     VanillaOptionSurfacePricingExecutionInput,
-    VanillaOptionSurfacePricingMarketInputs,
     VanillaOptionSurfacePricingRequest,
 )
 from janiform.simulation import HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters
@@ -34,8 +33,8 @@ def build_anchored_request_model() -> VanillaOptionPricingRequest:
     return VanillaOptionPricingRequest(
         market_inputs=VanillaOptionPricingMarketInputs(
             spot=101.0,
-            strike=100.0,
-            maturity_interval=1.0,
+            strikes=(100.0,),
+            maturity_intervals=(1.0,),
             risk_free_rate=0.02,
             dividend_yield=0.01,
         ),
@@ -109,7 +108,7 @@ def build_anchored_runtime_execution_input_model() -> VanillaOptionPricingExecut
 
 def build_anchored_surface_request_model() -> VanillaOptionSurfacePricingRequest:
     return VanillaOptionSurfacePricingRequest(
-        market_inputs=VanillaOptionSurfacePricingMarketInputs(
+        market_inputs=VanillaOptionPricingMarketInputs(
             spot=101.0,
             strikes=(95.0, 100.0, 105.0),
             maturity_intervals=(1.0, 2.0),
@@ -137,11 +136,11 @@ def build_anchored_surface_execution_input_model() -> VanillaOptionSurfacePricin
 
     return VanillaOptionSurfacePricingExecutionInput(
         request=VanillaOptionSurfacePricingRequest(
-            market_inputs=VanillaOptionSurfacePricingMarketInputs(
+            market_inputs=VanillaOptionPricingMarketInputs(
                 spot=anchored_runtime_execution_input.request.market_inputs.spot,
                 strikes=(95.0, 100.0, 105.0),
                 maturity_intervals=(
-                    anchored_runtime_execution_input.request.market_inputs.maturity_interval,
+                    anchored_runtime_execution_input.request.market_inputs.single_maturity_interval,
                 ),
                 risk_free_rate=anchored_runtime_execution_input.request.market_inputs.risk_free_rate,
                 dividend_yield=anchored_runtime_execution_input.request.market_inputs.dividend_yield,

@@ -21,7 +21,7 @@ use super::support::{disabled_boundary_input, valid_model_parameters};
 #[test]
 fn nested_transition_measure_detection_accepts_disabled_multi_interval_boundary() {
     let pricing_request = VanillaOptionPricingRequest::try_new(
-        VanillaOptionPricingMarketInputs::try_new(100.0, 105.0, 1.0, 0.0, 0.0)
+        VanillaOptionPricingMarketInputs::try_new_single_node(100.0, 105.0, 1.0, 0.0, 0.0)
             .expect("market inputs should construct"),
         VanillaOptionPayoffConfiguration {
             payoff_type: VanillaOptionPayoffType::Call,
@@ -54,7 +54,7 @@ fn nested_transition_measure_detection_accepts_disabled_multi_interval_boundary(
 #[test]
 fn nested_transition_measure_detection_rejects_nonzero_local_martingale_deviation_adjustment() {
     let pricing_request = VanillaOptionPricingRequest::try_new(
-        VanillaOptionPricingMarketInputs::try_new(100.0, 105.0, 1.0, 0.0, 0.0)
+        VanillaOptionPricingMarketInputs::try_new_single_node(100.0, 105.0, 1.0, 0.0, 0.0)
             .expect("market inputs should construct"),
         VanillaOptionPayoffConfiguration {
             payoff_type: VanillaOptionPayoffType::Call,
@@ -125,7 +125,7 @@ fn expected_news_loading_inference_short_circuits_when_activity_coupling_is_zero
         .activity_coupling_scale = 0.0;
 
     let request = VanillaOptionPricingRequest::try_new(
-        VanillaOptionPricingMarketInputs::try_new(100.0, 100.0, 2.0, 0.0, 0.0)
+        VanillaOptionPricingMarketInputs::try_new_single_node(100.0, 100.0, 2.0, 0.0, 0.0)
             .expect("market inputs should construct"),
         VanillaOptionPayoffConfiguration {
             payoff_type: VanillaOptionPayoffType::Call,
@@ -179,7 +179,7 @@ fn risk_neutral_anchor_materialization_accepts_zero_adjustment_nested_request() 
         .activity_coupling_scale = 0.0;
 
     let request = VanillaOptionPricingRequest::try_new(
-        VanillaOptionPricingMarketInputs::try_new(100.0, 100.0, 2.0, 0.02, 0.01)
+        VanillaOptionPricingMarketInputs::try_new_single_node(100.0, 100.0, 2.0, 0.02, 0.01)
             .expect("market inputs should construct"),
         VanillaOptionPayoffConfiguration {
             payoff_type: VanillaOptionPayoffType::Call,
@@ -239,7 +239,7 @@ fn risk_neutral_anchor_materialization_accepts_zero_adjustment_nested_request() 
 #[test]
 fn local_transition_theta_short_circuits_to_zero_for_zero_adjustment_requests() {
     let request = VanillaOptionPricingRequest::try_new(
-        VanillaOptionPricingMarketInputs::try_new(100.0, 100.0, 2.0, 0.02, 0.01)
+        VanillaOptionPricingMarketInputs::try_new_single_node(100.0, 100.0, 2.0, 0.02, 0.01)
             .expect("market inputs should construct"),
         VanillaOptionPayoffConfiguration {
             payoff_type: VanillaOptionPayoffType::Call,

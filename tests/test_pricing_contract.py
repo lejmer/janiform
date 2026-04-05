@@ -290,7 +290,7 @@ def test_vanilla_option_surface_response_derives_node_table_and_roundtrip() -> N
 
 def test_vanilla_option_request_rejects_incomplete_payload_with_structured_error() -> None:
     request_payload = _valid_request_payload()
-    del request_payload["market_inputs"]["strike"]
+    del request_payload["market_inputs"]["strikes"]
 
     with pytest.raises(VanillaOptionPricingValidationError) as captured_error:
         VanillaOptionPricingRequest.from_mapping(request_payload)
@@ -298,7 +298,7 @@ def test_vanilla_option_request_rejects_incomplete_payload_with_structured_error
     assert captured_error.value.failure.error_id == "pricing.validation.contract"
     assert captured_error.value.failure.workflow == "pricing"
     assert captured_error.value.failure.entrypoint == "contract"
-    assert captured_error.value.failure.field_path == "market_inputs.strike"
+    assert captured_error.value.failure.field_path == "market_inputs.strikes"
     assert captured_error.value.failure.message == "is required"
 
 
@@ -672,8 +672,8 @@ def _valid_request_model() -> VanillaOptionPricingRequest:
     return VanillaOptionPricingRequest(
         market_inputs=VanillaOptionPricingMarketInputs(
             spot=101.0,
-            strike=100.0,
-            maturity_interval=0.5,
+            strikes=(100.0,),
+            maturity_intervals=(0.5,),
             risk_free_rate=0.02,
             dividend_yield=0.01,
         ),
@@ -748,8 +748,8 @@ def _valid_runtime_execution_input_model() -> VanillaOptionPricingExecutionInput
         request=VanillaOptionPricingRequest(
             market_inputs=VanillaOptionPricingMarketInputs(
                 spot=101.0,
-                strike=100.0,
-                maturity_interval=1.0,
+                strikes=(100.0,),
+                maturity_intervals=(1.0,),
                 risk_free_rate=0.02,
                 dividend_yield=0.01,
             ),

@@ -156,12 +156,14 @@ def _surface_pricing_native_execution_input(
 
     return {
         "request": {
-            "spot": market_inputs.spot,
-            "strikes": list(market_inputs.strikes),
-            "maturity_intervals": list(market_inputs.maturity_intervals),
-            "payoff_type": request.payoff.payoff_type.value,
-            "risk_free_rate": market_inputs.risk_free_rate,
-            "dividend_yield": market_inputs.dividend_yield,
+            "market_inputs": {
+                "spot": market_inputs.spot,
+                "strikes": list(market_inputs.strikes),
+                "maturity_intervals": list(market_inputs.maturity_intervals),
+                "risk_free_rate": market_inputs.risk_free_rate,
+                "dividend_yield": market_inputs.dividend_yield,
+            },
+            "payoff": request.payoff.to_payload(),
         },
         "boundary_input": request.boundary_input.to_payload(),
         "model_parameters": request.model_parameters.to_payload(),

@@ -28,6 +28,7 @@ from ..contracts import (
     VanillaOptionImpliedVolatilityInversionStatus,
     VanillaOptionPayoffConfiguration,
     VanillaOptionPayoffType,
+    VanillaOptionPricingMarketInputs,
     VanillaOptionPricingModelParameters,
     VanillaOptionPricingOptionalOutputSelection,
     _pricing_error,
@@ -48,98 +49,6 @@ from ...hourly_factors import HourlyFactorContract
 
 
 type SurfaceNodeRecord = dict[str, Any]
-
-
-@dataclass(frozen=True, slots=True)
-class VanillaOptionSurfacePricingMarketInputs(ContractModel):
-    spot: float
-    strikes: tuple[float, ...]
-    maturity_intervals: tuple[float, ...]
-    risk_free_rate: float
-    dividend_yield: float
-
-    def __post_init__(self) -> None:
-        require_positive_finite_scalar(self.spot, "spot", PRICING_ERROR_FACTORY)
-        require_finite_number(
-            {"risk_free_rate": self.risk_free_rate},
-            "risk_free_rate",
-            "risk_free_rate",
-            PRICING_ERROR_FACTORY,
-        )
-        require_finite_number(
-            {"dividend_yield": self.dividend_yield},
-            "dividend_yield",
-            "dividend_yield",
-            PRICING_ERROR_FACTORY,
-        )
-
-        if len(self.strikes) == 0:
-            raise _pricing_error("strikes", "must contain at least one strike")
-        if len(self.maturity_intervals) == 0:
-            raise _pricing_error(
-                "maturity_intervals",
-                "must contain at least one maturity interval",
-            )
-
-        for strike_index, strike in enumerate(self.strikes):
-            require_positive_finite_scalar(
-                strike,
-                f"strikes[{strike_index}]",
-                PRICING_ERROR_FACTORY,
-            )
-
-        for maturity_index, maturity_interval in enumerate(self.maturity_intervals):
-            require_positive_finite_scalar(
-                maturity_interval,
-                f"maturity_intervals[{maturity_index}]",
-                PRICING_ERROR_FACTORY,
-            )
-
-    @property
-    def shape(self) -> tuple[int, int]:
-        return len(self.maturity_intervals), len(self.strikes)
-
-    @staticmethod
-    def from_mapping(
-        raw_payload: dict[str, Any] | Any,
-        *,
-        field_path: str = "market_inputs",
-    ) -> VanillaOptionSurfacePricingMarketInputs:
-        if not isinstance(raw_payload, dict):
-            raise _pricing_error(field_path, "must be an object")
-
-        return VanillaOptionSurfacePricingMarketInputs(
-            spot=require_positive_finite_number(
-                raw_payload,
-                "spot",
-                f"{field_path}.spot",
-                PRICING_ERROR_FACTORY,
-            ),
-            strikes=tuple_of_positive_floats(
-                raw_payload,
-                field_name="strikes",
-                field_path=f"{field_path}.strikes",
-                error_factory=PRICING_ERROR_FACTORY,
-            ),
-            maturity_intervals=tuple_of_positive_floats(
-                raw_payload,
-                field_name="maturity_intervals",
-                field_path=f"{field_path}.maturity_intervals",
-                error_factory=PRICING_ERROR_FACTORY,
-            ),
-            risk_free_rate=require_finite_number(
-                raw_payload,
-                "risk_free_rate",
-                f"{field_path}.risk_free_rate",
-                PRICING_ERROR_FACTORY,
-            ),
-            dividend_yield=require_finite_number(
-                raw_payload,
-                "dividend_yield",
-                f"{field_path}.dividend_yield",
-                PRICING_ERROR_FACTORY,
-            ),
-        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -356,7 +265,7 @@ class VanillaOptionSurfacePricingNodeTable(ContractModel):
 
 @dataclass(frozen=True, slots=True)
 class VanillaOptionSurfacePricingRequest(ContractModel):
-    market_inputs: VanillaOptionSurfacePricingMarketInputs
+    market_inputs: VanillaOptionPricingMarketInputs
     payoff: VanillaOptionPayoffConfiguration
     boundary_input: AnchoredVanillaOptionPricingBoundaryInput
     model_parameters: VanillaOptionPricingModelParameters
@@ -370,10 +279,10 @@ class VanillaOptionSurfacePricingRequest(ContractModel):
             PRICING_ERROR_FACTORY,
         )
 
-        if not isinstance(self.market_inputs, VanillaOptionSurfacePricingMarketInputs):
+        if not isinstance(self.market_inputs, VanillaOptionPricingMarketInputs):
             raise _pricing_error(
                 "market_inputs",
-                "must be a VanillaOptionSurfacePricingMarketInputs",
+                "must be a VanillaOptionPricingMarketInputs",
             )
 
         if not isinstance(self.payoff, VanillaOptionPayoffConfiguration):
@@ -433,7 +342,7 @@ class VanillaOptionSurfacePricingRequest(ContractModel):
 
         try:
             return VanillaOptionSurfacePricingRequest(
-                market_inputs=VanillaOptionSurfacePricingMarketInputs.from_mapping(
+                market_inputs=VanillaOptionPricingMarketInputs.from_mapping(
                     require_mapping(
                         raw_payload,
                         "market_inputs",
@@ -1024,7 +933,6 @@ def _surface_interval_count_from_maturity_interval(
 
 __all__ = [
     "VanillaOptionSurfacePricingExecutionInput",
-    "VanillaOptionSurfacePricingMarketInputs",
     "VanillaOptionSurfacePricingNodeTable",
     "VanillaOptionSurfacePricingRequest",
     "VanillaOptionSurfacePricingResponse",

@@ -963,7 +963,7 @@ fn anchored_local_tilt_solver_rejects_inadmissible_states() {
     .expect("valid return decomposition payload should construct");
 
     let request = VanillaOptionPricingRequest::try_new_with_interval_delta(
-        VanillaOptionPricingMarketInputs::try_new(101.0, 100.0, 1.0, 25.0, -25.0)
+        VanillaOptionPricingMarketInputs::try_new_single_node(101.0, 100.0, 1.0, 25.0, -25.0)
             .expect("market inputs should construct"),
         VanillaOptionPayoffConfiguration {
             payoff_type: VanillaOptionPayoffType::Call,
@@ -1125,8 +1125,14 @@ fn pricing_request_for_local_tilt(
     let risk_free_rate = (combined + target_adjustment) / intraday_year_fraction(interval_delta);
 
     VanillaOptionPricingRequest::try_new_with_interval_delta(
-        VanillaOptionPricingMarketInputs::try_new(101.0, 100.0, 1.0, risk_free_rate, 0.0)
-            .expect("market inputs should construct"),
+        VanillaOptionPricingMarketInputs::try_new_single_node(
+            101.0,
+            100.0,
+            1.0,
+            risk_free_rate,
+            0.0,
+        )
+        .expect("market inputs should construct"),
         VanillaOptionPayoffConfiguration {
             payoff_type: VanillaOptionPayoffType::Call,
         },

@@ -483,14 +483,21 @@ fn run_profile_benchmark(
                 unit_interval_from_seed(invocation_seed ^ 0x51),
             );
 
-            let maturity_interval = market_inputs.maturity_interval;
+            let maturity_interval = market_inputs.single_maturity_interval().map_err(|source| {
+                OraclePricerRiskBenchmarkHarnessError::InvalidPricingMarketInputs {
+                    profile_id: profile.profile_id.clone(),
+                    source,
+                }
+            })?;
+
             let drift = (market_inputs.risk_free_rate
                 - market_inputs.dividend_yield
                 - 0.5 * volatility * volatility)
                 * maturity_interval;
             let variance = volatility * volatility * maturity_interval;
+
             let pricing_result = price_vanilla_option_via_fourier_inversion(
-                market_inputs,
+                &market_inputs,
                 payoff,
                 pricing_engine_settings,
                 |argument| {
@@ -519,6 +526,7 @@ fn run_profile_benchmark(
         |invocation_count_including_warmup| {
             let path_seed =
                 derive_invocation_seed(risk_component_seed, invocation_count_including_warmup);
+
             let sampled_statistics =
                 sample_interval_statistics_batch_from_transform_slices(path_seed, &risk_slices)
                     .map_err(|source| {
@@ -527,12 +535,15 @@ fn run_profile_benchmark(
                             source,
                         }
                     })?;
+
             let mut checksum = 0.0_f64;
+
             for interval_statistics in sampled_statistics {
                 checksum += interval_statistics.a_plus + interval_statistics.a_minus;
                 checksum +=
                     (interval_statistics.n_plus + interval_statistics.n_minus) as f64 * 1.0e-3;
             }
+
             Ok(checksum)
         },
     )?;

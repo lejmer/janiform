@@ -378,7 +378,6 @@ def test_pricing_public_symbols_live_in_pricing_module() -> None:
         "VanillaOptionPricingRunOutputSchemaMetadata",
         "VanillaOptionPricingRunResult",
         "VanillaOptionSurfacePricingExecutionInput",
-        "VanillaOptionSurfacePricingMarketInputs",
         "VanillaOptionSurfacePricingNodeTable",
         "VanillaOptionSurfacePricingRequest",
         "VanillaOptionSurfacePricingResponse",

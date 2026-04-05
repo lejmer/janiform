@@ -52,6 +52,9 @@ This codebase is pre-v0.1 and has no external users.
     - Boundary value means at least one of: validation, policy/default injection, type conversion, error mapping, telemetry, or compatibility constraints that are explicitly documented.
     - If no boundary value is needed, call the shared function directly or use a non-duplicative re-export.
     - If a passthrough wrapper is already public and removal would be breaking, do not remove it silently. Create a planned cleanup issue or deprecation path first.
+  - Do not introduce `new_with_*` or `try_new_with_*` constructor families for general optional arguments.
+    - Only use a `*_with_*` constructor when `new` or `try_new` represents one canonical default behavior and the alternate constructor is a single explicit override of that default.
+    - If more than one optional override is needed, prefer a typed configuration or contract object instead of proliferating constructor combinations.
   - Maintain public APIs unless explicitly required to change.
   - Use project logging (no prints).
   - Update any relevant docs (including README.md) when changes are made, and you deem it necessary for any reason. Never word it as if something has changed, because the repo is in pre-v0.1 and we haven't reached the first version for any of the docs yet, so it cannot sound like something has changed.

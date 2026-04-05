@@ -62,44 +62,60 @@ impl VanillaOptionPayoffConfiguration {
     }
 }
 
-/// Public market-input payload for vanilla option pricing.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+/// Public market-input payload for vanilla option pricing workflows.
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct VanillaOptionPricingMarketInputs {
     pub spot: f64,
-    pub strike: f64,
-    pub maturity_interval: f64,
+    pub strikes: Vec<f64>,
+    pub maturity_intervals: Vec<f64>,
     pub risk_free_rate: f64,
     pub dividend_yield: f64,
 }
 
 impl VanillaOptionPricingMarketInputs {
-    pub const fn new(
+    pub fn new(
+        spot: f64,
+        strikes: Vec<f64>,
+        maturity_intervals: Vec<f64>,
+        risk_free_rate: f64,
+        dividend_yield: f64,
+    ) -> Self {
+        Self {
+            spot,
+            strikes,
+            maturity_intervals,
+            risk_free_rate,
+            dividend_yield,
+        }
+    }
+
+    pub fn new_single_node(
         spot: f64,
         strike: f64,
         maturity_interval: f64,
         risk_free_rate: f64,
         dividend_yield: f64,
     ) -> Self {
-        Self {
+        Self::new(
             spot,
-            strike,
-            maturity_interval,
+            vec![strike],
+            vec![maturity_interval],
             risk_free_rate,
             dividend_yield,
-        }
+        )
     }
 
     pub fn try_new(
         spot: f64,
-        strike: f64,
-        maturity_interval: f64,
+        strikes: Vec<f64>,
+        maturity_intervals: Vec<f64>,
         risk_free_rate: f64,
         dividend_yield: f64,
     ) -> Result<Self, VanillaOptionPricingMarketInputsError> {
         let market_inputs = Self::new(
             spot,
-            strike,
-            maturity_interval,
+            strikes,
+            maturity_intervals,
             risk_free_rate,
             dividend_yield,
         );
@@ -109,27 +125,67 @@ impl VanillaOptionPricingMarketInputs {
         Ok(market_inputs)
     }
 
-    pub fn validate(self) -> Result<(), VanillaOptionPricingMarketInputsError> {
+    pub fn try_new_single_node(
+        spot: f64,
+        strike: f64,
+        maturity_interval: f64,
+        risk_free_rate: f64,
+        dividend_yield: f64,
+    ) -> Result<Self, VanillaOptionPricingMarketInputsError> {
+        let market_inputs = Self::new_single_node(
+            spot,
+            strike,
+            maturity_interval,
+            risk_free_rate,
+            dividend_yield,
+        );
+
+        market_inputs.validate_single_node_shape()?;
+
+        Ok(market_inputs)
+    }
+
+    pub fn validate(&self) -> Result<(), VanillaOptionPricingMarketInputsError> {
         if !self.spot.is_finite() || self.spot <= 0.0 {
             return Err(VanillaOptionPricingMarketInputsError::InvalidSpot { value: self.spot });
         }
-        if !self.strike.is_finite() || self.strike <= 0.0 {
-            return Err(VanillaOptionPricingMarketInputsError::InvalidStrike {
-                value: self.strike,
-            });
+
+        if self.strikes.is_empty() {
+            return Err(VanillaOptionPricingMarketInputsError::EmptyStrikeAxis);
         }
-        if !self.maturity_interval.is_finite() || self.maturity_interval <= 0.0 {
-            return Err(
-                VanillaOptionPricingMarketInputsError::InvalidMaturityInterval {
-                    value: self.maturity_interval,
-                },
-            );
+
+        if self.maturity_intervals.is_empty() {
+            return Err(VanillaOptionPricingMarketInputsError::EmptyMaturityAxis);
         }
+
+        for (strike_index, strike) in self.strikes.iter().copied().enumerate() {
+            if !strike.is_finite() || strike <= 0.0 {
+                return Err(VanillaOptionPricingMarketInputsError::InvalidStrike {
+                    index: strike_index,
+                    value: strike,
+                });
+            }
+        }
+
+        for (maturity_index, maturity_interval) in
+            self.maturity_intervals.iter().copied().enumerate()
+        {
+            if !maturity_interval.is_finite() || maturity_interval <= 0.0 {
+                return Err(
+                    VanillaOptionPricingMarketInputsError::InvalidMaturityInterval {
+                        index: maturity_index,
+                        value: maturity_interval,
+                    },
+                );
+            }
+        }
+
         if !self.risk_free_rate.is_finite() {
             return Err(VanillaOptionPricingMarketInputsError::InvalidRiskFreeRate {
                 value: self.risk_free_rate,
             });
         }
+
         if !self.dividend_yield.is_finite() {
             return Err(
                 VanillaOptionPricingMarketInputsError::InvalidDividendYield {
@@ -140,16 +196,65 @@ impl VanillaOptionPricingMarketInputs {
 
         Ok(())
     }
+
+    pub fn validate_single_node_shape(&self) -> Result<(), VanillaOptionPricingMarketInputsError> {
+        self.validate()?;
+
+        if self.strikes.len() != 1 || self.maturity_intervals.len() != 1 {
+            return Err(
+                VanillaOptionPricingMarketInputsError::InvalidSingleNodeShape {
+                    strike_count: self.strikes.len(),
+                    maturity_interval_count: self.maturity_intervals.len(),
+                },
+            );
+        }
+
+        Ok(())
+    }
+
+    pub fn shape(&self) -> (usize, usize) {
+        (self.maturity_intervals.len(), self.strikes.len())
+    }
+
+    pub fn single_strike(&self) -> Result<f64, VanillaOptionPricingMarketInputsError> {
+        self.validate_single_node_shape()?;
+
+        Ok(self.strikes[0])
+    }
+
+    pub fn single_maturity_interval(&self) -> Result<f64, VanillaOptionPricingMarketInputsError> {
+        self.validate_single_node_shape()?;
+
+        Ok(self.maturity_intervals[0])
+    }
 }
 
 /// Validation errors for public vanilla option market inputs.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum VanillaOptionPricingMarketInputsError {
-    InvalidSpot { value: f64 },
-    InvalidStrike { value: f64 },
-    InvalidMaturityInterval { value: f64 },
-    InvalidRiskFreeRate { value: f64 },
-    InvalidDividendYield { value: f64 },
+    InvalidSpot {
+        value: f64,
+    },
+    EmptyStrikeAxis,
+    EmptyMaturityAxis,
+    InvalidStrike {
+        index: usize,
+        value: f64,
+    },
+    InvalidMaturityInterval {
+        index: usize,
+        value: f64,
+    },
+    InvalidRiskFreeRate {
+        value: f64,
+    },
+    InvalidDividendYield {
+        value: f64,
+    },
+    InvalidSingleNodeShape {
+        strike_count: usize,
+        maturity_interval_count: usize,
+    },
 }
 
 impl Display for VanillaOptionPricingMarketInputsError {
@@ -159,13 +264,20 @@ impl Display for VanillaOptionPricingMarketInputsError {
                 formatter,
                 "spot must be finite and strictly positive, found {value}"
             ),
-            Self::InvalidStrike { value } => write!(
+            Self::EmptyStrikeAxis => {
+                write!(formatter, "strikes must contain at least one strike")
+            }
+            Self::EmptyMaturityAxis => write!(
                 formatter,
-                "strike must be finite and strictly positive, found {value}"
+                "maturity_intervals must contain at least one maturity interval"
             ),
-            Self::InvalidMaturityInterval { value } => write!(
+            Self::InvalidStrike { index, value } => write!(
                 formatter,
-                "maturity_interval must be finite and strictly positive, found {value}"
+                "strikes[{index}] must be finite and strictly positive, found {value}"
+            ),
+            Self::InvalidMaturityInterval { index, value } => write!(
+                formatter,
+                "maturity_intervals[{index}] must be finite and strictly positive, found {value}"
             ),
             Self::InvalidRiskFreeRate { value } => {
                 write!(formatter, "risk_free_rate must be finite, found {value}")
@@ -173,6 +285,13 @@ impl Display for VanillaOptionPricingMarketInputsError {
             Self::InvalidDividendYield { value } => {
                 write!(formatter, "dividend_yield must be finite, found {value}")
             }
+            Self::InvalidSingleNodeShape {
+                strike_count,
+                maturity_interval_count,
+            } => write!(
+                formatter,
+                "single-option pricing requires exactly one strike and one maturity interval, found strikes={strike_count} maturity_intervals={maturity_interval_count}"
+            ),
         }
     }
 }
@@ -814,7 +933,7 @@ pub struct VanillaOptionPricingRequest {
 }
 
 impl VanillaOptionPricingRequest {
-    pub const fn new(
+    pub fn new(
         market_inputs: VanillaOptionPricingMarketInputs,
         payoff: VanillaOptionPayoffConfiguration,
         boundary_input: AnchoredVanillaOptionPricingBoundaryInput,
@@ -829,7 +948,7 @@ impl VanillaOptionPricingRequest {
         )
     }
 
-    pub const fn new_with_interval_delta(
+    pub fn new_with_interval_delta(
         market_inputs: VanillaOptionPricingMarketInputs,
         payoff: VanillaOptionPayoffConfiguration,
         boundary_input: AnchoredVanillaOptionPricingBoundaryInput,
@@ -897,6 +1016,9 @@ impl VanillaOptionPricingRequest {
     pub fn validate(&self) -> Result<(), VanillaOptionPricingRequestError> {
         self.market_inputs
             .validate()
+            .map_err(|source| VanillaOptionPricingRequestError::InvalidMarketInputs { source })?;
+        self.market_inputs
+            .validate_single_node_shape()
             .map_err(|source| VanillaOptionPricingRequestError::InvalidMarketInputs { source })?;
 
         validate_interval_delta(self.interval_delta)?;
@@ -1494,8 +1616,11 @@ impl VanillaOptionPricingCalibrationHooks {
             VanillaOptionPricingCalibrationHooksError::InvalidMarketInputs { source }
         })?;
 
-        let log_moneyness = (market_inputs.strike / market_inputs.spot).ln();
-        let forward_moneyness = response.diagnostics.forward_price / market_inputs.strike;
+        let strike = market_inputs.single_strike().map_err(|source| {
+            VanillaOptionPricingCalibrationHooksError::InvalidMarketInputs { source }
+        })?;
+        let log_moneyness = (strike / market_inputs.spot).ln();
+        let forward_moneyness = response.diagnostics.forward_price / strike;
 
         let integration_quality_diagnostics =
             integration_quality.map(|diagnostics| diagnostics.numeric_quality_diagnostics);
@@ -1917,12 +2042,12 @@ fn validate_observed_anchor_alignment(
 
     Ok(())
 }
-#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct VanillaOptionPricingMarketInputsPayload {
     spot: f64,
-    strike: f64,
-    maturity_interval: f64,
+    strikes: Vec<f64>,
+    maturity_intervals: Vec<f64>,
     risk_free_rate: f64,
     dividend_yield: f64,
 }
@@ -1936,8 +2061,8 @@ impl<'de> Deserialize<'de> for VanillaOptionPricingMarketInputs {
 
         Self::try_new(
             payload.spot,
-            payload.strike,
-            payload.maturity_interval,
+            payload.strikes,
+            payload.maturity_intervals,
             payload.risk_free_rate,
             payload.dividend_yield,
         )

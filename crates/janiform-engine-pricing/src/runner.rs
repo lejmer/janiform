@@ -201,10 +201,20 @@ impl VanillaOptionPricingExecutionInput {
         let maturity_interval_from_runtime_grid =
             self.request.interval_delta * self.interval_factors.len() as f64;
 
-        if maturity_interval_from_runtime_grid != self.request.market_inputs.maturity_interval {
+        let requested_maturity_interval = self
+            .request
+            .market_inputs
+            .single_maturity_interval()
+            .map_err(
+                |source| VanillaOptionPricingExecutionInputError::InvalidRequest {
+                    source: VanillaOptionPricingRequestError::InvalidMarketInputs { source },
+                },
+            )?;
+
+        if maturity_interval_from_runtime_grid != requested_maturity_interval {
             return Err(
                 VanillaOptionPricingExecutionInputError::MaturityIntervalMismatch {
-                    requested_maturity_interval: self.request.market_inputs.maturity_interval,
+                    requested_maturity_interval,
                     runtime_grid_maturity_interval: maturity_interval_from_runtime_grid,
                 },
             );
@@ -659,7 +669,7 @@ fn run_single_interval_nested_fourier_pricing(
         };
 
         price_vanilla_option_via_fourier_inversion_with_observer(
-            pricing_request.market_inputs,
+            &pricing_request.market_inputs,
             pricing_request.payoff,
             pricing_request.resolved_fourier_inversion_settings(),
             |argument| match evaluate_pricing_log_return_characteristic_function(
@@ -799,7 +809,7 @@ fn run_single_interval_anchored_fourier_pricing(
         };
 
         price_vanilla_option_via_fourier_inversion_with_observer(
-            pricing_request.market_inputs,
+            &pricing_request.market_inputs,
             pricing_request.payoff,
             pricing_request.resolved_fourier_inversion_settings(),
             |argument| {
@@ -1015,7 +1025,7 @@ fn run_anchored_characteristic_pricing(
         };
 
         price_vanilla_option_via_fourier_inversion_with_observer(
-            pricing_request.market_inputs,
+            &pricing_request.market_inputs,
             pricing_request.payoff,
             pricing_request.resolved_fourier_inversion_settings(),
             |argument| match evaluate_total_observed_log_return_characteristic_function(
@@ -1297,6 +1307,26 @@ pub(crate) fn build_deviation_grid(
     refined: bool,
 ) -> Result<DeviationGrid, VanillaOptionPricingRunError> {
     let runtime_anchors = &risk_neutral_anchor_materialization.runtime_interval_anchors;
+    let strike = pricing_request
+        .market_inputs
+        .single_strike()
+        .map_err(
+            |source| VanillaOptionPricingRunError::InvalidExecutionInput {
+                source: VanillaOptionPricingExecutionInputError::InvalidRequest {
+                    source: VanillaOptionPricingRequestError::InvalidMarketInputs { source },
+                },
+            },
+        )?;
+    let maturity_interval = pricing_request
+        .market_inputs
+        .single_maturity_interval()
+        .map_err(
+            |source| VanillaOptionPricingRunError::InvalidExecutionInput {
+                source: VanillaOptionPricingExecutionInputError::InvalidRequest {
+                    source: VanillaOptionPricingRequestError::InvalidMarketInputs { source },
+                },
+            },
+        )?;
 
     let terminal_anchor = runtime_anchors.end_anchor_values[interval_count - 1];
 
@@ -1306,7 +1336,7 @@ pub(crate) fn build_deviation_grid(
         .observed_log_price;
 
     let terminal_strike_deviation = current_observed_log_price
-        + (pricing_request.market_inputs.strike / pricing_request.market_inputs.spot).ln()
+        + (strike / pricing_request.market_inputs.spot).ln()
         - terminal_anchor;
 
     let current_deviation = pricing_request
@@ -1334,7 +1364,7 @@ pub(crate) fn build_deviation_grid(
 
     let half_width = (terminal_strike_deviation - current_deviation).abs()
         + (anchor_max - anchor_min)
-        + pricing_request.market_inputs.maturity_interval;
+        + maturity_interval;
 
     let center = 0.5 * (current_deviation + terminal_strike_deviation);
 
@@ -1937,9 +1967,20 @@ pub(crate) fn build_local_pricing_request(
     interval_delta: f64,
 ) -> Result<VanillaOptionPricingRequest, VanillaOptionPricingRunError> {
     VanillaOptionPricingRequest::try_new_with_interval_delta(
-        super::contracts::VanillaOptionPricingMarketInputs::try_new(
+        super::contracts::VanillaOptionPricingMarketInputs::try_new_single_node(
             pricing_request.market_inputs.spot,
-            pricing_request.market_inputs.strike,
+            pricing_request
+                .market_inputs
+                .single_strike()
+                .map_err(
+                    |source| VanillaOptionPricingRunError::InvalidExecutionInput {
+                        source: VanillaOptionPricingExecutionInputError::InvalidRequest {
+                            source: VanillaOptionPricingRequestError::InvalidMarketInputs {
+                                source,
+                            },
+                        },
+                    },
+                )?,
             interval_delta,
             pricing_request.market_inputs.risk_free_rate,
             pricing_request.market_inputs.dividend_yield,
@@ -2204,8 +2245,15 @@ fn build_pricing_response(
     pricing_request: &VanillaOptionPricingRequest,
     price: f64,
 ) -> Result<VanillaOptionPricingResponse, VanillaOptionPricingRunError> {
-    let market_inputs = pricing_request.market_inputs;
-    let maturity_year_fraction = intraday_year_fraction(market_inputs.maturity_interval);
+    let market_inputs = &pricing_request.market_inputs;
+    let maturity_interval = market_inputs.single_maturity_interval().map_err(|source| {
+        VanillaOptionPricingRunError::InvalidExecutionInput {
+            source: VanillaOptionPricingExecutionInputError::InvalidRequest {
+                source: VanillaOptionPricingRequestError::InvalidMarketInputs { source },
+            },
+        }
+    })?;
+    let maturity_year_fraction = intraday_year_fraction(maturity_interval);
 
     let forward_price = market_inputs.spot
         * ((market_inputs.risk_free_rate - market_inputs.dividend_yield) * maturity_year_fraction)
@@ -2223,7 +2271,7 @@ fn build_pricing_response(
     let diagnostics = VanillaOptionPricingDiagnostics::try_new(
         forward_price,
         discount_factor,
-        market_inputs.maturity_interval,
+        maturity_interval,
         boundary_state_norm,
     )
     .map_err(|source| VanillaOptionPricingRunError::InvalidResponseDiagnostics { source })?;

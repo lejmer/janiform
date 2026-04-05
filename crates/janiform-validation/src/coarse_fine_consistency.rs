@@ -5,8 +5,8 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 
 use janiform_engine_pricing::{
-    VanillaOptionPayoffConfiguration, VanillaOptionPayoffType,
-    price_vanilla_option_via_fourier_inversion,
+    FourierInversionEngineSettings, VanillaOptionPayoffConfiguration, VanillaOptionPayoffType,
+    VanillaOptionPricingMarketInputs, price_vanilla_option_via_fourier_inversion,
 };
 use janiform_engine_risk::{
     SufficientStatisticsTransformSliceContext, SufficientStatisticsTransformSliceSettings,
@@ -875,6 +875,53 @@ struct CoarseFineRiskMetricMeans {
     mean_n_minus: f64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct CoarseFineScenarioSeeds {
+    profile_seed: u64,
+    oracle_component_seed: u64,
+    pricing_component_seed: u64,
+    risk_component_seed: u64,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct CoarseFineScenarioSetup {
+    scenario_id: String,
+    seeds: CoarseFineScenarioSeeds,
+    fine_interval_delta: f64,
+    tolerance_band: CoarseFineConsistencyRegressionIntervalToleranceBand,
+    oracle_solver_settings: ExponentialAffineTransformSolverSettings,
+    oracle_reference_solver_settings: ExponentialAffineTransformSolverSettings,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct CoarseFineOracleExperiment {
+    coarse_output: ExponentialAffineTransformOutput,
+    reference_output: ExponentialAffineTransformOutput,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct CoarseFinePricingInputs {
+    spot: f64,
+    strike: f64,
+    maturity_interval: f64,
+    risk_free_rate: f64,
+    dividend_yield: f64,
+    volatility: f64,
+    payoff_type: VanillaOptionPayoffType,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct CoarseFinePricingExperiment {
+    coarse_value: f64,
+    fine_reference_value: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct CoarseFineRiskExperiment {
+    coarse_metric_means: CoarseFineRiskMetricMeans,
+    fine_metric_means: CoarseFineRiskMetricMeans,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 struct CoarseFineRiskMetricAccumulator {
     sum_a_plus: f64,
@@ -942,6 +989,7 @@ pub fn run_coarse_fine_consistency_regression_harness(
     })?;
 
     let mut normalized_catalog = catalog.clone();
+
     normalized_catalog.validate().map_err(|source| {
         CoarseFineConsistencyRegressionHarnessError::InvalidScenarioCatalog { source }
     })?;
@@ -949,6 +997,7 @@ pub fn run_coarse_fine_consistency_regression_harness(
 
     let mut scenario_reports: Vec<CoarseFineConsistencyScenarioReport> =
         Vec::with_capacity(normalized_catalog.profiles.len());
+
     for profile in &normalized_catalog.profiles {
         let scenario_report = run_coarse_fine_consistency_scenario(
             profile,
@@ -965,8 +1014,10 @@ pub fn run_coarse_fine_consistency_regression_harness(
             scenario_report.status == CoarseFineConsistencyScenarioStatus::Pass
         })
         .count();
+
     let total_scenario_count = scenario_reports.len();
     let failed_scenario_count = total_scenario_count - passed_scenario_count;
+
     let total_metric_count = scenario_reports
         .iter()
         .map(|scenario_report| scenario_report.metric_deltas.len())
@@ -1017,20 +1068,48 @@ fn run_coarse_fine_consistency_scenario(
     tolerance_config: &CoarseFineConsistencyRegressionToleranceConfig,
     execution_config: CoarseFineConsistencyRegressionExecutionConfig,
 ) -> Result<CoarseFineConsistencyScenarioReport, CoarseFineConsistencyRegressionHarnessError> {
-    let scenario_id = profile.profile_id.clone();
-    let profile_seed = splitmix64(
-        execution_config
-            .reproducibility_seed
-            .wrapping_add(fnv1a_64(profile.profile_id.as_bytes())),
+    let setup = build_coarse_fine_scenario_setup(
+        profile,
+        benchmark_policy,
+        tolerance_config,
+        execution_config,
+    )?;
+
+    let oracle_experiment = run_coarse_fine_oracle_experiment(profile, benchmark_policy, &setup)?;
+    let pricing_experiment =
+        run_coarse_fine_pricing_experiment(profile, benchmark_policy, execution_config, &setup)?;
+    let risk_experiment =
+        run_coarse_fine_risk_experiment(profile, benchmark_policy, execution_config, &setup)?;
+
+    let metric_deltas = build_coarse_fine_metric_deltas(
+        &setup.tolerance_band,
+        oracle_experiment,
+        pricing_experiment,
+        risk_experiment,
     );
-    let oracle_component_seed =
-        splitmix64(profile_seed ^ benchmark_policy.seed_partition.oracle_component_seed_salt);
-    let pricing_component_seed =
-        splitmix64(profile_seed ^ benchmark_policy.seed_partition.pricing_component_seed_salt);
-    let risk_component_seed =
-        splitmix64(profile_seed ^ benchmark_policy.seed_partition.risk_component_seed_salt);
+
+    Ok(build_coarse_fine_scenario_report(
+        profile,
+        execution_config,
+        &setup,
+        pricing_experiment,
+        risk_experiment,
+        metric_deltas,
+    ))
+}
+
+fn build_coarse_fine_scenario_setup(
+    profile: &BenchmarkScenarioWorkloadProfile,
+    benchmark_policy: &OraclePricerRiskBenchmarkPolicy,
+    tolerance_config: &CoarseFineConsistencyRegressionToleranceConfig,
+    execution_config: CoarseFineConsistencyRegressionExecutionConfig,
+) -> Result<CoarseFineScenarioSetup, CoarseFineConsistencyRegressionHarnessError> {
+    let scenario_id = profile.profile_id.clone();
+    let seeds = build_coarse_fine_scenario_seeds(profile, benchmark_policy, execution_config);
+
     let fine_interval_delta = profile.interval_settings.interval_delta
         / execution_config.fine_subinterval_count_per_coarse_interval as f64;
+
     let tolerance_band = tolerance_config
         .select_tolerance_band_for_interval_delta(profile.interval_settings.interval_delta)
         .map_err(|source| {
@@ -1040,21 +1119,62 @@ fn run_coarse_fine_consistency_scenario(
             )
         })?;
 
-    let equation_specification =
-        build_equation_specification(profile, benchmark_policy).map_err(|source| {
-            coarse_fine_scenario_error(
-                &scenario_id,
-                format!("failed to build equation specification: {source}"),
-            )
-        })?;
+    let (oracle_solver_settings, oracle_reference_solver_settings) =
+        build_coarse_fine_oracle_solver_settings(&scenario_id, profile, execution_config)?;
 
+    Ok(CoarseFineScenarioSetup {
+        scenario_id,
+        seeds,
+        fine_interval_delta,
+        tolerance_band,
+        oracle_solver_settings,
+        oracle_reference_solver_settings,
+    })
+}
+
+fn build_coarse_fine_scenario_seeds(
+    profile: &BenchmarkScenarioWorkloadProfile,
+    benchmark_policy: &OraclePricerRiskBenchmarkPolicy,
+    execution_config: CoarseFineConsistencyRegressionExecutionConfig,
+) -> CoarseFineScenarioSeeds {
+    let profile_seed = splitmix64(
+        execution_config
+            .reproducibility_seed
+            .wrapping_add(fnv1a_64(profile.profile_id.as_bytes())),
+    );
+
+    CoarseFineScenarioSeeds {
+        profile_seed,
+        oracle_component_seed: splitmix64(
+            profile_seed ^ benchmark_policy.seed_partition.oracle_component_seed_salt,
+        ),
+        pricing_component_seed: splitmix64(
+            profile_seed ^ benchmark_policy.seed_partition.pricing_component_seed_salt,
+        ),
+        risk_component_seed: splitmix64(
+            profile_seed ^ benchmark_policy.seed_partition.risk_component_seed_salt,
+        ),
+    }
+}
+
+fn build_coarse_fine_oracle_solver_settings(
+    scenario_id: &str,
+    profile: &BenchmarkScenarioWorkloadProfile,
+    execution_config: CoarseFineConsistencyRegressionExecutionConfig,
+) -> Result<
+    (
+        ExponentialAffineTransformSolverSettings,
+        ExponentialAffineTransformSolverSettings,
+    ),
+    CoarseFineConsistencyRegressionHarnessError,
+> {
     let oracle_solver_settings = ExponentialAffineTransformSolverSettings::try_new(
         ExponentialAffineTransformIntegratorMethod::FourthOrderRungeKutta,
         profile.interval_settings.oracle_solver_step_count,
     )
     .map_err(|source| {
         coarse_fine_scenario_error(
-            &scenario_id,
+            scenario_id,
             format!("failed to construct oracle solver settings: {source}"),
         )
     })?;
@@ -1065,7 +1185,7 @@ fn run_coarse_fine_consistency_scenario(
         .checked_mul(execution_config.fine_subinterval_count_per_coarse_interval)
         .ok_or_else(|| {
             coarse_fine_scenario_error(
-                &scenario_id,
+                scenario_id,
                 "oracle reference solver step count overflowed usize".to_string(),
             )
         })?;
@@ -1076,12 +1196,40 @@ fn run_coarse_fine_consistency_scenario(
     )
     .map_err(|source| {
         coarse_fine_scenario_error(
-            &scenario_id,
+            scenario_id,
             format!("failed to construct oracle reference solver settings: {source}"),
         )
     })?;
 
-    let oracle_invocation_seed = derive_invocation_seed(oracle_component_seed, 1);
+    Ok((oracle_solver_settings, oracle_reference_solver_settings))
+}
+
+fn build_scenario_equation_specification(
+    scenario_id: &str,
+    profile: &BenchmarkScenarioWorkloadProfile,
+    benchmark_policy: &OraclePricerRiskBenchmarkPolicy,
+) -> Result<
+    ExponentialAffineTransformEquationSpecification,
+    CoarseFineConsistencyRegressionHarnessError,
+> {
+    build_equation_specification(profile, benchmark_policy).map_err(|source| {
+        coarse_fine_scenario_error(
+            scenario_id,
+            format!("failed to build equation specification: {source}"),
+        )
+    })
+}
+
+fn run_coarse_fine_oracle_experiment(
+    profile: &BenchmarkScenarioWorkloadProfile,
+    benchmark_policy: &OraclePricerRiskBenchmarkPolicy,
+    setup: &CoarseFineScenarioSetup,
+) -> Result<CoarseFineOracleExperiment, CoarseFineConsistencyRegressionHarnessError> {
+    let equation_specification =
+        build_scenario_equation_specification(&setup.scenario_id, profile, benchmark_policy)?;
+
+    let oracle_invocation_seed = derive_invocation_seed(setup.seeds.oracle_component_seed, 1);
+
     let oracle_transform_input = build_oracle_transform_input(
         profile,
         benchmark_policy,
@@ -1090,77 +1238,163 @@ fn run_coarse_fine_consistency_scenario(
     )
     .map_err(|source| {
         coarse_fine_scenario_error(
-            &scenario_id,
+            &setup.scenario_id,
             format!("failed to build oracle transform input: {source}"),
         )
     })?;
 
     let coarse_oracle_result = solve_exponential_affine_transform_with_settings(
         oracle_transform_input,
-        oracle_solver_settings,
+        setup.oracle_solver_settings,
     )
     .map_err(|source| {
         coarse_fine_scenario_error(
-            &scenario_id,
+            &setup.scenario_id,
             format!("coarse oracle solve failed: {source}"),
         )
     })?;
 
-    let oracle_reference_result = solve_exponential_affine_transform_with_settings(
+    let reference_oracle_result = solve_exponential_affine_transform_with_settings(
         oracle_transform_input,
-        oracle_reference_solver_settings,
+        setup.oracle_reference_solver_settings,
     )
     .map_err(|source| {
         coarse_fine_scenario_error(
-            &scenario_id,
+            &setup.scenario_id,
             format!("oracle reference solve failed: {source}"),
         )
     })?;
 
-    let coarse_oracle_output =
-        extract_completed_oracle_output(&scenario_id, "coarse", coarse_oracle_result)?;
-    let oracle_reference_output =
-        extract_completed_oracle_output(&scenario_id, "reference", oracle_reference_result)?;
+    Ok(CoarseFineOracleExperiment {
+        coarse_output: extract_completed_oracle_output(
+            &setup.scenario_id,
+            "coarse",
+            coarse_oracle_result,
+        )?,
+        reference_output: extract_completed_oracle_output(
+            &setup.scenario_id,
+            "reference",
+            reference_oracle_result,
+        )?,
+    })
+}
 
+fn run_coarse_fine_pricing_experiment(
+    profile: &BenchmarkScenarioWorkloadProfile,
+    benchmark_policy: &OraclePricerRiskBenchmarkPolicy,
+    execution_config: CoarseFineConsistencyRegressionExecutionConfig,
+    setup: &CoarseFineScenarioSetup,
+) -> Result<CoarseFinePricingExperiment, CoarseFineConsistencyRegressionHarnessError> {
     let pricing_engine_settings = build_pricing_engine_settings(profile, benchmark_policy)
         .map_err(|source| {
             coarse_fine_scenario_error(
-                &scenario_id,
+                &setup.scenario_id,
                 format!("failed to construct pricing engine settings: {source}"),
             )
         })?;
 
-    let pricing_invocation_seed = derive_invocation_seed(pricing_component_seed, 1);
+    let pricing_invocation_seed = derive_invocation_seed(setup.seeds.pricing_component_seed, 1);
+
     let pricing_market_inputs =
         build_pricing_market_inputs(profile, benchmark_policy, pricing_invocation_seed).map_err(
             |source| {
                 coarse_fine_scenario_error(
-                    &scenario_id,
+                    &setup.scenario_id,
                     format!("failed to build pricing market inputs: {source}"),
                 )
             },
         )?;
-    let pricing_payoff_type = VanillaOptionPayoffType::Call;
-    let pricing_payoff = VanillaOptionPayoffConfiguration {
-        payoff_type: pricing_payoff_type,
-    };
-    let pricing_volatility = interpolate_range(
+
+    let pricing_inputs = build_coarse_fine_pricing_inputs(
+        &setup.scenario_id,
+        &pricing_market_inputs,
+        benchmark_policy,
+        pricing_invocation_seed,
+    )?;
+
+    let coarse_value = price_coarse_fine_benchmark_vanilla_option(
+        &setup.scenario_id,
+        &pricing_market_inputs,
+        pricing_engine_settings,
+        pricing_inputs,
+    )?;
+
+    let fine_reference_value = estimate_fine_pricing_reference_price(
+        &setup.scenario_id,
+        setup.seeds.pricing_component_seed,
+        execution_config.fine_pricing_reference_path_count,
+        execution_config.fine_pricing_reference_step_count,
+        pricing_inputs.spot,
+        pricing_inputs.strike,
+        pricing_inputs.maturity_interval,
+        pricing_inputs.risk_free_rate,
+        pricing_inputs.dividend_yield,
+        pricing_inputs.volatility,
+        pricing_inputs.payoff_type,
+    )?;
+
+    Ok(CoarseFinePricingExperiment {
+        coarse_value,
+        fine_reference_value,
+    })
+}
+
+fn build_coarse_fine_pricing_inputs(
+    scenario_id: &str,
+    pricing_market_inputs: &VanillaOptionPricingMarketInputs,
+    benchmark_policy: &OraclePricerRiskBenchmarkPolicy,
+    pricing_invocation_seed: u64,
+) -> Result<CoarseFinePricingInputs, CoarseFineConsistencyRegressionHarnessError> {
+    let strike = pricing_market_inputs.single_strike().map_err(|source| {
+        coarse_fine_scenario_error(
+            scenario_id,
+            format!("invalid pricing market inputs for coarse-fine comparison: {source}"),
+        )
+    })?;
+
+    let maturity_interval = pricing_market_inputs
+        .single_maturity_interval()
+        .map_err(|source| {
+            coarse_fine_scenario_error(
+                scenario_id,
+                format!("invalid pricing market inputs for coarse-fine comparison: {source}"),
+            )
+        })?;
+
+    let volatility = interpolate_range(
         benchmark_policy.pricing_input_ranges.volatility_min,
         benchmark_policy.pricing_input_ranges.volatility_max,
         unit_interval_from_seed(pricing_invocation_seed ^ 0x51),
     );
 
-    let pricing_spot = pricing_market_inputs.spot;
-    let pricing_strike = pricing_market_inputs.strike;
-    let pricing_maturity_interval = pricing_market_inputs.maturity_interval;
-    let pricing_risk_free_rate = pricing_market_inputs.risk_free_rate;
-    let pricing_dividend_yield = pricing_market_inputs.dividend_yield;
+    Ok(CoarseFinePricingInputs {
+        spot: pricing_market_inputs.spot,
+        strike,
+        maturity_interval,
+        risk_free_rate: pricing_market_inputs.risk_free_rate,
+        dividend_yield: pricing_market_inputs.dividend_yield,
+        volatility,
+        payoff_type: VanillaOptionPayoffType::Call,
+    })
+}
 
-    let pricing_drift = (pricing_risk_free_rate
-        - pricing_dividend_yield
-        - 0.5 * pricing_volatility * pricing_volatility)
-        * pricing_maturity_interval;
-    let pricing_variance = pricing_volatility * pricing_volatility * pricing_maturity_interval;
+fn price_coarse_fine_benchmark_vanilla_option(
+    scenario_id: &str,
+    pricing_market_inputs: &VanillaOptionPricingMarketInputs,
+    pricing_engine_settings: FourierInversionEngineSettings,
+    pricing_inputs: CoarseFinePricingInputs,
+) -> Result<f64, CoarseFineConsistencyRegressionHarnessError> {
+    let pricing_payoff = VanillaOptionPayoffConfiguration {
+        payoff_type: pricing_inputs.payoff_type,
+    };
+
+    let pricing_drift = (pricing_inputs.risk_free_rate
+        - pricing_inputs.dividend_yield
+        - 0.5 * pricing_inputs.volatility * pricing_inputs.volatility)
+        * pricing_inputs.maturity_interval;
+
+    let pricing_variance =
+        pricing_inputs.volatility * pricing_inputs.volatility * pricing_inputs.maturity_interval;
 
     let coarse_pricing_result = price_vanilla_option_via_fourier_inversion(
         pricing_market_inputs,
@@ -1174,73 +1408,81 @@ fn run_coarse_fine_consistency_scenario(
         },
     )
     .map_err(|source| {
-        coarse_fine_scenario_error(
-            &scenario_id,
-            format!("coarse pricing call failed: {source}"),
-        )
+        coarse_fine_scenario_error(scenario_id, format!("coarse pricing call failed: {source}"))
     })?;
-    let coarse_pricing_value = coarse_pricing_result.price;
 
-    let fine_pricing_reference_value = estimate_fine_pricing_reference_price(
-        &scenario_id,
-        pricing_component_seed,
-        execution_config.fine_pricing_reference_path_count,
-        execution_config.fine_pricing_reference_step_count,
-        pricing_spot,
-        pricing_strike,
-        pricing_maturity_interval,
-        pricing_risk_free_rate,
-        pricing_dividend_yield,
-        pricing_volatility,
-        pricing_payoff_type,
-    )?;
+    Ok(coarse_pricing_result.price)
+}
 
+fn run_coarse_fine_risk_experiment(
+    profile: &BenchmarkScenarioWorkloadProfile,
+    benchmark_policy: &OraclePricerRiskBenchmarkPolicy,
+    execution_config: CoarseFineConsistencyRegressionExecutionConfig,
+    setup: &CoarseFineScenarioSetup,
+) -> Result<CoarseFineRiskExperiment, CoarseFineConsistencyRegressionHarnessError> {
     let coarse_risk_factor_series =
-        build_coarse_risk_factor_series(profile, benchmark_policy, risk_component_seed);
+        build_coarse_risk_factor_series(profile, benchmark_policy, setup.seeds.risk_component_seed);
+
     let fine_risk_factor_series = expand_risk_factor_series_for_fine_reference(
         &coarse_risk_factor_series,
         execution_config.fine_subinterval_count_per_coarse_interval,
     );
+    let equation_specification =
+        build_scenario_equation_specification(&setup.scenario_id, profile, benchmark_policy)?;
 
     let coarse_risk_slices = solve_coarse_fine_risk_slices(
-        &scenario_id,
+        &setup.scenario_id,
         equation_specification,
-        oracle_solver_settings,
+        setup.oracle_solver_settings,
         profile.model_state.initial_excitation_state,
         profile.interval_settings.interval_delta,
         &coarse_risk_factor_series,
     )?;
+
     let fine_risk_slices = solve_coarse_fine_risk_slices(
-        &scenario_id,
+        &setup.scenario_id,
         equation_specification,
-        oracle_solver_settings,
+        setup.oracle_solver_settings,
         profile.model_state.initial_excitation_state,
-        fine_interval_delta,
+        setup.fine_interval_delta,
         &fine_risk_factor_series,
     )?;
 
-    let coarse_risk_metric_means = sample_coarse_risk_metric_means(
-        &scenario_id,
-        risk_component_seed,
+    let coarse_metric_means = sample_coarse_risk_metric_means(
+        &setup.scenario_id,
+        setup.seeds.risk_component_seed,
         execution_config.paired_risk_path_count,
         &coarse_risk_slices,
     )?;
-    let fine_risk_metric_means = sample_fine_risk_reference_metric_means(
-        &scenario_id,
-        risk_component_seed,
+
+    let fine_metric_means = sample_fine_risk_reference_metric_means(
+        &setup.scenario_id,
+        setup.seeds.risk_component_seed,
         execution_config.paired_risk_path_count,
         profile.interval_settings.horizon_interval_count,
         execution_config.fine_subinterval_count_per_coarse_interval,
         &fine_risk_slices,
     )?;
 
-    let metric_deltas = vec![
+    Ok(CoarseFineRiskExperiment {
+        coarse_metric_means,
+        fine_metric_means,
+    })
+}
+
+fn build_coarse_fine_metric_deltas(
+    tolerance_band: &CoarseFineConsistencyRegressionIntervalToleranceBand,
+    oracle_experiment: CoarseFineOracleExperiment,
+    pricing_experiment: CoarseFinePricingExperiment,
+    risk_experiment: CoarseFineRiskExperiment,
+) -> Vec<CoarseFineConsistencyMetricDelta> {
+    vec![
         build_coarse_fine_metric_delta(
             "oracle_c_at_delta_absolute_difference",
             VerificationSemanticBucket::TradingReturn,
             complex_difference_norm(
-                coarse_oracle_output.c_at_delta,
-                oracle_reference_output.c_at_delta,
+                oracle_experiment.coarse_output.c_at_delta,
+                oracle_experiment.reference_output.c_at_delta,
             ),
             0.0,
             tolerance_band.oracle_c_at_delta_absolute_tolerance,
@@ -1249,7 +1491,10 @@ fn run_coarse_fine_consistency_scenario(
         build_coarse_fine_metric_delta(
             "oracle_d_component_max_absolute_difference",
             VerificationSemanticBucket::TradingReturn,
-            max_abs_oracle_d_component_difference(coarse_oracle_output, oracle_reference_output),
+            max_abs_oracle_d_component_difference(
+                oracle_experiment.coarse_output,
+                oracle_experiment.reference_output,
+            ),
             0.0,
             tolerance_band.oracle_d_component_absolute_tolerance,
             0.0,
@@ -1258,8 +1503,8 @@ fn run_coarse_fine_consistency_scenario(
             "oracle_transform_value_absolute_difference",
             VerificationSemanticBucket::TradingReturn,
             complex_difference_norm(
-                coarse_oracle_output.transform_value,
-                oracle_reference_output.transform_value,
+                oracle_experiment.coarse_output.transform_value,
+                oracle_experiment.reference_output.transform_value,
             ),
             0.0,
             tolerance_band.oracle_transform_value_absolute_tolerance,
@@ -1268,73 +1513,84 @@ fn run_coarse_fine_consistency_scenario(
         build_coarse_fine_metric_delta(
             "pricing_vanilla_option_price",
             VerificationSemanticBucket::TradingReturn,
-            coarse_pricing_value,
-            fine_pricing_reference_value,
+            pricing_experiment.coarse_value,
+            pricing_experiment.fine_reference_value,
             tolerance_band.pricing_price_absolute_delta_tolerance,
             tolerance_band.pricing_price_relative_delta_tolerance,
         ),
         build_coarse_fine_metric_delta(
             "risk_mean_a_plus",
             VerificationSemanticBucket::ActivityCoupling,
-            coarse_risk_metric_means.mean_a_plus,
-            fine_risk_metric_means.mean_a_plus,
+            risk_experiment.coarse_metric_means.mean_a_plus,
+            risk_experiment.fine_metric_means.mean_a_plus,
             tolerance_band.risk_integrated_intensity_mean_absolute_delta_tolerance,
             tolerance_band.risk_integrated_intensity_mean_relative_delta_tolerance,
         ),
         build_coarse_fine_metric_delta(
             "risk_mean_a_minus",
             VerificationSemanticBucket::ActivityCoupling,
-            coarse_risk_metric_means.mean_a_minus,
-            fine_risk_metric_means.mean_a_minus,
+            risk_experiment.coarse_metric_means.mean_a_minus,
+            risk_experiment.fine_metric_means.mean_a_minus,
             tolerance_band.risk_integrated_intensity_mean_absolute_delta_tolerance,
             tolerance_band.risk_integrated_intensity_mean_relative_delta_tolerance,
         ),
         build_coarse_fine_metric_delta(
             "risk_mean_n_plus",
             VerificationSemanticBucket::ActivityCoupling,
-            coarse_risk_metric_means.mean_n_plus,
-            fine_risk_metric_means.mean_n_plus,
+            risk_experiment.coarse_metric_means.mean_n_plus,
+            risk_experiment.fine_metric_means.mean_n_plus,
             tolerance_band.risk_event_count_mean_absolute_delta_tolerance,
             tolerance_band.risk_event_count_mean_relative_delta_tolerance,
         ),
         build_coarse_fine_metric_delta(
             "risk_mean_n_minus",
             VerificationSemanticBucket::ActivityCoupling,
-            coarse_risk_metric_means.mean_n_minus,
-            fine_risk_metric_means.mean_n_minus,
+            risk_experiment.coarse_metric_means.mean_n_minus,
+            risk_experiment.fine_metric_means.mean_n_minus,
             tolerance_band.risk_event_count_mean_absolute_delta_tolerance,
             tolerance_band.risk_event_count_mean_relative_delta_tolerance,
         ),
-    ];
+    ]
+}
 
+fn build_coarse_fine_scenario_report(
+    profile: &BenchmarkScenarioWorkloadProfile,
+    execution_config: CoarseFineConsistencyRegressionExecutionConfig,
+    setup: &CoarseFineScenarioSetup,
+    pricing_experiment: CoarseFinePricingExperiment,
+    risk_experiment: CoarseFineRiskExperiment,
+    metric_deltas: Vec<CoarseFineConsistencyMetricDelta>,
+) -> CoarseFineConsistencyScenarioReport {
     let failed_metric_count = metric_deltas
         .iter()
         .filter(|metric_delta| !metric_delta.passed)
         .count();
+
     let max_absolute_delta = metric_deltas
         .iter()
         .map(|metric_delta| metric_delta.absolute_delta)
         .fold(0.0_f64, f64::max);
+
     let status = if failed_metric_count == 0 {
         CoarseFineConsistencyScenarioStatus::Pass
     } else {
         CoarseFineConsistencyScenarioStatus::Fail
     };
 
-    Ok(CoarseFineConsistencyScenarioReport {
-        scenario_id: scenario_id.clone(),
-        applied_tolerance_band_label: tolerance_band.interval_grid_label.clone(),
+    CoarseFineConsistencyScenarioReport {
+        scenario_id: setup.scenario_id.clone(),
+        applied_tolerance_band_label: setup.tolerance_band.interval_grid_label.clone(),
         status,
         failed_metric_count,
         max_absolute_delta,
         run_metadata: CoarseFineConsistencyScenarioRunMetadata {
-            scenario_id,
-            profile_seed,
-            oracle_component_seed,
-            pricing_component_seed,
-            risk_component_seed,
+            scenario_id: setup.scenario_id.clone(),
+            profile_seed: setup.seeds.profile_seed,
+            oracle_component_seed: setup.seeds.oracle_component_seed,
+            pricing_component_seed: setup.seeds.pricing_component_seed,
+            risk_component_seed: setup.seeds.risk_component_seed,
             coarse_interval_delta: profile.interval_settings.interval_delta,
-            fine_interval_delta,
+            fine_interval_delta: setup.fine_interval_delta,
             horizon_interval_count: profile.interval_settings.horizon_interval_count,
             fine_subinterval_count_per_coarse_interval: execution_config
                 .fine_subinterval_count_per_coarse_interval,
@@ -1343,19 +1599,19 @@ fn run_coarse_fine_consistency_scenario(
             fine_pricing_reference_step_count: execution_config.fine_pricing_reference_step_count,
         },
         summary: CoarseFineConsistencyScenarioSummary {
-            coarse_pricing_value,
-            fine_pricing_reference_value,
-            coarse_risk_mean_a_plus: coarse_risk_metric_means.mean_a_plus,
-            fine_risk_mean_a_plus: fine_risk_metric_means.mean_a_plus,
-            coarse_risk_mean_a_minus: coarse_risk_metric_means.mean_a_minus,
-            fine_risk_mean_a_minus: fine_risk_metric_means.mean_a_minus,
-            coarse_risk_mean_n_plus: coarse_risk_metric_means.mean_n_plus,
-            fine_risk_mean_n_plus: fine_risk_metric_means.mean_n_plus,
-            coarse_risk_mean_n_minus: coarse_risk_metric_means.mean_n_minus,
-            fine_risk_mean_n_minus: fine_risk_metric_means.mean_n_minus,
+            coarse_pricing_value: pricing_experiment.coarse_value,
+            fine_pricing_reference_value: pricing_experiment.fine_reference_value,
+            coarse_risk_mean_a_plus: risk_experiment.coarse_metric_means.mean_a_plus,
+            fine_risk_mean_a_plus: risk_experiment.fine_metric_means.mean_a_plus,
+            coarse_risk_mean_a_minus: risk_experiment.coarse_metric_means.mean_a_minus,
+            fine_risk_mean_a_minus: risk_experiment.fine_metric_means.mean_a_minus,
+            coarse_risk_mean_n_plus: risk_experiment.coarse_metric_means.mean_n_plus,
+            fine_risk_mean_n_plus: risk_experiment.fine_metric_means.mean_n_plus,
+            coarse_risk_mean_n_minus: risk_experiment.coarse_metric_means.mean_n_minus,
+            fine_risk_mean_n_minus: risk_experiment.fine_metric_means.mean_n_minus,
         },
         metric_deltas,
-    })
+    }
 }
 
 fn extract_completed_oracle_output(
@@ -1436,12 +1692,15 @@ fn build_coarse_fine_metric_delta(
     } else {
         f64::INFINITY
     };
+
     let denominator = fine_reference_value.abs().max(1.0e-12);
+
     let relative_delta = if absolute_delta.is_finite() {
         absolute_delta / denominator
     } else {
         f64::INFINITY
     };
+
     let passed = absolute_delta <= absolute_tolerance || relative_delta <= relative_tolerance;
 
     CoarseFineConsistencyMetricDelta {
@@ -1466,12 +1725,15 @@ fn build_coarse_risk_factor_series(
         Vec::with_capacity(profile.interval_settings.horizon_interval_count);
     for interval_index in 0..profile.interval_settings.horizon_interval_count {
         let interval_seed = derive_invocation_seed(risk_component_seed, interval_index + 1);
+
         let factor_noise = unit_interval_from_seed(interval_seed);
+
         let seasonality_factor = interpolate_range(
             benchmark_policy.oracle_solver_probes.seasonality_factor_min,
             benchmark_policy.oracle_solver_probes.seasonality_factor_max,
             factor_noise,
         );
+
         let news_intensity_factor = interpolate_range(
             benchmark_policy
                 .oracle_solver_probes
@@ -1513,6 +1775,7 @@ fn solve_coarse_fine_risk_slices(
     factor_series: &[(f64, f64)],
 ) -> Result<Vec<SufficientStatisticsTransformSlices>, CoarseFineConsistencyRegressionHarnessError> {
     let sampling_settings = SufficientStatisticsTransformSliceSettings::default();
+
     let mut slices_by_interval: Vec<SufficientStatisticsTransformSlices> =
         Vec::with_capacity(factor_series.len());
 
@@ -1520,7 +1783,9 @@ fn solve_coarse_fine_risk_slices(
         factor_series.iter().copied().enumerate()
     {
         let known_news_intensity_factor = news_intensity_factor * 0.5;
+
         let surprise_news_intensity_factor = news_intensity_factor - known_news_intensity_factor;
+
         let news_intensity_input = ExponentialAffineTransformNewsIntensityInput::try_new(
             known_news_intensity_factor,
             surprise_news_intensity_factor,
@@ -1577,6 +1842,7 @@ fn sample_coarse_risk_metric_means(
 
     for path_index in 0..paired_risk_path_count {
         let path_seed = derive_invocation_seed(risk_component_seed, path_index + 1);
+
         let sampled_statistics =
             sample_interval_statistics_batch_from_transform_slices(path_seed, slices_by_interval)
                 .map_err(|source| {
@@ -1629,8 +1895,10 @@ fn sample_fine_risk_reference_metric_means(
     }
 
     let mut accumulator = CoarseFineRiskMetricAccumulator::default();
+
     for path_index in 0..paired_risk_path_count {
         let path_seed = derive_invocation_seed(risk_component_seed, path_index + 1);
+
         let sampled_statistics =
             sample_interval_statistics_batch_from_transform_slices(path_seed, slices_by_interval)
                 .map_err(|source| {
@@ -1652,7 +1920,9 @@ fn sample_fine_risk_reference_metric_means(
         for coarse_interval_index in 0..coarse_interval_count {
             let fine_start =
                 coarse_interval_index.saturating_mul(fine_subinterval_count_per_coarse_interval);
+
             let fine_end = fine_start + fine_subinterval_count_per_coarse_interval;
+
             let mut aggregated_a_plus = 0.0_f64;
             let mut aggregated_a_minus = 0.0_f64;
             let mut aggregated_n_plus = 0.0_f64;
@@ -1682,6 +1952,7 @@ fn sample_fine_risk_reference_metric_means(
             "fine risk metric aggregation produced no observations".to_string(),
         )
     })?;
+
     validate_risk_metric_means(scenario_id, "fine", metric_means)
 }
 
@@ -1747,12 +2018,14 @@ fn estimate_fine_pricing_reference_price(
             format!("fine pricing reference input `spot` must be positive, found {spot}"),
         ));
     }
+
     if strike <= 0.0 {
         return Err(coarse_fine_scenario_error(
             scenario_id,
             format!("fine pricing reference input `strike` must be positive, found {strike}"),
         ));
     }
+
     if maturity_interval <= 0.0 {
         return Err(coarse_fine_scenario_error(
             scenario_id,
@@ -1761,6 +2034,7 @@ fn estimate_fine_pricing_reference_price(
             ),
         ));
     }
+
     if volatility <= 0.0 {
         return Err(coarse_fine_scenario_error(
             scenario_id,
@@ -1771,13 +2045,17 @@ fn estimate_fine_pricing_reference_price(
     }
 
     let time_step = maturity_interval / step_count as f64;
+
     let drift_per_step =
         (risk_free_rate - dividend_yield - 0.5 * volatility * volatility) * time_step;
+
     let volatility_per_step = volatility * time_step.sqrt();
+
     let mut payoff_sum = 0.0_f64;
 
     for path_index in 0..path_count {
         let path_seed = derive_invocation_seed(pricing_component_seed, path_index + 1);
+
         let mut log_terminal_spot = spot.ln();
 
         for step_index in 0..step_count {
@@ -1788,10 +2066,12 @@ fn estimate_fine_pricing_reference_price(
         }
 
         let terminal_spot = log_terminal_spot.exp();
+
         let path_payoff = match payoff_type {
             VanillaOptionPayoffType::Call => (terminal_spot - strike).max(0.0),
             VanillaOptionPayoffType::Put => (strike - terminal_spot).max(0.0),
         };
+
         payoff_sum += path_payoff;
     }
 
@@ -1809,7 +2089,9 @@ fn estimate_fine_pricing_reference_price(
 fn sample_standard_normal_from_seed(seed: u64) -> f64 {
     let first_uniform_draw = unit_interval_from_seed(seed ^ 0x8B77_D4C9_14F2_5A11)
         .clamp(f64::MIN_POSITIVE, 1.0 - f64::EPSILON);
+
     let second_uniform_draw = unit_interval_from_seed(seed ^ 0xC4D5_1E6A_227A_F093);
+
     let radius = (-2.0 * first_uniform_draw.ln()).sqrt();
     let angle = 2.0 * std::f64::consts::PI * second_uniform_draw;
 

@@ -651,7 +651,7 @@ impl Error for FourierInversionPricingError {
 /// The engine computes a damped-call inversion and maps to the requested payoff
 /// via put-call parity when needed.
 pub fn price_vanilla_option_via_fourier_inversion<FCharacteristicFunction>(
-    market_inputs: VanillaOptionPricingMarketInputs,
+    market_inputs: &VanillaOptionPricingMarketInputs,
     payoff: VanillaOptionPayoffConfiguration,
     settings: FourierInversionEngineSettings,
     log_return_characteristic_function: FCharacteristicFunction,
@@ -669,7 +669,7 @@ where
 }
 
 pub(crate) fn price_vanilla_option_via_fourier_inversion_with_observer<FCharacteristicFunction>(
-    market_inputs: VanillaOptionPricingMarketInputs,
+    market_inputs: &VanillaOptionPricingMarketInputs,
     payoff: VanillaOptionPayoffConfiguration,
     settings: FourierInversionEngineSettings,
     log_return_characteristic_function: FCharacteristicFunction,
@@ -679,20 +679,29 @@ where
     FCharacteristicFunction: Fn(ComplexScalar) -> ComplexScalar,
 {
     market_inputs
-        .validate()
+        .validate_single_node_shape()
         .map_err(|source| FourierInversionPricingError::InvalidMarketInputs { source })?;
     settings
         .validate()
         .map_err(|source| FourierInversionPricingError::InvalidSettings { source })?;
 
-    let log_moneyness = (market_inputs.strike / market_inputs.spot).ln();
+    let strike = market_inputs
+        .single_strike()
+        .map_err(|source| FourierInversionPricingError::InvalidMarketInputs { source })?;
+
+    let maturity_interval = market_inputs
+        .single_maturity_interval()
+        .map_err(|source| FourierInversionPricingError::InvalidMarketInputs { source })?;
+
+    let log_moneyness = (strike / market_inputs.spot).ln();
     if !log_moneyness.is_finite() {
         return Err(FourierInversionPricingError::NonFiniteLogMoneyness {
             value: log_moneyness,
         });
     }
 
-    let maturity_year_fraction = intraday_year_fraction(market_inputs.maturity_interval);
+    let maturity_year_fraction = intraday_year_fraction(maturity_interval);
+
     let discount_factor = (-market_inputs.risk_free_rate * maturity_year_fraction).exp();
     if !discount_factor.is_finite() || discount_factor <= 0.0 {
         return Err(FourierInversionPricingError::NonFiniteDiscountFactor {
@@ -774,7 +783,7 @@ struct FourierIntegralStatistics {
 }
 
 fn integrate_discounted_call_price_with_fourier_inversion<FCharacteristicFunction>(
-    market_inputs: VanillaOptionPricingMarketInputs,
+    market_inputs: &VanillaOptionPricingMarketInputs,
     settings: FourierInversionEngineSettings,
     log_moneyness: f64,
     discount_factor: f64,
@@ -1125,19 +1134,25 @@ where
 fn map_discounted_call_to_vanilla_payoff(
     payoff_type: VanillaOptionPayoffType,
     discounted_call_price: f64,
-    market_inputs: VanillaOptionPricingMarketInputs,
+    market_inputs: &VanillaOptionPricingMarketInputs,
     discount_factor: f64,
     dividend_discount_factor: f64,
 ) -> Result<f64, FourierInversionPricingError> {
     match payoff_type {
         VanillaOptionPayoffType::Call => clamp_small_negative_price(discounted_call_price),
         VanillaOptionPayoffType::Put => {
+            let strike = market_inputs
+                .single_strike()
+                .map_err(|source| FourierInversionPricingError::InvalidMarketInputs { source })?;
+
             let discounted_spot = market_inputs.spot * dividend_discount_factor;
-            let discounted_strike = market_inputs.strike * discount_factor;
+            let discounted_strike = strike * discount_factor;
+
             let put_price = discounted_call_price - discounted_spot + discounted_strike;
             if !put_price.is_finite() {
                 return Err(FourierInversionPricingError::NonFiniteFinalPrice { value: put_price });
             }
+
             clamp_small_negative_price(put_price)
         }
     }
@@ -1147,12 +1162,14 @@ fn clamp_small_negative_price(price: f64) -> Result<f64, FourierInversionPricing
     if !price.is_finite() {
         return Err(FourierInversionPricingError::NonFiniteFinalPrice { value: price });
     }
+
     if price < -FOURIER_NON_NEGATIVE_PRICE_CLAMP_TOLERANCE {
         return Err(FourierInversionPricingError::NegativePriceBeyondTolerance {
             value: price,
             tolerance: FOURIER_NON_NEGATIVE_PRICE_CLAMP_TOLERANCE,
         });
     }
+
     if price < 0.0 {
         return Ok(0.0);
     }

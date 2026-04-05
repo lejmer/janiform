@@ -809,8 +809,8 @@ def _valid_pricing_execution_input() -> VanillaOptionPricingExecutionInput:
         request=VanillaOptionPricingRequest(
             market_inputs=VanillaOptionPricingMarketInputs(
                 spot=101.0,
-                strike=100.0,
-                maturity_interval=0.5,
+                strikes=(100.0,),
+                maturity_intervals=(0.5,),
                 risk_free_rate=0.02,
                 dividend_yield=0.01,
             ),
