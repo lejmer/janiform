@@ -664,9 +664,7 @@ fn build_joint_candidate_ordering_states<'a>(
         .collect()
 }
 
-fn pareto_ranks(
-    restart_outcomes: &[&JointRefinementRestartOutcome],
-) -> Vec<usize> {
+fn pareto_ranks(restart_outcomes: &[&JointRefinementRestartOutcome]) -> Vec<usize> {
     restart_outcomes
         .iter()
         .map(|candidate| {
