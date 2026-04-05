@@ -31,7 +31,8 @@ The supported fit ownership submodules also include:
   used by `JaniformModel.estimate_current_state(...)`
 - `janiform.calibration.fit.pricing` for the public batch and surface pricing contracts used by
   `JaniformModel.price_options(...)` and `JaniformModel.price_option_surface(...)`, including
-  Janiform-computed implied-volatility fields on the returned pricing artifacts
+  Janiform-computed implied-volatility fields together with per-node pricing status and failure
+  diagnostics on the returned pricing artifacts
 
 `JaniformModel` is the canonical high-level runtime surface for fitted models. In addition to
 `fit` persistence helpers, the main runtime entrypoints are:

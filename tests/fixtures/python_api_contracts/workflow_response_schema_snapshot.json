@@ -601,6 +601,12 @@
         },
         "price": {
           "type": "float"
+        },
+        "pricing_failure_diagnostic": {
+          "type": "null"
+        },
+        "pricing_status": {
+          "type": "string"
         }
       },
       "type": "object"
@@ -786,6 +792,12 @@
             },
             "price": {
               "type": "float"
+            },
+            "pricing_failure_diagnostic": {
+              "type": "null"
+            },
+            "pricing_status": {
+              "type": "string"
             }
           },
           "type": "object"
@@ -1385,6 +1397,12 @@
             },
             "price": {
               "type": "float"
+            },
+            "pricing_failure_diagnostic": {
+              "type": "null"
+            },
+            "pricing_status": {
+              "type": "string"
             }
           },
           "type": "object"

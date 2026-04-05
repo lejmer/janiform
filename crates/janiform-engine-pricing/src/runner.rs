@@ -36,10 +36,12 @@ use super::characteristic::{
 use super::contracts::{
     AnchoredLocalTiltSolveDiagnostics, AnchoredPricingRecursionDiagnostics,
     AnchoredPricingRecursionIntervalDiagnostics, AnchoredVanillaOptionPricingBoundaryInput,
-    VanillaOptionPricingDiagnostics, VanillaOptionPricingOptionalOutputSelection,
+    VanillaOptionPricingDiagnostics, VanillaOptionPricingFailureDiagnostic,
+    VanillaOptionPricingFailureStage, VanillaOptionPricingOptionalOutputSelection,
     VanillaOptionPricingRequest, VanillaOptionPricingRequestError, VanillaOptionPricingResponse,
     VanillaOptionPricingResponseError, VanillaOptionPricingRunResult,
-    VanillaOptionPricingRunResultBuildError, build_vanilla_option_pricing_run_result,
+    VanillaOptionPricingRunResultBuildError, VanillaOptionPricingStatus,
+    build_vanilla_option_pricing_run_result,
 };
 use super::fourier::{
     FourierInversionPricingError, FourierInversionProgress,
@@ -390,6 +392,7 @@ pub fn run_vanilla_option_pricing_with_observer(
 
     let pricing_request = execution_input.request.clone();
     let output_selection = execution_input.optional_output_selection;
+    let market_inputs_for_calibration_hooks = pricing_request.market_inputs.clone();
 
     let driver_parameters = pricing_request
         .model_parameters
@@ -397,50 +400,74 @@ pub fn run_vanilla_option_pricing_with_observer(
         .derive_driver_parameters()
         .map_err(|source| VanillaOptionPricingRunError::InvalidDriverParameters { source })?;
 
-    let anchored_result = if should_use_nested_single_interval_pricing(
-        &pricing_request,
-        execution_input.interval_factors.len(),
-    )? {
-        run_single_interval_nested_fourier_pricing(
+    let successful_result = (|| {
+        let anchored_result = if should_use_nested_single_interval_pricing(
             &pricing_request,
-            execution_input.interval_factors[0],
-            output_selection,
-            driver_parameters,
-            &mut observer,
-        )?
-    } else if execution_input.interval_factors.len() == 1 {
-        run_single_interval_anchored_fourier_pricing(
-            &pricing_request,
-            execution_input.interval_factors[0],
-            driver_parameters,
-            &mut observer,
-        )?
-    } else {
-        run_multi_interval_anchored_pricing(
-            &pricing_request,
-            &execution_input.interval_factors,
-            driver_parameters,
-            &mut observer,
-        )?
-    };
+            execution_input.interval_factors.len(),
+        )? {
+            run_single_interval_nested_fourier_pricing(
+                &pricing_request,
+                execution_input.interval_factors[0],
+                output_selection,
+                driver_parameters,
+                &mut observer,
+            )?
+        } else if execution_input.interval_factors.len() == 1 {
+            run_single_interval_anchored_fourier_pricing(
+                &pricing_request,
+                execution_input.interval_factors[0],
+                driver_parameters,
+                &mut observer,
+            )?
+        } else {
+            run_multi_interval_anchored_pricing(
+                &pricing_request,
+                &execution_input.interval_factors,
+                driver_parameters,
+                &mut observer,
+            )?
+        };
 
-    let response = build_pricing_response(&pricing_request, anchored_result.price)?;
+        let response = build_pricing_response(&pricing_request, anchored_result.price)?;
+        Ok::<_, VanillaOptionPricingRunError>((response, anchored_result))
+    })();
 
-    let representative_transform_diagnostics = if output_selection.include_transform_diagnostics
-        || output_selection.include_calibration_hooks
-    {
-        anchored_result.representative_transform_diagnostics
-    } else {
-        None
+    let (
+        response,
+        representative_transform_diagnostics,
+        integration_quality_diagnostics,
+        anchored_recursion_diagnostics,
+    ) = match successful_result {
+        Ok((response, anchored_result)) => {
+            let representative_transform_diagnostics = if output_selection
+                .include_transform_diagnostics
+                || output_selection.include_calibration_hooks
+            {
+                anchored_result.representative_transform_diagnostics
+            } else {
+                None
+            };
+
+            (
+                response,
+                representative_transform_diagnostics,
+                anchored_result.integration_quality_diagnostics,
+                anchored_result.anchored_recursion_diagnostics,
+            )
+        }
+        Err(error) => {
+            let response = build_failed_pricing_response(error)?;
+            (response, None, None, None)
+        }
     };
 
     build_vanilla_option_pricing_run_result(
         response,
         output_selection,
-        Some(pricing_request.market_inputs),
+        Some(market_inputs_for_calibration_hooks),
         representative_transform_diagnostics,
-        anchored_result.integration_quality_diagnostics,
-        anchored_result.anchored_recursion_diagnostics,
+        integration_quality_diagnostics,
+        anchored_recursion_diagnostics,
     )
     .map_err(|source| VanillaOptionPricingRunError::InvalidRunResult { source })
 }
@@ -2283,12 +2310,96 @@ fn build_pricing_response(
     );
 
     VanillaOptionPricingResponse::try_new(
-        price,
-        diagnostics,
+        VanillaOptionPricingStatus::Succeeded,
+        None,
+        Some(price),
+        Some(diagnostics),
         implied_volatility_outcome.implied_volatility,
-        implied_volatility_outcome.inversion_status,
+        Some(implied_volatility_outcome.inversion_status),
     )
     .map_err(|source| VanillaOptionPricingRunError::InvalidResponse { source })
+}
+
+fn build_failed_pricing_response(
+    error: VanillaOptionPricingRunError,
+) -> Result<VanillaOptionPricingResponse, VanillaOptionPricingRunError> {
+    match error {
+        VanillaOptionPricingRunError::InvalidExecutionInput { .. }
+        | VanillaOptionPricingRunError::InvalidDriverParameters { .. } => Err(error),
+        other => {
+            let failure_diagnostic = pricing_failure_diagnostic_from_run_error(&other);
+            VanillaOptionPricingResponse::try_new(
+                VanillaOptionPricingStatus::Failed,
+                Some(failure_diagnostic),
+                None,
+                None,
+                None,
+                None,
+            )
+            .map_err(|source| VanillaOptionPricingRunError::InvalidResponse { source })
+        }
+    }
+}
+
+pub(crate) fn pricing_failure_diagnostic_from_run_error(
+    error: &VanillaOptionPricingRunError,
+) -> VanillaOptionPricingFailureDiagnostic {
+    let stage = match error {
+        VanillaOptionPricingRunError::TransformInputBuildFailure { .. } => {
+            VanillaOptionPricingFailureStage::TransformInputBuild
+        }
+        VanillaOptionPricingRunError::TransformSolveFailure { .. } => {
+            VanillaOptionPricingFailureStage::TransformSolve
+        }
+        VanillaOptionPricingRunError::MissingTransformOutput { .. } => {
+            VanillaOptionPricingFailureStage::TransformOutput
+        }
+        VanillaOptionPricingRunError::CharacteristicFunctionAssemblyFailure { .. } => {
+            VanillaOptionPricingFailureStage::CharacteristicFunctionAssembly
+        }
+        VanillaOptionPricingRunError::FourierPricingFailure { .. } => {
+            VanillaOptionPricingFailureStage::FourierPricing
+        }
+        VanillaOptionPricingRunError::InvalidRiskNeutralCharacteristicFunction { .. } => {
+            VanillaOptionPricingFailureStage::RiskNeutralCharacteristicFunction
+        }
+        VanillaOptionPricingRunError::EndogenousAnchorMaterializationFailure { .. } => {
+            VanillaOptionPricingFailureStage::EndogenousAnchorMaterialization
+        }
+        VanillaOptionPricingRunError::ExpectedHawkesStateUpdateFailure { .. } => {
+            VanillaOptionPricingFailureStage::ExpectedHawkesStateUpdate
+        }
+        VanillaOptionPricingRunError::AnchoredLocalTiltSolveFailure { .. } => {
+            VanillaOptionPricingFailureStage::AnchoredLocalTiltSolve
+        }
+        VanillaOptionPricingRunError::InvalidObservedBoundaryStateDuringRecursion { .. } => {
+            VanillaOptionPricingFailureStage::AnchoredRecursionObservedBoundaryState
+        }
+        VanillaOptionPricingRunError::InvalidAnchoredRecursionDiagnostics { .. } => {
+            VanillaOptionPricingFailureStage::AnchoredRecursionDiagnostics
+        }
+        VanillaOptionPricingRunError::InvalidGridInterpolationShape { .. } => {
+            VanillaOptionPricingFailureStage::GridInterpolationShape
+        }
+        VanillaOptionPricingRunError::InvalidResponseDiagnostics { .. } => {
+            VanillaOptionPricingFailureStage::ResponseDiagnostics
+        }
+        VanillaOptionPricingRunError::InvalidResponse { .. } => {
+            VanillaOptionPricingFailureStage::ResponseAssembly
+        }
+        VanillaOptionPricingRunError::MissingRepresentativeTransformDiagnostics
+        | VanillaOptionPricingRunError::InvalidRunResult { .. } => {
+            VanillaOptionPricingFailureStage::RunResultAssembly
+        }
+        VanillaOptionPricingRunError::InvalidExecutionInput { .. } => {
+            VanillaOptionPricingFailureStage::NodeSetup
+        }
+        VanillaOptionPricingRunError::InvalidDriverParameters { .. } => {
+            VanillaOptionPricingFailureStage::NodeSetup
+        }
+    };
+
+    VanillaOptionPricingFailureDiagnostic::new(stage, error.to_string())
 }
 
 fn evaluate_pricing_log_return_characteristic_function(

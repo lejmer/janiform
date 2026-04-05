@@ -557,16 +557,11 @@ pub(crate) fn option_spread_normalized_price_fit(
     let mut normalized_residuals = Vec::with_capacity(option_pricing_context.observed_nodes.len());
 
     for observed_node in &option_pricing_context.observed_nodes {
-        let model_price = pricing_result
-            .groups
-            .get(observed_node.location.group_index)
-            .and_then(|group| group.price_grid.get(observed_node.location.maturity_index))
-            .and_then(|row| row.get(observed_node.location.strike_index))
-            .copied()
-            .ok_or_else(|| {
-                "joint option pricing evaluation returned a grid inconsistent with the selected option snapshot"
-                    .to_string()
-            })?;
+        let model_price = resolve_model_option_price(
+            &pricing_result,
+            observed_node,
+            "joint option pricing evaluation returned a grid inconsistent with the selected option snapshot",
+        )?;
 
         normalized_residuals.push(
             (model_price - observed_node.observed_mid_price)
@@ -711,11 +706,37 @@ fn resolve_model_option_price(
     observed_node: &JointRefinementOptionNodeDefinition,
     error_message: &str,
 ) -> Result<f64, String> {
-    pricing_result
+    let group = pricing_result
         .groups
         .get(observed_node.location.group_index)
-        .and_then(|group| group.price_grid.get(observed_node.location.maturity_index))
+        .ok_or_else(|| error_message.to_string())?;
+    let model_price = group
+        .price_grid
+        .get(observed_node.location.maturity_index)
         .and_then(|row| row.get(observed_node.location.strike_index))
         .copied()
-        .ok_or_else(|| error_message.to_string())
+        .ok_or_else(|| error_message.to_string())?;
+
+    if let Some(model_price) = model_price {
+        return Ok(model_price);
+    }
+
+    let failure_stage = group
+        .pricing_failure_stage_grid
+        .get(observed_node.location.maturity_index)
+        .and_then(|row| row.get(observed_node.location.strike_index))
+        .and_then(|stage| *stage)
+        .map(|stage| format!("{stage:?}"))
+        .unwrap_or_else(|| "unknown".to_string());
+    let failure_reason = group
+        .pricing_failure_reason_grid
+        .get(observed_node.location.maturity_index)
+        .and_then(|row| row.get(observed_node.location.strike_index))
+        .and_then(|reason| reason.as_ref())
+        .cloned()
+        .unwrap_or_else(|| "missing failure reason".to_string());
+
+    Err(format!(
+        "{error_message}: node pricing failed at stage={failure_stage} reason={failure_reason}"
+    ))
 }

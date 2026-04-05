@@ -179,11 +179,17 @@ fn anchored_pricing_native_prices_match_seeded_reference_baseline() {
             } => {
                 let native_run_result = run_native_pricer_for_scenario(&scenario)
                     .expect("native anchored pricer should succeed");
-                let observed_native_price = native_run_result.response.price;
+
+                let observed_native_price = native_run_result
+                    .response
+                    .price
+                    .expect("successful native anchored pricing response should include a price");
+
                 let observed_simulation_reference_price = estimate_seeded_reference_price(
                     &scenario,
                     policy.simulation_reference.path_count,
                 );
+
                 let observed_gap =
                     (observed_native_price - observed_simulation_reference_price).abs();
 

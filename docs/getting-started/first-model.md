@@ -199,7 +199,8 @@ surface_result = model.price_option_surface(
 )
 ```
 
-Both workflows return Janiform prices together with Janiform-computed implied volatility outputs.
+Both workflows return Janiform prices together with Janiform-computed implied volatility outputs,
+per-node pricing statuses, and failure diagnostics for any nodes that do not price successfully.
 
 ## Related Example
 

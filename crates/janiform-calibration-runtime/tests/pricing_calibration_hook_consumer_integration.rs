@@ -7,7 +7,7 @@ use janiform_engine_pricing::{
     VanillaOptionPayoffConfiguration, VanillaOptionPayoffType, VanillaOptionPricingDiagnostics,
     VanillaOptionPricingMarketInputs, VanillaOptionPricingModelParameters,
     VanillaOptionPricingOptionalOutputSelection, VanillaOptionPricingRequest,
-    VanillaOptionPricingResponse, build_pricing_transform_input,
+    VanillaOptionPricingResponse, VanillaOptionPricingStatus, build_pricing_transform_input,
     build_vanilla_option_pricing_run_result, price_vanilla_option_via_fourier_inversion,
     solve_exponential_affine_transform,
 };
@@ -42,16 +42,20 @@ fn pricing_run_output_hooks_are_directly_consumable_by_calibration_adapter() {
     let discount_factor = (-market_inputs.risk_free_rate * maturity_interval).exp();
 
     let response = VanillaOptionPricingResponse::try_new(
-        12.5,
-        VanillaOptionPricingDiagnostics::try_new(
-            forward_price,
-            discount_factor,
-            maturity_interval,
-            0.55,
-        )
-        .expect("response diagnostics should construct"),
+        VanillaOptionPricingStatus::Succeeded,
+        None,
+        Some(12.5),
+        Some(
+            VanillaOptionPricingDiagnostics::try_new(
+                forward_price,
+                discount_factor,
+                maturity_interval,
+                0.55,
+            )
+            .expect("response diagnostics should construct"),
+        ),
         Some(0.2),
-        janiform_engine_pricing::VanillaOptionImpliedVolatilityInversionStatus::Succeeded,
+        Some(janiform_engine_pricing::VanillaOptionImpliedVolatilityInversionStatus::Succeeded),
     )
     .expect("response should construct");
 

@@ -62,16 +62,25 @@ fn vanilla_option_pricing_runner_executes_public_workflow_with_optional_outputs(
     let run_result: VanillaOptionPricingRunResult =
         run_vanilla_option_pricing(execution_input).expect("pricing runner should succeed");
 
-    assert!(run_result.response.price.is_finite());
-    assert!(run_result.response.price >= 0.0);
+    let price = run_result
+        .response
+        .price
+        .expect("single pricing should return a price");
+    assert!(price.is_finite());
+    assert!(price >= 0.0);
     assert!(run_result.response.implied_volatility.is_some());
     assert_eq!(
         run_result.response.implied_volatility_inversion_status,
-        VanillaOptionImpliedVolatilityInversionStatus::Succeeded
+        Some(VanillaOptionImpliedVolatilityInversionStatus::Succeeded)
     );
-    assert!(run_result.response.diagnostics.forward_price > 0.0);
-    assert!(run_result.response.diagnostics.discount_factor > 0.0);
-    assert!(run_result.response.diagnostics.boundary_state_norm >= 0.0);
+    let diagnostics = run_result
+        .response
+        .diagnostics
+        .as_ref()
+        .expect("single pricing should return diagnostics");
+    assert!(diagnostics.forward_price > 0.0);
+    assert!(diagnostics.discount_factor > 0.0);
+    assert!(diagnostics.boundary_state_norm >= 0.0);
 
     let run_diagnostics = run_result
         .run_diagnostics
@@ -82,10 +91,10 @@ fn vanilla_option_pricing_runner_executes_public_workflow_with_optional_outputs(
     let calibration_hooks = run_result
         .calibration_hooks
         .expect("calibration hooks should be present");
-    assert_eq!(calibration_hooks.option_price, run_result.response.price);
+    assert_eq!(calibration_hooks.option_price, price);
     assert_eq!(
         calibration_hooks.maturity_interval,
-        run_result.response.diagnostics.maturity_interval
+        diagnostics.maturity_interval
     );
 }
 
@@ -307,15 +316,36 @@ fn vanilla_option_grouped_batch_pricing_matches_single_option_runner_on_shared_g
         );
         assert_eq!(
             grouped_batch_result.groups[node_index].forward_price_grid[0][0],
-            single_result.response.diagnostics.forward_price
+            Some(
+                single_result
+                    .response
+                    .diagnostics
+                    .as_ref()
+                    .expect("single pricing should return diagnostics")
+                    .forward_price
+            )
         );
         assert_eq!(
             grouped_batch_result.groups[node_index].discount_factor_grid[0][0],
-            single_result.response.diagnostics.discount_factor
+            Some(
+                single_result
+                    .response
+                    .diagnostics
+                    .as_ref()
+                    .expect("single pricing should return diagnostics")
+                    .discount_factor
+            )
         );
         assert_eq!(
             grouped_batch_result.groups[node_index].boundary_state_norm_grid[0][0],
-            single_result.response.diagnostics.boundary_state_norm
+            Some(
+                single_result
+                    .response
+                    .diagnostics
+                    .as_ref()
+                    .expect("single pricing should return diagnostics")
+                    .boundary_state_norm
+            )
         );
     }
 }
@@ -426,15 +456,36 @@ fn vanilla_option_surface_pricing_matches_single_option_runner_on_shared_grid() 
             );
             assert_eq!(
                 surface_result.response.forward_price_grid[maturity_index][strike_index],
-                single_result.response.diagnostics.forward_price
+                Some(
+                    single_result
+                        .response
+                        .diagnostics
+                        .as_ref()
+                        .expect("single pricing should return diagnostics")
+                        .forward_price
+                )
             );
             assert_eq!(
                 surface_result.response.discount_factor_grid[maturity_index][strike_index],
-                single_result.response.diagnostics.discount_factor
+                Some(
+                    single_result
+                        .response
+                        .diagnostics
+                        .as_ref()
+                        .expect("single pricing should return diagnostics")
+                        .discount_factor
+                )
             );
             assert_eq!(
                 surface_result.response.boundary_state_norm_grid[maturity_index][strike_index],
-                single_result.response.diagnostics.boundary_state_norm
+                Some(
+                    single_result
+                        .response
+                        .diagnostics
+                        .as_ref()
+                        .expect("single pricing should return diagnostics")
+                        .boundary_state_norm
+                )
             );
         }
     }
