@@ -757,6 +757,40 @@ fn hourly_factor_contract_loader_rejects_inconsistent_interval_grid_metadata() {
 }
 
 #[test]
+fn hourly_factor_contract_loader_accepts_zero_seasonality_factors() {
+    let output = load_hourly_factor_contract(valid_hourly_factor_contract_payload_with_overrides(
+        &[("s_h", serde_json::json!([0.0, 0.9]))],
+    ))
+    .expect("zero seasonality factors should remain valid contract values");
+
+    assert_eq!(output.s_h, vec![0.0, 0.9]);
+}
+
+#[test]
+fn hourly_factor_contract_loader_accepts_empty_interval_grid_payload() {
+    let output =
+        load_hourly_factor_contract(valid_hourly_factor_contract_payload_with_overrides(&[
+            ("request_end_utc_nanos", serde_json::json!(0_i64)),
+            ("interval_indices", serde_json::json!([])),
+            ("interval_start_utc_nanos", serde_json::json!([])),
+            ("interval_end_utc_nanos", serde_json::json!([])),
+            ("interval_start_exchange_local", serde_json::json!([])),
+            ("interval_end_exchange_local", serde_json::json!([])),
+            ("s_h", serde_json::json!([])),
+            ("known_component_nu_h", serde_json::json!([])),
+            ("surprise_component_nu_h", serde_json::json!([])),
+            ("nu_h", serde_json::json!([])),
+            ("interval_count", serde_json::json!(0_usize)),
+            ("last_interval_end_utc_nanos", serde_json::json!(0_i64)),
+        ]))
+        .expect("empty interval grid payload should remain structurally valid");
+
+    assert_eq!(output.diagnostics.interval_count, 0);
+    assert!(output.interval_indices.is_empty());
+    assert!(output.s_h.is_empty());
+}
+
+#[test]
 fn hourly_factor_contract_loader_accepts_canonical_payload() {
     let output =
         load_hourly_factor_contract(valid_hourly_factor_contract_payload_with_overrides(&[]))

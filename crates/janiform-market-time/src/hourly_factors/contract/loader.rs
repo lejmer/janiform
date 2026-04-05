@@ -99,7 +99,14 @@ pub fn load_hourly_factor_contract(
         });
     }
 
-    if payload.request_start_utc_nanos >= payload.request_end_utc_nanos {
+    if payload.interval_count == 0 {
+        if payload.request_start_utc_nanos > payload.request_end_utc_nanos {
+            return Err(HourlyFactorContractError::NonIncreasingRange {
+                range_start_utc_nanos: payload.request_start_utc_nanos,
+                range_end_utc_nanos: payload.request_end_utc_nanos,
+            });
+        }
+    } else if payload.request_start_utc_nanos >= payload.request_end_utc_nanos {
         return Err(HourlyFactorContractError::NonIncreasingRange {
             range_start_utc_nanos: payload.request_start_utc_nanos,
             range_end_utc_nanos: payload.request_end_utc_nanos,
@@ -208,6 +215,17 @@ fn validate_interval_grid(
     payload: &HourlyFactorContractPayload,
 ) -> Result<(), HourlyFactorContractError> {
     if payload.interval_count == 0 {
+        validate_interval_start_match(
+            "first_interval_start_utc_nanos",
+            payload.request_start_utc_nanos,
+            payload.first_interval_start_utc_nanos,
+        )?;
+        validate_interval_start_match(
+            "last_interval_end_utc_nanos",
+            payload.request_end_utc_nanos,
+            payload.last_interval_end_utc_nanos,
+        )?;
+
         return Ok(());
     }
 
@@ -292,7 +310,7 @@ fn validate_interval_values(
     payload: &HourlyFactorContractPayload,
 ) -> Result<(), HourlyFactorContractError> {
     for (interval_index, seasonality_factor) in payload.s_h.iter().copied().enumerate() {
-        if !seasonality_factor.is_finite() || seasonality_factor <= 0.0 {
+        if !seasonality_factor.is_finite() || seasonality_factor < 0.0 {
             return Err(HourlyFactorContractError::InvalidSeasonalityFactor {
                 interval_index,
                 value: seasonality_factor,

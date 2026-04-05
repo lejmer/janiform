@@ -50,12 +50,16 @@ def test_risk_run_request_accepts_sub_hour_interval_when_interval_factors_are_co
     request_payload = _valid_run_request_payload()
     request_payload["interval_delta"] = 0.5
     request_payload["hourly_factor_contract"]["interval_duration_nanos"] = 1_800_000_000_000
-    request_payload["hourly_factor_contract"]["interval_end_utc_nanos"] = [
-        1_706_868_600_000_000_000,
-        1_706_870_400_000_000_000,
+    request_payload["hourly_factor_contract"]["interval_start_utc_nanos"] = [
+        1_706_865_000_000_000_000,
+        1_706_866_800_000_000_000,
     ]
-    request_payload["hourly_factor_contract"]["request_end_utc_nanos"] = 1_706_870_400_000_000_000
-    request_payload["hourly_factor_contract"]["last_interval_end_utc_nanos"] = 1_706_870_400_000_000_000
+    request_payload["hourly_factor_contract"]["interval_end_utc_nanos"] = [
+        1_706_866_800_000_000_000,
+        1_706_868_600_000_000_000,
+    ]
+    request_payload["hourly_factor_contract"]["request_end_utc_nanos"] = 1_706_868_600_000_000_000
+    request_payload["hourly_factor_contract"]["last_interval_end_utc_nanos"] = 1_706_868_600_000_000_000
     (
         _mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors,

@@ -201,7 +201,7 @@ impl Display for HourlyFactorContractError {
                 value,
             } => write!(
                 formatter,
-                "s_h must contain finite positive values, found {value} at interval index {interval_index}"
+                "s_h must contain finite non-negative values, found {value} at interval index {interval_index}"
             ),
             Self::InvalidNewsIntensityFactor {
                 interval_index,
@@ -302,7 +302,7 @@ impl Display for HourlyFactorContractError {
                 actual_length,
             } => write!(
                 formatter,
-                "hourly factor contract field `{field}` must have length {expected_length}, received {actual_length}"
+                "{field} must have length {expected_length}, received {actual_length}"
             ),
             Self::IntervalStartMismatch {
                 field,
