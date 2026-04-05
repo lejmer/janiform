@@ -12,6 +12,9 @@ from janiform.pricing import (
     VanillaOptionPricingModelParameters,
     VanillaOptionPricingOptionalOutputSelection,
     VanillaOptionPricingRequest,
+    VanillaOptionSurfacePricingExecutionInput,
+    VanillaOptionSurfacePricingMarketInputs,
+    VanillaOptionSurfacePricingRequest,
 )
 from janiform.simulation import HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters
 from janiform.simulation.coarse import (
@@ -104,6 +107,55 @@ def build_anchored_runtime_execution_input_model() -> VanillaOptionPricingExecut
     )
 
 
+def build_anchored_surface_request_model() -> VanillaOptionSurfacePricingRequest:
+    return VanillaOptionSurfacePricingRequest(
+        market_inputs=VanillaOptionSurfacePricingMarketInputs(
+            spot=101.0,
+            strikes=(95.0, 100.0, 105.0),
+            maturity_intervals=(1.0, 2.0),
+            risk_free_rate=0.02,
+            dividend_yield=0.01,
+        ),
+        payoff=VanillaOptionPayoffConfiguration(
+            payoff_type=VanillaOptionPayoffType.CALL,
+        ),
+        boundary_input=_disabled_boundary_input(
+            interval_delta=1.0,
+            hawkes_boundary_state=HawkesExcitationState(
+                y_plus_plus=0.2,
+                y_plus_minus=0.1,
+                y_minus_plus=0.3,
+                y_minus_minus=0.4,
+            ),
+        ),
+        model_parameters=_build_model_parameters(),
+    )
+
+
+def build_anchored_surface_execution_input_model() -> VanillaOptionSurfacePricingExecutionInput:
+    anchored_runtime_execution_input = build_anchored_runtime_execution_input_model()
+
+    return VanillaOptionSurfacePricingExecutionInput(
+        request=VanillaOptionSurfacePricingRequest(
+            market_inputs=VanillaOptionSurfacePricingMarketInputs(
+                spot=anchored_runtime_execution_input.request.market_inputs.spot,
+                strikes=(95.0, 100.0, 105.0),
+                maturity_intervals=(
+                    anchored_runtime_execution_input.request.market_inputs.maturity_interval,
+                ),
+                risk_free_rate=anchored_runtime_execution_input.request.market_inputs.risk_free_rate,
+                dividend_yield=anchored_runtime_execution_input.request.market_inputs.dividend_yield,
+            ),
+            payoff=anchored_runtime_execution_input.request.payoff,
+            boundary_input=anchored_runtime_execution_input.request.boundary_input,
+            model_parameters=anchored_runtime_execution_input.request.model_parameters,
+        ),
+        hourly_factor_contract=anchored_runtime_execution_input.hourly_factor_contract,
+        optional_output_selection=anchored_runtime_execution_input.optional_output_selection,
+        cpu_count=1,
+    )
+
+
 def _build_model_parameters() -> VanillaOptionPricingModelParameters:
     return VanillaOptionPricingModelParameters(
         hawkes_kernel_parameters=HawkesKernelParameters(
@@ -129,6 +181,28 @@ def _build_model_parameters() -> VanillaOptionPricingModelParameters:
             delta=0.7,
             mu=0.1,
             delta_beta=-0.2,
+        ),
+    )
+
+
+def _disabled_boundary_input(
+    *,
+    interval_delta: float,
+    hawkes_boundary_state: HawkesExcitationState,
+) -> AnchoredVanillaOptionPricingBoundaryInput:
+    return AnchoredVanillaOptionPricingBoundaryInput(
+        interval_index=0,
+        hawkes_boundary_state=hawkes_boundary_state,
+        mean_reversion_fitted_parameters=MeanReversionFittedParameters(
+            kappa=0.0,
+            anchor_model=MeanReversionAnchorModel.zero_gain_endogenous_core_pressure_level(),
+        ),
+        interval_delta=interval_delta,
+        observed_boundary_state=MeanReversionBoundaryState(
+            observed_log_price=0.0,
+            anchor_value=0.0,
+            pressure_state=0.0,
+            deviation=0.0,
         ),
     )
 

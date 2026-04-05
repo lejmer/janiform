@@ -101,10 +101,17 @@ Vanilla option pricing contracts and runtime entrypoints. Representative public 
 - `VanillaOptionPricingRequest`
 - `VanillaOptionPricingResponse`
 - `VanillaOptionPricingRunResult`
+- `VanillaOptionSurfacePricingRequest`
+- `VanillaOptionSurfacePricingResponse`
+- `VanillaOptionSurfacePricingRunResult`
 - `VanillaOptionImpliedVolatilityInversionStatus`
 - `AnchoredVanillaOptionPricingBoundaryInput`
 - `run_vanilla_option_pricing`
-- `validate_vanilla_option_pricing_request`
+- `run_vanilla_option_surface_pricing`
+
+`VanillaOptionSurfacePricingResponse` carries both the surface grids and an aligned
+`VanillaOptionSurfacePricingNodeTable`, so callers can inspect, tabulate, plot, or export the
+priced surface directly without rebuilding node rows from separate axes and grids first.
 
 The public contract submodule is:
 

@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale.v1",
-  "approved_snapshot_sha256": "734af8b58e91150f158cf3f88f07b34b2b482a64b04e0302e1a43df80fb3f6d4",
+  "approved_snapshot_sha256": "00a4e8216447118e2b7f2df5827db326257c975c590ee818de35f4856b9d1565",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -909,6 +909,31 @@
         "janiform.calibration.market_data",
         "janiform.calibration.market_data.contracts",
         "janiform.calibration.market_data.request"
+      ]
+    },
+    {
+      "approved_on": "2026-04-05",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The public pricing package now owns a typed volatility-surface workflow alongside the existing single-option runner. The approved snapshot must therefore add the surface request, execution input, response, node-table, run-result, and workflow serialization helpers across janiform.pricing and janiform.pricing.contracts so callers can price, inspect, and export one surface artifact without rebuilding node rows outside the library.",
+      "snapshot_sha256": "79b70ee53d8a3acc23e67e51aecbd6946f181b31716b1b6e1b443a5654fda886",
+      "summary": "Approve the public vanilla-option surface pricing artifact and workflow.",
+      "updated_surfaces": [
+        "janiform.pricing",
+        "janiform.pricing.contracts"
+      ]
+    },
+    {
+      "approved_on": "2026-04-05",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The pricing contracts now own their own validation and JSON or payload roundtrips directly through from_mapping, to_payload, and to_json. The approved snapshot must therefore remove the redundant validate, serialize, and deserialize pass-through helpers from janiform.pricing and janiform.pricing.workflow instead of preserving wrapper functions that add no behavior.",
+      "snapshot_sha256": "00a4e8216447118e2b7f2df5827db326257c975c590ee818de35f4856b9d1565",
+      "summary": "Remove redundant pricing workflow validation and serialization wrappers.",
+      "updated_surfaces": [
+        "janiform.pricing"
       ]
     }
   ],

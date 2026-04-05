@@ -5,16 +5,13 @@ from __future__ import annotations
 from types import ModuleType
 from typing import Any
 
-from ..contracts import parse_json_object, serialize_deterministic_json
-from .._native_api import native_exception_matches, native_module
 from .contracts import (
     VanillaOptionPricingExecutionInput,
-    VanillaOptionPricingRequest,
-    VanillaOptionPricingResponse,
     VanillaOptionPricingRunResult,
+    VanillaOptionSurfacePricingExecutionInput,
+    VanillaOptionSurfacePricingRunResult,
 )
 from .errors import (
-    PRICING_ERROR_FACTORY,
     PRICING_INTEGRATION_NATIVE_MODULE_ERROR_ID,
     PRICING_INTEGRATION_RESPONSE_ERROR_ID,
     VanillaOptionPricingValidationError,
@@ -22,56 +19,7 @@ from .errors import (
     _pricing_execution_error,
     _pricing_integration_error,
 )
-
-
-def validate_vanilla_option_pricing_request(
-    raw_request: dict[str, Any] | Any,
-) -> VanillaOptionPricingRequest:
-    return VanillaOptionPricingRequest.from_mapping(raw_request)
-
-
-def validate_vanilla_option_pricing_response(
-    raw_response: dict[str, Any] | Any,
-) -> VanillaOptionPricingResponse:
-    return VanillaOptionPricingResponse.from_mapping(raw_response)
-
-
-def validate_vanilla_option_pricing_run_result(
-    raw_run_result: dict[str, Any] | Any,
-) -> VanillaOptionPricingRunResult:
-    return VanillaOptionPricingRunResult.from_mapping(raw_run_result)
-
-
-def serialize_vanilla_option_pricing_request(request: VanillaOptionPricingRequest) -> str:
-    return serialize_deterministic_json(request)
-
-
-def deserialize_vanilla_option_pricing_request(payload_json: str) -> VanillaOptionPricingRequest:
-    raw_payload = parse_json_object(payload_json, "vanilla option request", PRICING_ERROR_FACTORY)
-    return validate_vanilla_option_pricing_request(dict(raw_payload))
-
-
-def serialize_vanilla_option_pricing_response(response: VanillaOptionPricingResponse) -> str:
-    return serialize_deterministic_json(response)
-
-
-def deserialize_vanilla_option_pricing_response(payload_json: str) -> VanillaOptionPricingResponse:
-    raw_payload = parse_json_object(payload_json, "vanilla option response", PRICING_ERROR_FACTORY)
-    return validate_vanilla_option_pricing_response(dict(raw_payload))
-
-
-def serialize_vanilla_option_pricing_run_result(run_result: VanillaOptionPricingRunResult) -> str:
-    return serialize_deterministic_json(run_result)
-
-
-def deserialize_vanilla_option_pricing_run_result(payload_json: str) -> VanillaOptionPricingRunResult:
-    raw_payload = parse_json_object(
-        payload_json,
-        "vanilla option pricing run result",
-        PRICING_ERROR_FACTORY,
-    )
-    return validate_vanilla_option_pricing_run_result(dict(raw_payload))
-
+from .._native_api import native_exception_matches, native_module
 
 def run_vanilla_option_pricing(
     execution_input: VanillaOptionPricingExecutionInput,
@@ -133,7 +81,7 @@ def run_vanilla_option_pricing(
         )
 
     try:
-        return validate_vanilla_option_pricing_run_result(raw_run_result)
+        return VanillaOptionPricingRunResult.from_mapping(raw_run_result)
     except VanillaOptionPricingValidationError as error:
         raise _pricing_integration_error(
             "native pricing returned an invalid response payload",
@@ -143,15 +91,108 @@ def run_vanilla_option_pricing(
         ) from error
 
 
+def run_vanilla_option_surface_pricing(
+    execution_input: VanillaOptionSurfacePricingExecutionInput,
+) -> VanillaOptionSurfacePricingRunResult:
+    if not isinstance(execution_input, VanillaOptionSurfacePricingExecutionInput):
+        raise _pricing_error(
+            "execution_input",
+            "must be a VanillaOptionSurfacePricingExecutionInput",
+            entrypoint="run_vanilla_option_surface_pricing",
+        )
+
+    try:
+        native: ModuleType = native_module()
+    except ModuleNotFoundError as error:
+        raise _pricing_integration_error(
+            "native pricing module is unavailable",
+            entrypoint="run_vanilla_option_surface_pricing",
+            error_id=PRICING_INTEGRATION_NATIVE_MODULE_ERROR_ID,
+            context={"module_name": "janiform._native"},
+        ) from error
+
+    try:
+        raw_run_result = native.run_vanilla_option_surface_pricing(
+            _surface_pricing_native_execution_input(execution_input)
+        )
+    except Exception as error:
+        if native_exception_matches(native, error, "PricingExecutionError"):
+            raise _pricing_execution_error(
+                "vanilla option surface pricing failed during native execution",
+                entrypoint="run_vanilla_option_surface_pricing",
+                context={"source_exception_type": type(error).__name__},
+            ) from error
+
+        raise _pricing_execution_error(
+            "vanilla option surface pricing failed during native execution",
+            entrypoint="run_vanilla_option_surface_pricing",
+            context={"source_exception_type": type(error).__name__},
+        ) from error
+
+    if not isinstance(raw_run_result, dict):
+        raise _pricing_integration_error(
+            "native pricing returned an invalid response payload",
+            entrypoint="run_vanilla_option_surface_pricing",
+            error_id=PRICING_INTEGRATION_RESPONSE_ERROR_ID,
+            context={"returned_type": type(raw_run_result).__name__},
+        )
+
+    try:
+        return VanillaOptionSurfacePricingRunResult.from_mapping(raw_run_result)
+    except VanillaOptionPricingValidationError as error:
+        raise _pricing_integration_error(
+            "native pricing returned an invalid response payload",
+            entrypoint="run_vanilla_option_surface_pricing",
+            error_id=PRICING_INTEGRATION_RESPONSE_ERROR_ID,
+            context={"source_error_id": error.error_id},
+        ) from error
+
+
+def _surface_pricing_native_execution_input(
+    execution_input: VanillaOptionSurfacePricingExecutionInput,
+) -> dict[str, Any]:
+    request = execution_input.request
+    market_inputs = request.market_inputs
+
+    return {
+        "request": {
+            "spot": market_inputs.spot,
+            "strikes": list(market_inputs.strikes),
+            "maturity_intervals": list(market_inputs.maturity_intervals),
+            "payoff_type": request.payoff.payoff_type.value,
+            "risk_free_rate": market_inputs.risk_free_rate,
+            "dividend_yield": market_inputs.dividend_yield,
+        },
+        "boundary_input": request.boundary_input.to_payload(),
+        "model_parameters": request.model_parameters.to_payload(),
+        "interval_delta": request.interval_delta,
+        "fourier_inversion_settings": (
+            request.fourier_inversion_settings.to_payload()
+            if request.fourier_inversion_settings is not None
+            else None
+        ),
+        "interval_factors": [
+            {
+                "s_h": float(execution_input.hourly_factor_contract.s_h[interval_index]),
+                "nu_h_known": float(
+                    execution_input.hourly_factor_contract.known_component_nu_h[
+                        interval_index
+                    ]
+                ),
+                "nu_h_surprise": float(
+                    execution_input.hourly_factor_contract.surprise_component_nu_h[
+                        interval_index
+                    ]
+                ),
+            }
+            for interval_index in range(execution_input.hourly_factor_contract.interval_count)
+        ],
+        "optional_output_selection": execution_input.optional_output_selection.to_payload(),
+        "cpu_count": execution_input.cpu_count,
+    }
+
+
 __all__ = [
-    "deserialize_vanilla_option_pricing_request",
-    "deserialize_vanilla_option_pricing_response",
-    "deserialize_vanilla_option_pricing_run_result",
     "run_vanilla_option_pricing",
-    "serialize_vanilla_option_pricing_request",
-    "serialize_vanilla_option_pricing_response",
-    "serialize_vanilla_option_pricing_run_result",
-    "validate_vanilla_option_pricing_request",
-    "validate_vanilla_option_pricing_response",
-    "validate_vanilla_option_pricing_run_result",
+    "run_vanilla_option_surface_pricing",
 ]

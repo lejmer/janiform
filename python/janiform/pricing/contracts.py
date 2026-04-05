@@ -8,6 +8,7 @@ from math import exp
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
+from .errors import PRICING_ERROR_FACTORY, _pricing_error
 from ..contracts.base import (
     require_boolean,
     require_optional_finite_number,
@@ -38,7 +39,6 @@ from ..contracts import (
 from ..errors import JaniformValidationError
 from ..hourly_factors import HourlyFactorContract
 from .._timestamps import hours_to_exact_nanoseconds
-from .errors import PRICING_ERROR_FACTORY, _pricing_error
 
 if TYPE_CHECKING:
     from ..simulation import HawkesExcitationState, HawkesKernelParameters
@@ -219,8 +219,10 @@ class NigSharedPlusShiftConfiguration(ContractModel):
 
         if self.delta_beta >= 0.0:
             raise _pricing_error("delta_beta", "must be strictly negative")
+
         if self.alpha <= abs(self.beta_0):
             raise _pricing_error("alpha", "must be strictly greater than abs(beta_0)")
+
         if self.alpha <= abs(self.beta_0 + self.delta_beta):
             raise _pricing_error(
                 "delta_beta",
@@ -930,8 +932,10 @@ class FourierInversionEngineSettings(ContractModel):
     def __post_init__(self) -> None:
         if not isinstance(self.contour, FourierInversionContour):
             raise _pricing_error("contour", "must be a FourierInversionContour")
+
         if not isinstance(self.numeric_settings, FourierInversionNumericSettings):
             raise _pricing_error("numeric_settings", "must be a FourierInversionNumericSettings")
+
         if not isinstance(
             self.stability_controls,
             FourierInversionIntegrationStabilityControls,
@@ -1178,11 +1182,13 @@ class VanillaOptionPricingOptionalOutputSelection(ContractModel):
     def __post_init__(self) -> None:
         if not isinstance(self.include_transform_diagnostics, bool):
             raise _pricing_error("include_transform_diagnostics", "must be a boolean")
+
         if not isinstance(self.include_integration_quality_diagnostics, bool):
             raise _pricing_error(
                 "include_integration_quality_diagnostics",
                 "must be a boolean",
             )
+
         if not isinstance(self.include_calibration_hooks, bool):
             raise _pricing_error("include_calibration_hooks", "must be a boolean")
 
@@ -1228,6 +1234,7 @@ class VanillaOptionPricingExecutionInput(ContractModel):
     def __post_init__(self) -> None:
         if not isinstance(self.request, VanillaOptionPricingRequest):
             raise _pricing_error("request", "must be a VanillaOptionPricingRequest")
+
         if not isinstance(self.hourly_factor_contract, HourlyFactorContract):
             raise _pricing_error(
                 "hourly_factor_contract",
@@ -1242,6 +1249,7 @@ class VanillaOptionPricingExecutionInput(ContractModel):
                 "optional_output_selection",
                 "must be VanillaOptionPricingOptionalOutputSelection",
             )
+
         if self.hourly_factor_contract.interval_count == 0:
             raise _pricing_error(
                 "hourly_factor_contract.interval_count",
@@ -1652,6 +1660,16 @@ def _validate_implied_volatility_inversion_outcome(
                 )
 
 
+from .surface.contracts import (
+    VanillaOptionSurfacePricingExecutionInput,
+    VanillaOptionSurfacePricingMarketInputs,
+    VanillaOptionSurfacePricingNodeTable,
+    VanillaOptionSurfacePricingRequest,
+    VanillaOptionSurfacePricingResponse,
+    VanillaOptionSurfacePricingRunResult,
+)
+
+
 __all__ = [
     "AnchoredLocalTiltAdmissibilityStatus",
     "AnchoredLocalTiltBoundaryStateSummary",
@@ -1683,4 +1701,10 @@ __all__ = [
     "VanillaOptionPricingRunDiagnostics",
     "VanillaOptionPricingRunOutputSchemaMetadata",
     "VanillaOptionPricingRunResult",
+    "VanillaOptionSurfacePricingExecutionInput",
+    "VanillaOptionSurfacePricingMarketInputs",
+    "VanillaOptionSurfacePricingNodeTable",
+    "VanillaOptionSurfacePricingRequest",
+    "VanillaOptionSurfacePricingResponse",
+    "VanillaOptionSurfacePricingRunResult",
 ]

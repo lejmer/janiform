@@ -40,6 +40,7 @@ from janiform.pricing import (
     VanillaOptionPricingOptionalOutputSelection,
     VanillaOptionPricingRequest,
     run_vanilla_option_pricing,
+    run_vanilla_option_surface_pricing,
 )
 from janiform.simulation import (
     SeededTickSimulationValidationError,
@@ -66,6 +67,7 @@ from janiform.simulation.seeded.contracts import (
 )
 from tests.support.calibration import build_valid_execution_input_model
 from tests.support.hourly_factor_contracts import build_hourly_factor_contract
+from tests.support.pricing import build_anchored_surface_execution_input_model
 from tests.support.simulation import build_endogenous_mean_reversion_runtime_contracts
 
 START_TIME_UTC = datetime(2026, 2, 2, tzinfo=UTC)
@@ -435,6 +437,71 @@ def test_pricing_run_maps_invalid_native_response_to_integration_error(
     assert captured_error.value.error_id == "pricing.integration.invalid_native_response"
     assert captured_error.value.workflow == "pricing"
     assert captured_error.value.entrypoint == "run_vanilla_option_pricing"
+    assert captured_error.value.context == {"source_error_id": "pricing.validation.contract"}
+
+
+def test_surface_pricing_run_maps_missing_native_module_to_integration_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def missing_native_module() -> NoReturn:
+        raise ModuleNotFoundError("janiform._native")
+
+    monkeypatch.setattr(pricing_workflow_module, "native_module", missing_native_module)
+
+    with pytest.raises(JaniformIntegrationError) as captured_error:
+        run_vanilla_option_surface_pricing(build_anchored_surface_execution_input_model())
+
+    assert captured_error.value.error_id == "pricing.integration.native_module_unavailable"
+    assert captured_error.value.workflow == "pricing"
+    assert captured_error.value.entrypoint == "run_vanilla_option_surface_pricing"
+    assert captured_error.value.context == {"module_name": "janiform._native"}
+
+
+def test_surface_pricing_run_maps_native_execution_failure_to_execution_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class NativeExecutionError(Exception):
+        pass
+
+    class FakeNative:
+        PricingExecutionError = NativeExecutionError
+
+        @staticmethod
+        def run_vanilla_option_surface_pricing(*args, **kwargs) -> str:
+            raise NativeExecutionError("native surface pricer failed")
+
+    monkeypatch.setattr(pricing_workflow_module, "native_module", lambda: FakeNative())
+
+    with pytest.raises(JaniformExecutionError) as captured_error:
+        run_vanilla_option_surface_pricing(build_anchored_surface_execution_input_model())
+
+    assert captured_error.value.error_id == "pricing.execution.run_failed"
+    assert captured_error.value.workflow == "pricing"
+    assert captured_error.value.entrypoint == "run_vanilla_option_surface_pricing"
+    assert captured_error.value.context == {"source_exception_type": "NativeExecutionError"}
+
+
+def test_surface_pricing_run_maps_invalid_native_response_to_integration_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class NativeExecutionError(Exception):
+        pass
+
+    class FakeNative:
+        PricingExecutionError = NativeExecutionError
+
+        @staticmethod
+        def run_vanilla_option_surface_pricing(*args, **kwargs) -> dict[str, Any]:
+            return {}
+
+    monkeypatch.setattr(pricing_workflow_module, "native_module", lambda: FakeNative())
+
+    with pytest.raises(JaniformIntegrationError) as captured_error:
+        run_vanilla_option_surface_pricing(build_anchored_surface_execution_input_model())
+
+    assert captured_error.value.error_id == "pricing.integration.invalid_native_response"
+    assert captured_error.value.workflow == "pricing"
+    assert captured_error.value.entrypoint == "run_vanilla_option_surface_pricing"
     assert captured_error.value.context == {"source_error_id": "pricing.validation.contract"}
 
 

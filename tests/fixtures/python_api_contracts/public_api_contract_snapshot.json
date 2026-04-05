@@ -5578,16 +5578,14 @@
         "VanillaOptionPricingRunOutputSchemaMetadata",
         "VanillaOptionPricingRunResult",
         "VanillaOptionPricingValidationError",
-        "deserialize_vanilla_option_pricing_request",
-        "deserialize_vanilla_option_pricing_response",
-        "deserialize_vanilla_option_pricing_run_result",
+        "VanillaOptionSurfacePricingExecutionInput",
+        "VanillaOptionSurfacePricingMarketInputs",
+        "VanillaOptionSurfacePricingNodeTable",
+        "VanillaOptionSurfacePricingRequest",
+        "VanillaOptionSurfacePricingResponse",
+        "VanillaOptionSurfacePricingRunResult",
         "run_vanilla_option_pricing",
-        "serialize_vanilla_option_pricing_request",
-        "serialize_vanilla_option_pricing_response",
-        "serialize_vanilla_option_pricing_run_result",
-        "validate_vanilla_option_pricing_request",
-        "validate_vanilla_option_pricing_response",
-        "validate_vanilla_option_pricing_run_result"
+        "run_vanilla_option_surface_pricing"
       ],
       "module_name": "janiform.pricing",
       "schema_identifiers": [],
@@ -5944,45 +5942,88 @@
           "origin_module": "janiform.pricing.errors",
           "qualname": "VanillaOptionPricingValidationError"
         },
-        "deserialize_vanilla_option_pricing_request": {
-          "kind": "function",
-          "signature": "(payload_json: 'str') -> 'VanillaOptionPricingRequest'"
+        "VanillaOptionSurfacePricingExecutionInput": {
+          "field_names": [
+            "request",
+            "hourly_factor_contract",
+            "optional_output_selection",
+            "cpu_count"
+          ],
+          "kind": "contract_model",
+          "signature": "(request: 'VanillaOptionSurfacePricingRequest', hourly_factor_contract: 'HourlyFactorContract', optional_output_selection: 'VanillaOptionPricingOptionalOutputSelection' = <factory>, cpu_count: 'Optional[int]' = None) -> 'None'"
         },
-        "deserialize_vanilla_option_pricing_response": {
-          "kind": "function",
-          "signature": "(payload_json: 'str') -> 'VanillaOptionPricingResponse'"
+        "VanillaOptionSurfacePricingMarketInputs": {
+          "field_names": [
+            "spot",
+            "strikes",
+            "maturity_intervals",
+            "risk_free_rate",
+            "dividend_yield"
+          ],
+          "kind": "contract_model",
+          "signature": "(spot: 'float', strikes: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]', risk_free_rate: 'float', dividend_yield: 'float') -> 'None'"
         },
-        "deserialize_vanilla_option_pricing_run_result": {
-          "kind": "function",
-          "signature": "(payload_json: 'str') -> 'VanillaOptionPricingRunResult'"
+        "VanillaOptionSurfacePricingNodeTable": {
+          "field_names": [
+            "strikes",
+            "maturity_intervals",
+            "option_types",
+            "model_prices",
+            "implied_volatilities",
+            "node_statuses",
+            "forward_prices",
+            "discount_factors",
+            "boundary_state_norms"
+          ],
+          "kind": "contract_model",
+          "signature": "(strikes: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]', option_types: 'tuple[VanillaOptionPayoffType, ...]', model_prices: 'tuple[float, ...]', implied_volatilities: 'tuple[Optional[float], ...]', node_statuses: 'tuple[VanillaOptionImpliedVolatilityInversionStatus, ...]', forward_prices: 'tuple[float, ...]', discount_factors: 'tuple[float, ...]', boundary_state_norms: 'tuple[float, ...]') -> 'None'"
+        },
+        "VanillaOptionSurfacePricingRequest": {
+          "field_names": [
+            "market_inputs",
+            "payoff",
+            "boundary_input",
+            "model_parameters",
+            "interval_delta",
+            "fourier_inversion_settings"
+          ],
+          "kind": "contract_model",
+          "signature": "(market_inputs: 'VanillaOptionSurfacePricingMarketInputs', payoff: 'VanillaOptionPayoffConfiguration', boundary_input: 'AnchoredVanillaOptionPricingBoundaryInput', model_parameters: 'VanillaOptionPricingModelParameters', interval_delta: 'float' = 1.0, fourier_inversion_settings: 'Optional[FourierInversionEngineSettings]' = None) -> 'None'"
+        },
+        "VanillaOptionSurfacePricingResponse": {
+          "field_names": [
+            "spot",
+            "strikes",
+            "maturity_intervals",
+            "payoff_type",
+            "risk_free_rate",
+            "dividend_yield",
+            "price_grid",
+            "implied_volatility_grid",
+            "implied_volatility_inversion_status_grid",
+            "forward_price_grid",
+            "discount_factor_grid",
+            "boundary_state_norm_grid",
+            "node_table"
+          ],
+          "kind": "contract_model",
+          "signature": "(spot: 'float', strikes: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]', payoff_type: 'VanillaOptionPayoffType', risk_free_rate: 'float', dividend_yield: 'float', price_grid: 'tuple[tuple[float, ...], ...]', implied_volatility_grid: 'tuple[tuple[Optional[float], ...], ...]', implied_volatility_inversion_status_grid: 'tuple[tuple[VanillaOptionImpliedVolatilityInversionStatus, ...], ...]', forward_price_grid: 'tuple[tuple[float, ...], ...]', discount_factor_grid: 'tuple[tuple[float, ...], ...]', boundary_state_norm_grid: 'tuple[tuple[float, ...], ...]', node_table: 'VanillaOptionSurfacePricingNodeTable') -> 'None'"
+        },
+        "VanillaOptionSurfacePricingRunResult": {
+          "field_names": [
+            "response",
+            "maturity_summaries"
+          ],
+          "kind": "contract_model",
+          "signature": "(response: 'VanillaOptionSurfacePricingResponse', maturity_summaries: 'tuple[dict[str, Any], ...]') -> 'None'"
         },
         "run_vanilla_option_pricing": {
           "kind": "function",
           "signature": "(execution_input: 'VanillaOptionPricingExecutionInput') -> 'VanillaOptionPricingRunResult'"
         },
-        "serialize_vanilla_option_pricing_request": {
+        "run_vanilla_option_surface_pricing": {
           "kind": "function",
-          "signature": "(request: 'VanillaOptionPricingRequest') -> 'str'"
-        },
-        "serialize_vanilla_option_pricing_response": {
-          "kind": "function",
-          "signature": "(response: 'VanillaOptionPricingResponse') -> 'str'"
-        },
-        "serialize_vanilla_option_pricing_run_result": {
-          "kind": "function",
-          "signature": "(run_result: 'VanillaOptionPricingRunResult') -> 'str'"
-        },
-        "validate_vanilla_option_pricing_request": {
-          "kind": "function",
-          "signature": "(raw_request: 'dict[str, Any] | Any') -> 'VanillaOptionPricingRequest'"
-        },
-        "validate_vanilla_option_pricing_response": {
-          "kind": "function",
-          "signature": "(raw_response: 'dict[str, Any] | Any') -> 'VanillaOptionPricingResponse'"
-        },
-        "validate_vanilla_option_pricing_run_result": {
-          "kind": "function",
-          "signature": "(raw_run_result: 'dict[str, Any] | Any') -> 'VanillaOptionPricingRunResult'"
+          "signature": "(execution_input: 'VanillaOptionSurfacePricingExecutionInput') -> 'VanillaOptionSurfacePricingRunResult'"
         }
       }
     },
@@ -6017,7 +6058,13 @@
         "VanillaOptionPricingResponse",
         "VanillaOptionPricingRunDiagnostics",
         "VanillaOptionPricingRunOutputSchemaMetadata",
-        "VanillaOptionPricingRunResult"
+        "VanillaOptionPricingRunResult",
+        "VanillaOptionSurfacePricingExecutionInput",
+        "VanillaOptionSurfacePricingMarketInputs",
+        "VanillaOptionSurfacePricingNodeTable",
+        "VanillaOptionSurfacePricingRequest",
+        "VanillaOptionSurfacePricingResponse",
+        "VanillaOptionSurfacePricingRunResult"
       ],
       "module_name": "janiform.pricing.contracts",
       "schema_identifiers": [
@@ -6382,6 +6429,81 @@
           ],
           "kind": "contract_model",
           "signature": "(schema_version: 'str', output_schema_metadata: 'VanillaOptionPricingRunOutputSchemaMetadata', response: 'VanillaOptionPricingResponse', run_diagnostics: 'Optional[VanillaOptionPricingRunDiagnostics]', calibration_hooks: 'Optional[VanillaOptionPricingCalibrationHooks]') -> 'None'"
+        },
+        "VanillaOptionSurfacePricingExecutionInput": {
+          "field_names": [
+            "request",
+            "hourly_factor_contract",
+            "optional_output_selection",
+            "cpu_count"
+          ],
+          "kind": "contract_model",
+          "signature": "(request: 'VanillaOptionSurfacePricingRequest', hourly_factor_contract: 'HourlyFactorContract', optional_output_selection: 'VanillaOptionPricingOptionalOutputSelection' = <factory>, cpu_count: 'Optional[int]' = None) -> 'None'"
+        },
+        "VanillaOptionSurfacePricingMarketInputs": {
+          "field_names": [
+            "spot",
+            "strikes",
+            "maturity_intervals",
+            "risk_free_rate",
+            "dividend_yield"
+          ],
+          "kind": "contract_model",
+          "signature": "(spot: 'float', strikes: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]', risk_free_rate: 'float', dividend_yield: 'float') -> 'None'"
+        },
+        "VanillaOptionSurfacePricingNodeTable": {
+          "field_names": [
+            "strikes",
+            "maturity_intervals",
+            "option_types",
+            "model_prices",
+            "implied_volatilities",
+            "node_statuses",
+            "forward_prices",
+            "discount_factors",
+            "boundary_state_norms"
+          ],
+          "kind": "contract_model",
+          "signature": "(strikes: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]', option_types: 'tuple[VanillaOptionPayoffType, ...]', model_prices: 'tuple[float, ...]', implied_volatilities: 'tuple[Optional[float], ...]', node_statuses: 'tuple[VanillaOptionImpliedVolatilityInversionStatus, ...]', forward_prices: 'tuple[float, ...]', discount_factors: 'tuple[float, ...]', boundary_state_norms: 'tuple[float, ...]') -> 'None'"
+        },
+        "VanillaOptionSurfacePricingRequest": {
+          "field_names": [
+            "market_inputs",
+            "payoff",
+            "boundary_input",
+            "model_parameters",
+            "interval_delta",
+            "fourier_inversion_settings"
+          ],
+          "kind": "contract_model",
+          "signature": "(market_inputs: 'VanillaOptionSurfacePricingMarketInputs', payoff: 'VanillaOptionPayoffConfiguration', boundary_input: 'AnchoredVanillaOptionPricingBoundaryInput', model_parameters: 'VanillaOptionPricingModelParameters', interval_delta: 'float' = 1.0, fourier_inversion_settings: 'Optional[FourierInversionEngineSettings]' = None) -> 'None'"
+        },
+        "VanillaOptionSurfacePricingResponse": {
+          "field_names": [
+            "spot",
+            "strikes",
+            "maturity_intervals",
+            "payoff_type",
+            "risk_free_rate",
+            "dividend_yield",
+            "price_grid",
+            "implied_volatility_grid",
+            "implied_volatility_inversion_status_grid",
+            "forward_price_grid",
+            "discount_factor_grid",
+            "boundary_state_norm_grid",
+            "node_table"
+          ],
+          "kind": "contract_model",
+          "signature": "(spot: 'float', strikes: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]', payoff_type: 'VanillaOptionPayoffType', risk_free_rate: 'float', dividend_yield: 'float', price_grid: 'tuple[tuple[float, ...], ...]', implied_volatility_grid: 'tuple[tuple[Optional[float], ...], ...]', implied_volatility_inversion_status_grid: 'tuple[tuple[VanillaOptionImpliedVolatilityInversionStatus, ...], ...]', forward_price_grid: 'tuple[tuple[float, ...], ...]', discount_factor_grid: 'tuple[tuple[float, ...], ...]', boundary_state_norm_grid: 'tuple[tuple[float, ...], ...]', node_table: 'VanillaOptionSurfacePricingNodeTable') -> 'None'"
+        },
+        "VanillaOptionSurfacePricingRunResult": {
+          "field_names": [
+            "response",
+            "maturity_summaries"
+          ],
+          "kind": "contract_model",
+          "signature": "(response: 'VanillaOptionSurfacePricingResponse', maturity_summaries: 'tuple[dict[str, Any], ...]') -> 'None'"
         }
       }
     },
