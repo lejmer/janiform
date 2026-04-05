@@ -1,7 +1,23 @@
 name: ci-rust-benchmark-governance-smoke
 
 on:
+  workflow_call:
+    inputs:
+      target_ref:
+        description: Git ref to check out when this workflow is reused
+        required: false
+        type: string
   workflow_dispatch:
+    inputs:
+      target_ref:
+        description: Git ref to check out for a manual benchmark run
+        required: false
+        default: develop
+        type: string
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   rust-benchmark-governance-smoke:
@@ -12,6 +28,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.target_ref || github.ref }}
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -47,7 +65,7 @@ jobs:
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "- Scope: benchmark smoke validation for wiring, schema stability, and baseline artifact hooks" >> "$GITHUB_STEP_SUMMARY"
           echo "- Workloads: \`benchmark_scenario_catalog\`, \`oracle_pricer_risk_benchmark_harness\`, \`performance_baseline_capture_and_storage\`, \`regression_drift_attribution_reports\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Trigger policy: manual dispatch only" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Trigger policy: manual dispatch and reusable from release automation" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Emit benchmark smoke failure context with links
         if: failure()

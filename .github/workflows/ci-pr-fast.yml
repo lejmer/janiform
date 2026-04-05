@@ -1,0 +1,52 @@
+name: ci-pr-fast
+
+on:
+  pull_request:
+  push:
+    branches:
+      - develop
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  repository-contracts-fast:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Install Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Check Rust formatting
+        run: cargo fmt --all -- --check
+
+      - name: Bootstrap Linux environment
+        run: ./scripts/bootstrap-linux.sh .venv-linux
+
+      - name: Verify generated artifacts
+        run: |
+          ./.venv-linux/bin/python scripts/generate_crate_readmes.py --check
+          ./.venv-linux/bin/python scripts/generate_third_party_notices.py --check
+
+      - name: Run fast repository contract checks
+        run: |
+          ./.venv-linux/bin/python -m pytest \
+            ci/tests/test_ci_tiered_execution_strategy.py \
+            tests/test_api_contract_guardrails.py \
+            tests/test_public_api_surface_map.py \
+            tests/test_experimental_api_surface.py \
+            tests/test_real_data_seeded_runtime_benchmark.py

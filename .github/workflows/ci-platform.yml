@@ -1,0 +1,82 @@
+name: ci-platform
+
+on:
+  pull_request:
+  push:
+    branches:
+      - develop
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux-full-verification:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Bootstrap Linux environment
+        run: ./scripts/bootstrap-linux.sh .venv-linux
+
+      - name: Build Linux environment
+        run: ./scripts/build-linux.sh .venv-linux
+
+      - name: Run Rust verification
+        run: ./scripts/test-rust-linux.sh .venv-linux
+
+      - name: Run Python verification
+        run: ./scripts/test-python-linux.sh .venv-linux
+
+      - name: Verify generated artifacts
+        run: |
+          ./.venv-linux/bin/python scripts/generate_crate_readmes.py --check
+          ./.venv-linux/bin/python scripts/generate_third_party_notices.py --check
+
+  windows-build-smoke:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Bootstrap Windows environment
+        shell: pwsh
+        run: ./scripts/bootstrap-win.ps1 .venv
+
+      - name: Build Windows environment
+        shell: pwsh
+        run: ./scripts/build-win.ps1 .venv
+
+      - name: Run Windows smoke checks
+        shell: pwsh
+        run: |
+          . .\.venv\Scripts\Activate.ps1
+          python -m janiform --help
+          python -m pytest `
+            tests/test_api_contract_guardrails.py `
+            tests/test_public_api_surface_map.py `
+            tests/test_experimental_api_surface.py
