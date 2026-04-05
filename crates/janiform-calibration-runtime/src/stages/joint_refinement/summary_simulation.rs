@@ -787,10 +787,10 @@ pub(crate) mod tests {
         run_seasonality_calibration_stage,
     };
     use crate::stages::{
-        joint_refinement::execution::build_exchange_calendar_registry_artifact,
-        joint_refinement::setup::{
-            build_observed_data, selected_hawkes_observed_open_event_rate_per_hour,
+        joint_refinement::execution::{
+            build_exchange_calendar_registry_artifact, build_observed_data,
         },
+        joint_refinement::setup::selected_hawkes_observed_open_event_rate_per_hour,
     };
     use janiform_calibration_artifacts::{
         CalibrationExecutionMode, CalibrationOptimizerSettings, CalibrationRunDataInputs,
