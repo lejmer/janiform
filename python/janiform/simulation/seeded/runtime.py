@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from datetime import UTC
 from time import perf_counter
 from collections.abc import Callable

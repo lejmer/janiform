@@ -1,5 +1,7 @@
 """Public mean-reversion domain contracts shared across pricing, calibration, and simulation."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 from typing import Any, Final, Self
 

@@ -6,6 +6,8 @@ transport and event-stream plumbing stay internal so the supported API remains
 artifact-backed instead of exposing another weak wrapper layer.
 """
 
+from __future__ import annotations
+
 from collections.abc import Callable
 from pathlib import Path
 from types import ModuleType
