@@ -23,7 +23,7 @@ use crate::SeasonalityInputValidationError;
 use crate::types::PyCalendarRegistry;
 
 #[pyfunction]
-#[pyo3(signature = (calendar_registry, calendar_cases, seasonality_cases, *, seasonality_absolute_tolerance = 1e-12, news_intensity_absolute_tolerance = 1e-12))]
+#[pyo3(signature = (calendar_registry, calendar_cases, seasonality_cases, *, seasonality_absolute_tolerance, news_intensity_absolute_tolerance))]
 fn run_deterministic_regression_harness(
     py: Python<'_>,
     calendar_registry: &PyCalendarRegistry,
@@ -34,6 +34,7 @@ fn run_deterministic_regression_harness(
 ) -> PyResult<String> {
     let parsed_calendar_cases = parse_regression_calendar_cases(calendar_cases)?;
     let parsed_seasonality_cases = parse_regression_seasonality_cases(seasonality_cases)?;
+
     let tolerance_config = RegressionHarnessToleranceConfig {
         seasonality_absolute_tolerance,
         news_intensity_absolute_tolerance,
@@ -58,7 +59,7 @@ fn run_deterministic_regression_harness(
 }
 
 #[pyfunction]
-#[pyo3(signature = (calendar_registry, gap_behavior_cases, *, component_absolute_tolerance = 1e-12))]
+#[pyo3(signature = (calendar_registry, gap_behavior_cases, *, component_absolute_tolerance))]
 fn run_open_closed_gap_leakage_regression_harness(
     py: Python<'_>,
     calendar_registry: &PyCalendarRegistry,
@@ -67,6 +68,7 @@ fn run_open_closed_gap_leakage_regression_harness(
 ) -> PyResult<String> {
     let parsed_gap_behavior_cases =
         parse_open_closed_gap_leakage_regression_cases(gap_behavior_cases)?;
+
     let tolerance_config = OpenClosedGapLeakageRegressionHarnessToleranceConfig {
         component_absolute_tolerance,
     };
@@ -96,6 +98,7 @@ fn parse_regression_calendar_cases(
             "calendar_cases must be an iterable of mapping records",
         )
     })?;
+
     let mut parsed_calendar_cases: Vec<CalendarStateRegressionCase> = Vec::new();
 
     for (case_position, raw_case) in calendar_case_iter.enumerate() {
@@ -267,10 +270,12 @@ fn parse_open_closed_gap_leakage_regression_cases(
             "gap_behavior_cases must be an iterable of mapping records",
         )
     })?;
+
     let mut parsed_gap_behavior_cases: Vec<OpenClosedGapLeakageRegressionCase> = Vec::new();
 
     for (case_position, raw_case) in gap_behavior_case_iter.enumerate() {
         let raw_case = raw_case?;
+
         let case_mapping = raw_case.downcast::<PyMapping>().map_err(|_| {
             SeasonalityInputValidationError::new_err(format!(
                 "gap_behavior_cases[{case_position}] must be a mapping",
@@ -283,12 +288,14 @@ fn parse_open_closed_gap_leakage_regression_cases(
             "gap_behavior_cases",
             "fixture_id",
         )?;
+
         let exchange_code = parse_required_string_field(
             &case_mapping,
             case_position,
             "gap_behavior_cases",
             "exchange_code",
         )?;
+
         let raw_scenario_class = parse_required_string_field(
             &case_mapping,
             case_position,
@@ -303,6 +310,7 @@ fn parse_open_closed_gap_leakage_regression_cases(
             "gap_behavior_cases",
             "initial_j_t",
         )?;
+
         let initial_j_t = initial_j_t_value.extract::<f64>().map_err(|_| {
             SeasonalityInputValidationError::new_err(format!(
                 "gap_behavior_cases[{case_position}] field 'initial_j_t' must be a float",
@@ -313,6 +321,7 @@ fn parse_open_closed_gap_leakage_regression_cases(
                 "gap_behavior_cases[{case_position}] field 'initial_j_t' must be finite"
             )));
         }
+
         let initial_m_t_value = parse_required_field(
             &case_mapping,
             case_position,
@@ -351,6 +360,7 @@ fn parse_open_closed_gap_leakage_regression_cases(
 
         let deterministic_replay_metadata =
             parse_deterministic_replay_metadata(&case_mapping, case_position)?;
+
         let issue_traceability = parse_issue_traceability_metadata(&case_mapping, case_position)?;
 
         let injected_events_value = parse_required_field(
@@ -359,11 +369,13 @@ fn parse_open_closed_gap_leakage_regression_cases(
             "gap_behavior_cases",
             "injected_events",
         )?;
+
         let injected_event_iter = injected_events_value.try_iter().map_err(|_| {
             SeasonalityInputValidationError::new_err(format!(
                 "gap_behavior_cases[{case_position}] field 'injected_events' must be an iterable of mapping records",
             ))
         })?;
+
         let mut injected_events: Vec<OpenClosedGapLeakageRegressionEventInput> = Vec::new();
 
         for (event_position, raw_event) in injected_event_iter.enumerate() {
@@ -380,18 +392,21 @@ fn parse_open_closed_gap_leakage_regression_cases(
                 &format!("gap_behavior_cases[{case_position}].injected_events"),
                 "event_id",
             )?;
+
             let timestamp_utc_text = parse_required_string_field(
                 &event_mapping,
                 event_position,
                 &format!("gap_behavior_cases[{case_position}].injected_events"),
                 "timestamp_utc",
             )?;
+
             let raw_news_arrival_component = parse_required_string_field(
                 &event_mapping,
                 event_position,
                 &format!("gap_behavior_cases[{case_position}].injected_events"),
                 "news_arrival_component",
             )?;
+
             let news_arrival_component =
                 parse_news_arrival_component(raw_news_arrival_component.as_str())?;
 
@@ -401,6 +416,7 @@ fn parse_open_closed_gap_leakage_regression_cases(
                 &format!("gap_behavior_cases[{case_position}].injected_events"),
                 "shared_severity_mark",
             )?;
+
             let shared_severity_mark = shared_severity_mark_value.extract::<f64>().map_err(|_| {
                 SeasonalityInputValidationError::new_err(format!(
                     "gap_behavior_cases[{case_position}].injected_events[{event_position}] field 'shared_severity_mark' must be a float"
@@ -418,6 +434,7 @@ fn parse_open_closed_gap_leakage_regression_cases(
                 &format!("gap_behavior_cases[{case_position}].injected_events"),
                 "coupled_return_jump_mark",
             )?;
+
             let coupled_return_jump_mark =
                 coupled_gap_jump_mark_value.extract::<f64>().map_err(|_| {
                 SeasonalityInputValidationError::new_err(format!(
@@ -435,16 +452,19 @@ fn parse_open_closed_gap_leakage_regression_cases(
                 "observed_activity_coupling_j_t_increment_override",
                 &format!("gap_behavior_cases[{case_position}].injected_events[{event_position}]"),
             )?;
+
             let observed_open_jump_m_t_increment_override = parse_optional_f64_field(
                 &event_mapping,
                 "observed_open_jump_m_t_increment_override",
                 &format!("gap_behavior_cases[{case_position}].injected_events[{event_position}]"),
             )?;
+
             let observed_closed_gap_g_t_increment_override = parse_optional_f64_field(
                 &event_mapping,
                 "observed_closed_gap_g_t_increment_override",
                 &format!("gap_behavior_cases[{case_position}].injected_events[{event_position}]"),
             )?;
+
             let observed_trading_return_increment_override = parse_optional_f64_field(
                 &event_mapping,
                 "observed_trading_return_increment_override",
@@ -503,6 +523,7 @@ fn parse_required_string_field(
     field_name: &str,
 ) -> PyResult<String> {
     let field_value = parse_required_field(mapping, case_position, field_group_name, field_name)?;
+
     field_value.extract().map_err(|_| {
         SeasonalityInputValidationError::new_err(format!(
             "{field_group_name}[{case_position}] field '{field_name}' must be a string",
@@ -599,6 +620,7 @@ fn parse_deterministic_replay_metadata(
         "gap_behavior_cases",
         "deterministic_replay_metadata",
     )?;
+
     let replay_mapping = replay_mapping_value.downcast::<PyMapping>().map_err(|_| {
         SeasonalityInputValidationError::new_err(format!(
             "{context} field 'deterministic_replay_metadata' must be a mapping",
@@ -611,36 +633,42 @@ fn parse_deterministic_replay_metadata(
         "gap_behavior_cases",
         "replay_baseline_id",
     )?;
+
     let event_calendar_binding_id = parse_required_string_field(
         &replay_mapping,
         case_position,
         "gap_behavior_cases",
         "event_calendar_binding_id",
     )?;
+
     let jump_observation_binding_id = parse_required_string_field(
         &replay_mapping,
         case_position,
         "gap_behavior_cases",
         "jump_observation_binding_id",
     )?;
+
     let gap_observation_binding_id = parse_required_string_field(
         &replay_mapping,
         case_position,
         "gap_behavior_cases",
         "gap_observation_binding_id",
     )?;
+
     let candidate_selection_policy_id = parse_required_string_field(
         &replay_mapping,
         case_position,
         "gap_behavior_cases",
         "candidate_selection_policy_id",
     )?;
+
     let candidate_selection_rank_value = parse_required_field(
         &replay_mapping,
         case_position,
         "gap_behavior_cases",
         "candidate_selection_rank",
     )?;
+
     let candidate_selection_rank =
         candidate_selection_rank_value
             .extract::<u64>()
@@ -672,6 +700,7 @@ fn parse_issue_traceability_metadata(
         "gap_behavior_cases",
         "issue_traceability",
     )?;
+
     let issue_mapping = issue_mapping_value.downcast::<PyMapping>().map_err(|_| {
         SeasonalityInputValidationError::new_err(format!(
             "{context} field 'issue_traceability' must be a mapping",
@@ -684,6 +713,7 @@ fn parse_issue_traceability_metadata(
         "gap_behavior_cases",
         "issue_id",
     )?;
+
     let semantic_focus_tags = parse_required_string_list(
         &issue_mapping,
         case_position,

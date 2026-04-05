@@ -11,8 +11,8 @@ use crate::hourly_factors::{
     HOURLY_FACTOR_SPRING_FORWARD_POLICY, HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY,
     HOURLY_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION,
     HOURLY_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION, HourlyFactorContractError,
-    build_hourly_factor_contract, materialize_hourly_news_intensity_factors,
-    materialize_hourly_seasonality_factors,
+    HourlyFactorContractPayload, build_hourly_factor_contract, load_hourly_factor_contract,
+    materialize_hourly_news_intensity_factors, materialize_hourly_seasonality_factors,
 };
 
 const ONE_HOUR_INTERVAL_NANOS: i64 = ONE_HOUR_NANOS;
@@ -720,6 +720,88 @@ fn news_intensity_materializer_rejects_invalid_surprise_intensity_controls() {
     ));
 }
 
+#[test]
+fn hourly_factor_contract_loader_rejects_mismatched_interval_lengths() {
+    let error = load_hourly_factor_contract(valid_hourly_factor_contract_payload_with_overrides(
+        &[("nu_h", serde_json::json!([0.4]))],
+    ))
+    .expect_err("malformed interval payload must fail");
+
+    assert!(matches!(
+        error,
+        HourlyFactorContractError::IntervalFieldLengthMismatch {
+            field: "nu_h",
+            expected_length: 2,
+            actual_length: 1,
+        }
+    ));
+}
+
+#[test]
+fn hourly_factor_contract_loader_rejects_inconsistent_interval_grid_metadata() {
+    let error =
+        load_hourly_factor_contract(valid_hourly_factor_contract_payload_with_overrides(&[(
+            "last_interval_end_utc_nanos",
+            serde_json::json!(7_300_000_000_000_i64),
+        )]))
+        .expect_err("inconsistent interval metadata must fail");
+
+    assert!(matches!(
+        error,
+        HourlyFactorContractError::IntervalStartMismatch {
+            field: "last_interval_end_utc_nanos",
+            expected: 7_300_000_000_000_i64,
+            actual: 7_200_000_000_000_i64,
+        }
+    ));
+}
+
+#[test]
+fn hourly_factor_contract_loader_accepts_zero_seasonality_factors() {
+    let output = load_hourly_factor_contract(valid_hourly_factor_contract_payload_with_overrides(
+        &[("s_h", serde_json::json!([0.0, 0.9]))],
+    ))
+    .expect("zero seasonality factors should remain valid contract values");
+
+    assert_eq!(output.s_h, vec![0.0, 0.9]);
+}
+
+#[test]
+fn hourly_factor_contract_loader_accepts_empty_interval_grid_payload() {
+    let output =
+        load_hourly_factor_contract(valid_hourly_factor_contract_payload_with_overrides(&[
+            ("request_end_utc_nanos", serde_json::json!(0_i64)),
+            ("interval_indices", serde_json::json!([])),
+            ("interval_start_utc_nanos", serde_json::json!([])),
+            ("interval_end_utc_nanos", serde_json::json!([])),
+            ("interval_start_exchange_local", serde_json::json!([])),
+            ("interval_end_exchange_local", serde_json::json!([])),
+            ("s_h", serde_json::json!([])),
+            ("known_component_nu_h", serde_json::json!([])),
+            ("surprise_component_nu_h", serde_json::json!([])),
+            ("nu_h", serde_json::json!([])),
+            ("interval_count", serde_json::json!(0_usize)),
+            ("last_interval_end_utc_nanos", serde_json::json!(0_i64)),
+        ]))
+        .expect("empty interval grid payload should remain structurally valid");
+
+    assert_eq!(output.diagnostics.interval_count, 0);
+    assert!(output.interval_indices.is_empty());
+    assert!(output.s_h.is_empty());
+}
+
+#[test]
+fn hourly_factor_contract_loader_accepts_canonical_payload() {
+    let output =
+        load_hourly_factor_contract(valid_hourly_factor_contract_payload_with_overrides(&[]))
+            .expect("canonical hourly factor payload should load");
+
+    assert_eq!(output.interval_indices, vec![0, 1]);
+    assert_eq!(output.s_h, vec![1.0, 0.9]);
+    assert_eq!(output.known_component_nu_h, vec![0.1, 0.0]);
+    assert_eq!(output.surprise_component_nu_h, vec![0.3, 0.2]);
+}
+
 fn build_calendar_registry() -> crate::calendar::ExchangeCalendarRegistry {
     ExchangeCalendarRegistryLoader::load_from_json(
         r#"
@@ -782,4 +864,53 @@ fn parse_timestamp(raw_timestamp: &str) -> DateTime<Utc> {
     DateTime::parse_from_rfc3339(raw_timestamp)
         .expect("timestamp fixture must parse")
         .with_timezone(&Utc)
+}
+
+fn valid_hourly_factor_contract_payload_with_overrides(
+    overrides: &[(&str, serde_json::Value)],
+) -> HourlyFactorContractPayload {
+    let mut payload = serde_json::json!({
+        "schema_version": HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION,
+        "exchange_code": "XNYS",
+        "exchange_timezone_name": "America/New_York",
+        "request_start_utc_nanos": 0_i64,
+        "request_end_utc_nanos": 7_200_000_000_000_i64,
+        "interval_duration_nanos": 3_600_000_000_000_i64,
+        "interval_indices": [0_u64, 1_u64],
+        "interval_start_utc_nanos": [0_i64, 3_600_000_000_000_i64],
+        "interval_end_utc_nanos": [3_600_000_000_000_i64, 7_200_000_000_000_i64],
+        "interval_start_exchange_local": [
+            "2026-02-02T09:00:00-05:00",
+            "2026-02-02T10:00:00-05:00"
+        ],
+        "interval_end_exchange_local": [
+            "2026-02-02T10:00:00-05:00",
+            "2026-02-02T11:00:00-05:00"
+        ],
+        "s_h": [1.0, 0.9],
+        "known_component_nu_h": [0.1, 0.0],
+        "surprise_component_nu_h": [0.3, 0.2],
+        "nu_h": [0.4, 0.2],
+        "interval_count": 2,
+        "first_interval_start_utc_nanos": 0_i64,
+        "last_interval_end_utc_nanos": 7_200_000_000_000_i64,
+        "skipped_local_hour_interval_count": 0,
+        "repeated_local_hour_interval_count": 0,
+        "interval_boundary_policy": HOURLY_FACTOR_INTERVAL_BOUNDARY_POLICY,
+        "interval_alignment_policy": HOURLY_FACTOR_INTERVAL_ALIGNMENT_POLICY,
+        "timezone_transition_policy": HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY,
+        "spring_forward_policy": HOURLY_FACTOR_SPRING_FORWARD_POLICY,
+        "fall_back_policy": HOURLY_FACTOR_FALL_BACK_POLICY,
+        "seasonality_materialization_method": DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD,
+        "news_intensity_materialization_method": DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD
+    });
+
+    let payload_object = payload
+        .as_object_mut()
+        .expect("payload template must be a JSON object");
+    for (field, value) in overrides {
+        payload_object.insert((*field).to_string(), value.clone());
+    }
+
+    serde_json::from_value(payload).expect("payload template must deserialize")
 }

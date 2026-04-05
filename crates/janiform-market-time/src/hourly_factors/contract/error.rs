@@ -4,6 +4,11 @@ use std::fmt::{Display, Formatter};
 /// Validation failures and contract build errors for hourly factor outputs.
 #[derive(Debug, Clone, PartialEq)]
 pub enum HourlyFactorContractError {
+    UnexpectedContractFieldValue {
+        field: &'static str,
+        expected: &'static str,
+        observed: String,
+    },
     EmptyExchangeCode,
     EmptySeasonalityMaterializationMethod,
     EmptyNewsIntensityMaterializationMethod,
@@ -94,11 +99,45 @@ pub enum HourlyFactorContractError {
     InvalidSparseHourMinimumObservationCount {
         sparse_hour_minimum_observation_count: usize,
     },
+    IntervalFieldLengthMismatch {
+        field: &'static str,
+        expected_length: usize,
+        actual_length: usize,
+    },
+    IntervalStartMismatch {
+        field: &'static str,
+        expected: i64,
+        actual: i64,
+    },
+    IntervalIndexMismatch {
+        interval_position: usize,
+        expected_index: u64,
+        actual_index: u64,
+    },
+    InvalidIntervalBounds {
+        interval_position: usize,
+        start_utc_nanos: i64,
+        end_utc_nanos: i64,
+        interval_duration_nanos: i64,
+    },
+    NonContiguousIntervals {
+        previous_interval_end_utc_nanos: i64,
+        current_interval_start_utc_nanos: i64,
+        interval_position: usize,
+    },
 }
 
 impl Display for HourlyFactorContractError {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::UnexpectedContractFieldValue {
+                field,
+                expected,
+                observed,
+            } => write!(
+                formatter,
+                "hourly factor contract field `{field}` must be `{expected}`, received `{observed}`"
+            ),
             Self::EmptyExchangeCode => {
                 write!(formatter, "exchange_code must be a non-empty string")
             }
@@ -162,7 +201,7 @@ impl Display for HourlyFactorContractError {
                 value,
             } => write!(
                 formatter,
-                "s_h must contain finite positive values, found {value} at interval index {interval_index}"
+                "s_h must contain finite non-negative values, found {value} at interval index {interval_index}"
             ),
             Self::InvalidNewsIntensityFactor {
                 interval_index,
@@ -256,6 +295,47 @@ impl Display for HourlyFactorContractError {
             } => write!(
                 formatter,
                 "sparse_hour_minimum_observation_count must be at least 1, received {sparse_hour_minimum_observation_count}"
+            ),
+            Self::IntervalFieldLengthMismatch {
+                field,
+                expected_length,
+                actual_length,
+            } => write!(
+                formatter,
+                "{field} must have length {expected_length}, received {actual_length}"
+            ),
+            Self::IntervalStartMismatch {
+                field,
+                expected,
+                actual,
+            } => write!(
+                formatter,
+                "hourly factor contract field `{field}` must equal {expected}, received {actual}"
+            ),
+            Self::IntervalIndexMismatch {
+                interval_position,
+                expected_index,
+                actual_index,
+            } => write!(
+                formatter,
+                "hourly factor contract interval index at position {interval_position} must be {expected_index}, received {actual_index}"
+            ),
+            Self::InvalidIntervalBounds {
+                interval_position,
+                start_utc_nanos,
+                end_utc_nanos,
+                interval_duration_nanos,
+            } => write!(
+                formatter,
+                "hourly factor contract interval at position {interval_position} must have start < end and width {interval_duration_nanos}, received start={start_utc_nanos}, end={end_utc_nanos}"
+            ),
+            Self::NonContiguousIntervals {
+                previous_interval_end_utc_nanos,
+                current_interval_start_utc_nanos,
+                interval_position,
+            } => write!(
+                formatter,
+                "hourly factor contract intervals must be contiguous, found previous_end={previous_interval_end_utc_nanos} and current_start={current_interval_start_utc_nanos} at position {interval_position}"
             ),
         }
     }

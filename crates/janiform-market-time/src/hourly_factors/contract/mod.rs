@@ -4,6 +4,7 @@ mod builder;
 mod constants;
 mod error;
 mod interval_indexing;
+mod loader;
 mod news_intensity;
 mod seasonality;
 #[cfg(test)]
@@ -24,6 +25,7 @@ pub use constants::{
     HOURLY_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION,
 };
 pub use error::HourlyFactorContractError;
+pub use loader::{HourlyFactorContractPayload, load_hourly_factor_contract};
 pub use news_intensity::materialize_hourly_news_intensity_factors;
 pub use seasonality::materialize_hourly_seasonality_factors;
 pub use types::{
