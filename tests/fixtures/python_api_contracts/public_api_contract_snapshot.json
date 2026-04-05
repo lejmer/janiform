@@ -245,10 +245,12 @@
             "risk_free_rate",
             "dividend_yield",
             "strikes",
-            "maturity_intervals"
+            "expiry_timestamps_utc",
+            "expiry_dates",
+            "tenors"
           ],
           "kind": "contract_model",
-          "signature": "(payoff_type: 'VanillaOptionPayoffType', risk_free_rate: 'float', dividend_yield: 'float', strikes: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]') -> 'None'"
+          "signature": "(payoff_type: 'VanillaOptionPayoffType', risk_free_rate: 'float', dividend_yield: 'float', strikes: 'tuple[float, ...]', expiry_timestamps_utc: 'Optional[tuple[Optional[datetime], ...]]' = None, expiry_dates: 'Optional[tuple[Optional[date], ...]]' = None, tenors: 'Optional[tuple[Optional[str], ...]]' = None) -> 'None'"
         },
         "JaniformModel": {
           "field_names": [
@@ -349,13 +351,15 @@
           "field_names": [
             "spot",
             "strikes",
-            "maturity_intervals",
+            "expiry_timestamps_utc",
+            "expiry_dates",
+            "tenors",
             "payoff_type",
             "risk_free_rate",
             "dividend_yield"
           ],
           "kind": "contract_model",
-          "signature": "(spot: 'float', strikes: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]', payoff_type: 'VanillaOptionPayoffType' = <VanillaOptionPayoffType.CALL: 'call'>, risk_free_rate: 'float' = 0.0, dividend_yield: 'float' = 0.0) -> 'None'"
+          "signature": "(spot: 'float', strikes: 'tuple[float, ...]', expiry_timestamps_utc: 'Optional[tuple[Optional[datetime], ...]]' = None, expiry_dates: 'Optional[tuple[Optional[date], ...]]' = None, tenors: 'Optional[tuple[Optional[str], ...]]' = None, payoff_type: 'VanillaOptionPayoffType' = <VanillaOptionPayoffType.CALL: 'call'>, risk_free_rate: 'float' = 0.0, dividend_yield: 'float' = 0.0) -> 'None'"
         },
         "JaniformVanillaOptionSurfacePricingResult": {
           "field_names": [
@@ -614,10 +618,12 @@
             "risk_free_rate",
             "dividend_yield",
             "strikes",
-            "maturity_intervals"
+            "expiry_timestamps_utc",
+            "expiry_dates",
+            "tenors"
           ],
           "kind": "contract_model",
-          "signature": "(payoff_type: 'VanillaOptionPayoffType', risk_free_rate: 'float', dividend_yield: 'float', strikes: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]') -> 'None'"
+          "signature": "(payoff_type: 'VanillaOptionPayoffType', risk_free_rate: 'float', dividend_yield: 'float', strikes: 'tuple[float, ...]', expiry_timestamps_utc: 'Optional[tuple[Optional[datetime], ...]]' = None, expiry_dates: 'Optional[tuple[Optional[date], ...]]' = None, tenors: 'Optional[tuple[Optional[str], ...]]' = None) -> 'None'"
         },
         "JaniformModel": {
           "field_names": [
@@ -718,13 +724,15 @@
           "field_names": [
             "spot",
             "strikes",
-            "maturity_intervals",
+            "expiry_timestamps_utc",
+            "expiry_dates",
+            "tenors",
             "payoff_type",
             "risk_free_rate",
             "dividend_yield"
           ],
           "kind": "contract_model",
-          "signature": "(spot: 'float', strikes: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]', payoff_type: 'VanillaOptionPayoffType' = <VanillaOptionPayoffType.CALL: 'call'>, risk_free_rate: 'float' = 0.0, dividend_yield: 'float' = 0.0) -> 'None'"
+          "signature": "(spot: 'float', strikes: 'tuple[float, ...]', expiry_timestamps_utc: 'Optional[tuple[Optional[datetime], ...]]' = None, expiry_dates: 'Optional[tuple[Optional[date], ...]]' = None, tenors: 'Optional[tuple[Optional[str], ...]]' = None, payoff_type: 'VanillaOptionPayoffType' = <VanillaOptionPayoffType.CALL: 'call'>, risk_free_rate: 'float' = 0.0, dividend_yield: 'float' = 0.0) -> 'None'"
         },
         "JaniformVanillaOptionSurfacePricingResult": {
           "field_names": [
@@ -834,10 +842,12 @@
             "risk_free_rate",
             "dividend_yield",
             "strikes",
-            "maturity_intervals"
+            "expiry_timestamps_utc",
+            "expiry_dates",
+            "tenors"
           ],
           "kind": "contract_model",
-          "signature": "(payoff_type: 'VanillaOptionPayoffType', risk_free_rate: 'float', dividend_yield: 'float', strikes: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]') -> 'None'"
+          "signature": "(payoff_type: 'VanillaOptionPayoffType', risk_free_rate: 'float', dividend_yield: 'float', strikes: 'tuple[float, ...]', expiry_timestamps_utc: 'Optional[tuple[Optional[datetime], ...]]' = None, expiry_dates: 'Optional[tuple[Optional[date], ...]]' = None, tenors: 'Optional[tuple[Optional[str], ...]]' = None) -> 'None'"
         },
         "JaniformVanillaOptionGroupedBatchPricingGroupResult": {
           "field_names": [
@@ -915,13 +925,15 @@
           "field_names": [
             "spot",
             "strikes",
-            "maturity_intervals",
+            "expiry_timestamps_utc",
+            "expiry_dates",
+            "tenors",
             "payoff_type",
             "risk_free_rate",
             "dividend_yield"
           ],
           "kind": "contract_model",
-          "signature": "(spot: 'float', strikes: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]', payoff_type: 'VanillaOptionPayoffType' = <VanillaOptionPayoffType.CALL: 'call'>, risk_free_rate: 'float' = 0.0, dividend_yield: 'float' = 0.0) -> 'None'"
+          "signature": "(spot: 'float', strikes: 'tuple[float, ...]', expiry_timestamps_utc: 'Optional[tuple[Optional[datetime], ...]]' = None, expiry_dates: 'Optional[tuple[Optional[date], ...]]' = None, tenors: 'Optional[tuple[Optional[str], ...]]' = None, payoff_type: 'VanillaOptionPayoffType' = <VanillaOptionPayoffType.CALL: 'call'>, risk_free_rate: 'float' = 0.0, dividend_yield: 'float' = 0.0) -> 'None'"
         },
         "JaniformVanillaOptionSurfacePricingResult": {
           "field_names": [
@@ -4407,6 +4419,7 @@
         "ValidationErrorFactory",
         "compute_hawkes_alpha_over_beta_spectral_radius",
         "parse_json_object",
+        "require_date",
         "require_datetime_utc",
         "require_field",
         "require_finite_number",
@@ -4449,6 +4462,10 @@
         "parse_json_object": {
           "kind": "function",
           "signature": "(payload_json: 'str', payload_label: 'str', error_factory: 'ValidationErrorFactory') -> 'Mapping[str, Any]'"
+        },
+        "require_date": {
+          "kind": "function",
+          "signature": "(raw_value: 'Any', field_path: 'str', error_factory: 'ValidationErrorFactory') -> 'date'"
         },
         "require_datetime_utc": {
           "kind": "function",

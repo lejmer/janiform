@@ -54,7 +54,9 @@ def test_price_help_documents_high_level_pricing_workflow() -> None:
     assert "--model-path" in help_output
     assert "--spot" in help_output
     assert "--strike" in help_output
-    assert "--maturity-interval" in help_output
+    assert "--expiry-timestamp-utc" in help_output
+    assert "--expiry-date" in help_output
+    assert "--tenor" in help_output
 
 
 def test_stylized_facts_help_lists_horizon_comparison_workflow() -> None:

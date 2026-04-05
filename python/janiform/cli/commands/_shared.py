@@ -1,7 +1,7 @@
 """Internal shared helpers for CLI workflow command implementations."""
 
 import json
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Optional, cast
 
@@ -210,6 +210,24 @@ def parse_utc_datetime_cli_argument(
         )
 
     return parsed_value.astimezone(UTC)
+
+
+def parse_date_cli_argument(
+    value: str,
+    *,
+    field_path: str,
+    error_id: str,
+    entrypoint: str,
+) -> date:
+    try:
+        return date.fromisoformat(value)
+    except ValueError as e:
+        raise cli_validation_error(
+            field_path,
+            "must be a valid ISO 8601 date",
+            error_id=error_id,
+            entrypoint=entrypoint,
+        ) from e
 
 
 def extract_hourly_seasonality_materialization_input(

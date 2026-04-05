@@ -921,6 +921,11 @@ def run_stylized_fact_horizon_comparison_report_generator(
 ) -> str: ...
 
 
+def resolve_high_level_pricing_maturity_inputs(
+    request: Any,
+) -> Any: ...
+
+
 def run_vanilla_option_pricing(
     request: Any,
     hourly_factor_contract: HourlyFactorContractResult,

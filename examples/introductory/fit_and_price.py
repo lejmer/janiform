@@ -14,22 +14,25 @@ from examples._shared import (
 VALUATION_TIME_UTC: Final[datetime] = datetime(2026, 2, 2, 15, 0, tzinfo=UTC)
 SPOT: Final[float] = 1.0850
 STRIKE: Final[float] = 1.0900
-MATURITY_INTERVAL: Final[float] = 1.0
+TENOR: Final[str] = "1h"
 
 
 def main() -> None:
     arguments = _parse_args()
+
     persisted_model = load_or_fit_persisted_example_model(
         market_profile="eurusd_spot",
         tick_data_path=SYNTHETIC_EURUSD_TICK_DATA_PATH,
         force_refit=arguments.refit,
     )
+
     model: JaniformModel = persisted_model.model
+
     pricing_result: VanillaOptionPricingRunResult = model.price_option(
         valuation_time_utc=VALUATION_TIME_UTC,
         spot=SPOT,
         strike=STRIKE,
-        maturity_interval=MATURITY_INTERVAL,
+        tenor=TENOR,
     )
 
     print(
@@ -51,6 +54,7 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="Rebuild the persisted example model before running the example.",
     )
+
     return parser.parse_args()
 
 

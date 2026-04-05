@@ -195,8 +195,8 @@ def _build_price_smoke_invocation(_: str, tmp_path: Path) -> CliSmokeInvocation:
             "101.0",
             "--strike",
             "100.0",
-            "--maturity-interval",
-            "1.0",
+            "--tenor",
+            "1h",
             "--output-path",
             str(output_path),
             "--output",
@@ -646,8 +646,8 @@ def _build_price_missing_strike_arguments(_: str, tmp_path: Path) -> list[str]:
         "2026-02-02T15:00:00Z",
         "--spot",
         "101.0",
-        "--maturity-interval",
-        "1.0",
+        "--tenor",
+        "1h",
     ]
 
 

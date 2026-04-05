@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import date, datetime
 from enum import StrEnum
 from typing import Any, Optional
 
@@ -35,6 +36,12 @@ from ...pricing.surface.common import (
     validate_aligned_count as _surface_validate_aligned_node_count,
     validate_matching_grid_shape as _surface_validate_matching_grid_shape,
 )
+from .maturity_inputs import (
+    normalize_optional_expiry_dates,
+    normalize_optional_expiry_timestamps_utc,
+    normalize_optional_tenors,
+    validate_high_level_pricing_maturity_axis_fields,
+)
 from .._errors import _calibration_error
 from ...pricing.contracts import _validate_implied_volatility_inversion_outcome
 
@@ -50,17 +57,13 @@ class JaniformGroupedVanillaOptionGroup(ContractModel):
     risk_free_rate: float
     dividend_yield: float
     strikes: tuple[float, ...]
-    maturity_intervals: tuple[float, ...]
+    expiry_timestamps_utc: Optional[tuple[Optional[datetime], ...]] = None
+    expiry_dates: Optional[tuple[Optional[date], ...]] = None
+    tenors: Optional[tuple[Optional[str], ...]] = None
 
     def __post_init__(self) -> None:
         if len(self.strikes) == 0:
             raise _calibration_error("strikes", "must contain at least one strike")
-
-        if len(self.maturity_intervals) == 0:
-            raise _calibration_error(
-                "maturity_intervals",
-                "must contain at least one maturity interval",
-            )
 
         require_finite_scalar(self.risk_free_rate, "risk_free_rate", _calibration_error)
         require_finite_scalar(self.dividend_yield, "dividend_yield", _calibration_error)
@@ -72,16 +75,22 @@ class JaniformGroupedVanillaOptionGroup(ContractModel):
                 _calibration_error,
             )
 
-        for maturity_index, maturity_interval in enumerate(self.maturity_intervals):
-            require_positive_finite_scalar(
-                maturity_interval,
-                f"maturity_intervals[{maturity_index}]",
-                _calibration_error,
-            )
+        validate_high_level_pricing_maturity_axis_fields(
+            expiry_timestamps_utc=self.expiry_timestamps_utc,
+            expiry_dates=self.expiry_dates,
+            tenors=self.tenors,
+        )
 
     @property
     def shape(self) -> tuple[int, int]:
-        return len(self.maturity_intervals), len(self.strikes)
+        return (
+            validate_high_level_pricing_maturity_axis_fields(
+                expiry_timestamps_utc=self.expiry_timestamps_utc,
+                expiry_dates=self.expiry_dates,
+                tenors=self.tenors,
+            ),
+            len(self.strikes),
+        )
 
     @staticmethod
     def from_mapping(
@@ -91,6 +100,28 @@ class JaniformGroupedVanillaOptionGroup(ContractModel):
     ) -> JaniformGroupedVanillaOptionGroup:
         if not isinstance(raw_payload, dict):
             raise _calibration_error(field_path, "must be an object")
+
+        expiry_timestamps_utc = normalize_optional_expiry_timestamps_utc(
+            raw_payload.get("expiry_timestamps_utc"),
+            field_path=f"{field_path}.expiry_timestamps_utc",
+        )
+
+        expiry_dates = normalize_optional_expiry_dates(
+            raw_payload.get("expiry_dates"),
+            field_path=f"{field_path}.expiry_dates",
+        )
+
+        tenors = normalize_optional_tenors(
+            raw_payload.get("tenors"),
+            field_path=f"{field_path}.tenors",
+        )
+
+        validate_high_level_pricing_maturity_axis_fields(
+            expiry_timestamps_utc=expiry_timestamps_utc,
+            expiry_dates=expiry_dates,
+            tenors=tenors,
+            field_prefix=field_path,
+        )
 
         return JaniformGroupedVanillaOptionGroup(
             payoff_type=require_str_enum_value(
@@ -117,11 +148,9 @@ class JaniformGroupedVanillaOptionGroup(ContractModel):
                 field_name="strikes",
                 field_path=f"{field_path}.strikes",
             ),
-            maturity_intervals=_tuple_of_positive_floats(
-                raw_payload,
-                field_name="maturity_intervals",
-                field_path=f"{field_path}.maturity_intervals",
-            ),
+            expiry_timestamps_utc=expiry_timestamps_utc,
+            expiry_dates=expiry_dates,
+            tenors=tenors,
         )
 
 
@@ -132,6 +161,7 @@ class JaniformGroupedVanillaOptionBatch(ContractModel):
 
     def __post_init__(self) -> None:
         require_positive_finite_scalar(self.spot, "spot", _calibration_error)
+
         if len(self.groups) == 0:
             raise _calibration_error("groups", "must contain at least one pricing group")
 
@@ -349,6 +379,7 @@ class JaniformVanillaOptionMaturitySummary(ContractModel):
         )
 
         raw_deviation_grid_node_count = raw_payload.get("deviation_grid_node_count")
+
         deviation_grid_node_count = None
         if raw_deviation_grid_node_count is not None:
             deviation_grid_node_count = int(
@@ -600,6 +631,7 @@ class JaniformVanillaOptionGroupedBatchPricingResult(ContractModel):
 
     def __post_init__(self) -> None:
         require_positive_finite_scalar(self.spot, "spot", _calibration_error)
+
         if len(self.groups) == 0:
             raise _calibration_error("groups", "must contain at least one pricing result group")
 
@@ -639,20 +671,18 @@ class JaniformVanillaOptionGroupedBatchPricingResult(ContractModel):
 class JaniformVanillaOptionSurface(ContractModel):
     spot: float
     strikes: tuple[float, ...]
-    maturity_intervals: tuple[float, ...]
+    expiry_timestamps_utc: Optional[tuple[Optional[datetime], ...]] = None
+    expiry_dates: Optional[tuple[Optional[date], ...]] = None
+    tenors: Optional[tuple[Optional[str], ...]] = None
     payoff_type: VanillaOptionPayoffType = VanillaOptionPayoffType.CALL
     risk_free_rate: float = 0.0
     dividend_yield: float = 0.0
 
     def __post_init__(self) -> None:
         require_positive_finite_scalar(self.spot, "spot", _calibration_error)
+
         if len(self.strikes) == 0:
             raise _calibration_error("strikes", "must contain at least one strike")
-        if len(self.maturity_intervals) == 0:
-            raise _calibration_error(
-                "maturity_intervals",
-                "must contain at least one maturity interval",
-            )
 
         require_finite_scalar(self.risk_free_rate, "risk_free_rate", _calibration_error)
         require_finite_scalar(self.dividend_yield, "dividend_yield", _calibration_error)
@@ -664,16 +694,22 @@ class JaniformVanillaOptionSurface(ContractModel):
                 _calibration_error,
             )
 
-        for maturity_index, maturity_interval in enumerate(self.maturity_intervals):
-            require_positive_finite_scalar(
-                maturity_interval,
-                f"maturity_intervals[{maturity_index}]",
-                _calibration_error,
-            )
+        validate_high_level_pricing_maturity_axis_fields(
+            expiry_timestamps_utc=self.expiry_timestamps_utc,
+            expiry_dates=self.expiry_dates,
+            tenors=self.tenors,
+        )
 
     @property
     def shape(self) -> tuple[int, int]:
-        return len(self.maturity_intervals), len(self.strikes)
+        return (
+            validate_high_level_pricing_maturity_axis_fields(
+                expiry_timestamps_utc=self.expiry_timestamps_utc,
+                expiry_dates=self.expiry_dates,
+                tenors=self.tenors,
+            ),
+            len(self.strikes),
+        )
 
     @staticmethod
     def from_mapping(
@@ -683,6 +719,28 @@ class JaniformVanillaOptionSurface(ContractModel):
     ) -> JaniformVanillaOptionSurface:
         if not isinstance(raw_payload, dict):
             raise _calibration_error(field_path, "must be an object")
+
+        expiry_timestamps_utc = normalize_optional_expiry_timestamps_utc(
+            raw_payload.get("expiry_timestamps_utc"),
+            field_path=f"{field_path}.expiry_timestamps_utc",
+        )
+
+        expiry_dates = normalize_optional_expiry_dates(
+            raw_payload.get("expiry_dates"),
+            field_path=f"{field_path}.expiry_dates",
+        )
+
+        tenors = normalize_optional_tenors(
+            raw_payload.get("tenors"),
+            field_path=f"{field_path}.tenors",
+        )
+
+        validate_high_level_pricing_maturity_axis_fields(
+            expiry_timestamps_utc=expiry_timestamps_utc,
+            expiry_dates=expiry_dates,
+            tenors=tenors,
+            field_prefix=field_path,
+        )
 
         return JaniformVanillaOptionSurface(
             spot=require_positive_finite_scalar(
@@ -695,11 +753,9 @@ class JaniformVanillaOptionSurface(ContractModel):
                 field_name="strikes",
                 field_path=f"{field_path}.strikes",
             ),
-            maturity_intervals=_tuple_of_positive_floats(
-                raw_payload,
-                field_name="maturity_intervals",
-                field_path=f"{field_path}.maturity_intervals",
-            ),
+            expiry_timestamps_utc=expiry_timestamps_utc,
+            expiry_dates=expiry_dates,
+            tenors=tenors,
             payoff_type=require_str_enum_value(
                 raw_payload.get("payoff_type", VanillaOptionPayoffType.CALL.value),
                 f"{field_path}.payoff_type",

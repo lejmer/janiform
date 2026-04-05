@@ -2,10 +2,12 @@ import json
 from abc import ABC
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import fields, is_dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from enum import Enum, StrEnum
 from math import isfinite, sqrt
 from typing import Any, Optional, cast
+
+import orjson
 
 
 type ValidationErrorFactory = Callable[[str, str], Exception]
@@ -37,8 +39,8 @@ def parse_json_object(
     error_factory: ValidationErrorFactory,
 ) -> Mapping[str, Any]:
     try:
-        parsed_payload = json.loads(payload_json)
-    except json.JSONDecodeError as e:
+        parsed_payload = orjson.loads(payload_json)
+    except orjson.JSONDecodeError as e:
         raise error_factory(payload_label, f"must be valid JSON: {e.msg}") from e
 
     if not isinstance(parsed_payload, dict):
@@ -595,6 +597,26 @@ def require_datetime_utc(
     return parsed_value.astimezone(UTC)
 
 
+def require_date(
+    raw_value: Any,
+    field_path: str,
+    error_factory: ValidationErrorFactory,
+) -> date:
+    if isinstance(raw_value, str):
+        try:
+            return date.fromisoformat(raw_value)
+        except ValueError as e:
+            raise error_factory(field_path, f"must be a valid ISO 8601 date: {e}") from e
+
+    if isinstance(raw_value, datetime):
+        raise error_factory(field_path, "must be a date value without time information")
+
+    if isinstance(raw_value, date):
+        return raw_value
+
+    raise error_factory(field_path, "must be a date or ISO 8601 date string")
+
+
 def compute_hawkes_alpha_over_beta_spectral_radius(
     plus_plus: float,
     plus_minus: float,
@@ -715,6 +737,9 @@ def _to_jsonable(value: object) -> Any:
             return value.isoformat()
 
         return value.astimezone(UTC).isoformat()
+
+    if isinstance(value, date):
+        return value.isoformat()
 
     if isinstance(value, Enum):
         return value.value

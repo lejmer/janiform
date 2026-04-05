@@ -111,14 +111,14 @@ result = model.price_option(
     valuation_time_utc=datetime(2026, 2, 2, 15, 0, tzinfo=UTC),
     spot=1.0850,
     strike=1.0900,
-    maturity_interval=1.0,
+    expiry_timestamp_utc=datetime(2026, 2, 2, 16, 0, tzinfo=UTC),
 )
 ```
 
 To supply observed data explicitly:
 
 ```python
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 import pandas as pd
 
@@ -128,7 +128,7 @@ result = model.price_option(
     valuation_time_utc=datetime(2026, 2, 2, 15, 0, tzinfo=UTC),
     spot=1.0850,
     strike=1.0900,
-    maturity_interval=1.0,
+    expiry_date=date(2026, 2, 3),
     observed_data=CurrentStateEstimationRequest(
         observed_tick_data=pd.DataFrame(
             {
@@ -170,14 +170,14 @@ group_result = model.price_option_groups(
                 risk_free_rate=0.0,
                 dividend_yield=0.0,
                 strikes=(1.0800, 1.0850, 1.0900),
-                maturity_intervals=(1.0, 2.0, 4.0),
+                tenors=("1h", "2h", "4h"),
             ),
         ),
     ),
 )
 ```
 
-When your nodes already form a strike-by-maturity grid, use
+When your nodes already form a strike-by-expiry grid, use
 `model.price_option_surface(...)` with `JaniformVanillaOptionSurface`.
 
 ```python
@@ -191,7 +191,7 @@ surface_result = model.price_option_surface(
     surface=JaniformVanillaOptionSurface(
         spot=1.0850,
         strikes=(1.0800, 1.0850, 1.0900),
-        maturity_intervals=(1.0, 2.0, 4.0),
+        tenors=("1h", "2h", "4h"),
         payoff_type=VanillaOptionPayoffType.CALL,
         risk_free_rate=0.0,
         dividend_yield=0.0,

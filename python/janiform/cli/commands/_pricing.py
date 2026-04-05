@@ -6,7 +6,7 @@ from typing import Optional, cast
 
 import click
 
-from ._shared import parse_utc_datetime_cli_argument
+from ._shared import parse_date_cli_argument, parse_utc_datetime_cli_argument
 from .._constants import (
     CLI_PRICE_ENTRYPOINT,
     CLI_PRICE_INTERNAL_ERROR_ID,
@@ -87,7 +87,27 @@ def run_price_command(
             ),
             spot=float(cast(float, command_arguments["spot"])),
             strike=float(cast(float, command_arguments["strike"])),
-            maturity_interval=float(cast(float, command_arguments["maturity_interval"])),
+            expiry_timestamp_utc=(
+                None
+                if command_arguments.get("expiry_timestamp_utc") is None
+                else parse_utc_datetime_cli_argument(
+                    cast(str, command_arguments["expiry_timestamp_utc"]),
+                    field_path="expiry_timestamp_utc",
+                    error_id=CLI_PRICE_VALIDATION_ERROR_ID,
+                    entrypoint=CLI_PRICE_ENTRYPOINT,
+                )
+            ),
+            expiry_date=(
+                None
+                if command_arguments.get("expiry_date") is None
+                else parse_date_cli_argument(
+                    cast(str, command_arguments["expiry_date"]),
+                    field_path="expiry_date",
+                    error_id=CLI_PRICE_VALIDATION_ERROR_ID,
+                    entrypoint=CLI_PRICE_ENTRYPOINT,
+                )
+            ),
+            tenor=cast(Optional[str], command_arguments.get("tenor")),
             payoff_type=cast(str, command_arguments["payoff_type"]),
             risk_free_rate=float(cast(float, command_arguments["risk_free_rate"])),
             dividend_yield=float(cast(float, command_arguments["dividend_yield"])),
@@ -171,10 +191,16 @@ def build_price_command(*, environment: Optional[Mapping[str, str]] = None) -> c
             command_option("--spot", help_text="Spot price.", required=True, value_type=float),
             command_option("--strike", help_text="Option strike.", required=True, value_type=float),
             command_option(
-                "--maturity-interval",
-                help_text="Option maturity interval in model time units.",
-                required=True,
-                value_type=float,
+                "--expiry-timestamp-utc",
+                help_text="Exact option expiry timestamp in UTC.",
+            ),
+            command_option(
+                "--expiry-date",
+                help_text="Option expiry date in YYYY-MM-DD. Janiform preserves the valuation UTC time-of-day.",
+            ),
+            command_option(
+                "--tenor",
+                help_text="Relative option tenor. Supported units: h, d, w, m, y.",
             ),
             command_option(
                 "--payoff-type",
@@ -227,6 +253,7 @@ def build_price_command(*, environment: Optional[Mapping[str, str]] = None) -> c
             handler=run_price_command,
             command_path=("price",),
             command_arguments=dict(command_arguments),
+            required_one_of_groups=(("expiry_timestamp_utc", "expiry_date", "tenor"),),
         )
 
     return price

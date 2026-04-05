@@ -1,8 +1,10 @@
 use janiform::pricing::{
+    HighLevelPricingMaturityResolution, HighLevelPricingMaturityResolutionRequest,
     PricingProgressEvent, VanillaOptionGroupedBatchPricingExecutionInput,
     VanillaOptionPricingExecutionInput, VanillaOptionPricingIntervalFactors,
     VanillaOptionPricingOptionalOutputSelection, VanillaOptionPricingRequest,
     VanillaOptionSurfacePricingExecutionInput,
+    resolve_high_level_pricing_maturity_inputs as resolve_high_level_pricing_maturity_inputs_core,
     run_vanilla_option_grouped_batch_pricing as run_vanilla_option_grouped_batch_pricing_core,
     run_vanilla_option_grouped_batch_pricing_with_observer as run_vanilla_option_grouped_batch_pricing_core_with_observer,
     run_vanilla_option_pricing as run_vanilla_option_pricing_core,
@@ -26,6 +28,31 @@ use crate::python_value::{json_value_to_py_object, py_any_to_json_value};
 use crate::types::PyHourlyFactorContractResult;
 
 const PRICING_PROGRESS_CALLBACK_MIN_INTERVAL: Duration = Duration::from_millis(100);
+
+#[pyfunction]
+fn resolve_high_level_pricing_maturity_inputs(
+    py: Python<'_>,
+    request: &Bound<'_, PyAny>,
+) -> PyResult<Py<PyAny>> {
+    let request: HighLevelPricingMaturityResolutionRequest =
+        serde_json::from_value(py_any_to_json_value(request)?).map_err(|source| {
+            PricingExecutionError::new_err(format!(
+                "failed to deserialize high-level pricing maturity resolution request: {source}"
+            ))
+        })?;
+
+    let resolution: HighLevelPricingMaturityResolution =
+        resolve_high_level_pricing_maturity_inputs_core(request)
+            .map_err(|source| PricingExecutionError::new_err(source.to_string()))?;
+
+    let serialized_resolution = serde_json::to_value(&resolution).map_err(|source| {
+        PricingExecutionError::new_err(format!(
+            "failed to serialize high-level pricing maturity resolution output: {source}"
+        ))
+    })?;
+
+    json_value_to_py_object(py, &serialized_resolution)
+}
 
 #[pyfunction]
 fn run_vanilla_option_pricing(
@@ -339,6 +366,10 @@ fn should_emit_pricing_progress_event(
 }
 
 pub(super) fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
+    module.add_function(wrap_pyfunction!(
+        resolve_high_level_pricing_maturity_inputs,
+        module
+    )?)?;
     module.add_function(wrap_pyfunction!(run_vanilla_option_pricing, module)?)?;
     module.add_function(wrap_pyfunction!(
         run_vanilla_option_grouped_batch_pricing,
