@@ -66,6 +66,21 @@ saved input inference, so users can pass data that looks like the data they fit 
 restating the column mapping. `tick_data_column_mapping` remains available when an override is
 needed.
 
+`JaniformEstimator.fit(...)` is the canonical high-level fit entrypoint for both underlying-only
+and option calibration. It chooses the fit from the supplied inputs:
+
+- tick data only fits the underlying model, suitable for simulations
+- tick data plus an option surface fits the model to the underlying data and the selected option snapshot,
+  suitable for options pricing
+
+The high-level joint option path also exposes:
+
+- `option_surface_valuation_time_utc` to select the option snapshot being fit
+- `carry` for optional flat discount-rate and carry-rate input
+
+When fitting with options, one fit run targets one option quote timestamp, tick data remains
+mandatory, and the option surface must contain bid and ask quote data together with prices.
+
 ### `janiform.simulation`
 
 Public simulation workflows and shared runtime contracts. Representative public symbols include:

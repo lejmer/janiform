@@ -1,5 +1,6 @@
 import json
 import re
+import shutil
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -16,6 +17,7 @@ DATA_ROOT: Final[Path] = REPOSITORY_ROOT / "data"
 TEST_FIXTURE_ROOT: Final[Path] = REPOSITORY_ROOT / "tests" / "fixtures"
 EXAMPLE_ARTIFACT_ROOT: Final[Path] = REPOSITORY_ROOT / ".artifacts" / "examples"
 EXAMPLE_MODEL_ARTIFACT_ROOT: Final[Path] = EXAMPLE_ARTIFACT_ROOT / "models"
+EXAMPLE_OPTION_SURFACE_ARTIFACT_ROOT: Final[Path] = EXAMPLE_ARTIFACT_ROOT / "option_surfaces"
 EXAMPLE_MODEL_CACHE_METADATA_SCHEMA_VERSION: Final[str] = (
     "examples.persisted_model_cache_metadata.v1"
 )
@@ -192,7 +194,7 @@ def _materialize_tail_slice(
         )
 
         persisted_fit_input_path.parent.mkdir(parents=True, exist_ok=True)
-        fit_input_path.replace(persisted_fit_input_path)
+        shutil.move(str(fit_input_path), str(persisted_fit_input_path))
 
         return persisted_fit_input_path
 

@@ -35,6 +35,15 @@ pricing = model.price_option(
 )
 ```
 
+Use `JaniformEstimator.fit(...)` for both fitting workflows:
+
+- supply only tick data to fit the underlying model
+- add `option_surface_path` to fit the model to the underlying data and one option snapshot
+
+When fitting with options, select the option snapshot through
+`option_surface_valuation_time_utc` unless the surface file contains exactly one quote timestamp.
+Optional flat `carry` is accepted on the same call and defaults to zero when omitted.
+
 For multi-node fitted-model pricing, stay on the same high-level surface with
 `model.price_options(...)` or `model.price_option_surface(...)` instead of looping over
 `model.price_option(...)`. Those multi-node results include Janiform-computed implied

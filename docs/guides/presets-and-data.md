@@ -28,9 +28,9 @@ Use `janiform presets list` to see what is bundled, `janiform presets show` to i
 
 ### Option surface
 
-- Optional unless the workflow scope requires option-surface calibration
+- Optional unless you want to fit the model with option data
 - Supported formats: `csv`, `parquet`
-- Supply quote timestamp, expiry, strike, option type, and either midpoint, bid/ask, or implied-volatility fields
+- Supply quote timestamp, expiry, strike, option type, and price quotes with bid and ask data
 
 ### Calendar registry
 
