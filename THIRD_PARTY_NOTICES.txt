@@ -17,12 +17,6 @@ Package Inventory
   repository: https://github.com/tkaitchuck/ahash
   legal files: LICENSE-APACHE, LICENSE-MIT
 
-- aho-corasick 1.1.4
-  license: Unlicense OR MIT
-  source: registry+https://github.com/rust-lang/crates.io-index
-  repository: https://github.com/BurntSushi/aho-corasick
-  legal files: COPYING, LICENSE-MIT, UNLICENSE
-
 - alloc-no-stdlib 2.0.4
   license: BSD-3-Clause
   source: registry+https://github.com/rust-lang/crates.io-index
@@ -275,12 +269,6 @@ Package Inventory
   repository: https://github.com/dtolnay/itoa
   legal files: LICENSE-APACHE, LICENSE-MIT
 
-- lazy_static 1.5.0
-  license: MIT OR Apache-2.0
-  source: registry+https://github.com/rust-lang/crates.io-index
-  repository: https://github.com/rust-lang-nursery/lazy-static.rs
-  legal files: LICENSE-APACHE, LICENSE-MIT
-
 - lexical-core 1.0.6
   license: MIT/Apache-2.0
   source: registry+https://github.com/rust-lang/crates.io-index
@@ -329,22 +317,10 @@ Package Inventory
   repository: https://github.com/rust-lang/compiler-builtins
   legal files: LICENSE.txt
 
-- log 0.4.29
-  license: MIT OR Apache-2.0
-  source: registry+https://github.com/rust-lang/crates.io-index
-  repository: https://github.com/rust-lang/log
-  legal files: LICENSE-APACHE, LICENSE-MIT
-
 - lz4_flex 0.11.6
   license: MIT
   source: registry+https://github.com/rust-lang/crates.io-index
   repository: https://github.com/pseitz/lz4_flex
-  legal files: LICENSE
-
-- matchers 0.2.0
-  license: MIT
-  source: registry+https://github.com/rust-lang/crates.io-index
-  repository: https://github.com/hawkw/matchers
   legal files: LICENSE
 
 - matrixmultiply 0.3.10
@@ -376,12 +352,6 @@ Package Inventory
   source: registry+https://github.com/rust-lang/crates.io-index
   repository: https://github.com/MSxDOS/ntapi
   legal files: LICENSE-APACHE, LICENSE-MIT
-
-- nu-ansi-term 0.50.3
-  license: MIT
-  source: registry+https://github.com/rust-lang/crates.io-index
-  repository: https://github.com/nushell/nu-ansi-term
-  legal files: LICENSE
 
 - num 0.4.3
   license: MIT OR Apache-2.0
@@ -557,18 +527,6 @@ Package Inventory
   repository: https://github.com/rayon-rs/rayon
   legal files: LICENSE-APACHE, LICENSE-MIT
 
-- regex-automata 0.4.14
-  license: MIT OR Apache-2.0
-  source: registry+https://github.com/rust-lang/crates.io-index
-  repository: https://github.com/rust-lang/regex
-  legal files: LICENSE-APACHE, LICENSE-MIT
-
-- regex-syntax 0.8.10
-  license: MIT OR Apache-2.0
-  source: registry+https://github.com/rust-lang/crates.io-index
-  repository: https://github.com/rust-lang/regex
-  legal files: LICENSE-APACHE, LICENSE-MIT
-
 - ryu 1.0.23
   license: Apache-2.0 OR BSL-1.0
   source: registry+https://github.com/rust-lang/crates.io-index
@@ -611,12 +569,6 @@ Package Inventory
   repository: https://github.com/serde-rs/json
   legal files: LICENSE-APACHE, LICENSE-MIT
 
-- sharded-slab 0.1.7
-  license: MIT
-  source: registry+https://github.com/rust-lang/crates.io-index
-  repository: https://github.com/hawkw/sharded-slab
-  legal files: LICENSE
-
 - simba 0.9.1
   license: Apache-2.0
   source: registry+https://github.com/rust-lang/crates.io-index
@@ -634,12 +586,6 @@ Package Inventory
   source: registry+https://github.com/rust-lang/crates.io-index
   repository: https://github.com/jedisct1/rust-siphash
   legal files: COPYING
-
-- smallvec 1.15.1
-  license: MIT OR Apache-2.0
-  source: registry+https://github.com/rust-lang/crates.io-index
-  repository: https://github.com/servo/rust-smallvec
-  legal files: LICENSE-APACHE, LICENSE-MIT
 
 - snap 1.1.1
   license: BSD-3-Clause
@@ -671,12 +617,6 @@ Package Inventory
   repository: https://github.com/bytecodealliance/target-lexicon
   legal files: LICENSE
 
-- thread_local 1.1.9
-  license: MIT OR Apache-2.0
-  source: registry+https://github.com/rust-lang/crates.io-index
-  repository: https://github.com/Amanieu/thread_local-rs
-  legal files: LICENSE-APACHE, LICENSE-MIT
-
 - thrift 0.17.0
   license: Apache-2.0
   source: registry+https://github.com/rust-lang/crates.io-index
@@ -702,18 +642,6 @@ Package Inventory
   legal files: LICENSE
 
 - tracing-core 0.1.36
-  license: MIT
-  source: registry+https://github.com/rust-lang/crates.io-index
-  repository: https://github.com/tokio-rs/tracing
-  legal files: LICENSE
-
-- tracing-log 0.2.0
-  license: MIT
-  source: registry+https://github.com/rust-lang/crates.io-index
-  repository: https://github.com/tokio-rs/tracing
-  legal files: LICENSE
-
-- tracing-subscriber 0.3.23
   license: MIT
   source: registry+https://github.com/rust-lang/crates.io-index
   repository: https://github.com/tokio-rs/tracing
@@ -821,12 +749,6 @@ Package Inventory
   repository: https://github.com/microsoft/windows-rs
   legal files: license-apache-2.0, license-mit
 
-- windows-sys 0.61.2
-  license: MIT OR Apache-2.0
-  source: registry+https://github.com/rust-lang/crates.io-index
-  repository: https://github.com/microsoft/windows-rs
-  legal files: license-apache-2.0, license-mit
-
 - windows-threading 0.1.0
   license: MIT OR Apache-2.0
   source: registry+https://github.com/rust-lang/crates.io-index
@@ -895,8 +817,6 @@ Applies to:
 - flate2 1.1.9 (LICENSE-APACHE)
 - hashbrown 0.16.1 (LICENSE-APACHE)
 - heck 0.5.0 (LICENSE-APACHE)
-- lazy_static 1.5.0 (LICENSE-APACHE)
-- log 0.4.29 (LICENSE-APACHE)
 - matrixmultiply 0.3.10 (LICENSE-APACHE)
 - num 0.4.3 (LICENSE-APACHE)
 - num-bigint 0.4.6 (LICENSE-APACHE)
@@ -909,10 +829,6 @@ Applies to:
 - rawpointer 0.2.1 (LICENSE-APACHE)
 - rayon 1.11.0 (LICENSE-APACHE)
 - rayon-core 1.13.0 (LICENSE-APACHE)
-- regex-automata 0.4.14 (LICENSE-APACHE)
-- regex-syntax 0.8.10 (LICENSE-APACHE)
-- smallvec 1.15.1 (LICENSE-APACHE)
-- thread_local 1.1.9 (LICENSE-APACHE)
 
                               Apache License
                         Version 2.0, January 2004
@@ -1152,87 +1068,6 @@ DEALINGS IN THE SOFTWARE.
 Text 003
 -------------------------------------------------------------------------------
 Applies to:
-- aho-corasick 1.1.4 (COPYING)
-- byteorder 1.5.0 (COPYING)
-- csv 1.4.0 (COPYING)
-- csv-core 0.1.13 (COPYING)
-- memchr 2.8.0 (COPYING)
-
-This project is dual-licensed under the Unlicense and MIT licenses.
-
-You may use this code under the terms of either license.
-
-===============================================================================
-Text 004
--------------------------------------------------------------------------------
-Applies to:
-- aho-corasick 1.1.4 (LICENSE-MIT)
-- byteorder 1.5.0 (LICENSE-MIT)
-- csv 1.4.0 (LICENSE-MIT)
-- csv-core 0.1.13 (LICENSE-MIT)
-- memchr 2.8.0 (LICENSE-MIT)
-
-The MIT License (MIT)
-
-Copyright (c) 2015 Andrew Gallant
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
-
-===============================================================================
-Text 005
--------------------------------------------------------------------------------
-Applies to:
-- aho-corasick 1.1.4 (UNLICENSE)
-- byteorder 1.5.0 (UNLICENSE)
-- csv 1.4.0 (UNLICENSE)
-- csv-core 0.1.13 (UNLICENSE)
-- memchr 2.8.0 (UNLICENSE)
-
-This is free and unencumbered software released into the public domain.
-
-Anyone is free to copy, modify, publish, use, compile, sell, or
-distribute this software, either in source code form or as a compiled
-binary, for any purpose, commercial or non-commercial, and by any
-means.
-
-In jurisdictions that recognize copyright laws, the author or authors
-of this software dedicate any and all copyright interest in the
-software to the public domain. We make this dedication for the benefit
-of the public at large and to the detriment of our heirs and
-successors. We intend this dedication to be an overt act of
-relinquishment in perpetuity of all present and future rights to this
-software under copyright law.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR
-OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
-ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
-OTHER DEALINGS IN THE SOFTWARE.
-
-For more information, please refer to <http://unlicense.org/>
-
-===============================================================================
-Text 006
--------------------------------------------------------------------------------
-Applies to:
 - alloc-no-stdlib 2.0.4 (LICENSE)
 - brotli-decompressor 5.0.0 (LICENSE)
 
@@ -1250,7 +1085,7 @@ Redistribution and use in source and binary forms, with or without modification,
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ===============================================================================
-Text 007
+Text 004
 -------------------------------------------------------------------------------
 Applies to:
 - approx 0.5.1 (LICENSE)
@@ -1467,7 +1302,7 @@ Applies to:
    limitations under the License.
 
 ===============================================================================
-Text 008
+Text 005
 -------------------------------------------------------------------------------
 Applies to:
 - arrow-array 56.2.0 (NOTICE.txt)
@@ -1565,7 +1400,7 @@ its NOTICE file:
   (c) Copyright [2014-2015] Hewlett-Packard Development Company, L.P
 
 ===============================================================================
-Text 009
+Text 006
 -------------------------------------------------------------------------------
 Applies to:
 - atoi 2.0.0 (LICENSE)
@@ -1593,7 +1428,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ===============================================================================
-Text 010
+Text 007
 -------------------------------------------------------------------------------
 Applies to:
 - base64 0.22.1 (LICENSE-MIT)
@@ -1621,7 +1456,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 ===============================================================================
-Text 011
+Text 008
 -------------------------------------------------------------------------------
 Applies to:
 - bincode 1.3.3 (LICENSE.md)
@@ -1649,11 +1484,10 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ===============================================================================
-Text 012
+Text 009
 -------------------------------------------------------------------------------
 Applies to:
 - bitflags 2.11.0 (LICENSE-MIT)
-- log 0.4.29 (LICENSE-MIT)
 - num 0.4.3 (LICENSE-MIT)
 - num-bigint 0.4.6 (LICENSE-MIT)
 - num-complex 0.4.6 (LICENSE-MIT)
@@ -1661,8 +1495,6 @@ Applies to:
 - num-iter 0.1.45 (LICENSE-MIT)
 - num-rational 0.4.2 (LICENSE-MIT)
 - num-traits 0.2.19 (LICENSE-MIT)
-- regex-automata 0.4.14 (LICENSE-MIT)
-- regex-syntax 0.8.10 (LICENSE-MIT)
 
 Copyright (c) 2014 The Rust Project Developers
 
@@ -1691,7 +1523,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ===============================================================================
-Text 013
+Text 010
 -------------------------------------------------------------------------------
 Applies to:
 - brotli 8.0.2 (LICENSE.MIT)
@@ -1717,7 +1549,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 ===============================================================================
-Text 014
+Text 011
 -------------------------------------------------------------------------------
 Applies to:
 - bytemuck 1.25.0 (LICENSE-APACHE)
@@ -1786,7 +1618,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 
 ===============================================================================
-Text 015
+Text 012
 -------------------------------------------------------------------------------
 Applies to:
 - bytemuck 1.25.0 (LICENSE-MIT)
@@ -1802,7 +1634,7 @@ The above copyright notice and this permission notice (including the next paragr
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ===============================================================================
-Text 016
+Text 013
 -------------------------------------------------------------------------------
 Applies to:
 - bytemuck 1.25.0 (LICENSE-ZLIB)
@@ -1818,6 +1650,84 @@ Permission is granted to anyone to use this software for any purpose, including 
 2. Altered source versions must be plainly marked as such, and must not be misrepresented as being the original software.
 
 3. This notice may not be removed or altered from any source distribution.
+
+===============================================================================
+Text 014
+-------------------------------------------------------------------------------
+Applies to:
+- byteorder 1.5.0 (COPYING)
+- csv 1.4.0 (COPYING)
+- csv-core 0.1.13 (COPYING)
+- memchr 2.8.0 (COPYING)
+
+This project is dual-licensed under the Unlicense and MIT licenses.
+
+You may use this code under the terms of either license.
+
+===============================================================================
+Text 015
+-------------------------------------------------------------------------------
+Applies to:
+- byteorder 1.5.0 (LICENSE-MIT)
+- csv 1.4.0 (LICENSE-MIT)
+- csv-core 0.1.13 (LICENSE-MIT)
+- memchr 2.8.0 (LICENSE-MIT)
+
+The MIT License (MIT)
+
+Copyright (c) 2015 Andrew Gallant
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+
+===============================================================================
+Text 016
+-------------------------------------------------------------------------------
+Applies to:
+- byteorder 1.5.0 (UNLICENSE)
+- csv 1.4.0 (UNLICENSE)
+- csv-core 0.1.13 (UNLICENSE)
+- memchr 2.8.0 (UNLICENSE)
+
+This is free and unencumbered software released into the public domain.
+
+Anyone is free to copy, modify, publish, use, compile, sell, or
+distribute this software, either in source code form or as a compiled
+binary, for any purpose, commercial or non-commercial, and by any
+means.
+
+In jurisdictions that recognize copyright laws, the author or authors
+of this software dedicate any and all copyright interest in the
+software to the public domain. We make this dedication for the benefit
+of the public at large and to the detriment of our heirs and
+successors. We intend this dedication to be an overt act of
+relinquishment in perpetuity of all present and future rights to this
+software under copyright law.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+OTHER DEALINGS IN THE SOFTWARE.
+
+For more information, please refer to <http://unlicense.org/>
 
 ===============================================================================
 Text 017
@@ -3566,40 +3476,6 @@ IN THE SOFTWARE.
 Text 037
 -------------------------------------------------------------------------------
 Applies to:
-- lazy_static 1.5.0 (LICENSE-MIT)
-- rayon 1.11.0 (LICENSE-MIT)
-- rayon-core 1.13.0 (LICENSE-MIT)
-
-Copyright (c) 2010 The Rust Project Developers
-
-Permission is hereby granted, free of charge, to any
-person obtaining a copy of this software and associated
-documentation files (the "Software"), to deal in the
-Software without restriction, including without
-limitation the rights to use, copy, modify, merge,
-publish, distribute, sublicense, and/or sell copies of
-the Software, and to permit persons to whom the Software
-is furnished to do so, subject to the following
-conditions:
-
-The above copyright notice and this permission notice
-shall be included in all copies or substantial portions
-of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
-ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
-TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
-PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
-SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
-OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
-IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-DEALINGS IN THE SOFTWARE.
-
-===============================================================================
-Text 038
--------------------------------------------------------------------------------
-Applies to:
 - lexical-core 1.0.6 (LICENSE-APACHE)
 - lexical-parse-float 1.0.6 (LICENSE-APACHE)
 - lexical-parse-integer 1.0.6 (LICENSE-APACHE)
@@ -3810,7 +3686,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 
 ===============================================================================
-Text 039
+Text 038
 -------------------------------------------------------------------------------
 Applies to:
 - lexical-core 1.0.6 (LICENSE.md)
@@ -4158,7 +4034,7 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ===============================================================================
-Text 040
+Text 039
 -------------------------------------------------------------------------------
 Applies to:
 - libc 0.2.182 (LICENSE-MIT)
@@ -4190,7 +4066,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ===============================================================================
-Text 041
+Text 040
 -------------------------------------------------------------------------------
 Applies to:
 - libm 0.2.16 (LICENSE.txt)
@@ -4455,7 +4331,7 @@ have been licensed under extremely permissive terms.
 Copyright notices are retained in src/* files where relevant.
 
 ===============================================================================
-Text 042
+Text 041
 -------------------------------------------------------------------------------
 Applies to:
 - lz4_flex 0.11.6 (LICENSE)
@@ -4482,33 +4358,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ===============================================================================
-Text 043
--------------------------------------------------------------------------------
-Applies to:
-- matchers 0.2.0 (LICENSE)
-
-Copyright (c) 2019 Eliza Weisman
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-
-===============================================================================
-Text 044
+Text 042
 -------------------------------------------------------------------------------
 Applies to:
 - matrixmultiply 0.3.10 (LICENSE-MIT)
@@ -4542,7 +4392,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ===============================================================================
-Text 045
+Text 043
 -------------------------------------------------------------------------------
 Applies to:
 - memoffset 0.9.1 (LICENSE)
@@ -4568,7 +4418,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ===============================================================================
-Text 046
+Text 044
 -------------------------------------------------------------------------------
 Applies to:
 - nalgebra 0.33.3 (LICENSE)
@@ -4777,7 +4627,7 @@ Applies to:
    limitations under the License.
 
 ===============================================================================
-Text 047
+Text 045
 -------------------------------------------------------------------------------
 Applies to:
 - ntapi 0.4.3 (LICENSE-APACHE)
@@ -4986,7 +4836,7 @@ Applies to:
    
 
 ===============================================================================
-Text 048
+Text 046
 -------------------------------------------------------------------------------
 Applies to:
 - ntapi 0.4.3 (LICENSE-MIT)
@@ -5010,36 +4860,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ===============================================================================
-Text 049
--------------------------------------------------------------------------------
-Applies to:
-- nu-ansi-term 0.50.3 (LICENSE)
-
-The MIT License (MIT)
-
-Copyright (c) 2014 Benjamin Sago
-Copyright (c) 2021-2022 The Nushell Project Developers
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-
-===============================================================================
-Text 050
+Text 047
 -------------------------------------------------------------------------------
 Applies to:
 - ordered-float 2.10.1 (LICENSE-MIT)
@@ -5071,7 +4892,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ===============================================================================
-Text 051
+Text 048
 -------------------------------------------------------------------------------
 Applies to:
 - phf 0.12.1 (LICENSE)
@@ -5099,7 +4920,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ===============================================================================
-Text 052
+Text 049
 -------------------------------------------------------------------------------
 Applies to:
 - pin-project-lite 0.2.17 (LICENSE-APACHE)
@@ -5285,7 +5106,7 @@ Applies to:
    END OF TERMS AND CONDITIONS
 
 ===============================================================================
-Text 053
+Text 050
 -------------------------------------------------------------------------------
 Applies to:
 - ppv-lite86 0.2.21 (LICENSE-APACHE)
@@ -5493,7 +5314,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 
 ===============================================================================
-Text 054
+Text 051
 -------------------------------------------------------------------------------
 Applies to:
 - ppv-lite86 0.2.21 (LICENSE-MIT)
@@ -5525,7 +5346,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ===============================================================================
-Text 055
+Text 052
 -------------------------------------------------------------------------------
 Applies to:
 - pyo3 0.24.2 (LICENSE-APACHE)
@@ -5714,7 +5535,7 @@ TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
 END OF TERMS AND CONDITIONS
 
 ===============================================================================
-Text 056
+Text 053
 -------------------------------------------------------------------------------
 Applies to:
 - pyo3 0.24.2 (LICENSE-MIT)
@@ -5750,7 +5571,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ===============================================================================
-Text 057
+Text 054
 -------------------------------------------------------------------------------
 Applies to:
 - rand 0.8.5 (LICENSE-APACHE)
@@ -5933,7 +5754,7 @@ TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
 END OF TERMS AND CONDITIONS
 
 ===============================================================================
-Text 058
+Text 055
 -------------------------------------------------------------------------------
 Applies to:
 - rand 0.8.5 (LICENSE-MIT)
@@ -5968,7 +5789,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ===============================================================================
-Text 059
+Text 056
 -------------------------------------------------------------------------------
 Applies to:
 - rand_core 0.6.4 (LICENSE-APACHE)
@@ -6163,7 +5984,7 @@ APPENDIX: How to apply the Apache License to your work.
    identification within third-party archives.
 
 ===============================================================================
-Text 060
+Text 057
 -------------------------------------------------------------------------------
 Applies to:
 - rand_distr 0.4.3 (LICENSE-MIT)
@@ -6195,7 +6016,40 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ===============================================================================
-Text 061
+Text 058
+-------------------------------------------------------------------------------
+Applies to:
+- rayon 1.11.0 (LICENSE-MIT)
+- rayon-core 1.13.0 (LICENSE-MIT)
+
+Copyright (c) 2010 The Rust Project Developers
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+===============================================================================
+Text 059
 -------------------------------------------------------------------------------
 Applies to:
 - ryu 1.0.23 (LICENSE-BOOST)
@@ -6225,7 +6079,7 @@ ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ===============================================================================
-Text 062
+Text 060
 -------------------------------------------------------------------------------
 Applies to:
 - safe_arch 0.7.4 (LICENSE-MIT.md)
@@ -6241,7 +6095,7 @@ The above copyright notice and this permission notice (including the next paragr
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ===============================================================================
-Text 063
+Text 061
 -------------------------------------------------------------------------------
 Applies to:
 - safe_arch 0.7.4 (LICENSE-ZLIB.md)
@@ -6260,33 +6114,7 @@ Permission is granted to anyone to use this software for any purpose, including 
 3. This notice may not be removed or altered from any source distribution.
 
 ===============================================================================
-Text 064
--------------------------------------------------------------------------------
-Applies to:
-- sharded-slab 0.1.7 (LICENSE)
-
-Copyright (c) 2019 Eliza Weisman
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
-
-===============================================================================
-Text 065
+Text 062
 -------------------------------------------------------------------------------
 Applies to:
 - simdutf8 0.1.5 (LICENSE-Apache)
@@ -6470,7 +6298,7 @@ Applies to:
    END OF TERMS AND CONDITIONS
 
 ===============================================================================
-Text 066
+Text 063
 -------------------------------------------------------------------------------
 Applies to:
 - simdutf8 0.1.5 (LICENSE-MIT)
@@ -6496,7 +6324,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ===============================================================================
-Text 067
+Text 064
 -------------------------------------------------------------------------------
 Applies to:
 - siphasher 1.0.2 (COPYING)
@@ -6510,39 +6338,7 @@ http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 option.
 
 ===============================================================================
-Text 068
--------------------------------------------------------------------------------
-Applies to:
-- smallvec 1.15.1 (LICENSE-MIT)
-
-Copyright (c) 2018 The Servo Project Developers
-
-Permission is hereby granted, free of charge, to any
-person obtaining a copy of this software and associated
-documentation files (the "Software"), to deal in the
-Software without restriction, including without
-limitation the rights to use, copy, modify, merge,
-publish, distribute, sublicense, and/or sell copies of
-the Software, and to permit persons to whom the Software
-is furnished to do so, subject to the following
-conditions:
-
-The above copyright notice and this permission notice
-shall be included in all copies or substantial portions
-of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
-ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
-TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
-PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
-SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
-OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
-IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-DEALINGS IN THE SOFTWARE.
-
-===============================================================================
-Text 069
+Text 065
 -------------------------------------------------------------------------------
 Applies to:
 - snap 1.1.1 (COPYING)
@@ -6576,7 +6372,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ===============================================================================
-Text 070
+Text 066
 -------------------------------------------------------------------------------
 Applies to:
 - statrs 0.18.0 (LICENSE.md)
@@ -6604,7 +6400,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ===============================================================================
-Text 071
+Text 067
 -------------------------------------------------------------------------------
 Applies to:
 - sysinfo 0.37.2 (LICENSE)
@@ -6632,7 +6428,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ===============================================================================
-Text 072
+Text 068
 -------------------------------------------------------------------------------
 Applies to:
 - target-lexicon 0.13.4 (LICENSE)
@@ -6858,39 +6654,7 @@ the License, but only in their entirety and only with respect to the Combined
 Software.
 
 ===============================================================================
-Text 073
--------------------------------------------------------------------------------
-Applies to:
-- thread_local 1.1.9 (LICENSE-MIT)
-
-Copyright (c) 2016 The Rust Project Developers
-
-Permission is hereby granted, free of charge, to any
-person obtaining a copy of this software and associated
-documentation files (the "Software"), to deal in the
-Software without restriction, including without
-limitation the rights to use, copy, modify, merge,
-publish, distribute, sublicense, and/or sell copies of
-the Software, and to permit persons to whom the Software
-is furnished to do so, subject to the following
-conditions:
-
-The above copyright notice and this permission notice
-shall be included in all copies or substantial portions
-of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
-ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
-TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
-PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
-SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
-OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
-IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-DEALINGS IN THE SOFTWARE.
-
-===============================================================================
-Text 074
+Text 069
 -------------------------------------------------------------------------------
 Applies to:
 - tiny-keccak 2.0.2 (LICENSE)
@@ -7018,14 +6782,12 @@ express Statement of Purpose.
     this CC0 or use of the Work.
 
 ===============================================================================
-Text 075
+Text 070
 -------------------------------------------------------------------------------
 Applies to:
 - tracing 0.1.44 (LICENSE)
 - tracing-attributes 0.1.31 (LICENSE)
 - tracing-core 0.1.36 (LICENSE)
-- tracing-log 0.2.0 (LICENSE)
-- tracing-subscriber 0.3.23 (LICENSE)
 
 Copyright (c) 2019 Tokio Contributors
 
@@ -7054,7 +6816,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ===============================================================================
-Text 076
+Text 071
 -------------------------------------------------------------------------------
 Applies to:
 - twox-hash 2.1.2 (LICENSE.txt)
@@ -7082,7 +6844,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ===============================================================================
-Text 077
+Text 072
 -------------------------------------------------------------------------------
 Applies to:
 - typenum 1.19.0 (LICENSE)
@@ -7090,7 +6852,7 @@ Applies to:
 MIT OR Apache-2.0
 
 ===============================================================================
-Text 078
+Text 073
 -------------------------------------------------------------------------------
 Applies to:
 - typenum 1.19.0 (LICENSE-APACHE)
@@ -7298,7 +7060,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 
 ===============================================================================
-Text 079
+Text 074
 -------------------------------------------------------------------------------
 Applies to:
 - typenum 1.19.0 (LICENSE-MIT)
@@ -7326,7 +7088,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ===============================================================================
-Text 080
+Text 075
 -------------------------------------------------------------------------------
 Applies to:
 - unicode-ident 1.0.23 (LICENSE-UNICODE)
@@ -7372,7 +7134,7 @@ dealings in these Data Files or Software without prior written
 authorization of the copyright holder.
 
 ===============================================================================
-Text 081
+Text 076
 -------------------------------------------------------------------------------
 Applies to:
 - winapi 0.3.9 (LICENSE-APACHE)
@@ -7580,7 +7342,7 @@ Applies to:
    limitations under the License.
 
 ===============================================================================
-Text 082
+Text 077
 -------------------------------------------------------------------------------
 Applies to:
 - winapi 0.3.9 (LICENSE-MIT)
@@ -7606,7 +7368,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ===============================================================================
-Text 083
+Text 078
 -------------------------------------------------------------------------------
 Applies to:
 - windows 0.61.3 (license-apache-2.0)
@@ -7620,7 +7382,6 @@ Applies to:
 - windows-numerics 0.2.0 (license-apache-2.0)
 - windows-result 0.3.4 (license-apache-2.0)
 - windows-strings 0.4.2 (license-apache-2.0)
-- windows-sys 0.61.2 (license-apache-2.0)
 - windows-threading 0.1.0 (license-apache-2.0)
 
                                  Apache License
@@ -7826,7 +7587,7 @@ Applies to:
    limitations under the License.
 
 ===============================================================================
-Text 084
+Text 079
 -------------------------------------------------------------------------------
 Applies to:
 - windows 0.61.3 (license-mit)
@@ -7840,7 +7601,6 @@ Applies to:
 - windows-numerics 0.2.0 (license-mit)
 - windows-result 0.3.4 (license-mit)
 - windows-strings 0.4.2 (license-mit)
-- windows-sys 0.61.2 (license-mit)
 - windows-threading 0.1.0 (license-mit)
 
     MIT License
@@ -7866,7 +7626,7 @@ Applies to:
     SOFTWARE
 
 ===============================================================================
-Text 085
+Text 080
 -------------------------------------------------------------------------------
 Applies to:
 - zerocopy 0.8.42 (LICENSE-APACHE)
@@ -8075,7 +7835,7 @@ Applies to:
    limitations under the License.
 
 ===============================================================================
-Text 086
+Text 081
 -------------------------------------------------------------------------------
 Applies to:
 - zerocopy 0.8.42 (LICENSE-BSD)
@@ -8107,7 +7867,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ===============================================================================
-Text 087
+Text 082
 -------------------------------------------------------------------------------
 Applies to:
 - zerocopy 0.8.42 (LICENSE-MIT)
@@ -8140,7 +7900,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ===============================================================================
-Text 088
+Text 083
 -------------------------------------------------------------------------------
 Applies to:
 - zlib-rs 0.6.3 (LICENSE)
@@ -8166,7 +7926,7 @@ freely, subject to the following restrictions:
 3. This notice may not be removed or altered from any source distribution.
 
 ===============================================================================
-Text 089
+Text 084
 -------------------------------------------------------------------------------
 Applies to:
 - zstd 0.13.3 (LICENSE)
@@ -8183,7 +7943,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ===============================================================================
-Text 090
+Text 085
 -------------------------------------------------------------------------------
 Applies to:
 - zstd-safe 7.2.4 (LICENSE)
@@ -8192,7 +7952,7 @@ Applies to:
 MIT or Apache-2.0
 
 ===============================================================================
-Text 091
+Text 086
 -------------------------------------------------------------------------------
 Applies to:
 - zstd-sys 2.0.16+zstd.1.5.7 (LICENSE.BSD-3-Clause)
