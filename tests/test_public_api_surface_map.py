@@ -377,17 +377,15 @@ def test_pricing_public_symbols_live_in_pricing_module() -> None:
         "VanillaOptionPricingRunDiagnostics",
         "VanillaOptionPricingRunOutputSchemaMetadata",
         "VanillaOptionPricingRunResult",
+        "VanillaOptionSurfacePricingExecutionInput",
+        "VanillaOptionSurfacePricingMarketInputs",
+        "VanillaOptionSurfacePricingNodeTable",
+        "VanillaOptionSurfacePricingRequest",
+        "VanillaOptionSurfacePricingResponse",
+        "VanillaOptionSurfacePricingRunResult",
         "VanillaOptionPricingValidationError",
         "run_vanilla_option_pricing",
-        "validate_vanilla_option_pricing_request",
-        "validate_vanilla_option_pricing_response",
-        "validate_vanilla_option_pricing_run_result",
-        "serialize_vanilla_option_pricing_request",
-        "serialize_vanilla_option_pricing_response",
-        "serialize_vanilla_option_pricing_run_result",
-        "deserialize_vanilla_option_pricing_request",
-        "deserialize_vanilla_option_pricing_response",
-        "deserialize_vanilla_option_pricing_run_result",
+        "run_vanilla_option_surface_pricing",
     }
 
     assert expected_exports <= set(pricing_module.__all__)
@@ -403,6 +401,9 @@ def test_pricing_contract_submodule_is_supported_domain_import() -> None:
         "VanillaOptionPricingRequest",
         "VanillaOptionPricingResponse",
         "VanillaOptionPricingRunResult",
+        "VanillaOptionSurfacePricingRequest",
+        "VanillaOptionSurfacePricingResponse",
+        "VanillaOptionSurfacePricingRunResult",
     }
 
     assert expected_exports <= set(pricing_contracts_module.__all__)

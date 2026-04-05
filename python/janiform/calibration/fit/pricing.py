@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, Optional
@@ -23,8 +23,20 @@ from ...pricing import (
     VanillaOptionImpliedVolatilityInversionStatus,
     VanillaOptionPayoffType,
 )
-from ...pricing.contracts import _validate_implied_volatility_inversion_outcome
+from ...pricing.surface.common import (
+    grid_of_non_negative_floats as _surface_grid_of_non_negative_floats,
+    grid_of_optional_finite_floats as _surface_grid_of_optional_finite_floats,
+    grid_of_positive_floats as _surface_grid_of_positive_floats,
+    grid_of_scalars,
+    grid_shape as _surface_grid_shape,
+    tuple_of_finite_floats as _surface_tuple_of_finite_floats,
+    tuple_of_non_negative_floats as _surface_tuple_of_non_negative_floats,
+    tuple_of_positive_floats as _surface_tuple_of_positive_floats,
+    validate_aligned_count as _surface_validate_aligned_node_count,
+    validate_matching_grid_shape as _surface_validate_matching_grid_shape,
+)
 from .._errors import _calibration_error
+from ...pricing.contracts import _validate_implied_volatility_inversion_outcome
 
 
 class JaniformVanillaOptionMaturityPricingEngineKind(StrEnum):
@@ -895,18 +907,12 @@ def _tuple_of_positive_floats(
     field_name: str,
     field_path: str,
 ) -> tuple[float, ...]:
-    values = require_sequence(raw_payload, field_name, field_path, _calibration_error)
-    normalized: list[float] = []
-    for value_index, value in enumerate(values):
-        normalized.append(
-            require_positive_finite_scalar(
-                value,
-                f"{field_path}[{value_index}]",
-                _calibration_error,
-            )
-        )
-
-    return tuple(normalized)
+    return _surface_tuple_of_positive_floats(
+        raw_payload,
+        field_name=field_name,
+        field_path=field_path,
+        error_factory=_calibration_error,
+    )
 
 
 def _tuple_of_non_negative_floats(
@@ -915,18 +921,12 @@ def _tuple_of_non_negative_floats(
     field_name: str,
     field_path: str,
 ) -> tuple[float, ...]:
-    values = require_sequence(raw_payload, field_name, field_path, _calibration_error)
-    normalized: list[float] = []
-    for value_index, value in enumerate(values):
-        normalized.append(
-            require_non_negative_finite_scalar(
-                value,
-                f"{field_path}[{value_index}]",
-                _calibration_error,
-            )
-        )
-
-    return tuple(normalized)
+    return _surface_tuple_of_non_negative_floats(
+        raw_payload,
+        field_name=field_name,
+        field_path=field_path,
+        error_factory=_calibration_error,
+    )
 
 
 def _tuple_of_finite_floats(
@@ -935,18 +935,12 @@ def _tuple_of_finite_floats(
     field_name: str,
     field_path: str,
 ) -> tuple[float, ...]:
-    values = require_sequence(raw_payload, field_name, field_path, _calibration_error)
-    normalized: list[float] = []
-    for value_index, value in enumerate(values):
-        normalized.append(
-            require_finite_scalar(
-                value,
-                f"{field_path}[{value_index}]",
-                _calibration_error,
-            )
-        )
-
-    return tuple(normalized)
+    return _surface_tuple_of_finite_floats(
+        raw_payload,
+        field_name=field_name,
+        field_path=field_path,
+        error_factory=_calibration_error,
+    )
 
 
 def _grid_of_positive_floats(
@@ -955,15 +949,11 @@ def _grid_of_positive_floats(
     field_name: str,
     field_path: str,
 ) -> tuple[tuple[float, ...], ...]:
-    return _grid_of_scalars(
+    return _surface_grid_of_positive_floats(
         raw_payload,
         field_name=field_name,
         field_path=field_path,
-        scalar_parser=lambda value, location: require_positive_finite_scalar(
-            value,
-            location,
-            _calibration_error,
-        ),
+        error_factory=_calibration_error,
     )
 
 
@@ -973,15 +963,11 @@ def _grid_of_non_negative_floats(
     field_name: str,
     field_path: str,
 ) -> tuple[tuple[float, ...], ...]:
-    return _grid_of_scalars(
+    return _surface_grid_of_non_negative_floats(
         raw_payload,
         field_name=field_name,
         field_path=field_path,
-        scalar_parser=lambda value, location: require_non_negative_finite_scalar(
-            value,
-            location,
-            _calibration_error,
-        ),
+        error_factory=_calibration_error,
     )
 
 
@@ -991,16 +977,11 @@ def _grid_of_optional_finite_floats(
     field_name: str,
     field_path: str,
 ) -> tuple[tuple[Optional[float], ...], ...]:
-    return _grid_of_scalars(
+    return _surface_grid_of_optional_finite_floats(
         raw_payload,
         field_name=field_name,
         field_path=field_path,
-        scalar_parser=lambda value, location: require_optional_finite_number(
-            {"value": value},
-            "value",
-            location,
-            _calibration_error,
-        ),
+        error_factory=_calibration_error,
     )
 
 
@@ -1010,10 +991,11 @@ def _grid_of_implied_volatility_inversion_statuses(
     field_name: str,
     field_path: str,
 ) -> tuple[tuple[VanillaOptionImpliedVolatilityInversionStatus, ...], ...]:
-    return _grid_of_scalars(
+    return grid_of_scalars(
         raw_payload,
         field_name=field_name,
         field_path=field_path,
+        error_factory=_calibration_error,
         scalar_parser=lambda value, location: require_str_enum_value(
             value,
             location,
@@ -1027,53 +1009,6 @@ def _grid_of_implied_volatility_inversion_statuses(
             ),
         ),
     )
-
-
-def _grid_of_scalars[TScalar](
-    raw_payload: dict[str, Any],
-    *,
-    field_name: str,
-    field_path: str,
-    scalar_parser: Callable[[Any, str], TScalar],
-) -> tuple[tuple[TScalar, ...], ...]:
-    rows = require_sequence(raw_payload, field_name, field_path, _calibration_error)
-
-    normalized_rows: list[tuple[TScalar, ...]] = []
-    expected_column_count: Optional[int] = None
-
-    for row_index, raw_row in enumerate(rows):
-        if isinstance(raw_row, str) or not isinstance(raw_row, Sequence):
-            raise _calibration_error(f"{field_path}[{row_index}]", "must be a sequence")
-
-        normalized_row = tuple(
-            scalar_parser(value, f"{field_path}[{row_index}][{column_index}]")
-            for column_index, value in enumerate(raw_row)
-        )
-
-        if expected_column_count is None:
-            expected_column_count = len(normalized_row)
-        elif len(normalized_row) != expected_column_count:
-            raise _calibration_error(
-                f"{field_path}[{row_index}]",
-                f"must contain {expected_column_count} aligned values",
-            )
-
-        normalized_rows.append(normalized_row)
-
-    return tuple(normalized_rows)
-
-
-def _validate_aligned_node_count(
-    values: Sequence[Any],
-    expected_count: int,
-    *,
-    field_path: str,
-) -> None:
-    if len(values) != expected_count:
-        raise _calibration_error(
-            field_path,
-            f"must contain {expected_count} aligned values",
-        )
 
 
 def _validate_optional_tuple_pair(
@@ -1095,19 +1030,25 @@ def _grid_shape(
     *,
     field_path: str,
 ) -> tuple[int, int]:
-    row_count = len(values)
-    if row_count == 0:
-        return 0, 0
+    return _surface_grid_shape(
+        values,
+        field_path=field_path,
+        error_factory=_calibration_error,
+    )
 
-    column_count = len(values[0])
-    for row_index, row in enumerate(values):
-        if len(row) != column_count:
-            raise _calibration_error(
-                f"{field_path}[{row_index}]",
-                f"must contain {column_count} aligned values",
-            )
 
-    return row_count, column_count
+def _validate_aligned_node_count(
+    values: Sequence[Any],
+    expected_count: int,
+    *,
+    field_path: str,
+) -> None:
+    _surface_validate_aligned_node_count(
+        values,
+        expected_count,
+        field_path=field_path,
+        error_factory=_calibration_error,
+    )
 
 
 def _validate_matching_grid_shape(
@@ -1116,12 +1057,12 @@ def _validate_matching_grid_shape(
     grid_shape: tuple[int, int],
     field_path: str,
 ) -> None:
-    observed_shape = _grid_shape(values, field_path=field_path)
-    if observed_shape != grid_shape:
-        raise _calibration_error(
-            field_path,
-            f"must have shape {grid_shape}, found {observed_shape}",
-        )
+    _surface_validate_matching_grid_shape(
+        values,
+        grid_shape_value=grid_shape,
+        field_path=field_path,
+        error_factory=_calibration_error,
+    )
 
 
 __all__ = [

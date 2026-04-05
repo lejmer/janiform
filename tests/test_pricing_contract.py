@@ -3,6 +3,7 @@ from typing import Any
 
 import pytest
 
+from janiform.contracts import parse_json_object
 from janiform.pricing import (
     AnchoredLocalTiltAdmissibilityStatus,
     AnchoredLocalTiltBoundaryStateSummary,
@@ -30,16 +31,14 @@ from janiform.pricing import (
     VanillaOptionPricingRequest,
     VanillaOptionPricingResponse,
     VanillaOptionPricingRunResult,
+    VanillaOptionSurfacePricingExecutionInput,
+    VanillaOptionSurfacePricingNodeTable,
+    VanillaOptionSurfacePricingRequest,
+    VanillaOptionSurfacePricingResponse,
+    VanillaOptionSurfacePricingRunResult,
     VanillaOptionPricingValidationError,
-    deserialize_vanilla_option_pricing_request,
-    deserialize_vanilla_option_pricing_response,
-    deserialize_vanilla_option_pricing_run_result,
     run_vanilla_option_pricing,
-    serialize_vanilla_option_pricing_request,
-    serialize_vanilla_option_pricing_response,
-    serialize_vanilla_option_pricing_run_result,
-    validate_vanilla_option_pricing_request,
-    validate_vanilla_option_pricing_response,
+    run_vanilla_option_surface_pricing,
 )
 from janiform.simulation import HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters
 from janiform.simulation.coarse import (
@@ -55,6 +54,8 @@ from janiform.simulation.coarse import (
 from tests.support.hourly_factor_contracts import build_hourly_factor_contract
 from tests.support.pricing import (
     build_anchored_request_model,
+    build_anchored_surface_execution_input_model,
+    build_anchored_surface_request_model,
     build_anchored_runtime_execution_input_model,
 )
 
@@ -62,8 +63,14 @@ from tests.support.pricing import (
 def test_vanilla_option_request_model_construction_and_roundtrip() -> None:
     request = _valid_request_model()
 
-    serialized_request = serialize_vanilla_option_pricing_request(request)
-    deserialized_request = deserialize_vanilla_option_pricing_request(serialized_request)
+    serialized_request = request.to_json()
+    deserialized_request = VanillaOptionPricingRequest.from_mapping(
+        parse_json_object(
+            serialized_request,
+            "vanilla option request",
+            lambda field_path, message: ValueError(f"{field_path}: {message}"),
+        )
+    )
 
     assert deserialized_request == request
     assert deserialized_request.interval_delta == pytest.approx(1.0)
@@ -89,7 +96,7 @@ def test_vanilla_option_request_validation_defaults_interval_delta() -> None:
     request_payload = _valid_request_payload()
     del request_payload["interval_delta"]
 
-    validated_request = validate_vanilla_option_pricing_request(request_payload)
+    validated_request = VanillaOptionPricingRequest.from_mapping(request_payload)
 
     assert validated_request.interval_delta == pytest.approx(1.0)
 
@@ -117,8 +124,14 @@ def test_vanilla_option_request_roundtrip_preserves_fourier_inversion_settings()
         ),
     )
 
-    serialized_request = serialize_vanilla_option_pricing_request(request)
-    deserialized_request = deserialize_vanilla_option_pricing_request(serialized_request)
+    serialized_request = request.to_json()
+    deserialized_request = VanillaOptionPricingRequest.from_mapping(
+        parse_json_object(
+            serialized_request,
+            "vanilla option request",
+            lambda field_path, message: ValueError(f"{field_path}: {message}"),
+        )
+    )
 
     assert deserialized_request == request
 
@@ -136,12 +149,125 @@ def test_vanilla_option_response_model_construction_and_roundtrip() -> None:
         implied_volatility_inversion_status=VanillaOptionImpliedVolatilityInversionStatus.SUCCEEDED,
     )
 
-    serialized_response = serialize_vanilla_option_pricing_response(response)
-    deserialized_response = deserialize_vanilla_option_pricing_response(serialized_response)
+    serialized_response = response.to_json()
+    deserialized_response = VanillaOptionPricingResponse.from_mapping(
+        parse_json_object(
+            serialized_response,
+            "vanilla option response",
+            lambda field_path, message: ValueError(f"{field_path}: {message}"),
+        )
+    )
 
     assert deserialized_response == response
     assert json.loads(serialized_response)["price"] == pytest.approx(12.5)
     assert json.loads(serialized_response)["implied_volatility"] == pytest.approx(0.2)
+
+
+def test_vanilla_option_surface_request_model_construction_and_roundtrip() -> None:
+    request = build_anchored_surface_request_model()
+
+    serialized_request = request.to_json()
+    deserialized_request = VanillaOptionSurfacePricingRequest.from_mapping(
+        parse_json_object(
+            serialized_request,
+            "vanilla option surface request",
+            lambda field_path, message: ValueError(f"{field_path}: {message}"),
+        )
+    )
+
+    assert deserialized_request == request
+    assert deserialized_request.market_inputs.shape == (2, 3)
+    assert (
+        json.loads(serialized_request)["market_inputs"]["maturity_intervals"]
+        == [1.0, 2.0]
+    )
+
+
+def test_vanilla_option_surface_request_validation_defaults_interval_delta() -> None:
+    request_payload = build_anchored_surface_request_model().to_payload()
+    del request_payload["interval_delta"]
+
+    validated_request = VanillaOptionSurfacePricingRequest.from_mapping(request_payload)
+
+    assert validated_request.interval_delta == pytest.approx(1.0)
+
+
+def test_vanilla_option_surface_response_derives_node_table_and_roundtrip() -> None:
+    response = VanillaOptionSurfacePricingResponse(
+        spot=100.0,
+        strikes=(95.0, 105.0),
+        maturity_intervals=(1.0, 2.0),
+        payoff_type=VanillaOptionPayoffType.CALL,
+        risk_free_rate=0.01,
+        dividend_yield=0.0,
+        price_grid=((8.0, 6.0), (10.0, 7.0)),
+        implied_volatility_grid=((0.22, 0.19), (0.24, 0.2)),
+        implied_volatility_inversion_status_grid=(
+            (
+                VanillaOptionImpliedVolatilityInversionStatus.SUCCEEDED,
+                VanillaOptionImpliedVolatilityInversionStatus.SUCCEEDED,
+            ),
+            (
+                VanillaOptionImpliedVolatilityInversionStatus.SUCCEEDED,
+                VanillaOptionImpliedVolatilityInversionStatus.SUCCEEDED,
+            ),
+        ),
+        forward_price_grid=((100.5, 100.5), (101.0, 101.0)),
+        discount_factor_grid=((0.99, 0.99), (0.98, 0.98)),
+        boundary_state_norm_grid=((0.1, 0.2), (0.3, 0.4)),
+        node_table=VanillaOptionSurfacePricingNodeTable(
+            strikes=(95.0, 105.0, 95.0, 105.0),
+            maturity_intervals=(1.0, 1.0, 2.0, 2.0),
+            option_types=(
+                VanillaOptionPayoffType.CALL,
+                VanillaOptionPayoffType.CALL,
+                VanillaOptionPayoffType.CALL,
+                VanillaOptionPayoffType.CALL,
+            ),
+            model_prices=(8.0, 6.0, 10.0, 7.0),
+            implied_volatilities=(0.22, 0.19, 0.24, 0.2),
+            node_statuses=(
+                VanillaOptionImpliedVolatilityInversionStatus.SUCCEEDED,
+                VanillaOptionImpliedVolatilityInversionStatus.SUCCEEDED,
+                VanillaOptionImpliedVolatilityInversionStatus.SUCCEEDED,
+                VanillaOptionImpliedVolatilityInversionStatus.SUCCEEDED,
+            ),
+            forward_prices=(100.5, 100.5, 101.0, 101.0),
+            discount_factors=(0.99, 0.99, 0.98, 0.98),
+            boundary_state_norms=(0.1, 0.2, 0.3, 0.4),
+        ),
+    )
+
+    serialized_response = response.to_json()
+    deserialized_response = VanillaOptionSurfacePricingResponse.from_mapping(
+        parse_json_object(
+            serialized_response,
+            "vanilla option surface response",
+            lambda field_path, message: ValueError(f"{field_path}: {message}"),
+        )
+    )
+    native_style_deserialized_response = VanillaOptionSurfacePricingResponse.from_mapping(
+        {
+            key: value
+            for key, value in response.to_payload().items()
+            if key != "node_table"
+        }
+    )
+
+    assert deserialized_response == response
+    assert native_style_deserialized_response == response
+    assert native_style_deserialized_response.node_count == 4
+    assert native_style_deserialized_response.to_records()[0] == {
+        "strike": 95.0,
+        "maturity_interval": 1.0,
+        "option_type": "call",
+        "model_price": 8.0,
+        "implied_volatility": 0.22,
+        "node_status": "succeeded",
+        "forward_price": 100.5,
+        "discount_factor": 0.99,
+        "boundary_state_norm": 0.1,
+    }
 
 
 def test_vanilla_option_request_rejects_incomplete_payload_with_structured_error() -> None:
@@ -149,7 +275,7 @@ def test_vanilla_option_request_rejects_incomplete_payload_with_structured_error
     del request_payload["market_inputs"]["strike"]
 
     with pytest.raises(VanillaOptionPricingValidationError) as captured_error:
-        validate_vanilla_option_pricing_request(request_payload)
+        VanillaOptionPricingRequest.from_mapping(request_payload)
 
     assert captured_error.value.failure.error_id == "pricing.validation.contract"
     assert captured_error.value.failure.workflow == "pricing"
@@ -163,7 +289,7 @@ def test_vanilla_option_request_rejects_negative_boundary_state_with_structured_
     request_payload["boundary_input"]["hawkes_boundary_state"]["y_plus_plus"] = -0.25
 
     with pytest.raises(VanillaOptionPricingValidationError) as captured_error:
-        validate_vanilla_option_pricing_request(request_payload)
+        VanillaOptionPricingRequest.from_mapping(request_payload)
 
     assert captured_error.value.failure.field_path == "boundary_input.hawkes_boundary_state.y_plus_plus"
     assert captured_error.value.failure.message == "must be non-negative"
@@ -174,7 +300,7 @@ def test_vanilla_option_request_rejects_non_positive_interval_delta() -> None:
     request_payload["interval_delta"] = 0.0
 
     with pytest.raises(VanillaOptionPricingValidationError) as captured_error:
-        validate_vanilla_option_pricing_request(request_payload)
+        VanillaOptionPricingRequest.from_mapping(request_payload)
 
     assert captured_error.value.failure.field_path == "interval_delta"
     assert captured_error.value.failure.message == "must be strictly positive"
@@ -185,7 +311,7 @@ def test_vanilla_option_request_rejects_non_negative_delta_beta_with_field_path(
     request_payload["model_parameters"]["nig_shared_plus_shift_configuration"]["delta_beta"] = 0.0
 
     with pytest.raises(VanillaOptionPricingValidationError) as captured_error:
-        validate_vanilla_option_pricing_request(request_payload)
+        VanillaOptionPricingRequest.from_mapping(request_payload)
 
     assert (
         captured_error.value.failure.field_path
@@ -198,7 +324,7 @@ def test_vanilla_option_request_accepts_negative_delta_beta_regression() -> None
     request_payload = _valid_request_payload()
     request_payload["model_parameters"]["nig_shared_plus_shift_configuration"]["delta_beta"] = -0.15
 
-    validated_request = validate_vanilla_option_pricing_request(request_payload)
+    validated_request = VanillaOptionPricingRequest.from_mapping(request_payload)
 
     assert validated_request.model_parameters.nig_shared_plus_shift_configuration.delta_beta == pytest.approx(-0.15)
 
@@ -208,7 +334,7 @@ def test_vanilla_option_response_rejects_negative_price_with_structured_error() 
     response_payload["price"] = -0.01
 
     with pytest.raises(VanillaOptionPricingValidationError) as captured_error:
-        validate_vanilla_option_pricing_response(response_payload)
+        VanillaOptionPricingResponse.from_mapping(response_payload)
 
     assert captured_error.value.failure.error_id == "pricing.validation.contract"
     assert captured_error.value.failure.field_path == "price"
@@ -220,10 +346,26 @@ def test_vanilla_option_response_rejects_missing_implied_volatility_for_successf
     response_payload["implied_volatility"] = None
 
     with pytest.raises(VanillaOptionPricingValidationError) as captured_error:
-        validate_vanilla_option_pricing_response(response_payload)
+        VanillaOptionPricingResponse.from_mapping(response_payload)
 
     assert captured_error.value.failure.field_path == "vanilla_option_pricing_response.implied_volatility"
     assert "must be present" in captured_error.value.failure.message
+
+
+def test_vanilla_option_surface_execution_input_rejects_misaligned_factor_count() -> None:
+    with pytest.raises(VanillaOptionPricingValidationError) as captured_error:
+        VanillaOptionSurfacePricingExecutionInput(
+            request=build_anchored_surface_request_model(),
+            hourly_factor_contract=build_hourly_factor_contract(
+                request_start_utc_nanos=1_706_882_400_000_000_000,
+                s_h=(1.0,),
+                known_component_nu_h=(0.0,),
+                surprise_component_nu_h=(0.0,),
+            ),
+        )
+
+    assert captured_error.value.failure.field_path == "hourly_factor_contract.interval_count"
+    assert "maximum maturity implied interval count" in captured_error.value.failure.message
 
 
 def test_vanilla_option_pricing_execution_input_keeps_native_hourly_factor_contract() -> None:
@@ -318,8 +460,14 @@ def test_anchored_boundary_input_accepts_endogenous_anchor_policy_boundary_state
 def test_anchored_vanilla_option_request_roundtrip_preserves_observed_boundary_contract() -> None:
     request = build_anchored_request_model()
 
-    serialized_request = serialize_vanilla_option_pricing_request(request)
-    deserialized_request = deserialize_vanilla_option_pricing_request(serialized_request)
+    serialized_request = request.to_json()
+    deserialized_request = VanillaOptionPricingRequest.from_mapping(
+        parse_json_object(
+            serialized_request,
+            "vanilla option request",
+            lambda field_path, message: ValueError(f"{field_path}: {message}"),
+        )
+    )
 
     assert deserialized_request == request
     assert deserialized_request.boundary_input.mean_reversion_fitted_parameters.kappa == pytest.approx(0.35)
@@ -407,11 +555,44 @@ def test_run_vanilla_option_pricing_executes_native_workflow_with_optional_outpu
     assert run_result.calibration_hooks.option_price == pytest.approx(run_result.response.price)
 
 
+def test_run_vanilla_option_surface_pricing_executes_native_workflow_with_typed_surface_artifact() -> None:
+    run_result = run_vanilla_option_surface_pricing(
+        build_anchored_surface_execution_input_model()
+    )
+
+    assert isinstance(run_result, VanillaOptionSurfacePricingRunResult)
+    assert run_result.response.shape == (1, 3)
+    assert run_result.response.node_count == 3
+    assert run_result.response.node_table.option_types == (
+        VanillaOptionPayoffType.CALL,
+        VanillaOptionPayoffType.CALL,
+        VanillaOptionPayoffType.CALL,
+    )
+    records = run_result.response.to_records()
+
+    assert records[0]["strike"] == pytest.approx(run_result.response.strikes[0])
+    assert records[0]["maturity_interval"] == pytest.approx(run_result.response.maturity_intervals[0])
+    assert records[-1]["strike"] == pytest.approx(run_result.response.strikes[-1])
+    assert records[-1]["maturity_interval"] == pytest.approx(run_result.response.maturity_intervals[0])
+    assert {
+        record["node_status"] for record in records
+    } <= {
+        status.value
+        for status in VanillaOptionImpliedVolatilityInversionStatus
+    }
+
+
 def test_vanilla_option_pricing_run_result_roundtrip_preserves_required_schema_fields() -> None:
     run_result = run_vanilla_option_pricing(_valid_runtime_execution_input_model())
 
-    serialized_run_result = serialize_vanilla_option_pricing_run_result(run_result)
-    deserialized_run_result = deserialize_vanilla_option_pricing_run_result(serialized_run_result)
+    serialized_run_result = run_result.to_json()
+    deserialized_run_result = VanillaOptionPricingRunResult.from_mapping(
+        parse_json_object(
+            serialized_run_result,
+            "vanilla option pricing run result",
+            lambda field_path, message: ValueError(f"{field_path}: {message}"),
+        )
+    )
 
     assert deserialized_run_result == run_result
     assert deserialized_run_result.schema_version == "pricing.vanilla_option.run_result.v1"
@@ -427,11 +608,38 @@ def test_vanilla_option_pricing_run_result_roundtrip_preserves_required_schema_f
     )
 
 
+def test_vanilla_option_surface_pricing_run_result_roundtrip_preserves_node_table() -> None:
+    run_result = run_vanilla_option_surface_pricing(
+        build_anchored_surface_execution_input_model()
+    )
+
+    serialized_run_result = run_result.to_json()
+    deserialized_run_result = VanillaOptionSurfacePricingRunResult.from_mapping(
+        parse_json_object(
+            serialized_run_result,
+            "vanilla option surface pricing run result",
+            lambda field_path, message: ValueError(f"{field_path}: {message}"),
+        )
+    )
+
+    assert deserialized_run_result == run_result
+    assert (
+        deserialized_run_result.response.node_table.model_prices[0]
+        == run_result.response.price_grid[0][0]
+    )
+
+
 def test_anchored_pricing_run_result_roundtrip_preserves_anchored_recursion_diagnostics() -> None:
     run_result = run_vanilla_option_pricing(build_anchored_runtime_execution_input_model())
 
-    serialized_run_result = serialize_vanilla_option_pricing_run_result(run_result)
-    deserialized_run_result = deserialize_vanilla_option_pricing_run_result(serialized_run_result)
+    serialized_run_result = run_result.to_json()
+    deserialized_run_result = VanillaOptionPricingRunResult.from_mapping(
+        parse_json_object(
+            serialized_run_result,
+            "vanilla option pricing run result",
+            lambda field_path, message: ValueError(f"{field_path}: {message}"),
+        )
+    )
 
     assert deserialized_run_result == run_result
     assert deserialized_run_result.run_diagnostics is not None

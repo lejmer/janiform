@@ -37,11 +37,10 @@ from janiform.pricing import (
     VanillaOptionPricingModelParameters,
     VanillaOptionPricingOptionalOutputSelection,
     VanillaOptionPricingRequest,
+    VanillaOptionPricingResponse,
+    VanillaOptionPricingRunResult,
     VanillaOptionPricingValidationError,
     run_vanilla_option_pricing,
-    validate_vanilla_option_pricing_request,
-    validate_vanilla_option_pricing_response,
-    validate_vanilla_option_pricing_run_result,
 )
 from janiform.simulation import (
     SeededTickEventSide,
@@ -385,7 +384,7 @@ def _build_pricing_direct_response_payload(calendar_registry, tmp_path: Path) ->
     del calendar_registry
     del tmp_path
 
-    return validate_vanilla_option_pricing_response(
+    return VanillaOptionPricingResponse.from_mapping(
         {
             "price": 12.5,
             "implied_volatility": 0.2,
@@ -404,7 +403,7 @@ def _build_pricing_direct_run_result_payload(calendar_registry, tmp_path: Path) 
     del calendar_registry
     del tmp_path
 
-    return validate_vanilla_option_pricing_run_result(
+    return VanillaOptionPricingRunResult.from_mapping(
         {
             "schema_version": "pricing.vanilla_option.run_result.v1",
             "output_schema_metadata": {
@@ -561,7 +560,7 @@ def _run_pricing_invalid_request_missing_strike(calendar_registry) -> None:
     request_payload = _valid_pricing_execution_input().request.to_payload()
     del request_payload["market_inputs"]["strike"]
 
-    validate_vanilla_option_pricing_request(request_payload)
+    VanillaOptionPricingRequest.from_mapping(request_payload)
 
 
 def _run_calibration_invalid_request_execution_mode(calendar_registry) -> None:
