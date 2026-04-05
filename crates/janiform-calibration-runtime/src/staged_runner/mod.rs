@@ -54,7 +54,11 @@ pub(super) use janiform_calibration_artifacts::{
     CalibrationStageSeedSource, stage_output_artifact_references_for_stage,
 };
 
-pub use contracts::*;
+pub use contracts::{
+    CalibrationStagedRunFailure, CalibrationStagedRunInputs, CalibrationStagedRunObserverEvent,
+    CalibrationStagedRunReport, CalibrationStagedRunStageReport,
+    calibration_checkpoint_reference_for_stage, calibration_last_success_checkpoint_reference,
+};
 pub use execution::{
     run_staged_calibration_with_checkpointing,
     run_staged_calibration_with_checkpointing_and_observer,

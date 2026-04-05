@@ -12,6 +12,7 @@ use super::{
     SeasonalityStageExecutionInput, SeasonalityStageExecutionMetadata,
     SeasonalityStageExecutionReport,
 };
+use crate::JointRefinementStageOptionPricingInput;
 use serde::Serialize;
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -21,6 +22,7 @@ pub struct CalibrationStagedRunInputs {
     pub return_components_candidate_generation_input:
         Option<ReturnComponentsStageCandidateGenerationInput>,
     pub mean_reversion_stage_input: Option<MeanReversionStageExecutionInput>,
+    pub joint_refinement_option_pricing_input: Option<JointRefinementStageOptionPricingInput>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]

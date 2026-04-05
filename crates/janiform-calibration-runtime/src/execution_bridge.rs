@@ -15,8 +15,9 @@ use crate::seasonality::{
 use janiform_calibration_artifacts::{
     CalibrationExecutionMode, CalibrationRunContract, CalibrationRunContractError,
     CalibrationRunSpec, CalibrationStage, CalibrationStageDependency, CalibrationStageGraph,
-    ReturnComponentsStageFittedParameters,
+    JointRefinementStageCarryInput, ReturnComponentsStageFittedParameters,
 };
+use janiform_engine_pricing::VanillaOptionPayoffType;
 use janiform_model_kernels::hawkes::{
     HawkesStructuredAlphaParameterization, HawkesStructuredRhoParameterization,
     HawkesStructuredRhoSelfDominancePolicy,
@@ -75,6 +76,8 @@ pub struct CalibrationStagedExecutionInput {
         Option<CalibrationReturnComponentsStageCandidateGenerationInput>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mean_reversion_stage_input: Option<CalibrationMeanReversionStageExecutionInput>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub joint_refinement_option_pricing_input: Option<CalibrationJointRefinementOptionPricingInput>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub runtime_resources: Option<CalibrationStagedExecutionRuntimeResources>,
 }
@@ -410,6 +413,45 @@ pub struct CalibrationMeanReversionStageExecutionInput {
     pub observations: Vec<CalibrationMeanReversionStageObservation>,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CalibrationJointRefinementCurrentStateEstimationInput {
+    pub state_time_utc_nanos: i64,
+    pub observed_spot: f64,
+    pub observed_log_price: f64,
+    pub observation_timestamp_utc_nanos: Vec<i64>,
+    pub observation_trade_prices: Vec<f64>,
+    pub observation_trade_sides: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CalibrationJointRefinementOptionSnapshotNode {
+    pub quote_timestamp_utc_nanos: i64,
+    pub expiry_timestamp_utc_nanos: i64,
+    pub strike: f64,
+    pub payoff_type: VanillaOptionPayoffType,
+    pub bid_price: f64,
+    pub ask_price: f64,
+    pub observed_mid_price: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CalibrationJointRefinementCarryInput {
+    pub discount_rate: f64,
+    pub carry_rate: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CalibrationJointRefinementOptionPricingInput {
+    pub valuation_time_utc_nanos: i64,
+    pub carry_input: CalibrationJointRefinementCarryInput,
+    pub current_state_estimation_input: CalibrationJointRefinementCurrentStateEstimationInput,
+    pub option_snapshot_nodes: Vec<CalibrationJointRefinementOptionSnapshotNode>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum CalibrationStagedExecutionBridgeError {
     UnsupportedSchemaVersion {
@@ -566,6 +608,7 @@ impl CalibrationStagedExecutionInput {
 
         let stage_graph =
             canonical_stage_graph_for_selected_stages(request.selected_stages.as_slice());
+
         let run_contract =
             CalibrationRunContract::try_new(request, stage_graph).map_err(|source| {
                 CalibrationStagedExecutionBridgeError::InvalidRunContract { source }
@@ -588,6 +631,9 @@ impl CalibrationStagedExecutionInput {
             mean_reversion_stage_input: self
                 .mean_reversion_stage_input
                 .map(CalibrationMeanReversionStageExecutionInput::into_core),
+            joint_refinement_option_pricing_input: self
+                .joint_refinement_option_pricing_input
+                .map(CalibrationJointRefinementOptionPricingInput::into_core),
         };
 
         Ok(CalibrationStagedExecutionPlan {
@@ -1000,6 +1046,70 @@ impl CalibrationMeanReversionStageExecutionInput {
     }
 }
 
+impl CalibrationJointRefinementCarryInput {
+    fn into_core(self) -> JointRefinementStageCarryInput {
+        JointRefinementStageCarryInput {
+            discount_rate: self.discount_rate,
+            carry_rate: self.carry_rate,
+        }
+    }
+}
+
+impl CalibrationJointRefinementCurrentStateEstimationInput {
+    fn into_core(
+        self,
+    ) -> super::stages::joint_refinement::JointRefinementStageCurrentStateEstimationInput {
+        let observation_trade_sides = self
+            .observation_trade_sides
+            .into_iter()
+            .map(|trade_side| match trade_side.as_str() {
+                "buy" => Ok(janiform_model_kernels::hawkes::HawkesEventSide::Buy),
+                "sell" => Ok(janiform_model_kernels::hawkes::HawkesEventSide::Sell),
+                other => Err(other.to_string()),
+            })
+            .collect::<Result<Vec<_>, _>>()
+            .expect("joint refinement current-state bridge input validates trade sides upstream");
+
+        super::stages::joint_refinement::JointRefinementStageCurrentStateEstimationInput {
+            state_time_utc_nanos: self.state_time_utc_nanos,
+            observed_spot: self.observed_spot,
+            observed_log_price: self.observed_log_price,
+            observation_timestamp_utc_nanos: self.observation_timestamp_utc_nanos,
+            observation_trade_prices: self.observation_trade_prices,
+            observation_trade_sides,
+        }
+    }
+}
+
+impl CalibrationJointRefinementOptionSnapshotNode {
+    fn into_core(self) -> super::stages::joint_refinement::JointRefinementStageOptionSnapshotNode {
+        super::stages::joint_refinement::JointRefinementStageOptionSnapshotNode {
+            quote_timestamp_utc_nanos: self.quote_timestamp_utc_nanos,
+            expiry_timestamp_utc_nanos: self.expiry_timestamp_utc_nanos,
+            strike: self.strike,
+            payoff_type: self.payoff_type,
+            bid_price: self.bid_price,
+            ask_price: self.ask_price,
+            observed_mid_price: self.observed_mid_price,
+        }
+    }
+}
+
+impl CalibrationJointRefinementOptionPricingInput {
+    fn into_core(self) -> super::stages::joint_refinement::JointRefinementStageOptionPricingInput {
+        super::stages::joint_refinement::JointRefinementStageOptionPricingInput {
+            valuation_time_utc_nanos: self.valuation_time_utc_nanos,
+            carry_input: self.carry_input.into_core(),
+            current_state_estimation_input: self.current_state_estimation_input.into_core(),
+            option_snapshot_nodes: self
+                .option_snapshot_nodes
+                .into_iter()
+                .map(CalibrationJointRefinementOptionSnapshotNode::into_core)
+                .collect(),
+        }
+    }
+}
+
 impl CalibrationMeanReversionStageObservation {
     fn into_core(self) -> MeanReversionStageObservation {
         MeanReversionStageObservation {
@@ -1243,6 +1353,7 @@ mod tests {
                     },
                 ],
             }),
+            joint_refinement_option_pricing_input: None,
             runtime_resources: match execution_mode {
                 CalibrationExecutionMode::Memory => None,
                 CalibrationExecutionMode::Disk => {

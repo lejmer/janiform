@@ -20,10 +20,31 @@ mod loadings;
 mod parameters;
 mod state;
 
-pub use analytics::*;
-pub use loadings::*;
-pub use parameters::*;
-pub use state::*;
+pub use analytics::{
+    HawkesSpectralRadiusStabilityCheck, HawkesStationaryIntensityMultipliers,
+    spectral_radius_alpha_over_beta, spectral_radius_stability_check,
+    stationary_intensity_multipliers,
+};
+pub use loadings::{
+    HawkesKernelLoadings, HawkesStructuredAlphaParameterError,
+    HawkesStructuredAlphaParameterization, HawkesStructuredRhoParameterError,
+    HawkesStructuredRhoParameterization, HawkesStructuredRhoSelfDominancePolicy,
+    HawkesStructuredRhoValidationOutput,
+};
+pub use parameters::{
+    HAWKES_DEFAULT_STABILITY_NUMERIC_TOLERANCE,
+    HAWKES_KERNEL_PARAMETER_VALIDATION_DETERMINISM_POLICY,
+    HAWKES_KERNEL_PARAMETER_VALIDATION_REPORT_SCHEMA_VERSION, HAWKES_STRICT_STATIONARITY_THRESHOLD,
+    HawkesKernelParameterCheck, HawkesKernelParameterCheckCategory,
+    HawkesKernelParameterConstraint, HawkesKernelParameterError,
+    HawkesKernelParameterValidationReport, HawkesKernelParameterValidationSummary,
+    HawkesKernelParameterViolation, HawkesKernelParameters, HawkesKernelValidationStatus,
+};
+pub use state::{
+    HawkesEventSide, HawkesEventSidePayloadError, HawkesExcitationState, HawkesIntensityProjection,
+    HawkesNewsSeverityMarkError, HawkesSeasonalityIntervalError, HawkesSideIntensities,
+    HawkesSourceComponents, HawkesTransitionError, HawkesTransitionStep, evolve_hawkes_state,
+};
 
 #[cfg(test)]
 mod tests;

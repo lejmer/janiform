@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any, Optional
 
 from .contracts import (
     CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION,
+    CalibrationFlatCarryInput,
     CalibrationInputFileFormat,
     CalibrationInputFileReference,
     CalibrationKnownNewsInput,
@@ -24,6 +26,7 @@ from ..staged import CalibrationStage, CalibrationStageSolverSettings
 from ...contracts import (
     ContractModel,
     parse_json_object,
+    require_datetime_utc,
     require_mapping,
     require_non_empty_string,
     require_sequence,
@@ -45,6 +48,8 @@ class MarketDataCalibrationRequest(ContractModel):
     optimizer_settings_by_stage: tuple[CalibrationStageSolverSettings, ...] = ()
     preprocessing_settings: Optional[CalibrationMarketDataPreprocessingSettings] = None
     option_surface_source: Optional[CalibrationInputFileReference] = None
+    option_surface_valuation_time_utc: Optional[datetime] = None
+    carry: Optional[CalibrationFlatCarryInput] = None
     known_news_inputs: Optional[CalibrationKnownNewsInput] = None
     mean_reversion: Optional[CalibrationMeanReversionConfiguration] = None
 
@@ -77,6 +82,8 @@ class MarketDataCalibrationRequest(ContractModel):
             option_surface_source=self.option_surface_source,
             option_surface_column_mapping=self.column_mapping.option_surface,
             option_quote_input_policy=self.normalization_policy.option_quote_input_policy,
+            option_surface_valuation_time_utc=self.option_surface_valuation_time_utc,
+            carry=self.carry,
         )
         validate_known_news_inputs(
             known_news_inputs=self.known_news_inputs,
@@ -199,6 +206,24 @@ class MarketDataCalibrationRequest(ContractModel):
                     field_path="option_surface_source",
                 )
                 if "option_surface_source" in raw_payload and raw_payload["option_surface_source"] is not None
+                else None
+            ),
+            option_surface_valuation_time_utc=(
+                require_datetime_utc(
+                    raw_payload["option_surface_valuation_time_utc"],
+                    "option_surface_valuation_time_utc",
+                    CALIBRATION_ERROR_FACTORY,
+                )
+                if "option_surface_valuation_time_utc" in raw_payload
+                and raw_payload["option_surface_valuation_time_utc"] is not None
+                else None
+            ),
+            carry=(
+                CalibrationFlatCarryInput.from_mapping(
+                    require_mapping(raw_payload, "carry", "carry", CALIBRATION_ERROR_FACTORY),
+                    field_path="carry",
+                )
+                if "carry" in raw_payload and raw_payload["carry"] is not None
                 else None
             ),
             known_news_inputs=(

@@ -11,6 +11,7 @@ use super::{
     run_mean_reversion_calibration_stage, run_return_components_calibration_stage,
     run_seasonality_calibration_stage, stage_output_artifact_references_for_stage,
 };
+use crate::JointRefinementStageMeanReversionInput;
 
 pub(super) fn run_stage_for_staged_execution(
     run_spec: &CalibrationRunSpec,
@@ -307,11 +308,50 @@ pub(super) fn run_stage_for_staged_execution(
                 }
             };
 
+            let mean_reversion_input_transport = expected_stage_handoff_transport(
+                run_spec,
+                CalibrationStage::MeanReversion,
+                CalibrationStage::JointRefinement,
+            );
+
+            let Some(mean_reversion_stage_payload) =
+                payload_state.mean_reversion_stage_payload.clone()
+            else {
+                return Err(
+                    CalibrationStagedRunFailure::MissingInMemoryUpstreamPayload {
+                        required_stage: CalibrationStage::MeanReversion,
+                        consuming_stage: CalibrationStage::JointRefinement,
+                    },
+                );
+            };
+
+            let mean_reversion_input = match mean_reversion_input_transport {
+                CalibrationStageHandoffTransport::InMemoryOutput => {
+                    JointRefinementStageMeanReversionInput::InMemoryOutput {
+                        payload: mean_reversion_stage_payload,
+                    }
+                }
+                CalibrationStageHandoffTransport::PersistedArtifactReference => {
+                    JointRefinementStageMeanReversionInput::PersistedArtifactReference {
+                        artifact_reference: expected_stage_handoff_artifact_reference(
+                            run_spec,
+                            CalibrationStage::MeanReversion,
+                            CalibrationStage::JointRefinement,
+                        ),
+                        payload: Some(mean_reversion_stage_payload),
+                    }
+                }
+            };
+
             let stage_input = JointRefinementStageExecutionInput {
                 seasonality_factors_input,
                 hawkes_input,
                 return_components_input,
+                mean_reversion_input,
                 candidate_generation_input,
+                option_pricing_input: staged_run_inputs
+                    .joint_refinement_option_pricing_input
+                    .clone(),
             };
 
             if observer.is_none() {

@@ -23,7 +23,45 @@ mod solver;
 #[cfg(test)]
 mod tests;
 
-pub use constants::*;
-pub use contracts::*;
-pub use rhs::*;
-pub use solver::*;
+pub use constants::{
+    EXPONENTIAL_AFFINE_TRANSFORM_BLOWUP_TERMINATION_POLICY,
+    EXPONENTIAL_AFFINE_TRANSFORM_DEFAULT_SOLVER_POLICY,
+    EXPONENTIAL_AFFINE_TRANSFORM_DOMAIN_GUARD_POLICY,
+    EXPONENTIAL_AFFINE_TRANSFORM_EQUATION_MAPPING_POLICY,
+    EXPONENTIAL_AFFINE_TRANSFORM_GUARD_FAILURE_SCHEMA_VERSION,
+    EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_METADATA_SCHEMA_VERSION,
+    EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_OUTPUT_SCHEMA_METADATA_VERSION,
+    EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_REQUIRED_GUARD_FAILURE_FIELDS,
+    EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_REQUIRED_METADATA_FIELDS,
+    EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_REQUIRED_RESULT_FIELDS,
+    EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_REQUIRED_TELEMETRY_FIELDS,
+    EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_RESULT_SCHEMA_VERSION,
+    EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_TELEMETRY_SCHEMA_VERSION,
+    EXPONENTIAL_AFFINE_TRANSFORM_NEWS_INTENSITY_USAGE_POLICY,
+};
+pub use contracts::{
+    ExponentialAffineTransformDVector, ExponentialAffineTransformDVectorError,
+    ExponentialAffineTransformEquationSpecification,
+    ExponentialAffineTransformEquationSpecificationError, ExponentialAffineTransformInput,
+    ExponentialAffineTransformInputError, ExponentialAffineTransformNewsIntensityInput,
+    ExponentialAffineTransformNewsIntensityInputError, ExponentialAffineTransformOutput,
+    ExponentialAffineTransformOutputError,
+};
+pub use rhs::{
+    ExponentialAffineTransformHamiltonians, ExponentialAffineTransformOdeRhs,
+    evaluate_exponential_affine_transform_hamiltonians,
+    evaluate_exponential_affine_transform_ode_rhs,
+};
+pub use solver::{
+    EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_OUTPUT_SCHEMA_METADATA,
+    ExponentialAffineTransformGuardFailure, ExponentialAffineTransformGuardFailureCode,
+    ExponentialAffineTransformIntegrationMetadata,
+    ExponentialAffineTransformIntegrationOutputSchemaMetadata,
+    ExponentialAffineTransformIntegrationResult, ExponentialAffineTransformIntegrationStatus,
+    ExponentialAffineTransformIntegrationStatusFlags,
+    ExponentialAffineTransformIntegrationTelemetry, ExponentialAffineTransformIntegratorMethod,
+    ExponentialAffineTransformSolverError, ExponentialAffineTransformSolverSettings,
+    ExponentialAffineTransformSolverSettingsError, ExponentialAffineTransformTelemetryMode,
+    solve_exponential_affine_transform, solve_exponential_affine_transform_with_optional_settings,
+    solve_exponential_affine_transform_with_settings,
+};

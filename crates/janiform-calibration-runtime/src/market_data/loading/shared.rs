@@ -122,6 +122,7 @@ pub(super) struct KnownNewsLoadOutput {
 #[derive(Debug, Clone)]
 pub(super) struct OptionSurfaceLoadOutput {
     pub(super) option_surface_quote_values: Vec<f64>,
+    pub(super) option_surface_records: Vec<LoadedOptionSurfaceRecord>,
     pub(super) summary: MarketDataSourceSummary,
 }
 

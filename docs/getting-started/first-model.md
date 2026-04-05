@@ -17,6 +17,41 @@ estimator = JaniformEstimator(market_profile="eurusd_spot")
 model = estimator.fit(tick_data_path=data_path)
 ```
 
+Start with tick data. If you also want the fit to include options, add an option surface on the
+same call:
+
+- `tick_data_path=...` fits the model to the underlying data
+- `tick_data_path=...` plus `option_surface_path=...` fits the model to the underlying data and the
+  selected option snapshot
+
+## Fit With One Option Snapshot
+
+Use the same `fit(...)` call when you want to include option data.
+
+```python
+from datetime import UTC, datetime
+from pathlib import Path
+
+from janiform.calibration import JaniformEstimator
+from janiform.calibration.market_data import CalibrationFlatCarryInput
+
+tick_data_path = Path("data") / "Synthetic_EURUSD_Data_1M_ticks.parquet"
+option_surface_path = Path("path/to/your_option_surface.parquet")
+
+model = JaniformEstimator(market_profile="eurusd_spot").fit(
+    tick_data_path=tick_data_path,
+    option_surface_path=option_surface_path,
+    option_surface_valuation_time_utc=datetime(2026, 2, 2, 15, 0, tzinfo=UTC),
+    carry=CalibrationFlatCarryInput(discount_rate=0.0, carry_rate=0.0),
+)
+```
+
+When you add an option surface:
+
+- each fit run uses one option quote timestamp
+- pass `option_surface_valuation_time_utc` unless the file contains exactly one quote timestamp
+- include bid and ask quotes together with prices
+
 ## Simulate
 
 ```python
@@ -38,7 +73,7 @@ continuing the simulation.
 ```python
 from datetime import UTC, datetime
 
-import pandas
+import pandas as pd
 
 from janiform.calibration import CurrentStateEstimationRequest
 
@@ -48,7 +83,7 @@ simulation = model.simulate(
     horizon_interval_count=4,
     interval="1h",
     continuation_data=CurrentStateEstimationRequest(
-        observed_tick_data=pandas.DataFrame(
+        observed_tick_data=pd.DataFrame(
             {
                 "timestamp_utc": [
                     datetime(2026, 2, 2, 14, 30, tzinfo=UTC),
@@ -85,7 +120,7 @@ To supply observed data explicitly:
 ```python
 from datetime import UTC, datetime
 
-import pandas
+import pandas as pd
 
 from janiform.calibration import CurrentStateEstimationRequest
 
@@ -95,7 +130,7 @@ result = model.price_option(
     strike=1.0900,
     maturity_interval=1.0,
     observed_data=CurrentStateEstimationRequest(
-        observed_tick_data=pandas.DataFrame(
+        observed_tick_data=pd.DataFrame(
             {
                 "timestamp_utc": [
                     datetime(2026, 2, 2, 14, 30, tzinfo=UTC),
@@ -113,10 +148,58 @@ If you want the derived live state directly, call `model.estimate_current_state(
 request contract.
 
 To price several nodes from the same fitted-model snapshot without writing a loop, use
-`model.price_options(...)` with `JaniformVanillaOptionBatch`, or use
-`model.price_option_surface(...)` with `JaniformVanillaOptionSurface` when your nodes form a
-strike-by-expiry grid. Both workflows return Janiform prices together with Janiform-computed
-implied-volatility outputs.
+`model.price_option_groups(...)` with `JaniformGroupedVanillaOptionBatch` when you want to combine
+multiple payoff or carry groups in one run.
+
+```python
+from datetime import UTC, datetime
+
+from janiform.calibration import (
+    JaniformGroupedVanillaOptionBatch,
+    JaniformGroupedVanillaOptionGroup,
+)
+from janiform.pricing import VanillaOptionPayoffType
+
+group_result = model.price_option_groups(
+    valuation_time_utc=datetime(2026, 2, 2, 15, 0, tzinfo=UTC),
+    batch=JaniformGroupedVanillaOptionBatch(
+        spot=1.0850,
+        groups=(
+            JaniformGroupedVanillaOptionGroup(
+                payoff_type=VanillaOptionPayoffType.CALL,
+                risk_free_rate=0.0,
+                dividend_yield=0.0,
+                strikes=(1.0800, 1.0850, 1.0900),
+                maturity_intervals=(1.0, 2.0, 4.0),
+            ),
+        ),
+    ),
+)
+```
+
+When your nodes already form a strike-by-maturity grid, use
+`model.price_option_surface(...)` with `JaniformVanillaOptionSurface`.
+
+```python
+from datetime import UTC, datetime
+
+from janiform.calibration import JaniformVanillaOptionSurface
+from janiform.pricing import VanillaOptionPayoffType
+
+surface_result = model.price_option_surface(
+    valuation_time_utc=datetime(2026, 2, 2, 15, 0, tzinfo=UTC),
+    surface=JaniformVanillaOptionSurface(
+        spot=1.0850,
+        strikes=(1.0800, 1.0850, 1.0900),
+        maturity_intervals=(1.0, 2.0, 4.0),
+        payoff_type=VanillaOptionPayoffType.CALL,
+        risk_free_rate=0.0,
+        dividend_yield=0.0,
+    ),
+)
+```
+
+Both workflows return Janiform prices together with Janiform-computed implied volatility outputs.
 
 ## Related Example
 

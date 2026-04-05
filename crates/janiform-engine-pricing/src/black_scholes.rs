@@ -124,8 +124,8 @@ pub fn intraday_black_scholes_no_arbitrage_price_bounds(
 fn discounted_underlyings(market_inputs: VanillaOptionPricingMarketInputs) -> (f64, f64) {
     let discounted_forward = market_inputs.spot
         * (-market_inputs.dividend_yield * market_inputs.maturity_interval).exp();
-    let discounted_strike =
-        market_inputs.strike * (-market_inputs.risk_free_rate * market_inputs.maturity_interval).exp();
+    let discounted_strike = market_inputs.strike
+        * (-market_inputs.risk_free_rate * market_inputs.maturity_interval).exp();
 
     (discounted_forward, discounted_strike)
 }

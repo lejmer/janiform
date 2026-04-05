@@ -8,7 +8,14 @@ Use the high-level commands first. Drop to explicit subcommands only when you ne
 - `janiform fit plan` validates inputs and builds the derived fit plan without running staged calibration.
 - `janiform fit staged` runs from an explicit staged execution-input contract.
 
-Use `fit plan` when you want the derived request and persistence policy reviewed before execution. Use `fit staged` when orchestration artifacts are already prepared and you need the explicit boundary.
+`janiform fit` chooses the fit from the supplied inputs:
+
+- tick data only fits the underlying model
+- tick data plus an option surface fits the model to the underlying data and the selected option snapshot
+
+Use `fit plan` when you want the derived request and persistence policy reviewed before execution.
+Use `fit staged` when orchestration artifacts are already prepared and you need the explicit
+boundary.
 
 ## Simulate
 

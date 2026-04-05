@@ -1,5 +1,6 @@
 import json
 import re
+import shutil
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -16,6 +17,7 @@ DATA_ROOT: Final[Path] = REPOSITORY_ROOT / "data"
 TEST_FIXTURE_ROOT: Final[Path] = REPOSITORY_ROOT / "tests" / "fixtures"
 EXAMPLE_ARTIFACT_ROOT: Final[Path] = REPOSITORY_ROOT / ".artifacts" / "examples"
 EXAMPLE_MODEL_ARTIFACT_ROOT: Final[Path] = EXAMPLE_ARTIFACT_ROOT / "models"
+EXAMPLE_OPTION_SURFACE_ARTIFACT_ROOT: Final[Path] = EXAMPLE_ARTIFACT_ROOT / "option_surfaces"
 EXAMPLE_MODEL_CACHE_METADATA_SCHEMA_VERSION: Final[str] = (
     "examples.persisted_model_cache_metadata.v1"
 )
@@ -61,6 +63,20 @@ def write_json_document(path: Path, document: dict[str, Any]) -> Path:
 def write_csv_lines(path: Path, rows: Sequence[str]) -> Path:
     path.write_text("\n".join(rows) + "\n", encoding="utf-8")
     return path
+
+
+def repository_relative_path_string(
+    path: Path,
+    *,
+    repository_root: Path = REPOSITORY_ROOT,
+) -> str:
+    resolved_path = path.resolve()
+    resolved_repository_root = repository_root.resolve()
+
+    try:
+        return resolved_path.relative_to(resolved_repository_root).as_posix()
+    except ValueError:
+        return str(path)
 
 
 def calendar_fixture_document() -> dict[str, Any]:
@@ -112,7 +128,9 @@ def load_or_fit_persisted_example_model(
         tick_data_path=tick_data_path,
         tail_row_count=tail_row_count,
     )
+
     metadata_path = model_path.with_suffix(".metadata.json")
+
     expected_metadata = _persisted_example_model_cache_metadata(
         market_profile=market_profile,
         tick_data_path=tick_data_path,
@@ -148,6 +166,7 @@ def load_or_fit_persisted_example_model(
 
     model.save(model_path)
     write_json_document(metadata_path, expected_metadata)
+
     return PersistedExampleModel(
         model=model,
         model_path=model_path,
@@ -192,7 +211,7 @@ def _materialize_tail_slice(
         )
 
         persisted_fit_input_path.parent.mkdir(parents=True, exist_ok=True)
-        fit_input_path.replace(persisted_fit_input_path)
+        shutil.move(str(fit_input_path), str(persisted_fit_input_path))
 
         return persisted_fit_input_path
 
@@ -204,10 +223,11 @@ def _persisted_example_model_cache_metadata(
     tail_row_count: int | None,
 ) -> dict[str, Any]:
     source_stat = tick_data_path.stat()
+
     return {
         "schema_version": EXAMPLE_MODEL_CACHE_METADATA_SCHEMA_VERSION,
         "market_profile": market_profile,
-        "tick_data_path": str(tick_data_path.resolve()),
+        "tick_data_path": repository_relative_path_string(tick_data_path),
         "tick_data_signature": {
             "size_bytes": source_stat.st_size,
             "modified_time_ns": source_stat.st_mtime_ns,

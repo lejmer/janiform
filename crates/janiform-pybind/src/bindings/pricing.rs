@@ -17,8 +17,8 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 use std::fmt::Display;
-use std::sync::{Arc, Mutex};
 use std::sync::mpsc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use crate::PricingExecutionError;
@@ -89,12 +89,14 @@ fn run_vanilla_option_grouped_batch_pricing(
     py: Python<'_>,
     execution_input: &Bound<'_, PyAny>,
 ) -> PyResult<Py<PyAny>> {
-    let execution_input: VanillaOptionGroupedBatchPricingExecutionInput =
-        serde_json::from_value(py_any_to_json_value(execution_input)?).map_err(|source| {
-            PricingExecutionError::new_err(format!(
-                "failed to deserialize vanilla option grouped batch pricing execution input: {source}"
-            ))
-        })?;
+    let execution_input: VanillaOptionGroupedBatchPricingExecutionInput = serde_json::from_value(
+        py_any_to_json_value(execution_input)?,
+    )
+    .map_err(|source| {
+        PricingExecutionError::new_err(format!(
+            "failed to deserialize vanilla option grouped batch pricing execution input: {source}"
+        ))
+    })?;
 
     let run_result = py
         .allow_threads(|| run_vanilla_option_grouped_batch_pricing_core(execution_input))
@@ -181,7 +183,10 @@ fn run_vanilla_option_surface_pricing_with_events(
                 let _ = progress_sender.send(event);
             };
 
-            run_vanilla_option_surface_pricing_core_with_observer(execution_input, Some(&mut observer))
+            run_vanilla_option_surface_pricing_core_with_observer(
+                execution_input,
+                Some(&mut observer),
+            )
         },
         || janiform::pricing::VanillaOptionSurfacePricingRunError::NodePricingFailure {
             message: "pricing progress worker terminated unexpectedly".to_string(),
@@ -202,10 +207,7 @@ where
     TExecutionInput: DeserializeOwned + Send + 'static,
     TRunResult: Serialize + Send + 'static,
     TRunError: Display + Send + 'static,
-    TRunFn: FnOnce(
-            TExecutionInput,
-            mpsc::Sender<PricingProgressEvent>,
-        ) -> Result<TRunResult, TRunError>
+    TRunFn: FnOnce(TExecutionInput, mpsc::Sender<PricingProgressEvent>) -> Result<TRunResult, TRunError>
         + Send
         + 'static,
     TPanicError: FnOnce() -> TRunError + Send + 'static,
@@ -254,8 +256,11 @@ where
                     last_emitted_at = Some(Instant::now());
 
                     Python::with_gil(|py| {
-                        let callback_result = python_pricing_progress_event_to_py_object(py, &event)
-                            .and_then(|payload| event_callback.call1(py, (payload,)).map(|_| ()));
+                        let callback_result = python_pricing_progress_event_to_py_object(
+                            py, &event,
+                        )
+                        .and_then(|payload| event_callback.call1(py, (payload,)).map(|_| ()));
+
                         if let Err(source) = callback_result {
                             if let Ok(mut guard) = callback_error_message_for_observer.lock() {
                                 if guard.is_none() {
@@ -335,7 +340,10 @@ fn should_emit_pricing_progress_event(
 
 pub(super) fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(run_vanilla_option_pricing, module)?)?;
-    module.add_function(wrap_pyfunction!(run_vanilla_option_grouped_batch_pricing, module)?)?;
+    module.add_function(wrap_pyfunction!(
+        run_vanilla_option_grouped_batch_pricing,
+        module
+    )?)?;
     module.add_function(wrap_pyfunction!(
         run_vanilla_option_grouped_batch_pricing_with_events,
         module

@@ -36,6 +36,18 @@ simulation = model.simulate(
 print(simulation.to_pandas().head())
 ```
 
+`JaniformEstimator.fit(...)` works for both tick-only fitting and option calibration. With only
+tick data, it fits the underlying model (suitable for simulating price paths). When you also pass
+an option surface, it fits the model to the underlying data and the selected option snapshot
+(suitable for options pricing).
+
+When you fit with options:
+
+- one fit run targets one option quote timestamp
+- pass `option_surface_valuation_time_utc` unless the file contains exactly one unique quote time
+- the option surface must contain bid and ask data together with prices
+- `carry` is an optional flat discount or carry input and defaults to zero when omitted
+
 ## Example Script
 
 Start with this example script:

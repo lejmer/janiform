@@ -150,6 +150,8 @@ pub struct MarketDataLoadingOutput {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub option_surface_summary: Option<MarketDataSourceSummary>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub option_surface_records: Option<Vec<MarketDataNormalizedOptionSurfaceRecord>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub known_news_summary: Option<MarketDataSourceSummary>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reference_price: Option<f64>,
@@ -198,6 +200,25 @@ pub struct MarketDataSourceSummary {
     pub canonical_value_field: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub value_mapping_policy: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MarketDataNormalizedOptionSurfaceRecord {
+    pub quote_timestamp_utc_nanos: i64,
+    pub expiry_timestamp_utc_nanos: i64,
+    pub strike: f64,
+    pub option_type: String,
+    pub quote_value: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mid_price: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bid_price: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ask_price: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub implied_volatility: Option<f64>,
+    pub source_row_number: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

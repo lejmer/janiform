@@ -18,6 +18,7 @@ from ..staged.contracts import (
 )
 from ...contracts import (
     ContractModel,
+    require_datetime_utc,
     require_finite_number,
     require_mapping,
     require_non_empty_string,
@@ -63,6 +64,50 @@ class CalibrationOptionQuoteInputPolicy(StrEnum):
     MID_PRICE_COLUMN = "mid_price_column"
     BID_ASK_MIDPOINT = "bid_ask_midpoint"
     IMPLIED_VOLATILITY_COLUMN = "implied_volatility_column"
+
+
+@dataclass(frozen=True, slots=True)
+class CalibrationFlatCarryInput(ContractModel):
+    discount_rate: float = 0.0
+    carry_rate: float = 0.0
+
+    def __post_init__(self) -> None:
+        if not isfinite(self.discount_rate):
+            raise _calibration_error("discount_rate", "must be finite")
+        if not isfinite(self.carry_rate):
+            raise _calibration_error("carry_rate", "must be finite")
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> CalibrationFlatCarryInput:
+        if not isinstance(raw_payload, dict):
+            raise _calibration_error(field_path, "must be an object")
+
+        return CalibrationFlatCarryInput(
+            discount_rate=(
+                require_finite_number(
+                    raw_payload,
+                    "discount_rate",
+                    f"{field_path}.discount_rate",
+                    CALIBRATION_ERROR_FACTORY,
+                )
+                if "discount_rate" in raw_payload and raw_payload["discount_rate"] is not None
+                else 0.0
+            ),
+            carry_rate=(
+                require_finite_number(
+                    raw_payload,
+                    "carry_rate",
+                    f"{field_path}.carry_rate",
+                    CALIBRATION_ERROR_FACTORY,
+                )
+                if "carry_rate" in raw_payload and raw_payload["carry_rate"] is not None
+                else 0.0
+            ),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -819,6 +864,8 @@ def validate_option_surface_scope(
     option_surface_source: Optional[CalibrationInputFileReference],
     option_surface_column_mapping: Optional[CalibrationOptionSurfaceColumnMapping],
     option_quote_input_policy: Optional[CalibrationOptionQuoteInputPolicy],
+    option_surface_valuation_time_utc: Optional[Any] = None,
+    carry: Optional[CalibrationFlatCarryInput] = None,
 ) -> None:
     if workflow_scope == CalibrationMarketDataWorkflowScope.FULL_WITH_OPTION_SURFACE:
         if option_surface_source is None:
@@ -852,30 +899,64 @@ def validate_option_surface_scope(
                 "normalization_policy.option_quote_input_policy",
                 "must not be provided unless workflow_scope=full_with_option_surface",
             )
+        if option_surface_valuation_time_utc is not None:
+            raise _calibration_error(
+                "option_surface_valuation_time_utc",
+                "must not be provided unless workflow_scope=full_with_option_surface",
+            )
+        if carry is not None:
+            raise _calibration_error(
+                "carry",
+                "must not be provided unless workflow_scope=full_with_option_surface",
+            )
+
         return
 
     if option_surface_column_mapping is None or option_quote_input_policy is None:
         return
 
+    if option_surface_valuation_time_utc is not None:
+        require_datetime_utc(
+            option_surface_valuation_time_utc,
+            "option_surface_valuation_time_utc",
+            _calibration_error,
+        )
+
     match option_quote_input_policy:
         case CalibrationOptionQuoteInputPolicy.MID_PRICE_COLUMN:
-            if option_surface_column_mapping.mid_price_column is None:
-                raise _calibration_error(
-                    "column_mapping.option_surface.mid_price_column",
-                    "is required when option_quote_input_policy=mid_price_column",
-                )
-        case CalibrationOptionQuoteInputPolicy.BID_ASK_MIDPOINT:
-            if option_surface_column_mapping.bid_column is None or option_surface_column_mapping.ask_column is None:
+            if (
+                option_surface_column_mapping.mid_price_column is None
+                or option_surface_column_mapping.bid_column is None
+                or option_surface_column_mapping.ask_column is None
+            ):
                 raise _calibration_error(
                     "column_mapping.option_surface",
-                    "bid_column and ask_column are required when option_quote_input_policy=bid_ask_midpoint",
+                    (
+                        "mid_price_column, bid_column, and ask_column are required when "
+                        "workflow_scope=full_with_option_surface and "
+                        "option_quote_input_policy=mid_price_column"
+                    ),
+                )
+        case CalibrationOptionQuoteInputPolicy.BID_ASK_MIDPOINT:
+            if (
+                option_surface_column_mapping.bid_column is None
+                or option_surface_column_mapping.ask_column is None
+            ):
+                raise _calibration_error(
+                    "column_mapping.option_surface",
+                    (
+                        "bid_column and ask_column are required when "
+                        "option_quote_input_policy=bid_ask_midpoint"
+                    ),
                 )
         case CalibrationOptionQuoteInputPolicy.IMPLIED_VOLATILITY_COLUMN:
-            if option_surface_column_mapping.implied_volatility_column is None:
-                raise _calibration_error(
-                    "column_mapping.option_surface.implied_volatility_column",
-                    "is required when option_quote_input_policy=implied_volatility_column",
-                )
+            raise _calibration_error(
+                "normalization_policy.option_quote_input_policy",
+                (
+                    "implied_volatility_column is not a valid joint option calibration target in v1; "
+                    "price-space targets require bid and ask quotes"
+                ),
+            )
 
 
 def validate_known_news_inputs(
@@ -905,6 +986,7 @@ __all__ = [
     "CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION",
     "CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION",
     "CalibrationDuplicateRecordPolicy",
+    "CalibrationFlatCarryInput",
     "CalibrationExecutionMode",
     "CalibrationInputFileFormat",
     "CalibrationInputFileReference",

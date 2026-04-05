@@ -149,10 +149,7 @@ impl PricingProgressReporter {
         state.finished.store(true, Ordering::SeqCst);
     }
 
-    pub(crate) fn poll_until_finished(
-        &self,
-        observer: &mut dyn FnMut(PricingProgressEvent),
-    ) {
+    pub(crate) fn poll_until_finished(&self, observer: &mut dyn FnMut(PricingProgressEvent)) {
         let Some(state) = &self.state else {
             return;
         };
@@ -249,7 +246,9 @@ impl PricingProgressState {
             Ordering::SeqCst,
         );
         self.current_maturity_index.store(
-            event.current_maturity_index.unwrap_or(PRICING_PROGRESS_NONE),
+            event
+                .current_maturity_index
+                .unwrap_or(PRICING_PROGRESS_NONE),
             Ordering::SeqCst,
         );
 
@@ -259,7 +258,9 @@ impl PricingProgressState {
         );
 
         self.current_interval_index.store(
-            event.current_interval_index.unwrap_or(PRICING_PROGRESS_NONE),
+            event
+                .current_interval_index
+                .unwrap_or(PRICING_PROGRESS_NONE),
             Ordering::SeqCst,
         );
         self.total_intervals.store(
@@ -268,13 +269,13 @@ impl PricingProgressState {
         );
 
         self.current_transition_row_index.store(
-            event.current_transition_row_index
+            event
+                .current_transition_row_index
                 .unwrap_or(PRICING_PROGRESS_NONE),
             Ordering::SeqCst,
         );
         self.total_transition_rows.store(
-            event.total_transition_rows
-                .unwrap_or(PRICING_PROGRESS_NONE),
+            event.total_transition_rows.unwrap_or(PRICING_PROGRESS_NONE),
             Ordering::SeqCst,
         );
 
@@ -299,15 +300,11 @@ impl PricingProgressState {
             current_maturity_index: decode_optional_usize(
                 self.current_maturity_index.load(Ordering::SeqCst),
             ),
-            total_maturities: decode_optional_usize(
-                self.total_maturities.load(Ordering::SeqCst),
-            ),
+            total_maturities: decode_optional_usize(self.total_maturities.load(Ordering::SeqCst)),
             current_interval_index: decode_optional_usize(
                 self.current_interval_index.load(Ordering::SeqCst),
             ),
-            total_intervals: decode_optional_usize(
-                self.total_intervals.load(Ordering::SeqCst),
-            ),
+            total_intervals: decode_optional_usize(self.total_intervals.load(Ordering::SeqCst)),
             current_transition_row_index: decode_optional_usize(
                 self.current_transition_row_index.load(Ordering::SeqCst),
             ),
@@ -317,9 +314,7 @@ impl PricingProgressState {
             current_strike_index: decode_optional_usize(
                 self.current_strike_index.load(Ordering::SeqCst),
             ),
-            total_strikes: decode_optional_usize(
-                self.total_strikes.load(Ordering::SeqCst),
-            ),
+            total_strikes: decode_optional_usize(self.total_strikes.load(Ordering::SeqCst)),
         })
     }
 }

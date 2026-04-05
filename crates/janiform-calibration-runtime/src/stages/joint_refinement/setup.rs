@@ -47,13 +47,15 @@ use super::summary_simulation::JointRefinementSummarySimulationSessionContext;
 use super::worker_runtime::JointRefinementSeedSummaryAcquisitionError;
 use janiform_calibration_artifacts::{
     CalibrationOptimizerSettings, JointRefinementStageFittedParameters,
-    ReturnComponentsStageFittedParameters,
+    JointRefinementStagePricingBlockFittedParameters, ReturnComponentsStageFittedParameters,
 };
 
 pub(super) fn parameter_vector_to_fitted_parameters(
     parameter_vector: &[f64],
     context: &JointRefinementContext,
 ) -> Option<JointRefinementStageFittedParameters> {
+    let option_pricing_only = context.option_pricing_context.is_some();
+
     let mut structured_alpha = context.baseline_hawkes_fitted_parameters.structured_alpha;
 
     let mut news_process_configuration = context
@@ -61,55 +63,62 @@ pub(super) fn parameter_vector_to_fitted_parameters(
         .news_process_configuration
         .clone();
 
-    let lambda_scale =
-        parameter_vector[context.active_parameter_layout.log_lambda_scale_index].exp();
-    let beta_scale = parameter_vector[context.active_parameter_layout.log_beta_scale_index].exp();
-    let self_excitation_scale = parameter_vector[context
-        .active_parameter_layout
-        .log_self_excitation_scale_index]
-        .exp();
-    let cross_excitation_scale = parameter_vector[context
-        .active_parameter_layout
-        .log_cross_excitation_scale_index]
-        .exp();
+    let hawkes_fitted_parameters = if option_pricing_only {
+        context.baseline_hawkes_fitted_parameters.clone()
+    } else {
+        let lambda_scale =
+            parameter_vector[context.active_parameter_layout.log_lambda_scale_index].exp();
+        let beta_scale =
+            parameter_vector[context.active_parameter_layout.log_beta_scale_index].exp();
+        let self_excitation_scale = parameter_vector[context
+            .active_parameter_layout
+            .log_self_excitation_scale_index]
+            .exp();
+        let cross_excitation_scale = parameter_vector[context
+            .active_parameter_layout
+            .log_cross_excitation_scale_index]
+            .exp();
 
-    structured_alpha.a_self *= self_excitation_scale;
-    structured_alpha.delta_self *= self_excitation_scale;
-    structured_alpha.a_cross *= cross_excitation_scale;
-    structured_alpha.delta_cross *= cross_excitation_scale;
+        structured_alpha.a_self *= self_excitation_scale;
+        structured_alpha.delta_self *= self_excitation_scale;
+        structured_alpha.a_cross *= cross_excitation_scale;
+        structured_alpha.delta_cross *= cross_excitation_scale;
 
-    let alpha_loadings = HawkesKernelLoadings::try_from_structured_alpha(structured_alpha).ok()?;
-    let rho_loadings = HawkesKernelLoadings::try_from_structured_rho(
-        context.baseline_hawkes_fitted_parameters.structured_rho,
-        context
+        let alpha_loadings =
+            HawkesKernelLoadings::try_from_structured_alpha(structured_alpha).ok()?;
+        let rho_loadings = HawkesKernelLoadings::try_from_structured_rho(
+            context.baseline_hawkes_fitted_parameters.structured_rho,
+            context
+                .baseline_hawkes_fitted_parameters
+                .self_dominance_policy,
+        )
+        .ok()?;
+
+        let lambda_bar = context
             .baseline_hawkes_fitted_parameters
-            .self_dominance_policy,
-    )
-    .ok()?;
-
-    let lambda_bar = context
-        .baseline_hawkes_fitted_parameters
-        .kernel_parameters
-        .lambda_bar
-        * lambda_scale;
-    let beta = context
-        .baseline_hawkes_fitted_parameters
-        .kernel_parameters
-        .beta
-        * beta_scale;
-
-    let kernel_parameters =
-        HawkesKernelParameters::try_new(lambda_bar, beta, alpha_loadings, rho_loadings).ok()?;
-    let hawkes_fitted_parameters = janiform_calibration_artifacts::HawkesStageFittedParameters {
-        kernel_parameters,
-        structured_alpha,
-        structured_rho: context.baseline_hawkes_fitted_parameters.structured_rho,
-        self_dominance_policy: context
+            .kernel_parameters
+            .lambda_bar
+            * lambda_scale;
+        let beta = context
             .baseline_hawkes_fitted_parameters
-            .self_dominance_policy,
-        stability_numeric_tolerance: context
-            .baseline_hawkes_fitted_parameters
-            .stability_numeric_tolerance,
+            .kernel_parameters
+            .beta
+            * beta_scale;
+
+        let kernel_parameters =
+            HawkesKernelParameters::try_new(lambda_bar, beta, alpha_loadings, rho_loadings).ok()?;
+
+        janiform_calibration_artifacts::HawkesStageFittedParameters {
+            kernel_parameters,
+            structured_alpha,
+            structured_rho: context.baseline_hawkes_fitted_parameters.structured_rho,
+            self_dominance_policy: context
+                .baseline_hawkes_fitted_parameters
+                .self_dominance_policy,
+            stability_numeric_tolerance: context
+                .baseline_hawkes_fitted_parameters
+                .stability_numeric_tolerance,
+        }
     };
 
     let modeled_open_event_rate_per_hour =
@@ -132,54 +141,67 @@ pub(super) fn parameter_vector_to_fitted_parameters(
     let nig_shared_plus_shift_configuration =
         nig_configuration_from_search_point(&aggregated_15m_sample, nig_search_point)?;
 
-    if let Some(index) = context.active_parameter_layout.known_activity_scale_index {
-        news_process_configuration
-            .known_component_mark_scales
-            .activity_coupling_scale *= parameter_vector[index].exp();
-    }
+    let (return_components_fitted_parameters, pricing_block_fitted_parameters) =
+        if option_pricing_only {
+            (
+                context.baseline_return_components_fitted_parameters.clone(),
+                Some(JointRefinementStagePricingBlockFittedParameters {
+                    nig_shared_plus_shift_configuration,
+                }),
+            )
+        } else {
+            if let Some(index) = context.active_parameter_layout.known_activity_scale_index {
+                news_process_configuration
+                    .known_component_mark_scales
+                    .activity_coupling_scale *= parameter_vector[index].exp();
+            }
 
-    if let Some(index) = context
-        .active_parameter_layout
-        .surprise_activity_scale_index
-    {
-        news_process_configuration
-            .surprise_component_mark_scales
-            .activity_coupling_scale *= parameter_vector[index].exp();
-    }
+            if let Some(index) = context
+                .active_parameter_layout
+                .surprise_activity_scale_index
+            {
+                news_process_configuration
+                    .surprise_component_mark_scales
+                    .activity_coupling_scale *= parameter_vector[index].exp();
+            }
 
-    if let Some(index) = context
-        .active_parameter_layout
-        .surprise_baseline_scale_index
-    {
-        news_process_configuration.arrivals.surprise = SurpriseNewsArrivalConfiguration {
-            baseline_intensity: news_process_configuration
-                .arrivals
-                .surprise
-                .baseline_intensity
-                * parameter_vector[index].exp(),
+            if let Some(index) = context
+                .active_parameter_layout
+                .surprise_baseline_scale_index
+            {
+                news_process_configuration.arrivals.surprise = SurpriseNewsArrivalConfiguration {
+                    baseline_intensity: news_process_configuration
+                        .arrivals
+                        .surprise
+                        .baseline_intensity
+                        * parameter_vector[index].exp(),
+                };
+            }
+
+            let return_components_fitted_parameters = ReturnComponentsStageFittedParameters {
+                nig_shared_plus_shift_configuration,
+                news_process_configuration,
+                surprise_deterministic_intensity_profile: context
+                    .baseline_return_components_fitted_parameters
+                    .surprise_deterministic_intensity_profile
+                    .clone(),
+                mean_reversion_fitted_parameters:
+                    MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
+                        .expect("zero-gain mean reversion should validate"),
+            };
+
+            return_components_fitted_parameters
+                .news_process_configuration
+                .validate()
+                .ok()?;
+
+            (return_components_fitted_parameters, None)
         };
-    }
-
-    let return_components_fitted_parameters = ReturnComponentsStageFittedParameters {
-        nig_shared_plus_shift_configuration,
-        news_process_configuration,
-        surprise_deterministic_intensity_profile: context
-            .baseline_return_components_fitted_parameters
-            .surprise_deterministic_intensity_profile
-            .clone(),
-        mean_reversion_fitted_parameters:
-            MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
-                .expect("zero-gain mean reversion should validate"),
-    };
-
-    return_components_fitted_parameters
-        .news_process_configuration
-        .validate()
-        .ok()?;
 
     Some(JointRefinementStageFittedParameters {
         hawkes_fitted_parameters,
         return_components_fitted_parameters,
+        pricing_block_fitted_parameters,
     })
 }
 

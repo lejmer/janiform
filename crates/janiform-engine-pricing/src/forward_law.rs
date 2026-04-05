@@ -22,9 +22,7 @@ use super::runner::{
     evaluate_core_log_return_characteristic_function_under_local_measure,
     resolve_local_transition_theta,
 };
-use super::thread_pool::{
-    install_pricing_parallelism, resolved_pricing_cpu_count,
-};
+use super::thread_pool::{install_pricing_parallelism, resolved_pricing_cpu_count};
 use super::time_scaling::intraday_year_fraction;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -35,7 +33,8 @@ pub(crate) struct ForwardLawTerminalSnapshot {
     pub(crate) terminal_deviation_nodes: Vec<f64>,
     pub(crate) terminal_probability_mass: Vec<f64>,
     pub(crate) anchored_recursion_diagnostics: AnchoredPricingRecursionDiagnostics,
-    pub(crate) representative_transform_diagnostics: Option<ExponentialAffineTransformIntegrationResult>,
+    pub(crate) representative_transform_diagnostics:
+        Option<ExponentialAffineTransformIntegrationResult>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -135,7 +134,11 @@ pub(crate) fn price_terminal_snapshot_strikes(
     cpu_count: Option<usize>,
     progress_reporter: &PricingProgressReporter,
 ) -> Vec<ForwardPricedStrike> {
-    let current_observed_log_price = pricing_request.boundary_input.observed_boundary_state.observed_log_price;
+    let current_observed_log_price = pricing_request
+        .boundary_input
+        .observed_boundary_state
+        .observed_log_price;
+
     let payoff_type = pricing_request.payoff.payoff_type;
     let maturity_interval = terminal_snapshot.maturity_interval;
 
@@ -154,7 +157,6 @@ pub(crate) fn price_terminal_snapshot_strikes(
     let forward_price = pricing_request.market_inputs.spot
         * ((risk_free_rate - dividend_yield) * maturity_year_fraction).exp();
     let discount_factor = (-risk_free_rate * maturity_year_fraction).exp();
-
 
     let price_strike = |strike: f64| {
         let price = discount_factor
@@ -182,7 +184,6 @@ pub(crate) fn price_terminal_snapshot_strikes(
             payoff_type,
             price,
         );
-
 
         ForwardPricedStrike {
             price,
@@ -266,11 +267,16 @@ fn build_common_deviation_grid(
         || !common_step.is_finite()
         || common_step <= 0.0
     {
-        return Err(VanillaOptionPricingRunError::InvalidObservedBoundaryStateDuringRecursion {
-            interval_index: pricing_request.boundary_input.interval_index,
-            deviation: pricing_request.boundary_input.observed_boundary_state.deviation,
-            message: "failed to derive a finite common deviation grid".to_string(),
-        });
+        return Err(
+            VanillaOptionPricingRunError::InvalidObservedBoundaryStateDuringRecursion {
+                interval_index: pricing_request.boundary_input.interval_index,
+                deviation: pricing_request
+                    .boundary_input
+                    .observed_boundary_state
+                    .deviation,
+                message: "failed to derive a finite common deviation grid".to_string(),
+            },
+        );
     }
 
     let interval_count_float = ((common_upper_bound - common_lower_bound) / common_step).ceil();
@@ -302,11 +308,15 @@ fn propagate_terminal_probability_mass(
 
     let initial_probability_mass = interpolate_initial_probability_mass(
         refined_grid,
-        pricing_request.boundary_input.observed_boundary_state.deviation,
+        pricing_request
+            .boundary_input
+            .observed_boundary_state
+            .deviation,
     );
 
-    let frequency_grid =
-        SharedMidpointFrequencyGrid::from_settings(pricing_request.resolved_fourier_inversion_settings());
+    let frequency_grid = SharedMidpointFrequencyGrid::from_settings(
+        pricing_request.resolved_fourier_inversion_settings(),
+    );
 
     let mut current_probability_mass = initial_probability_mass;
     let mut interval_diagnostics = Vec::with_capacity(interval_factors.len());
@@ -480,8 +490,11 @@ fn build_transition_matrix(
             interval_delta,
         )?;
 
-        let local_request =
-            build_local_pricing_request(pricing_request, local_boundary_input.clone(), interval_delta)?;
+        let local_request = build_local_pricing_request(
+            pricing_request,
+            local_boundary_input.clone(),
+            interval_delta,
+        )?;
 
         let (local_transition_theta, _) =
             resolve_local_transition_theta(&local_request, interval_factor, driver_parameters)?;
@@ -504,8 +517,8 @@ fn build_transition_matrix(
         )?;
 
         let row_mass = row.probability_mass.iter().sum::<f64>();
-        let maximum_tail_probability_mass = row.probability_mass[0]
-            .max(row.probability_mass[row.probability_mass.len() - 1]);
+        let maximum_tail_probability_mass =
+            row.probability_mass[0].max(row.probability_mass[row.probability_mass.len() - 1]);
         let probability_mass = row.probability_mass;
 
         Ok::<_, VanillaOptionPricingRunError>(SolvedTransitionRow {
@@ -580,9 +593,9 @@ fn build_transition_matrix(
         maximum_solved_theta,
         Vec::new(),
     )
-    .map_err(|source| VanillaOptionPricingRunError::InvalidAnchoredRecursionDiagnostics {
-        source,
-    })?;
+    .map_err(
+        |source| VanillaOptionPricingRunError::InvalidAnchoredRecursionDiagnostics { source },
+    )?;
 
     let representative_transform_diagnostics = row_solutions
         .iter()
@@ -634,24 +647,31 @@ fn transition_probability_row_from_shared_frequency_grid(
     let deviation_decay_factor = pricing_request
         .boundary_input
         .deviation_decay_factor()
-        .map_err(|source| VanillaOptionPricingRunError::InvalidExecutionInput {
-            source: super::runner::VanillaOptionPricingExecutionInputError::InvalidRequest {
-                source: super::contracts::VanillaOptionPricingRequestError::InvalidBoundaryInput {
-                    source,
+        .map_err(
+            |source| VanillaOptionPricingRunError::InvalidExecutionInput {
+                source: super::runner::VanillaOptionPricingExecutionInputError::InvalidRequest {
+                    source:
+                        super::contracts::VanillaOptionPricingRequestError::InvalidBoundaryInput {
+                            source,
+                        },
                 },
             },
-        })?;
+        )?;
 
     let news_intensity = interval_factors.news_intensity_input().map_err(|source| {
         VanillaOptionPricingRunError::InvalidExecutionInput {
-            source: super::runner::VanillaOptionPricingExecutionInputError::InvalidIntervalFactors {
-                source,
-            },
+            source:
+                super::runner::VanillaOptionPricingExecutionInputError::InvalidIntervalFactors {
+                    source,
+                },
         }
     })?;
 
     let shift = deviation_decay_factor
-        * pricing_request.boundary_input.observed_boundary_state.deviation
+        * pricing_request
+            .boundary_input
+            .observed_boundary_state
+            .deviation
         - local_q_core_expected_increment;
 
     let cdf_evaluator = SharedRiskNeutralCoreCdfEvaluator::new(
@@ -670,13 +690,13 @@ fn transition_probability_row_from_shared_frequency_grid(
         target_boundaries[1] - target_boundaries[0]
     };
 
-    let (projected_cdf_values, representative_transform_diagnostics) =
-        cdf_evaluator.evaluate_uniform_boundaries(
-        first_boundary,
-        boundary_step,
-        target_boundaries.len(),
-        frequency_grid,
-    )?;
+    let (projected_cdf_values, representative_transform_diagnostics) = cdf_evaluator
+        .evaluate_uniform_boundaries(
+            first_boundary,
+            boundary_step,
+            target_boundaries.len(),
+            frequency_grid,
+        )?;
 
     let row = probability_mass_from_sampled_cdf_values(projected_cdf_values.as_slice());
 
@@ -706,7 +726,8 @@ struct SharedRiskNeutralCoreCdfEvaluator<'a> {
     pricing_request: &'a VanillaOptionPricingRequest,
     driver_parameters: NigBuySellDriverParameters,
     interval_factors: VanillaOptionPricingIntervalFactors,
-    news_intensity: janiform_affine_oracle::affine_oracle::ExponentialAffineTransformNewsIntensityInput,
+    news_intensity:
+        janiform_affine_oracle::affine_oracle::ExponentialAffineTransformNewsIntensityInput,
     theta: f64,
     denominator: ComplexScalar,
 }
@@ -789,7 +810,9 @@ impl<'a> SharedRiskNeutralCoreCdfEvaluator<'a> {
     fn evaluate_frequency(
         &self,
         argument: ComplexScalar,
-        representative_transform_diagnostics: &mut Option<ExponentialAffineTransformIntegrationResult>,
+        representative_transform_diagnostics: &mut Option<
+            ExponentialAffineTransformIntegrationResult,
+        >,
     ) -> Result<PricingCharacteristicFunctionEvaluation, VanillaOptionPricingRunError> {
         let numerator = evaluate_core_log_return_characteristic_function_under_local_measure(
             self.pricing_request,
@@ -804,13 +827,12 @@ impl<'a> SharedRiskNeutralCoreCdfEvaluator<'a> {
             *representative_transform_diagnostics = Some(numerator.transform_diagnostics);
         }
 
-        let value = numerator
-            .value
-            .divide(self.denominator)
-            .ok_or(VanillaOptionPricingRunError::InvalidRiskNeutralCharacteristicFunction {
+        let value = numerator.value.divide(self.denominator).ok_or(
+            VanillaOptionPricingRunError::InvalidRiskNeutralCharacteristicFunction {
                 numerator: numerator.value,
                 denominator: self.denominator,
-            })?;
+            },
+        )?;
 
         Ok(PricingCharacteristicFunctionEvaluation {
             value,
@@ -832,21 +854,28 @@ fn pricing_request_for_strike(
             pricing_request.market_inputs.risk_free_rate,
             pricing_request.market_inputs.dividend_yield,
         )
-        .map_err(|source| VanillaOptionPricingRunError::InvalidExecutionInput {
-            source: super::runner::VanillaOptionPricingExecutionInputError::InvalidRequest {
-                source: super::contracts::VanillaOptionPricingRequestError::InvalidMarketInputs {
-                    source,
+        .map_err(
+            |source| VanillaOptionPricingRunError::InvalidExecutionInput {
+                source: super::runner::VanillaOptionPricingExecutionInputError::InvalidRequest {
+                    source:
+                        super::contracts::VanillaOptionPricingRequestError::InvalidMarketInputs {
+                            source,
+                        },
                 },
             },
-        })?,
+        )?,
         pricing_request.payoff,
         pricing_request.boundary_input.clone(),
         pricing_request.model_parameters.clone(),
         pricing_request.interval_delta,
     )
-    .map_err(|source| VanillaOptionPricingRunError::InvalidExecutionInput {
-        source: super::runner::VanillaOptionPricingExecutionInputError::InvalidRequest { source },
-    })?;
+    .map_err(
+        |source| VanillaOptionPricingRunError::InvalidExecutionInput {
+            source: super::runner::VanillaOptionPricingExecutionInputError::InvalidRequest {
+                source,
+            },
+        },
+    )?;
 
     Ok(
         if let Some(fourier_inversion_settings) = pricing_request.fourier_inversion_settings {

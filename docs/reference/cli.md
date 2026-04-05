@@ -38,6 +38,8 @@ This is a curated reference for the public CLI surface. Use `janiform <command> 
 ## Notes
 
 - `fit plan` defaults to an automation-friendly disk-oriented execution policy.
+- `fit` chooses the fit from the supplied inputs, so adding `--option-surface-path` fits the model
+  to the underlying data *and* the selected option snapshot.
 - `fit staged` is the explicit orchestration boundary, not the recommended starting point.
 - `simulate` defaults to the seeded-tick path unless an explicit interval workflow is chosen.
 - `price` derives its pricing state from the persisted model, the valuation timestamp, and the supplied spot.

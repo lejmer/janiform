@@ -64,8 +64,8 @@ mod tests {
     use crate::stages::return_components::{
         ReturnComponentsObservedOpenSessionReturn,
         ReturnComponentsStageObservedSignalSummaryStatistics,
-        ReturnComponentsStageSignalSourceWindow, ReturnComponentsStageSortedSignalInputs,
-        continuous_fit, test_support::test_summary_statistics,
+        ReturnComponentsStageSignalSourceWindow, continuous_fit,
+        execution::ReturnComponentsStageSortedSignalInputs, test_support::test_summary_statistics,
     };
 
     #[test]

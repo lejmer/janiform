@@ -124,6 +124,7 @@ pub(super) fn restore_in_memory_payload_state_from_stage_parameter_artifact(
                     candidate_frontier: Vec::new(),
                     simulation_summaries: Vec::new(),
                     coarse_tick_consistency: Vec::new(),
+                    option_calibration_diagnostics: None,
                 });
         }
     }

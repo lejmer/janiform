@@ -16,7 +16,9 @@ use super::contracts::{
 };
 use super::known_news::load_known_news_records;
 use super::normalization::normalize_tick_row;
-use super::option_surface::load_option_surface_records;
+use super::option_surface::{
+    load_option_surface_records, materialize_option_surface_records_for_payload,
+};
 use super::rows::{
     load_rows, load_source_columns, probe_source_row_count_estimate, validate_columns_exist,
 };
@@ -171,7 +173,12 @@ pub fn prepare_market_data_loading_from_phases(
         session_resolution,
         preprocessing_output,
         tick_data_summary: normalized_tick_output.tick_data_summary,
-        option_surface_summary: option_surface_output.map(|output| output.summary),
+        option_surface_summary: option_surface_output
+            .as_ref()
+            .map(|output| output.summary.clone()),
+        option_surface_records: option_surface_output.as_ref().map(|output| {
+            materialize_option_surface_records_for_payload(output.option_surface_records.as_slice())
+        }),
         known_news_summary: known_news_output.map(|output| output.summary),
         reference_price: normalized_tick_output.reference_price,
         fit_warning: normalized_tick_output.fit_warning,

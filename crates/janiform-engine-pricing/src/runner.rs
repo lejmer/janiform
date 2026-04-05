@@ -46,11 +46,9 @@ use super::fourier::{
     price_vanilla_option_via_fourier_inversion_with_observer,
 };
 use super::implied_volatility::invert_vanilla_option_implied_volatility;
-use super::progress::{
-    PricingNodeProgress, PricingNodeProgressPhase, emit_node_progress,
-};
-use super::time_scaling::intraday_year_fraction;
 use super::probability_projection::probability_mass_from_sampled_cdf_values;
+use super::progress::{PricingNodeProgress, PricingNodeProgressPhase, emit_node_progress};
+use super::time_scaling::intraday_year_fraction;
 
 const OBSERVED_LOG_MOMENT_ARGUMENT_IMAGINARY: f64 = -1.0;
 
@@ -804,29 +802,31 @@ fn run_single_interval_anchored_fourier_pricing(
             pricing_request.market_inputs,
             pricing_request.payoff,
             pricing_request.resolved_fourier_inversion_settings(),
-            |argument| match evaluate_observed_log_return_characteristic_function_under_local_measure(
-                pricing_request,
-                driver_parameters,
-                interval_factors,
-                news_intensity,
-                local_tilt_diagnostics.theta,
-                local_martingale_deviation_adjustment,
-                argument,
-            ) {
-                Ok(evaluation) => {
-                    if representative_transform_diagnostics.borrow().is_none() {
-                        *representative_transform_diagnostics.borrow_mut() =
-                            Some(evaluation.transform_diagnostics);
-                    }
+            |argument| {
+                match evaluate_observed_log_return_characteristic_function_under_local_measure(
+                    pricing_request,
+                    driver_parameters,
+                    interval_factors,
+                    news_intensity,
+                    local_tilt_diagnostics.theta,
+                    local_martingale_deviation_adjustment,
+                    argument,
+                ) {
+                    Ok(evaluation) => {
+                        if representative_transform_diagnostics.borrow().is_none() {
+                            *representative_transform_diagnostics.borrow_mut() =
+                                Some(evaluation.transform_diagnostics);
+                        }
 
-                    evaluation.value
-                }
-                Err(error) => {
-                    if deferred_characteristic_function_error.borrow().is_none() {
-                        *deferred_characteristic_function_error.borrow_mut() = Some(error);
+                        evaluation.value
                     }
+                    Err(error) => {
+                        if deferred_characteristic_function_error.borrow().is_none() {
+                            *deferred_characteristic_function_error.borrow_mut() = Some(error);
+                        }
 
-                    ComplexScalar::new(f64::NAN, f64::NAN)
+                        ComplexScalar::new(f64::NAN, f64::NAN)
+                    }
                 }
             },
             Some(&mut fourier_progress_observer),
@@ -1000,10 +1000,7 @@ fn run_anchored_characteristic_pricing(
     let deferred_characteristic_function_error: RefCell<Option<VanillaOptionPricingRunError>> =
         RefCell::new(None);
 
-    emit_node_progress(
-        observer,
-        PricingNodeProgress::phase_only(fourier_phase),
-    );
+    emit_node_progress(observer, PricingNodeProgress::phase_only(fourier_phase));
 
     let price_result = {
         let mut fourier_progress_observer = |progress: FourierInversionProgress| {
@@ -2211,8 +2208,7 @@ fn build_pricing_response(
     let maturity_year_fraction = intraday_year_fraction(market_inputs.maturity_interval);
 
     let forward_price = market_inputs.spot
-        * ((market_inputs.risk_free_rate - market_inputs.dividend_yield)
-            * maturity_year_fraction)
+        * ((market_inputs.risk_free_rate - market_inputs.dividend_yield) * maturity_year_fraction)
             .exp();
 
     let discount_factor = (-market_inputs.risk_free_rate * maturity_year_fraction).exp();

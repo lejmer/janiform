@@ -1033,7 +1033,7 @@ pub(crate) fn resolve_activity_calibration_context(
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct ReturnComponentsStageSortedSignalInputs {
+pub(crate) struct ReturnComponentsStageSortedSignalInputs {
     pub(super) known_return_samples: Vec<ReturnComponentsRealizedKnownNewsReturnSample>,
     pub(super) observed_open_session_returns: Vec<ReturnComponentsObservedOpenSessionReturn>,
     pub(super) continuous_fit_returns: Vec<ReturnComponentsObservedOpenSessionReturn>,
@@ -2519,7 +2519,7 @@ fn build_return_components_stage_failure_report(
 
 #[cfg(test)]
 mod tests {
-    use chrono::{TimeZone, Utc};
+    use janiform_foundations::time::utc_nanos;
     use janiform_model_kernels::mean_reversion::MeanReversionFittedParameters;
     use janiform_model_kernels::news::{
         DoubleExponentialBaseShockConfiguration, GammaSeverityMarkConfiguration,
@@ -3204,13 +3204,5 @@ mod tests {
 "#,
         )
         .expect("calendar registry fixture should load")
-    }
-
-    fn utc_nanos(year: i32, month: u32, day: u32, hour: u32, minute: u32, second: u32) -> i64 {
-        Utc.with_ymd_and_hms(year, month, day, hour, minute, second)
-            .single()
-            .expect("fixture timestamp should be valid")
-            .timestamp_nanos_opt()
-            .expect("fixture timestamp nanos should fit in i64")
     }
 }

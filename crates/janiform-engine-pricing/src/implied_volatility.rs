@@ -1,10 +1,10 @@
 use serde::{Deserialize, Serialize};
 
+use super::time_scaling::intraday_year_fraction;
 use crate::{
     VanillaOptionPayoffType, VanillaOptionPricingMarketInputs,
     intraday_black_scholes_no_arbitrage_price_bounds, intraday_black_scholes_price,
 };
-use super::time_scaling::intraday_year_fraction;
 
 /// Structured outcome for Black-Scholes implied-volatility inversion on Janiform prices.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -74,11 +74,8 @@ pub(crate) fn invert_vanilla_option_implied_volatility(
 
         let midpoint_implied_volatility =
             implied_volatility_parameter_to_volatility(midpoint_parameter, market_inputs);
-        let midpoint_price = intraday_black_scholes_price(
-            market_inputs,
-            payoff_type,
-            midpoint_implied_volatility,
-        );
+        let midpoint_price =
+            intraday_black_scholes_price(market_inputs, payoff_type, midpoint_implied_volatility);
 
         if midpoint_implied_volatility.is_finite() {
             let midpoint_price_error = (midpoint_price - option_price).abs();
@@ -124,8 +121,7 @@ fn implied_volatility_parameter_to_volatility(
 #[cfg(test)]
 mod tests {
     use super::{
-        VanillaOptionImpliedVolatilityInversionStatus,
-        invert_vanilla_option_implied_volatility,
+        VanillaOptionImpliedVolatilityInversionStatus, invert_vanilla_option_implied_volatility,
     };
     use crate::{
         VanillaOptionPayoffType, VanillaOptionPricingMarketInputs,
@@ -137,11 +133,8 @@ mod tests {
         let market_inputs =
             VanillaOptionPricingMarketInputs::try_new(100.0, 105.0, 1.5, 0.02, 0.01)
                 .expect("market inputs should construct");
-        let option_price = intraday_black_scholes_price(
-            market_inputs,
-            VanillaOptionPayoffType::Call,
-            0.24,
-        );
+        let option_price =
+            intraday_black_scholes_price(market_inputs, VanillaOptionPayoffType::Call, 0.24);
 
         let inversion = invert_vanilla_option_implied_volatility(
             market_inputs,
@@ -163,11 +156,8 @@ mod tests {
     fn implied_volatility_inversion_recovers_black_scholes_put_price() {
         let market_inputs = VanillaOptionPricingMarketInputs::try_new(100.0, 95.0, 0.75, 0.01, 0.0)
             .expect("market inputs should construct");
-        let option_price = intraday_black_scholes_price(
-            market_inputs,
-            VanillaOptionPayoffType::Put,
-            0.31,
-        );
+        let option_price =
+            intraday_black_scholes_price(market_inputs, VanillaOptionPayoffType::Put, 0.31);
 
         let inversion = invert_vanilla_option_implied_volatility(
             market_inputs,
@@ -209,12 +199,12 @@ mod tests {
         let market_inputs =
             VanillaOptionPricingMarketInputs::try_new(100.0, 100.0, 1.0, 0.02, 0.01)
                 .expect("market inputs should construct");
-        let upper_bound =
-            intraday_black_scholes_no_arbitrage_price_bounds(
-                market_inputs,
-                VanillaOptionPayoffType::Call,
-            )
-            .1;
+
+        let upper_bound = intraday_black_scholes_no_arbitrage_price_bounds(
+            market_inputs,
+            VanillaOptionPayoffType::Call,
+        )
+        .1;
 
         let inversion = invert_vanilla_option_implied_volatility(
             market_inputs,
@@ -254,11 +244,8 @@ mod tests {
             VanillaOptionPricingMarketInputs::try_new(1.01037, 1.00537, 1.0, 0.02, 0.01)
                 .expect("market inputs should construct");
 
-        let option_price = intraday_black_scholes_price(
-            market_inputs,
-            VanillaOptionPayoffType::Call,
-            0.0,
-        );
+        let option_price =
+            intraday_black_scholes_price(market_inputs, VanillaOptionPayoffType::Call, 0.0);
 
         assert!((option_price - 0.0050011411912873616).abs() < 1.0e-15);
     }

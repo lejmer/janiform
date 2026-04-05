@@ -1,4 +1,5 @@
 use chrono::{TimeZone, Utc};
+use janiform_foundations::time::utc_nanos;
 
 use super::close_open_boundaries::derive_close_open_boundary_observations;
 use super::hawkes_inputs::{build_structured_rho_candidate, derive_positive_scale_candidates};
@@ -289,14 +290,6 @@ fn zero_inflated_tick_returns_do_not_label_every_non_zero_move_as_a_jump() {
         open_price_tick_timestamps[6]
     );
     assert!((detected_candidates[0].jump_return - 5.0e-3).abs() <= 1.0e-12);
-}
-
-fn utc_nanos(year: i32, month: u32, day: u32, hour: u32, minute: u32, second: u32) -> i64 {
-    Utc.with_ymd_and_hms(year, month, day, hour, minute, second)
-        .single()
-        .expect("fixture timestamp should be valid")
-        .timestamp_nanos_opt()
-        .expect("fixture timestamp nanos should fit in i64")
 }
 
 fn fx_spot_weekend_definition() -> ExchangeCalendarDefinition {

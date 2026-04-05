@@ -213,8 +213,8 @@ fn vanilla_option_grouped_batch_pricing_matches_single_option_runner_on_shared_g
     let optional_output_selection =
         VanillaOptionPricingOptionalOutputSelection::new(false, false, false);
 
-    let grouped_batch_result = run_vanilla_option_grouped_batch_pricing(
-        VanillaOptionGroupedBatchPricingExecutionInput {
+    let grouped_batch_result =
+        run_vanilla_option_grouped_batch_pricing(VanillaOptionGroupedBatchPricingExecutionInput {
             request: VanillaOptionGroupedBatchPricingRequest {
                 spot: 101.0,
                 groups: vec![
@@ -244,9 +244,8 @@ fn vanilla_option_grouped_batch_pricing_matches_single_option_runner_on_shared_g
             ],
             optional_output_selection,
             cpu_count: Some(1),
-        },
-    )
-    .expect("grouped batch pricing should succeed");
+        })
+        .expect("grouped batch pricing should succeed");
 
     let single_specs = [
         (95.0, 1.0, VanillaOptionPayoffType::Call, 0.01, 0.0),
@@ -341,8 +340,8 @@ fn vanilla_option_surface_pricing_matches_single_option_runner_on_shared_grid() 
     let optional_output_selection =
         VanillaOptionPricingOptionalOutputSelection::new(true, true, true);
 
-    let surface_result = run_vanilla_option_surface_pricing(
-        VanillaOptionSurfacePricingExecutionInput {
+    let surface_result =
+        run_vanilla_option_surface_pricing(VanillaOptionSurfacePricingExecutionInput {
             request: VanillaOptionSurfacePricingRequest {
                 spot: 101.0,
                 strikes: vec![95.0, 105.0],
@@ -361,9 +360,8 @@ fn vanilla_option_surface_pricing_matches_single_option_runner_on_shared_grid() 
             ],
             optional_output_selection,
             cpu_count: Some(1),
-        },
-    )
-    .expect("surface pricing should succeed");
+        })
+        .expect("surface pricing should succeed");
 
     for (maturity_index, maturity_interval) in [1.0].iter().copied().enumerate() {
         for (strike_index, strike) in [95.0, 105.0].iter().copied().enumerate() {
