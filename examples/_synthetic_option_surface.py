@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Final
 
@@ -51,7 +51,10 @@ class SyntheticVanillaOptionSurfaceContext:
         return JaniformVanillaOptionSurface(
             spot=self.spot,
             strikes=self.strikes,
-            maturity_intervals=self.maturity_intervals_hours,
+            expiry_timestamps_utc=tuple(
+                self.valuation_time_utc + timedelta(hours=maturity_interval)
+                for maturity_interval in self.maturity_intervals_hours
+            ),
             payoff_type=payoff_type,
             risk_free_rate=self.discount_rate,
             dividend_yield=self.carry_rate,

@@ -698,6 +698,7 @@ dependencies = [
 name = "janiform-engine-pricing"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "janiform-affine-oracle",
  "janiform-foundations",
  "janiform-market-time",

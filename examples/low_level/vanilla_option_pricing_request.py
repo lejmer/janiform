@@ -8,7 +8,6 @@ from janiform.pricing import (
     VanillaOptionPricingRequest,
     VanillaOptionPricingRunResult,
     run_vanilla_option_pricing,
-    validate_vanilla_option_pricing_request,
 )
 
 from examples._contracts import (
@@ -27,9 +26,6 @@ def main() -> None:
         boundary_input=build_pricing_boundary_input(),
         model_parameters=build_pricing_model_parameters(),
     )
-    validated_request: VanillaOptionPricingRequest = validate_vanilla_option_pricing_request(
-        request.to_payload(),
-    )
 
     calendar_registry: CalendarRegistry = CalendarRegistry(calendar_registry_json())
     hourly_factor_contract: HourlyFactorContract = build_hourly_factor_contract(
@@ -42,7 +38,7 @@ def main() -> None:
     )
 
     execution_input: VanillaOptionPricingExecutionInput = VanillaOptionPricingExecutionInput(
-        request=validated_request,
+        request=request,
         hourly_factor_contract=hourly_factor_contract,
         optional_output_selection=VanillaOptionPricingOptionalOutputSelection(
             include_transform_diagnostics=True,
@@ -55,9 +51,9 @@ def main() -> None:
     print(
         "request summary:",
         {
-            "spot": validated_request.market_inputs.spot,
-            "strike": validated_request.market_inputs.strike,
-            "interval_delta": validated_request.interval_delta,
+            "spot": request.market_inputs.spot,
+            "strike": request.market_inputs.strike,
+            "interval_delta": request.interval_delta,
         },
     )
     print(f"option price: {run_result.response.price:.6f}")

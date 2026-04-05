@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import math
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, NoReturn, Self, cast
@@ -2474,7 +2474,7 @@ def test_high_level_model_price_option_dispatches_through_canonical_pricing_runn
         valuation_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
         spot=100.0,
         strike=105.0,
-        maturity_interval=4.0,
+        expiry_timestamp_utc=datetime(2026, 2, 2, 19, tzinfo=UTC),
     )
 
     assert observed_result is pricing_result
@@ -2542,7 +2542,7 @@ def test_high_level_model_price_option_derives_boundary_state_from_spot_and_mode
         valuation_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
         spot=100.0,
         strike=105.0,
-        maturity_interval=4.0,
+        tenor="4h",
     )
 
     assert observed_result is pricing_result
@@ -2693,7 +2693,7 @@ def test_high_level_model_price_option_uses_estimated_current_state_when_observe
         valuation_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
         spot=100.0,
         strike=105.0,
-        maturity_interval=4.0,
+        expiry_date=date(2026, 2, 3),
         observed_data=observed_data,
     )
 
@@ -2740,7 +2740,7 @@ def test_high_level_model_price_option_uses_stationary_hawkes_boundary_state_by_
         valuation_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
         spot=100.0,
         strike=105.0,
-        maturity_interval=4.0,
+        tenor="4h",
     )
 
     runtime_factors = fit_model_module._prepare_model_runtime_factors(
@@ -2778,7 +2778,7 @@ def test_high_level_model_price_option_requires_reference_price_to_derive_pricin
             valuation_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
             spot=100.0,
             strike=105.0,
-            maturity_interval=4.0,
+            expiry_timestamp_utc=datetime(2026, 2, 2, 19, tzinfo=UTC),
         )
 
     assert (
@@ -2810,7 +2810,7 @@ def test_high_level_model_price_option_end_to_end_supports_endogenous_anchor_mea
         valuation_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
         spot=100.0,
         strike=105.0,
-        maturity_interval=1.0,
+        tenor="1h",
         boundary_state=fit_model_module.HawkesExcitationState(
             y_plus_plus=0.0,
             y_plus_minus=0.0,
@@ -2826,6 +2826,127 @@ def test_high_level_model_price_option_end_to_end_supports_endogenous_anchor_mea
     assert pricing_result.run_diagnostics.anchored_recursion is not None
 
 
+def test_high_level_model_price_option_resolves_expiry_timestamp_date_and_tenor_inputs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _build_full_workflow_model(
+        tmp_path,
+        monkeypatch,
+        run_id="high-level-model-pricing-maturity-resolution",
+    )
+    captured_maturity_intervals: list[float] = []
+
+    monkeypatch.setattr(
+        fit_model_module,
+        "run_vanilla_option_pricing",
+        lambda execution_input: (
+            captured_maturity_intervals.append(
+                execution_input.request.market_inputs.maturity_interval
+            )
+            or object()
+        ),
+    )
+
+    model.price_option(
+        valuation_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
+        spot=100.0,
+        strike=105.0,
+        expiry_timestamp_utc=datetime(2026, 2, 2, 19, tzinfo=UTC),
+    )
+    model.price_option(
+        valuation_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
+        spot=100.0,
+        strike=105.0,
+        expiry_date=date(2026, 2, 3),
+    )
+    model.price_option(
+        valuation_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
+        spot=100.0,
+        strike=105.0,
+        tenor="2d",
+    )
+
+    assert captured_maturity_intervals == [
+        pytest.approx(4.0),
+        pytest.approx(24.0),
+        pytest.approx(48.0),
+    ]
+
+
+def test_high_level_grouped_batch_pricing_resolves_mixed_maturity_axes_to_native_request(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _build_full_workflow_model(
+        tmp_path,
+        monkeypatch,
+        run_id="high-level-model-grouped-batch-maturity-resolution",
+    )
+    batch = JaniformGroupedVanillaOptionBatch(
+        spot=100.0,
+        groups=(
+            JaniformGroupedVanillaOptionGroup(
+                payoff_type=VanillaOptionPayoffType.CALL,
+                risk_free_rate=0.01,
+                dividend_yield=0.0,
+                strikes=(95.0, 105.0),
+                expiry_timestamps_utc=(datetime(2026, 2, 2, 16, tzinfo=UTC), None),
+                expiry_dates=(None, None),
+                tenors=(None, "2h"),
+            ),
+        ),
+    )
+
+    native_execution_input = fit_model_module._prepare_model_grouped_batch_pricing_native_input(
+        model,
+        valuation_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
+        batch=batch,
+        observed_data=None,
+        boundary_state=None,
+        include_transform_diagnostics=False,
+        include_integration_quality_diagnostics=False,
+        cpu_count=None,
+    )
+
+    assert native_execution_input["request"]["groups"][0]["maturity_intervals"] == [1.0, 2.0]
+
+
+def test_high_level_surface_pricing_resolves_mixed_maturity_axes_to_native_request(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _build_full_workflow_model(
+        tmp_path,
+        monkeypatch,
+        run_id="high-level-model-surface-maturity-resolution",
+    )
+
+    surface = JaniformVanillaOptionSurface(
+        spot=100.0,
+        strikes=(95.0, 105.0),
+        expiry_timestamps_utc=(datetime(2026, 2, 2, 16, tzinfo=UTC), None),
+        expiry_dates=(None, date(2026, 2, 3)),
+        tenors=(None, None),
+        payoff_type=VanillaOptionPayoffType.CALL,
+        risk_free_rate=0.01,
+        dividend_yield=0.0,
+    )
+
+    native_execution_input = fit_model_module._prepare_model_surface_pricing_native_input(
+        model,
+        valuation_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
+        surface=surface,
+        observed_data=None,
+        boundary_state=None,
+        include_transform_diagnostics=False,
+        include_integration_quality_diagnostics=False,
+        cpu_count=None,
+    )
+
+    assert native_execution_input["request"]["maturity_intervals"] == [1.0, 24.0]
+
+
 def test_high_level_model_price_option_groups_dispatches_through_grouped_batch_pricing_runner(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -2835,6 +2956,7 @@ def test_high_level_model_price_option_groups_dispatches_through_grouped_batch_p
         monkeypatch,
         run_id="high-level-model-batch-pricing",
     )
+
     batch = JaniformGroupedVanillaOptionBatch(
         spot=100.0,
         groups=(
@@ -2843,18 +2965,20 @@ def test_high_level_model_price_option_groups_dispatches_through_grouped_batch_p
                 risk_free_rate=0.01,
                 dividend_yield=0.0,
                 strikes=(95.0,),
-                maturity_intervals=(1.0,),
+                tenors=("1h",),
             ),
             JaniformGroupedVanillaOptionGroup(
                 payoff_type=VanillaOptionPayoffType.PUT,
                 risk_free_rate=0.01,
                 dividend_yield=0.0,
                 strikes=(105.0,),
-                maturity_intervals=(2.0,),
+                tenors=("2h",),
             ),
         ),
     )
+
     prepared_native_execution_input = {"prepared": "batch"}
+
     observed_result = JaniformVanillaOptionGroupedBatchPricingResult(
         spot=100.0,
         groups=(
@@ -2953,15 +3077,18 @@ def test_high_level_model_price_option_surface_dispatches_through_surface_pricin
         monkeypatch,
         run_id="high-level-model-surface-pricing",
     )
+
     surface = JaniformVanillaOptionSurface(
         spot=100.0,
         strikes=(95.0, 105.0),
-        maturity_intervals=(1.0, 2.0),
+        tenors=("1h", "2h"),
         payoff_type=VanillaOptionPayoffType.CALL,
         risk_free_rate=0.01,
         dividend_yield=0.0,
     )
+
     prepared_native_execution_input = {"prepared": "surface"}
+
     observed_result = JaniformVanillaOptionSurfacePricingResult(
         spot=100.0,
         strikes=(95.0, 105.0),
@@ -3046,12 +3173,14 @@ def test_high_level_model_price_option_groups_matches_single_option_engine_on_sh
         monkeypatch,
         run_id="high-level-model-batch-pricing-parity",
     )
+
     boundary_state = fit_model_module.HawkesExcitationState(
         y_plus_plus=0.0,
         y_plus_minus=0.0,
         y_minus_plus=0.0,
         y_minus_minus=0.0,
     )
+
     batch = JaniformGroupedVanillaOptionBatch(
         spot=100.0,
         groups=(
@@ -3060,14 +3189,14 @@ def test_high_level_model_price_option_groups_matches_single_option_engine_on_sh
                 risk_free_rate=0.01,
                 dividend_yield=0.0,
                 strikes=(95.0, 105.0),
-                maturity_intervals=(1.0,),
+                tenors=("1h",),
             ),
             JaniformGroupedVanillaOptionGroup(
                 payoff_type=VanillaOptionPayoffType.PUT,
                 risk_free_rate=0.01,
                 dividend_yield=0.0,
                 strikes=(100.0,),
-                maturity_intervals=(1.0,),
+                tenors=("1h",),
             ),
         ),
     )
@@ -3081,6 +3210,7 @@ def test_high_level_model_price_option_groups_matches_single_option_engine_on_sh
     )
 
     assert isinstance(batch_result, JaniformVanillaOptionGroupedBatchPricingResult)
+
     flattened_specs = [
         (0, 0, 95.0, VanillaOptionPayoffType.CALL),
         (0, 1, 105.0, VanillaOptionPayoffType.CALL),
@@ -3094,7 +3224,7 @@ def test_high_level_model_price_option_groups_matches_single_option_engine_on_sh
             valuation_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
             spot=batch.spot,
             strike=strike,
-            maturity_interval=1.0,
+            tenor="1h",
             payoff_type=payoff_type,
             risk_free_rate=0.01,
             dividend_yield=0.0,
@@ -3106,6 +3236,7 @@ def test_high_level_model_price_option_groups_matches_single_option_engine_on_sh
 
         observed_group = batch_result.groups[group_index]
         representative_single_results.setdefault(group_index, single_result)
+
         assert observed_group.price_grid[0][strike_index] == pytest.approx(single_result.response.price)
         assert observed_group.implied_volatility_grid[0][strike_index] == pytest.approx(
             cast(float, single_result.response.implied_volatility)
@@ -3129,6 +3260,7 @@ def test_high_level_model_price_option_groups_matches_single_option_engine_on_sh
 
     for group_index, representative_single_result in representative_single_results.items():
         observed_summary = batch_result.groups[group_index].maturity_summaries[0]
+
         assert representative_single_result.run_diagnostics is not None
         assert observed_summary.integration_quality == representative_single_result.run_diagnostics.integration_quality
 
@@ -3142,16 +3274,18 @@ def test_high_level_model_price_option_surface_matches_single_option_engine_on_s
         monkeypatch,
         run_id="high-level-model-surface-pricing-parity",
     )
+
     boundary_state = fit_model_module.HawkesExcitationState(
         y_plus_plus=0.0,
         y_plus_minus=0.0,
         y_minus_plus=0.0,
         y_minus_minus=0.0,
     )
+
     surface = JaniformVanillaOptionSurface(
         spot=100.0,
         strikes=(95.0, 105.0),
-        maturity_intervals=(1.0,),
+        tenors=("1h",),
         payoff_type=VanillaOptionPayoffType.CALL,
         risk_free_rate=0.01,
         dividend_yield=0.0,
@@ -3170,13 +3304,13 @@ def test_high_level_model_price_option_surface_matches_single_option_engine_on_s
 
     representative_single_results: dict[int, pricing_module.VanillaOptionPricingRunResult] = {}
 
-    for maturity_index, maturity_interval in enumerate(surface.maturity_intervals):
+    for maturity_index, maturity_interval in enumerate(surface_result.maturity_intervals):
         for strike_index, strike in enumerate(surface.strikes):
             single_result = model.price_option(
                 valuation_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
                 spot=surface.spot,
                 strike=strike,
-                maturity_interval=maturity_interval,
+                tenor=f"{int(maturity_interval)}h",
                 payoff_type=surface.payoff_type,
                 risk_free_rate=surface.risk_free_rate,
                 dividend_yield=surface.dividend_yield,
@@ -3187,6 +3321,7 @@ def test_high_level_model_price_option_surface_matches_single_option_engine_on_s
             )
 
             representative_single_results.setdefault(maturity_index, single_result)
+
             assert surface_result.price_grid[maturity_index][strike_index] == pytest.approx(
                 single_result.response.price
             )
@@ -3231,7 +3366,9 @@ def test_runtime_pricing_seasonality_source_stays_materialized_for_off_hour_wind
         monkeypatch,
         run_id="high-level-model-off-hour-surface-pricing",
     )
+
     valuation_time_utc = datetime(2026, 2, 2, 15, 34, tzinfo=UTC)
+
     runtime_factors = fit_model_module._prepare_model_runtime_factors(
         model,
         start_time_utc=valuation_time_utc,
@@ -3267,7 +3404,9 @@ def test_runtime_pricing_seasonality_source_uses_explicit_hourly_factors_for_hou
         monkeypatch,
         run_id="high-level-model-hour-aligned-surface-pricing",
     )
+
     valuation_time_utc = datetime(2026, 2, 2, 15, tzinfo=UTC)
+
     runtime_factors = fit_model_module._prepare_model_runtime_factors(
         model,
         start_time_utc=valuation_time_utc,
@@ -3367,7 +3506,9 @@ def test_high_level_fit_reuses_single_load_and_translation_pass_when_session_is_
 
     normalize_call_count = 0
     translate_call_count = 0
+
     original_normalize_source = fit_estimator_module.normalize_market_data_source
+
     original_translate_request = (
         fit_estimator_module.translate_market_data_request_to_prepared_calibration_from_phases
     )
@@ -3529,6 +3670,7 @@ def test_high_level_fit_progress_splits_loading_and_translation_steps(
             _ = completed_units
             _ = total_units
             _ = reset_progress_units
+
             if detail is not None:
                 progress_details.append(detail)
 
@@ -3619,6 +3761,7 @@ def test_high_level_fit_report_returns_success_details_with_model(
         ),
         market_profile="us_equity_cash",
     )
+
     monkeypatch.setattr(
         fit_estimator_module,
         "_run_prepared_staged_calibration_with_raw_payload",
@@ -3754,10 +3897,12 @@ def _build_test_hourly_factor_contract(
             for timestamp_utc in interval_end_times_utc[:-1]
         ],
     ]
+
     interval_end_utc_nanos = [
         datetime_to_utc_nanos(timestamp_utc)
         for timestamp_utc in interval_end_times_utc
     ]
+
     interval_duration_nanos = interval_end_utc_nanos[0] - interval_start_utc_nanos[0]
 
     return HourlyFactorContract(

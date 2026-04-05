@@ -5,7 +5,7 @@ from collections.abc import Callable
 from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from math import log
 from pathlib import Path
 from typing import Any, NoReturn, Optional, cast
@@ -119,6 +119,10 @@ from .pricing import (
     JaniformVanillaOptionGroupedBatchPricingResult,
     JaniformVanillaOptionSurfacePricingResult,
 )
+from .maturity_inputs import (
+    resolve_high_level_pricing_maturity_axis,
+    resolve_single_high_level_pricing_maturity_input,
+)
 from .state_estimation import (
     CurrentStateEstimationRequest,
     CurrentStateEstimationResult,
@@ -165,6 +169,16 @@ class _PreparedModelPricingRuntimeInput:
     effective_observed_boundary_state: MeanReversionBoundaryState
     mean_reversion_fitted_parameters: MeanReversionFittedParameters
     model_parameters: VanillaOptionPricingModelParameters
+
+
+@dataclass(frozen=True, slots=True)
+class _PreparedModelSimulationRuntimeInput:
+    runtime_factors: _PreparedModelRuntimeFactors
+    hourly_factor_contract: HourlyFactorContract
+    initial_excitation_state: HawkesExcitationState
+    initial_mean_reversion_boundary_state: MeanReversionBoundaryState
+    mean_reversion_fitted_parameters: MeanReversionFittedParameters
+    mean_reversion_runtime_interval_anchors: MeanReversionRuntimeIntervalAnchors
 
 
 @dataclass(frozen=True, slots=True)
@@ -418,7 +432,9 @@ class JaniformModel:
         valuation_time_utc: datetime,
         spot: float,
         strike: float,
-        maturity_interval: float,
+        expiry_timestamp_utc: Optional[datetime] = None,
+        expiry_date: Optional[date] = None,
+        tenor: Optional[str] = None,
         payoff_type: VanillaOptionPayoffType | str = VanillaOptionPayoffType.CALL,
         risk_free_rate: float = 0.0,
         dividend_yield: float = 0.0,
@@ -443,7 +459,9 @@ class JaniformModel:
             valuation_time_utc=valuation_time_utc,
             spot=spot,
             strike=strike,
-            maturity_interval=maturity_interval,
+            expiry_timestamp_utc=expiry_timestamp_utc,
+            expiry_date=expiry_date,
+            tenor=tenor,
             payoff_type=payoff_type,
             risk_free_rate=risk_free_rate,
             dividend_yield=dividend_yield,
@@ -695,6 +713,7 @@ def _prepare_model_simulation_inputs(
         horizon_interval_count=horizon_interval_count,
         interval=interval,
     )
+
     initial_state_resolution = _resolve_model_simulation_initial_state(
         model,
         start_time_utc=start_time_utc,
@@ -705,139 +724,38 @@ def _prepare_model_simulation_inputs(
         initial_excitation_state=initial_excitation_state,
         initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
     )
+
     effective_initial_state = initial_state_resolution.excitation_state
     effective_start_anchor_value = initial_state_resolution.start_anchor_value
-    effective_mean_reversion_boundary_state = (
-        initial_state_resolution.mean_reversion_boundary_state
-    )
+    effective_mean_reversion_boundary_state = initial_state_resolution.mean_reversion_boundary_state
 
     coarse_request: Optional[CoarseSimulationRunRequest] = None
     seeded_request: Optional[SeededTickSimulationRequest] = None
 
     match simulation_kind:
         case "coarse_interval":
-            hourly_factor_contract = provide_hourly_factor_contract(
-                calendar_registry=runtime_factors.calendar_registry,
-                exchange_code=runtime_factors.exchange_code,
-                range_start_utc=start_time_utc,
-                range_end_utc=runtime_factors.range_end_utc,
-                interval=interval,
-                seasonality_source=_build_runtime_hourly_seasonality_source_from_model(
-                    model,
-                    calendar_registry=runtime_factors.calendar_registry,
-                    exchange_code=runtime_factors.exchange_code,
-                    range_start_utc=start_time_utc,
-                    range_end_utc=runtime_factors.range_end_utc,
-                    interval=interval,
-                ),
-                news_intensity_source=HourlyNewsIntensityProviderMaterializedSource(
-                    known_scheduled_event_timestamps_utc=_resolved_known_news_event_timestamps(model),
-                    surprise_baseline_intensity=_surprise_baseline_intensity(model),
-                    surprise_deterministic_time_multiplier_by_interval_index=(
-                        _surprise_deterministic_time_multiplier_by_interval_index(
-                            model,
-                            range_start_utc=start_time_utc,
-                            range_end_utc=runtime_factors.range_end_utc,
-                            interval_duration_nanos=_parse_interval_duration_nanos(interval),
-                        )
-                    ),
-                ),
-            )
-
-            (
-                mean_reversion_fitted_parameters,
-                mean_reversion_runtime_interval_anchors,
-                initial_mean_reversion_boundary_state,
-            ) = _prepare_model_mean_reversion_runtime_inputs(
+            coarse_request = _prepare_model_coarse_interval_simulation_request(
                 model,
-                runtime_factors=runtime_factors,
-                hourly_factor_contract=hourly_factor_contract,
-                initial_excitation_state=effective_initial_state,
-                start_anchor_value=effective_start_anchor_value,
-            )
-            if effective_mean_reversion_boundary_state is not None:
-                initial_mean_reversion_boundary_state = effective_mean_reversion_boundary_state
-
-            coarse_request = CoarseSimulationRunRequest.from_runtime_inputs(
                 seed=seed,
                 start_time_utc=start_time_utc,
                 horizon_interval_count=horizon_interval_count,
-                interval_delta=runtime_factors.interval_delta,
-                risk_model_inputs=SufficientStatisticsRiskModelInputs(
-                    equation_specification=SufficientStatisticsRiskEquationSpecification(
-                        hawkes_kernel_parameters=runtime_factors.kernel_parameters,
-                        gamma_severity_mark_configuration=runtime_factors.gamma_severity_mark_configuration,
-                    ),
-                    nig_shared_plus_shift_configuration=runtime_factors.nig_shared_plus_shift_configuration,
-                    initial_excitation_state=effective_initial_state,
-                    mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
-                    mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
-                    initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
-                ),
-                hourly_factor_contract=_zero_closed_coarse_interval_seasonality_factors(
-                    hourly_factor_contract,
-                    calendar_registry=runtime_factors.calendar_registry,
-                    exchange_code=runtime_factors.exchange_code,
-                ),
-                news_process_configuration=runtime_factors.news_process_configuration,
-                calendar_registry=runtime_factors.calendar_registry,
-                exchange_code=runtime_factors.exchange_code,
+                interval=interval,
+                runtime_factors=runtime_factors,
+                initial_excitation_state=effective_initial_state,
+                start_anchor_value=effective_start_anchor_value,
+                initial_mean_reversion_boundary_state=effective_mean_reversion_boundary_state,
             )
         case "seeded_tick":
-            hourly_factor_contract = provide_hourly_factor_contract(
-                calendar_registry=runtime_factors.calendar_registry,
-                exchange_code=runtime_factors.exchange_code,
-                range_start_utc=start_time_utc,
-                range_end_utc=runtime_factors.range_end_utc,
-                interval=interval,
-                seasonality_source=_build_runtime_hourly_seasonality_source_from_model(
-                    model,
-                    calendar_registry=runtime_factors.calendar_registry,
-                    exchange_code=runtime_factors.exchange_code,
-                    range_start_utc=start_time_utc,
-                    range_end_utc=runtime_factors.range_end_utc,
-                    interval=interval,
-                ),
-                news_intensity_source=HourlyNewsIntensityProviderMaterializedSource(
-                    known_scheduled_event_timestamps_utc=_resolved_known_news_event_timestamps(model),
-                    surprise_baseline_intensity=_surprise_baseline_intensity(model),
-                    surprise_deterministic_time_multiplier_by_interval_index=(
-                        _surprise_deterministic_time_multiplier_by_interval_index(
-                            model,
-                            range_start_utc=start_time_utc,
-                            range_end_utc=runtime_factors.range_end_utc,
-                            interval_duration_nanos=_parse_interval_duration_nanos(interval),
-                        )
-                    ),
-                ),
-            )
-
-            (
-                mean_reversion_fitted_parameters,
-                mean_reversion_runtime_interval_anchors,
-                initial_mean_reversion_boundary_state,
-            ) = _prepare_model_mean_reversion_runtime_inputs(
+            seeded_request = _prepare_model_seeded_tick_simulation_request(
                 model,
-                runtime_factors=runtime_factors,
-                hourly_factor_contract=hourly_factor_contract,
-                initial_excitation_state=effective_initial_state,
-                start_anchor_value=effective_start_anchor_value,
-            )
-            if effective_mean_reversion_boundary_state is not None:
-                initial_mean_reversion_boundary_state = effective_mean_reversion_boundary_state
-
-            seeded_request = SeededTickSimulationRequest.from_runtime_inputs(
                 seed=seed,
                 start_time_utc=start_time_utc,
                 horizon_interval_count=horizon_interval_count,
-                kernel_parameters=runtime_factors.kernel_parameters,
-                nig_shared_plus_shift_configuration=runtime_factors.nig_shared_plus_shift_configuration,
-                news_process_configuration=runtime_factors.news_process_configuration,
+                interval=interval,
+                runtime_factors=runtime_factors,
                 initial_excitation_state=effective_initial_state,
-                mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
-                mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
-                initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
-                hourly_factor_contract=hourly_factor_contract,
+                start_anchor_value=effective_start_anchor_value,
+                initial_mean_reversion_boundary_state=effective_mean_reversion_boundary_state,
                 debug_trace_enabled=debug_trace_enabled,
                 sample_every_nth_transition=sample_every_nth_transition,
                 max_records_per_chunk=max_records_per_chunk,
@@ -851,6 +769,195 @@ def _prepare_model_simulation_inputs(
     return _PreparedModelSimulationInputs(
         coarse_request=coarse_request,
         seeded_request=seeded_request,
+    )
+
+
+def _prepare_model_coarse_interval_simulation_request(
+    model: JaniformModel,
+    *,
+    seed: int,
+    start_time_utc: datetime,
+    horizon_interval_count: int,
+    interval: str | timedelta,
+    runtime_factors: _PreparedModelRuntimeFactors,
+    initial_excitation_state: HawkesExcitationState,
+    start_anchor_value: float,
+    initial_mean_reversion_boundary_state: Optional[MeanReversionBoundaryState],
+) -> CoarseSimulationRunRequest:
+    runtime_input = _prepare_model_simulation_runtime_input(
+        model,
+        start_time_utc=start_time_utc,
+        interval=interval,
+        runtime_factors=runtime_factors,
+        initial_excitation_state=initial_excitation_state,
+        start_anchor_value=start_anchor_value,
+        initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
+    )
+
+    return CoarseSimulationRunRequest.from_runtime_inputs(
+        seed=seed,
+        start_time_utc=start_time_utc,
+        horizon_interval_count=horizon_interval_count,
+        interval_delta=runtime_input.runtime_factors.interval_delta,
+        risk_model_inputs=SufficientStatisticsRiskModelInputs(
+            equation_specification=SufficientStatisticsRiskEquationSpecification(
+                hawkes_kernel_parameters=runtime_input.runtime_factors.kernel_parameters,
+                gamma_severity_mark_configuration=(
+                    runtime_input.runtime_factors.gamma_severity_mark_configuration
+                ),
+            ),
+            nig_shared_plus_shift_configuration=(
+                runtime_input.runtime_factors.nig_shared_plus_shift_configuration
+            ),
+            initial_excitation_state=runtime_input.initial_excitation_state,
+            mean_reversion_fitted_parameters=runtime_input.mean_reversion_fitted_parameters,
+            mean_reversion_runtime_interval_anchors=(
+                runtime_input.mean_reversion_runtime_interval_anchors
+            ),
+            initial_mean_reversion_boundary_state=(
+                runtime_input.initial_mean_reversion_boundary_state
+            ),
+        ),
+        hourly_factor_contract=_zero_closed_coarse_interval_seasonality_factors(
+            runtime_input.hourly_factor_contract,
+            calendar_registry=runtime_input.runtime_factors.calendar_registry,
+            exchange_code=runtime_input.runtime_factors.exchange_code,
+        ),
+        news_process_configuration=runtime_input.runtime_factors.news_process_configuration,
+        calendar_registry=runtime_input.runtime_factors.calendar_registry,
+        exchange_code=runtime_input.runtime_factors.exchange_code,
+    )
+
+
+def _prepare_model_seeded_tick_simulation_request(
+    model: JaniformModel,
+    *,
+    seed: int,
+    start_time_utc: datetime,
+    horizon_interval_count: int,
+    interval: str | timedelta,
+    runtime_factors: _PreparedModelRuntimeFactors,
+    initial_excitation_state: HawkesExcitationState,
+    start_anchor_value: float,
+    initial_mean_reversion_boundary_state: Optional[MeanReversionBoundaryState],
+    debug_trace_enabled: bool,
+    sample_every_nth_transition: int,
+    max_records_per_chunk: int,
+    state_snapshot_capture: SeededTickEventStateSnapshotCapture,
+) -> SeededTickSimulationRequest:
+    runtime_input = _prepare_model_simulation_runtime_input(
+        model,
+        start_time_utc=start_time_utc,
+        interval=interval,
+        runtime_factors=runtime_factors,
+        initial_excitation_state=initial_excitation_state,
+        start_anchor_value=start_anchor_value,
+        initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
+    )
+
+    return SeededTickSimulationRequest.from_runtime_inputs(
+        seed=seed,
+        start_time_utc=start_time_utc,
+        horizon_interval_count=horizon_interval_count,
+        kernel_parameters=runtime_input.runtime_factors.kernel_parameters,
+        nig_shared_plus_shift_configuration=(
+            runtime_input.runtime_factors.nig_shared_plus_shift_configuration
+        ),
+        news_process_configuration=runtime_input.runtime_factors.news_process_configuration,
+        initial_excitation_state=runtime_input.initial_excitation_state,
+        mean_reversion_fitted_parameters=runtime_input.mean_reversion_fitted_parameters,
+        mean_reversion_runtime_interval_anchors=(
+            runtime_input.mean_reversion_runtime_interval_anchors
+        ),
+        initial_mean_reversion_boundary_state=(
+            runtime_input.initial_mean_reversion_boundary_state
+        ),
+        hourly_factor_contract=runtime_input.hourly_factor_contract,
+        debug_trace_enabled=debug_trace_enabled,
+        sample_every_nth_transition=sample_every_nth_transition,
+        max_records_per_chunk=max_records_per_chunk,
+        state_snapshot_capture=state_snapshot_capture,
+    )
+
+
+def _prepare_model_simulation_runtime_input(
+    model: JaniformModel,
+    *,
+    start_time_utc: datetime,
+    interval: str | timedelta,
+    runtime_factors: _PreparedModelRuntimeFactors,
+    initial_excitation_state: HawkesExcitationState,
+    start_anchor_value: float,
+    initial_mean_reversion_boundary_state: Optional[MeanReversionBoundaryState],
+) -> _PreparedModelSimulationRuntimeInput:
+    hourly_factor_contract = _build_model_simulation_hourly_factor_contract(
+        model,
+        runtime_factors=runtime_factors,
+        start_time_utc=start_time_utc,
+        interval=interval,
+    )
+
+    (
+        mean_reversion_fitted_parameters,
+        mean_reversion_runtime_interval_anchors,
+        derived_initial_mean_reversion_boundary_state,
+    ) = _prepare_model_mean_reversion_runtime_inputs(
+        model,
+        runtime_factors=runtime_factors,
+        hourly_factor_contract=hourly_factor_contract,
+        initial_excitation_state=initial_excitation_state,
+        start_anchor_value=start_anchor_value,
+    )
+
+    effective_initial_mean_reversion_boundary_state = (
+        derived_initial_mean_reversion_boundary_state
+        if initial_mean_reversion_boundary_state is None
+        else initial_mean_reversion_boundary_state
+    )
+
+    return _PreparedModelSimulationRuntimeInput(
+        runtime_factors=runtime_factors,
+        hourly_factor_contract=hourly_factor_contract,
+        initial_excitation_state=initial_excitation_state,
+        initial_mean_reversion_boundary_state=effective_initial_mean_reversion_boundary_state,
+        mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
+        mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
+    )
+
+
+def _build_model_simulation_hourly_factor_contract(
+    model: JaniformModel,
+    *,
+    runtime_factors: _PreparedModelRuntimeFactors,
+    start_time_utc: datetime,
+    interval: str | timedelta,
+) -> HourlyFactorContract:
+    return provide_hourly_factor_contract(
+        calendar_registry=runtime_factors.calendar_registry,
+        exchange_code=runtime_factors.exchange_code,
+        range_start_utc=start_time_utc,
+        range_end_utc=runtime_factors.range_end_utc,
+        interval=interval,
+        seasonality_source=_build_runtime_hourly_seasonality_source_from_model(
+            model,
+            calendar_registry=runtime_factors.calendar_registry,
+            exchange_code=runtime_factors.exchange_code,
+            range_start_utc=start_time_utc,
+            range_end_utc=runtime_factors.range_end_utc,
+            interval=interval,
+        ),
+        news_intensity_source=HourlyNewsIntensityProviderMaterializedSource(
+            known_scheduled_event_timestamps_utc=_resolved_known_news_event_timestamps(model),
+            surprise_baseline_intensity=_surprise_baseline_intensity(model),
+            surprise_deterministic_time_multiplier_by_interval_index=(
+                _surprise_deterministic_time_multiplier_by_interval_index(
+                    model,
+                    range_start_utc=start_time_utc,
+                    range_end_utc=runtime_factors.range_end_utc,
+                    interval_duration_nanos=runtime_factors.interval_duration_nanos,
+                )
+            ),
+        ),
     )
 
 
@@ -882,6 +989,7 @@ def _resolve_model_simulation_initial_state(
             else initial_excitation_state
         )
     )
+
     effective_initial_mean_reversion_boundary_state = (
         initial_mean_reversion_boundary_state
         if initial_mean_reversion_boundary_state is not None
@@ -891,6 +999,7 @@ def _resolve_model_simulation_initial_state(
             else estimated_current_state.mean_reversion_boundary_state
         )
     )
+
     start_anchor_value = (
         0.0
         if effective_initial_mean_reversion_boundary_state is None
@@ -917,6 +1026,7 @@ def _prepare_model_mean_reversion_runtime_inputs(
     MeanReversionBoundaryState,
 ]:
     fitted_parameters = _mean_reversion_fitted_parameters(model)
+
     runtime_interval_anchors = _materialize_model_mean_reversion_runtime_interval_anchors(
         fitted_parameters=fitted_parameters,
         runtime_factors=runtime_factors,
@@ -947,6 +1057,7 @@ def _materialize_model_mean_reversion_runtime_interval_anchors(
         _runtime_datetime_from_utc_nanos(timestamp_utc_nanos)
         for timestamp_utc_nanos in hourly_factor_contract.interval_end_utc_nanos
     )
+
     interval_deltas = tuple(
         nanoseconds_to_hours(hourly_factor_contract.interval_duration_nanos)
         for _ in range(hourly_factor_contract.interval_count)
@@ -1009,6 +1120,7 @@ def _build_runtime_interval_end_times_utc(
     horizon_interval_count: int,
 ) -> tuple[datetime, ...]:
     interval_duration = timedelta(seconds=interval_duration_nanos / 1_000_000_000)
+
     return tuple(
         start_time_utc + interval_duration * interval_index
         for interval_index in range(1, horizon_interval_count + 1)
@@ -1048,7 +1160,9 @@ def _prepare_model_pricing_execution_input(
     valuation_time_utc: datetime,
     spot: float,
     strike: float,
-    maturity_interval: float,
+    expiry_timestamp_utc: Optional[datetime],
+    expiry_date: Optional[date],
+    tenor: Optional[str],
     payoff_type: VanillaOptionPayoffType | str,
     risk_free_rate: float,
     dividend_yield: float,
@@ -1058,10 +1172,20 @@ def _prepare_model_pricing_execution_input(
     include_integration_quality_diagnostics: bool,
     include_calibration_hooks: bool,
 ) -> VanillaOptionPricingExecutionInput:
+    resolved_maturity_inputs = resolve_single_high_level_pricing_maturity_input(
+        valuation_time_utc=valuation_time_utc,
+        expiry_timestamp_utc=expiry_timestamp_utc,
+        expiry_date=expiry_date,
+        tenor=tenor,
+    )
+
+    maturity_interval = resolved_maturity_inputs.maturity_intervals[0]
+
     horizon_interval_count = _pricing_interval_count_from_maturity_interval(
         maturity_interval,
-        field_path="maturity_interval",
+        field_path="maturity_input",
     )
+
     runtime_input = _prepare_model_pricing_runtime_input(
         model,
         valuation_time_utc=valuation_time_utc,
@@ -1124,11 +1248,13 @@ def _prepare_model_pricing_runtime_input(
         interval="1h",
         prefer_joint_pricing_block=True,
     )
+
     hourly_factor_contract = _build_model_pricing_hourly_factor_contract(
         model,
         runtime_factors=runtime_factors,
         valuation_time_utc=valuation_time_utc,
     )
+
     mean_reversion_fitted_parameters = _mean_reversion_fitted_parameters(model)
 
     if boundary_state is not None:
@@ -1259,17 +1385,30 @@ def _prepare_model_grouped_batch_pricing_native_input(
     include_integration_quality_diagnostics: bool,
     cpu_count: Optional[int],
 ) -> dict[str, Any]:
+    resolved_group_maturity_inputs = tuple(
+        resolve_high_level_pricing_maturity_axis(
+            valuation_time_utc=valuation_time_utc,
+            expiry_timestamps_utc=group.expiry_timestamps_utc,
+            expiry_dates=group.expiry_dates,
+            tenors=group.tenors,
+            field_path=f"batch.groups[{group_index}]",
+        )
+        for group_index, group in enumerate(batch.groups)
+    )
+
     interval_counts = tuple(
         _pricing_interval_count_from_maturity_interval(
             maturity_interval,
             field_path=(
-                f"batch.groups[{group_index}].maturity_intervals[{maturity_index}]"
+                f"batch.groups[{group_index}].maturity_inputs[{maturity_index}]"
             ),
         )
-        for group_index, group in enumerate(batch.groups)
-        for maturity_index, maturity_interval in enumerate(group.maturity_intervals)
+        for group_index, resolved_group in enumerate(resolved_group_maturity_inputs)
+        for maturity_index, maturity_interval in enumerate(resolved_group.maturity_intervals)
     )
+
     max_interval_count = max(interval_counts)
+
     runtime_input = _prepare_model_pricing_runtime_input(
         model,
         valuation_time_utc=valuation_time_utc,
@@ -1280,7 +1419,19 @@ def _prepare_model_grouped_batch_pricing_native_input(
     )
 
     return {
-        "request": batch.to_payload(),
+        "request": {
+            "spot": batch.spot,
+            "groups": [
+                {
+                    "payoff_type": group.payoff_type.value,
+                    "risk_free_rate": group.risk_free_rate,
+                    "dividend_yield": group.dividend_yield,
+                    "strikes": list(group.strikes),
+                    "maturity_intervals": list(resolved_group.maturity_intervals),
+                }
+                for group, resolved_group in zip(batch.groups, resolved_group_maturity_inputs, strict=True)
+            ],
+        },
         "boundary_input": AnchoredVanillaOptionPricingBoundaryInput(
             interval_index=0,
             hawkes_boundary_state=runtime_input.effective_boundary_state,
@@ -1314,14 +1465,26 @@ def _prepare_model_surface_pricing_native_input(
     include_integration_quality_diagnostics: bool,
     cpu_count: Optional[int],
 ) -> dict[str, Any]:
+    resolved_surface_maturity_inputs = resolve_high_level_pricing_maturity_axis(
+        valuation_time_utc=valuation_time_utc,
+        expiry_timestamps_utc=surface.expiry_timestamps_utc,
+        expiry_dates=surface.expiry_dates,
+        tenors=surface.tenors,
+        field_path="surface",
+    )
+
     interval_counts = tuple(
         _pricing_interval_count_from_maturity_interval(
             maturity_interval,
-            field_path=f"surface.maturity_intervals[{maturity_index}]",
+            field_path=f"surface.maturity_inputs[{maturity_index}]",
         )
-        for maturity_index, maturity_interval in enumerate(surface.maturity_intervals)
+        for maturity_index, maturity_interval in enumerate(
+            resolved_surface_maturity_inputs.maturity_intervals
+        )
     )
+
     max_interval_count = max(interval_counts)
+
     runtime_input = _prepare_model_pricing_runtime_input(
         model,
         valuation_time_utc=valuation_time_utc,
@@ -1332,7 +1495,14 @@ def _prepare_model_surface_pricing_native_input(
     )
 
     return {
-        "request": surface.to_payload(),
+        "request": {
+            "spot": surface.spot,
+            "strikes": list(surface.strikes),
+            "maturity_intervals": list(resolved_surface_maturity_inputs.maturity_intervals),
+            "payoff_type": surface.payoff_type.value,
+            "risk_free_rate": surface.risk_free_rate,
+            "dividend_yield": surface.dividend_yield,
+        },
         "boundary_input": AnchoredVanillaOptionPricingBoundaryInput(
             interval_index=0,
             hawkes_boundary_state=runtime_input.effective_boundary_state,
@@ -1555,11 +1725,13 @@ def _prepare_model_runtime_factors(
     _require_timezone_aware_datetime(start_time_utc, field_path="start_time_utc")
 
     interval_duration_nanos = _parse_interval_duration_nanos(interval, field_name="interval")
+
     range_end_utc = start_time_utc + timedelta(
         seconds=(interval_duration_nanos * horizon_interval_count) / 1_000_000_000
     )
 
     calendar_registry = CalendarRegistry(model.session_resolution.resolved_session_definition_json)
+
     exchange_code = model.session_resolution.exchange_code
 
     return_components_fitted_parameters = _return_components_fitted_parameters_payload(model)
@@ -1656,10 +1828,12 @@ def _current_state_tick_data_column_mapping(
             Mapping[str, Any],
             model.metadata.get("input_inference", {}),
         )
+
         tick_price_columns = cast(
             Mapping[str, Any],
             input_inference.get("tick_price_columns", {}),
         )
+
         timestamp_column = input_inference.get("timestamp_column")
         price_column = tick_price_columns.get("price_column")
         trade_sign_column = tick_price_columns.get("trade_sign_column")
@@ -1669,11 +1843,13 @@ def _current_state_tick_data_column_mapping(
                 "metadata.input_inference.timestamp_column",
                 "must be present so current-state estimation can read observed tick timestamps",
             )
+
         if not isinstance(price_column, str) or not price_column.strip():
             raise _calibration_error(
                 "metadata.input_inference.tick_price_columns.price_column",
                 "must be present so current-state estimation can read observed tick prices",
             )
+
         if not isinstance(trade_sign_column, str) or not trade_sign_column.strip():
             raise _calibration_error(
                 "metadata.input_inference.tick_price_columns.trade_sign_column",
@@ -1691,6 +1867,7 @@ def _current_state_tick_data_column_mapping(
             "tick_data_column_mapping.price_column",
             "is required for current-state estimation",
         )
+
     if column_mapping.trade_sign_column is None:
         raise _calibration_error(
             "tick_data_column_mapping.trade_sign_column",
@@ -1703,6 +1880,7 @@ def _current_state_tick_data_column_mapping(
 def _require_timezone_aware_datetime(value: datetime, *, field_path: str) -> None:
     if not isinstance(value, datetime):
         raise _calibration_error(field_path, "must be a datetime")
+
     if value.tzinfo is None:
         raise _calibration_error(field_path, "must be timezone-aware")
 
@@ -1870,6 +2048,7 @@ def _zero_closed_coarse_interval_seasonality_factors(
         return hourly_factor_contract
 
     payload = hourly_factor_contract.to_payload()
+
     gated_seasonality: list[float] = []
     contains_closed_interval = False
 
@@ -1910,6 +2089,7 @@ def _contains_structural_seasonality_parameters(
     seasonality_parameters: Mapping[str, Any],
 ) -> bool:
     intraday_factor_by_bin = seasonality_parameters.get("intraday_factor_by_bin")
+
     day_of_week_factor = seasonality_parameters.get("day_of_week_factor")
     day_of_year_factor = seasonality_parameters.get("day_of_year_factor")
 
@@ -2018,6 +2198,7 @@ def _surprise_baseline_intensity(model: JaniformModel) -> float:
         "surprise",
         "return_components.fitted_parameters.news_process_configuration.arrivals.surprise",
     )
+
     baseline_intensity = surprise.get("baseline_intensity")
     if not isinstance(baseline_intensity, int | float) or isinstance(baseline_intensity, bool):
         raise RuntimeError(
@@ -2035,6 +2216,7 @@ def _surprise_deterministic_time_multiplier_by_interval_index(
     interval_duration_nanos: int,
 ) -> dict[int, float]:
     weekly_hour_utc_multipliers = _surprise_weekly_hour_utc_multipliers(model)
+
     normalized_range_start_utc = _normalize_runtime_utc_timestamp(
         range_start_utc,
         field_name="range_start_utc",
@@ -2112,18 +2294,22 @@ def _average_weekly_hour_multiplier_over_interval(
     current = interval_start_utc
     while current < interval_end_utc:
         hour_start_utc = current.replace(minute=0, second=0, microsecond=0)
+
         next_hour_boundary_utc = (
             current + timedelta(hours=1)
             if current == hour_start_utc
             else hour_start_utc + timedelta(hours=1)
         )
+
         segment_end_utc = min(next_hour_boundary_utc, interval_end_utc)
+
         segment_duration_seconds = (segment_end_utc - current).total_seconds()
 
         weighted_multiplier_sum += (
             weekly_hour_utc_multipliers[_weekly_hour_bucket_index(current)]
             * segment_duration_seconds
         )
+
         weighted_duration_seconds += segment_duration_seconds
 
         current = segment_end_utc
@@ -2345,16 +2531,19 @@ def _build_model_metadata(
         )
         else None
     )
+
     session_preset_name = (
         resolved_configuration.session.selected_preset.preset_name
         if resolved_configuration.session.selected_preset is not None
         else None
     )
+
     known_news_preset_name = (
         resolved_configuration.known_news.selected_preset.preset_name
         if resolved_configuration.known_news.selected_preset is not None
         else None
     )
+
     known_news_event_count = len(resolved_configuration.known_news.configuration.events)
 
     calibration_scope = (

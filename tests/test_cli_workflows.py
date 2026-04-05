@@ -212,8 +212,8 @@ def test_cli_primary_workflows_smoke(
             "100.0",
             "--strike",
             "105.0",
-            "--maturity-interval",
-            "1.0",
+            "--tenor",
+            "1h",
             "--output",
             "json",
         ]

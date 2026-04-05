@@ -31,7 +31,7 @@ pricing = model.price_option(
     valuation_time_utc="2026-02-02T15:00:00Z",
     spot=1.0850,
     strike=1.0900,
-    maturity_interval=1.0,
+    tenor="1h",
 )
 ```
 

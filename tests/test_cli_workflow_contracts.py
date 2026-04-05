@@ -108,7 +108,9 @@ def test_price_cli_help_documents_model_driven_workflow_contract() -> None:
     assert "--valuation-time-utc VALUATION_TIME_UTC" in help_output
     assert "--spot SPOT" in help_output
     assert "--strike STRIKE" in help_output
-    assert "--maturity-interval MATURITY_INTERVAL" in help_output
+    assert "--expiry-timestamp-utc EXPIRY_TIMESTAMP_UTC" in help_output
+    assert "--expiry-date EXPIRY_DATE" in help_output
+    assert "--tenor TENOR" in help_output
     assert "--output-path PATH" in help_output
     assert cli_module.CLI_REPOSITORY_RELATIVE_PATH_POLICY in help_output
 
@@ -1665,8 +1667,8 @@ def test_price_cli_maps_model_and_flags_to_runtime_contract(
             "101.0",
             "--strike",
             "100.0",
-            "--maturity-interval",
-            "1.0",
+            "--tenor",
+            "1h",
             "--risk-free-rate",
             "0.02",
             "--dividend-yield",
@@ -1686,7 +1688,9 @@ def test_price_cli_maps_model_and_flags_to_runtime_contract(
     assert exit_code == int(cli_module.CliExitCode.SUCCESS), stderr_text
     assert captured_arguments["spot"] == pytest.approx(101.0)
     assert captured_arguments["strike"] == pytest.approx(100.0)
-    assert captured_arguments["maturity_interval"] == pytest.approx(1.0)
+    assert captured_arguments["tenor"] == "1h"
+    assert captured_arguments["expiry_timestamp_utc"] is None
+    assert captured_arguments["expiry_date"] is None
     assert captured_arguments["risk_free_rate"] == pytest.approx(0.02)
     assert captured_arguments["dividend_yield"] == pytest.approx(0.01)
     assert captured_arguments["payoff_type"] == "call"
@@ -1730,8 +1734,8 @@ def test_price_cli_prices_anchored_model_without_manual_boundary_state_input(
             "101.0",
             "--strike",
             "100.0",
-            "--maturity-interval",
-            "1.0",
+            "--tenor",
+            "1h",
             "--output",
             "json",
         ]
@@ -2034,8 +2038,8 @@ def test_pricing_cli_unexpected_failures_return_internal_exit_code(
             "101.0",
             "--strike",
             "100.0",
-            "--maturity-interval",
-            "1.0",
+            "--tenor",
+            "1h",
         ]
     )
 

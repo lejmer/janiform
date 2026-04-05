@@ -77,6 +77,24 @@ def test_vanilla_option_request_model_construction_and_roundtrip() -> None:
     assert json.loads(serialized_request)["payoff"]["payoff_type"] == "call"
 
 
+def test_parse_json_object_rejects_malformed_json() -> None:
+    with pytest.raises(ValueError, match="payload: must be valid JSON: unexpected character"):
+        parse_json_object(
+            "{foo",
+            "payload",
+            lambda field_path, message: ValueError(f"{field_path}: {message}"),
+        )
+
+
+def test_parse_json_object_rejects_non_object_payloads() -> None:
+    with pytest.raises(ValueError, match="payload: must decode to a JSON object"):
+        parse_json_object(
+            "[1, 2, 3]",
+            "payload",
+            lambda field_path, message: ValueError(f"{field_path}: {message}"),
+        )
+
+
 def test_vanilla_option_request_accepts_explicit_non_hourly_interval_delta() -> None:
     request = VanillaOptionPricingRequest(
         market_inputs=_valid_request_model().market_inputs,

@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale.v1",
-  "approved_snapshot_sha256": "00a4e8216447118e2b7f2df5827db326257c975c590ee818de35f4856b9d1565",
+  "approved_snapshot_sha256": "2ac2196d3747295e3ec620082dcb1ff11611e8fdab912290a30a4c551529bef6",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -934,6 +934,21 @@
       "summary": "Remove redundant pricing workflow validation and serialization wrappers.",
       "updated_surfaces": [
         "janiform.pricing"
+      ]
+    },
+    {
+      "approved_on": "2026-04-05",
+      "docs_updated": [
+        "docs/getting-started/first-model.md",
+        "docs/guides/python-workflows.md"
+      ],
+      "rationale": "High-level fitted-model pricing now accepts expiry timestamps, expiry dates, and relative tenors directly on the public pricing surface instead of forcing callers to precompute Janiform maturity intervals. The approved snapshot must therefore replace the old maturity-interval request fields on the high-level grouped-batch and surface contracts and expose the shared date parser in janiform.contracts.",
+      "snapshot_sha256": "2ac2196d3747295e3ec620082dcb1ff11611e8fdab912290a30a4c551529bef6",
+      "summary": "Approve direct expiry and tenor inputs on the high-level pricing API.",
+      "updated_surfaces": [
+        "janiform.calibration",
+        "janiform.calibration.fit",
+        "janiform.contracts"
       ]
     }
   ],

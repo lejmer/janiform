@@ -35,6 +35,7 @@ mod forward_law;
 mod fourier;
 mod grouped;
 mod implied_volatility;
+mod maturity_inputs;
 mod probability_projection;
 mod progress;
 mod progress_runtime;
@@ -120,6 +121,10 @@ pub use grouped::{
     run_vanilla_option_surface_pricing_with_observer,
 };
 pub use implied_volatility::VanillaOptionImpliedVolatilityInversionStatus;
+pub use maturity_inputs::{
+    HighLevelPricingMaturityResolution, HighLevelPricingMaturityResolutionError,
+    HighLevelPricingMaturityResolutionRequest, resolve_high_level_pricing_maturity_inputs,
+};
 pub use progress::{
     PricingNodeProgress, PricingNodeProgressPhase, PricingProgressEvent, PricingProgressPhase,
 };
