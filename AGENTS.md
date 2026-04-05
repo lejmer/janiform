@@ -61,6 +61,10 @@ This codebase is pre-v0.1 and has no external users.
   - If a file exceeds roughly 800 LoC, add new functionality in a new module instead of extending the existing file unless there is a strong-documented reason not to.
   - This rule applies especially to high-touch files that already attract unrelated changes.
   - When extracting code from a large module, move the related tests and module/type docs toward the new implementation so the invariants stay close to the code that owns them.
+- Avoid large functions:
+  - Prefer adding focused helpers over growing large functions even larger.
+  - Target functions under 100 LoC (tests don't have this limit).
+  - If a function exceeds roughly 200 LoC, add new functionality in a new function or helper instead of growing the existing function body.
 
 ## Rust
 
