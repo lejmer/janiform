@@ -1,0 +1,48 @@
+{
+  "calibration_row_count": 5000,
+  "carry_rate": 0.01,
+  "column_mapping": {
+    "ask_column": "ask",
+    "bid_column": "bid",
+    "expiry_timestamp_column": "expiry_utc",
+    "mid_price_column": "mid_price",
+    "option_type_column": "option_type",
+    "quote_timestamp_column": "quote_timestamp_utc",
+    "strike_column": "strike"
+  },
+  "discount_rate": 0.02,
+  "generator": "scripts/generate_synthetic_option_snapshot.py",
+  "market_profile": "eurusd_spot",
+  "maturity_intervals_hours": [
+    1.0,
+    2.0,
+    4.0,
+    8.0
+  ],
+  "observed_state_row_count": 256,
+  "output_path": ".artifacts/examples/option_surfaces/synthetic_eurusd_option_snapshot.parquet",
+  "payoff_types": [
+    "call",
+    "put"
+  ],
+  "quoted_spread_policy": {
+    "relative_bid_ask_width": 0.1,
+    "type": "proportional_mid_width"
+  },
+  "spot": 1.01037,
+  "strike_offsets_in_pips": [
+    -50,
+    -25,
+    -10,
+    0,
+    10,
+    25,
+    50
+  ],
+  "teacher_model_loaded_from_cache": false,
+  "teacher_model_path": ".artifacts/examples/models/synthetic_eurusd_data_1m_ticks_eurusd_spot_tail_5000.json",
+  "teacher_model_run_id": "synthetic_eurusd_data_1m_ticks_tail_5000_20260405T015459Z",
+  "tick_data_path": "data/Synthetic_EURUSD_Data_1M_ticks.parquet",
+  "valuation_row_offset_from_end": 0,
+  "valuation_time_utc": "2026-03-31T11:34:14.302000+00:00"
+}

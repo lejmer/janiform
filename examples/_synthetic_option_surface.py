@@ -71,24 +71,29 @@ def load_synthetic_eurusd_surface_context(
     carry_rate: float = DEFAULT_CARRY_RATE,
 ) -> SyntheticVanillaOptionSurfaceContext:
     underlying_frame: pd.DataFrame = pd.read_parquet(SYNTHETIC_EURUSD_TICK_DATA_PATH)
+
     valuation_row_position = valuation_row_position_from_end(
         underlying_frame,
         valuation_row_offset_from_end=valuation_row_offset_from_end,
     )
+
     valuation_time_utc = timestamp_at_row_position(
         underlying_frame,
         row_position=valuation_row_position,
     )
+
     spot = spot_at_row_position(
         underlying_frame,
         row_position=valuation_row_position,
     )
+
     observed_data = build_observed_state_request(
         underlying_frame,
         row_position=valuation_row_position,
         observed_price=spot,
         observed_state_row_count=observed_state_row_count,
     )
+
     persisted_model = load_or_fit_persisted_example_model(
         market_profile="eurusd_spot",
         tick_data_path=SYNTHETIC_EURUSD_TICK_DATA_PATH,

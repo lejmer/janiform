@@ -65,11 +65,32 @@ def _short_status_label(status: str) -> str:
             return "?"
 
 
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Price and plot a synthetic EUR/USD option surface from a fitted Janiform model.",
+    )
+
+    parser.add_argument(
+        "--output-path",
+        type=Path,
+        default=None,
+        help="Optional path to save the figure instead of displaying it interactively.",
+    )
+    parser.add_argument(
+        "--refit",
+        action="store_true",
+        help="Refit the cached synthetic EUR/USD example model before pricing.",
+    )
+
+    return parser.parse_args()
+
+
 def main() -> None:
     import matplotlib.pyplot as plt
     from matplotlib.colors import ListedColormap
 
     arguments = _parse_args()
+
     surface_context: SyntheticVanillaOptionSurfaceContext = (
         load_synthetic_eurusd_surface_context(
             force_refit=arguments.refit,
@@ -80,12 +101,16 @@ def main() -> None:
             carry_rate=DEFAULT_CARRY_RATE,
         )
     )
+
     valuation_time_utc = surface_context.valuation_time_utc
     spot = surface_context.spot
     observed_data = surface_context.observed_data
     persisted_model = surface_context.persisted_model
+
     model: JaniformModel = persisted_model.model
+
     strikes = surface_context.strikes
+
     price_rows: list[list[float | None]] = []
     implied_volatility_rows: list[list[float | None]] = []
     inversion_status_rows: list[list[str]] = []
@@ -101,11 +126,14 @@ def main() -> None:
             surface=surface,
             observed_data=observed_data,
         )
+
         price_rows = [list(price_row) for price_row in pricing_result.price_grid]
+
         implied_volatility_rows = [
             list(implied_volatility_row)
             for implied_volatility_row in pricing_result.implied_volatility_grid
         ]
+
         inversion_status_rows = [
             [status.value for status in status_row]
             for status_row in pricing_result.implied_volatility_inversion_status_grid
@@ -115,9 +143,7 @@ def main() -> None:
             price_rows.append([None for _strike in strikes])
             implied_volatility_rows.append([None for _strike in strikes])
             inversion_status_rows.append(["pricing_failed" for _strike in strikes])
-            pricing_failure_messages.append(
-                f"maturity {maturity_interval:.1f}: {error}"
-            )
+            pricing_failure_messages.append(f"maturity {maturity_interval:.1f}: {error}")
 
     has_any_implied_volatility_node = any(
         implied_volatility is not None
@@ -130,9 +156,7 @@ def main() -> None:
         for price in price_row
     )
     if not has_any_price_node:
-        raise RuntimeError(
-            "the synthetic EUR/USD example could not produce any pricing nodes"
-        )
+        raise RuntimeError("the synthetic EUR/USD example could not produce any pricing nodes")
 
     if not has_any_implied_volatility_node:
         print("pricing notes:")
@@ -155,9 +179,9 @@ def main() -> None:
     )
 
     if all(
-        implied_volatility is None
-        for implied_volatility_row in implied_volatility_rows
-        for implied_volatility in implied_volatility_row
+            implied_volatility is None
+            for implied_volatility_row in implied_volatility_rows
+            for implied_volatility in implied_volatility_row
     ):
         print("option price surface:")
         print(price_frame.to_string(float_format=lambda value: f"{value:.6f}"))
@@ -166,11 +190,13 @@ def main() -> None:
         f"model cache: {persisted_model.model_path} "
         f"({'loaded' if persisted_model.loaded_from_cache else 'fit'})"
     )
+
     print(f"fitted run id: {model.run_id}")
     print(f"valuation time utc: {valuation_time_utc.isoformat()}")
     print(f"spot: {spot:.5f}")
     print(f"calibration rows used: {surface_context.calibration_row_count}")
     print(f"observed state rows used: {surface_context.observed_state_row_count}")
+
     print(
         "flat assumptions:",
         {
@@ -179,6 +205,7 @@ def main() -> None:
             "payoff_type": VanillaOptionPayoffType.CALL.value,
         },
     )
+
     print("strike offsets in pips:", DEFAULT_STRIKE_OFFSETS_IN_PIPS)
 
     if pricing_failure_messages:
@@ -187,9 +214,11 @@ def main() -> None:
             print(f"  {message}")
 
     strike_axis = _format_float_axis(strikes)
+
     maturity_axis = [
         f"{maturity:.1f}" for maturity in surface_context.maturity_intervals_hours
     ]
+
     status_codes, status_labels = _status_grid_codes(
         tuple(tuple(status for status in status_row) for status_row in inversion_status_rows)
     )
@@ -242,7 +271,9 @@ def main() -> None:
         origin="lower",
         cmap="magma",
     )
+
     figure.colorbar(price_mesh, ax=price_plot, shrink=0.9)
+
     price_plot.set_title("Option Price")
     price_plot.set_xticks(range(len(strikes)), strike_axis, rotation=45, ha="right")
     price_plot.set_yticks(range(len(surface_context.maturity_intervals_hours)), maturity_axis)
@@ -258,12 +289,14 @@ def main() -> None:
         vmin=0,
         vmax=len(status_labels) - 1,
     )
+
     figure.colorbar(
         status_mesh,
         ax=status_plot,
         shrink=0.9,
         ticks=range(len(status_labels)),
     ).ax.set_yticklabels(status_labels)
+
     status_plot.set_title("IV Inversion Status")
     status_plot.set_xticks(range(len(strikes)), strike_axis, rotation=45, ha="right")
     status_plot.set_yticks(range(len(surface_context.maturity_intervals_hours)), maturity_axis)
@@ -287,26 +320,10 @@ def main() -> None:
     else:
         arguments.output_path.parent.mkdir(parents=True, exist_ok=True)
         figure.savefig(arguments.output_path, dpi=180)
+
         print(f"saved plot to: {arguments.output_path}")
+
         plt.close(figure)
-
-
-def _parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Price and plot a synthetic EUR/USD option surface from a fitted Janiform model.",
-    )
-    parser.add_argument(
-        "--output-path",
-        type=Path,
-        default=None,
-        help="Optional path to save the figure instead of displaying it interactively.",
-    )
-    parser.add_argument(
-        "--refit",
-        action="store_true",
-        help="Refit the cached synthetic EUR/USD example model before pricing.",
-    )
-    return parser.parse_args()
 
 
 if __name__ == "__main__":
