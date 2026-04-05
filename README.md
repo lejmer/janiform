@@ -1,5 +1,11 @@
 # Janiform
 
+[![CI](https://github.com/lejmer/janiform/actions/workflows/ci-fast-regression.yml/badge.svg?branch=develop)](https://github.com/lejmer/janiform/actions/workflows/ci-fast-regression.yml)
+[![License](https://img.shields.io/badge/license-AGPL--3.0--only-blue.svg)](https://github.com/lejmer/janiform/blob/develop/LICENSE)
+[![Python](https://img.shields.io/badge/python-3.12%2B-blue)](https://github.com/lejmer/janiform/blob/develop/pyproject.toml)
+[![Rust](https://img.shields.io/badge/rust-1.89%2B-orange)](https://github.com/lejmer/janiform/blob/develop/Cargo.toml)
+[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows-lightgrey)](https://github.com/lejmer/janiform)
+
 Janiform is a Python package and CLI for fitting, simulating, pricing, and validating a hyperrealistic high-frequency return model backed by a Rust workspace. Jnaiform comes both as a command-line interface and an importable Python package.
 
 Janiform is pre-v0.1. Install it from a source checkout with the local bootstrap scripts.
