@@ -13,16 +13,16 @@ Install Janiform from a source checkout with the bootstrap scripts below. They c
 ## Linux
 
 ```bash
-./scripts/bootstrap-linux.sh .venv
-source .venv/bin/activate
+./scripts/bootstrap-linux.sh .venv-linux
+source .venv-linux/bin/activate
 janiform --help
 ```
 
 ## Windows
 
 ```powershell
-./scripts/bootstrap-win.ps1 .venv
-. .\.venv\Scripts\Activate.ps1
+./scripts/bootstrap-win.ps1 .venv-win
+. .\.venv-win\Scripts\Activate.ps1
 janiform --help
 ```
 
@@ -33,11 +33,11 @@ Use the build scripts when you change Rust or Python code and want to refresh th
 ### Linux
 
 ```bash
-./scripts/build-linux.sh .venv
+./scripts/build-linux.sh .venv-linux
 ```
 
 ### Windows
 
 ```powershell
-./scripts/build-win.ps1 .venv
+./scripts/build-win.ps1 .venv-win
 ```
