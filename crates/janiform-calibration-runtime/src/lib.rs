@@ -227,8 +227,13 @@ pub use execution_bridge::{
     run_staged_calibration_from_execution_input_with_observer,
 };
 pub use market_data::{
-    CalibrationDirectionalLabelDiagnosticsPayload, MarketDataDuplicateRecordPolicy,
-    MarketDataInputFileFormat, MarketDataInputFileReference, MarketDataKnownNewsColumnMapping,
+    CalibrationDirectionalLabelDiagnosticsPayload, CalibrationMarketDataCarryInput,
+    CalibrationMarketDataColumnMapping, CalibrationMarketDataKnownNewsInput,
+    CalibrationMarketDataMeanReversionConfiguration, CalibrationMarketDataOutputPreferences,
+    CalibrationMarketDataPreparationDiagnostics, CalibrationMarketDataPreparationError,
+    CalibrationMarketDataPreparationProvenance, CalibrationMarketDataPreparationRequest,
+    CalibrationMarketDataWorkflowScope, MarketDataDuplicateRecordPolicy, MarketDataInputFileFormat,
+    MarketDataInputFileReference, MarketDataKnownNewsColumnMapping,
     MarketDataKnownNewsLoadingInput, MarketDataLoadingError, MarketDataLoadingOutput,
     MarketDataLoadingRequest, MarketDataNormalizationPolicy, MarketDataNormalizedTickOutput,
     MarketDataOptionQuoteInputPolicy, MarketDataOptionSurfaceColumnMapping,
@@ -241,9 +246,11 @@ pub use market_data::{
     MarketDataTranslationPreprocessingSettings,
     MarketDataTranslationReturnComponentsPreprocessingSettings,
     MarketDataTranslationSeasonalityPreprocessingSettings, MarketDataTranslationTickRecord,
-    load_and_preprocess_market_data_translation_request, normalize_market_data_source,
-    prepare_market_data_loading_from_phases, preprocess_market_data_translation_request,
-    probe_market_data_source, resolve_market_data_session_configuration,
+    PreparedMarketDataCalibrationPlan, load_and_preprocess_market_data_translation_request,
+    normalize_market_data_source, prepare_market_data_calibration_plan,
+    prepare_market_data_calibration_plan_from_phases, prepare_market_data_loading_from_phases,
+    preprocess_market_data_translation_request, probe_market_data_source,
+    resolve_market_data_session_configuration,
 };
 pub use objective::{
     CALIBRATION_CONSTRAINED_OPTIMIZER_ADAPTER_BOUNDS_POLICY,

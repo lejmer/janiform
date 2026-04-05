@@ -24,7 +24,7 @@ use crate::types::{
 };
 
 #[pyfunction]
-#[pyo3(signature = (exchange_local_minute_of_day, *, minutes_per_bin = 1, smoothing_kernel = "gaussian", smoothing_bandwidth_bins = 3.0, minimum_bin_events = 1, pseudocount = 1e-6))]
+#[pyo3(signature = (exchange_local_minute_of_day, *, minutes_per_bin, smoothing_kernel, smoothing_bandwidth_bins, minimum_bin_events, pseudocount))]
 fn estimate_intraday_seasonality(
     py: Python<'_>,
     exchange_local_minute_of_day: &Bound<'_, PyAny>,
@@ -60,7 +60,7 @@ fn estimate_intraday_seasonality(
 }
 
 #[pyfunction]
-#[pyo3(signature = (exchange_local_day_of_week, *, minimum_bucket_events = 1, pseudocount = 1e-6))]
+#[pyo3(signature = (exchange_local_day_of_week, *, minimum_bucket_events, pseudocount))]
 fn estimate_day_of_week_seasonality(
     py: Python<'_>,
     exchange_local_day_of_week: &Bound<'_, PyAny>,
@@ -88,7 +88,7 @@ fn estimate_day_of_week_seasonality(
 }
 
 #[pyfunction]
-#[pyo3(signature = (exchange_local_day_of_year, *, minimum_bucket_events = 1, pseudocount = 1e-6))]
+#[pyo3(signature = (exchange_local_day_of_year, *, minimum_bucket_events, pseudocount))]
 fn estimate_day_of_year_seasonality(
     py: Python<'_>,
     exchange_local_day_of_year: &Bound<'_, PyAny>,
@@ -116,7 +116,7 @@ fn estimate_day_of_year_seasonality(
 }
 
 #[pyfunction]
-#[pyo3(signature = (timestamp_utc_nanos, exchange_local_minute_of_day, exchange_local_day_of_week, exchange_local_day_of_year, intraday_log_component_by_bin, day_of_week_log_component, day_of_year_log_component, *, intraday_minutes_per_bin = 1, scheduled_event_overlays = None))]
+#[pyo3(signature = (timestamp_utc_nanos, exchange_local_minute_of_day, exchange_local_day_of_week, exchange_local_day_of_year, intraday_log_component_by_bin, day_of_week_log_component, day_of_year_log_component, *, intraday_minutes_per_bin, scheduled_event_overlays = None))]
 fn compose_deterministic_seasonality_signal(
     py: Python<'_>,
     timestamp_utc_nanos: &Bound<'_, PyAny>,
@@ -134,31 +134,37 @@ fn compose_deterministic_seasonality_signal(
             "timestamp_utc_nanos must be an iterable of integer UTC nanosecond values",
         )
     })?;
+
     let minute_of_day_values: Vec<u16> = exchange_local_minute_of_day.extract().map_err(|_| {
         SeasonalityInputValidationError::new_err(
             "exchange_local_minute_of_day must be an iterable of integer minute-of-day values",
         )
     })?;
+
     let day_of_week_values: Vec<u8> = exchange_local_day_of_week.extract().map_err(|_| {
         SeasonalityInputValidationError::new_err(
             "exchange_local_day_of_week must be an iterable of integer day-of-week values",
         )
     })?;
+
     let day_of_year_values: Vec<u16> = exchange_local_day_of_year.extract().map_err(|_| {
         SeasonalityInputValidationError::new_err(
             "exchange_local_day_of_year must be an iterable of integer day-of-year values",
         )
     })?;
+
     let intraday_log_values: Vec<f64> = intraday_log_component_by_bin.extract().map_err(|_| {
         SeasonalityInputValidationError::new_err(
             "intraday_log_component_by_bin must be an iterable of float values",
         )
     })?;
+
     let day_of_week_log_values: Vec<f64> = day_of_week_log_component.extract().map_err(|_| {
         SeasonalityInputValidationError::new_err(
             "day_of_week_log_component must be an iterable of float values",
         )
     })?;
+
     let day_of_year_log_values: Vec<f64> = day_of_year_log_component.extract().map_err(|_| {
         SeasonalityInputValidationError::new_err(
             "day_of_year_log_component must be an iterable of float values",
@@ -187,7 +193,7 @@ fn compose_deterministic_seasonality_signal(
 }
 
 #[pyfunction]
-#[pyo3(signature = (dataset_id, preprocessed_events, intraday_estimate, day_of_week_estimate, day_of_year_estimate, composition, *, estimator_version = "seasonality_estimator.v1"))]
+#[pyo3(signature = (dataset_id, preprocessed_events, intraday_estimate, day_of_week_estimate, day_of_year_estimate, composition, *, estimator_version))]
 fn generate_seasonality_diagnostics_report(
     py: Python<'_>,
     dataset_id: &str,

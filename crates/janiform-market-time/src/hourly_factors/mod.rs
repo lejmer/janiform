@@ -14,11 +14,12 @@ pub use contract::{
     HOURLY_FACTOR_SPRING_FORWARD_POLICY, HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY,
     HOURLY_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION,
     HOURLY_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION, HourlyFactorContractDiagnostics,
-    HourlyFactorContractError, HourlyFactorContractOutput, HourlyFactorMaterializationMetadata,
-    HourlyNewsIntensityMaterializationDiagnostics, HourlyNewsIntensityMaterializationMetadata,
-    HourlyNewsIntensityMaterializationOutput, HourlySeasonalityMaterializationDiagnostics,
-    HourlySeasonalityMaterializationMetadata, HourlySeasonalityMaterializationOutput,
-    build_hourly_factor_contract, materialize_hourly_news_intensity_factors,
+    HourlyFactorContractError, HourlyFactorContractOutput, HourlyFactorContractPayload,
+    HourlyFactorMaterializationMetadata, HourlyNewsIntensityMaterializationDiagnostics,
+    HourlyNewsIntensityMaterializationMetadata, HourlyNewsIntensityMaterializationOutput,
+    HourlySeasonalityMaterializationDiagnostics, HourlySeasonalityMaterializationMetadata,
+    HourlySeasonalityMaterializationOutput, build_hourly_factor_contract,
+    load_hourly_factor_contract, materialize_hourly_news_intensity_factors,
     materialize_hourly_seasonality_factors,
 };
 pub use provider::{

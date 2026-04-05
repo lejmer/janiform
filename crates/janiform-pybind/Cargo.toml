@@ -18,4 +18,3 @@ janiform = { path = "../janiform" }
 pyo3 = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-tracing-subscriber = { version = "0.3.20", features = ["env-filter", "fmt"] }
