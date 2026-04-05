@@ -28,7 +28,7 @@ use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 fn vanilla_option_pricing_runner_executes_public_workflow_with_optional_outputs() {
     let execution_input = VanillaOptionPricingExecutionInput::try_new(
         VanillaOptionPricingRequest::try_new(
-            VanillaOptionPricingMarketInputs::try_new(101.0, 100.0, 1.0, 0.02, 0.01)
+            VanillaOptionPricingMarketInputs::try_new_single_node(101.0, 100.0, 1.0, 0.02, 0.01)
                 .expect("market inputs should construct"),
             VanillaOptionPayoffConfiguration {
                 payoff_type: VanillaOptionPayoffType::Call,
@@ -99,8 +99,9 @@ fn vanilla_option_pricing_runner_matches_zero_anchor_and_shifted_anchor_for_zero
         y_minus_minus: 0.0,
     };
 
-    let market_inputs = VanillaOptionPricingMarketInputs::try_new(101.0, 100.0, 1.0, 0.02, 0.01)
-        .expect("market inputs should construct");
+    let market_inputs =
+        VanillaOptionPricingMarketInputs::try_new_single_node(101.0, 100.0, 1.0, 0.02, 0.01)
+            .expect("market inputs should construct");
 
     let payoff = VanillaOptionPayoffConfiguration {
         payoff_type: VanillaOptionPayoffType::Call,
@@ -115,7 +116,7 @@ fn vanilla_option_pricing_runner_matches_zero_anchor_and_shifted_anchor_for_zero
         VanillaOptionPricingOptionalOutputSelection::new(true, true, true);
 
     let zero_anchor_request = VanillaOptionPricingRequest::try_new(
-        market_inputs,
+        market_inputs.clone(),
         payoff,
         AnchoredVanillaOptionPricingBoundaryInput::try_new(
             0,
@@ -272,7 +273,7 @@ fn vanilla_option_grouped_batch_pricing_matches_single_option_runner_on_shared_g
         let single_result = run_vanilla_option_pricing(
             VanillaOptionPricingExecutionInput::try_new(
                 VanillaOptionPricingRequest::try_new(
-                    VanillaOptionPricingMarketInputs::try_new(
+                    VanillaOptionPricingMarketInputs::try_new_single_node(
                         101.0,
                         strike,
                         maturity_interval,
@@ -343,12 +344,17 @@ fn vanilla_option_surface_pricing_matches_single_option_runner_on_shared_grid() 
     let surface_result =
         run_vanilla_option_surface_pricing(VanillaOptionSurfacePricingExecutionInput {
             request: VanillaOptionSurfacePricingRequest {
-                spot: 101.0,
-                strikes: vec![95.0, 105.0],
-                maturity_intervals: vec![1.0],
-                payoff_type: VanillaOptionPayoffType::Call,
-                risk_free_rate: 0.01,
-                dividend_yield: 0.0,
+                market_inputs: VanillaOptionPricingMarketInputs::try_new(
+                    101.0,
+                    vec![95.0, 105.0],
+                    vec![1.0],
+                    0.01,
+                    0.0,
+                )
+                .expect("surface market inputs should construct"),
+                payoff: VanillaOptionPayoffConfiguration {
+                    payoff_type: VanillaOptionPayoffType::Call,
+                },
             },
             boundary_input: boundary_input.clone(),
             model_parameters: model_parameters.clone(),
@@ -382,7 +388,7 @@ fn vanilla_option_surface_pricing_matches_single_option_runner_on_shared_grid() 
             let single_result = run_vanilla_option_pricing(
                 VanillaOptionPricingExecutionInput::try_new(
                     VanillaOptionPricingRequest::try_new(
-                        VanillaOptionPricingMarketInputs::try_new(
+                        VanillaOptionPricingMarketInputs::try_new_single_node(
                             101.0,
                             strike,
                             maturity_interval,

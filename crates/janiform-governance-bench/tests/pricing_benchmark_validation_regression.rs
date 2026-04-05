@@ -410,7 +410,7 @@ fn pricing_benchmark_fixture_schema_and_metadata_are_valid() {
         {
             // Use Black-Scholes closed form as a stable baseline for fixture values.
             let expected_benchmark_price = black_scholes_price(
-                fixture_case.market_inputs,
+                &fixture_case.market_inputs,
                 fixture_case.payoff_type,
                 fixture_case.volatility,
             );
@@ -585,8 +585,10 @@ fn pricing_sanity_bounds_and_pathology_flags_hold_for_benchmark_fixture() {
                 observed_price,
                 diagnostics,
             } => {
-                let (lower_bound, upper_bound) =
-                    no_arbitrage_price_bounds(fixture_case.market_inputs, fixture_case.payoff_type);
+                let (lower_bound, upper_bound) = no_arbitrage_price_bounds(
+                    &fixture_case.market_inputs,
+                    fixture_case.payoff_type,
+                );
                 let tolerance = fixture_document
                     .sanity_guardrails
                     .no_arbitrage_absolute_tolerance;
@@ -654,13 +656,17 @@ fn pricing_sanity_bounds_and_pathology_flags_hold_for_benchmark_fixture() {
 
         assert_eq!(call_case.market_inputs, put_case.market_inputs);
 
-        let market_inputs = call_case.market_inputs;
-        let maturity_year_fraction =
-            market_inputs.maturity_interval / INTRADAY_PRICING_HOURS_PER_YEAR;
+        let market_inputs = &call_case.market_inputs;
+        let maturity_year_fraction = market_inputs
+            .single_maturity_interval()
+            .expect("put-call parity fixture should be single-node")
+            / INTRADAY_PRICING_HOURS_PER_YEAR;
         let discounted_spot =
             market_inputs.spot * (-market_inputs.dividend_yield * maturity_year_fraction).exp();
-        let discounted_strike =
-            market_inputs.strike * (-market_inputs.risk_free_rate * maturity_year_fraction).exp();
+        let discounted_strike = market_inputs
+            .single_strike()
+            .expect("put-call parity fixture should be single-node")
+            * (-market_inputs.risk_free_rate * maturity_year_fraction).exp();
         let expected_parity_gap = discounted_spot - discounted_strike;
         let observed_parity_gap = call_price - put_price;
 
@@ -777,7 +783,7 @@ fn run_benchmark_case(
         .to_core(&fixture_case.fixture_id);
 
     let outcome = match price_vanilla_option_via_fourier_inversion(
-        fixture_case.market_inputs,
+        &fixture_case.market_inputs,
         VanillaOptionPayoffConfiguration {
             payoff_type: fixture_case.payoff_type,
         },
@@ -785,7 +791,7 @@ fn run_benchmark_case(
         |argument| {
             // Keep benchmark CF external to Janiform so pricing drift is isolated.
             black_scholes_log_return_characteristic_function(
-                fixture_case.market_inputs,
+                &fixture_case.market_inputs,
                 fixture_case.volatility,
                 argument,
             )
@@ -806,7 +812,7 @@ fn run_benchmark_case(
 
     PricingBenchmarkObservedCaseResult {
         fixture_id: fixture_case.fixture_id.clone(),
-        market_inputs: fixture_case.market_inputs,
+        market_inputs: fixture_case.market_inputs.clone(),
         payoff_type: fixture_case.payoff_type,
         outcome,
     }

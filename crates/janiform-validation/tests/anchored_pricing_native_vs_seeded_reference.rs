@@ -334,7 +334,13 @@ fn assert_anchored_diagnostics_match_baseline(
 
 fn estimate_seeded_reference_price(scenario: &ScenarioDefinition, path_count: usize) -> f64 {
     let market_inputs = pricing_market_inputs();
-    let discount_factor = (-market_inputs.risk_free_rate * market_inputs.maturity_interval).exp();
+    let maturity_interval = market_inputs
+        .single_maturity_interval()
+        .expect("seeded reference pricing inputs should be single-node");
+    let strike = market_inputs
+        .single_strike()
+        .expect("seeded reference pricing inputs should be single-node");
+    let discount_factor = (-market_inputs.risk_free_rate * maturity_interval).exp();
     let initial_observed_log_price = scenario.observed_boundary_state.observed_log_price;
 
     let mut discounted_payoff_sum = 0.0_f64;
@@ -361,7 +367,7 @@ fn estimate_seeded_reference_price(scenario: &ScenarioDefinition, path_count: us
         let terminal_observed_log_return = terminal_observed_log_price - initial_observed_log_price;
         let terminal_spot = market_inputs.spot * terminal_observed_log_return.exp();
 
-        let payoff = (terminal_spot - market_inputs.strike).max(0.0);
+        let payoff = (terminal_spot - strike).max(0.0);
 
         discounted_payoff_sum += discount_factor * payoff;
     }
@@ -395,7 +401,7 @@ fn run_native_pricer_for_scenario(
 }
 
 fn pricing_market_inputs() -> VanillaOptionPricingMarketInputs {
-    VanillaOptionPricingMarketInputs::try_new(100.0, 80.0, 1.0, 0.0, 0.0)
+    VanillaOptionPricingMarketInputs::try_new_single_node(100.0, 80.0, 1.0, 0.0, 0.0)
         .expect("synthetic pricing market inputs should construct")
 }
 
