@@ -105,8 +105,8 @@
       "payoff_type": "call",
       "market_inputs": {
         "spot": 100.0,
-        "strike": 90.0,
-        "maturity_interval": 8766.0,
+        "strikes": [90.0],
+        "maturity_intervals": [8766.0],
         "risk_free_rate": 0.02,
         "dividend_yield": 0.01
       },
@@ -144,8 +144,8 @@
       "payoff_type": "call",
       "market_inputs": {
         "spot": 100.0,
-        "strike": 100.0,
-        "maturity_interval": 8766.0,
+        "strikes": [100.0],
+        "maturity_intervals": [8766.0],
         "risk_free_rate": 0.02,
         "dividend_yield": 0.01
       },
@@ -183,8 +183,8 @@
       "payoff_type": "call",
       "market_inputs": {
         "spot": 100.0,
-        "strike": 110.0,
-        "maturity_interval": 8766.0,
+        "strikes": [110.0],
+        "maturity_intervals": [8766.0],
         "risk_free_rate": 0.02,
         "dividend_yield": 0.01
       },
@@ -222,8 +222,8 @@
       "payoff_type": "put",
       "market_inputs": {
         "spot": 100.0,
-        "strike": 90.0,
-        "maturity_interval": 8766.0,
+        "strikes": [90.0],
+        "maturity_intervals": [8766.0],
         "risk_free_rate": 0.02,
         "dividend_yield": 0.01
       },
@@ -261,8 +261,8 @@
       "payoff_type": "put",
       "market_inputs": {
         "spot": 100.0,
-        "strike": 100.0,
-        "maturity_interval": 8766.0,
+        "strikes": [100.0],
+        "maturity_intervals": [8766.0],
         "risk_free_rate": 0.02,
         "dividend_yield": 0.01
       },
@@ -300,8 +300,8 @@
       "payoff_type": "put",
       "market_inputs": {
         "spot": 100.0,
-        "strike": 110.0,
-        "maturity_interval": 8766.0,
+        "strikes": [110.0],
+        "maturity_intervals": [8766.0],
         "risk_free_rate": 0.02,
         "dividend_yield": 0.01
       },
@@ -339,8 +339,8 @@
       "payoff_type": "call",
       "market_inputs": {
         "spot": 100.0,
-        "strike": 100.0,
-        "maturity_interval": 8766.0,
+        "strikes": [100.0],
+        "maturity_intervals": [8766.0],
         "risk_free_rate": 0.02,
         "dividend_yield": 0.01
       },

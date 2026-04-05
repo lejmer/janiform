@@ -39,6 +39,7 @@ from janiform.pricing import (
     VanillaOptionPricingRequest,
     VanillaOptionPricingResponse,
     VanillaOptionPricingRunResult,
+    VanillaOptionPricingStatus,
     VanillaOptionPricingValidationError,
     run_vanilla_option_pricing,
 )
@@ -386,6 +387,8 @@ def _build_pricing_direct_response_payload(calendar_registry, tmp_path: Path) ->
 
     return VanillaOptionPricingResponse.from_mapping(
         {
+            "pricing_status": VanillaOptionPricingStatus.SUCCEEDED.value,
+            "pricing_failure_diagnostic": None,
             "price": 12.5,
             "implied_volatility": 0.2,
             "implied_volatility_inversion_status": "succeeded",
@@ -438,6 +441,8 @@ def _build_pricing_direct_run_result_payload(calendar_registry, tmp_path: Path) 
                 ],
             },
             "response": {
+                "pricing_status": VanillaOptionPricingStatus.SUCCEEDED.value,
+                "pricing_failure_diagnostic": None,
                 "price": 12.5,
                 "implied_volatility": 0.2,
                 "implied_volatility_inversion_status": "succeeded",

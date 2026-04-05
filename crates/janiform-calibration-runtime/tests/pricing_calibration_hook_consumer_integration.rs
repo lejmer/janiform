@@ -7,7 +7,7 @@ use janiform_engine_pricing::{
     VanillaOptionPayoffConfiguration, VanillaOptionPayoffType, VanillaOptionPricingDiagnostics,
     VanillaOptionPricingMarketInputs, VanillaOptionPricingModelParameters,
     VanillaOptionPricingOptionalOutputSelection, VanillaOptionPricingRequest,
-    VanillaOptionPricingResponse, build_pricing_transform_input,
+    VanillaOptionPricingResponse, VanillaOptionPricingStatus, build_pricing_transform_input,
     build_vanilla_option_pricing_run_result, price_vanilla_option_via_fourier_inversion,
     solve_exponential_affine_transform,
 };
@@ -29,27 +29,33 @@ use support::shared::black_scholes_log_return_characteristic_function;
 
 #[test]
 fn pricing_run_output_hooks_are_directly_consumable_by_calibration_adapter() {
-    let market_inputs = VanillaOptionPricingMarketInputs::try_new(101.0, 100.0, 0.5, 0.02, 0.01)
-        .expect("market inputs should construct");
+    let market_inputs =
+        VanillaOptionPricingMarketInputs::try_new_single_node(101.0, 100.0, 0.5, 0.02, 0.01)
+            .expect("market inputs should construct");
+    let maturity_interval = market_inputs
+        .single_maturity_interval()
+        .expect("market inputs should have a single maturity interval");
 
     let forward_price = market_inputs.spot
-        * ((market_inputs.risk_free_rate - market_inputs.dividend_yield)
-            * market_inputs.maturity_interval)
-            .exp();
+        * ((market_inputs.risk_free_rate - market_inputs.dividend_yield) * maturity_interval).exp();
 
-    let discount_factor = (-market_inputs.risk_free_rate * market_inputs.maturity_interval).exp();
+    let discount_factor = (-market_inputs.risk_free_rate * maturity_interval).exp();
 
     let response = VanillaOptionPricingResponse::try_new(
-        12.5,
-        VanillaOptionPricingDiagnostics::try_new(
-            forward_price,
-            discount_factor,
-            market_inputs.maturity_interval,
-            0.55,
-        )
-        .expect("response diagnostics should construct"),
+        VanillaOptionPricingStatus::Succeeded,
+        None,
+        Some(12.5),
+        Some(
+            VanillaOptionPricingDiagnostics::try_new(
+                forward_price,
+                discount_factor,
+                maturity_interval,
+                0.55,
+            )
+            .expect("response diagnostics should construct"),
+        ),
         Some(0.2),
-        janiform_engine_pricing::VanillaOptionImpliedVolatilityInversionStatus::Succeeded,
+        Some(janiform_engine_pricing::VanillaOptionImpliedVolatilityInversionStatus::Succeeded),
     )
     .expect("response should construct");
 
@@ -103,7 +109,7 @@ fn pricing_run_output_hooks_are_directly_consumable_by_calibration_adapter() {
     .expect("pricing model parameters should construct");
 
     let pricing_request = VanillaOptionPricingRequest::try_new(
-        market_inputs,
+        market_inputs.clone(),
         VanillaOptionPayoffConfiguration {
             payoff_type: VanillaOptionPayoffType::Call,
         },
@@ -142,13 +148,13 @@ fn pricing_run_output_hooks_are_directly_consumable_by_calibration_adapter() {
         .expect("transform solve should succeed");
 
     let integration_diagnostics = price_vanilla_option_via_fourier_inversion(
-        market_inputs,
+        &market_inputs,
         VanillaOptionPayoffConfiguration {
             payoff_type: VanillaOptionPayoffType::Call,
         },
         FourierInversionEngineSettings::default(),
         // Use a Black-Scholes baseline here to validate wiring, not Janiform dynamics.
-        |argument| black_scholes_log_return_characteristic_function(market_inputs, 0.2, argument),
+        |argument| black_scholes_log_return_characteristic_function(&market_inputs, 0.2, argument),
     )
     .expect("Fourier pricing run should succeed")
     .diagnostics;

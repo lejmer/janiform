@@ -1,4 +1,5 @@
 import json
+from dataclasses import replace
 from typing import Any
 
 import pytest
@@ -24,6 +25,8 @@ from janiform.pricing import (
     VanillaOptionPayoffConfiguration,
     VanillaOptionPayoffType,
     VanillaOptionPricingDiagnostics,
+    VanillaOptionPricingFailureDiagnostic,
+    VanillaOptionPricingFailureStage,
     VanillaOptionPricingExecutionInput,
     VanillaOptionPricingMarketInputs,
     VanillaOptionPricingModelParameters,
@@ -31,6 +34,7 @@ from janiform.pricing import (
     VanillaOptionPricingRequest,
     VanillaOptionPricingResponse,
     VanillaOptionPricingRunResult,
+    VanillaOptionPricingStatus,
     VanillaOptionSurfacePricingExecutionInput,
     VanillaOptionSurfacePricingNodeTable,
     VanillaOptionSurfacePricingRequest,
@@ -156,6 +160,8 @@ def test_vanilla_option_request_roundtrip_preserves_fourier_inversion_settings()
 
 def test_vanilla_option_response_model_construction_and_roundtrip() -> None:
     response = VanillaOptionPricingResponse(
+        pricing_status=VanillaOptionPricingStatus.SUCCEEDED,
+        pricing_failure_diagnostic=None,
         price=12.5,
         diagnostics=VanillaOptionPricingDiagnostics(
             forward_price=104.3,
@@ -230,6 +236,18 @@ def test_vanilla_option_surface_response_derives_node_table_and_roundtrip() -> N
                 VanillaOptionImpliedVolatilityInversionStatus.SUCCEEDED,
             ),
         ),
+        pricing_status_grid=(
+            (
+                VanillaOptionPricingStatus.SUCCEEDED,
+                VanillaOptionPricingStatus.SUCCEEDED,
+            ),
+            (
+                VanillaOptionPricingStatus.SUCCEEDED,
+                VanillaOptionPricingStatus.SUCCEEDED,
+            ),
+        ),
+        pricing_failure_stage_grid=((None, None), (None, None)),
+        pricing_failure_reason_grid=((None, None), (None, None)),
         forward_price_grid=((100.5, 100.5), (101.0, 101.0)),
         discount_factor_grid=((0.99, 0.99), (0.98, 0.98)),
         boundary_state_norm_grid=((0.1, 0.2), (0.3, 0.4)),
@@ -244,12 +262,20 @@ def test_vanilla_option_surface_response_derives_node_table_and_roundtrip() -> N
             ),
             model_prices=(8.0, 6.0, 10.0, 7.0),
             implied_volatilities=(0.22, 0.19, 0.24, 0.2),
-            node_statuses=(
+            implied_volatility_inversion_statuses=(
                 VanillaOptionImpliedVolatilityInversionStatus.SUCCEEDED,
                 VanillaOptionImpliedVolatilityInversionStatus.SUCCEEDED,
                 VanillaOptionImpliedVolatilityInversionStatus.SUCCEEDED,
                 VanillaOptionImpliedVolatilityInversionStatus.SUCCEEDED,
             ),
+            pricing_statuses=(
+                VanillaOptionPricingStatus.SUCCEEDED,
+                VanillaOptionPricingStatus.SUCCEEDED,
+                VanillaOptionPricingStatus.SUCCEEDED,
+                VanillaOptionPricingStatus.SUCCEEDED,
+            ),
+            pricing_failure_stages=(None, None, None, None),
+            pricing_failure_reasons=(None, None, None, None),
             forward_prices=(100.5, 100.5, 101.0, 101.0),
             discount_factors=(0.99, 0.99, 0.98, 0.98),
             boundary_state_norms=(0.1, 0.2, 0.3, 0.4),
@@ -281,7 +307,10 @@ def test_vanilla_option_surface_response_derives_node_table_and_roundtrip() -> N
         "option_type": "call",
         "model_price": 8.0,
         "implied_volatility": 0.22,
-        "node_status": "succeeded",
+        "implied_volatility_inversion_status": "succeeded",
+        "pricing_status": "succeeded",
+        "pricing_failure_stage": None,
+        "pricing_failure_reason": None,
         "forward_price": 100.5,
         "discount_factor": 0.99,
         "boundary_state_norm": 0.1,
@@ -356,7 +385,7 @@ def test_vanilla_option_response_rejects_negative_price_with_structured_error() 
 
     assert captured_error.value.failure.error_id == "pricing.validation.contract"
     assert captured_error.value.failure.field_path == "price"
-    assert captured_error.value.failure.message == "must be non-negative"
+    assert "non-negative" in captured_error.value.failure.message
 
 
 def test_vanilla_option_response_rejects_missing_implied_volatility_for_successful_status() -> None:
@@ -593,11 +622,36 @@ def test_run_vanilla_option_surface_pricing_executes_native_workflow_with_typed_
     assert records[-1]["strike"] == pytest.approx(run_result.response.strikes[-1])
     assert records[-1]["maturity_interval"] == pytest.approx(run_result.response.maturity_intervals[0])
     assert {
-        record["node_status"] for record in records
+        record["pricing_status"] for record in records
     } <= {
-        status.value
-        for status in VanillaOptionImpliedVolatilityInversionStatus
+        status.value for status in VanillaOptionPricingStatus
     }
+
+
+def test_surface_pricing_preserves_partial_success_with_node_failure_diagnostics() -> None:
+    execution_input = build_anchored_surface_execution_input_model()
+    adjusted_market_inputs = replace(
+        execution_input.request.market_inputs,
+        strikes=(1e-6, 95.0, 105.0),
+    )
+    adjusted_request = replace(execution_input.request, market_inputs=adjusted_market_inputs)
+
+    run_result = run_vanilla_option_surface_pricing(
+        replace(execution_input, request=adjusted_request)
+    )
+
+    assert run_result.response.pricing_status_grid[0] == (
+        VanillaOptionPricingStatus.FAILED,
+        VanillaOptionPricingStatus.SUCCEEDED,
+        VanillaOptionPricingStatus.SUCCEEDED,
+    )
+    assert run_result.response.price_grid[0][0] is None
+    assert run_result.response.pricing_failure_stage_grid[0][0] is VanillaOptionPricingFailureStage.FOURIER_PRICING
+    assert "Fourier inversion failed" in (
+        run_result.response.pricing_failure_reason_grid[0][0] or ""
+    )
+    assert run_result.response.price_grid[0][1] is not None
+    assert run_result.response.price_grid[0][2] is not None
 
 
 def test_vanilla_option_pricing_run_result_roundtrip_preserves_required_schema_fields() -> None:
@@ -785,6 +839,8 @@ def _valid_request_payload() -> dict[str, Any]:
 
 def _valid_response_payload() -> dict[str, Any]:
     return {
+        "pricing_status": "succeeded",
+        "pricing_failure_diagnostic": None,
         "price": 12.5,
         "diagnostics": {
             "forward_price": 104.3,

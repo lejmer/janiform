@@ -64,6 +64,7 @@ from janiform.mean_reversion import (
 from janiform.pricing import (
     VanillaOptionImpliedVolatilityInversionStatus,
     VanillaOptionPayoffType,
+    VanillaOptionPricingStatus,
 )
 from janiform.seasonality import IntradaySmoothingKernel, SessionFilter
 from janiform.simulation import SeededTickEventSide, SeededTickEventStateSnapshotCapture
@@ -2993,6 +2994,9 @@ def test_high_level_model_price_option_groups_dispatches_through_grouped_batch_p
                 implied_volatility_inversion_status_grid=((
                     VanillaOptionImpliedVolatilityInversionStatus.SUCCEEDED,
                 ),),
+                pricing_status_grid=((VanillaOptionPricingStatus.SUCCEEDED,),),
+                pricing_failure_stage_grid=((None,),),
+                pricing_failure_reason_grid=((None,),),
                 forward_price_grid=((100.5,),),
                 discount_factor_grid=((0.99,),),
                 boundary_state_norm_grid=((0.0,),),
@@ -3023,6 +3027,9 @@ def test_high_level_model_price_option_groups_dispatches_through_grouped_batch_p
                 implied_volatility_inversion_status_grid=((
                     VanillaOptionImpliedVolatilityInversionStatus.SUCCEEDED,
                 ),),
+                pricing_status_grid=((VanillaOptionPricingStatus.SUCCEEDED,),),
+                pricing_failure_stage_grid=((None,),),
+                pricing_failure_reason_grid=((None,),),
                 forward_price_grid=((101.0,),),
                 discount_factor_grid=((0.98,),),
                 boundary_state_norm_grid=((0.0,),),
@@ -3108,6 +3115,18 @@ def test_high_level_model_price_option_surface_dispatches_through_surface_pricin
                 VanillaOptionImpliedVolatilityInversionStatus.SUCCEEDED,
             ),
         ),
+        pricing_status_grid=(
+            (
+                VanillaOptionPricingStatus.SUCCEEDED,
+                VanillaOptionPricingStatus.SUCCEEDED,
+            ),
+            (
+                VanillaOptionPricingStatus.SUCCEEDED,
+                VanillaOptionPricingStatus.SUCCEEDED,
+            ),
+        ),
+        pricing_failure_stage_grid=((None, None), (None, None)),
+        pricing_failure_reason_grid=((None, None), (None, None)),
         forward_price_grid=((100.5, 100.5), (101.0, 101.0)),
         discount_factor_grid=((0.99, 0.99), (0.98, 0.98)),
         boundary_state_norm_grid=((0.0, 0.0), (0.0, 0.0)),

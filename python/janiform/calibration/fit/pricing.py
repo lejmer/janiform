@@ -18,11 +18,14 @@ from ...contracts import (
 from ...contracts.base import (
     require_optional_finite_number,
     require_optional_mapping_value,
+    require_optional_string_value,
     require_str_enum_value,
 )
 from ...pricing import (
     VanillaOptionImpliedVolatilityInversionStatus,
     VanillaOptionPayoffType,
+    VanillaOptionPricingFailureStage,
+    VanillaOptionPricingStatus,
 )
 from ...pricing.surface.common import (
     grid_of_non_negative_floats as _surface_grid_of_non_negative_floats,
@@ -43,7 +46,7 @@ from .maturity_inputs import (
     validate_high_level_pricing_maturity_axis_fields,
 )
 from .._errors import _calibration_error
-from ...pricing.contracts import _validate_implied_volatility_inversion_outcome
+from ...pricing.contracts import _validate_optional_implied_volatility_inversion_outcome
 
 
 class JaniformVanillaOptionMaturityPricingEngineKind(StrEnum):
@@ -467,16 +470,22 @@ class JaniformVanillaOptionGroupedBatchPricingGroupResult(ContractModel):
     dividend_yield: float
     strikes: tuple[float, ...]
     maturity_intervals: tuple[float, ...]
-    price_grid: tuple[tuple[float, ...], ...]
+    price_grid: tuple[tuple[Optional[float], ...], ...]
     implied_volatility_grid: tuple[tuple[Optional[float], ...], ...]
     implied_volatility_inversion_status_grid: tuple[
-        tuple[VanillaOptionImpliedVolatilityInversionStatus, ...],
+        tuple[Optional[VanillaOptionImpliedVolatilityInversionStatus], ...],
         ...,
     ]
-    forward_price_grid: tuple[tuple[float, ...], ...]
-    discount_factor_grid: tuple[tuple[float, ...], ...]
-    boundary_state_norm_grid: tuple[tuple[float, ...], ...]
-    maturity_summaries: tuple[JaniformVanillaOptionMaturitySummary, ...]
+    pricing_status_grid: tuple[tuple[VanillaOptionPricingStatus, ...], ...]
+    pricing_failure_stage_grid: tuple[
+        tuple[Optional[VanillaOptionPricingFailureStage], ...],
+        ...,
+    ]
+    pricing_failure_reason_grid: tuple[tuple[Optional[str], ...], ...]
+    forward_price_grid: tuple[tuple[Optional[float], ...], ...]
+    discount_factor_grid: tuple[tuple[Optional[float], ...], ...]
+    boundary_state_norm_grid: tuple[tuple[Optional[float], ...], ...]
+    maturity_summaries: tuple[Optional[JaniformVanillaOptionMaturitySummary], ...]
 
     def __post_init__(self) -> None:
         require_finite_scalar(self.risk_free_rate, "risk_free_rate", _calibration_error)
@@ -501,6 +510,21 @@ class JaniformVanillaOptionGroupedBatchPricingGroupResult(ContractModel):
             field_path="implied_volatility_inversion_status_grid",
         )
         _validate_matching_grid_shape(
+            self.pricing_status_grid,
+            grid_shape=expected_shape,
+            field_path="pricing_status_grid",
+        )
+        _validate_matching_grid_shape(
+            self.pricing_failure_stage_grid,
+            grid_shape=expected_shape,
+            field_path="pricing_failure_stage_grid",
+        )
+        _validate_matching_grid_shape(
+            self.pricing_failure_reason_grid,
+            grid_shape=expected_shape,
+            field_path="pricing_failure_reason_grid",
+        )
+        _validate_matching_grid_shape(
             self.forward_price_grid,
             grid_shape=expected_shape,
             field_path="forward_price_grid",
@@ -523,11 +547,24 @@ class JaniformVanillaOptionGroupedBatchPricingGroupResult(ContractModel):
 
         for maturity_index, implied_volatility_row in enumerate(self.implied_volatility_grid):
             for strike_index, implied_volatility in enumerate(implied_volatility_row):
-                _validate_implied_volatility_inversion_outcome(
+                _validate_group_node_payload(
+                    pricing_status=self.pricing_status_grid[maturity_index][strike_index],
+                    pricing_failure_stage=self.pricing_failure_stage_grid[maturity_index][
+                        strike_index
+                    ],
+                    pricing_failure_reason=self.pricing_failure_reason_grid[maturity_index][
+                        strike_index
+                    ],
+                    model_price=self.price_grid[maturity_index][strike_index],
                     implied_volatility=implied_volatility,
                     implied_volatility_inversion_status=self.implied_volatility_inversion_status_grid[
                         maturity_index
                     ][strike_index],
+                    forward_price=self.forward_price_grid[maturity_index][strike_index],
+                    discount_factor=self.discount_factor_grid[maturity_index][strike_index],
+                    boundary_state_norm=self.boundary_state_norm_grid[maturity_index][
+                        strike_index
+                    ],
                     field_path=(
                         "grouped_batch_pricing_result"
                         f".group_node[{maturity_index}][{strike_index}]"
@@ -584,7 +621,7 @@ class JaniformVanillaOptionGroupedBatchPricingGroupResult(ContractModel):
                 field_name="maturity_intervals",
                 field_path=f"{field_path}.maturity_intervals",
             ),
-            price_grid=_grid_of_non_negative_floats(
+            price_grid=_grid_of_optional_finite_floats(
                 raw_payload,
                 field_name="price_grid",
                 field_path=f"{field_path}.price_grid",
@@ -599,25 +636,44 @@ class JaniformVanillaOptionGroupedBatchPricingGroupResult(ContractModel):
                 field_name="implied_volatility_inversion_status_grid",
                 field_path=f"{field_path}.implied_volatility_inversion_status_grid",
             ),
-            forward_price_grid=_grid_of_positive_floats(
+            pricing_status_grid=_grid_of_pricing_statuses(
+                raw_payload,
+                field_name="pricing_status_grid",
+                field_path=f"{field_path}.pricing_status_grid",
+            ),
+            pricing_failure_stage_grid=_grid_of_optional_failure_stages(
+                raw_payload,
+                field_name="pricing_failure_stage_grid",
+                field_path=f"{field_path}.pricing_failure_stage_grid",
+            ),
+            pricing_failure_reason_grid=_grid_of_optional_strings(
+                raw_payload,
+                field_name="pricing_failure_reason_grid",
+                field_path=f"{field_path}.pricing_failure_reason_grid",
+            ),
+            forward_price_grid=_grid_of_optional_finite_floats(
                 raw_payload,
                 field_name="forward_price_grid",
                 field_path=f"{field_path}.forward_price_grid",
             ),
-            discount_factor_grid=_grid_of_positive_floats(
+            discount_factor_grid=_grid_of_optional_finite_floats(
                 raw_payload,
                 field_name="discount_factor_grid",
                 field_path=f"{field_path}.discount_factor_grid",
             ),
-            boundary_state_norm_grid=_grid_of_non_negative_floats(
+            boundary_state_norm_grid=_grid_of_optional_finite_floats(
                 raw_payload,
                 field_name="boundary_state_norm_grid",
                 field_path=f"{field_path}.boundary_state_norm_grid",
             ),
             maturity_summaries=tuple(
-                JaniformVanillaOptionMaturitySummary.from_mapping(
-                    raw_summary,
-                    field_path=f"{field_path}.maturity_summaries[{summary_index}]",
+                (
+                    JaniformVanillaOptionMaturitySummary.from_mapping(
+                        raw_summary,
+                        field_path=f"{field_path}.maturity_summaries[{summary_index}]",
+                    )
+                    if raw_summary is not None
+                    else None
                 )
                 for summary_index, raw_summary in enumerate(raw_maturity_summaries)
             ),
@@ -788,16 +844,22 @@ class JaniformVanillaOptionSurfacePricingResult(ContractModel):
     payoff_type: VanillaOptionPayoffType
     risk_free_rate: float
     dividend_yield: float
-    price_grid: tuple[tuple[float, ...], ...]
+    price_grid: tuple[tuple[Optional[float], ...], ...]
     implied_volatility_grid: tuple[tuple[Optional[float], ...], ...]
     implied_volatility_inversion_status_grid: tuple[
-        tuple[VanillaOptionImpliedVolatilityInversionStatus, ...],
+        tuple[Optional[VanillaOptionImpliedVolatilityInversionStatus], ...],
         ...,
     ]
-    forward_price_grid: tuple[tuple[float, ...], ...]
-    discount_factor_grid: tuple[tuple[float, ...], ...]
-    boundary_state_norm_grid: tuple[tuple[float, ...], ...]
-    maturity_summaries: tuple[JaniformVanillaOptionMaturitySummary, ...]
+    pricing_status_grid: tuple[tuple[VanillaOptionPricingStatus, ...], ...]
+    pricing_failure_stage_grid: tuple[
+        tuple[Optional[VanillaOptionPricingFailureStage], ...],
+        ...,
+    ]
+    pricing_failure_reason_grid: tuple[tuple[Optional[str], ...], ...]
+    forward_price_grid: tuple[tuple[Optional[float], ...], ...]
+    discount_factor_grid: tuple[tuple[Optional[float], ...], ...]
+    boundary_state_norm_grid: tuple[tuple[Optional[float], ...], ...]
+    maturity_summaries: tuple[Optional[JaniformVanillaOptionMaturitySummary], ...]
 
     def __post_init__(self) -> None:
         require_positive_finite_scalar(self.spot, "spot", _calibration_error)
@@ -823,6 +885,21 @@ class JaniformVanillaOptionSurfacePricingResult(ContractModel):
             field_path="implied_volatility_inversion_status_grid",
         )
         _validate_matching_grid_shape(
+            self.pricing_status_grid,
+            grid_shape=expected_shape,
+            field_path="pricing_status_grid",
+        )
+        _validate_matching_grid_shape(
+            self.pricing_failure_stage_grid,
+            grid_shape=expected_shape,
+            field_path="pricing_failure_stage_grid",
+        )
+        _validate_matching_grid_shape(
+            self.pricing_failure_reason_grid,
+            grid_shape=expected_shape,
+            field_path="pricing_failure_reason_grid",
+        )
+        _validate_matching_grid_shape(
             self.forward_price_grid,
             grid_shape=expected_shape,
             field_path="forward_price_grid",
@@ -845,11 +922,24 @@ class JaniformVanillaOptionSurfacePricingResult(ContractModel):
 
         for maturity_index, implied_volatility_row in enumerate(self.implied_volatility_grid):
             for strike_index, implied_volatility in enumerate(implied_volatility_row):
-                _validate_implied_volatility_inversion_outcome(
+                _validate_group_node_payload(
+                    pricing_status=self.pricing_status_grid[maturity_index][strike_index],
+                    pricing_failure_stage=self.pricing_failure_stage_grid[maturity_index][
+                        strike_index
+                    ],
+                    pricing_failure_reason=self.pricing_failure_reason_grid[maturity_index][
+                        strike_index
+                    ],
+                    model_price=self.price_grid[maturity_index][strike_index],
                     implied_volatility=implied_volatility,
                     implied_volatility_inversion_status=self.implied_volatility_inversion_status_grid[
                         maturity_index
                     ][strike_index],
+                    forward_price=self.forward_price_grid[maturity_index][strike_index],
+                    discount_factor=self.discount_factor_grid[maturity_index][strike_index],
+                    boundary_state_norm=self.boundary_state_norm_grid[maturity_index][
+                        strike_index
+                    ],
                     field_path=(
                         "surface_pricing_result"
                         f".node[{maturity_index}][{strike_index}]"
@@ -917,7 +1007,7 @@ class JaniformVanillaOptionSurfacePricingResult(ContractModel):
                 f"{field_path}.response.dividend_yield",
                 _calibration_error,
             ),
-            price_grid=_grid_of_non_negative_floats(
+            price_grid=_grid_of_optional_finite_floats(
                 response,
                 field_name="price_grid",
                 field_path=f"{field_path}.response.price_grid",
@@ -932,25 +1022,44 @@ class JaniformVanillaOptionSurfacePricingResult(ContractModel):
                 field_name="implied_volatility_inversion_status_grid",
                 field_path=f"{field_path}.response.implied_volatility_inversion_status_grid",
             ),
-            forward_price_grid=_grid_of_positive_floats(
+            pricing_status_grid=_grid_of_pricing_statuses(
+                response,
+                field_name="pricing_status_grid",
+                field_path=f"{field_path}.response.pricing_status_grid",
+            ),
+            pricing_failure_stage_grid=_grid_of_optional_failure_stages(
+                response,
+                field_name="pricing_failure_stage_grid",
+                field_path=f"{field_path}.response.pricing_failure_stage_grid",
+            ),
+            pricing_failure_reason_grid=_grid_of_optional_strings(
+                response,
+                field_name="pricing_failure_reason_grid",
+                field_path=f"{field_path}.response.pricing_failure_reason_grid",
+            ),
+            forward_price_grid=_grid_of_optional_finite_floats(
                 response,
                 field_name="forward_price_grid",
                 field_path=f"{field_path}.response.forward_price_grid",
             ),
-            discount_factor_grid=_grid_of_positive_floats(
+            discount_factor_grid=_grid_of_optional_finite_floats(
                 response,
                 field_name="discount_factor_grid",
                 field_path=f"{field_path}.response.discount_factor_grid",
             ),
-            boundary_state_norm_grid=_grid_of_non_negative_floats(
+            boundary_state_norm_grid=_grid_of_optional_finite_floats(
                 response,
                 field_name="boundary_state_norm_grid",
                 field_path=f"{field_path}.response.boundary_state_norm_grid",
             ),
             maturity_summaries=tuple(
-                JaniformVanillaOptionMaturitySummary.from_mapping(
-                    raw_summary,
-                    field_path=f"{field_path}.maturity_summaries[{summary_index}]",
+                (
+                    JaniformVanillaOptionMaturitySummary.from_mapping(
+                        raw_summary,
+                        field_path=f"{field_path}.maturity_summaries[{summary_index}]",
+                    )
+                    if raw_summary is not None
+                    else None
                 )
                 for summary_index, raw_summary in enumerate(raw_maturity_summaries)
             ),
@@ -1046,7 +1155,37 @@ def _grid_of_implied_volatility_inversion_statuses(
     *,
     field_name: str,
     field_path: str,
-) -> tuple[tuple[VanillaOptionImpliedVolatilityInversionStatus, ...], ...]:
+) -> tuple[tuple[Optional[VanillaOptionImpliedVolatilityInversionStatus], ...], ...]:
+    return grid_of_scalars(
+        raw_payload,
+        field_name=field_name,
+        field_path=field_path,
+        error_factory=_calibration_error,
+        scalar_parser=lambda value, location: (
+            require_str_enum_value(
+                value,
+                location,
+                _calibration_error,
+                enum_type=VanillaOptionImpliedVolatilityInversionStatus,
+                allowed_values_message=(
+                    "must be one of: succeeded, "
+                    "price_below_no_arbitrage_lower_bound, "
+                    "price_equals_finite_upper_bound, "
+                    "price_above_finite_upper_bound"
+                ),
+            )
+            if value is not None
+            else None
+        ),
+    )
+
+
+def _grid_of_pricing_statuses(
+    raw_payload: dict[str, Any],
+    *,
+    field_name: str,
+    field_path: str,
+) -> tuple[tuple[VanillaOptionPricingStatus, ...], ...]:
     return grid_of_scalars(
         raw_payload,
         field_name=field_name,
@@ -1056,15 +1195,160 @@ def _grid_of_implied_volatility_inversion_statuses(
             value,
             location,
             _calibration_error,
-            enum_type=VanillaOptionImpliedVolatilityInversionStatus,
-            allowed_values_message=(
-                "must be one of: succeeded, "
-                "price_below_no_arbitrage_lower_bound, "
-                "price_equals_finite_upper_bound, "
-                "price_above_finite_upper_bound"
-            ),
+            enum_type=VanillaOptionPricingStatus,
+            allowed_values_message="must be one of: succeeded, failed",
         ),
     )
+
+
+def _grid_of_optional_failure_stages(
+    raw_payload: dict[str, Any],
+    *,
+    field_name: str,
+    field_path: str,
+) -> tuple[tuple[Optional[VanillaOptionPricingFailureStage], ...], ...]:
+    return grid_of_scalars(
+        raw_payload,
+        field_name=field_name,
+        field_path=field_path,
+        error_factory=_calibration_error,
+        scalar_parser=lambda value, location: (
+            require_str_enum_value(
+                value,
+                location,
+                _calibration_error,
+                enum_type=VanillaOptionPricingFailureStage,
+                allowed_values_message=(
+                    "must be one of: node_setup, transform_input_build, transform_solve, "
+                    "transform_output, characteristic_function_assembly, fourier_pricing, "
+                    "risk_neutral_characteristic_function, endogenous_anchor_materialization, "
+                    "expected_hawkes_state_update, anchored_local_tilt_solve, "
+                    "anchored_recursion_observed_boundary_state, "
+                    "anchored_recursion_diagnostics, grid_interpolation_shape, "
+                    "response_diagnostics, response_assembly, run_result_assembly, "
+                    "forward_law, worker_execution"
+                ),
+            )
+            if value is not None
+            else None
+        ),
+    )
+
+
+def _grid_of_optional_strings(
+    raw_payload: dict[str, Any],
+    *,
+    field_name: str,
+    field_path: str,
+) -> tuple[tuple[Optional[str], ...], ...]:
+    return grid_of_scalars(
+        raw_payload,
+        field_name=field_name,
+        field_path=field_path,
+        error_factory=_calibration_error,
+        scalar_parser=lambda value, location: (
+            require_optional_string_value(
+                value,
+                location,
+                _calibration_error,
+            )
+        ),
+    )
+
+
+def _validate_group_node_payload(
+    *,
+    pricing_status: VanillaOptionPricingStatus,
+    pricing_failure_stage: Optional[VanillaOptionPricingFailureStage],
+    pricing_failure_reason: Optional[str],
+    model_price: Optional[float],
+    implied_volatility: Optional[float],
+    implied_volatility_inversion_status: Optional[
+        VanillaOptionImpliedVolatilityInversionStatus
+    ],
+    forward_price: Optional[float],
+    discount_factor: Optional[float],
+    boundary_state_norm: Optional[float],
+    field_path: str,
+) -> None:
+    if pricing_status is VanillaOptionPricingStatus.SUCCEEDED:
+        if pricing_failure_stage is not None:
+            raise _calibration_error(
+                f"{field_path}.pricing_failure_stage",
+                "must be null when pricing_status=succeeded",
+            )
+        if pricing_failure_reason is not None:
+            raise _calibration_error(
+                f"{field_path}.pricing_failure_reason",
+                "must be null when pricing_status=succeeded",
+            )
+        require_non_negative_finite_scalar(
+            model_price,
+            f"{field_path}.model_price",
+            _calibration_error,
+        )
+        require_positive_finite_scalar(
+            forward_price,
+            f"{field_path}.forward_price",
+            _calibration_error,
+        )
+        require_positive_finite_scalar(
+            discount_factor,
+            f"{field_path}.discount_factor",
+            _calibration_error,
+        )
+        require_non_negative_finite_scalar(
+            boundary_state_norm,
+            f"{field_path}.boundary_state_norm",
+            _calibration_error,
+        )
+        _validate_optional_implied_volatility_inversion_outcome(
+            implied_volatility=implied_volatility,
+            implied_volatility_inversion_status=implied_volatility_inversion_status,
+            field_path=field_path,
+        )
+        return
+
+    if pricing_failure_stage is None:
+        raise _calibration_error(
+            f"{field_path}.pricing_failure_stage",
+            "must be present when pricing_status=failed",
+        )
+    if pricing_failure_reason is None or pricing_failure_reason.strip() == "":
+        raise _calibration_error(
+            f"{field_path}.pricing_failure_reason",
+            "must be a non-empty string when pricing_status=failed",
+        )
+    if model_price is not None:
+        raise _calibration_error(
+            f"{field_path}.model_price",
+            "must be null when pricing_status=failed",
+        )
+    if implied_volatility is not None:
+        raise _calibration_error(
+            f"{field_path}.implied_volatility",
+            "must be null when pricing_status=failed",
+        )
+    if implied_volatility_inversion_status is not None:
+        raise _calibration_error(
+            f"{field_path}.implied_volatility_inversion_status",
+            "must be null when pricing_status=failed",
+        )
+    if forward_price is not None:
+        raise _calibration_error(
+            f"{field_path}.forward_price",
+            "must be null when pricing_status=failed",
+        )
+    if discount_factor is not None:
+        raise _calibration_error(
+            f"{field_path}.discount_factor",
+            "must be null when pricing_status=failed",
+        )
+    if boundary_state_norm is not None:
+        raise _calibration_error(
+            f"{field_path}.boundary_state_norm",
+            "must be null when pricing_status=failed",
+        )
 
 
 def _validate_optional_tuple_pair(

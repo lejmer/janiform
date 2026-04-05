@@ -8,12 +8,9 @@ import numpy as np
 import pandas as pd
 
 from .common import (
-    grid_of_non_negative_floats,
     grid_of_optional_finite_floats,
-    grid_of_positive_floats,
     grid_of_scalars,
     grid_shape,
-    tuple_of_non_negative_floats,
     tuple_of_optional_finite_floats,
     tuple_of_positive_floats,
     tuple_of_scalars,
@@ -28,9 +25,12 @@ from ..contracts import (
     VanillaOptionImpliedVolatilityInversionStatus,
     VanillaOptionPayoffConfiguration,
     VanillaOptionPayoffType,
+    VanillaOptionPricingFailureStage,
     VanillaOptionPricingMarketInputs,
     VanillaOptionPricingModelParameters,
     VanillaOptionPricingOptionalOutputSelection,
+    VanillaOptionPricingStatus,
+    _validate_optional_implied_volatility_inversion_outcome,
     _pricing_error,
 )
 from ..._timestamps import hours_to_exact_nanoseconds
@@ -44,11 +44,13 @@ from ...contracts import (
     require_sequence,
 )
 from ...contracts.base import require_str_enum_value
+from ...contracts.base import require_optional_string_value
 from ...errors import JaniformValidationError
 from ...hourly_factors import HourlyFactorContract
 
 
 type SurfaceNodeRecord = dict[str, Any]
+type SurfaceNodeField = tuple[str, tuple[Any, ...]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,28 +58,39 @@ class VanillaOptionSurfacePricingNodeTable(ContractModel):
     strikes: tuple[float, ...]
     maturity_intervals: tuple[float, ...]
     option_types: tuple[VanillaOptionPayoffType, ...]
-    model_prices: tuple[float, ...]
+    model_prices: tuple[Optional[float], ...]
     implied_volatilities: tuple[Optional[float], ...]
-    node_statuses: tuple[VanillaOptionImpliedVolatilityInversionStatus, ...]
-    forward_prices: tuple[float, ...]
-    discount_factors: tuple[float, ...]
-    boundary_state_norms: tuple[float, ...]
+    implied_volatility_inversion_statuses: tuple[Optional[VanillaOptionImpliedVolatilityInversionStatus], ...]
+    pricing_statuses: tuple[VanillaOptionPricingStatus, ...]
+    pricing_failure_stages: tuple[Optional[VanillaOptionPricingFailureStage], ...]
+    pricing_failure_reasons: tuple[Optional[str], ...]
+    forward_prices: tuple[Optional[float], ...]
+    discount_factors: tuple[Optional[float], ...]
+    boundary_state_norms: tuple[Optional[float], ...]
 
     def __post_init__(self) -> None:
         expected_count = len(self.strikes)
         if expected_count == 0:
             raise _pricing_error("strikes", "must contain at least one priced surface node")
 
-        for field_name, values in (
+        aligned_node_fields: tuple[SurfaceNodeField, ...] = (
             ("maturity_intervals", self.maturity_intervals),
             ("option_types", self.option_types),
             ("model_prices", self.model_prices),
             ("implied_volatilities", self.implied_volatilities),
-            ("node_statuses", self.node_statuses),
+            (
+                "implied_volatility_inversion_statuses",
+                self.implied_volatility_inversion_statuses,
+            ),
+            ("pricing_statuses", self.pricing_statuses),
+            ("pricing_failure_stages", self.pricing_failure_stages),
+            ("pricing_failure_reasons", self.pricing_failure_reasons),
             ("forward_prices", self.forward_prices),
             ("discount_factors", self.discount_factors),
             ("boundary_state_norms", self.boundary_state_norms),
-        ):
+        )
+
+        for field_name, values in aligned_node_fields:
             validate_aligned_count(
                 values,
                 expected_count,
@@ -106,42 +119,25 @@ class VanillaOptionSurfacePricingNodeTable(ContractModel):
                     "must be a VanillaOptionPayoffType",
                 )
 
-        for node_index, model_price in enumerate(self.model_prices):
-            require_non_negative_finite_number(
-                {"value": model_price},
-                "value",
-                f"model_prices[{node_index}]",
-                PRICING_ERROR_FACTORY,
-            )
+        for node_index, pricing_status in enumerate(self.pricing_statuses):
+            if not isinstance(pricing_status, VanillaOptionPricingStatus):
+                raise _pricing_error(
+                    f"pricing_statuses[{node_index}]",
+                    "must be a VanillaOptionPricingStatus",
+                )
 
-        for node_index, forward_price in enumerate(self.forward_prices):
-            require_positive_finite_number(
-                {"value": forward_price},
-                "value",
-                f"forward_prices[{node_index}]",
-                PRICING_ERROR_FACTORY,
-            )
-
-        for node_index, discount_factor in enumerate(self.discount_factors):
-            require_positive_finite_number(
-                {"value": discount_factor},
-                "value",
-                f"discount_factors[{node_index}]",
-                PRICING_ERROR_FACTORY,
-            )
-
-        for node_index, boundary_state_norm in enumerate(self.boundary_state_norms):
-            require_non_negative_finite_number(
-                {"value": boundary_state_norm},
-                "value",
-                f"boundary_state_norms[{node_index}]",
-                PRICING_ERROR_FACTORY,
-            )
-
-        for node_index, implied_volatility in enumerate(self.implied_volatilities):
-            _validate_implied_volatility_inversion_outcome(
-                implied_volatility=implied_volatility,
-                implied_volatility_inversion_status=self.node_statuses[node_index],
+            _validate_surface_node_payload(
+                pricing_status=pricing_status,
+                pricing_failure_stage=self.pricing_failure_stages[node_index],
+                pricing_failure_reason=self.pricing_failure_reasons[node_index],
+                model_price=self.model_prices[node_index],
+                implied_volatility=self.implied_volatilities[node_index],
+                implied_volatility_inversion_status=self.implied_volatility_inversion_statuses[
+                    node_index
+                ],
+                forward_price=self.forward_prices[node_index],
+                discount_factor=self.discount_factors[node_index],
+                boundary_state_norm=self.boundary_state_norms[node_index],
                 field_path=f"node_table[{node_index}]",
             )
 
@@ -157,7 +153,18 @@ class VanillaOptionSurfacePricingNodeTable(ContractModel):
                 "option_type": self.option_types[node_index].value,
                 "model_price": self.model_prices[node_index],
                 "implied_volatility": self.implied_volatilities[node_index],
-                "node_status": self.node_statuses[node_index].value,
+                "implied_volatility_inversion_status": (
+                    self.implied_volatility_inversion_statuses[node_index].value
+                    if self.implied_volatility_inversion_statuses[node_index] is not None
+                    else None
+                ),
+                "pricing_status": self.pricing_statuses[node_index].value,
+                "pricing_failure_stage": (
+                    self.pricing_failure_stages[node_index].value
+                    if self.pricing_failure_stages[node_index] is not None
+                    else None
+                ),
+                "pricing_failure_reason": self.pricing_failure_reasons[node_index],
                 "forward_price": self.forward_prices[node_index],
                 "discount_factor": self.discount_factors[node_index],
                 "boundary_state_norm": self.boundary_state_norms[node_index],
@@ -174,6 +181,7 @@ class VanillaOptionSurfacePricingNodeTable(ContractModel):
             return np.empty((0, 0), dtype=object)
 
         column_names = tuple(records[0].keys())
+
         return np.asarray(
             [
                 tuple(record[column_name] for column_name in column_names)
@@ -220,7 +228,7 @@ class VanillaOptionSurfacePricingNodeTable(ContractModel):
                     allowed_values_message="must be one of: call, put",
                 ),
             ),
-            model_prices=tuple_of_non_negative_floats(
+            model_prices=tuple_of_optional_finite_floats(
                 raw_payload,
                 field_name="model_prices",
                 field_path=f"{field_path}.model_prices",
@@ -232,29 +240,60 @@ class VanillaOptionSurfacePricingNodeTable(ContractModel):
                 field_path=f"{field_path}.implied_volatilities",
                 error_factory=PRICING_ERROR_FACTORY,
             ),
-            node_statuses=tuple_of_scalars(
+            implied_volatility_inversion_statuses=tuple_of_scalars(
                 raw_payload,
-                field_name="node_statuses",
-                field_path=f"{field_path}.node_statuses",
+                field_name="implied_volatility_inversion_statuses",
+                field_path=f"{field_path}.implied_volatility_inversion_statuses",
                 error_factory=PRICING_ERROR_FACTORY,
-                scalar_parser=lambda value, location: _require_inversion_status(
+                scalar_parser=lambda value, location: _require_optional_inversion_status(
                     value,
                     field_path=location,
                 ),
             ),
-            forward_prices=tuple_of_positive_floats(
+            pricing_statuses=tuple_of_scalars(
+                raw_payload,
+                field_name="pricing_statuses",
+                field_path=f"{field_path}.pricing_statuses",
+                error_factory=PRICING_ERROR_FACTORY,
+                scalar_parser=lambda value, location: _require_pricing_status(
+                    value,
+                    field_path=location,
+                ),
+            ),
+            pricing_failure_stages=tuple_of_scalars(
+                raw_payload,
+                field_name="pricing_failure_stages",
+                field_path=f"{field_path}.pricing_failure_stages",
+                error_factory=PRICING_ERROR_FACTORY,
+                scalar_parser=lambda value, location: _require_optional_failure_stage(
+                    value,
+                    field_path=location,
+                ),
+            ),
+            pricing_failure_reasons=tuple_of_scalars(
+                raw_payload,
+                field_name="pricing_failure_reasons",
+                field_path=f"{field_path}.pricing_failure_reasons",
+                error_factory=PRICING_ERROR_FACTORY,
+                scalar_parser=lambda value, location: require_optional_string_value(
+                    value,
+                    location,
+                    PRICING_ERROR_FACTORY,
+                ),
+            ),
+            forward_prices=tuple_of_optional_finite_floats(
                 raw_payload,
                 field_name="forward_prices",
                 field_path=f"{field_path}.forward_prices",
                 error_factory=PRICING_ERROR_FACTORY,
             ),
-            discount_factors=tuple_of_positive_floats(
+            discount_factors=tuple_of_optional_finite_floats(
                 raw_payload,
                 field_name="discount_factors",
                 field_path=f"{field_path}.discount_factors",
                 error_factory=PRICING_ERROR_FACTORY,
             ),
-            boundary_state_norms=tuple_of_non_negative_floats(
+            boundary_state_norms=tuple_of_optional_finite_floats(
                 raw_payload,
                 field_name="boundary_state_norms",
                 field_path=f"{field_path}.boundary_state_norms",
@@ -495,15 +534,18 @@ class VanillaOptionSurfacePricingResponse(ContractModel):
     payoff_type: VanillaOptionPayoffType
     risk_free_rate: float
     dividend_yield: float
-    price_grid: tuple[tuple[float, ...], ...]
+    price_grid: tuple[tuple[Optional[float], ...], ...]
     implied_volatility_grid: tuple[tuple[Optional[float], ...], ...]
     implied_volatility_inversion_status_grid: tuple[
-        tuple[VanillaOptionImpliedVolatilityInversionStatus, ...],
+        tuple[Optional[VanillaOptionImpliedVolatilityInversionStatus], ...],
         ...,
     ]
-    forward_price_grid: tuple[tuple[float, ...], ...]
-    discount_factor_grid: tuple[tuple[float, ...], ...]
-    boundary_state_norm_grid: tuple[tuple[float, ...], ...]
+    pricing_status_grid: tuple[tuple[VanillaOptionPricingStatus, ...], ...]
+    pricing_failure_stage_grid: tuple[tuple[Optional[VanillaOptionPricingFailureStage], ...], ...]
+    pricing_failure_reason_grid: tuple[tuple[Optional[str], ...], ...]
+    forward_price_grid: tuple[tuple[Optional[float], ...], ...]
+    discount_factor_grid: tuple[tuple[Optional[float], ...], ...]
+    boundary_state_norm_grid: tuple[tuple[Optional[float], ...], ...]
     node_table: VanillaOptionSurfacePricingNodeTable
 
     def __post_init__(self) -> None:
@@ -555,6 +597,24 @@ class VanillaOptionSurfacePricingResponse(ContractModel):
             error_factory=PRICING_ERROR_FACTORY,
         )
         validate_matching_grid_shape(
+            self.pricing_status_grid,
+            grid_shape_value=expected_shape,
+            field_path="pricing_status_grid",
+            error_factory=PRICING_ERROR_FACTORY,
+        )
+        validate_matching_grid_shape(
+            self.pricing_failure_stage_grid,
+            grid_shape_value=expected_shape,
+            field_path="pricing_failure_stage_grid",
+            error_factory=PRICING_ERROR_FACTORY,
+        )
+        validate_matching_grid_shape(
+            self.pricing_failure_reason_grid,
+            grid_shape_value=expected_shape,
+            field_path="pricing_failure_reason_grid",
+            error_factory=PRICING_ERROR_FACTORY,
+        )
+        validate_matching_grid_shape(
             self.forward_price_grid,
             grid_shape_value=expected_shape,
             field_path="forward_price_grid",
@@ -580,6 +640,9 @@ class VanillaOptionSurfacePricingResponse(ContractModel):
             price_grid=self.price_grid,
             implied_volatility_grid=self.implied_volatility_grid,
             implied_volatility_inversion_status_grid=self.implied_volatility_inversion_status_grid,
+            pricing_status_grid=self.pricing_status_grid,
+            pricing_failure_stage_grid=self.pricing_failure_stage_grid,
+            pricing_failure_reason_grid=self.pricing_failure_reason_grid,
             forward_price_grid=self.forward_price_grid,
             discount_factor_grid=self.discount_factor_grid,
             boundary_state_norm_grid=self.boundary_state_norm_grid,
@@ -638,7 +701,7 @@ class VanillaOptionSurfacePricingResponse(ContractModel):
             enum_type=VanillaOptionPayoffType,
             allowed_values_message="must be one of: call, put",
         )
-        price_grid = grid_of_non_negative_floats(
+        price_grid = grid_of_optional_finite_floats(
             raw_payload,
             field_name="price_grid",
             field_path=f"{field_path}.price_grid",
@@ -655,24 +718,55 @@ class VanillaOptionSurfacePricingResponse(ContractModel):
             field_name="implied_volatility_inversion_status_grid",
             field_path=f"{field_path}.implied_volatility_inversion_status_grid",
             error_factory=PRICING_ERROR_FACTORY,
-            scalar_parser=lambda value, location: _require_inversion_status(
+            scalar_parser=lambda value, location: _require_optional_inversion_status(
                 value,
                 field_path=location,
             ),
         )
-        forward_price_grid = grid_of_positive_floats(
+        pricing_status_grid = grid_of_scalars(
+            raw_payload,
+            field_name="pricing_status_grid",
+            field_path=f"{field_path}.pricing_status_grid",
+            error_factory=PRICING_ERROR_FACTORY,
+            scalar_parser=lambda value, location: _require_pricing_status(
+                value,
+                field_path=location,
+            ),
+        )
+        pricing_failure_stage_grid = grid_of_scalars(
+            raw_payload,
+            field_name="pricing_failure_stage_grid",
+            field_path=f"{field_path}.pricing_failure_stage_grid",
+            error_factory=PRICING_ERROR_FACTORY,
+            scalar_parser=lambda value, location: _require_optional_failure_stage(
+                value,
+                field_path=location,
+            ),
+        )
+        pricing_failure_reason_grid = grid_of_scalars(
+            raw_payload,
+            field_name="pricing_failure_reason_grid",
+            field_path=f"{field_path}.pricing_failure_reason_grid",
+            error_factory=PRICING_ERROR_FACTORY,
+            scalar_parser=lambda value, location: require_optional_string_value(
+                value,
+                location,
+                PRICING_ERROR_FACTORY,
+            ),
+        )
+        forward_price_grid = grid_of_optional_finite_floats(
             raw_payload,
             field_name="forward_price_grid",
             field_path=f"{field_path}.forward_price_grid",
             error_factory=PRICING_ERROR_FACTORY,
         )
-        discount_factor_grid = grid_of_positive_floats(
+        discount_factor_grid = grid_of_optional_finite_floats(
             raw_payload,
             field_name="discount_factor_grid",
             field_path=f"{field_path}.discount_factor_grid",
             error_factory=PRICING_ERROR_FACTORY,
         )
-        boundary_state_norm_grid = grid_of_non_negative_floats(
+        boundary_state_norm_grid = grid_of_optional_finite_floats(
             raw_payload,
             field_name="boundary_state_norm_grid",
             field_path=f"{field_path}.boundary_state_norm_grid",
@@ -686,6 +780,9 @@ class VanillaOptionSurfacePricingResponse(ContractModel):
             price_grid=price_grid,
             implied_volatility_grid=implied_volatility_grid,
             implied_volatility_inversion_status_grid=implied_volatility_inversion_status_grid,
+            pricing_status_grid=pricing_status_grid,
+            pricing_failure_stage_grid=pricing_failure_stage_grid,
+            pricing_failure_reason_grid=pricing_failure_reason_grid,
             forward_price_grid=forward_price_grid,
             discount_factor_grid=discount_factor_grid,
             boundary_state_norm_grid=boundary_state_norm_grid,
@@ -730,6 +827,9 @@ class VanillaOptionSurfacePricingResponse(ContractModel):
             price_grid=price_grid,
             implied_volatility_grid=implied_volatility_grid,
             implied_volatility_inversion_status_grid=implied_volatility_inversion_status_grid,
+            pricing_status_grid=pricing_status_grid,
+            pricing_failure_stage_grid=pricing_failure_stage_grid,
+            pricing_failure_reason_grid=pricing_failure_reason_grid,
             forward_price_grid=forward_price_grid,
             discount_factor_grid=discount_factor_grid,
             boundary_state_norm_grid=boundary_state_norm_grid,
@@ -740,7 +840,7 @@ class VanillaOptionSurfacePricingResponse(ContractModel):
 @dataclass(frozen=True, slots=True)
 class VanillaOptionSurfacePricingRunResult(ContractModel):
     response: VanillaOptionSurfacePricingResponse
-    maturity_summaries: tuple[dict[str, Any], ...]
+    maturity_summaries: tuple[Optional[dict[str, Any]], ...]
 
     def __post_init__(self) -> None:
         if not isinstance(self.response, VanillaOptionSurfacePricingResponse):
@@ -788,9 +888,13 @@ class VanillaOptionSurfacePricingRunResult(ContractModel):
                 field_path=f"{field_path}.response",
             ),
             maturity_summaries=tuple(
-                _require_mapping_value(
-                    raw_summary,
-                    field_path=f"{field_path}.maturity_summaries[{summary_index}]",
+                (
+                    _require_mapping_value(
+                        raw_summary,
+                        field_path=f"{field_path}.maturity_summaries[{summary_index}]",
+                    )
+                    if raw_summary is not None
+                    else None
                 )
                 for summary_index, raw_summary in enumerate(raw_maturity_summaries)
             ),
@@ -802,25 +906,31 @@ def _build_node_table(
     strikes: tuple[float, ...],
     maturity_intervals: tuple[float, ...],
     payoff_type: VanillaOptionPayoffType,
-    price_grid: tuple[tuple[float, ...], ...],
+    price_grid: tuple[tuple[Optional[float], ...], ...],
     implied_volatility_grid: tuple[tuple[Optional[float], ...], ...],
     implied_volatility_inversion_status_grid: tuple[
-        tuple[VanillaOptionImpliedVolatilityInversionStatus, ...],
+        tuple[Optional[VanillaOptionImpliedVolatilityInversionStatus], ...],
         ...,
     ],
-    forward_price_grid: tuple[tuple[float, ...], ...],
-    discount_factor_grid: tuple[tuple[float, ...], ...],
-    boundary_state_norm_grid: tuple[tuple[float, ...], ...],
+    pricing_status_grid: tuple[tuple[VanillaOptionPricingStatus, ...], ...],
+    pricing_failure_stage_grid: tuple[tuple[Optional[VanillaOptionPricingFailureStage], ...], ...],
+    pricing_failure_reason_grid: tuple[tuple[Optional[str], ...], ...],
+    forward_price_grid: tuple[tuple[Optional[float], ...], ...],
+    discount_factor_grid: tuple[tuple[Optional[float], ...], ...],
+    boundary_state_norm_grid: tuple[tuple[Optional[float], ...], ...],
 ) -> VanillaOptionSurfacePricingNodeTable:
     node_strikes: list[float] = []
     node_maturity_intervals: list[float] = []
     node_option_types: list[VanillaOptionPayoffType] = []
-    node_model_prices: list[float] = []
+    node_model_prices: list[Optional[float]] = []
     node_implied_volatilities: list[Optional[float]] = []
-    node_statuses: list[VanillaOptionImpliedVolatilityInversionStatus] = []
-    node_forward_prices: list[float] = []
-    node_discount_factors: list[float] = []
-    node_boundary_state_norms: list[float] = []
+    node_implied_volatility_inversion_statuses: list[Optional[VanillaOptionImpliedVolatilityInversionStatus]] = []
+    node_pricing_statuses: list[VanillaOptionPricingStatus] = []
+    node_pricing_failure_stages: list[Optional[VanillaOptionPricingFailureStage]] = []
+    node_pricing_failure_reasons: list[Optional[str]] = []
+    node_forward_prices: list[Optional[float]] = []
+    node_discount_factors: list[Optional[float]] = []
+    node_boundary_state_norms: list[Optional[float]] = []
 
     for maturity_index, maturity_interval in enumerate(maturity_intervals):
         for strike_index, strike in enumerate(strikes):
@@ -829,7 +939,16 @@ def _build_node_table(
             node_option_types.append(payoff_type)
             node_model_prices.append(price_grid[maturity_index][strike_index])
             node_implied_volatilities.append(implied_volatility_grid[maturity_index][strike_index])
-            node_statuses.append(implied_volatility_inversion_status_grid[maturity_index][strike_index])
+            node_implied_volatility_inversion_statuses.append(
+                implied_volatility_inversion_status_grid[maturity_index][strike_index]
+            )
+            node_pricing_statuses.append(pricing_status_grid[maturity_index][strike_index])
+            node_pricing_failure_stages.append(
+                pricing_failure_stage_grid[maturity_index][strike_index]
+            )
+            node_pricing_failure_reasons.append(
+                pricing_failure_reason_grid[maturity_index][strike_index]
+            )
             node_forward_prices.append(forward_price_grid[maturity_index][strike_index])
             node_discount_factors.append(discount_factor_grid[maturity_index][strike_index])
             node_boundary_state_norms.append(boundary_state_norm_grid[maturity_index][strike_index])
@@ -840,13 +959,14 @@ def _build_node_table(
         option_types=tuple(node_option_types),
         model_prices=tuple(node_model_prices),
         implied_volatilities=tuple(node_implied_volatilities),
-        node_statuses=tuple(node_statuses),
+        implied_volatility_inversion_statuses=tuple(node_implied_volatility_inversion_statuses),
+        pricing_statuses=tuple(node_pricing_statuses),
+        pricing_failure_stages=tuple(node_pricing_failure_stages),
+        pricing_failure_reasons=tuple(node_pricing_failure_reasons),
         forward_prices=tuple(node_forward_prices),
         discount_factors=tuple(node_discount_factors),
         boundary_state_norms=tuple(node_boundary_state_norms),
     )
-
-
 def _require_inversion_status(
     raw_value: Any,
     *,
@@ -866,33 +986,162 @@ def _require_inversion_status(
     )
 
 
-def _validate_implied_volatility_inversion_outcome(
+def _require_optional_inversion_status(
+    raw_value: Any,
     *,
+    field_path: str,
+) -> Optional[VanillaOptionImpliedVolatilityInversionStatus]:
+    if raw_value is None:
+        return None
+
+    return _require_inversion_status(raw_value, field_path=field_path)
+
+
+def _require_pricing_status(
+    raw_value: Any,
+    *,
+    field_path: str,
+) -> VanillaOptionPricingStatus:
+    return require_str_enum_value(
+        raw_value,
+        field_path,
+        PRICING_ERROR_FACTORY,
+        enum_type=VanillaOptionPricingStatus,
+        allowed_values_message="must be one of: succeeded, failed",
+    )
+
+
+def _require_optional_failure_stage(
+    raw_value: Any,
+    *,
+    field_path: str,
+) -> Optional[VanillaOptionPricingFailureStage]:
+    if raw_value is None:
+        return None
+
+    return require_str_enum_value(
+        raw_value,
+        field_path,
+        PRICING_ERROR_FACTORY,
+        enum_type=VanillaOptionPricingFailureStage,
+        allowed_values_message=(
+            "must be one of: node_setup, transform_input_build, transform_solve, "
+            "transform_output, characteristic_function_assembly, fourier_pricing, "
+            "risk_neutral_characteristic_function, endogenous_anchor_materialization, "
+            "expected_hawkes_state_update, anchored_local_tilt_solve, "
+            "anchored_recursion_observed_boundary_state, anchored_recursion_diagnostics, "
+            "grid_interpolation_shape, response_diagnostics, response_assembly, "
+            "run_result_assembly, forward_law, worker_execution"
+        ),
+    )
+
+
+def _validate_surface_node_payload(
+    *,
+    pricing_status: VanillaOptionPricingStatus,
+    pricing_failure_stage: Optional[VanillaOptionPricingFailureStage],
+    pricing_failure_reason: Optional[str],
+    model_price: Optional[float],
     implied_volatility: Optional[float],
-    implied_volatility_inversion_status: VanillaOptionImpliedVolatilityInversionStatus,
+    implied_volatility_inversion_status: Optional[VanillaOptionImpliedVolatilityInversionStatus],
+    forward_price: Optional[float],
+    discount_factor: Optional[float],
+    boundary_state_norm: Optional[float],
     field_path: str,
 ) -> None:
-    if (
-        implied_volatility_inversion_status
-        is VanillaOptionImpliedVolatilityInversionStatus.SUCCEEDED
-    ):
-        if implied_volatility is None:
+    if pricing_status is VanillaOptionPricingStatus.SUCCEEDED:
+        if pricing_failure_stage is not None:
             raise _pricing_error(
-                f"{field_path}.implied_volatility",
-                "must be present when implied_volatility_inversion_status=succeeded",
+                f"{field_path}.pricing_failure_stage",
+                "must be null when pricing_status=succeeded",
             )
 
+        if pricing_failure_reason is not None:
+            raise _pricing_error(
+                f"{field_path}.pricing_failure_reason",
+                "must be null when pricing_status=succeeded",
+            )
+
+        require_non_negative_finite_number(
+            {"value": model_price},
+            "value",
+            f"{field_path}.model_price",
+            PRICING_ERROR_FACTORY,
+        )
+        require_positive_finite_number(
+            {"value": forward_price},
+            "value",
+            f"{field_path}.forward_price",
+            PRICING_ERROR_FACTORY,
+        )
+        require_positive_finite_number(
+            {"value": discount_factor},
+            "value",
+            f"{field_path}.discount_factor",
+            PRICING_ERROR_FACTORY,
+        )
+        require_non_negative_finite_number(
+            {"value": boundary_state_norm},
+            "value",
+            f"{field_path}.boundary_state_norm",
+            PRICING_ERROR_FACTORY,
+        )
+
+        _validate_optional_implied_volatility_inversion_outcome(
+            implied_volatility=implied_volatility,
+            implied_volatility_inversion_status=implied_volatility_inversion_status,
+            field_path=field_path,
+        )
+
         return
+
+    if pricing_failure_stage is None:
+        raise _pricing_error(
+            f"{field_path}.pricing_failure_stage",
+            "must be present when pricing_status=failed",
+        )
+
+    if pricing_failure_reason is None or pricing_failure_reason.strip() == "":
+        raise _pricing_error(
+            f"{field_path}.pricing_failure_reason",
+            "must be a non-empty string when pricing_status=failed",
+        )
+
+    if model_price is not None:
+        raise _pricing_error(
+            f"{field_path}.model_price",
+            "must be null when pricing_status=failed",
+        )
 
     if implied_volatility is not None:
         raise _pricing_error(
             f"{field_path}.implied_volatility",
-            (
-                "must be null when implied_volatility_inversion_status="
-                f"{implied_volatility_inversion_status.value}"
-            ),
+            "must be null when pricing_status=failed",
         )
 
+    if implied_volatility_inversion_status is not None:
+        raise _pricing_error(
+            f"{field_path}.implied_volatility_inversion_status",
+            "must be null when pricing_status=failed",
+        )
+
+    if forward_price is not None:
+        raise _pricing_error(
+            f"{field_path}.forward_price",
+            "must be null when pricing_status=failed",
+        )
+
+    if discount_factor is not None:
+        raise _pricing_error(
+            f"{field_path}.discount_factor",
+            "must be null when pricing_status=failed",
+        )
+
+    if boundary_state_norm is not None:
+        raise _pricing_error(
+            f"{field_path}.boundary_state_norm",
+            "must be null when pricing_status=failed",
+        )
 
 def _require_mapping_value(
     raw_value: Any,

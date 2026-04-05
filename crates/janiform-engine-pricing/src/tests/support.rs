@@ -138,16 +138,20 @@ pub(super) fn build_reference_pricing_response(
     let discount_factor = (-market_inputs.risk_free_rate * maturity_interval).exp();
 
     VanillaOptionPricingResponse::try_new(
-        12.5,
-        VanillaOptionPricingDiagnostics::try_new(
-            forward_price,
-            discount_factor,
-            maturity_interval,
-            0.55,
-        )
-        .expect("reference diagnostics should construct"),
+        crate::VanillaOptionPricingStatus::Succeeded,
+        None,
+        Some(12.5),
+        Some(
+            VanillaOptionPricingDiagnostics::try_new(
+                forward_price,
+                discount_factor,
+                maturity_interval,
+                0.55,
+            )
+            .expect("reference diagnostics should construct"),
+        ),
         Some(0.2),
-        crate::VanillaOptionImpliedVolatilityInversionStatus::Succeeded,
+        Some(crate::VanillaOptionImpliedVolatilityInversionStatus::Succeeded),
     )
     .expect("reference response should construct")
 }

@@ -285,7 +285,7 @@ fn build_pricing_request(interval_delta: f64) -> VanillaOptionPricingRequest {
     .expect("pricing fixture model parameters should construct");
 
     VanillaOptionPricingRequest::try_new_with_interval_delta(
-        VanillaOptionPricingMarketInputs::try_new(101.0, 100.0, 0.5, 0.02, 0.01)
+        VanillaOptionPricingMarketInputs::try_new_single_node(101.0, 100.0, 0.5, 0.02, 0.01)
             .expect("pricing fixture market inputs should construct"),
         VanillaOptionPayoffConfiguration {
             payoff_type: VanillaOptionPayoffType::Call,

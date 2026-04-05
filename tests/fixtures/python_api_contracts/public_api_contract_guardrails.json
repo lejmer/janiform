@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale.v1",
-  "approved_snapshot_sha256": "2ac2196d3747295e3ec620082dcb1ff11611e8fdab912290a30a4c551529bef6",
+  "approved_snapshot_sha256": "f05de78f872e6f7f9e89447283d0354bf3e3ad22cde994bffde6e139b083bfa7",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -949,6 +949,37 @@
         "janiform.calibration",
         "janiform.calibration.fit",
         "janiform.contracts"
+      ]
+    },
+    {
+      "approved_on": "2026-04-05",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Pricing now uses one canonical surface-level market-input contract across single-option and surface workflows instead of exposing separate node-shaped and surface-shaped public market-input objects. The approved snapshot must therefore replace the old scalar strike and maturity fields on VanillaOptionPricingMarketInputs with vectorized strikes and maturity_intervals, remove the redundant VanillaOptionSurfacePricingMarketInputs export, and record that VanillaOptionSurfacePricingRequest now refers to the unified pricing market-input contract.",
+      "snapshot_sha256": "ad5877fb23e4758fce79007fc3be77763542c4f68ab6e34880bee33c7f293b4e",
+      "summary": "Approve the unified surface-level pricing market-input contract.",
+      "updated_surfaces": [
+        "janiform.pricing",
+        "janiform.pricing.contracts"
+      ]
+    },
+    {
+      "approved_on": "2026-04-05",
+      "docs_updated": [
+        "docs/getting-started/first-model.md",
+        "docs/guides/python-workflows.md",
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "Pricing now returns explicit per-node priceability status and failure diagnostics across single-option, grouped batch, and surface workflows. The approved snapshot must therefore add the public pricing-status and failure-diagnostic types, replace always-present node outputs with optional node values on failed paths, and record the aligned failure-stage and failure-reason grids on batch and surface artifacts.",
+      "snapshot_sha256": "f05de78f872e6f7f9e89447283d0354bf3e3ad22cde994bffde6e139b083bfa7",
+      "summary": "Approve public node-level priceability diagnostics for pricing workflows.",
+      "updated_surfaces": [
+        "janiform.calibration",
+        "janiform.calibration.fit.pricing",
+        "janiform.pricing",
+        "janiform.pricing.contracts",
+        "janiform.pricing.surface"
       ]
     }
   ],

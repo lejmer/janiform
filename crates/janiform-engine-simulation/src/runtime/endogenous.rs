@@ -302,7 +302,6 @@ fn apply_exogenous_activity_coupling_marks(
             activity_coupling_mark,
             ..
         } = exogenous_interval_updates[scheduling_state.next_exogenous_update_position]
-
         {
             scheduling_state.simulated_state = evolve_hawkes_state(
                 scheduling_state.simulated_state,

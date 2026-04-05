@@ -69,7 +69,14 @@ fn microbenchmark_cases_prepare_deterministic_component_inputs() {
         pricing_case.profile_id,
         PRICING_KERNEL_MICROBENCHMARK_PROFILE_ID
     );
-    assert!(pricing_case.market_inputs.spot > pricing_case.market_inputs.strike * 0.5);
+    assert!(
+        pricing_case.market_inputs.spot
+            > pricing_case
+                .market_inputs
+                .single_strike()
+                .expect("pricing benchmark case should be single-node")
+                * 0.5
+    );
     assert!(pricing_case.variance.is_finite());
 
     let risk_case = fixture_set

@@ -47,7 +47,8 @@ Optional flat `carry` is accepted on the same call and defaults to zero when omi
 For multi-node fitted-model pricing, stay on the same high-level surface with
 `model.price_options(...)` or `model.price_option_surface(...)` instead of looping over
 `model.price_option(...)`. Those multi-node results include Janiform-computed implied
-volatilities and aligned inversion-status fields for each node.
+volatilities, aligned pricing-status fields, and aligned failure-stage and failure-reason fields
+for each node.
 
 ## When To Drop Lower
 
