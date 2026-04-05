@@ -25,7 +25,7 @@ python -m examples.introductory.first_model
 ./scripts/bootstrap-win.ps1 .venv
 . .\.venv\Scripts\Activate.ps1
 janiform --help
-python -m examples.high_level.synthetic_eurusd_plot
+python -m examples.introductory.first_model
 ```
 
 ## Fastest Python Path
