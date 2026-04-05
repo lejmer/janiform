@@ -1,5 +1,7 @@
 """Stylized-fact reporting workflows and internal validation helpers."""
 
+from __future__ import annotations
+
 import json
 from collections.abc import Mapping
 from typing import Any, Optional

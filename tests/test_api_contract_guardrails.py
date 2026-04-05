@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
 
-import annotationlib
 import pytest
 
 from tests.support.public_api_contract_guardrails import (
@@ -285,7 +284,10 @@ def test_dataclass_contract_model_signature_falls_back_for_annotation_lookup_val
     def raise_value_error(*args: Any, **kwargs: Any) -> dict[str, str]:
         raise ValueError("annotation formatting unavailable")
 
-    monkeypatch.setattr(annotationlib, "get_annotations", raise_value_error)
+    monkeypatch.setattr(
+        "tests.support.public_api_contract_guardrails._get_annotation_strings",
+        raise_value_error,
+    )
 
     assert _dataclass_contract_model_signature(ExampleContract) == "(value: 'int') -> 'None'"
 
@@ -300,7 +302,10 @@ def test_dataclass_contract_model_signature_does_not_swallow_unexpected_runtime_
     def raise_runtime_error(*args: Any, **kwargs: Any) -> dict[str, str]:
         raise RuntimeError("unexpected annotation failure")
 
-    monkeypatch.setattr(annotationlib, "get_annotations", raise_runtime_error)
+    monkeypatch.setattr(
+        "tests.support.public_api_contract_guardrails._get_annotation_strings",
+        raise_runtime_error,
+    )
 
     with pytest.raises(RuntimeError, match="unexpected annotation failure"):
         _dataclass_contract_model_signature(ExampleContract)

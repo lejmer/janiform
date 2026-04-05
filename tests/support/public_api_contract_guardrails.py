@@ -1,4 +1,3 @@
-import annotationlib
 import hashlib
 import inspect
 import json
@@ -341,10 +340,7 @@ def _contract_model_signature(contract_model_type: type[object]) -> Optional[str
 
 def _dataclass_contract_model_signature(contract_model_type: type[object]) -> Optional[str]:
     try:
-        annotation_strings = annotationlib.get_annotations(
-            contract_model_type,
-            format=annotationlib.Format.STRING,
-        )
+        annotation_strings = _get_annotation_strings(contract_model_type)
     except (AttributeError, NameError, TypeError, ValueError):
         annotation_strings = {}
 
@@ -380,6 +376,11 @@ def _format_contract_model_field_annotation(
         return repr(getattr(fallback_annotation, "__name__"))
 
     return repr(str(fallback_annotation))
+
+
+def _get_annotation_strings(contract_model_type: type[object]) -> dict[str, object]:
+    raw_annotations = inspect.get_annotations(contract_model_type, eval_str=False)
+    return dict(raw_annotations)
 
 
 def _public_method_signatures(class_type: type[object]) -> dict[str, str]:
@@ -428,16 +429,40 @@ def _safe_signature(value: object) -> Optional[str]:
 
 def _resolve_signature(value: object) -> Optional[inspect.Signature]:
     try:
-        return inspect.signature(
-            value,
-            eval_str=False,
-            annotation_format=inspect.Format.STRING,
-        )
+        signature = inspect.signature(value, eval_str=False)
     except (NameError, TypeError, ValueError):
         try:
-            return inspect.signature(value)
+            signature = inspect.signature(value)
         except (NameError, TypeError, ValueError):
             return None
+
+    normalized_parameters: list[inspect.Parameter] = []
+    for parameter in signature.parameters.values():
+        if parameter.annotation is inspect.Signature.empty:
+            normalized_parameters.append(parameter)
+            continue
+
+        normalized_parameters.append(
+            parameter.replace(
+                annotation=_stringify_annotation(parameter.annotation),
+            )
+        )
+
+    return_annotation = signature.return_annotation
+    if return_annotation is not inspect.Signature.empty:
+        return_annotation = _stringify_annotation(return_annotation)
+
+    return signature.replace(
+        parameters=normalized_parameters,
+        return_annotation=return_annotation,
+    )
+
+
+def _stringify_annotation(annotation: object) -> str:
+    if isinstance(annotation, str):
+        return annotation.strip("'")
+
+    return inspect.formatannotation(annotation)
 
 
 def _require_non_empty_string(mapping: Mapping[str, Any], field_name: str) -> str:
