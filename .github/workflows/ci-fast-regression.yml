@@ -32,7 +32,7 @@ jobs:
       - name: Install Python CI dependencies
         run: |
           python3 -m pip install --upgrade pip
-          python3 -m pip install orjson pytest
+          python3 -m pip install orjson pytest pytest-benchmark
 
       - name: Run fast deterministic regression tier
         run: |
