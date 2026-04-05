@@ -50,20 +50,16 @@ fn bench_pricing_kernel_hot_path(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("pricing_kernel_hot_path");
 
     group.bench_function(case.profile_id, |bench| {
-        bench.iter_batched(
-            || (case.market_inputs, case.payoff, case.engine_settings),
-            |(market_inputs, payoff, engine_settings)| {
-                let result = price_vanilla_option_via_fourier_inversion(
-                    market_inputs,
-                    payoff,
-                    engine_settings,
-                    |argument| case.characteristic_function(argument),
-                )
-                .expect("pricing microbenchmark input should stay valid");
-                criterion::black_box(result.price);
-            },
-            BatchSize::SmallInput,
-        );
+        bench.iter(|| {
+            let result = price_vanilla_option_via_fourier_inversion(
+                &case.market_inputs,
+                case.payoff,
+                case.engine_settings,
+                |argument| case.characteristic_function(argument),
+            )
+            .expect("pricing microbenchmark input should stay valid");
+            criterion::black_box(result.price);
+        });
     });
 
     group.finish();
