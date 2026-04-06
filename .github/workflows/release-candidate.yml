@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: Release candidate tag name, for example v0.1.0-rc.1
+        description: Release candidate tag name, like vX.Y.Z-rc.1
         required: true
         type: string
       target_ref:
