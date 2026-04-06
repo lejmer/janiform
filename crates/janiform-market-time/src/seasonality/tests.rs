@@ -527,12 +527,20 @@ fn seasonality_normalization_anchors_mean_and_emits_metadata() {
     let anchored_mean = normalized.normalized_factor_by_event.iter().sum::<f64>()
         / normalized.normalized_factor_by_event.len() as f64;
 
-    assert!((anchored_mean - 1.0).abs() < 1e-12);
+    let anchor_error = (anchored_mean - 1.0).abs();
+
+    assert!(anchor_error <= normalized.normalization_metadata.mean_anchor_tolerance);
     assert_eq!(
         normalized.normalization_metadata.normalization_policy,
         "mean_factor_anchor.v1"
     );
     assert_eq!(normalized.normalization_metadata.fit_window_event_count, 2);
+    assert!(
+        normalized
+            .normalization_metadata
+            .mean_anchor_tolerance
+            .is_sign_positive()
+    );
 }
 
 #[test]
@@ -569,6 +577,54 @@ fn seasonality_stable_sum_recovers_small_positive_increments_after_large_prefix(
 
     assert!(stable_sum > naive_sum);
     assert_eq!(stable_sum, expected_sum);
+}
+
+#[test]
+fn seasonality_normalization_derives_mean_anchor_tolerance_from_support_and_machine_resolution() {
+    let short_factors = vec![1.0, 1.0];
+    let short_logs = vec![0.0, 0.0];
+    let short_normalized =
+        normalize_seasonality_factors_for_identifiability(&short_factors, &short_logs)
+            .expect("short fit window normalization should succeed");
+
+    let long_factors = vec![1.0; 1_024];
+    let long_logs = vec![0.0; 1_024];
+    let long_normalized =
+        normalize_seasonality_factors_for_identifiability(&long_factors, &long_logs)
+            .expect("long fit window normalization should succeed");
+
+    let subnormal_factors = vec![2.0e-320, 3.0e-320, 4.0e-320];
+    let subnormal_logs: Vec<f64> = subnormal_factors.iter().copied().map(f64::ln).collect();
+    let subnormal_normalized =
+        normalize_seasonality_factors_for_identifiability(&subnormal_factors, &subnormal_logs)
+            .expect("subnormal fit window normalization should succeed");
+
+    assert!(
+        long_normalized.normalization_metadata.mean_anchor_tolerance
+            > short_normalized
+                .normalization_metadata
+                .mean_anchor_tolerance
+    );
+    assert!(
+        subnormal_normalized
+            .normalization_metadata
+            .mean_anchor_tolerance
+            > short_normalized
+                .normalization_metadata
+                .mean_anchor_tolerance
+    );
+
+    let subnormal_anchor_error = (subnormal_normalized
+        .normalization_metadata
+        .post_normalization_mean_factor
+        - 1.0)
+        .abs();
+    assert!(
+        subnormal_anchor_error
+            <= subnormal_normalized
+                .normalization_metadata
+                .mean_anchor_tolerance
+    );
 }
 
 #[test]
