@@ -19,7 +19,7 @@ use janiform_calibration_artifacts::{
 };
 use janiform_engine_pricing::VanillaOptionPayoffType;
 use janiform_model_kernels::hawkes::{
-    HawkesStructuredAlphaParameterization, HawkesStructuredRhoParameterization,
+    HawkesEventSide, HawkesStructuredAlphaParameterization, HawkesStructuredRhoParameterization,
     HawkesStructuredRhoSelfDominancePolicy,
 };
 use janiform_model_kernels::news::{
@@ -470,6 +470,9 @@ pub enum CalibrationStagedExecutionBridgeError {
     MissingDiskCheckpointDirectory,
     EmptyDiskCheckpointDirectory,
     UnexpectedDiskCheckpointDirectoryForMemoryMode,
+    InvalidObservationTradeSide {
+        trade_side: String,
+    },
 }
 
 impl Display for CalibrationStagedExecutionBridgeError {
@@ -504,6 +507,10 @@ impl Display for CalibrationStagedExecutionBridgeError {
             Self::UnexpectedDiskCheckpointDirectoryForMemoryMode => write!(
                 formatter,
                 "runtime_resources.disk_checkpoint_directory is only supported when execution_mode=`disk`"
+            ),
+            Self::InvalidObservationTradeSide { trade_side } => write!(
+                formatter,
+                "joint refinement current-state estimation input observation_trade_sides contains unsupported value `{trade_side}`"
             ),
         }
     }
@@ -633,7 +640,8 @@ impl CalibrationStagedExecutionInput {
                 .map(CalibrationMeanReversionStageExecutionInput::into_core),
             joint_refinement_option_pricing_input: self
                 .joint_refinement_option_pricing_input
-                .map(CalibrationJointRefinementOptionPricingInput::into_core),
+                .map(CalibrationJointRefinementOptionPricingInput::try_into_core)
+                .transpose()?,
         };
 
         Ok(CalibrationStagedExecutionPlan {
@@ -1056,28 +1064,36 @@ impl CalibrationJointRefinementCarryInput {
 }
 
 impl CalibrationJointRefinementCurrentStateEstimationInput {
-    fn into_core(
+    fn try_into_core(
         self,
-    ) -> super::stages::joint_refinement::JointRefinementStageCurrentStateEstimationInput {
+    ) -> Result<
+        super::stages::joint_refinement::JointRefinementStageCurrentStateEstimationInput,
+        CalibrationStagedExecutionBridgeError,
+    > {
         let observation_trade_sides = self
             .observation_trade_sides
             .into_iter()
             .map(|trade_side| match trade_side.as_str() {
-                "buy" => Ok(janiform_model_kernels::hawkes::HawkesEventSide::Buy),
-                "sell" => Ok(janiform_model_kernels::hawkes::HawkesEventSide::Sell),
-                other => Err(other.to_string()),
+                "buy" => Ok(HawkesEventSide::Buy),
+                "sell" => Ok(HawkesEventSide::Sell),
+                _ => Err(
+                    CalibrationStagedExecutionBridgeError::InvalidObservationTradeSide {
+                        trade_side,
+                    },
+                ),
             })
-            .collect::<Result<Vec<_>, _>>()
-            .expect("joint refinement current-state bridge input validates trade sides upstream");
+            .collect::<Result<Vec<_>, _>>()?;
 
-        super::stages::joint_refinement::JointRefinementStageCurrentStateEstimationInput {
-            state_time_utc_nanos: self.state_time_utc_nanos,
-            observed_spot: self.observed_spot,
-            observed_log_price: self.observed_log_price,
-            observation_timestamp_utc_nanos: self.observation_timestamp_utc_nanos,
-            observation_trade_prices: self.observation_trade_prices,
-            observation_trade_sides,
-        }
+        Ok(
+            super::stages::joint_refinement::JointRefinementStageCurrentStateEstimationInput {
+                state_time_utc_nanos: self.state_time_utc_nanos,
+                observed_spot: self.observed_spot,
+                observed_log_price: self.observed_log_price,
+                observation_timestamp_utc_nanos: self.observation_timestamp_utc_nanos,
+                observation_trade_prices: self.observation_trade_prices,
+                observation_trade_sides,
+            },
+        )
     }
 }
 
@@ -1096,17 +1112,26 @@ impl CalibrationJointRefinementOptionSnapshotNode {
 }
 
 impl CalibrationJointRefinementOptionPricingInput {
-    fn into_core(self) -> super::stages::joint_refinement::JointRefinementStageOptionPricingInput {
-        super::stages::joint_refinement::JointRefinementStageOptionPricingInput {
-            valuation_time_utc_nanos: self.valuation_time_utc_nanos,
-            carry_input: self.carry_input.into_core(),
-            current_state_estimation_input: self.current_state_estimation_input.into_core(),
-            option_snapshot_nodes: self
-                .option_snapshot_nodes
-                .into_iter()
-                .map(CalibrationJointRefinementOptionSnapshotNode::into_core)
-                .collect(),
-        }
+    fn try_into_core(
+        self,
+    ) -> Result<
+        super::stages::joint_refinement::JointRefinementStageOptionPricingInput,
+        CalibrationStagedExecutionBridgeError,
+    > {
+        Ok(
+            super::stages::joint_refinement::JointRefinementStageOptionPricingInput {
+                valuation_time_utc_nanos: self.valuation_time_utc_nanos,
+                carry_input: self.carry_input.into_core(),
+                current_state_estimation_input: self
+                    .current_state_estimation_input
+                    .try_into_core()?,
+                option_snapshot_nodes: self
+                    .option_snapshot_nodes
+                    .into_iter()
+                    .map(CalibrationJointRefinementOptionSnapshotNode::into_core)
+                    .collect(),
+            },
+        )
     }
 }
 
@@ -1124,8 +1149,10 @@ mod tests {
     use super::{
         CALIBRATION_STAGED_EXECUTION_INPUT_SCHEMA_VERSION,
         CalibrationHawkesDirectionalLabelDiagnostics, CalibrationHawkesObservedSourceRegime,
-        CalibrationHawkesStageCandidateInput, CalibrationMeanReversionStageExecutionInput,
-        CalibrationMeanReversionStageObservation,
+        CalibrationHawkesStageCandidateInput, CalibrationJointRefinementCarryInput,
+        CalibrationJointRefinementCurrentStateEstimationInput,
+        CalibrationJointRefinementOptionPricingInput, CalibrationJointRefinementOptionSnapshotNode,
+        CalibrationMeanReversionStageExecutionInput, CalibrationMeanReversionStageObservation,
         CalibrationReturnComponentsCloseOpenGapDetectionPolicy,
         CalibrationReturnComponentsDetectedIntradayJumpCandidate,
         CalibrationReturnComponentsKnownNewsCalendarInput,
@@ -1146,6 +1173,7 @@ mod tests {
         CalibrationRunSeedSettings, CalibrationRunSpec, CalibrationStage,
         CalibrationStageSeedOverride, CalibrationStageSolverSettings,
     };
+    use janiform_engine_pricing::VanillaOptionPayoffType;
     use janiform_model_kernels::hawkes::{
         HawkesStructuredAlphaParameterization, HawkesStructuredRhoParameterization,
         HawkesStructuredRhoSelfDominancePolicy,
@@ -1421,6 +1449,51 @@ mod tests {
         assert_eq!(
             plan.disk_checkpoint_directory,
             Some(PathBuf::from("/tmp/janiform-bridge"))
+        );
+    }
+
+    #[test]
+    fn execution_input_plan_rejects_invalid_joint_refinement_trade_side() {
+        let mut execution_input = valid_execution_input(CalibrationExecutionMode::Memory);
+        execution_input.joint_refinement_option_pricing_input =
+            Some(CalibrationJointRefinementOptionPricingInput {
+                valuation_time_utc_nanos: 1_770_042_600_000_000_000,
+                carry_input: CalibrationJointRefinementCarryInput {
+                    discount_rate: 0.02,
+                    carry_rate: 0.01,
+                },
+                current_state_estimation_input:
+                    CalibrationJointRefinementCurrentStateEstimationInput {
+                        state_time_utc_nanos: 1_770_042_600_000_000_000,
+                        observed_spot: 100.0,
+                        observed_log_price: 100.0_f64.ln(),
+                        observation_timestamp_utc_nanos: vec![
+                            1_770_042_599_000_000_000,
+                            1_770_042_600_000_000_000,
+                        ],
+                        observation_trade_prices: vec![100.0, 100.1],
+                        observation_trade_sides: vec!["buy".to_string(), "hold".to_string()],
+                    },
+                option_snapshot_nodes: vec![CalibrationJointRefinementOptionSnapshotNode {
+                    quote_timestamp_utc_nanos: 1_770_042_600_000_000_000,
+                    expiry_timestamp_utc_nanos: 1_770_301_800_000_000_000,
+                    strike: 100.0,
+                    payoff_type: VanillaOptionPayoffType::Call,
+                    bid_price: 2.0,
+                    ask_price: 2.2,
+                    observed_mid_price: 2.1,
+                }],
+            });
+
+        let error = execution_input
+            .build_execution_plan()
+            .expect_err("invalid trade side should fail");
+
+        assert_eq!(
+            error,
+            CalibrationStagedExecutionBridgeError::InvalidObservationTradeSide {
+                trade_side: "hold".to_string(),
+            }
         );
     }
 }

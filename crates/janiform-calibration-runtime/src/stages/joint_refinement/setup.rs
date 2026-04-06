@@ -169,8 +169,7 @@ pub(super) fn parameter_vector_to_fitted_parameters(
                     .surprise_deterministic_intensity_profile
                     .clone(),
                 mean_reversion_fitted_parameters:
-                    MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
-                        .expect("zero-gain mean reversion should validate"),
+                    MeanReversionFittedParameters::zero_kappa_flat_anchor_mean_reversion(),
             };
 
             return_components_fitted_parameters

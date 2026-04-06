@@ -102,11 +102,29 @@ pub(super) fn build_session_window_utc(
         open_utc_nanos: open_local
             .with_timezone(&Utc)
             .timestamp_nanos_opt()
-            .expect("session open boundary must fit in i64 nanos"),
+            .ok_or_else(|| {
+                MarketDataTranslationPreprocessingError::SessionBoundaryOutOfNanosecondRange {
+                    exchange_code: exchange_code.to_string(),
+                    local_date: format!(
+                        "{:04}-{:02}-{:02}",
+                        local_date.year, local_date.month, local_date.day
+                    ),
+                    local_time: session_window.open_time().to_string(),
+                }
+            })?,
         close_utc_nanos: close_local
             .with_timezone(&Utc)
             .timestamp_nanos_opt()
-            .expect("session close boundary must fit in i64 nanos"),
+            .ok_or_else(|| {
+                MarketDataTranslationPreprocessingError::SessionBoundaryOutOfNanosecondRange {
+                    exchange_code: exchange_code.to_string(),
+                    local_date: format!(
+                        "{:04}-{:02}-{:02}",
+                        local_date.year, local_date.month, local_date.day
+                    ),
+                    local_time: session_window.close_time().to_string(),
+                }
+            })?,
     })
 }
 

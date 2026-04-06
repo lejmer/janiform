@@ -426,8 +426,7 @@ fn build_joint_coarse_model_inputs(
             y_minus_plus: 0.0,
             y_minus_minus: 0.0,
         },
-        MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
-            .expect("zero-gain mean reversion should validate"),
+        MeanReversionFittedParameters::zero_kappa_flat_anchor_mean_reversion(),
         MeanReversionRuntimeIntervalAnchors::try_new(
             "explicit_runtime_interval_grid_alignment.v1",
             0.0,

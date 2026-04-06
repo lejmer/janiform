@@ -699,6 +699,7 @@ pub enum ReturnComponentsStageCandidateGenerationInputError {
     InvalidContinuousDistributionFitWeight {
         value: f64,
     },
+    MissingContinuousDistributionSeedCandidate,
     InvalidSurpriseArrivalFitWeight {
         value: f64,
     },
@@ -933,6 +934,10 @@ impl Display for ReturnComponentsStageCandidateGenerationInputError {
             Self::InvalidContinuousDistributionFitWeight { value } => write!(
                 formatter,
                 "continuous_distribution_fit_weight must be finite and non-negative, found {value}"
+            ),
+            Self::MissingContinuousDistributionSeedCandidate => write!(
+                formatter,
+                "continuous-return candidate generation produced no NIG seed candidates"
             ),
             Self::InvalidSurpriseArrivalFitWeight { value } => write!(
                 formatter,

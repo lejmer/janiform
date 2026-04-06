@@ -879,6 +879,10 @@ pub enum OraclePricerRiskPerformanceBaselineComparisonError {
         missing_in_reference: Vec<String>,
         missing_in_candidate: Vec<String>,
     },
+    MissingProfileMapping {
+        profile_id: String,
+        baseline_kind: &'static str,
+    },
     WorkloadScaleMismatch {
         profile_id: String,
         reference: BenchmarkWorkloadScale,
@@ -924,6 +928,13 @@ impl Display for OraclePricerRiskPerformanceBaselineComparisonError {
                 formatter,
                 "profile set mismatch between baselines (missing_in_reference={:?}, missing_in_candidate={:?})",
                 missing_in_reference, missing_in_candidate
+            ),
+            Self::MissingProfileMapping {
+                profile_id,
+                baseline_kind,
+            } => write!(
+                formatter,
+                "profile `{profile_id}` is missing from the {baseline_kind} baseline mapping after profile-set validation"
             ),
             Self::WorkloadScaleMismatch {
                 profile_id,
@@ -1065,11 +1076,22 @@ pub fn compare_oracle_pricer_risk_performance_baseline_versions(
         let reference_profile = reference_by_profile
             .get(profile_id)
             .copied()
-            .expect("profile_id from reference set must exist in reference map");
+            .ok_or_else(|| {
+                OraclePricerRiskPerformanceBaselineComparisonError::MissingProfileMapping {
+                    profile_id: profile_id.to_string(),
+                    baseline_kind: "reference",
+                }
+            })?;
+        
         let candidate_profile = candidate_by_profile
             .get(profile_id)
             .copied()
-            .expect("profile_id from reference set must exist in candidate map");
+            .ok_or_else(|| {
+                OraclePricerRiskPerformanceBaselineComparisonError::MissingProfileMapping {
+                    profile_id: profile_id.to_string(),
+                    baseline_kind: "candidate",
+                }
+            })?;
 
         if reference_profile.workload_scale != candidate_profile.workload_scale {
             return Err(

@@ -130,6 +130,11 @@ pub enum MarketDataTranslationPreprocessingError {
         exchange_code: String,
         timestamp_utc_nanos: i64,
     },
+    SessionBoundaryOutOfNanosecondRange {
+        exchange_code: String,
+        local_date: String,
+        local_time: String,
+    },
     AmbiguousSessionBoundary {
         exchange_code: String,
         timezone_name: String,
@@ -193,6 +198,14 @@ impl Display for MarketDataTranslationPreprocessingError {
             } => write!(
                 formatter,
                 "calendar session boundary could not be resolved for exchange `{exchange_code}` at `{timestamp_utc_nanos}`"
+            ),
+            Self::SessionBoundaryOutOfNanosecondRange {
+                exchange_code,
+                local_date,
+                local_time,
+            } => write!(
+                formatter,
+                "calendar session boundary for exchange `{exchange_code}` at `{local_date} {local_time}` cannot be represented in UTC nanoseconds"
             ),
             Self::AmbiguousSessionBoundary {
                 exchange_code,

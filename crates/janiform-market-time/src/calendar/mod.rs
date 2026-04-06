@@ -79,9 +79,18 @@
 //! # Ok::<(), janiform_market_time::calendar::ExchangeCalendarValidationError>(())
 //! ```
 
-pub const TIMESTAMP_EVENT_INPUT_SCHEMA_VERSION: &str = "seasonality.timestamp_event.v1";
-pub const PREPROCESSED_TIMESTAMP_EVENT_SCHEMA_VERSION: &str =
-    "seasonality.timestamp_event.preprocessed.v1";
+mod constants;
+mod definition;
+mod errors;
+mod news_market_state_resolver;
+mod preprocessing;
+mod registry;
+mod types;
+mod validation;
+
+pub use constants::{
+    PREPROCESSED_TIMESTAMP_EVENT_SCHEMA_VERSION, TIMESTAMP_EVENT_INPUT_SCHEMA_VERSION,
+};
 pub use janiform_foundations::market_state::{
     MARKET_STATE_RESOLUTION_POLICY, SESSION_WINDOW_BOUNDARY_POLICY,
 };
@@ -107,14 +116,6 @@ pub use crate::seasonality::{
     estimate_intraday_seasonality, generate_seasonality_diagnostics_batch_report,
     generate_seasonality_diagnostics_report,
 };
-
-mod definition;
-mod errors;
-mod news_market_state_resolver;
-mod preprocessing;
-mod registry;
-mod types;
-mod validation;
 
 pub use errors::{
     ExchangeCalendarRegistryLoadError, ExchangeCalendarRegistryLookupError,

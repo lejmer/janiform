@@ -504,8 +504,15 @@ where
         });
     };
 
-    let reference_theta = nearest_zero_theta_in_domain(admissible_domain)
-        .expect("non-empty admissible domain must provide one interior point nearest zero");
+    let Some(reference_theta) = nearest_zero_theta_in_domain(admissible_domain) else {
+        return Err(AnchoredLocalTiltSolveError::NoAdmissibleLocalTilt {
+            target_log_moment_exponent,
+            lower_theta: admissible_domain.lower_theta_exclusive,
+            upper_theta: admissible_domain.upper_theta_exclusive,
+            lower_residual: f64::NAN,
+            upper_residual: f64::NAN,
+        });
+    };
 
     let reference_evaluation = evaluate_residual(reference_theta)?;
     if reference_evaluation.residual.abs() <= tolerance {

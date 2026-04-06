@@ -6,7 +6,10 @@ use super::continuous_fit::{
     ReturnComponentsStageContinuousReturnCalibrationSample, build_nig_search_candidates,
     evaluate_continuous_nig_candidate,
 };
-use super::contracts::ReturnComponentsStageObservedSignalSummaryStatistics;
+use super::contracts::{
+    ReturnComponentsStageCandidateGenerationInputError,
+    ReturnComponentsStageObservedSignalSummaryStatistics,
+};
 
 #[derive(Debug, Clone)]
 pub(crate) struct FittedContinuousReturnLayer {
@@ -19,7 +22,7 @@ pub(crate) fn fit_continuous_return_layer(
     calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
     stage_seed: u64,
     solver_settings: &CalibrationOptimizerSettings,
-) -> FittedContinuousReturnLayer {
+) -> Result<FittedContinuousReturnLayer, ReturnComponentsStageCandidateGenerationInputError> {
     let optimized_candidates =
         build_nig_search_candidates(calibration_sample, stage_seed, solver_settings);
 
@@ -29,7 +32,9 @@ pub(crate) fn fit_continuous_return_layer(
     } = optimized_candidates
         .into_iter()
         .next()
-        .expect("continuous-layer search must yield at least one NIG candidate");
+        .ok_or(
+            ReturnComponentsStageCandidateGenerationInputError::MissingContinuousDistributionSeedCandidate,
+        )?;
 
     let mut evaluation = evaluate_continuous_nig_candidate(
         nig_configuration,
@@ -49,10 +54,10 @@ pub(crate) fn fit_continuous_return_layer(
         optimizer_diagnostic.basin_diagnostics.clone();
     evaluation.optimizer_diagnostic = optimizer_diagnostic;
 
-    FittedContinuousReturnLayer {
+    Ok(FittedContinuousReturnLayer {
         nig_configuration,
         evaluation,
-    }
+    })
 }
 
 #[cfg(test)]
@@ -134,7 +139,8 @@ mod tests {
             &calibration_sample,
             17,
             &solver_settings,
-        );
+        )
+        .expect("continuous layer fit should produce a NIG candidate");
 
         assert!(fitted_layer.nig_configuration.delta > 0.0);
         assert!(fitted_layer.evaluation.objective_score.is_finite());

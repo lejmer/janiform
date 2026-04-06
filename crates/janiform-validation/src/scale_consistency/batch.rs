@@ -765,6 +765,9 @@ pub enum ScaleConsistencyBatchOrchestratorError {
     ArtifactPersistenceRequiresDiskMode {
         execution_mode: CalibrationExecutionMode,
     },
+    MissingArtifactOutputConfiguration {
+        run_id: String,
+    },
     ArtifactPersistenceFailed {
         export_directory: String,
         error_message: String,
@@ -811,6 +814,10 @@ impl Display for ScaleConsistencyBatchOrchestratorError {
             Self::ArtifactPersistenceRequiresDiskMode { execution_mode } => write!(
                 formatter,
                 "artifact persistence requires execution_mode=`disk`, found `{execution_mode:?}`"
+            ),
+            Self::MissingArtifactOutputConfiguration { run_id } => write!(
+                formatter,
+                "batch run `{run_id}` requested artifact persistence without artifact_output configuration"
             ),
             Self::ArtifactPersistenceFailed {
                 export_directory,
@@ -1199,15 +1206,21 @@ fn persist_json_artifact<T>(
 where
     T: Serialize,
 {
+    let export_directory = run_contract
+        .run_spec
+        .artifact_output
+        .as_ref()
+        .ok_or_else(|| {
+            ScaleConsistencyBatchOrchestratorError::MissingArtifactOutputConfiguration {
+                run_id: run_contract.run_spec.run_id.clone(),
+            }
+        })?
+        .artifact_root_uri
+        .clone();
+
     write_json_file(path, value).map_err(|error_message| {
         ScaleConsistencyBatchOrchestratorError::ArtifactPersistenceFailed {
-            export_directory: run_contract
-                .run_spec
-                .artifact_output
-                .as_ref()
-                .expect("disk-mode persistence requires configured artifact output")
-                .artifact_root_uri
-                .clone(),
+            export_directory: export_directory.clone(),
             error_message,
         }
     })?;

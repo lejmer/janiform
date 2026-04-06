@@ -3,9 +3,9 @@ use super::contracts::{
 };
 use super::session_windows::resolve_market_state_and_session_window;
 use super::shared::{
-    ACTIVITY_LIFT_WINDOW_MINUTES, CalibrationReturnComponentsKnownNewsReturnSample,
+    ACTIVITY_LIFT_WINDOW_NANOS, CalibrationReturnComponentsKnownNewsReturnSample,
     CalibrationReturnComponentsObservedCloseOpenBoundaryObservation,
-    CalibrationReturnComponentsSignalSourceWindow, Duration, ExchangeCalendarDefinition,
+    CalibrationReturnComponentsSignalSourceWindow, ExchangeCalendarDefinition,
     KNOWN_NEWS_EXCLUSION_WINDOW_MINUTES, KnownNewsResolutionSummary, MarketState, OpenTickRecord,
     PartitionPointIndex, ResolvedKnownNewsRecord, Tz,
     contains_timestamp_in_symmetric_minute_window, count_timestamps_in_half_open_interval,
@@ -124,9 +124,7 @@ pub(super) fn open_session_known_news_activity_share(
         return 0.0;
     }
 
-    let window_nanos = Duration::minutes(ACTIVITY_LIFT_WINDOW_MINUTES)
-        .num_nanoseconds()
-        .expect("activity-lift window must fit in i64");
+    let window_nanos = ACTIVITY_LIFT_WINDOW_NANOS;
 
     let mut right_index: usize = 0;
     let mut left_index: usize = 0;
@@ -157,9 +155,7 @@ pub(super) fn activity_lift(
     anchor_timestamp_utc_nanos: i64,
     open_price_tick_timestamps: &[i64],
 ) -> f64 {
-    let window_nanos = Duration::minutes(ACTIVITY_LIFT_WINDOW_MINUTES)
-        .num_nanoseconds()
-        .expect("activity-lift window must fit in i64");
+    let window_nanos = ACTIVITY_LIFT_WINDOW_NANOS;
 
     let pre_window_start = anchor_timestamp_utc_nanos - window_nanos;
     let post_window_end = anchor_timestamp_utc_nanos + window_nanos;

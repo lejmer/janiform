@@ -427,29 +427,29 @@ fn estimate_endogenous_mean_reversion_fitted_parameters(
         calibration_grid.calibration_grid_interval_hours,
     );
 
-    let evaluated_candidates = vec![
+    let evaluated_candidates = [
         full_candidate,
         no_mean_reversion_candidate,
         flat_anchor_mean_reversion_candidate,
         random_walk_null_candidate,
     ];
-    let selected_candidate_index = evaluated_candidates
-        .iter()
-        .enumerate()
-        .min_by(|(_, left_candidate), (_, right_candidate)| {
-            left_candidate
-                .information_criterion_bic
-                .total_cmp(&right_candidate.information_criterion_bic)
-        })
-        .map(|(candidate_index, _)| candidate_index)
-        .expect("at least one candidate is always evaluated");
-    let selected_candidate = evaluated_candidates[selected_candidate_index].clone();
+
+    let mut selected_candidate = evaluated_candidates[0].clone();
+    for candidate in evaluated_candidates.iter().skip(1) {
+        if candidate.information_criterion_bic < selected_candidate.information_criterion_bic {
+            selected_candidate = candidate.clone();
+        }
+    }
 
     let fitted_parameters = MeanReversionFittedParameters::try_new(
         selected_candidate.kappa,
         selected_candidate.anchor_model.clone(),
     )
-    .expect("mean reversion fit should validate");
+    .map_err(
+        |source| MeanReversionStageExecutionFailure::InvalidRunSpec {
+            error_message: format!("selected mean-reversion candidate is invalid: {source}"),
+        },
+    )?;
 
     Ok((
         fitted_parameters,
@@ -505,35 +505,35 @@ fn build_endogenous_mean_reversion_calibration_context(
     let interval_duration_nanos =
         derive_observation_interval_duration_nanos(execution_input.observations.as_slice())?;
 
-    let range_start_utc = DateTime::<Utc>::from_timestamp_nanos(
-        execution_input
-            .observations
-            .first()
-            .expect("observation count is checked before endogenous estimation")
-            .observation_timestamp_utc_nanos,
-    );
-    let range_end_utc = DateTime::<Utc>::from_timestamp_nanos(
-        execution_input
-            .observations
-            .last()
-            .expect("observation count is checked before endogenous estimation")
-            .observation_timestamp_utc_nanos,
-    );
+    let Some(first_observation) = execution_input.observations.first() else {
+        return Err(
+            MeanReversionStageExecutionFailure::InvalidObservationTimestampGrid {
+                error_message:
+                    "mean-reversion endogenous calibration requires at least two observations"
+                        .to_string(),
+            },
+        );
+    };
 
-    let runtime_hourly_seasonality_range_start_utc_nanos = floor_to_hour_utc_nanos(
-        execution_input
-            .observations
-            .first()
-            .expect("observation count is checked before endogenous estimation")
-            .observation_timestamp_utc_nanos,
-    );
-    let runtime_hourly_seasonality_range_end_utc_nanos = ceil_to_hour_utc_nanos(
-        execution_input
-            .observations
-            .last()
-            .expect("observation count is checked before endogenous estimation")
-            .observation_timestamp_utc_nanos,
-    );
+    let Some(last_observation) = execution_input.observations.last() else {
+        return Err(
+            MeanReversionStageExecutionFailure::InvalidObservationTimestampGrid {
+                error_message:
+                    "mean-reversion endogenous calibration requires at least two observations"
+                        .to_string(),
+            },
+        );
+    };
+
+    let range_start_utc =
+        DateTime::<Utc>::from_timestamp_nanos(first_observation.observation_timestamp_utc_nanos);
+    let range_end_utc =
+        DateTime::<Utc>::from_timestamp_nanos(last_observation.observation_timestamp_utc_nanos);
+
+    let runtime_hourly_seasonality_range_start_utc_nanos =
+        floor_to_hour_utc_nanos(first_observation.observation_timestamp_utc_nanos);
+    let runtime_hourly_seasonality_range_end_utc_nanos =
+        ceil_to_hour_utc_nanos(last_observation.observation_timestamp_utc_nanos);
 
     let runtime_hourly_seasonality_factors =
         build_runtime_hourly_seasonality_factors_from_components(
@@ -1363,8 +1363,10 @@ fn zero_kappa_endogenous_fit(
         0.0,
     );
 
-    let fitted_parameters = MeanReversionFittedParameters::try_new(0.0, anchor_model.clone())
-        .expect("zero-kappa endogenous mean reversion fit should validate");
+    let fitted_parameters = MeanReversionFittedParameters {
+        kappa: 0.0,
+        anchor_model: anchor_model.clone(),
+    };
 
     let fallback_candidate = MeanReversionStageCandidateEvaluation {
         candidate_family: RANDOM_WALK_NULL_CANDIDATE_FAMILY,

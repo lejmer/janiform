@@ -154,6 +154,9 @@ pub enum SeededTickSimulationRunError {
     InvalidTransitionStep {
         source: HawkesTransitionError,
     },
+    InternalInvariantViolation {
+        message: &'static str,
+    },
 }
 
 impl Display for SeededTickSimulationRunError {
@@ -370,6 +373,12 @@ impl Display for SeededTickSimulationRunError {
                     "failed to apply canonical Hawkes transition step: {source}"
                 )
             }
+            Self::InternalInvariantViolation { message } => {
+                write!(
+                    formatter,
+                    "seeded simulation internal invariant violation: {message}"
+                )
+            }
         }
     }
 }
@@ -390,6 +399,7 @@ impl Error for SeededTickSimulationRunError {
             Self::InvalidReturnComponents { source, .. } => Some(source),
             Self::InvalidTransitionStep { source } => Some(source),
             Self::CalendarSessionBoundaryResolutionFailed { .. } => None,
+            Self::InternalInvariantViolation { .. } => None,
             _ => None,
         }
     }

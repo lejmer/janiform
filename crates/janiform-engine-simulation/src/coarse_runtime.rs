@@ -823,8 +823,7 @@ fn endogenous_statistics_news_intensity_input() -> ExponentialAffineTransformNew
     // Coarse runtime samples exogenous news explicitly for direct jumps and boundary excitation.
     // Keep the transform-slice statistics endogenous-only so the same news process is not
     // absorbed once in the affine counts and again in the explicit event sampler.
-    ExponentialAffineTransformNewsIntensityInput::try_new(0.0, 0.0)
-        .expect("zero news intensity must be a valid affine input")
+    ExponentialAffineTransformNewsIntensityInput::zero()
 }
 
 #[cfg(test)]

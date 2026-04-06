@@ -372,8 +372,7 @@ pub(super) fn collect_return_components_stage_constraint_violations(
             surprise_deterministic_intensity_profile:
                 default_surprise_deterministic_intensity_profile(),
             mean_reversion_fitted_parameters:
-                MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
-                    .expect("zero-gain mean reversion should validate"),
+                MeanReversionFittedParameters::zero_kappa_flat_anchor_mean_reversion(),
         },
     )
 }

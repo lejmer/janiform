@@ -294,11 +294,17 @@ impl SufficientStatisticsRiskIntervalFactors {
         &self,
         interval_index: usize,
     ) -> ExponentialAffineTransformNewsIntensityInput {
-        ExponentialAffineTransformNewsIntensityInput::try_new(
-            self.nu_h_known[interval_index],
-            self.nu_h_surprise[interval_index],
-        )
-        .expect("validated interval factors must produce valid news intensity inputs")
+        let news_intensity_input = ExponentialAffineTransformNewsIntensityInput {
+            known_nu_h: self.nu_h_known[interval_index],
+            surprise_nu_h: self.nu_h_surprise[interval_index],
+        };
+
+        debug_assert!(
+            news_intensity_input.validate().is_ok(),
+            "validated interval factors must produce valid news intensity inputs"
+        );
+
+        news_intensity_input
     }
 }
 

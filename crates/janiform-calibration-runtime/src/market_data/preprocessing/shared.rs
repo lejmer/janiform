@@ -1,9 +1,7 @@
 pub(super) use std::collections::BTreeMap;
 pub(super) use std::str::FromStr;
 
-pub(super) use chrono::{
-    DateTime, Datelike, Duration, LocalResult, NaiveDate, TimeZone, Timelike, Utc,
-};
+pub(super) use chrono::{DateTime, Datelike, LocalResult, NaiveDate, TimeZone, Timelike, Utc};
 pub(super) use chrono_tz::Tz;
 
 pub(super) use crate::calendar::{
@@ -52,7 +50,7 @@ pub(super) use super::contracts::{
     MarketDataTranslationSeasonalityPreprocessingSettings,
 };
 
-pub(super) const ACTIVITY_LIFT_WINDOW_MINUTES: i64 = 30;
+pub(super) const ACTIVITY_LIFT_WINDOW_NANOS: i64 = 30 * 60 * 1_000_000_000;
 pub(super) const KNOWN_NEWS_EXCLUSION_WINDOW_MINUTES: i64 = 15;
 pub(super) const MINIMUM_OPEN_TICK_COUNT_DURATION_HOURS: f64 = 0.25;
 

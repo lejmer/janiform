@@ -278,9 +278,12 @@ pub(super) fn merge_weekly_intervals(mut intervals: Vec<(i32, i32)>) -> Vec<(i32
     let mut merged = vec![intervals[0]];
 
     for (start_minute, end_minute) in intervals.into_iter().skip(1) {
-        let previous = merged.last_mut().expect("merged is initialized");
-        if start_minute <= previous.1 {
-            previous.1 = previous.1.max(end_minute);
+        if let Some(previous) = merged.last_mut() {
+            if start_minute <= previous.1 {
+                previous.1 = previous.1.max(end_minute);
+            } else {
+                merged.push((start_minute, end_minute));
+            }
         } else {
             merged.push((start_minute, end_minute));
         }

@@ -543,8 +543,7 @@ fn build_return_components_stage_success_report(
                     .clone(),
             },
             mean_reversion_fitted_parameters:
-                MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
-                    .expect("zero-gain mean reversion should validate"),
+                MeanReversionFittedParameters::zero_kappa_flat_anchor_mean_reversion(),
         },
         candidate_diagnostics: selection.candidate_diagnostics,
         candidate_generation_policy: RETURN_COMPONENTS_STAGE_CANDIDATE_GENERATION_POLICY,

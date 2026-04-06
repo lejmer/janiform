@@ -104,7 +104,12 @@ pub(super) fn first_open_boundary_after_close(
                 current_local_date.month as u32,
                 current_local_date.day as u32,
             )
-            .expect("calendar date produced from timestamp should be valid")
+            .ok_or_else(
+                || MarketDataTranslationPreprocessingError::InvalidSessionBoundary {
+                    exchange_code: exchange_code.to_string(),
+                    timestamp_utc_nanos: close_timestamp_utc_nanos,
+                },
+            )?
             .weekday(),
         );
 

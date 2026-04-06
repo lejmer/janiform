@@ -160,16 +160,15 @@ impl SeededTickEventDebugTraceCollector {
             return;
         }
 
-        let start_transition_index = self
-            .pending_chunk_records
-            .first()
-            .expect("non-empty trace chunk should contain first record")
-            .transition_index;
-        let end_transition_index = self
-            .pending_chunk_records
-            .last()
-            .expect("non-empty trace chunk should contain last record")
-            .transition_index;
+        let Some(first_record) = self.pending_chunk_records.first() else {
+            return;
+        };
+        let Some(last_record) = self.pending_chunk_records.last() else {
+            return;
+        };
+
+        let start_transition_index = first_record.transition_index;
+        let end_transition_index = last_record.transition_index;
 
         let records = std::mem::take(&mut self.pending_chunk_records);
         let chunk_index = self.trace_chunks.len();

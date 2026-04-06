@@ -126,6 +126,13 @@ pub struct ExponentialAffineTransformNewsIntensityInput {
 }
 
 impl ExponentialAffineTransformNewsIntensityInput {
+    pub const fn zero() -> Self {
+        Self {
+            known_nu_h: 0.0,
+            surprise_nu_h: 0.0,
+        }
+    }
+
     pub fn try_new(
         known_nu_h: f64,
         surprise_nu_h: f64,

@@ -113,7 +113,8 @@ impl SimulationRandomnessFactory for SplitMix64SimulationRandomnessFactory {
     }
 }
 
-pub(crate) const fn splitmix64_output_mixer(mut value: u64) -> u64 {
+/// Deterministic splitmix64 output mixer used for seed derivation workflows.
+pub const fn splitmix64_output_mixer(mut value: u64) -> u64 {
     value ^= value >> 30;
     value = value.wrapping_mul(0xBF58_476D_1CE4_E5B9);
     value ^= value >> 27;

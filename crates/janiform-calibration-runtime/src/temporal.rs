@@ -30,9 +30,12 @@ pub(crate) fn contains_timestamp_in_symmetric_minute_window(
         return false;
     }
 
-    let window_nanos = chrono::Duration::minutes(window_minutes)
-        .num_nanoseconds()
-        .expect("timestamp window must fit in i64");
+    let Some(window_nanos) = window_minutes
+        .checked_mul(60)
+        .and_then(|seconds| seconds.checked_mul(1_000_000_000))
+    else {
+        return false;
+    };
 
     let lower_bound = candidate_timestamp_utc_nanos - window_nanos;
     let upper_bound = candidate_timestamp_utc_nanos + window_nanos;

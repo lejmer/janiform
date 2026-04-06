@@ -398,9 +398,15 @@ where
         CalibrationArtifactIoError::validation_failed(artifact_kind, error_message)
     })?;
 
-    let run_directory = artifact_path
-        .parent()
-        .expect("artifact path should always have a parent directory");
+    let Some(run_directory) = artifact_path.parent() else {
+        return Err(CalibrationArtifactIoError::validation_failed(
+            artifact_kind,
+            format!(
+                "artifact path `{}` must include a parent directory",
+                artifact_path.display()
+            ),
+        ));
+    };
     fs::create_dir_all(run_directory).map_err(|source| {
         CalibrationArtifactIoError::create_directory_failed(
             artifact_kind,

@@ -189,11 +189,12 @@ pub(crate) fn select_best_restart_outcome_with_lazy_coarse_consistency<'a>(
     let mut progress_state = LazyCoarseConsistencyProgressState::default();
 
     for candidate_state in ranked_restart_candidates {
-        let restart_group = find_restart_group(
+        let Some(restart_group) = find_restart_group(
             restart_groups.as_slice(),
             candidate_state.restart_outcome.restart_id.as_str(),
-        )
-        .expect("joint restart group should exist for every ranked candidate");
+        ) else {
+            continue;
+        };
 
         let current_weighted_objective = candidate_state
             .restart_outcome
@@ -226,16 +227,15 @@ pub(crate) fn select_best_restart_outcome_with_lazy_coarse_consistency<'a>(
             .as_ref()
             .is_some_and(|artifacts| coarse_consistency_summary_is_admissible(&artifacts.summary))
         {
-            return (
-                Some(
-                    find_restart_outcome(
-                        restart_outcomes,
-                        restart_group.representative.restart_id.as_str(),
-                    )
-                    .expect("joint restart outcome should exist for every selected group"),
-                ),
-                coarse_consistency_cache.artifacts_by_restart_id,
-            );
+            if let Some(selected_restart_outcome) = find_restart_outcome(
+                restart_outcomes,
+                restart_group.representative.restart_id.as_str(),
+            ) {
+                return (
+                    Some(selected_restart_outcome),
+                    coarse_consistency_cache.artifacts_by_restart_id,
+                );
+            }
         }
     }
 
@@ -446,7 +446,12 @@ pub(crate) fn build_joint_candidate_frontier_diagnostics(
                 .find(|candidate_state| {
                     candidate_state.restart_outcome.restart_id == outcome.restart_id
                 })
-                .expect("joint candidate state should exist for every frontier outcome");
+                .copied()
+                .unwrap_or(JointRefinementCandidateOrderingState {
+                    pareto_rank: usize::MAX,
+                    restart_outcome: outcome,
+                    admissible: false,
+                });
 
             let valid = outcome.local_evaluation.invalid_reason.is_none()
                 && outcome.final_evaluation.invalid_reason.is_none();

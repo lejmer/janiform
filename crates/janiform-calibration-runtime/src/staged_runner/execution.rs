@@ -352,9 +352,20 @@ pub fn run_staged_calibration_with_checkpointing_and_observer(
     };
 
     if run_spec.execution_mode == CalibrationExecutionMode::Disk && start_position > 0 {
-        let artifact_run_writer = artifact_run_writer
-            .as_ref()
-            .expect("disk-mode execution should have prepared an artifact run writer");
+        let Some(artifact_run_writer) = artifact_run_writer.as_ref() else {
+            return build_staged_run_failure_report(
+                run_contract,
+                stage_reports,
+                emitted_checkpoints,
+                resumed_from_checkpoint_reference,
+                resumed_from_last_successful_stage,
+                None,
+                CalibrationStagedRunFailure::ArtifactManifestPersistFailed {
+                    error_message: "disk-mode execution did not prepare an artifact run writer"
+                        .to_string(),
+                },
+            );
+        };
 
         for stage in execution_stage_order.iter().copied().take(start_position) {
             let artifact_reference = expected_stage_output_artifact_reference(run_spec, stage);
@@ -550,9 +561,20 @@ pub fn run_staged_calibration_with_checkpointing_and_observer(
         update_in_memory_payload_state(&mut payload_state, &stage_report);
 
         if run_spec.execution_mode == CalibrationExecutionMode::Disk {
-            let artifact_run_writer = artifact_run_writer
-                .as_ref()
-                .expect("disk-mode execution should have prepared an artifact run writer");
+            let Some(artifact_run_writer) = artifact_run_writer.as_ref() else {
+                return build_staged_run_failure_report(
+                    run_contract,
+                    stage_reports,
+                    emitted_checkpoints,
+                    resumed_from_checkpoint_reference,
+                    resumed_from_last_successful_stage,
+                    started_from_stage,
+                    CalibrationStagedRunFailure::ArtifactManifestPersistFailed {
+                        error_message: "disk-mode execution did not prepare an artifact run writer"
+                            .to_string(),
+                    },
+                );
+            };
 
             let stage_parameter_input = match build_stage_parameter_artifact_input(&stage_report) {
                 Ok(input) => input,
@@ -684,11 +706,38 @@ pub fn run_staged_calibration_with_checkpointing_and_observer(
     let mut diagnostic_manifest_artifact_references = Vec::new();
 
     if run_spec.execution_mode == CalibrationExecutionMode::Disk {
-        let artifact_run_writer = artifact_run_writer
-            .expect("disk-mode execution should have prepared an artifact run writer");
-        let dataset_snapshot_artifact = dataset_snapshot_artifact
-            .as_ref()
-            .expect("disk-mode execution should have built a dataset snapshot artifact");
+        let Some(artifact_run_writer) = artifact_run_writer else {
+            return build_staged_run_failure_report(
+                run_contract,
+                stage_reports,
+                emitted_checkpoints,
+                resumed_from_checkpoint_reference,
+                resumed_from_last_successful_stage,
+                started_from_stage,
+                CalibrationStagedRunFailure::ArtifactManifestPersistFailed {
+                    error_message: "disk-mode execution did not prepare an artifact run writer"
+                        .to_string(),
+                },
+            );
+        };
+
+        let Some(dataset_snapshot_artifact) = dataset_snapshot_artifact.as_ref() else {
+            return build_staged_run_failure_report(
+                run_contract,
+                stage_reports,
+                emitted_checkpoints,
+                resumed_from_checkpoint_reference,
+                resumed_from_last_successful_stage,
+                started_from_stage,
+                CalibrationStagedRunFailure::DatasetSnapshotPersistFailed {
+                    artifact_reference: calibration_dataset_snapshot_artifact_reference(
+                        run_spec.run_id.as_str(),
+                    ),
+                    error_message: "disk-mode execution did not build a dataset snapshot artifact"
+                        .to_string(),
+                },
+            );
+        };
 
         if let Err(source) = persist_calibration_dataset_snapshot_artifact_to_run_directory(
             artifact_run_writer.pending_run_directory(),

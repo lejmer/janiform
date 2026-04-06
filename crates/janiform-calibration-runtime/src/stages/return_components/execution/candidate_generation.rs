@@ -129,7 +129,7 @@ pub(super) fn generate_return_components_stage_candidate_inputs(
         &continuous_return_calibration_sample,
         stage_seed,
         stage_solver_settings,
-    );
+    )?;
 
     let fitted_diagnostic_policy = diagnostic_policy_fit::fit_diagnostic_policy(
         RETURN_COMPONENTS_STAGE_SHOCK_EVIDENCE_MIN_COUNT,

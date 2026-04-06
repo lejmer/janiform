@@ -213,21 +213,47 @@ pub(crate) fn merge_ordered_interval_updates(
                 if compare_interval_updates(endogenous_update, exogenous_update)
                     != Ordering::Greater
                 {
-                    merged_updates.push(next_endogenous.take().expect("endogenous update exists"));
+                    let Some(endogenous_update) = next_endogenous.take() else {
+                        return Err(SeededTickSimulationRunError::InternalInvariantViolation {
+                            message: "missing endogenous update while merging interval updates",
+                        });
+                    };
+
+                    merged_updates.push(endogenous_update);
                     next_endogenous = endogenous_iterator.next();
                 } else {
-                    merged_updates.push(next_exogenous.take().expect("exogenous update exists"));
+                    let Some(exogenous_update) = next_exogenous.take() else {
+                        return Err(SeededTickSimulationRunError::InternalInvariantViolation {
+                            message: "missing exogenous update while merging interval updates",
+                        });
+                    };
+
+                    merged_updates.push(exogenous_update);
                     next_exogenous = exogenous_iterator.next();
                 }
             }
             (Some(_), None) => {
-                merged_updates.push(next_endogenous.take().expect("endogenous update exists"));
+                let Some(endogenous_update) = next_endogenous.take() else {
+                    return Err(SeededTickSimulationRunError::InternalInvariantViolation {
+                        message: "missing endogenous tail update while merging interval updates",
+                    });
+                };
+
+                merged_updates.push(endogenous_update);
                 merged_updates.extend(endogenous_iterator);
+
                 return Ok(merged_updates);
             }
             (None, Some(_)) => {
-                merged_updates.push(next_exogenous.take().expect("exogenous update exists"));
+                let Some(exogenous_update) = next_exogenous.take() else {
+                    return Err(SeededTickSimulationRunError::InternalInvariantViolation {
+                        message: "missing exogenous tail update while merging interval updates",
+                    });
+                };
+
+                merged_updates.push(exogenous_update);
                 merged_updates.extend(exogenous_iterator);
+
                 return Ok(merged_updates);
             }
             (None, None) => return Ok(merged_updates),

@@ -368,7 +368,12 @@ impl ScaleConsistencyPairedExperimentScenarioSpec {
             .parameter_set
             .fine_interval_factors
             .interval_delta
-            .expect("parameter set validation requires explicit fine interval factor delta");
+            .ok_or(
+                ScaleConsistencyPairedExperimentScenarioSpecError::InvalidParameterSet {
+                    source:
+                        ScaleConsistencyExperimentParameterSetError::MissingFineIntervalFactorDelta,
+                },
+            )?;
         if available_factor_interval_delta != self.fine_interval_delta {
             return Err(
                 ScaleConsistencyPairedExperimentScenarioSpecError::FineIntervalFactorDeltaMismatch {

@@ -657,8 +657,7 @@ fn build_seeded_summary_simulation_run_config(
                 y_minus_minus: 0.0,
             },
             mean_reversion_fitted_parameters:
-                MeanReversionFittedParameters::flat_anchor_mean_reversion(0.0)
-                    .map_err(|source| source.to_string())?,
+                MeanReversionFittedParameters::zero_kappa_flat_anchor_mean_reversion(),
             mean_reversion_runtime_interval_anchors: MeanReversionRuntimeIntervalAnchors::try_new(
                 hourly_factor_contract.metadata.interval_alignment_policy,
                 0.0,

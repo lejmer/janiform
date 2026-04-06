@@ -14,8 +14,9 @@ const BUNDLED_SESSION_PRESETS_SOURCE_JSON: &str = include_str!(concat!(
     "/../../presets/sources/sessions/session_presets.json"
 ));
 
-static BUNDLED_SESSION_TEMPLATES_BY_EXCHANGE_CODE: OnceLock<BTreeMap<String, SessionTemplate>> =
-    OnceLock::new();
+static BUNDLED_SESSION_TEMPLATES_BY_EXCHANGE_CODE: OnceLock<
+    Result<BTreeMap<String, SessionTemplate>, String>,
+> = OnceLock::new();
 
 #[derive(Debug, Deserialize)]
 struct BundledSessionPresetSourceDocument {
@@ -41,20 +42,23 @@ struct BundledSessionPresetConfiguration {
 pub(super) fn bundled_session_template(
     exchange_code: &str,
 ) -> Result<Option<SessionTemplate>, MarketDataLoadingError> {
-    Ok(BUNDLED_SESSION_TEMPLATES_BY_EXCHANGE_CODE
+    let templates = BUNDLED_SESSION_TEMPLATES_BY_EXCHANGE_CODE
         .get_or_init(load_bundled_session_templates)
-        .get(exchange_code)
-        .cloned())
+        .as_ref()
+        .map_err(|message| MarketDataLoadingError::InvalidValue {
+            field_path: "session_configuration.exchange_code".to_string(),
+            message: message.clone(),
+        })?;
+
+    Ok(templates.get(exchange_code).cloned())
 }
 
-fn load_bundled_session_templates() -> BTreeMap<String, SessionTemplate> {
+fn load_bundled_session_templates() -> Result<BTreeMap<String, SessionTemplate>, String> {
     let source_document: BundledSessionPresetSourceDocument =
-        serde_json::from_str(BUNDLED_SESSION_PRESETS_SOURCE_JSON).expect(
-            "bundled session preset source JSON must remain valid because calibration session \
-resolution depends on it",
-        );
+        serde_json::from_str(BUNDLED_SESSION_PRESETS_SOURCE_JSON)
+            .map_err(|source| format!("bundled session preset source JSON is invalid: {source}"))?;
 
-    source_document
+    Ok(source_document
         .presets
         .into_iter()
         .map(|entry| {
@@ -80,5 +84,5 @@ resolution depends on it",
                 },
             )
         })
-        .collect()
+        .collect())
 }

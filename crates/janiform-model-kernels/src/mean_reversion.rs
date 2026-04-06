@@ -116,6 +116,13 @@ impl MeanReversionFittedParameters {
         )
     }
 
+    pub fn zero_kappa_flat_anchor_mean_reversion() -> Self {
+        Self {
+            kappa: 0.0,
+            anchor_model: MeanReversionAnchorModel::zero_gain_endogenous_core_pressure_level(),
+        }
+    }
+
     pub fn try_new(
         kappa: f64,
         anchor_model: MeanReversionAnchorModel,
