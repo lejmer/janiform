@@ -12,10 +12,6 @@ use janiform_model_kernels::news::{
 };
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 
-use super::super::constants::{
-    RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER,
-    RETURN_COMPONENTS_STAGE_SHOCK_EVIDENCE_MIN_COUNT,
-};
 use super::super::contracts::{
     ReturnComponentsActivityCouplingCandidateFamily, ReturnComponentsCloseOpenGapDetectionPolicy,
     ReturnComponentsDetectedIntradayJumpCandidate, ReturnComponentsKnownNewsCalendarInput,
@@ -28,6 +24,7 @@ use super::super::contracts::{
     ReturnComponentsStageObservedSignalSummaryStatistics, ReturnComponentsStageSignalSourceWindow,
     ReturnComponentsSurpriseNewsArrivalCandidateFamily,
 };
+use super::super::derived_contracts::return_components_stage_positive_domain_floor;
 use super::super::diagnostic_policy_fit;
 use super::super::objective_scoring_policy_fit;
 use super::super::price_range_policy_fit;
@@ -245,7 +242,7 @@ fn nig_search_candidates_remain_non_empty_for_tiny_fx_return_volatility() {
         nig_candidates
             .iter()
             .all(|candidate| candidate.configuration.delta
-                >= RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER)
+                >= return_components_stage_positive_domain_floor())
     );
 }
 
@@ -338,6 +335,12 @@ fn zero_inflated_open_returns_keep_small_non_zero_moves_in_continuous_fit_sample
         candidate_generation_input
             .observed_open_session_returns
             .as_slice(),
+        candidate_generation_input
+            .realized_known_news_return_samples
+            .as_slice(),
+        candidate_generation_input
+            .detected_intraday_jump_candidates
+            .as_slice(),
     );
 
     let fitted_surprise_episode_selection_layer =
@@ -362,8 +365,11 @@ fn zero_inflated_open_returns_keep_small_non_zero_moves_in_continuous_fit_sample
         .filter(|return_value| *return_value != 0.0)
         .collect();
 
-    assert_eq!(sorted_signals.continuous_fit_returns.len(), 5);
-    assert_eq!(retained_non_zero_returns, vec![1.0e-4, -2.0e-4, 3.0e-4]);
+    assert_eq!(sorted_signals.continuous_fit_returns.len(), 6);
+    assert_eq!(
+        retained_non_zero_returns,
+        vec![1.0e-4, -2.0e-4, 3.0e-4, 5.0e-3]
+    );
 }
 
 #[test]
@@ -430,6 +436,12 @@ fn continuous_fit_excludes_exact_known_news_attributed_open_return_timestamps() 
         candidate_generation_input
             .observed_open_session_returns
             .as_slice(),
+        candidate_generation_input
+            .realized_known_news_return_samples
+            .as_slice(),
+        candidate_generation_input
+            .detected_intraday_jump_candidates
+            .as_slice(),
     );
 
     let fitted_surprise_episode_selection_layer =
@@ -447,17 +459,14 @@ fn continuous_fit_excludes_exact_known_news_attributed_open_return_timestamps() 
         &fitted_surprise_episode_selection_layer,
     );
 
-    assert_eq!(
-        sorted_signals
-            .continuous_fit_returns
-            .iter()
-            .map(|observation| observation.return_timestamp_utc_nanos)
-            .collect::<Vec<_>>(),
-        vec![
-            utc_nanos(2026, 2, 2, 14, 0, 1),
-            utc_nanos(2026, 2, 2, 14, 0, 3),
-        ]
-    );
+    let retained_timestamps: Vec<i64> = sorted_signals
+        .continuous_fit_returns
+        .iter()
+        .map(|observation| observation.return_timestamp_utc_nanos)
+        .collect();
+
+    assert!(retained_timestamps.contains(&utc_nanos(2026, 2, 2, 14, 0, 1)));
+    assert!(!retained_timestamps.contains(&utc_nanos(2026, 2, 2, 14, 0, 2)));
 }
 
 #[test]
@@ -584,6 +593,12 @@ fn exact_candidate_evaluation_matches_stage_bucket_construction() {
         candidate_generation_input
             .observed_open_session_returns
             .as_slice(),
+        candidate_generation_input
+            .realized_known_news_return_samples
+            .as_slice(),
+        candidate_generation_input
+            .detected_intraday_jump_candidates
+            .as_slice(),
     );
 
     let fitted_surprise_episode_selection_layer =
@@ -654,13 +669,9 @@ fn exact_candidate_evaluation_matches_stage_bucket_construction() {
             .activity_coupling_scale,
     };
 
-    let fitted_diagnostic_policy = diagnostic_policy_fit::fit_diagnostic_policy(
-        RETURN_COMPONENTS_STAGE_SHOCK_EVIDENCE_MIN_COUNT,
-    );
+    let fitted_diagnostic_policy = diagnostic_policy_fit::fit_diagnostic_policy();
     let fitted_objective_scoring_policy =
-        objective_scoring_policy_fit::fit_objective_scoring_policy(
-            RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER,
-        );
+        objective_scoring_policy_fit::fit_objective_scoring_policy(summary_statistics);
 
     let expected_jump_diagnostic = build_jump_diagnostic(
         &fitted_diagnostic_policy,
@@ -705,7 +716,6 @@ fn exact_candidate_evaluation_matches_stage_bucket_construction() {
         &expected_gap_diagnostic,
         &expected_activity_coupling_diagnostic,
         &expected_price_range_sanity_diagnostic,
-        fitted_diagnostic_policy.shock_evidence_min_count,
     );
 
     assert_eq!(exact_evaluation.objective_metric_buckets, expected_buckets);

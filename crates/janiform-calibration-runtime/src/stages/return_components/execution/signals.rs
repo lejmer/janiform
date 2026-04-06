@@ -1,6 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use janiform_foundations::numeric::arithmetic_mean_or_zero as arithmetic_mean;
+use janiform_foundations::numeric::{
+    arithmetic_mean_or_zero as arithmetic_mean, smallest_positive_value,
+    strictly_positive_machine_value,
+};
 use janiform_foundations::time::duration_nanos_to_hours;
 
 use super::super::contracts::{
@@ -205,7 +208,14 @@ pub(crate) fn summarize_candidate_generation_signals(
         continuous_fit::mean_continuous_return_calibration_business_time_scale(
             &continuous_return_calibration_sample,
         )
-        .max(1.0e-8);
+        .max(
+            smallest_positive_value(
+                continuous_fit::continuous_return_calibration_sample_business_time_scales(
+                    &continuous_return_calibration_sample,
+                ),
+            )
+            .unwrap_or_else(strictly_positive_machine_value),
+        );
 
     let continuous_distribution =
         continuous_fit::summarize_observed_continuous_return_calibration_sample(

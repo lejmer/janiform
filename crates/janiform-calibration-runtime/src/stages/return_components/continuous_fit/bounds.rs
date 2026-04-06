@@ -3,7 +3,7 @@ use janiform_foundations::numeric::{logistic, root_mean_square_or_infinity};
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
-use super::super::constants::RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER;
+use super::super::derived_contracts::return_components_stage_positive_domain_floor;
 use super::super::execution::{
     round_negative_candidate_value, round_positive_candidate_value, round_signed_candidate_value,
     theoretical_net_process_moments,
@@ -29,7 +29,7 @@ pub(crate) fn nig_search_point_from_configuration(
 ) -> Option<NigShapeSearchPoint> {
     let optimizer_context = build_continuous_return_optimizer_context(calibration_sample);
     let alpha = configuration.alpha;
-    if !alpha.is_finite() || alpha <= RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER {
+    if !alpha.is_finite() || alpha <= return_components_stage_positive_domain_floor() {
         return None;
     }
 
@@ -43,8 +43,7 @@ pub(crate) fn nig_search_point_from_configuration(
         configuration.delta_beta,
     )?;
     let delta_offset = configuration.delta / delta_center;
-    if !delta_offset.is_finite()
-        || delta_offset <= RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER
+    if !delta_offset.is_finite() || delta_offset <= return_components_stage_positive_domain_floor()
     {
         return None;
     }
@@ -86,6 +85,7 @@ pub(super) fn build_moment_seed_candidates(
 
     let relative_share_lower_bound = coordinate_to_share(theoretical_search_bounds.lower_bounds[2]);
     let relative_share_upper_bound = coordinate_to_share(theoretical_search_bounds.upper_bounds[2]);
+
     let beta_ratio_lower_bound = coordinate_to_ratio(theoretical_search_bounds.lower_bounds[1]);
     let beta_ratio_upper_bound = coordinate_to_ratio(theoretical_search_bounds.upper_bounds[1]);
 
@@ -212,6 +212,7 @@ pub(super) fn build_search_regimes_from_moment_seeds(
             )
         })
         .collect();
+
     profiled_search_regimes.sort_by(|left, right| {
         left.log_alpha_center
             .total_cmp(&right.log_alpha_center)
@@ -231,16 +232,21 @@ pub(super) fn configuration_from_shape_search_point(
     shape_search_point: NigShapeSearchPoint,
 ) -> Option<NigSharedPlusShiftConfiguration> {
     let alpha = shape_search_point.log_alpha.exp();
-    if !alpha.is_finite() || alpha <= RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER {
+    if !alpha.is_finite() || alpha <= return_components_stage_positive_domain_floor() {
         return None;
     }
+
     let buy_beta_ratio = coordinate_to_ratio(shape_search_point.buy_skew_coordinate);
     let sell_relative_share = coordinate_to_share(shape_search_point.sell_relative_coordinate);
+
     let sell_beta_ratio = sell_beta_ratio_from_relative_share(buy_beta_ratio, sell_relative_share);
+
     let beta_0 = alpha * buy_beta_ratio;
     let sell_beta = alpha * sell_beta_ratio;
     let delta_beta = sell_beta - beta_0;
+
     let delta_center = inferred_delta_center(optimizer_context, alpha, beta_0, delta_beta)?;
+
     let delta = delta_center * shape_search_point.log_delta_offset.exp();
 
     NigSharedPlusShiftConfiguration::try_new(
@@ -258,7 +264,9 @@ pub(super) fn theoretical_search_bounds(
     moment_candidate_count: usize,
 ) -> NigShapeSearchBounds {
     let (alpha_lower_bound, alpha_upper_bound) = theoretical_alpha_bounds(observed_profile);
+
     let maximum_profiled_beta_ratio = maximum_profiled_open_beta_ratio(alpha_lower_bound);
+
     let relative_share_lower_bound = minimum_profiled_relative_share(moment_candidate_count);
     let relative_share_upper_bound = 1.0 - relative_share_lower_bound;
 
@@ -284,15 +292,15 @@ pub(super) fn theoretical_alpha_bounds(
     let observed_variance = observed_profile
         .return_volatility
         .powi(2)
-        .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER);
+        .max(return_components_stage_positive_domain_floor());
 
     let excess_kurtosis_standard_error = observed_profile.excess_kurtosis_standard_error();
     let observed_excess_kurtosis = observed_profile.adjusted_excess_kurtosis.max(0.0);
     let excess_kurtosis_confidence_half_width =
         RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_PROFILE_CONFIDENCE_Z_SCORE
             * excess_kurtosis_standard_error;
-    let distinguishable_positive_excess_kurtosis = excess_kurtosis_confidence_half_width
-        .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER);
+    let distinguishable_positive_excess_kurtosis =
+        excess_kurtosis_confidence_half_width.max(return_components_stage_positive_domain_floor());
 
     let lower_plausible_excess_kurtosis =
         if observed_excess_kurtosis > excess_kurtosis_confidence_half_width {
@@ -300,14 +308,14 @@ pub(super) fn theoretical_alpha_bounds(
         } else {
             distinguishable_positive_excess_kurtosis
         }
-        .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER);
+        .max(return_components_stage_positive_domain_floor());
     let upper_plausible_excess_kurtosis = (observed_excess_kurtosis
         + excess_kurtosis_confidence_half_width)
         .max(lower_plausible_excess_kurtosis);
 
     let lower_alpha_bound = (3.0 / (observed_variance * upper_plausible_excess_kurtosis))
         .sqrt()
-        .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER);
+        .max(return_components_stage_positive_domain_floor());
     let upper_alpha_bound = (3.0 / (observed_variance * lower_plausible_excess_kurtosis))
         .sqrt()
         .max(lower_alpha_bound);
@@ -335,16 +343,15 @@ fn inferred_delta_center(
     let target_variance = optimizer_context
         .observed_return_volatility
         .powi(2)
-        .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER);
+        .max(return_components_stage_positive_domain_floor());
     let mean_business_time_scale = optimizer_context
         .mean_business_time_scale
-        .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER);
-    let variance_per_unit =
-        variance_per_unit.max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER);
+        .max(return_components_stage_positive_domain_floor());
+    let variance_per_unit = variance_per_unit.max(return_components_stage_positive_domain_floor());
 
     Some(
         (target_variance / (variance_per_unit * mean_business_time_scale))
-            .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER),
+            .max(return_components_stage_positive_domain_floor()),
     )
 }
 
@@ -357,7 +364,7 @@ fn theoretical_log_delta_offset_bounds(
     let upper_tail_quantile = approximate_chi_square_quantile(degrees_of_freedom, 0.975);
 
     let lower_variance_ratio = (degrees_of_freedom / upper_tail_quantile)
-        .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER);
+        .max(return_components_stage_positive_domain_floor());
     let upper_variance_ratio = (degrees_of_freedom / lower_tail_quantile).max(lower_variance_ratio);
 
     (lower_variance_ratio.ln(), upper_variance_ratio.ln())
@@ -381,20 +388,24 @@ fn moment_seed_objective_score(
 
     let mean_scale = (moment_targets.return_volatility
         / (moment_targets.sample_count.max(2) as f64).sqrt())
-    .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER.sqrt());
+    .max(return_components_stage_positive_domain_floor().sqrt());
+
     let variance_scale = moment_targets
         .return_volatility
         .powi(2)
-        .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER);
+        .max(return_components_stage_positive_domain_floor());
 
     let mean_fit =
         scale_aware_absolute_error(fitted_mean_return, moment_targets.mean_return, mean_scale);
+
     let variance_fit = scale_aware_absolute_error(fitted_variance, variance_scale, variance_scale);
+
     let skewness_fit = scale_aware_absolute_error(
         fitted_skewness,
         moment_targets.adjusted_skewness,
         moment_targets.skewness_standard_error,
     );
+
     let excess_kurtosis_fit = scale_aware_absolute_error(
         fitted_excess_kurtosis,
         moment_targets.adjusted_excess_kurtosis,
@@ -408,11 +419,12 @@ fn moment_seed_objective_score(
 
 fn approximate_chi_square_quantile(degrees_of_freedom: f64, probability_level: f64) -> f64 {
     let standardized_quantile = standard_normal_quantile(probability_level);
+
     let wilson_hilferty_term = 1.0 - 2.0 / (9.0 * degrees_of_freedom)
         + standardized_quantile * (2.0 / (9.0 * degrees_of_freedom)).sqrt();
 
     (degrees_of_freedom * wilson_hilferty_term.powi(3))
-        .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER)
+        .max(return_components_stage_positive_domain_floor())
 }
 
 fn standard_normal_quantile(probability_level: f64) -> f64 {

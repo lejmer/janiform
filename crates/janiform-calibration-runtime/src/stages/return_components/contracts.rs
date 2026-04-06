@@ -1070,23 +1070,31 @@ impl ReturnComponentsSurpriseNewsArrivalCandidateFamily {
             }
         })?;
 
-        if self.profile_resolution_hours != 1 {
+        if self.profile_resolution_hours
+            != super::constants::RETURN_COMPONENTS_STAGE_SURPRISE_INTENSITY_PROFILE_RESOLUTION_HOURS
+        {
             return Err(
                 ReturnComponentsStageCandidateInputError::InvalidSurpriseArrivalFamily {
-                    error_message: "surprise arrival weekly profile resolution must equal one hour"
-                        .to_string(),
+                    error_message: format!(
+                        "surprise arrival weekly profile resolution must equal {} hour(s)",
+                        super::constants::RETURN_COMPONENTS_STAGE_SURPRISE_INTENSITY_PROFILE_RESOLUTION_HOURS
+                    ),
                 },
             );
         }
-        if self.weekly_hour_utc_multipliers.len() != 168 {
+
+        let expected_bucket_count =
+            super::derived_contracts::return_components_stage_surprise_intensity_weekly_profile_bucket_count();
+        if self.weekly_hour_utc_multipliers.len() != expected_bucket_count {
             return Err(
                 ReturnComponentsStageCandidateInputError::InvalidSurpriseArrivalFamily {
-                    error_message:
-                        "surprise arrival weekly profile must contain exactly 168 hourly multipliers"
-                            .to_string(),
+                    error_message: format!(
+                        "surprise arrival weekly profile must contain exactly {expected_bucket_count} multipliers"
+                    ),
                 },
             );
         }
+
         if self
             .weekly_hour_utc_multipliers
             .iter()
@@ -1313,7 +1321,6 @@ impl ReturnComponentsStageCandidateProvenance {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ReturnComponentsStageDiagnosticPolicy {
     pub fit_policy: &'static str,
-    pub shock_evidence_min_count: usize,
     pub insufficient_evidence_state: &'static str,
     pub identified_component_state: &'static str,
 }
@@ -1322,9 +1329,6 @@ impl ReturnComponentsStageDiagnosticPolicy {
     fn validate(&self) -> Result<(), String> {
         if self.fit_policy.trim().is_empty() {
             return Err("fit_policy must be non-empty".to_string());
-        }
-        if self.shock_evidence_min_count == 0 {
-            return Err("shock_evidence_min_count must be strictly positive".to_string());
         }
         if self.insufficient_evidence_state.trim().is_empty() {
             return Err("insufficient_evidence_state must be non-empty".to_string());

@@ -1,6 +1,5 @@
 use janiform_foundations::numeric::round_to;
 
-use super::constants::RETURN_COMPONENTS_STAGE_SHOCK_EVIDENCE_MIN_COUNT;
 use super::contracts::ReturnComponentsStageObservedSignalSummaryStatistics;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -17,7 +16,7 @@ pub(crate) fn fit_activity_coupling_layer(
             summary_statistics.known_activity_coupling_target,
         ),
         surprise_activity_coupling_scale: if summary_statistics.selected_surprise_jump_episode_count
-            < RETURN_COMPONENTS_STAGE_SHOCK_EVIDENCE_MIN_COUNT
+            == 0
         {
             0.0
         } else {
@@ -42,12 +41,12 @@ mod tests {
     };
 
     #[test]
-    fn sparse_surprise_evidence_collapses_surprise_coupling_to_zero() {
+    fn absent_surprise_evidence_collapses_surprise_coupling_to_zero() {
         let fitted_layer =
             fit_activity_coupling_layer(ReturnComponentsStageObservedSignalSummaryStatistics {
                 known_activity_coupling_target: 0.125432198765,
                 surprise_activity_coupling_target: 0.875,
-                selected_surprise_jump_episode_count: 1,
+                selected_surprise_jump_episode_count: 0,
                 ..test_summary_statistics()
             });
 
@@ -61,12 +60,12 @@ mod tests {
     }
 
     #[test]
-    fn sufficient_surprise_evidence_keeps_both_targets() {
+    fn any_surprise_evidence_keeps_both_targets() {
         let fitted_layer =
             fit_activity_coupling_layer(ReturnComponentsStageObservedSignalSummaryStatistics {
                 known_activity_coupling_target: 0.25,
                 surprise_activity_coupling_target: 0.75,
-                selected_surprise_jump_episode_count: 2,
+                selected_surprise_jump_episode_count: 1,
                 ..test_summary_statistics()
             });
 

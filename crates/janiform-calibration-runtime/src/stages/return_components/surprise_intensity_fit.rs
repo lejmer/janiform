@@ -3,11 +3,13 @@ use janiform_calibration_artifacts::SurpriseNewsDeterministicIntensityProfile;
 use janiform_foundations::time::duration_nanos_to_hours;
 
 use super::constants::{
-    RETURN_COMPONENTS_STAGE_SHOCK_EVIDENCE_MIN_COUNT,
     RETURN_COMPONENTS_STAGE_SURPRISE_INTENSITY_PROFILE_FIT_POLICY,
     RETURN_COMPONENTS_STAGE_SURPRISE_INTENSITY_PROFILE_NORMALIZATION_POLICY,
     RETURN_COMPONENTS_STAGE_SURPRISE_INTENSITY_PROFILE_RESOLUTION_HOURS,
-    RETURN_COMPONENTS_STAGE_SURPRISE_INTENSITY_WEEKLY_PROFILE_BUCKET_COUNT,
+};
+use super::derived_contracts::{
+    return_components_stage_positive_domain_floor,
+    return_components_stage_surprise_intensity_weekly_profile_bucket_count,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -28,23 +30,22 @@ pub(super) fn fit_surprise_news_arrival_layer(
                 && timestamp_utc_nanos < window_end_utc_nanos
         })
         .count();
+
     let source_window_duration_hours =
         duration_nanos_to_hours(window_end_utc_nanos.saturating_sub(window_start_utc_nanos));
 
-    if source_window_duration_hours <= 0.0
-        || effective_event_count < RETURN_COMPONENTS_STAGE_SHOCK_EVIDENCE_MIN_COUNT
-    {
+    if source_window_duration_hours <= 0.0 || effective_event_count == 0 {
         return FittedSurpriseNewsArrivalLayer {
             baseline_intensity_per_hour: 0.0,
             deterministic_intensity_profile: unit_weekly_profile(
-                RETURN_COMPONENTS_STAGE_SURPRISE_INTENSITY_WEEKLY_PROFILE_BUCKET_COUNT,
+                return_components_stage_surprise_intensity_weekly_profile_bucket_count(),
             ),
         };
     }
 
     FittedSurpriseNewsArrivalLayer {
         baseline_intensity_per_hour: effective_event_count as f64
-            / source_window_duration_hours.max(f64::EPSILON),
+            / source_window_duration_hours.max(return_components_stage_positive_domain_floor()),
         deterministic_intensity_profile: fit_surprise_news_deterministic_intensity_profile(
             window_start_utc_nanos,
             window_end_utc_nanos,
@@ -58,7 +59,7 @@ pub(super) fn fit_surprise_news_deterministic_intensity_profile(
     window_end_utc_nanos: i64,
     selected_surprise_episode_timestamps_utc_nanos: &[i64],
 ) -> SurpriseNewsDeterministicIntensityProfile {
-    let bucket_count = RETURN_COMPONENTS_STAGE_SURPRISE_INTENSITY_WEEKLY_PROFILE_BUCKET_COUNT;
+    let bucket_count = return_components_stage_surprise_intensity_weekly_profile_bucket_count();
     if window_end_utc_nanos <= window_start_utc_nanos {
         return unit_weekly_profile(bucket_count);
     }
@@ -66,10 +67,7 @@ pub(super) fn fit_surprise_news_deterministic_intensity_profile(
     let exposure_hours_by_bucket =
         exposure_hours_by_weekly_bucket(window_start_utc_nanos, window_end_utc_nanos, bucket_count);
     let total_exposure_hours = exposure_hours_by_bucket.iter().sum::<f64>();
-    if total_exposure_hours <= 0.0
-        || selected_surprise_episode_timestamps_utc_nanos.len()
-            < RETURN_COMPONENTS_STAGE_SHOCK_EVIDENCE_MIN_COUNT
-    {
+    if total_exposure_hours <= 0.0 {
         return unit_weekly_profile(bucket_count);
     }
 
@@ -89,7 +87,8 @@ pub(super) fn fit_surprise_news_deterministic_intensity_profile(
         return unit_weekly_profile(bucket_count);
     }
 
-    let baseline_intensity = total_event_count / total_exposure_hours.max(f64::EPSILON);
+    let baseline_intensity = total_event_count
+        / total_exposure_hours.max(return_components_stage_positive_domain_floor());
     if !baseline_intensity.is_finite() || baseline_intensity <= 0.0 {
         return unit_weekly_profile(bucket_count);
     }
@@ -97,10 +96,12 @@ pub(super) fn fit_surprise_news_deterministic_intensity_profile(
     let shrinkage_event_mass = (total_event_count / bucket_count as f64).max(1.0);
     let mut weekly_hour_utc_multipliers = Vec::with_capacity(bucket_count);
     for bucket_index in 0..bucket_count {
-        let bucket_exposure_hours = exposure_hours_by_bucket[bucket_index].max(f64::EPSILON);
+        let bucket_exposure_hours = exposure_hours_by_bucket[bucket_index]
+            .max(return_components_stage_positive_domain_floor());
         let bucket_expected_count = baseline_intensity * bucket_exposure_hours;
         let bucket_multiplier = (event_count_by_bucket[bucket_index] + shrinkage_event_mass)
-            / (bucket_expected_count + shrinkage_event_mass).max(f64::EPSILON);
+            / (bucket_expected_count + shrinkage_event_mass)
+                .max(return_components_stage_positive_domain_floor());
         weekly_hour_utc_multipliers.push(
             if bucket_multiplier.is_finite() && bucket_multiplier > 0.0 {
                 bucket_multiplier
@@ -115,7 +116,7 @@ pub(super) fn fit_surprise_news_deterministic_intensity_profile(
         .zip(exposure_hours_by_bucket.iter())
         .map(|(multiplier, exposure_hours)| multiplier * exposure_hours)
         .sum::<f64>()
-        / total_exposure_hours.max(f64::EPSILON);
+        / total_exposure_hours.max(return_components_stage_positive_domain_floor());
     if weighted_mean_multiplier.is_finite() && weighted_mean_multiplier > 0.0 {
         for multiplier in &mut weekly_hour_utc_multipliers {
             *multiplier /= weighted_mean_multiplier;
@@ -216,6 +217,7 @@ fn weekly_hour_bucket_index(timestamp_utc_nanos: i64) -> usize {
 mod tests {
     use chrono::{TimeZone, Utc};
 
+    use super::super::derived_contracts::return_components_stage_surprise_intensity_weekly_profile_bucket_count;
     use super::{
         fit_surprise_news_arrival_layer, fit_surprise_news_deterministic_intensity_profile,
     };
@@ -257,7 +259,10 @@ mod tests {
             ],
         );
 
-        assert_eq!(fitted_profile.weekly_hour_utc_multipliers.len(), 168);
+        assert_eq!(
+            fitted_profile.weekly_hour_utc_multipliers.len(),
+            return_components_stage_surprise_intensity_weekly_profile_bucket_count()
+        );
 
         let weighted_mean = fitted_profile
             .weekly_hour_utc_multipliers
@@ -272,7 +277,7 @@ mod tests {
     }
 
     #[test]
-    fn sparse_surprise_evidence_collapses_to_zero_baseline_and_unit_profile() {
+    fn absent_surprise_evidence_collapses_to_zero_baseline_and_unit_profile() {
         let window_start_utc_nanos = Utc
             .with_ymd_and_hms(2025, 1, 6, 0, 0, 0)
             .single()
@@ -286,16 +291,8 @@ mod tests {
             .timestamp_nanos_opt()
             .unwrap();
 
-        let fitted_layer = fit_surprise_news_arrival_layer(
-            window_start_utc_nanos,
-            window_end_utc_nanos,
-            &[Utc
-                .with_ymd_and_hms(2025, 1, 6, 9, 0, 0)
-                .single()
-                .unwrap()
-                .timestamp_nanos_opt()
-                .unwrap()],
-        );
+        let fitted_layer =
+            fit_surprise_news_arrival_layer(window_start_utc_nanos, window_end_utc_nanos, &[]);
 
         assert_eq!(fitted_layer.baseline_intensity_per_hour, 0.0);
         assert!(

@@ -23,6 +23,12 @@ pub(crate) fn prepare_candidate_generation_input(
         candidate_generation_input
             .observed_open_session_returns
             .as_slice(),
+        candidate_generation_input
+            .realized_known_news_return_samples
+            .as_slice(),
+        candidate_generation_input
+            .detected_intraday_jump_candidates
+            .as_slice(),
     );
 
     let derived_close_open_gap_candidates = derive_close_open_gap_candidates(
