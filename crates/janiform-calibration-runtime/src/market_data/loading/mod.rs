@@ -5,8 +5,11 @@ mod known_news;
 mod normalization;
 mod option_surface;
 mod rows;
+mod session_gap_spectrum;
 mod session_resolution;
 mod shared;
+#[cfg(test)]
+mod test_support;
 mod workflow;
 
 pub use contracts::{

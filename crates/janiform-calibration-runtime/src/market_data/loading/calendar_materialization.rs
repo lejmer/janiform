@@ -1,17 +1,24 @@
 use std::collections::BTreeMap;
+use std::str::FromStr;
 
-use crate::calendar::ExchangeCalendarDefinition;
-use crate::calendar::ExchangeCalendarRegistry;
+use chrono::{Datelike, LocalResult, NaiveDate, TimeZone};
+use chrono_tz::Tz;
+
+use crate::calendar::{
+    CalendarDate, ExchangeCalendarDefinition, ExchangeCalendarRegistry,
+    ExchangeCalendarRegistryLookupError, SessionTime, SessionWindowDefinition, TradingWeekday,
+};
 use crate::market_data::preprocessing::MarketDataTranslationTickRecord;
 
 use super::contracts::{
     MarketDataLoadingError, MarketDataSessionRecurringClosedWindowPayload,
     MarketDataSessionRegularWindowPayload,
 };
+use super::session_gap_spectrum::ObservedGapSpectrum;
 use super::shared::{
-    CalendarRuleMetadataArtifact, DateTime, Duration, ExchangeCalendarArtifact,
-    ExchangeCalendarRegistryArtifact, GAP_SCAN_STEP_MINUTES, LONG_GAP_THRESHOLD_HOURS, MarketState,
-    RegularSessionArtifact, SessionTemplate, SessionWindowArtifact, TradingWeekday, Utc,
+    CalendarRuleMetadataArtifact, DateTime, ExchangeCalendarArtifact,
+    ExchangeCalendarRegistryArtifact, RegularSessionArtifact, SessionTemplate,
+    SessionWindowArtifact, Utc,
 };
 
 pub(super) fn trading_weekdays() -> [&'static str; 5] {
@@ -339,22 +346,19 @@ pub(super) fn evaluate_gap_alignment(
     calendar_registry: &ExchangeCalendarRegistry,
     exchange_code: &str,
     tick_records: &[MarketDataTranslationTickRecord],
+    observed_gap_spectrum: &ObservedGapSpectrum,
 ) -> Result<(usize, usize, usize), MarketDataLoadingError> {
-    let mut long_gap_count = 0;
+    let mut inactivity_gap_count = 0;
     let mut aligned_gap_count = 0;
     let mut unexpected_gap_count = 0;
 
     for pair in tick_records.windows(2) {
         let gap_nanos = pair[1].timestamp_utc_nanos - pair[0].timestamp_utc_nanos;
-        if gap_nanos
-            < Duration::hours(LONG_GAP_THRESHOLD_HOURS)
-                .num_nanoseconds()
-                .unwrap_or(0)
-        {
+        if !observed_gap_spectrum.is_inactivity_gap(gap_nanos) {
             continue;
         }
 
-        long_gap_count += 1;
+        inactivity_gap_count += 1;
 
         if gap_contains_closed_period(
             calendar_registry,
@@ -368,7 +372,11 @@ pub(super) fn evaluate_gap_alignment(
         }
     }
 
-    Ok((long_gap_count, aligned_gap_count, unexpected_gap_count))
+    Ok((
+        inactivity_gap_count,
+        aligned_gap_count,
+        unexpected_gap_count,
+    ))
 }
 
 pub(super) fn gap_contains_closed_period(
@@ -377,32 +385,55 @@ pub(super) fn gap_contains_closed_period(
     gap_start_utc_nanos: i64,
     gap_end_utc_nanos: i64,
 ) -> Result<bool, MarketDataLoadingError> {
-    let mut probe_timestamp = DateTime::<Utc>::from_timestamp_nanos(gap_start_utc_nanos)
-        + Duration::minutes(GAP_SCAN_STEP_MINUTES);
+    if gap_end_utc_nanos <= gap_start_utc_nanos {
+        return Ok(false);
+    }
 
-    let gap_end = DateTime::<Utc>::from_timestamp_nanos(gap_end_utc_nanos);
-    while probe_timestamp < gap_end {
-        let market_state = calendar_registry
-            .resolve_market_state_at_utc(exchange_code, probe_timestamp)
-            .map_err(|error| MarketDataLoadingError::InvalidValue {
-                field_path: "session_configuration".to_string(),
-                message: format!("failed to resolve inferred market state: {error}"),
-            })?;
-        if market_state == MarketState::Closed {
+    let (definition, timezone) =
+        required_definition_and_timezone(calendar_registry, exchange_code)?;
+
+    let overlapping_open_intervals = overlapping_open_intervals(
+        definition,
+        timezone,
+        exchange_code,
+        gap_start_utc_nanos,
+        gap_end_utc_nanos,
+    )?;
+
+    if overlapping_open_intervals.is_empty() {
+        return Ok(true);
+    }
+
+    let mut covered_until_utc_nanos = gap_start_utc_nanos;
+
+    for (interval_start_utc_nanos, interval_end_utc_nanos) in overlapping_open_intervals {
+        if interval_start_utc_nanos > covered_until_utc_nanos {
             return Ok(true);
         }
 
-        probe_timestamp += Duration::minutes(GAP_SCAN_STEP_MINUTES);
+        covered_until_utc_nanos = covered_until_utc_nanos.max(interval_end_utc_nanos);
+        if covered_until_utc_nanos >= gap_end_utc_nanos {
+            return Ok(false);
+        }
     }
 
-    Ok(false)
+    Ok(covered_until_utc_nanos < gap_end_utc_nanos)
 }
 
 pub(super) fn confidence_score_for_inference(
     template: &SessionTemplate,
     gap_alignment_diagnostics: (usize, usize, usize),
 ) -> f64 {
-    let (long_gap_count, aligned_gap_count, unexpected_gap_count) = gap_alignment_diagnostics;
+    // This score is an operator-facing diagnostic for automatic session inference,
+    // not a calibration or simulation control. The resolved session definition is
+    // the runtime artifact that downstream code consumes.
+    //
+    // Keep this deliberately lightweight. The loading path already does the exact
+    // work that matters for correctness: it materializes one calendar definition
+    // and checks whether derived inactivity gaps overlap inferred closed periods.
+    // A more elaborate confidence model would add hidden policy, retries, or extra
+    // clustering passes without improving the persisted session interpretation.
+    let (inactivity_gap_count, aligned_gap_count, unexpected_gap_count) = gap_alignment_diagnostics;
 
     let mut confidence_score: f64 = if template.timezone_source == "exchange_code_builtin_default" {
         0.65
@@ -416,7 +447,7 @@ pub(super) fn confidence_score_for_inference(
     if template.continuous_weekday_template {
         confidence_score += 0.10;
     }
-    if long_gap_count > 0 && unexpected_gap_count == 0 {
+    if inactivity_gap_count > 0 && unexpected_gap_count == 0 {
         confidence_score += 0.10;
     }
     if unexpected_gap_count > 0 {
@@ -446,7 +477,7 @@ pub(super) fn automatic_resolution_reasons(
     template: &SessionTemplate,
     gap_alignment_diagnostics: (usize, usize, usize),
 ) -> Vec<String> {
-    let (long_gap_count, aligned_gap_count, _) = gap_alignment_diagnostics;
+    let (inactivity_gap_count, aligned_gap_count, _) = gap_alignment_diagnostics;
     let mut reasons = Vec::new();
 
     if template.timezone_source == "exchange_code_builtin_default" {
@@ -461,11 +492,11 @@ pub(super) fn automatic_resolution_reasons(
 
     if aligned_gap_count > 0 {
         reasons.push(format!(
-            "validated the inferred session against {aligned_gap_count} observed long gaps that overlapped inferred closed windows"
+            "validated the inferred session against {aligned_gap_count} observed inactivity gaps from the derived gap spectrum that overlapped inferred closed windows"
         ));
-    } else if long_gap_count == 0 {
+    } else if inactivity_gap_count == 0 {
         reasons.push(
-            "no long gaps were present in the observed window, so exchange metadata carried the inference"
+            "the observed gap spectrum did not isolate recurring inactivity gaps, so exchange metadata carried the inference"
                 .to_string(),
         );
     }
@@ -477,21 +508,233 @@ pub(super) fn automatic_resolution_warnings(
     template: &SessionTemplate,
     gap_alignment_diagnostics: (usize, usize, usize),
 ) -> Vec<String> {
-    let (long_gap_count, _, unexpected_gap_count) = gap_alignment_diagnostics;
+    let (inactivity_gap_count, _, unexpected_gap_count) = gap_alignment_diagnostics;
     let mut warnings = Vec::new();
 
-    if long_gap_count == 0 && template.timezone_source == "exchange_code_builtin_default" {
+    if inactivity_gap_count == 0 && template.timezone_source == "exchange_code_builtin_default" {
         warnings.push(
-            "observed data did not include long inactivity gaps, so the session was inferred from exchange defaults".to_string(),
+            "the observed gap spectrum did not isolate recurring inactivity gaps, so the session was inferred from exchange defaults".to_string(),
         );
     }
     if unexpected_gap_count > 0 {
         warnings.push(format!(
-            "{unexpected_gap_count} observed long gaps did not clearly overlap inferred closed windows. If downstream diagnostics look inconsistent, provide an explicit session-definition override."
+            "{unexpected_gap_count} derived inactivity gaps did not clearly overlap inferred closed windows. If downstream diagnostics look inconsistent, provide an explicit session-definition override."
         ));
     }
 
     warnings
+}
+
+fn required_definition_and_timezone<'a>(
+    calendar_registry: &'a ExchangeCalendarRegistry,
+    exchange_code: &str,
+) -> Result<(&'a ExchangeCalendarDefinition, Tz), MarketDataLoadingError> {
+    let definition =
+        calendar_registry
+            .get_required(exchange_code)
+            .map_err(|error| match error {
+                ExchangeCalendarRegistryLookupError::MissingExchangeId { exchange_code } => {
+                    MarketDataLoadingError::InvalidValue {
+                        field_path: "session_configuration.exchange_code".to_string(),
+                        message: format!(
+                            "resolved calendar registry does not contain `{exchange_code}`"
+                        ),
+                    }
+                }
+            })?;
+
+    let timezone_name = definition.timezone_name().to_string();
+    let timezone =
+        Tz::from_str(timezone_name.as_str()).map_err(|_| MarketDataLoadingError::InvalidValue {
+            field_path: "session_configuration".to_string(),
+            message: format!(
+                "resolved session definition contains an invalid timezone: {timezone_name}"
+            ),
+        })?;
+
+    Ok((definition, timezone))
+}
+
+fn overlapping_open_intervals(
+    definition: &ExchangeCalendarDefinition,
+    timezone: Tz,
+    exchange_code: &str,
+    gap_start_utc_nanos: i64,
+    gap_end_utc_nanos: i64,
+) -> Result<Vec<(i64, i64)>, MarketDataLoadingError> {
+    let gap_start_utc = DateTime::<Utc>::from_timestamp_nanos(gap_start_utc_nanos);
+    let gap_end_utc = DateTime::<Utc>::from_timestamp_nanos(gap_end_utc_nanos);
+
+    let mut current_local_date =
+        CalendarDate::from_local_timestamp(&gap_start_utc.with_timezone(&timezone));
+    let final_local_date =
+        CalendarDate::from_local_timestamp(&gap_end_utc.with_timezone(&timezone));
+
+    let mut open_intervals = Vec::new();
+
+    loop {
+        let local_weekday = TradingWeekday::from_chrono_weekday(
+            calendar_date_as_naive_date(current_local_date, exchange_code)?.weekday(),
+        );
+
+        for session_window in
+            definition.session_windows_for_local_date(current_local_date, local_weekday)
+        {
+            let (open_utc_nanos, close_utc_nanos) = session_window_utc_boundaries(
+                timezone,
+                exchange_code,
+                current_local_date,
+                session_window,
+            )?;
+            let interval_start_utc_nanos = open_utc_nanos.max(gap_start_utc_nanos);
+            let interval_end_utc_nanos = close_utc_nanos.min(gap_end_utc_nanos);
+
+            if interval_start_utc_nanos < interval_end_utc_nanos {
+                open_intervals.push((interval_start_utc_nanos, interval_end_utc_nanos));
+            }
+        }
+
+        if current_local_date == final_local_date {
+            break;
+        }
+
+        current_local_date =
+            next_calendar_date(current_local_date, exchange_code, gap_end_utc_nanos)?;
+    }
+
+    Ok(open_intervals)
+}
+
+fn session_window_utc_boundaries(
+    timezone: Tz,
+    exchange_code: &str,
+    local_date: CalendarDate,
+    session_window: &SessionWindowDefinition,
+) -> Result<(i64, i64), MarketDataLoadingError> {
+    let open_utc_nanos = local_datetime_for_session_time(
+        timezone,
+        exchange_code,
+        local_date,
+        session_window.open_time(),
+    )?
+    .with_timezone(&Utc)
+    .timestamp_nanos_opt()
+    .ok_or_else(|| MarketDataLoadingError::InvalidValue {
+        field_path: "session_configuration".to_string(),
+        message: format!(
+            "resolved session boundary fell outside the supported nanosecond range for `{exchange_code}`"
+        ),
+    })?;
+
+    let close_utc_nanos = local_datetime_for_session_time(
+        timezone,
+        exchange_code,
+        local_date,
+        session_window.close_time(),
+    )?
+    .with_timezone(&Utc)
+    .timestamp_nanos_opt()
+    .ok_or_else(|| MarketDataLoadingError::InvalidValue {
+        field_path: "session_configuration".to_string(),
+        message: format!(
+            "resolved session boundary fell outside the supported nanosecond range for `{exchange_code}`"
+        ),
+    })?;
+
+    Ok((open_utc_nanos, close_utc_nanos))
+}
+
+fn local_datetime_for_session_time(
+    timezone: Tz,
+    exchange_code: &str,
+    local_date: CalendarDate,
+    session_time: SessionTime,
+) -> Result<DateTime<Tz>, MarketDataLoadingError> {
+    let (resolved_year, resolved_month, resolved_day, resolved_hour, resolved_minute) =
+        if session_time.hour() == 24 && session_time.minute() == 0 {
+            let next_date = calendar_date_as_naive_date(local_date, exchange_code)?
+                .succ_opt()
+                .ok_or_else(|| MarketDataLoadingError::InvalidValue {
+                    field_path: "session_configuration".to_string(),
+                    message: format!(
+                        "resolved session boundary overflowed the calendar for `{exchange_code}`"
+                    ),
+                })?;
+
+            (
+                next_date.year(),
+                next_date.month(),
+                next_date.day(),
+                0_u32,
+                0_u32,
+            )
+        } else {
+            (
+                local_date.year,
+                local_date.month as u32,
+                local_date.day as u32,
+                session_time.hour() as u32,
+                session_time.minute() as u32,
+            )
+        };
+
+    match timezone.with_ymd_and_hms(
+        resolved_year,
+        resolved_month,
+        resolved_day,
+        resolved_hour,
+        resolved_minute,
+        0,
+    ) {
+        LocalResult::Single(timestamp_local) => Ok(timestamp_local),
+        LocalResult::Ambiguous(_, _) | LocalResult::None => {
+            Err(MarketDataLoadingError::InvalidValue {
+                field_path: "session_configuration".to_string(),
+                message: format!(
+                    "resolved session boundary is ambiguous in timezone `{}` for `{exchange_code}`",
+                    timezone.name()
+                ),
+            })
+        }
+    }
+}
+
+fn calendar_date_as_naive_date(
+    local_date: CalendarDate,
+    exchange_code: &str,
+) -> Result<NaiveDate, MarketDataLoadingError> {
+    NaiveDate::from_ymd_opt(
+        local_date.year,
+        local_date.month as u32,
+        local_date.day as u32,
+    )
+    .ok_or_else(|| MarketDataLoadingError::InvalidValue {
+        field_path: "session_configuration".to_string(),
+        message: format!(
+            "resolved session definition contains an invalid calendar date for `{exchange_code}`"
+        ),
+    })
+}
+
+fn next_calendar_date(
+    local_date: CalendarDate,
+    exchange_code: &str,
+    gap_end_utc_nanos: i64,
+) -> Result<CalendarDate, MarketDataLoadingError> {
+    let next_date = calendar_date_as_naive_date(local_date, exchange_code)?
+        .succ_opt()
+        .ok_or_else(|| MarketDataLoadingError::InvalidValue {
+            field_path: "session_configuration".to_string(),
+            message: format!(
+                "could not advance the resolved session calendar while checking gap alignment at {gap_end_utc_nanos}"
+            ),
+        })?;
+
+    Ok(CalendarDate {
+        year: next_date.year(),
+        month: next_date.month() as u8,
+        day: next_date.day() as u8,
+    })
 }
 
 pub(super) fn weekday_start_minute(weekday_name: &str) -> i32 {

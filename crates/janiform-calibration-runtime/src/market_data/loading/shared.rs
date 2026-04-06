@@ -1,4 +1,4 @@
-pub(super) use chrono::{DateTime, Duration, Utc};
+pub(super) use chrono::{DateTime, Utc};
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -6,7 +6,7 @@ use std::hash::Hash;
 
 pub(super) use crate::calendar::{
     CalendarRuleMetadataArtifact, ExchangeCalendarArtifact, ExchangeCalendarRegistryArtifact,
-    MarketState, RegularSessionArtifact, SessionWindowArtifact, TradingWeekday,
+    RegularSessionArtifact, SessionWindowArtifact,
 };
 use crate::market_data::preprocessing::{
     MarketDataTranslationKnownNewsRecord, MarketDataTranslationTickRecord,
@@ -61,9 +61,6 @@ pub(super) const COMMON_TIMESTAMP_FORMATS: [&str; 37] = [
 
 pub(super) const SESSION_RESOLUTION_SCHEMA_VERSION: &str =
     "calibration.market_data.session_resolution.v1";
-pub(super) const LONG_GAP_THRESHOLD_HOURS: i64 = 4;
-pub(super) const GAP_SCAN_STEP_MINUTES: i64 = 30;
-pub(super) const MINIMUM_GENERIC_24_5_WEEKDAY_COUNT: usize = 4;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(super) enum TradeSign {
