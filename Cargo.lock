@@ -613,7 +613,7 @@ checksum = "92ecc6618181def0457392ccd0ee51198e065e016d1d527a7ac1b6dc7c1f09d2"
 
 [[package]]
 name = "janiform"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "chrono",
  "chrono-tz",
@@ -637,7 +637,7 @@ dependencies = [
 
 [[package]]
 name = "janiform-affine-oracle"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "janiform-foundations",
  "janiform-model-kernels",
@@ -648,7 +648,7 @@ dependencies = [
 
 [[package]]
 name = "janiform-analytics-stylized-facts"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "chrono",
  "janiform-calibration-artifacts",
@@ -663,7 +663,7 @@ dependencies = [
 
 [[package]]
 name = "janiform-calibration-artifacts"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "chrono",
  "janiform-foundations",
@@ -674,7 +674,7 @@ dependencies = [
 
 [[package]]
 name = "janiform-calibration-runtime"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "bincode",
  "chrono",
@@ -696,7 +696,7 @@ dependencies = [
 
 [[package]]
 name = "janiform-engine-pricing"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "chrono",
  "janiform-affine-oracle",
@@ -711,7 +711,7 @@ dependencies = [
 
 [[package]]
 name = "janiform-engine-risk"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "janiform-affine-oracle",
  "janiform-foundations",
@@ -723,7 +723,7 @@ dependencies = [
 
 [[package]]
 name = "janiform-engine-simulation"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "chrono",
  "chrono-tz",
@@ -738,7 +738,7 @@ dependencies = [
 
 [[package]]
 name = "janiform-foundations"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "chrono",
  "serde",
@@ -746,7 +746,7 @@ dependencies = [
 
 [[package]]
 name = "janiform-governance"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "chrono",
  "janiform-foundations",
@@ -761,7 +761,7 @@ dependencies = [
 
 [[package]]
 name = "janiform-governance-bench"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "chrono",
  "criterion",
@@ -779,7 +779,7 @@ dependencies = [
 
 [[package]]
 name = "janiform-joint-refinement-worker"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "janiform-calibration-runtime",
  "serde",
@@ -787,7 +787,7 @@ dependencies = [
 
 [[package]]
 name = "janiform-market-time"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "chrono",
  "chrono-tz",
@@ -800,7 +800,7 @@ dependencies = [
 
 [[package]]
 name = "janiform-model-kernels"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "chrono",
  "janiform-foundations",
@@ -812,7 +812,7 @@ dependencies = [
 
 [[package]]
 name = "janiform-pybind"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "chrono",
  "janiform",
@@ -823,7 +823,7 @@ dependencies = [
 
 [[package]]
 name = "janiform-test-support"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "chrono",
  "janiform-market-time",
@@ -834,7 +834,7 @@ dependencies = [
 
 [[package]]
 name = "janiform-validation"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "chrono",
  "janiform-affine-oracle",
@@ -1967,7 +1967,7 @@ dependencies = [
 
 [[package]]
 name = "windows-threading"
-version = "0.1.0"
+version = "0.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b66463ad2e0ea3bbf808b7f1d371311c80e115c0b71d60efc142cafbcfb057a6"
 dependencies = [

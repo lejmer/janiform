@@ -8,7 +8,7 @@ This crate is the umbrella Rust facade for [Janiform](https://github.com/lejmer/
 overview, Python package entry points, CLI examples, and workflow guidance live in the
 [repository README](https://github.com/lejmer/janiform/blob/main/README.md).
 
-This version is `0.1.0`. The source for this crate lives [here](https://github.com/lejmer/janiform/blob/main/crates/janiform).
+This version is `0.0.0`. The source for this crate lives [here](https://github.com/lejmer/janiform/blob/main/crates/janiform).
 
 ## Workspace Crates
 
