@@ -172,6 +172,7 @@ fn nig_search_candidates_remain_non_empty_for_tiny_fx_return_volatility() {
         continuous_return_volatility: 2.5e-6,
         continuous_return_skewness: -0.15,
         continuous_return_excess_kurtosis: 1.2,
+        observed_continuous_log_price_span: 0.0115,
         observed_log_price_span: 0.012,
         mean_abs_known_open_jump_return: 0.0008,
         mean_abs_known_closed_gap_return: 0.0,
@@ -697,7 +698,9 @@ fn exact_candidate_evaluation_matches_stage_bucket_construction() {
         &activity_coupling_family,
     );
 
-    let fitted_price_range_sanity_policy = price_range_policy_fit::fit_price_range_sanity_policy();
+    let fitted_price_range_sanity_policy =
+        price_range_policy_fit::fit_price_range_sanity_policy(summary_statistics);
+
     let expected_price_range_sanity_diagnostic = build_price_range_sanity_diagnostic(
         &fitted_diagnostic_policy,
         summary_statistics,

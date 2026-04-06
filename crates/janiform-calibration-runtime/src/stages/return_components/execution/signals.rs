@@ -222,6 +222,20 @@ pub(crate) fn summarize_candidate_generation_signals(
             &continuous_return_calibration_sample,
         );
 
+    let observed_continuous_log_price_span = compute_observed_log_price_span(
+        sorted_signals
+            .continuous_fit_returns
+            .iter()
+            .map(|observation| {
+                (
+                    observation.return_timestamp_utc_nanos,
+                    observation.log_return,
+                )
+            })
+            .collect::<Vec<_>>()
+            .as_slice(),
+    );
+
     let observed_log_price_span = compute_observed_log_price_span(
         sorted_signals
             .observed_open_session_returns
@@ -287,6 +301,7 @@ pub(crate) fn summarize_candidate_generation_signals(
             continuous_return_volatility: continuous_distribution.volatility,
             continuous_return_skewness: continuous_distribution.skewness,
             continuous_return_excess_kurtosis: continuous_distribution.excess_kurtosis,
+            observed_continuous_log_price_span,
             observed_log_price_span,
             mean_abs_known_open_jump_return: arithmetic_mean(
                 sorted_signals

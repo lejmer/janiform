@@ -80,6 +80,11 @@ pub fn strictly_positive_machine_value() -> f64 {
     f64::MIN_POSITIVE
 }
 
+/// Return the widest finite log span representable by strictly positive `f64` values.
+pub fn representable_positive_f64_log_span() -> f64 {
+    f64::MAX.ln() - f64::MIN_POSITIVE.ln()
+}
+
 /// Validate that a numeric field is finite.
 pub fn validate_finite_number(
     value: f64,
@@ -767,12 +772,12 @@ mod tests {
         compute_sorted_quantile_or_zero, coverage_ratio, finite_arithmetic_mean_or_zero,
         integer_square_root, l_moment_lambda2_from_sorted, l_moment_tau3_from_sorted, logistic,
         median_abs, median_abs_non_zero, normalized_pseudocount, pearson_correlation,
-        relative_rmse, rolling_sum, root_mean_square_or_infinity, round_positive_to_domain,
-        round_to, sample_adjusted_excess_kurtosis, sample_adjusted_skewness,
-        sample_standard_deviation, sample_variance, smallest_positive_value, sorted_finite_values,
-        standardized_path_distance, strictly_positive_machine_value, unique_sorted_values,
-        validate_finite_number, validate_negative_number, validate_non_negative_number,
-        validate_positive_number, z_score,
+        relative_rmse, representable_positive_f64_log_span, rolling_sum,
+        root_mean_square_or_infinity, round_positive_to_domain, round_to,
+        sample_adjusted_excess_kurtosis, sample_adjusted_skewness, sample_standard_deviation,
+        sample_variance, smallest_positive_value, sorted_finite_values, standardized_path_distance,
+        strictly_positive_machine_value, unique_sorted_values, validate_finite_number,
+        validate_negative_number, validate_non_negative_number, validate_positive_number, z_score,
     };
 
     #[test]
@@ -836,6 +841,10 @@ mod tests {
         assert_eq!(unique_sorted_values(&[2.0, 1.0, 2.0]), vec![1.0, 2.0]);
         assert_eq!(normalized_pseudocount(4), 0.25);
         assert_eq!(logistic(0.0), 0.5);
+        assert_eq!(
+            representable_positive_f64_log_span(),
+            f64::MAX.ln() - f64::MIN_POSITIVE.ln()
+        );
         assert_eq!(compute_sorted_median(&[1.0, 2.0, 4.0]), 2.0);
         assert_eq!(compute_sorted_median(&[1.0, 2.0, 3.0, 4.0]), 2.5);
         assert_eq!(compute_sorted_quantile(&[1.0, 2.0, 4.0], 0.5), 2.0);

@@ -18,6 +18,7 @@ pub(crate) fn test_summary_statistics() -> ReturnComponentsStageObservedSignalSu
         continuous_return_volatility: 0.0,
         continuous_return_skewness: 0.0,
         continuous_return_excess_kurtosis: 0.0,
+        observed_continuous_log_price_span: 0.0,
         observed_log_price_span: 0.0,
         mean_abs_known_open_jump_return: 0.0,
         mean_abs_known_closed_gap_return: 0.0,
