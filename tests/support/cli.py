@@ -8,7 +8,7 @@ from typing import Any, Optional
 import pyarrow as pa
 from pyarrow import parquet
 
-import janiform.cli.command_tree as cli_command_tree_module
+import janiform._cli.command_tree as cli_command_tree_module
 from janiform.calendar import CalendarRegistry
 from janiform.hourly_factors import (
     HourlyNewsIntensityProviderExplicitSource,
@@ -167,7 +167,7 @@ def invoke_cli(
 
     try:
         with redirect_stdout(stdout_buffer), redirect_stderr(stderr_buffer):
-            exit_code = cli_command_tree_module._invoke_application(
+            exit_code = cli_command_tree_module.invoke_application(
                 arguments,
                 environment={} if environment is None else environment,
             )

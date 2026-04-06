@@ -4,7 +4,7 @@ from typing import Any, Optional
 
 import click
 
-from ._shared import build_calendar_registry_from_document, override_calibration_execution_mode
+from .shared import build_calendar_registry_from_document, override_calibration_execution_mode
 from ..command_runtime import (
     JaniformCommand,
     command_config_option,
@@ -15,7 +15,7 @@ from ..command_runtime import (
     required_json_path_option,
 )
 from ..context import CliCommandContext
-from .._constants import (
+from ..constants import (
     CLI_CALIBRATION_DUPLICATE_RECORD_POLICY_CHOICES,
     CLI_CALIBRATION_EXECUTION_MODE_CHOICES,
     CLI_CALIBRATION_EXECUTION_MODE_HELP,
@@ -34,10 +34,10 @@ from .._constants import (
     CliExitCode,
     CliOutputMode,
 )
-from .._documents import load_json_document_for_cli_field
-from .._errors import classify_market_data_command_error, classify_workflow_command_error
-from ..paths import _require_path_argument, _resolve_path_from_repository_root
-from .._rendering import (
+from ..documents import load_json_document_for_cli_field
+from ..errors import classify_market_data_command_error, classify_workflow_command_error
+from ..paths import require_path_argument, resolve_path_from_repository_root
+from ..rendering import (
     render_calibration_staged_human_output,
     render_market_data_calibration_human_output,
     write_cli_error,
@@ -58,14 +58,14 @@ from ...calibration.staged import (
 from ...errors import JaniformError
 
 
-def _run_calibration_market_data_command(
+def run_calibration_market_data_command(
     *,
     cli_context: CliCommandContext,
     output: str,
     **command_arguments,
 ) -> int:
     try:
-        request = _build_market_data_calibration_request_from_arguments(
+        request = build_market_data_calibration_request_from_arguments(
             cli_context=cli_context,
             **command_arguments,
         )
@@ -77,14 +77,14 @@ def _run_calibration_market_data_command(
 
     write_command_output(
         output,
-        json_payload=_build_market_data_calibration_summary_payload(prepared_calibration),
+        json_payload=build_market_data_calibration_summary_payload(prepared_calibration),
         human_output_factory=lambda: render_market_data_calibration_human_output(prepared_calibration),
     )
 
     return int(CliExitCode.SUCCESS)
 
 
-def _run_calibration_staged_command(
+def run_calibration_staged_command(
     *,
     cli_context: CliCommandContext,
     output: str,
@@ -95,7 +95,7 @@ def _run_calibration_staged_command(
     **_,
 ) -> int:
     resolved_disk_checkpoint_directory = (
-        _resolve_path_from_repository_root(cli_context.repository_root, disk_checkpoint_directory)
+        resolve_path_from_repository_root(cli_context.repository_root, disk_checkpoint_directory)
         if disk_checkpoint_directory is not None
         else None
     )
@@ -154,7 +154,7 @@ def _run_calibration_staged_command(
     return int(CliExitCode.SUCCESS)
 
 
-def _build_market_data_calibration_request_from_arguments(
+def build_market_data_calibration_request_from_arguments(
     *,
     cli_context: CliCommandContext,
     run_id: str,
@@ -201,13 +201,13 @@ def _build_market_data_calibration_request_from_arguments(
     **_,
 ) -> MarketDataCalibrationRequest:
     repository_root = cli_context.repository_root
-    tick_data_path = _require_path_argument(
+    tick_data_path = require_path_argument(
         repository_root,
         tick_data_path,
         argument_name="tick_data_path",
     )
     session_definition_path = (
-        _require_path_argument(
+        require_path_argument(
             repository_root,
             session_definition_path,
             argument_name="session_definition_path",
@@ -217,19 +217,19 @@ def _build_market_data_calibration_request_from_arguments(
     )
 
     disk_checkpoint_directory = (
-        _resolve_path_from_repository_root(repository_root, disk_checkpoint_directory)
+        resolve_path_from_repository_root(repository_root, disk_checkpoint_directory)
         if disk_checkpoint_directory is not None
         else None
     )
 
     option_surface_path = (
-        _resolve_path_from_repository_root(repository_root, option_surface_path)
+        resolve_path_from_repository_root(repository_root, option_surface_path)
         if option_surface_path is not None
         else None
     )
 
     known_news_path = (
-        _resolve_path_from_repository_root(repository_root, known_news_path)
+        resolve_path_from_repository_root(repository_root, known_news_path)
         if known_news_path is not None
         else None
     )
@@ -318,7 +318,7 @@ def _build_market_data_calibration_request_from_arguments(
     return validate_market_data_calibration_request(payload)
 
 
-def _build_market_data_calibration_summary_payload(
+def build_market_data_calibration_summary_payload(
     prepared_calibration: PreparedMarketDataCalibration,
 ) -> dict[str, Any]:
     request = prepared_calibration.request
@@ -396,7 +396,7 @@ def _build_market_data_calibration_summary_payload(
     }
 
 
-def _build_fit_plan_command(*, environment: Optional[Mapping[str, str]] = None) -> click.Command:
+def build_fit_plan_command(*, environment: Optional[Mapping[str, str]] = None) -> click.Command:
     @click.command(
         "plan",
         cls=JaniformCommand,
@@ -406,13 +406,13 @@ def _build_fit_plan_command(*, environment: Optional[Mapping[str, str]] = None) 
             "Validate market-data inputs, resolve presets and provenance, and build the "
             "derived fit plan without running the staged fit."
         ),
-        params=_market_data_calibration_options(),
+        params=market_data_calibration_options(),
     )
     @click.pass_context
     def plan(ctx: click.Context, **command_arguments) -> int:
         return invoke_command_handler(
             ctx,
-            handler=_run_calibration_market_data_command,
+            handler=run_calibration_market_data_command,
             command_path=("fit", "plan"),
             command_arguments=dict(command_arguments),
         )
@@ -420,20 +420,20 @@ def _build_fit_plan_command(*, environment: Optional[Mapping[str, str]] = None) 
     return plan
 
 
-def _build_fit_staged_command(*, environment: Optional[Mapping[str, str]] = None) -> click.Command:
+def build_fit_staged_command(*, environment: Optional[Mapping[str, str]] = None) -> click.Command:
     @click.command(
         "staged",
         cls=JaniformCommand,
         command_path=("fit", "staged"),
         environment=environment,
         help="Run the explicit staged fit workflow from a prepared execution-input contract.",
-        params=_staged_calibration_options(),
+        params=staged_calibration_options(),
     )
     @click.pass_context
     def staged(ctx: click.Context, **command_arguments) -> int:
         return invoke_command_handler(
             ctx,
-            handler=_run_calibration_staged_command,
+            handler=run_calibration_staged_command,
             command_path=("fit", "staged"),
             command_arguments=dict(command_arguments),
         )
@@ -441,7 +441,7 @@ def _build_fit_staged_command(*, environment: Optional[Mapping[str, str]] = None
     return staged
 
 
-def _market_data_calibration_options() -> list[click.Parameter]:
+def market_data_calibration_options() -> list[click.Parameter]:
     return [
         command_config_option(),
         output_option(default_output_mode=CliOutputMode.JSON),
@@ -603,7 +603,7 @@ def _market_data_calibration_options() -> list[click.Parameter]:
     ]
 
 
-def _staged_calibration_options() -> list[click.Parameter]:
+def staged_calibration_options() -> list[click.Parameter]:
     return [
         command_config_option(),
         output_option(default_output_mode=CliOutputMode.JSON),
@@ -635,6 +635,3 @@ def _staged_calibration_options() -> list[click.Parameter]:
             ),
         ),
     ]
-
-
-__all__ = []

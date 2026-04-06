@@ -58,6 +58,7 @@ def test_cli_primary_workflows_smoke(
         ]
     )
     assert coarse_simulation_exit_code == int(cli_module.CliExitCode.SUCCESS), coarse_simulation_stderr
+
     coarse_simulation_payload = orjson.loads(coarse_simulation_stdout)
     assert coarse_simulation_payload["schema_version"] == "simulation.coarse_interval.path.v1"
 
@@ -74,6 +75,7 @@ def test_cli_primary_workflows_smoke(
         ]
     )
     assert simulation_exit_code == int(cli_module.CliExitCode.SUCCESS), simulation_stderr
+
     simulation_payload = orjson.loads(simulation_stdout)
     assert simulation_payload["schema_version"] == "simulation.seeded_tick_event.path.v1"
 
@@ -96,6 +98,7 @@ def test_cli_primary_workflows_smoke(
         ]
     )
     assert seasonality_exit_code == int(cli_module.CliExitCode.SUCCESS), seasonality_stderr
+
     seasonality_payload = orjson.loads(seasonality_stdout)
     assert seasonality_payload["schema_version"] == "seasonality.diagnostics.report.v1"
     assert seasonality_payload["dataset_id"] == "cli-workflows-dataset"
@@ -117,6 +120,7 @@ def test_cli_primary_workflows_smoke(
         ]
     )
     assert preprocess_exit_code == int(cli_module.CliExitCode.SUCCESS), preprocess_stderr
+
     preprocess_payload = orjson.loads(preprocess_stdout)
     assert preprocess_payload["schema_version"] == "seasonality.timestamp_event.preprocessed.v1"
     assert preprocess_payload["accepted_record_count"] == 3
@@ -140,6 +144,7 @@ def test_cli_primary_workflows_smoke(
         ]
     )
     assert hourly_factor_seasonality_exit_code == int(cli_module.CliExitCode.SUCCESS), hourly_factor_seasonality_stderr
+
     hourly_factor_seasonality_payload = orjson.loads(hourly_factor_seasonality_stdout)
     assert hourly_factor_seasonality_payload["schema_version"] == "seasonality.hourly_s_h.materialization.v1"
 
@@ -162,6 +167,7 @@ def test_cli_primary_workflows_smoke(
         ]
     )
     assert hourly_factor_news_exit_code == int(cli_module.CliExitCode.SUCCESS), hourly_factor_news_stderr
+
     hourly_factor_news_payload = orjson.loads(hourly_factor_news_stdout)
     assert hourly_factor_news_payload["schema_version"] == "seasonality.hourly_nu_h.materialization.v1"
 
@@ -186,6 +192,7 @@ def test_cli_primary_workflows_smoke(
         ]
     )
     assert hourly_factor_contract_exit_code == int(cli_module.CliExitCode.SUCCESS), hourly_factor_contract_stderr
+
     hourly_factor_contract_payload = orjson.loads(hourly_factor_contract_stdout)
     assert hourly_factor_contract_payload["schema_version"] == "seasonality.hourly_factor.contract.v1"
 

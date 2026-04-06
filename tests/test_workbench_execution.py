@@ -137,7 +137,7 @@ def test_workbench_execution_worker_uses_prepared_handle_runner_and_current_fit_
         lambda **_: {"run_id": "workbench-run"},
     )
     monkeypatch.setattr(
-        "tools.workbench.execution._run_native_staged_calibration_with_prepared_handle_and_events",
+        "tools.workbench.execution.run_staged_calibration_with_prepared_handle_and_events",
         _fake_runner,
     )
     monkeypatch.setattr(

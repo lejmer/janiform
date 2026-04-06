@@ -8,7 +8,7 @@ import pyarrow
 from pyarrow import parquet
 
 from .contracts import CalibrationInputFileFormat, CalibrationInputFileReference
-from .._errors import _calibration_error
+from ..errors import calibration_error
 from ...contracts import ContractModel
 
 
@@ -127,7 +127,7 @@ def _market_data_ingestion_error(
     if normalization_step is not None:
         error_context["normalization_step"] = normalization_step
 
-    return _calibration_error(
+    return calibration_error(
         field_path,
         message,
         entrypoint=CALIBRATION_MARKET_DATA_INGESTION_ENTRYPOINT,

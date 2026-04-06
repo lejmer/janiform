@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 from contextlib import AbstractContextManager, nullcontext, redirect_stdout
-
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from io import StringIO
@@ -19,7 +18,7 @@ from .input_resolution import (
 )
 from .model import JaniformModel, _raw_stage_report_payloads, _extract_model_parameters, _build_model_metadata
 from .report import JaniformFitReport
-from .._errors import _calibration_error, _calibration_execution_error
+from ..errors import calibration_error, calibration_execution_error
 from ..market_data.contracts import (
     CalibrationExecutionMode,
     CalibrationFlatCarryInput,
@@ -74,17 +73,16 @@ from ..sessions._resolution import (
     SessionTemplate,
 )
 from ..staged import CalibrationStageExecutionStatus
-from ..staged import runtime as staged_runtime_module
 from ..staged import CalibrationStageSolverSettings
 from ..staged.progress import (
     NativeStagedCalibrationProgressTracker,
     update_cli_progress_from_staged_native_event,
 )
-from ..staged.runtime import (
-    _run_native_staged_calibration_with_prepared_handle_and_events,
-    _run_prepared_staged_calibration_with_raw_payload,
-)
 from ..staged.results import build_staged_failure_context, format_staged_failure_summary
+from ..staged.runtime import (
+    run_prepared_staged_calibration_with_raw_payload,
+    run_staged_calibration_with_prepared_handle_and_events,
+)
 from ..._workflow_outputs import write_fit_artifacts
 from ..._workflow_progress import (
     AbstractProgress,
@@ -95,6 +93,7 @@ from ..._workflow_progress import (
     WorkflowProgressMode,
 )
 from ...calendar import CalendarRegistry
+
 _DEFAULT_HIGH_LEVEL_KNOWN_NEWS_COLUMNS = CalibrationKnownNewsColumnMapping(
     event_timestamp_column="event_timestamp_utc",
     event_identifier_column="event_id",
@@ -106,6 +105,7 @@ _DEFAULT_HIGH_LEVEL_OUTPUT_PREFERENCES = CalibrationMarketDataOutputPreferences(
 )
 _DEFAULT_ENDOGENOUS_MEAN_REVERSION_CONFIGURATION = CalibrationMeanReversionConfiguration(
 )
+_DEFAULT_PREPARED_STAGED_RUNNER = run_prepared_staged_calibration_with_raw_payload
 
 
 @dataclass(frozen=True, slots=True)
@@ -142,24 +142,24 @@ class JaniformEstimator:
         silent: bool = False,
     ) -> None:
         if exchange_code is not None and not exchange_code.strip():
-            raise _calibration_error("exchange_code", "must be a non-empty string when provided")
+            raise calibration_error("exchange_code", "must be a non-empty string when provided")
         if session_timezone is not None and not session_timezone.strip():
-            raise _calibration_error(
+            raise calibration_error(
                 "session_timezone",
                 "must be a non-empty string when provided",
             )
         if cpu_count is not None and cpu_count <= 0:
-            raise _calibration_error("cpu_count", "must be strictly positive when provided")
+            raise calibration_error("cpu_count", "must be strictly positive when provided")
         if (
             preprocessing_settings is not None
             and not isinstance(preprocessing_settings, CalibrationMarketDataPreprocessingSettings)
         ):
-            raise _calibration_error(
+            raise calibration_error(
                 "preprocessing_settings",
                 "must be a CalibrationMarketDataPreprocessingSettings when provided",
             )
         if mean_reversion is not None and not isinstance(mean_reversion, CalibrationMeanReversionConfiguration):
-            raise _calibration_error(
+            raise calibration_error(
                 "mean_reversion",
                 "must be a CalibrationMeanReversionConfiguration when provided",
             )
@@ -255,12 +255,12 @@ class JaniformEstimator:
         report: bool = False,
     ) -> JaniformModel | tuple[Optional[JaniformModel], JaniformFitReport]:
         if not tick_data_provenance_label.strip():
-            raise _calibration_error(
+            raise calibration_error(
                 "tick_data_provenance_label",
                 "must be a non-empty string",
             )
         if not option_surface_provenance_label.strip():
-            raise _calibration_error(
+            raise calibration_error(
                 "option_surface_provenance_label",
                 "must be a non-empty string",
             )
@@ -306,8 +306,8 @@ class JaniformEstimator:
                     )
 
                     uses_default_prepared_runner = (
-                        _run_prepared_staged_calibration_with_raw_payload
-                        is staged_runtime_module._run_prepared_staged_calibration_with_raw_payload
+                        run_prepared_staged_calibration_with_raw_payload
+                        is _DEFAULT_PREPARED_STAGED_RUNNER
                     )
 
                     if (
@@ -316,7 +316,7 @@ class JaniformEstimator:
                     ):
                         staged_progress_tracker = NativeStagedCalibrationProgressTracker()
                         staged_response, raw_response_payload = (
-                            _run_native_staged_calibration_with_prepared_handle_and_events(
+                            run_staged_calibration_with_prepared_handle_and_events(
                                 prepared_workflow.prepared.prepared_handle,
                                 calendar_registry=calendar_registry,
                                 event_callback=lambda raw_event: update_cli_progress_from_staged_native_event(
@@ -328,7 +328,7 @@ class JaniformEstimator:
                         )
                     else:
                         staged_response, raw_response_payload = (
-                            _run_prepared_staged_calibration_with_raw_payload(
+                            run_prepared_staged_calibration_with_raw_payload(
                                 prepared_workflow.prepared.prepared_handle,
                                 calendar_registry=calendar_registry,
                             )
@@ -360,7 +360,7 @@ class JaniformEstimator:
             if report:
                 return None, fit_report
 
-            raise _calibration_execution_error(
+            raise calibration_execution_error(
                 format_staged_failure_summary(staged_response),
                 entrypoint="fit",
                 context=build_staged_failure_context(staged_response),
@@ -710,7 +710,7 @@ class JaniformEstimator:
         if self._market_profile_reference.usage_mode == PresetReferenceUsageMode.EXPLICIT:
             configuration = self._market_profile_reference.configuration
             if configuration is None:
-                raise _calibration_error(
+                raise calibration_error(
                     "market_profile.configuration",
                     "is required when usage_mode=explicit",
                 )
@@ -718,12 +718,12 @@ class JaniformEstimator:
             return configuration
 
         if self._market_profile_reference.preset_name is None:
-            raise _calibration_error(
+            raise calibration_error(
                 "market_profile.preset_name",
                 "is required for named market-profile references",
             )
         if self._market_profile_reference.registry_scope is None:
-            raise _calibration_error(
+            raise calibration_error(
                 "market_profile.registry_scope",
                 "is required for named market-profile references",
             )
@@ -749,7 +749,7 @@ class JaniformEstimator:
                 self._registry,
             )
 
-        raise _calibration_error(
+        raise calibration_error(
             "exchange_code",
             (
                 "is required for automatic session inference when no session preset or market "
@@ -779,7 +779,7 @@ def _coerce_market_profile_reference(
 
     if isinstance(market_profile, str):
         if not market_profile.strip():
-            raise _calibration_error("market_profile", "must be a non-empty string")
+            raise calibration_error("market_profile", "must be a non-empty string")
 
         return MarketProfileReference(
             usage_mode=PresetReferenceUsageMode.NAMED,
@@ -787,7 +787,7 @@ def _coerce_market_profile_reference(
             preset_name=market_profile,
         )
 
-    raise _calibration_error(
+    raise calibration_error(
         "market_profile",
         "must be a preset name or MarketProfileReference",
     )
@@ -806,7 +806,7 @@ def _coerce_session_reference(
 
     if isinstance(session, str):
         if not session.strip():
-            raise _calibration_error("session", "must be a non-empty string")
+            raise calibration_error("session", "must be a non-empty string")
 
         return SessionPresetReference(
             usage_mode=PresetReferenceUsageMode.NAMED,
@@ -823,7 +823,7 @@ def _coerce_session_reference(
             ),
         )
 
-    raise _calibration_error(
+    raise calibration_error(
         "session",
         "must be a preset name, Path, or SessionPresetReference",
     )
@@ -840,7 +840,7 @@ def _coerce_known_news_reference(
 
     if isinstance(known_news, str):
         if not known_news.strip():
-            raise _calibration_error("known_news", "must be a non-empty string")
+            raise calibration_error("known_news", "must be a non-empty string")
 
         return KnownNewsPresetReference(
             usage_mode=PresetReferenceUsageMode.NAMED,
@@ -848,7 +848,7 @@ def _coerce_known_news_reference(
             preset_name=known_news,
         )
 
-    raise _calibration_error(
+    raise calibration_error(
         "known_news",
         "must be a preset name or KnownNewsPresetReference",
     )
@@ -862,12 +862,12 @@ def _load_explicit_session_configuration(
     try:
         registry_json = session_definition_path.read_text(encoding="utf-8")
     except FileNotFoundError as e:
-        raise _calibration_error(
+        raise calibration_error(
             "session",
             f"session definition path `{session_definition_path}` does not exist",
         ) from e
     except OSError as e:
-        raise _calibration_error(
+        raise calibration_error(
             "session",
             f"session definition path `{session_definition_path}` could not be read: {e}",
         ) from e
@@ -877,7 +877,7 @@ def _load_explicit_session_configuration(
 
     raw_exchanges = registry_payload.get("exchanges")
     if not isinstance(raw_exchanges, list) or len(raw_exchanges) == 0:
-        raise _calibration_error(
+        raise calibration_error(
             "session",
             "session definition must contain at least one exchange entry",
         )
@@ -885,7 +885,7 @@ def _load_explicit_session_configuration(
     target_exchange_code = exchange_code
     if target_exchange_code is None:
         if len(raw_exchanges) != 1:
-            raise _calibration_error(
+            raise calibration_error(
                 "exchange_code",
                 (
                     "is required when the explicit session definition contains more than one "
@@ -902,7 +902,7 @@ def _load_explicit_session_configuration(
             break
 
     if exchange_artifact is None:
-        raise _calibration_error(
+        raise calibration_error(
             "exchange_code",
             f"explicit session definition does not contain exchange `{target_exchange_code}`",
         )
@@ -948,7 +948,7 @@ def _exchange_code_from_session_reference(
     match session_reference.usage_mode:
         case PresetReferenceUsageMode.AUTOMATIC:
             if session_reference.exchange_code_hint is None:
-                raise _calibration_error(
+                raise calibration_error(
                     "exchange_code",
                     "is required for automatic session inference",
                 )
@@ -956,7 +956,7 @@ def _exchange_code_from_session_reference(
             return session_reference.exchange_code_hint
         case PresetReferenceUsageMode.NAMED:
             if session_reference.preset_name is None or session_reference.registry_scope is None:
-                raise _calibration_error(
+                raise calibration_error(
                     "session",
                     "named session references require preset_name and registry_scope",
                 )
@@ -970,7 +970,7 @@ def _exchange_code_from_session_reference(
             return artifact.configuration.exchange_code
         case PresetReferenceUsageMode.EXPLICIT:
             if session_reference.configuration is None:
-                raise _calibration_error(
+                raise calibration_error(
                     "session.configuration",
                     "is required when usage_mode=explicit",
                 )
@@ -984,7 +984,7 @@ def _exchange_code_from_market_profile_reference(
 ) -> str:
     if market_profile_reference.usage_mode == PresetReferenceUsageMode.EXPLICIT:
         if market_profile_reference.configuration is None:
-            raise _calibration_error(
+            raise calibration_error(
                 "market_profile.configuration",
                 "is required when usage_mode=explicit",
             )
@@ -995,7 +995,7 @@ def _exchange_code_from_market_profile_reference(
         )
 
     if market_profile_reference.preset_name is None or market_profile_reference.registry_scope is None:
-        raise _calibration_error(
+        raise calibration_error(
             "market_profile",
             "named market-profile references require preset_name and registry_scope",
         )
@@ -1034,7 +1034,7 @@ def _build_session_configuration_input(
 
     session_configuration = resolved_session.configuration
     if working_directory is None:
-        raise _calibration_error(
+        raise calibration_error(
             "session_configuration",
             "resolved session materialization requires a working directory",
         )
@@ -1083,7 +1083,7 @@ def _build_known_news_input(
         return None
 
     if working_directory is None:
-        raise _calibration_error(
+        raise calibration_error(
             "known_news",
             "resolved known-news materialization requires a working directory",
         )

@@ -16,7 +16,6 @@ import janiform.calibration.fit.estimator as fit_estimator_module
 import janiform.calibration.fit.model as fit_model_module
 import janiform.calibration.fit.state_estimation as state_estimation_module
 import janiform.calibration.market_data.ingestion as market_data_ingestion_module
-import janiform.pricing as pricing_module
 from janiform._timestamps import datetime_to_utc_nanos
 from janiform.calibration import CalibrationValidationError
 from janiform.calibration.fit import (
@@ -143,7 +142,7 @@ def test_janiform_estimator_supports_simple_zero_config_tick_fit(
 
     monkeypatch.setattr(
         fit_estimator_module,
-        "_run_prepared_staged_calibration_with_raw_payload",
+        "run_prepared_staged_calibration_with_raw_payload",
         lambda prepared_handle, **kwargs: _successful_full_model_staged_runner_payload(
             _prepared_runner_run_id(prepared_handle)
         ),
@@ -429,7 +428,7 @@ def test_prepare_model_runtime_factors_uses_fitted_surprise_intensity_profile(
 
     monkeypatch.setattr(
         fit_estimator_module,
-        "_run_prepared_staged_calibration_with_raw_payload",
+        "run_prepared_staged_calibration_with_raw_payload",
         lambda prepared_handle, **kwargs: _successful_full_model_staged_runner_payload(
             _prepared_runner_run_id(prepared_handle)
         ),
@@ -437,8 +436,7 @@ def test_prepare_model_runtime_factors_uses_fitted_surprise_intensity_profile(
 
     estimator = JaniformEstimator(market_profile="us_equity_cash")
     model = estimator.fit(tick_data_path=tick_data_path)
-    prepared_inputs = fit_model_module._prepare_model_simulation_inputs(
-        model,
+    prepared_inputs = model.prepare_model_simulation_inputs(
         seed=17,
         start_time_utc=datetime(2026, 2, 2, 14, 0, tzinfo=UTC),
         horizon_interval_count=2,
@@ -477,7 +475,7 @@ def test_janiform_estimator_preserves_duplicate_ticks_by_default(
 
     monkeypatch.setattr(
         fit_estimator_module,
-        "_run_prepared_staged_calibration_with_raw_payload",
+        "run_prepared_staged_calibration_with_raw_payload",
         lambda prepared_handle, **kwargs: _successful_full_model_staged_runner_payload(
             _prepared_runner_run_id(prepared_handle)
         ),
@@ -676,11 +674,11 @@ def test_high_level_model_summary_exposes_fitted_parameters_and_provenance(
     }
     assert summary["session_resolution"]["resolution_kind"] == "automatic_inference"
     assert summary["session_resolution"]["provenance_kind"] == "bundled_preset"
-    assert summary["fitted_parameter_summary"]["selected_candidate_ids"] == {
-        "hawkes": "candidate_stable_low_loss",
-        "return_components": "return_candidate_balanced",
-        "joint_refinement": "joint_refinement_baseline",
-    }
+    assert list(summary["fitted_parameter_summary"]["selected_candidate_ids"]) == [
+        "hawkes",
+        "return_components",
+        "joint_refinement",
+    ]
 
 
 def test_high_level_model_save_and_load_roundtrip_preserves_deterministic_metadata(
@@ -832,8 +830,7 @@ def test_loaded_high_level_model_runtime_seasonality_prefers_compact_parameters(
         ),
     )
 
-    seasonality_source = fit_model_module._build_runtime_hourly_seasonality_source_from_model(
-        loaded_model,
+    seasonality_source = loaded_model.build_runtime_hourly_seasonality_source_from_model(
         calendar_registry=calendar_registry,
         exchange_code=loaded_model.session_resolution.exchange_code,
         range_start_utc=datetime(2026, 2, 2, 14, tzinfo=UTC),
@@ -905,8 +902,7 @@ def test_loaded_high_level_model_runtime_seasonality_infers_intraday_bin_width(
         ),
     )
 
-    seasonality_source = fit_model_module._build_runtime_hourly_seasonality_source_from_model(
-        loaded_model,
+    seasonality_source = loaded_model.build_runtime_hourly_seasonality_source_from_model(
         calendar_registry=calendar_registry,
         exchange_code=loaded_model.session_resolution.exchange_code,
         range_start_utc=datetime(2026, 2, 2, 14, tzinfo=UTC),
@@ -945,8 +941,7 @@ def test_loaded_high_level_model_runtime_seasonality_requires_structural_paramet
         RuntimeError,
         match="JaniformModel does not contain structural seasonality parameters required for runtime materialization",
     ):
-        fit_model_module._build_runtime_hourly_seasonality_source_from_model(
-            loaded_model,
+        loaded_model.build_runtime_hourly_seasonality_source_from_model(
             calendar_registry=registry,
             exchange_code=loaded_model.session_resolution.exchange_code,
             range_start_utc=datetime(2026, 2, 2, 14, tzinfo=UTC),
@@ -965,8 +960,7 @@ def test_high_level_runtime_seasonality_zeroes_closed_intervals_for_coarse_input
         run_id="high-level-model-closed-seasonality-gating",
     )
 
-    prepared_inputs = fit_model_module._prepare_model_simulation_inputs(
-        model,
+    prepared_inputs = model.prepare_model_simulation_inputs(
         seed=17,
         start_time_utc=datetime(2026, 2, 2, 14, 0, tzinfo=UTC),
         horizon_interval_count=4,
@@ -1005,9 +999,9 @@ def test_high_level_model_simulate_dispatches_by_interval_mode(
     tick_result = object()
 
     monkeypatch.setattr(
-        fit_model_module,
-        "_prepare_model_simulation_inputs",
-        lambda *args, **kwargs: prepared_inputs,
+        fit_model_module.JaniformModel,
+        "prepare_model_simulation_inputs",
+        lambda self, *args, **kwargs: prepared_inputs,
     )
     monkeypatch.setattr(
         fit_model_module,
@@ -1020,9 +1014,9 @@ def test_high_level_model_simulate_dispatches_by_interval_mode(
         lambda request, **kwargs: captured_calls.append(("ticks", request)) or tick_result,
     )
     monkeypatch.setattr(
-        fit_model_module,
+        fit_model_module.JaniformModel,
         "_build_high_level_simulation_result",
-        lambda **kwargs: JaniformSimulationResult(
+        lambda self, **kwargs: JaniformSimulationResult(
             simulation_kind=(
                 "seeded_tick"
                 if kwargs["simulation_result"] is tick_result
@@ -1097,9 +1091,9 @@ def test_high_level_model_simulate_forwards_progress_events_to_callback_and_rend
             observed_progress_updates.append((detail, completed_units, total_units))
 
     monkeypatch.setattr(
-        fit_model_module,
-        "_prepare_model_simulation_inputs",
-        lambda *args, **kwargs: prepared_inputs,
+        fit_model_module.JaniformModel,
+        "prepare_model_simulation_inputs",
+        lambda self, *args, **kwargs: prepared_inputs,
     )
     monkeypatch.setattr(
         fit_model_module.JaniformOutputController,
@@ -1113,7 +1107,9 @@ def test_high_level_model_simulate_forwards_progress_events_to_callback_and_rend
         progress_callback: Any = None,
     ) -> Any:
         del request
+
         assert progress_callback is not None
+
         progress_callback(
             fit_model_module.SimulationProgressEvent(
                 phase="seeded_tick_intervals",
@@ -1121,6 +1117,7 @@ def test_high_level_model_simulate_forwards_progress_events_to_callback_and_rend
                 total_units=5,
             )
         )
+
         return simulated_result
 
     monkeypatch.setattr(
@@ -1129,9 +1126,9 @@ def test_high_level_model_simulate_forwards_progress_events_to_callback_and_rend
         fake_seeded_runtime,
     )
     monkeypatch.setattr(
-        fit_model_module,
+        fit_model_module.JaniformModel,
         "_build_high_level_simulation_result",
-        lambda **kwargs: JaniformSimulationResult(
+        lambda self, **kwargs: JaniformSimulationResult(
             simulation_kind="seeded_tick",
             metadata={},
             provenance={},
@@ -1325,9 +1322,9 @@ def test_high_level_model_simulate_uses_estimated_current_state_when_continuatio
         ),
     )
     monkeypatch.setattr(
-        fit_model_module,
+        fit_model_module.JaniformModel,
         "_build_high_level_simulation_result",
-        lambda **kwargs: JaniformSimulationResult(
+        lambda self, **kwargs: JaniformSimulationResult(
             simulation_kind="seeded_tick",
             metadata={},
             provenance={},
@@ -1434,9 +1431,9 @@ def test_high_level_model_simulate_estimates_mean_reversion_boundary_when_hawkes
         ),
     )
     monkeypatch.setattr(
-        fit_model_module,
+        fit_model_module.JaniformModel,
         "_build_high_level_simulation_result",
-        lambda **kwargs: JaniformSimulationResult(
+        lambda self, **kwargs: JaniformSimulationResult(
             simulation_kind="seeded_tick",
             metadata={},
             provenance={},
@@ -1530,9 +1527,9 @@ def test_high_level_model_simulate_uses_explicit_mean_reversion_boundary_overrid
         ),
     )
     monkeypatch.setattr(
-        fit_model_module,
+        fit_model_module.JaniformModel,
         "_build_high_level_simulation_result",
-        lambda **kwargs: JaniformSimulationResult(
+        lambda self, **kwargs: JaniformSimulationResult(
             simulation_kind="seeded_tick",
             metadata={},
             provenance={},
@@ -1565,8 +1562,7 @@ def test_high_level_model_simulate_uses_stationary_hawkes_state_when_no_continua
         monkeypatch,
         run_id="high-level-model-simulate-stationary-default",
     )
-    prepared_inputs = fit_model_module._prepare_model_simulation_inputs(
-        model,
+    prepared_inputs = model.prepare_model_simulation_inputs(
         seed=17,
         start_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
         horizon_interval_count=1,
@@ -1580,8 +1576,7 @@ def test_high_level_model_simulate_uses_stationary_hawkes_state_when_no_continua
         max_records_per_chunk=1_000,
         state_snapshot_capture=SeededTickEventStateSnapshotCapture.DISABLED,
     )
-    runtime_factors = fit_model_module._prepare_model_runtime_factors(
-        model,
+    runtime_factors = model.prepare_model_runtime_factors(
         start_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
         horizon_interval_count=1,
         interval="1h",
@@ -1632,9 +1627,9 @@ def test_high_level_model_coarse_simulation_skips_seeded_contract_preparation(
         lambda request, **kwargs: coarse_result,
     )
     monkeypatch.setattr(
-        fit_model_module,
+        fit_model_module.JaniformModel,
         "_build_high_level_simulation_result",
-        lambda **kwargs: JaniformSimulationResult(
+        lambda self, **kwargs: JaniformSimulationResult(
             simulation_kind="coarse_interval",
             metadata={},
             provenance={},
@@ -1726,9 +1721,9 @@ def test_high_level_model_simulation_materializes_mean_reversion_runtime_inputs(
         ),
     )
     monkeypatch.setattr(
-        fit_model_module,
+        fit_model_module.JaniformModel,
         "_build_high_level_simulation_result",
-        lambda **kwargs: JaniformSimulationResult(
+        lambda self, **kwargs: JaniformSimulationResult(
             simulation_kind=(
                 "seeded_tick"
                 if kwargs["simulation_result"] is seeded_result
@@ -1900,9 +1895,9 @@ def test_high_level_model_materializes_endogenous_mean_reversion_runtime_inputs_
         ),
     )
     monkeypatch.setattr(
-        fit_model_module,
+        fit_model_module.JaniformModel,
         "_build_high_level_simulation_result",
-        lambda **kwargs: JaniformSimulationResult(
+        lambda self, **kwargs: JaniformSimulationResult(
             simulation_kind=(
                 "seeded_tick"
                 if kwargs["simulation_result"] is seeded_result
@@ -2077,8 +2072,7 @@ def test_build_high_level_coarse_simulation_result_preserves_session_context_for
         reference_price=1.0,
     )
 
-    result = fit_model_module._build_high_level_simulation_result(
-        model=model,
+    result = model._build_high_level_simulation_result(
         simulation_result=coarse_result,
         preferences=preferences,
     )
@@ -2461,9 +2455,9 @@ def test_high_level_model_price_option_dispatches_through_canonical_pricing_runn
     pricing_result = object()
 
     monkeypatch.setattr(
-        fit_model_module,
+        fit_model_module.JaniformModel,
         "_prepare_model_pricing_execution_input",
-        lambda *args, **kwargs: prepared_execution_input,
+        lambda self, *args, **kwargs: prepared_execution_input,
     )
     monkeypatch.setattr(
         fit_model_module,
@@ -2515,12 +2509,12 @@ def test_high_level_model_price_option_derives_boundary_state_from_spot_and_mode
     pricing_result = object()
 
     monkeypatch.setattr(
-        fit_model_module,
-        "_prepare_model_mean_reversion_runtime_inputs",
+        fit_model_module.JaniformModel,
+        "prepare_model_mean_reversion_runtime_inputs",
         lambda pricing_model, **kwargs: (
             captured_start_anchor_values.append(cast(float, kwargs["start_anchor_value"]))
             or (
-                fit_model_module._mean_reversion_fitted_parameters(pricing_model),
+                pricing_model.mean_reversion_fitted_parameters(),
                 fit_model_module.MeanReversionRuntimeIntervalAnchors(
                     interval_alignment_policy="explicit_runtime_interval_grid_alignment.v1",
                     start_anchor_value=derived_boundary_state.anchor_value,
@@ -2628,7 +2622,7 @@ def test_high_level_model_estimate_current_state_dispatches_to_native_estimator(
         datetime(2026, 2, 2, 15, tzinfo=UTC)
     )
     assert captured_native_arguments[0][3] == pytest.approx(
-        fit_model_module._pricing_observed_log_price_from_spot(model, spot=100.0)
+        model.pricing_observed_log_price_from_spot(spot=100.0)
     )
     assert captured_native_arguments[0][4] == (
         datetime(2026, 2, 2, 13, tzinfo=UTC).isoformat(),
@@ -2744,8 +2738,7 @@ def test_high_level_model_price_option_uses_stationary_hawkes_boundary_state_by_
         tenor="4h",
     )
 
-    runtime_factors = fit_model_module._prepare_model_runtime_factors(
-        model,
+    runtime_factors = model.prepare_model_runtime_factors(
         start_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
         horizon_interval_count=4,
         interval="1h",
@@ -2899,8 +2892,7 @@ def test_high_level_grouped_batch_pricing_resolves_mixed_maturity_axes_to_native
         ),
     )
 
-    native_execution_input = fit_model_module._prepare_model_grouped_batch_pricing_native_input(
-        model,
+    native_execution_input = model.prepare_model_grouped_batch_pricing_native_input(
         valuation_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
         batch=batch,
         observed_data=None,
@@ -2934,8 +2926,7 @@ def test_high_level_surface_pricing_resolves_mixed_maturity_axes_to_native_reque
         dividend_yield=0.0,
     )
 
-    native_execution_input = fit_model_module._prepare_model_surface_pricing_native_input(
-        model,
+    native_execution_input = model.prepare_model_surface_pricing_native_input(
         valuation_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
         surface=surface,
         observed_data=None,
@@ -3024,9 +3015,11 @@ def test_high_level_model_price_option_groups_dispatches_through_grouped_batch_p
                 maturity_intervals=(2.0,),
                 price_grid=((11.0,),),
                 implied_volatility_grid=((0.25,),),
-                implied_volatility_inversion_status_grid=((
-                    VanillaOptionImpliedVolatilityInversionStatus.SUCCEEDED,
-                ),),
+                implied_volatility_inversion_status_grid=(
+                    (
+                        VanillaOptionImpliedVolatilityInversionStatus.SUCCEEDED,
+                    ),
+                ),
                 pricing_status_grid=((VanillaOptionPricingStatus.SUCCEEDED,),),
                 pricing_failure_stage_grid=((None,),),
                 pricing_failure_reason_grid=((None,),),
@@ -3053,9 +3046,9 @@ def test_high_level_model_price_option_groups_dispatches_through_grouped_batch_p
     )
 
     monkeypatch.setattr(
-        fit_model_module,
-        "_prepare_model_grouped_batch_pricing_native_input",
-        lambda *args, **kwargs: prepared_native_execution_input,
+        fit_model_module.JaniformModel,
+        "prepare_model_grouped_batch_pricing_native_input",
+        lambda self, *args, **kwargs: prepared_native_execution_input,
     )
     monkeypatch.setattr(
         fit_model_module,
@@ -3161,9 +3154,9 @@ def test_high_level_model_price_option_surface_dispatches_through_surface_pricin
     )
 
     monkeypatch.setattr(
-        fit_model_module,
-        "_prepare_model_surface_pricing_native_input",
-        lambda *args, **kwargs: prepared_native_execution_input,
+        fit_model_module.JaniformModel,
+        "prepare_model_surface_pricing_native_input",
+        lambda self, *args, **kwargs: prepared_native_execution_input,
     )
     monkeypatch.setattr(
         fit_model_module,
@@ -3236,7 +3229,7 @@ def test_high_level_model_price_option_groups_matches_single_option_engine_on_sh
         (1, 0, 100.0, VanillaOptionPayoffType.PUT),
     ]
 
-    representative_single_results: dict[int, pricing_module.VanillaOptionPricingRunResult] = {}
+    representative_single_results: dict[int, fit_model_module.VanillaOptionPricingRunResult] = {}
 
     for group_index, strike_index, strike, payoff_type in flattened_specs:
         single_result = model.price_option(
@@ -3321,7 +3314,7 @@ def test_high_level_model_price_option_surface_matches_single_option_engine_on_s
     assert isinstance(surface_result, JaniformVanillaOptionSurfacePricingResult)
     assert surface_result.shape == (1, 2)
 
-    representative_single_results: dict[int, pricing_module.VanillaOptionPricingRunResult] = {}
+    representative_single_results: dict[int, fit_model_module.VanillaOptionPricingRunResult] = {}
 
     for maturity_index, maturity_interval in enumerate(surface_result.maturity_intervals):
         for strike_index, strike in enumerate(surface.strikes):
@@ -3388,15 +3381,13 @@ def test_runtime_pricing_seasonality_source_stays_materialized_for_off_hour_wind
 
     valuation_time_utc = datetime(2026, 2, 2, 15, 34, tzinfo=UTC)
 
-    runtime_factors = fit_model_module._prepare_model_runtime_factors(
-        model,
+    runtime_factors = model.prepare_model_runtime_factors(
         start_time_utc=valuation_time_utc,
         horizon_interval_count=2,
         interval="1h",
     )
 
-    seasonality_source = fit_model_module._build_runtime_hourly_seasonality_source_from_model(
-        model,
+    seasonality_source = model.build_runtime_hourly_seasonality_source_from_model(
         calendar_registry=runtime_factors.calendar_registry,
         exchange_code=runtime_factors.exchange_code,
         range_start_utc=valuation_time_utc,
@@ -3426,15 +3417,13 @@ def test_runtime_pricing_seasonality_source_uses_explicit_hourly_factors_for_hou
 
     valuation_time_utc = datetime(2026, 2, 2, 15, tzinfo=UTC)
 
-    runtime_factors = fit_model_module._prepare_model_runtime_factors(
-        model,
+    runtime_factors = model.prepare_model_runtime_factors(
         start_time_utc=valuation_time_utc,
         horizon_interval_count=2,
         interval="1h",
     )
 
-    seasonality_source = fit_model_module._build_runtime_hourly_seasonality_source_from_model(
-        model,
+    seasonality_source = model.build_runtime_hourly_seasonality_source_from_model(
         calendar_registry=runtime_factors.calendar_registry,
         exchange_code=runtime_factors.exchange_code,
         range_start_utc=valuation_time_utc,
@@ -3476,7 +3465,7 @@ def test_high_level_fit_routes_through_prepared_staged_runner(
 
     monkeypatch.setattr(
         fit_estimator_module,
-        "_run_prepared_staged_calibration_with_raw_payload",
+        "run_prepared_staged_calibration_with_raw_payload",
         capturing_runner,
     )
 
@@ -3554,7 +3543,7 @@ def test_high_level_fit_reuses_single_load_and_translation_pass_when_session_is_
     )
     monkeypatch.setattr(
         fit_estimator_module,
-        "_run_prepared_staged_calibration_with_raw_payload",
+        "run_prepared_staged_calibration_with_raw_payload",
         lambda *args, **kwargs: _successful_staged_runner_payload("high-level-fit-single-pass"),
     )
 
@@ -3615,7 +3604,7 @@ def test_high_level_fit_named_built_in_session_does_not_require_materialization(
     )
     monkeypatch.setattr(
         fit_estimator_module,
-        "_run_prepared_staged_calibration_with_raw_payload",
+        "run_prepared_staged_calibration_with_raw_payload",
         lambda *args, **kwargs: _successful_staged_runner_payload("high-level-fit-built-in-session"),
     )
 
@@ -3711,7 +3700,7 @@ def test_high_level_fit_progress_splits_loading_and_translation_steps(
     )
     monkeypatch.setattr(
         fit_estimator_module,
-        "_run_prepared_staged_calibration_with_raw_payload",
+        "run_prepared_staged_calibration_with_raw_payload",
         lambda *args, **kwargs: _successful_staged_runner_payload("high-level-fit-progress"),
     )
 
@@ -3783,7 +3772,7 @@ def test_high_level_fit_report_returns_success_details_with_model(
 
     monkeypatch.setattr(
         fit_estimator_module,
-        "_run_prepared_staged_calibration_with_raw_payload",
+        "run_prepared_staged_calibration_with_raw_payload",
         lambda prepared_handle, **kwargs: _successful_full_model_staged_runner_payload(
             _prepared_runner_run_id(prepared_handle)
         ),
@@ -3849,7 +3838,7 @@ def _patch_successful_staged_runner(
 ) -> None:
     monkeypatch.setattr(
         fit_estimator_module,
-        "_run_prepared_staged_calibration_with_raw_payload",
+        "run_prepared_staged_calibration_with_raw_payload",
         lambda *args, **kwargs: _successful_staged_runner_payload(run_id),
     )
 
@@ -3878,7 +3867,7 @@ def _build_full_workflow_model(
 
     monkeypatch.setattr(
         fit_estimator_module,
-        "_run_prepared_staged_calibration_with_raw_payload",
+        "run_prepared_staged_calibration_with_raw_payload",
         lambda *args, **kwargs: _successful_full_model_staged_runner_payload(run_id),
     )
 

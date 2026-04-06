@@ -39,7 +39,7 @@ def build_full_workflow_model(
 
     monkeypatch.setattr(
         fit_estimator_module,
-        "_run_prepared_staged_calibration_with_raw_payload",
+        "run_prepared_staged_calibration_with_raw_payload",
         lambda *args, **kwargs: successful_full_model_staged_runner_payload(run_id),
     )
 

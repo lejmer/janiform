@@ -102,7 +102,7 @@ def test_fit_outputs_resolved_configuration_and_provenance(
 
     monkeypatch.setattr(
         fit_estimator_module,
-        "_run_prepared_staged_calibration_with_raw_payload",
+        "run_prepared_staged_calibration_with_raw_payload",
         lambda *args, **kwargs: successful_full_model_staged_runner_payload("cli-fit-success"),
     )
 
@@ -196,7 +196,7 @@ def test_fit_cli_uses_endogenous_mean_reversion_calibration(
 
     monkeypatch.setattr(
         fit_estimator_module,
-        "_run_prepared_staged_calibration_with_raw_payload",
+        "run_prepared_staged_calibration_with_raw_payload",
         _capture_execution_input,
     )
 
@@ -266,7 +266,7 @@ def test_fit_supports_beginner_positional_tick_path_and_inferred_defaults(
 
     monkeypatch.setattr(
         fit_estimator_module,
-        "_run_prepared_staged_calibration_with_raw_payload",
+        "run_prepared_staged_calibration_with_raw_payload",
         lambda prepared_handle, **kwargs: successful_full_model_staged_runner_payload(
             _prepared_runner_run_id(prepared_handle)
         ),
@@ -319,7 +319,7 @@ def test_fit_supports_eurusd_market_preset_with_full_day_fx_session_windows(
 
     monkeypatch.setattr(
         fit_estimator_module,
-        "_run_prepared_staged_calibration_with_raw_payload",
+        "run_prepared_staged_calibration_with_raw_payload",
         lambda prepared_handle, **kwargs: successful_full_model_staged_runner_payload(
             _prepared_runner_run_id(prepared_handle)
         ),
@@ -360,7 +360,7 @@ def test_fit_explain_and_silent_flags_control_success_output(
 
     monkeypatch.setattr(
         fit_estimator_module,
-        "_run_prepared_staged_calibration_with_raw_payload",
+        "run_prepared_staged_calibration_with_raw_payload",
         lambda prepared_handle, **kwargs: successful_full_model_staged_runner_payload(
             _prepared_runner_run_id(prepared_handle)
         ),
@@ -594,7 +594,7 @@ def test_fit_surfaces_staged_failure_details_in_cli_error(
 
     monkeypatch.setattr(
         fit_estimator_module,
-        "_run_prepared_staged_calibration_with_raw_payload",
+        "run_prepared_staged_calibration_with_raw_payload",
         lambda *args, **kwargs: _failed_return_components_staged_runner_payload("cli-fit-stage-failure"),
     )
 
@@ -651,7 +651,7 @@ def test_fit_prefers_failed_stage_message_over_generic_top_level_failure(
 
     monkeypatch.setattr(
         fit_estimator_module,
-        "_run_prepared_staged_calibration_with_raw_payload",
+        "run_prepared_staged_calibration_with_raw_payload",
         lambda *args, **kwargs: _failed_return_components_with_generic_top_level_staged_runner_payload(
             "cli-fit-generic-top-level"
         ),
@@ -711,7 +711,7 @@ def test_fit_renders_human_error_output_with_labeled_lines(
 
     monkeypatch.setattr(
         fit_estimator_module,
-        "_run_prepared_staged_calibration_with_raw_payload",
+        "run_prepared_staged_calibration_with_raw_payload",
         lambda *args, **kwargs: _failed_return_components_with_generic_top_level_staged_runner_payload(
             "cli-fit-human-error"
         ),

@@ -111,7 +111,8 @@ def test_workbench_comparison_reloads_training_ticks_and_simulates_training_wind
             silent: bool,
             progress_callback: Any = None,
         ) -> _FakeSimulationResult:
-            del progress_callback
+            _ = progress_callback
+
             captured_simulations.append(
                 {
                     "seed": seed,
@@ -133,6 +134,7 @@ def test_workbench_comparison_reloads_training_ticks_and_simulates_training_wind
     comparison = build_observed_simulation_comparison(artifacts, seed=7)
 
     assert comparison is not None
+
     _assert_price_series(
         comparison.observed_series,
         timestamps_utc=(
@@ -149,6 +151,7 @@ def test_workbench_comparison_reloads_training_ticks_and_simulates_training_wind
         ),
         prices=(99.5, 100.5),
     )
+
     assert captured_simulations == [
         {
             "seed": 7,
@@ -182,12 +185,14 @@ def test_workbench_comparison_reuses_persisted_cache_for_same_model_seed_and_ran
         ),
         encoding="utf-8",
     )
+
     _write_fit_report(
         tmp_path / "fit_report.json",
         tick_data_path=tick_data_path,
         run_id="fit-context-cache-hit",
         duplicate_record_policy=None,
     )
+
     (tmp_path / "model.json").write_text("{}", encoding="utf-8")
 
     captured_simulations: list[dict[str, Any]] = []
@@ -236,7 +241,8 @@ def test_workbench_comparison_reuses_persisted_cache_for_same_model_seed_and_ran
             silent: bool,
             progress_callback: Any = None,
         ) -> _FakeSimulationResult:
-            del progress_callback
+            _ = progress_callback
+
             captured_simulations.append(
                 {
                     "seed": seed,
@@ -246,6 +252,7 @@ def test_workbench_comparison_reuses_persisted_cache_for_same_model_seed_and_ran
                     "silent": silent,
                 }
             )
+
             return _FakeSimulationResult()
 
     fake_model = _FakeModel()
@@ -647,7 +654,7 @@ def test_horizon_event_count_distribution_uses_raw_simulated_tick_counts() -> No
     )
 
     comparison = WorkbenchObservedSimulationComparison(
-        fit_context=SimpleNamespace(),
+        fit_context=SimpleNamespace(model=None),
         simulation_seed=7,
         observed_series=observed_series,
         observed_comparison_series=observed_series,

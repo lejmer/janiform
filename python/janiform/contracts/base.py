@@ -619,6 +619,19 @@ def require_date(
     raise error_factory(field_path, "must be a date or ISO 8601 date string")
 
 
+def require_timezone_aware_datetime(
+        value: datetime,
+        *,
+        field_path: str,
+        error_factory: ValidationErrorFactory,
+) -> None:
+    if not isinstance(value, datetime):
+        raise error_factory(field_path, "must be a datetime")
+
+    if value.tzinfo is None:
+        raise error_factory(field_path, "must be timezone-aware")
+
+
 def compute_hawkes_alpha_over_beta_spectral_radius(
     plus_plus: float,
     plus_minus: float,

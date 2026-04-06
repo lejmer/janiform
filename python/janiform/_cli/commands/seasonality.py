@@ -4,7 +4,7 @@ from typing import Optional
 
 import click
 
-from ._shared import (
+from .shared import (
     build_calendar_registry_from_document,
     build_day_of_week_seasonality_settings,
     build_day_of_year_seasonality_settings,
@@ -25,7 +25,7 @@ from ..command_runtime import (
     required_json_path_option,
 )
 from ..context import CliCommandContext
-from .._constants import (
+from ..constants import (
     CLI_SEASONALITY_DIAGNOSTICS_ENTRYPOINT,
     CLI_SEASONALITY_DIAGNOSTICS_VALIDATION_ERROR_ID,
     CLI_SEASONALITY_INTRADAY_SMOOTHING_KERNEL_CHOICES,
@@ -35,12 +35,12 @@ from .._constants import (
     CliExitCode,
     CliOutputMode,
 )
-from .._documents import load_json_document_for_cli_field
-from .._errors import (
+from ..documents import load_json_document_for_cli_field
+from ..errors import (
     classify_seasonality_diagnostics_command_error,
     classify_seasonality_preprocess_command_error,
 )
-from .._rendering import (
+from ..rendering import (
     render_seasonality_diagnostics_human_output,
     render_seasonality_preprocess_timestamps_human_output,
     write_cli_error,
@@ -58,7 +58,7 @@ from ...seasonality import (
 )
 
 
-def _run_seasonality_preprocess_timestamps_command(
+def run_seasonality_preprocess_timestamps_command(
     *,
     cli_context: CliCommandContext,
     output: str,
@@ -123,7 +123,7 @@ def _run_seasonality_preprocess_timestamps_command(
     return int(CliExitCode.SUCCESS)
 
 
-def _run_seasonality_diagnostics_command(
+def run_seasonality_diagnostics_command(
     *,
     cli_context: CliCommandContext,
     output: str,
@@ -256,7 +256,7 @@ def _run_seasonality_diagnostics_command(
     return int(CliExitCode.SUCCESS)
 
 
-def _build_seasonality_group(*, environment: Optional[Mapping[str, str]] = None) -> click.Group:
+def build_seasonality_group(*, environment: Optional[Mapping[str, str]] = None) -> click.Group:
     @click.group(
         cls=JaniformGroup,
         command_path=("seasonality",),
@@ -316,7 +316,7 @@ def _build_seasonality_group(*, environment: Optional[Mapping[str, str]] = None)
     def diagnostics(ctx: click.Context, **command_arguments) -> int:
         return invoke_command_handler(
             ctx,
-            handler=_run_seasonality_diagnostics_command,
+            handler=run_seasonality_diagnostics_command,
             command_path=("seasonality", "diagnostics"),
             command_arguments=dict(command_arguments),
         )
@@ -357,7 +357,7 @@ def _build_seasonality_group(*, environment: Optional[Mapping[str, str]] = None)
     def preprocess_timestamps(ctx: click.Context, **command_arguments) -> int:
         return invoke_command_handler(
             ctx,
-            handler=_run_seasonality_preprocess_timestamps_command,
+            handler=run_seasonality_preprocess_timestamps_command,
             command_path=("seasonality", "preprocess-timestamps"),
             command_arguments=dict(command_arguments),
         )

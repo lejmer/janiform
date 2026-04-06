@@ -1,17 +1,17 @@
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Optional, cast
+from typing import Any, Optional
 
 import click
 
-from ._model_workflows import (
+from .model_workflows import (
     build_cli_preset_registry,
     parse_cli_preset_category,
     parse_cli_preset_scope,
     resolve_named_preset_scope,
     resolve_preset_artifact,
 )
-from ._shared import require_non_empty_cli_string
+from .shared import require_non_empty_cli_string
 from ..context import CliCommandContext
 from ..command_runtime import (
     JaniformCommand,
@@ -25,7 +25,7 @@ from ..command_runtime import (
     preset_scope_option,
     user_preset_json_option,
 )
-from .._constants import (
+from ..constants import (
     CLI_PRESET_CATEGORY_CHOICES,
     CLI_PRESET_LIST_SCHEMA_VERSION,
     CLI_PRESET_SHOW_SCHEMA_VERSION,
@@ -41,8 +41,8 @@ from .._constants import (
     CliExitCode,
     CliOutputMode,
 )
-from .._errors import classify_generic_cli_command_error
-from .._rendering import (
+from ..errors import classify_generic_cli_command_error
+from ..rendering import (
     render_presets_export_human_output,
     render_presets_list_human_output,
     render_presets_show_human_output,
@@ -241,7 +241,7 @@ def _run_presets_export_command(
     return int(CliExitCode.SUCCESS)
 
 
-def _build_presets_group(*, environment: Optional[Mapping[str, str]] = None) -> click.Group:
+def build_presets_group(*, environment: Optional[Mapping[str, str]] = None) -> click.Group:
     @click.group(
         cls=JaniformGroup,
         command_path=("presets",),
@@ -314,4 +314,3 @@ def _build_presets_group(*, environment: Optional[Mapping[str, str]] = None) -> 
             )
 
     return presets
-

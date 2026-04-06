@@ -18,13 +18,13 @@ from .inputs import (
     validate_staged_calibration_execution_input,
 )
 from .results import StagedCalibrationResponse, validate_staged_calibration_response
-from .._errors import (
+from ..errors import (
     CALIBRATION_INTEGRATION_NATIVE_MODULE_ERROR_ID,
     CALIBRATION_INTEGRATION_RESPONSE_ERROR_ID,
     CalibrationValidationError,
-    _calibration_error,
-    _calibration_execution_error,
-    _calibration_integration_error,
+    calibration_error,
+    calibration_execution_error,
+    calibration_integration_error,
 )
 from ..._native_api import native_exception_matches, native_module
 from ..._native_types import PreparedCalibrationExecutionHandleProtocol
@@ -32,26 +32,26 @@ from ...calendar import CalendarRegistry
 from ...contracts import parse_json_object
 
 
-def _run_prepared_staged_calibration_with_raw_payload(
+def run_prepared_staged_calibration_with_raw_payload(
     prepared_handle: PreparedCalibrationExecutionHandleProtocol,
     *,
     calendar_registry: CalendarRegistry,
 ) -> tuple[StagedCalibrationResponse, dict[str, Any]]:
-    return _run_native_staged_calibration_with_prepared_handle_and_events(
+    return run_staged_calibration_with_prepared_handle_and_events(
         prepared_handle,
         calendar_registry=calendar_registry,
         event_callback=None,
     )
 
 
-def _run_native_staged_calibration_with_prepared_handle_and_events(
+def run_staged_calibration_with_prepared_handle_and_events(
     prepared_handle: PreparedCalibrationExecutionHandleProtocol,
     *,
     calendar_registry: CalendarRegistry,
     event_callback: Optional[Callable[[dict[str, Any]], None]],
 ) -> tuple[StagedCalibrationResponse, dict[str, Any]]:
     if not isinstance(calendar_registry, CalendarRegistry):
-        raise _calibration_error("calendar_registry", "must be a CalendarRegistry")
+        raise calibration_error("calendar_registry", "must be a CalendarRegistry")
 
     native = _native_module_for_staged_runtime()
     try:
@@ -79,10 +79,10 @@ def _run_staged_calibration_with_optional_events(
     event_callback: Optional[Callable[[dict[str, Any]], None]],
 ) -> tuple[StagedCalibrationResponse, dict[str, Any]]:
     if not isinstance(execution_input, StagedCalibrationExecutionInput):
-        raise _calibration_error("execution_input", "must be a StagedCalibrationExecutionInput")
+        raise calibration_error("execution_input", "must be a StagedCalibrationExecutionInput")
 
     if not isinstance(calendar_registry, CalendarRegistry):
-        raise _calibration_error("calendar_registry", "must be a CalendarRegistry")
+        raise calibration_error("calendar_registry", "must be a CalendarRegistry")
 
     normalized_execution_input = validate_staged_calibration_execution_input(
         execution_input.to_payload()
@@ -137,7 +137,7 @@ def _load_prepared_staged_payload(
     try:
         payload_json = payload_path.read_text(encoding="utf-8")
     except OSError as e:
-        raise _calibration_error(
+        raise calibration_error(
             "prepared_payload_file.path",
             f"could not be read: {e}",
         ) from e
@@ -145,7 +145,7 @@ def _load_prepared_staged_payload(
     raw_payload = parse_json_object(
         payload_json,
         "prepared staged calibration payload",
-        _calibration_error,
+        calibration_error,
     )
     return dict(raw_payload)
 
@@ -154,7 +154,7 @@ def _native_module_for_staged_runtime() -> ModuleType:
     try:
         return native_module()
     except ModuleNotFoundError as e:
-        raise _calibration_integration_error(
+        raise calibration_integration_error(
             "native calibration module is unavailable",
             entrypoint="run_staged_calibration",
             error_id=CALIBRATION_INTEGRATION_NATIVE_MODULE_ERROR_ID,
@@ -168,13 +168,13 @@ def _raise_staged_execution_error(native: ModuleType, error: Exception) -> None:
         "source_error_message": str(error),
     }
     if native_exception_matches(native, error, "CalibrationExecutionError"):
-        raise _calibration_execution_error(
+        raise calibration_execution_error(
             "staged calibration failed during native execution",
             entrypoint="run_staged_calibration",
             context=error_context,
         ) from error
 
-    raise _calibration_execution_error(
+    raise calibration_execution_error(
         "staged calibration failed during native execution",
         entrypoint="run_staged_calibration",
         context=error_context,
@@ -185,7 +185,7 @@ def _validate_native_staged_response(
     raw_response_payload: Any,
 ) -> tuple[StagedCalibrationResponse, dict[str, Any]]:
     if not isinstance(raw_response_payload, dict):
-        raise _calibration_integration_error(
+        raise calibration_integration_error(
             "native calibration returned an invalid response payload",
             entrypoint="run_staged_calibration",
             error_id=CALIBRATION_INTEGRATION_RESPONSE_ERROR_ID,
@@ -195,7 +195,7 @@ def _validate_native_staged_response(
     try:
         normalized_response = validate_staged_calibration_response(raw_response_payload)
     except CalibrationValidationError as e:
-        raise _calibration_integration_error(
+        raise calibration_integration_error(
             "native calibration returned an invalid response payload",
             entrypoint="run_staged_calibration",
             error_id=CALIBRATION_INTEGRATION_RESPONSE_ERROR_ID,
@@ -206,5 +206,7 @@ def _validate_native_staged_response(
 
 
 __all__ = [
+    "run_prepared_staged_calibration_with_raw_payload",
     "run_staged_calibration",
+    "run_staged_calibration_with_prepared_handle_and_events",
 ]

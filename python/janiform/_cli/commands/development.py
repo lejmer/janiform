@@ -6,7 +6,7 @@ from typing import Any, Optional, cast
 
 import click
 
-from ._shared import build_calendar_registry, build_calendar_registry_from_document
+from .shared import build_calendar_registry, build_calendar_registry_from_document
 from ..command_runtime import (
     JaniformCommand,
     JaniformGroup,
@@ -18,7 +18,7 @@ from ..command_runtime import (
     required_json_path_option,
 )
 from ..context import CliCommandContext
-from .._constants import (
+from ..constants import (
     CLI_DETERMINISTIC_REGRESSION_ENTRYPOINT,
     CLI_DETERMINISTIC_REGRESSION_INTERNAL_ERROR_ID,
     CLI_DETERMINISTIC_REGRESSION_VALIDATION_ERROR_ID,
@@ -29,9 +29,9 @@ from .._constants import (
     DEFAULT_GAP_BEHAVIOR_FIXTURE_PATH,
     CliOutputMode,
 )
-from .._documents import load_json_document_for_cli_field
-from .._errors import classify_open_closed_gap_command_error, classify_workflow_command_error
-from .._rendering import (
+from ..documents import load_json_document_for_cli_field
+from ..errors import classify_open_closed_gap_command_error, classify_workflow_command_error
+from ..rendering import (
     write_cli_error,
     write_contract_json,
     write_deterministic_regression_human_output,

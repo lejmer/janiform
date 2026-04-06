@@ -21,6 +21,7 @@ from matplotlib.figure import Figure
 
 from janiform._timestamps import datetime_to_utc_microseconds, utc_microseconds_to_datetime
 from janiform.calibration.fit import model as fit_model_runtime
+from janiform.calibration import JaniformModel
 from janiform.calendar import CalendarRegistry, MarketState
 from janiform.mean_reversion import MeanReversionFittedParameters
 from janiform.hourly_factors import (
@@ -1458,6 +1459,7 @@ def _analysis_for_observed_simulation_comparison(
     if len(available_horizon_minutes) == 0:
         available_horizon_minutes = (15,)
 
+    model = comparison.fit_context.model
     mean_reversion_interval_series = _mean_reversion_interval_series_for_comparison(
         comparison
     )
@@ -1469,11 +1471,11 @@ def _analysis_for_observed_simulation_comparison(
         simulated_coarse_15m=simulated_coarse_analysis,
         available_horizon_minutes=available_horizon_minutes,
         observed_mean_reversion=_build_mean_reversion_series_analysis(
-            _comparison_model(comparison),
+            model,
             mean_reversion_interval_series[0],
         ),
         simulated_mean_reversion=_build_mean_reversion_series_analysis(
-            _comparison_model(comparison),
+            model,
             mean_reversion_interval_series[1],
         ),
     )
@@ -1562,7 +1564,7 @@ def _build_series_analysis(series: WorkbenchPriceSeries) -> WorkbenchSeriesAnaly
 
 
 def _build_mean_reversion_series_analysis(
-    model: Any,
+    model: Optional[JaniformModel],
     series: WorkbenchPriceSeries,
 ) -> Optional[WorkbenchMeanReversionSeriesAnalysis]:
     if (
@@ -1602,14 +1604,30 @@ def _build_mean_reversion_series_analysis(
 
 
 def _resolve_mean_reversion_fitted_parameters(
-    model: Any,
+    model: Optional[JaniformModel],
 ) -> Optional[MeanReversionFittedParameters]:
     if model is None:
         return None
 
     try:
-        return fit_model_runtime._mean_reversion_fitted_parameters(model)
-    except (AttributeError, RuntimeError, TypeError, ValueError):
+        return model.mean_reversion_fitted_parameters()
+    except AttributeError:
+        model_payload = _mean_reversion_model_payload(model)
+        if model_payload is None:
+            return None
+
+        fitted_parameters = model_payload.get("fitted_parameters")
+        if not isinstance(fitted_parameters, dict):
+            return None
+
+        try:
+            return MeanReversionFittedParameters.from_mapping(
+                fitted_parameters,
+                field_path="mean_reversion.fitted_parameters",
+            )
+        except (RuntimeError, TypeError, ValueError):
+            return None
+    except (RuntimeError, TypeError, ValueError):
         return None
 
 
@@ -1617,7 +1635,14 @@ def _mean_reversion_interval_series_for_comparison(
     comparison: WorkbenchObservedSimulationComparison,
 ) -> tuple[WorkbenchPriceSeries, WorkbenchPriceSeries]:
     diagnostic_interval = timedelta(minutes=_MEAN_REVERSION_DIAGNOSTIC_INTERVAL_MINUTES)
-    model = _comparison_model(comparison)
+    model = comparison.fit_context.model
+
+    if model is None:
+        simulated_series = comparison.simulated_seeded_series_15m
+        if simulated_series.timestamp_microseconds_utc.size == 0:
+            simulated_series = comparison.simulated_series
+
+        return comparison.observed_comparison_series, simulated_series
 
     observed_series = _regularize_price_series_to_interval_closes(
         model,
@@ -1637,7 +1662,7 @@ def _mean_reversion_interval_series_for_comparison(
 
 
 def _regularize_price_series_to_interval_closes(
-    model: Any,
+    model: JaniformModel,
     series: WorkbenchPriceSeries,
     *,
     interval: timedelta,
@@ -1701,24 +1726,30 @@ def _regularize_price_series_to_interval_closes(
 
 
 def _mean_reversion_diagnostic_interval_is_open(
-    model: Any,
+    model: JaniformModel,
     interval_start_utc: datetime,
 ) -> bool:
-    session_resolution = getattr(model, "session_resolution", None)
+    session_resolution = _model_session_resolution(model)
     if session_resolution is None:
         return True
 
-    try:
-        calendar_registry = CalendarRegistry(session_resolution.resolved_session_definition_json)
-        exchange_code = session_resolution.exchange_code
-    except AttributeError:
-        return True
+    calendar_registry = CalendarRegistry(session_resolution.resolved_session_definition_json)
+    exchange_code = session_resolution.exchange_code
 
     return calendar_registry.resolve_market_state(exchange_code, interval_start_utc) == MarketState.OPEN
 
 
+def _model_session_resolution(
+    model: JaniformModel,
+) -> Optional[Any]:
+    try:
+        return model.session_resolution
+    except AttributeError:
+        return None
+
+
 def _materialize_endogenous_mean_reversion_anchor_values(
-    model: Any,
+    model: JaniformModel,
     *,
     runtime_log_prices: NDArray[np.float64],
     timestamp_microseconds_utc: NDArray[np.int64],
@@ -1746,8 +1777,7 @@ def _materialize_endogenous_mean_reversion_anchor_values(
         return np.asarray([float(runtime_log_prices[0])], dtype=np.float64)
 
     try:
-        runtime_factors = fit_model_runtime._prepare_model_runtime_factors(
-            model,
+        runtime_factors = model.prepare_model_runtime_factors(
             start_time_utc=start_time_utc,
             horizon_interval_count=full_interval_count,
             interval=interval,
@@ -1759,8 +1789,7 @@ def _materialize_endogenous_mean_reversion_anchor_values(
             range_start_utc=start_time_utc,
             range_end_utc=end_time_utc,
             interval=interval,
-            seasonality_source=fit_model_runtime._build_runtime_hourly_seasonality_source_from_model(
-                model,
+            seasonality_source=model.build_runtime_hourly_seasonality_source_from_model(
                 calendar_registry=runtime_factors.calendar_registry,
                 exchange_code=runtime_factors.exchange_code,
                 range_start_utc=start_time_utc,
@@ -1768,13 +1797,10 @@ def _materialize_endogenous_mean_reversion_anchor_values(
                 interval=interval,
             ),
             news_intensity_source=HourlyNewsIntensityProviderMaterializedSource(
-                known_scheduled_event_timestamps_utc=fit_model_runtime._resolved_known_news_event_timestamps(
-                    model
-                ),
-                surprise_baseline_intensity=fit_model_runtime._surprise_baseline_intensity(model),
+                known_scheduled_event_timestamps_utc=model.resolved_known_news_event_timestamps(),
+                surprise_baseline_intensity=model.surprise_baseline_intensity(),
                 surprise_deterministic_time_multiplier_by_interval_index=(
-                    fit_model_runtime._surprise_deterministic_time_multiplier_by_interval_index(
-                        model,
+                    model.surprise_deterministic_time_multiplier_by_interval_index(
                         range_start_utc=start_time_utc,
                         range_end_utc=end_time_utc,
                         interval_duration_nanos=runtime_factors.interval_duration_nanos,
@@ -1783,11 +1809,10 @@ def _materialize_endogenous_mean_reversion_anchor_values(
             ),
         )
 
-        _, runtime_interval_anchors, _ = fit_model_runtime._prepare_model_mean_reversion_runtime_inputs(
-            model,
+        _, runtime_interval_anchors, _ = model.prepare_model_mean_reversion_runtime_inputs(
             runtime_factors=runtime_factors,
             hourly_factor_contract=hourly_factor_contract,
-            initial_excitation_state=fit_model_runtime._zero_hawkes_excitation_state(),
+            initial_excitation_state=fit_model_runtime.zero_hawkes_excitation_state(),
             start_anchor_value=float(runtime_log_prices[0]),
         )
     except (AttributeError, RuntimeError, TypeError, ValueError):
@@ -1844,9 +1869,9 @@ def _infer_regularized_interval_microseconds(
 
 def _mean_reversion_unavailable_diagnostics(
     artifacts: WorkbenchArtifacts,
-    comparison: Optional[Any],
+    comparison: Optional[WorkbenchObservedSimulationComparison],
 ) -> WorkbenchMeanReversionUnavailableDiagnostics:
-    model = _comparison_model(comparison) if comparison is not None else None
+    model = comparison.fit_context.model if comparison is not None else None
     diagnostics_payload = _mean_reversion_diagnostics_payload(artifacts, model)
 
     return WorkbenchMeanReversionUnavailableDiagnostics(
@@ -1861,7 +1886,7 @@ def _mean_reversion_unavailable_diagnostics(
 
 def _mean_reversion_diagnostics_payload(
     artifacts: WorkbenchArtifacts,
-    model: Any,
+    model: JaniformModel,
 ) -> Optional[dict[str, Any]]:
     model_payload = _mean_reversion_model_payload(model)
     if model_payload is not None:
@@ -1894,7 +1919,7 @@ def _mean_reversion_diagnostics_payload(
     return None
 
 
-def _mean_reversion_model_payload(model: Any) -> Optional[dict[str, Any]]:
+def _mean_reversion_model_payload(model: Optional[JaniformModel]) -> Optional[dict[str, Any]]:
     if model is None:
         return None
 
@@ -1965,13 +1990,6 @@ def _mean_reversion_diagnostics_summary_lines(
             summary_lines.append(f"{label}: {value:.6g}")
 
     return tuple(summary_lines)
-
-
-def _comparison_model(comparison: WorkbenchObservedSimulationComparison) -> Any:
-    try:
-        return comparison.fit_context.model
-    except AttributeError:
-        return None
 
 
 def _hourly_event_counts_from_microseconds(

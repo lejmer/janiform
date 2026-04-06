@@ -10,7 +10,7 @@ from .contracts import (
     CalibrationStageExecutionStatus,
     _parse_calibration_execution_mode,
 )
-from .._errors import CALIBRATION_ERROR_FACTORY, _calibration_error
+from ..errors import calibration_error, calibration_error
 from ...contracts import (
     ContractModel,
     parse_json_object,
@@ -32,26 +32,26 @@ class CalibrationCheckpointMetadata(ContractModel):
     @staticmethod
     def from_mapping(raw_payload: dict[str, Any] | Any, *, field_path: str) -> CalibrationCheckpointMetadata:
         if not isinstance(raw_payload, dict):
-            raise _calibration_error(field_path, "must be an object")
+            raise calibration_error(field_path, "must be an object")
 
         return CalibrationCheckpointMetadata(
             checkpoint_reference=require_non_empty_string(
                 raw_payload,
                 "checkpoint_reference",
                 f"{field_path}.checkpoint_reference",
-                CALIBRATION_ERROR_FACTORY,
+                calibration_error,
             ),
             completed_stage=CalibrationStage(
-                require_string(raw_payload, "completed_stage", f"{field_path}.completed_stage", CALIBRATION_ERROR_FACTORY)
+                require_string(raw_payload, "completed_stage", f"{field_path}.completed_stage", calibration_error)
             ),
             completed_stage_position=require_non_negative_integer(
                 raw_payload,
                 "completed_stage_position",
                 f"{field_path}.completed_stage_position",
-                CALIBRATION_ERROR_FACTORY,
+                calibration_error,
             ),
             execution_mode=_parse_calibration_execution_mode(
-                require_string(raw_payload, "execution_mode", f"{field_path}.execution_mode", CALIBRATION_ERROR_FACTORY),
+                require_string(raw_payload, "execution_mode", f"{field_path}.execution_mode", calibration_error),
                 field_path=f"{field_path}.execution_mode",
             ),
         )
@@ -69,18 +69,18 @@ class CalibrationFailureDetails(ContractModel):
     @staticmethod
     def from_mapping(raw_payload: dict[str, Any] | Any, *, field_path: str) -> CalibrationFailureDetails:
         if not isinstance(raw_payload, dict):
-            raise _calibration_error(field_path, "must be an object")
+            raise calibration_error(field_path, "must be an object")
 
         raw_stage = raw_payload.get("stage")
         if raw_stage is not None and not isinstance(raw_stage, str):
-            raise _calibration_error(f"{field_path}.stage", "must be a string when provided")
+            raise calibration_error(f"{field_path}.stage", "must be a string when provided")
 
         return CalibrationFailureDetails(
             failure_kind=require_non_empty_string(
                 raw_payload,
                 "failure_kind",
                 f"{field_path}.failure_kind",
-                CALIBRATION_ERROR_FACTORY,
+                calibration_error,
             ),
             error_message=raw_payload.get("error_message"),
             stage=CalibrationStage(raw_stage) if raw_stage is not None else None,
@@ -103,7 +103,7 @@ class CalibrationStageReport(ContractModel):
     @staticmethod
     def from_mapping(raw_payload: dict[str, Any] | Any, *, field_path: str) -> CalibrationStageReport:
         if not isinstance(raw_payload, dict):
-            raise _calibration_error(field_path, "must be an object")
+            raise calibration_error(field_path, "must be an object")
 
         return CalibrationStageReport(
             stage_report_kind=CalibrationStage(
@@ -111,25 +111,25 @@ class CalibrationStageReport(ContractModel):
                     raw_payload,
                     "stage_report_kind",
                     f"{field_path}.stage_report_kind",
-                    CALIBRATION_ERROR_FACTORY,
+                    calibration_error,
                 )
             ),
             stage=CalibrationStage(
-                require_string(raw_payload, "stage", f"{field_path}.stage", CALIBRATION_ERROR_FACTORY)
+                require_string(raw_payload, "stage", f"{field_path}.stage", calibration_error)
             ),
             status=CalibrationStageExecutionStatus(
-                require_string(raw_payload, "status", f"{field_path}.status", CALIBRATION_ERROR_FACTORY)
+                require_string(raw_payload, "status", f"{field_path}.status", calibration_error)
             ),
-            run_id=require_non_empty_string(raw_payload, "run_id", f"{field_path}.run_id", CALIBRATION_ERROR_FACTORY),
+            run_id=require_non_empty_string(raw_payload, "run_id", f"{field_path}.run_id", calibration_error),
             execution_mode=_parse_calibration_execution_mode(
-                require_string(raw_payload, "execution_mode", f"{field_path}.execution_mode", CALIBRATION_ERROR_FACTORY),
+                require_string(raw_payload, "execution_mode", f"{field_path}.execution_mode", calibration_error),
                 field_path=f"{field_path}.execution_mode",
             ),
             handoff_policy=require_non_empty_string(
                 raw_payload,
                 "handoff_policy",
                 f"{field_path}.handoff_policy",
-                CALIBRATION_ERROR_FACTORY,
+                calibration_error,
             ),
             failure=(
                 CalibrationFailureDetails.from_mapping(raw_payload["failure"], field_path=f"{field_path}.failure")
@@ -169,26 +169,26 @@ class StagedCalibrationResponse(ContractModel):
     @staticmethod
     def from_mapping(raw_payload: dict[str, Any] | Any) -> StagedCalibrationResponse:
         if not isinstance(raw_payload, dict):
-            raise _calibration_error("staged_calibration_response", "must be an object")
+            raise calibration_error("staged_calibration_response", "must be an object")
 
         raw_stage_reports = require_sequence(
             raw_payload,
             "stage_reports",
             "stage_reports",
-            CALIBRATION_ERROR_FACTORY,
+            calibration_error,
         )
         raw_emitted_checkpoints = require_sequence(
             raw_payload,
             "emitted_checkpoints",
             "emitted_checkpoints",
-            CALIBRATION_ERROR_FACTORY,
+            calibration_error,
         )
         raw_diagnostic_artifact_references = raw_payload.get("diagnostic_artifact_references", ())
         if isinstance(raw_diagnostic_artifact_references, str) or not isinstance(
             raw_diagnostic_artifact_references,
             tuple | list,
         ):
-            raise _calibration_error(
+            raise calibration_error(
                 "diagnostic_artifact_references",
                 "must be a sequence when provided",
             )
@@ -200,7 +200,7 @@ class StagedCalibrationResponse(ContractModel):
             raw_diagnostic_artifact_bundle,
             dict,
         ):
-            raise _calibration_error(
+            raise calibration_error(
                 "diagnostic_artifact_bundle",
                 "must be an object when provided",
             )
@@ -208,7 +208,7 @@ class StagedCalibrationResponse(ContractModel):
         for reference_index, raw_reference in enumerate(raw_diagnostic_artifact_references):
             field_path = f"diagnostic_artifact_references[{reference_index}]"
             if not isinstance(raw_reference, dict):
-                raise _calibration_error(field_path, "must be an object")
+                raise calibration_error(field_path, "must be an object")
 
             normalized_diagnostic_artifact_references.append(
                 {
@@ -216,13 +216,13 @@ class StagedCalibrationResponse(ContractModel):
                         raw_reference,
                         "artifact_family",
                         f"{field_path}.artifact_family",
-                        CALIBRATION_ERROR_FACTORY,
+                        calibration_error,
                     ),
                     "relative_path": require_non_empty_string(
                         raw_reference,
                         "relative_path",
                         f"{field_path}.relative_path",
-                        CALIBRATION_ERROR_FACTORY,
+                        calibration_error,
                     ),
                 }
             )
@@ -232,21 +232,21 @@ class StagedCalibrationResponse(ContractModel):
                 raw_payload,
                 "schema_version",
                 "schema_version",
-                CALIBRATION_ERROR_FACTORY,
+                calibration_error,
             ),
             failure_triage_policy=require_non_empty_string(
                 raw_payload,
                 "failure_triage_policy",
                 "failure_triage_policy",
-                CALIBRATION_ERROR_FACTORY,
+                calibration_error,
             ),
-            run_id=require_non_empty_string(raw_payload, "run_id", "run_id", CALIBRATION_ERROR_FACTORY),
+            run_id=require_non_empty_string(raw_payload, "run_id", "run_id", calibration_error),
             execution_mode=_parse_calibration_execution_mode(
-                require_string(raw_payload, "execution_mode", "execution_mode", CALIBRATION_ERROR_FACTORY),
+                require_string(raw_payload, "execution_mode", "execution_mode", calibration_error),
                 field_path="execution_mode",
             ),
             status=CalibrationStageExecutionStatus(
-                require_string(raw_payload, "status", "status", CALIBRATION_ERROR_FACTORY)
+                require_string(raw_payload, "status", "status", calibration_error)
             ),
             stage_reports=tuple(
                 CalibrationStageReport.from_mapping(
@@ -393,7 +393,7 @@ def serialize_staged_calibration_response(response: StagedCalibrationResponse) -
 
 
 def deserialize_staged_calibration_response(payload_json: str) -> StagedCalibrationResponse:
-    raw_payload = parse_json_object(payload_json, 'staged calibration response', CALIBRATION_ERROR_FACTORY)
+    raw_payload = parse_json_object(payload_json, 'staged calibration response', calibration_error)
     return validate_staged_calibration_response(dict(raw_payload))
 
 

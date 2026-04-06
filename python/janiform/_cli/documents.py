@@ -4,8 +4,8 @@ import json
 from pathlib import Path
 from typing import Any
 
-from ._errors import cli_validation_error
-from .paths import _resolve_path_from_repository_root
+from .errors import cli_validation_error
+from .paths import resolve_path_from_repository_root
 
 
 def load_json_document(path: Path, context: str) -> dict[str, Any]:
@@ -25,7 +25,7 @@ def load_json_document_for_cli_field(
     error_id: str,
     entrypoint: str,
 ) -> dict[str, Any]:
-    resolved_path = _resolve_path_from_repository_root(repository_root, path)
+    resolved_path = resolve_path_from_repository_root(repository_root, path)
 
     try:
         return load_json_document(resolved_path, context)

@@ -6,8 +6,8 @@ from typing import Optional, cast
 
 import click
 
-from ._shared import parse_date_cli_argument, parse_utc_datetime_cli_argument
-from .._constants import (
+from .shared import parse_date_cli_argument, parse_utc_datetime_cli_argument
+from ..constants import (
     CLI_PRICE_ENTRYPOINT,
     CLI_PRICE_INTERNAL_ERROR_ID,
     CLI_PRICE_RESULT_SCHEMA_VERSION,
@@ -25,9 +25,9 @@ from ..command_runtime import (
     required_datetime_option,
 )
 from ..context import CliCommandContext
-from .._errors import classify_workflow_command_error
-from ..paths import _resolve_path_from_repository_root
-from .._rendering import render_price_human_output, write_cli_error, write_command_output
+from ..errors import classify_workflow_command_error
+from ..paths import resolve_path_from_repository_root
+from ..rendering import render_price_human_output, write_cli_error, write_command_output
 from ..._workflow_outputs import generate_workflow_run_id, resolve_pricing_artifact_paths
 from ..._workflow_progress import JaniformOutputController, WorkflowProgressMode
 from ...calibration.fit import JaniformModel
@@ -42,14 +42,14 @@ def run_price_command(
     model_path: Path,
     **command_arguments,
 ) -> int:
-    resolved_model_path = _resolve_path_from_repository_root(cli_context.repository_root, model_path)
+    resolved_model_path = resolve_path_from_repository_root(cli_context.repository_root, model_path)
 
     try:
         model = JaniformModel.load(resolved_model_path)
         pricing_run_id = generate_workflow_run_id(f"{model.run_id}_price")
         output_path_argument = cast(Optional[Path], command_arguments.get("output_path"))
         resolved_output_path = (
-            _resolve_path_from_repository_root(cli_context.repository_root, output_path_argument)
+            resolve_path_from_repository_root(cli_context.repository_root, output_path_argument)
             if output_path_argument is not None
             else None
         )

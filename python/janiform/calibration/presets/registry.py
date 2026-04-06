@@ -19,7 +19,7 @@ from .references import (
     SessionExplicitConfiguration,
     SessionPresetReference,
 )
-from .._errors import CALIBRATION_ERROR_FACTORY, _calibration_error
+from ..errors import calibration_error
 from ...contracts import (
     ContractModel,
     parse_json_object,
@@ -36,6 +36,7 @@ MARKET_PROFILE_PRESET_ARTIFACT_SCHEMA_VERSION = "preset.artifact.market_profile.
 BUNDLED_PRESET_INDEX_SCHEMA_VERSION = "preset.runtime.index.v1"
 RESOLVED_PRESET_EXPORT_SCHEMA_VERSION = "preset.runtime.export.v1"
 PRESET_CONTENT_HASH_ALGORITHM = "sha256"
+
 _BUNDLED_PRESET_RESOURCE_PACKAGE = "janiform.calibration._bundled_presets.generated"
 _BUNDLED_PRESET_INDEX_RESOURCE_NAME = "index.json"
 _WEEKDAY_ORDER: tuple[str, ...] = (
@@ -84,13 +85,13 @@ class PresetUpstreamSourceVersion(ContractModel):
                 raw_payload,
                 "source_name",
                 f"{field_path}.source_name",
-                CALIBRATION_ERROR_FACTORY,
+                calibration_error,
             ),
             version_label=require_non_empty_string(
                 raw_payload,
                 "version_label",
                 f"{field_path}.version_label",
-                CALIBRATION_ERROR_FACTORY,
+                calibration_error,
             ),
         )
 
@@ -146,7 +147,7 @@ class PresetArtifactProvenance(ContractModel):
             raw_payload,
             "source_manifest_ids",
             f"{field_path}.source_manifest_ids",
-            CALIBRATION_ERROR_FACTORY,
+            calibration_error,
         )
         raw_upstream_source_versions = raw_payload.get("upstream_source_versions", ())
 
@@ -171,31 +172,31 @@ class PresetArtifactProvenance(ContractModel):
                 raw_payload,
                 "bundle_id",
                 f"{field_path}.bundle_id",
-                CALIBRATION_ERROR_FACTORY,
+                calibration_error,
             ),
             bundle_version=require_non_empty_string(
                 raw_payload,
                 "bundle_version",
                 f"{field_path}.bundle_version",
-                CALIBRATION_ERROR_FACTORY,
+                calibration_error,
             ),
             generator_id=require_non_empty_string(
                 raw_payload,
                 "generator_id",
                 f"{field_path}.generator_id",
-                CALIBRATION_ERROR_FACTORY,
+                calibration_error,
             ),
             generator_version=require_non_empty_string(
                 raw_payload,
                 "generator_version",
                 f"{field_path}.generator_version",
-                CALIBRATION_ERROR_FACTORY,
+                calibration_error,
             ),
             generated_on=require_non_empty_string(
                 raw_payload,
                 "generated_on",
                 f"{field_path}.generated_on",
-                CALIBRATION_ERROR_FACTORY,
+                calibration_error,
             ),
             source_manifest_ids=tuple(
                 _require_non_empty_string_value(
@@ -243,7 +244,7 @@ class PresetArtifactMetadata(ContractModel):
             raw_payload,
             "provenance",
             f"{field_path}.provenance",
-            CALIBRATION_ERROR_FACTORY,
+            calibration_error,
         )
 
         return PresetArtifactMetadata(
@@ -251,19 +252,19 @@ class PresetArtifactMetadata(ContractModel):
                 raw_payload,
                 "display_name",
                 f"{field_path}.display_name",
-                CALIBRATION_ERROR_FACTORY,
+                calibration_error,
             ),
             description=require_non_empty_string(
                 raw_payload,
                 "description",
                 f"{field_path}.description",
-                CALIBRATION_ERROR_FACTORY,
+                calibration_error,
             ),
             version_label=require_non_empty_string(
                 raw_payload,
                 "version_label",
                 f"{field_path}.version_label",
-                CALIBRATION_ERROR_FACTORY,
+                calibration_error,
             ),
             provenance=PresetArtifactProvenance.from_mapping(
                 raw_provenance,
@@ -305,14 +306,14 @@ class SessionPresetArtifact(ContractModel):
                 raw_payload,
                 "schema_version",
                 f"{field_path}.schema_version",
-                CALIBRATION_ERROR_FACTORY,
+                calibration_error,
             ),
             category=_parse_preset_category(
                 require_field(
                     raw_payload,
                     "category",
                     f"{field_path}.category",
-                    CALIBRATION_ERROR_FACTORY,
+                    calibration_error,
                 ),
                 field_path=f"{field_path}.category",
             ),
@@ -320,14 +321,14 @@ class SessionPresetArtifact(ContractModel):
                 raw_payload,
                 "preset_name",
                 f"{field_path}.preset_name",
-                CALIBRATION_ERROR_FACTORY,
+                calibration_error,
             ),
             metadata=PresetArtifactMetadata.from_mapping(
                 require_field(
                     raw_payload,
                     "metadata",
                     f"{field_path}.metadata",
-                    CALIBRATION_ERROR_FACTORY,
+                    calibration_error,
                 ),
                 field_path=f"{field_path}.metadata",
             ),
@@ -336,7 +337,7 @@ class SessionPresetArtifact(ContractModel):
                     raw_payload,
                     "configuration",
                     f"{field_path}.configuration",
-                    CALIBRATION_ERROR_FACTORY,
+                    calibration_error,
                 ),
                 field_path=f"{field_path}.configuration",
             ),
@@ -376,14 +377,14 @@ class KnownNewsPresetArtifact(ContractModel):
                 raw_payload,
                 "schema_version",
                 f"{field_path}.schema_version",
-                CALIBRATION_ERROR_FACTORY,
+                calibration_error,
             ),
             category=_parse_preset_category(
                 require_field(
                     raw_payload,
                     "category",
                     f"{field_path}.category",
-                    CALIBRATION_ERROR_FACTORY,
+                    calibration_error,
                 ),
                 field_path=f"{field_path}.category",
             ),
@@ -391,14 +392,14 @@ class KnownNewsPresetArtifact(ContractModel):
                 raw_payload,
                 "preset_name",
                 f"{field_path}.preset_name",
-                CALIBRATION_ERROR_FACTORY,
+                calibration_error,
             ),
             metadata=PresetArtifactMetadata.from_mapping(
                 require_field(
                     raw_payload,
                     "metadata",
                     f"{field_path}.metadata",
-                    CALIBRATION_ERROR_FACTORY,
+                    calibration_error,
                 ),
                 field_path=f"{field_path}.metadata",
             ),
@@ -407,7 +408,7 @@ class KnownNewsPresetArtifact(ContractModel):
                     raw_payload,
                     "configuration",
                     f"{field_path}.configuration",
-                    CALIBRATION_ERROR_FACTORY,
+                    calibration_error,
                 ),
                 field_path=f"{field_path}.configuration",
             ),
@@ -447,14 +448,14 @@ class MarketProfilePresetArtifact(ContractModel):
                 raw_payload,
                 "schema_version",
                 f"{field_path}.schema_version",
-                CALIBRATION_ERROR_FACTORY,
+                calibration_error,
             ),
             category=_parse_preset_category(
                 require_field(
                     raw_payload,
                     "category",
                     f"{field_path}.category",
-                    CALIBRATION_ERROR_FACTORY,
+                    calibration_error,
                 ),
                 field_path=f"{field_path}.category",
             ),
@@ -462,14 +463,14 @@ class MarketProfilePresetArtifact(ContractModel):
                 raw_payload,
                 "preset_name",
                 f"{field_path}.preset_name",
-                CALIBRATION_ERROR_FACTORY,
+                calibration_error,
             ),
             metadata=PresetArtifactMetadata.from_mapping(
                 require_field(
                     raw_payload,
                     "metadata",
                     f"{field_path}.metadata",
-                    CALIBRATION_ERROR_FACTORY,
+                    calibration_error,
                 ),
                 field_path=f"{field_path}.metadata",
             ),
@@ -478,7 +479,7 @@ class MarketProfilePresetArtifact(ContractModel):
                     raw_payload,
                     "configuration",
                     f"{field_path}.configuration",
-                    CALIBRATION_ERROR_FACTORY,
+                    calibration_error,
                 ),
                 field_path=f"{field_path}.configuration",
             ),
@@ -540,7 +541,7 @@ class PresetIndexEntry(ContractModel):
                     raw_payload,
                     "category",
                     f"{field_path}.category",
-                    CALIBRATION_ERROR_FACTORY,
+                    calibration_error,
                 ),
                 field_path=f"{field_path}.category",
             ),
@@ -548,32 +549,32 @@ class PresetIndexEntry(ContractModel):
                 raw_payload,
                 "preset_name",
                 f"{field_path}.preset_name",
-                CALIBRATION_ERROR_FACTORY,
+                calibration_error,
             ),
             display_name=require_non_empty_string(
                 raw_payload,
                 "display_name",
                 f"{field_path}.display_name",
-                CALIBRATION_ERROR_FACTORY,
+                calibration_error,
             ),
             description=require_non_empty_string(
                 raw_payload,
                 "description",
                 f"{field_path}.description",
-                CALIBRATION_ERROR_FACTORY,
+                calibration_error,
             ),
             version_label=require_non_empty_string(
                 raw_payload,
                 "version_label",
                 f"{field_path}.version_label",
-                CALIBRATION_ERROR_FACTORY,
+                calibration_error,
             ),
             registry_scope=_parse_preset_registry_scope(
                 require_field(
                     raw_payload,
                     "registry_scope",
                     f"{field_path}.registry_scope",
-                    CALIBRATION_ERROR_FACTORY,
+                    calibration_error,
                 ),
                 field_path=f"{field_path}.registry_scope",
             ),
@@ -581,7 +582,7 @@ class PresetIndexEntry(ContractModel):
                 raw_payload,
                 "content_hash",
                 f"{field_path}.content_hash",
-                CALIBRATION_ERROR_FACTORY,
+                calibration_error,
             ),
             artifact_path=cast(Optional[str], raw_artifact_path),
         )
@@ -632,7 +633,7 @@ class BundledPresetRegistryIndex(ContractModel):
             raw_payload,
             "entries",
             f"{field_path}.entries",
-            CALIBRATION_ERROR_FACTORY,
+            calibration_error,
         )
 
         return BundledPresetRegistryIndex(
@@ -640,25 +641,25 @@ class BundledPresetRegistryIndex(ContractModel):
                 raw_payload,
                 "schema_version",
                 f"{field_path}.schema_version",
-                CALIBRATION_ERROR_FACTORY,
+                calibration_error,
             ),
             bundle_id=require_non_empty_string(
                 raw_payload,
                 "bundle_id",
                 f"{field_path}.bundle_id",
-                CALIBRATION_ERROR_FACTORY,
+                calibration_error,
             ),
             bundle_version=require_non_empty_string(
                 raw_payload,
                 "bundle_version",
                 f"{field_path}.bundle_version",
-                CALIBRATION_ERROR_FACTORY,
+                calibration_error,
             ),
             generated_on=require_non_empty_string(
                 raw_payload,
                 "generated_on",
                 f"{field_path}.generated_on",
-                CALIBRATION_ERROR_FACTORY,
+                calibration_error,
             ),
             entries=tuple(
                 PresetIndexEntry.from_mapping(
@@ -729,7 +730,7 @@ class BuiltInPresetRegistry:
     def load_default(cls) -> BuiltInPresetRegistry:
         resource_root = files(_BUNDLED_PRESET_RESOURCE_PACKAGE)
         index_json = resource_root.joinpath(_BUNDLED_PRESET_INDEX_RESOURCE_NAME).read_text(encoding="utf-8")
-        index_mapping = parse_json_object(index_json, "bundled preset index", CALIBRATION_ERROR_FACTORY)
+        index_mapping = parse_json_object(index_json, "bundled preset index", calibration_error)
         index = BundledPresetRegistryIndex.from_mapping(index_mapping, field_path="bundled_preset_index")
         artifact_json_by_path: dict[str, str] = {}
 
@@ -755,7 +756,7 @@ class BuiltInPresetRegistry:
         index_json: str,
         artifact_json_by_path: Mapping[str, str],
     ) -> BuiltInPresetRegistry:
-        index_mapping = parse_json_object(index_json, "bundled preset index", CALIBRATION_ERROR_FACTORY)
+        index_mapping = parse_json_object(index_json, "bundled preset index", calibration_error)
         index = BundledPresetRegistryIndex.from_mapping(index_mapping, field_path="bundled_preset_index")
         preset_store = _PresetStore()
 
@@ -1154,7 +1155,7 @@ def serialize_preset_artifact(artifact: PresetArtifact) -> str:
 
 
 def deserialize_preset_artifact(payload_json: str) -> PresetArtifact:
-    raw_payload = parse_json_object(payload_json, "preset artifact", CALIBRATION_ERROR_FACTORY)
+    raw_payload = parse_json_object(payload_json, "preset artifact", calibration_error)
     return _parse_preset_artifact_mapping(raw_payload, field_path="preset_artifact")
 
 
@@ -1192,7 +1193,7 @@ def _parse_preset_artifact_mapping(
     field_path: str,
 ) -> PresetArtifact:
     category = _parse_preset_category(
-        require_field(raw_payload, "category", f"{field_path}.category", CALIBRATION_ERROR_FACTORY),
+        require_field(raw_payload, "category", f"{field_path}.category", calibration_error),
         field_path=f"{field_path}.category",
     )
 
@@ -1586,7 +1587,7 @@ def _validate_unique_strings(
 
 
 def _preset_registry_error(field_path: str, message: str) -> Exception:
-    return _calibration_error(
+    return calibration_error(
         field_path,
         message,
         entrypoint="preset_registry",

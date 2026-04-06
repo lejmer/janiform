@@ -549,10 +549,3 @@ class JaniformOutputController:
                 )
             case WorkflowProgressMode.AUTO:
                 return NullProgress()
-
-
-__all__ = [
-    "JaniformOutputController",
-    "WorkflowProgressMode",
-    "resolve_workflow_progress_mode",
-]

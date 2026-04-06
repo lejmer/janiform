@@ -16,7 +16,6 @@ from janiform.calibration.fit import (
     JaniformModel,
     JaniformSimulationResult,
 )
-from janiform.calibration.fit.model import _prepare_model_simulation_inputs
 from janiform.simulation import SeededTickEventStateSnapshotCapture
 from janiform.simulation.seeded import (
     SeededTickSimulationRequest,
@@ -93,8 +92,7 @@ def prepare_real_data_seeded_runtime_microbenchmark_case(
                 f"fit failed while preparing microbenchmark fixture `{fixture.fixture_id}`"
             )
 
-        prepared_inputs = _prepare_model_simulation_inputs(
-            model,
+        prepared_inputs = model.prepare_model_simulation_inputs(
             seed=fixture.simulation_seed,
             start_time_utc=fixture.simulation_start_time_utc,
             horizon_interval_count=fixture.seeded_horizon_interval_count,

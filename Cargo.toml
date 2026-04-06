@@ -1,22 +1,22 @@
 [workspace]
 members = [
-    "crates/janiform-analytics-stylized-facts",
     "crates/janiform-affine-oracle",
+    "crates/janiform-analytics-stylized-facts",
     "crates/janiform-calibration-artifacts",
     "crates/janiform-calibration-runtime",
-    "crates/janiform-joint-refinement-worker",
-    "crates/janiform",
     "crates/janiform-engine-pricing",
     "crates/janiform-engine-risk",
     "crates/janiform-engine-simulation",
     "crates/janiform-foundations",
     "crates/janiform-governance",
     "crates/janiform-governance-bench",
+    "crates/janiform-joint-refinement-worker",
     "crates/janiform-market-time",
     "crates/janiform-model-kernels",
     "crates/janiform-pybind",
     "crates/janiform-test-support",
     "crates/janiform-validation",
+    "crates/janiform",
 ]
 resolver = "2"
 

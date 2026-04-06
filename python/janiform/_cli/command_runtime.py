@@ -6,7 +6,7 @@ from typing import Any, Optional, cast
 
 import click
 
-from ._constants import (
+from .constants import (
     CLI_COMMAND_CONFIG_HELP,
     CLI_DIRECTORY_METAVAR,
     CLI_OUTPUT_MODE_CHOICES,
@@ -22,6 +22,7 @@ from ._constants import (
 from .configuration import build_click_default_map
 from .context import CliCommandContext
 from .paths import resolve_repository_root
+
 
 type CliHandler = Callable[..., int]
 
@@ -89,7 +90,7 @@ def build_argument(
     )
 
 
-def build_cli_context(ctx: click.Context, *, command_path: tuple[str, ...]) -> CliCommandContext:
+def _build_cli_context(ctx: click.Context, *, command_path: tuple[str, ...]) -> CliCommandContext:
     return CliCommandContext(
         command_path=command_path,
         command_identifier=CLI_PRIMARY_COMMAND_IDENTIFIERS.get(command_path),
@@ -179,7 +180,7 @@ def invoke_command_handler(
         required_one_of_groups=required_one_of_groups,
     )
 
-    cli_context = build_cli_context(ctx, command_path=command_path)
+    cli_context = _build_cli_context(ctx, command_path=command_path)
     return handler(cli_context=cli_context, **command_arguments)
 
 
@@ -207,7 +208,7 @@ def invoke_group_default_handler(
         required_one_of_groups=required_one_of_groups,
     )
 
-    cli_context = build_cli_context(ctx, command_path=command_path)
+    cli_context = _build_cli_context(ctx, command_path=command_path)
     return handler(cli_context=cli_context, **command_arguments)
 
 
@@ -368,23 +369,3 @@ def _validate_required_options(
             raise click.UsageError(f"missing required option --{option_name.replace('_', '-')}")
 
         raise click.MissingParameter(ctx=ctx, param=parameter)
-
-
-__all__ = [
-    "CliHandler",
-    "JaniformCommand",
-    "JaniformGroup",
-    "build_argument",
-    "build_cli_context",
-    "command_config_option",
-    "command_option",
-    "group_help_callback",
-    "invoke_command_handler",
-    "invoke_group_default_handler",
-    "optional_path_option",
-    "output_option",
-    "preset_scope_option",
-    "required_datetime_option",
-    "required_json_path_option",
-    "user_preset_json_option",
-]

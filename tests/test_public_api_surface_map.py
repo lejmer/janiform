@@ -32,8 +32,8 @@ def test_package_root_surface_is_intentionally_minimal() -> None:
     assert "native_module" not in root_exports
 
 
-def test_cli_public_module_is_a_package_with_curated_root_exports() -> None:
-    assert hasattr(cli_module, "__path__")
+def test_cli_public_module_is_a_thin_module_with_curated_root_exports() -> None:
+    assert not hasattr(cli_module, "__path__")
     assert set(cli_module.__all__) == {
         "CLI_CALIBRATION_DISK_CHECKPOINT_DIRECTORY_ENV_VAR",
         "CLI_CALIBRATION_EXECUTION_MODE_ENV_VAR",
@@ -58,23 +58,6 @@ def test_cli_public_module_is_a_package_with_curated_root_exports() -> None:
     assert "main" not in cli_module.__dict__
     assert "_build_parser" not in cli_module.__dict__
     assert "_parse_cli_arguments" not in cli_module.__dict__
-
-
-def test_cli_public_command_submodules_are_supported_domain_imports() -> None:
-    cli_commands_module = import_module("janiform.cli.commands")
-    cli_calibration_commands_module = import_module("janiform.cli.commands.calibration")
-    cli_simulation_commands_module = import_module("janiform.cli.commands.simulation")
-
-    assert not hasattr(cli_commands_module, "_run_fit_command")
-    assert cli_calibration_commands_module.__all__ == []
-    assert "run_coarse_simulation" in cli_simulation_commands_module.__all__
-    assert "run_seeded_tick_event_simulation" in cli_simulation_commands_module.__all__
-
-
-def test_cli_click_command_tree_helpers_remain_internal() -> None:
-    cli_command_tree_module = import_module("janiform.cli.command_tree")
-
-    assert not hasattr(cli_command_tree_module, "__all__")
 
 
 def test_public_and_internal_module_intent_is_explicit() -> None:
@@ -102,18 +85,18 @@ def test_public_and_internal_module_intent_is_explicit() -> None:
         "janiform.validation.contracts",
     )
     internal_modules = (
-        "janiform.cli.command_tree",
-        "janiform.cli.command_runtime",
-        "janiform.cli.configuration",
-        "janiform.cli.commands._development",
-        "janiform.cli.commands._model_workflows",
-        "janiform.cli.commands._pricing",
-        "janiform.cli.commands._shared",
-        "janiform.cli.context",
-        "janiform.cli._documents",
-        "janiform.cli._errors",
-        "janiform.cli.paths",
-        "janiform.cli._rendering",
+        "janiform._cli.command_tree",
+        "janiform._cli.command_runtime",
+        "janiform._cli.configuration",
+        "janiform._cli.commands.development",
+        "janiform._cli.commands.model_workflows",
+        "janiform._cli.commands.pricing",
+        "janiform._cli.commands.shared",
+        "janiform._cli.context",
+        "janiform._cli.documents",
+        "janiform._cli.errors",
+        "janiform._cli.paths",
+        "janiform._cli.rendering",
     )
 
     for module_name in public_modules:
@@ -725,6 +708,7 @@ def test_calibration_fit_public_ownership_submodules_are_supported_domain_import
     assert set(calibration_fit_state_estimation_module.__all__) == {
         "CurrentStateEstimationRequest",
         "CurrentStateEstimationResult",
+        "estimate_current_state_for_model",
     }
 
 
@@ -935,6 +919,7 @@ def test_calibration_sessions_public_submodule_is_supported_domain_import() -> N
         "MarketDataSessionRecurringClosedWindow",
         "MarketDataSessionRegularWindow",
         "MarketDataSessionResolution",
+        "session_resolution_error",
     }
 
     assert set(calibration_sessions_module.__all__) == expected_exports
@@ -951,6 +936,7 @@ def test_calibration_sessions_public_ownership_submodules_are_supported_domain_i
         "MarketDataSessionRecurringClosedWindow",
         "MarketDataSessionRegularWindow",
         "MarketDataSessionResolution",
+        "session_resolution_error",
     }
 
 

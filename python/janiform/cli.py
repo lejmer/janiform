@@ -7,7 +7,7 @@ supported CLI workflows. The process entrypoint itself lives in
 `janiform.__main__`.
 """
 
-from ._constants import (
+from ._cli.constants import (
     CLI_CALIBRATION_DISK_CHECKPOINT_DIRECTORY_ENV_VAR,
     CLI_CALIBRATION_EXECUTION_MODE_ENV_VAR,
     CLI_CALIBRATION_MARKET_DATA_ENTRYPOINT,

@@ -8,6 +8,8 @@ from typing import Any, Optional, TypedDict, cast
 import orjson
 
 from janiform.calendar import CalendarRegistry
+from janiform.calibration.errors import calibration_error
+from janiform.contracts import require_boolean
 from janiform.validation.enum import (
     HourlySourceKind,
     HourlyValidationOutcomeKind,
@@ -1384,10 +1386,11 @@ def validate_stylized_fact_metric_regression_fixture_document(
             error_message="unsupported stylized fact policy_kind: {value}",
         )
 
-        require_confidence_intervals: bool = _require_bool(
+        require_confidence_intervals: bool = require_boolean(
             policy_map,
             "require_confidence_intervals",
             f"stylized fact tolerance_policies[{policy_index}]",
+            calibration_error,
         )
         match policy_kind:
             case StylizedFactTolerancePolicyKind.DETERMINISTIC_EXACT_MATCH:
@@ -3339,10 +3342,11 @@ def _validate_seeded_tick_simulation_parity_case(
         "expected_min_positive_timestamp_gap_nanos",
         "seeded tick simulation parity case",
     )
-    expected_has_non_grid_arrival: bool = _require_bool(
+    expected_has_non_grid_arrival: bool = require_boolean(
         raw_case,
         "expected_has_non_grid_arrival",
         "seeded tick simulation parity case",
+        calibration_error,
     )
 
     tags: list[str] = _require_non_empty_string_list(raw_case, "tags", "seeded tick simulation parity case")

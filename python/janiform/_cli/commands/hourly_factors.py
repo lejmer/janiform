@@ -4,7 +4,7 @@ from typing import Optional
 
 import click
 
-from ._shared import (
+from .shared import (
     build_calendar_registry_from_document,
     build_hourly_factor_contract_payload,
     build_hourly_news_intensity_materialization_payload,
@@ -29,7 +29,7 @@ from ..command_runtime import (
     required_json_path_option,
 )
 from ..context import CliCommandContext
-from .._constants import (
+from ..constants import (
     CLI_HOURLY_FACTORS_BUILD_CONTRACT_ENTRYPOINT,
     CLI_HOURLY_FACTORS_BUILD_CONTRACT_INTERNAL_ERROR_ID,
     CLI_HOURLY_FACTORS_BUILD_CONTRACT_VALIDATION_ERROR_ID,
@@ -42,9 +42,9 @@ from .._constants import (
     CliExitCode,
     CliOutputMode,
 )
-from .._documents import load_json_document_for_cli_field
-from .._errors import classify_workflow_command_error
-from .._rendering import (
+from ..documents import load_json_document_for_cli_field
+from ..errors import classify_workflow_command_error
+from ..rendering import (
     render_hourly_factor_build_contract_human_output,
     render_hourly_factor_materialize_news_intensity_human_output,
     render_hourly_factor_materialize_seasonality_human_output,
@@ -59,7 +59,7 @@ from ...hourly_factors import (
 )
 
 
-def _run_hourly_factor_materialize_seasonality_command(
+def run_hourly_factor_materialize_seasonality_command(
     *,
     cli_context: CliCommandContext,
     output: str,
@@ -145,7 +145,7 @@ def _run_hourly_factor_materialize_seasonality_command(
     return int(CliExitCode.SUCCESS)
 
 
-def _run_hourly_factor_materialize_news_intensity_command(
+def run_hourly_factor_materialize_news_intensity_command(
     *,
     cli_context: CliCommandContext,
     output: str,
@@ -229,7 +229,7 @@ def _run_hourly_factor_materialize_news_intensity_command(
     return int(CliExitCode.SUCCESS)
 
 
-def _run_hourly_factor_build_contract_command(
+def run_hourly_factor_build_contract_command(
     *,
     cli_context: CliCommandContext,
     output: str,
@@ -376,7 +376,7 @@ def _run_hourly_factor_build_contract_command(
     return int(CliExitCode.SUCCESS)
 
 
-def _build_hourly_factors_group(*, environment: Optional[Mapping[str, str]] = None) -> click.Group:
+def build_hourly_factors_group(*, environment: Optional[Mapping[str, str]] = None) -> click.Group:
     @click.group(
         cls=JaniformGroup,
         command_path=("hourly-factors",),
@@ -399,7 +399,7 @@ def _build_hourly_factors_group(*, environment: Optional[Mapping[str, str]] = No
             "report shape."
         ),
         params=[
-            *_hourly_factor_common_options(),
+            *hourly_factor_common_options(),
             required_json_path_option(
                 "--materialization-input-json",
                 contract_label=(
@@ -413,7 +413,7 @@ def _build_hourly_factors_group(*, environment: Optional[Mapping[str, str]] = No
     def materialize_seasonality(ctx: click.Context, **command_arguments) -> int:
         return invoke_command_handler(
             ctx,
-            handler=_run_hourly_factor_materialize_seasonality_command,
+            handler=run_hourly_factor_materialize_seasonality_command,
             command_path=("hourly-factors", "materialize-seasonality"),
             command_arguments=dict(command_arguments),
         )
@@ -429,7 +429,7 @@ def _build_hourly_factors_group(*, environment: Optional[Mapping[str, str]] = No
             "materialization report shape."
         ),
         params=[
-            *_hourly_factor_common_options(),
+            *hourly_factor_common_options(),
             required_json_path_option(
                 "--materialization-input-json",
                 contract_label=(
@@ -443,7 +443,7 @@ def _build_hourly_factors_group(*, environment: Optional[Mapping[str, str]] = No
     def materialize_news_intensity(ctx: click.Context, **command_arguments) -> int:
         return invoke_command_handler(
             ctx,
-            handler=_run_hourly_factor_materialize_news_intensity_command,
+            handler=run_hourly_factor_materialize_news_intensity_command,
             command_path=("hourly-factors", "materialize-news-intensity"),
             command_arguments=dict(command_arguments),
         )
@@ -460,7 +460,7 @@ def _build_hourly_factors_group(*, environment: Optional[Mapping[str, str]] = No
             "files produced by Janiform."
         ),
         params=[
-            *_hourly_factor_common_options(),
+            *hourly_factor_common_options(),
             optional_path_option(
                 "--seasonality-explicit-source-json",
                 help_text=(
@@ -495,7 +495,7 @@ def _build_hourly_factors_group(*, environment: Optional[Mapping[str, str]] = No
     def build_contract(ctx: click.Context, **command_arguments) -> int:
         return invoke_command_handler(
             ctx,
-            handler=_run_hourly_factor_build_contract_command,
+            handler=run_hourly_factor_build_contract_command,
             command_path=("hourly-factors", "build-contract"),
             command_arguments=dict(command_arguments),
             required_one_of_groups=(
@@ -507,7 +507,7 @@ def _build_hourly_factors_group(*, environment: Optional[Mapping[str, str]] = No
     return hourly_factors
 
 
-def _hourly_factor_common_options() -> list[click.Parameter]:
+def hourly_factor_common_options() -> list[click.Parameter]:
     return [
         command_config_option(),
         output_option(default_output_mode=CliOutputMode.JSON),
@@ -537,6 +537,3 @@ def _hourly_factor_common_options() -> list[click.Parameter]:
             help_text="Exclusive UTC range end aligned to the final target interval boundary.",
         ),
     ]
-
-
-__all__ = []

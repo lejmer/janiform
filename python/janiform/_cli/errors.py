@@ -3,7 +3,7 @@
 import json
 from typing import Any, Optional
 
-from ._constants import (
+from .constants import (
     CLI_CALIBRATION_MARKET_DATA_ENTRYPOINT,
     CLI_CALIBRATION_MARKET_DATA_INTERNAL_ERROR_ID,
     CLI_CALIBRATION_MARKET_DATA_VALIDATION_ERROR_ID,

@@ -7,7 +7,7 @@ from typing import Any, Optional, cast
 from .contracts import (
     MarketDataSessionRecurringClosedWindow,
     MarketDataSessionRegularWindow,
-    _session_resolution_error,
+    session_resolution_error,
 )
 from ...contracts import serialize_deterministic_json
 
@@ -69,7 +69,7 @@ def build_calendar_registry_json_from_windows(
                     "holiday_calendar_code": holiday_calendar_code,
                     "early_close_rule_set": early_close_rule_set,
                 },
-                "regular_sessions": materialize_calendar_regular_sessions(
+                "regular_sessions": _materialize_calendar_regular_sessions(
                     regular_session_windows=regular_session_windows,
                     recurring_closed_windows=recurring_closed_windows,
                 ),
@@ -82,25 +82,25 @@ def build_calendar_registry_json_from_windows(
     return serialize_deterministic_json(calendar_registry_payload)
 
 
-def materialize_calendar_regular_sessions(
+def _materialize_calendar_regular_sessions(
     *,
     regular_session_windows: tuple[MarketDataSessionRegularWindow, ...],
     recurring_closed_windows: tuple[MarketDataSessionRecurringClosedWindow, ...],
 ) -> list[dict[str, Any]]:
-    retained_open_intervals = subtract_closed_intervals_from_open_intervals(
+    retained_open_intervals = _subtract_closed_intervals_from_open_intervals(
         open_intervals=tuple(
             (
-                weekday_start_minute(window.weekday) + clock_minutes(window.open_time),
-                weekday_start_minute(window.weekday) + clock_minutes(window.close_time),
+                _weekday_start_minute(window.weekday) + _clock_minutes(window.open_time),
+                _weekday_start_minute(window.weekday) + _clock_minutes(window.close_time),
                 window.label,
             )
             for window in regular_session_windows
         ),
-        closed_intervals=merge_weekly_intervals(
+        closed_intervals=_merge_weekly_intervals(
             tuple(
                 interval
                 for closed_window in recurring_closed_windows
-                for interval in weekly_intervals_for_recurring_closed_window(closed_window)
+                for interval in _weekly_intervals_for_recurring_closed_window(closed_window)
             )
         ),
     )
@@ -112,13 +112,13 @@ def materialize_calendar_regular_sessions(
             day_start_minute = (current_minute // (24 * 60)) * (24 * 60)
             day_end_minute = day_start_minute + (24 * 60)
             segment_end_minute = min(open_end, day_end_minute)
-            weekday_name = weekday_name_for_minute(current_minute)
+            weekday_name = _weekday_name_for_minute(current_minute)
 
             windows_by_weekday.setdefault(weekday_name, []).append(
                 {
                     "label": label,
-                    "open_time": clock_time_for_minute_of_day(current_minute - day_start_minute),
-                    "close_time": clock_time_for_minute_of_day(
+                    "open_time": _clock_time_for_minute_of_day(current_minute - day_start_minute),
+                    "close_time": _clock_time_for_minute_of_day(
                         segment_end_minute - day_start_minute
                     ),
                 }
@@ -142,14 +142,14 @@ def materialize_calendar_regular_sessions(
     ]
 
 
-def weekly_intervals_for_recurring_closed_window(
+def _weekly_intervals_for_recurring_closed_window(
     closed_window: MarketDataSessionRecurringClosedWindow,
 ) -> tuple[tuple[int, int], ...]:
     week_minutes = 7 * 24 * 60
-    start_minute = weekday_start_minute(closed_window.start_weekday) + clock_minutes(
+    start_minute = _weekday_start_minute(closed_window.start_weekday) + _clock_minutes(
         closed_window.start_time
     )
-    end_minute = weekday_start_minute(closed_window.end_weekday) + clock_minutes(
+    end_minute = _weekday_start_minute(closed_window.end_weekday) + _clock_minutes(
         closed_window.end_time
     )
 
@@ -161,7 +161,7 @@ def weekly_intervals_for_recurring_closed_window(
     return ((0, week_minutes),)
 
 
-def merge_weekly_intervals(
+def _merge_weekly_intervals(
     intervals: tuple[tuple[int, int], ...],
 ) -> tuple[tuple[int, int], ...]:
     if len(intervals) == 0:
@@ -181,7 +181,7 @@ def merge_weekly_intervals(
     return tuple(merged_intervals)
 
 
-def subtract_closed_intervals_from_open_intervals(
+def _subtract_closed_intervals_from_open_intervals(
     *,
     open_intervals: tuple[tuple[int, int, str], ...],
     closed_intervals: tuple[tuple[int, int], ...],
@@ -220,7 +220,7 @@ def regular_session_windows_from_exchange_artifact(
 ) -> tuple[MarketDataSessionRegularWindow, ...]:
     raw_regular_sessions = exchange_artifact.get("regular_sessions")
     if not isinstance(raw_regular_sessions, list):
-        raise _session_resolution_error(
+        raise session_resolution_error(
             "session_configuration",
             "resolved exchange artifact must contain `regular_sessions`",
         )
@@ -228,7 +228,7 @@ def regular_session_windows_from_exchange_artifact(
     regular_session_windows: list[MarketDataSessionRegularWindow] = []
     for regular_session in raw_regular_sessions:
         if not isinstance(regular_session, dict):
-            raise _session_resolution_error(
+            raise session_resolution_error(
                 "session_configuration",
                 "resolved exchange artifact regular_sessions entries must be objects",
             )
@@ -236,14 +236,14 @@ def regular_session_windows_from_exchange_artifact(
         weekday = regular_session.get("weekday")
         raw_windows = regular_session.get("windows")
         if not isinstance(weekday, str) or not isinstance(raw_windows, list):
-            raise _session_resolution_error(
+            raise session_resolution_error(
                 "session_configuration",
                 "resolved exchange artifact regular_sessions entries must contain weekday and windows",
             )
 
         for raw_window in raw_windows:
             if not isinstance(raw_window, dict):
-                raise _session_resolution_error(
+                raise session_resolution_error(
                     "session_configuration",
                     "resolved exchange artifact windows must be objects",
                 )
@@ -295,10 +295,10 @@ def build_recurring_closed_windows(
 
     return tuple(
         MarketDataSessionRecurringClosedWindow(
-            start_weekday=weekday_name_for_minute(start_minute),
-            start_time=clock_time_for_minute(start_minute),
-            end_weekday=weekday_name_for_minute(end_minute % week_minutes),
-            end_time=clock_time_for_minute(end_minute % week_minutes),
+            start_weekday=_weekday_name_for_minute(start_minute),
+            start_time=_clock_time_for_minute(start_minute),
+            end_weekday=_weekday_name_for_minute(end_minute % week_minutes),
+            end_time=_clock_time_for_minute(end_minute % week_minutes),
             reason="recurring closure derived from the resolved weekly session pattern",
         )
         for start_minute, end_minute in closed_intervals
@@ -322,20 +322,20 @@ def looks_like_continuous_weekday_template(
     )
 
 
-def weekday_start_minute(weekday_name: str) -> int:
+def _weekday_start_minute(weekday_name: str) -> int:
     return _WEEKDAY_INDEX_BY_NAME[weekday_name] * 24 * 60
 
 
-def clock_minutes(clock_text: str) -> int:
+def _clock_minutes(clock_text: str) -> int:
     raw_hour_text, raw_minute_text = clock_text.split(":")
     return int(raw_hour_text) * 60 + int(raw_minute_text)
 
 
-def weekday_name_for_minute(week_minute: int) -> str:
+def _weekday_name_for_minute(week_minute: int) -> str:
     return _WEEKDAY_NAMES[(week_minute // (24 * 60)) % 7]
 
 
-def clock_time_for_minute(week_minute: int) -> str:
+def _clock_time_for_minute(week_minute: int) -> str:
     minute_of_day = week_minute % (24 * 60)
     hour = minute_of_day // 60
     minute = minute_of_day % 60
@@ -343,7 +343,7 @@ def clock_time_for_minute(week_minute: int) -> str:
     return f"{hour:02d}:{minute:02d}"
 
 
-def clock_time_for_minute_of_day(minute_of_day: int) -> str:
+def _clock_time_for_minute_of_day(minute_of_day: int) -> str:
     if minute_of_day == 24 * 60:
         return "24:00"
 
