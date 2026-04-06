@@ -2,18 +2,17 @@ use janiform_calibration_artifacts::{
     ReturnComponentsStageFittedParameters, SurpriseNewsDeterministicIntensityProfile,
 };
 use janiform_foundations::numeric::{
-    sample_adjusted_excess_kurtosis, sample_adjusted_skewness, sample_standard_deviation,
+    round_positive_to_domain, sample_adjusted_excess_kurtosis, sample_adjusted_skewness,
+    sample_standard_deviation,
 };
 use janiform_model_kernels::mean_reversion::MeanReversionFittedParameters;
 use janiform_model_kernels::news::NewsProcessConfiguration;
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 
 use super::super::constants::{
-    RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER,
     RETURN_COMPONENTS_STAGE_SURPRISE_INTENSITY_PROFILE_FIT_POLICY,
     RETURN_COMPONENTS_STAGE_SURPRISE_INTENSITY_PROFILE_NORMALIZATION_POLICY,
     RETURN_COMPONENTS_STAGE_SURPRISE_INTENSITY_PROFILE_RESOLUTION_HOURS,
-    RETURN_COMPONENTS_STAGE_SURPRISE_INTENSITY_WEEKLY_PROFILE_BUCKET_COUNT,
 };
 use super::super::contracts::{
     ReturnComponentsActivityCouplingCandidateFamily,
@@ -26,6 +25,10 @@ use super::super::contracts::{
     ReturnComponentsStageReturnDistributionDiagnostic,
     ReturnComponentsStageSurpriseArrivalDiagnostic,
     ReturnComponentsSurpriseNewsArrivalCandidateFamily,
+};
+use super::super::derived_contracts::{
+    return_components_stage_positive_domain_floor,
+    return_components_stage_surprise_intensity_weekly_profile_bucket_count,
 };
 use super::super::diagnostic_policy_fit;
 use super::super::surprise_intensity_fit;
@@ -56,7 +59,7 @@ pub(crate) fn build_jump_diagnostic(
         .to_string(),
         observed_jump_count: summary_statistics.selected_surprise_jump_episode_count,
         observed_mean_abs_jump_return: if summary_statistics.selected_surprise_jump_episode_count
-            < diagnostic_policy.shock_evidence_min_count
+            == 0
         {
             0.0
         } else {
@@ -92,19 +95,19 @@ pub(crate) fn build_surprise_arrival_diagnostic(
         .to_string(),
         observed_jump_count: summary_statistics.selected_surprise_jump_episode_count,
         observed_jump_frequency_per_hour: if summary_statistics.selected_surprise_jump_episode_count
-            < diagnostic_policy.shock_evidence_min_count
+            == 0
         {
             0.0
         } else {
             summary_statistics.selected_surprise_jump_episode_count as f64
                 / summary_statistics
                     .source_window_duration_hours
-                    .max(f64::EPSILON)
+                    .max(return_components_stage_positive_domain_floor())
         },
         fitted_surprise_arrival_intensity_per_hour: surprise_arrival_family.baseline_intensity,
         surprise_arrival_profile_fit_error: if summary_statistics
             .selected_surprise_jump_episode_count
-            < diagnostic_policy.shock_evidence_min_count
+            == 0
         {
             0.0
         } else {
@@ -132,19 +135,15 @@ pub(crate) fn build_gap_diagnostic(
         )
         .to_string(),
         observed_gap_count: summary_statistics.close_open_gap_episode_count,
-        observed_gap_frequency_per_hour: if summary_statistics.close_open_gap_episode_count
-            < diagnostic_policy.shock_evidence_min_count
-        {
+        observed_gap_frequency_per_hour: if summary_statistics.close_open_gap_episode_count == 0 {
             0.0
         } else {
             summary_statistics.close_open_gap_episode_count as f64
                 / summary_statistics
                     .source_window_duration_hours
-                    .max(f64::EPSILON)
+                    .max(return_components_stage_positive_domain_floor())
         },
-        observed_mean_abs_gap_return: if summary_statistics.close_open_gap_episode_count
-            < diagnostic_policy.shock_evidence_min_count
-        {
+        observed_mean_abs_gap_return: if summary_statistics.close_open_gap_episode_count == 0 {
             0.0
         } else {
             summary_statistics.mean_abs_surprise_closed_gap_return
@@ -168,7 +167,7 @@ pub(crate) fn build_activity_coupling_diagnostic(
         observed_known_post_shock_activity_lift: summary_statistics.known_activity_coupling_target,
         observed_surprise_post_shock_activity_lift: if summary_statistics
             .selected_surprise_jump_episode_count
-            < diagnostic_policy.shock_evidence_min_count
+            == 0
         {
             0.0
         } else {
@@ -182,7 +181,7 @@ pub(crate) fn build_activity_coupling_diagnostic(
 }
 
 pub(crate) fn build_price_range_sanity_diagnostic(
-    diagnostic_policy: &ReturnComponentsStageDiagnosticPolicy,
+    _diagnostic_policy: &ReturnComponentsStageDiagnosticPolicy,
     summary_statistics: ReturnComponentsStageObservedSignalSummaryStatistics,
     return_distribution_diagnostic: ReturnComponentsStageReturnDistributionDiagnostic,
     surprise_arrival_family: &ReturnComponentsSurpriseNewsArrivalCandidateFamily,
@@ -193,7 +192,7 @@ pub(crate) fn build_price_range_sanity_diagnostic(
     let effective_continuous_sample_count = summary_statistics.continuous_fit_return_count.max(1);
     let effective_mean_business_time_scale = summary_statistics
         .mean_continuous_business_time_scale
-        .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER);
+        .max(return_components_stage_positive_domain_floor());
 
     let continuous_reference_span = price_range_sanity_policy.continuous_reference_span_multiplier
         * return_distribution_diagnostic.fitted_return_volatility
@@ -209,16 +208,16 @@ pub(crate) fn build_price_range_sanity_diagnostic(
             + surprise_arrival_family.baseline_intensity
                 * summary_statistics.source_window_duration_hours)
             * fitted_mean_abs_jump_return
-        + if summary_statistics.close_open_gap_episode_count
-            >= diagnostic_policy.shock_evidence_min_count
-        {
+        + if summary_statistics.close_open_gap_episode_count > 0 {
             summary_statistics.close_open_gap_candidate_count as f64 * fitted_mean_abs_jump_return
         } else {
             0.0
         };
 
-    let expansion_ratio =
-        fitted_reference_log_price_span / summary_statistics.observed_log_price_span.max(1.0e-8);
+    let expansion_ratio = fitted_reference_log_price_span
+        / summary_statistics
+            .observed_log_price_span
+            .max(return_components_stage_positive_domain_floor());
     let is_flagged = expansion_ratio > price_range_sanity_policy.threshold_ratio;
 
     ReturnComponentsStagePriceRangeSanityDiagnostic {
@@ -256,7 +255,7 @@ pub(crate) fn theoretical_net_process_moments(
 
     let mean_return = buy_weight * buy_unit_cumulants.0 - sell_weight * sell_unit_cumulants.0;
     let variance = buy_weight * buy_unit_cumulants.1 + sell_weight * sell_unit_cumulants.1;
-    if !variance.is_finite() || variance <= 1.0e-12 {
+    if !variance.is_finite() || variance <= return_components_stage_positive_domain_floor() {
         return None;
     }
 
@@ -286,9 +285,9 @@ pub(crate) fn round_positive_candidate_value(value: f64) -> f64 {
         return 0.0;
     }
 
-    let rounded = round_candidate_value(value.max(0.0));
+    let rounded = round_positive_to_domain(value.max(0.0), 12);
     if value > 0.0 && rounded <= 0.0 {
-        RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER
+        return_components_stage_positive_domain_floor()
     } else {
         rounded
     }
@@ -304,12 +303,10 @@ pub(crate) fn round_signed_candidate_value(value: f64) -> f64 {
 
 pub(crate) fn round_negative_candidate_value(value: f64) -> f64 {
     if !value.is_finite() {
-        return -RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER;
+        return -return_components_stage_positive_domain_floor();
     }
 
-    ((value.min(-RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER))
-        * 1_000_000_000_000.0)
-        .round()
+    ((value.min(-return_components_stage_positive_domain_floor())) * 1_000_000_000_000.0).round()
         / 1_000_000_000_000.0
 }
 
@@ -335,7 +332,7 @@ pub(crate) fn summarize_return_distribution(
                 return None;
             }
 
-            Some(*value / business_time_scale.max(1.0e-8))
+            Some(*value / business_time_scale.max(return_components_stage_positive_domain_floor()))
         })
         .collect();
 
@@ -348,7 +345,12 @@ pub(crate) fn summarize_return_distribution(
                 return None;
             }
 
-            Some(*value / business_time_scale.max(1.0e-8).sqrt())
+            Some(
+                *value
+                    / business_time_scale
+                        .max(return_components_stage_positive_domain_floor())
+                        .sqrt(),
+            )
         })
         .collect();
 
@@ -447,18 +449,20 @@ pub(super) fn collect_return_components_exact_candidate_constraint_violations(
         });
     }
 
+    let expected_bucket_count =
+        return_components_stage_surprise_intensity_weekly_profile_bucket_count();
     if fitted_parameters
         .surprise_deterministic_intensity_profile
         .weekly_hour_utc_multipliers
         .len()
-        != RETURN_COMPONENTS_STAGE_SURPRISE_INTENSITY_WEEKLY_PROFILE_BUCKET_COUNT
+        != expected_bucket_count
     {
         violations.push(ReturnComponentsStageConstraintViolationDiagnostic {
             field: "surprise_deterministic_intensity_profile.weekly_hour_utc_multipliers"
                 .to_string(),
             message: format!(
                 "weekly_hour_utc_multipliers must contain exactly {} values",
-                RETURN_COMPONENTS_STAGE_SURPRISE_INTENSITY_WEEKLY_PROFILE_BUCKET_COUNT
+                expected_bucket_count
             ),
         });
     }
@@ -490,7 +494,7 @@ pub(crate) fn default_surprise_deterministic_intensity_profile()
     SurpriseNewsDeterministicIntensityProfile {
         weekly_hour_utc_multipliers: vec![
             1.0;
-            RETURN_COMPONENTS_STAGE_SURPRISE_INTENSITY_WEEKLY_PROFILE_BUCKET_COUNT
+            return_components_stage_surprise_intensity_weekly_profile_bucket_count()
         ],
         profile_resolution_hours:
             RETURN_COMPONENTS_STAGE_SURPRISE_INTENSITY_PROFILE_RESOLUTION_HOURS,
@@ -538,6 +542,7 @@ fn nig_unit_cumulants(alpha: f64, beta: f64, delta: f64, mu: f64) -> Option<(f64
     }
 
     let gamma = gamma_squared.sqrt();
+
     let kappa_1 = mu + delta * beta / gamma;
     let kappa_2 = delta * alpha * alpha / gamma.powi(3);
     let kappa_3 = 3.0 * delta * beta * alpha * alpha / gamma.powi(5);

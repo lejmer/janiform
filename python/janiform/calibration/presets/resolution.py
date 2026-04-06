@@ -36,6 +36,7 @@ from ..sessions.contracts import MarketDataSessionResolution
 from ...contracts.base import require_boolean
 from ...contracts import ContractModel, require_mapping, require_non_empty_string, require_sequence
 
+# Public preset-resolution default that callers can replace with an explicit preset name.
 DEFAULT_HIGH_LEVEL_KNOWN_NEWS_PRESET_NAME = "none"
 RESOLVED_PRESET_WORKFLOW_CONFIGURATION_SCHEMA_VERSION = (
     "calibration.preset_resolution.resolved_configuration.v1"

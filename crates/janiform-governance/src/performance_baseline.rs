@@ -1082,7 +1082,7 @@ pub fn compare_oracle_pricer_risk_performance_baseline_versions(
                     baseline_kind: "reference",
                 }
             })?;
-        
+
         let candidate_profile = candidate_by_profile
             .get(profile_id)
             .copied()

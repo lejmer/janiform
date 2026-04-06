@@ -57,6 +57,7 @@ pub(super) fn derive_close_open_boundary_observations(
                 open_price: current_tick.price,
                 post_shock_activity_lift: activity_lift(
                     open_timestamp_utc_nanos,
+                    open_price_ticks,
                     open_price_tick_timestamps,
                 ),
             },

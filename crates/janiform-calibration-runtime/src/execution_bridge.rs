@@ -301,6 +301,7 @@ pub struct CalibrationReturnComponentsKnownNewsCalendarInput {
 #[serde(deny_unknown_fields)]
 pub struct CalibrationReturnComponentsKnownNewsReturnSample {
     pub event_timestamp_utc_nanos: i64,
+    pub attributed_open_return_timestamp_utc_nanos: Option<i64>,
     pub open_window_jump_return: f64,
     pub closed_window_gap_return: f64,
     pub post_shock_activity_lift: f64,
@@ -935,6 +936,8 @@ impl CalibrationReturnComponentsKnownNewsReturnSample {
     fn into_core(self) -> ReturnComponentsRealizedKnownNewsReturnSample {
         ReturnComponentsRealizedKnownNewsReturnSample {
             event_timestamp_utc_nanos: self.event_timestamp_utc_nanos,
+            attributed_open_return_timestamp_utc_nanos: self
+                .attributed_open_return_timestamp_utc_nanos,
             open_window_jump_return: self.open_window_jump_return,
             closed_window_gap_return: self.closed_window_gap_return,
             post_shock_activity_lift: self.post_shock_activity_lift,
@@ -1299,6 +1302,9 @@ mod tests {
                     realized_known_news_return_samples: vec![
                         CalibrationReturnComponentsKnownNewsReturnSample {
                             event_timestamp_utc_nanos: 1_770_042_600_000_000_000,
+                            attributed_open_return_timestamp_utc_nanos: Some(
+                                1_770_046_200_000_000_000,
+                            ),
                             open_window_jump_return: 0.016,
                             closed_window_gap_return: -0.009,
                             post_shock_activity_lift: 1.20,

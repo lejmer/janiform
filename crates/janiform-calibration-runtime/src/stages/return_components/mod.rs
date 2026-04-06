@@ -3,6 +3,7 @@ mod constants;
 mod continuous_fit;
 mod continuous_layer_fit;
 mod contracts;
+mod derived_contracts;
 mod diagnostic_policy_fit;
 mod execution;
 mod known_arrival_fit;

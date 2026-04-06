@@ -2,10 +2,15 @@
 
 use chrono::{TimeZone, Utc};
 
+/// Exact five-minute UTC duration expressed in nanoseconds.
 pub const FIVE_MINUTES_NANOS: i64 = 5 * 60 * 1_000_000_000;
+/// Exact fifteen-minute UTC duration expressed in nanoseconds.
 pub const FIFTEEN_MINUTES_NANOS: i64 = 15 * 60 * 1_000_000_000;
+/// Exact one-hour UTC duration expressed in nanoseconds.
 pub const ONE_HOUR_NANOS: i64 = 3_600_000_000_000;
+/// Floating-point view of the exact one-hour nanosecond duration for unit conversion only.
 pub const ONE_HOUR_NANOS_F64: f64 = ONE_HOUR_NANOS as f64;
+/// Exact reciprocal conversion from nanoseconds to hours derived from `ONE_HOUR_NANOS_F64`.
 pub const HOURS_PER_NANOSECOND: f64 = 1.0 / ONE_HOUR_NANOS_F64;
 
 /// Convert a fixed-width UTC nanosecond duration to hours.

@@ -3,9 +3,11 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use janiform_foundations::numeric::arithmetic_mean_or_zero as arithmetic_mean;
+use janiform_foundations::numeric::{
+    arithmetic_mean_or_zero as arithmetic_mean, smallest_positive_value,
+    strictly_positive_machine_value,
+};
 
-use super::super::constants::RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER;
 use super::super::contracts::ReturnComponentsObservedOpenSessionReturn;
 use super::super::execution::{
     ReturnComponentsStageReturnDistributionSummary, ReturnComponentsStageSortedSignalInputs,
@@ -111,8 +113,7 @@ pub(crate) fn rescale_continuous_return_calibration_sample_business_time_scales(
     calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
     scale_multiplier: f64,
 ) -> ReturnComponentsStageContinuousReturnCalibrationSample {
-    let resolved_scale_multiplier =
-        scale_multiplier.max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER);
+    let resolved_scale_multiplier = scale_multiplier.max(strictly_positive_machine_value());
 
     build_continuous_return_calibration_sample_from_components(
         calibration_sample.observed_returns.clone(),
@@ -129,6 +130,8 @@ pub(crate) fn rescale_continuous_return_calibration_sample_business_time_scales(
 pub(super) fn build_continuous_return_optimizer_context(
     calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
 ) -> ContinuousReturnOptimizerContext {
+    let business_time_floor =
+        positive_business_time_floor(calibration_sample.business_time_scales.as_slice());
     let integrated_buy_intensities: Vec<f64> = calibration_sample
         .business_time_scales
         .iter()
@@ -152,7 +155,7 @@ pub(super) fn build_continuous_return_optimizer_context(
         mean_business_time_scale: arithmetic_mean(
             calibration_sample.business_time_scales.as_slice(),
         )
-        .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER),
+        .max(business_time_floor),
         sell_share_proxies: calibration_sample.sell_share_proxies.clone(),
         integrated_buy_intensities,
         integrated_sell_intensities,
@@ -183,7 +186,10 @@ pub(super) fn build_equal_business_time_blocks(
     business_time_scales: &[f64],
     maximum_count: usize,
 ) -> Vec<(ReturnComponentsObservedOpenSessionReturn, f64)> {
+    let business_time_floor = positive_business_time_floor(business_time_scales);
+
     let aligned_count = continuous_fit_returns.len().min(business_time_scales.len());
+
     let aligned_pairs: Vec<(ReturnComponentsObservedOpenSessionReturn, f64)> =
         continuous_fit_returns
             .iter()
@@ -191,9 +197,11 @@ pub(super) fn build_equal_business_time_blocks(
             .zip(business_time_scales.iter().copied())
             .take(aligned_count)
             .collect();
+
     if aligned_pairs.is_empty() {
         return Vec::new();
     }
+
     if aligned_pairs.len() == 1 || aligned_pairs.len() <= maximum_count {
         return aligned_pairs;
     }
@@ -302,10 +310,11 @@ pub(super) fn build_equal_business_time_blocks(
                 sell_share_proxy: (running_weighted_sell_share / weight_denominator)
                     .clamp(0.0, 1.0),
             },
-            running_business_time.max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER),
+            running_business_time.max(business_time_floor),
         ));
 
         emitted_block_count += 1;
+
         running_log_return = 0.0;
         running_business_time = 0.0;
         running_weighted_activity_lift = 0.0;
@@ -327,6 +336,7 @@ fn weighted_average(values_and_weights: &[(f64, f64)]) -> f64 {
             }
         })
         .sum();
+
     if total_weight <= 0.0 {
         return arithmetic_mean(
             values_and_weights
@@ -351,6 +361,10 @@ fn weighted_average(values_and_weights: &[(f64, f64)]) -> f64 {
         / total_weight
 }
 
+fn positive_business_time_floor(business_time_scales: &[f64]) -> f64 {
+    smallest_positive_value(business_time_scales).unwrap_or_else(strictly_positive_machine_value)
+}
+
 fn log_likelihood_shift_from_observed_profile(
     observed_profile: super::types::ContinuousReturnDistributionProfile,
 ) -> f64 {
@@ -369,6 +383,7 @@ fn deterministic_member_indices(total_count: usize, target_count: usize) -> Vec<
         } else {
             (retained_position * (total_count - 1)) / (target_count - 1)
         };
+
         retained_indices.insert(scaled_index);
     }
 

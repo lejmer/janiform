@@ -39,7 +39,9 @@ pub const VANILLA_OPTION_PRICING_RUN_OUTPUT_SCHEMA_METADATA_VERSION: &str =
     "pricing.vanilla_option.run_output_schema_metadata.v1";
 pub const VANILLA_OPTION_CALIBRATION_HOOK_POLICY: &str =
     "derive_option_surface_inputs_from_pricing_response_and_optional_run_diagnostics.v1";
+/// Public default pricing interval in hours, overrideable on the pricing request contract.
 pub const DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA: f64 = 1.0;
+/// Annualization convention for continuous rates in pricing, not a fitted model heuristic.
 pub const INTRADAY_PRICING_HOURS_PER_YEAR: f64 = 24.0 * 365.25;
 
 pub(crate) const VANILLA_OPTION_PRICING_RUN_RESULT_REQUIRED_FIELDS: [&str; 5] = [
@@ -68,11 +70,18 @@ pub(crate) const VANILLA_OPTION_PRICING_CALIBRATION_HOOKS_REQUIRED_FIELDS: [&str
     "integration_truncation_check_passed",
 ];
 
+// Public engine defaults for Fourier inversion, overrideable through `FourierInversionEngineSettings`.
 pub(crate) const DEFAULT_FOURIER_INVERSION_DAMPING_FACTOR: f64 = 1.5;
+// Public engine defaults for Fourier inversion, overrideable through `FourierInversionEngineSettings`.
 pub(crate) const DEFAULT_FOURIER_INVERSION_UPPER_INTEGRATION_BOUND: f64 = 150.0;
+// Public engine defaults for Fourier inversion, overrideable through `FourierInversionEngineSettings`.
 pub(crate) const DEFAULT_FOURIER_INVERSION_STEP_COUNT: usize = 4_096;
+// Public engine defaults for Fourier inversion, overrideable through `FourierInversionEngineSettings`.
 pub(crate) const DEFAULT_FOURIER_INVERSION_CONVERGENCE_ABSOLUTE_TOLERANCE: f64 = 1.0e-5;
+// Public engine defaults for Fourier inversion, overrideable through `FourierInversionEngineSettings`.
 pub(crate) const DEFAULT_FOURIER_INVERSION_CONVERGENCE_RELATIVE_TOLERANCE: f64 = 1.0e-4;
+// Public engine defaults for Fourier inversion, overrideable through `FourierInversionEngineSettings`.
 pub(crate) const DEFAULT_FOURIER_INVERSION_TERMINAL_INTEGRAND_ABSOLUTE_TOLERANCE: f64 = 5.0e-4;
+// Public engine defaults for Fourier inversion, overrideable through `FourierInversionEngineSettings`.
 pub(crate) const DEFAULT_FOURIER_INVERSION_TERMINAL_INTEGRAND_RATIO_TOLERANCE: f64 = 1.0e-2;
 pub(crate) const FOURIER_NON_NEGATIVE_PRICE_CLAMP_TOLERANCE: f64 = 1.0e-12;

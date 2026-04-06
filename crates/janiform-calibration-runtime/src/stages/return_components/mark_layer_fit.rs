@@ -1,7 +1,6 @@
 use janiform_foundations::numeric::round_to;
 use janiform_model_kernels::news::SharedNewsMarkLawConfiguration;
 
-use super::constants::RETURN_COMPONENTS_STAGE_SHOCK_EVIDENCE_MIN_COUNT;
 use super::contracts::ReturnComponentsStageObservedSignalSummaryStatistics;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -17,9 +16,7 @@ pub(crate) fn fit_return_jump_mark_layer(
         + summary_statistics.selected_surprise_jump_episode_count;
     let gap_evidence_count = summary_statistics.close_open_gap_episode_count;
 
-    if jump_evidence_count < RETURN_COMPONENTS_STAGE_SHOCK_EVIDENCE_MIN_COUNT
-        && gap_evidence_count < RETURN_COMPONENTS_STAGE_SHOCK_EVIDENCE_MIN_COUNT
-    {
+    if jump_evidence_count == 0 && gap_evidence_count == 0 {
         return FittedReturnJumpMarkLayer { sigma_g: 0.0 };
     }
 
@@ -49,13 +46,12 @@ mod tests {
     };
 
     #[test]
-    fn sparse_shock_evidence_collapses_mark_layer_to_zero() {
+    fn absent_shock_evidence_collapses_mark_layer_to_zero() {
         let fitted_layer = fit_return_jump_mark_layer(
             test_shared_mark_law_template(),
             ReturnComponentsStageObservedSignalSummaryStatistics {
-                known_realized_sample_count: 1,
                 selected_surprise_jump_episode_count: 0,
-                close_open_gap_episode_count: 1,
+                close_open_gap_episode_count: 0,
                 ..test_summary_statistics()
             },
         );
@@ -64,11 +60,11 @@ mod tests {
     }
 
     #[test]
-    fn sufficient_shock_evidence_keeps_template_sigma_g() {
+    fn any_shock_evidence_keeps_template_sigma_g() {
         let fitted_layer = fit_return_jump_mark_layer(
             test_shared_mark_law_template(),
             ReturnComponentsStageObservedSignalSummaryStatistics {
-                selected_surprise_jump_episode_count: 2,
+                selected_surprise_jump_episode_count: 1,
                 ..test_summary_statistics()
             },
         );

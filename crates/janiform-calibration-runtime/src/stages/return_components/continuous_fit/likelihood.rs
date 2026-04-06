@@ -7,7 +7,7 @@ use janiform_foundations::randomness::SplitMix64SimulationRandomnessStream;
 use janiform_foundations::splitmix64_output_mixer;
 use janiform_model_kernels::nig::{NigBuySellDriverParameters, NigSharedPlusShiftConfiguration};
 
-use super::super::constants::RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER;
+use super::super::derived_contracts::return_components_stage_positive_domain_floor;
 use super::constants::{
     RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_FINAL_INTEGRATION_STEP_COUNT,
     RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_LOCAL_INTEGRATION_STEP_COUNT,
@@ -349,7 +349,7 @@ fn block_return_standard_deviation(
         super::super::execution::theoretical_net_process_moments(configuration, sell_share_proxy)?;
 
     let variance = (variance_per_unit * business_time_scale)
-        .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER);
+        .max(return_components_stage_positive_domain_floor());
     let standard_deviation = variance.sqrt();
 
     standard_deviation.is_finite().then_some(standard_deviation)

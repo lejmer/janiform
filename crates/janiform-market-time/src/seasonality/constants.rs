@@ -9,10 +9,14 @@ pub const SEASONALITY_DIAGNOSTICS_REPORT_SCHEMA_VERSION: &str = "seasonality.dia
 pub const SEASONALITY_DIAGNOSTICS_BATCH_REPORT_SCHEMA_VERSION: &str =
     "seasonality.diagnostics.batch.v1";
 
+// Exact calendar bin count for a 24-hour intraday seasonality grid.
 pub(crate) const MINUTES_PER_DAY: usize = 1_440;
+// Exact weekday count for day-of-week seasonality factors.
 pub(crate) const DAYS_PER_WEEK: usize = 7;
+// Calendar-year support includes leap-day indexing, so the factor table always has 366 slots.
 pub(crate) const DAYS_PER_YEAR: usize = 366;
 pub(crate) const IDENTIFIABILITY_NORMALIZATION_POLICY: &str = "mean_factor_anchor.v1";
+// Identifiability normalization anchors the mean deterministic factor at exactly one by contract.
 pub(crate) const IDENTIFIABILITY_TARGET_MEAN_FACTOR: f64 = 1.0;
 pub(crate) const IDENTIFIABILITY_MEAN_ANCHOR_TOLERANCE: f64 = 1e-12;
 pub(crate) const SPECIAL_OVERLAY_PRECEDENCE_POLICY: &str = "highest_precedence_wins.v1";

@@ -1,6 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use janiform_foundations::numeric::arithmetic_mean_or_zero as arithmetic_mean;
+use janiform_foundations::numeric::{
+    arithmetic_mean_or_zero as arithmetic_mean, smallest_positive_value,
+    strictly_positive_machine_value,
+};
 use janiform_foundations::time::duration_nanos_to_hours;
 
 use super::super::contracts::{
@@ -11,7 +14,6 @@ use super::super::contracts::{
     ReturnComponentsSurpriseJumpEpisode,
 };
 use super::super::{continuous_fit, signal_partition_fit, surprise_episode_selection_fit};
-use crate::temporal::contains_timestamp_in_symmetric_minute_window;
 
 #[derive(Debug, Clone)]
 pub(crate) struct ReturnComponentsStageSortedSignalInputs {
@@ -131,19 +133,18 @@ pub(crate) fn sort_candidate_generation_signals(
         .iter()
         .flat_map(|episode| episode.member_jump_timestamps_utc_nanos.iter().copied())
         .collect();
+    let known_news_attributed_open_return_timestamps: BTreeSet<i64> = known_return_samples
+        .iter()
+        .filter_map(|sample| sample.attributed_open_return_timestamp_utc_nanos)
+        .collect();
 
     let mut continuous_fit_returns = observed_open_session_returns
         .iter()
         .copied()
         .filter(|observation| {
-            !is_within_known_news_exclusion_window(
-                observation.return_timestamp_utc_nanos,
-                candidate_generation_input
-                    .known_news_calendar
-                    .scheduled_event_timestamps_utc_nanos
-                    .as_slice(),
-                fitted_signal_partition_layer.known_news_exclusion_window_minutes,
-            ) && !exogenous_jump_timestamps.contains(&observation.return_timestamp_utc_nanos)
+            !known_news_attributed_open_return_timestamps
+                .contains(&observation.return_timestamp_utc_nanos)
+                && !exogenous_jump_timestamps.contains(&observation.return_timestamp_utc_nanos)
                 && observation.log_return.abs()
                     <= fitted_signal_partition_layer.continuous_return_filter_threshold
         })
@@ -207,7 +208,14 @@ pub(crate) fn summarize_candidate_generation_signals(
         continuous_fit::mean_continuous_return_calibration_business_time_scale(
             &continuous_return_calibration_sample,
         )
-        .max(1.0e-8);
+        .max(
+            smallest_positive_value(
+                continuous_fit::continuous_return_calibration_sample_business_time_scales(
+                    &continuous_return_calibration_sample,
+                ),
+            )
+            .unwrap_or_else(strictly_positive_machine_value),
+        );
 
     let continuous_distribution =
         continuous_fit::summarize_observed_continuous_return_calibration_sample(
@@ -425,16 +433,4 @@ fn compute_observed_log_price_span(timestamped_returns: &[(i64, f64)]) -> f64 {
     }
 
     (maximum_cumulative_return - minimum_cumulative_return).max(0.0)
-}
-
-fn is_within_known_news_exclusion_window(
-    candidate_timestamp_utc_nanos: i64,
-    known_news_timestamps: &[i64],
-    exclusion_window_minutes: i64,
-) -> bool {
-    contains_timestamp_in_symmetric_minute_window(
-        known_news_timestamps,
-        candidate_timestamp_utc_nanos,
-        exclusion_window_minutes,
-    )
 }

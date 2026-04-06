@@ -23,7 +23,9 @@ pub struct HawkesKernelParameters {
     pub rho: HawkesKernelLoadings,
 }
 
+/// Exact strict-stationarity boundary for the Hawkes spectral radius constraint.
 pub const HAWKES_STRICT_STATIONARITY_THRESHOLD: f64 = 1.0;
+/// Public default applies no numerical slack unless a caller opts into an explicit tolerance.
 pub const HAWKES_DEFAULT_STABILITY_NUMERIC_TOLERANCE: f64 = 0.0;
 pub const HAWKES_KERNEL_PARAMETER_VALIDATION_REPORT_SCHEMA_VERSION: &str =
     "validation.hawkes.kernel_parameter_report.v1";

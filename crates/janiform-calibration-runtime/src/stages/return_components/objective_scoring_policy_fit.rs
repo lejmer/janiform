@@ -1,3 +1,5 @@
+use janiform_foundations::numeric::{smallest_positive_value, strictly_positive_machine_value};
+
 use super::constants::{
     RETURN_COMPONENTS_STAGE_OBJECTIVE_TERM_ACTIVITY_COUPLING_FIT,
     RETURN_COMPONENTS_STAGE_OBJECTIVE_TERM_CLOSED_GAP_FIT,
@@ -10,7 +12,8 @@ use super::contracts::{
     ReturnComponentsStageActivityCouplingDiagnostic, ReturnComponentsStageGapDiagnostic,
     ReturnComponentsStageJumpDiagnostic, ReturnComponentsStageObjectiveMetricBuckets,
     ReturnComponentsStageObjectiveMetricWeights, ReturnComponentsStageObjectiveScoringPolicy,
-    ReturnComponentsStageObjectiveTermInput, ReturnComponentsStagePriceRangeSanityDiagnostic,
+    ReturnComponentsStageObjectiveTermInput, ReturnComponentsStageObservedSignalSummaryStatistics,
+    ReturnComponentsStagePriceRangeSanityDiagnostic,
     ReturnComponentsStageSurpriseArrivalDiagnostic,
 };
 
@@ -20,12 +23,12 @@ const RETURN_COMPONENTS_STAGE_PRICE_RANGE_EXCESS_TRANSFORM: &str =
     "ln1p(max(expansion_ratio/max(threshold_ratio,1)-1,0))";
 
 pub(crate) fn fit_objective_scoring_policy(
-    positive_metric_zero_floor: f64,
+    summary_statistics: ReturnComponentsStageObservedSignalSummaryStatistics,
 ) -> ReturnComponentsStageObjectiveScoringPolicy {
     ReturnComponentsStageObjectiveScoringPolicy {
         fit_policy: RETURN_COMPONENTS_STAGE_OBJECTIVE_SCORING_POLICY,
-        arrival_frequency_zero_floor: 1.0e-8,
-        positive_metric_zero_floor,
+        arrival_frequency_zero_floor: observed_arrival_frequency_zero_floor(summary_statistics),
+        positive_metric_zero_floor: observed_positive_metric_zero_floor(summary_statistics),
         price_range_threshold_floor: 1.0,
         price_range_excess_transform: RETURN_COMPONENTS_STAGE_PRICE_RANGE_EXCESS_TRANSFORM,
         dominant_scale_driver_order: vec![
@@ -47,7 +50,6 @@ pub(crate) fn score_candidate_metric_buckets(
     gap_diagnostic: &ReturnComponentsStageGapDiagnostic,
     activity_coupling_diagnostic: &ReturnComponentsStageActivityCouplingDiagnostic,
     price_range_sanity_diagnostic: &ReturnComponentsStagePriceRangeSanityDiagnostic,
-    shock_evidence_min_count: usize,
 ) -> ReturnComponentsStageObjectiveMetricBuckets {
     let surprise_arrival_fit = zero_aware_relative_error(
         surprise_arrival_diagnostic.fitted_surprise_arrival_intensity_per_hour,
@@ -61,7 +63,7 @@ pub(crate) fn score_candidate_metric_buckets(
         objective_scoring_policy.positive_metric_zero_floor,
     );
 
-    let closed_gap_fit = if gap_diagnostic.observed_gap_count < shock_evidence_min_count {
+    let closed_gap_fit = if gap_diagnostic.observed_gap_count == 0 {
         0.0
     } else {
         zero_aware_relative_error(
@@ -208,6 +210,35 @@ fn zero_aware_relative_error(observed: f64, target: f64, zero_floor: f64) -> f64
     ((observed - target).abs() / denominator).max(0.0)
 }
 
+fn observed_arrival_frequency_zero_floor(
+    summary_statistics: ReturnComponentsStageObservedSignalSummaryStatistics,
+) -> f64 {
+    if summary_statistics.source_window_duration_hours > 0.0 {
+        1.0 / summary_statistics.source_window_duration_hours
+    } else {
+        strictly_positive_machine_value()
+    }
+}
+
+fn observed_positive_metric_zero_floor(
+    summary_statistics: ReturnComponentsStageObservedSignalSummaryStatistics,
+) -> f64 {
+    smallest_positive_value(
+        [
+            summary_statistics.mean_abs_known_open_jump_return,
+            summary_statistics.mean_abs_known_closed_gap_return,
+            summary_statistics.mean_abs_surprise_open_jump_return,
+            summary_statistics.mean_abs_surprise_closed_gap_return,
+            summary_statistics.mean_known_post_shock_activity_lift,
+            summary_statistics.mean_surprise_post_shock_activity_lift,
+            summary_statistics.known_activity_coupling_target,
+            summary_statistics.surprise_activity_coupling_target,
+        ]
+        .as_slice(),
+    )
+    .unwrap_or_else(strictly_positive_machine_value)
+}
+
 fn round_non_negative_value(value: f64) -> f64 {
     if !value.is_finite() {
         return 0.0;
@@ -220,13 +251,43 @@ fn round_non_negative_value(value: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::fit_objective_scoring_policy;
+    use crate::stages::return_components::ReturnComponentsStageObservedSignalSummaryStatistics;
 
     #[test]
-    fn fitted_objective_scoring_policy_uses_expected_defaults() {
-        let policy = fit_objective_scoring_policy(1.0e-12);
+    fn fitted_objective_scoring_policy_uses_source_window_and_observed_metric_floors() {
+        let policy =
+            fit_objective_scoring_policy(ReturnComponentsStageObservedSignalSummaryStatistics {
+                known_calendar_event_count: 1,
+                known_realized_sample_count: 1,
+                source_window_duration_hours: 12.0,
+                observed_open_session_return_count: 4,
+                continuous_fit_return_count: 4,
+                intraday_jump_candidate_count: 1,
+                intraday_jump_episode_count: 1,
+                selected_surprise_jump_episode_count: 1,
+                close_open_gap_candidate_count: 1,
+                close_open_gap_episode_count: 1,
+                open_session_sell_share_proxy: 0.5,
+                mean_continuous_business_time_scale: 1.0,
+                continuous_return_mean: 0.0,
+                continuous_return_volatility: 0.01,
+                continuous_return_skewness: 0.0,
+                continuous_return_excess_kurtosis: 0.0,
+                observed_log_price_span: 0.03,
+                mean_abs_known_open_jump_return: 0.0015,
+                mean_abs_known_closed_gap_return: 0.004,
+                mean_abs_surprise_open_jump_return: 0.002,
+                mean_abs_surprise_closed_gap_return: 0.003,
+                mean_known_post_shock_activity_lift: 1.2,
+                mean_surprise_post_shock_activity_lift: 1.1,
+                known_activity_coupling_target: 0.015,
+                surprise_activity_coupling_target: 0.025,
+                known_news_coverage_ratio: 1.0,
+                surprise_arrival_intensity_per_hour: 0.25,
+            });
 
-        assert_eq!(policy.arrival_frequency_zero_floor, 1.0e-8);
-        assert_eq!(policy.positive_metric_zero_floor, 1.0e-12);
+        assert_eq!(policy.arrival_frequency_zero_floor, 1.0 / 12.0);
+        assert_eq!(policy.positive_metric_zero_floor, 0.0015);
         assert_eq!(policy.price_range_threshold_floor, 1.0);
         assert_eq!(
             policy.dominant_scale_driver_order,

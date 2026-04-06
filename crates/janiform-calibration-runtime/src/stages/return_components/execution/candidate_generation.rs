@@ -10,8 +10,6 @@ use janiform_model_kernels::news::{
 use super::super::activity_coupling_fit;
 use super::super::constants::{
     RETURN_COMPONENTS_STAGE_DETERMINISTIC_SEED_POLICY,
-    RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER,
-    RETURN_COMPONENTS_STAGE_SHOCK_EVIDENCE_MIN_COUNT,
     RETURN_COMPONENTS_STAGE_SIGNAL_PREPROCESSING_POLICY,
 };
 use super::super::continuous_layer_fit;
@@ -78,6 +76,12 @@ pub(super) fn generate_return_components_stage_candidate_inputs(
         candidate_generation_input
             .observed_open_session_returns
             .as_slice(),
+        candidate_generation_input
+            .realized_known_news_return_samples
+            .as_slice(),
+        candidate_generation_input
+            .detected_intraday_jump_candidates
+            .as_slice(),
     );
 
     let fitted_surprise_episode_selection_layer =
@@ -131,13 +135,9 @@ pub(super) fn generate_return_components_stage_candidate_inputs(
         stage_solver_settings,
     )?;
 
-    let fitted_diagnostic_policy = diagnostic_policy_fit::fit_diagnostic_policy(
-        RETURN_COMPONENTS_STAGE_SHOCK_EVIDENCE_MIN_COUNT,
-    );
+    let fitted_diagnostic_policy = diagnostic_policy_fit::fit_diagnostic_policy();
     let fitted_objective_scoring_policy =
-        objective_scoring_policy_fit::fit_objective_scoring_policy(
-            RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER,
-        );
+        objective_scoring_policy_fit::fit_objective_scoring_policy(summary_statistics);
     let fitted_price_range_sanity_policy = price_range_policy_fit::fit_price_range_sanity_policy();
 
     let candidate_family_sets = build_candidate_family_sets(
@@ -286,15 +286,11 @@ fn build_candidate_provenance_template(
         preprocessing_filters: vec![
             "reject_non_finite_known_news_returns".to_string(),
             "reject_non_finite_observed_open_session_returns".to_string(),
-            "exclude_known_news_windows_from_continuous_nig_fit".to_string(),
-            format!(
-                "known_news_exclusion_window_minutes={}",
-                fitted_signal_partition_layer.known_news_exclusion_window_minutes
-            ),
+            "exclude_known_news_attributed_open_returns_from_continuous_nig_fit".to_string(),
             "exclude_selected_exogenous_surprise_episodes_from_continuous_nig_fit".to_string(),
             format!(
-                "continuous_return_filter_multiplier={:.6}",
-                fitted_signal_partition_layer.continuous_return_filter_multiplier
+                "continuous_return_filter_policy={}",
+                fitted_signal_partition_layer.continuous_return_filter_policy
             ),
             format!(
                 "continuous_return_filter_threshold={:.12}",
@@ -412,7 +408,6 @@ fn enumerate_candidate_inputs(
         &gap_diagnostic,
         &activity_coupling_diagnostic,
         &price_range_sanity_diagnostic,
-        fitted_diagnostic_policy.shock_evidence_min_count,
     );
 
     let dominant_scale_driver =

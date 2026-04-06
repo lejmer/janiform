@@ -8,11 +8,11 @@ use janiform_foundations::numeric::{
 use janiform_foundations::vector_math::vector4_subtract;
 use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
-use super::super::constants::RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER;
 use super::super::contracts::{
     ReturnComponentsStageObservedSignalSummaryStatistics,
     ReturnComponentsStageReturnDistributionDiagnostic,
 };
+use super::super::derived_contracts::return_components_stage_positive_domain_floor;
 use super::super::execution::arithmetic_mean_signed;
 use super::bounds::{
     build_moment_seed_candidates, build_search_regimes_from_moment_seeds,
@@ -1040,7 +1040,7 @@ fn optimize_local_search_point(
 
     let step_floor = solver_settings
         .absolute_tolerance
-        .max(RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER);
+        .max(return_components_stage_positive_domain_floor());
 
     let mut step_radii: [f64; 4] = coordinate_spans.map(|span| (span * 0.18).max(step_floor));
 
@@ -1065,16 +1065,17 @@ fn optimize_local_search_point(
             .filter_map(|(direction, sign)| {
                 let mut displaced_vector = current_vector;
                 let mut any_displacement = false;
+
                 for coordinate_index in 0..4 {
                     let direction_component = direction[coordinate_index];
-                    if direction_component.abs()
-                        <= RETURN_COMPONENTS_STAGE_MIN_REPRESENTABLE_POSITIVE_PARAMETER
+                    if direction_component.abs() <= return_components_stage_positive_domain_floor()
                     {
                         continue;
                     }
 
                     displaced_vector[coordinate_index] +=
                         sign * direction_component * step_radii[coordinate_index];
+
                     any_displacement = true;
                 }
 
@@ -1120,6 +1121,7 @@ fn optimize_local_search_point(
                 .shifted_objective_score
                 .total_cmp(&right.1.objective.shifted_objective_score)
         });
+
         let objective_tolerance = solver_settings.absolute_tolerance.max(
             solver_settings.relative_tolerance
                 * current_evaluation

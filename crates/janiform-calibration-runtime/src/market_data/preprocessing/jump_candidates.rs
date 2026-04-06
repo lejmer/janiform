@@ -1,21 +1,23 @@
-use super::known_news_samples::{activity_lift, is_within_known_news_exclusion_window};
+use super::known_news_samples::{activity_lift, is_attributed_to_known_news_open_return};
 use super::shared::{
-    CalibrationReturnComponentsDetectedIntradayJumpCandidate, median_abs, median_abs_non_zero,
+    CalibrationReturnComponentsDetectedIntradayJumpCandidate, OpenTickRecord, median_abs,
+    median_abs_non_zero,
 };
 
 pub(crate) fn derive_intraday_jump_candidates(
     same_session_returns: &[(i64, f64)],
+    open_price_ticks: &[OpenTickRecord],
     open_price_tick_timestamps: &[i64],
-    known_news_timestamps: &[i64],
+    known_news_attributed_open_return_timestamps: &[i64],
     threshold_multiplier: f64,
 ) -> Vec<CalibrationReturnComponentsDetectedIntradayJumpCandidate> {
     let candidate_returns: Vec<(i64, f64)> = same_session_returns
         .iter()
         .copied()
         .filter(|(candidate_timestamp_utc_nanos, _)| {
-            !is_within_known_news_exclusion_window(
+            !is_attributed_to_known_news_open_return(
                 *candidate_timestamp_utc_nanos,
-                known_news_timestamps,
+                known_news_attributed_open_return_timestamps,
             )
         })
         .collect();
@@ -44,6 +46,7 @@ pub(crate) fn derive_intraday_jump_candidates(
                 jump_return,
                 post_shock_activity_lift: activity_lift(
                     candidate_timestamp_utc_nanos,
+                    open_price_ticks,
                     open_price_tick_timestamps,
                 ),
             }

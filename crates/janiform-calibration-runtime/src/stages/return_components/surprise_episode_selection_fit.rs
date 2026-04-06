@@ -233,9 +233,9 @@ fn select_exogenous_surprise_jump_episodes(
                 normalized_magnitude_score.ln_1p() * activity_excess.ln_1p()
             };
 
-            if normalized_magnitude_score < normalized_magnitude_threshold
-                || activity_excess < positive_activity_excess_threshold
-                || composite_score < composite_threshold
+            if normalized_magnitude_score <= normalized_magnitude_threshold
+                || activity_excess <= positive_activity_excess_threshold
+                || composite_score <= composite_threshold
             {
                 return None;
             }
@@ -268,38 +268,34 @@ mod tests {
     }
 
     #[test]
-    fn high_evidence_episode_is_retained() {
+    fn boundary_touching_episode_is_not_retained_under_strict_thresholds() {
         let fitted_layer = fit_surprise_episode_selection_layer(
             &[
                 ReturnComponentsDetectedIntradayJumpCandidate {
                     jump_timestamp_utc_nanos: 10,
-                    jump_return: 1.4e-3,
+                    jump_return: 3.0e-3,
                     post_shock_activity_lift: 4.5,
                 },
                 ReturnComponentsDetectedIntradayJumpCandidate {
-                    jump_timestamp_utc_nanos: 12,
-                    jump_return: 9.0e-4,
+                    jump_timestamp_utc_nanos: 110,
+                    jump_return: 1.0e-3,
                     post_shock_activity_lift: 4.0,
                 },
                 ReturnComponentsDetectedIntradayJumpCandidate {
-                    jump_timestamp_utc_nanos: 100,
-                    jump_return: 2.0e-4,
-                    post_shock_activity_lift: 1.1,
+                    jump_timestamp_utc_nanos: 1_110,
+                    jump_return: 5.0e-4,
+                    post_shock_activity_lift: 1.4,
                 },
                 ReturnComponentsDetectedIntradayJumpCandidate {
-                    jump_timestamp_utc_nanos: 400,
-                    jump_return: -1.5e-4,
-                    post_shock_activity_lift: 1.05,
+                    jump_timestamp_utc_nanos: 101_110,
+                    jump_return: 2.0e-4,
+                    post_shock_activity_lift: 1.1,
                 },
             ],
             1.0e-4,
         );
 
         assert_eq!(fitted_layer.surprise_jump_episodes.len(), 2);
-        assert_eq!(fitted_layer.selected_surprise_jump_episodes.len(), 1);
-        assert_eq!(
-            fitted_layer.selected_surprise_jump_episodes[0].member_jump_timestamps_utc_nanos,
-            vec![10, 12, 100]
-        );
+        assert_eq!(fitted_layer.selected_surprise_jump_episodes.len(), 0);
     }
 }

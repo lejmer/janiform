@@ -28,6 +28,7 @@ DETERMINISTIC_SEASONALITY_COMPOSITION_SCHEMA_VERSION: str = (
 )
 SEASONALITY_DIAGNOSTICS_REPORT_SCHEMA_VERSION: str = "seasonality.diagnostics.report.v1"
 SEASONALITY_DIAGNOSTICS_BATCH_REPORT_SCHEMA_VERSION: str = "seasonality.diagnostics.batch.v1"
+# Public workflow default for the estimator identifier, overrideable by callers.
 DEFAULT_SEASONALITY_ESTIMATOR_VERSION: str = "seasonality_estimator.v1"
 
 

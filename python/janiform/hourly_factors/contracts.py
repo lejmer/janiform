@@ -16,6 +16,8 @@ HOURLY_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION: str = (
 HOURLY_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION: str = (
     "seasonality.hourly_nu_h.materialization.v1"
 )
+# These are public contract defaults, not hidden runtime heuristics, and callers can override them
+# by populating the corresponding hourly-factor request fields.
 DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD: str = "explicit_hourly_input.v1"
 DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD: str = (
     "known_calendar_anchor_plus_surprise_background_controls.v1"
@@ -24,6 +26,8 @@ DEFAULT_SEASONALITY_INTERPOLATION_METHOD: str = "previous_observation_carry_forw
 DEFAULT_SEASONALITY_AGGREGATION_METHOD: str = "mean_of_observations.v1"
 DEFAULT_SEASONALITY_SPARSE_FALLBACK_POLICY: str = "global_mean.v1"
 DEFAULT_SPARSE_HOUR_MINIMUM_OBSERVATION_COUNT: int = 1
+# These are public contract defaults, not hidden runtime heuristics, and callers can override them
+# by populating the corresponding hourly-factor request fields.
 HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY: str = (
     "fixed_width_utc_interval_projected_to_exchange_local.v1"
 )

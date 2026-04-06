@@ -2572,18 +2572,21 @@ pub(crate) fn return_components_stage_candidate_generation_fixture()
         realized_known_news_return_samples: vec![
             ReturnComponentsRealizedKnownNewsReturnSample {
                 event_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 14, 30, 0),
+                attributed_open_return_timestamp_utc_nanos: Some(utc_nanos(2026, 2, 2, 15, 0, 0)),
                 open_window_jump_return: 0.016,
                 closed_window_gap_return: -0.009,
                 post_shock_activity_lift: 1.20,
             },
             ReturnComponentsRealizedKnownNewsReturnSample {
                 event_timestamp_utc_nanos: utc_nanos(2026, 2, 3, 15, 0, 0),
+                attributed_open_return_timestamp_utc_nanos: Some(utc_nanos(2026, 2, 3, 18, 20, 0)),
                 open_window_jump_return: -0.012,
                 closed_window_gap_return: 0.004,
                 post_shock_activity_lift: 1.05,
             },
             ReturnComponentsRealizedKnownNewsReturnSample {
                 event_timestamp_utc_nanos: utc_nanos(2026, 2, 4, 16, 0, 0),
+                attributed_open_return_timestamp_utc_nanos: Some(utc_nanos(2026, 2, 4, 19, 15, 0)),
                 open_window_jump_return: 0.011,
                 closed_window_gap_return: -0.006,
                 post_shock_activity_lift: 0.98,

@@ -29,10 +29,7 @@ pub(super) use crate::execution_bridge::{
     CalibrationTimestampEventSessionFilter,
 };
 pub(super) use crate::shock_mark_fitting::fit_shared_news_mark_law_from_shock_samples;
-pub(super) use crate::temporal::{
-    contains_timestamp_in_symmetric_minute_window, count_timestamps_in_half_open_interval,
-    datetime_from_nanos,
-};
+pub(super) use crate::temporal::datetime_from_nanos;
 pub(super) use janiform_foundations::numeric::{
     arithmetic_mean, clamp_to_open_unit_interval, clamp_to_unit_interval, coefficient_of_variation,
     logistic, median_abs, median_abs_non_zero, normalized_pseudocount, round_positive_to_domain,
@@ -49,10 +46,6 @@ pub(super) use super::contracts::{
     MarketDataTranslationReturnComponentsPreprocessingSettings,
     MarketDataTranslationSeasonalityPreprocessingSettings,
 };
-
-pub(super) const ACTIVITY_LIFT_WINDOW_NANOS: i64 = 30 * 60 * 1_000_000_000;
-pub(super) const KNOWN_NEWS_EXCLUSION_WINDOW_MINUTES: i64 = 15;
-pub(super) const MINIMUM_OPEN_TICK_COUNT_DURATION_HOURS: f64 = 0.25;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum TradeSign {

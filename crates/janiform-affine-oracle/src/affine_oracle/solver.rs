@@ -24,6 +24,7 @@ use super::{
     evaluate_exponential_affine_transform_ode_rhs,
 };
 
+// Public default ODE step count for one-interval solves, overrideable on solver settings.
 const DEFAULT_EXPONENTIAL_AFFINE_TRANSFORM_SOLVER_STEP_COUNT: usize = 64;
 
 /// Supported one-step numerical integration methods for affine transform ODE solving.
