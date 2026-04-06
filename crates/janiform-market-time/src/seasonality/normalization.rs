@@ -1,9 +1,6 @@
 use super::composition::SeasonalityNormalizationMetadata;
-use super::numerics::stable_mean_f64;
-use super::{
-    IDENTIFIABILITY_MEAN_ANCHOR_TOLERANCE, IDENTIFIABILITY_NORMALIZATION_POLICY,
-    IDENTIFIABILITY_TARGET_MEAN_FACTOR,
-};
+use super::numerics::{derived_mean_anchor_tolerance_f64, stable_mean_f64};
+use super::{IDENTIFIABILITY_NORMALIZATION_POLICY, IDENTIFIABILITY_TARGET_MEAN_FACTOR};
 
 #[derive(Debug, Clone, PartialEq)]
 pub(super) enum SeasonalityNormalizationError {
@@ -103,15 +100,27 @@ pub(super) fn normalize_seasonality_factors_for_identifiability(
     }
 
     let post_normalization_mean_factor = stable_mean_f64(&normalized_factor_by_event);
+
+    let mean_anchor_tolerance = derived_mean_anchor_tolerance_f64(
+        factor_by_event.len(),
+        IDENTIFIABILITY_TARGET_MEAN_FACTOR,
+        normalization_constant,
+        post_normalization_mean_factor,
+    );
+
+    if !mean_anchor_tolerance.is_finite() || mean_anchor_tolerance <= 0.0 {
+        return Err(SeasonalityNormalizationError::UnstableNormalizationConstant);
+    }
+
     if !post_normalization_mean_factor.is_finite()
         || (post_normalization_mean_factor - IDENTIFIABILITY_TARGET_MEAN_FACTOR).abs()
-            > IDENTIFIABILITY_MEAN_ANCHOR_TOLERANCE
+            > mean_anchor_tolerance
     {
         return Err(
             SeasonalityNormalizationError::IdentifiabilityGuardViolation {
                 anchored_mean_factor: post_normalization_mean_factor,
                 target_mean_factor: IDENTIFIABILITY_TARGET_MEAN_FACTOR,
-                mean_anchor_tolerance: IDENTIFIABILITY_MEAN_ANCHOR_TOLERANCE,
+                mean_anchor_tolerance,
             },
         );
     }
@@ -127,7 +136,7 @@ pub(super) fn normalize_seasonality_factors_for_identifiability(
             normalization_constant,
             normalization_log_offset,
             post_normalization_mean_factor,
-            mean_anchor_tolerance: IDENTIFIABILITY_MEAN_ANCHOR_TOLERANCE,
+            mean_anchor_tolerance,
         },
     })
 }
