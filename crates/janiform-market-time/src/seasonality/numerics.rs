@@ -42,19 +42,19 @@ pub(super) fn derived_mean_anchor_tolerance_f64(
 
     let stable_mean_relative_error =
         relative_rounding_error_bound(stable_mean_rounding_step_count(fit_window_event_count));
-    
+
     let normalized_factor_relative_error = relative_rounding_error_bound(fit_window_event_count);
-    
+
     let normalization_constant_relative_resolution =
         local_relative_machine_resolution(normalization_constant);
-    
+
     let combined_relative_error = combine_relative_error_bounds(&[
         stable_mean_relative_error,
         normalization_constant_relative_resolution,
         normalized_factor_relative_error,
         stable_mean_relative_error,
     ]);
-    
+
     let scale_reference = target_mean_factor
         .abs()
         .max(post_normalization_mean_factor.abs());

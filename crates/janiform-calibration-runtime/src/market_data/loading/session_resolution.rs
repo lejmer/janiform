@@ -1,6 +1,3 @@
-use chrono::{DateTime, Datelike, Duration, Utc};
-use std::collections::HashSet;
-
 use crate::calendar::ExchangeCalendarRegistryLoader;
 use crate::market_data::preprocessing::MarketDataTranslationTickRecord;
 
@@ -17,15 +14,17 @@ use super::contracts::{
     MarketDataSessionConfiguration, MarketDataSessionRegularWindowPayload,
     MarketDataSessionResolutionPayload,
 };
+use super::session_gap_spectrum::ObservedGapSpectrum;
 use super::shared::{
-    LONG_GAP_THRESHOLD_HOURS, MINIMUM_GENERIC_24_5_WEEKDAY_COUNT, ResolvedMarketDataSession,
-    SESSION_RESOLUTION_SCHEMA_VERSION, SessionTemplate,
+    ResolvedMarketDataSession, SESSION_RESOLUTION_SCHEMA_VERSION, SessionTemplate,
 };
 
 pub(super) fn resolve_market_data_session_configuration_from_tick_records(
     session_configuration: &MarketDataSessionConfiguration,
     tick_records: &[MarketDataTranslationTickRecord],
 ) -> Result<ResolvedMarketDataSession, MarketDataLoadingError> {
+    let observed_gap_spectrum = ObservedGapSpectrum::from_tick_records(tick_records);
+
     if let Some(session_source) = &session_configuration.session_definition_source {
         return resolve_explicit_session_definition(
             session_configuration.exchange_code.as_str(),
@@ -37,13 +36,14 @@ pub(super) fn resolve_market_data_session_configuration_from_tick_records(
     let inferred_template = infer_session_template(
         session_configuration.exchange_code.as_str(),
         session_configuration.session_timezone.as_deref(),
-        tick_records,
+        &observed_gap_spectrum,
     )?;
 
     resolved_market_data_session_from_template(
         session_configuration,
         inferred_template,
         tick_records,
+        &observed_gap_spectrum,
     )
 }
 
@@ -65,11 +65,13 @@ pub(super) fn try_resolve_market_data_session_configuration_without_tick_records
     else {
         return Ok(None);
     };
+    let observed_gap_spectrum = ObservedGapSpectrum::from_tick_records(&[]);
 
     Ok(Some(resolved_market_data_session_from_template(
         session_configuration,
         inferred_template,
         &[],
+        &observed_gap_spectrum,
     )?))
 }
 
@@ -77,6 +79,7 @@ fn resolved_market_data_session_from_template(
     session_configuration: &MarketDataSessionConfiguration,
     inferred_template: SessionTemplate,
     tick_records: &[MarketDataTranslationTickRecord],
+    observed_gap_spectrum: &ObservedGapSpectrum,
 ) -> Result<ResolvedMarketDataSession, MarketDataLoadingError> {
     let registry_json = build_calendar_registry_json(
         session_configuration.exchange_code.as_str(),
@@ -93,6 +96,7 @@ fn resolved_market_data_session_from_template(
         &calendar_registry,
         session_configuration.exchange_code.as_str(),
         tick_records,
+        observed_gap_spectrum,
     )?;
 
     Ok(ResolvedMarketDataSession {
@@ -179,6 +183,7 @@ pub(super) fn resolve_explicit_session_definition(
 
     let resolved_timezone_name = definition.timezone_name().to_string();
     let exchange_name = definition.exchange_metadata().exchange_name().to_string();
+
     let holiday_calendar_code = definition
         .rule_metadata()
         .holiday_calendar_code()
@@ -246,7 +251,7 @@ pub(super) fn resolve_explicit_session_definition(
 pub(super) fn infer_session_template(
     exchange_code: &str,
     configured_session_timezone: Option<&str>,
-    tick_records: &[MarketDataTranslationTickRecord],
+    observed_gap_spectrum: &ObservedGapSpectrum,
 ) -> Result<SessionTemplate, MarketDataLoadingError> {
     if let Some(template) =
         infer_session_template_without_tick_records(exchange_code, configured_session_timezone)?
@@ -258,7 +263,7 @@ pub(super) fn infer_session_template(
         let generic_template =
             build_generic_24_5_template(exchange_code, configured_session_timezone);
 
-        validate_generic_24_5_inference(exchange_code, tick_records)?;
+        validate_generic_24_5_inference(exchange_code, observed_gap_spectrum)?;
 
         return Ok(generic_template);
     }
@@ -272,7 +277,7 @@ pub(super) fn infer_session_template(
 
     let generic_template = build_generic_24_5_template(exchange_code, Some(timezone_name));
 
-    validate_generic_24_5_inference(exchange_code, tick_records)?;
+    validate_generic_24_5_inference(exchange_code, observed_gap_spectrum)?;
 
     Ok(generic_template)
 }
@@ -338,62 +343,117 @@ pub(super) fn build_generic_24_5_template(
 
 pub(super) fn validate_generic_24_5_inference(
     exchange_code: &str,
-    tick_records: &[MarketDataTranslationTickRecord],
+    observed_gap_spectrum: &ObservedGapSpectrum,
 ) -> Result<(), MarketDataLoadingError> {
-    let mut distinct_weekdays = HashSet::new();
+    let weekday_support = observed_gap_spectrum.weekday_support();
+    let weekend_tick_count = weekday_support[5] + weekday_support[6];
 
-    let mut long_gap_count = 0;
-    let mut weekend_gap_count = 0;
-    let mut unexpected_weekday_gap_count = 0;
-
-    for tick_record in tick_records {
-        let weekday = DateTime::<Utc>::from_timestamp_nanos(tick_record.timestamp_utc_nanos)
-            .weekday()
-            .num_days_from_monday();
-        distinct_weekdays.insert(weekday);
-    }
-
-    for pair in tick_records.windows(2) {
-        let gap_nanos = pair[1].timestamp_utc_nanos - pair[0].timestamp_utc_nanos;
-        if gap_nanos
-            < Duration::hours(LONG_GAP_THRESHOLD_HOURS)
-                .num_nanoseconds()
-                .unwrap_or(0)
-        {
-            continue;
-        }
-
-        long_gap_count += 1;
-
-        let midpoint_nanos = pair[0].timestamp_utc_nanos + (gap_nanos / 2);
-        let midpoint_weekday = DateTime::<Utc>::from_timestamp_nanos(midpoint_nanos)
-            .weekday()
-            .num_days_from_monday();
-
-        if midpoint_weekday >= 5 {
-            weekend_gap_count += 1;
-        } else {
-            unexpected_weekday_gap_count += 1;
-        }
-    }
-
-    if distinct_weekdays.len() < MINIMUM_GENERIC_24_5_WEEKDAY_COUNT {
+    if weekend_tick_count > 0 {
         return Err(MarketDataLoadingError::InvalidValue {
             field_path: "session_configuration".to_string(),
             message: format!(
-                "automatic 24/5 session inference is ambiguous because the observed tick window does not span enough weekdays. Provide an explicit session-definition override. exchange_code={exchange_code}"
+                "automatic 24/5 session inference is ambiguous because the observed weekday support includes weekend trading. Provide an explicit session-definition override. exchange_code={exchange_code}"
             ),
         });
     }
 
-    if long_gap_count == 0 || weekend_gap_count == 0 || unexpected_weekday_gap_count > 0 {
+    let weekday_continuous_support_count = weekday_support[..trading_weekdays().len()]
+        .iter()
+        .filter(|support_count| **support_count > 0)
+        .count();
+    let weekend_inactivity_gap_count = observed_gap_spectrum
+        .inactivity_gap_midpoint_weekday_support()[5]
+        + observed_gap_spectrum.inactivity_gap_midpoint_weekday_support()[6];
+
+    if weekend_inactivity_gap_count == 0
+        && weekday_continuous_support_count < trading_weekdays().len()
+    {
         return Err(MarketDataLoadingError::InvalidValue {
             field_path: "session_configuration".to_string(),
             message: format!(
-                "automatic 24/5 session inference is ambiguous because the observed gap structure does not clearly support a weekday-continuous broker market. Provide an explicit session-definition override. exchange_code={exchange_code}"
+                "automatic 24/5 session inference is ambiguous because the derived inactivity-gap support does not isolate a weekend closure and the observed weekday support does not span the full weekday-continuous template. Provide an explicit session-definition override. exchange_code={exchange_code}"
             ),
         });
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ObservedGapSpectrum, infer_session_template, validate_generic_24_5_inference};
+    use crate::market_data::loading::contracts::MarketDataLoadingError;
+    use crate::market_data::loading::test_support::tick;
+
+    #[test]
+    fn generic_24_5_inference_accepts_full_weekday_support_without_weekend_gap() {
+        let tick_records = vec![
+            tick("2026-04-06T08:00:00Z"),
+            tick("2026-04-06T17:00:00Z"),
+            tick("2026-04-07T08:30:00Z"),
+            tick("2026-04-08T15:30:00Z"),
+            tick("2026-04-09T12:00:00Z"),
+            tick("2026-04-10T18:00:00Z"),
+        ];
+        let observed_gap_spectrum = ObservedGapSpectrum::from_tick_records(&tick_records);
+
+        let inferred_template =
+            infer_session_template("FX_EURUSD", Some("UTC"), &observed_gap_spectrum)
+                .expect("weekday-only FX support should remain inferable");
+
+        assert!(inferred_template.continuous_weekday_template);
+        assert_eq!(inferred_template.timezone_name, "UTC");
+    }
+
+    #[test]
+    fn generic_24_5_inference_rejects_weekend_tick_support() {
+        let observed_gap_spectrum = ObservedGapSpectrum::from_tick_records(&[
+            tick("2026-04-10T18:00:00Z"),
+            tick("2026-04-11T09:00:00Z"),
+            tick("2026-04-13T08:00:00Z"),
+        ]);
+
+        let error = validate_generic_24_5_inference("FX_EURUSD", &observed_gap_spectrum)
+            .expect_err("weekend tick support must reject generic 24/5 inference");
+
+        match error {
+            MarketDataLoadingError::InvalidValue {
+                field_path,
+                message,
+            } => {
+                assert_eq!(field_path, "session_configuration");
+                assert_eq!(
+                    message,
+                    "automatic 24/5 session inference is ambiguous because the observed weekday support includes weekend trading. Provide an explicit session-definition override. exchange_code=FX_EURUSD"
+                );
+            }
+            other_error => panic!("unexpected error variant: {other_error}"),
+        }
+    }
+
+    #[test]
+    fn generic_24_5_inference_rejects_partial_weekday_support_without_weekend_gap() {
+        let observed_gap_spectrum = ObservedGapSpectrum::from_tick_records(&[
+            tick("2026-04-06T08:00:00Z"),
+            tick("2026-04-06T12:00:00Z"),
+            tick("2026-04-07T08:00:00Z"),
+        ]);
+
+        let error = validate_generic_24_5_inference("BROKER_SPOT", &observed_gap_spectrum)
+            .expect_err("partial weekday support without weekend inactivity must stay ambiguous");
+
+        match error {
+            MarketDataLoadingError::InvalidValue {
+                field_path,
+                message,
+            } => {
+                assert_eq!(field_path, "session_configuration");
+                assert_eq!(
+                    message,
+                    "automatic 24/5 session inference is ambiguous because the derived inactivity-gap support does not isolate a weekend closure and the observed weekday support does not span the full weekday-continuous template. Provide an explicit session-definition override. exchange_code=BROKER_SPOT"
+                );
+            }
+            other_error => panic!("unexpected error variant: {other_error}"),
+        }
+    }
 }
