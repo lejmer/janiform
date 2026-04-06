@@ -1,14 +1,17 @@
 use super::contracts::MarketDataTranslationPreprocessingError;
-use super::known_news_samples::open_session_known_news_activity_share;
+use super::known_news_samples::{
+    attributed_open_return_timestamps, open_session_known_news_activity_share,
+};
 use super::shared::{
     CalibrationHawkesDirectionalLabelDiagnostics, CalibrationHawkesObservedSourceRegime,
     CalibrationHawkesStageCandidateInput, HawkesStructuredAlphaParameterization,
-    HawkesStructuredRhoParameterization, HawkesStructuredRhoSelfDominancePolicy,
-    MINIMUM_OPEN_TICK_COUNT_DURATION_HOURS, MarketState, OpenTickRecord, ResolvedKnownNewsRecord,
-    ResolvedTickRecord, arithmetic_mean, clamp_to_open_unit_interval, clamp_to_unit_interval,
-    coefficient_of_variation, logistic, observation_window_hours, round_positive_to_domain,
-    round_to, smallest_positive_value, strictly_positive_machine_value, unique_sorted_values,
+    HawkesStructuredRhoParameterization, HawkesStructuredRhoSelfDominancePolicy, MarketState,
+    OpenTickRecord, ResolvedKnownNewsRecord, ResolvedTickRecord, arithmetic_mean,
+    clamp_to_open_unit_interval, clamp_to_unit_interval, coefficient_of_variation, logistic,
+    observation_window_hours, round_positive_to_domain, round_to, smallest_positive_value,
+    strictly_positive_machine_value, unique_sorted_values,
 };
+use janiform_foundations::time::duration_nanos_to_hours;
 use janiform_model_kernels::hawkes::{HawkesKernelLoadings, stationary_intensity_multipliers};
 
 pub(super) fn build_hawkes_candidate_inputs(
@@ -42,11 +45,24 @@ pub(super) fn build_hawkes_candidate_inputs(
         resolved_ticks.first().map(|tick| tick.timestamp_utc_nanos),
         resolved_ticks.last().map(|tick| tick.timestamp_utc_nanos),
     );
+    let source_window = resolved_ticks
+        .first()
+        .zip(resolved_ticks.last())
+        .map(|(first_tick, last_tick)| {
+            (
+                first_tick.timestamp_utc_nanos,
+                last_tick.timestamp_utc_nanos.saturating_add(1),
+            )
+        })
+        .unwrap_or((0, 0));
     let (open_session_duration_hours, open_interarrival_seconds) =
-        open_session_transition_metrics(open_price_ticks);
+        open_session_transition_metrics(open_price_ticks, source_window);
 
-    let mean_interarrival_seconds =
-        arithmetic_mean(open_interarrival_seconds.as_slice()).unwrap_or(60.0);
+    let mean_interarrival_seconds = arithmetic_mean(open_interarrival_seconds.as_slice())
+        .unwrap_or_else(|| {
+            let open_session_duration_seconds = open_session_duration_hours * 3600.0;
+            open_session_duration_seconds / (session_open_tick_count.max(1) as f64)
+        });
 
     let interarrival_coefficient_of_variation =
         coefficient_of_variation(open_interarrival_seconds.as_slice());
@@ -71,10 +87,19 @@ pub(super) fn build_hawkes_candidate_inputs(
         .filter(|record| record.market_state == MarketState::Open)
         .map(|record| record.event_timestamp_utc_nanos)
         .collect();
+    let open_price_tick_timestamps = open_price_ticks
+        .iter()
+        .map(|tick| tick.timestamp_utc_nanos)
+        .collect::<Vec<_>>();
+    let known_news_attributed_open_return_timestamps = attributed_open_return_timestamps(
+        retained_known_news,
+        open_price_ticks,
+        open_price_tick_timestamps.as_slice(),
+    );
 
     let open_known_news_activity_share = open_session_known_news_activity_share(
         open_price_ticks,
-        open_known_news_timestamps.as_slice(),
+        known_news_attributed_open_return_timestamps.as_slice(),
     );
 
     let source_regime = CalibrationHawkesObservedSourceRegime {
@@ -245,13 +270,25 @@ pub(super) fn build_structured_rho_candidate(
 
 pub(super) fn open_session_transition_metrics(
     open_price_ticks: &[OpenTickRecord],
+    source_window: (i64, i64),
 ) -> (f64, Vec<f64>) {
-    if open_price_ticks.len() < 2 {
-        return (MINIMUM_OPEN_TICK_COUNT_DURATION_HOURS, Vec::new());
-    }
-
-    let mut cumulative_seconds = 0.0;
+    let mut open_session_exposure_nanos: i64 = 0;
     let mut same_session_gaps: Vec<f64> = Vec::new();
+    let mut previous_session_window: Option<(i64, i64)> = None;
+
+    for tick in open_price_ticks {
+        let session_window = (
+            tick.session_open_utc_nanos.max(source_window.0),
+            tick.session_close_utc_nanos.min(source_window.1),
+        );
+        if session_window.1 <= session_window.0 || previous_session_window == Some(session_window) {
+            continue;
+        }
+
+        open_session_exposure_nanos =
+            open_session_exposure_nanos.saturating_add(session_window.1 - session_window.0);
+        previous_session_window = Some(session_window);
+    }
 
     for (previous_tick, current_tick) in
         open_price_ticks.iter().zip(open_price_ticks.iter().skip(1))
@@ -262,23 +299,12 @@ pub(super) fn open_session_transition_metrics(
             let gap_seconds = (current_tick.timestamp_utc_nanos - previous_tick.timestamp_utc_nanos)
                 as f64
                 / 1_000_000_000.0;
-            let clamped_gap_seconds = gap_seconds.max(0.0);
-
-            cumulative_seconds += clamped_gap_seconds;
-            same_session_gaps.push(clamped_gap_seconds);
-        } else {
-            let boundary_seconds = (previous_tick.session_close_utc_nanos
-                - previous_tick.timestamp_utc_nanos) as f64
-                / 1_000_000_000.0;
-
-            cumulative_seconds += boundary_seconds.max(0.0);
+            same_session_gaps.push(gap_seconds.max(0.0));
         }
     }
 
-    let end_padding_seconds = arithmetic_mean(same_session_gaps.as_slice()).unwrap_or(60.0);
-    cumulative_seconds += end_padding_seconds.max(60.0);
     (
-        (cumulative_seconds / 3600.0).max(MINIMUM_OPEN_TICK_COUNT_DURATION_HOURS),
+        duration_nanos_to_hours(open_session_exposure_nanos),
         same_session_gaps,
     )
 }

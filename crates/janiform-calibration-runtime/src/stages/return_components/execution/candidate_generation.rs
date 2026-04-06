@@ -286,11 +286,7 @@ fn build_candidate_provenance_template(
         preprocessing_filters: vec![
             "reject_non_finite_known_news_returns".to_string(),
             "reject_non_finite_observed_open_session_returns".to_string(),
-            "exclude_known_news_windows_from_continuous_nig_fit".to_string(),
-            format!(
-                "known_news_exclusion_window_minutes={}",
-                fitted_signal_partition_layer.known_news_exclusion_window_minutes
-            ),
+            "exclude_known_news_attributed_open_returns_from_continuous_nig_fit".to_string(),
             "exclude_selected_exogenous_surprise_episodes_from_continuous_nig_fit".to_string(),
             format!(
                 "continuous_return_filter_multiplier={:.6}",

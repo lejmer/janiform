@@ -2,8 +2,12 @@ use chrono::{TimeZone, Utc};
 use janiform_foundations::time::utc_nanos;
 
 use super::close_open_boundaries::derive_close_open_boundary_observations;
-use super::hawkes_inputs::{build_structured_rho_candidate, derive_positive_scale_candidates};
+use super::hawkes_inputs::{
+    build_structured_rho_candidate, derive_positive_scale_candidates,
+    open_session_transition_metrics,
+};
 use super::jump_candidates::derive_intraday_jump_candidates;
+use super::known_news_samples::activity_lift;
 use super::session_windows::resolve_market_state_and_session_window;
 use super::shared::OpenTickRecord;
 use crate::calendar::{
@@ -268,6 +272,17 @@ fn zero_inflated_tick_returns_do_not_label_every_non_zero_move_as_a_jump() {
         utc_nanos(2026, 3, 2, 9, 0, 6),
     ];
 
+    let open_price_ticks = open_price_tick_timestamps
+        .iter()
+        .map(|timestamp_utc_nanos| OpenTickRecord {
+            timestamp_utc_nanos: *timestamp_utc_nanos,
+            price: 100.0,
+            trade_sign: None,
+            session_open_utc_nanos: utc_nanos(2026, 3, 2, 9, 0, 0),
+            session_close_utc_nanos: utc_nanos(2026, 3, 2, 10, 0, 0),
+        })
+        .collect::<Vec<_>>();
+
     let same_session_returns = vec![
         (open_price_tick_timestamps[1], 0.0),
         (open_price_tick_timestamps[2], 0.0),
@@ -279,6 +294,7 @@ fn zero_inflated_tick_returns_do_not_label_every_non_zero_move_as_a_jump() {
 
     let detected_candidates = derive_intraday_jump_candidates(
         same_session_returns.as_slice(),
+        open_price_ticks.as_slice(),
         open_price_tick_timestamps.as_slice(),
         &[],
         4.0,
@@ -290,6 +306,123 @@ fn zero_inflated_tick_returns_do_not_label_every_non_zero_move_as_a_jump() {
         open_price_tick_timestamps[6]
     );
     assert!((detected_candidates[0].jump_return - 5.0e-3).abs() <= 1.0e-12);
+}
+
+#[test]
+fn jump_candidate_exclusion_uses_exact_attributed_open_return_timestamp() {
+    let open_price_tick_timestamps = vec![
+        utc_nanos(2026, 3, 2, 9, 0, 0),
+        utc_nanos(2026, 3, 2, 9, 0, 1),
+        utc_nanos(2026, 3, 2, 9, 0, 2),
+    ];
+
+    let open_price_ticks = open_price_tick_timestamps
+        .iter()
+        .map(|timestamp_utc_nanos| OpenTickRecord {
+            timestamp_utc_nanos: *timestamp_utc_nanos,
+            price: 100.0,
+            trade_sign: None,
+            session_open_utc_nanos: utc_nanos(2026, 3, 2, 9, 0, 0),
+            session_close_utc_nanos: utc_nanos(2026, 3, 2, 10, 0, 0),
+        })
+        .collect::<Vec<_>>();
+
+    let same_session_returns = vec![
+        (open_price_tick_timestamps[1], 1.0e-2),
+        (open_price_tick_timestamps[2], 2.0e-2),
+    ];
+
+    let detected_candidates = derive_intraday_jump_candidates(
+        same_session_returns.as_slice(),
+        open_price_ticks.as_slice(),
+        open_price_tick_timestamps.as_slice(),
+        &[open_price_tick_timestamps[1]],
+        0.0,
+    );
+
+    assert_eq!(detected_candidates.len(), 1);
+    assert_eq!(
+        detected_candidates[0].jump_timestamp_utc_nanos,
+        open_price_tick_timestamps[2]
+    );
+}
+
+#[test]
+fn open_session_transition_metrics_use_exact_source_window_exposure() {
+    let open_price_ticks = vec![
+        OpenTickRecord {
+            timestamp_utc_nanos: utc_nanos(2026, 3, 2, 9, 30, 0),
+            price: 100.0,
+            trade_sign: None,
+            session_open_utc_nanos: utc_nanos(2026, 3, 2, 9, 0, 0),
+            session_close_utc_nanos: utc_nanos(2026, 3, 2, 10, 0, 0),
+        },
+        OpenTickRecord {
+            timestamp_utc_nanos: utc_nanos(2026, 3, 2, 9, 45, 0),
+            price: 100.1,
+            trade_sign: None,
+            session_open_utc_nanos: utc_nanos(2026, 3, 2, 9, 0, 0),
+            session_close_utc_nanos: utc_nanos(2026, 3, 2, 10, 0, 0),
+        },
+        OpenTickRecord {
+            timestamp_utc_nanos: utc_nanos(2026, 3, 2, 10, 30, 0),
+            price: 100.2,
+            trade_sign: None,
+            session_open_utc_nanos: utc_nanos(2026, 3, 2, 10, 0, 0),
+            session_close_utc_nanos: utc_nanos(2026, 3, 2, 11, 0, 0),
+        },
+    ];
+
+    let (open_session_duration_hours, interarrival_seconds) = open_session_transition_metrics(
+        open_price_ticks.as_slice(),
+        (
+            utc_nanos(2026, 3, 2, 9, 40, 0),
+            utc_nanos(2026, 3, 2, 10, 40, 0),
+        ),
+    );
+
+    assert!((open_session_duration_hours - 1.0).abs() <= 1.0e-12);
+    assert_eq!(interarrival_seconds, vec![900.0]);
+}
+
+#[test]
+fn activity_lift_uses_local_same_session_tick_geometry() {
+    let open_price_ticks = vec![
+        OpenTickRecord {
+            timestamp_utc_nanos: utc_nanos(2026, 3, 2, 9, 0, 0),
+            price: 100.0,
+            trade_sign: None,
+            session_open_utc_nanos: utc_nanos(2026, 3, 2, 9, 0, 0),
+            session_close_utc_nanos: utc_nanos(2026, 3, 2, 10, 0, 0),
+        },
+        OpenTickRecord {
+            timestamp_utc_nanos: utc_nanos(2026, 3, 2, 9, 0, 4),
+            price: 100.1,
+            trade_sign: None,
+            session_open_utc_nanos: utc_nanos(2026, 3, 2, 9, 0, 0),
+            session_close_utc_nanos: utc_nanos(2026, 3, 2, 10, 0, 0),
+        },
+        OpenTickRecord {
+            timestamp_utc_nanos: utc_nanos(2026, 3, 2, 9, 0, 5),
+            price: 100.2,
+            trade_sign: None,
+            session_open_utc_nanos: utc_nanos(2026, 3, 2, 9, 0, 0),
+            session_close_utc_nanos: utc_nanos(2026, 3, 2, 10, 0, 0),
+        },
+    ];
+
+    let open_price_tick_timestamps = open_price_ticks
+        .iter()
+        .map(|tick| tick.timestamp_utc_nanos)
+        .collect::<Vec<_>>();
+
+    let derived_activity_lift = activity_lift(
+        utc_nanos(2026, 3, 2, 9, 0, 4),
+        open_price_ticks.as_slice(),
+        open_price_tick_timestamps.as_slice(),
+    );
+
+    assert_eq!(derived_activity_lift, 4.0);
 }
 
 fn fx_spot_weekend_definition() -> ExchangeCalendarDefinition {

@@ -112,6 +112,7 @@ impl ReturnComponentsKnownNewsCalendarInput {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ReturnComponentsRealizedKnownNewsReturnSample {
     pub event_timestamp_utc_nanos: i64,
+    pub attributed_open_return_timestamp_utc_nanos: Option<i64>,
     pub open_window_jump_return: f64,
     pub closed_window_gap_return: f64,
     pub post_shock_activity_lift: f64,
@@ -132,6 +133,30 @@ impl ReturnComponentsRealizedKnownNewsReturnSample {
                     window_end_utc_nanos: source_window.window_end_utc_nanos,
                 },
             );
+        }
+        if let Some(attributed_open_return_timestamp_utc_nanos) =
+            self.attributed_open_return_timestamp_utc_nanos
+        {
+            if attributed_open_return_timestamp_utc_nanos < source_window.window_start_utc_nanos
+                || attributed_open_return_timestamp_utc_nanos >= source_window.window_end_utc_nanos
+            {
+                return Err(
+                    ReturnComponentsStageCandidateGenerationInputError::KnownNewsAttributedOpenReturnOutsideSourceWindow {
+                        event_timestamp_utc_nanos: self.event_timestamp_utc_nanos,
+                        attributed_open_return_timestamp_utc_nanos,
+                        window_start_utc_nanos: source_window.window_start_utc_nanos,
+                        window_end_utc_nanos: source_window.window_end_utc_nanos,
+                    },
+                );
+            }
+            if attributed_open_return_timestamp_utc_nanos < self.event_timestamp_utc_nanos {
+                return Err(
+                    ReturnComponentsStageCandidateGenerationInputError::KnownNewsAttributedOpenReturnPrecedesEvent {
+                        event_timestamp_utc_nanos: self.event_timestamp_utc_nanos,
+                        attributed_open_return_timestamp_utc_nanos,
+                    },
+                );
+            }
         }
         if !self.open_window_jump_return.is_finite() {
             return Err(
@@ -585,6 +610,16 @@ pub enum ReturnComponentsStageCandidateGenerationInputError {
         window_start_utc_nanos: i64,
         window_end_utc_nanos: i64,
     },
+    KnownNewsAttributedOpenReturnOutsideSourceWindow {
+        event_timestamp_utc_nanos: i64,
+        attributed_open_return_timestamp_utc_nanos: i64,
+        window_start_utc_nanos: i64,
+        window_end_utc_nanos: i64,
+    },
+    KnownNewsAttributedOpenReturnPrecedesEvent {
+        event_timestamp_utc_nanos: i64,
+        attributed_open_return_timestamp_utc_nanos: i64,
+    },
     InvalidKnownNewsOpenJumpReturn {
         event_timestamp_utc_nanos: i64,
         value: f64,
@@ -750,6 +785,22 @@ impl Display for ReturnComponentsStageCandidateGenerationInputError {
             } => write!(
                 formatter,
                 "known-news return sample timestamp {event_timestamp_utc_nanos} is outside source window [{window_start_utc_nanos}, {window_end_utc_nanos})"
+            ),
+            Self::KnownNewsAttributedOpenReturnOutsideSourceWindow {
+                event_timestamp_utc_nanos,
+                attributed_open_return_timestamp_utc_nanos,
+                window_start_utc_nanos,
+                window_end_utc_nanos,
+            } => write!(
+                formatter,
+                "known-news sample at {event_timestamp_utc_nanos} attributes open return timestamp {attributed_open_return_timestamp_utc_nanos} outside source window [{window_start_utc_nanos}, {window_end_utc_nanos})"
+            ),
+            Self::KnownNewsAttributedOpenReturnPrecedesEvent {
+                event_timestamp_utc_nanos,
+                attributed_open_return_timestamp_utc_nanos,
+            } => write!(
+                formatter,
+                "known-news sample at {event_timestamp_utc_nanos} attributes open return timestamp {attributed_open_return_timestamp_utc_nanos} before the event"
             ),
             Self::InvalidKnownNewsOpenJumpReturn {
                 event_timestamp_utc_nanos,

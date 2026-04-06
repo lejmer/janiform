@@ -1,7 +1,9 @@
 use super::close_open_boundaries::derive_close_open_boundary_observations;
 use super::contracts::MarketDataTranslationPreprocessingError;
 use super::jump_candidates::derive_intraday_jump_candidates;
-use super::known_news_samples::{activity_lift, derive_known_news_return_samples};
+use super::known_news_samples::{
+    activity_lift, attributed_open_return_timestamps, derive_known_news_return_samples,
+};
 use super::shared::{
     BTreeMap, CalibrationMeanReversionStageObservation,
     CalibrationReturnComponentsCloseOpenGapDetectionPolicy,
@@ -79,11 +81,17 @@ pub(super) fn build_return_components_candidate_generation_input(
         .iter()
         .map(|record| record.event_timestamp_utc_nanos)
         .collect();
+    let known_news_attributed_open_return_timestamps = attributed_open_return_timestamps(
+        retained_known_news,
+        open_price_ticks,
+        open_price_tick_timestamps.as_slice(),
+    );
 
     let intraday_jump_candidates = derive_intraday_jump_candidates(
         same_session_returns.as_slice(),
+        open_price_ticks,
         open_price_tick_timestamps.as_slice(),
-        known_news_timestamps.as_slice(),
+        known_news_attributed_open_return_timestamps.as_slice(),
         return_components_settings.intraday_jump_threshold_multiplier,
     );
 
@@ -190,6 +198,7 @@ pub(super) fn derive_observed_open_session_returns(
                 log_return: f64::ln(current_tick.price / previous_tick.price),
                 post_shock_activity_lift: activity_lift(
                     current_tick.timestamp_utc_nanos,
+                    open_price_ticks,
                     open_price_tick_timestamps,
                 ),
                 sell_share_proxy: sell_share_proxy_for_open_return(current_tick.trade_sign),

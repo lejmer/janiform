@@ -20,7 +20,8 @@ use super::super::contracts::{
     ReturnComponentsActivityCouplingCandidateFamily, ReturnComponentsCloseOpenGapDetectionPolicy,
     ReturnComponentsDetectedIntradayJumpCandidate, ReturnComponentsKnownNewsCalendarInput,
     ReturnComponentsObservedCloseOpenBoundaryObservation,
-    ReturnComponentsObservedOpenSessionReturn, ReturnComponentsReturnJumpMarkScaleCandidateFamily,
+    ReturnComponentsObservedOpenSessionReturn, ReturnComponentsRealizedKnownNewsReturnSample,
+    ReturnComponentsReturnJumpMarkScaleCandidateFamily,
     ReturnComponentsStageCandidateGenerationInput,
     ReturnComponentsStageCandidateGenerationInputError,
     ReturnComponentsStageObjectiveMetricWeights,
@@ -363,6 +364,100 @@ fn zero_inflated_open_returns_keep_small_non_zero_moves_in_continuous_fit_sample
 
     assert_eq!(sorted_signals.continuous_fit_returns.len(), 5);
     assert_eq!(retained_non_zero_returns, vec![1.0e-4, -2.0e-4, 3.0e-4]);
+}
+
+#[test]
+fn continuous_fit_excludes_exact_known_news_attributed_open_return_timestamps() {
+    let candidate_generation_input = ReturnComponentsStageCandidateGenerationInput {
+        known_news_calendar: ReturnComponentsKnownNewsCalendarInput {
+            source_window: test_source_window(),
+            scheduled_event_timestamps_utc_nanos: vec![utc_nanos(2026, 2, 2, 14, 0, 0)],
+        },
+        realized_known_news_return_samples: vec![ReturnComponentsRealizedKnownNewsReturnSample {
+            event_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 14, 0, 0),
+            attributed_open_return_timestamp_utc_nanos: Some(utc_nanos(2026, 2, 2, 14, 0, 2)),
+            open_window_jump_return: 1.0e-3,
+            closed_window_gap_return: 0.0,
+            post_shock_activity_lift: 1.2,
+        }],
+        observed_open_session_returns: vec![
+            ReturnComponentsObservedOpenSessionReturn {
+                return_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 14, 0, 1),
+                log_return: 1.0e-4,
+                post_shock_activity_lift: 1.0,
+                sell_share_proxy: 0.5,
+            },
+            ReturnComponentsObservedOpenSessionReturn {
+                return_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 14, 0, 2),
+                log_return: 2.0e-4,
+                post_shock_activity_lift: 1.0,
+                sell_share_proxy: 0.5,
+            },
+            ReturnComponentsObservedOpenSessionReturn {
+                return_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 14, 0, 3),
+                log_return: 3.0e-4,
+                post_shock_activity_lift: 1.0,
+                sell_share_proxy: 0.5,
+            },
+        ],
+        detected_intraday_jump_candidates: Vec::new(),
+        observed_close_open_boundary_observations: Vec::new(),
+        close_open_gap_detection_policy: ReturnComponentsCloseOpenGapDetectionPolicy::new(0.005),
+        open_session_sell_share_proxy: 0.5,
+        shared_mark_law_template: SharedNewsMarkLawConfiguration {
+            gamma_severity_marks: GammaSeverityMarkConfiguration {
+                shape_k: 2.0,
+                scale_theta: 1.0e-4,
+            },
+            double_exponential_base_shock: DoubleExponentialBaseShockConfiguration {
+                probability_positive: 0.45,
+                eta_plus: 8.0,
+                eta_minus: 10.0,
+            },
+            coupled_gap_marks: CoupledGapMarkConfiguration { sigma_g: 0.001 },
+        },
+        objective_metric_weights: ReturnComponentsStageObjectiveMetricWeights {
+            continuous_distribution_fit_weight: 1.0,
+            surprise_arrival_fit_weight: 1.0,
+            jump_fit_weight: 1.0,
+            gap_fit_weight: 1.0,
+            activity_coupling_fit_weight: 1.0,
+            price_range_sanity_fit_weight: 0.1,
+        },
+    };
+
+    let fitted_signal_partition_layer = signal_partition_fit::fit_signal_partition_layer(
+        candidate_generation_input
+            .observed_open_session_returns
+            .as_slice(),
+    );
+
+    let fitted_surprise_episode_selection_layer =
+        surprise_episode_selection_fit::fit_surprise_episode_selection_layer(
+            candidate_generation_input
+                .detected_intraday_jump_candidates
+                .as_slice(),
+            fitted_signal_partition_layer.continuous_return_filter_threshold,
+        );
+
+    let sorted_signals = sort_candidate_generation_signals(
+        &candidate_generation_input,
+        &[],
+        fitted_signal_partition_layer,
+        &fitted_surprise_episode_selection_layer,
+    );
+
+    assert_eq!(
+        sorted_signals
+            .continuous_fit_returns
+            .iter()
+            .map(|observation| observation.return_timestamp_utc_nanos)
+            .collect::<Vec<_>>(),
+        vec![
+            utc_nanos(2026, 2, 2, 14, 0, 1),
+            utc_nanos(2026, 2, 2, 14, 0, 3),
+        ]
+    );
 }
 
 #[test]
