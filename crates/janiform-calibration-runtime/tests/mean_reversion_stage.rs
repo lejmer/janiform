@@ -32,6 +32,26 @@ fn synthetic_constant_anchor_observations() -> Vec<MeanReversionStageObservation
     .collect()
 }
 
+fn synthetic_weekly_anchor_observations() -> Vec<MeanReversionStageObservation> {
+    [
+        (1_770_042_600_000_000_000_i64, 4.5_f64),
+        (1_770_129_000_000_000_000_i64, 4.4_f64),
+        (1_770_215_400_000_000_000_i64, 4.1_f64),
+        (1_770_301_800_000_000_000_i64, 3.9_f64),
+        (1_770_388_200_000_000_000_i64, 3.8_f64),
+        (1_770_474_600_000_000_000_i64, 3.7_f64),
+        (1_770_561_000_000_000_000_i64, 3.5_f64),
+    ]
+    .into_iter()
+    .map(
+        |(observation_timestamp_utc_nanos, observed_log_price)| MeanReversionStageObservation {
+            observation_timestamp_utc_nanos,
+            observed_log_price,
+        },
+    )
+    .collect()
+}
+
 fn direct_stage_input(
     observations: Vec<MeanReversionStageObservation>,
 ) -> MeanReversionStageExecutionInput {
@@ -174,6 +194,68 @@ fn mean_reversion_stage_falls_back_to_zero_kappa_endogenous_fit_when_runtime_pro
     assert_eq!(payload.diagnostics.phi_reference, 1.0);
     assert_eq!(payload.diagnostics.deviation_sample_count, 0);
     assert_eq!(payload.diagnostics.regression_pair_count, 0);
+    assert_eq!(
+        payload.diagnostics.stage_decision_reason,
+        "endogenous_anchor_runtime_projection_required.v1"
+    );
+}
+
+#[test]
+fn mean_reversion_stage_accepts_sparse_coverage_when_identifiable_structure_is_present() {
+    let run_contract = build_run_contract_with_mode_and_resume(
+        "run-mean-reversion-derived-sufficiency-accepts-sparse-coverage",
+        CalibrationExecutionMode::Memory,
+        None,
+    );
+
+    let calendar_registry = calibration_stage_test_registry();
+    let mut execution_input = direct_stage_input(synthetic_weekly_anchor_observations());
+
+    execution_input.source_observation_count = 3;
+    execution_input.coverage_ratio = 3.0 / 7.0;
+
+    let report = run_mean_reversion_calibration_stage(
+        &run_contract.run_spec,
+        &calendar_registry,
+        execution_input,
+    );
+
+    let payload = report
+        .fitted_stage_payload
+        .expect("derived sparse sufficiency should still emit a fitted payload");
+
+    assert_ne!(payload.fitted_parameters.kappa, 0.0);
+    assert_ne!(
+        payload.diagnostics.stage_decision_reason,
+        "endogenous_anchor_runtime_projection_required.v1"
+    );
+}
+
+#[test]
+fn mean_reversion_stage_falls_back_when_direct_coverage_cannot_identify_the_full_regression() {
+    let run_contract = build_run_contract_with_mode_and_resume(
+        "run-mean-reversion-derived-sufficiency-rejects-unidentified-coverage",
+        CalibrationExecutionMode::Memory,
+        None,
+    );
+
+    let calendar_registry = calibration_stage_test_registry();
+    let mut execution_input = direct_stage_input(synthetic_weekly_anchor_observations());
+
+    execution_input.source_observation_count = 2;
+    execution_input.coverage_ratio = 2.0 / 7.0;
+
+    let report = run_mean_reversion_calibration_stage(
+        &run_contract.run_spec,
+        &calendar_registry,
+        execution_input,
+    );
+
+    let payload = report
+        .fitted_stage_payload
+        .expect("insufficient direct coverage should still emit a fallback payload");
+
+    assert_eq!(payload.fitted_parameters.kappa, 0.0);
     assert_eq!(
         payload.diagnostics.stage_decision_reason,
         "endogenous_anchor_runtime_projection_required.v1"

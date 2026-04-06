@@ -6,6 +6,8 @@ use janiform_foundations::randomness::{
 };
 use janiform_foundations::splitmix64_output_mixer;
 
+pub(crate) use janiform_foundations::numeric::coverage_ratio;
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct BlockBootstrapConfiguration {
     pub confidence_level: f64,
@@ -83,14 +85,6 @@ where
         compute_sorted_quantile(&bootstrap_replication_values, upper_tail_probability);
 
     (lower_bound, upper_bound)
-}
-
-pub(crate) fn coverage_ratio(covered_interval_count: usize, horizon_interval_count: usize) -> f64 {
-    if horizon_interval_count == 0 {
-        return 0.0;
-    }
-
-    covered_interval_count as f64 / horizon_interval_count as f64
 }
 
 pub(crate) fn derive_metric_bootstrap_seed(
@@ -202,7 +196,9 @@ where
             if resampled_series.len() >= sample_count {
                 break;
             }
+
             let source_position = (block_start_position + block_offset) % sample_count;
+
             resampled_series.push(source_series[source_position]);
         }
     }
