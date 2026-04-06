@@ -14,11 +14,11 @@ from .contracts import (
 )
 from .ingestion import LoadedMarketDataSourceSummary
 from .request import MarketDataCalibrationRequest
-from .._errors import (
+from ..errors import (
     CALIBRATION_INTEGRATION_NATIVE_MODULE_ERROR_ID,
     CALIBRATION_INTEGRATION_RESPONSE_ERROR_ID,
-    _calibration_error,
-    _calibration_integration_error,
+    calibration_error,
+    calibration_integration_error,
 )
 from ..sessions.contracts import (
     MarketDataSessionRecurringClosedWindow,
@@ -176,7 +176,7 @@ def translate_market_data_request_to_prepared_calibration_from_phases(
         ) from e
 
     if not isinstance(raw_payload, dict):
-        raise _calibration_integration_error(
+        raise calibration_integration_error(
             "market-data preparation returned an invalid response payload",
             entrypoint=CALIBRATION_MARKET_DATA_TRANSLATION_ENTRYPOINT,
             error_id=CALIBRATION_INTEGRATION_RESPONSE_ERROR_ID,
@@ -211,7 +211,7 @@ def probe_market_data_source(
         ) from e
 
     if not isinstance(raw_payload, dict):
-        raise _calibration_integration_error(
+        raise calibration_integration_error(
             "market-data source probe returned an invalid response payload",
             entrypoint=CALIBRATION_MARKET_DATA_TRANSLATION_ENTRYPOINT,
             error_id=CALIBRATION_INTEGRATION_RESPONSE_ERROR_ID,
@@ -252,7 +252,7 @@ def normalize_market_data_source(
         ) from e
 
     if not isinstance(raw_payload, dict):
-        raise _calibration_integration_error(
+        raise calibration_integration_error(
             "market-data normalization returned an invalid response payload",
             entrypoint=CALIBRATION_MARKET_DATA_TRANSLATION_ENTRYPOINT,
             error_id=CALIBRATION_INTEGRATION_RESPONSE_ERROR_ID,
@@ -293,7 +293,7 @@ def resolve_market_data_session(
         ) from e
 
     if not isinstance(raw_payload, dict):
-        raise _calibration_integration_error(
+        raise calibration_integration_error(
             "market-data session resolution returned an invalid response payload",
             entrypoint=CALIBRATION_MARKET_DATA_TRANSLATION_ENTRYPOINT,
             error_id=CALIBRATION_INTEGRATION_RESPONSE_ERROR_ID,
@@ -507,7 +507,7 @@ def _native_market_data_module() -> ModuleType:
     try:
         return native_module()
     except ModuleNotFoundError as e:
-        raise _calibration_integration_error(
+        raise calibration_integration_error(
             "market-data loading module is unavailable",
             entrypoint=CALIBRATION_MARKET_DATA_TRANSLATION_ENTRYPOINT,
             error_id=CALIBRATION_INTEGRATION_NATIVE_MODULE_ERROR_ID,
@@ -521,7 +521,7 @@ def _translation_error(
     *,
     context: Optional[dict[str, Optional[str | int | float | bool]]] = None,
 ) -> Exception:
-    return _calibration_error(
+    return calibration_error(
         field_path,
         message,
         entrypoint=CALIBRATION_MARKET_DATA_TRANSLATION_ENTRYPOINT,

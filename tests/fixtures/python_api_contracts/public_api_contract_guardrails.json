@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale.v1",
-  "approved_snapshot_sha256": "f05de78f872e6f7f9e89447283d0354bf3e3ad22cde994bffde6e139b083bfa7",
+  "approved_snapshot_sha256": "d93cacfdcebdfa0aa71a1c7d345ac6b5e70b88b712a03819e157e12ea449e719",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -980,6 +980,22 @@
         "janiform.pricing",
         "janiform.pricing.contracts",
         "janiform.pricing.surface"
+      ]
+    },
+    {
+      "approved_on": "2026-04-06",
+      "docs_updated": [],
+      "rationale": "The public Python surface now reflects the CLI ownership refactor, the staged runtime exposes the prepared-handle helpers that high-level workflows and tools patch directly, and shared contract helpers are recorded from their defining modules instead of legacy wrapper paths. The approved snapshot must therefore align the guardrails with the thin janiform.cli module, the live staged-runtime helper exports, and the current package-owned contract layout.",
+      "snapshot_sha256": "d93cacfdcebdfa0aa71a1c7d345ac6b5e70b88b712a03819e157e12ea449e719",
+      "summary": "Approve the thin CLI module surface and live staged-runtime helper exports.",
+      "updated_surfaces": [
+        "janiform.calibration",
+        "janiform.calibration.fit.state_estimation",
+        "janiform.calibration.sessions",
+        "janiform.calibration.sessions.contracts",
+        "janiform.calibration.staged.runtime",
+        "janiform.cli",
+        "janiform.contracts"
       ]
     }
   ],

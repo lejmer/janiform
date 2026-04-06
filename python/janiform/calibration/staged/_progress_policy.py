@@ -58,7 +58,7 @@ def calibration_total_progress_fraction(
                 1.0 - _CALIBRATION_TOTAL_PROGRESS_COMPLETION_RESERVE_V1
             ) * stage_execution_fraction
 
-        current_stage_fraction = calibration_current_stage_progress_fraction(snapshot)
+        current_stage_fraction = _calibration_current_stage_progress_fraction(snapshot)
 
         stage_execution_fraction = min(
             max(completed_weight + current_stage_fraction * stage_weights[stage_index - 1], 0.0),
@@ -81,7 +81,7 @@ def calibration_total_progress_fraction(
 
     completed_stage_count = max(stage_index - 1, 0)
 
-    current_stage_fraction = calibration_current_stage_progress_fraction(snapshot)
+    current_stage_fraction = _calibration_current_stage_progress_fraction(snapshot)
 
     return (1.0 - _CALIBRATION_TOTAL_PROGRESS_COMPLETION_RESERVE_V1) * min(
         max((completed_stage_count + current_stage_fraction) / stage_count, 0.0),
@@ -89,7 +89,7 @@ def calibration_total_progress_fraction(
     )
 
 
-def calibration_current_stage_progress_fraction(
+def _calibration_current_stage_progress_fraction(
     snapshot: CalibrationLiveProgressSnapshot,
 ) -> float:
     joint_refinement_phase_progress_fraction = _joint_refinement_phase_progress_fraction(
@@ -98,7 +98,7 @@ def calibration_current_stage_progress_fraction(
     if joint_refinement_phase_progress_fraction is not None:
         return joint_refinement_phase_progress_fraction
 
-    subtask_progress_fraction = progress_bar_fraction(
+    subtask_progress_fraction = _progress_bar_fraction(
         snapshot.subtask_completed_units,
         snapshot.subtask_total_units,
         is_complete=snapshot.current_stage_is_complete,
@@ -133,7 +133,7 @@ def progress_bar_display_units(
     return display_completed_units, total_units
 
 
-def progress_bar_fraction(
+def _progress_bar_fraction(
     completed_units: Optional[int],
     total_units: Optional[int],
     *,
@@ -178,7 +178,7 @@ def _joint_refinement_phase_progress_fraction(
     phase_names = tuple(phase_weights.keys())
     phase_index = phase_names.index(progress_phase)
 
-    current_phase_fraction = progress_bar_fraction(
+    current_phase_fraction = _progress_bar_fraction(
         snapshot.subtask_completed_units,
         snapshot.subtask_total_units,
     )

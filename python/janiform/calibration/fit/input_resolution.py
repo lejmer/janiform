@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Optional, Any
 
-from .._errors import _calibration_error
+from ..errors import calibration_error
 from ..market_data.contracts import (
     CalibrationDuplicateRecordPolicy,
     CalibrationInputFileFormat,
@@ -98,7 +98,7 @@ class HighLevelTickDataColumnOverrides:
             ("ask_column", self.ask_column),
         ):
             if field_value is not None and not field_value.strip():
-                raise _calibration_error(field_name, "must be non-empty when provided")
+                raise calibration_error(field_name, "must be non-empty when provided")
 
 
 @dataclass(frozen=True, slots=True)
@@ -111,7 +111,7 @@ class HighLevelNormalizationPolicyOverrides:
 
     def __post_init__(self) -> None:
         if self.timestamp_timezone is not None and not self.timestamp_timezone.strip():
-            raise _calibration_error("timestamp_timezone", "must be non-empty when provided")
+            raise calibration_error("timestamp_timezone", "must be non-empty when provided")
 
 
 @dataclass(frozen=True, slots=True)
@@ -142,7 +142,7 @@ def infer_high_level_fit_inputs(
     market_profile_configuration: Optional[MarketProfileExplicitConfiguration],
 ) -> HighLevelFitInference:
     if not tick_data_provenance_label.strip():
-        raise _calibration_error(
+        raise calibration_error(
             "tick_data_provenance_label",
             "must be a non-empty string",
         )
@@ -358,7 +358,7 @@ def _infer_tick_data_format_from_path(tick_data_path: Path) -> CalibrationInputF
     if suffix in _SUPPORTED_TICK_DATA_EXTENSIONS:
         return _SUPPORTED_TICK_DATA_EXTENSIONS[suffix]
 
-    raise _calibration_error(
+    raise calibration_error(
         "tick_data_format",
         (
             f"could not infer tick-data format from `{tick_data_path.name}`. "
@@ -374,7 +374,7 @@ def _resolve_run_id(
 ) -> str:
     if run_id is not None:
         if not run_id.strip():
-            raise _calibration_error("run_id", "must be a non-empty string")
+            raise calibration_error("run_id", "must be a non-empty string")
 
         return run_id
 
@@ -426,7 +426,7 @@ def _resolve_tick_price_input_policy(
         )
     )
 
-    raise _calibration_error(
+    raise calibration_error(
         "normalization_policy.tick_price_input_policy",
         (
             "could not infer a tick-price input policy. "
@@ -510,7 +510,7 @@ def _resolve_required_price_column(
     if selected_column is not None:
         return selected_column
 
-    raise _calibration_error(
+    raise calibration_error(
         field_path,
         (
             "could not infer a required price column. "
@@ -579,7 +579,7 @@ def _select_required_candidate(
     if selected_candidate is not None:
         return selected_candidate
 
-    raise _calibration_error(field_path, failure_message)
+    raise calibration_error(field_path, failure_message)
 
 
 def _normalize_identifier(identifier: str) -> str:

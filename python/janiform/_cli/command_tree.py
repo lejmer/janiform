@@ -7,18 +7,18 @@ from typing import Optional, cast
 import click
 
 from .command_runtime import JaniformGroup
-from .commands._development import build_development_group
-from .commands.hourly_factors import _build_hourly_factors_group
-from .commands._model_workflows import build_fit_group, build_simulate_group
-from .commands.presets import _build_presets_group
-from .commands._pricing import build_price_command
-from .commands.seasonality import _build_seasonality_group
-from .commands.stylized_facts import _build_stylized_facts_group
-from ._constants import CliExitCode
+from .commands.development import build_development_group
+from .commands.hourly_factors import build_hourly_factors_group
+from .commands.model_workflows import build_fit_group, build_simulate_group
+from .commands.presets import build_presets_group
+from .commands.pricing import build_price_command
+from .commands.seasonality import build_seasonality_group
+from .commands.stylized_facts import build_stylized_facts_group
+from .constants import CliExitCode
 from .. import __version__
 
 
-def _build_app(*, environment: Optional[Mapping[str, str]] = None) -> click.Command:
+def build_app(*, environment: Optional[Mapping[str, str]] = None) -> click.Command:
     @click.group(
         cls=JaniformGroup,
         command_path=(),
@@ -47,10 +47,10 @@ def _build_app(*, environment: Optional[Mapping[str, str]] = None) -> click.Comm
         build_fit_group,
         build_simulate_group,
         build_price_command,
-        _build_presets_group,
-        _build_seasonality_group,
-        _build_hourly_factors_group,
-        _build_stylized_facts_group,
+        build_presets_group,
+        build_seasonality_group,
+        build_hourly_factors_group,
+        build_stylized_facts_group,
         build_development_group,
     ):
         root.add_command(group_builder(environment=environment))
@@ -58,7 +58,7 @@ def _build_app(*, environment: Optional[Mapping[str, str]] = None) -> click.Comm
     return root
 
 
-def _invoke_application(
+def invoke_application(
     arguments: Optional[list[str]] = None,
     *,
     environment: Optional[Mapping[str, str]] = None,
@@ -66,7 +66,7 @@ def _invoke_application(
     effective_arguments = _rewrite_beginner_fit_arguments(
         list(sys.argv[1:] if arguments is None else arguments)
     )
-    result = _invoke_click_command(_build_app(environment=environment), effective_arguments)
+    result = _invoke_click_command(build_app(environment=environment), effective_arguments)
 
     return int(CliExitCode.SUCCESS if result is None else result)
 

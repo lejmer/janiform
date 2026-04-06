@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, Optional
 
-from .._errors import CALIBRATION_ERROR_FACTORY, _calibration_error
+from ..errors import calibration_error, calibration_error
 from ...contracts import (
     ContractModel,
     require_mapping,
@@ -65,13 +65,13 @@ class CalibrationRunDataInputs(ContractModel):
 
     def __post_init__(self) -> None:
         if not self.exchange_code.strip():
-            raise _calibration_error("exchange_code", "must be a non-empty string")
+            raise calibration_error("exchange_code", "must be a non-empty string")
 
         if not self.trade_events_data_reference.strip():
-            raise _calibration_error("trade_events_data_reference", "must be a non-empty string")
+            raise calibration_error("trade_events_data_reference", "must be a non-empty string")
 
         if self.option_surface_data_reference is not None and not self.option_surface_data_reference.strip():
-            raise _calibration_error(
+            raise calibration_error(
                 "option_surface_data_reference",
                 "must be non-empty when provided",
             )
@@ -79,11 +79,11 @@ class CalibrationRunDataInputs(ContractModel):
     @staticmethod
     def from_mapping(raw_payload: dict[str, Any] | Any, *, field_path: str) -> CalibrationRunDataInputs:
         if not isinstance(raw_payload, dict):
-            raise _calibration_error(field_path, "must be an object")
+            raise calibration_error(field_path, "must be an object")
 
         option_surface_data_reference = raw_payload.get("option_surface_data_reference")
         if option_surface_data_reference is not None and not isinstance(option_surface_data_reference, str):
-            raise _calibration_error(
+            raise calibration_error(
                 f"{field_path}.option_surface_data_reference",
                 "must be a string when provided",
             )
@@ -93,13 +93,13 @@ class CalibrationRunDataInputs(ContractModel):
                 raw_payload,
                 "exchange_code",
                 f"{field_path}.exchange_code",
-                CALIBRATION_ERROR_FACTORY,
+                calibration_error,
             ),
             trade_events_data_reference=require_non_empty_string(
                 raw_payload,
                 "trade_events_data_reference",
                 f"{field_path}.trade_events_data_reference",
-                CALIBRATION_ERROR_FACTORY,
+                calibration_error,
             ),
             option_surface_data_reference=option_surface_data_reference,
         )
@@ -113,13 +113,13 @@ class CalibrationStageSeedOverride(ContractModel):
     @staticmethod
     def from_mapping(raw_payload: dict[str, Any] | Any, *, field_path: str) -> CalibrationStageSeedOverride:
         if not isinstance(raw_payload, dict):
-            raise _calibration_error(field_path, "must be an object")
+            raise calibration_error(field_path, "must be an object")
 
-        raw_stage = require_string(raw_payload, "stage", f"{field_path}.stage", CALIBRATION_ERROR_FACTORY)
+        raw_stage = require_string(raw_payload, "stage", f"{field_path}.stage", calibration_error)
         try:
             stage = CalibrationStage(raw_stage)
         except ValueError as e:
-            raise _calibration_error(
+            raise calibration_error(
                 f"{field_path}.stage",
                 "must be one of: seasonality, hawkes, return_components, mean_reversion, joint_refinement",
             ) from e
@@ -130,7 +130,7 @@ class CalibrationStageSeedOverride(ContractModel):
                 raw_payload,
                 "seed",
                 f"{field_path}.seed",
-                CALIBRATION_ERROR_FACTORY,
+                calibration_error,
             ),
         )
 
@@ -142,12 +142,12 @@ class CalibrationRunSeedSettings(ContractModel):
 
     def __post_init__(self) -> None:
         if self.global_seed < 0:
-            raise _calibration_error("global_seed", "must be non-negative")
+            raise calibration_error("global_seed", "must be non-negative")
 
         seen_stages: set[CalibrationStage] = set()
         for stage_seed_override in self.stage_seed_overrides:
             if stage_seed_override.stage in seen_stages:
-                raise _calibration_error(
+                raise calibration_error(
                     "stage_seed_overrides",
                     f"contains duplicate stage '{stage_seed_override.stage.value}'",
                 )
@@ -156,18 +156,18 @@ class CalibrationRunSeedSettings(ContractModel):
     @staticmethod
     def from_mapping(raw_payload: dict[str, Any] | Any, *, field_path: str) -> CalibrationRunSeedSettings:
         if not isinstance(raw_payload, dict):
-            raise _calibration_error(field_path, "must be an object")
+            raise calibration_error(field_path, "must be an object")
 
         raw_overrides = raw_payload.get("stage_seed_overrides", [])
         if isinstance(raw_overrides, str) or not isinstance(raw_overrides, list):
-            raise _calibration_error(f"{field_path}.stage_seed_overrides", "must be a sequence")
+            raise calibration_error(f"{field_path}.stage_seed_overrides", "must be a sequence")
 
         return CalibrationRunSeedSettings(
             global_seed=require_non_negative_integer(
                 raw_payload,
                 "global_seed",
                 f"{field_path}.global_seed",
-                CALIBRATION_ERROR_FACTORY,
+                calibration_error,
             ),
             stage_seed_overrides=tuple(
                 CalibrationStageSeedOverride.from_mapping(
@@ -190,59 +190,59 @@ class CalibrationOptimizerSettings(ContractModel):
 
     def __post_init__(self) -> None:
         if not self.solver_name.strip():
-            raise _calibration_error("solver_name", "must be a non-empty string")
+            raise calibration_error("solver_name", "must be a non-empty string")
         if self.max_iterations <= 0:
-            raise _calibration_error("max_iterations", "must be strictly positive")
+            raise calibration_error("max_iterations", "must be strictly positive")
         if self.cpu_count <= 0:
-            raise _calibration_error("cpu_count", "must be strictly positive")
+            raise calibration_error("cpu_count", "must be strictly positive")
         if self.absolute_tolerance <= 0.0:
-            raise _calibration_error("absolute_tolerance", "must be strictly positive")
+            raise calibration_error("absolute_tolerance", "must be strictly positive")
         if self.relative_tolerance <= 0.0:
-            raise _calibration_error("relative_tolerance", "must be strictly positive")
+            raise calibration_error("relative_tolerance", "must be strictly positive")
         if self.constraint_penalty_weight < 0.0:
-            raise _calibration_error("constraint_penalty_weight", "must be non-negative")
+            raise calibration_error("constraint_penalty_weight", "must be non-negative")
 
     @staticmethod
     def from_mapping(raw_payload: dict[str, Any] | Any, *, field_path: str) -> CalibrationOptimizerSettings:
         if not isinstance(raw_payload, dict):
-            raise _calibration_error(field_path, "must be an object")
+            raise calibration_error(field_path, "must be an object")
 
         return CalibrationOptimizerSettings(
             solver_name=require_non_empty_string(
                 raw_payload,
                 "solver_name",
                 f"{field_path}.solver_name",
-                CALIBRATION_ERROR_FACTORY,
+                calibration_error,
             ),
             max_iterations=require_positive_integer(
                 raw_payload,
                 "max_iterations",
                 f"{field_path}.max_iterations",
-                CALIBRATION_ERROR_FACTORY,
+                calibration_error,
             ),
             cpu_count=require_positive_integer(
                 raw_payload,
                 "cpu_count",
                 f"{field_path}.cpu_count",
-                CALIBRATION_ERROR_FACTORY,
+                calibration_error,
             ),
             absolute_tolerance=require_positive_finite_number(
                 raw_payload,
                 "absolute_tolerance",
                 f"{field_path}.absolute_tolerance",
-                CALIBRATION_ERROR_FACTORY,
+                calibration_error,
             ),
             relative_tolerance=require_positive_finite_number(
                 raw_payload,
                 "relative_tolerance",
                 f"{field_path}.relative_tolerance",
-                CALIBRATION_ERROR_FACTORY,
+                calibration_error,
             ),
             constraint_penalty_weight=require_non_negative_finite_number(
                 raw_payload,
                 "constraint_penalty_weight",
                 f"{field_path}.constraint_penalty_weight",
-                CALIBRATION_ERROR_FACTORY,
+                calibration_error,
             ),
         )
 
@@ -255,13 +255,13 @@ class CalibrationStageSolverSettings(ContractModel):
     @staticmethod
     def from_mapping(raw_payload: dict[str, Any] | Any, *, field_path: str) -> CalibrationStageSolverSettings:
         if not isinstance(raw_payload, dict):
-            raise _calibration_error(field_path, "must be an object")
+            raise calibration_error(field_path, "must be an object")
 
-        raw_stage = require_string(raw_payload, "stage", f"{field_path}.stage", CALIBRATION_ERROR_FACTORY)
+        raw_stage = require_string(raw_payload, "stage", f"{field_path}.stage", calibration_error)
         try:
             stage = CalibrationStage(raw_stage)
         except ValueError as e:
-            raise _calibration_error(
+            raise calibration_error(
                 f"{field_path}.stage",
                 "must be one of: seasonality, hawkes, return_components, mean_reversion, joint_refinement",
             ) from e
@@ -273,7 +273,7 @@ class CalibrationStageSolverSettings(ContractModel):
                     raw_payload,
                     "optimizer_settings",
                     f"{field_path}.optimizer_settings",
-                    CALIBRATION_ERROR_FACTORY,
+                    calibration_error,
                 ),
                 field_path=f"{field_path}.optimizer_settings",
             ),
@@ -289,29 +289,29 @@ class CalibrationStageHandoff(ContractModel):
 
     def __post_init__(self) -> None:
         if self.from_stage == self.to_stage:
-            raise _calibration_error("stage_handoff", "must not target the same stage")
+            raise calibration_error("stage_handoff", "must not target the same stage")
         if self.transport == CalibrationHandoffTransport.PERSISTED_ARTIFACT_REFERENCE:
             if self.artifact_reference is None or not self.artifact_reference.strip():
-                raise _calibration_error("artifact_reference", "must be non-empty for persisted handoffs")
+                raise calibration_error("artifact_reference", "must be non-empty for persisted handoffs")
 
     @staticmethod
     def from_mapping(raw_payload: dict[str, Any] | Any, *, field_path: str) -> CalibrationStageHandoff:
         if not isinstance(raw_payload, dict):
-            raise _calibration_error(field_path, "must be an object")
+            raise calibration_error(field_path, "must be an object")
 
         from_stage = CalibrationStage(
-            require_string(raw_payload, "from_stage", f"{field_path}.from_stage", CALIBRATION_ERROR_FACTORY)
+            require_string(raw_payload, "from_stage", f"{field_path}.from_stage", calibration_error)
         )
         to_stage = CalibrationStage(
-            require_string(raw_payload, "to_stage", f"{field_path}.to_stage", CALIBRATION_ERROR_FACTORY)
+            require_string(raw_payload, "to_stage", f"{field_path}.to_stage", calibration_error)
         )
         transport = CalibrationHandoffTransport(
-            require_string(raw_payload, "transport", f"{field_path}.transport", CALIBRATION_ERROR_FACTORY)
+            require_string(raw_payload, "transport", f"{field_path}.transport", calibration_error)
         )
 
         artifact_reference = raw_payload.get("artifact_reference")
         if artifact_reference is not None and not isinstance(artifact_reference, str):
-            raise _calibration_error(f"{field_path}.artifact_reference", "must be a string when provided")
+            raise calibration_error(f"{field_path}.artifact_reference", "must be a string when provided")
 
         return CalibrationStageHandoff(
             from_stage=from_stage,
@@ -330,7 +330,7 @@ class CalibrationResumeSettings(ContractModel):
     def __post_init__(self) -> None:
         if self.source == CalibrationResumeSource.PERSISTED_CHECKPOINT_REFERENCE:
             if self.checkpoint_reference is None or not self.checkpoint_reference.strip():
-                raise _calibration_error(
+                raise calibration_error(
                     "checkpoint_reference",
                     "must be non-empty when source=persisted_checkpoint_reference",
                 )
@@ -338,15 +338,15 @@ class CalibrationResumeSettings(ContractModel):
     @staticmethod
     def from_mapping(raw_payload: dict[str, Any] | Any, *, field_path: str) -> CalibrationResumeSettings:
         if not isinstance(raw_payload, dict):
-            raise _calibration_error(field_path, "must be an object")
+            raise calibration_error(field_path, "must be an object")
 
         source = CalibrationResumeSource(
-            require_string(raw_payload, "source", f"{field_path}.source", CALIBRATION_ERROR_FACTORY)
+            require_string(raw_payload, "source", f"{field_path}.source", calibration_error)
         )
 
         raw_resume_from_stage = raw_payload.get("resume_from_stage")
         if raw_resume_from_stage is not None and not isinstance(raw_resume_from_stage, str):
-            raise _calibration_error(f"{field_path}.resume_from_stage", "must be a string when provided")
+            raise calibration_error(f"{field_path}.resume_from_stage", "must be a string when provided")
 
         resume_from_stage = (
             CalibrationStage(raw_resume_from_stage)
@@ -356,7 +356,7 @@ class CalibrationResumeSettings(ContractModel):
 
         raw_checkpoint_reference = raw_payload.get("checkpoint_reference")
         if raw_checkpoint_reference is not None and not isinstance(raw_checkpoint_reference, str):
-            raise _calibration_error(f"{field_path}.checkpoint_reference", "must be a string when provided")
+            raise calibration_error(f"{field_path}.checkpoint_reference", "must be a string when provided")
 
         return CalibrationResumeSettings(
             source=source,
@@ -376,12 +376,12 @@ def _parse_calibration_execution_mode(
     field_path: str,
 ) -> CalibrationExecutionMode:
     if not isinstance(raw_value, str):
-        raise _calibration_error(field_path, "must be a string")
+        raise calibration_error(field_path, "must be a string")
 
     try:
         return CalibrationExecutionMode(raw_value)
     except ValueError as e:
-        raise _calibration_error(
+        raise calibration_error(
             field_path,
             f"must be one of: memory, disk, received '{raw_value}'",
         ) from e

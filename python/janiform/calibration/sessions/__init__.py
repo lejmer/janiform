@@ -5,6 +5,7 @@ from .contracts import (
     MarketDataSessionRecurringClosedWindow,
     MarketDataSessionRegularWindow,
     MarketDataSessionResolution,
+    session_resolution_error,
 )
 
 __all__ = [
@@ -14,4 +15,5 @@ __all__ = [
     "MarketDataSessionRecurringClosedWindow",
     "MarketDataSessionRegularWindow",
     "MarketDataSessionResolution",
+    "session_resolution_error",
 ]

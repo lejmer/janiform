@@ -18,7 +18,7 @@ from .translation import (
     MarketDataTranslationResult,
     translate_market_data_request_to_prepared_calibration,
 )
-from .._errors import _calibration_error
+from ..errors import calibration_error
 from ..sessions.contracts import MarketDataSessionResolution
 from ..staged.contracts import CalibrationStage
 from ..staged.inputs import (
@@ -28,7 +28,7 @@ from ..staged.inputs import (
 )
 from ..staged.request import StagedCalibrationRequest
 from ..staged.results import StagedCalibrationResponse
-from ..staged.runtime import _run_prepared_staged_calibration_with_raw_payload
+from ..staged.runtime import run_prepared_staged_calibration_with_raw_payload
 from ..._native_types import PreparedCalibrationExecutionHandleProtocol
 from ...calendar import CalendarRegistry
 from ...contracts import ContractModel, serialize_pretty_json
@@ -105,17 +105,17 @@ class PreparedMarketDataCalibration(ContractModel):
 
     def __post_init__(self) -> None:
         if self.schema_version != CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION:
-            raise _calibration_error(
+            raise calibration_error(
                 "schema_version",
                 f"must be `{CALIBRATION_MARKET_DATA_PREPARATION_SCHEMA_VERSION}`",
             )
         if self._prepared_handle is None:
-            raise _calibration_error("_prepared_handle", "must be provided")
+            raise calibration_error("_prepared_handle", "must be provided")
 
     @property
     def prepared_handle(self) -> PreparedCalibrationExecutionHandleProtocol:
         if self._prepared_handle is None:
-            raise _calibration_error("_prepared_handle", "must be provided")
+            raise calibration_error("_prepared_handle", "must be provided")
 
         return self._prepared_handle
 
@@ -253,7 +253,7 @@ def _build_market_data_session_resolution(
     session_resolution: MarketDataSessionResolution,
 ) -> MarketDataSessionResolution:
     if not isinstance(session_resolution, MarketDataSessionResolution):
-        raise _calibration_error("session_resolution", "must be a MarketDataSessionResolution")
+        raise calibration_error("session_resolution", "must be a MarketDataSessionResolution")
 
     return session_resolution
 
@@ -262,7 +262,7 @@ def prepare_market_data_calibration(
     request: MarketDataCalibrationRequest,
 ) -> PreparedMarketDataCalibration:
     if not isinstance(request, MarketDataCalibrationRequest):
-        raise _calibration_error("request", "must be a MarketDataCalibrationRequest")
+        raise calibration_error("request", "must be a MarketDataCalibrationRequest")
 
     normalized_request = validate_market_data_calibration_request(request.to_payload())
     translation_result = translate_market_data_request_to_prepared_calibration(normalized_request)
@@ -305,10 +305,10 @@ def _prepare_market_data_calibration_from_translation_result(
 
 def run_market_data_calibration(request: MarketDataCalibrationRequest) -> StagedCalibrationResponse:
     if not isinstance(request, MarketDataCalibrationRequest):
-        raise _calibration_error("request", "must be a MarketDataCalibrationRequest")
+        raise calibration_error("request", "must be a MarketDataCalibrationRequest")
 
     prepared = prepare_market_data_calibration(request)
-    response, _ = _run_prepared_staged_calibration_with_raw_payload(
+    response, _ = run_prepared_staged_calibration_with_raw_payload(
         prepared.prepared_handle,
         calendar_registry=CalendarRegistry(
             prepared.session_resolution.resolved_session_definition_json

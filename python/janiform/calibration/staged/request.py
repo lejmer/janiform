@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Optional
 
-from .._errors import CALIBRATION_ERROR_FACTORY, _calibration_error
+from ..errors import calibration_error, calibration_error
 from .contracts import (
     DEFAULT_PYTHON_IMPORTABLE_API_EXECUTION_MODE,
     CalibrationExecutionMode,
@@ -42,41 +42,41 @@ class StagedCalibrationRequest(ContractModel):
 
     def __post_init__(self) -> None:
         if not self.run_id.strip():
-            raise _calibration_error("run_id", "must be a non-empty string")
+            raise calibration_error("run_id", "must be a non-empty string")
 
         if len(self.selected_stages) == 0:
-            raise _calibration_error("selected_stages", "must include at least one calibration stage")
+            raise calibration_error("selected_stages", "must include at least one calibration stage")
 
         if self.seed_settings is None:
-            raise _calibration_error("seed_settings", "is required")
+            raise calibration_error("seed_settings", "is required")
 
         selected_stage_set = set(self.selected_stages)
         if len(selected_stage_set) != len(self.selected_stages):
-            raise _calibration_error("selected_stages", "must not contain duplicates")
+            raise calibration_error("selected_stages", "must not contain duplicates")
 
         configured_stage_set = {entry.stage for entry in self.optimizer_settings_by_stage}
         if configured_stage_set != selected_stage_set:
-            raise _calibration_error(
+            raise calibration_error(
                 "optimizer_settings_by_stage",
                 "must include exactly one solver-settings entry for each selected stage",
             )
 
         for stage_seed_override in self.seed_settings.stage_seed_overrides:
             if stage_seed_override.stage not in selected_stage_set:
-                raise _calibration_error(
+                raise calibration_error(
                     "seed_settings.stage_seed_overrides",
                     f"contains stage '{stage_seed_override.stage.value}' that is not selected",
                 )
 
         for stage_handoff in self.stage_handoffs:
             if stage_handoff.from_stage not in selected_stage_set:
-                raise _calibration_error(
+                raise calibration_error(
                     "stage_handoffs.from_stage",
                     f"'{stage_handoff.from_stage.value}' must be selected",
                 )
 
             if stage_handoff.to_stage not in selected_stage_set:
-                raise _calibration_error(
+                raise calibration_error(
                     "stage_handoffs.to_stage",
                     f"'{stage_handoff.to_stage.value}' must be selected",
                 )
@@ -85,7 +85,7 @@ class StagedCalibrationRequest(ContractModel):
                 self.execution_mode == CalibrationExecutionMode.MEMORY
                 and stage_handoff.transport == CalibrationHandoffTransport.PERSISTED_ARTIFACT_REFERENCE
             ):
-                raise _calibration_error(
+                raise calibration_error(
                     "stage_handoffs.transport",
                     "persisted_artifact_reference requires execution_mode=disk",
                 )
@@ -95,7 +95,7 @@ class StagedCalibrationRequest(ContractModel):
                 self.execution_mode == CalibrationExecutionMode.MEMORY
                 and self.resume_settings.source != CalibrationResumeSource.SAME_PROCESS
             ):
-                raise _calibration_error(
+                raise calibration_error(
                     "resume_settings.source",
                     "persisted_checkpoint_reference is only supported when execution_mode=disk",
                 )
@@ -104,7 +104,7 @@ class StagedCalibrationRequest(ContractModel):
                 self.execution_mode == CalibrationExecutionMode.DISK
                 and self.resume_settings.source == CalibrationResumeSource.SAME_PROCESS
             ):
-                raise _calibration_error(
+                raise calibration_error(
                     "resume_settings.source",
                     "same_process is only supported when execution_mode=memory",
                 )
@@ -121,7 +121,7 @@ class StagedCalibrationRequest(ContractModel):
                 if field_path_prefix is not None
                 else "staged_calibration_request"
             )
-            raise _calibration_error(field_path, "must be an object")
+            raise calibration_error(field_path, "must be an object")
 
         def prefixed(field_name: str) -> str:
             if field_path_prefix is None:
@@ -138,32 +138,32 @@ class StagedCalibrationRequest(ContractModel):
             raw_payload,
             "selected_stages",
             prefixed("selected_stages"),
-            CALIBRATION_ERROR_FACTORY,
+            calibration_error,
         )
         raw_solver_settings = require_sequence(
             raw_payload,
             "optimizer_settings_by_stage",
             prefixed("optimizer_settings_by_stage"),
-            CALIBRATION_ERROR_FACTORY,
+            calibration_error,
         )
 
         raw_stage_handoffs = raw_payload.get("stage_handoffs", [])
         if isinstance(raw_stage_handoffs, str) or not isinstance(raw_stage_handoffs, list):
-            raise _calibration_error(prefixed("stage_handoffs"), "must be a sequence")
+            raise calibration_error(prefixed("stage_handoffs"), "must be a sequence")
 
         return StagedCalibrationRequest(
             run_id=require_non_empty_string(
                 raw_payload,
                 "run_id",
                 prefixed("run_id"),
-                CALIBRATION_ERROR_FACTORY,
+                calibration_error,
             ),
             data_inputs=CalibrationRunDataInputs.from_mapping(
                 require_mapping(
                     raw_payload,
                     "data_inputs",
                     prefixed("data_inputs"),
-                    CALIBRATION_ERROR_FACTORY,
+                    calibration_error,
                 ),
                 field_path=prefixed("data_inputs"),
             ),
@@ -174,7 +174,7 @@ class StagedCalibrationRequest(ContractModel):
                     raw_payload,
                     "seed_settings",
                     prefixed("seed_settings"),
-                    CALIBRATION_ERROR_FACTORY,
+                    calibration_error,
                 ),
                 field_path=prefixed("seed_settings"),
             ),
@@ -212,7 +212,7 @@ def serialize_staged_calibration_request(request: StagedCalibrationRequest) -> s
 
 
 def deserialize_staged_calibration_request(payload_json: str) -> StagedCalibrationRequest:
-    raw_payload = parse_json_object(payload_json, "staged calibration request", CALIBRATION_ERROR_FACTORY)
+    raw_payload = parse_json_object(payload_json, "staged calibration request", calibration_error)
     return validate_staged_calibration_request(dict(raw_payload))
 
 

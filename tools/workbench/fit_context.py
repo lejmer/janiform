@@ -23,7 +23,6 @@ from janiform._timestamps import (
 )
 from janiform.calendar import CalendarRegistry, MarketState
 from janiform.calibration.fit import JaniformModel
-from janiform.calibration.fit.model import _mean_reversion_fitted_parameters
 from janiform.simulation import SimulationProgressEvent
 
 from .artifacts import WorkbenchArtifacts

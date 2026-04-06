@@ -35,7 +35,7 @@ from janiform.calibration.staged.progress import (
 )
 from janiform.calibration.staged.results import format_staged_failure_summary
 from janiform.calibration.staged.runtime import (
-    _run_native_staged_calibration_with_prepared_handle_and_events,
+    run_staged_calibration_with_prepared_handle_and_events,
 )
 from janiform._workflow_outputs import write_fit_artifacts
 from janiform.calendar import CalendarRegistry
@@ -202,7 +202,7 @@ class WorkbenchExecutionWorker(QObject):
             heartbeat_thread: Optional[Thread] = self._start_heartbeat()
 
             staged_response, raw_response_payload = (
-                _run_native_staged_calibration_with_prepared_handle_and_events(
+                run_staged_calibration_with_prepared_handle_and_events(
                     prepared_workflow.prepared.prepared_handle,
                     calendar_registry=CalendarRegistry(
                         prepared_workflow.prepared.session_resolution.resolved_session_definition_json

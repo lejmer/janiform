@@ -45,7 +45,7 @@ from .maturity_inputs import (
     normalize_optional_tenors,
     validate_high_level_pricing_maturity_axis_fields,
 )
-from .._errors import _calibration_error
+from ..errors import calibration_error
 from ...pricing.contracts import _validate_optional_implied_volatility_inversion_outcome
 
 
@@ -66,16 +66,16 @@ class JaniformGroupedVanillaOptionGroup(ContractModel):
 
     def __post_init__(self) -> None:
         if len(self.strikes) == 0:
-            raise _calibration_error("strikes", "must contain at least one strike")
+            raise calibration_error("strikes", "must contain at least one strike")
 
-        require_finite_scalar(self.risk_free_rate, "risk_free_rate", _calibration_error)
-        require_finite_scalar(self.dividend_yield, "dividend_yield", _calibration_error)
+        require_finite_scalar(self.risk_free_rate, "risk_free_rate", calibration_error)
+        require_finite_scalar(self.dividend_yield, "dividend_yield", calibration_error)
 
         for strike_index, strike in enumerate(self.strikes):
             require_positive_finite_scalar(
                 strike,
                 f"strikes[{strike_index}]",
-                _calibration_error,
+                calibration_error,
             )
 
         validate_high_level_pricing_maturity_axis_fields(
@@ -102,7 +102,7 @@ class JaniformGroupedVanillaOptionGroup(ContractModel):
         field_path: str = "group",
     ) -> JaniformGroupedVanillaOptionGroup:
         if not isinstance(raw_payload, dict):
-            raise _calibration_error(field_path, "must be an object")
+            raise calibration_error(field_path, "must be an object")
 
         expiry_timestamps_utc = normalize_optional_expiry_timestamps_utc(
             raw_payload.get("expiry_timestamps_utc"),
@@ -130,7 +130,7 @@ class JaniformGroupedVanillaOptionGroup(ContractModel):
             payoff_type=require_str_enum_value(
                 raw_payload.get("payoff_type"),
                 f"{field_path}.payoff_type",
-                _calibration_error,
+                calibration_error,
                 enum_type=VanillaOptionPayoffType,
                 allowed_values_message="must be one of: call, put",
             ),
@@ -138,13 +138,13 @@ class JaniformGroupedVanillaOptionGroup(ContractModel):
                 raw_payload,
                 "risk_free_rate",
                 f"{field_path}.risk_free_rate",
-                _calibration_error,
+                calibration_error,
             ),
             dividend_yield=require_finite_number(
                 raw_payload,
                 "dividend_yield",
                 f"{field_path}.dividend_yield",
-                _calibration_error,
+                calibration_error,
             ),
             strikes=_tuple_of_positive_floats(
                 raw_payload,
@@ -163,10 +163,10 @@ class JaniformGroupedVanillaOptionBatch(ContractModel):
     groups: tuple[JaniformGroupedVanillaOptionGroup, ...]
 
     def __post_init__(self) -> None:
-        require_positive_finite_scalar(self.spot, "spot", _calibration_error)
+        require_positive_finite_scalar(self.spot, "spot", calibration_error)
 
         if len(self.groups) == 0:
-            raise _calibration_error("groups", "must contain at least one pricing group")
+            raise calibration_error("groups", "must contain at least one pricing group")
 
     @staticmethod
     def from_mapping(
@@ -175,20 +175,20 @@ class JaniformGroupedVanillaOptionBatch(ContractModel):
         field_path: str = "grouped_batch",
     ) -> JaniformGroupedVanillaOptionBatch:
         if not isinstance(raw_payload, dict):
-            raise _calibration_error(field_path, "must be an object")
+            raise calibration_error(field_path, "must be an object")
 
         raw_groups = require_sequence(
             raw_payload,
             "groups",
             f"{field_path}.groups",
-            _calibration_error,
+            calibration_error,
         )
 
         return JaniformGroupedVanillaOptionBatch(
             spot=require_positive_finite_scalar(
                 raw_payload.get("spot"),
                 f"{field_path}.spot",
-                _calibration_error,
+                calibration_error,
             ),
             groups=tuple(
                 JaniformGroupedVanillaOptionGroup.from_mapping(
@@ -215,42 +215,42 @@ class JaniformVanillaOptionMaturityIntervalSummary(ContractModel):
 
     def __post_init__(self) -> None:
         if self.interval_index < 0:
-            raise _calibration_error("interval_index", "must be non-negative")
+            raise calibration_error("interval_index", "must be non-negative")
 
         require_finite_scalar(
             self.current_anchor_value,
             "current_anchor_value",
-            _calibration_error,
+            calibration_error,
         )
         require_finite_scalar(
             self.next_anchor_value,
             "next_anchor_value",
-            _calibration_error,
+            calibration_error,
         )
         require_positive_finite_scalar(
             self.interval_delta,
             "interval_delta",
-            _calibration_error,
+            calibration_error,
         )
         require_non_negative_finite_scalar(
             self.maximum_tail_probability_mass,
             "maximum_tail_probability_mass",
-            _calibration_error,
+            calibration_error,
         )
         require_non_negative_finite_scalar(
             self.maximum_row_probability_mass_error,
             "maximum_row_probability_mass_error",
-            _calibration_error,
+            calibration_error,
         )
         require_finite_scalar(
             self.minimum_solved_theta,
             "minimum_solved_theta",
-            _calibration_error,
+            calibration_error,
         )
         require_finite_scalar(
             self.maximum_solved_theta,
             "maximum_solved_theta",
-            _calibration_error,
+            calibration_error,
         )
 
     @staticmethod
@@ -260,66 +260,66 @@ class JaniformVanillaOptionMaturityIntervalSummary(ContractModel):
         field_path: str,
     ) -> JaniformVanillaOptionMaturityIntervalSummary:
         if not isinstance(raw_payload, dict):
-            raise _calibration_error(field_path, "must be an object")
+            raise calibration_error(field_path, "must be an object")
 
         return JaniformVanillaOptionMaturityIntervalSummary(
             interval_index=int(
                 require_non_negative_finite_scalar(
                     raw_payload.get("interval_index"),
                     f"{field_path}.interval_index",
-                    _calibration_error,
+                    calibration_error,
                 )
             ),
             current_anchor_value=require_finite_number(
                 raw_payload,
                 "current_anchor_value",
                 f"{field_path}.current_anchor_value",
-                _calibration_error,
+                calibration_error,
             ),
             next_anchor_value=require_finite_number(
                 raw_payload,
                 "next_anchor_value",
                 f"{field_path}.next_anchor_value",
-                _calibration_error,
+                calibration_error,
             ),
             interval_delta=require_positive_finite_scalar(
                 raw_payload.get("interval_delta"),
                 f"{field_path}.interval_delta",
-                _calibration_error,
+                calibration_error,
             ),
             expected_hawkes_boundary_state_before=require_mapping(
                 raw_payload,
                 "expected_hawkes_boundary_state_before",
                 f"{field_path}.expected_hawkes_boundary_state_before",
-                _calibration_error,
+                calibration_error,
             ),
             expected_hawkes_boundary_state_after=require_mapping(
                 raw_payload,
                 "expected_hawkes_boundary_state_after",
                 f"{field_path}.expected_hawkes_boundary_state_after",
-                _calibration_error,
+                calibration_error,
             ),
             maximum_tail_probability_mass=require_non_negative_finite_scalar(
                 raw_payload.get("maximum_tail_probability_mass"),
                 f"{field_path}.maximum_tail_probability_mass",
-                _calibration_error,
+                calibration_error,
             ),
             maximum_row_probability_mass_error=require_non_negative_finite_scalar(
                 raw_payload.get("maximum_row_probability_mass_error"),
                 f"{field_path}.maximum_row_probability_mass_error",
-                _calibration_error,
+                calibration_error,
             ),
             minimum_solved_theta=require_finite_number(
                 raw_payload,
                 "minimum_solved_theta",
                 f"{field_path}.minimum_solved_theta",
-                _calibration_error,
+                calibration_error,
             ),
             maximum_solved_theta=require_finite_number(
                 raw_payload,
                 "maximum_solved_theta",
                 f"{field_path}.maximum_solved_theta",
-                _calibration_error,
+                calibration_error,
             ),
         )
 
@@ -342,11 +342,11 @@ class JaniformVanillaOptionMaturitySummary(ContractModel):
         require_positive_finite_scalar(
             self.maturity_interval,
             "maturity_interval",
-            _calibration_error,
+            calibration_error,
         )
 
         if self.deviation_grid_node_count is not None and self.deviation_grid_node_count <= 0:
-            raise _calibration_error(
+            raise calibration_error(
                 "deviation_grid_node_count",
                 "must be strictly positive when provided",
             )
@@ -372,13 +372,13 @@ class JaniformVanillaOptionMaturitySummary(ContractModel):
         field_path: str,
     ) -> JaniformVanillaOptionMaturitySummary:
         if not isinstance(raw_payload, dict):
-            raise _calibration_error(field_path, "must be an object")
+            raise calibration_error(field_path, "must be an object")
 
         raw_interval_summaries = require_sequence(
             raw_payload,
             "interval_summaries",
             f"{field_path}.interval_summaries",
-            _calibration_error,
+            calibration_error,
         )
 
         raw_deviation_grid_node_count = raw_payload.get("deviation_grid_node_count")
@@ -389,7 +389,7 @@ class JaniformVanillaOptionMaturitySummary(ContractModel):
                 require_positive_finite_scalar(
                     raw_deviation_grid_node_count,
                     f"{field_path}.deviation_grid_node_count",
-                    _calibration_error,
+                    calibration_error,
                 )
             )
 
@@ -397,12 +397,12 @@ class JaniformVanillaOptionMaturitySummary(ContractModel):
             maturity_interval=require_positive_finite_scalar(
                 raw_payload.get("maturity_interval"),
                 f"{field_path}.maturity_interval",
-                _calibration_error,
+                calibration_error,
             ),
             engine_kind=require_str_enum_value(
                 raw_payload.get("engine_kind"),
                 f"{field_path}.engine_kind",
-                _calibration_error,
+                calibration_error,
                 enum_type=JaniformVanillaOptionMaturityPricingEngineKind,
                 allowed_values_message="must be one of: direct_fourier, forward_law",
             ),
@@ -410,19 +410,19 @@ class JaniformVanillaOptionMaturitySummary(ContractModel):
                 raw_payload,
                 "terminal_anchor_value",
                 f"{field_path}.terminal_anchor_value",
-                _calibration_error,
+                calibration_error,
             ),
             deviation_grid_lower_bound=require_optional_finite_number(
                 raw_payload,
                 "deviation_grid_lower_bound",
                 f"{field_path}.deviation_grid_lower_bound",
-                _calibration_error,
+                calibration_error,
             ),
             deviation_grid_upper_bound=require_optional_finite_number(
                 raw_payload,
                 "deviation_grid_upper_bound",
                 f"{field_path}.deviation_grid_upper_bound",
-                _calibration_error,
+                calibration_error,
             ),
             deviation_grid_node_count=deviation_grid_node_count,
             terminal_deviation_nodes=(
@@ -453,12 +453,12 @@ class JaniformVanillaOptionMaturitySummary(ContractModel):
             representative_transform=require_optional_mapping_value(
                 raw_payload.get("representative_transform"),
                 f"{field_path}.representative_transform",
-                _calibration_error,
+                calibration_error,
             ),
             integration_quality=require_optional_mapping_value(
                 raw_payload.get("integration_quality"),
                 f"{field_path}.integration_quality",
-                _calibration_error,
+                calibration_error,
             ),
         )
 
@@ -488,13 +488,13 @@ class JaniformVanillaOptionGroupedBatchPricingGroupResult(ContractModel):
     maturity_summaries: tuple[Optional[JaniformVanillaOptionMaturitySummary], ...]
 
     def __post_init__(self) -> None:
-        require_finite_scalar(self.risk_free_rate, "risk_free_rate", _calibration_error)
-        require_finite_scalar(self.dividend_yield, "dividend_yield", _calibration_error)
+        require_finite_scalar(self.risk_free_rate, "risk_free_rate", calibration_error)
+        require_finite_scalar(self.dividend_yield, "dividend_yield", calibration_error)
 
         expected_shape = (len(self.maturity_intervals), len(self.strikes))
         grid_shape = _grid_shape(self.price_grid, field_path="price_grid")
         if grid_shape != expected_shape:
-            raise _calibration_error(
+            raise calibration_error(
                 "price_grid",
                 f"must have shape {expected_shape}, found {grid_shape}",
             )
@@ -582,20 +582,20 @@ class JaniformVanillaOptionGroupedBatchPricingGroupResult(ContractModel):
         field_path: str,
     ) -> JaniformVanillaOptionGroupedBatchPricingGroupResult:
         if not isinstance(raw_payload, dict):
-            raise _calibration_error(field_path, "must be an object")
+            raise calibration_error(field_path, "must be an object")
 
         raw_maturity_summaries = require_sequence(
             raw_payload,
             "maturity_summaries",
             f"{field_path}.maturity_summaries",
-            _calibration_error,
+            calibration_error,
         )
 
         return JaniformVanillaOptionGroupedBatchPricingGroupResult(
             payoff_type=require_str_enum_value(
                 raw_payload.get("payoff_type"),
                 f"{field_path}.payoff_type",
-                _calibration_error,
+                calibration_error,
                 enum_type=VanillaOptionPayoffType,
                 allowed_values_message="must be one of: call, put",
             ),
@@ -603,13 +603,13 @@ class JaniformVanillaOptionGroupedBatchPricingGroupResult(ContractModel):
                 raw_payload,
                 "risk_free_rate",
                 f"{field_path}.risk_free_rate",
-                _calibration_error,
+                calibration_error,
             ),
             dividend_yield=require_finite_number(
                 raw_payload,
                 "dividend_yield",
                 f"{field_path}.dividend_yield",
-                _calibration_error,
+                calibration_error,
             ),
             strikes=_tuple_of_positive_floats(
                 raw_payload,
@@ -686,10 +686,10 @@ class JaniformVanillaOptionGroupedBatchPricingResult(ContractModel):
     groups: tuple[JaniformVanillaOptionGroupedBatchPricingGroupResult, ...]
 
     def __post_init__(self) -> None:
-        require_positive_finite_scalar(self.spot, "spot", _calibration_error)
+        require_positive_finite_scalar(self.spot, "spot", calibration_error)
 
         if len(self.groups) == 0:
-            raise _calibration_error("groups", "must contain at least one pricing result group")
+            raise calibration_error("groups", "must contain at least one pricing result group")
 
     @staticmethod
     def from_mapping(
@@ -698,20 +698,20 @@ class JaniformVanillaOptionGroupedBatchPricingResult(ContractModel):
         field_path: str = "grouped_batch_pricing_result",
     ) -> JaniformVanillaOptionGroupedBatchPricingResult:
         if not isinstance(raw_payload, dict):
-            raise _calibration_error(field_path, "must be an object")
+            raise calibration_error(field_path, "must be an object")
 
         raw_groups = require_sequence(
             raw_payload,
             "groups",
             f"{field_path}.groups",
-            _calibration_error,
+            calibration_error,
         )
 
         return JaniformVanillaOptionGroupedBatchPricingResult(
             spot=require_positive_finite_scalar(
                 raw_payload.get("spot"),
                 f"{field_path}.spot",
-                _calibration_error,
+                calibration_error,
             ),
             groups=tuple(
                 JaniformVanillaOptionGroupedBatchPricingGroupResult.from_mapping(
@@ -735,19 +735,19 @@ class JaniformVanillaOptionSurface(ContractModel):
     dividend_yield: float = 0.0
 
     def __post_init__(self) -> None:
-        require_positive_finite_scalar(self.spot, "spot", _calibration_error)
+        require_positive_finite_scalar(self.spot, "spot", calibration_error)
 
         if len(self.strikes) == 0:
-            raise _calibration_error("strikes", "must contain at least one strike")
+            raise calibration_error("strikes", "must contain at least one strike")
 
-        require_finite_scalar(self.risk_free_rate, "risk_free_rate", _calibration_error)
-        require_finite_scalar(self.dividend_yield, "dividend_yield", _calibration_error)
+        require_finite_scalar(self.risk_free_rate, "risk_free_rate", calibration_error)
+        require_finite_scalar(self.dividend_yield, "dividend_yield", calibration_error)
 
         for strike_index, strike in enumerate(self.strikes):
             require_positive_finite_scalar(
                 strike,
                 f"strikes[{strike_index}]",
-                _calibration_error,
+                calibration_error,
             )
 
         validate_high_level_pricing_maturity_axis_fields(
@@ -774,7 +774,7 @@ class JaniformVanillaOptionSurface(ContractModel):
         field_path: str = "surface",
     ) -> JaniformVanillaOptionSurface:
         if not isinstance(raw_payload, dict):
-            raise _calibration_error(field_path, "must be an object")
+            raise calibration_error(field_path, "must be an object")
 
         expiry_timestamps_utc = normalize_optional_expiry_timestamps_utc(
             raw_payload.get("expiry_timestamps_utc"),
@@ -802,7 +802,7 @@ class JaniformVanillaOptionSurface(ContractModel):
             spot=require_positive_finite_scalar(
                 raw_payload.get("spot"),
                 f"{field_path}.spot",
-                _calibration_error,
+                calibration_error,
             ),
             strikes=_tuple_of_positive_floats(
                 raw_payload,
@@ -815,7 +815,7 @@ class JaniformVanillaOptionSurface(ContractModel):
             payoff_type=require_str_enum_value(
                 raw_payload.get("payoff_type", VanillaOptionPayoffType.CALL.value),
                 f"{field_path}.payoff_type",
-                _calibration_error,
+                calibration_error,
                 enum_type=VanillaOptionPayoffType,
                 allowed_values_message="must be one of: call, put",
             ),
@@ -823,14 +823,14 @@ class JaniformVanillaOptionSurface(ContractModel):
                 raw_payload,
                 "risk_free_rate",
                 f"{field_path}.risk_free_rate",
-                _calibration_error,
+                calibration_error,
                 default_value=0.0,
             ),
             dividend_yield=require_optional_finite_number(
                 raw_payload,
                 "dividend_yield",
                 f"{field_path}.dividend_yield",
-                _calibration_error,
+                calibration_error,
                 default_value=0.0,
             ),
         )
@@ -862,14 +862,14 @@ class JaniformVanillaOptionSurfacePricingResult(ContractModel):
     maturity_summaries: tuple[Optional[JaniformVanillaOptionMaturitySummary], ...]
 
     def __post_init__(self) -> None:
-        require_positive_finite_scalar(self.spot, "spot", _calibration_error)
-        require_finite_scalar(self.risk_free_rate, "risk_free_rate", _calibration_error)
-        require_finite_scalar(self.dividend_yield, "dividend_yield", _calibration_error)
+        require_positive_finite_scalar(self.spot, "spot", calibration_error)
+        require_finite_scalar(self.risk_free_rate, "risk_free_rate", calibration_error)
+        require_finite_scalar(self.dividend_yield, "dividend_yield", calibration_error)
 
         expected_shape = (len(self.maturity_intervals), len(self.strikes))
         grid_shape = _grid_shape(self.price_grid, field_path="price_grid")
         if grid_shape != expected_shape:
-            raise _calibration_error(
+            raise calibration_error(
                 "price_grid",
                 f"must have shape {expected_shape}, found {grid_shape}",
             )
@@ -957,26 +957,26 @@ class JaniformVanillaOptionSurfacePricingResult(ContractModel):
         field_path: str = "surface_pricing_result",
     ) -> JaniformVanillaOptionSurfacePricingResult:
         if not isinstance(raw_payload, dict):
-            raise _calibration_error(field_path, "must be an object")
+            raise calibration_error(field_path, "must be an object")
 
         response = require_mapping(
             raw_payload,
             "response",
             f"{field_path}.response",
-            _calibration_error,
+            calibration_error,
         )
         raw_maturity_summaries = require_sequence(
             raw_payload,
             "maturity_summaries",
             f"{field_path}.maturity_summaries",
-            _calibration_error,
+            calibration_error,
         )
 
         return JaniformVanillaOptionSurfacePricingResult(
             spot=require_positive_finite_scalar(
                 response.get("spot"),
                 f"{field_path}.response.spot",
-                _calibration_error,
+                calibration_error,
             ),
             strikes=_tuple_of_positive_floats(
                 response,
@@ -991,7 +991,7 @@ class JaniformVanillaOptionSurfacePricingResult(ContractModel):
             payoff_type=require_str_enum_value(
                 response.get("payoff_type"),
                 f"{field_path}.response.payoff_type",
-                _calibration_error,
+                calibration_error,
                 enum_type=VanillaOptionPayoffType,
                 allowed_values_message="must be one of: call, put",
             ),
@@ -999,13 +999,13 @@ class JaniformVanillaOptionSurfacePricingResult(ContractModel):
                 response,
                 "risk_free_rate",
                 f"{field_path}.response.risk_free_rate",
-                _calibration_error,
+                calibration_error,
             ),
             dividend_yield=require_finite_number(
                 response,
                 "dividend_yield",
                 f"{field_path}.response.dividend_yield",
-                _calibration_error,
+                calibration_error,
             ),
             price_grid=_grid_of_optional_finite_floats(
                 response,
@@ -1076,7 +1076,7 @@ def _tuple_of_positive_floats(
         raw_payload,
         field_name=field_name,
         field_path=field_path,
-        error_factory=_calibration_error,
+        error_factory=calibration_error,
     )
 
 
@@ -1090,7 +1090,7 @@ def _tuple_of_non_negative_floats(
         raw_payload,
         field_name=field_name,
         field_path=field_path,
-        error_factory=_calibration_error,
+        error_factory=calibration_error,
     )
 
 
@@ -1104,7 +1104,7 @@ def _tuple_of_finite_floats(
         raw_payload,
         field_name=field_name,
         field_path=field_path,
-        error_factory=_calibration_error,
+        error_factory=calibration_error,
     )
 
 
@@ -1118,7 +1118,7 @@ def _grid_of_positive_floats(
         raw_payload,
         field_name=field_name,
         field_path=field_path,
-        error_factory=_calibration_error,
+        error_factory=calibration_error,
     )
 
 
@@ -1132,7 +1132,7 @@ def _grid_of_non_negative_floats(
         raw_payload,
         field_name=field_name,
         field_path=field_path,
-        error_factory=_calibration_error,
+        error_factory=calibration_error,
     )
 
 
@@ -1146,7 +1146,7 @@ def _grid_of_optional_finite_floats(
         raw_payload,
         field_name=field_name,
         field_path=field_path,
-        error_factory=_calibration_error,
+        error_factory=calibration_error,
     )
 
 
@@ -1160,12 +1160,12 @@ def _grid_of_implied_volatility_inversion_statuses(
         raw_payload,
         field_name=field_name,
         field_path=field_path,
-        error_factory=_calibration_error,
+        error_factory=calibration_error,
         scalar_parser=lambda value, location: (
             require_str_enum_value(
                 value,
                 location,
-                _calibration_error,
+                calibration_error,
                 enum_type=VanillaOptionImpliedVolatilityInversionStatus,
                 allowed_values_message=(
                     "must be one of: succeeded, "
@@ -1190,11 +1190,11 @@ def _grid_of_pricing_statuses(
         raw_payload,
         field_name=field_name,
         field_path=field_path,
-        error_factory=_calibration_error,
+        error_factory=calibration_error,
         scalar_parser=lambda value, location: require_str_enum_value(
             value,
             location,
-            _calibration_error,
+            calibration_error,
             enum_type=VanillaOptionPricingStatus,
             allowed_values_message="must be one of: succeeded, failed",
         ),
@@ -1211,12 +1211,12 @@ def _grid_of_optional_failure_stages(
         raw_payload,
         field_name=field_name,
         field_path=field_path,
-        error_factory=_calibration_error,
+        error_factory=calibration_error,
         scalar_parser=lambda value, location: (
             require_str_enum_value(
                 value,
                 location,
-                _calibration_error,
+                calibration_error,
                 enum_type=VanillaOptionPricingFailureStage,
                 allowed_values_message=(
                     "must be one of: node_setup, transform_input_build, transform_solve, "
@@ -1245,12 +1245,12 @@ def _grid_of_optional_strings(
         raw_payload,
         field_name=field_name,
         field_path=field_path,
-        error_factory=_calibration_error,
+        error_factory=calibration_error,
         scalar_parser=lambda value, location: (
             require_optional_string_value(
                 value,
                 location,
-                _calibration_error,
+                calibration_error,
             )
         ),
     )
@@ -1273,34 +1273,34 @@ def _validate_group_node_payload(
 ) -> None:
     if pricing_status is VanillaOptionPricingStatus.SUCCEEDED:
         if pricing_failure_stage is not None:
-            raise _calibration_error(
+            raise calibration_error(
                 f"{field_path}.pricing_failure_stage",
                 "must be null when pricing_status=succeeded",
             )
         if pricing_failure_reason is not None:
-            raise _calibration_error(
+            raise calibration_error(
                 f"{field_path}.pricing_failure_reason",
                 "must be null when pricing_status=succeeded",
             )
         require_non_negative_finite_scalar(
             model_price,
             f"{field_path}.model_price",
-            _calibration_error,
+            calibration_error,
         )
         require_positive_finite_scalar(
             forward_price,
             f"{field_path}.forward_price",
-            _calibration_error,
+            calibration_error,
         )
         require_positive_finite_scalar(
             discount_factor,
             f"{field_path}.discount_factor",
-            _calibration_error,
+            calibration_error,
         )
         require_non_negative_finite_scalar(
             boundary_state_norm,
             f"{field_path}.boundary_state_norm",
-            _calibration_error,
+            calibration_error,
         )
         _validate_optional_implied_volatility_inversion_outcome(
             implied_volatility=implied_volatility,
@@ -1310,42 +1310,42 @@ def _validate_group_node_payload(
         return
 
     if pricing_failure_stage is None:
-        raise _calibration_error(
+        raise calibration_error(
             f"{field_path}.pricing_failure_stage",
             "must be present when pricing_status=failed",
         )
     if pricing_failure_reason is None or pricing_failure_reason.strip() == "":
-        raise _calibration_error(
+        raise calibration_error(
             f"{field_path}.pricing_failure_reason",
             "must be a non-empty string when pricing_status=failed",
         )
     if model_price is not None:
-        raise _calibration_error(
+        raise calibration_error(
             f"{field_path}.model_price",
             "must be null when pricing_status=failed",
         )
     if implied_volatility is not None:
-        raise _calibration_error(
+        raise calibration_error(
             f"{field_path}.implied_volatility",
             "must be null when pricing_status=failed",
         )
     if implied_volatility_inversion_status is not None:
-        raise _calibration_error(
+        raise calibration_error(
             f"{field_path}.implied_volatility_inversion_status",
             "must be null when pricing_status=failed",
         )
     if forward_price is not None:
-        raise _calibration_error(
+        raise calibration_error(
             f"{field_path}.forward_price",
             "must be null when pricing_status=failed",
         )
     if discount_factor is not None:
-        raise _calibration_error(
+        raise calibration_error(
             f"{field_path}.discount_factor",
             "must be null when pricing_status=failed",
         )
     if boundary_state_norm is not None:
-        raise _calibration_error(
+        raise calibration_error(
             f"{field_path}.boundary_state_norm",
             "must be null when pricing_status=failed",
         )
@@ -1359,7 +1359,7 @@ def _validate_optional_tuple_pair(
     right_field_path: str,
 ) -> None:
     if (left_values is None) != (right_values is None):
-        raise _calibration_error(
+        raise calibration_error(
             left_field_path if left_values is None else right_field_path,
             "must be null when the paired terminal distribution field is null",
         )
@@ -1373,7 +1373,7 @@ def _grid_shape(
     return _surface_grid_shape(
         values,
         field_path=field_path,
-        error_factory=_calibration_error,
+        error_factory=calibration_error,
     )
 
 
@@ -1387,7 +1387,7 @@ def _validate_aligned_node_count(
         values,
         expected_count,
         field_path=field_path,
-        error_factory=_calibration_error,
+        error_factory=calibration_error,
     )
 
 
@@ -1401,7 +1401,7 @@ def _validate_matching_grid_shape(
         values,
         grid_shape_value=grid_shape,
         field_path=field_path,
-        error_factory=_calibration_error,
+        error_factory=calibration_error,
     )
 
 

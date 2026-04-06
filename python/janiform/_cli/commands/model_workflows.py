@@ -15,9 +15,9 @@ from ..._workflow_outputs import (
     simulation_output_preferences_from_model,
 )
 from ..._workflow_progress import JaniformOutputController, WorkflowProgressMode
-from .calibration import _build_fit_plan_command, _build_fit_staged_command
-from .simulation import _build_simulation_coarse_interval_command, _build_simulation_seeded_ticks_command
-from ._shared import (
+from .calibration import build_fit_plan_command, build_fit_staged_command
+from .simulation import build_simulation_coarse_interval_command, build_simulation_seeded_ticks_command
+from .shared import (
     parse_utc_datetime_cli_argument,
     require_non_empty_cli_string,
     require_positive_integer_cli_argument,
@@ -37,7 +37,7 @@ from ..command_runtime import (
     user_preset_json_option,
 )
 from ..context import CliCommandContext
-from .._constants import (
+from ..constants import (
     CLI_CALIBRATION_DUPLICATE_RECORD_POLICY_CHOICES,
     CLI_CALIBRATION_EXECUTION_MODE_CHOICES,
     CLI_CALIBRATION_MARKET_DATA_SCOPE_CHOICES,
@@ -60,10 +60,10 @@ from .._constants import (
     CliExitCode,
     CliOutputMode,
 )
-from .._documents import load_json_document_for_cli_field
-from .._errors import classify_generic_cli_command_error, cli_validation_error
-from ..paths import _resolve_path_from_repository_root
-from .._rendering import (
+from ..documents import load_json_document_for_cli_field
+from ..errors import classify_generic_cli_command_error, cli_validation_error
+from ..paths import resolve_path_from_repository_root
+from ..rendering import (
     render_fit_human_output,
     render_fit_inspect_human_output,
     render_simulate_human_output,
@@ -279,7 +279,7 @@ def run_model_simulate_command(
     model_path: Path,
     **command_arguments,
 ) -> int:
-    model_path = _resolve_path_from_repository_root(
+    model_path = resolve_path_from_repository_root(
         cli_context.repository_root,
         model_path,
     )
@@ -341,7 +341,7 @@ def build_cli_preset_registry(
     registry = PresetRegistry()
 
     for path in user_preset_json:
-        resolved_path = _resolve_path_from_repository_root(cli_context.repository_root, path)
+        resolved_path = resolve_path_from_repository_root(cli_context.repository_root, path)
         try:
             preset_json = resolved_path.read_text(encoding="utf-8")
         except FileNotFoundError as e:
@@ -453,7 +453,7 @@ def configure_cli_fit_command(
     )
     option_surface_path = cast(Optional[Path], command_arguments.get("option_surface_path"))
     resolved_option_surface_path = (
-        _resolve_path_from_repository_root(cli_context.repository_root, option_surface_path)
+        resolve_path_from_repository_root(cli_context.repository_root, option_surface_path)
         if option_surface_path is not None
         else None
     )
@@ -561,7 +561,7 @@ def configure_cli_fit_command(
 
     raw_output_dir = cast(Optional[Path], command_arguments.get("output_dir"))
     output_dir = (
-        _resolve_path_from_repository_root(cli_context.repository_root, raw_output_dir)
+        resolve_path_from_repository_root(cli_context.repository_root, raw_output_dir)
         if raw_output_dir is not None
         else resolve_fit_artifact_paths(run_id=input_inference.run_id, output_dir=None).run_directory
     )
@@ -593,7 +593,7 @@ def resolve_required_tick_data_path(
             entrypoint=entrypoint,
         )
 
-    return _resolve_path_from_repository_root(cli_context.repository_root, raw_tick_data_path)
+    return resolve_path_from_repository_root(cli_context.repository_root, raw_tick_data_path)
 
 
 def optional_tick_data_format_from_arguments(
@@ -885,7 +885,7 @@ def build_session_reference_from_arguments(
         return None
 
     if session_json is not None:
-        resolved_session_path = _resolve_path_from_repository_root(repository_root, session_json)
+        resolved_session_path = resolve_path_from_repository_root(repository_root, session_json)
         return SessionPresetReference(
             usage_mode=PresetReferenceUsageMode.EXPLICIT,
             configuration=_load_explicit_session_configuration(
@@ -1014,7 +1014,7 @@ def build_model_workflow_output_preferences_from_arguments(
     raw_disk_checkpoint_directory = cast(Optional[Path], parsed_arguments.get("disk_checkpoint_directory"))
 
     disk_checkpoint_directory = (
-        _resolve_path_from_repository_root(repository_root, raw_disk_checkpoint_directory)
+        resolve_path_from_repository_root(repository_root, raw_disk_checkpoint_directory)
         if raw_disk_checkpoint_directory is not None
         else None
     )
@@ -1112,7 +1112,7 @@ def build_cli_simulate_result_payload(
     simulation_run_id = generate_workflow_run_id(f"{model.run_id}_simulate")
     output_path_argument = cast(Optional[Path], command_arguments.get("output_path"))
     resolved_output_path_argument = (
-        _resolve_path_from_repository_root(Path.cwd(), output_path_argument)
+        resolve_path_from_repository_root(Path.cwd(), output_path_argument)
         if output_path_argument is not None
         else None
     )
@@ -1264,8 +1264,8 @@ def build_fit_group(*, environment: Optional[Mapping[str, str]] = None) -> click
         )
 
     fit_group.add_command(fit_inspect)
-    fit_group.add_command(_build_fit_plan_command(environment=environment))
-    fit_group.add_command(_build_fit_staged_command(environment=environment))
+    fit_group.add_command(build_fit_plan_command(environment=environment))
+    fit_group.add_command(build_fit_staged_command(environment=environment))
 
     return fit_group
 
@@ -1299,8 +1299,8 @@ def build_simulate_group(*, environment: Optional[Mapping[str, str]] = None) -> 
 
     simulate_group = simulate
 
-    simulate_group.add_command(_build_simulation_coarse_interval_command(environment=environment))
-    simulate_group.add_command(_build_simulation_seeded_ticks_command(environment=environment))
+    simulate_group.add_command(build_simulation_coarse_interval_command(environment=environment))
+    simulate_group.add_command(build_simulation_seeded_ticks_command(environment=environment))
 
     return simulate_group
 

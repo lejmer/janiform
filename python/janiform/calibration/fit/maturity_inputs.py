@@ -9,11 +9,11 @@ from typing import Any, Optional
 from ..._native_api import native_exception_matches, native_module
 from ...contracts import require_date, require_datetime_utc
 from ...contracts.base import require_non_empty_string_value
-from .._errors import (
+from ..errors import (
     CALIBRATION_INTEGRATION_NATIVE_MODULE_ERROR_ID,
     CALIBRATION_INTEGRATION_RESPONSE_ERROR_ID,
-    _calibration_error,
-    _calibration_integration_error,
+    calibration_error,
+    calibration_integration_error,
 )
 
 
@@ -39,7 +39,7 @@ def normalize_optional_expiry_timestamps_utc(
         item_parser=lambda value, location: require_datetime_utc(
             value,
             location,
-            _calibration_error,
+            calibration_error,
         ),
     )
 
@@ -55,7 +55,7 @@ def normalize_optional_expiry_dates(
         item_parser=lambda value, location: require_date(
             value,
             location,
-            _calibration_error,
+            calibration_error,
         ),
     )
 
@@ -71,7 +71,7 @@ def normalize_optional_tenors(
         item_parser=lambda value, location: require_non_empty_string_value(
             value,
             location,
-            _calibration_error,
+            calibration_error,
         ),
     )
 
@@ -97,7 +97,7 @@ def validate_high_level_pricing_maturity_axis_fields(
             continue
 
         if len(axis) == 0:
-            raise _calibration_error(
+            raise calibration_error(
                 field_path,
                 "must contain at least one maturity input when provided",
             )
@@ -107,13 +107,13 @@ def validate_high_level_pricing_maturity_axis_fields(
             continue
 
         if len(axis) != entry_count:
-            raise _calibration_error(
+            raise calibration_error(
                 field_path,
                 f"must contain {entry_count} entries to match the other maturity input axes, found {len(axis)}",
             )
 
     if entry_count is None:
-        raise _calibration_error(
+        raise calibration_error(
             field_prefix or "maturity_inputs",
             "at least one of expiry_timestamps_utc, expiry_dates, or tenors must be provided",
         )
@@ -124,7 +124,7 @@ def validate_high_level_pricing_maturity_axis_fields(
             for axis in (expiry_timestamps_utc, expiry_dates, tenors)
         )
         if selected_count != 1:
-            raise _calibration_error(
+            raise calibration_error(
                 field_prefix or "maturity_inputs",
                 (
                     f"exactly one of {expiry_timestamp_field_path}[{index}], "
@@ -146,7 +146,7 @@ def resolve_single_high_level_pricing_maturity_input(
         value is not None for value in (expiry_timestamp_utc, expiry_date, tenor)
     )
     if selected_count != 1:
-        raise _calibration_error(
+        raise calibration_error(
             "maturity_input",
             "exactly one of expiry_timestamp_utc, expiry_date, or tenor must be provided",
         )
@@ -157,18 +157,18 @@ def resolve_single_high_level_pricing_maturity_input(
         else require_datetime_utc(
             expiry_timestamp_utc,
             "expiry_timestamp_utc",
-            _calibration_error,
+            calibration_error,
         )
     )
 
     normalized_expiry_date = (
-        None if expiry_date is None else require_date(expiry_date, "expiry_date", _calibration_error)
+        None if expiry_date is None else require_date(expiry_date, "expiry_date", calibration_error)
     )
 
     normalized_tenor = (
         None
         if tenor is None
-        else require_non_empty_string_value(tenor, "tenor", _calibration_error)
+        else require_non_empty_string_value(tenor, "tenor", calibration_error)
     )
 
     return _resolve_high_level_pricing_maturity_inputs(
@@ -218,7 +218,7 @@ def _normalize_optional_axis[T](
         return None
 
     if isinstance(raw_values, str) or not isinstance(raw_values, Sequence):
-        raise _calibration_error(field_path, "must be a sequence or null")
+        raise calibration_error(field_path, "must be a sequence or null")
 
     return tuple(
         None
@@ -239,13 +239,13 @@ def _resolve_high_level_pricing_maturity_inputs(
     normalized_valuation_time_utc = require_datetime_utc(
         valuation_time_utc,
         "valuation_time_utc",
-        _calibration_error,
+        calibration_error,
     )
 
     try:
         native: ModuleType = native_module()
     except ModuleNotFoundError as error:
-        raise _calibration_integration_error(
+        raise calibration_integration_error(
             "native pricing module is unavailable",
             entrypoint="high_level_pricing_maturity_resolution",
             error_id=CALIBRATION_INTEGRATION_NATIVE_MODULE_ERROR_ID,
@@ -263,12 +263,12 @@ def _resolve_high_level_pricing_maturity_inputs(
         raw_resolution = native.resolve_high_level_pricing_maturity_inputs(request_payload)
     except Exception as error:
         if native_exception_matches(native, error, "PricingExecutionError"):
-            raise _calibration_error(field_path, str(error)) from error
+            raise calibration_error(field_path, str(error)) from error
 
-        raise _calibration_error(field_path, str(error)) from error
+        raise calibration_error(field_path, str(error)) from error
 
     if not isinstance(raw_resolution, dict):
-        raise _calibration_integration_error(
+        raise calibration_integration_error(
             "native pricing maturity resolution returned an invalid response payload",
             entrypoint="high_level_pricing_maturity_resolution",
             error_id=CALIBRATION_INTEGRATION_RESPONSE_ERROR_ID,
@@ -281,7 +281,7 @@ def _resolve_high_level_pricing_maturity_inputs(
         resolved_expiry_timestamps_utc,
         list,
     ):
-        raise _calibration_integration_error(
+        raise calibration_integration_error(
             "native pricing maturity resolution returned an invalid response payload",
             entrypoint="high_level_pricing_maturity_resolution",
             error_id=CALIBRATION_INTEGRATION_RESPONSE_ERROR_ID,
@@ -296,7 +296,7 @@ def _resolve_high_level_pricing_maturity_inputs(
             require_datetime_utc(
                 raw_timestamp,
                 f"{field_path}.resolved_expiry_timestamps_utc[{index}]",
-                _calibration_error,
+                calibration_error,
             )
             for index, raw_timestamp in enumerate(resolved_expiry_timestamps_utc)
         ),

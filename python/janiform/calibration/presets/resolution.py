@@ -31,10 +31,11 @@ from .registry import (
     _normalize_session_configuration,
     _normalize_session_reference,
 )
-from .._errors import _calibration_error
+from ..errors import calibration_error
 from ..sessions.contracts import MarketDataSessionResolution
 from ...contracts.base import require_boolean
 from ...contracts import ContractModel, require_mapping, require_non_empty_string, require_sequence
+
 
 # Public preset-resolution default that callers can replace with an explicit preset name.
 DEFAULT_HIGH_LEVEL_KNOWN_NEWS_PRESET_NAME = "none"
@@ -69,7 +70,7 @@ class ResolvedPresetSelection(ContractModel):
 
     def __post_init__(self) -> None:
         if not self.preset_name.strip():
-            raise _calibration_error("preset_name", "must be a non-empty string")
+            raise calibration_error("preset_name", "must be a non-empty string")
 
     @staticmethod
     def from_mapping(
@@ -78,7 +79,7 @@ class ResolvedPresetSelection(ContractModel):
         field_path: str,
     ) -> ResolvedPresetSelection:
         if not isinstance(raw_payload, Mapping):
-            raise _calibration_error(field_path, "must be an object")
+            raise calibration_error(field_path, "must be an object")
 
         return ResolvedPresetSelection(
             category=PresetCategory(
@@ -86,7 +87,7 @@ class ResolvedPresetSelection(ContractModel):
                     raw_payload,
                     "category",
                     f"{field_path}.category",
-                    _calibration_error,
+                    calibration_error,
                 )
             ),
             registry_scope=PresetRegistryScope(
@@ -94,14 +95,14 @@ class ResolvedPresetSelection(ContractModel):
                     raw_payload,
                     "registry_scope",
                     f"{field_path}.registry_scope",
-                    _calibration_error,
+                    calibration_error,
                 )
             ),
             preset_name=require_non_empty_string(
                 raw_payload,
                 "preset_name",
                 f"{field_path}.preset_name",
-                _calibration_error,
+                calibration_error,
             ),
         )
 
@@ -115,9 +116,9 @@ class ResolvedWorkflowDiagnostic(ContractModel):
 
     def __post_init__(self) -> None:
         if not self.code.strip():
-            raise _calibration_error("code", "must be a non-empty string")
+            raise calibration_error("code", "must be a non-empty string")
         if not self.message.strip():
-            raise _calibration_error("message", "must be a non-empty string")
+            raise calibration_error("message", "must be a non-empty string")
 
     @staticmethod
     def from_mapping(
@@ -126,7 +127,7 @@ class ResolvedWorkflowDiagnostic(ContractModel):
         field_path: str,
     ) -> ResolvedWorkflowDiagnostic:
         if not isinstance(raw_payload, Mapping):
-            raise _calibration_error(field_path, "must be an object")
+            raise calibration_error(field_path, "must be an object")
 
         return ResolvedWorkflowDiagnostic(
             component=ResolvedWorkflowComponent(
@@ -134,7 +135,7 @@ class ResolvedWorkflowDiagnostic(ContractModel):
                     raw_payload,
                     "component",
                     f"{field_path}.component",
-                    _calibration_error,
+                    calibration_error,
                 )
             ),
             severity=ResolvedWorkflowDiagnosticSeverity(
@@ -142,20 +143,20 @@ class ResolvedWorkflowDiagnostic(ContractModel):
                     raw_payload,
                     "severity",
                     f"{field_path}.severity",
-                    _calibration_error,
+                    calibration_error,
                 )
             ),
             code=require_non_empty_string(
                 raw_payload,
                 "code",
                 f"{field_path}.code",
-                _calibration_error,
+                calibration_error,
             ),
             message=require_non_empty_string(
                 raw_payload,
                 "message",
                 f"{field_path}.message",
-                _calibration_error,
+                calibration_error,
             ),
         )
 
@@ -177,7 +178,7 @@ class ResolvedMarketProfileComponent(ContractModel):
         field_path: str,
     ) -> ResolvedMarketProfileComponent:
         if not isinstance(raw_payload, Mapping):
-            raise _calibration_error(field_path, "must be an object")
+            raise calibration_error(field_path, "must be an object")
 
         raw_selected_preset = raw_payload.get("selected_preset")
 
@@ -187,7 +188,7 @@ class ResolvedMarketProfileComponent(ContractModel):
                     raw_payload,
                     "configuration",
                     f"{field_path}.configuration",
-                    _calibration_error,
+                    calibration_error,
                 ),
                 field_path=f"{field_path}.configuration",
             ),
@@ -196,7 +197,7 @@ class ResolvedMarketProfileComponent(ContractModel):
                     raw_payload,
                     "source_kind",
                     f"{field_path}.source_kind",
-                    _calibration_error,
+                    calibration_error,
                 )
             ),
             selected_preset=(
@@ -229,12 +230,12 @@ class ResolvedSessionComponent(ContractModel):
     def __post_init__(self) -> None:
         _validate_override_fields(self.applied_override_fields, "session.applied_override_fields")
         if self.inferred_from_data and self.inference_resolution is None:
-            raise _calibration_error(
+            raise calibration_error(
                 "session.inference_resolution",
                 "is required when inferred_from_data is true",
             )
         if not self.inferred_from_data and self.inference_resolution is not None:
-            raise _calibration_error(
+            raise calibration_error(
                 "session.inference_resolution",
                 "is only allowed when inferred_from_data is true",
             )
@@ -246,7 +247,7 @@ class ResolvedSessionComponent(ContractModel):
         field_path: str,
     ) -> ResolvedSessionComponent:
         if not isinstance(raw_payload, Mapping):
-            raise _calibration_error(field_path, "must be an object")
+            raise calibration_error(field_path, "must be an object")
 
         raw_selected_preset = raw_payload.get("selected_preset")
         raw_inference_resolution = raw_payload.get("inference_resolution")
@@ -257,7 +258,7 @@ class ResolvedSessionComponent(ContractModel):
                     raw_payload,
                     "configuration",
                     f"{field_path}.configuration",
-                    _calibration_error,
+                    calibration_error,
                 ),
                 field_path=f"{field_path}.configuration",
             ),
@@ -266,7 +267,7 @@ class ResolvedSessionComponent(ContractModel):
                     raw_payload,
                     "source_kind",
                     f"{field_path}.source_kind",
-                    _calibration_error,
+                    calibration_error,
                 )
             ),
             selected_preset=(
@@ -281,7 +282,7 @@ class ResolvedSessionComponent(ContractModel):
                 raw_payload,
                 "inferred_from_data",
                 f"{field_path}.inferred_from_data",
-                _calibration_error,
+                calibration_error,
             ),
             inference_resolution=(
                 MarketDataSessionResolution.from_mapping(
@@ -314,12 +315,12 @@ class ResolvedKnownNewsComponent(ContractModel):
     def __post_init__(self) -> None:
         _validate_override_fields(self.applied_override_fields, "known_news.applied_override_fields")
         if self.recommendation_applied and self.recommended_reference is None:
-            raise _calibration_error(
+            raise calibration_error(
                 "known_news.recommended_reference",
                 "is required when recommendation_applied is true",
             )
         if self.recommendation_policy is None and self.recommended_reference is not None:
-            raise _calibration_error(
+            raise calibration_error(
                 "known_news.recommendation_policy",
                 "is required when recommended_reference is provided",
             )
@@ -331,7 +332,7 @@ class ResolvedKnownNewsComponent(ContractModel):
         field_path: str,
     ) -> ResolvedKnownNewsComponent:
         if not isinstance(raw_payload, Mapping):
-            raise _calibration_error(field_path, "must be an object")
+            raise calibration_error(field_path, "must be an object")
 
         raw_selected_preset = raw_payload.get("selected_preset")
         raw_recommended_reference = raw_payload.get("recommended_reference")
@@ -343,7 +344,7 @@ class ResolvedKnownNewsComponent(ContractModel):
                     raw_payload,
                     "configuration",
                     f"{field_path}.configuration",
-                    _calibration_error,
+                    calibration_error,
                 ),
                 field_path=f"{field_path}.configuration",
             ),
@@ -352,7 +353,7 @@ class ResolvedKnownNewsComponent(ContractModel):
                     raw_payload,
                     "source_kind",
                     f"{field_path}.source_kind",
-                    _calibration_error,
+                    calibration_error,
                 )
             ),
             selected_preset=(
@@ -387,7 +388,7 @@ class ResolvedKnownNewsComponent(ContractModel):
                 raw_payload,
                 "recommendation_applied",
                 f"{field_path}.recommendation_applied",
-                _calibration_error,
+                calibration_error,
             ),
         )
 
@@ -402,7 +403,7 @@ class ResolvedPresetWorkflowConfiguration(ContractModel):
 
     def __post_init__(self) -> None:
         if self.schema_version != RESOLVED_PRESET_WORKFLOW_CONFIGURATION_SCHEMA_VERSION:
-            raise _calibration_error(
+            raise calibration_error(
                 "schema_version",
                 f"must be `{RESOLVED_PRESET_WORKFLOW_CONFIGURATION_SCHEMA_VERSION}`",
             )
@@ -414,7 +415,7 @@ class ResolvedPresetWorkflowConfiguration(ContractModel):
         field_path: str,
     ) -> ResolvedPresetWorkflowConfiguration:
         if not isinstance(raw_payload, Mapping):
-            raise _calibration_error(field_path, "must be an object")
+            raise calibration_error(field_path, "must be an object")
 
         raw_market_profile = raw_payload.get("market_profile")
 
@@ -423,14 +424,14 @@ class ResolvedPresetWorkflowConfiguration(ContractModel):
                 raw_payload,
                 "schema_version",
                 f"{field_path}.schema_version",
-                _calibration_error,
+                calibration_error,
             ),
             session=ResolvedSessionComponent.from_mapping(
                 require_mapping(
                     raw_payload,
                     "session",
                     f"{field_path}.session",
-                    _calibration_error,
+                    calibration_error,
                 ),
                 field_path=f"{field_path}.session",
             ),
@@ -439,7 +440,7 @@ class ResolvedPresetWorkflowConfiguration(ContractModel):
                     raw_payload,
                     "known_news",
                     f"{field_path}.known_news",
-                    _calibration_error,
+                    calibration_error,
                 ),
                 field_path=f"{field_path}.known_news",
             ),
@@ -453,7 +454,7 @@ class ResolvedPresetWorkflowConfiguration(ContractModel):
                         raw_payload,
                         "diagnostics",
                         f"{field_path}.diagnostics",
-                        _calibration_error,
+                        calibration_error,
                     )
                 )
             ),
@@ -478,12 +479,12 @@ def _require_string_sequence(
         raw_payload,
         field_name,
         field_path,
-        _calibration_error,
+        calibration_error,
     )
     values: list[str] = []
     for value_index, raw_value in enumerate(raw_values):
         if not isinstance(raw_value, str):
-            raise _calibration_error(
+            raise calibration_error(
                 f"{field_path}[{value_index}]",
                 "must be a string",
             )
@@ -542,7 +543,7 @@ def _resolve_market_profile_component(
     match normalized_reference.usage_mode:
         case PresetReferenceUsageMode.NAMED:
             if normalized_reference.preset_name is None or normalized_reference.registry_scope is None:
-                raise _calibration_error(
+                raise calibration_error(
                     "market_profile_reference",
                     "named market-profile references require preset_name and registry_scope",
                 )
@@ -578,7 +579,7 @@ def _resolve_market_profile_component(
             )
         case PresetReferenceUsageMode.EXPLICIT:
             if normalized_reference.configuration is None:
-                raise _calibration_error(
+                raise calibration_error(
                     "market_profile_reference.configuration",
                     "is required when usage_mode=explicit",
                 )
@@ -588,7 +589,7 @@ def _resolve_market_profile_component(
                 source_kind=ResolvedWorkflowComponentSource.FULLY_CUSTOM,
             )
         case PresetReferenceUsageMode.AUTOMATIC:
-            raise _calibration_error(
+            raise calibration_error(
                 "market_profile_reference.usage_mode",
                 "automatic is not supported for market-profile resolution",
             )
@@ -662,7 +663,7 @@ def _resolve_session_component(
         selected_reference = profile_reference
 
     if selected_reference is None:
-        raise _calibration_error(
+        raise calibration_error(
             "session_reference",
             "could not resolve a session baseline. Provide an explicit session reference or inferred session resolution.",
         )
@@ -671,7 +672,7 @@ def _resolve_session_component(
     match normalized_reference.usage_mode:
         case PresetReferenceUsageMode.AUTOMATIC:
             if inferred_session_resolution is None:
-                raise _calibration_error(
+                raise calibration_error(
                     "inferred_session_resolution",
                     "is required when the resolved session reference uses automatic inference",
                 )
@@ -704,7 +705,7 @@ def _resolve_session_component(
             )
         case PresetReferenceUsageMode.NAMED:
             if normalized_reference.preset_name is None or normalized_reference.registry_scope is None:
-                raise _calibration_error(
+                raise calibration_error(
                     "session_reference",
                     "named session references require preset_name and registry_scope",
                 )
@@ -739,7 +740,7 @@ def _resolve_session_component(
             )
         case PresetReferenceUsageMode.EXPLICIT:
             if normalized_reference.configuration is None:
-                raise _calibration_error(
+                raise calibration_error(
                     "session_reference.configuration",
                     "is required when usage_mode=explicit",
                 )
@@ -829,7 +830,7 @@ def _resolve_known_news_component(
     match normalized_reference.usage_mode:
         case PresetReferenceUsageMode.NAMED:
             if normalized_reference.preset_name is None or normalized_reference.registry_scope is None:
-                raise _calibration_error(
+                raise calibration_error(
                     "known_news_reference",
                     "named known-news references require preset_name and registry_scope",
                 )
@@ -869,7 +870,7 @@ def _resolve_known_news_component(
             )
         case PresetReferenceUsageMode.EXPLICIT:
             if normalized_reference.configuration is None:
-                raise _calibration_error(
+                raise calibration_error(
                     "known_news_reference.configuration",
                     "is required when usage_mode=explicit",
                 )
@@ -884,7 +885,7 @@ def _resolve_known_news_component(
                 recommendation_applied=recommendation_applied,
             )
         case PresetReferenceUsageMode.AUTOMATIC:
-            raise _calibration_error(
+            raise calibration_error(
                 "known_news_reference.usage_mode",
                 "automatic known-news resolution is not supported",
             )
@@ -939,7 +940,7 @@ def _apply_known_news_override_patch(
     events_by_id = {event.event_id: event for event in configuration.events}
     for event_id in override_patch.removed_event_ids:
         if event_id not in events_by_id:
-            raise _calibration_error(
+            raise calibration_error(
                 "known_news_reference.override_patch.removed_event_ids",
                 f"cannot remove unknown known-news event_id `{event_id}` from the selected baseline",
             )
@@ -948,7 +949,7 @@ def _apply_known_news_override_patch(
 
     for event in override_patch.additional_events:
         if event.event_id in events_by_id:
-            raise _calibration_error(
+            raise calibration_error(
                 "known_news_reference.override_patch.additional_events",
                 f"cannot add duplicate known-news event_id `{event.event_id}` to the selected baseline",
             )
@@ -1174,9 +1175,9 @@ def _validate_override_fields(fields: tuple[str, ...], field_path: str) -> None:
     seen_fields: set[str] = set()
     for field_name in fields:
         if not field_name.strip():
-            raise _calibration_error(field_path, "must not contain empty override field names")
+            raise calibration_error(field_path, "must not contain empty override field names")
         if field_name in seen_fields:
-            raise _calibration_error(field_path, "must not contain duplicate override field names")
+            raise calibration_error(field_path, "must not contain duplicate override field names")
 
         seen_fields.add(field_name)
 

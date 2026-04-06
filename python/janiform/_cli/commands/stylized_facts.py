@@ -16,7 +16,7 @@ from ..command_runtime import (
     required_json_path_option,
 )
 from ..context import CliCommandContext
-from .._constants import (
+from ..constants import (
     CLI_CALIBRATION_EXECUTION_MODE_CHOICES,
     CLI_STYLIZED_FACTS_HORIZON_COMPARISON_ENTRYPOINT,
     CLI_STYLIZED_FACTS_HORIZON_COMPARISON_INTERNAL_ERROR_ID,
@@ -24,14 +24,14 @@ from .._constants import (
     CliExitCode,
     CliOutputMode,
 )
-from .._documents import load_json_document_for_cli_field
-from .._errors import classify_workflow_command_error
-from .._rendering import render_stylized_facts_horizon_comparison_human_output, write_cli_error, write_command_output
+from ..documents import load_json_document_for_cli_field
+from ..errors import classify_workflow_command_error
+from ..rendering import render_stylized_facts_horizon_comparison_human_output, write_cli_error, write_command_output
 from ...errors import JaniformError
 from ...stylized_facts import run_stylized_fact_horizon_comparison_report_generator
 
 
-def _run_stylized_facts_horizon_comparison_command(
+def run_stylized_facts_horizon_comparison_command(
     *,
     cli_context: CliCommandContext,
     output: str,
@@ -108,7 +108,7 @@ def _run_stylized_facts_horizon_comparison_command(
     return int(CliExitCode.SUCCESS)
 
 
-def _build_stylized_facts_group(*, environment: Optional[Mapping[str, str]] = None) -> click.Group:
+def build_stylized_facts_group(*, environment: Optional[Mapping[str, str]] = None) -> click.Group:
     @click.group(
         cls=JaniformGroup,
         command_path=("stylized-facts",),
@@ -157,7 +157,7 @@ def _build_stylized_facts_group(*, environment: Optional[Mapping[str, str]] = No
     def horizon_comparison(ctx: click.Context, **command_arguments) -> int:
         return invoke_command_handler(
             ctx,
-            handler=_run_stylized_facts_horizon_comparison_command,
+            handler=run_stylized_facts_horizon_comparison_command,
             command_path=("stylized-facts", "horizon-comparison"),
             command_arguments=dict(command_arguments),
         )

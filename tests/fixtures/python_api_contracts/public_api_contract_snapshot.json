@@ -169,7 +169,7 @@
           ],
           "constructor_signature": "(failure: 'ContractValidationFailure') -> 'None'",
           "kind": "exception_class",
-          "origin_module": "janiform.calibration._errors",
+          "origin_module": "janiform.calibration.errors",
           "qualname": "CalibrationValidationError"
         },
         "CalibrationValidationFailure": {
@@ -3245,7 +3245,8 @@
         "CALIBRATION_MARKET_DATA_SESSION_RESOLUTION_SCHEMA_VERSION",
         "MarketDataSessionRecurringClosedWindow",
         "MarketDataSessionRegularWindow",
-        "MarketDataSessionResolution"
+        "MarketDataSessionResolution",
+        "session_resolution_error"
       ],
       "module_name": "janiform.calibration.sessions",
       "schema_identifiers": [
@@ -3312,6 +3313,10 @@
           ],
           "kind": "contract_model",
           "signature": "(schema_version: 'str', resolution_kind: 'str', provenance_kind: 'str', selected_policy_id: 'str', manual_override_applied: 'bool', exchange_code: 'str', exchange_name: 'str', resolved_timezone_name: 'str', timezone_source: 'str', open_session_duration_hours_per_week: 'float', confidence_score: 'float', confidence_label: 'str', regular_session_windows: 'tuple[MarketDataSessionRegularWindow, ...]', recurring_closed_windows: 'tuple[MarketDataSessionRecurringClosedWindow, ...]', reasons: 'tuple[str, ...]', ambiguity_warnings: 'tuple[str, ...]', metadata_discrepancies: 'tuple[str, ...]', resolved_session_definition_json: 'str') -> 'None'"
+        },
+        "session_resolution_error": {
+          "kind": "function",
+          "signature": "(field_path: 'str', message: 'str', *, context: 'Optional[dict[str, Optional[str | int | float | bool]]]' = None) -> 'Exception'"
         }
       }
     },
@@ -3322,7 +3327,8 @@
         "CALIBRATION_MARKET_DATA_SESSION_RESOLUTION_SCHEMA_VERSION",
         "MarketDataSessionRecurringClosedWindow",
         "MarketDataSessionRegularWindow",
-        "MarketDataSessionResolution"
+        "MarketDataSessionResolution",
+        "session_resolution_error"
       ],
       "module_name": "janiform.calibration.sessions.contracts",
       "schema_identifiers": [
@@ -3389,6 +3395,10 @@
           ],
           "kind": "contract_model",
           "signature": "(schema_version: 'str', resolution_kind: 'str', provenance_kind: 'str', selected_policy_id: 'str', manual_override_applied: 'bool', exchange_code: 'str', exchange_name: 'str', resolved_timezone_name: 'str', timezone_source: 'str', open_session_duration_hours_per_week: 'float', confidence_score: 'float', confidence_label: 'str', regular_session_windows: 'tuple[MarketDataSessionRegularWindow, ...]', recurring_closed_windows: 'tuple[MarketDataSessionRecurringClosedWindow, ...]', reasons: 'tuple[str, ...]', ambiguity_warnings: 'tuple[str, ...]', metadata_discrepancies: 'tuple[str, ...]', resolved_session_definition_json: 'str') -> 'None'"
+        },
+        "session_resolution_error": {
+          "kind": "function",
+          "signature": "(field_path: 'str', message: 'str', *, context: 'Optional[dict[str, Optional[str | int | float | bool]]]' = None) -> 'Exception'"
         }
       }
     },
@@ -4229,14 +4239,24 @@
     },
     "janiform.calibration.staged.runtime": {
       "exports": [
-        "run_staged_calibration"
+        "run_prepared_staged_calibration_with_raw_payload",
+        "run_staged_calibration",
+        "run_staged_calibration_with_prepared_handle_and_events"
       ],
       "module_name": "janiform.calibration.staged.runtime",
       "schema_identifiers": [],
       "symbols": {
+        "run_prepared_staged_calibration_with_raw_payload": {
+          "kind": "function",
+          "signature": "(prepared_handle: 'PreparedCalibrationExecutionHandleProtocol', *, calendar_registry: 'CalendarRegistry') -> 'tuple[StagedCalibrationResponse, dict[str, Any]]'"
+        },
         "run_staged_calibration": {
           "kind": "function",
           "signature": "(execution_input: 'StagedCalibrationExecutionInput', *, calendar_registry: 'CalendarRegistry') -> 'StagedCalibrationResponse'"
+        },
+        "run_staged_calibration_with_prepared_handle_and_events": {
+          "kind": "function",
+          "signature": "(prepared_handle: 'PreparedCalibrationExecutionHandleProtocol', *, calendar_registry: 'CalendarRegistry', event_callback: 'Optional[Callable[[dict[str, Any]], None]]') -> 'tuple[StagedCalibrationResponse, dict[str, Any]]'"
         }
       }
     },
@@ -4396,47 +4416,13 @@
         }
       }
     },
-    "janiform.cli.commands.calibration": {
-      "exports": [],
-      "module_name": "janiform.cli.commands.calibration",
-      "schema_identifiers": [
-        {
-          "name": "CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION",
-          "public_exported": false,
-          "value": "calibration.market_data.request.v1"
-        },
-        {
-          "name": "CLI_MARKET_DATA_SUMMARY_SCHEMA_VERSION",
-          "public_exported": false,
-          "value": "cli.calibration.market_data.summary.v1"
-        }
-      ],
-      "symbols": {}
-    },
-    "janiform.cli.commands.simulation": {
-      "exports": [
-        "run_coarse_simulation",
-        "run_seeded_tick_event_simulation"
-      ],
-      "module_name": "janiform.cli.commands.simulation",
-      "schema_identifiers": [],
-      "symbols": {
-        "run_coarse_simulation": {
-          "kind": "function",
-          "signature": "(request: 'CoarseSimulationRunRequest', *, progress_callback: 'Optional[Callable[[SimulationProgressEvent], None]]' = None) -> 'CoarseSimulationPath'"
-        },
-        "run_seeded_tick_event_simulation": {
-          "kind": "function",
-          "signature": "(request: 'SeededTickSimulationRequest', *, progress_callback: 'Optional[Callable[[SimulationProgressEvent], None]]' = None) -> 'SeededTickSimulationResponse'"
-        }
-      }
-    },
     "janiform.contracts": {
       "exports": [
         "ContractModel",
         "ValidationErrorFactory",
         "compute_hawkes_alpha_over_beta_spectral_radius",
         "parse_json_object",
+        "require_boolean",
         "require_date",
         "require_datetime_utc",
         "require_field",
@@ -4448,11 +4434,13 @@
         "require_non_negative_finite_number",
         "require_non_negative_finite_scalar",
         "require_non_negative_integer",
+        "require_only_supported_fields",
         "require_positive_finite_number",
         "require_positive_finite_scalar",
         "require_positive_integer",
         "require_sequence",
         "require_string",
+        "require_timezone_aware_datetime",
         "serialize_deterministic_json",
         "serialize_pretty_json",
         "validate_exact_integer",
@@ -4480,6 +4468,10 @@
         "parse_json_object": {
           "kind": "function",
           "signature": "(payload_json: 'str', payload_label: 'str', error_factory: 'ValidationErrorFactory') -> 'Mapping[str, Any]'"
+        },
+        "require_boolean": {
+          "kind": "function",
+          "signature": "(mapping: 'Mapping[str, Any]', field_name: 'str', field_path: 'str', error_factory: 'ValidationErrorFactory') -> 'bool'"
         },
         "require_date": {
           "kind": "function",
@@ -4525,6 +4517,10 @@
           "kind": "function",
           "signature": "(mapping: 'Mapping[str, Any]', field_name: 'str', field_path: 'str', error_factory: 'ValidationErrorFactory') -> 'int'"
         },
+        "require_only_supported_fields": {
+          "kind": "function",
+          "signature": "(mapping: 'Mapping[str, Any]', *, supported_fields: 'tuple[str, ...]', field_path: 'str', error_factory: 'ValidationErrorFactory') -> 'None'"
+        },
         "require_positive_finite_number": {
           "kind": "function",
           "signature": "(mapping: 'Mapping[str, Any]', field_name: 'str', field_path: 'str', error_factory: 'ValidationErrorFactory') -> 'float'"
@@ -4544,6 +4540,10 @@
         "require_string": {
           "kind": "function",
           "signature": "(mapping: 'Mapping[str, Any]', field_name: 'str', field_path: 'str', error_factory: 'ValidationErrorFactory') -> 'str'"
+        },
+        "require_timezone_aware_datetime": {
+          "kind": "function",
+          "signature": "(value: 'datetime', *, field_path: 'str', error_factory: 'ValidationErrorFactory') -> 'None'"
         },
         "serialize_deterministic_json": {
           "kind": "function",

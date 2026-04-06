@@ -1,6 +1,5 @@
-from typing import Any, Optional
+from typing import Optional
 
-from ..contracts import ValidationErrorFactory
 from ..errors import (
     ContractValidationFailure,
     JaniformErrorCategory,
@@ -23,7 +22,7 @@ class CalibrationValidationError(JaniformValidationError):
     pass
 
 
-def _calibration_error(
+def calibration_error(
     field_path: str,
     message: str,
     *,
@@ -43,7 +42,7 @@ def _calibration_error(
     )
 
 
-def _calibration_execution_error(
+def calibration_execution_error(
     message: str,
     *,
     entrypoint: str,
@@ -61,7 +60,7 @@ def _calibration_execution_error(
     )
 
 
-def _calibration_integration_error(
+def calibration_integration_error(
     message: str,
     *,
     entrypoint: str,
@@ -82,15 +81,12 @@ def _calibration_integration_error(
     )
 
 
-CALIBRATION_ERROR_FACTORY: ValidationErrorFactory = _calibration_error
-
-
-def _require_bool(raw_payload: dict[str, Any], field_name: str, field_path: str) -> bool:
-    if field_name not in raw_payload:
-        raise _calibration_error(field_path, "is required")
-
-    value = raw_payload[field_name]
-    if not isinstance(value, bool):
-        raise _calibration_error(field_path, "must be a boolean")
-
-    return value
+__all__ = [
+    "CALIBRATION_INTEGRATION_NATIVE_MODULE_ERROR_ID",
+    "CALIBRATION_INTEGRATION_RESPONSE_ERROR_ID",
+    "CalibrationValidationError",
+    "CalibrationValidationFailure",
+    "calibration_error",
+    "calibration_execution_error",
+    "calibration_integration_error",
+]

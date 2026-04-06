@@ -8,7 +8,7 @@ from typing import Any, Optional
 
 import click
 
-from ._constants import (
+from .constants import (
     CLI_ARGUMENT_RESOLUTION_ENTRYPOINT,
     CLI_ARGUMENT_RESOLUTION_VALIDATION_ERROR_ID,
     CLI_CALIBRATION_DISK_CHECKPOINT_DIRECTORY_ENV_VAR,
@@ -18,9 +18,9 @@ from ._constants import (
     CLI_OUTPUT_ENV_VAR,
     CLI_PRIMARY_COMMAND_IDENTIFIERS,
 )
-from ._documents import load_json_document
-from ._errors import cli_validation_error
-from .paths import _resolve_path_from_repository_root, resolve_repository_root
+from .documents import load_json_document
+from .errors import cli_validation_error
+from .paths import resolve_path_from_repository_root, resolve_repository_root
 
 
 def build_click_default_map(
@@ -73,7 +73,7 @@ def _resolve_command_config_path(
     )
 
     if explicit_config_path is not None:
-        return _resolve_path_from_repository_root(repository_root, Path(explicit_config_path))
+        return resolve_path_from_repository_root(repository_root, Path(explicit_config_path))
 
     environment_config_path = environment.get(CLI_CONFIG_JSON_ENV_VAR)
 
@@ -86,7 +86,7 @@ def _resolve_command_config_path(
             message="environment variable must be non-empty when provided",
         )
 
-    return _resolve_path_from_repository_root(repository_root, Path(environment_config_path))
+    return resolve_path_from_repository_root(repository_root, Path(environment_config_path))
 
 
 def _extract_explicit_option_value(arguments: list[str], *, flag_name: str) -> Optional[str]:
@@ -301,7 +301,7 @@ def _build_environment_default_map(
                     message="environment variable must be non-empty when provided",
                 )
 
-            environment_default_map["disk_checkpoint_directory"] = _resolve_path_from_repository_root(
+            environment_default_map["disk_checkpoint_directory"] = resolve_path_from_repository_root(
                 resolve_repository_root(),
                 Path(checkpoint_directory),
             )
@@ -322,6 +322,3 @@ def _raise_cli_argument_resolution_error(
         entrypoint=CLI_ARGUMENT_RESOLUTION_ENTRYPOINT,
         context=context,
     )
-
-
-__all__ = ["build_click_default_map"]

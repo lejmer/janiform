@@ -13,6 +13,3 @@ class CliCommandContext:
     default_map: dict[str, Any]
     environment: Mapping[str, str]
     repository_root: Path
-
-
-__all__ = ["CliCommandContext"]

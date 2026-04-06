@@ -8,7 +8,7 @@ from .contracts import (
     CALIBRATION_STAGED_EXECUTION_INPUT_SCHEMA_VERSION,
     CalibrationExecutionMode,
 )
-from .._errors import CALIBRATION_ERROR_FACTORY, _calibration_error
+from ..errors import calibration_error, calibration_error
 from ...contracts import (
     ContractModel,
     parse_json_object,
@@ -35,7 +35,7 @@ class CalibrationPreparedExecutionPayloadFileReference(ContractModel):
 
     def __post_init__(self) -> None:
         if not self.path.strip():
-            raise _calibration_error("prepared_payload_file.path", "must be a non-empty string")
+            raise calibration_error("prepared_payload_file.path", "must be a non-empty string")
 
     @staticmethod
     def from_mapping(
@@ -44,7 +44,7 @@ class CalibrationPreparedExecutionPayloadFileReference(ContractModel):
         field_path: str,
     ) -> CalibrationPreparedExecutionPayloadFileReference:
         if not isinstance(raw_payload, dict):
-            raise _calibration_error(field_path, "must be an object")
+            raise calibration_error(field_path, "must be an object")
 
         try:
             file_format = CalibrationPreparedExecutionPayloadFileFormat(
@@ -52,11 +52,11 @@ class CalibrationPreparedExecutionPayloadFileReference(ContractModel):
                     raw_payload,
                     "file_format",
                     f"{field_path}.file_format",
-                    CALIBRATION_ERROR_FACTORY,
+                    calibration_error,
                 )
             )
         except ValueError as e:
-            raise _calibration_error(
+            raise calibration_error(
                 f"{field_path}.file_format",
                 "must be a CalibrationPreparedExecutionPayloadFileFormat value",
             ) from e
@@ -66,7 +66,7 @@ class CalibrationPreparedExecutionPayloadFileReference(ContractModel):
                 raw_payload,
                 "path",
                 f"{field_path}.path",
-                CALIBRATION_ERROR_FACTORY,
+                calibration_error,
             ),
             file_format=file_format,
         )
@@ -78,7 +78,7 @@ class CalibrationStagedExecutionRuntimeResources(ContractModel):
 
     def __post_init__(self) -> None:
         if self.disk_checkpoint_directory is not None and not self.disk_checkpoint_directory.strip():
-            raise _calibration_error(
+            raise calibration_error(
                 "runtime_resources.disk_checkpoint_directory",
                 "must be a non-empty string when provided",
             )
@@ -90,11 +90,11 @@ class CalibrationStagedExecutionRuntimeResources(ContractModel):
         field_path: str,
     ) -> CalibrationStagedExecutionRuntimeResources:
         if not isinstance(raw_payload, dict):
-            raise _calibration_error(field_path, "must be an object")
+            raise calibration_error(field_path, "must be an object")
 
         raw_directory = raw_payload.get("disk_checkpoint_directory")
         if raw_directory is not None and not isinstance(raw_directory, str):
-            raise _calibration_error(
+            raise calibration_error(
                 f"{field_path}.disk_checkpoint_directory",
                 "must be a string when provided",
             )
@@ -113,7 +113,7 @@ class StagedCalibrationExecutionInput(ContractModel):
 
     def __post_init__(self) -> None:
         if self.schema_version != CALIBRATION_STAGED_EXECUTION_INPUT_SCHEMA_VERSION:
-            raise _calibration_error(
+            raise calibration_error(
                 "schema_version",
                 f"must be `{CALIBRATION_STAGED_EXECUTION_INPUT_SCHEMA_VERSION}`",
             )
@@ -124,7 +124,7 @@ class StagedCalibrationExecutionInput(ContractModel):
             and runtime_resources is not None
             and runtime_resources.disk_checkpoint_directory is not None
         ):
-            raise _calibration_error(
+            raise calibration_error(
                 "runtime_resources.disk_checkpoint_directory",
                 "is only supported when execution_mode=disk",
             )
@@ -136,7 +136,7 @@ class StagedCalibrationExecutionInput(ContractModel):
                 or runtime_resources.disk_checkpoint_directory is None
             )
         ):
-            raise _calibration_error(
+            raise calibration_error(
                 "runtime_resources.disk_checkpoint_directory",
                 "is required when execution_mode=disk",
             )
@@ -144,7 +144,7 @@ class StagedCalibrationExecutionInput(ContractModel):
     @staticmethod
     def from_mapping(raw_payload: dict[str, Any] | Any) -> StagedCalibrationExecutionInput:
         if not isinstance(raw_payload, dict):
-            raise _calibration_error("staged_calibration_execution_input", "must be an object")
+            raise calibration_error("staged_calibration_execution_input", "must be an object")
 
         from .request import StagedCalibrationRequest
 
@@ -153,14 +153,14 @@ class StagedCalibrationExecutionInput(ContractModel):
                 raw_payload,
                 "schema_version",
                 "schema_version",
-                CALIBRATION_ERROR_FACTORY,
+                calibration_error,
             ),
             request=StagedCalibrationRequest.from_mapping(
                 require_mapping(
                     raw_payload,
                     "request",
                     "request",
-                    CALIBRATION_ERROR_FACTORY,
+                    calibration_error,
                 ),
             ),
             prepared_payload_file=CalibrationPreparedExecutionPayloadFileReference.from_mapping(
@@ -168,7 +168,7 @@ class StagedCalibrationExecutionInput(ContractModel):
                     raw_payload,
                     "prepared_payload_file",
                     "prepared_payload_file",
-                    CALIBRATION_ERROR_FACTORY,
+                    calibration_error,
                 ),
                 field_path="prepared_payload_file",
             ),
@@ -201,7 +201,7 @@ def deserialize_staged_calibration_execution_input(
     raw_payload = parse_json_object(
         payload_json,
         "staged calibration execution input",
-        CALIBRATION_ERROR_FACTORY,
+        calibration_error,
     )
     return validate_staged_calibration_execution_input(dict(raw_payload))
 

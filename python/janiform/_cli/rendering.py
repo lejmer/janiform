@@ -6,7 +6,7 @@ from collections.abc import Callable
 from enum import StrEnum
 from typing import Any, Optional, cast
 
-from ._constants import CliExitCode, CliOutputMode
+from .constants import CliExitCode, CliOutputMode
 from ..calibration.presets import DEFAULT_HIGH_LEVEL_KNOWN_NEWS_PRESET_NAME
 from ..contracts import ContractModel
 from ..errors import JaniformError, JaniformErrorCategory

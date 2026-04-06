@@ -5,7 +5,7 @@ from typing import Optional
 
 import click
 
-from ._shared import attach_runtime_hourly_factor_contract, build_calendar_registry_from_document
+from .shared import attach_runtime_hourly_factor_contract, build_calendar_registry_from_document
 from ..command_runtime import (
     JaniformCommand,
     command_config_option,
@@ -15,7 +15,7 @@ from ..command_runtime import (
     required_json_path_option,
 )
 from ..context import CliCommandContext
-from .._constants import (
+from ..constants import (
     CLI_SIMULATION_COARSE_INTERVAL_ENTRYPOINT,
     CLI_SIMULATION_COARSE_INTERVAL_INTERNAL_ERROR_ID,
     CLI_SIMULATION_COARSE_INTERVAL_VALIDATION_ERROR_ID,
@@ -26,9 +26,9 @@ from .._constants import (
     CliExitCode,
     CliOutputMode,
 )
-from .._documents import load_json_document_for_cli_field
-from .._errors import classify_workflow_command_error
-from .._rendering import (
+from ..documents import load_json_document_for_cli_field
+from ..errors import classify_workflow_command_error
+from ..rendering import (
     render_simulation_coarse_interval_human_output,
     render_simulation_seeded_ticks_human_output,
     write_cli_error,
@@ -45,7 +45,7 @@ from ...simulation import (
 )
 
 
-def _build_simulation_output_controller(
+def build_simulation_output_controller(
     *,
     output: str,
     progress: str,
@@ -65,7 +65,7 @@ def _build_simulation_output_controller(
     )
 
 
-def _simulation_progress_callback(
+def simulation_progress_callback(
     progress_controller: JaniformOutputController,
 ) -> tuple[
     Optional[Callable[[SimulationProgressEvent], None]],
@@ -85,7 +85,7 @@ def _simulation_progress_callback(
     return callback, progress
 
 
-def _run_simulation_coarse_interval_command(
+def run_simulation_coarse_interval_command(
     *,
     cli_context: CliCommandContext,
     output: str,
@@ -94,9 +94,9 @@ def _run_simulation_coarse_interval_command(
     **_,
 ) -> int:
     try:
-        output_controller = _build_simulation_output_controller(output=output, progress=progress)
+        output_controller = build_simulation_output_controller(output=output, progress=progress)
 
-        progress_callback, progress_scope = _simulation_progress_callback(output_controller)
+        progress_callback, progress_scope = simulation_progress_callback(output_controller)
 
         request_document = load_json_document_for_cli_field(
             repository_root=cli_context.repository_root,
@@ -142,7 +142,7 @@ def _run_simulation_coarse_interval_command(
     return int(CliExitCode.SUCCESS)
 
 
-def _run_simulation_seeded_ticks_command(
+def run_simulation_seeded_ticks_command(
     *,
     cli_context: CliCommandContext,
     output: str,
@@ -152,9 +152,9 @@ def _run_simulation_seeded_ticks_command(
     **_,
 ) -> int:
     try:
-        output_controller = _build_simulation_output_controller(output=output, progress=progress)
+        output_controller = build_simulation_output_controller(output=output, progress=progress)
 
-        progress_callback, progress_scope = _simulation_progress_callback(output_controller)
+        progress_callback, progress_scope = simulation_progress_callback(output_controller)
 
         request_document = load_json_document_for_cli_field(
             repository_root=cli_context.repository_root,
@@ -216,7 +216,7 @@ def _run_simulation_seeded_ticks_command(
     return int(CliExitCode.SUCCESS)
 
 
-def _build_simulation_coarse_interval_command(
+def build_simulation_coarse_interval_command(
     *,
     environment: Optional[Mapping[str, str]] = None,
 ) -> click.Command:
@@ -247,7 +247,7 @@ def _build_simulation_coarse_interval_command(
     def coarse_interval(ctx: click.Context, **command_arguments) -> int:
         return invoke_command_handler(
             ctx,
-            handler=_run_simulation_coarse_interval_command,
+            handler=run_simulation_coarse_interval_command,
             command_path=("simulate", "coarse-interval"),
             command_arguments=dict(command_arguments),
         )
@@ -255,7 +255,7 @@ def _build_simulation_coarse_interval_command(
     return coarse_interval
 
 
-def _build_simulation_seeded_ticks_command(
+def build_simulation_seeded_ticks_command(
     *,
     environment: Optional[Mapping[str, str]] = None,
 ) -> click.Command:
@@ -287,15 +287,9 @@ def _build_simulation_seeded_ticks_command(
     def seeded_ticks(ctx: click.Context, **command_arguments) -> int:
         return invoke_command_handler(
             ctx,
-            handler=_run_simulation_seeded_ticks_command,
+            handler=run_simulation_seeded_ticks_command,
             command_path=("simulate", "seeded-ticks"),
             command_arguments=dict(command_arguments),
         )
 
     return seeded_ticks
-
-
-__all__ = [
-    "run_coarse_simulation",
-    "run_seeded_tick_event_simulation",
-]

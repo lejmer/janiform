@@ -2,7 +2,7 @@ from typing import cast
 
 import click
 
-from janiform.cli.command_tree import _build_app
+from janiform._cli.command_tree import build_app
 from tests.support.cli import render_help
 
 
@@ -79,7 +79,7 @@ def test_regression_help_lists_developer_regression_commands() -> None:
 
 
 def test_click_app_exposes_the_expected_live_command_tree() -> None:
-    root_command = _build_app(environment={})
+    root_command = build_app(environment={})
 
     assert isinstance(root_command, click.Group)
     assert tuple(root_command.commands) == (

@@ -8,12 +8,12 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import orjson
 import pytest
 
+import janiform._cli.commands.calibration as cli_calibration_commands_module
+import janiform._cli.commands.pricing as cli_pricing_commands_module
+import janiform._cli.commands.simulation as cli_simulation_commands_module
+import janiform._cli.paths as cli_paths_module
 import janiform.calibration as calibration_module
 import janiform.cli as cli_module
-import janiform.cli.commands.calibration as cli_calibration_commands_module
-import janiform.cli.paths as cli_paths_module
-import janiform.cli.commands._pricing as cli_pricing_commands_module
-import janiform.cli.commands.simulation as cli_simulation_commands_module
 import janiform.pricing as pricing_module
 import janiform.simulation as simulation_module
 from janiform._timestamps import ONE_HOUR_NANOS
@@ -1899,7 +1899,7 @@ def test_calibration_cli_resolves_relative_disk_checkpoint_directory_from_reposi
     execution_input = build_valid_execution_input_model()
     relative_checkpoint_directory = Path("tmp") / "cli-checkpoints"
     repository_root = Path(cli_module.__file__).resolve().parents[3]
-    resolved_checkpoint_directory = cli_paths_module._resolve_path_from_repository_root(
+    resolved_checkpoint_directory = cli_paths_module.resolve_path_from_repository_root(
         repository_root,
         relative_checkpoint_directory,
     )

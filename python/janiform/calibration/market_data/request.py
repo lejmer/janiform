@@ -21,7 +21,7 @@ from .contracts import (
     validate_option_surface_scope,
     validate_tick_price_input_policy,
 )
-from .._errors import CALIBRATION_ERROR_FACTORY, _calibration_error
+from ..errors import calibration_error, calibration_error
 from ..staged import CalibrationStage, CalibrationStageSolverSettings
 from ...contracts import (
     ContractModel,
@@ -55,22 +55,22 @@ class MarketDataCalibrationRequest(ContractModel):
 
     def __post_init__(self) -> None:
         if self.schema_version != CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION:
-            raise _calibration_error(
+            raise calibration_error(
                 "schema_version",
                 f"must be `{CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION}`",
             )
 
         if not self.run_id.strip():
-            raise _calibration_error("run_id", "must be a non-empty string")
+            raise calibration_error("run_id", "must be a non-empty string")
 
         if self.tick_data_source.file_format not in (CalibrationInputFileFormat.CSV, CalibrationInputFileFormat.PARQUET):
-            raise _calibration_error("tick_data_source.file_format", "must be one of: csv, parquet")
+            raise calibration_error("tick_data_source.file_format", "must be one of: csv, parquet")
 
         if (
             self.option_surface_source is not None
             and self.option_surface_source.file_format not in (CalibrationInputFileFormat.CSV, CalibrationInputFileFormat.PARQUET)
         ):
-            raise _calibration_error("option_surface_source.file_format", "must be one of: csv, parquet")
+            raise calibration_error("option_surface_source.file_format", "must be one of: csv, parquet")
 
         validate_tick_price_input_policy(
             workflow_scope=self.workflow_scope,
@@ -95,7 +95,7 @@ class MarketDataCalibrationRequest(ContractModel):
             and self.mean_reversion is not None
             and self.mean_reversion.enabled
         ):
-            raise _calibration_error(
+            raise calibration_error(
                 "mean_reversion",
                 "must be omitted when workflow_scope is seasonality_only",
             )
@@ -116,13 +116,13 @@ class MarketDataCalibrationRequest(ContractModel):
 
         for stage_settings in self.optimizer_settings_by_stage:
             if stage_settings.stage in configured_stage_set:
-                raise _calibration_error(
+                raise calibration_error(
                     "optimizer_settings_by_stage",
                     f"contains duplicate stage '{stage_settings.stage.value}'",
                 )
 
             if stage_settings.stage not in selected_stage_set:
-                raise _calibration_error(
+                raise calibration_error(
                     "optimizer_settings_by_stage",
                     f"contains stage '{stage_settings.stage.value}' outside workflow_scope '{self.workflow_scope.value}'",
                 )
@@ -132,37 +132,37 @@ class MarketDataCalibrationRequest(ContractModel):
     @staticmethod
     def from_mapping(raw_payload: dict[str, Any] | Any) -> MarketDataCalibrationRequest:
         if not isinstance(raw_payload, dict):
-            raise _calibration_error("market_data_calibration_request", "must be an object")
+            raise calibration_error("market_data_calibration_request", "must be an object")
 
         return MarketDataCalibrationRequest(
             schema_version=require_non_empty_string(
                 raw_payload,
                 "schema_version",
                 "schema_version",
-                CALIBRATION_ERROR_FACTORY,
+                calibration_error,
             ),
-            run_id=require_non_empty_string(raw_payload, "run_id", "run_id", CALIBRATION_ERROR_FACTORY),
+            run_id=require_non_empty_string(raw_payload, "run_id", "run_id", calibration_error),
             tick_data_source=CalibrationInputFileReference.from_mapping(
-                require_mapping(raw_payload, "tick_data_source", "tick_data_source", CALIBRATION_ERROR_FACTORY),
+                require_mapping(raw_payload, "tick_data_source", "tick_data_source", calibration_error),
                 field_path="tick_data_source",
             ),
             session_configuration=CalibrationSessionConfigurationInput.from_mapping(
-                require_mapping(raw_payload, "session_configuration", "session_configuration", CALIBRATION_ERROR_FACTORY),
+                require_mapping(raw_payload, "session_configuration", "session_configuration", calibration_error),
                 field_path="session_configuration",
             ),
             column_mapping=CalibrationMarketDataColumnMapping.from_mapping(
-                require_mapping(raw_payload, "column_mapping", "column_mapping", CALIBRATION_ERROR_FACTORY),
+                require_mapping(raw_payload, "column_mapping", "column_mapping", calibration_error),
                 field_path="column_mapping",
             ),
             workflow_scope=CalibrationMarketDataWorkflowScope(
-                require_string(raw_payload, "workflow_scope", "workflow_scope", CALIBRATION_ERROR_FACTORY)
+                require_string(raw_payload, "workflow_scope", "workflow_scope", calibration_error)
             ),
             normalization_policy=CalibrationMarketDataNormalizationPolicy.from_mapping(
-                require_mapping(raw_payload, "normalization_policy", "normalization_policy", CALIBRATION_ERROR_FACTORY),
+                require_mapping(raw_payload, "normalization_policy", "normalization_policy", calibration_error),
                 field_path="normalization_policy",
             ),
             output_preferences=CalibrationMarketDataOutputPreferences.from_mapping(
-                require_mapping(raw_payload, "output_preferences", "output_preferences", CALIBRATION_ERROR_FACTORY),
+                require_mapping(raw_payload, "output_preferences", "output_preferences", calibration_error),
                 field_path="output_preferences",
             ),
             optimizer_settings_by_stage=tuple(
@@ -175,7 +175,7 @@ class MarketDataCalibrationRequest(ContractModel):
                         raw_payload,
                         "optimizer_settings_by_stage",
                         "optimizer_settings_by_stage",
-                        CALIBRATION_ERROR_FACTORY,
+                        calibration_error,
                     )
                     if "optimizer_settings_by_stage" in raw_payload
                     else ()
@@ -187,7 +187,7 @@ class MarketDataCalibrationRequest(ContractModel):
                         raw_payload,
                         "preprocessing_settings",
                         "preprocessing_settings",
-                        CALIBRATION_ERROR_FACTORY,
+                        calibration_error,
                     ),
                     field_path="preprocessing_settings",
                 )
@@ -201,7 +201,7 @@ class MarketDataCalibrationRequest(ContractModel):
                         raw_payload,
                         "option_surface_source",
                         "option_surface_source",
-                        CALIBRATION_ERROR_FACTORY,
+                        calibration_error,
                     ),
                     field_path="option_surface_source",
                 )
@@ -212,7 +212,7 @@ class MarketDataCalibrationRequest(ContractModel):
                 require_datetime_utc(
                     raw_payload["option_surface_valuation_time_utc"],
                     "option_surface_valuation_time_utc",
-                    CALIBRATION_ERROR_FACTORY,
+                    calibration_error,
                 )
                 if "option_surface_valuation_time_utc" in raw_payload
                 and raw_payload["option_surface_valuation_time_utc"] is not None
@@ -220,7 +220,7 @@ class MarketDataCalibrationRequest(ContractModel):
             ),
             carry=(
                 CalibrationFlatCarryInput.from_mapping(
-                    require_mapping(raw_payload, "carry", "carry", CALIBRATION_ERROR_FACTORY),
+                    require_mapping(raw_payload, "carry", "carry", calibration_error),
                     field_path="carry",
                 )
                 if "carry" in raw_payload and raw_payload["carry"] is not None
@@ -228,7 +228,7 @@ class MarketDataCalibrationRequest(ContractModel):
             ),
             known_news_inputs=(
                 CalibrationKnownNewsInput.from_mapping(
-                    require_mapping(raw_payload, "known_news_inputs", "known_news_inputs", CALIBRATION_ERROR_FACTORY),
+                    require_mapping(raw_payload, "known_news_inputs", "known_news_inputs", calibration_error),
                     field_path="known_news_inputs",
                 )
                 if "known_news_inputs" in raw_payload and raw_payload["known_news_inputs"] is not None
@@ -236,7 +236,7 @@ class MarketDataCalibrationRequest(ContractModel):
             ),
             mean_reversion=(
                 CalibrationMeanReversionConfiguration.from_mapping(
-                    require_mapping(raw_payload, "mean_reversion", "mean_reversion", CALIBRATION_ERROR_FACTORY),
+                    require_mapping(raw_payload, "mean_reversion", "mean_reversion", calibration_error),
                     field_path="mean_reversion",
                 )
                 if "mean_reversion" in raw_payload and raw_payload["mean_reversion"] is not None
@@ -254,7 +254,7 @@ def serialize_market_data_calibration_request(request: MarketDataCalibrationRequ
 
 
 def deserialize_market_data_calibration_request(payload_json: str) -> MarketDataCalibrationRequest:
-    raw_payload = parse_json_object(payload_json, "market_data_calibration_request", CALIBRATION_ERROR_FACTORY)
+    raw_payload = parse_json_object(payload_json, "market_data_calibration_request", calibration_error)
     return validate_market_data_calibration_request(dict(raw_payload))
 
 
