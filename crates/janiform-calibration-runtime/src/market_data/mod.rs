@@ -1,6 +1,7 @@
 pub(crate) mod loading;
 pub(crate) mod preparation;
 pub(crate) mod preprocessing;
+pub(crate) mod solver_settings;
 
 pub use loading::{
     CalibrationDirectionalLabelDiagnosticsPayload, MarketDataDuplicateRecordPolicy,

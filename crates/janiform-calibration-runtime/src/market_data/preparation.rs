@@ -4,14 +4,17 @@ use std::fmt::{Display, Formatter};
 
 use chrono::{DateTime, Utc};
 use janiform_calibration_artifacts::{
-    CalibrationExecutionMode, CalibrationOptimizerSettings, CalibrationRunDataInputs,
-    CalibrationRunSeedSettings, CalibrationRunSpec, CalibrationStage,
-    CalibrationStageSolverSettings,
+    CalibrationExecutionMode, CalibrationRunDataInputs, CalibrationRunSeedSettings,
+    CalibrationRunSpec, CalibrationStage, CalibrationStageSolverSettings,
 };
 use janiform_foundations::time::{ONE_HOUR_NANOS_F64, duration_nanos_to_hours};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use super::solver_settings::{
+    DATA_DERIVED_SOLVER_SETTINGS_POLICY_ID, has_missing_stage_solver_settings,
+    resolve_solver_settings_by_stage,
+};
 use crate::pricing::VanillaOptionPayoffType;
 use crate::{
     CALIBRATION_STAGED_EXECUTION_INPUT_SCHEMA_VERSION, CalibrationJointRefinementCarryInput,
@@ -69,11 +72,6 @@ const MEAN_REVERSION_SESSION_DURATION_INTERVAL_DERIVATION_POLICY: &str =
     "median_observed_session_duration_hours_from_retained_open_session_ticks.v1";
 const MEAN_REVERSION_INTERVAL_OVERRIDE_POLICY: &str =
     "explicit_mean_reversion_grid_interval_hours.v1";
-const DEFAULT_SEASONALITY_MAX_ITERATIONS: usize = 150;
-const DEFAULT_OTHER_STAGE_MAX_ITERATIONS: usize = 250;
-const DEFAULT_SOLVER_ABSOLUTE_TOLERANCE: f64 = 1.0e-8;
-const DEFAULT_SOLVER_RELATIVE_TOLERANCE: f64 = 1.0e-6;
-const DEFAULT_SOLVER_CONSTRAINT_PENALTY_WEIGHT: f64 = 10.0;
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -344,72 +342,6 @@ fn stable_seed_from_run_id(run_id: &str) -> u64 {
             position.saturating_mul(u64::from(u32::from(character)))
         })
         .sum()
-}
-
-fn default_solver_settings(
-    stage: CalibrationStage,
-    cpu_count: Option<usize>,
-) -> Result<CalibrationStageSolverSettings, CalibrationMarketDataPreparationError> {
-    let max_iterations = match stage {
-        CalibrationStage::Seasonality => DEFAULT_SEASONALITY_MAX_ITERATIONS,
-        _ => DEFAULT_OTHER_STAGE_MAX_ITERATIONS,
-    };
-
-    let optimizer_settings = CalibrationOptimizerSettings::try_new(
-        "lbfgs",
-        max_iterations,
-        cpu_count.unwrap_or_else(|| std::thread::available_parallelism().map_or(1, usize::from)),
-        DEFAULT_SOLVER_ABSOLUTE_TOLERANCE,
-        DEFAULT_SOLVER_RELATIVE_TOLERANCE,
-        DEFAULT_SOLVER_CONSTRAINT_PENALTY_WEIGHT,
-    )
-    .map_err(|source| {
-        CalibrationMarketDataPreparationError::from(format!(
-            "failed to build default optimizer settings: {source}"
-        ))
-    })?;
-
-    Ok(CalibrationStageSolverSettings {
-        stage,
-        optimizer_settings,
-    })
-}
-
-const fn calibration_stage_name(stage: CalibrationStage) -> &'static str {
-    match stage {
-        CalibrationStage::Seasonality => "seasonality",
-        CalibrationStage::Hawkes => "hawkes",
-        CalibrationStage::ReturnComponents => "return_components",
-        CalibrationStage::MeanReversion => "mean_reversion",
-        CalibrationStage::JointRefinement => "joint_refinement",
-    }
-}
-
-fn resolve_solver_settings_by_stage(
-    selected_stages: &[CalibrationStage],
-    configured_solver_settings: &[CalibrationStageSolverSettings],
-    cpu_count: Option<usize>,
-) -> Result<Vec<CalibrationStageSolverSettings>, CalibrationMarketDataPreparationError> {
-    for configured_stage_settings in configured_solver_settings {
-        if !selected_stages.contains(&configured_stage_settings.stage) {
-            return Err(CalibrationMarketDataPreparationError::from(format!(
-                "optimizer_settings_by_stage contains stage '{}' outside the selected workflow scope",
-                calibration_stage_name(configured_stage_settings.stage)
-            )));
-        }
-    }
-
-    selected_stages
-        .iter()
-        .copied()
-        .map(|stage| {
-            configured_solver_settings
-                .iter()
-                .find(|configured_stage_settings| configured_stage_settings.stage == stage)
-                .cloned()
-                .map_or_else(|| default_solver_settings(stage, cpu_count), Ok)
-        })
-        .collect()
 }
 
 fn executed_preprocessing_steps(
@@ -1184,8 +1116,10 @@ fn prepared_market_data_plan_from_loading_output(
         resolve_solver_settings_by_stage(
             &selected_stages,
             &request.optimizer_settings_by_stage,
+            &loading_output,
             cpu_count,
-        )?,
+        )
+        .map_err(CalibrationMarketDataPreparationError::from)?,
     )
     .map_err(|source| {
         CalibrationMarketDataPreparationError::from(format!(
@@ -1280,6 +1214,25 @@ fn prepared_market_data_plan_from_loading_output(
             .material_close_open_gap_count,
     };
 
+    let mut derivation_policies = vec![
+        loading_output.session_resolution.selected_policy_id.clone(),
+        PREPARED_MARKET_DATA_DERIVATION_POLICY_ID.to_string(),
+        KNOWN_NEWS_WINDOW_FILTER_POLICY_ID.to_string(),
+        KNOWN_NEWS_OVERLAY_POLICY_ID.to_string(),
+        TRADE_LABEL_DERIVATION_POLICY_ID.to_string(),
+        HAWKES_SEARCH_POLICY_ID.to_string(),
+        RETURN_COMPONENTS_JUMP_POLICY_ID.to_string(),
+        RETURN_COMPONENTS_BOUNDARY_POLICY_ID.to_string(),
+        RETURN_COMPONENTS_CONTINUOUS_FIT_POLICY_ID.to_string(),
+    ];
+
+    if has_missing_stage_solver_settings(
+        selected_stages.as_slice(),
+        &request.optimizer_settings_by_stage,
+    ) {
+        derivation_policies.push(DATA_DERIVED_SOLVER_SETTINGS_POLICY_ID.to_string());
+    }
+
     let provenance = CalibrationMarketDataPreparationProvenance {
         tick_data_summary: serde_json::to_value(&loading_output.tick_data_summary).map_err(
             |source| {
@@ -1328,17 +1281,7 @@ fn prepared_market_data_plan_from_loading_output(
         },
         derived_trade_events_data_reference: trade_events_data_reference,
         derived_option_surface_data_reference: option_surface_data_reference,
-        derivation_policies: vec![
-            loading_output.session_resolution.selected_policy_id.clone(),
-            PREPARED_MARKET_DATA_DERIVATION_POLICY_ID.to_string(),
-            KNOWN_NEWS_WINDOW_FILTER_POLICY_ID.to_string(),
-            KNOWN_NEWS_OVERLAY_POLICY_ID.to_string(),
-            TRADE_LABEL_DERIVATION_POLICY_ID.to_string(),
-            HAWKES_SEARCH_POLICY_ID.to_string(),
-            RETURN_COMPONENTS_JUMP_POLICY_ID.to_string(),
-            RETURN_COMPONENTS_BOUNDARY_POLICY_ID.to_string(),
-            RETURN_COMPONENTS_CONTINUOUS_FIT_POLICY_ID.to_string(),
-        ],
+        derivation_policies,
         deterministic_defaults_applied: deterministic_defaults_applied(&request),
     };
 
