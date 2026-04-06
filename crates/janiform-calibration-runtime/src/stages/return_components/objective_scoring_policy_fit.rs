@@ -19,8 +19,7 @@ use super::contracts::{
 
 const RETURN_COMPONENTS_STAGE_OBJECTIVE_SCORING_POLICY: &str =
     "relative_error_bucket_scoring_with_log_price_range_excess_penalty.v1";
-const RETURN_COMPONENTS_STAGE_PRICE_RANGE_EXCESS_TRANSFORM: &str =
-    "ln1p(max(expansion_ratio/max(threshold_ratio,1)-1,0))";
+const RETURN_COMPONENTS_STAGE_PRICE_RANGE_EXCESS_TRANSFORM: &str = "ln1p(max(fitted_reference_log_price_span/max(admissible_reference_log_price_span,price_range_threshold_floor)-1,0))";
 
 pub(crate) fn fit_objective_scoring_policy(
     summary_statistics: ReturnComponentsStageObservedSignalSummaryStatistics,
@@ -29,7 +28,7 @@ pub(crate) fn fit_objective_scoring_policy(
         fit_policy: RETURN_COMPONENTS_STAGE_OBJECTIVE_SCORING_POLICY,
         arrival_frequency_zero_floor: observed_arrival_frequency_zero_floor(summary_statistics),
         positive_metric_zero_floor: observed_positive_metric_zero_floor(summary_statistics),
-        price_range_threshold_floor: 1.0,
+        price_range_threshold_floor: strictly_positive_machine_value(),
         price_range_excess_transform: RETURN_COMPONENTS_STAGE_PRICE_RANGE_EXCESS_TRANSFORM,
         dominant_scale_driver_order: vec![
             "nig_scale".to_string(),
@@ -91,10 +90,10 @@ pub(crate) fn score_candidate_metric_buckets(
         activity_coupling_fit: round_non_negative_value(activity_coupling_fit),
         price_range_sanity_fit: round_non_negative_value(
             if price_range_sanity_diagnostic.is_flagged {
-                let normalized_excess = (price_range_sanity_diagnostic.expansion_ratio
+                let normalized_excess = (price_range_sanity_diagnostic
+                    .fitted_reference_log_price_span
                     / price_range_sanity_diagnostic
-                        .policy
-                        .threshold_ratio
+                        .admissible_reference_log_price_span
                         .max(objective_scoring_policy.price_range_threshold_floor))
                     - 1.0;
                 normalized_excess.max(0.0).ln_1p()
@@ -250,6 +249,8 @@ fn round_non_negative_value(value: f64) -> f64 {
 
 #[cfg(test)]
 mod tests {
+    use janiform_foundations::numeric::strictly_positive_machine_value;
+
     use super::fit_objective_scoring_policy;
     use crate::stages::return_components::ReturnComponentsStageObservedSignalSummaryStatistics;
 
@@ -273,6 +274,7 @@ mod tests {
                 continuous_return_volatility: 0.01,
                 continuous_return_skewness: 0.0,
                 continuous_return_excess_kurtosis: 0.0,
+                observed_continuous_log_price_span: 0.02,
                 observed_log_price_span: 0.03,
                 mean_abs_known_open_jump_return: 0.0015,
                 mean_abs_known_closed_gap_return: 0.004,
@@ -288,7 +290,10 @@ mod tests {
 
         assert_eq!(policy.arrival_frequency_zero_floor, 1.0 / 12.0);
         assert_eq!(policy.positive_metric_zero_floor, 0.0015);
-        assert_eq!(policy.price_range_threshold_floor, 1.0);
+        assert_eq!(
+            policy.price_range_threshold_floor,
+            strictly_positive_machine_value()
+        );
         assert_eq!(
             policy.dominant_scale_driver_order,
             vec![

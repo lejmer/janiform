@@ -1206,6 +1206,7 @@ pub struct ReturnComponentsStageObservedSignalSummaryStatistics {
     pub continuous_return_volatility: f64,
     pub continuous_return_skewness: f64,
     pub continuous_return_excess_kurtosis: f64,
+    pub observed_continuous_log_price_span: f64,
     pub observed_log_price_span: f64,
     pub mean_abs_known_open_jump_return: f64,
     pub mean_abs_known_closed_gap_return: f64,
@@ -1512,8 +1513,9 @@ impl ReturnComponentsStageQuantileBinningPolicy {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ReturnComponentsStagePriceRangeSanityPolicy {
     pub fit_policy: &'static str,
-    pub threshold_ratio: f64,
-    pub continuous_reference_span_multiplier: f64,
+    pub observed_continuous_log_price_span: f64,
+    pub observed_component_reference_log_price_span: f64,
+    pub maximum_representable_log_price_span: f64,
 }
 
 impl ReturnComponentsStagePriceRangeSanityPolicy {
@@ -1523,15 +1525,28 @@ impl ReturnComponentsStagePriceRangeSanityPolicy {
         }
 
         for (field_name, value) in [
-            ("threshold_ratio", self.threshold_ratio),
             (
-                "continuous_reference_span_multiplier",
-                self.continuous_reference_span_multiplier,
+                "observed_continuous_log_price_span",
+                self.observed_continuous_log_price_span,
+            ),
+            (
+                "observed_component_reference_log_price_span",
+                self.observed_component_reference_log_price_span,
+            ),
+            (
+                "maximum_representable_log_price_span",
+                self.maximum_representable_log_price_span,
             ),
         ] {
-            if !value.is_finite() || value <= 0.0 {
-                return Err(format!("{field_name} must be finite and strictly positive"));
+            if !value.is_finite() || value < 0.0 {
+                return Err(format!("{field_name} must be finite and non-negative"));
             }
+        }
+        if self.maximum_representable_log_price_span <= 0.0 {
+            return Err(
+                "maximum_representable_log_price_span must be finite and strictly positive"
+                    .to_string(),
+            );
         }
 
         Ok(())
@@ -1626,6 +1641,8 @@ pub struct ReturnComponentsStagePriceRangeSanityDiagnostic {
     pub policy: ReturnComponentsStagePriceRangeSanityPolicy,
     pub is_flagged: bool,
     pub observed_log_price_span: f64,
+    pub observed_component_reference_log_price_span: f64,
+    pub admissible_reference_log_price_span: f64,
     pub fitted_reference_log_price_span: f64,
     pub continuous_reference_log_price_span: f64,
     pub effective_continuous_sample_count: usize,

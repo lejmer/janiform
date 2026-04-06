@@ -138,7 +138,8 @@ pub(super) fn generate_return_components_stage_candidate_inputs(
     let fitted_diagnostic_policy = diagnostic_policy_fit::fit_diagnostic_policy();
     let fitted_objective_scoring_policy =
         objective_scoring_policy_fit::fit_objective_scoring_policy(summary_statistics);
-    let fitted_price_range_sanity_policy = price_range_policy_fit::fit_price_range_sanity_policy();
+    let fitted_price_range_sanity_policy =
+        price_range_policy_fit::fit_price_range_sanity_policy(summary_statistics);
 
     let candidate_family_sets = build_candidate_family_sets(
         candidate_generation_input,

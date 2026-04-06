@@ -194,11 +194,21 @@ pub(crate) fn build_price_range_sanity_diagnostic(
         .mean_continuous_business_time_scale
         .max(return_components_stage_positive_domain_floor());
 
-    let continuous_reference_span = price_range_sanity_policy.continuous_reference_span_multiplier
-        * return_distribution_diagnostic.fitted_return_volatility
-        * (effective_continuous_sample_count as f64 * effective_mean_business_time_scale)
-            .sqrt()
-            .max(1.0);
+    let continuous_reference_span = if summary_statistics.observed_continuous_log_price_span
+        <= return_components_stage_positive_domain_floor()
+    {
+        0.0
+    } else if summary_statistics.continuous_return_volatility
+        <= return_components_stage_positive_domain_floor()
+    {
+        price_range_sanity_policy.observed_continuous_log_price_span
+    } else {
+        price_range_sanity_policy.observed_continuous_log_price_span
+            * return_distribution_diagnostic
+                .fitted_return_volatility
+                .max(0.0)
+            / summary_statistics.continuous_return_volatility
+    };
 
     let fitted_mean_abs_jump_return =
         fitted_mean_abs_jump_return(shared_mark_law_template, return_jump_family);
@@ -214,16 +224,24 @@ pub(crate) fn build_price_range_sanity_diagnostic(
             0.0
         };
 
-    let expansion_ratio = fitted_reference_log_price_span
-        / summary_statistics
-            .observed_log_price_span
-            .max(return_components_stage_positive_domain_floor());
-    let is_flagged = expansion_ratio > price_range_sanity_policy.threshold_ratio;
+    let observed_component_reference_log_price_span = price_range_sanity_policy
+        .observed_component_reference_log_price_span
+        .max(summary_statistics.observed_log_price_span);
+
+    let admissible_reference_log_price_span = observed_component_reference_log_price_span
+        .min(price_range_sanity_policy.maximum_representable_log_price_span)
+        .max(return_components_stage_positive_domain_floor());
+
+    let expansion_ratio = fitted_reference_log_price_span / admissible_reference_log_price_span;
+
+    let is_flagged = fitted_reference_log_price_span > admissible_reference_log_price_span;
 
     ReturnComponentsStagePriceRangeSanityDiagnostic {
         policy: price_range_sanity_policy.clone(),
         is_flagged,
         observed_log_price_span: summary_statistics.observed_log_price_span,
+        observed_component_reference_log_price_span,
+        admissible_reference_log_price_span,
         fitted_reference_log_price_span,
         continuous_reference_log_price_span: continuous_reference_span,
         effective_continuous_sample_count,

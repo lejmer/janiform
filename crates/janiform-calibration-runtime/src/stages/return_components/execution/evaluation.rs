@@ -246,7 +246,8 @@ pub fn evaluate_return_components_exact_candidate(
         &activity_coupling_family,
     );
 
-    let fitted_price_range_sanity_policy = price_range_policy_fit::fit_price_range_sanity_policy();
+    let fitted_price_range_sanity_policy =
+        price_range_policy_fit::fit_price_range_sanity_policy(observed_summary_statistics);
 
     let price_range_sanity_diagnostic = build_price_range_sanity_diagnostic(
         &fitted_diagnostic_policy,
