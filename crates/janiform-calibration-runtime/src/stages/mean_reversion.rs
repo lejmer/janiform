@@ -15,6 +15,7 @@ use janiform_calibration_artifacts::{
     MeanReversionStageDiagnostics,
 };
 use janiform_foundations::matrix2::solve_two_by_two_linear_system;
+use janiform_foundations::numeric::coverage_ratio;
 use janiform_foundations::time::{ONE_HOUR_NANOS, ceil_to_hour_utc_nanos, floor_to_hour_utc_nanos};
 use janiform_market_time::hourly_factors::{
     HourlyFactorProviderRequest, HourlyNewsIntensityFactorSource, HourlySeasonalityFactorSource,
@@ -35,8 +36,7 @@ use crate::stages::seasonality::{
     build_runtime_hourly_seasonality_factors_from_components,
 };
 
-const MINIMUM_MEAN_REVERSION_OBSERVATION_COUNT: usize = 3;
-const MINIMUM_MEAN_REVERSION_COVERAGE_RATIO: f64 = 0.5;
+const FULL_PRESSURE_TO_LEVEL_REGRESSION_COLUMN_COUNT: usize = 2;
 const FULL_PRESSURE_TO_LEVEL_CANDIDATE_FAMILY: &str =
     "endogenous_core_pressure_level_mean_reversion";
 const PRESSURE_TO_LEVEL_NO_MEAN_REVERSION_CANDIDATE_FAMILY: &str =
@@ -302,10 +302,7 @@ fn estimate_mean_reversion_fitted_parameters(
         coverage_ratio: execution_input.coverage_ratio,
     };
 
-    if execution_input.observations.len() < MINIMUM_MEAN_REVERSION_OBSERVATION_COUNT
-        || !execution_input.coverage_ratio.is_finite()
-        || execution_input.coverage_ratio < MINIMUM_MEAN_REVERSION_COVERAGE_RATIO
-    {
+    if !mean_reversion_sample_is_sufficient(execution_input) {
         return Ok(zero_kappa_endogenous_fit(
             calibration_grid,
             ENDOGENOUS_RUNTIME_PROJECTION_REQUIRED_REASON,
@@ -325,6 +322,28 @@ fn estimate_mean_reversion_fitted_parameters(
         calibration_grid,
         observation_levels.as_slice(),
     )
+}
+
+fn mean_reversion_sample_is_sufficient(execution_input: &MeanReversionStageExecutionInput) -> bool {
+    if !execution_input.coverage_ratio.is_finite() {
+        return false;
+    }
+
+    let retained_observation_count = execution_input.observations.len();
+
+    // The richest endogenous candidate fits a two-column regression, so the stage needs three
+    // directly covered boundary observations to identify that structure over the prepared horizon.
+    let required_source_observation_count =
+        FULL_PRESSURE_TO_LEVEL_REGRESSION_COLUMN_COUNT.saturating_add(1);
+
+    let required_minimum_coverage_ratio = coverage_ratio(
+        required_source_observation_count,
+        retained_observation_count,
+    );
+
+    retained_observation_count >= required_source_observation_count
+        && execution_input.source_observation_count >= required_source_observation_count
+        && execution_input.coverage_ratio >= required_minimum_coverage_ratio
 }
 
 #[derive(Debug, Clone)]
@@ -410,6 +429,7 @@ fn estimate_endogenous_mean_reversion_fitted_parameters(
         calibration_context.interval_deltas.as_slice(),
         solver_settings,
     )?;
+
     let no_mean_reversion_candidate = profile_pressure_to_level_without_mean_reversion_candidate(
         observation_levels,
         calibration_grid.calibration_grid_interval_hours,
@@ -417,11 +437,13 @@ fn estimate_endogenous_mean_reversion_fitted_parameters(
         calibration_context.interval_deltas.as_slice(),
         solver_settings,
     )?;
+
     let flat_anchor_mean_reversion_candidate = profile_flat_anchor_mean_reversion_candidate(
         observation_levels,
         calibration_grid.calibration_grid_interval_hours,
         solver_settings,
-    );
+    )?;
+
     let random_walk_null_candidate = evaluate_random_walk_null_candidate(
         observation_levels,
         calibration_grid.calibration_grid_interval_hours,
@@ -716,81 +738,16 @@ fn profile_full_pressure_to_level_candidate_at_pressure_persistence(
         1.0,
     )?;
 
-    let mut lower_phi_reference = 0.0_f64;
-    let mut upper_phi_reference = 1.0_f64;
-    let golden_ratio = (1.0 + 5.0_f64.sqrt()) / 2.0;
-
-    let mut left_phi_reference =
-        upper_phi_reference - (upper_phi_reference - lower_phi_reference) / golden_ratio;
-    let mut right_phi_reference =
-        lower_phi_reference + (upper_phi_reference - lower_phi_reference) / golden_ratio;
-
-    let mut left_candidate = evaluate_full_pressure_to_level_candidate(
-        observation_levels,
-        calibration_grid_interval_hours,
-        core_expected_increments,
-        interval_deltas,
-        pressure_persistence_per_reference_interval,
-        left_phi_reference,
-    )?;
-    let mut right_candidate = evaluate_full_pressure_to_level_candidate(
-        observation_levels,
-        calibration_grid_interval_hours,
-        core_expected_increments,
-        interval_deltas,
-        pressure_persistence_per_reference_interval,
-        right_phi_reference,
-    )?;
-
-    for _ in 0..solver_settings.max_iterations {
-        let width = upper_phi_reference - lower_phi_reference;
-        let tolerance = solver_settings
-            .absolute_tolerance
-            .max(solver_settings.relative_tolerance * upper_phi_reference);
-        if width <= tolerance {
-            break;
-        }
-
-        if left_candidate.quasi_log_likelihood >= right_candidate.quasi_log_likelihood {
-            upper_phi_reference = right_phi_reference;
-            right_phi_reference = left_phi_reference;
-            right_candidate = left_candidate;
-            left_phi_reference =
-                upper_phi_reference - (upper_phi_reference - lower_phi_reference) / golden_ratio;
-            left_candidate = evaluate_full_pressure_to_level_candidate(
-                observation_levels,
-                calibration_grid_interval_hours,
-                core_expected_increments,
-                interval_deltas,
-                pressure_persistence_per_reference_interval,
-                left_phi_reference,
-            )?;
-        } else {
-            lower_phi_reference = left_phi_reference;
-            left_phi_reference = right_phi_reference;
-            left_candidate = right_candidate;
-            right_phi_reference =
-                lower_phi_reference + (upper_phi_reference - lower_phi_reference) / golden_ratio;
-            right_candidate = evaluate_full_pressure_to_level_candidate(
-                observation_levels,
-                calibration_grid_interval_hours,
-                core_expected_increments,
-                interval_deltas,
-                pressure_persistence_per_reference_interval,
-                right_phi_reference,
-            )?;
-        }
-    }
-
-    let mut best_candidate = phi_boundary_candidate;
-    if left_candidate.quasi_log_likelihood > best_candidate.quasi_log_likelihood {
-        best_candidate = left_candidate;
-    }
-    if right_candidate.quasi_log_likelihood > best_candidate.quasi_log_likelihood {
-        best_candidate = right_candidate;
-    }
-
-    Ok(best_candidate)
+    profile_candidate_over_unit_interval(solver_settings, phi_boundary_candidate, |phi_reference| {
+        evaluate_full_pressure_to_level_candidate(
+            observation_levels,
+            calibration_grid_interval_hours,
+            core_expected_increments,
+            interval_deltas,
+            pressure_persistence_per_reference_interval,
+            phi_reference,
+        )
+    })
 }
 
 fn evaluate_full_pressure_to_level_candidate(
@@ -807,6 +764,7 @@ fn evaluate_full_pressure_to_level_candidate(
         core_expected_increments,
         interval_deltas,
     )?;
+
     let transition_terms = build_transition_terms(
         observation_levels,
         pressure_state_path.as_slice(),
@@ -814,11 +772,13 @@ fn evaluate_full_pressure_to_level_candidate(
         calibration_grid_interval_hours,
         phi_reference,
     );
+
     let least_squares_solution = solve_two_column_least_squares(
         transition_terms.intercept_column.as_slice(),
         transition_terms.pressure_column.as_slice(),
         transition_terms.response.as_slice(),
     );
+
     let anchor_origin_level = if phi_reference == 1.0 {
         None
     } else {
@@ -879,11 +839,13 @@ fn evaluate_pressure_to_level_without_mean_reversion_candidate(
         core_expected_increments,
         interval_deltas,
     )?;
+
     let response = observation_levels
         .iter()
         .zip(observation_levels.iter().skip(1))
         .map(|(current_observation, next_observation)| next_observation - current_observation)
         .collect::<Vec<_>>();
+
     let pressure_column = pressure_state_path
         .iter()
         .zip(pressure_state_path.iter().skip(1))
@@ -891,6 +853,7 @@ fn evaluate_pressure_to_level_without_mean_reversion_candidate(
             next_pressure_state - current_pressure_state
         })
         .collect::<Vec<_>>();
+
     let least_squares_solution =
         solve_one_column_least_squares(pressure_column.as_slice(), response.as_slice());
 
@@ -921,76 +884,20 @@ fn profile_flat_anchor_mean_reversion_candidate(
     observation_levels: &[f64],
     calibration_grid_interval_hours: f64,
     solver_settings: &CalibrationOptimizerSettings,
-) -> MeanReversionStageCandidateEvaluation {
+) -> Result<MeanReversionStageCandidateEvaluation, MeanReversionStageExecutionFailure> {
     let phi_boundary_candidate = evaluate_flat_anchor_mean_reversion_candidate(
         observation_levels,
         calibration_grid_interval_hours,
         1.0,
     );
 
-    let mut lower_phi_reference = 0.0_f64;
-    let mut upper_phi_reference = 1.0_f64;
-    let golden_ratio = (1.0 + 5.0_f64.sqrt()) / 2.0;
-
-    let mut left_phi_reference =
-        upper_phi_reference - (upper_phi_reference - lower_phi_reference) / golden_ratio;
-    let mut right_phi_reference =
-        lower_phi_reference + (upper_phi_reference - lower_phi_reference) / golden_ratio;
-
-    let mut left_candidate = evaluate_flat_anchor_mean_reversion_candidate(
-        observation_levels,
-        calibration_grid_interval_hours,
-        left_phi_reference,
-    );
-    let mut right_candidate = evaluate_flat_anchor_mean_reversion_candidate(
-        observation_levels,
-        calibration_grid_interval_hours,
-        right_phi_reference,
-    );
-
-    for _ in 0..solver_settings.max_iterations {
-        let width = upper_phi_reference - lower_phi_reference;
-        let tolerance = solver_settings
-            .absolute_tolerance
-            .max(solver_settings.relative_tolerance * upper_phi_reference);
-        if width <= tolerance {
-            break;
-        }
-
-        if left_candidate.quasi_log_likelihood >= right_candidate.quasi_log_likelihood {
-            upper_phi_reference = right_phi_reference;
-            right_phi_reference = left_phi_reference;
-            right_candidate = left_candidate;
-            left_phi_reference =
-                upper_phi_reference - (upper_phi_reference - lower_phi_reference) / golden_ratio;
-            left_candidate = evaluate_flat_anchor_mean_reversion_candidate(
-                observation_levels,
-                calibration_grid_interval_hours,
-                left_phi_reference,
-            );
-        } else {
-            lower_phi_reference = left_phi_reference;
-            left_phi_reference = right_phi_reference;
-            left_candidate = right_candidate;
-            right_phi_reference =
-                lower_phi_reference + (upper_phi_reference - lower_phi_reference) / golden_ratio;
-            right_candidate = evaluate_flat_anchor_mean_reversion_candidate(
-                observation_levels,
-                calibration_grid_interval_hours,
-                right_phi_reference,
-            );
-        }
-    }
-
-    let mut best_candidate = phi_boundary_candidate;
-    if left_candidate.quasi_log_likelihood > best_candidate.quasi_log_likelihood {
-        best_candidate = left_candidate;
-    }
-    if right_candidate.quasi_log_likelihood > best_candidate.quasi_log_likelihood {
-        best_candidate = right_candidate;
-    }
-
-    best_candidate
+    profile_candidate_over_unit_interval(solver_settings, phi_boundary_candidate, |phi_reference| {
+        Ok(evaluate_flat_anchor_mean_reversion_candidate(
+            observation_levels,
+            calibration_grid_interval_hours,
+            phi_reference,
+        ))
+    })
 }
 
 fn evaluate_flat_anchor_mean_reversion_candidate(
@@ -1024,6 +931,7 @@ fn evaluate_flat_anchor_mean_reversion_candidate(
         .iter()
         .map(|observation| observation - anchor_value)
         .collect::<Vec<_>>();
+
     let residuals = response
         .iter()
         .zip(intercept_column.iter())
@@ -1031,6 +939,7 @@ fn evaluate_flat_anchor_mean_reversion_candidate(
             current_response - least_squares_solution.first_coefficient * intercept_term
         })
         .collect::<Vec<_>>();
+
     let residual_sum_of_squares = residuals
         .iter()
         .map(|residual| residual * residual)
@@ -1119,58 +1028,81 @@ fn profile_candidate_over_pressure_persistence(
     let psi_zero_candidate = evaluate_candidate_at_pressure_persistence(0.0)?;
     let psi_one_candidate = evaluate_candidate_at_pressure_persistence(1.0)?;
 
-    let mut lower_pressure_persistence = 0.0_f64;
-    let mut upper_pressure_persistence = 1.0_f64;
+    let best_boundary_candidate =
+        best_candidate_by_quasi_log_likelihood(psi_zero_candidate, psi_one_candidate);
+
+    profile_candidate_over_unit_interval(
+        solver_settings,
+        best_boundary_candidate,
+        |pressure_persistence| evaluate_candidate_at_pressure_persistence(pressure_persistence),
+    )
+}
+
+fn profile_candidate_over_unit_interval<Error>(
+    solver_settings: &CalibrationOptimizerSettings,
+    mut best_candidate: MeanReversionStageCandidateEvaluation,
+    mut evaluate_candidate_at_position: impl FnMut(
+        f64,
+    ) -> Result<
+        MeanReversionStageCandidateEvaluation,
+        Error,
+    >,
+) -> Result<MeanReversionStageCandidateEvaluation, Error> {
+    let mut lower_position = 0.0_f64;
+    let mut upper_position = 1.0_f64;
+
     let golden_ratio = (1.0 + 5.0_f64.sqrt()) / 2.0;
 
-    let mut left_pressure_persistence = upper_pressure_persistence
-        - (upper_pressure_persistence - lower_pressure_persistence) / golden_ratio;
-    let mut right_pressure_persistence = lower_pressure_persistence
-        + (upper_pressure_persistence - lower_pressure_persistence) / golden_ratio;
+    let mut left_position = upper_position - (upper_position - lower_position) / golden_ratio;
+    let mut right_position = lower_position + (upper_position - lower_position) / golden_ratio;
 
-    let mut left_candidate = evaluate_candidate_at_pressure_persistence(left_pressure_persistence)?;
-    let mut right_candidate =
-        evaluate_candidate_at_pressure_persistence(right_pressure_persistence)?;
+    let mut left_candidate = evaluate_candidate_at_position(left_position)?;
+    let mut right_candidate = evaluate_candidate_at_position(right_position)?;
 
     for _ in 0..solver_settings.max_iterations {
-        let width = upper_pressure_persistence - lower_pressure_persistence;
+        let width = upper_position - lower_position;
         let tolerance = solver_settings
             .absolute_tolerance
-            .max(solver_settings.relative_tolerance * upper_pressure_persistence);
+            .max(solver_settings.relative_tolerance * upper_position);
+
         if width <= tolerance {
             break;
         }
 
         if left_candidate.quasi_log_likelihood >= right_candidate.quasi_log_likelihood {
-            upper_pressure_persistence = right_pressure_persistence;
-            right_pressure_persistence = left_pressure_persistence;
+            upper_position = right_position;
+            right_position = left_position;
+
             right_candidate = left_candidate;
-            left_pressure_persistence = upper_pressure_persistence
-                - (upper_pressure_persistence - lower_pressure_persistence) / golden_ratio;
-            left_candidate = evaluate_candidate_at_pressure_persistence(left_pressure_persistence)?;
+
+            left_position = upper_position - (upper_position - lower_position) / golden_ratio;
+            left_candidate = evaluate_candidate_at_position(left_position)?;
         } else {
-            lower_pressure_persistence = left_pressure_persistence;
-            left_pressure_persistence = right_pressure_persistence;
+            lower_position = left_position;
+            left_position = right_position;
+
             left_candidate = right_candidate;
-            right_pressure_persistence = lower_pressure_persistence
-                + (upper_pressure_persistence - lower_pressure_persistence) / golden_ratio;
-            right_candidate =
-                evaluate_candidate_at_pressure_persistence(right_pressure_persistence)?;
+
+            right_position = lower_position + (upper_position - lower_position) / golden_ratio;
+            right_candidate = evaluate_candidate_at_position(right_position)?;
         }
     }
 
-    let mut best_candidate = psi_zero_candidate;
-    if psi_one_candidate.quasi_log_likelihood > best_candidate.quasi_log_likelihood {
-        best_candidate = psi_one_candidate;
-    }
-    if left_candidate.quasi_log_likelihood > best_candidate.quasi_log_likelihood {
-        best_candidate = left_candidate;
-    }
-    if right_candidate.quasi_log_likelihood > best_candidate.quasi_log_likelihood {
-        best_candidate = right_candidate;
-    }
+    best_candidate = best_candidate_by_quasi_log_likelihood(best_candidate, left_candidate);
+    best_candidate = best_candidate_by_quasi_log_likelihood(best_candidate, right_candidate);
 
     Ok(best_candidate)
+}
+
+fn best_candidate_by_quasi_log_likelihood(
+    left_candidate: MeanReversionStageCandidateEvaluation,
+    right_candidate: MeanReversionStageCandidateEvaluation,
+) -> MeanReversionStageCandidateEvaluation {
+    if right_candidate.quasi_log_likelihood > left_candidate.quasi_log_likelihood {
+        right_candidate
+    } else {
+        left_candidate
+    }
 }
 
 fn materialize_pressure_state_path(
@@ -1184,6 +1116,7 @@ fn materialize_pressure_state_path(
         pressure_persistence_per_reference_interval,
         0.0,
     );
+
     let runtime_interval_anchors =
         materialize_mean_reversion_runtime_interval_anchors_from_core_expected_increments(
             CALIBRATION_GRID_ALIGNMENT_POLICY,
@@ -1201,8 +1134,10 @@ fn materialize_pressure_state_path(
 
     let mut pressure_state_path =
         Vec::with_capacity(runtime_interval_anchors.end_pressure_states.len() + 1);
+
     pressure_state_path.push(runtime_interval_anchors.start_pressure_state);
     pressure_state_path.extend(runtime_interval_anchors.end_pressure_states);
+
     Ok(pressure_state_path)
 }
 
@@ -1471,6 +1406,7 @@ fn solve_two_column_least_squares(
         .zip(response.iter())
         .map(|(first_value, response_value)| first_value * response_value)
         .sum::<f64>();
+
     let second_response_inner_product = second_column
         .iter()
         .zip(response.iter())

@@ -7,6 +7,7 @@ use janiform_calibration_artifacts::{
     CalibrationExecutionMode, CalibrationRunDataInputs, CalibrationRunSeedSettings,
     CalibrationRunSpec, CalibrationStage, CalibrationStageSolverSettings,
 };
+use janiform_foundations::numeric::coverage_ratio;
 use janiform_foundations::time::{ONE_HOUR_NANOS_F64, duration_nanos_to_hours};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -956,18 +957,31 @@ fn mean_reversion_grid_observations_from_open_session_prices(
     }
 
     let mut observations = Vec::new();
+
+    // Covered intervals require at least one direct source tick. Carry-forward intervals stay on
+    // the grid but do not add observed coverage.
+    let mut covered_interval_count = 0usize;
+
     let mut interval_end_utc_nanos = source_window_start_utc_nanos.saturating_add(interval_nanos);
     let mut pending_observation: Option<CalibrationMeanReversionStageObservation> = None;
+
+    let mut interval_has_direct_observation = false;
 
     for observation in open_session_price_observations {
         while observation.observation_timestamp_utc_nanos >= interval_end_utc_nanos {
             if let Some(pending_observation) = pending_observation.as_ref() {
                 let mut snapped_observation = pending_observation.clone();
                 snapped_observation.observation_timestamp_utc_nanos = interval_end_utc_nanos;
+
                 observations.push(snapped_observation);
+
+                if interval_has_direct_observation {
+                    covered_interval_count = covered_interval_count.saturating_add(1);
+                }
             }
 
             interval_end_utc_nanos = interval_end_utc_nanos.saturating_add(interval_nanos);
+            interval_has_direct_observation = false;
             if interval_end_utc_nanos > source_window_end_utc_nanos {
                 break;
             }
@@ -978,16 +992,13 @@ fn mean_reversion_grid_observations_from_open_session_prices(
         }
 
         pending_observation = Some(observation.clone());
+        interval_has_direct_observation = true;
     }
 
-    let source_observation_count = observations.len();
+    let source_observation_count = covered_interval_count;
     MeanReversionGridObservations {
         source_observation_count,
-        coverage_ratio: if source_observation_count == 0 {
-            0.0
-        } else {
-            1.0
-        },
+        coverage_ratio: coverage_ratio(source_observation_count, observations.len()),
         observations,
     }
 }
@@ -1020,6 +1031,7 @@ fn derive_mean_reversion_grid_interval_hours_from_boundary_observations(
             ))
         })
         .collect::<Vec<_>>();
+
     median_positive_interval_hours(positive_interval_hours.as_mut_slice())
 }
 
@@ -1031,6 +1043,7 @@ fn derive_mean_reversion_grid_interval_hours_from_session_durations(
         .copied()
         .filter(|duration_hours| duration_hours.is_finite() && *duration_hours > 0.0)
         .collect::<Vec<_>>();
+
     median_positive_interval_hours(positive_interval_hours.as_mut_slice())
 }
 
@@ -1335,6 +1348,7 @@ mod tests {
         );
 
         assert_eq!(grid_observations.source_observation_count, 2);
+        assert_eq!(grid_observations.coverage_ratio, 1.0);
         assert_eq!(
             grid_observations
                 .observations
@@ -1369,7 +1383,8 @@ mod tests {
             24.0,
         );
 
-        assert_eq!(grid_observations.source_observation_count, 3);
+        assert_eq!(grid_observations.source_observation_count, 1);
+        assert_eq!(grid_observations.coverage_ratio, 1.0 / 3.0);
         assert_eq!(
             grid_observations
                 .observations

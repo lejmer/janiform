@@ -138,6 +138,15 @@ pub fn clamp_to_open_unit_interval(value: f64) -> f64 {
     value.clamp(0.0f64.next_up(), 1.0f64.next_down())
 }
 
+/// Compute the fraction of covered intervals within a horizon.
+pub fn coverage_ratio(covered_interval_count: usize, horizon_interval_count: usize) -> f64 {
+    if horizon_interval_count == 0 {
+        return 0.0;
+    }
+
+    covered_interval_count as f64 / horizon_interval_count as f64
+}
+
 /// Compute the logistic sigmoid in a numerically stable piecewise form.
 pub fn logistic(value: f64) -> f64 {
     if value >= 0.0 {
@@ -755,14 +764,15 @@ mod tests {
         central_skewness_or_zero, clamp_to_open_unit_interval, clamp_to_unit_interval,
         coefficient_of_variation, compute_finite_median_or_zero, compute_finite_quantile_or_zero,
         compute_probability_weighted_moment, compute_sorted_median, compute_sorted_quantile,
-        compute_sorted_quantile_or_zero, finite_arithmetic_mean_or_zero, integer_square_root,
-        l_moment_lambda2_from_sorted, l_moment_tau3_from_sorted, logistic, median_abs,
-        median_abs_non_zero, normalized_pseudocount, pearson_correlation, relative_rmse,
-        rolling_sum, root_mean_square_or_infinity, round_positive_to_domain, round_to,
-        sample_adjusted_excess_kurtosis, sample_adjusted_skewness, sample_standard_deviation,
-        sample_variance, smallest_positive_value, sorted_finite_values, standardized_path_distance,
-        strictly_positive_machine_value, unique_sorted_values, validate_finite_number,
-        validate_negative_number, validate_non_negative_number, validate_positive_number, z_score,
+        compute_sorted_quantile_or_zero, coverage_ratio, finite_arithmetic_mean_or_zero,
+        integer_square_root, l_moment_lambda2_from_sorted, l_moment_tau3_from_sorted, logistic,
+        median_abs, median_abs_non_zero, normalized_pseudocount, pearson_correlation,
+        relative_rmse, rolling_sum, root_mean_square_or_infinity, round_positive_to_domain,
+        round_to, sample_adjusted_excess_kurtosis, sample_adjusted_skewness,
+        sample_standard_deviation, sample_variance, smallest_positive_value, sorted_finite_values,
+        standardized_path_distance, strictly_positive_machine_value, unique_sorted_values,
+        validate_finite_number, validate_negative_number, validate_non_negative_number,
+        validate_positive_number, z_score,
     };
 
     #[test]
@@ -789,6 +799,8 @@ mod tests {
         assert_eq!(finite_arithmetic_mean_or_zero(&[1.0, f64::NAN, 3.0]), 2.0);
         assert_eq!(rolling_sum(&[1.0, 2.0, 3.0], 2), vec![1.0, 3.0, 5.0]);
         assert_eq!(rolling_sum(&[1.0, 2.0], 0), vec![0.0, 0.0]);
+        assert_eq!(coverage_ratio(2, 5), 0.4);
+        assert_eq!(coverage_ratio(0, 0), 0.0);
         assert_eq!(validate_finite_number(1.0, "field"), Ok(()));
         let error = validate_finite_number(f64::NAN, "field")
             .expect_err("non-finite values must fail validation");

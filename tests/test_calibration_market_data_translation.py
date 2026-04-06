@@ -258,10 +258,8 @@ def test_translate_market_data_request_materializes_mean_reversion_on_interval_g
         "coverage_ratio",
         "observations",
     }
-    assert mean_reversion_stage_input["source_observation_count"] == len(
-        mean_reversion_stage_input["observations"]
-    )
-    assert mean_reversion_stage_input["coverage_ratio"] == pytest.approx(1.0)
+    assert mean_reversion_stage_input["source_observation_count"] == 2
+    assert mean_reversion_stage_input["coverage_ratio"] == pytest.approx(2.0 / 3.0)
     assert mean_reversion_stage_input["calibration_grid_interval_hours"] == pytest.approx(24.0)
     assert mean_reversion_stage_input["calibration_grid_kind"].startswith(
         "market_data_open_session_log_price_interval_grid.v1"
@@ -283,6 +281,63 @@ def test_translate_market_data_request_materializes_mean_reversion_on_interval_g
             math.log(101.0 / 107.0),
             math.log(104.0 / 107.0),
         )
+    )
+
+
+def test_translate_market_data_request_reports_direct_mean_reversion_coverage_on_sparse_grid(
+    tmp_path: Path,
+    calendar_registry_json: str,
+) -> None:
+    session_definition_path = _write_session_definition(tmp_path, calendar_registry_json)
+
+    tick_data_path = tmp_path / "ticks_sparse.csv"
+    tick_data_path.write_text(
+        "\n".join(
+            [
+                "timestamp_utc,trade_price,trade_sign",
+                "2026-02-02T14:30:00Z,100.0,buy",
+                "2026-02-02T20:59:00Z,101.0,sell",
+                "2026-02-05T14:30:00Z,106.0,buy",
+                "2026-02-05T20:59:00Z,107.0,sell",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    request = _build_market_data_request(
+        session_definition_path=session_definition_path,
+        tick_data_path=tick_data_path,
+        workflow_scope=CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE,
+        tick_column_mapping=CalibrationTickDataColumnMapping(
+            timestamp_column="timestamp_utc",
+            price_column="trade_price",
+            trade_sign_column="trade_sign",
+        ),
+        normalization_policy=CalibrationMarketDataNormalizationPolicy(
+            timestamp_timezone="UTC",
+            sort_records_by_timestamp=True,
+            tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
+        ),
+        mean_reversion=CalibrationMeanReversionConfiguration(
+            calibration_grid_interval_hours=24.0,
+        ),
+    )
+
+    translation = translate_market_data_request_to_prepared_calibration(request)
+    prepared_payload = _prepared_payload(translation)
+
+    mean_reversion_stage_input = prepared_payload["mean_reversion_stage_input"]
+
+    assert mean_reversion_stage_input["source_observation_count"] == 1
+    assert mean_reversion_stage_input["coverage_ratio"] == pytest.approx(1.0 / 3.0)
+    assert len(mean_reversion_stage_input["observations"]) == 3
+    assert tuple(
+        observation["observation_timestamp_utc_nanos"]
+        for observation in mean_reversion_stage_input["observations"]
+    ) == (
+        _utc_nanos("2026-02-03T14:30:00Z"),
+        _utc_nanos("2026-02-04T14:30:00Z"),
+        _utc_nanos("2026-02-05T14:30:00Z"),
     )
 
 
@@ -555,8 +610,8 @@ def test_translate_market_data_request_derives_fxspot_mean_reversion_interval_fr
         "median_observed_session_duration_hours_from_retained_open_session_ticks.v1"
         in mean_reversion_stage_input["calibration_grid_kind"]
     )
-    assert mean_reversion_stage_input["source_observation_count"] == 7
-    assert mean_reversion_stage_input["coverage_ratio"] == pytest.approx(1.0)
+    assert mean_reversion_stage_input["source_observation_count"] == 6
+    assert mean_reversion_stage_input["coverage_ratio"] == pytest.approx(6.0 / 7.0)
     assert tuple(
         observation["observation_timestamp_utc_nanos"]
         for observation in mean_reversion_stage_input["observations"]
