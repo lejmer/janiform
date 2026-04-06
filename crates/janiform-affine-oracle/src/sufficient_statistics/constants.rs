@@ -22,12 +22,18 @@ pub const SUFFICIENT_STATISTICS_INTERVAL_RETURN_COMPONENT_BREAKDOWN_POLICY: &str
     "optional_component_breakdown_toggle_for_risk_interval_return_generation.v1";
 pub const SUFFICIENT_STATISTICS_INTERVAL_RETURN_COMPONENT_ROUTING_POLICY: &str =
     SHARED_NEWS_EVENT_DISPATCH_RETURN_ROUTING_POLICY;
+/// Public default risk interval in hours, overrideable on the risk request contract.
 pub const DEFAULT_INTRADAY_RISK_INTERVAL_DELTA: f64 = 1.0;
 
+// Public default transform probe for positive `a + u`, overrideable via slice settings.
 pub(crate) const DEFAULT_TRANSFORM_SLICE_A_PLUS_U: f64 = 1.0e-3;
+// Public default transform probe for positive `a - u`, overrideable via slice settings.
 pub(crate) const DEFAULT_TRANSFORM_SLICE_A_MINUS_U: f64 = 1.0e-3;
+// Public default transform probe for `n + z`, overrideable via slice settings.
 pub(crate) const DEFAULT_TRANSFORM_SLICE_N_PLUS_Z: f64 = 0.99;
+// Public default transform probe for `n - z`, overrideable via slice settings.
 pub(crate) const DEFAULT_TRANSFORM_SLICE_N_MINUS_Z: f64 = 0.99;
+// Public default streaming chunk size, overrideable through chunking settings.
 pub(crate) const DEFAULT_STREAMING_MAX_INTERVALS_PER_CHUNK: usize = 256;
 pub(crate) const TRANSFORM_SLICE_NEGATIVE_EXPECTATION_TOLERANCE: f64 = 1.0e-10;
 pub(crate) const MAX_INTERVAL_STATISTICS_COUNT: u64 = 1_000_000;

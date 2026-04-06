@@ -167,8 +167,12 @@ SUFFICIENT_STATISTICS_RISK_PATH_ARTIFACT_WORKFLOW_TAGS: tuple[str, ...] = (
     "calibration",
     "validation",
 )
+
+# Public risk-request default in hours, and callers can override it on the request payload.
 DEFAULT_INTRADAY_RISK_INTERVAL_DELTA = 1.0
 _MEAN_REVERSION_ALIGNMENT_TOLERANCE = 1e-12
+
+
 @dataclass(frozen=True, slots=True)
 class SufficientStatisticsRiskEquationSpecification(ContractModel):
     hawkes_kernel_parameters: HawkesKernelParameters

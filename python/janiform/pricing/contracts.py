@@ -45,6 +45,7 @@ if TYPE_CHECKING:
     from ..simulation import HawkesExcitationState, HawkesKernelParameters
     from ..simulation.coarse.news import NewsProcessConfiguration
 
+# Public pricing-request default in hours, and callers can override it on the request payload.
 DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA = 1.0
 VANILLA_OPTION_PRICING_RUN_RESULT_SCHEMA_VERSION = "pricing.vanilla_option.run_result.v1"
 VANILLA_OPTION_PRICING_RUN_DIAGNOSTICS_SCHEMA_VERSION = "pricing.vanilla_option.run_diagnostics.v1"

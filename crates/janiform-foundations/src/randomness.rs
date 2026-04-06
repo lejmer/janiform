@@ -5,8 +5,11 @@ pub const SIMULATION_RANDOMNESS_STREAM_POLICY: &str =
 pub const SIMULATION_RANDOMNESS_SUBSTREAM_DERIVATION_POLICY: &str =
     "root_seed_domain_and_index_mixed_by_splitmix64.v1";
 
+// SplitMix64 uses this fixed Weyl increment as part of the published generator definition.
 const SPLITMIX64_GAMMA: u64 = 0x9E37_79B9_7F4A_7C15;
+// These fixed mixers are part of the deterministic substream derivation contract.
 const SUBSTREAM_DOMAIN_MIXER: u64 = 0xA24B_AED4_963E_E407;
+// This constant separates substream indices without introducing a tunable runtime policy.
 const SUBSTREAM_INDEX_MIXER: u64 = 0x9FB2_1C65_1E98_DF25;
 
 /// Explicit substream domains for seeded simulation and validation workflows.
@@ -57,6 +60,7 @@ pub trait SimulationRandomnessStream {
     fn next_u64(&mut self) -> u64;
 
     fn next_unit_interval_f64(&mut self) -> f64 {
+        // IEEE-754 `f64` stores 53 bits of mantissa, so this is the exact projection factor.
         const UNIT_INTERVAL_NORMALIZATION: f64 = 1.0 / ((1_u64 << 53) as f64);
         let most_significant_bits = self.next_u64() >> 11;
         (most_significant_bits as f64) * UNIT_INTERVAL_NORMALIZATION

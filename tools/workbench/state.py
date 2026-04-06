@@ -8,7 +8,9 @@ from janiform.calibration.market_data.contracts import (
     CalibrationTickPriceInputPolicy,
 )
 
+# Workbench startup defaults only. The user can replace both values from the setup workflow.
 DEFAULT_WORKBENCH_SESSION_PRESET_NAME = "fx_spot_24_5"
+# Workbench startup defaults only. The user can replace both values from the setup workflow.
 DEFAULT_WORKBENCH_FALLBACK_EXCHANGE_CODE = "FXSPOT"
 
 

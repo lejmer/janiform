@@ -23,6 +23,7 @@ CALIBRATION_STAGED_RUN_REPORT_SCHEMA_VERSION = "calibration.orchestration.staged
 CALIBRATION_EXECUTION_MODE_DEFAULT_POLICY = (
     "cli_defaults_to_disk_python_importable_api_defaults_to_memory.v1"
 )
+# Public Python API default, and callers can override it with an explicit execution mode.
 DEFAULT_PYTHON_IMPORTABLE_API_EXECUTION_MODE = "memory"
 
 
