@@ -336,18 +336,16 @@
     \]
 
     The pricing engine therefore generates the risk-neutral pressure state and
-    anchor from the same local tilted transform used to price. It does not require
-    the caller to supply a future anchor grid.
+    anchor from the same local tilted transform used to price.
 
-    \section*{11. Optional Risk-Neutral Esscher Tilt}
+    \section*{11. Risk-Neutral Esscher Tilt}
     \[
         \psi_Q(u)=\psi_P(u+i\theta)-\psi_P(i\theta),
         \qquad
         \mathbb{E}^Q\!\left[e^{X_{t+\Delta}-X_t}\mid\mathcal{F}_t\right]=e^{(r-q)\Delta}.
     \]
     In the anchored setting, the scalar Esscher parameter becomes the local
-    state-dependent tilt \(\theta_h(Z_h)\) defined above. The old state-independent
-    tilt survives only as the nested non-anchored case.
+    state-dependent tilt \(\theta_h(Z_h)\) defined above.
 
     \section*{12. Final Price Process}
     \[
