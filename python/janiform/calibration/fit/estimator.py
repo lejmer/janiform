@@ -547,6 +547,9 @@ class JaniformEstimator:
                 run_id=input_inference.run_id,
                 workflow_scope=workflow_scope,
                 tick_data_source=input_inference.tick_data_source,
+                option_surface_source=option_surface_source,
+                option_surface_valuation_time_utc=option_surface_valuation_time_utc,
+                carry=carry,
                 tick_data_column_mapping=input_inference.tick_data_column_mapping,
                 normalization_policy=input_inference.normalization_policy,
                 normalized_market_data=normalized_market_data,
@@ -656,6 +659,9 @@ class JaniformEstimator:
         run_id: str,
         workflow_scope: CalibrationMarketDataWorkflowScope,
         tick_data_source: CalibrationInputFileReference,
+        option_surface_source: Optional[CalibrationInputFileReference],
+        option_surface_valuation_time_utc: Optional[datetime],
+        carry: Optional[CalibrationFlatCarryInput],
         tick_data_column_mapping: CalibrationTickDataColumnMapping,
         normalization_policy: CalibrationMarketDataNormalizationPolicy,
         normalized_market_data: NormalizedMarketDataSource,
@@ -676,12 +682,16 @@ class JaniformEstimator:
             ),
             column_mapping=CalibrationMarketDataColumnMapping(
                 tick_data=tick_data_column_mapping,
+                option_surface=self._option_surface_column_mapping,
             ),
             workflow_scope=workflow_scope,
             normalization_policy=normalization_policy,
             output_preferences=self._output_preferences,
             optimizer_settings_by_stage=self._optimizer_settings_by_stage,
             preprocessing_settings=self._preprocessing_settings,
+            option_surface_source=option_surface_source,
+            option_surface_valuation_time_utc=option_surface_valuation_time_utc,
+            carry=carry,
         )
 
         progress.update(detail="resolving session from market data")

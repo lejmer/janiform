@@ -39,6 +39,8 @@ from janiform.calibration.market_data import (
     CalibrationMeanReversionConfiguration,
     CalibrationMarketDataNormalizationPolicy,
     CalibrationMarketDataWorkflowScope,
+    CalibrationOptionQuoteInputPolicy,
+    CalibrationOptionSurfaceColumnMapping,
     CalibrationMarketDataPreprocessingSettings,
     CalibrationMarketDataReturnComponentsPreprocessingSettings,
     CalibrationMarketDataSeasonalityPreprocessingSettings,
@@ -406,6 +408,87 @@ def test_prepare_fit_workflow_passes_preprocessing_settings_to_translation(
 
     request = captured_request["request"]
     assert request.preprocessing_settings == preprocessing_settings
+
+
+def test_prepare_fit_workflow_passes_option_surface_inputs_to_session_inference(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tick_data_path = tmp_path / "ticks.csv"
+    tick_data_path.write_text(
+        "\n".join(
+            [
+                "timestamp_utc,trade_price,trade_sign",
+                "2026-02-02T14:30:00Z,100.0,buy",
+                "2026-02-02T15:00:00Z,101.0,sell",
+                "2026-02-02T20:59:00Z,102.0,buy",
+                "2026-02-03T14:30:00Z,99.0,sell",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    option_surface_path = tmp_path / "options.parquet"
+
+    class _StopAfterTranslation(Exception):
+        pass
+
+    captured_request: dict[str, Any] = {}
+
+    def _capture_request(request, **kwargs):
+        captured_request["request"] = request
+        del kwargs
+        raise _StopAfterTranslation()
+
+    monkeypatch.setattr(
+        fit_estimator_module,
+        "translate_market_data_request_to_prepared_calibration_from_phases",
+        _capture_request,
+    )
+
+    estimator = JaniformEstimator(
+        tick_data_column_mapping=CalibrationTickDataColumnMapping(
+            timestamp_column="timestamp_utc",
+            price_column="trade_price",
+            trade_sign_column="trade_sign",
+        ),
+        normalization_policy=CalibrationMarketDataNormalizationPolicy(
+            timestamp_timezone="UTC",
+            sort_records_by_timestamp=True,
+            tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
+            option_quote_input_policy=CalibrationOptionQuoteInputPolicy.BID_ASK_MIDPOINT,
+        ),
+        option_surface_column_mapping=CalibrationOptionSurfaceColumnMapping(
+            quote_timestamp_column="quote_timestamp",
+            expiry_timestamp_column="expiry_timestamp",
+            strike_column="strike",
+            option_type_column="option_type",
+            bid_column="bid_price",
+            ask_column="ask_price",
+        ),
+        market_profile="us_equity_cash",
+    )
+
+    with pytest.raises(_StopAfterTranslation):
+        estimator._prepare_fit_workflow(
+            run_id="high-level-option-session-inference",
+            tick_data_path=tick_data_path,
+            tick_data_format=CalibrationInputFileFormat.CSV,
+            tick_data_provenance_label="tick_data",
+            option_surface_path=option_surface_path,
+            option_surface_format=CalibrationInputFileFormat.PARQUET,
+            option_surface_provenance_label="option_surface",
+            option_surface_valuation_time_utc=datetime(2026, 2, 3, 15, 0, tzinfo=UTC),
+        )
+
+    request = captured_request["request"]
+    assert request.workflow_scope == CalibrationMarketDataWorkflowScope.FULL_WITH_OPTION_SURFACE
+    assert request.option_surface_source is not None
+    assert request.option_surface_source.path == str(option_surface_path)
+    assert request.column_mapping.option_surface is not None
+    assert (
+        request.normalization_policy.option_quote_input_policy
+        == CalibrationOptionQuoteInputPolicy.BID_ASK_MIDPOINT
+    )
 
 
 def test_prepare_model_runtime_factors_uses_fitted_surprise_intensity_profile(
