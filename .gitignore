@@ -234,6 +234,7 @@ pull_requests/
 
 # Scratch files
 scratch/
+data/databento*/
 
 # LaTeX
 *.aux
