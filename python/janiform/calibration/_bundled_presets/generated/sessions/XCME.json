@@ -1,0 +1,95 @@
+{
+  "category": "session",
+  "configuration": {
+    "exchange_code": "XCME",
+    "exchange_name": "CME Globex Futures",
+    "recurring_closed_windows": [],
+    "regular_session_windows": [
+      {
+        "close_time": "16:00",
+        "label": "globex",
+        "open_time": "00:00",
+        "weekday": "Monday"
+      },
+      {
+        "close_time": "24:00",
+        "label": "globex",
+        "open_time": "17:00",
+        "weekday": "Monday"
+      },
+      {
+        "close_time": "16:00",
+        "label": "globex",
+        "open_time": "00:00",
+        "weekday": "Tuesday"
+      },
+      {
+        "close_time": "24:00",
+        "label": "globex",
+        "open_time": "17:00",
+        "weekday": "Tuesday"
+      },
+      {
+        "close_time": "16:00",
+        "label": "globex",
+        "open_time": "00:00",
+        "weekday": "Wednesday"
+      },
+      {
+        "close_time": "24:00",
+        "label": "globex",
+        "open_time": "17:00",
+        "weekday": "Wednesday"
+      },
+      {
+        "close_time": "16:00",
+        "label": "globex",
+        "open_time": "00:00",
+        "weekday": "Thursday"
+      },
+      {
+        "close_time": "24:00",
+        "label": "globex",
+        "open_time": "17:00",
+        "weekday": "Thursday"
+      },
+      {
+        "close_time": "16:00",
+        "label": "globex",
+        "open_time": "00:00",
+        "weekday": "Friday"
+      },
+      {
+        "close_time": "24:00",
+        "label": "globex",
+        "open_time": "17:00",
+        "weekday": "Sunday"
+      }
+    ],
+    "timezone_name": "America/Chicago"
+  },
+  "metadata": {
+    "description": "CME Globex-style nearly continuous weekday futures session in Chicago time with the daily maintenance break from 16:00 to 17:00 and the weekend close from Friday 16:00 to Sunday 17:00.",
+    "display_name": "CME Globex Futures Session",
+    "provenance": {
+      "bundle_id": "janiform_bundled_presets",
+      "bundle_version": "v1",
+      "content_hash": "sha256:eeb02bacb6816ce5bc3d96140ce471cef5a22655eff83b96a622020afe2d279f",
+      "generated_on": "2026-03-12",
+      "generator_id": "janiform.curated_preset_generator",
+      "generator_version": "1.0.0",
+      "source_manifest_ids": [
+        "sources.sessions.XCME.v1"
+      ],
+      "upstream_source_versions": [
+        {
+          "source_name": "cme_globex_equity_index_futures_hours_reference",
+          "version_label": "captured_2026-04-08"
+        }
+      ]
+    },
+    "version_label": "2026.03"
+  },
+  "preset_name": "XCME",
+  "schema_version": "preset.artifact.session.v1"
+}

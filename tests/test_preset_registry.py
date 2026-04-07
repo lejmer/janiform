@@ -46,6 +46,7 @@ def test_bundled_registry_loads_minimal_v1_preset_set_and_fx_session_hours() -> 
     built_in_registry = BuiltInPresetRegistry.load_default()
 
     assert {entry.preset_name for entry in built_in_registry.list_presets(category=PresetCategory.SESSION)} == {
+        "XCME",
         "XNAS",
         "XNYS",
         "crypto_24_7",
@@ -58,7 +59,7 @@ def test_bundled_registry_loads_minimal_v1_preset_set_and_fx_session_hours() -> 
     }
     assert {
         entry.preset_name for entry in built_in_registry.list_presets(category=PresetCategory.MARKET_PROFILE)
-    } == {"btcusd_spot", "eurusd_spot", "us_equity_cash"}
+    } == {"btcusd_spot", "es_futures_globex", "eurusd_spot", "us_equity_cash"}
 
     fx_session = built_in_registry.resolve(PresetCategory.SESSION, "fx_spot_24_5")
 

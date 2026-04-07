@@ -186,6 +186,89 @@
       }
     },
     {
+      "preset_name": "XCME",
+      "display_name": "CME Globex Futures Session",
+      "description": "CME Globex-style nearly continuous weekday futures session in Chicago time with the daily maintenance break from 16:00 to 17:00 and the weekend close from Friday 16:00 to Sunday 17:00.",
+      "version_label": "2026.03",
+      "source_manifest_ids": [
+        "sources.sessions.XCME.v1"
+      ],
+      "upstream_source_versions": [
+        {
+          "source_name": "cme_globex_equity_index_futures_hours_reference",
+          "version_label": "captured_2026-04-08"
+        }
+      ],
+      "configuration": {
+        "exchange_code": "XCME",
+        "exchange_name": "CME Globex Futures",
+        "timezone_name": "America/Chicago",
+        "regular_session_windows": [
+          {
+            "weekday": "Sunday",
+            "label": "globex",
+            "open_time": "17:00",
+            "close_time": "24:00"
+          },
+          {
+            "weekday": "Monday",
+            "label": "globex",
+            "open_time": "00:00",
+            "close_time": "16:00"
+          },
+          {
+            "weekday": "Monday",
+            "label": "globex",
+            "open_time": "17:00",
+            "close_time": "24:00"
+          },
+          {
+            "weekday": "Tuesday",
+            "label": "globex",
+            "open_time": "00:00",
+            "close_time": "16:00"
+          },
+          {
+            "weekday": "Tuesday",
+            "label": "globex",
+            "open_time": "17:00",
+            "close_time": "24:00"
+          },
+          {
+            "weekday": "Wednesday",
+            "label": "globex",
+            "open_time": "00:00",
+            "close_time": "16:00"
+          },
+          {
+            "weekday": "Wednesday",
+            "label": "globex",
+            "open_time": "17:00",
+            "close_time": "24:00"
+          },
+          {
+            "weekday": "Thursday",
+            "label": "globex",
+            "open_time": "00:00",
+            "close_time": "16:00"
+          },
+          {
+            "weekday": "Thursday",
+            "label": "globex",
+            "open_time": "17:00",
+            "close_time": "24:00"
+          },
+          {
+            "weekday": "Friday",
+            "label": "globex",
+            "open_time": "00:00",
+            "close_time": "16:00"
+          }
+        ],
+        "recurring_closed_windows": []
+      }
+    },
+    {
       "preset_name": "crypto_24_7",
       "display_name": "Crypto Spot 24/7",
       "description": "Continuous 24/7 spot-crypto trading hours expressed in UTC.",

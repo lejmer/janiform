@@ -725,6 +725,20 @@ def test_built_in_session_resolution_does_not_require_source_file_access() -> No
     assert session_resolution.selected_policy_id == "sources.sessions.fx_spot_24_5.v1"
 
 
+def test_built_in_xcme_session_resolution_does_not_require_source_file_access() -> None:
+    session_resolution = resolve_market_data_session(
+        session_configuration=CalibrationSessionConfigurationInput(
+            exchange_code="XCME",
+            session_timezone="America/Chicago",
+        ),
+    )
+
+    assert session_resolution.exchange_code == "XCME"
+    assert session_resolution.resolved_timezone_name == "America/Chicago"
+    assert session_resolution.selected_policy_id == "sources.sessions.XCME.v1"
+    assert len(session_resolution.regular_session_windows) == 10
+
+
 def test_translate_market_data_request_without_known_news_omits_realized_known_news_samples(
     tmp_path: Path,
     calendar_registry_json: str,

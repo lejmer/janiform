@@ -104,6 +104,39 @@
         ],
         "default_calibration_hint_ids": ["crypto_spot_defaults"]
       }
+    },
+    {
+      "preset_name": "es_futures_globex",
+      "display_name": "ES Futures Globex",
+      "description": "Default E-mini S&P 500 futures profile with the bundled CME Globex session and no known-news events enabled.",
+      "version_label": "2026.03",
+      "source_manifest_ids": [
+        "sources.market_profiles.es_futures_globex.v1"
+      ],
+      "upstream_source_versions": [
+        {
+          "source_name": "bundled_session_reference",
+          "version_label": "XCME@2026.03"
+        },
+        {
+          "source_name": "bundled_known_news_reference",
+          "version_label": "none@2026.03"
+        }
+      ],
+      "configuration": {
+        "profile_name": "es_futures_globex",
+        "session_preset_name": "XCME",
+        "known_news_preset_name": "none",
+        "known_news_policy": "suggest_only",
+        "timestamp_timezone_name": "UTC",
+        "column_alias_hints": [
+          {
+            "canonical_name": "timestamp",
+            "aliases": ["event_timestamp_utc", "timestamp_utc", "ts_recv"]
+          }
+        ],
+        "default_calibration_hint_ids": ["equity_index_futures_defaults"]
+      }
     }
   ]
 }
