@@ -33,6 +33,7 @@ from ....simulation.seeded import (
 from ....simulation.shared import HawkesExcitationState, SeededTickEventStateSnapshotCapture
 from ...errors import calibration_error
 from ..state import CurrentStateEstimationRequest, CurrentStateEstimationResult
+from .state import estimate_model_state_from_observed_data
 from .shared import (
     DEFAULT_SIMULATION_INTERVAL,
     PreparedModelSimulationInputs,
@@ -430,7 +431,8 @@ def resolve_model_simulation_initial_state(
     if continuation_data is not None and (
         initial_excitation_state is None or initial_mean_reversion_boundary_state is None
     ):
-        estimated_current_state = model.estimate_current_state(
+        estimated_current_state = estimate_model_state_from_observed_data(
+            model,
             state_time_utc=start_time_utc,
             request=continuation_data,
         )

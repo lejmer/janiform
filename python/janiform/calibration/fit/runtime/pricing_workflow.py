@@ -38,6 +38,7 @@ from .pricing_native import (
     run_model_vanilla_option_grouped_batch_pricing,
     run_model_vanilla_option_surface_pricing,
 )
+from .state import estimate_model_state_from_observed_data
 from .shared import PreparedModelPricingRuntimeInput
 
 if TYPE_CHECKING:
@@ -282,25 +283,24 @@ def prepare_model_pricing_runtime_input(
             initial_excitation_state=effective_boundary_state,
             start_anchor_value=price_observed_log_price_from_spot(model, spot=spot),
         )
-    elif observed_data is not None:
-        pricing_state = model.estimate_current_state(
-            state_time_utc=valuation_time_utc,
-            request=CurrentStateEstimationRequest(
-                observed_tick_data=observed_data.observed_tick_data,
-                tick_data_column_mapping=observed_data.tick_data_column_mapping,
-                observed_price=spot if observed_data.observed_price is None else observed_data.observed_price,
-            ),
-        )
-        effective_boundary_state = pricing_state.hawkes_excitation_state
-        effective_observed_boundary_state = pricing_state.mean_reversion_boundary_state
     else:
-        effective_boundary_state = runtime_factors.kernel_parameters.stationary_excitation_state()
-        (_, _, effective_observed_boundary_state) = model.prepare_model_mean_reversion_runtime_inputs(
-            runtime_factors=runtime_factors,
-            hourly_factor_contract=hourly_factor_contract,
-            initial_excitation_state=effective_boundary_state,
-            start_anchor_value=price_observed_log_price_from_spot(model, spot=spot),
+        pricing_state = estimate_model_state_from_observed_data(
+            model,
+            state_time_utc=valuation_time_utc,
+            request=observed_data,
+            observed_price=spot,
         )
+        if pricing_state is not None:
+            effective_boundary_state = pricing_state.hawkes_excitation_state
+            effective_observed_boundary_state = pricing_state.mean_reversion_boundary_state
+        else:
+            effective_boundary_state = runtime_factors.kernel_parameters.stationary_excitation_state()
+            (_, _, effective_observed_boundary_state) = model.prepare_model_mean_reversion_runtime_inputs(
+                runtime_factors=runtime_factors,
+                hourly_factor_contract=hourly_factor_contract,
+                initial_excitation_state=effective_boundary_state,
+                start_anchor_value=price_observed_log_price_from_spot(model, spot=spot),
+            )
 
     return PreparedModelPricingRuntimeInput(
         runtime_factors=runtime_factors,

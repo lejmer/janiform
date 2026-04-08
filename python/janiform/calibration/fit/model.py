@@ -3,13 +3,16 @@ from __future__ import annotations
 import json
 from copy import deepcopy
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Optional
 
-from ..._workflow_progress import WorkflowProgressMode
 from .pricing import (
+    JaniformGroupedVanillaOptionBatch,
     JaniformObservedOptionSnapshotPricingResult,
+    JaniformVanillaOptionGroupedBatchPricingResult,
+    JaniformVanillaOptionSurface,
+    JaniformVanillaOptionSurfacePricingResult,
 )
 from .pricing.observed_snapshot import TabularFrameInput, _price_observed_option_snapshot
 from .runtime.factors import (
@@ -30,6 +33,12 @@ from .runtime.metadata import (
     normalize_model_parameters,
     serialize_model_payload,
 )
+from .runtime.shared import (
+    MODEL_PERSISTENCE_SCHEMA_VERSION as _MODEL_PERSISTENCE_SCHEMA_VERSION,
+    PreparedModelPricingRuntimeInput,
+    PreparedModelRuntimeFactors,
+    PreparedModelSimulationInputs,
+)
 from .runtime.pricing import (
     build_model_pricing_hourly_factor_contract,
     model_reference_price,
@@ -42,9 +51,6 @@ from .runtime.pricing import (
     price_option_groups_for_model,
     price_option_surface_for_model,
 )
-from .runtime.shared import (
-    MODEL_PERSISTENCE_SCHEMA_VERSION as _MODEL_PERSISTENCE_SCHEMA_VERSION,
-)
 from .runtime.simulation import (
     JaniformSimulationResult,
     build_simulation_result,
@@ -56,7 +62,10 @@ from ..errors import calibration_error
 from ..market_data.contracts import CalibrationMarketDataWorkflowScope, CalibrationOptionSurfaceColumnMapping
 from ..presets.resolution import ResolvedPresetWorkflowConfiguration
 from ..sessions.contracts import MarketDataSessionResolution
-from ...pricing import VanillaOptionPayoffType
+from ..._workflow_progress import WorkflowProgressMode
+from ...mean_reversion import MeanReversionBoundaryState
+from ...pricing import VanillaOptionPayoffType, VanillaOptionPricingRunResult
+from ...simulation.shared import HawkesExcitationState, SeededTickEventStateSnapshotCapture
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,31 +87,217 @@ class JaniformModel:
         summary["fitted_parameters"] = deepcopy(self.parameters)
         return summary
 
-    simulate = simulate_model
-    price_option = price_option_for_model
-    price_option_groups = price_option_groups_for_model
-    price_option_surface = price_option_surface_for_model
-    _build_simulation_result = build_simulation_result
-    prepare_model_simulation_inputs = prepare_model_simulation_inputs
-    prepare_model_mean_reversion_runtime_inputs = prepare_model_mean_reversion_runtime_inputs
-    mean_reversion_fitted_parameters = mean_reversion_fitted_parameters_for_model
-    _prepare_model_pricing_execution_input = prepare_model_pricing_execution_input
-    _prepare_model_pricing_runtime_input = prepare_model_pricing_runtime_input
-    _build_model_pricing_hourly_factor_contract = build_model_pricing_hourly_factor_contract
-    pricing_observed_log_price_from_spot = price_observed_log_price_from_spot
-    prepare_model_grouped_batch_pricing_native_input = prepare_model_grouped_batch_pricing_native_input
-    prepare_model_surface_pricing_native_input = prepare_model_surface_pricing_native_input
-    _model_reference_price = model_reference_price
-    prepare_model_runtime_factors = prepare_model_runtime_factors_for_model
-    hawkes_kernel_parameters = hawkes_kernel_parameters_for_model
-    current_state_tick_data_column_mapping = current_state_tick_data_column_mapping_for_model
-    build_runtime_hourly_seasonality_source_from_model = build_runtime_hourly_seasonality_source_from_model
-    _seasonality_parameters_payload = seasonality_parameters_payload
-    _return_components_fitted_parameters_payload = return_components_fitted_parameters_payload
-    _pricing_nig_shared_plus_shift_configuration_payload = pricing_nig_shared_plus_shift_configuration_payload
-    resolved_known_news_event_timestamps = resolved_known_news_event_timestamps
-    surprise_baseline_intensity = surprise_baseline_intensity
-    surprise_deterministic_time_multiplier_by_interval_index = surprise_deterministic_time_multiplier_by_interval_index
+    def simulate(
+        self,
+        *,
+        seed: int,
+        start_time_utc: datetime,
+        horizon_interval_count: int,
+        interval: Optional[str | timedelta] = None,
+        output_path: Optional[str | Path] = None,
+        sink: Optional[Any] = None,
+        continuation_data: Optional[CurrentStateEstimationRequest] = None,
+        initial_excitation_state: Optional[HawkesExcitationState] = None,
+        initial_mean_reversion_boundary_state: Optional[MeanReversionBoundaryState] = None,
+        debug_trace_enabled: bool = False,
+        sample_every_nth_transition: int = 1,
+        max_records_per_chunk: int = 1024,
+        state_snapshot_capture: SeededTickEventStateSnapshotCapture = SeededTickEventStateSnapshotCapture.DISABLED,
+        silent: bool = False,
+        progress_mode: WorkflowProgressMode | str = WorkflowProgressMode.AUTO,
+        progress_callback: Optional[Any] = None,
+    ) -> JaniformSimulationResult:
+        return simulate_model(
+            self,
+            seed=seed,
+            start_time_utc=start_time_utc,
+            horizon_interval_count=horizon_interval_count,
+            interval=interval,
+            output_path=output_path,
+            sink=sink,
+            continuation_data=continuation_data,
+            initial_excitation_state=initial_excitation_state,
+            initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
+            debug_trace_enabled=debug_trace_enabled,
+            sample_every_nth_transition=sample_every_nth_transition,
+            max_records_per_chunk=max_records_per_chunk,
+            state_snapshot_capture=state_snapshot_capture,
+            silent=silent,
+            progress_mode=progress_mode,
+            progress_callback=progress_callback,
+        )
+
+    def price_option(
+        self,
+        *,
+        valuation_time_utc: datetime,
+        spot: float,
+        strike: float,
+        expiry_timestamp_utc: Optional[datetime] = None,
+        expiry_date: Optional[date] = None,
+        tenor: Optional[str] = None,
+        payoff_type: VanillaOptionPayoffType | str = VanillaOptionPayoffType.CALL,
+        risk_free_rate: float = 0.0,
+        dividend_yield: float = 0.0,
+        observed_data: Optional[CurrentStateEstimationRequest] = None,
+        boundary_state: Optional[HawkesExcitationState] = None,
+        include_transform_diagnostics: bool = False,
+        include_integration_quality_diagnostics: bool = False,
+        include_calibration_hooks: bool = False,
+        output_path: Optional[str | Path] = None,
+        silent: bool = False,
+        progress_mode: WorkflowProgressMode | str = WorkflowProgressMode.AUTO,
+    ) -> VanillaOptionPricingRunResult:
+        return price_option_for_model(
+            self,
+            valuation_time_utc=valuation_time_utc,
+            spot=spot,
+            strike=strike,
+            expiry_timestamp_utc=expiry_timestamp_utc,
+            expiry_date=expiry_date,
+            tenor=tenor,
+            payoff_type=payoff_type,
+            risk_free_rate=risk_free_rate,
+            dividend_yield=dividend_yield,
+            observed_data=observed_data,
+            boundary_state=boundary_state,
+            include_transform_diagnostics=include_transform_diagnostics,
+            include_integration_quality_diagnostics=include_integration_quality_diagnostics,
+            include_calibration_hooks=include_calibration_hooks,
+            output_path=output_path,
+            silent=silent,
+            progress_mode=progress_mode,
+        )
+
+    def price_option_groups(
+        self,
+        *,
+        valuation_time_utc: datetime,
+        batch: JaniformGroupedVanillaOptionBatch,
+        observed_data: Optional[CurrentStateEstimationRequest] = None,
+        boundary_state: Optional[HawkesExcitationState] = None,
+        include_transform_diagnostics: bool = False,
+        include_integration_quality_diagnostics: bool = False,
+        cpu_count: Optional[int] = None,
+        silent: bool = False,
+        progress_mode: WorkflowProgressMode | str = WorkflowProgressMode.AUTO,
+    ) -> JaniformVanillaOptionGroupedBatchPricingResult:
+        return price_option_groups_for_model(
+            self,
+            valuation_time_utc=valuation_time_utc,
+            batch=batch,
+            observed_data=observed_data,
+            boundary_state=boundary_state,
+            include_transform_diagnostics=include_transform_diagnostics,
+            include_integration_quality_diagnostics=include_integration_quality_diagnostics,
+            cpu_count=cpu_count,
+            silent=silent,
+            progress_mode=progress_mode,
+        )
+
+    def price_option_surface(
+        self,
+        *,
+        valuation_time_utc: datetime,
+        surface: JaniformVanillaOptionSurface,
+        observed_data: Optional[CurrentStateEstimationRequest] = None,
+        boundary_state: Optional[HawkesExcitationState] = None,
+        include_transform_diagnostics: bool = False,
+        include_integration_quality_diagnostics: bool = False,
+        cpu_count: Optional[int] = None,
+        silent: bool = False,
+        progress_mode: WorkflowProgressMode | str = WorkflowProgressMode.AUTO,
+    ) -> JaniformVanillaOptionSurfacePricingResult:
+        return price_option_surface_for_model(
+            self,
+            valuation_time_utc=valuation_time_utc,
+            surface=surface,
+            observed_data=observed_data,
+            boundary_state=boundary_state,
+            include_transform_diagnostics=include_transform_diagnostics,
+            include_integration_quality_diagnostics=include_integration_quality_diagnostics,
+            cpu_count=cpu_count,
+            silent=silent,
+            progress_mode=progress_mode,
+        )
+
+    def _build_simulation_result(self, *, simulation_result: Any, preferences: Any) -> JaniformSimulationResult:
+        return build_simulation_result(
+            self,
+            simulation_result=simulation_result,
+            preferences=preferences,
+        )
+
+    def prepare_model_simulation_inputs(self, **kwargs: Any) -> PreparedModelSimulationInputs:
+        return prepare_model_simulation_inputs(self, **kwargs)
+
+    def prepare_model_mean_reversion_runtime_inputs(self, **kwargs: Any) -> Any:
+        return prepare_model_mean_reversion_runtime_inputs(self, **kwargs)
+
+    def mean_reversion_fitted_parameters(self) -> Any:
+        return mean_reversion_fitted_parameters_for_model(self)
+
+    def _prepare_model_pricing_execution_input(self, **kwargs: Any) -> Any:
+        return prepare_model_pricing_execution_input(self, **kwargs)
+
+    def _prepare_model_pricing_runtime_input(self, **kwargs: Any) -> PreparedModelPricingRuntimeInput:
+        return prepare_model_pricing_runtime_input(self, **kwargs)
+
+    def _build_model_pricing_hourly_factor_contract(self, **kwargs: Any) -> Any:
+        return build_model_pricing_hourly_factor_contract(self, **kwargs)
+
+    def pricing_observed_log_price_from_spot(self, *, spot: float) -> float:
+        return price_observed_log_price_from_spot(self, spot=spot)
+
+    def prepare_model_grouped_batch_pricing_native_input(self, **kwargs: Any) -> dict[str, Any]:
+        return prepare_model_grouped_batch_pricing_native_input(self, **kwargs)
+
+    def prepare_model_surface_pricing_native_input(self, **kwargs: Any) -> dict[str, Any]:
+        return prepare_model_surface_pricing_native_input(self, **kwargs)
+
+    def _model_reference_price(self) -> float:
+        return model_reference_price(self)
+
+    def prepare_model_runtime_factors(self, **kwargs: Any) -> PreparedModelRuntimeFactors:
+        return prepare_model_runtime_factors_for_model(self, **kwargs)
+
+    def hawkes_kernel_parameters(self) -> Any:
+        return hawkes_kernel_parameters_for_model(self)
+
+    def current_state_tick_data_column_mapping(self, *, request: CurrentStateEstimationRequest) -> Any:
+        return current_state_tick_data_column_mapping_for_model(self, request=request)
+
+    def build_runtime_hourly_seasonality_source_from_model(self, **kwargs: Any) -> Any:
+        return build_runtime_hourly_seasonality_source_from_model(self, **kwargs)
+
+    def _seasonality_parameters_payload(self) -> Any:
+        return seasonality_parameters_payload(self)
+
+    def _return_components_fitted_parameters_payload(self) -> Any:
+        return return_components_fitted_parameters_payload(self)
+
+    def _pricing_nig_shared_plus_shift_configuration_payload(self) -> Any:
+        return pricing_nig_shared_plus_shift_configuration_payload(self)
+
+    def resolved_known_news_event_timestamps(self) -> tuple[datetime, ...]:
+        return resolved_known_news_event_timestamps(self)
+
+    def surprise_baseline_intensity(self) -> float:
+        return surprise_baseline_intensity(self)
+
+    def surprise_deterministic_time_multiplier_by_interval_index(
+        self,
+        *,
+        range_start_utc: datetime,
+        range_end_utc: datetime,
+        interval_duration_nanos: int,
+    ) -> dict[int, float]:
+        return surprise_deterministic_time_multiplier_by_interval_index(
+            self,
+            range_start_utc=range_start_utc,
+            range_end_utc=range_end_utc,
+            interval_duration_nanos=interval_duration_nanos,
+        )
 
     def price_observed_option_snapshot(
         self,

@@ -9,22 +9,26 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any, Optional
 
+from .execution import fit_with_execution_configuration
 from .inference import build_fit_inference_payload
 from .model import JaniformModel
 from .preparation.configuration import (
+    build_known_news_input,
+    build_session_configuration_input,
+    calendar_registry_json_from_session_configuration,
     coerce_known_news_reference,
     coerce_market_profile_reference,
     coerce_session_reference,
     exchange_code_from_market_profile_reference,
     exchange_code_from_session_reference,
     load_explicit_session_configuration,
-    calendar_registry_json_from_session_configuration,
-    build_known_news_input,
-    build_session_configuration_input,
     resolved_configuration_requires_materialization,
 )
-from .execution import fit_with_estimator
-from .preparation.contracts import FitExecutionEstimator
+from .preparation.contracts import (
+    FitExecutionConfiguration,
+    FitExecutionEstimator,
+    FitPreparationConfiguration,
+)
 from .preparation.workflow import (
     PreparedFitWorkflow,
     build_market_data_request,
@@ -69,7 +73,8 @@ from ..presets.resolution import ResolvedPresetWorkflowConfiguration, resolve_pr
 from ..sessions.contracts import MarketDataSessionResolution
 from ..staged import CalibrationStageSolverSettings
 from ..staged.runtime import run_prepared_staged_calibration_with_raw_payload, run_staged_calibration_with_prepared_handle_and_events
-from ..._workflow_progress import AbstractProgress, JaniformOutputController, NullProgress
+from ..._workflow_progress import AbstractProgress, NullProgress
+from ..._workflow_progress import JaniformOutputController
 
 _DEFAULT_OUTPUT_PREFERENCES = CalibrationMarketDataOutputPreferences(
     execution_mode=CalibrationExecutionMode.MEMORY,
@@ -188,8 +193,8 @@ class JaniformEstimator(FitExecutionEstimator):
         output_dir: Optional[str | Path] = None,
         silent: Optional[bool] = None,
     ) -> JaniformModel:
-        return fit_with_estimator(
-            self,
+        return fit_with_execution_configuration(
+            self._build_execution_configuration(silent=silent),
             run_id=run_id,
             tick_data_path=tick_data_path,
             tick_data_format=tick_data_format,
@@ -200,12 +205,7 @@ class JaniformEstimator(FitExecutionEstimator):
             option_surface_valuation_time_utc=option_surface_valuation_time_utc,
             carry=carry,
             output_dir=output_dir,
-            silent=silent,
             report=False,
-            output_controller_type=JaniformOutputController,
-            run_staged_calibration_with_prepared_handle_and_events_method=(
-                run_staged_calibration_with_prepared_handle_and_events
-            ),
         )
 
     def fit_with_report(
@@ -223,8 +223,8 @@ class JaniformEstimator(FitExecutionEstimator):
         output_dir: Optional[str | Path] = None,
         silent: Optional[bool] = None,
     ) -> JaniformFitResult:
-        model, fit_report = fit_with_estimator(
-            self,
+        model, fit_report = fit_with_execution_configuration(
+            self._build_execution_configuration(silent=silent),
             run_id=run_id,
             tick_data_path=tick_data_path,
             tick_data_format=tick_data_format,
@@ -235,12 +235,7 @@ class JaniformEstimator(FitExecutionEstimator):
             option_surface_valuation_time_utc=option_surface_valuation_time_utc,
             carry=carry,
             output_dir=output_dir,
-            silent=silent,
             report=True,
-            output_controller_type=JaniformOutputController,
-            run_staged_calibration_with_prepared_handle_and_events_method=(
-                run_staged_calibration_with_prepared_handle_and_events
-            ),
         )
 
         return JaniformFitResult(
@@ -249,7 +244,67 @@ class JaniformEstimator(FitExecutionEstimator):
         )
 
     def _fit_progress_total_steps(self) -> int:
-        return fit_progress_total_steps(self)
+        return fit_progress_total_steps(self._build_preparation_configuration())
+
+    def _build_preparation_configuration(self) -> FitPreparationConfiguration:
+        resolved_market_profile_configuration = self._resolve_market_profile_configuration()
+        requires_session_inference = self._requires_session_inference()
+        return FitPreparationConfiguration(
+            workflow_scope_override=self._workflow_scope_override,
+            tick_data_column_mapping=self._tick_data_column_mapping,
+            normalization_policy=self._normalization_policy,
+            option_surface_column_mapping=self._option_surface_column_mapping,
+            output_preferences=self._output_preferences,
+            optimizer_settings_by_stage=self._optimizer_settings_by_stage,
+            preprocessing_settings=self._preprocessing_settings,
+            mean_reversion=self._mean_reversion,
+            default_endogenous_mean_reversion_configuration=(
+                self._default_endogenous_mean_reversion_configuration()
+            ),
+            market_profile_reference=self._market_profile_reference,
+            known_news_reference=self._known_news_reference,
+            resolved_market_profile_configuration=resolved_market_profile_configuration,
+            effective_session_reference=self._effective_session_reference(),
+            requires_session_inference=requires_session_inference,
+            exchange_code_for_inference=(
+                self._resolve_exchange_code_for_inference() if requires_session_inference else None
+            ),
+            session_timezone=self._session_timezone,
+            registry=self._registry,
+            cpu_count=self._cpu_count,
+        )
+
+    def _build_execution_configuration(
+        self,
+        *,
+        silent: Optional[bool],
+    ) -> FitExecutionConfiguration:
+        preparation_configuration = self._build_preparation_configuration()
+        effective_silent = self._silent if silent is None else silent
+        return FitExecutionConfiguration(
+            silent=effective_silent,
+            progress_total_steps=fit_progress_total_steps(preparation_configuration),
+            preparation=preparation_configuration,
+            output_controller_factory=JaniformOutputController,
+            prepare_fit_workflow=lambda **kwargs: prepare_fit_workflow(
+                preparation_configuration,
+                **kwargs,
+                temporary_directory_factory=TemporaryDirectory,
+                normalize_market_data_source_method=normalize_market_data_source,
+                resolve_market_data_session_method=resolve_market_data_session,
+                resolve_preset_workflow_configuration_method=resolve_preset_workflow_configuration,
+                translate_market_data_request_to_prepared_calibration_from_phases_method=(
+                    translate_market_data_request_to_prepared_calibration_from_phases
+                ),
+                prepare_market_data_calibration_from_translation_result_method=(
+                    _prepare_market_data_calibration_from_translation_result
+                ),
+            ),
+            prepared_staged_runner=self._prepared_staged_runner(),
+            use_default_prepared_runner=self._uses_default_prepared_runner(),
+            evented_prepared_runner=run_staged_calibration_with_prepared_handle_and_events,
+            build_fit_inference_metadata=self._build_fit_inference_metadata,
+        )
 
     def _build_market_data_request(
         self,
@@ -266,7 +321,7 @@ class JaniformEstimator(FitExecutionEstimator):
         working_directory: Optional[Path],
     ) -> MarketDataCalibrationRequest:
         return build_market_data_request(
-            self,
+            self._build_preparation_configuration(),
             run_id=run_id,
             workflow_scope=workflow_scope,
             tick_data_source=tick_data_source,
@@ -294,7 +349,7 @@ class JaniformEstimator(FitExecutionEstimator):
         progress: Optional[AbstractProgress] = None,
     ) -> PreparedFitWorkflow:
         return prepare_fit_workflow(
-            self,
+            self._build_preparation_configuration(),
             run_id=run_id,
             tick_data_path=tick_data_path,
             tick_data_format=tick_data_format,
@@ -356,7 +411,7 @@ class JaniformEstimator(FitExecutionEstimator):
         progress: AbstractProgress,
     ) -> Optional[MarketDataSessionResolution]:
         return infer_session_resolution(
-            self,
+            self._build_preparation_configuration(),
             run_id=run_id,
             workflow_scope=workflow_scope,
             tick_data_source=tick_data_source,

@@ -5,7 +5,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any, Callable, Optional
 
-from ...._workflow_progress import AbstractProgress
+from ...._workflow_progress import AbstractProgress, NullProgress
 from ..inference import (
     FitInference,
     column_overrides_from_mapping,
@@ -14,7 +14,7 @@ from ..inference import (
 )
 from .contracts import (
     DEFAULT_KNOWN_NEWS_COLUMNS,
-    FitWorkflowEstimator,
+    FitPreparationConfiguration,
     PreparedFitWorkflow,
 )
 from ...market_data.contracts import (
@@ -40,15 +40,28 @@ from ...sessions.contracts import MarketDataSessionResolution
 from .configuration import build_known_news_input, build_session_configuration_input, resolved_configuration_requires_materialization
 
 
-def fit_progress_total_steps(estimator: FitWorkflowEstimator) -> int:
-    if estimator._requires_session_inference():
+def fit_progress_total_steps(configuration: FitPreparationConfiguration) -> int:
+    if configuration.requires_session_inference:
         return 9
 
     return 8
 
 
+def effective_workflow_scope(
+    configuration: FitPreparationConfiguration,
+    *,
+    option_surface_path: Optional[str | Path],
+) -> CalibrationMarketDataWorkflowScope:
+    if configuration.workflow_scope_override is not None:
+        return configuration.workflow_scope_override
+    if option_surface_path is not None:
+        return CalibrationMarketDataWorkflowScope.FULL_WITH_OPTION_SURFACE
+
+    return CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE
+
+
 def build_market_data_request(
-    estimator: FitWorkflowEstimator,
+    configuration: FitPreparationConfiguration,
     *,
     run_id: str,
     workflow_scope: CalibrationMarketDataWorkflowScope,
@@ -72,7 +85,7 @@ def build_market_data_request(
 
     column_mapping = CalibrationMarketDataColumnMapping(
         tick_data=tick_data_column_mapping,
-        option_surface=estimator._option_surface_column_mapping,
+        option_surface=configuration.option_surface_column_mapping,
         known_news=(DEFAULT_KNOWN_NEWS_COLUMNS if known_news_input is not None else None),
     )
 
@@ -84,9 +97,9 @@ def build_market_data_request(
         column_mapping=column_mapping,
         workflow_scope=workflow_scope,
         normalization_policy=normalization_policy,
-        output_preferences=estimator._output_preferences,
-        optimizer_settings_by_stage=estimator._optimizer_settings_by_stage,
-        preprocessing_settings=estimator._preprocessing_settings,
+        output_preferences=configuration.output_preferences,
+        optimizer_settings_by_stage=configuration.optimizer_settings_by_stage,
+        preprocessing_settings=configuration.preprocessing_settings,
         option_surface_source=option_surface_source,
         option_surface_valuation_time_utc=option_surface_valuation_time_utc,
         carry=carry,
@@ -95,16 +108,16 @@ def build_market_data_request(
             None
             if workflow_scope == CalibrationMarketDataWorkflowScope.SEASONALITY_ONLY
             else (
-                estimator._mean_reversion
-                if estimator._mean_reversion is not None
-                else estimator._default_endogenous_mean_reversion_configuration()
+                configuration.mean_reversion
+                if configuration.mean_reversion is not None
+                else configuration.default_endogenous_mean_reversion_configuration
             )
         ),
     )
 
 
 def infer_session_resolution(
-    estimator: FitWorkflowEstimator,
+    configuration: FitPreparationConfiguration,
     *,
     run_id: str,
     workflow_scope: CalibrationMarketDataWorkflowScope,
@@ -117,27 +130,29 @@ def infer_session_resolution(
     normalized_market_data: NormalizedMarketDataSource,
     progress: AbstractProgress,
 ) -> Optional[MarketDataSessionResolution]:
-    if not estimator._requires_session_inference():
+    if not configuration.requires_session_inference:
         return None
 
-    exchange_code = estimator._resolve_exchange_code_for_inference()
+    if configuration.exchange_code_for_inference is None:
+        raise RuntimeError("FitPreparationConfiguration must define exchange_code_for_inference when session inference is required")
+
     request = MarketDataCalibrationRequest(
         schema_version="calibration.market_data.request.v1",
         run_id=run_id,
         tick_data_source=tick_data_source,
         session_configuration=CalibrationSessionConfigurationInput(
-            exchange_code=exchange_code,
-            session_timezone=estimator._session_timezone,
+            exchange_code=configuration.exchange_code_for_inference,
+            session_timezone=configuration.session_timezone,
         ),
         column_mapping=CalibrationMarketDataColumnMapping(
             tick_data=tick_data_column_mapping,
-            option_surface=estimator._option_surface_column_mapping,
+            option_surface=configuration.option_surface_column_mapping,
         ),
         workflow_scope=workflow_scope,
         normalization_policy=normalization_policy,
-        output_preferences=estimator._output_preferences,
-        optimizer_settings_by_stage=estimator._optimizer_settings_by_stage,
-        preprocessing_settings=estimator._preprocessing_settings,
+        output_preferences=configuration.output_preferences,
+        optimizer_settings_by_stage=configuration.optimizer_settings_by_stage,
+        preprocessing_settings=configuration.preprocessing_settings,
         option_surface_source=option_surface_source,
         option_surface_valuation_time_utc=option_surface_valuation_time_utc,
         carry=carry,
@@ -152,7 +167,7 @@ def infer_session_resolution(
 
 
 def prepare_fit_workflow(
-    estimator: FitWorkflowEstimator,
+    configuration: FitPreparationConfiguration,
     *,
     run_id: Optional[str],
     tick_data_path: str | Path,
@@ -171,9 +186,11 @@ def prepare_fit_workflow(
     translate_market_data_request_to_prepared_calibration_from_phases_method: Callable[..., Any] = translate_market_data_request_to_prepared_calibration_from_phases,
     prepare_market_data_calibration_from_translation_result_method: Callable[..., PreparedMarketDataCalibration] = _prepare_market_data_calibration_from_translation_result,
 ) -> PreparedFitWorkflow:
-    effective_progress = estimator._null_progress() if progress is None else progress
-    workflow_scope = estimator._effective_workflow_scope(option_surface_path=option_surface_path)
-    resolved_market_profile_configuration = estimator._resolve_market_profile_configuration()
+    effective_progress = NullProgress() if progress is None else progress
+    workflow_scope = effective_workflow_scope(
+        configuration,
+        option_surface_path=option_surface_path,
+    )
 
     input_inference = infer_fit_inputs(
         tick_data_path=Path(tick_data_path),
@@ -181,9 +198,9 @@ def prepare_fit_workflow(
         tick_data_provenance_label=tick_data_provenance_label,
         workflow_scope=workflow_scope,
         run_id=run_id,
-        column_overrides=column_overrides_from_mapping(estimator._tick_data_column_mapping),
-        normalization_overrides=normalization_overrides_from_policy(estimator._normalization_policy),
-        market_profile_configuration=resolved_market_profile_configuration,
+        column_overrides=column_overrides_from_mapping(configuration.tick_data_column_mapping),
+        normalization_overrides=normalization_overrides_from_policy(configuration.normalization_policy),
+        market_profile_configuration=configuration.resolved_market_profile_configuration,
     )
 
     option_surface_source = (
@@ -208,7 +225,7 @@ def prepare_fit_workflow(
 
         effective_progress.update(detail="resolve session")
         inferred_session_resolution = infer_session_resolution(
-            estimator,
+            configuration,
             run_id=input_inference.run_id,
             workflow_scope=workflow_scope,
             tick_data_source=input_inference.tick_data_source,
@@ -223,10 +240,10 @@ def prepare_fit_workflow(
 
         effective_progress.update(detail="resolve presets")
         resolved_configuration = resolve_preset_workflow_configuration_method(
-            registry=estimator._registry,
-            market_profile_reference=estimator._market_profile_reference,
-            session_reference=estimator._effective_session_reference(),
-            known_news_reference=estimator._known_news_reference,
+            registry=configuration.registry,
+            market_profile_reference=configuration.market_profile_reference,
+            session_reference=configuration.effective_session_reference,
+            known_news_reference=configuration.known_news_reference,
             inferred_session_resolution=inferred_session_resolution,
         )
 
@@ -238,7 +255,7 @@ def prepare_fit_workflow(
 
         effective_progress.update(detail="build market-data request")
         request = build_market_data_request(
-            estimator,
+            configuration,
             run_id=input_inference.run_id,
             workflow_scope=workflow_scope,
             tick_data_source=input_inference.tick_data_source,
@@ -262,7 +279,7 @@ def prepare_fit_workflow(
             request=request,
             normalized_market_data=normalized_market_data,
             session_resolution=session_resolution,
-            cpu_count=estimator._cpu_count,
+            cpu_count=configuration.cpu_count,
         )
 
         prepared = prepare_market_data_calibration_from_translation_result_method(
