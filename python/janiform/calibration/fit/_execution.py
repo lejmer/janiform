@@ -1,3 +1,5 @@
+"""Internal fit-execution orchestration."""
+
 from __future__ import annotations
 
 from contextlib import nullcontext, redirect_stdout
@@ -20,9 +22,9 @@ from ..staged import CalibrationStageExecutionStatus
 from ..staged.progress import NativeStagedCalibrationProgressTracker, update_cli_progress_from_staged_native_event
 from ..staged.results import build_staged_failure_context, format_staged_failure_summary
 from .model import JaniformModel
-from .preparation.contracts import FitExecutionConfiguration, PreparedFitWorkflow
+from ._preparation.contracts import FitExecutionConfiguration, PreparedFitWorkflow
 from .report import JaniformFitReport
-from .runtime.metadata import build_model_metadata, extract_model_parameters, raw_stage_report_payloads
+from ._runtime.metadata import build_model_metadata, extract_model_parameters, raw_stage_report_payloads
 
 
 def fit_with_execution_configuration(

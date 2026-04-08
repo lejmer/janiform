@@ -1,3 +1,5 @@
+"""Public maturity-summary pricing contracts."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -15,7 +17,7 @@ from ....contracts import (
 )
 from ....contracts.base import require_optional_finite_number, require_optional_mapping_value, require_str_enum_value
 from ...errors import calibration_error
-from .common import (
+from .internal.common import (
     tuple_of_finite_floats,
     tuple_of_non_negative_floats,
     validate_aligned_node_count,

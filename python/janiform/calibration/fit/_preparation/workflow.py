@@ -6,8 +6,7 @@ from tempfile import TemporaryDirectory
 from typing import Any, Callable, Optional
 
 from ...._workflow_progress import AbstractProgress, NullProgress
-from ..inference import (
-    FitInference,
+from .._inference import (
     column_overrides_from_mapping,
     infer_fit_inputs,
     normalization_overrides_from_policy,

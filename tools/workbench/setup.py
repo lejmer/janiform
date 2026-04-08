@@ -15,7 +15,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from janiform.calibration.fit.inference import (
+from janiform.calibration.fit._inference import (
     FitInference,
     infer_fit_inputs,
 )

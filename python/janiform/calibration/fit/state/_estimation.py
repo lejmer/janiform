@@ -13,6 +13,12 @@ from ....mean_reversion import MeanReversionBoundaryState
 from ....simulation import SeededTickEventSide, HawkesExcitationState
 from ...errors import calibration_error
 from ...market_data.contracts import CalibrationTickDataColumnMapping
+from .._runtime.payloads import (
+    current_state_tick_data_column_mapping_for_model,
+    hawkes_kernel_parameters_for_model,
+    mean_reversion_fitted_parameters_for_model,
+)
+from .._runtime.option_pricing.support import price_observed_log_price_from_spot
 from .contracts import CurrentStateEstimationRequest, CurrentStateEstimationResult
 
 if TYPE_CHECKING:
@@ -30,7 +36,8 @@ def estimate_current_state_for_model(
         field_path="state_time_utc",
         error_factory=calibration_error,
     )
-    column_mapping = model.current_state_tick_data_column_mapping(
+    column_mapping = current_state_tick_data_column_mapping_for_model(
+        model,
         request=request,
     )
     (
@@ -46,13 +53,14 @@ def estimate_current_state_for_model(
         if request.observed_price is not None
         else observed_trade_prices[-1]
     )
-    observed_log_price = model.pricing_observed_log_price_from_spot(
+    observed_log_price = price_observed_log_price_from_spot(
+        model,
         spot=observed_price,
     )
 
     native_payload = native_module().estimate_current_state_from_observed_data(
-        model.hawkes_kernel_parameters().to_payload(),
-        model.mean_reversion_fitted_parameters().to_payload(),
+        hawkes_kernel_parameters_for_model(model).to_payload(),
+        mean_reversion_fitted_parameters_for_model(model).to_payload(),
         datetime_to_utc_nanos(state_time_utc),
         observed_log_price,
         observed_timestamps_utc,

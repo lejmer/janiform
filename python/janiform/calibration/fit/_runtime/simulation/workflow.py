@@ -5,45 +5,55 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional, cast
 
-from ...._timestamps import ONE_HOUR_NANOS
-from ...._workflow_outputs import (
+from ....._timestamps import ONE_HOUR_NANOS
+from ....._workflow_outputs import (
     SimulationArtifactSink,
     generate_workflow_run_id,
     persist_seeded_tick_simulation,
     simulation_output_preferences_from_model,
     write_simulation_artifacts,
 )
-from ...._workflow_progress import JaniformOutputController, WorkflowProgressMode
-from ....calendar import CalendarRegistry, MarketState
-from ....hourly_factors import (
+from ....._workflow_progress import JaniformOutputController, WorkflowProgressMode
+from .....calendar import CalendarRegistry, MarketState
+from .....hourly_factors import (
     HourlyFactorContract,
     HourlyNewsIntensityProviderMaterializedSource,
     provide_hourly_factor_contract,
     load_hourly_factor_contract_payload,
 )
-from ....mean_reversion import MeanReversionBoundaryState
-from ....risk import SufficientStatisticsRiskEquationSpecification, SufficientStatisticsRiskModelInputs
-from ....simulation.coarse import CoarseSimulationPath, CoarseSimulationRunRequest, run_coarse_simulation
-from ....simulation.progress import SimulationProgressEvent
-from ....simulation.seeded import (
+from .....mean_reversion import MeanReversionBoundaryState
+from .....risk import SufficientStatisticsRiskEquationSpecification, SufficientStatisticsRiskModelInputs
+from .....simulation.coarse import CoarseSimulationPath, CoarseSimulationRunRequest, run_coarse_simulation
+from .....simulation.progress import SimulationProgressEvent
+from .....simulation.seeded import (
     SeededTickSimulationRequest,
     SeededTickSimulationResponse,
     run_seeded_tick_event_simulation,
 )
-from ....simulation.shared import HawkesExcitationState, SeededTickEventStateSnapshotCapture
-from ...errors import calibration_error
-from ..state import CurrentStateEstimationRequest, CurrentStateEstimationResult
-from .state import estimate_model_state_from_observed_data
-from .shared import (
+from .....simulation.shared import HawkesExcitationState, SeededTickEventStateSnapshotCapture
+from ....errors import calibration_error
+from ...state import CurrentStateEstimationRequest, CurrentStateEstimationResult
+from ..payloads import (
+    prepare_model_runtime_factors_for_model,
+    resolved_known_news_event_timestamps,
+    surprise_baseline_intensity,
+)
+from ..seasonality import (
+    build_runtime_hourly_seasonality_source_from_model,
+    surprise_deterministic_time_multiplier_by_interval_index,
+)
+from ..mean_reversion import prepare_model_mean_reversion_runtime_inputs
+from ..state import estimate_model_state_from_observed_data
+from ..shared import (
     DEFAULT_SIMULATION_INTERVAL,
     PreparedModelSimulationInputs,
     PreparedModelSimulationRuntimeInput,
     ResolvedModelSimulationInitialState,
 )
-from .simulation_result import JaniformSimulationResult, normalize_interval_label, runtime_datetime_from_utc_nanos
+from .result import JaniformSimulationResult, normalize_interval_label, runtime_datetime_from_utc_nanos
 
 if TYPE_CHECKING:
-    from ..model import JaniformModel
+    from ...model import JaniformModel
 
 
 def simulate_model(
@@ -77,7 +87,8 @@ def simulate_model(
     )
     simulation_kind = "seeded_tick" if interval is None else "coarse_interval"
 
-    execution_inputs = model.prepare_model_simulation_inputs(
+    execution_inputs = prepare_model_simulation_inputs(
+        model,
         seed=seed,
         start_time_utc=start_time_utc,
         horizon_interval_count=horizon_interval_count,
@@ -200,7 +211,8 @@ def prepare_model_simulation_inputs(
     max_records_per_chunk: int,
     state_snapshot_capture: SeededTickEventStateSnapshotCapture,
 ) -> PreparedModelSimulationInputs:
-    runtime_factors = model.prepare_model_runtime_factors(
+    runtime_factors = prepare_model_runtime_factors_for_model(
+        model,
         start_time_utc=start_time_utc,
         horizon_interval_count=horizon_interval_count,
         interval=interval,
@@ -363,7 +375,8 @@ def prepare_model_simulation_runtime_input(
         mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors,
         derived_initial_mean_reversion_boundary_state,
-    ) = model.prepare_model_mean_reversion_runtime_inputs(
+    ) = prepare_model_mean_reversion_runtime_inputs(
+        model,
         runtime_factors=runtime_factors,
         hourly_factor_contract=hourly_factor_contract,
         initial_excitation_state=initial_excitation_state,
@@ -397,7 +410,8 @@ def build_model_simulation_hourly_factor_contract(
         range_start_utc=start_time_utc,
         range_end_utc=runtime_factors.range_end_utc,
         interval=interval,
-        seasonality_source=model.build_runtime_hourly_seasonality_source_from_model(
+        seasonality_source=build_runtime_hourly_seasonality_source_from_model(
+            model,
             calendar_registry=runtime_factors.calendar_registry,
             exchange_code=runtime_factors.exchange_code,
             range_start_utc=start_time_utc,
@@ -405,10 +419,11 @@ def build_model_simulation_hourly_factor_contract(
             interval=interval,
         ),
         news_intensity_source=HourlyNewsIntensityProviderMaterializedSource(
-            known_scheduled_event_timestamps_utc=model.resolved_known_news_event_timestamps(),
-            surprise_baseline_intensity=model.surprise_baseline_intensity(),
+            known_scheduled_event_timestamps_utc=resolved_known_news_event_timestamps(model),
+            surprise_baseline_intensity=surprise_baseline_intensity(model),
             surprise_deterministic_time_multiplier_by_interval_index=(
-                model.surprise_deterministic_time_multiplier_by_interval_index(
+                surprise_deterministic_time_multiplier_by_interval_index(
+                    model,
                     range_start_utc=start_time_utc,
                     range_end_utc=runtime_factors.range_end_utc,
                     interval_duration_nanos=runtime_factors.interval_duration_nanos,

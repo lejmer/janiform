@@ -1,3 +1,5 @@
+"""Internal market-snapshot result assembly helpers."""
+
 from __future__ import annotations
 
 from collections import OrderedDict
@@ -7,15 +9,15 @@ from typing import Optional
 
 import pandas
 
-from ....contracts import require_positive_finite_scalar
-from ....pricing import VanillaOptionPayoffType
-from ...errors import calibration_error
-from .grouped import JaniformVanillaOptionGroupedBatchPricingResult
-from .observed_snapshot_contracts import (
+from .....contracts import require_positive_finite_scalar
+from .....pricing import VanillaOptionPayoffType
+from ....errors import calibration_error
+from ..grids import JaniformVanillaOptionGroupedBatchPricingResult
+from .workflow import (
     JaniformObservedOptionSnapshotNode,
     JaniformObservedOptionSnapshotPricingResult,
 )
-from .observed_snapshot_loading import (
+from .loading import (
     ResolvedOptionSnapshotColumns,
     normalize_observed_option_type,
     normalize_requested_option_type,
@@ -155,7 +157,7 @@ def build_observed_option_snapshot_pricing_result(
     for prepared_group, priced_group in zip(prepared_snapshot_groups, pricing_result.groups, strict=True):
         if len(priced_group.maturity_intervals) != 1:
             raise RuntimeError(
-                "price_observed_option_snapshot expected exactly one maturity per pricing group"
+                "price_option_market_snapshot expected exactly one maturity per pricing group"
             )
 
         maturity_interval = priced_group.maturity_intervals[0]

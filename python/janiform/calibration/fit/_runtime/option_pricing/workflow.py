@@ -4,7 +4,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
-from ....pricing import (
+from .....pricing import (
     AnchoredVanillaOptionPricingBoundaryInput,
     VanillaOptionPayoffConfiguration,
     VanillaOptionPayoffType,
@@ -16,33 +16,38 @@ from ....pricing import (
     VanillaOptionPricingRunResult,
     run_vanilla_option_pricing,
 )
-from ....simulation.shared import HawkesExcitationState
-from ...._workflow_outputs import generate_workflow_run_id, write_pricing_artifacts
-from ...._workflow_progress import JaniformOutputController, WorkflowProgressMode
-from ...errors import calibration_error
-from ..pricing import (
+from .....simulation.shared import HawkesExcitationState
+from ....._workflow_outputs import generate_workflow_run_id, write_pricing_artifacts
+from ....._workflow_progress import JaniformOutputController, WorkflowProgressMode
+from ....errors import calibration_error
+from ...pricing import (
     JaniformGroupedVanillaOptionBatch,
     JaniformVanillaOptionGroupedBatchPricingResult,
     JaniformVanillaOptionSurface,
     JaniformVanillaOptionSurfacePricingResult,
 )
-from ..pricing.maturity import resolve_pricing_maturity_axis, resolve_single_pricing_maturity_input
-from ..state import CurrentStateEstimationRequest
-from .pricing_support import (
+from ...pricing.internal.maturity import resolve_pricing_maturity_axis, resolve_single_pricing_maturity_input
+from ...state import CurrentStateEstimationRequest
+from .support import (
     build_model_pricing_hourly_factor_contract,
     native_pricing_interval_factors,
     price_observed_log_price_from_spot,
     pricing_interval_count_from_maturity_interval,
 )
-from .pricing_native import (
+from ..payloads import (
+    mean_reversion_fitted_parameters_for_model,
+    prepare_model_runtime_factors_for_model,
+)
+from ..mean_reversion import prepare_model_mean_reversion_runtime_inputs
+from .native import (
     run_model_vanilla_option_grouped_batch_pricing,
     run_model_vanilla_option_surface_pricing,
 )
-from .state import estimate_model_state_from_observed_data
-from .shared import PreparedModelPricingRuntimeInput
+from ..state import estimate_model_state_from_observed_data
+from ..shared import PreparedModelPricingRuntimeInput
 
 if TYPE_CHECKING:
-    from ..model import JaniformModel
+    from ...model import JaniformModel
 
 
 def price_option_for_model(
@@ -72,7 +77,8 @@ def price_option_for_model(
         default_progress_mode=(WorkflowProgressMode.NONE if silent else WorkflowProgressMode.HUMAN),
     )
 
-    execution_input = model._prepare_model_pricing_execution_input(
+    execution_input = prepare_model_pricing_execution_input(
+        model,
         valuation_time_utc=valuation_time_utc,
         spot=spot,
         strike=strike,
@@ -105,7 +111,7 @@ def price_option_for_model(
     return pricing_result
 
 
-def price_option_groups_for_model(
+def price_option_grids_for_model(
     model: JaniformModel,
     *,
     valuation_time_utc: datetime,
@@ -124,7 +130,8 @@ def price_option_groups_for_model(
         default_progress_mode=(WorkflowProgressMode.NONE if silent else WorkflowProgressMode.HUMAN),
     )
 
-    native_execution_input = model.prepare_model_grouped_batch_pricing_native_input(
+    native_execution_input = prepare_model_grouped_batch_pricing_native_input(
+        model,
         valuation_time_utc=valuation_time_utc,
         batch=batch,
         observed_data=observed_data,
@@ -161,7 +168,8 @@ def price_option_surface_for_model(
         default_progress_mode=(WorkflowProgressMode.NONE if silent else WorkflowProgressMode.HUMAN),
     )
 
-    native_execution_input = model.prepare_model_surface_pricing_native_input(
+    native_execution_input = prepare_model_surface_pricing_native_input(
+        model,
         valuation_time_utc=valuation_time_utc,
         surface=surface,
         observed_data=observed_data,
@@ -262,7 +270,8 @@ def prepare_model_pricing_runtime_input(
     observed_data: Optional[CurrentStateEstimationRequest],
     boundary_state: Optional[HawkesExcitationState],
 ) -> PreparedModelPricingRuntimeInput:
-    runtime_factors = model.prepare_model_runtime_factors(
+    runtime_factors = prepare_model_runtime_factors_for_model(
+        model,
         start_time_utc=valuation_time_utc,
         horizon_interval_count=horizon_interval_count,
         interval="1h",
@@ -273,11 +282,12 @@ def prepare_model_pricing_runtime_input(
         runtime_factors=runtime_factors,
         valuation_time_utc=valuation_time_utc,
     )
-    mean_reversion_fitted_parameters = model.mean_reversion_fitted_parameters()
+    mean_reversion_fitted_parameters = mean_reversion_fitted_parameters_for_model(model)
 
     if boundary_state is not None:
         effective_boundary_state = boundary_state
-        (_, _, effective_observed_boundary_state) = model.prepare_model_mean_reversion_runtime_inputs(
+        (_, _, effective_observed_boundary_state) = prepare_model_mean_reversion_runtime_inputs(
+            model,
             runtime_factors=runtime_factors,
             hourly_factor_contract=hourly_factor_contract,
             initial_excitation_state=effective_boundary_state,
@@ -295,7 +305,8 @@ def prepare_model_pricing_runtime_input(
             effective_observed_boundary_state = pricing_state.mean_reversion_boundary_state
         else:
             effective_boundary_state = runtime_factors.kernel_parameters.stationary_excitation_state()
-            (_, _, effective_observed_boundary_state) = model.prepare_model_mean_reversion_runtime_inputs(
+            (_, _, effective_observed_boundary_state) = prepare_model_mean_reversion_runtime_inputs(
+                model,
                 runtime_factors=runtime_factors,
                 hourly_factor_contract=hourly_factor_contract,
                 initial_excitation_state=effective_boundary_state,

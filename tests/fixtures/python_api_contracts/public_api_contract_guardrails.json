@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale.v1",
-  "approved_snapshot_sha256": "555a8617be8123075dee0a45a858ead6f0d116bbc0800f1462df1b399d0f3b20",
+  "approved_snapshot_sha256": "b5bfbd27a42e7f0fe670281b271f4922a2d3509a07ee860c6bfa6fac66a04d9c",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -1031,6 +1031,40 @@
         "janiform.calibration.fit",
         "janiform.calibration.fit.estimator",
         "janiform.calibration.fit.result"
+      ]
+    },
+    {
+      "approved_on": "2026-04-08",
+      "rationale": "The fit package now treats execution, inference, preparation, and runtime helpers as internal _-prefixed implementation modules, removes estimator compatibility base classes from the public contract metadata, and keeps janiform.calibration.fit.state focused on public state-estimation contracts rather than implementation helpers.",
+      "snapshot_sha256": "c94779cccc923c255570983f2c03b80244879498c727728365d2622a0d6869f6",
+      "summary": "Curate the fit package boundary around public facades and internal workflow modules.",
+      "updated_surfaces": [
+        "janiform.calibration.fit",
+        "janiform.calibration.fit.estimator",
+        "janiform.calibration.fit.state"
+      ]
+    },
+    {
+      "approved_on": "2026-04-08",
+      "rationale": "The calibration root now exposes only the main high-level fit facade and root-level validation errors. Internal fitted-model helper behavior now lives in private _runtime service modules instead of on JaniformModel.",
+      "snapshot_sha256": "0531c541cbbf5a4ddf5ba2ece8c55830a0555073e5676c23451da0677f4b2b90",
+      "summary": "Shrink the calibration root and remove model-private runtime helper exports.",
+      "updated_surfaces": [
+        "janiform.calibration",
+        "janiform.calibration.fit.model"
+      ]
+    },
+    {
+      "approved_on": "2026-04-08",
+      "rationale": "The fitted-model pricing package now exposes grids, surface, summaries, and market_snapshot as explicit public concept modules. Internal pricing helpers live under internal and market_snapshot subpackages instead of underscore helper files.",
+      "snapshot_sha256": "b5bfbd27a42e7f0fe670281b271f4922a2d3509a07ee860c6bfa6fac66a04d9c",
+      "summary": "Reshape fitted-model pricing around concept modules and subpackages.",
+      "updated_surfaces": [
+        "janiform.calibration.fit.pricing",
+        "janiform.calibration.fit.pricing.grids",
+        "janiform.calibration.fit.pricing.market_snapshot",
+        "janiform.calibration.fit.pricing.summaries",
+        "janiform.calibration.fit.pricing.surface"
       ]
     }
   ],

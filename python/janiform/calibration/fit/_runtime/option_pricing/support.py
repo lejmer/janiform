@@ -4,15 +4,20 @@ from datetime import datetime
 from math import log
 from typing import TYPE_CHECKING, Any, Mapping, cast
 
-from ....contracts import require_positive_finite_scalar
-from ....hourly_factors import (
+from .....contracts import require_positive_finite_scalar
+from .....hourly_factors import (
     HourlyNewsIntensityProviderMaterializedSource,
     provide_hourly_factor_contract,
 )
-from ...errors import calibration_error
+from ....errors import calibration_error
+from ..payloads import resolved_known_news_event_timestamps, surprise_baseline_intensity
+from ..seasonality import (
+    build_runtime_hourly_seasonality_source_from_model,
+    surprise_deterministic_time_multiplier_by_interval_index,
+)
 
 if TYPE_CHECKING:
-    from ..model import JaniformModel
+    from ...model import JaniformModel
 
 
 def build_model_pricing_hourly_factor_contract(
@@ -27,7 +32,8 @@ def build_model_pricing_hourly_factor_contract(
         range_start_utc=valuation_time_utc,
         range_end_utc=runtime_factors.range_end_utc,
         interval="1h",
-        seasonality_source=model.build_runtime_hourly_seasonality_source_from_model(
+        seasonality_source=build_runtime_hourly_seasonality_source_from_model(
+            model,
             calendar_registry=runtime_factors.calendar_registry,
             exchange_code=runtime_factors.exchange_code,
             range_start_utc=valuation_time_utc,
@@ -35,10 +41,11 @@ def build_model_pricing_hourly_factor_contract(
             interval="1h",
         ),
         news_intensity_source=HourlyNewsIntensityProviderMaterializedSource(
-            known_scheduled_event_timestamps_utc=model.resolved_known_news_event_timestamps(),
-            surprise_baseline_intensity=model.surprise_baseline_intensity(),
+            known_scheduled_event_timestamps_utc=resolved_known_news_event_timestamps(model),
+            surprise_baseline_intensity=surprise_baseline_intensity(model),
             surprise_deterministic_time_multiplier_by_interval_index=(
-                model.surprise_deterministic_time_multiplier_by_interval_index(
+                surprise_deterministic_time_multiplier_by_interval_index(
+                    model,
                     range_start_utc=valuation_time_utc,
                     range_end_utc=runtime_factors.range_end_utc,
                     interval_duration_nanos=runtime_factors.interval_duration_nanos,

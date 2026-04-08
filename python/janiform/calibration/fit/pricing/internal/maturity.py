@@ -1,3 +1,5 @@
+"""Internal maturity-axis resolution helpers for fitted-model pricing."""
+
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
@@ -6,10 +8,10 @@ from datetime import UTC, date, datetime
 from types import ModuleType
 from typing import Any, Optional
 
-from ...._native_api import native_exception_matches, native_module
-from ....contracts import require_date, require_datetime_utc
-from ....contracts.base import require_non_empty_string_value
-from ...errors import (
+from ....._native_api import native_exception_matches, native_module
+from .....contracts import require_date, require_datetime_utc
+from .....contracts.base import require_non_empty_string_value
+from ....errors import (
     CALIBRATION_INTEGRATION_NATIVE_MODULE_ERROR_ID,
     CALIBRATION_INTEGRATION_RESPONSE_ERROR_ID,
     calibration_error,

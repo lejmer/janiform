@@ -3,17 +3,17 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any, Optional
 
-from ...._native_api import native_exception_matches, native_module
-from ....pricing.progress import PricingProgressEvent, pricing_progress_event_from_mapping
-from ...._workflow_progress import AbstractProgress, NullProgress
-from ...errors import (
+from ....._native_api import native_exception_matches, native_module
+from .....pricing.progress import PricingProgressEvent, pricing_progress_event_from_mapping
+from ....._workflow_progress import AbstractProgress, NullProgress
+from ....errors import (
     CALIBRATION_INTEGRATION_NATIVE_MODULE_ERROR_ID,
     CALIBRATION_INTEGRATION_RESPONSE_ERROR_ID,
     CalibrationValidationError,
     calibration_execution_error,
     calibration_integration_error,
 )
-from ..pricing import (
+from ...pricing import (
     JaniformVanillaOptionGroupedBatchPricingResult,
     JaniformVanillaOptionSurfacePricingResult,
 )
@@ -28,7 +28,7 @@ def run_model_vanilla_option_grouped_batch_pricing(
         native_method_name="run_vanilla_option_grouped_batch_pricing",
         native_execution_input=native_execution_input,
         result_parser=JaniformVanillaOptionGroupedBatchPricingResult.from_mapping,
-        entrypoint="JaniformModel.price_option_groups",
+        entrypoint="JaniformModel.price_option_grids",
         result_field_path="grouped_batch_pricing_result",
         progress=progress,
         progress_detail="running grouped batch pricing workflow",

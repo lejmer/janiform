@@ -75,6 +75,7 @@ from ...calibration.fit import (
     JaniformFitReport,
     JaniformModel,
 )
+from ...calibration.fit._preparation.configuration import load_explicit_session_configuration
 from ...calibration.market_data import (
     CalibrationDuplicateRecordPolicy,
     CalibrationInputFileFormat,
@@ -96,8 +97,7 @@ from ...calibration.presets import (
     SessionPresetReference,
     deserialize_preset_artifact,
 )
-from ...calibration.fit.estimator import _load_explicit_session_configuration
-from ...calibration.fit.inference import (
+from ...calibration.fit._inference import (
     FitInference,
     NormalizationPolicyOverrides,
     TickDataColumnOverrides,
@@ -886,7 +886,7 @@ def build_session_reference_from_arguments(
         resolved_session_path = resolve_path_from_repository_root(repository_root, session_json)
         return SessionPresetReference(
             usage_mode=PresetReferenceUsageMode.EXPLICIT,
-            configuration=_load_explicit_session_configuration(
+            configuration=load_explicit_session_configuration(
                 resolved_session_path,
                 exchange_code=cast(Optional[str], command_arguments.get("exchange_code")),
             ),

@@ -1,3 +1,5 @@
+"""Curated fitted-model API surface for calibration, pricing, and simulation."""
+
 from .estimator import JaniformEstimator
 from .model import JaniformModel, JaniformSimulationResult
 from .pricing import (
@@ -13,8 +15,8 @@ from .pricing import (
     JaniformVanillaOptionSurface,
     JaniformVanillaOptionSurfacePricingResult,
 )
-from .result import JaniformFitResult
 from .report import JaniformFitReport
+from .result import JaniformFitResult
 from .state import (
     CurrentStateEstimationRequest,
     CurrentStateEstimationResult,
@@ -24,8 +26,8 @@ __all__ = [
     "CurrentStateEstimationRequest",
     "CurrentStateEstimationResult",
     "JaniformEstimator",
-    "JaniformFitResult",
     "JaniformFitReport",
+    "JaniformFitResult",
     "JaniformGroupedVanillaOptionBatch",
     "JaniformGroupedVanillaOptionGroup",
     "JaniformModel",

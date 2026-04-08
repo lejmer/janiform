@@ -6,9 +6,8 @@ import pytest
 
 import janiform.calibration.fit.estimator as fit_estimator_module
 import janiform.cli as cli_module
-from janiform.calibration import StagedCalibrationResponse
 from janiform.calibration.market_data import CalibrationDuplicateRecordPolicy
-from janiform.calibration.staged import validate_staged_calibration_response
+from janiform.calibration.staged import StagedCalibrationResponse, validate_staged_calibration_response
 from tests.support.cli import invoke_cli, normalize_help_output, render_help
 from tests.support.high_level_workflows import (
     build_full_workflow_model,

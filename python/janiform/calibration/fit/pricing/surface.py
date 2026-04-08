@@ -1,3 +1,5 @@
+"""Public option-surface pricing contracts."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -13,7 +15,7 @@ from ....pricing import (
     VanillaOptionPricingStatus,
 )
 from ...errors import calibration_error
-from .common import (
+from .internal.common import (
     grid_of_implied_volatility_inversion_statuses,
     grid_of_optional_failure_stages,
     grid_of_optional_finite_floats,
@@ -25,7 +27,7 @@ from .common import (
     validate_group_node_payload,
     validate_matching_grid_shape,
 )
-from .maturity import (
+from .internal.maturity import (
     normalize_optional_expiry_dates,
     normalize_optional_expiry_timestamps_utc,
     normalize_optional_tenors,

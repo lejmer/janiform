@@ -149,7 +149,7 @@ def load_explicit_session_configuration(
         timezone_name=timezone_name,
         timezone_source="session_definition_source",
         holiday_calendar_code=cast(str, cast(dict[str, Any], exchange_artifact["rule_metadata"])["holiday_calendar_code"]),
-        early_close_rule_set=cast(Optional[str], cast(dict[str, Any], exchange_artifact["rule_metadata"]).get("early_close_rule_set")),
+        early_close_rule_set=cast(dict[str, Any], exchange_artifact["rule_metadata"]).get("early_close_rule_set"),
         regular_session_windows=regular_session_windows,
         continuous_weekday_template=looks_like_continuous_weekday_template(
             exchange_code=target_exchange_code,

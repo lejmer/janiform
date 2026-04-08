@@ -9,33 +9,27 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any, Optional
 
-from .execution import fit_with_execution_configuration
-from .inference import build_fit_inference_payload
-from .model import JaniformModel
-from .preparation.configuration import (
-    build_known_news_input,
-    build_session_configuration_input,
-    calendar_registry_json_from_session_configuration,
+from ._execution import fit_with_execution_configuration
+from ._inference import build_fit_inference_payload
+from ._preparation.configuration import (
     coerce_known_news_reference,
     coerce_market_profile_reference,
     coerce_session_reference,
     exchange_code_from_market_profile_reference,
     exchange_code_from_session_reference,
-    load_explicit_session_configuration,
-    resolved_configuration_requires_materialization,
 )
-from .preparation.contracts import (
+from ._preparation.contracts import (
     FitExecutionConfiguration,
-    FitExecutionEstimator,
     FitPreparationConfiguration,
 )
-from .preparation.workflow import (
+from ._preparation.workflow import (
     PreparedFitWorkflow,
     build_market_data_request,
     fit_progress_total_steps,
     infer_session_resolution,
     prepare_fit_workflow,
 )
+from .model import JaniformModel
 from .result import JaniformFitResult
 from ..errors import calibration_error
 from ..market_data.contracts import (
@@ -84,19 +78,8 @@ _DEFAULT_OUTPUT_PREFERENCES = CalibrationMarketDataOutputPreferences(
 _DEFAULT_ENDOGENOUS_MEAN_REVERSION_CONFIGURATION = CalibrationMeanReversionConfiguration()
 _DEFAULT_PREPARED_STAGED_RUNNER = run_prepared_staged_calibration_with_raw_payload
 
-_coerce_market_profile_reference = coerce_market_profile_reference
-_coerce_session_reference = coerce_session_reference
-_coerce_known_news_reference = coerce_known_news_reference
-_load_explicit_session_configuration = load_explicit_session_configuration
-_exchange_code_from_session_reference = exchange_code_from_session_reference
-_exchange_code_from_market_profile_reference = exchange_code_from_market_profile_reference
-_calendar_registry_json_from_session_configuration = calendar_registry_json_from_session_configuration
-_build_session_configuration_input = build_session_configuration_input
-_build_known_news_input = build_known_news_input
-_resolved_configuration_requires_materialization = resolved_configuration_requires_materialization
 
-
-class JaniformEstimator(FitExecutionEstimator):
+class JaniformEstimator:
     _workflow_scope_override: Optional[CalibrationMarketDataWorkflowScope]
     _tick_data_column_mapping: Optional[CalibrationTickDataColumnMapping]
     _normalization_policy: Optional[CalibrationMarketDataNormalizationPolicy]
@@ -169,9 +152,9 @@ class JaniformEstimator(FitExecutionEstimator):
         self._optimizer_settings_by_stage = optimizer_settings_by_stage
         self._preprocessing_settings = preprocessing_settings
         self._mean_reversion = mean_reversion
-        self._market_profile_reference = _coerce_market_profile_reference(market_profile)
-        self._session_reference = _coerce_session_reference(session, exchange_code=exchange_code)
-        self._known_news_reference = _coerce_known_news_reference(known_news)
+        self._market_profile_reference = coerce_market_profile_reference(market_profile)
+        self._session_reference = coerce_session_reference(session, exchange_code=exchange_code)
+        self._known_news_reference = coerce_known_news_reference(known_news)
         self._exchange_code = exchange_code
         self._session_timezone = session_timezone
         self._registry = PresetRegistry() if registry is None else registry
@@ -473,10 +456,10 @@ class JaniformEstimator(FitExecutionEstimator):
             return self._exchange_code
 
         if self._session_reference is not None:
-            return _exchange_code_from_session_reference(self._session_reference, self._registry)
+            return exchange_code_from_session_reference(self._session_reference, self._registry)
 
         if self._market_profile_reference is not None:
-            return _exchange_code_from_market_profile_reference(
+            return exchange_code_from_market_profile_reference(
                 self._market_profile_reference,
                 self._registry,
             )

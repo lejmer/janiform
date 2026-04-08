@@ -1,17 +1,19 @@
+"""Internal pricing-grid validation helpers."""
+
 from __future__ import annotations
 
 from collections.abc import Sequence
 from typing import Any, Optional
 
-from ....contracts import require_non_negative_finite_scalar, require_positive_finite_scalar
-from ....contracts.base import require_optional_string_value, require_str_enum_value
-from ....pricing import (
+from .....contracts import require_non_negative_finite_scalar, require_positive_finite_scalar
+from .....contracts.base import require_optional_string_value, require_str_enum_value
+from .....pricing import (
     VanillaOptionImpliedVolatilityInversionStatus,
     VanillaOptionPricingFailureStage,
     VanillaOptionPricingStatus,
 )
-from ....pricing.contracts import _validate_optional_implied_volatility_inversion_outcome
-from ....pricing.surface.common import (
+from .....pricing.contracts import _validate_optional_implied_volatility_inversion_outcome
+from .....pricing.surface.common import (
     grid_of_non_negative_floats as _surface_grid_of_non_negative_floats,
     grid_of_optional_finite_floats as _surface_grid_of_optional_finite_floats,
     grid_of_positive_floats as _surface_grid_of_positive_floats,
@@ -23,7 +25,7 @@ from ....pricing.surface.common import (
     validate_aligned_count as _surface_validate_aligned_node_count,
     validate_matching_grid_shape as _surface_validate_matching_grid_shape,
 )
-from ...errors import calibration_error
+from ....errors import calibration_error
 
 
 def tuple_of_positive_floats(

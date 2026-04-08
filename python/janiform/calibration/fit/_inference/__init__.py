@@ -1,3 +1,5 @@
+"""Internal fit-input inference helpers."""
+
 from .fit_inputs import (
     FitInference,
     NormalizationPolicyOverrides,

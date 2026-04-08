@@ -4,7 +4,6 @@ from typing import Any
 import pytest
 
 import janiform.calibration.fit.estimator as fit_estimator_module
-from janiform.calibration import StagedCalibrationResponse
 from janiform.calibration.fit import JaniformEstimator, JaniformModel
 from janiform.calibration.market_data import (
     CalibrationInputFileFormat,
@@ -13,7 +12,7 @@ from janiform.calibration.market_data import (
     CalibrationTickDataColumnMapping,
     CalibrationTickPriceInputPolicy,
 )
-from janiform.calibration.staged import validate_staged_calibration_response
+from janiform.calibration.staged import StagedCalibrationResponse, validate_staged_calibration_response
 from tests.support.calibration import (
     build_zero_kappa_endogenous_mean_reversion_fitted_parameters_payload,
 )

@@ -14,14 +14,17 @@ from pyarrow import parquet
 
 import janiform.calibration.fit.estimator as fit_estimator_module
 import janiform.calibration.fit.model as fit_model_module
-import janiform.calibration.fit.runtime.mean_reversion as fit_mean_reversion_runtime_module
-import janiform.calibration.fit.runtime.pricing_native as fit_pricing_native_module
-import janiform.calibration.fit.runtime.pricing_workflow as fit_pricing_workflow_module
-import janiform.calibration.fit.runtime.seasonality as fit_seasonality_runtime_module
-import janiform.calibration.fit.runtime.shared as fit_runtime_shared_module
-import janiform.calibration.fit.runtime.simulation_result as fit_simulation_result_module
-import janiform.calibration.fit.runtime.simulation_workflow as fit_simulation_workflow_module
-import janiform.calibration.fit.state.estimation as state_estimation_module
+import janiform.calibration.fit._preparation.configuration as fit_preparation_configuration_module
+import janiform.calibration.fit._runtime.payloads as fit_runtime_payloads_module
+import janiform.calibration.fit._runtime.mean_reversion as fit_mean_reversion_runtime_module
+import janiform.calibration.fit._runtime.option_pricing.native as fit_pricing_native_module
+import janiform.calibration.fit._runtime.option_pricing.support as fit_pricing_support_module
+import janiform.calibration.fit._runtime.option_pricing.workflow as fit_pricing_workflow_module
+import janiform.calibration.fit._runtime.seasonality as fit_seasonality_runtime_module
+import janiform.calibration.fit._runtime.shared as fit_runtime_shared_module
+import janiform.calibration.fit._runtime.simulation.result as fit_simulation_result_module
+import janiform.calibration.fit._runtime.simulation.workflow as fit_simulation_workflow_module
+import janiform.calibration.fit.state._estimation as state_estimation_module
 import janiform.calibration.market_data.ingestion as market_data_ingestion_module
 import janiform.hourly_factors.workflow as hourly_factors_workflow_module
 from janiform._timestamps import datetime_to_utc_nanos
@@ -565,7 +568,7 @@ def test_prepare_fit_workflow_allows_inferred_option_quote_input_policy(
     assert request.normalization_policy.option_quote_input_policy is None
 
 
-def test_price_observed_option_snapshot_returns_tidy_snapshot_and_surface_frame(
+def test_price_option_market_snapshot_returns_tidy_snapshot_and_surface_frame(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -606,7 +609,7 @@ def test_price_observed_option_snapshot_returns_tidy_snapshot_and_surface_frame(
 
     captured_arguments: dict[str, Any] = {}
 
-    def _capture_price_option_groups(
+    def _capture_price_option_grids(
         self: JaniformModel,
         *,
         valuation_time_utc: datetime,
@@ -668,11 +671,11 @@ def test_price_observed_option_snapshot_returns_tidy_snapshot_and_surface_frame(
 
     monkeypatch.setattr(
         fit_model_module.JaniformModel,
-        "price_option_groups",
-        _capture_price_option_groups,
+        "price_option_grids",
+        _capture_price_option_grids,
     )
 
-    result = model.price_observed_option_snapshot(
+    result = model.price_option_market_snapshot(
         tick_data=tick_data_path,
         option_surface=option_surface_path,
         valuation_time_utc=datetime(2026, 2, 3, 15, 0, tzinfo=UTC),
@@ -755,7 +758,8 @@ def test_prepare_model_runtime_factors_uses_fitted_surprise_intensity_profile(
 
     estimator = JaniformEstimator(market_profile="us_equity_cash")
     model = estimator.fit(tick_data_path=tick_data_path)
-    prepared_inputs = model.prepare_model_simulation_inputs(
+    prepared_inputs = fit_simulation_workflow_module.prepare_model_simulation_inputs(
+        model,
         seed=17,
         start_time_utc=datetime(2026, 2, 2, 14, 0, tzinfo=UTC),
         horizon_interval_count=2,
@@ -820,7 +824,7 @@ def test_high_level_session_calendar_registry_preserves_fx_weekend_closure() -> 
     )
 
     calendar_registry = CalendarRegistry(
-        fit_estimator_module._calendar_registry_json_from_session_configuration(
+        fit_preparation_configuration_module.calendar_registry_json_from_session_configuration(
             session_artifact.configuration
         )
     )
@@ -1153,7 +1157,8 @@ def test_loaded_high_level_model_runtime_seasonality_prefers_compact_parameters(
         ),
     )
 
-    seasonality_source = loaded_model.build_runtime_hourly_seasonality_source_from_model(
+    seasonality_source = fit_seasonality_runtime_module.build_runtime_hourly_seasonality_source_from_model(
+        loaded_model,
         calendar_registry=calendar_registry,
         exchange_code=loaded_model.session_resolution.exchange_code,
         range_start_utc=datetime(2026, 2, 2, 14, tzinfo=UTC),
@@ -1225,7 +1230,8 @@ def test_loaded_high_level_model_runtime_seasonality_infers_intraday_bin_width(
         ),
     )
 
-    seasonality_source = loaded_model.build_runtime_hourly_seasonality_source_from_model(
+    seasonality_source = fit_seasonality_runtime_module.build_runtime_hourly_seasonality_source_from_model(
+        loaded_model,
         calendar_registry=calendar_registry,
         exchange_code=loaded_model.session_resolution.exchange_code,
         range_start_utc=datetime(2026, 2, 2, 14, tzinfo=UTC),
@@ -1264,7 +1270,8 @@ def test_loaded_high_level_model_runtime_seasonality_requires_structural_paramet
         RuntimeError,
         match="JaniformModel does not contain structural seasonality parameters required for runtime materialization",
     ):
-        loaded_model.build_runtime_hourly_seasonality_source_from_model(
+        fit_seasonality_runtime_module.build_runtime_hourly_seasonality_source_from_model(
+            loaded_model,
             calendar_registry=registry,
             exchange_code=loaded_model.session_resolution.exchange_code,
             range_start_utc=datetime(2026, 2, 2, 14, tzinfo=UTC),
@@ -1283,7 +1290,8 @@ def test_high_level_runtime_seasonality_zeroes_closed_intervals_for_coarse_input
         run_id="high-level-model-closed-seasonality-gating",
     )
 
-    prepared_inputs = model.prepare_model_simulation_inputs(
+    prepared_inputs = fit_simulation_workflow_module.prepare_model_simulation_inputs(
+        model,
         seed=17,
         start_time_utc=datetime(2026, 2, 2, 14, 0, tzinfo=UTC),
         horizon_interval_count=4,
@@ -1322,9 +1330,9 @@ def test_high_level_model_simulate_dispatches_by_interval_mode(
     tick_result = object()
 
     monkeypatch.setattr(
-        fit_model_module.JaniformModel,
+        fit_simulation_workflow_module,
         "prepare_model_simulation_inputs",
-        lambda self, *args, **kwargs: prepared_inputs,
+        lambda model_value, *args, **kwargs: prepared_inputs,
     )
     monkeypatch.setattr(
         fit_simulation_workflow_module,
@@ -1414,9 +1422,9 @@ def test_high_level_model_simulate_forwards_progress_events_to_callback_and_rend
             observed_progress_updates.append((detail, completed_units, total_units))
 
     monkeypatch.setattr(
-        fit_model_module.JaniformModel,
+        fit_simulation_workflow_module,
         "prepare_model_simulation_inputs",
-        lambda self, *args, **kwargs: prepared_inputs,
+        lambda model_value, *args, **kwargs: prepared_inputs,
     )
     monkeypatch.setattr(
         fit_simulation_workflow_module.JaniformOutputController,
@@ -1885,7 +1893,8 @@ def test_high_level_model_simulate_uses_stationary_hawkes_state_when_no_continua
         monkeypatch,
         run_id="high-level-model-simulate-stationary-default",
     )
-    prepared_inputs = model.prepare_model_simulation_inputs(
+    prepared_inputs = fit_simulation_workflow_module.prepare_model_simulation_inputs(
+        model,
         seed=17,
         start_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
         horizon_interval_count=1,
@@ -1899,7 +1908,8 @@ def test_high_level_model_simulate_uses_stationary_hawkes_state_when_no_continua
         max_records_per_chunk=1_000,
         state_snapshot_capture=SeededTickEventStateSnapshotCapture.DISABLED,
     )
-    runtime_factors = model.prepare_model_runtime_factors(
+    runtime_factors = fit_runtime_payloads_module.prepare_model_runtime_factors_for_model(
+        model,
         start_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
         horizon_interval_count=1,
         interval="1h",
@@ -2413,7 +2423,8 @@ def test_build_high_level_coarse_simulation_result_preserves_session_context_for
         reference_price=1.0,
     )
 
-    result = model._build_simulation_result(
+    result = fit_simulation_workflow_module.build_simulation_result(
+        model,
         simulation_result=coarse_result,
         preferences=preferences,
     )
@@ -2438,7 +2449,7 @@ def test_persist_coarse_simulation_suppresses_closed_fx_weekend_rows() -> None:
         preset_name="fx_spot_24_5",
     )
     calendar_registry = CalendarRegistry(
-        fit_estimator_module._calendar_registry_json_from_session_configuration(
+        fit_preparation_configuration_module.calendar_registry_json_from_session_configuration(
             session_artifact.configuration
         )
     )
@@ -2796,9 +2807,9 @@ def test_high_level_model_price_option_dispatches_through_canonical_pricing_runn
     pricing_result = object()
 
     monkeypatch.setattr(
-        fit_model_module.JaniformModel,
-        "_prepare_model_pricing_execution_input",
-        lambda self, *args, **kwargs: prepared_execution_input,
+        fit_pricing_workflow_module,
+        "prepare_model_pricing_execution_input",
+        lambda model_value, *args, **kwargs: prepared_execution_input,
     )
     monkeypatch.setattr(
         fit_pricing_workflow_module,
@@ -2850,12 +2861,12 @@ def test_high_level_model_price_option_derives_boundary_state_from_spot_and_mode
     pricing_result = object()
 
     monkeypatch.setattr(
-        fit_model_module.JaniformModel,
+        fit_pricing_workflow_module,
         "prepare_model_mean_reversion_runtime_inputs",
         lambda pricing_model, **kwargs: (
             captured_start_anchor_values.append(cast(float, kwargs["start_anchor_value"]))
             or (
-                pricing_model.mean_reversion_fitted_parameters(),
+                fit_runtime_payloads_module.mean_reversion_fitted_parameters_for_model(pricing_model),
                 MeanReversionRuntimeIntervalAnchors(
                     interval_alignment_policy="explicit_runtime_interval_grid_alignment.v1",
                     start_anchor_value=derived_boundary_state.anchor_value,
@@ -2963,7 +2974,7 @@ def test_high_level_model_estimate_current_state_dispatches_to_native_estimator(
         datetime(2026, 2, 2, 15, tzinfo=UTC)
     )
     assert captured_native_arguments[0][3] == pytest.approx(
-        model.pricing_observed_log_price_from_spot(spot=100.0)
+        fit_pricing_support_module.price_observed_log_price_from_spot(model, spot=100.0)
     )
     assert captured_native_arguments[0][4] == (
         datetime(2026, 2, 2, 13, tzinfo=UTC).isoformat(),
@@ -3079,7 +3090,8 @@ def test_high_level_model_price_option_uses_stationary_hawkes_boundary_state_by_
         tenor="4h",
     )
 
-    runtime_factors = model.prepare_model_runtime_factors(
+    runtime_factors = fit_runtime_payloads_module.prepare_model_runtime_factors_for_model(
+        model,
         start_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
         horizon_interval_count=4,
         interval="1h",
@@ -3233,7 +3245,8 @@ def test_high_level_grouped_batch_pricing_resolves_mixed_maturity_axes_to_native
         ),
     )
 
-    native_execution_input = model.prepare_model_grouped_batch_pricing_native_input(
+    native_execution_input = fit_pricing_workflow_module.prepare_model_grouped_batch_pricing_native_input(
+        model,
         valuation_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
         batch=batch,
         observed_data=None,
@@ -3267,7 +3280,8 @@ def test_high_level_surface_pricing_resolves_mixed_maturity_axes_to_native_reque
         dividend_yield=0.0,
     )
 
-    native_execution_input = model.prepare_model_surface_pricing_native_input(
+    native_execution_input = fit_pricing_workflow_module.prepare_model_surface_pricing_native_input(
+        model,
         valuation_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
         surface=surface,
         observed_data=None,
@@ -3280,7 +3294,7 @@ def test_high_level_surface_pricing_resolves_mixed_maturity_axes_to_native_reque
     assert native_execution_input["request"]["market_inputs"]["maturity_intervals"] == [1.0, 24.0]
 
 
-def test_high_level_model_price_option_groups_dispatches_through_grouped_batch_pricing_runner(
+def test_high_level_model_price_option_grids_dispatches_through_grouped_batch_pricing_runner(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -3387,9 +3401,9 @@ def test_high_level_model_price_option_groups_dispatches_through_grouped_batch_p
     )
 
     monkeypatch.setattr(
-        fit_model_module.JaniformModel,
+        fit_pricing_workflow_module,
         "prepare_model_grouped_batch_pricing_native_input",
-        lambda self, *args, **kwargs: prepared_native_execution_input,
+        lambda model_value, *args, **kwargs: prepared_native_execution_input,
     )
     monkeypatch.setattr(
         fit_pricing_workflow_module,
@@ -3401,7 +3415,7 @@ def test_high_level_model_price_option_groups_dispatches_through_grouped_batch_p
         ),
     )
 
-    result = model.price_option_groups(
+    result = model.price_option_grids(
         valuation_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
         batch=batch,
     )
@@ -3495,9 +3509,9 @@ def test_high_level_model_price_option_surface_dispatches_through_surface_pricin
     )
 
     monkeypatch.setattr(
-        fit_model_module.JaniformModel,
+        fit_pricing_workflow_module,
         "prepare_model_surface_pricing_native_input",
-        lambda self, *args, **kwargs: prepared_native_execution_input,
+        lambda model_value, *args, **kwargs: prepared_native_execution_input,
     )
     monkeypatch.setattr(
         fit_pricing_workflow_module,
@@ -3517,7 +3531,27 @@ def test_high_level_model_price_option_surface_dispatches_through_surface_pricin
     assert result is observed_result
 
 
-def test_high_level_model_price_option_groups_matches_single_option_engine_on_shared_groups(
+def test_high_level_model_reserved_cross_instrument_entrypoints_raise_not_implemented(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _build_full_workflow_model(
+        tmp_path,
+        monkeypatch,
+        run_id="high-level-model-reserved-cross-instrument-entrypoints",
+    )
+
+    with pytest.raises(NotImplementedError, match="price_future"):
+        model.price_future(contract="reserved")
+
+    with pytest.raises(NotImplementedError, match="price_swap"):
+        model.price_swap(contract="reserved")
+
+    with pytest.raises(NotImplementedError, match="price_instruments"):
+        model.price_instruments(contracts=("reserved",))
+
+
+def test_high_level_model_price_option_grids_matches_single_option_engine_on_shared_groups(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -3554,7 +3588,7 @@ def test_high_level_model_price_option_groups_matches_single_option_engine_on_sh
         ),
     )
 
-    batch_result = model.price_option_groups(
+    batch_result = model.price_option_grids(
         valuation_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
         batch=batch,
         boundary_state=boundary_state,
@@ -3722,13 +3756,15 @@ def test_runtime_pricing_seasonality_source_stays_materialized_for_off_hour_wind
 
     valuation_time_utc = datetime(2026, 2, 2, 15, 34, tzinfo=UTC)
 
-    runtime_factors = model.prepare_model_runtime_factors(
+    runtime_factors = fit_runtime_payloads_module.prepare_model_runtime_factors_for_model(
+        model,
         start_time_utc=valuation_time_utc,
         horizon_interval_count=2,
         interval="1h",
     )
 
-    seasonality_source = model.build_runtime_hourly_seasonality_source_from_model(
+    seasonality_source = fit_seasonality_runtime_module.build_runtime_hourly_seasonality_source_from_model(
+        model,
         calendar_registry=runtime_factors.calendar_registry,
         exchange_code=runtime_factors.exchange_code,
         range_start_utc=valuation_time_utc,
@@ -3758,13 +3794,15 @@ def test_runtime_pricing_seasonality_source_uses_explicit_hourly_factors_for_hou
 
     valuation_time_utc = datetime(2026, 2, 2, 15, tzinfo=UTC)
 
-    runtime_factors = model.prepare_model_runtime_factors(
+    runtime_factors = fit_runtime_payloads_module.prepare_model_runtime_factors_for_model(
+        model,
         start_time_utc=valuation_time_utc,
         horizon_interval_count=2,
         interval="1h",
     )
 
-    seasonality_source = model.build_runtime_hourly_seasonality_source_from_model(
+    seasonality_source = fit_seasonality_runtime_module.build_runtime_hourly_seasonality_source_from_model(
+        model,
         calendar_registry=runtime_factors.calendar_registry,
         exchange_code=runtime_factors.exchange_code,
         range_start_utc=valuation_time_utc,

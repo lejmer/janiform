@@ -63,6 +63,13 @@ def test_cli_public_module_is_a_thin_module_with_curated_root_exports() -> None:
 def test_public_and_internal_module_intent_is_explicit() -> None:
     public_modules = (
         "janiform.calibration",
+        "janiform.calibration.fit",
+        "janiform.calibration.fit.pricing",
+        "janiform.calibration.fit.pricing.grids",
+        "janiform.calibration.fit.pricing.market_snapshot",
+        "janiform.calibration.fit.pricing.summaries",
+        "janiform.calibration.fit.pricing.surface",
+        "janiform.calibration.fit.state",
         "janiform.calibration.market_data",
         "janiform.calibration.staged",
         "janiform.cli",
@@ -85,6 +92,13 @@ def test_public_and_internal_module_intent_is_explicit() -> None:
         "janiform.validation.contracts",
     )
     internal_modules = (
+        "janiform.calibration.fit._execution",
+        "janiform.calibration.fit._inference",
+        "janiform.calibration.fit._preparation",
+        "janiform.calibration.fit._runtime",
+        "janiform.calibration.fit.pricing.internal",
+        "janiform.calibration.fit.pricing.market_snapshot.loading",
+        "janiform.calibration.fit.pricing.market_snapshot.preparation",
         "janiform._cli.command_tree",
         "janiform._cli.command_runtime",
         "janiform._cli.configuration",
@@ -605,43 +619,13 @@ def test_calibration_public_symbols_live_in_calibration_module() -> None:
     calibration_module = import_module("janiform.calibration")
 
     expected_exports = {
-        "CalibrationMeanReversionConfiguration",
         "CalibrationValidationError",
         "CalibrationValidationFailure",
-        "CurrentStateEstimationRequest",
-        "CurrentStateEstimationResult",
-        "DEFAULT_HIGH_LEVEL_KNOWN_NEWS_PRESET_NAME",
-        "JaniformGroupedVanillaOptionBatch",
-        "JaniformGroupedVanillaOptionGroup",
-        "KnownNewsExplicitConfiguration",
-        "KnownNewsPresetReference",
         "JaniformEstimator",
         "JaniformFitResult",
         "JaniformFitReport",
         "JaniformModel",
-        "JaniformObservedOptionSnapshotNode",
-        "JaniformObservedOptionSnapshotPricingResult",
         "JaniformSimulationResult",
-        "JaniformVanillaOptionGroupedBatchPricingGroupResult",
-        "JaniformVanillaOptionGroupedBatchPricingResult",
-        "JaniformVanillaOptionMaturityIntervalSummary",
-        "JaniformVanillaOptionMaturityPricingEngineKind",
-        "JaniformVanillaOptionMaturitySummary",
-        "JaniformVanillaOptionSurface",
-        "JaniformVanillaOptionSurfacePricingResult",
-        "MarketDataCalibrationRequest",
-        "MarketProfileReference",
-        "PresetRegistry",
-        "SessionExplicitConfiguration",
-        "SessionPresetReference",
-        "StagedCalibrationExecutionInput",
-        "StagedCalibrationRequest",
-        "StagedCalibrationResponse",
-        "PreparedMarketDataCalibration",
-        "prepare_market_data_calibration",
-        "resolve_preset_workflow_configuration",
-        "run_market_data_calibration",
-        "run_staged_calibration",
     }
 
     assert set(calibration_module.__all__) == expected_exports
@@ -650,7 +634,8 @@ def test_calibration_public_symbols_live_in_calibration_module() -> None:
     root_exports = set(calibration_module.__all__)
 
     assert "CalibrationCheckpointMetadata" not in root_exports
-    assert "CalibrationInputFileReference" not in root_exports
+    assert "CurrentStateEstimationRequest" not in root_exports
+    assert "JaniformGroupedVanillaOptionBatch" not in root_exports
     assert "serialize_preset_artifact" not in root_exports
 
 
@@ -689,6 +674,10 @@ def test_calibration_fit_public_ownership_submodules_are_supported_domain_import
     calibration_fit_estimator_module = import_module("janiform.calibration.fit.estimator")
     calibration_fit_model_module = import_module("janiform.calibration.fit.model")
     calibration_fit_pricing_module = import_module("janiform.calibration.fit.pricing")
+    calibration_fit_pricing_grids_module = import_module("janiform.calibration.fit.pricing.grids")
+    calibration_fit_pricing_market_snapshot_module = import_module("janiform.calibration.fit.pricing.market_snapshot")
+    calibration_fit_pricing_summaries_module = import_module("janiform.calibration.fit.pricing.summaries")
+    calibration_fit_pricing_surface_module = import_module("janiform.calibration.fit.pricing.surface")
     calibration_fit_result_module = import_module("janiform.calibration.fit.result")
     calibration_fit_report_module = import_module("janiform.calibration.fit.report")
     calibration_fit_state_module = import_module("janiform.calibration.fit.state")
@@ -711,12 +700,30 @@ def test_calibration_fit_public_ownership_submodules_are_supported_domain_import
         "JaniformVanillaOptionSurface",
         "JaniformVanillaOptionSurfacePricingResult",
     }
+    assert set(calibration_fit_pricing_grids_module.__all__) == {
+        "JaniformGroupedVanillaOptionBatch",
+        "JaniformGroupedVanillaOptionGroup",
+        "JaniformVanillaOptionGroupedBatchPricingGroupResult",
+        "JaniformVanillaOptionGroupedBatchPricingResult",
+    }
+    assert set(calibration_fit_pricing_market_snapshot_module.__all__) == {
+        "JaniformObservedOptionSnapshotNode",
+        "JaniformObservedOptionSnapshotPricingResult",
+    }
+    assert set(calibration_fit_pricing_summaries_module.__all__) == {
+        "JaniformVanillaOptionMaturityIntervalSummary",
+        "JaniformVanillaOptionMaturityPricingEngineKind",
+        "JaniformVanillaOptionMaturitySummary",
+    }
+    assert set(calibration_fit_pricing_surface_module.__all__) == {
+        "JaniformVanillaOptionSurface",
+        "JaniformVanillaOptionSurfacePricingResult",
+    }
     assert set(calibration_fit_result_module.__all__) == {"JaniformFitResult"}
     assert set(calibration_fit_report_module.__all__) == {"JaniformFitReport"}
     assert set(calibration_fit_state_module.__all__) == {
         "CurrentStateEstimationRequest",
         "CurrentStateEstimationResult",
-        "estimate_current_state_for_model",
     }
 
 
@@ -951,20 +958,11 @@ def test_calibration_sessions_public_ownership_submodules_are_supported_domain_i
 def test_calibration_root_and_public_submodules_share_supported_symbols() -> None:
     calibration_module = import_module("janiform.calibration")
     calibration_fit_module = import_module("janiform.calibration.fit")
-    calibration_market_data_module = import_module("janiform.calibration.market_data")
-    calibration_presets_module = import_module("janiform.calibration.presets")
-    calibration_staged_module = import_module("janiform.calibration.staged")
 
     assert calibration_module.JaniformEstimator is calibration_fit_module.JaniformEstimator
-    assert (
-        calibration_module.MarketDataCalibrationRequest
-        is calibration_market_data_module.MarketDataCalibrationRequest
-    )
-    assert calibration_module.PresetRegistry is calibration_presets_module.PresetRegistry
-    assert (
-        calibration_module.StagedCalibrationExecutionInput
-        is calibration_staged_module.StagedCalibrationExecutionInput
-    )
+    assert calibration_module.JaniformModel is calibration_fit_module.JaniformModel
+    assert calibration_module.JaniformFitResult is calibration_fit_module.JaniformFitResult
+    assert calibration_module.JaniformFitReport is calibration_fit_module.JaniformFitReport
 
 
 def test_calibration_root_and_public_ownership_submodules_share_supported_symbols() -> None:
@@ -972,56 +970,19 @@ def test_calibration_root_and_public_ownership_submodules_share_supported_symbol
 
     calibration_fit_estimator_module = import_module("janiform.calibration.fit.estimator")
     calibration_fit_model_module = import_module("janiform.calibration.fit.model")
-    calibration_fit_pricing_module = import_module("janiform.calibration.fit.pricing")
     calibration_fit_result_module = import_module("janiform.calibration.fit.result")
     calibration_fit_report_module = import_module("janiform.calibration.fit.report")
-    calibration_fit_state_module = import_module("janiform.calibration.fit.state")
-    calibration_market_data_request_module = import_module("janiform.calibration.market_data.request")
-    calibration_presets_references_module = import_module("janiform.calibration.presets.references")
-    calibration_presets_registry_module = import_module("janiform.calibration.presets.registry")
-    calibration_presets_resolution_module = import_module("janiform.calibration.presets.resolution")
-    calibration_staged_inputs_module = import_module("janiform.calibration.staged.inputs")
-    calibration_staged_request_module = import_module("janiform.calibration.staged.request")
-    calibration_staged_results_module = import_module("janiform.calibration.staged.results")
 
     assert calibration_module.JaniformEstimator is calibration_fit_estimator_module.JaniformEstimator
     assert calibration_module.JaniformModel is calibration_fit_model_module.JaniformModel
     assert calibration_module.JaniformFitResult is calibration_fit_result_module.JaniformFitResult
     assert calibration_module.JaniformFitReport is calibration_fit_report_module.JaniformFitReport
-    assert (
-        calibration_module.JaniformGroupedVanillaOptionBatch
-        is calibration_fit_pricing_module.JaniformGroupedVanillaOptionBatch
-    )
-    assert (
-        calibration_module.JaniformVanillaOptionSurface
-        is calibration_fit_pricing_module.JaniformVanillaOptionSurface
-    )
-    assert (
+
+    with pytest.raises(AttributeError):
         calibration_module.CurrentStateEstimationRequest
-        is calibration_fit_state_module.CurrentStateEstimationRequest
-    )
-    assert (
+
+    with pytest.raises(AttributeError):
+        calibration_module.JaniformGroupedVanillaOptionBatch
+
+    with pytest.raises(AttributeError):
         calibration_module.MarketDataCalibrationRequest
-        is calibration_market_data_request_module.MarketDataCalibrationRequest
-    )
-    assert calibration_module.MarketProfileReference is calibration_presets_references_module.MarketProfileReference
-    assert calibration_module.PresetRegistry is calibration_presets_registry_module.PresetRegistry
-    assert (
-        calibration_module.resolve_preset_workflow_configuration
-        is calibration_presets_resolution_module.resolve_preset_workflow_configuration
-    )
-    assert calibration_module.StagedCalibrationRequest is calibration_staged_request_module.StagedCalibrationRequest
-    assert (
-        calibration_module.StagedCalibrationExecutionInput
-        is calibration_staged_inputs_module.StagedCalibrationExecutionInput
-    )
-    assert calibration_module.StagedCalibrationResponse is calibration_staged_results_module.StagedCalibrationResponse
-
-    with pytest.raises(AttributeError):
-        calibration_module.CalibrationExecutionMode
-
-    with pytest.raises(AttributeError):
-        calibration_module.CalibrationMarketDataWorkflowScope
-
-    with pytest.raises(AttributeError):
-        calibration_module.MarketDataSessionResolution

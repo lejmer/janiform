@@ -6,21 +6,23 @@ from typing import Any, Optional, Protocol
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
-from janiform.calibration.fit.estimator import JaniformEstimator
-from janiform.calibration.fit.inference import (
+from janiform._workflow_outputs import write_fit_artifacts
+from janiform.calendar import CalendarRegistry
+from janiform.calibration.fit._inference import (
     NormalizationPolicyOverrides,
     TickDataColumnOverrides,
     build_fit_inference_payload,
     infer_fit_inputs,
 )
-from janiform.calibration.fit.model import JaniformModel
-from janiform.calibration.fit.preparation.workflow import PreparedFitWorkflow
-from janiform.calibration.fit.report import JaniformFitReport
-from janiform.calibration.fit.runtime.metadata import (
+from janiform.calibration.fit._preparation.contracts import PreparedFitWorkflow
+from janiform.calibration.fit._runtime.metadata import (
     build_model_metadata,
     extract_model_parameters,
     raw_stage_report_payloads,
 )
+from janiform.calibration.fit.estimator import JaniformEstimator
+from janiform.calibration.fit.model import JaniformModel
+from janiform.calibration.fit.report import JaniformFitReport
 from janiform.calibration.market_data.contracts import (
     CalibrationMeanReversionConfiguration,
     CalibrationMarketDataNormalizationPolicy,
@@ -38,8 +40,6 @@ from janiform.calibration.staged.results import format_staged_failure_summary
 from janiform.calibration.staged.runtime import (
     run_staged_calibration_with_prepared_handle_and_events,
 )
-from janiform._workflow_outputs import write_fit_artifacts
-from janiform.calendar import CalendarRegistry
 
 from .artifacts import load_workbench_artifacts
 from .events import WorkbenchEventType, build_workbench_event

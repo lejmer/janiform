@@ -21,7 +21,15 @@ from matplotlib.figure import Figure
 from matplotlib.axes import Axes
 
 from janiform._timestamps import datetime_to_utc_microseconds, utc_microseconds_to_datetime
-from janiform.calibration.fit import model as fit_model_runtime
+from janiform.calibration.fit._runtime.payloads import (
+    mean_reversion_fitted_parameters_for_model,
+    prepare_model_runtime_factors_for_model,
+    resolved_known_news_event_timestamps,
+    surprise_baseline_intensity,
+)
+from janiform.calibration.fit._runtime.mean_reversion import prepare_model_mean_reversion_runtime_inputs
+from janiform.calibration.fit._runtime.seasonality import build_runtime_hourly_seasonality_source_from_model
+from janiform.calibration.fit._runtime.seasonality import surprise_deterministic_time_multiplier_by_interval_index
 from janiform.calibration import JaniformModel
 from janiform.calendar import CalendarRegistry, MarketState
 from janiform.mean_reversion import MeanReversionFittedParameters
@@ -29,6 +37,7 @@ from janiform.hourly_factors import (
     HourlyNewsIntensityProviderMaterializedSource,
     provide_hourly_factor_contract,
 )
+from janiform.simulation.shared import HawkesExcitationState
 
 from .artifacts import WorkbenchArtifacts, _artifact_list
 from .fit_context import (
@@ -1611,7 +1620,7 @@ def _resolve_mean_reversion_fitted_parameters(
         return None
 
     try:
-        return model.mean_reversion_fitted_parameters()
+        return mean_reversion_fitted_parameters_for_model(model)
     except AttributeError:
         model_payload = _mean_reversion_model_payload(model)
         if model_payload is None:
@@ -1778,7 +1787,8 @@ def _materialize_endogenous_mean_reversion_anchor_values(
         return np.asarray([float(runtime_log_prices[0])], dtype=np.float64)
 
     try:
-        runtime_factors = model.prepare_model_runtime_factors(
+        runtime_factors = prepare_model_runtime_factors_for_model(
+            model,
             start_time_utc=start_time_utc,
             horizon_interval_count=full_interval_count,
             interval=interval,
@@ -1790,7 +1800,8 @@ def _materialize_endogenous_mean_reversion_anchor_values(
             range_start_utc=start_time_utc,
             range_end_utc=end_time_utc,
             interval=interval,
-            seasonality_source=model.build_runtime_hourly_seasonality_source_from_model(
+            seasonality_source=build_runtime_hourly_seasonality_source_from_model(
+                model,
                 calendar_registry=runtime_factors.calendar_registry,
                 exchange_code=runtime_factors.exchange_code,
                 range_start_utc=start_time_utc,
@@ -1798,10 +1809,11 @@ def _materialize_endogenous_mean_reversion_anchor_values(
                 interval=interval,
             ),
             news_intensity_source=HourlyNewsIntensityProviderMaterializedSource(
-                known_scheduled_event_timestamps_utc=model.resolved_known_news_event_timestamps(),
-                surprise_baseline_intensity=model.surprise_baseline_intensity(),
+                known_scheduled_event_timestamps_utc=resolved_known_news_event_timestamps(model),
+                surprise_baseline_intensity=surprise_baseline_intensity(model),
                 surprise_deterministic_time_multiplier_by_interval_index=(
-                    model.surprise_deterministic_time_multiplier_by_interval_index(
+                    surprise_deterministic_time_multiplier_by_interval_index(
+                        model,
                         range_start_utc=start_time_utc,
                         range_end_utc=end_time_utc,
                         interval_duration_nanos=runtime_factors.interval_duration_nanos,
@@ -1810,10 +1822,16 @@ def _materialize_endogenous_mean_reversion_anchor_values(
             ),
         )
 
-        _, runtime_interval_anchors, _ = model.prepare_model_mean_reversion_runtime_inputs(
+        _, runtime_interval_anchors, _ = prepare_model_mean_reversion_runtime_inputs(
+            model,
             runtime_factors=runtime_factors,
             hourly_factor_contract=hourly_factor_contract,
-            initial_excitation_state=fit_model_runtime.zero_hawkes_excitation_state(),
+            initial_excitation_state=HawkesExcitationState(
+                y_plus_plus=0.0,
+                y_plus_minus=0.0,
+                y_minus_plus=0.0,
+                y_minus_minus=0.0,
+            ),
             start_anchor_value=float(runtime_log_prices[0]),
         )
     except (AttributeError, RuntimeError, TypeError, ValueError):
