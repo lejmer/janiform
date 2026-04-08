@@ -1,5 +1,9 @@
 from .estimator import JaniformEstimator
 from .model import JaniformModel, JaniformSimulationResult
+from .observed_snapshot import (
+    JaniformObservedOptionSnapshotNode,
+    JaniformObservedOptionSnapshotPricingResult,
+)
 from .pricing import (
     JaniformGroupedVanillaOptionBatch,
     JaniformGroupedVanillaOptionGroup,
@@ -25,6 +29,8 @@ __all__ = [
     "JaniformGroupedVanillaOptionBatch",
     "JaniformGroupedVanillaOptionGroup",
     "JaniformModel",
+    "JaniformObservedOptionSnapshotNode",
+    "JaniformObservedOptionSnapshotPricingResult",
     "JaniformSimulationResult",
     "JaniformVanillaOptionGroupedBatchPricingGroupResult",
     "JaniformVanillaOptionGroupedBatchPricingResult",

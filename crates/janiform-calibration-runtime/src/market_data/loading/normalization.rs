@@ -16,11 +16,56 @@ pub(super) fn normalize_tick_row(
     normalization_policy: &MarketDataNormalizationPolicy,
     source_path: &str,
 ) -> Result<LoadedTickRecord, MarketDataLoadingError> {
+    normalize_tick_values(
+        column_mapping
+            .timestamp_column
+            .as_ref()
+            .and_then(|column_name| raw_row.get(column_name)),
+        column_mapping
+            .price_column
+            .as_ref()
+            .and_then(|column_name| raw_row.get(column_name)),
+        column_mapping
+            .bid_column
+            .as_ref()
+            .and_then(|column_name| raw_row.get(column_name)),
+        column_mapping
+            .ask_column
+            .as_ref()
+            .and_then(|column_name| raw_row.get(column_name)),
+        column_mapping
+            .trade_sign_column
+            .as_ref()
+            .and_then(|column_name| raw_row.get(column_name)),
+        source_row_number,
+        column_mapping,
+        normalization_policy,
+        source_path,
+    )
+}
+
+pub(super) fn normalize_tick_values(
+    timestamp_raw_value: Option<&RawValue>,
+    explicit_price_raw_value: Option<&RawValue>,
+    bid_price_raw_value: Option<&RawValue>,
+    ask_price_raw_value: Option<&RawValue>,
+    trade_sign_raw_value: Option<&RawValue>,
+    source_row_number: usize,
+    column_mapping: &MarketDataTickDataColumnMapping,
+    normalization_policy: &MarketDataNormalizationPolicy,
+    source_path: &str,
+) -> Result<LoadedTickRecord, MarketDataLoadingError> {
+    let timestamp_column = column_mapping.timestamp_column.as_deref().ok_or_else(|| {
+        MarketDataLoadingError::InvalidValue {
+            field_path: "column_mapping.tick_data.timestamp_column".to_string(),
+            message: "could not resolve a tick timestamp column".to_string(),
+        }
+    })?;
     let timestamp = normalize_timestamp_value(
-        raw_row.get(&column_mapping.timestamp_column),
+        timestamp_raw_value,
         &format!(
             "tick_data_source.rows[{source_row_number}].{}",
-            column_mapping.timestamp_column
+            timestamp_column
         ),
         Some(normalization_policy.timestamp_timezone.as_str()),
         source_path,
@@ -28,7 +73,7 @@ pub(super) fn normalize_tick_row(
 
     let explicit_price = match column_mapping.price_column.as_ref() {
         Some(column_name) => normalize_optional_numeric_value(
-            raw_row.get(column_name),
+            explicit_price_raw_value,
             &format!("tick_data_source.rows[{source_row_number}].{column_name}"),
             source_path,
             true,
@@ -38,7 +83,7 @@ pub(super) fn normalize_tick_row(
     };
     let bid_price = match column_mapping.bid_column.as_ref() {
         Some(column_name) => normalize_optional_numeric_value(
-            raw_row.get(column_name),
+            bid_price_raw_value,
             &format!("tick_data_source.rows[{source_row_number}].{column_name}"),
             source_path,
             true,
@@ -48,7 +93,7 @@ pub(super) fn normalize_tick_row(
     };
     let ask_price = match column_mapping.ask_column.as_ref() {
         Some(column_name) => normalize_optional_numeric_value(
-            raw_row.get(column_name),
+            ask_price_raw_value,
             &format!("tick_data_source.rows[{source_row_number}].{column_name}"),
             source_path,
             true,
@@ -58,7 +103,7 @@ pub(super) fn normalize_tick_row(
     };
     let trade_sign = match column_mapping.trade_sign_column.as_ref() {
         Some(column_name) => normalize_optional_trade_sign_value(
-            raw_row.get(column_name),
+            trade_sign_raw_value,
             &format!("tick_data_source.rows[{source_row_number}].{column_name}"),
             source_path,
         )?,

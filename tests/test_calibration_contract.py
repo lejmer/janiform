@@ -95,6 +95,18 @@ def test_market_data_calibration_request_requires_option_surface_for_option_scop
     assert "full_with_option_surface" in captured_error.value.failure.message
 
 
+def test_market_data_calibration_request_allows_missing_option_surface_mapping_for_option_scope() -> None:
+    request_payload = _valid_market_data_request_payload()
+    del request_payload["column_mapping"]["option_surface"]
+    request_payload["normalization_policy"]["option_quote_input_policy"] = None
+
+    validated_request = validate_market_data_calibration_request(request_payload)
+
+    assert validated_request.workflow_scope == CalibrationMarketDataWorkflowScope.FULL_WITH_OPTION_SURFACE
+    assert validated_request.column_mapping.option_surface is None
+    assert validated_request.normalization_policy.option_quote_input_policy is None
+
+
 def test_market_data_calibration_request_requires_tick_provenance_label() -> None:
     request_payload = _valid_market_data_request_payload()
     del request_payload["tick_data_source"]["provenance_label"]
@@ -104,6 +116,52 @@ def test_market_data_calibration_request_requires_tick_provenance_label() -> Non
 
     assert captured_error.value.failure.field_path == "tick_data_source.provenance_label"
     assert captured_error.value.failure.message == "is required"
+
+
+def test_market_data_calibration_request_defaults_missing_column_mapping() -> None:
+    request_payload = _valid_market_data_request_payload()
+    del request_payload["column_mapping"]
+    del request_payload["known_news_inputs"]
+
+    validated_request = validate_market_data_calibration_request(request_payload)
+
+    assert validated_request.column_mapping.tick_data.timestamp_column is None
+    assert validated_request.column_mapping.option_surface is None
+
+
+def test_market_data_calibration_request_constructor_defaults_column_mapping() -> None:
+    request = MarketDataCalibrationRequest(
+        schema_version=CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION,
+        run_id="market-data-run-default-mapping",
+        tick_data_source=CalibrationInputFileReference(
+            path="/tmp/ticks.csv",
+            file_format=CalibrationInputFileFormat.CSV,
+            provenance_label="tick-feed-primary",
+        ),
+        session_configuration=CalibrationSessionConfigurationInput(
+            exchange_code="XNYS",
+            session_definition_source=CalibrationInputFileReference(
+                path="/tmp/sessions.json",
+                file_format=CalibrationInputFileFormat.JSON,
+                provenance_label="session-calendar-v1",
+            ),
+            session_timezone="America/New_York",
+        ),
+        workflow_scope=CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE,
+        normalization_policy=CalibrationMarketDataNormalizationPolicy(
+            timestamp_timezone="UTC",
+            sort_records_by_timestamp=True,
+            tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
+            option_quote_input_policy=None,
+        ),
+        output_preferences=CalibrationMarketDataOutputPreferences(
+            execution_mode=CalibrationExecutionMode.MEMORY,
+            emit_derived_staged_execution_input=False,
+            emit_input_provenance_report=True,
+        ),
+    )
+
+    assert request.column_mapping.tick_data.timestamp_column is None
 
 
 def test_market_data_calibration_request_requires_known_news_column_mapping_for_csv_sources() -> None:
@@ -221,20 +279,20 @@ def test_market_data_calibration_request_rejects_enabled_mean_reversion_for_seas
     assert "seasonality_only" in captured_error.value.failure.message
 
 
-def test_market_data_calibration_request_requires_bid_and_ask_mapping_for_tick_midpoint_policy() -> None:
+def test_market_data_calibration_request_allows_missing_tick_mapping_fields_for_tick_midpoint_policy() -> None:
     request_payload = _valid_market_data_request_payload()
     request_payload["workflow_scope"] = CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE.value
     del request_payload["option_surface_source"]
     del request_payload["column_mapping"]["option_surface"]
     request_payload["normalization_policy"]["option_quote_input_policy"] = None
     request_payload["normalization_policy"]["tick_price_input_policy"] = "bid_ask_midpoint"
-    del request_payload["column_mapping"]["tick_data"]["price_column"]
+    request_payload["column_mapping"]["tick_data"] = {}
 
-    with pytest.raises(CalibrationValidationError) as captured_error:
-        validate_market_data_calibration_request(request_payload)
+    validated_request = validate_market_data_calibration_request(request_payload)
 
-    assert captured_error.value.failure.field_path == "column_mapping.tick_data"
-    assert "bid_column and ask_column" in captured_error.value.failure.message
+    assert validated_request.column_mapping.tick_data.timestamp_column is None
+    assert validated_request.column_mapping.tick_data.bid_column is None
+    assert validated_request.column_mapping.tick_data.ask_column is None
 
 
 def test_staged_calibration_request_defaults_execution_mode_to_memory() -> None:

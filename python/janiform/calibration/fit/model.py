@@ -14,6 +14,11 @@ from .maturity_inputs import (
     resolve_high_level_pricing_maturity_axis,
     resolve_single_high_level_pricing_maturity_input,
 )
+from .observed_snapshot import (
+    JaniformObservedOptionSnapshotPricingResult,
+    TabularFrameInput,
+    price_observed_option_snapshot_for_model,
+)
 from .pricing import (
     JaniformGroupedVanillaOptionBatch,
     JaniformVanillaOptionSurface,
@@ -27,6 +32,7 @@ from .state_estimation import (
 )
 from ..market_data.contracts import (
     CalibrationMarketDataWorkflowScope,
+    CalibrationOptionSurfaceColumnMapping,
     CalibrationTickDataColumnMapping,
 )
 from ..market_data.workflow import (
@@ -566,6 +572,34 @@ class JaniformModel:
                 native_execution_input,
                 progress=progress,
             )
+
+    def price_observed_option_snapshot(
+        self,
+        *,
+        tick_data: TabularFrameInput,
+        option_surface: TabularFrameInput,
+        valuation_time_utc: Optional[datetime] = None,
+        option_type: Optional[VanillaOptionPayoffType | str] = None,
+        option_surface_column_mapping: Optional[CalibrationOptionSurfaceColumnMapping] = None,
+        risk_free_rate: float = 0.0,
+        dividend_yield: float = 0.0,
+        cpu_count: Optional[int] = None,
+        silent: bool = False,
+        progress_mode: WorkflowProgressMode | str = WorkflowProgressMode.AUTO,
+    ) -> JaniformObservedOptionSnapshotPricingResult:
+        return price_observed_option_snapshot_for_model(
+            self,
+            tick_data=tick_data,
+            option_surface=option_surface,
+            valuation_time_utc=valuation_time_utc,
+            option_type=option_type,
+            option_surface_column_mapping=option_surface_column_mapping,
+            risk_free_rate=risk_free_rate,
+            dividend_yield=dividend_yield,
+            cpu_count=cpu_count,
+            silent=silent,
+            progress_mode=progress_mode,
+        )
 
     def estimate_current_state(
         self,

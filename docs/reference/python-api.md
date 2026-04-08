@@ -41,6 +41,7 @@ The supported fit ownership submodules also include:
 - `JaniformModel.price_option(...)`
 - `JaniformModel.price_options(...)`
 - `JaniformModel.price_option_surface(...)`
+- `JaniformModel.price_observed_option_snapshot(...)`
 - `JaniformModel.simulate(...)`
 
 Current-state estimation is the default live-state path when observed data is supplied:
@@ -50,6 +51,9 @@ Current-state estimation is the default live-state path when observed data is su
 - `price_option(..., observed_data=...)` uses that estimator automatically before pricing
 - `simulate(..., continuation_data=...)` uses that estimator automatically before continuing the
   path
+- `price_observed_option_snapshot(...)` loads observed tick data, estimates the current state,
+  prices the selected quote snapshot in grouped batches, and returns both tidy rows and a
+  strike-by-expiry surface frame
 - when no observed data is supplied, Janiform falls back to the stationary Hawkes state
 - explicit `initial_excitation_state` and `initial_mean_reversion_boundary_state` overrides remain
   available for diagnostic workflows

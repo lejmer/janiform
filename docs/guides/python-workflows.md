@@ -50,6 +50,12 @@ For multi-node fitted-model pricing, stay on the same high-level surface with
 volatilities, aligned pricing-status fields, and aligned failure-stage and failure-reason fields
 for each node.
 
+When the input is an observed option quote snapshot, prefer
+`model.price_observed_option_snapshot(...)`. That helper loads the observed tick and option data,
+estimates the current state automatically, prices the retained option nodes in grouped batches,
+and returns both a tidy DataFrame view through `to_pandas()` and a strike-by-expiry matrix through
+`to_surface_frame()`.
+
 ## When To Drop Lower
 
 - Use `janiform.calibration.staged` when you need explicit staged orchestration contracts.

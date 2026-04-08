@@ -28,6 +28,7 @@ test = [
 ]
 dev = [
     "janiform[test]",
+    "databento>=0.74.1",
     "maturin>=1.9,<2.0",
 ]
 

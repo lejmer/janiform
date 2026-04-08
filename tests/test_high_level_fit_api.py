@@ -491,6 +491,224 @@ def test_prepare_fit_workflow_passes_option_surface_inputs_to_session_inference(
     )
 
 
+def test_prepare_fit_workflow_allows_inferred_option_quote_input_policy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tick_data_path = tmp_path / "ticks.csv"
+    tick_data_path.write_text(
+        "\n".join(
+            [
+                "timestamp_utc,trade_price,trade_sign",
+                "2026-02-02T14:30:00Z,100.0,buy",
+                "2026-02-02T15:00:00Z,101.0,sell",
+                "2026-02-02T20:59:00Z,102.0,buy",
+                "2026-02-03T14:30:00Z,99.0,sell",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    option_surface_path = tmp_path / "options.parquet"
+
+    class _StopAfterTranslation(Exception):
+        pass
+
+    captured_request: dict[str, Any] = {}
+
+    def _capture_request(request, **kwargs):
+        captured_request["request"] = request
+        del kwargs
+        raise _StopAfterTranslation()
+
+    monkeypatch.setattr(
+        fit_estimator_module,
+        "translate_market_data_request_to_prepared_calibration_from_phases",
+        _capture_request,
+    )
+
+    estimator = JaniformEstimator(
+        market_profile="us_equity_cash",
+    )
+
+    with pytest.raises(_StopAfterTranslation):
+        estimator._prepare_fit_workflow(
+            run_id="high-level-inferred-option-policy-request",
+            tick_data_path=tick_data_path,
+            tick_data_format=CalibrationInputFileFormat.CSV,
+            tick_data_provenance_label="tick_data",
+            option_surface_path=option_surface_path,
+            option_surface_format=CalibrationInputFileFormat.PARQUET,
+            option_surface_provenance_label="option_surface",
+        )
+
+    request = captured_request["request"]
+    assert request.workflow_scope == CalibrationMarketDataWorkflowScope.FULL_WITH_OPTION_SURFACE
+    assert request.option_surface_source is not None
+    assert request.normalization_policy.option_quote_input_policy is None
+
+
+def test_price_observed_option_snapshot_returns_tidy_snapshot_and_surface_frame(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _build_full_workflow_model(
+        tmp_path,
+        monkeypatch,
+        run_id="high-level-observed-option-snapshot",
+    )
+
+    tick_data_path = tmp_path / "observed_ticks.csv"
+    tick_data_path.write_text(
+        "\n".join(
+            [
+                "trade_time,trade_price,trade_side",
+                "2026-02-03T14:30:00Z,100.0,buy",
+                "2026-02-03T14:45:00Z,101.0,sell",
+                "2026-02-03T15:00:00Z,102.0,buy",
+                "2026-02-03T15:15:00Z,103.0,sell",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    option_surface_path = tmp_path / "observed_surface.csv"
+    option_surface_path.write_text(
+        "\n".join(
+            [
+                "quote_time,expiry_utc,strike_price,right,best_bid,best_ask",
+                "2026-02-03T15:00:00Z,2026-03-20T20:00:00Z,95.0,C,8.0,8.5",
+                "2026-02-03T15:00:00Z,2026-03-20T20:00:00Z,105.0,C,3.0,3.5",
+                "2026-02-03T15:00:00Z,2026-04-17T20:00:00Z,95.0,C,9.0,9.5",
+                "2026-02-03T15:00:00Z,2026-04-17T20:00:00Z,105.0,C,4.0,4.5",
+                "2026-02-03T16:00:00Z,2026-03-20T20:00:00Z,95.0,C,8.2,8.7",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    captured_arguments: dict[str, Any] = {}
+
+    def _capture_price_option_groups(
+        self: JaniformModel,
+        *,
+        valuation_time_utc: datetime,
+        batch: JaniformGroupedVanillaOptionBatch,
+        observed_data: Optional[CurrentStateEstimationRequest] = None,
+        boundary_state: Any = None,
+        include_transform_diagnostics: bool = False,
+        include_integration_quality_diagnostics: bool = False,
+        cpu_count: Optional[int] = None,
+        silent: bool = False,
+        progress_mode: Any = fit_model_module.WorkflowProgressMode.AUTO,
+    ) -> JaniformVanillaOptionGroupedBatchPricingResult:
+        _ = self
+        _ = boundary_state
+        _ = include_transform_diagnostics
+        _ = include_integration_quality_diagnostics
+        captured_arguments["valuation_time_utc"] = valuation_time_utc
+        captured_arguments["batch"] = batch
+        captured_arguments["observed_data"] = observed_data
+        captured_arguments["cpu_count"] = cpu_count
+        captured_arguments["silent"] = silent
+        captured_arguments["progress_mode"] = progress_mode
+
+        groups = []
+        for group_index, group in enumerate(batch.groups):
+            groups.append(
+                JaniformVanillaOptionGroupedBatchPricingGroupResult(
+                    payoff_type=group.payoff_type,
+                    risk_free_rate=group.risk_free_rate,
+                    dividend_yield=group.dividend_yield,
+                    strikes=group.strikes,
+                    maturity_intervals=(0.1 + 0.1 * group_index,),
+                    price_grid=(tuple(1.0 + strike / 100.0 for strike in group.strikes),),
+                    implied_volatility_grid=(
+                        tuple(0.2 + 0.01 * strike_index + 0.05 * group_index for strike_index, _strike in enumerate(group.strikes)),
+                    ),
+                    implied_volatility_inversion_status_grid=(
+                        tuple(
+                            VanillaOptionImpliedVolatilityInversionStatus.SUCCEEDED
+                            for _ in group.strikes
+                        ),
+                    ),
+                    pricing_status_grid=(
+                        tuple(VanillaOptionPricingStatus.SUCCEEDED for _ in group.strikes),
+                    ),
+                    pricing_failure_stage_grid=(tuple(None for _ in group.strikes),),
+                    pricing_failure_reason_grid=(tuple(None for _ in group.strikes),),
+                    forward_price_grid=(tuple(100.0 for _ in group.strikes),),
+                    discount_factor_grid=(tuple(1.0 for _ in group.strikes),),
+                    boundary_state_norm_grid=(tuple(0.3 for _ in group.strikes),),
+                    maturity_summaries=(None,),
+                )
+            )
+
+        return JaniformVanillaOptionGroupedBatchPricingResult(
+            spot=batch.spot,
+            groups=tuple(groups),
+        )
+
+    monkeypatch.setattr(
+        fit_model_module.JaniformModel,
+        "price_option_groups",
+        _capture_price_option_groups,
+    )
+
+    result = model.price_observed_option_snapshot(
+        tick_data=tick_data_path,
+        option_surface=option_surface_path,
+        valuation_time_utc=datetime(2026, 2, 3, 15, 0, tzinfo=UTC),
+        option_type="call",
+    )
+
+    observed_data = captured_arguments["observed_data"]
+    assert observed_data is not None
+    assert list(observed_data.observed_tick_data["trade_time"]) == [
+        "2026-02-03T14:30:00Z",
+        "2026-02-03T14:45:00Z",
+        "2026-02-03T15:00:00Z",
+    ]
+    assert observed_data.observed_price == pytest.approx(102.0)
+
+    batch = captured_arguments["batch"]
+    assert batch.spot == pytest.approx(102.0)
+    assert tuple(group.strikes for group in batch.groups) == (
+        (95.0, 105.0),
+        (95.0, 105.0),
+    )
+
+    frame = result.to_pandas()
+    assert list(frame.columns) == [
+        "quote_timestamp_utc",
+        "expiry_timestamp_utc",
+        "strike",
+        "option_type",
+        "risk_free_rate",
+        "dividend_yield",
+        "maturity_interval",
+        "observed_bid_price",
+        "observed_ask_price",
+        "observed_mid_price",
+        "model_price",
+        "model_implied_volatility",
+        "implied_volatility_inversion_status",
+        "pricing_status",
+        "pricing_failure_stage",
+        "pricing_failure_reason",
+        "forward_price",
+        "discount_factor",
+        "boundary_state_norm",
+    ]
+    assert len(frame) == 4
+    assert set(frame["observed_mid_price"]) == {3.25, 4.25, 8.25, 9.25}
+
+    surface_frame = result.to_surface_frame()
+    assert tuple(surface_frame.columns) == (95.0, 105.0)
+    assert surface_frame.shape == (2, 2)
+    assert surface_frame.iloc[0, 0] == pytest.approx(0.2)
+    assert surface_frame.iloc[1, 1] == pytest.approx(0.26)
+
+
 def test_prepare_model_runtime_factors_uses_fitted_surprise_intensity_profile(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

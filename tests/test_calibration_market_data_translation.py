@@ -8,8 +8,10 @@ import pytest
 from pyarrow import parquet
 
 from janiform.calibration.market_data.translation import (
+    normalize_market_data_source,
     resolve_market_data_session,
     translate_market_data_request_to_prepared_calibration,
+    translate_market_data_request_to_prepared_calibration_from_phases,
 )
 from janiform.calibration import CalibrationValidationError
 from janiform.calibration.market_data import (
@@ -1199,7 +1201,7 @@ def test_translate_market_data_request_full_with_option_surface_sets_option_refe
             timestamp_timezone="UTC",
             sort_records_by_timestamp=True,
             tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
-            option_quote_input_policy=CalibrationOptionQuoteInputPolicy.BID_ASK_MIDPOINT,
+            option_quote_input_policy=None,
         ),
         option_surface_source=CalibrationInputFileReference(
             path=str(option_surface_path),
@@ -1222,10 +1224,92 @@ def test_translate_market_data_request_full_with_option_surface_sets_option_refe
     assert translation.staged_request.data_inputs.option_surface_data_reference is not None
 
 
+def test_translate_market_data_request_from_phases_resolves_common_column_names(
+    tmp_path: Path,
+    calendar_registry_json: str,
+) -> None:
+    session_definition_path = _write_session_definition(tmp_path, calendar_registry_json)
+
+    tick_data_path = tmp_path / "ticks.parquet"
+    parquet.write_table(
+        pa.table(
+            {
+                "ts_recv": [
+                    "2026-02-02T14:30:00Z",
+                    "2026-02-02T15:00:00Z",
+                    "2026-02-02T20:59:00Z",
+                ],
+                "trade_price": [100.0, 101.0, 102.0],
+                "side": ["buy", "sell", "buy"],
+                "ignored_label": ["first", "second", "third"],
+            }
+        ),
+        tick_data_path,
+    )
+
+    option_surface_path = tmp_path / "options.parquet"
+    parquet.write_table(
+        pa.table(
+            {
+                "quote_time": ["2026-02-02T20:00:00Z"],
+                "expiry_utc": ["2026-03-20T20:00:00Z"],
+                "strike_price": [100.0],
+                "right": ["C"],
+                "best_bid": [4.0],
+                "best_ask": [5.0],
+                "ignored_label": ["snapshot"],
+            }
+        ),
+        option_surface_path,
+    )
+
+    request = _build_market_data_request(
+        session_definition_path=session_definition_path,
+        tick_data_path=tick_data_path,
+        tick_data_format=CalibrationInputFileFormat.PARQUET,
+        workflow_scope=CalibrationMarketDataWorkflowScope.FULL_WITH_OPTION_SURFACE,
+        tick_column_mapping=CalibrationTickDataColumnMapping(),
+        normalization_policy=CalibrationMarketDataNormalizationPolicy(
+            timestamp_timezone="UTC",
+            sort_records_by_timestamp=True,
+            tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
+            option_quote_input_policy=None,
+        ),
+        option_surface_source=CalibrationInputFileReference(
+            path=str(option_surface_path),
+            file_format=CalibrationInputFileFormat.PARQUET,
+            provenance_label="options-close",
+        ),
+        option_surface_column_mapping=CalibrationOptionSurfaceColumnMapping(),
+    )
+
+    normalized_market_data = normalize_market_data_source(
+        tick_data_source=request.tick_data_source,
+        tick_data_column_mapping=request.column_mapping.tick_data,
+        normalization_policy=request.normalization_policy,
+        require_hawkes=True,
+    )
+    session_resolution = resolve_market_data_session(
+        session_configuration=request.session_configuration,
+        normalized_market_data=normalized_market_data,
+    )
+
+    translation = translate_market_data_request_to_prepared_calibration_from_phases(
+        request=request,
+        normalized_market_data=normalized_market_data,
+        session_resolution=session_resolution,
+    )
+
+    assert translation.diagnostics.tick_record_count == 3
+    assert translation.diagnostics.option_surface_record_count == 1
+    assert translation.staged_request.data_inputs.option_surface_data_reference is not None
+
+
 def _build_market_data_request(
     *,
     session_definition_path: Optional[Path],
     tick_data_path: Path,
+    tick_data_format: CalibrationInputFileFormat = CalibrationInputFileFormat.CSV,
     workflow_scope: CalibrationMarketDataWorkflowScope,
     tick_column_mapping: CalibrationTickDataColumnMapping,
     normalization_policy: CalibrationMarketDataNormalizationPolicy,
@@ -1255,7 +1339,7 @@ def _build_market_data_request(
         run_id="market-data-translation-run",
         tick_data_source=CalibrationInputFileReference(
             path=str(tick_data_path),
-            file_format=CalibrationInputFileFormat.CSV,
+            file_format=tick_data_format,
             provenance_label="ticks-primary",
         ),
         session_configuration=CalibrationSessionConfigurationInput(**session_configuration_fields),

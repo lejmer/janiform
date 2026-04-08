@@ -34,6 +34,8 @@ _GENERIC_COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
         "trade_time",
         "exchange_timestamp",
         "datetime",
+        "quote_timestamp",
+        "ts_recv",
     ),
     "price": (
         "price",
@@ -52,6 +54,8 @@ _GENERIC_COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
         "close_price",
         "closeprice",
         "last_close",
+        "px",
+        "value",
     ),
     "trade_sign": (
         "trade_sign",
@@ -60,18 +64,26 @@ _GENERIC_COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
         "tradedirection",
         "trade_dir",
         "tradedir",
+        "side",
+        "trade_side",
+        "aggressor_side",
+        "direction",
     ),
     "bid": (
         "bid",
         "bid_price",
         "bidprice",
         "best_bid",
+        "bid_px",
+        "bestbid",
     ),
     "ask": (
         "ask",
         "ask_price",
         "askprice",
         "best_ask",
+        "ask_px",
+        "bestask",
     ),
 }
 _SUPPORTED_TICK_DATA_EXTENSIONS: dict[str, CalibrationInputFileFormat] = {
