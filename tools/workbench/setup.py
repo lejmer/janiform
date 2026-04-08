@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import (
@@ -15,9 +15,9 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from janiform.calibration.fit.input_resolution import (
-    HighLevelFitInference,
-    infer_high_level_fit_inputs,
+from janiform.calibration.fit.inference import (
+    FitInference,
+    infer_fit_inputs,
 )
 from janiform.calibration.market_data.contracts import (
     CalibrationInputFileFormat,
@@ -38,10 +38,28 @@ class WorkbenchSetupWidget(QWidget):
     setup_submitted = pyqtSignal(object)
     open_existing_requested = pyqtSignal()
 
+    _latest_inference: Optional[FitInference]
+    _preset_registry: PresetRegistry
+    _dataset_path_edit: QLineEdit
+    _session_source_mode_combo: QComboBox
+    _session_preset_combo: QComboBox
+    _session_definition_edit: QLineEdit
+    _session_exchange_code_edit: QLineEdit
+    _output_directory_edit: QLineEdit
+    _workflow_scope_combo: QComboBox
+    _file_format_combo: QComboBox
+    _timestamp_column_combo: QComboBox
+    _price_policy_combo: QComboBox
+    _price_column_combo: QComboBox
+    _bid_column_combo: QComboBox
+    _ask_column_combo: QComboBox
+    _status_label: QLabel
+    _inference_view: QTextEdit
+
     def __init__(self) -> None:
         super().__init__()
 
-        self._latest_inference: Optional[HighLevelFitInference] = None
+        self._latest_inference: Optional[FitInference] = None
         self._preset_registry = PresetRegistry()
         self._dataset_path_edit = QLineEdit()
         self._session_source_mode_combo = QComboBox()
@@ -208,7 +226,7 @@ class WorkbenchSetupWidget(QWidget):
             return
 
         try:
-            inference = infer_high_level_fit_inputs(
+            inference = infer_fit_inputs(
                 tick_data_path=Path(dataset_path_text).expanduser().resolve(),
                 tick_data_format=self._file_format_combo.currentData(),
                 tick_data_provenance_label="tick_data",
@@ -351,7 +369,7 @@ class WorkbenchSetupWidget(QWidget):
         self._set_combo_data(combo_box, selected_value)
 
     @staticmethod
-    def _set_combo_data(combo_box: QComboBox, target_value: object) -> None:
+    def _set_combo_data(combo_box: QComboBox, target_value: Any) -> None:
         for index in range(combo_box.count()):
             if combo_box.itemData(index) == target_value:
                 combo_box.setCurrentIndex(index)

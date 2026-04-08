@@ -18,6 +18,7 @@ if "MPLCONFIGDIR" not in os.environ:
     os.environ["MPLCONFIGDIR"] = str(matplotlib_cache_directory)
 
 from matplotlib.figure import Figure
+from matplotlib.axes import Axes
 
 from janiform._timestamps import datetime_to_utc_microseconds, utc_microseconds_to_datetime
 from janiform.calibration.fit import model as fit_model_runtime
@@ -135,7 +136,7 @@ def create_selected_candidate_diagnostics_figure(
         family_axis = figure.add_subplot(grid_spec[0, 0])
         metric_axis = figure.add_subplot(grid_spec[1, 0])
         scatter_axis = figure.add_subplot(grid_spec[:, 1])
-        summary_axis = None
+        summary_axis: Optional[Axes] = None
 
     selected_candidate_entry = _selected_candidate_entry(artifacts)
     if selected_candidate_entry is None:
@@ -754,7 +755,7 @@ def create_consistency_figure(
         delta_axis = figure.add_subplot(grid_spec[0, 0])
         scatter_axis = figure.add_subplot(grid_spec[0, 1])
         heatmap_axis = figure.add_subplot(grid_spec[1, :])
-        summary_axis = None
+        summary_axis: Optional[Axes] = None
 
     metrics = sorted(
         _artifact_list(artifacts.coarse_tick_consistency, "metrics"),
@@ -1284,7 +1285,7 @@ def create_parameter_search_figure(
         admissibility_axis = figure.add_subplot(grid_spec[0, 0])
         pairwise_axis = figure.add_subplot(grid_spec[0, 1])
         coverage_axis = figure.add_subplot(grid_spec[1, :])
-        summary_axis = None
+        summary_axis: Optional[Axes] = None
 
     parameter_points = _parameter_search_points(artifacts)
     parameter_names = sorted(
@@ -2268,7 +2269,7 @@ def create_td_sd_mean_reversion_variance_growth_figure(
         variance_axis = figure.add_subplot(grid_spec[0, 0])
         spread_axis = figure.add_subplot(grid_spec[1, 0], sharex=variance_axis)
 
-        summary_axis = None
+        summary_axis: Optional[Axes] = None
 
     analysis = _observed_simulation_analysis_for_plot(artifacts, comparison)
     if analysis is None:
@@ -2418,7 +2419,7 @@ def create_td_sd_mean_reversion_future_change_figure(
     else:
         figure = Figure(figsize=(10, 5), constrained_layout=True)
         conditional_axis = figure.add_subplot(1, 1, 1)
-        summary_axis = None
+        summary_axis: Optional[Axes] = None
 
     analysis = _observed_simulation_analysis_for_plot(artifacts, comparison)
     if analysis is None:
@@ -2828,7 +2829,7 @@ def create_td_sd_return_distribution_figure(
         tick_axis = figure.add_subplot(grid_spec[0, 0])
         aggregated_axis = figure.add_subplot(grid_spec[0, 1])
         coarse_axis = figure.add_subplot(grid_spec[1, :])
-        summary_axis = None
+        summary_axis: Optional[Axes] = None
 
     analysis = _observed_simulation_analysis_for_plot(artifacts, comparison)
     if analysis is None:
@@ -3139,7 +3140,7 @@ def create_td_sd_autocorrelation_figure(
         td_axis = figure.add_subplot(grid_spec[0, 0])
         sd_tick_axis = figure.add_subplot(grid_spec[0, 1])
         sd_coarse_axis = figure.add_subplot(grid_spec[1, :])
-        text_axis = None
+        text_axis: Optional[Axes] = None
 
     analysis = _observed_simulation_analysis_for_plot(artifacts, comparison)
     if analysis is None:
@@ -3241,7 +3242,7 @@ def create_candidate_compare_figure(
         objective_axis = figure.add_subplot(grid_spec[0, 0])
         coordinate_axis = figure.add_subplot(grid_spec[0, 1])
         metric_axis = figure.add_subplot(grid_spec[1, :])
-        summary_axis = None
+        summary_axis: Optional[Axes] = None
 
     selected_candidate = _selected_candidate_entry(artifacts)
     frontier_entries = _artifact_list(artifacts.candidate_frontier, "frontier_entries")

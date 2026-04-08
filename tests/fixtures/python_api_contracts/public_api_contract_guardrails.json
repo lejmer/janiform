@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale.v1",
-  "approved_snapshot_sha256": "d93cacfdcebdfa0aa71a1c7d345ac6b5e70b88b712a03819e157e12ea449e719",
+  "approved_snapshot_sha256": "555a8617be8123075dee0a45a858ead6f0d116bbc0800f1462df1b399d0f3b20",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -996,6 +996,41 @@
         "janiform.calibration.staged.runtime",
         "janiform.cli",
         "janiform.contracts"
+      ]
+    },
+    {
+      "approved_on": "2026-04-08",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The high-level fit surface now groups pricing, state-estimation, and fit-inference ownership under dedicated subpackages instead of flat helper modules, and the observed snapshot pricing results are part of the public fit-pricing surface. The approved snapshot must therefore record janiform.calibration.fit.state as the public state-estimation module, keep janiform.calibration.fit.pricing as the canonical pricing ownership package, and align the root calibration exports with the observed snapshot result types that are already part of the supported workflow surface.",
+      "snapshot_sha256": "c3391f66a5e9c807c3685a8ae979b13ab9909bff76e0ef99be12be926056d9d4",
+      "summary": "Approve the fit package ownership subpackages and observed snapshot pricing exports.",
+      "updated_surfaces": [
+        "janiform.calibration",
+        "janiform.calibration.fit",
+        "janiform.calibration.fit.pricing",
+        "janiform.calibration.fit.state"
+      ]
+    },
+    {
+      "approved_on": "2026-04-08",
+      "docs_updated": [],
+      "rationale": "The refactored fit package now uses responsibility-based internal names instead of leaking the old high_level label through private implementation symbols, so the approved snapshot records the cleaned model persistence constant name without changing the serialized schema value.",
+      "snapshot_sha256": "2ec178a2fcfccac53ac7d83c22238e1a4338757079d7922b019327f76c6f621c",
+      "summary": "Record the fit package naming cleanup in the approved Python API snapshot."
+    },
+    {
+      "approved_on": "2026-04-08",
+      "docs_updated": [],
+      "rationale": "The high-level fit API now separates the simple raising path from the reporting path, so JaniformEstimator.fit no longer changes shape based on a boolean flag and the public surface records JaniformFitResult plus the explicit fit_with_report entrypoint.",
+      "snapshot_sha256": "555a8617be8123075dee0a45a858ead6f0d116bbc0800f1462df1b399d0f3b20",
+      "summary": "Approve the split high-level fit and fit_with_report API surface.",
+      "updated_surfaces": [
+        "janiform.calibration",
+        "janiform.calibration.fit",
+        "janiform.calibration.fit.estimator",
+        "janiform.calibration.fit.result"
       ]
     }
   ],

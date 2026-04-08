@@ -7,19 +7,20 @@ from typing import Any, Optional, Protocol
 from PyQt6.QtCore import QObject, pyqtSignal
 
 from janiform.calibration.fit.estimator import JaniformEstimator
-from janiform.calibration.fit.input_resolution import (
-    HighLevelNormalizationPolicyOverrides,
-    HighLevelTickDataColumnOverrides,
+from janiform.calibration.fit.inference import (
+    NormalizationPolicyOverrides,
+    TickDataColumnOverrides,
     build_fit_inference_payload,
-    infer_high_level_fit_inputs,
+    infer_fit_inputs,
 )
-from janiform.calibration.fit.model import (
-    JaniformModel,
-    _build_model_metadata,
-    _extract_model_parameters,
-    _raw_stage_report_payloads,
-)
+from janiform.calibration.fit.model import JaniformModel
+from janiform.calibration.fit.preparation.workflow import PreparedFitWorkflow
 from janiform.calibration.fit.report import JaniformFitReport
+from janiform.calibration.fit.runtime.metadata import (
+    build_model_metadata,
+    extract_model_parameters,
+    raw_stage_report_payloads,
+)
 from janiform.calibration.market_data.contracts import (
     CalibrationMeanReversionConfiguration,
     CalibrationMarketDataNormalizationPolicy,
@@ -68,6 +69,8 @@ class _WorkbenchEventEmitter(Protocol):
 
 
 class _WorkbenchProgressAdapter:
+    _worker: _WorkbenchEventEmitter
+
     def __init__(self, worker: _WorkbenchEventEmitter) -> None:
         self._worker: _WorkbenchEventEmitter = worker
 
@@ -95,6 +98,11 @@ class WorkbenchExecutionWorker(QObject):
     error_raised = pyqtSignal(str)
     finished = pyqtSignal()
 
+    _run_setup: WorkbenchRunSetup
+    _event_sequence_number: int
+    _run_id: str
+    _heartbeat_stop: Event
+
     def __init__(self, run_setup: WorkbenchRunSetup) -> None:
         super().__init__()
 
@@ -104,8 +112,7 @@ class WorkbenchExecutionWorker(QObject):
         self._heartbeat_stop: Event = Event()
 
     def run(self) -> None:
-        from janiform.calibration.fit.estimator import _PreparedHighLevelFitWorkflow
-        prepared_workflow: Optional[_PreparedHighLevelFitWorkflow] = None
+        prepared_workflow: Optional[PreparedFitWorkflow] = None
 
         try:
             session_argument: Optional[str | Path] = None
@@ -136,7 +143,7 @@ class WorkbenchExecutionWorker(QObject):
                 silent=True,
             )
 
-            initial_inference = infer_high_level_fit_inputs(
+            initial_inference = infer_fit_inputs(
                 tick_data_path=self._run_setup.dataset_path,
                 tick_data_format=self._run_setup.file_format,
                 tick_data_provenance_label="tick_data",
@@ -229,7 +236,7 @@ class WorkbenchExecutionWorker(QObject):
                 prepared_payload_path=prepared_workflow.prepared.prepared_payload_path,
                 staged_execution_input_path=prepared_workflow.prepared.staged_execution_input_path,
                 staged_response=staged_response,
-                stage_report_payloads=_raw_stage_report_payloads(raw_response_payload),
+                stage_report_payloads=raw_stage_report_payloads(raw_response_payload),
             )
 
             if staged_response.status != CalibrationStageExecutionStatus.SUCCESS:
@@ -241,8 +248,8 @@ class WorkbenchExecutionWorker(QObject):
             model = JaniformModel(
                 run_id=prepared_workflow.run_id,
                 workflow_scope=self._run_setup.workflow_scope,
-                parameters=_extract_model_parameters(fit_report.stage_report_payloads),
-                metadata=_build_model_metadata(
+                parameters=extract_model_parameters(fit_report.stage_report_payloads),
+                metadata=build_model_metadata(
                     resolved_configuration=prepared_workflow.resolved_configuration,
                     prepared=prepared_workflow.prepared,
                     staged_response=staged_response,
@@ -505,8 +512,8 @@ def _normalization_policy_from_setup(
     )
 
 
-def _column_overrides_from_setup(run_setup: WorkbenchRunSetup) -> HighLevelTickDataColumnOverrides:
-    return HighLevelTickDataColumnOverrides(
+def _column_overrides_from_setup(run_setup: WorkbenchRunSetup) -> TickDataColumnOverrides:
+    return TickDataColumnOverrides(
         timestamp_column=run_setup.timestamp_column,
         price_column=run_setup.price_column,
         bid_column=run_setup.bid_column,
@@ -516,8 +523,8 @@ def _column_overrides_from_setup(run_setup: WorkbenchRunSetup) -> HighLevelTickD
 
 def _normalization_overrides_from_setup(
     run_setup: WorkbenchRunSetup,
-) -> HighLevelNormalizationPolicyOverrides:
-    return HighLevelNormalizationPolicyOverrides(
+) -> NormalizationPolicyOverrides:
+    return NormalizationPolicyOverrides(
         timestamp_timezone=run_setup.timestamp_timezone,
         sort_records_by_timestamp=True,
         tick_price_input_policy=run_setup.tick_price_input_policy,

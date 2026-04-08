@@ -111,10 +111,12 @@ def test_public_api_contract_guardrail_supports_public_domain_submodules() -> No
             ],
             "janiform.calibration": [
                 "JaniformEstimator",
+                "JaniformFitResult",
                 "MarketDataCalibrationRequest",
             ],
             "janiform.calibration.fit": [
                 "JaniformEstimator",
+                "JaniformFitResult",
                 "JaniformModel",
             ],
             "janiform.calibration.fit.estimator": [
@@ -126,6 +128,9 @@ def test_public_api_contract_guardrail_supports_public_domain_submodules() -> No
             "janiform.calibration.fit.pricing": [
                 "JaniformGroupedVanillaOptionBatch",
                 "JaniformVanillaOptionSurface",
+            ],
+            "janiform.calibration.fit.result": [
+                "JaniformFitResult",
             ],
             "janiform.calibration.fit.report": [
                 "JaniformFitReport",

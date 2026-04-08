@@ -97,12 +97,12 @@ from ...calibration.presets import (
     deserialize_preset_artifact,
 )
 from ...calibration.fit.estimator import _load_explicit_session_configuration
-from ...calibration.fit.input_resolution import (
-    HighLevelFitInference,
-    HighLevelNormalizationPolicyOverrides,
-    HighLevelTickDataColumnOverrides,
+from ...calibration.fit.inference import (
+    FitInference,
+    NormalizationPolicyOverrides,
+    TickDataColumnOverrides,
     build_fit_inference_payload,
-    infer_high_level_fit_inputs,
+    infer_fit_inputs,
 )
 from ...calibration.staged import CalibrationExecutionMode
 from ...calibration.staged.results import build_staged_failure_context
@@ -162,7 +162,7 @@ def _build_cli_output_controller(
 @dataclass(frozen=True, slots=True)
 class ConfiguredCliFitCommand:
     estimator: JaniformEstimator
-    input_inference: HighLevelFitInference
+    input_inference: FitInference
     tick_data_path: Path
     option_surface_path: Optional[Path]
     option_surface_format: CalibrationInputFileFormat
@@ -527,14 +527,14 @@ def configure_cli_fit_command(
         ),
         silent=bool(command_arguments.get("silent")),
     )
-    input_inference = infer_high_level_fit_inputs(
+    input_inference = infer_fit_inputs(
         tick_data_path=tick_data_path,
         tick_data_format=optional_tick_data_format_from_arguments(command_arguments),
         tick_data_provenance_label=tick_data_provenance_label_from_arguments(command_arguments),
         workflow_scope=workflow_scope,
         run_id=cast(Optional[str], command_arguments.get("run_id")),
-        column_overrides=build_high_level_tick_data_column_overrides_from_arguments(command_arguments),
-        normalization_overrides=build_high_level_normalization_overrides_from_arguments(command_arguments),
+        column_overrides=build_tick_data_column_overrides_from_arguments(command_arguments),
+        normalization_overrides=build_normalization_overrides_from_arguments(command_arguments),
         market_profile_configuration=preliminary_estimator._resolve_market_profile_configuration(),
     )
 
@@ -628,10 +628,10 @@ def cpu_count_from_arguments(
     )
 
 
-def build_high_level_tick_data_column_overrides_from_arguments(
+def build_tick_data_column_overrides_from_arguments(
     parsed_arguments: CliCommandArguments,
-) -> Optional[HighLevelTickDataColumnOverrides]:
-    overrides = HighLevelTickDataColumnOverrides(
+) -> Optional[TickDataColumnOverrides]:
+    overrides = TickDataColumnOverrides(
         timestamp_column=cast(Optional[str], parsed_arguments.get("tick_timestamp_column")),
         price_column=cast(Optional[str], parsed_arguments.get("tick_price_column")),
         trade_sign_column=cast(Optional[str], parsed_arguments.get("tick_trade_sign_column")),
@@ -654,14 +654,14 @@ def build_high_level_tick_data_column_overrides_from_arguments(
     return overrides
 
 
-def build_high_level_normalization_overrides_from_arguments(
+def build_normalization_overrides_from_arguments(
     parsed_arguments: CliCommandArguments,
-) -> Optional[HighLevelNormalizationPolicyOverrides]:
+) -> Optional[NormalizationPolicyOverrides]:
     duplicate_record_policy_raw = cast(Optional[str], parsed_arguments.get("duplicate_record_policy"))
     tick_price_input_policy_raw = cast(Optional[str], parsed_arguments.get("tick_price_input_policy"))
     option_quote_input_policy_raw = cast(Optional[str], parsed_arguments.get("option_quote_input_policy"))
 
-    overrides = HighLevelNormalizationPolicyOverrides(
+    overrides = NormalizationPolicyOverrides(
         timestamp_timezone=cast(Optional[str], parsed_arguments.get("timestamp_timezone")),
         sort_records_by_timestamp=(
             False
@@ -740,21 +740,19 @@ def execute_cli_fit(
 ) -> tuple[JaniformModel, JaniformFitReport, WorkflowArtifactPaths]:
     execution_silent = bool(command_arguments.get("silent")) or output == CliOutputMode.JSON.value
 
-    model_result, fit_report = cast(
-        tuple[Optional[JaniformModel], JaniformFitReport],
-        configured_command.estimator.fit(
-            run_id=configured_command.input_inference.run_id,
-            tick_data_path=configured_command.tick_data_path,
-            tick_data_format=configured_command.input_inference.tick_data_source.file_format,
-            tick_data_provenance_label=configured_command.input_inference.tick_data_source.provenance_label,
-            option_surface_path=configured_command.option_surface_path,
-            option_surface_format=configured_command.option_surface_format,
-            option_surface_provenance_label=configured_command.option_surface_provenance_label,
-            output_dir=configured_command.output_dir,
-            silent=execution_silent,
-            report=True,
-        ),
+    fit_result = configured_command.estimator.fit_with_report(
+        run_id=configured_command.input_inference.run_id,
+        tick_data_path=configured_command.tick_data_path,
+        tick_data_format=configured_command.input_inference.tick_data_source.file_format,
+        tick_data_provenance_label=configured_command.input_inference.tick_data_source.provenance_label,
+        option_surface_path=configured_command.option_surface_path,
+        option_surface_format=configured_command.option_surface_format,
+        option_surface_provenance_label=configured_command.option_surface_provenance_label,
+        output_dir=configured_command.output_dir,
+        silent=execution_silent,
     )
+    model_result = fit_result.model
+    fit_report = fit_result.report
     if model_result is None:
         failure_context = build_cli_fit_failure_context(fit_report)
         raise JaniformExecutionError(

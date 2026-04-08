@@ -616,8 +616,11 @@ def test_calibration_public_symbols_live_in_calibration_module() -> None:
         "KnownNewsExplicitConfiguration",
         "KnownNewsPresetReference",
         "JaniformEstimator",
+        "JaniformFitResult",
         "JaniformFitReport",
         "JaniformModel",
+        "JaniformObservedOptionSnapshotNode",
+        "JaniformObservedOptionSnapshotPricingResult",
         "JaniformSimulationResult",
         "JaniformVanillaOptionGroupedBatchPricingGroupResult",
         "JaniformVanillaOptionGroupedBatchPricingResult",
@@ -666,8 +669,11 @@ def test_calibration_fit_public_submodule_is_supported_domain_import() -> None:
         "JaniformGroupedVanillaOptionBatch",
         "JaniformGroupedVanillaOptionGroup",
         "JaniformEstimator",
+        "JaniformFitResult",
         "JaniformFitReport",
         "JaniformModel",
+        "JaniformObservedOptionSnapshotNode",
+        "JaniformObservedOptionSnapshotPricingResult",
         "JaniformSimulationResult",
         "JaniformVanillaOptionGroupedBatchPricingGroupResult",
         "JaniformVanillaOptionGroupedBatchPricingResult",
@@ -683,10 +689,9 @@ def test_calibration_fit_public_ownership_submodules_are_supported_domain_import
     calibration_fit_estimator_module = import_module("janiform.calibration.fit.estimator")
     calibration_fit_model_module = import_module("janiform.calibration.fit.model")
     calibration_fit_pricing_module = import_module("janiform.calibration.fit.pricing")
+    calibration_fit_result_module = import_module("janiform.calibration.fit.result")
     calibration_fit_report_module = import_module("janiform.calibration.fit.report")
-    calibration_fit_state_estimation_module = import_module(
-        "janiform.calibration.fit.state_estimation"
-    )
+    calibration_fit_state_module = import_module("janiform.calibration.fit.state")
 
     assert set(calibration_fit_estimator_module.__all__) == {"JaniformEstimator"}
     assert set(calibration_fit_model_module.__all__) == {
@@ -696,6 +701,8 @@ def test_calibration_fit_public_ownership_submodules_are_supported_domain_import
     assert set(calibration_fit_pricing_module.__all__) == {
         "JaniformGroupedVanillaOptionBatch",
         "JaniformGroupedVanillaOptionGroup",
+        "JaniformObservedOptionSnapshotNode",
+        "JaniformObservedOptionSnapshotPricingResult",
         "JaniformVanillaOptionGroupedBatchPricingGroupResult",
         "JaniformVanillaOptionGroupedBatchPricingResult",
         "JaniformVanillaOptionMaturityIntervalSummary",
@@ -704,8 +711,9 @@ def test_calibration_fit_public_ownership_submodules_are_supported_domain_import
         "JaniformVanillaOptionSurface",
         "JaniformVanillaOptionSurfacePricingResult",
     }
+    assert set(calibration_fit_result_module.__all__) == {"JaniformFitResult"}
     assert set(calibration_fit_report_module.__all__) == {"JaniformFitReport"}
-    assert set(calibration_fit_state_estimation_module.__all__) == {
+    assert set(calibration_fit_state_module.__all__) == {
         "CurrentStateEstimationRequest",
         "CurrentStateEstimationResult",
         "estimate_current_state_for_model",
@@ -965,10 +973,9 @@ def test_calibration_root_and_public_ownership_submodules_share_supported_symbol
     calibration_fit_estimator_module = import_module("janiform.calibration.fit.estimator")
     calibration_fit_model_module = import_module("janiform.calibration.fit.model")
     calibration_fit_pricing_module = import_module("janiform.calibration.fit.pricing")
+    calibration_fit_result_module = import_module("janiform.calibration.fit.result")
     calibration_fit_report_module = import_module("janiform.calibration.fit.report")
-    calibration_fit_state_estimation_module = import_module(
-        "janiform.calibration.fit.state_estimation"
-    )
+    calibration_fit_state_module = import_module("janiform.calibration.fit.state")
     calibration_market_data_request_module = import_module("janiform.calibration.market_data.request")
     calibration_presets_references_module = import_module("janiform.calibration.presets.references")
     calibration_presets_registry_module = import_module("janiform.calibration.presets.registry")
@@ -979,6 +986,7 @@ def test_calibration_root_and_public_ownership_submodules_share_supported_symbol
 
     assert calibration_module.JaniformEstimator is calibration_fit_estimator_module.JaniformEstimator
     assert calibration_module.JaniformModel is calibration_fit_model_module.JaniformModel
+    assert calibration_module.JaniformFitResult is calibration_fit_result_module.JaniformFitResult
     assert calibration_module.JaniformFitReport is calibration_fit_report_module.JaniformFitReport
     assert (
         calibration_module.JaniformGroupedVanillaOptionBatch
@@ -990,7 +998,7 @@ def test_calibration_root_and_public_ownership_submodules_share_supported_symbol
     )
     assert (
         calibration_module.CurrentStateEstimationRequest
-        is calibration_fit_state_estimation_module.CurrentStateEstimationRequest
+        is calibration_fit_state_module.CurrentStateEstimationRequest
     )
     assert (
         calibration_module.MarketDataCalibrationRequest

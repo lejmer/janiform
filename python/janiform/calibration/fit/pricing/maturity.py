@@ -6,10 +6,10 @@ from datetime import UTC, date, datetime
 from types import ModuleType
 from typing import Any, Optional
 
-from ..._native_api import native_exception_matches, native_module
-from ...contracts import require_date, require_datetime_utc
-from ...contracts.base import require_non_empty_string_value
-from ..errors import (
+from ...._native_api import native_exception_matches, native_module
+from ....contracts import require_date, require_datetime_utc
+from ....contracts.base import require_non_empty_string_value
+from ...errors import (
     CALIBRATION_INTEGRATION_NATIVE_MODULE_ERROR_ID,
     CALIBRATION_INTEGRATION_RESPONSE_ERROR_ID,
     calibration_error,
@@ -23,7 +23,7 @@ type TenorAxis = Optional[tuple[Optional[str], ...]]
 
 
 @dataclass(frozen=True, slots=True)
-class ResolvedHighLevelPricingMaturityInputs:
+class ResolvedPricingMaturityInputs:
     maturity_intervals: tuple[float, ...]
     resolved_expiry_timestamps_utc: tuple[datetime, ...]
 
@@ -76,7 +76,7 @@ def normalize_optional_tenors(
     )
 
 
-def validate_high_level_pricing_maturity_axis_fields(
+def validate_pricing_maturity_axis_fields(
     *,
     expiry_timestamps_utc: ExpiryTimestampAxis,
     expiry_dates: ExpiryDateAxis,
@@ -135,13 +135,13 @@ def validate_high_level_pricing_maturity_axis_fields(
     return entry_count
 
 
-def resolve_single_high_level_pricing_maturity_input(
+def resolve_single_pricing_maturity_input(
     *,
     valuation_time_utc: datetime,
     expiry_timestamp_utc: Optional[datetime],
     expiry_date: Optional[date],
     tenor: Optional[str],
-) -> ResolvedHighLevelPricingMaturityInputs:
+) -> ResolvedPricingMaturityInputs:
     selected_count = sum(
         value is not None for value in (expiry_timestamp_utc, expiry_date, tenor)
     )
@@ -171,7 +171,7 @@ def resolve_single_high_level_pricing_maturity_input(
         else require_non_empty_string_value(tenor, "tenor", calibration_error)
     )
 
-    return _resolve_high_level_pricing_maturity_inputs(
+    return _resolve_pricing_maturity_inputs(
         valuation_time_utc=valuation_time_utc,
         expiry_timestamps_utc=(
             None
@@ -184,22 +184,22 @@ def resolve_single_high_level_pricing_maturity_input(
     )
 
 
-def resolve_high_level_pricing_maturity_axis(
+def resolve_pricing_maturity_axis(
     *,
     valuation_time_utc: datetime,
     expiry_timestamps_utc: ExpiryTimestampAxis,
     expiry_dates: ExpiryDateAxis,
     tenors: TenorAxis,
     field_path: str,
-) -> ResolvedHighLevelPricingMaturityInputs:
-    validate_high_level_pricing_maturity_axis_fields(
+) -> ResolvedPricingMaturityInputs:
+    validate_pricing_maturity_axis_fields(
         expiry_timestamps_utc=expiry_timestamps_utc,
         expiry_dates=expiry_dates,
         tenors=tenors,
         field_prefix=field_path,
     )
 
-    return _resolve_high_level_pricing_maturity_inputs(
+    return _resolve_pricing_maturity_inputs(
         valuation_time_utc=valuation_time_utc,
         expiry_timestamps_utc=expiry_timestamps_utc,
         expiry_dates=expiry_dates,
@@ -228,14 +228,14 @@ def _normalize_optional_axis[T](
     )
 
 
-def _resolve_high_level_pricing_maturity_inputs(
+def _resolve_pricing_maturity_inputs(
     *,
     valuation_time_utc: datetime,
     expiry_timestamps_utc: ExpiryTimestampAxis,
     expiry_dates: ExpiryDateAxis,
     tenors: TenorAxis,
     field_path: str,
-) -> ResolvedHighLevelPricingMaturityInputs:
+) -> ResolvedPricingMaturityInputs:
     normalized_valuation_time_utc = require_datetime_utc(
         valuation_time_utc,
         "valuation_time_utc",
@@ -247,7 +247,7 @@ def _resolve_high_level_pricing_maturity_inputs(
     except ModuleNotFoundError as error:
         raise calibration_integration_error(
             "native pricing module is unavailable",
-            entrypoint="high_level_pricing_maturity_resolution",
+            entrypoint="pricing_maturity_resolution",
             error_id=CALIBRATION_INTEGRATION_NATIVE_MODULE_ERROR_ID,
             context={"module_name": "janiform._native"},
         ) from error
@@ -270,7 +270,7 @@ def _resolve_high_level_pricing_maturity_inputs(
     if not isinstance(raw_resolution, dict):
         raise calibration_integration_error(
             "native pricing maturity resolution returned an invalid response payload",
-            entrypoint="high_level_pricing_maturity_resolution",
+            entrypoint="pricing_maturity_resolution",
             error_id=CALIBRATION_INTEGRATION_RESPONSE_ERROR_ID,
             context={"returned_type": type(raw_resolution).__name__},
         )
@@ -283,12 +283,12 @@ def _resolve_high_level_pricing_maturity_inputs(
     ):
         raise calibration_integration_error(
             "native pricing maturity resolution returned an invalid response payload",
-            entrypoint="high_level_pricing_maturity_resolution",
+            entrypoint="pricing_maturity_resolution",
             error_id=CALIBRATION_INTEGRATION_RESPONSE_ERROR_ID,
             context={"returned_type": type(raw_resolution).__name__},
         )
 
-    return ResolvedHighLevelPricingMaturityInputs(
+    return ResolvedPricingMaturityInputs(
         maturity_intervals=tuple(
             float(interval) for interval in maturity_intervals
         ),

@@ -126,7 +126,7 @@ def test_workbench_execution_worker_uses_prepared_handle_runner_and_current_fit_
 
     monkeypatch.setattr("tools.workbench.execution.JaniformEstimator", _FakeEstimator)
     monkeypatch.setattr(
-        "tools.workbench.execution.infer_high_level_fit_inputs",
+        "tools.workbench.execution.infer_fit_inputs",
         lambda **_: SimpleNamespace(
             run_id="workbench-run",
             tick_data_source=SimpleNamespace(file_format="csv"),
@@ -141,7 +141,7 @@ def test_workbench_execution_worker_uses_prepared_handle_runner_and_current_fit_
         _fake_runner,
     )
     monkeypatch.setattr(
-        "tools.workbench.execution._raw_stage_report_payloads",
+        "tools.workbench.execution.raw_stage_report_payloads",
         lambda payload: tuple(payload["staged_response"]["stage_reports"]),
     )
     monkeypatch.setattr(
@@ -149,11 +149,11 @@ def test_workbench_execution_worker_uses_prepared_handle_runner_and_current_fit_
         lambda **kwargs: SimpleNamespace(**kwargs),
     )
     monkeypatch.setattr(
-        "tools.workbench.execution._extract_model_parameters",
+        "tools.workbench.execution.extract_model_parameters",
         lambda stage_report_payloads: {"stage_report_count": len(stage_report_payloads)},
     )
     monkeypatch.setattr(
-        "tools.workbench.execution._build_model_metadata",
+        "tools.workbench.execution.build_model_metadata",
         lambda **_: {"metadata": "ok"},
     )
     monkeypatch.setattr(

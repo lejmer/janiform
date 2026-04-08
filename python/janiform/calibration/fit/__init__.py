@@ -1,12 +1,10 @@
 from .estimator import JaniformEstimator
 from .model import JaniformModel, JaniformSimulationResult
-from .observed_snapshot import (
-    JaniformObservedOptionSnapshotNode,
-    JaniformObservedOptionSnapshotPricingResult,
-)
 from .pricing import (
     JaniformGroupedVanillaOptionBatch,
     JaniformGroupedVanillaOptionGroup,
+    JaniformObservedOptionSnapshotNode,
+    JaniformObservedOptionSnapshotPricingResult,
     JaniformVanillaOptionGroupedBatchPricingGroupResult,
     JaniformVanillaOptionGroupedBatchPricingResult,
     JaniformVanillaOptionMaturityIntervalSummary,
@@ -15,8 +13,9 @@ from .pricing import (
     JaniformVanillaOptionSurface,
     JaniformVanillaOptionSurfacePricingResult,
 )
+from .result import JaniformFitResult
 from .report import JaniformFitReport
-from .state_estimation import (
+from .state import (
     CurrentStateEstimationRequest,
     CurrentStateEstimationResult,
 )
@@ -25,6 +24,7 @@ __all__ = [
     "CurrentStateEstimationRequest",
     "CurrentStateEstimationResult",
     "JaniformEstimator",
+    "JaniformFitResult",
     "JaniformFitReport",
     "JaniformGroupedVanillaOptionBatch",
     "JaniformGroupedVanillaOptionGroup",
