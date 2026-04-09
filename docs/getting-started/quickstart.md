@@ -41,6 +41,9 @@ tick data, it fits the underlying model (suitable for simulating price paths). W
 an option surface, it fits the model to the underlying data and the selected option snapshot
 (suitable for options pricing).
 
+Use `JaniformEstimator.fit_with_report(...)` when you want the fitted model and the fit report from
+the same high-level call without changing the return type of `fit(...)`.
+
 When you fit with options:
 
 - one fit run targets one option quote timestamp

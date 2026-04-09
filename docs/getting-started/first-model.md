@@ -75,7 +75,7 @@ from datetime import UTC, datetime
 
 import pandas as pd
 
-from janiform.calibration import CurrentStateEstimationRequest
+from janiform.calibration.fit.state import CurrentStateEstimationRequest
 
 simulation = model.simulate(
     seed=17,
@@ -122,7 +122,7 @@ from datetime import UTC, date, datetime
 
 import pandas as pd
 
-from janiform.calibration import CurrentStateEstimationRequest
+from janiform.calibration.fit.state import CurrentStateEstimationRequest
 
 result = model.price_option(
     valuation_time_utc=datetime(2026, 2, 2, 15, 0, tzinfo=UTC),
@@ -147,25 +147,21 @@ result = model.price_option(
 If you want the derived live state directly, call `model.estimate_current_state(...)` with the same
 request contract.
 
-To price several nodes from the same fitted-model snapshot without writing a loop, use
-`model.price_option_groups(...)` with `JaniformGroupedVanillaOptionBatch` when you want to combine
-multiple payoff or carry groups in one run.
+To price several strike-by-maturity grids from the same fitted-model snapshot without writing a
+loop, use `model.price_option_grids(...)` with `JaniformVanillaOptionGridBatch`.
 
 ```python
 from datetime import UTC, datetime
 
-from janiform.calibration import (
-    JaniformGroupedVanillaOptionBatch,
-    JaniformGroupedVanillaOptionGroup,
-)
+from janiform.calibration.fit.pricing.grids import JaniformVanillaOptionGrid, JaniformVanillaOptionGridBatch
 from janiform.pricing import VanillaOptionPayoffType
 
-group_result = model.price_option_groups(
+grid_result = model.price_option_grids(
     valuation_time_utc=datetime(2026, 2, 2, 15, 0, tzinfo=UTC),
-    batch=JaniformGroupedVanillaOptionBatch(
+    batch=JaniformVanillaOptionGridBatch(
         spot=1.0850,
-        groups=(
-            JaniformGroupedVanillaOptionGroup(
+        grids=(
+            JaniformVanillaOptionGrid(
                 payoff_type=VanillaOptionPayoffType.CALL,
                 risk_free_rate=0.0,
                 dividend_yield=0.0,
@@ -183,7 +179,7 @@ When your nodes already form a strike-by-expiry grid, use
 ```python
 from datetime import UTC, datetime
 
-from janiform.calibration import JaniformVanillaOptionSurface
+from janiform.calibration.fit.pricing.surface import JaniformVanillaOptionSurface
 from janiform.pricing import VanillaOptionPayoffType
 
 surface_result = model.price_option_surface(
