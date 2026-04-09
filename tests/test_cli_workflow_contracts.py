@@ -13,6 +13,7 @@ import janiform._cli.commands.pricing as cli_pricing_commands_module
 import janiform._cli.commands.simulation as cli_simulation_commands_module
 import janiform._cli.paths as cli_paths_module
 import janiform.calibration as calibration_module
+import janiform.calibration.staged as calibration_staged_module
 import janiform.cli as cli_module
 import janiform.pricing as pricing_module
 import janiform.simulation as simulation_module
@@ -1800,7 +1801,7 @@ def test_calibration_cli_defaults_execution_mode_to_disk(
     ) -> StagedCalibrationResponse:
         del calendar_registry
         captured_execution_input["execution_input"] = execution_input_model
-        return calibration_module.run_staged_calibration(
+        return calibration_staged_module.run_staged_calibration(
             execution_input_model,
             calendar_registry=CalendarRegistry(calendar_registry_json),
         )
@@ -1856,7 +1857,7 @@ def test_calibration_cli_honors_explicit_memory_override(
     ) -> StagedCalibrationResponse:
         del calendar_registry
         captured_execution_input["execution_input"] = execution_input_model
-        return calibration_module.run_staged_calibration(
+        return calibration_staged_module.run_staged_calibration(
             execution_input_model,
             calendar_registry=CalendarRegistry(calendar_registry_json),
         )

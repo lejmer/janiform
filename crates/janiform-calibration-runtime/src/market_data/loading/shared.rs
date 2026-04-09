@@ -184,12 +184,19 @@ pub(super) fn required_option_surface_source_columns(
     column_mapping: &MarketDataOptionSurfaceColumnMapping,
     normalization_policy: &MarketDataNormalizationPolicy,
 ) -> Vec<String> {
-    let mut columns = vec![
-        column_mapping.quote_timestamp_column.clone(),
-        column_mapping.expiry_timestamp_column.clone(),
-        column_mapping.strike_column.clone(),
-        column_mapping.option_type_column.clone(),
-    ];
+    let mut columns = Vec::new();
+    if let Some(column) = &column_mapping.quote_timestamp_column {
+        columns.push(column.clone());
+    }
+    if let Some(column) = &column_mapping.expiry_timestamp_column {
+        columns.push(column.clone());
+    }
+    if let Some(column) = &column_mapping.strike_column {
+        columns.push(column.clone());
+    }
+    if let Some(column) = &column_mapping.option_type_column {
+        columns.push(column.clone());
+    }
     match normalization_policy.option_quote_input_policy {
         Some(MarketDataOptionQuoteInputPolicy::MidPriceColumn) => {
             if let Some(column) = &column_mapping.mid_price_column {

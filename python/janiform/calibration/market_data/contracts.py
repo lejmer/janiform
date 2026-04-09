@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from math import isfinite
-from typing import Any, Optional, cast
+from typing import Any, Optional
 
 from ...seasonality import IntradaySmoothingKernel, SessionFilter
 from ..errors import calibration_error
@@ -451,13 +451,13 @@ class CalibrationSessionConfigurationInput(ContractModel):
             ),
             session_definition_source=(
                 CalibrationInputFileReference.from_mapping(
-                    cast(dict[str, Any], raw_session_definition_source),
+                    raw_session_definition_source,
                     field_path=f"{field_path}.session_definition_source",
                 )
                 if raw_session_definition_source is not None
                 else None
             ),
-            session_timezone=cast(Optional[str], raw_session_timezone),
+            session_timezone=raw_session_timezone,
         )
 
 
@@ -498,17 +498,15 @@ class CalibrationKnownNewsInput(ContractModel):
 
 @dataclass(frozen=True, slots=True)
 class CalibrationTickDataColumnMapping(ContractModel):
-    timestamp_column: str
+    timestamp_column: Optional[str] = None
     price_column: Optional[str] = None
     trade_sign_column: Optional[str] = None
     bid_column: Optional[str] = None
     ask_column: Optional[str] = None
 
     def __post_init__(self) -> None:
-        if not self.timestamp_column.strip():
-            raise calibration_error("timestamp_column", "must be a non-empty string")
-
         for field_name, field_value in (
+            ("timestamp_column", self.timestamp_column),
             ("price_column", self.price_column),
             ("trade_sign_column", self.trade_sign_column),
             ("bid_column", self.bid_column),
@@ -523,6 +521,7 @@ class CalibrationTickDataColumnMapping(ContractModel):
             raise calibration_error(field_path, "must be an object")
 
         raw_optional_fields = {
+            "timestamp_column": raw_payload.get("timestamp_column"),
             "price_column": raw_payload.get("price_column"),
             "trade_sign_column": raw_payload.get("trade_sign_column"),
             "bid_column": raw_payload.get("bid_column"),
@@ -536,25 +535,20 @@ class CalibrationTickDataColumnMapping(ContractModel):
                 )
 
         return CalibrationTickDataColumnMapping(
-            timestamp_column=require_non_empty_string(
-                raw_payload,
-                "timestamp_column",
-                f"{field_path}.timestamp_column",
-                calibration_error,
-            ),
-            price_column=cast(Optional[str], raw_optional_fields["price_column"]),
-            trade_sign_column=cast(Optional[str], raw_optional_fields["trade_sign_column"]),
-            bid_column=cast(Optional[str], raw_optional_fields["bid_column"]),
-            ask_column=cast(Optional[str], raw_optional_fields["ask_column"]),
+            timestamp_column=raw_payload.get("timestamp_column"),
+            price_column=raw_optional_fields["price_column"],
+            trade_sign_column=raw_optional_fields["trade_sign_column"],
+            bid_column=raw_optional_fields["bid_column"],
+            ask_column=raw_optional_fields["ask_column"],
         )
 
 
 @dataclass(frozen=True, slots=True)
 class CalibrationOptionSurfaceColumnMapping(ContractModel):
-    quote_timestamp_column: str
-    expiry_timestamp_column: str
-    strike_column: str
-    option_type_column: str
+    quote_timestamp_column: Optional[str] = None
+    expiry_timestamp_column: Optional[str] = None
+    strike_column: Optional[str] = None
+    option_type_column: Optional[str] = None
     mid_price_column: Optional[str] = None
     bid_column: Optional[str] = None
     ask_column: Optional[str] = None
@@ -567,8 +561,8 @@ class CalibrationOptionSurfaceColumnMapping(ContractModel):
             ("strike_column", self.strike_column),
             ("option_type_column", self.option_type_column),
         ):
-            if not field_value.strip():
-                raise calibration_error(field_name, "must be a non-empty string")
+            if field_value is not None and not field_value.strip():
+                raise calibration_error(field_name, "must be non-empty when provided")
 
         for field_name, field_value in (
             ("mid_price_column", self.mid_price_column),
@@ -589,6 +583,10 @@ class CalibrationOptionSurfaceColumnMapping(ContractModel):
             raise calibration_error(field_path, "must be an object")
 
         raw_optional_fields = {
+            "quote_timestamp_column": raw_payload.get("quote_timestamp_column"),
+            "expiry_timestamp_column": raw_payload.get("expiry_timestamp_column"),
+            "strike_column": raw_payload.get("strike_column"),
+            "option_type_column": raw_payload.get("option_type_column"),
             "mid_price_column": raw_payload.get("mid_price_column"),
             "bid_column": raw_payload.get("bid_column"),
             "ask_column": raw_payload.get("ask_column"),
@@ -602,34 +600,14 @@ class CalibrationOptionSurfaceColumnMapping(ContractModel):
                 )
 
         return CalibrationOptionSurfaceColumnMapping(
-            quote_timestamp_column=require_non_empty_string(
-                raw_payload,
-                "quote_timestamp_column",
-                f"{field_path}.quote_timestamp_column",
-                calibration_error,
-            ),
-            expiry_timestamp_column=require_non_empty_string(
-                raw_payload,
-                "expiry_timestamp_column",
-                f"{field_path}.expiry_timestamp_column",
-                calibration_error,
-            ),
-            strike_column=require_non_empty_string(
-                raw_payload,
-                "strike_column",
-                f"{field_path}.strike_column",
-                calibration_error,
-            ),
-            option_type_column=require_non_empty_string(
-                raw_payload,
-                "option_type_column",
-                f"{field_path}.option_type_column",
-                calibration_error,
-            ),
-            mid_price_column=cast(Optional[str], raw_optional_fields["mid_price_column"]),
-            bid_column=cast(Optional[str], raw_optional_fields["bid_column"]),
-            ask_column=cast(Optional[str], raw_optional_fields["ask_column"]),
-            implied_volatility_column=cast(Optional[str], raw_optional_fields["implied_volatility_column"]),
+            quote_timestamp_column=raw_payload.get("quote_timestamp_column"),
+            expiry_timestamp_column=raw_payload.get("expiry_timestamp_column"),
+            strike_column=raw_payload.get("strike_column"),
+            option_type_column=raw_payload.get("option_type_column"),
+            mid_price_column=raw_optional_fields["mid_price_column"],
+            bid_column=raw_optional_fields["bid_column"],
+            ask_column=raw_optional_fields["ask_column"],
+            implied_volatility_column=raw_optional_fields["implied_volatility_column"],
         )
 
 
@@ -673,13 +651,15 @@ class CalibrationKnownNewsColumnMapping(ContractModel):
                 f"{field_path}.event_timestamp_column",
                 calibration_error,
             ),
-            event_identifier_column=cast(Optional[str], raw_event_identifier_column),
+            event_identifier_column=raw_event_identifier_column,
         )
 
 
 @dataclass(frozen=True, slots=True)
 class CalibrationMarketDataColumnMapping(ContractModel):
-    tick_data: CalibrationTickDataColumnMapping
+    tick_data: CalibrationTickDataColumnMapping = field(
+        default_factory=CalibrationTickDataColumnMapping
+    )
     option_surface: Optional[CalibrationOptionSurfaceColumnMapping] = None
     known_news: Optional[CalibrationKnownNewsColumnMapping] = None
 
@@ -689,14 +669,18 @@ class CalibrationMarketDataColumnMapping(ContractModel):
             raise calibration_error(field_path, "must be an object")
 
         return CalibrationMarketDataColumnMapping(
-            tick_data=CalibrationTickDataColumnMapping.from_mapping(
-                require_mapping(
-                    raw_payload,
-                    "tick_data",
-                    f"{field_path}.tick_data",
-                    calibration_error,
-                ),
-                field_path=f"{field_path}.tick_data",
+            tick_data=(
+                CalibrationTickDataColumnMapping.from_mapping(
+                    require_mapping(
+                        raw_payload,
+                        "tick_data",
+                        f"{field_path}.tick_data",
+                        calibration_error,
+                    ),
+                    field_path=f"{field_path}.tick_data",
+                )
+                if "tick_data" in raw_payload and raw_payload["tick_data"] is not None
+                else CalibrationTickDataColumnMapping()
             ),
             option_surface=(
                 CalibrationOptionSurfaceColumnMapping.from_mapping(
@@ -841,7 +825,7 @@ class CalibrationMarketDataOutputPreferences(ContractModel):
                 raw_payload.get("execution_mode", DEFAULT_PYTHON_IMPORTABLE_API_EXECUTION_MODE),
                 field_path=f"{field_path}.execution_mode",
             ),
-            disk_checkpoint_directory=cast(Optional[str], raw_disk_checkpoint_directory),
+            disk_checkpoint_directory=raw_disk_checkpoint_directory,
             emit_derived_staged_execution_input=require_boolean(
                 raw_payload,
                 "emit_derived_staged_execution_input",
@@ -860,7 +844,6 @@ class CalibrationMarketDataOutputPreferences(ContractModel):
 def validate_tick_price_input_policy(
     *,
     workflow_scope: CalibrationMarketDataWorkflowScope,
-    column_mapping: CalibrationTickDataColumnMapping,
     normalization_policy: CalibrationMarketDataNormalizationPolicy,
 ) -> None:
     tick_price_input_policy = normalization_policy.tick_price_input_policy
@@ -880,17 +863,9 @@ def validate_tick_price_input_policy(
 
     match tick_price_input_policy:
         case CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN:
-            if column_mapping.price_column is None:
-                raise calibration_error(
-                    "column_mapping.tick_data.price_column",
-                    "is required when tick_price_input_policy=explicit_price_column",
-                )
+            return
         case CalibrationTickPriceInputPolicy.BID_ASK_MIDPOINT:
-            if column_mapping.bid_column is None or column_mapping.ask_column is None:
-                raise calibration_error(
-                    "column_mapping.tick_data",
-                    "bid_column and ask_column are required when tick_price_input_policy=bid_ask_midpoint",
-                )
+            return
 
 
 def validate_option_surface_scope(
@@ -906,16 +881,6 @@ def validate_option_surface_scope(
         if option_surface_source is None:
             raise calibration_error(
                 "option_surface_source",
-                "is required when workflow_scope=full_with_option_surface",
-            )
-        if option_surface_column_mapping is None:
-            raise calibration_error(
-                "column_mapping.option_surface",
-                "is required when workflow_scope=full_with_option_surface",
-            )
-        if option_quote_input_policy is None:
-            raise calibration_error(
-                "normalization_policy.option_quote_input_policy",
                 "is required when workflow_scope=full_with_option_surface",
             )
     else:
@@ -947,8 +912,11 @@ def validate_option_surface_scope(
 
         return
 
-    if option_surface_column_mapping is None or option_quote_input_policy is None:
-        return
+    effective_option_surface_column_mapping = (
+        CalibrationOptionSurfaceColumnMapping()
+        if option_surface_column_mapping is None
+        else option_surface_column_mapping
+    )
 
     if option_surface_valuation_time_utc is not None:
         require_datetime_utc(
@@ -957,33 +925,26 @@ def validate_option_surface_scope(
             calibration_error,
         )
 
+    if option_quote_input_policy is None:
+        return
+
     match option_quote_input_policy:
         case CalibrationOptionQuoteInputPolicy.MID_PRICE_COLUMN:
             if (
-                option_surface_column_mapping.mid_price_column is None
-                or option_surface_column_mapping.bid_column is None
-                or option_surface_column_mapping.ask_column is None
+                effective_option_surface_column_mapping.mid_price_column is not None
+                and effective_option_surface_column_mapping.bid_column is not None
+                and effective_option_surface_column_mapping.ask_column is not None
             ):
-                raise calibration_error(
-                    "column_mapping.option_surface",
-                    (
-                        "mid_price_column, bid_column, and ask_column are required when "
-                        "workflow_scope=full_with_option_surface and "
-                        "option_quote_input_policy=mid_price_column"
-                    ),
-                )
+                return
+            raise calibration_error(
+                "column_mapping.option_surface",
+                (
+                    "mid_price_column option normalization requires mid_price_column, "
+                    "bid_column, and ask_column"
+                ),
+            )
         case CalibrationOptionQuoteInputPolicy.BID_ASK_MIDPOINT:
-            if (
-                option_surface_column_mapping.bid_column is None
-                or option_surface_column_mapping.ask_column is None
-            ):
-                raise calibration_error(
-                    "column_mapping.option_surface",
-                    (
-                        "bid_column and ask_column are required when "
-                        "option_quote_input_policy=bid_ask_midpoint"
-                    ),
-                )
+            return
         case CalibrationOptionQuoteInputPolicy.IMPLIED_VOLATILITY_COLUMN:
             raise calibration_error(
                 "normalization_policy.option_quote_input_policy",

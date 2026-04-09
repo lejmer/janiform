@@ -676,6 +676,8 @@ dependencies = [
 name = "janiform-calibration-runtime"
 version = "0.0.0"
 dependencies = [
+ "arrow-array",
+ "arrow-schema",
  "bincode",
  "chrono",
  "chrono-tz",

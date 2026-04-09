@@ -256,7 +256,7 @@ pub fn prepare_market_data_calibration_plan(
 
 pub fn prepare_market_data_calibration_plan_from_phases(
     request: CalibrationMarketDataPreparationRequest,
-    normalized_tick_output: MarketDataNormalizedTickOutput,
+    normalized_tick_output: &MarketDataNormalizedTickOutput,
     session_resolution: MarketDataSessionResolutionPayload,
     cpu_count: Option<usize>,
 ) -> Result<PreparedMarketDataCalibrationPlan, CalibrationMarketDataPreparationError> {
@@ -266,7 +266,7 @@ pub fn prepare_market_data_calibration_plan_from_phases(
 
     let loading_output = prepare_market_data_loading_from_phases(
         loading_request,
-        normalized_tick_output.clone(),
+        normalized_tick_output,
         session_resolution,
     )
     .map_err(|source| {
@@ -281,7 +281,7 @@ pub fn prepare_market_data_calibration_plan_from_phases(
         selected_stages,
         trade_events_data_reference,
         option_surface_data_reference,
-        normalized_tick_output,
+        normalized_tick_output.clone(),
         loading_output,
     )
 }
@@ -441,13 +441,20 @@ fn build_loading_request(
             source: source.clone(),
             column_mapping,
         }),
+        (Some(source), None) => Some(MarketDataOptionSurfaceLoadingInput {
+            source: source.clone(),
+            column_mapping: MarketDataOptionSurfaceColumnMapping {
+                quote_timestamp_column: None,
+                expiry_timestamp_column: None,
+                strike_column: None,
+                option_type_column: None,
+                mid_price_column: None,
+                bid_column: None,
+                ask_column: None,
+                implied_volatility_column: None,
+            },
+        }),
         (None, None) => None,
-        (Some(_), None) => {
-            return Err(CalibrationMarketDataPreparationError::from(
-                "column_mapping.option_surface is required when option_surface_source is provided"
-                    .to_string(),
-            ));
-        }
         (None, Some(_)) => {
             return Err(CalibrationMarketDataPreparationError::from(
                 "option_surface_source is required when column_mapping.option_surface is provided"
@@ -1089,7 +1096,7 @@ fn load_market_data_from_phases(
 
     let loading_output = prepare_market_data_loading_from_phases(
         loading_request,
-        normalized_tick_output.clone(),
+        &normalized_tick_output,
         session_resolution,
     )
     .map_err(|source| {

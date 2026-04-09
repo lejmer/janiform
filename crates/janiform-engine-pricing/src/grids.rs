@@ -72,7 +72,7 @@ pub struct VanillaOptionMaturitySummary {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct VanillaOptionGroupedBatchGroupRequest {
+pub struct VanillaOptionGridRequest {
     pub payoff_type: VanillaOptionPayoffType,
     pub risk_free_rate: f64,
     pub dividend_yield: f64,
@@ -80,13 +80,13 @@ pub struct VanillaOptionGroupedBatchGroupRequest {
     pub maturity_intervals: Vec<f64>,
 }
 
-impl VanillaOptionGroupedBatchGroupRequest {
-    pub fn validate(&self) -> Result<(), VanillaOptionGroupedBatchPricingRequestError> {
+impl VanillaOptionGridRequest {
+    pub fn validate(&self) -> Result<(), VanillaOptionGridBatchPricingRequestError> {
         if self.strikes.is_empty() {
-            return Err(VanillaOptionGroupedBatchPricingRequestError::EmptyStrikeAxis);
+            return Err(VanillaOptionGridBatchPricingRequestError::EmptyStrikeAxis);
         }
         if self.maturity_intervals.is_empty() {
-            return Err(VanillaOptionGroupedBatchPricingRequestError::EmptyMaturityAxis);
+            return Err(VanillaOptionGridBatchPricingRequestError::EmptyMaturityAxis);
         }
         for strike in &self.strikes {
             validate_positive_finite("strikes", *strike)?;
@@ -101,46 +101,46 @@ impl VanillaOptionGroupedBatchGroupRequest {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct VanillaOptionGroupedBatchPricingRequest {
+pub struct VanillaOptionGridBatchPricingRequest {
     pub spot: f64,
-    pub groups: Vec<VanillaOptionGroupedBatchGroupRequest>,
+    pub grids: Vec<VanillaOptionGridRequest>,
 }
 
-impl VanillaOptionGroupedBatchPricingRequest {
-    pub fn validate(&self) -> Result<(), VanillaOptionGroupedBatchPricingRequestError> {
+impl VanillaOptionGridBatchPricingRequest {
+    pub fn validate(&self) -> Result<(), VanillaOptionGridBatchPricingRequestError> {
         validate_positive_finite("spot", self.spot)?;
-        if self.groups.is_empty() {
-            return Err(VanillaOptionGroupedBatchPricingRequestError::EmptyGroups);
+        if self.grids.is_empty() {
+            return Err(VanillaOptionGridBatchPricingRequestError::EmptyGrids);
         }
-        for group in &self.groups {
-            group.validate()?;
+        for grid in &self.grids {
+            grid.validate()?;
         }
         Ok(())
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum VanillaOptionGroupedBatchPricingRequestError {
-    EmptyGroups,
+pub enum VanillaOptionGridBatchPricingRequestError {
+    EmptyGrids,
     EmptyStrikeAxis,
     EmptyMaturityAxis,
     InvalidFiniteField { field: &'static str, value: f64 },
     InvalidPositiveField { field: &'static str, value: f64 },
 }
 
-impl Display for VanillaOptionGroupedBatchPricingRequestError {
+impl Display for VanillaOptionGridBatchPricingRequestError {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::EmptyGroups => write!(
+            Self::EmptyGrids => write!(
                 formatter,
-                "grouped batch pricing request must contain at least one group"
+                "grid batch pricing request must contain at least one grid"
             ),
             Self::EmptyStrikeAxis => {
-                write!(formatter, "pricing group must contain at least one strike")
+                write!(formatter, "pricing grid must contain at least one strike")
             }
             Self::EmptyMaturityAxis => write!(
                 formatter,
-                "pricing group must contain at least one maturity_interval"
+                "pricing grid must contain at least one maturity_interval"
             ),
             Self::InvalidFiniteField { field, value } => {
                 write!(formatter, "{field} values must be finite, found {value}")
@@ -155,11 +155,11 @@ impl Display for VanillaOptionGroupedBatchPricingRequestError {
     }
 }
 
-impl Error for VanillaOptionGroupedBatchPricingRequestError {}
+impl Error for VanillaOptionGridBatchPricingRequestError {}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct VanillaOptionGroupedBatchPricingExecutionInput {
-    pub request: VanillaOptionGroupedBatchPricingRequest,
+pub struct VanillaOptionGridBatchPricingExecutionInput {
+    pub request: VanillaOptionGridBatchPricingRequest,
     pub boundary_input: AnchoredVanillaOptionPricingBoundaryInput,
     pub model_parameters: VanillaOptionPricingModelParameters,
     pub interval_delta: f64,
@@ -169,34 +169,34 @@ pub struct VanillaOptionGroupedBatchPricingExecutionInput {
     pub cpu_count: Option<usize>,
 }
 
-impl VanillaOptionGroupedBatchPricingExecutionInput {
-    pub fn validate(&self) -> Result<(), VanillaOptionGroupedBatchPricingExecutionInputError> {
+impl VanillaOptionGridBatchPricingExecutionInput {
+    pub fn validate(&self) -> Result<(), VanillaOptionGridBatchPricingExecutionInputError> {
         self.request.validate().map_err(|source| {
-            VanillaOptionGroupedBatchPricingExecutionInputError::InvalidRequest { source }
+            VanillaOptionGridBatchPricingExecutionInputError::InvalidRequest { source }
         })?;
         self.boundary_input.validate().map_err(|source| {
-            VanillaOptionGroupedBatchPricingExecutionInputError::InvalidBoundaryInput { source }
+            VanillaOptionGridBatchPricingExecutionInputError::InvalidBoundaryInput { source }
         })?;
         self.model_parameters.validate().map_err(|source| {
-            VanillaOptionGroupedBatchPricingExecutionInputError::InvalidModelParameters { source }
+            VanillaOptionGridBatchPricingExecutionInputError::InvalidModelParameters { source }
         })?;
         validate_positive_finite("interval_delta", self.interval_delta).map_err(|source| {
-            VanillaOptionGroupedBatchPricingExecutionInputError::InvalidRequest { source }
+            VanillaOptionGridBatchPricingExecutionInputError::InvalidRequest { source }
         })?;
         if self.boundary_input.interval_delta != self.interval_delta {
             return Err(
-                VanillaOptionGroupedBatchPricingExecutionInputError::BoundaryIntervalDeltaMismatch {
+                VanillaOptionGridBatchPricingExecutionInputError::BoundaryIntervalDeltaMismatch {
                     request_interval_delta: self.interval_delta,
                     boundary_interval_delta: self.boundary_input.interval_delta,
                 },
             );
         }
         if self.interval_factors.is_empty() {
-            return Err(VanillaOptionGroupedBatchPricingExecutionInputError::EmptyIntervalFactors);
+            return Err(VanillaOptionGridBatchPricingExecutionInputError::EmptyIntervalFactors);
         }
         for interval_factor in &self.interval_factors {
             interval_factor.validate().map_err(|source| {
-                VanillaOptionGroupedBatchPricingExecutionInputError::InvalidIntervalFactors {
+                VanillaOptionGridBatchPricingExecutionInputError::InvalidIntervalFactors {
                     source,
                 }
             })?;
@@ -204,7 +204,7 @@ impl VanillaOptionGroupedBatchPricingExecutionInput {
         if let Some(cpu_count) = self.cpu_count {
             if cpu_count == 0 {
                 return Err(
-                    VanillaOptionGroupedBatchPricingExecutionInputError::InvalidCpuCount {
+                    VanillaOptionGridBatchPricingExecutionInputError::InvalidCpuCount {
                         value: cpu_count,
                     },
                 );
@@ -212,7 +212,7 @@ impl VanillaOptionGroupedBatchPricingExecutionInput {
         }
         if let Some(settings) = self.fourier_inversion_settings {
             settings.validate().map_err(|source| {
-                VanillaOptionGroupedBatchPricingExecutionInputError::InvalidFourierInversionSettings {
+                VanillaOptionGridBatchPricingExecutionInputError::InvalidFourierInversionSettings {
                     source,
                 }
             })?;
@@ -220,15 +220,15 @@ impl VanillaOptionGroupedBatchPricingExecutionInput {
 
         let max_interval_count = self
             .request
-            .groups
+            .grids
             .iter()
-            .flat_map(|group| group.maturity_intervals.iter())
+            .flat_map(|grid| grid.maturity_intervals.iter())
             .map(|maturity_interval| (*maturity_interval / self.interval_delta) as usize)
             .max()
             .unwrap_or(0);
         if self.interval_factors.len() != max_interval_count {
             return Err(
-                VanillaOptionGroupedBatchPricingExecutionInputError::IntervalFactorShapeMismatch {
+                VanillaOptionGridBatchPricingExecutionInputError::IntervalFactorShapeMismatch {
                     expected_interval_factor_count: max_interval_count,
                     found_interval_factor_count: self.interval_factors.len(),
                 },
@@ -240,9 +240,9 @@ impl VanillaOptionGroupedBatchPricingExecutionInput {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum VanillaOptionGroupedBatchPricingExecutionInputError {
+pub enum VanillaOptionGridBatchPricingExecutionInputError {
     InvalidRequest {
-        source: VanillaOptionGroupedBatchPricingRequestError,
+        source: VanillaOptionGridBatchPricingRequestError,
     },
     InvalidBoundaryInput {
         source: super::contracts::AnchoredVanillaOptionPricingBoundaryInputError,
@@ -270,59 +270,59 @@ pub enum VanillaOptionGroupedBatchPricingExecutionInputError {
     },
 }
 
-impl Display for VanillaOptionGroupedBatchPricingExecutionInputError {
+impl Display for VanillaOptionGridBatchPricingExecutionInputError {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::InvalidRequest { source } => write!(
                 formatter,
-                "grouped batch pricing request is invalid: {source}"
+                "grid batch pricing request is invalid: {source}"
             ),
             Self::InvalidBoundaryInput { source } => write!(
                 formatter,
-                "grouped batch pricing boundary_input is invalid: {source}"
+                "grid batch pricing boundary_input is invalid: {source}"
             ),
             Self::InvalidModelParameters { source } => write!(
                 formatter,
-                "grouped batch pricing model_parameters are invalid: {source}"
+                "grid batch pricing model_parameters are invalid: {source}"
             ),
             Self::InvalidFourierInversionSettings { source } => write!(
                 formatter,
-                "grouped batch pricing fourier_inversion_settings are invalid: {source}"
+                "grid batch pricing fourier_inversion_settings are invalid: {source}"
             ),
             Self::InvalidIntervalFactors { source } => write!(
                 formatter,
-                "grouped batch pricing interval_factors are invalid: {source}"
+                "grid batch pricing interval_factors are invalid: {source}"
             ),
             Self::BoundaryIntervalDeltaMismatch {
                 request_interval_delta,
                 boundary_interval_delta,
             } => write!(
                 formatter,
-                "grouped batch pricing interval_delta {request_interval_delta} must equal boundary_input.interval_delta {boundary_interval_delta}"
+                "grid batch pricing interval_delta {request_interval_delta} must equal boundary_input.interval_delta {boundary_interval_delta}"
             ),
             Self::EmptyIntervalFactors => write!(
                 formatter,
-                "grouped batch pricing interval_factors must contain at least one interval"
+                "grid batch pricing interval_factors must contain at least one interval"
             ),
             Self::IntervalFactorShapeMismatch {
                 expected_interval_factor_count,
                 found_interval_factor_count,
             } => write!(
                 formatter,
-                "grouped batch pricing interval_factors must contain exactly {expected_interval_factor_count} entries implied by the maximum maturity, found {found_interval_factor_count}"
+                "grid batch pricing interval_factors must contain exactly {expected_interval_factor_count} entries implied by the maximum maturity, found {found_interval_factor_count}"
             ),
             Self::InvalidCpuCount { value } => write!(
                 formatter,
-                "grouped batch pricing cpu_count must be strictly positive when provided, found {value}"
+                "grid batch pricing cpu_count must be strictly positive when provided, found {value}"
             ),
         }
     }
 }
 
-impl Error for VanillaOptionGroupedBatchPricingExecutionInputError {}
+impl Error for VanillaOptionGridBatchPricingExecutionInputError {}
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct VanillaOptionGroupedBatchPricingGroupResult {
+pub struct VanillaOptionGridPricingResult {
     pub payoff_type: VanillaOptionPayoffType,
     pub risk_free_rate: f64,
     pub dividend_yield: f64,
@@ -342,15 +342,15 @@ pub struct VanillaOptionGroupedBatchPricingGroupResult {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct VanillaOptionGroupedBatchPricingRunResult {
+pub struct VanillaOptionGridBatchPricingRunResult {
     pub spot: f64,
-    pub groups: Vec<VanillaOptionGroupedBatchPricingGroupResult>,
+    pub grids: Vec<VanillaOptionGridPricingResult>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum VanillaOptionGroupedBatchPricingRunError {
+pub enum VanillaOptionGridBatchPricingRunError {
     InvalidExecutionInput {
-        source: VanillaOptionGroupedBatchPricingExecutionInputError,
+        source: VanillaOptionGridBatchPricingExecutionInputError,
     },
     InvalidDriverParameters {
         source: NigSharedPlusShiftConfigurationError,
@@ -360,25 +360,25 @@ pub enum VanillaOptionGroupedBatchPricingRunError {
     },
 }
 
-impl Display for VanillaOptionGroupedBatchPricingRunError {
+impl Display for VanillaOptionGridBatchPricingRunError {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::InvalidExecutionInput { source } => write!(
                 formatter,
-                "grouped batch pricing execution input is invalid: {source}"
+                "grid batch pricing execution input is invalid: {source}"
             ),
             Self::InvalidDriverParameters { source } => write!(
                 formatter,
-                "grouped batch pricing driver parameters are invalid: {source}"
+                "grid batch pricing driver parameters are invalid: {source}"
             ),
             Self::NodePricingFailure { message } => {
-                write!(formatter, "grouped batch pricing failed: {message}")
+                write!(formatter, "grid batch pricing failed: {message}")
             }
         }
     }
 }
 
-impl Error for VanillaOptionGroupedBatchPricingRunError {
+impl Error for VanillaOptionGridBatchPricingRunError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::InvalidExecutionInput { source } => Some(source),
@@ -395,10 +395,10 @@ pub struct VanillaOptionSurfacePricingRequest {
 }
 
 impl VanillaOptionSurfacePricingRequest {
-    pub fn validate(&self) -> Result<(), VanillaOptionGroupedBatchPricingRequestError> {
-        VanillaOptionGroupedBatchPricingRequest {
+    pub fn validate(&self) -> Result<(), VanillaOptionGridBatchPricingRequestError> {
+        VanillaOptionGridBatchPricingRequest {
             spot: self.market_inputs.spot,
-            groups: vec![VanillaOptionGroupedBatchGroupRequest {
+            grids: vec![VanillaOptionGridRequest {
                 payoff_type: self.payoff.payoff_type,
                 risk_free_rate: self.market_inputs.risk_free_rate,
                 dividend_yield: self.market_inputs.dividend_yield,
@@ -449,7 +449,7 @@ pub struct VanillaOptionSurfacePricingRunResult {
 }
 
 pub type VanillaOptionSurfacePricingExecutionInputError =
-    VanillaOptionGroupedBatchPricingExecutionInputError;
+    VanillaOptionGridBatchPricingExecutionInputError;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum VanillaOptionSurfacePricingRunError {
@@ -494,10 +494,10 @@ impl Error for VanillaOptionSurfacePricingRunError {
 
 impl VanillaOptionSurfacePricingExecutionInput {
     pub fn validate(&self) -> Result<(), VanillaOptionSurfacePricingExecutionInputError> {
-        VanillaOptionGroupedBatchPricingExecutionInput {
-            request: VanillaOptionGroupedBatchPricingRequest {
+        VanillaOptionGridBatchPricingExecutionInput {
+            request: VanillaOptionGridBatchPricingRequest {
                 spot: self.request.market_inputs.spot,
-                groups: vec![VanillaOptionGroupedBatchGroupRequest {
+                grids: vec![VanillaOptionGridRequest {
                     payoff_type: self.request.payoff.payoff_type,
                     risk_free_rate: self.request.market_inputs.risk_free_rate,
                     dividend_yield: self.request.market_inputs.dividend_yield,
@@ -517,31 +517,31 @@ impl VanillaOptionSurfacePricingExecutionInput {
     }
 }
 
-pub fn run_vanilla_option_grouped_batch_pricing(
-    execution_input: VanillaOptionGroupedBatchPricingExecutionInput,
-) -> Result<VanillaOptionGroupedBatchPricingRunResult, VanillaOptionGroupedBatchPricingRunError> {
-    run_vanilla_option_grouped_batch_pricing_with_observer(execution_input, None)
+pub fn run_vanilla_option_grid_batch_pricing(
+    execution_input: VanillaOptionGridBatchPricingExecutionInput,
+) -> Result<VanillaOptionGridBatchPricingRunResult, VanillaOptionGridBatchPricingRunError> {
+    run_vanilla_option_grid_batch_pricing_with_observer(execution_input, None)
 }
 
-pub fn run_vanilla_option_grouped_batch_pricing_with_observer(
-    execution_input: VanillaOptionGroupedBatchPricingExecutionInput,
+pub fn run_vanilla_option_grid_batch_pricing_with_observer(
+    execution_input: VanillaOptionGridBatchPricingExecutionInput,
     mut observer: Option<&mut dyn FnMut(PricingProgressEvent)>,
-) -> Result<VanillaOptionGroupedBatchPricingRunResult, VanillaOptionGroupedBatchPricingRunError> {
+) -> Result<VanillaOptionGridBatchPricingRunResult, VanillaOptionGridBatchPricingRunError> {
     execution_input.validate().map_err(|source| {
-        VanillaOptionGroupedBatchPricingRunError::InvalidExecutionInput { source }
+        VanillaOptionGridBatchPricingRunError::InvalidExecutionInput { source }
     })?;
 
-    let total_groups = execution_input.request.groups.len();
+    let total_grids = execution_input.request.grids.len();
 
     let driver_parameters = execution_input
         .model_parameters
         .nig_shared_plus_shift_configuration
         .derive_driver_parameters()
         .map_err(
-            |source| VanillaOptionGroupedBatchPricingRunError::InvalidDriverParameters { source },
+            |source| VanillaOptionGridBatchPricingRunError::InvalidDriverParameters { source },
         )?;
 
-    let mut groups = Vec::with_capacity(total_groups);
+    let mut grids = Vec::with_capacity(total_grids);
 
     let pricing_thread_pool = build_pricing_thread_pool(execution_input.cpu_count);
 
@@ -555,7 +555,7 @@ pub fn run_vanilla_option_grouped_batch_pricing_with_observer(
         std::thread::scope(|scope| {
             let worker_progress_reporter = progress_reporter.clone();
             let execution_input_ref = &execution_input;
-            let groups_ref = &mut groups;
+            let grids_ref = &mut grids;
 
             let worker = scope.spawn(move || {
                 struct FinishOnDrop(PricingProgressReporter);
@@ -568,59 +568,59 @@ pub fn run_vanilla_option_grouped_batch_pricing_with_observer(
 
                 let _finish_guard = FinishOnDrop(worker_progress_reporter.clone());
 
-                run_grouped_batch_body(
+                run_grid_batch_body(
                     execution_input_ref,
-                    total_groups,
+                    total_grids,
                     driver_parameters,
                     pricing_thread_pool.as_ref(),
                     &worker_progress_reporter,
-                    groups_ref,
+                    grids_ref,
                 )
             });
 
             progress_reporter.poll_until_finished(observer);
 
             worker.join().map_err(|_| {
-                VanillaOptionGroupedBatchPricingRunError::NodePricingFailure {
+                VanillaOptionGridBatchPricingRunError::NodePricingFailure {
                     message: "pricing progress worker terminated unexpectedly".to_string(),
                 }
             })?
         })?;
     } else {
-        run_grouped_batch_body(
+        run_grid_batch_body(
             &execution_input,
-            total_groups,
+            total_grids,
             driver_parameters,
             pricing_thread_pool.as_ref(),
             &progress_reporter,
-            &mut groups,
+            &mut grids,
         )?;
     }
 
-    Ok(VanillaOptionGroupedBatchPricingRunResult {
+    Ok(VanillaOptionGridBatchPricingRunResult {
         spot: execution_input.request.spot,
-        groups,
+        grids,
     })
 }
 
-fn run_grouped_batch_body(
-    execution_input: &VanillaOptionGroupedBatchPricingExecutionInput,
-    total_groups: usize,
+fn run_grid_batch_body(
+    execution_input: &VanillaOptionGridBatchPricingExecutionInput,
+    total_grids: usize,
     driver_parameters: NigBuySellDriverParameters,
     pricing_thread_pool: Option<&rayon::ThreadPool>,
     progress_reporter: &PricingProgressReporter,
-    groups: &mut Vec<VanillaOptionGroupedBatchPricingGroupResult>,
-) -> Result<(), VanillaOptionGroupedBatchPricingRunError> {
+    grids: &mut Vec<VanillaOptionGridPricingResult>,
+) -> Result<(), VanillaOptionGridBatchPricingRunError> {
     progress_reporter.emit(PricingProgressEvent::group_progress(
         0,
-        total_groups,
+        total_grids,
         Some(0),
     ));
 
-    for (group_index, group) in execution_input.request.groups.iter().enumerate() {
-        let group_result = run_homogeneous_scope(
+    for (grid_index, grid) in execution_input.request.grids.iter().enumerate() {
+        let grid_result = run_homogeneous_scope(
             execution_input.request.spot,
-            group,
+            grid,
             execution_input.boundary_input.clone(),
             execution_input.model_parameters.clone(),
             execution_input.interval_delta,
@@ -633,21 +633,21 @@ fn run_grouped_batch_body(
             progress_reporter,
         )
         .map_err(|source| {
-            VanillaOptionGroupedBatchPricingRunError::NodePricingFailure { message: source }
+            VanillaOptionGridBatchPricingRunError::NodePricingFailure { message: source }
         })?;
 
-        groups.push(group_result);
+        grids.push(grid_result);
 
-        let next_group_index = if group_index + 1 < total_groups {
-            Some(group_index + 1)
+        let next_grid_index = if grid_index + 1 < total_grids {
+            Some(grid_index + 1)
         } else {
             None
         };
 
         progress_reporter.emit(PricingProgressEvent::group_progress(
-            group_index + 1,
-            total_groups,
-            next_group_index,
+            grid_index + 1,
+            total_grids,
+            next_grid_index,
         ));
     }
 
@@ -668,11 +668,11 @@ pub fn run_vanilla_option_surface_pricing_with_observer(
         .validate()
         .map_err(|source| VanillaOptionSurfacePricingRunError::InvalidExecutionInput { source })?;
 
-    let grouped_result = run_vanilla_option_grouped_batch_pricing_with_observer(
-        VanillaOptionGroupedBatchPricingExecutionInput {
-            request: VanillaOptionGroupedBatchPricingRequest {
+    let grid_result = run_vanilla_option_grid_batch_pricing_with_observer(
+        VanillaOptionGridBatchPricingExecutionInput {
+            request: VanillaOptionGridBatchPricingRequest {
                 spot: execution_input.request.market_inputs.spot,
-                groups: vec![VanillaOptionGroupedBatchGroupRequest {
+                grids: vec![VanillaOptionGridRequest {
                     payoff_type: execution_input.request.payoff.payoff_type,
                     risk_free_rate: execution_input.request.market_inputs.risk_free_rate,
                     dividend_yield: execution_input.request.market_inputs.dividend_yield,
@@ -695,49 +695,49 @@ pub fn run_vanilla_option_surface_pricing_with_observer(
         observer,
     )
     .map_err(|source| match source {
-        VanillaOptionGroupedBatchPricingRunError::InvalidExecutionInput { source } => {
+        VanillaOptionGridBatchPricingRunError::InvalidExecutionInput { source } => {
             VanillaOptionSurfacePricingRunError::InvalidExecutionInput { source }
         }
-        VanillaOptionGroupedBatchPricingRunError::InvalidDriverParameters { source } => {
+        VanillaOptionGridBatchPricingRunError::InvalidDriverParameters { source } => {
             VanillaOptionSurfacePricingRunError::InvalidDriverParameters { source }
         }
-        VanillaOptionGroupedBatchPricingRunError::NodePricingFailure { message } => {
+        VanillaOptionGridBatchPricingRunError::NodePricingFailure { message } => {
             VanillaOptionSurfacePricingRunError::NodePricingFailure { message }
         }
     })?;
 
-    let group = grouped_result.groups.into_iter().next().ok_or(
+    let grid = grid_result.grids.into_iter().next().ok_or(
         VanillaOptionSurfacePricingRunError::NodePricingFailure {
-            message: "missing surface pricing group result".to_string(),
+            message: "missing surface pricing grid result".to_string(),
         },
     )?;
 
     Ok(VanillaOptionSurfacePricingRunResult {
         response: VanillaOptionSurfacePricingResponse {
-            spot: grouped_result.spot,
-            strikes: group.strikes,
-            maturity_intervals: group.maturity_intervals,
-            payoff_type: group.payoff_type,
-            risk_free_rate: group.risk_free_rate,
-            dividend_yield: group.dividend_yield,
-            price_grid: group.price_grid,
-            implied_volatility_grid: group.implied_volatility_grid,
-            implied_volatility_inversion_status_grid: group
+            spot: grid_result.spot,
+            strikes: grid.strikes,
+            maturity_intervals: grid.maturity_intervals,
+            payoff_type: grid.payoff_type,
+            risk_free_rate: grid.risk_free_rate,
+            dividend_yield: grid.dividend_yield,
+            price_grid: grid.price_grid,
+            implied_volatility_grid: grid.implied_volatility_grid,
+            implied_volatility_inversion_status_grid: grid
                 .implied_volatility_inversion_status_grid,
-            pricing_status_grid: group.pricing_status_grid,
-            pricing_failure_stage_grid: group.pricing_failure_stage_grid,
-            pricing_failure_reason_grid: group.pricing_failure_reason_grid,
-            forward_price_grid: group.forward_price_grid,
-            discount_factor_grid: group.discount_factor_grid,
-            boundary_state_norm_grid: group.boundary_state_norm_grid,
+            pricing_status_grid: grid.pricing_status_grid,
+            pricing_failure_stage_grid: grid.pricing_failure_stage_grid,
+            pricing_failure_reason_grid: grid.pricing_failure_reason_grid,
+            forward_price_grid: grid.forward_price_grid,
+            discount_factor_grid: grid.discount_factor_grid,
+            boundary_state_norm_grid: grid.boundary_state_norm_grid,
         },
-        maturity_summaries: group.maturity_summaries,
+        maturity_summaries: grid.maturity_summaries,
     })
 }
 
 fn run_homogeneous_scope(
     spot: f64,
-    group: &VanillaOptionGroupedBatchGroupRequest,
+    grid: &VanillaOptionGridRequest,
     boundary_input: AnchoredVanillaOptionPricingBoundaryInput,
     model_parameters: VanillaOptionPricingModelParameters,
     interval_delta: f64,
@@ -748,13 +748,13 @@ fn run_homogeneous_scope(
     pricing_thread_pool: Option<&rayon::ThreadPool>,
     cpu_count: Option<usize>,
     progress_reporter: &PricingProgressReporter,
-) -> Result<VanillaOptionGroupedBatchPricingGroupResult, String> {
+) -> Result<VanillaOptionGridPricingResult, String> {
     let maturity_interval_counts =
-        maturity_interval_counts(group.maturity_intervals.as_slice(), interval_delta);
+        maturity_interval_counts(grid.maturity_intervals.as_slice(), interval_delta);
 
     let forward_law_scope = prepare_forward_law_scope(
         spot,
-        group,
+        grid,
         boundary_input.clone(),
         model_parameters.clone(),
         interval_delta,
@@ -767,19 +767,19 @@ fn run_homogeneous_scope(
         maturity_interval_counts.as_slice(),
     )?;
 
-    let mut result_builder = GroupResultBuilder::new(group);
+    let mut result_builder = GroupResultBuilder::new(grid);
 
     for (maturity_index, maturity_interval_count) in maturity_interval_counts.iter().enumerate() {
         progress_reporter.emit(PricingProgressEvent::maturity_progress(
             maturity_index,
-            group.maturity_intervals.len(),
+            grid.maturity_intervals.len(),
             Some(maturity_index),
-            group.maturity_intervals.len(),
+            grid.maturity_intervals.len(),
         ));
 
         let row = group_pricing_row_for_maturity(
             spot,
-            group,
+            grid,
             maturity_index,
             maturity_interval_count,
             &boundary_input,
@@ -798,13 +798,13 @@ fn run_homogeneous_scope(
     }
 
     progress_reporter.emit(PricingProgressEvent::maturity_progress(
-        group.maturity_intervals.len(),
-        group.maturity_intervals.len(),
+        grid.maturity_intervals.len(),
+        grid.maturity_intervals.len(),
         None,
-        group.maturity_intervals.len(),
+        grid.maturity_intervals.len(),
     ));
 
-    Ok(result_builder.finish(group))
+    Ok(result_builder.finish(grid))
 }
 
 struct ForwardLawScope {
@@ -827,7 +827,7 @@ struct GroupResultBuilder {
 }
 
 impl GroupResultBuilder {
-    fn new(group: &VanillaOptionGroupedBatchGroupRequest) -> Self {
+    fn new(group: &VanillaOptionGridRequest) -> Self {
         Self {
             price_grid: Vec::with_capacity(group.maturity_intervals.len()),
             implied_volatility_grid: Vec::with_capacity(group.maturity_intervals.len()),
@@ -864,9 +864,9 @@ impl GroupResultBuilder {
 
     fn finish(
         self,
-        group: &VanillaOptionGroupedBatchGroupRequest,
-    ) -> VanillaOptionGroupedBatchPricingGroupResult {
-        VanillaOptionGroupedBatchPricingGroupResult {
+        group: &VanillaOptionGridRequest,
+    ) -> VanillaOptionGridPricingResult {
+        VanillaOptionGridPricingResult {
             payoff_type: group.payoff_type,
             risk_free_rate: group.risk_free_rate,
             dividend_yield: group.dividend_yield,
@@ -992,7 +992,7 @@ fn maturity_interval_counts(
 
 fn prepare_forward_law_scope(
     spot: f64,
-    group: &VanillaOptionGroupedBatchGroupRequest,
+    group: &VanillaOptionGridRequest,
     boundary_input: AnchoredVanillaOptionPricingBoundaryInput,
     model_parameters: VanillaOptionPricingModelParameters,
     interval_delta: f64,
@@ -1039,7 +1039,7 @@ fn prepare_forward_law_scope(
         None
     } else {
         let base_request = base_request.as_ref().ok_or_else(|| {
-            "grouped batch pricing requires at least one valid maturity interval".to_string()
+            "grid batch pricing requires at least one valid maturity interval".to_string()
         })?;
 
         Some(
@@ -1067,7 +1067,7 @@ fn prepare_forward_law_scope(
 
 fn group_pricing_row_for_maturity(
     spot: f64,
-    group: &VanillaOptionGroupedBatchGroupRequest,
+    group: &VanillaOptionGridRequest,
     maturity_index: usize,
     maturity_interval_count: &Result<usize, String>,
     boundary_input: &AnchoredVanillaOptionPricingBoundaryInput,
@@ -1122,7 +1122,7 @@ fn group_pricing_row_for_maturity(
 }
 
 fn price_forward_law_row(
-    group: &VanillaOptionGroupedBatchGroupRequest,
+    group: &VanillaOptionGridRequest,
     maturity_index: usize,
     optional_output_selection: VanillaOptionPricingOptionalOutputSelection,
     forward_law_scope: &ForwardLawScope,
@@ -1252,7 +1252,7 @@ fn failed_group_row_from_diagnostic(
 
 fn price_direct_fourier_row(
     spot: f64,
-    group: &VanillaOptionGroupedBatchGroupRequest,
+    group: &VanillaOptionGridRequest,
     maturity_index: usize,
     boundary_input: AnchoredVanillaOptionPricingBoundaryInput,
     model_parameters: VanillaOptionPricingModelParameters,
@@ -1377,7 +1377,7 @@ fn price_direct_fourier_row(
 }
 
 fn direct_fourier_maturity_summary(
-    group: &VanillaOptionGroupedBatchGroupRequest,
+    group: &VanillaOptionGridRequest,
     maturity_index: usize,
     optional_output_selection: VanillaOptionPricingOptionalOutputSelection,
     has_successful_node: bool,
@@ -1509,10 +1509,10 @@ fn pricing_interval_count_from_maturity_interval(
 fn validate_finite(
     field: &'static str,
     value: f64,
-) -> Result<(), VanillaOptionGroupedBatchPricingRequestError> {
+) -> Result<(), VanillaOptionGridBatchPricingRequestError> {
     if !value.is_finite() {
         return Err(
-            VanillaOptionGroupedBatchPricingRequestError::InvalidFiniteField { field, value },
+            VanillaOptionGridBatchPricingRequestError::InvalidFiniteField { field, value },
         );
     }
 
@@ -1522,10 +1522,10 @@ fn validate_finite(
 fn validate_positive_finite(
     field: &'static str,
     value: f64,
-) -> Result<(), VanillaOptionGroupedBatchPricingRequestError> {
+) -> Result<(), VanillaOptionGridBatchPricingRequestError> {
     if !value.is_finite() || value <= 0.0 {
         return Err(
-            VanillaOptionGroupedBatchPricingRequestError::InvalidPositiveField { field, value },
+            VanillaOptionGridBatchPricingRequestError::InvalidPositiveField { field, value },
         );
     }
 

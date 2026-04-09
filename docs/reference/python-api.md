@@ -12,35 +12,35 @@ Import the module that matches the workflow you want. The package root stays int
 
 Primary high-level fitting surface. Representative public symbols include:
 
-- `CurrentStateEstimationRequest`
-- `CurrentStateEstimationResult`
 - `JaniformEstimator`
-- `JaniformModel`
 - `JaniformFitReport`
+- `JaniformFitResult`
+- `JaniformModel`
 - `MarketDataCalibrationRequest`
-- `StagedCalibrationExecutionInput`
-- `StagedCalibrationRequest`
-- `StagedCalibrationResponse`
-- `prepare_market_data_calibration`
-- `run_market_data_calibration`
-- `run_staged_calibration`
 
 The supported fit ownership submodules also include:
 
-- `janiform.calibration.fit.state_estimation` for the public current-state estimation contracts
+- `janiform.calibration.fit.state` for the public current-state estimation contracts
   used by `JaniformModel.estimate_current_state(...)`
-- `janiform.calibration.fit.pricing` for the public batch and surface pricing contracts used by
-  `JaniformModel.price_options(...)` and `JaniformModel.price_option_surface(...)`, including
-  Janiform-computed implied-volatility fields together with per-node pricing status and failure
-  diagnostics on the returned pricing artifacts
+- `janiform.calibration.fit.pricing` for the public fitted-model option-pricing contracts used by
+  `JaniformModel.price_option_grids(...)`, `JaniformModel.price_option_surface(...)`, and
+  `JaniformModel.price_option_market_snapshot(...)`, including Janiform-computed
+  implied-volatility fields together with per-node pricing status and failure diagnostics on the
+  returned pricing artifacts
+- `janiform.calibration.fit.pricing.market_snapshot.inputs` for `TabularFrameInput`, the public
+  market-snapshot tabular input alias used by `JaniformModel.price_option_market_snapshot(...)`
+- `janiform.calibration.market_data` for market-data request, preparation, and workflow contracts
+- `janiform.calibration.presets` for preset references, preset registries, and preset resolution
+- `janiform.calibration.staged` for staged calibration request, input, runtime, and response contracts
 
 `JaniformModel` is the canonical high-level runtime surface for fitted models. In addition to
 `fit` persistence helpers, the main runtime entrypoints are:
 
 - `JaniformModel.estimate_current_state(...)`
 - `JaniformModel.price_option(...)`
-- `JaniformModel.price_options(...)`
+- `JaniformModel.price_option_grids(...)`
 - `JaniformModel.price_option_surface(...)`
+- `JaniformModel.price_option_market_snapshot(...)`
 - `JaniformModel.simulate(...)`
 
 Current-state estimation is the default live-state path when observed data is supplied:
@@ -50,6 +50,9 @@ Current-state estimation is the default live-state path when observed data is su
 - `price_option(..., observed_data=...)` uses that estimator automatically before pricing
 - `simulate(..., continuation_data=...)` uses that estimator automatically before continuing the
   path
+- `price_option_market_snapshot(...)` loads observed tick data, estimates the current state,
+  prices the selected quote snapshot in option grids, and returns both tidy rows and a
+  strike-by-expiry surface frame
 - when no observed data is supplied, Janiform falls back to the stationary Hawkes state
 - explicit `initial_excitation_state` and `initial_mean_reversion_boundary_state` overrides remain
   available for diagnostic workflows
@@ -78,6 +81,9 @@ The high-level joint option path also exposes:
 
 - `option_surface_valuation_time_utc` to select the option snapshot being fit
 - `carry` for optional flat discount-rate and carry-rate input
+
+`JaniformEstimator.fit_with_report(...)` returns `JaniformFitResult`, which carries both the fitted
+model and the fit report without changing the main `fit(...)` return shape.
 
 When fitting with options, one fit run targets one option quote timestamp, tick data remains
 mandatory, and the option surface must contain bid and ask quote data together with prices.

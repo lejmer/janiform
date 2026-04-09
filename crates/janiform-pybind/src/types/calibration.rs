@@ -4,6 +4,7 @@ use janiform::calibration::{
 };
 use pyo3::exceptions::PyValueError;
 use pyo3::{PyResult, pyclass, pymethods};
+use std::sync::Arc;
 
 #[pyclass(module = "janiform._native", name = "CalibrationMemoryCheckpointStore")]
 pub(crate) struct PyCalibrationMemoryCheckpointStore {
@@ -22,7 +23,7 @@ pub(crate) struct PyPreparedCalibrationExecutionHandle {
 #[pyclass(module = "janiform._native", name = "NormalizedMarketDataHandle")]
 #[derive(Clone)]
 pub(crate) struct PyNormalizedMarketDataHandle {
-    pub(crate) normalized_output: MarketDataNormalizedTickOutput,
+    pub(crate) normalized_output: Arc<MarketDataNormalizedTickOutput>,
 }
 
 #[pymethods]

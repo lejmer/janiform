@@ -6,7 +6,6 @@ import pytest
 
 import janiform._cli.commands.development as cli_development_commands_module
 import janiform.calendar as calendar_module
-import janiform.calibration as calibration_module
 import janiform.calibration.staged.runtime as calibration_staged_runtime_module
 import janiform.cli as cli_module
 import janiform.pricing.workflow as pricing_workflow_module
@@ -15,6 +14,7 @@ import janiform.simulation.seeded.runtime as simulation_seeded_runtime_module
 from janiform._cli.context import CliCommandContext
 from janiform._timestamps import ONE_HOUR_NANOS
 from janiform.calendar import CalendarRegistry
+from janiform.calibration.staged import run_staged_calibration
 from janiform.mean_reversion import (
     MeanReversionAnchorModel,
     MeanReversionBoundaryState,
@@ -515,7 +515,7 @@ def test_calibration_run_maps_missing_native_module_to_integration_error(
     monkeypatch.setattr(calibration_staged_runtime_module, "native_module", missing_native_module)
 
     with pytest.raises(JaniformIntegrationError) as captured_error:
-        calibration_module.run_staged_calibration(
+        run_staged_calibration(
             build_valid_execution_input_model(),
             calendar_registry=calendar_registry,
         )
@@ -543,7 +543,7 @@ def test_calibration_run_maps_native_execution_failure_to_execution_error(
     monkeypatch.setattr(calibration_staged_runtime_module, "native_module", lambda: FakeNative())
 
     with pytest.raises(JaniformExecutionError) as captured_error:
-        calibration_module.run_staged_calibration(
+        run_staged_calibration(
             build_valid_execution_input_model(),
             calendar_registry=calendar_registry,
         )
@@ -574,7 +574,7 @@ def test_calibration_run_maps_invalid_native_response_to_integration_error(
     monkeypatch.setattr(calibration_staged_runtime_module, "native_module", lambda: FakeNative())
 
     with pytest.raises(JaniformIntegrationError) as captured_error:
-        calibration_module.run_staged_calibration(
+        run_staged_calibration(
             build_valid_execution_input_model(),
             calendar_registry=calendar_registry,
         )

@@ -1,5 +1,6 @@
 mod bundled_sessions;
 mod calendar_materialization;
+mod column_resolution;
 mod contracts;
 mod known_news;
 mod normalization;

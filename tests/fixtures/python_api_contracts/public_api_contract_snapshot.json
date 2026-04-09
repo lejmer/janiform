@@ -115,51 +115,17 @@
     },
     "janiform.calibration": {
       "exports": [
-        "CalibrationMeanReversionConfiguration",
         "CalibrationValidationError",
         "CalibrationValidationFailure",
-        "CurrentStateEstimationRequest",
-        "CurrentStateEstimationResult",
-        "DEFAULT_HIGH_LEVEL_KNOWN_NEWS_PRESET_NAME",
         "JaniformEstimator",
         "JaniformFitReport",
-        "JaniformGroupedVanillaOptionBatch",
-        "JaniformGroupedVanillaOptionGroup",
+        "JaniformFitResult",
         "JaniformModel",
-        "JaniformSimulationResult",
-        "JaniformVanillaOptionGroupedBatchPricingGroupResult",
-        "JaniformVanillaOptionGroupedBatchPricingResult",
-        "JaniformVanillaOptionMaturityIntervalSummary",
-        "JaniformVanillaOptionMaturityPricingEngineKind",
-        "JaniformVanillaOptionMaturitySummary",
-        "JaniformVanillaOptionSurface",
-        "JaniformVanillaOptionSurfacePricingResult",
-        "KnownNewsExplicitConfiguration",
-        "KnownNewsPresetReference",
-        "MarketDataCalibrationRequest",
-        "MarketProfileReference",
-        "PreparedMarketDataCalibration",
-        "PresetRegistry",
-        "SessionExplicitConfiguration",
-        "SessionPresetReference",
-        "StagedCalibrationExecutionInput",
-        "StagedCalibrationRequest",
-        "StagedCalibrationResponse",
-        "prepare_market_data_calibration",
-        "resolve_preset_workflow_configuration",
-        "run_market_data_calibration",
-        "run_staged_calibration"
+        "JaniformSimulationResult"
       ],
       "module_name": "janiform.calibration",
       "schema_identifiers": [],
       "symbols": {
-        "CalibrationMeanReversionConfiguration": {
-          "field_names": [
-            "calibration_grid_interval_hours"
-          ],
-          "kind": "contract_model",
-          "signature": "(calibration_grid_interval_hours: 'Optional[float]' = None) -> 'None'"
-        },
         "CalibrationValidationError": {
           "base_classes": [
             "JaniformValidationError",
@@ -184,27 +150,6 @@
           "kind": "contract_model",
           "signature": "(error_id: 'str', workflow: 'str', entrypoint: 'str', field_path: 'str', message: 'str', context_items: 'tuple[tuple[str, ErrorContextValue], ...]' = ()) -> 'None'"
         },
-        "CurrentStateEstimationRequest": {
-          "field_names": [
-            "observed_tick_data",
-            "tick_data_column_mapping",
-            "observed_price"
-          ],
-          "kind": "contract_model",
-          "signature": "(observed_tick_data: 'pandas.DataFrame | Mapping[str, Sequence[Any]]', tick_data_column_mapping: 'Optional[CalibrationTickDataColumnMapping]' = None, observed_price: 'Optional[float]' = None) -> 'None'"
-        },
-        "CurrentStateEstimationResult": {
-          "field_names": [
-            "hawkes_excitation_state",
-            "mean_reversion_boundary_state"
-          ],
-          "kind": "contract_model",
-          "signature": "(hawkes_excitation_state: 'HawkesExcitationState', mean_reversion_boundary_state: 'MeanReversionBoundaryState') -> 'None'"
-        },
-        "DEFAULT_HIGH_LEVEL_KNOWN_NEWS_PRESET_NAME": {
-          "kind": "constant",
-          "value": "none"
-        },
         "JaniformEstimator": {
           "base_classes": [],
           "constructor_signature": "(*, workflow_scope: 'Optional[CalibrationMarketDataWorkflowScope]' = None, tick_data_column_mapping: 'Optional[CalibrationTickDataColumnMapping]' = None, normalization_policy: 'Optional[CalibrationMarketDataNormalizationPolicy]' = None, option_surface_column_mapping: 'Optional[CalibrationOptionSurfaceColumnMapping]' = None, output_preferences: 'Optional[CalibrationMarketDataOutputPreferences]' = None, optimizer_settings_by_stage: 'tuple[CalibrationStageSolverSettings, ...]' = (), preprocessing_settings: 'Optional[CalibrationMarketDataPreprocessingSettings]' = None, mean_reversion: 'Optional[CalibrationMeanReversionConfiguration]' = None, market_profile: 'Optional[str | MarketProfileReference]' = None, session: 'Optional[str | Path | SessionPresetReference]' = None, known_news: 'Optional[str | KnownNewsPresetReference]' = None, exchange_code: 'Optional[str]' = None, session_timezone: 'Optional[str]' = None, registry: 'Optional[PresetRegistry]' = None, cpu_count: 'Optional[int]' = None, silent: 'bool' = False) -> 'None'",
@@ -231,26 +176,13 @@
           "kind": "contract_model",
           "signature": "(run_id: 'str', workflow_scope: 'CalibrationMarketDataWorkflowScope', success: 'bool', resolved_configuration: 'ResolvedPresetWorkflowConfiguration', session_resolution: 'MarketDataSessionResolution', preparation_diagnostics: 'MarketDataCalibrationPreparationDiagnostics', preparation_provenance: 'MarketDataCalibrationPreparationProvenance', staged_request: 'StagedCalibrationRequest', prepared_data_reference: 'str | None', prepared_payload_path: 'str | None', staged_execution_input_path: 'str | None', staged_response: 'StagedCalibrationResponse', stage_report_payloads: 'tuple[dict[str, Any], ...]') -> 'None'"
         },
-        "JaniformGroupedVanillaOptionBatch": {
+        "JaniformFitResult": {
           "field_names": [
-            "spot",
-            "groups"
+            "model",
+            "report"
           ],
           "kind": "contract_model",
-          "signature": "(spot: 'float', groups: 'tuple[JaniformGroupedVanillaOptionGroup, ...]') -> 'None'"
-        },
-        "JaniformGroupedVanillaOptionGroup": {
-          "field_names": [
-            "payoff_type",
-            "risk_free_rate",
-            "dividend_yield",
-            "strikes",
-            "expiry_timestamps_utc",
-            "expiry_dates",
-            "tenors"
-          ],
-          "kind": "contract_model",
-          "signature": "(payoff_type: 'VanillaOptionPayoffType', risk_free_rate: 'float', dividend_yield: 'float', strikes: 'tuple[float, ...]', expiry_timestamps_utc: 'Optional[tuple[Optional[datetime], ...]]' = None, expiry_dates: 'Optional[tuple[Optional[date], ...]]' = None, tenors: 'Optional[tuple[Optional[str], ...]]' = None) -> 'None'"
+          "signature": "(model: 'Optional[JaniformModel]', report: 'JaniformFitReport') -> 'None'"
         },
         "JaniformModel": {
           "field_names": [
@@ -274,316 +206,20 @@
           ],
           "kind": "contract_model",
           "signature": "(simulation_kind: 'str', metadata: 'dict[str, Any]', provenance: 'dict[str, Any]', diagnostics: 'dict[str, Any]', raw_result: 'CoarseSimulationPath | SeededTickSimulationResponse') -> 'None'"
-        },
-        "JaniformVanillaOptionGroupedBatchPricingGroupResult": {
-          "field_names": [
-            "payoff_type",
-            "risk_free_rate",
-            "dividend_yield",
-            "strikes",
-            "maturity_intervals",
-            "price_grid",
-            "implied_volatility_grid",
-            "implied_volatility_inversion_status_grid",
-            "pricing_status_grid",
-            "pricing_failure_stage_grid",
-            "pricing_failure_reason_grid",
-            "forward_price_grid",
-            "discount_factor_grid",
-            "boundary_state_norm_grid",
-            "maturity_summaries"
-          ],
-          "kind": "contract_model",
-          "signature": "(payoff_type: 'VanillaOptionPayoffType', risk_free_rate: 'float', dividend_yield: 'float', strikes: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]', price_grid: 'tuple[tuple[Optional[float], ...], ...]', implied_volatility_grid: 'tuple[tuple[Optional[float], ...], ...]', implied_volatility_inversion_status_grid: 'tuple[tuple[Optional[VanillaOptionImpliedVolatilityInversionStatus], ...], ...]', pricing_status_grid: 'tuple[tuple[VanillaOptionPricingStatus, ...], ...]', pricing_failure_stage_grid: 'tuple[tuple[Optional[VanillaOptionPricingFailureStage], ...], ...]', pricing_failure_reason_grid: 'tuple[tuple[Optional[str], ...], ...]', forward_price_grid: 'tuple[tuple[Optional[float], ...], ...]', discount_factor_grid: 'tuple[tuple[Optional[float], ...], ...]', boundary_state_norm_grid: 'tuple[tuple[Optional[float], ...], ...]', maturity_summaries: 'tuple[Optional[JaniformVanillaOptionMaturitySummary], ...]') -> 'None'"
-        },
-        "JaniformVanillaOptionGroupedBatchPricingResult": {
-          "field_names": [
-            "spot",
-            "groups"
-          ],
-          "kind": "contract_model",
-          "signature": "(spot: 'float', groups: 'tuple[JaniformVanillaOptionGroupedBatchPricingGroupResult, ...]') -> 'None'"
-        },
-        "JaniformVanillaOptionMaturityIntervalSummary": {
-          "field_names": [
-            "interval_index",
-            "current_anchor_value",
-            "next_anchor_value",
-            "interval_delta",
-            "expected_hawkes_boundary_state_before",
-            "expected_hawkes_boundary_state_after",
-            "maximum_tail_probability_mass",
-            "maximum_row_probability_mass_error",
-            "minimum_solved_theta",
-            "maximum_solved_theta"
-          ],
-          "kind": "contract_model",
-          "signature": "(interval_index: 'int', current_anchor_value: 'float', next_anchor_value: 'float', interval_delta: 'float', expected_hawkes_boundary_state_before: 'dict[str, float]', expected_hawkes_boundary_state_after: 'dict[str, float]', maximum_tail_probability_mass: 'float', maximum_row_probability_mass_error: 'float', minimum_solved_theta: 'float', maximum_solved_theta: 'float') -> 'None'"
-        },
-        "JaniformVanillaOptionMaturityPricingEngineKind": {
-          "kind": "enum",
-          "members": [
-            {
-              "name": "DIRECT_FOURIER",
-              "value": "direct_fourier"
-            },
-            {
-              "name": "FORWARD_LAW",
-              "value": "forward_law"
-            }
-          ]
-        },
-        "JaniformVanillaOptionMaturitySummary": {
-          "field_names": [
-            "maturity_interval",
-            "engine_kind",
-            "terminal_anchor_value",
-            "deviation_grid_lower_bound",
-            "deviation_grid_upper_bound",
-            "deviation_grid_node_count",
-            "terminal_deviation_nodes",
-            "terminal_probability_mass",
-            "interval_summaries",
-            "representative_transform",
-            "integration_quality"
-          ],
-          "kind": "contract_model",
-          "signature": "(maturity_interval: 'float', engine_kind: 'JaniformVanillaOptionMaturityPricingEngineKind', terminal_anchor_value: 'Optional[float]', deviation_grid_lower_bound: 'Optional[float]', deviation_grid_upper_bound: 'Optional[float]', deviation_grid_node_count: 'Optional[int]', terminal_deviation_nodes: 'Optional[tuple[float, ...]]', terminal_probability_mass: 'Optional[tuple[float, ...]]', interval_summaries: 'tuple[JaniformVanillaOptionMaturityIntervalSummary, ...]', representative_transform: 'Optional[dict[str, Any]]', integration_quality: 'Optional[dict[str, Any]]') -> 'None'"
-        },
-        "JaniformVanillaOptionSurface": {
-          "field_names": [
-            "spot",
-            "strikes",
-            "expiry_timestamps_utc",
-            "expiry_dates",
-            "tenors",
-            "payoff_type",
-            "risk_free_rate",
-            "dividend_yield"
-          ],
-          "kind": "contract_model",
-          "signature": "(spot: 'float', strikes: 'tuple[float, ...]', expiry_timestamps_utc: 'Optional[tuple[Optional[datetime], ...]]' = None, expiry_dates: 'Optional[tuple[Optional[date], ...]]' = None, tenors: 'Optional[tuple[Optional[str], ...]]' = None, payoff_type: 'VanillaOptionPayoffType' = <VanillaOptionPayoffType.CALL: 'call'>, risk_free_rate: 'float' = 0.0, dividend_yield: 'float' = 0.0) -> 'None'"
-        },
-        "JaniformVanillaOptionSurfacePricingResult": {
-          "field_names": [
-            "spot",
-            "strikes",
-            "maturity_intervals",
-            "payoff_type",
-            "risk_free_rate",
-            "dividend_yield",
-            "price_grid",
-            "implied_volatility_grid",
-            "implied_volatility_inversion_status_grid",
-            "pricing_status_grid",
-            "pricing_failure_stage_grid",
-            "pricing_failure_reason_grid",
-            "forward_price_grid",
-            "discount_factor_grid",
-            "boundary_state_norm_grid",
-            "maturity_summaries"
-          ],
-          "kind": "contract_model",
-          "signature": "(spot: 'float', strikes: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]', payoff_type: 'VanillaOptionPayoffType', risk_free_rate: 'float', dividend_yield: 'float', price_grid: 'tuple[tuple[Optional[float], ...], ...]', implied_volatility_grid: 'tuple[tuple[Optional[float], ...], ...]', implied_volatility_inversion_status_grid: 'tuple[tuple[Optional[VanillaOptionImpliedVolatilityInversionStatus], ...], ...]', pricing_status_grid: 'tuple[tuple[VanillaOptionPricingStatus, ...], ...]', pricing_failure_stage_grid: 'tuple[tuple[Optional[VanillaOptionPricingFailureStage], ...], ...]', pricing_failure_reason_grid: 'tuple[tuple[Optional[str], ...], ...]', forward_price_grid: 'tuple[tuple[Optional[float], ...], ...]', discount_factor_grid: 'tuple[tuple[Optional[float], ...], ...]', boundary_state_norm_grid: 'tuple[tuple[Optional[float], ...], ...]', maturity_summaries: 'tuple[Optional[JaniformVanillaOptionMaturitySummary], ...]') -> 'None'"
-        },
-        "KnownNewsExplicitConfiguration": {
-          "field_names": [
-            "events",
-            "calendar_timezone_name"
-          ],
-          "kind": "contract_model",
-          "signature": "(events: 'tuple[KnownNewsEvent, ...]', calendar_timezone_name: 'Optional[str]' = None) -> 'None'"
-        },
-        "KnownNewsPresetReference": {
-          "field_names": [
-            "usage_mode",
-            "registry_scope",
-            "preset_name",
-            "configuration",
-            "override_patch"
-          ],
-          "kind": "contract_model",
-          "signature": "(usage_mode: 'PresetReferenceUsageMode', registry_scope: 'Optional[PresetRegistryScope]' = None, preset_name: 'Optional[str]' = None, configuration: 'Optional[KnownNewsExplicitConfiguration]' = None, override_patch: 'Optional[KnownNewsConfigurationOverridePatch]' = None) -> 'None'"
-        },
-        "MarketDataCalibrationRequest": {
-          "field_names": [
-            "schema_version",
-            "run_id",
-            "tick_data_source",
-            "session_configuration",
-            "column_mapping",
-            "workflow_scope",
-            "normalization_policy",
-            "output_preferences",
-            "optimizer_settings_by_stage",
-            "preprocessing_settings",
-            "option_surface_source",
-            "option_surface_valuation_time_utc",
-            "carry",
-            "known_news_inputs",
-            "mean_reversion"
-          ],
-          "kind": "contract_model",
-          "signature": "(schema_version: 'str', run_id: 'str', tick_data_source: 'CalibrationInputFileReference', session_configuration: 'CalibrationSessionConfigurationInput', column_mapping: 'CalibrationMarketDataColumnMapping', workflow_scope: 'CalibrationMarketDataWorkflowScope', normalization_policy: 'CalibrationMarketDataNormalizationPolicy', output_preferences: 'CalibrationMarketDataOutputPreferences', optimizer_settings_by_stage: 'tuple[CalibrationStageSolverSettings, ...]' = (), preprocessing_settings: 'Optional[CalibrationMarketDataPreprocessingSettings]' = None, option_surface_source: 'Optional[CalibrationInputFileReference]' = None, option_surface_valuation_time_utc: 'Optional[datetime]' = None, carry: 'Optional[CalibrationFlatCarryInput]' = None, known_news_inputs: 'Optional[CalibrationKnownNewsInput]' = None, mean_reversion: 'Optional[CalibrationMeanReversionConfiguration]' = None) -> 'None'"
-        },
-        "MarketProfileReference": {
-          "field_names": [
-            "usage_mode",
-            "registry_scope",
-            "preset_name",
-            "configuration",
-            "override_patch"
-          ],
-          "kind": "contract_model",
-          "signature": "(usage_mode: 'PresetReferenceUsageMode', registry_scope: 'Optional[PresetRegistryScope]' = None, preset_name: 'Optional[str]' = None, configuration: 'Optional[MarketProfileExplicitConfiguration]' = None, override_patch: 'Optional[MarketProfileOverridePatch]' = None) -> 'None'"
-        },
-        "PreparedMarketDataCalibration": {
-          "field_names": [
-            "schema_version",
-            "request",
-            "staged_request",
-            "diagnostics",
-            "provenance",
-            "session_resolution",
-            "fit_warning",
-            "reference_price",
-            "prepared_data_reference",
-            "prepared_payload_path",
-            "staged_execution_input_path"
-          ],
-          "kind": "contract_model",
-          "signature": "(schema_version: 'str', request: 'MarketDataCalibrationRequest', staged_request: 'StagedCalibrationRequest', diagnostics: 'MarketDataCalibrationPreparationDiagnostics', provenance: 'MarketDataCalibrationPreparationProvenance', session_resolution: 'MarketDataSessionResolution', fit_warning: 'Optional[str]' = None, reference_price: 'Optional[float]' = None, prepared_data_reference: 'Optional[str]' = None, prepared_payload_path: 'Optional[str]' = None, staged_execution_input_path: 'Optional[str]' = None) -> 'None'"
-        },
-        "PresetRegistry": {
-          "base_classes": [],
-          "constructor_signature": "(*, built_in: 'Optional[BuiltInPresetRegistry]' = None, user_registered: 'Optional[UserPresetRegistry]' = None) -> 'None'",
-          "kind": "class",
-          "origin_module": "janiform.calibration.presets.registry",
-          "qualname": "PresetRegistry"
-        },
-        "SessionExplicitConfiguration": {
-          "field_names": [
-            "exchange_code",
-            "timezone_name",
-            "regular_session_windows",
-            "recurring_closed_windows",
-            "exchange_name"
-          ],
-          "kind": "contract_model",
-          "signature": "(exchange_code: 'str', timezone_name: 'str', regular_session_windows: 'tuple[MarketDataSessionRegularWindow, ...]', recurring_closed_windows: 'tuple[MarketDataSessionRecurringClosedWindow, ...]' = (), exchange_name: 'Optional[str]' = None) -> 'None'"
-        },
-        "SessionPresetReference": {
-          "field_names": [
-            "usage_mode",
-            "registry_scope",
-            "preset_name",
-            "configuration",
-            "override_patch",
-            "exchange_code_hint",
-            "timezone_name_hint"
-          ],
-          "kind": "contract_model",
-          "signature": "(usage_mode: 'PresetReferenceUsageMode', registry_scope: 'Optional[PresetRegistryScope]' = None, preset_name: 'Optional[str]' = None, configuration: 'Optional[SessionExplicitConfiguration]' = None, override_patch: 'Optional[SessionConfigurationOverridePatch]' = None, exchange_code_hint: 'Optional[str]' = None, timezone_name_hint: 'Optional[str]' = None) -> 'None'"
-        },
-        "StagedCalibrationExecutionInput": {
-          "field_names": [
-            "schema_version",
-            "request",
-            "prepared_payload_file",
-            "runtime_resources"
-          ],
-          "kind": "contract_model",
-          "signature": "(schema_version: 'str', request: 'StagedCalibrationRequest', prepared_payload_file: 'CalibrationPreparedExecutionPayloadFileReference', runtime_resources: 'Optional[CalibrationStagedExecutionRuntimeResources]' = None) -> 'None'"
-        },
-        "StagedCalibrationRequest": {
-          "field_names": [
-            "run_id",
-            "data_inputs",
-            "execution_mode",
-            "selected_stages",
-            "seed_settings",
-            "optimizer_settings_by_stage",
-            "stage_handoffs",
-            "resume_settings"
-          ],
-          "kind": "contract_model",
-          "signature": "(run_id: 'str', data_inputs: 'CalibrationRunDataInputs', execution_mode: 'CalibrationExecutionMode' = <CalibrationExecutionMode.MEMORY: 'memory'>, selected_stages: 'tuple[CalibrationStage, ...]' = (), seed_settings: 'Optional[CalibrationRunSeedSettings]' = None, optimizer_settings_by_stage: 'tuple[CalibrationStageSolverSettings, ...]' = (), stage_handoffs: 'tuple[CalibrationStageHandoff, ...]' = (), resume_settings: 'Optional[CalibrationResumeSettings]' = None) -> 'None'"
-        },
-        "StagedCalibrationResponse": {
-          "field_names": [
-            "schema_version",
-            "failure_triage_policy",
-            "run_id",
-            "execution_mode",
-            "status",
-            "stage_reports",
-            "emitted_checkpoints",
-            "diagnostic_artifact_references",
-            "diagnostic_artifact_bundle",
-            "resumed_from_checkpoint_reference",
-            "resumed_from_last_successful_stage",
-            "started_from_stage",
-            "failure"
-          ],
-          "kind": "contract_model",
-          "signature": "(schema_version: 'str', failure_triage_policy: 'str', run_id: 'str', execution_mode: 'CalibrationExecutionMode', status: 'CalibrationStageExecutionStatus', stage_reports: 'tuple[CalibrationStageReport, ...]', emitted_checkpoints: 'tuple[CalibrationCheckpointMetadata, ...]', diagnostic_artifact_references: 'tuple[dict[str, Any], ...]' = (), diagnostic_artifact_bundle: 'Optional[dict[str, Any]]' = None, resumed_from_checkpoint_reference: 'Optional[str]' = None, resumed_from_last_successful_stage: 'Optional[CalibrationStage]' = None, started_from_stage: 'Optional[CalibrationStage]' = None, failure: 'Optional[CalibrationFailureDetails]' = None) -> 'None'"
-        },
-        "prepare_market_data_calibration": {
-          "kind": "function",
-          "signature": "(request: 'MarketDataCalibrationRequest') -> 'PreparedMarketDataCalibration'"
-        },
-        "resolve_preset_workflow_configuration": {
-          "kind": "function",
-          "signature": "(*, registry: 'Optional[PresetRegistry]' = None, market_profile_reference: 'Optional[MarketProfileReference]' = None, session_reference: 'Optional[SessionPresetReference]' = None, known_news_reference: 'Optional[KnownNewsPresetReference]' = None, inferred_session_resolution: 'Optional[MarketDataSessionResolution]' = None) -> 'ResolvedPresetWorkflowConfiguration'"
-        },
-        "run_market_data_calibration": {
-          "kind": "function",
-          "signature": "(request: 'MarketDataCalibrationRequest') -> 'StagedCalibrationResponse'"
-        },
-        "run_staged_calibration": {
-          "kind": "function",
-          "signature": "(execution_input: 'StagedCalibrationExecutionInput', *, calendar_registry: 'CalendarRegistry') -> 'StagedCalibrationResponse'"
         }
       }
     },
     "janiform.calibration.fit": {
       "exports": [
-        "CurrentStateEstimationRequest",
-        "CurrentStateEstimationResult",
         "JaniformEstimator",
         "JaniformFitReport",
-        "JaniformGroupedVanillaOptionBatch",
-        "JaniformGroupedVanillaOptionGroup",
+        "JaniformFitResult",
         "JaniformModel",
-        "JaniformSimulationResult",
-        "JaniformVanillaOptionGroupedBatchPricingGroupResult",
-        "JaniformVanillaOptionGroupedBatchPricingResult",
-        "JaniformVanillaOptionMaturityIntervalSummary",
-        "JaniformVanillaOptionMaturityPricingEngineKind",
-        "JaniformVanillaOptionMaturitySummary",
-        "JaniformVanillaOptionSurface",
-        "JaniformVanillaOptionSurfacePricingResult"
+        "JaniformSimulationResult"
       ],
       "module_name": "janiform.calibration.fit",
       "schema_identifiers": [],
       "symbols": {
-        "CurrentStateEstimationRequest": {
-          "field_names": [
-            "observed_tick_data",
-            "tick_data_column_mapping",
-            "observed_price"
-          ],
-          "kind": "contract_model",
-          "signature": "(observed_tick_data: 'pandas.DataFrame | Mapping[str, Sequence[Any]]', tick_data_column_mapping: 'Optional[CalibrationTickDataColumnMapping]' = None, observed_price: 'Optional[float]' = None) -> 'None'"
-        },
-        "CurrentStateEstimationResult": {
-          "field_names": [
-            "hawkes_excitation_state",
-            "mean_reversion_boundary_state"
-          ],
-          "kind": "contract_model",
-          "signature": "(hawkes_excitation_state: 'HawkesExcitationState', mean_reversion_boundary_state: 'MeanReversionBoundaryState') -> 'None'"
-        },
         "JaniformEstimator": {
           "base_classes": [],
           "constructor_signature": "(*, workflow_scope: 'Optional[CalibrationMarketDataWorkflowScope]' = None, tick_data_column_mapping: 'Optional[CalibrationTickDataColumnMapping]' = None, normalization_policy: 'Optional[CalibrationMarketDataNormalizationPolicy]' = None, option_surface_column_mapping: 'Optional[CalibrationOptionSurfaceColumnMapping]' = None, output_preferences: 'Optional[CalibrationMarketDataOutputPreferences]' = None, optimizer_settings_by_stage: 'tuple[CalibrationStageSolverSettings, ...]' = (), preprocessing_settings: 'Optional[CalibrationMarketDataPreprocessingSettings]' = None, mean_reversion: 'Optional[CalibrationMeanReversionConfiguration]' = None, market_profile: 'Optional[str | MarketProfileReference]' = None, session: 'Optional[str | Path | SessionPresetReference]' = None, known_news: 'Optional[str | KnownNewsPresetReference]' = None, exchange_code: 'Optional[str]' = None, session_timezone: 'Optional[str]' = None, registry: 'Optional[PresetRegistry]' = None, cpu_count: 'Optional[int]' = None, silent: 'bool' = False) -> 'None'",
@@ -610,26 +246,13 @@
           "kind": "contract_model",
           "signature": "(run_id: 'str', workflow_scope: 'CalibrationMarketDataWorkflowScope', success: 'bool', resolved_configuration: 'ResolvedPresetWorkflowConfiguration', session_resolution: 'MarketDataSessionResolution', preparation_diagnostics: 'MarketDataCalibrationPreparationDiagnostics', preparation_provenance: 'MarketDataCalibrationPreparationProvenance', staged_request: 'StagedCalibrationRequest', prepared_data_reference: 'str | None', prepared_payload_path: 'str | None', staged_execution_input_path: 'str | None', staged_response: 'StagedCalibrationResponse', stage_report_payloads: 'tuple[dict[str, Any], ...]') -> 'None'"
         },
-        "JaniformGroupedVanillaOptionBatch": {
+        "JaniformFitResult": {
           "field_names": [
-            "spot",
-            "groups"
+            "model",
+            "report"
           ],
           "kind": "contract_model",
-          "signature": "(spot: 'float', groups: 'tuple[JaniformGroupedVanillaOptionGroup, ...]') -> 'None'"
-        },
-        "JaniformGroupedVanillaOptionGroup": {
-          "field_names": [
-            "payoff_type",
-            "risk_free_rate",
-            "dividend_yield",
-            "strikes",
-            "expiry_timestamps_utc",
-            "expiry_dates",
-            "tenors"
-          ],
-          "kind": "contract_model",
-          "signature": "(payoff_type: 'VanillaOptionPayoffType', risk_free_rate: 'float', dividend_yield: 'float', strikes: 'tuple[float, ...]', expiry_timestamps_utc: 'Optional[tuple[Optional[datetime], ...]]' = None, expiry_dates: 'Optional[tuple[Optional[date], ...]]' = None, tenors: 'Optional[tuple[Optional[str], ...]]' = None) -> 'None'"
+          "signature": "(model: 'Optional[JaniformModel]', report: 'JaniformFitReport') -> 'None'"
         },
         "JaniformModel": {
           "field_names": [
@@ -653,117 +276,6 @@
           ],
           "kind": "contract_model",
           "signature": "(simulation_kind: 'str', metadata: 'dict[str, Any]', provenance: 'dict[str, Any]', diagnostics: 'dict[str, Any]', raw_result: 'CoarseSimulationPath | SeededTickSimulationResponse') -> 'None'"
-        },
-        "JaniformVanillaOptionGroupedBatchPricingGroupResult": {
-          "field_names": [
-            "payoff_type",
-            "risk_free_rate",
-            "dividend_yield",
-            "strikes",
-            "maturity_intervals",
-            "price_grid",
-            "implied_volatility_grid",
-            "implied_volatility_inversion_status_grid",
-            "pricing_status_grid",
-            "pricing_failure_stage_grid",
-            "pricing_failure_reason_grid",
-            "forward_price_grid",
-            "discount_factor_grid",
-            "boundary_state_norm_grid",
-            "maturity_summaries"
-          ],
-          "kind": "contract_model",
-          "signature": "(payoff_type: 'VanillaOptionPayoffType', risk_free_rate: 'float', dividend_yield: 'float', strikes: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]', price_grid: 'tuple[tuple[Optional[float], ...], ...]', implied_volatility_grid: 'tuple[tuple[Optional[float], ...], ...]', implied_volatility_inversion_status_grid: 'tuple[tuple[Optional[VanillaOptionImpliedVolatilityInversionStatus], ...], ...]', pricing_status_grid: 'tuple[tuple[VanillaOptionPricingStatus, ...], ...]', pricing_failure_stage_grid: 'tuple[tuple[Optional[VanillaOptionPricingFailureStage], ...], ...]', pricing_failure_reason_grid: 'tuple[tuple[Optional[str], ...], ...]', forward_price_grid: 'tuple[tuple[Optional[float], ...], ...]', discount_factor_grid: 'tuple[tuple[Optional[float], ...], ...]', boundary_state_norm_grid: 'tuple[tuple[Optional[float], ...], ...]', maturity_summaries: 'tuple[Optional[JaniformVanillaOptionMaturitySummary], ...]') -> 'None'"
-        },
-        "JaniformVanillaOptionGroupedBatchPricingResult": {
-          "field_names": [
-            "spot",
-            "groups"
-          ],
-          "kind": "contract_model",
-          "signature": "(spot: 'float', groups: 'tuple[JaniformVanillaOptionGroupedBatchPricingGroupResult, ...]') -> 'None'"
-        },
-        "JaniformVanillaOptionMaturityIntervalSummary": {
-          "field_names": [
-            "interval_index",
-            "current_anchor_value",
-            "next_anchor_value",
-            "interval_delta",
-            "expected_hawkes_boundary_state_before",
-            "expected_hawkes_boundary_state_after",
-            "maximum_tail_probability_mass",
-            "maximum_row_probability_mass_error",
-            "minimum_solved_theta",
-            "maximum_solved_theta"
-          ],
-          "kind": "contract_model",
-          "signature": "(interval_index: 'int', current_anchor_value: 'float', next_anchor_value: 'float', interval_delta: 'float', expected_hawkes_boundary_state_before: 'dict[str, float]', expected_hawkes_boundary_state_after: 'dict[str, float]', maximum_tail_probability_mass: 'float', maximum_row_probability_mass_error: 'float', minimum_solved_theta: 'float', maximum_solved_theta: 'float') -> 'None'"
-        },
-        "JaniformVanillaOptionMaturityPricingEngineKind": {
-          "kind": "enum",
-          "members": [
-            {
-              "name": "DIRECT_FOURIER",
-              "value": "direct_fourier"
-            },
-            {
-              "name": "FORWARD_LAW",
-              "value": "forward_law"
-            }
-          ]
-        },
-        "JaniformVanillaOptionMaturitySummary": {
-          "field_names": [
-            "maturity_interval",
-            "engine_kind",
-            "terminal_anchor_value",
-            "deviation_grid_lower_bound",
-            "deviation_grid_upper_bound",
-            "deviation_grid_node_count",
-            "terminal_deviation_nodes",
-            "terminal_probability_mass",
-            "interval_summaries",
-            "representative_transform",
-            "integration_quality"
-          ],
-          "kind": "contract_model",
-          "signature": "(maturity_interval: 'float', engine_kind: 'JaniformVanillaOptionMaturityPricingEngineKind', terminal_anchor_value: 'Optional[float]', deviation_grid_lower_bound: 'Optional[float]', deviation_grid_upper_bound: 'Optional[float]', deviation_grid_node_count: 'Optional[int]', terminal_deviation_nodes: 'Optional[tuple[float, ...]]', terminal_probability_mass: 'Optional[tuple[float, ...]]', interval_summaries: 'tuple[JaniformVanillaOptionMaturityIntervalSummary, ...]', representative_transform: 'Optional[dict[str, Any]]', integration_quality: 'Optional[dict[str, Any]]') -> 'None'"
-        },
-        "JaniformVanillaOptionSurface": {
-          "field_names": [
-            "spot",
-            "strikes",
-            "expiry_timestamps_utc",
-            "expiry_dates",
-            "tenors",
-            "payoff_type",
-            "risk_free_rate",
-            "dividend_yield"
-          ],
-          "kind": "contract_model",
-          "signature": "(spot: 'float', strikes: 'tuple[float, ...]', expiry_timestamps_utc: 'Optional[tuple[Optional[datetime], ...]]' = None, expiry_dates: 'Optional[tuple[Optional[date], ...]]' = None, tenors: 'Optional[tuple[Optional[str], ...]]' = None, payoff_type: 'VanillaOptionPayoffType' = <VanillaOptionPayoffType.CALL: 'call'>, risk_free_rate: 'float' = 0.0, dividend_yield: 'float' = 0.0) -> 'None'"
-        },
-        "JaniformVanillaOptionSurfacePricingResult": {
-          "field_names": [
-            "spot",
-            "strikes",
-            "maturity_intervals",
-            "payoff_type",
-            "risk_free_rate",
-            "dividend_yield",
-            "price_grid",
-            "implied_volatility_grid",
-            "implied_volatility_inversion_status_grid",
-            "pricing_status_grid",
-            "pricing_failure_stage_grid",
-            "pricing_failure_reason_grid",
-            "forward_price_grid",
-            "discount_factor_grid",
-            "boundary_state_norm_grid",
-            "maturity_summaries"
-          ],
-          "kind": "contract_model",
-          "signature": "(spot: 'float', strikes: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]', payoff_type: 'VanillaOptionPayoffType', risk_free_rate: 'float', dividend_yield: 'float', price_grid: 'tuple[tuple[Optional[float], ...], ...]', implied_volatility_grid: 'tuple[tuple[Optional[float], ...], ...]', implied_volatility_inversion_status_grid: 'tuple[tuple[Optional[VanillaOptionImpliedVolatilityInversionStatus], ...], ...]', pricing_status_grid: 'tuple[tuple[VanillaOptionPricingStatus, ...], ...]', pricing_failure_stage_grid: 'tuple[tuple[Optional[VanillaOptionPricingFailureStage], ...], ...]', pricing_failure_reason_grid: 'tuple[tuple[Optional[str], ...], ...]', forward_price_grid: 'tuple[tuple[Optional[float], ...], ...]', discount_factor_grid: 'tuple[tuple[Optional[float], ...], ...]', boundary_state_norm_grid: 'tuple[tuple[Optional[float], ...], ...]', maturity_summaries: 'tuple[Optional[JaniformVanillaOptionMaturitySummary], ...]') -> 'None'"
         }
       }
     },
@@ -780,7 +292,8 @@
           "kind": "class",
           "origin_module": "janiform.calibration.fit.estimator",
           "public_methods": {
-            "fit": "(self, *, run_id: 'Optional[str]' = None, tick_data_path: 'str | Path', tick_data_format: 'Optional[CalibrationInputFileFormat]' = None, tick_data_provenance_label: 'str' = 'tick_data', option_surface_path: 'Optional[str | Path]' = None, option_surface_format: 'CalibrationInputFileFormat' = <CalibrationInputFileFormat.PARQUET: 'parquet'>, option_surface_provenance_label: 'str' = 'option_surface', option_surface_valuation_time_utc: 'Optional[datetime]' = None, carry: 'Optional[CalibrationFlatCarryInput]' = None, output_dir: 'Optional[str | Path]' = None, silent: 'Optional[bool]' = None, report: 'bool' = False) -> 'JaniformModel | tuple[Optional[JaniformModel], JaniformFitReport]'"
+            "fit": "(self, *, run_id: 'Optional[str]' = None, tick_data_path: 'str | Path', tick_data_format: 'Optional[CalibrationInputFileFormat]' = None, tick_data_provenance_label: 'str' = 'tick_data', option_surface_path: 'Optional[str | Path]' = None, option_surface_format: 'CalibrationInputFileFormat' = <CalibrationInputFileFormat.PARQUET: 'parquet'>, option_surface_provenance_label: 'str' = 'option_surface', option_surface_valuation_time_utc: 'Optional[datetime]' = None, carry: 'Optional[CalibrationFlatCarryInput]' = None, output_dir: 'Optional[str | Path]' = None, silent: 'Optional[bool]' = None) -> 'JaniformModel'",
+            "fit_with_report": "(self, *, run_id: 'Optional[str]' = None, tick_data_path: 'str | Path', tick_data_format: 'Optional[CalibrationInputFileFormat]' = None, tick_data_provenance_label: 'str' = 'tick_data', option_surface_path: 'Optional[str | Path]' = None, option_surface_format: 'CalibrationInputFileFormat' = <CalibrationInputFileFormat.PARQUET: 'parquet'>, option_surface_provenance_label: 'str' = 'option_surface', option_surface_valuation_time_utc: 'Optional[datetime]' = None, carry: 'Optional[CalibrationFlatCarryInput]' = None, output_dir: 'Optional[str | Path]' = None, silent: 'Optional[bool]' = None) -> 'JaniformFitResult'"
           },
           "qualname": "JaniformEstimator"
         }
@@ -794,7 +307,7 @@
       "module_name": "janiform.calibration.fit.model",
       "schema_identifiers": [
         {
-          "name": "_HIGH_LEVEL_MODEL_PERSISTENCE_SCHEMA_VERSION",
+          "name": "_MODEL_PERSISTENCE_SCHEMA_VERSION",
           "public_exported": false,
           "value": "calibration.high_level.model.v1"
         }
@@ -827,10 +340,12 @@
     },
     "janiform.calibration.fit.pricing": {
       "exports": [
-        "JaniformGroupedVanillaOptionBatch",
-        "JaniformGroupedVanillaOptionGroup",
-        "JaniformVanillaOptionGroupedBatchPricingGroupResult",
-        "JaniformVanillaOptionGroupedBatchPricingResult",
+        "JaniformObservedOptionSnapshotNode",
+        "JaniformObservedOptionSnapshotPricingResult",
+        "JaniformVanillaOptionGrid",
+        "JaniformVanillaOptionGridBatch",
+        "JaniformVanillaOptionGridBatchPricingResult",
+        "JaniformVanillaOptionGridPricingResult",
         "JaniformVanillaOptionMaturityIntervalSummary",
         "JaniformVanillaOptionMaturityPricingEngineKind",
         "JaniformVanillaOptionMaturitySummary",
@@ -840,15 +355,42 @@
       "module_name": "janiform.calibration.fit.pricing",
       "schema_identifiers": [],
       "symbols": {
-        "JaniformGroupedVanillaOptionBatch": {
+        "JaniformObservedOptionSnapshotNode": {
           "field_names": [
-            "spot",
-            "groups"
+            "quote_timestamp_utc",
+            "expiry_timestamp_utc",
+            "strike",
+            "option_type",
+            "risk_free_rate",
+            "dividend_yield",
+            "maturity_interval",
+            "observed_bid_price",
+            "observed_ask_price",
+            "observed_mid_price",
+            "model_price",
+            "model_implied_volatility",
+            "implied_volatility_inversion_status",
+            "pricing_status",
+            "pricing_failure_stage",
+            "pricing_failure_reason",
+            "forward_price",
+            "discount_factor",
+            "boundary_state_norm"
           ],
           "kind": "contract_model",
-          "signature": "(spot: 'float', groups: 'tuple[JaniformGroupedVanillaOptionGroup, ...]') -> 'None'"
+          "signature": "(quote_timestamp_utc: 'datetime', expiry_timestamp_utc: 'datetime', strike: 'float', option_type: 'VanillaOptionPayoffType', risk_free_rate: 'float', dividend_yield: 'float', maturity_interval: 'float', observed_bid_price: 'Optional[float]', observed_ask_price: 'Optional[float]', observed_mid_price: 'Optional[float]', model_price: 'Optional[float]', model_implied_volatility: 'Optional[float]', implied_volatility_inversion_status: 'Optional[VanillaOptionImpliedVolatilityInversionStatus]', pricing_status: 'VanillaOptionPricingStatus', pricing_failure_stage: 'Optional[VanillaOptionPricingFailureStage]', pricing_failure_reason: 'Optional[str]', forward_price: 'Optional[float]', discount_factor: 'Optional[float]', boundary_state_norm: 'Optional[float]') -> 'None'"
         },
-        "JaniformGroupedVanillaOptionGroup": {
+        "JaniformObservedOptionSnapshotPricingResult": {
+          "field_names": [
+            "valuation_time_utc",
+            "spot",
+            "nodes",
+            "raw_result"
+          ],
+          "kind": "contract_model",
+          "signature": "(valuation_time_utc: 'datetime', spot: 'float', nodes: 'tuple[JaniformObservedOptionSnapshotNode, ...]', raw_result: 'JaniformVanillaOptionGridBatchPricingResult') -> 'None'"
+        },
+        "JaniformVanillaOptionGrid": {
           "field_names": [
             "payoff_type",
             "risk_free_rate",
@@ -861,7 +403,23 @@
           "kind": "contract_model",
           "signature": "(payoff_type: 'VanillaOptionPayoffType', risk_free_rate: 'float', dividend_yield: 'float', strikes: 'tuple[float, ...]', expiry_timestamps_utc: 'Optional[tuple[Optional[datetime], ...]]' = None, expiry_dates: 'Optional[tuple[Optional[date], ...]]' = None, tenors: 'Optional[tuple[Optional[str], ...]]' = None) -> 'None'"
         },
-        "JaniformVanillaOptionGroupedBatchPricingGroupResult": {
+        "JaniformVanillaOptionGridBatch": {
+          "field_names": [
+            "spot",
+            "grids"
+          ],
+          "kind": "contract_model",
+          "signature": "(spot: 'float', grids: 'tuple[JaniformVanillaOptionGrid, ...]') -> 'None'"
+        },
+        "JaniformVanillaOptionGridBatchPricingResult": {
+          "field_names": [
+            "spot",
+            "grids"
+          ],
+          "kind": "contract_model",
+          "signature": "(spot: 'float', grids: 'tuple[JaniformVanillaOptionGridPricingResult, ...]') -> 'None'"
+        },
+        "JaniformVanillaOptionGridPricingResult": {
           "field_names": [
             "payoff_type",
             "risk_free_rate",
@@ -881,14 +439,6 @@
           ],
           "kind": "contract_model",
           "signature": "(payoff_type: 'VanillaOptionPayoffType', risk_free_rate: 'float', dividend_yield: 'float', strikes: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]', price_grid: 'tuple[tuple[Optional[float], ...], ...]', implied_volatility_grid: 'tuple[tuple[Optional[float], ...], ...]', implied_volatility_inversion_status_grid: 'tuple[tuple[Optional[VanillaOptionImpliedVolatilityInversionStatus], ...], ...]', pricing_status_grid: 'tuple[tuple[VanillaOptionPricingStatus, ...], ...]', pricing_failure_stage_grid: 'tuple[tuple[Optional[VanillaOptionPricingFailureStage], ...], ...]', pricing_failure_reason_grid: 'tuple[tuple[Optional[str], ...], ...]', forward_price_grid: 'tuple[tuple[Optional[float], ...], ...]', discount_factor_grid: 'tuple[tuple[Optional[float], ...], ...]', boundary_state_norm_grid: 'tuple[tuple[Optional[float], ...], ...]', maturity_summaries: 'tuple[Optional[JaniformVanillaOptionMaturitySummary], ...]') -> 'None'"
-        },
-        "JaniformVanillaOptionGroupedBatchPricingResult": {
-          "field_names": [
-            "spot",
-            "groups"
-          ],
-          "kind": "contract_model",
-          "signature": "(spot: 'float', groups: 'tuple[JaniformVanillaOptionGroupedBatchPricingGroupResult, ...]') -> 'None'"
         },
         "JaniformVanillaOptionMaturityIntervalSummary": {
           "field_names": [
@@ -936,6 +486,229 @@
           "kind": "contract_model",
           "signature": "(maturity_interval: 'float', engine_kind: 'JaniformVanillaOptionMaturityPricingEngineKind', terminal_anchor_value: 'Optional[float]', deviation_grid_lower_bound: 'Optional[float]', deviation_grid_upper_bound: 'Optional[float]', deviation_grid_node_count: 'Optional[int]', terminal_deviation_nodes: 'Optional[tuple[float, ...]]', terminal_probability_mass: 'Optional[tuple[float, ...]]', interval_summaries: 'tuple[JaniformVanillaOptionMaturityIntervalSummary, ...]', representative_transform: 'Optional[dict[str, Any]]', integration_quality: 'Optional[dict[str, Any]]') -> 'None'"
         },
+        "JaniformVanillaOptionSurface": {
+          "field_names": [
+            "spot",
+            "strikes",
+            "expiry_timestamps_utc",
+            "expiry_dates",
+            "tenors",
+            "payoff_type",
+            "risk_free_rate",
+            "dividend_yield"
+          ],
+          "kind": "contract_model",
+          "signature": "(spot: 'float', strikes: 'tuple[float, ...]', expiry_timestamps_utc: 'Optional[tuple[Optional[datetime], ...]]' = None, expiry_dates: 'Optional[tuple[Optional[date], ...]]' = None, tenors: 'Optional[tuple[Optional[str], ...]]' = None, payoff_type: 'VanillaOptionPayoffType' = <VanillaOptionPayoffType.CALL: 'call'>, risk_free_rate: 'float' = 0.0, dividend_yield: 'float' = 0.0) -> 'None'"
+        },
+        "JaniformVanillaOptionSurfacePricingResult": {
+          "field_names": [
+            "spot",
+            "strikes",
+            "maturity_intervals",
+            "payoff_type",
+            "risk_free_rate",
+            "dividend_yield",
+            "price_grid",
+            "implied_volatility_grid",
+            "implied_volatility_inversion_status_grid",
+            "pricing_status_grid",
+            "pricing_failure_stage_grid",
+            "pricing_failure_reason_grid",
+            "forward_price_grid",
+            "discount_factor_grid",
+            "boundary_state_norm_grid",
+            "maturity_summaries"
+          ],
+          "kind": "contract_model",
+          "signature": "(spot: 'float', strikes: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]', payoff_type: 'VanillaOptionPayoffType', risk_free_rate: 'float', dividend_yield: 'float', price_grid: 'tuple[tuple[Optional[float], ...], ...]', implied_volatility_grid: 'tuple[tuple[Optional[float], ...], ...]', implied_volatility_inversion_status_grid: 'tuple[tuple[Optional[VanillaOptionImpliedVolatilityInversionStatus], ...], ...]', pricing_status_grid: 'tuple[tuple[VanillaOptionPricingStatus, ...], ...]', pricing_failure_stage_grid: 'tuple[tuple[Optional[VanillaOptionPricingFailureStage], ...], ...]', pricing_failure_reason_grid: 'tuple[tuple[Optional[str], ...], ...]', forward_price_grid: 'tuple[tuple[Optional[float], ...], ...]', discount_factor_grid: 'tuple[tuple[Optional[float], ...], ...]', boundary_state_norm_grid: 'tuple[tuple[Optional[float], ...], ...]', maturity_summaries: 'tuple[Optional[JaniformVanillaOptionMaturitySummary], ...]') -> 'None'"
+        }
+      }
+    },
+    "janiform.calibration.fit.pricing.grids": {
+      "exports": [
+        "JaniformVanillaOptionGrid",
+        "JaniformVanillaOptionGridBatch",
+        "JaniformVanillaOptionGridBatchPricingResult",
+        "JaniformVanillaOptionGridPricingResult"
+      ],
+      "module_name": "janiform.calibration.fit.pricing.grids",
+      "schema_identifiers": [],
+      "symbols": {
+        "JaniformVanillaOptionGrid": {
+          "field_names": [
+            "payoff_type",
+            "risk_free_rate",
+            "dividend_yield",
+            "strikes",
+            "expiry_timestamps_utc",
+            "expiry_dates",
+            "tenors"
+          ],
+          "kind": "contract_model",
+          "signature": "(payoff_type: 'VanillaOptionPayoffType', risk_free_rate: 'float', dividend_yield: 'float', strikes: 'tuple[float, ...]', expiry_timestamps_utc: 'Optional[tuple[Optional[datetime], ...]]' = None, expiry_dates: 'Optional[tuple[Optional[date], ...]]' = None, tenors: 'Optional[tuple[Optional[str], ...]]' = None) -> 'None'"
+        },
+        "JaniformVanillaOptionGridBatch": {
+          "field_names": [
+            "spot",
+            "grids"
+          ],
+          "kind": "contract_model",
+          "signature": "(spot: 'float', grids: 'tuple[JaniformVanillaOptionGrid, ...]') -> 'None'"
+        },
+        "JaniformVanillaOptionGridBatchPricingResult": {
+          "field_names": [
+            "spot",
+            "grids"
+          ],
+          "kind": "contract_model",
+          "signature": "(spot: 'float', grids: 'tuple[JaniformVanillaOptionGridPricingResult, ...]') -> 'None'"
+        },
+        "JaniformVanillaOptionGridPricingResult": {
+          "field_names": [
+            "payoff_type",
+            "risk_free_rate",
+            "dividend_yield",
+            "strikes",
+            "maturity_intervals",
+            "price_grid",
+            "implied_volatility_grid",
+            "implied_volatility_inversion_status_grid",
+            "pricing_status_grid",
+            "pricing_failure_stage_grid",
+            "pricing_failure_reason_grid",
+            "forward_price_grid",
+            "discount_factor_grid",
+            "boundary_state_norm_grid",
+            "maturity_summaries"
+          ],
+          "kind": "contract_model",
+          "signature": "(payoff_type: 'VanillaOptionPayoffType', risk_free_rate: 'float', dividend_yield: 'float', strikes: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]', price_grid: 'tuple[tuple[Optional[float], ...], ...]', implied_volatility_grid: 'tuple[tuple[Optional[float], ...], ...]', implied_volatility_inversion_status_grid: 'tuple[tuple[Optional[VanillaOptionImpliedVolatilityInversionStatus], ...], ...]', pricing_status_grid: 'tuple[tuple[VanillaOptionPricingStatus, ...], ...]', pricing_failure_stage_grid: 'tuple[tuple[Optional[VanillaOptionPricingFailureStage], ...], ...]', pricing_failure_reason_grid: 'tuple[tuple[Optional[str], ...], ...]', forward_price_grid: 'tuple[tuple[Optional[float], ...], ...]', discount_factor_grid: 'tuple[tuple[Optional[float], ...], ...]', boundary_state_norm_grid: 'tuple[tuple[Optional[float], ...], ...]', maturity_summaries: 'tuple[Optional[JaniformVanillaOptionMaturitySummary], ...]') -> 'None'"
+        }
+      }
+    },
+    "janiform.calibration.fit.pricing.market_snapshot": {
+      "exports": [
+        "JaniformObservedOptionSnapshotNode",
+        "JaniformObservedOptionSnapshotPricingResult"
+      ],
+      "module_name": "janiform.calibration.fit.pricing.market_snapshot",
+      "schema_identifiers": [],
+      "symbols": {
+        "JaniformObservedOptionSnapshotNode": {
+          "field_names": [
+            "quote_timestamp_utc",
+            "expiry_timestamp_utc",
+            "strike",
+            "option_type",
+            "risk_free_rate",
+            "dividend_yield",
+            "maturity_interval",
+            "observed_bid_price",
+            "observed_ask_price",
+            "observed_mid_price",
+            "model_price",
+            "model_implied_volatility",
+            "implied_volatility_inversion_status",
+            "pricing_status",
+            "pricing_failure_stage",
+            "pricing_failure_reason",
+            "forward_price",
+            "discount_factor",
+            "boundary_state_norm"
+          ],
+          "kind": "contract_model",
+          "signature": "(quote_timestamp_utc: 'datetime', expiry_timestamp_utc: 'datetime', strike: 'float', option_type: 'VanillaOptionPayoffType', risk_free_rate: 'float', dividend_yield: 'float', maturity_interval: 'float', observed_bid_price: 'Optional[float]', observed_ask_price: 'Optional[float]', observed_mid_price: 'Optional[float]', model_price: 'Optional[float]', model_implied_volatility: 'Optional[float]', implied_volatility_inversion_status: 'Optional[VanillaOptionImpliedVolatilityInversionStatus]', pricing_status: 'VanillaOptionPricingStatus', pricing_failure_stage: 'Optional[VanillaOptionPricingFailureStage]', pricing_failure_reason: 'Optional[str]', forward_price: 'Optional[float]', discount_factor: 'Optional[float]', boundary_state_norm: 'Optional[float]') -> 'None'"
+        },
+        "JaniformObservedOptionSnapshotPricingResult": {
+          "field_names": [
+            "valuation_time_utc",
+            "spot",
+            "nodes",
+            "raw_result"
+          ],
+          "kind": "contract_model",
+          "signature": "(valuation_time_utc: 'datetime', spot: 'float', nodes: 'tuple[JaniformObservedOptionSnapshotNode, ...]', raw_result: 'JaniformVanillaOptionGridBatchPricingResult') -> 'None'"
+        }
+      }
+    },
+    "janiform.calibration.fit.pricing.market_snapshot.inputs": {
+      "exports": [
+        "TabularFrameInput"
+      ],
+      "module_name": "janiform.calibration.fit.pricing.market_snapshot.inputs",
+      "schema_identifiers": [],
+      "symbols": {
+        "TabularFrameInput": {
+          "kind": "constant",
+          "value": "TabularFrameInput"
+        }
+      }
+    },
+    "janiform.calibration.fit.pricing.summaries": {
+      "exports": [
+        "JaniformVanillaOptionMaturityIntervalSummary",
+        "JaniformVanillaOptionMaturityPricingEngineKind",
+        "JaniformVanillaOptionMaturitySummary"
+      ],
+      "module_name": "janiform.calibration.fit.pricing.summaries",
+      "schema_identifiers": [],
+      "symbols": {
+        "JaniformVanillaOptionMaturityIntervalSummary": {
+          "field_names": [
+            "interval_index",
+            "current_anchor_value",
+            "next_anchor_value",
+            "interval_delta",
+            "expected_hawkes_boundary_state_before",
+            "expected_hawkes_boundary_state_after",
+            "maximum_tail_probability_mass",
+            "maximum_row_probability_mass_error",
+            "minimum_solved_theta",
+            "maximum_solved_theta"
+          ],
+          "kind": "contract_model",
+          "signature": "(interval_index: 'int', current_anchor_value: 'float', next_anchor_value: 'float', interval_delta: 'float', expected_hawkes_boundary_state_before: 'dict[str, float]', expected_hawkes_boundary_state_after: 'dict[str, float]', maximum_tail_probability_mass: 'float', maximum_row_probability_mass_error: 'float', minimum_solved_theta: 'float', maximum_solved_theta: 'float') -> 'None'"
+        },
+        "JaniformVanillaOptionMaturityPricingEngineKind": {
+          "kind": "enum",
+          "members": [
+            {
+              "name": "DIRECT_FOURIER",
+              "value": "direct_fourier"
+            },
+            {
+              "name": "FORWARD_LAW",
+              "value": "forward_law"
+            }
+          ]
+        },
+        "JaniformVanillaOptionMaturitySummary": {
+          "field_names": [
+            "maturity_interval",
+            "engine_kind",
+            "terminal_anchor_value",
+            "deviation_grid_lower_bound",
+            "deviation_grid_upper_bound",
+            "deviation_grid_node_count",
+            "terminal_deviation_nodes",
+            "terminal_probability_mass",
+            "interval_summaries",
+            "representative_transform",
+            "integration_quality"
+          ],
+          "kind": "contract_model",
+          "signature": "(maturity_interval: 'float', engine_kind: 'JaniformVanillaOptionMaturityPricingEngineKind', terminal_anchor_value: 'Optional[float]', deviation_grid_lower_bound: 'Optional[float]', deviation_grid_upper_bound: 'Optional[float]', deviation_grid_node_count: 'Optional[int]', terminal_deviation_nodes: 'Optional[tuple[float, ...]]', terminal_probability_mass: 'Optional[tuple[float, ...]]', interval_summaries: 'tuple[JaniformVanillaOptionMaturityIntervalSummary, ...]', representative_transform: 'Optional[dict[str, Any]]', integration_quality: 'Optional[dict[str, Any]]') -> 'None'"
+        }
+      }
+    },
+    "janiform.calibration.fit.pricing.surface": {
+      "exports": [
+        "JaniformVanillaOptionSurface",
+        "JaniformVanillaOptionSurfacePricingResult"
+      ],
+      "module_name": "janiform.calibration.fit.pricing.surface",
+      "schema_identifiers": [],
+      "symbols": {
         "JaniformVanillaOptionSurface": {
           "field_names": [
             "spot",
@@ -999,6 +772,50 @@
           ],
           "kind": "contract_model",
           "signature": "(run_id: 'str', workflow_scope: 'CalibrationMarketDataWorkflowScope', success: 'bool', resolved_configuration: 'ResolvedPresetWorkflowConfiguration', session_resolution: 'MarketDataSessionResolution', preparation_diagnostics: 'MarketDataCalibrationPreparationDiagnostics', preparation_provenance: 'MarketDataCalibrationPreparationProvenance', staged_request: 'StagedCalibrationRequest', prepared_data_reference: 'str | None', prepared_payload_path: 'str | None', staged_execution_input_path: 'str | None', staged_response: 'StagedCalibrationResponse', stage_report_payloads: 'tuple[dict[str, Any], ...]') -> 'None'"
+        }
+      }
+    },
+    "janiform.calibration.fit.result": {
+      "exports": [
+        "JaniformFitResult"
+      ],
+      "module_name": "janiform.calibration.fit.result",
+      "schema_identifiers": [],
+      "symbols": {
+        "JaniformFitResult": {
+          "field_names": [
+            "model",
+            "report"
+          ],
+          "kind": "contract_model",
+          "signature": "(model: 'Optional[JaniformModel]', report: 'JaniformFitReport') -> 'None'"
+        }
+      }
+    },
+    "janiform.calibration.fit.state": {
+      "exports": [
+        "CurrentStateEstimationRequest",
+        "CurrentStateEstimationResult"
+      ],
+      "module_name": "janiform.calibration.fit.state",
+      "schema_identifiers": [],
+      "symbols": {
+        "CurrentStateEstimationRequest": {
+          "field_names": [
+            "observed_tick_data",
+            "tick_data_column_mapping",
+            "observed_price"
+          ],
+          "kind": "contract_model",
+          "signature": "(observed_tick_data: 'pandas.DataFrame | Mapping[str, Sequence[Any]]', tick_data_column_mapping: 'Optional[CalibrationTickDataColumnMapping]' = None, observed_price: 'Optional[float]' = None) -> 'None'"
+        },
+        "CurrentStateEstimationResult": {
+          "field_names": [
+            "hawkes_excitation_state",
+            "mean_reversion_boundary_state"
+          ],
+          "kind": "contract_model",
+          "signature": "(hawkes_excitation_state: 'HawkesExcitationState', mean_reversion_boundary_state: 'MeanReversionBoundaryState') -> 'None'"
         }
       }
     },
@@ -1133,7 +950,7 @@
             "known_news"
           ],
           "kind": "contract_model",
-          "signature": "(tick_data: 'CalibrationTickDataColumnMapping', option_surface: 'Optional[CalibrationOptionSurfaceColumnMapping]' = None, known_news: 'Optional[CalibrationKnownNewsColumnMapping]' = None) -> 'None'"
+          "signature": "(tick_data: 'CalibrationTickDataColumnMapping' = <factory>, option_surface: 'Optional[CalibrationOptionSurfaceColumnMapping]' = None, known_news: 'Optional[CalibrationKnownNewsColumnMapping]' = None) -> 'None'"
         },
         "CalibrationMarketDataNormalizationPolicy": {
           "field_names": [
@@ -1240,7 +1057,7 @@
             "implied_volatility_column"
           ],
           "kind": "contract_model",
-          "signature": "(quote_timestamp_column: 'str', expiry_timestamp_column: 'str', strike_column: 'str', option_type_column: 'str', mid_price_column: 'Optional[str]' = None, bid_column: 'Optional[str]' = None, ask_column: 'Optional[str]' = None, implied_volatility_column: 'Optional[str]' = None) -> 'None'"
+          "signature": "(quote_timestamp_column: 'Optional[str]' = None, expiry_timestamp_column: 'Optional[str]' = None, strike_column: 'Optional[str]' = None, option_type_column: 'Optional[str]' = None, mid_price_column: 'Optional[str]' = None, bid_column: 'Optional[str]' = None, ask_column: 'Optional[str]' = None, implied_volatility_column: 'Optional[str]' = None) -> 'None'"
         },
         "CalibrationSessionConfigurationInput": {
           "field_names": [
@@ -1260,7 +1077,7 @@
             "ask_column"
           ],
           "kind": "contract_model",
-          "signature": "(timestamp_column: 'str', price_column: 'Optional[str]' = None, trade_sign_column: 'Optional[str]' = None, bid_column: 'Optional[str]' = None, ask_column: 'Optional[str]' = None) -> 'None'"
+          "signature": "(timestamp_column: 'Optional[str]' = None, price_column: 'Optional[str]' = None, trade_sign_column: 'Optional[str]' = None, bid_column: 'Optional[str]' = None, ask_column: 'Optional[str]' = None) -> 'None'"
         },
         "CalibrationTickPriceInputPolicy": {
           "kind": "enum",
@@ -1321,10 +1138,10 @@
             "run_id",
             "tick_data_source",
             "session_configuration",
-            "column_mapping",
             "workflow_scope",
             "normalization_policy",
             "output_preferences",
+            "column_mapping",
             "optimizer_settings_by_stage",
             "preprocessing_settings",
             "option_surface_source",
@@ -1334,7 +1151,7 @@
             "mean_reversion"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: 'str', run_id: 'str', tick_data_source: 'CalibrationInputFileReference', session_configuration: 'CalibrationSessionConfigurationInput', column_mapping: 'CalibrationMarketDataColumnMapping', workflow_scope: 'CalibrationMarketDataWorkflowScope', normalization_policy: 'CalibrationMarketDataNormalizationPolicy', output_preferences: 'CalibrationMarketDataOutputPreferences', optimizer_settings_by_stage: 'tuple[CalibrationStageSolverSettings, ...]' = (), preprocessing_settings: 'Optional[CalibrationMarketDataPreprocessingSettings]' = None, option_surface_source: 'Optional[CalibrationInputFileReference]' = None, option_surface_valuation_time_utc: 'Optional[datetime]' = None, carry: 'Optional[CalibrationFlatCarryInput]' = None, known_news_inputs: 'Optional[CalibrationKnownNewsInput]' = None, mean_reversion: 'Optional[CalibrationMeanReversionConfiguration]' = None) -> 'None'"
+          "signature": "(schema_version: 'str', run_id: 'str', tick_data_source: 'CalibrationInputFileReference', session_configuration: 'CalibrationSessionConfigurationInput', workflow_scope: 'CalibrationMarketDataWorkflowScope', normalization_policy: 'CalibrationMarketDataNormalizationPolicy', output_preferences: 'CalibrationMarketDataOutputPreferences', column_mapping: 'CalibrationMarketDataColumnMapping' = <factory>, optimizer_settings_by_stage: 'tuple[CalibrationStageSolverSettings, ...]' = (), preprocessing_settings: 'Optional[CalibrationMarketDataPreprocessingSettings]' = None, option_surface_source: 'Optional[CalibrationInputFileReference]' = None, option_surface_valuation_time_utc: 'Optional[datetime]' = None, carry: 'Optional[CalibrationFlatCarryInput]' = None, known_news_inputs: 'Optional[CalibrationKnownNewsInput]' = None, mean_reversion: 'Optional[CalibrationMeanReversionConfiguration]' = None) -> 'None'"
         },
         "MarketDataCalibrationSourceSummary": {
           "field_names": [
@@ -1558,7 +1375,7 @@
             "known_news"
           ],
           "kind": "contract_model",
-          "signature": "(tick_data: 'CalibrationTickDataColumnMapping', option_surface: 'Optional[CalibrationOptionSurfaceColumnMapping]' = None, known_news: 'Optional[CalibrationKnownNewsColumnMapping]' = None) -> 'None'"
+          "signature": "(tick_data: 'CalibrationTickDataColumnMapping' = <factory>, option_surface: 'Optional[CalibrationOptionSurfaceColumnMapping]' = None, known_news: 'Optional[CalibrationKnownNewsColumnMapping]' = None) -> 'None'"
         },
         "CalibrationMarketDataNormalizationPolicy": {
           "field_names": [
@@ -1665,7 +1482,7 @@
             "implied_volatility_column"
           ],
           "kind": "contract_model",
-          "signature": "(quote_timestamp_column: 'str', expiry_timestamp_column: 'str', strike_column: 'str', option_type_column: 'str', mid_price_column: 'Optional[str]' = None, bid_column: 'Optional[str]' = None, ask_column: 'Optional[str]' = None, implied_volatility_column: 'Optional[str]' = None) -> 'None'"
+          "signature": "(quote_timestamp_column: 'Optional[str]' = None, expiry_timestamp_column: 'Optional[str]' = None, strike_column: 'Optional[str]' = None, option_type_column: 'Optional[str]' = None, mid_price_column: 'Optional[str]' = None, bid_column: 'Optional[str]' = None, ask_column: 'Optional[str]' = None, implied_volatility_column: 'Optional[str]' = None) -> 'None'"
         },
         "CalibrationSessionConfigurationInput": {
           "field_names": [
@@ -1685,7 +1502,7 @@
             "ask_column"
           ],
           "kind": "contract_model",
-          "signature": "(timestamp_column: 'str', price_column: 'Optional[str]' = None, trade_sign_column: 'Optional[str]' = None, bid_column: 'Optional[str]' = None, ask_column: 'Optional[str]' = None) -> 'None'"
+          "signature": "(timestamp_column: 'Optional[str]' = None, price_column: 'Optional[str]' = None, trade_sign_column: 'Optional[str]' = None, bid_column: 'Optional[str]' = None, ask_column: 'Optional[str]' = None) -> 'None'"
         },
         "CalibrationTickPriceInputPolicy": {
           "kind": "enum",
@@ -1723,7 +1540,7 @@
         },
         "validate_tick_price_input_policy": {
           "kind": "function",
-          "signature": "(*, workflow_scope: 'CalibrationMarketDataWorkflowScope', column_mapping: 'CalibrationTickDataColumnMapping', normalization_policy: 'CalibrationMarketDataNormalizationPolicy') -> 'None'"
+          "signature": "(*, workflow_scope: 'CalibrationMarketDataWorkflowScope', normalization_policy: 'CalibrationMarketDataNormalizationPolicy') -> 'None'"
         }
       }
     },
@@ -1774,10 +1591,10 @@
             "run_id",
             "tick_data_source",
             "session_configuration",
-            "column_mapping",
             "workflow_scope",
             "normalization_policy",
             "output_preferences",
+            "column_mapping",
             "optimizer_settings_by_stage",
             "preprocessing_settings",
             "option_surface_source",
@@ -1787,7 +1604,7 @@
             "mean_reversion"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: 'str', run_id: 'str', tick_data_source: 'CalibrationInputFileReference', session_configuration: 'CalibrationSessionConfigurationInput', column_mapping: 'CalibrationMarketDataColumnMapping', workflow_scope: 'CalibrationMarketDataWorkflowScope', normalization_policy: 'CalibrationMarketDataNormalizationPolicy', output_preferences: 'CalibrationMarketDataOutputPreferences', optimizer_settings_by_stage: 'tuple[CalibrationStageSolverSettings, ...]' = (), preprocessing_settings: 'Optional[CalibrationMarketDataPreprocessingSettings]' = None, option_surface_source: 'Optional[CalibrationInputFileReference]' = None, option_surface_valuation_time_utc: 'Optional[datetime]' = None, carry: 'Optional[CalibrationFlatCarryInput]' = None, known_news_inputs: 'Optional[CalibrationKnownNewsInput]' = None, mean_reversion: 'Optional[CalibrationMeanReversionConfiguration]' = None) -> 'None'"
+          "signature": "(schema_version: 'str', run_id: 'str', tick_data_source: 'CalibrationInputFileReference', session_configuration: 'CalibrationSessionConfigurationInput', workflow_scope: 'CalibrationMarketDataWorkflowScope', normalization_policy: 'CalibrationMarketDataNormalizationPolicy', output_preferences: 'CalibrationMarketDataOutputPreferences', column_mapping: 'CalibrationMarketDataColumnMapping' = <factory>, optimizer_settings_by_stage: 'tuple[CalibrationStageSolverSettings, ...]' = (), preprocessing_settings: 'Optional[CalibrationMarketDataPreprocessingSettings]' = None, option_surface_source: 'Optional[CalibrationInputFileReference]' = None, option_surface_valuation_time_utc: 'Optional[datetime]' = None, carry: 'Optional[CalibrationFlatCarryInput]' = None, known_news_inputs: 'Optional[CalibrationKnownNewsInput]' = None, mean_reversion: 'Optional[CalibrationMeanReversionConfiguration]' = None) -> 'None'"
         },
         "deserialize_market_data_calibration_request": {
           "kind": "function",

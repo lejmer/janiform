@@ -171,24 +171,43 @@ fn normalize_market_data_source(
     let normalized_handle = Py::new(
         py,
         PyNormalizedMarketDataHandle {
-            normalized_output: normalized_output.clone(),
+            normalized_output: Arc::new(normalized_output),
         },
     )?;
 
-    result.set_item("normalized_handle", normalized_handle)?;
+    result.set_item("normalized_handle", &normalized_handle)?;
     result.set_item(
         "tick_data_summary",
         json_value_to_py_object(
             py,
-            &serde_json::to_value(&normalized_output.tick_data_summary).map_err(|source| {
+            &serde_json::to_value(
+                &normalized_handle
+                    .borrow(py)
+                    .normalized_output
+                    .tick_data_summary,
+            )
+            .map_err(|source| {
                 CalibrationExecutionError::new_err(format!(
                     "failed to serialize normalized tick-data summary: {source}"
                 ))
             })?,
         )?,
     )?;
-    result.set_item("reference_price", normalized_output.reference_price)?;
-    result.set_item("fit_warning", normalized_output.fit_warning)?;
+    result.set_item(
+        "reference_price",
+        normalized_handle
+            .borrow(py)
+            .normalized_output
+            .reference_price,
+    )?;
+    result.set_item(
+        "fit_warning",
+        normalized_handle
+            .borrow(py)
+            .normalized_output
+            .fit_warning
+            .clone(),
+    )?;
 
     Ok(result.into())
 }
@@ -211,7 +230,7 @@ fn resolve_market_data_session(
         .allow_threads(|| {
             resolve_market_data_session_configuration_native(
                 session_configuration,
-                normalized_market_data_handle.map(|handle| &handle.normalized_output),
+                normalized_market_data_handle.map(|handle| handle.normalized_output.as_ref()),
             )
         })
         .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
@@ -249,7 +268,7 @@ fn prepare_market_data_calibration_plan_from_phases(
         .allow_threads(|| {
             prepare_market_data_calibration_plan_from_phases_core(
                 request,
-                normalized_market_data_handle.normalized_output.clone(),
+                normalized_market_data_handle.normalized_output.as_ref(),
                 session_resolution,
                 cpu_count,
             )

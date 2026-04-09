@@ -436,8 +436,8 @@ def _clip_price_series_to_range(
         & (series.timestamp_microseconds_utc <= range_end_microseconds_utc)
     )
 
-    direct_return_timestamps_microseconds_utc = None
-    direct_returns = None
+    direct_return_timestamps_microseconds_utc: Optional[NDArray[np.int64]] = None
+    direct_returns: Optional[NDArray[np.float64]] = None
     if (
         series.direct_return_timestamps_microseconds_utc is not None
         and series.direct_returns is not None
@@ -640,8 +640,8 @@ def _price_series_from_cached_payload(
     prefix: str,
 ) -> WorkbenchPriceSeries:
     has_direct_returns = bool(int(cached_payload[f"{prefix}_has_direct_returns"].item()))
-    direct_return_timestamps_microseconds_utc = None
-    direct_returns = None
+    direct_return_timestamps_microseconds_utc: Optional[NDArray[np.int64]] = None
+    direct_returns: Optional[NDArray[np.float64]] = None
     if has_direct_returns:
         direct_return_timestamps_microseconds_utc = np.asarray(
             cached_payload[f"{prefix}_direct_return_timestamps_microseconds_utc"],

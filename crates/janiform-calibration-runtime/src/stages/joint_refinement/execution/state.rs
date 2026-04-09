@@ -9,7 +9,7 @@ use janiform_calibration_artifacts::{
     ReturnComponentsStageFittedParameters,
 };
 use janiform_engine_pricing::{
-    AnchoredVanillaOptionPricingBoundaryInput, VanillaOptionGroupedBatchPricingRequest,
+    AnchoredVanillaOptionPricingBoundaryInput, VanillaOptionGridBatchPricingRequest,
     VanillaOptionPayoffType, VanillaOptionPricingIntervalFactors,
 };
 use serde::{Deserialize, Serialize};
@@ -266,7 +266,7 @@ pub(crate) struct JointRefinementContext {
 
 #[derive(Debug, Clone)]
 pub(crate) struct JointRefinementOptionNodeLocation {
-    pub(crate) group_index: usize,
+    pub(crate) grid_index: usize,
     pub(crate) maturity_index: usize,
     pub(crate) strike_index: usize,
 }
@@ -286,7 +286,7 @@ pub(crate) struct JointRefinementOptionNodeDefinition {
 #[derive(Debug, Clone)]
 pub(crate) struct JointRefinementOptionPricingContext {
     pub(crate) valuation_time_utc_nanos: i64,
-    pub(crate) grouped_pricing_request: VanillaOptionGroupedBatchPricingRequest,
+    pub(crate) grid_batch_pricing_request: VanillaOptionGridBatchPricingRequest,
     pub(crate) boundary_input: AnchoredVanillaOptionPricingBoundaryInput,
     pub(crate) interval_factors: Vec<VanillaOptionPricingIntervalFactors>,
     pub(crate) carry_input: janiform_calibration_artifacts::JointRefinementStageCarryInput,

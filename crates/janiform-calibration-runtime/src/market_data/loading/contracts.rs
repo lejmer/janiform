@@ -54,7 +54,8 @@ pub enum MarketDataInputFileFormat {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MarketDataTickDataColumnMapping {
-    pub timestamp_column: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timestamp_column: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub price_column: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -84,10 +85,14 @@ pub struct MarketDataOptionSurfaceLoadingInput {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MarketDataOptionSurfaceColumnMapping {
-    pub quote_timestamp_column: String,
-    pub expiry_timestamp_column: String,
-    pub strike_column: String,
-    pub option_type_column: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quote_timestamp_column: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expiry_timestamp_column: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub strike_column: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub option_type_column: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mid_price_column: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

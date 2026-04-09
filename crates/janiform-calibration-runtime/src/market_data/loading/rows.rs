@@ -1,4 +1,12 @@
+use arrow_array::{
+    Array, BooleanArray, Date32Array, Date64Array, Float32Array, Float64Array, Int8Array,
+    Int16Array, Int32Array, Int64Array, LargeStringArray, RecordBatch, StringArray,
+    TimestampMicrosecondArray, TimestampMillisecondArray, TimestampNanosecondArray,
+    TimestampSecondArray, UInt8Array, UInt16Array, UInt32Array, UInt64Array,
+};
 use csv::StringRecord;
+use parquet::arrow::ProjectionMask;
+use parquet::arrow::arrow_reader::{ParquetRecordBatchReader, ParquetRecordBatchReaderBuilder};
 use parquet::file::reader::{FileReader, SerializedFileReader};
 use parquet::record::Field;
 use std::collections::{BTreeMap, HashSet};
@@ -8,6 +16,8 @@ use super::contracts::{
     MarketDataInputFileFormat, MarketDataInputFileReference, MarketDataLoadingError,
 };
 use super::shared::{RawRow, RawValue};
+
+const PROJECTED_PARQUET_BATCH_SIZE: usize = 65_536;
 
 pub(super) fn load_source_columns(
     file_reference: &MarketDataInputFileReference,
@@ -112,6 +122,40 @@ pub(super) fn load_rows(
     }
 }
 
+pub(super) fn load_projected_parquet_record_batch_reader(
+    file_reference: &MarketDataInputFileReference,
+    field_path: &str,
+    projected_columns: &[String],
+) -> Result<ParquetRecordBatchReader, MarketDataLoadingError> {
+    let file = File::open(&file_reference.path).map_err(|error| MarketDataLoadingError::Io {
+        field_path: format!("{field_path}.path"),
+        message: error.to_string(),
+    })?;
+
+    let builder = ParquetRecordBatchReaderBuilder::try_new(file).map_err(|error| {
+        MarketDataLoadingError::Parquet {
+            field_path: format!("{field_path}.path"),
+            message: error.to_string(),
+        }
+    })?;
+
+    let parquet_schema = builder.metadata().file_metadata().schema_descr_ptr();
+
+    let projection = ProjectionMask::columns(
+        parquet_schema.as_ref(),
+        projected_columns.iter().map(String::as_str),
+    );
+
+    builder
+        .with_projection(projection)
+        .with_batch_size(PROJECTED_PARQUET_BATCH_SIZE)
+        .build()
+        .map_err(|error| MarketDataLoadingError::Parquet {
+            field_path: format!("{field_path}.path"),
+            message: error.to_string(),
+        })
+}
+
 pub(super) fn load_csv_rows(
     file_reference: &MarketDataInputFileReference,
     field_path: &str,
@@ -193,6 +237,122 @@ pub(super) fn load_parquet_rows(
     }
 
     Ok(rows)
+}
+
+pub(super) fn column_index(
+    batch: &RecordBatch,
+    column_name: &str,
+    field_path: &str,
+    source_path: &str,
+) -> Result<usize, MarketDataLoadingError> {
+    batch
+        .schema_ref()
+        .index_of(column_name)
+        .map_err(|_| MarketDataLoadingError::MissingColumn {
+            field_path: field_path.to_string(),
+            message: format!(
+                "references source columns that are not present in the projected parquet batch. Missing columns: {column_name}. Update the explicit column mapping so Janiform does not have to guess the schema. source_path={source_path}"
+            ),
+        })
+}
+
+pub(super) fn raw_value_from_arrow_array(
+    array: &dyn Array,
+    row_index: usize,
+    field_path: &str,
+    source_path: &str,
+) -> Result<RawValue, MarketDataLoadingError> {
+    if array.is_null(row_index) {
+        return Ok(RawValue::Null);
+    }
+
+    if let Some(values) = array.as_any().downcast_ref::<BooleanArray>() {
+        return Ok(if values.value(row_index) {
+            RawValue::Text("true".to_string())
+        } else {
+            RawValue::Text("false".to_string())
+        });
+    }
+
+    if let Some(values) = array.as_any().downcast_ref::<Int8Array>() {
+        return Ok(RawValue::Integer(i64::from(values.value(row_index))));
+    }
+
+    if let Some(values) = array.as_any().downcast_ref::<Int16Array>() {
+        return Ok(RawValue::Integer(i64::from(values.value(row_index))));
+    }
+
+    if let Some(values) = array.as_any().downcast_ref::<Int32Array>() {
+        return Ok(RawValue::Integer(i64::from(values.value(row_index))));
+    }
+
+    if let Some(values) = array.as_any().downcast_ref::<Int64Array>() {
+        return Ok(RawValue::Integer(values.value(row_index)));
+    }
+
+    if let Some(values) = array.as_any().downcast_ref::<UInt8Array>() {
+        return Ok(RawValue::Integer(i64::from(values.value(row_index))));
+    }
+
+    if let Some(values) = array.as_any().downcast_ref::<UInt16Array>() {
+        return Ok(RawValue::Integer(i64::from(values.value(row_index))));
+    }
+
+    if let Some(values) = array.as_any().downcast_ref::<UInt32Array>() {
+        return Ok(RawValue::Integer(i64::from(values.value(row_index))));
+    }
+
+    if let Some(values) = array.as_any().downcast_ref::<UInt64Array>() {
+        return Ok(RawValue::Float(values.value(row_index) as f64));
+    }
+
+    if let Some(values) = array.as_any().downcast_ref::<Float32Array>() {
+        return Ok(RawValue::Float(f64::from(values.value(row_index))));
+    }
+
+    if let Some(values) = array.as_any().downcast_ref::<Float64Array>() {
+        return Ok(RawValue::Float(values.value(row_index)));
+    }
+
+    if let Some(values) = array.as_any().downcast_ref::<StringArray>() {
+        return Ok(RawValue::Text(values.value(row_index).to_string()));
+    }
+
+    if let Some(values) = array.as_any().downcast_ref::<LargeStringArray>() {
+        return Ok(RawValue::Text(values.value(row_index).to_string()));
+    }
+
+    if let Some(values) = array.as_any().downcast_ref::<TimestampSecondArray>() {
+        return Ok(RawValue::Integer(values.value(row_index)));
+    }
+
+    if let Some(values) = array.as_any().downcast_ref::<TimestampMillisecondArray>() {
+        return Ok(RawValue::Integer(values.value(row_index)));
+    }
+
+    if let Some(values) = array.as_any().downcast_ref::<TimestampMicrosecondArray>() {
+        return Ok(RawValue::Integer(values.value(row_index)));
+    }
+
+    if let Some(values) = array.as_any().downcast_ref::<TimestampNanosecondArray>() {
+        return Ok(RawValue::Integer(values.value(row_index)));
+    }
+
+    if let Some(values) = array.as_any().downcast_ref::<Date32Array>() {
+        return Ok(RawValue::Integer(i64::from(values.value(row_index))));
+    }
+
+    if let Some(values) = array.as_any().downcast_ref::<Date64Array>() {
+        return Ok(RawValue::Integer(values.value(row_index)));
+    }
+
+    Err(MarketDataLoadingError::Parquet {
+        field_path: field_path.to_string(),
+        message: format!(
+            "encountered unsupported projected parquet column type {:?}. source_path={source_path}",
+            array.data_type()
+        ),
+    })
 }
 
 pub(super) fn raw_value_from_parquet_field(field: &Field) -> RawValue {

@@ -2,11 +2,11 @@ use std::collections::BTreeMap;
 
 use chrono::{DateTime, Utc};
 use janiform_engine_pricing::{
-    AnchoredVanillaOptionPricingBoundaryInput, VanillaOptionGroupedBatchGroupRequest,
-    VanillaOptionGroupedBatchPricingExecutionInput, VanillaOptionGroupedBatchPricingRequest,
-    VanillaOptionGroupedBatchPricingRunResult, VanillaOptionPayoffType,
+    AnchoredVanillaOptionPricingBoundaryInput, VanillaOptionGridRequest,
+    VanillaOptionGridBatchPricingExecutionInput, VanillaOptionGridBatchPricingRequest,
+    VanillaOptionGridBatchPricingRunResult, VanillaOptionPayoffType,
     VanillaOptionPricingIntervalFactors, VanillaOptionPricingModelParameters,
-    VanillaOptionPricingOptionalOutputSelection, run_vanilla_option_grouped_batch_pricing,
+    VanillaOptionPricingOptionalOutputSelection, run_vanilla_option_grid_batch_pricing,
 };
 use janiform_foundations::time::ONE_HOUR_NANOS;
 use janiform_market_time::hourly_factors::{
@@ -98,12 +98,12 @@ pub(crate) fn build_option_pricing_context(
     let boundary_input =
         build_option_boundary_input(mean_reversion_payload, &current_state_estimation_output)?;
 
-    let (grouped_pricing_request, observed_nodes) =
-        build_option_grouped_pricing_request(option_spot, option_pricing_input)?;
+    let (grid_batch_pricing_request, observed_nodes) =
+        build_option_grid_batch_pricing_request(option_spot, option_pricing_input)?;
 
     Ok(Some(JointRefinementOptionPricingContext {
         valuation_time_utc_nanos: option_pricing_input.valuation_time_utc_nanos,
-        grouped_pricing_request,
+        grid_batch_pricing_request,
         boundary_input,
         interval_factors,
         carry_input: option_pricing_input.carry_input.clone(),
@@ -352,12 +352,12 @@ fn build_option_boundary_input(
     )
 }
 
-fn build_option_grouped_pricing_request(
+fn build_option_grid_batch_pricing_request(
     spot: f64,
     option_pricing_input: &JointRefinementStageOptionPricingInput,
 ) -> Result<
     (
-        VanillaOptionGroupedBatchPricingRequest,
+        VanillaOptionGridBatchPricingRequest,
         Vec<JointRefinementOptionNodeDefinition>,
     ),
     JointRefinementStageExecutionFailure,
@@ -366,7 +366,7 @@ fn build_option_grouped_pricing_request(
     let dividend_yield = option_pricing_input.carry_input.discount_rate
         - option_pricing_input.carry_input.carry_rate;
 
-    let mut groups = Vec::new();
+    let mut grids = Vec::new();
     let mut observed_nodes = Vec::new();
 
     for payoff_type in [VanillaOptionPayoffType::Call, VanillaOptionPayoffType::Put] {
@@ -378,16 +378,16 @@ fn build_option_grouped_pricing_request(
         let bucket_definition =
             build_option_bucket_definition(&payoff_nodes, option_pricing_input)?;
 
-        let group_index = groups.len();
+        let grid_index = grids.len();
 
         observed_nodes.extend(build_observed_option_nodes(
-            group_index,
+            grid_index,
             &bucket_definition,
             &payoff_nodes,
             option_pricing_input,
         )?);
 
-        groups.push(VanillaOptionGroupedBatchGroupRequest {
+        grids.push(VanillaOptionGridRequest {
             payoff_type: bucket_definition.payoff_type,
             risk_free_rate,
             dividend_yield,
@@ -397,7 +397,7 @@ fn build_option_grouped_pricing_request(
     }
 
     Ok((
-        VanillaOptionGroupedBatchPricingRequest { spot, groups },
+        VanillaOptionGridBatchPricingRequest { spot, grids },
         observed_nodes,
     ))
 }
@@ -441,7 +441,7 @@ fn build_option_bucket_definition(
 }
 
 fn build_observed_option_nodes(
-    group_index: usize,
+    grid_index: usize,
     bucket_definition: &OptionBucketDefinition,
     payoff_nodes: &[&crate::stages::joint_refinement::JointRefinementStageOptionSnapshotNode],
     option_pricing_input: &JointRefinementStageOptionPricingInput,
@@ -468,7 +468,7 @@ fn build_observed_option_nodes(
                 ask_price: node.ask_price,
                 observed_mid_price: node.observed_mid_price,
                 location: JointRefinementOptionNodeLocation {
-                    group_index,
+                    grid_index,
                     maturity_index,
                     strike_index,
                 },
@@ -512,16 +512,16 @@ fn locate_option_grid_coordinate(
         )
 }
 
-fn run_option_grouped_pricing(
+fn run_option_grid_batch_pricing(
     context: &JointRefinementContext,
     fitted_parameters: &janiform_calibration_artifacts::JointRefinementStageFittedParameters,
-) -> Result<VanillaOptionGroupedBatchPricingRunResult, String> {
+) -> Result<VanillaOptionGridBatchPricingRunResult, String> {
     let Some(option_pricing_context) = context.option_pricing_context.as_ref() else {
         return Err("joint option pricing context is unavailable".to_string());
     };
 
-    run_vanilla_option_grouped_batch_pricing(VanillaOptionGroupedBatchPricingExecutionInput {
-        request: option_pricing_context.grouped_pricing_request.clone(),
+    run_vanilla_option_grid_batch_pricing(VanillaOptionGridBatchPricingExecutionInput {
+        request: option_pricing_context.grid_batch_pricing_request.clone(),
         boundary_input: option_pricing_context.boundary_input.clone(),
         model_parameters: VanillaOptionPricingModelParameters::new(
             fitted_parameters.hawkes_fitted_parameters.kernel_parameters,
@@ -552,7 +552,7 @@ pub(crate) fn option_spread_normalized_price_fit(
         return Ok(0.0);
     };
 
-    let pricing_result = run_option_grouped_pricing(context, fitted_parameters)?;
+    let pricing_result = run_option_grid_batch_pricing(context, fitted_parameters)?;
 
     let mut normalized_residuals = Vec::with_capacity(option_pricing_context.observed_nodes.len());
 
@@ -580,7 +580,7 @@ pub(crate) fn build_option_calibration_diagnostics(
         return Ok(None);
     };
 
-    let pricing_result = run_option_grouped_pricing(context, fitted_parameters)?;
+    let pricing_result = run_option_grid_batch_pricing(context, fitted_parameters)?;
 
     let (node_diagnostics, maturity_bucket_residuals, strike_bucket_residuals) =
         build_option_node_diagnostics(&pricing_result, option_pricing_context)?;
@@ -601,7 +601,7 @@ pub(crate) fn build_option_calibration_diagnostics(
 type ResidualBuckets = BTreeMap<String, Vec<f64>>;
 
 fn build_option_node_diagnostics(
-    pricing_result: &VanillaOptionGroupedBatchPricingRunResult,
+    pricing_result: &VanillaOptionGridBatchPricingRunResult,
     option_pricing_context: &JointRefinementOptionPricingContext,
 ) -> Result<
     (
@@ -702,15 +702,15 @@ fn build_option_bucket_aggregate_diagnostics(
 }
 
 fn resolve_model_option_price(
-    pricing_result: &VanillaOptionGroupedBatchPricingRunResult,
+    pricing_result: &VanillaOptionGridBatchPricingRunResult,
     observed_node: &JointRefinementOptionNodeDefinition,
     error_message: &str,
 ) -> Result<f64, String> {
-    let group = pricing_result
-        .groups
-        .get(observed_node.location.group_index)
+    let grid = pricing_result
+        .grids
+        .get(observed_node.location.grid_index)
         .ok_or_else(|| error_message.to_string())?;
-    let model_price = group
+    let model_price = grid
         .price_grid
         .get(observed_node.location.maturity_index)
         .and_then(|row| row.get(observed_node.location.strike_index))
@@ -721,14 +721,14 @@ fn resolve_model_option_price(
         return Ok(model_price);
     }
 
-    let failure_stage = group
+    let failure_stage = grid
         .pricing_failure_stage_grid
         .get(observed_node.location.maturity_index)
         .and_then(|row| row.get(observed_node.location.strike_index))
         .and_then(|stage| *stage)
         .map(|stage| format!("{stage:?}"))
         .unwrap_or_else(|| "unknown".to_string());
-    let failure_reason = group
+    let failure_reason = grid
         .pricing_failure_reason_grid
         .get(observed_node.location.maturity_index)
         .and_then(|row| row.get(observed_node.location.strike_index))

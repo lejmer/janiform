@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from concurrent.futures import Future, ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor
 from collections.abc import Callable
 from dataclasses import dataclass
 import multiprocessing

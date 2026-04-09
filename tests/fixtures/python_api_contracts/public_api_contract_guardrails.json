@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale.v1",
-  "approved_snapshot_sha256": "d93cacfdcebdfa0aa71a1c7d345ac6b5e70b88b712a03819e157e12ea449e719",
+  "approved_snapshot_sha256": "bfa79063bc9dadd9f2f68844f2111440f729522ea4e472050dfe558278be4efd",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -996,6 +996,110 @@
         "janiform.calibration.staged.runtime",
         "janiform.cli",
         "janiform.contracts"
+      ]
+    },
+    {
+      "approved_on": "2026-04-08",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The high-level fit surface now groups pricing, state-estimation, and fit-inference ownership under dedicated subpackages instead of flat helper modules, and the observed snapshot pricing results are part of the public fit-pricing surface. The approved snapshot must therefore record janiform.calibration.fit.state as the public state-estimation module, keep janiform.calibration.fit.pricing as the canonical pricing ownership package, and align the root calibration exports with the observed snapshot result types that are already part of the supported workflow surface.",
+      "snapshot_sha256": "c3391f66a5e9c807c3685a8ae979b13ab9909bff76e0ef99be12be926056d9d4",
+      "summary": "Approve the fit package ownership subpackages and observed snapshot pricing exports.",
+      "updated_surfaces": [
+        "janiform.calibration",
+        "janiform.calibration.fit",
+        "janiform.calibration.fit.pricing",
+        "janiform.calibration.fit.state"
+      ]
+    },
+    {
+      "approved_on": "2026-04-08",
+      "docs_updated": [],
+      "rationale": "The refactored fit package now uses responsibility-based internal names instead of leaking the old high_level label through private implementation symbols, so the approved snapshot records the cleaned model persistence constant name without changing the serialized schema value.",
+      "snapshot_sha256": "2ec178a2fcfccac53ac7d83c22238e1a4338757079d7922b019327f76c6f621c",
+      "summary": "Record the fit package naming cleanup in the approved Python API snapshot."
+    },
+    {
+      "approved_on": "2026-04-08",
+      "docs_updated": [],
+      "rationale": "The high-level fit API now separates the simple raising path from the reporting path, so JaniformEstimator.fit no longer changes shape based on a boolean flag and the public surface records JaniformFitResult plus the explicit fit_with_report entrypoint.",
+      "snapshot_sha256": "555a8617be8123075dee0a45a858ead6f0d116bbc0800f1462df1b399d0f3b20",
+      "summary": "Approve the split high-level fit and fit_with_report API surface.",
+      "updated_surfaces": [
+        "janiform.calibration",
+        "janiform.calibration.fit",
+        "janiform.calibration.fit.estimator",
+        "janiform.calibration.fit.result"
+      ]
+    },
+    {
+      "approved_on": "2026-04-08",
+      "rationale": "The fit package now treats execution, inference, preparation, and runtime helpers as internal _-prefixed implementation modules, removes estimator compatibility base classes from the public contract metadata, and keeps janiform.calibration.fit.state focused on public state-estimation contracts rather than implementation helpers.",
+      "snapshot_sha256": "c94779cccc923c255570983f2c03b80244879498c727728365d2622a0d6869f6",
+      "summary": "Curate the fit package boundary around public facades and internal workflow modules.",
+      "updated_surfaces": [
+        "janiform.calibration.fit",
+        "janiform.calibration.fit.estimator",
+        "janiform.calibration.fit.state"
+      ]
+    },
+    {
+      "approved_on": "2026-04-08",
+      "rationale": "The calibration root now exposes only the main high-level fit facade and root-level validation errors. Internal fitted-model helper behavior now lives in private _runtime service modules instead of on JaniformModel.",
+      "snapshot_sha256": "0531c541cbbf5a4ddf5ba2ece8c55830a0555073e5676c23451da0677f4b2b90",
+      "summary": "Shrink the calibration root and remove model-private runtime helper exports.",
+      "updated_surfaces": [
+        "janiform.calibration",
+        "janiform.calibration.fit.model"
+      ]
+    },
+    {
+      "approved_on": "2026-04-08",
+      "rationale": "The fitted-model pricing package now exposes grids, surface, summaries, and market_snapshot as explicit public concept modules. Internal pricing helpers live under internal and market_snapshot subpackages instead of underscore helper files.",
+      "snapshot_sha256": "b5bfbd27a42e7f0fe670281b271f4922a2d3509a07ee860c6bfa6fac66a04d9c",
+      "summary": "Reshape fitted-model pricing around concept modules and subpackages.",
+      "updated_surfaces": [
+        "janiform.calibration.fit.pricing",
+        "janiform.calibration.fit.pricing.grids",
+        "janiform.calibration.fit.pricing.market_snapshot",
+        "janiform.calibration.fit.pricing.summaries",
+        "janiform.calibration.fit.pricing.surface"
+      ]
+    },
+    {
+      "approved_on": "2026-04-09",
+      "docs_updated": [],
+      "rationale": "The janiform.calibration.fit root now stays focused on the main estimator, fitted model, and fit-result classes, while pricing and state contracts are imported from their ownership submodules.",
+      "snapshot_sha256": "c886b713602bce476e0e1228ec204d4666382321789d3d9d98a21eba969028ad",
+      "summary": "Narrow janiform.calibration.fit to the curated high-level surface.",
+      "updated_surfaces": [
+        "janiform.calibration.fit",
+        "janiform.calibration.fit.pricing",
+        "janiform.calibration.fit.state"
+      ]
+    },
+    {
+      "approved_on": "2026-04-09",
+      "docs_updated": [],
+      "rationale": "The option-grid pricing surface now uses grid-based contract names that match JaniformModel.price_option_grids, so callers no longer have to translate between grouped-batch naming and the public method vocabulary.",
+      "snapshot_sha256": "5c6a9bb84d0f55f20ebb329734d25349caef47269068e89a4fb051337da27c0d",
+      "summary": "Rename grouped-batch option pricing contracts to grid-based names.",
+      "updated_surfaces": [
+        "janiform.calibration.fit.pricing",
+        "janiform.calibration.fit.pricing.grids",
+        "janiform.calibration.fit.pricing.market_snapshot"
+      ]
+    },
+    {
+      "approved_on": "2026-04-09",
+      "docs_updated": [],
+      "rationale": "Give market_snapshot tabular inputs a real public owner module and import public pricing types in JaniformModel from their owning modules instead of the pricing barrel or private workflow modules.",
+      "snapshot_sha256": "bfa79063bc9dadd9f2f68844f2111440f729522ea4e472050dfe558278be4efd",
+      "summary": "Add market_snapshot.inputs as the public owner of TabularFrameInput and align model imports with owner modules.",
+      "updated_surfaces": [
+        "janiform.calibration.fit.model",
+        "janiform.calibration.fit.pricing.market_snapshot.inputs"
       ]
     }
   ],

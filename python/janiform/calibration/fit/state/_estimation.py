@@ -1,99 +1,28 @@
-"""Public current-state estimation contracts for fitted Janiform models."""
-
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, Optional, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import pandas
 
-from ..._native_api import native_module
-from ..._timestamps import datetime_to_utc_nanos
-from ...mean_reversion import MeanReversionBoundaryState
-from ...contracts import (
-    require_datetime_utc,
-    require_positive_finite_scalar,
-    require_timezone_aware_datetime,
+from ...._native_api import native_module
+from ...._timestamps import datetime_to_utc_nanos
+from ....contracts import require_datetime_utc, require_positive_finite_scalar, require_timezone_aware_datetime
+from ....mean_reversion import MeanReversionBoundaryState
+from ....simulation import SeededTickEventSide, HawkesExcitationState
+from ...errors import calibration_error
+from ...market_data.contracts import CalibrationTickDataColumnMapping
+from .._runtime.payloads import (
+    current_state_tick_data_column_mapping_for_model,
+    hawkes_kernel_parameters_for_model,
+    mean_reversion_fitted_parameters_for_model,
 )
-from ..market_data.contracts import CalibrationTickDataColumnMapping
-from ...simulation import HawkesExcitationState, SeededTickEventSide
-from ..errors import calibration_error
+from .._runtime.option_pricing.support import price_observed_log_price_from_spot
+from .contracts import CurrentStateEstimationRequest, CurrentStateEstimationResult
 
 if TYPE_CHECKING:
-    from .model import JaniformModel
-
-
-@dataclass(frozen=True, slots=True, eq=False)
-class CurrentStateEstimationRequest:
-    """Observed tick data required to estimate the current fitted-model runtime state."""
-
-    observed_tick_data: pandas.DataFrame | Mapping[str, Sequence[Any]]
-    tick_data_column_mapping: Optional[CalibrationTickDataColumnMapping] = None
-    observed_price: Optional[float] = None
-
-    def __post_init__(self) -> None:
-        if not isinstance(self.observed_tick_data, pandas.DataFrame) and not isinstance(
-            self.observed_tick_data,
-            Mapping,
-        ):
-            raise calibration_error(
-                "observed_tick_data",
-                "must be a pandas.DataFrame or a mapping of column arrays",
-            )
-
-        if (
-            self.tick_data_column_mapping is not None
-            and not isinstance(
-                self.tick_data_column_mapping,
-                CalibrationTickDataColumnMapping,
-            )
-        ):
-            raise calibration_error(
-                "tick_data_column_mapping",
-                "must be a CalibrationTickDataColumnMapping when provided",
-            )
-
-        if self.observed_price is not None:
-            require_positive_finite_scalar(
-                self.observed_price,
-                "observed_price",
-                calibration_error,
-            )
-
-    def __eq__(self, other: object) -> bool:
-        if not isinstance(other, CurrentStateEstimationRequest):
-            return NotImplemented
-
-        return (
-            self.tick_data_column_mapping == other.tick_data_column_mapping
-            and self.observed_price == other.observed_price
-            and _observed_tick_data_equal(
-                self.observed_tick_data,
-                other.observed_tick_data,
-            )
-        )
-
-
-@dataclass(frozen=True, slots=True)
-class CurrentStateEstimationResult:
-    """Current runtime state derived from a fitted model and observed signed trades."""
-
-    hawkes_excitation_state: HawkesExcitationState
-    mean_reversion_boundary_state: MeanReversionBoundaryState
-
-    def __post_init__(self) -> None:
-        if not isinstance(self.hawkes_excitation_state, HawkesExcitationState):
-            raise calibration_error(
-                "hawkes_excitation_state",
-                "must be a HawkesExcitationState",
-            )
-        if not isinstance(self.mean_reversion_boundary_state, MeanReversionBoundaryState):
-            raise calibration_error(
-                "mean_reversion_boundary_state",
-                "must be a MeanReversionBoundaryState",
-            )
+    from ..model import JaniformModel
 
 
 def estimate_current_state_for_model(
@@ -107,7 +36,8 @@ def estimate_current_state_for_model(
         field_path="state_time_utc",
         error_factory=calibration_error,
     )
-    column_mapping = model.current_state_tick_data_column_mapping(
+    column_mapping = current_state_tick_data_column_mapping_for_model(
+        model,
         request=request,
     )
     (
@@ -123,13 +53,14 @@ def estimate_current_state_for_model(
         if request.observed_price is not None
         else observed_trade_prices[-1]
     )
-    observed_log_price = model.pricing_observed_log_price_from_spot(
+    observed_log_price = price_observed_log_price_from_spot(
+        model,
         spot=observed_price,
     )
 
     native_payload = native_module().estimate_current_state_from_observed_data(
-        model.hawkes_kernel_parameters().to_payload(),
-        model.mean_reversion_fitted_parameters().to_payload(),
+        hawkes_kernel_parameters_for_model(model).to_payload(),
+        mean_reversion_fitted_parameters_for_model(model).to_payload(),
         datetime_to_utc_nanos(state_time_utc),
         observed_log_price,
         observed_timestamps_utc,
@@ -230,26 +161,10 @@ def _extract_observed_tick_data_columns(
     )
 
 
-def _observed_tick_data_equal(
-    left: pandas.DataFrame | Mapping[str, Sequence[Any]],
-    right: pandas.DataFrame | Mapping[str, Sequence[Any]],
-) -> bool:
-    if isinstance(left, pandas.DataFrame) and isinstance(right, pandas.DataFrame):
-        return left.equals(right)
-
-    if isinstance(left, Mapping) and isinstance(right, Mapping):
-        if set(left) != set(right):
-            return False
-
-        return all(tuple(left[column_name]) == tuple(right[column_name]) for column_name in left)
-
-    return False
-
-
 def _extract_tick_data_column(
     observed_tick_data: pandas.DataFrame | Mapping[str, Sequence[Any]],
     *,
-    column_name: Optional[str],
+    column_name: str | None,
     field_path: str,
 ) -> tuple[Any, ...]:
     if column_name is None:
@@ -290,8 +205,8 @@ def _normalize_observed_timestamp_utc_string(
     if isinstance(raw_timestamp, str):
         try:
             parsed_timestamp = datetime.fromisoformat(raw_timestamp.replace("Z", "+00:00"))
-        except ValueError as e:
-            raise calibration_error(field_path, "must be a valid ISO 8601 UTC timestamp") from e
+        except ValueError as error:
+            raise calibration_error(field_path, "must be a valid ISO 8601 UTC timestamp") from error
 
         return require_datetime_utc(
             parsed_timestamp,
@@ -323,14 +238,12 @@ def _normalize_observed_trade_side(
     if isinstance(raw_trade_side, str):
         try:
             return SeededTickEventSide(raw_trade_side).value
-        except ValueError as e:
-            raise calibration_error(field_path, "must be one of: buy, sell") from e
+        except ValueError as error:
+            raise calibration_error(field_path, "must be one of: buy, sell") from error
 
     raise calibration_error(field_path, "must be a SeededTickEventSide or trade-side string")
 
 
 __all__ = [
-    "CurrentStateEstimationRequest",
-    "CurrentStateEstimationResult",
     "estimate_current_state_for_model",
 ]

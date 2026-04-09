@@ -1,5 +1,7 @@
 use std::collections::{BTreeMap, HashSet};
 
+use arrow_array::RecordBatch;
+
 use crate::calendar::ExchangeCalendarRegistryLoader;
 use crate::execution_bridge::CalibrationHawkesDirectionalLabelDiagnostics;
 use crate::market_data::preprocessing::{
@@ -7,20 +9,22 @@ use crate::market_data::preprocessing::{
     preprocess_market_data_translation_request,
 };
 
+use super::column_resolution::resolve_tick_data_column_mapping;
 use super::contracts::{
-    MarketDataDuplicateRecordPolicy, MarketDataInputFileReference, MarketDataLoadingError,
-    MarketDataLoadingOutput, MarketDataLoadingRequest, MarketDataNormalizationPolicy,
-    MarketDataNormalizedTickOutput, MarketDataSessionConfiguration,
+    MarketDataDuplicateRecordPolicy, MarketDataInputFileFormat, MarketDataInputFileReference,
+    MarketDataLoadingError, MarketDataLoadingOutput, MarketDataLoadingRequest,
+    MarketDataNormalizationPolicy, MarketDataNormalizedTickOutput, MarketDataSessionConfiguration,
     MarketDataSessionResolutionPayload, MarketDataSourceProbePayload, MarketDataSourceSummary,
     MarketDataTickDataColumnMapping, MarketDataTickPriceInputPolicy,
 };
 use super::known_news::load_known_news_records;
-use super::normalization::normalize_tick_row;
+use super::normalization::{normalize_tick_row, normalize_tick_values};
 use super::option_surface::{
     load_option_surface_records, materialize_option_surface_records_for_payload,
 };
 use super::rows::{
-    load_rows, load_source_columns, probe_source_row_count_estimate, validate_columns_exist,
+    column_index, load_projected_parquet_record_batch_reader, load_rows, load_source_columns,
+    probe_source_row_count_estimate, raw_value_from_arrow_array, validate_columns_exist,
 };
 use super::session_resolution::{
     resolve_market_data_session_configuration_from_tick_records,
@@ -46,7 +50,7 @@ pub fn load_and_preprocess_market_data_translation_request(
         Some(&normalized_tick_output),
     )?;
 
-    prepare_market_data_loading_from_phases(request, normalized_tick_output, session_resolution)
+    prepare_market_data_loading_from_phases(request, &normalized_tick_output, session_resolution)
 }
 
 pub fn probe_market_data_source(
@@ -110,7 +114,7 @@ pub fn resolve_market_data_session_configuration(
 
 pub fn prepare_market_data_loading_from_phases(
     request: MarketDataLoadingRequest,
-    normalized_tick_output: MarketDataNormalizedTickOutput,
+    normalized_tick_output: &MarketDataNormalizedTickOutput,
     session_resolution: MarketDataSessionResolutionPayload,
 ) -> Result<MarketDataLoadingOutput, MarketDataLoadingError> {
     let calendar_registry = ExchangeCalendarRegistryLoader::load_from_json(
@@ -136,24 +140,33 @@ pub fn prepare_market_data_loading_from_phases(
         None
     };
 
+    let (known_news_records, known_news_summary) = match known_news_output {
+        Some(output) => (output.known_news_records, Some(output.summary)),
+        None => (Vec::new(), None),
+    };
+
+    let (option_surface_quote_values, option_surface_summary, option_surface_records) =
+        match option_surface_output {
+            Some(output) => (
+                output.option_surface_quote_values,
+                Some(output.summary),
+                Some(output.option_surface_records),
+            ),
+            None => (Vec::new(), None, None),
+        };
+
     let preprocessing_request = MarketDataTranslationPreprocessingRequest {
         exchange_code: request.session_configuration.exchange_code,
         trade_events_data_reference: request.trade_events_data_reference,
         tick_records: normalized_tick_output.tick_records.clone(),
-        known_news_records: known_news_output
-            .as_ref()
-            .map(|output| output.known_news_records.clone())
-            .unwrap_or_default(),
-        option_surface_quote_values: option_surface_output
-            .as_ref()
-            .map(|output| output.option_surface_quote_values.clone())
-            .unwrap_or_default(),
+        known_news_records,
+        option_surface_quote_values,
         directional_label_diagnostics: normalized_tick_output
             .directional_label_diagnostics
-            .clone()
+            .as_ref()
             .map(|diagnostics| CalibrationHawkesDirectionalLabelDiagnostics {
-                policy_id: diagnostics.policy_id,
-                first_inferred_trade_sign: diagnostics.first_inferred_trade_sign,
+                policy_id: diagnostics.policy_id.clone(),
+                first_inferred_trade_sign: diagnostics.first_inferred_trade_sign.clone(),
                 provided_label_count: diagnostics.provided_label_count,
                 inferred_label_count: diagnostics.inferred_label_count,
                 flat_move_carry_count: diagnostics.flat_move_carry_count,
@@ -172,16 +185,13 @@ pub fn prepare_market_data_loading_from_phases(
     Ok(MarketDataLoadingOutput {
         session_resolution,
         preprocessing_output,
-        tick_data_summary: normalized_tick_output.tick_data_summary,
-        option_surface_summary: option_surface_output
-            .as_ref()
-            .map(|output| output.summary.clone()),
-        option_surface_records: option_surface_output.as_ref().map(|output| {
-            materialize_option_surface_records_for_payload(output.option_surface_records.as_slice())
-        }),
-        known_news_summary: known_news_output.map(|output| output.summary),
+        tick_data_summary: normalized_tick_output.tick_data_summary.clone(),
+        option_surface_summary,
+        option_surface_records: option_surface_records
+            .map(|records| materialize_option_surface_records_for_payload(records.as_slice())),
+        known_news_summary,
         reference_price: normalized_tick_output.reference_price,
-        fit_warning: normalized_tick_output.fit_warning,
+        fit_warning: normalized_tick_output.fit_warning.clone(),
     })
 }
 
@@ -191,8 +201,15 @@ fn load_tick_records(
     normalization_policy: &MarketDataNormalizationPolicy,
     require_hawkes: bool,
 ) -> Result<TickLoadOutput, MarketDataLoadingError> {
-    let required_columns = required_tick_source_columns(column_mapping, normalization_policy);
     let available_columns = load_source_columns(file_reference, "tick_data_source")?;
+    let resolved_column_mapping = resolve_tick_data_column_mapping(
+        available_columns.as_slice(),
+        column_mapping,
+        normalization_policy,
+        &file_reference.path,
+    )?;
+    let required_columns =
+        required_tick_source_columns(&resolved_column_mapping, normalization_policy);
 
     validate_columns_exist(
         &available_columns,
@@ -201,8 +218,42 @@ fn load_tick_records(
         &file_reference.path,
     )?;
 
+    let (normalized_rows, source_row_count) = match file_reference.file_format {
+        MarketDataInputFileFormat::Csv => load_csv_tick_rows(
+            file_reference,
+            &resolved_column_mapping,
+            normalization_policy,
+        )?,
+        MarketDataInputFileFormat::Parquet => load_parquet_tick_rows(
+            file_reference,
+            &resolved_column_mapping,
+            normalization_policy,
+        )?,
+        MarketDataInputFileFormat::Json => {
+            return Err(MarketDataLoadingError::InvalidValue {
+                field_path: "tick_data_source.file_format".to_string(),
+                message: "must be one of: csv, parquet".to_string(),
+            });
+        }
+    };
+
+    finalize_tick_load_output(
+        normalized_rows,
+        source_row_count,
+        file_reference,
+        normalization_policy,
+        require_hawkes,
+    )
+}
+
+fn load_csv_tick_rows(
+    file_reference: &MarketDataInputFileReference,
+    column_mapping: &MarketDataTickDataColumnMapping,
+    normalization_policy: &MarketDataNormalizationPolicy,
+) -> Result<(Vec<LoadedTickRecord>, usize), MarketDataLoadingError> {
     let raw_rows = load_rows(file_reference, "tick_data_source")?;
     let source_row_count = raw_rows.len();
+
     let mut normalized_rows = Vec::with_capacity(source_row_count);
 
     for (row_index, raw_row) in raw_rows.iter().enumerate() {
@@ -215,6 +266,100 @@ fn load_tick_records(
         )?);
     }
 
+    Ok((normalized_rows, source_row_count))
+}
+
+fn load_parquet_tick_rows(
+    file_reference: &MarketDataInputFileReference,
+    column_mapping: &MarketDataTickDataColumnMapping,
+    normalization_policy: &MarketDataNormalizationPolicy,
+) -> Result<(Vec<LoadedTickRecord>, usize), MarketDataLoadingError> {
+    let projected_columns = required_tick_source_columns(column_mapping, normalization_policy);
+    let source_row_count = probe_source_row_count_estimate(file_reference, "tick_data_source")?
+        .ok_or_else(|| MarketDataLoadingError::Parquet {
+            field_path: "tick_data_source.path".to_string(),
+            message: "parquet source row-count metadata is unavailable".to_string(),
+        })?;
+
+    let mut reader = load_projected_parquet_record_batch_reader(
+        file_reference,
+        "tick_data_source",
+        projected_columns.as_slice(),
+    )?;
+    let mut normalized_rows = Vec::with_capacity(source_row_count);
+    let mut source_row_number: usize = 0;
+
+    while let Some(batch_result) = reader.next() {
+        let batch = batch_result.map_err(|error| MarketDataLoadingError::Parquet {
+            field_path: "tick_data_source.path".to_string(),
+            message: error.to_string(),
+        })?;
+        let projected_columns =
+            ProjectedTickColumns::new(&batch, column_mapping, &file_reference.path)?;
+
+        for row_index in 0..batch.num_rows() {
+            source_row_number = source_row_number.saturating_add(1);
+
+            let timestamp_raw_value = projected_columns.required_value(
+                &batch,
+                projected_columns.timestamp_index,
+                row_index,
+                "column_mapping.tick_data.timestamp_column",
+                &file_reference.path,
+            )?;
+            let explicit_price_raw_value = projected_columns.optional_value(
+                &batch,
+                projected_columns.explicit_price_index,
+                row_index,
+                "column_mapping.tick_data.price_column",
+                &file_reference.path,
+            )?;
+            let bid_price_raw_value = projected_columns.optional_value(
+                &batch,
+                projected_columns.bid_price_index,
+                row_index,
+                "column_mapping.tick_data.bid_column",
+                &file_reference.path,
+            )?;
+            let ask_price_raw_value = projected_columns.optional_value(
+                &batch,
+                projected_columns.ask_price_index,
+                row_index,
+                "column_mapping.tick_data.ask_column",
+                &file_reference.path,
+            )?;
+            let trade_sign_raw_value = projected_columns.optional_value(
+                &batch,
+                projected_columns.trade_sign_index,
+                row_index,
+                "column_mapping.tick_data.trade_sign_column",
+                &file_reference.path,
+            )?;
+
+            normalized_rows.push(normalize_tick_values(
+                Some(&timestamp_raw_value),
+                explicit_price_raw_value.as_ref(),
+                bid_price_raw_value.as_ref(),
+                ask_price_raw_value.as_ref(),
+                trade_sign_raw_value.as_ref(),
+                source_row_number,
+                column_mapping,
+                normalization_policy,
+                &file_reference.path,
+            )?);
+        }
+    }
+
+    Ok((normalized_rows, source_row_count))
+}
+
+fn finalize_tick_load_output(
+    normalized_rows: Vec<LoadedTickRecord>,
+    source_row_count: usize,
+    file_reference: &MarketDataInputFileReference,
+    normalization_policy: &MarketDataNormalizationPolicy,
+    require_hawkes: bool,
+) -> Result<TickLoadOutput, MarketDataLoadingError> {
     let (mut deduplicated_rows, dropped_duplicate_row_count) = deduplicate_tick_rows(
         normalized_rows,
         normalization_policy.duplicate_record_policy,
@@ -263,6 +408,122 @@ fn load_tick_records(
         reference_price,
         fit_warning,
     })
+}
+
+struct ProjectedTickColumns {
+    timestamp_index: usize,
+    explicit_price_index: Option<usize>,
+    bid_price_index: Option<usize>,
+    ask_price_index: Option<usize>,
+    trade_sign_index: Option<usize>,
+}
+
+impl ProjectedTickColumns {
+    fn new(
+        batch: &RecordBatch,
+        column_mapping: &MarketDataTickDataColumnMapping,
+        source_path: &str,
+    ) -> Result<Self, MarketDataLoadingError> {
+        let timestamp_column = column_mapping.timestamp_column.as_deref().ok_or_else(|| {
+            MarketDataLoadingError::InvalidValue {
+                field_path: "column_mapping.tick_data.timestamp_column".to_string(),
+                message: "could not resolve a tick timestamp column".to_string(),
+            }
+        })?;
+
+        Ok(Self {
+            timestamp_index: column_index(
+                batch,
+                timestamp_column,
+                "column_mapping.tick_data.timestamp_column",
+                source_path,
+            )?,
+            explicit_price_index: column_mapping
+                .price_column
+                .as_ref()
+                .map(|column_name| {
+                    column_index(
+                        batch,
+                        column_name,
+                        "column_mapping.tick_data.price_column",
+                        source_path,
+                    )
+                })
+                .transpose()?,
+            bid_price_index: column_mapping
+                .bid_column
+                .as_ref()
+                .map(|column_name| {
+                    column_index(
+                        batch,
+                        column_name,
+                        "column_mapping.tick_data.bid_column",
+                        source_path,
+                    )
+                })
+                .transpose()?,
+            ask_price_index: column_mapping
+                .ask_column
+                .as_ref()
+                .map(|column_name| {
+                    column_index(
+                        batch,
+                        column_name,
+                        "column_mapping.tick_data.ask_column",
+                        source_path,
+                    )
+                })
+                .transpose()?,
+            trade_sign_index: column_mapping
+                .trade_sign_column
+                .as_ref()
+                .map(|column_name| {
+                    column_index(
+                        batch,
+                        column_name,
+                        "column_mapping.tick_data.trade_sign_column",
+                        source_path,
+                    )
+                })
+                .transpose()?,
+        })
+    }
+
+    fn required_value(
+        &self,
+        batch: &RecordBatch,
+        column_index: usize,
+        row_index: usize,
+        field_path: &str,
+        source_path: &str,
+    ) -> Result<super::shared::RawValue, MarketDataLoadingError> {
+        raw_value_from_arrow_array(
+            batch.column(column_index).as_ref(),
+            row_index,
+            field_path,
+            source_path,
+        )
+    }
+
+    fn optional_value(
+        &self,
+        batch: &RecordBatch,
+        column_index: Option<usize>,
+        row_index: usize,
+        field_path: &str,
+        source_path: &str,
+    ) -> Result<Option<super::shared::RawValue>, MarketDataLoadingError> {
+        column_index
+            .map(|index| {
+                raw_value_from_arrow_array(
+                    batch.column(index).as_ref(),
+                    row_index,
+                    field_path,
+                    source_path,
+                )
+            })
+            .transpose()
+    }
 }
 
 fn deduplicate_tick_rows(
@@ -500,7 +761,11 @@ fn required_tick_source_columns(
     column_mapping: &MarketDataTickDataColumnMapping,
     normalization_policy: &MarketDataNormalizationPolicy,
 ) -> Vec<String> {
-    let mut columns = vec![column_mapping.timestamp_column.clone()];
+    let mut columns = Vec::new();
+
+    if let Some(column) = &column_mapping.timestamp_column {
+        columns.push(column.clone());
+    }
 
     if let Some(column) = &column_mapping.price_column {
         columns.push(column.clone());
@@ -535,5 +800,83 @@ fn tick_price_policy_string(policy: MarketDataTickPriceInputPolicy) -> String {
     match policy {
         MarketDataTickPriceInputPolicy::ExplicitPriceColumn => "explicit_price_column".to_string(),
         MarketDataTickPriceInputPolicy::BidAskMidpoint => "bid_ask_midpoint".to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use arrow_array::{ArrayRef, Float64Array, StringArray, TimestampNanosecondArray};
+    use arrow_schema::{DataType, Field, Schema, TimeUnit};
+
+    use super::{
+        MarketDataInputFileFormat, MarketDataInputFileReference, MarketDataNormalizationPolicy,
+        MarketDataTickDataColumnMapping, MarketDataTickPriceInputPolicy,
+        normalize_market_data_source,
+    };
+    use crate::market_data::loading::test_support::{unique_test_path, write_parquet_record_batch};
+
+    #[test]
+    fn normalize_market_data_source_reads_projected_parquet_tick_columns() {
+        let parquet_path = unique_test_path("tick-source.parquet");
+        let schema = Arc::new(Schema::new(vec![
+            Field::new(
+                "event_time",
+                DataType::Timestamp(TimeUnit::Nanosecond, None),
+                false,
+            ),
+            Field::new("trade_price", DataType::Float64, false),
+            Field::new("trade_side", DataType::Utf8, false),
+            Field::new("ignored_label", DataType::Utf8, false),
+        ]));
+
+        write_parquet_record_batch(
+            parquet_path.as_path(),
+            schema,
+            vec![
+                Arc::new(TimestampNanosecondArray::from(vec![
+                    1_711_957_600_000_000_000_i64,
+                    1_711_957_601_000_000_000_i64,
+                ])) as ArrayRef,
+                Arc::new(Float64Array::from(vec![10.0_f64, 11.0_f64])) as ArrayRef,
+                Arc::new(StringArray::from(vec!["buy", "sell"])) as ArrayRef,
+                Arc::new(StringArray::from(vec!["first", "second"])) as ArrayRef,
+            ],
+        );
+
+        let normalized = normalize_market_data_source(
+            &MarketDataInputFileReference {
+                path: parquet_path.to_string_lossy().into_owned(),
+                file_format: MarketDataInputFileFormat::Parquet,
+                provenance_label: "ticks".to_string(),
+            },
+            &MarketDataTickDataColumnMapping {
+                timestamp_column: Some("event_time".to_string()),
+                price_column: Some("trade_price".to_string()),
+                trade_sign_column: Some("trade_side".to_string()),
+                bid_column: None,
+                ask_column: None,
+            },
+            &MarketDataNormalizationPolicy {
+                timestamp_timezone: "UTC".to_string(),
+                sort_records_by_timestamp: true,
+                duplicate_record_policy: None,
+                tick_price_input_policy: Some(MarketDataTickPriceInputPolicy::ExplicitPriceColumn),
+                option_quote_input_policy: None,
+            },
+            false,
+        )
+        .expect("projected parquet tick normalization should succeed");
+
+        assert_eq!(normalized.tick_records.len(), 2);
+        assert_eq!(normalized.tick_records[0].price, Some(10.0));
+        assert_eq!(
+            normalized.tick_records[1].trade_sign.as_deref(),
+            Some("sell")
+        );
+        assert_eq!(normalized.tick_data_summary.source_row_count, 2);
+        assert_eq!(normalized.tick_data_summary.retained_row_count, 2);
+        assert_eq!(normalized.reference_price, Some(11.0));
     }
 }

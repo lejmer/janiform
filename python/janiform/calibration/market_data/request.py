@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Optional
 
@@ -41,10 +41,12 @@ class MarketDataCalibrationRequest(ContractModel):
     run_id: str
     tick_data_source: CalibrationInputFileReference
     session_configuration: CalibrationSessionConfigurationInput
-    column_mapping: CalibrationMarketDataColumnMapping
     workflow_scope: CalibrationMarketDataWorkflowScope
     normalization_policy: CalibrationMarketDataNormalizationPolicy
     output_preferences: CalibrationMarketDataOutputPreferences
+    column_mapping: CalibrationMarketDataColumnMapping = field(
+        default_factory=CalibrationMarketDataColumnMapping
+    )
     optimizer_settings_by_stage: tuple[CalibrationStageSolverSettings, ...] = ()
     preprocessing_settings: Optional[CalibrationMarketDataPreprocessingSettings] = None
     option_surface_source: Optional[CalibrationInputFileReference] = None
@@ -74,7 +76,6 @@ class MarketDataCalibrationRequest(ContractModel):
 
         validate_tick_price_input_policy(
             workflow_scope=self.workflow_scope,
-            column_mapping=self.column_mapping.tick_data,
             normalization_policy=self.normalization_policy,
         )
         validate_option_surface_scope(
@@ -150,9 +151,18 @@ class MarketDataCalibrationRequest(ContractModel):
                 require_mapping(raw_payload, "session_configuration", "session_configuration", calibration_error),
                 field_path="session_configuration",
             ),
-            column_mapping=CalibrationMarketDataColumnMapping.from_mapping(
-                require_mapping(raw_payload, "column_mapping", "column_mapping", calibration_error),
-                field_path="column_mapping",
+            column_mapping=(
+                CalibrationMarketDataColumnMapping.from_mapping(
+                    require_mapping(
+                        raw_payload,
+                        "column_mapping",
+                        "column_mapping",
+                        calibration_error,
+                    ),
+                    field_path="column_mapping",
+                )
+                if "column_mapping" in raw_payload and raw_payload["column_mapping"] is not None
+                else CalibrationMarketDataColumnMapping()
             ),
             workflow_scope=CalibrationMarketDataWorkflowScope(
                 require_string(raw_payload, "workflow_scope", "workflow_scope", calibration_error)
