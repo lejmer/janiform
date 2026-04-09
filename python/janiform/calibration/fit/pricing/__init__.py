@@ -1,10 +1,10 @@
 """Public pricing contracts and result types for fitted-model workflows."""
 
 from .grids import (
-    JaniformGroupedVanillaOptionBatch,
-    JaniformGroupedVanillaOptionGroup,
-    JaniformVanillaOptionGroupedBatchPricingGroupResult,
-    JaniformVanillaOptionGroupedBatchPricingResult,
+    JaniformVanillaOptionGrid,
+    JaniformVanillaOptionGridBatch,
+    JaniformVanillaOptionGridBatchPricingResult,
+    JaniformVanillaOptionGridPricingResult,
 )
 from .market_snapshot import (
     JaniformObservedOptionSnapshotNode,
@@ -21,12 +21,12 @@ from .surface import (
 )
 
 __all__ = [
-    "JaniformGroupedVanillaOptionBatch",
-    "JaniformGroupedVanillaOptionGroup",
+    "JaniformVanillaOptionGrid",
+    "JaniformVanillaOptionGridBatch",
+    "JaniformVanillaOptionGridBatchPricingResult",
+    "JaniformVanillaOptionGridPricingResult",
     "JaniformObservedOptionSnapshotNode",
     "JaniformObservedOptionSnapshotPricingResult",
-    "JaniformVanillaOptionGroupedBatchPricingGroupResult",
-    "JaniformVanillaOptionGroupedBatchPricingResult",
     "JaniformVanillaOptionMaturityIntervalSummary",
     "JaniformVanillaOptionMaturityPricingEngineKind",
     "JaniformVanillaOptionMaturitySummary",

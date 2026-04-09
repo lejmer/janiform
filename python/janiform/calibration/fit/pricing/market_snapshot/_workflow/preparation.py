@@ -9,11 +9,11 @@ from typing import Optional
 
 import pandas
 
-from .....contracts import require_positive_finite_scalar
-from .....pricing import VanillaOptionPayoffType
-from ....errors import calibration_error
-from ..grids import JaniformVanillaOptionGroupedBatchPricingResult
-from .workflow import (
+from ......contracts import require_positive_finite_scalar
+from ......pricing import VanillaOptionPayoffType
+from .....errors import calibration_error
+from ...grids import JaniformVanillaOptionGridBatchPricingResult
+from ..result import (
     JaniformObservedOptionSnapshotNode,
     JaniformObservedOptionSnapshotPricingResult,
 )
@@ -150,11 +150,11 @@ def build_observed_option_snapshot_pricing_result(
     valuation_time_utc: datetime,
     spot: float,
     prepared_snapshot_groups: tuple[PreparedSnapshotGroupInput, ...],
-    pricing_result: JaniformVanillaOptionGroupedBatchPricingResult,
+    pricing_result: JaniformVanillaOptionGridBatchPricingResult,
 ) -> JaniformObservedOptionSnapshotPricingResult:
     nodes: list[JaniformObservedOptionSnapshotNode] = []
 
-    for prepared_group, priced_group in zip(prepared_snapshot_groups, pricing_result.groups, strict=True):
+    for prepared_group, priced_group in zip(prepared_snapshot_groups, pricing_result.grids, strict=True):
         if len(priced_group.maturity_intervals) != 1:
             raise RuntimeError(
                 "price_option_market_snapshot expected exactly one maturity per pricing group"

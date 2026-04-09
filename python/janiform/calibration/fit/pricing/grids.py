@@ -1,4 +1,4 @@
-"""Public grouped-grid pricing contracts."""
+"""Public option-grid pricing contracts."""
 
 from __future__ import annotations
 
@@ -43,7 +43,7 @@ from .summaries import JaniformVanillaOptionMaturitySummary
 
 
 @dataclass(frozen=True, slots=True)
-class JaniformGroupedVanillaOptionGroup(ContractModel):
+class JaniformVanillaOptionGrid(ContractModel):
     payoff_type: VanillaOptionPayoffType
     risk_free_rate: float
     dividend_yield: float
@@ -88,7 +88,7 @@ class JaniformGroupedVanillaOptionGroup(ContractModel):
         raw_payload: dict[str, Any] | Any,
         *,
         field_path: str = "group",
-    ) -> JaniformGroupedVanillaOptionGroup:
+    ) -> JaniformVanillaOptionGrid:
         if not isinstance(raw_payload, dict):
             raise calibration_error(field_path, "must be an object")
 
@@ -112,7 +112,7 @@ class JaniformGroupedVanillaOptionGroup(ContractModel):
             field_prefix=field_path,
         )
 
-        return JaniformGroupedVanillaOptionGroup(
+        return JaniformVanillaOptionGrid(
             payoff_type=require_str_enum_value(
                 raw_payload.get("payoff_type"),
                 f"{field_path}.payoff_type",
@@ -144,50 +144,50 @@ class JaniformGroupedVanillaOptionGroup(ContractModel):
 
 
 @dataclass(frozen=True, slots=True)
-class JaniformGroupedVanillaOptionBatch(ContractModel):
+class JaniformVanillaOptionGridBatch(ContractModel):
     spot: float
-    groups: tuple[JaniformGroupedVanillaOptionGroup, ...]
+    grids: tuple[JaniformVanillaOptionGrid, ...]
 
     def __post_init__(self) -> None:
         require_positive_finite_scalar(self.spot, "spot", calibration_error)
 
-        if len(self.groups) == 0:
-            raise calibration_error("groups", "must contain at least one pricing group")
+        if len(self.grids) == 0:
+            raise calibration_error("grids", "must contain at least one pricing grid")
 
     @staticmethod
     def from_mapping(
         raw_payload: dict[str, Any] | Any,
         *,
-        field_path: str = "grouped_batch",
-    ) -> JaniformGroupedVanillaOptionBatch:
+        field_path: str = "grid_batch",
+    ) -> JaniformVanillaOptionGridBatch:
         if not isinstance(raw_payload, dict):
             raise calibration_error(field_path, "must be an object")
 
-        raw_groups = require_sequence(
+        raw_grids = require_sequence(
             raw_payload,
-            "groups",
-            f"{field_path}.groups",
+            "grids",
+            f"{field_path}.grids",
             calibration_error,
         )
 
-        return JaniformGroupedVanillaOptionBatch(
+        return JaniformVanillaOptionGridBatch(
             spot=require_positive_finite_scalar(
                 raw_payload.get("spot"),
                 f"{field_path}.spot",
                 calibration_error,
             ),
-            groups=tuple(
-                JaniformGroupedVanillaOptionGroup.from_mapping(
-                    raw_group,
-                    field_path=f"{field_path}.groups[{group_index}]",
+            grids=tuple(
+                JaniformVanillaOptionGrid.from_mapping(
+                    raw_grid,
+                    field_path=f"{field_path}.grids[{grid_index}]",
                 )
-                for group_index, raw_group in enumerate(raw_groups)
+                for grid_index, raw_grid in enumerate(raw_grids)
             ),
         )
 
 
 @dataclass(frozen=True, slots=True)
-class JaniformVanillaOptionGroupedBatchPricingGroupResult(ContractModel):
+class JaniformVanillaOptionGridPricingResult(ContractModel):
     payoff_type: VanillaOptionPayoffType
     risk_free_rate: float
     dividend_yield: float
@@ -282,7 +282,7 @@ class JaniformVanillaOptionGroupedBatchPricingGroupResult(ContractModel):
                     forward_price=self.forward_price_grid[maturity_index][strike_index],
                     discount_factor=self.discount_factor_grid[maturity_index][strike_index],
                     boundary_state_norm=self.boundary_state_norm_grid[maturity_index][strike_index],
-                    field_path=f"grouped_batch_pricing_result.group_node[{maturity_index}][{strike_index}]",
+                    field_path=f"grid_batch_pricing_result.grid_node[{maturity_index}][{strike_index}]",
                 )
 
     @property
@@ -294,7 +294,7 @@ class JaniformVanillaOptionGroupedBatchPricingGroupResult(ContractModel):
         raw_payload: dict[str, Any] | Any,
         *,
         field_path: str,
-    ) -> JaniformVanillaOptionGroupedBatchPricingGroupResult:
+    ) -> JaniformVanillaOptionGridPricingResult:
         if not isinstance(raw_payload, dict):
             raise calibration_error(field_path, "must be an object")
 
@@ -305,7 +305,7 @@ class JaniformVanillaOptionGroupedBatchPricingGroupResult(ContractModel):
             calibration_error,
         )
 
-        return JaniformVanillaOptionGroupedBatchPricingGroupResult(
+        return JaniformVanillaOptionGridPricingResult(
             payoff_type=require_str_enum_value(
                 raw_payload.get("payoff_type"),
                 f"{field_path}.payoff_type",
@@ -395,51 +395,51 @@ class JaniformVanillaOptionGroupedBatchPricingGroupResult(ContractModel):
 
 
 @dataclass(frozen=True, slots=True)
-class JaniformVanillaOptionGroupedBatchPricingResult(ContractModel):
+class JaniformVanillaOptionGridBatchPricingResult(ContractModel):
     spot: float
-    groups: tuple[JaniformVanillaOptionGroupedBatchPricingGroupResult, ...]
+    grids: tuple[JaniformVanillaOptionGridPricingResult, ...]
 
     def __post_init__(self) -> None:
         require_positive_finite_scalar(self.spot, "spot", calibration_error)
 
-        if len(self.groups) == 0:
-            raise calibration_error("groups", "must contain at least one pricing result group")
+        if len(self.grids) == 0:
+            raise calibration_error("grids", "must contain at least one pricing result grid")
 
     @staticmethod
     def from_mapping(
         raw_payload: dict[str, Any] | Any,
         *,
-        field_path: str = "grouped_batch_pricing_result",
-    ) -> JaniformVanillaOptionGroupedBatchPricingResult:
+        field_path: str = "grid_batch_pricing_result",
+    ) -> JaniformVanillaOptionGridBatchPricingResult:
         if not isinstance(raw_payload, dict):
             raise calibration_error(field_path, "must be an object")
 
-        raw_groups = require_sequence(
+        raw_grids = require_sequence(
             raw_payload,
-            "groups",
-            f"{field_path}.groups",
+            "grids",
+            f"{field_path}.grids",
             calibration_error,
         )
 
-        return JaniformVanillaOptionGroupedBatchPricingResult(
+        return JaniformVanillaOptionGridBatchPricingResult(
             spot=require_positive_finite_scalar(
                 raw_payload.get("spot"),
                 f"{field_path}.spot",
                 calibration_error,
             ),
-            groups=tuple(
-                JaniformVanillaOptionGroupedBatchPricingGroupResult.from_mapping(
-                    raw_group,
-                    field_path=f"{field_path}.groups[{group_index}]",
+            grids=tuple(
+                JaniformVanillaOptionGridPricingResult.from_mapping(
+                    raw_grid,
+                    field_path=f"{field_path}.grids[{grid_index}]",
                 )
-                for group_index, raw_group in enumerate(raw_groups)
+                for grid_index, raw_grid in enumerate(raw_grids)
             ),
         )
 
 
 __all__ = [
-    "JaniformGroupedVanillaOptionBatch",
-    "JaniformGroupedVanillaOptionGroup",
-    "JaniformVanillaOptionGroupedBatchPricingGroupResult",
-    "JaniformVanillaOptionGroupedBatchPricingResult",
+    "JaniformVanillaOptionGrid",
+    "JaniformVanillaOptionGridBatch",
+    "JaniformVanillaOptionGridBatchPricingResult",
+    "JaniformVanillaOptionGridPricingResult",
 ]

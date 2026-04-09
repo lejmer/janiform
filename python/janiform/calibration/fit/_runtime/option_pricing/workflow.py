@@ -20,9 +20,11 @@ from .....simulation.shared import HawkesExcitationState
 from ....._workflow_outputs import generate_workflow_run_id, write_pricing_artifacts
 from ....._workflow_progress import JaniformOutputController, WorkflowProgressMode
 from ....errors import calibration_error
-from ...pricing import (
-    JaniformGroupedVanillaOptionBatch,
-    JaniformVanillaOptionGroupedBatchPricingResult,
+from ...pricing.grids import (
+    JaniformVanillaOptionGridBatch,
+    JaniformVanillaOptionGridBatchPricingResult,
+)
+from ...pricing.surface import (
     JaniformVanillaOptionSurface,
     JaniformVanillaOptionSurfacePricingResult,
 )
@@ -40,7 +42,7 @@ from ..payloads import (
 )
 from ..mean_reversion import prepare_model_mean_reversion_runtime_inputs
 from .native import (
-    run_model_vanilla_option_grouped_batch_pricing,
+    run_model_vanilla_option_grid_batch_pricing,
     run_model_vanilla_option_surface_pricing,
 )
 from ..state import estimate_model_state_from_observed_data
@@ -115,7 +117,7 @@ def price_option_grids_for_model(
     model: JaniformModel,
     *,
     valuation_time_utc: datetime,
-    batch: JaniformGroupedVanillaOptionBatch,
+    batch: JaniformVanillaOptionGridBatch,
     observed_data: Optional[CurrentStateEstimationRequest] = None,
     boundary_state: Optional[HawkesExcitationState] = None,
     include_transform_diagnostics: bool = False,
@@ -123,14 +125,14 @@ def price_option_grids_for_model(
     cpu_count: Optional[int] = None,
     silent: bool = False,
     progress_mode: WorkflowProgressMode | str = WorkflowProgressMode.AUTO,
-) -> JaniformVanillaOptionGroupedBatchPricingResult:
+) -> JaniformVanillaOptionGridBatchPricingResult:
     output_controller = JaniformOutputController(
         suppress_info_output=silent,
         progress_mode=WorkflowProgressMode.NONE if silent else progress_mode,
         default_progress_mode=(WorkflowProgressMode.NONE if silent else WorkflowProgressMode.HUMAN),
     )
 
-    native_execution_input = prepare_model_grouped_batch_pricing_native_input(
+    native_execution_input = prepare_model_grid_batch_pricing_native_input(
         model,
         valuation_time_utc=valuation_time_utc,
         batch=batch,
@@ -142,8 +144,8 @@ def price_option_grids_for_model(
     )
 
     with output_controller.progress("price") as progress:
-        progress.update(detail="running grouped batch pricing workflow")
-        return run_model_vanilla_option_grouped_batch_pricing(
+        progress.update(detail="running grid batch pricing workflow")
+        return run_model_vanilla_option_grid_batch_pricing(
             native_execution_input,
             progress=progress,
         )
@@ -325,34 +327,34 @@ def prepare_model_pricing_runtime_input(
             nig_shared_plus_shift_configuration=runtime_factors.nig_shared_plus_shift_configuration,
         ),
     )
-def prepare_model_grouped_batch_pricing_native_input(
+def prepare_model_grid_batch_pricing_native_input(
     model: JaniformModel,
     *,
     valuation_time_utc: datetime,
-    batch: JaniformGroupedVanillaOptionBatch,
+    batch: JaniformVanillaOptionGridBatch,
     observed_data: Optional[CurrentStateEstimationRequest],
     boundary_state: Optional[HawkesExcitationState],
     include_transform_diagnostics: bool,
     include_integration_quality_diagnostics: bool,
     cpu_count: Optional[int],
 ) -> dict[str, Any]:
-    resolved_group_maturity_inputs = tuple(
+    resolved_grid_maturity_inputs = tuple(
         resolve_pricing_maturity_axis(
             valuation_time_utc=valuation_time_utc,
-            expiry_timestamps_utc=group.expiry_timestamps_utc,
-            expiry_dates=group.expiry_dates,
-            tenors=group.tenors,
-            field_path=f"batch.groups[{group_index}]",
+            expiry_timestamps_utc=grid.expiry_timestamps_utc,
+            expiry_dates=grid.expiry_dates,
+            tenors=grid.tenors,
+            field_path=f"batch.grids[{grid_index}]",
         )
-        for group_index, group in enumerate(batch.groups)
+        for grid_index, grid in enumerate(batch.grids)
     )
     interval_counts = tuple(
         pricing_interval_count_from_maturity_interval(
             maturity_interval,
-            field_path=f"batch.groups[{group_index}].maturity_inputs[{maturity_index}]",
+            field_path=f"batch.grids[{grid_index}].maturity_inputs[{maturity_index}]",
         )
-        for group_index, resolved_group in enumerate(resolved_group_maturity_inputs)
-        for maturity_index, maturity_interval in enumerate(resolved_group.maturity_intervals)
+        for grid_index, resolved_grid in enumerate(resolved_grid_maturity_inputs)
+        for maturity_index, maturity_interval in enumerate(resolved_grid.maturity_intervals)
     )
     max_interval_count = max(interval_counts)
     runtime_input = prepare_model_pricing_runtime_input(
@@ -367,15 +369,15 @@ def prepare_model_grouped_batch_pricing_native_input(
     return {
         "request": {
             "spot": batch.spot,
-            "groups": [
+            "grids": [
                 {
-                    "payoff_type": group.payoff_type.value,
-                    "risk_free_rate": group.risk_free_rate,
-                    "dividend_yield": group.dividend_yield,
-                    "strikes": list(group.strikes),
-                    "maturity_intervals": list(resolved_group.maturity_intervals),
+                    "payoff_type": grid.payoff_type.value,
+                    "risk_free_rate": grid.risk_free_rate,
+                    "dividend_yield": grid.dividend_yield,
+                    "strikes": list(grid.strikes),
+                    "maturity_intervals": list(resolved_grid.maturity_intervals),
                 }
-                for group, resolved_group in zip(batch.groups, resolved_group_maturity_inputs, strict=True)
+                for grid, resolved_grid in zip(batch.grids, resolved_grid_maturity_inputs, strict=True)
             ],
         },
         "boundary_input": AnchoredVanillaOptionPricingBoundaryInput(

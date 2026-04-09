@@ -33,7 +33,7 @@ mod constants;
 mod contracts;
 mod forward_law;
 mod fourier;
-mod grouped;
+mod grids;
 mod implied_volatility;
 mod maturity_inputs;
 mod probability_projection;
@@ -109,18 +109,18 @@ pub use fourier::{
     FourierInversionPricingResult, FourierInversionQuadratureRule,
     price_vanilla_option_via_fourier_inversion,
 };
-pub use grouped::{
-    VanillaOptionGroupedBatchGroupRequest, VanillaOptionGroupedBatchPricingExecutionInput,
-    VanillaOptionGroupedBatchPricingExecutionInputError,
-    VanillaOptionGroupedBatchPricingGroupResult, VanillaOptionGroupedBatchPricingRequest,
-    VanillaOptionGroupedBatchPricingRequestError, VanillaOptionGroupedBatchPricingRunError,
-    VanillaOptionGroupedBatchPricingRunResult, VanillaOptionMaturityIntervalSummary,
+pub use grids::{
+    VanillaOptionGridRequest, VanillaOptionGridBatchPricingExecutionInput,
+    VanillaOptionGridBatchPricingExecutionInputError,
+    VanillaOptionGridPricingResult, VanillaOptionGridBatchPricingRequest,
+    VanillaOptionGridBatchPricingRequestError, VanillaOptionGridBatchPricingRunError,
+    VanillaOptionGridBatchPricingRunResult, VanillaOptionMaturityIntervalSummary,
     VanillaOptionMaturityPricingEngineKind, VanillaOptionMaturitySummary,
     VanillaOptionSurfacePricingExecutionInput, VanillaOptionSurfacePricingExecutionInputError,
     VanillaOptionSurfacePricingRequest, VanillaOptionSurfacePricingResponse,
     VanillaOptionSurfacePricingRunError, VanillaOptionSurfacePricingRunResult,
-    run_vanilla_option_grouped_batch_pricing,
-    run_vanilla_option_grouped_batch_pricing_with_observer, run_vanilla_option_surface_pricing,
+    run_vanilla_option_grid_batch_pricing,
+    run_vanilla_option_grid_batch_pricing_with_observer, run_vanilla_option_surface_pricing,
     run_vanilla_option_surface_pricing_with_observer,
 };
 pub use implied_volatility::VanillaOptionImpliedVolatilityInversionStatus;

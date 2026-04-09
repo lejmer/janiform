@@ -120,8 +120,10 @@ def test_public_api_contract_guardrail_supports_public_domain_submodules() -> No
             ],
             "janiform.calibration.fit": [
                 "JaniformEstimator",
+                "JaniformFitReport",
                 "JaniformFitResult",
                 "JaniformModel",
+                "JaniformSimulationResult",
             ],
             "janiform.calibration.fit.estimator": [
                 "JaniformEstimator",
@@ -130,15 +132,18 @@ def test_public_api_contract_guardrail_supports_public_domain_submodules() -> No
                 "JaniformModel",
             ],
             "janiform.calibration.fit.pricing": [
-                "JaniformGroupedVanillaOptionBatch",
+                "JaniformVanillaOptionGridBatch",
                 "JaniformVanillaOptionSurface",
             ],
             "janiform.calibration.fit.pricing.grids": [
-                "JaniformGroupedVanillaOptionBatch",
-                "JaniformVanillaOptionGroupedBatchPricingResult",
+                "JaniformVanillaOptionGridBatch",
+                "JaniformVanillaOptionGridBatchPricingResult",
             ],
             "janiform.calibration.fit.pricing.market_snapshot": [
                 "JaniformObservedOptionSnapshotPricingResult",
+            ],
+            "janiform.calibration.fit.pricing.market_snapshot.inputs": [
+                "TabularFrameInput",
             ],
             "janiform.calibration.fit.pricing.summaries": [
                 "JaniformVanillaOptionMaturitySummary",
@@ -271,11 +276,12 @@ def test_public_api_contract_guardrail_supports_public_domain_submodules() -> No
         "janiform.calibration.fit",
         "janiform.calibration.fit.estimator",
         "janiform.calibration.fit.model",
-        "janiform.calibration.fit.pricing",
-        "janiform.calibration.fit.pricing.grids",
-        "janiform.calibration.fit.pricing.market_snapshot",
-        "janiform.calibration.fit.pricing.summaries",
-        "janiform.calibration.fit.pricing.surface",
+            "janiform.calibration.fit.pricing",
+            "janiform.calibration.fit.pricing.grids",
+            "janiform.calibration.fit.pricing.market_snapshot",
+            "janiform.calibration.fit.pricing.market_snapshot.inputs",
+            "janiform.calibration.fit.pricing.summaries",
+            "janiform.calibration.fit.pricing.surface",
         "janiform.calibration.fit.result",
         "janiform.calibration.fit.report",
         "janiform.calibration.market_data",

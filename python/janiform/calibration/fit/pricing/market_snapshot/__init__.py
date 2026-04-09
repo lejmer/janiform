@@ -1,6 +1,6 @@
-"""Public market-snapshot pricing contracts."""
+"""Public market-snapshot pricing result types."""
 
-from .workflow import (
+from .result import (
     JaniformObservedOptionSnapshotNode,
     JaniformObservedOptionSnapshotPricingResult,
 )

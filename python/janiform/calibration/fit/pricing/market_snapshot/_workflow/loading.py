@@ -11,14 +11,12 @@ from typing import Any, Optional
 import pandas
 from pyarrow import parquet as pyarrow_parquet
 
-from .....contracts import require_positive_finite_scalar, require_timezone_aware_datetime
-from .....pricing import VanillaOptionPayoffType
-from ....errors import calibration_error
-from ....market_data.contracts import CalibrationOptionSurfaceColumnMapping, CalibrationTickDataColumnMapping
-from ..._inference.aliases import GENERIC_COLUMN_ALIASES
-
-
-type TabularFrameInput = str | Path | pandas.DataFrame | Mapping[str, Sequence[Any]]
+from ......contracts import require_positive_finite_scalar, require_timezone_aware_datetime
+from ......pricing import VanillaOptionPayoffType
+from .....errors import calibration_error
+from .....market_data.contracts import CalibrationOptionSurfaceColumnMapping, CalibrationTickDataColumnMapping
+from ...._inference.aliases import GENERIC_COLUMN_ALIASES
+from ..inputs import TabularFrameInput
 
 
 _OPTION_QUOTE_TIMESTAMP_ALIASES = (
@@ -308,6 +306,72 @@ def resolve_observed_tick_column_mapping(
     )
 
 
+def resolve_required_column(
+    explicit_column: Optional[str],
+    *,
+    aliases: Sequence[str],
+    available_by_normalized: Mapping[str, str],
+    field_path: str,
+) -> str:
+    resolved = resolve_optional_column(
+        explicit_column,
+        aliases=aliases,
+        available_by_normalized=available_by_normalized,
+        field_path=field_path,
+    )
+    if resolved is None:
+        raise calibration_error(
+            field_path,
+            f"could not resolve a source column from common aliases [{', '.join(aliases)}]",
+        )
+
+    return resolved
+
+
+def optional_existing_column_name(
+    explicit_column: Optional[str],
+    *,
+    available_by_normalized: Mapping[str, str],
+) -> Optional[str]:
+    if explicit_column is None:
+        return None
+
+    return available_by_normalized.get(normalize_identifier(explicit_column))
+
+
+def resolve_optional_column(
+    explicit_column: Optional[str],
+    *,
+    aliases: Sequence[str],
+    available_by_normalized: Mapping[str, str],
+    field_path: str,
+) -> Optional[str]:
+    if explicit_column is not None:
+        resolved_explicit = available_by_normalized.get(normalize_identifier(explicit_column))
+        if resolved_explicit is None:
+            raise calibration_error(
+                field_path,
+                f"explicit column `{explicit_column}` is not present in the source data",
+            )
+
+        return resolved_explicit
+
+    for alias in aliases:
+        resolved = available_by_normalized.get(normalize_identifier(alias))
+        if resolved is not None:
+            return resolved
+
+    return None
+
+
+def normalize_identifier(identifier: str) -> str:
+    return "".join(
+        character.lower()
+        for character in identifier
+        if character.isascii() and character.isalnum()
+    )
+
+
 def resolve_snapshot_valuation_time_utc(
     *,
     option_surface_frame: pandas.DataFrame,
@@ -388,14 +452,6 @@ def observed_spot_from_tick_data(
     )
 
 
-def normalize_identifier(identifier: str) -> str:
-    return "".join(
-        character.lower()
-        for character in identifier
-        if character.isascii() and character.isalnum()
-    )
-
-
 def normalize_requested_option_type(
     option_type: Optional[VanillaOptionPayoffType | str],
 ) -> Optional[VanillaOptionPayoffType]:
@@ -442,61 +498,3 @@ def optional_numeric_value(
         return None
 
     return float(raw_value)
-
-
-def resolve_required_column(
-    explicit_column: Optional[str],
-    *,
-    aliases: Sequence[str],
-    available_by_normalized: Mapping[str, str],
-    field_path: str,
-) -> str:
-    resolved = resolve_optional_column(
-        explicit_column,
-        aliases=aliases,
-        available_by_normalized=available_by_normalized,
-        field_path=field_path,
-    )
-    if resolved is None:
-        raise calibration_error(
-            field_path,
-            f"could not resolve a source column from common aliases [{', '.join(aliases)}]",
-        )
-
-    return resolved
-
-
-def optional_existing_column_name(
-    explicit_column: Optional[str],
-    *,
-    available_by_normalized: Mapping[str, str],
-) -> Optional[str]:
-    if explicit_column is None:
-        return None
-
-    return available_by_normalized.get(normalize_identifier(explicit_column))
-
-
-def resolve_optional_column(
-    explicit_column: Optional[str],
-    *,
-    aliases: Sequence[str],
-    available_by_normalized: Mapping[str, str],
-    field_path: str,
-) -> Optional[str]:
-    if explicit_column is not None:
-        resolved_explicit = available_by_normalized.get(normalize_identifier(explicit_column))
-        if resolved_explicit is None:
-            raise calibration_error(
-                field_path,
-                f"explicit column `{explicit_column}` is not present in the source data",
-            )
-
-        return resolved_explicit
-
-    for alias in aliases:
-        resolved = available_by_normalized.get(normalize_identifier(alias))
-        if resolved is not None:
-            return resolved
-
-    return None

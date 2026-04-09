@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale.v1",
-  "approved_snapshot_sha256": "b5bfbd27a42e7f0fe670281b271f4922a2d3509a07ee860c6bfa6fac66a04d9c",
+  "approved_snapshot_sha256": "bfa79063bc9dadd9f2f68844f2111440f729522ea4e472050dfe558278be4efd",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -1065,6 +1065,41 @@
         "janiform.calibration.fit.pricing.market_snapshot",
         "janiform.calibration.fit.pricing.summaries",
         "janiform.calibration.fit.pricing.surface"
+      ]
+    },
+    {
+      "approved_on": "2026-04-09",
+      "docs_updated": [],
+      "rationale": "The janiform.calibration.fit root now stays focused on the main estimator, fitted model, and fit-result classes, while pricing and state contracts are imported from their ownership submodules.",
+      "snapshot_sha256": "c886b713602bce476e0e1228ec204d4666382321789d3d9d98a21eba969028ad",
+      "summary": "Narrow janiform.calibration.fit to the curated high-level surface.",
+      "updated_surfaces": [
+        "janiform.calibration.fit",
+        "janiform.calibration.fit.pricing",
+        "janiform.calibration.fit.state"
+      ]
+    },
+    {
+      "approved_on": "2026-04-09",
+      "docs_updated": [],
+      "rationale": "The option-grid pricing surface now uses grid-based contract names that match JaniformModel.price_option_grids, so callers no longer have to translate between grouped-batch naming and the public method vocabulary.",
+      "snapshot_sha256": "5c6a9bb84d0f55f20ebb329734d25349caef47269068e89a4fb051337da27c0d",
+      "summary": "Rename grouped-batch option pricing contracts to grid-based names.",
+      "updated_surfaces": [
+        "janiform.calibration.fit.pricing",
+        "janiform.calibration.fit.pricing.grids",
+        "janiform.calibration.fit.pricing.market_snapshot"
+      ]
+    },
+    {
+      "approved_on": "2026-04-09",
+      "docs_updated": [],
+      "rationale": "Give market_snapshot tabular inputs a real public owner module and import public pricing types in JaniformModel from their owning modules instead of the pricing barrel or private workflow modules.",
+      "snapshot_sha256": "bfa79063bc9dadd9f2f68844f2111440f729522ea4e472050dfe558278be4efd",
+      "summary": "Add market_snapshot.inputs as the public owner of TabularFrameInput and align model imports with owner modules.",
+      "updated_surfaces": [
+        "janiform.calibration.fit.model",
+        "janiform.calibration.fit.pricing.market_snapshot.inputs"
       ]
     }
   ],

@@ -1,12 +1,12 @@
 use janiform::pricing::{
     HighLevelPricingMaturityResolution, HighLevelPricingMaturityResolutionRequest,
-    PricingProgressEvent, VanillaOptionGroupedBatchPricingExecutionInput,
+    PricingProgressEvent, VanillaOptionGridBatchPricingExecutionInput,
     VanillaOptionPricingExecutionInput, VanillaOptionPricingIntervalFactors,
     VanillaOptionPricingOptionalOutputSelection, VanillaOptionPricingRequest,
     VanillaOptionSurfacePricingExecutionInput,
     resolve_high_level_pricing_maturity_inputs as resolve_high_level_pricing_maturity_inputs_core,
-    run_vanilla_option_grouped_batch_pricing as run_vanilla_option_grouped_batch_pricing_core,
-    run_vanilla_option_grouped_batch_pricing_with_observer as run_vanilla_option_grouped_batch_pricing_core_with_observer,
+    run_vanilla_option_grid_batch_pricing as run_vanilla_option_grid_batch_pricing_core,
+    run_vanilla_option_grid_batch_pricing_with_observer as run_vanilla_option_grid_batch_pricing_core_with_observer,
     run_vanilla_option_pricing as run_vanilla_option_pricing_core,
     run_vanilla_option_surface_pricing as run_vanilla_option_surface_pricing_core,
     run_vanilla_option_surface_pricing_with_observer as run_vanilla_option_surface_pricing_core_with_observer,
@@ -112,26 +112,26 @@ fn run_vanilla_option_pricing(
 }
 
 #[pyfunction]
-fn run_vanilla_option_grouped_batch_pricing(
+fn run_vanilla_option_grid_batch_pricing(
     py: Python<'_>,
     execution_input: &Bound<'_, PyAny>,
 ) -> PyResult<Py<PyAny>> {
-    let execution_input: VanillaOptionGroupedBatchPricingExecutionInput = serde_json::from_value(
+    let execution_input: VanillaOptionGridBatchPricingExecutionInput = serde_json::from_value(
         py_any_to_json_value(execution_input)?,
     )
     .map_err(|source| {
         PricingExecutionError::new_err(format!(
-            "failed to deserialize vanilla option grouped batch pricing execution input: {source}"
+            "failed to deserialize vanilla option grid batch pricing execution input: {source}"
         ))
     })?;
 
     let run_result = py
-        .allow_threads(|| run_vanilla_option_grouped_batch_pricing_core(execution_input))
+        .allow_threads(|| run_vanilla_option_grid_batch_pricing_core(execution_input))
         .map_err(|source| PricingExecutionError::new_err(source.to_string()))?;
 
     let serialized_run_result = serde_json::to_value(&run_result).map_err(|source| {
         PricingExecutionError::new_err(format!(
-            "failed to serialize vanilla option grouped batch pricing run result: {source}"
+            "failed to serialize vanilla option grid batch pricing run result: {source}"
         ))
     })?;
 
@@ -140,7 +140,7 @@ fn run_vanilla_option_grouped_batch_pricing(
 
 #[pyfunction]
 #[pyo3(signature = (execution_input, event_callback))]
-fn run_vanilla_option_grouped_batch_pricing_with_events(
+fn run_vanilla_option_grid_batch_pricing_with_events(
     py: Python<'_>,
     execution_input: &Bound<'_, PyAny>,
     event_callback: &Bound<'_, PyAny>,
@@ -149,19 +149,19 @@ fn run_vanilla_option_grouped_batch_pricing_with_events(
         py,
         execution_input,
         event_callback,
-        "vanilla option grouped batch pricing execution input",
-        "vanilla option grouped batch pricing run result",
+        "vanilla option grid batch pricing execution input",
+        "vanilla option grid batch pricing run result",
         |execution_input, progress_sender| {
             let mut observer = |event: PricingProgressEvent| {
                 let _ = progress_sender.send(event);
             };
 
-            run_vanilla_option_grouped_batch_pricing_core_with_observer(
+            run_vanilla_option_grid_batch_pricing_core_with_observer(
                 execution_input,
                 Some(&mut observer),
             )
         },
-        || janiform::pricing::VanillaOptionGroupedBatchPricingRunError::NodePricingFailure {
+        || janiform::pricing::VanillaOptionGridBatchPricingRunError::NodePricingFailure {
             message: "pricing progress worker terminated unexpectedly".to_string(),
         },
     )
@@ -372,11 +372,11 @@ pub(super) fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
     )?)?;
     module.add_function(wrap_pyfunction!(run_vanilla_option_pricing, module)?)?;
     module.add_function(wrap_pyfunction!(
-        run_vanilla_option_grouped_batch_pricing,
+        run_vanilla_option_grid_batch_pricing,
         module
     )?)?;
     module.add_function(wrap_pyfunction!(
-        run_vanilla_option_grouped_batch_pricing_with_events,
+        run_vanilla_option_grid_batch_pricing_with_events,
         module
     )?)?;
     module.add_function(wrap_pyfunction!(

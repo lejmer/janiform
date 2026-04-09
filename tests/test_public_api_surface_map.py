@@ -67,6 +67,7 @@ def test_public_and_internal_module_intent_is_explicit() -> None:
         "janiform.calibration.fit.pricing",
         "janiform.calibration.fit.pricing.grids",
         "janiform.calibration.fit.pricing.market_snapshot",
+        "janiform.calibration.fit.pricing.market_snapshot.inputs",
         "janiform.calibration.fit.pricing.summaries",
         "janiform.calibration.fit.pricing.surface",
         "janiform.calibration.fit.state",
@@ -97,8 +98,7 @@ def test_public_and_internal_module_intent_is_explicit() -> None:
         "janiform.calibration.fit._preparation",
         "janiform.calibration.fit._runtime",
         "janiform.calibration.fit.pricing.internal",
-        "janiform.calibration.fit.pricing.market_snapshot.loading",
-        "janiform.calibration.fit.pricing.market_snapshot.preparation",
+        "janiform.calibration.fit.pricing.market_snapshot._workflow",
         "janiform._cli.command_tree",
         "janiform._cli.command_runtime",
         "janiform._cli.configuration",
@@ -635,7 +635,7 @@ def test_calibration_public_symbols_live_in_calibration_module() -> None:
 
     assert "CalibrationCheckpointMetadata" not in root_exports
     assert "CurrentStateEstimationRequest" not in root_exports
-    assert "JaniformGroupedVanillaOptionBatch" not in root_exports
+    assert "JaniformVanillaOptionGridBatch" not in root_exports
     assert "serialize_preset_artifact" not in root_exports
 
 
@@ -648,26 +648,19 @@ def test_calibration_public_module_is_a_package() -> None:
 def test_calibration_fit_public_submodule_is_supported_domain_import() -> None:
     calibration_fit_module = import_module("janiform.calibration.fit")
 
-    assert set(calibration_fit_module.__all__) == {
-        "CurrentStateEstimationRequest",
-        "CurrentStateEstimationResult",
-        "JaniformGroupedVanillaOptionBatch",
-        "JaniformGroupedVanillaOptionGroup",
+    expected_exports = {
         "JaniformEstimator",
         "JaniformFitResult",
         "JaniformFitReport",
         "JaniformModel",
-        "JaniformObservedOptionSnapshotNode",
-        "JaniformObservedOptionSnapshotPricingResult",
         "JaniformSimulationResult",
-        "JaniformVanillaOptionGroupedBatchPricingGroupResult",
-        "JaniformVanillaOptionGroupedBatchPricingResult",
-        "JaniformVanillaOptionMaturityIntervalSummary",
-        "JaniformVanillaOptionMaturityPricingEngineKind",
-        "JaniformVanillaOptionMaturitySummary",
-        "JaniformVanillaOptionSurface",
-        "JaniformVanillaOptionSurfacePricingResult",
     }
+    assert set(calibration_fit_module.__all__) == expected_exports
+
+    fit_exports = set(calibration_fit_module.__all__)
+    assert "CurrentStateEstimationRequest" not in fit_exports
+    assert "JaniformVanillaOptionGridBatch" not in fit_exports
+    assert "JaniformVanillaOptionSurface" not in fit_exports
 
 
 def test_calibration_fit_public_ownership_submodules_are_supported_domain_imports() -> None:
@@ -676,6 +669,9 @@ def test_calibration_fit_public_ownership_submodules_are_supported_domain_import
     calibration_fit_pricing_module = import_module("janiform.calibration.fit.pricing")
     calibration_fit_pricing_grids_module = import_module("janiform.calibration.fit.pricing.grids")
     calibration_fit_pricing_market_snapshot_module = import_module("janiform.calibration.fit.pricing.market_snapshot")
+    calibration_fit_pricing_market_snapshot_inputs_module = import_module(
+        "janiform.calibration.fit.pricing.market_snapshot.inputs"
+    )
     calibration_fit_pricing_summaries_module = import_module("janiform.calibration.fit.pricing.summaries")
     calibration_fit_pricing_surface_module = import_module("janiform.calibration.fit.pricing.surface")
     calibration_fit_result_module = import_module("janiform.calibration.fit.result")
@@ -688,12 +684,12 @@ def test_calibration_fit_public_ownership_submodules_are_supported_domain_import
         "JaniformSimulationResult",
     }
     assert set(calibration_fit_pricing_module.__all__) == {
-        "JaniformGroupedVanillaOptionBatch",
-        "JaniformGroupedVanillaOptionGroup",
+        "JaniformVanillaOptionGrid",
+        "JaniformVanillaOptionGridBatch",
+        "JaniformVanillaOptionGridBatchPricingResult",
+        "JaniformVanillaOptionGridPricingResult",
         "JaniformObservedOptionSnapshotNode",
         "JaniformObservedOptionSnapshotPricingResult",
-        "JaniformVanillaOptionGroupedBatchPricingGroupResult",
-        "JaniformVanillaOptionGroupedBatchPricingResult",
         "JaniformVanillaOptionMaturityIntervalSummary",
         "JaniformVanillaOptionMaturityPricingEngineKind",
         "JaniformVanillaOptionMaturitySummary",
@@ -701,15 +697,16 @@ def test_calibration_fit_public_ownership_submodules_are_supported_domain_import
         "JaniformVanillaOptionSurfacePricingResult",
     }
     assert set(calibration_fit_pricing_grids_module.__all__) == {
-        "JaniformGroupedVanillaOptionBatch",
-        "JaniformGroupedVanillaOptionGroup",
-        "JaniformVanillaOptionGroupedBatchPricingGroupResult",
-        "JaniformVanillaOptionGroupedBatchPricingResult",
+        "JaniformVanillaOptionGrid",
+        "JaniformVanillaOptionGridBatch",
+        "JaniformVanillaOptionGridBatchPricingResult",
+        "JaniformVanillaOptionGridPricingResult",
     }
     assert set(calibration_fit_pricing_market_snapshot_module.__all__) == {
         "JaniformObservedOptionSnapshotNode",
         "JaniformObservedOptionSnapshotPricingResult",
     }
+    assert set(calibration_fit_pricing_market_snapshot_inputs_module.__all__) == {"TabularFrameInput"}
     assert set(calibration_fit_pricing_summaries_module.__all__) == {
         "JaniformVanillaOptionMaturityIntervalSummary",
         "JaniformVanillaOptionMaturityPricingEngineKind",
@@ -982,7 +979,7 @@ def test_calibration_root_and_public_ownership_submodules_share_supported_symbol
         calibration_module.CurrentStateEstimationRequest
 
     with pytest.raises(AttributeError):
-        calibration_module.JaniformGroupedVanillaOptionBatch
+        calibration_module.JaniformVanillaOptionGridBatch
 
     with pytest.raises(AttributeError):
         calibration_module.MarketDataCalibrationRequest

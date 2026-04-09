@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Callable
 from contextlib import AbstractContextManager, nullcontext, redirect_stdout
 from datetime import datetime
 from io import StringIO
@@ -66,6 +65,7 @@ from ..presets.registry import PresetCategory, PresetRegistry
 from ..presets.resolution import ResolvedPresetWorkflowConfiguration, resolve_preset_workflow_configuration
 from ..sessions.contracts import MarketDataSessionResolution
 from ..staged import CalibrationStageSolverSettings
+from ..staged import runtime as staged_runtime_module
 from ..staged.runtime import run_prepared_staged_calibration_with_raw_payload, run_staged_calibration_with_prepared_handle_and_events
 from ..._workflow_progress import AbstractProgress, NullProgress
 from ..._workflow_progress import JaniformOutputController
@@ -76,7 +76,6 @@ _DEFAULT_OUTPUT_PREFERENCES = CalibrationMarketDataOutputPreferences(
     emit_input_provenance_report=True,
 )
 _DEFAULT_ENDOGENOUS_MEAN_REVERSION_CONFIGURATION = CalibrationMeanReversionConfiguration()
-_DEFAULT_PREPARED_STAGED_RUNNER = run_prepared_staged_calibration_with_raw_payload
 
 
 class JaniformEstimator:
@@ -264,6 +263,7 @@ class JaniformEstimator:
     ) -> FitExecutionConfiguration:
         preparation_configuration = self._build_preparation_configuration()
         effective_silent = self._silent if silent is None else silent
+        prepared_staged_runner = run_prepared_staged_calibration_with_raw_payload
         return FitExecutionConfiguration(
             silent=effective_silent,
             progress_total_steps=fit_progress_total_steps(preparation_configuration),
@@ -276,15 +276,17 @@ class JaniformEstimator:
                 normalize_market_data_source_method=normalize_market_data_source,
                 resolve_market_data_session_method=resolve_market_data_session,
                 resolve_preset_workflow_configuration_method=resolve_preset_workflow_configuration,
-                translate_market_data_request_to_prepared_calibration_from_phases_method=(
-                    translate_market_data_request_to_prepared_calibration_from_phases
-                ),
+            translate_market_data_request_to_prepared_calibration_from_phases_method=(
+                translate_market_data_request_to_prepared_calibration_from_phases
+            ),
                 prepare_market_data_calibration_from_translation_result_method=(
                     _prepare_market_data_calibration_from_translation_result
                 ),
             ),
-            prepared_staged_runner=self._prepared_staged_runner(),
-            use_default_prepared_runner=self._uses_default_prepared_runner(),
+            prepared_staged_runner=prepared_staged_runner,
+            use_default_prepared_runner=(
+                prepared_staged_runner is staged_runtime_module.run_prepared_staged_calibration_with_raw_payload
+            ),
             evented_prepared_runner=run_staged_calibration_with_prepared_handle_and_events,
             build_fit_inference_metadata=self._build_fit_inference_metadata,
         )
@@ -489,12 +491,6 @@ class JaniformEstimator:
         self,
     ) -> CalibrationMeanReversionConfiguration:
         return _DEFAULT_ENDOGENOUS_MEAN_REVERSION_CONFIGURATION
-
-    def _prepared_staged_runner(self) -> Callable[..., tuple[Any, dict[str, Any]]]:
-        return run_prepared_staged_calibration_with_raw_payload
-
-    def _uses_default_prepared_runner(self) -> bool:
-        return run_prepared_staged_calibration_with_raw_payload is _DEFAULT_PREPARED_STAGED_RUNNER
 
     def _build_fit_inference_metadata(
         self,

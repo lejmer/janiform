@@ -1,13 +1,13 @@
 use janiform_engine_pricing::{
-    AnchoredVanillaOptionPricingBoundaryInput, VanillaOptionGroupedBatchGroupRequest,
-    VanillaOptionGroupedBatchPricingExecutionInput, VanillaOptionGroupedBatchPricingRequest,
+    AnchoredVanillaOptionPricingBoundaryInput, VanillaOptionGridRequest,
+    VanillaOptionGridBatchPricingExecutionInput, VanillaOptionGridBatchPricingRequest,
     VanillaOptionImpliedVolatilityInversionStatus, VanillaOptionPayoffConfiguration,
     VanillaOptionPayoffType, VanillaOptionPricingExecutionInput,
     VanillaOptionPricingIntervalFactors, VanillaOptionPricingMarketInputs,
     VanillaOptionPricingModelParameters, VanillaOptionPricingOptionalOutputSelection,
     VanillaOptionPricingRequest, VanillaOptionPricingRunResult,
     VanillaOptionSurfacePricingExecutionInput, VanillaOptionSurfacePricingRequest,
-    run_vanilla_option_grouped_batch_pricing, run_vanilla_option_pricing,
+    run_vanilla_option_grid_batch_pricing, run_vanilla_option_pricing,
     run_vanilla_option_surface_pricing,
 };
 use janiform_model_kernels::hawkes::{
@@ -203,7 +203,7 @@ fn vanilla_option_pricing_runner_matches_zero_anchor_and_shifted_anchor_for_zero
 }
 
 #[test]
-fn vanilla_option_grouped_batch_pricing_matches_single_option_runner_on_shared_groups() {
+fn vanilla_option_grid_batch_pricing_matches_single_option_runner_on_shared_grids() {
     let boundary_input = AnchoredVanillaOptionPricingBoundaryInput::try_new(
         0,
         HawkesExcitationState {
@@ -223,19 +223,19 @@ fn vanilla_option_grouped_batch_pricing_matches_single_option_runner_on_shared_g
     let optional_output_selection =
         VanillaOptionPricingOptionalOutputSelection::new(false, false, false);
 
-    let grouped_batch_result =
-        run_vanilla_option_grouped_batch_pricing(VanillaOptionGroupedBatchPricingExecutionInput {
-            request: VanillaOptionGroupedBatchPricingRequest {
+    let grid_batch_result =
+        run_vanilla_option_grid_batch_pricing(VanillaOptionGridBatchPricingExecutionInput {
+            request: VanillaOptionGridBatchPricingRequest {
                 spot: 101.0,
-                groups: vec![
-                    VanillaOptionGroupedBatchGroupRequest {
+                grids: vec![
+                    VanillaOptionGridRequest {
                         payoff_type: VanillaOptionPayoffType::Call,
                         risk_free_rate: 0.01,
                         dividend_yield: 0.0,
                         strikes: vec![95.0],
                         maturity_intervals: vec![1.0],
                     },
-                    VanillaOptionGroupedBatchGroupRequest {
+                    VanillaOptionGridRequest {
                         payoff_type: VanillaOptionPayoffType::Put,
                         risk_free_rate: 0.01,
                         dividend_yield: 0.0,
@@ -255,7 +255,7 @@ fn vanilla_option_grouped_batch_pricing_matches_single_option_runner_on_shared_g
             optional_output_selection,
             cpu_count: Some(1),
         })
-        .expect("grouped batch pricing should succeed");
+        .expect("grid batch pricing should succeed");
 
     let single_specs = [
         (95.0, 1.0, VanillaOptionPayoffType::Call, 0.01, 0.0),
@@ -303,19 +303,19 @@ fn vanilla_option_grouped_batch_pricing_matches_single_option_runner_on_shared_g
         .expect("single pricing should succeed");
 
         assert_eq!(
-            grouped_batch_result.groups[node_index].price_grid[0][0],
+            grid_batch_result.grids[node_index].price_grid[0][0],
             single_result.response.price
         );
         assert_eq!(
-            grouped_batch_result.groups[node_index].implied_volatility_grid[0][0],
+            grid_batch_result.grids[node_index].implied_volatility_grid[0][0],
             single_result.response.implied_volatility
         );
         assert_eq!(
-            grouped_batch_result.groups[node_index].implied_volatility_inversion_status_grid[0][0],
+            grid_batch_result.grids[node_index].implied_volatility_inversion_status_grid[0][0],
             single_result.response.implied_volatility_inversion_status
         );
         assert_eq!(
-            grouped_batch_result.groups[node_index].forward_price_grid[0][0],
+            grid_batch_result.grids[node_index].forward_price_grid[0][0],
             Some(
                 single_result
                     .response
@@ -326,7 +326,7 @@ fn vanilla_option_grouped_batch_pricing_matches_single_option_runner_on_shared_g
             )
         );
         assert_eq!(
-            grouped_batch_result.groups[node_index].discount_factor_grid[0][0],
+            grid_batch_result.grids[node_index].discount_factor_grid[0][0],
             Some(
                 single_result
                     .response
@@ -337,7 +337,7 @@ fn vanilla_option_grouped_batch_pricing_matches_single_option_runner_on_shared_g
             )
         );
         assert_eq!(
-            grouped_batch_result.groups[node_index].boundary_state_norm_grid[0][0],
+            grid_batch_result.grids[node_index].boundary_state_norm_grid[0][0],
             Some(
                 single_result
                     .response

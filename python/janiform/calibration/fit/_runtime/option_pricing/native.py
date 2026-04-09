@@ -13,25 +13,27 @@ from ....errors import (
     calibration_execution_error,
     calibration_integration_error,
 )
-from ...pricing import (
-    JaniformVanillaOptionGroupedBatchPricingResult,
+from ...pricing.grids import (
+    JaniformVanillaOptionGridBatchPricingResult,
+)
+from ...pricing.surface import (
     JaniformVanillaOptionSurfacePricingResult,
 )
 
 
-def run_model_vanilla_option_grouped_batch_pricing(
+def run_model_vanilla_option_grid_batch_pricing(
     native_execution_input: dict[str, Any],
     *,
     progress: Optional[AbstractProgress] = None,
-) -> JaniformVanillaOptionGroupedBatchPricingResult:
+) -> JaniformVanillaOptionGridBatchPricingResult:
     return run_model_native_pricing_workflow(
-        native_method_name="run_vanilla_option_grouped_batch_pricing",
+        native_method_name="run_vanilla_option_grid_batch_pricing",
         native_execution_input=native_execution_input,
-        result_parser=JaniformVanillaOptionGroupedBatchPricingResult.from_mapping,
+        result_parser=JaniformVanillaOptionGridBatchPricingResult.from_mapping,
         entrypoint="JaniformModel.price_option_grids",
-        result_field_path="grouped_batch_pricing_result",
+        result_field_path="grid_batch_pricing_result",
         progress=progress,
-        progress_detail="running grouped batch pricing workflow",
+        progress_detail="running grid batch pricing workflow",
     )
 
 
@@ -145,10 +147,10 @@ def run_native_pricing_workflow_method(
     native_progress_callback: Optional[Callable[[dict[str, Any]], None]],
 ) -> Any:
     match native_method_name:
-        case "run_vanilla_option_grouped_batch_pricing":
+        case "run_vanilla_option_grid_batch_pricing":
             if native_progress_callback is None:
-                return native.run_vanilla_option_grouped_batch_pricing(native_execution_input)
-            return native.run_vanilla_option_grouped_batch_pricing_with_events(
+                return native.run_vanilla_option_grid_batch_pricing(native_execution_input)
+            return native.run_vanilla_option_grid_batch_pricing_with_events(
                 native_execution_input,
                 native_progress_callback,
             )

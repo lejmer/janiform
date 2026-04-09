@@ -25,15 +25,17 @@ from ._runtime.simulation.result import (
 from ._runtime.simulation.workflow import (
     simulate_model,
 )
-from .pricing import (
-    JaniformGroupedVanillaOptionBatch,
-    JaniformObservedOptionSnapshotPricingResult,
-    JaniformVanillaOptionGroupedBatchPricingResult,
+from .pricing.grids import (
+    JaniformVanillaOptionGridBatch,
+    JaniformVanillaOptionGridBatchPricingResult,
+)
+from .pricing.market_snapshot._workflow.workflow import price_option_market_snapshot_for_model
+from .pricing.market_snapshot.inputs import TabularFrameInput
+from .pricing.market_snapshot.result import JaniformObservedOptionSnapshotPricingResult
+from .pricing.surface import (
     JaniformVanillaOptionSurface,
     JaniformVanillaOptionSurfacePricingResult,
 )
-from .pricing.market_snapshot.loading import TabularFrameInput
-from .pricing.market_snapshot.workflow import _price_option_market_snapshot
 from .state import CurrentStateEstimationRequest, CurrentStateEstimationResult
 from .state._estimation import estimate_current_state_for_model
 from ..errors import calibration_error
@@ -151,7 +153,7 @@ class JaniformModel:
         self,
         *,
         valuation_time_utc: datetime,
-        batch: JaniformGroupedVanillaOptionBatch,
+        batch: JaniformVanillaOptionGridBatch,
         observed_data: Optional[CurrentStateEstimationRequest] = None,
         boundary_state: Optional[HawkesExcitationState] = None,
         include_transform_diagnostics: bool = False,
@@ -159,7 +161,7 @@ class JaniformModel:
         cpu_count: Optional[int] = None,
         silent: bool = False,
         progress_mode: WorkflowProgressMode | str = WorkflowProgressMode.AUTO,
-    ) -> JaniformVanillaOptionGroupedBatchPricingResult:
+    ) -> JaniformVanillaOptionGridBatchPricingResult:
         return price_option_grids_for_model(
             self,
             valuation_time_utc=valuation_time_utc,
@@ -228,7 +230,7 @@ class JaniformModel:
         silent: bool = False,
         progress_mode: WorkflowProgressMode | str = WorkflowProgressMode.AUTO,
     ) -> JaniformObservedOptionSnapshotPricingResult:
-        return _price_option_market_snapshot(
+        return price_option_market_snapshot_for_model(
             self,
             tick_data=tick_data,
             option_surface=option_surface,
