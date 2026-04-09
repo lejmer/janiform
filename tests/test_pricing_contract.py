@@ -21,11 +21,12 @@ from janiform.pricing import (
     MeanReversionBoundaryState,
     MeanReversionFittedParameters,
     NigSharedPlusShiftConfiguration,
+    PricingIntervalSchedule,
+    PricingIntervalScheduleMetadata,
     VanillaOptionImpliedVolatilityInversionStatus,
     VanillaOptionPayoffConfiguration,
     VanillaOptionPayoffType,
     VanillaOptionPricingDiagnostics,
-    VanillaOptionPricingFailureDiagnostic,
     VanillaOptionPricingFailureStage,
     VanillaOptionPricingExecutionInput,
     VanillaOptionPricingMarketInputs,
@@ -62,6 +63,7 @@ from tests.support.pricing import (
     build_anchored_surface_request_model,
     build_anchored_runtime_execution_input_model,
 )
+from tests.support.time import REFERENCE_PRICING_TIMESTAMP_UTC_NANOS
 
 
 def test_vanilla_option_request_model_construction_and_roundtrip() -> None:
@@ -399,20 +401,21 @@ def test_vanilla_option_response_rejects_missing_implied_volatility_for_successf
     assert "must be present" in captured_error.value.failure.message
 
 
-def test_vanilla_option_surface_execution_input_rejects_misaligned_factor_count() -> None:
+def test_vanilla_option_surface_execution_input_rejects_runtime_schedule_terminal_maturity_mismatch() -> None:
     with pytest.raises(VanillaOptionPricingValidationError) as captured_error:
         VanillaOptionSurfacePricingExecutionInput(
             request=build_anchored_surface_request_model(),
+            runtime_interval_schedule=_runtime_interval_schedule((1.0,)),
             hourly_factor_contract=build_hourly_factor_contract(
-                request_start_utc_nanos=1_706_882_400_000_000_000,
+                request_start_utc_nanos=REFERENCE_PRICING_TIMESTAMP_UTC_NANOS,
                 s_h=(1.0,),
                 known_component_nu_h=(0.0,),
                 surprise_component_nu_h=(0.0,),
             ),
         )
 
-    assert captured_error.value.failure.field_path == "hourly_factor_contract.interval_count"
-    assert "maximum maturity implied interval count" in captured_error.value.failure.message
+    assert captured_error.value.failure.field_path == "request.market_inputs.maturity_intervals[1]"
+    assert "terminal boundary exactly" in captured_error.value.failure.message
 
 
 def test_vanilla_option_pricing_execution_input_keeps_native_hourly_factor_contract() -> None:
@@ -428,8 +431,9 @@ def test_vanilla_option_pricing_execution_input_rejects_empty_hourly_factor_cont
     with pytest.raises(VanillaOptionPricingValidationError) as captured_error:
         VanillaOptionPricingExecutionInput(
             request=request,
+            runtime_interval_schedule=_runtime_interval_schedule((0.5,)),
             hourly_factor_contract=build_hourly_factor_contract(
-                request_start_utc_nanos=1_706_882_400_000_000_000,
+                request_start_utc_nanos=REFERENCE_PRICING_TIMESTAMP_UTC_NANOS,
                 s_h=(),
                 known_component_nu_h=(),
                 surprise_component_nu_h=(),
@@ -676,6 +680,8 @@ def test_vanilla_option_pricing_run_result_roundtrip_preserves_required_schema_f
             "response",
             "run_diagnostics",
             "calibration_hooks",
+            "runtime_interval_schedule",
+            "maturity_terminal_interval_indices",
         )
     )
 
@@ -770,6 +776,30 @@ def _valid_request_model() -> VanillaOptionPricingRequest:
     )
 
 
+def _runtime_interval_schedule(
+    interval_deltas_hours: tuple[float, ...],
+    *,
+    valuation_time_utc_nanos: int = REFERENCE_PRICING_TIMESTAMP_UTC_NANOS,
+) -> PricingIntervalSchedule:
+    interval_end_timestamps_utc_nanos: list[int] = []
+    running_timestamp_utc_nanos = valuation_time_utc_nanos
+
+    for interval_delta_hours in interval_deltas_hours:
+        running_timestamp_utc_nanos += int(interval_delta_hours * 3_600_000_000_000)
+        interval_end_timestamps_utc_nanos.append(running_timestamp_utc_nanos)
+
+    return PricingIntervalSchedule(
+        valuation_time_utc_nanos=valuation_time_utc_nanos,
+        metadata=PricingIntervalScheduleMetadata(
+            policy_id="explicit_interval_end_timestamps_utc.v1",
+            derivation_policy="explicit_interval_end_timestamps_utc.v1",
+            factor_assignment_policy="overlap_weighted_resampling_from_hourly_source_buckets.v1",
+        ),
+        interval_end_timestamps_utc_nanos=tuple(interval_end_timestamps_utc_nanos),
+        interval_deltas_hours=interval_deltas_hours,
+    )
+
+
 def _valid_execution_input_model() -> VanillaOptionPricingExecutionInput:
     return VanillaOptionPricingExecutionInput(
         request=VanillaOptionPricingRequest(
@@ -782,9 +812,9 @@ def _valid_execution_input_model() -> VanillaOptionPricingExecutionInput:
             model_parameters=_valid_request_model().model_parameters,
             interval_delta=0.5,
         ),
+        runtime_interval_schedule=_runtime_interval_schedule((0.5,)),
         hourly_factor_contract=build_hourly_factor_contract(
-            request_start_utc_nanos=1_706_882_400_000_000_000,
-            interval_duration_nanos=1_800_000_000_000,
+            request_start_utc_nanos=REFERENCE_PRICING_TIMESTAMP_UTC_NANOS,
             s_h=(1.1,),
             known_component_nu_h=(0.03,),
             surprise_component_nu_h=(0.05,),
@@ -819,8 +849,9 @@ def _valid_runtime_execution_input_model() -> VanillaOptionPricingExecutionInput
             ),
             model_parameters=_valid_request_model().model_parameters,
         ),
+        runtime_interval_schedule=_runtime_interval_schedule((1.0,)),
         hourly_factor_contract=build_hourly_factor_contract(
-            request_start_utc_nanos=1_706_882_400_000_000_000,
+            request_start_utc_nanos=REFERENCE_PRICING_TIMESTAMP_UTC_NANOS,
             s_h=(1.0,),
             known_component_nu_h=(0.0,),
             surprise_component_nu_h=(0.0,),

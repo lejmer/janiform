@@ -5,19 +5,19 @@ use std::path::PathBuf;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::calendar::{
-    ExchangeCalendarRegistry, TimestampEventInputRecord, TimestampEventSessionFilter,
-};
-use crate::seasonality::{
-    DayOfWeekSeasonalityEstimatorSettings, DayOfYearSeasonalityEstimatorSettings,
-    IntradaySeasonalityEstimatorSettings, IntradaySmoothingKernel, ScheduledEventOverlayDefinition,
-};
 use janiform_calibration_artifacts::{
     CalibrationExecutionMode, CalibrationRunContract, CalibrationRunContractError,
     CalibrationRunSpec, CalibrationStage, CalibrationStageDependency, CalibrationStageGraph,
     JointRefinementStageCarryInput, ReturnComponentsStageFittedParameters,
 };
 use janiform_engine_pricing::VanillaOptionPayoffType;
+use janiform_market_time::calendar::{
+    ExchangeCalendarRegistry, TimestampEventInputRecord, TimestampEventSessionFilter,
+};
+use janiform_market_time::seasonality::{
+    DayOfWeekSeasonalityEstimatorSettings, DayOfYearSeasonalityEstimatorSettings,
+    IntradaySeasonalityEstimatorSettings, IntradaySmoothingKernel, ScheduledEventOverlayDefinition,
+};
 use janiform_model_kernels::hawkes::{
     HawkesEventSide, HawkesStructuredAlphaParameterization, HawkesStructuredRhoParameterization,
     HawkesStructuredRhoSelfDominancePolicy,
@@ -51,6 +51,7 @@ use super::stages::return_components::{
 use super::stages::seasonality::{
     SeasonalityStageExecutionInput, SeasonalityStageExecutionSettings,
 };
+use janiform_engine_pricing::PricingIntervalSchedulePolicy;
 
 pub const CALIBRATION_STAGED_EXECUTION_INPUT_SCHEMA_VERSION: &str =
     "calibration.orchestration.staged_execution_input.v1";
@@ -448,6 +449,8 @@ pub struct CalibrationJointRefinementCarryInput {
 #[serde(deny_unknown_fields)]
 pub struct CalibrationJointRefinementOptionPricingInput {
     pub valuation_time_utc_nanos: i64,
+    #[serde(default)]
+    pub pricing_interval_schedule_policy: PricingIntervalSchedulePolicy,
     pub carry_input: CalibrationJointRefinementCarryInput,
     pub current_state_estimation_input: CalibrationJointRefinementCurrentStateEstimationInput,
     pub option_snapshot_nodes: Vec<CalibrationJointRefinementOptionSnapshotNode>,
@@ -1124,6 +1127,7 @@ impl CalibrationJointRefinementOptionPricingInput {
         Ok(
             super::stages::joint_refinement::JointRefinementStageOptionPricingInput {
                 valuation_time_utc_nanos: self.valuation_time_utc_nanos,
+                pricing_interval_schedule_policy: self.pricing_interval_schedule_policy,
                 carry_input: self.carry_input.into_core(),
                 current_state_estimation_input: self
                     .current_state_estimation_input
@@ -1176,7 +1180,7 @@ mod tests {
         CalibrationRunSeedSettings, CalibrationRunSpec, CalibrationStage,
         CalibrationStageSeedOverride, CalibrationStageSolverSettings,
     };
-    use janiform_engine_pricing::VanillaOptionPayoffType;
+    use janiform_engine_pricing::{PricingIntervalSchedulePolicy, VanillaOptionPayoffType};
     use janiform_model_kernels::hawkes::{
         HawkesStructuredAlphaParameterization, HawkesStructuredRhoParameterization,
         HawkesStructuredRhoSelfDominancePolicy,
@@ -1464,6 +1468,7 @@ mod tests {
         execution_input.joint_refinement_option_pricing_input =
             Some(CalibrationJointRefinementOptionPricingInput {
                 valuation_time_utc_nanos: 1_770_042_600_000_000_000,
+                pricing_interval_schedule_policy: PricingIntervalSchedulePolicy::AutoExactSparse,
                 carry_input: CalibrationJointRefinementCarryInput {
                     discount_rate: 0.02,
                     carry_rate: 0.01,

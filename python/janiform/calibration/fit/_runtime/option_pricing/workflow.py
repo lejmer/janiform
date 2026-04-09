@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING, Any, Optional
 
 from .....pricing import (
     AnchoredVanillaOptionPricingBoundaryInput,
+    PricingIntervalSchedule,
+    PricingIntervalSchedulePolicy,
     VanillaOptionPayoffConfiguration,
     VanillaOptionPayoffType,
     VanillaOptionPricingExecutionInput,
@@ -32,9 +34,8 @@ from ...pricing.internal.maturity import resolve_pricing_maturity_axis, resolve_
 from ...state import CurrentStateEstimationRequest
 from .support import (
     build_model_pricing_hourly_factor_contract,
-    native_pricing_interval_factors,
     price_observed_log_price_from_spot,
-    pricing_interval_count_from_maturity_interval,
+    runtime_schedule_hourly_factor_contract_coverage,
 )
 from ..payloads import (
     mean_reversion_fitted_parameters_for_model,
@@ -69,6 +70,7 @@ def price_option_for_model(
     include_transform_diagnostics: bool = False,
     include_integration_quality_diagnostics: bool = False,
     include_calibration_hooks: bool = False,
+    pricing_interval_schedule_policy: Optional[PricingIntervalSchedulePolicy] = None,
     output_path: Optional[str | Path] = None,
     silent: bool = False,
     progress_mode: WorkflowProgressMode | str = WorkflowProgressMode.AUTO,
@@ -95,6 +97,7 @@ def price_option_for_model(
         include_transform_diagnostics=include_transform_diagnostics,
         include_integration_quality_diagnostics=include_integration_quality_diagnostics,
         include_calibration_hooks=include_calibration_hooks,
+        pricing_interval_schedule_policy=pricing_interval_schedule_policy,
     )
 
     with output_controller.progress("price") as progress:
@@ -122,6 +125,7 @@ def price_option_grids_for_model(
     boundary_state: Optional[HawkesExcitationState] = None,
     include_transform_diagnostics: bool = False,
     include_integration_quality_diagnostics: bool = False,
+    pricing_interval_schedule_policy: Optional[PricingIntervalSchedulePolicy] = None,
     cpu_count: Optional[int] = None,
     silent: bool = False,
     progress_mode: WorkflowProgressMode | str = WorkflowProgressMode.AUTO,
@@ -140,6 +144,7 @@ def price_option_grids_for_model(
         boundary_state=boundary_state,
         include_transform_diagnostics=include_transform_diagnostics,
         include_integration_quality_diagnostics=include_integration_quality_diagnostics,
+        pricing_interval_schedule_policy=pricing_interval_schedule_policy,
         cpu_count=cpu_count,
     )
 
@@ -160,6 +165,7 @@ def price_option_surface_for_model(
     boundary_state: Optional[HawkesExcitationState] = None,
     include_transform_diagnostics: bool = False,
     include_integration_quality_diagnostics: bool = False,
+    pricing_interval_schedule_policy: Optional[PricingIntervalSchedulePolicy] = None,
     cpu_count: Optional[int] = None,
     silent: bool = False,
     progress_mode: WorkflowProgressMode | str = WorkflowProgressMode.AUTO,
@@ -178,6 +184,7 @@ def price_option_surface_for_model(
         boundary_state=boundary_state,
         include_transform_diagnostics=include_transform_diagnostics,
         include_integration_quality_diagnostics=include_integration_quality_diagnostics,
+        pricing_interval_schedule_policy=pricing_interval_schedule_policy,
         cpu_count=cpu_count,
     )
 
@@ -206,24 +213,22 @@ def prepare_model_pricing_execution_input(
     include_transform_diagnostics: bool,
     include_integration_quality_diagnostics: bool,
     include_calibration_hooks: bool,
+    pricing_interval_schedule_policy: Optional[PricingIntervalSchedulePolicy],
 ) -> VanillaOptionPricingExecutionInput:
     resolved_maturity_inputs = resolve_single_pricing_maturity_input(
         valuation_time_utc=valuation_time_utc,
         expiry_timestamp_utc=expiry_timestamp_utc,
         expiry_date=expiry_date,
         tenor=tenor,
+        pricing_interval_schedule_policy=pricing_interval_schedule_policy,
     )
     maturity_interval = resolved_maturity_inputs.maturity_intervals[0]
-    horizon_interval_count = pricing_interval_count_from_maturity_interval(
-        maturity_interval,
-        field_path="maturity_input",
-    )
 
     runtime_input = prepare_model_pricing_runtime_input(
         model,
         valuation_time_utc=valuation_time_utc,
         spot=spot,
-        horizon_interval_count=horizon_interval_count,
+        runtime_interval_schedule=resolved_maturity_inputs.pricing_interval_schedule,
         observed_data=observed_data,
         boundary_state=boundary_state,
     )
@@ -249,11 +254,13 @@ def prepare_model_pricing_execution_input(
                 interval_index=0,
                 hawkes_boundary_state=runtime_input.effective_boundary_state,
                 mean_reversion_fitted_parameters=runtime_input.mean_reversion_fitted_parameters,
-                interval_delta=runtime_input.runtime_factors.interval_delta,
+                interval_delta=resolved_maturity_inputs.pricing_interval_schedule.first_interval_delta_hours,
                 observed_boundary_state=runtime_input.effective_observed_boundary_state,
             ),
             model_parameters=runtime_input.model_parameters,
+            interval_delta=resolved_maturity_inputs.pricing_interval_schedule.first_interval_delta_hours,
         ),
+        runtime_interval_schedule=resolved_maturity_inputs.pricing_interval_schedule,
         hourly_factor_contract=runtime_input.hourly_factor_contract,
         optional_output_selection=VanillaOptionPricingOptionalOutputSelection(
             include_transform_diagnostics=include_transform_diagnostics,
@@ -268,30 +275,48 @@ def prepare_model_pricing_runtime_input(
     *,
     valuation_time_utc: datetime,
     spot: float,
-    horizon_interval_count: int,
+    runtime_interval_schedule: PricingIntervalSchedule,
     observed_data: Optional[CurrentStateEstimationRequest],
     boundary_state: Optional[HawkesExcitationState],
 ) -> PreparedModelPricingRuntimeInput:
     runtime_factors = prepare_model_runtime_factors_for_model(
         model,
         start_time_utc=valuation_time_utc,
-        horizon_interval_count=horizon_interval_count,
+        horizon_interval_count=1,
         interval="1h",
         prefer_joint_pricing_block=True,
     )
-    hourly_factor_contract = build_model_pricing_hourly_factor_contract(
+
+    boundary_hourly_factor_contract = build_model_pricing_hourly_factor_contract(
         model,
         runtime_factors=runtime_factors,
-        valuation_time_utc=valuation_time_utc,
+        range_start_utc=valuation_time_utc,
+        range_end_utc=runtime_factors.range_end_utc,
     )
+
+    pricing_hourly_coverage_start_utc, pricing_hourly_coverage_end_utc = (
+        runtime_schedule_hourly_factor_contract_coverage(
+            valuation_time_utc,
+            runtime_interval_schedule,
+        )
+    )
+
+    pricing_hourly_factor_contract = build_model_pricing_hourly_factor_contract(
+        model,
+        runtime_factors=runtime_factors,
+        range_start_utc=pricing_hourly_coverage_start_utc,
+        range_end_utc=pricing_hourly_coverage_end_utc,
+    )
+
     mean_reversion_fitted_parameters = mean_reversion_fitted_parameters_for_model(model)
 
     if boundary_state is not None:
         effective_boundary_state = boundary_state
+
         (_, _, effective_observed_boundary_state) = prepare_model_mean_reversion_runtime_inputs(
             model,
             runtime_factors=runtime_factors,
-            hourly_factor_contract=hourly_factor_contract,
+            hourly_factor_contract=boundary_hourly_factor_contract,
             initial_excitation_state=effective_boundary_state,
             start_anchor_value=price_observed_log_price_from_spot(model, spot=spot),
         )
@@ -307,17 +332,18 @@ def prepare_model_pricing_runtime_input(
             effective_observed_boundary_state = pricing_state.mean_reversion_boundary_state
         else:
             effective_boundary_state = runtime_factors.kernel_parameters.stationary_excitation_state()
+
             (_, _, effective_observed_boundary_state) = prepare_model_mean_reversion_runtime_inputs(
                 model,
                 runtime_factors=runtime_factors,
-                hourly_factor_contract=hourly_factor_contract,
+                hourly_factor_contract=boundary_hourly_factor_contract,
                 initial_excitation_state=effective_boundary_state,
                 start_anchor_value=price_observed_log_price_from_spot(model, spot=spot),
             )
 
     return PreparedModelPricingRuntimeInput(
         runtime_factors=runtime_factors,
-        hourly_factor_contract=hourly_factor_contract,
+        hourly_factor_contract=pricing_hourly_factor_contract,
         effective_boundary_state=effective_boundary_state,
         effective_observed_boundary_state=effective_observed_boundary_state,
         mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
@@ -327,6 +353,8 @@ def prepare_model_pricing_runtime_input(
             nig_shared_plus_shift_configuration=runtime_factors.nig_shared_plus_shift_configuration,
         ),
     )
+
+
 def prepare_model_grid_batch_pricing_native_input(
     model: JaniformModel,
     *,
@@ -336,6 +364,7 @@ def prepare_model_grid_batch_pricing_native_input(
     boundary_state: Optional[HawkesExcitationState],
     include_transform_diagnostics: bool,
     include_integration_quality_diagnostics: bool,
+    pricing_interval_schedule_policy: Optional[PricingIntervalSchedulePolicy],
     cpu_count: Optional[int],
 ) -> dict[str, Any]:
     resolved_grid_maturity_inputs = tuple(
@@ -345,23 +374,29 @@ def prepare_model_grid_batch_pricing_native_input(
             expiry_dates=grid.expiry_dates,
             tenors=grid.tenors,
             field_path=f"batch.grids[{grid_index}]",
+            pricing_interval_schedule_policy=pricing_interval_schedule_policy,
         )
         for grid_index, grid in enumerate(batch.grids)
     )
-    interval_counts = tuple(
-        pricing_interval_count_from_maturity_interval(
-            maturity_interval,
-            field_path=f"batch.grids[{grid_index}].maturity_inputs[{maturity_index}]",
-        )
-        for grid_index, resolved_grid in enumerate(resolved_grid_maturity_inputs)
-        for maturity_index, maturity_interval in enumerate(resolved_grid.maturity_intervals)
+
+    runtime_schedule_resolution = resolve_pricing_maturity_axis(
+        valuation_time_utc=valuation_time_utc,
+        expiry_timestamps_utc=tuple(
+            resolved_expiry_timestamp_utc
+            for resolved_grid in resolved_grid_maturity_inputs
+            for resolved_expiry_timestamp_utc in resolved_grid.resolved_expiry_timestamps_utc
+        ),
+        expiry_dates=None,
+        tenors=None,
+        field_path="batch.runtime_interval_schedule",
+        pricing_interval_schedule_policy=pricing_interval_schedule_policy,
     )
-    max_interval_count = max(interval_counts)
+
     runtime_input = prepare_model_pricing_runtime_input(
         model,
         valuation_time_utc=valuation_time_utc,
         spot=batch.spot,
-        horizon_interval_count=max_interval_count,
+        runtime_interval_schedule=runtime_schedule_resolution.pricing_interval_schedule,
         observed_data=observed_data,
         boundary_state=boundary_state,
     )
@@ -384,15 +419,13 @@ def prepare_model_grid_batch_pricing_native_input(
             interval_index=0,
             hawkes_boundary_state=runtime_input.effective_boundary_state,
             mean_reversion_fitted_parameters=runtime_input.mean_reversion_fitted_parameters,
-            interval_delta=runtime_input.runtime_factors.interval_delta,
+            interval_delta=runtime_schedule_resolution.pricing_interval_schedule.first_interval_delta_hours,
             observed_boundary_state=runtime_input.effective_observed_boundary_state,
         ).to_payload(),
         "model_parameters": runtime_input.model_parameters.to_payload(),
-        "interval_delta": runtime_input.runtime_factors.interval_delta,
-        "interval_factors": native_pricing_interval_factors(
-            runtime_input.hourly_factor_contract,
-            horizon_interval_count=max_interval_count,
-        ),
+        "runtime_interval_schedule": runtime_schedule_resolution.pricing_interval_schedule.to_payload(),
+        "interval_delta": runtime_schedule_resolution.pricing_interval_schedule.first_interval_delta_hours,
+        "hourly_factor_contract": runtime_input.hourly_factor_contract.to_payload(),
         "optional_output_selection": VanillaOptionPricingOptionalOutputSelection(
             include_transform_diagnostics=include_transform_diagnostics,
             include_integration_quality_diagnostics=include_integration_quality_diagnostics,
@@ -411,6 +444,7 @@ def prepare_model_surface_pricing_native_input(
     boundary_state: Optional[HawkesExcitationState],
     include_transform_diagnostics: bool,
     include_integration_quality_diagnostics: bool,
+    pricing_interval_schedule_policy: Optional[PricingIntervalSchedulePolicy],
     cpu_count: Optional[int],
 ) -> dict[str, Any]:
     resolved_surface_maturity_inputs = resolve_pricing_maturity_axis(
@@ -419,20 +453,14 @@ def prepare_model_surface_pricing_native_input(
         expiry_dates=surface.expiry_dates,
         tenors=surface.tenors,
         field_path="surface",
+        pricing_interval_schedule_policy=pricing_interval_schedule_policy,
     )
-    interval_counts = tuple(
-        pricing_interval_count_from_maturity_interval(
-            maturity_interval,
-            field_path=f"surface.maturity_inputs[{maturity_index}]",
-        )
-        for maturity_index, maturity_interval in enumerate(resolved_surface_maturity_inputs.maturity_intervals)
-    )
-    max_interval_count = max(interval_counts)
+
     runtime_input = prepare_model_pricing_runtime_input(
         model,
         valuation_time_utc=valuation_time_utc,
         spot=surface.spot,
-        horizon_interval_count=max_interval_count,
+        runtime_interval_schedule=resolved_surface_maturity_inputs.pricing_interval_schedule,
         observed_data=observed_data,
         boundary_state=boundary_state,
     )
@@ -454,15 +482,13 @@ def prepare_model_surface_pricing_native_input(
             interval_index=0,
             hawkes_boundary_state=runtime_input.effective_boundary_state,
             mean_reversion_fitted_parameters=runtime_input.mean_reversion_fitted_parameters,
-            interval_delta=runtime_input.runtime_factors.interval_delta,
+            interval_delta=resolved_surface_maturity_inputs.pricing_interval_schedule.first_interval_delta_hours,
             observed_boundary_state=runtime_input.effective_observed_boundary_state,
         ).to_payload(),
         "model_parameters": runtime_input.model_parameters.to_payload(),
-        "interval_delta": runtime_input.runtime_factors.interval_delta,
-        "interval_factors": native_pricing_interval_factors(
-            runtime_input.hourly_factor_contract,
-            horizon_interval_count=max_interval_count,
-        ),
+        "runtime_interval_schedule": resolved_surface_maturity_inputs.pricing_interval_schedule.to_payload(),
+        "interval_delta": resolved_surface_maturity_inputs.pricing_interval_schedule.first_interval_delta_hours,
+        "hourly_factor_contract": runtime_input.hourly_factor_contract.to_payload(),
         "optional_output_selection": VanillaOptionPricingOptionalOutputSelection(
             include_transform_diagnostics=include_transform_diagnostics,
             include_integration_quality_diagnostics=include_integration_quality_diagnostics,

@@ -5,6 +5,8 @@ from janiform.pricing import (
     MeanReversionBoundaryState,
     MeanReversionFittedParameters,
     NigSharedPlusShiftConfiguration,
+    PricingIntervalSchedule,
+    PricingIntervalScheduleMetadata,
     VanillaOptionPayoffConfiguration,
     VanillaOptionPayoffType,
     VanillaOptionPricingExecutionInput,
@@ -27,6 +29,7 @@ from janiform.simulation.coarse import (
     SurpriseNewsArrivalConfiguration,
 )
 from tests.support.hourly_factor_contracts import build_hourly_factor_contract
+from tests.support.time import REFERENCE_PRICING_TIMESTAMP_UTC_NANOS
 
 
 def build_anchored_request_model() -> VanillaOptionPricingRequest:
@@ -92,8 +95,9 @@ def build_anchored_runtime_execution_input_model() -> VanillaOptionPricingExecut
             ),
             model_parameters=anchored_request.model_parameters,
         ),
+        runtime_interval_schedule=_runtime_interval_schedule((1.0,)),
         hourly_factor_contract=build_hourly_factor_contract(
-            request_start_utc_nanos=1_706_882_400_000_000_000,
+            request_start_utc_nanos=REFERENCE_PRICING_TIMESTAMP_UTC_NANOS,
             s_h=(1.0,),
             known_component_nu_h=(0.0,),
             surprise_component_nu_h=(0.0,),
@@ -149,6 +153,7 @@ def build_anchored_surface_execution_input_model() -> VanillaOptionSurfacePricin
             boundary_input=anchored_runtime_execution_input.request.boundary_input,
             model_parameters=anchored_runtime_execution_input.request.model_parameters,
         ),
+        runtime_interval_schedule=anchored_runtime_execution_input.runtime_interval_schedule,
         hourly_factor_contract=anchored_runtime_execution_input.hourly_factor_contract,
         optional_output_selection=anchored_runtime_execution_input.optional_output_selection,
         cpu_count=1,
@@ -239,4 +244,25 @@ def _build_news_process_configuration() -> NewsProcessConfiguration:
             activity_coupling_scale=0.0,
             return_jump_scale=1.0,
         ),
+    )
+
+
+def _runtime_interval_schedule(interval_deltas_hours: tuple[float, ...]) -> PricingIntervalSchedule:
+    valuation_time_utc_nanos = REFERENCE_PRICING_TIMESTAMP_UTC_NANOS
+    interval_end_timestamps_utc_nanos: list[int] = []
+    current_endpoint_utc_nanos = valuation_time_utc_nanos
+
+    for interval_delta_hours in interval_deltas_hours:
+        current_endpoint_utc_nanos += int(interval_delta_hours * 3_600_000_000_000)
+        interval_end_timestamps_utc_nanos.append(current_endpoint_utc_nanos)
+
+    return PricingIntervalSchedule(
+        valuation_time_utc_nanos=valuation_time_utc_nanos,
+        metadata=PricingIntervalScheduleMetadata(
+            policy_id="explicit_interval_end_timestamps_utc.v1",
+            derivation_policy="tests.support.pricing.uniform_schedule.v1",
+            factor_assignment_policy="overlap_weighted_resampling_from_hourly_source_buckets.v1",
+        ),
+        interval_end_timestamps_utc_nanos=tuple(interval_end_timestamps_utc_nanos),
+        interval_deltas_hours=interval_deltas_hours,
     )

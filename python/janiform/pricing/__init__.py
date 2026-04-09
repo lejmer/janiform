@@ -1,11 +1,13 @@
 """Public vanilla-option pricing contracts and workflow helpers."""
 
 from .contracts import (
+    AutoExactSparsePricingIntervalSchedulePolicy,
     AnchoredLocalTiltAdmissibilityStatus,
     AnchoredLocalTiltBoundaryStateSummary,
     AnchoredLocalTiltDomainStatus,
     AnchoredLocalTiltSolveDiagnostics,
     AnchoredVanillaOptionPricingBoundaryInput,
+    ExplicitIntervalEndTimestampsUtcPricingIntervalSchedulePolicy,
     FourierInversionContour,
     FourierInversionEngineSettings,
     FourierInversionIntegrationStabilityControls,
@@ -17,6 +19,9 @@ from .contracts import (
     MeanReversionBoundaryState,
     MeanReversionFittedParameters,
     NigSharedPlusShiftConfiguration,
+    PricingIntervalSchedule,
+    PricingIntervalScheduleMetadata,
+    PricingIntervalSchedulePolicy,
     VanillaOptionImpliedVolatilityInversionStatus,
     VanillaOptionPayoffConfiguration,
     VanillaOptionPayoffType,
@@ -39,6 +44,8 @@ from .contracts import (
     VanillaOptionSurfacePricingRequest,
     VanillaOptionSurfacePricingResponse,
     VanillaOptionSurfacePricingRunResult,
+    default_pricing_interval_schedule_policy,
+    pricing_interval_schedule_policy_from_mapping,
 )
 from .errors import VanillaOptionPricingValidationError
 from .workflow import (
@@ -52,6 +59,8 @@ __all__ = [
     "AnchoredLocalTiltDomainStatus",
     "AnchoredLocalTiltSolveDiagnostics",
     "AnchoredVanillaOptionPricingBoundaryInput",
+    "AutoExactSparsePricingIntervalSchedulePolicy",
+    "ExplicitIntervalEndTimestampsUtcPricingIntervalSchedulePolicy",
     "FourierInversionContour",
     "FourierInversionEngineSettings",
     "FourierInversionIntegrationStabilityControls",
@@ -63,6 +72,9 @@ __all__ = [
     "MeanReversionBoundaryState",
     "MeanReversionFittedParameters",
     "NigSharedPlusShiftConfiguration",
+    "PricingIntervalSchedule",
+    "PricingIntervalScheduleMetadata",
+    "PricingIntervalSchedulePolicy",
     "VanillaOptionImpliedVolatilityInversionStatus",
     "VanillaOptionPayoffConfiguration",
     "VanillaOptionPayoffType",
@@ -86,6 +98,8 @@ __all__ = [
     "VanillaOptionSurfacePricingResponse",
     "VanillaOptionSurfacePricingRunResult",
     "VanillaOptionPricingValidationError",
+    "default_pricing_interval_schedule_policy",
+    "pricing_interval_schedule_policy_from_mapping",
     "run_vanilla_option_pricing",
     "run_vanilla_option_surface_pricing",
 ]

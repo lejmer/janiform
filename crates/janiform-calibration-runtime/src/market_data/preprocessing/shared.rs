@@ -4,11 +4,6 @@ pub(super) use std::str::FromStr;
 pub(super) use chrono::{DateTime, Datelike, LocalResult, NaiveDate, TimeZone, Timelike, Utc};
 pub(super) use chrono_tz::Tz;
 
-pub(super) use crate::calendar::{
-    CalendarDate, ExchangeCalendarDefinition, ExchangeCalendarRegistry,
-    ExchangeCalendarRegistryLookupError, MarketState, SessionTime, SessionWindowDefinition,
-    TradingWeekday,
-};
 pub(super) use crate::execution_bridge::{
     CalibrationDayOfWeekSeasonalityEstimatorSettings,
     CalibrationDayOfYearSeasonalityEstimatorSettings, CalibrationHawkesDirectionalLabelDiagnostics,
@@ -34,6 +29,11 @@ pub(super) use janiform_foundations::numeric::{
     arithmetic_mean, clamp_to_open_unit_interval, clamp_to_unit_interval, coefficient_of_variation,
     logistic, median_abs, median_abs_non_zero, normalized_pseudocount, round_positive_to_domain,
     round_to, smallest_positive_value, strictly_positive_machine_value, unique_sorted_values,
+};
+pub(super) use janiform_market_time::calendar::{
+    CalendarDate, ExchangeCalendarDefinition, ExchangeCalendarRegistry,
+    ExchangeCalendarRegistryLookupError, MarketState, SessionTime, SessionWindowDefinition,
+    TradingWeekday,
 };
 pub(super) use janiform_model_kernels::hawkes::{
     HawkesStructuredAlphaParameterization, HawkesStructuredRhoParameterization,

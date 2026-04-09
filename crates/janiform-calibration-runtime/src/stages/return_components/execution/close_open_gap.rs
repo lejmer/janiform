@@ -8,8 +8,8 @@ use super::super::contracts::{
 };
 use super::super::{signal_partition_fit, surprise_episode_selection_fit};
 use super::signals::ReturnComponentsStagePreparedCandidateGenerationInput;
-use crate::calendar::{ExchangeCalendarRegistry, MarketState};
 use crate::shock_mark_fitting::fit_shared_news_mark_law_from_shock_samples;
+use janiform_market_time::calendar::{ExchangeCalendarRegistry, MarketState};
 
 pub(crate) fn prepare_candidate_generation_input(
     exchange_code: &str,
@@ -204,7 +204,7 @@ fn resolve_market_state_at_nanos(
 
     calendar_registry
         .resolve_market_state_at_utc(exchange_code, timestamp_utc)
-        .map_err(|source: crate::calendar::ExchangeCalendarResolveError| {
+        .map_err(|source: janiform_market_time::calendar::ExchangeCalendarResolveError| {
             ReturnComponentsStageCandidateGenerationInputError::CloseOpenBoundaryStateResolutionFailed {
                 exchange_code: exchange_code.to_string(),
                 timestamp_utc_nanos,

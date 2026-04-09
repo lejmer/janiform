@@ -7,8 +7,8 @@ use crate::artifacts::{
     SeededFinePathRecord, SeededFinePathTransitionKind, SeededTickEventDebugTraceTransitionKind,
     SeededTickEventSide, SeededTickSimulationNewsEventMarketState,
 };
-use crate::calendar::MarketState;
 use crate::error::SeededTickSimulationRunError;
+use janiform_market_time::calendar::MarketState;
 
 use super::buffers::try_reserve_simulation_buffer;
 

@@ -5,6 +5,7 @@ use std::fs;
 use chrono::{DateTime, Utc};
 use janiform_engine_pricing::{
     AnchoredPricingRecursionDiagnostics, AnchoredVanillaOptionPricingBoundaryInput,
+    PricingIntervalSchedule, PricingIntervalScheduleMetadata,
     VanillaOptionPayoffConfiguration, VanillaOptionPayoffType, VanillaOptionPricingExecutionInput,
     VanillaOptionPricingIntervalFactors, VanillaOptionPricingMarketInputs,
     VanillaOptionPricingModelParameters, VanillaOptionPricingOptionalOutputSelection,
@@ -340,13 +341,17 @@ fn assert_anchored_diagnostics_match_baseline(
 
 fn estimate_seeded_reference_price(scenario: &ScenarioDefinition, path_count: usize) -> f64 {
     let market_inputs = pricing_market_inputs();
+
     let maturity_interval = market_inputs
         .single_maturity_interval()
         .expect("seeded reference pricing inputs should be single-node");
+
     let strike = market_inputs
         .single_strike()
         .expect("seeded reference pricing inputs should be single-node");
+
     let discount_factor = (-market_inputs.risk_free_rate * maturity_interval).exp();
+
     let initial_observed_log_price = scenario.observed_boundary_state.observed_log_price;
 
     let mut discounted_payoff_sum = 0.0_f64;
@@ -395,6 +400,7 @@ fn run_native_pricer_for_scenario(
             pricing_model_parameters(),
         )
         .expect("native pricing request should construct"),
+        build_runtime_interval_schedule(),
         vec![
             VanillaOptionPricingIntervalFactors::try_new(0.0, 0.0, 0.0)
                 .expect("zero-factor pricing interval should construct"),
@@ -404,6 +410,21 @@ fn run_native_pricer_for_scenario(
     .expect("native pricing execution input should construct");
 
     run_vanilla_option_pricing(execution_input)
+}
+
+fn build_runtime_interval_schedule() -> PricingIntervalSchedule {
+    PricingIntervalSchedule::try_new(
+        SYNTHETIC_START_UTC_NANOS,
+        PricingIntervalScheduleMetadata {
+            policy_id: "explicit_interval_end_timestamps_utc.v1".to_string(),
+            derivation_policy: "anchored_pricing_native_vs_seeded_reference.synthetic_schedule.v1"
+                .to_string(),
+            factor_assignment_policy:
+                "overlap_weighted_resampling_from_hourly_source_buckets.v1".to_string(),
+        },
+        vec![SYNTHETIC_START_UTC_NANOS + ONE_HOUR_NANOS],
+    )
+    .expect("synthetic runtime interval schedule should construct")
 }
 
 fn pricing_market_inputs() -> VanillaOptionPricingMarketInputs {

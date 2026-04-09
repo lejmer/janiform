@@ -3,8 +3,8 @@ use chrono_tz::Tz;
 use janiform_foundations::randomness::SimulationRandomnessStream;
 use janiform_model_kernels::hawkes::HawkesExcitationState;
 
-use crate::calendar::{CalendarDate, SessionTime, TradingWeekday};
 use crate::error::SeededTickSimulationRunError;
+use janiform_market_time::calendar::{CalendarDate, SessionTime, TradingWeekday};
 
 use super::market_state::SeededSimulationMarketStateResolver;
 use super::results::validate_integrated_intensity;
@@ -370,7 +370,7 @@ fn local_datetime_for_session_boundary(
 mod tests {
     use chrono::{TimeZone, Utc};
 
-    use crate::calendar::{
+    use janiform_market_time::calendar::{
         ExchangeCalendarArtifact, ExchangeCalendarRegistry, ExchangeCalendarRegistryArtifact,
         RegularSessionArtifact, SessionWindowArtifact, TradingWeekday,
     };
@@ -407,7 +407,7 @@ mod tests {
                 exchange_code: "TEST".to_string(),
                 exchange_name: "Test Exchange".to_string(),
                 timezone_name: Some("UTC".to_string()),
-                rule_metadata: crate::calendar::CalendarRuleMetadataArtifact {
+                rule_metadata: janiform_market_time::calendar::CalendarRuleMetadataArtifact {
                     holiday_calendar_code: "NONE".to_string(),
                     early_close_rule_set: None,
                 },

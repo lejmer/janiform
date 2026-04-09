@@ -2,8 +2,12 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 
 use chrono::{DateTime, Duration, Months, NaiveDate, Utc};
-use janiform_foundations::time::{ONE_HOUR_NANOS, duration_nanos_to_hours};
 use serde::{Deserialize, Serialize};
+
+use crate::interval_schedule::{
+    PricingIntervalSchedule, PricingIntervalScheduleError, PricingIntervalSchedulePolicy,
+    derive_pricing_interval_schedule,
+};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct HighLevelPricingMaturityResolutionRequest {
@@ -11,15 +15,19 @@ pub struct HighLevelPricingMaturityResolutionRequest {
     pub expiry_timestamps_utc: Option<Vec<Option<String>>>,
     pub expiry_dates: Option<Vec<Option<String>>>,
     pub tenors: Option<Vec<Option<String>>>,
+    #[serde(default)]
+    pub pricing_interval_schedule_policy: PricingIntervalSchedulePolicy,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct HighLevelPricingMaturityResolution {
     pub maturity_intervals: Vec<f64>,
     pub resolved_expiry_timestamps_utc: Vec<String>,
+    pub pricing_interval_schedule: PricingIntervalSchedule,
+    pub maturity_terminal_interval_indices: Vec<usize>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum HighLevelPricingMaturityResolutionError {
     InvalidValuationTime {
         value: String,
@@ -52,13 +60,12 @@ pub enum HighLevelPricingMaturityResolutionError {
         field: &'static str,
         index: usize,
     },
-    MisalignedExpiry {
-        field: &'static str,
-        index: usize,
-    },
     TenorOverflow {
         index: usize,
         value: String,
+    },
+    InvalidPricingIntervalSchedule {
+        source: PricingIntervalScheduleError,
     },
 }
 
@@ -107,19 +114,25 @@ impl Display for HighLevelPricingMaturityResolutionError {
                 formatter,
                 "{field}[{index}] must resolve to a timestamp strictly after valuation_time_utc"
             ),
-            Self::MisalignedExpiry { field, index } => write!(
-                formatter,
-                "{field}[{index}] must resolve to a positive exact multiple of the 1h pricing interval from valuation_time_utc"
-            ),
             Self::TenorOverflow { index, value } => write!(
                 formatter,
                 "tenors[{index}] with value {value} cannot be represented safely"
             ),
+            Self::InvalidPricingIntervalSchedule { source } => {
+                write!(formatter, "pricing interval schedule is invalid: {source}")
+            }
         }
     }
 }
 
-impl Error for HighLevelPricingMaturityResolutionError {}
+impl Error for HighLevelPricingMaturityResolutionError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::InvalidPricingIntervalSchedule { source } => Some(source),
+            _ => None,
+        }
+    }
+}
 
 pub fn resolve_high_level_pricing_maturity_inputs(
     request: HighLevelPricingMaturityResolutionRequest,
@@ -132,24 +145,26 @@ pub fn resolve_high_level_pricing_maturity_inputs(
 
     let entry_count = maturity_input_entry_count(&request)?;
 
-    let mut maturity_intervals = Vec::with_capacity(entry_count);
+    let mut resolved_expiry_timestamps_utc_nanos = Vec::with_capacity(entry_count);
     let mut resolved_expiry_timestamps_utc = Vec::with_capacity(entry_count);
 
     for index in 0..entry_count {
         let expiry_timestamp = resolve_entry_expiry_timestamp(index, &request, valuation_time_utc)?;
+        let expiry_timestamp_utc_nanos =
+            expiry_timestamp.timestamp_nanos_opt().ok_or_else(|| {
+                HighLevelPricingMaturityResolutionError::TenorOverflow {
+                    index,
+                    value: expiry_timestamp.to_rfc3339(),
+                }
+            })?;
 
-        let maturity_nanos = expiry_timestamp.timestamp_nanos_opt().ok_or_else(|| {
-            HighLevelPricingMaturityResolutionError::TenorOverflow {
-                index,
-                value: expiry_timestamp.to_rfc3339(),
-            }
-        })? - valuation_time_utc.timestamp_nanos_opt().ok_or_else(|| {
-            HighLevelPricingMaturityResolutionError::InvalidValuationTime {
-                value: request.valuation_time_utc.clone(),
-            }
-        })?;
-
-        if maturity_nanos <= 0 {
+        if expiry_timestamp_utc_nanos
+            <= valuation_time_utc.timestamp_nanos_opt().ok_or_else(|| {
+                HighLevelPricingMaturityResolutionError::InvalidValuationTime {
+                    value: request.valuation_time_utc.clone(),
+                }
+            })?
+        {
             return Err(match entry_kind(index, &request) {
                 EntryKind::ExpiryTimestamp => {
                     HighLevelPricingMaturityResolutionError::NonPositiveExpiry {
@@ -170,34 +185,42 @@ pub fn resolve_high_level_pricing_maturity_inputs(
             });
         }
 
-        if maturity_nanos % ONE_HOUR_NANOS != 0 {
-            return Err(match entry_kind(index, &request) {
-                EntryKind::ExpiryTimestamp => {
-                    HighLevelPricingMaturityResolutionError::MisalignedExpiry {
-                        field: "expiry_timestamps_utc",
-                        index,
-                    }
-                }
-                EntryKind::ExpiryDate => {
-                    HighLevelPricingMaturityResolutionError::MisalignedExpiry {
-                        field: "expiry_dates",
-                        index,
-                    }
-                }
-                EntryKind::Tenor => HighLevelPricingMaturityResolutionError::MisalignedExpiry {
-                    field: "tenors",
-                    index,
-                },
-            });
-        }
-
-        maturity_intervals.push(duration_nanos_to_hours(maturity_nanos));
+        resolved_expiry_timestamps_utc_nanos.push(expiry_timestamp_utc_nanos);
         resolved_expiry_timestamps_utc.push(expiry_timestamp.to_rfc3339());
     }
+
+    let derived_schedule = derive_pricing_interval_schedule(
+        valuation_time_utc.timestamp_nanos_opt().ok_or_else(|| {
+            HighLevelPricingMaturityResolutionError::InvalidValuationTime {
+                value: request.valuation_time_utc.clone(),
+            }
+        })?,
+        resolved_expiry_timestamps_utc_nanos.as_slice(),
+        &request.pricing_interval_schedule_policy,
+    )
+    .map_err(|source| {
+        HighLevelPricingMaturityResolutionError::InvalidPricingIntervalSchedule { source }
+    })?;
+
+    let maturity_intervals = derived_schedule
+        .maturity_terminal_interval_indices
+        .iter()
+        .copied()
+        .map(|terminal_interval_index| {
+            derived_schedule
+                .schedule
+                .maturity_interval_hours(terminal_interval_index)
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|source| {
+            HighLevelPricingMaturityResolutionError::InvalidPricingIntervalSchedule { source }
+        })?;
 
     Ok(HighLevelPricingMaturityResolution {
         maturity_intervals,
         resolved_expiry_timestamps_utc,
+        pricing_interval_schedule: derived_schedule.schedule,
+        maturity_terminal_interval_indices: derived_schedule.maturity_terminal_interval_indices,
     })
 }
 
@@ -460,6 +483,7 @@ mod tests {
         HighLevelPricingMaturityResolutionError, HighLevelPricingMaturityResolutionRequest,
         resolve_high_level_pricing_maturity_inputs,
     };
+    use crate::PricingIntervalSchedulePolicy;
 
     #[test]
     fn resolves_expiry_timestamps_to_maturity_intervals() {
@@ -469,6 +493,7 @@ mod tests {
                 expiry_timestamps_utc: Some(vec![Some("2026-02-02T19:00:00Z".to_string())]),
                 expiry_dates: None,
                 tenors: None,
+                pricing_interval_schedule_policy: PricingIntervalSchedulePolicy::AutoExactSparse,
             })
             .expect("timestamp maturity resolution should succeed");
 
@@ -487,6 +512,7 @@ mod tests {
                 expiry_timestamps_utc: None,
                 expiry_dates: Some(vec![Some("2026-02-04".to_string())]),
                 tenors: None,
+                pricing_interval_schedule_policy: PricingIntervalSchedulePolicy::AutoExactSparse,
             })
             .expect("date maturity resolution should succeed");
 
@@ -505,6 +531,7 @@ mod tests {
                 expiry_timestamps_utc: None,
                 expiry_dates: None,
                 tenors: Some(vec![Some("2d".to_string()), Some("1m".to_string())]),
+                pricing_interval_schedule_policy: PricingIntervalSchedulePolicy::AutoExactSparse,
             })
             .expect("tenor maturity resolution should succeed");
 
@@ -526,6 +553,7 @@ mod tests {
                 expiry_timestamps_utc: Some(vec![Some("2026-02-02T19:00:00Z".to_string())]),
                 expiry_dates: Some(vec![Some("2026-02-02".to_string())]),
                 tenors: None,
+                pricing_interval_schedule_policy: PricingIntervalSchedulePolicy::AutoExactSparse,
             })
             .expect_err("multiple maturity inputs must fail");
 
@@ -536,22 +564,18 @@ mod tests {
     }
 
     #[test]
-    fn rejects_non_hour_aligned_expiry_timestamps() {
-        let error =
+    fn accepts_non_hour_aligned_expiry_timestamps_via_sparse_schedule() {
+        let resolved =
             resolve_high_level_pricing_maturity_inputs(HighLevelPricingMaturityResolutionRequest {
                 valuation_time_utc: "2026-02-02T15:00:00Z".to_string(),
                 expiry_timestamps_utc: Some(vec![Some("2026-02-02T16:30:00Z".to_string())]),
                 expiry_dates: None,
                 tenors: None,
+                pricing_interval_schedule_policy: PricingIntervalSchedulePolicy::AutoExactSparse,
             })
-            .expect_err("misaligned timestamps must fail");
+            .expect("non-hour-aligned timestamps should resolve");
 
-        assert_eq!(
-            error,
-            HighLevelPricingMaturityResolutionError::MisalignedExpiry {
-                field: "expiry_timestamps_utc",
-                index: 0,
-            }
-        );
+        assert_eq!(resolved.maturity_intervals, vec![1.5]);
+        assert_eq!(resolved.maturity_terminal_interval_indices, vec![1]);
     }
 }

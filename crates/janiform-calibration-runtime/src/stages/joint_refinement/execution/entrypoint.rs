@@ -1,11 +1,11 @@
 use std::sync::mpsc;
 
-use crate::calendar::ExchangeCalendarRegistry;
 use crate::stages::joint_refinement::contracts::{
     JointRefinementStageExecutionFailure, JointRefinementStageExecutionInput,
     JointRefinementStageExecutionReport, JointRefinementStageProgressUpdate,
 };
 use janiform_calibration_artifacts::CalibrationRunSpec;
+use janiform_market_time::calendar::ExchangeCalendarRegistry;
 
 pub fn run_joint_refinement_calibration_stage(
     run_spec: &CalibrationRunSpec,

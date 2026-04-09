@@ -11,6 +11,7 @@ use super::contracts::{
 use super::implied_volatility::{
     VanillaOptionImpliedVolatilityInversionOutcome, invert_vanilla_option_implied_volatility,
 };
+use super::interval_schedule::PricingIntervalSchedule;
 use super::probability_projection::probability_mass_from_sampled_cdf_values;
 use super::progress::PricingProgressEvent;
 use super::progress_runtime::PricingProgressReporter;
@@ -53,6 +54,7 @@ pub(crate) struct ForwardPricedStrike {
 
 pub(crate) fn solve_forward_law_scope(
     pricing_request: &VanillaOptionPricingRequest,
+    runtime_interval_schedule: &PricingIntervalSchedule,
     strikes: &[f64],
     maturity_interval_counts: &[usize],
     interval_factors: &[VanillaOptionPricingIntervalFactors],
@@ -63,6 +65,7 @@ pub(crate) fn solve_forward_law_scope(
 ) -> Result<ForwardLawScopeSolution, VanillaOptionPricingRunError> {
     let risk_neutral_anchor_materialization = build_pricing_risk_neutral_anchor_materialization(
         pricing_request,
+        runtime_interval_schedule,
         interval_factors,
         driver_parameters,
         &mut None,
@@ -75,6 +78,7 @@ pub(crate) fn solve_forward_law_scope(
 
     let coarse_grid = build_common_deviation_grid(
         pricing_request,
+        runtime_interval_schedule,
         strikes,
         &risk_neutral_anchor_materialization,
         unique_maturity_interval_counts.as_slice(),
@@ -82,6 +86,7 @@ pub(crate) fn solve_forward_law_scope(
     )?;
     let refined_grid = build_common_deviation_grid(
         pricing_request,
+        runtime_interval_schedule,
         strikes,
         &risk_neutral_anchor_materialization,
         unique_maturity_interval_counts.as_slice(),
@@ -90,6 +95,7 @@ pub(crate) fn solve_forward_law_scope(
 
     let solved_snapshots = propagate_terminal_probability_mass(
         pricing_request,
+        runtime_interval_schedule,
         interval_factors,
         driver_parameters,
         &risk_neutral_anchor_materialization,
@@ -108,7 +114,9 @@ pub(crate) fn solve_forward_law_scope(
                 .iter()
                 .find(|snapshot| {
                     snapshot.maturity_interval
-                        == pricing_request.interval_delta * *requested_count as f64
+                        == runtime_interval_schedule
+                            .maturity_interval_hours(*requested_count - 1)
+                            .unwrap_or(f64::NAN)
                 })
                 .cloned()
                 .ok_or(VanillaOptionPricingRunError::InvalidObservedBoundaryStateDuringRecursion {
@@ -227,6 +235,7 @@ pub(crate) fn price_terminal_snapshot_strikes(
 
 fn build_common_deviation_grid(
     pricing_request: &VanillaOptionPricingRequest,
+    runtime_interval_schedule: &PricingIntervalSchedule,
     strikes: &[f64],
     risk_neutral_anchor_materialization: &RiskNeutralAnchorMaterialization,
     maturity_interval_counts: &[usize],
@@ -238,8 +247,12 @@ fn build_common_deviation_grid(
 
     for maturity_interval_count in maturity_interval_counts {
         for strike in strikes {
-            let strike_request =
-                pricing_request_for_strike(pricing_request, *strike, *maturity_interval_count)?;
+            let strike_request = pricing_request_for_strike(
+                pricing_request,
+                runtime_interval_schedule,
+                *strike,
+                *maturity_interval_count,
+            )?;
 
             let strike_grid = build_deviation_grid(
                 &strike_request,
@@ -294,6 +307,7 @@ fn build_common_deviation_grid(
 
 fn propagate_terminal_probability_mass(
     pricing_request: &VanillaOptionPricingRequest,
+    runtime_interval_schedule: &PricingIntervalSchedule,
     interval_factors: &[VanillaOptionPricingIntervalFactors],
     driver_parameters: NigBuySellDriverParameters,
     risk_neutral_anchor_materialization: &RiskNeutralAnchorMaterialization,
@@ -378,7 +392,18 @@ fn propagate_terminal_probability_mass(
             })?;
 
             terminal_snapshots.push(ForwardLawTerminalSnapshot {
-                maturity_interval: pricing_request.interval_delta * current_interval_count as f64,
+                maturity_interval: runtime_interval_schedule
+                    .maturity_interval_hours(current_interval_count - 1)
+                    .map_err(|source| {
+                        VanillaOptionPricingRunError::InvalidObservedBoundaryStateDuringRecursion {
+                            interval_index: pricing_request.boundary_input.interval_index,
+                            deviation: pricing_request
+                                .boundary_input
+                                .observed_boundary_state
+                                .deviation,
+                            message: source.to_string(),
+                        }
+                    })?,
                 terminal_anchor_value: risk_neutral_anchor_materialization
                     .runtime_interval_anchors
                     .end_anchor_values[current_interval_count - 1],
@@ -843,14 +868,23 @@ impl<'a> SharedRiskNeutralCoreCdfEvaluator<'a> {
 
 fn pricing_request_for_strike(
     pricing_request: &VanillaOptionPricingRequest,
+    runtime_interval_schedule: &PricingIntervalSchedule,
     strike: f64,
     maturity_interval_count: usize,
 ) -> Result<VanillaOptionPricingRequest, VanillaOptionPricingRunError> {
+    let maturity_interval = runtime_interval_schedule
+        .maturity_interval_hours(maturity_interval_count - 1)
+        .map_err(|source| VanillaOptionPricingRunError::InvalidExecutionInput {
+            source: super::runner::VanillaOptionPricingExecutionInputError::InvalidRuntimeIntervalSchedule {
+                message: source.to_string(),
+            },
+        })?;
+
     let request = VanillaOptionPricingRequest::try_new_with_interval_delta(
         VanillaOptionPricingMarketInputs::try_new_single_node(
             pricing_request.market_inputs.spot,
             strike,
-            pricing_request.interval_delta * maturity_interval_count as f64,
+            maturity_interval,
             pricing_request.market_inputs.risk_free_rate,
             pricing_request.market_inputs.dividend_yield,
         )

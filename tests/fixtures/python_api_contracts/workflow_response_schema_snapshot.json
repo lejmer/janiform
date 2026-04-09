@@ -612,51 +612,90 @@
       "type": "object"
     },
     "pricing.vanilla_option.run_result.v1::boundary_runtime_nominal": {
+      "type": "object",
       "fields": {
-        "calibration_hooks": {
-          "fields": {
-            "forward_moneyness": {
-              "type": "float"
-            },
-            "hook_policy": {
-              "type": "string",
-              "value": "derive_option_surface_inputs_from_pricing_response_and_optional_run_diagnostics.v1"
-            },
-            "integration_convergence_check_passed": {
-              "type": "bool"
-            },
-            "integration_numeric_quality_is_poor": {
-              "type": "bool"
-            },
-            "integration_truncation_check_passed": {
-              "type": "bool"
-            },
-            "log_moneyness": {
-              "type": "float"
-            },
-            "maturity_interval": {
-              "type": "float"
-            },
-            "option_price": {
-              "type": "float"
-            },
-            "schema_version": {
-              "type": "string",
-              "value": "pricing.vanilla_option.calibration_hooks.v1"
-            },
-            "transform_status": {
-              "type": "string"
-            }
-          },
-          "type": "object"
+        "schema_version": {
+          "type": "string",
+          "value": "pricing.vanilla_option.run_result.v1"
         },
         "output_schema_metadata": {
+          "type": "object",
           "fields": {
+            "schema_version": {
+              "type": "string",
+              "value": "pricing.vanilla_option.run_output_schema_metadata.v1"
+            },
+            "run_result_schema_version": {
+              "type": "string",
+              "value": "pricing.vanilla_option.run_result.v1"
+            },
+            "run_diagnostics_schema_version": {
+              "type": "string",
+              "value": "pricing.vanilla_option.run_diagnostics.v1"
+            },
             "calibration_hooks_schema_version": {
               "type": "string",
               "value": "pricing.vanilla_option.calibration_hooks.v1"
             },
+            "required_run_result_fields": {
+              "type": "array",
+              "length": 7,
+              "item_profiles": [
+                {
+                  "type": "string",
+                  "value": "schema_version"
+                },
+                {
+                  "type": "string",
+                  "value": "output_schema_metadata"
+                },
+                {
+                  "type": "string",
+                  "value": "response"
+                },
+                {
+                  "type": "string",
+                  "value": "run_diagnostics"
+                },
+                {
+                  "type": "string",
+                  "value": "calibration_hooks"
+                },
+                {
+                  "type": "string",
+                  "value": "runtime_interval_schedule"
+                },
+                {
+                  "type": "string",
+                  "value": "maturity_terminal_interval_indices"
+                }
+              ]
+            },
+            "required_run_diagnostics_fields": {
+              "type": "array",
+              "length": 4,
+              "item_profiles": [
+                {
+                  "type": "string",
+                  "value": "schema_version"
+                },
+                {
+                  "type": "string",
+                  "value": "transform"
+                },
+                {
+                  "type": "string",
+                  "value": "integration_quality"
+                },
+                {
+                  "type": "string",
+                  "value": "anchored_recursion"
+                }
+              ]
+            },
             "required_calibration_hooks_fields": {
+              "type": "array",
+              "length": 10,
               "item_profiles": [
                 {
                   "type": "string",
@@ -698,219 +737,266 @@
                   "type": "string",
                   "value": "integration_truncation_check_passed"
                 }
-              ],
-              "length": 10,
-              "type": "array"
-            },
-            "required_run_diagnostics_fields": {
-              "item_profiles": [
-                {
-                  "type": "string",
-                  "value": "schema_version"
-                },
-                {
-                  "type": "string",
-                  "value": "transform"
-                },
-                {
-                  "type": "string",
-                  "value": "integration_quality"
-                },
-                {
-                  "type": "string",
-                  "value": "anchored_recursion"
-                }
-              ],
-              "length": 4,
-              "type": "array"
-            },
-            "required_run_result_fields": {
-              "item_profiles": [
-                {
-                  "type": "string",
-                  "value": "schema_version"
-                },
-                {
-                  "type": "string",
-                  "value": "output_schema_metadata"
-                },
-                {
-                  "type": "string",
-                  "value": "response"
-                },
-                {
-                  "type": "string",
-                  "value": "run_diagnostics"
-                },
-                {
-                  "type": "string",
-                  "value": "calibration_hooks"
-                }
-              ],
-              "length": 5,
-              "type": "array"
-            },
-            "run_diagnostics_schema_version": {
-              "type": "string",
-              "value": "pricing.vanilla_option.run_diagnostics.v1"
-            },
-            "run_result_schema_version": {
-              "type": "string",
-              "value": "pricing.vanilla_option.run_result.v1"
-            },
-            "schema_version": {
-              "type": "string",
-              "value": "pricing.vanilla_option.run_output_schema_metadata.v1"
+              ]
             }
-          },
-          "type": "object"
+          }
         },
         "response": {
+          "type": "object",
           "fields": {
+            "pricing_status": {
+              "type": "string"
+            },
+            "pricing_failure_diagnostic": {
+              "type": "null"
+            },
+            "price": {
+              "type": "float"
+            },
             "diagnostics": {
+              "type": "object",
               "fields": {
-                "boundary_state_norm": {
+                "forward_price": {
                   "type": "float"
                 },
                 "discount_factor": {
                   "type": "float"
                 },
-                "forward_price": {
-                  "type": "float"
-                },
                 "maturity_interval": {
                   "type": "float"
+                },
+                "boundary_state_norm": {
+                  "type": "float"
                 }
-              },
-              "type": "object"
+              }
             },
             "implied_volatility": {
               "type": "float"
             },
             "implied_volatility_inversion_status": {
               "type": "string"
-            },
-            "price": {
-              "type": "float"
-            },
-            "pricing_failure_diagnostic": {
-              "type": "null"
-            },
-            "pricing_status": {
-              "type": "string"
             }
-          },
-          "type": "object"
+          }
         },
         "run_diagnostics": {
+          "type": "object",
           "fields": {
-            "anchored_recursion": {
+            "schema_version": {
+              "type": "string",
+              "value": "pricing.vanilla_option.run_diagnostics.v1"
+            },
+            "transform": {
+              "type": "object",
               "fields": {
-                "continuation_recursion_policy": {
-                  "type": "string"
-                },
-                "deviation_grid_lower_bound": {
-                  "type": "float"
-                },
-                "deviation_grid_node_count": {
-                  "type": "int"
-                },
-                "deviation_grid_policy": {
-                  "type": "string"
-                },
-                "deviation_grid_upper_bound": {
-                  "type": "float"
-                },
-                "expected_hawkes_state_update_policy": {
-                  "type": "string"
-                },
-                "interval_diagnostics": {
-                  "item_profiles": [
-                    {
+                "metadata": {
+                  "type": "object",
+                  "fields": {
+                    "blowup_termination_policy": {
+                      "type": "string"
+                    },
+                    "completed_step_count": {
+                      "type": "int"
+                    },
+                    "configured_step_count": {
+                      "type": "int"
+                    },
+                    "domain_guard_policy": {
+                      "type": "string"
+                    },
+                    "guard_failure": {
+                      "type": "null"
+                    },
+                    "integrator_method": {
+                      "type": "string"
+                    },
+                    "news_intensity": {
+                      "type": "object",
                       "fields": {
-                        "current_anchor_value": {
+                        "known_nu_h": {
                           "type": "float"
                         },
-                        "expected_hawkes_boundary_state_after": {
-                          "fields": {
-                            "y_minus_minus": {
-                              "type": "float"
-                            },
-                            "y_minus_plus": {
-                              "type": "float"
-                            },
-                            "y_plus_minus": {
-                              "type": "float"
-                            },
-                            "y_plus_plus": {
-                              "type": "float"
-                            }
-                          },
-                          "type": "object"
-                        },
-                        "expected_hawkes_boundary_state_before": {
-                          "fields": {
-                            "y_minus_minus": {
-                              "type": "float"
-                            },
-                            "y_minus_plus": {
-                              "type": "float"
-                            },
-                            "y_plus_minus": {
-                              "type": "float"
-                            },
-                            "y_plus_plus": {
-                              "type": "float"
-                            }
-                          },
-                          "type": "object"
-                        },
-                        "interval_delta": {
-                          "type": "float"
-                        },
-                        "interval_index": {
-                          "type": "int"
-                        },
-                        "local_tilt_solve_diagnostics": {
-                          "item_profiles": [],
-                          "length": 0,
-                          "type": "array"
-                        },
-                        "maximum_row_probability_mass_error": {
-                          "type": "float"
-                        },
-                        "maximum_solved_theta": {
-                          "type": "float"
-                        },
-                        "maximum_tail_probability_mass": {
-                          "type": "float"
-                        },
-                        "minimum_solved_theta": {
-                          "type": "float"
-                        },
-                        "next_anchor_value": {
+                        "surprise_nu_h": {
                           "type": "float"
                         }
-                      },
-                      "type": "object"
+                      }
+                    },
+                    "news_intensity_usage_policy": {
+                      "type": "string"
+                    },
+                    "rhs_evaluation_count": {
+                      "type": "int"
+                    },
+                    "schema_version": {
+                      "type": "string",
+                      "value": "affine_oracle.integration_metadata.v1"
+                    },
+                    "status_flags": {
+                      "type": "object",
+                      "fields": {
+                        "blowup_terminated": {
+                          "type": "bool"
+                        },
+                        "completed": {
+                          "type": "bool"
+                        },
+                        "domain_guard_violation": {
+                          "type": "bool"
+                        }
+                      }
+                    },
+                    "step_size": {
+                      "type": "float"
+                    },
+                    "telemetry_mode": {
+                      "type": "string"
                     }
-                  ],
-                  "length": 1,
-                  "type": "array"
+                  }
                 },
-                "refined_deviation_grid_node_count": {
-                  "type": "int"
+                "output": {
+                  "type": "object",
+                  "fields": {
+                    "c_at_delta": {
+                      "type": "object",
+                      "fields": {
+                        "imaginary": {
+                          "type": "float"
+                        },
+                        "real": {
+                          "type": "float"
+                        }
+                      }
+                    },
+                    "d_at_delta": {
+                      "type": "object",
+                      "fields": {
+                        "minus_minus": {
+                          "type": "object",
+                          "fields": {
+                            "imaginary": {
+                              "type": "float"
+                            },
+                            "real": {
+                              "type": "float"
+                            }
+                          }
+                        },
+                        "minus_plus": {
+                          "type": "object",
+                          "fields": {
+                            "imaginary": {
+                              "type": "float"
+                            },
+                            "real": {
+                              "type": "float"
+                            }
+                          }
+                        },
+                        "plus_minus": {
+                          "type": "object",
+                          "fields": {
+                            "imaginary": {
+                              "type": "float"
+                            },
+                            "real": {
+                              "type": "float"
+                            }
+                          }
+                        },
+                        "plus_plus": {
+                          "type": "object",
+                          "fields": {
+                            "imaginary": {
+                              "type": "float"
+                            },
+                            "real": {
+                              "type": "float"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "transform_value": {
+                      "type": "object",
+                      "fields": {
+                        "imaginary": {
+                          "type": "float"
+                        },
+                        "real": {
+                          "type": "float"
+                        }
+                      }
+                    }
+                  }
                 },
-                "refinement_absolute_difference": {
-                  "type": "float"
+                "output_schema_metadata": {
+                  "type": "object",
+                  "fields": {
+                    "guard_failure_schema_version": {
+                      "type": "string"
+                    },
+                    "integration_metadata_schema_version": {
+                      "type": "string"
+                    },
+                    "required_guard_failure_fields": {
+                      "type": "array",
+                      "length": 6,
+                      "item_profiles": [
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "required_metadata_fields": {
+                      "type": "array",
+                      "length": 13,
+                      "item_profiles": [
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "required_result_fields": {
+                      "type": "array",
+                      "length": 6,
+                      "item_profiles": [
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "required_telemetry_fields": {
+                      "type": "array",
+                      "length": 9,
+                      "item_profiles": [
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "schema_version": {
+                      "type": "string",
+                      "value": "affine_oracle.integration_output_schema_metadata.v1"
+                    },
+                    "telemetry_schema_version": {
+                      "type": "string"
+                    }
+                  }
                 },
-                "refinement_relative_difference": {
-                  "type": "float"
+                "schema_version": {
+                  "type": "string",
+                  "value": "affine_oracle.integration_result.v1"
+                },
+                "status": {
+                  "type": "string",
+                  "value": "completed"
+                },
+                "telemetry": {
+                  "type": "null"
                 }
-              },
-              "type": "object"
+              }
             },
             "integration_quality": {
+              "type": "object",
               "fields": {
                 "absolute_integral_estimate": {
                   "type": "float"
@@ -949,6 +1035,7 @@
                   "type": "float"
                 },
                 "numeric_quality_diagnostics": {
+                  "type": "object",
                   "fields": {
                     "coarse_integral_estimate": {
                       "type": "float"
@@ -1004,8 +1091,7 @@
                     "truncation_check_policy": {
                       "type": "string"
                     }
-                  },
-                  "type": "object"
+                  }
                 },
                 "numeric_settings_policy": {
                   "type": "string"
@@ -1023,245 +1109,289 @@
                 "terminal_abs_integrand": {
                   "type": "float"
                 }
-              },
-              "type": "object"
+              }
             },
+            "anchored_recursion": {
+              "type": "object",
+              "fields": {
+                "continuation_recursion_policy": {
+                  "type": "string"
+                },
+                "deviation_grid_lower_bound": {
+                  "type": "float"
+                },
+                "deviation_grid_node_count": {
+                  "type": "int"
+                },
+                "deviation_grid_policy": {
+                  "type": "string"
+                },
+                "deviation_grid_upper_bound": {
+                  "type": "float"
+                },
+                "expected_hawkes_state_update_policy": {
+                  "type": "string"
+                },
+                "interval_diagnostics": {
+                  "type": "array",
+                  "length": 1,
+                  "item_profiles": [
+                    {
+                      "type": "object",
+                      "fields": {
+                        "current_anchor_value": {
+                          "type": "float"
+                        },
+                        "expected_hawkes_boundary_state_after": {
+                          "type": "object",
+                          "fields": {
+                            "y_minus_minus": {
+                              "type": "float"
+                            },
+                            "y_minus_plus": {
+                              "type": "float"
+                            },
+                            "y_plus_minus": {
+                              "type": "float"
+                            },
+                            "y_plus_plus": {
+                              "type": "float"
+                            }
+                          }
+                        },
+                        "expected_hawkes_boundary_state_before": {
+                          "type": "object",
+                          "fields": {
+                            "y_minus_minus": {
+                              "type": "float"
+                            },
+                            "y_minus_plus": {
+                              "type": "float"
+                            },
+                            "y_plus_minus": {
+                              "type": "float"
+                            },
+                            "y_plus_plus": {
+                              "type": "float"
+                            }
+                          }
+                        },
+                        "interval_delta": {
+                          "type": "float"
+                        },
+                        "interval_index": {
+                          "type": "int"
+                        },
+                        "local_tilt_solve_diagnostics": {
+                          "type": "array",
+                          "length": 0,
+                          "item_profiles": []
+                        },
+                        "maximum_row_probability_mass_error": {
+                          "type": "float"
+                        },
+                        "maximum_solved_theta": {
+                          "type": "float"
+                        },
+                        "maximum_tail_probability_mass": {
+                          "type": "float"
+                        },
+                        "minimum_solved_theta": {
+                          "type": "float"
+                        },
+                        "next_anchor_value": {
+                          "type": "float"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "refined_deviation_grid_node_count": {
+                  "type": "int"
+                },
+                "refinement_absolute_difference": {
+                  "type": "float"
+                },
+                "refinement_relative_difference": {
+                  "type": "float"
+                }
+              }
+            }
+          }
+        },
+        "calibration_hooks": {
+          "type": "object",
+          "fields": {
             "schema_version": {
               "type": "string",
-              "value": "pricing.vanilla_option.run_diagnostics.v1"
+              "value": "pricing.vanilla_option.calibration_hooks.v1"
             },
-            "transform": {
-              "fields": {
-                "metadata": {
-                  "fields": {
-                    "blowup_termination_policy": {
-                      "type": "string"
-                    },
-                    "completed_step_count": {
-                      "type": "int"
-                    },
-                    "configured_step_count": {
-                      "type": "int"
-                    },
-                    "domain_guard_policy": {
-                      "type": "string"
-                    },
-                    "guard_failure": {
-                      "type": "null"
-                    },
-                    "integrator_method": {
-                      "type": "string"
-                    },
-                    "news_intensity": {
-                      "fields": {
-                        "known_nu_h": {
-                          "type": "float"
-                        },
-                        "surprise_nu_h": {
-                          "type": "float"
-                        }
-                      },
-                      "type": "object"
-                    },
-                    "news_intensity_usage_policy": {
-                      "type": "string"
-                    },
-                    "rhs_evaluation_count": {
-                      "type": "int"
-                    },
-                    "schema_version": {
-                      "type": "string",
-                      "value": "affine_oracle.integration_metadata.v1"
-                    },
-                    "status_flags": {
-                      "fields": {
-                        "blowup_terminated": {
-                          "type": "bool"
-                        },
-                        "completed": {
-                          "type": "bool"
-                        },
-                        "domain_guard_violation": {
-                          "type": "bool"
-                        }
-                      },
-                      "type": "object"
-                    },
-                    "step_size": {
-                      "type": "float"
-                    },
-                    "telemetry_mode": {
-                      "type": "string"
-                    }
-                  },
-                  "type": "object"
-                },
-                "output": {
-                  "fields": {
-                    "c_at_delta": {
-                      "fields": {
-                        "imaginary": {
-                          "type": "float"
-                        },
-                        "real": {
-                          "type": "float"
-                        }
-                      },
-                      "type": "object"
-                    },
-                    "d_at_delta": {
-                      "fields": {
-                        "minus_minus": {
-                          "fields": {
-                            "imaginary": {
-                              "type": "float"
-                            },
-                            "real": {
-                              "type": "float"
-                            }
-                          },
-                          "type": "object"
-                        },
-                        "minus_plus": {
-                          "fields": {
-                            "imaginary": {
-                              "type": "float"
-                            },
-                            "real": {
-                              "type": "float"
-                            }
-                          },
-                          "type": "object"
-                        },
-                        "plus_minus": {
-                          "fields": {
-                            "imaginary": {
-                              "type": "float"
-                            },
-                            "real": {
-                              "type": "float"
-                            }
-                          },
-                          "type": "object"
-                        },
-                        "plus_plus": {
-                          "fields": {
-                            "imaginary": {
-                              "type": "float"
-                            },
-                            "real": {
-                              "type": "float"
-                            }
-                          },
-                          "type": "object"
-                        }
-                      },
-                      "type": "object"
-                    },
-                    "transform_value": {
-                      "fields": {
-                        "imaginary": {
-                          "type": "float"
-                        },
-                        "real": {
-                          "type": "float"
-                        }
-                      },
-                      "type": "object"
-                    }
-                  },
-                  "type": "object"
-                },
-                "output_schema_metadata": {
-                  "fields": {
-                    "guard_failure_schema_version": {
-                      "type": "string"
-                    },
-                    "integration_metadata_schema_version": {
-                      "type": "string"
-                    },
-                    "required_guard_failure_fields": {
-                      "item_profiles": [
-                        {
-                          "type": "string"
-                        }
-                      ],
-                      "length": 6,
-                      "type": "array"
-                    },
-                    "required_metadata_fields": {
-                      "item_profiles": [
-                        {
-                          "type": "string"
-                        }
-                      ],
-                      "length": 13,
-                      "type": "array"
-                    },
-                    "required_result_fields": {
-                      "item_profiles": [
-                        {
-                          "type": "string"
-                        }
-                      ],
-                      "length": 6,
-                      "type": "array"
-                    },
-                    "required_telemetry_fields": {
-                      "item_profiles": [
-                        {
-                          "type": "string"
-                        }
-                      ],
-                      "length": 9,
-                      "type": "array"
-                    },
-                    "schema_version": {
-                      "type": "string",
-                      "value": "affine_oracle.integration_output_schema_metadata.v1"
-                    },
-                    "telemetry_schema_version": {
-                      "type": "string"
-                    }
-                  },
-                  "type": "object"
-                },
-                "schema_version": {
-                  "type": "string",
-                  "value": "affine_oracle.integration_result.v1"
-                },
-                "status": {
-                  "type": "string",
-                  "value": "completed"
-                },
-                "telemetry": {
-                  "type": "null"
-                }
-              },
-              "type": "object"
+            "hook_policy": {
+              "type": "string",
+              "value": "derive_option_surface_inputs_from_pricing_response_and_optional_run_diagnostics.v1"
+            },
+            "option_price": {
+              "type": "float"
+            },
+            "log_moneyness": {
+              "type": "float"
+            },
+            "forward_moneyness": {
+              "type": "float"
+            },
+            "maturity_interval": {
+              "type": "float"
+            },
+            "transform_status": {
+              "type": "string"
+            },
+            "integration_numeric_quality_is_poor": {
+              "type": "bool"
+            },
+            "integration_convergence_check_passed": {
+              "type": "bool"
+            },
+            "integration_truncation_check_passed": {
+              "type": "bool"
             }
-          },
-          "type": "object"
+          }
         },
+        "runtime_interval_schedule": {
+          "type": "object",
+          "fields": {
+            "valuation_time_utc_nanos": {
+              "type": "int"
+            },
+            "metadata": {
+              "type": "object",
+              "fields": {
+                "policy_id": {
+                  "type": "string"
+                },
+                "derivation_policy": {
+                  "type": "string"
+                },
+                "factor_assignment_policy": {
+                  "type": "string"
+                }
+              }
+            },
+            "interval_end_timestamps_utc_nanos": {
+              "type": "array",
+              "length": 1,
+              "item_profiles": [
+                {
+                  "type": "int"
+                }
+              ]
+            },
+            "interval_deltas_hours": {
+              "type": "array",
+              "length": 1,
+              "item_profiles": [
+                {
+                  "type": "float"
+                }
+              ]
+            }
+          }
+        },
+        "maturity_terminal_interval_indices": {
+          "type": "array",
+          "length": 1,
+          "item_profiles": [
+            {
+              "type": "int"
+            }
+          ]
+        }
+      }
+    },
+    "pricing.vanilla_option.run_result.v1::direct_run_result_validation_edge_optional_outputs_omitted": {
+      "type": "object",
+      "fields": {
         "schema_version": {
           "type": "string",
           "value": "pricing.vanilla_option.run_result.v1"
-        }
-      },
-      "type": "object"
-    },
-    "pricing.vanilla_option.run_result.v1::direct_run_result_validation_edge_optional_outputs_omitted": {
-      "fields": {
-        "calibration_hooks": {
-          "type": "null"
         },
         "output_schema_metadata": {
+          "type": "object",
           "fields": {
+            "schema_version": {
+              "type": "string",
+              "value": "pricing.vanilla_option.run_output_schema_metadata.v1"
+            },
+            "run_result_schema_version": {
+              "type": "string",
+              "value": "pricing.vanilla_option.run_result.v1"
+            },
+            "run_diagnostics_schema_version": {
+              "type": "string",
+              "value": "pricing.vanilla_option.run_diagnostics.v1"
+            },
             "calibration_hooks_schema_version": {
               "type": "string",
               "value": "pricing.vanilla_option.calibration_hooks.v1"
             },
+            "required_run_result_fields": {
+              "type": "array",
+              "length": 7,
+              "item_profiles": [
+                {
+                  "type": "string",
+                  "value": "schema_version"
+                },
+                {
+                  "type": "string",
+                  "value": "output_schema_metadata"
+                },
+                {
+                  "type": "string",
+                  "value": "response"
+                },
+                {
+                  "type": "string",
+                  "value": "run_diagnostics"
+                },
+                {
+                  "type": "string",
+                  "value": "calibration_hooks"
+                },
+                {
+                  "type": "string",
+                  "value": "runtime_interval_schedule"
+                },
+                {
+                  "type": "string",
+                  "value": "maturity_terminal_interval_indices"
+                }
+              ]
+            },
+            "required_run_diagnostics_fields": {
+              "type": "array",
+              "length": 4,
+              "item_profiles": [
+                {
+                  "type": "string",
+                  "value": "schema_version"
+                },
+                {
+                  "type": "string",
+                  "value": "transform"
+                },
+                {
+                  "type": "string",
+                  "value": "integration_quality"
+                },
+                {
+                  "type": "string",
+                  "value": "anchored_recursion"
+                }
+              ]
+            },
             "required_calibration_hooks_fields": {
+              "type": "array",
+              "length": 10,
               "item_profiles": [
                 {
                   "type": "string",
@@ -1303,119 +1433,103 @@
                   "type": "string",
                   "value": "integration_truncation_check_passed"
                 }
-              ],
-              "length": 10,
-              "type": "array"
-            },
-            "required_run_diagnostics_fields": {
-              "item_profiles": [
-                {
-                  "type": "string",
-                  "value": "schema_version"
-                },
-                {
-                  "type": "string",
-                  "value": "transform"
-                },
-                {
-                  "type": "string",
-                  "value": "integration_quality"
-                },
-                {
-                  "type": "string",
-                  "value": "anchored_recursion"
-                }
-              ],
-              "length": 4,
-              "type": "array"
-            },
-            "required_run_result_fields": {
-              "item_profiles": [
-                {
-                  "type": "string",
-                  "value": "schema_version"
-                },
-                {
-                  "type": "string",
-                  "value": "output_schema_metadata"
-                },
-                {
-                  "type": "string",
-                  "value": "response"
-                },
-                {
-                  "type": "string",
-                  "value": "run_diagnostics"
-                },
-                {
-                  "type": "string",
-                  "value": "calibration_hooks"
-                }
-              ],
-              "length": 5,
-              "type": "array"
-            },
-            "run_diagnostics_schema_version": {
-              "type": "string",
-              "value": "pricing.vanilla_option.run_diagnostics.v1"
-            },
-            "run_result_schema_version": {
-              "type": "string",
-              "value": "pricing.vanilla_option.run_result.v1"
-            },
-            "schema_version": {
-              "type": "string",
-              "value": "pricing.vanilla_option.run_output_schema_metadata.v1"
+              ]
             }
-          },
-          "type": "object"
+          }
         },
         "response": {
+          "type": "object",
           "fields": {
+            "pricing_status": {
+              "type": "string"
+            },
+            "pricing_failure_diagnostic": {
+              "type": "null"
+            },
+            "price": {
+              "type": "float"
+            },
             "diagnostics": {
+              "type": "object",
               "fields": {
-                "boundary_state_norm": {
+                "forward_price": {
                   "type": "float"
                 },
                 "discount_factor": {
                   "type": "float"
                 },
-                "forward_price": {
-                  "type": "float"
-                },
                 "maturity_interval": {
                   "type": "float"
+                },
+                "boundary_state_norm": {
+                  "type": "float"
                 }
-              },
-              "type": "object"
+              }
             },
             "implied_volatility": {
               "type": "float"
             },
             "implied_volatility_inversion_status": {
               "type": "string"
-            },
-            "price": {
-              "type": "float"
-            },
-            "pricing_failure_diagnostic": {
-              "type": "null"
-            },
-            "pricing_status": {
-              "type": "string"
             }
-          },
-          "type": "object"
+          }
         },
         "run_diagnostics": {
           "type": "null"
         },
-        "schema_version": {
-          "type": "string",
-          "value": "pricing.vanilla_option.run_result.v1"
+        "calibration_hooks": {
+          "type": "null"
+        },
+        "runtime_interval_schedule": {
+          "type": "object",
+          "fields": {
+            "valuation_time_utc_nanos": {
+              "type": "int"
+            },
+            "metadata": {
+              "type": "object",
+              "fields": {
+                "policy_id": {
+                  "type": "string"
+                },
+                "derivation_policy": {
+                  "type": "string"
+                },
+                "factor_assignment_policy": {
+                  "type": "string"
+                }
+              }
+            },
+            "interval_end_timestamps_utc_nanos": {
+              "type": "array",
+              "length": 1,
+              "item_profiles": [
+                {
+                  "type": "int"
+                }
+              ]
+            },
+            "interval_deltas_hours": {
+              "type": "array",
+              "length": 1,
+              "item_profiles": [
+                {
+                  "type": "float"
+                }
+              ]
+            }
+          }
+        },
+        "maturity_terminal_interval_indices": {
+          "type": "array",
+          "length": 1,
+          "item_profiles": [
+            {
+              "type": "int"
+            }
+          ]
         }
-      },
-      "type": "object"
+      }
     },
     "simulation.seeded_tick_event.path.v1::boundary_runtime_nominal": {
       "fields": {

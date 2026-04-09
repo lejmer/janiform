@@ -48,6 +48,7 @@ use super::fourier::{
     price_vanilla_option_via_fourier_inversion_with_observer,
 };
 use super::implied_volatility::invert_vanilla_option_implied_volatility;
+use super::interval_schedule::PricingIntervalSchedule;
 use super::probability_projection::probability_mass_from_sampled_cdf_values;
 use super::progress::{PricingNodeProgress, PricingNodeProgressPhase, emit_node_progress};
 use super::time_scaling::intraday_year_fraction;
@@ -156,6 +157,7 @@ impl Error for VanillaOptionPricingIntervalFactorsError {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct VanillaOptionPricingExecutionInput {
     pub request: VanillaOptionPricingRequest,
+    pub runtime_interval_schedule: PricingIntervalSchedule,
     pub interval_factors: Vec<VanillaOptionPricingIntervalFactors>,
     pub optional_output_selection: VanillaOptionPricingOptionalOutputSelection,
 }
@@ -163,11 +165,13 @@ pub struct VanillaOptionPricingExecutionInput {
 impl VanillaOptionPricingExecutionInput {
     pub fn new(
         request: VanillaOptionPricingRequest,
+        runtime_interval_schedule: PricingIntervalSchedule,
         interval_factors: Vec<VanillaOptionPricingIntervalFactors>,
         optional_output_selection: VanillaOptionPricingOptionalOutputSelection,
     ) -> Self {
         Self {
             request,
+            runtime_interval_schedule,
             interval_factors,
             optional_output_selection,
         }
@@ -175,10 +179,16 @@ impl VanillaOptionPricingExecutionInput {
 
     pub fn try_new(
         request: VanillaOptionPricingRequest,
+        runtime_interval_schedule: PricingIntervalSchedule,
         interval_factors: Vec<VanillaOptionPricingIntervalFactors>,
         optional_output_selection: VanillaOptionPricingOptionalOutputSelection,
     ) -> Result<Self, VanillaOptionPricingExecutionInputError> {
-        let execution_input = Self::new(request, interval_factors, optional_output_selection);
+        let execution_input = Self::new(
+            request,
+            runtime_interval_schedule,
+            interval_factors,
+            optional_output_selection,
+        );
 
         execution_input.validate()?;
 
@@ -200,8 +210,36 @@ impl VanillaOptionPricingExecutionInput {
             })?;
         }
 
-        let maturity_interval_from_runtime_grid =
-            self.request.interval_delta * self.interval_factors.len() as f64;
+        if self.interval_factors.len() != self.runtime_interval_schedule.interval_count() {
+            return Err(
+                VanillaOptionPricingExecutionInputError::IntervalFactorShapeMismatch {
+                    expected_interval_factor_count: self.runtime_interval_schedule.interval_count(),
+                    found_interval_factor_count: self.interval_factors.len(),
+                },
+            );
+        }
+
+        let first_runtime_interval_delta =
+            self.runtime_interval_schedule
+                .interval_delta_hours(0)
+                .ok_or(VanillaOptionPricingExecutionInputError::EmptyRuntimeIntervalSchedule)?;
+        if self.request.interval_delta != first_runtime_interval_delta {
+            return Err(
+                VanillaOptionPricingExecutionInputError::InitialIntervalDeltaMismatch {
+                    requested_interval_delta: self.request.interval_delta,
+                    runtime_interval_delta: first_runtime_interval_delta,
+                },
+            );
+        }
+
+        let maturity_interval_from_runtime_grid = self
+            .runtime_interval_schedule
+            .maturity_interval_hours(self.runtime_interval_schedule.interval_count() - 1)
+            .map_err(|message| {
+                VanillaOptionPricingExecutionInputError::InvalidRuntimeIntervalSchedule {
+                    message: message.to_string(),
+                }
+            })?;
 
         let requested_maturity_interval = self
             .request
@@ -235,6 +273,18 @@ pub enum VanillaOptionPricingExecutionInputError {
     InvalidIntervalFactors {
         source: VanillaOptionPricingIntervalFactorsError,
     },
+    EmptyRuntimeIntervalSchedule,
+    InvalidRuntimeIntervalSchedule {
+        message: String,
+    },
+    InitialIntervalDeltaMismatch {
+        requested_interval_delta: f64,
+        runtime_interval_delta: f64,
+    },
+    IntervalFactorShapeMismatch {
+        expected_interval_factor_count: usize,
+        found_interval_factor_count: usize,
+    },
     MaturityIntervalMismatch {
         requested_maturity_interval: f64,
         runtime_grid_maturity_interval: f64,
@@ -255,6 +305,28 @@ impl Display for VanillaOptionPricingExecutionInputError {
             Self::InvalidIntervalFactors { source } => write!(
                 formatter,
                 "pricing execution interval_factors payload is invalid: {source}"
+            ),
+            Self::EmptyRuntimeIntervalSchedule => write!(
+                formatter,
+                "pricing execution runtime_interval_schedule must contain at least one interval"
+            ),
+            Self::InvalidRuntimeIntervalSchedule { message } => write!(
+                formatter,
+                "pricing execution runtime_interval_schedule is invalid: {message}"
+            ),
+            Self::InitialIntervalDeltaMismatch {
+                requested_interval_delta,
+                runtime_interval_delta,
+            } => write!(
+                formatter,
+                "request.interval_delta={requested_interval_delta} must equal the first runtime interval delta {runtime_interval_delta}"
+            ),
+            Self::IntervalFactorShapeMismatch {
+                expected_interval_factor_count,
+                found_interval_factor_count,
+            } => write!(
+                formatter,
+                "pricing execution interval_factors must contain exactly {expected_interval_factor_count} entries implied by runtime_interval_schedule, found {found_interval_factor_count}"
             ),
             Self::MaturityIntervalMismatch {
                 requested_maturity_interval,
@@ -407,6 +479,7 @@ pub fn run_vanilla_option_pricing_with_observer(
         )? {
             run_single_interval_nested_fourier_pricing(
                 &pricing_request,
+                &execution_input.runtime_interval_schedule,
                 execution_input.interval_factors[0],
                 output_selection,
                 driver_parameters,
@@ -415,6 +488,7 @@ pub fn run_vanilla_option_pricing_with_observer(
         } else if execution_input.interval_factors.len() == 1 {
             run_single_interval_anchored_fourier_pricing(
                 &pricing_request,
+                &execution_input.runtime_interval_schedule,
                 execution_input.interval_factors[0],
                 driver_parameters,
                 &mut observer,
@@ -422,6 +496,7 @@ pub fn run_vanilla_option_pricing_with_observer(
         } else {
             run_multi_interval_anchored_pricing(
                 &pricing_request,
+                &execution_input.runtime_interval_schedule,
                 &execution_input.interval_factors,
                 driver_parameters,
                 &mut observer,
@@ -468,6 +543,8 @@ pub fn run_vanilla_option_pricing_with_observer(
         representative_transform_diagnostics,
         integration_quality_diagnostics,
         anchored_recursion_diagnostics,
+        execution_input.runtime_interval_schedule.clone(),
+        vec![execution_input.runtime_interval_schedule.interval_count() - 1],
     )
     .map_err(|source| VanillaOptionPricingRunError::InvalidRunResult { source })
 }
@@ -661,6 +738,7 @@ pub(crate) fn recover_pure_imaginary_log_moment_exponent(
 
 fn run_single_interval_nested_fourier_pricing(
     pricing_request: &VanillaOptionPricingRequest,
+    runtime_interval_schedule: &PricingIntervalSchedule,
     interval_factors: VanillaOptionPricingIntervalFactors,
     output_selection: VanillaOptionPricingOptionalOutputSelection,
     driver_parameters: NigBuySellDriverParameters,
@@ -744,6 +822,7 @@ fn run_single_interval_nested_fourier_pricing(
         let risk_neutral_anchor_materialization =
             build_pricing_risk_neutral_anchor_materialization(
                 pricing_request,
+                runtime_interval_schedule,
                 &[interval_factors],
                 driver_parameters,
                 observer,
@@ -785,6 +864,7 @@ fn run_single_interval_nested_fourier_pricing(
 
 fn run_single_interval_anchored_fourier_pricing(
     pricing_request: &VanillaOptionPricingRequest,
+    runtime_interval_schedule: &PricingIntervalSchedule,
     interval_factors: VanillaOptionPricingIntervalFactors,
     driver_parameters: NigBuySellDriverParameters,
     observer: &mut Option<&mut dyn FnMut(PricingNodeProgress)>,
@@ -886,6 +966,7 @@ fn run_single_interval_anchored_fourier_pricing(
     );
     let risk_neutral_anchor_materialization = build_pricing_risk_neutral_anchor_materialization(
         pricing_request,
+        runtime_interval_schedule,
         &[interval_factors],
         driver_parameters,
         observer,
@@ -918,12 +999,14 @@ fn run_single_interval_anchored_fourier_pricing(
 
 fn run_multi_interval_anchored_pricing(
     pricing_request: &VanillaOptionPricingRequest,
+    runtime_interval_schedule: &PricingIntervalSchedule,
     interval_factors: &[VanillaOptionPricingIntervalFactors],
     driver_parameters: NigBuySellDriverParameters,
     observer: &mut Option<&mut dyn FnMut(PricingNodeProgress)>,
 ) -> Result<AnchoredPricingEngineResult, VanillaOptionPricingRunError> {
     let risk_neutral_anchor_materialization = build_pricing_risk_neutral_anchor_materialization(
         pricing_request,
+        runtime_interval_schedule,
         interval_factors,
         driver_parameters,
         observer,
@@ -1410,6 +1493,7 @@ pub(crate) fn build_deviation_grid(
 
 pub(crate) fn build_pricing_risk_neutral_anchor_materialization(
     pricing_request: &VanillaOptionPricingRequest,
+    runtime_interval_schedule: &PricingIntervalSchedule,
     interval_factors: &[VanillaOptionPricingIntervalFactors],
     driver_parameters: NigBuySellDriverParameters,
     observer: &mut Option<&mut dyn FnMut(PricingNodeProgress)>,
@@ -1429,6 +1513,14 @@ pub(crate) fn build_pricing_risk_neutral_anchor_materialization(
     expected_hawkes_state_path.push(current_hawkes_state);
 
     for (interval_index, interval_factor) in interval_factors.iter().copied().enumerate() {
+        let interval_delta = runtime_interval_schedule
+            .interval_delta_hours(interval_index)
+            .ok_or_else(|| VanillaOptionPricingRunError::EndogenousAnchorMaterializationFailure {
+                message: format!(
+                    "runtime interval schedule is missing interval delta for interval_index={interval_index}"
+                ),
+            })?;
+
         emit_node_progress(
             observer,
             PricingNodeProgress::for_interval(
@@ -1445,13 +1537,13 @@ pub(crate) fn build_pricing_risk_neutral_anchor_materialization(
             current_boundary_state.anchor_value,
             current_boundary_state.pressure_state,
             current_boundary_state.deviation,
-            pricing_request.interval_delta,
+            interval_delta,
         )?;
 
         let local_request = build_local_pricing_request(
             pricing_request,
             local_boundary_input.clone(),
-            pricing_request.interval_delta,
+            interval_delta,
         )?;
 
         let (local_transition_theta, _) =
@@ -1469,7 +1561,7 @@ pub(crate) fn build_pricing_risk_neutral_anchor_materialization(
             &pricing_request
                 .boundary_input
                 .mean_reversion_fitted_parameters,
-            pricing_request.interval_delta,
+            interval_delta,
             local_expectations.core_expected_increment,
             local_expectations.core_expected_increment,
         )
@@ -1480,14 +1572,14 @@ pub(crate) fn build_pricing_risk_neutral_anchor_materialization(
         })?;
 
         current_hawkes_state = evolve_expected_hawkes_state_under_local_measure(
-            pricing_request,
+            &local_request,
             current_hawkes_state,
             local_expectations,
         )?;
 
         end_anchor_values.push(current_boundary_state.anchor_value);
         end_pressure_states.push(current_boundary_state.pressure_state);
-        interval_deltas.push(pricing_request.interval_delta);
+        interval_deltas.push(interval_delta);
         expected_hawkes_state_path.push(current_hawkes_state);
     }
 
@@ -2662,6 +2754,7 @@ impl<'de> Deserialize<'de> for VanillaOptionPricingIntervalFactors {
 #[serde(deny_unknown_fields)]
 struct VanillaOptionPricingExecutionInputPayload {
     request: VanillaOptionPricingRequest,
+    runtime_interval_schedule: PricingIntervalSchedule,
     interval_factors: Vec<VanillaOptionPricingIntervalFactors>,
     #[serde(default)]
     optional_output_selection: VanillaOptionPricingOptionalOutputSelection,
@@ -2676,6 +2769,7 @@ impl<'de> Deserialize<'de> for VanillaOptionPricingExecutionInput {
 
         Self::try_new(
             payload.request,
+            payload.runtime_interval_schedule,
             payload.interval_factors,
             payload.optional_output_selection,
         )

@@ -927,32 +927,30 @@ def resolve_high_level_pricing_maturity_inputs(
 
 
 def run_vanilla_option_pricing(
-    request: Any,
-    hourly_factor_contract: HourlyFactorContractResult,
-    optional_output_selection: Any,
+    execution_input: Any,
 ) -> Any: ...
 
 
 def run_vanilla_option_grid_batch_pricing(
-    execution_input: Any,
-) -> Any: ...
+    execution_input: object,
+) -> object: ...
 
 
 def run_vanilla_option_grid_batch_pricing_with_events(
-    execution_input: Any,
-    event_callback: Any,
-) -> Any: ...
+    execution_input: object,
+    event_callback: object,
+) -> object: ...
 
 
 def run_vanilla_option_surface_pricing(
-    execution_input: Any,
-) -> Any: ...
+    execution_input: object,
+) -> object: ...
 
 
 def run_vanilla_option_surface_pricing_with_events(
-    execution_input: Any,
-    event_callback: Any,
-) -> Any: ...
+    execution_input: object,
+    event_callback: object,
+) -> object: ...
 
 
 def run_staged_calibration(

@@ -15,7 +15,6 @@ use janiform_calibration_artifacts::{
 use janiform_foundations::splitmix64_output_mixer;
 use janiform_foundations::time::ONE_HOUR_NANOS;
 
-use crate::calendar::ExchangeCalendarRegistry;
 use crate::optimizer_adapter::CalibrationOptimizerAdapterRunMetadata;
 use crate::stages::hawkes::{HawkesStageFittedPayload, stationary_open_event_rate_per_hour};
 use crate::stages::joint_metrics::build_continuous_calibration_sample_from_aggregated_intervals;
@@ -35,6 +34,7 @@ use crate::stages::seasonality::{
     CalibrationStageExecutionStatus, build_runtime_hourly_seasonality_factors_from_components,
     maximum_realizable_runtime_hourly_seasonality_factor_from_components,
 };
+use janiform_market_time::calendar::ExchangeCalendarRegistry;
 
 use super::super::objective::evaluate_joint_fitted_parameters;
 use super::super::setup::{

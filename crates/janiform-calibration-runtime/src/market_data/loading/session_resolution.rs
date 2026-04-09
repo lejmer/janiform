@@ -1,5 +1,5 @@
-use crate::calendar::ExchangeCalendarRegistryLoader;
 use crate::market_data::preprocessing::MarketDataTranslationTickRecord;
+use janiform_market_time::calendar::ExchangeCalendarRegistryLoader;
 
 use super::bundled_sessions::bundled_session_template;
 use super::calendar_materialization::{

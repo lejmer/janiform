@@ -3,12 +3,15 @@
 pub use janiform_engine_pricing::{
     DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA, FOURIER_INVERSION_DIAGNOSTICS_SCHEMA_VERSION,
     FOURIER_INVERSION_ENGINE_POLICY, FOURIER_INVERSION_NUMERIC_QUALITY_GATE_POLICY,
+    AnchoredVanillaOptionPricingBoundaryInput,
     FourierInversionContour, FourierInversionDiagnostics, FourierInversionEngineSettings,
     FourierInversionIntegrationStabilityControls, FourierInversionNumericQualityDiagnostics,
     FourierInversionNumericQualityGate, FourierInversionNumericSettings,
     FourierInversionPricingError, FourierInversionQuadratureRule,
     HighLevelPricingMaturityResolution, HighLevelPricingMaturityResolutionError,
-    HighLevelPricingMaturityResolutionRequest, PricingProgressEvent, PricingProgressPhase,
+    HighLevelPricingMaturityResolutionRequest, PricingIntervalSchedule,
+    PricingIntervalScheduleError, PricingIntervalScheduleMetadata,
+    PricingIntervalSchedulePolicy, PricingProgressEvent, PricingProgressPhase,
     RETURN_CHARACTERISTIC_FUNCTION_COMPOSITION_POLICY, VanillaOptionGridRequest,
     VanillaOptionGridBatchPricingExecutionInput,
     VanillaOptionGridBatchPricingExecutionInputError,
@@ -35,4 +38,5 @@ pub use janiform_engine_pricing::{
     run_vanilla_option_grid_batch_pricing_with_observer, run_vanilla_option_pricing,
     run_vanilla_option_surface_pricing, run_vanilla_option_surface_pricing_with_observer,
     solve_exponential_affine_transform, solve_exponential_affine_transform_with_settings,
+    materialize_schedule_interval_factors,
 };

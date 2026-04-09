@@ -5,9 +5,9 @@ use janiform_model_kernels::hawkes::{
 };
 
 use crate::artifacts::SeededTickEventSide;
-use crate::calendar::MarketState;
 use crate::constants::{MAX_STOCHASTIC_UPDATES_PER_INTERVAL, ONE_HOUR_NANOS};
 use crate::error::SeededTickSimulationRunError;
+use janiform_market_time::calendar::MarketState;
 
 use super::buffers::{push_simulation_buffer_value, try_reserve_simulation_buffer};
 use super::market_state::SeededSimulationMarketStateResolver;

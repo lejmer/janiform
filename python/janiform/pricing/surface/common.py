@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any, Optional
 
-from ...contracts import (
+from ...contracts.base import (
     require_finite_scalar,
     require_non_negative_finite_scalar,
     require_positive_finite_scalar,

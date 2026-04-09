@@ -8,7 +8,11 @@ import pandas
 
 from ...._native_api import native_module
 from ...._timestamps import datetime_to_utc_nanos
-from ....contracts import require_datetime_utc, require_positive_finite_scalar, require_timezone_aware_datetime
+from ....contracts.base import (
+    require_datetime_utc,
+    require_positive_finite_scalar,
+    require_timezone_aware_datetime,
+)
 from ....mean_reversion import MeanReversionBoundaryState
 from ....simulation import SeededTickEventSide, HawkesExcitationState
 from ...errors import calibration_error

@@ -21,17 +21,24 @@ from .contracts import (
     validate_option_surface_scope,
     validate_tick_price_input_policy,
 )
-from ..errors import calibration_error, calibration_error
+from ..errors import calibration_error
 from ..staged import CalibrationStage, CalibrationStageSolverSettings
-from ...contracts import (
+from ...contracts.base import (
     ContractModel,
     parse_json_object,
+    serialize_deterministic_json,
     require_datetime_utc,
     require_mapping,
     require_non_empty_string,
     require_sequence,
     require_string,
-    serialize_deterministic_json,
+)
+from ...pricing import (
+    AutoExactSparsePricingIntervalSchedulePolicy,
+    ExplicitIntervalEndTimestampsUtcPricingIntervalSchedulePolicy,
+    PricingIntervalSchedulePolicy,
+    default_pricing_interval_schedule_policy,
+    pricing_interval_schedule_policy_from_mapping,
 )
 
 
@@ -52,6 +59,9 @@ class MarketDataCalibrationRequest(ContractModel):
     option_surface_source: Optional[CalibrationInputFileReference] = None
     option_surface_valuation_time_utc: Optional[datetime] = None
     carry: Optional[CalibrationFlatCarryInput] = None
+    pricing_interval_schedule_policy: PricingIntervalSchedulePolicy = field(
+        default_factory=default_pricing_interval_schedule_policy
+    )
     known_news_inputs: Optional[CalibrationKnownNewsInput] = None
     mean_reversion: Optional[CalibrationMeanReversionConfiguration] = None
 
@@ -90,6 +100,18 @@ class MarketDataCalibrationRequest(ContractModel):
             known_news_inputs=self.known_news_inputs,
             known_news_column_mapping=self.column_mapping.known_news,
         )
+
+        if not isinstance(
+            self.pricing_interval_schedule_policy,
+            (
+                AutoExactSparsePricingIntervalSchedulePolicy,
+                ExplicitIntervalEndTimestampsUtcPricingIntervalSchedulePolicy,
+            ),
+        ):
+            raise calibration_error(
+                "pricing_interval_schedule_policy",
+                "must be a pricing interval schedule policy contract",
+            )
 
         if (
             self.workflow_scope == CalibrationMarketDataWorkflowScope.SEASONALITY_ONLY
@@ -235,6 +257,20 @@ class MarketDataCalibrationRequest(ContractModel):
                 )
                 if "carry" in raw_payload and raw_payload["carry"] is not None
                 else None
+            ),
+            pricing_interval_schedule_policy=(
+                pricing_interval_schedule_policy_from_mapping(
+                    require_mapping(
+                        raw_payload,
+                        "pricing_interval_schedule_policy",
+                        "pricing_interval_schedule_policy",
+                        calibration_error,
+                    ),
+                    field_path="pricing_interval_schedule_policy",
+                )
+                if "pricing_interval_schedule_policy" in raw_payload
+                and raw_payload["pricing_interval_schedule_policy"] is not None
+                else default_pricing_interval_schedule_policy()
             ),
             known_news_inputs=(
                 CalibrationKnownNewsInput.from_mapping(

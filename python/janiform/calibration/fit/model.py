@@ -43,9 +43,15 @@ from ..market_data.contracts import CalibrationMarketDataWorkflowScope, Calibrat
 from ..presets.resolution import ResolvedPresetWorkflowConfiguration
 from ..sessions.contracts import MarketDataSessionResolution
 from ..._workflow_progress import WorkflowProgressMode
+from ...contracts.base import require_non_empty_string
 from ...mean_reversion import MeanReversionBoundaryState
-from ...pricing import VanillaOptionPayoffType, VanillaOptionPricingRunResult
+from ...pricing import (
+    PricingIntervalSchedulePolicy,
+    VanillaOptionPayoffType,
+    VanillaOptionPricingRunResult,
+)
 from ...simulation.shared import HawkesExcitationState, SeededTickEventStateSnapshotCapture
+
 
 
 @dataclass(frozen=True, slots=True)
@@ -124,6 +130,7 @@ class JaniformModel:
         include_transform_diagnostics: bool = False,
         include_integration_quality_diagnostics: bool = False,
         include_calibration_hooks: bool = False,
+        pricing_interval_schedule_policy: Optional[PricingIntervalSchedulePolicy] = None,
         output_path: Optional[str | Path] = None,
         silent: bool = False,
         progress_mode: WorkflowProgressMode | str = WorkflowProgressMode.AUTO,
@@ -144,6 +151,7 @@ class JaniformModel:
             include_transform_diagnostics=include_transform_diagnostics,
             include_integration_quality_diagnostics=include_integration_quality_diagnostics,
             include_calibration_hooks=include_calibration_hooks,
+            pricing_interval_schedule_policy=pricing_interval_schedule_policy,
             output_path=output_path,
             silent=silent,
             progress_mode=progress_mode,
@@ -158,6 +166,7 @@ class JaniformModel:
         boundary_state: Optional[HawkesExcitationState] = None,
         include_transform_diagnostics: bool = False,
         include_integration_quality_diagnostics: bool = False,
+        pricing_interval_schedule_policy: Optional[PricingIntervalSchedulePolicy] = None,
         cpu_count: Optional[int] = None,
         silent: bool = False,
         progress_mode: WorkflowProgressMode | str = WorkflowProgressMode.AUTO,
@@ -170,6 +179,7 @@ class JaniformModel:
             boundary_state=boundary_state,
             include_transform_diagnostics=include_transform_diagnostics,
             include_integration_quality_diagnostics=include_integration_quality_diagnostics,
+            pricing_interval_schedule_policy=pricing_interval_schedule_policy,
             cpu_count=cpu_count,
             silent=silent,
             progress_mode=progress_mode,
@@ -199,6 +209,7 @@ class JaniformModel:
         boundary_state: Optional[HawkesExcitationState] = None,
         include_transform_diagnostics: bool = False,
         include_integration_quality_diagnostics: bool = False,
+        pricing_interval_schedule_policy: Optional[PricingIntervalSchedulePolicy] = None,
         cpu_count: Optional[int] = None,
         silent: bool = False,
         progress_mode: WorkflowProgressMode | str = WorkflowProgressMode.AUTO,
@@ -211,6 +222,7 @@ class JaniformModel:
             boundary_state=boundary_state,
             include_transform_diagnostics=include_transform_diagnostics,
             include_integration_quality_diagnostics=include_integration_quality_diagnostics,
+            pricing_interval_schedule_policy=pricing_interval_schedule_policy,
             cpu_count=cpu_count,
             silent=silent,
             progress_mode=progress_mode,
@@ -320,8 +332,6 @@ class JaniformModel:
                 "workflow_scope",
                 "must be a valid CalibrationMarketDataWorkflowScope value",
             ) from error
-
-        from ...contracts import require_non_empty_string
 
         return JaniformModel(
             run_id=require_non_empty_string(payload, "run_id", "run_id", calibration_error),

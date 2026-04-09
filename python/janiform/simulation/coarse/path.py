@@ -29,7 +29,7 @@ from ..shared.errors import (
     _simulation_error,
 )
 from ...mean_reversion import MeanReversionBoundaryState
-from ...contracts import (
+from ...contracts.base import (
     ContractModel,
     parse_json_object,
     require_datetime_utc,

@@ -10,8 +10,8 @@ from .contracts import (
     CalibrationStageExecutionStatus,
     _parse_calibration_execution_mode,
 )
-from ..errors import calibration_error, calibration_error
-from ...contracts import (
+from ..errors import calibration_error
+from ...contracts.base import (
     ContractModel,
     parse_json_object,
     require_non_empty_string,

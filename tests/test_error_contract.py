@@ -65,8 +65,10 @@ from janiform.simulation.seeded.contracts import (
     build_endogenous_seeded_mean_reversion_runtime_inputs,
 )
 from tests.support.calibration import build_valid_execution_input_model
-from tests.support.hourly_factor_contracts import build_hourly_factor_contract
-from tests.support.pricing import build_anchored_surface_execution_input_model
+from tests.support.pricing import (
+    build_anchored_runtime_execution_input_model,
+    build_anchored_surface_execution_input_model,
+)
 from tests.support.simulation import build_endogenous_mean_reversion_runtime_contracts
 
 
@@ -805,57 +807,7 @@ def _valid_excitation_state() -> HawkesExcitationState:
 
 
 def _valid_pricing_execution_input() -> VanillaOptionPricingExecutionInput:
-    return VanillaOptionPricingExecutionInput(
-        request=VanillaOptionPricingRequest(
-            market_inputs=VanillaOptionPricingMarketInputs(
-                spot=101.0,
-                strikes=(100.0,),
-                maturity_intervals=(0.5,),
-                risk_free_rate=0.02,
-                dividend_yield=0.01,
-            ),
-            payoff=VanillaOptionPayoffConfiguration(payoff_type=VanillaOptionPayoffType.CALL),
-            boundary_input=AnchoredVanillaOptionPricingBoundaryInput(
-                interval_index=0,
-                interval_delta=0.5,
-                hawkes_boundary_state=_valid_excitation_state(),
-                mean_reversion_fitted_parameters=MeanReversionFittedParameters(
-                    kappa=0.0,
-                    anchor_model=MeanReversionAnchorModel.zero_gain_endogenous_core_pressure_level(),
-                ),
-                observed_boundary_state=MeanReversionBoundaryState(
-                    observed_log_price=0.0,
-                    anchor_value=0.0,
-                    pressure_state=0.0,
-                    deviation=0.0,
-                ),
-            ),
-            model_parameters=VanillaOptionPricingModelParameters(
-                hawkes_kernel_parameters=_valid_kernel_parameters(),
-                news_process_configuration=_valid_news_process_configuration(),
-                nig_shared_plus_shift_configuration=NigSharedPlusShiftConfiguration(
-                    alpha=2.3,
-                    beta_0=-0.8,
-                    delta=0.7,
-                    mu=0.1,
-                    delta_beta=-0.2,
-                ),
-            ),
-            interval_delta=0.5,
-        ),
-        hourly_factor_contract=build_hourly_factor_contract(
-            request_start_utc_nanos=1_706_882_400_000_000_000,
-            interval_duration_nanos=1_800_000_000_000,
-            s_h=(1.1,),
-            known_component_nu_h=(0.03,),
-            surprise_component_nu_h=(0.05,),
-        ),
-        optional_output_selection=VanillaOptionPricingOptionalOutputSelection(
-            include_transform_diagnostics=True,
-            include_integration_quality_diagnostics=True,
-            include_calibration_hooks=True,
-        ),
-    )
+    return build_anchored_runtime_execution_input_model()
 
 
 def _valid_news_process_configuration() -> NewsProcessConfiguration:

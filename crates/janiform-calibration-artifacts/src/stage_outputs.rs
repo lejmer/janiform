@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+use janiform_engine_pricing::PricingIntervalSchedule;
 use janiform_model_kernels::hawkes::{
     HawkesKernelParameters, HawkesStructuredAlphaParameterization,
     HawkesStructuredRhoParameterization, HawkesStructuredRhoSelfDominancePolicy,
@@ -187,6 +188,9 @@ pub struct JointRefinementStageCarryInput {
 pub struct JointRefinementStageOptionSnapshotMetadata {
     pub valuation_time_utc_nanos: i64,
     pub node_count: usize,
+    pub pricing_interval_schedule: PricingIntervalSchedule,
+    pub maturity_intervals: Vec<f64>,
+    pub maturity_terminal_interval_indices: Vec<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

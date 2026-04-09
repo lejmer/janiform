@@ -4,6 +4,7 @@ use janiform_affine_oracle::affine_oracle::ExponentialAffineTransformNewsIntensi
 use janiform_calibration_runtime::build_option_surface_calibration_observation_from_pricing_hooks;
 use janiform_engine_pricing::{
     AnchoredVanillaOptionPricingBoundaryInput, FourierInversionEngineSettings,
+    PricingIntervalSchedule, PricingIntervalScheduleMetadata,
     VanillaOptionPayoffConfiguration, VanillaOptionPayoffType, VanillaOptionPricingDiagnostics,
     VanillaOptionPricingMarketInputs, VanillaOptionPricingModelParameters,
     VanillaOptionPricingOptionalOutputSelection, VanillaOptionPricingRequest,
@@ -12,6 +13,7 @@ use janiform_engine_pricing::{
     solve_exponential_affine_transform,
 };
 use janiform_foundations::complex_math::ComplexScalar;
+use janiform_foundations::time::ONE_HOUR_NANOS;
 use janiform_model_kernels::hawkes::{
     HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
 };
@@ -168,6 +170,8 @@ fn pricing_run_output_hooks_are_directly_consumable_by_calibration_adapter() {
         Some(transform_diagnostics),
         Some(integration_diagnostics),
         None,
+        build_uniform_runtime_interval_schedule(1, 0.5),
+        vec![0],
     )
     .expect("run output should include diagnostics and calibration hooks");
 
@@ -208,4 +212,33 @@ fn pricing_run_output_hooks_are_directly_consumable_by_calibration_adapter() {
         calibration_observation.integration_truncation_check_passed,
         Some(numeric_quality.truncation_check_passed)
     );
+}
+
+fn build_uniform_runtime_interval_schedule(
+    interval_count: usize,
+    interval_delta: f64,
+) -> PricingIntervalSchedule {
+    let interval_duration_nanos_float = interval_delta * ONE_HOUR_NANOS as f64;
+    let interval_duration_nanos = interval_duration_nanos_float as i64;
+
+    assert_eq!(
+        interval_duration_nanos as f64,
+        interval_duration_nanos_float,
+        "test runtime interval schedule requires an exact nanosecond interval"
+    );
+
+    PricingIntervalSchedule::try_new(
+        0,
+        PricingIntervalScheduleMetadata {
+            policy_id: "explicit_interval_end_timestamps_utc.v1".to_string(),
+            derivation_policy:
+                "pricing_calibration_hook_consumer_integration.synthetic_schedule.v1".to_string(),
+            factor_assignment_policy:
+                "overlap_weighted_resampling_from_hourly_source_buckets.v1".to_string(),
+        },
+        (1..=interval_count)
+            .map(|interval_index| interval_index as i64 * interval_duration_nanos)
+            .collect(),
+    )
+    .expect("uniform runtime interval schedule should construct")
 }

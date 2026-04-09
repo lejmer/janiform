@@ -40,6 +40,7 @@ use super::fourier::{
     FourierInversionEngineSettingsError,
 };
 use super::implied_volatility::VanillaOptionImpliedVolatilityInversionStatus;
+use super::interval_schedule::{PricingIntervalSchedule, PricingIntervalScheduleError};
 
 const PRICING_MEAN_REVERSION_ALIGNMENT_TOLERANCE: f64 = 1.0e-12;
 
@@ -1973,13 +1974,17 @@ pub struct VanillaOptionPricingRunResult {
     pub response: VanillaOptionPricingResponse,
     pub run_diagnostics: Option<VanillaOptionPricingRunDiagnostics>,
     pub calibration_hooks: Option<VanillaOptionPricingCalibrationHooks>,
+    pub runtime_interval_schedule: PricingIntervalSchedule,
+    pub maturity_terminal_interval_indices: Vec<usize>,
 }
 
 impl VanillaOptionPricingRunResult {
-    pub const fn new(
+    pub fn new(
         response: VanillaOptionPricingResponse,
         run_diagnostics: Option<VanillaOptionPricingRunDiagnostics>,
         calibration_hooks: Option<VanillaOptionPricingCalibrationHooks>,
+        runtime_interval_schedule: PricingIntervalSchedule,
+        maturity_terminal_interval_indices: Vec<usize>,
     ) -> Self {
         Self {
             schema_version: VANILLA_OPTION_PRICING_RUN_RESULT_SCHEMA_VERSION,
@@ -1987,6 +1992,8 @@ impl VanillaOptionPricingRunResult {
             response,
             run_diagnostics,
             calibration_hooks,
+            runtime_interval_schedule,
+            maturity_terminal_interval_indices,
         }
     }
 
@@ -1994,8 +2001,16 @@ impl VanillaOptionPricingRunResult {
         response: VanillaOptionPricingResponse,
         run_diagnostics: Option<VanillaOptionPricingRunDiagnostics>,
         calibration_hooks: Option<VanillaOptionPricingCalibrationHooks>,
+        runtime_interval_schedule: PricingIntervalSchedule,
+        maturity_terminal_interval_indices: Vec<usize>,
     ) -> Result<Self, VanillaOptionPricingRunResultError> {
-        let run_result = Self::new(response, run_diagnostics, calibration_hooks);
+        let run_result = Self::new(
+            response,
+            run_diagnostics,
+            calibration_hooks,
+            runtime_interval_schedule,
+            maturity_terminal_interval_indices,
+        );
 
         run_result.validate()?;
 
@@ -2013,7 +2028,19 @@ impl VanillaOptionPricingRunResult {
             })?;
         }
 
-        if let Some(calibration_hooks) = self.calibration_hooks {
+        if self.maturity_terminal_interval_indices.is_empty() {
+            return Err(VanillaOptionPricingRunResultError::EmptyMaturityTerminalIntervalIndices);
+        }
+
+        for &terminal_interval_index in &self.maturity_terminal_interval_indices {
+            self.runtime_interval_schedule
+                .maturity_interval_hours(terminal_interval_index)
+                .map_err(|source| {
+                    VanillaOptionPricingRunResultError::InvalidRuntimeIntervalSchedule { source }
+                })?;
+        }
+
+        if let Some(calibration_hooks) = &self.calibration_hooks {
             calibration_hooks.validate().map_err(|source| {
                 VanillaOptionPricingRunResultError::InvalidCalibrationHooks { source }
             })?;
@@ -2035,6 +2062,10 @@ pub enum VanillaOptionPricingRunResultError {
     InvalidCalibrationHooks {
         source: VanillaOptionPricingCalibrationHooksError,
     },
+    EmptyMaturityTerminalIntervalIndices,
+    InvalidRuntimeIntervalSchedule {
+        source: PricingIntervalScheduleError,
+    },
 }
 
 impl Display for VanillaOptionPricingRunResultError {
@@ -2052,6 +2083,16 @@ impl Display for VanillaOptionPricingRunResultError {
             Self::InvalidCalibrationHooks { source } => {
                 write!(formatter, "calibration hooks payload is invalid: {source}")
             }
+            Self::EmptyMaturityTerminalIntervalIndices => write!(
+                formatter,
+                "maturity_terminal_interval_indices must contain at least one entry"
+            ),
+            Self::InvalidRuntimeIntervalSchedule { source } => {
+                write!(
+                    formatter,
+                    "runtime interval schedule payload is invalid: {source}"
+                )
+            }
         }
     }
 }
@@ -2062,6 +2103,8 @@ impl Error for VanillaOptionPricingRunResultError {
             Self::InvalidResponse { source } => Some(source),
             Self::InvalidRunDiagnostics { source } => Some(source),
             Self::InvalidCalibrationHooks { source } => Some(source),
+            Self::InvalidRuntimeIntervalSchedule { source } => Some(source),
+            Self::EmptyMaturityTerminalIntervalIndices => None,
         }
     }
 }
@@ -2074,6 +2117,8 @@ pub fn build_vanilla_option_pricing_run_result(
     transform_diagnostics_source: Option<ExponentialAffineTransformIntegrationResult>,
     integration_quality_source: Option<FourierInversionDiagnostics>,
     anchored_recursion_source: Option<AnchoredPricingRecursionDiagnostics>,
+    runtime_interval_schedule: PricingIntervalSchedule,
+    maturity_terminal_interval_indices: Vec<usize>,
 ) -> Result<VanillaOptionPricingRunResult, VanillaOptionPricingRunResultBuildError> {
     let run_diagnostics = if response.is_successful() && output_selection.diagnostics_selected() {
         if output_selection.include_transform_diagnostics && transform_diagnostics_source.is_none()
@@ -2138,8 +2183,14 @@ pub fn build_vanilla_option_pricing_run_result(
             None
         };
 
-    VanillaOptionPricingRunResult::try_new(response, run_diagnostics, calibration_hooks)
-        .map_err(|source| VanillaOptionPricingRunResultBuildError::InvalidRunResult { source })
+    VanillaOptionPricingRunResult::try_new(
+        response,
+        run_diagnostics,
+        calibration_hooks,
+        runtime_interval_schedule,
+        maturity_terminal_interval_indices,
+    )
+    .map_err(|source| VanillaOptionPricingRunResultBuildError::InvalidRunResult { source })
 }
 
 /// Structured failures for pricing run output construction.

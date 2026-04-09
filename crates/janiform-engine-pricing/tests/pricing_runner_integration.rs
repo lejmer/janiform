@@ -1,6 +1,7 @@
 use janiform_engine_pricing::{
     AnchoredVanillaOptionPricingBoundaryInput, VanillaOptionGridRequest,
     VanillaOptionGridBatchPricingExecutionInput, VanillaOptionGridBatchPricingRequest,
+    PricingIntervalSchedule, PricingIntervalScheduleMetadata,
     VanillaOptionImpliedVolatilityInversionStatus, VanillaOptionPayoffConfiguration,
     VanillaOptionPayoffType, VanillaOptionPricingExecutionInput,
     VanillaOptionPricingIntervalFactors, VanillaOptionPricingMarketInputs,
@@ -10,6 +11,7 @@ use janiform_engine_pricing::{
     run_vanilla_option_grid_batch_pricing, run_vanilla_option_pricing,
     run_vanilla_option_surface_pricing,
 };
+use janiform_foundations::time::ONE_HOUR_NANOS;
 use janiform_model_kernels::hawkes::{
     HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
 };
@@ -51,6 +53,7 @@ fn vanilla_option_pricing_runner_executes_public_workflow_with_optional_outputs(
             valid_model_parameters(),
         )
         .expect("pricing request should construct"),
+        build_uniform_runtime_interval_schedule(1, 1.0),
         vec![
             VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
                 .expect("interval factors should construct"),
@@ -164,6 +167,7 @@ fn vanilla_option_pricing_runner_matches_zero_anchor_and_shifted_anchor_for_zero
     let zero_anchor_run_result = run_vanilla_option_pricing(
         VanillaOptionPricingExecutionInput::try_new(
             zero_anchor_request,
+            build_uniform_runtime_interval_schedule(1, 1.0),
             interval_factors.clone(),
             optional_output_selection,
         )
@@ -174,6 +178,7 @@ fn vanilla_option_pricing_runner_matches_zero_anchor_and_shifted_anchor_for_zero
     let flat_anchor_run_result = run_vanilla_option_pricing(
         VanillaOptionPricingExecutionInput::try_new(
             flat_anchor_request,
+            build_uniform_runtime_interval_schedule(1, 1.0),
             interval_factors,
             optional_output_selection,
         )
@@ -246,6 +251,7 @@ fn vanilla_option_grid_batch_pricing_matches_single_option_runner_on_shared_grid
             },
             boundary_input: boundary_input.clone(),
             model_parameters: model_parameters.clone(),
+            runtime_interval_schedule: build_uniform_runtime_interval_schedule(1, 1.0),
             interval_delta: 1.0,
             fourier_inversion_settings: None,
             interval_factors: vec![
@@ -295,6 +301,7 @@ fn vanilla_option_grid_batch_pricing_matches_single_option_runner_on_shared_grid
                     model_parameters.clone(),
                 )
                 .expect("pricing request should construct"),
+                build_uniform_runtime_interval_schedule(interval_factors.len(), 1.0),
                 interval_factors,
                 optional_output_selection,
             )
@@ -388,6 +395,7 @@ fn vanilla_option_surface_pricing_matches_single_option_runner_on_shared_grid() 
             },
             boundary_input: boundary_input.clone(),
             model_parameters: model_parameters.clone(),
+            runtime_interval_schedule: build_uniform_runtime_interval_schedule(1, 1.0),
             interval_delta: 1.0,
             fourier_inversion_settings: None,
             interval_factors: vec![
@@ -433,6 +441,7 @@ fn vanilla_option_surface_pricing_matches_single_option_runner_on_shared_grid() 
                         model_parameters.clone(),
                     )
                     .expect("pricing request should construct"),
+                    build_uniform_runtime_interval_schedule(interval_factors.len(), 1.0),
                     interval_factors,
                     optional_output_selection,
                 )
@@ -489,6 +498,33 @@ fn vanilla_option_surface_pricing_matches_single_option_runner_on_shared_grid() 
             );
         }
     }
+}
+
+fn build_uniform_runtime_interval_schedule(
+    interval_count: usize,
+    interval_delta: f64,
+) -> PricingIntervalSchedule {
+    let interval_duration_nanos_float = interval_delta * ONE_HOUR_NANOS as f64;
+    let interval_duration_nanos = interval_duration_nanos_float as i64;
+    assert_eq!(
+        interval_duration_nanos as f64,
+        interval_duration_nanos_float,
+        "test runtime interval schedule requires an exact nanosecond interval"
+    );
+
+    PricingIntervalSchedule::try_new(
+        0,
+        PricingIntervalScheduleMetadata {
+            policy_id: "explicit_interval_end_timestamps_utc.v1".to_string(),
+            derivation_policy: "test_uniform_schedule.v1".to_string(),
+            factor_assignment_policy:
+                "overlap_weighted_resampling_from_hourly_source_buckets.v1".to_string(),
+        },
+        (1..=interval_count)
+            .map(|interval_index| interval_index as i64 * interval_duration_nanos)
+            .collect(),
+    )
+    .expect("uniform runtime interval schedule should construct")
 }
 
 fn valid_model_parameters() -> VanillaOptionPricingModelParameters {

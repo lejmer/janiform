@@ -6,9 +6,18 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Any, Optional
 
-from ....contracts import ContractModel, require_finite_number, require_finite_scalar, require_positive_finite_scalar, require_sequence
-from ....contracts.base import require_optional_finite_number, require_str_enum_value
+from ....contracts.base import (
+    ContractModel,
+    require_finite_number,
+    require_finite_scalar,
+    require_non_negative_integer,
+    require_positive_finite_scalar,
+    require_optional_finite_number,
+    require_sequence,
+    require_str_enum_value,
+)
 from ....pricing import (
+    PricingIntervalSchedule,
     VanillaOptionImpliedVolatilityInversionStatus,
     VanillaOptionPayoffType,
     VanillaOptionPricingFailureStage,
@@ -167,6 +176,8 @@ class JaniformVanillaOptionSurfacePricingResult(ContractModel):
     discount_factor_grid: tuple[tuple[Optional[float], ...], ...]
     boundary_state_norm_grid: tuple[tuple[Optional[float], ...], ...]
     maturity_summaries: tuple[Optional[JaniformVanillaOptionMaturitySummary], ...]
+    runtime_interval_schedule: PricingIntervalSchedule
+    maturity_terminal_interval_indices: tuple[int, ...]
 
     def __post_init__(self) -> None:
         require_positive_finite_scalar(self.spot, "spot", calibration_error)
@@ -190,6 +201,17 @@ class JaniformVanillaOptionSurfacePricingResult(ContractModel):
         validate_matching_grid_shape(self.discount_factor_grid, grid_shape_value=expected_shape, field_path="discount_factor_grid")
         validate_matching_grid_shape(self.boundary_state_norm_grid, grid_shape_value=expected_shape, field_path="boundary_state_norm_grid")
         validate_aligned_node_count(self.maturity_summaries, len(self.maturity_intervals), field_path="maturity_summaries")
+        validate_aligned_node_count(
+            self.maturity_terminal_interval_indices,
+            len(self.maturity_intervals),
+            field_path="maturity_terminal_interval_indices",
+        )
+
+        if not isinstance(self.runtime_interval_schedule, PricingIntervalSchedule):
+            raise calibration_error(
+                "runtime_interval_schedule",
+                "must be a PricingIntervalSchedule",
+            )
 
         for maturity_index, implied_volatility_row in enumerate(self.implied_volatility_grid):
             for strike_index, implied_volatility in enumerate(implied_volatility_row):
@@ -219,7 +241,7 @@ class JaniformVanillaOptionSurfacePricingResult(ContractModel):
         if not isinstance(raw_payload, dict):
             raise calibration_error(field_path, "must be an object")
 
-        from ....contracts import require_mapping
+        from ....contracts.base import require_mapping
 
         response = require_mapping(
             raw_payload,
@@ -231,6 +253,12 @@ class JaniformVanillaOptionSurfacePricingResult(ContractModel):
             raw_payload,
             "maturity_summaries",
             f"{field_path}.maturity_summaries",
+            calibration_error,
+        )
+        raw_maturity_terminal_interval_indices = require_sequence(
+            raw_payload,
+            "maturity_terminal_interval_indices",
+            f"{field_path}.maturity_terminal_interval_indices",
             calibration_error,
         )
 
@@ -266,6 +294,24 @@ class JaniformVanillaOptionSurfacePricingResult(ContractModel):
                     else None
                 )
                 for summary_index, raw_summary in enumerate(raw_maturity_summaries)
+            ),
+            runtime_interval_schedule=PricingIntervalSchedule.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "runtime_interval_schedule",
+                    f"{field_path}.runtime_interval_schedule",
+                    calibration_error,
+                ),
+                field_path=f"{field_path}.runtime_interval_schedule",
+            ),
+            maturity_terminal_interval_indices=tuple(
+                require_non_negative_integer(
+                    {"value": raw_index},
+                    "value",
+                    f"{field_path}.maturity_terminal_interval_indices[{index}]",
+                    calibration_error,
+                )
+                for index, raw_index in enumerate(raw_maturity_terminal_interval_indices)
             ),
         )
 

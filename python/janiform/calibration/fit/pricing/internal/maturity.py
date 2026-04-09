@@ -9,8 +9,16 @@ from types import ModuleType
 from typing import Any, Optional
 
 from ....._native_api import native_exception_matches, native_module
-from .....contracts import require_date, require_datetime_utc
-from .....contracts.base import require_non_empty_string_value
+from .....contracts.base import (
+    require_date,
+    require_datetime_utc,
+    require_non_empty_string_value,
+)
+from .....pricing import (
+    PricingIntervalSchedule,
+    PricingIntervalSchedulePolicy,
+    default_pricing_interval_schedule_policy,
+)
 from ....errors import (
     CALIBRATION_INTEGRATION_NATIVE_MODULE_ERROR_ID,
     CALIBRATION_INTEGRATION_RESPONSE_ERROR_ID,
@@ -28,6 +36,8 @@ type TenorAxis = Optional[tuple[Optional[str], ...]]
 class ResolvedPricingMaturityInputs:
     maturity_intervals: tuple[float, ...]
     resolved_expiry_timestamps_utc: tuple[datetime, ...]
+    pricing_interval_schedule: PricingIntervalSchedule
+    maturity_terminal_interval_indices: tuple[int, ...]
 
 
 def normalize_optional_expiry_timestamps_utc(
@@ -143,6 +153,7 @@ def resolve_single_pricing_maturity_input(
     expiry_timestamp_utc: Optional[datetime],
     expiry_date: Optional[date],
     tenor: Optional[str],
+    pricing_interval_schedule_policy: Optional[PricingIntervalSchedulePolicy] = None,
 ) -> ResolvedPricingMaturityInputs:
     selected_count = sum(
         value is not None for value in (expiry_timestamp_utc, expiry_date, tenor)
@@ -182,6 +193,7 @@ def resolve_single_pricing_maturity_input(
         ),
         expiry_dates=None if normalized_expiry_date is None else (normalized_expiry_date,),
         tenors=None if normalized_tenor is None else (normalized_tenor,),
+        pricing_interval_schedule_policy=pricing_interval_schedule_policy,
         field_path="maturity_input",
     )
 
@@ -193,6 +205,7 @@ def resolve_pricing_maturity_axis(
     expiry_dates: ExpiryDateAxis,
     tenors: TenorAxis,
     field_path: str,
+    pricing_interval_schedule_policy: Optional[PricingIntervalSchedulePolicy] = None,
 ) -> ResolvedPricingMaturityInputs:
     validate_pricing_maturity_axis_fields(
         expiry_timestamps_utc=expiry_timestamps_utc,
@@ -206,6 +219,7 @@ def resolve_pricing_maturity_axis(
         expiry_timestamps_utc=expiry_timestamps_utc,
         expiry_dates=expiry_dates,
         tenors=tenors,
+        pricing_interval_schedule_policy=pricing_interval_schedule_policy,
         field_path=field_path,
     )
 
@@ -236,6 +250,7 @@ def _resolve_pricing_maturity_inputs(
     expiry_timestamps_utc: ExpiryTimestampAxis,
     expiry_dates: ExpiryDateAxis,
     tenors: TenorAxis,
+    pricing_interval_schedule_policy: Optional[PricingIntervalSchedulePolicy],
     field_path: str,
 ) -> ResolvedPricingMaturityInputs:
     normalized_valuation_time_utc = require_datetime_utc(
@@ -259,6 +274,11 @@ def _resolve_pricing_maturity_inputs(
         "expiry_timestamps_utc": _datetime_axis_payload(expiry_timestamps_utc),
         "expiry_dates": _date_axis_payload(expiry_dates),
         "tenors": _string_axis_payload(tenors),
+        "pricing_interval_schedule_policy": (
+            pricing_interval_schedule_policy.to_payload()
+            if pricing_interval_schedule_policy is not None
+            else default_pricing_interval_schedule_policy().to_payload()
+        ),
     }
 
     try:
@@ -279,8 +299,14 @@ def _resolve_pricing_maturity_inputs(
 
     maturity_intervals = raw_resolution.get("maturity_intervals")
     resolved_expiry_timestamps_utc = raw_resolution.get("resolved_expiry_timestamps_utc")
+    pricing_interval_schedule = raw_resolution.get("pricing_interval_schedule")
+    maturity_terminal_interval_indices = raw_resolution.get("maturity_terminal_interval_indices")
+
     if not isinstance(maturity_intervals, list) or not isinstance(
         resolved_expiry_timestamps_utc,
+        list,
+    ) or not isinstance(pricing_interval_schedule, dict) or not isinstance(
+        maturity_terminal_interval_indices,
         list,
     ):
         raise calibration_integration_error(
@@ -301,6 +327,13 @@ def _resolve_pricing_maturity_inputs(
                 calibration_error,
             )
             for index, raw_timestamp in enumerate(resolved_expiry_timestamps_utc)
+        ),
+        pricing_interval_schedule=PricingIntervalSchedule.from_mapping(
+            pricing_interval_schedule,
+            field_path=f"{field_path}.pricing_interval_schedule",
+        ),
+        maturity_terminal_interval_indices=tuple(
+            int(raw_index) for raw_index in maturity_terminal_interval_indices
         ),
     )
 

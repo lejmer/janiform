@@ -6,15 +6,18 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Any, Optional
 
-from ....contracts import (
+from ....contracts.base import (
     ContractModel,
     require_finite_number,
     require_finite_scalar,
+    require_mapping,
+    require_non_negative_integer,
     require_positive_finite_scalar,
     require_sequence,
+    require_str_enum_value,
 )
-from ....contracts.base import require_str_enum_value
 from ....pricing import (
+    PricingIntervalSchedule,
     VanillaOptionImpliedVolatilityInversionStatus,
     VanillaOptionPayoffType,
     VanillaOptionPricingFailureStage,
@@ -193,6 +196,7 @@ class JaniformVanillaOptionGridPricingResult(ContractModel):
     dividend_yield: float
     strikes: tuple[float, ...]
     maturity_intervals: tuple[float, ...]
+    maturity_terminal_interval_indices: tuple[int, ...]
     price_grid: tuple[tuple[Optional[float], ...], ...]
     implied_volatility_grid: tuple[tuple[Optional[float], ...], ...]
     implied_volatility_inversion_status_grid: tuple[
@@ -215,6 +219,16 @@ class JaniformVanillaOptionGridPricingResult(ContractModel):
         require_finite_scalar(self.dividend_yield, "dividend_yield", calibration_error)
 
         expected_shape = (len(self.maturity_intervals), len(self.strikes))
+        if len(self.maturity_terminal_interval_indices) != len(self.maturity_intervals):
+            raise calibration_error(
+                "maturity_terminal_interval_indices",
+                (
+                    "must contain one terminal interval index per maturity interval "
+                    f"({len(self.maturity_intervals)}), found "
+                    f"{len(self.maturity_terminal_interval_indices)}"
+                ),
+            )
+
         actual_shape = grid_shape(self.price_grid, field_path="price_grid")
         if actual_shape != expected_shape:
             raise calibration_error(
@@ -335,6 +349,22 @@ class JaniformVanillaOptionGridPricingResult(ContractModel):
                 field_name="maturity_intervals",
                 field_path=f"{field_path}.maturity_intervals",
             ),
+            maturity_terminal_interval_indices=tuple(
+                require_non_negative_integer(
+                    {"value": raw_index},
+                    "value",
+                    f"{field_path}.maturity_terminal_interval_indices[{index}]",
+                    calibration_error,
+                )
+                for index, raw_index in enumerate(
+                    require_sequence(
+                        raw_payload,
+                        "maturity_terminal_interval_indices",
+                        f"{field_path}.maturity_terminal_interval_indices",
+                        calibration_error,
+                    )
+                )
+            ),
             price_grid=grid_of_optional_finite_floats(
                 raw_payload,
                 field_name="price_grid",
@@ -398,12 +428,19 @@ class JaniformVanillaOptionGridPricingResult(ContractModel):
 class JaniformVanillaOptionGridBatchPricingResult(ContractModel):
     spot: float
     grids: tuple[JaniformVanillaOptionGridPricingResult, ...]
+    runtime_interval_schedule: PricingIntervalSchedule
 
     def __post_init__(self) -> None:
         require_positive_finite_scalar(self.spot, "spot", calibration_error)
 
         if len(self.grids) == 0:
             raise calibration_error("grids", "must contain at least one pricing result grid")
+
+        if not isinstance(self.runtime_interval_schedule, PricingIntervalSchedule):
+            raise calibration_error(
+                "runtime_interval_schedule",
+                "must be a PricingIntervalSchedule",
+            )
 
     @staticmethod
     def from_mapping(
@@ -433,6 +470,15 @@ class JaniformVanillaOptionGridBatchPricingResult(ContractModel):
                     field_path=f"{field_path}.grids[{grid_index}]",
                 )
                 for grid_index, raw_grid in enumerate(raw_grids)
+            ),
+            runtime_interval_schedule=PricingIntervalSchedule.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "runtime_interval_schedule",
+                    f"{field_path}.runtime_interval_schedule",
+                    calibration_error,
+                ),
+                field_path=f"{field_path}.runtime_interval_schedule",
             ),
         )
 

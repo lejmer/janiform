@@ -9,12 +9,12 @@ use janiform_calibration_artifacts::{
     ReturnComponentsStageFittedParameters,
 };
 use janiform_engine_pricing::{
-    AnchoredVanillaOptionPricingBoundaryInput, VanillaOptionGridBatchPricingRequest,
-    VanillaOptionPayoffType, VanillaOptionPricingIntervalFactors,
+    AnchoredVanillaOptionPricingBoundaryInput, PricingIntervalSchedule,
+    VanillaOptionGridBatchPricingRequest, VanillaOptionPayoffType,
+    VanillaOptionPricingIntervalFactors,
 };
 use serde::{Deserialize, Serialize};
 
-use crate::calendar::ExchangeCalendarRegistry;
 use crate::stages::joint_metrics::{
     JointRefinementAggregatedIntervalObservation,
     JointRefinementBusinessTimeBucketReturnScaleSummaries,
@@ -23,6 +23,7 @@ use crate::stages::joint_metrics::{
 };
 use crate::stages::joint_refinement::contracts::JointRefinementStageObjectiveTermDiagnostic;
 use crate::stages::return_components::ReturnComponentsStageContinuousReturnCalibrationSample;
+use janiform_market_time::calendar::ExchangeCalendarRegistry;
 
 use super::super::worker_runtime::JointRefinementSummarySimulationScheduler;
 
@@ -288,7 +289,10 @@ pub(crate) struct JointRefinementOptionPricingContext {
     pub(crate) valuation_time_utc_nanos: i64,
     pub(crate) grid_batch_pricing_request: VanillaOptionGridBatchPricingRequest,
     pub(crate) boundary_input: AnchoredVanillaOptionPricingBoundaryInput,
+    pub(crate) runtime_interval_schedule: PricingIntervalSchedule,
     pub(crate) interval_factors: Vec<VanillaOptionPricingIntervalFactors>,
+    pub(crate) snapshot_maturity_intervals: Vec<f64>,
+    pub(crate) snapshot_maturity_terminal_interval_indices: Vec<usize>,
     pub(crate) carry_input: janiform_calibration_artifacts::JointRefinementStageCarryInput,
     pub(crate) observed_nodes: Vec<JointRefinementOptionNodeDefinition>,
     pub(crate) cpu_count: usize,

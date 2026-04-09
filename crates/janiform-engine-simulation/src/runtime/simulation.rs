@@ -23,7 +23,7 @@ use crate::constants::{
 };
 use crate::error::SeededTickSimulationRunError;
 use crate::progress::{SimulationProgressEvent, SimulationProgressPhase, emit_progress_event};
-use crate::risk::SufficientStatisticsRiskReturnComponents;
+use janiform_affine_oracle::sufficient_statistics::SufficientStatisticsRiskReturnComponents;
 
 use super::debug_trace::{
     SeededTickEventDebugTraceCaptureInput, SeededTickEventDebugTraceCollector,
@@ -756,9 +756,9 @@ fn apply_interval_update_side_effects(
 
 fn realize_pending_jump_returns(
     runtime_state: &mut SeededTickSimulationRuntimeState,
-    market_state: crate::calendar::MarketState,
+    market_state: janiform_market_time::calendar::MarketState,
 ) -> (f64, f64) {
-    if market_state != crate::calendar::MarketState::Open {
+    if market_state != janiform_market_time::calendar::MarketState::Open {
         return (0.0, 0.0);
     }
 

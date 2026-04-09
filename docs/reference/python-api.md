@@ -210,5 +210,8 @@ Representative public symbols include:
 Shared contract models and serialization helpers. Representative public symbols include:
 
 - `ContractModel`
+- `require_mapping`
+- `require_non_empty_string`
+- `require_optional_finite_scalar`
 - `serialize_deterministic_json`
 - `serialize_pretty_json`

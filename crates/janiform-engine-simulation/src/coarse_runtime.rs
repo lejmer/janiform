@@ -1,7 +1,8 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
-use crate::risk::{
+use janiform_affine_oracle::affine_oracle::ExponentialAffineTransformNewsIntensityInput;
+use janiform_affine_oracle::sufficient_statistics::{
     SufficientStatisticsBoundaryStateUpdateError, SufficientStatisticsBoundaryStateUpdateSnapshot,
     SufficientStatisticsRiskReturnComponents, SufficientStatisticsRiskReturnComponentsError,
     SufficientStatisticsTransformSliceContext, SufficientStatisticsTransformSliceSamplingError,
@@ -9,7 +10,6 @@ use crate::risk::{
     sample_interval_statistics_from_transform_slices_with_randomness_factory,
     solve_sufficient_statistics_transform_slices, update_boundary_state_from_interval_statistics,
 };
-use janiform_affine_oracle::affine_oracle::ExponentialAffineTransformNewsIntensityInput;
 use janiform_foundations::randomness::{
     SimulationRandomnessFactory, SimulationRandomnessSubstreamDomain,
     SplitMix64SimulationRandomnessFactory,
@@ -389,7 +389,7 @@ pub enum CoarseSimulationRunError {
         source: CoarseSimulationRunRequestError,
     },
     CalendarRegistryLoadFailure {
-        source: crate::calendar::ExchangeCalendarRegistryLoadError,
+        source: janiform_market_time::calendar::ExchangeCalendarRegistryLoadError,
     },
     InvalidNigDriverConfiguration {
         source: janiform_model_kernels::nig::NigSharedPlusShiftConfigurationError,
@@ -402,7 +402,7 @@ pub enum CoarseSimulationRunError {
     },
     InvalidTransformSliceContext {
         interval_index: usize,
-        source: crate::risk::SufficientStatisticsTransformSliceContextError,
+        source: janiform_affine_oracle::sufficient_statistics::SufficientStatisticsTransformSliceContextError,
     },
     TransformSliceSolveFailure {
         interval_index: usize,
@@ -634,7 +634,7 @@ struct IntervalDirectJumpTotals {
 
 fn sample_interval_direct_jump_totals<F>(
     run_request: &CoarseSimulationRunRequest,
-    calendar_registry: &crate::calendar::ExchangeCalendarRegistry,
+    calendar_registry: &janiform_market_time::calendar::ExchangeCalendarRegistry,
     interval_index: usize,
     interval_start_utc_nanos: i64,
     interval_end_utc_nanos: i64,

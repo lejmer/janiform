@@ -10,7 +10,7 @@ use super::jump_candidates::derive_intraday_jump_candidates;
 use super::known_news_samples::activity_lift;
 use super::session_windows::resolve_market_state_and_session_window;
 use super::shared::OpenTickRecord;
-use crate::calendar::{
+use janiform_market_time::calendar::{
     CalendarRuleMetadataArtifact, ExchangeCalendarArtifact, ExchangeCalendarDefinition,
     MarketState, RegularSessionArtifact, SessionWindowArtifact, TradingWeekday,
 };

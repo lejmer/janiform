@@ -20,7 +20,7 @@ from ..shared.errors import (
     _simulation_execution_error,
     _simulation_integration_error,
 )
-from ...contracts import require_datetime_utc
+from ...contracts.base import require_datetime_utc
 from ..._native_api import native_exception_matches, native_module
 
 

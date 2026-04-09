@@ -1,15 +1,22 @@
 use janiform::pricing::{
+    AnchoredVanillaOptionPricingBoundaryInput, FourierInversionEngineSettings,
     HighLevelPricingMaturityResolution, HighLevelPricingMaturityResolutionRequest,
-    PricingProgressEvent, VanillaOptionGridBatchPricingExecutionInput,
-    VanillaOptionPricingExecutionInput, VanillaOptionPricingIntervalFactors,
-    VanillaOptionPricingOptionalOutputSelection, VanillaOptionPricingRequest,
-    VanillaOptionSurfacePricingExecutionInput,
+    PricingIntervalSchedule, PricingProgressEvent, VanillaOptionGridBatchPricingExecutionInput,
+    VanillaOptionGridBatchPricingRequest, VanillaOptionPricingExecutionInput,
+    VanillaOptionPricingModelParameters, VanillaOptionPricingOptionalOutputSelection,
+    VanillaOptionPricingRequest, VanillaOptionSurfacePricingExecutionInput,
+    VanillaOptionSurfacePricingRequest,
+    materialize_schedule_interval_factors,
     resolve_high_level_pricing_maturity_inputs as resolve_high_level_pricing_maturity_inputs_core,
     run_vanilla_option_grid_batch_pricing as run_vanilla_option_grid_batch_pricing_core,
     run_vanilla_option_grid_batch_pricing_with_observer as run_vanilla_option_grid_batch_pricing_core_with_observer,
     run_vanilla_option_pricing as run_vanilla_option_pricing_core,
     run_vanilla_option_surface_pricing as run_vanilla_option_surface_pricing_core,
     run_vanilla_option_surface_pricing_with_observer as run_vanilla_option_surface_pricing_core_with_observer,
+};
+use janiform::hourly_factors::{
+    HourlyFactorContractDiagnostics, HourlyFactorContractOutput,
+    HourlyFactorMaterializationMetadata,
 };
 use pyo3::prelude::{Bound, Py, PyResult, Python};
 use pyo3::types::PyAny;
@@ -25,9 +32,116 @@ use std::time::{Duration, Instant};
 
 use crate::PricingExecutionError;
 use crate::python_value::{json_value_to_py_object, py_any_to_json_value};
-use crate::types::PyHourlyFactorContractResult;
 
 const PRICING_PROGRESS_CALLBACK_MIN_INTERVAL: Duration = Duration::from_millis(100);
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PythonVanillaOptionPricingExecutionInputPayload {
+    request: VanillaOptionPricingRequest,
+    runtime_interval_schedule: PricingIntervalSchedule,
+    hourly_factor_contract: PythonHourlyFactorContractPayload,
+    #[serde(default)]
+    optional_output_selection: VanillaOptionPricingOptionalOutputSelection,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PythonVanillaOptionGridBatchPricingExecutionInputPayload {
+    request: VanillaOptionGridBatchPricingRequest,
+    boundary_input: AnchoredVanillaOptionPricingBoundaryInput,
+    model_parameters: VanillaOptionPricingModelParameters,
+    runtime_interval_schedule: PricingIntervalSchedule,
+    interval_delta: f64,
+    fourier_inversion_settings: Option<FourierInversionEngineSettings>,
+    hourly_factor_contract: PythonHourlyFactorContractPayload,
+    #[serde(default)]
+    optional_output_selection: VanillaOptionPricingOptionalOutputSelection,
+    cpu_count: Option<usize>,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PythonVanillaOptionSurfacePricingExecutionInputPayload {
+    request: VanillaOptionSurfacePricingRequest,
+    boundary_input: AnchoredVanillaOptionPricingBoundaryInput,
+    model_parameters: VanillaOptionPricingModelParameters,
+    runtime_interval_schedule: PricingIntervalSchedule,
+    interval_delta: f64,
+    fourier_inversion_settings: Option<FourierInversionEngineSettings>,
+    hourly_factor_contract: PythonHourlyFactorContractPayload,
+    #[serde(default)]
+    optional_output_selection: VanillaOptionPricingOptionalOutputSelection,
+    cpu_count: Option<usize>,
+}
+
+#[derive(serde::Deserialize)]
+struct PythonHourlyFactorContractPayload {
+    interval_duration_nanos: i64,
+    interval_start_utc_nanos: Vec<i64>,
+    interval_end_utc_nanos: Vec<i64>,
+    s_h: Vec<f64>,
+    known_component_nu_h: Vec<f64>,
+    surprise_component_nu_h: Vec<f64>,
+}
+
+fn hourly_factor_contract_output_from_payload(
+    payload: PythonHourlyFactorContractPayload,
+) -> HourlyFactorContractOutput {
+    let interval_count = payload.interval_start_utc_nanos.len();
+    let first_interval_start_utc_nanos = payload
+        .interval_start_utc_nanos
+        .first()
+        .copied()
+        .unwrap_or_default();
+    let last_interval_end_utc_nanos = payload
+        .interval_end_utc_nanos
+        .last()
+        .copied()
+        .unwrap_or_default();
+
+    HourlyFactorContractOutput {
+        schema_version: "",
+        exchange_code: String::new(),
+        exchange_timezone_name: String::new(),
+        request_start_utc_nanos: first_interval_start_utc_nanos,
+        request_end_utc_nanos: last_interval_end_utc_nanos,
+        interval_duration_nanos: payload.interval_duration_nanos,
+        interval_indices: (0..interval_count).map(|index| index as u64).collect(),
+        interval_start_utc_nanos: payload.interval_start_utc_nanos,
+        interval_end_utc_nanos: payload.interval_end_utc_nanos,
+        interval_start_exchange_local: vec![String::new(); interval_count],
+        interval_end_exchange_local: vec![String::new(); interval_count],
+        nu_h: payload
+            .known_component_nu_h
+            .iter()
+            .zip(payload.surprise_component_nu_h.iter())
+            .map(|(known_component_nu_h, surprise_component_nu_h)| {
+                known_component_nu_h + surprise_component_nu_h
+            })
+            .collect(),
+        s_h: payload.s_h,
+        known_component_nu_h: payload.known_component_nu_h,
+        surprise_component_nu_h: payload.surprise_component_nu_h,
+        metadata: HourlyFactorMaterializationMetadata {
+            seasonality_materialization_method: String::new(),
+            news_intensity_materialization_method: String::new(),
+            interval_boundary_policy: "",
+            interval_alignment_policy: "",
+            timezone_transition_policy: "",
+            spring_forward_policy: "",
+            fall_back_policy: "",
+        },
+        diagnostics: HourlyFactorContractDiagnostics {
+            interval_count,
+            interval_duration_nanos: payload.interval_duration_nanos,
+            first_interval_start_utc_nanos,
+            last_interval_end_utc_nanos,
+            skipped_local_hour_interval_count: 0,
+            repeated_local_hour_interval_count: 0,
+        },
+    }
+}
 
 #[pyfunction]
 fn resolve_high_level_pricing_maturity_inputs(
@@ -57,47 +171,33 @@ fn resolve_high_level_pricing_maturity_inputs(
 #[pyfunction]
 fn run_vanilla_option_pricing(
     py: Python<'_>,
-    request: &Bound<'_, PyAny>,
-    hourly_factor_contract: &PyHourlyFactorContractResult,
-    optional_output_selection: &Bound<'_, PyAny>,
+    execution_input: &Bound<'_, PyAny>,
 ) -> PyResult<Py<PyAny>> {
-    let request: VanillaOptionPricingRequest =
-        serde_json::from_value(py_any_to_json_value(request)?).map_err(|source| {
+    let execution_input: PythonVanillaOptionPricingExecutionInputPayload =
+        serde_json::from_value(py_any_to_json_value(execution_input)?).map_err(|source| {
             PricingExecutionError::new_err(format!(
-                "failed to deserialize vanilla option pricing request: {source}"
+                "failed to deserialize vanilla option pricing execution input: {source}"
             ))
         })?;
-    let optional_output_selection: VanillaOptionPricingOptionalOutputSelection =
-        serde_json::from_value(py_any_to_json_value(optional_output_selection)?).map_err(
-            |source| {
-                PricingExecutionError::new_err(format!(
-                    "failed to deserialize vanilla option pricing optional output selection: {source}"
-                ))
-            },
-        )?;
-    let interval_factors = hourly_factor_contract
-        .output
-        .s_h
-        .iter()
-        .zip(hourly_factor_contract.output.known_component_nu_h.iter())
-        .zip(hourly_factor_contract.output.surprise_component_nu_h.iter())
-        .map(
-            |((seasonality_factor, known_component_nu_h), surprise_component_nu_h)| {
-                VanillaOptionPricingIntervalFactors::try_new(
-                    *seasonality_factor,
-                    *known_component_nu_h,
-                    *surprise_component_nu_h,
-                )
-            },
-        )
-        .collect::<Result<Vec<_>, _>>()
+
+    let hourly_factor_contract =
+        hourly_factor_contract_output_from_payload(execution_input.hourly_factor_contract);
+
+
+    let interval_factors = materialize_schedule_interval_factors(
+        &execution_input.runtime_interval_schedule,
+        &hourly_factor_contract,
+    )
         .map_err(|source| PricingExecutionError::new_err(source.to_string()))?;
+
     let execution_input = VanillaOptionPricingExecutionInput::try_new(
-        request,
+        execution_input.request,
+        execution_input.runtime_interval_schedule,
         interval_factors,
-        optional_output_selection,
+        execution_input.optional_output_selection,
     )
     .map_err(|source| PricingExecutionError::new_err(source.to_string()))?;
+
     let run_result = py
         .allow_threads(|| run_vanilla_option_pricing_core(execution_input))
         .map_err(|source| PricingExecutionError::new_err(source.to_string()))?;
@@ -116,14 +216,34 @@ fn run_vanilla_option_grid_batch_pricing(
     py: Python<'_>,
     execution_input: &Bound<'_, PyAny>,
 ) -> PyResult<Py<PyAny>> {
-    let execution_input: VanillaOptionGridBatchPricingExecutionInput = serde_json::from_value(
-        py_any_to_json_value(execution_input)?,
-    )
+    let execution_input: PythonVanillaOptionGridBatchPricingExecutionInputPayload =
+        serde_json::from_value(py_any_to_json_value(execution_input)?)
     .map_err(|source| {
         PricingExecutionError::new_err(format!(
             "failed to deserialize vanilla option grid batch pricing execution input: {source}"
         ))
     })?;
+
+    let hourly_factor_contract =
+        hourly_factor_contract_output_from_payload(execution_input.hourly_factor_contract);
+
+    let interval_factors = materialize_schedule_interval_factors(
+        &execution_input.runtime_interval_schedule,
+        &hourly_factor_contract,
+    )
+    .map_err(|source| PricingExecutionError::new_err(source.to_string()))?;
+
+    let execution_input = VanillaOptionGridBatchPricingExecutionInput {
+        request: execution_input.request,
+        boundary_input: execution_input.boundary_input,
+        model_parameters: execution_input.model_parameters,
+        runtime_interval_schedule: execution_input.runtime_interval_schedule,
+        interval_delta: execution_input.interval_delta,
+        fourier_inversion_settings: execution_input.fourier_inversion_settings,
+        interval_factors,
+        optional_output_selection: execution_input.optional_output_selection,
+        cpu_count: execution_input.cpu_count,
+    };
 
     let run_result = py
         .allow_threads(|| run_vanilla_option_grid_batch_pricing_core(execution_input))
@@ -145,9 +265,46 @@ fn run_vanilla_option_grid_batch_pricing_with_events(
     execution_input: &Bound<'_, PyAny>,
     event_callback: &Bound<'_, PyAny>,
 ) -> PyResult<Py<PyAny>> {
+    let execution_input_json = py_any_to_json_value(execution_input)?;
+
+    let payload: PythonVanillaOptionGridBatchPricingExecutionInputPayload =
+        serde_json::from_value(execution_input_json).map_err(|source| {
+            PricingExecutionError::new_err(format!(
+                "failed to deserialize vanilla option grid batch pricing execution input: {source}"
+            ))
+        })?;
+
+    let hourly_factor_contract =
+        hourly_factor_contract_output_from_payload(payload.hourly_factor_contract);
+
+    let interval_factors = materialize_schedule_interval_factors(
+        &payload.runtime_interval_schedule,
+        &hourly_factor_contract,
+    )
+    .map_err(|source| PricingExecutionError::new_err(source.to_string()))?;
+
+    let execution_input = serde_json::to_value(VanillaOptionGridBatchPricingExecutionInput {
+        request: payload.request,
+        boundary_input: payload.boundary_input,
+        model_parameters: payload.model_parameters,
+        runtime_interval_schedule: payload.runtime_interval_schedule,
+        interval_delta: payload.interval_delta,
+        fourier_inversion_settings: payload.fourier_inversion_settings,
+        interval_factors,
+        optional_output_selection: payload.optional_output_selection,
+        cpu_count: payload.cpu_count,
+    })
+    .map_err(|source| {
+        PricingExecutionError::new_err(format!(
+            "failed to serialize vanilla option grid batch pricing execution input: {source}"
+        ))
+    })?;
+
+    let execution_input = json_value_to_py_object(py, &execution_input)?;
+
     run_pricing_workflow_with_events(
         py,
-        execution_input,
+        execution_input.bind(py),
         event_callback,
         "vanilla option grid batch pricing execution input",
         "vanilla option grid batch pricing run result",
@@ -172,12 +329,33 @@ fn run_vanilla_option_surface_pricing(
     py: Python<'_>,
     execution_input: &Bound<'_, PyAny>,
 ) -> PyResult<Py<PyAny>> {
-    let execution_input: VanillaOptionSurfacePricingExecutionInput =
+    let execution_input: PythonVanillaOptionSurfacePricingExecutionInputPayload =
         serde_json::from_value(py_any_to_json_value(execution_input)?).map_err(|source| {
             PricingExecutionError::new_err(format!(
                 "failed to deserialize vanilla option surface pricing execution input: {source}"
             ))
         })?;
+
+    let hourly_factor_contract =
+        hourly_factor_contract_output_from_payload(execution_input.hourly_factor_contract);
+
+    let interval_factors = materialize_schedule_interval_factors(
+        &execution_input.runtime_interval_schedule,
+        &hourly_factor_contract,
+    )
+    .map_err(|source| PricingExecutionError::new_err(source.to_string()))?;
+
+    let execution_input = VanillaOptionSurfacePricingExecutionInput {
+        request: execution_input.request,
+        boundary_input: execution_input.boundary_input,
+        model_parameters: execution_input.model_parameters,
+        runtime_interval_schedule: execution_input.runtime_interval_schedule,
+        interval_delta: execution_input.interval_delta,
+        fourier_inversion_settings: execution_input.fourier_inversion_settings,
+        interval_factors,
+        optional_output_selection: execution_input.optional_output_selection,
+        cpu_count: execution_input.cpu_count,
+    };
 
     let run_result = py
         .allow_threads(|| run_vanilla_option_surface_pricing_core(execution_input))
@@ -199,9 +377,46 @@ fn run_vanilla_option_surface_pricing_with_events(
     execution_input: &Bound<'_, PyAny>,
     event_callback: &Bound<'_, PyAny>,
 ) -> PyResult<Py<PyAny>> {
+    let execution_input_json = py_any_to_json_value(execution_input)?;
+
+    let payload: PythonVanillaOptionSurfacePricingExecutionInputPayload =
+        serde_json::from_value(execution_input_json).map_err(|source| {
+            PricingExecutionError::new_err(format!(
+                "failed to deserialize vanilla option surface pricing execution input: {source}"
+            ))
+        })?;
+
+    let hourly_factor_contract =
+        hourly_factor_contract_output_from_payload(payload.hourly_factor_contract);
+
+    let interval_factors = materialize_schedule_interval_factors(
+        &payload.runtime_interval_schedule,
+        &hourly_factor_contract,
+    )
+    .map_err(|source| PricingExecutionError::new_err(source.to_string()))?;
+
+    let execution_input = serde_json::to_value(VanillaOptionSurfacePricingExecutionInput {
+        request: payload.request,
+        boundary_input: payload.boundary_input,
+        model_parameters: payload.model_parameters,
+        runtime_interval_schedule: payload.runtime_interval_schedule,
+        interval_delta: payload.interval_delta,
+        fourier_inversion_settings: payload.fourier_inversion_settings,
+        interval_factors,
+        optional_output_selection: payload.optional_output_selection,
+        cpu_count: payload.cpu_count,
+    })
+    .map_err(|source| {
+        PricingExecutionError::new_err(format!(
+            "failed to serialize vanilla option surface pricing execution input: {source}"
+        ))
+    })?;
+
+    let execution_input = json_value_to_py_object(py, &execution_input)?;
+
     run_pricing_workflow_with_events(
         py,
-        execution_input,
+        execution_input.bind(py),
         event_callback,
         "vanilla option surface pricing execution input",
         "vanilla option surface pricing run result",

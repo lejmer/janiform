@@ -46,13 +46,14 @@ from tests.support.cli_fixtures import (
     build_pricing_request,
 )
 from tests.support.hourly_factor_contracts import build_hourly_factor_contract
+from tests.support.time import REFERENCE_PRICING_TIMESTAMP_UTC_NANOS
 
 
 def build_pricing_execution_input() -> VanillaOptionPricingExecutionInput:
     return VanillaOptionPricingExecutionInput(
         request=build_pricing_request(),
         hourly_factor_contract=build_hourly_factor_contract(
-            request_start_utc_nanos=1_706_882_400_000_000_000,
+            request_start_utc_nanos=REFERENCE_PRICING_TIMESTAMP_UTC_NANOS,
             s_h=(1.0,),
             known_component_nu_h=(0.01,),
             surprise_component_nu_h=(0.02,),

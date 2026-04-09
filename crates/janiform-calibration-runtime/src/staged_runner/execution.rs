@@ -35,7 +35,6 @@ use super::payload_state::{
 use super::reporting::{
     build_staged_run_failure_report, diagnostic_runtime_profile_entry_for_stage_report,
 };
-use crate::calendar::ExchangeCalendarRegistry;
 use crate::checkpointing::{
     CalibrationInMemoryStagePayloadState, CalibrationMemoryCheckpointStore,
     LoadedInMemoryCheckpointState,
@@ -45,6 +44,7 @@ use crate::diagnostics::artifacts::{
 };
 use crate::diagnostics::types::CalibrationDiagnosticRuntimeProfileEntry;
 use crate::stages::seasonality::CalibrationStageExecutionStatus;
+use janiform_market_time::calendar::ExchangeCalendarRegistry;
 
 /// Execute staged calibration with deterministic checkpoint emission after each successful stage.
 ///

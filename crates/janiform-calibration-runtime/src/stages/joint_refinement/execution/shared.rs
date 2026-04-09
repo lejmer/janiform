@@ -5,7 +5,7 @@ use janiform_market_time::calendar::{
     RegularSessionArtifact, SessionWindowArtifact,
 };
 
-use crate::calendar::ExchangeCalendarRegistry;
+use janiform_market_time::calendar::ExchangeCalendarRegistry;
 
 pub(crate) fn ordered_parameter_bits(parameter_vector: &[f64]) -> Vec<u64> {
     parameter_vector

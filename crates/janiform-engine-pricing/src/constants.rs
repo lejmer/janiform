@@ -44,12 +44,14 @@ pub const DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA: f64 = 1.0;
 /// Annualization convention for continuous rates in pricing, not a fitted model heuristic.
 pub const INTRADAY_PRICING_HOURS_PER_YEAR: f64 = 24.0 * 365.25;
 
-pub(crate) const VANILLA_OPTION_PRICING_RUN_RESULT_REQUIRED_FIELDS: [&str; 5] = [
+pub(crate) const VANILLA_OPTION_PRICING_RUN_RESULT_REQUIRED_FIELDS: [&str; 7] = [
     "schema_version",
     "output_schema_metadata",
     "response",
     "run_diagnostics",
     "calibration_hooks",
+    "runtime_interval_schedule",
+    "maturity_terminal_interval_indices",
 ];
 pub(crate) const VANILLA_OPTION_PRICING_RUN_DIAGNOSTICS_REQUIRED_FIELDS: [&str; 4] = [
     "schema_version",

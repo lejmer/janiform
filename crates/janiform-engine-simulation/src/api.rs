@@ -1,7 +1,7 @@
 //! Public simulation adapters bridging shared factor, Hawkes, and NIG APIs.
 
-use crate::hourly_factors::HourlyFactorContractOutput;
 use janiform_foundations::randomness::SimulationRandomnessStream;
+use janiform_market_time::hourly_factors::HourlyFactorContractOutput;
 use janiform_model_kernels::hawkes::{
     HawkesExcitationState, HawkesIntensityProjection, HawkesKernelParameters,
     HawkesSeasonalityIntervalError,
@@ -15,7 +15,7 @@ use janiform_model_kernels::return_decomposition::{
 };
 
 /// Resolve interval-aligned hourly factors for the simulation path.
-pub use crate::hourly_factors::provide_hourly_factor_contract as load_hourly_factor_contract;
+pub use janiform_market_time::hourly_factors::provide_hourly_factor_contract as load_hourly_factor_contract;
 
 /// Project state to interval intensities for the fine-scale simulation path.
 pub fn project_hawkes_intensities_simulation_interval(

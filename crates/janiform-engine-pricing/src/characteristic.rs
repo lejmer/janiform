@@ -1,7 +1,6 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
-use crate::hourly_factors::HourlyFactorContractOutput;
 use janiform_affine_oracle::affine_oracle::{
     ExponentialAffineTransformEquationSpecification, ExponentialAffineTransformInput,
     ExponentialAffineTransformInputError, ExponentialAffineTransformIntegrationResult,
@@ -12,6 +11,7 @@ use janiform_affine_oracle::affine_oracle::{
 };
 use janiform_foundations::complex_math::ComplexScalar;
 use janiform_foundations::complex_math::{complex_exponential, complex_multiply};
+use janiform_market_time::hourly_factors::HourlyFactorContractOutput;
 use janiform_model_kernels::hawkes::{
     HawkesExcitationState, HawkesIntensityProjection, HawkesKernelParameters,
     HawkesSeasonalityIntervalError,
@@ -282,7 +282,7 @@ const BUY_SIDE_OBSERVED_LOG_MOMENT_ARGUMENT_IMAGINARY: f64 = -1.0;
 const SELL_SIDE_OBSERVED_LOG_MOMENT_ARGUMENT_IMAGINARY: f64 = 1.0;
 
 /// Resolve interval-aligned hourly factors for the pricing path.
-pub use crate::hourly_factors::provide_hourly_factor_contract as load_hourly_factor_contract;
+pub use janiform_market_time::hourly_factors::provide_hourly_factor_contract as load_hourly_factor_contract;
 
 /// Project state to interval intensities for coarse-time sufficient-statistics paths.
 pub fn project_hawkes_intensities_coarse_interval(

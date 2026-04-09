@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Optional
 import pandas
 
 from ......_workflow_progress import WorkflowProgressMode
-from ......contracts import require_finite_scalar
+from ......contracts.base import require_finite_scalar
 from ......pricing import VanillaOptionPayoffType
 from .....errors import calibration_error
 from .....market_data.contracts import CalibrationOptionSurfaceColumnMapping

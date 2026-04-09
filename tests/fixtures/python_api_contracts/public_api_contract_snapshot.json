@@ -414,10 +414,11 @@
         "JaniformVanillaOptionGridBatchPricingResult": {
           "field_names": [
             "spot",
-            "grids"
+            "grids",
+            "runtime_interval_schedule"
           ],
           "kind": "contract_model",
-          "signature": "(spot: 'float', grids: 'tuple[JaniformVanillaOptionGridPricingResult, ...]') -> 'None'"
+          "signature": "(spot: 'float', grids: 'tuple[JaniformVanillaOptionGridPricingResult, ...]', runtime_interval_schedule: 'PricingIntervalSchedule') -> 'None'"
         },
         "JaniformVanillaOptionGridPricingResult": {
           "field_names": [
@@ -426,6 +427,7 @@
             "dividend_yield",
             "strikes",
             "maturity_intervals",
+            "maturity_terminal_interval_indices",
             "price_grid",
             "implied_volatility_grid",
             "implied_volatility_inversion_status_grid",
@@ -438,7 +440,7 @@
             "maturity_summaries"
           ],
           "kind": "contract_model",
-          "signature": "(payoff_type: 'VanillaOptionPayoffType', risk_free_rate: 'float', dividend_yield: 'float', strikes: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]', price_grid: 'tuple[tuple[Optional[float], ...], ...]', implied_volatility_grid: 'tuple[tuple[Optional[float], ...], ...]', implied_volatility_inversion_status_grid: 'tuple[tuple[Optional[VanillaOptionImpliedVolatilityInversionStatus], ...], ...]', pricing_status_grid: 'tuple[tuple[VanillaOptionPricingStatus, ...], ...]', pricing_failure_stage_grid: 'tuple[tuple[Optional[VanillaOptionPricingFailureStage], ...], ...]', pricing_failure_reason_grid: 'tuple[tuple[Optional[str], ...], ...]', forward_price_grid: 'tuple[tuple[Optional[float], ...], ...]', discount_factor_grid: 'tuple[tuple[Optional[float], ...], ...]', boundary_state_norm_grid: 'tuple[tuple[Optional[float], ...], ...]', maturity_summaries: 'tuple[Optional[JaniformVanillaOptionMaturitySummary], ...]') -> 'None'"
+          "signature": "(payoff_type: 'VanillaOptionPayoffType', risk_free_rate: 'float', dividend_yield: 'float', strikes: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]', maturity_terminal_interval_indices: 'tuple[int, ...]', price_grid: 'tuple[tuple[Optional[float], ...], ...]', implied_volatility_grid: 'tuple[tuple[Optional[float], ...], ...]', implied_volatility_inversion_status_grid: 'tuple[tuple[Optional[VanillaOptionImpliedVolatilityInversionStatus], ...], ...]', pricing_status_grid: 'tuple[tuple[VanillaOptionPricingStatus, ...], ...]', pricing_failure_stage_grid: 'tuple[tuple[Optional[VanillaOptionPricingFailureStage], ...], ...]', pricing_failure_reason_grid: 'tuple[tuple[Optional[str], ...], ...]', forward_price_grid: 'tuple[tuple[Optional[float], ...], ...]', discount_factor_grid: 'tuple[tuple[Optional[float], ...], ...]', boundary_state_norm_grid: 'tuple[tuple[Optional[float], ...], ...]', maturity_summaries: 'tuple[Optional[JaniformVanillaOptionMaturitySummary], ...]') -> 'None'"
         },
         "JaniformVanillaOptionMaturityIntervalSummary": {
           "field_names": [
@@ -517,10 +519,12 @@
             "forward_price_grid",
             "discount_factor_grid",
             "boundary_state_norm_grid",
-            "maturity_summaries"
+            "maturity_summaries",
+            "runtime_interval_schedule",
+            "maturity_terminal_interval_indices"
           ],
           "kind": "contract_model",
-          "signature": "(spot: 'float', strikes: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]', payoff_type: 'VanillaOptionPayoffType', risk_free_rate: 'float', dividend_yield: 'float', price_grid: 'tuple[tuple[Optional[float], ...], ...]', implied_volatility_grid: 'tuple[tuple[Optional[float], ...], ...]', implied_volatility_inversion_status_grid: 'tuple[tuple[Optional[VanillaOptionImpliedVolatilityInversionStatus], ...], ...]', pricing_status_grid: 'tuple[tuple[VanillaOptionPricingStatus, ...], ...]', pricing_failure_stage_grid: 'tuple[tuple[Optional[VanillaOptionPricingFailureStage], ...], ...]', pricing_failure_reason_grid: 'tuple[tuple[Optional[str], ...], ...]', forward_price_grid: 'tuple[tuple[Optional[float], ...], ...]', discount_factor_grid: 'tuple[tuple[Optional[float], ...], ...]', boundary_state_norm_grid: 'tuple[tuple[Optional[float], ...], ...]', maturity_summaries: 'tuple[Optional[JaniformVanillaOptionMaturitySummary], ...]') -> 'None'"
+          "signature": "(spot: 'float', strikes: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]', payoff_type: 'VanillaOptionPayoffType', risk_free_rate: 'float', dividend_yield: 'float', price_grid: 'tuple[tuple[Optional[float], ...], ...]', implied_volatility_grid: 'tuple[tuple[Optional[float], ...], ...]', implied_volatility_inversion_status_grid: 'tuple[tuple[Optional[VanillaOptionImpliedVolatilityInversionStatus], ...], ...]', pricing_status_grid: 'tuple[tuple[VanillaOptionPricingStatus, ...], ...]', pricing_failure_stage_grid: 'tuple[tuple[Optional[VanillaOptionPricingFailureStage], ...], ...]', pricing_failure_reason_grid: 'tuple[tuple[Optional[str], ...], ...]', forward_price_grid: 'tuple[tuple[Optional[float], ...], ...]', discount_factor_grid: 'tuple[tuple[Optional[float], ...], ...]', boundary_state_norm_grid: 'tuple[tuple[Optional[float], ...], ...]', maturity_summaries: 'tuple[Optional[JaniformVanillaOptionMaturitySummary], ...]', runtime_interval_schedule: 'PricingIntervalSchedule', maturity_terminal_interval_indices: 'tuple[int, ...]') -> 'None'"
         }
       }
     },
@@ -558,10 +562,11 @@
         "JaniformVanillaOptionGridBatchPricingResult": {
           "field_names": [
             "spot",
-            "grids"
+            "grids",
+            "runtime_interval_schedule"
           ],
           "kind": "contract_model",
-          "signature": "(spot: 'float', grids: 'tuple[JaniformVanillaOptionGridPricingResult, ...]') -> 'None'"
+          "signature": "(spot: 'float', grids: 'tuple[JaniformVanillaOptionGridPricingResult, ...]', runtime_interval_schedule: 'PricingIntervalSchedule') -> 'None'"
         },
         "JaniformVanillaOptionGridPricingResult": {
           "field_names": [
@@ -570,6 +575,7 @@
             "dividend_yield",
             "strikes",
             "maturity_intervals",
+            "maturity_terminal_interval_indices",
             "price_grid",
             "implied_volatility_grid",
             "implied_volatility_inversion_status_grid",
@@ -582,7 +588,7 @@
             "maturity_summaries"
           ],
           "kind": "contract_model",
-          "signature": "(payoff_type: 'VanillaOptionPayoffType', risk_free_rate: 'float', dividend_yield: 'float', strikes: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]', price_grid: 'tuple[tuple[Optional[float], ...], ...]', implied_volatility_grid: 'tuple[tuple[Optional[float], ...], ...]', implied_volatility_inversion_status_grid: 'tuple[tuple[Optional[VanillaOptionImpliedVolatilityInversionStatus], ...], ...]', pricing_status_grid: 'tuple[tuple[VanillaOptionPricingStatus, ...], ...]', pricing_failure_stage_grid: 'tuple[tuple[Optional[VanillaOptionPricingFailureStage], ...], ...]', pricing_failure_reason_grid: 'tuple[tuple[Optional[str], ...], ...]', forward_price_grid: 'tuple[tuple[Optional[float], ...], ...]', discount_factor_grid: 'tuple[tuple[Optional[float], ...], ...]', boundary_state_norm_grid: 'tuple[tuple[Optional[float], ...], ...]', maturity_summaries: 'tuple[Optional[JaniformVanillaOptionMaturitySummary], ...]') -> 'None'"
+          "signature": "(payoff_type: 'VanillaOptionPayoffType', risk_free_rate: 'float', dividend_yield: 'float', strikes: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]', maturity_terminal_interval_indices: 'tuple[int, ...]', price_grid: 'tuple[tuple[Optional[float], ...], ...]', implied_volatility_grid: 'tuple[tuple[Optional[float], ...], ...]', implied_volatility_inversion_status_grid: 'tuple[tuple[Optional[VanillaOptionImpliedVolatilityInversionStatus], ...], ...]', pricing_status_grid: 'tuple[tuple[VanillaOptionPricingStatus, ...], ...]', pricing_failure_stage_grid: 'tuple[tuple[Optional[VanillaOptionPricingFailureStage], ...], ...]', pricing_failure_reason_grid: 'tuple[tuple[Optional[str], ...], ...]', forward_price_grid: 'tuple[tuple[Optional[float], ...], ...]', discount_factor_grid: 'tuple[tuple[Optional[float], ...], ...]', boundary_state_norm_grid: 'tuple[tuple[Optional[float], ...], ...]', maturity_summaries: 'tuple[Optional[JaniformVanillaOptionMaturitySummary], ...]') -> 'None'"
         }
       }
     },
@@ -740,10 +746,12 @@
             "forward_price_grid",
             "discount_factor_grid",
             "boundary_state_norm_grid",
-            "maturity_summaries"
+            "maturity_summaries",
+            "runtime_interval_schedule",
+            "maturity_terminal_interval_indices"
           ],
           "kind": "contract_model",
-          "signature": "(spot: 'float', strikes: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]', payoff_type: 'VanillaOptionPayoffType', risk_free_rate: 'float', dividend_yield: 'float', price_grid: 'tuple[tuple[Optional[float], ...], ...]', implied_volatility_grid: 'tuple[tuple[Optional[float], ...], ...]', implied_volatility_inversion_status_grid: 'tuple[tuple[Optional[VanillaOptionImpliedVolatilityInversionStatus], ...], ...]', pricing_status_grid: 'tuple[tuple[VanillaOptionPricingStatus, ...], ...]', pricing_failure_stage_grid: 'tuple[tuple[Optional[VanillaOptionPricingFailureStage], ...], ...]', pricing_failure_reason_grid: 'tuple[tuple[Optional[str], ...], ...]', forward_price_grid: 'tuple[tuple[Optional[float], ...], ...]', discount_factor_grid: 'tuple[tuple[Optional[float], ...], ...]', boundary_state_norm_grid: 'tuple[tuple[Optional[float], ...], ...]', maturity_summaries: 'tuple[Optional[JaniformVanillaOptionMaturitySummary], ...]') -> 'None'"
+          "signature": "(spot: 'float', strikes: 'tuple[float, ...]', maturity_intervals: 'tuple[float, ...]', payoff_type: 'VanillaOptionPayoffType', risk_free_rate: 'float', dividend_yield: 'float', price_grid: 'tuple[tuple[Optional[float], ...], ...]', implied_volatility_grid: 'tuple[tuple[Optional[float], ...], ...]', implied_volatility_inversion_status_grid: 'tuple[tuple[Optional[VanillaOptionImpliedVolatilityInversionStatus], ...], ...]', pricing_status_grid: 'tuple[tuple[VanillaOptionPricingStatus, ...], ...]', pricing_failure_stage_grid: 'tuple[tuple[Optional[VanillaOptionPricingFailureStage], ...], ...]', pricing_failure_reason_grid: 'tuple[tuple[Optional[str], ...], ...]', forward_price_grid: 'tuple[tuple[Optional[float], ...], ...]', discount_factor_grid: 'tuple[tuple[Optional[float], ...], ...]', boundary_state_norm_grid: 'tuple[tuple[Optional[float], ...], ...]', maturity_summaries: 'tuple[Optional[JaniformVanillaOptionMaturitySummary], ...]', runtime_interval_schedule: 'PricingIntervalSchedule', maturity_terminal_interval_indices: 'tuple[int, ...]') -> 'None'"
         }
       }
     },
@@ -1147,11 +1155,12 @@
             "option_surface_source",
             "option_surface_valuation_time_utc",
             "carry",
+            "pricing_interval_schedule_policy",
             "known_news_inputs",
             "mean_reversion"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: 'str', run_id: 'str', tick_data_source: 'CalibrationInputFileReference', session_configuration: 'CalibrationSessionConfigurationInput', workflow_scope: 'CalibrationMarketDataWorkflowScope', normalization_policy: 'CalibrationMarketDataNormalizationPolicy', output_preferences: 'CalibrationMarketDataOutputPreferences', column_mapping: 'CalibrationMarketDataColumnMapping' = <factory>, optimizer_settings_by_stage: 'tuple[CalibrationStageSolverSettings, ...]' = (), preprocessing_settings: 'Optional[CalibrationMarketDataPreprocessingSettings]' = None, option_surface_source: 'Optional[CalibrationInputFileReference]' = None, option_surface_valuation_time_utc: 'Optional[datetime]' = None, carry: 'Optional[CalibrationFlatCarryInput]' = None, known_news_inputs: 'Optional[CalibrationKnownNewsInput]' = None, mean_reversion: 'Optional[CalibrationMeanReversionConfiguration]' = None) -> 'None'"
+          "signature": "(schema_version: 'str', run_id: 'str', tick_data_source: 'CalibrationInputFileReference', session_configuration: 'CalibrationSessionConfigurationInput', workflow_scope: 'CalibrationMarketDataWorkflowScope', normalization_policy: 'CalibrationMarketDataNormalizationPolicy', output_preferences: 'CalibrationMarketDataOutputPreferences', column_mapping: 'CalibrationMarketDataColumnMapping' = <factory>, optimizer_settings_by_stage: 'tuple[CalibrationStageSolverSettings, ...]' = (), preprocessing_settings: 'Optional[CalibrationMarketDataPreprocessingSettings]' = None, option_surface_source: 'Optional[CalibrationInputFileReference]' = None, option_surface_valuation_time_utc: 'Optional[datetime]' = None, carry: 'Optional[CalibrationFlatCarryInput]' = None, pricing_interval_schedule_policy: 'PricingIntervalSchedulePolicy' = <factory>, known_news_inputs: 'Optional[CalibrationKnownNewsInput]' = None, mean_reversion: 'Optional[CalibrationMeanReversionConfiguration]' = None) -> 'None'"
         },
         "MarketDataCalibrationSourceSummary": {
           "field_names": [
@@ -1600,11 +1609,12 @@
             "option_surface_source",
             "option_surface_valuation_time_utc",
             "carry",
+            "pricing_interval_schedule_policy",
             "known_news_inputs",
             "mean_reversion"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: 'str', run_id: 'str', tick_data_source: 'CalibrationInputFileReference', session_configuration: 'CalibrationSessionConfigurationInput', workflow_scope: 'CalibrationMarketDataWorkflowScope', normalization_policy: 'CalibrationMarketDataNormalizationPolicy', output_preferences: 'CalibrationMarketDataOutputPreferences', column_mapping: 'CalibrationMarketDataColumnMapping' = <factory>, optimizer_settings_by_stage: 'tuple[CalibrationStageSolverSettings, ...]' = (), preprocessing_settings: 'Optional[CalibrationMarketDataPreprocessingSettings]' = None, option_surface_source: 'Optional[CalibrationInputFileReference]' = None, option_surface_valuation_time_utc: 'Optional[datetime]' = None, carry: 'Optional[CalibrationFlatCarryInput]' = None, known_news_inputs: 'Optional[CalibrationKnownNewsInput]' = None, mean_reversion: 'Optional[CalibrationMeanReversionConfiguration]' = None) -> 'None'"
+          "signature": "(schema_version: 'str', run_id: 'str', tick_data_source: 'CalibrationInputFileReference', session_configuration: 'CalibrationSessionConfigurationInput', workflow_scope: 'CalibrationMarketDataWorkflowScope', normalization_policy: 'CalibrationMarketDataNormalizationPolicy', output_preferences: 'CalibrationMarketDataOutputPreferences', column_mapping: 'CalibrationMarketDataColumnMapping' = <factory>, optimizer_settings_by_stage: 'tuple[CalibrationStageSolverSettings, ...]' = (), preprocessing_settings: 'Optional[CalibrationMarketDataPreprocessingSettings]' = None, option_surface_source: 'Optional[CalibrationInputFileReference]' = None, option_surface_valuation_time_utc: 'Optional[datetime]' = None, carry: 'Optional[CalibrationFlatCarryInput]' = None, pricing_interval_schedule_policy: 'PricingIntervalSchedulePolicy' = <factory>, known_news_inputs: 'Optional[CalibrationKnownNewsInput]' = None, mean_reversion: 'Optional[CalibrationMeanReversionConfiguration]' = None) -> 'None'"
         },
         "deserialize_market_data_calibration_request": {
           "kind": "function",
@@ -4241,22 +4251,42 @@
         "parse_json_object",
         "require_boolean",
         "require_date",
+        "require_datetime_instance_utc",
         "require_datetime_utc",
         "require_field",
         "require_finite_number",
+        "require_finite_number_sequence",
         "require_finite_scalar",
         "require_integer",
+        "require_integer_sequence",
+        "require_integer_value",
         "require_mapping",
+        "require_mapping_value",
         "require_non_empty_string",
+        "require_non_empty_string_sequence",
+        "require_non_empty_string_value",
         "require_non_negative_finite_number",
         "require_non_negative_finite_scalar",
         "require_non_negative_integer",
+        "require_non_negative_integer_value",
         "require_only_supported_fields",
+        "require_optional_boolean_value",
+        "require_optional_finite_number",
+        "require_optional_finite_scalar",
+        "require_optional_integer_value",
+        "require_optional_mapping_value",
+        "require_optional_non_negative_integer_value",
+        "require_optional_positive_integer_value",
+        "require_optional_string_value",
         "require_positive_finite_number",
         "require_positive_finite_scalar",
         "require_positive_integer",
+        "require_positive_integer_value",
         "require_sequence",
+        "require_str_enum_value",
         "require_string",
+        "require_string_sequence",
+        "require_string_value",
         "require_timezone_aware_datetime",
         "serialize_deterministic_json",
         "serialize_pretty_json",
@@ -4294,6 +4324,10 @@
           "kind": "function",
           "signature": "(raw_value: 'Any', field_path: 'str', error_factory: 'ValidationErrorFactory') -> 'date'"
         },
+        "require_datetime_instance_utc": {
+          "kind": "function",
+          "signature": "(raw_value: 'Any', field_path: 'str', error_factory: 'ValidationErrorFactory') -> 'datetime'"
+        },
         "require_datetime_utc": {
           "kind": "function",
           "signature": "(raw_value: 'Any', field_path: 'str', error_factory: 'ValidationErrorFactory') -> 'datetime'"
@@ -4306,6 +4340,10 @@
           "kind": "function",
           "signature": "(mapping: 'Mapping[str, Any]', field_name: 'str', field_path: 'str', error_factory: 'ValidationErrorFactory', *, number_message: 'str' = 'must be a finite number') -> 'float'"
         },
+        "require_finite_number_sequence": {
+          "kind": "function",
+          "signature": "(mapping: 'Mapping[str, Any]', field_name: 'str', field_path: 'str', error_factory: 'ValidationErrorFactory', *, require_non_empty: 'bool' = False, number_message: 'str' = 'must be a finite number') -> 'list[float]'"
+        },
         "require_finite_scalar": {
           "kind": "function",
           "signature": "(raw_value: 'Any', field_path: 'str', error_factory: 'ValidationErrorFactory', *, number_message: 'str' = 'must be a finite number') -> 'float'"
@@ -4314,13 +4352,33 @@
           "kind": "function",
           "signature": "(mapping: 'Mapping[str, Any]', field_name: 'str', field_path: 'str', error_factory: 'ValidationErrorFactory') -> 'int'"
         },
+        "require_integer_sequence": {
+          "kind": "function",
+          "signature": "(mapping: 'Mapping[str, Any]', field_name: 'str', field_path: 'str', error_factory: 'ValidationErrorFactory', *, require_non_empty: 'bool' = False) -> 'list[int]'"
+        },
+        "require_integer_value": {
+          "kind": "function",
+          "signature": "(raw_value: 'Any', field_path: 'str', error_factory: 'ValidationErrorFactory') -> 'int'"
+        },
         "require_mapping": {
           "kind": "function",
           "signature": "(mapping: 'Mapping[str, Any]', field_name: 'str', field_path: 'str', error_factory: 'ValidationErrorFactory') -> 'Mapping[str, Any]'"
         },
+        "require_mapping_value": {
+          "kind": "function",
+          "signature": "(raw_value: 'Any', field_path: 'str', error_factory: 'ValidationErrorFactory') -> 'dict[str, Any]'"
+        },
         "require_non_empty_string": {
           "kind": "function",
           "signature": "(mapping: 'Mapping[str, Any]', field_name: 'str', field_path: 'str', error_factory: 'ValidationErrorFactory') -> 'str'"
+        },
+        "require_non_empty_string_sequence": {
+          "kind": "function",
+          "signature": "(mapping: 'Mapping[str, Any]', field_name: 'str', field_path: 'str', error_factory: 'ValidationErrorFactory', *, require_non_empty_items: 'bool' = False, strip_items: 'bool' = False) -> 'list[str]'"
+        },
+        "require_non_empty_string_value": {
+          "kind": "function",
+          "signature": "(raw_value: 'Any', field_path: 'str', error_factory: 'ValidationErrorFactory') -> 'str'"
         },
         "require_non_negative_finite_number": {
           "kind": "function",
@@ -4334,9 +4392,45 @@
           "kind": "function",
           "signature": "(mapping: 'Mapping[str, Any]', field_name: 'str', field_path: 'str', error_factory: 'ValidationErrorFactory') -> 'int'"
         },
+        "require_non_negative_integer_value": {
+          "kind": "function",
+          "signature": "(raw_value: 'Any', field_path: 'str', error_factory: 'ValidationErrorFactory') -> 'int'"
+        },
         "require_only_supported_fields": {
           "kind": "function",
           "signature": "(mapping: 'Mapping[str, Any]', *, supported_fields: 'tuple[str, ...]', field_path: 'str', error_factory: 'ValidationErrorFactory') -> 'None'"
+        },
+        "require_optional_boolean_value": {
+          "kind": "function",
+          "signature": "(raw_value: 'Any', field_path: 'str', error_factory: 'ValidationErrorFactory') -> 'Optional[bool]'"
+        },
+        "require_optional_finite_number": {
+          "kind": "function",
+          "signature": "(mapping: 'Mapping[str, Any]', field_name: 'str', field_path: 'str', error_factory: 'ValidationErrorFactory', *, default_value: 'Optional[float]' = None, number_message: 'str' = 'must be a finite number') -> 'Optional[float]'"
+        },
+        "require_optional_finite_scalar": {
+          "kind": "function",
+          "signature": "(raw_value: 'Any', field_path: 'str', error_factory: 'ValidationErrorFactory', *, default_value: 'Optional[float]' = None, number_message: 'str' = 'must be a finite number') -> 'Optional[float]'"
+        },
+        "require_optional_integer_value": {
+          "kind": "function",
+          "signature": "(raw_value: 'Any', field_path: 'str', error_factory: 'ValidationErrorFactory') -> 'Optional[int]'"
+        },
+        "require_optional_mapping_value": {
+          "kind": "function",
+          "signature": "(raw_value: 'Any', field_path: 'str', error_factory: 'ValidationErrorFactory') -> 'Optional[dict[str, Any]]'"
+        },
+        "require_optional_non_negative_integer_value": {
+          "kind": "function",
+          "signature": "(raw_value: 'Any', field_path: 'str', error_factory: 'ValidationErrorFactory') -> 'Optional[int]'"
+        },
+        "require_optional_positive_integer_value": {
+          "kind": "function",
+          "signature": "(raw_value: 'Any', field_path: 'str', error_factory: 'ValidationErrorFactory') -> 'Optional[int]'"
+        },
+        "require_optional_string_value": {
+          "kind": "function",
+          "signature": "(raw_value: 'Any', field_path: 'str', error_factory: 'ValidationErrorFactory') -> 'Optional[str]'"
         },
         "require_positive_finite_number": {
           "kind": "function",
@@ -4350,13 +4444,29 @@
           "kind": "function",
           "signature": "(mapping: 'Mapping[str, Any]', field_name: 'str', field_path: 'str', error_factory: 'ValidationErrorFactory') -> 'int'"
         },
+        "require_positive_integer_value": {
+          "kind": "function",
+          "signature": "(raw_value: 'Any', field_path: 'str', error_factory: 'ValidationErrorFactory') -> 'int'"
+        },
         "require_sequence": {
           "kind": "function",
           "signature": "(mapping: 'Mapping[str, Any]', field_name: 'str', field_path: 'str', error_factory: 'ValidationErrorFactory') -> 'Sequence[object]'"
         },
+        "require_str_enum_value": {
+          "kind": "function",
+          "signature": "(raw_value: 'Any', field_path: 'str', error_factory: 'ValidationErrorFactory', *, enum_type: 'type[TStrEnum]', allowed_values_message: 'str', include_received_value: 'bool' = False) -> 'TStrEnum'"
+        },
         "require_string": {
           "kind": "function",
           "signature": "(mapping: 'Mapping[str, Any]', field_name: 'str', field_path: 'str', error_factory: 'ValidationErrorFactory') -> 'str'"
+        },
+        "require_string_sequence": {
+          "kind": "function",
+          "signature": "(mapping: 'Mapping[str, Any]', field_name: 'str', field_path: 'str', error_factory: 'ValidationErrorFactory', *, require_non_empty: 'bool' = False, require_non_empty_items: 'bool' = False, strip_items: 'bool' = False) -> 'list[str]'"
+        },
+        "require_string_value": {
+          "kind": "function",
+          "signature": "(raw_value: 'Any', field_path: 'str', error_factory: 'ValidationErrorFactory') -> 'str'"
         },
         "require_timezone_aware_datetime": {
           "kind": "function",
@@ -5404,6 +5514,8 @@
         "AnchoredLocalTiltDomainStatus",
         "AnchoredLocalTiltSolveDiagnostics",
         "AnchoredVanillaOptionPricingBoundaryInput",
+        "AutoExactSparsePricingIntervalSchedulePolicy",
+        "ExplicitIntervalEndTimestampsUtcPricingIntervalSchedulePolicy",
         "FourierInversionContour",
         "FourierInversionEngineSettings",
         "FourierInversionIntegrationStabilityControls",
@@ -5415,6 +5527,9 @@
         "MeanReversionBoundaryState",
         "MeanReversionFittedParameters",
         "NigSharedPlusShiftConfiguration",
+        "PricingIntervalSchedule",
+        "PricingIntervalScheduleMetadata",
+        "PricingIntervalSchedulePolicy",
         "VanillaOptionImpliedVolatilityInversionStatus",
         "VanillaOptionPayoffConfiguration",
         "VanillaOptionPayoffType",
@@ -5438,6 +5553,8 @@
         "VanillaOptionSurfacePricingRequest",
         "VanillaOptionSurfacePricingResponse",
         "VanillaOptionSurfacePricingRunResult",
+        "default_pricing_interval_schedule_policy",
+        "pricing_interval_schedule_policy_from_mapping",
         "run_vanilla_option_pricing",
         "run_vanilla_option_surface_pricing"
       ],
@@ -5514,6 +5631,21 @@
           ],
           "kind": "contract_model",
           "signature": "(interval_index: 'int', hawkes_boundary_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', interval_delta: 'float', observed_boundary_state: 'MeanReversionBoundaryState') -> 'None'"
+        },
+        "AutoExactSparsePricingIntervalSchedulePolicy": {
+          "field_names": [
+            "policy"
+          ],
+          "kind": "contract_model",
+          "signature": "(policy: 'str' = 'auto_exact_sparse') -> 'None'"
+        },
+        "ExplicitIntervalEndTimestampsUtcPricingIntervalSchedulePolicy": {
+          "field_names": [
+            "interval_end_timestamps_utc_nanos",
+            "policy"
+          ],
+          "kind": "contract_model",
+          "signature": "(interval_end_timestamps_utc_nanos: 'tuple[int, ...]', policy: 'str' = 'explicit_interval_end_timestamps_utc') -> 'None'"
         },
         "FourierInversionContour": {
           "field_names": [
@@ -5623,6 +5755,29 @@
           "kind": "contract_model",
           "signature": "(alpha: 'float', beta_0: 'float', delta: 'float', mu: 'float', delta_beta: 'float') -> 'None'"
         },
+        "PricingIntervalSchedule": {
+          "field_names": [
+            "valuation_time_utc_nanos",
+            "metadata",
+            "interval_end_timestamps_utc_nanos",
+            "interval_deltas_hours"
+          ],
+          "kind": "contract_model",
+          "signature": "(valuation_time_utc_nanos: 'int', metadata: 'PricingIntervalScheduleMetadata', interval_end_timestamps_utc_nanos: 'tuple[int, ...]', interval_deltas_hours: 'tuple[float, ...]') -> 'None'"
+        },
+        "PricingIntervalScheduleMetadata": {
+          "field_names": [
+            "policy_id",
+            "derivation_policy",
+            "factor_assignment_policy"
+          ],
+          "kind": "contract_model",
+          "signature": "(policy_id: 'str', derivation_policy: 'str', factor_assignment_policy: 'str') -> 'None'"
+        },
+        "PricingIntervalSchedulePolicy": {
+          "kind": "constant",
+          "value": "PricingIntervalSchedulePolicy"
+        },
         "VanillaOptionImpliedVolatilityInversionStatus": {
           "kind": "enum",
           "members": [
@@ -5693,11 +5848,12 @@
         "VanillaOptionPricingExecutionInput": {
           "field_names": [
             "request",
+            "runtime_interval_schedule",
             "hourly_factor_contract",
             "optional_output_selection"
           ],
           "kind": "contract_model",
-          "signature": "(request: 'VanillaOptionPricingRequest', hourly_factor_contract: 'HourlyFactorContract', optional_output_selection: 'VanillaOptionPricingOptionalOutputSelection' = VanillaOptionPricingOptionalOutputSelection(include_transform_diagnostics=False, include_integration_quality_diagnostics=False, include_calibration_hooks=False)) -> 'None'"
+          "signature": "(request: 'VanillaOptionPricingRequest', runtime_interval_schedule: 'PricingIntervalSchedule', hourly_factor_contract: 'HourlyFactorContract', optional_output_selection: 'VanillaOptionPricingOptionalOutputSelection' = VanillaOptionPricingOptionalOutputSelection(include_transform_diagnostics=False, include_integration_quality_diagnostics=False, include_calibration_hooks=False)) -> 'None'"
         },
         "VanillaOptionPricingFailureDiagnostic": {
           "field_names": [
@@ -5866,10 +6022,12 @@
             "output_schema_metadata",
             "response",
             "run_diagnostics",
-            "calibration_hooks"
+            "calibration_hooks",
+            "runtime_interval_schedule",
+            "maturity_terminal_interval_indices"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: 'str', output_schema_metadata: 'VanillaOptionPricingRunOutputSchemaMetadata', response: 'VanillaOptionPricingResponse', run_diagnostics: 'Optional[VanillaOptionPricingRunDiagnostics]', calibration_hooks: 'Optional[VanillaOptionPricingCalibrationHooks]') -> 'None'"
+          "signature": "(schema_version: 'str', output_schema_metadata: 'VanillaOptionPricingRunOutputSchemaMetadata', response: 'VanillaOptionPricingResponse', run_diagnostics: 'Optional[VanillaOptionPricingRunDiagnostics]', calibration_hooks: 'Optional[VanillaOptionPricingCalibrationHooks]', runtime_interval_schedule: 'PricingIntervalSchedule', maturity_terminal_interval_indices: 'tuple[int, ...]') -> 'None'"
         },
         "VanillaOptionPricingStatus": {
           "kind": "enum",
@@ -5899,12 +6057,13 @@
         "VanillaOptionSurfacePricingExecutionInput": {
           "field_names": [
             "request",
+            "runtime_interval_schedule",
             "hourly_factor_contract",
             "optional_output_selection",
             "cpu_count"
           ],
           "kind": "contract_model",
-          "signature": "(request: 'VanillaOptionSurfacePricingRequest', hourly_factor_contract: 'HourlyFactorContract', optional_output_selection: 'VanillaOptionPricingOptionalOutputSelection' = <factory>, cpu_count: 'Optional[int]' = None) -> 'None'"
+          "signature": "(request: 'VanillaOptionSurfacePricingRequest', runtime_interval_schedule: 'PricingIntervalSchedule', hourly_factor_contract: 'HourlyFactorContract', optional_output_selection: 'VanillaOptionPricingOptionalOutputSelection' = <factory>, cpu_count: 'Optional[int]' = None) -> 'None'"
         },
         "VanillaOptionSurfacePricingNodeTable": {
           "field_names": [
@@ -5961,10 +6120,20 @@
         "VanillaOptionSurfacePricingRunResult": {
           "field_names": [
             "response",
-            "maturity_summaries"
+            "maturity_summaries",
+            "runtime_interval_schedule",
+            "maturity_terminal_interval_indices"
           ],
           "kind": "contract_model",
-          "signature": "(response: 'VanillaOptionSurfacePricingResponse', maturity_summaries: 'tuple[Optional[dict[str, Any]], ...]') -> 'None'"
+          "signature": "(response: 'VanillaOptionSurfacePricingResponse', maturity_summaries: 'tuple[Optional[dict[str, Any]], ...]', runtime_interval_schedule: 'PricingIntervalSchedule', maturity_terminal_interval_indices: 'tuple[int, ...]') -> 'None'"
+        },
+        "default_pricing_interval_schedule_policy": {
+          "kind": "function",
+          "signature": "() -> 'PricingIntervalSchedulePolicy'"
+        },
+        "pricing_interval_schedule_policy_from_mapping": {
+          "kind": "function",
+          "signature": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str') -> 'PricingIntervalSchedulePolicy'"
         },
         "run_vanilla_option_pricing": {
           "kind": "function",
@@ -5983,6 +6152,8 @@
         "AnchoredLocalTiltDomainStatus",
         "AnchoredLocalTiltSolveDiagnostics",
         "AnchoredVanillaOptionPricingBoundaryInput",
+        "AutoExactSparsePricingIntervalSchedulePolicy",
+        "ExplicitIntervalEndTimestampsUtcPricingIntervalSchedulePolicy",
         "FourierInversionContour",
         "FourierInversionEngineSettings",
         "FourierInversionIntegrationStabilityControls",
@@ -5994,6 +6165,9 @@
         "MeanReversionBoundaryState",
         "MeanReversionFittedParameters",
         "NigSharedPlusShiftConfiguration",
+        "PricingIntervalSchedule",
+        "PricingIntervalScheduleMetadata",
+        "PricingIntervalSchedulePolicy",
         "VanillaOptionImpliedVolatilityInversionStatus",
         "VanillaOptionPayoffConfiguration",
         "VanillaOptionPayoffType",
@@ -6015,7 +6189,9 @@
         "VanillaOptionSurfacePricingNodeTable",
         "VanillaOptionSurfacePricingRequest",
         "VanillaOptionSurfacePricingResponse",
-        "VanillaOptionSurfacePricingRunResult"
+        "VanillaOptionSurfacePricingRunResult",
+        "default_pricing_interval_schedule_policy",
+        "pricing_interval_schedule_policy_from_mapping"
       ],
       "module_name": "janiform.pricing.contracts",
       "schema_identifiers": [
@@ -6112,6 +6288,21 @@
           "kind": "contract_model",
           "signature": "(interval_index: 'int', hawkes_boundary_state: 'HawkesExcitationState', mean_reversion_fitted_parameters: 'MeanReversionFittedParameters', interval_delta: 'float', observed_boundary_state: 'MeanReversionBoundaryState') -> 'None'"
         },
+        "AutoExactSparsePricingIntervalSchedulePolicy": {
+          "field_names": [
+            "policy"
+          ],
+          "kind": "contract_model",
+          "signature": "(policy: 'str' = 'auto_exact_sparse') -> 'None'"
+        },
+        "ExplicitIntervalEndTimestampsUtcPricingIntervalSchedulePolicy": {
+          "field_names": [
+            "interval_end_timestamps_utc_nanos",
+            "policy"
+          ],
+          "kind": "contract_model",
+          "signature": "(interval_end_timestamps_utc_nanos: 'tuple[int, ...]', policy: 'str' = 'explicit_interval_end_timestamps_utc') -> 'None'"
+        },
         "FourierInversionContour": {
           "field_names": [
             "damping_factor"
@@ -6220,6 +6411,29 @@
           "kind": "contract_model",
           "signature": "(alpha: 'float', beta_0: 'float', delta: 'float', mu: 'float', delta_beta: 'float') -> 'None'"
         },
+        "PricingIntervalSchedule": {
+          "field_names": [
+            "valuation_time_utc_nanos",
+            "metadata",
+            "interval_end_timestamps_utc_nanos",
+            "interval_deltas_hours"
+          ],
+          "kind": "contract_model",
+          "signature": "(valuation_time_utc_nanos: 'int', metadata: 'PricingIntervalScheduleMetadata', interval_end_timestamps_utc_nanos: 'tuple[int, ...]', interval_deltas_hours: 'tuple[float, ...]') -> 'None'"
+        },
+        "PricingIntervalScheduleMetadata": {
+          "field_names": [
+            "policy_id",
+            "derivation_policy",
+            "factor_assignment_policy"
+          ],
+          "kind": "contract_model",
+          "signature": "(policy_id: 'str', derivation_policy: 'str', factor_assignment_policy: 'str') -> 'None'"
+        },
+        "PricingIntervalSchedulePolicy": {
+          "kind": "constant",
+          "value": "PricingIntervalSchedulePolicy"
+        },
         "VanillaOptionImpliedVolatilityInversionStatus": {
           "kind": "enum",
           "members": [
@@ -6290,11 +6504,12 @@
         "VanillaOptionPricingExecutionInput": {
           "field_names": [
             "request",
+            "runtime_interval_schedule",
             "hourly_factor_contract",
             "optional_output_selection"
           ],
           "kind": "contract_model",
-          "signature": "(request: 'VanillaOptionPricingRequest', hourly_factor_contract: 'HourlyFactorContract', optional_output_selection: 'VanillaOptionPricingOptionalOutputSelection' = VanillaOptionPricingOptionalOutputSelection(include_transform_diagnostics=False, include_integration_quality_diagnostics=False, include_calibration_hooks=False)) -> 'None'"
+          "signature": "(request: 'VanillaOptionPricingRequest', runtime_interval_schedule: 'PricingIntervalSchedule', hourly_factor_contract: 'HourlyFactorContract', optional_output_selection: 'VanillaOptionPricingOptionalOutputSelection' = VanillaOptionPricingOptionalOutputSelection(include_transform_diagnostics=False, include_integration_quality_diagnostics=False, include_calibration_hooks=False)) -> 'None'"
         },
         "VanillaOptionPricingFailureDiagnostic": {
           "field_names": [
@@ -6463,10 +6678,12 @@
             "output_schema_metadata",
             "response",
             "run_diagnostics",
-            "calibration_hooks"
+            "calibration_hooks",
+            "runtime_interval_schedule",
+            "maturity_terminal_interval_indices"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: 'str', output_schema_metadata: 'VanillaOptionPricingRunOutputSchemaMetadata', response: 'VanillaOptionPricingResponse', run_diagnostics: 'Optional[VanillaOptionPricingRunDiagnostics]', calibration_hooks: 'Optional[VanillaOptionPricingCalibrationHooks]') -> 'None'"
+          "signature": "(schema_version: 'str', output_schema_metadata: 'VanillaOptionPricingRunOutputSchemaMetadata', response: 'VanillaOptionPricingResponse', run_diagnostics: 'Optional[VanillaOptionPricingRunDiagnostics]', calibration_hooks: 'Optional[VanillaOptionPricingCalibrationHooks]', runtime_interval_schedule: 'PricingIntervalSchedule', maturity_terminal_interval_indices: 'tuple[int, ...]') -> 'None'"
         },
         "VanillaOptionPricingStatus": {
           "kind": "enum",
@@ -6484,12 +6701,13 @@
         "VanillaOptionSurfacePricingExecutionInput": {
           "field_names": [
             "request",
+            "runtime_interval_schedule",
             "hourly_factor_contract",
             "optional_output_selection",
             "cpu_count"
           ],
           "kind": "contract_model",
-          "signature": "(request: 'VanillaOptionSurfacePricingRequest', hourly_factor_contract: 'HourlyFactorContract', optional_output_selection: 'VanillaOptionPricingOptionalOutputSelection' = <factory>, cpu_count: 'Optional[int]' = None) -> 'None'"
+          "signature": "(request: 'VanillaOptionSurfacePricingRequest', runtime_interval_schedule: 'PricingIntervalSchedule', hourly_factor_contract: 'HourlyFactorContract', optional_output_selection: 'VanillaOptionPricingOptionalOutputSelection' = <factory>, cpu_count: 'Optional[int]' = None) -> 'None'"
         },
         "VanillaOptionSurfacePricingNodeTable": {
           "field_names": [
@@ -6546,10 +6764,20 @@
         "VanillaOptionSurfacePricingRunResult": {
           "field_names": [
             "response",
-            "maturity_summaries"
+            "maturity_summaries",
+            "runtime_interval_schedule",
+            "maturity_terminal_interval_indices"
           ],
           "kind": "contract_model",
-          "signature": "(response: 'VanillaOptionSurfacePricingResponse', maturity_summaries: 'tuple[Optional[dict[str, Any]], ...]') -> 'None'"
+          "signature": "(response: 'VanillaOptionSurfacePricingResponse', maturity_summaries: 'tuple[Optional[dict[str, Any]], ...]', runtime_interval_schedule: 'PricingIntervalSchedule', maturity_terminal_interval_indices: 'tuple[int, ...]') -> 'None'"
+        },
+        "default_pricing_interval_schedule_policy": {
+          "kind": "function",
+          "signature": "() -> 'PricingIntervalSchedulePolicy'"
+        },
+        "pricing_interval_schedule_policy_from_mapping": {
+          "kind": "function",
+          "signature": "(raw_payload: 'dict[str, Any] | Any', *, field_path: 'str') -> 'PricingIntervalSchedulePolicy'"
         }
       }
     },

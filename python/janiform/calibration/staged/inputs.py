@@ -8,8 +8,8 @@ from .contracts import (
     CALIBRATION_STAGED_EXECUTION_INPUT_SCHEMA_VERSION,
     CalibrationExecutionMode,
 )
-from ..errors import calibration_error, calibration_error
-from ...contracts import (
+from ..errors import calibration_error
+from ...contracts.base import (
     ContractModel,
     parse_json_object,
     require_mapping,

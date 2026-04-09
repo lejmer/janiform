@@ -24,6 +24,11 @@ from ..mean_reversion import (
 )
 from ..contracts import (
     ContractModel,
+    serialize_pretty_json,
+    validate_exact_string,
+    validate_required_field_list,
+)
+from ..contracts.base import (
     require_finite_number,
     require_mapping,
     require_non_negative_finite_number,
@@ -33,13 +38,10 @@ from ..contracts import (
     require_positive_integer,
     require_sequence,
     require_string,
-    serialize_pretty_json,
-    validate_exact_string,
-    validate_required_field_list,
 )
 from ..errors import JaniformValidationError
 from ..hourly_factors import HourlyFactorContract
-from .._timestamps import hours_to_exact_nanoseconds
+from .._timestamps import ONE_HOUR_NANOS
 
 if TYPE_CHECKING:
     from ..simulation import HawkesExcitationState, HawkesKernelParameters
@@ -62,6 +64,8 @@ VANILLA_OPTION_PRICING_RUN_RESULT_REQUIRED_FIELDS: tuple[str, ...] = (
     "response",
     "run_diagnostics",
     "calibration_hooks",
+    "runtime_interval_schedule",
+    "maturity_terminal_interval_indices",
 )
 VANILLA_OPTION_PRICING_RUN_DIAGNOSTICS_REQUIRED_FIELDS: tuple[str, ...] = (
     "schema_version",
@@ -1212,6 +1216,345 @@ class VanillaOptionPricingRequest(ContractModel):
 
 
 @dataclass(frozen=True, slots=True)
+class AutoExactSparsePricingIntervalSchedulePolicy(ContractModel):
+    policy: str = "auto_exact_sparse"
+
+    def __post_init__(self) -> None:
+        if self.policy != "auto_exact_sparse":
+            raise _pricing_error("policy", "must equal 'auto_exact_sparse'")
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> AutoExactSparsePricingIntervalSchedulePolicy:
+        if not isinstance(raw_payload, dict):
+            raise _pricing_error(field_path, "must be an object")
+
+        return AutoExactSparsePricingIntervalSchedulePolicy(
+            policy=require_string(
+                raw_payload,
+                "policy",
+                f"{field_path}.policy",
+                PRICING_ERROR_FACTORY,
+            )
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ExplicitIntervalEndTimestampsUtcPricingIntervalSchedulePolicy(ContractModel):
+    interval_end_timestamps_utc_nanos: tuple[int, ...]
+    policy: str = "explicit_interval_end_timestamps_utc"
+
+    def __post_init__(self) -> None:
+        if self.policy != "explicit_interval_end_timestamps_utc":
+            raise _pricing_error(
+                "policy",
+                "must equal 'explicit_interval_end_timestamps_utc'",
+            )
+
+        if len(self.interval_end_timestamps_utc_nanos) == 0:
+            raise _pricing_error(
+                "interval_end_timestamps_utc_nanos",
+                "must contain at least one interval endpoint",
+            )
+
+        previous_endpoint_utc_nanos: Optional[int] = None
+        for interval_index, interval_end_utc_nanos in enumerate(
+            self.interval_end_timestamps_utc_nanos
+        ):
+            require_non_negative_integer(
+                {"value": interval_end_utc_nanos},
+                "value",
+                f"interval_end_timestamps_utc_nanos[{interval_index}]",
+                PRICING_ERROR_FACTORY,
+            )
+
+            if (
+                previous_endpoint_utc_nanos is not None
+                and interval_end_utc_nanos <= previous_endpoint_utc_nanos
+            ):
+                raise _pricing_error(
+                    f"interval_end_timestamps_utc_nanos[{interval_index}]",
+                    "must be strictly greater than the previous endpoint",
+                )
+
+            previous_endpoint_utc_nanos = interval_end_utc_nanos
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> ExplicitIntervalEndTimestampsUtcPricingIntervalSchedulePolicy:
+        if not isinstance(raw_payload, dict):
+            raise _pricing_error(field_path, "must be an object")
+
+        raw_interval_end_timestamps = require_sequence(
+            raw_payload,
+            "interval_end_timestamps_utc_nanos",
+            f"{field_path}.interval_end_timestamps_utc_nanos",
+            PRICING_ERROR_FACTORY,
+        )
+
+        return ExplicitIntervalEndTimestampsUtcPricingIntervalSchedulePolicy(
+            policy=require_string(
+                raw_payload,
+                "policy",
+                f"{field_path}.policy",
+                PRICING_ERROR_FACTORY,
+            ),
+            interval_end_timestamps_utc_nanos=tuple(
+                require_non_negative_integer(
+                    {"value": value},
+                    "value",
+                    f"{field_path}.interval_end_timestamps_utc_nanos[{index}]",
+                    PRICING_ERROR_FACTORY,
+                )
+                for index, value in enumerate(raw_interval_end_timestamps)
+            ),
+        )
+
+
+type PricingIntervalSchedulePolicy = (
+    AutoExactSparsePricingIntervalSchedulePolicy
+    | ExplicitIntervalEndTimestampsUtcPricingIntervalSchedulePolicy
+)
+
+
+def default_pricing_interval_schedule_policy() -> PricingIntervalSchedulePolicy:
+    return AutoExactSparsePricingIntervalSchedulePolicy()
+
+
+def pricing_interval_schedule_policy_from_mapping(
+    raw_payload: dict[str, Any] | Any,
+    *,
+    field_path: str,
+) -> PricingIntervalSchedulePolicy:
+    if not isinstance(raw_payload, dict):
+        raise _pricing_error(field_path, "must be an object")
+
+    policy = require_string(
+        raw_payload,
+        "policy",
+        f"{field_path}.policy",
+        PRICING_ERROR_FACTORY,
+    )
+
+    match policy:
+        case "auto_exact_sparse":
+            return AutoExactSparsePricingIntervalSchedulePolicy.from_mapping(
+                raw_payload,
+                field_path=field_path,
+            )
+        case "explicit_interval_end_timestamps_utc":
+            return ExplicitIntervalEndTimestampsUtcPricingIntervalSchedulePolicy.from_mapping(
+                raw_payload,
+                field_path=field_path,
+            )
+        case _:
+            raise _pricing_error(
+                f"{field_path}.policy",
+                "must be one of: auto_exact_sparse, explicit_interval_end_timestamps_utc",
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class PricingIntervalScheduleMetadata(ContractModel):
+    policy_id: str
+    derivation_policy: str
+    factor_assignment_policy: str
+
+    def __post_init__(self) -> None:
+        require_string({"policy_id": self.policy_id}, "policy_id", "policy_id", PRICING_ERROR_FACTORY)
+        require_string(
+            {"derivation_policy": self.derivation_policy},
+            "derivation_policy",
+            "derivation_policy",
+            PRICING_ERROR_FACTORY,
+        )
+        require_string(
+            {"factor_assignment_policy": self.factor_assignment_policy},
+            "factor_assignment_policy",
+            "factor_assignment_policy",
+            PRICING_ERROR_FACTORY,
+        )
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> PricingIntervalScheduleMetadata:
+        if not isinstance(raw_payload, dict):
+            raise _pricing_error(field_path, "must be an object")
+
+        return PricingIntervalScheduleMetadata(
+            policy_id=require_string(
+                raw_payload,
+                "policy_id",
+                f"{field_path}.policy_id",
+                PRICING_ERROR_FACTORY,
+            ),
+            derivation_policy=require_string(
+                raw_payload,
+                "derivation_policy",
+                f"{field_path}.derivation_policy",
+                PRICING_ERROR_FACTORY,
+            ),
+            factor_assignment_policy=require_string(
+                raw_payload,
+                "factor_assignment_policy",
+                f"{field_path}.factor_assignment_policy",
+                PRICING_ERROR_FACTORY,
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class PricingIntervalSchedule(ContractModel):
+    valuation_time_utc_nanos: int
+    metadata: PricingIntervalScheduleMetadata
+    interval_end_timestamps_utc_nanos: tuple[int, ...]
+    interval_deltas_hours: tuple[float, ...]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.metadata, PricingIntervalScheduleMetadata):
+            raise _pricing_error("runtime_interval_schedule.metadata", "must be a PricingIntervalScheduleMetadata")
+
+        if len(self.interval_end_timestamps_utc_nanos) == 0:
+            raise _pricing_error(
+                "runtime_interval_schedule.interval_end_timestamps_utc_nanos",
+                "must contain at least one interval endpoint",
+            )
+
+        if len(self.interval_end_timestamps_utc_nanos) != len(self.interval_deltas_hours):
+            raise _pricing_error(
+                "runtime_interval_schedule.interval_deltas_hours",
+                (
+                    "must contain one entry per interval_end_timestamps_utc_nanos "
+                    f"({len(self.interval_end_timestamps_utc_nanos)}), found {len(self.interval_deltas_hours)}"
+                ),
+            )
+
+        previous_endpoint_utc_nanos = self.valuation_time_utc_nanos
+        for interval_index, interval_end_utc_nanos in enumerate(self.interval_end_timestamps_utc_nanos):
+            if interval_end_utc_nanos <= previous_endpoint_utc_nanos:
+                raise _pricing_error(
+                    f"runtime_interval_schedule.interval_end_timestamps_utc_nanos[{interval_index}]",
+                    "must be strictly increasing and strictly after the previous endpoint",
+                )
+
+            require_positive_finite_scalar(
+                self.interval_deltas_hours[interval_index],
+                f"runtime_interval_schedule.interval_deltas_hours[{interval_index}]",
+                PRICING_ERROR_FACTORY,
+            )
+
+            previous_endpoint_utc_nanos = interval_end_utc_nanos
+
+    @property
+    def interval_count(self) -> int:
+        return len(self.interval_end_timestamps_utc_nanos)
+
+    @property
+    def first_interval_delta_hours(self) -> float:
+        return self.interval_deltas_hours[0]
+
+    @property
+    def terminal_maturity_interval_hours(self) -> float:
+        return (
+            self.interval_end_timestamps_utc_nanos[-1] - self.valuation_time_utc_nanos
+        ) / ONE_HOUR_NANOS
+
+    def maturity_interval_hours(self, terminal_interval_index: int) -> float:
+        if terminal_interval_index < 0 or terminal_interval_index >= self.interval_count:
+            raise _pricing_error(
+                "terminal_interval_index",
+                (
+                    "must be smaller than interval_count "
+                    f"({self.interval_count}), found {terminal_interval_index}"
+                ),
+            )
+
+        return (
+            self.interval_end_timestamps_utc_nanos[terminal_interval_index]
+            - self.valuation_time_utc_nanos
+        ) / ONE_HOUR_NANOS
+
+    def terminal_interval_index_for_maturity_interval(self, maturity_interval: float) -> int:
+        for terminal_interval_index in range(self.interval_count):
+            if self.maturity_interval_hours(terminal_interval_index) == maturity_interval:
+                return terminal_interval_index
+
+        raise _pricing_error(
+            "maturity_interval",
+            (
+                "must match a runtime_interval_schedule terminal boundary exactly "
+                f"(maturity_interval={maturity_interval})"
+            ),
+        )
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> PricingIntervalSchedule:
+        if not isinstance(raw_payload, dict):
+            raise _pricing_error(field_path, "must be an object")
+
+        raw_interval_end_timestamps = require_sequence(
+            raw_payload,
+            "interval_end_timestamps_utc_nanos",
+            f"{field_path}.interval_end_timestamps_utc_nanos",
+            PRICING_ERROR_FACTORY,
+        )
+        raw_interval_deltas = require_sequence(
+            raw_payload,
+            "interval_deltas_hours",
+            f"{field_path}.interval_deltas_hours",
+            PRICING_ERROR_FACTORY,
+        )
+
+        return PricingIntervalSchedule(
+            valuation_time_utc_nanos=require_non_negative_integer(
+                raw_payload,
+                "valuation_time_utc_nanos",
+                f"{field_path}.valuation_time_utc_nanos",
+                PRICING_ERROR_FACTORY,
+            ),
+            metadata=PricingIntervalScheduleMetadata.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "metadata",
+                    f"{field_path}.metadata",
+                    PRICING_ERROR_FACTORY,
+                ),
+                field_path=f"{field_path}.metadata",
+            ),
+            interval_end_timestamps_utc_nanos=tuple(
+                require_non_negative_integer(
+                    {"value": value},
+                    "value",
+                    f"{field_path}.interval_end_timestamps_utc_nanos[{index}]",
+                    PRICING_ERROR_FACTORY,
+                )
+                for index, value in enumerate(raw_interval_end_timestamps)
+            ),
+            interval_deltas_hours=tuple(
+                require_positive_finite_scalar(
+                    value,
+                    f"{field_path}.interval_deltas_hours[{index}]",
+                    PRICING_ERROR_FACTORY,
+                )
+                for index, value in enumerate(raw_interval_deltas)
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class VanillaOptionPricingDiagnostics(ContractModel):
     """User-facing diagnostics returned alongside the option price."""
 
@@ -1526,6 +1869,7 @@ class VanillaOptionPricingOptionalOutputSelection(ContractModel):
 @dataclass(frozen=True, slots=True)
 class VanillaOptionPricingExecutionInput(ContractModel):
     request: VanillaOptionPricingRequest
+    runtime_interval_schedule: PricingIntervalSchedule
     hourly_factor_contract: HourlyFactorContract
     optional_output_selection: VanillaOptionPricingOptionalOutputSelection = (
         VanillaOptionPricingOptionalOutputSelection()
@@ -1534,6 +1878,12 @@ class VanillaOptionPricingExecutionInput(ContractModel):
     def __post_init__(self) -> None:
         if not isinstance(self.request, VanillaOptionPricingRequest):
             raise _pricing_error("request", "must be a VanillaOptionPricingRequest")
+
+        if not isinstance(self.runtime_interval_schedule, PricingIntervalSchedule):
+            raise _pricing_error(
+                "runtime_interval_schedule",
+                "must be a PricingIntervalSchedule",
+            )
 
         if not isinstance(self.hourly_factor_contract, HourlyFactorContract):
             raise _pricing_error(
@@ -1556,31 +1906,32 @@ class VanillaOptionPricingExecutionInput(ContractModel):
                 "must contain at least one interval",
             )
 
-        try:
-            expected_interval_duration_nanos = hours_to_exact_nanoseconds(self.request.interval_delta)
-        except ValueError as e:
-            raise _pricing_error("request.interval_delta", str(e)) from e
-
-        if self.hourly_factor_contract.interval_duration_nanos != expected_interval_duration_nanos:
+        if self.hourly_factor_contract.interval_duration_nanos != ONE_HOUR_NANOS:
             raise _pricing_error(
                 "hourly_factor_contract.interval_duration_nanos",
                 (
-                    "must match request.interval_delta exactly under explicit factor alignment "
-                    f"(request.interval_delta={self.request.interval_delta}, "
-                    "hourly_factor_contract.interval_duration_nanos="
+                    "must equal the canonical hourly source interval duration "
+                    "(hourly_factor_contract.interval_duration_nanos="
                     f"{self.hourly_factor_contract.interval_duration_nanos})"
                 ),
             )
 
-        maturity_interval_from_runtime_grid = (
-            self.hourly_factor_contract.interval_count * self.request.interval_delta
-        )
+        if self.request.interval_delta != self.runtime_interval_schedule.first_interval_delta_hours:
+            raise _pricing_error(
+                "request.interval_delta",
+                (
+                    "must equal runtime_interval_schedule.first_interval_delta_hours "
+                    f"({self.runtime_interval_schedule.first_interval_delta_hours})"
+                ),
+            )
+
+        maturity_interval_from_runtime_grid = self.runtime_interval_schedule.terminal_maturity_interval_hours
         requested_maturity_interval = self.request.market_inputs.single_maturity_interval
         if maturity_interval_from_runtime_grid != requested_maturity_interval:
             raise _pricing_error(
-                "hourly_factor_contract.interval_count",
+                "runtime_interval_schedule.interval_end_timestamps_utc_nanos",
                 (
-                    "must satisfy interval_count * request.interval_delta = "
+                    "must satisfy runtime_interval_schedule terminal maturity = "
                     "request.market_inputs.single_maturity_interval "
                     f"({requested_maturity_interval}), "
                     f"found {maturity_interval_from_runtime_grid}"
@@ -1590,6 +1941,7 @@ class VanillaOptionPricingExecutionInput(ContractModel):
     def to_payload(self) -> dict[str, Any]:
         return {
             "request": self.request.to_payload(),
+            "runtime_interval_schedule": self.runtime_interval_schedule.to_payload(),
             "hourly_factor_contract": self.hourly_factor_contract.to_payload(),
             "optional_output_selection": self.optional_output_selection.to_payload(),
         }
@@ -1837,6 +2189,8 @@ class VanillaOptionPricingRunResult(ContractModel):
     response: VanillaOptionPricingResponse
     run_diagnostics: Optional[VanillaOptionPricingRunDiagnostics]
     calibration_hooks: Optional[VanillaOptionPricingCalibrationHooks]
+    runtime_interval_schedule: PricingIntervalSchedule
+    maturity_terminal_interval_indices: tuple[int, ...]
 
     def save(self, path: str | Path) -> None:
         Path(path).write_text(serialize_pretty_json(self), encoding="utf-8")
@@ -1878,6 +2232,13 @@ class VanillaOptionPricingRunResult(ContractModel):
                 field_path="calibration_hooks",
             )
 
+        raw_maturity_terminal_interval_indices = require_sequence(
+            raw_payload,
+            "maturity_terminal_interval_indices",
+            "maturity_terminal_interval_indices",
+            PRICING_ERROR_FACTORY,
+        )
+
         return VanillaOptionPricingRunResult(
             schema_version=VANILLA_OPTION_PRICING_RUN_RESULT_SCHEMA_VERSION,
             output_schema_metadata=VanillaOptionPricingRunOutputSchemaMetadata.from_mapping(
@@ -1894,6 +2255,24 @@ class VanillaOptionPricingRunResult(ContractModel):
             ),
             run_diagnostics=run_diagnostics,
             calibration_hooks=calibration_hooks,
+            runtime_interval_schedule=PricingIntervalSchedule.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "runtime_interval_schedule",
+                    "runtime_interval_schedule",
+                    PRICING_ERROR_FACTORY,
+                ),
+                field_path="runtime_interval_schedule",
+            ),
+            maturity_terminal_interval_indices=tuple(
+                require_non_negative_integer(
+                    {"value": raw_index},
+                    "value",
+                    f"maturity_terminal_interval_indices[{index}]",
+                    PRICING_ERROR_FACTORY,
+                )
+                for index, raw_index in enumerate(raw_maturity_terminal_interval_indices)
+            ),
         )
 
 
@@ -2010,11 +2389,13 @@ from .surface.contracts import (
 
 
 __all__ = [
+    "AutoExactSparsePricingIntervalSchedulePolicy",
     "AnchoredLocalTiltAdmissibilityStatus",
     "AnchoredLocalTiltBoundaryStateSummary",
     "AnchoredLocalTiltDomainStatus",
     "AnchoredLocalTiltSolveDiagnostics",
     "AnchoredVanillaOptionPricingBoundaryInput",
+    "ExplicitIntervalEndTimestampsUtcPricingIntervalSchedulePolicy",
     "FourierInversionContour",
     "FourierInversionEngineSettings",
     "FourierInversionIntegrationStabilityControls",
@@ -2026,6 +2407,9 @@ __all__ = [
     "MeanReversionBoundaryState",
     "MeanReversionFittedParameters",
     "NigSharedPlusShiftConfiguration",
+    "PricingIntervalSchedule",
+    "PricingIntervalScheduleMetadata",
+    "PricingIntervalSchedulePolicy",
     "VanillaOptionImpliedVolatilityInversionStatus",
     "VanillaOptionPricingCalibrationHooks",
     "VanillaOptionPricingFailureDiagnostic",
@@ -2048,4 +2432,6 @@ __all__ = [
     "VanillaOptionSurfacePricingRequest",
     "VanillaOptionSurfacePricingResponse",
     "VanillaOptionSurfacePricingRunResult",
+    "default_pricing_interval_schedule_policy",
+    "pricing_interval_schedule_policy_from_mapping",
 ]

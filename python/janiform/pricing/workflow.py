@@ -54,9 +54,7 @@ def run_vanilla_option_pricing(
 
     try:
         raw_run_result = native.run_vanilla_option_pricing(
-            normalized_execution_input.request.to_payload(),
-            normalized_execution_input.hourly_factor_contract._native_result,
-            normalized_execution_input.optional_output_selection.to_payload(),
+            normalized_execution_input.to_payload()
         )
     except Exception as error:
         if native_exception_matches(native, error, "PricingExecutionError"):
@@ -167,28 +165,14 @@ def _surface_pricing_native_execution_input(
         },
         "boundary_input": request.boundary_input.to_payload(),
         "model_parameters": request.model_parameters.to_payload(),
+        "runtime_interval_schedule": execution_input.runtime_interval_schedule.to_payload(),
         "interval_delta": request.interval_delta,
         "fourier_inversion_settings": (
             request.fourier_inversion_settings.to_payload()
             if request.fourier_inversion_settings is not None
             else None
         ),
-        "interval_factors": [
-            {
-                "s_h": float(execution_input.hourly_factor_contract.s_h[interval_index]),
-                "nu_h_known": float(
-                    execution_input.hourly_factor_contract.known_component_nu_h[
-                        interval_index
-                    ]
-                ),
-                "nu_h_surprise": float(
-                    execution_input.hourly_factor_contract.surprise_component_nu_h[
-                        interval_index
-                    ]
-                ),
-            }
-            for interval_index in range(execution_input.hourly_factor_contract.interval_count)
-        ],
+        "hourly_factor_contract": execution_input.hourly_factor_contract.to_payload(),
         "optional_output_selection": execution_input.optional_output_selection.to_payload(),
         "cpu_count": execution_input.cpu_count,
     }

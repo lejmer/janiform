@@ -9,7 +9,7 @@ from ..shared.errors import (
     _simulation_error,
     _simulation_integration_error,
 )
-from ...contracts import (
+from ...contracts.base import (
     ContractModel,
     require_mapping,
     require_non_negative_finite_number,
@@ -85,7 +85,7 @@ def _validate_calendar_registry_artifact_payload(
             context={"module_name": "janiform._native"},
         ) from e
 
-    return cast(dict[str, Any], calendar_registry_artifact)
+    return calendar_registry_artifact
 
 
 @dataclass(frozen=True, slots=True)

@@ -7,7 +7,6 @@ use super::contracts::{
     HawkesStageObjectiveTermDiagnostic, HawkesStageObservedSourceRegime,
 };
 use crate::adapters::precheck_structured_hawkes_kernel_parameter_domain;
-use crate::calendar::ExchangeCalendarRegistry;
 use crate::objective::CalibrationObjectiveTermInput;
 use crate::optimizer_adapter::{
     CalibrationOptimizerAdapterCandidateInput, CalibrationOptimizerAdapterConfiguration,
@@ -29,6 +28,7 @@ use janiform_calibration_artifacts::{
 use janiform_foundations::numeric::{
     arithmetic_mean, coefficient_of_variation, round_positive_to_domain, round_to,
 };
+use janiform_market_time::calendar::ExchangeCalendarRegistry;
 use janiform_model_kernels::hawkes::{
     HawkesKernelLoadings, HawkesKernelParameterValidationReport, HawkesKernelParameters,
     HawkesKernelValidationStatus, HawkesStructuredAlphaParameterization,
@@ -1512,11 +1512,6 @@ mod tests {
         refinement_alpha_scales,
     };
     use crate::adapters::precheck_structured_hawkes_kernel_parameter_domain;
-    use crate::seasonality::{
-        SeasonalityComponentDiagnosticsSummary, SeasonalityDiagnosticsReportOutput,
-        SeasonalityEstimatorConfigurationMetadata, SeasonalityFitQualityMetrics,
-        SeasonalityInputSnapshotMetadata, SeasonalityReproducibilityMetadata,
-    };
     use crate::stages::hawkes::{
         HawkesStageCandidateDiagnostic, HawkesStageCandidateInput,
         HawkesStageDirectionalLabelDiagnostics, HawkesStageImpliedMetricsDiagnostic,
@@ -1526,6 +1521,11 @@ mod tests {
         SeasonalityStageNormalizedPayload, SeasonalityStageOverlayMetadata,
     };
     use janiform_calibration_artifacts::SeasonalityStageNormalizationMetadata;
+    use janiform_market_time::seasonality::{
+        SeasonalityComponentDiagnosticsSummary, SeasonalityDiagnosticsReportOutput,
+        SeasonalityEstimatorConfigurationMetadata, SeasonalityFitQualityMetrics,
+        SeasonalityInputSnapshotMetadata, SeasonalityReproducibilityMetadata,
+    };
     use janiform_model_kernels::hawkes::{
         HawkesStructuredAlphaParameterization, HawkesStructuredRhoParameterization,
         HawkesStructuredRhoSelfDominancePolicy,

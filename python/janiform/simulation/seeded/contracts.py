@@ -21,8 +21,8 @@ from ...mean_reversion import (
     MeanReversionFittedParameters,
     MeanReversionRuntimeIntervalAnchors,
 )
-from ...contracts import (
-    ContractModel,
+from ...contracts import ContractModel
+from ...contracts.base import (
     require_datetime_utc,
     require_finite_number,
     require_mapping,

@@ -4,11 +4,11 @@ use std::str::FromStr;
 use chrono::{Datelike, LocalResult, NaiveDate, TimeZone};
 use chrono_tz::Tz;
 
-use crate::calendar::{
+use crate::market_data::preprocessing::MarketDataTranslationTickRecord;
+use janiform_market_time::calendar::{
     CalendarDate, ExchangeCalendarDefinition, ExchangeCalendarRegistry,
     ExchangeCalendarRegistryLookupError, SessionTime, SessionWindowDefinition, TradingWeekday,
 };
-use crate::market_data::preprocessing::MarketDataTranslationTickRecord;
 
 use super::contracts::{
     MarketDataLoadingError, MarketDataSessionRecurringClosedWindowPayload,

@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale.v1",
-  "approved_snapshot_sha256": "bfa79063bc9dadd9f2f68844f2111440f729522ea4e472050dfe558278be4efd",
+  "approved_snapshot_sha256": "f7fdbfd372e8380ebf8307107fa8413f2d6e89202032a041bc758f7abf520a36",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -1100,6 +1100,18 @@
       "updated_surfaces": [
         "janiform.calibration.fit.model",
         "janiform.calibration.fit.pricing.market_snapshot.inputs"
+      ]
+    },
+    {
+      "approved_on": "2026-04-09",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The shared janiform.contracts package now reexports every public require_* helper that lives in janiform.contracts.base, while package-internal modules import those helpers from the defining base module instead of the public barrel. The approved snapshot must therefore widen the janiform.contracts public surface to include the remaining validation helpers without preserving barrel imports inside the package.",
+      "snapshot_sha256": "f7fdbfd372e8380ebf8307107fa8413f2d6e89202032a041bc758f7abf520a36",
+      "summary": "Approve the full shared require_* helper surface on janiform.contracts.",
+      "updated_surfaces": [
+        "janiform.contracts"
       ]
     }
   ],

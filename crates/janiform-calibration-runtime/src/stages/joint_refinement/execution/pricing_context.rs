@@ -2,19 +2,19 @@ use std::collections::BTreeMap;
 
 use chrono::{DateTime, Utc};
 use janiform_engine_pricing::{
-    AnchoredVanillaOptionPricingBoundaryInput, VanillaOptionGridRequest,
+    AnchoredVanillaOptionPricingBoundaryInput, PricingIntervalSchedule,
     VanillaOptionGridBatchPricingExecutionInput, VanillaOptionGridBatchPricingRequest,
-    VanillaOptionGridBatchPricingRunResult, VanillaOptionPayoffType,
-    VanillaOptionPricingIntervalFactors, VanillaOptionPricingModelParameters,
-    VanillaOptionPricingOptionalOutputSelection, run_vanilla_option_grid_batch_pricing,
+    VanillaOptionGridBatchPricingRunResult, VanillaOptionGridRequest, VanillaOptionPayoffType,
+    VanillaOptionPricingModelParameters, VanillaOptionPricingOptionalOutputSelection,
+    derive_pricing_interval_schedule, materialize_schedule_interval_factors,
+    run_vanilla_option_grid_batch_pricing,
 };
-use janiform_foundations::time::ONE_HOUR_NANOS;
+use janiform_foundations::time::{ONE_HOUR_NANOS, ceil_to_hour_utc_nanos, floor_to_hour_utc_nanos};
 use janiform_market_time::hourly_factors::{
     HourlyFactorProviderRequest, HourlyNewsIntensityFactorSource, HourlySeasonalityFactorSource,
 };
 
 use crate::adapters::load_hourly_factor_contract_for_calibration;
-use crate::calendar::ExchangeCalendarRegistry;
 use crate::current_state::{
     CurrentStateEstimationInput, estimate_current_state_from_observed_data,
 };
@@ -27,6 +27,7 @@ use janiform_calibration_artifacts::{
     JointRefinementStageOptionCalibrationDiagnostics, JointRefinementStageOptionNodeDiagnostic,
     JointRefinementStageOptionSnapshotMetadata,
 };
+use janiform_market_time::calendar::ExchangeCalendarRegistry;
 
 use super::super::objective::root_mean_square;
 use super::super::setup::build_surprise_multipliers_for_interval_grid;
@@ -36,9 +37,10 @@ use super::state::{
 };
 
 struct OptionPricingHorizon {
-    valuation_time_utc: DateTime<Utc>,
-    max_expiry_timestamp_utc_nanos: i64,
-    interval_count: usize,
+    runtime_interval_schedule: PricingIntervalSchedule,
+    hourly_coverage_start_utc_nanos: i64,
+    hourly_coverage_end_utc_nanos: i64,
+    hourly_coverage_interval_count: usize,
 }
 
 struct OptionBucketDefinition {
@@ -88,24 +90,47 @@ pub(crate) fn build_option_pricing_context(
         run_spec,
         calendar_registry,
         stage_input,
-        option_pricing_input,
         return_components_payload,
         &horizon,
     )?;
 
-    let interval_factors = build_option_interval_factors(&hourly_factor_contract)?;
+    let interval_factors = materialize_schedule_interval_factors(
+        &horizon.runtime_interval_schedule,
+        &hourly_factor_contract,
+    )
+    .map_err(|source| {
+        JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
+            error_message: format!(
+                "joint option calibration interval factor materialization failed: {source}"
+            ),
+        }
+    })?;
 
-    let boundary_input =
-        build_option_boundary_input(mean_reversion_payload, &current_state_estimation_output)?;
+    let boundary_input = build_option_boundary_input(
+        mean_reversion_payload,
+        &current_state_estimation_output,
+        &horizon.runtime_interval_schedule,
+    )?;
 
-    let (grid_batch_pricing_request, observed_nodes) =
-        build_option_grid_batch_pricing_request(option_spot, option_pricing_input)?;
+    let (
+        grid_batch_pricing_request,
+        observed_nodes,
+        snapshot_maturity_intervals,
+        snapshot_maturity_terminal_interval_indices,
+    ) = build_option_grid_batch_pricing_request(
+        option_spot,
+        option_pricing_input,
+        &horizon.runtime_interval_schedule,
+    )?;
 
     Ok(Some(JointRefinementOptionPricingContext {
         valuation_time_utc_nanos: option_pricing_input.valuation_time_utc_nanos,
         grid_batch_pricing_request,
         boundary_input,
+        runtime_interval_schedule: horizon.runtime_interval_schedule,
         interval_factors,
+        snapshot_maturity_intervals,
+        snapshot_maturity_terminal_interval_indices,
         carry_input: option_pricing_input.carry_input.clone(),
         observed_nodes,
         cpu_count: cpu_count.max(1),
@@ -171,10 +196,15 @@ fn validate_option_spot(
 fn resolve_option_pricing_horizon(
     option_pricing_input: &JointRefinementStageOptionPricingInput,
 ) -> Result<OptionPricingHorizon, JointRefinementStageExecutionFailure> {
-    let max_expiry_timestamp_utc_nanos = option_pricing_input
+    let expiry_timestamps_utc_nanos = option_pricing_input
         .option_snapshot_nodes
         .iter()
         .map(|node| node.expiry_timestamp_utc_nanos)
+        .collect::<Vec<_>>();
+
+    let max_expiry_timestamp_utc_nanos = expiry_timestamps_utc_nanos
+        .iter()
+        .copied()
         .max()
         .ok_or_else(
             || JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
@@ -193,24 +223,44 @@ fn resolve_option_pricing_horizon(
         );
     }
 
-    let option_horizon_nanos =
-        max_expiry_timestamp_utc_nanos - option_pricing_input.valuation_time_utc_nanos;
-    if option_horizon_nanos % ONE_HOUR_NANOS != 0 {
-        return Err(
-            JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
+    let runtime_interval_schedule = derive_pricing_interval_schedule(
+        option_pricing_input.valuation_time_utc_nanos,
+        expiry_timestamps_utc_nanos.as_slice(),
+        &option_pricing_input.pricing_interval_schedule_policy,
+    )
+    .map_err(
+        |source| JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
+            error_message: format!(
+                "joint option calibration runtime interval schedule is invalid: {source}"
+            ),
+        },
+    )?
+    .schedule;
+
+    let last_schedule_end_utc_nanos = *runtime_interval_schedule
+        .interval_end_timestamps_utc_nanos
+        .last()
+        .ok_or_else(
+            || JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
                 error_message:
-                    "joint option calibration requires option expiries aligned to the 1h pricing grid"
+                    "joint option calibration runtime interval schedule must contain at least one interval"
                         .to_string(),
             },
-        );
-    }
+        )?;
+
+    let hourly_coverage_start_utc_nanos =
+        floor_to_hour_utc_nanos(option_pricing_input.valuation_time_utc_nanos);
+    let hourly_coverage_end_utc_nanos = ceil_to_hour_utc_nanos(last_schedule_end_utc_nanos);
+
+    let hourly_coverage_interval_count = ((hourly_coverage_end_utc_nanos
+        - hourly_coverage_start_utc_nanos)
+        / ONE_HOUR_NANOS) as usize;
 
     Ok(OptionPricingHorizon {
-        valuation_time_utc: DateTime::<Utc>::from_timestamp_nanos(
-            option_pricing_input.valuation_time_utc_nanos,
-        ),
-        max_expiry_timestamp_utc_nanos,
-        interval_count: option_horizon_nanos.div_euclid(ONE_HOUR_NANOS) as usize,
+        runtime_interval_schedule,
+        hourly_coverage_start_utc_nanos,
+        hourly_coverage_end_utc_nanos,
+        hourly_coverage_interval_count,
     })
 }
 
@@ -218,7 +268,6 @@ fn build_option_hourly_factor_contract(
     run_spec: &janiform_calibration_artifacts::CalibrationRunSpec,
     calendar_registry: &ExchangeCalendarRegistry,
     stage_input: &crate::stages::joint_refinement::JointRefinementStageExecutionInput,
-    option_pricing_input: &JointRefinementStageOptionPricingInput,
     return_components_payload: &crate::stages::return_components::ReturnComponentsStageFittedPayload,
     horizon: &OptionPricingHorizon,
 ) -> Result<
@@ -244,8 +293,8 @@ fn build_option_hourly_factor_contract(
                 .seasonality_factors_input
                 .day_of_year_factor
                 .as_slice(),
-            option_pricing_input.valuation_time_utc_nanos,
-            horizon.max_expiry_timestamp_utc_nanos,
+            horizon.hourly_coverage_start_utc_nanos,
+            horizon.hourly_coverage_end_utc_nanos,
             ONE_HOUR_NANOS,
         )
         .map_err(|error_message| {
@@ -258,8 +307,8 @@ fn build_option_hourly_factor_contract(
 
     let surprise_deterministic_time_multiplier_by_interval_index =
         build_surprise_multipliers_for_interval_grid(
-            horizon.valuation_time_utc,
-            horizon.interval_count,
+            DateTime::<Utc>::from_timestamp_nanos(horizon.hourly_coverage_start_utc_nanos),
+            horizon.hourly_coverage_interval_count,
             ONE_HOUR_NANOS,
             return_components_payload
                 .fitted_parameters
@@ -272,9 +321,11 @@ fn build_option_hourly_factor_contract(
         calendar_registry,
         HourlyFactorProviderRequest {
             exchange_code: run_spec.data_inputs.exchange_code.as_str(),
-            range_start_utc: horizon.valuation_time_utc,
+            range_start_utc: DateTime::<Utc>::from_timestamp_nanos(
+                horizon.hourly_coverage_start_utc_nanos,
+            ),
             range_end_utc: DateTime::<Utc>::from_timestamp_nanos(
-                horizon.max_expiry_timestamp_utc_nanos,
+                horizon.hourly_coverage_end_utc_nanos,
             ),
             interval_duration_nanos: ONE_HOUR_NANOS,
             seasonality_source: Some(HourlySeasonalityFactorSource::Explicit {
@@ -301,43 +352,26 @@ fn build_option_hourly_factor_contract(
             }),
         },
     )
-    .map_err(|source| JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
-        error_message: format!(
-            "joint option calibration hourly factor materialization failed: {source}"
-        ),
-    })
-}
-
-fn build_option_interval_factors(
-    hourly_factor_contract: &janiform_market_time::hourly_factors::HourlyFactorContractOutput,
-) -> Result<Vec<VanillaOptionPricingIntervalFactors>, JointRefinementStageExecutionFailure> {
-    hourly_factor_contract
-        .s_h
-        .iter()
-        .zip(hourly_factor_contract.known_component_nu_h.iter())
-        .zip(hourly_factor_contract.surprise_component_nu_h.iter())
-        .map(|((&s_h, &nu_h_known), &nu_h_surprise)| {
-            VanillaOptionPricingIntervalFactors::try_new(s_h, nu_h_known, nu_h_surprise).map_err(
-                |source| JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
-                    error_message: format!(
-                        "joint option calibration interval factors are invalid: {source}"
-                    ),
-                },
-            )
-        })
-        .collect()
+    .map_err(
+        |source| JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
+            error_message: format!(
+                "joint option calibration hourly factor materialization failed: {source}"
+            ),
+        },
+    )
 }
 
 fn build_option_boundary_input(
     mean_reversion_payload: &crate::stages::mean_reversion::MeanReversionStageFittedPayload,
     current_state_estimation_output: &crate::current_state::CurrentStateEstimationOutput,
+    runtime_interval_schedule: &PricingIntervalSchedule,
 ) -> Result<AnchoredVanillaOptionPricingBoundaryInput, JointRefinementStageExecutionFailure> {
     AnchoredVanillaOptionPricingBoundaryInput::try_new(
         0,
         current_state_estimation_output.hawkes_excitation_state,
         // Intentional clone so the shared fitted payload remains available for later reporting.
         mean_reversion_payload.fitted_parameters.clone(),
-        1.0,
+        runtime_interval_schedule.interval_deltas_hours[0],
         // Intentional clone so the state estimate remains available to later pricing steps.
         current_state_estimation_output
             .mean_reversion_boundary_state
@@ -355,10 +389,13 @@ fn build_option_boundary_input(
 fn build_option_grid_batch_pricing_request(
     spot: f64,
     option_pricing_input: &JointRefinementStageOptionPricingInput,
+    runtime_interval_schedule: &PricingIntervalSchedule,
 ) -> Result<
     (
         VanillaOptionGridBatchPricingRequest,
         Vec<JointRefinementOptionNodeDefinition>,
+        Vec<f64>,
+        Vec<usize>,
     ),
     JointRefinementStageExecutionFailure,
 > {
@@ -376,7 +413,7 @@ fn build_option_grid_batch_pricing_request(
         }
 
         let bucket_definition =
-            build_option_bucket_definition(&payoff_nodes, option_pricing_input)?;
+            build_option_bucket_definition(&payoff_nodes, runtime_interval_schedule)?;
 
         let grid_index = grids.len();
 
@@ -384,7 +421,7 @@ fn build_option_grid_batch_pricing_request(
             grid_index,
             &bucket_definition,
             &payoff_nodes,
-            option_pricing_input,
+            runtime_interval_schedule,
         )?);
 
         grids.push(VanillaOptionGridRequest {
@@ -396,16 +433,21 @@ fn build_option_grid_batch_pricing_request(
         });
     }
 
+    let (snapshot_maturity_intervals, snapshot_maturity_terminal_interval_indices) =
+        snapshot_maturity_terminal_mapping(option_pricing_input, runtime_interval_schedule)?;
+
     Ok((
         VanillaOptionGridBatchPricingRequest { spot, grids },
         observed_nodes,
+        snapshot_maturity_intervals,
+        snapshot_maturity_terminal_interval_indices,
     ))
 }
 
-fn option_nodes_for_payoff_type<'a>(
-    option_pricing_input: &'a JointRefinementStageOptionPricingInput,
+fn option_nodes_for_payoff_type(
+    option_pricing_input: &JointRefinementStageOptionPricingInput,
     payoff_type: VanillaOptionPayoffType,
-) -> Vec<&'a crate::stages::joint_refinement::JointRefinementStageOptionSnapshotNode> {
+) -> Vec<&crate::stages::joint_refinement::JointRefinementStageOptionSnapshotNode> {
     option_pricing_input
         .option_snapshot_nodes
         .iter()
@@ -415,7 +457,7 @@ fn option_nodes_for_payoff_type<'a>(
 
 fn build_option_bucket_definition(
     payoff_nodes: &[&crate::stages::joint_refinement::JointRefinementStageOptionSnapshotNode],
-    option_pricing_input: &JointRefinementStageOptionPricingInput,
+    runtime_interval_schedule: &PricingIntervalSchedule,
 ) -> Result<OptionBucketDefinition, JointRefinementStageExecutionFailure> {
     let mut strikes = payoff_nodes
         .iter()
@@ -427,7 +469,9 @@ fn build_option_bucket_definition(
 
     let mut maturity_intervals = payoff_nodes
         .iter()
-        .map(|node| maturity_interval_hours(node.expiry_timestamp_utc_nanos, option_pricing_input))
+        .map(|node| {
+            maturity_interval_hours(node.expiry_timestamp_utc_nanos, runtime_interval_schedule)
+        })
         .collect::<Result<Vec<_>, _>>()?;
 
     maturity_intervals.sort_by(|left, right| left.total_cmp(right));
@@ -444,13 +488,16 @@ fn build_observed_option_nodes(
     grid_index: usize,
     bucket_definition: &OptionBucketDefinition,
     payoff_nodes: &[&crate::stages::joint_refinement::JointRefinementStageOptionSnapshotNode],
-    option_pricing_input: &JointRefinementStageOptionPricingInput,
+    runtime_interval_schedule: &PricingIntervalSchedule,
 ) -> Result<Vec<JointRefinementOptionNodeDefinition>, JointRefinementStageExecutionFailure> {
     payoff_nodes
         .iter()
         .map(|node| {
-            let maturity_interval =
-                maturity_interval_hours(node.expiry_timestamp_utc_nanos, option_pricing_input)?;
+            let maturity_interval = maturity_interval_hours(
+                node.expiry_timestamp_utc_nanos,
+                runtime_interval_schedule,
+            )?;
+
             let strike_index =
                 locate_option_grid_coordinate(&bucket_definition.strikes, node.strike, "strike")?;
             let maturity_index = locate_option_grid_coordinate(
@@ -479,20 +526,27 @@ fn build_observed_option_nodes(
 
 fn maturity_interval_hours(
     expiry_timestamp_utc_nanos: i64,
-    option_pricing_input: &JointRefinementStageOptionPricingInput,
+    runtime_interval_schedule: &PricingIntervalSchedule,
 ) -> Result<f64, JointRefinementStageExecutionFailure> {
-    let maturity_nanos = expiry_timestamp_utc_nanos - option_pricing_input.valuation_time_utc_nanos;
-    if maturity_nanos <= 0 || maturity_nanos % ONE_HOUR_NANOS != 0 {
-        return Err(
+    let terminal_interval_index = runtime_interval_schedule
+        .terminal_interval_index_for_timestamp(expiry_timestamp_utc_nanos)
+        .map_err(|source| {
             JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
-                error_message:
-                    "joint option calibration requires expiries aligned to positive 1h maturities"
-                        .to_string(),
-            },
-        );
-    }
+                error_message: format!(
+                    "joint option calibration maturity resolution failed: {source}"
+                ),
+            }
+        })?;
 
-    Ok(maturity_nanos as f64 / ONE_HOUR_NANOS as f64)
+    runtime_interval_schedule
+        .maturity_interval_hours(terminal_interval_index)
+        .map_err(
+            |source| JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
+                error_message: format!(
+                    "joint option calibration maturity resolution failed: {source}"
+                ),
+            },
+        )
 }
 
 fn locate_option_grid_coordinate(
@@ -531,7 +585,8 @@ fn run_option_grid_batch_pricing(
                 .clone(),
             pricing_nig_configuration(fitted_parameters),
         ),
-        interval_delta: 1.0,
+        runtime_interval_schedule: option_pricing_context.runtime_interval_schedule.clone(),
+        interval_delta: option_pricing_context.boundary_input.interval_delta,
         fourier_inversion_settings: None,
         interval_factors: option_pricing_context.interval_factors.clone(),
         optional_output_selection: VanillaOptionPricingOptionalOutputSelection {
@@ -591,11 +646,52 @@ pub(crate) fn build_option_calibration_diagnostics(
         snapshot_metadata: JointRefinementStageOptionSnapshotMetadata {
             valuation_time_utc_nanos: option_pricing_context.valuation_time_utc_nanos,
             node_count: node_diagnostics.len(),
+            pricing_interval_schedule: option_pricing_context.runtime_interval_schedule.clone(),
+            maturity_intervals: option_pricing_context.snapshot_maturity_intervals.clone(),
+            maturity_terminal_interval_indices: option_pricing_context
+                .snapshot_maturity_terminal_interval_indices
+                .clone(),
         },
         carry_input: option_pricing_context.carry_input.clone(),
         node_diagnostics,
         aggregate_diagnostics,
     }))
+}
+
+fn snapshot_maturity_terminal_mapping(
+    option_pricing_input: &JointRefinementStageOptionPricingInput,
+    runtime_interval_schedule: &PricingIntervalSchedule,
+) -> Result<(Vec<f64>, Vec<usize>), JointRefinementStageExecutionFailure> {
+    let mut maturity_terminal_pairs = option_pricing_input
+        .option_snapshot_nodes
+        .iter()
+        .map(|node| {
+            let terminal_interval_index = runtime_interval_schedule
+                .terminal_interval_index_for_timestamp(node.expiry_timestamp_utc_nanos)
+                .map_err(|source| {
+                    JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
+                        error_message: format!(
+                            "joint option calibration maturity mapping failed: {source}"
+                        ),
+                    }
+                })?;
+            let maturity_interval = runtime_interval_schedule
+                .maturity_interval_hours(terminal_interval_index)
+                .map_err(|source| {
+                    JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
+                        error_message: format!(
+                            "joint option calibration maturity mapping failed: {source}"
+                        ),
+                    }
+                })?;
+            Ok((maturity_interval, terminal_interval_index))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    maturity_terminal_pairs.sort_by(|left, right| left.0.total_cmp(&right.0));
+    maturity_terminal_pairs.dedup_by(|left, right| left.0.total_cmp(&right.0).is_eq());
+
+    Ok(maturity_terminal_pairs.into_iter().unzip())
 }
 
 type ResidualBuckets = BTreeMap<String, Vec<f64>>;
@@ -710,6 +806,7 @@ fn resolve_model_option_price(
         .grids
         .get(observed_node.location.grid_index)
         .ok_or_else(|| error_message.to_string())?;
+
     let model_price = grid
         .price_grid
         .get(observed_node.location.maturity_index)

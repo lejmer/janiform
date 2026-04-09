@@ -20,13 +20,13 @@ from .references import (
     SessionPresetReference,
 )
 from ..errors import calibration_error
-from ...contracts import (
+from ...contracts.base import (
     ContractModel,
     parse_json_object,
+    serialize_deterministic_json,
     require_field,
     require_non_empty_string,
     require_sequence,
-    serialize_deterministic_json,
 )
 
 

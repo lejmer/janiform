@@ -1,32 +1,5 @@
 //! Pricing-side hourly factor loading through the shared provider interface.
 
-mod hourly_factors {
-    #[allow(unused_imports)]
-    pub use janiform_market_time::hourly_factors::{
-        DEFAULT_HOURLY_FACTOR_MATERIALIZATION_METHOD, DEFAULT_KNOWN_NEWS_CALENDAR_ANCHOR_POLICY,
-        DEFAULT_NEWS_INTENSITY_COMPONENT_AGGREGATION_POLICY,
-        DEFAULT_NEWS_INTENSITY_MATERIALIZATION_METHOD, DEFAULT_SEASONALITY_AGGREGATION_METHOD,
-        DEFAULT_SEASONALITY_INTERPOLATION_METHOD, DEFAULT_SEASONALITY_SPARSE_FALLBACK_POLICY,
-        DEFAULT_SPARSE_HOUR_MINIMUM_OBSERVATION_COUNT,
-        DEFAULT_SURPRISE_NEWS_INTENSITY_CONTROL_POLICY, HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION,
-        HOURLY_FACTOR_FALL_BACK_POLICY, HOURLY_FACTOR_INTERVAL_ALIGNMENT_POLICY,
-        HOURLY_FACTOR_INTERVAL_BOUNDARY_POLICY,
-        HOURLY_FACTOR_PROVIDER_NEWS_INTENSITY_MATERIALIZATION_METHOD,
-        HOURLY_FACTOR_PROVIDER_SEASONALITY_MATERIALIZATION_METHOD,
-        HOURLY_FACTOR_SPRING_FORWARD_POLICY, HOURLY_FACTOR_TIMEZONE_TRANSITION_POLICY,
-        HOURLY_NEWS_INTENSITY_MATERIALIZATION_SCHEMA_VERSION,
-        HOURLY_SEASONALITY_MATERIALIZATION_SCHEMA_VERSION, HourlyFactorContractDiagnostics,
-        HourlyFactorContractError, HourlyFactorContractOutput, HourlyFactorMaterializationMetadata,
-        HourlyFactorProviderError, HourlyFactorProviderRequest, HourlyNewsIntensityFactorSource,
-        HourlyNewsIntensityMaterializationDiagnostics, HourlyNewsIntensityMaterializationMetadata,
-        HourlyNewsIntensityMaterializationOutput, HourlySeasonalityFactorSource,
-        HourlySeasonalityMaterializationDiagnostics, HourlySeasonalityMaterializationMetadata,
-        HourlySeasonalityMaterializationOutput, build_hourly_factor_contract,
-        materialize_hourly_news_intensity_factors, materialize_hourly_seasonality_factors,
-        provide_hourly_factor_contract,
-    };
-}
-
 mod black_scholes;
 mod characteristic;
 mod constants;
@@ -35,6 +8,7 @@ mod forward_law;
 mod fourier;
 mod grids;
 mod implied_volatility;
+mod interval_schedule;
 mod maturity_inputs;
 mod probability_projection;
 mod progress;
@@ -110,20 +84,23 @@ pub use fourier::{
     price_vanilla_option_via_fourier_inversion,
 };
 pub use grids::{
-    VanillaOptionGridRequest, VanillaOptionGridBatchPricingExecutionInput,
-    VanillaOptionGridBatchPricingExecutionInputError,
-    VanillaOptionGridPricingResult, VanillaOptionGridBatchPricingRequest,
-    VanillaOptionGridBatchPricingRequestError, VanillaOptionGridBatchPricingRunError,
-    VanillaOptionGridBatchPricingRunResult, VanillaOptionMaturityIntervalSummary,
+    VanillaOptionGridBatchPricingExecutionInput, VanillaOptionGridBatchPricingExecutionInputError,
+    VanillaOptionGridBatchPricingRequest, VanillaOptionGridBatchPricingRequestError,
+    VanillaOptionGridBatchPricingRunError, VanillaOptionGridBatchPricingRunResult,
+    VanillaOptionGridPricingResult, VanillaOptionGridRequest, VanillaOptionMaturityIntervalSummary,
     VanillaOptionMaturityPricingEngineKind, VanillaOptionMaturitySummary,
     VanillaOptionSurfacePricingExecutionInput, VanillaOptionSurfacePricingExecutionInputError,
     VanillaOptionSurfacePricingRequest, VanillaOptionSurfacePricingResponse,
     VanillaOptionSurfacePricingRunError, VanillaOptionSurfacePricingRunResult,
-    run_vanilla_option_grid_batch_pricing,
-    run_vanilla_option_grid_batch_pricing_with_observer, run_vanilla_option_surface_pricing,
-    run_vanilla_option_surface_pricing_with_observer,
+    run_vanilla_option_grid_batch_pricing, run_vanilla_option_grid_batch_pricing_with_observer,
+    run_vanilla_option_surface_pricing, run_vanilla_option_surface_pricing_with_observer,
 };
 pub use implied_volatility::VanillaOptionImpliedVolatilityInversionStatus;
+pub use interval_schedule::{
+    DerivedPricingIntervalSchedule, PricingIntervalSchedule, PricingIntervalScheduleError,
+    PricingIntervalScheduleMetadata, PricingIntervalSchedulePolicy,
+    derive_pricing_interval_schedule, materialize_schedule_interval_factors,
+};
 pub use maturity_inputs::{
     HighLevelPricingMaturityResolution, HighLevelPricingMaturityResolutionError,
     HighLevelPricingMaturityResolutionRequest, resolve_high_level_pricing_maturity_inputs,

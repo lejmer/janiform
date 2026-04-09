@@ -9,7 +9,7 @@ from typing import Any, Optional
 import pandas
 
 from ....mean_reversion import MeanReversionBoundaryState
-from ....contracts import require_positive_finite_scalar
+from ....contracts.base import require_positive_finite_scalar
 from ....simulation import HawkesExcitationState
 from ...errors import calibration_error
 from ...market_data.contracts import CalibrationTickDataColumnMapping

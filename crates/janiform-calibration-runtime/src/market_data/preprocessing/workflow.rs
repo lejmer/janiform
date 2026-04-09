@@ -1,4 +1,4 @@
-use crate::calendar::ExchangeCalendarRegistry;
+use janiform_market_time::calendar::ExchangeCalendarRegistry;
 
 use super::contracts::{
     MarketDataTranslationPreprocessingError, MarketDataTranslationPreprocessingOutput,

@@ -38,9 +38,9 @@ use super::{
     sort_candidate_generation_signals, summarize_candidate_generation_signals,
     summarize_return_distribution,
 };
-use crate::calendar::ExchangeCalendarRegistry;
-use crate::calendar::ExchangeCalendarRegistryLoader;
 use crate::stages::return_components::continuous_fit;
+use janiform_market_time::calendar::ExchangeCalendarRegistry;
+use janiform_market_time::calendar::ExchangeCalendarRegistryLoader;
 
 #[test]
 fn derived_close_open_gap_detection_filters_zero_gap_boundaries() {

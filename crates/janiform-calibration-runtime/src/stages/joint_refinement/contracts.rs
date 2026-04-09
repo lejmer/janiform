@@ -1,7 +1,7 @@
 use serde::Serialize;
 
 use janiform_calibration_artifacts::JointRefinementStageOptionCalibrationDiagnostics;
-use janiform_engine_pricing::VanillaOptionPayoffType;
+use janiform_engine_pricing::{PricingIntervalSchedulePolicy, VanillaOptionPayoffType};
 use janiform_model_kernels::hawkes::HawkesEventSide;
 
 use crate::optimizer_adapter::CalibrationOptimizerAdapterRunMetadata;
@@ -166,6 +166,7 @@ pub struct JointRefinementStageOptionSnapshotNode {
 #[derive(Debug, Clone, PartialEq)]
 pub struct JointRefinementStageOptionPricingInput {
     pub valuation_time_utc_nanos: i64,
+    pub pricing_interval_schedule_policy: PricingIntervalSchedulePolicy,
     pub carry_input: JointRefinementStageCarryInput,
     pub current_state_estimation_input: JointRefinementStageCurrentStateEstimationInput,
     pub option_snapshot_nodes: Vec<JointRefinementStageOptionSnapshotNode>,

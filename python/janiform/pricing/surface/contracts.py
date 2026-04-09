@@ -18,10 +18,9 @@ from .common import (
     validate_matching_grid_shape,
 )
 from ..contracts import (
-    DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA,
+    PricingIntervalSchedule,
     AnchoredVanillaOptionPricingBoundaryInput,
     FourierInversionEngineSettings,
-    PRICING_ERROR_FACTORY,
     VanillaOptionImpliedVolatilityInversionStatus,
     VanillaOptionPayoffConfiguration,
     VanillaOptionPayoffType,
@@ -30,14 +29,17 @@ from ..contracts import (
     VanillaOptionPricingModelParameters,
     VanillaOptionPricingOptionalOutputSelection,
     VanillaOptionPricingStatus,
+    DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA,
+    PRICING_ERROR_FACTORY,
     _validate_optional_implied_volatility_inversion_outcome,
     _pricing_error,
 )
-from ..._timestamps import hours_to_exact_nanoseconds
-from ...contracts import (
-    ContractModel,
+from ..._timestamps import ONE_HOUR_NANOS, hours_to_exact_nanoseconds
+from ...contracts import ContractModel
+from ...contracts.base import (
     require_finite_number,
     require_mapping,
+    require_non_negative_integer,
     require_non_negative_finite_number,
     require_positive_finite_number,
     require_positive_finite_scalar,
@@ -440,6 +442,7 @@ class VanillaOptionSurfacePricingRequest(ContractModel):
 @dataclass(frozen=True, slots=True)
 class VanillaOptionSurfacePricingExecutionInput(ContractModel):
     request: VanillaOptionSurfacePricingRequest
+    runtime_interval_schedule: PricingIntervalSchedule
     hourly_factor_contract: HourlyFactorContract
     optional_output_selection: VanillaOptionPricingOptionalOutputSelection = field(
         default_factory=VanillaOptionPricingOptionalOutputSelection
@@ -451,6 +454,12 @@ class VanillaOptionSurfacePricingExecutionInput(ContractModel):
             raise _pricing_error(
                 "request",
                 "must be a VanillaOptionSurfacePricingRequest",
+            )
+
+        if not isinstance(self.runtime_interval_schedule, PricingIntervalSchedule):
+            raise _pricing_error(
+                "runtime_interval_schedule",
+                "must be a PricingIntervalSchedule",
             )
 
         if not isinstance(self.hourly_factor_contract, HourlyFactorContract):
@@ -480,46 +489,37 @@ class VanillaOptionSurfacePricingExecutionInput(ContractModel):
             if self.cpu_count <= 0:
                 raise _pricing_error("cpu_count", "must be strictly positive")
 
-        expected_interval_duration_nanos = hours_to_exact_nanoseconds(
-            self.request.interval_delta
-        )
-        if (
-            self.hourly_factor_contract.interval_duration_nanos
-            != expected_interval_duration_nanos
-        ):
+        if self.hourly_factor_contract.interval_duration_nanos != ONE_HOUR_NANOS:
             raise _pricing_error(
                 "hourly_factor_contract.interval_duration_nanos",
                 (
-                    "must match request.interval_delta exactly under explicit factor alignment "
-                    f"(request.interval_delta={self.request.interval_delta}, "
-                    "hourly_factor_contract.interval_duration_nanos="
+                    "must equal the canonical hourly source interval duration "
+                    "(hourly_factor_contract.interval_duration_nanos="
                     f"{self.hourly_factor_contract.interval_duration_nanos})"
                 ),
             )
 
-        expected_interval_count = max(
-            _surface_interval_count_from_maturity_interval(
-                maturity_interval,
-                interval_duration_nanos=expected_interval_duration_nanos,
-                field_path=(
-                    "request.market_inputs.maturity_intervals"
-                    f"[{maturity_index}]"
-                ),
-            )
-            for maturity_index, maturity_interval in enumerate(
-                self.request.market_inputs.maturity_intervals
-            )
-        )
-
-        if self.hourly_factor_contract.interval_count != expected_interval_count:
+        if self.request.interval_delta != self.runtime_interval_schedule.first_interval_delta_hours:
             raise _pricing_error(
-                "hourly_factor_contract.interval_count",
+                "request.interval_delta",
                 (
-                    "must equal the maximum maturity implied interval count "
-                    f"({expected_interval_count}), found "
-                    f"{self.hourly_factor_contract.interval_count}"
+                    "must equal runtime_interval_schedule.first_interval_delta_hours "
+                    f"({self.runtime_interval_schedule.first_interval_delta_hours})"
                 ),
             )
+
+        for maturity_index, maturity_interval in enumerate(
+            self.request.market_inputs.maturity_intervals
+        ):
+            try:
+                self.runtime_interval_schedule.terminal_interval_index_for_maturity_interval(
+                    maturity_interval
+                )
+            except JaniformValidationError as error:
+                raise _pricing_error(
+                    f"request.market_inputs.maturity_intervals[{maturity_index}]",
+                    error.failure.message,
+                ) from error
 
     @property
     def shape(self) -> tuple[int, int]:
@@ -841,12 +841,20 @@ class VanillaOptionSurfacePricingResponse(ContractModel):
 class VanillaOptionSurfacePricingRunResult(ContractModel):
     response: VanillaOptionSurfacePricingResponse
     maturity_summaries: tuple[Optional[dict[str, Any]], ...]
+    runtime_interval_schedule: PricingIntervalSchedule
+    maturity_terminal_interval_indices: tuple[int, ...]
 
     def __post_init__(self) -> None:
         if not isinstance(self.response, VanillaOptionSurfacePricingResponse):
             raise _pricing_error(
                 "response",
                 "must be a VanillaOptionSurfacePricingResponse",
+            )
+
+        if not isinstance(self.runtime_interval_schedule, PricingIntervalSchedule):
+            raise _pricing_error(
+                "runtime_interval_schedule",
+                "must be a PricingIntervalSchedule",
             )
 
     def to_records(self) -> tuple[SurfaceNodeRecord, ...]:
@@ -876,6 +884,12 @@ class VanillaOptionSurfacePricingRunResult(ContractModel):
             f"{field_path}.maturity_summaries",
             PRICING_ERROR_FACTORY,
         )
+        raw_maturity_terminal_interval_indices = require_sequence(
+            raw_payload,
+            "maturity_terminal_interval_indices",
+            f"{field_path}.maturity_terminal_interval_indices",
+            PRICING_ERROR_FACTORY,
+        )
 
         return VanillaOptionSurfacePricingRunResult(
             response=VanillaOptionSurfacePricingResponse.from_mapping(
@@ -897,6 +911,24 @@ class VanillaOptionSurfacePricingRunResult(ContractModel):
                     else None
                 )
                 for summary_index, raw_summary in enumerate(raw_maturity_summaries)
+            ),
+            runtime_interval_schedule=PricingIntervalSchedule.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "runtime_interval_schedule",
+                    f"{field_path}.runtime_interval_schedule",
+                    PRICING_ERROR_FACTORY,
+                ),
+                field_path=f"{field_path}.runtime_interval_schedule",
+            ),
+            maturity_terminal_interval_indices=tuple(
+                require_non_negative_integer(
+                    {"value": raw_index},
+                    "value",
+                    f"{field_path}.maturity_terminal_interval_indices[{index}]",
+                    PRICING_ERROR_FACTORY,
+                )
+                for index, raw_index in enumerate(raw_maturity_terminal_interval_indices)
             ),
         )
 
@@ -1166,7 +1198,7 @@ def _surface_interval_count_from_maturity_interval(
             field_path,
             (
                 "must be an exact positive multiple of request.interval_delta "
-                f"({maturity_interval} / {interval_duration_nanos / 3_600_000_000_000:.12g})"
+                f"({maturity_interval} / {interval_duration_nanos / ONE_HOUR_NANOS:.12g})"
             ),
         )
 

@@ -29,7 +29,6 @@ use super::candidate_generation::generate_return_components_stage_candidate_inpu
 use super::close_open_gap::prepare_candidate_generation_input;
 use super::diagnostics::collect_return_components_stage_constraint_violations;
 use super::signals::resolve_activity_calibration_context;
-use crate::calendar::ExchangeCalendarRegistry;
 use crate::optimizer_adapter::{
     CalibrationOptimizerAdapterCandidateInput, CalibrationOptimizerAdapterConfiguration,
     CalibrationOptimizerAdapterError, CalibrationOptimizerAdapterRunMetadata,
@@ -37,6 +36,7 @@ use crate::optimizer_adapter::{
     CalibrationOptimizerParameterBound, run_constrained_optimizer_adapter,
 };
 use crate::stages::seasonality::CalibrationStageExecutionStatus;
+use janiform_market_time::calendar::ExchangeCalendarRegistry;
 
 struct ReturnComponentsStagePreflight {
     stage_solver_settings: janiform_calibration_artifacts::CalibrationOptimizerSettings,

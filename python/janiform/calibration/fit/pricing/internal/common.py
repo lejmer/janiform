@@ -5,7 +5,10 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any, Optional
 
-from .....contracts import require_non_negative_finite_scalar, require_positive_finite_scalar
+from .....contracts.base import (
+    require_non_negative_finite_scalar,
+    require_positive_finite_scalar,
+)
 from .....contracts.base import require_optional_string_value, require_str_enum_value
 from .....pricing import (
     VanillaOptionImpliedVolatilityInversionStatus,

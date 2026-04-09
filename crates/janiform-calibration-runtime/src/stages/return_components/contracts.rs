@@ -4,7 +4,6 @@ use std::fmt::{Display, Formatter};
 use janiform_foundations::time::duration_nanos_to_hours;
 use serde::{Deserialize, Serialize};
 
-use crate::calendar::MarketState;
 use crate::objective::{
     CalibrationObjectiveTermDiagnostic, HawkesStageObjectiveTermInput,
     HawkesStageObjectiveTermInputError,
@@ -17,6 +16,7 @@ use janiform_calibration_artifacts::{
     CalibrationStageHandoffTransport, CalibrationStageSeedSource,
     ReturnComponentsStageFittedParameters,
 };
+use janiform_market_time::calendar::MarketState;
 use janiform_model_kernels::news::{
     CoupledGapMarkConfiguration, KnownNewsArrivalConfiguration,
     NewsComponentMarkScaleConfiguration, NewsProcessConfiguration, SharedNewsMarkLawConfiguration,

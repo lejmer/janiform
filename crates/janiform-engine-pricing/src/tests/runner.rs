@@ -16,7 +16,9 @@ use crate::runner::{
     resolve_local_transition_theta, use_nested_transition_measure_for_local_request,
 };
 
-use super::support::{disabled_boundary_input, valid_model_parameters};
+use super::support::{
+    build_uniform_runtime_interval_schedule, disabled_boundary_input, valid_model_parameters,
+};
 
 #[test]
 fn nested_transition_measure_detection_accepts_disabled_multi_interval_boundary() {
@@ -213,6 +215,7 @@ fn risk_neutral_anchor_materialization_accepts_zero_adjustment_nested_request() 
 
     let materialization = build_pricing_risk_neutral_anchor_materialization(
         &request,
+        &build_uniform_runtime_interval_schedule(2, 1.0),
         interval_factors.as_slice(),
         driver_parameters,
         &mut observer,

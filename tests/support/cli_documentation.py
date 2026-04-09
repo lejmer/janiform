@@ -52,6 +52,7 @@ from tests.support.cli_fixtures import (
     build_stylized_fact_metric_catalog,
 )
 from tests.support.hourly_factor_contracts import build_hourly_factor_contract
+from tests.support.time import REFERENCE_PRICING_TIMESTAMP_UTC_NANOS
 
 CALENDAR_REGISTRY_JSON: str = json.dumps(
     {
@@ -471,7 +472,7 @@ def _build_initial_excitation_state() -> HawkesExcitationState:
 
 def _build_pricing_hourly_factor_contract() -> HourlyFactorContract:
     return build_hourly_factor_contract(
-        request_start_utc_nanos=1_706_882_400_000_000_000,
+        request_start_utc_nanos=REFERENCE_PRICING_TIMESTAMP_UTC_NANOS,
         s_h=(1.0,),
         known_component_nu_h=(0.01,),
         surprise_component_nu_h=(0.02,),

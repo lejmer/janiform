@@ -9,7 +9,7 @@ from typing import Optional
 
 import pandas
 
-from ......contracts import require_positive_finite_scalar
+from ......contracts.base import require_positive_finite_scalar
 from ......pricing import VanillaOptionPayoffType
 from .....errors import calibration_error
 from ...grids import JaniformVanillaOptionGridBatchPricingResult

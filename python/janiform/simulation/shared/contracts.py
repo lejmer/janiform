@@ -8,6 +8,8 @@ from .errors import SIMULATION_ERROR_FACTORY, _simulation_error
 from ...contracts import (
     ContractModel,
     compute_hawkes_alpha_over_beta_spectral_radius,
+)
+from ...contracts.base import (
     require_mapping,
     require_non_negative_finite_number,
     require_non_negative_finite_scalar,

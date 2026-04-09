@@ -6,7 +6,6 @@ mod observer;
 mod payload_state;
 mod reporting;
 
-pub(super) use crate::calendar::ExchangeCalendarRegistry;
 pub(super) use crate::checkpointing::CalibrationInMemoryStagePayloadState;
 pub(super) use crate::diagnostics::types::{
     CalibrationDiagnosticArtifactBundle, CalibrationDiagnosticArtifactReference,
@@ -53,6 +52,7 @@ pub(super) use janiform_calibration_artifacts::{
     CalibrationStageParameterOptimizerStateInput, CalibrationStageParameterPayload,
     CalibrationStageSeedSource, stage_output_artifact_references_for_stage,
 };
+pub(super) use janiform_market_time::calendar::ExchangeCalendarRegistry;
 
 pub use contracts::{
     CalibrationStagedRunFailure, CalibrationStagedRunInputs, CalibrationStagedRunObserverEvent,

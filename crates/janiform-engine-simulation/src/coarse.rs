@@ -7,11 +7,7 @@ use chrono::{DateTime, Utc};
 use janiform_foundations::time::ONE_HOUR_NANOS;
 use serde::{Deserialize, Serialize};
 
-use crate::calendar::{
-    ExchangeCalendarRegistry, ExchangeCalendarRegistryArtifact, ExchangeCalendarRegistryLoadError,
-    ExchangeCalendarRegistryLookupError,
-};
-use crate::risk::{
+use janiform_affine_oracle::sufficient_statistics::{
     SUFFICIENT_STATISTICS_BATCH_SEED_PARTITION_POLICY,
     SUFFICIENT_STATISTICS_BOUNDARY_STATE_UPDATE_POLICY,
     SUFFICIENT_STATISTICS_INTERVAL_RETURN_COMPONENT_ROUTING_POLICY,
@@ -22,6 +18,10 @@ use crate::risk::{
     SufficientStatisticsRiskIntervalFactorsError, SufficientStatisticsRiskModelInputs,
     SufficientStatisticsRiskModelInputsError, SufficientStatisticsRiskReturnComponents,
     SufficientStatisticsRiskReturnComponentsError,
+};
+use janiform_market_time::calendar::{
+    ExchangeCalendarRegistry, ExchangeCalendarRegistryArtifact, ExchangeCalendarRegistryLoadError,
+    ExchangeCalendarRegistryLookupError,
 };
 use janiform_model_kernels::hawkes::HawkesExcitationState;
 use janiform_model_kernels::mean_reversion::MeanReversionBoundaryStateValidationError;
@@ -1918,14 +1918,14 @@ fn validate_diagnostics_field(
 mod tests {
     use serde_json::json;
 
-    use crate::calendar::{
-        CalendarRuleMetadataArtifact, ExchangeCalendarArtifact, ExchangeCalendarRegistryArtifact,
-        RegularSessionArtifact, SessionWindowArtifact, TradingWeekday,
-    };
     use janiform_affine_oracle::affine_oracle::ExponentialAffineTransformEquationSpecification;
     use janiform_affine_oracle::sufficient_statistics::{
         SufficientStatisticsIntervalStatistics, SufficientStatisticsRiskIntervalFactors,
         SufficientStatisticsRiskModelInputs, SufficientStatisticsRiskReturnComponents,
+    };
+    use janiform_market_time::calendar::{
+        CalendarRuleMetadataArtifact, ExchangeCalendarArtifact, ExchangeCalendarRegistryArtifact,
+        RegularSessionArtifact, SessionWindowArtifact, TradingWeekday,
     };
     use janiform_model_kernels::hawkes::HawkesExcitationState;
     use janiform_model_kernels::hawkes::{HawkesKernelLoadings, HawkesKernelParameters};

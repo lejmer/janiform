@@ -7,6 +7,7 @@ use janiform_calibration_artifacts::{
     CalibrationExecutionMode, CalibrationRunDataInputs, CalibrationRunSeedSettings,
     CalibrationRunSpec, CalibrationStage, CalibrationStageSolverSettings,
 };
+use janiform_engine_pricing::PricingIntervalSchedulePolicy;
 use janiform_foundations::numeric::coverage_ratio;
 use janiform_foundations::time::{ONE_HOUR_NANOS_F64, duration_nanos_to_hours};
 use serde::{Deserialize, Serialize};
@@ -16,7 +17,6 @@ use super::solver_settings::{
     DATA_DERIVED_SOLVER_SETTINGS_POLICY_ID, has_missing_stage_solver_settings,
     resolve_solver_settings_by_stage,
 };
-use crate::pricing::VanillaOptionPayoffType;
 use crate::{
     CALIBRATION_STAGED_EXECUTION_INPUT_SCHEMA_VERSION, CalibrationJointRefinementCarryInput,
     CalibrationJointRefinementCurrentStateEstimationInput,
@@ -32,6 +32,7 @@ use crate::{
     normalize_market_data_source, prepare_market_data_loading_from_phases,
     resolve_market_data_session_configuration,
 };
+use janiform_engine_pricing::VanillaOptionPayoffType;
 
 const PREPARED_MARKET_DATA_DERIVATION_POLICY_ID: &str =
     "market_data_loading_and_translation.rust.v1";
@@ -150,6 +151,8 @@ pub struct CalibrationMarketDataPreparationRequest {
     pub option_surface_valuation_time_utc: Option<String>,
     #[serde(default)]
     pub carry: Option<CalibrationMarketDataCarryInput>,
+    #[serde(default)]
+    pub pricing_interval_schedule_policy: PricingIntervalSchedulePolicy,
     #[serde(default)]
     pub known_news_inputs: Option<CalibrationMarketDataKnownNewsInput>,
     #[serde(default)]
@@ -694,6 +697,7 @@ fn joint_refinement_option_pricing_input_from_request(
 
     Ok(Some(CalibrationJointRefinementOptionPricingInput {
         valuation_time_utc_nanos,
+        pricing_interval_schedule_policy: request.pricing_interval_schedule_policy.clone(),
         carry_input,
         current_state_estimation_input,
         option_snapshot_nodes,

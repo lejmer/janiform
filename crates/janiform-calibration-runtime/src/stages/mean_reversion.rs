@@ -27,7 +27,6 @@ use janiform_model_kernels::mean_reversion::{
 };
 
 use crate::adapters::load_hourly_factor_contract_for_calibration;
-use crate::calendar::ExchangeCalendarRegistry;
 use crate::stages::hawkes::HawkesStageFittedPayload;
 use crate::stages::joint_refinement::build_surprise_multipliers_for_interval_grid;
 use crate::stages::return_components::ReturnComponentsStageFittedPayload;
@@ -35,6 +34,7 @@ use crate::stages::seasonality::{
     CalibrationStageExecutionStatus, SeasonalityStageNormalizedPayload,
     build_runtime_hourly_seasonality_factors_from_components,
 };
+use janiform_market_time::calendar::ExchangeCalendarRegistry;
 
 const FULL_PRESSURE_TO_LEVEL_REGRESSION_COLUMN_COUNT: usize = 2;
 const FULL_PRESSURE_TO_LEVEL_CANDIDATE_FAMILY: &str =

@@ -2,12 +2,12 @@ use std::collections::{BTreeMap, HashSet};
 
 use arrow_array::RecordBatch;
 
-use crate::calendar::ExchangeCalendarRegistryLoader;
 use crate::execution_bridge::CalibrationHawkesDirectionalLabelDiagnostics;
 use crate::market_data::preprocessing::{
     MarketDataTranslationPreprocessingRequest, MarketDataTranslationTickRecord,
     preprocess_market_data_translation_request,
 };
+use janiform_market_time::calendar::ExchangeCalendarRegistryLoader;
 
 use super::column_resolution::resolve_tick_data_column_mapping;
 use super::contracts::{

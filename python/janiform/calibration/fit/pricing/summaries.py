@@ -6,16 +6,18 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, Optional
 
-from ....contracts import (
+from ....contracts.base import (
     ContractModel,
     require_finite_number,
     require_finite_scalar,
     require_mapping,
     require_non_negative_finite_scalar,
+    require_optional_finite_number,
+    require_optional_mapping_value,
     require_positive_finite_scalar,
     require_sequence,
+    require_str_enum_value,
 )
-from ....contracts.base import require_optional_finite_number, require_optional_mapping_value, require_str_enum_value
 from ...errors import calibration_error
 from .internal.common import (
     tuple_of_finite_floats,

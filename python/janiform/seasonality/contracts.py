@@ -8,7 +8,8 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any, cast
 
-from ..contracts import ContractModel, require_non_empty_string
+from ..contracts import ContractModel
+from ..contracts.base import require_non_empty_string
 from ..contracts.base import (
     require_boolean,
     require_datetime_utc,

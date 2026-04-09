@@ -752,9 +752,6 @@ pub(crate) mod tests {
         initialize_joint_refinement_summary_simulation_session, read_joint_refinement_worker_frame,
         simulate_joint_refinement_seed_summary_in_process, write_joint_refinement_worker_frame,
     };
-    use crate::calendar::{
-        ExchangeCalendarRegistry, ExchangeCalendarRegistryLoader, TimestampEventInputRecord,
-    };
     use crate::load_hourly_factor_contract_for_calibration;
     use crate::stages::hawkes::{
         HawkesStageCandidateInput, HawkesStageDirectionalLabelDiagnostics,
@@ -799,6 +796,9 @@ pub(crate) mod tests {
     };
     use janiform_engine_simulation::run_seeded_tick_event_simulation;
     use janiform_foundations::time::{ONE_HOUR_NANOS, utc_nanos};
+    use janiform_market_time::calendar::{
+        ExchangeCalendarRegistry, ExchangeCalendarRegistryLoader, TimestampEventInputRecord,
+    };
     use janiform_market_time::hourly_factors::{
         HourlyFactorProviderRequest, HourlyNewsIntensityFactorSource, HourlySeasonalityFactorSource,
     };

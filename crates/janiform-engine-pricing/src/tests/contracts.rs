@@ -21,7 +21,8 @@ use janiform_model_kernels::hawkes::HawkesExcitationState;
 use super::support::{
     build_reference_integration_diagnostics_source, build_reference_market_inputs,
     build_reference_pricing_response, build_reference_transform_diagnostics_source,
-    build_valid_vanilla_option_request, disabled_boundary_input, valid_model_parameters,
+    build_uniform_runtime_interval_schedule, build_valid_vanilla_option_request,
+    disabled_boundary_input, valid_model_parameters,
 };
 #[test]
 fn vanilla_option_request_roundtrip_serialization_preserves_contract_fields() {
@@ -121,6 +122,7 @@ fn vanilla_option_request_accepts_explicit_non_hourly_interval_delta() {
 fn vanilla_option_pricing_execution_input_roundtrip_serialization_preserves_split_news_intensity() {
     let execution_input = VanillaOptionPricingExecutionInput::try_new(
         build_valid_vanilla_option_request(),
+        build_uniform_runtime_interval_schedule(1, 1.0),
         vec![
             VanillaOptionPricingIntervalFactors::try_new(1.1, 0.03, 0.05)
                 .expect("interval factors should construct"),
@@ -175,6 +177,7 @@ fn vanilla_option_pricing_execution_input_deserialization_requires_split_news_fi
 fn vanilla_option_pricing_execution_input_rejects_negative_surprise_news_intensity() {
     let error = VanillaOptionPricingExecutionInput::try_new(
         build_valid_vanilla_option_request(),
+        build_uniform_runtime_interval_schedule(1, 1.0),
         vec![VanillaOptionPricingIntervalFactors::new(1.0, 0.03, -0.01)],
         VanillaOptionPricingOptionalOutputSelection::default(),
     )
@@ -404,6 +407,8 @@ fn pricing_run_output_selection_defaults_to_base_response_only() {
         Some(transform_diagnostics),
         Some(integration_quality),
         None,
+        build_uniform_runtime_interval_schedule(1, 1.0),
+        vec![0],
     )
     .expect("default output selection should emit base response only");
 
@@ -429,6 +434,8 @@ fn pricing_run_output_selection_can_emit_diagnostics_and_calibration_hooks() {
         Some(transform_diagnostics),
         Some(integration_quality),
         None,
+        build_uniform_runtime_interval_schedule(1, 1.0),
+        vec![0],
     )
     .expect("full output selection should include diagnostics and hooks");
 
@@ -470,6 +477,8 @@ fn pricing_run_output_schema_metadata_is_machine_readable_with_required_fields()
         Some(transform_diagnostics),
         Some(integration_quality),
         None,
+        build_uniform_runtime_interval_schedule(1, 1.0),
+        vec![0],
     )
     .expect("full output selection should construct");
 
@@ -540,6 +549,8 @@ fn pricing_run_output_builder_reports_missing_selected_optional_sources() {
         None,
         None,
         None,
+        build_uniform_runtime_interval_schedule(1, 1.0),
+        vec![0],
     )
     .expect_err("transform diagnostics selection without source must fail");
     assert!(matches!(
@@ -554,6 +565,8 @@ fn pricing_run_output_builder_reports_missing_selected_optional_sources() {
         None,
         None,
         None,
+        build_uniform_runtime_interval_schedule(1, 1.0),
+        vec![0],
     )
     .expect_err("integration diagnostics selection without source must fail");
     assert!(matches!(
@@ -568,6 +581,8 @@ fn pricing_run_output_builder_reports_missing_selected_optional_sources() {
         None,
         None,
         None,
+        build_uniform_runtime_interval_schedule(1, 1.0),
+        vec![0],
     )
     .expect_err("calibration hooks selection without market inputs must fail");
     assert!(matches!(
@@ -589,6 +604,8 @@ fn calibration_hooks_reject_invalid_market_inputs_with_actionable_error() {
         None,
         None,
         None,
+        build_uniform_runtime_interval_schedule(1, 1.0),
+        vec![0],
     )
     .expect_err("invalid market inputs should fail calibration hook construction");
 

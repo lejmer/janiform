@@ -1,16 +1,17 @@
 use crate::{
     AnchoredVanillaOptionPricingBoundaryInput, FourierInversionDiagnostics,
-    FourierInversionEngineSettings, VanillaOptionPayoffConfiguration, VanillaOptionPayoffType,
-    VanillaOptionPricingDiagnostics, VanillaOptionPricingMarketInputs,
-    VanillaOptionPricingModelParameters, VanillaOptionPricingRequest, VanillaOptionPricingResponse,
-    build_pricing_transform_input, price_vanilla_option_via_fourier_inversion,
-    solve_exponential_affine_transform,
+    FourierInversionEngineSettings, PricingIntervalSchedule, PricingIntervalScheduleMetadata,
+    VanillaOptionPayoffConfiguration, VanillaOptionPayoffType, VanillaOptionPricingDiagnostics,
+    VanillaOptionPricingMarketInputs, VanillaOptionPricingModelParameters,
+    VanillaOptionPricingRequest, VanillaOptionPricingResponse, build_pricing_transform_input,
+    price_vanilla_option_via_fourier_inversion, solve_exponential_affine_transform,
 };
 use janiform_affine_oracle::affine_oracle::{
     ExponentialAffineTransformDVector, ExponentialAffineTransformIntegrationResult,
     ExponentialAffineTransformNewsIntensityInput, ExponentialAffineTransformOutput,
 };
 use janiform_foundations::complex_math::ComplexScalar;
+use janiform_foundations::time::ONE_HOUR_NANOS;
 use janiform_model_kernels::hawkes::{
     HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
 };
@@ -44,6 +45,32 @@ pub(super) fn build_valid_vanilla_option_request() -> VanillaOptionPricingReques
         valid_model_parameters(),
     )
     .expect("request should construct")
+}
+
+pub(super) fn build_uniform_runtime_interval_schedule(
+    interval_count: usize,
+    interval_delta: f64,
+) -> PricingIntervalSchedule {
+    let interval_duration_nanos_float = interval_delta * ONE_HOUR_NANOS as f64;
+    let interval_duration_nanos = interval_duration_nanos_float as i64;
+    assert_eq!(
+        interval_duration_nanos as f64, interval_duration_nanos_float,
+        "test runtime interval schedule requires an exact nanosecond interval"
+    );
+
+    PricingIntervalSchedule::try_new(
+        0,
+        PricingIntervalScheduleMetadata {
+            policy_id: "explicit_interval_end_timestamps_utc.v1".to_string(),
+            derivation_policy: "test_uniform_schedule.v1".to_string(),
+            factor_assignment_policy: "overlap_weighted_resampling_from_hourly_source_buckets.v1"
+                .to_string(),
+        },
+        (1..=interval_count)
+            .map(|interval_index| interval_index as i64 * interval_duration_nanos)
+            .collect(),
+    )
+    .expect("uniform runtime interval schedule should construct")
 }
 
 pub(super) fn endogenous_boundary_input(

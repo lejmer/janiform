@@ -3,8 +3,8 @@ use std::fmt::{Display, Formatter};
 
 use serde::Serialize;
 
-use crate::calendar::ExchangeCalendarRegistry;
 use crate::stages::seasonality::build_runtime_hourly_seasonality_factors_from_components;
+use janiform_market_time::calendar::ExchangeCalendarRegistry;
 
 /// Rust-native input for compact structural runtime seasonality materialization.
 #[derive(Debug, Clone, PartialEq)]

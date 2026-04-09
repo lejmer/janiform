@@ -666,6 +666,7 @@ name = "janiform-calibration-artifacts"
 version = "0.0.0"
 dependencies = [
  "chrono",
+ "janiform-engine-pricing",
  "janiform-foundations",
  "janiform-model-kernels",
  "serde",
