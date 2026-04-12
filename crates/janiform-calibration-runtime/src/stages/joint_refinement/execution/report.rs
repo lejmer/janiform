@@ -94,6 +94,8 @@ pub(crate) fn build_joint_finalist_seed_summaries(
         context.final_simulation_seeds.as_slice(),
         progress_sender,
         Some(JointRefinementStageProgressPhase::FinalSeedEvaluation),
+        0,
+        context.final_simulation_seeds.len(),
     )
     .unwrap_or_default()
 }
@@ -166,6 +168,16 @@ pub(crate) fn simulation_infrastructure_failure_message(
 ) -> Option<String> {
     context
         .simulation_infrastructure_failure
+        .lock()
+        .ok()
+        .and_then(|guard| guard.clone())
+}
+
+pub(crate) fn option_pricing_execution_failure_message(
+    context: &JointRefinementContext,
+) -> Option<String> {
+    context
+        .option_pricing_execution_failure
         .lock()
         .ok()
         .and_then(|guard| guard.clone())

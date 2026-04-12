@@ -1,15 +1,23 @@
 mod support;
 
-use janiform_affine_oracle::affine_oracle::ExponentialAffineTransformNewsIntensityInput;
+use janiform_affine_oracle::affine_oracle::{
+    ExponentialAffineTransformIntegratorMethod, ExponentialAffineTransformNewsIntensityInput,
+    ExponentialAffineTransformSolverSettings, ExponentialAffineTransformTelemetryMode,
+};
 use janiform_calibration_runtime::build_option_surface_calibration_observation_from_pricing_hooks;
+use janiform_engine_pricing::internal::{
+    FourierInversionContour, FourierInversionEngineSettings,
+    FourierInversionIntegrationStabilityControls, FourierInversionNumericQualityGate,
+    FourierInversionNumericSettings, FourierInversionQuadratureRule,
+    price_vanilla_option_via_fourier_inversion,
+};
 use janiform_engine_pricing::{
-    AnchoredVanillaOptionPricingBoundaryInput, FourierInversionEngineSettings,
-    PricingIntervalSchedule, PricingIntervalScheduleMetadata,
-    VanillaOptionPayoffConfiguration, VanillaOptionPayoffType, VanillaOptionPricingDiagnostics,
-    VanillaOptionPricingMarketInputs, VanillaOptionPricingModelParameters,
-    VanillaOptionPricingOptionalOutputSelection, VanillaOptionPricingRequest,
-    VanillaOptionPricingResponse, VanillaOptionPricingStatus, build_pricing_transform_input,
-    build_vanilla_option_pricing_run_result, price_vanilla_option_via_fourier_inversion,
+    AnchoredVanillaOptionPricingBoundaryInput, PricingIntervalSchedule,
+    PricingIntervalScheduleMetadata, VanillaOptionPayoffConfiguration, VanillaOptionPayoffType,
+    VanillaOptionPricingDiagnostics, VanillaOptionPricingMarketInputs,
+    VanillaOptionPricingModelParameters, VanillaOptionPricingOptionalOutputSelection,
+    VanillaOptionPricingRequest, VanillaOptionPricingResponse, VanillaOptionPricingStatus,
+    build_pricing_transform_input, build_vanilla_option_pricing_run_result,
     solve_exponential_affine_transform,
 };
 use janiform_foundations::complex_math::ComplexScalar;
@@ -28,6 +36,36 @@ use janiform_model_kernels::news::{
 };
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 use support::shared::black_scholes_log_return_characteristic_function;
+
+fn reference_fourier_inversion_settings() -> FourierInversionEngineSettings {
+    FourierInversionEngineSettings::try_new(
+        FourierInversionContour::try_new(1.5).expect("contour should construct"),
+        FourierInversionNumericSettings::try_new(
+            150.0,
+            4_096,
+            FourierInversionQuadratureRule::Midpoint,
+        )
+        .expect("numeric settings should construct"),
+        FourierInversionIntegrationStabilityControls::try_new(
+            1.0e-5,
+            1.0e-4,
+            5.0e-4,
+            1.0e-2,
+            FourierInversionNumericQualityGate::DiagnosticsOnly,
+        )
+        .expect("stability controls should construct"),
+    )
+    .expect("engine settings should construct")
+}
+
+fn reference_affine_transform_solver_settings() -> ExponentialAffineTransformSolverSettings {
+    ExponentialAffineTransformSolverSettings::try_new(
+        ExponentialAffineTransformIntegratorMethod::FourthOrderRungeKutta,
+        64,
+    )
+    .expect("solver settings should construct")
+    .with_telemetry_mode(ExponentialAffineTransformTelemetryMode::Disabled)
+}
 
 #[test]
 fn pricing_run_output_hooks_are_directly_consumable_by_calibration_adapter() {
@@ -131,6 +169,7 @@ fn pricing_run_output_hooks_are_directly_consumable_by_calibration_adapter() {
         )
         .expect("endogenous anchored boundary input should construct"),
         model_parameters,
+        1.0,
     )
     .expect("pricing request should construct");
 
@@ -146,15 +185,18 @@ fn pricing_run_output_hooks_are_directly_consumable_by_calibration_adapter() {
     )
     .expect("pricing transform input should construct");
 
-    let transform_diagnostics = solve_exponential_affine_transform(transform_input)
-        .expect("transform solve should succeed");
+    let transform_diagnostics = solve_exponential_affine_transform(
+        transform_input,
+        reference_affine_transform_solver_settings(),
+    )
+    .expect("transform solve should succeed");
 
     let integration_diagnostics = price_vanilla_option_via_fourier_inversion(
         &market_inputs,
         VanillaOptionPayoffConfiguration {
             payoff_type: VanillaOptionPayoffType::Call,
         },
-        FourierInversionEngineSettings::default(),
+        reference_fourier_inversion_settings(),
         // Use a Black-Scholes baseline here to validate wiring, not Janiform dynamics.
         |argument| black_scholes_log_return_characteristic_function(&market_inputs, 0.2, argument),
     )
@@ -222,8 +264,7 @@ fn build_uniform_runtime_interval_schedule(
     let interval_duration_nanos = interval_duration_nanos_float as i64;
 
     assert_eq!(
-        interval_duration_nanos as f64,
-        interval_duration_nanos_float,
+        interval_duration_nanos as f64, interval_duration_nanos_float,
         "test runtime interval schedule requires an exact nanosecond interval"
     );
 
@@ -233,8 +274,8 @@ fn build_uniform_runtime_interval_schedule(
             policy_id: "explicit_interval_end_timestamps_utc.v1".to_string(),
             derivation_policy:
                 "pricing_calibration_hook_consumer_integration.synthetic_schedule.v1".to_string(),
-            factor_assignment_policy:
-                "overlap_weighted_resampling_from_hourly_source_buckets.v1".to_string(),
+            factor_assignment_policy: "overlap_weighted_resampling_from_hourly_source_buckets.v1"
+                .to_string(),
         },
         (1..=interval_count)
             .map(|interval_index| interval_index as i64 * interval_duration_nanos)

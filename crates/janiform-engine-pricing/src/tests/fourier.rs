@@ -1,13 +1,15 @@
 use serde_json::json;
 
-use crate::{
-    FOURIER_INVERSION_DIAGNOSTICS_SCHEMA_VERSION, FourierInversionContour,
-    FourierInversionContourError, FourierInversionEngineSettings,
+use crate::fourier::{
+    FourierInversionContour, FourierInversionContourError, FourierInversionEngineSettings,
     FourierInversionIntegrationStabilityControls,
     FourierInversionIntegrationStabilityControlsError, FourierInversionNumericQualityGate,
     FourierInversionNumericSettings, FourierInversionPricingError, FourierInversionQuadratureRule,
-    VanillaOptionPayoffConfiguration, VanillaOptionPayoffType, VanillaOptionPricingMarketInputs,
     price_vanilla_option_via_fourier_inversion,
+};
+use crate::{
+    FOURIER_INVERSION_DIAGNOSTICS_SCHEMA_VERSION, VanillaOptionPayoffConfiguration,
+    VanillaOptionPayoffType, VanillaOptionPricingMarketInputs,
 };
 use janiform_foundations::complex_math::ComplexScalar;
 
@@ -38,6 +40,14 @@ fn fourier_inversion_call_price_matches_black_scholes_sanity_case() {
             FourierInversionQuadratureRule::Midpoint,
         )
         .expect("numeric settings should construct"),
+        FourierInversionIntegrationStabilityControls::try_new(
+            1.0e-5,
+            1.0e-4,
+            5.0e-4,
+            1.0e-2,
+            FourierInversionNumericQualityGate::DiagnosticsOnly,
+        )
+        .expect("stability controls should construct"),
     )
     .expect("engine settings should construct");
 
@@ -89,6 +99,14 @@ fn fourier_inversion_put_price_matches_black_scholes_sanity_case() {
             FourierInversionQuadratureRule::Trapezoid,
         )
         .expect("numeric settings should construct"),
+        FourierInversionIntegrationStabilityControls::try_new(
+            1.0e-5,
+            1.0e-4,
+            5.0e-4,
+            1.0e-2,
+            FourierInversionNumericQualityGate::DiagnosticsOnly,
+        )
+        .expect("stability controls should construct"),
     )
     .expect("engine settings should construct");
 
@@ -138,6 +156,13 @@ fn fourier_inversion_rejects_invalid_integration_settings() {
     let invalid_settings = FourierInversionEngineSettings::new(
         FourierInversionContour::new(1.0),
         FourierInversionNumericSettings::new(120.0, 0, FourierInversionQuadratureRule::Midpoint),
+        FourierInversionIntegrationStabilityControls::new(
+            1.0e-5,
+            1.0e-4,
+            5.0e-4,
+            1.0e-2,
+            FourierInversionNumericQualityGate::DiagnosticsOnly,
+        ),
     );
 
     let error = price_vanilla_option_via_fourier_inversion(
@@ -178,13 +203,26 @@ fn fourier_inversion_stability_controls_validate_and_deserialize_with_defaults()
             "integration_upper_bound": 120.0,
             "integration_step_count": 4096,
             "quadrature_rule": "midpoint"
+        },
+        "stability_controls": {
+            "convergence_absolute_tolerance": 1.0e-5,
+            "convergence_relative_tolerance": 1.0e-4,
+            "terminal_integrand_absolute_tolerance": 5.0e-4,
+            "terminal_integrand_ratio_tolerance": 1.0e-2,
+            "quality_gate": "diagnostics_only"
         }
     }))
-    .expect("engine settings should deserialize with default stability controls");
+    .expect("engine settings should deserialize with explicit stability controls");
 
     assert_eq!(
         parsed_settings.stability_controls,
-        FourierInversionIntegrationStabilityControls::default()
+        FourierInversionIntegrationStabilityControls::new(
+            1.0e-5,
+            1.0e-4,
+            5.0e-4,
+            1.0e-2,
+            FourierInversionNumericQualityGate::DiagnosticsOnly,
+        )
     );
 }
 
@@ -203,7 +241,7 @@ fn fourier_inversion_emits_numeric_quality_diagnostics_for_poor_settings() {
         FourierInversionNumericQualityGate::DiagnosticsOnly,
     )
     .expect("strict stability controls should construct");
-    let poor_settings = FourierInversionEngineSettings::try_new_with_stability_controls(
+    let poor_settings = FourierInversionEngineSettings::try_new(
         FourierInversionContour::try_new(1.2).expect("contour settings should construct"),
         FourierInversionNumericSettings::try_new(3.0, 2, FourierInversionQuadratureRule::Midpoint)
             .expect("numeric settings should construct"),
@@ -246,7 +284,7 @@ fn fourier_inversion_quality_gate_can_fail_under_poor_settings() {
         FourierInversionNumericQualityGate::EnforceFailure,
     )
     .expect("strict stability controls should construct");
-    let poor_settings = FourierInversionEngineSettings::try_new_with_stability_controls(
+    let poor_settings = FourierInversionEngineSettings::try_new(
         FourierInversionContour::try_new(1.2).expect("contour settings should construct"),
         FourierInversionNumericSettings::try_new(3.0, 2, FourierInversionQuadratureRule::Midpoint)
             .expect("numeric settings should construct"),
@@ -287,6 +325,14 @@ fn fourier_inversion_quality_diagnostics_converge_on_reference_fixture() {
             FourierInversionQuadratureRule::Midpoint,
         )
         .expect("numeric settings should construct"),
+        FourierInversionIntegrationStabilityControls::try_new(
+            1.0e-5,
+            1.0e-4,
+            5.0e-4,
+            1.0e-2,
+            FourierInversionNumericQualityGate::DiagnosticsOnly,
+        )
+        .expect("stability controls should construct"),
     )
     .expect("engine settings should construct");
 
@@ -335,6 +381,14 @@ fn fourier_inversion_surfaces_non_finite_characteristic_function_boundary_failur
             FourierInversionQuadratureRule::Midpoint,
         )
         .expect("numeric settings should construct"),
+        FourierInversionIntegrationStabilityControls::try_new(
+            1.0e-5,
+            1.0e-4,
+            5.0e-4,
+            1.0e-2,
+            FourierInversionNumericQualityGate::DiagnosticsOnly,
+        )
+        .expect("stability controls should construct"),
     )
     .expect("engine settings should construct");
 
@@ -365,7 +419,24 @@ fn fourier_inversion_output_is_deterministic_for_reference_fixture() {
         VanillaOptionPricingMarketInputs::try_new_single_node(103.0, 100.0, 0.75, 0.03, 0.01)
             .expect("market inputs should construct");
     let volatility = 0.25;
-    let settings = FourierInversionEngineSettings::default();
+    let settings = FourierInversionEngineSettings::try_new(
+        FourierInversionContour::try_new(1.5).expect("contour settings should construct"),
+        FourierInversionNumericSettings::try_new(
+            150.0,
+            4_096,
+            FourierInversionQuadratureRule::Midpoint,
+        )
+        .expect("numeric settings should construct"),
+        FourierInversionIntegrationStabilityControls::try_new(
+            1.0e-5,
+            1.0e-4,
+            5.0e-4,
+            1.0e-2,
+            FourierInversionNumericQualityGate::DiagnosticsOnly,
+        )
+        .expect("stability controls should construct"),
+    )
+    .expect("engine settings should construct");
     let payoff = VanillaOptionPayoffConfiguration {
         payoff_type: VanillaOptionPayoffType::Call,
     };

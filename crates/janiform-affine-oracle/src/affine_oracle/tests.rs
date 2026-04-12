@@ -217,6 +217,40 @@ fn blowup_fixture_input() -> ExponentialAffineTransformInput {
     .expect("blowup fixture input should construct")
 }
 
+fn transform_value_overflow_fixture_input() -> ExponentialAffineTransformInput {
+    let mut transform_input = linear_closed_form_fixture_input();
+    transform_input.u_plus = ComplexScalar::new(-0.2, 0.0);
+    transform_input.u_minus = ComplexScalar::new(-0.3, 0.0);
+    transform_input.initial_state = HawkesExcitationState {
+        y_plus_plus: 1.0e308,
+        y_plus_minus: 1.0e308,
+        y_minus_plus: 1.0e308,
+        y_minus_minus: 1.0e308,
+    };
+    transform_input
+}
+
+fn exact_identity_query_input() -> ExponentialAffineTransformInput {
+    ExponentialAffineTransformInput::try_new(
+        valid_equation_specification(),
+        ComplexScalar::new(0.0, -0.0),
+        ComplexScalar::new(0.0, 0.0),
+        ComplexScalar::new(1.0, 0.0),
+        ComplexScalar::new(1.0, -0.0),
+        1.3,
+        ExponentialAffineTransformNewsIntensityInput::try_new(0.17, 0.29)
+            .expect("identity-query news-intensity payload should construct"),
+        0.5,
+        HawkesExcitationState {
+            y_plus_plus: 0.4,
+            y_plus_minus: 0.2,
+            y_minus_plus: 0.3,
+            y_minus_minus: 0.5,
+        },
+    )
+    .expect("identity-query transform input should construct")
+}
+
 fn assert_complex_close(
     observed: ComplexScalar,
     expected: ComplexScalar,
@@ -235,6 +269,37 @@ fn assert_complex_close(
         observed.imaginary,
         expected.imaginary
     );
+}
+
+#[test]
+fn exact_identity_query_short_circuits_to_exact_identity_output() {
+    let input = exact_identity_query_input();
+
+    let result =
+        solve_exponential_affine_transform(input).expect("identity query should solve exactly");
+
+    assert_eq!(
+        result.status,
+        ExponentialAffineTransformIntegrationStatus::Completed
+    );
+    assert_eq!(result.metadata.completed_step_count, 0);
+    assert_eq!(result.metadata.rhs_evaluation_count, 0);
+    assert_eq!(result.metadata.news_intensity, input.news_intensity);
+
+    let output = result
+        .output
+        .expect("identity query should produce an exact output");
+    assert_eq!(output.c_at_delta, ComplexScalar::new(0.0, 0.0));
+    assert_eq!(
+        output.d_at_delta,
+        ExponentialAffineTransformDVector::new(
+            ComplexScalar::new(0.0, 0.0),
+            ComplexScalar::new(0.0, 0.0),
+            ComplexScalar::new(0.0, 0.0),
+            ComplexScalar::new(0.0, 0.0),
+        )
+    );
+    assert_eq!(output.transform_value, ComplexScalar::new(1.0, 0.0));
 }
 
 #[test]
@@ -943,6 +1008,41 @@ fn solver_blowup_detection_terminates_without_output() {
         "non-finite-state guard marker should use NaN d_dot_r sentinel"
     );
     assert_eq!(solve_result.metadata.rhs_evaluation_count, 1);
+}
+
+#[test]
+fn solver_transform_value_overflow_terminates_without_output() {
+    let transform_input = transform_value_overflow_fixture_input();
+    let solver_settings = ExponentialAffineTransformSolverSettings::try_new(
+        ExponentialAffineTransformIntegratorMethod::FourthOrderRungeKutta,
+        8,
+    )
+    .expect("overflow settings should construct");
+
+    let solve_result =
+        solve_exponential_affine_transform_with_settings(transform_input, solver_settings)
+            .expect("overflow run should return guarded termination result");
+    assert_eq!(
+        solve_result.status,
+        ExponentialAffineTransformIntegrationStatus::BlowupTerminated
+    );
+    assert!(solve_result.output.is_none());
+
+    let guard_failure = solve_result
+        .metadata
+        .guard_failure
+        .expect("overflow run should include guard failure metadata");
+    assert_eq!(
+        guard_failure.code,
+        ExponentialAffineTransformGuardFailureCode::TransformValueOverflow
+    );
+    assert_eq!(
+        guard_failure.schema_version,
+        EXPONENTIAL_AFFINE_TRANSFORM_GUARD_FAILURE_SCHEMA_VERSION
+    );
+    assert_eq!(guard_failure.step_index, 8);
+    assert!(guard_failure.d_dot_r.is_finite());
+    assert_eq!(solve_result.metadata.rhs_evaluation_count, 32);
 }
 
 #[test]

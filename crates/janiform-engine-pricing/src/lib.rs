@@ -8,8 +8,10 @@ mod forward_law;
 mod fourier;
 mod grids;
 mod implied_volatility;
+mod integration_geometry;
 mod interval_schedule;
 mod maturity_inputs;
+mod news_loading_projection;
 mod probability_projection;
 mod progress;
 mod progress_runtime;
@@ -32,7 +34,6 @@ pub use characteristic::{
     compose_total_return_characteristic_function_with_edge_mode, evolve_hawkes_state,
     load_hourly_factor_contract, project_hawkes_intensities_coarse_interval,
     solve_anchored_local_pricing_tilt, solve_exponential_affine_transform,
-    solve_exponential_affine_transform_with_settings,
 };
 pub use constants::{
     ANCHORED_PRICING_CONTINUATION_RECURSION_POLICY, ANCHORED_PRICING_DEVIATION_GRID_POLICY,
@@ -74,14 +75,8 @@ pub use contracts::{
     build_vanilla_option_pricing_run_result,
 };
 pub use fourier::{
-    FourierInversionContour, FourierInversionContourError, FourierInversionDiagnostics,
-    FourierInversionEngineSettings, FourierInversionEngineSettingsError,
-    FourierInversionIntegrationStabilityControls,
-    FourierInversionIntegrationStabilityControlsError, FourierInversionNumericQualityDiagnostics,
-    FourierInversionNumericQualityGate, FourierInversionNumericSettings,
-    FourierInversionNumericSettingsError, FourierInversionPricingError,
-    FourierInversionPricingResult, FourierInversionQuadratureRule,
-    price_vanilla_option_via_fourier_inversion,
+    FourierInversionDiagnostics, FourierInversionNumericQualityDiagnostics,
+    FourierInversionPricingError, FourierInversionPricingResult,
 };
 pub use grids::{
     VanillaOptionGridBatchPricingExecutionInput, VanillaOptionGridBatchPricingExecutionInputError,
@@ -114,6 +109,18 @@ pub use runner::{
     VanillaOptionPricingRunError, run_vanilla_option_pricing,
     run_vanilla_option_pricing_with_observer,
 };
+
+#[doc(hidden)]
+pub mod internal {
+    pub use super::fourier::{
+        FourierInversionContour, FourierInversionContourError, FourierInversionEngineSettings,
+        FourierInversionEngineSettingsError, FourierInversionIntegrationStabilityControls,
+        FourierInversionIntegrationStabilityControlsError, FourierInversionNumericQualityGate,
+        FourierInversionNumericSettings, FourierInversionNumericSettingsError,
+        FourierInversionPricingError, FourierInversionPricingResult,
+        FourierInversionQuadratureRule, price_vanilla_option_via_fourier_inversion,
+    };
+}
 
 #[cfg(test)]
 mod tests;

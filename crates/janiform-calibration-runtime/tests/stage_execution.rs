@@ -22,6 +22,7 @@ use support::shared::{
     build_seasonality_stage_run_spec, build_seasonality_stage_success_payload,
     build_solver_settings, calibration_stage_test_registry, calibration_stage_timestamp_fixture,
     hawkes_stage_candidate_fixture, hawkes_stage_constraint_violating_candidate_fixture,
+    joint_refinement_stage_option_pricing_input_fixture,
     normalize_joint_refinement_runtime_profile_for_reproducibility,
     return_components_stage_candidate_generation_fixture, run_hawkes_calibration_stage,
     run_joint_refinement_calibration_stage, run_return_components_calibration_stage,
@@ -549,6 +550,70 @@ fn joint_refinement_stage_execution_reports_infrastructure_failure_when_worker_i
             ));
         },
     );
+}
+
+#[test]
+fn joint_refinement_stage_execution_fails_when_option_pricing_input_is_invalid() {
+    let calendar_registry = calibration_stage_test_registry();
+    let seasonality_payload = build_seasonality_stage_success_payload();
+    let hawkes_payload = build_hawkes_stage_success_payload();
+    let return_components_payload = run_return_components_calibration_stage(
+        &build_run_contract_with_mode_and_resume(
+            "run-joint-stage-invalid-option-pricing",
+            CalibrationExecutionMode::Memory,
+            None,
+        )
+        .run_spec,
+        &calendar_registry,
+        ReturnComponentsStageExecutionInput {
+            activity_input: ReturnComponentsStageActivityInput::InMemoryOutput {
+                payload: hawkes_payload.clone(),
+            },
+            candidate_generation_input: return_components_stage_candidate_generation_fixture(),
+        },
+    )
+    .fitted_stage_payload
+    .expect("return-components fixture should produce fitted payload");
+
+    let mut option_pricing_input = joint_refinement_stage_option_pricing_input_fixture();
+    option_pricing_input
+        .current_state_estimation_input
+        .observed_spot = 0.0;
+
+    let report = run_joint_refinement_calibration_stage(
+        &joint_refinement_run_spec_with_cpu_count(CalibrationExecutionMode::Memory, 1),
+        &calendar_registry,
+        JointRefinementStageExecutionInput {
+            seasonality_factors_input: JointRefinementStageSeasonalityFactorsInput {
+                intraday_minutes_per_bin: seasonality_payload.intraday_minutes_per_bin,
+                intraday_factor_by_bin: seasonality_payload.intraday_factor_by_bin,
+                day_of_week_factor: seasonality_payload.day_of_week_factor,
+                day_of_year_factor: seasonality_payload.day_of_year_factor,
+                timestamp_utc_nanos: seasonality_payload.timestamp_utc_nanos,
+                normalized_combined_factor_by_event: seasonality_payload
+                    .normalized_combined_factor_by_event,
+            },
+            hawkes_input: JointRefinementStageHawkesInput::InMemoryOutput {
+                payload: hawkes_payload,
+            },
+            return_components_input: JointRefinementStageReturnComponentsInput::InMemoryOutput {
+                payload: return_components_payload,
+            },
+            mean_reversion_input: JointRefinementStageMeanReversionInput::InMemoryOutput {
+                payload: build_mean_reversion_stage_success_payload(),
+            },
+            candidate_generation_input: return_components_stage_candidate_generation_fixture(),
+            option_pricing_input: Some(option_pricing_input),
+        },
+    );
+
+    assert_eq!(report.status, CalibrationStageExecutionStatus::Failure);
+    assert!(matches!(
+        report.failure,
+        Some(JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
+            ref error_message,
+        }) if error_message.contains("strictly positive observed spot")
+    ));
 }
 
 #[test]

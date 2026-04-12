@@ -364,7 +364,7 @@ def prepare_model_grid_batch_pricing_native_input(
     boundary_state: Optional[HawkesExcitationState],
     include_transform_diagnostics: bool,
     include_integration_quality_diagnostics: bool,
-    pricing_interval_schedule_policy: Optional[PricingIntervalSchedulePolicy],
+    pricing_interval_schedule_policy: Optional[PricingIntervalSchedulePolicy] = None,
     cpu_count: Optional[int],
 ) -> dict[str, Any]:
     resolved_grid_maturity_inputs = tuple(
@@ -444,7 +444,7 @@ def prepare_model_surface_pricing_native_input(
     boundary_state: Optional[HawkesExcitationState],
     include_transform_diagnostics: bool,
     include_integration_quality_diagnostics: bool,
-    pricing_interval_schedule_policy: Optional[PricingIntervalSchedulePolicy],
+    pricing_interval_schedule_policy: Optional[PricingIntervalSchedulePolicy] = None,
     cpu_count: Optional[int],
 ) -> dict[str, Any]:
     resolved_surface_maturity_inputs = resolve_pricing_maturity_axis(

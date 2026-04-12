@@ -16,9 +16,11 @@ _CALIBRATION_TOTAL_PROGRESS_STAGE_WEIGHT_POLICY_V1: dict[str, float] = {
 _CALIBRATION_TOTAL_PROGRESS_COMPLETION_RESERVE_V1: float = 0.01
 
 _CALIBRATION_JOINT_REFINEMENT_PROGRESS_PHASE_WEIGHT_POLICY_V1: dict[str, float] = {
-    "restart_optimization": 0.90,
-    "coarse_consistency_evaluation": 0.05,
-    "final_seed_evaluation": 0.03,
+    "baseline_local_evaluation": 0.04,
+    "baseline_final_evaluation": 0.08,
+    "restart_optimization": 0.80,
+    "coarse_consistency_evaluation": 0.04,
+    "final_seed_evaluation": 0.02,
     "final_assembly": 0.02,
 }
 

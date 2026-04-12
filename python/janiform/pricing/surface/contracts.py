@@ -20,7 +20,6 @@ from .common import (
 from ..contracts import (
     PricingIntervalSchedule,
     AnchoredVanillaOptionPricingBoundaryInput,
-    FourierInversionEngineSettings,
     VanillaOptionImpliedVolatilityInversionStatus,
     VanillaOptionPayoffConfiguration,
     VanillaOptionPayoffType,
@@ -310,8 +309,7 @@ class VanillaOptionSurfacePricingRequest(ContractModel):
     payoff: VanillaOptionPayoffConfiguration
     boundary_input: AnchoredVanillaOptionPricingBoundaryInput
     model_parameters: VanillaOptionPricingModelParameters
-    interval_delta: float = DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA
-    fourier_inversion_settings: Optional[FourierInversionEngineSettings] = None
+    interval_delta: float
 
     def __post_init__(self) -> None:
         require_positive_finite_scalar(
@@ -341,15 +339,6 @@ class VanillaOptionSurfacePricingRequest(ContractModel):
                 "must be a VanillaOptionPricingModelParameters",
             )
 
-        if (
-            self.fourier_inversion_settings is not None
-            and not isinstance(self.fourier_inversion_settings, FourierInversionEngineSettings)
-        ):
-            raise _pricing_error(
-                "fourier_inversion_settings",
-                "must be a FourierInversionEngineSettings when provided",
-            )
-
         request_interval_duration_nanos = hours_to_exact_nanoseconds(self.interval_delta)
         boundary_interval_duration_nanos = hours_to_exact_nanoseconds(
             self.boundary_input.interval_delta
@@ -369,17 +358,6 @@ class VanillaOptionSurfacePricingRequest(ContractModel):
     ) -> VanillaOptionSurfacePricingRequest:
         if not isinstance(raw_payload, dict):
             raise _pricing_error("vanilla_option_surface_pricing_request", "must be an object")
-
-        interval_delta = (
-            require_positive_finite_number(
-                raw_payload,
-                "interval_delta",
-                "interval_delta",
-                PRICING_ERROR_FACTORY,
-            )
-            if "interval_delta" in raw_payload
-            else DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA
-        )
 
         try:
             return VanillaOptionSurfacePricingRequest(
@@ -419,20 +397,11 @@ class VanillaOptionSurfacePricingRequest(ContractModel):
                     ),
                     field_path="model_parameters",
                 ),
-                interval_delta=interval_delta,
-                fourier_inversion_settings=(
-                    FourierInversionEngineSettings.from_mapping(
-                        require_mapping(
-                            raw_payload,
-                            "fourier_inversion_settings",
-                            "fourier_inversion_settings",
-                            PRICING_ERROR_FACTORY,
-                        ),
-                        field_path="fourier_inversion_settings",
-                    )
-                    if "fourier_inversion_settings" in raw_payload
-                    and raw_payload["fourier_inversion_settings"] is not None
-                    else None
+                interval_delta=require_positive_finite_number(
+                    raw_payload,
+                    "interval_delta",
+                    "interval_delta",
+                    PRICING_ERROR_FACTORY,
                 ),
             )
         except JaniformValidationError as e:

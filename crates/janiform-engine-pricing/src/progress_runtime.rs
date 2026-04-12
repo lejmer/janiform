@@ -18,6 +18,10 @@ impl PricingProgressReporter {
         Self { state: None }
     }
 
+    pub(crate) fn is_enabled(&self) -> bool {
+        self.state.is_some()
+    }
+
     pub(crate) fn shared() -> Self {
         Self {
             state: Some(Arc::new(PricingProgressState::new())),

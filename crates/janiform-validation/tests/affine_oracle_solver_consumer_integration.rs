@@ -9,7 +9,6 @@ use janiform_engine_pricing::{
     VanillaOptionPayoffConfiguration, VanillaOptionPayoffType, VanillaOptionPricingMarketInputs,
     VanillaOptionPricingModelParameters, VanillaOptionPricingRequest,
     build_pricing_transform_input, solve_exponential_affine_transform,
-    solve_exponential_affine_transform_with_settings,
 };
 use janiform_engine_risk::{
     solve_exponential_affine_transform_for_risk_sampling,
@@ -32,8 +31,13 @@ use janiform_model_kernels::news::{
 #[test]
 fn solver_api_contract_is_compatible_across_pricing_and_risk_consumers() {
     let transform_input = build_transform_input(1.0);
+    let solver_settings = ExponentialAffineTransformSolverSettings::try_new(
+        ExponentialAffineTransformIntegratorMethod::FourthOrderRungeKutta,
+        64,
+    )
+    .expect("pricing integration settings should construct");
 
-    let pricing_result = solve_exponential_affine_transform(transform_input)
+    let pricing_result = solve_exponential_affine_transform(transform_input, solver_settings)
         .expect("pricing consumer solve should succeed");
     let risk_result = solve_exponential_affine_transform_for_risk_sampling(transform_input)
         .expect("risk consumer solve should succeed");
@@ -58,9 +62,8 @@ fn pricing_consumer_calls_shared_solver_entrypoint() {
     )
     .expect("pricing integration settings should construct");
 
-    let pricing_result =
-        solve_exponential_affine_transform_with_settings(transform_input, solver_settings)
-            .expect("pricing solve with explicit settings should succeed");
+    let pricing_result = solve_exponential_affine_transform(transform_input, solver_settings)
+        .expect("pricing solve with explicit settings should succeed");
     let shared_result = solve_exponential_affine_transform_with_optional_settings(
         transform_input,
         Some(solver_settings),
@@ -162,10 +165,24 @@ fn pricing_pipeline_propagates_interval_delta_to_solver_input() {
     );
     assert_eq!(non_hourly_transform_input.delta, 0.5);
 
-    let hourly_result = solve_exponential_affine_transform(hourly_transform_input)
-        .expect("hourly pricing solve should succeed");
-    let non_hourly_result = solve_exponential_affine_transform(non_hourly_transform_input)
-        .expect("non-hourly pricing solve should succeed");
+    let hourly_result = solve_exponential_affine_transform(
+        hourly_transform_input,
+        ExponentialAffineTransformSolverSettings::try_new(
+            ExponentialAffineTransformIntegratorMethod::FourthOrderRungeKutta,
+            64,
+        )
+        .expect("hourly solver settings should construct"),
+    )
+    .expect("hourly pricing solve should succeed");
+    let non_hourly_result = solve_exponential_affine_transform(
+        non_hourly_transform_input,
+        ExponentialAffineTransformSolverSettings::try_new(
+            ExponentialAffineTransformIntegratorMethod::FourthOrderRungeKutta,
+            64,
+        )
+        .expect("non-hourly solver settings should construct"),
+    )
+    .expect("non-hourly pricing solve should succeed");
 
     let hourly_output = hourly_result
         .output
@@ -284,7 +301,7 @@ fn build_pricing_request(interval_delta: f64) -> VanillaOptionPricingRequest {
     )
     .expect("pricing fixture model parameters should construct");
 
-    VanillaOptionPricingRequest::try_new_with_interval_delta(
+    VanillaOptionPricingRequest::try_new(
         VanillaOptionPricingMarketInputs::try_new_single_node(101.0, 100.0, 0.5, 0.02, 0.01)
             .expect("pricing fixture market inputs should construct"),
         VanillaOptionPayoffConfiguration {

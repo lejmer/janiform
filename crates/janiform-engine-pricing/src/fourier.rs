@@ -10,20 +10,19 @@ use janiform_foundations::complex_math::complex_multiply;
 use janiform_foundations::numeric::validate_positive_number;
 
 use super::constants::{
-    DEFAULT_FOURIER_INVERSION_CONVERGENCE_ABSOLUTE_TOLERANCE,
-    DEFAULT_FOURIER_INVERSION_CONVERGENCE_RELATIVE_TOLERANCE,
-    DEFAULT_FOURIER_INVERSION_DAMPING_FACTOR, DEFAULT_FOURIER_INVERSION_STEP_COUNT,
-    DEFAULT_FOURIER_INVERSION_TERMINAL_INTEGRAND_ABSOLUTE_TOLERANCE,
-    DEFAULT_FOURIER_INVERSION_TERMINAL_INTEGRAND_RATIO_TOLERANCE,
-    DEFAULT_FOURIER_INVERSION_UPPER_INTEGRATION_BOUND, FOURIER_INVERSION_CONTOUR_POLICY,
-    FOURIER_INVERSION_CONVERGENCE_CHECK_POLICY, FOURIER_INVERSION_DIAGNOSTICS_SCHEMA_VERSION,
-    FOURIER_INVERSION_ENGINE_POLICY, FOURIER_INVERSION_INTEGRATION_STABILITY_POLICY,
-    FOURIER_INVERSION_NUMERIC_QUALITY_GATE_POLICY, FOURIER_INVERSION_NUMERIC_SETTINGS_POLICY,
-    FOURIER_INVERSION_TRUNCATION_CHECK_POLICY, FOURIER_NON_NEGATIVE_PRICE_CLAMP_TOLERANCE,
+    FOURIER_INVERSION_CONTOUR_POLICY, FOURIER_INVERSION_CONVERGENCE_CHECK_POLICY,
+    FOURIER_INVERSION_DIAGNOSTICS_SCHEMA_VERSION, FOURIER_INVERSION_ENGINE_POLICY,
+    FOURIER_INVERSION_INTEGRATION_STABILITY_POLICY, FOURIER_INVERSION_NUMERIC_QUALITY_GATE_POLICY,
+    FOURIER_INVERSION_NUMERIC_SETTINGS_POLICY, FOURIER_INVERSION_TRUNCATION_CHECK_POLICY,
+    FOURIER_NON_NEGATIVE_PRICE_CLAMP_TOLERANCE, INTERNAL_DIRECT_FOURIER_NUMERICS_SELECTION_POLICY,
 };
 use super::contracts::{
     VanillaOptionPayoffConfiguration, VanillaOptionPayoffType, VanillaOptionPricingMarketInputs,
     VanillaOptionPricingMarketInputsError,
+};
+use super::integration_geometry::{
+    estimate_asymptotic_tail_integral_error, initial_midpoint_upper_bound_from_phase_scale,
+    next_power_of_two_at_least,
 };
 use super::time_scaling::intraday_year_fraction;
 
@@ -69,12 +68,6 @@ impl FourierInversionContour {
 
     pub const fn policy() -> &'static str {
         FOURIER_INVERSION_CONTOUR_POLICY
-    }
-}
-
-impl Default for FourierInversionContour {
-    fn default() -> Self {
-        Self::new(DEFAULT_FOURIER_INVERSION_DAMPING_FACTOR)
     }
 }
 
@@ -154,16 +147,6 @@ impl FourierInversionNumericSettings {
 
     pub const fn policy() -> &'static str {
         FOURIER_INVERSION_NUMERIC_SETTINGS_POLICY
-    }
-}
-
-impl Default for FourierInversionNumericSettings {
-    fn default() -> Self {
-        Self::new(
-            DEFAULT_FOURIER_INVERSION_UPPER_INTEGRATION_BOUND,
-            DEFAULT_FOURIER_INVERSION_STEP_COUNT,
-            FourierInversionQuadratureRule::Midpoint,
-        )
     }
 }
 
@@ -284,18 +267,6 @@ impl FourierInversionIntegrationStabilityControls {
     }
 }
 
-impl Default for FourierInversionIntegrationStabilityControls {
-    fn default() -> Self {
-        Self::new(
-            DEFAULT_FOURIER_INVERSION_CONVERGENCE_ABSOLUTE_TOLERANCE,
-            DEFAULT_FOURIER_INVERSION_CONVERGENCE_RELATIVE_TOLERANCE,
-            DEFAULT_FOURIER_INVERSION_TERMINAL_INTEGRAND_ABSOLUTE_TOLERANCE,
-            DEFAULT_FOURIER_INVERSION_TERMINAL_INTEGRAND_RATIO_TOLERANCE,
-            FourierInversionNumericQualityGate::default(),
-        )
-    }
-}
-
 /// Validation errors for integration stability controls.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum FourierInversionIntegrationStabilityControlsError {
@@ -346,23 +317,6 @@ impl FourierInversionEngineSettings {
     pub const fn new(
         contour: FourierInversionContour,
         numeric_settings: FourierInversionNumericSettings,
-    ) -> Self {
-        Self::new_with_stability_controls(
-            contour,
-            numeric_settings,
-            FourierInversionIntegrationStabilityControls::new(
-                DEFAULT_FOURIER_INVERSION_CONVERGENCE_ABSOLUTE_TOLERANCE,
-                DEFAULT_FOURIER_INVERSION_CONVERGENCE_RELATIVE_TOLERANCE,
-                DEFAULT_FOURIER_INVERSION_TERMINAL_INTEGRAND_ABSOLUTE_TOLERANCE,
-                DEFAULT_FOURIER_INVERSION_TERMINAL_INTEGRAND_RATIO_TOLERANCE,
-                FourierInversionNumericQualityGate::DiagnosticsOnly,
-            ),
-        )
-    }
-
-    pub const fn new_with_stability_controls(
-        contour: FourierInversionContour,
-        numeric_settings: FourierInversionNumericSettings,
         stability_controls: FourierInversionIntegrationStabilityControls,
     ) -> Self {
         Self {
@@ -375,19 +329,9 @@ impl FourierInversionEngineSettings {
     pub fn try_new(
         contour: FourierInversionContour,
         numeric_settings: FourierInversionNumericSettings,
-    ) -> Result<Self, FourierInversionEngineSettingsError> {
-        let settings = Self::new(contour, numeric_settings);
-        settings.validate()?;
-        Ok(settings)
-    }
-
-    pub fn try_new_with_stability_controls(
-        contour: FourierInversionContour,
-        numeric_settings: FourierInversionNumericSettings,
         stability_controls: FourierInversionIntegrationStabilityControls,
     ) -> Result<Self, FourierInversionEngineSettingsError> {
-        let settings =
-            Self::new_with_stability_controls(contour, numeric_settings, stability_controls);
+        let settings = Self::new(contour, numeric_settings, stability_controls);
         settings.validate()?;
         Ok(settings)
     }
@@ -410,16 +354,6 @@ impl FourierInversionEngineSettings {
         FOURIER_INVERSION_ENGINE_POLICY
     }
 }
-
-impl Default for FourierInversionEngineSettings {
-    fn default() -> Self {
-        Self::new(
-            FourierInversionContour::default(),
-            FourierInversionNumericSettings::default(),
-        )
-    }
-}
-
 /// Validation errors for Fourier inversion engine settings.
 #[derive(Debug, Clone, PartialEq)]
 pub enum FourierInversionEngineSettingsError {
@@ -525,6 +459,9 @@ pub enum FourierInversionPricingError {
     InvalidSettings {
         source: FourierInversionEngineSettingsError,
     },
+    InternalSelectionFailure {
+        message: String,
+    },
     NonFiniteLogMoneyness {
         value: f64,
     },
@@ -574,6 +511,13 @@ impl Display for FourierInversionPricingError {
             }
             Self::InvalidSettings { source } => {
                 write!(formatter, "fourier settings are invalid: {source}")
+            }
+            Self::InternalSelectionFailure { message } => {
+                write!(
+                    formatter,
+                    "internal fourier numerics selection failed under policy `{}`: {message}",
+                    INTERNAL_DIRECT_FOURIER_NUMERICS_SELECTION_POLICY
+                )
             }
             Self::NonFiniteLogMoneyness { value } => {
                 write!(formatter, "log_moneyness must be finite, found {value}")
@@ -665,6 +609,67 @@ where
         settings,
         log_return_characteristic_function,
         None,
+    )
+}
+
+pub(crate) fn price_vanilla_option_via_fourier_inversion_with_internal_selection<
+    FCharacteristicFunction,
+>(
+    market_inputs: &VanillaOptionPricingMarketInputs,
+    payoff: VanillaOptionPayoffConfiguration,
+    log_return_characteristic_function: FCharacteristicFunction,
+    observer: Option<&mut dyn FnMut(FourierInversionProgress)>,
+) -> Result<FourierInversionPricingResult, FourierInversionPricingError>
+where
+    FCharacteristicFunction: Fn(ComplexScalar) -> ComplexScalar,
+{
+    market_inputs
+        .validate_single_node_shape()
+        .map_err(|source| FourierInversionPricingError::InvalidMarketInputs { source })?;
+
+    let strike = market_inputs
+        .single_strike()
+        .map_err(|source| FourierInversionPricingError::InvalidMarketInputs { source })?;
+    let maturity_interval = market_inputs
+        .single_maturity_interval()
+        .map_err(|source| FourierInversionPricingError::InvalidMarketInputs { source })?;
+    let log_moneyness = (strike / market_inputs.spot).ln();
+    if !log_moneyness.is_finite() {
+        return Err(FourierInversionPricingError::NonFiniteLogMoneyness {
+            value: log_moneyness,
+        });
+    }
+
+    let maturity_year_fraction = intraday_year_fraction(maturity_interval);
+    let discount_factor = (-market_inputs.risk_free_rate * maturity_year_fraction).exp();
+    if !discount_factor.is_finite() || discount_factor <= 0.0 {
+        return Err(FourierInversionPricingError::NonFiniteDiscountFactor {
+            value: discount_factor,
+        });
+    }
+    let dividend_discount_factor = (-market_inputs.dividend_yield * maturity_year_fraction).exp();
+    if !dividend_discount_factor.is_finite() || dividend_discount_factor <= 0.0 {
+        return Err(
+            FourierInversionPricingError::NonFiniteDividendDiscountFactor {
+                value: dividend_discount_factor,
+            },
+        );
+    }
+
+    let selected_settings = select_internal_fourier_inversion_settings(
+        market_inputs,
+        log_moneyness,
+        discount_factor,
+        dividend_discount_factor,
+        &log_return_characteristic_function,
+    )?;
+
+    price_vanilla_option_via_fourier_inversion_with_observer(
+        market_inputs,
+        payoff,
+        selected_settings,
+        log_return_characteristic_function,
+        observer,
     )
 }
 
@@ -760,6 +765,205 @@ where
     })
 }
 
+fn select_internal_fourier_inversion_settings<FCharacteristicFunction>(
+    market_inputs: &VanillaOptionPricingMarketInputs,
+    log_moneyness: f64,
+    discount_factor: f64,
+    dividend_discount_factor: f64,
+    log_return_characteristic_function: &FCharacteristicFunction,
+) -> Result<FourierInversionEngineSettings, FourierInversionPricingError>
+where
+    FCharacteristicFunction: Fn(ComplexScalar) -> ComplexScalar,
+{
+    let damping_factor =
+        select_internal_fourier_damping_factor(log_moneyness, log_return_characteristic_function)?;
+    let damping_multiplier = (-(damping_factor * log_moneyness)).exp();
+    if !damping_multiplier.is_finite() || damping_multiplier <= 0.0 {
+        return Err(FourierInversionPricingError::NonFiniteDampingMultiplier {
+            value: damping_multiplier,
+        });
+    }
+
+    let discounted_call_upper_bound = market_inputs.spot * dividend_discount_factor;
+    let absolute_price_budget = discounted_call_upper_bound * f64::EPSILON.cbrt();
+    let integral_budget =
+        absolute_price_budget * PI / (discount_factor * market_inputs.spot * damping_multiplier);
+    if !integral_budget.is_finite() || integral_budget <= 0.0 {
+        return Err(FourierInversionPricingError::InternalSelectionFailure {
+            message: format!(
+                "integral budget must be finite and strictly positive, found {integral_budget}"
+            ),
+        });
+    }
+
+    let mut integration_upper_bound =
+        initial_midpoint_upper_bound_from_phase_scale(log_moneyness.abs());
+    if !integration_upper_bound.is_finite() || integration_upper_bound <= 0.0 {
+        return Err(FourierInversionPricingError::InternalSelectionFailure {
+            message: format!(
+                "initial integration upper bound must be finite and strictly positive, found {integration_upper_bound}"
+            ),
+        });
+    }
+
+    let phase_resolution_count = (integration_upper_bound * log_moneyness.abs() / PI)
+        .ceil()
+        .max(2.0) as usize;
+    let origin_resolution_count = (integration_upper_bound / (damping_factor + 1.0))
+        .ceil()
+        .max(2.0) as usize;
+    let mut integration_step_count = next_power_of_two_at_least(
+        phase_resolution_count.max(origin_resolution_count),
+    )
+    .ok_or(FourierInversionPricingError::InternalSelectionFailure {
+        message: "failed to initialize dyadic Fourier step count".to_string(),
+    })?;
+
+    loop {
+        let coarse_resolution_statistics = evaluate_fourier_integral_statistics(
+            damping_factor,
+            FourierInversionQuadratureRule::Midpoint,
+            integration_upper_bound,
+            integration_step_count / 2,
+            log_moneyness,
+            log_return_characteristic_function,
+            0,
+            0,
+            &mut None,
+        )?;
+        let full_resolution_statistics = evaluate_fourier_integral_statistics(
+            damping_factor,
+            FourierInversionQuadratureRule::Midpoint,
+            integration_upper_bound,
+            integration_step_count,
+            log_moneyness,
+            log_return_characteristic_function,
+            0,
+            0,
+            &mut None,
+        )?;
+
+        let quadrature_error_estimate = (full_resolution_statistics.integral_estimate
+            - coarse_resolution_statistics.integral_estimate)
+            .abs()
+            / 3.0;
+        let tail_error_estimate = estimate_asymptotic_tail_integral_error(
+            full_resolution_statistics.penultimate_frequency,
+            full_resolution_statistics.penultimate_abs_integrand,
+            full_resolution_statistics.terminal_frequency,
+            full_resolution_statistics.terminal_abs_integrand,
+        );
+
+        if quadrature_error_estimate <= integral_budget && tail_error_estimate <= integral_budget {
+            let stability_controls =
+                derive_internal_stability_controls(full_resolution_statistics, integral_budget)?;
+
+            return FourierInversionEngineSettings::try_new(
+                FourierInversionContour::try_new(damping_factor).map_err(|source| {
+                    FourierInversionPricingError::InvalidSettings {
+                        source: FourierInversionEngineSettingsError::InvalidContour { source },
+                    }
+                })?,
+                FourierInversionNumericSettings::try_new(
+                    integration_upper_bound,
+                    integration_step_count,
+                    FourierInversionQuadratureRule::Midpoint,
+                )
+                .map_err(|source| {
+                    FourierInversionPricingError::InvalidSettings {
+                        source: FourierInversionEngineSettingsError::InvalidNumericSettings {
+                            source,
+                        },
+                    }
+                })?,
+                stability_controls,
+            )
+            .map_err(|source| FourierInversionPricingError::InvalidSettings { source });
+        }
+
+        if quadrature_error_estimate > integral_budget {
+            integration_step_count = integration_step_count.checked_mul(2).ok_or(
+                FourierInversionPricingError::InternalSelectionFailure {
+                    message: "Fourier step count overflowed during dyadic refinement".to_string(),
+                },
+            )?;
+            continue;
+        }
+
+        integration_upper_bound *= 2.0;
+        if !integration_upper_bound.is_finite() || integration_upper_bound <= 0.0 {
+            return Err(FourierInversionPricingError::InternalSelectionFailure {
+                message: format!(
+                    "integration upper bound overflowed during dyadic tail expansion, found {integration_upper_bound}"
+                ),
+            });
+        }
+        integration_step_count = integration_step_count.checked_mul(2).ok_or(
+            FourierInversionPricingError::InternalSelectionFailure {
+                message: "Fourier step count overflowed during tail expansion".to_string(),
+            },
+        )?;
+    }
+}
+
+fn select_internal_fourier_damping_factor<FCharacteristicFunction>(
+    log_moneyness: f64,
+    log_return_characteristic_function: &FCharacteristicFunction,
+) -> Result<f64, FourierInversionPricingError>
+where
+    FCharacteristicFunction: Fn(ComplexScalar) -> ComplexScalar,
+{
+    let mut damping_factor = 1.0_f64;
+
+    loop {
+        let contour_argument = ComplexScalar::new(0.0, -(damping_factor + 1.0));
+        let characteristic_function_value = log_return_characteristic_function(contour_argument);
+        let damping_multiplier = (-(damping_factor * log_moneyness)).exp();
+
+        if characteristic_function_value.is_finite()
+            && damping_multiplier.is_finite()
+            && damping_multiplier > 0.0
+        {
+            return Ok(damping_factor);
+        }
+
+        let refined_damping_factor = damping_factor / 2.0;
+        if refined_damping_factor == damping_factor || refined_damping_factor <= 0.0 {
+            return Err(FourierInversionPricingError::InternalSelectionFailure {
+                message: "failed to find a finite dyadic damping factor".to_string(),
+            });
+        }
+
+        damping_factor = refined_damping_factor;
+    }
+}
+
+fn derive_internal_stability_controls(
+    statistics: FourierIntegralStatistics,
+    integral_budget: f64,
+) -> Result<FourierInversionIntegrationStabilityControls, FourierInversionPricingError> {
+    let convergence_relative_tolerance = f64::EPSILON.cbrt();
+    let terminal_integrand_absolute_tolerance =
+        integral_budget / statistics.integration_interval_width;
+    let terminal_integrand_ratio_tolerance = if statistics.max_abs_integrand > 0.0 {
+        (terminal_integrand_absolute_tolerance / statistics.max_abs_integrand)
+            .max(f64::MIN_POSITIVE)
+    } else {
+        f64::MIN_POSITIVE
+    };
+
+    FourierInversionIntegrationStabilityControls::try_new(
+        integral_budget,
+        convergence_relative_tolerance,
+        terminal_integrand_absolute_tolerance,
+        terminal_integrand_ratio_tolerance,
+        FourierInversionNumericQualityGate::DiagnosticsOnly,
+    )
+    .map_err(|source| FourierInversionPricingError::InvalidSettings {
+        source: FourierInversionEngineSettingsError::InvalidStabilityControls { source },
+    })
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct FourierDiscountedCallIntegrationReport {
     discounted_call_price: f64,
@@ -779,6 +983,9 @@ struct FourierIntegralStatistics {
     integral_estimate: f64,
     absolute_integral_estimate: f64,
     max_abs_integrand: f64,
+    penultimate_frequency: f64,
+    penultimate_abs_integrand: f64,
+    terminal_frequency: f64,
     terminal_abs_integrand: f64,
 }
 
@@ -876,6 +1083,9 @@ where
     let mut weighted_integrand_sum: f64 = 0.0;
     let mut weighted_absolute_integrand_sum: f64 = 0.0;
     let mut max_abs_integrand: f64 = 0.0;
+    let mut penultimate_frequency: f64 = 0.0;
+    let mut penultimate_abs_integrand: f64 = 0.0;
+    let mut terminal_frequency: f64 = 0.0;
     let mut terminal_abs_integrand: f64 = 0.0;
     let mut integrand_evaluation_count = 0usize;
 
@@ -899,6 +1109,9 @@ where
                 let absolute_integrand_value = integrand_value.abs();
                 weighted_absolute_integrand_sum += absolute_integrand_value;
                 max_abs_integrand = max_abs_integrand.max(absolute_integrand_value);
+                penultimate_frequency = terminal_frequency;
+                penultimate_abs_integrand = terminal_abs_integrand;
+                terminal_frequency = frequency;
                 terminal_abs_integrand = absolute_integrand_value;
                 integrand_evaluation_count += 1;
             }
@@ -928,6 +1141,9 @@ where
                 let absolute_integrand_value = integrand_value.abs();
                 weighted_absolute_integrand_sum += integration_weight * absolute_integrand_value;
                 max_abs_integrand = max_abs_integrand.max(absolute_integrand_value);
+                penultimate_frequency = terminal_frequency;
+                penultimate_abs_integrand = terminal_abs_integrand;
+                terminal_frequency = frequency;
                 terminal_abs_integrand = absolute_integrand_value;
                 integrand_evaluation_count += 1;
             }
@@ -954,6 +1170,9 @@ where
         integral_estimate,
         absolute_integral_estimate,
         max_abs_integrand,
+        penultimate_frequency,
+        penultimate_abs_integrand,
+        terminal_frequency,
         terminal_abs_integrand,
     })
 }
@@ -1249,7 +1468,6 @@ impl<'de> Deserialize<'de> for FourierInversionIntegrationStabilityControls {
 struct FourierInversionEngineSettingsPayload {
     contour: FourierInversionContour,
     numeric_settings: FourierInversionNumericSettings,
-    #[serde(default)]
     stability_controls: FourierInversionIntegrationStabilityControls,
 }
 
@@ -1259,7 +1477,7 @@ impl<'de> Deserialize<'de> for FourierInversionEngineSettings {
         D: serde::Deserializer<'de>,
     {
         let payload = FourierInversionEngineSettingsPayload::deserialize(deserializer)?;
-        Self::try_new_with_stability_controls(
+        Self::try_new(
             payload.contour,
             payload.numeric_settings,
             payload.stability_controls,

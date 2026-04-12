@@ -1,11 +1,14 @@
+use janiform::hourly_factors::{
+    HourlyFactorContractDiagnostics, HourlyFactorContractOutput,
+    HourlyFactorMaterializationMetadata,
+};
 use janiform::pricing::{
-    AnchoredVanillaOptionPricingBoundaryInput, FourierInversionEngineSettings,
-    HighLevelPricingMaturityResolution, HighLevelPricingMaturityResolutionRequest,
-    PricingIntervalSchedule, PricingProgressEvent, VanillaOptionGridBatchPricingExecutionInput,
-    VanillaOptionGridBatchPricingRequest, VanillaOptionPricingExecutionInput,
-    VanillaOptionPricingModelParameters, VanillaOptionPricingOptionalOutputSelection,
-    VanillaOptionPricingRequest, VanillaOptionSurfacePricingExecutionInput,
-    VanillaOptionSurfacePricingRequest,
+    AnchoredVanillaOptionPricingBoundaryInput, HighLevelPricingMaturityResolution,
+    HighLevelPricingMaturityResolutionRequest, PricingIntervalSchedule, PricingProgressEvent,
+    VanillaOptionGridBatchPricingExecutionInput, VanillaOptionGridBatchPricingRequest,
+    VanillaOptionPricingExecutionInput, VanillaOptionPricingModelParameters,
+    VanillaOptionPricingOptionalOutputSelection, VanillaOptionPricingRequest,
+    VanillaOptionSurfacePricingExecutionInput, VanillaOptionSurfacePricingRequest,
     materialize_schedule_interval_factors,
     resolve_high_level_pricing_maturity_inputs as resolve_high_level_pricing_maturity_inputs_core,
     run_vanilla_option_grid_batch_pricing as run_vanilla_option_grid_batch_pricing_core,
@@ -13,10 +16,6 @@ use janiform::pricing::{
     run_vanilla_option_pricing as run_vanilla_option_pricing_core,
     run_vanilla_option_surface_pricing as run_vanilla_option_surface_pricing_core,
     run_vanilla_option_surface_pricing_with_observer as run_vanilla_option_surface_pricing_core_with_observer,
-};
-use janiform::hourly_factors::{
-    HourlyFactorContractDiagnostics, HourlyFactorContractOutput,
-    HourlyFactorMaterializationMetadata,
 };
 use pyo3::prelude::{Bound, Py, PyResult, Python};
 use pyo3::types::PyAny;
@@ -53,7 +52,6 @@ struct PythonVanillaOptionGridBatchPricingExecutionInputPayload {
     model_parameters: VanillaOptionPricingModelParameters,
     runtime_interval_schedule: PricingIntervalSchedule,
     interval_delta: f64,
-    fourier_inversion_settings: Option<FourierInversionEngineSettings>,
     hourly_factor_contract: PythonHourlyFactorContractPayload,
     #[serde(default)]
     optional_output_selection: VanillaOptionPricingOptionalOutputSelection,
@@ -68,7 +66,6 @@ struct PythonVanillaOptionSurfacePricingExecutionInputPayload {
     model_parameters: VanillaOptionPricingModelParameters,
     runtime_interval_schedule: PricingIntervalSchedule,
     interval_delta: f64,
-    fourier_inversion_settings: Option<FourierInversionEngineSettings>,
     hourly_factor_contract: PythonHourlyFactorContractPayload,
     #[serde(default)]
     optional_output_selection: VanillaOptionPricingOptionalOutputSelection,
@@ -183,12 +180,11 @@ fn run_vanilla_option_pricing(
     let hourly_factor_contract =
         hourly_factor_contract_output_from_payload(execution_input.hourly_factor_contract);
 
-
     let interval_factors = materialize_schedule_interval_factors(
         &execution_input.runtime_interval_schedule,
         &hourly_factor_contract,
     )
-        .map_err(|source| PricingExecutionError::new_err(source.to_string()))?;
+    .map_err(|source| PricingExecutionError::new_err(source.to_string()))?;
 
     let execution_input = VanillaOptionPricingExecutionInput::try_new(
         execution_input.request,
@@ -217,12 +213,11 @@ fn run_vanilla_option_grid_batch_pricing(
     execution_input: &Bound<'_, PyAny>,
 ) -> PyResult<Py<PyAny>> {
     let execution_input: PythonVanillaOptionGridBatchPricingExecutionInputPayload =
-        serde_json::from_value(py_any_to_json_value(execution_input)?)
-    .map_err(|source| {
-        PricingExecutionError::new_err(format!(
-            "failed to deserialize vanilla option grid batch pricing execution input: {source}"
-        ))
-    })?;
+        serde_json::from_value(py_any_to_json_value(execution_input)?).map_err(|source| {
+            PricingExecutionError::new_err(format!(
+                "failed to deserialize vanilla option grid batch pricing execution input: {source}"
+            ))
+        })?;
 
     let hourly_factor_contract =
         hourly_factor_contract_output_from_payload(execution_input.hourly_factor_contract);
@@ -239,7 +234,6 @@ fn run_vanilla_option_grid_batch_pricing(
         model_parameters: execution_input.model_parameters,
         runtime_interval_schedule: execution_input.runtime_interval_schedule,
         interval_delta: execution_input.interval_delta,
-        fourier_inversion_settings: execution_input.fourier_inversion_settings,
         interval_factors,
         optional_output_selection: execution_input.optional_output_selection,
         cpu_count: execution_input.cpu_count,
@@ -289,7 +283,6 @@ fn run_vanilla_option_grid_batch_pricing_with_events(
         model_parameters: payload.model_parameters,
         runtime_interval_schedule: payload.runtime_interval_schedule,
         interval_delta: payload.interval_delta,
-        fourier_inversion_settings: payload.fourier_inversion_settings,
         interval_factors,
         optional_output_selection: payload.optional_output_selection,
         cpu_count: payload.cpu_count,
@@ -351,7 +344,6 @@ fn run_vanilla_option_surface_pricing(
         model_parameters: execution_input.model_parameters,
         runtime_interval_schedule: execution_input.runtime_interval_schedule,
         interval_delta: execution_input.interval_delta,
-        fourier_inversion_settings: execution_input.fourier_inversion_settings,
         interval_factors,
         optional_output_selection: execution_input.optional_output_selection,
         cpu_count: execution_input.cpu_count,
@@ -401,7 +393,6 @@ fn run_vanilla_option_surface_pricing_with_events(
         model_parameters: payload.model_parameters,
         runtime_interval_schedule: payload.runtime_interval_schedule,
         interval_delta: payload.interval_delta,
-        fourier_inversion_settings: payload.fourier_inversion_settings,
         interval_factors,
         optional_output_selection: payload.optional_output_selection,
         cpu_count: payload.cpu_count,

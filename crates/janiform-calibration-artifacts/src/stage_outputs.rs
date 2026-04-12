@@ -149,9 +149,13 @@ pub struct JointRefinementStageRuntimeProfile {
     pub deterministic_cache_miss_count: usize,
     pub seed_summary_cache_hit_count: usize,
     pub seed_summary_cache_miss_count: usize,
+    pub option_pricing_cache_hit_count: usize,
+    pub option_pricing_cache_miss_count: usize,
+    pub option_pricing_run_count: usize,
     pub invalid_candidate_evaluation_count: usize,
     pub cumulative_deterministic_evaluation_millis: u64,
     pub cumulative_seed_summary_simulation_millis: u64,
+    pub cumulative_option_pricing_millis: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

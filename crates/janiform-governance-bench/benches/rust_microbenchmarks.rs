@@ -2,7 +2,7 @@ use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
 use janiform_affine_oracle::affine_oracle::{
     ExponentialAffineTransformIntegrationStatus, solve_exponential_affine_transform_with_settings,
 };
-use janiform_engine_pricing::price_vanilla_option_via_fourier_inversion;
+use janiform_engine_pricing::internal::price_vanilla_option_via_fourier_inversion;
 use janiform_engine_risk::sample_interval_statistics_batch_from_transform_slices;
 use janiform_engine_simulation::evolve_hawkes_state;
 use janiform_governance_bench::benchmarking::{

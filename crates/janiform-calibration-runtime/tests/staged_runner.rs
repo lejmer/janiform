@@ -16,18 +16,147 @@ use janiform_calibration_artifacts::{
 };
 use janiform_calibration_runtime::{
     CalibrationMemoryCheckpointStore, CalibrationStageExecutionStatus, CalibrationStagedRunFailure,
-    CalibrationStagedRunReport, CalibrationStagedRunStageReport, HawkesStageExecutionFailure,
+    CalibrationStagedRunObserverEvent, CalibrationStagedRunReport, CalibrationStagedRunStageReport,
+    HawkesStageExecutionFailure, JointRefinementStageProgressPhase,
     calibration_checkpoint_reference_for_stage, calibration_last_success_checkpoint_reference,
     run_staged_calibration_with_checkpointing,
+    run_staged_calibration_with_checkpointing_and_observer,
 };
 use support::shared::{
     BTreeSet, build_pre_joint_run_contract_with_mode_and_resume,
     build_run_contract_for_caller_surface, build_run_contract_with_mode_and_resume,
-    calibration_stage_test_registry, fs, hawkes_stage_constraint_violating_candidate_fixture, json,
+    calibration_stage_test_registry, fs, hawkes_stage_constraint_violating_candidate_fixture,
+    joint_refinement_stage_option_pricing_input_fixture, json,
     normalize_joint_refinement_runtime_profile_for_reproducibility,
     resolve_calibration_execution_mode_for_surface, staged_run_inputs,
     temporary_checkpoint_directory,
 };
+
+#[test]
+fn staged_runner_forwards_nested_option_pricing_progress_labels() {
+    let run_contract = build_run_contract_with_mode_and_resume(
+        "run-stage-progress-option-pricing",
+        CalibrationExecutionMode::Memory,
+        None,
+    );
+    let calendar_registry = calibration_stage_test_registry();
+    let mut checkpoint_store = CalibrationMemoryCheckpointStore::new();
+    let mut inputs = staged_run_inputs(true, true, true);
+    inputs.joint_refinement_option_pricing_input =
+        Some(joint_refinement_stage_option_pricing_input_fixture());
+    let mut observed_events = Vec::<CalibrationStagedRunObserverEvent>::new();
+
+    let report = run_staged_calibration_with_checkpointing_and_observer(
+        &run_contract,
+        &calendar_registry,
+        inputs,
+        Some(&mut checkpoint_store),
+        None,
+        Some(&mut |event| observed_events.push(event)),
+    );
+
+    assert_eq!(
+        report.status,
+        CalibrationStageExecutionStatus::Success,
+        "{report:#?}"
+    );
+
+    let baseline_local_option_pricing_labels = observed_events
+        .iter()
+        .filter_map(|event| match event {
+            CalibrationStagedRunObserverEvent::StageProgress {
+                stage,
+                progress_phase,
+                current_item_label,
+                ..
+            } if *stage == CalibrationStage::JointRefinement
+                && *progress_phase
+                    == JointRefinementStageProgressPhase::BaselineLocalEvaluation =>
+            {
+                current_item_label.as_deref()
+            }
+            _ => None,
+        })
+        .filter(|label| {
+            label.starts_with("strike ")
+                || label.starts_with("grid_batch ")
+                || label.starts_with("maturity ")
+                || label.starts_with("interval ")
+                || label.starts_with("transition_rows ")
+        })
+        .collect::<Vec<_>>();
+
+    assert!(
+        baseline_local_option_pricing_labels.is_empty(),
+        "expected baseline local evaluation to skip nested option-pricing progress labels, observed events were: {observed_events:#?}"
+    );
+
+    let baseline_final_cache_labels = observed_events
+        .iter()
+        .filter_map(|event| match event {
+            CalibrationStagedRunObserverEvent::StageProgress {
+                stage,
+                progress_phase,
+                current_item_label,
+                ..
+            } if *stage == CalibrationStage::JointRefinement
+                && *progress_phase
+                    == JointRefinementStageProgressPhase::BaselineFinalEvaluation =>
+            {
+                current_item_label.as_deref()
+            }
+            _ => None,
+        })
+        .filter(|label| {
+            *label == "option_pricing cache_lookup"
+                || *label == "option_pricing cache_hit"
+                || *label == "option_pricing cache_hit_resolved"
+                || *label == "option_pricing cache_hit_value"
+                || *label == "option_pricing cache_hit_error"
+                || *label == "option_pricing cache_miss"
+                || *label == "option_pricing resolved_ok"
+                || *label == "option_pricing resolved_error"
+        })
+        .collect::<Vec<_>>();
+
+    assert!(
+        !baseline_final_cache_labels.is_empty(),
+        "expected baseline final evaluation to expose cache-aware option-pricing labels, observed events were: {observed_events:#?}"
+    );
+
+    assert!(
+        baseline_final_cache_labels.contains(&"option_pricing cache_miss"),
+        "expected baseline final evaluation to perform the first option-pricing cache population, observed events were: {observed_events:#?}"
+    );
+    assert!(
+        !baseline_final_cache_labels.contains(&"option_pricing cache_hit_resolved"),
+        "expected baseline final evaluation to avoid cache-hit progress labels before any final-tier option pricing result was cached, observed events were: {observed_events:#?}"
+    );
+
+    let baseline_coarse_consistency_labels = observed_events
+        .iter()
+        .filter_map(|event| match event {
+            CalibrationStagedRunObserverEvent::StageProgress {
+                stage,
+                progress_phase,
+                current_item_label,
+                ..
+            } if *stage == CalibrationStage::JointRefinement
+                && *progress_phase
+                    == JointRefinementStageProgressPhase::CoarseConsistencyEvaluation =>
+            {
+                current_item_label.as_deref()
+            }
+            _ => None,
+        })
+        .filter(|label| *label == "baseline coarse_consistency")
+        .collect::<Vec<_>>();
+
+    assert!(
+        !baseline_coarse_consistency_labels.is_empty(),
+        "expected staged runner to expose baseline coarse-consistency progress labels, observed events were: {observed_events:#?}"
+    );
+}
 
 #[test]
 fn staged_runner_emits_checkpoint_metadata_with_deterministic_identifiers_in_memory_mode() {

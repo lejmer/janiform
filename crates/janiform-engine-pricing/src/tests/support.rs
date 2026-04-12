@@ -1,14 +1,21 @@
+use crate::fourier::{
+    FourierInversionContour, FourierInversionDiagnostics, FourierInversionEngineSettings,
+    FourierInversionIntegrationStabilityControls, FourierInversionNumericQualityGate,
+    FourierInversionNumericSettings, FourierInversionQuadratureRule,
+    price_vanilla_option_via_fourier_inversion,
+};
 use crate::{
-    AnchoredVanillaOptionPricingBoundaryInput, FourierInversionDiagnostics,
-    FourierInversionEngineSettings, PricingIntervalSchedule, PricingIntervalScheduleMetadata,
-    VanillaOptionPayoffConfiguration, VanillaOptionPayoffType, VanillaOptionPricingDiagnostics,
-    VanillaOptionPricingMarketInputs, VanillaOptionPricingModelParameters,
-    VanillaOptionPricingRequest, VanillaOptionPricingResponse, build_pricing_transform_input,
-    price_vanilla_option_via_fourier_inversion, solve_exponential_affine_transform,
+    AnchoredVanillaOptionPricingBoundaryInput, PricingIntervalSchedule,
+    PricingIntervalScheduleMetadata, VanillaOptionPayoffConfiguration, VanillaOptionPayoffType,
+    VanillaOptionPricingDiagnostics, VanillaOptionPricingMarketInputs,
+    VanillaOptionPricingModelParameters, VanillaOptionPricingRequest, VanillaOptionPricingResponse,
+    build_pricing_transform_input, solve_exponential_affine_transform,
 };
 use janiform_affine_oracle::affine_oracle::{
     ExponentialAffineTransformDVector, ExponentialAffineTransformIntegrationResult,
-    ExponentialAffineTransformNewsIntensityInput, ExponentialAffineTransformOutput,
+    ExponentialAffineTransformIntegratorMethod, ExponentialAffineTransformNewsIntensityInput,
+    ExponentialAffineTransformOutput, ExponentialAffineTransformSolverSettings,
+    ExponentialAffineTransformTelemetryMode,
 };
 use janiform_foundations::complex_math::ComplexScalar;
 use janiform_foundations::time::ONE_HOUR_NANOS;
@@ -43,8 +50,40 @@ pub(super) fn build_valid_vanilla_option_request() -> VanillaOptionPricingReques
             },
         ),
         valid_model_parameters(),
+        1.0,
     )
     .expect("request should construct")
+}
+
+pub(super) fn build_reference_fourier_inversion_settings() -> FourierInversionEngineSettings {
+    FourierInversionEngineSettings::try_new(
+        FourierInversionContour::try_new(1.5).expect("reference contour settings should construct"),
+        FourierInversionNumericSettings::try_new(
+            150.0,
+            4_096,
+            FourierInversionQuadratureRule::Midpoint,
+        )
+        .expect("reference numeric settings should construct"),
+        FourierInversionIntegrationStabilityControls::try_new(
+            1.0e-5,
+            1.0e-4,
+            5.0e-4,
+            1.0e-2,
+            FourierInversionNumericQualityGate::DiagnosticsOnly,
+        )
+        .expect("reference stability controls should construct"),
+    )
+    .expect("reference Fourier engine settings should construct")
+}
+
+pub(super) fn build_reference_affine_transform_solver_settings()
+-> ExponentialAffineTransformSolverSettings {
+    ExponentialAffineTransformSolverSettings::try_new(
+        ExponentialAffineTransformIntegratorMethod::FourthOrderRungeKutta,
+        64,
+    )
+    .expect("reference affine solver settings should construct")
+    .with_telemetry_mode(ExponentialAffineTransformTelemetryMode::Disabled)
 }
 
 pub(super) fn build_uniform_runtime_interval_schedule(
@@ -197,8 +236,11 @@ pub(super) fn build_reference_transform_diagnostics_source()
     )
     .expect("pricing transform input should construct");
 
-    solve_exponential_affine_transform(transform_input)
-        .expect("reference transform solve should succeed")
+    solve_exponential_affine_transform(
+        transform_input,
+        build_reference_affine_transform_solver_settings(),
+    )
+    .expect("reference transform solve should succeed")
 }
 
 pub(super) fn build_reference_integration_diagnostics_source(
@@ -209,7 +251,7 @@ pub(super) fn build_reference_integration_diagnostics_source(
         VanillaOptionPayoffConfiguration {
             payoff_type: VanillaOptionPayoffType::Call,
         },
-        FourierInversionEngineSettings::default(),
+        build_reference_fourier_inversion_settings(),
         |argument| black_scholes_log_return_characteristic_function(market_inputs, 0.2, argument),
     )
     .expect("reference Fourier pricing run should succeed");

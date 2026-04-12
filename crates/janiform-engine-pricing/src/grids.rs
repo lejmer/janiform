@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 
 use janiform_affine_oracle::affine_oracle::ExponentialAffineTransformIntegrationResult;
@@ -21,7 +21,7 @@ use super::forward_law::{
     ForwardLawScopeSolution, ForwardLawTerminalSnapshot, ForwardPricedStrike,
     price_terminal_snapshot_strikes, solve_forward_law_scope,
 };
-use super::fourier::{FourierInversionDiagnostics, FourierInversionEngineSettings};
+use super::fourier::FourierInversionDiagnostics;
 use super::implied_volatility::VanillaOptionImpliedVolatilityInversionStatus;
 use super::interval_schedule::PricingIntervalSchedule;
 use super::progress::PricingProgressEvent;
@@ -165,7 +165,6 @@ pub struct VanillaOptionGridBatchPricingExecutionInput {
     pub model_parameters: VanillaOptionPricingModelParameters,
     pub runtime_interval_schedule: PricingIntervalSchedule,
     pub interval_delta: f64,
-    pub fourier_inversion_settings: Option<FourierInversionEngineSettings>,
     pub interval_factors: Vec<VanillaOptionPricingIntervalFactors>,
     pub optional_output_selection: VanillaOptionPricingOptionalOutputSelection,
     pub cpu_count: Option<usize>,
@@ -228,14 +227,6 @@ impl VanillaOptionGridBatchPricingExecutionInput {
                 );
             }
         }
-        if let Some(settings) = self.fourier_inversion_settings {
-            settings.validate().map_err(|source| {
-                VanillaOptionGridBatchPricingExecutionInputError::InvalidFourierInversionSettings {
-                    source,
-                }
-            })?;
-        }
-
         for grid in &self.request.grids {
             for maturity_interval in &grid.maturity_intervals {
                 self.runtime_interval_schedule
@@ -272,9 +263,6 @@ pub enum VanillaOptionGridBatchPricingExecutionInputError {
     InvalidModelParameters {
         source: super::contracts::VanillaOptionPricingModelParametersError,
     },
-    InvalidFourierInversionSettings {
-        source: super::fourier::FourierInversionEngineSettingsError,
-    },
     InvalidIntervalFactors {
         source: super::runner::VanillaOptionPricingIntervalFactorsError,
     },
@@ -308,10 +296,6 @@ impl Display for VanillaOptionGridBatchPricingExecutionInputError {
             Self::InvalidModelParameters { source } => write!(
                 formatter,
                 "grid batch pricing model_parameters are invalid: {source}"
-            ),
-            Self::InvalidFourierInversionSettings { source } => write!(
-                formatter,
-                "grid batch pricing fourier_inversion_settings are invalid: {source}"
             ),
             Self::InvalidIntervalFactors { source } => write!(
                 formatter,
@@ -447,7 +431,6 @@ pub struct VanillaOptionSurfacePricingExecutionInput {
     pub model_parameters: VanillaOptionPricingModelParameters,
     pub runtime_interval_schedule: PricingIntervalSchedule,
     pub interval_delta: f64,
-    pub fourier_inversion_settings: Option<FourierInversionEngineSettings>,
     pub interval_factors: Vec<VanillaOptionPricingIntervalFactors>,
     pub optional_output_selection: VanillaOptionPricingOptionalOutputSelection,
     pub cpu_count: Option<usize>,
@@ -542,7 +525,6 @@ impl VanillaOptionSurfacePricingExecutionInput {
             model_parameters: self.model_parameters.clone(),
             runtime_interval_schedule: self.runtime_interval_schedule.clone(),
             interval_delta: self.interval_delta,
-            fourier_inversion_settings: self.fourier_inversion_settings,
             interval_factors: self.interval_factors.clone(),
             optional_output_selection: self.optional_output_selection,
             cpu_count: self.cpu_count,
@@ -652,6 +634,46 @@ fn run_grid_batch_body(
         Some(0),
     ));
 
+    if !progress_reporter.is_enabled()
+        && resolved_pricing_cpu_count(execution_input.cpu_count) > 1
+        && total_grids > 1
+    {
+        let grid_results = install_pricing_parallelism(pricing_thread_pool, || {
+            execution_input
+                .request
+                .grids
+                .par_iter()
+                .map(|grid| {
+                    run_homogeneous_scope(
+                        execution_input.request.spot,
+                        grid,
+                        execution_input.boundary_input.clone(),
+                        execution_input.model_parameters.clone(),
+                        &execution_input.runtime_interval_schedule,
+                        execution_input.interval_delta,
+                        execution_input.interval_factors.as_slice(),
+                        execution_input.optional_output_selection,
+                        driver_parameters,
+                        pricing_thread_pool,
+                        execution_input.cpu_count,
+                        progress_reporter,
+                    )
+                    .map_err(|message| {
+                        VanillaOptionGridBatchPricingRunError::NodePricingFailure { message }
+                    })
+                })
+                .collect::<Result<Vec<_>, _>>()
+        })?;
+
+        grids.extend(grid_results);
+        progress_reporter.emit(PricingProgressEvent::group_progress(
+            total_grids,
+            total_grids,
+            None,
+        ));
+        return Ok(());
+    }
+
     for (grid_index, grid) in execution_input.request.grids.iter().enumerate() {
         let grid_result = run_homogeneous_scope(
             execution_input.request.spot,
@@ -660,7 +682,6 @@ fn run_grid_batch_body(
             execution_input.model_parameters.clone(),
             &execution_input.runtime_interval_schedule,
             execution_input.interval_delta,
-            execution_input.fourier_inversion_settings,
             execution_input.interval_factors.as_slice(),
             execution_input.optional_output_selection,
             driver_parameters,
@@ -724,7 +745,6 @@ pub fn run_vanilla_option_surface_pricing_with_observer(
             model_parameters: execution_input.model_parameters,
             runtime_interval_schedule: execution_input.runtime_interval_schedule,
             interval_delta: execution_input.interval_delta,
-            fourier_inversion_settings: execution_input.fourier_inversion_settings,
             interval_factors: execution_input.interval_factors,
             optional_output_selection: execution_input.optional_output_selection,
             cpu_count: execution_input.cpu_count,
@@ -780,7 +800,6 @@ fn run_homogeneous_scope(
     model_parameters: VanillaOptionPricingModelParameters,
     runtime_interval_schedule: &PricingIntervalSchedule,
     interval_delta: f64,
-    fourier_inversion_settings: Option<FourierInversionEngineSettings>,
     interval_factors: &[VanillaOptionPricingIntervalFactors],
     optional_output_selection: VanillaOptionPricingOptionalOutputSelection,
     driver_parameters: NigBuySellDriverParameters,
@@ -800,7 +819,6 @@ fn run_homogeneous_scope(
         model_parameters.clone(),
         runtime_interval_schedule,
         interval_delta,
-        fourier_inversion_settings,
         interval_factors,
         driver_parameters,
         pricing_thread_pool,
@@ -809,43 +827,79 @@ fn run_homogeneous_scope(
         maturity_interval_counts.as_slice(),
     )?;
 
-    let mut result_builder = GroupResultBuilder::new(grid);
+    let rows = if !progress_reporter.is_enabled()
+        && resolved_pricing_cpu_count(cpu_count) > 1
+        && maturity_interval_counts.len() > 1
+    {
+        install_pricing_parallelism(pricing_thread_pool, || {
+            maturity_interval_counts
+                .par_iter()
+                .enumerate()
+                .map(|(maturity_index, maturity_interval_count)| {
+                    group_pricing_row_for_maturity(
+                        spot,
+                        grid,
+                        maturity_index,
+                        maturity_interval_count,
+                        &boundary_input,
+                        &model_parameters,
+                        runtime_interval_schedule,
+                        interval_delta,
+                        optional_output_selection,
+                        interval_factors,
+                        &forward_law_scope,
+                        pricing_thread_pool,
+                        cpu_count,
+                        progress_reporter,
+                    )
+                })
+                .collect::<Result<Vec<_>, _>>()
+        })?
+    } else {
+        let mut rows = Vec::with_capacity(maturity_interval_counts.len());
 
-    for (maturity_index, maturity_interval_count) in maturity_interval_counts.iter().enumerate() {
+        for (maturity_index, maturity_interval_count) in maturity_interval_counts.iter().enumerate()
+        {
+            progress_reporter.emit(PricingProgressEvent::maturity_progress(
+                maturity_index,
+                grid.maturity_intervals.len(),
+                Some(maturity_index),
+                grid.maturity_intervals.len(),
+            ));
+
+            rows.push(group_pricing_row_for_maturity(
+                spot,
+                grid,
+                maturity_index,
+                maturity_interval_count,
+                &boundary_input,
+                &model_parameters,
+                runtime_interval_schedule,
+                interval_delta,
+                optional_output_selection,
+                interval_factors,
+                &forward_law_scope,
+                pricing_thread_pool,
+                cpu_count,
+                progress_reporter,
+            )?);
+        }
+
         progress_reporter.emit(PricingProgressEvent::maturity_progress(
-            maturity_index,
             grid.maturity_intervals.len(),
-            Some(maturity_index),
+            grid.maturity_intervals.len(),
+            None,
             grid.maturity_intervals.len(),
         ));
 
-        let row = group_pricing_row_for_maturity(
-            spot,
-            grid,
-            maturity_index,
-            maturity_interval_count,
-            &boundary_input,
-            &model_parameters,
-            runtime_interval_schedule,
-            interval_delta,
-            fourier_inversion_settings,
-            optional_output_selection,
-            interval_factors,
-            &forward_law_scope,
-            pricing_thread_pool,
-            cpu_count,
-            progress_reporter,
-        )?;
+        rows
+    };
 
+    let mut result_builder = GroupResultBuilder::new(grid);
+
+    for row in rows {
         result_builder.push_row(row);
     }
-
-    progress_reporter.emit(PricingProgressEvent::maturity_progress(
-        grid.maturity_intervals.len(),
-        grid.maturity_intervals.len(),
-        None,
-        grid.maturity_intervals.len(),
-    ));
 
     result_builder.finish(grid, runtime_interval_schedule)
 }
@@ -1058,7 +1112,6 @@ fn prepare_forward_law_scope(
     model_parameters: VanillaOptionPricingModelParameters,
     runtime_interval_schedule: &PricingIntervalSchedule,
     interval_delta: f64,
-    fourier_inversion_settings: Option<FourierInversionEngineSettings>,
     interval_factors: &[VanillaOptionPricingIntervalFactors],
     driver_parameters: NigBuySellDriverParameters,
     pricing_thread_pool: Option<&rayon::ThreadPool>,
@@ -1087,7 +1140,6 @@ fn prepare_forward_law_scope(
                 boundary_input,
                 model_parameters,
                 interval_delta,
-                fourier_inversion_settings,
             )
             .map_err(|source| source.to_string())?,
         )
@@ -1139,7 +1191,6 @@ fn group_pricing_row_for_maturity(
     model_parameters: &VanillaOptionPricingModelParameters,
     runtime_interval_schedule: &PricingIntervalSchedule,
     interval_delta: f64,
-    fourier_inversion_settings: Option<FourierInversionEngineSettings>,
     optional_output_selection: VanillaOptionPricingOptionalOutputSelection,
     interval_factors: &[VanillaOptionPricingIntervalFactors],
     forward_law_scope: &ForwardLawScope,
@@ -1167,7 +1218,6 @@ fn group_pricing_row_for_maturity(
             model_parameters.clone(),
             runtime_interval_schedule,
             interval_delta,
-            fourier_inversion_settings,
             optional_output_selection,
             interval_factors[0],
             pricing_thread_pool,
@@ -1325,7 +1375,6 @@ fn price_direct_fourier_row(
     model_parameters: VanillaOptionPricingModelParameters,
     runtime_interval_schedule: &PricingIntervalSchedule,
     interval_delta: f64,
-    fourier_inversion_settings: Option<FourierInversionEngineSettings>,
     optional_output_selection: VanillaOptionPricingOptionalOutputSelection,
     interval_factor: VanillaOptionPricingIntervalFactors,
     pricing_thread_pool: Option<&rayon::ThreadPool>,
@@ -1336,7 +1385,7 @@ fn price_direct_fourier_row(
         VanillaOptionPricingOptionalOutputSelection::new(true, true, false);
 
     let solve_strike = |strike: f64| {
-        let mut request = VanillaOptionPricingRequest::new_with_interval_delta(
+        let request = VanillaOptionPricingRequest::new(
             VanillaOptionPricingMarketInputs::new_single_node(
                 spot,
                 strike,
@@ -1351,10 +1400,6 @@ fn price_direct_fourier_row(
             model_parameters.clone(),
             interval_delta,
         );
-
-        if let Some(settings) = fourier_inversion_settings {
-            request = request.with_fourier_inversion_settings(settings);
-        }
 
         let run_result = run_vanilla_option_pricing_with_observer(
             VanillaOptionPricingExecutionInput::new(
@@ -1547,9 +1592,8 @@ fn base_scope_request(
     boundary_input: AnchoredVanillaOptionPricingBoundaryInput,
     model_parameters: VanillaOptionPricingModelParameters,
     interval_delta: f64,
-    fourier_inversion_settings: Option<FourierInversionEngineSettings>,
 ) -> Result<VanillaOptionPricingRequest, super::contracts::VanillaOptionPricingRequestError> {
-    let mut request = VanillaOptionPricingRequest::try_new_with_interval_delta(
+    VanillaOptionPricingRequest::try_new(
         VanillaOptionPricingMarketInputs::try_new_single_node(
             spot,
             spot,
@@ -1562,13 +1606,7 @@ fn base_scope_request(
         boundary_input,
         model_parameters,
         interval_delta,
-    )?;
-
-    if let Some(settings) = fourier_inversion_settings {
-        request = request.with_fourier_inversion_settings(settings);
-    }
-
-    Ok(request)
+    )
 }
 
 fn validate_finite(

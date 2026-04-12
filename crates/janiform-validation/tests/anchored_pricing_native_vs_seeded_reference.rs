@@ -5,8 +5,8 @@ use std::fs;
 use chrono::{DateTime, Utc};
 use janiform_engine_pricing::{
     AnchoredPricingRecursionDiagnostics, AnchoredVanillaOptionPricingBoundaryInput,
-    PricingIntervalSchedule, PricingIntervalScheduleMetadata,
-    VanillaOptionPayoffConfiguration, VanillaOptionPayoffType, VanillaOptionPricingExecutionInput,
+    PricingIntervalSchedule, PricingIntervalScheduleMetadata, VanillaOptionPayoffConfiguration,
+    VanillaOptionPayoffType, VanillaOptionPricingExecutionInput,
     VanillaOptionPricingIntervalFactors, VanillaOptionPricingMarketInputs,
     VanillaOptionPricingModelParameters, VanillaOptionPricingOptionalOutputSelection,
     VanillaOptionPricingRequest, VanillaOptionPricingRunError, VanillaOptionPricingRunResult,
@@ -398,6 +398,7 @@ fn run_native_pricer_for_scenario(
             anchored_boundary_input_for_scenario(scenario)
                 .expect("anchored boundary input should construct"),
             pricing_model_parameters(),
+            1.0,
         )
         .expect("native pricing request should construct"),
         build_runtime_interval_schedule(),
@@ -419,8 +420,8 @@ fn build_runtime_interval_schedule() -> PricingIntervalSchedule {
             policy_id: "explicit_interval_end_timestamps_utc.v1".to_string(),
             derivation_policy: "anchored_pricing_native_vs_seeded_reference.synthetic_schedule.v1"
                 .to_string(),
-            factor_assignment_policy:
-                "overlap_weighted_resampling_from_hourly_source_buckets.v1".to_string(),
+            factor_assignment_policy: "overlap_weighted_resampling_from_hourly_source_buckets.v1"
+                .to_string(),
         },
         vec![SYNTHETIC_START_UTC_NANOS + ONE_HOUR_NANOS],
     )

@@ -185,6 +185,8 @@ pub struct JointRefinementStageExecutionInput {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum JointRefinementStageProgressPhase {
+    BaselineLocalEvaluation,
+    BaselineFinalEvaluation,
     RestartOptimization,
     CoarseConsistencyEvaluation,
     FinalSeedEvaluation,

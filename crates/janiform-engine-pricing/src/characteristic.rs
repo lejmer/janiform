@@ -4,10 +4,11 @@ use std::fmt::{Display, Formatter};
 use janiform_affine_oracle::affine_oracle::{
     ExponentialAffineTransformEquationSpecification, ExponentialAffineTransformInput,
     ExponentialAffineTransformInputError, ExponentialAffineTransformIntegrationResult,
+    ExponentialAffineTransformIntegrationStatus, ExponentialAffineTransformIntegratorMethod,
     ExponentialAffineTransformNewsIntensityInput, ExponentialAffineTransformOutput,
     ExponentialAffineTransformOutputError, ExponentialAffineTransformSolverError,
     ExponentialAffineTransformSolverSettings,
-    solve_exponential_affine_transform_with_optional_settings,
+    solve_exponential_affine_transform_with_settings as solve_exponential_affine_transform_core,
 };
 use janiform_foundations::complex_math::ComplexScalar;
 use janiform_foundations::complex_math::{complex_exponential, complex_multiply};
@@ -29,7 +30,8 @@ use janiform_model_kernels::risk_neutral::{
 };
 
 use super::constants::{
-    PRICING_LOCAL_ANCHORED_TILT_SOLVE_POLICY, RETURN_CHARACTERISTIC_FUNCTION_COMPOSITION_POLICY,
+    INTERNAL_AFFINE_TRANSFORM_STEP_SELECTION_POLICY, PRICING_LOCAL_ANCHORED_TILT_SOLVE_POLICY,
+    RETURN_CHARACTERISTIC_FUNCTION_COMPOSITION_POLICY,
     RETURN_CHARACTERISTIC_FUNCTION_DOMAIN_GUARD_POLICY,
 };
 use super::contracts::{
@@ -781,23 +783,149 @@ pub fn solve_anchored_local_pricing_tilt(
 }
 
 /// Solve one-interval exponential-affine transform for pricing workflows.
-///
-/// This adapter keeps the pricing layer conversion-focused and delegates to the
-/// shared solver entrypoint in `affine_oracle`.
 pub fn solve_exponential_affine_transform(
-    transform_input: ExponentialAffineTransformInput,
-) -> Result<ExponentialAffineTransformIntegrationResult, ExponentialAffineTransformSolverError> {
-    solve_exponential_affine_transform_with_optional_settings(transform_input, None)
-}
-
-/// Solve one-interval exponential-affine transform for pricing workflows with explicit settings.
-pub fn solve_exponential_affine_transform_with_settings(
     transform_input: ExponentialAffineTransformInput,
     solver_settings: ExponentialAffineTransformSolverSettings,
 ) -> Result<ExponentialAffineTransformIntegrationResult, ExponentialAffineTransformSolverError> {
-    solve_exponential_affine_transform_with_optional_settings(
-        transform_input,
-        Some(solver_settings),
+    solve_exponential_affine_transform_core(transform_input, solver_settings)
+}
+
+pub(crate) fn solve_exponential_affine_transform_with_internal_selection(
+    transform_input: ExponentialAffineTransformInput,
+) -> Result<ExponentialAffineTransformIntegrationResult, ExponentialAffineTransformSolverError> {
+    debug_assert!(!INTERNAL_AFFINE_TRANSFORM_STEP_SELECTION_POLICY.is_empty());
+
+    let mut step_count = 1usize;
+    let mut previous_completed_result: Option<ExponentialAffineTransformIntegrationResult> = None;
+    let mut last_incomplete_result: Option<ExponentialAffineTransformIntegrationResult> = None;
+
+    loop {
+        let solver_settings = ExponentialAffineTransformSolverSettings::try_new(
+            ExponentialAffineTransformIntegratorMethod::FourthOrderRungeKutta,
+            step_count,
+        )
+        .map_err(|source| {
+            ExponentialAffineTransformSolverError::InvalidSolverSettings { source }
+        })?;
+
+        // Intentional clone. Internal step refinement reruns the same validated transform input
+        // at finer dyadic resolutions until the RK4 truncation estimate reaches the roundoff scale.
+        let current_result =
+            solve_exponential_affine_transform_core(transform_input.clone(), solver_settings)?;
+
+        if current_result.status != ExponentialAffineTransformIntegrationStatus::Completed {
+            last_incomplete_result = Some(current_result);
+        } else if let Some(previous_result) = previous_completed_result {
+            if affine_transform_results_agree_with_internal_budget(previous_result, current_result)
+            {
+                return Ok(current_result);
+            }
+
+            previous_completed_result = Some(current_result);
+        } else {
+            previous_completed_result = Some(current_result);
+        }
+
+        step_count = match step_count.checked_mul(2) {
+            Some(next_step_count) => next_step_count,
+            None => {
+                if let Some(best_completed_result) = previous_completed_result {
+                    return Ok(best_completed_result);
+                }
+                if let Some(best_incomplete_result) = last_incomplete_result {
+                    return Ok(best_incomplete_result);
+                }
+                return Err(ExponentialAffineTransformSolverError::InvalidOutput {
+                    source: ExponentialAffineTransformOutputError::InvalidTransformValue {
+                        value: ComplexScalar::new(f64::NAN, f64::NAN),
+                    },
+                });
+            }
+        };
+    }
+}
+
+fn affine_transform_results_agree_with_internal_budget(
+    coarse_result: ExponentialAffineTransformIntegrationResult,
+    fine_result: ExponentialAffineTransformIntegrationResult,
+) -> bool {
+    let Some(coarse_output) = coarse_result.output else {
+        return false;
+    };
+    let Some(fine_output) = fine_result.output else {
+        return false;
+    };
+
+    let truncation_error_estimate =
+        affine_transform_output_max_difference_norm(coarse_output, fine_output) / 15.0;
+    let output_scale = affine_transform_output_max_norm(fine_output).max(f64::MIN_POSITIVE);
+    let roundoff_budget = f64::EPSILON.cbrt() * output_scale;
+
+    truncation_error_estimate <= roundoff_budget
+}
+
+fn affine_transform_output_max_difference_norm(
+    coarse_output: ExponentialAffineTransformOutput,
+    fine_output: ExponentialAffineTransformOutput,
+) -> f64 {
+    [
+        fine_output
+            .c_at_delta
+            .subtract(coarse_output.c_at_delta)
+            .norm(),
+        fine_output
+            .d_at_delta
+            .plus_plus
+            .subtract(coarse_output.d_at_delta.plus_plus)
+            .norm(),
+        fine_output
+            .d_at_delta
+            .plus_minus
+            .subtract(coarse_output.d_at_delta.plus_minus)
+            .norm(),
+        fine_output
+            .d_at_delta
+            .minus_plus
+            .subtract(coarse_output.d_at_delta.minus_plus)
+            .norm(),
+        fine_output
+            .d_at_delta
+            .minus_minus
+            .subtract(coarse_output.d_at_delta.minus_minus)
+            .norm(),
+        fine_output
+            .transform_value
+            .subtract(coarse_output.transform_value)
+            .norm(),
+    ]
+    .into_iter()
+    .fold(0.0_f64, f64::max)
+}
+
+fn affine_transform_output_max_norm(output: ExponentialAffineTransformOutput) -> f64 {
+    [
+        output.c_at_delta.norm(),
+        output.d_at_delta.plus_plus.norm(),
+        output.d_at_delta.plus_minus.norm(),
+        output.d_at_delta.minus_plus.norm(),
+        output.d_at_delta.minus_minus.norm(),
+        output.transform_value.norm(),
+    ]
+    .into_iter()
+    .fold(0.0_f64, f64::max)
+}
+
+/// Build the shared affine-oracle equation specification from pricing inputs.
+pub(crate) fn build_pricing_equation_specification(
+    pricing_request: &VanillaOptionPricingRequest,
+) -> ExponentialAffineTransformEquationSpecification {
+    ExponentialAffineTransformEquationSpecification::new(
+        pricing_request.model_parameters.hawkes_kernel_parameters,
+        pricing_request
+            .model_parameters
+            .news_process_configuration
+            .shared_mark_law
+            .gamma_severity_marks,
     )
 }
 
@@ -819,17 +947,8 @@ pub fn build_pricing_transform_input(
         .validate()
         .map_err(|source| PricingTransformInputBuildError::InvalidPricingRequest { source })?;
 
-    let equation_specification = ExponentialAffineTransformEquationSpecification::new(
-        pricing_request.model_parameters.hawkes_kernel_parameters,
-        pricing_request
-            .model_parameters
-            .news_process_configuration
-            .shared_mark_law
-            .gamma_severity_marks,
-    );
-
     ExponentialAffineTransformInput::try_new(
-        equation_specification,
+        build_pricing_equation_specification(pricing_request),
         u_plus,
         u_minus,
         z_plus,

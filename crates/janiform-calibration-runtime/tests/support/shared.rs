@@ -295,18 +295,20 @@ pub(crate) use janiform_calibration_runtime::{
     transform_nig_exponent_for_calibration_under_esscher_tilt, write_joint_refinement_worker_frame,
 };
 pub(crate) use janiform_engine_pricing::{
-    VanillaOptionPricingCalibrationHooks, VanillaOptionPricingMarketInputs,
+    PricingIntervalSchedulePolicy, VanillaOptionPayoffType, VanillaOptionPricingCalibrationHooks,
+    VanillaOptionPricingMarketInputs,
     intraday_black_scholes_log_return_characteristic_function as black_scholes_log_return_characteristic_function,
 };
 pub(crate) use janiform_foundations::complex_math::ComplexScalar;
-pub(crate) use janiform_foundations::time::utc_nanos;
+pub(crate) use janiform_foundations::time::{ONE_HOUR_NANOS, utc_nanos};
 pub(crate) use janiform_market_time::calendar::{
     ExchangeCalendarRegistry, ExchangeCalendarRegistryLoader, TimestampEventInputRecord,
 };
 pub(crate) use janiform_model_kernels::hawkes::{
-    HAWKES_KERNEL_PARAMETER_VALIDATION_REPORT_SCHEMA_VERSION, HawkesKernelLoadings,
-    HawkesKernelParameters, HawkesKernelValidationStatus, HawkesStructuredAlphaParameterization,
-    HawkesStructuredRhoParameterization, HawkesStructuredRhoSelfDominancePolicy,
+    HAWKES_KERNEL_PARAMETER_VALIDATION_REPORT_SCHEMA_VERSION, HawkesEventSide,
+    HawkesKernelLoadings, HawkesKernelParameters, HawkesKernelValidationStatus,
+    HawkesStructuredAlphaParameterization, HawkesStructuredRhoParameterization,
+    HawkesStructuredRhoSelfDominancePolicy,
 };
 pub(crate) use janiform_model_kernels::news::{
     CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
@@ -334,6 +336,7 @@ pub(crate) fn normalize_joint_refinement_runtime_profile_for_reproducibility(
     runtime_profile.final_assembly_wall_clock_millis = 0;
     runtime_profile.cumulative_deterministic_evaluation_millis = 0;
     runtime_profile.cumulative_seed_summary_simulation_millis = 0;
+    runtime_profile.cumulative_option_pricing_millis = 0;
 }
 
 pub(crate) fn assert_joint_refinement_objective_breakdown_matches(
@@ -547,6 +550,20 @@ fn assert_joint_refinement_runtime_profile_matches(
         "{context} seed_summary_cache_miss_count drifted"
     );
     assert_eq!(
+        actual_profile.option_pricing_cache_hit_count,
+        expected_profile.option_pricing_cache_hit_count,
+        "{context} option_pricing_cache_hit_count drifted"
+    );
+    assert_eq!(
+        actual_profile.option_pricing_cache_miss_count,
+        expected_profile.option_pricing_cache_miss_count,
+        "{context} option_pricing_cache_miss_count drifted"
+    );
+    assert_eq!(
+        actual_profile.option_pricing_run_count, expected_profile.option_pricing_run_count,
+        "{context} option_pricing_run_count drifted"
+    );
+    assert_eq!(
         actual_profile.invalid_candidate_evaluation_count,
         expected_profile.invalid_candidate_evaluation_count,
         "{context} invalid_candidate_evaluation_count drifted"
@@ -560,6 +577,11 @@ fn assert_joint_refinement_runtime_profile_matches(
         actual_profile.cumulative_seed_summary_simulation_millis,
         expected_profile.cumulative_seed_summary_simulation_millis,
         "{context} cumulative_seed_summary_simulation_millis drifted"
+    );
+    assert_eq!(
+        actual_profile.cumulative_option_pricing_millis,
+        expected_profile.cumulative_option_pricing_millis,
+        "{context} cumulative_option_pricing_millis drifted"
     );
 }
 
@@ -2071,6 +2093,38 @@ pub(crate) fn staged_run_inputs(
             None
         },
         joint_refinement_option_pricing_input: None,
+    }
+}
+
+pub(crate) fn joint_refinement_stage_option_pricing_input_fixture()
+-> JointRefinementStageOptionPricingInput {
+    let valuation_time_utc_nanos = 0;
+    let expiry_timestamp_utc_nanos = ONE_HOUR_NANOS;
+
+    JointRefinementStageOptionPricingInput {
+        valuation_time_utc_nanos,
+        pricing_interval_schedule_policy: PricingIntervalSchedulePolicy::AutoExactSparse,
+        carry_input: janiform_calibration_artifacts::JointRefinementStageCarryInput {
+            discount_rate: 0.0,
+            carry_rate: 0.0,
+        },
+        current_state_estimation_input: JointRefinementStageCurrentStateEstimationInput {
+            state_time_utc_nanos: valuation_time_utc_nanos,
+            observed_spot: 100.0,
+            observed_log_price: 100.0_f64.ln(),
+            observation_timestamp_utc_nanos: vec![valuation_time_utc_nanos],
+            observation_trade_prices: vec![100.0],
+            observation_trade_sides: vec![HawkesEventSide::Buy],
+        },
+        option_snapshot_nodes: vec![JointRefinementStageOptionSnapshotNode {
+            quote_timestamp_utc_nanos: valuation_time_utc_nanos,
+            expiry_timestamp_utc_nanos,
+            strike: 100.0,
+            payoff_type: VanillaOptionPayoffType::Call,
+            bid_price: 1.0,
+            ask_price: 1.2,
+            observed_mid_price: 1.1,
+        }],
     }
 }
 

@@ -61,6 +61,11 @@ pub(crate) struct JointRefinementSeedSummaryCacheKey {
     pub(crate) simulation_seed: u64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct JointRefinementOptionPricingCacheKey {
+    pub(crate) parameter_bits: Vec<u64>,
+}
+
 #[derive(Debug, Default)]
 pub(crate) struct JointRefinementProfilingState {
     objective_cache_hit_count: AtomicUsize,
@@ -69,9 +74,13 @@ pub(crate) struct JointRefinementProfilingState {
     deterministic_cache_miss_count: AtomicUsize,
     seed_summary_cache_hit_count: AtomicUsize,
     seed_summary_cache_miss_count: AtomicUsize,
+    option_pricing_cache_hit_count: AtomicUsize,
+    option_pricing_cache_miss_count: AtomicUsize,
+    option_pricing_run_count: AtomicUsize,
     invalid_candidate_evaluation_count: AtomicUsize,
     cumulative_deterministic_evaluation_millis: AtomicU64,
     cumulative_seed_summary_simulation_millis: AtomicU64,
+    cumulative_option_pricing_millis: AtomicU64,
 }
 
 impl JointRefinementProfilingState {
@@ -103,6 +112,23 @@ impl JointRefinementProfilingState {
     pub(crate) fn record_seed_summary_cache_miss(&self, miss_count: usize) {
         self.seed_summary_cache_miss_count
             .fetch_add(miss_count, Ordering::Relaxed);
+    }
+
+    pub(crate) fn record_option_pricing_cache_hit(&self) {
+        self.option_pricing_cache_hit_count
+            .fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub(crate) fn record_option_pricing_cache_miss(&self) {
+        self.option_pricing_cache_miss_count
+            .fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub(crate) fn record_option_pricing_run_duration(&self, elapsed_millis: u64) {
+        self.option_pricing_run_count
+            .fetch_add(1, Ordering::Relaxed);
+        self.cumulative_option_pricing_millis
+            .fetch_add(elapsed_millis, Ordering::Relaxed);
     }
 
     pub(crate) fn record_invalid_candidate_evaluation(&self) {
@@ -144,6 +170,13 @@ impl JointRefinementProfilingState {
             seed_summary_cache_miss_count: self
                 .seed_summary_cache_miss_count
                 .load(Ordering::Relaxed),
+            option_pricing_cache_hit_count: self
+                .option_pricing_cache_hit_count
+                .load(Ordering::Relaxed),
+            option_pricing_cache_miss_count: self
+                .option_pricing_cache_miss_count
+                .load(Ordering::Relaxed),
+            option_pricing_run_count: self.option_pricing_run_count.load(Ordering::Relaxed),
             invalid_candidate_evaluation_count: self
                 .invalid_candidate_evaluation_count
                 .load(Ordering::Relaxed),
@@ -152,6 +185,9 @@ impl JointRefinementProfilingState {
                 .load(Ordering::Relaxed),
             cumulative_seed_summary_simulation_millis: self
                 .cumulative_seed_summary_simulation_millis
+                .load(Ordering::Relaxed),
+            cumulative_option_pricing_millis: self
+                .cumulative_option_pricing_millis
                 .load(Ordering::Relaxed),
         }
     }
@@ -231,6 +267,7 @@ pub(crate) struct JointRefinementContext {
     pub(crate) stage_thread_pool: Option<Arc<rayon::ThreadPool>>,
     pub(crate) summary_simulation_scheduler: Arc<JointRefinementSummarySimulationScheduler>,
     pub(crate) simulation_infrastructure_failure: Arc<Mutex<Option<String>>>,
+    pub(crate) option_pricing_execution_failure: Arc<Mutex<Option<String>>>,
     pub(crate) calendar_registry: ExchangeCalendarRegistry,
     pub(crate) exchange_code: String,
     pub(crate) runtime_hourly_seasonality_factors: Vec<f64>,
@@ -261,6 +298,8 @@ pub(crate) struct JointRefinementContext {
             >,
         >,
     >,
+    pub(crate) option_pricing_cache:
+        Arc<Mutex<BTreeMap<JointRefinementOptionPricingCacheKey, Result<f64, String>>>>,
     pub(crate) option_pricing_context: Option<JointRefinementOptionPricingContext>,
     pub(crate) profiling_state: Arc<JointRefinementProfilingState>,
 }

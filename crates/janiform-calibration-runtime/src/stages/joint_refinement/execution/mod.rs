@@ -40,7 +40,8 @@ pub(crate) use pricing_context::{
 pub(crate) use report::{
     baseline_buckets_from_evaluation, build_joint_finalist_seed_summaries,
     build_joint_refinement_stage_failure_report, build_joint_restart_diagnostics,
-    build_joint_simulation_summaries, simulation_infrastructure_failure_message,
+    build_joint_simulation_summaries, option_pricing_execution_failure_message,
+    simulation_infrastructure_failure_message,
 };
 #[cfg(test)]
 pub(crate) use selection::{
@@ -62,6 +63,7 @@ pub(crate) use state::{
     JointRefinementCandidateEvaluation, JointRefinementCoarseConsistencySummary,
     JointRefinementContext, JointRefinementDeterministicCacheKey,
     JointRefinementDeterministicEvaluation, JointRefinementFidelityTier,
-    JointRefinementObjectiveCacheKey, JointRefinementObservedData, JointRefinementProfilingState,
+    JointRefinementObjectiveCacheKey, JointRefinementObservedData,
+    JointRefinementOptionPricingCacheKey, JointRefinementProfilingState,
     JointRefinementRestartOutcome, JointRefinementSeedSummaryCacheKey,
 };

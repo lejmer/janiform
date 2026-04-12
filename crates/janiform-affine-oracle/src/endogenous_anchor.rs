@@ -482,6 +482,25 @@ struct HawkesTargetSumFirstMoment {
     integrated_target_minus: f64,
 }
 
+/// Derive sufficient-statistics first moments from structural dynamics without
+/// solving transform slices.
+pub fn derive_expected_interval_statistics_from_first_moment_dynamics(
+    equation_specification: ExponentialAffineTransformEquationSpecification,
+    expected_severity_mark: f64,
+    factors: EndogenousAnchorIntervalFactors,
+    structural_state_before: HawkesExcitationState,
+) -> Result<
+    SufficientStatisticsExpectedIntervalStatistics,
+    SufficientStatisticsIntervalStatisticsError,
+> {
+    expected_interval_statistics_from_first_moment_dynamics(
+        equation_specification,
+        expected_severity_mark,
+        factors,
+        structural_state_before,
+    )
+}
+
 fn expected_interval_statistics_from_first_moment_dynamics(
     equation_specification: ExponentialAffineTransformEquationSpecification,
     expected_severity_mark: f64,

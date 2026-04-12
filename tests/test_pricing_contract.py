@@ -11,12 +11,6 @@ from janiform.pricing import (
     AnchoredLocalTiltDomainStatus,
     AnchoredLocalTiltSolveDiagnostics,
     AnchoredVanillaOptionPricingBoundaryInput,
-    FourierInversionContour,
-    FourierInversionEngineSettings,
-    FourierInversionIntegrationStabilityControls,
-    FourierInversionNumericQualityGate,
-    FourierInversionNumericSettings,
-    FourierInversionQuadratureRule,
     MeanReversionAnchorModel,
     MeanReversionBoundaryState,
     MeanReversionFittedParameters,
@@ -125,27 +119,13 @@ def test_vanilla_option_request_validation_defaults_interval_delta() -> None:
     assert validated_request.interval_delta == pytest.approx(1.0)
 
 
-def test_vanilla_option_request_roundtrip_preserves_fourier_inversion_settings() -> None:
+def test_vanilla_option_request_roundtrip_preserves_public_contract_fields() -> None:
     request = VanillaOptionPricingRequest(
         market_inputs=_valid_request_model().market_inputs,
         payoff=_valid_request_model().payoff,
         boundary_input=_valid_request_model().boundary_input,
         model_parameters=_valid_request_model().model_parameters,
-        fourier_inversion_settings=FourierInversionEngineSettings(
-            contour=FourierInversionContour(damping_factor=1.2),
-            numeric_settings=FourierInversionNumericSettings(
-                integration_upper_bound=80.0,
-                integration_step_count=2_048,
-                quadrature_rule=FourierInversionQuadratureRule.TRAPEZOID,
-            ),
-            stability_controls=FourierInversionIntegrationStabilityControls(
-                convergence_absolute_tolerance=1.0e-6,
-                convergence_relative_tolerance=1.0e-5,
-                terminal_integrand_absolute_tolerance=2.5e-4,
-                terminal_integrand_ratio_tolerance=5.0e-3,
-                quality_gate=FourierInversionNumericQualityGate.ENFORCE_FAILURE,
-            ),
-        ),
+        interval_delta=_valid_request_model().interval_delta,
     )
 
     serialized_request = request.to_json()

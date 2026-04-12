@@ -13,7 +13,8 @@ use crate::stages::optimization::{PowellOptimizerSettings, optimize_bounded_powe
 use super::super::objective::evaluate_joint_candidate;
 use super::{
     JOINT_REFINEMENT_PARAMETER_BLOCK_COUNT, JointRefinementContext, JointRefinementFidelityTier,
-    JointRefinementRestartOutcome,
+    JointRefinementRestartOutcome, option_pricing_execution_failure_message,
+    simulation_infrastructure_failure_message,
 };
 
 const JOINT_REFINEMENT_RESTART_POLICY_ENV: &str = "JANIFORM_JOINT_REFINEMENT_RESTART_POLICY";
@@ -94,6 +95,10 @@ fn optimize_restart_seeds_sequential(
     let mut ordered_outcomes = Vec::with_capacity(total_units);
 
     for (restart_id, seed_vector) in restart_seeds {
+        if joint_refinement_has_fatal_execution_failure(context) {
+            break;
+        }
+
         let restart_outcome = optimize_single_restart(
             restart_id.as_str(),
             seed_vector.as_slice(),
@@ -284,6 +289,17 @@ fn optimize_single_restart(
     let mut stop_reason = "tolerance";
 
     for _ in 0..budget_schedule.outer_cycle_count {
+        if joint_refinement_has_fatal_execution_failure(context) {
+            return build_short_circuited_restart_outcome(
+                restart_id,
+                current_vector,
+                context,
+                solver_settings,
+                evaluation_count,
+                "fatal_execution_failure",
+            );
+        }
+
         let cycle_result = optimize_restart_cycle(
             current_vector.as_slice(),
             context,
@@ -329,6 +345,17 @@ fn optimize_single_restart(
             local_evaluation,
             local_evaluation_count: evaluation_count,
             stop_reason,
+        };
+    }
+
+    if joint_refinement_has_fatal_execution_failure(context) {
+        return JointRefinementRestartOutcome {
+            restart_id: restart_id.to_string(),
+            parameter_vector: current_vector,
+            final_evaluation: local_evaluation.clone(),
+            local_evaluation,
+            local_evaluation_count: evaluation_count,
+            stop_reason: "fatal_execution_failure",
         };
     }
 
@@ -495,6 +522,10 @@ fn optimize_parameter_block(
         .collect();
 
     let mut evaluate_block = |block_vector: &[f64]| -> Option<f64> {
+        if joint_refinement_has_fatal_execution_failure(context) {
+            return None;
+        }
+
         let full_vector = substitute_block(current_vector, block_indices, block_vector);
         let candidate_evaluation = evaluate_joint_candidate(
             full_vector.as_slice(),
@@ -556,6 +587,11 @@ fn joint_refinement_has_parallel_worker_capacity(context: &JointRefinementContex
         .stage_thread_pool
         .as_ref()
         .is_some_and(|thread_pool| thread_pool.current_num_threads() > 1)
+}
+
+fn joint_refinement_has_fatal_execution_failure(context: &JointRefinementContext) -> bool {
+    simulation_infrastructure_failure_message(context).is_some()
+        || option_pricing_execution_failure_message(context).is_some()
 }
 
 fn emit_joint_refinement_progress(

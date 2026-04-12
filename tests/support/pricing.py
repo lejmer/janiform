@@ -95,7 +95,7 @@ def build_anchored_runtime_execution_input_model() -> VanillaOptionPricingExecut
             ),
             model_parameters=anchored_request.model_parameters,
         ),
-        runtime_interval_schedule=_runtime_interval_schedule((1.0,)),
+        runtime_interval_schedule=build_runtime_interval_schedule((1.0,)),
         hourly_factor_contract=build_hourly_factor_contract(
             request_start_utc_nanos=REFERENCE_PRICING_TIMESTAMP_UTC_NANOS,
             s_h=(1.0,),
@@ -247,8 +247,11 @@ def _build_news_process_configuration() -> NewsProcessConfiguration:
     )
 
 
-def _runtime_interval_schedule(interval_deltas_hours: tuple[float, ...]) -> PricingIntervalSchedule:
-    valuation_time_utc_nanos = REFERENCE_PRICING_TIMESTAMP_UTC_NANOS
+def build_runtime_interval_schedule(
+    interval_deltas_hours: tuple[float, ...],
+    *,
+    valuation_time_utc_nanos: int = REFERENCE_PRICING_TIMESTAMP_UTC_NANOS,
+) -> PricingIntervalSchedule:
     interval_end_timestamps_utc_nanos: list[int] = []
     current_endpoint_utc_nanos = valuation_time_utc_nanos
 
@@ -266,3 +269,7 @@ def _runtime_interval_schedule(interval_deltas_hours: tuple[float, ...]) -> Pric
         interval_end_timestamps_utc_nanos=tuple(interval_end_timestamps_utc_nanos),
         interval_deltas_hours=interval_deltas_hours,
     )
+
+
+def _runtime_interval_schedule(interval_deltas_hours: tuple[float, ...]) -> PricingIntervalSchedule:
+    return build_runtime_interval_schedule(interval_deltas_hours)

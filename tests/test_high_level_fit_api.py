@@ -99,6 +99,7 @@ from tests.support.calibration import (
     build_zero_kappa_endogenous_mean_reversion_fitted_parameters_payload,
     update_model_mean_reversion_payload,
 )
+from tests.support.pricing import build_runtime_interval_schedule
 
 
 def test_janiform_estimator_fit_returns_model_for_default_high_level_workflow(
@@ -646,6 +647,7 @@ def test_price_option_market_snapshot_returns_tidy_snapshot_and_surface_frame(
                     dividend_yield=grid.dividend_yield,
                     strikes=grid.strikes,
                     maturity_intervals=(0.1 + 0.1 * grid_index,),
+                    maturity_terminal_interval_indices=(grid_index,),
                     price_grid=(tuple(1.0 + strike / 100.0 for strike in grid.strikes),),
                     implied_volatility_grid=(
                         tuple(0.2 + 0.01 * strike_index + 0.05 * grid_index for strike_index, _strike in enumerate(grid.strikes)),
@@ -671,6 +673,7 @@ def test_price_option_market_snapshot_returns_tidy_snapshot_and_surface_frame(
         return JaniformVanillaOptionGridBatchPricingResult(
             spot=batch.spot,
             grids=tuple(grids),
+            runtime_interval_schedule=build_runtime_interval_schedule((0.1, 0.1)),
         )
 
     monkeypatch.setattr(
@@ -3257,6 +3260,7 @@ def test_high_level_grid_batch_pricing_resolves_mixed_maturity_axes_to_native_re
         boundary_state=None,
         include_transform_diagnostics=False,
         include_integration_quality_diagnostics=False,
+        pricing_interval_schedule_policy=None,
         cpu_count=None,
     )
 
@@ -3292,6 +3296,7 @@ def test_high_level_surface_pricing_resolves_mixed_maturity_axes_to_native_reque
         boundary_state=None,
         include_transform_diagnostics=False,
         include_integration_quality_diagnostics=False,
+        pricing_interval_schedule_policy=None,
         cpu_count=None,
     )
 
@@ -3339,6 +3344,7 @@ def test_high_level_model_price_option_grids_dispatches_through_grid_batch_prici
                 dividend_yield=0.0,
                 strikes=(95.0,),
                 maturity_intervals=(1.0,),
+                maturity_terminal_interval_indices=(0,),
                 price_grid=((10.0,),),
                 implied_volatility_grid=((0.2,),),
                 implied_volatility_inversion_status_grid=((
@@ -3372,6 +3378,7 @@ def test_high_level_model_price_option_grids_dispatches_through_grid_batch_prici
                 dividend_yield=0.0,
                 strikes=(105.0,),
                 maturity_intervals=(2.0,),
+                maturity_terminal_interval_indices=(1,),
                 price_grid=((11.0,),),
                 implied_volatility_grid=((0.25,),),
                 implied_volatility_inversion_status_grid=(
@@ -3402,6 +3409,7 @@ def test_high_level_model_price_option_grids_dispatches_through_grid_batch_prici
                 ),
             ),
         ),
+        runtime_interval_schedule=build_runtime_interval_schedule((1.0, 1.0)),
     )
 
     monkeypatch.setattr(
@@ -3510,6 +3518,8 @@ def test_high_level_model_price_option_surface_dispatches_through_surface_pricin
                 integration_quality=None,
             ),
         ),
+        runtime_interval_schedule=build_runtime_interval_schedule((1.0, 1.0)),
+        maturity_terminal_interval_indices=(0, 1),
     )
 
     monkeypatch.setattr(

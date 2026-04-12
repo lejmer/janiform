@@ -24,8 +24,8 @@ use janiform_model_kernels::nig::{
 
 use super::constants::{
     ANCHORED_PRICING_CONTINUATION_RECURSION_POLICY, ANCHORED_PRICING_DEVIATION_GRID_POLICY,
-    ANCHORED_PRICING_EXPECTED_HAWKES_STATE_UPDATE_POLICY, DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA,
-    VANILLA_OPTION_CALIBRATION_HOOK_POLICY, VANILLA_OPTION_PAYOFF_CONFIGURATION_POLICY,
+    ANCHORED_PRICING_EXPECTED_HAWKES_STATE_UPDATE_POLICY, VANILLA_OPTION_CALIBRATION_HOOK_POLICY,
+    VANILLA_OPTION_PAYOFF_CONFIGURATION_POLICY,
     VANILLA_OPTION_PRICING_CALIBRATION_HOOKS_REQUIRED_FIELDS,
     VANILLA_OPTION_PRICING_CALIBRATION_HOOKS_SCHEMA_VERSION,
     VANILLA_OPTION_PRICING_RUN_DIAGNOSTICS_REQUIRED_FIELDS,
@@ -35,10 +35,7 @@ use super::constants::{
     VANILLA_OPTION_PRICING_RUN_RESULT_SCHEMA_VERSION, VANILLA_OPTION_REQUEST_VALIDATION_POLICY,
     VANILLA_OPTION_RESPONSE_VALIDATION_POLICY,
 };
-use super::fourier::{
-    FourierInversionDiagnostics, FourierInversionEngineSettings,
-    FourierInversionEngineSettingsError,
-};
+use super::fourier::FourierInversionDiagnostics;
 use super::implied_volatility::VanillaOptionImpliedVolatilityInversionStatus;
 use super::interval_schedule::{PricingIntervalSchedule, PricingIntervalScheduleError};
 
@@ -1015,26 +1012,10 @@ pub struct VanillaOptionPricingRequest {
     pub boundary_input: AnchoredVanillaOptionPricingBoundaryInput,
     pub model_parameters: VanillaOptionPricingModelParameters,
     pub interval_delta: f64,
-    pub fourier_inversion_settings: Option<FourierInversionEngineSettings>,
 }
 
 impl VanillaOptionPricingRequest {
     pub fn new(
-        market_inputs: VanillaOptionPricingMarketInputs,
-        payoff: VanillaOptionPayoffConfiguration,
-        boundary_input: AnchoredVanillaOptionPricingBoundaryInput,
-        model_parameters: VanillaOptionPricingModelParameters,
-    ) -> Self {
-        Self::new_with_interval_delta(
-            market_inputs,
-            payoff,
-            boundary_input,
-            model_parameters,
-            DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA,
-        )
-    }
-
-    pub fn new_with_interval_delta(
         market_inputs: VanillaOptionPricingMarketInputs,
         payoff: VanillaOptionPayoffConfiguration,
         boundary_input: AnchoredVanillaOptionPricingBoundaryInput,
@@ -1047,24 +1028,7 @@ impl VanillaOptionPricingRequest {
             boundary_input,
             model_parameters,
             interval_delta,
-            fourier_inversion_settings: None,
         }
-    }
-
-    pub const fn with_fourier_inversion_settings(
-        mut self,
-        fourier_inversion_settings: FourierInversionEngineSettings,
-    ) -> Self {
-        self.fourier_inversion_settings = Some(fourier_inversion_settings);
-        self
-    }
-
-    const fn with_fourier_inversion_settings_option(
-        mut self,
-        fourier_inversion_settings: Option<FourierInversionEngineSettings>,
-    ) -> Self {
-        self.fourier_inversion_settings = fourier_inversion_settings;
-        self
     }
 
     pub fn try_new(
@@ -1072,21 +1036,9 @@ impl VanillaOptionPricingRequest {
         payoff: VanillaOptionPayoffConfiguration,
         boundary_input: AnchoredVanillaOptionPricingBoundaryInput,
         model_parameters: VanillaOptionPricingModelParameters,
-    ) -> Result<Self, VanillaOptionPricingRequestError> {
-        let request = Self::new(market_inputs, payoff, boundary_input, model_parameters);
-        request.validate()?;
-
-        Ok(request)
-    }
-
-    pub fn try_new_with_interval_delta(
-        market_inputs: VanillaOptionPricingMarketInputs,
-        payoff: VanillaOptionPayoffConfiguration,
-        boundary_input: AnchoredVanillaOptionPricingBoundaryInput,
-        model_parameters: VanillaOptionPricingModelParameters,
         interval_delta: f64,
     ) -> Result<Self, VanillaOptionPricingRequestError> {
-        let request = Self::new_with_interval_delta(
+        let request = Self::new(
             market_inputs,
             payoff,
             boundary_input,
@@ -1133,21 +1085,11 @@ impl VanillaOptionPricingRequest {
             VanillaOptionPricingRequestError::InvalidModelParameters { source }
         })?;
 
-        if let Some(fourier_inversion_settings) = self.fourier_inversion_settings {
-            fourier_inversion_settings.validate().map_err(|source| {
-                VanillaOptionPricingRequestError::InvalidFourierInversionSettings { source }
-            })?;
-        }
-
         Ok(())
     }
 
     pub const fn validation_policy() -> &'static str {
         VANILLA_OPTION_REQUEST_VALIDATION_POLICY
-    }
-
-    pub fn resolved_fourier_inversion_settings(&self) -> FourierInversionEngineSettings {
-        self.fourier_inversion_settings.unwrap_or_default()
     }
 }
 
@@ -1170,9 +1112,6 @@ pub enum VanillaOptionPricingRequestError {
     },
     InvalidModelParameters {
         source: VanillaOptionPricingModelParametersError,
-    },
-    InvalidFourierInversionSettings {
-        source: FourierInversionEngineSettingsError,
     },
 }
 
@@ -1202,12 +1141,6 @@ impl Display for VanillaOptionPricingRequestError {
             Self::InvalidModelParameters { source } => {
                 write!(formatter, "model_parameters payload is invalid: {source}")
             }
-            Self::InvalidFourierInversionSettings { source } => {
-                write!(
-                    formatter,
-                    "fourier_inversion_settings payload is invalid: {source}"
-                )
-            }
         }
     }
 }
@@ -1218,7 +1151,6 @@ impl Error for VanillaOptionPricingRequestError {
             Self::InvalidMarketInputs { source } => Some(source),
             Self::InvalidBoundaryInput { source } => Some(source),
             Self::InvalidModelParameters { source } => Some(source),
-            Self::InvalidFourierInversionSettings { source } => Some(source),
             _ => None,
         }
     }
@@ -2412,10 +2344,7 @@ struct VanillaOptionPricingRequestPayload {
     payoff: VanillaOptionPayoffConfiguration,
     boundary_input: AnchoredVanillaOptionPricingBoundaryInput,
     model_parameters: VanillaOptionPricingModelParameters,
-    #[serde(default = "default_intraday_pricing_interval_delta")]
     interval_delta: f64,
-    #[serde(default)]
-    fourier_inversion_settings: Option<FourierInversionEngineSettings>,
 }
 
 impl<'de> Deserialize<'de> for VanillaOptionPricingRequest {
@@ -2425,29 +2354,18 @@ impl<'de> Deserialize<'de> for VanillaOptionPricingRequest {
     {
         let payload = VanillaOptionPricingRequestPayload::deserialize(deserializer)?;
 
-        let request = Self::new_with_interval_delta(
+        let request = Self::new(
             payload.market_inputs,
             payload.payoff,
             payload.boundary_input,
             payload.model_parameters,
             payload.interval_delta,
-        )
-        .with_fourier_inversion_settings_option(payload.fourier_inversion_settings);
+        );
 
         request
             .validate()
             .map(|()| request)
             .map_err(serde::de::Error::custom)
-    }
-}
-
-const fn default_intraday_pricing_interval_delta() -> f64 {
-    DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA
-}
-
-impl VanillaOptionPricingRequest {
-    pub const fn default_interval_delta() -> f64 {
-        DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA
     }
 }
 

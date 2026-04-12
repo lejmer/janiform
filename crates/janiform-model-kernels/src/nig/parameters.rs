@@ -215,6 +215,25 @@ impl NigParameters {
             );
         }
 
+        if argument == ComplexScalar::new(0.0, 0.0) {
+            return NigCharacteristicExponentEvaluationReport {
+                schema_version: NIG_CHARACTERISTIC_EXPONENT_GUARDRAIL_REPORT_SCHEMA_VERSION,
+                determinism_policy: NIG_CHARACTERISTIC_EXPONENT_GUARDRAIL_DETERMINISM_POLICY,
+                stability_policy: NIG_CHARACTERISTIC_EXPONENT_STABILITY_POLICY,
+                status,
+                argument,
+                alpha_beta_margin,
+                alpha_beta_margin_warning_threshold,
+                radicand_norm,
+                radicand_warning_threshold,
+                cancellation_ratio,
+                cancellation_warning_threshold: NIG_CANCELLATION_WARNING_THRESHOLD,
+                used_rationalized_difference,
+                events,
+                value: Some(ComplexScalar::new(0.0, 0.0)),
+            };
+        }
+
         let beta_plus_imaginary_argument =
             ComplexScalar::new(self.beta - argument.imaginary, argument.real);
         let alpha_squared = self.alpha * self.alpha;

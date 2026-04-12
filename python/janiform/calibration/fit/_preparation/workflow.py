@@ -222,7 +222,7 @@ def prepare_fit_workflow(
             require_hawkes=(workflow_scope != CalibrationMarketDataWorkflowScope.SEASONALITY_ONLY),
         )
 
-        effective_progress.update(detail="resolve session")
+        effective_progress.update(detail="infer session")
         inferred_session_resolution = infer_session_resolution(
             configuration,
             run_id=input_inference.run_id,
@@ -267,7 +267,7 @@ def prepare_fit_workflow(
             working_directory=working_directory,
         )
 
-        effective_progress.update(detail="resolve session")
+        effective_progress.update(detail="resolve final session")
         session_resolution = resolve_market_data_session_method(
             session_configuration=request.session_configuration,
             normalized_market_data=normalized_market_data,

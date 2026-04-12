@@ -1,24 +1,43 @@
+use crate::characteristic::build_pricing_equation_specification;
 use crate::{
     AnchoredVanillaOptionPricingBoundaryInput, VanillaOptionPayoffConfiguration,
     VanillaOptionPayoffType, VanillaOptionPricingIntervalFactors, VanillaOptionPricingMarketInputs,
     VanillaOptionPricingRequest,
 };
+use janiform_affine_oracle::endogenous_anchor::{
+    EndogenousAnchorIntervalFactors, derive_expected_interval_statistics_from_first_moment_dynamics,
+};
 use janiform_affine_oracle::sufficient_statistics::SufficientStatisticsExpectedIntervalStatistics;
 use janiform_foundations::complex_math::ComplexScalar;
-use janiform_model_kernels::hawkes::HawkesExcitationState;
+use janiform_model_kernels::hawkes::{HawkesEventSide, HawkesExcitationState};
 use janiform_model_kernels::mean_reversion::{
     MeanReversionAnchorModel, MeanReversionBoundaryState, MeanReversionFittedParameters,
 };
 
 use crate::runner::{
-    build_pricing_risk_neutral_anchor_materialization,
-    infer_expected_news_loading_under_local_measure, recover_pure_imaginary_log_moment_exponent,
-    resolve_local_transition_theta, use_nested_transition_measure_for_local_request,
+    LocalTransitionRequestContext, build_pricing_risk_neutral_anchor_materialization,
+    evaluate_pricing_log_return_characteristic_function,
+    infer_expected_news_loading_under_local_measure_for_row,
+    recover_pure_imaginary_log_moment_exponent, resolve_local_transition_theta,
+};
+use janiform_affine_oracle::affine_oracle::{
+    ExponentialAffineTransformGuardFailureCode, ExponentialAffineTransformIntegrationStatus,
 };
 
 use super::support::{
     build_uniform_runtime_interval_schedule, disabled_boundary_input, valid_model_parameters,
 };
+
+fn transition_context_for_request(
+    pricing_request: &VanillaOptionPricingRequest,
+) -> LocalTransitionRequestContext {
+    LocalTransitionRequestContext::from_pricing_request(
+        pricing_request,
+        VanillaOptionPricingIntervalFactors::try_new(0.0, 0.0, 0.0)
+            .expect("transition-context interval factors should construct"),
+    )
+    .expect("transition context should construct")
+}
 
 #[test]
 fn nested_transition_measure_detection_accepts_disabled_multi_interval_boundary() {
@@ -44,13 +63,21 @@ fn nested_transition_measure_detection_accepts_disabled_multi_interval_boundary(
         )
         .expect("boundary input should construct"),
         valid_model_parameters(),
+        1.0,
     )
     .expect("pricing request should construct");
 
-    assert!(
-        use_nested_transition_measure_for_local_request(&pricing_request)
-            .expect("nested transition measure detection should succeed")
-    );
+    let transition_context = transition_context_for_request(&pricing_request);
+    let transition_row = transition_context
+        .build_row_state(
+            pricing_request
+                .boundary_input
+                .observed_boundary_state
+                .deviation,
+        )
+        .expect("transition row should construct");
+
+    assert!(transition_row.uses_nested_transition_measure());
 }
 
 #[test]
@@ -80,13 +107,21 @@ fn nested_transition_measure_detection_rejects_nonzero_local_martingale_deviatio
         )
         .expect("boundary input should construct"),
         valid_model_parameters(),
+        1.0,
     )
     .expect("pricing request should construct");
 
-    assert!(
-        !use_nested_transition_measure_for_local_request(&pricing_request)
-            .expect("nested transition measure detection should succeed")
-    );
+    let transition_context = transition_context_for_request(&pricing_request);
+    let transition_row = transition_context
+        .build_row_state(
+            pricing_request
+                .boundary_input
+                .observed_boundary_state
+                .deviation,
+        )
+        .expect("transition row should construct");
+
+    assert!(!transition_row.uses_nested_transition_measure());
 }
 
 #[test]
@@ -148,6 +183,7 @@ fn expected_news_loading_inference_short_circuits_when_activity_coupling_is_zero
         )
         .expect("boundary input should construct"),
         model_parameters,
+        1.0,
     )
     .expect("pricing request should construct");
 
@@ -157,9 +193,16 @@ fn expected_news_loading_inference_short_circuits_when_activity_coupling_is_zero
         SufficientStatisticsExpectedIntervalStatistics::try_new(1.0, 1.0, 0.0, 0.0)
             .expect("expected statistics should construct");
 
-    let expected_news_loading = infer_expected_news_loading_under_local_measure(
-        &request,
-        interval_factors,
+    let transition_context =
+        LocalTransitionRequestContext::from_pricing_request(&request, interval_factors)
+            .expect("transition context should construct");
+    let transition_row = transition_context
+        .build_row_state(request.boundary_input.observed_boundary_state.deviation)
+        .expect("transition row should construct");
+
+    let expected_news_loading = infer_expected_news_loading_under_local_measure_for_row(
+        &transition_context,
+        &transition_row,
         expected_statistics,
     )
     .expect("zero activity coupling should not require inferred loading");
@@ -196,6 +239,7 @@ fn risk_neutral_anchor_materialization_accepts_zero_adjustment_nested_request() 
             },
         ),
         model_parameters,
+        1.0,
     )
     .expect("pricing request should construct");
 
@@ -257,6 +301,7 @@ fn local_transition_theta_short_circuits_to_zero_for_zero_adjustment_requests() 
             },
         ),
         valid_model_parameters(),
+        1.0,
     )
     .expect("pricing request should construct");
 
@@ -276,4 +321,249 @@ fn local_transition_theta_short_circuits_to_zero_for_zero_adjustment_requests() 
 
     assert_eq!(theta, 0.0);
     assert_eq!(diagnostics, None);
+}
+
+#[test]
+fn nested_zero_adjustment_materialization_matches_first_moment_hawkes_update() {
+    let request = VanillaOptionPricingRequest::try_new(
+        VanillaOptionPricingMarketInputs::try_new_single_node(100.0, 100.0, 1.0, 0.02, 0.01)
+            .expect("market inputs should construct"),
+        VanillaOptionPayoffConfiguration {
+            payoff_type: VanillaOptionPayoffType::Call,
+        },
+        disabled_boundary_input(
+            1.0,
+            HawkesExcitationState {
+                y_plus_plus: 0.35,
+                y_plus_minus: 0.15,
+                y_minus_plus: 0.25,
+                y_minus_minus: 0.4,
+            },
+        ),
+        valid_model_parameters(),
+        1.0,
+    )
+    .expect("pricing request should construct");
+
+    let interval_factors = VanillaOptionPricingIntervalFactors::try_new(1.2, 0.3, 0.15)
+        .expect("interval factors should construct");
+    let driver_parameters = request
+        .model_parameters
+        .nig_shared_plus_shift_configuration
+        .derive_driver_parameters()
+        .expect("driver parameters should derive");
+    let mut observer = None;
+
+    let materialization = build_pricing_risk_neutral_anchor_materialization(
+        &request,
+        &build_uniform_runtime_interval_schedule(1, 1.0),
+        &[interval_factors],
+        driver_parameters,
+        &mut observer,
+    )
+    .expect("risk-neutral anchor materialization should succeed");
+
+    let expected_severity_mark = request
+        .model_parameters
+        .news_process_configuration
+        .shared_mark_law
+        .gamma_severity_marks
+        .expected_severity_mark()
+        .expect("expected severity mark should evaluate");
+    let expected_statistics = derive_expected_interval_statistics_from_first_moment_dynamics(
+        build_pricing_equation_specification(&request),
+        expected_severity_mark,
+        EndogenousAnchorIntervalFactors::try_new(
+            interval_factors.s_h,
+            interval_factors.nu_h_known,
+            interval_factors.nu_h_surprise,
+            request.interval_delta,
+        )
+        .expect("endogenous interval factors should construct"),
+        request.boundary_input.hawkes_boundary_state,
+    )
+    .expect("first-moment expected statistics should evaluate");
+
+    let expected_hawkes_state = request
+        .boundary_input
+        .hawkes_boundary_state
+        .apply_shared_decay_drift(
+            request.model_parameters.hawkes_kernel_parameters.beta,
+            request.interval_delta,
+        )
+        .apply_expected_endogenous_event_jump(
+            HawkesEventSide::Buy,
+            request.model_parameters.hawkes_kernel_parameters.alpha,
+            expected_statistics.expected_n_plus,
+        )
+        .apply_expected_endogenous_event_jump(
+            HawkesEventSide::Sell,
+            request.model_parameters.hawkes_kernel_parameters.alpha,
+            expected_statistics.expected_n_minus,
+        );
+
+    assert_eq!(
+        materialization.expected_hawkes_state_path[1],
+        expected_hawkes_state
+    );
+}
+
+#[test]
+fn nested_news_loading_inference_uses_exact_closed_form_with_activity_coupling() {
+    let mut model_parameters = valid_model_parameters();
+    model_parameters
+        .news_process_configuration
+        .known_component_mark_scales
+        .activity_coupling_scale = 0.8;
+    model_parameters
+        .news_process_configuration
+        .surprise_component_mark_scales
+        .activity_coupling_scale = 0.35;
+
+    let request = VanillaOptionPricingRequest::try_new(
+        VanillaOptionPricingMarketInputs::try_new_single_node(100.0, 100.0, 1.0, 0.02, 0.01)
+            .expect("market inputs should construct"),
+        VanillaOptionPayoffConfiguration {
+            payoff_type: VanillaOptionPayoffType::Call,
+        },
+        disabled_boundary_input(
+            1.0,
+            HawkesExcitationState {
+                y_plus_plus: 0.35,
+                y_plus_minus: 0.15,
+                y_minus_plus: 0.25,
+                y_minus_minus: 0.4,
+            },
+        ),
+        model_parameters,
+        1.0,
+    )
+    .expect("pricing request should construct");
+
+    let interval_factors = VanillaOptionPricingIntervalFactors::try_new(1.2, 0.3, 0.15)
+        .expect("interval factors should construct");
+    let expected_statistics = derive_expected_interval_statistics_from_first_moment_dynamics(
+        build_pricing_equation_specification(&request),
+        request
+            .model_parameters
+            .news_process_configuration
+            .shared_mark_law
+            .gamma_severity_marks
+            .expected_severity_mark()
+            .expect("expected severity mark should evaluate"),
+        EndogenousAnchorIntervalFactors::try_new(
+            interval_factors.s_h,
+            interval_factors.nu_h_known,
+            interval_factors.nu_h_surprise,
+            request.interval_delta,
+        )
+        .expect("endogenous interval factors should construct"),
+        request.boundary_input.hawkes_boundary_state,
+    )
+    .expect("first-moment expected statistics should evaluate");
+
+    let transition_context =
+        LocalTransitionRequestContext::from_pricing_request(&request, interval_factors)
+            .expect("transition context should construct");
+    let transition_row = transition_context
+        .build_row_state(request.boundary_input.observed_boundary_state.deviation)
+        .expect("transition row should construct");
+
+    let expected_news_loading = infer_expected_news_loading_under_local_measure_for_row(
+        &transition_context,
+        &transition_row,
+        expected_statistics,
+    )
+    .expect("nested closed-form news loading should evaluate");
+
+    let expected_severity_mark = request
+        .model_parameters
+        .news_process_configuration
+        .shared_mark_law
+        .gamma_severity_marks
+        .expected_severity_mark()
+        .expect("expected severity mark should evaluate");
+
+    let expected_loading = (interval_factors.nu_h_known
+        * request.interval_delta
+        * request
+            .model_parameters
+            .news_process_configuration
+            .known_component_mark_scales
+            .activity_coupling_scale
+        + interval_factors.nu_h_surprise
+            * request.interval_delta
+            * request
+                .model_parameters
+                .news_process_configuration
+                .surprise_component_mark_scales
+                .activity_coupling_scale)
+        * expected_severity_mark;
+
+    assert_eq!(expected_news_loading, expected_loading);
+}
+
+#[test]
+fn near_origin_positive_real_characteristic_function_evaluation_remains_finite() {
+    let pricing_request = VanillaOptionPricingRequest::try_new(
+        VanillaOptionPricingMarketInputs::try_new_single_node(100.0, 100.0, 1.0, 0.02, 0.01)
+            .expect("market inputs should construct"),
+        VanillaOptionPayoffConfiguration {
+            payoff_type: VanillaOptionPayoffType::Call,
+        },
+        disabled_boundary_input(
+            1.0,
+            HawkesExcitationState {
+                y_plus_plus: 0.35,
+                y_plus_minus: 0.15,
+                y_minus_plus: 0.25,
+                y_minus_minus: 0.4,
+            },
+        ),
+        valid_model_parameters(),
+        1.0,
+    )
+    .expect("pricing request should construct");
+
+    let driver_parameters = pricing_request
+        .model_parameters
+        .nig_shared_plus_shift_configuration
+        .derive_driver_parameters()
+        .expect("driver parameters should derive");
+    let interval_factors = VanillaOptionPricingIntervalFactors::try_new(1.2, 0.3, 0.15)
+        .expect("interval factors should construct");
+    let news_intensity = interval_factors
+        .news_intensity_input()
+        .expect("news intensity should construct");
+
+    let evaluation = evaluate_pricing_log_return_characteristic_function(
+        &pricing_request,
+        driver_parameters,
+        interval_factors,
+        news_intensity,
+        ComplexScalar::new(0.000_831_192_045_403_289_7, 0.0),
+    )
+    .expect("near-origin positive real characteristic-function evaluation should succeed");
+
+    assert!(evaluation.value.is_finite());
+    assert_eq!(
+        evaluation.transform_diagnostics.status,
+        ExponentialAffineTransformIntegrationStatus::Completed
+    );
+    assert!(
+        evaluation
+            .transform_diagnostics
+            .output
+            .expect("completed transform should include output")
+            .transform_value
+            .is_finite()
+    );
+    assert_ne!(
+        evaluation
+            .transform_diagnostics
+            .metadata
+            .guard_failure
+            .map(|guard_failure| guard_failure.code),
+        Some(ExponentialAffineTransformGuardFailureCode::TransformValueOverflow)
+    );
 }

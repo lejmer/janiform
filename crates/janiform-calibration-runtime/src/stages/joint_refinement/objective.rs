@@ -1,4 +1,5 @@
 use std::cmp::Ordering;
+use std::sync::mpsc::Sender;
 
 use janiform_foundations::numeric::{
     bowley_skewness_from_sorted, central_skewness_or_zero, relative_rmse, sorted_finite_values,
@@ -9,7 +10,8 @@ use super::execution::{
     JOINT_REFINEMENT_OBJECTIVE_NORMALIZATION_FLOOR, JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR,
     JointRefinementBaselineBuckets, JointRefinementCandidateEvaluation, JointRefinementContext,
     JointRefinementDeterministicCacheKey, JointRefinementDeterministicEvaluation,
-    JointRefinementFidelityTier, JointRefinementObservedData, JointRefinementSeedSummary,
+    JointRefinementFidelityTier, JointRefinementObservedData, JointRefinementOptionPricingCacheKey,
+    JointRefinementSeedSummary, option_pricing_execution_failure_message,
     option_spread_normalized_price_fit, ordered_parameter_bits,
 };
 use super::setup::{
@@ -29,6 +31,8 @@ use janiform_calibration_artifacts::{
     JointRefinementStageObjectiveBreakdown,
 };
 use janiform_model_kernels::hawkes::HawkesKernelParameters;
+
+use super::contracts::{JointRefinementStageProgressPhase, JointRefinementStageProgressUpdate};
 
 pub(super) use janiform_foundations::numeric::root_mean_square_or_infinity as root_mean_square;
 
@@ -66,6 +70,8 @@ pub(super) fn evaluate_joint_fitted_parameters(
     context: &JointRefinementContext,
     fidelity_tier: JointRefinementFidelityTier,
     solver_settings: &CalibrationOptimizerSettings,
+    progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
+    progress_phase: Option<JointRefinementStageProgressPhase>,
 ) -> JointRefinementCandidateEvaluation {
     build_joint_candidate_evaluation_for_fitted_parameters(
         fitted_parameters,
@@ -73,6 +79,8 @@ pub(super) fn evaluate_joint_fitted_parameters(
         context,
         fidelity_tier,
         solver_settings,
+        progress_sender,
+        progress_phase,
     )
 }
 
@@ -106,6 +114,8 @@ fn build_joint_candidate_evaluation(
         context,
         fidelity_tier,
         solver_settings,
+        None,
+        None,
     )
 }
 
@@ -115,7 +125,26 @@ fn build_joint_candidate_evaluation_for_fitted_parameters(
     context: &JointRefinementContext,
     fidelity_tier: JointRefinementFidelityTier,
     solver_settings: &CalibrationOptimizerSettings,
+    progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
+    progress_phase: Option<JointRefinementStageProgressPhase>,
 ) -> JointRefinementCandidateEvaluation {
+    if let Some(fatal_option_pricing_failure) = option_pricing_execution_failure_message(context) {
+        return invalid_candidate_evaluation(
+            context,
+            &context.baseline_hawkes_fitted_parameters,
+            &context.baseline_return_components_fitted_parameters,
+            solver_settings.constraint_penalty_weight,
+            fatal_option_pricing_failure.as_str(),
+        );
+    }
+
+    let simulation_seed_count = match fidelity_tier {
+        JointRefinementFidelityTier::Local => 1,
+        JointRefinementFidelityTier::Final => context.final_simulation_seeds.len(),
+    };
+    let include_option_pricing = option_pricing_is_enabled_for_fidelity(context, fidelity_tier);
+    let total_progress_units = 1 + simulation_seed_count + usize::from(include_option_pricing);
+
     if violates_runtime_seasonality_scaled_stationarity(&fitted_parameters, context) {
         return invalid_candidate_evaluation(
             context,
@@ -126,6 +155,14 @@ fn build_joint_candidate_evaluation_for_fitted_parameters(
         );
     }
 
+    emit_joint_refinement_candidate_evaluation_progress(
+        progress_sender,
+        progress_phase,
+        0,
+        total_progress_units,
+        Some("deterministic_evaluation"),
+    );
+
     let simulation_parameter_bits = if context.option_pricing_context.is_some() {
         Some(&[][..])
     } else {
@@ -134,6 +171,14 @@ fn build_joint_candidate_evaluation_for_fitted_parameters(
 
     let deterministic_evaluation =
         resolve_deterministic_evaluation(&fitted_parameters, simulation_parameter_bits, context);
+
+    emit_joint_refinement_candidate_evaluation_progress(
+        progress_sender,
+        progress_phase,
+        1,
+        total_progress_units,
+        Some("deterministic_evaluation"),
+    );
 
     let raw_aggregated_likelihood_fit = deterministic_evaluation.raw_aggregated_likelihood_fit;
 
@@ -147,8 +192,10 @@ fn build_joint_candidate_evaluation_for_fitted_parameters(
         &fitted_parameters,
         context,
         simulation_seeds.as_slice(),
-        None,
-        None,
+        progress_sender,
+        progress_phase,
+        1,
+        total_progress_units,
     ) {
         Ok(seed_summaries) => seed_summaries,
         Err(error_message) => {
@@ -236,10 +283,53 @@ fn build_joint_candidate_evaluation_for_fitted_parameters(
                 / context.observed_data.observed_log_price_span.max(1.0e-8)
         }));
 
-    let raw_option_spread_normalized_price_fit = if context.option_pricing_context.is_some() {
-        match option_spread_normalized_price_fit(context, &fitted_parameters) {
-            Ok(value) => value,
+    let raw_option_spread_normalized_price_fit = if include_option_pricing {
+        emit_joint_refinement_candidate_evaluation_progress(
+            progress_sender,
+            progress_phase,
+            1 + simulation_seeds.len(),
+            total_progress_units,
+            Some("option_pricing cache_lookup"),
+        );
+        let resolved_option_pricing_fit = resolve_option_spread_normalized_price_fit(
+            parameter_bits,
+            context,
+            &fitted_parameters,
+            progress_sender,
+            progress_phase,
+            1 + simulation_seeds.len(),
+            total_progress_units,
+        );
+        emit_joint_refinement_candidate_evaluation_progress(
+            progress_sender,
+            progress_phase,
+            1 + simulation_seeds.len(),
+            total_progress_units,
+            Some(if resolved_option_pricing_fit.is_ok() {
+                "option_pricing resolved_ok"
+            } else {
+                "option_pricing resolved_error"
+            }),
+        );
+        match resolved_option_pricing_fit {
+            Ok(value) => {
+                emit_joint_refinement_candidate_evaluation_progress(
+                    progress_sender,
+                    progress_phase,
+                    total_progress_units,
+                    total_progress_units,
+                    Some("option_pricing"),
+                );
+                value
+            }
             Err(error_message) => {
+                emit_joint_refinement_candidate_evaluation_progress(
+                    progress_sender,
+                    progress_phase,
+                    1 + simulation_seeds.len(),
+                    total_progress_units,
+                    Some(format!("option_pricing error: {error_message}").as_str()),
+                );
                 return invalid_candidate_evaluation(
                     context,
                     &context.baseline_hawkes_fitted_parameters,
@@ -257,6 +347,14 @@ fn build_joint_candidate_evaluation_for_fitted_parameters(
         JointRefinementFidelityTier::Local => &context.local_baseline_buckets,
         JointRefinementFidelityTier::Final => &context.final_baseline_buckets,
     };
+
+    emit_joint_refinement_candidate_evaluation_progress(
+        progress_sender,
+        progress_phase,
+        total_progress_units,
+        total_progress_units,
+        Some("objective_normalization"),
+    );
 
     let normalized_aggregated_likelihood_fit = normalize_bucket(
         raw_aggregated_likelihood_fit,
@@ -314,8 +412,7 @@ fn build_joint_candidate_evaluation_for_fitted_parameters(
         baseline_buckets.price_span_sanity_fit,
     );
 
-    let normalized_option_spread_normalized_price_fit = if context.option_pricing_context.is_some()
-    {
+    let normalized_option_spread_normalized_price_fit = if include_option_pricing {
         normalize_bucket(
             raw_option_spread_normalized_price_fit,
             baseline_buckets.option_spread_normalized_price_fit,
@@ -341,7 +438,7 @@ fn build_joint_candidate_evaluation_for_fitted_parameters(
         normalized_price_span_sanity_fit,
     ];
 
-    if context.option_pricing_context.is_some() {
+    if include_option_pricing {
         normalized_objective_terms.push(normalized_option_spread_normalized_price_fit);
     }
 
@@ -349,6 +446,14 @@ fn build_joint_candidate_evaluation_for_fitted_parameters(
         root_mean_square(normalized_objective_terms.as_slice()) + hard_constraint_penalty;
 
     let use_raw_bucket_values = baseline_bucket_values_are_unity(baseline_buckets);
+
+    emit_joint_refinement_candidate_evaluation_progress(
+        progress_sender,
+        progress_phase,
+        total_progress_units,
+        total_progress_units,
+        Some("objective_diagnostics"),
+    );
 
     JointRefinementCandidateEvaluation {
         fitted_parameters,
@@ -427,6 +532,34 @@ fn build_joint_candidate_evaluation_for_fitted_parameters(
         },
         invalid_reason: None,
     }
+}
+
+fn emit_joint_refinement_candidate_evaluation_progress(
+    progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
+    progress_phase: Option<JointRefinementStageProgressPhase>,
+    completed_units: usize,
+    total_units: usize,
+    current_item_label: Option<&str>,
+) {
+    let Some(progress_sender) = progress_sender else {
+        return;
+    };
+    let Some(progress_phase) = progress_phase else {
+        return;
+    };
+
+    let _ = progress_sender.send(JointRefinementStageProgressUpdate {
+        phase: progress_phase,
+        completed_units,
+        total_units,
+        current_item_label: current_item_label.map(str::to_string),
+        valid_completed_units: None,
+        cumulative_local_evaluation_count: None,
+        current_weighted_objective: None,
+        best_weighted_objective: None,
+        current_coarse_consistency_fit: None,
+        best_coarse_consistency_fit: None,
+    });
 }
 
 pub(super) fn joint_primary_metrics_from_breakdown(
@@ -600,6 +733,14 @@ fn maybe_raw(use_raw: bool, raw_value: f64, normalized_value: f64) -> f64 {
     if use_raw { raw_value } else { normalized_value }
 }
 
+fn option_pricing_is_enabled_for_fidelity(
+    context: &JointRefinementContext,
+    fidelity_tier: JointRefinementFidelityTier,
+) -> bool {
+    matches!(fidelity_tier, JointRefinementFidelityTier::Final)
+        && context.option_pricing_context.is_some()
+}
+
 fn average_seed_score(values: impl Iterator<Item = f64>) -> f64 {
     let collected = values.collect::<Vec<_>>();
     collected.iter().sum::<f64>() / collected.len().max(1) as f64
@@ -748,6 +889,100 @@ fn resolve_deterministic_evaluation(
     }
 
     deterministic_evaluation
+}
+
+fn resolve_option_spread_normalized_price_fit(
+    parameter_bits: Option<&[u64]>,
+    context: &JointRefinementContext,
+    fitted_parameters: &JointRefinementStageFittedParameters,
+    progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
+    progress_phase: Option<JointRefinementStageProgressPhase>,
+    completed_units: usize,
+    total_units: usize,
+) -> Result<f64, String> {
+    let cache_key = parameter_bits.map(|bits| JointRefinementOptionPricingCacheKey {
+        parameter_bits: bits.to_vec(),
+    });
+
+    if let Some(option_pricing_cache_key) = cache_key.as_ref() {
+        let cached_value = if let Ok(cache_guard) = context.option_pricing_cache.lock() {
+            cache_guard.get(option_pricing_cache_key).cloned()
+        } else {
+            None
+        };
+
+        if let Some(cached_value) = cached_value {
+            if let Err(error_message) = &cached_value {
+                record_option_pricing_execution_failure(context, error_message);
+            }
+            let cache_hit_outcome_label = if cached_value.is_ok() {
+                "option_pricing cache_hit_value"
+            } else {
+                "option_pricing cache_hit_error"
+            };
+            context.profiling_state.record_option_pricing_cache_hit();
+            emit_joint_refinement_candidate_evaluation_progress(
+                progress_sender,
+                progress_phase,
+                completed_units,
+                total_units,
+                Some("option_pricing cache_hit"),
+            );
+            emit_joint_refinement_candidate_evaluation_progress(
+                progress_sender,
+                progress_phase,
+                completed_units,
+                total_units,
+                Some("option_pricing cache_hit_resolved"),
+            );
+            emit_joint_refinement_candidate_evaluation_progress(
+                progress_sender,
+                progress_phase,
+                completed_units,
+                total_units,
+                Some(cache_hit_outcome_label),
+            );
+            return cached_value;
+        }
+    }
+
+    context.profiling_state.record_option_pricing_cache_miss();
+    emit_joint_refinement_candidate_evaluation_progress(
+        progress_sender,
+        progress_phase,
+        completed_units,
+        total_units,
+        Some("option_pricing cache_miss"),
+    );
+
+    let resolved_fit = option_spread_normalized_price_fit(
+        context,
+        fitted_parameters,
+        progress_sender,
+        progress_phase,
+        Some(completed_units),
+        Some(total_units),
+    );
+
+    if let Err(error_message) = &resolved_fit {
+        record_option_pricing_execution_failure(context, error_message);
+    }
+
+    if let Some(option_pricing_cache_key) = cache_key
+        && let Ok(mut cache_guard) = context.option_pricing_cache.lock()
+    {
+        cache_guard.insert(option_pricing_cache_key, resolved_fit.clone());
+    }
+
+    resolved_fit
+}
+
+fn record_option_pricing_execution_failure(context: &JointRefinementContext, error_message: &str) {
+    if let Ok(mut guard) = context.option_pricing_execution_failure.lock()
+        && guard.is_none()
+    {
+        *guard = Some(error_message.to_string());
+    }
 }
 
 fn baseline_bucket_values_are_unity(baseline_buckets: &JointRefinementBaselineBuckets) -> bool {

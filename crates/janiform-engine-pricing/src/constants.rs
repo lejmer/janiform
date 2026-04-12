@@ -39,6 +39,10 @@ pub const VANILLA_OPTION_PRICING_RUN_OUTPUT_SCHEMA_METADATA_VERSION: &str =
     "pricing.vanilla_option.run_output_schema_metadata.v1";
 pub const VANILLA_OPTION_CALIBRATION_HOOK_POLICY: &str =
     "derive_option_surface_inputs_from_pricing_response_and_optional_run_diagnostics.v1";
+pub(crate) const INTERNAL_DIRECT_FOURIER_NUMERICS_SELECTION_POLICY: &str = "dyadic_contour_probe_and_midpoint_refinement_until_quadrature_and_tail_error_estimates_fall_below_cuberoot_machine_epsilon_call_bound.v1";
+pub(crate) const INTERNAL_AFFINE_TRANSFORM_STEP_SELECTION_POLICY: &str = "dyadic_runge_kutta_step_refinement_until_successive_solves_agree_within_order_four_richardson_error_and_cuberoot_machine_epsilon_relative_budget.v1";
+pub(crate) const INTERNAL_FORWARD_LAW_FREQUENCY_GRID_POLICY: &str =
+    "uniform_boundary_grid_dual_midpoint_frequency_lattice_from_boundary_span_and_spacing.v1";
 /// Public default pricing interval in hours, overrideable on the pricing request contract.
 pub const DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA: f64 = 1.0;
 /// Annualization convention for continuous rates in pricing, not a fitted model heuristic.
@@ -72,18 +76,4 @@ pub(crate) const VANILLA_OPTION_PRICING_CALIBRATION_HOOKS_REQUIRED_FIELDS: [&str
     "integration_truncation_check_passed",
 ];
 
-// Public engine defaults for Fourier inversion, overrideable through `FourierInversionEngineSettings`.
-pub(crate) const DEFAULT_FOURIER_INVERSION_DAMPING_FACTOR: f64 = 1.5;
-// Public engine defaults for Fourier inversion, overrideable through `FourierInversionEngineSettings`.
-pub(crate) const DEFAULT_FOURIER_INVERSION_UPPER_INTEGRATION_BOUND: f64 = 150.0;
-// Public engine defaults for Fourier inversion, overrideable through `FourierInversionEngineSettings`.
-pub(crate) const DEFAULT_FOURIER_INVERSION_STEP_COUNT: usize = 4_096;
-// Public engine defaults for Fourier inversion, overrideable through `FourierInversionEngineSettings`.
-pub(crate) const DEFAULT_FOURIER_INVERSION_CONVERGENCE_ABSOLUTE_TOLERANCE: f64 = 1.0e-5;
-// Public engine defaults for Fourier inversion, overrideable through `FourierInversionEngineSettings`.
-pub(crate) const DEFAULT_FOURIER_INVERSION_CONVERGENCE_RELATIVE_TOLERANCE: f64 = 1.0e-4;
-// Public engine defaults for Fourier inversion, overrideable through `FourierInversionEngineSettings`.
-pub(crate) const DEFAULT_FOURIER_INVERSION_TERMINAL_INTEGRAND_ABSOLUTE_TOLERANCE: f64 = 5.0e-4;
-// Public engine defaults for Fourier inversion, overrideable through `FourierInversionEngineSettings`.
-pub(crate) const DEFAULT_FOURIER_INVERSION_TERMINAL_INTEGRAND_RATIO_TOLERANCE: f64 = 1.0e-2;
 pub(crate) const FOURIER_NON_NEGATIVE_PRICE_CLAMP_TOLERANCE: f64 = 1.0e-12;

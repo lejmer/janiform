@@ -301,6 +301,13 @@ impl ExponentialAffineTransformInput {
         validate_initial_state(self.initial_state)?;
         Ok(())
     }
+
+    pub(crate) fn is_exact_identity_query(self) -> bool {
+        self.u_plus == ComplexScalar::new(0.0, 0.0)
+            && self.u_minus == ComplexScalar::new(0.0, 0.0)
+            && self.z_plus == ComplexScalar::new(1.0, 0.0)
+            && self.z_minus == ComplexScalar::new(1.0, 0.0)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

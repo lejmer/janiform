@@ -52,6 +52,7 @@ from tests.support.cli_fixtures import (
     build_stylized_fact_metric_catalog,
 )
 from tests.support.hourly_factor_contracts import build_hourly_factor_contract
+from tests.support.pricing import build_runtime_interval_schedule
 from tests.support.time import REFERENCE_PRICING_TIMESTAMP_UTC_NANOS
 
 CALENDAR_REGISTRY_JSON: str = json.dumps(
@@ -291,8 +292,12 @@ def write_cli_documentation_inputs(output_directory: Path) -> dict[str, str]:
         encoding="utf-8",
     )
 
+    pricing_request = build_pricing_request()
     pricing_execution_input = VanillaOptionPricingExecutionInput(
-        request=build_pricing_request(),
+        request=pricing_request,
+        runtime_interval_schedule=build_runtime_interval_schedule(
+            (pricing_request.market_inputs.single_maturity_interval,),
+        ),
         hourly_factor_contract=_build_pricing_hourly_factor_contract(),
         optional_output_selection=build_pricing_optional_output_selection(),
     )

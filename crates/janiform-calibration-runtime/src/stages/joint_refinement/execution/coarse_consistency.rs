@@ -124,6 +124,8 @@ pub(crate) fn build_joint_candidate_coarse_consistency_artifacts(
         context.final_simulation_seeds.as_slice(),
         None,
         None,
+        0,
+        context.final_simulation_seeds.len(),
     )
     .ok()?;
 

@@ -452,6 +452,10 @@ def _detail_for_failed_native_run(failure_payload: Any) -> str:
 
 def _label_for_stage_progress_phase(progress_phase: Optional[str]) -> str:
     match progress_phase:
+        case "baseline_local_evaluation":
+            return "baseline local evaluation"
+        case "baseline_final_evaluation":
+            return "baseline final evaluation"
         case "restart_optimization":
             return "restart optimization"
         case "coarse_consistency_evaluation":

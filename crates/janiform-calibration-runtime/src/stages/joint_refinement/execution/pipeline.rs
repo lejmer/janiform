@@ -53,7 +53,7 @@ use super::{
     build_joint_simulation_summaries, build_observed_data, build_option_calibration_diagnostics,
     build_option_pricing_context, build_summary_simulation_session_context,
     desired_joint_refinement_restart_count, joint_refinement_budget_schedule,
-    optimize_restart_seeds, ordered_parameter_bits,
+    optimize_restart_seeds, option_pricing_execution_failure_message, ordered_parameter_bits,
     select_best_restart_outcome_with_lazy_coarse_consistency,
     simulation_infrastructure_failure_message,
 };
@@ -164,6 +164,7 @@ pub(super) fn run_joint_refinement_calibration_stage_internal(
         &resolved_stage_payloads,
         &mut prepared_bootstrap.bootstrap_context,
         prepared_bootstrap.baseline_parameter_vector.as_slice(),
+        progress_sender.as_ref(),
     ) {
         Ok(artifacts) => artifacts,
         Err(failure) => return build_joint_refinement_stage_failure_report(run_spec, failure),
@@ -178,6 +179,10 @@ pub(super) fn run_joint_refinement_calibration_stage_internal(
         Ok(artifacts) => artifacts,
         Err(failure) => return build_joint_refinement_stage_failure_report(run_spec, failure),
     };
+
+    if let Err(failure) = ensure_valid_selected_restart_outcome(&restart_search_artifacts) {
+        return build_joint_refinement_stage_failure_report(run_spec, failure);
+    }
 
     let final_assembly_artifacts = match assemble_final_stage_outputs(
         &prepared_bootstrap.bootstrap_context,
@@ -468,6 +473,7 @@ fn build_bootstrap_context(
             &runtime_materialization.summary_simulation_session_context,
         )?,
         simulation_infrastructure_failure: Arc::new(Mutex::new(None)),
+        option_pricing_execution_failure: Arc::new(Mutex::new(None)),
         calendar_registry: calendar_registry.clone(),
         exchange_code: run_spec.data_inputs.exchange_code.clone(),
         runtime_hourly_seasonality_factors: runtime_materialization
@@ -495,6 +501,7 @@ fn build_bootstrap_context(
         objective_cache: Arc::new(Mutex::new(BTreeMap::new())),
         deterministic_evaluation_cache: Arc::new(Mutex::new(BTreeMap::new())),
         seed_summary_cache: Arc::new(Mutex::new(BTreeMap::new())),
+        option_pricing_cache: Arc::new(Mutex::new(BTreeMap::new())),
         option_pricing_context,
         profiling_state: Arc::new(JointRefinementProfilingState::default()),
     })
@@ -674,6 +681,7 @@ fn establish_baseline_evaluation(
     resolved_stage_payloads: &ResolvedStagePayloads<'_>,
     bootstrap_context: &mut JointRefinementContext,
     baseline_parameter_vector: &[f64],
+    progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
 ) -> Result<BaselineEvaluationArtifacts, JointRefinementStageExecutionFailure> {
     let baseline_fitted_parameters =
         janiform_calibration_artifacts::JointRefinementStageFittedParameters {
@@ -696,7 +704,10 @@ fn establish_baseline_evaluation(
         bootstrap_context,
         JointRefinementFidelityTier::Local,
         &resolved_stage_payloads.stage_solver_settings,
+        progress_sender,
+        Some(JointRefinementStageProgressPhase::BaselineLocalEvaluation),
     );
+    ensure_option_pricing_execution_available(bootstrap_context)?;
 
     let baseline_final_evaluation = evaluate_joint_fitted_parameters(
         baseline_fitted_parameters,
@@ -704,23 +715,35 @@ fn establish_baseline_evaluation(
         bootstrap_context,
         JointRefinementFidelityTier::Final,
         &resolved_stage_payloads.stage_solver_settings,
+        progress_sender,
+        Some(JointRefinementStageProgressPhase::BaselineFinalEvaluation),
     );
 
     ensure_simulation_infrastructure_available(bootstrap_context)?;
-
-    ensure_valid_baseline_candidate(&baseline_local_evaluation, &baseline_final_evaluation)?;
+    ensure_option_pricing_execution_available(bootstrap_context)?;
 
     bootstrap_context.local_baseline_buckets =
         baseline_buckets_from_evaluation(&baseline_local_evaluation);
     bootstrap_context.final_baseline_buckets =
         baseline_buckets_from_evaluation(&baseline_final_evaluation);
 
-    let baseline_coarse_consistency_artifacts = build_joint_candidate_coarse_consistency_artifacts(
-        bootstrap_context,
-        &baseline_final_evaluation.fitted_parameters,
-        Some(baseline_parameter_bits.as_slice()),
-        None,
-    );
+    let baseline_candidate_is_valid = baseline_local_evaluation.invalid_reason.is_none()
+        && baseline_final_evaluation.invalid_reason.is_none();
+
+    let baseline_coarse_consistency_artifacts = if baseline_candidate_is_valid {
+        emit_coarse_consistency_progress(progress_sender, 0, 1, "baseline coarse_consistency");
+        build_joint_candidate_coarse_consistency_artifacts(
+            bootstrap_context,
+            &baseline_final_evaluation.fitted_parameters,
+            Some(baseline_parameter_bits.as_slice()),
+            None,
+        )
+        .inspect(|_| {
+            emit_coarse_consistency_progress(progress_sender, 1, 1, "baseline coarse_consistency");
+        })
+    } else {
+        None
+    };
 
     let baseline_restart_outcome = JointRefinementRestartOutcome {
         restart_id: "baseline".to_string(),
@@ -741,21 +764,32 @@ fn establish_baseline_evaluation(
     })
 }
 
-fn ensure_valid_baseline_candidate(
-    baseline_local_evaluation: &super::JointRefinementCandidateEvaluation,
-    baseline_final_evaluation: &super::JointRefinementCandidateEvaluation,
+fn ensure_valid_selected_restart_outcome(
+    restart_search_artifacts: &RestartSearchArtifacts,
 ) -> Result<(), JointRefinementStageExecutionFailure> {
-    if baseline_local_evaluation.invalid_reason.is_none()
-        && baseline_final_evaluation.invalid_reason.is_none()
+    if restart_search_artifacts
+        .best_restart
+        .local_evaluation
+        .invalid_reason
+        .is_none()
+        && restart_search_artifacts
+            .best_restart
+            .final_evaluation
+            .invalid_reason
+            .is_none()
     {
         return Ok(());
     }
 
-    let local_reason = baseline_local_evaluation
+    let local_reason = restart_search_artifacts
+        .best_restart
+        .local_evaluation
         .invalid_reason
         .clone()
         .unwrap_or_else(|| "unknown_local_joint_refinement_failure".to_string());
-    let final_reason = baseline_final_evaluation
+    let final_reason = restart_search_artifacts
+        .best_restart
+        .final_evaluation
         .invalid_reason
         .clone()
         .unwrap_or_else(|| "unknown_final_joint_refinement_failure".to_string());
@@ -763,7 +797,9 @@ fn ensure_valid_baseline_candidate(
     Err(
         JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
             error_message: format!(
-                "joint refinement baseline candidate is invalid: local={local_reason} final={final_reason}"
+                "joint refinement could not identify a valid candidate after restart search: selected_restart={} valid_restart_count={} local={local_reason} final={final_reason}",
+                restart_search_artifacts.best_restart.restart_id,
+                restart_search_artifacts.valid_restart_count,
             ),
         },
     )
@@ -789,6 +825,7 @@ fn run_restart_search(
     let restart_optimization_wall_clock_millis = elapsed_millis(restart_optimization_started_at);
 
     ensure_simulation_infrastructure_available(&prepared_bootstrap.bootstrap_context)?;
+    ensure_option_pricing_execution_available(&prepared_bootstrap.bootstrap_context)?;
 
     let valid_restart_count = count_valid_restart_outcomes(&restart_outcomes);
     let restart_selection_artifacts = select_restart_outcome(
@@ -915,6 +952,22 @@ fn ensure_simulation_infrastructure_available(
         return Err(
             JointRefinementStageExecutionFailure::SimulationInfrastructureUnavailable {
                 error_message,
+            },
+        );
+    }
+
+    Ok(())
+}
+
+fn ensure_option_pricing_execution_available(
+    bootstrap_context: &JointRefinementContext,
+) -> Result<(), JointRefinementStageExecutionFailure> {
+    if let Some(error_message) = option_pricing_execution_failure_message(bootstrap_context) {
+        return Err(
+            JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
+                error_message: format!(
+                    "joint refinement option pricing execution failed: {error_message}"
+                ),
             },
         );
     }
@@ -1212,6 +1265,28 @@ fn emit_final_assembly_progress(
     if let Some(progress_sender) = progress_sender {
         let _ = progress_sender.send(JointRefinementStageProgressUpdate {
             phase: JointRefinementStageProgressPhase::FinalAssembly,
+            completed_units,
+            total_units,
+            current_item_label: Some(current_item_label.to_string()),
+            valid_completed_units: None,
+            cumulative_local_evaluation_count: None,
+            current_weighted_objective: None,
+            best_weighted_objective: None,
+            current_coarse_consistency_fit: None,
+            best_coarse_consistency_fit: None,
+        });
+    }
+}
+
+fn emit_coarse_consistency_progress(
+    progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
+    completed_units: usize,
+    total_units: usize,
+    current_item_label: &str,
+) {
+    if let Some(progress_sender) = progress_sender {
+        let _ = progress_sender.send(JointRefinementStageProgressUpdate {
+            phase: JointRefinementStageProgressPhase::CoarseConsistencyEvaluation,
             completed_units,
             total_units,
             current_item_label: Some(current_item_label.to_string()),

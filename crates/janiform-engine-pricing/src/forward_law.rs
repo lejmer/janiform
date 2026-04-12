@@ -1,9 +1,10 @@
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
 use janiform_affine_oracle::affine_oracle::ExponentialAffineTransformIntegrationResult;
 use janiform_foundations::complex_math::{ComplexScalar, complex_exponential, complex_multiply};
 use janiform_model_kernels::nig::NigBuySellDriverParameters;
 
+use super::constants::INTERNAL_FORWARD_LAW_FREQUENCY_GRID_POLICY;
 use super::contracts::{
     AnchoredPricingRecursionDiagnostics, AnchoredPricingRecursionIntervalDiagnostics,
     VanillaOptionPayoffType, VanillaOptionPricingMarketInputs, VanillaOptionPricingRequest,
@@ -11,17 +12,22 @@ use super::contracts::{
 use super::implied_volatility::{
     VanillaOptionImpliedVolatilityInversionOutcome, invert_vanilla_option_implied_volatility,
 };
+use super::integration_geometry::{
+    estimate_asymptotic_tail_integral_error, initial_midpoint_upper_bound_from_phase_scale,
+    next_power_of_two_at_least,
+};
 use super::interval_schedule::PricingIntervalSchedule;
 use super::probability_projection::probability_mass_from_sampled_cdf_values;
 use super::progress::PricingProgressEvent;
 use super::progress_runtime::PricingProgressReporter;
 use super::runner::{
-    DeviationGrid, PricingCharacteristicFunctionEvaluation, RiskNeutralAnchorMaterialization,
+    DeviationGrid, LocalTransitionRequestContext, LocalTransitionRowState,
+    PricingCharacteristicFunctionEvaluation, RiskNeutralAnchorMaterialization,
     VanillaOptionPricingIntervalFactors, VanillaOptionPricingRunError, build_deviation_grid,
-    build_local_boundary_input, build_local_pricing_request,
-    build_pricing_risk_neutral_anchor_materialization, derive_local_tilted_interval_expectations,
-    evaluate_core_log_return_characteristic_function_under_local_measure,
-    resolve_local_transition_theta,
+    build_pricing_risk_neutral_anchor_materialization,
+    derive_local_tilted_interval_expectations_for_row_with_parallelism,
+    evaluate_core_log_return_characteristic_function_under_local_measure_with_parallelism,
+    resolve_local_transition_theta_for_row_with_parallelism,
 };
 use super::thread_pool::{install_pricing_parallelism, resolved_pricing_cpu_count};
 use super::time_scaling::intraday_year_fraction;
@@ -50,6 +56,112 @@ pub(crate) struct ForwardPricedStrike {
     pub(crate) forward_price: f64,
     pub(crate) discount_factor: f64,
     pub(crate) boundary_state_norm: f64,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct TerminalDistributionPricingKernel {
+    terminal_spots: Vec<f64>,
+    prefix_probability_mass: Vec<f64>,
+    prefix_weighted_spot_mass: Vec<f64>,
+    total_weighted_spot_mass: f64,
+}
+
+impl TerminalDistributionPricingKernel {
+    fn from_terminal_snapshot(
+        pricing_request: &VanillaOptionPricingRequest,
+        terminal_snapshot: &ForwardLawTerminalSnapshot,
+    ) -> Self {
+        let current_observed_log_price = pricing_request
+            .boundary_input
+            .observed_boundary_state
+            .observed_log_price;
+
+        let terminal_spots = terminal_snapshot
+            .terminal_deviation_nodes
+            .iter()
+            .map(|deviation| {
+                pricing_request.market_inputs.spot
+                    * (terminal_snapshot.terminal_anchor_value + *deviation
+                        - current_observed_log_price)
+                        .exp()
+            })
+            .collect::<Vec<_>>();
+
+        let mut prefix_probability_mass =
+            Vec::with_capacity(terminal_snapshot.terminal_probability_mass.len());
+        let mut prefix_weighted_spot_mass =
+            Vec::with_capacity(terminal_snapshot.terminal_probability_mass.len());
+        let mut running_probability_mass = 0.0;
+        let mut running_weighted_spot_mass = 0.0;
+
+        for (probability_mass, terminal_spot) in terminal_snapshot
+            .terminal_probability_mass
+            .iter()
+            .copied()
+            .zip(terminal_spots.iter().copied())
+        {
+            running_probability_mass += probability_mass;
+            running_weighted_spot_mass += probability_mass * terminal_spot;
+            prefix_probability_mass.push(running_probability_mass);
+            prefix_weighted_spot_mass.push(running_weighted_spot_mass);
+        }
+
+        Self {
+            terminal_spots,
+            prefix_probability_mass,
+            prefix_weighted_spot_mass,
+            total_weighted_spot_mass: running_weighted_spot_mass,
+        }
+    }
+
+    fn discounted_price(
+        &self,
+        payoff_type: VanillaOptionPayoffType,
+        strike: f64,
+        discount_factor: f64,
+    ) -> f64 {
+        // Terminal spots inherit the ordered deviation grid, so one partition
+        // point is enough to price all in-the-money mass exactly.
+        let first_in_the_money_index =
+            self.terminal_spots
+                .partition_point(|spot| match payoff_type {
+                    VanillaOptionPayoffType::Call => *spot <= strike,
+                    VanillaOptionPayoffType::Put => *spot < strike,
+                });
+
+        let undiscounted_price = match payoff_type {
+            VanillaOptionPayoffType::Call => {
+                let tail_probability_mass = if first_in_the_money_index == 0 {
+                    self.prefix_probability_mass.last().copied().unwrap_or(0.0)
+                } else if first_in_the_money_index == self.terminal_spots.len() {
+                    0.0
+                } else {
+                    self.prefix_probability_mass.last().copied().unwrap_or(0.0)
+                        - self.prefix_probability_mass[first_in_the_money_index - 1]
+                };
+                let tail_weighted_spot_mass = if first_in_the_money_index == 0 {
+                    self.total_weighted_spot_mass
+                } else if first_in_the_money_index == self.terminal_spots.len() {
+                    0.0
+                } else {
+                    self.total_weighted_spot_mass
+                        - self.prefix_weighted_spot_mass[first_in_the_money_index - 1]
+                };
+
+                tail_weighted_spot_mass - strike * tail_probability_mass
+            }
+            VanillaOptionPayoffType::Put => {
+                if first_in_the_money_index == 0 {
+                    0.0
+                } else {
+                    strike * self.prefix_probability_mass[first_in_the_money_index - 1]
+                        - self.prefix_weighted_spot_mass[first_in_the_money_index - 1]
+                }
+            }
+        };
+
+        discount_factor * undiscounted_price
+    }
 }
 
 pub(crate) fn solve_forward_law_scope(
@@ -83,6 +195,8 @@ pub(crate) fn solve_forward_law_scope(
         &risk_neutral_anchor_materialization,
         unique_maturity_interval_counts.as_slice(),
         false,
+        pricing_thread_pool,
+        cpu_count,
     )?;
     let refined_grid = build_common_deviation_grid(
         pricing_request,
@@ -91,6 +205,8 @@ pub(crate) fn solve_forward_law_scope(
         &risk_neutral_anchor_materialization,
         unique_maturity_interval_counts.as_slice(),
         true,
+        pricing_thread_pool,
+        cpu_count,
     )?;
 
     let solved_snapshots = propagate_terminal_probability_mass(
@@ -142,11 +258,6 @@ pub(crate) fn price_terminal_snapshot_strikes(
     cpu_count: Option<usize>,
     progress_reporter: &PricingProgressReporter,
 ) -> Vec<ForwardPricedStrike> {
-    let current_observed_log_price = pricing_request
-        .boundary_input
-        .observed_boundary_state
-        .observed_log_price;
-
     let payoff_type = pricing_request.payoff.payoff_type;
     let maturity_interval = terminal_snapshot.maturity_interval;
 
@@ -165,21 +276,13 @@ pub(crate) fn price_terminal_snapshot_strikes(
     let forward_price = pricing_request.market_inputs.spot
         * ((risk_free_rate - dividend_yield) * maturity_year_fraction).exp();
     let discount_factor = (-risk_free_rate * maturity_year_fraction).exp();
+    let terminal_distribution = TerminalDistributionPricingKernel::from_terminal_snapshot(
+        pricing_request,
+        terminal_snapshot,
+    );
 
     let price_strike = |strike: f64| {
-        let price = discount_factor
-            * terminal_snapshot
-                .terminal_probability_mass
-                .iter()
-                .zip(terminal_snapshot.terminal_deviation_nodes.iter())
-                .map(|(probability_mass, deviation)| {
-                    let terminal_spot = pricing_request.market_inputs.spot
-                        * (terminal_snapshot.terminal_anchor_value + *deviation
-                            - current_observed_log_price)
-                            .exp();
-                    probability_mass * payoff_value(payoff_type, terminal_spot, strike)
-                })
-                .sum::<f64>();
+        let price = terminal_distribution.discounted_price(payoff_type, strike, discount_factor);
 
         let implied_volatility_outcome = invert_vanilla_option_implied_volatility(
             &VanillaOptionPricingMarketInputs::new_single_node(
@@ -240,24 +343,33 @@ fn build_common_deviation_grid(
     risk_neutral_anchor_materialization: &RiskNeutralAnchorMaterialization,
     maturity_interval_counts: &[usize],
     refined: bool,
+    pricing_thread_pool: Option<&rayon::ThreadPool>,
+    cpu_count: Option<usize>,
 ) -> Result<DeviationGrid, VanillaOptionPricingRunError> {
-    let mut common_lower_bound = f64::INFINITY;
-    let mut common_upper_bound = f64::NEG_INFINITY;
-    let mut common_step = f64::INFINITY;
+    #[derive(Clone, Copy)]
+    struct DeviationGridBoundsSummary {
+        lower_bound: f64,
+        upper_bound: f64,
+        step: f64,
+    }
 
-    for maturity_interval_count in maturity_interval_counts {
+    let summarize_maturity = |maturity_interval_count: usize| {
+        let mut maturity_lower_bound = f64::INFINITY;
+        let mut maturity_upper_bound = f64::NEG_INFINITY;
+        let mut maturity_step = f64::INFINITY;
+
         for strike in strikes {
             let strike_request = pricing_request_for_strike(
                 pricing_request,
                 runtime_interval_schedule,
                 *strike,
-                *maturity_interval_count,
+                maturity_interval_count,
             )?;
 
             let strike_grid = build_deviation_grid(
                 &strike_request,
                 risk_neutral_anchor_materialization,
-                *maturity_interval_count,
+                maturity_interval_count,
                 refined,
             )?;
 
@@ -268,10 +380,43 @@ fn build_common_deviation_grid(
                     / (strike_grid.node_count - 1) as f64
             };
 
-            common_lower_bound = common_lower_bound.min(strike_grid.lower_bound);
-            common_upper_bound = common_upper_bound.max(strike_grid.upper_bound);
-            common_step = common_step.min(strike_step);
+            maturity_lower_bound = maturity_lower_bound.min(strike_grid.lower_bound);
+            maturity_upper_bound = maturity_upper_bound.max(strike_grid.upper_bound);
+            maturity_step = maturity_step.min(strike_step);
         }
+
+        Ok::<_, VanillaOptionPricingRunError>(DeviationGridBoundsSummary {
+            lower_bound: maturity_lower_bound,
+            upper_bound: maturity_upper_bound,
+            step: maturity_step,
+        })
+    };
+
+    let summaries =
+        if resolved_pricing_cpu_count(cpu_count) <= 1 || maturity_interval_counts.len() <= 1 {
+            maturity_interval_counts
+                .iter()
+                .copied()
+                .map(summarize_maturity)
+                .collect::<Result<Vec<_>, _>>()?
+        } else {
+            install_pricing_parallelism(pricing_thread_pool, || {
+                maturity_interval_counts
+                    .par_iter()
+                    .copied()
+                    .map(summarize_maturity)
+                    .collect::<Result<Vec<_>, _>>()
+            })?
+        };
+
+    let mut common_lower_bound = f64::INFINITY;
+    let mut common_upper_bound = f64::NEG_INFINITY;
+    let mut common_step = f64::INFINITY;
+
+    for summary in summaries {
+        common_lower_bound = common_lower_bound.min(summary.lower_bound);
+        common_upper_bound = common_upper_bound.max(summary.upper_bound);
+        common_step = common_step.min(summary.step);
     }
 
     if !common_lower_bound.is_finite()
@@ -318,18 +463,12 @@ fn propagate_terminal_probability_mass(
     cpu_count: Option<usize>,
     progress_reporter: &PricingProgressReporter,
 ) -> Result<Vec<ForwardLawTerminalSnapshot>, VanillaOptionPricingRunError> {
-    let nodes = refined_grid.nodes();
-
     let initial_probability_mass = interpolate_initial_probability_mass(
         refined_grid,
         pricing_request
             .boundary_input
             .observed_boundary_state
             .deviation,
-    );
-
-    let frequency_grid = SharedMidpointFrequencyGrid::from_settings(
-        pricing_request.resolved_fourier_inversion_settings(),
     );
 
     let mut current_probability_mass = initial_probability_mass;
@@ -345,35 +484,26 @@ fn propagate_terminal_probability_mass(
             interval_factors.len(),
         ));
 
-        let transition_matrix = build_transition_matrix(
+        let applied_transition = apply_transition_matrix(
             pricing_request,
             interval_factor,
             driver_parameters,
             risk_neutral_anchor_materialization,
             refined_grid,
             interval_index,
-            &frequency_grid,
+            current_probability_mass.as_slice(),
             pricing_thread_pool,
             cpu_count,
             progress_reporter,
         )?;
 
-        let mut next_probability_mass = vec![0.0; nodes.len()];
+        current_probability_mass = applied_transition.next_probability_mass;
 
-        for (row_index, row) in transition_matrix.rows.iter().enumerate() {
-            let current_mass = current_probability_mass[row_index];
-            for (column_index, probability_mass) in row.iter().enumerate() {
-                next_probability_mass[column_index] += current_mass * probability_mass;
-            }
-        }
-
-        current_probability_mass = next_probability_mass;
-
-        interval_diagnostics.push(transition_matrix.interval_diagnostics);
+        interval_diagnostics.push(applied_transition.interval_diagnostics);
 
         if representative_transform_diagnostics.is_none() {
             representative_transform_diagnostics =
-                transition_matrix.representative_transform_diagnostics;
+                applied_transition.representative_transform_diagnostics;
         }
 
         let current_interval_count = interval_index + 1;
@@ -461,24 +591,205 @@ fn interpolate_initial_probability_mass(
 }
 
 #[derive(Debug, Clone, PartialEq)]
-struct IntervalTransitionMatrix {
-    rows: Vec<Vec<f64>>,
+struct AppliedIntervalTransition {
+    next_probability_mass: Vec<f64>,
     interval_diagnostics: AnchoredPricingRecursionIntervalDiagnostics,
     representative_transform_diagnostics: Option<ExponentialAffineTransformIntegrationResult>,
 }
 
-fn build_transition_matrix(
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TransitionRowExecutionMode {
+    Sequential,
+    AcrossRows,
+    WithinEachRow,
+}
+
+fn resolve_transition_row_execution_mode(
+    active_row_count: usize,
+    cpu_count: Option<usize>,
+) -> TransitionRowExecutionMode {
+    let worker_count = resolved_pricing_cpu_count(cpu_count);
+    if worker_count <= 1 {
+        return TransitionRowExecutionMode::Sequential;
+    }
+
+    if active_row_count >= worker_count {
+        TransitionRowExecutionMode::AcrossRows
+    } else {
+        TransitionRowExecutionMode::WithinEachRow
+    }
+}
+
+fn interval_supports_shift_invariant_transition(
+    pricing_request: &VanillaOptionPricingRequest,
+    interval_delta: f64,
+) -> Result<bool, VanillaOptionPricingRunError> {
+    let deviation_decay_factor = (-pricing_request
+        .boundary_input
+        .mean_reversion_fitted_parameters
+        .kappa
+        * interval_delta)
+        .exp();
+
+    Ok(deviation_decay_factor == 1.0)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn apply_shift_invariant_transition_rows(
+    transition_context: &LocalTransitionRequestContext,
+    driver_parameters: NigBuySellDriverParameters,
+    nodes: &[f64],
+    boundaries: &[f64],
+    active_rows: &[(usize, f64, f64)],
+    row_execution_mode: TransitionRowExecutionMode,
+    pricing_thread_pool: Option<&rayon::ThreadPool>,
+    cpu_count: Option<usize>,
+    progress_reporter: &PricingProgressReporter,
+) -> Result<IntervalTransitionAccumulation, VanillaOptionPricingRunError> {
+    if nodes.is_empty() {
+        return Ok(IntervalTransitionAccumulation::new(0));
+    }
+    if active_rows.is_empty() {
+        return Ok(IntervalTransitionAccumulation::new(nodes.len()));
+    }
+    if boundaries.is_empty() {
+        let mut accumulation = IntervalTransitionAccumulation::new(nodes.len());
+        for (_, _, current_mass) in active_rows.iter().copied() {
+            accumulation.record_row(AppliedTransitionRow {
+                weighted_probability_mass: vec![current_mass],
+                maximum_tail_probability_mass: 1.0,
+                row_probability_mass_error: 0.0,
+                solved_theta: 0.0,
+                representative_transform_diagnostics: None,
+            });
+            progress_reporter.advance_transition_rows(1);
+        }
+        return Ok(accumulation);
+    }
+
+    let reference_row = transition_context.build_row_state(nodes[0])?;
+    let enable_frequency_parallelism = matches!(
+        row_execution_mode,
+        TransitionRowExecutionMode::WithinEachRow
+    );
+    let row_pricing_thread_pool = enable_frequency_parallelism
+        .then_some(pricing_thread_pool)
+        .flatten();
+    let row_cpu_count = enable_frequency_parallelism.then_some(cpu_count).flatten();
+
+    let (reference_theta, _) = resolve_local_transition_theta_for_row_with_parallelism(
+        transition_context,
+        &reference_row,
+        driver_parameters,
+        row_pricing_thread_pool,
+        row_cpu_count,
+    )?;
+    let reference_expectations =
+        derive_local_tilted_interval_expectations_for_row_with_parallelism(
+            transition_context,
+            &reference_row,
+            driver_parameters,
+            reference_theta,
+            row_pricing_thread_pool,
+            row_cpu_count,
+        )?;
+
+    let shift = nodes[0] - reference_expectations.core_expected_increment;
+    let first_boundary = boundaries.first().copied().unwrap_or(0.0) - shift;
+    let boundary_step = if boundaries.len() <= 1 {
+        0.0
+    } else {
+        boundaries[1] - boundaries[0]
+    };
+    let boundary_extension = boundaries.len();
+    let extended_first_boundary = first_boundary - boundary_extension as f64 * boundary_step;
+
+    let cdf_evaluator = SharedRiskNeutralCoreCdfEvaluator::new(
+        transition_context,
+        reference_row.boundary_state.deviation,
+        driver_parameters,
+        reference_theta,
+    )?;
+
+    let (extended_cdf_values, representative_transform_diagnostics) = cdf_evaluator
+        .evaluate_uniform_boundaries(
+            extended_first_boundary,
+            boundary_step,
+            boundaries.len().saturating_mul(2),
+            enable_frequency_parallelism,
+            pricing_thread_pool,
+            cpu_count,
+        )?;
+
+    let accumulate_active_row = |source_node_index: usize, current_mass: f64| {
+        let sampled_cdf_start = boundary_extension.saturating_sub(source_node_index);
+        let sampled_cdf_end = sampled_cdf_start + boundaries.len();
+        let row_probability_mass = probability_mass_from_sampled_cdf_values(
+            &extended_cdf_values[sampled_cdf_start..sampled_cdf_end],
+        );
+        let row_probability_mass_error = (row_probability_mass.iter().sum::<f64>() - 1.0).abs();
+        let maximum_tail_probability_mass =
+            row_probability_mass[0].max(row_probability_mass[row_probability_mass.len() - 1]);
+        let weighted_probability_mass = row_probability_mass
+            .into_iter()
+            .map(|probability_mass| probability_mass * current_mass)
+            .collect::<Vec<_>>();
+
+        Ok::<_, VanillaOptionPricingRunError>(AppliedTransitionRow {
+            weighted_probability_mass,
+            maximum_tail_probability_mass,
+            row_probability_mass_error,
+            solved_theta: reference_theta,
+            representative_transform_diagnostics: representative_transform_diagnostics.clone(),
+        })
+    };
+
+    match row_execution_mode {
+        TransitionRowExecutionMode::AcrossRows => {
+            install_pricing_parallelism(pricing_thread_pool, || {
+                active_rows
+                    .par_iter()
+                    .copied()
+                    .try_fold(
+                        || IntervalTransitionAccumulation::new(nodes.len()),
+                        |mut accumulation, (source_node_index, _, current_mass)| {
+                            let row_solution =
+                                accumulate_active_row(source_node_index, current_mass)?;
+                            accumulation.record_row(row_solution);
+                            progress_reporter.advance_transition_rows(1);
+                            Ok::<_, VanillaOptionPricingRunError>(accumulation)
+                        },
+                    )
+                    .try_reduce(
+                        || IntervalTransitionAccumulation::new(nodes.len()),
+                        |left, right| Ok::<_, VanillaOptionPricingRunError>(left.merge(right)),
+                    )
+            })
+        }
+        TransitionRowExecutionMode::Sequential | TransitionRowExecutionMode::WithinEachRow => {
+            let mut accumulation = IntervalTransitionAccumulation::new(nodes.len());
+            for (source_node_index, _, current_mass) in active_rows.iter().copied() {
+                let row_solution = accumulate_active_row(source_node_index, current_mass)?;
+                accumulation.record_row(row_solution);
+                progress_reporter.advance_transition_rows(1);
+            }
+            Ok(accumulation)
+        }
+    }
+}
+
+fn apply_transition_matrix(
     pricing_request: &VanillaOptionPricingRequest,
     interval_factor: VanillaOptionPricingIntervalFactors,
     driver_parameters: NigBuySellDriverParameters,
     risk_neutral_anchor_materialization: &RiskNeutralAnchorMaterialization,
     deviation_grid: DeviationGrid,
     interval_index: usize,
-    frequency_grid: &SharedMidpointFrequencyGrid,
+    current_probability_mass: &[f64],
     pricing_thread_pool: Option<&rayon::ThreadPool>,
     cpu_count: Option<usize>,
     progress_reporter: &PricingProgressReporter,
-) -> Result<IntervalTransitionMatrix, VanillaOptionPricingRunError> {
+) -> Result<AppliedIntervalTransition, VanillaOptionPricingRunError> {
     let nodes = deviation_grid.nodes();
     let boundaries = deviation_grid.boundaries();
     let global_interval_index = pricing_request.boundary_input.interval_index + interval_index;
@@ -503,51 +814,75 @@ fn build_transition_matrix(
         risk_neutral_anchor_materialization.expected_hawkes_state_path[interval_index];
     let expected_hawkes_state_after =
         risk_neutral_anchor_materialization.expected_hawkes_state_path[interval_index + 1];
+    let transition_context = LocalTransitionRequestContext::from_interval_state(
+        pricing_request,
+        interval_factor,
+        global_interval_index,
+        expected_hawkes_state_before,
+        current_anchor_value,
+        current_pressure_state,
+        interval_delta,
+    )?;
 
-    let solve_row = |deviation: f64| {
-        let local_boundary_input = build_local_boundary_input(
-            pricing_request,
-            global_interval_index,
-            expected_hawkes_state_before,
-            current_anchor_value,
-            current_pressure_state,
-            deviation,
-            interval_delta,
-        )?;
+    let active_rows = nodes
+        .iter()
+        .copied()
+        .enumerate()
+        .zip(current_probability_mass.iter().copied())
+        .filter_map(|((node_index, deviation), current_mass)| {
+            (current_mass != 0.0).then_some((node_index, deviation, current_mass))
+        })
+        .collect::<Vec<_>>();
 
-        let local_request = build_local_pricing_request(
-            pricing_request,
-            local_boundary_input.clone(),
-            interval_delta,
-        )?;
+    let row_execution_mode = resolve_transition_row_execution_mode(active_rows.len(), cpu_count);
 
-        let (local_transition_theta, _) =
-            resolve_local_transition_theta(&local_request, interval_factor, driver_parameters)?;
+    let solve_row = |deviation: f64, current_mass: f64, enable_frequency_parallelism: bool| {
+        let transition_row = transition_context.build_row_state(deviation)?;
 
-        let local_expectations = derive_local_tilted_interval_expectations(
-            &local_request,
+        let (local_transition_theta, _) = resolve_local_transition_theta_for_row_with_parallelism(
+            &transition_context,
+            &transition_row,
             driver_parameters,
-            interval_factor,
-            local_transition_theta,
+            enable_frequency_parallelism
+                .then_some(pricing_thread_pool)
+                .flatten(),
+            enable_frequency_parallelism.then_some(cpu_count).flatten(),
         )?;
+
+        let local_expectations =
+            derive_local_tilted_interval_expectations_for_row_with_parallelism(
+                &transition_context,
+                &transition_row,
+                driver_parameters,
+                local_transition_theta,
+                enable_frequency_parallelism
+                    .then_some(pricing_thread_pool)
+                    .flatten(),
+                enable_frequency_parallelism.then_some(cpu_count).flatten(),
+            )?;
 
         let row = transition_probability_row_from_shared_frequency_grid(
-            &local_request,
-            interval_factor,
+            &transition_context,
+            &transition_row,
             driver_parameters,
             local_transition_theta,
             local_expectations.core_expected_increment,
             &boundaries,
-            frequency_grid,
+            enable_frequency_parallelism,
+            pricing_thread_pool,
+            cpu_count,
         )?;
 
         let row_mass = row.probability_mass.iter().sum::<f64>();
         let maximum_tail_probability_mass =
             row.probability_mass[0].max(row.probability_mass[row.probability_mass.len() - 1]);
-        let probability_mass = row.probability_mass;
+        let mut weighted_probability_mass = row.probability_mass;
+        for probability_mass in &mut weighted_probability_mass {
+            *probability_mass *= current_mass;
+        }
 
-        Ok::<_, VanillaOptionPricingRunError>(SolvedTransitionRow {
-            row: probability_mass,
+        Ok::<_, VanillaOptionPricingRunError>(AppliedTransitionRow {
+            weighted_probability_mass,
             maximum_tail_probability_mass,
             row_probability_mass_error: (row_mass - 1.0).abs(),
             solved_theta: local_transition_theta,
@@ -558,52 +893,67 @@ fn build_transition_matrix(
     progress_reporter.start_transition_rows(
         interval_index,
         runtime_anchors.interval_deltas.len(),
-        nodes.len(),
+        active_rows.len(),
     );
-    let row_solutions = if resolved_pricing_cpu_count(cpu_count) <= 1 {
-        nodes
-            .iter()
-            .copied()
-            .map(|deviation| {
-                let row_solution = solve_row(deviation)?;
-                progress_reporter.advance_transition_rows(1);
-                Ok::<_, VanillaOptionPricingRunError>(row_solution)
-            })
-            .collect::<Result<Vec<_>, _>>()?
-    } else {
-        install_pricing_parallelism(pricing_thread_pool, || {
-            nodes
-                .par_iter()
-                .copied()
-                .map(|deviation| {
-                    let row_solution = solve_row(deviation)?;
-                    progress_reporter.advance_transition_rows(1);
-                    Ok::<_, VanillaOptionPricingRunError>(row_solution)
-                })
-                .collect::<Result<Vec<_>, _>>()
-        })?
-    };
+    let applied_rows =
+        if interval_supports_shift_invariant_transition(pricing_request, interval_delta)? {
+            apply_shift_invariant_transition_rows(
+                &transition_context,
+                driver_parameters,
+                &nodes,
+                &boundaries,
+                active_rows.as_slice(),
+                row_execution_mode,
+                pricing_thread_pool,
+                cpu_count,
+                progress_reporter,
+            )?
+        } else {
+            match row_execution_mode {
+                TransitionRowExecutionMode::Sequential => {
+                    let mut accumulation = IntervalTransitionAccumulation::new(nodes.len());
+                    for (_, deviation, current_mass) in active_rows {
+                        let row_solution = solve_row(deviation, current_mass, false)?;
+                        accumulation.record_row(row_solution);
+                        progress_reporter.advance_transition_rows(1);
+                    }
+                    accumulation
+                }
+                TransitionRowExecutionMode::AcrossRows => {
+                    install_pricing_parallelism(pricing_thread_pool, || {
+                        active_rows
+                            .par_iter()
+                            .copied()
+                            .try_fold(
+                                || IntervalTransitionAccumulation::new(nodes.len()),
+                                |mut accumulation, (_, deviation, current_mass)| {
+                                    let row_solution = solve_row(deviation, current_mass, false)?;
+                                    accumulation.record_row(row_solution);
+                                    progress_reporter.advance_transition_rows(1);
+                                    Ok::<_, VanillaOptionPricingRunError>(accumulation)
+                                },
+                            )
+                            .try_reduce(
+                                || IntervalTransitionAccumulation::new(nodes.len()),
+                                |left, right| {
+                                    Ok::<_, VanillaOptionPricingRunError>(left.merge(right))
+                                },
+                            )
+                    })?
+                }
+                TransitionRowExecutionMode::WithinEachRow => {
+                    let mut accumulation = IntervalTransitionAccumulation::new(nodes.len());
+                    for (_, deviation, current_mass) in active_rows {
+                        let row_solution = solve_row(deviation, current_mass, true)?;
+                        accumulation.record_row(row_solution);
+                        progress_reporter.advance_transition_rows(1);
+                    }
+                    accumulation
+                }
+            }
+        };
 
     progress_reporter.finish_transition_rows();
-
-    let maximum_tail_probability_mass = row_solutions
-        .iter()
-        .map(|row| row.maximum_tail_probability_mass)
-        .fold(0.0_f64, f64::max);
-    let maximum_row_probability_mass_error = row_solutions
-        .iter()
-        .map(|row| row.row_probability_mass_error)
-        .fold(0.0_f64, f64::max);
-    let minimum_solved_theta = row_solutions
-        .iter()
-        .map(|row| row.solved_theta)
-        .min_by(|left, right| left.total_cmp(right))
-        .unwrap_or(0.0);
-    let maximum_solved_theta = row_solutions
-        .iter()
-        .map(|row| row.solved_theta)
-        .max_by(|left, right| left.total_cmp(right))
-        .unwrap_or(0.0);
 
     let interval_diagnostics = AnchoredPricingRecursionIntervalDiagnostics::try_new(
         global_interval_index,
@@ -612,39 +962,125 @@ fn build_transition_matrix(
         interval_delta,
         expected_hawkes_state_before,
         expected_hawkes_state_after,
-        maximum_tail_probability_mass,
-        maximum_row_probability_mass_error,
-        minimum_solved_theta,
-        maximum_solved_theta,
+        applied_rows.maximum_tail_probability_mass,
+        applied_rows.maximum_row_probability_mass_error,
+        applied_rows.minimum_solved_theta(),
+        applied_rows.maximum_solved_theta(),
         Vec::new(),
     )
     .map_err(
         |source| VanillaOptionPricingRunError::InvalidAnchoredRecursionDiagnostics { source },
     )?;
 
-    let representative_transform_diagnostics = row_solutions
-        .iter()
-        .find_map(|solution| solution.representative_transform_diagnostics);
-
-    let rows = row_solutions
-        .into_iter()
-        .map(|solution| solution.row)
-        .collect();
-
-    Ok(IntervalTransitionMatrix {
-        rows,
+    Ok(AppliedIntervalTransition {
+        next_probability_mass: applied_rows.next_probability_mass,
         interval_diagnostics,
-        representative_transform_diagnostics,
+        representative_transform_diagnostics: applied_rows.representative_transform_diagnostics,
     })
 }
 
 #[derive(Debug, Clone, PartialEq)]
-struct SolvedTransitionRow {
-    row: Vec<f64>,
+struct AppliedTransitionRow {
+    weighted_probability_mass: Vec<f64>,
     maximum_tail_probability_mass: f64,
     row_probability_mass_error: f64,
     solved_theta: f64,
     representative_transform_diagnostics: Option<ExponentialAffineTransformIntegrationResult>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct IntervalTransitionAccumulation {
+    next_probability_mass: Vec<f64>,
+    maximum_tail_probability_mass: f64,
+    maximum_row_probability_mass_error: f64,
+    minimum_solved_theta: Option<f64>,
+    maximum_solved_theta: Option<f64>,
+    representative_transform_diagnostics: Option<ExponentialAffineTransformIntegrationResult>,
+}
+
+impl IntervalTransitionAccumulation {
+    fn new(node_count: usize) -> Self {
+        Self {
+            next_probability_mass: vec![0.0; node_count],
+            maximum_tail_probability_mass: 0.0,
+            maximum_row_probability_mass_error: 0.0,
+            minimum_solved_theta: None,
+            maximum_solved_theta: None,
+            representative_transform_diagnostics: None,
+        }
+    }
+
+    fn record_row(&mut self, row: AppliedTransitionRow) {
+        for (next_probability_mass, weighted_probability_mass) in self
+            .next_probability_mass
+            .iter_mut()
+            .zip(row.weighted_probability_mass)
+        {
+            *next_probability_mass += weighted_probability_mass;
+        }
+
+        self.maximum_tail_probability_mass = self
+            .maximum_tail_probability_mass
+            .max(row.maximum_tail_probability_mass);
+        self.maximum_row_probability_mass_error = self
+            .maximum_row_probability_mass_error
+            .max(row.row_probability_mass_error);
+        self.minimum_solved_theta = Some(match self.minimum_solved_theta {
+            Some(current_value) => current_value.min(row.solved_theta),
+            None => row.solved_theta,
+        });
+        self.maximum_solved_theta = Some(match self.maximum_solved_theta {
+            Some(current_value) => current_value.max(row.solved_theta),
+            None => row.solved_theta,
+        });
+
+        if self.representative_transform_diagnostics.is_none() {
+            self.representative_transform_diagnostics = row.representative_transform_diagnostics;
+        }
+    }
+
+    fn merge(mut self, other: Self) -> Self {
+        for (left_value, right_value) in self
+            .next_probability_mass
+            .iter_mut()
+            .zip(other.next_probability_mass)
+        {
+            *left_value += right_value;
+        }
+
+        self.maximum_tail_probability_mass = self
+            .maximum_tail_probability_mass
+            .max(other.maximum_tail_probability_mass);
+        self.maximum_row_probability_mass_error = self
+            .maximum_row_probability_mass_error
+            .max(other.maximum_row_probability_mass_error);
+        self.minimum_solved_theta = match (self.minimum_solved_theta, other.minimum_solved_theta) {
+            (Some(left_value), Some(right_value)) => Some(left_value.min(right_value)),
+            (Some(left_value), None) => Some(left_value),
+            (None, Some(right_value)) => Some(right_value),
+            (None, None) => None,
+        };
+        self.maximum_solved_theta = match (self.maximum_solved_theta, other.maximum_solved_theta) {
+            (Some(left_value), Some(right_value)) => Some(left_value.max(right_value)),
+            (Some(left_value), None) => Some(left_value),
+            (None, Some(right_value)) => Some(right_value),
+            (None, None) => None,
+        };
+
+        if self.representative_transform_diagnostics.is_none() {
+            self.representative_transform_diagnostics = other.representative_transform_diagnostics;
+        }
+
+        self
+    }
+
+    fn minimum_solved_theta(&self) -> f64 {
+        self.minimum_solved_theta.unwrap_or(0.0)
+    }
+
+    fn maximum_solved_theta(&self) -> f64 {
+        self.maximum_solved_theta.unwrap_or(0.0)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -654,13 +1090,15 @@ struct TransitionProbabilityRow {
 }
 
 fn transition_probability_row_from_shared_frequency_grid(
-    pricing_request: &VanillaOptionPricingRequest,
-    interval_factors: VanillaOptionPricingIntervalFactors,
+    transition_context: &LocalTransitionRequestContext,
+    transition_row: &LocalTransitionRowState,
     driver_parameters: NigBuySellDriverParameters,
     theta: f64,
     local_q_core_expected_increment: f64,
     target_boundaries: &[f64],
-    frequency_grid: &SharedMidpointFrequencyGrid,
+    enable_frequency_parallelism: bool,
+    pricing_thread_pool: Option<&rayon::ThreadPool>,
+    cpu_count: Option<usize>,
 ) -> Result<TransitionProbabilityRow, VanillaOptionPricingRunError> {
     if target_boundaries.is_empty() {
         return Ok(TransitionProbabilityRow {
@@ -669,41 +1107,13 @@ fn transition_probability_row_from_shared_frequency_grid(
         });
     }
 
-    let deviation_decay_factor = pricing_request
-        .boundary_input
-        .deviation_decay_factor()
-        .map_err(
-            |source| VanillaOptionPricingRunError::InvalidExecutionInput {
-                source: super::runner::VanillaOptionPricingExecutionInputError::InvalidRequest {
-                    source:
-                        super::contracts::VanillaOptionPricingRequestError::InvalidBoundaryInput {
-                            source,
-                        },
-                },
-            },
-        )?;
-
-    let news_intensity = interval_factors.news_intensity_input().map_err(|source| {
-        VanillaOptionPricingRunError::InvalidExecutionInput {
-            source:
-                super::runner::VanillaOptionPricingExecutionInputError::InvalidIntervalFactors {
-                    source,
-                },
-        }
-    })?;
-
-    let shift = deviation_decay_factor
-        * pricing_request
-            .boundary_input
-            .observed_boundary_state
-            .deviation
+    let shift = transition_context.deviation_decay_factor * transition_row.boundary_state.deviation
         - local_q_core_expected_increment;
 
     let cdf_evaluator = SharedRiskNeutralCoreCdfEvaluator::new(
-        pricing_request,
+        transition_context,
+        transition_row.boundary_state.deviation,
         driver_parameters,
-        interval_factors,
-        news_intensity,
         theta,
     )?;
 
@@ -720,7 +1130,9 @@ fn transition_probability_row_from_shared_frequency_grid(
             first_boundary,
             boundary_step,
             target_boundaries.len(),
-            frequency_grid,
+            enable_frequency_parallelism,
+            pricing_thread_pool,
+            cpu_count,
         )?;
 
     let row = probability_mass_from_sampled_cdf_values(projected_cdf_values.as_slice());
@@ -738,48 +1150,48 @@ struct SharedMidpointFrequencyGrid {
 }
 
 impl SharedMidpointFrequencyGrid {
-    fn from_settings(settings: super::fourier::FourierInversionEngineSettings) -> Self {
+    fn from_uniform_boundary_grid(boundary_step: f64, boundary_count: usize) -> Self {
         Self {
-            integration_step: settings.numeric_settings.integration_upper_bound
-                / settings.numeric_settings.integration_step_count as f64,
-            integration_step_count: settings.numeric_settings.integration_step_count,
+            integration_step: 2.0 * std::f64::consts::PI / (boundary_step * boundary_count as f64),
+            integration_step_count: boundary_count,
         }
+    }
+
+    fn policy() -> &'static str {
+        INTERNAL_FORWARD_LAW_FREQUENCY_GRID_POLICY
     }
 }
 
 struct SharedRiskNeutralCoreCdfEvaluator<'a> {
-    pricing_request: &'a VanillaOptionPricingRequest,
+    transition_context: &'a LocalTransitionRequestContext,
+    deviation: f64,
     driver_parameters: NigBuySellDriverParameters,
-    interval_factors: VanillaOptionPricingIntervalFactors,
-    news_intensity:
-        janiform_affine_oracle::affine_oracle::ExponentialAffineTransformNewsIntensityInput,
     theta: f64,
     denominator: ComplexScalar,
 }
 
 impl<'a> SharedRiskNeutralCoreCdfEvaluator<'a> {
     fn new(
-        pricing_request: &'a VanillaOptionPricingRequest,
+        transition_context: &'a LocalTransitionRequestContext,
+        deviation: f64,
         driver_parameters: NigBuySellDriverParameters,
-        interval_factors: VanillaOptionPricingIntervalFactors,
-        news_intensity: janiform_affine_oracle::affine_oracle::ExponentialAffineTransformNewsIntensityInput,
         theta: f64,
     ) -> Result<Self, VanillaOptionPricingRunError> {
-        let denominator = evaluate_core_log_return_characteristic_function_under_local_measure(
-            pricing_request,
-            driver_parameters,
-            interval_factors,
-            news_intensity,
-            theta,
-            ComplexScalar::new(0.0, 0.0),
-        )?
-        .value;
+        let denominator =
+            evaluate_core_log_return_characteristic_function_under_local_measure_with_parallelism(
+                transition_context,
+                driver_parameters,
+                theta,
+                ComplexScalar::new(0.0, 0.0),
+                None,
+                None,
+            )?
+            .value;
 
         Ok(Self {
-            pricing_request,
+            transition_context,
+            deviation,
             driver_parameters,
-            interval_factors,
-            news_intensity,
             theta,
             denominator,
         })
@@ -790,7 +1202,9 @@ impl<'a> SharedRiskNeutralCoreCdfEvaluator<'a> {
         first_boundary: f64,
         boundary_step: f64,
         boundary_count: usize,
-        frequency_grid: &SharedMidpointFrequencyGrid,
+        enable_frequency_parallelism: bool,
+        pricing_thread_pool: Option<&rayon::ThreadPool>,
+        cpu_count: Option<usize>,
     ) -> Result<
         (
             Vec<f64>,
@@ -798,59 +1212,212 @@ impl<'a> SharedRiskNeutralCoreCdfEvaluator<'a> {
         ),
         VanillaOptionPricingRunError,
     > {
-        let mut boundary_integrals = vec![0.0; boundary_count];
-        let mut representative_transform_diagnostics = None;
-
-        for frequency_index in 0..frequency_grid.integration_step_count {
-            let frequency = (frequency_index as f64 + 0.5) * frequency_grid.integration_step;
-            let evaluation = self.evaluate_frequency(
-                ComplexScalar::new(frequency, 0.0),
-                &mut representative_transform_diagnostics,
-            )?;
-
-            let step_phase =
-                complex_exponential(ComplexScalar::new(0.0, -frequency * boundary_step));
-            let mut boundary_phase =
-                complex_exponential(ComplexScalar::new(0.0, -frequency * first_boundary));
-
-            for boundary_integral in &mut boundary_integrals {
-                let integrand = complex_multiply(boundary_phase, evaluation.value);
-                *boundary_integral += integrand.imaginary / frequency;
-                boundary_phase = complex_multiply(boundary_phase, step_phase);
-            }
+        if boundary_count == 1 {
+            let (cdf_value, representative_transform_diagnostics) =
+                self.evaluate_single_boundary(first_boundary)?;
+            return Ok((vec![cdf_value], representative_transform_diagnostics));
         }
 
+        let frequency_grid =
+            SharedMidpointFrequencyGrid::from_uniform_boundary_grid(boundary_step, boundary_count);
+        debug_assert!(!SharedMidpointFrequencyGrid::policy().is_empty());
+
+        let accumulation = if enable_frequency_parallelism
+            && resolved_pricing_cpu_count(cpu_count) > 1
+            && frequency_grid.integration_step_count > 1
+        {
+            install_pricing_parallelism(pricing_thread_pool, || {
+                (0..frequency_grid.integration_step_count)
+                    .into_par_iter()
+                    .try_fold(
+                        || BoundaryIntegralAccumulation::new(boundary_count),
+                        |mut accumulation, frequency_index| {
+                            let frequency =
+                                (frequency_index as f64 + 0.5) * frequency_grid.integration_step;
+                            let evaluation =
+                                self.evaluate_frequency(ComplexScalar::new(frequency, 0.0))?;
+                            accumulation.record_frequency(
+                                first_boundary,
+                                boundary_step,
+                                frequency,
+                                evaluation,
+                            );
+                            Ok::<_, VanillaOptionPricingRunError>(accumulation)
+                        },
+                    )
+                    .try_reduce(
+                        || BoundaryIntegralAccumulation::new(boundary_count),
+                        |left, right| Ok::<_, VanillaOptionPricingRunError>(left.merge(right)),
+                    )
+            })?
+        } else {
+            let mut accumulation = BoundaryIntegralAccumulation::new(boundary_count);
+            for frequency_index in 0..frequency_grid.integration_step_count {
+                let frequency = (frequency_index as f64 + 0.5) * frequency_grid.integration_step;
+                let evaluation = self.evaluate_frequency(ComplexScalar::new(frequency, 0.0))?;
+                accumulation.record_frequency(first_boundary, boundary_step, frequency, evaluation);
+            }
+            accumulation
+        };
+
         Ok((
-            boundary_integrals
+            accumulation
+                .boundary_integrals
                 .into_iter()
                 .map(|integral| {
                     (0.5 - frequency_grid.integration_step * integral / std::f64::consts::PI)
                         .clamp(0.0, 1.0)
                 })
                 .collect(),
-            representative_transform_diagnostics,
+            accumulation.representative_transform_diagnostics,
         ))
+    }
+
+    fn evaluate_single_boundary(
+        &self,
+        boundary: f64,
+    ) -> Result<
+        (f64, Option<ExponentialAffineTransformIntegrationResult>),
+        VanillaOptionPricingRunError,
+    > {
+        let mut integration_upper_bound =
+            initial_midpoint_upper_bound_from_phase_scale(boundary.abs());
+        let initial_phase_resolution = (integration_upper_bound * boundary.abs()
+            / std::f64::consts::PI)
+            .ceil()
+            .max(2.0) as usize;
+        let mut integration_step_count = next_power_of_two_at_least(initial_phase_resolution)
+            .ok_or_else(|| {
+                VanillaOptionPricingRunError::InvalidObservedBoundaryStateDuringRecursion {
+                    interval_index: self.transition_context.interval_index,
+                    deviation: self.deviation,
+                    message:
+                        "single-boundary CDF refinement could not initialize a dyadic step count"
+                            .to_string(),
+                }
+            })?;
+        let absolute_cdf_budget = f64::EPSILON.cbrt();
+        let mut representative_transform_diagnostics = None;
+
+        loop {
+            let coarse_statistics = self.evaluate_single_boundary_integral_statistics(
+                boundary,
+                integration_upper_bound,
+                integration_step_count / 2,
+                &mut representative_transform_diagnostics,
+            )?;
+            let full_statistics = self.evaluate_single_boundary_integral_statistics(
+                boundary,
+                integration_upper_bound,
+                integration_step_count,
+                &mut representative_transform_diagnostics,
+            )?;
+
+            let quadrature_error_estimate =
+                (full_statistics.integral_estimate - coarse_statistics.integral_estimate).abs()
+                    / 3.0;
+            let tail_error_estimate = estimate_asymptotic_tail_integral_error(
+                full_statistics.penultimate_frequency,
+                full_statistics.penultimate_abs_integrand,
+                full_statistics.terminal_frequency,
+                full_statistics.terminal_abs_integrand,
+            );
+
+            if quadrature_error_estimate <= absolute_cdf_budget
+                && tail_error_estimate <= absolute_cdf_budget
+            {
+                return Ok((
+                    (0.5 - full_statistics.integration_step * full_statistics.integral_estimate
+                        / std::f64::consts::PI)
+                        .clamp(0.0, 1.0),
+                    representative_transform_diagnostics,
+                ));
+            }
+
+            if quadrature_error_estimate > absolute_cdf_budget {
+                integration_step_count =
+                    integration_step_count.checked_mul(2).ok_or_else(|| {
+                        VanillaOptionPricingRunError::InvalidObservedBoundaryStateDuringRecursion {
+                        interval_index: self.transition_context.interval_index,
+                        deviation: self.deviation,
+                        message:
+                            "single-boundary CDF refinement overflowed during step-count doubling"
+                                .to_string(),
+                    }
+                    })?;
+                continue;
+            }
+
+            integration_upper_bound *= 2.0;
+            integration_step_count = integration_step_count.checked_mul(2).ok_or_else(|| {
+                VanillaOptionPricingRunError::InvalidObservedBoundaryStateDuringRecursion {
+                    interval_index: self.transition_context.interval_index,
+                    deviation: self.deviation,
+                    message: "single-boundary CDF refinement overflowed during tail expansion"
+                        .to_string(),
+                }
+            })?;
+        }
+    }
+
+    fn evaluate_single_boundary_integral_statistics(
+        &self,
+        boundary: f64,
+        integration_upper_bound: f64,
+        integration_step_count: usize,
+        representative_transform_diagnostics: &mut Option<
+            ExponentialAffineTransformIntegrationResult,
+        >,
+    ) -> Result<SingleBoundaryIntegralStatistics, VanillaOptionPricingRunError> {
+        let integration_step = integration_upper_bound / integration_step_count as f64;
+        let mut integral_estimate = 0.0;
+        let mut penultimate_frequency = 0.0;
+        let mut penultimate_abs_integrand = 0.0;
+        let mut terminal_frequency = 0.0;
+        let mut terminal_abs_integrand = 0.0;
+
+        for frequency_index in 0..integration_step_count {
+            let frequency = (frequency_index as f64 + 0.5) * integration_step;
+            let evaluation = self.evaluate_frequency(ComplexScalar::new(frequency, 0.0))?;
+            if representative_transform_diagnostics.is_none() {
+                *representative_transform_diagnostics = Some(evaluation.transform_diagnostics);
+            }
+            let boundary_phase =
+                complex_exponential(ComplexScalar::new(0.0, -frequency * boundary));
+            let integrand =
+                complex_multiply(boundary_phase, evaluation.value).imaginary / frequency;
+            let absolute_integrand = integrand.abs();
+
+            integral_estimate += integrand;
+            penultimate_frequency = terminal_frequency;
+            penultimate_abs_integrand = terminal_abs_integrand;
+            terminal_frequency = frequency;
+            terminal_abs_integrand = absolute_integrand;
+        }
+
+        Ok(SingleBoundaryIntegralStatistics {
+            integration_step,
+            integral_estimate,
+            penultimate_frequency,
+            penultimate_abs_integrand,
+            terminal_frequency,
+            terminal_abs_integrand,
+        })
     }
 
     fn evaluate_frequency(
         &self,
         argument: ComplexScalar,
-        representative_transform_diagnostics: &mut Option<
-            ExponentialAffineTransformIntegrationResult,
-        >,
     ) -> Result<PricingCharacteristicFunctionEvaluation, VanillaOptionPricingRunError> {
-        let numerator = evaluate_core_log_return_characteristic_function_under_local_measure(
-            self.pricing_request,
-            self.driver_parameters,
-            self.interval_factors,
-            self.news_intensity,
-            self.theta,
-            argument,
-        )?;
-
-        if representative_transform_diagnostics.is_none() {
-            *representative_transform_diagnostics = Some(numerator.transform_diagnostics);
-        }
+        let numerator =
+            evaluate_core_log_return_characteristic_function_under_local_measure_with_parallelism(
+                self.transition_context,
+                self.driver_parameters,
+                self.theta,
+                argument,
+                None,
+                None,
+            )?;
 
         let value = numerator.value.divide(self.denominator).ok_or(
             VanillaOptionPricingRunError::InvalidRiskNeutralCharacteristicFunction {
@@ -864,6 +1431,69 @@ impl<'a> SharedRiskNeutralCoreCdfEvaluator<'a> {
             transform_diagnostics: numerator.transform_diagnostics,
         })
     }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct BoundaryIntegralAccumulation {
+    boundary_integrals: Vec<f64>,
+    representative_transform_diagnostics: Option<ExponentialAffineTransformIntegrationResult>,
+}
+
+impl BoundaryIntegralAccumulation {
+    fn new(boundary_count: usize) -> Self {
+        Self {
+            boundary_integrals: vec![0.0; boundary_count],
+            representative_transform_diagnostics: None,
+        }
+    }
+
+    fn record_frequency(
+        &mut self,
+        first_boundary: f64,
+        boundary_step: f64,
+        frequency: f64,
+        evaluation: PricingCharacteristicFunctionEvaluation,
+    ) {
+        let step_phase = complex_exponential(ComplexScalar::new(0.0, -frequency * boundary_step));
+        let mut boundary_phase =
+            complex_exponential(ComplexScalar::new(0.0, -frequency * first_boundary));
+
+        for boundary_integral in &mut self.boundary_integrals {
+            let integrand = complex_multiply(boundary_phase, evaluation.value);
+            *boundary_integral += integrand.imaginary / frequency;
+            boundary_phase = complex_multiply(boundary_phase, step_phase);
+        }
+
+        if self.representative_transform_diagnostics.is_none() {
+            self.representative_transform_diagnostics = Some(evaluation.transform_diagnostics);
+        }
+    }
+
+    fn merge(mut self, other: Self) -> Self {
+        for (left_integral, right_integral) in self
+            .boundary_integrals
+            .iter_mut()
+            .zip(other.boundary_integrals)
+        {
+            *left_integral += right_integral;
+        }
+
+        if self.representative_transform_diagnostics.is_none() {
+            self.representative_transform_diagnostics = other.representative_transform_diagnostics;
+        }
+
+        self
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct SingleBoundaryIntegralStatistics {
+    integration_step: f64,
+    integral_estimate: f64,
+    penultimate_frequency: f64,
+    penultimate_abs_integrand: f64,
+    terminal_frequency: f64,
+    terminal_abs_integrand: f64,
 }
 
 fn pricing_request_for_strike(
@@ -880,7 +1510,7 @@ fn pricing_request_for_strike(
             },
         })?;
 
-    let request = VanillaOptionPricingRequest::try_new_with_interval_delta(
+    VanillaOptionPricingRequest::try_new(
         VanillaOptionPricingMarketInputs::try_new_single_node(
             pricing_request.market_inputs.spot,
             strike,
@@ -909,20 +1539,5 @@ fn pricing_request_for_strike(
                 source,
             },
         },
-    )?;
-
-    Ok(
-        if let Some(fourier_inversion_settings) = pricing_request.fourier_inversion_settings {
-            request.with_fourier_inversion_settings(fourier_inversion_settings)
-        } else {
-            request
-        },
     )
-}
-
-fn payoff_value(payoff_type: VanillaOptionPayoffType, terminal_spot: f64, strike: f64) -> f64 {
-    match payoff_type {
-        VanillaOptionPayoffType::Call => (terminal_spot - strike).max(0.0),
-        VanillaOptionPayoffType::Put => (strike - terminal_spot).max(0.0),
-    }
 }

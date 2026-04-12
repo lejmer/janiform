@@ -627,6 +627,8 @@ pub(super) fn cached_seed_summaries_for_candidate_seeds(
     simulation_seeds: &[u64],
     progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
     progress_phase: Option<JointRefinementStageProgressPhase>,
+    completed_units_before_seed_summaries: usize,
+    total_units: usize,
 ) -> Result<Vec<(u64, JointRefinementSeedSummary)>, String> {
     let cache_key = parameter_bits.map(|bits| JointRefinementSeedSummaryCacheKey {
         parameter_bits: bits.to_vec(),
@@ -665,8 +667,7 @@ pub(super) fn cached_seed_summaries_for_candidate_seeds(
         .profiling_state
         .record_seed_summary_cache_miss(missing_seeds.len());
 
-    let total_units = simulation_seeds.len();
-    let completed_units = resolved_seed_summaries.len();
+    let completed_units = completed_units_before_seed_summaries + resolved_seed_summaries.len();
 
     emit_seed_summary_progress(
         progress_sender,
@@ -683,7 +684,7 @@ pub(super) fn cached_seed_summaries_for_candidate_seeds(
             missing_seeds.as_slice(),
             progress_sender,
             progress_phase,
-            completed_units,
+            completed_units_before_seed_summaries,
             total_units,
         )?;
 

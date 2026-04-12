@@ -35,7 +35,6 @@ from ..contracts.base import (
     require_non_negative_integer,
     require_positive_finite_number,
     require_positive_finite_scalar,
-    require_positive_integer,
     require_sequence,
     require_string,
 )
@@ -89,15 +88,6 @@ PRICING_LOCAL_ANCHORED_TILT_SOLVE_POLICY = (
     "solve_state_dependent_local_tilt_against_endogenous_q_martingale_target.v1"
 )
 _PRICING_MEAN_REVERSION_ALIGNMENT_TOLERANCE = 1e-12
-
-class FourierInversionQuadratureRule(StrEnum):
-    MIDPOINT = "midpoint"
-    TRAPEZOID = "trapezoid"
-
-
-class FourierInversionNumericQualityGate(StrEnum):
-    DIAGNOSTICS_ONLY = "diagnostics_only"
-    ENFORCE_FAILURE = "enforce_failure"
 
 
 def _parse_hawkes_kernel_parameters(
@@ -877,246 +867,12 @@ class AnchoredLocalTiltSolveDiagnostics(ContractModel):
 
 
 @dataclass(frozen=True, slots=True)
-class FourierInversionContour(ContractModel):
-    damping_factor: float = 1.5
-
-    def __post_init__(self) -> None:
-        require_positive_finite_scalar(
-            self.damping_factor,
-            "damping_factor",
-            PRICING_ERROR_FACTORY,
-        )
-
-    @staticmethod
-    def from_mapping(
-        raw_payload: dict[str, Any] | Any,
-        *,
-        field_path: str,
-    ) -> FourierInversionContour:
-        if not isinstance(raw_payload, dict):
-            raise _pricing_error(field_path, "must be an object")
-
-        return FourierInversionContour(
-            damping_factor=require_positive_finite_number(
-                raw_payload,
-                "damping_factor",
-                f"{field_path}.damping_factor",
-                PRICING_ERROR_FACTORY,
-            )
-        )
-
-
-@dataclass(frozen=True, slots=True)
-class FourierInversionNumericSettings(ContractModel):
-    integration_upper_bound: float = 150.0
-    integration_step_count: int = 4_096
-    quadrature_rule: FourierInversionQuadratureRule = FourierInversionQuadratureRule.MIDPOINT
-
-    def __post_init__(self) -> None:
-        require_positive_finite_scalar(
-            self.integration_upper_bound,
-            "integration_upper_bound",
-            PRICING_ERROR_FACTORY,
-        )
-
-        if not isinstance(self.integration_step_count, int) or isinstance(
-            self.integration_step_count,
-            bool,
-        ):
-            raise _pricing_error(
-                "integration_step_count",
-                "must be an integer",
-            )
-
-        if self.integration_step_count <= 0:
-            raise _pricing_error(
-                "integration_step_count",
-                "must be strictly positive",
-            )
-
-    @staticmethod
-    def from_mapping(
-        raw_payload: dict[str, Any] | Any,
-        *,
-        field_path: str,
-    ) -> FourierInversionNumericSettings:
-        if not isinstance(raw_payload, dict):
-            raise _pricing_error(field_path, "must be an object")
-
-        try:
-            return FourierInversionNumericSettings(
-                integration_upper_bound=require_positive_finite_number(
-                    raw_payload,
-                    "integration_upper_bound",
-                    f"{field_path}.integration_upper_bound",
-                    PRICING_ERROR_FACTORY,
-                ),
-                integration_step_count=require_positive_integer(
-                    raw_payload,
-                    "integration_step_count",
-                    f"{field_path}.integration_step_count",
-                    PRICING_ERROR_FACTORY,
-                ),
-                quadrature_rule=FourierInversionQuadratureRule(
-                    require_string(
-                        raw_payload,
-                        "quadrature_rule",
-                        f"{field_path}.quadrature_rule",
-                        PRICING_ERROR_FACTORY,
-                    )
-                ),
-            )
-        except ValueError as e:
-            raise _pricing_error(f"{field_path}.quadrature_rule", str(e)) from e
-
-
-@dataclass(frozen=True, slots=True)
-class FourierInversionIntegrationStabilityControls(ContractModel):
-    convergence_absolute_tolerance: float = 1.0e-5
-    convergence_relative_tolerance: float = 1.0e-4
-    terminal_integrand_absolute_tolerance: float = 5.0e-4
-    terminal_integrand_ratio_tolerance: float = 1.0e-2
-    quality_gate: FourierInversionNumericQualityGate = FourierInversionNumericQualityGate.DIAGNOSTICS_ONLY
-
-    def __post_init__(self) -> None:
-        require_positive_finite_scalar(
-            self.convergence_absolute_tolerance,
-            "convergence_absolute_tolerance",
-            PRICING_ERROR_FACTORY,
-        )
-        require_positive_finite_scalar(
-            self.convergence_relative_tolerance,
-            "convergence_relative_tolerance",
-            PRICING_ERROR_FACTORY,
-        )
-        require_positive_finite_scalar(
-            self.terminal_integrand_absolute_tolerance,
-            "terminal_integrand_absolute_tolerance",
-            PRICING_ERROR_FACTORY,
-        )
-        require_positive_finite_scalar(
-            self.terminal_integrand_ratio_tolerance,
-            "terminal_integrand_ratio_tolerance",
-            PRICING_ERROR_FACTORY,
-        )
-
-    @staticmethod
-    def from_mapping(
-        raw_payload: dict[str, Any] | Any,
-        *,
-        field_path: str,
-    ) -> FourierInversionIntegrationStabilityControls:
-        if not isinstance(raw_payload, dict):
-            raise _pricing_error(field_path, "must be an object")
-
-        try:
-            return FourierInversionIntegrationStabilityControls(
-                convergence_absolute_tolerance=require_positive_finite_number(
-                    raw_payload,
-                    "convergence_absolute_tolerance",
-                    f"{field_path}.convergence_absolute_tolerance",
-                    PRICING_ERROR_FACTORY,
-                ),
-                convergence_relative_tolerance=require_positive_finite_number(
-                    raw_payload,
-                    "convergence_relative_tolerance",
-                    f"{field_path}.convergence_relative_tolerance",
-                    PRICING_ERROR_FACTORY,
-                ),
-                terminal_integrand_absolute_tolerance=require_positive_finite_number(
-                    raw_payload,
-                    "terminal_integrand_absolute_tolerance",
-                    f"{field_path}.terminal_integrand_absolute_tolerance",
-                    PRICING_ERROR_FACTORY,
-                ),
-                terminal_integrand_ratio_tolerance=require_positive_finite_number(
-                    raw_payload,
-                    "terminal_integrand_ratio_tolerance",
-                    f"{field_path}.terminal_integrand_ratio_tolerance",
-                    PRICING_ERROR_FACTORY,
-                ),
-                quality_gate=FourierInversionNumericQualityGate(
-                    require_string(
-                        raw_payload,
-                        "quality_gate",
-                        f"{field_path}.quality_gate",
-                        PRICING_ERROR_FACTORY,
-                    )
-                ),
-            )
-        except ValueError as e:
-            raise _pricing_error(f"{field_path}.quality_gate", str(e)) from e
-
-
-@dataclass(frozen=True, slots=True)
-class FourierInversionEngineSettings(ContractModel):
-    contour: FourierInversionContour = field(default_factory=FourierInversionContour)
-    numeric_settings: FourierInversionNumericSettings = field(default_factory=FourierInversionNumericSettings)
-    stability_controls: FourierInversionIntegrationStabilityControls = field(
-        default_factory=FourierInversionIntegrationStabilityControls
-    )
-
-    def __post_init__(self) -> None:
-        if not isinstance(self.contour, FourierInversionContour):
-            raise _pricing_error("contour", "must be a FourierInversionContour")
-
-        if not isinstance(self.numeric_settings, FourierInversionNumericSettings):
-            raise _pricing_error("numeric_settings", "must be a FourierInversionNumericSettings")
-
-        if not isinstance(
-            self.stability_controls,
-            FourierInversionIntegrationStabilityControls,
-        ):
-            raise _pricing_error(
-                "stability_controls",
-                "must be a FourierInversionIntegrationStabilityControls",
-            )
-
-    @staticmethod
-    def from_mapping(
-        raw_payload: dict[str, Any] | Any,
-        *,
-        field_path: str,
-    ) -> FourierInversionEngineSettings:
-        if not isinstance(raw_payload, dict):
-            raise _pricing_error(field_path, "must be an object")
-
-        return FourierInversionEngineSettings(
-            contour=FourierInversionContour.from_mapping(
-                require_mapping(raw_payload, "contour", f"{field_path}.contour", PRICING_ERROR_FACTORY),
-                field_path=f"{field_path}.contour",
-            ),
-            numeric_settings=FourierInversionNumericSettings.from_mapping(
-                require_mapping(
-                    raw_payload,
-                    "numeric_settings",
-                    f"{field_path}.numeric_settings",
-                    PRICING_ERROR_FACTORY,
-                ),
-                field_path=f"{field_path}.numeric_settings",
-            ),
-            stability_controls=FourierInversionIntegrationStabilityControls.from_mapping(
-                require_mapping(
-                    raw_payload,
-                    "stability_controls",
-                    f"{field_path}.stability_controls",
-                    PRICING_ERROR_FACTORY,
-                ),
-                field_path=f"{field_path}.stability_controls",
-            ),
-        )
-
-
-@dataclass(frozen=True, slots=True)
 class VanillaOptionPricingRequest(ContractModel):
-    """Typed pricing request with hourly intraday default `interval_delta=1.0`."""
-
     market_inputs: VanillaOptionPricingMarketInputs
     payoff: VanillaOptionPayoffConfiguration
     boundary_input: AnchoredVanillaOptionPricingBoundaryInput
     model_parameters: VanillaOptionPricingModelParameters
-    interval_delta: float = DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA
-    fourier_inversion_settings: Optional[FourierInversionEngineSettings] = None
+    interval_delta: float
 
     def __post_init__(self) -> None:
         require_positive_finite_scalar(
@@ -1152,30 +908,10 @@ class VanillaOptionPricingRequest(ContractModel):
                 ),
             )
 
-        if (
-            self.fourier_inversion_settings is not None
-            and not isinstance(self.fourier_inversion_settings, FourierInversionEngineSettings)
-        ):
-            raise _pricing_error(
-                "fourier_inversion_settings",
-                "must be a FourierInversionEngineSettings when provided",
-            )
-
     @staticmethod
     def from_mapping(raw_payload: dict[str, Any] | Any) -> VanillaOptionPricingRequest:
         if not isinstance(raw_payload, dict):
             raise _pricing_error("vanilla_option_pricing_request", "must be an object")
-
-        interval_delta = (
-            require_positive_finite_number(
-                raw_payload,
-                "interval_delta",
-                "interval_delta",
-                PRICING_ERROR_FACTORY,
-            )
-            if "interval_delta" in raw_payload
-            else DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA
-        )
 
         try:
             return VanillaOptionPricingRequest(
@@ -1195,20 +931,11 @@ class VanillaOptionPricingRequest(ContractModel):
                     require_mapping(raw_payload, "model_parameters", "model_parameters", PRICING_ERROR_FACTORY),
                     field_path="model_parameters",
                 ),
-                interval_delta=interval_delta,
-                fourier_inversion_settings=(
-                    FourierInversionEngineSettings.from_mapping(
-                        require_mapping(
-                            raw_payload,
-                            "fourier_inversion_settings",
-                            "fourier_inversion_settings",
-                            PRICING_ERROR_FACTORY,
-                        ),
-                        field_path="fourier_inversion_settings",
-                    )
-                    if "fourier_inversion_settings" in raw_payload
-                    and raw_payload["fourier_inversion_settings"] is not None
-                    else None
+                interval_delta=require_positive_finite_number(
+                    raw_payload,
+                    "interval_delta",
+                    "interval_delta",
+                    PRICING_ERROR_FACTORY,
                 ),
             )
         except JaniformValidationError as e:
@@ -2396,12 +2123,6 @@ __all__ = [
     "AnchoredLocalTiltSolveDiagnostics",
     "AnchoredVanillaOptionPricingBoundaryInput",
     "ExplicitIntervalEndTimestampsUtcPricingIntervalSchedulePolicy",
-    "FourierInversionContour",
-    "FourierInversionEngineSettings",
-    "FourierInversionIntegrationStabilityControls",
-    "FourierInversionNumericQualityGate",
-    "FourierInversionNumericSettings",
-    "FourierInversionQuadratureRule",
     "GammaSeverityMarkConfiguration",
     "MeanReversionAnchorModel",
     "MeanReversionBoundaryState",

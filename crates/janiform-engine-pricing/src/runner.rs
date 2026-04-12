@@ -3,14 +3,19 @@ use std::error::Error;
 use std::f64::consts::PI;
 use std::fmt::{Display, Formatter};
 
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
+use rayon::join;
 use serde::{Deserialize, Serialize};
 
 use janiform_affine_oracle::affine_oracle::{
+    ExponentialAffineTransformEquationSpecification, ExponentialAffineTransformInput,
     ExponentialAffineTransformIntegrationResult, ExponentialAffineTransformIntegrationStatus,
     ExponentialAffineTransformNewsIntensityInput,
     ExponentialAffineTransformNewsIntensityInputError, ExponentialAffineTransformSolverError,
 };
-use janiform_affine_oracle::endogenous_anchor::EndogenousAnchorIntervalFactors;
+use janiform_affine_oracle::endogenous_anchor::{
+    EndogenousAnchorIntervalFactors, derive_expected_interval_statistics_from_first_moment_dynamics,
+};
 use janiform_affine_oracle::sufficient_statistics::{
     SufficientStatisticsExpectedIntervalStatistics, SufficientStatisticsTransformSliceContext,
     SufficientStatisticsTransformSliceSettings, SufficientStatisticsTransformSlices,
@@ -29,15 +34,16 @@ use janiform_model_kernels::nig::{
 
 use super::characteristic::{
     LocalTiltResidualEvaluation, PricingTransformInputBuildError,
-    build_local_tilt_bracket_with_residual_evaluator, build_pricing_transform_input,
+    build_local_tilt_bracket_with_residual_evaluator, build_pricing_equation_specification,
     compose_total_return_characteristic_function_from_oracle_output,
-    solve_exponential_affine_transform,
+    solve_exponential_affine_transform_with_internal_selection,
 };
 use super::contracts::{
-    AnchoredLocalTiltSolveDiagnostics, AnchoredPricingRecursionDiagnostics,
-    AnchoredPricingRecursionIntervalDiagnostics, AnchoredVanillaOptionPricingBoundaryInput,
-    VanillaOptionPricingDiagnostics, VanillaOptionPricingFailureDiagnostic,
-    VanillaOptionPricingFailureStage, VanillaOptionPricingOptionalOutputSelection,
+    AnchoredLocalTiltBoundaryStateSummary, AnchoredLocalTiltSolveDiagnostics,
+    AnchoredPricingRecursionDiagnostics, AnchoredPricingRecursionIntervalDiagnostics,
+    AnchoredVanillaOptionPricingBoundaryInput, VanillaOptionPricingDiagnostics,
+    VanillaOptionPricingFailureDiagnostic, VanillaOptionPricingFailureStage,
+    VanillaOptionPricingModelParameters, VanillaOptionPricingOptionalOutputSelection,
     VanillaOptionPricingRequest, VanillaOptionPricingRequestError, VanillaOptionPricingResponse,
     VanillaOptionPricingResponseError, VanillaOptionPricingRunResult,
     VanillaOptionPricingRunResultBuildError, VanillaOptionPricingStatus,
@@ -45,12 +51,18 @@ use super::contracts::{
 };
 use super::fourier::{
     FourierInversionPricingError, FourierInversionProgress,
-    price_vanilla_option_via_fourier_inversion_with_observer,
+    price_vanilla_option_via_fourier_inversion_with_internal_selection,
 };
 use super::implied_volatility::invert_vanilla_option_implied_volatility;
+use super::integration_geometry::{
+    estimate_asymptotic_tail_integral_error, initial_midpoint_upper_bound_from_phase_scale,
+    next_power_of_two_at_least,
+};
 use super::interval_schedule::PricingIntervalSchedule;
+use super::news_loading_projection::project_nonnegative_exogenous_news_loading;
 use super::probability_projection::probability_mass_from_sampled_cdf_values;
 use super::progress::{PricingNodeProgress, PricingNodeProgressPhase, emit_node_progress};
+use super::thread_pool::{install_pricing_parallelism, resolved_pricing_cpu_count};
 use super::time_scaling::intraday_year_fraction;
 
 const OBSERVED_LOG_MOMENT_ARGUMENT_IMAGINARY: f64 = -1.0;
@@ -369,6 +381,163 @@ pub(crate) struct LocalTiltedIntervalExpectations {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub(crate) struct LocalTransitionRequestContext {
+    pub(crate) interval_index: usize,
+    pub(crate) interval_delta: f64,
+    current_anchor_value: f64,
+    current_pressure_state: f64,
+    pub(crate) hawkes_boundary_state: HawkesExcitationState,
+    pub(crate) mean_reversion_fitted_parameters:
+        janiform_model_kernels::mean_reversion::MeanReversionFittedParameters,
+    risk_free_rate: f64,
+    dividend_yield: f64,
+    pub(crate) model_parameters: VanillaOptionPricingModelParameters,
+    pub(crate) interval_factors: VanillaOptionPricingIntervalFactors,
+    pub(crate) news_intensity: ExponentialAffineTransformNewsIntensityInput,
+    pub(crate) equation_specification: ExponentialAffineTransformEquationSpecification,
+    pub(crate) deviation_decay_factor: f64,
+}
+
+impl LocalTransitionRequestContext {
+    pub(crate) fn from_pricing_request(
+        pricing_request: &VanillaOptionPricingRequest,
+        interval_factors: VanillaOptionPricingIntervalFactors,
+    ) -> Result<Self, VanillaOptionPricingRunError> {
+        Self::from_interval_state(
+            pricing_request,
+            interval_factors,
+            pricing_request.boundary_input.interval_index,
+            pricing_request.boundary_input.hawkes_boundary_state,
+            pricing_request
+                .boundary_input
+                .observed_boundary_state
+                .anchor_value,
+            pricing_request
+                .boundary_input
+                .observed_boundary_state
+                .pressure_state,
+            pricing_request.interval_delta,
+        )
+    }
+
+    pub(crate) fn from_interval_state(
+        pricing_request: &VanillaOptionPricingRequest,
+        interval_factors: VanillaOptionPricingIntervalFactors,
+        interval_index: usize,
+        hawkes_boundary_state: HawkesExcitationState,
+        current_anchor_value: f64,
+        current_pressure_state: f64,
+        interval_delta: f64,
+    ) -> Result<Self, VanillaOptionPricingRunError> {
+        let news_intensity = interval_factors.news_intensity_input().map_err(|source| {
+            VanillaOptionPricingRunError::InvalidExecutionInput {
+                source: VanillaOptionPricingExecutionInputError::InvalidIntervalFactors { source },
+            }
+        })?;
+
+        let mean_reversion_fitted_parameters = pricing_request
+            .boundary_input
+            .mean_reversion_fitted_parameters
+            .clone();
+        let deviation_decay_factor =
+            (-mean_reversion_fitted_parameters.kappa * interval_delta).exp();
+
+        Ok(Self {
+            interval_index,
+            interval_delta,
+            current_anchor_value,
+            current_pressure_state,
+            hawkes_boundary_state,
+            mean_reversion_fitted_parameters,
+            risk_free_rate: pricing_request.market_inputs.risk_free_rate,
+            dividend_yield: pricing_request.market_inputs.dividend_yield,
+            model_parameters: pricing_request.model_parameters.clone(),
+            interval_factors,
+            news_intensity,
+            equation_specification: build_pricing_equation_specification(pricing_request),
+            deviation_decay_factor,
+        })
+    }
+
+    fn build_transform_input(
+        &self,
+        u_plus: ComplexScalar,
+        u_minus: ComplexScalar,
+        z_plus: ComplexScalar,
+        z_minus: ComplexScalar,
+    ) -> ExponentialAffineTransformInput {
+        ExponentialAffineTransformInput::new(
+            self.equation_specification,
+            u_plus,
+            u_minus,
+            z_plus,
+            z_minus,
+            self.interval_factors.s_h,
+            self.news_intensity,
+            self.interval_delta,
+            self.hawkes_boundary_state,
+        )
+    }
+
+    pub(crate) fn build_row_state(
+        &self,
+        deviation: f64,
+    ) -> Result<LocalTransitionRowState, VanillaOptionPricingRunError> {
+        let boundary_state = MeanReversionBoundaryState::try_new(
+            self.current_anchor_value + deviation,
+            self.current_anchor_value,
+            self.current_pressure_state,
+            deviation,
+        )
+        .map_err(|source| {
+            VanillaOptionPricingRunError::InvalidObservedBoundaryStateDuringRecursion {
+                interval_index: self.interval_index,
+                deviation,
+                message: source.to_string(),
+            }
+        })?;
+        let local_martingale_deviation_adjustment = (self.deviation_decay_factor - 1.0) * deviation;
+
+        Ok(LocalTransitionRowState {
+            boundary_state,
+            local_martingale_deviation_adjustment,
+            target_log_moment_exponent: (self.risk_free_rate - self.dividend_yield)
+                * intraday_year_fraction(self.interval_delta)
+                - local_martingale_deviation_adjustment,
+        })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct LocalTransitionRowState {
+    pub(crate) boundary_state: MeanReversionBoundaryState,
+    pub(crate) local_martingale_deviation_adjustment: f64,
+    pub(crate) target_log_moment_exponent: f64,
+}
+
+impl LocalTransitionRowState {
+    fn anchored_boundary_state_summary(
+        &self,
+        transition_context: &LocalTransitionRequestContext,
+    ) -> AnchoredLocalTiltBoundaryStateSummary {
+        AnchoredLocalTiltBoundaryStateSummary {
+            interval_index: transition_context.interval_index,
+            hawkes_boundary_state: transition_context.hawkes_boundary_state,
+            observed_boundary_state: self.boundary_state.clone(),
+            current_anchor_value: transition_context.current_anchor_value,
+            interval_delta: transition_context.interval_delta,
+            kappa: transition_context.mean_reversion_fitted_parameters.kappa,
+            deviation_decay_factor: transition_context.deviation_decay_factor,
+            local_martingale_deviation_adjustment: self.local_martingale_deviation_adjustment,
+        }
+    }
+
+    pub(crate) fn uses_nested_transition_measure(&self) -> bool {
+        self.local_martingale_deviation_adjustment == 0.0
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 struct AnchoredPricingEngineResult {
     price: f64,
     anchored_recursion_diagnostics: Option<AnchoredPricingRecursionDiagnostics>,
@@ -584,34 +753,49 @@ fn solve_exact_local_pricing_tilt(
     interval_factors: VanillaOptionPricingIntervalFactors,
     driver_parameters: NigBuySellDriverParameters,
 ) -> Result<AnchoredLocalTiltSolveDiagnostics, VanillaOptionPricingRunError> {
-    let news_intensity = interval_factors.news_intensity_input().map_err(|source| {
-        VanillaOptionPricingRunError::InvalidExecutionInput {
-            source: VanillaOptionPricingExecutionInputError::InvalidIntervalFactors { source },
-        }
-    })?;
+    solve_exact_local_pricing_tilt_with_parallelism(
+        pricing_request,
+        interval_factors,
+        driver_parameters,
+        None,
+        None,
+    )
+}
 
-    let boundary_state_summary =
-        super::characteristic::anchored_boundary_state_summary(pricing_request).map_err(
-            |source| VanillaOptionPricingRunError::AnchoredLocalTiltSolveFailure {
-                interval_index: pricing_request.boundary_input.interval_index,
-                deviation: pricing_request
-                    .boundary_input
-                    .observed_boundary_state
-                    .deviation,
-                source,
-            },
-        )?;
-    let target_log_moment_exponent =
-        super::characteristic::target_log_moment_exponent(pricing_request).map_err(|source| {
-            VanillaOptionPricingRunError::AnchoredLocalTiltSolveFailure {
-                interval_index: pricing_request.boundary_input.interval_index,
-                deviation: pricing_request
-                    .boundary_input
-                    .observed_boundary_state
-                    .deviation,
-                source,
-            }
-        })?;
+fn solve_exact_local_pricing_tilt_with_parallelism(
+    pricing_request: &VanillaOptionPricingRequest,
+    interval_factors: VanillaOptionPricingIntervalFactors,
+    driver_parameters: NigBuySellDriverParameters,
+    pricing_thread_pool: Option<&rayon::ThreadPool>,
+    cpu_count: Option<usize>,
+) -> Result<AnchoredLocalTiltSolveDiagnostics, VanillaOptionPricingRunError> {
+    let transition_context =
+        LocalTransitionRequestContext::from_pricing_request(pricing_request, interval_factors)?;
+    let transition_row = transition_context.build_row_state(
+        pricing_request
+            .boundary_input
+            .observed_boundary_state
+            .deviation,
+    )?;
+
+    solve_exact_local_pricing_tilt_for_row_with_parallelism(
+        &transition_context,
+        &transition_row,
+        driver_parameters,
+        pricing_thread_pool,
+        cpu_count,
+    )
+}
+
+fn solve_exact_local_pricing_tilt_for_row_with_parallelism(
+    transition_context: &LocalTransitionRequestContext,
+    transition_row: &LocalTransitionRowState,
+    driver_parameters: NigBuySellDriverParameters,
+    pricing_thread_pool: Option<&rayon::ThreadPool>,
+    cpu_count: Option<usize>,
+) -> Result<AnchoredLocalTiltSolveDiagnostics, VanillaOptionPricingRunError> {
+    let boundary_state_summary = transition_row.anchored_boundary_state_summary(transition_context);
+    let target_log_moment_exponent = transition_row.target_log_moment_exponent;
 
     let (theta, evaluation) = build_local_tilt_bracket_with_residual_evaluator(
         driver_parameters,
@@ -619,11 +803,12 @@ fn solve_exact_local_pricing_tilt(
         local_tilt_tolerance(),
         |theta| {
             let observed_log_moment_exponent = evaluate_observed_log_moment_exponent_for_tilt(
-                pricing_request,
+                transition_context,
                 driver_parameters,
-                interval_factors,
-                news_intensity,
+                transition_row.local_martingale_deviation_adjustment,
                 theta,
+                pricing_thread_pool,
+                cpu_count,
             )?;
 
             Ok(LocalTiltResidualEvaluation {
@@ -634,11 +819,8 @@ fn solve_exact_local_pricing_tilt(
     )
     .map_err(
         |source| VanillaOptionPricingRunError::AnchoredLocalTiltSolveFailure {
-            interval_index: pricing_request.boundary_input.interval_index,
-            deviation: pricing_request
-                .boundary_input
-                .observed_boundary_state
-                .deviation,
+            interval_index: transition_context.interval_index,
+            deviation: transition_row.boundary_state.deviation,
             source,
         },
     )?;
@@ -662,47 +844,86 @@ pub(crate) fn resolve_local_transition_theta(
     interval_factors: VanillaOptionPricingIntervalFactors,
     driver_parameters: NigBuySellDriverParameters,
 ) -> Result<(f64, Option<AnchoredLocalTiltSolveDiagnostics>), VanillaOptionPricingRunError> {
-    if use_nested_transition_measure_for_local_request(pricing_request)? {
+    resolve_local_transition_theta_with_parallelism(
+        pricing_request,
+        interval_factors,
+        driver_parameters,
+        None,
+        None,
+    )
+}
+
+pub(crate) fn resolve_local_transition_theta_with_parallelism(
+    pricing_request: &VanillaOptionPricingRequest,
+    interval_factors: VanillaOptionPricingIntervalFactors,
+    driver_parameters: NigBuySellDriverParameters,
+    pricing_thread_pool: Option<&rayon::ThreadPool>,
+    cpu_count: Option<usize>,
+) -> Result<(f64, Option<AnchoredLocalTiltSolveDiagnostics>), VanillaOptionPricingRunError> {
+    let transition_context =
+        LocalTransitionRequestContext::from_pricing_request(pricing_request, interval_factors)?;
+    let transition_row = transition_context.build_row_state(
+        pricing_request
+            .boundary_input
+            .observed_boundary_state
+            .deviation,
+    )?;
+
+    resolve_local_transition_theta_for_row_with_parallelism(
+        &transition_context,
+        &transition_row,
+        driver_parameters,
+        pricing_thread_pool,
+        cpu_count,
+    )
+}
+
+pub(crate) fn resolve_local_transition_theta_for_row_with_parallelism(
+    transition_context: &LocalTransitionRequestContext,
+    transition_row: &LocalTransitionRowState,
+    driver_parameters: NigBuySellDriverParameters,
+    pricing_thread_pool: Option<&rayon::ThreadPool>,
+    cpu_count: Option<usize>,
+) -> Result<(f64, Option<AnchoredLocalTiltSolveDiagnostics>), VanillaOptionPricingRunError> {
+    if transition_row.uses_nested_transition_measure() {
         return Ok((0.0, None));
     }
 
-    let diagnostics =
-        solve_exact_local_pricing_tilt(pricing_request, interval_factors, driver_parameters)?;
+    let diagnostics = solve_exact_local_pricing_tilt_for_row_with_parallelism(
+        transition_context,
+        transition_row,
+        driver_parameters,
+        pricing_thread_pool,
+        cpu_count,
+    )?;
 
     Ok((diagnostics.theta, Some(diagnostics)))
 }
 
 fn evaluate_observed_log_moment_exponent_for_tilt(
-    pricing_request: &VanillaOptionPricingRequest,
+    transition_context: &LocalTransitionRequestContext,
     driver_parameters: NigBuySellDriverParameters,
-    interval_factors: VanillaOptionPricingIntervalFactors,
-    news_intensity: ExponentialAffineTransformNewsIntensityInput,
+    local_martingale_deviation_adjustment: f64,
     theta: f64,
+    pricing_thread_pool: Option<&rayon::ThreadPool>,
+    cpu_count: Option<usize>,
 ) -> Result<f64, super::characteristic::AnchoredLocalTiltSolveError> {
-    let local_martingale_deviation_adjustment = pricing_request
-        .boundary_input
-        .local_martingale_deviation_adjustment()
-        .map_err(|source| {
-            super::characteristic::AnchoredLocalTiltSolveError::InvalidPricingRequest {
-                source: VanillaOptionPricingRequestError::InvalidBoundaryInput { source },
+    let evaluation =
+        evaluate_observed_log_return_characteristic_function_under_local_measure_for_context(
+            transition_context,
+            driver_parameters,
+            theta,
+            local_martingale_deviation_adjustment,
+            ComplexScalar::new(0.0, OBSERVED_LOG_MOMENT_ARGUMENT_IMAGINARY),
+            pricing_thread_pool,
+            cpu_count,
+        )
+        .map_err(|error| {
+            super::characteristic::AnchoredLocalTiltSolveError::TransformEvaluationFailure {
+                theta,
+                message: error.to_string(),
             }
         })?;
-
-    let evaluation = evaluate_observed_log_return_characteristic_function_under_local_measure(
-        pricing_request,
-        driver_parameters,
-        interval_factors,
-        news_intensity,
-        theta,
-        local_martingale_deviation_adjustment,
-        ComplexScalar::new(0.0, OBSERVED_LOG_MOMENT_ARGUMENT_IMAGINARY),
-    )
-    .map_err(|error| {
-        super::characteristic::AnchoredLocalTiltSolveError::TransformEvaluationFailure {
-            theta,
-            message: error.to_string(),
-        }
-    })?;
 
     recover_pure_imaginary_log_moment_exponent(evaluation.value, theta)
 }
@@ -773,10 +994,9 @@ fn run_single_interval_nested_fourier_pricing(
             );
         };
 
-        price_vanilla_option_via_fourier_inversion_with_observer(
+        price_vanilla_option_via_fourier_inversion_with_internal_selection(
             &pricing_request.market_inputs,
             pricing_request.payoff,
-            pricing_request.resolved_fourier_inversion_settings(),
             |argument| match evaluate_pricing_log_return_characteristic_function(
                 pricing_request,
                 driver_parameters,
@@ -915,10 +1135,9 @@ fn run_single_interval_anchored_fourier_pricing(
             );
         };
 
-        price_vanilla_option_via_fourier_inversion_with_observer(
+        price_vanilla_option_via_fourier_inversion_with_internal_selection(
             &pricing_request.market_inputs,
             pricing_request.payoff,
-            pricing_request.resolved_fourier_inversion_settings(),
             |argument| {
                 match evaluate_observed_log_return_characteristic_function_under_local_measure(
                     pricing_request,
@@ -928,6 +1147,8 @@ fn run_single_interval_anchored_fourier_pricing(
                     local_tilt_diagnostics.theta,
                     local_martingale_deviation_adjustment,
                     argument,
+                    None,
+                    None,
                 ) {
                     Ok(evaluation) => {
                         if representative_transform_diagnostics.borrow().is_none() {
@@ -1134,10 +1355,9 @@ fn run_anchored_characteristic_pricing(
             );
         };
 
-        price_vanilla_option_via_fourier_inversion_with_observer(
+        price_vanilla_option_via_fourier_inversion_with_internal_selection(
             &pricing_request.market_inputs,
             pricing_request.payoff,
-            pricing_request.resolved_fourier_inversion_settings(),
             |argument| match evaluate_total_observed_log_return_characteristic_function(
                 pricing_request,
                 interval_factors,
@@ -1393,23 +1613,6 @@ fn evaluate_total_observed_log_return_characteristic_function_with_progress(
     Ok((characteristic_value, interval_diagnostics))
 }
 
-pub(crate) fn use_nested_transition_measure_for_local_request(
-    pricing_request: &VanillaOptionPricingRequest,
-) -> Result<bool, VanillaOptionPricingRunError> {
-    let local_martingale_deviation_adjustment = pricing_request
-        .boundary_input
-        .local_martingale_deviation_adjustment()
-        .map_err(
-            |source| VanillaOptionPricingRunError::InvalidExecutionInput {
-                source: VanillaOptionPricingExecutionInputError::InvalidRequest {
-                    source: VanillaOptionPricingRequestError::InvalidBoundaryInput { source },
-                },
-            },
-        )?;
-
-    Ok(local_martingale_deviation_adjustment == 0.0)
-}
-
 pub(crate) fn build_deviation_grid(
     pricing_request: &VanillaOptionPricingRequest,
     risk_neutral_anchor_materialization: &RiskNeutralAnchorMaterialization,
@@ -1573,6 +1776,7 @@ pub(crate) fn build_pricing_risk_neutral_anchor_materialization(
 
         current_hawkes_state = evolve_expected_hawkes_state_under_local_measure(
             &local_request,
+            interval_factor,
             current_hawkes_state,
             local_expectations,
         )?;
@@ -1615,11 +1819,58 @@ pub(crate) fn derive_local_tilted_interval_expectations(
     interval_factors: VanillaOptionPricingIntervalFactors,
     theta: f64,
 ) -> Result<LocalTiltedIntervalExpectations, VanillaOptionPricingRunError> {
-    let tilted_statistics = derive_local_tilted_expected_interval_statistics(
+    derive_local_tilted_interval_expectations_with_parallelism(
         pricing_request,
         driver_parameters,
         interval_factors,
         theta,
+        None,
+        None,
+    )
+}
+
+pub(crate) fn derive_local_tilted_interval_expectations_with_parallelism(
+    pricing_request: &VanillaOptionPricingRequest,
+    driver_parameters: NigBuySellDriverParameters,
+    interval_factors: VanillaOptionPricingIntervalFactors,
+    theta: f64,
+    pricing_thread_pool: Option<&rayon::ThreadPool>,
+    cpu_count: Option<usize>,
+) -> Result<LocalTiltedIntervalExpectations, VanillaOptionPricingRunError> {
+    let transition_context =
+        LocalTransitionRequestContext::from_pricing_request(pricing_request, interval_factors)?;
+    let transition_row = transition_context.build_row_state(
+        pricing_request
+            .boundary_input
+            .observed_boundary_state
+            .deviation,
+    )?;
+
+    derive_local_tilted_interval_expectations_for_row_with_parallelism(
+        &transition_context,
+        &transition_row,
+        driver_parameters,
+        theta,
+        pricing_thread_pool,
+        cpu_count,
+    )
+}
+
+pub(crate) fn derive_local_tilted_interval_expectations_for_row_with_parallelism(
+    transition_context: &LocalTransitionRequestContext,
+    transition_row: &LocalTransitionRowState,
+    driver_parameters: NigBuySellDriverParameters,
+    theta: f64,
+    pricing_thread_pool: Option<&rayon::ThreadPool>,
+    cpu_count: Option<usize>,
+) -> Result<LocalTiltedIntervalExpectations, VanillaOptionPricingRunError> {
+    let tilted_statistics = derive_local_tilted_expected_interval_statistics_for_row(
+        transition_context,
+        transition_row,
+        driver_parameters,
+        theta,
+        pricing_thread_pool,
+        cpu_count,
     )?;
 
     let core_expected_increment = tilted_core_expected_increment_from_statistics(
@@ -1627,9 +1878,9 @@ pub(crate) fn derive_local_tilted_interval_expectations(
         tilted_statistics,
         theta,
     )?;
-    let expected_news_loading = infer_expected_news_loading_under_local_measure(
-        pricing_request,
-        interval_factors,
+    let expected_news_loading = infer_expected_news_loading_under_local_measure_for_row(
+        transition_context,
+        transition_row,
         tilted_statistics,
     )?;
 
@@ -1640,26 +1891,96 @@ pub(crate) fn derive_local_tilted_interval_expectations(
     })
 }
 
-fn derive_local_tilted_expected_interval_statistics(
-    pricing_request: &VanillaOptionPricingRequest,
-    driver_parameters: NigBuySellDriverParameters,
-    interval_factors: VanillaOptionPricingIntervalFactors,
-    theta: f64,
-) -> Result<SufficientStatisticsExpectedIntervalStatistics, VanillaOptionPricingRunError> {
-    let news_intensity = interval_factors.news_intensity_input().map_err(|source| {
-        VanillaOptionPricingRunError::InvalidExecutionInput {
-            source: VanillaOptionPricingExecutionInputError::InvalidIntervalFactors { source },
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TransformSliceKind {
+    Baseline,
+    APlus,
+    AMinus,
+    NPlus,
+    NMinus,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct TransformSliceRequest {
+    kind: TransformSliceKind,
+    extra_u_plus: ComplexScalar,
+    extra_u_minus: ComplexScalar,
+    z_plus: ComplexScalar,
+    z_minus: ComplexScalar,
+}
+
+impl TransformSliceRequest {
+    fn baseline() -> Self {
+        Self {
+            kind: TransformSliceKind::Baseline,
+            extra_u_plus: ComplexScalar::new(0.0, 0.0),
+            extra_u_minus: ComplexScalar::new(0.0, 0.0),
+            z_plus: ComplexScalar::new(1.0, 0.0),
+            z_minus: ComplexScalar::new(1.0, 0.0),
         }
-    })?;
+    }
+
+    fn a_plus(a_plus_u: f64) -> Self {
+        Self {
+            kind: TransformSliceKind::APlus,
+            extra_u_plus: ComplexScalar::new(a_plus_u, 0.0),
+            extra_u_minus: ComplexScalar::new(0.0, 0.0),
+            z_plus: ComplexScalar::new(1.0, 0.0),
+            z_minus: ComplexScalar::new(1.0, 0.0),
+        }
+    }
+
+    fn a_minus(a_minus_u: f64) -> Self {
+        Self {
+            kind: TransformSliceKind::AMinus,
+            extra_u_plus: ComplexScalar::new(0.0, 0.0),
+            extra_u_minus: ComplexScalar::new(a_minus_u, 0.0),
+            z_plus: ComplexScalar::new(1.0, 0.0),
+            z_minus: ComplexScalar::new(1.0, 0.0),
+        }
+    }
+
+    fn n_plus(n_plus_z: f64) -> Self {
+        Self {
+            kind: TransformSliceKind::NPlus,
+            extra_u_plus: ComplexScalar::new(0.0, 0.0),
+            extra_u_minus: ComplexScalar::new(0.0, 0.0),
+            z_plus: ComplexScalar::new(n_plus_z, 0.0),
+            z_minus: ComplexScalar::new(1.0, 0.0),
+        }
+    }
+
+    fn n_minus(n_minus_z: f64) -> Self {
+        Self {
+            kind: TransformSliceKind::NMinus,
+            extra_u_plus: ComplexScalar::new(0.0, 0.0),
+            extra_u_minus: ComplexScalar::new(0.0, 0.0),
+            z_plus: ComplexScalar::new(1.0, 0.0),
+            z_minus: ComplexScalar::new(n_minus_z, 0.0),
+        }
+    }
+}
+
+fn derive_local_tilted_expected_interval_statistics_for_row(
+    transition_context: &LocalTransitionRequestContext,
+    transition_row: &LocalTransitionRowState,
+    driver_parameters: NigBuySellDriverParameters,
+    theta: f64,
+    pricing_thread_pool: Option<&rayon::ThreadPool>,
+    cpu_count: Option<usize>,
+) -> Result<SufficientStatisticsExpectedIntervalStatistics, VanillaOptionPricingRunError> {
+    if transition_row.uses_nested_transition_measure() {
+        return derive_nested_local_expected_interval_statistics_from_context(transition_context);
+    }
 
     let settings = SufficientStatisticsTransformSliceSettings::default();
 
     let context = SufficientStatisticsTransformSliceContext::try_new(
-        pricing_request.boundary_input.interval_index,
-        interval_factors.s_h,
-        news_intensity,
-        pricing_request.interval_delta,
-        pricing_request.boundary_input.hawkes_boundary_state,
+        transition_context.interval_index,
+        transition_context.interval_factors.s_h,
+        transition_context.news_intensity,
+        transition_context.interval_delta,
+        transition_context.hawkes_boundary_state,
     )
     .map_err(|source| {
         VanillaOptionPricingRunError::EndogenousAnchorMaterializationFailure {
@@ -1667,65 +1988,90 @@ fn derive_local_tilted_expected_interval_statistics(
         }
     })?;
 
-    let baseline_transform = solve_local_tilted_transform_slice_value(
-        pricing_request,
-        driver_parameters,
-        interval_factors,
-        theta,
-        ComplexScalar::new(0.0, 0.0),
-        ComplexScalar::new(0.0, 0.0),
-        ComplexScalar::new(1.0, 0.0),
-        ComplexScalar::new(1.0, 0.0),
-    )?;
-    let a_plus_transform = solve_local_tilted_transform_slice_value(
-        pricing_request,
-        driver_parameters,
-        interval_factors,
-        theta,
-        ComplexScalar::new(settings.a_plus_u, 0.0),
-        ComplexScalar::new(0.0, 0.0),
-        ComplexScalar::new(1.0, 0.0),
-        ComplexScalar::new(1.0, 0.0),
-    )?;
-    let a_minus_transform = solve_local_tilted_transform_slice_value(
-        pricing_request,
-        driver_parameters,
-        interval_factors,
-        theta,
-        ComplexScalar::new(0.0, 0.0),
-        ComplexScalar::new(settings.a_minus_u, 0.0),
-        ComplexScalar::new(1.0, 0.0),
-        ComplexScalar::new(1.0, 0.0),
-    )?;
-    let n_plus_transform = solve_local_tilted_transform_slice_value(
-        pricing_request,
-        driver_parameters,
-        interval_factors,
-        theta,
-        ComplexScalar::new(0.0, 0.0),
-        ComplexScalar::new(0.0, 0.0),
-        ComplexScalar::new(settings.n_plus_z, 0.0),
-        ComplexScalar::new(1.0, 0.0),
-    )?;
-    let n_minus_transform = solve_local_tilted_transform_slice_value(
-        pricing_request,
-        driver_parameters,
-        interval_factors,
-        theta,
-        ComplexScalar::new(0.0, 0.0),
-        ComplexScalar::new(0.0, 0.0),
-        ComplexScalar::new(1.0, 0.0),
-        ComplexScalar::new(settings.n_minus_z, 0.0),
-    )?;
+    let slice_requests = [
+        TransformSliceRequest::baseline(),
+        TransformSliceRequest::a_plus(settings.a_plus_u),
+        TransformSliceRequest::a_minus(settings.a_minus_u),
+        TransformSliceRequest::n_plus(settings.n_plus_z),
+        TransformSliceRequest::n_minus(settings.n_minus_z),
+    ];
+
+    let slice_results = if resolved_pricing_cpu_count(cpu_count) > 1 {
+        install_pricing_parallelism(pricing_thread_pool, || {
+            slice_requests
+                .into_par_iter()
+                .map(|request| {
+                    Ok::<_, VanillaOptionPricingRunError>((
+                        request.kind,
+                        solve_local_tilted_transform_slice_value(
+                            transition_context,
+                            driver_parameters,
+                            theta,
+                            request.extra_u_plus,
+                            request.extra_u_minus,
+                            request.z_plus,
+                            request.z_minus,
+                        )?,
+                    ))
+                })
+                .collect::<Result<Vec<_>, _>>()
+        })?
+    } else {
+        slice_requests
+            .into_iter()
+            .map(|request| {
+                Ok::<_, VanillaOptionPricingRunError>((
+                    request.kind,
+                    solve_local_tilted_transform_slice_value(
+                        transition_context,
+                        driver_parameters,
+                        theta,
+                        request.extra_u_plus,
+                        request.extra_u_minus,
+                        request.z_plus,
+                        request.z_minus,
+                    )?,
+                ))
+            })
+            .collect::<Result<Vec<_>, _>>()?
+    };
+
+    let mut baseline_transform = None;
+    let mut a_plus_transform = None;
+    let mut a_minus_transform = None;
+    let mut n_plus_transform = None;
+    let mut n_minus_transform = None;
+
+    for (kind, value) in slice_results {
+        match kind {
+            TransformSliceKind::Baseline => baseline_transform = Some(value),
+            TransformSliceKind::APlus => a_plus_transform = Some(value),
+            TransformSliceKind::AMinus => a_minus_transform = Some(value),
+            TransformSliceKind::NPlus => n_plus_transform = Some(value),
+            TransformSliceKind::NMinus => n_minus_transform = Some(value),
+        }
+    }
 
     let slices = SufficientStatisticsTransformSlices::try_new(
         context,
         settings,
-        baseline_transform,
-        a_plus_transform,
-        a_minus_transform,
-        n_plus_transform,
-        n_minus_transform,
+        baseline_transform.ok_or_else(|| {
+            VanillaOptionPricingRunError::InternalNumericsFailure {
+                message: "missing baseline transform slice".to_string(),
+            }
+        })?,
+        a_plus_transform.ok_or_else(|| VanillaOptionPricingRunError::InternalNumericsFailure {
+            message: "missing a_plus transform slice".to_string(),
+        })?,
+        a_minus_transform.ok_or_else(|| VanillaOptionPricingRunError::InternalNumericsFailure {
+            message: "missing a_minus transform slice".to_string(),
+        })?,
+        n_plus_transform.ok_or_else(|| VanillaOptionPricingRunError::InternalNumericsFailure {
+            message: "missing n_plus transform slice".to_string(),
+        })?,
+        n_minus_transform.ok_or_else(|| VanillaOptionPricingRunError::InternalNumericsFailure {
+            message: "missing n_minus transform slice".to_string(),
+        })?,
     )
     .map_err(|source| {
         VanillaOptionPricingRunError::EndogenousAnchorMaterializationFailure {
@@ -1740,23 +2086,56 @@ fn derive_local_tilted_expected_interval_statistics(
     })
 }
 
+fn derive_nested_local_expected_interval_statistics_from_context(
+    transition_context: &LocalTransitionRequestContext,
+) -> Result<SufficientStatisticsExpectedIntervalStatistics, VanillaOptionPricingRunError> {
+    let endogenous_factors = EndogenousAnchorIntervalFactors::try_new(
+        transition_context.interval_factors.s_h,
+        transition_context.interval_factors.nu_h_known,
+        transition_context.interval_factors.nu_h_surprise,
+        transition_context.interval_delta,
+    )
+    .map_err(|source| {
+        VanillaOptionPricingRunError::EndogenousAnchorMaterializationFailure {
+            message: source.to_string(),
+        }
+    })?;
+
+    let expected_severity_mark = transition_context
+        .model_parameters
+        .news_process_configuration
+        .shared_mark_law
+        .gamma_severity_marks
+        .expected_severity_mark()
+        .map_err(
+            |source| VanillaOptionPricingRunError::EndogenousAnchorMaterializationFailure {
+                message: source.to_string(),
+            },
+        )?;
+
+    derive_expected_interval_statistics_from_first_moment_dynamics(
+        transition_context.equation_specification,
+        expected_severity_mark,
+        endogenous_factors,
+        transition_context.hawkes_boundary_state,
+    )
+    .map_err(
+        |source| VanillaOptionPricingRunError::EndogenousAnchorMaterializationFailure {
+            message: source.to_string(),
+        },
+    )
+}
+
 #[allow(clippy::too_many_arguments)]
 fn solve_local_tilted_transform_slice_value(
-    pricing_request: &VanillaOptionPricingRequest,
+    transition_context: &LocalTransitionRequestContext,
     driver_parameters: NigBuySellDriverParameters,
-    interval_factors: VanillaOptionPricingIntervalFactors,
     theta: f64,
     extra_u_plus: ComplexScalar,
     extra_u_minus: ComplexScalar,
     z_plus: ComplexScalar,
     z_minus: ComplexScalar,
 ) -> Result<ComplexScalar, VanillaOptionPricingRunError> {
-    let news_intensity = interval_factors.news_intensity_input().map_err(|source| {
-        VanillaOptionPricingRunError::InvalidExecutionInput {
-            source: VanillaOptionPricingExecutionInputError::InvalidIntervalFactors { source },
-        }
-    })?;
-
     let shifted_argument = ComplexScalar::new(0.0, -theta);
 
     let buy_side_shift = driver_parameters
@@ -1768,34 +2147,30 @@ fn solve_local_tilted_transform_slice_value(
         .scale(-1.0)
         .add(extra_u_minus);
 
-    let transform_input = build_pricing_transform_input(
-        pricing_request,
-        buy_side_shift,
-        sell_side_shift,
-        z_plus,
-        z_minus,
-        interval_factors.s_h,
-        news_intensity,
-    )
-    .map_err(
-        |source| VanillaOptionPricingRunError::TransformInputBuildFailure {
-            argument: shifted_argument,
-            source,
-        },
-    )?;
+    let transform_input =
+        transition_context.build_transform_input(buy_side_shift, sell_side_shift, z_plus, z_minus);
 
     let transform_diagnostics =
-        solve_exponential_affine_transform(transform_input).map_err(|source| {
-            VanillaOptionPricingRunError::TransformSolveFailure {
+        solve_exponential_affine_transform_with_internal_selection(transform_input).map_err(
+            |source| VanillaOptionPricingRunError::TransformSolveFailure {
                 argument: shifted_argument,
                 source,
-            }
-        })?;
+            },
+        )?;
 
     let transform_output = transform_diagnostics.output.ok_or(
         VanillaOptionPricingRunError::MissingTransformOutput {
             argument: shifted_argument,
             status: transform_diagnostics.status,
+            context: format!(
+                "local_tilted_transform_slice interval_index={} interval_delta={} u_plus={buy_side_shift:?} u_minus={sell_side_shift:?} z_plus={z_plus:?} z_minus={z_minus:?} guard_failure_code={:?}",
+                transition_context.interval_index,
+                transition_context.interval_delta,
+                transform_diagnostics
+                    .metadata
+                    .guard_failure
+                    .map(|guard_failure| guard_failure.code),
+            ),
         },
     )?;
 
@@ -1845,16 +2220,16 @@ fn tilted_nig_expected_increment(
     )
 }
 
-pub(crate) fn infer_expected_news_loading_under_local_measure(
-    pricing_request: &VanillaOptionPricingRequest,
-    interval_factors: VanillaOptionPricingIntervalFactors,
+pub(crate) fn infer_expected_news_loading_under_local_measure_for_row(
+    transition_context: &LocalTransitionRequestContext,
+    transition_row: &LocalTransitionRowState,
     expected_statistics: SufficientStatisticsExpectedIntervalStatistics,
 ) -> Result<f64, VanillaOptionPricingRunError> {
     let endogenous_factors = EndogenousAnchorIntervalFactors::try_new(
-        interval_factors.s_h,
-        interval_factors.nu_h_known,
-        interval_factors.nu_h_surprise,
-        pricing_request.interval_delta,
+        transition_context.interval_factors.s_h,
+        transition_context.interval_factors.nu_h_known,
+        transition_context.interval_factors.nu_h_surprise,
+        transition_context.interval_delta,
     )
     .map_err(|source| {
         VanillaOptionPricingRunError::EndogenousAnchorMaterializationFailure {
@@ -1862,24 +2237,8 @@ pub(crate) fn infer_expected_news_loading_under_local_measure(
         }
     })?;
 
-    if pricing_request
-        .model_parameters
-        .news_process_configuration
-        .known_component_mark_scales
-        .activity_coupling_scale
-        == 0.0
-        && pricing_request
-            .model_parameters
-            .news_process_configuration
-            .surprise_component_mark_scales
-            .activity_coupling_scale
-            == 0.0
-    {
-        return Ok(0.0);
-    }
-
-    if interval_factors.s_h == 0.0 {
-        let expected_severity_mark = pricing_request
+    if transition_row.uses_nested_transition_measure() {
+        let expected_severity_mark = transition_context
             .model_parameters
             .news_process_configuration
             .shared_mark_law
@@ -1892,30 +2251,54 @@ pub(crate) fn infer_expected_news_loading_under_local_measure(
             })?;
 
         return Ok(expected_scaled_news_loading(
-            pricing_request,
+            &transition_context.model_parameters,
             endogenous_factors,
             expected_severity_mark,
         ));
     }
 
-    let kernel_parameters = pricing_request.model_parameters.hawkes_kernel_parameters;
+    if transition_context
+        .model_parameters
+        .news_process_configuration
+        .known_component_mark_scales
+        .activity_coupling_scale
+        == 0.0
+        && transition_context
+            .model_parameters
+            .news_process_configuration
+            .surprise_component_mark_scales
+            .activity_coupling_scale
+            == 0.0
+    {
+        return Ok(0.0);
+    }
 
-    let target_plus_before = pricing_request
-        .boundary_input
-        .hawkes_boundary_state
-        .y_plus_plus
-        + pricing_request
-            .boundary_input
-            .hawkes_boundary_state
-            .y_plus_minus;
-    let target_minus_before = pricing_request
-        .boundary_input
-        .hawkes_boundary_state
-        .y_minus_plus
-        + pricing_request
-            .boundary_input
-            .hawkes_boundary_state
-            .y_minus_minus;
+    if transition_context.interval_factors.s_h == 0.0 {
+        let expected_severity_mark = transition_context
+            .model_parameters
+            .news_process_configuration
+            .shared_mark_law
+            .gamma_severity_marks
+            .expected_severity_mark()
+            .map_err(|source| {
+                VanillaOptionPricingRunError::EndogenousAnchorMaterializationFailure {
+                    message: source.to_string(),
+                }
+            })?;
+
+        return Ok(expected_scaled_news_loading(
+            &transition_context.model_parameters,
+            endogenous_factors,
+            expected_severity_mark,
+        ));
+    }
+
+    let kernel_parameters = transition_context.model_parameters.hawkes_kernel_parameters;
+
+    let target_plus_before = transition_context.hawkes_boundary_state.y_plus_plus
+        + transition_context.hawkes_boundary_state.y_plus_minus;
+    let target_minus_before = transition_context.hawkes_boundary_state.y_minus_plus
+        + transition_context.hawkes_boundary_state.y_minus_minus;
 
     let baseline_expected_business_time =
         kernel_parameters.lambda_bar * endogenous_factors.s_h * endogenous_factors.delta;
@@ -1964,40 +2347,34 @@ pub(crate) fn infer_expected_news_loading_under_local_measure(
         endogenous_factors.delta,
     );
 
-    let plus_loading_coefficient = unit_loading_solution.integrated_first_component;
-    if plus_loading_coefficient != 0.0 {
-        return Ok(
-            (observed_integrated_target_plus - base_solution.integrated_first_component)
-                / plus_loading_coefficient,
-        );
-    }
-
-    let minus_loading_coefficient = unit_loading_solution.integrated_second_component;
-    if minus_loading_coefficient != 0.0 {
-        return Ok(
-            (observed_integrated_target_minus - base_solution.integrated_second_component)
-                / minus_loading_coefficient,
-        );
-    }
-
-    Ok(0.0)
+    project_nonnegative_exogenous_news_loading(
+        observed_integrated_target_plus,
+        observed_integrated_target_minus,
+        base_solution.integrated_first_component,
+        base_solution.integrated_second_component,
+        unit_loading_solution.integrated_first_component,
+        unit_loading_solution.integrated_second_component,
+    )
+    .map_err(
+        |source| VanillaOptionPricingRunError::ExpectedHawkesStateUpdateFailure {
+            message: source.to_string(),
+        },
+    )
 }
 
 fn expected_scaled_news_loading(
-    pricing_request: &VanillaOptionPricingRequest,
+    model_parameters: &VanillaOptionPricingModelParameters,
     interval_factors: EndogenousAnchorIntervalFactors,
     expected_severity_mark: f64,
 ) -> f64 {
     let known_loading = interval_factors.expected_known_arrival_count()
-        * pricing_request
-            .model_parameters
+        * model_parameters
             .news_process_configuration
             .known_component_mark_scales
             .activity_coupling_scale
         * expected_severity_mark;
     let surprise_loading = interval_factors.expected_surprise_arrival_count()
-        * pricing_request
-            .model_parameters
+        * model_parameters
             .news_process_configuration
             .surprise_component_mark_scales
             .activity_coupling_scale
@@ -2008,6 +2385,7 @@ fn expected_scaled_news_loading(
 
 fn evolve_expected_hawkes_state_under_local_measure(
     pricing_request: &VanillaOptionPricingRequest,
+    interval_factors: VanillaOptionPricingIntervalFactors,
     state_before_update: HawkesExcitationState,
     local_expectations: LocalTiltedIntervalExpectations,
 ) -> Result<HawkesExcitationState, VanillaOptionPricingRunError> {
@@ -2026,16 +2404,50 @@ fn evolve_expected_hawkes_state_under_local_measure(
         local_expectations.expected_statistics.expected_n_minus,
     );
 
+    if !local_expectations.expected_news_loading.is_finite()
+        || local_expectations.expected_news_loading < 0.0
+    {
+        return Err(
+            VanillaOptionPricingRunError::EndogenousAnchorMaterializationFailure {
+                message: format!(
+                    "local-measure expected news loading must be finite and non-negative at interval_index={} interval_delta={} s_h={} nu_h_known={} nu_h_surprise={} expected_a_plus={} expected_a_minus={} expected_n_plus={} expected_n_minus={} expected_news_loading={}",
+                    pricing_request.boundary_input.interval_index,
+                    pricing_request.interval_delta,
+                    interval_factors.s_h,
+                    interval_factors.nu_h_known,
+                    interval_factors.nu_h_surprise,
+                    local_expectations.expected_statistics.expected_a_plus,
+                    local_expectations.expected_statistics.expected_a_minus,
+                    local_expectations.expected_statistics.expected_n_plus,
+                    local_expectations.expected_statistics.expected_n_minus,
+                    local_expectations.expected_news_loading,
+                ),
+            },
+        );
+    }
+
     post_sell_state
         .apply_exogenous_news_loading_jump(
             kernel_parameters.rho,
             local_expectations.expected_news_loading,
         )
-        .map_err(
-            |source| VanillaOptionPricingRunError::EndogenousAnchorMaterializationFailure {
-                message: source.to_string(),
-            },
-        )
+        .map_err(|source| {
+            VanillaOptionPricingRunError::EndogenousAnchorMaterializationFailure {
+                message: format!(
+                    "{source}; interval_index={} interval_delta={} s_h={} nu_h_known={} nu_h_surprise={} expected_a_plus={} expected_a_minus={} expected_n_plus={} expected_n_minus={} expected_news_loading={}",
+                    pricing_request.boundary_input.interval_index,
+                    pricing_request.interval_delta,
+                    interval_factors.s_h,
+                    interval_factors.nu_h_known,
+                    interval_factors.nu_h_surprise,
+                    local_expectations.expected_statistics.expected_a_plus,
+                    local_expectations.expected_statistics.expected_a_minus,
+                    local_expectations.expected_statistics.expected_n_plus,
+                    local_expectations.expected_statistics.expected_n_minus,
+                    local_expectations.expected_news_loading,
+                ),
+            }
+        })
 }
 
 pub(crate) fn build_local_boundary_input(
@@ -2085,7 +2497,7 @@ pub(crate) fn build_local_pricing_request(
     boundary_input: AnchoredVanillaOptionPricingBoundaryInput,
     interval_delta: f64,
 ) -> Result<VanillaOptionPricingRequest, VanillaOptionPricingRunError> {
-    VanillaOptionPricingRequest::try_new_with_interval_delta(
+    VanillaOptionPricingRequest::try_new(
         super::contracts::VanillaOptionPricingMarketInputs::try_new_single_node(
             pricing_request.market_inputs.spot,
             pricing_request
@@ -2184,27 +2596,136 @@ fn evaluate_shifted_core_cdf_under_local_measure(
     evaluation_point: f64,
     representative_transform_diagnostics: &mut Option<ExponentialAffineTransformIntegrationResult>,
 ) -> Result<f64, VanillaOptionPricingRunError> {
-    let settings = pricing_request.resolved_fourier_inversion_settings();
+    evaluate_core_cdf_under_local_measure_with_internal_selection(
+        pricing_request,
+        driver_parameters,
+        interval_factors,
+        news_intensity,
+        theta,
+        evaluation_point,
+        representative_transform_diagnostics,
+    )
+}
 
-    let integration_upper_bound = settings.numeric_settings.integration_upper_bound;
-    let integration_step_count = settings.numeric_settings.integration_step_count;
+fn evaluate_core_cdf_under_local_measure_with_internal_selection(
+    pricing_request: &VanillaOptionPricingRequest,
+    driver_parameters: NigBuySellDriverParameters,
+    interval_factors: VanillaOptionPricingIntervalFactors,
+    news_intensity: ExponentialAffineTransformNewsIntensityInput,
+    theta: f64,
+    evaluation_point: f64,
+    representative_transform_diagnostics: &mut Option<ExponentialAffineTransformIntegrationResult>,
+) -> Result<f64, VanillaOptionPricingRunError> {
+    let mut integration_upper_bound =
+        initial_midpoint_upper_bound_from_phase_scale(evaluation_point.abs());
 
+    let initial_phase_resolution = (integration_upper_bound * evaluation_point.abs() / PI)
+        .ceil()
+        .max(2.0) as usize;
+    let mut integration_step_count = next_power_of_two_at_least(initial_phase_resolution)
+        .ok_or_else(|| VanillaOptionPricingRunError::InternalNumericsFailure {
+            message: "core CDF refinement could not initialize a dyadic step count".to_string(),
+        })?;
+    let absolute_cdf_budget = f64::EPSILON.cbrt();
+
+    loop {
+        let coarse_statistics = evaluate_core_cdf_midpoint_integral_statistics(
+            pricing_request,
+            driver_parameters,
+            interval_factors,
+            news_intensity,
+            theta,
+            evaluation_point,
+            integration_upper_bound,
+            integration_step_count / 2,
+            representative_transform_diagnostics,
+        )?;
+        let full_statistics = evaluate_core_cdf_midpoint_integral_statistics(
+            pricing_request,
+            driver_parameters,
+            interval_factors,
+            news_intensity,
+            theta,
+            evaluation_point,
+            integration_upper_bound,
+            integration_step_count,
+            representative_transform_diagnostics,
+        )?;
+
+        let quadrature_error_estimate =
+            (full_statistics.integral_estimate - coarse_statistics.integral_estimate).abs() / 3.0;
+        let tail_error_estimate = estimate_asymptotic_tail_integral_error(
+            full_statistics.penultimate_frequency,
+            full_statistics.penultimate_abs_integrand,
+            full_statistics.terminal_frequency,
+            full_statistics.terminal_abs_integrand,
+        );
+
+        if quadrature_error_estimate <= absolute_cdf_budget
+            && tail_error_estimate <= absolute_cdf_budget
+        {
+            return Ok((0.5
+                - full_statistics.integration_step * full_statistics.integral_estimate / PI)
+                .clamp(0.0, 1.0));
+        }
+
+        if quadrature_error_estimate > absolute_cdf_budget {
+            integration_step_count = integration_step_count.checked_mul(2).ok_or_else(|| {
+                VanillaOptionPricingRunError::InternalNumericsFailure {
+                    message: "core CDF refinement overflowed during step-count doubling"
+                        .to_string(),
+                }
+            })?;
+            continue;
+        }
+
+        integration_upper_bound *= 2.0;
+        integration_step_count = integration_step_count.checked_mul(2).ok_or_else(|| {
+            VanillaOptionPricingRunError::InternalNumericsFailure {
+                message: "core CDF refinement overflowed during tail expansion".to_string(),
+            }
+        })?;
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct CoreCdfMidpointIntegralStatistics {
+    integration_step: f64,
+    integral_estimate: f64,
+    penultimate_frequency: f64,
+    penultimate_abs_integrand: f64,
+    terminal_frequency: f64,
+    terminal_abs_integrand: f64,
+}
+
+#[allow(clippy::too_many_arguments)]
+fn evaluate_core_cdf_midpoint_integral_statistics(
+    pricing_request: &VanillaOptionPricingRequest,
+    driver_parameters: NigBuySellDriverParameters,
+    interval_factors: VanillaOptionPricingIntervalFactors,
+    news_intensity: ExponentialAffineTransformNewsIntensityInput,
+    theta: f64,
+    evaluation_point: f64,
+    integration_upper_bound: f64,
+    integration_step_count: usize,
+    representative_transform_diagnostics: &mut Option<ExponentialAffineTransformIntegrationResult>,
+) -> Result<CoreCdfMidpointIntegralStatistics, VanillaOptionPricingRunError> {
     let integration_step = integration_upper_bound / integration_step_count as f64;
-
-    let mut integral = 0.0;
+    let mut integral_estimate = 0.0;
+    let mut penultimate_frequency = 0.0;
+    let mut penultimate_abs_integrand = 0.0;
+    let mut terminal_frequency = 0.0;
+    let mut terminal_abs_integrand = 0.0;
 
     for integration_index in 0..integration_step_count {
         let frequency = (integration_index as f64 + 0.5) * integration_step;
-
-        let characteristic_argument = ComplexScalar::new(frequency, 0.0);
-
         let evaluation = evaluate_core_log_return_characteristic_function_under_local_measure(
             pricing_request,
             driver_parameters,
             interval_factors,
             news_intensity,
             theta,
-            characteristic_argument,
+            ComplexScalar::new(frequency, 0.0),
         )?;
 
         if representative_transform_diagnostics.is_none() {
@@ -2213,39 +2734,95 @@ fn evaluate_shifted_core_cdf_under_local_measure(
 
         let exponential_factor =
             complex_exponential(ComplexScalar::new(0.0, -frequency * evaluation_point));
+        let integrand =
+            complex_multiply(exponential_factor, evaluation.value).imaginary / frequency;
+        let absolute_integrand = integrand.abs();
 
-        let integrand = complex_multiply(exponential_factor, evaluation.value);
-
-        integral += integrand.imaginary / frequency;
+        integral_estimate += integrand;
+        penultimate_frequency = terminal_frequency;
+        penultimate_abs_integrand = terminal_abs_integrand;
+        terminal_frequency = frequency;
+        terminal_abs_integrand = absolute_integrand;
     }
 
-    Ok((0.5 - integration_step * integral / PI).clamp(0.0, 1.0))
+    Ok(CoreCdfMidpointIntegralStatistics {
+        integration_step,
+        integral_estimate,
+        penultimate_frequency,
+        penultimate_abs_integrand,
+        terminal_frequency,
+        terminal_abs_integrand,
+    })
 }
 
 pub(crate) fn evaluate_core_log_return_characteristic_function_under_local_measure(
     pricing_request: &VanillaOptionPricingRequest,
     driver_parameters: NigBuySellDriverParameters,
     interval_factors: VanillaOptionPricingIntervalFactors,
-    news_intensity: ExponentialAffineTransformNewsIntensityInput,
+    _news_intensity: ExponentialAffineTransformNewsIntensityInput,
     theta: f64,
     argument: ComplexScalar,
 ) -> Result<PricingCharacteristicFunctionEvaluation, VanillaOptionPricingRunError> {
-    let shifted_argument = ComplexScalar::new(argument.real, argument.imaginary - theta);
+    let transition_context =
+        LocalTransitionRequestContext::from_pricing_request(pricing_request, interval_factors)?;
 
-    let numerator = evaluate_pricing_log_return_characteristic_function(
-        pricing_request,
+    evaluate_core_log_return_characteristic_function_under_local_measure_with_parallelism(
+        &transition_context,
         driver_parameters,
-        interval_factors,
-        news_intensity,
-        shifted_argument,
-    )?;
-    let denominator = evaluate_pricing_log_return_characteristic_function(
-        pricing_request,
-        driver_parameters,
-        interval_factors,
-        news_intensity,
-        ComplexScalar::new(0.0, -theta),
-    )?;
+        theta,
+        argument,
+        None,
+        None,
+    )
+}
+
+pub(crate) fn evaluate_core_log_return_characteristic_function_under_local_measure_with_parallelism(
+    transition_context: &LocalTransitionRequestContext,
+    driver_parameters: NigBuySellDriverParameters,
+    theta: f64,
+    argument: ComplexScalar,
+    pricing_thread_pool: Option<&rayon::ThreadPool>,
+    cpu_count: Option<usize>,
+) -> Result<PricingCharacteristicFunctionEvaluation, VanillaOptionPricingRunError> {
+    let shifted_argument = ComplexScalar::new(argument.real, argument.imaginary - theta);
+    let denominator_argument = ComplexScalar::new(0.0, -theta);
+
+    let (numerator, denominator) = if resolved_pricing_cpu_count(cpu_count) > 1 {
+        install_pricing_parallelism(pricing_thread_pool, || {
+            join(
+                || {
+                    evaluate_pricing_log_return_characteristic_function_for_context(
+                        transition_context,
+                        driver_parameters,
+                        shifted_argument,
+                    )
+                },
+                || {
+                    evaluate_pricing_log_return_characteristic_function_for_context(
+                        transition_context,
+                        driver_parameters,
+                        denominator_argument,
+                    )
+                },
+            )
+        })
+    } else {
+        (
+            evaluate_pricing_log_return_characteristic_function_for_context(
+                transition_context,
+                driver_parameters,
+                shifted_argument,
+            ),
+            evaluate_pricing_log_return_characteristic_function_for_context(
+                transition_context,
+                driver_parameters,
+                denominator_argument,
+            ),
+        )
+    };
+
+    let numerator = numerator?;
+    let denominator = denominator?;
 
     let risk_neutral_value = numerator.value.divide(denominator.value).ok_or(
         VanillaOptionPricingRunError::InvalidRiskNeutralCharacteristicFunction {
@@ -2260,23 +2837,24 @@ pub(crate) fn evaluate_core_log_return_characteristic_function_under_local_measu
     })
 }
 
-fn evaluate_observed_log_return_characteristic_function_under_local_measure(
-    pricing_request: &VanillaOptionPricingRequest,
+fn evaluate_observed_log_return_characteristic_function_under_local_measure_for_context(
+    transition_context: &LocalTransitionRequestContext,
     driver_parameters: NigBuySellDriverParameters,
-    interval_factors: VanillaOptionPricingIntervalFactors,
-    news_intensity: ExponentialAffineTransformNewsIntensityInput,
     theta: f64,
     local_martingale_deviation_adjustment: f64,
     argument: ComplexScalar,
+    pricing_thread_pool: Option<&rayon::ThreadPool>,
+    cpu_count: Option<usize>,
 ) -> Result<PricingCharacteristicFunctionEvaluation, VanillaOptionPricingRunError> {
-    let core_evaluation = evaluate_core_log_return_characteristic_function_under_local_measure(
-        pricing_request,
-        driver_parameters,
-        interval_factors,
-        news_intensity,
-        theta,
-        argument,
-    )?;
+    let core_evaluation =
+        evaluate_core_log_return_characteristic_function_under_local_measure_with_parallelism(
+            transition_context,
+            driver_parameters,
+            theta,
+            argument,
+            pricing_thread_pool,
+            cpu_count,
+        )?;
 
     let translation_factor = complex_exponential(ComplexScalar::new(
         -local_martingale_deviation_adjustment * argument.imaginary,
@@ -2287,6 +2865,31 @@ fn evaluate_observed_log_return_characteristic_function_under_local_measure(
         value: complex_multiply(translation_factor, core_evaluation.value),
         transform_diagnostics: core_evaluation.transform_diagnostics,
     })
+}
+
+fn evaluate_observed_log_return_characteristic_function_under_local_measure(
+    pricing_request: &VanillaOptionPricingRequest,
+    driver_parameters: NigBuySellDriverParameters,
+    interval_factors: VanillaOptionPricingIntervalFactors,
+    _news_intensity: ExponentialAffineTransformNewsIntensityInput,
+    theta: f64,
+    local_martingale_deviation_adjustment: f64,
+    argument: ComplexScalar,
+    pricing_thread_pool: Option<&rayon::ThreadPool>,
+    cpu_count: Option<usize>,
+) -> Result<PricingCharacteristicFunctionEvaluation, VanillaOptionPricingRunError> {
+    let transition_context =
+        LocalTransitionRequestContext::from_pricing_request(pricing_request, interval_factors)?;
+
+    evaluate_observed_log_return_characteristic_function_under_local_measure_for_context(
+        &transition_context,
+        driver_parameters,
+        theta,
+        local_martingale_deviation_adjustment,
+        argument,
+        pricing_thread_pool,
+        cpu_count,
+    )
 }
 
 fn build_single_interval_recursion_diagnostics(
@@ -2449,6 +3052,9 @@ pub(crate) fn pricing_failure_diagnostic_from_run_error(
         VanillaOptionPricingRunError::CharacteristicFunctionAssemblyFailure { .. } => {
             VanillaOptionPricingFailureStage::CharacteristicFunctionAssembly
         }
+        VanillaOptionPricingRunError::InternalNumericsFailure { .. } => {
+            VanillaOptionPricingFailureStage::FourierPricing
+        }
         VanillaOptionPricingRunError::FourierPricingFailure { .. } => {
             VanillaOptionPricingFailureStage::FourierPricing
         }
@@ -2494,11 +3100,9 @@ pub(crate) fn pricing_failure_diagnostic_from_run_error(
     VanillaOptionPricingFailureDiagnostic::new(stage, error.to_string())
 }
 
-fn evaluate_pricing_log_return_characteristic_function(
-    pricing_request: &VanillaOptionPricingRequest,
+fn evaluate_pricing_log_return_characteristic_function_for_context(
+    transition_context: &LocalTransitionRequestContext,
     driver_parameters: NigBuySellDriverParameters,
-    interval_factors: VanillaOptionPricingIntervalFactors,
-    news_intensity: ExponentialAffineTransformNewsIntensityInput,
     argument: ComplexScalar,
 ) -> Result<PricingCharacteristicFunctionEvaluation, VanillaOptionPricingRunError> {
     let buy_side_characteristic_exponent =
@@ -2506,28 +3110,35 @@ fn evaluate_pricing_log_return_characteristic_function(
     let sell_side_characteristic_exponent =
         driver_parameters.sell_side_characteristic_exponent_for_return_composition(argument);
 
-    let transform_input = build_pricing_transform_input(
-        pricing_request,
+    let transform_input = transition_context.build_transform_input(
         buy_side_characteristic_exponent.scale(-1.0),
         sell_side_characteristic_exponent.scale(-1.0),
         ComplexScalar::new(1.0, 0.0),
         ComplexScalar::new(1.0, 0.0),
-        interval_factors.s_h,
-        news_intensity,
-    )
-    .map_err(
-        |source| VanillaOptionPricingRunError::TransformInputBuildFailure { argument, source },
-    )?;
+    );
 
-    let transform_diagnostics =
-        solve_exponential_affine_transform(transform_input).map_err(|source| {
-            VanillaOptionPricingRunError::TransformSolveFailure { argument, source }
-        })?;
+    let transform_diagnostics = solve_exponential_affine_transform_with_internal_selection(
+        transform_input,
+    )
+    .map_err(|source| VanillaOptionPricingRunError::TransformSolveFailure { argument, source })?;
 
     let transform_output = transform_diagnostics.output.ok_or(
         VanillaOptionPricingRunError::MissingTransformOutput {
             argument,
             status: transform_diagnostics.status,
+            context: format!(
+                "pricing_log_return_characteristic_function interval_index={} interval_delta={} u_plus={:?} u_minus={:?} z_plus={:?} z_minus={:?} guard_failure_code={:?}",
+                transition_context.interval_index,
+                transition_context.interval_delta,
+                buy_side_characteristic_exponent.scale(-1.0),
+                sell_side_characteristic_exponent.scale(-1.0),
+                ComplexScalar::new(1.0, 0.0),
+                ComplexScalar::new(1.0, 0.0),
+                transform_diagnostics
+                    .metadata
+                    .guard_failure
+                    .map(|guard_failure| guard_failure.code),
+            ),
         },
     )?;
 
@@ -2547,10 +3158,30 @@ fn evaluate_pricing_log_return_characteristic_function(
     })
 }
 
+pub(crate) fn evaluate_pricing_log_return_characteristic_function(
+    pricing_request: &VanillaOptionPricingRequest,
+    driver_parameters: NigBuySellDriverParameters,
+    interval_factors: VanillaOptionPricingIntervalFactors,
+    _news_intensity: ExponentialAffineTransformNewsIntensityInput,
+    argument: ComplexScalar,
+) -> Result<PricingCharacteristicFunctionEvaluation, VanillaOptionPricingRunError> {
+    let transition_context =
+        LocalTransitionRequestContext::from_pricing_request(pricing_request, interval_factors)?;
+
+    evaluate_pricing_log_return_characteristic_function_for_context(
+        &transition_context,
+        driver_parameters,
+        argument,
+    )
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum VanillaOptionPricingRunError {
     InvalidExecutionInput {
         source: VanillaOptionPricingExecutionInputError,
+    },
+    InternalNumericsFailure {
+        message: String,
     },
     InvalidDriverParameters {
         source: NigSharedPlusShiftConfigurationError,
@@ -2566,6 +3197,7 @@ pub enum VanillaOptionPricingRunError {
     MissingTransformOutput {
         argument: ComplexScalar,
         status: ExponentialAffineTransformIntegrationStatus,
+        context: String,
     },
     CharacteristicFunctionAssemblyFailure {
         argument: ComplexScalar,
@@ -2619,6 +3251,9 @@ impl Display for VanillaOptionPricingRunError {
             Self::InvalidExecutionInput { source } => {
                 write!(formatter, "pricing execution input is invalid: {source}")
             }
+            Self::InternalNumericsFailure { message } => {
+                write!(formatter, "internal pricing numerics failed: {message}")
+            }
             Self::InvalidDriverParameters { source } => {
                 write!(
                     formatter,
@@ -2633,9 +3268,13 @@ impl Display for VanillaOptionPricingRunError {
                 formatter,
                 "failed to solve affine transform for characteristic-function argument {argument:?}: {source}"
             ),
-            Self::MissingTransformOutput { argument, status } => write!(
+            Self::MissingTransformOutput {
+                argument,
+                status,
+                context,
+            } => write!(
                 formatter,
-                "affine transform returned no output for characteristic-function argument {argument:?} with status {status:?}"
+                "affine transform returned no output for characteristic-function argument {argument:?} with status {status:?}: {context}"
             ),
             Self::CharacteristicFunctionAssemblyFailure { argument, source } => write!(
                 formatter,
