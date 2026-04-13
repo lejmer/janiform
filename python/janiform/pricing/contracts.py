@@ -70,7 +70,7 @@ VANILLA_OPTION_PRICING_RUN_DIAGNOSTICS_REQUIRED_FIELDS: tuple[str, ...] = (
     "schema_version",
     "transform",
     "integration_quality",
-    "anchored_recursion",
+    "spectral",
 )
 VANILLA_OPTION_PRICING_CALIBRATION_HOOKS_REQUIRED_FIELDS: tuple[str, ...] = (
     "schema_version",
@@ -151,13 +151,12 @@ class VanillaOptionPricingFailureStage(StrEnum):
     ENDOGENOUS_ANCHOR_MATERIALIZATION = "endogenous_anchor_materialization"
     EXPECTED_HAWKES_STATE_UPDATE = "expected_hawkes_state_update"
     ANCHORED_LOCAL_TILT_SOLVE = "anchored_local_tilt_solve"
-    ANCHORED_RECURSION_OBSERVED_BOUNDARY_STATE = "anchored_recursion_observed_boundary_state"
-    ANCHORED_RECURSION_DIAGNOSTICS = "anchored_recursion_diagnostics"
-    GRID_INTERPOLATION_SHAPE = "grid_interpolation_shape"
+    SPECTRAL_OBSERVED_BOUNDARY_STATE = "spectral_observed_boundary_state"
+    SPECTRAL_DIAGNOSTICS = "spectral_diagnostics"
+    SPECTRAL_OPERATOR_ASSEMBLY = "spectral_operator_assembly"
     RESPONSE_DIAGNOSTICS = "response_diagnostics"
     RESPONSE_ASSEMBLY = "response_assembly"
     RUN_RESULT_ASSEMBLY = "run_result_assembly"
-    FORWARD_LAW = "forward_law"
     WORKER_EXECUTION = "worker_execution"
 
 
@@ -1368,10 +1367,10 @@ class VanillaOptionPricingFailureDiagnostic(ContractModel):
                     "risk_neutral_characteristic_function, "
                     "endogenous_anchor_materialization, "
                     "expected_hawkes_state_update, anchored_local_tilt_solve, "
-                    "anchored_recursion_observed_boundary_state, "
-                    "anchored_recursion_diagnostics, grid_interpolation_shape, "
+                    "spectral_observed_boundary_state, "
+                    "spectral_diagnostics, spectral_operator_assembly, "
                     "response_diagnostics, response_assembly, "
-                    "run_result_assembly, forward_law, worker_execution"
+                    "run_result_assembly, worker_execution"
                 ),
             ),
             reason=require_string(
@@ -1759,7 +1758,7 @@ class VanillaOptionPricingRunDiagnostics(ContractModel):
     schema_version: str
     transform: Optional[dict[str, Any]]
     integration_quality: Optional[dict[str, Any]]
-    anchored_recursion: Optional[dict[str, Any]]
+    spectral: Optional[dict[str, Any]]
 
     @staticmethod
     def from_mapping(
@@ -1782,8 +1781,8 @@ class VanillaOptionPricingRunDiagnostics(ContractModel):
             raise _pricing_error(f"{field_path}.transform", "is required")
         if "integration_quality" not in raw_payload:
             raise _pricing_error(f"{field_path}.integration_quality", "is required")
-        if "anchored_recursion" not in raw_payload:
-            raise _pricing_error(f"{field_path}.anchored_recursion", "is required")
+        if "spectral" not in raw_payload:
+            raise _pricing_error(f"{field_path}.spectral", "is required")
 
         transform = require_optional_mapping_value(
             raw_payload["transform"],
@@ -1797,18 +1796,18 @@ class VanillaOptionPricingRunDiagnostics(ContractModel):
             PRICING_ERROR_FACTORY,
         )
 
-        anchored_recursion = require_optional_mapping_value(
-            raw_payload["anchored_recursion"],
-            f"{field_path}.anchored_recursion",
+        spectral = require_optional_mapping_value(
+            raw_payload["spectral"],
+            f"{field_path}.spectral",
             PRICING_ERROR_FACTORY,
         )
 
-        if transform is None and integration_quality is None and anchored_recursion is None:
+        if transform is None and integration_quality is None and spectral is None:
             raise _pricing_error(
                 field_path,
                 (
                     "must include transform diagnostics, integration quality diagnostics, "
-                    "anchored recursion diagnostics, or any non-empty combination of them"
+                    "spectral diagnostics, or any non-empty combination of them"
                 ),
             )
 
@@ -1816,7 +1815,7 @@ class VanillaOptionPricingRunDiagnostics(ContractModel):
             schema_version=VANILLA_OPTION_PRICING_RUN_DIAGNOSTICS_SCHEMA_VERSION,
             transform=transform,
             integration_quality=integration_quality,
-            anchored_recursion=anchored_recursion,
+            spectral=spectral,
         )
 
 

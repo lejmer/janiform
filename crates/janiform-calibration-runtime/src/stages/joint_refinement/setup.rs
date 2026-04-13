@@ -814,7 +814,7 @@ fn emit_seed_summary_progress(
         phase: progress_phase,
         completed_units,
         total_units,
-        current_item_label: simulation_seed.map(|value| value.to_string()),
+        current_item_label: simulation_seed.map(format_seed_summary_progress_item),
         valid_completed_units: None,
         cumulative_local_evaluation_count: None,
         current_weighted_objective: None,
@@ -822,6 +822,10 @@ fn emit_seed_summary_progress(
         current_coarse_consistency_fit: None,
         best_coarse_consistency_fit: None,
     });
+}
+
+fn format_seed_summary_progress_item(simulation_seed: u64) -> String {
+    format!("simulation_seed {simulation_seed}")
 }
 
 pub(super) fn selected_hawkes_observed_open_event_rate_per_hour(

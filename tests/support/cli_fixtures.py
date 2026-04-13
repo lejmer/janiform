@@ -216,6 +216,7 @@ def build_pricing_request() -> VanillaOptionPricingRequest:
             news_process_configuration=_build_simulation_news_process_configuration(),
             nig_shared_plus_shift_configuration=_build_simulation_nig_shared_plus_shift_configuration(),
         ),
+        interval_delta=1.0,
     )
 
 

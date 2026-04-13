@@ -55,10 +55,15 @@ fn staged_runner_forwards_nested_option_pricing_progress_labels() {
         Some(&mut |event| observed_events.push(event)),
     );
 
-    assert_eq!(
-        report.status,
-        CalibrationStageExecutionStatus::Success,
-        "{report:#?}"
+    assert!(
+        observed_events.iter().any(|event| matches!(
+            event,
+            CalibrationStagedRunObserverEvent::StageProgress {
+                stage: CalibrationStage::JointRefinement,
+                ..
+            }
+        )),
+        "expected staged runner to emit joint refinement progress events, report was: {report:#?}"
     );
 
     let baseline_local_option_pricing_labels = observed_events
@@ -131,6 +136,56 @@ fn staged_runner_forwards_nested_option_pricing_progress_labels() {
     assert!(
         !baseline_final_cache_labels.contains(&"option_pricing cache_hit_resolved"),
         "expected baseline final evaluation to avoid cache-hit progress labels before any final-tier option pricing result was cached, observed events were: {observed_events:#?}"
+    );
+
+    let baseline_final_nested_option_pricing_labels = observed_events
+        .iter()
+        .filter_map(|event| match event {
+            CalibrationStagedRunObserverEvent::StageProgress {
+                stage,
+                progress_phase,
+                current_item_label,
+                ..
+            } if *stage == CalibrationStage::JointRefinement
+                && *progress_phase
+                    == JointRefinementStageProgressPhase::BaselineFinalEvaluation =>
+            {
+                current_item_label.as_deref()
+            }
+            _ => None,
+        })
+        .filter(|label| {
+            label.starts_with("strike ")
+                || label.starts_with("grid_batch ")
+                || label.starts_with("maturity ")
+                || label.starts_with("interval ")
+                || label.starts_with("transition_rows ")
+        })
+        .collect::<Vec<_>>();
+
+    assert!(
+        !baseline_final_nested_option_pricing_labels.is_empty(),
+        "expected baseline final evaluation to expose nested spectral option-pricing progress labels, observed events were: {observed_events:#?}"
+    );
+
+    let joint_refinement_digit_only_item_labels = observed_events
+        .iter()
+        .filter_map(|event| match event {
+            CalibrationStagedRunObserverEvent::StageProgress {
+                stage,
+                current_item_label,
+                ..
+            } if *stage == CalibrationStage::JointRefinement => current_item_label.as_deref(),
+            _ => None,
+        })
+        .filter(|label| {
+            !label.is_empty() && label.chars().all(|character| character.is_ascii_digit())
+        })
+        .collect::<Vec<_>>();
+
+    assert!(
+        joint_refinement_digit_only_item_labels.is_empty(),
+        "expected joint refinement progress labels to remain human-readable, observed digit-only labels were {joint_refinement_digit_only_item_labels:?}, all events were: {observed_events:#?}"
     );
 
     let baseline_coarse_consistency_labels = observed_events

@@ -347,7 +347,6 @@
         "JaniformVanillaOptionGridBatchPricingResult",
         "JaniformVanillaOptionGridPricingResult",
         "JaniformVanillaOptionMaturityIntervalSummary",
-        "JaniformVanillaOptionMaturityPricingEngineKind",
         "JaniformVanillaOptionMaturitySummary",
         "JaniformVanillaOptionSurface",
         "JaniformVanillaOptionSurfacePricingResult"
@@ -450,43 +449,26 @@
             "interval_delta",
             "expected_hawkes_boundary_state_before",
             "expected_hawkes_boundary_state_after",
-            "maximum_tail_probability_mass",
-            "maximum_row_probability_mass_error",
             "minimum_solved_theta",
             "maximum_solved_theta"
           ],
           "kind": "contract_model",
-          "signature": "(interval_index: 'int', current_anchor_value: 'float', next_anchor_value: 'float', interval_delta: 'float', expected_hawkes_boundary_state_before: 'dict[str, float]', expected_hawkes_boundary_state_after: 'dict[str, float]', maximum_tail_probability_mass: 'float', maximum_row_probability_mass_error: 'float', minimum_solved_theta: 'float', maximum_solved_theta: 'float') -> 'None'"
-        },
-        "JaniformVanillaOptionMaturityPricingEngineKind": {
-          "kind": "enum",
-          "members": [
-            {
-              "name": "DIRECT_FOURIER",
-              "value": "direct_fourier"
-            },
-            {
-              "name": "FORWARD_LAW",
-              "value": "forward_law"
-            }
-          ]
+          "signature": "(interval_index: 'int', current_anchor_value: 'float', next_anchor_value: 'float', interval_delta: 'float', expected_hawkes_boundary_state_before: 'dict[str, float]', expected_hawkes_boundary_state_after: 'dict[str, float]', minimum_solved_theta: 'float', maximum_solved_theta: 'float') -> 'None'"
         },
         "JaniformVanillaOptionMaturitySummary": {
           "field_names": [
             "maturity_interval",
-            "engine_kind",
             "terminal_anchor_value",
-            "deviation_grid_lower_bound",
-            "deviation_grid_upper_bound",
-            "deviation_grid_node_count",
-            "terminal_deviation_nodes",
-            "terminal_probability_mass",
+            "deviation_domain_lower_bound",
+            "deviation_domain_upper_bound",
+            "collocation_node_count",
+            "collocation_nodes",
             "interval_summaries",
             "representative_transform",
             "integration_quality"
           ],
           "kind": "contract_model",
-          "signature": "(maturity_interval: 'float', engine_kind: 'JaniformVanillaOptionMaturityPricingEngineKind', terminal_anchor_value: 'Optional[float]', deviation_grid_lower_bound: 'Optional[float]', deviation_grid_upper_bound: 'Optional[float]', deviation_grid_node_count: 'Optional[int]', terminal_deviation_nodes: 'Optional[tuple[float, ...]]', terminal_probability_mass: 'Optional[tuple[float, ...]]', interval_summaries: 'tuple[JaniformVanillaOptionMaturityIntervalSummary, ...]', representative_transform: 'Optional[dict[str, Any]]', integration_quality: 'Optional[dict[str, Any]]') -> 'None'"
+          "signature": "(maturity_interval: 'float', terminal_anchor_value: 'float', deviation_domain_lower_bound: 'float', deviation_domain_upper_bound: 'float', collocation_node_count: 'int', collocation_nodes: 'tuple[float, ...]', interval_summaries: 'tuple[JaniformVanillaOptionMaturityIntervalSummary, ...]', representative_transform: 'Optional[dict[str, Any]]', integration_quality: 'Optional[dict[str, Any]]') -> 'None'"
         },
         "JaniformVanillaOptionSurface": {
           "field_names": [
@@ -653,7 +635,6 @@
     "janiform.calibration.fit.pricing.summaries": {
       "exports": [
         "JaniformVanillaOptionMaturityIntervalSummary",
-        "JaniformVanillaOptionMaturityPricingEngineKind",
         "JaniformVanillaOptionMaturitySummary"
       ],
       "module_name": "janiform.calibration.fit.pricing.summaries",
@@ -667,43 +648,26 @@
             "interval_delta",
             "expected_hawkes_boundary_state_before",
             "expected_hawkes_boundary_state_after",
-            "maximum_tail_probability_mass",
-            "maximum_row_probability_mass_error",
             "minimum_solved_theta",
             "maximum_solved_theta"
           ],
           "kind": "contract_model",
-          "signature": "(interval_index: 'int', current_anchor_value: 'float', next_anchor_value: 'float', interval_delta: 'float', expected_hawkes_boundary_state_before: 'dict[str, float]', expected_hawkes_boundary_state_after: 'dict[str, float]', maximum_tail_probability_mass: 'float', maximum_row_probability_mass_error: 'float', minimum_solved_theta: 'float', maximum_solved_theta: 'float') -> 'None'"
-        },
-        "JaniformVanillaOptionMaturityPricingEngineKind": {
-          "kind": "enum",
-          "members": [
-            {
-              "name": "DIRECT_FOURIER",
-              "value": "direct_fourier"
-            },
-            {
-              "name": "FORWARD_LAW",
-              "value": "forward_law"
-            }
-          ]
+          "signature": "(interval_index: 'int', current_anchor_value: 'float', next_anchor_value: 'float', interval_delta: 'float', expected_hawkes_boundary_state_before: 'dict[str, float]', expected_hawkes_boundary_state_after: 'dict[str, float]', minimum_solved_theta: 'float', maximum_solved_theta: 'float') -> 'None'"
         },
         "JaniformVanillaOptionMaturitySummary": {
           "field_names": [
             "maturity_interval",
-            "engine_kind",
             "terminal_anchor_value",
-            "deviation_grid_lower_bound",
-            "deviation_grid_upper_bound",
-            "deviation_grid_node_count",
-            "terminal_deviation_nodes",
-            "terminal_probability_mass",
+            "deviation_domain_lower_bound",
+            "deviation_domain_upper_bound",
+            "collocation_node_count",
+            "collocation_nodes",
             "interval_summaries",
             "representative_transform",
             "integration_quality"
           ],
           "kind": "contract_model",
-          "signature": "(maturity_interval: 'float', engine_kind: 'JaniformVanillaOptionMaturityPricingEngineKind', terminal_anchor_value: 'Optional[float]', deviation_grid_lower_bound: 'Optional[float]', deviation_grid_upper_bound: 'Optional[float]', deviation_grid_node_count: 'Optional[int]', terminal_deviation_nodes: 'Optional[tuple[float, ...]]', terminal_probability_mass: 'Optional[tuple[float, ...]]', interval_summaries: 'tuple[JaniformVanillaOptionMaturityIntervalSummary, ...]', representative_transform: 'Optional[dict[str, Any]]', integration_quality: 'Optional[dict[str, Any]]') -> 'None'"
+          "signature": "(maturity_interval: 'float', terminal_anchor_value: 'float', deviation_domain_lower_bound: 'float', deviation_domain_upper_bound: 'float', collocation_node_count: 'int', collocation_nodes: 'tuple[float, ...]', interval_summaries: 'tuple[JaniformVanillaOptionMaturityIntervalSummary, ...]', representative_transform: 'Optional[dict[str, Any]]', integration_quality: 'Optional[dict[str, Any]]') -> 'None'"
         }
       }
     },
@@ -5516,12 +5480,6 @@
         "AnchoredVanillaOptionPricingBoundaryInput",
         "AutoExactSparsePricingIntervalSchedulePolicy",
         "ExplicitIntervalEndTimestampsUtcPricingIntervalSchedulePolicy",
-        "FourierInversionContour",
-        "FourierInversionEngineSettings",
-        "FourierInversionIntegrationStabilityControls",
-        "FourierInversionNumericQualityGate",
-        "FourierInversionNumericSettings",
-        "FourierInversionQuadratureRule",
         "GammaSeverityMarkConfiguration",
         "MeanReversionAnchorModel",
         "MeanReversionBoundaryState",
@@ -5646,68 +5604,6 @@
           ],
           "kind": "contract_model",
           "signature": "(interval_end_timestamps_utc_nanos: 'tuple[int, ...]', policy: 'str' = 'explicit_interval_end_timestamps_utc') -> 'None'"
-        },
-        "FourierInversionContour": {
-          "field_names": [
-            "damping_factor"
-          ],
-          "kind": "contract_model",
-          "signature": "(damping_factor: 'float' = 1.5) -> 'None'"
-        },
-        "FourierInversionEngineSettings": {
-          "field_names": [
-            "contour",
-            "numeric_settings",
-            "stability_controls"
-          ],
-          "kind": "contract_model",
-          "signature": "(contour: 'FourierInversionContour' = <factory>, numeric_settings: 'FourierInversionNumericSettings' = <factory>, stability_controls: 'FourierInversionIntegrationStabilityControls' = <factory>) -> 'None'"
-        },
-        "FourierInversionIntegrationStabilityControls": {
-          "field_names": [
-            "convergence_absolute_tolerance",
-            "convergence_relative_tolerance",
-            "terminal_integrand_absolute_tolerance",
-            "terminal_integrand_ratio_tolerance",
-            "quality_gate"
-          ],
-          "kind": "contract_model",
-          "signature": "(convergence_absolute_tolerance: 'float' = 1e-05, convergence_relative_tolerance: 'float' = 0.0001, terminal_integrand_absolute_tolerance: 'float' = 0.0005, terminal_integrand_ratio_tolerance: 'float' = 0.01, quality_gate: 'FourierInversionNumericQualityGate' = <FourierInversionNumericQualityGate.DIAGNOSTICS_ONLY: 'diagnostics_only'>) -> 'None'"
-        },
-        "FourierInversionNumericQualityGate": {
-          "kind": "enum",
-          "members": [
-            {
-              "name": "DIAGNOSTICS_ONLY",
-              "value": "diagnostics_only"
-            },
-            {
-              "name": "ENFORCE_FAILURE",
-              "value": "enforce_failure"
-            }
-          ]
-        },
-        "FourierInversionNumericSettings": {
-          "field_names": [
-            "integration_upper_bound",
-            "integration_step_count",
-            "quadrature_rule"
-          ],
-          "kind": "contract_model",
-          "signature": "(integration_upper_bound: 'float' = 150.0, integration_step_count: 'int' = 4096, quadrature_rule: 'FourierInversionQuadratureRule' = <FourierInversionQuadratureRule.MIDPOINT: 'midpoint'>) -> 'None'"
-        },
-        "FourierInversionQuadratureRule": {
-          "kind": "enum",
-          "members": [
-            {
-              "name": "MIDPOINT",
-              "value": "midpoint"
-            },
-            {
-              "name": "TRAPEZOID",
-              "value": "trapezoid"
-            }
-          ]
         },
         "GammaSeverityMarkConfiguration": {
           "field_names": [
@@ -5907,16 +5803,16 @@
               "value": "anchored_local_tilt_solve"
             },
             {
-              "name": "ANCHORED_RECURSION_OBSERVED_BOUNDARY_STATE",
-              "value": "anchored_recursion_observed_boundary_state"
+              "name": "SPECTRAL_OBSERVED_BOUNDARY_STATE",
+              "value": "spectral_observed_boundary_state"
             },
             {
-              "name": "ANCHORED_RECURSION_DIAGNOSTICS",
-              "value": "anchored_recursion_diagnostics"
+              "name": "SPECTRAL_DIAGNOSTICS",
+              "value": "spectral_diagnostics"
             },
             {
-              "name": "GRID_INTERPOLATION_SHAPE",
-              "value": "grid_interpolation_shape"
+              "name": "SPECTRAL_OPERATOR_ASSEMBLY",
+              "value": "spectral_operator_assembly"
             },
             {
               "name": "RESPONSE_DIAGNOSTICS",
@@ -5929,10 +5825,6 @@
             {
               "name": "RUN_RESULT_ASSEMBLY",
               "value": "run_result_assembly"
-            },
-            {
-              "name": "FORWARD_LAW",
-              "value": "forward_law"
             },
             {
               "name": "WORKER_EXECUTION",
@@ -5975,11 +5867,10 @@
             "payoff",
             "boundary_input",
             "model_parameters",
-            "interval_delta",
-            "fourier_inversion_settings"
+            "interval_delta"
           ],
           "kind": "contract_model",
-          "signature": "(market_inputs: 'VanillaOptionPricingMarketInputs', payoff: 'VanillaOptionPayoffConfiguration', boundary_input: 'AnchoredVanillaOptionPricingBoundaryInput', model_parameters: 'VanillaOptionPricingModelParameters', interval_delta: 'float' = 1.0, fourier_inversion_settings: 'Optional[FourierInversionEngineSettings]' = None) -> 'None'"
+          "signature": "(market_inputs: 'VanillaOptionPricingMarketInputs', payoff: 'VanillaOptionPayoffConfiguration', boundary_input: 'AnchoredVanillaOptionPricingBoundaryInput', model_parameters: 'VanillaOptionPricingModelParameters', interval_delta: 'float') -> 'None'"
         },
         "VanillaOptionPricingResponse": {
           "field_names": [
@@ -5998,10 +5889,10 @@
             "schema_version",
             "transform",
             "integration_quality",
-            "anchored_recursion"
+            "spectral"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: 'str', transform: 'Optional[dict[str, Any]]', integration_quality: 'Optional[dict[str, Any]]', anchored_recursion: 'Optional[dict[str, Any]]') -> 'None'"
+          "signature": "(schema_version: 'str', transform: 'Optional[dict[str, Any]]', integration_quality: 'Optional[dict[str, Any]]', spectral: 'Optional[dict[str, Any]]') -> 'None'"
         },
         "VanillaOptionPricingRunOutputSchemaMetadata": {
           "field_names": [
@@ -6089,11 +5980,10 @@
             "payoff",
             "boundary_input",
             "model_parameters",
-            "interval_delta",
-            "fourier_inversion_settings"
+            "interval_delta"
           ],
           "kind": "contract_model",
-          "signature": "(market_inputs: 'VanillaOptionPricingMarketInputs', payoff: 'VanillaOptionPayoffConfiguration', boundary_input: 'AnchoredVanillaOptionPricingBoundaryInput', model_parameters: 'VanillaOptionPricingModelParameters', interval_delta: 'float' = 1.0, fourier_inversion_settings: 'Optional[FourierInversionEngineSettings]' = None) -> 'None'"
+          "signature": "(market_inputs: 'VanillaOptionPricingMarketInputs', payoff: 'VanillaOptionPayoffConfiguration', boundary_input: 'AnchoredVanillaOptionPricingBoundaryInput', model_parameters: 'VanillaOptionPricingModelParameters', interval_delta: 'float') -> 'None'"
         },
         "VanillaOptionSurfacePricingResponse": {
           "field_names": [
@@ -6154,12 +6044,6 @@
         "AnchoredVanillaOptionPricingBoundaryInput",
         "AutoExactSparsePricingIntervalSchedulePolicy",
         "ExplicitIntervalEndTimestampsUtcPricingIntervalSchedulePolicy",
-        "FourierInversionContour",
-        "FourierInversionEngineSettings",
-        "FourierInversionIntegrationStabilityControls",
-        "FourierInversionNumericQualityGate",
-        "FourierInversionNumericSettings",
-        "FourierInversionQuadratureRule",
         "GammaSeverityMarkConfiguration",
         "MeanReversionAnchorModel",
         "MeanReversionBoundaryState",
@@ -6303,68 +6187,6 @@
           "kind": "contract_model",
           "signature": "(interval_end_timestamps_utc_nanos: 'tuple[int, ...]', policy: 'str' = 'explicit_interval_end_timestamps_utc') -> 'None'"
         },
-        "FourierInversionContour": {
-          "field_names": [
-            "damping_factor"
-          ],
-          "kind": "contract_model",
-          "signature": "(damping_factor: 'float' = 1.5) -> 'None'"
-        },
-        "FourierInversionEngineSettings": {
-          "field_names": [
-            "contour",
-            "numeric_settings",
-            "stability_controls"
-          ],
-          "kind": "contract_model",
-          "signature": "(contour: 'FourierInversionContour' = <factory>, numeric_settings: 'FourierInversionNumericSettings' = <factory>, stability_controls: 'FourierInversionIntegrationStabilityControls' = <factory>) -> 'None'"
-        },
-        "FourierInversionIntegrationStabilityControls": {
-          "field_names": [
-            "convergence_absolute_tolerance",
-            "convergence_relative_tolerance",
-            "terminal_integrand_absolute_tolerance",
-            "terminal_integrand_ratio_tolerance",
-            "quality_gate"
-          ],
-          "kind": "contract_model",
-          "signature": "(convergence_absolute_tolerance: 'float' = 1e-05, convergence_relative_tolerance: 'float' = 0.0001, terminal_integrand_absolute_tolerance: 'float' = 0.0005, terminal_integrand_ratio_tolerance: 'float' = 0.01, quality_gate: 'FourierInversionNumericQualityGate' = <FourierInversionNumericQualityGate.DIAGNOSTICS_ONLY: 'diagnostics_only'>) -> 'None'"
-        },
-        "FourierInversionNumericQualityGate": {
-          "kind": "enum",
-          "members": [
-            {
-              "name": "DIAGNOSTICS_ONLY",
-              "value": "diagnostics_only"
-            },
-            {
-              "name": "ENFORCE_FAILURE",
-              "value": "enforce_failure"
-            }
-          ]
-        },
-        "FourierInversionNumericSettings": {
-          "field_names": [
-            "integration_upper_bound",
-            "integration_step_count",
-            "quadrature_rule"
-          ],
-          "kind": "contract_model",
-          "signature": "(integration_upper_bound: 'float' = 150.0, integration_step_count: 'int' = 4096, quadrature_rule: 'FourierInversionQuadratureRule' = <FourierInversionQuadratureRule.MIDPOINT: 'midpoint'>) -> 'None'"
-        },
-        "FourierInversionQuadratureRule": {
-          "kind": "enum",
-          "members": [
-            {
-              "name": "MIDPOINT",
-              "value": "midpoint"
-            },
-            {
-              "name": "TRAPEZOID",
-              "value": "trapezoid"
-            }
-          ]
-        },
         "GammaSeverityMarkConfiguration": {
           "field_names": [
             "shape_k",
@@ -6563,16 +6385,16 @@
               "value": "anchored_local_tilt_solve"
             },
             {
-              "name": "ANCHORED_RECURSION_OBSERVED_BOUNDARY_STATE",
-              "value": "anchored_recursion_observed_boundary_state"
+              "name": "SPECTRAL_OBSERVED_BOUNDARY_STATE",
+              "value": "spectral_observed_boundary_state"
             },
             {
-              "name": "ANCHORED_RECURSION_DIAGNOSTICS",
-              "value": "anchored_recursion_diagnostics"
+              "name": "SPECTRAL_DIAGNOSTICS",
+              "value": "spectral_diagnostics"
             },
             {
-              "name": "GRID_INTERPOLATION_SHAPE",
-              "value": "grid_interpolation_shape"
+              "name": "SPECTRAL_OPERATOR_ASSEMBLY",
+              "value": "spectral_operator_assembly"
             },
             {
               "name": "RESPONSE_DIAGNOSTICS",
@@ -6585,10 +6407,6 @@
             {
               "name": "RUN_RESULT_ASSEMBLY",
               "value": "run_result_assembly"
-            },
-            {
-              "name": "FORWARD_LAW",
-              "value": "forward_law"
             },
             {
               "name": "WORKER_EXECUTION",
@@ -6631,11 +6449,10 @@
             "payoff",
             "boundary_input",
             "model_parameters",
-            "interval_delta",
-            "fourier_inversion_settings"
+            "interval_delta"
           ],
           "kind": "contract_model",
-          "signature": "(market_inputs: 'VanillaOptionPricingMarketInputs', payoff: 'VanillaOptionPayoffConfiguration', boundary_input: 'AnchoredVanillaOptionPricingBoundaryInput', model_parameters: 'VanillaOptionPricingModelParameters', interval_delta: 'float' = 1.0, fourier_inversion_settings: 'Optional[FourierInversionEngineSettings]' = None) -> 'None'"
+          "signature": "(market_inputs: 'VanillaOptionPricingMarketInputs', payoff: 'VanillaOptionPayoffConfiguration', boundary_input: 'AnchoredVanillaOptionPricingBoundaryInput', model_parameters: 'VanillaOptionPricingModelParameters', interval_delta: 'float') -> 'None'"
         },
         "VanillaOptionPricingResponse": {
           "field_names": [
@@ -6654,10 +6471,10 @@
             "schema_version",
             "transform",
             "integration_quality",
-            "anchored_recursion"
+            "spectral"
           ],
           "kind": "contract_model",
-          "signature": "(schema_version: 'str', transform: 'Optional[dict[str, Any]]', integration_quality: 'Optional[dict[str, Any]]', anchored_recursion: 'Optional[dict[str, Any]]') -> 'None'"
+          "signature": "(schema_version: 'str', transform: 'Optional[dict[str, Any]]', integration_quality: 'Optional[dict[str, Any]]', spectral: 'Optional[dict[str, Any]]') -> 'None'"
         },
         "VanillaOptionPricingRunOutputSchemaMetadata": {
           "field_names": [
@@ -6733,11 +6550,10 @@
             "payoff",
             "boundary_input",
             "model_parameters",
-            "interval_delta",
-            "fourier_inversion_settings"
+            "interval_delta"
           ],
           "kind": "contract_model",
-          "signature": "(market_inputs: 'VanillaOptionPricingMarketInputs', payoff: 'VanillaOptionPayoffConfiguration', boundary_input: 'AnchoredVanillaOptionPricingBoundaryInput', model_parameters: 'VanillaOptionPricingModelParameters', interval_delta: 'float' = 1.0, fourier_inversion_settings: 'Optional[FourierInversionEngineSettings]' = None) -> 'None'"
+          "signature": "(market_inputs: 'VanillaOptionPricingMarketInputs', payoff: 'VanillaOptionPayoffConfiguration', boundary_input: 'AnchoredVanillaOptionPricingBoundaryInput', model_parameters: 'VanillaOptionPricingModelParameters', interval_delta: 'float') -> 'None'"
         },
         "VanillaOptionSurfacePricingResponse": {
           "field_names": [

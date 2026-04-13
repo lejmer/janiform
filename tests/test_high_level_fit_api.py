@@ -41,7 +41,6 @@ from janiform.calibration.fit.pricing import (
     JaniformVanillaOptionGridBatch,
     JaniformVanillaOptionGridBatchPricingResult,
     JaniformVanillaOptionGridPricingResult,
-    JaniformVanillaOptionMaturityPricingEngineKind,
     JaniformVanillaOptionMaturitySummary,
     JaniformVanillaOptionSurface,
     JaniformVanillaOptionSurfacePricingResult,
@@ -3177,7 +3176,7 @@ def test_high_level_model_price_option_end_to_end_supports_endogenous_anchor_mea
 
     assert pricing_result.response.price >= 0.0
     assert pricing_result.run_diagnostics is not None
-    assert pricing_result.run_diagnostics.anchored_recursion is not None
+    assert pricing_result.run_diagnostics.spectral is not None
 
 
 def test_high_level_model_price_option_resolves_expiry_timestamp_date_and_tenor_inputs(
@@ -3359,13 +3358,11 @@ def test_high_level_model_price_option_grids_dispatches_through_grid_batch_prici
                 maturity_summaries=(
                     JaniformVanillaOptionMaturitySummary(
                         maturity_interval=1.0,
-                        engine_kind=JaniformVanillaOptionMaturityPricingEngineKind.DIRECT_FOURIER,
-                        terminal_anchor_value=None,
-                        deviation_grid_lower_bound=None,
-                        deviation_grid_upper_bound=None,
-                        deviation_grid_node_count=None,
-                        terminal_deviation_nodes=None,
-                        terminal_probability_mass=None,
+                        terminal_anchor_value=0.0,
+                        deviation_domain_lower_bound=-1.0,
+                        deviation_domain_upper_bound=1.0,
+                        collocation_node_count=3,
+                        collocation_nodes=(-1.0, 0.0, 1.0),
                         interval_summaries=(),
                         representative_transform=None,
                         integration_quality=None,
@@ -3395,13 +3392,11 @@ def test_high_level_model_price_option_grids_dispatches_through_grid_batch_prici
                 maturity_summaries=(
                     JaniformVanillaOptionMaturitySummary(
                         maturity_interval=2.0,
-                        engine_kind=JaniformVanillaOptionMaturityPricingEngineKind.FORWARD_LAW,
                         terminal_anchor_value=0.0,
-                        deviation_grid_lower_bound=-1.0,
-                        deviation_grid_upper_bound=1.0,
-                        deviation_grid_node_count=3,
-                        terminal_deviation_nodes=(-1.0, 0.0, 1.0),
-                        terminal_probability_mass=(0.25, 0.5, 0.25),
+                        deviation_domain_lower_bound=-1.0,
+                        deviation_domain_upper_bound=1.0,
+                        collocation_node_count=3,
+                        collocation_nodes=(-1.0, 0.0, 1.0),
                         interval_summaries=(),
                         representative_transform=None,
                         integration_quality=None,
@@ -3493,26 +3488,22 @@ def test_high_level_model_price_option_surface_dispatches_through_surface_pricin
         maturity_summaries=(
             JaniformVanillaOptionMaturitySummary(
                 maturity_interval=1.0,
-                engine_kind=JaniformVanillaOptionMaturityPricingEngineKind.DIRECT_FOURIER,
-                terminal_anchor_value=None,
-                deviation_grid_lower_bound=None,
-                deviation_grid_upper_bound=None,
-                deviation_grid_node_count=None,
-                terminal_deviation_nodes=None,
-                terminal_probability_mass=None,
+                terminal_anchor_value=0.0,
+                deviation_domain_lower_bound=-1.0,
+                deviation_domain_upper_bound=1.0,
+                collocation_node_count=3,
+                collocation_nodes=(-1.0, 0.0, 1.0),
                 interval_summaries=(),
                 representative_transform=None,
                 integration_quality=None,
             ),
             JaniformVanillaOptionMaturitySummary(
                 maturity_interval=2.0,
-                engine_kind=JaniformVanillaOptionMaturityPricingEngineKind.FORWARD_LAW,
                 terminal_anchor_value=0.0,
-                deviation_grid_lower_bound=-1.0,
-                deviation_grid_upper_bound=1.0,
-                deviation_grid_node_count=3,
-                terminal_deviation_nodes=(-1.0, 0.0, 1.0),
-                terminal_probability_mass=(0.25, 0.5, 0.25),
+                deviation_domain_lower_bound=-1.0,
+                deviation_domain_upper_bound=1.0,
+                collocation_node_count=3,
+                collocation_nodes=(-1.0, 0.0, 1.0),
                 interval_summaries=(),
                 representative_transform=None,
                 integration_quality=None,
@@ -4120,10 +4111,10 @@ def test_high_level_fit_progress_splits_loading_and_translation_steps(
     assert progress_details == [
         "inferring workflow inputs",
         "normalize source",
-        "resolve session",
+        "infer session",
         "resolve presets",
         "build market-data request",
-        "resolve session",
+        "resolve final session",
         "prepare stage inputs",
         "running calibration",
     ]

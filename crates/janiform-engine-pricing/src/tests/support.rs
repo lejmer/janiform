@@ -222,7 +222,7 @@ pub(super) fn build_reference_pricing_response(
     .expect("reference response should construct")
 }
 
-pub(super) fn build_reference_transform_diagnostics_source()
+pub(crate) fn build_reference_transform_diagnostics_source()
 -> ExponentialAffineTransformIntegrationResult {
     let transform_input = build_pricing_transform_input(
         &build_valid_vanilla_option_request(),

@@ -110,13 +110,15 @@ def test_vanilla_option_request_accepts_explicit_non_hourly_interval_delta() -> 
     assert request.interval_delta == pytest.approx(0.5)
 
 
-def test_vanilla_option_request_validation_defaults_interval_delta() -> None:
+def test_vanilla_option_request_validation_requires_explicit_interval_delta() -> None:
     request_payload = _valid_request_payload()
     del request_payload["interval_delta"]
 
-    validated_request = VanillaOptionPricingRequest.from_mapping(request_payload)
-
-    assert validated_request.interval_delta == pytest.approx(1.0)
+    with pytest.raises(
+        VanillaOptionPricingValidationError,
+        match='field_path="interval_delta" message="is required"',
+    ):
+        VanillaOptionPricingRequest.from_mapping(request_payload)
 
 
 def test_vanilla_option_request_roundtrip_preserves_public_contract_fields() -> None:
@@ -189,13 +191,15 @@ def test_vanilla_option_surface_request_model_construction_and_roundtrip() -> No
     )
 
 
-def test_vanilla_option_surface_request_validation_defaults_interval_delta() -> None:
+def test_vanilla_option_surface_request_validation_requires_explicit_interval_delta() -> None:
     request_payload = build_anchored_surface_request_model().to_payload()
     del request_payload["interval_delta"]
 
-    validated_request = VanillaOptionSurfacePricingRequest.from_mapping(request_payload)
-
-    assert validated_request.interval_delta == pytest.approx(1.0)
+    with pytest.raises(
+        VanillaOptionPricingValidationError,
+        match='field_path="interval_delta" message="is required"',
+    ):
+        VanillaOptionSurfacePricingRequest.from_mapping(request_payload)
 
 
 def test_vanilla_option_surface_response_derives_node_table_and_roundtrip() -> None:
@@ -612,7 +616,7 @@ def test_run_vanilla_option_surface_pricing_executes_native_workflow_with_typed_
     }
 
 
-def test_surface_pricing_preserves_partial_success_with_node_failure_diagnostics() -> None:
+def test_surface_pricing_handles_extreme_deep_in_the_money_strike_without_node_failure() -> None:
     execution_input = build_anchored_surface_execution_input_model()
     adjusted_market_inputs = replace(
         execution_input.request.market_inputs,
@@ -625,17 +629,17 @@ def test_surface_pricing_preserves_partial_success_with_node_failure_diagnostics
     )
 
     assert run_result.response.pricing_status_grid[0] == (
-        VanillaOptionPricingStatus.FAILED,
+        VanillaOptionPricingStatus.SUCCEEDED,
         VanillaOptionPricingStatus.SUCCEEDED,
         VanillaOptionPricingStatus.SUCCEEDED,
     )
-    assert run_result.response.price_grid[0][0] is None
-    assert run_result.response.pricing_failure_stage_grid[0][0] is VanillaOptionPricingFailureStage.FOURIER_PRICING
-    assert "Fourier inversion failed" in (
-        run_result.response.pricing_failure_reason_grid[0][0] or ""
+    assert run_result.response.pricing_failure_stage_grid[0] == (None, None, None)
+    assert run_result.response.pricing_failure_reason_grid[0] == (None, None, None)
+    assert run_result.response.price_grid[0][0] is not None
+    assert run_result.response.price_grid[0][0] > run_result.response.price_grid[0][1]
+    assert run_result.response.implied_volatility_inversion_status_grid[0][0] is (
+        VanillaOptionImpliedVolatilityInversionStatus.SUCCEEDED
     )
-    assert run_result.response.price_grid[0][1] is not None
-    assert run_result.response.price_grid[0][2] is not None
 
 
 def test_vanilla_option_pricing_run_result_roundtrip_preserves_required_schema_fields() -> None:
@@ -687,7 +691,7 @@ def test_vanilla_option_surface_pricing_run_result_roundtrip_preserves_node_tabl
     )
 
 
-def test_anchored_pricing_run_result_roundtrip_preserves_anchored_recursion_diagnostics() -> None:
+def test_pricing_run_result_roundtrip_preserves_spectral_diagnostics() -> None:
     run_result = run_vanilla_option_pricing(build_anchored_runtime_execution_input_model())
 
     serialized_run_result = run_result.to_json()
@@ -701,10 +705,10 @@ def test_anchored_pricing_run_result_roundtrip_preserves_anchored_recursion_diag
 
     assert deserialized_run_result == run_result
     assert deserialized_run_result.run_diagnostics is not None
-    assert deserialized_run_result.run_diagnostics.anchored_recursion is not None
+    assert deserialized_run_result.run_diagnostics.spectral is not None
     assert (
-        deserialized_run_result.run_diagnostics.anchored_recursion["refined_deviation_grid_node_count"]
-        >= deserialized_run_result.run_diagnostics.anchored_recursion["deviation_grid_node_count"]
+        deserialized_run_result.run_diagnostics.spectral["collocation_node_count"]
+        >= 1
     )
 
 
@@ -753,6 +757,7 @@ def _valid_request_model() -> VanillaOptionPricingRequest:
                 delta_beta=-0.2,
             ),
         ),
+        interval_delta=1.0,
     )
 
 
@@ -828,6 +833,7 @@ def _valid_runtime_execution_input_model() -> VanillaOptionPricingExecutionInput
                 ),
             ),
             model_parameters=_valid_request_model().model_parameters,
+            interval_delta=1.0,
         ),
         runtime_interval_schedule=_runtime_interval_schedule((1.0,)),
         hourly_factor_contract=build_hourly_factor_contract(

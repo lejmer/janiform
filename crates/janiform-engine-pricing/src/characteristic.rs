@@ -280,6 +280,13 @@ pub(crate) struct LocalTiltResidualEvaluation {
     pub(crate) residual: f64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct LocalTiltSearchDomain {
+    pub(crate) lower_theta: f64,
+    pub(crate) upper_theta: f64,
+    pub(crate) reference_theta: f64,
+}
+
 const BUY_SIDE_OBSERVED_LOG_MOMENT_ARGUMENT_IMAGINARY: f64 = -1.0;
 const SELL_SIDE_OBSERVED_LOG_MOMENT_ARGUMENT_IMAGINARY: f64 = 1.0;
 
@@ -442,6 +449,48 @@ fn anchored_local_tilt_domain(
     Ok(buy_side_domain.intersect(sell_side_domain))
 }
 
+pub(crate) fn resolve_local_tilt_search_domain(
+    driver_parameters: NigBuySellDriverParameters,
+) -> Result<LocalTiltSearchDomain, AnchoredLocalTiltSolveError> {
+    let admissible_domain = anchored_local_tilt_domain(driver_parameters)?;
+
+    let Some(lower_theta) = admissible_domain.interior_lower_bound() else {
+        return Err(AnchoredLocalTiltSolveError::NoAdmissibleLocalTilt {
+            target_log_moment_exponent: f64::NAN,
+            lower_theta: admissible_domain.lower_theta_exclusive,
+            upper_theta: admissible_domain.upper_theta_exclusive,
+            lower_residual: f64::NAN,
+            upper_residual: f64::NAN,
+        });
+    };
+
+    let Some(upper_theta) = admissible_domain.interior_upper_bound() else {
+        return Err(AnchoredLocalTiltSolveError::NoAdmissibleLocalTilt {
+            target_log_moment_exponent: f64::NAN,
+            lower_theta: admissible_domain.lower_theta_exclusive,
+            upper_theta: admissible_domain.upper_theta_exclusive,
+            lower_residual: f64::NAN,
+            upper_residual: f64::NAN,
+        });
+    };
+
+    let Some(reference_theta) = nearest_zero_theta_in_domain(admissible_domain) else {
+        return Err(AnchoredLocalTiltSolveError::NoAdmissibleLocalTilt {
+            target_log_moment_exponent: f64::NAN,
+            lower_theta: admissible_domain.lower_theta_exclusive,
+            upper_theta: admissible_domain.upper_theta_exclusive,
+            lower_residual: f64::NAN,
+            upper_residual: f64::NAN,
+        });
+    };
+
+    Ok(LocalTiltSearchDomain {
+        lower_theta,
+        upper_theta,
+        reference_theta,
+    })
+}
+
 fn map_local_tilt_axis_evaluation_error(
     theta: f64,
     argument_imaginary: f64,
@@ -484,37 +533,44 @@ pub(crate) fn build_local_tilt_bracket_with_residual_evaluator<F>(
 where
     F: FnMut(f64) -> Result<LocalTiltResidualEvaluation, AnchoredLocalTiltSolveError>,
 {
-    let admissible_domain = anchored_local_tilt_domain(driver_parameters)?;
+    let search_domain =
+        resolve_local_tilt_search_domain(driver_parameters).map_err(|error| match error {
+            AnchoredLocalTiltSolveError::NoAdmissibleLocalTilt {
+                lower_theta,
+                upper_theta,
+                lower_residual,
+                upper_residual,
+                ..
+            } => AnchoredLocalTiltSolveError::NoAdmissibleLocalTilt {
+                target_log_moment_exponent,
+                lower_theta,
+                upper_theta,
+                lower_residual,
+                upper_residual,
+            },
+            other => other,
+        })?;
 
-    let Some(lower_theta) = admissible_domain.interior_lower_bound() else {
-        return Err(AnchoredLocalTiltSolveError::NoAdmissibleLocalTilt {
-            target_log_moment_exponent,
-            lower_theta: admissible_domain.lower_theta_exclusive,
-            upper_theta: admissible_domain.upper_theta_exclusive,
-            lower_residual: f64::NAN,
-            upper_residual: f64::NAN,
-        });
-    };
+    build_local_tilt_bracket_with_search_domain_and_residual_evaluator(
+        search_domain,
+        target_log_moment_exponent,
+        tolerance,
+        &mut evaluate_residual,
+    )
+}
 
-    let Some(upper_theta) = admissible_domain.interior_upper_bound() else {
-        return Err(AnchoredLocalTiltSolveError::NoAdmissibleLocalTilt {
-            target_log_moment_exponent,
-            lower_theta: admissible_domain.lower_theta_exclusive,
-            upper_theta: admissible_domain.upper_theta_exclusive,
-            lower_residual: f64::NAN,
-            upper_residual: f64::NAN,
-        });
-    };
-
-    let Some(reference_theta) = nearest_zero_theta_in_domain(admissible_domain) else {
-        return Err(AnchoredLocalTiltSolveError::NoAdmissibleLocalTilt {
-            target_log_moment_exponent,
-            lower_theta: admissible_domain.lower_theta_exclusive,
-            upper_theta: admissible_domain.upper_theta_exclusive,
-            lower_residual: f64::NAN,
-            upper_residual: f64::NAN,
-        });
-    };
+pub(crate) fn build_local_tilt_bracket_with_search_domain_and_residual_evaluator<F>(
+    search_domain: LocalTiltSearchDomain,
+    target_log_moment_exponent: f64,
+    tolerance: f64,
+    mut evaluate_residual: F,
+) -> Result<(f64, LocalTiltResidualEvaluation), AnchoredLocalTiltSolveError>
+where
+    F: FnMut(f64) -> Result<LocalTiltResidualEvaluation, AnchoredLocalTiltSolveError>,
+{
+    let lower_theta = search_domain.lower_theta;
+    let upper_theta = search_domain.upper_theta;
+    let reference_theta = search_domain.reference_theta;
 
     let reference_evaluation = evaluate_residual(reference_theta)?;
     if reference_evaluation.residual.abs() <= tolerance {

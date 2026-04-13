@@ -1030,9 +1030,9 @@ def _require_optional_failure_stage(
             "transform_output, characteristic_function_assembly, fourier_pricing, "
             "risk_neutral_characteristic_function, endogenous_anchor_materialization, "
             "expected_hawkes_state_update, anchored_local_tilt_solve, "
-            "anchored_recursion_observed_boundary_state, anchored_recursion_diagnostics, "
-            "grid_interpolation_shape, response_diagnostics, response_assembly, "
-            "run_result_assembly, forward_law, worker_execution"
+            "spectral_observed_boundary_state, spectral_diagnostics, "
+            "spectral_operator_assembly, response_diagnostics, response_assembly, "
+            "run_result_assembly, worker_execution"
         ),
     )
 

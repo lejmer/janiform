@@ -428,7 +428,7 @@ def _build_pricing_direct_run_result_payload(calendar_registry, tmp_path: Path) 
                     "schema_version",
                     "transform",
                     "integration_quality",
-                    "anchored_recursion",
+                    "spectral",
                 ],
                 "required_calibration_hooks_fields": [
                     "schema_version",

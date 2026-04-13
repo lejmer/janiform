@@ -21,7 +21,7 @@ def test_resolve_fit_artifact_paths_appends_run_id_to_explicit_output_directory(
     assert artifact_paths.manifest_path == tmp_path / ".janiform" / "run-123" / "run.json"
 
 
-def test_build_pricing_report_payload_preserves_anchored_pricing_diagnostics(tmp_path: Path) -> None:
+def test_build_pricing_report_payload_preserves_spectral_pricing_diagnostics(tmp_path: Path) -> None:
     from janiform._workflow_outputs import build_pricing_report_payload
 
     pricing_result = run_vanilla_option_pricing(build_anchored_runtime_execution_input_model())
@@ -33,4 +33,4 @@ def test_build_pricing_report_payload_preserves_anchored_pricing_diagnostics(tmp
 
     assert report_payload["workflow"] == "price"
     assert report_payload["run_diagnostics"] is not None
-    assert report_payload["run_diagnostics"]["anchored_recursion"] is not None
+    assert report_payload["run_diagnostics"]["spectral"] is not None

@@ -131,6 +131,14 @@ In the `crates/` folder where the Rust code is located:
   - numerical stability (if relevant)
 - Benchmarks (criterion) for performance-critical kernels. Optimize based on measurement.
 
+### Expensive runs
+If you run an expensive command, test or run (e.g. pricing or calibration):
+  - run one command at a time
+  - for tests: always use a 120 second timeout for the process
+  - for other commands: always use a 360 second timeout for the process
+
+You don't have the necessary permissions to kill processes manually, so do not rely on that.
+
 ### Dependencies
 
 - Add dependencies deliberately. Avoid "just in case" crates.

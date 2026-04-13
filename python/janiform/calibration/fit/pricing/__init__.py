@@ -12,7 +12,6 @@ from .market_snapshot import (
 )
 from .summaries import (
     JaniformVanillaOptionMaturityIntervalSummary,
-    JaniformVanillaOptionMaturityPricingEngineKind,
     JaniformVanillaOptionMaturitySummary,
 )
 from .surface import (
@@ -28,7 +27,6 @@ __all__ = [
     "JaniformObservedOptionSnapshotNode",
     "JaniformObservedOptionSnapshotPricingResult",
     "JaniformVanillaOptionMaturityIntervalSummary",
-    "JaniformVanillaOptionMaturityPricingEngineKind",
     "JaniformVanillaOptionMaturitySummary",
     "JaniformVanillaOptionSurface",
     "JaniformVanillaOptionSurfacePricingResult",

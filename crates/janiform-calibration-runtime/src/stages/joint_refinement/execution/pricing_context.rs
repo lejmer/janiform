@@ -751,39 +751,24 @@ pub(crate) fn build_option_calibration_diagnostics(
 
 fn format_option_pricing_progress_item(event: &PricingProgressEvent) -> String {
     match event.phase {
-        PricingProgressPhase::GroupProgress => format_progress_counts(
-            "grid_batch",
-            event.completed_units,
-            event.total_units,
-            event.current_group_index,
-            "grid",
-        ),
+        PricingProgressPhase::GroupProgress => {
+            format_progress_counts("grid_batch", event.total_units, event.current_group_index)
+        }
         PricingProgressPhase::MaturityProgress => {
-            let mut detail = format_progress_counts(
-                "maturity",
-                event.completed_units,
-                event.total_units,
-                event.current_maturity_index,
-                "maturity",
-            );
+            let mut detail =
+                format_progress_counts("maturity", event.total_units, event.current_maturity_index);
             if let Some(total_maturities) = event.total_maturities {
                 detail.push_str(&format!(" of {total_maturities}"));
             }
             detail
         }
-        PricingProgressPhase::IntervalProgress => format_progress_counts(
-            "interval",
-            event.completed_units,
-            event.total_units,
-            event.current_interval_index,
-            "interval",
-        ),
+        PricingProgressPhase::IntervalProgress => {
+            format_progress_counts("interval", event.total_units, event.current_interval_index)
+        }
         PricingProgressPhase::TransitionRowProgress => {
             let total_rows = event.total_transition_rows.unwrap_or(event.total_units);
-            let mut detail = format!(
-                "transition_rows {}/{} completed",
-                event.completed_units, total_rows
-            );
+            let mut detail =
+                format!("transition_rows {}/{}", event.completed_units.min(total_rows), total_rows);
             if let Some(total_intervals) = event.total_intervals {
                 detail.push_str(&format!(
                     " interval {}/{}",
@@ -811,13 +796,11 @@ fn format_option_pricing_progress_item(event: &PricingProgressEvent) -> String {
 
 fn format_progress_counts(
     label: &str,
-    completed_units: usize,
     total_units: usize,
     current_index: Option<usize>,
-    index_label: &str,
 ) -> String {
-    let current_position = current_index.map_or(completed_units, |index| index.saturating_add(1));
-    format!("{label} {current_position}/{total_units} {index_label}")
+    let current_position = current_index.map_or(0, |index| index.saturating_add(1));
+    format!("{label} {current_position}/{total_units}")
 }
 
 fn display_position(index: Option<usize>, completed_units: usize) -> usize {
@@ -1015,9 +998,9 @@ mod tests {
         ReturnComponentsStageFittedParameters,
     };
     use janiform_engine_pricing::{
-        AnchoredVanillaOptionPricingBoundaryInput, PricingIntervalSchedulePolicy,
-        VanillaOptionGridBatchPricingExecutionInput, VanillaOptionGridRequest,
-        VanillaOptionPayoffType, VanillaOptionPricingModelParameters,
+        AnchoredVanillaOptionPricingBoundaryInput, PricingIntervalSchedule,
+        PricingIntervalSchedulePolicy, VanillaOptionGridBatchPricingExecutionInput,
+        VanillaOptionGridRequest, VanillaOptionPayoffType, VanillaOptionPricingModelParameters,
         VanillaOptionPricingOptionalOutputSelection, materialize_schedule_interval_factors,
         run_vanilla_option_grid_batch_pricing,
     };
@@ -1047,14 +1030,13 @@ mod tests {
         HourlyFactorProviderRequest, HourlyNewsIntensityFactorSource, HourlySeasonalityFactorSource,
     };
 
-    #[test]
-    fn option_grid_batch_pricing_request_uses_sparse_observed_maturity_buckets() {
+    fn sample_option_pricing_input() -> JointRefinementStageOptionPricingInput {
         let valuation_time_utc_nanos = 0;
         let first_expiry_utc_nanos = ONE_HOUR_NANOS;
         let second_expiry_utc_nanos = 2 * ONE_HOUR_NANOS;
         let third_expiry_utc_nanos = 3 * ONE_HOUR_NANOS;
 
-        let option_pricing_input = JointRefinementStageOptionPricingInput {
+        JointRefinementStageOptionPricingInput {
             valuation_time_utc_nanos,
             pricing_interval_schedule_policy: PricingIntervalSchedulePolicy::AutoExactSparse,
             carry_input: JointRefinementStageCarryInput {
@@ -1081,7 +1063,7 @@ mod tests {
                 },
                 JointRefinementStageOptionSnapshotNode {
                     quote_timestamp_utc_nanos: valuation_time_utc_nanos,
-                    expiry_timestamp_utc_nanos: second_expiry_utc_nanos,
+                    expiry_timestamp_utc_nanos: first_expiry_utc_nanos,
                     strike: 110.0,
                     payoff_type: VanillaOptionPayoffType::Call,
                     bid_price: 1.1,
@@ -1091,11 +1073,20 @@ mod tests {
                 JointRefinementStageOptionSnapshotNode {
                     quote_timestamp_utc_nanos: valuation_time_utc_nanos,
                     expiry_timestamp_utc_nanos: second_expiry_utc_nanos,
-                    strike: 115.0,
+                    strike: 100.0,
                     payoff_type: VanillaOptionPayoffType::Call,
                     bid_price: 0.9,
                     ask_price: 1.4,
                     observed_mid_price: 1.15,
+                },
+                JointRefinementStageOptionSnapshotNode {
+                    quote_timestamp_utc_nanos: valuation_time_utc_nanos,
+                    expiry_timestamp_utc_nanos: second_expiry_utc_nanos,
+                    strike: 110.0,
+                    payoff_type: VanillaOptionPayoffType::Call,
+                    bid_price: 0.8,
+                    ask_price: 1.3,
+                    observed_mid_price: 1.05,
                 },
                 JointRefinementStageOptionSnapshotNode {
                     quote_timestamp_utc_nanos: valuation_time_utc_nanos,
@@ -1107,19 +1098,30 @@ mod tests {
                     observed_mid_price: 1.5,
                 },
             ],
-        };
+        }
+    }
 
-        let runtime_interval_schedule = derive_pricing_interval_schedule(
-            valuation_time_utc_nanos,
-            &[
-                first_expiry_utc_nanos,
-                second_expiry_utc_nanos,
-                third_expiry_utc_nanos,
-            ],
+    fn sample_option_runtime_interval_schedule(
+        option_pricing_input: &JointRefinementStageOptionPricingInput,
+    ) -> PricingIntervalSchedule {
+        derive_pricing_interval_schedule(
+            option_pricing_input.valuation_time_utc_nanos,
+            &option_pricing_input
+                .option_snapshot_nodes
+                .iter()
+                .map(|node| node.expiry_timestamp_utc_nanos)
+                .collect::<Vec<_>>(),
             &option_pricing_input.pricing_interval_schedule_policy,
         )
         .expect("sparse interval schedule should be valid")
-        .schedule;
+        .schedule
+    }
+
+    #[test]
+    fn option_grid_batch_pricing_request_uses_sparse_observed_maturity_buckets() {
+        let option_pricing_input = sample_option_pricing_input();
+        let runtime_interval_schedule =
+            sample_option_runtime_interval_schedule(&option_pricing_input);
 
         let (request, observed_nodes, _, _) = build_option_grid_batch_pricing_request(
             100.0,
@@ -1135,7 +1137,7 @@ mod tests {
                 payoff_type: VanillaOptionPayoffType::Call,
                 risk_free_rate: 0.01,
                 dividend_yield: 0.005,
-                strikes: vec![100.0],
+                strikes: vec![100.0, 110.0],
                 maturity_intervals: vec![1.0],
             }
         );
@@ -1145,7 +1147,7 @@ mod tests {
                 payoff_type: VanillaOptionPayoffType::Call,
                 risk_free_rate: 0.01,
                 dividend_yield: 0.005,
-                strikes: vec![110.0, 115.0],
+                strikes: vec![100.0, 110.0],
                 maturity_intervals: vec![2.0],
             }
         );
@@ -1160,19 +1162,22 @@ mod tests {
             }
         );
 
-        assert_eq!(observed_nodes.len(), 4);
+        assert_eq!(observed_nodes.len(), 5);
         assert_eq!(observed_nodes[0].location.grid_index, 0);
         assert_eq!(observed_nodes[0].location.maturity_index, 0);
         assert_eq!(observed_nodes[0].location.strike_index, 0);
-        assert_eq!(observed_nodes[1].location.grid_index, 1);
+        assert_eq!(observed_nodes[1].location.grid_index, 0);
         assert_eq!(observed_nodes[1].location.maturity_index, 0);
-        assert_eq!(observed_nodes[1].location.strike_index, 0);
+        assert_eq!(observed_nodes[1].location.strike_index, 1);
         assert_eq!(observed_nodes[2].location.grid_index, 1);
         assert_eq!(observed_nodes[2].location.maturity_index, 0);
-        assert_eq!(observed_nodes[2].location.strike_index, 1);
-        assert_eq!(observed_nodes[3].location.grid_index, 2);
+        assert_eq!(observed_nodes[2].location.strike_index, 0);
+        assert_eq!(observed_nodes[3].location.grid_index, 1);
         assert_eq!(observed_nodes[3].location.maturity_index, 0);
-        assert_eq!(observed_nodes[3].location.strike_index, 0);
+        assert_eq!(observed_nodes[3].location.strike_index, 1);
+        assert_eq!(observed_nodes[4].location.grid_index, 2);
+        assert_eq!(observed_nodes[4].location.maturity_index, 0);
+        assert_eq!(observed_nodes[4].location.strike_index, 0);
     }
 
     #[derive(Debug, Deserialize)]

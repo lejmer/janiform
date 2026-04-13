@@ -63,6 +63,7 @@ def build_anchored_request_model() -> VanillaOptionPricingRequest:
             ),
         ),
         model_parameters=_build_model_parameters(),
+        interval_delta=1.0,
     )
 
 
@@ -94,6 +95,7 @@ def build_anchored_runtime_execution_input_model() -> VanillaOptionPricingExecut
                 ),
             ),
             model_parameters=anchored_request.model_parameters,
+            interval_delta=anchored_request.interval_delta,
         ),
         runtime_interval_schedule=build_runtime_interval_schedule((1.0,)),
         hourly_factor_contract=build_hourly_factor_contract(
@@ -132,6 +134,7 @@ def build_anchored_surface_request_model() -> VanillaOptionSurfacePricingRequest
             ),
         ),
         model_parameters=_build_model_parameters(),
+        interval_delta=1.0,
     )
 
 
@@ -152,6 +155,7 @@ def build_anchored_surface_execution_input_model() -> VanillaOptionSurfacePricin
             payoff=anchored_runtime_execution_input.request.payoff,
             boundary_input=anchored_runtime_execution_input.request.boundary_input,
             model_parameters=anchored_runtime_execution_input.request.model_parameters,
+            interval_delta=anchored_runtime_execution_input.request.interval_delta,
         ),
         runtime_interval_schedule=anchored_runtime_execution_input.runtime_interval_schedule,
         hourly_factor_contract=anchored_runtime_execution_input.hourly_factor_contract,

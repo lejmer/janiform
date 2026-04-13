@@ -15,10 +15,14 @@ use janiform_model_kernels::mean_reversion::{
 };
 
 use crate::runner::{
-    LocalTransitionRequestContext, build_pricing_risk_neutral_anchor_materialization,
+    IntervalTiltCurve, LocalTransitionRequestContext,
+    build_pricing_risk_neutral_anchor_materialization,
+    evaluate_core_pure_imaginary_log_moment_exponent_for_tilt,
     evaluate_pricing_log_return_characteristic_function,
     infer_expected_news_loading_under_local_measure_for_row,
-    recover_pure_imaginary_log_moment_exponent, resolve_local_transition_theta,
+    prepare_transition_row_kernel_with_curve, recover_pure_imaginary_log_moment_exponent,
+    resolve_local_transition_theta, resolve_local_transition_theta_for_row_with_curve,
+    resolve_local_transition_theta_for_row_with_parallelism,
 };
 use janiform_affine_oracle::affine_oracle::{
     ExponentialAffineTransformGuardFailureCode, ExponentialAffineTransformIntegrationStatus,
@@ -281,6 +285,188 @@ fn risk_neutral_anchor_materialization_accepts_zero_adjustment_nested_request() 
         2
     );
     assert_eq!(materialization.expected_hawkes_state_path.len(), 3);
+}
+
+#[test]
+fn interval_tilt_curve_matches_direct_row_solver_across_ordered_rows() {
+    let pricing_request = build_non_nested_transition_request();
+    let transition_context = transition_context_for_request(&pricing_request);
+    let driver_parameters = pricing_request
+        .model_parameters
+        .nig_shared_plus_shift_configuration
+        .derive_driver_parameters()
+        .expect("driver parameters should construct");
+    let resolved_rows =
+        build_resolved_non_nested_transition_rows(&transition_context, driver_parameters);
+
+    let mut interval_tilt_curve =
+        IntervalTiltCurve::try_new(&transition_context, driver_parameters, None, None)
+            .expect("interval tilt curve should construct");
+
+    let nested_row = transition_context
+        .build_row_state(0.0)
+        .expect("nested transition row should construct");
+    let nested_direct = resolve_local_transition_theta_for_row_with_parallelism(
+        &transition_context,
+        &nested_row,
+        driver_parameters,
+        None,
+        None,
+    )
+    .expect("nested direct row solve should succeed");
+    let nested_cached =
+        resolve_local_transition_theta_for_row_with_curve(&mut interval_tilt_curve, &nested_row)
+            .expect("nested curve-backed row solve should succeed");
+    assert_eq!(nested_cached, nested_direct);
+
+    for (transition_row, direct) in resolved_rows {
+        let cached = resolve_local_transition_theta_for_row_with_curve(
+            &mut interval_tilt_curve,
+            &transition_row,
+        )
+        .expect("curve-backed row solve should succeed");
+
+        assert_eq!(cached, direct);
+    }
+}
+
+#[test]
+fn prepared_transition_row_kernel_matches_direct_row_expectations() {
+    let pricing_request = build_non_nested_transition_request();
+    let transition_context = transition_context_for_request(&pricing_request);
+    let driver_parameters = pricing_request
+        .model_parameters
+        .nig_shared_plus_shift_configuration
+        .derive_driver_parameters()
+        .expect("driver parameters should construct");
+    let (transition_row, direct_theta) =
+        build_resolved_non_nested_transition_rows(&transition_context, driver_parameters)
+            .into_iter()
+            .next()
+            .expect("at least one non-nested row should resolve");
+    let direct_expectations =
+        crate::runner::derive_local_tilted_interval_expectations_for_row_with_parallelism(
+            &transition_context,
+            &transition_row,
+            driver_parameters,
+            direct_theta.0,
+            None,
+            None,
+        )
+        .expect("direct expectations should succeed");
+    let mut interval_tilt_curve =
+        IntervalTiltCurve::try_new(&transition_context, driver_parameters, None, None)
+            .expect("interval tilt curve should construct");
+    let prepared_kernel =
+        prepare_transition_row_kernel_with_curve(&mut interval_tilt_curve, transition_row.clone())
+            .expect("prepared row kernel should succeed");
+
+    assert_eq!(prepared_kernel.theta, direct_theta.0);
+    assert_eq!(prepared_kernel.tilt_diagnostics, direct_theta.1);
+    assert_eq!(prepared_kernel.local_expectations, direct_expectations);
+}
+
+#[test]
+fn core_pure_imaginary_log_moment_plus_local_adjustment_matches_row_diagnostics() {
+    let pricing_request = build_non_nested_transition_request();
+    let transition_context = transition_context_for_request(&pricing_request);
+    let driver_parameters = pricing_request
+        .model_parameters
+        .nig_shared_plus_shift_configuration
+        .derive_driver_parameters()
+        .expect("driver parameters should construct");
+    let (transition_row, direct_theta) =
+        build_resolved_non_nested_transition_rows(&transition_context, driver_parameters)
+            .into_iter()
+            .next()
+            .expect("at least one non-nested row should resolve");
+    let theta = direct_theta.0;
+    let diagnostics = direct_theta
+        .1
+        .expect("non-nested row should return diagnostics");
+    let core_evaluation = evaluate_core_pure_imaginary_log_moment_exponent_for_tilt(
+        &transition_context,
+        driver_parameters,
+        theta,
+        None,
+        None,
+    )
+    .expect("core pure-imaginary evaluation should succeed");
+
+    assert_eq!(
+        diagnostics.observed_log_moment_exponent,
+        core_evaluation.observed_log_moment_exponent
+            + transition_row.local_martingale_deviation_adjustment
+    );
+}
+
+fn build_non_nested_transition_request() -> VanillaOptionPricingRequest {
+    VanillaOptionPricingRequest::try_new(
+        VanillaOptionPricingMarketInputs::try_new_single_node(100.0, 105.0, 1.0, 0.0, 0.0)
+            .expect("market inputs should construct"),
+        VanillaOptionPayoffConfiguration {
+            payoff_type: VanillaOptionPayoffType::Call,
+        },
+        AnchoredVanillaOptionPricingBoundaryInput::try_new(
+            0,
+            HawkesExcitationState {
+                y_plus_plus: 0.0,
+                y_plus_minus: 0.0,
+                y_minus_plus: 0.0,
+                y_minus_minus: 0.0,
+            },
+            MeanReversionFittedParameters::try_new(
+                0.5,
+                MeanReversionAnchorModel::zero_gain_endogenous_core_pressure_level(),
+            )
+            .expect("mean-reversion fitted parameters should construct"),
+            1.0,
+            MeanReversionBoundaryState::try_new(0.2, 0.0, 0.0, 0.2)
+                .expect("observed boundary state should construct"),
+        )
+        .expect("boundary input should construct"),
+        valid_model_parameters(),
+        1.0,
+    )
+    .expect("pricing request should construct")
+}
+
+fn build_resolved_non_nested_transition_rows(
+    transition_context: &LocalTransitionRequestContext,
+    driver_parameters: janiform_model_kernels::nig::NigBuySellDriverParameters,
+) -> Vec<(
+    crate::runner::LocalTransitionRowState,
+    (f64, Option<crate::AnchoredLocalTiltSolveDiagnostics>),
+)> {
+    let candidate_deviations = [1.0e-8, 1.0e-7, 1.0e-6, 1.0e-5, 1.0e-4, 1.0e-3, 1.0e-2];
+    let mut resolved_rows = Vec::new();
+
+    for deviation in candidate_deviations {
+        let transition_row = transition_context
+            .build_row_state(deviation)
+            .expect("transition row should construct");
+        if transition_row.uses_nested_transition_measure() {
+            continue;
+        }
+
+        let direct = resolve_local_transition_theta_for_row_with_parallelism(
+            transition_context,
+            &transition_row,
+            driver_parameters,
+            None,
+            None,
+        );
+        if let Ok(direct) = direct {
+            resolved_rows.push((transition_row, direct));
+        }
+    }
+
+    assert!(
+        !resolved_rows.is_empty(),
+        "expected at least one resolvable non-nested transition row"
+    );
+
+    resolved_rows
 }
 
 #[test]

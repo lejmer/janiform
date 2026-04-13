@@ -691,7 +691,6 @@ def test_calibration_fit_public_ownership_submodules_are_supported_domain_import
         "JaniformObservedOptionSnapshotNode",
         "JaniformObservedOptionSnapshotPricingResult",
         "JaniformVanillaOptionMaturityIntervalSummary",
-        "JaniformVanillaOptionMaturityPricingEngineKind",
         "JaniformVanillaOptionMaturitySummary",
         "JaniformVanillaOptionSurface",
         "JaniformVanillaOptionSurfacePricingResult",
@@ -709,7 +708,6 @@ def test_calibration_fit_public_ownership_submodules_are_supported_domain_import
     assert set(calibration_fit_pricing_market_snapshot_inputs_module.__all__) == {"TabularFrameInput"}
     assert set(calibration_fit_pricing_summaries_module.__all__) == {
         "JaniformVanillaOptionMaturityIntervalSummary",
-        "JaniformVanillaOptionMaturityPricingEngineKind",
         "JaniformVanillaOptionMaturitySummary",
     }
     assert set(calibration_fit_pricing_surface_module.__all__) == {

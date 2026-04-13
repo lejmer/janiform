@@ -4,18 +4,15 @@ mod black_scholes;
 mod characteristic;
 mod constants;
 mod contracts;
-mod forward_law;
 mod fourier;
 mod grids;
 mod implied_volatility;
-mod integration_geometry;
 mod interval_schedule;
 mod maturity_inputs;
 mod news_loading_projection;
-mod probability_projection;
 mod progress;
-mod progress_runtime;
 mod runner;
+mod spectral;
 mod thread_pool;
 mod time_scaling;
 
@@ -36,9 +33,8 @@ pub use characteristic::{
     solve_anchored_local_pricing_tilt, solve_exponential_affine_transform,
 };
 pub use constants::{
-    ANCHORED_PRICING_CONTINUATION_RECURSION_POLICY, ANCHORED_PRICING_DEVIATION_GRID_POLICY,
-    ANCHORED_PRICING_EXPECTED_HAWKES_STATE_UPDATE_POLICY, DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA,
-    FOURIER_INVERSION_CONTOUR_POLICY, FOURIER_INVERSION_CONVERGENCE_CHECK_POLICY,
+    DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA, FOURIER_INVERSION_CONTOUR_POLICY,
+    FOURIER_INVERSION_CONVERGENCE_CHECK_POLICY,
     FOURIER_INVERSION_DIAGNOSTICS_SCHEMA_VERSION, FOURIER_INVERSION_ENGINE_POLICY,
     FOURIER_INVERSION_INTEGRATION_STABILITY_POLICY, FOURIER_INVERSION_NUMERIC_QUALITY_GATE_POLICY,
     FOURIER_INVERSION_NUMERIC_SETTINGS_POLICY, FOURIER_INVERSION_TRUNCATION_CHECK_POLICY,
@@ -46,6 +42,9 @@ pub use constants::{
     PRICING_LOCAL_ANCHORED_TILT_SOLVE_POLICY, PRICING_MARTINGALE_CONDITION_VALIDATION_POLICY,
     RETURN_CHARACTERISTIC_FUNCTION_COMPOSITION_POLICY,
     RETURN_CHARACTERISTIC_FUNCTION_DOMAIN_GUARD_POLICY, VANILLA_OPTION_CALIBRATION_HOOK_POLICY,
+    SPECTRAL_PRICING_COLLOCATION_POLICY, SPECTRAL_PRICING_DEVIATION_DOMAIN_POLICY,
+    SPECTRAL_PRICING_EXPECTED_HAWKES_STATE_UPDATE_POLICY,
+    SPECTRAL_PRICING_INTEGRATION_COMPATIBILITY_POLICY, SPECTRAL_PRICING_INTERVAL_OPERATOR_POLICY,
     VANILLA_OPTION_PAYOFF_CONFIGURATION_POLICY,
     VANILLA_OPTION_PRICING_CALIBRATION_HOOKS_SCHEMA_VERSION,
     VANILLA_OPTION_PRICING_RUN_DIAGNOSTICS_SCHEMA_VERSION,
@@ -56,9 +55,9 @@ pub use constants::{
 pub use contracts::{
     AnchoredLocalTiltAdmissibilityStatus, AnchoredLocalTiltBoundaryStateSummary,
     AnchoredLocalTiltDomainStatus, AnchoredLocalTiltSolveDiagnostics,
-    AnchoredPricingRecursionDiagnostics, AnchoredPricingRecursionDiagnosticsError,
-    AnchoredPricingRecursionIntervalDiagnostics, AnchoredVanillaOptionPricingBoundaryInput,
-    AnchoredVanillaOptionPricingBoundaryInputError,
+    AnchoredVanillaOptionPricingBoundaryInput, AnchoredVanillaOptionPricingBoundaryInputError,
+    SpectralPricingDiagnostics, SpectralPricingDiagnosticsError,
+    SpectralPricingIntervalDiagnostics,
     VANILLA_OPTION_PRICING_RUN_OUTPUT_SCHEMA_METADATA, VanillaOptionPayoffConfiguration,
     VanillaOptionPayoffType, VanillaOptionPricingCalibrationHooks,
     VanillaOptionPricingCalibrationHooksError, VanillaOptionPricingDiagnostics,
@@ -82,8 +81,7 @@ pub use grids::{
     VanillaOptionGridBatchPricingExecutionInput, VanillaOptionGridBatchPricingExecutionInputError,
     VanillaOptionGridBatchPricingRequest, VanillaOptionGridBatchPricingRequestError,
     VanillaOptionGridBatchPricingRunError, VanillaOptionGridBatchPricingRunResult,
-    VanillaOptionGridPricingResult, VanillaOptionGridRequest, VanillaOptionMaturityIntervalSummary,
-    VanillaOptionMaturityPricingEngineKind, VanillaOptionMaturitySummary,
+    VanillaOptionGridPricingResult, VanillaOptionGridRequest, VanillaOptionMaturitySummary,
     VanillaOptionSurfacePricingExecutionInput, VanillaOptionSurfacePricingExecutionInputError,
     VanillaOptionSurfacePricingRequest, VanillaOptionSurfacePricingResponse,
     VanillaOptionSurfacePricingRunError, VanillaOptionSurfacePricingRunResult,
