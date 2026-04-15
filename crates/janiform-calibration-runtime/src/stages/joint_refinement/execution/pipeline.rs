@@ -24,6 +24,7 @@ use crate::stages::joint_refinement::contracts::{
     JointRefinementStageFittedPayload, JointRefinementStageProgressPhase,
     JointRefinementStageProgressUpdate,
 };
+use crate::stages::joint_refinement::option_surface_tiering::JointRefinementOptionSurfaceTierKind;
 use crate::stages::mean_reversion::MeanReversionStageFittedPayload;
 use crate::stages::return_components::{
     ReturnComponentsStageFittedPayload,
@@ -52,9 +53,10 @@ use super::{
     build_joint_refinement_stage_failure_report, build_joint_restart_diagnostics,
     build_joint_simulation_summaries, build_observed_data, build_option_calibration_diagnostics,
     build_option_pricing_context, build_summary_simulation_session_context,
+    desired_joint_refinement_option_refinement_candidate_count,
     desired_joint_refinement_restart_count, joint_refinement_budget_schedule,
-    optimize_restart_seeds, ordered_parameter_bits,
-    select_best_restart_outcome_with_lazy_coarse_consistency,
+    optimize_restart_seeds, ordered_parameter_bits, resolve_option_surface_tier_pricing_artifact,
+    run_option_refinement, select_restart_outcomes_with_lazy_coarse_consistency,
     simulation_infrastructure_failure_message,
 };
 
@@ -103,6 +105,13 @@ struct RestartSearchArtifacts {
     restart_outcomes: Vec<JointRefinementRestartOutcome>,
     valid_restart_count: usize,
     best_restart: JointRefinementRestartOutcome,
+    option_refinement_candidate_frontier: Vec<JointRefinementRestartOutcome>,
+    selected_option_search_tier_pricing_artifact:
+        Option<Arc<super::state::JointRefinementOptionTierPricingArtifact>>,
+    selected_option_selection_tier_pricing_artifact:
+        Option<Arc<super::state::JointRefinementOptionTierPricingArtifact>>,
+    selected_option_audit_tier_pricing_artifact:
+        Option<Arc<super::state::JointRefinementOptionTierPricingArtifact>>,
     coarse_consistency_artifacts_by_restart_id:
         BTreeMap<String, super::coarse_consistency::JointRefinementCoarseConsistencyArtifacts>,
     selection_coarse_consistency_by_restart_id:
@@ -118,6 +127,7 @@ struct RestartSearchPlan {
 
 struct RestartSelectionArtifacts {
     best_restart: JointRefinementRestartOutcome,
+    option_refinement_candidate_frontier: Vec<JointRefinementRestartOutcome>,
     coarse_consistency_artifacts_by_restart_id:
         BTreeMap<String, super::coarse_consistency::JointRefinementCoarseConsistencyArtifacts>,
     selection_coarse_consistency_by_restart_id:
@@ -154,6 +164,26 @@ pub(super) fn run_joint_refinement_calibration_stage_internal(
             },
         );
     }
+    if stage_input.option_refinement_candidate_count_override == Some(0) {
+        return build_joint_refinement_stage_failure_report(
+            run_spec,
+            JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
+                error_message:
+                    "joint refinement option_refinement_candidate_count_override must be greater than zero"
+                        .to_string(),
+            },
+        );
+    }
+    if stage_input.audit_option_pricing_enabled && stage_input.option_pricing_input.is_none() {
+        return build_joint_refinement_stage_failure_report(
+            run_spec,
+            JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
+                error_message:
+                    "joint refinement audit_option_pricing_enabled requires option_pricing_input"
+                        .to_string(),
+            },
+        );
+    }
 
     let resolved_stage_payloads =
         match resolve_stage_payloads(run_spec, calendar_registry, &stage_input) {
@@ -181,7 +211,7 @@ pub(super) fn run_joint_refinement_calibration_stage_internal(
         Err(failure) => return build_joint_refinement_stage_failure_report(run_spec, failure),
     };
 
-    let restart_search_artifacts = match run_restart_search(
+    let mut restart_search_artifacts = match run_restart_search(
         &stage_input,
         &resolved_stage_payloads,
         &prepared_bootstrap,
@@ -193,6 +223,24 @@ pub(super) fn run_joint_refinement_calibration_stage_internal(
     };
 
     if let Err(failure) = ensure_valid_selected_restart_outcome(&restart_search_artifacts) {
+        return build_joint_refinement_stage_failure_report(run_spec, failure);
+    }
+
+    if let Err(failure) = run_option_refinement_if_enabled(
+        &stage_input,
+        &resolved_stage_payloads,
+        &prepared_bootstrap.bootstrap_context,
+        &mut restart_search_artifacts,
+        progress_sender.as_ref(),
+    ) {
+        return build_joint_refinement_stage_failure_report(run_spec, failure);
+    }
+    if let Err(failure) = run_audit_option_pricing_if_enabled(
+        &stage_input,
+        &prepared_bootstrap.bootstrap_context,
+        &mut restart_search_artifacts,
+        progress_sender.as_ref(),
+    ) {
         return build_joint_refinement_stage_failure_report(run_spec, failure);
     }
 
@@ -724,7 +772,6 @@ fn establish_baseline_evaluation(
         &resolved_stage_payloads.stage_solver_settings,
         progress_sender,
         Some(JointRefinementStageProgressPhase::BaselineLocalEvaluation),
-        false,
     );
 
     let baseline_final_evaluation = evaluate_joint_fitted_parameters(
@@ -735,7 +782,6 @@ fn establish_baseline_evaluation(
         &resolved_stage_payloads.stage_solver_settings,
         progress_sender,
         Some(JointRefinementStageProgressPhase::BaselineFinalEvaluation),
-        false,
     );
 
     ensure_simulation_infrastructure_available(bootstrap_context)?;
@@ -847,6 +893,7 @@ fn run_restart_search(
 
     let valid_restart_count = count_valid_restart_outcomes(&restart_outcomes);
     let restart_selection_artifacts = select_restart_outcome(
+        stage_input,
         prepared_bootstrap,
         baseline_evaluation_artifacts,
         restart_outcomes.as_slice(),
@@ -857,6 +904,11 @@ fn run_restart_search(
         restart_outcomes,
         valid_restart_count,
         best_restart: restart_selection_artifacts.best_restart,
+        option_refinement_candidate_frontier: restart_selection_artifacts
+            .option_refinement_candidate_frontier,
+        selected_option_search_tier_pricing_artifact: None,
+        selected_option_selection_tier_pricing_artifact: None,
+        selected_option_audit_tier_pricing_artifact: None,
         coarse_consistency_artifacts_by_restart_id: restart_selection_artifacts
             .coarse_consistency_artifacts_by_restart_id,
         selection_coarse_consistency_by_restart_id: restart_selection_artifacts
@@ -918,7 +970,84 @@ fn count_valid_restart_outcomes(restart_outcomes: &[JointRefinementRestartOutcom
         .count()
 }
 
+fn run_option_refinement_if_enabled(
+    stage_input: &JointRefinementStageExecutionInput,
+    resolved_stage_payloads: &ResolvedStagePayloads<'_>,
+    bootstrap_context: &JointRefinementContext,
+    restart_search_artifacts: &mut RestartSearchArtifacts,
+    progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
+) -> Result<(), JointRefinementStageExecutionFailure> {
+    if stage_input.option_pricing_input.is_none() {
+        return Ok(());
+    }
+
+    let option_refinement_result = run_option_refinement(
+        bootstrap_context,
+        &resolved_stage_payloads.stage_solver_settings,
+        restart_search_artifacts
+            .option_refinement_candidate_frontier
+            .as_slice(),
+        progress_sender,
+    )?;
+
+    restart_search_artifacts.best_restart = option_refinement_result.selected_restart_outcome;
+    restart_search_artifacts.selected_option_search_tier_pricing_artifact =
+        Some(option_refinement_result.selected_search_tier_pricing_artifact);
+    restart_search_artifacts.selected_option_selection_tier_pricing_artifact =
+        Some(option_refinement_result.selected_selection_tier_pricing_artifact);
+    Ok(())
+}
+
+fn run_audit_option_pricing_if_enabled(
+    stage_input: &JointRefinementStageExecutionInput,
+    bootstrap_context: &JointRefinementContext,
+    restart_search_artifacts: &mut RestartSearchArtifacts,
+    progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
+) -> Result<(), JointRefinementStageExecutionFailure> {
+    if !stage_input.audit_option_pricing_enabled {
+        return Ok(());
+    }
+
+    let selection_artifact = restart_search_artifacts
+        .selected_option_selection_tier_pricing_artifact
+        .as_ref()
+        .ok_or_else(|| {
+            JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
+                error_message:
+                    "joint option audit pricing requires the selected selection-tier pricing artifact"
+                        .to_string(),
+            }
+        })?;
+    let audit_artifact = resolve_option_surface_tier_pricing_artifact(
+        bootstrap_context,
+        &restart_search_artifacts
+            .best_restart
+            .final_evaluation
+            .fitted_parameters,
+        JointRefinementOptionSurfaceTierKind::Audit,
+        selection_artifact
+            .cache_key
+            .source_dynamics_parameter_bits
+            .as_slice(),
+        selection_artifact
+            .cache_key
+            .pricing_parameter_bits
+            .as_slice(),
+        progress_sender,
+        Some(JointRefinementStageProgressPhase::OptionAuditTierEvaluation),
+        Some(0),
+        Some(1),
+    )
+    .map_err(|error_message| {
+        JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput { error_message }
+    })?;
+
+    restart_search_artifacts.selected_option_audit_tier_pricing_artifact = Some(audit_artifact);
+    Ok(())
+}
+
 fn select_restart_outcome(
+    stage_input: &JointRefinementStageExecutionInput,
     prepared_bootstrap: &PreparedBootstrapContext,
     baseline_evaluation_artifacts: &BaselineEvaluationArtifacts,
     restart_outcomes: &[JointRefinementRestartOutcome],
@@ -938,28 +1067,65 @@ fn select_restart_outcome(
         })
         .collect::<Vec<_>>();
 
-    let (best_restart, coarse_consistency_artifacts_by_restart_id) =
-        select_best_restart_outcome_with_lazy_coarse_consistency(
-            valid_selectable_restart_outcome_refs.as_slice(),
-            &prepared_bootstrap.bootstrap_context,
-            baseline_evaluation_artifacts
-                .baseline_coarse_consistency_artifacts
-                .as_ref(),
-            progress_sender,
-        );
+    let selected_restart_count = if prepared_bootstrap
+        .bootstrap_context
+        .option_pricing_context
+        .is_some()
+    {
+        desired_joint_refinement_option_refinement_candidate_count(
+            stage_input.option_refinement_candidate_count_override,
+        )
+    } else {
+        1
+    };
 
-    let selection_coarse_consistency_by_restart_id = coarse_consistency_artifacts_by_restart_id
+    let selection_artifacts = select_restart_outcomes_with_lazy_coarse_consistency(
+        valid_selectable_restart_outcome_refs.as_slice(),
+        &prepared_bootstrap.bootstrap_context,
+        baseline_evaluation_artifacts
+            .baseline_coarse_consistency_artifacts
+            .as_ref(),
+        selected_restart_count,
+        progress_sender,
+    );
+
+    let selection_coarse_consistency_by_restart_id = selection_artifacts
+        .coarse_consistency_artifacts_by_restart_id
         .iter()
         .map(|(restart_id, artifacts)| (restart_id.clone(), artifacts.summary))
         .collect::<BTreeMap<_, _>>();
 
-    RestartSelectionArtifacts {
-        best_restart: best_restart.cloned().unwrap_or_else(|| {
+    let best_restart = selection_artifacts
+        .selected_restart_outcomes
+        .first()
+        .copied()
+        .cloned()
+        .unwrap_or_else(|| {
             baseline_evaluation_artifacts
                 .baseline_restart_outcome
                 .clone()
-        }),
-        coarse_consistency_artifacts_by_restart_id,
+        });
+    let option_refinement_candidate_frontier = if prepared_bootstrap
+        .bootstrap_context
+        .option_pricing_context
+        .is_some()
+        && selection_artifacts.used_unadmissible_fallback
+    {
+        Vec::new()
+    } else {
+        selection_artifacts
+            .selected_restart_outcomes
+            .iter()
+            .copied()
+            .cloned()
+            .collect::<Vec<_>>()
+    };
+
+    RestartSelectionArtifacts {
+        best_restart,
+        option_refinement_candidate_frontier,
+        coarse_consistency_artifacts_by_restart_id: selection_artifacts
+            .coarse_consistency_artifacts_by_restart_id,
         selection_coarse_consistency_by_restart_id,
         coarse_consistency_wall_clock_millis: elapsed_millis(coarse_consistency_started_at),
     }
@@ -1053,10 +1219,12 @@ fn assemble_final_stage_outputs(
 
     let option_calibration_diagnostics = build_option_calibration_diagnostics(
         bootstrap_context,
-        &restart_search_artifacts
-            .best_restart
-            .final_evaluation
-            .fitted_parameters,
+        restart_search_artifacts
+            .selected_option_selection_tier_pricing_artifact
+            .as_deref(),
+        restart_search_artifacts
+            .selected_option_audit_tier_pricing_artifact
+            .as_deref(),
     )
     .map_err(|error_message| {
         JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput { error_message }
@@ -1318,6 +1486,5 @@ fn unit_baseline_buckets() -> JointRefinementBaselineBuckets {
         activity_level_fit: 1.0,
         rv_activity_coupling_fit: 1.0,
         price_span_sanity_fit: 1.0,
-        option_spread_normalized_price_fit: 1.0,
     }
 }

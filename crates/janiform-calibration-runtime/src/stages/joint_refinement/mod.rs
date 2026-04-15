@@ -1,6 +1,7 @@
 mod contracts;
 mod execution;
 mod objective;
+mod option_surface_tiering;
 mod setup;
 mod summary_simulation;
 mod worker_runtime;

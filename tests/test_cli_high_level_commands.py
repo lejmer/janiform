@@ -37,6 +37,7 @@ def test_fit_help_documents_default_workflow_and_expert_subcommands() -> None:
     assert "--known-news KNOWN_NEWS" in help_output
     assert "--known-news-json PATH" in help_output
     assert "--mean-reversion-grid-interval-hours" in help_output
+    assert "--dynamics-search-restart-count" in help_output
     assert "--output-dir DIRECTORY" in help_output
 
 

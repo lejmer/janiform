@@ -56,6 +56,7 @@ class FitPreparationConfiguration:
     optimizer_settings_by_stage: tuple[CalibrationStageSolverSettings, ...]
     preprocessing_settings: Optional[CalibrationMarketDataPreprocessingSettings]
     mean_reversion: Optional[CalibrationMeanReversionConfiguration]
+    dynamics_search_restart_count: Optional[int]
     default_endogenous_mean_reversion_configuration: CalibrationMeanReversionConfiguration
     market_profile_reference: Optional[MarketProfileReference]
     known_news_reference: Optional[KnownNewsPresetReference]

@@ -154,6 +154,12 @@ pub struct CalibrationMarketDataPreparationRequest {
     #[serde(default)]
     pub pricing_interval_schedule_policy: PricingIntervalSchedulePolicy,
     #[serde(default)]
+    pub dynamics_search_restart_count: Option<usize>,
+    #[serde(default)]
+    pub joint_refinement_option_refinement_candidate_count_override: Option<usize>,
+    #[serde(default)]
+    pub joint_refinement_audit_option_pricing_enabled: bool,
+    #[serde(default)]
     pub known_news_inputs: Option<CalibrationMarketDataKnownNewsInput>,
     #[serde(default)]
     pub mean_reversion: Option<CalibrationMarketDataMeanReversionConfiguration>,
@@ -226,6 +232,47 @@ impl From<String> for CalibrationMarketDataPreparationError {
     }
 }
 
+fn validate_joint_refinement_option_refinement_candidate_count_override(
+    request: &CalibrationMarketDataPreparationRequest,
+) -> Result<(), CalibrationMarketDataPreparationError> {
+    if request.joint_refinement_option_refinement_candidate_count_override == Some(0) {
+        return Err(CalibrationMarketDataPreparationError::from(
+            "joint_refinement_option_refinement_candidate_count_override must be greater than zero when provided"
+                .to_string(),
+        ));
+    }
+
+    Ok(())
+}
+
+fn validate_dynamics_search_restart_count(
+    request: &CalibrationMarketDataPreparationRequest,
+) -> Result<(), CalibrationMarketDataPreparationError> {
+    if request.dynamics_search_restart_count == Some(0) {
+        return Err(CalibrationMarketDataPreparationError::from(
+            "dynamics_search_restart_count must be greater than zero when provided"
+                .to_string(),
+        ));
+    }
+
+    Ok(())
+}
+
+fn validate_joint_refinement_audit_option_pricing(
+    request: &CalibrationMarketDataPreparationRequest,
+) -> Result<(), CalibrationMarketDataPreparationError> {
+    if request.joint_refinement_audit_option_pricing_enabled
+        && request.option_surface_source.is_none()
+    {
+        return Err(CalibrationMarketDataPreparationError::from(
+            "joint_refinement_audit_option_pricing_enabled requires option_surface_source"
+                .to_string(),
+        ));
+    }
+
+    Ok(())
+}
+
 struct LoadedMarketDataPhases {
     normalized_tick_output: MarketDataNormalizedTickOutput,
     loading_output: MarketDataLoadingOutput,
@@ -241,6 +288,10 @@ pub fn prepare_market_data_calibration_plan(
     request: CalibrationMarketDataPreparationRequest,
     cpu_count: Option<usize>,
 ) -> Result<PreparedMarketDataCalibrationPlan, CalibrationMarketDataPreparationError> {
+    validate_dynamics_search_restart_count(&request)?;
+    validate_joint_refinement_option_refinement_candidate_count_override(&request)?;
+    validate_joint_refinement_audit_option_pricing(&request)?;
+
     let selected_stages = selected_stages_for_scope(request.workflow_scope);
     let (loading_request, trade_events_data_reference, option_surface_data_reference) =
         build_loading_request(&request, &selected_stages)?;
@@ -263,6 +314,10 @@ pub fn prepare_market_data_calibration_plan_from_phases(
     session_resolution: MarketDataSessionResolutionPayload,
     cpu_count: Option<usize>,
 ) -> Result<PreparedMarketDataCalibrationPlan, CalibrationMarketDataPreparationError> {
+    validate_dynamics_search_restart_count(&request)?;
+    validate_joint_refinement_option_refinement_candidate_count_override(&request)?;
+    validate_joint_refinement_audit_option_pricing(&request)?;
+
     let selected_stages = selected_stages_for_scope(request.workflow_scope);
     let (loading_request, trade_events_data_reference, option_surface_data_reference) =
         build_loading_request(&request, &selected_stages)?;
@@ -1173,7 +1228,11 @@ fn prepared_market_data_plan_from_loading_output(
             &selected_stages,
             &loading_output,
         )?,
-        joint_refinement_restart_count_override: None,
+        joint_refinement_restart_count_override: request.dynamics_search_restart_count,
+        joint_refinement_option_refinement_candidate_count_override: request
+            .joint_refinement_option_refinement_candidate_count_override,
+        joint_refinement_audit_option_pricing_enabled: request
+            .joint_refinement_audit_option_pricing_enabled,
         joint_refinement_option_pricing_input: joint_refinement_option_pricing_input_from_request(
             &request,
             &loading_output,

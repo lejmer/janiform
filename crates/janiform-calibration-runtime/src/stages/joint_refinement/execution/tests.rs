@@ -9,9 +9,9 @@ use super::super::setup::{
     build_restart_seeds_with_halton_acceptance, project_basin_diagnostic_into_joint_nig_coordinates,
 };
 use super::{
-    JOINT_REFINEMENT_PARAMETER_BLOCK_COUNT, JointRefinementActiveParameterLayout,
-    JointRefinementAdmissibilityThresholds, JointRefinementCoarseConsistencySummary,
-    JointRefinementSeedSummary, admissibility_threshold_from_sample_count,
+    JointRefinementActiveParameterLayout, JointRefinementAdmissibilityThresholds,
+    JointRefinementCoarseConsistencySummary, JointRefinementSeedSummary,
+    admissibility_threshold_from_sample_count,
     desired_joint_refinement_restart_count, extend_joint_coarse_tick_consistency_metrics_for_seed,
     joint_breakdown_is_admissible, joint_refinement_base_schedule_components,
     joint_refinement_budget_schedule, sampled_observed_tick_returns,
@@ -110,7 +110,6 @@ fn build_test_joint_breakdown(
         activity_level_fit: 1.0,
         rv_activity_coupling_fit: 1.0,
         price_span_sanity_fit: 0.5,
-        option_spread_normalized_price_fit: 0.0,
         weighted_objective,
         hard_constraint_penalty: 0.0,
     }
@@ -196,27 +195,18 @@ fn joint_refinement_desired_restart_count_honors_override() {
 }
 
 #[test]
-fn joint_refinement_high_core_budget_stays_within_base_block_budget() {
+fn joint_refinement_restart_count_controls_frontier_size_not_per_restart_budget() {
     let solver_settings = build_test_solver_settings(64);
     let (base_outer_cycle_count, base_powell_settings) =
         joint_refinement_base_schedule_components(&solver_settings);
-    let base_total_block_evaluation_budget = JOINT_REFINEMENT_PARAMETER_BLOCK_COUNT
-        * base_outer_cycle_count
-        * base_powell_settings.evaluation_budget;
 
-    let high_core_schedule = joint_refinement_budget_schedule(
-        &solver_settings,
-        desired_joint_refinement_restart_count(None),
-    );
-    let scheduled_block_evaluation_budget = high_core_schedule.restart_count
-        * high_core_schedule.outer_cycle_count
-        * JOINT_REFINEMENT_PARAMETER_BLOCK_COUNT
-        * high_core_schedule.powell_settings.evaluation_budget;
+    for restart_count in [1, 15, 50, 100] {
+        let schedule = joint_refinement_budget_schedule(&solver_settings, restart_count);
 
-    assert!(
-        scheduled_block_evaluation_budget <= base_total_block_evaluation_budget,
-        "scheduled block evaluation budget exceeded base budget: scheduled={scheduled_block_evaluation_budget} base={base_total_block_evaluation_budget}",
-    );
+        assert_eq!(schedule.restart_count, restart_count);
+        assert_eq!(schedule.outer_cycle_count, base_outer_cycle_count);
+        assert_eq!(schedule.powell_settings, base_powell_settings);
+    }
 }
 
 #[test]

@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale.v1",
-  "approved_snapshot_sha256": "f7fdbfd372e8380ebf8307107fa8413f2d6e89202032a041bc758f7abf520a36",
+  "approved_snapshot_sha256": "5ae2066822598ee94ef8eaa5045ce9363ff185372e4e0e0dfb6493b210e3085f",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -1112,6 +1112,32 @@
       "summary": "Approve the full shared require_* helper surface on janiform.contracts.",
       "updated_surfaces": [
         "janiform.contracts"
+      ]
+    },
+    {
+      "approved_on": "2026-04-15",
+      "docs_updated": [
+        "design/joint_refinement_option_calibration_rewrite_tasks.md"
+      ],
+      "rationale": "The market-data calibration request now exposes explicit joint-refinement option refinement controls for candidate shortlist sizing and audit-tier pricing, while keeping both controls optional and defaulted for normal calibration.",
+      "snapshot_sha256": "8270651846d53828a6c7ddd7400d29c7c3659c70ed6e2de805d993cc22fbc6e0",
+      "summary": "Expose joint-refinement option refinement and audit controls on the market-data request.",
+      "updated_surfaces": [
+        "janiform.calibration.market_data",
+        "janiform.calibration.market_data.request"
+      ]
+    },
+    {
+      "approved_on": "2026-04-15",
+      "docs_updated": [],
+      "rationale": "The high-level JaniformEstimator and market-data request now expose a dynamics-search restart count so users can adjust restart frontier breadth without constructing staged execution inputs.",
+      "snapshot_sha256": "5ae2066822598ee94ef8eaa5045ce9363ff185372e4e0e0dfb6493b210e3085f",
+      "summary": "Expose dynamics-search restart count on high-level calibration.",
+      "updated_surfaces": [
+        "janiform.calibration.fit",
+        "janiform.calibration.fit.estimator",
+        "janiform.calibration.market_data",
+        "janiform.calibration.market_data.request"
       ]
     }
   ],

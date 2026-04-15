@@ -80,6 +80,10 @@ pub struct CalibrationStagedExecutionInput {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub joint_refinement_restart_count_override: Option<usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub joint_refinement_option_refinement_candidate_count_override: Option<usize>,
+    #[serde(default)]
+    pub joint_refinement_audit_option_pricing_enabled: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub joint_refinement_option_pricing_input: Option<CalibrationJointRefinementOptionPricingInput>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub runtime_resources: Option<CalibrationStagedExecutionRuntimeResources>,
@@ -477,6 +481,8 @@ pub enum CalibrationStagedExecutionBridgeError {
     EmptyDiskCheckpointDirectory,
     UnexpectedDiskCheckpointDirectoryForMemoryMode,
     InvalidJointRefinementRestartCountOverride,
+    InvalidJointRefinementOptionRefinementCandidateCountOverride,
+    AuditOptionPricingRequiresOptionInput,
     InvalidObservationTradeSide {
         trade_side: String,
     },
@@ -519,6 +525,14 @@ impl Display for CalibrationStagedExecutionBridgeError {
                 formatter,
                 "joint_refinement_restart_count_override must be greater than zero when provided"
             ),
+            Self::InvalidJointRefinementOptionRefinementCandidateCountOverride => write!(
+                formatter,
+                "joint_refinement_option_refinement_candidate_count_override must be greater than zero when provided"
+            ),
+            Self::AuditOptionPricingRequiresOptionInput => write!(
+                formatter,
+                "joint_refinement_audit_option_pricing_enabled requires joint_refinement_option_pricing_input"
+            ),
             Self::InvalidObservationTradeSide { trade_side } => write!(
                 formatter,
                 "joint refinement current-state estimation input observation_trade_sides contains unsupported value `{trade_side}`"
@@ -554,6 +568,16 @@ impl CalibrationStagedExecutionInput {
         if self.joint_refinement_restart_count_override == Some(0) {
             return Err(
                 CalibrationStagedExecutionBridgeError::InvalidJointRefinementRestartCountOverride,
+            );
+        }
+        if self.joint_refinement_option_refinement_candidate_count_override == Some(0) {
+            return Err(CalibrationStagedExecutionBridgeError::InvalidJointRefinementOptionRefinementCandidateCountOverride);
+        }
+        if self.joint_refinement_audit_option_pricing_enabled
+            && self.joint_refinement_option_pricing_input.is_none()
+        {
+            return Err(
+                CalibrationStagedExecutionBridgeError::AuditOptionPricingRequiresOptionInput,
             );
         }
 
@@ -655,6 +679,10 @@ impl CalibrationStagedExecutionInput {
                 .mean_reversion_stage_input
                 .map(CalibrationMeanReversionStageExecutionInput::into_core),
             joint_refinement_restart_count_override: self.joint_refinement_restart_count_override,
+            joint_refinement_option_refinement_candidate_count_override: self
+                .joint_refinement_option_refinement_candidate_count_override,
+            joint_refinement_audit_option_pricing_enabled: self
+                .joint_refinement_audit_option_pricing_enabled,
             joint_refinement_option_pricing_input: self
                 .joint_refinement_option_pricing_input
                 .map(CalibrationJointRefinementOptionPricingInput::try_into_core)
@@ -1405,6 +1433,8 @@ mod tests {
                 ],
             }),
             joint_refinement_restart_count_override: None,
+            joint_refinement_option_refinement_candidate_count_override: None,
+            joint_refinement_audit_option_pricing_enabled: false,
             joint_refinement_option_pricing_input: None,
             runtime_resources: match execution_mode {
                 CalibrationExecutionMode::Memory => None,
@@ -1488,6 +1518,36 @@ mod tests {
         assert_eq!(
             error,
             CalibrationStagedExecutionBridgeError::InvalidJointRefinementRestartCountOverride
+        );
+    }
+
+    #[test]
+    fn execution_input_plan_rejects_zero_joint_refinement_option_refinement_override() {
+        let mut execution_input = valid_execution_input(CalibrationExecutionMode::Memory);
+        execution_input.joint_refinement_option_refinement_candidate_count_override = Some(0);
+
+        let error = execution_input
+            .build_execution_plan()
+            .expect_err("zero option refinement override should fail");
+
+        assert_eq!(
+            error,
+            CalibrationStagedExecutionBridgeError::InvalidJointRefinementOptionRefinementCandidateCountOverride
+        );
+    }
+
+    #[test]
+    fn execution_input_plan_rejects_audit_option_pricing_without_option_input() {
+        let mut execution_input = valid_execution_input(CalibrationExecutionMode::Memory);
+        execution_input.joint_refinement_audit_option_pricing_enabled = true;
+
+        let error = execution_input
+            .build_execution_plan()
+            .expect_err("audit option pricing without option input should fail");
+
+        assert_eq!(
+            error,
+            CalibrationStagedExecutionBridgeError::AuditOptionPricingRequiresOptionInput
         );
     }
 

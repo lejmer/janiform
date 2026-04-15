@@ -739,7 +739,7 @@ fn hawkes_boundary_state_norm(boundary_state: HawkesExcitationState) -> f64 {
         .sqrt()
 }
 
-fn build_spectral_compatibility_integration_diagnostics(
+pub(crate) fn build_spectral_compatibility_integration_diagnostics(
     price: f64,
     maturity_interval: f64,
     spectral_diagnostics: &SpectralPricingDiagnostics,

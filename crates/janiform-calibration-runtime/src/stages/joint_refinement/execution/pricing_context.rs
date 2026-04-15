@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::sync::Arc;
 use std::sync::mpsc::Sender;
 
 use chrono::{DateTime, Utc};
@@ -24,19 +25,31 @@ use crate::stages::joint_refinement::contracts::{
     JointRefinementStageExecutionFailure, JointRefinementStageOptionPricingInput,
     JointRefinementStageProgressPhase, JointRefinementStageProgressUpdate,
 };
+use crate::stages::joint_refinement::option_surface_tiering::{
+    JointRefinementCanonicalOptionQuote, JointRefinementOptionSurfaceTier,
+    JointRefinementOptionSurfaceTierKind, build_option_surface_tiers, clean_option_pricing_input,
+};
 use crate::stages::seasonality::build_runtime_hourly_seasonality_factors_from_components;
 use janiform_calibration_artifacts::{
     JointRefinementStageOptionAggregateDiagnostic,
-    JointRefinementStageOptionCalibrationDiagnostics, JointRefinementStageOptionNodeDiagnostic,
-    JointRefinementStageOptionSnapshotMetadata,
+    JointRefinementStageOptionCalibrationDiagnostics,
+    JointRefinementStageOptionMaturityScoreDiagnostic, JointRefinementStageOptionNodeDiagnostic,
+    JointRefinementStageOptionQuoteUniverseDiagnostics, JointRefinementStageOptionSnapshotMetadata,
+    JointRefinementStageOptionTierConstructionDiagnostic,
+    JointRefinementStageOptionTierConstructionDiagnostics,
+    JointRefinementStageOptionTierMaturityDiagnostic,
+    JointRefinementStageOptionTierPricingDiagnostics,
 };
 use janiform_market_time::calendar::ExchangeCalendarRegistry;
 
 use super::super::objective::root_mean_square;
 use super::super::setup::build_surprise_multipliers_for_interval_grid;
 use super::state::{
-    JointRefinementContext, JointRefinementOptionNodeDefinition, JointRefinementOptionNodeLocation,
-    JointRefinementOptionPricingContext,
+    JointRefinementContext, JointRefinementOptionMaturityScoreArtifact,
+    JointRefinementOptionNodeDefinition, JointRefinementOptionNodeLocation,
+    JointRefinementOptionPricingContext, JointRefinementOptionTierPricingArtifact,
+    JointRefinementOptionTierPricingInputSet, JointRefinementOptionTierPricingInputs,
+    JointRefinementOptionTierScore,
 };
 
 struct OptionPricingHorizon {
@@ -46,20 +59,28 @@ struct OptionPricingHorizon {
     hourly_coverage_interval_count: usize,
 }
 
+#[cfg(test)]
 struct OptionBucketDefinition {
     payoff_type: VanillaOptionPayoffType,
     maturity_interval: f64,
     strikes: Vec<f64>,
 }
 
+#[cfg(test)]
 struct ResolvedOptionNode<'a> {
     node: &'a crate::stages::joint_refinement::JointRefinementStageOptionSnapshotNode,
     maturity_interval: f64,
 }
 
+#[cfg(test)]
 struct ResolvedOptionMaturityBucket<'a> {
     definition: OptionBucketDefinition,
     nodes: Vec<ResolvedOptionNode<'a>>,
+}
+
+struct OptionMaturityResidualBucket {
+    maturity_weight: usize,
+    residuals: Vec<f64>,
 }
 
 fn pricing_nig_configuration(
@@ -88,16 +109,17 @@ pub(crate) fn build_option_pricing_context(
     let Some(option_pricing_input) = stage_input.option_pricing_input.as_ref() else {
         return Ok(None);
     };
+    let cleaned_option_pricing_input = clean_option_pricing_input(option_pricing_input)?;
 
-    let horizon = resolve_option_pricing_horizon(option_pricing_input)?;
+    let horizon = resolve_option_pricing_horizon(&cleaned_option_pricing_input)?;
 
     let current_state_estimation_output = estimate_option_pricing_current_state(
-        option_pricing_input,
+        &cleaned_option_pricing_input,
         hawkes_payload,
         mean_reversion_payload,
     )?;
 
-    let option_spot = validate_option_spot(option_pricing_input)?;
+    let option_spot = validate_option_spot(&cleaned_option_pricing_input)?;
 
     let hourly_factor_contract = build_option_hourly_factor_contract(
         run_spec,
@@ -125,27 +147,36 @@ pub(crate) fn build_option_pricing_context(
         &horizon.runtime_interval_schedule,
     )?;
 
-    let (
-        grid_batch_pricing_request,
-        observed_nodes,
-        snapshot_maturity_intervals,
-        snapshot_maturity_terminal_interval_indices,
-    ) = build_option_grid_batch_pricing_request(
-        option_spot,
+    let (snapshot_maturity_intervals, snapshot_maturity_terminal_interval_indices) =
+        snapshot_maturity_terminal_mapping(
+            &cleaned_option_pricing_input,
+            &horizon.runtime_interval_schedule,
+        )?;
+    let option_surface_tiers = build_option_surface_tiers(
         option_pricing_input,
+        &cleaned_option_pricing_input,
+        option_spot,
         &horizon.runtime_interval_schedule,
     )?;
+    let tier_pricing_inputs = build_option_surface_tier_pricing_input_set(
+        option_spot,
+        &cleaned_option_pricing_input.carry_input,
+        &option_surface_tiers,
+    )
+    .map_err(|error_message| {
+        JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput { error_message }
+    })?;
 
     Ok(Some(JointRefinementOptionPricingContext {
-        valuation_time_utc_nanos: option_pricing_input.valuation_time_utc_nanos,
-        grid_batch_pricing_request,
+        valuation_time_utc_nanos: cleaned_option_pricing_input.valuation_time_utc_nanos,
         boundary_input,
         runtime_interval_schedule: horizon.runtime_interval_schedule,
         interval_factors,
         snapshot_maturity_intervals,
         snapshot_maturity_terminal_interval_indices,
-        carry_input: option_pricing_input.carry_input.clone(),
-        observed_nodes,
+        option_surface_tiers,
+        tier_pricing_inputs,
+        carry_input: cleaned_option_pricing_input.carry_input.clone(),
         cpu_count: cpu_count.max(1),
     }))
 }
@@ -399,6 +430,7 @@ fn build_option_boundary_input(
     )
 }
 
+#[cfg(test)]
 fn build_option_grid_batch_pricing_request(
     spot: f64,
     option_pricing_input: &JointRefinementStageOptionPricingInput,
@@ -457,6 +489,7 @@ fn build_option_grid_batch_pricing_request(
     ))
 }
 
+#[cfg(test)]
 fn option_nodes_for_payoff_type(
     option_pricing_input: &JointRefinementStageOptionPricingInput,
     payoff_type: VanillaOptionPayoffType,
@@ -468,6 +501,7 @@ fn option_nodes_for_payoff_type(
         .collect::<Vec<_>>()
 }
 
+#[cfg(test)]
 fn build_option_bucket_definitions<'a>(
     payoff_nodes: &[&'a crate::stages::joint_refinement::JointRefinementStageOptionSnapshotNode],
     runtime_interval_schedule: &PricingIntervalSchedule,
@@ -528,6 +562,7 @@ fn build_option_bucket_definitions<'a>(
     Ok(buckets)
 }
 
+#[cfg(test)]
 fn build_observed_option_nodes(
     grid_index: usize,
     bucket_definition: &OptionBucketDefinition,
@@ -550,6 +585,7 @@ fn build_observed_option_nodes(
                 bid_price: resolved_node.node.bid_price,
                 ask_price: resolved_node.node.ask_price,
                 observed_mid_price: resolved_node.node.observed_mid_price,
+                maturity_weight: 1,
                 location: JointRefinementOptionNodeLocation {
                     grid_index,
                     maturity_index: 0,
@@ -560,6 +596,7 @@ fn build_observed_option_nodes(
         .collect()
 }
 
+#[cfg(test)]
 fn maturity_interval_hours(
     expiry_timestamp_utc_nanos: i64,
     runtime_interval_schedule: &PricingIntervalSchedule,
@@ -605,6 +642,7 @@ fn locate_option_grid_coordinate(
 fn run_option_grid_batch_pricing(
     context: &JointRefinementContext,
     fitted_parameters: &janiform_calibration_artifacts::JointRefinementStageFittedParameters,
+    grid_batch_pricing_request: &VanillaOptionGridBatchPricingRequest,
     progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
     progress_phase: Option<JointRefinementStageProgressPhase>,
     completed_units: Option<usize>,
@@ -616,7 +654,7 @@ fn run_option_grid_batch_pricing(
 
     let started_at = std::time::Instant::now();
     let execution_input = VanillaOptionGridBatchPricingExecutionInput {
-        request: option_pricing_context.grid_batch_pricing_request.clone(),
+        request: grid_batch_pricing_request.clone(),
         boundary_input: option_pricing_context.boundary_input.clone(),
         model_parameters: VanillaOptionPricingModelParameters::new(
             fitted_parameters.hawkes_fitted_parameters.kernel_parameters,
@@ -678,75 +716,501 @@ fn run_option_grid_batch_pricing(
     pricing_result.map_err(|source| format!("joint option pricing evaluation failed: {source}"))
 }
 
-pub(crate) fn option_spread_normalized_price_fit(
+pub(crate) fn resolve_option_surface_tier_pricing_artifact(
     context: &JointRefinementContext,
     fitted_parameters: &janiform_calibration_artifacts::JointRefinementStageFittedParameters,
+    tier_kind: JointRefinementOptionSurfaceTierKind,
+    source_dynamics_parameter_bits: &[u64],
+    pricing_parameter_bits: &[u64],
     progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
     progress_phase: Option<JointRefinementStageProgressPhase>,
     completed_units: Option<usize>,
     total_units: Option<usize>,
-) -> Result<f64, String> {
-    let Some(option_pricing_context) = context.option_pricing_context.as_ref() else {
-        return Ok(0.0);
+) -> Result<Arc<JointRefinementOptionTierPricingArtifact>, String> {
+    let cache_key = super::JointRefinementOptionPricingCacheKey {
+        tier_kind,
+        source_dynamics_parameter_bits: source_dynamics_parameter_bits.to_vec(),
+        pricing_parameter_bits: pricing_parameter_bits.to_vec(),
     };
 
+    if let Ok(cache_guard) = context.option_pricing_cache.lock()
+        && let Some(cached_value) = cache_guard.get(&cache_key).cloned()
+    {
+        context.profiling_state.record_option_pricing_cache_hit();
+        return cached_value;
+    }
+
+    context.profiling_state.record_option_pricing_cache_miss();
+
+    let Some(option_pricing_context) = context.option_pricing_context.as_ref() else {
+        return Err("joint option pricing context is unavailable".to_string());
+    };
+    let valuation_time_utc_nanos = option_pricing_context.valuation_time_utc_nanos;
+    let tier_inputs = option_pricing_context.tier_pricing_inputs.tier(tier_kind);
     let pricing_result = run_option_grid_batch_pricing(
         context,
         fitted_parameters,
+        &tier_inputs.grid_batch_pricing_request,
         progress_sender,
         progress_phase,
         completed_units,
         total_units,
-    )?;
+    );
 
-    let mut normalized_residuals = Vec::with_capacity(option_pricing_context.observed_nodes.len());
-
-    for observed_node in &option_pricing_context.observed_nodes {
-        let model_price = resolve_model_option_price(
+    let resolved_artifact = pricing_result.and_then(|pricing_result| {
+        build_option_surface_tier_pricing_artifact(
+            cache_key.clone(),
             &pricing_result,
-            observed_node,
-            "joint option pricing evaluation returned a grid inconsistent with the selected option snapshot",
-        )?;
+            valuation_time_utc_nanos,
+            tier_inputs,
+        )
+        .map(Arc::new)
+    });
 
-        normalized_residuals.push(
-            (model_price - observed_node.observed_mid_price)
-                / (observed_node.ask_price - observed_node.bid_price),
-        );
+    if let Ok(mut cache_guard) = context.option_pricing_cache.lock() {
+        cache_guard.insert(cache_key, resolved_artifact.clone());
     }
 
-    Ok(root_mean_square(normalized_residuals.as_slice()))
+    resolved_artifact
+}
+
+fn build_option_surface_tier_pricing_input_set(
+    spot: f64,
+    carry_input: &janiform_calibration_artifacts::JointRefinementStageCarryInput,
+    option_surface_tiers: &crate::stages::joint_refinement::option_surface_tiering::JointRefinementOptionSurfaceTierSet,
+) -> Result<JointRefinementOptionTierPricingInputSet, String> {
+    Ok(JointRefinementOptionTierPricingInputSet {
+        search: build_option_surface_tier_pricing_inputs(
+            spot,
+            carry_input,
+            option_surface_tiers,
+            JointRefinementOptionSurfaceTierKind::Search,
+        )?,
+        selection: build_option_surface_tier_pricing_inputs(
+            spot,
+            carry_input,
+            option_surface_tiers,
+            JointRefinementOptionSurfaceTierKind::Selection,
+        )?,
+        audit: build_option_surface_tier_pricing_inputs(
+            spot,
+            carry_input,
+            option_surface_tiers,
+            JointRefinementOptionSurfaceTierKind::Audit,
+        )?,
+    })
+}
+
+fn build_option_surface_tier_pricing_inputs(
+    spot: f64,
+    carry_input: &janiform_calibration_artifacts::JointRefinementStageCarryInput,
+    option_surface_tiers: &crate::stages::joint_refinement::option_surface_tiering::JointRefinementOptionSurfaceTierSet,
+    tier_kind: JointRefinementOptionSurfaceTierKind,
+) -> Result<JointRefinementOptionTierPricingInputs, String> {
+    let tier = option_surface_tier_by_kind(option_surface_tiers, tier_kind);
+    let risk_free_rate = carry_input.discount_rate;
+    let dividend_yield = carry_input.discount_rate - carry_input.carry_rate;
+
+    let mut grids = Vec::new();
+    let mut observed_nodes = Vec::new();
+
+    for payoff_type in [VanillaOptionPayoffType::Call, VanillaOptionPayoffType::Put] {
+        for representative in &tier.maturity_representatives {
+            let mut quotes = representative
+                .quote_indices
+                .iter()
+                .filter_map(|quote_index| option_surface_tiers.canonical_quotes.get(*quote_index))
+                .filter(|quote| quote.payoff_type == payoff_type)
+                .collect::<Vec<_>>();
+
+            quotes.sort_by(|left, right| {
+                left.strike
+                    .total_cmp(&right.strike)
+                    .then_with(|| left.source_position.cmp(&right.source_position))
+            });
+
+            if quotes.is_empty() {
+                continue;
+            }
+
+            let grid_index = grids.len();
+            let strikes = quotes.iter().map(|quote| quote.strike).collect::<Vec<_>>();
+
+            observed_nodes.extend(build_observed_tier_option_nodes(
+                grid_index,
+                representative.maturity_weight,
+                quotes.as_slice(),
+                strikes.as_slice(),
+            )?);
+
+            grids.push(VanillaOptionGridRequest {
+                payoff_type,
+                risk_free_rate,
+                dividend_yield,
+                strikes,
+                maturity_intervals: vec![representative.maturity_interval],
+            });
+        }
+    }
+
+    if observed_nodes.is_empty() {
+        return Err(format!(
+            "joint option pricing tier `{tier_kind:?}` contains no priceable option quotes"
+        ));
+    }
+
+    let maturity_intervals = tier
+        .maturity_representatives
+        .iter()
+        .map(|representative| representative.maturity_interval)
+        .collect::<Vec<_>>();
+    let maturity_terminal_interval_indices = tier
+        .maturity_representatives
+        .iter()
+        .map(|representative| representative.terminal_interval_index)
+        .collect::<Vec<_>>();
+
+    Ok(JointRefinementOptionTierPricingInputs {
+        grid_batch_pricing_request: VanillaOptionGridBatchPricingRequest { spot, grids },
+        observed_nodes,
+        maturity_intervals,
+        maturity_terminal_interval_indices,
+    })
+}
+
+fn option_surface_tier_by_kind(
+    option_surface_tiers: &crate::stages::joint_refinement::option_surface_tiering::JointRefinementOptionSurfaceTierSet,
+    tier_kind: JointRefinementOptionSurfaceTierKind,
+) -> &JointRefinementOptionSurfaceTier {
+    match tier_kind {
+        JointRefinementOptionSurfaceTierKind::Search => &option_surface_tiers.search,
+        JointRefinementOptionSurfaceTierKind::Selection => &option_surface_tiers.selection,
+        JointRefinementOptionSurfaceTierKind::Audit => &option_surface_tiers.audit,
+    }
+}
+
+fn build_observed_tier_option_nodes(
+    grid_index: usize,
+    maturity_weight: usize,
+    quotes: &[&JointRefinementCanonicalOptionQuote],
+    strikes: &[f64],
+) -> Result<Vec<JointRefinementOptionNodeDefinition>, String> {
+    quotes
+        .iter()
+        .map(|quote| {
+            let strike_index = locate_option_grid_coordinate(strikes, quote.strike, "strike")
+                .map_err(|source| format!("{source:?}"))?;
+
+            Ok(JointRefinementOptionNodeDefinition {
+                quote_timestamp_utc_nanos: quote.quote_timestamp_utc_nanos,
+                expiry_timestamp_utc_nanos: quote.expiry_timestamp_utc_nanos,
+                strike: quote.strike,
+                payoff_type: quote.payoff_type,
+                bid_price: quote.bid_price,
+                ask_price: quote.ask_price,
+                observed_mid_price: quote.observed_mid_price,
+                maturity_weight,
+                location: JointRefinementOptionNodeLocation {
+                    grid_index,
+                    maturity_index: 0,
+                    strike_index,
+                },
+            })
+        })
+        .collect()
+}
+
+fn build_option_surface_tier_pricing_artifact(
+    cache_key: super::JointRefinementOptionPricingCacheKey,
+    pricing_result: &VanillaOptionGridBatchPricingRunResult,
+    valuation_time_utc_nanos: i64,
+    tier_inputs: &JointRefinementOptionTierPricingInputs,
+) -> Result<JointRefinementOptionTierPricingArtifact, String> {
+    let mut node_diagnostics = Vec::with_capacity(tier_inputs.observed_nodes.len());
+    let mut maturity_bucket_residuals = BTreeMap::<String, Vec<f64>>::new();
+    let mut strike_bucket_residuals = BTreeMap::<String, Vec<f64>>::new();
+    let mut residuals_by_maturity = BTreeMap::<i64, OptionMaturityResidualBucket>::new();
+
+    for observed_node in &tier_inputs.observed_nodes {
+        let model_price = resolve_model_option_price(
+            pricing_result,
+            observed_node,
+            "joint option pricing artifact returned a grid inconsistent with the selected option tier",
+        )?;
+        let spread_normalized_residual = (model_price - observed_node.observed_mid_price)
+            / (observed_node.ask_price - observed_node.bid_price);
+
+        node_diagnostics.push(JointRefinementStageOptionNodeDiagnostic {
+            quote_timestamp_utc_nanos: observed_node.quote_timestamp_utc_nanos,
+            expiry_timestamp_utc_nanos: observed_node.expiry_timestamp_utc_nanos,
+            strike: observed_node.strike,
+            option_type: match observed_node.payoff_type {
+                VanillaOptionPayoffType::Call => "call".to_string(),
+                VanillaOptionPayoffType::Put => "put".to_string(),
+            },
+            bid_price: observed_node.bid_price,
+            ask_price: observed_node.ask_price,
+            observed_mid_price: observed_node.observed_mid_price,
+            model_price,
+            spread_normalized_residual,
+        });
+
+        maturity_bucket_residuals
+            .entry(format!(
+                "{:.0}",
+                (observed_node.expiry_timestamp_utc_nanos - valuation_time_utc_nanos) as f64
+                    / ONE_HOUR_NANOS as f64
+            ))
+            .or_default()
+            .push(spread_normalized_residual);
+
+        strike_bucket_residuals
+            .entry(format!("{}", observed_node.strike))
+            .or_default()
+            .push(spread_normalized_residual);
+
+        if let Some(bucket) =
+            residuals_by_maturity.get_mut(&observed_node.expiry_timestamp_utc_nanos)
+        {
+            if bucket.maturity_weight != observed_node.maturity_weight {
+                return Err(
+                    "joint option pricing artifact encountered inconsistent maturity weights"
+                        .to_string(),
+                );
+            }
+            bucket.residuals.push(spread_normalized_residual);
+        } else {
+            residuals_by_maturity.insert(
+                observed_node.expiry_timestamp_utc_nanos,
+                OptionMaturityResidualBucket {
+                    maturity_weight: observed_node.maturity_weight,
+                    residuals: vec![spread_normalized_residual],
+                },
+            );
+        }
+    }
+
+    let mut weighted_squared_maturity_fit_sum = 0.0;
+    let mut total_maturity_weight = 0usize;
+    let mut maturity_scores = Vec::with_capacity(residuals_by_maturity.len());
+
+    for (expiry_timestamp_utc_nanos, bucket) in residuals_by_maturity {
+        let maturity_fit = root_mean_square(bucket.residuals.as_slice());
+        weighted_squared_maturity_fit_sum +=
+            bucket.maturity_weight as f64 * maturity_fit * maturity_fit;
+        total_maturity_weight += bucket.maturity_weight;
+        maturity_scores.push(JointRefinementOptionMaturityScoreArtifact {
+            expiry_timestamp_utc_nanos,
+            maturity_weight: bucket.maturity_weight,
+            quote_count: bucket.residuals.len(),
+            root_mean_square_spread_normalized_residual: maturity_fit,
+        });
+    }
+
+    if total_maturity_weight == 0 {
+        return Err("joint option pricing tier contains no weighted maturities".to_string());
+    }
+
+    let score = JointRefinementOptionTierScore {
+        root_mean_square_spread_normalized_residual: (weighted_squared_maturity_fit_sum
+            / total_maturity_weight as f64)
+            .sqrt(),
+    };
+    let aggregate_diagnostics =
+        build_option_aggregate_diagnostics(maturity_bucket_residuals, strike_bucket_residuals);
+    let tier_kind = cache_key.tier_kind;
+
+    Ok(JointRefinementOptionTierPricingArtifact {
+        cache_key,
+        tier_kind,
+        score,
+        maturity_scores,
+        node_diagnostics,
+        aggregate_diagnostics,
+        maturity_intervals: tier_inputs.maturity_intervals.clone(),
+        maturity_terminal_interval_indices: tier_inputs.maturity_terminal_interval_indices.clone(),
+    })
 }
 
 pub(crate) fn build_option_calibration_diagnostics(
     context: &JointRefinementContext,
-    fitted_parameters: &janiform_calibration_artifacts::JointRefinementStageFittedParameters,
+    selected_selection_tier_pricing_artifact: Option<&JointRefinementOptionTierPricingArtifact>,
+    audit_tier_pricing_artifact: Option<&JointRefinementOptionTierPricingArtifact>,
 ) -> Result<Option<JointRefinementStageOptionCalibrationDiagnostics>, String> {
     let Some(option_pricing_context) = context.option_pricing_context.as_ref() else {
         return Ok(None);
     };
+    debug_assert_eq!(
+        option_pricing_context
+            .option_surface_tiers
+            .audit
+            .maturity_count,
+        option_pricing_context.snapshot_maturity_intervals.len()
+    );
+    debug_assert_eq!(
+        option_pricing_context
+            .snapshot_maturity_terminal_interval_indices
+            .len(),
+        option_pricing_context.snapshot_maturity_intervals.len()
+    );
 
-    let pricing_result =
-        run_option_grid_batch_pricing(context, fitted_parameters, None, None, None, None)?;
-
-    let (node_diagnostics, maturity_bucket_residuals, strike_bucket_residuals) =
-        build_option_node_diagnostics(&pricing_result, option_pricing_context)?;
-    let aggregate_diagnostics =
-        build_option_aggregate_diagnostics(maturity_bucket_residuals, strike_bucket_residuals);
+    let selection_artifact = selected_selection_tier_pricing_artifact.ok_or_else(|| {
+        "joint option calibration diagnostics require the selected selection-tier pricing artifact"
+            .to_string()
+    })?;
+    validate_option_tier_pricing_artifact(
+        selection_artifact,
+        JointRefinementOptionSurfaceTierKind::Selection,
+    )?;
+    if let Some(audit_artifact) = audit_tier_pricing_artifact {
+        validate_option_tier_pricing_artifact(
+            audit_artifact,
+            JointRefinementOptionSurfaceTierKind::Audit,
+        )?;
+    }
 
     Ok(Some(JointRefinementStageOptionCalibrationDiagnostics {
+        carry_input: option_pricing_context.carry_input.clone(),
+        quote_universe: JointRefinementStageOptionQuoteUniverseDiagnostics {
+            input_quote_count: option_pricing_context
+                .option_surface_tiers
+                .valid_input_quote_count
+                + option_pricing_context
+                    .option_surface_tiers
+                    .dropped_input_quote_count,
+            canonical_quote_count: option_pricing_context
+                .option_surface_tiers
+                .canonical_quotes
+                .len(),
+            dropped_quote_count: option_pricing_context
+                .option_surface_tiers
+                .dropped_input_quote_count,
+        },
+        tier_construction: build_option_tier_construction_diagnostics(option_pricing_context),
+        selection_tier_pricing: build_option_tier_pricing_diagnostics(
+            option_pricing_context,
+            selection_artifact,
+        ),
+        audit_tier_pricing: audit_tier_pricing_artifact.map(|audit_artifact| {
+            build_option_tier_pricing_diagnostics(option_pricing_context, audit_artifact)
+        }),
+    }))
+}
+
+fn validate_option_tier_pricing_artifact(
+    artifact: &JointRefinementOptionTierPricingArtifact,
+    expected_tier_kind: JointRefinementOptionSurfaceTierKind,
+) -> Result<(), String> {
+    if artifact.tier_kind != expected_tier_kind
+        || artifact.cache_key.tier_kind != expected_tier_kind
+    {
+        return Err(format!(
+            "joint option calibration diagnostics require a `{expected_tier_kind:?}` pricing artifact"
+        ));
+    }
+    for maturity_score in &artifact.maturity_scores {
+        if maturity_score.maturity_weight == 0
+            || maturity_score.quote_count == 0
+            || !maturity_score
+                .root_mean_square_spread_normalized_residual
+                .is_finite()
+        {
+            return Err(
+                "joint option calibration diagnostics received an invalid maturity score artifact"
+                    .to_string(),
+            );
+        }
+        if !artifact.node_diagnostics.iter().any(|node| {
+            node.expiry_timestamp_utc_nanos == maturity_score.expiry_timestamp_utc_nanos
+        }) {
+            return Err(
+                "joint option calibration diagnostics received a maturity score without node coverage"
+                    .to_string(),
+            );
+        }
+    }
+
+    Ok(())
+}
+
+fn build_option_tier_construction_diagnostics(
+    option_pricing_context: &JointRefinementOptionPricingContext,
+) -> JointRefinementStageOptionTierConstructionDiagnostics {
+    JointRefinementStageOptionTierConstructionDiagnostics {
+        search: build_option_tier_construction_diagnostic(
+            &option_pricing_context.option_surface_tiers.search,
+        ),
+        selection: build_option_tier_construction_diagnostic(
+            &option_pricing_context.option_surface_tiers.selection,
+        ),
+        audit: build_option_tier_construction_diagnostic(
+            &option_pricing_context.option_surface_tiers.audit,
+        ),
+    }
+}
+
+fn build_option_tier_construction_diagnostic(
+    tier: &JointRefinementOptionSurfaceTier,
+) -> JointRefinementStageOptionTierConstructionDiagnostic {
+    JointRefinementStageOptionTierConstructionDiagnostic {
+        tier_kind: option_surface_tier_kind_label(tier.tier_kind).to_string(),
+        maturity_count: tier.maturity_count,
+        representative_maturities: tier
+            .maturity_representatives
+            .iter()
+            .map(
+                |representative| JointRefinementStageOptionTierMaturityDiagnostic {
+                    terminal_interval_index: representative.terminal_interval_index,
+                    maturity_interval: representative.maturity_interval,
+                    expiry_timestamp_utc_nanos: representative.expiry_timestamp_utc_nanos,
+                    maturity_weight: representative.maturity_weight,
+                    selected_quote_count: representative.quote_indices.len(),
+                },
+            )
+            .collect(),
+    }
+}
+
+fn build_option_tier_pricing_diagnostics(
+    option_pricing_context: &JointRefinementOptionPricingContext,
+    artifact: &JointRefinementOptionTierPricingArtifact,
+) -> JointRefinementStageOptionTierPricingDiagnostics {
+    JointRefinementStageOptionTierPricingDiagnostics {
+        tier_kind: option_surface_tier_kind_label(artifact.tier_kind).to_string(),
         snapshot_metadata: JointRefinementStageOptionSnapshotMetadata {
             valuation_time_utc_nanos: option_pricing_context.valuation_time_utc_nanos,
-            node_count: node_diagnostics.len(),
+            node_count: artifact.node_diagnostics.len(),
             pricing_interval_schedule: option_pricing_context.runtime_interval_schedule.clone(),
-            maturity_intervals: option_pricing_context.snapshot_maturity_intervals.clone(),
-            maturity_terminal_interval_indices: option_pricing_context
-                .snapshot_maturity_terminal_interval_indices
-                .clone(),
+            maturity_intervals: artifact.maturity_intervals.clone(),
+            maturity_terminal_interval_indices: artifact.maturity_terminal_interval_indices.clone(),
         },
-        carry_input: option_pricing_context.carry_input.clone(),
-        node_diagnostics,
-        aggregate_diagnostics,
-    }))
+        root_mean_square_spread_normalized_residual: artifact
+            .score
+            .root_mean_square_spread_normalized_residual,
+        maturity_scores: artifact
+            .maturity_scores
+            .iter()
+            .map(
+                |maturity_score| JointRefinementStageOptionMaturityScoreDiagnostic {
+                    expiry_timestamp_utc_nanos: maturity_score.expiry_timestamp_utc_nanos,
+                    maturity_weight: maturity_score.maturity_weight,
+                    quote_count: maturity_score.quote_count,
+                    root_mean_square_spread_normalized_residual: maturity_score
+                        .root_mean_square_spread_normalized_residual,
+                },
+            )
+            .collect(),
+        node_diagnostics: artifact.node_diagnostics.clone(),
+        aggregate_diagnostics: artifact.aggregate_diagnostics.clone(),
+    }
+}
+
+fn option_surface_tier_kind_label(tier_kind: JointRefinementOptionSurfaceTierKind) -> &'static str {
+    match tier_kind {
+        JointRefinementOptionSurfaceTierKind::Search => "search",
+        JointRefinementOptionSurfaceTierKind::Selection => "selection",
+        JointRefinementOptionSurfaceTierKind::Audit => "audit",
+    }
 }
 
 fn format_option_pricing_progress_item(event: &PricingProgressEvent) -> String {
@@ -844,68 +1308,6 @@ fn snapshot_maturity_terminal_mapping(
 
 type ResidualBuckets = BTreeMap<String, Vec<f64>>;
 
-fn build_option_node_diagnostics(
-    pricing_result: &VanillaOptionGridBatchPricingRunResult,
-    option_pricing_context: &JointRefinementOptionPricingContext,
-) -> Result<
-    (
-        Vec<JointRefinementStageOptionNodeDiagnostic>,
-        ResidualBuckets,
-        ResidualBuckets,
-    ),
-    String,
-> {
-    let mut node_diagnostics = Vec::with_capacity(option_pricing_context.observed_nodes.len());
-    let mut maturity_bucket_residuals = BTreeMap::<String, Vec<f64>>::new();
-    let mut strike_bucket_residuals = BTreeMap::<String, Vec<f64>>::new();
-
-    for observed_node in &option_pricing_context.observed_nodes {
-        let model_price = resolve_model_option_price(
-            pricing_result,
-            observed_node,
-            "joint option pricing diagnostics returned a grid inconsistent with the selected option snapshot",
-        )?;
-        let spread_normalized_residual = (model_price - observed_node.observed_mid_price)
-            / (observed_node.ask_price - observed_node.bid_price);
-
-        node_diagnostics.push(JointRefinementStageOptionNodeDiagnostic {
-            quote_timestamp_utc_nanos: observed_node.quote_timestamp_utc_nanos,
-            expiry_timestamp_utc_nanos: observed_node.expiry_timestamp_utc_nanos,
-            strike: observed_node.strike,
-            option_type: match observed_node.payoff_type {
-                VanillaOptionPayoffType::Call => "call".to_string(),
-                VanillaOptionPayoffType::Put => "put".to_string(),
-            },
-            bid_price: observed_node.bid_price,
-            ask_price: observed_node.ask_price,
-            observed_mid_price: observed_node.observed_mid_price,
-            model_price,
-            spread_normalized_residual,
-        });
-
-        maturity_bucket_residuals
-            .entry(format!(
-                "{:.0}",
-                (observed_node.expiry_timestamp_utc_nanos
-                    - option_pricing_context.valuation_time_utc_nanos) as f64
-                    / ONE_HOUR_NANOS as f64
-            ))
-            .or_default()
-            .push(spread_normalized_residual);
-
-        strike_bucket_residuals
-            .entry(format!("{}", observed_node.strike))
-            .or_default()
-            .push(spread_normalized_residual);
-    }
-
-    Ok((
-        node_diagnostics,
-        maturity_bucket_residuals,
-        strike_bucket_residuals,
-    ))
-}
-
 fn build_option_aggregate_diagnostics(
     maturity_bucket_residuals: ResidualBuckets,
     strike_bucket_residuals: ResidualBuckets,
@@ -999,8 +1401,10 @@ mod tests {
     use janiform_engine_pricing::{
         AnchoredVanillaOptionPricingBoundaryInput, PricingIntervalSchedule,
         PricingIntervalSchedulePolicy, VanillaOptionGridBatchPricingExecutionInput,
-        VanillaOptionGridRequest, VanillaOptionPayoffType, VanillaOptionPricingModelParameters,
-        VanillaOptionPricingOptionalOutputSelection, materialize_schedule_interval_factors,
+        VanillaOptionGridBatchPricingRequest, VanillaOptionGridBatchPricingRunResult,
+        VanillaOptionGridPricingResult, VanillaOptionGridRequest, VanillaOptionPayoffType,
+        VanillaOptionPricingModelParameters, VanillaOptionPricingOptionalOutputSelection,
+        VanillaOptionPricingStatus, materialize_schedule_interval_factors,
         run_vanilla_option_grid_batch_pricing,
     };
     use janiform_foundations::time::ONE_HOUR_NANOS;
@@ -1012,8 +1416,9 @@ mod tests {
 
     use super::{
         build_option_boundary_input, build_option_grid_batch_pricing_request,
-        build_surprise_multipliers_for_interval_grid, derive_pricing_interval_schedule,
-        estimate_option_pricing_current_state, pricing_nig_configuration, validate_option_spot,
+        build_option_surface_tier_pricing_artifact, build_surprise_multipliers_for_interval_grid,
+        derive_pricing_interval_schedule, estimate_option_pricing_current_state,
+        pricing_nig_configuration, validate_option_spot,
     };
     use crate::adapters::load_hourly_factor_contract_for_calibration;
     use crate::stages::hawkes::HawkesStageFittedPayload;
@@ -1021,6 +1426,11 @@ mod tests {
         JointRefinementStageCurrentStateEstimationInput, JointRefinementStageOptionPricingInput,
         JointRefinementStageOptionSnapshotNode, JointRefinementStageSeasonalityFactorsInput,
     };
+    use crate::stages::joint_refinement::execution::state::{
+        JointRefinementOptionNodeDefinition, JointRefinementOptionNodeLocation,
+        JointRefinementOptionPricingCacheKey, JointRefinementOptionTierPricingInputs,
+    };
+    use crate::stages::joint_refinement::option_surface_tiering::JointRefinementOptionSurfaceTierKind;
     use crate::stages::mean_reversion::MeanReversionStageFittedPayload;
     use crate::stages::return_components::ReturnComponentsStageFittedPayload;
     use crate::stages::seasonality::build_runtime_hourly_seasonality_factors_from_components;
@@ -1177,6 +1587,233 @@ mod tests {
         assert_eq!(observed_nodes[4].location.grid_index, 2);
         assert_eq!(observed_nodes[4].location.maturity_index, 0);
         assert_eq!(observed_nodes[4].location.strike_index, 0);
+    }
+
+    #[test]
+    fn option_tier_pricing_artifact_preserves_node_and_maturity_scores() {
+        let runtime_interval_schedule =
+            sample_option_runtime_interval_schedule(&sample_option_pricing_input());
+        let cache_key = JointRefinementOptionPricingCacheKey {
+            tier_kind: JointRefinementOptionSurfaceTierKind::Selection,
+            source_dynamics_parameter_bits: vec![1, 2, 3],
+            pricing_parameter_bits: vec![4, 5],
+        };
+        let tier_inputs = JointRefinementOptionTierPricingInputs {
+            grid_batch_pricing_request: VanillaOptionGridBatchPricingRequest {
+                spot: 100.0,
+                grids: vec![
+                    VanillaOptionGridRequest {
+                        payoff_type: VanillaOptionPayoffType::Call,
+                        risk_free_rate: 0.01,
+                        dividend_yield: 0.005,
+                        strikes: vec![100.0, 110.0],
+                        maturity_intervals: vec![1.0],
+                    },
+                    VanillaOptionGridRequest {
+                        payoff_type: VanillaOptionPayoffType::Put,
+                        risk_free_rate: 0.01,
+                        dividend_yield: 0.005,
+                        strikes: vec![95.0],
+                        maturity_intervals: vec![2.0],
+                    },
+                ],
+            },
+            observed_nodes: vec![
+                artifact_observed_node(
+                    ONE_HOUR_NANOS,
+                    100.0,
+                    VanillaOptionPayoffType::Call,
+                    0,
+                    0,
+                    0,
+                    2,
+                    0.9,
+                    1.1,
+                ),
+                artifact_observed_node(
+                    ONE_HOUR_NANOS,
+                    110.0,
+                    VanillaOptionPayoffType::Call,
+                    0,
+                    0,
+                    1,
+                    2,
+                    1.25,
+                    1.75,
+                ),
+                artifact_observed_node(
+                    2 * ONE_HOUR_NANOS,
+                    95.0,
+                    VanillaOptionPayoffType::Put,
+                    1,
+                    0,
+                    0,
+                    1,
+                    1.05,
+                    1.35,
+                ),
+            ],
+            maturity_intervals: vec![1.0, 2.0],
+            maturity_terminal_interval_indices: vec![0, 1],
+        };
+        let pricing_result = VanillaOptionGridBatchPricingRunResult {
+            spot: 100.0,
+            grids: vec![
+                artifact_grid_result(
+                    VanillaOptionPayoffType::Call,
+                    vec![100.0, 110.0],
+                    1.0,
+                    0,
+                    vec![1.4, 2.0],
+                ),
+                artifact_grid_result(VanillaOptionPayoffType::Put, vec![95.0], 2.0, 1, vec![0.9]),
+            ],
+            runtime_interval_schedule,
+        };
+
+        let artifact = build_option_surface_tier_pricing_artifact(
+            cache_key.clone(),
+            &pricing_result,
+            0,
+            &tier_inputs,
+        )
+        .expect("artifact should build from complete grid prices");
+        assert_eq!(artifact.cache_key, cache_key);
+        assert_eq!(
+            artifact.tier_kind,
+            JointRefinementOptionSurfaceTierKind::Selection
+        );
+        assert_eq!(artifact.node_diagnostics.len(), 3);
+        assert_eq!(artifact.node_diagnostics[0].model_price, 1.4);
+        assert_eq!(artifact.node_diagnostics[1].spread_normalized_residual, 1.0);
+        let third_observed_node = &tier_inputs.observed_nodes[2];
+        assert_eq!(
+            artifact.node_diagnostics[2].spread_normalized_residual,
+            (0.9 - third_observed_node.observed_mid_price)
+                / (third_observed_node.ask_price - third_observed_node.bid_price)
+        );
+        assert_eq!(artifact.maturity_scores.len(), 2);
+        assert_eq!(
+            artifact.maturity_scores[0].expiry_timestamp_utc_nanos,
+            ONE_HOUR_NANOS
+        );
+        assert_eq!(artifact.maturity_scores[0].maturity_weight, 2);
+        assert_eq!(artifact.maturity_scores[0].quote_count, 2);
+        assert_eq!(
+            artifact.maturity_scores[1].expiry_timestamp_utc_nanos,
+            2 * ONE_HOUR_NANOS
+        );
+        assert_eq!(artifact.maturity_scores[1].maturity_weight, 1);
+        assert_eq!(artifact.aggregate_diagnostics.len(), 5);
+
+        let total_maturity_weight = artifact
+            .maturity_scores
+            .iter()
+            .map(|maturity_score| maturity_score.maturity_weight)
+            .sum::<usize>();
+        let weighted_squared_maturity_fit_sum = artifact
+            .maturity_scores
+            .iter()
+            .map(|maturity_score| {
+                maturity_score.maturity_weight as f64
+                    * maturity_score.root_mean_square_spread_normalized_residual
+                    * maturity_score.root_mean_square_spread_normalized_residual
+            })
+            .sum::<f64>();
+        assert_eq!(
+            artifact.score.root_mean_square_spread_normalized_residual,
+            (weighted_squared_maturity_fit_sum / total_maturity_weight as f64).sqrt()
+        );
+    }
+
+    #[test]
+    fn option_pricing_cache_key_separates_tier_dynamics_and_pricing_bits() {
+        let base_key = JointRefinementOptionPricingCacheKey {
+            tier_kind: JointRefinementOptionSurfaceTierKind::Search,
+            source_dynamics_parameter_bits: vec![1, 2],
+            pricing_parameter_bits: vec![3, 4],
+        };
+
+        assert_ne!(
+            base_key,
+            JointRefinementOptionPricingCacheKey {
+                tier_kind: JointRefinementOptionSurfaceTierKind::Selection,
+                source_dynamics_parameter_bits: vec![1, 2],
+                pricing_parameter_bits: vec![3, 4],
+            }
+        );
+        assert_ne!(
+            base_key,
+            JointRefinementOptionPricingCacheKey {
+                tier_kind: JointRefinementOptionSurfaceTierKind::Search,
+                source_dynamics_parameter_bits: vec![1, 5],
+                pricing_parameter_bits: vec![3, 4],
+            }
+        );
+        assert_ne!(
+            base_key,
+            JointRefinementOptionPricingCacheKey {
+                tier_kind: JointRefinementOptionSurfaceTierKind::Search,
+                source_dynamics_parameter_bits: vec![1, 2],
+                pricing_parameter_bits: vec![3, 6],
+            }
+        );
+    }
+
+    fn artifact_observed_node(
+        expiry_timestamp_utc_nanos: i64,
+        strike: f64,
+        payoff_type: VanillaOptionPayoffType,
+        grid_index: usize,
+        maturity_index: usize,
+        strike_index: usize,
+        maturity_weight: usize,
+        bid_price: f64,
+        ask_price: f64,
+    ) -> JointRefinementOptionNodeDefinition {
+        JointRefinementOptionNodeDefinition {
+            quote_timestamp_utc_nanos: 0,
+            expiry_timestamp_utc_nanos,
+            strike,
+            payoff_type,
+            bid_price,
+            ask_price,
+            observed_mid_price: 0.5 * (bid_price + ask_price),
+            maturity_weight,
+            location: JointRefinementOptionNodeLocation {
+                grid_index,
+                maturity_index,
+                strike_index,
+            },
+        }
+    }
+
+    fn artifact_grid_result(
+        payoff_type: VanillaOptionPayoffType,
+        strikes: Vec<f64>,
+        maturity_interval: f64,
+        terminal_interval_index: usize,
+        prices: Vec<f64>,
+    ) -> VanillaOptionGridPricingResult {
+        let strike_count = strikes.len();
+        VanillaOptionGridPricingResult {
+            payoff_type,
+            risk_free_rate: 0.01,
+            dividend_yield: 0.005,
+            strikes,
+            maturity_intervals: vec![maturity_interval],
+            maturity_terminal_interval_indices: vec![terminal_interval_index],
+            price_grid: vec![prices.into_iter().map(Some).collect()],
+            implied_volatility_grid: vec![vec![None; strike_count]],
+            implied_volatility_inversion_status_grid: vec![vec![None; strike_count]],
+            pricing_status_grid: vec![vec![VanillaOptionPricingStatus::Succeeded; strike_count]],
+            pricing_failure_stage_grid: vec![vec![None; strike_count]],
+            pricing_failure_reason_grid: vec![vec![None; strike_count]],
+            forward_price_grid: vec![vec![None; strike_count]],
+            discount_factor_grid: vec![vec![None; strike_count]],
+            boundary_state_norm_grid: vec![vec![None; strike_count]],
+            maturity_summaries: vec![None],
+        }
     }
 
     #[derive(Debug, Deserialize)]

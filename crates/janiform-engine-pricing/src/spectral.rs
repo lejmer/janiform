@@ -23,6 +23,7 @@ use crate::runner::{
     LocalTransitionRequestContext, RiskNeutralAnchorMaterialization,
     VanillaOptionPricingExecutionInput, VanillaOptionPricingIntervalFactors,
     VanillaOptionPricingRunError, build_pricing_risk_neutral_anchor_materialization,
+    build_spectral_compatibility_integration_diagnostics,
     evaluate_pricing_log_return_characteristic_function_batch_for_context,
     resolve_local_transition_theta_for_row_with_parallelism,
 };
@@ -507,6 +508,8 @@ fn build_grid_result(
             observer,
         );
 
+        let representative_price = priced_row.price_row.iter().flatten().copied().next();
+
         price_grid.push(priced_row.price_row);
         implied_volatility_grid.push(priced_row.implied_volatility_row);
         implied_volatility_status_grid.push(priced_row.implied_volatility_status_row);
@@ -519,7 +522,8 @@ fn build_grid_result(
         maturity_summaries.push(Some(build_maturity_summary(
             solved_maturity,
             execution_input.optional_output_selection,
-        )));
+            representative_price,
+        )?));
         let next_maturity_index = if maturity_index + 1 < total_maturities {
             Some(maturity_index + 1)
         } else {
@@ -1184,8 +1188,36 @@ fn build_spectral_domain(
 fn build_maturity_summary(
     solved_maturity: &SolvedMaturityLaw,
     optional_output_selection: VanillaOptionPricingOptionalOutputSelection,
-) -> VanillaOptionMaturitySummary {
-    VanillaOptionMaturitySummary {
+    representative_price: Option<f64>,
+) -> Result<VanillaOptionMaturitySummary, VanillaOptionGridBatchPricingRunError> {
+    let spectral_diagnostics = if optional_output_selection.include_integration_quality_diagnostics
+    {
+        Some(
+            SpectralPricingDiagnostics::try_new(
+                solved_maturity.deviation_lower_bound,
+                solved_maturity.deviation_upper_bound,
+                solved_maturity.node_count,
+                solved_maturity.interval_summaries.clone(),
+            )
+            .map_err(|source| VanillaOptionGridBatchPricingRunError::NodePricingFailure {
+                message: format!("spectral maturity diagnostics are invalid: {source}"),
+            })?,
+        )
+    } else {
+        None
+    };
+    let integration_quality =
+        if let (Some(price), Some(diagnostics)) = (representative_price, spectral_diagnostics) {
+            Some(build_spectral_compatibility_integration_diagnostics(
+                price,
+                solved_maturity.maturity_interval,
+                &diagnostics,
+            ))
+        } else {
+            None
+        };
+
+    Ok(VanillaOptionMaturitySummary {
         maturity_interval: solved_maturity.maturity_interval,
         terminal_anchor_value: solved_maturity.terminal_anchor_value,
         deviation_domain_lower_bound: solved_maturity.deviation_lower_bound,
@@ -1205,8 +1237,8 @@ fn build_maturity_summary(
         } else {
             None
         },
-        integration_quality: None,
-    }
+        integration_quality,
+    })
 }
 
 fn cos_price_from_terminal_characteristic_function(

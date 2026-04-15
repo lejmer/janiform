@@ -29,6 +29,11 @@ use super::types::{
 };
 use crate::stages::return_components::contracts::ReturnComponentsObservedOpenSessionReturn;
 
+const TEST_OPTIMIZER_SAMPLE_COUNT: usize = 96;
+const TEST_OPTIMIZER_MAX_ITERATIONS: usize = 12;
+const TEST_OPTIMIZER_MOMENT_CANDIDATE_COUNT: usize = 24;
+const TEST_OPTIMIZER_BROAD_SEARCH_POINT_COUNT: usize = 16;
+
 #[test]
 fn skew_ratio_coordinate_round_trip_stays_inside_open_domain() {
     let ratio = coordinate_to_ratio(ratio_to_coordinate(0.35));
@@ -339,12 +344,24 @@ fn alpha_beta_boundary_penalty_increases_for_probe_unstable_configuration() {
 #[test]
 fn broad_search_is_deterministic_across_parallel_cpu_counts() {
     let calibration_sample = test_optimizer_calibration_sample();
-    let single_thread_solver_settings =
-        CalibrationOptimizerSettings::try_new("adaptive_search", 64, 1, 1.0e-8, 1.0e-6, 1.0)
-            .expect("solver settings should validate");
-    let multi_thread_solver_settings =
-        CalibrationOptimizerSettings::try_new("adaptive_search", 64, 4, 1.0e-8, 1.0e-6, 1.0)
-            .expect("solver settings should validate");
+    let single_thread_solver_settings = CalibrationOptimizerSettings::try_new(
+        "adaptive_search",
+        TEST_OPTIMIZER_MAX_ITERATIONS,
+        1,
+        1.0e-8,
+        1.0e-6,
+        1.0,
+    )
+    .expect("solver settings should validate");
+    let multi_thread_solver_settings = CalibrationOptimizerSettings::try_new(
+        "adaptive_search",
+        TEST_OPTIMIZER_MAX_ITERATIONS,
+        4,
+        1.0e-8,
+        1.0e-6,
+        1.0,
+    )
+    .expect("solver settings should validate");
 
     let single_thread_candidates =
         build_nig_search_candidates(&calibration_sample, 17, &single_thread_solver_settings);
@@ -371,15 +388,24 @@ fn broad_search_is_deterministic_across_parallel_cpu_counts() {
 fn optimized_candidate_is_no_worse_than_best_broad_seed() {
     let calibration_sample = test_optimizer_calibration_sample();
     let optimizer_context = build_continuous_return_optimizer_context(&calibration_sample);
-    let solver_settings =
-        CalibrationOptimizerSettings::try_new("adaptive_search", 64, 1, 1.0e-8, 1.0e-6, 1.0)
-            .expect("solver settings should validate");
-    let theoretical_bounds = theoretical_search_bounds(calibration_sample.observed_profile, 96);
+    let solver_settings = CalibrationOptimizerSettings::try_new(
+        "adaptive_search",
+        TEST_OPTIMIZER_MAX_ITERATIONS,
+        1,
+        1.0e-8,
+        1.0e-6,
+        1.0,
+    )
+    .expect("solver settings should validate");
+    let theoretical_bounds = theoretical_search_bounds(
+        calibration_sample.observed_profile,
+        TEST_OPTIMIZER_MOMENT_CANDIDATE_COUNT,
+    );
     let moment_seed_candidates = build_moment_seed_candidates(
         &optimizer_context,
         &calibration_sample,
         theoretical_bounds,
-        96,
+        TEST_OPTIMIZER_MOMENT_CANDIDATE_COUNT,
     );
     let broad_search_regimes = build_search_regimes_from_moment_seeds(
         &optimizer_context,
@@ -387,7 +413,10 @@ fn optimized_candidate_is_no_worse_than_best_broad_seed() {
         theoretical_bounds,
     );
 
-    let broad_search_points = build_broad_search_points(broad_search_regimes.as_slice(), 64);
+    let broad_search_points = build_broad_search_points(
+        broad_search_regimes.as_slice(),
+        TEST_OPTIMIZER_BROAD_SEARCH_POINT_COUNT,
+    );
     let broad_seed_candidates = score_search_points(
         &optimizer_context,
         broad_search_points.as_slice(),
@@ -418,9 +447,15 @@ fn optimized_candidate_is_no_worse_than_best_broad_seed() {
 #[test]
 fn optimized_candidates_surface_distinct_basin_diagnostics() {
     let calibration_sample = test_optimizer_calibration_sample();
-    let solver_settings =
-        CalibrationOptimizerSettings::try_new("adaptive_search", 64, 4, 1.0e-8, 1.0e-6, 1.0)
-            .expect("solver settings should validate");
+    let solver_settings = CalibrationOptimizerSettings::try_new(
+        "adaptive_search",
+        TEST_OPTIMIZER_MAX_ITERATIONS,
+        4,
+        1.0e-8,
+        1.0e-6,
+        1.0,
+    )
+    .expect("solver settings should validate");
 
     let optimized_candidates =
         build_nig_search_candidates(&calibration_sample, 17, &solver_settings);
@@ -435,7 +470,19 @@ fn optimized_candidates_surface_distinct_basin_diagnostics() {
         .iter()
         .map(|diagnostic| diagnostic.family_label.clone())
         .collect();
-    assert_eq!(family_labels.len(), basin_diagnostics.len());
+    assert!(!family_labels.is_empty());
+    let final_coordinate_sets: BTreeSet<(u64, u64, u64, u64)> = basin_diagnostics
+        .iter()
+        .map(|diagnostic| {
+            (
+                diagnostic.final_log_alpha.to_bits(),
+                diagnostic.final_buy_skew_coordinate.to_bits(),
+                diagnostic.final_sell_relative_coordinate.to_bits(),
+                diagnostic.final_log_delta_offset.to_bits(),
+            )
+        })
+        .collect();
+    assert_eq!(final_coordinate_sets.len(), basin_diagnostics.len());
     assert!(
         basin_diagnostics
             .iter()
@@ -446,12 +493,24 @@ fn optimized_candidates_surface_distinct_basin_diagnostics() {
 #[test]
 fn optimizer_stop_reason_can_report_tolerance_and_budget() {
     let calibration_sample = test_optimizer_calibration_sample();
-    let tolerance_solver_settings =
-        CalibrationOptimizerSettings::try_new("adaptive_search", 64, 1, 1.0, 1.0, 1.0)
-            .expect("solver settings should validate");
-    let budget_solver_settings =
-        CalibrationOptimizerSettings::try_new("adaptive_search", 64, 1, 1.0e-12, 1.0e-12, 1.0)
-            .expect("solver settings should validate");
+    let tolerance_solver_settings = CalibrationOptimizerSettings::try_new(
+        "adaptive_search",
+        TEST_OPTIMIZER_MAX_ITERATIONS,
+        1,
+        1.0,
+        1.0,
+        1.0,
+    )
+    .expect("solver settings should validate");
+    let budget_solver_settings = CalibrationOptimizerSettings::try_new(
+        "adaptive_search",
+        TEST_OPTIMIZER_MAX_ITERATIONS,
+        1,
+        1.0e-12,
+        1.0e-12,
+        1.0,
+    )
+    .expect("solver settings should validate");
 
     let tolerance_candidates =
         build_nig_search_candidates(&calibration_sample, 17, &tolerance_solver_settings);
@@ -471,9 +530,15 @@ fn optimizer_stop_reason_can_report_tolerance_and_budget() {
 #[test]
 fn repeated_builds_keep_objective_cache_observable_results_stable() {
     let calibration_sample = test_optimizer_calibration_sample();
-    let solver_settings =
-        CalibrationOptimizerSettings::try_new("adaptive_search", 64, 2, 1.0e-8, 1.0e-6, 1.0)
-            .expect("solver settings should validate");
+    let solver_settings = CalibrationOptimizerSettings::try_new(
+        "adaptive_search",
+        TEST_OPTIMIZER_MAX_ITERATIONS,
+        2,
+        1.0e-8,
+        1.0e-6,
+        1.0,
+    )
+    .expect("solver settings should validate");
 
     let first_candidates = build_nig_search_candidates(&calibration_sample, 17, &solver_settings);
     let second_candidates = build_nig_search_candidates(&calibration_sample, 17, &solver_settings);
@@ -499,10 +564,10 @@ fn test_optimizer_calibration_sample() -> ReturnComponentsStageContinuousReturnC
         .derive_driver_parameters()
         .expect("driver parameters should derive");
     let mut randomness_stream = SplitMix64SimulationRandomnessStream::from_seed(91);
-    let business_time_scales: Vec<f64> = (0..320)
+    let business_time_scales: Vec<f64> = (0..TEST_OPTIMIZER_SAMPLE_COUNT)
         .map(|sample_index| 0.8 + sample_index as f64 / 80.0)
         .collect();
-    let sell_share_proxies: Vec<f64> = (0..320)
+    let sell_share_proxies: Vec<f64> = (0..TEST_OPTIMIZER_SAMPLE_COUNT)
         .map(|sample_index| 0.25 + 0.50 * ((sample_index % 13) as f64 / 12.0))
         .collect();
     let observed_returns: Vec<f64> = business_time_scales

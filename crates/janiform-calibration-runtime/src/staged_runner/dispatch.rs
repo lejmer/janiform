@@ -350,6 +350,10 @@ pub(super) fn run_stage_for_staged_execution(
                 mean_reversion_input,
                 candidate_generation_input,
                 restart_count_override: staged_run_inputs.joint_refinement_restart_count_override,
+                option_refinement_candidate_count_override: staged_run_inputs
+                    .joint_refinement_option_refinement_candidate_count_override,
+                audit_option_pricing_enabled: staged_run_inputs
+                    .joint_refinement_audit_option_pricing_enabled,
                 option_pricing_input: staged_run_inputs
                     .joint_refinement_option_pricing_input
                     .clone(),

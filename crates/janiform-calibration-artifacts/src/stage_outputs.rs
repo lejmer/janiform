@@ -114,7 +114,6 @@ pub struct JointRefinementStageObjectiveBreakdown {
     pub activity_level_fit: f64,
     pub rv_activity_coupling_fit: f64,
     pub price_span_sanity_fit: f64,
-    pub option_spread_normalized_price_fit: f64,
     pub weighted_objective: f64,
     pub hard_constraint_penalty: f64,
 }
@@ -198,6 +197,36 @@ pub struct JointRefinementStageOptionSnapshotMetadata {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct JointRefinementStageOptionQuoteUniverseDiagnostics {
+    pub input_quote_count: usize,
+    pub canonical_quote_count: usize,
+    pub dropped_quote_count: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct JointRefinementStageOptionTierMaturityDiagnostic {
+    pub terminal_interval_index: usize,
+    pub maturity_interval: f64,
+    pub expiry_timestamp_utc_nanos: i64,
+    pub maturity_weight: usize,
+    pub selected_quote_count: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct JointRefinementStageOptionTierConstructionDiagnostic {
+    pub tier_kind: String,
+    pub maturity_count: usize,
+    pub representative_maturities: Vec<JointRefinementStageOptionTierMaturityDiagnostic>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct JointRefinementStageOptionTierConstructionDiagnostics {
+    pub search: JointRefinementStageOptionTierConstructionDiagnostic,
+    pub selection: JointRefinementStageOptionTierConstructionDiagnostic,
+    pub audit: JointRefinementStageOptionTierConstructionDiagnostic,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct JointRefinementStageOptionNodeDiagnostic {
     pub quote_timestamp_utc_nanos: i64,
     pub expiry_timestamp_utc_nanos: i64,
@@ -220,9 +249,29 @@ pub struct JointRefinementStageOptionAggregateDiagnostic {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct JointRefinementStageOptionCalibrationDiagnostics {
+pub struct JointRefinementStageOptionMaturityScoreDiagnostic {
+    pub expiry_timestamp_utc_nanos: i64,
+    pub maturity_weight: usize,
+    pub quote_count: usize,
+    pub root_mean_square_spread_normalized_residual: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct JointRefinementStageOptionTierPricingDiagnostics {
+    pub tier_kind: String,
     pub snapshot_metadata: JointRefinementStageOptionSnapshotMetadata,
-    pub carry_input: JointRefinementStageCarryInput,
+    pub root_mean_square_spread_normalized_residual: f64,
+    pub maturity_scores: Vec<JointRefinementStageOptionMaturityScoreDiagnostic>,
     pub node_diagnostics: Vec<JointRefinementStageOptionNodeDiagnostic>,
     pub aggregate_diagnostics: Vec<JointRefinementStageOptionAggregateDiagnostic>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct JointRefinementStageOptionCalibrationDiagnostics {
+    pub carry_input: JointRefinementStageCarryInput,
+    pub quote_universe: JointRefinementStageOptionQuoteUniverseDiagnostics,
+    pub tier_construction: JointRefinementStageOptionTierConstructionDiagnostics,
+    pub selection_tier_pricing: JointRefinementStageOptionTierPricingDiagnostics,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audit_tier_pricing: Option<JointRefinementStageOptionTierPricingDiagnostics>,
 }

@@ -159,7 +159,6 @@ pub(crate) fn baseline_buckets_from_evaluation(
         activity_level_fit: breakdown.activity_level_fit,
         rv_activity_coupling_fit: breakdown.rv_activity_coupling_fit,
         price_span_sanity_fit: breakdown.price_span_sanity_fit,
-        option_spread_normalized_price_fit: breakdown.option_spread_normalized_price_fit,
     }
 }
 

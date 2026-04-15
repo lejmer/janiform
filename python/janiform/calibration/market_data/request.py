@@ -26,12 +26,14 @@ from ..staged import CalibrationStage, CalibrationStageSolverSettings
 from ...contracts.base import (
     ContractModel,
     parse_json_object,
-    serialize_deterministic_json,
+    require_boolean,
     require_datetime_utc,
     require_mapping,
     require_non_empty_string,
+    require_positive_integer,
     require_sequence,
     require_string,
+    serialize_deterministic_json,
 )
 from ...pricing import (
     AutoExactSparsePricingIntervalSchedulePolicy,
@@ -62,6 +64,9 @@ class MarketDataCalibrationRequest(ContractModel):
     pricing_interval_schedule_policy: PricingIntervalSchedulePolicy = field(
         default_factory=default_pricing_interval_schedule_policy
     )
+    dynamics_search_restart_count: Optional[int] = None
+    joint_refinement_option_refinement_candidate_count_override: Optional[int] = None
+    joint_refinement_audit_option_pricing_enabled: bool = False
     known_news_inputs: Optional[CalibrationKnownNewsInput] = None
     mean_reversion: Optional[CalibrationMeanReversionConfiguration] = None
 
@@ -88,6 +93,15 @@ class MarketDataCalibrationRequest(ContractModel):
             workflow_scope=self.workflow_scope,
             normalization_policy=self.normalization_policy,
         )
+        if (
+            self.joint_refinement_audit_option_pricing_enabled
+            and self.option_surface_source is None
+        ):
+            raise calibration_error(
+                "joint_refinement_audit_option_pricing_enabled",
+                "requires option_surface_source",
+            )
+
         validate_option_surface_scope(
             workflow_scope=self.workflow_scope,
             option_surface_source=self.option_surface_source,
@@ -121,6 +135,24 @@ class MarketDataCalibrationRequest(ContractModel):
             raise calibration_error(
                 "mean_reversion",
                 "must be omitted when workflow_scope is seasonality_only",
+            )
+
+        if (
+            self.dynamics_search_restart_count is not None
+            and self.dynamics_search_restart_count <= 0
+        ):
+            raise calibration_error(
+                "dynamics_search_restart_count",
+                "must be greater than zero when provided",
+            )
+
+        if (
+            self.joint_refinement_option_refinement_candidate_count_override is not None
+            and self.joint_refinement_option_refinement_candidate_count_override <= 0
+        ):
+            raise calibration_error(
+                "joint_refinement_option_refinement_candidate_count_override",
+                "must be greater than zero when provided",
             )
 
         selected_stages = (
@@ -271,6 +303,38 @@ class MarketDataCalibrationRequest(ContractModel):
                 if "pricing_interval_schedule_policy" in raw_payload
                 and raw_payload["pricing_interval_schedule_policy"] is not None
                 else default_pricing_interval_schedule_policy()
+            ),
+            dynamics_search_restart_count=(
+                require_positive_integer(
+                    raw_payload,
+                    "dynamics_search_restart_count",
+                    "dynamics_search_restart_count",
+                    calibration_error,
+                )
+                if "dynamics_search_restart_count" in raw_payload
+                and raw_payload["dynamics_search_restart_count"] is not None
+                else None
+            ),
+            joint_refinement_option_refinement_candidate_count_override=(
+                require_positive_integer(
+                    raw_payload,
+                    "joint_refinement_option_refinement_candidate_count_override",
+                    "joint_refinement_option_refinement_candidate_count_override",
+                    calibration_error,
+                )
+                if "joint_refinement_option_refinement_candidate_count_override" in raw_payload
+                and raw_payload["joint_refinement_option_refinement_candidate_count_override"] is not None
+                else None
+            ),
+            joint_refinement_audit_option_pricing_enabled=(
+                require_boolean(
+                    raw_payload,
+                    "joint_refinement_audit_option_pricing_enabled",
+                    "joint_refinement_audit_option_pricing_enabled",
+                    calibration_error,
+                )
+                if "joint_refinement_audit_option_pricing_enabled" in raw_payload
+                else False
             ),
             known_news_inputs=(
                 CalibrationKnownNewsInput.from_mapping(

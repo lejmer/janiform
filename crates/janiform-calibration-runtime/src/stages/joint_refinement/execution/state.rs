@@ -5,7 +5,8 @@ use std::sync::{Arc, Mutex};
 use chrono::{DateTime, Utc};
 use janiform_calibration_artifacts::{
     HawkesStageFittedParameters, JointRefinementStageFittedParameters,
-    JointRefinementStageObjectiveBreakdown, JointRefinementStageRuntimeProfile,
+    JointRefinementStageObjectiveBreakdown, JointRefinementStageOptionAggregateDiagnostic,
+    JointRefinementStageOptionNodeDiagnostic, JointRefinementStageRuntimeProfile,
     ReturnComponentsStageFittedParameters,
 };
 use janiform_engine_pricing::{
@@ -22,6 +23,9 @@ use crate::stages::joint_metrics::{
     JointRefinementRollingVarianceActivityMetric,
 };
 use crate::stages::joint_refinement::contracts::JointRefinementStageObjectiveTermDiagnostic;
+use crate::stages::joint_refinement::option_surface_tiering::{
+    JointRefinementOptionSurfaceTierKind, JointRefinementOptionSurfaceTierSet,
+};
 use crate::stages::return_components::ReturnComponentsStageContinuousReturnCalibrationSample;
 use janiform_market_time::calendar::ExchangeCalendarRegistry;
 
@@ -41,7 +45,6 @@ pub(crate) enum JointRefinementFidelityTier {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct JointRefinementObjectiveCacheKey {
     pub(crate) fidelity_tier: JointRefinementFidelityTier,
-    pub(crate) include_option_pricing: bool,
     pub(crate) parameter_bits: Vec<u64>,
 }
 
@@ -64,7 +67,9 @@ pub(crate) struct JointRefinementSeedSummaryCacheKey {
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct JointRefinementOptionPricingCacheKey {
-    pub(crate) parameter_bits: Vec<u64>,
+    pub(crate) tier_kind: JointRefinementOptionSurfaceTierKind,
+    pub(crate) source_dynamics_parameter_bits: Vec<u64>,
+    pub(crate) pricing_parameter_bits: Vec<u64>,
 }
 
 #[derive(Debug, Default)]
@@ -260,7 +265,6 @@ pub(crate) struct JointRefinementBaselineBuckets {
     pub(crate) activity_level_fit: f64,
     pub(crate) rv_activity_coupling_fit: f64,
     pub(crate) price_span_sanity_fit: f64,
-    pub(crate) option_spread_normalized_price_fit: f64,
 }
 
 #[derive(Debug, Clone)]
@@ -300,8 +304,14 @@ pub(crate) struct JointRefinementContext {
             >,
         >,
     >,
-    pub(crate) option_pricing_cache:
-        Arc<Mutex<BTreeMap<JointRefinementOptionPricingCacheKey, Result<f64, String>>>>,
+    pub(crate) option_pricing_cache: Arc<
+        Mutex<
+            BTreeMap<
+                JointRefinementOptionPricingCacheKey,
+                Result<Arc<JointRefinementOptionTierPricingArtifact>, String>,
+            >,
+        >,
+    >,
     pub(crate) option_pricing_context: Option<JointRefinementOptionPricingContext>,
     pub(crate) profiling_state: Arc<JointRefinementProfilingState>,
 }
@@ -322,20 +332,74 @@ pub(crate) struct JointRefinementOptionNodeDefinition {
     pub(crate) bid_price: f64,
     pub(crate) ask_price: f64,
     pub(crate) observed_mid_price: f64,
+    pub(crate) maturity_weight: usize,
     pub(crate) location: JointRefinementOptionNodeLocation,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct JointRefinementOptionTierPricingInputs {
+    pub(crate) grid_batch_pricing_request: VanillaOptionGridBatchPricingRequest,
+    pub(crate) observed_nodes: Vec<JointRefinementOptionNodeDefinition>,
+    pub(crate) maturity_intervals: Vec<f64>,
+    pub(crate) maturity_terminal_interval_indices: Vec<usize>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct JointRefinementOptionTierPricingInputSet {
+    pub(crate) search: JointRefinementOptionTierPricingInputs,
+    pub(crate) selection: JointRefinementOptionTierPricingInputs,
+    pub(crate) audit: JointRefinementOptionTierPricingInputs,
+}
+
+impl JointRefinementOptionTierPricingInputSet {
+    pub(crate) fn tier(
+        &self,
+        tier_kind: JointRefinementOptionSurfaceTierKind,
+    ) -> &JointRefinementOptionTierPricingInputs {
+        match tier_kind {
+            JointRefinementOptionSurfaceTierKind::Search => &self.search,
+            JointRefinementOptionSurfaceTierKind::Selection => &self.selection,
+            JointRefinementOptionSurfaceTierKind::Audit => &self.audit,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct JointRefinementOptionTierScore {
+    pub(crate) root_mean_square_spread_normalized_residual: f64,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct JointRefinementOptionMaturityScoreArtifact {
+    pub(crate) expiry_timestamp_utc_nanos: i64,
+    pub(crate) maturity_weight: usize,
+    pub(crate) quote_count: usize,
+    pub(crate) root_mean_square_spread_normalized_residual: f64,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct JointRefinementOptionTierPricingArtifact {
+    pub(crate) cache_key: JointRefinementOptionPricingCacheKey,
+    pub(crate) tier_kind: JointRefinementOptionSurfaceTierKind,
+    pub(crate) score: JointRefinementOptionTierScore,
+    pub(crate) maturity_scores: Vec<JointRefinementOptionMaturityScoreArtifact>,
+    pub(crate) node_diagnostics: Vec<JointRefinementStageOptionNodeDiagnostic>,
+    pub(crate) aggregate_diagnostics: Vec<JointRefinementStageOptionAggregateDiagnostic>,
+    pub(crate) maturity_intervals: Vec<f64>,
+    pub(crate) maturity_terminal_interval_indices: Vec<usize>,
 }
 
 #[derive(Debug, Clone)]
 pub(crate) struct JointRefinementOptionPricingContext {
     pub(crate) valuation_time_utc_nanos: i64,
-    pub(crate) grid_batch_pricing_request: VanillaOptionGridBatchPricingRequest,
     pub(crate) boundary_input: AnchoredVanillaOptionPricingBoundaryInput,
     pub(crate) runtime_interval_schedule: PricingIntervalSchedule,
     pub(crate) interval_factors: Vec<VanillaOptionPricingIntervalFactors>,
     pub(crate) snapshot_maturity_intervals: Vec<f64>,
     pub(crate) snapshot_maturity_terminal_interval_indices: Vec<usize>,
+    pub(crate) option_surface_tiers: JointRefinementOptionSurfaceTierSet,
+    pub(crate) tier_pricing_inputs: JointRefinementOptionTierPricingInputSet,
     pub(crate) carry_input: janiform_calibration_artifacts::JointRefinementStageCarryInput,
-    pub(crate) observed_nodes: Vec<JointRefinementOptionNodeDefinition>,
     pub(crate) cpu_count: usize,
 }
 

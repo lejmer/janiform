@@ -47,6 +47,14 @@ struct JointRefinementCandidateOrderingState<'a> {
     admissible: bool,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct JointRefinementLazyCoarseConsistencySelection<'a> {
+    pub(crate) selected_restart_outcomes: Vec<&'a JointRefinementRestartOutcome>,
+    pub(crate) coarse_consistency_artifacts_by_restart_id:
+        BTreeMap<String, JointRefinementCoarseConsistencyArtifacts>,
+    pub(crate) used_unadmissible_fallback: bool,
+}
+
 #[derive(Debug, Default, Clone)]
 struct LazyCoarseConsistencyCache {
     artifacts_by_restart_id: BTreeMap<String, JointRefinementCoarseConsistencyArtifacts>,
@@ -114,20 +122,24 @@ pub(crate) fn joint_breakdown_is_admissible(
         )
 }
 
-pub(crate) fn select_best_restart_outcome_with_lazy_coarse_consistency<'a>(
+pub(crate) fn select_restart_outcomes_with_lazy_coarse_consistency<'a>(
     restart_outcomes: &'a [&'a JointRefinementRestartOutcome],
     context: &JointRefinementContext,
     baseline_artifacts: Option<&JointRefinementCoarseConsistencyArtifacts>,
+    selected_restart_count: usize,
     progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
-) -> (
-    Option<&'a JointRefinementRestartOutcome>,
-    BTreeMap<String, JointRefinementCoarseConsistencyArtifacts>,
-) {
+) -> JointRefinementLazyCoarseConsistencySelection<'a> {
+    let selected_restart_count = selected_restart_count.max(1);
+
     let Some(baseline_artifacts) = baseline_artifacts else {
-        return (
-            select_best_restart_outcome_without_admissibility(restart_outcomes),
-            BTreeMap::new(),
-        );
+        return JointRefinementLazyCoarseConsistencySelection {
+            selected_restart_outcomes: select_restart_outcomes_without_admissibility(
+                restart_outcomes,
+                selected_restart_count,
+            ),
+            coarse_consistency_artifacts_by_restart_id: BTreeMap::new(),
+            used_unadmissible_fallback: false,
+        };
     };
 
     let restart_groups = build_joint_restart_outcome_groups(restart_outcomes);
@@ -187,6 +199,7 @@ pub(crate) fn select_best_restart_outcome_with_lazy_coarse_consistency<'a>(
     );
 
     let mut progress_state = LazyCoarseConsistencyProgressState::default();
+    let mut selected_restart_outcomes = Vec::new();
 
     for candidate_state in ranked_restart_candidates {
         let Some(restart_group) = find_restart_group(
@@ -231,30 +244,45 @@ pub(crate) fn select_best_restart_outcome_with_lazy_coarse_consistency<'a>(
                 restart_outcomes,
                 restart_group.representative.restart_id.as_str(),
             ) {
-                return (
-                    Some(selected_restart_outcome),
-                    coarse_consistency_cache.artifacts_by_restart_id,
-                );
+                selected_restart_outcomes.push(selected_restart_outcome);
+
+                if selected_restart_outcomes.len() >= selected_restart_count {
+                    return JointRefinementLazyCoarseConsistencySelection {
+                        selected_restart_outcomes,
+                        coarse_consistency_artifacts_by_restart_id: coarse_consistency_cache
+                            .artifacts_by_restart_id,
+                        used_unadmissible_fallback: false,
+                    };
+                }
             }
         }
     }
 
-    let selected_restart_outcome = select_best_restart_outcome_without_admissibility(
-        representative_restart_outcomes.as_slice(),
-    );
+    let mut used_unadmissible_fallback = false;
+    if selected_restart_outcomes.is_empty() {
+        selected_restart_outcomes = select_restart_outcomes_without_admissibility(
+            representative_restart_outcomes.as_slice(),
+            1,
+        );
+        used_unadmissible_fallback = true;
+    }
 
-    ensure_selected_restart_artifacts(
-        &mut coarse_consistency_cache,
-        context,
-        restart_groups.as_slice(),
-        selected_restart_outcome,
-        baseline_artifacts,
-    );
+    for selected_restart_outcome in &selected_restart_outcomes {
+        ensure_selected_restart_artifacts(
+            &mut coarse_consistency_cache,
+            context,
+            restart_groups.as_slice(),
+            Some(selected_restart_outcome),
+            baseline_artifacts,
+        );
+    }
 
-    (
-        selected_restart_outcome,
-        coarse_consistency_cache.artifacts_by_restart_id,
-    )
+    JointRefinementLazyCoarseConsistencySelection {
+        selected_restart_outcomes,
+        coarse_consistency_artifacts_by_restart_id: coarse_consistency_cache
+            .artifacts_by_restart_id,
+        used_unadmissible_fallback,
+    }
 }
 
 fn representative_restart_outcomes<'a>(
@@ -609,11 +637,12 @@ fn assign_coarse_consistency_artifacts_to_restart_group(
     }
 }
 
-fn select_best_restart_outcome_without_admissibility<'a>(
+fn select_restart_outcomes_without_admissibility<'a>(
     restart_outcomes: &[&'a JointRefinementRestartOutcome],
-) -> Option<&'a JointRefinementRestartOutcome> {
+    selected_restart_count: usize,
+) -> Vec<&'a JointRefinementRestartOutcome> {
     if restart_outcomes.is_empty() {
-        return None;
+        return Vec::new();
     }
 
     let pareto_ranks = pareto_ranks(restart_outcomes);
@@ -638,7 +667,11 @@ fn select_best_restart_outcome_without_admissibility<'a>(
         )
     });
 
-    ranked_candidates.first().map(|(_, outcome)| *outcome)
+    ranked_candidates
+        .into_iter()
+        .take(selected_restart_count.max(1))
+        .map(|(_, outcome)| outcome)
+        .collect()
 }
 
 fn build_joint_candidate_ordering_states<'a>(

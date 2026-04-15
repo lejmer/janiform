@@ -186,30 +186,10 @@ pub(crate) fn joint_refinement_budget_schedule(
     let (base_outer_cycle_count, base_powell_settings) =
         joint_refinement_base_schedule_components(solver_settings);
 
-    let restart_count = restart_count.max(1);
-    let total_block_cycle_budget = base_outer_cycle_count * base_powell_settings.evaluation_budget;
-
-    let outer_cycle_count = ((base_outer_cycle_count * base_outer_cycle_count)
-        / restart_count.max(1))
-    .clamp(1, base_outer_cycle_count);
-
-    let evaluation_budget = (total_block_cycle_budget
-        / (restart_count.max(1) * outer_cycle_count.max(1)))
-    .max(base_powell_settings.line_search_evaluation_cap.max(1));
-
-    let line_search_evaluation_cap = integer_square_root(evaluation_budget).max(1);
-
     JointRefinementBudgetSchedule {
-        restart_count,
-        outer_cycle_count,
-        powell_settings: PowellOptimizerSettings {
-            absolute_tolerance: solver_settings.absolute_tolerance,
-            relative_tolerance: solver_settings.relative_tolerance,
-            min_step_norm: solver_settings.absolute_tolerance,
-            max_cycle_count: base_powell_settings.max_cycle_count,
-            line_search_evaluation_cap,
-            evaluation_budget,
-        },
+        restart_count: restart_count.max(1),
+        outer_cycle_count: base_outer_cycle_count,
+        powell_settings: base_powell_settings,
     }
 }
 
@@ -309,7 +289,6 @@ fn optimize_single_restart(
         context,
         JointRefinementFidelityTier::Local,
         solver_settings,
-        false,
     );
     if local_evaluation.invalid_reason.is_some() {
         return JointRefinementRestartOutcome {
@@ -338,7 +317,6 @@ fn optimize_single_restart(
         context,
         JointRefinementFidelityTier::Final,
         solver_settings,
-        false,
     );
 
     JointRefinementRestartOutcome {
@@ -449,7 +427,6 @@ fn build_short_circuited_restart_outcome(
         context,
         JointRefinementFidelityTier::Local,
         solver_settings,
-        false,
     );
 
     JointRefinementRestartOutcome {
@@ -508,7 +485,6 @@ fn optimize_parameter_block(
             context,
             JointRefinementFidelityTier::Local,
             solver_settings,
-            false,
         );
         if candidate_evaluation.invalid_reason.is_some() {
             return None;

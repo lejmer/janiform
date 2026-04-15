@@ -1,3 +1,5 @@
+from math import log
+
 from janiform.pricing import (
     AnchoredVanillaOptionPricingBoundaryInput,
     GammaSeverityMarkConfiguration,
@@ -31,11 +33,14 @@ from janiform.simulation.coarse import (
 from tests.support.hourly_factor_contracts import build_hourly_factor_contract
 from tests.support.time import REFERENCE_PRICING_TIMESTAMP_UTC_NANOS
 
+TEST_REFERENCE_PRICE = 100.0
+TEST_SPOT_PRICE = 101.0
+
 
 def build_anchored_request_model() -> VanillaOptionPricingRequest:
     return VanillaOptionPricingRequest(
         market_inputs=VanillaOptionPricingMarketInputs(
-            spot=101.0,
+            spot=TEST_SPOT_PRICE,
             strikes=(100.0,),
             maturity_intervals=(1.0,),
             risk_free_rate=0.02,
@@ -88,8 +93,8 @@ def build_anchored_runtime_execution_input_model() -> VanillaOptionPricingExecut
                 ),
                 interval_delta=1.0,
                 observed_boundary_state=MeanReversionBoundaryState(
-                    observed_log_price=0.25,
-                    anchor_value=0.25,
+                    observed_log_price=_normalized_observed_log_price(TEST_SPOT_PRICE),
+                    anchor_value=_normalized_observed_log_price(TEST_SPOT_PRICE),
                     pressure_state=0.0,
                     deviation=0.0,
                 ),
@@ -153,7 +158,15 @@ def build_anchored_surface_execution_input_model() -> VanillaOptionSurfacePricin
                 dividend_yield=anchored_runtime_execution_input.request.market_inputs.dividend_yield,
             ),
             payoff=anchored_runtime_execution_input.request.payoff,
-            boundary_input=anchored_runtime_execution_input.request.boundary_input,
+            boundary_input=_disabled_boundary_input(
+                interval_delta=anchored_runtime_execution_input.request.interval_delta,
+                hawkes_boundary_state=HawkesExcitationState(
+                    y_plus_plus=0.0,
+                    y_plus_minus=0.0,
+                    y_minus_plus=0.0,
+                    y_minus_minus=0.0,
+                ),
+            ),
             model_parameters=anchored_runtime_execution_input.request.model_parameters,
             interval_delta=anchored_runtime_execution_input.request.interval_delta,
         ),
@@ -213,6 +226,10 @@ def _disabled_boundary_input(
             deviation=0.0,
         ),
     )
+
+
+def _normalized_observed_log_price(spot: float) -> float:
+    return log(spot / TEST_REFERENCE_PRICE)
 
 
 def _build_news_process_configuration() -> NewsProcessConfiguration:

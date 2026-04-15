@@ -180,6 +180,8 @@ pub struct JointRefinementStageExecutionInput {
     pub mean_reversion_input: JointRefinementStageMeanReversionInput,
     pub candidate_generation_input: ReturnComponentsStageCandidateGenerationInput,
     pub restart_count_override: Option<usize>,
+    pub option_refinement_candidate_count_override: Option<usize>,
+    pub audit_option_pricing_enabled: bool,
     pub option_pricing_input: Option<JointRefinementStageOptionPricingInput>,
 }
 
@@ -190,6 +192,9 @@ pub enum JointRefinementStageProgressPhase {
     BaselineFinalEvaluation,
     RestartOptimization,
     CoarseConsistencyEvaluation,
+    OptionSearchTierRefinement,
+    OptionSelectionTierEvaluation,
+    OptionAuditTierEvaluation,
     FinalSeedEvaluation,
     FinalAssembly,
 }

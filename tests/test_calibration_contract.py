@@ -81,6 +81,72 @@ def test_market_data_calibration_request_roundtrip_serialization_is_deterministi
     assert orjson.loads(serialized_request)["schema_version"] == CALIBRATION_MARKET_DATA_REQUEST_SCHEMA_VERSION
 
 
+def test_market_data_calibration_request_accepts_option_refinement_candidate_override() -> None:
+    request_payload = _valid_market_data_request_payload()
+    request_payload["joint_refinement_option_refinement_candidate_count_override"] = 8
+
+    validated_request = validate_market_data_calibration_request(request_payload)
+
+    assert validated_request.joint_refinement_option_refinement_candidate_count_override == 8
+
+
+def test_market_data_calibration_request_accepts_dynamics_search_restart_count() -> None:
+    request_payload = _valid_market_data_request_payload()
+    request_payload["dynamics_search_restart_count"] = 21
+
+    validated_request = validate_market_data_calibration_request(request_payload)
+
+    assert validated_request.dynamics_search_restart_count == 21
+
+
+def test_market_data_calibration_request_defaults_audit_option_pricing_to_false() -> None:
+    request_payload = _valid_market_data_request_payload()
+
+    validated_request = validate_market_data_calibration_request(request_payload)
+
+    assert not validated_request.joint_refinement_audit_option_pricing_enabled
+
+
+def test_market_data_calibration_request_rejects_audit_option_pricing_without_option_surface() -> None:
+    request_payload = _valid_market_data_request_payload()
+    request_payload["joint_refinement_audit_option_pricing_enabled"] = True
+    del request_payload["option_surface_source"]
+
+    with pytest.raises(CalibrationValidationError) as captured_error:
+        validate_market_data_calibration_request(request_payload)
+
+    assert (
+        captured_error.value.failure.field_path
+        == "joint_refinement_audit_option_pricing_enabled"
+    )
+    assert "requires option_surface_source" in captured_error.value.failure.message
+
+
+def test_market_data_calibration_request_rejects_zero_option_refinement_candidate_override() -> None:
+    request_payload = _valid_market_data_request_payload()
+    request_payload["joint_refinement_option_refinement_candidate_count_override"] = 0
+
+    with pytest.raises(CalibrationValidationError) as captured_error:
+        validate_market_data_calibration_request(request_payload)
+
+    assert (
+        captured_error.value.failure.field_path
+        == "joint_refinement_option_refinement_candidate_count_override"
+    )
+    assert "strictly positive" in captured_error.value.failure.message
+
+
+def test_market_data_calibration_request_rejects_zero_dynamics_search_restart_count() -> None:
+    request_payload = _valid_market_data_request_payload()
+    request_payload["dynamics_search_restart_count"] = 0
+
+    with pytest.raises(CalibrationValidationError) as captured_error:
+        validate_market_data_calibration_request(request_payload)
+
+    assert captured_error.value.failure.field_path == "dynamics_search_restart_count"
+    assert "strictly positive" in captured_error.value.failure.message
+
+
 def test_market_data_calibration_request_requires_option_surface_for_option_scope() -> None:
     request_payload = _valid_market_data_request_payload()
     request_payload["workflow_scope"] = CalibrationMarketDataWorkflowScope.FULL_WITH_OPTION_SURFACE.value

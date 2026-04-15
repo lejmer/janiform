@@ -326,7 +326,9 @@ fn joint_refinement_stage_execution_succeeds_for_memory_and_disk_mode_handoffs()
                 payload: build_mean_reversion_stage_success_payload(),
             },
             candidate_generation_input: return_components_stage_candidate_generation_fixture(),
-            restart_count_override: None,
+            restart_count_override: Some(1),
+            option_refinement_candidate_count_override: Some(1),
+            audit_option_pricing_enabled: false,
             option_pricing_input: None,
         },
     );
@@ -360,7 +362,9 @@ fn joint_refinement_stage_execution_succeeds_for_memory_and_disk_mode_handoffs()
                     payload: Some(build_mean_reversion_stage_success_payload()),
                 },
             candidate_generation_input: return_components_stage_candidate_generation_fixture(),
-            restart_count_override: None,
+            restart_count_override: Some(1),
+            option_refinement_candidate_count_override: Some(1),
+            audit_option_pricing_enabled: false,
             option_pricing_input: None,
         },
     );
@@ -431,7 +435,9 @@ fn joint_refinement_stage_execution_is_deterministic_across_cpu_counts() {
                     },
                     candidate_generation_input:
                         return_components_stage_candidate_generation_fixture(),
-                    restart_count_override: None,
+                    restart_count_override: Some(1),
+                    option_refinement_candidate_count_override: Some(1),
+                    audit_option_pricing_enabled: false,
                     option_pricing_input: None,
                 },
             );
@@ -462,7 +468,9 @@ fn joint_refinement_stage_execution_is_deterministic_across_cpu_counts() {
                     },
                     candidate_generation_input:
                         return_components_stage_candidate_generation_fixture(),
-                    restart_count_override: None,
+                    restart_count_override: Some(1),
+                    option_refinement_candidate_count_override: Some(1),
+                    audit_option_pricing_enabled: false,
                     option_pricing_input: None,
                 },
             );
@@ -541,7 +549,9 @@ fn joint_refinement_stage_execution_reports_infrastructure_failure_when_worker_i
                     },
                     candidate_generation_input:
                         return_components_stage_candidate_generation_fixture(),
-                    restart_count_override: None,
+                    restart_count_override: Some(1),
+                    option_refinement_candidate_count_override: Some(1),
+                    audit_option_pricing_enabled: false,
                     option_pricing_input: None,
                 },
             );
@@ -608,7 +618,9 @@ fn joint_refinement_stage_execution_fails_when_option_pricing_input_is_invalid()
                 payload: build_mean_reversion_stage_success_payload(),
             },
             candidate_generation_input: return_components_stage_candidate_generation_fixture(),
-            restart_count_override: None,
+            restart_count_override: Some(1),
+            option_refinement_candidate_count_override: Some(1),
+            audit_option_pricing_enabled: false,
             option_pricing_input: Some(option_pricing_input),
         },
     );
@@ -669,6 +681,8 @@ fn joint_refinement_stage_execution_fails_when_restart_override_is_zero() {
             },
             candidate_generation_input: return_components_stage_candidate_generation_fixture(),
             restart_count_override: Some(0),
+            option_refinement_candidate_count_override: Some(1),
+            audit_option_pricing_enabled: false,
             option_pricing_input: None,
         },
     );

@@ -87,6 +87,7 @@ class JaniformEstimator:
     _optimizer_settings_by_stage: tuple[CalibrationStageSolverSettings, ...]
     _preprocessing_settings: Optional[CalibrationMarketDataPreprocessingSettings]
     _mean_reversion: Optional[CalibrationMeanReversionConfiguration]
+    _dynamics_search_restart_count: Optional[int]
     _market_profile_reference: Optional[MarketProfileReference]
     _session_reference: Optional[SessionPresetReference]
     _known_news_reference: Optional[KnownNewsPresetReference]
@@ -107,6 +108,7 @@ class JaniformEstimator:
         optimizer_settings_by_stage: tuple[CalibrationStageSolverSettings, ...] = (),
         preprocessing_settings: Optional[CalibrationMarketDataPreprocessingSettings] = None,
         mean_reversion: Optional[CalibrationMeanReversionConfiguration] = None,
+        dynamics_search_restart_count: Optional[int] = None,
         market_profile: Optional[str | MarketProfileReference] = None,
         session: Optional[str | Path | SessionPresetReference] = None,
         known_news: Optional[str | KnownNewsPresetReference] = None,
@@ -142,6 +144,14 @@ class JaniformEstimator:
                 "mean_reversion",
                 "must be a CalibrationMeanReversionConfiguration when provided",
             )
+        if (
+            dynamics_search_restart_count is not None
+            and dynamics_search_restart_count <= 0
+        ):
+            raise calibration_error(
+                "dynamics_search_restart_count",
+                "must be strictly positive when provided",
+            )
 
         self._workflow_scope_override = workflow_scope
         self._tick_data_column_mapping = tick_data_column_mapping
@@ -151,6 +161,7 @@ class JaniformEstimator:
         self._optimizer_settings_by_stage = optimizer_settings_by_stage
         self._preprocessing_settings = preprocessing_settings
         self._mean_reversion = mean_reversion
+        self._dynamics_search_restart_count = dynamics_search_restart_count
         self._market_profile_reference = coerce_market_profile_reference(market_profile)
         self._session_reference = coerce_session_reference(session, exchange_code=exchange_code)
         self._known_news_reference = coerce_known_news_reference(known_news)
@@ -240,6 +251,7 @@ class JaniformEstimator:
             optimizer_settings_by_stage=self._optimizer_settings_by_stage,
             preprocessing_settings=self._preprocessing_settings,
             mean_reversion=self._mean_reversion,
+            dynamics_search_restart_count=self._dynamics_search_restart_count,
             default_endogenous_mean_reversion_configuration=(
                 self._default_endogenous_mean_reversion_configuration()
             ),

@@ -2,6 +2,7 @@ mod coarse_consistency;
 mod entrypoint;
 mod inputs;
 mod optimization;
+mod option_refinement;
 mod pipeline;
 mod pricing_context;
 mod report;
@@ -31,9 +32,12 @@ pub(crate) use optimization::{
     desired_joint_refinement_restart_count, joint_refinement_budget_schedule,
     optimize_restart_seeds,
 };
+pub(crate) use option_refinement::{
+    desired_joint_refinement_option_refinement_candidate_count, run_option_refinement,
+};
 pub(crate) use pricing_context::{
     build_option_calibration_diagnostics, build_option_pricing_context,
-    option_spread_normalized_price_fit,
+    resolve_option_surface_tier_pricing_artifact,
 };
 pub(crate) use report::{
     baseline_buckets_from_evaluation, build_joint_finalist_seed_summaries,
@@ -48,7 +52,7 @@ pub(crate) use selection::{
 };
 pub(crate) use selection::{
     build_joint_candidate_frontier_diagnostics,
-    select_best_restart_outcome_with_lazy_coarse_consistency,
+    select_restart_outcomes_with_lazy_coarse_consistency,
 };
 pub(crate) use shared::{
     build_exchange_calendar_registry_artifact, build_halton_restart_id, clamp_in_place,
@@ -62,6 +66,7 @@ pub(crate) use state::{
     JointRefinementContext, JointRefinementDeterministicCacheKey,
     JointRefinementDeterministicEvaluation, JointRefinementFidelityTier,
     JointRefinementObjectiveCacheKey, JointRefinementObservedData,
-    JointRefinementOptionPricingCacheKey, JointRefinementProfilingState,
-    JointRefinementRestartOutcome, JointRefinementSeedSummaryCacheKey,
+    JointRefinementOptionPricingCacheKey, JointRefinementOptionTierPricingArtifact,
+    JointRefinementProfilingState, JointRefinementRestartOutcome,
+    JointRefinementSeedSummaryCacheKey,
 };
