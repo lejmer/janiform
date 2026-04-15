@@ -53,7 +53,7 @@ use super::{
     build_joint_simulation_summaries, build_observed_data, build_option_calibration_diagnostics,
     build_option_pricing_context, build_summary_simulation_session_context,
     desired_joint_refinement_restart_count, joint_refinement_budget_schedule,
-    optimize_restart_seeds, option_pricing_execution_failure_message, ordered_parameter_bits,
+    optimize_restart_seeds, ordered_parameter_bits,
     select_best_restart_outcome_with_lazy_coarse_consistency,
     simulation_infrastructure_failure_message,
 };
@@ -89,6 +89,7 @@ struct PreparedParameterization {
     baseline_parameter_vector: Vec<f64>,
     lower_bounds: Vec<f64>,
     upper_bounds: Vec<f64>,
+    option_pricing_refinement_enabled: bool,
     option_pricing_context: Option<super::state::JointRefinementOptionPricingContext>,
 }
 
@@ -144,6 +145,16 @@ pub(super) fn run_joint_refinement_calibration_stage_internal(
     stage_input: JointRefinementStageExecutionInput,
     progress_sender: Option<Sender<JointRefinementStageProgressUpdate>>,
 ) -> JointRefinementStageExecutionReport {
+    if stage_input.restart_count_override == Some(0) {
+        return build_joint_refinement_stage_failure_report(
+            run_spec,
+            JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
+                error_message: "joint refinement restart_count_override must be greater than zero"
+                    .to_string(),
+            },
+        );
+    }
+
     let resolved_stage_payloads =
         match resolve_stage_payloads(run_spec, calendar_registry, &stage_input) {
             Ok(payloads) => payloads,
@@ -171,6 +182,7 @@ pub(super) fn run_joint_refinement_calibration_stage_internal(
     };
 
     let restart_search_artifacts = match run_restart_search(
+        &stage_input,
         &resolved_stage_payloads,
         &prepared_bootstrap,
         &baseline_evaluation_artifacts,
@@ -325,6 +337,7 @@ fn prepare_bootstrap_context(
         baseline_parameter_vector,
         lower_bounds,
         upper_bounds,
+        option_pricing_refinement_enabled,
         option_pricing_context,
     } = prepare_parameterization(
         run_spec,
@@ -352,6 +365,7 @@ fn prepare_bootstrap_context(
         active_parameter_layout,
         lower_bounds,
         upper_bounds,
+        option_pricing_refinement_enabled,
         option_pricing_context,
         runtime_materialization,
     )?;
@@ -425,6 +439,7 @@ fn prepare_parameterization(
         baseline_parameter_vector.as_slice(),
         baseline_15m_calibration_sample,
     );
+    let option_pricing_refinement_enabled = false;
 
     let option_pricing_context = build_option_pricing_context(
         run_spec,
@@ -441,7 +456,7 @@ fn prepare_parameterization(
         baseline_parameter_vector.as_slice(),
         lower_bounds.as_mut_slice(),
         upper_bounds.as_mut_slice(),
-        option_pricing_context.is_some(),
+        option_pricing_refinement_enabled,
     );
 
     Ok(PreparedParameterization {
@@ -449,6 +464,7 @@ fn prepare_parameterization(
         baseline_parameter_vector,
         lower_bounds,
         upper_bounds,
+        option_pricing_refinement_enabled,
         option_pricing_context,
     })
 }
@@ -461,6 +477,7 @@ fn build_bootstrap_context(
     active_parameter_layout: JointRefinementActiveParameterLayout,
     lower_bounds: Vec<f64>,
     upper_bounds: Vec<f64>,
+    option_pricing_refinement_enabled: bool,
     option_pricing_context: Option<super::state::JointRefinementOptionPricingContext>,
     runtime_materialization: RuntimeMaterialization,
 ) -> Result<JointRefinementContext, JointRefinementStageExecutionFailure> {
@@ -494,6 +511,7 @@ fn build_bootstrap_context(
         active_parameter_layout,
         lower_bounds,
         upper_bounds,
+        option_pricing_refinement_enabled,
         local_simulation_seed: resolved_stage_payloads.resolved_stage_seed.stage_seed,
         final_simulation_seeds: resolved_stage_payloads.final_simulation_seeds.clone(),
         local_baseline_buckets: unit_baseline_buckets(),
@@ -706,8 +724,8 @@ fn establish_baseline_evaluation(
         &resolved_stage_payloads.stage_solver_settings,
         progress_sender,
         Some(JointRefinementStageProgressPhase::BaselineLocalEvaluation),
+        false,
     );
-    ensure_option_pricing_execution_available(bootstrap_context)?;
 
     let baseline_final_evaluation = evaluate_joint_fitted_parameters(
         baseline_fitted_parameters,
@@ -717,10 +735,10 @@ fn establish_baseline_evaluation(
         &resolved_stage_payloads.stage_solver_settings,
         progress_sender,
         Some(JointRefinementStageProgressPhase::BaselineFinalEvaluation),
+        false,
     );
 
     ensure_simulation_infrastructure_available(bootstrap_context)?;
-    ensure_option_pricing_execution_available(bootstrap_context)?;
 
     bootstrap_context.local_baseline_buckets =
         baseline_buckets_from_evaluation(&baseline_local_evaluation);
@@ -806,13 +824,14 @@ fn ensure_valid_selected_restart_outcome(
 }
 
 fn run_restart_search(
+    stage_input: &JointRefinementStageExecutionInput,
     resolved_stage_payloads: &ResolvedStagePayloads<'_>,
     prepared_bootstrap: &PreparedBootstrapContext,
     baseline_evaluation_artifacts: &BaselineEvaluationArtifacts,
     progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
 ) -> Result<RestartSearchArtifacts, JointRefinementStageExecutionFailure> {
     let restart_search_plan =
-        build_restart_search_plan(resolved_stage_payloads, prepared_bootstrap);
+        build_restart_search_plan(stage_input, resolved_stage_payloads, prepared_bootstrap);
 
     let restart_optimization_started_at = Instant::now();
     let restart_outcomes = optimize_restart_seeds(
@@ -825,7 +844,6 @@ fn run_restart_search(
     let restart_optimization_wall_clock_millis = elapsed_millis(restart_optimization_started_at);
 
     ensure_simulation_infrastructure_available(&prepared_bootstrap.bootstrap_context)?;
-    ensure_option_pricing_execution_available(&prepared_bootstrap.bootstrap_context)?;
 
     let valid_restart_count = count_valid_restart_outcomes(&restart_outcomes);
     let restart_selection_artifacts = select_restart_outcome(
@@ -850,6 +868,7 @@ fn run_restart_search(
 }
 
 fn build_restart_search_plan(
+    stage_input: &JointRefinementStageExecutionInput,
     resolved_stage_payloads: &ResolvedStagePayloads<'_>,
     prepared_bootstrap: &PreparedBootstrapContext,
 ) -> RestartSearchPlan {
@@ -874,7 +893,8 @@ fn build_restart_search_plan(
                 .observed_open_event_rate_per_hour,
             resolved_stage_payloads.baseline_modeled_open_event_rate_per_hour,
         ),
-        desired_joint_refinement_restart_count(&resolved_stage_payloads.stage_solver_settings),
+        &prepared_bootstrap.bootstrap_context,
+        desired_joint_refinement_restart_count(stage_input.restart_count_override),
     );
 
     let budget_schedule = joint_refinement_budget_schedule(
@@ -952,22 +972,6 @@ fn ensure_simulation_infrastructure_available(
         return Err(
             JointRefinementStageExecutionFailure::SimulationInfrastructureUnavailable {
                 error_message,
-            },
-        );
-    }
-
-    Ok(())
-}
-
-fn ensure_option_pricing_execution_available(
-    bootstrap_context: &JointRefinementContext,
-) -> Result<(), JointRefinementStageExecutionFailure> {
-    if let Some(error_message) = option_pricing_execution_failure_message(bootstrap_context) {
-        return Err(
-            JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
-                error_message: format!(
-                    "joint refinement option pricing execution failed: {error_message}"
-                ),
             },
         );
     }

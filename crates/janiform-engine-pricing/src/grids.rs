@@ -8,16 +8,17 @@ use janiform_model_kernels::nig::NigSharedPlusShiftConfigurationError;
 
 use super::contracts::{
     AnchoredVanillaOptionPricingBoundaryInput, SpectralPricingIntervalDiagnostics,
-    VanillaOptionPayoffConfiguration, VanillaOptionPayoffType,
-    VanillaOptionPricingFailureStage, VanillaOptionPricingMarketInputs,
-    VanillaOptionPricingModelParameters, VanillaOptionPricingOptionalOutputSelection,
-    VanillaOptionPricingStatus,
+    VanillaOptionPayoffConfiguration, VanillaOptionPayoffType, VanillaOptionPricingFailureStage,
+    VanillaOptionPricingMarketInputs, VanillaOptionPricingModelParameters,
+    VanillaOptionPricingOptionalOutputSelection, VanillaOptionPricingStatus,
 };
 use super::fourier::FourierInversionDiagnostics;
 use super::implied_volatility::VanillaOptionImpliedVolatilityInversionStatus;
 use super::interval_schedule::PricingIntervalSchedule;
 use super::progress::PricingProgressEvent;
-use super::runner::{VanillaOptionPricingIntervalFactors, VanillaOptionPricingIntervalFactorsError};
+use super::runner::{
+    VanillaOptionPricingIntervalFactors, VanillaOptionPricingIntervalFactorsError,
+};
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct VanillaOptionMaturitySummary {
@@ -145,7 +146,10 @@ impl VanillaOptionGridBatchPricingExecutionInput {
             VanillaOptionGridBatchPricingExecutionInputError::InvalidRequest { source }
         })?;
 
-        let first_runtime_interval_delta = self.runtime_interval_schedule.interval_delta_hours(0).ok_or(
+        let first_runtime_interval_delta = self
+            .runtime_interval_schedule
+            .interval_delta_hours(0)
+            .ok_or(
             VanillaOptionGridBatchPricingExecutionInputError::InvalidRuntimeIntervalSchedule {
                 message: "must contain at least one interval".to_string(),
             },
@@ -527,7 +531,11 @@ pub fn run_vanilla_option_surface_pricing_with_observer(
                     risk_free_rate: execution_input.request.market_inputs.risk_free_rate,
                     dividend_yield: execution_input.request.market_inputs.dividend_yield,
                     strikes: execution_input.request.market_inputs.strikes.clone(),
-                    maturity_intervals: execution_input.request.market_inputs.maturity_intervals.clone(),
+                    maturity_intervals: execution_input
+                        .request
+                        .market_inputs
+                        .maturity_intervals
+                        .clone(),
                 }],
             },
             boundary_input: execution_input.boundary_input,
@@ -601,10 +609,9 @@ fn validate_positive_finite(
         return Err(VanillaOptionGridBatchPricingRequestError::InvalidFiniteField { field, value });
     }
     if value <= 0.0 {
-        return Err(VanillaOptionGridBatchPricingRequestError::InvalidPositiveField {
-            field,
-            value,
-        });
+        return Err(
+            VanillaOptionGridBatchPricingRequestError::InvalidPositiveField { field, value },
+        );
     }
 
     Ok(())

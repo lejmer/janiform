@@ -33,7 +33,7 @@ use support::shared::{
 };
 
 #[test]
-fn staged_runner_forwards_nested_option_pricing_progress_labels() {
+fn staged_runner_skips_option_pricing_progress_during_baseline_search() {
     let run_contract = build_run_contract_with_mode_and_resume(
         "run-stage-progress-option-pricing",
         CalibrationExecutionMode::Memory,
@@ -125,17 +125,8 @@ fn staged_runner_forwards_nested_option_pricing_progress_labels() {
         .collect::<Vec<_>>();
 
     assert!(
-        !baseline_final_cache_labels.is_empty(),
-        "expected baseline final evaluation to expose cache-aware option-pricing labels, observed events were: {observed_events:#?}"
-    );
-
-    assert!(
-        baseline_final_cache_labels.contains(&"option_pricing cache_miss"),
-        "expected baseline final evaluation to perform the first option-pricing cache population, observed events were: {observed_events:#?}"
-    );
-    assert!(
-        !baseline_final_cache_labels.contains(&"option_pricing cache_hit_resolved"),
-        "expected baseline final evaluation to avoid cache-hit progress labels before any final-tier option pricing result was cached, observed events were: {observed_events:#?}"
+        baseline_final_cache_labels.is_empty(),
+        "expected baseline final evaluation to skip option-pricing cache progress labels during task-1 search, observed events were: {observed_events:#?}"
     );
 
     let baseline_final_nested_option_pricing_labels = observed_events
@@ -164,8 +155,8 @@ fn staged_runner_forwards_nested_option_pricing_progress_labels() {
         .collect::<Vec<_>>();
 
     assert!(
-        !baseline_final_nested_option_pricing_labels.is_empty(),
-        "expected baseline final evaluation to expose nested spectral option-pricing progress labels, observed events were: {observed_events:#?}"
+        baseline_final_nested_option_pricing_labels.is_empty(),
+        "expected baseline final evaluation to skip nested spectral option-pricing progress labels during task-1 search, observed events were: {observed_events:#?}"
     );
 
     let joint_refinement_digit_only_item_labels = observed_events

@@ -78,6 +78,8 @@ pub struct CalibrationStagedExecutionInput {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mean_reversion_stage_input: Option<CalibrationMeanReversionStageExecutionInput>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub joint_refinement_restart_count_override: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub joint_refinement_option_pricing_input: Option<CalibrationJointRefinementOptionPricingInput>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub runtime_resources: Option<CalibrationStagedExecutionRuntimeResources>,
@@ -474,6 +476,7 @@ pub enum CalibrationStagedExecutionBridgeError {
     MissingDiskCheckpointDirectory,
     EmptyDiskCheckpointDirectory,
     UnexpectedDiskCheckpointDirectoryForMemoryMode,
+    InvalidJointRefinementRestartCountOverride,
     InvalidObservationTradeSide {
         trade_side: String,
     },
@@ -512,6 +515,10 @@ impl Display for CalibrationStagedExecutionBridgeError {
                 formatter,
                 "runtime_resources.disk_checkpoint_directory is only supported when execution_mode=`disk`"
             ),
+            Self::InvalidJointRefinementRestartCountOverride => write!(
+                formatter,
+                "joint_refinement_restart_count_override must be greater than zero when provided"
+            ),
             Self::InvalidObservationTradeSide { trade_side } => write!(
                 formatter,
                 "joint refinement current-state estimation input observation_trade_sides contains unsupported value `{trade_side}`"
@@ -544,6 +551,11 @@ impl CalibrationStagedExecutionInput {
 
         let request = self.request;
         let selected_stages = request.selected_stages.clone();
+        if self.joint_refinement_restart_count_override == Some(0) {
+            return Err(
+                CalibrationStagedExecutionBridgeError::InvalidJointRefinementRestartCountOverride,
+            );
+        }
 
         let seasonality_selected = selected_stages.contains(&CalibrationStage::Seasonality);
         let hawkes_selected = selected_stages.contains(&CalibrationStage::Hawkes);
@@ -642,6 +654,7 @@ impl CalibrationStagedExecutionInput {
             mean_reversion_stage_input: self
                 .mean_reversion_stage_input
                 .map(CalibrationMeanReversionStageExecutionInput::into_core),
+            joint_refinement_restart_count_override: self.joint_refinement_restart_count_override,
             joint_refinement_option_pricing_input: self
                 .joint_refinement_option_pricing_input
                 .map(CalibrationJointRefinementOptionPricingInput::try_into_core)
@@ -1391,6 +1404,7 @@ mod tests {
                     },
                 ],
             }),
+            joint_refinement_restart_count_override: None,
             joint_refinement_option_pricing_input: None,
             runtime_resources: match execution_mode {
                 CalibrationExecutionMode::Memory => None,
@@ -1459,6 +1473,21 @@ mod tests {
         assert_eq!(
             plan.disk_checkpoint_directory,
             Some(PathBuf::from("/tmp/janiform-bridge"))
+        );
+    }
+
+    #[test]
+    fn execution_input_plan_rejects_zero_joint_refinement_restart_override() {
+        let mut execution_input = valid_execution_input(CalibrationExecutionMode::Memory);
+        execution_input.joint_refinement_restart_count_override = Some(0);
+
+        let error = execution_input
+            .build_execution_plan()
+            .expect_err("zero restart override should fail");
+
+        assert_eq!(
+            error,
+            CalibrationStagedExecutionBridgeError::InvalidJointRefinementRestartCountOverride
         );
     }
 

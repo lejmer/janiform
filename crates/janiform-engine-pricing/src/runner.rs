@@ -38,25 +38,26 @@ use super::characteristic::{
     compose_total_return_characteristic_function_from_oracle_output,
     resolve_local_tilt_search_domain, solve_exponential_affine_transform_with_internal_selection,
 };
-use super::contracts::{
-    AnchoredLocalTiltBoundaryStateSummary, AnchoredLocalTiltSolveDiagnostics,
-    AnchoredVanillaOptionPricingBoundaryInput, VanillaOptionPricingDiagnostics,
-    VanillaOptionPricingFailureDiagnostic, VanillaOptionPricingFailureStage,
-    VanillaOptionPricingModelParameters, VanillaOptionPricingOptionalOutputSelection,
-    SpectralPricingDiagnostics,
-    VanillaOptionPricingRequest, VanillaOptionPricingRequestError, VanillaOptionPricingResponse,
-    VanillaOptionPricingResponseError, VanillaOptionPricingRunResult,
-    VanillaOptionPricingRunResultBuildError, VanillaOptionPricingStatus,
-    build_vanilla_option_pricing_run_result,
-};
 use super::constants::{
     FOURIER_INVERSION_DIAGNOSTICS_SCHEMA_VERSION, FOURIER_INVERSION_NUMERIC_QUALITY_GATE_POLICY,
     SPECTRAL_PRICING_COLLOCATION_POLICY, SPECTRAL_PRICING_DEVIATION_DOMAIN_POLICY,
     SPECTRAL_PRICING_INTEGRATION_COMPATIBILITY_POLICY,
 };
+use super::contracts::{
+    AnchoredLocalTiltBoundaryStateSummary, AnchoredLocalTiltSolveDiagnostics,
+    AnchoredVanillaOptionPricingBoundaryInput, SpectralPricingDiagnostics,
+    VanillaOptionPricingDiagnostics, VanillaOptionPricingFailureDiagnostic,
+    VanillaOptionPricingFailureStage, VanillaOptionPricingModelParameters,
+    VanillaOptionPricingOptionalOutputSelection, VanillaOptionPricingRequest,
+    VanillaOptionPricingRequestError, VanillaOptionPricingResponse,
+    VanillaOptionPricingResponseError, VanillaOptionPricingRunResult,
+    VanillaOptionPricingRunResultBuildError, VanillaOptionPricingStatus,
+    build_vanilla_option_pricing_run_result,
+};
 use super::fourier::{
     FourierInversionDiagnostics, FourierInversionNumericQualityDiagnostics,
-    FourierInversionNumericQualityGate, FourierInversionPricingError, FourierInversionQuadratureRule,
+    FourierInversionNumericQualityGate, FourierInversionPricingError,
+    FourierInversionQuadratureRule,
 };
 use super::interval_schedule::PricingIntervalSchedule;
 use super::news_loading_projection::project_nonnegative_exogenous_news_loading;
@@ -659,60 +660,63 @@ pub fn run_vanilla_option_pricing_with_observer(
         integration_quality_diagnostics,
         spectral_diagnostics,
     ) = match successful_result {
-            Ok(spectral_outcome) => {
-                let maturity_interval = pricing_request
-                    .market_inputs
-                    .single_maturity_interval()
-                    .map_err(|source| VanillaOptionPricingRunError::InvalidExecutionInput {
+        Ok(spectral_outcome) => {
+            let maturity_interval = pricing_request
+                .market_inputs
+                .single_maturity_interval()
+                .map_err(
+                    |source| VanillaOptionPricingRunError::InvalidExecutionInput {
                         source: VanillaOptionPricingExecutionInputError::InvalidRequest {
-                            source: VanillaOptionPricingRequestError::InvalidMarketInputs { source },
+                            source: VanillaOptionPricingRequestError::InvalidMarketInputs {
+                                source,
+                            },
                         },
-                    })?;
-                let maturity_year_fraction = intraday_year_fraction(maturity_interval);
-                let response = VanillaOptionPricingResponse::try_new(
-                    VanillaOptionPricingStatus::Succeeded,
-                    None,
-                    Some(spectral_outcome.price),
-                    Some(
-                        VanillaOptionPricingDiagnostics::try_new(
-                            pricing_request.market_inputs.spot
-                                * ((pricing_request.market_inputs.risk_free_rate
-                                    - pricing_request.market_inputs.dividend_yield)
-                                    * maturity_year_fraction)
-                                .exp(),
-                            (-pricing_request.market_inputs.risk_free_rate
+                    },
+                )?;
+            let maturity_year_fraction = intraday_year_fraction(maturity_interval);
+            let response = VanillaOptionPricingResponse::try_new(
+                VanillaOptionPricingStatus::Succeeded,
+                None,
+                Some(spectral_outcome.price),
+                Some(
+                    VanillaOptionPricingDiagnostics::try_new(
+                        pricing_request.market_inputs.spot
+                            * ((pricing_request.market_inputs.risk_free_rate
+                                - pricing_request.market_inputs.dividend_yield)
                                 * maturity_year_fraction)
+                                .exp(),
+                        (-pricing_request.market_inputs.risk_free_rate * maturity_year_fraction)
                             .exp(),
-                            maturity_interval,
-                            hawkes_boundary_state_norm(
-                                pricing_request.boundary_input.hawkes_boundary_state,
-                            ),
-                        )
-                        .map_err(|source| {
-                            VanillaOptionPricingRunError::InvalidResponseDiagnostics { source }
-                        })?,
-                    ),
-                    spectral_outcome.implied_volatility,
-                    Some(spectral_outcome.implied_volatility_inversion_status),
-                )
-                .map_err(|source| VanillaOptionPricingRunError::InvalidResponse { source })?;
-
-                (
-                    response,
-                    spectral_outcome.representative_transform,
-                    Some(build_spectral_compatibility_integration_diagnostics(
-                        spectral_outcome.price,
                         maturity_interval,
-                        &spectral_outcome.spectral_diagnostics,
-                    )),
-                    Some(spectral_outcome.spectral_diagnostics),
-                )
-            }
-            Err(error) => {
-                let response = build_failed_pricing_response(error)?;
-                (response, None, None, None)
-            }
-        };
+                        hawkes_boundary_state_norm(
+                            pricing_request.boundary_input.hawkes_boundary_state,
+                        ),
+                    )
+                    .map_err(|source| {
+                        VanillaOptionPricingRunError::InvalidResponseDiagnostics { source }
+                    })?,
+                ),
+                spectral_outcome.implied_volatility,
+                Some(spectral_outcome.implied_volatility_inversion_status),
+            )
+            .map_err(|source| VanillaOptionPricingRunError::InvalidResponse { source })?;
+
+            (
+                response,
+                spectral_outcome.representative_transform,
+                Some(build_spectral_compatibility_integration_diagnostics(
+                    spectral_outcome.price,
+                    maturity_interval,
+                    &spectral_outcome.spectral_diagnostics,
+                )),
+                Some(spectral_outcome.spectral_diagnostics),
+            )
+        }
+        Err(error) => {
+            let response = build_failed_pricing_response(error)?;
+            (response, None, None, None)
+        }
+    };
 
     build_vanilla_option_pricing_run_result(
         response,
@@ -2100,11 +2104,13 @@ pub(crate) fn evaluate_pricing_log_return_characteristic_function_batch_for_cont
     let mut evaluations = Vec::with_capacity(arguments.len());
 
     for argument in arguments {
-        evaluations.push(evaluate_pricing_log_return_characteristic_function_for_context(
-            transition_context,
-            driver_parameters,
-            *argument,
-        )?);
+        evaluations.push(
+            evaluate_pricing_log_return_characteristic_function_for_context(
+                transition_context,
+                driver_parameters,
+                *argument,
+            )?,
+        );
     }
 
     Ok(evaluations)

@@ -1173,6 +1173,7 @@ fn prepared_market_data_plan_from_loading_output(
             &selected_stages,
             &loading_output,
         )?,
+        joint_refinement_restart_count_override: None,
         joint_refinement_option_pricing_input: joint_refinement_option_pricing_input_from_request(
             &request,
             &loading_output,

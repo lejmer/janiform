@@ -767,8 +767,11 @@ fn format_option_pricing_progress_item(event: &PricingProgressEvent) -> String {
         }
         PricingProgressPhase::TransitionRowProgress => {
             let total_rows = event.total_transition_rows.unwrap_or(event.total_units);
-            let mut detail =
-                format!("transition_rows {}/{}", event.completed_units.min(total_rows), total_rows);
+            let mut detail = format!(
+                "transition_rows {}/{}",
+                event.completed_units.min(total_rows),
+                total_rows
+            );
             if let Some(total_intervals) = event.total_intervals {
                 detail.push_str(&format!(
                     " interval {}/{}",
@@ -794,11 +797,7 @@ fn format_option_pricing_progress_item(event: &PricingProgressEvent) -> String {
     }
 }
 
-fn format_progress_counts(
-    label: &str,
-    total_units: usize,
-    current_index: Option<usize>,
-) -> String {
+fn format_progress_counts(label: &str, total_units: usize, current_index: Option<usize>) -> String {
     let current_position = current_index.map_or(0, |index| index.saturating_add(1));
     format!("{label} {current_position}/{total_units}")
 }

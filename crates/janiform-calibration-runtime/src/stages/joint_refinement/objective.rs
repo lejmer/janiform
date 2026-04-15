@@ -41,9 +41,11 @@ pub(super) fn evaluate_joint_candidate(
     context: &JointRefinementContext,
     fidelity_tier: JointRefinementFidelityTier,
     solver_settings: &CalibrationOptimizerSettings,
+    include_option_pricing: bool,
 ) -> JointRefinementCandidateEvaluation {
     let cache_key = super::execution::JointRefinementObjectiveCacheKey {
         fidelity_tier,
+        include_option_pricing,
         parameter_bits: ordered_parameter_bits(parameter_vector),
     };
     if let Ok(cache_guard) = context.objective_cache.lock()
@@ -54,8 +56,13 @@ pub(super) fn evaluate_joint_candidate(
     }
     context.profiling_state.record_objective_cache_miss();
 
-    let candidate_evaluation =
-        build_joint_candidate_evaluation(parameter_vector, context, fidelity_tier, solver_settings);
+    let candidate_evaluation = build_joint_candidate_evaluation(
+        parameter_vector,
+        context,
+        fidelity_tier,
+        solver_settings,
+        include_option_pricing,
+    );
 
     if let Ok(mut cache_guard) = context.objective_cache.lock() {
         cache_guard.insert(cache_key, candidate_evaluation.clone());
@@ -72,6 +79,7 @@ pub(super) fn evaluate_joint_fitted_parameters(
     solver_settings: &CalibrationOptimizerSettings,
     progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
     progress_phase: Option<JointRefinementStageProgressPhase>,
+    include_option_pricing: bool,
 ) -> JointRefinementCandidateEvaluation {
     build_joint_candidate_evaluation_for_fitted_parameters(
         fitted_parameters,
@@ -81,6 +89,7 @@ pub(super) fn evaluate_joint_fitted_parameters(
         solver_settings,
         progress_sender,
         progress_phase,
+        include_option_pricing,
     )
 }
 
@@ -89,9 +98,10 @@ fn build_joint_candidate_evaluation(
     context: &JointRefinementContext,
     fidelity_tier: JointRefinementFidelityTier,
     solver_settings: &CalibrationOptimizerSettings,
+    include_option_pricing: bool,
 ) -> JointRefinementCandidateEvaluation {
     let parameter_bits = ordered_parameter_bits(parameter_vector);
-    let simulation_parameter_bits = if context.option_pricing_context.is_some() {
+    let simulation_parameter_bits = if context.option_pricing_refinement_enabled {
         Some(&[][..])
     } else {
         Some(parameter_bits.as_slice())
@@ -116,6 +126,7 @@ fn build_joint_candidate_evaluation(
         solver_settings,
         None,
         None,
+        include_option_pricing,
     )
 }
 
@@ -127,8 +138,12 @@ fn build_joint_candidate_evaluation_for_fitted_parameters(
     solver_settings: &CalibrationOptimizerSettings,
     progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
     progress_phase: Option<JointRefinementStageProgressPhase>,
+    include_option_pricing: bool,
 ) -> JointRefinementCandidateEvaluation {
-    if let Some(fatal_option_pricing_failure) = option_pricing_execution_failure_message(context) {
+    if include_option_pricing
+        && let Some(fatal_option_pricing_failure) =
+            option_pricing_execution_failure_message(context)
+    {
         return invalid_candidate_evaluation(
             context,
             &context.baseline_hawkes_fitted_parameters,
@@ -142,8 +157,9 @@ fn build_joint_candidate_evaluation_for_fitted_parameters(
         JointRefinementFidelityTier::Local => 1,
         JointRefinementFidelityTier::Final => context.final_simulation_seeds.len(),
     };
-    let include_option_pricing = option_pricing_is_enabled_for_fidelity(context, fidelity_tier);
-    let total_progress_units = 1 + simulation_seed_count + usize::from(include_option_pricing);
+    let option_pricing_is_enabled =
+        option_pricing_is_enabled_for_fidelity(context, fidelity_tier, include_option_pricing);
+    let total_progress_units = 1 + simulation_seed_count + usize::from(option_pricing_is_enabled);
 
     if violates_runtime_seasonality_scaled_stationarity(&fitted_parameters, context) {
         return invalid_candidate_evaluation(
@@ -163,7 +179,7 @@ fn build_joint_candidate_evaluation_for_fitted_parameters(
         Some("deterministic_evaluation"),
     );
 
-    let simulation_parameter_bits = if context.option_pricing_context.is_some() {
+    let simulation_parameter_bits = if context.option_pricing_refinement_enabled {
         Some(&[][..])
     } else {
         parameter_bits
@@ -283,7 +299,7 @@ fn build_joint_candidate_evaluation_for_fitted_parameters(
                 / context.observed_data.observed_log_price_span.max(1.0e-8)
         }));
 
-    let raw_option_spread_normalized_price_fit = if include_option_pricing {
+    let raw_option_spread_normalized_price_fit = if option_pricing_is_enabled {
         emit_joint_refinement_candidate_evaluation_progress(
             progress_sender,
             progress_phase,
@@ -736,8 +752,10 @@ fn maybe_raw(use_raw: bool, raw_value: f64, normalized_value: f64) -> f64 {
 fn option_pricing_is_enabled_for_fidelity(
     context: &JointRefinementContext,
     fidelity_tier: JointRefinementFidelityTier,
+    include_option_pricing: bool,
 ) -> bool {
-    matches!(fidelity_tier, JointRefinementFidelityTier::Final)
+    include_option_pricing
+        && matches!(fidelity_tier, JointRefinementFidelityTier::Final)
         && context.option_pricing_context.is_some()
 }
 

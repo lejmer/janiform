@@ -25,13 +25,11 @@ pub(crate) use coarse_consistency::{
 #[cfg(test)]
 pub(crate) use inputs::sampled_observed_tick_returns;
 pub(crate) use inputs::{build_observed_data, build_summary_simulation_session_context};
+#[cfg(test)]
+pub(crate) use optimization::joint_refinement_base_schedule_components;
 pub(crate) use optimization::{
     desired_joint_refinement_restart_count, joint_refinement_budget_schedule,
     optimize_restart_seeds,
-};
-#[cfg(test)]
-pub(crate) use optimization::{
-    joint_refinement_base_schedule_components, maximum_parallel_restart_count,
 };
 pub(crate) use pricing_context::{
     build_option_calibration_diagnostics, build_option_pricing_context,

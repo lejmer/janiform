@@ -41,6 +41,7 @@ pub(crate) enum JointRefinementFidelityTier {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct JointRefinementObjectiveCacheKey {
     pub(crate) fidelity_tier: JointRefinementFidelityTier,
+    pub(crate) include_option_pricing: bool,
     pub(crate) parameter_bits: Vec<u64>,
 }
 
@@ -279,6 +280,7 @@ pub(crate) struct JointRefinementContext {
     pub(crate) active_parameter_layout: JointRefinementActiveParameterLayout,
     pub(crate) lower_bounds: Vec<f64>,
     pub(crate) upper_bounds: Vec<f64>,
+    pub(crate) option_pricing_refinement_enabled: bool,
     pub(crate) local_simulation_seed: u64,
     pub(crate) final_simulation_seeds: Vec<u64>,
     pub(crate) local_baseline_buckets: JointRefinementBaselineBuckets,

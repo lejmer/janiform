@@ -37,7 +37,7 @@ pub(super) fn parameter_vector_to_fitted_parameters(
     parameter_vector: &[f64],
     context: &JointRefinementContext,
 ) -> Option<JointRefinementStageFittedParameters> {
-    let option_pricing_only = context.option_pricing_context.is_some();
+    let option_pricing_only = context.option_pricing_refinement_enabled;
 
     let mut structured_alpha = context.baseline_hawkes_fitted_parameters.structured_alpha;
 
@@ -351,8 +351,38 @@ pub(super) fn build_restart_seeds(
     baseline_15m_calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
     return_component_basin_diagnostics: &[ReturnComponentsStageContinuousOptimizerBasinDiagnostic],
     activity_log_shift: f64,
+    halton_validation_context: &JointRefinementContext,
     restart_count: usize,
 ) -> Vec<(String, Vec<f64>)> {
+    build_restart_seeds_with_halton_acceptance(
+        baseline_parameter_vector,
+        active_parameter_layout,
+        lower_bounds,
+        upper_bounds,
+        baseline_15m_calibration_sample,
+        return_component_basin_diagnostics,
+        activity_log_shift,
+        restart_count,
+        |halton_seed| {
+            parameter_vector_to_fitted_parameters(halton_seed, halton_validation_context).is_some()
+        },
+    )
+}
+
+pub(super) fn build_restart_seeds_with_halton_acceptance<F>(
+    baseline_parameter_vector: &[f64],
+    active_parameter_layout: &JointRefinementActiveParameterLayout,
+    lower_bounds: &[f64],
+    upper_bounds: &[f64],
+    baseline_15m_calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
+    return_component_basin_diagnostics: &[ReturnComponentsStageContinuousOptimizerBasinDiagnostic],
+    activity_log_shift: f64,
+    restart_count: usize,
+    mut halton_seed_is_accepted: F,
+) -> Vec<(String, Vec<f64>)>
+where
+    F: FnMut(&[f64]) -> bool,
+{
     let mut baseline = baseline_parameter_vector.to_vec();
     clamp_in_place(baseline.as_mut_slice(), lower_bounds, upper_bounds);
 
@@ -380,6 +410,7 @@ pub(super) fn build_restart_seeds(
         baseline_15m_calibration_sample,
         return_component_basin_diagnostics,
         activity_log_shift,
+        4,
     ));
     restart_candidates.extend(joint_nig_alpha_delta_restart_seeds(
         baseline_parameter_vector,
@@ -389,13 +420,21 @@ pub(super) fn build_restart_seeds(
         baseline_15m_calibration_sample,
         return_component_basin_diagnostics,
         activity_log_shift,
+        2,
     ));
 
     let target_restart_count = restart_count.max(1);
-    let mut deduplicated_candidates = deduplicate_restart_seed_candidates(restart_candidates);
+    let mut deduplicated_candidates = deduplicate_restart_seed_candidates(restart_candidates)
+        .into_iter()
+        .take(target_restart_count)
+        .collect::<Vec<_>>();
     let mut halton_index = 1u64;
     let mut halton_position = 1usize;
-    while deduplicated_candidates.len() < target_restart_count {
+    let halton_attempt_cap = 8 * target_restart_count;
+
+    while deduplicated_candidates.len() < target_restart_count
+        && halton_position <= halton_attempt_cap
+    {
         let mut halton_seed = halton_parameter_vector(halton_index, lower_bounds, upper_bounds);
         if halton_seed.len() >= baseline_parameter_vector.len() {
             halton_seed[active_parameter_layout.log_lambda_scale_index] =
@@ -407,11 +446,13 @@ pub(super) fn build_restart_seeds(
 
         clamp_in_place(halton_seed.as_mut_slice(), lower_bounds, upper_bounds);
 
-        deduplicated_candidates = deduplicate_restart_seed_candidates({
-            let mut candidates = deduplicated_candidates;
-            candidates.push((build_halton_restart_id(halton_position), halton_seed));
-            candidates
-        });
+        if halton_seed_is_accepted(halton_seed.as_slice()) {
+            deduplicated_candidates = deduplicate_restart_seed_candidates({
+                let mut candidates = deduplicated_candidates;
+                candidates.push((build_halton_restart_id(halton_position), halton_seed));
+                candidates
+            });
+        }
 
         halton_index += 1;
         halton_position += 1;
@@ -428,9 +469,11 @@ fn joint_nig_basin_restart_seeds(
     baseline_15m_calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
     return_component_basin_diagnostics: &[ReturnComponentsStageContinuousOptimizerBasinDiagnostic],
     activity_log_shift: f64,
+    maximum_seed_count: usize,
 ) -> Vec<(String, Vec<f64>)> {
     return_component_basin_diagnostics
         .iter()
+        .take(maximum_seed_count.div_ceil(2))
         .filter_map(|diagnostic| {
             project_basin_diagnostic_into_joint_nig_coordinates(
                 baseline_15m_calibration_sample,
@@ -478,9 +521,11 @@ fn joint_nig_alpha_delta_restart_seeds(
     baseline_15m_calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
     return_component_basin_diagnostics: &[ReturnComponentsStageContinuousOptimizerBasinDiagnostic],
     activity_log_shift: f64,
+    maximum_seed_count: usize,
 ) -> Vec<(String, Vec<f64>)> {
     return_component_basin_diagnostics
         .iter()
+        .take(maximum_seed_count.div_ceil(2))
         .filter_map(|diagnostic| {
             project_basin_diagnostic_into_joint_nig_coordinates(
                 baseline_15m_calibration_sample,

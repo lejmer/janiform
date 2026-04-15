@@ -6,7 +6,7 @@ use super::super::objective::{
     return_asymmetry_horizon_fit, root_mean_square,
 };
 use super::super::setup::{
-    build_restart_seeds, project_basin_diagnostic_into_joint_nig_coordinates,
+    build_restart_seeds_with_halton_acceptance, project_basin_diagnostic_into_joint_nig_coordinates,
 };
 use super::{
     JOINT_REFINEMENT_PARAMETER_BLOCK_COUNT, JointRefinementActiveParameterLayout,
@@ -14,8 +14,7 @@ use super::{
     JointRefinementSeedSummary, admissibility_threshold_from_sample_count,
     desired_joint_refinement_restart_count, extend_joint_coarse_tick_consistency_metrics_for_seed,
     joint_breakdown_is_admissible, joint_refinement_base_schedule_components,
-    joint_refinement_budget_schedule, maximum_parallel_restart_count,
-    sampled_observed_tick_returns,
+    joint_refinement_budget_schedule, sampled_observed_tick_returns,
 };
 use crate::stages::joint_metrics::{
     JointRefinementAggregatedIntervalObservation,
@@ -187,28 +186,13 @@ fn build_test_seed_summary(
 }
 
 #[test]
-fn joint_refinement_desired_restart_count_is_cpu_count_invariant_and_budget_derived() {
-    let single_core_restart_count =
-        desired_joint_refinement_restart_count(&build_test_solver_settings(1));
-    let eight_core_restart_count =
-        desired_joint_refinement_restart_count(&build_test_solver_settings(8));
-    let high_core_solver_settings = build_test_solver_settings(64);
-    let high_core_restart_count =
-        desired_joint_refinement_restart_count(&high_core_solver_settings);
+fn joint_refinement_desired_restart_count_defaults_to_fifteen() {
+    assert_eq!(desired_joint_refinement_restart_count(None), 15);
+}
 
-    assert_eq!(
-        single_core_restart_count,
-        maximum_parallel_restart_count(&build_test_solver_settings(1))
-    );
-    assert_eq!(eight_core_restart_count, single_core_restart_count);
-    assert_eq!(
-        high_core_restart_count,
-        maximum_parallel_restart_count(&high_core_solver_settings)
-    );
-    assert!(
-        high_core_restart_count > JOINT_REFINEMENT_PARAMETER_BLOCK_COUNT,
-        "restart frontier should expand beyond the block count when budget allows",
-    );
+#[test]
+fn joint_refinement_desired_restart_count_honors_override() {
+    assert_eq!(desired_joint_refinement_restart_count(Some(9)), 9);
 }
 
 #[test]
@@ -222,7 +206,7 @@ fn joint_refinement_high_core_budget_stays_within_base_block_budget() {
 
     let high_core_schedule = joint_refinement_budget_schedule(
         &solver_settings,
-        desired_joint_refinement_restart_count(&solver_settings),
+        desired_joint_refinement_restart_count(None),
     );
     let scheduled_block_evaluation_budget = high_core_schedule.restart_count
         * high_core_schedule.outer_cycle_count
@@ -244,7 +228,7 @@ fn joint_refinement_restart_seed_generation_is_deterministic() {
     let lower_bounds = vec![-1.0; baseline_parameter_vector.len()];
     let upper_bounds = vec![2.0; baseline_parameter_vector.len()];
 
-    let first_restart_seeds = build_restart_seeds(
+    let first_restart_seeds = build_restart_seeds_with_halton_acceptance(
         baseline_parameter_vector.as_slice(),
         &active_parameter_layout,
         lower_bounds.as_slice(),
@@ -253,8 +237,9 @@ fn joint_refinement_restart_seed_generation_is_deterministic() {
         &[],
         0.25,
         8,
+        |_| true,
     );
-    let second_restart_seeds = build_restart_seeds(
+    let second_restart_seeds = build_restart_seeds_with_halton_acceptance(
         baseline_parameter_vector.as_slice(),
         &active_parameter_layout,
         lower_bounds.as_slice(),
@@ -263,6 +248,7 @@ fn joint_refinement_restart_seed_generation_is_deterministic() {
         &[],
         0.25,
         8,
+        |_| true,
     );
 
     assert_eq!(first_restart_seeds, second_restart_seeds);
@@ -271,6 +257,65 @@ fn joint_refinement_restart_seed_generation_is_deterministic() {
     assert_eq!(first_restart_seeds[1].0, "activity_aligned");
     assert_eq!(first_restart_seeds[2].0, "midpoint");
     assert_eq!(first_restart_seeds[3].0, "halton_01");
+}
+
+#[test]
+fn joint_refinement_restart_seed_generation_counts_only_accepted_haltons() {
+    let active_parameter_layout = build_test_active_parameter_layout();
+    let baseline_parameter_vector = vec![0.0; active_parameter_layout.vector_length()];
+    let baseline_15m_calibration_sample = build_test_calibration_sample();
+    let lower_bounds = vec![-1.0; baseline_parameter_vector.len()];
+    let upper_bounds = vec![2.0; baseline_parameter_vector.len()];
+    let mut halton_attempt_count = 0usize;
+
+    let restart_seeds = build_restart_seeds_with_halton_acceptance(
+        baseline_parameter_vector.as_slice(),
+        &active_parameter_layout,
+        lower_bounds.as_slice(),
+        upper_bounds.as_slice(),
+        &baseline_15m_calibration_sample,
+        &[],
+        0.25,
+        6,
+        |_| {
+            halton_attempt_count += 1;
+            halton_attempt_count % 3 == 0
+        },
+    );
+
+    assert_eq!(restart_seeds.len(), 6);
+    assert_eq!(restart_seeds[3].0, "halton_03");
+    assert_eq!(restart_seeds[4].0, "halton_06");
+    assert_eq!(restart_seeds[5].0, "halton_09");
+    assert_eq!(halton_attempt_count, 9);
+}
+
+#[test]
+fn joint_refinement_restart_seed_generation_stops_after_halton_attempt_cap() {
+    let active_parameter_layout = build_test_active_parameter_layout();
+    let baseline_parameter_vector = vec![0.0; active_parameter_layout.vector_length()];
+    let baseline_15m_calibration_sample = build_test_calibration_sample();
+    let lower_bounds = vec![-1.0; baseline_parameter_vector.len()];
+    let upper_bounds = vec![2.0; baseline_parameter_vector.len()];
+    let mut halton_attempt_count = 0usize;
+
+    let restart_seeds = build_restart_seeds_with_halton_acceptance(
+        baseline_parameter_vector.as_slice(),
+        &active_parameter_layout,
+        lower_bounds.as_slice(),
+        upper_bounds.as_slice(),
+        &baseline_15m_calibration_sample,
+        &[],
+        0.25,
+        6,
+        |_| {
+            halton_attempt_count += 1;
+            false
+        },
+    );
+
+    assert_eq!(restart_seeds.len(), 3);
+    assert_eq!(halton_attempt_count, 48);
 }
 
 #[test]
@@ -288,7 +333,7 @@ fn joint_refinement_restart_seeds_include_return_component_nig_basins() {
         -0.6,
     )];
 
-    let restart_seeds = build_restart_seeds(
+    let restart_seeds = build_restart_seeds_with_halton_acceptance(
         baseline_parameter_vector.as_slice(),
         &active_parameter_layout,
         lower_bounds.as_slice(),
@@ -297,6 +342,7 @@ fn joint_refinement_restart_seeds_include_return_component_nig_basins() {
         basin_diagnostics.as_slice(),
         0.25,
         8,
+        |_| true,
     );
     let projected_search_point = project_basin_diagnostic_into_joint_nig_coordinates(
         &baseline_15m_calibration_sample,

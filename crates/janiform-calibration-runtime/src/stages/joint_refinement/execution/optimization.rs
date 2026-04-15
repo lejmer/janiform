@@ -1,4 +1,3 @@
-use std::env;
 use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex};
 
@@ -16,10 +15,7 @@ use super::{
     JointRefinementRestartOutcome, option_pricing_execution_failure_message,
     simulation_infrastructure_failure_message,
 };
-
-const JOINT_REFINEMENT_RESTART_POLICY_ENV: &str = "JANIFORM_JOINT_REFINEMENT_RESTART_POLICY";
-const JOINT_REFINEMENT_RESTART_POLICY_BUDGET_DERIVED: &str = "budget_derived";
-const JOINT_REFINEMENT_RESTART_POLICY_CPU_COUNT_LIMITED: &str = "cpu_count_limited";
+pub(crate) const JOINT_REFINEMENT_DEFAULT_RESTART_COUNT: usize = 15;
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct JointRefinementBudgetSchedule {
@@ -218,34 +214,11 @@ pub(crate) fn joint_refinement_budget_schedule(
 }
 
 pub(crate) fn desired_joint_refinement_restart_count(
-    solver_settings: &CalibrationOptimizerSettings,
+    restart_count_override: Option<usize>,
 ) -> usize {
-    match env::var(JOINT_REFINEMENT_RESTART_POLICY_ENV) {
-        Ok(value) if value == JOINT_REFINEMENT_RESTART_POLICY_CPU_COUNT_LIMITED => {
-            solver_settings.cpu_count.max(1)
-        }
-        Ok(value) if value == JOINT_REFINEMENT_RESTART_POLICY_BUDGET_DERIVED => {
-            maximum_parallel_restart_count(solver_settings)
-        }
-        Ok(_) | Err(env::VarError::NotUnicode(_)) | Err(env::VarError::NotPresent) => {
-            maximum_parallel_restart_count(solver_settings)
-        }
-    }
-}
-
-pub(crate) fn maximum_parallel_restart_count(
-    solver_settings: &CalibrationOptimizerSettings,
-) -> usize {
-    let (base_outer_cycle_count, base_powell_settings) = base_schedule_components(solver_settings);
-
-    let total_block_cycle_budget = base_outer_cycle_count
-        .saturating_mul(base_powell_settings.evaluation_budget)
-        .max(1);
-
-    total_block_cycle_budget
-        .checked_div(base_powell_settings.line_search_evaluation_cap.max(1))
-        .unwrap_or(1)
-        .max(1)
+    restart_count_override
+        .filter(|restart_count| *restart_count > 0)
+        .unwrap_or(JOINT_REFINEMENT_DEFAULT_RESTART_COUNT)
 }
 
 pub(crate) fn joint_refinement_base_schedule_components(
@@ -336,6 +309,7 @@ fn optimize_single_restart(
         context,
         JointRefinementFidelityTier::Local,
         solver_settings,
+        false,
     );
     if local_evaluation.invalid_reason.is_some() {
         return JointRefinementRestartOutcome {
@@ -364,6 +338,7 @@ fn optimize_single_restart(
         context,
         JointRefinementFidelityTier::Final,
         solver_settings,
+        false,
     );
 
     JointRefinementRestartOutcome {
@@ -474,6 +449,7 @@ fn build_short_circuited_restart_outcome(
         context,
         JointRefinementFidelityTier::Local,
         solver_settings,
+        false,
     );
 
     JointRefinementRestartOutcome {
@@ -532,6 +508,7 @@ fn optimize_parameter_block(
             context,
             JointRefinementFidelityTier::Local,
             solver_settings,
+            false,
         );
         if candidate_evaluation.invalid_reason.is_some() {
             return None;

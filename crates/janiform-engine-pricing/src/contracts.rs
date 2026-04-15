@@ -814,9 +814,15 @@ impl SpectralPricingDiagnostics {
 
     pub fn validate(&self) -> Result<(), SpectralPricingDiagnosticsError> {
         for field in [
-            ("deviation_domain_policy", self.deviation_domain_policy.as_str()),
+            (
+                "deviation_domain_policy",
+                self.deviation_domain_policy.as_str(),
+            ),
             ("collocation_policy", self.collocation_policy.as_str()),
-            ("interval_operator_policy", self.interval_operator_policy.as_str()),
+            (
+                "interval_operator_policy",
+                self.interval_operator_policy.as_str(),
+            ),
             (
                 "expected_hawkes_state_update_policy",
                 self.expected_hawkes_state_update_policy.as_str(),
@@ -827,8 +833,14 @@ impl SpectralPricingDiagnostics {
             }
         }
 
-        validate_finite_field(self.deviation_domain_lower_bound, "deviation_domain_lower_bound")?;
-        validate_finite_field(self.deviation_domain_upper_bound, "deviation_domain_upper_bound")?;
+        validate_finite_field(
+            self.deviation_domain_lower_bound,
+            "deviation_domain_lower_bound",
+        )?;
+        validate_finite_field(
+            self.deviation_domain_upper_bound,
+            "deviation_domain_upper_bound",
+        )?;
 
         if self.deviation_domain_lower_bound >= self.deviation_domain_upper_bound {
             return Err(SpectralPricingDiagnosticsError::InvalidDomainBounds {
@@ -838,9 +850,11 @@ impl SpectralPricingDiagnostics {
         }
 
         if self.collocation_node_count == 0 {
-            return Err(SpectralPricingDiagnosticsError::InvalidCollocationNodeCount {
-                value: self.collocation_node_count,
-            });
+            return Err(
+                SpectralPricingDiagnosticsError::InvalidCollocationNodeCount {
+                    value: self.collocation_node_count,
+                },
+            );
         }
 
         if self.interval_diagnostics.is_empty() {
@@ -901,10 +915,16 @@ impl Display for SpectralPricingDiagnosticsError {
                 write!(formatter, "{field} must be finite, found {value}")
             }
             Self::InvalidPositiveField { field, value } => {
-                write!(formatter, "{field} must be finite and strictly positive, found {value}")
+                write!(
+                    formatter,
+                    "{field} must be finite and strictly positive, found {value}"
+                )
             }
             Self::InvalidNonNegativeField { field, value } => {
-                write!(formatter, "{field} must be finite and non-negative, found {value}")
+                write!(
+                    formatter,
+                    "{field} must be finite and non-negative, found {value}"
+                )
             }
             Self::InvalidThetaOrdering {
                 minimum_solved_theta,
@@ -1552,9 +1572,7 @@ impl VanillaOptionPricingRunDiagnostics {
     }
 
     pub fn validate(&self) -> Result<(), VanillaOptionPricingRunDiagnosticsError> {
-        if self.transform.is_none()
-            && self.integration_quality.is_none()
-            && self.spectral.is_none()
+        if self.transform.is_none() && self.integration_quality.is_none() && self.spectral.is_none()
         {
             return Err(VanillaOptionPricingRunDiagnosticsError::EmptyDiagnosticsPayload);
         }
@@ -1586,7 +1604,10 @@ impl Display for VanillaOptionPricingRunDiagnosticsError {
                 "run diagnostics payload must include transform diagnostics, integration diagnostics, spectral diagnostics, or any non-empty combination of them"
             ),
             Self::InvalidSpectral { source } => {
-                write!(formatter, "spectral diagnostics payload is invalid: {source}")
+                write!(
+                    formatter,
+                    "spectral diagnostics payload is invalid: {source}"
+                )
             }
         }
     }

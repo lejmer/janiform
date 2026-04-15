@@ -2092,6 +2092,7 @@ pub(crate) fn staged_run_inputs(
         } else {
             None
         },
+        joint_refinement_restart_count_override: None,
         joint_refinement_option_pricing_input: None,
     }
 }
@@ -2522,6 +2523,7 @@ pub(crate) fn build_joint_refinement_stage_success_report() -> JointRefinementSt
                     },
                     candidate_generation_input:
                         return_components_stage_candidate_generation_fixture(),
+                    restart_count_override: None,
                     option_pricing_input: None,
                 },
             )
