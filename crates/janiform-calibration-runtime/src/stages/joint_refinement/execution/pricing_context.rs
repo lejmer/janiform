@@ -688,16 +688,12 @@ fn run_option_grid_batch_pricing(
     ) {
         let mut pricing_progress_observer = |event: PricingProgressEvent| {
             let _ = progress_sender.send(JointRefinementStageProgressUpdate {
-                phase: progress_phase,
-                completed_units,
-                total_units,
                 current_item_label: Some(format_option_pricing_progress_item(&event)),
-                valid_completed_units: None,
-                cumulative_local_evaluation_count: None,
-                current_weighted_objective: None,
-                best_weighted_objective: None,
-                current_coarse_consistency_fit: None,
-                best_coarse_consistency_fit: None,
+                ..JointRefinementStageProgressUpdate::new(
+                    progress_phase,
+                    completed_units,
+                    total_units,
+                )
             });
         };
 

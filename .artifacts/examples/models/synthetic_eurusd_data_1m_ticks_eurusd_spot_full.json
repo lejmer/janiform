@@ -16,8 +16,8 @@
     "execution_mode": "memory",
     "fitted_parameter_summary": {
       "selected_candidate_ids": {
-        "hawkes": "market_data_fit_095_refined_2_545",
-        "joint_refinement": "joint_refinement_midpoint",
+        "hawkes": "market_data_fit_093_refined_0_115",
+        "joint_refinement": "joint_refinement_nig_basin_symmetric_like",
         "return_components": "generated_nig_001_known_001_surprise_001_mark_001_coupling_001"
       },
       "stage_keys": [
@@ -56,7 +56,7 @@
         "source_kind": "built_in"
       },
       "market_profile": "eurusd_spot",
-      "run_id": "Synthetic_EURUSD_Data_1M_ticks_20260406T025427Z",
+      "run_id": "Synthetic_EURUSD_Data_1M_ticks_20260415T221414Z",
       "session_source_kind": "built_in",
       "tick_data_format": "parquet",
       "tick_price_columns": {
@@ -112,7 +112,7 @@
         "source_kind": "built_in"
       }
     },
-    "run_id": "Synthetic_EURUSD_Data_1M_ticks_20260406T025427Z",
+    "run_id": "Synthetic_EURUSD_Data_1M_ticks_20260415T221414Z",
     "selected_stages": [
       "seasonality",
       "hawkes",
@@ -175,7 +175,7 @@
         }
       },
       "schema_version": "calibration.orchestration.stage_output.hawkes.v1",
-      "selected_candidate_id": "market_data_fit_095_refined_2_545"
+      "selected_candidate_id": "market_data_fit_093_refined_0_115"
     },
     "joint_refinement": {
       "baseline_hawkes_fitted_parameters": {
@@ -255,10 +255,10 @@
           }
         },
         "nig_shared_plus_shift_configuration": {
-          "alpha": 2004.529027545855,
-          "beta_0": 255.7219057258,
-          "delta": 4.46104e-07,
-          "delta_beta": -159.121762346882,
+          "alpha": 2027.284959933722,
+          "beta_0": 180.760339052463,
+          "delta": 4.54664e-07,
+          "delta_beta": -134.249159092422,
           "mu": 0.0
         },
         "surprise_deterministic_intensity_profile": {
@@ -446,7 +446,7 @@
               "plus_minus": 0.233141798442,
               "plus_plus": 2.098276185979
             },
-            "beta": 15.221390259263,
+            "beta": 40.62894772281253,
             "lambda_bar": 1109.4090125084233,
             "rho": {
               "minus_minus": 2.2250738585072014e-308,
@@ -516,10 +516,10 @@
             }
           },
           "nig_shared_plus_shift_configuration": {
-            "alpha": 1392.260706363546,
-            "beta_0": 0.0,
-            "delta": 3.97948e-07,
-            "delta_beta": -99.79283866834,
+            "alpha": 1428.446992298942,
+            "beta_0": 88.175715339022,
+            "delta": 4.69547e-07,
+            "delta_beta": -237.012534645917,
             "mu": 0.0
           },
           "surprise_deterministic_intensity_profile": {
@@ -700,138 +700,506 @@
         }
       },
       "objective_breakdown": {
-        "activity_level_fit": 0.5859030389621557,
-        "activity_shape_fit": 1.0000926588854118,
-        "aggregated_likelihood_fit": 1.1265934745548594,
-        "aggregated_return_scale_fit": 1.0956995901094986,
-        "aggregated_return_shape_fit": 0.9289689950390858,
-        "business_time_return_scale_fit": 1.1644651627489153,
+        "activity_level_fit": 0.577652535285887,
+        "activity_shape_fit": 0.9453244634048944,
+        "aggregated_likelihood_fit": 1.0361382720445529,
+        "aggregated_return_scale_fit": 0.987665570548348,
+        "aggregated_return_shape_fit": 1.3803450251429528,
+        "business_time_return_scale_fit": 1.7270292659435218,
         "hard_constraint_penalty": 0.0,
-        "intraday_return_level_fit": 1.0345383006628823,
-        "option_spread_normalized_price_fit": 0.0,
-        "price_span_sanity_fit": 0.5085664727432996,
-        "return_asymmetry_fit": 1.5942228273048773,
-        "rv_activity_coupling_fit": 0.41704257305219855,
-        "tick_return_asymmetry_fit": 1.5710764663709194,
-        "tick_return_scale_fit": 1.1083832646721448,
-        "weighted_objective": 1.071345558291918
+        "intraday_return_level_fit": 1.002143049152399,
+        "price_span_sanity_fit": 1.0575902373260673,
+        "return_asymmetry_fit": 1.4120335841036873,
+        "rv_activity_coupling_fit": 0.7228470932495281,
+        "tick_return_asymmetry_fit": 1.2642296298393625,
+        "tick_return_scale_fit": 1.0062858985808385,
+        "weighted_objective": 1.1333722356715172
       },
       "optimizer_diagnostics": {
-        "final_objective": 1.071345558291918,
+        "final_objective": 1.1333722356715172,
         "final_simulation_seeds": [
-          2659102505145015887,
-          13091488262724586730,
-          5122640115786077970
+          16171245015128391394,
+          2714793400818912582,
+          3606482429744706297
         ],
-        "local_evaluation_count": 32,
-        "local_objective": 0.8792556857302107,
+        "local_evaluation_count": 42,
+        "local_objective": 0.9420234610508211,
         "restart_diagnostics": {
           "invalid_reason_frequencies": [
             {
               "count": 2,
-              "label": "parameter_vector_to_fitted_parameters_failed"
-            },
-            {
-              "count": 12,
               "label": "seasonality_scaled_stationarity_failed"
             }
           ],
-          "invalid_restart_count": 14,
-          "restart_count": 50,
+          "invalid_restart_count": 2,
+          "restart_count": 15,
           "stop_reason_frequencies": [
             {
-              "count": 36,
+              "count": 13,
               "label": "fixed_block"
             },
             {
-              "count": 14,
+              "count": 2,
               "label": "invalid_step"
             }
           ],
           "terminal_collision_count": 2,
-          "terminal_collision_share": 0.04,
-          "unique_terminal_candidate_count": 48,
-          "valid_restart_count": 36
+          "terminal_collision_share": 0.13333333333333333,
+          "unique_terminal_candidate_count": 13,
+          "valid_restart_count": 13
         },
         "runtime_profile": {
-          "coarse_consistency_wall_clock_millis": 7222,
-          "cumulative_deterministic_evaluation_millis": 2041648,
-          "cumulative_seed_summary_simulation_millis": 3303446,
-          "deterministic_cache_hit_count": 35,
-          "deterministic_cache_miss_count": 999,
+          "coarse_consistency_wall_clock_millis": 6416,
+          "cumulative_deterministic_evaluation_millis": 489578,
+          "cumulative_option_pricing_millis": 0,
+          "cumulative_seed_summary_simulation_millis": 538529,
+          "deterministic_cache_hit_count": 14,
+          "deterministic_cache_miss_count": 266,
           "final_assembly_wall_clock_millis": 0,
           "final_seed_evaluation_wall_clock_millis": 0,
-          "invalid_candidate_evaluation_count": 39,
-          "objective_cache_hit_count": 485,
-          "objective_cache_miss_count": 1071,
-          "restart_optimization_wall_clock_millis": 322963,
-          "seed_summary_cache_hit_count": 44,
-          "seed_summary_cache_miss_count": 1069
+          "invalid_candidate_evaluation_count": 12,
+          "objective_cache_hit_count": 65,
+          "objective_cache_miss_count": 288,
+          "option_pricing_cache_hit_count": 0,
+          "option_pricing_cache_miss_count": 0,
+          "option_pricing_run_count": 0,
+          "restart_optimization_wall_clock_millis": 118701,
+          "seed_summary_cache_hit_count": 25,
+          "seed_summary_cache_miss_count": 292
         },
         "stop_reason": "fixed_block"
       },
       "option_calibration_diagnostics": {},
       "schema_version": "calibration.orchestration.stage_output.joint_refinement.v1",
-      "selected_candidate_id": "joint_refinement_midpoint"
+      "selected_candidate_id": "joint_refinement_nig_basin_symmetric_like"
     },
     "mean_reversion": {
       "diagnostics": {
+        "anchor_origin_level": 0.0001119404732805735,
         "anchor_parameter_estimates": {
           "pressure_level_gain": 0.0,
           "pressure_persistence_per_reference_interval": 0.0,
-          "reference_interval_hours": 168.0
+          "reference_interval_hours": 24.0
         },
         "calibration_grid": {
-          "calibration_grid_interval_hours": 168.0,
-          "calibration_grid_kind": "market_data_open_session_log_price_interval_grid.v1:last_observed_open_session_log_price_per_complete_utc_interval.v1:median_boundary_open_spacing_hours_from_retained_observations.v1",
-          "coverage_ratio": 1.0,
-          "retained_observation_count": 2,
-          "source_observation_count": 2
+          "calibration_grid_interval_hours": 24.0,
+          "calibration_grid_kind": "market_data_open_session_log_price_interval_grid.v1:last_observed_open_session_log_price_per_complete_utc_interval.v1:median_observed_session_duration_hours_from_retained_open_session_ticks.v1",
+          "coverage_ratio": 0.7333333333333333,
+          "retained_observation_count": 15,
+          "source_observation_count": 11
         },
-        "deviation_sample_count": 0,
+        "deviation_sample_count": 15,
         "evaluated_candidates": [
+          {
+            "anchor_model": {
+              "pressure_level_gain": -3.0887239287913864,
+              "pressure_persistence_per_reference_interval": 0.2544462987116048,
+              "reference_interval_hours": 24.0
+            },
+            "anchor_origin_level": 0.0050368938978746615,
+            "boundary_anchor_values": [
+              0.0050368938978746615,
+              0.0014543209215453269,
+              0.0005476853199210449,
+              0.00017413125646196213,
+              0.0006366927831898163,
+              0.0012103242506384436,
+              0.0014176947236220782,
+              -0.0014547607898648183,
+              -0.0013851726656135626,
+              -0.00038329833662021414,
+              -0.00010083023371570667,
+              0.0005608587253702639,
+              0.0011902320649573683,
+              0.0014124742605307497,
+              -0.0014561201156766059
+            ],
+            "candidate_family": "endogenous_core_pressure_level_mean_reversion",
+            "core_expected_increments": [
+              0.0015557400154372035,
+              0.0015535961855007944,
+              0.0016156351803835818,
+              0.0013734914157116519,
+              0.001175500922929714,
+              0.0011488325998500566,
+              0.0024191157430824774,
+              0.0020715082757995626,
+              0.0016441312548929805,
+              0.001632169828022122,
+              0.0013760409640826109,
+              0.0011758468005773292,
+              0.0011488795341748714,
+              0.0024191292041611584
+            ],
+            "deviation_sample_count": 15,
+            "deviations": [
+              -0.010823769013428679,
+              -0.0035746030990095917,
+              -0.003729796821271675,
+              0.0002513648734899422,
+              0.001646988790598514,
+              0.0010733573231498867,
+              0.0008659868501662521,
+              0.002849316315925847,
+              -0.0027605070926729797,
+              0.0012143315367340686,
+              -0.0021979985746512633,
+              0.0006557766863526963,
+              2.6403346765591865e-05,
+              -0.0001958388488077895,
+              0.00032718357272037675
+            ],
+            "information_criterion_bic": -127.09156279317453,
+            "kappa": 0.05922436085700535,
+            "least_squares_rank": 2,
+            "parameter_count": 4,
+            "phi_reference": 0.2413795566394783,
+            "pressure_state_path": [
+              0.0,
+              0.0011598877267516722,
+              0.0014534185254006298,
+              0.0015743597529337924,
+              0.00142460162064618,
+              0.0012388836734701471,
+              0.0011717457622276949,
+              0.002101727068330013,
+              0.0020791973357104695,
+              0.0017548322088519546,
+              0.0016633808168154262,
+              0.0014491535260828133,
+              0.0012453886852951883,
+              0.001173435930469235,
+              0.0021021671613403064
+            ],
+            "quasi_log_likelihood": 68.82389605581778,
+            "regression_pair_count": 14,
+            "residual_sum_of_squares": 4.4022711461982555e-05,
+            "residuals": [
+              -0.000961966533380054,
+              -0.0028669607100706342,
+              0.001151661576563834,
+              0.001586314448880773,
+              0.000675807899085027,
+              0.000606900335388595,
+              0.002640284793977099,
+              -0.0034482738017367906,
+              0.0018806615148636075,
+              -0.0024911133826014693,
+              0.0011863286077962235,
+              -0.00013188773904072816,
+              -0.00020221207694386643,
+              0.0003744550672183872
+            ],
+            "stage_decision_reason": "endogenous_core_pressure_level_profiled_over_pressure_persistence_and_phi_reference.v1"
+          },
+          {
+            "anchor_model": {
+              "pressure_level_gain": 0.04990695328472393,
+              "pressure_persistence_per_reference_interval": 0.0,
+              "reference_interval_hours": 24.0
+            },
+            "boundary_anchor_values": [
+              0.0,
+              7.76422442736002e-05,
+              7.753525225311343e-05,
+              8.063142947255993e-05,
+              6.854677192089074e-05,
+              5.86656696468031e-05,
+              5.733473489268471e-05,
+              0.0001207306963803574,
+              0.00010338266674924777,
+              8.20535817318985e-05,
+              8.145662335983592e-05,
+              6.867401211233732e-05,
+              5.868293134640485e-05,
+              5.733707724184069e-05,
+              0.0001207313681817823
+            ],
+            "candidate_family": "endogenous_core_pressure_level_no_mean_reversion",
+            "core_expected_increments": [
+              0.0015557400154372035,
+              0.0015535961855007944,
+              0.0016156351803835818,
+              0.0013734914157116519,
+              0.001175500922929714,
+              0.0011488325998500566,
+              0.0024191157430824774,
+              0.0020715082757995626,
+              0.0016441312548929805,
+              0.001632169828022122,
+              0.0013760409640826109,
+              0.0011758468005773292,
+              0.0011488795341748714,
+              0.0024191292041611584
+            ],
+            "deviation_sample_count": 15,
+            "deviations": [
+              -0.005786875115554017,
+              -0.002197924421737865,
+              -0.0032596467536037434,
+              0.0003448647004793444,
+              0.0022151348018674397,
+              0.002225015904141527,
+              0.002226346838895646,
+              0.0012738248296806712,
+              -0.00424906242503579,
+              0.000748979618381956,
+              -0.002380285431726806,
+              0.0011479613996106229,
+              0.0011579524803765552,
+              0.0011592983344811195,
+              -0.0012496679111380115
+            ],
+            "information_criterion_bic": null,
+            "kappa": 0.0,
+            "least_squares_rank": 1,
+            "parameter_count": 2,
+            "phi_reference": 1.0,
+            "pressure_state_path": [
+              0.0,
+              0.0015557400154372035,
+              0.0015535961855007944,
+              0.0016156351803835818,
+              0.0013734914157116519,
+              0.001175500922929714,
+              0.0011488325998500566,
+              0.0024191157430824774,
+              0.0020715082757995626,
+              0.0016441312548929805,
+              0.001632169828022122,
+              0.0013760409640826109,
+              0.0011758468005773292,
+              0.0011488795341748714,
+              0.0024191292041611584
+            ],
+            "quasi_log_likelihood": null,
+            "regression_pair_count": 0,
+            "residual_sum_of_squares": -0.0,
+            "residuals": [],
+            "stage_decision_reason": "endogenous_core_pressure_level_profiled_over_pressure_persistence_phi_reference_fixed_one.v1|pressure_persistence_per_reference_interval_boundary_zero.v1|phi_reference_boundary_one.v1"
+          },
           {
             "anchor_model": {
               "pressure_level_gain": 0.0,
               "pressure_persistence_per_reference_interval": 0.0,
-              "reference_interval_hours": 168.0
+              "reference_interval_hours": 24.0
             },
-            "boundary_anchor_values": [],
+            "anchor_origin_level": 0.0001119404732805735,
+            "boundary_anchor_values": [
+              0.0001119404732805735,
+              0.0001119404732805735,
+              0.0001119404732805735,
+              0.0001119404732805735,
+              0.0001119404732805735,
+              0.0001119404732805735,
+              0.0001119404732805735,
+              0.0001119404732805735,
+              0.0001119404732805735,
+              0.0001119404732805735,
+              0.0001119404732805735,
+              0.0001119404732805735,
+              0.0001119404732805735,
+              0.0001119404732805735,
+              0.0001119404732805735
+            ],
+            "candidate_family": "flat_anchor_mean_reversion",
+            "core_expected_increments": [
+              0.0015557400154372035,
+              0.0015535961855007944,
+              0.0016156351803835818,
+              0.0013734914157116519,
+              0.001175500922929714,
+              0.0011488325998500566,
+              0.0024191157430824774,
+              0.0020715082757995626,
+              0.0016441312548929805,
+              0.001632169828022122,
+              0.0013760409640826109,
+              0.0011758468005773292,
+              0.0011488795341748714,
+              0.0024191292041611584
+            ],
+            "deviation_sample_count": 15,
+            "deviations": [
+              -0.00589881558883459,
+              -0.0022322226507448385,
+              -0.0032940519746312035,
+              0.0003135556566713308,
+              0.0021717411005077567,
+              0.0021717411005077567,
+              0.0021717411005077567,
+              0.001282615052780455,
+              -0.0042576202315671155,
+              0.0007190927268332809,
+              -0.0024107692816475435,
+              0.0011046949384423868,
+              0.0011046949384423868,
+              0.0011046949384423868,
+              -0.0012408770162368025
+            ],
+            "information_criterion_bic": -128.77088490355328,
+            "kappa": 0.06365892238914816,
+            "least_squares_rank": 1,
+            "parameter_count": 2,
+            "phi_reference": 0.21700950222620108,
+            "pressure_state_path": [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "quasi_log_likelihood": 67.0244997813919,
+            "regression_pair_count": 14,
+            "residual_sum_of_squares": 5.6926575080841614e-05,
+            "residuals": [
+              -0.0009521236160876886,
+              -0.0028096384483350147,
+              0.0010283962359932829,
+              0.0021036965435333017,
+              0.0017004526453223863,
+              0.0017004526453223863,
+              0.0008113265975950847,
+              -0.004535959885718835,
+              0.0016430367739538635,
+              -0.002566819236352115,
+              0.0016278547802349363,
+              0.0008649656397392005,
+              0.0008649656397392005,
+              -0.001480606314939989
+            ],
+            "stage_decision_reason": "flat_anchor_mean_reversion_profiled_over_phi_reference_zero_pressure_gain.v1"
+          },
+          {
+            "anchor_model": {
+              "pressure_level_gain": 0.0,
+              "pressure_persistence_per_reference_interval": 0.0,
+              "reference_interval_hours": 24.0
+            },
+            "boundary_anchor_values": [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
             "candidate_family": "random_walk_null",
-            "core_expected_increments": [],
-            "deviation_sample_count": 0,
-            "deviations": [],
-            "information_criterion_bic": null,
+            "core_expected_increments": [
+              0.0015557400154372035,
+              0.0015535961855007944,
+              0.0016156351803835818,
+              0.0013734914157116519,
+              0.001175500922929714,
+              0.0011488325998500566,
+              0.0024191157430824774,
+              0.0020715082757995626,
+              0.0016441312548929805,
+              0.001632169828022122,
+              0.0013760409640826109,
+              0.0011758468005773292,
+              0.0011488795341748714,
+              0.0024191292041611584
+            ],
+            "deviation_sample_count": 15,
+            "deviations": [
+              -0.005786875115554017,
+              -0.002120282177464265,
+              -0.00318211150135063,
+              0.0004254961299519043,
+              0.0022836815737883303,
+              0.0022836815737883303,
+              0.0022836815737883303,
+              0.0013945555260610285,
+              -0.004145679758286542,
+              0.0008310332001138544,
+              -0.00229882880836697,
+              0.0012166354117229602,
+              0.0012166354117229602,
+              0.0012166354117229602,
+              -0.0011289365429562291
+            ],
+            "information_criterion_bic": -124.21098670278329,
             "kappa": 0.0,
             "least_squares_rank": 0,
             "parameter_count": 0,
             "phi_reference": 1.0,
-            "pressure_state_path": [],
-            "quasi_log_likelihood": null,
-            "regression_pair_count": 0,
-            "residual_sum_of_squares": 0.0,
-            "residuals": [],
-            "stage_decision_reason": "endogenous_anchor_runtime_projection_required.v1"
+            "pressure_state_path": [
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "quasi_log_likelihood": 62.105493351391644,
+            "regression_pair_count": 14,
+            "residual_sum_of_squares": 0.00011494772792626157,
+            "residuals": [
+              0.0036665929380897523,
+              -0.001061829323886365,
+              0.003607607631302534,
+              0.001858185443836426,
+              0.0,
+              0.0,
+              -0.0008891260477273018,
+              -0.005540235284347571,
+              0.004976712958400397,
+              -0.0031298620084808243,
+              0.00351546422008993,
+              0.0,
+              0.0,
+              -0.0023455719546791893
+            ],
+            "stage_decision_reason": "random_walk_null_baseline.v1"
           }
         ],
-        "information_criterion_bic": null,
-        "kappa": 0.0,
-        "least_squares_rank": 0,
+        "information_criterion_bic": -128.77088490355328,
+        "kappa": 0.06365892238914816,
+        "least_squares_rank": 1,
         "model_selection_policy": "gaussian_quasi_likelihood_bic_with_endogenous_core_pressure_level_candidate_family_profile.v1",
-        "phi_reference": 1.0,
-        "quasi_log_likelihood": null,
-        "regression_pair_count": 0,
-        "residual_sum_of_squares": 0.0,
-        "selected_candidate_family": "random_walk_null",
-        "stage_decision_reason": "endogenous_anchor_runtime_projection_required.v1"
+        "phi_reference": 0.21700950222620108,
+        "quasi_log_likelihood": 67.0244997813919,
+        "regression_pair_count": 14,
+        "residual_sum_of_squares": 5.6926575080841614e-05,
+        "selected_candidate_family": "flat_anchor_mean_reversion",
+        "stage_decision_reason": "flat_anchor_mean_reversion_profiled_over_phi_reference_zero_pressure_gain.v1|gaussian_quasi_likelihood_bic_with_endogenous_core_pressure_level_candidate_family_profile.v1"
       },
       "fitted_parameters": {
         "anchor_model": {
           "pressure_level_gain": 0.0,
           "pressure_persistence_per_reference_interval": 0.0,
-          "reference_interval_hours": 168.0
+          "reference_interval_hours": 24.0
         },
-        "kappa": 0.0
+        "kappa": 0.06365892238914816
       },
       "schema_version": "calibration.orchestration.stage_output.mean_reversion.v1"
     },
@@ -879,10 +1247,10 @@
           }
         },
         "nig_shared_plus_shift_configuration": {
-          "alpha": 2004.529027545855,
-          "beta_0": 255.7219057258,
-          "delta": 4.46104e-07,
-          "delta_beta": -159.121762346882,
+          "alpha": 2027.284959933722,
+          "beta_0": 180.760339052463,
+          "delta": 4.54664e-07,
+          "delta_beta": -134.249159092422,
           "mu": 0.0
         },
         "surprise_deterministic_intensity_profile": {
@@ -3034,7 +3402,7 @@
       "source_kind": "built_in"
     }
   },
-  "run_id": "Synthetic_EURUSD_Data_1M_ticks_20260406T025427Z",
+  "run_id": "Synthetic_EURUSD_Data_1M_ticks_20260415T221414Z",
   "schema_version": "calibration.high_level.model.v1",
   "session_resolution": {
     "ambiguity_warnings": [],
@@ -3048,7 +3416,7 @@
     "provenance_kind": "bundled_preset",
     "reasons": [
       "selected the generic weekday-continuous 24/5 broker-market template based on exchange code or workflow defaults",
-      "no long gaps were present in the observed window, so exchange metadata carried the inference"
+      "the observed gap spectrum did not isolate recurring inactivity gaps, so exchange metadata carried the inference"
     ],
     "recurring_closed_windows": [
       {
@@ -3104,7 +3472,7 @@
       }
     ],
     "resolution_kind": "automatic_inference",
-    "resolved_session_definition_json": "{\"schema_version\":\"calendar.registry.v1\",\"artifact_date\":\"2026-04-06\",\"exchanges\":[{\"schema_version\":\"calendar.v1\",\"exchange_code\":\"FXSPOT\",\"exchange_name\":\"OTC FX Spot 24/5\",\"timezone_name\":\"UTC\",\"rule_metadata\":{\"holiday_calendar_code\":\"BUNDLED_SESSION_PRESET\",\"early_close_rule_set\":null},\"regular_sessions\":[{\"weekday\":\"Monday\",\"windows\":[{\"label\":\"spot\",\"open_time\":\"00:00\",\"close_time\":\"24:00\"}]},{\"weekday\":\"Tuesday\",\"windows\":[{\"label\":\"spot\",\"open_time\":\"00:00\",\"close_time\":\"24:00\"}]},{\"weekday\":\"Wednesday\",\"windows\":[{\"label\":\"spot\",\"open_time\":\"00:00\",\"close_time\":\"24:00\"}]},{\"weekday\":\"Thursday\",\"windows\":[{\"label\":\"spot\",\"open_time\":\"00:00\",\"close_time\":\"24:00\"}]},{\"weekday\":\"Friday\",\"windows\":[{\"label\":\"spot\",\"open_time\":\"00:00\",\"close_time\":\"19:00\"}]},{\"weekday\":\"Sunday\",\"windows\":[{\"label\":\"spot\",\"open_time\":\"21:00\",\"close_time\":\"24:00\"}]}],\"holiday_dates\":[],\"early_close_sessions\":[]}]}",
+    "resolved_session_definition_json": "{\"schema_version\":\"calendar.registry.v1\",\"artifact_date\":\"2026-04-15\",\"exchanges\":[{\"schema_version\":\"calendar.v1\",\"exchange_code\":\"FXSPOT\",\"exchange_name\":\"OTC FX Spot 24/5\",\"timezone_name\":\"UTC\",\"rule_metadata\":{\"holiday_calendar_code\":\"BUNDLED_SESSION_PRESET\",\"early_close_rule_set\":null},\"regular_sessions\":[{\"weekday\":\"Monday\",\"windows\":[{\"label\":\"spot\",\"open_time\":\"00:00\",\"close_time\":\"24:00\"}]},{\"weekday\":\"Tuesday\",\"windows\":[{\"label\":\"spot\",\"open_time\":\"00:00\",\"close_time\":\"24:00\"}]},{\"weekday\":\"Wednesday\",\"windows\":[{\"label\":\"spot\",\"open_time\":\"00:00\",\"close_time\":\"24:00\"}]},{\"weekday\":\"Thursday\",\"windows\":[{\"label\":\"spot\",\"open_time\":\"00:00\",\"close_time\":\"24:00\"}]},{\"weekday\":\"Friday\",\"windows\":[{\"label\":\"spot\",\"open_time\":\"00:00\",\"close_time\":\"19:00\"}]},{\"weekday\":\"Sunday\",\"windows\":[{\"label\":\"spot\",\"open_time\":\"21:00\",\"close_time\":\"24:00\"}]}],\"holiday_dates\":[],\"early_close_sessions\":[]}]}",
     "resolved_timezone_name": "UTC",
     "schema_version": "calibration.market_data.session_resolution.v1",
     "selected_policy_id": "sources.sessions.fx_spot_24_5.v1",

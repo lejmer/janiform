@@ -232,7 +232,7 @@ fn mean_reversion_stage_accepts_sparse_coverage_when_identifiable_structure_is_p
 }
 
 #[test]
-fn mean_reversion_stage_falls_back_when_direct_coverage_cannot_identify_the_full_regression() {
+fn mean_reversion_stage_uses_identifiable_candidate_subset_when_full_regression_is_not_supported() {
     let run_contract = build_run_contract_with_mode_and_resume(
         "run-mean-reversion-derived-sufficiency-rejects-unidentified-coverage",
         CalibrationExecutionMode::Memory,
@@ -251,14 +251,47 @@ fn mean_reversion_stage_falls_back_when_direct_coverage_cannot_identify_the_full
         execution_input,
     );
 
+    assert_eq!(report.status, CalibrationStageExecutionStatus::Success);
+
     let payload = report
         .fitted_stage_payload
-        .expect("insufficient direct coverage should still emit a fallback payload");
+        .expect("partial direct coverage should still emit a fitted payload");
 
     assert_eq!(payload.fitted_parameters.kappa, 0.0);
-    assert_eq!(
+    assert_ne!(
         payload.diagnostics.stage_decision_reason,
         "endogenous_anchor_runtime_projection_required.v1"
+    );
+    assert_eq!(payload.diagnostics.evaluated_candidates.len(), 2);
+    assert!(
+        payload
+            .diagnostics
+            .evaluated_candidates
+            .iter()
+            .any(|candidate| candidate.candidate_family
+                == "endogenous_core_pressure_level_no_mean_reversion")
+    );
+    assert!(
+        payload
+            .diagnostics
+            .evaluated_candidates
+            .iter()
+            .any(|candidate| candidate.candidate_family == "random_walk_null")
+    );
+    assert!(
+        payload
+            .diagnostics
+            .evaluated_candidates
+            .iter()
+            .all(|candidate| candidate.candidate_family
+                != "endogenous_core_pressure_level_mean_reversion")
+    );
+    assert!(
+        payload
+            .diagnostics
+            .evaluated_candidates
+            .iter()
+            .all(|candidate| candidate.candidate_family != "flat_anchor_mean_reversion")
     );
 }
 

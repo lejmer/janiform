@@ -1436,16 +1436,12 @@ fn emit_final_assembly_progress(
 ) {
     if let Some(progress_sender) = progress_sender {
         let _ = progress_sender.send(JointRefinementStageProgressUpdate {
-            phase: JointRefinementStageProgressPhase::FinalAssembly,
-            completed_units,
-            total_units,
             current_item_label: Some(current_item_label.to_string()),
-            valid_completed_units: None,
-            cumulative_local_evaluation_count: None,
-            current_weighted_objective: None,
-            best_weighted_objective: None,
-            current_coarse_consistency_fit: None,
-            best_coarse_consistency_fit: None,
+            ..JointRefinementStageProgressUpdate::new(
+                JointRefinementStageProgressPhase::FinalAssembly,
+                completed_units,
+                total_units,
+            )
         });
     }
 }
@@ -1458,16 +1454,12 @@ fn emit_coarse_consistency_progress(
 ) {
     if let Some(progress_sender) = progress_sender {
         let _ = progress_sender.send(JointRefinementStageProgressUpdate {
-            phase: JointRefinementStageProgressPhase::CoarseConsistencyEvaluation,
-            completed_units,
-            total_units,
             current_item_label: Some(current_item_label.to_string()),
-            valid_completed_units: None,
-            cumulative_local_evaluation_count: None,
-            current_weighted_objective: None,
-            best_weighted_objective: None,
-            current_coarse_consistency_fit: None,
-            best_coarse_consistency_fit: None,
+            ..JointRefinementStageProgressUpdate::new(
+                JointRefinementStageProgressPhase::CoarseConsistencyEvaluation,
+                completed_units,
+                total_units,
+            )
         });
     }
 }

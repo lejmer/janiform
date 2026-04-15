@@ -381,10 +381,21 @@ pub(super) fn run_stage_for_staged_execution(
                             completed_units: progress_update.completed_units,
                             total_units: progress_update.total_units,
                             current_item_label: progress_update.current_item_label,
+                            current_restart_id: progress_update.current_restart_id,
+                            active_restart_count: progress_update.active_restart_count,
+                            current_parameter_block: progress_update.current_parameter_block,
+                            current_outer_cycle: progress_update.current_outer_cycle,
+                            total_outer_cycles: progress_update.total_outer_cycles,
+                            current_evaluation_count: progress_update.current_evaluation_count,
+                            total_evaluation_budget: progress_update.total_evaluation_budget,
+                            evaluation_progress_percent: progress_update
+                                .evaluation_progress_percent,
                             valid_completed_units: progress_update.valid_completed_units,
                             cumulative_local_evaluation_count: progress_update
                                 .cumulative_local_evaluation_count,
                             current_weighted_objective: progress_update.current_weighted_objective,
+                            current_restart_best_weighted_objective: progress_update
+                                .current_restart_best_weighted_objective,
                             best_weighted_objective: progress_update.best_weighted_objective,
                             current_coarse_consistency_fit: progress_update
                                 .current_coarse_consistency_fit,

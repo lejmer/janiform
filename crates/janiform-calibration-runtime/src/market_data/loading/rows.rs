@@ -1,8 +1,9 @@
 use arrow_array::{
-    Array, BooleanArray, Date32Array, Date64Array, Float32Array, Float64Array, Int8Array,
-    Int16Array, Int32Array, Int64Array, LargeStringArray, RecordBatch, StringArray,
-    TimestampMicrosecondArray, TimestampMillisecondArray, TimestampNanosecondArray,
-    TimestampSecondArray, UInt8Array, UInt16Array, UInt32Array, UInt64Array,
+    Array, BooleanArray, Date32Array, Date64Array, Decimal32Array, Decimal64Array, Decimal128Array,
+    Float32Array, Float64Array, Int8Array, Int16Array, Int32Array, Int64Array, LargeStringArray,
+    RecordBatch, StringArray, TimestampMicrosecondArray, TimestampMillisecondArray,
+    TimestampNanosecondArray, TimestampSecondArray, UInt8Array, UInt16Array, UInt32Array,
+    UInt64Array,
 };
 use csv::StringRecord;
 use parquet::arrow::ProjectionMask;
@@ -18,6 +19,7 @@ use super::contracts::{
 use super::shared::{RawRow, RawValue};
 
 const PROJECTED_PARQUET_BATCH_SIZE: usize = 65_536;
+const DECIMAL_RADIX_F64: f64 = 10.0;
 
 pub(super) fn load_source_columns(
     file_reference: &MarketDataInputFileReference,
@@ -314,6 +316,27 @@ pub(super) fn raw_value_from_arrow_array(
         return Ok(RawValue::Float(values.value(row_index)));
     }
 
+    if let Some(values) = array.as_any().downcast_ref::<Decimal32Array>() {
+        return Ok(RawValue::Float(decimal_i32_to_f64(
+            values.value(row_index),
+            values.scale(),
+        )));
+    }
+
+    if let Some(values) = array.as_any().downcast_ref::<Decimal64Array>() {
+        return Ok(RawValue::Float(decimal_i64_to_f64(
+            values.value(row_index),
+            values.scale(),
+        )));
+    }
+
+    if let Some(values) = array.as_any().downcast_ref::<Decimal128Array>() {
+        return Ok(RawValue::Float(decimal_i128_to_f64(
+            values.value(row_index),
+            values.scale(),
+        )));
+    }
+
     if let Some(values) = array.as_any().downcast_ref::<StringArray>() {
         return Ok(RawValue::Text(values.value(row_index).to_string()));
     }
@@ -353,6 +376,22 @@ pub(super) fn raw_value_from_arrow_array(
             array.data_type()
         ),
     })
+}
+
+fn decimal_i32_to_f64(value: i32, scale: i8) -> f64 {
+    f64::from(value) / decimal_scale_factor(scale)
+}
+
+fn decimal_i64_to_f64(value: i64, scale: i8) -> f64 {
+    value as f64 / decimal_scale_factor(scale)
+}
+
+fn decimal_i128_to_f64(value: i128, scale: i8) -> f64 {
+    value as f64 / decimal_scale_factor(scale)
+}
+
+fn decimal_scale_factor(scale: i8) -> f64 {
+    DECIMAL_RADIX_F64.powi(i32::from(scale))
 }
 
 pub(super) fn raw_value_from_parquet_field(field: &Field) -> RawValue {

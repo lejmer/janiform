@@ -205,12 +205,51 @@ pub struct JointRefinementStageProgressUpdate {
     pub completed_units: usize,
     pub total_units: usize,
     pub current_item_label: Option<String>,
+    pub current_restart_id: Option<String>,
+    pub active_restart_count: Option<usize>,
+    pub current_parameter_block: Option<String>,
+    pub current_outer_cycle: Option<usize>,
+    pub total_outer_cycles: Option<usize>,
+    pub current_evaluation_count: Option<usize>,
+    pub total_evaluation_budget: Option<usize>,
+    pub evaluation_progress_percent: Option<usize>,
     pub valid_completed_units: Option<usize>,
     pub cumulative_local_evaluation_count: Option<usize>,
     pub current_weighted_objective: Option<f64>,
+    pub current_restart_best_weighted_objective: Option<f64>,
     pub best_weighted_objective: Option<f64>,
     pub current_coarse_consistency_fit: Option<f64>,
     pub best_coarse_consistency_fit: Option<f64>,
+}
+
+impl JointRefinementStageProgressUpdate {
+    pub(crate) fn new(
+        phase: JointRefinementStageProgressPhase,
+        completed_units: usize,
+        total_units: usize,
+    ) -> Self {
+        Self {
+            phase,
+            completed_units,
+            total_units,
+            current_item_label: None,
+            current_restart_id: None,
+            active_restart_count: None,
+            current_parameter_block: None,
+            current_outer_cycle: None,
+            total_outer_cycles: None,
+            current_evaluation_count: None,
+            total_evaluation_budget: None,
+            evaluation_progress_percent: None,
+            valid_completed_units: None,
+            cumulative_local_evaluation_count: None,
+            current_weighted_objective: None,
+            current_restart_best_weighted_objective: None,
+            best_weighted_objective: None,
+            current_coarse_consistency_fit: None,
+            best_coarse_consistency_fit: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]

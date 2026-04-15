@@ -11,10 +11,10 @@ use super::super::setup::{
 use super::{
     JointRefinementActiveParameterLayout, JointRefinementAdmissibilityThresholds,
     JointRefinementCoarseConsistencySummary, JointRefinementSeedSummary,
-    admissibility_threshold_from_sample_count,
-    desired_joint_refinement_restart_count, extend_joint_coarse_tick_consistency_metrics_for_seed,
-    joint_breakdown_is_admissible, joint_refinement_base_schedule_components,
-    joint_refinement_budget_schedule, sampled_observed_tick_returns,
+    admissibility_threshold_from_sample_count, desired_joint_refinement_restart_count,
+    extend_joint_coarse_tick_consistency_metrics_for_seed, joint_breakdown_is_admissible,
+    joint_refinement_budget_schedule, joint_refinement_restart_block_powell_settings,
+    sampled_observed_tick_returns,
 };
 use crate::stages::joint_metrics::{
     JointRefinementAggregatedIntervalObservation,
@@ -195,18 +195,45 @@ fn joint_refinement_desired_restart_count_honors_override() {
 }
 
 #[test]
-fn joint_refinement_restart_count_controls_frontier_size_not_per_restart_budget() {
+fn joint_refinement_restart_count_controls_frontier_width_and_search_depth() {
     let solver_settings = build_test_solver_settings(64);
-    let (base_outer_cycle_count, base_powell_settings) =
-        joint_refinement_base_schedule_components(&solver_settings);
 
-    for restart_count in [1, 15, 50, 100] {
-        let schedule = joint_refinement_budget_schedule(&solver_settings, restart_count);
+    let single_restart_schedule = joint_refinement_budget_schedule(&solver_settings, 1);
+    assert_eq!(single_restart_schedule.restart_count, 1);
+    assert_eq!(
+        single_restart_schedule.outer_cycle_count,
+        super::JOINT_REFINEMENT_PARAMETER_BLOCK_COUNT
+    );
 
-        assert_eq!(schedule.restart_count, restart_count);
-        assert_eq!(schedule.outer_cycle_count, base_outer_cycle_count);
-        assert_eq!(schedule.powell_settings, base_powell_settings);
-    }
+    let default_frontier_schedule = joint_refinement_budget_schedule(&solver_settings, 15);
+    assert_eq!(default_frontier_schedule.restart_count, 15);
+    assert_eq!(default_frontier_schedule.outer_cycle_count, 1);
+
+    let broad_frontier_schedule = joint_refinement_budget_schedule(&solver_settings, 50);
+    assert_eq!(broad_frontier_schedule.restart_count, 50);
+    assert_eq!(broad_frontier_schedule.outer_cycle_count, 1);
+}
+
+#[test]
+fn joint_refinement_restart_block_budget_is_dimension_minimal() {
+    let solver_settings = build_test_solver_settings(64);
+    let four_dimensional_block_settings =
+        joint_refinement_restart_block_powell_settings(&solver_settings, 4);
+
+    assert_eq!(four_dimensional_block_settings.max_cycle_count, 1);
+    assert_eq!(
+        four_dimensional_block_settings.line_search_evaluation_cap,
+        5
+    );
+    assert_eq!(four_dimensional_block_settings.evaluation_budget, 20);
+    assert_eq!(
+        four_dimensional_block_settings.absolute_tolerance,
+        solver_settings.absolute_tolerance
+    );
+    assert_eq!(
+        four_dimensional_block_settings.relative_tolerance,
+        solver_settings.relative_tolerance
+    );
 }
 
 #[test]

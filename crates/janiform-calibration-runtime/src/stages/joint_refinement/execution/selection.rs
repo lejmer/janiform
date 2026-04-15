@@ -806,16 +806,16 @@ fn emit_coarse_consistency_progress(
 ) {
     if let Some(progress_sender) = progress_sender {
         let _ = progress_sender.send(JointRefinementStageProgressUpdate {
-            phase: JointRefinementStageProgressPhase::CoarseConsistencyEvaluation,
-            completed_units,
-            total_units,
             current_item_label: current_item_label.map(str::to_string),
-            valid_completed_units: None,
-            cumulative_local_evaluation_count: None,
             current_weighted_objective,
             best_weighted_objective,
             current_coarse_consistency_fit,
             best_coarse_consistency_fit,
+            ..JointRefinementStageProgressUpdate::new(
+                JointRefinementStageProgressPhase::CoarseConsistencyEvaluation,
+                completed_units,
+                total_units,
+            )
         });
     }
 }

@@ -626,12 +626,9 @@ fn resolve_backend_from_preference(
     worker_executable: Option<PathBuf>,
 ) -> Result<JointRefinementSummarySimulationBackend, String> {
     match backend_preference {
-        JointRefinementSummarySimulationBackendPreference::Auto => Ok(match worker_executable {
-            Some(worker_executable) => {
-                JointRefinementSummarySimulationBackend::ProcessWorker { worker_executable }
-            }
-            None => JointRefinementSummarySimulationBackend::InProcess,
-        }),
+        JointRefinementSummarySimulationBackendPreference::Auto => {
+            Ok(JointRefinementSummarySimulationBackend::InProcess)
+        }
         JointRefinementSummarySimulationBackendPreference::InProcess => {
             Ok(JointRefinementSummarySimulationBackend::InProcess)
         }
@@ -775,6 +772,20 @@ mod tests {
             None,
         )
         .expect("automatic backend selection should succeed");
+
+        assert!(matches!(
+            backend,
+            JointRefinementSummarySimulationBackend::InProcess
+        ));
+    }
+
+    #[test]
+    fn automatic_backend_selection_ignores_incidental_worker_executable() {
+        let backend = resolve_backend_from_preference(
+            JointRefinementSummarySimulationBackendPreference::Auto,
+            Some(PathBuf::from("janiform-joint-refinement-worker-test")),
+        )
+        .expect("automatic backend selection should not depend on build artifacts");
 
         assert!(matches!(
             backend,

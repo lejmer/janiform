@@ -63,6 +63,36 @@ pub(super) fn evaluate_joint_candidate(
     candidate_evaluation
 }
 
+pub(super) fn evaluate_joint_candidate_nig_block_search_objective(
+    parameter_vector: &[f64],
+    context: &JointRefinementContext,
+) -> Option<f64> {
+    let fitted_parameters = parameter_vector_to_fitted_parameters(parameter_vector, context)?;
+    if violates_runtime_seasonality_scaled_stationarity(&fitted_parameters, context) {
+        context
+            .profiling_state
+            .record_invalid_candidate_evaluation();
+        return None;
+    }
+
+    let modeled_open_event_rate_per_hour =
+        modeled_open_event_rate_per_hour(&fitted_parameters, context);
+    let raw_aggregated_likelihood_fit = raw_aggregated_likelihood_fit_for_fidelity(
+        &fitted_parameters,
+        modeled_open_event_rate_per_hour,
+        context,
+        ContinuousLikelihoodFidelityTier::Local,
+    );
+    let normalized_likelihood_fit = normalize_bucket(
+        raw_aggregated_likelihood_fit,
+        context.local_baseline_buckets.aggregated_likelihood_fit,
+    );
+
+    normalized_likelihood_fit
+        .is_finite()
+        .then_some(normalized_likelihood_fit)
+}
+
 pub(super) fn evaluate_joint_fitted_parameters(
     fitted_parameters: JointRefinementStageFittedParameters,
     parameter_bits: Option<&[u64]>,
@@ -459,16 +489,8 @@ fn emit_joint_refinement_candidate_evaluation_progress(
     };
 
     let _ = progress_sender.send(JointRefinementStageProgressUpdate {
-        phase: progress_phase,
-        completed_units,
-        total_units,
         current_item_label: current_item_label.map(str::to_string),
-        valid_completed_units: None,
-        cumulative_local_evaluation_count: None,
-        current_weighted_objective: None,
-        best_weighted_objective: None,
-        current_coarse_consistency_fit: None,
-        best_coarse_consistency_fit: None,
+        ..JointRefinementStageProgressUpdate::new(progress_phase, completed_units, total_units)
     });
 }
 
@@ -709,11 +731,53 @@ fn resolve_deterministic_evaluation(
     let deterministic_evaluation_started_at = std::time::Instant::now();
 
     let modeled_open_event_rate_per_hour =
-        crate::stages::hawkes::stationary_open_event_rate_per_hour(
-            &fitted_parameters.hawkes_fitted_parameters,
-        )
-        .unwrap_or(context.observed_data.observed_open_event_rate_per_hour);
+        modeled_open_event_rate_per_hour(fitted_parameters, context);
+    let raw_aggregated_likelihood_fit = raw_aggregated_likelihood_fit_for_fidelity(
+        fitted_parameters,
+        modeled_open_event_rate_per_hour,
+        context,
+        ContinuousLikelihoodFidelityTier::Full,
+    );
 
+    let deterministic_evaluation = JointRefinementDeterministicEvaluation {
+        modeled_open_event_rate_per_hour,
+        raw_aggregated_likelihood_fit,
+    };
+
+    context
+        .profiling_state
+        .record_deterministic_evaluation_duration(
+            deterministic_evaluation_started_at
+                .elapsed()
+                .as_millis()
+                .min(u128::from(u64::MAX)) as u64,
+        );
+
+    if let Some(deterministic_cache_key) = cache_key
+        && let Ok(mut cache_guard) = context.deterministic_evaluation_cache.lock()
+    {
+        cache_guard.insert(deterministic_cache_key, deterministic_evaluation.clone());
+    }
+
+    deterministic_evaluation
+}
+
+fn modeled_open_event_rate_per_hour(
+    fitted_parameters: &JointRefinementStageFittedParameters,
+    context: &JointRefinementContext,
+) -> f64 {
+    crate::stages::hawkes::stationary_open_event_rate_per_hour(
+        &fitted_parameters.hawkes_fitted_parameters,
+    )
+    .unwrap_or(context.observed_data.observed_open_event_rate_per_hour)
+}
+
+fn raw_aggregated_likelihood_fit_for_fidelity(
+    fitted_parameters: &JointRefinementStageFittedParameters,
+    modeled_open_event_rate_per_hour: f64,
+    context: &JointRefinementContext,
+    fidelity_tier: ContinuousLikelihoodFidelityTier,
+) -> f64 {
     let observed_5m_sample =
         crate::stages::joint_metrics::build_continuous_calibration_sample_from_aggregated_intervals(
             context.observed_data.observed_5m_intervals.as_slice(),
@@ -739,13 +803,13 @@ fn resolve_deterministic_evaluation(
                 .max(1.0e-8),
     );
 
-    let raw_aggregated_likelihood_fit = [
+    [
         evaluate_configuration_likelihood_objective(
             fitted_parameters
                 .return_components_fitted_parameters
                 .nig_shared_plus_shift_configuration,
             &observed_tick_sample,
-            ContinuousLikelihoodFidelityTier::Full,
+            fidelity_tier,
         )
         .shifted_objective_score,
         evaluate_configuration_likelihood_objective(
@@ -753,7 +817,7 @@ fn resolve_deterministic_evaluation(
                 .return_components_fitted_parameters
                 .nig_shared_plus_shift_configuration,
             &observed_5m_sample,
-            ContinuousLikelihoodFidelityTier::Full,
+            fidelity_tier,
         )
         .shifted_objective_score,
         evaluate_configuration_likelihood_objective(
@@ -761,35 +825,13 @@ fn resolve_deterministic_evaluation(
                 .return_components_fitted_parameters
                 .nig_shared_plus_shift_configuration,
             &observed_15m_sample,
-            ContinuousLikelihoodFidelityTier::Full,
+            fidelity_tier,
         )
         .shifted_objective_score,
     ]
     .into_iter()
     .sum::<f64>()
-        / 3.0;
-
-    let deterministic_evaluation = JointRefinementDeterministicEvaluation {
-        modeled_open_event_rate_per_hour,
-        raw_aggregated_likelihood_fit,
-    };
-
-    context
-        .profiling_state
-        .record_deterministic_evaluation_duration(
-            deterministic_evaluation_started_at
-                .elapsed()
-                .as_millis()
-                .min(u128::from(u64::MAX)) as u64,
-        );
-
-    if let Some(deterministic_cache_key) = cache_key
-        && let Ok(mut cache_guard) = context.deterministic_evaluation_cache.lock()
-    {
-        cache_guard.insert(deterministic_cache_key, deterministic_evaluation.clone());
-    }
-
-    deterministic_evaluation
+        / 3.0
 }
 
 fn baseline_bucket_values_are_unity(baseline_buckets: &JointRefinementBaselineBuckets) -> bool {

@@ -117,6 +117,7 @@ class SpinnerProgress(AbstractProgress):
         self._current_step_index: int = 0
         self._lock = Lock()
         self._last_rendered_width: int = 0
+        self._last_rendered_line_count: int = 0
         self._stop_event = Event()
         self._render_thread: Optional[Thread] = None
         self._total_started_at: float = monotonic()
@@ -242,13 +243,34 @@ class SpinnerProgress(AbstractProgress):
         if self._detail is None or self._stage_started_at is None:
             return
 
-        line = self._build_stage_line(
+        lines = self._build_stage_lines(
             indicator=frame,
             elapsed_seconds=monotonic() - self._stage_started_at,
             detail=self._detail,
         )
 
-        self._write_transient_line_locked(line)
+        self._write_transient_lines_locked(lines)
+
+    def _build_stage_lines(
+        self,
+        *,
+        indicator: str,
+        elapsed_seconds: float,
+        detail: str,
+    ) -> list[str]:
+        line = self._build_stage_line(
+            indicator=indicator,
+            elapsed_seconds=elapsed_seconds,
+            detail=detail,
+        )
+        if not self._supports_cursor_control() or self._subdetail is None:
+            return [line]
+
+        subdetail_lines = self._subdetail.splitlines()
+        if len(subdetail_lines) <= 1:
+            return [line]
+
+        return [line, *subdetail_lines[1:]]
 
     def _build_stage_line(
         self,
@@ -259,14 +281,15 @@ class SpinnerProgress(AbstractProgress):
     ) -> str:
         progress_segment = self._progress_segment()
         timing_segment = self._timing_segment(elapsed_seconds)
+        subdetail_summary = self._subdetail_summary()
         if self._progress_fraction is not None:
             detail_segment = (
                 f"{detail}{progress_segment}"
                 if progress_segment
                 else detail
             )
-            if self._subdetail is not None:
-                detail_segment = f"{detail_segment} | {self._subdetail}"
+            if subdetail_summary is not None:
+                detail_segment = f"{detail_segment} | {subdetail_summary}"
 
             return (
                 f"{indicator} {self._label}{self._step_segment()} "
@@ -275,8 +298,8 @@ class SpinnerProgress(AbstractProgress):
 
         detail_segment = (
             detail
-            if self._subdetail is None
-            else f"{detail} | {self._subdetail}"
+            if subdetail_summary is None
+            else f"{detail} | {subdetail_summary}"
         )
         if progress_segment:
             return (
@@ -285,6 +308,12 @@ class SpinnerProgress(AbstractProgress):
             )
 
         return f"{indicator} {self._label}{self._step_segment()} {timing_segment} {detail_segment}"
+
+    def _subdetail_summary(self) -> Optional[str]:
+        if self._subdetail is None:
+            return None
+
+        return self._subdetail.splitlines()[0]
 
     def _progress_segment(self) -> str:
         if self._progress_fraction is not None:
@@ -344,6 +373,38 @@ class SpinnerProgress(AbstractProgress):
         self._stream.flush()
 
         self._last_rendered_width = len(rendered_line)
+        self._last_rendered_line_count = 1
+
+    def _write_transient_lines_locked(self, lines: list[str]) -> None:
+        if len(lines) == 1 or not self._supports_cursor_control():
+            self._write_transient_line_locked(lines[0])
+            return
+
+        rendered_lines = [self._fit_line_to_stream_width(line) for line in lines]
+        if self._last_rendered_line_count > 1:
+            self._stream.write(f"\x1b[{self._last_rendered_line_count - 1}A\r")
+        else:
+            self._stream.write("\r")
+
+        for line_number, rendered_line in enumerate(rendered_lines):
+            self._stream.write("\x1b[2K")
+            self._stream.write(rendered_line)
+            if line_number + 1 < len(rendered_lines):
+                self._stream.write("\n")
+
+        if self._last_rendered_line_count > len(rendered_lines):
+            extra_line_count = self._last_rendered_line_count - len(rendered_lines)
+            for _ in range(extra_line_count):
+                self._stream.write("\n\x1b[2K")
+            self._stream.write(
+                f"\x1b[{extra_line_count}A"
+                if extra_line_count > 0
+                else ""
+            )
+
+        self._stream.flush()
+        self._last_rendered_width = len(rendered_lines[-1])
+        self._last_rendered_line_count = len(rendered_lines)
 
     def _write_final_line_locked(self, line: str) -> None:
         rendered_line = self._fit_line_to_stream_width(line)
@@ -354,6 +415,7 @@ class SpinnerProgress(AbstractProgress):
         self._stream.flush()
 
         self._last_rendered_width = 0
+        self._last_rendered_line_count = 0
 
     def _fit_line_to_stream_width(self, line: str) -> str:
         render_width = _resolve_stream_render_width(self._stream)
@@ -364,6 +426,10 @@ class SpinnerProgress(AbstractProgress):
             return line[:render_width]
 
         return f"{line[: render_width - len(_ELLIPSIS)]}{_ELLIPSIS}"
+
+    def _supports_cursor_control(self) -> bool:
+        is_tty = getattr(self._stream, "isatty", None)
+        return callable(is_tty) and is_tty()
 
 
 class JsonLinesProgress(AbstractProgress):

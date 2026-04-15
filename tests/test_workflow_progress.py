@@ -10,6 +10,8 @@ from janiform.calibration.staged._progress_policy import (
 )
 from janiform.calibration.staged.progress import (
     NativeStagedCalibrationProgressTracker,
+    format_compact_staged_progress_event_detail,
+    format_staged_progress_event_detail,
     update_cli_progress_from_staged_native_event,
 )
 
@@ -190,10 +192,114 @@ def test_spinner_progress_keeps_staged_subtasks_within_running_calibration_step(
             "✓ fit 1/8 "
             f"[00:25, ETA {workflow_progress_module._format_elapsed_seconds(expected_eta_seconds)}] "
             f"running calibration [{round(progress_fraction * 100.0)}%] | "
-            "joint_refinement restart optimization [12%] (1/8) | item=halton_03"
+            "joint_refinement restart optimization [12%] (1/8)"
         ),
         "done fit total [00:25]",
     ]
+
+
+def test_restart_optimization_progress_panel_tracks_active_candidates() -> None:
+    tracker = NativeStagedCalibrationProgressTracker()
+    tracker.update(
+        {
+            "event_kind": "stage_progress",
+            "stage": "joint_refinement",
+            "progress_phase": "restart_optimization",
+            "completed_units": 0,
+            "total_units": 15,
+            "current_restart_id": "halton_04",
+            "current_parameter_block": "nig",
+            "current_outer_cycle": 1,
+            "total_outer_cycles": 3,
+            "evaluation_progress_percent": 0,
+            "current_evaluation_count": 1,
+            "current_weighted_objective": 265255.2,
+            "current_restart_best_weighted_objective": 265255.2,
+        }
+    )
+    tracker.update(
+        {
+            "event_kind": "stage_progress",
+            "stage": "joint_refinement",
+            "progress_phase": "restart_optimization",
+            "completed_units": 0,
+            "total_units": 15,
+            "current_restart_id": "baseline",
+            "current_parameter_block": "hawkes",
+            "current_outer_cycle": 2,
+            "total_outer_cycles": 3,
+            "evaluation_progress_percent": 41,
+            "current_evaluation_count": 48,
+            "current_weighted_objective": 12991.02,
+            "current_restart_best_weighted_objective": 12991.02,
+        }
+    )
+
+    assert tracker.restart_progress_panel(
+        "joint_refinement restart optimization [0%] (0/15)"
+    ) == "\n".join(
+        (
+            "joint_refinement restart optimization [0%] (0/15)",
+            "  halton_04              nig        1/3  eval  <1%  obj  265255.20  best  265255.20",
+            "  baseline               hawkes     2/3  eval  41%  obj   12991.02  best   12991.02",
+        )
+    )
+
+    tracker.update(
+        {
+            "event_kind": "stage_progress",
+            "stage": "joint_refinement",
+            "progress_phase": "restart_optimization",
+            "completed_units": 1,
+            "total_units": 15,
+            "current_restart_id": "halton_04",
+            "evaluation_progress_percent": 100,
+        }
+    )
+
+    assert tracker.restart_progress_panel(
+        "joint_refinement restart optimization [7%] (1/15)"
+    ) == "\n".join(
+        (
+            "joint_refinement restart optimization [7%] (1/15)",
+            "  baseline               hawkes     2/3  eval  41%  obj   12991.02  best   12991.02",
+        )
+    )
+
+
+def test_restart_optimization_progress_renders_live_candidate_details() -> None:
+    raw_event = {
+        "event_kind": "stage_progress",
+        "stage": "joint_refinement",
+        "progress_phase": "restart_optimization",
+        "completed_units": 3,
+        "total_units": 15,
+        "current_restart_id": "halton_09",
+        "active_restart_count": 12,
+        "current_parameter_block": "nig",
+        "current_outer_cycle": 2,
+        "total_outer_cycles": 3,
+        "evaluation_progress_percent": 47,
+        "current_weighted_objective": 265255.2,
+        "current_restart_best_weighted_objective": 18422.71,
+        "best_weighted_objective": 13001.0,
+    }
+
+    assert format_compact_staged_progress_event_detail(
+        raw_event,
+        completed_units=3,
+        total_units=15,
+    ) == (
+        "joint_refinement restart optimization [20%] (3/15) | item=halton_09 | "
+        "running=12 | block=nig | cycle=2/3 | eval=47% | "
+        "obj=265255.200000 | candidate_best=18422.710000 | global_best=13001.000000"
+    )
+    assert format_staged_progress_event_detail(raw_event) == (
+        "joint_refinement restart optimization 3/15 | item=halton_09 | "
+        "running=12 | block=nig | cycle=2/3 | eval=47% | "
+        "objective=265255.200000 | candidate_best_objective=18422.710000 | "
+        "best_objective=13001.000000"
+    )
 
 
 def test_spinner_progress_truncates_long_lines_to_terminal_width(

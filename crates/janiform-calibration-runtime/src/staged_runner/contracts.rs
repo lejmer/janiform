@@ -363,11 +363,29 @@ pub enum CalibrationStagedRunObserverEvent {
         #[serde(skip_serializing_if = "Option::is_none")]
         current_item_label: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
+        current_restart_id: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        active_restart_count: Option<usize>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        current_parameter_block: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        current_outer_cycle: Option<usize>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        total_outer_cycles: Option<usize>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        current_evaluation_count: Option<usize>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        total_evaluation_budget: Option<usize>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        evaluation_progress_percent: Option<usize>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         valid_completed_units: Option<usize>,
         #[serde(skip_serializing_if = "Option::is_none")]
         cumulative_local_evaluation_count: Option<usize>,
         #[serde(skip_serializing_if = "Option::is_none")]
         current_weighted_objective: Option<f64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        current_restart_best_weighted_objective: Option<f64>,
         #[serde(skip_serializing_if = "Option::is_none")]
         best_weighted_objective: Option<f64>,
         #[serde(skip_serializing_if = "Option::is_none")]

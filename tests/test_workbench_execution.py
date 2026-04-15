@@ -247,7 +247,7 @@ def test_stage_progress_detail_summarizes_joint_refinement_runtime_state() -> No
     )
 
     assert detail == (
-        "joint_refinement restart optimization 3/8 | latest=halton_03 | valid=2 "
+        "joint_refinement restart optimization 3/8 | item=halton_03 | valid=2 "
         "| local_evaluations=117 | best_objective=0.123457"
     )
 
