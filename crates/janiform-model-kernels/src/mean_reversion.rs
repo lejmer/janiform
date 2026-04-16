@@ -416,7 +416,7 @@ pub fn evolve_mean_reversion_boundary_state_on_interval_grid(
     if !kappa.is_finite() || kappa < 0.0 {
         return Err(MeanReversionBoundaryStateEvolutionError::InvalidKappa { value: kappa });
     }
-    if !interval_delta.is_finite() || interval_delta <= 0.0 {
+    if !interval_delta.is_finite() || interval_delta < 0.0 {
         return Err(
             MeanReversionBoundaryStateEvolutionError::InvalidIntervalDelta {
                 value: interval_delta,
@@ -449,6 +449,7 @@ pub fn evolve_mean_reversion_boundary_state_on_interval_grid(
         + core_total_return
         + boundary_state.anchor_value
         - interval_end_anchor_value;
+
     let observed_log_price = interval_end_anchor_value + deviation;
 
     MeanReversionBoundaryState::try_new(
@@ -601,7 +602,7 @@ impl Display for MeanReversionPressureStateEvolutionError {
             ),
             Self::InvalidIntervalDelta { value } => write!(
                 formatter,
-                "interval_delta must be finite and strictly positive, found {value}"
+                "interval_delta must be finite and non-negative, found {value}"
             ),
         }
     }
@@ -740,6 +741,7 @@ pub fn evolve_mean_reversion_pressure_state(
     }
 
     let reference_interval_hours = anchor_model.reference_interval_hours;
+
     let pressure_persistence = anchor_model
         .pressure_persistence_per_reference_interval
         .powf(interval_delta / reference_interval_hours);

@@ -90,6 +90,7 @@ impl SpectralDomain {
 
     fn collocation_nodes(self) -> Vec<f64> {
         let width = self.width();
+
         (0..self.node_count)
             .map(|node_index| {
                 self.deviation_lower_bound
@@ -122,6 +123,7 @@ pub(crate) fn run_grid_batch_pricing(
     })?;
 
     let pricing_thread_pool = build_pricing_thread_pool(execution_input.cpu_count);
+
     let mut carry_groups = prepare_carry_group_contexts(
         &execution_input,
         pricing_thread_pool.as_ref(),
@@ -131,14 +133,17 @@ pub(crate) fn run_grid_batch_pricing(
     .map_err(|message| VanillaOptionGridBatchPricingRunError::NodePricingFailure { message })?;
 
     let total_grids = execution_input.request.grids.len();
+
     emit_pricing_progress(
         &mut observer,
         PricingProgressEvent::group_progress(0, total_grids, Some(0)),
     );
 
     let mut grid_results = Vec::with_capacity(total_grids);
+
     for (grid_index, grid) in execution_input.request.grids.iter().enumerate() {
         let carry_group_key = CarryGroupKey::from_grid(grid);
+
         let carry_context = carry_groups.get_mut(&carry_group_key).ok_or_else(|| {
             VanillaOptionGridBatchPricingRunError::NodePricingFailure {
                 message: "missing carry-group spectral pricing context".to_string(),
@@ -159,6 +164,7 @@ pub(crate) fn run_grid_batch_pricing(
         } else {
             None
         };
+
         emit_pricing_progress(
             &mut observer,
             PricingProgressEvent::group_progress(grid_index + 1, total_grids, next_group_index),
@@ -177,6 +183,7 @@ pub(crate) fn run_single_option_pricing(
 ) -> Result<SingleOptionSpectralOutcome, VanillaOptionPricingRunError> {
     let request = &execution_input.request;
     let market_inputs = &request.market_inputs;
+
     let strike = market_inputs.single_strike().map_err(|source| {
         VanillaOptionPricingRunError::InvalidExecutionInput {
             source: crate::runner::VanillaOptionPricingExecutionInputError::InvalidRequest {
@@ -186,6 +193,7 @@ pub(crate) fn run_single_option_pricing(
             },
         }
     })?;
+
     let maturity_interval = market_inputs.single_maturity_interval().map_err(|source| {
         VanillaOptionPricingRunError::InvalidExecutionInput {
             source: crate::runner::VanillaOptionPricingExecutionInputError::InvalidRequest {
@@ -247,11 +255,13 @@ pub(crate) fn run_single_option_pricing(
         .ok_or_else(|| VanillaOptionPricingRunError::InternalNumericsFailure {
             message: "spectral single-option pricing returned no price".to_string(),
         })?;
+
     let implied_volatility = grid
         .implied_volatility_grid
         .first()
         .and_then(|row| row.first())
         .and_then(|value| *value);
+
     let implied_volatility_inversion_status = grid
         .implied_volatility_inversion_status_grid
         .first()
@@ -260,6 +270,7 @@ pub(crate) fn run_single_option_pricing(
         .ok_or_else(|| VanillaOptionPricingRunError::InternalNumericsFailure {
             message: "spectral single-option pricing returned no IV status".to_string(),
         })?;
+
     let maturity_summary = grid
         .maturity_summaries
         .first()
@@ -296,6 +307,7 @@ fn prepare_carry_group_contexts(
     for grid in &execution_input.request.grids {
         let carry_group_key = CarryGroupKey::from_grid(grid);
         let strike_bits = grouped_strikes.entry(carry_group_key).or_default();
+
         for strike in &grid.strikes {
             strike_bits.insert(strike.to_bits());
         }
@@ -308,12 +320,14 @@ fn prepare_carry_group_contexts(
             .into_iter()
             .map(f64::from_bits)
             .collect::<Vec<_>>();
+
         let first_grid = execution_input
             .request
             .grids
             .iter()
             .find(|grid| CarryGroupKey::from_grid(grid) == carry_group_key)
             .ok_or_else(|| "missing representative grid for carry group".to_string())?;
+
         let max_maturity_interval = execution_input
             .request
             .grids
@@ -322,10 +336,12 @@ fn prepare_carry_group_contexts(
             .flat_map(|grid| grid.maturity_intervals.iter().copied())
             .max_by(|left, right| left.total_cmp(right))
             .ok_or_else(|| "carry group requires at least one maturity".to_string())?;
+
         let dummy_strike = union_strikes
             .first()
             .copied()
             .ok_or_else(|| "carry group requires at least one strike".to_string())?;
+
         let base_request = VanillaOptionPricingRequest::try_new(
             VanillaOptionPricingMarketInputs::new_single_node(
                 execution_input.request.spot,
@@ -350,6 +366,7 @@ fn prepare_carry_group_contexts(
             .map_err(|source| format!("failed to derive pricing driver parameters: {source}"))?;
 
         let mut no_observer = None;
+
         let materialization = build_pricing_risk_neutral_anchor_materialization(
             &base_request,
             &execution_input.runtime_interval_schedule,
@@ -374,11 +391,13 @@ fn prepare_carry_group_contexts(
                 })
             })
             .collect::<Result<BTreeSet<_>, _>>()?;
+
         let maximum_maturity_count = unique_maturity_counts
             .iter()
             .next_back()
             .copied()
             .ok_or_else(|| "carry group requires at least one resolved maturity".to_string())?;
+
         let spectral_domain = build_spectral_domain(
             &base_request,
             &materialization,
@@ -387,6 +406,7 @@ fn prepare_carry_group_contexts(
             union_strikes.as_slice(),
         )
         .map_err(|source| format!("failed to construct spectral domain: {source}"))?;
+
         let cached_interval_operators = build_cached_interval_operators(
             &base_request,
             execution_input.interval_factors.as_slice(),
@@ -401,6 +421,7 @@ fn prepare_carry_group_contexts(
         .map_err(|source| format!("spectral interval-operator assembly failed: {source}"))?;
 
         let mut maturity_laws = BTreeMap::new();
+
         let total_maturity_solves = unique_maturity_counts.len();
         if total_maturity_solves > 0 {
             emit_pricing_progress(
@@ -423,12 +444,15 @@ fn prepare_carry_group_contexts(
                 cached_interval_operators.as_slice(),
             )
             .map_err(|source| format!("spectral maturity solve failed: {source}"))?;
+
             maturity_laws.insert(maturity_count, solved_maturity_law);
+
             let next_maturity_index = if maturity_position + 1 < total_maturity_solves {
                 Some(maturity_position + 1)
             } else {
                 None
             };
+
             emit_pricing_progress(
                 observer,
                 PricingProgressEvent::maturity_progress(
@@ -484,7 +508,9 @@ fn build_grid_result(
                     message: message.to_string(),
                 },
             )?;
+
         maturity_terminal_interval_indices.push(maturity_count - 1);
+
         let solved_maturity = carry_context
             .maturity_laws
             .get(&maturity_count)
@@ -524,11 +550,13 @@ fn build_grid_result(
             execution_input.optional_output_selection,
             representative_price,
         )?));
+
         let next_maturity_index = if maturity_index + 1 < total_maturities {
             Some(maturity_index + 1)
         } else {
             None
         };
+
         emit_pricing_progress(
             observer,
             PricingProgressEvent::maturity_progress(
@@ -586,9 +614,12 @@ fn price_strike_row(
     let strike_count = grid.strikes.len();
 
     let maturity_year_fraction = intraday_year_fraction(solved_maturity.maturity_interval);
+
     let forward_price =
         spot * ((grid.risk_free_rate - grid.dividend_yield) * maturity_year_fraction).exp();
+
     let discount_factor = (-grid.risk_free_rate * maturity_year_fraction).exp();
+
     let boundary_state_norm_row_value = Some(
         (boundary_state.y_plus_plus * boundary_state.y_plus_plus
             + boundary_state.y_plus_minus * boundary_state.y_plus_minus
@@ -596,6 +627,7 @@ fn price_strike_row(
             + boundary_state.y_minus_minus * boundary_state.y_minus_minus)
             .sqrt(),
     );
+
     if strike_count > 0 {
         emit_pricing_progress(
             observer,
@@ -629,16 +661,20 @@ fn price_strike_row(
                     grid.risk_free_rate,
                     grid.dividend_yield,
                 );
+
                 let (lower_bound, upper_bound) = intraday_black_scholes_no_arbitrage_price_bounds(
                     &market_inputs,
                     grid.payoff_type,
                 );
+
                 let bounded_price = price.clamp(lower_bound, upper_bound);
+
                 let iv_outcome = invert_spectral_implied_volatility(
                     &market_inputs,
                     grid.payoff_type,
                     bounded_price,
                 );
+
                 (
                     Some(bounded_price),
                     iv_outcome.implied_volatility,
@@ -676,9 +712,11 @@ fn price_strike_row(
         })
     } else {
         let mut priced_nodes = Vec::with_capacity(strike_count);
+
         for strike in grid.strikes.iter().copied() {
             priced_nodes.push(price_strike(strike));
         }
+
         priced_nodes
     };
 
@@ -714,6 +752,7 @@ fn invert_spectral_implied_volatility(
 ) -> VanillaOptionImpliedVolatilityInversionOutcome {
     let (lower_bound, upper_bound) =
         intraday_black_scholes_no_arbitrage_price_bounds(market_inputs, payoff_type);
+
     let bounded_price = if option_price == upper_bound {
         upper_bound.next_down()
     } else if option_price == lower_bound {
@@ -756,17 +795,22 @@ fn build_cached_interval_operators(
         } else {
             runtime_anchors.end_anchor_values[interval_offset - 1]
         };
+
         let current_pressure_state = if interval_offset == 0 {
             runtime_anchors.start_pressure_state
         } else {
             runtime_anchors.end_pressure_states[interval_offset - 1]
         };
+
         let interval_delta = runtime_anchors.interval_deltas[interval_offset];
+
         let expected_hawkes_state_before =
             materialization.expected_hawkes_state_path[interval_offset];
         let expected_hawkes_state_after =
             materialization.expected_hawkes_state_path[interval_offset + 1];
+
         let interval_factor = interval_factors[interval_offset];
+
         let base_context = LocalTransitionRequestContext::from_interval_state(
             pricing_request,
             interval_factor,
@@ -807,6 +851,7 @@ fn build_cached_interval_operators(
                 })?
             } else {
                 let mut row_operators = Vec::with_capacity(collocation_nodes.len());
+
                 for deviation in &collocation_nodes {
                     row_operators.push(solve_row_frequency_batch(
                         &base_context,
@@ -815,6 +860,7 @@ fn build_cached_interval_operators(
                         driver_parameters,
                     )?);
                 }
+
                 row_operators
             };
 
@@ -877,11 +923,13 @@ fn solve_maturity_law(
         [..maturity_count]
         .iter()
         .sum::<f64>();
+
     let basis_size = spectral_domain.node_count;
     let frequency_count = basis_size;
 
     let mut continuation_coefficients =
         vec![vec![ComplexScalar::new(0.0, 0.0); basis_size]; frequency_count];
+
     for frequency_index in 0..frequency_count {
         continuation_coefficients[frequency_index][0] = ComplexScalar::new(1.0, 0.0);
     }
@@ -939,6 +987,7 @@ fn apply_cached_interval_operator(
     spectral_domain: SpectralDomain,
 ) -> Vec<Vec<ComplexScalar>> {
     let frequency_count = spectral_domain.node_count;
+
     let mut interval_values =
         vec![vec![ComplexScalar::new(0.0, 0.0); spectral_domain.node_count]; frequency_count];
 
@@ -953,6 +1002,7 @@ fn apply_cached_interval_operator(
                     row_operator.positive_frequency_values[basis_index - frequency_index]
                         .conjugate()
                 };
+
                 let expectation = complex_multiply(
                     row_operator.basis_forward_phases[basis_index],
                     row_operator.positive_frequency_values[frequency_index + basis_index],
@@ -962,6 +1012,7 @@ fn apply_cached_interval_operator(
                     difference_value,
                 ))
                 .scale(0.5);
+
                 row_value = row_value.add(complex_multiply(
                     continuation_coefficients[frequency_index][basis_index],
                     expectation,
@@ -1005,6 +1056,7 @@ fn solve_row_frequency_batch(
     driver_parameters: janiform_model_kernels::nig::NigBuySellDriverParameters,
 ) -> Result<RowFrequencyBatchSolution, VanillaOptionPricingRunError> {
     let transition_row = base_context.build_row_state(deviation)?;
+
     let (theta, _) = resolve_local_transition_theta_for_row_with_parallelism(
         base_context,
         &transition_row,
@@ -1014,7 +1066,9 @@ fn solve_row_frequency_batch(
     )?;
 
     let frequency_count = spectral_domain.node_count;
+
     let mut batch_arguments = Vec::with_capacity(2 * frequency_count - 1);
+
     for frequency_index in 0..(2 * frequency_count - 1) {
         batch_arguments.push(ComplexScalar::new(
             spectral_domain.basis_frequency(frequency_index),
@@ -1027,10 +1081,12 @@ fn solve_row_frequency_batch(
         driver_parameters,
         batch_arguments.as_slice(),
     )?;
+
     let denominator = batch_evaluations[0].value;
     let representative_transform = Some(batch_evaluations[0].transform_diagnostics);
 
     let mut positive_frequency_values = Vec::with_capacity(batch_evaluations.len());
+
     for evaluation in &batch_evaluations {
         let value = evaluation.value.divide(denominator).ok_or(
             VanillaOptionPricingRunError::InvalidRiskNeutralCharacteristicFunction {
@@ -1038,6 +1094,7 @@ fn solve_row_frequency_batch(
                 denominator,
             },
         )?;
+
         positive_frequency_values.push(value);
     }
 
@@ -1045,16 +1102,19 @@ fn solve_row_frequency_batch(
         positive_frequency_values.as_slice(),
         spectral_domain,
     )?;
+
     let shift_center = base_context.deviation_decay_factor * deviation - local_expectations;
     let shift_phase_offset = shift_center - spectral_domain.deviation_lower_bound;
 
     let mut basis_forward_phases = Vec::with_capacity(spectral_domain.node_count);
     let mut basis_backward_phases = Vec::with_capacity(spectral_domain.node_count);
+
     for basis_index in 0..spectral_domain.node_count {
         let forward_phase = complex_exponential(ComplexScalar::new(
             0.0,
             spectral_domain.basis_frequency(basis_index) * shift_phase_offset,
         ));
+
         basis_forward_phases.push(forward_phase);
         basis_backward_phases.push(forward_phase.conjugate());
     }
@@ -1090,6 +1150,7 @@ fn derive_expected_increment_from_frequency_values(
                 .to_string(),
         }
     })?;
+
     Ok(first_value.imaginary / first_frequency)
 }
 
@@ -1098,6 +1159,7 @@ fn values_to_cosine_coefficients(
 ) -> Vec<Vec<ComplexScalar>> {
     let frequency_count = values_by_frequency.len();
     let node_count = values_by_frequency.first().map_or(0, Vec::len);
+
     let mut coefficients = vec![vec![ComplexScalar::new(0.0, 0.0); node_count]; frequency_count];
 
     for frequency_index in 0..frequency_count {
@@ -1107,13 +1169,16 @@ fn values_to_cosine_coefficients(
             } else {
                 2.0 / node_count as f64
             };
+
             let mut coefficient = ComplexScalar::new(0.0, 0.0);
+
             for node_index in 0..node_count {
                 let angle = std::f64::consts::PI * basis_index as f64 * (node_index as f64 + 0.5)
                     / node_count as f64;
                 coefficient = coefficient
                     .add(values_by_frequency[frequency_index][node_index].scale(angle.cos()));
             }
+
             coefficients[frequency_index][basis_index] = coefficient.scale(scale);
         }
     }
@@ -1125,9 +1190,8 @@ fn evaluate_cosine_series(
     coefficients: &[ComplexScalar],
     spectral_domain: SpectralDomain,
     evaluation_point: f64,
-    frequency_index: usize,
+    _frequency_index: usize,
 ) -> ComplexScalar {
-    let _ = frequency_index;
     coefficients.iter().enumerate().fold(
         ComplexScalar::new(0.0, 0.0),
         |accum, (basis_index, coefficient)| {
@@ -1147,10 +1211,12 @@ fn build_spectral_domain(
 ) -> Result<SpectralDomain, VanillaOptionPricingRunError> {
     let terminal_anchor =
         materialization.runtime_interval_anchors.end_anchor_values[maturity_count - 1];
+
     let current_observed_log_price = pricing_request
         .boundary_input
         .observed_boundary_state
         .observed_log_price;
+
     let mut anchor_min = pricing_request
         .boundary_input
         .current_anchor_value()
@@ -1176,6 +1242,7 @@ fn build_spectral_domain(
     let observed_log_half_width = (current_observed_log_price.abs() + (anchor_max - anchor_min))
         .max(MINIMUM_SPECTRAL_DEVIATION_DOMAIN_HALF_WIDTH);
     let observed_log_center = current_observed_log_price;
+
     let node_count = MINIMUM_SPECTRAL_COLLOCATION_NODE_COUNT;
 
     Ok(SpectralDomain {
@@ -1206,6 +1273,7 @@ fn build_maturity_summary(
     } else {
         None
     };
+
     let integration_quality =
         if let (Some(price), Some(diagnostics)) = (representative_price, spectral_diagnostics) {
             Some(build_spectral_compatibility_integration_diagnostics(
@@ -1246,14 +1314,16 @@ fn cos_price_from_terminal_characteristic_function(
     strike: f64,
     payoff_type: VanillaOptionPayoffType,
     risk_free_rate: f64,
-    dividend_yield: f64,
+    _dividend_yield: f64,
     solved_maturity: &SolvedMaturityLaw,
 ) -> Option<f64> {
     let maturity_year_fraction = intraday_year_fraction(solved_maturity.maturity_interval);
+
     let y_lower_bound =
         solved_maturity.terminal_anchor_value + solved_maturity.deviation_lower_bound;
     let y_upper_bound =
         solved_maturity.terminal_anchor_value + solved_maturity.deviation_upper_bound;
+
     let width = y_upper_bound - y_lower_bound;
     if width <= 0.0 || !width.is_finite() {
         return None;
@@ -1278,15 +1348,17 @@ fn cos_price_from_terminal_characteristic_function(
             strike_boundary,
             frequency_index,
         )?;
+
         let phase = complex_exponential(ComplexScalar::new(
             0.0,
             -(frequency_index as f64 * std::f64::consts::PI / width) * y_lower_bound,
         ));
+
         let weight = if frequency_index == 0 { 0.5 } else { 1.0 };
+
         price += weight * complex_multiply(*phi_value, phase).real * coefficient;
     }
 
-    let _ = dividend_yield;
     Some((discount_factor * price).max(0.0))
 }
 
@@ -1301,13 +1373,16 @@ fn payoff_cos_coefficient(
 ) -> Option<f64> {
     let width = domain_upper_bound - domain_lower_bound;
     let angular_frequency = frequency_index as f64 * std::f64::consts::PI / width;
+
     match payoff_type {
         VanillaOptionPayoffType::Call => {
             if strike_boundary >= domain_upper_bound {
                 return Some(0.0);
             }
+
             let lower = strike_boundary.max(domain_lower_bound);
             let upper = domain_upper_bound;
+
             Some(
                 2.0 / width
                     * (spot * chi_coefficient(lower, upper, domain_lower_bound, angular_frequency)
@@ -1319,8 +1394,10 @@ fn payoff_cos_coefficient(
             if strike_boundary <= domain_lower_bound {
                 return Some(0.0);
             }
+
             let lower = domain_lower_bound;
             let upper = strike_boundary.min(domain_upper_bound);
+
             Some(
                 2.0 / width
                     * (strike
@@ -1339,6 +1416,7 @@ fn chi_coefficient(lower: f64, upper: f64, domain_lower_bound: f64, angular_freq
 
     let upper_shift = upper - domain_lower_bound;
     let lower_shift = lower - domain_lower_bound;
+
     let denominator = 1.0 + angular_frequency * angular_frequency;
 
     ((upper.exp() * (angular_frequency * upper_shift.sin() + upper_shift.cos()))
@@ -1353,5 +1431,6 @@ fn psi_coefficient(lower: f64, upper: f64, domain_lower_bound: f64, angular_freq
 
     let upper_shift = upper - domain_lower_bound;
     let lower_shift = lower - domain_lower_bound;
+
     (upper_shift.sin() - lower_shift.sin()) / angular_frequency
 }

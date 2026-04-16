@@ -189,7 +189,7 @@ pub(super) fn parameter_vector_to_fitted_parameters(
 
 pub(super) fn build_baseline_parameter_vector(
     active_parameter_layout: &JointRefinementActiveParameterLayout,
-    hawkes_fitted_parameters: &janiform_calibration_artifacts::HawkesStageFittedParameters,
+    _hawkes_fitted_parameters: &janiform_calibration_artifacts::HawkesStageFittedParameters,
     return_components_fitted_parameters: &ReturnComponentsStageFittedParameters,
     baseline_15m_calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
 ) -> Vec<f64> {
@@ -211,7 +211,6 @@ pub(super) fn build_baseline_parameter_vector(
     }
 
     if let Some(index) = active_parameter_layout.known_activity_scale_index {
-        let _ = hawkes_fitted_parameters;
         parameter_vector[index] = 0.0;
     }
     if let Some(index) = active_parameter_layout.surprise_activity_scale_index {

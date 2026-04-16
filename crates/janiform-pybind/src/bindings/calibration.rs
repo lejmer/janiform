@@ -871,7 +871,7 @@ fn python_staged_calibration_event_to_py_object(
         }
     };
 
-    if let Some(stage_report) = serialized_event.get("stage_report") {
+    if serialized_event.contains_key("stage_report") {
         let flattened_stage_report = match event {
             CalibrationStagedRunObserverEvent::StageCompleted { stage_report, .. } => {
                 flatten_stage_report_for_python(stage_report)
@@ -883,8 +883,6 @@ fn python_staged_calibration_event_to_py_object(
                 "failed to flatten staged calibration observer event stage report: {source}"
             ))
         })?;
-
-        let _ = stage_report;
 
         serialized_event.insert("stage_report".to_string(), flattened_stage_report);
     }

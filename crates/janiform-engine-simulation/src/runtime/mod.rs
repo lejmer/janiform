@@ -27,10 +27,14 @@ pub use results::estimate_seeded_result_capacities;
 pub(crate) use news::{
     build_interval_news_event_inputs, derive_interval_news_arrival_decomposition,
 };
+pub(crate) use market_state::SeededSimulationMarketStateResolver;
 pub(crate) use news::{
     build_timestamped_news_event_input, derive_known_news_interval_slice_bounds,
     sample_count_from_expectation, sample_interval_timestamp_utc_nanos,
     validate_known_scheduled_news_timestamps,
+};
+pub(crate) use trading_time::{
+    build_interval_open_market_segments, integrate_open_market_elapsed_hours,
 };
 pub(crate) use validation::{
     compute_max_effective_endogenous_branching_ratio, validate_hourly_factor_field_length,

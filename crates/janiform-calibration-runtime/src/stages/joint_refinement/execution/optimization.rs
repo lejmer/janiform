@@ -1006,7 +1006,7 @@ mod tests {
         };
 
         baseline_progress.record_evaluation("nig", 1, Some(10.0));
-        let _ = progress_receiver.recv().unwrap();
+        progress_receiver.recv().unwrap();
 
         halton_progress.record_evaluation("nig", 1, Some(4.0));
         let progress_update = progress_receiver.recv().unwrap();

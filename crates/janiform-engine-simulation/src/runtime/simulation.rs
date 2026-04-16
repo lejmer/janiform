@@ -42,7 +42,8 @@ use super::observed_state::SeededObservedState;
 use super::results::estimate_seeded_result_capacities;
 use super::time::derive_elapsed_hours;
 use super::trading_time::{
-    build_interval_open_market_segments, sample_transition_trading_time_return,
+    build_interval_open_market_segments, integrate_open_market_elapsed_hours,
+    sample_transition_trading_time_return,
 };
 use super::updates::{
     IntervalStochasticUpdate, is_public_seeded_fine_path_record, map_side_to_transition_kind,
@@ -64,6 +65,7 @@ where
 
     let state_snapshot_capture = run_config.options.state_snapshot_capture;
     let lambda_bar = run_config.model_inputs.kernel_parameters.lambda_bar;
+
     let driver_parameters =
         run_config
             .model_inputs
@@ -402,7 +404,7 @@ where
         randomness_factory,
     )?;
 
-    let _ = endogenous_auxiliary_stream.next_unit_interval_f64();
+    endogenous_auxiliary_stream.next_unit_interval_f64();
 
     let endogenous_interval_updates = schedule_endogenous_interval_events_with_event_time_feedback(
         interval_start_state,
@@ -482,7 +484,11 @@ where
 
     runtime_state.observed_state = runtime_state.observed_state.apply_core_increment(
         fine_path_state.mean_reversion_kappa,
-        elapsed_hours_since_previous_update,
+        integrate_open_market_elapsed_hours(
+            interval_inputs.interval_open_market_segments,
+            previous_timestamp_utc_nanos,
+            interval_update.timestamp_utc_nanos(),
+        ),
         total_return,
     );
 
@@ -637,7 +643,11 @@ where
         .observed_state
         .apply_core_increment(
             fine_path_state.mean_reversion_kappa,
-            elapsed_hours_to_interval_end,
+            integrate_open_market_elapsed_hours(
+                interval_inputs.interval_open_market_segments,
+                previous_timestamp_utc_nanos,
+                interval_inputs.interval_end_utc_nanos,
+            ),
             total_return,
         )
         .apply_anchor_reset(
@@ -676,34 +686,35 @@ where
         },
     );
 
-    consumer.consume_transition(
-        SeededFinePathRecord {
-            transition_index: runtime_state.next_transition_index,
-            timestamp_utc_nanos: interval_inputs.interval_end_utc_nanos,
-            transition_kind: SeededFinePathTransitionKind::IntervalBoundaryDrift,
-            side: None,
-            news_arrival_component: None,
-            market_state: SeededTickSimulationNewsEventMarketState::from_market_state(
-                boundary_market_state,
-            ),
-            return_components,
-            core_total_return_increment: total_return,
-            observed_log_price: runtime_state.observed_state.observed_log_price,
-            anchor_value: runtime_state.observed_state.anchor_value,
-            pressure_state: runtime_state.observed_state.pressure_state,
-            deviation_from_anchor: runtime_state.observed_state.deviation_from_anchor,
-            cumulative_core_log_return: runtime_state.observed_state.cumulative_core_log_return,
-            state_snapshot: build_event_state_snapshot(
-                runtime_state.next_state,
-                fine_path_state.lambda_bar,
-                fine_path_state.state_snapshot_capture,
-            ),
-        },
-        SeededTickSimulationTransitionEmission {
-            is_public_fine_path_record: true,
-            is_event_projection_record: false,
-        },
-    )?;
+    let boundary_record = SeededFinePathRecord {
+        transition_index: runtime_state.next_transition_index,
+        timestamp_utc_nanos: interval_inputs.interval_end_utc_nanos,
+        transition_kind: SeededFinePathTransitionKind::IntervalBoundaryDrift,
+        side: None,
+        news_arrival_component: None,
+        market_state: SeededTickSimulationNewsEventMarketState::from_market_state(
+            boundary_market_state,
+        ),
+        return_components,
+        core_total_return_increment: total_return,
+        observed_log_price: runtime_state.observed_state.observed_log_price,
+        anchor_value: runtime_state.observed_state.anchor_value,
+        pressure_state: runtime_state.observed_state.pressure_state,
+        deviation_from_anchor: runtime_state.observed_state.deviation_from_anchor,
+        cumulative_core_log_return: runtime_state.observed_state.cumulative_core_log_return,
+        state_snapshot: build_event_state_snapshot(
+            runtime_state.next_state,
+            fine_path_state.lambda_bar,
+            fine_path_state.state_snapshot_capture,
+        ),
+    };
+
+    let boundary_emission = SeededTickSimulationTransitionEmission {
+        is_public_fine_path_record: is_public_seeded_fine_path_record(&boundary_record),
+        is_event_projection_record: false,
+    };
+
+    consumer.consume_transition(boundary_record, boundary_emission)?;
 
     runtime_state.next_transition_index = runtime_state.next_transition_index.saturating_add(1);
 

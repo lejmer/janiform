@@ -298,11 +298,9 @@ pub trait SeededTickSimulationTransitionConsumer {
     /// Reserve retained storage using the simulator's deterministic capacity estimate.
     fn reserve_transition_capacity(
         &mut self,
-        estimated_transition_capacity: usize,
-        estimated_event_capacity: usize,
+        _estimated_transition_capacity: usize,
+        _estimated_event_capacity: usize,
     ) -> Result<(), crate::error::SeededTickSimulationRunError> {
-        let _ = estimated_transition_capacity;
-        let _ = estimated_event_capacity;
         Ok(())
     }
 

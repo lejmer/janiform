@@ -2187,11 +2187,9 @@ fn validate_hawkes_boundary_state_component(
 }
 
 fn validate_observed_anchor_alignment(
-    mean_reversion_fitted_parameters: &MeanReversionFittedParameters,
+    _mean_reversion_fitted_parameters: &MeanReversionFittedParameters,
     _observed_boundary_state: MeanReversionBoundaryState,
 ) -> Result<(), AnchoredVanillaOptionPricingBoundaryInputError> {
-    let _ = mean_reversion_fitted_parameters;
-
     Ok(())
 }
 #[derive(Debug, Clone, PartialEq, Deserialize)]

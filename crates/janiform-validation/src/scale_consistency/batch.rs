@@ -1158,7 +1158,8 @@ fn persist_checkpoint_from_reports(
             })
             .collect(),
     );
-    let _ = persist_checkpoint(run_contract, &checkpoint)?;
+
+    persist_checkpoint(run_contract, &checkpoint)?;
 
     Ok(())
 }
@@ -1193,6 +1194,7 @@ fn persist_checkpoint(
     }
 
     let checkpoint_path = batch_checkpoint_path(run_contract)?;
+
     persist_json_artifact(run_contract, checkpoint_path.as_path(), checkpoint)?;
 
     Ok(checkpoint_path)
@@ -1288,6 +1290,7 @@ where
 fn load_batch_checkpoint_from_disk(path: &Path) -> Result<ScaleConsistencyBatchCheckpoint, String> {
     let serialized =
         fs::read(path).map_err(|error| format!("failed to read `{}`: {error}", path.display()))?;
+
     serde_json::from_slice(&serialized).map_err(|error| {
         format!(
             "failed to parse checkpoint JSON `{}`: {error}",

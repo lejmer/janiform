@@ -128,6 +128,20 @@ fn integrate_open_market_elapsed_time_weights(
     }
 }
 
+pub(crate) fn integrate_open_market_elapsed_hours(
+    interval_open_market_segments: &[(i64, i64)],
+    previous_timestamp_utc_nanos: i64,
+    timestamp_utc_nanos: i64,
+) -> f64 {
+    integrate_open_market_elapsed_time_weights(
+        interval_open_market_segments,
+        previous_timestamp_utc_nanos,
+        timestamp_utc_nanos,
+        0.0,
+    )
+    .open_elapsed_hours
+}
+
 pub(crate) fn build_interval_open_market_segments(
     market_state_resolver: &SeededSimulationMarketStateResolver<'_>,
     interval_start_utc_nanos: &[i64],

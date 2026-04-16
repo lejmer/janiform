@@ -105,6 +105,6 @@ mod tests {
     #[test]
     #[should_panic(expected = "UTC timestamp should be valid")]
     fn utc_nanos_panics_for_invalid_calendar_timestamp() {
-        let _ = utc_nanos(2026, 2, 30, 12, 0, 0);
+        utc_nanos(2026, 2, 30, 12, 0, 0);
     }
 }

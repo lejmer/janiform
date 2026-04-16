@@ -280,12 +280,9 @@ pub(crate) const fn map_seeded_tick_side_to_hawkes_side(
 }
 
 pub(crate) fn is_public_seeded_fine_path_record(record: &SeededFinePathRecord) -> bool {
-    !matches!(
-        (record.transition_kind, record.market_state),
-        (
-            SeededFinePathTransitionKind::ExogenousNews,
-            SeededTickSimulationNewsEventMarketState::Closed,
-        )
+    matches!(
+        record.market_state,
+        SeededTickSimulationNewsEventMarketState::Open
     )
 }
 
