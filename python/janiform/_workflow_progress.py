@@ -27,10 +27,6 @@ def _format_elapsed_seconds(elapsed_seconds: float) -> str:
 
 
 def _resolve_stream_render_width(stream: TextIO) -> Optional[int]:
-    is_tty = getattr(stream, "isatty", None)
-    if not callable(is_tty) or not is_tty():
-        return None
-
     terminal_size = shutil.get_terminal_size(fallback=(0, 0))
     if terminal_size.columns <= 0:
         return None
@@ -376,11 +372,33 @@ class SpinnerProgress(AbstractProgress):
         self._last_rendered_line_count = 1
 
     def _write_transient_lines_locked(self, lines: list[str]) -> None:
-        if len(lines) == 1 or not self._supports_cursor_control():
+        if not self._supports_cursor_control():
             self._write_transient_line_locked(lines[0])
             return
 
         rendered_lines = [self._fit_line_to_stream_width(line) for line in lines]
+        self._rewrite_cursor_control_lines_locked(rendered_lines)
+
+    def _write_final_line_locked(self, line: str) -> None:
+        rendered_line = self._fit_line_to_stream_width(line)
+
+        if self._supports_cursor_control():
+            self._rewrite_cursor_control_lines_locked([rendered_line])
+            self._stream.write("\n")
+            self._stream.flush()
+            self._last_rendered_width = 0
+            self._last_rendered_line_count = 0
+            return
+
+        padding = " " * max(0, self._last_rendered_width - len(rendered_line))
+
+        self._stream.write(f"\r{rendered_line}{padding}\n")
+        self._stream.flush()
+
+        self._last_rendered_width = 0
+        self._last_rendered_line_count = 0
+
+    def _rewrite_cursor_control_lines_locked(self, rendered_lines: list[str]) -> None:
         if self._last_rendered_line_count > 1:
             self._stream.write(f"\x1b[{self._last_rendered_line_count - 1}A\r")
         else:
@@ -396,26 +414,12 @@ class SpinnerProgress(AbstractProgress):
             extra_line_count = self._last_rendered_line_count - len(rendered_lines)
             for _ in range(extra_line_count):
                 self._stream.write("\n\x1b[2K")
-            self._stream.write(
-                f"\x1b[{extra_line_count}A"
-                if extra_line_count > 0
-                else ""
-            )
+
+            self._stream.write(f"\x1b[{extra_line_count}A\r")
 
         self._stream.flush()
         self._last_rendered_width = len(rendered_lines[-1])
         self._last_rendered_line_count = len(rendered_lines)
-
-    def _write_final_line_locked(self, line: str) -> None:
-        rendered_line = self._fit_line_to_stream_width(line)
-
-        padding = " " * max(0, self._last_rendered_width - len(rendered_line))
-
-        self._stream.write(f"\r{rendered_line}{padding}\n")
-        self._stream.flush()
-
-        self._last_rendered_width = 0
-        self._last_rendered_line_count = 0
 
     def _fit_line_to_stream_width(self, line: str) -> str:
         render_width = _resolve_stream_render_width(self._stream)

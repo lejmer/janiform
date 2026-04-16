@@ -36,6 +36,7 @@ class CalibrationLiveProgressSnapshot:
     current_stage_is_complete: bool = False
     subtask_completed_units: Optional[int] = None
     subtask_total_units: Optional[int] = None
+    subtask_progress_fraction_override: Optional[float] = None
 
 
 def calibration_total_progress_fraction(
@@ -99,6 +100,9 @@ def _calibration_current_stage_progress_fraction(
     )
     if joint_refinement_phase_progress_fraction is not None:
         return joint_refinement_phase_progress_fraction
+
+    if isinstance(snapshot.subtask_progress_fraction_override, float):
+        return min(max(snapshot.subtask_progress_fraction_override, 0.0), 1.0)
 
     subtask_progress_fraction = _progress_bar_fraction(
         snapshot.subtask_completed_units,
@@ -179,10 +183,17 @@ def _joint_refinement_phase_progress_fraction(
 
     phase_names = tuple(phase_weights.keys())
     phase_index = phase_names.index(progress_phase)
+    current_phase_is_complete = (
+        isinstance(snapshot.subtask_completed_units, int)
+        and isinstance(snapshot.subtask_total_units, int)
+        and snapshot.subtask_total_units > 0
+        and snapshot.subtask_completed_units >= snapshot.subtask_total_units
+    )
 
     current_phase_fraction = _progress_bar_fraction(
         snapshot.subtask_completed_units,
         snapshot.subtask_total_units,
+        is_complete=current_phase_is_complete,
     )
     if current_phase_fraction is None:
         current_phase_fraction = 0.0

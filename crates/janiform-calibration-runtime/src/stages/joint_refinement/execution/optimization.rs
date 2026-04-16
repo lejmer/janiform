@@ -30,6 +30,11 @@ struct RestartProgressState {
     completed_units: usize,
     cumulative_local_evaluation_count: usize,
     valid_completed_units: usize,
+}
+
+#[derive(Debug, Default)]
+struct RestartDisplayBestState {
+    best_restart_id: Option<String>,
     best_weighted_objective: Option<f64>,
 }
 
@@ -37,6 +42,8 @@ struct RestartProgressState {
 struct RestartProgressCounters {
     completed_units: AtomicUsize,
     active_restart_count: AtomicUsize,
+    aggregate_progress_percent_sum: AtomicUsize,
+    display_best_state: Mutex<RestartDisplayBestState>,
 }
 
 struct RestartCandidateProgress<'a> {
@@ -66,6 +73,7 @@ pub(crate) fn optimize_restart_seeds(
     emit_joint_refinement_progress(
         progress_sender,
         JointRefinementStageProgressUpdate {
+            aggregate_progress_percent: Some(0),
             valid_completed_units: Some(0),
             cumulative_local_evaluation_count: Some(0),
             ..JointRefinementStageProgressUpdate::new(
@@ -128,16 +136,30 @@ fn optimize_restart_seeds_sequential(
         progress_counters
             .completed_units
             .store(progress_state.completed_units, Ordering::Relaxed);
+        progress_counters.record_display_best(
+            restart_outcome.restart_id.as_str(),
+            restart_outcome
+                .final_evaluation
+                .breakdown
+                .weighted_objective,
+        );
 
         emit_restart_progress(
             progress_sender,
             total_units,
             &progress_state,
             &restart_outcome,
+            &progress_counters,
             progress_counters
                 .active_restart_count
                 .load(Ordering::Relaxed),
             restart_candidate_total_evaluation_budget(context, solver_settings, budget_schedule),
+            progress_counters
+                .aggregate_progress_percent_sum
+                .load(Ordering::Relaxed)
+                .checked_div(total_units.max(1))
+                .unwrap_or(0)
+                .min(100),
         );
 
         ordered_outcomes.push(restart_outcome);
@@ -198,11 +220,19 @@ fn optimize_restart_seeds_parallel(
                 progress_counters
                     .completed_units
                     .store(progress_state.completed_units, Ordering::Relaxed);
+                progress_counters.record_display_best(
+                    restart_outcome.restart_id.as_str(),
+                    restart_outcome
+                        .final_evaluation
+                        .breakdown
+                        .weighted_objective,
+                );
                 emit_restart_progress(
                     progress_sender,
                     total_units,
                     &progress_state,
                     &restart_outcome,
+                    progress_counters.as_ref(),
                     progress_counters
                         .active_restart_count
                         .load(Ordering::Relaxed),
@@ -211,6 +241,12 @@ fn optimize_restart_seeds_parallel(
                         solver_settings,
                         budget_schedule,
                     ),
+                    progress_counters
+                        .aggregate_progress_percent_sum
+                        .load(Ordering::Relaxed)
+                        .checked_div(total_units.max(1))
+                        .unwrap_or(0)
+                        .min(100),
                 );
                 ordered_outcomes[restart_position] = Some(restart_outcome);
             }
@@ -718,6 +754,8 @@ impl<'a> RestartCandidateProgress<'a> {
                     .map(|current_best| current_best.min(weighted_objective))
                     .unwrap_or(weighted_objective),
             );
+            self.counters
+                .record_display_best(self.restart_id, weighted_objective);
         }
 
         let progress_percent = self.running_evaluation_progress_percent();
@@ -725,6 +763,7 @@ impl<'a> RestartCandidateProgress<'a> {
             return;
         }
 
+        self.record_progress_percent(progress_percent);
         self.last_evaluation_progress_percent = Some(progress_percent);
         self.emit_progress(
             Some(parameter_block_label),
@@ -750,10 +789,24 @@ impl<'a> RestartCandidateProgress<'a> {
             return;
         }
 
+        self.record_progress_percent(100);
+        self.last_evaluation_progress_percent = Some(100);
         self.finished = true;
         self.counters
             .active_restart_count
             .fetch_sub(1, Ordering::Relaxed);
+    }
+
+    fn record_progress_percent(&self, progress_percent: usize) {
+        let previous_progress_percent = self.last_evaluation_progress_percent.unwrap_or(0);
+        if progress_percent <= previous_progress_percent {
+            return;
+        }
+
+        self.counters.aggregate_progress_percent_sum.fetch_add(
+            progress_percent - previous_progress_percent,
+            Ordering::Relaxed,
+        );
     }
 
     fn running_evaluation_progress_percent(&self) -> usize {
@@ -764,6 +817,15 @@ impl<'a> RestartCandidateProgress<'a> {
             .min(99)
     }
 
+    fn aggregate_progress_percent(&self) -> usize {
+        self.counters
+            .aggregate_progress_percent_sum
+            .load(Ordering::Relaxed)
+            .checked_div(self.total_units.max(1))
+            .unwrap_or(0)
+            .min(100)
+    }
+
     fn emit_progress(
         &self,
         parameter_block_label: Option<&str>,
@@ -772,9 +834,11 @@ impl<'a> RestartCandidateProgress<'a> {
         active_restart_count: Option<usize>,
         current_weighted_objective: Option<f64>,
     ) {
+        let (best_restart_id, best_weighted_objective) = self.counters.display_best_snapshot();
         emit_joint_refinement_progress(
             self.progress_sender,
             JointRefinementStageProgressUpdate {
+                aggregate_progress_percent: Some(self.aggregate_progress_percent()),
                 current_item_label: Some(self.restart_id.to_string()),
                 current_restart_id: Some(self.restart_id.to_string()),
                 active_restart_count,
@@ -787,6 +851,8 @@ impl<'a> RestartCandidateProgress<'a> {
                 current_weighted_objective,
                 current_restart_best_weighted_objective: self
                     .current_restart_best_weighted_objective,
+                best_restart_id,
+                best_weighted_objective,
                 ..JointRefinementStageProgressUpdate::new(
                     JointRefinementStageProgressPhase::RestartOptimization,
                     self.counters.completed_units.load(Ordering::Relaxed),
@@ -806,16 +872,6 @@ impl RestartProgressState {
             && restart_outcome.final_evaluation.invalid_reason.is_none()
         {
             self.valid_completed_units += 1;
-
-            let restart_weighted_objective = restart_outcome
-                .final_evaluation
-                .breakdown
-                .weighted_objective;
-
-            self.best_weighted_objective = Some(match self.best_weighted_objective {
-                Some(current_best) => current_best.min(restart_weighted_objective),
-                None => restart_weighted_objective,
-            });
         }
     }
 }
@@ -825,13 +881,17 @@ fn emit_restart_progress(
     total_units: usize,
     progress_state: &RestartProgressState,
     restart_outcome: &JointRefinementRestartOutcome,
+    progress_counters: &RestartProgressCounters,
     active_restart_count: usize,
     total_evaluation_budget: usize,
+    aggregate_progress_percent: usize,
 ) {
     let completed_units = progress_state.completed_units;
+    let (best_restart_id, best_weighted_objective) = progress_counters.display_best_snapshot();
     emit_joint_refinement_progress(
         progress_sender,
         JointRefinementStageProgressUpdate {
+            aggregate_progress_percent: Some(aggregate_progress_percent),
             current_item_label: Some(restart_outcome.restart_id.clone()),
             current_restart_id: Some(restart_outcome.restart_id.clone()),
             active_restart_count: Some(active_restart_count),
@@ -848,7 +908,8 @@ fn emit_restart_progress(
                     .breakdown
                     .weighted_objective,
             ),
-            best_weighted_objective: progress_state.best_weighted_objective,
+            best_restart_id,
+            best_weighted_objective,
             ..JointRefinementStageProgressUpdate::new(
                 JointRefinementStageProgressPhase::RestartOptimization,
                 completed_units,
@@ -856,6 +917,33 @@ fn emit_restart_progress(
             )
         },
     );
+}
+
+impl RestartProgressCounters {
+    fn record_display_best(&self, restart_id: &str, weighted_objective: f64) {
+        let Ok(mut display_best_state) = self.display_best_state.lock() else {
+            return;
+        };
+
+        match display_best_state.best_weighted_objective {
+            Some(current_best) if weighted_objective >= current_best => {}
+            _ => {
+                display_best_state.best_weighted_objective = Some(weighted_objective);
+                display_best_state.best_restart_id = Some(restart_id.to_string());
+            }
+        }
+    }
+
+    fn display_best_snapshot(&self) -> (Option<String>, Option<f64>) {
+        let Ok(display_best_state) = self.display_best_state.lock() else {
+            return (None, None);
+        };
+
+        (
+            display_best_state.best_restart_id.clone(),
+            display_best_state.best_weighted_objective,
+        )
+    }
 }
 
 #[cfg(test)]
@@ -886,5 +974,44 @@ mod tests {
         restart_progress.current_evaluation_count = 5;
 
         assert_eq!(restart_progress.running_evaluation_progress_percent(), 50);
+    }
+
+    #[test]
+    fn running_restart_progress_emits_live_global_best_objective() {
+        let (progress_sender, progress_receiver) = mpsc::channel();
+        let progress_counters = RestartProgressCounters::default();
+        let mut baseline_progress = RestartCandidateProgress {
+            progress_sender: Some(&progress_sender),
+            restart_id: "baseline",
+            total_units: 2,
+            counters: &progress_counters,
+            total_outer_cycles: 1,
+            total_evaluation_budget: 10,
+            current_evaluation_count: 0,
+            last_evaluation_progress_percent: None,
+            current_restart_best_weighted_objective: None,
+            finished: false,
+        };
+        let mut halton_progress = RestartCandidateProgress {
+            progress_sender: Some(&progress_sender),
+            restart_id: "halton_01",
+            total_units: 2,
+            counters: &progress_counters,
+            total_outer_cycles: 1,
+            total_evaluation_budget: 10,
+            current_evaluation_count: 0,
+            last_evaluation_progress_percent: None,
+            current_restart_best_weighted_objective: None,
+            finished: false,
+        };
+
+        baseline_progress.record_evaluation("nig", 1, Some(10.0));
+        let _ = progress_receiver.recv().unwrap();
+
+        halton_progress.record_evaluation("nig", 1, Some(4.0));
+        let progress_update = progress_receiver.recv().unwrap();
+
+        assert_eq!(progress_update.best_restart_id.as_deref(), Some("halton_01"));
+        assert_eq!(progress_update.best_weighted_objective, Some(4.0));
     }
 }

@@ -361,6 +361,8 @@ pub enum CalibrationStagedRunObserverEvent {
         completed_units: usize,
         total_units: usize,
         #[serde(skip_serializing_if = "Option::is_none")]
+        aggregate_progress_percent: Option<usize>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         current_item_label: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         current_restart_id: Option<String>,
@@ -386,6 +388,8 @@ pub enum CalibrationStagedRunObserverEvent {
         current_weighted_objective: Option<f64>,
         #[serde(skip_serializing_if = "Option::is_none")]
         current_restart_best_weighted_objective: Option<f64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        best_restart_id: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         best_weighted_objective: Option<f64>,
         #[serde(skip_serializing_if = "Option::is_none")]

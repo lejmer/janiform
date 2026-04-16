@@ -61,9 +61,10 @@ struct LazyCoarseConsistencyCache {
     artifacts_by_parameter_bits: BTreeMap<Vec<u64>, JointRefinementCoarseConsistencyArtifacts>,
 }
 
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone)]
 struct LazyCoarseConsistencyProgressState {
     completed_units: usize,
+    best_restart_id: Option<String>,
     best_weighted_objective: Option<f64>,
     best_coarse_consistency_fit: Option<f64>,
 }
@@ -71,15 +72,19 @@ struct LazyCoarseConsistencyProgressState {
 impl LazyCoarseConsistencyProgressState {
     fn record(
         &mut self,
+        restart_id: &str,
         current_weighted_objective: f64,
         current_artifacts: Option<&JointRefinementCoarseConsistencyArtifacts>,
     ) -> Option<f64> {
         self.completed_units += 1;
 
-        self.best_weighted_objective = Some(match self.best_weighted_objective {
-            Some(current_best) => current_best.min(current_weighted_objective),
-            None => current_weighted_objective,
-        });
+        match self.best_weighted_objective {
+            Some(current_best) if current_weighted_objective >= current_best => {}
+            _ => {
+                self.best_weighted_objective = Some(current_weighted_objective);
+                self.best_restart_id = Some(restart_id.to_string());
+            }
+        }
 
         let current_coarse_consistency_fit = current_artifacts
             .as_ref()
@@ -196,6 +201,7 @@ pub(crate) fn select_restart_outcomes_with_lazy_coarse_consistency<'a>(
         None,
         None,
         None,
+        None,
     );
 
     let mut progress_state = LazyCoarseConsistencyProgressState::default();
@@ -223,7 +229,11 @@ pub(crate) fn select_restart_outcomes_with_lazy_coarse_consistency<'a>(
         );
 
         let current_coarse_consistency_fit =
-            progress_state.record(current_weighted_objective, current_artifacts.as_ref());
+            progress_state.record(
+                candidate_state.restart_outcome.restart_id.as_str(),
+                current_weighted_objective,
+                current_artifacts.as_ref(),
+            );
 
         emit_coarse_consistency_progress(
             progress_sender,
@@ -231,6 +241,7 @@ pub(crate) fn select_restart_outcomes_with_lazy_coarse_consistency<'a>(
             total_ranked_restart_groups,
             Some(candidate_state.restart_outcome.restart_id.as_str()),
             Some(current_weighted_objective),
+            progress_state.best_restart_id.as_deref(),
             progress_state.best_weighted_objective,
             current_coarse_consistency_fit,
             progress_state.best_coarse_consistency_fit,
@@ -800,6 +811,7 @@ fn emit_coarse_consistency_progress(
     total_units: usize,
     current_item_label: Option<&str>,
     current_weighted_objective: Option<f64>,
+    best_restart_id: Option<&str>,
     best_weighted_objective: Option<f64>,
     current_coarse_consistency_fit: Option<f64>,
     best_coarse_consistency_fit: Option<f64>,
@@ -808,6 +820,7 @@ fn emit_coarse_consistency_progress(
         let _ = progress_sender.send(JointRefinementStageProgressUpdate {
             current_item_label: current_item_label.map(str::to_string),
             current_weighted_objective,
+            best_restart_id: best_restart_id.map(str::to_string),
             best_weighted_objective,
             current_coarse_consistency_fit,
             best_coarse_consistency_fit,

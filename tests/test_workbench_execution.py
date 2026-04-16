@@ -242,13 +242,14 @@ def test_stage_progress_detail_summarizes_joint_refinement_runtime_state() -> No
             "current_item_label": "halton_03",
             "valid_completed_units": 2,
             "cumulative_local_evaluation_count": 117,
+            "best_restart_id": "baseline",
             "best_weighted_objective": 0.123456789,
         }
     )
 
     assert detail == (
         "joint_refinement restart optimization 3/8 | item=halton_03 | valid=2 "
-        "| local_evaluations=117 | best_objective=0.123457"
+        "| local_evaluations=117 | best_candidate=baseline | best_objective=0.123457"
     )
 
 
@@ -277,11 +278,11 @@ def test_stage_progress_detail_labels_post_restart_joint_refinement_phases() -> 
     )
 
     assert coarse_detail == (
-        "joint_refinement coarse consistency evaluation 7/12 | latest=halton_07 "
+        "joint_refinement coarse consistency evaluation 7/12 | item=halton_07 "
         "| objective=0.117000 | best_objective=0.101000 | coarse_fit=1.042000 "
         "| best_coarse_fit=0.998000"
     )
-    assert final_detail == "joint_refinement final assembly 2/3 | latest=simulation_summaries"
+    assert final_detail == "joint_refinement final assembly 2/3 | item=simulation_summaries"
 
 
 def test_workbench_execution_worker_forwards_stage_progress_native_events() -> None:

@@ -92,6 +92,7 @@ class NativeStagedCalibrationProgressTracker:
     current_stage_is_complete: bool = False
     subtask_completed_units: Optional[int] = None
     subtask_total_units: Optional[int] = None
+    subtask_progress_fraction_override: Optional[float] = None
     active_restart_rows: dict[str, ActiveRestartProgressRow] = field(default_factory=dict)
 
     def update(self, raw_event: dict[str, Any]) -> CalibrationLiveProgressSnapshot:
@@ -127,6 +128,7 @@ class NativeStagedCalibrationProgressTracker:
                 self.current_stage_is_complete = False
                 self.subtask_completed_units = None
                 self.subtask_total_units = None
+                self.subtask_progress_fraction_override = None
                 self.active_restart_rows.clear()
             case "stage_progress":
                 stage = _coerce_optional_string(raw_event.get("stage"))
@@ -154,6 +156,14 @@ class NativeStagedCalibrationProgressTracker:
                     raw_event.get("completed_units")
                 )
                 self.subtask_total_units = _coerce_optional_integer(raw_event.get("total_units"))
+                aggregate_progress_percent = _coerce_optional_integer(
+                    raw_event.get("aggregate_progress_percent")
+                )
+                self.subtask_progress_fraction_override = (
+                    None
+                    if aggregate_progress_percent is None
+                    else min(max(aggregate_progress_percent, 0), 100) / 100.0
+                )
                 if progress_phase == _RESTART_PROGRESS_PANEL_PHASE:
                     self._update_active_restart_rows(raw_event)
                 else:
@@ -176,6 +186,7 @@ class NativeStagedCalibrationProgressTracker:
                 self.current_subtask = None
                 self.subtask_completed_units = None
                 self.subtask_total_units = None
+                self.subtask_progress_fraction_override = None
                 self.active_restart_rows.clear()
             case "run_completed":
                 self.status = "completed"
@@ -183,12 +194,14 @@ class NativeStagedCalibrationProgressTracker:
                 self.current_subtask = None
                 self.subtask_completed_units = None
                 self.subtask_total_units = None
+                self.subtask_progress_fraction_override = None
                 self.active_restart_rows.clear()
             case "run_failed":
                 self.status = "failed"
                 self.current_subtask = None
                 self.subtask_completed_units = None
                 self.subtask_total_units = None
+                self.subtask_progress_fraction_override = None
                 self.active_restart_rows.clear()
             case _:
                 return self.snapshot()
@@ -206,6 +219,7 @@ class NativeStagedCalibrationProgressTracker:
             current_stage_is_complete=self.current_stage_is_complete,
             subtask_completed_units=self.subtask_completed_units,
             subtask_total_units=self.subtask_total_units,
+            subtask_progress_fraction_override=self.subtask_progress_fraction_override,
         )
 
     def restart_progress_panel(self, stage_summary: str) -> str:
@@ -282,6 +296,9 @@ def update_cli_progress_from_staged_native_event(
     progress_fraction = calibration_total_progress_fraction(snapshot)
 
     event_kind = _coerce_optional_string(raw_event.get("event_kind"))
+    aggregate_progress_percent = _coerce_optional_integer(
+        raw_event.get("aggregate_progress_percent")
+    )
 
     match event_kind:
         case "stage_started":
@@ -291,14 +308,24 @@ def update_cli_progress_from_staged_native_event(
                 progress_fraction=progress_fraction,
             )
         case "stage_progress":
+            raw_completed_units = _coerce_optional_integer(raw_event.get("completed_units"))
+            raw_total_units = _coerce_optional_integer(raw_event.get("total_units"))
+            subtask_is_complete = (
+                isinstance(raw_completed_units, int)
+                and isinstance(raw_total_units, int)
+                and raw_total_units > 0
+                and raw_completed_units >= raw_total_units
+            )
             display_units = progress_bar_display_units(
-                _coerce_optional_integer(raw_event.get("completed_units")),
-                _coerce_optional_integer(raw_event.get("total_units")),
+                raw_completed_units,
+                raw_total_units,
+                is_complete=subtask_is_complete,
             )
             compact_detail = format_compact_staged_progress_event_detail(
                 raw_event,
                 completed_units=None if display_units is None else display_units[0],
                 total_units=None if display_units is None else display_units[1],
+                progress_percent_override=aggregate_progress_percent,
             )
             progress_phase = _coerce_optional_string(raw_event.get("progress_phase"))
             subdetail = (
@@ -307,6 +334,7 @@ def update_cli_progress_from_staged_native_event(
                         raw_event,
                         completed_units=None if display_units is None else display_units[0],
                         total_units=None if display_units is None else display_units[1],
+                        progress_percent_override=aggregate_progress_percent,
                     )
                 )
                 if progress_phase == _RESTART_PROGRESS_PANEL_PHASE
@@ -319,20 +347,9 @@ def update_cli_progress_from_staged_native_event(
                 progress_fraction=progress_fraction,
             )
         case "stage_completed":
-            progress.update(
-                subdetail=_detail_for_stage_completed_event(
-                    _coerce_optional_string(raw_event.get("stage")),
-                    _coerce_optional_payload_dict(raw_event.get("stage_report")),
-                ),
-                reset_progress_units=True,
-                progress_fraction=progress_fraction,
-            )
+            progress.update(progress_fraction=progress_fraction)
         case "run_completed":
-            progress.update(
-                subdetail="native calibration completed, writing artifacts",
-                reset_progress_units=True,
-                progress_fraction=progress_fraction,
-            )
+            progress.update(progress_fraction=progress_fraction)
         case "run_failed":
             progress.update(
                 subdetail=_detail_for_failed_native_run(raw_event.get("failure")),
@@ -366,6 +383,7 @@ def format_staged_progress_event_detail(
     current_restart_best_weighted_objective = raw_event.get(
         "current_restart_best_weighted_objective"
     )
+    best_restart_id = _coerce_optional_string(raw_event.get("best_restart_id"))
     best_weighted_objective = raw_event.get("best_weighted_objective")
     current_coarse_consistency_fit = raw_event.get("current_coarse_consistency_fit")
     best_coarse_consistency_fit = raw_event.get("best_coarse_consistency_fit")
@@ -421,6 +439,9 @@ def format_staged_progress_event_detail(
             f"candidate_best_objective={current_restart_best_weighted_objective:.6f}"
         )
 
+    if best_restart_id is not None:
+        detail_parts.append(f"best_candidate={best_restart_id}")
+
     if isinstance(best_weighted_objective, int | float):
         detail_parts.append(f"best_objective={best_weighted_objective:.6f}")
 
@@ -438,6 +459,7 @@ def format_compact_staged_progress_event_detail(
     *,
     completed_units: Optional[int] = None,
     total_units: Optional[int] = None,
+    progress_percent_override: Optional[int] = None,
 ) -> str:
     stage = _coerce_optional_string(raw_event.get("stage")) or "stage"
     progress_phase = _coerce_optional_string(raw_event.get("progress_phase"))
@@ -453,6 +475,7 @@ def format_compact_staged_progress_event_detail(
     current_restart_best_weighted_objective = raw_event.get(
         "current_restart_best_weighted_objective"
     )
+    best_restart_id = _coerce_optional_string(raw_event.get("best_restart_id"))
     best_weighted_objective = raw_event.get("best_weighted_objective")
     current_coarse_consistency_fit = raw_event.get("current_coarse_consistency_fit")
     best_coarse_consistency_fit = raw_event.get("best_coarse_consistency_fit")
@@ -463,10 +486,17 @@ def format_compact_staged_progress_event_detail(
         and isinstance(total_units, int)
         and total_units > 0
     ):
-        detail = (
-            f"{detail} [{round(completed_units / total_units * 100.0)}%] "
-            f"({completed_units}/{total_units})"
+        progress_percent = (
+            min(max(progress_percent_override, 0), 100)
+            if isinstance(progress_percent_override, int)
+            else round(completed_units / total_units * 100.0)
         )
+        if progress_phase == _RESTART_PROGRESS_PANEL_PHASE and isinstance(
+            progress_percent_override, int
+        ):
+            detail = f"{detail} [{progress_percent}%]"
+        else:
+            detail = f"{detail} [{progress_percent}%] ({completed_units}/{total_units})"
 
     detail_parts = [detail]
 
@@ -501,6 +531,9 @@ def format_compact_staged_progress_event_detail(
     if isinstance(current_restart_best_weighted_objective, int | float):
         detail_parts.append(f"candidate_best={current_restart_best_weighted_objective:.6f}")
 
+    if best_restart_id is not None:
+        detail_parts.append(f"best={best_restart_id}")
+
     if isinstance(best_weighted_objective, int | float):
         label = (
             "global_best"
@@ -523,21 +556,39 @@ def format_compact_staged_progress_phase_summary(
     *,
     completed_units: Optional[int] = None,
     total_units: Optional[int] = None,
+    progress_percent_override: Optional[int] = None,
 ) -> str:
     stage = _coerce_optional_string(raw_event.get("stage")) or "stage"
     progress_phase = _coerce_optional_string(raw_event.get("progress_phase"))
+    best_restart_id = _coerce_optional_string(raw_event.get("best_restart_id"))
+    best_weighted_objective = raw_event.get("best_weighted_objective")
     detail = f"{stage} {_label_for_stage_progress_phase(progress_phase)}"
     if (
         isinstance(completed_units, int)
         and isinstance(total_units, int)
         and total_units > 0
     ):
-        return (
-            f"{detail} [{round(completed_units / total_units * 100.0)}%] "
-            f"({completed_units}/{total_units})"
+        progress_percent = (
+            min(max(progress_percent_override, 0), 100)
+            if isinstance(progress_percent_override, int)
+            else round(completed_units / total_units * 100.0)
         )
+        if progress_phase == _RESTART_PROGRESS_PANEL_PHASE and isinstance(
+            progress_percent_override, int
+        ):
+            detail = f"{detail} [{progress_percent}%]"
+        else:
+            detail = f"{detail} [{progress_percent}%] ({completed_units}/{total_units})"
 
-    return detail
+    detail_parts = [detail]
+
+    if best_restart_id is not None:
+        detail_parts.append(f"best={best_restart_id}")
+
+    if isinstance(best_weighted_objective, int | float):
+        detail_parts.append(f"best_obj={best_weighted_objective:.6f}")
+
+    return " | ".join(detail_parts)
 
 
 def format_restart_progress_panel_row(row: ActiveRestartProgressRow) -> str:

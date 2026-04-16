@@ -380,6 +380,8 @@ pub(super) fn run_stage_for_staged_execution(
                             progress_phase: progress_update.phase,
                             completed_units: progress_update.completed_units,
                             total_units: progress_update.total_units,
+                            aggregate_progress_percent: progress_update
+                                .aggregate_progress_percent,
                             current_item_label: progress_update.current_item_label,
                             current_restart_id: progress_update.current_restart_id,
                             active_restart_count: progress_update.active_restart_count,
@@ -396,6 +398,7 @@ pub(super) fn run_stage_for_staged_execution(
                             current_weighted_objective: progress_update.current_weighted_objective,
                             current_restart_best_weighted_objective: progress_update
                                 .current_restart_best_weighted_objective,
+                            best_restart_id: progress_update.best_restart_id,
                             best_weighted_objective: progress_update.best_weighted_objective,
                             current_coarse_consistency_fit: progress_update
                                 .current_coarse_consistency_fit,

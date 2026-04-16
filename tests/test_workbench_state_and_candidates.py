@@ -82,7 +82,7 @@ def test_workbench_reducer_tracks_determinate_subtask_progress() -> None:
         stage="joint_refinement",
         subtask="joint_refinement.restart_optimization",
         payload={
-            "detail": "joint_refinement restart optimization 3/8 | latest=halton_03",
+            "detail": "joint_refinement restart optimization 3/8 | item=halton_03",
             "completed_units": 3,
             "total_units": 8,
         },

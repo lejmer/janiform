@@ -56,7 +56,7 @@
         "source_kind": "built_in"
       },
       "market_profile": "eurusd_spot",
-      "run_id": "Synthetic_EURUSD_Data_1M_ticks_20260415T221414Z",
+      "run_id": "Synthetic_EURUSD_Data_1M_ticks_20260416T200111Z",
       "session_source_kind": "built_in",
       "tick_data_format": "parquet",
       "tick_price_columns": {
@@ -112,7 +112,7 @@
         "source_kind": "built_in"
       }
     },
-    "run_id": "Synthetic_EURUSD_Data_1M_ticks_20260415T221414Z",
+    "run_id": "Synthetic_EURUSD_Data_1M_ticks_20260416T200111Z",
     "selected_stages": [
       "seasonality",
       "hawkes",
@@ -217,9 +217,9 @@
           "anchor_model": {
             "pressure_level_gain": 0.0,
             "pressure_persistence_per_reference_interval": 0.0,
-            "reference_interval_hours": 1.0
+            "reference_interval_hours": 24.0
           },
-          "kappa": 0.0
+          "kappa": 0.06365892238914816
         },
         "news_process_configuration": {
           "arrivals": {
@@ -441,13 +441,13 @@
         "hawkes_fitted_parameters": {
           "kernel_parameters": {
             "alpha": {
-              "minus_minus": 2.101447016458,
+              "minus_minus": 1.9452113335933963,
               "minus_plus": 0.23349411294,
               "plus_minus": 0.233141798442,
-              "plus_plus": 2.098276185979
+              "plus_plus": 1.9422762439450023
             },
-            "beta": 40.62894772281253,
-            "lambda_bar": 1109.4090125084233,
+            "beta": 21.11452935528115,
+            "lambda_bar": 2134.7442803004233,
             "rho": {
               "minus_minus": 2.2250738585072014e-308,
               "minus_plus": 0.0,
@@ -461,9 +461,9 @@
           "stability_numeric_tolerance": 0.0,
           "structured_alpha": {
             "a_cross": 0.233141798442,
-            "a_self": 2.098276185979,
+            "a_self": 1.9422762439450023,
             "delta_cross": 0.000352314498,
-            "delta_self": 0.003170830479
+            "delta_self": 0.0029350896483939268
           },
           "structured_rho": {
             "delta_cross_r": 0.0,
@@ -478,9 +478,9 @@
             "anchor_model": {
               "pressure_level_gain": 0.0,
               "pressure_persistence_per_reference_interval": 0.0,
-              "reference_interval_hours": 1.0
+              "reference_interval_hours": 24.0
             },
-            "kappa": 0.0
+            "kappa": 0.06365892238914816
           },
           "news_process_configuration": {
             "arrivals": {
@@ -518,7 +518,7 @@
           "nig_shared_plus_shift_configuration": {
             "alpha": 1428.446992298942,
             "beta_0": 88.175715339022,
-            "delta": 4.69547e-07,
+            "delta": 2.32193e-07,
             "delta_beta": -237.012534645917,
             "mu": 0.0
           },
@@ -700,30 +700,30 @@
         }
       },
       "objective_breakdown": {
-        "activity_level_fit": 0.577652535285887,
-        "activity_shape_fit": 0.9453244634048944,
-        "aggregated_likelihood_fit": 1.0361382720445529,
-        "aggregated_return_scale_fit": 0.987665570548348,
-        "aggregated_return_shape_fit": 1.3803450251429528,
-        "business_time_return_scale_fit": 1.7270292659435218,
+        "activity_level_fit": 1.3789310182131873,
+        "activity_shape_fit": 0.9655531896868571,
+        "aggregated_likelihood_fit": 1.0361378273216948,
+        "aggregated_return_scale_fit": 1.4724733503391272,
+        "aggregated_return_shape_fit": 0.8256196396465016,
+        "business_time_return_scale_fit": 0.6594149753840599,
         "hard_constraint_penalty": 0.0,
-        "intraday_return_level_fit": 1.002143049152399,
-        "price_span_sanity_fit": 1.0575902373260673,
-        "return_asymmetry_fit": 1.4120335841036873,
-        "rv_activity_coupling_fit": 0.7228470932495281,
-        "tick_return_asymmetry_fit": 1.2642296298393625,
-        "tick_return_scale_fit": 1.0062858985808385,
-        "weighted_objective": 1.1333722356715172
+        "intraday_return_level_fit": 1.2802879065639867,
+        "price_span_sanity_fit": 2.219059807371331,
+        "return_asymmetry_fit": 0.3179942034145201,
+        "rv_activity_coupling_fit": 0.7649982762640096,
+        "tick_return_asymmetry_fit": 0.316659803034555,
+        "tick_return_scale_fit": 1.4853994940731885,
+        "weighted_objective": 1.1813964299093027
       },
       "optimizer_diagnostics": {
-        "final_objective": 1.1333722356715172,
+        "final_objective": 1.1813964299093027,
         "final_simulation_seeds": [
-          16171245015128391394,
-          2714793400818912582,
-          3606482429744706297
+          332160456834071352,
+          11157797596797664991,
+          5166711537362905933
         ],
         "local_evaluation_count": 42,
-        "local_objective": 0.9420234610508211,
+        "local_objective": 1.1120688735083593,
         "restart_diagnostics": {
           "invalid_reason_frequencies": [
             {
@@ -749,23 +749,23 @@
           "valid_restart_count": 13
         },
         "runtime_profile": {
-          "coarse_consistency_wall_clock_millis": 6416,
-          "cumulative_deterministic_evaluation_millis": 489578,
+          "coarse_consistency_wall_clock_millis": 6448,
+          "cumulative_deterministic_evaluation_millis": 495637,
           "cumulative_option_pricing_millis": 0,
-          "cumulative_seed_summary_simulation_millis": 538529,
-          "deterministic_cache_hit_count": 14,
+          "cumulative_seed_summary_simulation_millis": 827035,
+          "deterministic_cache_hit_count": 15,
           "deterministic_cache_miss_count": 266,
           "final_assembly_wall_clock_millis": 0,
           "final_seed_evaluation_wall_clock_millis": 0,
-          "invalid_candidate_evaluation_count": 12,
-          "objective_cache_hit_count": 65,
-          "objective_cache_miss_count": 288,
+          "invalid_candidate_evaluation_count": 10,
+          "objective_cache_hit_count": 66,
+          "objective_cache_miss_count": 287,
           "option_pricing_cache_hit_count": 0,
           "option_pricing_cache_miss_count": 0,
           "option_pricing_run_count": 0,
-          "restart_optimization_wall_clock_millis": 118701,
-          "seed_summary_cache_hit_count": 25,
-          "seed_summary_cache_miss_count": 292
+          "restart_optimization_wall_clock_millis": 133254,
+          "seed_summary_cache_hit_count": 23,
+          "seed_summary_cache_miss_count": 295
         },
         "stop_reason": "fixed_block"
       },
@@ -894,26 +894,26 @@
           },
           {
             "anchor_model": {
-              "pressure_level_gain": 0.04990695328472393,
-              "pressure_persistence_per_reference_interval": 0.0,
+              "pressure_level_gain": -0.30556006027919613,
+              "pressure_persistence_per_reference_interval": 0.3389182039194574,
               "reference_interval_hours": 24.0
             },
             "boundary_anchor_values": [
               0.0,
-              7.76422442736002e-05,
-              7.753525225311343e-05,
-              8.063142947255993e-05,
-              6.854677192089074e-05,
-              5.86656696468031e-05,
-              5.733473489268471e-05,
-              0.0001207306963803574,
-              0.00010338266674924777,
-              8.20535817318985e-05,
-              8.145662335983592e-05,
-              6.867401211233732e-05,
-              5.868293134640485e-05,
-              5.733707724184069e-05,
-              0.0001207313681817823
+              -0.0003142597840915449,
+              -0.0004203350916180681,
+              -0.00046881783329353916,
+              -0.00043633642971445467,
+              -0.0003853337729074858,
+              -0.0003626610376460069,
+              -0.0006115742756149802,
+              -0.0006257187275199639,
+              -0.0005441822988516023,
+              -0.0005141319083513449,
+              -0.00045220920390948665,
+              -0.00039078321238061685,
+              -0.00036451743262730076,
+              -0.0006122061608083032
             ],
             "candidate_family": "endogenous_core_pressure_level_no_mean_reversion",
             "core_expected_increments": [
@@ -935,48 +935,63 @@
             "deviation_sample_count": 15,
             "deviations": [
               -0.005786875115554017,
-              -0.002197924421737865,
-              -0.0032596467536037434,
-              0.0003448647004793444,
-              0.0022151348018674397,
-              0.002225015904141527,
-              0.002226346838895646,
-              0.0012738248296806712,
-              -0.00424906242503579,
-              0.000748979618381956,
-              -0.002380285431726806,
-              0.0011479613996106229,
-              0.0011579524803765552,
-              0.0011592983344811195,
-              -0.0012496679111380115
+              -0.00180602239337272,
+              -0.0027617764097325618,
+              0.0008943139632454435,
+              0.002720018003502785,
+              0.002669015346695816,
+              0.002646342611434337,
+              0.0020061298016760087,
+              -0.0035199610307665784,
+              0.0013752154989654566,
+              -0.001784696900015625,
+              0.0016688446156324468,
+              0.001607418624103577,
+              0.0015811528443502609,
+              -0.0005167303821479259
             ],
-            "information_criterion_bic": null,
+            "information_criterion_bic": -118.96407257915376,
             "kappa": 0.0,
             "least_squares_rank": 1,
             "parameter_count": 2,
             "phi_reference": 1.0,
             "pressure_state_path": [
               0.0,
-              0.0015557400154372035,
-              0.0015535961855007944,
-              0.0016156351803835818,
-              0.0013734914157116519,
-              0.001175500922929714,
-              0.0011488325998500566,
-              0.0024191157430824774,
-              0.0020715082757995626,
-              0.0016441312548929805,
-              0.001632169828022122,
-              0.0013760409640826109,
-              0.0011758468005773292,
-              0.0011488795341748714,
-              0.0024191292041611584
+              0.0010284714036395976,
+              0.0013756218375988007,
+              0.0015342902893302588,
+              0.0014279890811507421,
+              0.0012610737560249166,
+              0.0011868731709066835,
+              0.002001486303727565,
+              0.002047776554790023,
+              0.0017809339949546167,
+              0.0016825887122864573,
+              0.0014799355763194127,
+              0.0012789080222839026,
+              0.0011929485558231467,
+              0.0020035542611456436
             ],
-            "quasi_log_likelihood": null,
-            "regression_pair_count": 0,
-            "residual_sum_of_squares": -0.0,
-            "residuals": [],
-            "stage_decision_reason": "endogenous_core_pressure_level_profiled_over_pressure_persistence_phi_reference_fixed_one.v1|pressure_persistence_per_reference_interval_boundary_zero.v1|phi_reference_boundary_one.v1"
+            "quasi_log_likelihood": 62.12109361919214,
+            "regression_pair_count": 14,
+            "residual_sum_of_squares": 0.00011469183955001324,
+            "residuals": [
+              0.003980852722181297,
+              -0.0009557540163598418,
+              0.003656090372978005,
+              0.0018257040402573416,
+              -5.100265680696885e-05,
+              -2.2672735261478935e-05,
+              -0.0006402128097583283,
+              -0.005526090832442587,
+              0.004895176529732035,
+              -0.0031599123989810816,
+              0.0034535415156480716,
+              -6.142599152886981e-05,
+              -2.6265779753316112e-05,
+              -0.002097883226498187
+            ],
+            "stage_decision_reason": "endogenous_core_pressure_level_profiled_over_pressure_persistence_phi_reference_fixed_one.v1|phi_reference_boundary_one.v1"
           },
           {
             "anchor_model": {
@@ -3402,7 +3417,7 @@
       "source_kind": "built_in"
     }
   },
-  "run_id": "Synthetic_EURUSD_Data_1M_ticks_20260415T221414Z",
+  "run_id": "Synthetic_EURUSD_Data_1M_ticks_20260416T200111Z",
   "schema_version": "calibration.high_level.model.v1",
   "session_resolution": {
     "ambiguity_warnings": [],
@@ -3472,7 +3487,7 @@
       }
     ],
     "resolution_kind": "automatic_inference",
-    "resolved_session_definition_json": "{\"schema_version\":\"calendar.registry.v1\",\"artifact_date\":\"2026-04-15\",\"exchanges\":[{\"schema_version\":\"calendar.v1\",\"exchange_code\":\"FXSPOT\",\"exchange_name\":\"OTC FX Spot 24/5\",\"timezone_name\":\"UTC\",\"rule_metadata\":{\"holiday_calendar_code\":\"BUNDLED_SESSION_PRESET\",\"early_close_rule_set\":null},\"regular_sessions\":[{\"weekday\":\"Monday\",\"windows\":[{\"label\":\"spot\",\"open_time\":\"00:00\",\"close_time\":\"24:00\"}]},{\"weekday\":\"Tuesday\",\"windows\":[{\"label\":\"spot\",\"open_time\":\"00:00\",\"close_time\":\"24:00\"}]},{\"weekday\":\"Wednesday\",\"windows\":[{\"label\":\"spot\",\"open_time\":\"00:00\",\"close_time\":\"24:00\"}]},{\"weekday\":\"Thursday\",\"windows\":[{\"label\":\"spot\",\"open_time\":\"00:00\",\"close_time\":\"24:00\"}]},{\"weekday\":\"Friday\",\"windows\":[{\"label\":\"spot\",\"open_time\":\"00:00\",\"close_time\":\"19:00\"}]},{\"weekday\":\"Sunday\",\"windows\":[{\"label\":\"spot\",\"open_time\":\"21:00\",\"close_time\":\"24:00\"}]}],\"holiday_dates\":[],\"early_close_sessions\":[]}]}",
+    "resolved_session_definition_json": "{\"schema_version\":\"calendar.registry.v1\",\"artifact_date\":\"2026-04-16\",\"exchanges\":[{\"schema_version\":\"calendar.v1\",\"exchange_code\":\"FXSPOT\",\"exchange_name\":\"OTC FX Spot 24/5\",\"timezone_name\":\"UTC\",\"rule_metadata\":{\"holiday_calendar_code\":\"BUNDLED_SESSION_PRESET\",\"early_close_rule_set\":null},\"regular_sessions\":[{\"weekday\":\"Monday\",\"windows\":[{\"label\":\"spot\",\"open_time\":\"00:00\",\"close_time\":\"24:00\"}]},{\"weekday\":\"Tuesday\",\"windows\":[{\"label\":\"spot\",\"open_time\":\"00:00\",\"close_time\":\"24:00\"}]},{\"weekday\":\"Wednesday\",\"windows\":[{\"label\":\"spot\",\"open_time\":\"00:00\",\"close_time\":\"24:00\"}]},{\"weekday\":\"Thursday\",\"windows\":[{\"label\":\"spot\",\"open_time\":\"00:00\",\"close_time\":\"24:00\"}]},{\"weekday\":\"Friday\",\"windows\":[{\"label\":\"spot\",\"open_time\":\"00:00\",\"close_time\":\"19:00\"}]},{\"weekday\":\"Sunday\",\"windows\":[{\"label\":\"spot\",\"open_time\":\"21:00\",\"close_time\":\"24:00\"}]}],\"holiday_dates\":[],\"early_close_sessions\":[]}]}",
     "resolved_timezone_name": "UTC",
     "schema_version": "calibration.market_data.session_resolution.v1",
     "selected_policy_id": "sources.sessions.fx_spot_24_5.v1",
