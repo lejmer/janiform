@@ -163,6 +163,7 @@ In the `python/janiform/` folder where the Python code is located:
 - Type hints everywhere: functions, attributes, locals (where it matters, which is most of them).
 - Never use quoted / stringed type hints. Repo requires Python >=3.12 and PEP 649 and PEP 749 is accepted in that version.
 - Imports grouped and alphabetized per guide.
+- `import ...` before `from ... import ...` per group.
 - Use `Any` instead of `object` for most things where inference is hard or impossible. This includes tuples, lists and dicts that take non-builtin types that are hard to infer.
 - Don't be lazy and do `list[Any]` any time we have non-builtin types. That's bad practice. Most of the time types are inferable and should be used explicitly.
 - Never use `object` or `Any` as a cop-out / shortcut to get around specifying a type that is known. Even if it leads to circular imports. Deal with circular imports a different way! Good type hints are a priority! They make bugs less likely.
@@ -178,7 +179,8 @@ In the `python/janiform/` folder where the Python code is located:
   - Be thread-safe when it matters
   - Immutable data is good
   - Keeping fields private is good (expose with getter property if necessary)
-- Comments: follow the blank‑line rules from the guide.
+- Add a blank line before a comment unless it's the first line in a block.
+- When indentation level decreases, add a blank line before the new block of code.
 - Logging: never `print()` in production paths.
 - Never use `;` to contain two statements on one line: always put new statements on new lines.
 - No global state (no global variables used for registries, etc.).
@@ -201,8 +203,9 @@ In the `python/janiform/` folder where the Python code is located:
 Read and follow `docs/contributing/python-style.md`. Agents must adhere to it strictly when writing Python code.
 
 ## Comments
-Comments should only explain what the code doesn't clearly state, or help us understand the structure when the code is complex or is made up of many steps.
-NOTE: Do not use ";" in comments. It is almost never used by humans, especially coders. AI agents tend to overuse this in comments. Here we have a hard rule: NEVER USE THEM!
+- Comments should only explain what the code doesn't clearly state, or help us understand the structure when the code is complex or is made up of many steps.
+- Do not use ";" in comments. It is almost never used by humans, especially coders. AI agents tend to overuse this in comments. Here we have a hard rule: NEVER USE THEM!
+- Only standard keyboard symbols. Absolutely **no** emojis :)
 
 ## Available Tooling
 - `./scripts/bootstrap-linux.sh .venv-linux` for Linux/WSL-based bootstrapping (if no venv exists)
