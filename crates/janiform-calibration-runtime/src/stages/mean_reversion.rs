@@ -54,6 +54,8 @@ const FLAT_ANCHOR_MEAN_REVERSION_REASON: &str =
 const RANDOM_WALK_NULL_REASON: &str = "random_walk_null_baseline.v1";
 const ENDOGENOUS_RUNTIME_PROJECTION_REQUIRED_REASON: &str =
     "endogenous_anchor_runtime_projection_required.v1";
+const QUASI_LIKELIHOOD_MODEL_SELECTION_SAMPLE_SUPPORT_REQUIRED_REASON: &str =
+    "gaussian_quasi_likelihood_bic_model_selection_sample_support_required.v1";
 const ENDOGENOUS_MODEL_SELECTION_POLICY: &str =
     "gaussian_quasi_likelihood_bic_with_endogenous_core_pressure_level_candidate_family_profile.v1";
 const RUNTIME_SEASONALITY_MATERIALIZATION_METHOD: &str =
@@ -520,20 +522,19 @@ fn estimate_endogenous_mean_reversion_fitted_parameters(
         calibration_grid.calibration_grid_interval_hours,
     ));
 
-    let mut candidate_iter = evaluated_candidates.iter();
-    let Some(first_candidate) = candidate_iter.next() else {
-        return Ok(zero_kappa_endogenous_fit(
+    let Some(selected_candidate) =
+        select_best_admissible_candidate_by_information_criterion(evaluated_candidates.as_slice())
+    else {
+        return Ok(zero_kappa_endogenous_fit_with_evaluated_candidates(
             calibration_grid,
-            ENDOGENOUS_RUNTIME_PROJECTION_REQUIRED_REASON,
+            QUASI_LIKELIHOOD_MODEL_SELECTION_SAMPLE_SUPPORT_REQUIRED_REASON,
+            evaluated_candidates,
+            calibration_context
+                .as_ref()
+                .map(|context| context.core_expected_increments.as_slice())
+                .unwrap_or(&[]),
         ));
     };
-
-    let mut selected_candidate = first_candidate.clone();
-    for candidate in candidate_iter {
-        if candidate.information_criterion_bic < selected_candidate.information_criterion_bic {
-            selected_candidate = candidate.clone();
-        }
-    }
 
     let fitted_parameters = MeanReversionFittedParameters::try_new(
         selected_candidate.kappa,
@@ -1092,6 +1093,33 @@ fn evaluate_random_walk_null_candidate(
     }
 }
 
+fn select_best_admissible_candidate_by_information_criterion(
+    evaluated_candidates: &[MeanReversionStageCandidateEvaluation],
+) -> Option<MeanReversionStageCandidateEvaluation> {
+    let mut admissible_candidates = evaluated_candidates
+        .iter()
+        .filter(|candidate| candidate_supports_quasi_likelihood_model_selection(candidate));
+
+    let first_candidate = admissible_candidates.next()?.clone();
+
+    Some(admissible_candidates.fold(first_candidate, |best_candidate, candidate| {
+        if candidate.information_criterion_bic < best_candidate.information_criterion_bic {
+            candidate.clone()
+        } else {
+            best_candidate
+        }
+    }))
+}
+
+fn candidate_supports_quasi_likelihood_model_selection(
+    candidate: &MeanReversionStageCandidateEvaluation,
+) -> bool {
+    // The Gaussian quasi likelihood profiles the innovation variance from the same transition
+    // sample as the structural coefficients, so the candidate needs one residual degree of
+    // freedom after estimating both the structural parameters and that variance term.
+    candidate.residuals.len() > candidate.parameter_count.saturating_add(1)
+}
+
 fn profile_candidate_over_pressure_persistence(
     solver_settings: &CalibrationOptimizerSettings,
     mut evaluate_candidate_at_pressure_persistence: impl FnMut(
@@ -1284,8 +1312,15 @@ fn assemble_candidate_evaluation(
     let pressure_persistence_per_reference_interval =
         anchor_model.pressure_persistence_per_reference_interval;
 
-    let residuals = match pressure_column {
-        Some(pressure_column) => response
+    let residuals = match (pressure_column, intercept_column.is_empty()) {
+        (Some(pressure_column), true) => response
+            .iter()
+            .zip(pressure_column.iter())
+            .map(|(current_response, current_pressure_term)| {
+                current_response - anchor_model.pressure_level_gain * current_pressure_term
+            })
+            .collect::<Vec<_>>(),
+        (Some(pressure_column), false) => response
             .iter()
             .zip(intercept_column.iter())
             .zip(pressure_column.iter())
@@ -1297,7 +1332,7 @@ fn assemble_candidate_evaluation(
                 },
             )
             .collect::<Vec<_>>(),
-        None => response
+        (None, _) => response
             .iter()
             .zip(intercept_column.iter())
             .map(|(current_response, intercept_term)| {
@@ -1414,6 +1449,48 @@ fn zero_kappa_endogenous_fit(
             regression_pair_count: 0,
             least_squares_rank: 0,
             evaluated_candidates: vec![fallback_candidate.into_diagnostics(&[])],
+            stage_decision_reason: stage_decision_reason.to_string(),
+        },
+    )
+}
+
+fn zero_kappa_endogenous_fit_with_evaluated_candidates(
+    calibration_grid: MeanReversionStageCalibrationGrid,
+    stage_decision_reason: &str,
+    evaluated_candidates: Vec<MeanReversionStageCandidateEvaluation>,
+    core_expected_increments: &[f64],
+) -> (MeanReversionFittedParameters, MeanReversionStageDiagnostics) {
+    let anchor_model = MeanReversionAnchorModel::endogenous_core_pressure_level(
+        calibration_grid.calibration_grid_interval_hours,
+        0.0,
+        0.0,
+    );
+
+    let fitted_parameters = MeanReversionFittedParameters {
+        kappa: 0.0,
+        anchor_model: anchor_model.clone(),
+    };
+
+    (
+        fitted_parameters,
+        MeanReversionStageDiagnostics {
+            selected_candidate_family: RANDOM_WALK_NULL_CANDIDATE_FAMILY.to_string(),
+            calibration_grid,
+            anchor_parameter_estimates: anchor_model,
+            anchor_origin_level: None,
+            phi_reference: 1.0,
+            kappa: 0.0,
+            residual_sum_of_squares: 0.0,
+            quasi_log_likelihood: None,
+            information_criterion_bic: None,
+            model_selection_policy: ENDOGENOUS_MODEL_SELECTION_POLICY.to_string(),
+            deviation_sample_count: 0,
+            regression_pair_count: 0,
+            least_squares_rank: 0,
+            evaluated_candidates: evaluated_candidates
+                .into_iter()
+                .map(|candidate| candidate.into_diagnostics(core_expected_increments))
+                .collect(),
             stage_decision_reason: stage_decision_reason.to_string(),
         },
     )

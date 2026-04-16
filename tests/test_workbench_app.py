@@ -4,7 +4,14 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QApplication, QSplitter, QTableWidget, QTabWidget
+from PyQt6.QtWidgets import (
+    QApplication,
+    QLineEdit,
+    QPushButton,
+    QSplitter,
+    QTableWidget,
+    QTabWidget,
+)
 from matplotlib.figure import Figure
 
 from janiform.calibration.staged._progress_policy import (
@@ -15,6 +22,8 @@ from tools.workbench import app as workbench_app
 from tools.workbench.app import WorkbenchWindow, _ResponsiveFigureCanvas
 from tools.workbench.artifacts import WorkbenchArtifacts
 from tools.workbench.events import WorkbenchEventType, build_workbench_event
+from tools.workbench.loading import workbench_observed_simulation_refresh_task
+from tools.workbench.resimulation import WorkbenchObservedSimulationRefreshResult
 
 
 def test_responsive_figure_canvas_resizes_figure_to_widget_viewport() -> None:
@@ -132,6 +141,162 @@ def test_observed_simulation_comparison_cache_keys_on_selected_seed(
         assert second == {"seed": 1}
         assert third == {"seed": 7}
         assert captured_seeds == [1, 7]
+    finally:
+        window.close()
+        application.processEvents()
+
+
+def test_resimulate_updates_seed_controls_for_all_observed_simulation_plots(
+    monkeypatch,
+) -> None:
+    application = QApplication.instance() or QApplication([])
+    window = WorkbenchWindow()
+
+    observed_task_ids = [
+        manifest_entry.task_id
+        for manifest_entry in window._plot_manifest_by_task_id.values()
+        if manifest_entry.uses_observed_simulation_comparison
+    ]
+
+    assert len(observed_task_ids) >= 2
+
+    first_task_id = observed_task_ids[0]
+    second_task_id = observed_task_ids[1]
+
+    first_seed_input = window._plot_container_by_task_id[first_task_id].findChildren(QLineEdit)[0]
+    second_seed_input = window._plot_container_by_task_id[second_task_id].findChildren(QLineEdit)[0]
+
+    try:
+        assert first_seed_input.text() == "1"
+        assert second_seed_input.text() == "1"
+
+        monkeypatch.setattr(
+            window,
+            "_start_observed_simulation_refresh",
+            lambda seed: None,
+        )
+        window._resimulate_observed_simulation_plots(first_task_id, "7")
+
+        refreshed_first_seed_input = window._plot_container_by_task_id[first_task_id].findChildren(
+            QLineEdit
+        )[-1]
+        refreshed_second_seed_input = window._plot_container_by_task_id[
+            second_task_id
+        ].findChildren(QLineEdit)[-1]
+        refreshed_first_button = next(
+            button
+            for button in window._plot_container_by_task_id[first_task_id].findChildren(
+                QPushButton
+            )
+            if button.text() == "Resimulating..."
+        )
+        refreshed_second_button = next(
+            button
+            for button in window._plot_container_by_task_id[second_task_id].findChildren(
+                QPushButton
+            )
+            if button.text() == "Resimulating..."
+        )
+
+        assert refreshed_first_seed_input.text() == "7"
+        assert refreshed_second_seed_input.text() == "7"
+        assert not refreshed_first_seed_input.isEnabled()
+        assert not refreshed_second_seed_input.isEnabled()
+        assert not refreshed_first_button.isEnabled()
+        assert not refreshed_second_button.isEnabled()
+    finally:
+        window.close()
+        application.processEvents()
+
+
+def test_resimulate_starts_background_refresh_instead_of_rendering_immediately(
+    monkeypatch,
+) -> None:
+    application = QApplication.instance() or QApplication([])
+    window = WorkbenchWindow()
+
+    observed_task_id = next(
+        manifest_entry.task_id
+        for manifest_entry in window._plot_manifest_by_task_id.values()
+        if manifest_entry.uses_observed_simulation_comparison
+    )
+    started_seeds: list[int] = []
+
+    monkeypatch.setattr(
+        window,
+        "_start_observed_simulation_refresh",
+        lambda seed: started_seeds.append(seed),
+    )
+    monkeypatch.setattr(
+        window,
+        "_selected_plot_task_id",
+        lambda: observed_task_id,
+    )
+
+    try:
+        window._resimulate_observed_simulation_plots(observed_task_id, "9")
+
+        assert window._observed_simulation_seed == 9
+        assert window._observed_simulation_refresh_in_progress
+        assert started_seeds == [9]
+    finally:
+        window.close()
+        application.processEvents()
+
+
+def test_run_tab_tracks_observed_simulation_refresh_activity() -> None:
+    application = QApplication.instance() or QApplication([])
+    window = WorkbenchWindow()
+    refresh_task = workbench_observed_simulation_refresh_task()
+    refresh_row = window._task_row_by_id[refresh_task.task_id]
+
+    try:
+        assert window._activity_table.item(refresh_row, 1).text() == refresh_task.title
+        assert window._activity_table.item(refresh_row, 2).text() == refresh_task.detail
+
+        window._on_activity_changed(refresh_task.title, "Resimulating observed range")
+        window._on_task_state_changed(refresh_task.task_id, "running", 0, 1)
+
+        assert window._activity_title_label.text() == refresh_task.title
+        assert window._activity_detail_label.text() == "Resimulating observed range"
+        assert window._activity_table.item(refresh_row, 0).text() == "running"
+
+        window._on_observed_simulation_refresh_completed(
+            WorkbenchObservedSimulationRefreshResult(
+                seed=11,
+                comparison_available=True,
+            )
+        )
+
+        assert window._activity_title_label.text() == refresh_task.title
+        assert window._activity_detail_label.text() == (
+            "Observed-versus-simulated plots refreshed to seed 11."
+        )
+    finally:
+        window.close()
+        application.processEvents()
+
+
+def test_render_plot_canvas_skips_observed_simulation_build_while_refresh_runs(
+    monkeypatch,
+) -> None:
+    application = QApplication.instance() or QApplication([])
+    window = WorkbenchWindow()
+    observed_task_id = next(
+        manifest_entry.task_id
+        for manifest_entry in window._plot_manifest_by_task_id.values()
+        if manifest_entry.uses_observed_simulation_comparison
+    )
+
+    try:
+        window._observed_simulation_refresh_in_progress = True
+        monkeypatch.setattr(
+            window,
+            "_build_native_plot_panel",
+            lambda task_id: (_ for _ in ()).throw(AssertionError(task_id)),
+        )
+
+        window._render_plot_canvas(observed_task_id)
     finally:
         window.close()
         application.processEvents()

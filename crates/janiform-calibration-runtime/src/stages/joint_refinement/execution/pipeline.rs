@@ -9,8 +9,8 @@ use janiform_calibration_artifacts::{
     CALIBRATION_JOINT_REFINEMENT_STAGE_OUTPUT_SCHEMA_VERSION,
     CALIBRATION_STAGE_SEED_DERIVATION_POLICY, CalibrationOptimizerSettings,
     CalibrationResolvedStageSeed, CalibrationRunSpec, CalibrationStage,
-    JointRefinementStageOptimizerDiagnostics, resolve_calibration_stage_seed_metadata,
-    stage_solver_settings_for_stage,
+    JointRefinementStageOptimizerDiagnostics, ReturnComponentsStageFittedParameters,
+    resolve_calibration_stage_seed_metadata, stage_solver_settings_for_stage,
 };
 use janiform_foundations::splitmix64_output_mixer;
 use janiform_foundations::time::ONE_HOUR_NANOS;
@@ -364,6 +364,16 @@ fn build_final_simulation_seeds(
         .collect()
 }
 
+fn return_components_fitted_parameters_with_mean_reversion(
+    return_components_payload: &ReturnComponentsStageFittedPayload,
+    mean_reversion_payload: &MeanReversionStageFittedPayload,
+) -> ReturnComponentsStageFittedParameters {
+    let mut fitted_parameters = return_components_payload.fitted_parameters.clone();
+    fitted_parameters.mean_reversion_fitted_parameters =
+        mean_reversion_payload.fitted_parameters.clone();
+    fitted_parameters
+}
+
 fn prepare_bootstrap_context(
     run_spec: &CalibrationRunSpec,
     calendar_registry: &ExchangeCalendarRegistry,
@@ -395,14 +405,18 @@ fn prepare_bootstrap_context(
         &baseline_15m_calibration_sample,
     )?;
 
+    let baseline_return_components_fitted_parameters =
+        return_components_fitted_parameters_with_mean_reversion(
+            resolved_stage_payloads.return_components_payload,
+            resolved_stage_payloads.mean_reversion_payload,
+        );
+
     let runtime_materialization = materialize_runtime_state(
         run_spec,
         calendar_registry,
         stage_input,
         &observed_data,
-        &resolved_stage_payloads
-            .return_components_payload
-            .fitted_parameters,
+        &baseline_return_components_fitted_parameters,
     )?;
 
     let bootstrap_context = build_bootstrap_context(
@@ -416,6 +430,7 @@ fn prepare_bootstrap_context(
         option_pricing_refinement_enabled,
         option_pricing_context,
         runtime_materialization,
+        baseline_return_components_fitted_parameters,
     )?;
 
     Ok(PreparedBootstrapContext {
@@ -528,6 +543,7 @@ fn build_bootstrap_context(
     option_pricing_refinement_enabled: bool,
     option_pricing_context: Option<super::state::JointRefinementOptionPricingContext>,
     runtime_materialization: RuntimeMaterialization,
+    baseline_return_components_fitted_parameters: ReturnComponentsStageFittedParameters,
 ) -> Result<JointRefinementContext, JointRefinementStageExecutionFailure> {
     Ok(JointRefinementContext {
         stage_thread_pool: build_stage_thread_pool(
@@ -552,8 +568,9 @@ fn build_bootstrap_context(
             .hawkes_payload
             .fitted_parameters
             .clone(),
-        baseline_return_components_fitted_parameters: resolved_stage_payloads
-            .return_components_payload
+        baseline_return_components_fitted_parameters,
+        baseline_mean_reversion_fitted_parameters: resolved_stage_payloads
+            .mean_reversion_payload
             .fitted_parameters
             .clone(),
         active_parameter_layout,
@@ -755,9 +772,8 @@ fn establish_baseline_evaluation(
                 .hawkes_payload
                 .fitted_parameters
                 .clone(),
-            return_components_fitted_parameters: resolved_stage_payloads
-                .return_components_payload
-                .fitted_parameters
+            return_components_fitted_parameters: bootstrap_context
+                .baseline_return_components_fitted_parameters
                 .clone(),
             pricing_block_fitted_parameters: None,
         };
@@ -1351,10 +1367,11 @@ fn build_fitted_stage_payload(
             .hawkes_payload
             .fitted_parameters
             .clone(),
-        baseline_return_components_fitted_parameters: resolved_stage_payloads
-            .return_components_payload
-            .fitted_parameters
-            .clone(),
+        baseline_return_components_fitted_parameters:
+            return_components_fitted_parameters_with_mean_reversion(
+                resolved_stage_payloads.return_components_payload,
+                resolved_stage_payloads.mean_reversion_payload,
+            ),
         objective_breakdown: restart_search_artifacts
             .best_restart
             .final_evaluation

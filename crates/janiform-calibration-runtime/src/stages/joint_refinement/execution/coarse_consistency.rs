@@ -13,9 +13,6 @@ use janiform_market_time::hourly_factors::{
     HourlySeasonalityFactorSource,
 };
 use janiform_model_kernels::hawkes::HawkesExcitationState;
-use janiform_model_kernels::mean_reversion::{
-    MeanReversionBoundaryState, MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors,
-};
 
 use crate::adapters::load_hourly_factor_contract_for_calibration;
 use crate::stages::joint_metrics::{
@@ -25,6 +22,10 @@ use crate::stages::joint_metrics::{
 };
 use crate::stages::joint_refinement::contracts::JointRefinementStageCoarseTickConsistencyMetric;
 
+use super::super::mean_reversion_runtime::{
+    endogenous_interval_factors_from_hourly_contract,
+    materialize_joint_refinement_mean_reversion_runtime_inputs,
+};
 use super::super::objective::root_mean_square;
 use super::super::setup::{
     build_surprise_multipliers_for_interval_grid, cached_seed_summaries_for_candidate_seeds,
@@ -291,12 +292,8 @@ fn build_joint_coarse_interval_observations(
         interval_delta,
     )?;
 
-    let model_inputs = build_joint_coarse_model_inputs(
-        context,
-        fitted_parameters,
-        hourly_factor_contract.interval_indices.len(),
-        interval_delta,
-    )?;
+    let model_inputs =
+        build_joint_coarse_model_inputs(context, fitted_parameters, &hourly_factor_contract)?;
 
     let coarse_path = run_coarse_simulation(
         CoarseSimulationRunRequest::try_new(
@@ -406,9 +403,25 @@ fn count_known_news_events(
 fn build_joint_coarse_model_inputs(
     context: &JointRefinementContext,
     fitted_parameters: &janiform_calibration_artifacts::JointRefinementStageFittedParameters,
-    interval_count: usize,
-    interval_delta: f64,
+    hourly_factor_contract: &HourlyFactorContractOutput,
 ) -> Option<CoarseSimulationModelInputs> {
+    let initial_excitation_state = HawkesExcitationState {
+        y_plus_plus: 0.0,
+        y_plus_minus: 0.0,
+        y_minus_plus: 0.0,
+        y_minus_minus: 0.0,
+    };
+    let endogenous_interval_factors =
+        endogenous_interval_factors_from_hourly_contract(hourly_factor_contract).ok()?;
+    let (mean_reversion_runtime_interval_anchors, initial_mean_reversion_boundary_state) =
+        materialize_joint_refinement_mean_reversion_runtime_inputs(
+            hourly_factor_contract.metadata.interval_alignment_policy,
+            fitted_parameters,
+            initial_excitation_state,
+            endogenous_interval_factors.as_slice(),
+        )
+        .ok()?;
+
     let risk_model_inputs = SufficientStatisticsRiskModelInputs::try_new(
         ExponentialAffineTransformEquationSpecification::try_new(
             fitted_parameters.hawkes_fitted_parameters.kernel_parameters,
@@ -422,23 +435,13 @@ fn build_joint_coarse_model_inputs(
         fitted_parameters
             .return_components_fitted_parameters
             .nig_shared_plus_shift_configuration,
-        HawkesExcitationState {
-            y_plus_plus: 0.0,
-            y_plus_minus: 0.0,
-            y_minus_plus: 0.0,
-            y_minus_minus: 0.0,
-        },
-        MeanReversionFittedParameters::zero_kappa_flat_anchor_mean_reversion(),
-        MeanReversionRuntimeIntervalAnchors::try_new(
-            "explicit_runtime_interval_grid_alignment.v1",
-            0.0,
-            0.0,
-            vec![0.0; interval_count],
-            vec![0.0; interval_count],
-            vec![interval_delta; interval_count],
-        )
-        .ok()?,
-        MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0, 0.0).ok()?,
+        initial_excitation_state,
+        fitted_parameters
+            .return_components_fitted_parameters
+            .mean_reversion_fitted_parameters
+            .clone(),
+        mean_reversion_runtime_interval_anchors,
+        initial_mean_reversion_boundary_state,
     )
     .ok()?;
 

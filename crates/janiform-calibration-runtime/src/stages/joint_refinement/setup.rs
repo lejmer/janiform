@@ -2,7 +2,6 @@ use std::sync::mpsc::Sender;
 use std::time::Instant;
 
 use chrono::{DateTime, Datelike, Duration, Timelike, Utc};
-use janiform_engine_simulation::MeanReversionFittedParameters;
 use janiform_model_kernels::hawkes::{HawkesKernelLoadings, HawkesKernelParameters};
 use janiform_model_kernels::news::SurpriseNewsArrivalConfiguration;
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
@@ -168,8 +167,9 @@ pub(super) fn parameter_vector_to_fitted_parameters(
                     .baseline_return_components_fitted_parameters
                     .surprise_deterministic_intensity_profile
                     .clone(),
-                mean_reversion_fitted_parameters:
-                    MeanReversionFittedParameters::zero_kappa_flat_anchor_mean_reversion(),
+                mean_reversion_fitted_parameters: context
+                    .baseline_mean_reversion_fitted_parameters
+                    .clone(),
             };
 
             return_components_fitted_parameters

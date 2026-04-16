@@ -426,6 +426,12 @@ fn pricing_block_refinement_context(
         .fitted_parameters
         .return_components_fitted_parameters
         .clone();
+    refinement_context.baseline_mean_reversion_fitted_parameters = dynamics_candidate
+        .final_evaluation
+        .fitted_parameters
+        .return_components_fitted_parameters
+        .mean_reversion_fitted_parameters
+        .clone();
     refinement_context.option_pricing_refinement_enabled = true;
     refinement_context
 }

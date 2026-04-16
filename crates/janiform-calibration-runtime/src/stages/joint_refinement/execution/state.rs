@@ -281,6 +281,8 @@ pub(crate) struct JointRefinementContext {
     pub(crate) baseline_modeled_open_event_rate_per_hour: f64,
     pub(crate) baseline_hawkes_fitted_parameters: HawkesStageFittedParameters,
     pub(crate) baseline_return_components_fitted_parameters: ReturnComponentsStageFittedParameters,
+    pub(crate) baseline_mean_reversion_fitted_parameters:
+        janiform_model_kernels::mean_reversion::MeanReversionFittedParameters,
     pub(crate) active_parameter_layout: JointRefinementActiveParameterLayout,
     pub(crate) lower_bounds: Vec<f64>,
     pub(crate) upper_bounds: Vec<f64>,

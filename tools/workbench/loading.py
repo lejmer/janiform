@@ -53,6 +53,15 @@ _BUILD_COMPARISON_TASK = WorkbenchTaskDefinition(
     detail="Simulating the full observed range and caching comparison data for all plot tabs.",
 )
 
+_REFRESH_OBSERVED_SIMULATION_TASK = WorkbenchTaskDefinition(
+    task_id="refresh_observed_simulation_comparison",
+    title="Refresh observed-simulated plots",
+    detail=(
+        "Resimulating the observed range and rebuilding comparison data for the "
+        "observed-versus-simulated plot tabs."
+    ),
+)
+
 _PLOT_DEFINITIONS: tuple[WorkbenchPlotDefinition, ...] = tuple(
     WorkbenchPlotDefinition(
         task_id=manifest_entry.task_id,
@@ -81,8 +90,16 @@ def workbench_startup_tasks() -> tuple[WorkbenchTaskDefinition, ...]:
     )
 
 
+def workbench_activity_tasks() -> tuple[WorkbenchTaskDefinition, ...]:
+    return (*workbench_startup_tasks(), _REFRESH_OBSERVED_SIMULATION_TASK)
+
+
 def workbench_plot_definitions() -> tuple[WorkbenchPlotDefinition, ...]:
     return _PLOT_DEFINITIONS
+
+
+def workbench_observed_simulation_refresh_task() -> WorkbenchTaskDefinition:
+    return _REFRESH_OBSERVED_SIMULATION_TASK
 
 
 def _load_artifacts_in_subprocess(input_path: Path) -> WorkbenchArtifacts:
@@ -288,6 +305,8 @@ __all__ = [
     "WorkbenchLoadWorker",
     "WorkbenchPlotDefinition",
     "WorkbenchTaskDefinition",
+    "workbench_activity_tasks",
+    "workbench_observed_simulation_refresh_task",
     "workbench_plot_definitions",
     "workbench_startup_tasks",
 ]
