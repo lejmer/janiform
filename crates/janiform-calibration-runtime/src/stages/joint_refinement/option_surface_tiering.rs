@@ -5,13 +5,15 @@ use janiform_engine_pricing::{
     INTRADAY_PRICING_HOURS_PER_YEAR, PricingIntervalSchedule, VanillaOptionPayoffType,
 };
 use janiform_foundations::numeric::integer_square_root;
+use serde::{Deserialize, Serialize};
 
 use super::contracts::{
     JointRefinementStageCurrentStateEstimationInput, JointRefinementStageExecutionFailure,
     JointRefinementStageOptionPricingInput, JointRefinementStageOptionSnapshotNode,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub(crate) enum JointRefinementOptionSurfaceTierKind {
     Search,
     Selection,

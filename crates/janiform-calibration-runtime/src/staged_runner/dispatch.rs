@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use super::payload_state::joint_refinement_seasonality_factors_from_payload;
 use super::{
     CalibrationExecutionMode, CalibrationInMemoryStagePayloadState, CalibrationRunSpec,
@@ -7,7 +9,8 @@ use super::{
     JointRefinementStageExecutionInput, JointRefinementStageHawkesInput,
     JointRefinementStageReturnComponentsInput, MeanReversionStageReturnComponentsInput,
     ReturnComponentsStageActivityInput, ReturnComponentsStageExecutionInput,
-    run_hawkes_calibration_stage, run_joint_refinement_calibration_stage_with_progress_observer,
+    run_hawkes_calibration_stage,
+    run_joint_refinement_calibration_stage_with_progress_observer_and_persistence,
     run_mean_reversion_calibration_stage, run_return_components_calibration_stage,
     run_seasonality_calibration_stage, stage_output_artifact_references_for_stage,
 };
@@ -16,6 +19,7 @@ use crate::JointRefinementStageMeanReversionInput;
 pub(super) fn run_stage_for_staged_execution(
     run_spec: &CalibrationRunSpec,
     calendar_registry: &ExchangeCalendarRegistry,
+    disk_checkpoint_directory: Option<&Path>,
     stage: CalibrationStage,
     stage_index: usize,
     stage_count: usize,
@@ -361,10 +365,12 @@ pub(super) fn run_stage_for_staged_execution(
 
             if observer.is_none() {
                 return Ok(CalibrationStagedRunStageReport::JointRefinement(
-                    super::run_joint_refinement_calibration_stage(
+                    run_joint_refinement_calibration_stage_with_progress_observer_and_persistence(
                         run_spec,
                         calendar_registry,
                         stage_input,
+                        None,
+                        disk_checkpoint_directory,
                     ),
                 ));
             }
@@ -409,11 +415,12 @@ pub(super) fn run_stage_for_staged_execution(
                 };
 
             Ok(CalibrationStagedRunStageReport::JointRefinement(
-                run_joint_refinement_calibration_stage_with_progress_observer(
+                run_joint_refinement_calibration_stage_with_progress_observer_and_persistence(
                     run_spec,
                     calendar_registry,
                     stage_input,
                     Some(&mut progress_forwarder),
+                    disk_checkpoint_directory,
                 ),
             ))
         }

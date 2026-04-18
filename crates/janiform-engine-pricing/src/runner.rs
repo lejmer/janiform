@@ -36,7 +36,8 @@ use super::characteristic::{
     build_local_tilt_bracket_with_search_domain_and_residual_evaluator,
     build_pricing_equation_specification,
     compose_total_return_characteristic_function_from_oracle_output,
-    resolve_local_tilt_search_domain, solve_exponential_affine_transform_with_internal_selection,
+    resolve_local_tilt_search_domain, should_retry_local_tilt_side_evaluation,
+    solve_exponential_affine_transform_with_internal_selection,
 };
 use super::constants::{
     FOURIER_INVERSION_DIAGNOSTICS_SCHEMA_VERSION, FOURIER_INVERSION_NUMERIC_QUALITY_GATE_POLICY,
@@ -859,23 +860,28 @@ pub(crate) fn resolve_local_transition_theta_for_row_with_curve(
     }
 
     if let Some(previous_theta) = interval_tilt_curve.last_solved_theta {
-        let previous_evaluation = interval_tilt_curve
-            .evaluate_row_residual(transition_row, previous_theta)
-            .map_err(
-                |source| VanillaOptionPricingRunError::AnchoredLocalTiltSolveFailure {
+        match interval_tilt_curve.evaluate_row_residual(transition_row, previous_theta) {
+            Ok(previous_evaluation) => {
+                if previous_evaluation.residual.abs() <= local_tilt_tolerance() {
+                    let diagnostics = build_local_tilt_diagnostics_for_row(
+                        interval_tilt_curve.transition_context,
+                        transition_row,
+                        previous_theta,
+                        previous_evaluation,
+                    );
+                    return Ok((previous_theta, Some(diagnostics)));
+                }
+            }
+            Err(source) if should_retry_local_tilt_side_evaluation(&source) => {
+                interval_tilt_curve.last_solved_theta = None;
+            }
+            Err(source) => {
+                return Err(VanillaOptionPricingRunError::AnchoredLocalTiltSolveFailure {
                     interval_index: interval_tilt_curve.transition_context.interval_index,
                     deviation: transition_row.boundary_state.deviation,
                     source,
-                },
-            )?;
-        if previous_evaluation.residual.abs() <= local_tilt_tolerance() {
-            let diagnostics = build_local_tilt_diagnostics_for_row(
-                interval_tilt_curve.transition_context,
-                transition_row,
-                previous_theta,
-                previous_evaluation,
-            );
-            return Ok((previous_theta, Some(diagnostics)));
+                });
+            }
         }
     }
 
@@ -967,13 +973,58 @@ pub(crate) fn resolve_local_transition_theta_for_row_with_parallelism(
     pricing_thread_pool: Option<&rayon::ThreadPool>,
     cpu_count: Option<usize>,
 ) -> Result<(f64, Option<AnchoredLocalTiltSolveDiagnostics>), VanillaOptionPricingRunError> {
+    resolve_local_transition_theta_for_row_with_parallelism_and_hint(
+        transition_context,
+        transition_row,
+        driver_parameters,
+        None,
+        pricing_thread_pool,
+        cpu_count,
+    )
+}
+
+pub(crate) fn resolve_local_transition_theta_for_row_with_parallelism_and_hint(
+    transition_context: &LocalTransitionRequestContext,
+    transition_row: &LocalTransitionRowState,
+    driver_parameters: NigBuySellDriverParameters,
+    initial_theta_hint: Option<f64>,
+    pricing_thread_pool: Option<&rayon::ThreadPool>,
+    cpu_count: Option<usize>,
+) -> Result<(f64, Option<AnchoredLocalTiltSolveDiagnostics>), VanillaOptionPricingRunError> {
     let mut interval_tilt_curve = IntervalTiltCurve::try_new(
         transition_context,
         driver_parameters,
         pricing_thread_pool,
         cpu_count,
     )?;
+    interval_tilt_curve.last_solved_theta = initial_theta_hint;
     resolve_local_transition_theta_for_row_with_curve(&mut interval_tilt_curve, transition_row)
+}
+
+pub(crate) fn certify_local_transition_theta_for_row_with_parallelism(
+    transition_context: &LocalTransitionRequestContext,
+    transition_row: &LocalTransitionRowState,
+    driver_parameters: NigBuySellDriverParameters,
+    theta_candidate: f64,
+    pricing_thread_pool: Option<&rayon::ThreadPool>,
+    cpu_count: Option<usize>,
+) -> Result<bool, VanillaOptionPricingRunError> {
+    let mut interval_tilt_curve = IntervalTiltCurve::try_new(
+        transition_context,
+        driver_parameters,
+        pricing_thread_pool,
+        cpu_count,
+    )?;
+
+    match interval_tilt_curve.evaluate_row_residual(transition_row, theta_candidate) {
+        Ok(evaluation) => Ok(evaluation.residual.abs() <= local_tilt_tolerance()),
+        Err(source) if should_retry_local_tilt_side_evaluation(&source) => Ok(false),
+        Err(source) => Err(VanillaOptionPricingRunError::AnchoredLocalTiltSolveFailure {
+            interval_index: transition_context.interval_index,
+            deviation: transition_row.boundary_state.deviation,
+            source,
+        }),
+    }
 }
 
 #[cfg(test)]

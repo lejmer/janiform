@@ -20,8 +20,7 @@ pub(super) use crate::stages::joint_refinement::{
     JointRefinementStageExecutionReport, JointRefinementStageHawkesInput,
     JointRefinementStageProgressPhase, JointRefinementStageProgressUpdate,
     JointRefinementStageReturnComponentsInput, JointRefinementStageSeasonalityFactorsInput,
-    run_joint_refinement_calibration_stage,
-    run_joint_refinement_calibration_stage_with_progress_observer,
+    run_joint_refinement_calibration_stage_with_progress_observer_and_persistence,
 };
 pub(super) use crate::stages::mean_reversion::{
     MeanReversionStageExecutionInput, MeanReversionStageExecutionMetadata,

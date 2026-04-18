@@ -65,7 +65,7 @@ pub(crate) struct JointRefinementSeedSummaryCacheKey {
     pub(crate) simulation_seed: u64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub(crate) struct JointRefinementOptionPricingCacheKey {
     pub(crate) tier_kind: JointRefinementOptionSurfaceTierKind,
     pub(crate) source_dynamics_parameter_bits: Vec<u64>,
@@ -340,6 +340,8 @@ pub(crate) struct JointRefinementOptionNodeDefinition {
 
 #[derive(Debug, Clone)]
 pub(crate) struct JointRefinementOptionTierPricingInputs {
+    pub(crate) runtime_interval_schedule: PricingIntervalSchedule,
+    pub(crate) interval_factors: Vec<VanillaOptionPricingIntervalFactors>,
     pub(crate) grid_batch_pricing_request: VanillaOptionGridBatchPricingRequest,
     pub(crate) observed_nodes: Vec<JointRefinementOptionNodeDefinition>,
     pub(crate) maturity_intervals: Vec<f64>,
@@ -366,12 +368,12 @@ impl JointRefinementOptionTierPricingInputSet {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub(crate) struct JointRefinementOptionTierScore {
     pub(crate) root_mean_square_spread_normalized_residual: f64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) struct JointRefinementOptionMaturityScoreArtifact {
     pub(crate) expiry_timestamp_utc_nanos: i64,
     pub(crate) maturity_weight: usize,
@@ -379,10 +381,11 @@ pub(crate) struct JointRefinementOptionMaturityScoreArtifact {
     pub(crate) root_mean_square_spread_normalized_residual: f64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) struct JointRefinementOptionTierPricingArtifact {
     pub(crate) cache_key: JointRefinementOptionPricingCacheKey,
     pub(crate) tier_kind: JointRefinementOptionSurfaceTierKind,
+    pub(crate) runtime_interval_schedule: PricingIntervalSchedule,
     pub(crate) score: JointRefinementOptionTierScore,
     pub(crate) maturity_scores: Vec<JointRefinementOptionMaturityScoreArtifact>,
     pub(crate) node_diagnostics: Vec<JointRefinementStageOptionNodeDiagnostic>,
@@ -395,8 +398,6 @@ pub(crate) struct JointRefinementOptionTierPricingArtifact {
 pub(crate) struct JointRefinementOptionPricingContext {
     pub(crate) valuation_time_utc_nanos: i64,
     pub(crate) boundary_input: AnchoredVanillaOptionPricingBoundaryInput,
-    pub(crate) runtime_interval_schedule: PricingIntervalSchedule,
-    pub(crate) interval_factors: Vec<VanillaOptionPricingIntervalFactors>,
     pub(crate) snapshot_maturity_intervals: Vec<f64>,
     pub(crate) snapshot_maturity_terminal_interval_indices: Vec<usize>,
     pub(crate) option_surface_tiers: JointRefinementOptionSurfaceTierSet,
@@ -405,7 +406,7 @@ pub(crate) struct JointRefinementOptionPricingContext {
     pub(crate) cpu_count: usize,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) struct JointRefinementCandidateEvaluation {
     pub(crate) fitted_parameters: JointRefinementStageFittedParameters,
     pub(crate) breakdown: JointRefinementStageObjectiveBreakdown,
@@ -413,17 +414,17 @@ pub(crate) struct JointRefinementCandidateEvaluation {
     pub(crate) invalid_reason: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) struct JointRefinementRestartOutcome {
     pub(crate) restart_id: String,
     pub(crate) parameter_vector: Vec<f64>,
     pub(crate) local_evaluation: JointRefinementCandidateEvaluation,
     pub(crate) final_evaluation: JointRefinementCandidateEvaluation,
     pub(crate) local_evaluation_count: usize,
-    pub(crate) stop_reason: &'static str,
+    pub(crate) stop_reason: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub(crate) struct JointRefinementCoarseConsistencySummary {
     pub(crate) raw_fit: f64,
     pub(crate) normalized_fit: f64,

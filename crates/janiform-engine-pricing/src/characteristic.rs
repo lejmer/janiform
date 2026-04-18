@@ -759,7 +759,9 @@ fn locate_valid_side_evaluation(
     }
 }
 
-fn should_retry_local_tilt_side_evaluation(error: &AnchoredLocalTiltSolveError) -> bool {
+pub(crate) fn should_retry_local_tilt_side_evaluation(
+    error: &AnchoredLocalTiltSolveError,
+) -> bool {
     matches!(
         error,
         AnchoredLocalTiltSolveError::BuySideEsscherTransformFailure { .. }

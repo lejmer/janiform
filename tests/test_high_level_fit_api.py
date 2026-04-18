@@ -84,6 +84,10 @@ from janiform.mean_reversion import (
     MeanReversionRuntimeIntervalAnchors,
 )
 from janiform.pricing import (
+    AutoActivityCompressedPricingIntervalSchedulePolicy,
+    AutoExactSparsePricingIntervalSchedulePolicy,
+)
+from janiform.pricing import (
     VanillaOptionImpliedVolatilityInversionStatus,
     VanillaOptionPayoffType,
     VanillaOptionPricingRunResult,
@@ -3302,6 +3306,46 @@ def test_high_level_surface_pricing_resolves_mixed_maturity_axes_to_native_reque
     assert native_execution_input["request"]["market_inputs"]["maturity_intervals"] == [1.0, 24.0]
 
 
+def test_high_level_grid_batch_pricing_defaults_to_activity_compressed_runtime_schedule(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _build_full_workflow_model(
+        tmp_path,
+        monkeypatch,
+        run_id="high-level-model-grid-batch-activity-compressed-default",
+    )
+    batch = JaniformVanillaOptionGridBatch(
+        spot=100.0,
+        grids=(
+            JaniformVanillaOptionGrid(
+                payoff_type=VanillaOptionPayoffType.CALL,
+                risk_free_rate=0.01,
+                dividend_yield=0.0,
+                strikes=(95.0,),
+                tenors=("16h",),
+            ),
+        ),
+    )
+
+    native_execution_input = fit_pricing_workflow_module.prepare_model_grid_batch_pricing_native_input(
+        model,
+        valuation_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
+        batch=batch,
+        observed_data=None,
+        boundary_state=None,
+        include_transform_diagnostics=False,
+        include_integration_quality_diagnostics=False,
+        pricing_interval_schedule_policy=None,
+        cpu_count=None,
+    )
+
+    assert (
+        native_execution_input["runtime_interval_schedule"]["metadata"]["policy_id"]
+        == "auto_activity_compressed.v1"
+    )
+
+
 def test_high_level_model_price_option_grids_dispatches_through_grid_batch_pricing_runner(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -3967,6 +4011,69 @@ def test_high_level_estimator_rejects_zero_dynamics_search_restart_count() -> No
 
     assert captured_error.value.failure.field_path == "dynamics_search_restart_count"
     assert "strictly positive" in captured_error.value.failure.message
+
+
+def test_high_level_estimator_forwards_pricing_interval_schedule_policy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tick_data_path = tmp_path / "ticks.csv"
+    tick_data_path.write_text(
+        "\n".join(
+            [
+                "timestamp_utc",
+                "2026-02-02T14:30:00Z",
+                "2026-02-02T15:00:00Z",
+                "2026-02-02T20:59:00Z",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    captured_policies: list[str] = []
+    original_translate_request = (
+        fit_estimator_module.translate_market_data_request_to_prepared_calibration_from_phases
+    )
+
+    def counting_translate_request(*args, **kwargs):
+        captured_policies.append(
+            kwargs["request"].pricing_interval_schedule_policy.policy
+        )
+        return original_translate_request(*args, **kwargs)
+
+    monkeypatch.setattr(
+        fit_estimator_module,
+        "translate_market_data_request_to_prepared_calibration_from_phases",
+        counting_translate_request,
+    )
+    monkeypatch.setattr(
+        fit_estimator_module,
+        "run_prepared_staged_calibration_with_raw_payload",
+        lambda *args, **kwargs: _successful_staged_runner_payload("high-level-fit-policy-forward"),
+    )
+
+    estimator = JaniformEstimator(
+        workflow_scope=CalibrationMarketDataWorkflowScope.SEASONALITY_ONLY,
+        tick_data_column_mapping=CalibrationTickDataColumnMapping(
+            timestamp_column="timestamp_utc",
+        ),
+        normalization_policy=CalibrationMarketDataNormalizationPolicy(
+            timestamp_timezone="UTC",
+            sort_records_by_timestamp=True,
+        ),
+        pricing_interval_schedule_policy=AutoExactSparsePricingIntervalSchedulePolicy(),
+        session="XNYS",
+        known_news="none",
+    )
+
+    estimator.fit(
+        run_id="high-level-fit-policy-forward",
+        tick_data_path=tick_data_path,
+        tick_data_format=CalibrationInputFileFormat.CSV,
+        pricing_interval_schedule_policy=AutoActivityCompressedPricingIntervalSchedulePolicy(),
+    )
+
+    assert captured_policies == ["auto_activity_compressed"]
 
 
 def test_high_level_fit_named_built_in_session_does_not_require_materialization(

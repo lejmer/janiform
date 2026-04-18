@@ -926,6 +926,11 @@ def resolve_high_level_pricing_maturity_inputs(
 ) -> Any: ...
 
 
+def derive_activity_compressed_pricing_interval_schedule(
+    request: Any,
+) -> Any: ...
+
+
 def run_vanilla_option_pricing(
     execution_input: Any,
 ) -> Any: ...

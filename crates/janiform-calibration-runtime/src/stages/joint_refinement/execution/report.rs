@@ -67,7 +67,7 @@ pub(crate) fn build_joint_restart_diagnostics(
         stop_reason_frequencies: build_labeled_count_frequencies(
             restart_outcomes
                 .iter()
-                .map(|restart_outcome| restart_outcome.stop_reason.to_string()),
+                .map(|restart_outcome| restart_outcome.stop_reason.clone()),
         ),
         invalid_reason_frequencies: build_labeled_count_frequencies(
             restart_outcomes.iter().filter_map(|restart_outcome| {

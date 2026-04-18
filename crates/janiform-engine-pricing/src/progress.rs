@@ -93,6 +93,13 @@ pub struct PricingProgressEvent {
     pub total_transition_rows: Option<usize>,
     pub current_strike_index: Option<usize>,
     pub total_strikes: Option<usize>,
+    pub seed_exact_transition_row_count: Option<usize>,
+    pub shared_theta_transition_row_count: Option<usize>,
+    pub certified_transition_row_count: Option<usize>,
+    pub fallback_exact_transition_row_count: Option<usize>,
+    pub theta_search_elapsed_millis: Option<u64>,
+    pub theta_certification_elapsed_millis: Option<u64>,
+    pub row_batch_elapsed_millis: Option<u64>,
 }
 
 impl PricingProgressEvent {
@@ -114,6 +121,13 @@ impl PricingProgressEvent {
             total_transition_rows: None,
             current_strike_index: None,
             total_strikes: None,
+            seed_exact_transition_row_count: None,
+            shared_theta_transition_row_count: None,
+            certified_transition_row_count: None,
+            fallback_exact_transition_row_count: None,
+            theta_search_elapsed_millis: None,
+            theta_certification_elapsed_millis: None,
+            row_batch_elapsed_millis: None,
         }
     }
 
@@ -136,6 +150,13 @@ impl PricingProgressEvent {
             total_transition_rows: None,
             current_strike_index: None,
             total_strikes: None,
+            seed_exact_transition_row_count: None,
+            shared_theta_transition_row_count: None,
+            certified_transition_row_count: None,
+            fallback_exact_transition_row_count: None,
+            theta_search_elapsed_millis: None,
+            theta_certification_elapsed_millis: None,
+            row_batch_elapsed_millis: None,
         }
     }
 
@@ -158,6 +179,13 @@ impl PricingProgressEvent {
             total_transition_rows: None,
             current_strike_index: None,
             total_strikes: None,
+            seed_exact_transition_row_count: None,
+            shared_theta_transition_row_count: None,
+            certified_transition_row_count: None,
+            fallback_exact_transition_row_count: None,
+            theta_search_elapsed_millis: None,
+            theta_certification_elapsed_millis: None,
+            row_batch_elapsed_millis: None,
         }
     }
 
@@ -182,6 +210,13 @@ impl PricingProgressEvent {
             total_transition_rows: Some(total_transition_rows),
             current_strike_index: None,
             total_strikes: None,
+            seed_exact_transition_row_count: None,
+            shared_theta_transition_row_count: None,
+            certified_transition_row_count: None,
+            fallback_exact_transition_row_count: None,
+            theta_search_elapsed_millis: None,
+            theta_certification_elapsed_millis: None,
+            row_batch_elapsed_millis: None,
         }
     }
 
@@ -206,7 +241,34 @@ impl PricingProgressEvent {
             total_transition_rows: None,
             current_strike_index,
             total_strikes: Some(total_strikes),
+            seed_exact_transition_row_count: None,
+            shared_theta_transition_row_count: None,
+            certified_transition_row_count: None,
+            fallback_exact_transition_row_count: None,
+            theta_search_elapsed_millis: None,
+            theta_certification_elapsed_millis: None,
+            row_batch_elapsed_millis: None,
         }
+    }
+
+    pub fn with_transition_row_solve_diagnostics(
+        mut self,
+        seed_exact_transition_row_count: usize,
+        shared_theta_transition_row_count: usize,
+        certified_transition_row_count: usize,
+        fallback_exact_transition_row_count: usize,
+        theta_search_elapsed_millis: u64,
+        theta_certification_elapsed_millis: u64,
+        row_batch_elapsed_millis: u64,
+    ) -> Self {
+        self.seed_exact_transition_row_count = Some(seed_exact_transition_row_count);
+        self.shared_theta_transition_row_count = Some(shared_theta_transition_row_count);
+        self.certified_transition_row_count = Some(certified_transition_row_count);
+        self.fallback_exact_transition_row_count = Some(fallback_exact_transition_row_count);
+        self.theta_search_elapsed_millis = Some(theta_search_elapsed_millis);
+        self.theta_certification_elapsed_millis = Some(theta_certification_elapsed_millis);
+        self.row_batch_elapsed_millis = Some(row_batch_elapsed_millis);
+        self
     }
 }
 

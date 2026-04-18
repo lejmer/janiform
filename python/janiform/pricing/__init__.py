@@ -1,6 +1,7 @@
 """Public vanilla-option pricing contracts and workflow helpers."""
 
 from .contracts import (
+    AutoActivityCompressedPricingIntervalSchedulePolicy,
     AutoExactSparsePricingIntervalSchedulePolicy,
     AnchoredLocalTiltAdmissibilityStatus,
     AnchoredLocalTiltBoundaryStateSummary,
@@ -53,6 +54,7 @@ __all__ = [
     "AnchoredLocalTiltDomainStatus",
     "AnchoredLocalTiltSolveDiagnostics",
     "AnchoredVanillaOptionPricingBoundaryInput",
+    "AutoActivityCompressedPricingIntervalSchedulePolicy",
     "AutoExactSparsePricingIntervalSchedulePolicy",
     "ExplicitIntervalEndTimestampsUtcPricingIntervalSchedulePolicy",
     "GammaSeverityMarkConfiguration",

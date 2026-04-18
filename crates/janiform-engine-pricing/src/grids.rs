@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
@@ -495,6 +496,58 @@ impl Error for VanillaOptionSurfacePricingRunError {
     }
 }
 
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct SpectralThetaWarmStartState {
+    row_theta_hints_by_carry_group: BTreeMap<(u64, u64), Vec<Vec<Option<f64>>>>,
+}
+
+impl SpectralThetaWarmStartState {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub(crate) fn interval_theta_hints(
+        &mut self,
+        carry_group_key: (u64, u64),
+        interval_index: usize,
+        row_count: usize,
+    ) -> Vec<Option<f64>> {
+        self.ensure_interval_shape(carry_group_key, interval_index, row_count);
+        self.row_theta_hints_by_carry_group[&carry_group_key][interval_index].clone()
+    }
+
+    pub(crate) fn record_interval_thetas(
+        &mut self,
+        carry_group_key: (u64, u64),
+        interval_index: usize,
+        solved_thetas: impl IntoIterator<Item = f64>,
+    ) {
+        let solved_thetas = solved_thetas.into_iter().map(Some).collect::<Vec<_>>();
+        self.ensure_interval_shape(carry_group_key, interval_index, solved_thetas.len());
+        self.row_theta_hints_by_carry_group
+            .get_mut(&carry_group_key)
+            .expect("carry-group theta warm-start storage should exist")[interval_index] =
+            solved_thetas;
+    }
+
+    fn ensure_interval_shape(
+        &mut self,
+        carry_group_key: (u64, u64),
+        interval_index: usize,
+        row_count: usize,
+    ) {
+        let row_theta_hints_by_interval =
+            self.row_theta_hints_by_carry_group.entry(carry_group_key).or_default();
+        if row_theta_hints_by_interval.len() <= interval_index {
+            row_theta_hints_by_interval
+                .resize_with(interval_index + 1, Vec::new);
+        }
+        if row_theta_hints_by_interval[interval_index].len() != row_count {
+            row_theta_hints_by_interval[interval_index] = vec![None; row_count];
+        }
+    }
+}
+
 pub fn run_vanilla_option_grid_batch_pricing(
     execution_input: VanillaOptionGridBatchPricingExecutionInput,
 ) -> Result<VanillaOptionGridBatchPricingRunResult, VanillaOptionGridBatchPricingRunError> {
@@ -505,7 +558,16 @@ pub fn run_vanilla_option_grid_batch_pricing_with_observer(
     execution_input: VanillaOptionGridBatchPricingExecutionInput,
     observer: Option<&mut dyn FnMut(PricingProgressEvent)>,
 ) -> Result<VanillaOptionGridBatchPricingRunResult, VanillaOptionGridBatchPricingRunError> {
-    super::spectral::run_grid_batch_pricing(execution_input, observer)
+    super::spectral::run_grid_batch_pricing(execution_input, observer, None)
+}
+
+#[doc(hidden)]
+pub fn run_vanilla_option_grid_batch_pricing_with_observer_and_theta_warm_start_state(
+    execution_input: VanillaOptionGridBatchPricingExecutionInput,
+    observer: Option<&mut dyn FnMut(PricingProgressEvent)>,
+    theta_warm_start_state: Option<&mut SpectralThetaWarmStartState>,
+) -> Result<VanillaOptionGridBatchPricingRunResult, VanillaOptionGridBatchPricingRunError> {
+    super::spectral::run_grid_batch_pricing(execution_input, observer, theta_warm_start_state)
 }
 
 pub fn run_vanilla_option_surface_pricing(

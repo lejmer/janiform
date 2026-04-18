@@ -1,3 +1,4 @@
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any, Optional, Protocol
 
@@ -226,8 +227,11 @@ class NativeStagedCalibrationProgressTracker:
         if not self.active_restart_rows:
             return stage_summary
 
+        restart_id_width = maximum_restart_progress_row_id_width(
+            self.active_restart_rows.values()
+        )
         rows = [
-            format_restart_progress_panel_row(row)
+            format_restart_progress_panel_row(row, restart_id_width=restart_id_width)
             for row in self.active_restart_rows.values()
         ]
 
@@ -400,9 +404,13 @@ def format_staged_progress_event_detail(
 
     detail_parts = [detail]
 
-    item_label = current_restart_id or current_item_label
-    if item_label is not None:
-        detail_parts.append(f"item={item_label}")
+    if current_restart_id is not None:
+        detail_parts.append(f"item={current_restart_id}")
+    elif current_item_label is not None:
+        detail_parts.append(f"item={current_item_label}")
+
+    if current_restart_id is not None and current_item_label is not None:
+        detail_parts.append(f"detail={current_item_label}")
 
     if isinstance(active_restart_count, int):
         detail_parts.append(f"running={active_restart_count}")
@@ -500,9 +508,13 @@ def format_compact_staged_progress_event_detail(
 
     detail_parts = [detail]
 
-    item_label = current_restart_id or current_item_label
-    if item_label is not None:
-        detail_parts.append(f"item={item_label}")
+    if current_restart_id is not None:
+        detail_parts.append(f"item={current_restart_id}")
+    elif current_item_label is not None:
+        detail_parts.append(f"item={current_item_label}")
+
+    if current_restart_id is not None and current_item_label is not None:
+        detail_parts.append(f"detail={current_item_label}")
 
     if isinstance(active_restart_count, int):
         detail_parts.append(f"running={active_restart_count}")
@@ -591,7 +603,11 @@ def format_compact_staged_progress_phase_summary(
     return " | ".join(detail_parts)
 
 
-def format_restart_progress_panel_row(row: ActiveRestartProgressRow) -> str:
+def format_restart_progress_panel_row(
+    row: ActiveRestartProgressRow,
+    *,
+    restart_id_width: int,
+) -> str:
     block = row.parameter_block or "-"
     cycle = (
         f"{row.current_outer_cycle}/{row.total_outer_cycles}"
@@ -611,8 +627,20 @@ def format_restart_progress_panel_row(row: ActiveRestartProgressRow) -> str:
     )
 
     return (
-        f"  {row.restart_id:<22} {block:<8.8} {cycle:>5}  "
+        f"  {row.restart_id:<{restart_id_width}} {block:<8.8} {cycle:>5}  "
         f"eval {evaluation_label:>4}  obj {objective:>10}  best {candidate_best:>10}"
+    )
+
+
+def maximum_restart_progress_row_id_width(
+    rows: Iterable[ActiveRestartProgressRow],
+) -> int:
+    return max(
+        22,
+        max(
+            (len(row.restart_id) for row in rows),
+            default=0,
+        ),
     )
 
 

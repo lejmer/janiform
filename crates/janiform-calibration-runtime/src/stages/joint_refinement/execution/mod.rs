@@ -6,6 +6,7 @@ mod option_refinement;
 mod pipeline;
 mod pricing_context;
 mod report;
+mod resume_state;
 mod selection;
 mod shared;
 mod state;
@@ -16,7 +17,7 @@ mod tests;
 pub use entrypoint::run_joint_refinement_calibration_stage;
 pub use state::JointRefinementSeedSummary;
 
-pub(crate) use entrypoint::run_joint_refinement_calibration_stage_with_progress_observer;
+pub(crate) use entrypoint::run_joint_refinement_calibration_stage_with_progress_observer_and_persistence;
 
 #[cfg(test)]
 pub(crate) use coarse_consistency::extend_joint_coarse_tick_consistency_metrics_for_seed;
@@ -44,6 +45,9 @@ pub(crate) use report::{
     build_joint_refinement_stage_failure_report, build_joint_restart_diagnostics,
     build_joint_simulation_summaries, option_pricing_execution_failure_message,
     simulation_infrastructure_failure_message,
+};
+pub(crate) use resume_state::{
+    JointRefinementResumeStore, PersistedRestartSelectionArtifacts,
 };
 #[cfg(test)]
 pub(crate) use selection::{

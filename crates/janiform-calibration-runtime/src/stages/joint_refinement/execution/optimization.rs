@@ -65,6 +65,7 @@ pub(crate) fn optimize_restart_seeds(
     solver_settings: &CalibrationOptimizerSettings,
     budget_schedule: JointRefinementBudgetSchedule,
     progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
+    completed_restart_store: Option<&mut super::JointRefinementResumeStore>,
 ) -> Vec<JointRefinementRestartOutcome> {
     debug_assert_eq!(restart_seeds.len().max(1), budget_schedule.restart_count);
 
@@ -91,6 +92,7 @@ pub(crate) fn optimize_restart_seeds(
             solver_settings,
             budget_schedule,
             progress_sender,
+            completed_restart_store,
         );
     }
 
@@ -100,6 +102,7 @@ pub(crate) fn optimize_restart_seeds(
         solver_settings,
         budget_schedule,
         progress_sender,
+        completed_restart_store,
     )
 }
 
@@ -109,6 +112,7 @@ fn optimize_restart_seeds_sequential(
     solver_settings: &CalibrationOptimizerSettings,
     budget_schedule: JointRefinementBudgetSchedule,
     progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
+    mut completed_restart_store: Option<&mut super::JointRefinementResumeStore>,
 ) -> Vec<JointRefinementRestartOutcome> {
     let total_units = restart_seeds.len();
 
@@ -162,6 +166,10 @@ fn optimize_restart_seeds_sequential(
                 .min(100),
         );
 
+        if let Some(resume_store) = completed_restart_store.as_deref_mut() {
+            resume_store.record_restart_outcome(&restart_outcome);
+        }
+
         ordered_outcomes.push(restart_outcome);
     }
 
@@ -174,6 +182,7 @@ fn optimize_restart_seeds_parallel(
     solver_settings: &CalibrationOptimizerSettings,
     budget_schedule: JointRefinementBudgetSchedule,
     progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
+    mut completed_restart_store: Option<&mut super::JointRefinementResumeStore>,
 ) -> Vec<JointRefinementRestartOutcome> {
     let total_units = restart_seeds.len();
 
@@ -248,6 +257,9 @@ fn optimize_restart_seeds_parallel(
                         .unwrap_or(0)
                         .min(100),
                 );
+                if let Some(resume_store) = completed_restart_store.as_deref_mut() {
+                    resume_store.record_restart_outcome(&restart_outcome);
+                }
                 ordered_outcomes[restart_position] = Some(restart_outcome);
             }
 
@@ -387,16 +399,16 @@ fn optimize_single_restart(
         solver_settings,
     );
     if local_evaluation.invalid_reason.is_some() {
-        restart_progress.emit_finished();
-        return JointRefinementRestartOutcome {
-            restart_id: restart_id.to_string(),
-            parameter_vector: current_vector,
-            final_evaluation: local_evaluation.clone(),
-            local_evaluation,
-            local_evaluation_count: evaluation_count,
-            stop_reason,
-        };
-    }
+            restart_progress.emit_finished();
+            return JointRefinementRestartOutcome {
+                restart_id: restart_id.to_string(),
+                parameter_vector: current_vector,
+                final_evaluation: local_evaluation.clone(),
+                local_evaluation,
+                local_evaluation_count: evaluation_count,
+                stop_reason: stop_reason.to_string(),
+            };
+        }
 
     if joint_refinement_has_fatal_execution_failure(context) {
         restart_progress.emit_finished();
@@ -406,7 +418,7 @@ fn optimize_single_restart(
             final_evaluation: local_evaluation.clone(),
             local_evaluation,
             local_evaluation_count: evaluation_count,
-            stop_reason: "fatal_execution_failure",
+            stop_reason: "fatal_execution_failure".to_string(),
         };
     }
 
@@ -425,7 +437,7 @@ fn optimize_single_restart(
         local_evaluation,
         final_evaluation,
         local_evaluation_count: evaluation_count,
-        stop_reason,
+        stop_reason: stop_reason.to_string(),
     }
 }
 
@@ -542,7 +554,7 @@ fn build_short_circuited_restart_outcome(
         final_evaluation: local_evaluation.clone(),
         local_evaluation,
         local_evaluation_count: evaluation_count,
-        stop_reason,
+        stop_reason: stop_reason.to_string(),
     }
 }
 

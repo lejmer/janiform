@@ -86,7 +86,7 @@ pub(super) fn build_reference_affine_transform_solver_settings()
     .with_telemetry_mode(ExponentialAffineTransformTelemetryMode::Disabled)
 }
 
-pub(super) fn build_uniform_runtime_interval_schedule(
+pub(crate) fn build_uniform_runtime_interval_schedule(
     interval_count: usize,
     interval_delta: f64,
 ) -> PricingIntervalSchedule {
@@ -135,7 +135,7 @@ pub(super) fn disabled_boundary_input(
     endogenous_boundary_input(interval_delta, hawkes_boundary_state)
 }
 
-pub(super) fn valid_model_parameters() -> VanillaOptionPricingModelParameters {
+pub(crate) fn valid_model_parameters() -> VanillaOptionPricingModelParameters {
     VanillaOptionPricingModelParameters::try_new(
         HawkesKernelParameters::try_new(
             0.8,

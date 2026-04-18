@@ -942,6 +942,33 @@ class VanillaOptionPricingRequest(ContractModel):
 
 
 @dataclass(frozen=True, slots=True)
+class AutoActivityCompressedPricingIntervalSchedulePolicy(ContractModel):
+    policy: str = "auto_activity_compressed"
+
+    def __post_init__(self) -> None:
+        if self.policy != "auto_activity_compressed":
+            raise _pricing_error("policy", "must equal 'auto_activity_compressed'")
+
+    @staticmethod
+    def from_mapping(
+        raw_payload: dict[str, Any] | Any,
+        *,
+        field_path: str,
+    ) -> AutoActivityCompressedPricingIntervalSchedulePolicy:
+        if not isinstance(raw_payload, dict):
+            raise _pricing_error(field_path, "must be an object")
+
+        return AutoActivityCompressedPricingIntervalSchedulePolicy(
+            policy=require_string(
+                raw_payload,
+                "policy",
+                f"{field_path}.policy",
+                PRICING_ERROR_FACTORY,
+            )
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class AutoExactSparsePricingIntervalSchedulePolicy(ContractModel):
     policy: str = "auto_exact_sparse"
 
@@ -1044,13 +1071,14 @@ class ExplicitIntervalEndTimestampsUtcPricingIntervalSchedulePolicy(ContractMode
 
 
 type PricingIntervalSchedulePolicy = (
-    AutoExactSparsePricingIntervalSchedulePolicy
+    AutoActivityCompressedPricingIntervalSchedulePolicy
+    | AutoExactSparsePricingIntervalSchedulePolicy
     | ExplicitIntervalEndTimestampsUtcPricingIntervalSchedulePolicy
 )
 
 
 def default_pricing_interval_schedule_policy() -> PricingIntervalSchedulePolicy:
-    return AutoExactSparsePricingIntervalSchedulePolicy()
+    return AutoActivityCompressedPricingIntervalSchedulePolicy()
 
 
 def pricing_interval_schedule_policy_from_mapping(
@@ -1069,6 +1097,11 @@ def pricing_interval_schedule_policy_from_mapping(
     )
 
     match policy:
+        case "auto_activity_compressed":
+            return AutoActivityCompressedPricingIntervalSchedulePolicy.from_mapping(
+                raw_payload,
+                field_path=field_path,
+            )
         case "auto_exact_sparse":
             return AutoExactSparsePricingIntervalSchedulePolicy.from_mapping(
                 raw_payload,
@@ -1082,7 +1115,10 @@ def pricing_interval_schedule_policy_from_mapping(
         case _:
             raise _pricing_error(
                 f"{field_path}.policy",
-                "must be one of: auto_exact_sparse, explicit_interval_end_timestamps_utc",
+                (
+                    "must be one of: auto_activity_compressed, auto_exact_sparse, "
+                    "explicit_interval_end_timestamps_utc"
+                ),
             )
 
 
@@ -2115,6 +2151,7 @@ from .surface.contracts import (
 
 
 __all__ = [
+    "AutoActivityCompressedPricingIntervalSchedulePolicy",
     "AutoExactSparsePricingIntervalSchedulePolicy",
     "AnchoredLocalTiltAdmissibilityStatus",
     "AnchoredLocalTiltBoundaryStateSummary",

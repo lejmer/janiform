@@ -72,6 +72,37 @@ def run_staged_calibration_with_prepared_handle_and_events(
     return _validate_native_staged_response(raw_response_payload)
 
 
+def _run_staged_calibration_with_prepared_handle_resume_and_events(
+    prepared_handle: PreparedCalibrationExecutionHandleProtocol,
+    *,
+    calendar_registry: CalendarRegistry,
+    resume_settings: Any,
+    event_callback: Optional[Callable[[dict[str, Any]], None]],
+) -> tuple[StagedCalibrationResponse, dict[str, Any]]:
+    if not isinstance(calendar_registry, CalendarRegistry):
+        raise calibration_error("calendar_registry", "must be a CalendarRegistry")
+
+    native = _native_module_for_staged_runtime()
+    try:
+        if event_callback is None:
+            raw_response_payload = native.run_prepared_staged_calibration_with_resume(
+                prepared_handle,
+                calendar_registry._native_registry,
+                resume_settings.to_payload(),
+            )
+        else:
+            raw_response_payload = native.run_prepared_staged_calibration_with_resume_and_events(
+                prepared_handle,
+                calendar_registry._native_registry,
+                resume_settings.to_payload(),
+                event_callback,
+            )
+    except Exception as e:
+        _raise_staged_execution_error(native, e)
+
+    return _validate_native_staged_response(raw_response_payload)
+
+
 def _run_staged_calibration_with_optional_events(
     execution_input: StagedCalibrationExecutionInput,
     *,

@@ -59,6 +59,7 @@ from janiform.mean_reversion import (
     MeanReversionAnchorModel,
     MeanReversionFittedParameters,
 )
+from janiform.pricing import AutoActivityCompressedPricingIntervalSchedulePolicy
 from janiform.seasonality import IntradaySmoothingKernel, SessionFilter
 
 
@@ -97,6 +98,15 @@ def test_market_data_calibration_request_accepts_dynamics_search_restart_count()
     validated_request = validate_market_data_calibration_request(request_payload)
 
     assert validated_request.dynamics_search_restart_count == 21
+
+
+def test_market_data_calibration_request_defaults_to_activity_compressed_schedule_policy() -> None:
+    request_payload = _valid_market_data_request_payload()
+    request_payload.pop("pricing_interval_schedule_policy", None)
+
+    validated_request = validate_market_data_calibration_request(request_payload)
+
+    assert validated_request.pricing_interval_schedule_policy == AutoActivityCompressedPricingIntervalSchedulePolicy()
 
 
 def test_market_data_calibration_request_defaults_audit_option_pricing_to_false() -> None:

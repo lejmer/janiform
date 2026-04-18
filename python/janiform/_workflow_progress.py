@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
 from threading import Event, Lock, Thread
-from time import monotonic, sleep
+from time import monotonic
 from typing import Final, Optional, TextIO, override
 
 
@@ -115,6 +115,8 @@ class SpinnerProgress(AbstractProgress):
         self._last_rendered_width: int = 0
         self._last_rendered_line_count: int = 0
         self._stop_event = Event()
+        self._render_requested = Event()
+        self._pending_final_lines: list[str] = []
         self._render_thread: Optional[Thread] = None
         self._total_started_at: float = monotonic()
 
@@ -151,7 +153,7 @@ class SpinnerProgress(AbstractProgress):
             detail_changed = next_detail != self._detail
 
             if detail_changed:
-                self._finalize_current_stage_locked(status="done")
+                self._queue_current_stage_finalization_locked(status="done")
                 self._detail = next_detail
                 self._subdetail = subdetail
                 self._completed_units = completed_units
@@ -159,7 +161,7 @@ class SpinnerProgress(AbstractProgress):
                 self._progress_fraction = progress_fraction
                 self._current_step_index += 1
                 self._stage_started_at = monotonic()
-                self._render_active_stage_locked(frame=_SPINNER_FRAMES[0])
+                self._request_render_locked(frame=_SPINNER_FRAMES[0])
                 return
 
             if subdetail is not None:
@@ -179,32 +181,33 @@ class SpinnerProgress(AbstractProgress):
                 self._total_units = total_units
 
             if self._detail is not None and self._stage_started_at is not None:
-                self._render_active_stage_locked(frame=_SPINNER_FRAMES[0])
+                self._request_render_locked(frame=_SPINNER_FRAMES[0])
 
     def _render_loop(self) -> None:
         frame_index = 0
         while not self._stop_event.is_set():
+            self._render_requested.wait(timeout=0.1)
+            self._render_requested.clear()
             with self._lock:
-                if self._detail is not None and self._stage_started_at is not None:
-                    self._render_active_stage_locked(
-                        frame=_SPINNER_FRAMES[frame_index % len(_SPINNER_FRAMES)]
-                    )
+                self._drain_pending_output_locked(
+                    frame=_SPINNER_FRAMES[frame_index % len(_SPINNER_FRAMES)]
+                )
 
             frame_index += 1
-
-            sleep(0.1)
 
     def __exit__(self, exc_type, exc, exc_tb) -> None:
         if not self._enabled:
             return None
 
         self._stop_event.set()
+        self._render_requested.set()
         if self._render_thread is not None:
             self._render_thread.join(timeout=1.0)
 
         total_elapsed = _format_elapsed_seconds(monotonic() - self._total_started_at)
 
         with self._lock:
+            self._flush_pending_final_lines_locked()
             self._finalize_current_stage_locked(
                 status="done" if exc_type is None else "failed"
             )
@@ -235,6 +238,24 @@ class SpinnerProgress(AbstractProgress):
         self._progress_fraction = None
         self._stage_started_at = None
 
+    def _queue_current_stage_finalization_locked(self, *, status: str) -> None:
+        if self._detail is None or self._stage_started_at is None:
+            return
+
+        self._pending_final_lines.append(
+            self._build_stage_line(
+                indicator=_COMPLETED_STAGE_MARKER if status == "done" else status,
+                elapsed_seconds=monotonic() - self._stage_started_at,
+                detail=self._detail,
+            )
+        )
+        self._detail = None
+        self._subdetail = None
+        self._completed_units = None
+        self._total_units = None
+        self._progress_fraction = None
+        self._stage_started_at = None
+
     def _render_active_stage_locked(self, *, frame: str) -> None:
         if self._detail is None or self._stage_started_at is None:
             return
@@ -246,6 +267,24 @@ class SpinnerProgress(AbstractProgress):
         )
 
         self._write_transient_lines_locked(lines)
+
+    def _flush_pending_final_lines_locked(self) -> None:
+        while self._pending_final_lines:
+            self._write_final_line_locked(self._pending_final_lines.pop(0))
+
+    def _drain_pending_output_locked(self, *, frame: str) -> None:
+        self._flush_pending_final_lines_locked()
+        if self._detail is not None and self._stage_started_at is not None:
+            self._render_active_stage_locked(frame=frame)
+
+    def _request_render_locked(self, *, frame: str) -> None:
+        self._render_requested.set()
+        if not self._background_render_available():
+            self._drain_pending_output_locked(frame=frame)
+
+    def _background_render_available(self) -> bool:
+        is_alive = getattr(self._render_thread, "is_alive", None)
+        return callable(is_alive) and bool(is_alive())
 
     def _build_stage_lines(
         self,

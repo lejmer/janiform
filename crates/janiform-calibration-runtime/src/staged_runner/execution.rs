@@ -470,6 +470,7 @@ pub fn run_staged_calibration_with_checkpointing_and_observer(
         let stage_report = match run_stage_for_staged_execution(
             run_spec,
             calendar_registry,
+            disk_checkpoint_directory,
             stage,
             stage_position + 1,
             execution_stage_order.len(),

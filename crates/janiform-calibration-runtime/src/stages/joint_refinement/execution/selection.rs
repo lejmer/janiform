@@ -52,7 +52,6 @@ pub(crate) struct JointRefinementLazyCoarseConsistencySelection<'a> {
     pub(crate) selected_restart_outcomes: Vec<&'a JointRefinementRestartOutcome>,
     pub(crate) coarse_consistency_artifacts_by_restart_id:
         BTreeMap<String, JointRefinementCoarseConsistencyArtifacts>,
-    pub(crate) used_unadmissible_fallback: bool,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -143,7 +142,6 @@ pub(crate) fn select_restart_outcomes_with_lazy_coarse_consistency<'a>(
                 selected_restart_count,
             ),
             coarse_consistency_artifacts_by_restart_id: BTreeMap::new(),
-            used_unadmissible_fallback: false,
         };
     };
 
@@ -262,20 +260,17 @@ pub(crate) fn select_restart_outcomes_with_lazy_coarse_consistency<'a>(
                         selected_restart_outcomes,
                         coarse_consistency_artifacts_by_restart_id: coarse_consistency_cache
                             .artifacts_by_restart_id,
-                        used_unadmissible_fallback: false,
                     };
                 }
             }
         }
     }
 
-    let mut used_unadmissible_fallback = false;
     if selected_restart_outcomes.is_empty() {
         selected_restart_outcomes = select_restart_outcomes_without_admissibility(
             representative_restart_outcomes.as_slice(),
-            1,
+            selected_restart_count,
         );
-        used_unadmissible_fallback = true;
     }
 
     for selected_restart_outcome in &selected_restart_outcomes {
@@ -292,7 +287,6 @@ pub(crate) fn select_restart_outcomes_with_lazy_coarse_consistency<'a>(
         selected_restart_outcomes,
         coarse_consistency_artifacts_by_restart_id: coarse_consistency_cache
             .artifacts_by_restart_id,
-        used_unadmissible_fallback,
     }
 }
 
@@ -511,7 +505,7 @@ pub(crate) fn build_joint_candidate_frontier_diagnostics(
                     .unwrap_or(&(restart_outcomes.len() + 1)),
                 scalar_tie_break: outcome.final_evaluation.breakdown.weighted_objective,
                 local_evaluation_count: outcome.local_evaluation_count,
-                stop_reason: outcome.stop_reason.to_string(),
+                stop_reason: outcome.stop_reason.clone(),
                 invalid_reason,
                 objective_terms: outcome.final_evaluation.objective_terms.clone(),
                 objective_breakdown: outcome.final_evaluation.breakdown.clone(),

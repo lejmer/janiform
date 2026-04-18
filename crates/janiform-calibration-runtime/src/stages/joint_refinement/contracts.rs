@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use janiform_calibration_artifacts::JointRefinementStageOptionCalibrationDiagnostics;
 use janiform_engine_pricing::{PricingIntervalSchedulePolicy, VanillaOptionPayoffType};
@@ -291,7 +291,7 @@ pub struct JointRefinementStageCandidateDiagnostic {
     pub canonical_coordinates: Vec<(String, f64)>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct JointRefinementStageObjectiveTermDiagnostic {
     pub metric_id: String,
     pub target_id: String,
@@ -302,7 +302,7 @@ pub struct JointRefinementStageObjectiveTermDiagnostic {
     pub normalized_error: f64,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct JointRefinementStageSimulationSummary {
     pub simulation_seed: u64,
     pub horizon_label: String,
@@ -311,7 +311,7 @@ pub struct JointRefinementStageSimulationSummary {
     pub mean_absolute_return: f64,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct JointRefinementStageCoarseTickConsistencyMetric {
     pub simulation_seed: u64,
     pub horizon_label: String,

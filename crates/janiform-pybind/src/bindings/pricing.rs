@@ -9,6 +9,7 @@ use janiform::pricing::{
     VanillaOptionPricingExecutionInput, VanillaOptionPricingModelParameters,
     VanillaOptionPricingOptionalOutputSelection, VanillaOptionPricingRequest,
     VanillaOptionSurfacePricingExecutionInput, VanillaOptionSurfacePricingRequest,
+    derive_activity_compressed_pricing_interval_schedule as derive_activity_compressed_pricing_interval_schedule_core,
     materialize_schedule_interval_factors,
     resolve_high_level_pricing_maturity_inputs as resolve_high_level_pricing_maturity_inputs_core,
     run_vanilla_option_grid_batch_pricing as run_vanilla_option_grid_batch_pricing_core,
@@ -80,6 +81,14 @@ struct PythonHourlyFactorContractPayload {
     s_h: Vec<f64>,
     known_component_nu_h: Vec<f64>,
     surprise_component_nu_h: Vec<f64>,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PythonActivityCompressedPricingScheduleRequestPayload {
+    valuation_time_utc_nanos: i64,
+    expiry_timestamps_utc_nanos: Vec<i64>,
+    hourly_factor_contract: PythonHourlyFactorContractPayload,
 }
 
 fn hourly_factor_contract_output_from_payload(
@@ -163,6 +172,39 @@ fn resolve_high_level_pricing_maturity_inputs(
     })?;
 
     json_value_to_py_object(py, &serialized_resolution)
+}
+
+#[pyfunction]
+fn derive_activity_compressed_pricing_interval_schedule(
+    py: Python<'_>,
+    request: &Bound<'_, PyAny>,
+) -> PyResult<Py<PyAny>> {
+    let request: PythonActivityCompressedPricingScheduleRequestPayload =
+        serde_json::from_value(py_any_to_json_value(request)?).map_err(|source| {
+            PricingExecutionError::new_err(format!(
+                "failed to deserialize activity-compressed pricing interval schedule request: {source}"
+            ))
+        })?;
+
+    let hourly_factor_contract =
+        hourly_factor_contract_output_from_payload(request.hourly_factor_contract);
+    let derived_schedule = py
+        .allow_threads(|| {
+            derive_activity_compressed_pricing_interval_schedule_core(
+                request.valuation_time_utc_nanos,
+                request.expiry_timestamps_utc_nanos.as_slice(),
+                &hourly_factor_contract,
+            )
+        })
+        .map_err(|source| PricingExecutionError::new_err(source.to_string()))?;
+
+    let serialized_schedule = serde_json::to_value(&derived_schedule).map_err(|source| {
+        PricingExecutionError::new_err(format!(
+            "failed to serialize activity-compressed pricing interval schedule output: {source}"
+        ))
+    })?;
+
+    json_value_to_py_object(py, &serialized_schedule)
 }
 
 #[pyfunction]
@@ -574,6 +616,10 @@ fn should_emit_pricing_progress_event(
 pub(super) fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(
         resolve_high_level_pricing_maturity_inputs,
+        module
+    )?)?;
+    module.add_function(wrap_pyfunction!(
+        derive_activity_compressed_pricing_interval_schedule,
         module
     )?)?;
     module.add_function(wrap_pyfunction!(run_vanilla_option_pricing, module)?)?;

@@ -13,6 +13,7 @@ use janiform_market_time::hourly_factors::{
     HourlySeasonalityFactorSource,
 };
 use janiform_model_kernels::hawkes::HawkesExcitationState;
+use serde::{Deserialize, Serialize};
 
 use crate::adapters::load_hourly_factor_contract_for_calibration;
 use crate::stages::joint_metrics::{
@@ -35,7 +36,7 @@ use super::{
     JointRefinementContext, JointRefinementSeedSummary, build_exchange_calendar_registry_artifact,
 };
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) struct JointRefinementCoarseConsistencyArtifacts {
     pub(crate) summary: JointRefinementCoarseConsistencySummary,
     pub(crate) metrics: Vec<JointRefinementStageCoarseTickConsistencyMetric>,

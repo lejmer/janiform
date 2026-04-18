@@ -76,6 +76,7 @@ pub use fourier::{
     FourierInversionPricingError, FourierInversionPricingResult,
 };
 pub use grids::{
+    SpectralThetaWarmStartState,
     VanillaOptionGridBatchPricingExecutionInput, VanillaOptionGridBatchPricingExecutionInputError,
     VanillaOptionGridBatchPricingRequest, VanillaOptionGridBatchPricingRequestError,
     VanillaOptionGridBatchPricingRunError, VanillaOptionGridBatchPricingRunResult,
@@ -90,7 +91,8 @@ pub use implied_volatility::VanillaOptionImpliedVolatilityInversionStatus;
 pub use interval_schedule::{
     DerivedPricingIntervalSchedule, PricingIntervalSchedule, PricingIntervalScheduleError,
     PricingIntervalScheduleMetadata, PricingIntervalSchedulePolicy,
-    derive_pricing_interval_schedule, materialize_schedule_interval_factors,
+    derive_activity_compressed_pricing_interval_schedule, derive_pricing_interval_schedule,
+    materialize_schedule_interval_factors, materialize_schedule_interval_factors_with_cpu_count,
 };
 pub use maturity_inputs::{
     HighLevelPricingMaturityResolution, HighLevelPricingMaturityResolutionError,
@@ -115,6 +117,10 @@ pub mod internal {
         FourierInversionNumericSettings, FourierInversionNumericSettingsError,
         FourierInversionPricingError, FourierInversionPricingResult,
         FourierInversionQuadratureRule, price_vanilla_option_via_fourier_inversion,
+    };
+    pub use super::grids::{
+        SpectralThetaWarmStartState,
+        run_vanilla_option_grid_batch_pricing_with_observer_and_theta_warm_start_state,
     };
 }
 

@@ -36,6 +36,7 @@ from ...contracts.base import (
     serialize_deterministic_json,
 )
 from ...pricing import (
+    AutoActivityCompressedPricingIntervalSchedulePolicy,
     AutoExactSparsePricingIntervalSchedulePolicy,
     ExplicitIntervalEndTimestampsUtcPricingIntervalSchedulePolicy,
     PricingIntervalSchedulePolicy,
@@ -118,6 +119,7 @@ class MarketDataCalibrationRequest(ContractModel):
         if not isinstance(
             self.pricing_interval_schedule_policy,
             (
+                AutoActivityCompressedPricingIntervalSchedulePolicy,
                 AutoExactSparsePricingIntervalSchedulePolicy,
                 ExplicitIntervalEndTimestampsUtcPricingIntervalSchedulePolicy,
             ),

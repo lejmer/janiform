@@ -30,7 +30,11 @@ from ...pricing.surface import (
     JaniformVanillaOptionSurface,
     JaniformVanillaOptionSurfacePricingResult,
 )
-from ...pricing.internal.maturity import resolve_pricing_maturity_axis, resolve_single_pricing_maturity_input
+from ...pricing.internal.maturity import (
+    finalize_runtime_pricing_schedule,
+    resolve_pricing_maturity_axis,
+    resolve_single_pricing_maturity_input,
+)
 from ...state import CurrentStateEstimationRequest
 from .support import (
     build_model_pricing_hourly_factor_contract,
@@ -232,6 +236,13 @@ def prepare_model_pricing_execution_input(
         observed_data=observed_data,
         boundary_state=boundary_state,
     )
+    finalized_maturity_inputs = finalize_runtime_pricing_schedule(
+        resolved_maturity_inputs=resolved_maturity_inputs,
+        hourly_factor_contract=runtime_input.hourly_factor_contract,
+        pricing_interval_schedule_policy=pricing_interval_schedule_policy,
+        field_path="maturity_input",
+    )
+    maturity_interval = finalized_maturity_inputs.maturity_intervals[0]
 
     try:
         normalized_payoff_type = (
@@ -254,13 +265,13 @@ def prepare_model_pricing_execution_input(
                 interval_index=0,
                 hawkes_boundary_state=runtime_input.effective_boundary_state,
                 mean_reversion_fitted_parameters=runtime_input.mean_reversion_fitted_parameters,
-                interval_delta=resolved_maturity_inputs.pricing_interval_schedule.first_interval_delta_hours,
+                interval_delta=finalized_maturity_inputs.pricing_interval_schedule.first_interval_delta_hours,
                 observed_boundary_state=runtime_input.effective_observed_boundary_state,
             ),
             model_parameters=runtime_input.model_parameters,
-            interval_delta=resolved_maturity_inputs.pricing_interval_schedule.first_interval_delta_hours,
+            interval_delta=finalized_maturity_inputs.pricing_interval_schedule.first_interval_delta_hours,
         ),
-        runtime_interval_schedule=resolved_maturity_inputs.pricing_interval_schedule,
+        runtime_interval_schedule=finalized_maturity_inputs.pricing_interval_schedule,
         hourly_factor_contract=runtime_input.hourly_factor_contract,
         optional_output_selection=VanillaOptionPricingOptionalOutputSelection(
             include_transform_diagnostics=include_transform_diagnostics,
@@ -400,6 +411,12 @@ def prepare_model_grid_batch_pricing_native_input(
         observed_data=observed_data,
         boundary_state=boundary_state,
     )
+    finalized_runtime_schedule_resolution = finalize_runtime_pricing_schedule(
+        resolved_maturity_inputs=runtime_schedule_resolution,
+        hourly_factor_contract=runtime_input.hourly_factor_contract,
+        pricing_interval_schedule_policy=pricing_interval_schedule_policy,
+        field_path="batch.runtime_interval_schedule",
+    )
 
     return {
         "request": {
@@ -419,12 +436,12 @@ def prepare_model_grid_batch_pricing_native_input(
             interval_index=0,
             hawkes_boundary_state=runtime_input.effective_boundary_state,
             mean_reversion_fitted_parameters=runtime_input.mean_reversion_fitted_parameters,
-            interval_delta=runtime_schedule_resolution.pricing_interval_schedule.first_interval_delta_hours,
+            interval_delta=finalized_runtime_schedule_resolution.pricing_interval_schedule.first_interval_delta_hours,
             observed_boundary_state=runtime_input.effective_observed_boundary_state,
         ).to_payload(),
         "model_parameters": runtime_input.model_parameters.to_payload(),
-        "runtime_interval_schedule": runtime_schedule_resolution.pricing_interval_schedule.to_payload(),
-        "interval_delta": runtime_schedule_resolution.pricing_interval_schedule.first_interval_delta_hours,
+        "runtime_interval_schedule": finalized_runtime_schedule_resolution.pricing_interval_schedule.to_payload(),
+        "interval_delta": finalized_runtime_schedule_resolution.pricing_interval_schedule.first_interval_delta_hours,
         "hourly_factor_contract": runtime_input.hourly_factor_contract.to_payload(),
         "optional_output_selection": VanillaOptionPricingOptionalOutputSelection(
             include_transform_diagnostics=include_transform_diagnostics,
@@ -464,13 +481,19 @@ def prepare_model_surface_pricing_native_input(
         observed_data=observed_data,
         boundary_state=boundary_state,
     )
+    finalized_surface_maturity_inputs = finalize_runtime_pricing_schedule(
+        resolved_maturity_inputs=resolved_surface_maturity_inputs,
+        hourly_factor_contract=runtime_input.hourly_factor_contract,
+        pricing_interval_schedule_policy=pricing_interval_schedule_policy,
+        field_path="surface",
+    )
 
     return {
         "request": {
             "market_inputs": {
                 "spot": surface.spot,
                 "strikes": list(surface.strikes),
-                "maturity_intervals": list(resolved_surface_maturity_inputs.maturity_intervals),
+                "maturity_intervals": list(finalized_surface_maturity_inputs.maturity_intervals),
                 "risk_free_rate": surface.risk_free_rate,
                 "dividend_yield": surface.dividend_yield,
             },
@@ -482,12 +505,12 @@ def prepare_model_surface_pricing_native_input(
             interval_index=0,
             hawkes_boundary_state=runtime_input.effective_boundary_state,
             mean_reversion_fitted_parameters=runtime_input.mean_reversion_fitted_parameters,
-            interval_delta=resolved_surface_maturity_inputs.pricing_interval_schedule.first_interval_delta_hours,
+            interval_delta=finalized_surface_maturity_inputs.pricing_interval_schedule.first_interval_delta_hours,
             observed_boundary_state=runtime_input.effective_observed_boundary_state,
         ).to_payload(),
         "model_parameters": runtime_input.model_parameters.to_payload(),
-        "runtime_interval_schedule": resolved_surface_maturity_inputs.pricing_interval_schedule.to_payload(),
-        "interval_delta": resolved_surface_maturity_inputs.pricing_interval_schedule.first_interval_delta_hours,
+        "runtime_interval_schedule": finalized_surface_maturity_inputs.pricing_interval_schedule.to_payload(),
+        "interval_delta": finalized_surface_maturity_inputs.pricing_interval_schedule.first_interval_delta_hours,
         "hourly_factor_contract": runtime_input.hourly_factor_contract.to_payload(),
         "optional_output_selection": VanillaOptionPricingOptionalOutputSelection(
             include_transform_diagnostics=include_transform_diagnostics,

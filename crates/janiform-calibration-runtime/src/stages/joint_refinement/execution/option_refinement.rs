@@ -2,16 +2,20 @@ use std::sync::Arc;
 use std::sync::mpsc::Sender;
 
 use janiform_calibration_artifacts::CalibrationOptimizerSettings;
+use janiform_engine_pricing::internal::SpectralThetaWarmStartState;
 
 use crate::stages::joint_refinement::contracts::{
     JointRefinementStageExecutionFailure, JointRefinementStageProgressPhase,
     JointRefinementStageProgressUpdate,
 };
 use crate::stages::joint_refinement::option_surface_tiering::JointRefinementOptionSurfaceTierKind;
-use crate::stages::optimization::{PowellOptimizerSettings, optimize_bounded_powell};
+use crate::stages::optimization::{
+    BoundedTrustRegionOptimizerSettings, optimize_bounded_trust_region_quadratic,
+};
 
 use super::super::setup::parameter_vector_to_fitted_parameters;
 use super::{
+    JointRefinementResumeStore,
     JointRefinementContext, JointRefinementOptionTierPricingArtifact,
     JointRefinementRestartOutcome, ordered_parameter_bits,
     resolve_option_surface_tier_pricing_artifact,
@@ -19,23 +23,34 @@ use super::{
 
 pub(crate) const JOINT_REFINEMENT_DEFAULT_OPTION_REFINEMENT_CANDIDATE_COUNT: usize = 5;
 
-#[derive(Debug, Clone)]
-struct OptionRefinedCandidate {
-    source_rank: usize,
-    search_tier_score: f64,
-    selection_tier_score: f64,
-    search_tier_pricing_artifact: Arc<JointRefinementOptionTierPricingArtifact>,
-    selection_tier_pricing_artifact: Arc<JointRefinementOptionTierPricingArtifact>,
-    restart_outcome: JointRefinementRestartOutcome,
+#[derive(Debug, Clone, Copy)]
+struct OptionRefinementProgressContext<'a> {
+    progress_sender: Option<&'a Sender<JointRefinementStageProgressUpdate>>,
+    phase: JointRefinementStageProgressPhase,
+    completed_units: usize,
+    total_units: usize,
+    current_restart_id: &'a str,
+    best_restart_id: Option<&'a str>,
+    best_weighted_objective: Option<f64>,
 }
 
 #[derive(Debug, Clone)]
-struct SearchTierCandidate {
-    source_rank: usize,
-    source_dynamics_parameter_bits: Vec<u64>,
-    search_tier_score: f64,
-    search_tier_pricing_artifact: Arc<JointRefinementOptionTierPricingArtifact>,
-    restart_outcome: JointRefinementRestartOutcome,
+pub(crate) struct OptionRefinedCandidate {
+    pub(crate) source_rank: usize,
+    pub(crate) search_tier_score: f64,
+    pub(crate) selection_tier_score: f64,
+    pub(crate) search_tier_pricing_artifact: Arc<JointRefinementOptionTierPricingArtifact>,
+    pub(crate) selection_tier_pricing_artifact: Arc<JointRefinementOptionTierPricingArtifact>,
+    pub(crate) restart_outcome: JointRefinementRestartOutcome,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct SearchTierCandidate {
+    pub(crate) source_rank: usize,
+    pub(crate) source_dynamics_parameter_bits: Vec<u64>,
+    pub(crate) search_tier_score: f64,
+    pub(crate) search_tier_pricing_artifact: Arc<JointRefinementOptionTierPricingArtifact>,
+    pub(crate) restart_outcome: JointRefinementRestartOutcome,
 }
 
 #[derive(Debug, Clone)]
@@ -59,6 +74,7 @@ pub(crate) fn run_option_refinement(
     solver_settings: &CalibrationOptimizerSettings,
     dynamics_candidates: &[JointRefinementRestartOutcome],
     progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
+    mut resume_store: Option<&mut JointRefinementResumeStore>,
 ) -> Result<JointRefinementOptionRefinementResult, JointRefinementStageExecutionFailure> {
     if context.option_pricing_context.is_none() {
         return Err(
@@ -83,6 +99,7 @@ pub(crate) fn run_option_refinement(
         solver_settings,
         dynamics_candidates,
         progress_sender,
+        resume_store.as_deref_mut(),
     );
     if search_candidates.is_empty() {
         return Err(
@@ -94,8 +111,12 @@ pub(crate) fn run_option_refinement(
         );
     }
 
-    let selection_candidates =
-        evaluate_selection_tier_candidates(context, search_candidates, progress_sender);
+    let selection_candidates = evaluate_selection_tier_candidates(
+        context,
+        search_candidates,
+        progress_sender,
+        resume_store.as_deref_mut(),
+    );
     let Some(best_candidate) = best_selection_tier_candidate(selection_candidates) else {
         return Err(
             JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
@@ -118,10 +139,12 @@ fn refine_search_tier_candidates(
     solver_settings: &CalibrationOptimizerSettings,
     dynamics_candidates: &[JointRefinementRestartOutcome],
     progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
+    mut resume_store: Option<&mut JointRefinementResumeStore>,
 ) -> Vec<SearchTierCandidate> {
     let total_units = dynamics_candidates.len();
     let mut refined_candidates = Vec::new();
     let mut best_search_tier_score: Option<f64> = None;
+    let mut best_search_tier_restart_id: Option<&str> = None;
 
     emit_option_refinement_progress(
         progress_sender,
@@ -131,17 +154,90 @@ fn refine_search_tier_candidates(
         None,
         None,
         None,
+        None,
+        None,
     );
 
     for (source_rank, dynamics_candidate) in dynamics_candidates.iter().enumerate() {
-        let refined_candidate =
-            refine_single_search_tier_candidate(context, solver_settings, dynamics_candidate).ok();
+        if let Some(resume_store) = resume_store.as_deref_mut() {
+            if let Some(mut resumed_candidate) =
+                resume_store.search_tier_candidate(dynamics_candidate.restart_id.as_str())
+            {
+                resumed_candidate.source_rank = source_rank;
+
+                let candidate_is_new_best = match best_search_tier_score {
+                    Some(current_best) => resumed_candidate.search_tier_score < current_best,
+                    None => true,
+                };
+                best_search_tier_score = Some(match best_search_tier_score {
+                    Some(current_best) => current_best.min(resumed_candidate.search_tier_score),
+                    None => resumed_candidate.search_tier_score,
+                });
+                if candidate_is_new_best {
+                    best_search_tier_restart_id = Some(dynamics_candidate.restart_id.as_str());
+                }
+
+                refined_candidates.push(resumed_candidate);
+                emit_option_refinement_progress(
+                    progress_sender,
+                    JointRefinementStageProgressPhase::OptionSearchTierRefinement,
+                    source_rank + 1,
+                    total_units,
+                    Some(dynamics_candidate.restart_id.as_str()),
+                    Some("resumed"),
+                    refined_candidates.last().map(|candidate| candidate.search_tier_score),
+                    best_search_tier_restart_id,
+                    best_search_tier_score,
+                );
+                continue;
+            }
+        }
+
+        emit_option_refinement_progress(
+            progress_sender,
+            JointRefinementStageProgressPhase::OptionSearchTierRefinement,
+            source_rank,
+            total_units,
+            Some(dynamics_candidate.restart_id.as_str()),
+            None,
+            None,
+            best_search_tier_restart_id,
+            best_search_tier_score,
+        );
+
+        let progress_context = OptionRefinementProgressContext {
+            progress_sender,
+            phase: JointRefinementStageProgressPhase::OptionSearchTierRefinement,
+            completed_units: source_rank,
+            total_units,
+            current_restart_id: dynamics_candidate.restart_id.as_str(),
+            best_restart_id: best_search_tier_restart_id,
+            best_weighted_objective: best_search_tier_score,
+        };
+
+        let refined_candidate = refine_single_search_tier_candidate(
+            context,
+            solver_settings,
+            dynamics_candidate,
+            Some(&progress_context),
+        )
+        .ok();
 
         if let Some(candidate) = refined_candidate {
+            let candidate_is_new_best = match best_search_tier_score {
+                Some(current_best) => candidate.search_tier_score < current_best,
+                None => true,
+            };
             best_search_tier_score = Some(match best_search_tier_score {
                 Some(current_best) => current_best.min(candidate.search_tier_score),
                 None => candidate.search_tier_score,
             });
+            if candidate_is_new_best {
+                best_search_tier_restart_id = Some(dynamics_candidate.restart_id.as_str());
+            }
+            if let Some(resume_store) = resume_store.as_deref_mut() {
+                resume_store.record_search_tier_candidate(&candidate);
+            }
             refined_candidates.push(SearchTierCandidate {
                 source_rank,
                 source_dynamics_parameter_bits: candidate.source_dynamics_parameter_bits,
@@ -162,7 +258,9 @@ fn refine_search_tier_candidates(
             source_rank + 1,
             total_units,
             Some(dynamics_candidate.restart_id.as_str()),
+            None,
             current_score,
+            best_search_tier_restart_id,
             best_search_tier_score,
         );
     }
@@ -174,10 +272,12 @@ fn refine_single_search_tier_candidate(
     context: &JointRefinementContext,
     solver_settings: &CalibrationOptimizerSettings,
     dynamics_candidate: &JointRefinementRestartOutcome,
+    progress_context: Option<&OptionRefinementProgressContext<'_>>,
 ) -> Result<SearchTierCandidate, String> {
     let refinement_context = pricing_block_refinement_context(context, dynamics_candidate);
     let source_dynamics_parameter_bits =
         ordered_parameter_bits(dynamics_candidate.parameter_vector.as_slice());
+    let mut theta_warm_start_state = SpectralThetaWarmStartState::new();
 
     let initial_candidate = scored_pricing_vector(
         &refinement_context,
@@ -185,6 +285,8 @@ fn refine_single_search_tier_candidate(
         dynamics_candidate.parameter_vector.as_slice(),
         source_dynamics_parameter_bits.as_slice(),
         JointRefinementOptionSurfaceTierKind::Search,
+        Some(&mut theta_warm_start_state),
+        progress_context,
     )?;
 
     let optimized_candidate = optimize_pricing_block(
@@ -192,6 +294,8 @@ fn refine_single_search_tier_candidate(
         solver_settings,
         dynamics_candidate,
         source_dynamics_parameter_bits.as_slice(),
+        &mut theta_warm_start_state,
+        progress_context,
     )
     .ok();
 
@@ -208,6 +312,8 @@ fn optimize_pricing_block(
     solver_settings: &CalibrationOptimizerSettings,
     dynamics_candidate: &JointRefinementRestartOutcome,
     source_dynamics_parameter_bits: &[u64],
+    theta_warm_start_state: &mut SpectralThetaWarmStartState,
+    progress_context: Option<&OptionRefinementProgressContext<'_>>,
 ) -> Result<SearchTierCandidate, String> {
     let block_indices = refinement_context
         .active_parameter_layout
@@ -220,6 +326,8 @@ fn optimize_pricing_block(
             dynamics_candidate.parameter_vector.as_slice(),
             source_dynamics_parameter_bits,
             JointRefinementOptionSurfaceTierKind::Search,
+            Some(theta_warm_start_state),
+            progress_context,
         );
     }
 
@@ -248,16 +356,18 @@ fn optimize_pricing_block(
             pricing_vector.as_slice(),
             source_dynamics_parameter_bits,
             JointRefinementOptionSurfaceTierKind::Search,
+            Some(theta_warm_start_state),
+            progress_context,
         )
         .ok()
         .map(|candidate| candidate.search_tier_score)
     };
 
-    let optimizer_result = optimize_bounded_powell(
+    let optimizer_result = optimize_bounded_trust_region_quadratic(
         initial_point.as_slice(),
         lower_bounds.as_slice(),
         upper_bounds.as_slice(),
-        option_pricing_block_powell_settings(solver_settings, block_indices.len()),
+        option_pricing_block_trust_region_settings(solver_settings, block_indices.len()),
         &mut evaluate_block,
     )
     .ok_or_else(|| "pricing block optimizer found no valid option-pricing step".to_string())?;
@@ -274,6 +384,8 @@ fn optimize_pricing_block(
         pricing_vector.as_slice(),
         source_dynamics_parameter_bits,
         JointRefinementOptionSurfaceTierKind::Search,
+        Some(theta_warm_start_state),
+        progress_context,
     )
 }
 
@@ -281,10 +393,12 @@ fn evaluate_selection_tier_candidates(
     context: &JointRefinementContext,
     search_candidates: Vec<SearchTierCandidate>,
     progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
+    mut resume_store: Option<&mut JointRefinementResumeStore>,
 ) -> Vec<OptionRefinedCandidate> {
     let total_units = search_candidates.len();
     let mut selection_candidates = Vec::new();
     let mut best_selection_tier_score: Option<f64> = None;
+    let mut best_selection_tier_restart_id: Option<String> = None;
 
     emit_option_refinement_progress(
         progress_sender,
@@ -294,10 +408,58 @@ fn evaluate_selection_tier_candidates(
         None,
         None,
         None,
+        None,
+        None,
     );
 
     for (candidate_position, search_candidate) in search_candidates.into_iter().enumerate() {
         let restart_id = search_candidate.restart_outcome.restart_id.clone();
+        if let Some(resume_store) = resume_store.as_deref_mut() {
+            if let Some(mut resumed_candidate) =
+                resume_store.selection_tier_candidate(restart_id.as_str())
+            {
+                resumed_candidate.source_rank = search_candidate.source_rank;
+                let selection_candidate_is_new_best = match best_selection_tier_score {
+                    Some(current_best) => resumed_candidate.selection_tier_score < current_best,
+                    None => true,
+                };
+                best_selection_tier_score = Some(match best_selection_tier_score {
+                    Some(current_best) => current_best.min(resumed_candidate.selection_tier_score),
+                    None => resumed_candidate.selection_tier_score,
+                });
+                if selection_candidate_is_new_best {
+                    best_selection_tier_restart_id = Some(restart_id.clone());
+                }
+                selection_candidates.push(resumed_candidate);
+                emit_option_refinement_progress(
+                    progress_sender,
+                    JointRefinementStageProgressPhase::OptionSelectionTierEvaluation,
+                    candidate_position + 1,
+                    total_units,
+                    Some(restart_id.as_str()),
+                    Some("resumed"),
+                    selection_candidates
+                        .last()
+                        .map(|candidate| candidate.selection_tier_score),
+                    best_selection_tier_restart_id.as_deref(),
+                    best_selection_tier_score,
+                );
+                continue;
+            }
+        }
+
+        emit_option_refinement_progress(
+            progress_sender,
+            JointRefinementStageProgressPhase::OptionSelectionTierEvaluation,
+            candidate_position,
+            total_units,
+            Some(restart_id.as_str()),
+            None,
+            None,
+            best_selection_tier_restart_id.as_deref(),
+            best_selection_tier_score,
+        );
+
         let pricing_parameter_bits = pricing_block_parameter_bits(
             search_candidate.restart_outcome.parameter_vector.as_slice(),
             context,
@@ -313,9 +475,13 @@ fn evaluate_selection_tier_candidates(
             search_candidate.source_dynamics_parameter_bits.as_slice(),
             pricing_parameter_bits.as_slice(),
             None,
-            None,
-            None,
-            None,
+            progress_sender,
+            Some(JointRefinementStageProgressPhase::OptionSelectionTierEvaluation),
+            Some(candidate_position),
+            Some(total_units),
+            Some(restart_id.as_str()),
+            best_selection_tier_restart_id.as_deref(),
+            best_selection_tier_score,
         )
         .ok();
         let selection_score = selection_artifact
@@ -326,18 +492,29 @@ fn evaluate_selection_tier_candidates(
             let selection_tier_score = selection_tier_pricing_artifact
                 .score
                 .root_mean_square_spread_normalized_residual;
+            let selection_candidate_is_new_best = match best_selection_tier_score {
+                Some(current_best) => selection_tier_score < current_best,
+                None => true,
+            };
             best_selection_tier_score = Some(match best_selection_tier_score {
                 Some(current_best) => current_best.min(selection_tier_score),
                 None => selection_tier_score,
             });
-            selection_candidates.push(OptionRefinedCandidate {
+            if selection_candidate_is_new_best {
+                best_selection_tier_restart_id = Some(restart_id.clone());
+            }
+            let refined_candidate = OptionRefinedCandidate {
                 source_rank: search_candidate.source_rank,
                 search_tier_score: search_candidate.search_tier_score,
                 selection_tier_score,
                 search_tier_pricing_artifact: search_candidate.search_tier_pricing_artifact,
                 selection_tier_pricing_artifact,
                 restart_outcome: search_candidate.restart_outcome,
-            });
+            };
+            if let Some(resume_store) = resume_store.as_deref_mut() {
+                resume_store.record_selection_tier_candidate(&refined_candidate);
+            }
+            selection_candidates.push(refined_candidate);
         }
 
         emit_option_refinement_progress(
@@ -346,7 +523,9 @@ fn evaluate_selection_tier_candidates(
             candidate_position + 1,
             total_units,
             Some(restart_id.as_str()),
+            None,
             selection_score,
+            best_selection_tier_restart_id.as_deref(),
             best_selection_tier_score,
         );
     }
@@ -360,6 +539,8 @@ fn scored_pricing_vector(
     pricing_vector: &[f64],
     source_dynamics_parameter_bits: &[u64],
     tier_kind: JointRefinementOptionSurfaceTierKind,
+    theta_warm_start_state: Option<&mut SpectralThetaWarmStartState>,
+    progress_context: Option<&OptionRefinementProgressContext<'_>>,
 ) -> Result<SearchTierCandidate, String> {
     let fitted_parameters =
         parameter_vector_to_fitted_parameters(pricing_vector, refinement_context)
@@ -371,10 +552,14 @@ fn scored_pricing_vector(
         tier_kind,
         source_dynamics_parameter_bits,
         pricing_parameter_bits.as_slice(),
-        None,
-        None,
-        None,
-        None,
+        theta_warm_start_state,
+        progress_context.and_then(|context| context.progress_sender),
+        progress_context.map(|context| context.phase),
+        progress_context.map(|context| context.completed_units),
+        progress_context.map(|context| context.total_units),
+        progress_context.map(|context| context.current_restart_id),
+        progress_context.and_then(|context| context.best_restart_id),
+        progress_context.and_then(|context| context.best_weighted_objective),
     )?;
     let search_tier_score = pricing_artifact
         .score
@@ -453,22 +638,21 @@ fn restart_outcome_with_pricing_block(
         local_evaluation,
         final_evaluation,
         local_evaluation_count: dynamics_candidate.local_evaluation_count,
-        stop_reason: "option_pricing_block_refined",
+        stop_reason: "option_pricing_block_refined".to_string(),
     }
 }
 
-fn option_pricing_block_powell_settings(
+fn option_pricing_block_trust_region_settings(
     solver_settings: &CalibrationOptimizerSettings,
     active_nig_block_dimension: usize,
-) -> PowellOptimizerSettings {
-    let line_search_evaluation_cap = active_nig_block_dimension + 1;
-    PowellOptimizerSettings {
+) -> BoundedTrustRegionOptimizerSettings {
+    BoundedTrustRegionOptimizerSettings {
         absolute_tolerance: solver_settings.absolute_tolerance,
         relative_tolerance: solver_settings.relative_tolerance,
-        min_step_norm: solver_settings.absolute_tolerance,
-        max_cycle_count: 1,
-        line_search_evaluation_cap,
-        evaluation_budget: active_nig_block_dimension * line_search_evaluation_cap,
+        minimum_trust_region_radius: solver_settings.absolute_tolerance,
+        initial_trust_region_radius_fraction: 0.25,
+        interpolation_point_target: active_nig_block_dimension.saturating_mul(2).saturating_add(1),
+        evaluation_budget: active_nig_block_dimension.saturating_mul(6).saturating_add(1),
     }
 }
 
@@ -502,14 +686,18 @@ fn emit_option_refinement_progress(
     phase: JointRefinementStageProgressPhase,
     completed_units: usize,
     total_units: usize,
+    current_restart_id: Option<&str>,
     current_item_label: Option<&str>,
     current_weighted_objective: Option<f64>,
+    best_restart_id: Option<&str>,
     best_weighted_objective: Option<f64>,
 ) {
     if let Some(progress_sender) = progress_sender {
         let _ = progress_sender.send(JointRefinementStageProgressUpdate {
+            current_restart_id: current_restart_id.map(str::to_string),
             current_item_label: current_item_label.map(str::to_string),
             current_weighted_objective,
+            best_restart_id: best_restart_id.map(str::to_string),
             best_weighted_objective,
             ..JointRefinementStageProgressUpdate::new(phase, completed_units, total_units)
         });
@@ -523,7 +711,7 @@ mod tests {
     use super::{
         JOINT_REFINEMENT_DEFAULT_OPTION_REFINEMENT_CANDIDATE_COUNT,
         desired_joint_refinement_option_refinement_candidate_count,
-        option_pricing_block_powell_settings,
+        option_pricing_block_trust_region_settings,
     };
 
     #[test]
@@ -543,17 +731,18 @@ mod tests {
     }
 
     #[test]
-    fn pricing_block_budget_uses_one_dimension_minimal_powell_cycle() {
+    fn pricing_block_budget_uses_low_dimension_trust_region_model() {
         let solver_settings =
             CalibrationOptimizerSettings::try_new("joint-test", 256, 4, 1.0e-6, 2.0e-6, 10.0)
                 .expect("solver settings should validate");
 
-        let powell_settings = option_pricing_block_powell_settings(&solver_settings, 4);
+        let trust_region_settings =
+            option_pricing_block_trust_region_settings(&solver_settings, 4);
 
-        assert_eq!(powell_settings.max_cycle_count, 1);
-        assert_eq!(powell_settings.line_search_evaluation_cap, 5);
-        assert_eq!(powell_settings.evaluation_budget, 20);
-        assert_eq!(powell_settings.absolute_tolerance, 1.0e-6);
-        assert_eq!(powell_settings.relative_tolerance, 2.0e-6);
+        assert_eq!(trust_region_settings.interpolation_point_target, 9);
+        assert_eq!(trust_region_settings.evaluation_budget, 25);
+        assert_eq!(trust_region_settings.initial_trust_region_radius_fraction, 0.25);
+        assert_eq!(trust_region_settings.absolute_tolerance, 1.0e-6);
+        assert_eq!(trust_region_settings.relative_tolerance, 2.0e-6);
     }
 }

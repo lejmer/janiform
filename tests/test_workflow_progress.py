@@ -10,9 +10,12 @@ from janiform.calibration.staged._progress_policy import (
     calibration_total_progress_fraction,
 )
 from janiform.calibration.staged.progress import (
+    ActiveRestartProgressRow,
     NativeStagedCalibrationProgressTracker,
+    format_restart_progress_panel_row,
     format_compact_staged_progress_event_detail,
     format_staged_progress_event_detail,
+    maximum_restart_progress_row_id_width,
     update_cli_progress_from_staged_native_event,
 )
 
@@ -373,6 +376,51 @@ def test_restart_optimization_progress_renders_live_candidate_details() -> None:
     )
 
 
+def test_compact_option_refinement_progress_detail_shows_item_before_first_completion() -> None:
+    raw_event = {
+        "stage": "joint_refinement",
+        "progress_phase": "option_search_tier_refinement",
+        "completed_units": 0,
+        "total_units": 5,
+        "current_item_label": "baseline",
+    }
+
+    assert format_compact_staged_progress_event_detail(
+        raw_event,
+        completed_units=0,
+        total_units=5,
+    ) == (
+        "joint_refinement option_search_tier_refinement [0%] (0/5) | item=baseline"
+    )
+
+
+def test_compact_option_refinement_progress_detail_shows_candidate_and_pricing_step() -> None:
+    raw_event = {
+        "stage": "joint_refinement",
+        "progress_phase": "option_search_tier_refinement",
+        "completed_units": 0,
+        "total_units": 5,
+        "current_restart_id": "activity_aligned",
+        "current_item_label": "maturity 3/24",
+        "best_restart_id": "baseline",
+        "best_weighted_objective": 0.1825,
+    }
+
+    assert format_compact_staged_progress_event_detail(
+        raw_event,
+        completed_units=0,
+        total_units=5,
+    ) == (
+        "joint_refinement option_search_tier_refinement [0%] (0/5) | "
+        "item=activity_aligned | detail=maturity 3/24 | best=baseline | best_obj=0.182500"
+    )
+    assert format_staged_progress_event_detail(raw_event) == (
+        "joint_refinement option_search_tier_refinement 0/5 | "
+        "item=activity_aligned | detail=maturity 3/24 | "
+        "best_candidate=baseline | best_objective=0.182500"
+    )
+
+
 def test_spinner_progress_truncates_long_lines_to_terminal_width(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -550,6 +598,47 @@ def test_spinner_progress_clears_restart_panel_rows_when_returning_to_single_lin
         ),
         "done fit total [00:41]",
     ]
+
+
+def test_restart_progress_panel_widens_candidate_column_for_long_restart_ids() -> None:
+    long_row = ActiveRestartProgressRow(
+        restart_id="nig_basin_high_alpha_low_delta_activity_aligned",
+        parameter_block="hawkes",
+        current_outer_cycle=1,
+        total_outer_cycles=1,
+        evaluation_progress_percent=60,
+        current_evaluation_count=12,
+        current_weighted_objective=1.49,
+        candidate_best_weighted_objective=1.49,
+    )
+    short_row = ActiveRestartProgressRow(
+        restart_id="baseline",
+        parameter_block="hawkes",
+        current_outer_cycle=1,
+        total_outer_cycles=1,
+        evaluation_progress_percent=60,
+        current_evaluation_count=12,
+        current_weighted_objective=1.48,
+        candidate_best_weighted_objective=1.48,
+    )
+
+    restart_id_width = maximum_restart_progress_row_id_width((long_row, short_row))
+
+    assert restart_id_width == len(long_row.restart_id)
+    assert format_restart_progress_panel_row(
+        long_row,
+        restart_id_width=restart_id_width,
+    ) == (
+        "  nig_basin_high_alpha_low_delta_activity_aligned hawkes     1/1  "
+        "eval  60%  obj       1.49  best       1.49"
+    )
+    assert format_restart_progress_panel_row(
+        short_row,
+        restart_id_width=restart_id_width,
+    ) == (
+        "  baseline                                        hawkes     1/1  "
+        "eval  60%  obj       1.48  best       1.48"
+    )
 
 
 def _render_terminal_output(raw_output: str) -> list[str]:

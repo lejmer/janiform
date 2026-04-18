@@ -18,9 +18,13 @@ from ..._workflow_progress import (
 from ...calendar import CalendarRegistry
 from ..errors import calibration_error, calibration_execution_error
 from ..market_data.contracts import CalibrationFlatCarryInput, CalibrationInputFileFormat
-from ..staged import CalibrationStageExecutionStatus
+from ..staged import (
+    CalibrationResumeSettings,
+    CalibrationStageExecutionStatus,
+)
 from ..staged.progress import NativeStagedCalibrationProgressTracker, update_cli_progress_from_staged_native_event
 from ..staged.results import build_staged_failure_context, format_staged_failure_summary
+from ..staged.runtime import _run_staged_calibration_with_prepared_handle_resume_and_events
 from .model import JaniformModel
 from ._preparation.contracts import FitExecutionConfiguration, PreparedFitWorkflow
 from .report import JaniformFitReport
@@ -31,6 +35,7 @@ def fit_with_execution_configuration(
     configuration: FitExecutionConfiguration,
     *,
     run_id: Optional[str] = None,
+    resume_settings: Optional[CalibrationResumeSettings] = None,
     tick_data_path: str | Path,
     tick_data_format: Optional[CalibrationInputFileFormat] = None,
     tick_data_provenance_label: str = "tick_data",
@@ -54,6 +59,7 @@ def fit_with_execution_configuration(
         configuration,
         output_controller=output_controller,
         run_id=run_id,
+        resume_settings=resume_settings,
         tick_data_path=tick_data_path,
         tick_data_format=tick_data_format,
         tick_data_provenance_label=tick_data_provenance_label,
@@ -114,6 +120,7 @@ def _run_fit_with_output_controller(
     *,
     output_controller: JaniformOutputController,
     run_id: Optional[str],
+    resume_settings: Optional[CalibrationResumeSettings],
     tick_data_path: str | Path,
     tick_data_format: Optional[CalibrationInputFileFormat],
     tick_data_provenance_label: str,
@@ -151,6 +158,7 @@ def _run_fit_with_output_controller(
                     configuration,
                     prepared_workflow=prepared_workflow,
                     progress=progress,
+                    resume_settings=resume_settings,
                 )
         finally:
             if prepared_workflow is not None and prepared_workflow.temporary_directory is not None:
@@ -169,10 +177,41 @@ def _run_prepared_fit_calibration(
     *,
     prepared_workflow: PreparedFitWorkflow,
     progress: Any,
+    resume_settings: Optional[CalibrationResumeSettings],
 ) -> tuple[Any, dict[str, Any]]:
     calendar_registry = CalendarRegistry(
         prepared_workflow.prepared.session_resolution.resolved_session_definition_json
     )
+    if resume_settings is not None:
+        staged_progress_tracker = NativeStagedCalibrationProgressTracker()
+        event_callback = (
+            None
+            if not (
+                isinstance(progress, SpinnerProgress | JsonLinesProgress)
+                and configuration.use_default_prepared_runner
+            )
+            else lambda raw_event: update_cli_progress_from_staged_native_event(
+                progress,
+                staged_progress_tracker,
+                raw_event,
+            )
+        )
+
+        if isinstance(progress, SpinnerProgress | JsonLinesProgress) and configuration.use_default_prepared_runner:
+            return configuration.resume_evented_prepared_runner(
+                prepared_workflow.prepared.prepared_handle,
+                calendar_registry=calendar_registry,
+                resume_settings=resume_settings,
+                event_callback=event_callback,
+            )
+
+        return _run_staged_calibration_with_prepared_handle_resume_and_events(
+            prepared_workflow.prepared.prepared_handle,
+            calendar_registry=calendar_registry,
+            resume_settings=resume_settings,
+            event_callback=event_callback,
+        )
+
     if isinstance(progress, SpinnerProgress | JsonLinesProgress) and configuration.use_default_prepared_runner:
         staged_progress_tracker = NativeStagedCalibrationProgressTracker()
         return configuration.evented_prepared_runner(

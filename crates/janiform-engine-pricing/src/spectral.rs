@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::time::Instant;
 
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
@@ -9,7 +10,8 @@ use crate::contracts::{
     VanillaOptionPricingRequest, VanillaOptionPricingStatus,
 };
 use crate::grids::{
-    VanillaOptionGridBatchPricingExecutionInput, VanillaOptionGridBatchPricingRunError,
+    SpectralThetaWarmStartState, VanillaOptionGridBatchPricingExecutionInput,
+    VanillaOptionGridBatchPricingRunError,
     VanillaOptionGridBatchPricingRunResult, VanillaOptionGridPricingResult,
     VanillaOptionGridRequest, VanillaOptionMaturitySummary,
 };
@@ -20,12 +22,14 @@ use crate::implied_volatility::{
 use crate::intraday_black_scholes_no_arbitrage_price_bounds;
 use crate::progress::PricingProgressEvent;
 use crate::runner::{
+    certify_local_transition_theta_for_row_with_parallelism,
     LocalTransitionRequestContext, RiskNeutralAnchorMaterialization,
+    LocalTransitionRowState,
     VanillaOptionPricingExecutionInput, VanillaOptionPricingIntervalFactors,
     VanillaOptionPricingRunError, build_pricing_risk_neutral_anchor_materialization,
     build_spectral_compatibility_integration_diagnostics,
     evaluate_pricing_log_return_characteristic_function_batch_for_context,
-    resolve_local_transition_theta_for_row_with_parallelism,
+    resolve_local_transition_theta_for_row_with_parallelism_and_hint,
 };
 use crate::thread_pool::{
     build_pricing_thread_pool, install_pricing_parallelism, resolved_pricing_cpu_count,
@@ -117,6 +121,7 @@ pub(crate) struct SingleOptionSpectralOutcome {
 pub(crate) fn run_grid_batch_pricing(
     execution_input: VanillaOptionGridBatchPricingExecutionInput,
     mut observer: Option<&mut dyn FnMut(PricingProgressEvent)>,
+    theta_warm_start_state: Option<&mut SpectralThetaWarmStartState>,
 ) -> Result<VanillaOptionGridBatchPricingRunResult, VanillaOptionGridBatchPricingRunError> {
     execution_input.validate().map_err(|source| {
         VanillaOptionGridBatchPricingRunError::InvalidExecutionInput { source }
@@ -129,6 +134,7 @@ pub(crate) fn run_grid_batch_pricing(
         pricing_thread_pool.as_ref(),
         execution_input.cpu_count,
         &mut observer,
+        theta_warm_start_state,
     )
     .map_err(|message| VanillaOptionGridBatchPricingRunError::NodePricingFailure { message })?;
 
@@ -225,7 +231,7 @@ pub(crate) fn run_single_option_pricing(
     };
 
     let run_result =
-        run_grid_batch_pricing(grid_execution_input, None).map_err(|source| match source {
+        run_grid_batch_pricing(grid_execution_input, None, None).map_err(|source| match source {
             VanillaOptionGridBatchPricingRunError::InvalidExecutionInput { source } => {
                 VanillaOptionPricingRunError::InternalNumericsFailure {
                     message: format!(
@@ -301,6 +307,7 @@ fn prepare_carry_group_contexts(
     pricing_thread_pool: Option<&rayon::ThreadPool>,
     cpu_count: Option<usize>,
     observer: &mut Option<&mut dyn FnMut(PricingProgressEvent)>,
+    mut theta_warm_start_state: Option<&mut SpectralThetaWarmStartState>,
 ) -> Result<BTreeMap<CarryGroupKey, CarryGroupSolveContext>, String> {
     let mut grouped_strikes = BTreeMap::<CarryGroupKey, BTreeSet<u64>>::new();
 
@@ -408,6 +415,7 @@ fn prepare_carry_group_contexts(
         .map_err(|source| format!("failed to construct spectral domain: {source}"))?;
 
         let cached_interval_operators = build_cached_interval_operators(
+            carry_group_key,
             &base_request,
             execution_input.interval_factors.as_slice(),
             &materialization,
@@ -417,6 +425,7 @@ fn prepare_carry_group_contexts(
             pricing_thread_pool,
             cpu_count,
             observer,
+            theta_warm_start_state.as_deref_mut(),
         )
         .map_err(|source| format!("spectral interval-operator assembly failed: {source}"))?;
 
@@ -765,6 +774,7 @@ fn invert_spectral_implied_volatility(
 }
 
 fn build_cached_interval_operators(
+    carry_group_key: CarryGroupKey,
     pricing_request: &VanillaOptionPricingRequest,
     interval_factors: &[VanillaOptionPricingIntervalFactors],
     materialization: &RiskNeutralAnchorMaterialization,
@@ -774,6 +784,7 @@ fn build_cached_interval_operators(
     pricing_thread_pool: Option<&rayon::ThreadPool>,
     cpu_count: Option<usize>,
     observer: &mut Option<&mut dyn FnMut(PricingProgressEvent)>,
+    mut theta_warm_start_state: Option<&mut SpectralThetaWarmStartState>,
 ) -> Result<Vec<CachedIntervalOperator>, VanillaOptionPricingRunError> {
     let collocation_nodes = spectral_domain.collocation_nodes();
     let runtime_anchors = &materialization.runtime_interval_anchors;
@@ -833,36 +844,45 @@ fn build_cached_interval_operators(
             ),
         );
 
-        let row_operators =
-            if resolved_pricing_cpu_count(cpu_count) > 1 && collocation_nodes.len() > 1 {
-                install_pricing_parallelism(pricing_thread_pool, || {
-                    collocation_nodes
-                        .par_iter()
-                        .copied()
-                        .map(|deviation| {
-                            solve_row_frequency_batch(
-                                &base_context,
-                                deviation,
-                                spectral_domain,
-                                driver_parameters,
-                            )
-                        })
-                        .collect::<Result<Vec<_>, _>>()
-                })?
-            } else {
-                let mut row_operators = Vec::with_capacity(collocation_nodes.len());
+        let theta_hints = theta_warm_start_state
+            .as_deref_mut()
+            .map(|state| {
+                state.interval_theta_hints(
+                    (
+                        carry_group_key.risk_free_rate_bits,
+                        carry_group_key.dividend_yield_bits,
+                    ),
+                    interval_offset,
+                    collocation_nodes.len(),
+                )
+            })
+            .unwrap_or_else(|| vec![None; collocation_nodes.len()]);
+        let row_states = collocation_nodes
+            .iter()
+            .copied()
+            .map(|deviation| base_context.build_row_state(deviation))
+            .collect::<Result<Vec<_>, _>>()?;
+        let (row_operators, row_solve_diagnostics) = solve_interval_row_frequency_batches_adaptively(
+            &base_context,
+            collocation_nodes.as_slice(),
+            row_states.as_slice(),
+            theta_hints.as_slice(),
+            spectral_domain,
+            driver_parameters,
+            pricing_thread_pool,
+            cpu_count,
+        )?;
 
-                for deviation in &collocation_nodes {
-                    row_operators.push(solve_row_frequency_batch(
-                        &base_context,
-                        *deviation,
-                        spectral_domain,
-                        driver_parameters,
-                    )?);
-                }
-
-                row_operators
-            };
+        if let Some(state) = theta_warm_start_state.as_deref_mut() {
+            state.record_interval_thetas(
+                (
+                    carry_group_key.risk_free_rate_bits,
+                    carry_group_key.dividend_yield_bits,
+                ),
+                interval_offset,
+                row_operators.iter().map(|row_operator| row_operator.theta),
+            );
+        }
 
         emit_pricing_progress(
             observer,
@@ -873,6 +893,15 @@ fn build_cached_interval_operators(
                 Some(maximum_maturity_count),
                 Some(collocation_nodes.len() - 1),
                 collocation_nodes.len(),
+            )
+            .with_transition_row_solve_diagnostics(
+                row_solve_diagnostics.seed_exact_transition_row_count,
+                row_solve_diagnostics.shared_theta_transition_row_count,
+                row_solve_diagnostics.certified_transition_row_count,
+                row_solve_diagnostics.fallback_exact_transition_row_count,
+                row_solve_diagnostics.theta_search_elapsed_millis,
+                row_solve_diagnostics.theta_certification_elapsed_millis,
+                row_solve_diagnostics.row_batch_elapsed_millis,
             ),
         );
 
@@ -1049,22 +1078,94 @@ struct RowFrequencyBatchSolution {
         Option<janiform_affine_oracle::affine_oracle::ExponentialAffineTransformIntegrationResult>,
 }
 
+#[derive(Debug, Clone)]
+struct SharedRowFrequencyBatchKernel {
+    theta: f64,
+    positive_frequency_values: Vec<ComplexScalar>,
+    representative_transform:
+        Option<janiform_affine_oracle::affine_oracle::ExponentialAffineTransformIntegrationResult>,
+    local_expectations: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AdaptiveRowSolveMode {
+    SeedExact,
+    CertifiedPredicted,
+    FallbackExact,
+}
+
+#[derive(Debug, Clone)]
+struct TimedRowFrequencyBatchSolution {
+    solution: RowFrequencyBatchSolution,
+    solve_mode: AdaptiveRowSolveMode,
+    theta_search_elapsed_millis: u64,
+    theta_certification_elapsed_millis: u64,
+    row_batch_elapsed_millis: u64,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct AdaptiveRowSolveTask {
+    left_row_index: usize,
+    midpoint_row_index: usize,
+    right_row_index: usize,
+    predicted_theta: f64,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+struct IntervalRowSolveDiagnostics {
+    seed_exact_transition_row_count: usize,
+    shared_theta_transition_row_count: usize,
+    certified_transition_row_count: usize,
+    fallback_exact_transition_row_count: usize,
+    theta_search_elapsed_millis: u64,
+    theta_certification_elapsed_millis: u64,
+    row_batch_elapsed_millis: u64,
+}
+
+impl IntervalRowSolveDiagnostics {
+    fn record(&mut self, solution: &TimedRowFrequencyBatchSolution) {
+        match solution.solve_mode {
+            AdaptiveRowSolveMode::SeedExact => {
+                self.seed_exact_transition_row_count += 1;
+            }
+            AdaptiveRowSolveMode::CertifiedPredicted => {
+                self.certified_transition_row_count += 1;
+            }
+            AdaptiveRowSolveMode::FallbackExact => {
+                self.fallback_exact_transition_row_count += 1;
+            }
+        }
+
+        self.theta_search_elapsed_millis += solution.theta_search_elapsed_millis;
+        self.theta_certification_elapsed_millis += solution.theta_certification_elapsed_millis;
+        self.row_batch_elapsed_millis += solution.row_batch_elapsed_millis;
+    }
+}
+
 fn solve_row_frequency_batch(
     base_context: &LocalTransitionRequestContext,
-    deviation: f64,
+    transition_row: &LocalTransitionRowState,
     spectral_domain: SpectralDomain,
     driver_parameters: janiform_model_kernels::nig::NigBuySellDriverParameters,
+    theta: f64,
 ) -> Result<RowFrequencyBatchSolution, VanillaOptionPricingRunError> {
-    let transition_row = base_context.build_row_state(deviation)?;
+    let shared_kernel =
+        solve_shared_row_frequency_batch_kernel(base_context, spectral_domain, driver_parameters, theta)?;
 
-    let (theta, _) = resolve_local_transition_theta_for_row_with_parallelism(
+    build_row_frequency_batch_from_shared_kernel(
         base_context,
-        &transition_row,
-        driver_parameters,
-        None,
-        None,
-    )?;
+        transition_row,
+        spectral_domain,
+        &shared_kernel,
+    )
+}
 
+fn solve_shared_row_frequency_batch_kernel(
+    base_context: &LocalTransitionRequestContext,
+    spectral_domain: SpectralDomain,
+    driver_parameters: janiform_model_kernels::nig::NigBuySellDriverParameters,
+    theta: f64,
+) -> Result<SharedRowFrequencyBatchKernel, VanillaOptionPricingRunError> {
     let frequency_count = spectral_domain.node_count;
 
     let mut batch_arguments = Vec::with_capacity(2 * frequency_count - 1);
@@ -1103,7 +1204,24 @@ fn solve_row_frequency_batch(
         spectral_domain,
     )?;
 
-    let shift_center = base_context.deviation_decay_factor * deviation - local_expectations;
+    Ok(SharedRowFrequencyBatchKernel {
+        theta,
+        positive_frequency_values,
+        representative_transform,
+        local_expectations,
+    })
+}
+
+fn build_row_frequency_batch_from_shared_kernel(
+    base_context: &LocalTransitionRequestContext,
+    transition_row: &LocalTransitionRowState,
+    spectral_domain: SpectralDomain,
+    shared_kernel: &SharedRowFrequencyBatchKernel,
+) -> Result<RowFrequencyBatchSolution, VanillaOptionPricingRunError> {
+    let frequency_count = spectral_domain.node_count;
+    let deviation = transition_row.boundary_state.deviation;
+    let shift_center =
+        base_context.deviation_decay_factor * deviation - shared_kernel.local_expectations;
     let shift_phase_offset = shift_center - spectral_domain.deviation_lower_bound;
 
     let mut basis_forward_phases = Vec::with_capacity(spectral_domain.node_count);
@@ -1130,13 +1248,418 @@ fn solve_row_frequency_batch(
     }
 
     Ok(RowFrequencyBatchSolution {
-        theta,
-        positive_frequency_values,
+        theta: shared_kernel.theta,
+        positive_frequency_values: shared_kernel.positive_frequency_values.clone(),
         basis_forward_phases,
         basis_backward_phases,
         row_frequency_phases,
-        representative_transform,
+        representative_transform: shared_kernel.representative_transform.clone(),
     })
+}
+
+fn solve_interval_row_frequency_batches_adaptively(
+    base_context: &LocalTransitionRequestContext,
+    collocation_nodes: &[f64],
+    row_states: &[LocalTransitionRowState],
+    theta_hints: &[Option<f64>],
+    spectral_domain: SpectralDomain,
+    driver_parameters: janiform_model_kernels::nig::NigBuySellDriverParameters,
+    pricing_thread_pool: Option<&rayon::ThreadPool>,
+    cpu_count: Option<usize>,
+) -> Result<(Vec<RowFrequencyBatchSolution>, IntervalRowSolveDiagnostics), VanillaOptionPricingRunError> {
+    let row_count = collocation_nodes.len();
+    if row_count == 0 {
+        return Ok((Vec::new(), IntervalRowSolveDiagnostics::default()));
+    }
+
+    if row_states
+        .iter()
+        .all(LocalTransitionRowState::uses_nested_transition_measure)
+    {
+        return solve_nested_interval_row_frequency_batches_with_shared_theta(
+            base_context,
+            row_states,
+            theta_hints,
+            spectral_domain,
+            driver_parameters,
+            pricing_thread_pool,
+            cpu_count,
+        );
+    }
+
+    let mut solved_rows = vec![None; row_count];
+    let mut row_solve_diagnostics = IntervalRowSolveDiagnostics::default();
+    let mut seeded_row_indices =
+        derive_parallel_adaptive_seed_row_indices(row_count, resolved_pricing_cpu_count(cpu_count));
+    for (row_index, row_state) in row_states.iter().enumerate() {
+        if row_state.uses_nested_transition_measure() {
+            seeded_row_indices.push(row_index);
+        }
+    }
+    seeded_row_indices.sort_unstable();
+    seeded_row_indices.dedup();
+
+    let seeded_row_solutions =
+        if resolved_pricing_cpu_count(cpu_count) > 1 && seeded_row_indices.len() > 1 {
+            install_pricing_parallelism(pricing_thread_pool, || {
+                seeded_row_indices
+                    .par_iter()
+                    .map(|&row_index| {
+                        solve_exact_row_frequency_batch(
+                            base_context,
+                            &row_states[row_index],
+                            theta_hints[row_index],
+                            spectral_domain,
+                            driver_parameters,
+                            pricing_thread_pool,
+                            cpu_count,
+                        )
+                        .map(|solution| (row_index, solution))
+                    })
+                    .collect::<Result<Vec<_>, _>>()
+            })?
+        } else {
+            let mut seeded_solutions = Vec::with_capacity(seeded_row_indices.len());
+            for &row_index in &seeded_row_indices {
+                seeded_solutions.push((
+                    row_index,
+                    solve_exact_row_frequency_batch(
+                        base_context,
+                        &row_states[row_index],
+                        theta_hints[row_index],
+                        spectral_domain,
+                        driver_parameters,
+                        pricing_thread_pool,
+                        cpu_count,
+                    )?,
+                ));
+            }
+            seeded_solutions
+        };
+
+    for (row_index, solution) in seeded_row_solutions {
+        row_solve_diagnostics.record(&solution);
+        solved_rows[row_index] = Some(solution.solution);
+    }
+
+    let mut active_segments = seeded_row_indices
+        .windows(2)
+        .filter_map(|window| {
+            let left = window[0];
+            let right = window[1];
+            (right > left + 1).then_some((left, right))
+        })
+        .collect::<Vec<_>>();
+
+    while !active_segments.is_empty() {
+        let tasks = active_segments
+            .iter()
+            .map(|(left_row_index, right_row_index)| {
+                let left_theta = solved_rows[*left_row_index]
+                    .as_ref()
+                    .expect("adaptive left row must be solved")
+                    .theta;
+                let right_theta = solved_rows[*right_row_index]
+                    .as_ref()
+                    .expect("adaptive right row must be solved")
+                    .theta;
+                let midpoint_row_index = (left_row_index + right_row_index) / 2;
+                let predicted_theta = interpolate_theta_across_deviation_rows(
+                    collocation_nodes[*left_row_index],
+                    left_theta,
+                    collocation_nodes[*right_row_index],
+                    right_theta,
+                    collocation_nodes[midpoint_row_index],
+                );
+                AdaptiveRowSolveTask {
+                    left_row_index: *left_row_index,
+                    midpoint_row_index,
+                    right_row_index: *right_row_index,
+                    predicted_theta,
+                }
+            })
+            .collect::<Vec<_>>();
+
+        let solved_midpoints =
+            if resolved_pricing_cpu_count(cpu_count) > 1 && tasks.len() > 1 {
+                install_pricing_parallelism(pricing_thread_pool, || {
+                    tasks.par_iter()
+                        .map(|task| {
+                            solve_adaptive_midpoint_row_frequency_batch(
+                                base_context,
+                                &row_states[task.midpoint_row_index],
+                                theta_hints[task.midpoint_row_index]
+                                    .or(Some(task.predicted_theta)),
+                                task.predicted_theta,
+                                spectral_domain,
+                                driver_parameters,
+                                pricing_thread_pool,
+                                cpu_count,
+                            )
+                            .map(|solution| (task.midpoint_row_index, solution))
+                        })
+                        .collect::<Result<Vec<_>, _>>()
+                })?
+            } else {
+                let mut midpoint_solutions = Vec::with_capacity(tasks.len());
+                for task in &tasks {
+                    midpoint_solutions.push((
+                        task.midpoint_row_index,
+                        solve_adaptive_midpoint_row_frequency_batch(
+                            base_context,
+                            &row_states[task.midpoint_row_index],
+                            theta_hints[task.midpoint_row_index]
+                                .or(Some(task.predicted_theta)),
+                            task.predicted_theta,
+                            spectral_domain,
+                            driver_parameters,
+                            pricing_thread_pool,
+                            cpu_count,
+                        )?,
+                    ));
+                }
+                midpoint_solutions
+            };
+
+        for (midpoint_row_index, solution) in solved_midpoints {
+            row_solve_diagnostics.record(&solution);
+            solved_rows[midpoint_row_index] = Some(solution.solution);
+        }
+
+        let mut next_segments = Vec::new();
+        for task in tasks {
+            if task.midpoint_row_index > task.left_row_index + 1 {
+                next_segments.push((task.left_row_index, task.midpoint_row_index));
+            }
+            if task.right_row_index > task.midpoint_row_index + 1 {
+                next_segments.push((task.midpoint_row_index, task.right_row_index));
+            }
+        }
+        active_segments = next_segments;
+    }
+
+    solved_rows
+        .into_iter()
+        .enumerate()
+        .map(|(row_index, solution)| {
+            solution.ok_or_else(|| VanillaOptionPricingRunError::InternalNumericsFailure {
+                message: format!(
+                    "adaptive spectral interval operator left row {row_index} unsolved"
+                ),
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .map(|solutions| (solutions, row_solve_diagnostics))
+}
+
+fn derive_parallel_adaptive_seed_row_indices(row_count: usize, resolved_cpu_count: usize) -> Vec<usize> {
+    if row_count <= 1 {
+        return vec![0];
+    }
+
+    let last_row_index = row_count - 1;
+
+    // Keep at least one unsolved interior row inside every initial span so the
+    // adaptive midpoint certification step has meaningful work to do.
+    let target_segment_count = resolved_cpu_count
+        .min(last_row_index / 2)
+        .max(1);
+    let mut seeded_row_indices = Vec::with_capacity(target_segment_count + 1);
+
+    for segment_boundary_index in 0..=target_segment_count {
+        seeded_row_indices.push(
+            segment_boundary_index * last_row_index / target_segment_count,
+        );
+    }
+
+    seeded_row_indices
+}
+
+fn solve_nested_interval_row_frequency_batches_with_shared_theta(
+    base_context: &LocalTransitionRequestContext,
+    row_states: &[LocalTransitionRowState],
+    theta_hints: &[Option<f64>],
+    spectral_domain: SpectralDomain,
+    driver_parameters: janiform_model_kernels::nig::NigBuySellDriverParameters,
+    pricing_thread_pool: Option<&rayon::ThreadPool>,
+    cpu_count: Option<usize>,
+) -> Result<(Vec<RowFrequencyBatchSolution>, IntervalRowSolveDiagnostics), VanillaOptionPricingRunError> {
+    let representative_row_index = row_states
+        .iter()
+        .enumerate()
+        .min_by(|(_, left_row_state), (_, right_row_state)| {
+            left_row_state
+                .boundary_state
+                .deviation
+                .abs()
+                .total_cmp(&right_row_state.boundary_state.deviation.abs())
+        })
+        .map(|(row_index, _)| row_index)
+        .ok_or_else(|| VanillaOptionPricingRunError::InternalNumericsFailure {
+            message: "nested spectral interval solve expected at least one row".to_string(),
+        })?;
+
+    let theta_started_at = Instant::now();
+    let (theta, _) = resolve_local_transition_theta_for_row_with_parallelism_and_hint(
+        base_context,
+        &row_states[representative_row_index],
+        driver_parameters,
+        theta_hints[representative_row_index],
+        pricing_thread_pool,
+        cpu_count,
+    )?;
+
+    let shared_batch_started_at = Instant::now();
+    let shared_kernel =
+        solve_shared_row_frequency_batch_kernel(base_context, spectral_domain, driver_parameters, theta)?;
+    let shared_batch_elapsed_millis = elapsed_millis(shared_batch_started_at);
+
+    let row_materialization_started_at = Instant::now();
+    let row_operators = if resolved_pricing_cpu_count(cpu_count) > 1 && row_states.len() > 1 {
+        install_pricing_parallelism(pricing_thread_pool, || {
+            row_states
+                .par_iter()
+                .map(|row_state| {
+                    build_row_frequency_batch_from_shared_kernel(
+                        base_context,
+                        row_state,
+                        spectral_domain,
+                        &shared_kernel,
+                    )
+                })
+                .collect::<Result<Vec<_>, _>>()
+        })?
+    } else {
+        let mut row_operators = Vec::with_capacity(row_states.len());
+        for row_state in row_states {
+            row_operators.push(build_row_frequency_batch_from_shared_kernel(
+                base_context,
+                row_state,
+                spectral_domain,
+                &shared_kernel,
+            )?);
+        }
+        row_operators
+    };
+
+    Ok((
+        row_operators,
+        IntervalRowSolveDiagnostics {
+            seed_exact_transition_row_count: 1,
+            shared_theta_transition_row_count: row_states.len().saturating_sub(1),
+            certified_transition_row_count: 0,
+            fallback_exact_transition_row_count: 0,
+            theta_search_elapsed_millis: elapsed_millis(theta_started_at),
+            theta_certification_elapsed_millis: 0,
+            row_batch_elapsed_millis: shared_batch_elapsed_millis
+                + elapsed_millis(row_materialization_started_at),
+        },
+    ))
+}
+
+fn solve_exact_row_frequency_batch(
+    base_context: &LocalTransitionRequestContext,
+    transition_row: &LocalTransitionRowState,
+    initial_theta_hint: Option<f64>,
+    spectral_domain: SpectralDomain,
+    driver_parameters: janiform_model_kernels::nig::NigBuySellDriverParameters,
+    pricing_thread_pool: Option<&rayon::ThreadPool>,
+    cpu_count: Option<usize>,
+) -> Result<TimedRowFrequencyBatchSolution, VanillaOptionPricingRunError> {
+    let theta_started_at = Instant::now();
+    let (theta, _) = resolve_local_transition_theta_for_row_with_parallelism_and_hint(
+        base_context,
+        transition_row,
+        driver_parameters,
+        initial_theta_hint,
+        pricing_thread_pool,
+        cpu_count,
+    )?;
+
+    let row_batch_started_at = Instant::now();
+    let solution =
+        solve_row_frequency_batch(base_context, transition_row, spectral_domain, driver_parameters, theta)?;
+    Ok(TimedRowFrequencyBatchSolution {
+        solution,
+        solve_mode: AdaptiveRowSolveMode::SeedExact,
+        theta_search_elapsed_millis: elapsed_millis(theta_started_at),
+        theta_certification_elapsed_millis: 0,
+        row_batch_elapsed_millis: elapsed_millis(row_batch_started_at),
+    })
+}
+
+fn solve_adaptive_midpoint_row_frequency_batch(
+    base_context: &LocalTransitionRequestContext,
+    transition_row: &LocalTransitionRowState,
+    initial_theta_hint: Option<f64>,
+    predicted_theta: f64,
+    spectral_domain: SpectralDomain,
+    driver_parameters: janiform_model_kernels::nig::NigBuySellDriverParameters,
+    pricing_thread_pool: Option<&rayon::ThreadPool>,
+    cpu_count: Option<usize>,
+) -> Result<TimedRowFrequencyBatchSolution, VanillaOptionPricingRunError> {
+    let certification_started_at = Instant::now();
+    if certify_local_transition_theta_for_row_with_parallelism(
+        base_context,
+        transition_row,
+        driver_parameters,
+        predicted_theta,
+        pricing_thread_pool,
+        cpu_count,
+    )? {
+        let row_batch_started_at = Instant::now();
+        let solution = solve_row_frequency_batch(
+            base_context,
+            transition_row,
+            spectral_domain,
+            driver_parameters,
+            predicted_theta,
+        )?;
+        return Ok(TimedRowFrequencyBatchSolution {
+            solution,
+            solve_mode: AdaptiveRowSolveMode::CertifiedPredicted,
+            theta_search_elapsed_millis: 0,
+            theta_certification_elapsed_millis: elapsed_millis(certification_started_at),
+            row_batch_elapsed_millis: elapsed_millis(row_batch_started_at),
+        });
+    }
+
+    let exact_solution = solve_exact_row_frequency_batch(
+        base_context,
+        transition_row,
+        initial_theta_hint,
+        spectral_domain,
+        driver_parameters,
+        pricing_thread_pool,
+        cpu_count,
+    )?;
+    Ok(TimedRowFrequencyBatchSolution {
+        solution: exact_solution.solution,
+        solve_mode: AdaptiveRowSolveMode::FallbackExact,
+        theta_search_elapsed_millis: exact_solution.theta_search_elapsed_millis,
+        theta_certification_elapsed_millis: elapsed_millis(certification_started_at),
+        row_batch_elapsed_millis: exact_solution.row_batch_elapsed_millis,
+    })
+}
+
+fn interpolate_theta_across_deviation_rows(
+    left_deviation: f64,
+    left_theta: f64,
+    right_deviation: f64,
+    right_theta: f64,
+    target_deviation: f64,
+) -> f64 {
+    let deviation_span = right_deviation - left_deviation;
+    if deviation_span == 0.0 {
+        return left_theta;
+    }
+
+    let interpolation_weight = (target_deviation - left_deviation) / deviation_span;
+    left_theta + interpolation_weight * (right_theta - left_theta)
+}
+
+fn elapsed_millis(started_at: Instant) -> u64 {
+    started_at.elapsed().as_millis().min(u128::from(u64::MAX)) as u64
 }
 
 fn derive_expected_increment_from_frequency_values(
@@ -1433,4 +1956,133 @@ fn psi_coefficient(lower: f64, upper: f64, domain_lower_bound: f64, angular_freq
     let lower_shift = lower - domain_lower_bound;
 
     (upper_shift.sin() - lower_shift.sin()) / angular_frequency
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        build_spectral_domain, solve_interval_row_frequency_batches_adaptively,
+    };
+    use crate::contracts::{
+        AnchoredVanillaOptionPricingBoundaryInput, VanillaOptionPayoffConfiguration,
+        VanillaOptionPayoffType, VanillaOptionPricingMarketInputs,
+        VanillaOptionPricingRequest,
+    };
+    use crate::runner::{
+        LocalTransitionRequestContext, VanillaOptionPricingIntervalFactors,
+        build_pricing_risk_neutral_anchor_materialization,
+        certify_local_transition_theta_for_row_with_parallelism,
+    };
+    use crate::tests::support::{build_uniform_runtime_interval_schedule, valid_model_parameters};
+    use janiform_model_kernels::hawkes::HawkesExcitationState;
+    use janiform_model_kernels::mean_reversion::{
+        MeanReversionAnchorModel, MeanReversionBoundaryState, MeanReversionFittedParameters,
+    };
+
+    #[test]
+    fn adaptive_interval_row_solver_returns_certified_thetas_for_nonzero_kappa_interval() {
+        let pricing_request = VanillaOptionPricingRequest::try_new(
+            VanillaOptionPricingMarketInputs::try_new_single_node(101.0, 100.0, 1.0, 0.02, 0.01)
+                .expect("market inputs should construct"),
+            VanillaOptionPayoffConfiguration {
+                payoff_type: VanillaOptionPayoffType::Call,
+            },
+            AnchoredVanillaOptionPricingBoundaryInput::try_new(
+                0,
+                HawkesExcitationState {
+                    y_plus_plus: 0.2,
+                    y_plus_minus: 0.1,
+                    y_minus_plus: 0.3,
+                    y_minus_minus: 0.4,
+                },
+                MeanReversionFittedParameters::try_new(
+                    0.5,
+                    MeanReversionAnchorModel::zero_gain_endogenous_core_pressure_level(),
+                )
+                .expect("mean-reversion fitted parameters should construct"),
+                1.0,
+                MeanReversionBoundaryState::try_new(0.2, 0.0, 0.0, 0.2)
+                    .expect("observed boundary state should construct"),
+            )
+            .expect("boundary input should construct"),
+            valid_model_parameters(),
+            1.0,
+        )
+        .expect("pricing request should construct");
+        let interval_factors = vec![
+            VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
+                .expect("interval factors should construct"),
+        ];
+        let runtime_interval_schedule = build_uniform_runtime_interval_schedule(1, 1.0);
+        let driver_parameters = pricing_request
+            .model_parameters
+            .nig_shared_plus_shift_configuration
+            .derive_driver_parameters()
+            .expect("driver parameters should derive");
+        let mut no_observer = None;
+        let materialization = build_pricing_risk_neutral_anchor_materialization(
+            &pricing_request,
+            &runtime_interval_schedule,
+            interval_factors.as_slice(),
+            driver_parameters,
+            &mut no_observer,
+        )
+        .expect("risk-neutral anchor materialization should succeed");
+        let spectral_domain =
+            build_spectral_domain(&pricing_request, &materialization, 1, 1.0, &[100.0])
+                .expect("spectral domain should construct");
+        let collocation_nodes = spectral_domain.collocation_nodes();
+        let base_context = LocalTransitionRequestContext::from_interval_state(
+            &pricing_request,
+            interval_factors[0],
+            0,
+            materialization.expected_hawkes_state_path[0],
+            materialization.runtime_interval_anchors.start_anchor_value,
+            materialization.runtime_interval_anchors.start_pressure_state,
+            materialization.runtime_interval_anchors.interval_deltas[0],
+        )
+        .expect("transition context should construct");
+        let row_states = collocation_nodes
+            .iter()
+            .copied()
+            .map(|deviation| base_context.build_row_state(deviation))
+            .collect::<Result<Vec<_>, _>>()
+            .expect("row states should construct");
+
+        assert!(
+            row_states
+                .iter()
+                .any(|row_state| !row_state.uses_nested_transition_measure()),
+            "test fixture should require true adaptive midpoint certification"
+        );
+
+        let (solved_rows, _) = solve_interval_row_frequency_batches_adaptively(
+            &base_context,
+            collocation_nodes.as_slice(),
+            row_states.as_slice(),
+            &vec![None; collocation_nodes.len()],
+            spectral_domain,
+            driver_parameters,
+            None,
+            Some(1),
+        )
+        .expect("adaptive interval operator solve should succeed");
+
+        assert_eq!(solved_rows.len(), collocation_nodes.len());
+
+        for (row_state, solved_row) in row_states.iter().zip(solved_rows.iter()) {
+            assert!(
+                certify_local_transition_theta_for_row_with_parallelism(
+                    &base_context,
+                    row_state,
+                    driver_parameters,
+                    solved_row.theta,
+                    None,
+                    Some(1),
+                )
+                .expect("solved row theta should certify"),
+                "adaptive row theta should satisfy the local tilt equation"
+            );
+        }
+    }
 }
