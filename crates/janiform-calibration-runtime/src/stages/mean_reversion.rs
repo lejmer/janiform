@@ -1102,13 +1102,15 @@ fn select_best_admissible_candidate_by_information_criterion(
 
     let first_candidate = admissible_candidates.next()?.clone();
 
-    Some(admissible_candidates.fold(first_candidate, |best_candidate, candidate| {
-        if candidate.information_criterion_bic < best_candidate.information_criterion_bic {
-            candidate.clone()
-        } else {
-            best_candidate
-        }
-    }))
+    Some(
+        admissible_candidates.fold(first_candidate, |best_candidate, candidate| {
+            if candidate.information_criterion_bic < best_candidate.information_criterion_bic {
+                candidate.clone()
+            } else {
+                best_candidate
+            }
+        }),
+    )
 }
 
 fn candidate_supports_quasi_likelihood_model_selection(

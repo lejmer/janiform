@@ -9,6 +9,7 @@ use super::constants::{
 };
 use super::errors::{NigSharedPlusShiftConfigurationError, NigTradingTimeIncrementSamplingError};
 use super::parameters::NigParameters;
+use crate::risk_neutral::{EsscherTransformError, differentiate_nig_characteristic_exponent};
 use janiform_foundations::complex_math::ComplexScalar;
 
 /// Shared-plus-shift NIG driver configuration for buy and sell trading-time components.
@@ -111,6 +112,16 @@ pub struct NigBuySellDriverParameters {
     pub policy: &'static str,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct NigSharedPlusShiftCharacteristicExponentSensitivity {
+    pub exponent: ComplexScalar,
+    pub alpha_derivative: ComplexScalar,
+    pub beta_0_derivative: ComplexScalar,
+    pub delta_derivative: ComplexScalar,
+    pub mu_derivative: ComplexScalar,
+    pub delta_beta_derivative: ComplexScalar,
+}
+
 /// Trading-time characteristic exponent contributions for one return argument.
 ///
 /// Equation reference:
@@ -149,6 +160,23 @@ impl NigBuySellDriverParameters {
         self.buy_side_parameters.characteristic_exponent(argument)
     }
 
+    pub fn differentiate_buy_side_characteristic_exponent_for_shared_plus_shift_configuration(
+        self,
+        argument: ComplexScalar,
+    ) -> Result<NigSharedPlusShiftCharacteristicExponentSensitivity, EsscherTransformError> {
+        let sensitivity =
+            differentiate_nig_characteristic_exponent(self.buy_side_parameters, argument)?;
+
+        Ok(NigSharedPlusShiftCharacteristicExponentSensitivity {
+            exponent: sensitivity.exponent,
+            alpha_derivative: sensitivity.alpha_derivative,
+            beta_0_derivative: sensitivity.beta_derivative,
+            delta_derivative: sensitivity.delta_derivative,
+            mu_derivative: sensitivity.mu_derivative,
+            delta_beta_derivative: ComplexScalar::new(0.0, 0.0),
+        })
+    }
+
     /// Evaluate sell-side NIG exponent with the negated argument, i.e. \f$\psi_-(-u)\f$.
     ///
     /// This sign convention matches the model equation
@@ -165,6 +193,25 @@ impl NigBuySellDriverParameters {
     ) -> ComplexScalar {
         self.sell_side_parameters
             .characteristic_exponent(argument.scale(-1.0))
+    }
+
+    pub fn differentiate_sell_side_characteristic_exponent_for_return_composition_for_shared_plus_shift_configuration(
+        self,
+        argument: ComplexScalar,
+    ) -> Result<NigSharedPlusShiftCharacteristicExponentSensitivity, EsscherTransformError> {
+        let physical_sensitivity = differentiate_nig_characteristic_exponent(
+            self.sell_side_parameters,
+            argument.scale(-1.0),
+        )?;
+
+        Ok(NigSharedPlusShiftCharacteristicExponentSensitivity {
+            exponent: physical_sensitivity.exponent,
+            alpha_derivative: physical_sensitivity.alpha_derivative,
+            beta_0_derivative: physical_sensitivity.beta_derivative,
+            delta_derivative: physical_sensitivity.delta_derivative,
+            mu_derivative: physical_sensitivity.mu_derivative,
+            delta_beta_derivative: physical_sensitivity.beta_derivative,
+        })
     }
 
     /// Assemble trading-time weighted characteristic exponents with canonical sign handling.

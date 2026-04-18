@@ -226,12 +226,11 @@ pub(crate) fn select_restart_outcomes_with_lazy_coarse_consistency<'a>(
             baseline_artifacts,
         );
 
-        let current_coarse_consistency_fit =
-            progress_state.record(
-                candidate_state.restart_outcome.restart_id.as_str(),
-                current_weighted_objective,
-                current_artifacts.as_ref(),
-            );
+        let current_coarse_consistency_fit = progress_state.record(
+            candidate_state.restart_outcome.restart_id.as_str(),
+            current_weighted_objective,
+            current_artifacts.as_ref(),
+        );
 
         emit_coarse_consistency_progress(
             progress_sender,

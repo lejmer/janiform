@@ -79,7 +79,7 @@ impl PricingNodeProgress {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct PricingProgressEvent {
     pub phase: PricingProgressPhase,
     pub completed_units: usize,
@@ -100,6 +100,8 @@ pub struct PricingProgressEvent {
     pub theta_search_elapsed_millis: Option<u64>,
     pub theta_certification_elapsed_millis: Option<u64>,
     pub row_batch_elapsed_millis: Option<u64>,
+    pub average_buy_shift_configuration_gradient_norm: Option<f64>,
+    pub average_sell_shift_configuration_gradient_norm: Option<f64>,
 }
 
 impl PricingProgressEvent {
@@ -128,6 +130,8 @@ impl PricingProgressEvent {
             theta_search_elapsed_millis: None,
             theta_certification_elapsed_millis: None,
             row_batch_elapsed_millis: None,
+            average_buy_shift_configuration_gradient_norm: None,
+            average_sell_shift_configuration_gradient_norm: None,
         }
     }
 
@@ -157,6 +161,8 @@ impl PricingProgressEvent {
             theta_search_elapsed_millis: None,
             theta_certification_elapsed_millis: None,
             row_batch_elapsed_millis: None,
+            average_buy_shift_configuration_gradient_norm: None,
+            average_sell_shift_configuration_gradient_norm: None,
         }
     }
 
@@ -186,6 +192,8 @@ impl PricingProgressEvent {
             theta_search_elapsed_millis: None,
             theta_certification_elapsed_millis: None,
             row_batch_elapsed_millis: None,
+            average_buy_shift_configuration_gradient_norm: None,
+            average_sell_shift_configuration_gradient_norm: None,
         }
     }
 
@@ -217,6 +225,8 @@ impl PricingProgressEvent {
             theta_search_elapsed_millis: None,
             theta_certification_elapsed_millis: None,
             row_batch_elapsed_millis: None,
+            average_buy_shift_configuration_gradient_norm: None,
+            average_sell_shift_configuration_gradient_norm: None,
         }
     }
 
@@ -248,6 +258,8 @@ impl PricingProgressEvent {
             theta_search_elapsed_millis: None,
             theta_certification_elapsed_millis: None,
             row_batch_elapsed_millis: None,
+            average_buy_shift_configuration_gradient_norm: None,
+            average_sell_shift_configuration_gradient_norm: None,
         }
     }
 
@@ -260,6 +272,8 @@ impl PricingProgressEvent {
         theta_search_elapsed_millis: u64,
         theta_certification_elapsed_millis: u64,
         row_batch_elapsed_millis: u64,
+        average_buy_shift_configuration_gradient_norm: f64,
+        average_sell_shift_configuration_gradient_norm: f64,
     ) -> Self {
         self.seed_exact_transition_row_count = Some(seed_exact_transition_row_count);
         self.shared_theta_transition_row_count = Some(shared_theta_transition_row_count);
@@ -268,6 +282,10 @@ impl PricingProgressEvent {
         self.theta_search_elapsed_millis = Some(theta_search_elapsed_millis);
         self.theta_certification_elapsed_millis = Some(theta_certification_elapsed_millis);
         self.row_batch_elapsed_millis = Some(row_batch_elapsed_millis);
+        self.average_buy_shift_configuration_gradient_norm =
+            Some(average_buy_shift_configuration_gradient_norm);
+        self.average_sell_shift_configuration_gradient_norm =
+            Some(average_sell_shift_configuration_gradient_norm);
         self
     }
 }

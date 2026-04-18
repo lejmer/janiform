@@ -876,11 +876,13 @@ pub(crate) fn resolve_local_transition_theta_for_row_with_curve(
                 interval_tilt_curve.last_solved_theta = None;
             }
             Err(source) => {
-                return Err(VanillaOptionPricingRunError::AnchoredLocalTiltSolveFailure {
-                    interval_index: interval_tilt_curve.transition_context.interval_index,
-                    deviation: transition_row.boundary_state.deviation,
-                    source,
-                });
+                return Err(
+                    VanillaOptionPricingRunError::AnchoredLocalTiltSolveFailure {
+                        interval_index: interval_tilt_curve.transition_context.interval_index,
+                        deviation: transition_row.boundary_state.deviation,
+                        source,
+                    },
+                );
             }
         }
     }
@@ -1019,11 +1021,13 @@ pub(crate) fn certify_local_transition_theta_for_row_with_parallelism(
     match interval_tilt_curve.evaluate_row_residual(transition_row, theta_candidate) {
         Ok(evaluation) => Ok(evaluation.residual.abs() <= local_tilt_tolerance()),
         Err(source) if should_retry_local_tilt_side_evaluation(&source) => Ok(false),
-        Err(source) => Err(VanillaOptionPricingRunError::AnchoredLocalTiltSolveFailure {
-            interval_index: transition_context.interval_index,
-            deviation: transition_row.boundary_state.deviation,
-            source,
-        }),
+        Err(source) => Err(
+            VanillaOptionPricingRunError::AnchoredLocalTiltSolveFailure {
+                interval_index: transition_context.interval_index,
+                deviation: transition_row.boundary_state.deviation,
+                source,
+            },
+        ),
     }
 }
 

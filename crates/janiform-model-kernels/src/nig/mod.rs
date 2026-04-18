@@ -7,7 +7,7 @@ mod constants;
 mod driver;
 mod errors;
 mod guardrails;
-mod math;
+pub(crate) mod math;
 mod parameters;
 mod serde_impls;
 mod validation;
@@ -22,8 +22,9 @@ pub use constants::{
     NIG_TRADING_TIME_RETURN_SIGN_CONVENTION_POLICY,
 };
 pub use driver::{
-    NigBuySellDriverParameters, NigSharedPlusShiftConfiguration,
-    NigTradingTimeCharacteristicExponentContributions, NigTradingTimeIncrementContributions,
+    NigBuySellDriverParameters, NigSharedPlusShiftCharacteristicExponentSensitivity,
+    NigSharedPlusShiftConfiguration, NigTradingTimeCharacteristicExponentContributions,
+    NigTradingTimeIncrementContributions,
 };
 pub use errors::{
     NigIncrementSamplingError, NigParameterError, NigSharedPlusShiftConfigurationError,

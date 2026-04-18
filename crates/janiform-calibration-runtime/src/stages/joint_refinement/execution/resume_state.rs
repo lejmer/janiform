@@ -154,7 +154,10 @@ impl JointRefinementResumeStore {
         }
     }
 
-    pub(crate) fn restart_outcome(&self, restart_id: &str) -> Option<JointRefinementRestartOutcome> {
+    pub(crate) fn restart_outcome(
+        &self,
+        restart_id: &str,
+    ) -> Option<JointRefinementRestartOutcome> {
         self.state.restart_outcomes_by_id.get(restart_id).cloned()
     }
 
@@ -250,7 +253,8 @@ impl JointRefinementResumeStore {
         selection_tier_pricing_artifact: &JointRefinementOptionTierPricingArtifact,
     ) {
         self.state.selected_restart_id = Some(restart_id.to_string());
-        self.state.selected_search_tier_pricing_artifact = Some(search_tier_pricing_artifact.clone());
+        self.state.selected_search_tier_pricing_artifact =
+            Some(search_tier_pricing_artifact.clone());
         self.state.selected_selection_tier_pricing_artifact =
             Some(selection_tier_pricing_artifact.clone());
         self.persist();
@@ -260,8 +264,7 @@ impl JointRefinementResumeStore {
         &mut self,
         audit_tier_pricing_artifact: &JointRefinementOptionTierPricingArtifact,
     ) {
-        self.state.selected_audit_tier_pricing_artifact =
-            Some(audit_tier_pricing_artifact.clone());
+        self.state.selected_audit_tier_pricing_artifact = Some(audit_tier_pricing_artifact.clone());
         self.persist();
     }
 
@@ -315,8 +318,7 @@ fn persist_resume_state_to_disk(
 
     fs::create_dir_all(parent).map_err(|error| error.to_string())?;
 
-    let encoded =
-        serde_json::to_vec_pretty(resume_state).map_err(|error| error.to_string())?;
+    let encoded = serde_json::to_vec_pretty(resume_state).map_err(|error| error.to_string())?;
 
     let temporary_path = path.with_extension("tmp");
 
@@ -336,9 +338,8 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::{
-        JointRefinementResumeState, JointRefinementResumeStore,
-        JOINT_REFINEMENT_RESUME_STATE_FILENAME,
-        JOINT_REFINEMENT_RESUME_STATE_SCHEMA_VERSION, persist_resume_state_to_disk,
+        JOINT_REFINEMENT_RESUME_STATE_FILENAME, JOINT_REFINEMENT_RESUME_STATE_SCHEMA_VERSION,
+        JointRefinementResumeState, JointRefinementResumeStore, persist_resume_state_to_disk,
     };
 
     fn temp_directory() -> PathBuf {

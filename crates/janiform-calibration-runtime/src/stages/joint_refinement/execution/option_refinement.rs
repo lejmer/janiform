@@ -15,9 +15,8 @@ use crate::stages::optimization::{
 
 use super::super::setup::parameter_vector_to_fitted_parameters;
 use super::{
-    JointRefinementResumeStore,
     JointRefinementContext, JointRefinementOptionTierPricingArtifact,
-    JointRefinementRestartOutcome, ordered_parameter_bits,
+    JointRefinementRestartOutcome, JointRefinementResumeStore, ordered_parameter_bits,
     resolve_option_surface_tier_pricing_artifact,
 };
 
@@ -185,7 +184,9 @@ fn refine_search_tier_candidates(
                     total_units,
                     Some(dynamics_candidate.restart_id.as_str()),
                     Some("resumed"),
-                    refined_candidates.last().map(|candidate| candidate.search_tier_score),
+                    refined_candidates
+                        .last()
+                        .map(|candidate| candidate.search_tier_score),
                     best_search_tier_restart_id,
                     best_search_tier_score,
                 );
@@ -651,8 +652,12 @@ fn option_pricing_block_trust_region_settings(
         relative_tolerance: solver_settings.relative_tolerance,
         minimum_trust_region_radius: solver_settings.absolute_tolerance,
         initial_trust_region_radius_fraction: 0.25,
-        interpolation_point_target: active_nig_block_dimension.saturating_mul(2).saturating_add(1),
-        evaluation_budget: active_nig_block_dimension.saturating_mul(6).saturating_add(1),
+        interpolation_point_target: active_nig_block_dimension
+            .saturating_mul(2)
+            .saturating_add(1),
+        evaluation_budget: active_nig_block_dimension
+            .saturating_mul(6)
+            .saturating_add(1),
     }
 }
 
@@ -736,12 +741,14 @@ mod tests {
             CalibrationOptimizerSettings::try_new("joint-test", 256, 4, 1.0e-6, 2.0e-6, 10.0)
                 .expect("solver settings should validate");
 
-        let trust_region_settings =
-            option_pricing_block_trust_region_settings(&solver_settings, 4);
+        let trust_region_settings = option_pricing_block_trust_region_settings(&solver_settings, 4);
 
         assert_eq!(trust_region_settings.interpolation_point_target, 9);
         assert_eq!(trust_region_settings.evaluation_budget, 25);
-        assert_eq!(trust_region_settings.initial_trust_region_radius_fraction, 0.25);
+        assert_eq!(
+            trust_region_settings.initial_trust_region_radius_fraction,
+            0.25
+        );
         assert_eq!(trust_region_settings.absolute_tolerance, 1.0e-6);
         assert_eq!(trust_region_settings.relative_tolerance, 2.0e-6);
     }

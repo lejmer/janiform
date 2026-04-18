@@ -134,12 +134,11 @@ where
     while scheduling_state.simulated_timestamp_utc_nanos < segment_end_utc_nanos
         && endogenous_interval_updates.len() < MAX_STOCHASTIC_UPDATES_PER_INTERVAL as usize
     {
-        let (_, _, current_total_intensity) =
-            project_non_negative_intensities(
-                scheduling_state.simulated_state,
-                kernel_parameters.lambda_bar,
-                interval_seasonality_factor,
-            );
+        let (_, _, current_total_intensity) = project_non_negative_intensities(
+            scheduling_state.simulated_state,
+            kernel_parameters.lambda_bar,
+            interval_seasonality_factor,
+        );
         if current_total_intensity <= 0.0 {
             drift_state_to_timestamp(scheduling_state, kernel_parameters, segment_end_utc_nanos)?;
             break;

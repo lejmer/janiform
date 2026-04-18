@@ -46,9 +46,7 @@ pub(crate) use report::{
     build_joint_simulation_summaries, option_pricing_execution_failure_message,
     simulation_infrastructure_failure_message,
 };
-pub(crate) use resume_state::{
-    JointRefinementResumeStore, PersistedRestartSelectionArtifacts,
-};
+pub(crate) use resume_state::{JointRefinementResumeStore, PersistedRestartSelectionArtifacts};
 #[cfg(test)]
 pub(crate) use selection::{
     JointRefinementAdmissibilityThresholds, admissibility_threshold_from_sample_count,

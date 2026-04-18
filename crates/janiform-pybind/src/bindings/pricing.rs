@@ -179,12 +179,14 @@ fn derive_activity_compressed_pricing_interval_schedule(
     py: Python<'_>,
     request: &Bound<'_, PyAny>,
 ) -> PyResult<Py<PyAny>> {
-    let request: PythonActivityCompressedPricingScheduleRequestPayload =
-        serde_json::from_value(py_any_to_json_value(request)?).map_err(|source| {
-            PricingExecutionError::new_err(format!(
-                "failed to deserialize activity-compressed pricing interval schedule request: {source}"
-            ))
-        })?;
+    let request: PythonActivityCompressedPricingScheduleRequestPayload = serde_json::from_value(
+        py_any_to_json_value(request)?,
+    )
+    .map_err(|source| {
+        PricingExecutionError::new_err(format!(
+            "failed to deserialize activity-compressed pricing interval schedule request: {source}"
+        ))
+    })?;
 
     let hourly_factor_contract =
         hourly_factor_contract_output_from_payload(request.hourly_factor_contract);

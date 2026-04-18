@@ -12,11 +12,12 @@ use serde::{Deserialize, Serialize};
 use crate::runner::{
     VanillaOptionPricingIntervalFactors, VanillaOptionPricingIntervalFactorsError,
 };
-use crate::thread_pool::{build_pricing_thread_pool, install_pricing_parallelism, resolved_pricing_cpu_count};
+use crate::thread_pool::{
+    build_pricing_thread_pool, install_pricing_parallelism, resolved_pricing_cpu_count,
+};
 
 const AUTO_ACTIVITY_COMPRESSED_POLICY_ID: &str = "auto_activity_compressed.v1";
-const AUTO_ACTIVITY_COMPRESSED_DERIVATION_POLICY: &str =
-    "expiry_preserving_first_open_day_hourly_then_two_hour_open_compression_from_hourly_factor_coverage.v1";
+const AUTO_ACTIVITY_COMPRESSED_DERIVATION_POLICY: &str = "expiry_preserving_first_open_day_hourly_then_two_hour_open_compression_from_hourly_factor_coverage.v1";
 const AUTO_ACTIVITY_COMPRESSED_FACTOR_ASSIGNMENT_POLICY: &str =
     "overlap_weighted_resampling_from_hourly_source_buckets.v1";
 const AUTO_EXACT_SPARSE_POLICY_ID: &str = "auto_exact_sparse.v1";
@@ -193,9 +194,11 @@ pub fn derive_pricing_interval_schedule(
 
     let schedule = match policy {
         PricingIntervalSchedulePolicy::AutoActivityCompressed => {
-            return Err(PricingIntervalScheduleError::HourlyFactorCoverageRequiredForPolicy {
-                policy_id: AUTO_ACTIVITY_COMPRESSED_POLICY_ID.to_string(),
-            });
+            return Err(
+                PricingIntervalScheduleError::HourlyFactorCoverageRequiredForPolicy {
+                    policy_id: AUTO_ACTIVITY_COMPRESSED_POLICY_ID.to_string(),
+                },
+            );
         }
         PricingIntervalSchedulePolicy::AutoExactSparse => {
             build_auto_exact_sparse_schedule(valuation_time_utc_nanos, expiry_timestamps_utc_nanos)?
@@ -231,11 +234,7 @@ pub fn materialize_schedule_interval_factors(
     schedule: &PricingIntervalSchedule,
     hourly_factor_contract: &HourlyFactorContractOutput,
 ) -> Result<Vec<VanillaOptionPricingIntervalFactors>, PricingIntervalScheduleError> {
-    materialize_schedule_interval_factors_with_cpu_count(
-        schedule,
-        hourly_factor_contract,
-        None,
-    )
+    materialize_schedule_interval_factors_with_cpu_count(schedule, hourly_factor_contract, None)
 }
 
 pub fn materialize_schedule_interval_factors_with_cpu_count(
@@ -342,18 +341,20 @@ pub fn materialize_schedule_interval_factors_with_cpu_count(
                     (0..interval_count)
                         .into_par_iter()
                         .map(|interval_index| {
-                            let interval_start_utc_nanos = schedule.interval_start_utc_nanos(interval_index).ok_or(
-                                PricingIntervalScheduleError::InvalidTerminalIntervalIndex {
-                                    terminal_interval_index: interval_index,
-                                    interval_count,
-                                },
-                            )?;
-                            let interval_end_utc_nanos = schedule.interval_end_utc_nanos(interval_index).ok_or(
-                                PricingIntervalScheduleError::InvalidTerminalIntervalIndex {
-                                    terminal_interval_index: interval_index,
-                                    interval_count,
-                                },
-                            )?;
+                            let interval_start_utc_nanos =
+                                schedule.interval_start_utc_nanos(interval_index).ok_or(
+                                    PricingIntervalScheduleError::InvalidTerminalIntervalIndex {
+                                        terminal_interval_index: interval_index,
+                                        interval_count,
+                                    },
+                                )?;
+                            let interval_end_utc_nanos =
+                                schedule.interval_end_utc_nanos(interval_index).ok_or(
+                                    PricingIntervalScheduleError::InvalidTerminalIntervalIndex {
+                                        terminal_interval_index: interval_index,
+                                        interval_count,
+                                    },
+                                )?;
 
                             build_resampled_pricing_interval_factors(
                                 hourly_factor_contract,
@@ -366,18 +367,18 @@ pub fn materialize_schedule_interval_factors_with_cpu_count(
             } else {
                 (0..interval_count)
                     .map(|interval_index| {
-                        let interval_start_utc_nanos = schedule.interval_start_utc_nanos(interval_index).ok_or(
-                            PricingIntervalScheduleError::InvalidTerminalIntervalIndex {
+                        let interval_start_utc_nanos = schedule
+                            .interval_start_utc_nanos(interval_index)
+                            .ok_or(PricingIntervalScheduleError::InvalidTerminalIntervalIndex {
                                 terminal_interval_index: interval_index,
                                 interval_count,
-                            },
-                        )?;
-                        let interval_end_utc_nanos = schedule.interval_end_utc_nanos(interval_index).ok_or(
-                            PricingIntervalScheduleError::InvalidTerminalIntervalIndex {
+                            })?;
+                        let interval_end_utc_nanos = schedule
+                            .interval_end_utc_nanos(interval_index)
+                            .ok_or(PricingIntervalScheduleError::InvalidTerminalIntervalIndex {
                                 terminal_interval_index: interval_index,
                                 interval_count,
-                            },
-                        )?;
+                            })?;
 
                         build_resampled_pricing_interval_factors(
                             hourly_factor_contract,
@@ -388,7 +389,9 @@ pub fn materialize_schedule_interval_factors_with_cpu_count(
                     .collect::<Vec<_>>()
             };
 
-            interval_results.into_iter().collect::<Result<Vec<_>, _>>()?
+            interval_results
+                .into_iter()
+                .collect::<Result<Vec<_>, _>>()?
         }
         policy_id => {
             return Err(
@@ -498,10 +501,8 @@ fn build_auto_activity_compressed_schedule(
     let mut elapsed_open_exposure_hours = 0.0;
 
     while current_start_utc_nanos < max_expiry_timestamp_utc_nanos {
-        let current_hour_index = locate_hour_bucket_index(
-            hourly_factor_contract,
-            current_start_utc_nanos,
-        )?;
+        let current_hour_index =
+            locate_hour_bucket_index(hourly_factor_contract, current_start_utc_nanos)?;
         let current_state_is_open =
             hour_bucket_has_open_exposure(hourly_factor_contract, current_hour_index);
         let next_state_transition_utc_nanos =
@@ -564,8 +565,7 @@ fn build_auto_activity_compressed_schedule(
         PricingIntervalScheduleMetadata {
             policy_id: AUTO_ACTIVITY_COMPRESSED_POLICY_ID.to_string(),
             derivation_policy: AUTO_ACTIVITY_COMPRESSED_DERIVATION_POLICY.to_string(),
-            factor_assignment_policy: AUTO_ACTIVITY_COMPRESSED_FACTOR_ASSIGNMENT_POLICY
-                .to_string(),
+            factor_assignment_policy: AUTO_ACTIVITY_COMPRESSED_FACTOR_ASSIGNMENT_POLICY.to_string(),
         },
         interval_endpoints,
     )
@@ -637,11 +637,13 @@ fn locate_hour_bucket_index(
         ((timestamp_utc_nanos - first_contract_start_utc_nanos) / ONE_HOUR_NANOS) as usize;
 
     if hour_bucket_index >= hourly_factor_contract.interval_count() {
-        return Err(PricingIntervalScheduleError::ScheduleEndsAfterHourlyCoverage {
-            schedule_end_utc_nanos: timestamp_utc_nanos,
-            hourly_coverage_end_utc_nanos: hourly_factor_contract.interval_end_utc_nanos
-                [hourly_factor_contract.interval_end_utc_nanos.len() - 1],
-        });
+        return Err(
+            PricingIntervalScheduleError::ScheduleEndsAfterHourlyCoverage {
+                schedule_end_utc_nanos: timestamp_utc_nanos,
+                hourly_coverage_end_utc_nanos: hourly_factor_contract.interval_end_utc_nanos
+                    [hourly_factor_contract.interval_end_utc_nanos.len() - 1],
+            },
+        );
     }
 
     Ok(hour_bucket_index)
@@ -658,7 +660,8 @@ fn next_state_transition_utc_nanos(
     hourly_factor_contract: &HourlyFactorContractOutput,
     current_hour_index: usize,
 ) -> Option<i64> {
-    let current_state_is_open = hour_bucket_has_open_exposure(hourly_factor_contract, current_hour_index);
+    let current_state_is_open =
+        hour_bucket_has_open_exposure(hourly_factor_contract, current_hour_index);
 
     for next_hour_index in (current_hour_index + 1)..hourly_factor_contract.interval_count() {
         if hour_bucket_has_open_exposure(hourly_factor_contract, next_hour_index)
@@ -699,16 +702,15 @@ fn min_defined_boundary(
     tertiary_boundary_utc_nanos: Option<i64>,
     max_expiry_timestamp_utc_nanos: i64,
 ) -> i64 {
-    let mut resolved_boundary_utc_nanos = primary_boundary_utc_nanos.min(max_expiry_timestamp_utc_nanos);
+    let mut resolved_boundary_utc_nanos =
+        primary_boundary_utc_nanos.min(max_expiry_timestamp_utc_nanos);
 
     if let Some(secondary_boundary_utc_nanos) = secondary_boundary_utc_nanos {
-        resolved_boundary_utc_nanos =
-            resolved_boundary_utc_nanos.min(secondary_boundary_utc_nanos);
+        resolved_boundary_utc_nanos = resolved_boundary_utc_nanos.min(secondary_boundary_utc_nanos);
     }
 
     if let Some(tertiary_boundary_utc_nanos) = tertiary_boundary_utc_nanos {
-        resolved_boundary_utc_nanos =
-            resolved_boundary_utc_nanos.min(tertiary_boundary_utc_nanos);
+        resolved_boundary_utc_nanos = resolved_boundary_utc_nanos.min(tertiary_boundary_utc_nanos);
     }
 
     resolved_boundary_utc_nanos
@@ -1040,16 +1042,13 @@ mod tests {
     ) -> HourlyFactorContractOutput {
         let interval_count = open_hour_flags.len();
         let interval_start_utc_nanos = (0..interval_count)
-            .map(|interval_index| {
-                request_start_utc_nanos + interval_index as i64 * ONE_HOUR_NANOS
-            })
+            .map(|interval_index| request_start_utc_nanos + interval_index as i64 * ONE_HOUR_NANOS)
             .collect::<Vec<_>>();
         let interval_end_utc_nanos = interval_start_utc_nanos
             .iter()
             .map(|interval_start_utc_nanos| interval_start_utc_nanos + ONE_HOUR_NANOS)
             .collect::<Vec<_>>();
-        let last_interval_end_utc_nanos =
-            interval_end_utc_nanos[interval_end_utc_nanos.len() - 1];
+        let last_interval_end_utc_nanos = interval_end_utc_nanos[interval_end_utc_nanos.len() - 1];
         let s_h = open_hour_flags
             .iter()
             .map(|is_open| if *is_open { 1.0 } else { 0.0 })
@@ -1189,10 +1188,8 @@ mod tests {
 
     #[test]
     fn activity_compressed_schedule_keeps_first_open_day_hourly_then_uses_two_hour_buckets() {
-        let hourly_factor_contract = build_open_closed_hourly_factor_contract(
-            utc_nanos(2026, 2, 2, 14, 0, 0),
-            &[true; 28],
-        );
+        let hourly_factor_contract =
+            build_open_closed_hourly_factor_contract(utc_nanos(2026, 2, 2, 14, 0, 0), &[true; 28]);
 
         let derived = derive_activity_compressed_pricing_interval_schedule(
             utc_nanos(2026, 2, 2, 14, 0, 0),
@@ -1210,9 +1207,9 @@ mod tests {
         let hourly_factor_contract = build_open_closed_hourly_factor_contract(
             utc_nanos(2026, 2, 6, 22, 0, 0),
             &[
-                true, false, false, false, false, false, false, false, false, false, false,
-                false, false, false, false, false, false, false, false, false, false, false,
-                false, false, false, false, false, true, true,
+                true, false, false, false, false, false, false, false, false, false, false, false,
+                false, false, false, false, false, false, false, false, false, false, false, false,
+                false, false, false, true, true,
             ],
         );
 
@@ -1236,10 +1233,8 @@ mod tests {
 
     #[test]
     fn activity_compressed_schedule_preserves_expiries_and_reduces_interval_count() {
-        let hourly_factor_contract = build_open_closed_hourly_factor_contract(
-            utc_nanos(2026, 2, 2, 14, 0, 0),
-            &[true; 32],
-        );
+        let hourly_factor_contract =
+            build_open_closed_hourly_factor_contract(utc_nanos(2026, 2, 2, 14, 0, 0), &[true; 32]);
 
         let compressed = derive_activity_compressed_pricing_interval_schedule(
             utc_nanos(2026, 2, 2, 14, 0, 0),
@@ -1261,13 +1256,17 @@ mod tests {
         .expect("exact sparse schedule should resolve");
 
         assert!(compressed.schedule.interval_count() < exact.schedule.interval_count());
-        assert!(compressed
-            .schedule
-            .interval_end_timestamps_utc_nanos
-            .contains(&utc_nanos(2026, 2, 2, 20, 0, 0)));
-        assert!(compressed
-            .schedule
-            .interval_end_timestamps_utc_nanos
-            .contains(&utc_nanos(2026, 2, 3, 6, 0, 0)));
+        assert!(
+            compressed
+                .schedule
+                .interval_end_timestamps_utc_nanos
+                .contains(&utc_nanos(2026, 2, 2, 20, 0, 0))
+        );
+        assert!(
+            compressed
+                .schedule
+                .interval_end_timestamps_utc_nanos
+                .contains(&utc_nanos(2026, 2, 3, 6, 0, 0))
+        );
     }
 }

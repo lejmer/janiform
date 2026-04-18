@@ -536,11 +536,12 @@ impl SpectralThetaWarmStartState {
         interval_index: usize,
         row_count: usize,
     ) {
-        let row_theta_hints_by_interval =
-            self.row_theta_hints_by_carry_group.entry(carry_group_key).or_default();
+        let row_theta_hints_by_interval = self
+            .row_theta_hints_by_carry_group
+            .entry(carry_group_key)
+            .or_default();
         if row_theta_hints_by_interval.len() <= interval_index {
-            row_theta_hints_by_interval
-                .resize_with(interval_index + 1, Vec::new);
+            row_theta_hints_by_interval.resize_with(interval_index + 1, Vec::new);
         }
         if row_theta_hints_by_interval[interval_index].len() != row_count {
             row_theta_hints_by_interval[interval_index] = vec![None; row_count];

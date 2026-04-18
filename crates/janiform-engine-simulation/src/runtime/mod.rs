@@ -23,11 +23,11 @@ pub use entrypoints::{
 };
 pub use results::estimate_seeded_result_capacities;
 
+pub(crate) use market_state::SeededSimulationMarketStateResolver;
 #[cfg(test)]
 pub(crate) use news::{
     build_interval_news_event_inputs, derive_interval_news_arrival_decomposition,
 };
-pub(crate) use market_state::SeededSimulationMarketStateResolver;
 pub(crate) use news::{
     build_timestamped_news_event_input, derive_known_news_interval_slice_bounds,
     sample_count_from_expectation, sample_interval_timestamp_utc_nanos,

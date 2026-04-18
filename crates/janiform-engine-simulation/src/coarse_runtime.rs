@@ -136,9 +136,9 @@ where
 
     let market_state_resolver =
         SeededSimulationMarketStateResolver::new(&calendar_registry, &model_inputs.exchange_code)
-            .map_err(|source| CoarseSimulationRunError::OpenMarketExposureResolutionFailure {
-                source,
-            })?;
+            .map_err(
+            |source| CoarseSimulationRunError::OpenMarketExposureResolutionFailure { source },
+        )?;
 
     let interval_start_utc_nanos = (0..run_request.horizon_interval_count)
         .map(|interval_index| {
@@ -165,9 +165,7 @@ where
         interval_start_utc_nanos.as_slice(),
         interval_end_utc_nanos.as_slice(),
     )
-    .map_err(|source| CoarseSimulationRunError::OpenMarketExposureResolutionFailure {
-        source,
-    })?;
+    .map_err(|source| CoarseSimulationRunError::OpenMarketExposureResolutionFailure { source })?;
 
     emit_progress_event(
         &mut observer,
@@ -891,14 +889,13 @@ mod tests {
         MeanReversionBoundaryState, MeanReversionFittedParameters,
         MeanReversionRuntimeIntervalAnchors,
     };
+    use janiform_model_kernels::news::DoubleExponentialBaseShockConfiguration;
     use janiform_model_kernels::news::{
-        CoupledGapMarkConfiguration, GammaSeverityMarkConfiguration,
-        KnownNewsArrivalConfiguration, NewsArrivalConfiguration,
-        NewsComponentMarkScaleConfiguration, NewsProcessConfiguration,
+        CoupledGapMarkConfiguration, GammaSeverityMarkConfiguration, KnownNewsArrivalConfiguration,
+        NewsArrivalConfiguration, NewsComponentMarkScaleConfiguration, NewsProcessConfiguration,
         SharedNewsMarkLawConfiguration, SurpriseNewsArrivalConfiguration,
     };
     use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
-    use janiform_model_kernels::news::DoubleExponentialBaseShockConfiguration;
 
     #[test]
     fn adaptive_transform_slice_settings_stay_linear_for_high_intensity_regimes() {

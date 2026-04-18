@@ -399,16 +399,16 @@ fn optimize_single_restart(
         solver_settings,
     );
     if local_evaluation.invalid_reason.is_some() {
-            restart_progress.emit_finished();
-            return JointRefinementRestartOutcome {
-                restart_id: restart_id.to_string(),
-                parameter_vector: current_vector,
-                final_evaluation: local_evaluation.clone(),
-                local_evaluation,
-                local_evaluation_count: evaluation_count,
-                stop_reason: stop_reason.to_string(),
-            };
-        }
+        restart_progress.emit_finished();
+        return JointRefinementRestartOutcome {
+            restart_id: restart_id.to_string(),
+            parameter_vector: current_vector,
+            final_evaluation: local_evaluation.clone(),
+            local_evaluation,
+            local_evaluation_count: evaluation_count,
+            stop_reason: stop_reason.to_string(),
+        };
+    }
 
     if joint_refinement_has_fatal_execution_failure(context) {
         restart_progress.emit_finished();
@@ -1023,7 +1023,10 @@ mod tests {
         halton_progress.record_evaluation("nig", 1, Some(4.0));
         let progress_update = progress_receiver.recv().unwrap();
 
-        assert_eq!(progress_update.best_restart_id.as_deref(), Some("halton_01"));
+        assert_eq!(
+            progress_update.best_restart_id.as_deref(),
+            Some("halton_01")
+        );
         assert_eq!(progress_update.best_weighted_objective, Some(4.0));
     }
 }

@@ -27,9 +27,9 @@ use janiform::calibration::{
     run_staged_calibration_from_execution_input,
     run_staged_calibration_from_execution_input_with_observer,
 };
-use janiform_calibration_artifacts::CalibrationResumeSettings;
 use janiform::hawkes::{HawkesEventSide, HawkesKernelParameters};
 use janiform::simulation::MeanReversionFittedParameters;
+use janiform_calibration_artifacts::CalibrationResumeSettings;
 use pyo3::prelude::{Bound, Py, PyResult, Python};
 use pyo3::types::{PyAny, PyAnyMethods, PyDict, PyDictMethods, PyModule, PyModuleMethods};
 use pyo3::{pyfunction, wrap_pyfunction};

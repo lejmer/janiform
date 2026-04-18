@@ -17,12 +17,11 @@ use crate::{
     SEEDED_TICK_EVENT_STATE_SNAPSHOT_SCHEMA_VERSION,
     SEEDED_TICK_EVENT_TAPE_METADATA_SCHEMA_VERSION,
     SEEDED_TICK_EVENT_TIMESTAMP_REPRESENTATION_POLICY, SeededFinePathTransitionKind,
-    SeededTickEventDebugTraceTransitionKind,
-    SeededTickEventSide, SeededTickEventStateSnapshotCapture,
-    SeededTickSimulationDebugTraceOptions, SeededTickSimulationModelInputs,
-    SeededTickSimulationNewsEventMarketState, SeededTickSimulationRunConfig,
-    SeededTickSimulationRunError, SeededTickSimulationRunOptions, SimulationProgressEvent,
-    SimulationProgressPhase, run_seeded_tick_event_simulation,
+    SeededTickEventDebugTraceTransitionKind, SeededTickEventSide,
+    SeededTickEventStateSnapshotCapture, SeededTickSimulationDebugTraceOptions,
+    SeededTickSimulationModelInputs, SeededTickSimulationNewsEventMarketState,
+    SeededTickSimulationRunConfig, SeededTickSimulationRunError, SeededTickSimulationRunOptions,
+    SimulationProgressEvent, SimulationProgressPhase, run_seeded_tick_event_simulation,
     run_seeded_tick_event_simulation_with_observer,
     run_seeded_tick_event_simulation_with_randomness_factory, sample_nig_trading_time_increment,
     sample_nig_trading_time_increment_with_edge_mode,
@@ -742,18 +741,25 @@ fn seeded_simulation_hides_closed_boundary_drift_from_public_fine_path() {
     let mut model_inputs = two_interval_zero_event_carryover_model_inputs();
 
     model_inputs.hourly_factor_contract.request_start_utc_nanos = start_utc_nanos;
-    model_inputs.hourly_factor_contract.request_end_utc_nanos = start_utc_nanos + 2 * ONE_HOUR_NANOS;
+    model_inputs.hourly_factor_contract.request_end_utc_nanos =
+        start_utc_nanos + 2 * ONE_HOUR_NANOS;
 
     model_inputs.hourly_factor_contract.interval_start_utc_nanos =
         vec![start_utc_nanos, start_utc_nanos + ONE_HOUR_NANOS];
-    model_inputs.hourly_factor_contract.interval_end_utc_nanos =
-        vec![start_utc_nanos + ONE_HOUR_NANOS, start_utc_nanos + 2 * ONE_HOUR_NANOS];
+    model_inputs.hourly_factor_contract.interval_end_utc_nanos = vec![
+        start_utc_nanos + ONE_HOUR_NANOS,
+        start_utc_nanos + 2 * ONE_HOUR_NANOS,
+    ];
 
-    model_inputs.hourly_factor_contract.interval_start_exchange_local = vec![
+    model_inputs
+        .hourly_factor_contract
+        .interval_start_exchange_local = vec![
         "2024-01-22T07:00:00-05:00".to_string(),
         "2024-01-22T08:00:00-05:00".to_string(),
     ];
-    model_inputs.hourly_factor_contract.interval_end_exchange_local = vec![
+    model_inputs
+        .hourly_factor_contract
+        .interval_end_exchange_local = vec![
         "2024-01-22T08:00:00-05:00".to_string(),
         "2024-01-22T09:00:00-05:00".to_string(),
     ];
@@ -794,7 +800,8 @@ fn seeded_simulation_hides_closed_boundary_drift_from_public_fine_path() {
     assert_eq!(run_result.event_count(), 0);
     assert_eq!(run_result.public_transition_count(), 1);
 
-    let public_fine_path = run_result.public_fine_path_chunk(0, run_result.public_transition_count());
+    let public_fine_path =
+        run_result.public_fine_path_chunk(0, run_result.public_transition_count());
     assert_eq!(public_fine_path.len(), 1);
     assert_eq!(
         public_fine_path[0].transition_kind,
@@ -1337,7 +1344,8 @@ fn seeded_simulation_does_not_decay_mean_reversion_during_closed_interval() {
         run_seeded_tick_event_simulation_with_randomness_factory(run_config, &scripted_factory)
             .expect("closed-interval mean-reversion run should complete");
 
-    let public_fine_path = run_result.public_fine_path_chunk(0, run_result.public_transition_count());
+    let public_fine_path =
+        run_result.public_fine_path_chunk(0, run_result.public_transition_count());
     assert_eq!(public_fine_path.len(), 1);
     assert_float_close(public_fine_path[0].observed_log_price, 3.0);
     assert_float_close(public_fine_path[0].deviation_from_anchor, 1.0);

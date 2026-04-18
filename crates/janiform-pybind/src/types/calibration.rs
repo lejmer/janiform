@@ -73,10 +73,10 @@ impl PyPreparedCalibrationExecutionHandle {
     fn serialize_execution_input_json(&self, py: Python<'_>) -> PyResult<String> {
         py.allow_threads(|| serde_json::to_string(&self.execution_input))
             .map_err(|source| {
-            PyValueError::new_err(format!(
-                "failed to serialize prepared calibration execution input: {source}"
-            ))
-        })
+                PyValueError::new_err(format!(
+                    "failed to serialize prepared calibration execution input: {source}"
+                ))
+            })
     }
 }
 

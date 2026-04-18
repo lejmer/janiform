@@ -263,10 +263,7 @@ where
         if evaluation_count >= settings.evaluation_budget {
             break;
         }
-        if sample_set
-            .iter()
-            .any(|sample| sample.point == sample_point)
-        {
+        if sample_set.iter().any(|sample| sample.point == sample_point) {
             continue;
         }
 
@@ -352,9 +349,9 @@ where
         });
 
         if actual_objective < best_objective {
-            let objective_tolerance = settings.absolute_tolerance.max(
-                settings.relative_tolerance * best_objective.abs().max(1.0),
-            );
+            let objective_tolerance = settings
+                .absolute_tolerance
+                .max(settings.relative_tolerance * best_objective.abs().max(1.0));
             best_point = predicted_point;
             if actual_improvement <= objective_tolerance
                 && trust_region_radius <= settings.minimum_trust_region_radius * 2.0
@@ -628,16 +625,19 @@ fn fit_diagonal_quadratic_model(
         }
 
         match (positive_sample, negative_sample) {
-            (Some((positive_sample, positive_displacement)), Some((negative_sample, negative_displacement))) => {
+            (
+                Some((positive_sample, positive_displacement)),
+                Some((negative_sample, negative_displacement)),
+            ) => {
                 let positive_step = positive_displacement.abs();
                 let negative_step = negative_displacement.abs();
                 let symmetric_step = positive_step.min(negative_step);
                 if symmetric_step == 0.0 {
                     return None;
                 }
-                gradient[coordinate_index] =
-                    (positive_sample.objective - negative_sample.objective)
-                        / (positive_step + negative_step);
+                gradient[coordinate_index] = (positive_sample.objective
+                    - negative_sample.objective)
+                    / (positive_step + negative_step);
                 curvature[coordinate_index] = ((positive_sample.objective - center_objective)
                     / (positive_step * positive_step)
                     + (negative_sample.objective - center_objective)
@@ -693,10 +693,11 @@ fn propose_trust_region_candidate(
         } else {
             -model.gradient[coordinate_index].signum() * trust_region_radius
         };
-        let bounded_step = unconstrained_step
-            .clamp(-trust_region_radius, trust_region_radius);
-        candidate[coordinate_index] = (center_point[coordinate_index] + bounded_step)
-            .clamp(lower_bounds[coordinate_index], upper_bounds[coordinate_index]);
+        let bounded_step = unconstrained_step.clamp(-trust_region_radius, trust_region_radius);
+        candidate[coordinate_index] = (center_point[coordinate_index] + bounded_step).clamp(
+            lower_bounds[coordinate_index],
+            upper_bounds[coordinate_index],
+        );
     }
 
     candidate
@@ -724,12 +725,8 @@ fn update_trust_region_radius(
     upper_bounds: &[f64],
     minimum_trust_region_radius: f64,
 ) -> f64 {
-    let expanded_radius = bounded_radius_from_point(
-        best_point,
-        lower_bounds,
-        upper_bounds,
-        current_radius * 2.0,
-    );
+    let expanded_radius =
+        bounded_radius_from_point(best_point, lower_bounds, upper_bounds, current_radius * 2.0);
     if acceptance_ratio >= 0.75 {
         return expanded_radius.max(minimum_trust_region_radius);
     }
@@ -784,23 +781,19 @@ fn point_differs_outside_coordinate(
     center_point: &[f64],
     excluded_coordinate_index: usize,
 ) -> bool {
-    sample_point
-        .iter()
-        .zip(center_point)
-        .enumerate()
-        .any(|(coordinate_index, (sample_coordinate, center_coordinate))| {
+    sample_point.iter().zip(center_point).enumerate().any(
+        |(coordinate_index, (sample_coordinate, center_coordinate))| {
             coordinate_index != excluded_coordinate_index
                 && sample_coordinate.to_bits() != center_coordinate.to_bits()
-        })
+        },
+    )
 }
 
 fn max_coordinate_distance(left_point: &[f64], right_point: &[f64]) -> f64 {
     left_point
         .iter()
         .zip(right_point)
-        .map(|(left_coordinate, right_coordinate)| {
-            (left_coordinate - right_coordinate).abs()
-        })
+        .map(|(left_coordinate, right_coordinate)| (left_coordinate - right_coordinate).abs())
         .fold(0.0, f64::max)
 }
 

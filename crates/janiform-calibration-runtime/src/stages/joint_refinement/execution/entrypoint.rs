@@ -1,5 +1,5 @@
-use std::sync::mpsc;
 use std::path::Path;
+use std::sync::mpsc;
 
 use crate::stages::joint_refinement::contracts::{
     JointRefinementStageExecutionFailure, JointRefinementStageExecutionInput,

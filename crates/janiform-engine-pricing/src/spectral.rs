@@ -11,9 +11,8 @@ use crate::contracts::{
 };
 use crate::grids::{
     SpectralThetaWarmStartState, VanillaOptionGridBatchPricingExecutionInput,
-    VanillaOptionGridBatchPricingRunError,
-    VanillaOptionGridBatchPricingRunResult, VanillaOptionGridPricingResult,
-    VanillaOptionGridRequest, VanillaOptionMaturitySummary,
+    VanillaOptionGridBatchPricingRunError, VanillaOptionGridBatchPricingRunResult,
+    VanillaOptionGridPricingResult, VanillaOptionGridRequest, VanillaOptionMaturitySummary,
 };
 use crate::implied_volatility::{
     VanillaOptionImpliedVolatilityInversionOutcome, VanillaOptionImpliedVolatilityInversionStatus,
@@ -22,12 +21,11 @@ use crate::implied_volatility::{
 use crate::intraday_black_scholes_no_arbitrage_price_bounds;
 use crate::progress::PricingProgressEvent;
 use crate::runner::{
-    certify_local_transition_theta_for_row_with_parallelism,
-    LocalTransitionRequestContext, RiskNeutralAnchorMaterialization,
-    LocalTransitionRowState,
+    LocalTransitionRequestContext, LocalTransitionRowState, RiskNeutralAnchorMaterialization,
     VanillaOptionPricingExecutionInput, VanillaOptionPricingIntervalFactors,
     VanillaOptionPricingRunError, build_pricing_risk_neutral_anchor_materialization,
     build_spectral_compatibility_integration_diagnostics,
+    certify_local_transition_theta_for_row_with_parallelism,
     evaluate_pricing_log_return_characteristic_function_batch_for_context,
     resolve_local_transition_theta_for_row_with_parallelism_and_hint,
 };
@@ -230,8 +228,8 @@ pub(crate) fn run_single_option_pricing(
         cpu_count: None,
     };
 
-    let run_result =
-        run_grid_batch_pricing(grid_execution_input, None, None).map_err(|source| match source {
+    let run_result = run_grid_batch_pricing(grid_execution_input, None, None).map_err(
+        |source| match source {
             VanillaOptionGridBatchPricingRunError::InvalidExecutionInput { source } => {
                 VanillaOptionPricingRunError::InternalNumericsFailure {
                     message: format!(
@@ -245,7 +243,8 @@ pub(crate) fn run_single_option_pricing(
             VanillaOptionGridBatchPricingRunError::NodePricingFailure { message } => {
                 VanillaOptionPricingRunError::InternalNumericsFailure { message }
             }
-        })?;
+        },
+    )?;
 
     let grid = run_result.grids.first().ok_or_else(|| {
         VanillaOptionPricingRunError::InternalNumericsFailure {
@@ -862,16 +861,17 @@ fn build_cached_interval_operators(
             .copied()
             .map(|deviation| base_context.build_row_state(deviation))
             .collect::<Result<Vec<_>, _>>()?;
-        let (row_operators, row_solve_diagnostics) = solve_interval_row_frequency_batches_adaptively(
-            &base_context,
-            collocation_nodes.as_slice(),
-            row_states.as_slice(),
-            theta_hints.as_slice(),
-            spectral_domain,
-            driver_parameters,
-            pricing_thread_pool,
-            cpu_count,
-        )?;
+        let (row_operators, row_solve_diagnostics) =
+            solve_interval_row_frequency_batches_adaptively(
+                &base_context,
+                collocation_nodes.as_slice(),
+                row_states.as_slice(),
+                theta_hints.as_slice(),
+                spectral_domain,
+                driver_parameters,
+                pricing_thread_pool,
+                cpu_count,
+            )?;
 
         if let Some(state) = theta_warm_start_state.as_deref_mut() {
             state.record_interval_thetas(
@@ -902,6 +902,8 @@ fn build_cached_interval_operators(
                 row_solve_diagnostics.theta_search_elapsed_millis,
                 row_solve_diagnostics.theta_certification_elapsed_millis,
                 row_solve_diagnostics.row_batch_elapsed_millis,
+                row_solve_diagnostics.average_buy_shift_configuration_gradient_norm(),
+                row_solve_diagnostics.average_sell_shift_configuration_gradient_norm(),
             ),
         );
 
@@ -1101,6 +1103,8 @@ struct TimedRowFrequencyBatchSolution {
     theta_search_elapsed_millis: u64,
     theta_certification_elapsed_millis: u64,
     row_batch_elapsed_millis: u64,
+    buy_shift_configuration_gradient_norm: f64,
+    sell_shift_configuration_gradient_norm: f64,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -1120,6 +1124,9 @@ struct IntervalRowSolveDiagnostics {
     theta_search_elapsed_millis: u64,
     theta_certification_elapsed_millis: u64,
     row_batch_elapsed_millis: u64,
+    total_buy_shift_configuration_gradient_norm: f64,
+    total_sell_shift_configuration_gradient_norm: f64,
+    gradient_norm_sample_count: usize,
 }
 
 impl IntervalRowSolveDiagnostics {
@@ -1139,7 +1146,86 @@ impl IntervalRowSolveDiagnostics {
         self.theta_search_elapsed_millis += solution.theta_search_elapsed_millis;
         self.theta_certification_elapsed_millis += solution.theta_certification_elapsed_millis;
         self.row_batch_elapsed_millis += solution.row_batch_elapsed_millis;
+        self.total_buy_shift_configuration_gradient_norm +=
+            solution.buy_shift_configuration_gradient_norm;
+        self.total_sell_shift_configuration_gradient_norm +=
+            solution.sell_shift_configuration_gradient_norm;
+        self.gradient_norm_sample_count += 1;
     }
+
+    fn average_buy_shift_configuration_gradient_norm(self) -> f64 {
+        if self.gradient_norm_sample_count == 0 {
+            return 0.0;
+        }
+
+        self.total_buy_shift_configuration_gradient_norm / self.gradient_norm_sample_count as f64
+    }
+
+    fn average_sell_shift_configuration_gradient_norm(self) -> f64 {
+        if self.gradient_norm_sample_count == 0 {
+            return 0.0;
+        }
+
+        self.total_sell_shift_configuration_gradient_norm / self.gradient_norm_sample_count as f64
+    }
+}
+
+fn shared_plus_shift_configuration_gradient_norm(
+    alpha_derivative: ComplexScalar,
+    beta_0_derivative: ComplexScalar,
+    delta_derivative: ComplexScalar,
+    delta_beta_derivative: ComplexScalar,
+) -> f64 {
+    let alpha_norm = alpha_derivative.norm();
+    let beta_0_norm = beta_0_derivative.norm();
+    let delta_norm = delta_derivative.norm();
+    let delta_beta_norm = delta_beta_derivative.norm();
+
+    (alpha_norm * alpha_norm
+        + beta_0_norm * beta_0_norm
+        + delta_norm * delta_norm
+        + delta_beta_norm * delta_beta_norm)
+        .sqrt()
+}
+
+fn resolve_shift_configuration_gradient_norms(
+    driver_parameters: janiform_model_kernels::nig::NigBuySellDriverParameters,
+    theta: f64,
+) -> Result<(f64, f64), VanillaOptionPricingRunError> {
+    let shifted_argument = ComplexScalar::new(0.0, -theta);
+    let buy_shift_sensitivity = driver_parameters
+        .differentiate_buy_side_characteristic_exponent_for_shared_plus_shift_configuration(
+            shifted_argument,
+        )
+        .map_err(|source| VanillaOptionPricingRunError::InternalNumericsFailure {
+            message: format!(
+                "buy-side shared-plus-shift characteristic-exponent sensitivity failed at theta={theta}: {source}"
+            ),
+        })?;
+    let sell_shift_sensitivity = driver_parameters
+        .differentiate_sell_side_characteristic_exponent_for_return_composition_for_shared_plus_shift_configuration(
+            shifted_argument,
+        )
+        .map_err(|source| VanillaOptionPricingRunError::InternalNumericsFailure {
+            message: format!(
+                "sell-side shared-plus-shift characteristic-exponent sensitivity failed at theta={theta}: {source}"
+            ),
+        })?;
+
+    Ok((
+        shared_plus_shift_configuration_gradient_norm(
+            buy_shift_sensitivity.alpha_derivative,
+            buy_shift_sensitivity.beta_0_derivative,
+            buy_shift_sensitivity.delta_derivative,
+            buy_shift_sensitivity.delta_beta_derivative,
+        ),
+        shared_plus_shift_configuration_gradient_norm(
+            sell_shift_sensitivity.alpha_derivative,
+            sell_shift_sensitivity.beta_0_derivative,
+            sell_shift_sensitivity.delta_derivative,
+            sell_shift_sensitivity.delta_beta_derivative,
+        ),
+    ))
 }
 
 fn solve_row_frequency_batch(
@@ -1149,8 +1235,12 @@ fn solve_row_frequency_batch(
     driver_parameters: janiform_model_kernels::nig::NigBuySellDriverParameters,
     theta: f64,
 ) -> Result<RowFrequencyBatchSolution, VanillaOptionPricingRunError> {
-    let shared_kernel =
-        solve_shared_row_frequency_batch_kernel(base_context, spectral_domain, driver_parameters, theta)?;
+    let shared_kernel = solve_shared_row_frequency_batch_kernel(
+        base_context,
+        spectral_domain,
+        driver_parameters,
+        theta,
+    )?;
 
     build_row_frequency_batch_from_shared_kernel(
         base_context,
@@ -1266,7 +1356,10 @@ fn solve_interval_row_frequency_batches_adaptively(
     driver_parameters: janiform_model_kernels::nig::NigBuySellDriverParameters,
     pricing_thread_pool: Option<&rayon::ThreadPool>,
     cpu_count: Option<usize>,
-) -> Result<(Vec<RowFrequencyBatchSolution>, IntervalRowSolveDiagnostics), VanillaOptionPricingRunError> {
+) -> Result<
+    (Vec<RowFrequencyBatchSolution>, IntervalRowSolveDiagnostics),
+    VanillaOptionPricingRunError,
+> {
     let row_count = collocation_nodes.len();
     if row_count == 0 {
         return Ok((Vec::new(), IntervalRowSolveDiagnostics::default()));
@@ -1380,46 +1473,44 @@ fn solve_interval_row_frequency_batches_adaptively(
             })
             .collect::<Vec<_>>();
 
-        let solved_midpoints =
-            if resolved_pricing_cpu_count(cpu_count) > 1 && tasks.len() > 1 {
-                install_pricing_parallelism(pricing_thread_pool, || {
-                    tasks.par_iter()
-                        .map(|task| {
-                            solve_adaptive_midpoint_row_frequency_batch(
-                                base_context,
-                                &row_states[task.midpoint_row_index],
-                                theta_hints[task.midpoint_row_index]
-                                    .or(Some(task.predicted_theta)),
-                                task.predicted_theta,
-                                spectral_domain,
-                                driver_parameters,
-                                pricing_thread_pool,
-                                cpu_count,
-                            )
-                            .map(|solution| (task.midpoint_row_index, solution))
-                        })
-                        .collect::<Result<Vec<_>, _>>()
-                })?
-            } else {
-                let mut midpoint_solutions = Vec::with_capacity(tasks.len());
-                for task in &tasks {
-                    midpoint_solutions.push((
-                        task.midpoint_row_index,
+        let solved_midpoints = if resolved_pricing_cpu_count(cpu_count) > 1 && tasks.len() > 1 {
+            install_pricing_parallelism(pricing_thread_pool, || {
+                tasks
+                    .par_iter()
+                    .map(|task| {
                         solve_adaptive_midpoint_row_frequency_batch(
                             base_context,
                             &row_states[task.midpoint_row_index],
-                            theta_hints[task.midpoint_row_index]
-                                .or(Some(task.predicted_theta)),
+                            theta_hints[task.midpoint_row_index].or(Some(task.predicted_theta)),
                             task.predicted_theta,
                             spectral_domain,
                             driver_parameters,
                             pricing_thread_pool,
                             cpu_count,
-                        )?,
-                    ));
-                }
-                midpoint_solutions
-            };
+                        )
+                        .map(|solution| (task.midpoint_row_index, solution))
+                    })
+                    .collect::<Result<Vec<_>, _>>()
+            })?
+        } else {
+            let mut midpoint_solutions = Vec::with_capacity(tasks.len());
+            for task in &tasks {
+                midpoint_solutions.push((
+                    task.midpoint_row_index,
+                    solve_adaptive_midpoint_row_frequency_batch(
+                        base_context,
+                        &row_states[task.midpoint_row_index],
+                        theta_hints[task.midpoint_row_index].or(Some(task.predicted_theta)),
+                        task.predicted_theta,
+                        spectral_domain,
+                        driver_parameters,
+                        pricing_thread_pool,
+                        cpu_count,
+                    )?,
+                ));
+            }
+            midpoint_solutions
+        };
 
         for (midpoint_row_index, solution) in solved_midpoints {
             row_solve_diagnostics.record(&solution);
@@ -1452,7 +1543,10 @@ fn solve_interval_row_frequency_batches_adaptively(
         .map(|solutions| (solutions, row_solve_diagnostics))
 }
 
-fn derive_parallel_adaptive_seed_row_indices(row_count: usize, resolved_cpu_count: usize) -> Vec<usize> {
+fn derive_parallel_adaptive_seed_row_indices(
+    row_count: usize,
+    resolved_cpu_count: usize,
+) -> Vec<usize> {
     if row_count <= 1 {
         return vec![0];
     }
@@ -1461,15 +1555,11 @@ fn derive_parallel_adaptive_seed_row_indices(row_count: usize, resolved_cpu_coun
 
     // Keep at least one unsolved interior row inside every initial span so the
     // adaptive midpoint certification step has meaningful work to do.
-    let target_segment_count = resolved_cpu_count
-        .min(last_row_index / 2)
-        .max(1);
+    let target_segment_count = resolved_cpu_count.min(last_row_index / 2).max(1);
     let mut seeded_row_indices = Vec::with_capacity(target_segment_count + 1);
 
     for segment_boundary_index in 0..=target_segment_count {
-        seeded_row_indices.push(
-            segment_boundary_index * last_row_index / target_segment_count,
-        );
+        seeded_row_indices.push(segment_boundary_index * last_row_index / target_segment_count);
     }
 
     seeded_row_indices
@@ -1483,7 +1573,10 @@ fn solve_nested_interval_row_frequency_batches_with_shared_theta(
     driver_parameters: janiform_model_kernels::nig::NigBuySellDriverParameters,
     pricing_thread_pool: Option<&rayon::ThreadPool>,
     cpu_count: Option<usize>,
-) -> Result<(Vec<RowFrequencyBatchSolution>, IntervalRowSolveDiagnostics), VanillaOptionPricingRunError> {
+) -> Result<
+    (Vec<RowFrequencyBatchSolution>, IntervalRowSolveDiagnostics),
+    VanillaOptionPricingRunError,
+> {
     let representative_row_index = row_states
         .iter()
         .enumerate()
@@ -1510,8 +1603,12 @@ fn solve_nested_interval_row_frequency_batches_with_shared_theta(
     )?;
 
     let shared_batch_started_at = Instant::now();
-    let shared_kernel =
-        solve_shared_row_frequency_batch_kernel(base_context, spectral_domain, driver_parameters, theta)?;
+    let shared_kernel = solve_shared_row_frequency_batch_kernel(
+        base_context,
+        spectral_domain,
+        driver_parameters,
+        theta,
+    )?;
     let shared_batch_elapsed_millis = elapsed_millis(shared_batch_started_at);
 
     let row_materialization_started_at = Instant::now();
@@ -1542,6 +1639,9 @@ fn solve_nested_interval_row_frequency_batches_with_shared_theta(
         row_operators
     };
 
+    let (buy_shift_configuration_gradient_norm, sell_shift_configuration_gradient_norm) =
+        resolve_shift_configuration_gradient_norms(driver_parameters, theta)?;
+
     Ok((
         row_operators,
         IntervalRowSolveDiagnostics {
@@ -1553,6 +1653,11 @@ fn solve_nested_interval_row_frequency_batches_with_shared_theta(
             theta_certification_elapsed_millis: 0,
             row_batch_elapsed_millis: shared_batch_elapsed_millis
                 + elapsed_millis(row_materialization_started_at),
+            total_buy_shift_configuration_gradient_norm: buy_shift_configuration_gradient_norm
+                * row_states.len() as f64,
+            total_sell_shift_configuration_gradient_norm: sell_shift_configuration_gradient_norm
+                * row_states.len() as f64,
+            gradient_norm_sample_count: row_states.len(),
         },
     ))
 }
@@ -1577,14 +1682,23 @@ fn solve_exact_row_frequency_batch(
     )?;
 
     let row_batch_started_at = Instant::now();
-    let solution =
-        solve_row_frequency_batch(base_context, transition_row, spectral_domain, driver_parameters, theta)?;
+    let solution = solve_row_frequency_batch(
+        base_context,
+        transition_row,
+        spectral_domain,
+        driver_parameters,
+        theta,
+    )?;
+    let (buy_shift_configuration_gradient_norm, sell_shift_configuration_gradient_norm) =
+        resolve_shift_configuration_gradient_norms(driver_parameters, theta)?;
     Ok(TimedRowFrequencyBatchSolution {
         solution,
         solve_mode: AdaptiveRowSolveMode::SeedExact,
         theta_search_elapsed_millis: elapsed_millis(theta_started_at),
         theta_certification_elapsed_millis: 0,
         row_batch_elapsed_millis: elapsed_millis(row_batch_started_at),
+        buy_shift_configuration_gradient_norm,
+        sell_shift_configuration_gradient_norm,
     })
 }
 
@@ -1615,12 +1729,16 @@ fn solve_adaptive_midpoint_row_frequency_batch(
             driver_parameters,
             predicted_theta,
         )?;
+        let (buy_shift_configuration_gradient_norm, sell_shift_configuration_gradient_norm) =
+            resolve_shift_configuration_gradient_norms(driver_parameters, predicted_theta)?;
         return Ok(TimedRowFrequencyBatchSolution {
             solution,
             solve_mode: AdaptiveRowSolveMode::CertifiedPredicted,
             theta_search_elapsed_millis: 0,
             theta_certification_elapsed_millis: elapsed_millis(certification_started_at),
             row_batch_elapsed_millis: elapsed_millis(row_batch_started_at),
+            buy_shift_configuration_gradient_norm,
+            sell_shift_configuration_gradient_norm,
         });
     }
 
@@ -1639,6 +1757,9 @@ fn solve_adaptive_midpoint_row_frequency_batch(
         theta_search_elapsed_millis: exact_solution.theta_search_elapsed_millis,
         theta_certification_elapsed_millis: elapsed_millis(certification_started_at),
         row_batch_elapsed_millis: exact_solution.row_batch_elapsed_millis,
+        buy_shift_configuration_gradient_norm: exact_solution.buy_shift_configuration_gradient_norm,
+        sell_shift_configuration_gradient_norm: exact_solution
+            .sell_shift_configuration_gradient_norm,
     })
 }
 
@@ -1789,8 +1910,10 @@ fn build_maturity_summary(
                 solved_maturity.node_count,
                 solved_maturity.interval_summaries.clone(),
             )
-            .map_err(|source| VanillaOptionGridBatchPricingRunError::NodePricingFailure {
-                message: format!("spectral maturity diagnostics are invalid: {source}"),
+            .map_err(|source| {
+                VanillaOptionGridBatchPricingRunError::NodePricingFailure {
+                    message: format!("spectral maturity diagnostics are invalid: {source}"),
+                }
             })?,
         )
     } else {
@@ -1960,13 +2083,10 @@ fn psi_coefficient(lower: f64, upper: f64, domain_lower_bound: f64, angular_freq
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        build_spectral_domain, solve_interval_row_frequency_batches_adaptively,
-    };
+    use super::{build_spectral_domain, solve_interval_row_frequency_batches_adaptively};
     use crate::contracts::{
         AnchoredVanillaOptionPricingBoundaryInput, VanillaOptionPayoffConfiguration,
-        VanillaOptionPayoffType, VanillaOptionPricingMarketInputs,
-        VanillaOptionPricingRequest,
+        VanillaOptionPayoffType, VanillaOptionPricingMarketInputs, VanillaOptionPricingRequest,
     };
     use crate::runner::{
         LocalTransitionRequestContext, VanillaOptionPricingIntervalFactors,
@@ -2038,7 +2158,9 @@ mod tests {
             0,
             materialization.expected_hawkes_state_path[0],
             materialization.runtime_interval_anchors.start_anchor_value,
-            materialization.runtime_interval_anchors.start_pressure_state,
+            materialization
+                .runtime_interval_anchors
+                .start_pressure_state,
             materialization.runtime_interval_anchors.interval_deltas[0],
         )
         .expect("transition context should construct");

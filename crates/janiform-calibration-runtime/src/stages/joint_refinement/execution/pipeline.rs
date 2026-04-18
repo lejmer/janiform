@@ -49,6 +49,7 @@ use super::super::worker_runtime::JointRefinementSummarySimulationScheduler;
 use super::{
     JointRefinementActiveParameterLayout, JointRefinementBaselineBuckets, JointRefinementContext,
     JointRefinementFidelityTier, JointRefinementProfilingState, JointRefinementRestartOutcome,
+    JointRefinementResumeStore, PersistedRestartSelectionArtifacts,
     baseline_buckets_from_evaluation, build_joint_candidate_coarse_consistency_artifacts,
     build_joint_candidate_frontier_diagnostics, build_joint_finalist_seed_summaries,
     build_joint_refinement_stage_failure_report, build_joint_restart_diagnostics,
@@ -58,8 +59,7 @@ use super::{
     desired_joint_refinement_restart_count, joint_refinement_budget_schedule,
     optimize_restart_seeds, ordered_parameter_bits, resolve_option_surface_tier_pricing_artifact,
     run_option_refinement, select_restart_outcomes_with_lazy_coarse_consistency,
-    simulation_infrastructure_failure_message, JointRefinementResumeStore,
-    PersistedRestartSelectionArtifacts,
+    simulation_infrastructure_failure_message,
 };
 
 const JOINT_REFINEMENT_SELECTION_POLICY: &str = "validity_then_admissibility_with_incumbent_baseline_and_direct_interval_coarse_consistency_then_pareto_then_lexicographic_tie_break.v1";
@@ -1046,11 +1046,7 @@ fn run_option_refinement_if_enabled(
         return Ok(());
     }
 
-    if let (
-        Some(selected_restart_id),
-        Some(search_tier_artifact),
-        Some(selection_tier_artifact),
-    ) = (
+    if let (Some(selected_restart_id), Some(search_tier_artifact), Some(selection_tier_artifact)) = (
         resume_store.selected_restart_id(),
         resume_store.selected_search_tier_pricing_artifact(),
         resume_store.selected_selection_tier_pricing_artifact(),
@@ -1155,7 +1151,8 @@ fn run_audit_option_pricing_if_enabled(
         JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput { error_message }
     })?;
 
-    restart_search_artifacts.selected_option_audit_tier_pricing_artifact = Some(audit_artifact.clone());
+    restart_search_artifacts.selected_option_audit_tier_pricing_artifact =
+        Some(audit_artifact.clone());
     resume_store.record_audit_tier_pricing_artifact(audit_artifact.as_ref());
     Ok(())
 }
@@ -1206,9 +1203,9 @@ fn select_restart_outcome(
                         .iter()
                         .any(|restart_outcome| restart_outcome.restart_id == *restart_id)
                 })
-                && valid_selectable_restart_outcome_refs.iter().any(|restart_outcome| {
-                    restart_outcome.restart_id == selection.best_restart_id
-                })
+                && valid_selectable_restart_outcome_refs
+                    .iter()
+                    .any(|restart_outcome| restart_outcome.restart_id == selection.best_restart_id)
         });
 
     let selection_artifacts = persisted_selection.map_or_else(
