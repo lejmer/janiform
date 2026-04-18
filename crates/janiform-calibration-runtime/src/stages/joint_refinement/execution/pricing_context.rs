@@ -3,18 +3,18 @@ use std::sync::Arc;
 use std::sync::mpsc::Sender;
 
 use chrono::{DateTime, Utc};
-use janiform_engine_pricing::{
-    AnchoredVanillaOptionPricingBoundaryInput, PricingIntervalSchedule, PricingProgressEvent,
-    PricingIntervalSchedulePolicy, PricingProgressPhase, VanillaOptionGridBatchPricingExecutionInput,
-    VanillaOptionGridBatchPricingRequest, VanillaOptionGridBatchPricingRunResult,
-    VanillaOptionGridRequest, VanillaOptionPayoffType, VanillaOptionPricingModelParameters,
-    VanillaOptionPricingOptionalOutputSelection,
-    derive_activity_compressed_pricing_interval_schedule, derive_pricing_interval_schedule,
-    materialize_schedule_interval_factors_with_cpu_count,
-};
 use janiform_engine_pricing::internal::{
     SpectralThetaWarmStartState,
     run_vanilla_option_grid_batch_pricing_with_observer_and_theta_warm_start_state,
+};
+use janiform_engine_pricing::{
+    AnchoredVanillaOptionPricingBoundaryInput, PricingIntervalSchedule,
+    PricingIntervalSchedulePolicy, PricingProgressEvent, PricingProgressPhase,
+    VanillaOptionGridBatchPricingExecutionInput, VanillaOptionGridBatchPricingRequest,
+    VanillaOptionGridBatchPricingRunResult, VanillaOptionGridRequest, VanillaOptionPayoffType,
+    VanillaOptionPricingModelParameters, VanillaOptionPricingOptionalOutputSelection,
+    derive_activity_compressed_pricing_interval_schedule, derive_pricing_interval_schedule,
+    materialize_schedule_interval_factors_with_cpu_count,
 };
 use janiform_foundations::time::{ONE_HOUR_NANOS, ceil_to_hour_utc_nanos, floor_to_hour_utc_nanos};
 use janiform_market_time::hourly_factors::{
@@ -1372,6 +1372,18 @@ fn format_option_pricing_progress_item(event: &PricingProgressEvent) -> String {
                 ));
             }
 
+            if let (
+                Some(average_buy_shift_configuration_gradient_norm),
+                Some(average_sell_shift_configuration_gradient_norm),
+            ) = (
+                event.average_buy_shift_configuration_gradient_norm,
+                event.average_sell_shift_configuration_gradient_norm,
+            ) {
+                detail.push_str(&format!(
+                    " buy_g={average_buy_shift_configuration_gradient_norm:.3e} sell_g={average_sell_shift_configuration_gradient_norm:.3e}"
+                ));
+            }
+
             detail
         }
         PricingProgressPhase::StrikePricingProgress => {
@@ -1530,12 +1542,11 @@ mod tests {
     use janiform_engine_pricing::{
         AnchoredVanillaOptionPricingBoundaryInput, PricingIntervalSchedule,
         PricingIntervalSchedulePolicy, PricingProgressEvent, PricingProgressPhase,
-        VanillaOptionGridBatchPricingExecutionInput,
-        VanillaOptionGridBatchPricingRequest, VanillaOptionGridBatchPricingRunResult,
-        VanillaOptionGridPricingResult, VanillaOptionGridRequest, VanillaOptionPayoffType,
-        VanillaOptionPricingModelParameters, VanillaOptionPricingOptionalOutputSelection,
-        VanillaOptionPricingStatus, materialize_schedule_interval_factors,
-        run_vanilla_option_grid_batch_pricing,
+        VanillaOptionGridBatchPricingExecutionInput, VanillaOptionGridBatchPricingRequest,
+        VanillaOptionGridBatchPricingRunResult, VanillaOptionGridPricingResult,
+        VanillaOptionGridRequest, VanillaOptionPayoffType, VanillaOptionPricingModelParameters,
+        VanillaOptionPricingOptionalOutputSelection, VanillaOptionPricingStatus,
+        materialize_schedule_interval_factors, run_vanilla_option_grid_batch_pricing,
     };
     use janiform_foundations::time::ONE_HOUR_NANOS;
     use janiform_market_time::calendar::ExchangeCalendarRegistry;
@@ -1569,7 +1580,8 @@ mod tests {
     use janiform_market_time::hourly_factors::{
         HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION, HourlyFactorContractDiagnostics,
         HourlyFactorContractOutput, HourlyFactorMaterializationMetadata,
-        HourlyFactorProviderRequest, HourlyNewsIntensityFactorSource, HourlySeasonalityFactorSource,
+        HourlyFactorProviderRequest, HourlyNewsIntensityFactorSource,
+        HourlySeasonalityFactorSource,
     };
 
     fn sample_option_pricing_input() -> JointRefinementStageOptionPricingInput {
@@ -1673,6 +1685,8 @@ mod tests {
             theta_search_elapsed_millis: None,
             theta_certification_elapsed_millis: None,
             row_batch_elapsed_millis: None,
+            average_buy_shift_configuration_gradient_norm: None,
+            average_sell_shift_configuration_gradient_norm: None,
         };
 
         assert_eq!(
@@ -1709,8 +1723,7 @@ mod tests {
             .iter()
             .map(|interval_start_utc_nanos| interval_start_utc_nanos + ONE_HOUR_NANOS)
             .collect::<Vec<_>>();
-        let last_interval_end_utc_nanos =
-            interval_end_utc_nanos[interval_end_utc_nanos.len() - 1];
+        let last_interval_end_utc_nanos = interval_end_utc_nanos[interval_end_utc_nanos.len() - 1];
 
         HourlyFactorContractOutput {
             schema_version: HOURLY_FACTOR_CONTRACT_SCHEMA_VERSION,
@@ -1779,9 +1792,7 @@ mod tests {
             "auto_activity_compressed.v1"
         );
         assert_eq!(exact_schedule.metadata.policy_id, "auto_exact_sparse.v1");
-        assert!(
-            compressed_schedule.interval_count() <= exact_schedule.interval_count()
-        );
+        assert!(compressed_schedule.interval_count() <= exact_schedule.interval_count());
     }
 
     #[test]
