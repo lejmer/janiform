@@ -746,7 +746,7 @@ fn validate_sensitivity_component(
     Ok(())
 }
 
-fn differentiate_shifted_characteristic_exponent_wrt_theta(
+pub(crate) fn differentiate_shifted_characteristic_exponent_wrt_theta(
     physical_parameters: NigParameters,
     shifted_argument: ComplexScalar,
     context: &'static str,

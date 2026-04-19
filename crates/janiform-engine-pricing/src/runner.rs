@@ -11,6 +11,8 @@ use janiform_affine_oracle::affine_oracle::{
     ExponentialAffineTransformIntegrationResult, ExponentialAffineTransformIntegrationStatus,
     ExponentialAffineTransformNewsIntensityInput,
     ExponentialAffineTransformNewsIntensityInputError, ExponentialAffineTransformSolverError,
+    ExponentialAffineTransformSolverSettings,
+    solve_exponential_affine_transform_input_sensitivities_with_settings,
 };
 use janiform_affine_oracle::endogenous_anchor::{
     EndogenousAnchorIntervalFactors, derive_expected_interval_statistics_from_first_moment_dynamics,
@@ -21,6 +23,7 @@ use janiform_affine_oracle::sufficient_statistics::{
     derive_expected_interval_statistics_from_transform_slices,
 };
 use janiform_foundations::complex_math::ComplexScalar;
+use janiform_foundations::complex_math::complex_multiply;
 use janiform_foundations::matrix2::solve_two_by_two_linear_source_system;
 use janiform_model_kernels::hawkes::HawkesExcitationState;
 use janiform_model_kernels::mean_reversion::{
@@ -385,6 +388,27 @@ pub(crate) struct LocalTiltedIntervalExpectations {
 pub(crate) struct CorePureImaginaryLogMomentEvaluation {
     pub(crate) observed_log_moment_exponent: f64,
     pub(crate) transform_diagnostics: ExponentialAffineTransformIntegrationResult,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct CorePureImaginaryLogMomentSharedPlusShiftSensitivity {
+    pub(crate) observed_log_moment_exponent: f64,
+    pub(crate) alpha_derivative: f64,
+    pub(crate) beta_0_derivative: f64,
+    pub(crate) delta_derivative: f64,
+    pub(crate) mu_derivative: f64,
+    pub(crate) delta_beta_derivative: f64,
+    pub(crate) theta_derivative: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[allow(dead_code)]
+pub(crate) struct CoreLocalTiltImplicitThetaSharedPlusShiftSensitivity {
+    pub(crate) alpha_derivative: f64,
+    pub(crate) beta_0_derivative: f64,
+    pub(crate) delta_derivative: f64,
+    pub(crate) mu_derivative: f64,
+    pub(crate) delta_beta_derivative: f64,
 }
 
 #[cfg(test)]
@@ -827,6 +851,133 @@ pub(crate) fn evaluate_core_pure_imaginary_log_moment_exponent_for_tilt(
     Ok(CorePureImaginaryLogMomentEvaluation {
         observed_log_moment_exponent,
         transform_diagnostics: evaluation.transform_diagnostics,
+    })
+}
+
+pub(crate) fn differentiate_core_pure_imaginary_log_moment_exponent_for_tilt(
+    transition_context: &LocalTransitionRequestContext,
+    driver_parameters: NigBuySellDriverParameters,
+    theta: f64,
+) -> Result<CorePureImaginaryLogMomentSharedPlusShiftSensitivity, VanillaOptionPricingRunError> {
+    let shifted_argument = ComplexScalar::new(0.0, OBSERVED_LOG_MOMENT_ARGUMENT_IMAGINARY - theta);
+    let denominator_argument = ComplexScalar::new(0.0, -theta);
+
+    let numerator_sensitivity =
+        evaluate_pricing_log_return_characteristic_function_shared_plus_shift_sensitivity_for_context(
+            transition_context,
+            driver_parameters,
+            shifted_argument,
+        )?;
+    let denominator_sensitivity =
+        evaluate_pricing_log_return_characteristic_function_shared_plus_shift_sensitivity_for_context(
+            transition_context,
+            driver_parameters,
+            denominator_argument,
+        )?;
+
+    let risk_neutral_value = numerator_sensitivity
+        .value
+        .divide(denominator_sensitivity.value)
+        .ok_or(
+            VanillaOptionPricingRunError::InvalidRiskNeutralCharacteristicFunction {
+                numerator: numerator_sensitivity.value,
+                denominator: denominator_sensitivity.value,
+            },
+        )?;
+
+    let alpha_derivative = log_characteristic_modulus_derivative(
+        risk_neutral_value,
+        pricing_ratio_derivative(
+            numerator_sensitivity.value,
+            numerator_sensitivity.alpha_derivative,
+            denominator_sensitivity.value,
+            denominator_sensitivity.alpha_derivative,
+        )?,
+    )?;
+    let beta_0_derivative = log_characteristic_modulus_derivative(
+        risk_neutral_value,
+        pricing_ratio_derivative(
+            numerator_sensitivity.value,
+            numerator_sensitivity.beta_0_derivative,
+            denominator_sensitivity.value,
+            denominator_sensitivity.beta_0_derivative,
+        )?,
+    )?;
+    let delta_derivative = log_characteristic_modulus_derivative(
+        risk_neutral_value,
+        pricing_ratio_derivative(
+            numerator_sensitivity.value,
+            numerator_sensitivity.delta_derivative,
+            denominator_sensitivity.value,
+            denominator_sensitivity.delta_derivative,
+        )?,
+    )?;
+    let mu_derivative = log_characteristic_modulus_derivative(
+        risk_neutral_value,
+        pricing_ratio_derivative(
+            numerator_sensitivity.value,
+            numerator_sensitivity.mu_derivative,
+            denominator_sensitivity.value,
+            denominator_sensitivity.mu_derivative,
+        )?,
+    )?;
+    let delta_beta_derivative = log_characteristic_modulus_derivative(
+        risk_neutral_value,
+        pricing_ratio_derivative(
+            numerator_sensitivity.value,
+            numerator_sensitivity.delta_beta_derivative,
+            denominator_sensitivity.value,
+            denominator_sensitivity.delta_beta_derivative,
+        )?,
+    )?;
+    let theta_derivative = log_characteristic_modulus_derivative(
+        risk_neutral_value,
+        pricing_ratio_derivative(
+            numerator_sensitivity.value,
+            numerator_sensitivity.theta_derivative,
+            denominator_sensitivity.value,
+            denominator_sensitivity.theta_derivative,
+        )?,
+    )?;
+
+    Ok(CorePureImaginaryLogMomentSharedPlusShiftSensitivity {
+        observed_log_moment_exponent: risk_neutral_value.norm().ln(),
+        alpha_derivative,
+        beta_0_derivative,
+        delta_derivative,
+        mu_derivative,
+        delta_beta_derivative,
+        theta_derivative,
+    })
+}
+
+#[allow(dead_code)]
+pub(crate) fn differentiate_core_local_tilt_theta_for_tilt(
+    transition_context: &LocalTransitionRequestContext,
+    driver_parameters: NigBuySellDriverParameters,
+    theta: f64,
+) -> Result<CoreLocalTiltImplicitThetaSharedPlusShiftSensitivity, VanillaOptionPricingRunError> {
+    let sensitivity = differentiate_core_pure_imaginary_log_moment_exponent_for_tilt(
+        transition_context,
+        driver_parameters,
+        theta,
+    )?;
+    if !sensitivity.theta_derivative.is_finite() || sensitivity.theta_derivative == 0.0 {
+        return Err(VanillaOptionPricingRunError::InternalNumericsFailure {
+            message: format!(
+                "core local-tilt implicit theta sensitivity is undefined at interval={} theta={} with theta_derivative={}",
+                transition_context.interval_index, theta, sensitivity.theta_derivative,
+            ),
+        });
+    }
+
+    let inverse_theta_derivative = -1.0 / sensitivity.theta_derivative;
+    Ok(CoreLocalTiltImplicitThetaSharedPlusShiftSensitivity {
+        alpha_derivative: sensitivity.alpha_derivative * inverse_theta_derivative,
+        beta_0_derivative: sensitivity.beta_0_derivative * inverse_theta_derivative,
+        delta_derivative: sensitivity.delta_derivative * inverse_theta_derivative,
+        mu_derivative: sensitivity.mu_derivative * inverse_theta_derivative,
+        delta_beta_derivative: sensitivity.delta_beta_derivative * inverse_theta_derivative,
     })
 }
 
@@ -2149,6 +2300,267 @@ pub(crate) fn evaluate_pricing_log_return_characteristic_function_for_context(
         value: assembled.combined_characteristic_factor,
         transform_diagnostics,
     })
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct PricingCharacteristicFunctionSharedPlusShiftSensitivity {
+    pub(crate) value: ComplexScalar,
+    pub(crate) alpha_derivative: ComplexScalar,
+    pub(crate) beta_0_derivative: ComplexScalar,
+    pub(crate) delta_derivative: ComplexScalar,
+    pub(crate) mu_derivative: ComplexScalar,
+    pub(crate) delta_beta_derivative: ComplexScalar,
+    pub(crate) theta_derivative: ComplexScalar,
+}
+
+fn solve_affine_transform_value_input_sensitivities_for_context(
+    transition_context: &LocalTransitionRequestContext,
+    buy_side_shift: ComplexScalar,
+    sell_side_shift: ComplexScalar,
+) -> Result<
+    janiform_affine_oracle::affine_oracle::ExponentialAffineTransformInputSensitivityOutput,
+    VanillaOptionPricingRunError,
+> {
+    let transform_input = transition_context.build_transform_input(
+        buy_side_shift,
+        sell_side_shift,
+        ComplexScalar::new(1.0, 0.0),
+        ComplexScalar::new(1.0, 0.0),
+    );
+    let transform_diagnostics =
+        solve_exponential_affine_transform_with_internal_selection(transform_input).map_err(
+            |source| VanillaOptionPricingRunError::TransformSolveFailure {
+                argument: ComplexScalar::new(0.0, 0.0),
+                source,
+            },
+        )?;
+    let solver_settings = ExponentialAffineTransformSolverSettings::try_new(
+        transform_diagnostics.metadata.integrator_method,
+        transform_diagnostics.metadata.configured_step_count,
+    )
+    .map_err(|source| VanillaOptionPricingRunError::InternalNumericsFailure {
+        message: format!(
+            "failed to reconstruct affine transform solver settings for sensitivity solve: {source}"
+        ),
+    })?;
+
+    solve_exponential_affine_transform_input_sensitivities_with_settings(
+        transform_input,
+        solver_settings,
+    )
+    .map_err(
+        |source| VanillaOptionPricingRunError::InternalNumericsFailure {
+            message: format!("affine transform input sensitivity solve failed: {source}"),
+        },
+    )
+}
+
+fn validate_finite_characteristic_sensitivity(
+    label: &'static str,
+    value: ComplexScalar,
+) -> Result<(), VanillaOptionPricingRunError> {
+    if !value.is_finite() {
+        return Err(VanillaOptionPricingRunError::InternalNumericsFailure {
+            message: format!(
+                "non-finite pricing characteristic-function sensitivity {label}: {value:?}"
+            ),
+        });
+    }
+
+    Ok(())
+}
+
+pub(crate) fn pricing_ratio_derivative(
+    numerator: ComplexScalar,
+    numerator_derivative: ComplexScalar,
+    denominator: ComplexScalar,
+    denominator_derivative: ComplexScalar,
+) -> Result<ComplexScalar, VanillaOptionPricingRunError> {
+    let ratio = numerator.divide(denominator).ok_or(
+        VanillaOptionPricingRunError::InvalidRiskNeutralCharacteristicFunction {
+            numerator,
+            denominator,
+        },
+    )?;
+    let adjusted_numerator =
+        numerator_derivative.subtract(complex_multiply(ratio, denominator_derivative));
+
+    adjusted_numerator.divide(denominator).ok_or(
+        VanillaOptionPricingRunError::InvalidRiskNeutralCharacteristicFunction {
+            numerator: adjusted_numerator,
+            denominator,
+        },
+    )
+}
+
+fn log_characteristic_modulus_derivative(
+    characteristic_value: ComplexScalar,
+    characteristic_derivative: ComplexScalar,
+) -> Result<f64, VanillaOptionPricingRunError> {
+    let logarithmic_derivative = characteristic_derivative
+        .divide(characteristic_value)
+        .ok_or(
+            VanillaOptionPricingRunError::InvalidRiskNeutralCharacteristicFunction {
+                numerator: characteristic_derivative,
+                denominator: characteristic_value,
+            },
+        )?;
+    if !logarithmic_derivative.is_finite() {
+        return Err(VanillaOptionPricingRunError::InternalNumericsFailure {
+            message: format!(
+                "non-finite logarithmic derivative for characteristic modulus: {:?}",
+                logarithmic_derivative
+            ),
+        });
+    }
+
+    Ok(logarithmic_derivative.real)
+}
+
+pub(crate) fn evaluate_pricing_log_return_characteristic_function_shared_plus_shift_sensitivity_for_context(
+    transition_context: &LocalTransitionRequestContext,
+    driver_parameters: NigBuySellDriverParameters,
+    shifted_argument: ComplexScalar,
+) -> Result<PricingCharacteristicFunctionSharedPlusShiftSensitivity, VanillaOptionPricingRunError> {
+    let buy_side_sensitivity = driver_parameters
+        .differentiate_buy_side_characteristic_exponent_for_shared_plus_shift_configuration_with_negative_imaginary_shift(
+            shifted_argument,
+        )
+        .map_err(|source| VanillaOptionPricingRunError::InternalNumericsFailure {
+            message: format!(
+                "buy-side characteristic-exponent sensitivity failed for shifted_argument={shifted_argument:?}: {source}"
+            ),
+        })?;
+    let sell_side_sensitivity = driver_parameters
+        .differentiate_sell_side_characteristic_exponent_for_return_composition_for_shared_plus_shift_configuration_with_negative_imaginary_shift(
+            shifted_argument,
+        )
+        .map_err(|source| VanillaOptionPricingRunError::InternalNumericsFailure {
+            message: format!(
+                "sell-side characteristic-exponent sensitivity failed for shifted_argument={shifted_argument:?}: {source}"
+            ),
+        })?;
+
+    let buy_side_shift = buy_side_sensitivity.exponent.scale(-1.0);
+    let sell_side_shift = sell_side_sensitivity.exponent.scale(-1.0);
+    let transform_sensitivities = solve_affine_transform_value_input_sensitivities_for_context(
+        transition_context,
+        buy_side_shift,
+        sell_side_shift,
+    )?;
+
+    let alpha_derivative = complex_multiply(
+        transform_sensitivities
+            .u_plus_sensitivity
+            .transform_value_derivative,
+        buy_side_sensitivity.alpha_derivative.scale(-1.0),
+    )
+    .add(complex_multiply(
+        transform_sensitivities
+            .u_minus_sensitivity
+            .transform_value_derivative,
+        sell_side_sensitivity.alpha_derivative.scale(-1.0),
+    ));
+    let beta_0_derivative = complex_multiply(
+        transform_sensitivities
+            .u_plus_sensitivity
+            .transform_value_derivative,
+        buy_side_sensitivity.beta_0_derivative.scale(-1.0),
+    )
+    .add(complex_multiply(
+        transform_sensitivities
+            .u_minus_sensitivity
+            .transform_value_derivative,
+        sell_side_sensitivity.beta_0_derivative.scale(-1.0),
+    ));
+    let delta_derivative = complex_multiply(
+        transform_sensitivities
+            .u_plus_sensitivity
+            .transform_value_derivative,
+        buy_side_sensitivity.delta_derivative.scale(-1.0),
+    )
+    .add(complex_multiply(
+        transform_sensitivities
+            .u_minus_sensitivity
+            .transform_value_derivative,
+        sell_side_sensitivity.delta_derivative.scale(-1.0),
+    ));
+    let mu_derivative = complex_multiply(
+        transform_sensitivities
+            .u_plus_sensitivity
+            .transform_value_derivative,
+        buy_side_sensitivity.mu_derivative.scale(-1.0),
+    )
+    .add(complex_multiply(
+        transform_sensitivities
+            .u_minus_sensitivity
+            .transform_value_derivative,
+        sell_side_sensitivity.mu_derivative.scale(-1.0),
+    ));
+    let delta_beta_derivative = complex_multiply(
+        transform_sensitivities
+            .u_plus_sensitivity
+            .transform_value_derivative,
+        buy_side_sensitivity.delta_beta_derivative.scale(-1.0),
+    )
+    .add(complex_multiply(
+        transform_sensitivities
+            .u_minus_sensitivity
+            .transform_value_derivative,
+        sell_side_sensitivity.delta_beta_derivative.scale(-1.0),
+    ));
+    let theta_derivative = complex_multiply(
+        transform_sensitivities
+            .u_plus_sensitivity
+            .transform_value_derivative,
+        buy_side_sensitivity.theta_shift_derivative.scale(-1.0),
+    )
+    .add(complex_multiply(
+        transform_sensitivities
+            .u_minus_sensitivity
+            .transform_value_derivative,
+        sell_side_sensitivity.theta_shift_derivative.scale(-1.0),
+    ));
+
+    validate_finite_characteristic_sensitivity("alpha", alpha_derivative)?;
+    validate_finite_characteristic_sensitivity("beta_0", beta_0_derivative)?;
+    validate_finite_characteristic_sensitivity("delta", delta_derivative)?;
+    validate_finite_characteristic_sensitivity("mu", mu_derivative)?;
+    validate_finite_characteristic_sensitivity("delta_beta", delta_beta_derivative)?;
+    validate_finite_characteristic_sensitivity("theta", theta_derivative)?;
+
+    Ok(PricingCharacteristicFunctionSharedPlusShiftSensitivity {
+        value: transform_sensitivities.output.transform_value,
+        alpha_derivative,
+        beta_0_derivative,
+        delta_derivative,
+        mu_derivative,
+        delta_beta_derivative,
+        theta_derivative,
+    })
+}
+
+pub(crate) fn evaluate_pricing_log_return_characteristic_function_batch_shared_plus_shift_sensitivities_for_context(
+    transition_context: &LocalTransitionRequestContext,
+    driver_parameters: NigBuySellDriverParameters,
+    shifted_arguments: &[ComplexScalar],
+) -> Result<
+    Vec<PricingCharacteristicFunctionSharedPlusShiftSensitivity>,
+    VanillaOptionPricingRunError,
+> {
+    let mut sensitivities = Vec::with_capacity(shifted_arguments.len());
+
+    for shifted_argument in shifted_arguments {
+        sensitivities.push(
+            evaluate_pricing_log_return_characteristic_function_shared_plus_shift_sensitivity_for_context(
+                transition_context,
+                driver_parameters,
+                *shifted_argument,
+            )?,
+        );
+    }
+
+    Ok(sensitivities)
 }
 
 pub(crate) fn evaluate_pricing_log_return_characteristic_function_batch_for_context(

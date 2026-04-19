@@ -102,6 +102,7 @@ pub struct PricingProgressEvent {
     pub row_batch_elapsed_millis: Option<u64>,
     pub average_buy_shift_configuration_gradient_norm: Option<f64>,
     pub average_sell_shift_configuration_gradient_norm: Option<f64>,
+    pub average_core_log_moment_shift_configuration_gradient_norm: Option<f64>,
 }
 
 impl PricingProgressEvent {
@@ -132,6 +133,7 @@ impl PricingProgressEvent {
             row_batch_elapsed_millis: None,
             average_buy_shift_configuration_gradient_norm: None,
             average_sell_shift_configuration_gradient_norm: None,
+            average_core_log_moment_shift_configuration_gradient_norm: None,
         }
     }
 
@@ -163,6 +165,7 @@ impl PricingProgressEvent {
             row_batch_elapsed_millis: None,
             average_buy_shift_configuration_gradient_norm: None,
             average_sell_shift_configuration_gradient_norm: None,
+            average_core_log_moment_shift_configuration_gradient_norm: None,
         }
     }
 
@@ -194,6 +197,7 @@ impl PricingProgressEvent {
             row_batch_elapsed_millis: None,
             average_buy_shift_configuration_gradient_norm: None,
             average_sell_shift_configuration_gradient_norm: None,
+            average_core_log_moment_shift_configuration_gradient_norm: None,
         }
     }
 
@@ -227,6 +231,7 @@ impl PricingProgressEvent {
             row_batch_elapsed_millis: None,
             average_buy_shift_configuration_gradient_norm: None,
             average_sell_shift_configuration_gradient_norm: None,
+            average_core_log_moment_shift_configuration_gradient_norm: None,
         }
     }
 
@@ -260,6 +265,7 @@ impl PricingProgressEvent {
             row_batch_elapsed_millis: None,
             average_buy_shift_configuration_gradient_norm: None,
             average_sell_shift_configuration_gradient_norm: None,
+            average_core_log_moment_shift_configuration_gradient_norm: None,
         }
     }
 
@@ -274,6 +280,7 @@ impl PricingProgressEvent {
         row_batch_elapsed_millis: u64,
         average_buy_shift_configuration_gradient_norm: f64,
         average_sell_shift_configuration_gradient_norm: f64,
+        average_core_log_moment_shift_configuration_gradient_norm: f64,
     ) -> Self {
         self.seed_exact_transition_row_count = Some(seed_exact_transition_row_count);
         self.shared_theta_transition_row_count = Some(shared_theta_transition_row_count);
@@ -286,6 +293,9 @@ impl PricingProgressEvent {
             Some(average_buy_shift_configuration_gradient_norm);
         self.average_sell_shift_configuration_gradient_norm =
             Some(average_sell_shift_configuration_gradient_norm);
+        self.average_core_log_moment_shift_configuration_gradient_norm =
+            Some(average_core_log_moment_shift_configuration_gradient_norm);
+
         self
     }
 }

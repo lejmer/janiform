@@ -9,7 +9,11 @@ use super::constants::{
 };
 use super::errors::{NigSharedPlusShiftConfigurationError, NigTradingTimeIncrementSamplingError};
 use super::parameters::NigParameters;
-use crate::risk_neutral::{EsscherTransformError, differentiate_nig_characteristic_exponent};
+use crate::risk_neutral::{
+    EsscherTransformError, differentiate_nig_characteristic_exponent,
+    differentiate_nig_esscher_log_moment_exponent_for_pure_imaginary_argument,
+    differentiate_shifted_characteristic_exponent_wrt_theta,
+};
 use janiform_foundations::complex_math::ComplexScalar;
 
 /// Shared-plus-shift NIG driver configuration for buy and sell trading-time components.
@@ -120,6 +124,18 @@ pub struct NigSharedPlusShiftCharacteristicExponentSensitivity {
     pub delta_derivative: ComplexScalar,
     pub mu_derivative: ComplexScalar,
     pub delta_beta_derivative: ComplexScalar,
+    pub theta_shift_derivative: ComplexScalar,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct NigSharedPlusShiftPureImaginaryLogMomentSensitivity {
+    pub observed_log_moment_exponent: f64,
+    pub alpha_derivative: f64,
+    pub beta_0_derivative: f64,
+    pub delta_derivative: f64,
+    pub mu_derivative: f64,
+    pub delta_beta_derivative: f64,
+    pub theta_derivative: f64,
 }
 
 /// Trading-time characteristic exponent contributions for one return argument.
@@ -174,7 +190,27 @@ impl NigBuySellDriverParameters {
             delta_derivative: sensitivity.delta_derivative,
             mu_derivative: sensitivity.mu_derivative,
             delta_beta_derivative: ComplexScalar::new(0.0, 0.0),
+            theta_shift_derivative: ComplexScalar::new(0.0, 0.0),
         })
+    }
+
+    pub fn differentiate_buy_side_characteristic_exponent_for_shared_plus_shift_configuration_with_negative_imaginary_shift(
+        self,
+        shifted_argument: ComplexScalar,
+    ) -> Result<NigSharedPlusShiftCharacteristicExponentSensitivity, EsscherTransformError> {
+        let mut sensitivity = self
+            .differentiate_buy_side_characteristic_exponent_for_shared_plus_shift_configuration(
+                shifted_argument,
+            )?;
+        sensitivity.theta_shift_derivative =
+            differentiate_shifted_characteristic_exponent_wrt_theta(
+                self.buy_side_parameters,
+                shifted_argument,
+                "buy_side_negative_imaginary_shift",
+            )?
+            .scale(-1.0);
+
+        Ok(sensitivity)
     }
 
     /// Evaluate sell-side NIG exponent with the negated argument, i.e. \f$\psi_-(-u)\f$.
@@ -211,6 +247,72 @@ impl NigBuySellDriverParameters {
             delta_derivative: physical_sensitivity.delta_derivative,
             mu_derivative: physical_sensitivity.mu_derivative,
             delta_beta_derivative: physical_sensitivity.beta_derivative,
+            theta_shift_derivative: ComplexScalar::new(0.0, 0.0),
+        })
+    }
+
+    pub fn differentiate_sell_side_characteristic_exponent_for_return_composition_for_shared_plus_shift_configuration_with_negative_imaginary_shift(
+        self,
+        shifted_argument: ComplexScalar,
+    ) -> Result<NigSharedPlusShiftCharacteristicExponentSensitivity, EsscherTransformError> {
+        let effective_argument = shifted_argument.scale(-1.0);
+        let mut sensitivity = self
+            .differentiate_sell_side_characteristic_exponent_for_return_composition_for_shared_plus_shift_configuration(
+                shifted_argument,
+            )?;
+        sensitivity.theta_shift_derivative =
+            differentiate_shifted_characteristic_exponent_wrt_theta(
+                self.sell_side_parameters,
+                effective_argument,
+                "sell_side_return_composition_negative_imaginary_shift",
+            )?;
+
+        Ok(sensitivity)
+    }
+
+    pub fn differentiate_buy_side_pure_imaginary_log_moment_for_shared_plus_shift_configuration(
+        self,
+        argument_imaginary: f64,
+        theta: f64,
+    ) -> Result<NigSharedPlusShiftPureImaginaryLogMomentSensitivity, EsscherTransformError> {
+        let sensitivity =
+            differentiate_nig_esscher_log_moment_exponent_for_pure_imaginary_argument(
+                self.buy_side_parameters,
+                argument_imaginary,
+                theta,
+            )?;
+
+        Ok(NigSharedPlusShiftPureImaginaryLogMomentSensitivity {
+            observed_log_moment_exponent: sensitivity.observed_log_moment_exponent,
+            alpha_derivative: sensitivity.alpha_derivative,
+            beta_0_derivative: sensitivity.beta_derivative,
+            delta_derivative: sensitivity.delta_derivative,
+            mu_derivative: sensitivity.mu_derivative,
+            delta_beta_derivative: 0.0,
+            theta_derivative: sensitivity.theta_derivative,
+        })
+    }
+
+    pub fn differentiate_sell_side_pure_imaginary_log_moment_for_shared_plus_shift_configuration(
+        self,
+        argument_imaginary: f64,
+        theta: f64,
+    ) -> Result<NigSharedPlusShiftPureImaginaryLogMomentSensitivity, EsscherTransformError> {
+        let sensitivity =
+            differentiate_nig_esscher_log_moment_exponent_for_pure_imaginary_argument(
+                self.sell_side_parameters,
+                argument_imaginary,
+                theta,
+            )?;
+
+        Ok(NigSharedPlusShiftPureImaginaryLogMomentSensitivity {
+            observed_log_moment_exponent: sensitivity.observed_log_moment_exponent,
+            alpha_derivative: sensitivity.alpha_derivative,
+            beta_0_derivative: sensitivity.beta_derivative,
+            delta_derivative: sensitivity.delta_derivative,
+            mu_derivative: sensitivity.mu_derivative,
+            delta_beta_derivative: sensitivity.beta_derivative,
+            theta_derivative: sensitivity.theta_derivative,
         })
     }
 

@@ -729,6 +729,7 @@ fn run_option_grid_batch_pricing(
             include_transform_diagnostics: false,
             include_integration_quality_diagnostics: false,
             include_calibration_hooks: false,
+            include_node_price_sensitivities: false,
         },
         cpu_count: Some(option_pricing_context.cpu_count),
     };
@@ -1116,6 +1117,7 @@ fn build_option_surface_tier_pricing_artifact(
         maturity_scores,
         node_diagnostics,
         aggregate_diagnostics,
+        score_gradient_artifact: None,
         maturity_intervals: tier_inputs.maturity_intervals.clone(),
         maturity_terminal_interval_indices: tier_inputs.maturity_terminal_interval_indices.clone(),
     })
@@ -1381,6 +1383,14 @@ fn format_option_pricing_progress_item(event: &PricingProgressEvent) -> String {
             ) {
                 detail.push_str(&format!(
                     " buy_g={average_buy_shift_configuration_gradient_norm:.3e} sell_g={average_sell_shift_configuration_gradient_norm:.3e}"
+                ));
+            }
+
+            if let Some(average_core_log_moment_shift_configuration_gradient_norm) =
+                event.average_core_log_moment_shift_configuration_gradient_norm
+            {
+                detail.push_str(&format!(
+                    " core_g={average_core_log_moment_shift_configuration_gradient_norm:.3e}"
                 ));
             }
 
@@ -1687,6 +1697,7 @@ mod tests {
             row_batch_elapsed_millis: None,
             average_buy_shift_configuration_gradient_norm: None,
             average_sell_shift_configuration_gradient_norm: None,
+            average_core_log_moment_shift_configuration_gradient_norm: None,
         };
 
         assert_eq!(
@@ -2083,6 +2094,7 @@ mod tests {
             forward_price_grid: vec![vec![None; strike_count]],
             discount_factor_grid: vec![vec![None; strike_count]],
             boundary_state_norm_grid: vec![vec![None; strike_count]],
+            node_price_sensitivity_grid: None,
             maturity_summaries: vec![None],
         }
     }
@@ -2507,6 +2519,7 @@ mod tests {
                 include_transform_diagnostics: false,
                 include_integration_quality_diagnostics: false,
                 include_calibration_hooks: false,
+                include_node_price_sensitivities: false,
             },
             cpu_count: Some(1),
         };

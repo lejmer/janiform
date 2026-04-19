@@ -1,7 +1,14 @@
 use crate::characteristic::build_pricing_equation_specification;
+use crate::grids::{
+    SpectralThetaWarmStartDriverConfiguration, SpectralThetaWarmStartRowState,
+    SpectralThetaWarmStartSensitivity, SpectralThetaWarmStartState,
+    VanillaOptionGridBatchPricingExecutionInput, VanillaOptionGridBatchPricingRequest,
+    VanillaOptionGridRequest, run_vanilla_option_grid_batch_pricing,
+};
 use crate::{
-    AnchoredVanillaOptionPricingBoundaryInput, VanillaOptionPayoffConfiguration,
-    VanillaOptionPayoffType, VanillaOptionPricingIntervalFactors, VanillaOptionPricingMarketInputs,
+    AnchoredVanillaOptionPricingBoundaryInput, PricingIntervalSchedule,
+    VanillaOptionPayoffConfiguration, VanillaOptionPayoffType, VanillaOptionPricingIntervalFactors,
+    VanillaOptionPricingMarketInputs, VanillaOptionPricingOptionalOutputSelection,
     VanillaOptionPricingRequest,
 };
 use janiform_affine_oracle::endogenous_anchor::{
@@ -13,6 +20,7 @@ use janiform_model_kernels::hawkes::{HawkesEventSide, HawkesExcitationState};
 use janiform_model_kernels::mean_reversion::{
     MeanReversionAnchorModel, MeanReversionBoundaryState, MeanReversionFittedParameters,
 };
+use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 
 use crate::runner::{
     IntervalTiltCurve, LocalTransitionRequestContext,
@@ -41,6 +49,64 @@ fn transition_context_for_request(
             .expect("transition-context interval factors should construct"),
     )
     .expect("transition context should construct")
+}
+
+#[test]
+fn theta_warm_start_state_predicts_interval_hint_from_parameter_delta() {
+    let carry_group_key = (0_u64, 0_u64);
+    let previous_driver_configuration = SpectralThetaWarmStartDriverConfiguration {
+        alpha: 2.0,
+        beta_0: -0.1,
+        delta: 0.4,
+        mu: 0.05,
+        delta_beta: -0.2,
+    };
+    let current_driver_configuration = SpectralThetaWarmStartDriverConfiguration {
+        alpha: 2.3,
+        beta_0: -0.2,
+        delta: 0.45,
+        mu: 0.04,
+        delta_beta: -0.25,
+    };
+    let mut warm_start_state = SpectralThetaWarmStartState::new();
+
+    warm_start_state.record_interval_theta_states(
+        carry_group_key,
+        0,
+        previous_driver_configuration,
+        vec![
+            SpectralThetaWarmStartRowState::from_theta_hint(0.7).with_local_theta_sensitivity(
+                SpectralThetaWarmStartSensitivity {
+                    alpha_derivative: 2.0,
+                    beta_0_derivative: -3.0,
+                    delta_derivative: 5.0,
+                    mu_derivative: 7.0,
+                    delta_beta_derivative: 11.0,
+                },
+            ),
+            SpectralThetaWarmStartRowState::from_theta_hint(0.9),
+        ],
+    );
+
+    let predicted_hints =
+        warm_start_state.interval_theta_hints(carry_group_key, 0, 2, current_driver_configuration);
+
+    let expected_first_hint = 2.0_f64.mul_add(
+        current_driver_configuration.alpha - previous_driver_configuration.alpha,
+        (-3.0_f64).mul_add(
+            current_driver_configuration.beta_0 - previous_driver_configuration.beta_0,
+            5.0_f64.mul_add(
+                current_driver_configuration.delta - previous_driver_configuration.delta,
+                7.0_f64.mul_add(
+                    current_driver_configuration.mu - previous_driver_configuration.mu,
+                    11.0 * (current_driver_configuration.delta_beta
+                        - previous_driver_configuration.delta_beta),
+                ),
+            ),
+        ),
+    ) + 0.7;
+
+    assert_eq!(predicted_hints, vec![Some(expected_first_hint), Some(0.9)]);
 }
 
 #[test]
@@ -151,6 +217,108 @@ fn pure_imaginary_log_moment_recovery_rejects_zero_characteristic_factor() {
             value,
         } if theta == -0.5 && value == ComplexScalar::new(0.0, 0.0)
     ));
+}
+
+#[test]
+fn grid_batch_pricing_reports_exact_node_price_alpha_sensitivity() {
+    let mut model_parameters = valid_model_parameters();
+    let execution_input = single_node_grid_execution_input(model_parameters.clone(), true);
+    let pricing_result =
+        run_vanilla_option_grid_batch_pricing(execution_input).expect("pricing run should succeed");
+    let node_sensitivity = pricing_result.grids[0]
+        .node_price_sensitivity_grid
+        .as_ref()
+        .and_then(|grid| grid.first())
+        .and_then(|row| row.first())
+        .and_then(|node| *node)
+        .expect("node price sensitivity should be present");
+
+    let configuration = model_parameters.nig_shared_plus_shift_configuration;
+    let alpha_step = 1.0e-6 * configuration.alpha.max(1.0);
+
+    model_parameters.nig_shared_plus_shift_configuration =
+        NigSharedPlusShiftConfiguration::try_new(
+            configuration.alpha + alpha_step,
+            configuration.beta_0,
+            configuration.delta,
+            configuration.mu,
+            configuration.delta_beta,
+        )
+        .expect("positive alpha perturbation should stay valid");
+    let positive_price = single_node_price(model_parameters.clone());
+
+    model_parameters.nig_shared_plus_shift_configuration =
+        NigSharedPlusShiftConfiguration::try_new(
+            configuration.alpha - alpha_step,
+            configuration.beta_0,
+            configuration.delta,
+            configuration.mu,
+            configuration.delta_beta,
+        )
+        .expect("negative alpha perturbation should stay valid");
+    let negative_price = single_node_price(model_parameters);
+
+    let finite_difference = (positive_price - negative_price) / (2.0 * alpha_step);
+    assert!(
+        (node_sensitivity.alpha_derivative - finite_difference).abs() <= 1.0e-4,
+        "analytic alpha sensitivity {} should match finite difference {}",
+        node_sensitivity.alpha_derivative,
+        finite_difference,
+    );
+}
+
+fn single_node_grid_execution_input(
+    model_parameters: crate::VanillaOptionPricingModelParameters,
+    include_node_price_sensitivities: bool,
+) -> VanillaOptionGridBatchPricingExecutionInput {
+    let runtime_interval_schedule: PricingIntervalSchedule =
+        build_uniform_runtime_interval_schedule(1, 1.0);
+
+    VanillaOptionGridBatchPricingExecutionInput {
+        request: VanillaOptionGridBatchPricingRequest {
+            spot: 101.0,
+            grids: vec![VanillaOptionGridRequest {
+                payoff_type: VanillaOptionPayoffType::Call,
+                risk_free_rate: 0.02,
+                dividend_yield: 0.01,
+                strikes: vec![100.0],
+                maturity_intervals: vec![1.0],
+            }],
+        },
+        boundary_input: disabled_boundary_input(
+            1.0,
+            HawkesExcitationState {
+                y_plus_plus: 0.0,
+                y_plus_minus: 0.0,
+                y_minus_plus: 0.0,
+                y_minus_minus: 0.0,
+            },
+        ),
+        model_parameters,
+        runtime_interval_schedule,
+        interval_delta: 1.0,
+        interval_factors: vec![
+            VanillaOptionPricingIntervalFactors::try_new(0.0, 0.0, 0.0)
+                .expect("single-node interval factors should construct"),
+        ],
+        optional_output_selection: VanillaOptionPricingOptionalOutputSelection {
+            include_transform_diagnostics: false,
+            include_integration_quality_diagnostics: false,
+            include_calibration_hooks: false,
+            include_node_price_sensitivities,
+        },
+        cpu_count: Some(1),
+    }
+}
+
+fn single_node_price(model_parameters: crate::VanillaOptionPricingModelParameters) -> f64 {
+    let pricing_result = run_vanilla_option_grid_batch_pricing(single_node_grid_execution_input(
+        model_parameters,
+        false,
+    ))
+    .expect("finite-difference pricing run should succeed");
+
+    pricing_result.grids[0].price_grid[0][0].expect("single-node price should exist")
 }
 
 #[test]

@@ -23,8 +23,8 @@ pub use constants::{
 };
 pub use driver::{
     NigBuySellDriverParameters, NigSharedPlusShiftCharacteristicExponentSensitivity,
-    NigSharedPlusShiftConfiguration, NigTradingTimeCharacteristicExponentContributions,
-    NigTradingTimeIncrementContributions,
+    NigSharedPlusShiftConfiguration, NigSharedPlusShiftPureImaginaryLogMomentSensitivity,
+    NigTradingTimeCharacteristicExponentContributions, NigTradingTimeIncrementContributions,
 };
 pub use errors::{
     NigIncrementSamplingError, NigParameterError, NigSharedPlusShiftConfigurationError,

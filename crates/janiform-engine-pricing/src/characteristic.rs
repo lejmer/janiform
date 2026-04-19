@@ -18,7 +18,8 @@ use janiform_model_kernels::hawkes::{
     HawkesSeasonalityIntervalError,
 };
 use janiform_model_kernels::nig::{
-    NigBuySellDriverParameters, NigTradingTimeCharacteristicExponentContributions,
+    NigBuySellDriverParameters, NigSharedPlusShiftPureImaginaryLogMomentSensitivity,
+    NigTradingTimeCharacteristicExponentContributions,
 };
 use janiform_model_kernels::return_decomposition::{
     ReturnDecomposition, ReturnDecompositionEdgeMode, ReturnDecompositionValidationError,
@@ -203,6 +204,10 @@ pub enum AnchoredLocalTiltSolveError {
         lower_residual: f64,
         upper_residual: f64,
     },
+    UndefinedImplicitThetaSensitivity {
+        theta: f64,
+        residual_theta_derivative: f64,
+    },
 }
 
 impl Display for AnchoredLocalTiltSolveError {
@@ -258,6 +263,13 @@ impl Display for AnchoredLocalTiltSolveError {
                 formatter,
                 "anchored local tilt solve found no admissible theta for target={target_log_moment_exponent} across [{lower_theta}, {upper_theta}] with residuals [{lower_residual}, {upper_residual}]"
             ),
+            Self::UndefinedImplicitThetaSensitivity {
+                theta,
+                residual_theta_derivative,
+            } => write!(
+                formatter,
+                "anchored local tilt implicit sensitivity is undefined at theta={theta} because residual_theta_derivative={residual_theta_derivative}"
+            ),
         }
     }
 }
@@ -278,6 +290,30 @@ impl Error for AnchoredLocalTiltSolveError {
 pub(crate) struct LocalTiltResidualEvaluation {
     pub(crate) observed_log_moment_exponent: f64,
     pub(crate) residual: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[allow(dead_code)]
+pub(crate) struct LocalTiltResidualSharedPlusShiftSensitivity {
+    pub(crate) observed_log_moment_exponent: f64,
+    pub(crate) residual: f64,
+    pub(crate) alpha_derivative: f64,
+    pub(crate) beta_0_derivative: f64,
+    pub(crate) delta_derivative: f64,
+    pub(crate) mu_derivative: f64,
+    pub(crate) delta_beta_derivative: f64,
+    pub(crate) theta_derivative: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[allow(dead_code)]
+pub(crate) struct LocalTiltImplicitThetaSharedPlusShiftSensitivity {
+    pub(crate) theta: f64,
+    pub(crate) alpha_derivative: f64,
+    pub(crate) beta_0_derivative: f64,
+    pub(crate) delta_derivative: f64,
+    pub(crate) mu_derivative: f64,
+    pub(crate) delta_beta_derivative: f64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -418,6 +454,121 @@ fn evaluate_local_tilt_residual(
     Ok(LocalTiltResidualEvaluation {
         observed_log_moment_exponent,
         residual: observed_log_moment_exponent - target_log_moment_exponent,
+    })
+}
+
+#[allow(dead_code)]
+fn combine_shared_plus_shift_log_moment_sensitivities(
+    return_decomposition: ReturnDecomposition,
+    buy_side_sensitivity: NigSharedPlusShiftPureImaginaryLogMomentSensitivity,
+    sell_side_sensitivity: NigSharedPlusShiftPureImaginaryLogMomentSensitivity,
+    target_log_moment_exponent: f64,
+) -> LocalTiltResidualSharedPlusShiftSensitivity {
+    let observed_log_moment_exponent = return_decomposition.a_plus.mul_add(
+        buy_side_sensitivity.observed_log_moment_exponent,
+        return_decomposition.a_minus * sell_side_sensitivity.observed_log_moment_exponent,
+    );
+
+    LocalTiltResidualSharedPlusShiftSensitivity {
+        observed_log_moment_exponent,
+        residual: observed_log_moment_exponent - target_log_moment_exponent,
+        alpha_derivative: return_decomposition.a_plus.mul_add(
+            buy_side_sensitivity.alpha_derivative,
+            return_decomposition.a_minus * sell_side_sensitivity.alpha_derivative,
+        ),
+        beta_0_derivative: return_decomposition.a_plus.mul_add(
+            buy_side_sensitivity.beta_0_derivative,
+            return_decomposition.a_minus * sell_side_sensitivity.beta_0_derivative,
+        ),
+        delta_derivative: return_decomposition.a_plus.mul_add(
+            buy_side_sensitivity.delta_derivative,
+            return_decomposition.a_minus * sell_side_sensitivity.delta_derivative,
+        ),
+        mu_derivative: return_decomposition.a_plus.mul_add(
+            buy_side_sensitivity.mu_derivative,
+            return_decomposition.a_minus * sell_side_sensitivity.mu_derivative,
+        ),
+        delta_beta_derivative: return_decomposition.a_plus.mul_add(
+            buy_side_sensitivity.delta_beta_derivative,
+            return_decomposition.a_minus * sell_side_sensitivity.delta_beta_derivative,
+        ),
+        theta_derivative: return_decomposition.a_plus.mul_add(
+            buy_side_sensitivity.theta_derivative,
+            return_decomposition.a_minus * sell_side_sensitivity.theta_derivative,
+        ),
+    }
+}
+
+#[allow(dead_code)]
+pub(crate) fn differentiate_local_tilt_residual_for_shared_plus_shift_configuration(
+    driver_parameters: NigBuySellDriverParameters,
+    return_decomposition: ReturnDecomposition,
+    target_log_moment_exponent: f64,
+    theta: f64,
+) -> Result<LocalTiltResidualSharedPlusShiftSensitivity, AnchoredLocalTiltSolveError> {
+    let buy_side_sensitivity = driver_parameters
+        .differentiate_buy_side_pure_imaginary_log_moment_for_shared_plus_shift_configuration(
+            BUY_SIDE_OBSERVED_LOG_MOMENT_ARGUMENT_IMAGINARY,
+            theta,
+        )
+        .map_err(
+            |source| AnchoredLocalTiltSolveError::BuySideEsscherTransformFailure { theta, source },
+        )?;
+
+    let sell_side_sensitivity = driver_parameters
+        .differentiate_sell_side_pure_imaginary_log_moment_for_shared_plus_shift_configuration(
+            SELL_SIDE_OBSERVED_LOG_MOMENT_ARGUMENT_IMAGINARY,
+            theta,
+        )
+        .map_err(
+            |source| AnchoredLocalTiltSolveError::SellSideEsscherTransformFailure { theta, source },
+        )?;
+
+    Ok(combine_shared_plus_shift_log_moment_sensitivities(
+        return_decomposition,
+        buy_side_sensitivity,
+        sell_side_sensitivity,
+        target_log_moment_exponent,
+    ))
+}
+
+#[allow(dead_code)]
+pub(crate) fn differentiate_local_tilt_root_for_shared_plus_shift_configuration(
+    driver_parameters: NigBuySellDriverParameters,
+    return_decomposition: ReturnDecomposition,
+    target_log_moment_exponent: f64,
+    theta: f64,
+) -> Result<LocalTiltImplicitThetaSharedPlusShiftSensitivity, AnchoredLocalTiltSolveError> {
+    let residual_sensitivity =
+        differentiate_local_tilt_residual_for_shared_plus_shift_configuration(
+            driver_parameters,
+            return_decomposition,
+            target_log_moment_exponent,
+            theta,
+        )?;
+
+    if !residual_sensitivity.theta_derivative.is_finite()
+        || residual_sensitivity.theta_derivative == 0.0
+    {
+        return Err(
+            AnchoredLocalTiltSolveError::UndefinedImplicitThetaSensitivity {
+                theta,
+                residual_theta_derivative: residual_sensitivity.theta_derivative,
+            },
+        );
+    }
+
+    let inverse_residual_theta_derivative = -1.0 / residual_sensitivity.theta_derivative;
+
+    Ok(LocalTiltImplicitThetaSharedPlusShiftSensitivity {
+        theta,
+        alpha_derivative: residual_sensitivity.alpha_derivative * inverse_residual_theta_derivative,
+        beta_0_derivative: residual_sensitivity.beta_0_derivative
+            * inverse_residual_theta_derivative,
+        delta_derivative: residual_sensitivity.delta_derivative * inverse_residual_theta_derivative,
+        mu_derivative: residual_sensitivity.mu_derivative * inverse_residual_theta_derivative,
+        delta_beta_derivative: residual_sensitivity.delta_beta_derivative
+            * inverse_residual_theta_derivative,
     })
 }
 
@@ -571,7 +722,6 @@ where
     let lower_theta = search_domain.lower_theta;
     let upper_theta = search_domain.upper_theta;
     let reference_theta = search_domain.reference_theta;
-
     let reference_evaluation = evaluate_residual(reference_theta)?;
     if reference_evaluation.residual.abs() <= tolerance {
         return Ok((reference_theta, reference_evaluation));
