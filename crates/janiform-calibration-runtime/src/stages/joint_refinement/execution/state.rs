@@ -30,6 +30,8 @@ use crate::stages::return_components::ReturnComponentsStageContinuousReturnCalib
 use janiform_market_time::calendar::ExchangeCalendarRegistry;
 
 use super::super::worker_runtime::JointRefinementSummarySimulationScheduler;
+use super::option_objective_gradient::JointRefinementOptionTierScoreGradientArtifact;
+use super::option_reduced_model::JointRefinementOptionReducedModelArtifact;
 
 pub(crate) const JOINT_REFINEMENT_OBJECTIVE_NORMALIZATION_FLOOR: f64 = 1.0e-8;
 pub(crate) const JOINT_REFINEMENT_HAWKES_SCALE_LOG_BOUND: f64 = 1.386_294_361_119_890_6;
@@ -68,6 +70,8 @@ pub(crate) struct JointRefinementSeedSummaryCacheKey {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub(crate) struct JointRefinementOptionPricingCacheKey {
     pub(crate) tier_kind: JointRefinementOptionSurfaceTierKind,
+    #[serde(default)]
+    pub(crate) include_node_price_sensitivities: bool,
     pub(crate) source_dynamics_parameter_bits: Vec<u64>,
     pub(crate) pricing_parameter_bits: Vec<u64>,
 }
@@ -150,6 +154,19 @@ impl JointRefinementProfilingState {
     pub(crate) fn record_seed_summary_simulation_duration(&self, elapsed_millis: u64) {
         self.cumulative_seed_summary_simulation_millis
             .fetch_add(elapsed_millis, Ordering::Relaxed);
+    }
+
+    pub(crate) fn mean_option_pricing_run_wall_clock_millis(&self) -> Option<f64> {
+        let option_pricing_run_count = self.option_pricing_run_count.load(Ordering::Relaxed);
+        if option_pricing_run_count == 0 {
+            return None;
+        }
+
+        let cumulative_option_pricing_millis = self
+            .cumulative_option_pricing_millis
+            .load(Ordering::Relaxed);
+
+        Some(cumulative_option_pricing_millis as f64 / option_pricing_run_count as f64)
     }
 
     pub(crate) fn snapshot_runtime_profile(
@@ -343,6 +360,7 @@ pub(crate) struct JointRefinementOptionTierPricingInputs {
     pub(crate) runtime_interval_schedule: PricingIntervalSchedule,
     pub(crate) interval_factors: Vec<VanillaOptionPricingIntervalFactors>,
     pub(crate) grid_batch_pricing_request: VanillaOptionGridBatchPricingRequest,
+    pub(crate) spectral_collocation_node_count_override: Option<usize>,
     pub(crate) observed_nodes: Vec<JointRefinementOptionNodeDefinition>,
     pub(crate) maturity_intervals: Vec<f64>,
     pub(crate) maturity_terminal_interval_indices: Vec<usize>,
@@ -386,10 +404,16 @@ pub(crate) struct JointRefinementOptionTierPricingArtifact {
     pub(crate) cache_key: JointRefinementOptionPricingCacheKey,
     pub(crate) tier_kind: JointRefinementOptionSurfaceTierKind,
     pub(crate) runtime_interval_schedule: PricingIntervalSchedule,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) spectral_collocation_node_count: Option<usize>,
     pub(crate) score: JointRefinementOptionTierScore,
     pub(crate) maturity_scores: Vec<JointRefinementOptionMaturityScoreArtifact>,
     pub(crate) node_diagnostics: Vec<JointRefinementStageOptionNodeDiagnostic>,
     pub(crate) aggregate_diagnostics: Vec<JointRefinementStageOptionAggregateDiagnostic>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) score_gradient_artifact: Option<JointRefinementOptionTierScoreGradientArtifact>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) reduced_model_artifact: Option<JointRefinementOptionReducedModelArtifact>,
     pub(crate) maturity_intervals: Vec<f64>,
     pub(crate) maturity_terminal_interval_indices: Vec<usize>,
 }

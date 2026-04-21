@@ -10,12 +10,12 @@ from janiform.calibration.staged._progress_policy import (
     calibration_total_progress_fraction,
 )
 from janiform.calibration.staged.progress import (
-    ActiveRestartProgressRow,
+    ActiveCandidateProgressRow,
     NativeStagedCalibrationProgressTracker,
-    format_restart_progress_panel_row,
+    format_active_candidate_progress_panel_row,
     format_compact_staged_progress_event_detail,
     format_staged_progress_event_detail,
-    maximum_restart_progress_row_id_width,
+    maximum_active_candidate_progress_row_id_width,
     update_cli_progress_from_staged_native_event,
 )
 
@@ -193,8 +193,15 @@ def test_spinner_progress_keeps_staged_subtasks_within_running_calibration_step(
 
     assert rendered_lines == [
         (
+            "- fit 1/8 "
+            "[00:20, ETA 00:51] "
+            "running calibration [28%] | "
+            "joint_refinement restart optimization [12%] (1/8)"
+        ),
+        "  halton_03              -            -  eval    -  obj          -  best          -",
+        (
             "✓ fit 1/8 "
-            f"[00:25, ETA {workflow_progress_module._format_elapsed_seconds(expected_eta_seconds)}] "
+            f"[00:25, ETA {workflow_progress_module.format_elapsed_seconds(expected_eta_seconds)}] "
             f"running calibration [{round(progress_fraction * 100.0)}%] | "
             "joint_refinement restart optimization [12%] (1/8)"
         ),
@@ -303,7 +310,7 @@ def test_restart_optimization_progress_panel_tracks_active_candidates() -> None:
         }
     )
 
-    assert tracker.restart_progress_panel(
+    assert tracker.active_candidate_progress_panel(
         "joint_refinement restart optimization [20%] | best=baseline | best_obj=12991.020000"
     ) == "\n".join(
         (
@@ -328,7 +335,7 @@ def test_restart_optimization_progress_panel_tracks_active_candidates() -> None:
         }
     )
 
-    assert tracker.restart_progress_panel(
+    assert tracker.active_candidate_progress_panel(
         "joint_refinement restart optimization [27%] | best=baseline | best_obj=12991.020000"
     ) == "\n".join(
         (
@@ -376,6 +383,54 @@ def test_restart_optimization_progress_renders_live_candidate_details() -> None:
     )
 
 
+def test_option_refinement_progress_panel_tracks_active_candidates() -> None:
+    tracker = NativeStagedCalibrationProgressTracker()
+    tracker.update(
+        {
+            "event_kind": "stage_progress",
+            "stage": "joint_refinement",
+            "progress_phase": "option_search_tier_refinement",
+            "completed_units": 0,
+            "total_units": 5,
+            "current_restart_id": "baseline",
+            "current_item_label": "interval 99/957",
+            "active_restart_count": 2,
+            "current_evaluation_count": 7,
+            "total_evaluation_budget": 27,
+            "current_weighted_objective": 449.91,
+            "best_restart_id": "baseline",
+            "best_weighted_objective": 449.91,
+        }
+    )
+    tracker.update(
+        {
+            "event_kind": "stage_progress",
+            "stage": "joint_refinement",
+            "progress_phase": "option_search_tier_refinement",
+            "completed_units": 0,
+            "total_units": 5,
+            "current_restart_id": "halton_07",
+            "current_item_label": "interval 245/957",
+            "active_restart_count": 2,
+            "current_evaluation_count": 3,
+            "total_evaluation_budget": 27,
+            "current_weighted_objective": 452.37,
+            "best_restart_id": "baseline",
+            "best_weighted_objective": 449.91,
+        }
+    )
+
+    assert tracker.active_candidate_progress_panel(
+        "joint_refinement option_search_tier_refinement [0%] | best=baseline | best_obj=449.910000"
+    ) == "\n".join(
+        (
+            "joint_refinement option_search_tier_refinement [0%] | best=baseline | best_obj=449.910000",
+            "  baseline               interval 99/957               eval  7/27  obj     449.91  best          -",
+            "  halton_07              interval 245/957              eval  3/27  obj     452.37  best          -",
+        )
+    )
+
+
 def test_compact_option_refinement_progress_detail_shows_item_before_first_completion() -> None:
     raw_event = {
         "stage": "joint_refinement",
@@ -402,6 +457,9 @@ def test_compact_option_refinement_progress_detail_shows_candidate_and_pricing_s
         "total_units": 5,
         "current_restart_id": "activity_aligned",
         "current_item_label": "maturity 3/24",
+        "current_evaluation_count": 7,
+        "total_evaluation_budget": 27,
+        "evaluation_progress_percent": 25,
         "best_restart_id": "baseline",
         "best_weighted_objective": 0.1825,
     }
@@ -412,11 +470,12 @@ def test_compact_option_refinement_progress_detail_shows_candidate_and_pricing_s
         total_units=5,
     ) == (
         "joint_refinement option_search_tier_refinement [0%] (0/5) | "
-        "item=activity_aligned | detail=maturity 3/24 | best=baseline | best_obj=0.182500"
+        "item=activity_aligned | detail=maturity 3/24 | eval=7/27 | "
+        "best=baseline | best_obj=0.182500"
     )
     assert format_staged_progress_event_detail(raw_event) == (
         "joint_refinement option_search_tier_refinement 0/5 | "
-        "item=activity_aligned | detail=maturity 3/24 | "
+        "item=activity_aligned | detail=maturity 3/24 | eval=7/27 | "
         "best_candidate=baseline | best_objective=0.182500"
     )
 
@@ -466,11 +525,11 @@ def test_spinner_progress_truncates_long_lines_to_terminal_width(
     expected_eta_seconds = 39.0 * (1.0 - 0.64) / 0.64
     full_stage_line = (
         "✓ fit 1/8 "
-        f"[00:39, ETA {workflow_progress_module._format_elapsed_seconds(expected_eta_seconds)}] "
+        f"[00:39, ETA {workflow_progress_module.format_elapsed_seconds(expected_eta_seconds)}] "
         "running calibration [64%] | joint_refinement restart optimization [68%] "
         "| best=baseline | best_obj=5.315629 | item=baseline | obj=6.843098"
     )
-    expected_stage_line = f"{full_stage_line[:77]}..."
+    expected_stage_line = f"{full_stage_line[:76]}..."
 
     assert rendered_lines == [
         expected_stage_line,
@@ -523,16 +582,33 @@ def test_spinner_progress_truncates_long_lines_when_terminal_width_is_available_
     expected_eta_seconds = 39.0 * (1.0 - 0.64) / 0.64
     full_stage_line = (
         "✓ fit 1/8 "
-        f"[00:39, ETA {workflow_progress_module._format_elapsed_seconds(expected_eta_seconds)}] "
+        f"[00:39, ETA {workflow_progress_module.format_elapsed_seconds(expected_eta_seconds)}] "
         "running calibration [64%] | joint_refinement restart optimization [68%] "
         "| best=baseline | best_obj=5.315629 | item=baseline | obj=6.843098"
     )
-    expected_stage_line = f"{full_stage_line[:77]}..."
+    expected_stage_line = f"{full_stage_line[:76]}..."
 
     assert rendered_lines == [
         expected_stage_line,
         "done fit total [00:39]",
     ]
+
+
+def test_spinner_progress_truncates_exact_terminal_width_lines_to_avoid_wrap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    progress = workflow_progress_module.SpinnerProgress(
+        label="price",
+        stream=io.StringIO(),
+        enabled=False,
+    )
+    monkeypatch.setattr(
+        workflow_progress_module,
+        "_resolve_stream_render_width",
+        lambda stream: 10,
+    )
+
+    assert progress._fit_line_to_stream_width("1234567890") == "123456..."
 
 
 def test_spinner_progress_clears_restart_panel_rows_when_returning_to_single_line_summary(
@@ -592,7 +668,7 @@ def test_spinner_progress_clears_restart_panel_rows_when_returning_to_single_lin
     assert rendered_lines == [
         (
             "✓ fit 1/8 "
-            f"[00:41, ETA {workflow_progress_module._format_elapsed_seconds(expected_eta_seconds)}] "
+            f"[00:41, ETA {workflow_progress_module.format_elapsed_seconds(expected_eta_seconds)}] "
             "running calibration [84%] | joint_refinement coarse consistency evaluation [14%] | "
             "best=baseline | best_obj=1.058281"
         ),
@@ -600,8 +676,183 @@ def test_spinner_progress_clears_restart_panel_rows_when_returning_to_single_lin
     ]
 
 
+def test_spinner_progress_renders_multiline_panel_without_cursor_control_once_per_state_change(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stream = io.StringIO()
+    monotonic_values = iter((0.0, 0.0, 0.0, 0.0, 25.0, 25.0, 25.0))
+
+    class _DummyThread:
+        def __init__(self, *, target: Any, daemon: bool) -> None:
+            self._target = target
+            self._daemon = daemon
+
+        def start(self) -> None:
+            return None
+
+        def join(self, timeout: float) -> None:
+            _ = timeout
+
+    monkeypatch.setattr(workflow_progress_module, "Thread", _DummyThread)
+    monkeypatch.setattr(workflow_progress_module, "monotonic", lambda: next(monotonic_values))
+
+    with workflow_progress_module.SpinnerProgress(
+        label="price",
+        stream=stream,
+        enabled=True,
+    ) as progress:
+        progress.update(detail="pricing observed option surface")
+        progress.update(
+            detail="pricing observed option surface",
+            completed_units=0,
+            total_units=22,
+            subdetail="\n".join(
+                (
+                    "active 22 | valuation workers 22/24 | pricing cpus per worker 1",
+                    "  2026-03-27T18:42:00Z | queued  | - | --:--",
+                    "  2026-03-31T20:00:00Z | queued  | - | --:--",
+                )
+            ),
+        )
+        progress.update(
+            detail="pricing observed option surface",
+            completed_units=0,
+            total_units=22,
+            subdetail="\n".join(
+                (
+                    "active 22 | valuation workers 22/24 | pricing cpus per worker 1",
+                    "  2026-03-27T18:42:00Z | queued  | - | --:--",
+                    "  2026-03-31T20:00:00Z | queued  | - | --:--",
+                )
+            ),
+        )
+
+    rendered_lines = _render_terminal_output(stream.getvalue())
+
+    assert rendered_lines == [
+        "- price [0% 0/22] pricing observed option surface | active 22 | valuation workers 22/24 | pricing cpus per worker 1 [00:00]",
+        "  2026-03-27T18:42:00Z | queued  | - | --:--",
+        "  2026-03-31T20:00:00Z | queued  | - | --:--",
+        "✓ price [0% 0/22] pricing observed option surface | active 22 | valuation workers 22/24 | pricing cpus per worker 1 [00:25]",
+        "done price total [00:25]",
+    ]
+
+
+def test_spinner_progress_rewrites_multiline_panel_in_place_with_portable_cursor_control(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _TtyStringIO(io.StringIO):
+        def isatty(self) -> bool:
+            return True
+
+    stream = _TtyStringIO()
+    monotonic_values = iter((0.0, 0.0, 0.0, 5.0, 10.0, 10.0, 10.0))
+
+    class _DummyThread:
+        def __init__(self, *, target: Any, daemon: bool) -> None:
+            self._target = target
+            self._daemon = daemon
+
+        def start(self) -> None:
+            return None
+
+        def join(self, timeout: float) -> None:
+            _ = timeout
+
+    monkeypatch.setattr(workflow_progress_module, "Thread", _DummyThread)
+    monkeypatch.setattr(workflow_progress_module, "monotonic", lambda: next(monotonic_values))
+
+    progress = workflow_progress_module.SpinnerProgress(
+        label="price",
+        stream=stream,
+        enabled=True,
+    )
+    try:
+        progress.update(detail="pricing observed option surface")
+        progress.update(
+            detail="pricing observed option surface",
+            completed_units=0,
+            total_units=2,
+            subdetail="\n".join(
+                (
+                    "active 2 | valuation workers 2/4 | pricing cpus per worker 2",
+                    "  2026-03-27T18:42:00Z | queued  | - | --:--",
+                    "  2026-03-31T20:00:00Z | queued  | - | --:--",
+                )
+            ),
+        )
+        progress.update(
+            detail="pricing observed option surface",
+            completed_units=1,
+            total_units=2,
+            subdetail="\n".join(
+                (
+                    "active 1 | valuation workers 2/4 | pricing cpus per worker 2",
+                    "  2026-03-27T18:42:00Z | done    | strike 41/128 | 03:05",
+                    "  2026-03-31T20:00:00Z | running | interval 193/957 | 00:10",
+                )
+            ),
+        )
+
+        raw_output = stream.getvalue()
+        rendered_lines = _render_terminal_output(raw_output)
+    finally:
+        progress.__exit__(None, None, None)
+
+    assert "\x1b[2A\r" in raw_output
+    assert rendered_lines == [
+        "- price [50% 1/2] pricing observed option surface | active 1 | valuation workers 2/4 | pricing cpus per worker 2 [00:10, ETA 00:10]",
+        "  2026-03-27T18:42:00Z | done    | strike 41/128 | 03:05",
+        "  2026-03-31T20:00:00Z | running | interval 193/957 | 00:10",
+    ]
+
+
+def test_spinner_progress_animates_multiline_panel_with_cursor_control() -> None:
+    class _TtyStringIO(io.StringIO):
+        def isatty(self) -> bool:
+            return True
+
+    stream = _TtyStringIO()
+    progress = workflow_progress_module.SpinnerProgress(
+        label="price",
+        stream=stream,
+        enabled=False,
+    )
+    progress._detail = "pricing observed option surface"
+    progress._subdetail = "\n".join(
+        (
+            "active 22 | valuation workers 22/24 | pricing cpus per worker 1",
+            "  2026-03-27T18:42:00Z | queued  | - | --:--",
+        )
+    )
+    progress._stage_started_at = 0.0
+
+    assert progress._should_animate_locked() is True
+
+
+def test_spinner_progress_detects_cursor_control_from_stream_fileno(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _WrappedStream(io.StringIO):
+        def isatty(self) -> bool:
+            return False
+
+        def fileno(self) -> int:
+            return 9
+
+    monkeypatch.setattr(workflow_progress_module.os, "isatty", lambda fileno: fileno == 9)
+
+    progress = workflow_progress_module.SpinnerProgress(
+        label="price",
+        stream=_WrappedStream(),
+        enabled=False,
+    )
+
+    assert progress._supports_cursor_control() is True
+
+
 def test_restart_progress_panel_widens_candidate_column_for_long_restart_ids() -> None:
-    long_row = ActiveRestartProgressRow(
+    long_row = ActiveCandidateProgressRow(
         restart_id="nig_basin_high_alpha_low_delta_activity_aligned",
         parameter_block="hawkes",
         current_outer_cycle=1,
@@ -611,7 +862,7 @@ def test_restart_progress_panel_widens_candidate_column_for_long_restart_ids() -
         current_weighted_objective=1.49,
         candidate_best_weighted_objective=1.49,
     )
-    short_row = ActiveRestartProgressRow(
+    short_row = ActiveCandidateProgressRow(
         restart_id="baseline",
         parameter_block="hawkes",
         current_outer_cycle=1,
@@ -622,17 +873,17 @@ def test_restart_progress_panel_widens_candidate_column_for_long_restart_ids() -
         candidate_best_weighted_objective=1.48,
     )
 
-    restart_id_width = maximum_restart_progress_row_id_width((long_row, short_row))
+    restart_id_width = maximum_active_candidate_progress_row_id_width((long_row, short_row))
 
     assert restart_id_width == len(long_row.restart_id)
-    assert format_restart_progress_panel_row(
+    assert format_active_candidate_progress_panel_row(
         long_row,
         restart_id_width=restart_id_width,
     ) == (
         "  nig_basin_high_alpha_low_delta_activity_aligned hawkes     1/1  "
         "eval  60%  obj       1.49  best       1.49"
     )
-    assert format_restart_progress_panel_row(
+    assert format_active_candidate_progress_panel_row(
         short_row,
         restart_id_width=restart_id_width,
     ) == (
@@ -646,6 +897,8 @@ def _render_terminal_output(raw_output: str) -> list[str]:
     current_line: list[str] = []
     cursor_position = 0
     line_index = 0
+    saved_line_index: int | None = None
+    saved_cursor_position: int | None = None
     character_index = 0
 
     while character_index < len(raw_output):
@@ -674,6 +927,30 @@ def _render_terminal_output(raw_output: str) -> list[str]:
         if character == "\x1b":
             escape_start = character_index
             character_index += 1
+            if character_index < len(raw_output) and raw_output[character_index] == "7":
+                saved_line_index = line_index
+                saved_cursor_position = cursor_position
+                character_index += 1
+                continue
+
+            if character_index < len(raw_output) and raw_output[character_index] == "8":
+                if line_index == len(rendered_lines):
+                    rendered_lines.append("".join(current_line).rstrip())
+                else:
+                    rendered_lines[line_index] = "".join(current_line).rstrip()
+
+                if saved_line_index is not None and saved_cursor_position is not None:
+                    line_index = saved_line_index
+                    current_line = (
+                        list(rendered_lines[line_index])
+                        if line_index < len(rendered_lines)
+                        else []
+                    )
+                    cursor_position = saved_cursor_position
+
+                character_index += 1
+                continue
+
             if character_index >= len(raw_output) or raw_output[character_index] != "[":
                 continue
 
@@ -707,6 +984,27 @@ def _render_terminal_output(raw_output: str) -> list[str]:
             if command == "K" and argument == 2:
                 current_line = []
                 cursor_position = 0
+                continue
+
+            if command == "s":
+                saved_line_index = line_index
+                saved_cursor_position = cursor_position
+                continue
+
+            if command == "u":
+                if line_index == len(rendered_lines):
+                    rendered_lines.append("".join(current_line).rstrip())
+                else:
+                    rendered_lines[line_index] = "".join(current_line).rstrip()
+
+                if saved_line_index is not None and saved_cursor_position is not None:
+                    line_index = saved_line_index
+                    current_line = (
+                        list(rendered_lines[line_index])
+                        if line_index < len(rendered_lines)
+                        else []
+                    )
+                    cursor_position = saved_cursor_position
                 continue
 
             character_index = escape_start + 1

@@ -14,6 +14,7 @@ from ...presets.resolution import (
     ResolvedPresetWorkflowConfiguration,
     ResolvedWorkflowComponentSource,
 )
+from ...staged.contracts import CalibrationStage
 from ...staged.results import StagedCalibrationResponse
 from .shared import MODEL_PERSISTENCE_SCHEMA_VERSION
 
@@ -30,30 +31,12 @@ def build_model_persistence_payload(model: Any) -> dict[str, Any]:
     }
 
 
-def raw_stage_report_payloads(raw_response_payload: dict[str, Any]) -> tuple[dict[str, Any], ...]:
-    raw_stage_reports = raw_response_payload.get("stage_reports", ())
-    if not isinstance(raw_stage_reports, list):
-        raise calibration_error("stage_reports", "must be a sequence")
-
-    stage_payloads: list[dict[str, Any]] = []
-    for stage_index, raw_stage_report in enumerate(raw_stage_reports):
-        if not isinstance(raw_stage_report, dict):
-            raise calibration_error(
-                f"stage_reports[{stage_index}]",
-                "must be an object",
-            )
-
-        stage_payloads.append(dict(raw_stage_report))
-
-    return tuple(stage_payloads)
-
-
 def extract_model_parameters(stage_report_payloads: tuple[dict[str, Any], ...]) -> dict[str, Any]:
     parameters: dict[str, Any] = {}
     for stage_report in stage_report_payloads:
-        stage_kind = cast(str, stage_report["stage_report_kind"])
+        stage_kind = _require_stage_report_kind(stage_report)
         match stage_kind:
-            case "seasonality":
+            case CalibrationStage.SEASONALITY:
                 normalized_stage_payload = stage_report.get("normalized_stage_payload")
                 if isinstance(normalized_stage_payload, Mapping):
                     parameters["seasonality"] = {
@@ -70,7 +53,7 @@ def extract_model_parameters(stage_report_payloads: tuple[dict[str, Any], ...]) 
                             cast(list[float], normalized_stage_payload.get("day_of_year_factor", []))
                         ),
                     }
-            case "hawkes":
+            case CalibrationStage.HAWKES:
                 fitted_stage_payload = stage_report.get("fitted_stage_payload")
                 if isinstance(fitted_stage_payload, Mapping):
                     parameters["hawkes"] = {
@@ -80,7 +63,7 @@ def extract_model_parameters(stage_report_payloads: tuple[dict[str, Any], ...]) 
                             cast(dict[str, Any], fitted_stage_payload.get("fitted_parameters", {}))
                         ),
                     }
-            case "return_components":
+            case CalibrationStage.RETURN_COMPONENTS:
                 fitted_stage_payload = stage_report.get("fitted_stage_payload")
                 if isinstance(fitted_stage_payload, Mapping):
                     parameters["return_components"] = {
@@ -90,7 +73,7 @@ def extract_model_parameters(stage_report_payloads: tuple[dict[str, Any], ...]) 
                             cast(dict[str, Any], fitted_stage_payload.get("fitted_parameters", {}))
                         ),
                     }
-            case "mean_reversion":
+            case CalibrationStage.MEAN_REVERSION:
                 fitted_stage_payload = stage_report.get("fitted_stage_payload")
                 if isinstance(fitted_stage_payload, Mapping):
                     parameters["mean_reversion"] = {
@@ -102,7 +85,7 @@ def extract_model_parameters(stage_report_payloads: tuple[dict[str, Any], ...]) 
                             cast(dict[str, Any], fitted_stage_payload.get("diagnostics", {}))
                         ),
                     }
-            case "joint_refinement":
+            case CalibrationStage.JOINT_REFINEMENT:
                 fitted_stage_payload = stage_report.get("fitted_stage_payload")
                 if isinstance(fitted_stage_payload, Mapping):
                     parameters["joint_refinement"] = {
@@ -136,12 +119,6 @@ def extract_model_parameters(stage_report_payloads: tuple[dict[str, Any], ...]) 
                             )
                         ),
                     }
-            case _:
-                raise calibration_error(
-                    "stage_report_kind",
-                    f"unsupported stage report kind `{stage_kind}`",
-                )
-
     return parameters
 
 
@@ -281,14 +258,19 @@ def build_model_metadata(
 def selected_candidate_ids(stage_report_payloads: tuple[dict[str, Any], ...]) -> dict[str, str]:
     selected_candidate_ids_by_stage: dict[str, str] = {}
     for stage_report in stage_report_payloads:
-        stage_kind = stage_report.get("stage_report_kind")
+        raw_stage_kind = stage_report.get("stage_report_kind")
         fitted_stage_payload = stage_report.get("fitted_stage_payload")
-        if not isinstance(stage_kind, str) or not isinstance(fitted_stage_payload, Mapping):
+        if not isinstance(raw_stage_kind, str) or not isinstance(fitted_stage_payload, Mapping):
+            continue
+
+        try:
+            stage_kind = CalibrationStage(raw_stage_kind)
+        except ValueError:
             continue
 
         selected_candidate_id = fitted_stage_payload.get("selected_candidate_id")
         if isinstance(selected_candidate_id, str):
-            selected_candidate_ids_by_stage[stage_kind] = selected_candidate_id
+            selected_candidate_ids_by_stage[stage_kind.value] = selected_candidate_id
 
     return selected_candidate_ids_by_stage
 
@@ -398,3 +380,17 @@ def resolved_component_provenance(
 
 def serialize_model_payload(model: Any) -> str:
     return serialize_pretty_json(build_model_persistence_payload(model))
+
+
+def _require_stage_report_kind(stage_report: Mapping[str, Any]) -> CalibrationStage:
+    raw_stage_kind = stage_report.get("stage_report_kind")
+    if not isinstance(raw_stage_kind, str):
+        raise calibration_error("stage_report_kind", "must be a string")
+
+    try:
+        return CalibrationStage(raw_stage_kind)
+    except ValueError as error:
+        raise calibration_error(
+            "stage_report_kind",
+            f"unsupported stage report kind `{raw_stage_kind}`",
+        ) from error

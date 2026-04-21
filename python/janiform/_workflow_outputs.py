@@ -14,7 +14,7 @@ from .contracts import serialize_pretty_json
 from .calibration.fit.report import JaniformFitReport
 from .calendar import CalendarRegistry, MarketState
 from .pricing import VanillaOptionPricingRunResult
-from .simulation import CoarseSimulationPath, SeededTickSimulationResponse
+from .simulation import CoarseSimulationPath, SeededTickSimulationResponse, SimulationKind
 
 if TYPE_CHECKING:
     from .calibration.fit.model import JaniformModel
@@ -171,7 +171,7 @@ def write_simulation_artifacts(
             preferences=preferences,
         )
         report_payload = build_simulation_report_payload(
-            simulation_kind="seeded_tick",
+            simulation_kind=SimulationKind.SEEDED_TICK,
             output_path=paths.primary_output_path,
             diagnostics=simulation_result.diagnostics.to_payload(),
         )
@@ -184,7 +184,7 @@ def write_simulation_artifacts(
             exchange_code=model.session_resolution.exchange_code,
         )
         report_payload = build_simulation_report_payload(
-            simulation_kind="coarse_interval",
+            simulation_kind=SimulationKind.COARSE_INTERVAL,
             output_path=paths.primary_output_path,
             diagnostics=simulation_result.diagnostics.to_payload(),
         )
@@ -414,7 +414,7 @@ def build_run_manifest(
 
 def build_simulation_report_payload(
     *,
-    simulation_kind: str,
+    simulation_kind: SimulationKind,
     output_path: Path,
     diagnostics: dict[str, Any],
 ) -> dict[str, Any]:

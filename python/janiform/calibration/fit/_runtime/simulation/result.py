@@ -12,6 +12,7 @@ from ....._workflow_outputs import (
 )
 from .....calendar import CalendarRegistry
 from .....simulation.coarse import CoarseSimulationPath
+from .....simulation.kinds import SimulationKind
 from .....simulation.seeded import SeededTickSimulationResponse
 
 
@@ -31,7 +32,7 @@ class _MemorySimulationSink:
 
 @dataclass(slots=True)
 class JaniformSimulationResult:
-    simulation_kind: str
+    simulation_kind: SimulationKind
     metadata: dict[str, Any]
     provenance: dict[str, Any]
     diagnostics: dict[str, Any]
@@ -63,7 +64,7 @@ class JaniformSimulationResult:
 
     def to_parquet(self, path: str | Path) -> None:
         output_path = Path(path)
-        if self.simulation_kind == "seeded_tick":
+        if self.simulation_kind == SimulationKind.SEEDED_TICK:
             if self._preferences is None:
                 raise RuntimeError("seeded simulation exports require output preferences")
             persist_seeded_tick_simulation(
@@ -88,7 +89,7 @@ class JaniformSimulationResult:
             raise RuntimeError("simulation rows require output preferences")
 
         sink = _MemorySimulationSink()
-        if self.simulation_kind == "seeded_tick":
+        if self.simulation_kind == SimulationKind.SEEDED_TICK:
             persist_seeded_tick_simulation(
                 simulation_result=cast(SeededTickSimulationResponse, self.raw_result),
                 output_path=Path("simulation.parquet"),
@@ -113,7 +114,7 @@ class JaniformSimulationResult:
         return rows
 
     def _column_names(self) -> tuple[str, ...]:
-        if self.simulation_kind == "coarse_interval":
+        if self.simulation_kind == SimulationKind.COARSE_INTERVAL:
             rows = self._rows()
             return tuple(rows[0].keys()) if rows else (
                 "interval_start_utc",

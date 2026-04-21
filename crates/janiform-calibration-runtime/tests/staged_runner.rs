@@ -87,7 +87,6 @@ fn staged_runner_skips_option_pricing_progress_during_baseline_search() {
                 || label.starts_with("grid_batch ")
                 || label.starts_with("maturity ")
                 || label.starts_with("interval ")
-                || label.starts_with("transition_rows ")
         })
         .collect::<Vec<_>>();
 
@@ -150,7 +149,6 @@ fn staged_runner_skips_option_pricing_progress_during_baseline_search() {
                 || label.starts_with("grid_batch ")
                 || label.starts_with("maturity ")
                 || label.starts_with("interval ")
-                || label.starts_with("transition_rows ")
         })
         .collect::<Vec<_>>();
 

@@ -80,7 +80,7 @@ pub use grids::{
     VanillaOptionGridBatchPricingExecutionInputError, VanillaOptionGridBatchPricingRequest,
     VanillaOptionGridBatchPricingRequestError, VanillaOptionGridBatchPricingRunError,
     VanillaOptionGridBatchPricingRunResult, VanillaOptionGridPricingResult,
-    VanillaOptionGridRequest, VanillaOptionMaturitySummary,
+    VanillaOptionGridRequest, VanillaOptionMaturitySummary, VanillaOptionNodePriceSensitivity,
     VanillaOptionSurfacePricingExecutionInput, VanillaOptionSurfacePricingExecutionInputError,
     VanillaOptionSurfacePricingRequest, VanillaOptionSurfacePricingResponse,
     VanillaOptionSurfacePricingRunError, VanillaOptionSurfacePricingRunResult,
@@ -120,8 +120,8 @@ pub mod internal {
     };
     pub use super::grids::{
         SpectralThetaWarmStartState,
-        run_vanilla_option_grid_batch_pricing_with_observer_and_theta_warm_start_state,
     };
+    pub use super::spectral::run_vanilla_option_grid_batch_pricing_with_observer_and_theta_warm_start_state;
 }
 
 #[cfg(test)]

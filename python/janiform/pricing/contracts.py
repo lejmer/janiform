@@ -8,6 +8,32 @@ from math import exp
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
+from ._contract_field_names import (
+    DIAGNOSTICS_FIELD_NAME,
+    FORWARD_MONEYNESS_FIELD_NAME,
+    HOOK_POLICY_FIELD_NAME,
+    INTEGRATION_CONVERGENCE_CHECK_PASSED_FIELD_NAME,
+    INTEGRATION_NUMERIC_QUALITY_IS_POOR_FIELD_NAME,
+    INTEGRATION_TRUNCATION_CHECK_PASSED_FIELD_NAME,
+    LOG_MONEYNESS_FIELD_NAME,
+    OPTION_PRICE_FIELD_NAME,
+    PRICE_FIELD_NAME,
+    PRICING_FAILURE_DIAGNOSTIC_FIELD_NAME,
+    REASON_FIELD_NAME,
+    SCHEMA_VERSION_FIELD_NAME,
+    TRANSFORM_STATUS_FIELD_NAME,
+    VANILLA_OPTION_PRICING_RESPONSE_FIELD_PATH,
+)
+from .._pricing_field_names import (
+    BOUNDARY_STATE_NORM_FIELD_NAME,
+    DISCOUNT_FACTOR_FIELD_NAME,
+    FORWARD_PRICE_FIELD_NAME,
+    IMPLIED_VOLATILITY_FIELD_NAME,
+    IMPLIED_VOLATILITY_INVERSION_STATUS_FIELD_NAME,
+    MATURITY_INTERVAL_FIELD_NAME,
+    PRICING_STATUS_FIELD_NAME,
+)
+from ._moneyness import calculate_log_forward_moneyness
 from .errors import PRICING_ERROR_FACTORY, _pricing_error
 from ..contracts.base import (
     require_boolean,
@@ -1325,6 +1351,16 @@ class VanillaOptionPricingDiagnostics(ContractModel):
     maturity_interval: float
     boundary_state_norm: float
 
+    def log_forward_moneyness(
+        self,
+        *,
+        strike: float,
+    ) -> float:
+        return calculate_log_forward_moneyness(
+            strike=strike,
+            forward_price=self.forward_price,
+        )
+
     @staticmethod
     def from_mapping(
         raw_payload: dict[str, Any] | Any,
@@ -1337,26 +1373,26 @@ class VanillaOptionPricingDiagnostics(ContractModel):
         return VanillaOptionPricingDiagnostics(
             forward_price=require_positive_finite_number(
                 raw_payload,
-                "forward_price",
-                f"{field_path}.forward_price",
+                FORWARD_PRICE_FIELD_NAME,
+                f"{field_path}.{FORWARD_PRICE_FIELD_NAME}",
                 PRICING_ERROR_FACTORY,
             ),
             discount_factor=require_positive_finite_number(
                 raw_payload,
-                "discount_factor",
-                f"{field_path}.discount_factor",
+                DISCOUNT_FACTOR_FIELD_NAME,
+                f"{field_path}.{DISCOUNT_FACTOR_FIELD_NAME}",
                 PRICING_ERROR_FACTORY,
             ),
             maturity_interval=require_positive_finite_number(
                 raw_payload,
-                "maturity_interval",
-                f"{field_path}.maturity_interval",
+                MATURITY_INTERVAL_FIELD_NAME,
+                f"{field_path}.{MATURITY_INTERVAL_FIELD_NAME}",
                 PRICING_ERROR_FACTORY,
             ),
             boundary_state_norm=require_non_negative_finite_number(
                 raw_payload,
-                "boundary_state_norm",
-                f"{field_path}.boundary_state_norm",
+                BOUNDARY_STATE_NORM_FIELD_NAME,
+                f"{field_path}.{BOUNDARY_STATE_NORM_FIELD_NAME}",
                 PRICING_ERROR_FACTORY,
             ),
         )
@@ -1411,8 +1447,8 @@ class VanillaOptionPricingFailureDiagnostic(ContractModel):
             ),
             reason=require_string(
                 raw_payload,
-                "reason",
-                f"{field_path}.reason",
+                REASON_FIELD_NAME,
+                f"{field_path}.{REASON_FIELD_NAME}",
                 PRICING_ERROR_FACTORY,
             ),
         )
@@ -1432,7 +1468,7 @@ class VanillaOptionPricingResponse(ContractModel):
     def __post_init__(self) -> None:
         if not isinstance(self.pricing_status, VanillaOptionPricingStatus):
             raise _pricing_error(
-                "pricing_status",
+                PRICING_STATUS_FIELD_NAME,
                 "must be a VanillaOptionPricingStatus",
             )
 
@@ -1444,93 +1480,93 @@ class VanillaOptionPricingResponse(ContractModel):
             )
         ):
             raise _pricing_error(
-                "pricing_failure_diagnostic",
+                PRICING_FAILURE_DIAGNOSTIC_FIELD_NAME,
                 "must be a VanillaOptionPricingFailureDiagnostic when provided",
             )
 
         if self.pricing_status is VanillaOptionPricingStatus.SUCCEEDED:
             if self.pricing_failure_diagnostic is not None:
                 raise _pricing_error(
-                    "pricing_failure_diagnostic",
+                    PRICING_FAILURE_DIAGNOSTIC_FIELD_NAME,
                     "must be null when pricing_status=succeeded",
                 )
 
             if self.price is None:
-                raise _pricing_error("price", "must be present when pricing_status=succeeded")
+                raise _pricing_error(PRICE_FIELD_NAME, "must be present when pricing_status=succeeded")
 
             require_non_negative_finite_number(
-                {"price": self.price},
-                "price",
-                "price",
+                {PRICE_FIELD_NAME: self.price},
+                PRICE_FIELD_NAME,
+                PRICE_FIELD_NAME,
                 PRICING_ERROR_FACTORY,
             )
 
             if self.diagnostics is None:
                 raise _pricing_error(
-                    "diagnostics",
+                    DIAGNOSTICS_FIELD_NAME,
                     "must be present when pricing_status=succeeded",
                 )
 
             if not isinstance(self.diagnostics, VanillaOptionPricingDiagnostics):
                 raise _pricing_error(
-                    "diagnostics",
+                    DIAGNOSTICS_FIELD_NAME,
                     "must be a VanillaOptionPricingDiagnostics",
                 )
 
             if self.implied_volatility_inversion_status is None:
                 raise _pricing_error(
-                    "implied_volatility_inversion_status",
+                    IMPLIED_VOLATILITY_INVERSION_STATUS_FIELD_NAME,
                     "must be present when pricing_status=succeeded",
                 )
 
             _validate_optional_implied_volatility_inversion_outcome(
                 implied_volatility=self.implied_volatility,
                 implied_volatility_inversion_status=self.implied_volatility_inversion_status,
-                field_path="vanilla_option_pricing_response",
+                field_path=VANILLA_OPTION_PRICING_RESPONSE_FIELD_PATH,
             )
 
             return
 
         if self.pricing_failure_diagnostic is None:
             raise _pricing_error(
-                "pricing_failure_diagnostic",
+                PRICING_FAILURE_DIAGNOSTIC_FIELD_NAME,
                 "must be present when pricing_status=failed",
             )
 
         if self.price is not None:
-            raise _pricing_error("price", "must be null when pricing_status=failed")
+            raise _pricing_error(PRICE_FIELD_NAME, "must be null when pricing_status=failed")
 
         if self.diagnostics is not None:
-            raise _pricing_error("diagnostics", "must be null when pricing_status=failed")
+            raise _pricing_error(DIAGNOSTICS_FIELD_NAME, "must be null when pricing_status=failed")
 
         if self.implied_volatility is not None:
             raise _pricing_error(
-                "implied_volatility",
+                IMPLIED_VOLATILITY_FIELD_NAME,
                 "must be null when pricing_status=failed",
             )
 
         if self.implied_volatility_inversion_status is not None:
             raise _pricing_error(
-                "implied_volatility_inversion_status",
+                IMPLIED_VOLATILITY_INVERSION_STATUS_FIELD_NAME,
                 "must be null when pricing_status=failed",
             )
 
     @staticmethod
     def from_mapping(raw_payload: dict[str, Any] | Any) -> VanillaOptionPricingResponse:
         if not isinstance(raw_payload, dict):
-            raise _pricing_error("vanilla_option_pricing_response", "must be an object")
+            raise _pricing_error(VANILLA_OPTION_PRICING_RESPONSE_FIELD_PATH, "must be an object")
 
         implied_volatility = require_optional_finite_number(
             raw_payload,
-            "implied_volatility",
-            "implied_volatility",
+            IMPLIED_VOLATILITY_FIELD_NAME,
+            IMPLIED_VOLATILITY_FIELD_NAME,
             PRICING_ERROR_FACTORY,
         )
 
         return VanillaOptionPricingResponse(
             pricing_status=require_str_enum_value(
-                raw_payload.get("pricing_status"),
-                "pricing_status",
+                raw_payload.get(PRICING_STATUS_FIELD_NAME),
+                PRICING_STATUS_FIELD_NAME,
                 PRICING_ERROR_FACTORY,
                 enum_type=VanillaOptionPricingStatus,
                 allowed_values_message="must be one of: succeeded, failed",
@@ -1539,40 +1575,40 @@ class VanillaOptionPricingResponse(ContractModel):
                 VanillaOptionPricingFailureDiagnostic.from_mapping(
                     require_mapping(
                         raw_payload,
-                        "pricing_failure_diagnostic",
-                        "pricing_failure_diagnostic",
+                        PRICING_FAILURE_DIAGNOSTIC_FIELD_NAME,
+                        PRICING_FAILURE_DIAGNOSTIC_FIELD_NAME,
                         PRICING_ERROR_FACTORY,
                     ),
-                    field_path="pricing_failure_diagnostic",
+                    field_path=PRICING_FAILURE_DIAGNOSTIC_FIELD_NAME,
                 )
-                if raw_payload.get("pricing_failure_diagnostic") is not None
+                if raw_payload.get(PRICING_FAILURE_DIAGNOSTIC_FIELD_NAME) is not None
                 else None
             ),
             price=require_optional_finite_number(
                 raw_payload,
-                "price",
-                "price",
+                PRICE_FIELD_NAME,
+                PRICE_FIELD_NAME,
                 PRICING_ERROR_FACTORY,
             ),
             diagnostics=(
                 VanillaOptionPricingDiagnostics.from_mapping(
                     require_mapping(
                         raw_payload,
-                        "diagnostics",
-                        "diagnostics",
+                        DIAGNOSTICS_FIELD_NAME,
+                        DIAGNOSTICS_FIELD_NAME,
                         PRICING_ERROR_FACTORY,
                     ),
-                    field_path="diagnostics",
+                    field_path=DIAGNOSTICS_FIELD_NAME,
                 )
-                if raw_payload.get("diagnostics") is not None
+                if raw_payload.get(DIAGNOSTICS_FIELD_NAME) is not None
                 else None
             ),
             implied_volatility=implied_volatility,
             implied_volatility_inversion_status=(
                 _require_optional_implied_volatility_inversion_status(
                     raw_payload,
-                    field_name="implied_volatility_inversion_status",
-                    field_path="implied_volatility_inversion_status",
+                    field_name=IMPLIED_VOLATILITY_INVERSION_STATUS_FIELD_NAME,
+                    field_path=IMPLIED_VOLATILITY_INVERSION_STATUS_FIELD_NAME,
                 )
             ),
         )
@@ -1879,22 +1915,22 @@ class VanillaOptionPricingCalibrationHooks(ContractModel):
 
         validate_exact_string(
             raw_payload,
-            "schema_version",
-            f"{field_path}.schema_version",
+            SCHEMA_VERSION_FIELD_NAME,
+            f"{field_path}.{SCHEMA_VERSION_FIELD_NAME}",
             VANILLA_OPTION_PRICING_CALIBRATION_HOOKS_SCHEMA_VERSION,
             PRICING_ERROR_FACTORY,
         )
         validate_exact_string(
             raw_payload,
-            "hook_policy",
-            f"{field_path}.hook_policy",
+            HOOK_POLICY_FIELD_NAME,
+            f"{field_path}.{HOOK_POLICY_FIELD_NAME}",
             VANILLA_OPTION_CALIBRATION_HOOK_POLICY,
             PRICING_ERROR_FACTORY,
         )
 
         transform_status_raw = require_optional_string_value(
-            raw_payload.get("transform_status"),
-            f"{field_path}.transform_status",
+            raw_payload.get(TRANSFORM_STATUS_FIELD_NAME),
+            f"{field_path}.{TRANSFORM_STATUS_FIELD_NAME}",
             PRICING_ERROR_FACTORY,
         )
 
@@ -1903,43 +1939,43 @@ class VanillaOptionPricingCalibrationHooks(ContractModel):
             hook_policy=VANILLA_OPTION_CALIBRATION_HOOK_POLICY,
             option_price=require_non_negative_finite_number(
                 raw_payload,
-                "option_price",
-                f"{field_path}.option_price",
+                OPTION_PRICE_FIELD_NAME,
+                f"{field_path}.{OPTION_PRICE_FIELD_NAME}",
                 PRICING_ERROR_FACTORY,
             ),
             log_moneyness=require_finite_number(
                 raw_payload,
-                "log_moneyness",
-                f"{field_path}.log_moneyness",
+                LOG_MONEYNESS_FIELD_NAME,
+                f"{field_path}.{LOG_MONEYNESS_FIELD_NAME}",
                 PRICING_ERROR_FACTORY,
             ),
             forward_moneyness=require_positive_finite_number(
                 raw_payload,
-                "forward_moneyness",
-                f"{field_path}.forward_moneyness",
+                FORWARD_MONEYNESS_FIELD_NAME,
+                f"{field_path}.{FORWARD_MONEYNESS_FIELD_NAME}",
                 PRICING_ERROR_FACTORY,
             ),
             maturity_interval=require_positive_finite_number(
                 raw_payload,
-                "maturity_interval",
-                f"{field_path}.maturity_interval",
+                MATURITY_INTERVAL_FIELD_NAME,
+                f"{field_path}.{MATURITY_INTERVAL_FIELD_NAME}",
                 PRICING_ERROR_FACTORY,
             ),
             transform_status=transform_status_raw,
             integration_numeric_quality_is_poor=_optional_boolean(
                 raw_payload,
-                "integration_numeric_quality_is_poor",
-                f"{field_path}.integration_numeric_quality_is_poor",
+                INTEGRATION_NUMERIC_QUALITY_IS_POOR_FIELD_NAME,
+                f"{field_path}.{INTEGRATION_NUMERIC_QUALITY_IS_POOR_FIELD_NAME}",
             ),
             integration_convergence_check_passed=_optional_boolean(
                 raw_payload,
-                "integration_convergence_check_passed",
-                f"{field_path}.integration_convergence_check_passed",
+                INTEGRATION_CONVERGENCE_CHECK_PASSED_FIELD_NAME,
+                f"{field_path}.{INTEGRATION_CONVERGENCE_CHECK_PASSED_FIELD_NAME}",
             ),
             integration_truncation_check_passed=_optional_boolean(
                 raw_payload,
-                "integration_truncation_check_passed",
-                f"{field_path}.integration_truncation_check_passed",
+                INTEGRATION_TRUNCATION_CHECK_PASSED_FIELD_NAME,
+                f"{field_path}.{INTEGRATION_TRUNCATION_CHECK_PASSED_FIELD_NAME}",
             ),
         )
 

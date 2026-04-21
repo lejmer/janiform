@@ -77,6 +77,7 @@ fn vanilla_option_pricing_runner_executes_public_workflow_with_optional_outputs(
         run_result.response.implied_volatility_inversion_status,
         Some(VanillaOptionImpliedVolatilityInversionStatus::Succeeded)
     );
+
     let diagnostics = run_result
         .response
         .diagnostics
@@ -222,7 +223,9 @@ fn vanilla_option_grid_batch_pricing_matches_single_option_runner_on_shared_grid
             .expect("zero observed boundary state should construct"),
     )
     .expect("boundary input should construct");
+
     let model_parameters = valid_model_parameters();
+
     let optional_output_selection =
         VanillaOptionPricingOptionalOutputSelection::new(false, false, false);
 
@@ -256,6 +259,7 @@ fn vanilla_option_grid_batch_pricing_matches_single_option_runner_on_shared_grid
                     .expect("interval factors should construct"),
             ],
             optional_output_selection,
+            spectral_collocation_node_count_override: None,
             cpu_count: Some(1),
         })
         .expect("grid batch pricing should succeed");
@@ -373,8 +377,10 @@ fn vanilla_option_grid_batch_pricing_matches_single_option_runner_on_rectangular
             .expect("zero observed boundary state should construct"),
     )
     .expect("boundary input should construct");
-    let model_parameters = valid_model_parameters();
-    let optional_output_selection =
+
+     let model_parameters = valid_model_parameters();
+
+     let optional_output_selection =
         VanillaOptionPricingOptionalOutputSelection::new(false, false, false);
 
     let grid_batch_result =
@@ -409,6 +415,7 @@ fn vanilla_option_grid_batch_pricing_matches_single_option_runner_on_rectangular
                     .expect("interval factors should construct"),
             ],
             optional_output_selection,
+            spectral_collocation_node_count_override: None,
             cpu_count: Some(1),
         })
         .expect("grid batch pricing should succeed");
@@ -504,7 +511,9 @@ fn vanilla_option_surface_pricing_matches_single_option_runner_on_shared_grid() 
             .expect("zero observed boundary state should construct"),
     )
     .expect("boundary input should construct");
+
     let model_parameters = valid_model_parameters();
+
     let optional_output_selection =
         VanillaOptionPricingOptionalOutputSelection::new(true, true, true);
 
@@ -532,6 +541,7 @@ fn vanilla_option_surface_pricing_matches_single_option_runner_on_shared_grid() 
                     .expect("interval factors should construct"),
             ],
             optional_output_selection,
+            spectral_collocation_node_count_override: None,
             cpu_count: Some(1),
         })
         .expect("surface pricing should succeed");
@@ -636,6 +646,7 @@ fn build_uniform_runtime_interval_schedule(
 ) -> PricingIntervalSchedule {
     let interval_duration_nanos_float = interval_delta * ONE_HOUR_NANOS as f64;
     let interval_duration_nanos = interval_duration_nanos_float as i64;
+
     assert_eq!(
         interval_duration_nanos as f64, interval_duration_nanos_float,
         "test runtime interval schedule requires an exact nanosecond interval"

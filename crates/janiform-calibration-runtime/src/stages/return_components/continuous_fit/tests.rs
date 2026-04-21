@@ -23,8 +23,9 @@ use super::profile::{
     build_distribution_profile, build_scale_bucket_profiles, distribution_profile_fit_score,
 };
 use super::sample::{build_continuous_return_optimizer_context, build_equal_business_time_blocks};
+use super::shape_mapping::exact_configuration_and_gradient_from_shape_search_point;
 use super::types::{
-    ContinuousLikelihoodFidelityTier, ContinuousLikelihoodObjective,
+    ContinuousLikelihoodFidelityTier, ContinuousLikelihoodObjective, NigShapeSearchPoint,
     ReturnComponentsStageContinuousReturnCalibrationSample,
 };
 use crate::stages::return_components::contracts::ReturnComponentsObservedOpenSessionReturn;
@@ -59,6 +60,92 @@ fn sell_relative_coordinate_round_trip_preserves_ordering() {
 fn configuration_round_trip_preserves_delta_when_business_time_scale_is_large() {
     let configuration = NigSharedPlusShiftConfiguration::try_new(80.0, -12.0, 2.0e-4, 0.0, -8.0)
         .expect("configuration should validate");
+    let calibration_sample = synthetic_calibration_sample_from_configuration(configuration);
+
+    let search_point = nig_search_point_from_configuration(&calibration_sample, configuration)
+        .expect("search point should derive");
+    let recovered_configuration =
+        nig_configuration_from_search_point(&calibration_sample, search_point)
+            .expect("configuration should recover");
+
+    assert!((recovered_configuration.alpha - configuration.alpha).abs() <= 1.0e-10);
+    assert!((recovered_configuration.beta_0 - configuration.beta_0).abs() <= 1.0e-10);
+    assert!((recovered_configuration.delta - configuration.delta).abs() <= 1.0e-10);
+    assert!((recovered_configuration.delta_beta - configuration.delta_beta).abs() <= 1.0e-10);
+}
+
+#[test]
+fn exact_search_point_configuration_gradient_matches_finite_difference() {
+    let configuration = NigSharedPlusShiftConfiguration::try_new(75.0, -10.0, 3.0e-4, 0.0, -6.5)
+        .expect("configuration should validate");
+    let calibration_sample = synthetic_calibration_sample_from_configuration(configuration);
+    let optimizer_context = build_continuous_return_optimizer_context(&calibration_sample);
+    let search_point = nig_search_point_from_configuration(&calibration_sample, configuration)
+        .expect("search point should derive");
+    let mapping =
+        exact_configuration_and_gradient_from_shape_search_point(&optimizer_context, search_point)
+            .expect("exact mapping should resolve");
+
+    let epsilon = 1.0e-6;
+    for coordinate_index in 0..4 {
+        let forward_search_point = perturb_search_point(search_point, coordinate_index, epsilon);
+        let backward_search_point = perturb_search_point(search_point, coordinate_index, -epsilon);
+        let forward_mapping = exact_configuration_and_gradient_from_shape_search_point(
+            &optimizer_context,
+            forward_search_point,
+        )
+        .expect("forward mapping should resolve");
+        let backward_mapping = exact_configuration_and_gradient_from_shape_search_point(
+            &optimizer_context,
+            backward_search_point,
+        )
+        .expect("backward mapping should resolve");
+
+        let alpha_derivative = (forward_mapping.configuration.alpha
+            - backward_mapping.configuration.alpha)
+            / (2.0 * epsilon);
+        let beta_0_derivative = (forward_mapping.configuration.beta_0
+            - backward_mapping.configuration.beta_0)
+            / (2.0 * epsilon);
+        let delta_derivative = (forward_mapping.configuration.delta
+            - backward_mapping.configuration.delta)
+            / (2.0 * epsilon);
+        let delta_beta_derivative = (forward_mapping.configuration.delta_beta
+            - backward_mapping.configuration.delta_beta)
+            / (2.0 * epsilon);
+
+        assert_close(
+            mapping.gradient.alpha_gradient[coordinate_index],
+            alpha_derivative,
+        );
+        assert_close(
+            mapping.gradient.beta_0_gradient[coordinate_index],
+            beta_0_derivative,
+        );
+        assert_close(
+            mapping.gradient.delta_gradient[coordinate_index],
+            delta_derivative,
+        );
+        assert_close(
+            mapping.gradient.delta_beta_gradient[coordinate_index],
+            delta_beta_derivative,
+        );
+    }
+}
+
+#[test]
+fn distribution_profile_reports_robust_quantile_and_l_moment_metrics() {
+    let profile = build_distribution_profile(&[-0.03, -0.01, 0.0, 0.02, 0.08]);
+
+    assert!(profile.abs_quantile_ratio_q99_q95 >= 1.0);
+    assert!(profile.l_moment_lambda2.is_finite());
+    assert!(profile.bowley_skewness.is_finite());
+    assert!(profile.l_moment_tau3.is_finite());
+}
+
+fn synthetic_calibration_sample_from_configuration(
+    configuration: NigSharedPlusShiftConfiguration,
+) -> ReturnComponentsStageContinuousReturnCalibrationSample {
     let driver_parameters = configuration
         .derive_driver_parameters()
         .expect("driver parameters should derive");
@@ -85,7 +172,8 @@ fn configuration_round_trip_preserves_delta_when_business_time_scale_is_large() 
                 .combined_increment
         })
         .collect();
-    let calibration_sample = ReturnComponentsStageContinuousReturnCalibrationSample {
+
+    ReturnComponentsStageContinuousReturnCalibrationSample {
         observed_returns: observed_returns.clone(),
         business_time_scales: business_time_scales.clone(),
         sell_share_proxies: sell_share_proxies.clone(),
@@ -95,28 +183,40 @@ fn configuration_round_trip_preserves_delta_when_business_time_scale_is_large() 
             business_time_scales.as_slice(),
         ),
         open_session_sell_share_proxy: 0.5,
-    };
-
-    let search_point = nig_search_point_from_configuration(&calibration_sample, configuration)
-        .expect("search point should derive");
-    let recovered_configuration =
-        nig_configuration_from_search_point(&calibration_sample, search_point)
-            .expect("configuration should recover");
-
-    assert!((recovered_configuration.alpha - configuration.alpha).abs() <= 1.0e-10);
-    assert!((recovered_configuration.beta_0 - configuration.beta_0).abs() <= 1.0e-10);
-    assert!((recovered_configuration.delta - configuration.delta).abs() <= 1.0e-10);
-    assert!((recovered_configuration.delta_beta - configuration.delta_beta).abs() <= 1.0e-10);
+    }
 }
 
-#[test]
-fn distribution_profile_reports_robust_quantile_and_l_moment_metrics() {
-    let profile = build_distribution_profile(&[-0.03, -0.01, 0.0, 0.02, 0.08]);
+fn perturb_search_point(
+    search_point: NigShapeSearchPoint,
+    coordinate_index: usize,
+    coordinate_delta: f64,
+) -> NigShapeSearchPoint {
+    let mut perturbed_search_point = search_point;
+    match coordinate_index {
+        0 => {
+            perturbed_search_point.log_alpha += coordinate_delta;
+        }
+        1 => {
+            perturbed_search_point.buy_skew_coordinate += coordinate_delta;
+        }
+        2 => {
+            perturbed_search_point.sell_relative_coordinate += coordinate_delta;
+        }
+        3 => {
+            perturbed_search_point.log_delta_offset += coordinate_delta;
+        }
+        _ => panic!("coordinate_index should be in [0, 3]"),
+    }
 
-    assert!(profile.abs_quantile_ratio_q99_q95 >= 1.0);
-    assert!(profile.l_moment_lambda2.is_finite());
-    assert!(profile.bowley_skewness.is_finite());
-    assert!(profile.l_moment_tau3.is_finite());
+    perturbed_search_point
+}
+
+fn assert_close(actual: f64, expected: f64) {
+    let tolerance = 1.0e-6f64.max(1.0e-5 * expected.abs().max(actual.abs()));
+    assert!(
+        (actual - expected).abs() <= tolerance,
+        "actual={actual} expected={expected} tolerance={tolerance}"
+    );
 }
 
 #[test]

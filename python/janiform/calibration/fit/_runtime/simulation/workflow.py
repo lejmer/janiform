@@ -24,6 +24,7 @@ from .....hourly_factors import (
 from .....mean_reversion import MeanReversionBoundaryState
 from .....risk import SufficientStatisticsRiskEquationSpecification, SufficientStatisticsRiskModelInputs
 from .....simulation.coarse import CoarseSimulationPath, CoarseSimulationRunRequest, run_coarse_simulation
+from .....simulation.kinds import SimulationKind
 from .....simulation.progress import SimulationProgressEvent
 from .....simulation.seeded import (
     SeededTickSimulationRequest,
@@ -85,7 +86,7 @@ def simulate_model(
         progress_mode=WorkflowProgressMode.NONE if silent else progress_mode,
         default_progress_mode=(WorkflowProgressMode.NONE if silent else WorkflowProgressMode.HUMAN),
     )
-    simulation_kind = "seeded_tick" if interval is None else "coarse_interval"
+    simulation_kind = SimulationKind.SEEDED_TICK if interval is None else SimulationKind.COARSE_INTERVAL
 
     execution_inputs = prepare_model_simulation_inputs(
         model,
@@ -114,7 +115,7 @@ def simulate_model(
             if progress_callback is not None:
                 progress_callback(event)
 
-        if simulation_kind == "seeded_tick":
+        if simulation_kind == SimulationKind.SEEDED_TICK:
             if execution_inputs.seeded_request is None:
                 raise RuntimeError("JaniformModel seeded simulation inputs were not prepared")
             raw_simulation_result = run_seeded_tick_event_simulation(
@@ -137,7 +138,7 @@ def simulate_model(
     )
 
     if sink is not None:
-        if simulation_result.simulation_kind != "seeded_tick":
+        if simulation_result.simulation_kind != SimulationKind.SEEDED_TICK:
             raise calibration_error("sink", "sink output is currently supported only for seeded tick simulation")
         persist_seeded_tick_simulation(
             simulation_result=cast(SeededTickSimulationResponse, simulation_result.raw_result),
@@ -166,7 +167,7 @@ def build_simulation_result(
 ) -> JaniformSimulationResult:
     if isinstance(simulation_result, SeededTickSimulationResponse):
         return JaniformSimulationResult(
-            simulation_kind="seeded_tick",
+            simulation_kind=SimulationKind.SEEDED_TICK,
             metadata=simulation_result.metadata.to_payload(),
             provenance={
                 "model_run_id": model.run_id,
@@ -179,7 +180,7 @@ def build_simulation_result(
         )
 
     result = JaniformSimulationResult(
-        simulation_kind="coarse_interval",
+        simulation_kind=SimulationKind.COARSE_INTERVAL,
         metadata=simulation_result.output_schema_metadata.to_payload(),
         provenance={
             "model_run_id": model.run_id,
@@ -202,7 +203,7 @@ def prepare_model_simulation_inputs(
     start_time_utc: datetime,
     horizon_interval_count: int,
     interval: str | timedelta,
-    simulation_kind: str,
+    simulation_kind: SimulationKind,
     continuation_data: Optional[CurrentStateEstimationRequest] = None,
     initial_excitation_state: Optional[HawkesExcitationState],
     initial_mean_reversion_boundary_state: Optional[MeanReversionBoundaryState] = None,
@@ -229,7 +230,7 @@ def prepare_model_simulation_inputs(
     coarse_request: Optional[CoarseSimulationRunRequest] = None
     seeded_request: Optional[SeededTickSimulationRequest] = None
     match simulation_kind:
-        case "coarse_interval":
+        case SimulationKind.COARSE_INTERVAL:
             coarse_request = prepare_model_coarse_interval_simulation_request(
                 model,
                 seed=seed,
@@ -241,7 +242,7 @@ def prepare_model_simulation_inputs(
                 start_anchor_value=initial_state_resolution.start_anchor_value,
                 initial_mean_reversion_boundary_state=initial_state_resolution.mean_reversion_boundary_state,
             )
-        case "seeded_tick":
+        case SimulationKind.SEEDED_TICK:
             seeded_request = prepare_model_seeded_tick_simulation_request(
                 model,
                 seed=seed,

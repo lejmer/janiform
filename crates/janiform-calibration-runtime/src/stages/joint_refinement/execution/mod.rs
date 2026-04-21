@@ -2,6 +2,8 @@ mod coarse_consistency;
 mod entrypoint;
 mod inputs;
 mod optimization;
+mod option_objective_gradient;
+mod option_reduced_model;
 mod option_refinement;
 mod pipeline;
 mod pricing_context;

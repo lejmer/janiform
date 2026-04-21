@@ -126,7 +126,7 @@ pub(crate) struct SingleOptionSpectralOutcome {
     pub(crate) spectral_diagnostics: SpectralPricingDiagnostics,
 }
 
-pub(crate) fn run_grid_batch_pricing(
+pub fn run_vanilla_option_grid_batch_pricing_with_observer_and_theta_warm_start_state(
     execution_input: VanillaOptionGridBatchPricingExecutionInput,
     mut observer: Option<&mut dyn FnMut(PricingProgressEvent)>,
     theta_warm_start_state: Option<&mut SpectralThetaWarmStartState>,
@@ -235,10 +235,16 @@ pub(crate) fn run_single_option_pricing(
         interval_delta: request.interval_delta,
         interval_factors: execution_input.interval_factors.clone(),
         optional_output_selection: execution_input.optional_output_selection,
+        spectral_collocation_node_count_override: None,
         cpu_count: None,
     };
 
-    let run_result = run_grid_batch_pricing(grid_execution_input, None, None).map_err(
+    let run_result = run_vanilla_option_grid_batch_pricing_with_observer_and_theta_warm_start_state(
+        grid_execution_input,
+        None,
+        None,
+    )
+    .map_err(
         |source| match source {
             VanillaOptionGridBatchPricingRunError::InvalidExecutionInput { source } => {
                 VanillaOptionPricingRunError::InternalNumericsFailure {
@@ -420,6 +426,7 @@ fn prepare_carry_group_contexts(
             maximum_maturity_count,
             max_maturity_interval,
             union_strikes.as_slice(),
+            execution_input.spectral_collocation_node_count_override,
         )
         .map_err(|source| format!("failed to construct spectral domain: {source}"))?;
 
@@ -570,9 +577,11 @@ fn build_grid_result(
         forward_price_grid.push(priced_row.forward_price_row);
         discount_factor_grid.push(priced_row.discount_factor_row);
         boundary_state_norm_grid.push(priced_row.boundary_state_norm_row);
+
         if let Some(node_price_sensitivity_grid) = node_price_sensitivity_grid.as_mut() {
             node_price_sensitivity_grid.push(priced_row.node_price_sensitivity_row);
         }
+
         maturity_summaries.push(Some(build_maturity_summary(
             solved_maturity,
             execution_input.optional_output_selection,
@@ -766,8 +775,20 @@ fn price_strike_row(
     } else {
         let mut priced_nodes = Vec::with_capacity(strike_count);
 
-        for strike in grid.strikes.iter().copied() {
+        for (strike_index, strike) in grid.strikes.iter().copied().enumerate() {
             priced_nodes.push(price_strike(strike));
+
+            emit_pricing_progress(
+                observer,
+                PricingProgressEvent::strike_pricing_progress(
+                    strike_index + 1,
+                    strike_count,
+                    Some(maturity_index),
+                    Some(total_maturities),
+                    Some(strike_index),
+                    strike_count,
+                ),
+            );
         }
 
         priced_nodes
@@ -780,7 +801,7 @@ fn price_strike_row(
             strike_count,
             Some(maturity_index),
             Some(total_maturities),
-            None,
+            strike_count.checked_sub(1),
             strike_count,
         ),
     );
@@ -834,6 +855,7 @@ fn build_cached_interval_operators(
 ) -> Result<Vec<CachedIntervalOperator>, VanillaOptionPricingRunError> {
     let collocation_nodes = spectral_domain.collocation_nodes();
     let runtime_anchors = &materialization.runtime_interval_anchors;
+
     let mut cached_interval_operators = Vec::with_capacity(maximum_maturity_count);
 
     for interval_offset in 0..maximum_maturity_count {
@@ -886,8 +908,6 @@ fn build_cached_interval_operators(
                 collocation_nodes.len(),
                 Some(interval_offset),
                 Some(maximum_maturity_count),
-                Some(0),
-                collocation_nodes.len(),
             ),
         );
 
@@ -905,11 +925,13 @@ fn build_cached_interval_operators(
                 )
             })
             .unwrap_or_else(|| vec![None; collocation_nodes.len()]);
+
         let row_states = collocation_nodes
             .iter()
             .copied()
             .map(|deviation| base_context.build_row_state(deviation))
             .collect::<Result<Vec<_>, _>>()?;
+
         let (row_operators, row_theta_states, row_solve_diagnostics) =
             solve_interval_row_frequency_batches_adaptively(
                 &base_context,
@@ -923,6 +945,7 @@ fn build_cached_interval_operators(
                 pricing_thread_pool,
                 cpu_count,
             )?;
+
         let row_operator_sensitivities = if include_node_price_sensitivities {
             Some(build_row_operator_sensitivities(
                 &base_context,
@@ -954,8 +977,6 @@ fn build_cached_interval_operators(
                 collocation_nodes.len(),
                 Some(interval_offset),
                 Some(maximum_maturity_count),
-                Some(collocation_nodes.len() - 1),
-                collocation_nodes.len(),
             )
             .with_transition_row_solve_diagnostics(
                 row_solve_diagnostics.seed_exact_transition_row_count,
@@ -1065,6 +1086,7 @@ fn solve_maturity_law(
             )
         })
         .collect::<Vec<_>>();
+
     let characteristic_function_sensitivities =
         continuation_coefficient_sensitivities.map(|coefficient_sensitivities| {
             coefficient_sensitivities
@@ -1137,6 +1159,7 @@ fn apply_cached_interval_operator(
             .row_operator_sensitivities
             .as_ref()
             .and_then(|row_operator_sensitivities| row_operator_sensitivities.get(row_index));
+
         for frequency_index in 0..frequency_count {
             let mut row_value = ComplexScalar::new(0.0, 0.0);
             let mut row_value_sensitivity = NodePriceSharedPlusShiftComplexSensitivity::zero();
@@ -1158,11 +1181,13 @@ fn apply_cached_interval_operator(
                     difference_value,
                 ))
                 .scale(0.5);
+
                 let expectation_sensitivity = row_operator_sensitivity.map_or(
                     NodePriceSharedPlusShiftComplexSensitivity::zero(),
                     |row_operator_sensitivity| {
                         let positive_frequency_sensitivity = row_operator_sensitivity
                             .positive_frequency_value_sensitivities[frequency_index + basis_index];
+
                         let difference_sensitivity = if frequency_index >= basis_index {
                             row_operator_sensitivity.positive_frequency_value_sensitivities
                                 [frequency_index - basis_index]
@@ -1171,6 +1196,7 @@ fn apply_cached_interval_operator(
                                 [basis_index - frequency_index]
                                 .conjugate()
                         };
+
                         complex_expectation_sensitivity(
                             row_operator.basis_forward_phases[basis_index],
                             row_operator_sensitivity.basis_forward_phase_sensitivities[basis_index],
@@ -1184,6 +1210,7 @@ fn apply_cached_interval_operator(
                         )
                     },
                 );
+
                 let continuation_sensitivity = continuation_coefficient_sensitivities
                     .as_ref()
                     .map(|coefficient_sensitivities| {
@@ -1195,6 +1222,7 @@ fn apply_cached_interval_operator(
                     continuation_coefficients[frequency_index][basis_index],
                     expectation,
                 ));
+
                 row_value_sensitivity = row_value_sensitivity
                     .add(complex_scale_sensitivity(
                         expectation,
@@ -1210,6 +1238,7 @@ fn apply_cached_interval_operator(
                 row_operator.row_frequency_phases[frequency_index],
                 row_value,
             );
+
             if let Some(interval_value_sensitivities) = interval_value_sensitivities.as_mut() {
                 interval_value_sensitivities[frequency_index][row_index] =
                     complex_scale_sensitivity(
@@ -1494,6 +1523,7 @@ fn try_resolve_theta_warm_start_sensitivity(
     }
 
     let inverse_theta_derivative = -1.0 / sensitivity.theta_derivative;
+
     Some(SpectralThetaWarmStartSensitivity {
         alpha_derivative: sensitivity.alpha_derivative * inverse_theta_derivative,
         beta_0_derivative: sensitivity.beta_0_derivative * inverse_theta_derivative,
@@ -1508,6 +1538,7 @@ fn resolve_shift_configuration_gradient_norms(
     theta: f64,
 ) -> Result<(f64, f64), VanillaOptionPricingRunError> {
     let shifted_argument = ComplexScalar::new(0.0, -theta);
+
     let buy_shift_sensitivity = driver_parameters
         .differentiate_buy_side_characteristic_exponent_for_shared_plus_shift_configuration(
             shifted_argument,
@@ -1517,6 +1548,7 @@ fn resolve_shift_configuration_gradient_norms(
                 "buy-side shared-plus-shift characteristic-exponent sensitivity failed at theta={theta}: {source}"
             ),
         })?;
+
     let sell_shift_sensitivity = driver_parameters
         .differentiate_sell_side_characteristic_exponent_for_return_composition_for_shared_plus_shift_configuration(
             shifted_argument,
@@ -1799,6 +1831,7 @@ fn build_shared_row_frequency_batch_kernel_sensitivity(
             driver_parameters,
             batch_arguments.as_slice(),
         )?;
+
     let denominator_sensitivity = batch_sensitivities[0];
     let denominator = denominator_sensitivity.value;
 
@@ -1927,6 +1960,7 @@ fn build_row_frequency_batch_sensitivity_from_shared_kernel(
             )
         })
         .collect::<Vec<_>>();
+
     let basis_backward_phase_sensitivities = basis_forward_phase_sensitivities
         .iter()
         .copied()
@@ -2017,13 +2051,16 @@ fn solve_interval_row_frequency_batches_adaptively(
     let mut solved_rows = vec![None; row_count];
     let mut solved_theta_warm_start_states = vec![None; row_count];
     let mut row_solve_diagnostics = IntervalRowSolveDiagnostics::default();
+
     let mut seeded_row_indices =
         derive_parallel_adaptive_seed_row_indices(row_count, resolved_pricing_cpu_count(cpu_count));
+
     for (row_index, row_state) in row_states.iter().enumerate() {
         if row_state.uses_nested_transition_measure() {
             seeded_row_indices.push(row_index);
         }
     }
+
     seeded_row_indices.sort_unstable();
     seeded_row_indices.dedup();
 
@@ -2096,7 +2133,9 @@ fn solve_interval_row_frequency_batches_adaptively(
                     .as_ref()
                     .expect("adaptive right row must be solved")
                     .theta;
+
                 let midpoint_row_index = (left_row_index + right_row_index) / 2;
+
                 let predicted_theta = interpolate_theta_across_deviation_rows(
                     collocation_nodes[*left_row_index],
                     left_theta,
@@ -2104,6 +2143,7 @@ fn solve_interval_row_frequency_batches_adaptively(
                     right_theta,
                     collocation_nodes[midpoint_row_index],
                 );
+
                 AdaptiveRowSolveTask {
                     left_row_index: *left_row_index,
                     midpoint_row_index,
@@ -2153,13 +2193,16 @@ fn solve_interval_row_frequency_batches_adaptively(
                     )?,
                 ));
             }
+
             midpoint_solutions
         };
 
         for (midpoint_row_index, solution) in solved_midpoints {
             row_solve_diagnostics.record(&solution);
+
             solved_theta_warm_start_states[midpoint_row_index] =
                 Some(solution.theta_warm_start_state);
+
             solved_rows[midpoint_row_index] = Some(solution.solution);
         }
 
@@ -2172,6 +2215,7 @@ fn solve_interval_row_frequency_batches_adaptively(
                 next_segments.push((task.midpoint_row_index, task.right_row_index));
             }
         }
+
         active_segments = next_segments;
     }
 
@@ -2186,6 +2230,7 @@ fn solve_interval_row_frequency_batches_adaptively(
             })
         })
         .collect::<Result<Vec<_>, _>>()?;
+
     let theta_warm_start_states = solved_theta_warm_start_states
         .into_iter()
         .enumerate()
@@ -2296,6 +2341,7 @@ fn solve_nested_interval_row_frequency_batches_with_shared_theta(
         })?
     } else {
         let mut row_operators = Vec::with_capacity(row_states.len());
+
         for row_state in row_states {
             row_operators.push(build_row_frequency_batch_from_shared_kernel(
                 base_context,
@@ -2304,11 +2350,13 @@ fn solve_nested_interval_row_frequency_batches_with_shared_theta(
                 &shared_kernel,
             )?);
         }
+
         row_operators
     };
 
     let (buy_shift_configuration_gradient_norm, sell_shift_configuration_gradient_norm) =
         resolve_shift_configuration_gradient_norms(driver_parameters, theta)?;
+
     let core_log_moment_sensitivity = if collect_extended_gradient_diagnostics {
         Some(
             differentiate_core_pure_imaginary_log_moment_exponent_for_tilt(
@@ -2320,6 +2368,7 @@ fn solve_nested_interval_row_frequency_batches_with_shared_theta(
     } else {
         None
     };
+
     let core_log_moment_shift_configuration_gradient_norm =
         if let Some(core_log_moment_sensitivity) = core_log_moment_sensitivity.as_ref() {
             if collect_extended_gradient_diagnostics {
@@ -2330,6 +2379,7 @@ fn solve_nested_interval_row_frequency_batches_with_shared_theta(
         } else {
             0.0
         };
+
     Ok((
         row_operators,
         vec![SpectralThetaWarmStartRowState::from_theta_hint(theta); row_states.len()],
@@ -2382,8 +2432,10 @@ fn solve_exact_row_frequency_batch(
         driver_parameters,
         theta,
     )?;
+
     let (buy_shift_configuration_gradient_norm, sell_shift_configuration_gradient_norm) =
         resolve_shift_configuration_gradient_norms(driver_parameters, theta)?;
+
     let core_log_moment_sensitivity =
         if collect_extended_gradient_diagnostics || collect_theta_warm_start_sensitivities {
             Some(
@@ -2396,6 +2448,7 @@ fn solve_exact_row_frequency_batch(
         } else {
             None
         };
+
     let core_log_moment_shift_configuration_gradient_norm =
         if let Some(core_log_moment_sensitivity) = core_log_moment_sensitivity.as_ref() {
             if collect_extended_gradient_diagnostics {
@@ -2406,6 +2459,7 @@ fn solve_exact_row_frequency_batch(
         } else {
             0.0
         };
+
     let theta_warm_start_state = if collect_theta_warm_start_sensitivities {
         if let Some(theta_warm_start_sensitivity) = core_log_moment_sensitivity
             .as_ref()
@@ -2419,6 +2473,7 @@ fn solve_exact_row_frequency_batch(
     } else {
         SpectralThetaWarmStartRowState::from_theta_hint(theta)
     };
+
     Ok(TimedRowFrequencyBatchSolution {
         solution,
         solve_mode: AdaptiveRowSolveMode::SeedExact,
@@ -2445,6 +2500,7 @@ fn solve_adaptive_midpoint_row_frequency_batch(
     cpu_count: Option<usize>,
 ) -> Result<TimedRowFrequencyBatchSolution, VanillaOptionPricingRunError> {
     let certification_started_at = Instant::now();
+
     if certify_local_transition_theta_for_row_with_parallelism(
         base_context,
         transition_row,
@@ -2454,6 +2510,7 @@ fn solve_adaptive_midpoint_row_frequency_batch(
         cpu_count,
     )? {
         let row_batch_started_at = Instant::now();
+
         let solution = solve_row_frequency_batch(
             base_context,
             transition_row,
@@ -2461,8 +2518,10 @@ fn solve_adaptive_midpoint_row_frequency_batch(
             driver_parameters,
             predicted_theta,
         )?;
+
         let (buy_shift_configuration_gradient_norm, sell_shift_configuration_gradient_norm) =
             resolve_shift_configuration_gradient_norms(driver_parameters, predicted_theta)?;
+
         let core_log_moment_shift_configuration_gradient_norm =
             if collect_extended_gradient_diagnostics {
                 let core_log_moment_sensitivity =
@@ -2475,6 +2534,7 @@ fn solve_adaptive_midpoint_row_frequency_batch(
             } else {
                 0.0
             };
+
         return Ok(TimedRowFrequencyBatchSolution {
             solution,
             solve_mode: AdaptiveRowSolveMode::CertifiedPredicted,
@@ -2501,6 +2561,7 @@ fn solve_adaptive_midpoint_row_frequency_batch(
         pricing_thread_pool,
         cpu_count,
     )?;
+
     Ok(TimedRowFrequencyBatchSolution {
         solution: exact_solution.solution,
         solve_mode: AdaptiveRowSolveMode::FallbackExact,
@@ -2529,6 +2590,7 @@ fn interpolate_theta_across_deviation_rows(
     }
 
     let interpolation_weight = (target_deviation - left_deviation) / deviation_span;
+
     left_theta + interpolation_weight * (right_theta - left_theta)
 }
 
@@ -2692,6 +2754,7 @@ fn build_spectral_domain(
     maturity_count: usize,
     _maturity_interval: f64,
     _strikes: &[f64],
+    collocation_node_count_override: Option<usize>,
 ) -> Result<SpectralDomain, VanillaOptionPricingRunError> {
     let terminal_anchor =
         materialization.runtime_interval_anchors.end_anchor_values[maturity_count - 1];
@@ -2714,6 +2777,7 @@ fn build_spectral_domain(
                 },
             },
         )?;
+
     let mut anchor_max = anchor_min;
 
     for anchor_value in
@@ -2727,7 +2791,8 @@ fn build_spectral_domain(
         .max(MINIMUM_SPECTRAL_DEVIATION_DOMAIN_HALF_WIDTH);
     let observed_log_center = current_observed_log_price;
 
-    let node_count = MINIMUM_SPECTRAL_COLLOCATION_NODE_COUNT;
+    let node_count =
+        collocation_node_count_override.unwrap_or(MINIMUM_SPECTRAL_COLLOCATION_NODE_COUNT);
 
     Ok(SpectralDomain {
         deviation_lower_bound: observed_log_center - observed_log_half_width - terminal_anchor,
@@ -2816,8 +2881,8 @@ fn cos_price_from_terminal_characteristic_function(
     }
 
     let strike_boundary = solved_maturity.observed_log_price + (strike / spot).ln();
-
     let discount_factor = (-risk_free_rate * maturity_year_fraction).exp();
+
     let mut price = 0.0;
 
     for (frequency_index, phi_value) in solved_maturity
@@ -2864,6 +2929,7 @@ fn cos_price_sensitivity_from_terminal_characteristic_function(
     };
 
     let maturity_year_fraction = intraday_year_fraction(solved_maturity.maturity_interval);
+
     let y_lower_bound =
         solved_maturity.terminal_anchor_value + solved_maturity.deviation_lower_bound;
     let y_upper_bound =
@@ -2879,6 +2945,7 @@ fn cos_price_sensitivity_from_terminal_characteristic_function(
 
     let strike_boundary = solved_maturity.observed_log_price + (strike / spot).ln();
     let discount_factor = (-risk_free_rate * maturity_year_fraction).exp();
+
     let mut price_sensitivity = NodePriceSharedPlusShiftSensitivity::zero();
 
     for (frequency_index, phi_sensitivity) in
@@ -3057,17 +3124,22 @@ mod tests {
             1.0,
         )
         .expect("pricing request should construct");
+
         let interval_factors = vec![
             VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
                 .expect("interval factors should construct"),
         ];
+
         let runtime_interval_schedule = build_uniform_runtime_interval_schedule(1, 1.0);
+
         let driver_parameters = pricing_request
             .model_parameters
             .nig_shared_plus_shift_configuration
             .derive_driver_parameters()
             .expect("driver parameters should derive");
+
         let mut no_observer = None;
+
         let materialization = build_pricing_risk_neutral_anchor_materialization(
             &pricing_request,
             &runtime_interval_schedule,
@@ -3076,10 +3148,19 @@ mod tests {
             &mut no_observer,
         )
         .expect("risk-neutral anchor materialization should succeed");
-        let spectral_domain =
-            build_spectral_domain(&pricing_request, &materialization, 1, 1.0, &[100.0])
-                .expect("spectral domain should construct");
+
+        let spectral_domain = build_spectral_domain(
+            &pricing_request,
+            &materialization,
+            1,
+            1.0,
+            &[100.0],
+            None,
+        )
+        .expect("spectral domain should construct");
+
         let collocation_nodes = spectral_domain.collocation_nodes();
+
         let base_context = LocalTransitionRequestContext::from_interval_state(
             &pricing_request,
             interval_factors[0],
@@ -3092,6 +3173,7 @@ mod tests {
             materialization.runtime_interval_anchors.interval_deltas[0],
         )
         .expect("transition context should construct");
+
         let row_states = collocation_nodes
             .iter()
             .copied()

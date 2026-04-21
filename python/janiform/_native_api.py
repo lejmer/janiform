@@ -1,6 +1,7 @@
 from collections.abc import Mapping
 from importlib import import_module
 from types import ModuleType
+from typing import Optional
 
 
 def native_module() -> ModuleType:
@@ -32,7 +33,7 @@ def remap_native_exception_by_type(
     native: ModuleType,
     error: Exception,
     mappings: Mapping[str, type[Exception]],
-) -> Exception | None:
+) -> Optional[Exception]:
     for exception_name, error_type in mappings.items():
         if native_exception_matches(native, error, exception_name):
             return error_type(str(error))

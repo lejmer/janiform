@@ -1487,6 +1487,8 @@ pub struct VanillaOptionPricingOptionalOutputSelection {
     pub include_integration_quality_diagnostics: bool,
     #[serde(default)]
     pub include_calibration_hooks: bool,
+    #[serde(default)]
+    pub include_node_price_sensitivities: bool,
 }
 
 impl VanillaOptionPricingOptionalOutputSelection {
@@ -1499,6 +1501,7 @@ impl VanillaOptionPricingOptionalOutputSelection {
             include_transform_diagnostics,
             include_integration_quality_diagnostics,
             include_calibration_hooks,
+            include_node_price_sensitivities: false,
         }
     }
 

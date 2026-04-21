@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from ...contracts import serialize_pretty_json
 from ..market_data.contracts import CalibrationMarketDataWorkflowScope
@@ -26,9 +26,9 @@ class JaniformFitReport:
     preparation_diagnostics: MarketDataCalibrationPreparationDiagnostics
     preparation_provenance: MarketDataCalibrationPreparationProvenance
     staged_request: StagedCalibrationRequest
-    prepared_data_reference: str | None
-    prepared_payload_path: str | None
-    staged_execution_input_path: str | None
+    prepared_data_reference: Optional[str]
+    prepared_payload_path: Optional[str]
+    staged_execution_input_path: Optional[str]
     staged_response: StagedCalibrationResponse
     stage_report_payloads: tuple[dict[str, Any], ...]
 

@@ -7,6 +7,7 @@ from typing import Any, Optional
 import numpy as np
 import pandas as pd
 
+from ..._pricing_node_validation import validate_option_pricing_node_payload
 from .common import (
     grid_of_optional_finite_floats,
     grid_of_scalars,
@@ -28,10 +29,23 @@ from ..contracts import (
     VanillaOptionPricingModelParameters,
     VanillaOptionPricingOptionalOutputSelection,
     VanillaOptionPricingStatus,
-    DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA,
     PRICING_ERROR_FACTORY,
     _validate_optional_implied_volatility_inversion_outcome,
     _pricing_error,
+)
+from ..._pricing_field_names import (
+    BOUNDARY_STATE_NORM_FIELD_NAME,
+    DISCOUNT_FACTOR_FIELD_NAME,
+    FORWARD_PRICE_FIELD_NAME,
+    IMPLIED_VOLATILITY_FIELD_NAME,
+    IMPLIED_VOLATILITY_INVERSION_STATUS_FIELD_NAME,
+    MATURITY_INTERVAL_FIELD_NAME,
+    MODEL_PRICE_FIELD_NAME,
+    OPTION_TYPE_FIELD_NAME,
+    PRICING_FAILURE_REASON_FIELD_NAME,
+    PRICING_FAILURE_STAGE_FIELD_NAME,
+    PRICING_STATUS_FIELD_NAME,
+    STRIKE_FIELD_NAME,
 )
 from ..._timestamps import ONE_HOUR_NANOS, hours_to_exact_nanoseconds
 from ...contracts import ContractModel
@@ -149,26 +163,26 @@ class VanillaOptionSurfacePricingNodeTable(ContractModel):
     def to_records(self) -> tuple[SurfaceNodeRecord, ...]:
         return tuple(
             {
-                "strike": self.strikes[node_index],
-                "maturity_interval": self.maturity_intervals[node_index],
-                "option_type": self.option_types[node_index].value,
-                "model_price": self.model_prices[node_index],
-                "implied_volatility": self.implied_volatilities[node_index],
-                "implied_volatility_inversion_status": (
+                STRIKE_FIELD_NAME: self.strikes[node_index],
+                MATURITY_INTERVAL_FIELD_NAME: self.maturity_intervals[node_index],
+                OPTION_TYPE_FIELD_NAME: self.option_types[node_index].value,
+                MODEL_PRICE_FIELD_NAME: self.model_prices[node_index],
+                IMPLIED_VOLATILITY_FIELD_NAME: self.implied_volatilities[node_index],
+                IMPLIED_VOLATILITY_INVERSION_STATUS_FIELD_NAME: (
                     self.implied_volatility_inversion_statuses[node_index].value
                     if self.implied_volatility_inversion_statuses[node_index] is not None
                     else None
                 ),
-                "pricing_status": self.pricing_statuses[node_index].value,
-                "pricing_failure_stage": (
+                PRICING_STATUS_FIELD_NAME: self.pricing_statuses[node_index].value,
+                PRICING_FAILURE_STAGE_FIELD_NAME: (
                     self.pricing_failure_stages[node_index].value
                     if self.pricing_failure_stages[node_index] is not None
                     else None
                 ),
-                "pricing_failure_reason": self.pricing_failure_reasons[node_index],
-                "forward_price": self.forward_prices[node_index],
-                "discount_factor": self.discount_factors[node_index],
-                "boundary_state_norm": self.boundary_state_norms[node_index],
+                PRICING_FAILURE_REASON_FIELD_NAME: self.pricing_failure_reasons[node_index],
+                FORWARD_PRICE_FIELD_NAME: self.forward_prices[node_index],
+                DISCOUNT_FACTOR_FIELD_NAME: self.discount_factors[node_index],
+                BOUNDARY_STATE_NORM_FIELD_NAME: self.boundary_state_norms[node_index],
             }
             for node_index in range(self.node_count)
         )
@@ -1050,99 +1064,61 @@ def _validate_surface_node_payload(
     boundary_state_norm: Optional[float],
     field_path: str,
 ) -> None:
-    if pricing_status is VanillaOptionPricingStatus.SUCCEEDED:
-        if pricing_failure_stage is not None:
-            raise _pricing_error(
-                f"{field_path}.pricing_failure_stage",
-                "must be null when pricing_status=succeeded",
-            )
+    validate_option_pricing_node_payload(
+        pricing_status=pricing_status,
+        succeeded_pricing_status=VanillaOptionPricingStatus.SUCCEEDED,
+        pricing_failure_stage=pricing_failure_stage,
+        pricing_failure_reason=pricing_failure_reason,
+        model_price=model_price,
+        implied_volatility=implied_volatility,
+        implied_volatility_inversion_status=implied_volatility_inversion_status,
+        forward_price=forward_price,
+        discount_factor=discount_factor,
+        boundary_state_norm=boundary_state_norm,
+        field_path=field_path,
+        error_factory=_pricing_error,
+        require_non_negative_finite_numeric_field=_require_non_negative_finite_numeric_field,
+        require_positive_finite_numeric_field=_require_positive_finite_numeric_field,
+        validate_optional_implied_volatility_inversion_outcome=(
+            _validate_optional_implied_volatility_inversion_outcome_for_surface_node
+        ),
+    )
 
-        if pricing_failure_reason is not None:
-            raise _pricing_error(
-                f"{field_path}.pricing_failure_reason",
-                "must be null when pricing_status=succeeded",
-            )
 
-        require_non_negative_finite_number(
-            {"value": model_price},
-            "value",
-            f"{field_path}.model_price",
-            PRICING_ERROR_FACTORY,
-        )
-        require_positive_finite_number(
-            {"value": forward_price},
-            "value",
-            f"{field_path}.forward_price",
-            PRICING_ERROR_FACTORY,
-        )
-        require_positive_finite_number(
-            {"value": discount_factor},
-            "value",
-            f"{field_path}.discount_factor",
-            PRICING_ERROR_FACTORY,
-        )
-        require_non_negative_finite_number(
-            {"value": boundary_state_norm},
-            "value",
-            f"{field_path}.boundary_state_norm",
-            PRICING_ERROR_FACTORY,
-        )
+def _require_non_negative_finite_numeric_field(
+    value: Optional[float],
+    field_path: str,
+) -> None:
+    require_non_negative_finite_number(
+        {"value": value},
+        "value",
+        field_path,
+        PRICING_ERROR_FACTORY,
+    )
 
-        _validate_optional_implied_volatility_inversion_outcome(
-            implied_volatility=implied_volatility,
-            implied_volatility_inversion_status=implied_volatility_inversion_status,
-            field_path=field_path,
-        )
 
-        return
+def _require_positive_finite_numeric_field(
+    value: Optional[float],
+    field_path: str,
+) -> None:
+    require_positive_finite_number(
+        {"value": value},
+        "value",
+        field_path,
+        PRICING_ERROR_FACTORY,
+    )
 
-    if pricing_failure_stage is None:
-        raise _pricing_error(
-            f"{field_path}.pricing_failure_stage",
-            "must be present when pricing_status=failed",
-        )
 
-    if pricing_failure_reason is None or pricing_failure_reason.strip() == "":
-        raise _pricing_error(
-            f"{field_path}.pricing_failure_reason",
-            "must be a non-empty string when pricing_status=failed",
-        )
-
-    if model_price is not None:
-        raise _pricing_error(
-            f"{field_path}.model_price",
-            "must be null when pricing_status=failed",
-        )
-
-    if implied_volatility is not None:
-        raise _pricing_error(
-            f"{field_path}.implied_volatility",
-            "must be null when pricing_status=failed",
-        )
-
-    if implied_volatility_inversion_status is not None:
-        raise _pricing_error(
-            f"{field_path}.implied_volatility_inversion_status",
-            "must be null when pricing_status=failed",
-        )
-
-    if forward_price is not None:
-        raise _pricing_error(
-            f"{field_path}.forward_price",
-            "must be null when pricing_status=failed",
-        )
-
-    if discount_factor is not None:
-        raise _pricing_error(
-            f"{field_path}.discount_factor",
-            "must be null when pricing_status=failed",
-        )
-
-    if boundary_state_norm is not None:
-        raise _pricing_error(
-            f"{field_path}.boundary_state_norm",
-            "must be null when pricing_status=failed",
-        )
+def _validate_optional_implied_volatility_inversion_outcome_for_surface_node(
+    implied_volatility: Optional[float],
+    implied_volatility_inversion_status: Optional[VanillaOptionImpliedVolatilityInversionStatus],
+    field_path: str,
+) -> None:
+    _validate_optional_implied_volatility_inversion_outcome(
+        implied_volatility=implied_volatility,
+        implied_volatility_inversion_status=implied_volatility_inversion_status,
+        field_path=field_path,
+    )
 
 def _require_mapping_value(
     raw_value: Any,

@@ -6,7 +6,7 @@ use janiform::calibration::{
     CalibrationReturnComponentsActivityContextPayload,
     CalibrationReturnComponentsStageCandidateGenerationInput, CalibrationStagedExecutionInput,
     CalibrationStagedRunObserverEvent, CalibrationStagedRunReport, CalibrationStagedRunStageReport,
-    CurrentStateEstimationInput, MarketDataInputFileReference, MarketDataLoadingOutput,
+    CalibrationResumeSettings, CurrentStateEstimationInput, MarketDataInputFileReference, MarketDataLoadingOutput,
     MarketDataLoadingRequest, MarketDataNormalizationPolicy, MarketDataSessionConfiguration,
     MarketDataSessionResolutionPayload, MarketDataSourceProbePayload,
     MarketDataTickDataColumnMapping, MarketDataTranslationPreprocessingOutput,
@@ -29,7 +29,6 @@ use janiform::calibration::{
 };
 use janiform::hawkes::{HawkesEventSide, HawkesKernelParameters};
 use janiform::simulation::MeanReversionFittedParameters;
-use janiform_calibration_artifacts::CalibrationResumeSettings;
 use pyo3::prelude::{Bound, Py, PyResult, Python};
 use pyo3::types::{PyAny, PyAnyMethods, PyDict, PyDictMethods, PyModule, PyModuleMethods};
 use pyo3::{pyfunction, wrap_pyfunction};

@@ -30,10 +30,10 @@ def run_model_vanilla_option_grid_batch_pricing(
         native_method_name="run_vanilla_option_grid_batch_pricing",
         native_execution_input=native_execution_input,
         result_parser=JaniformVanillaOptionGridBatchPricingResult.from_mapping,
-        entrypoint="JaniformModel.price_option_grids",
+        entrypoint="JaniformModel.price_option_grid",
         result_field_path="grid_batch_pricing_result",
         progress=progress,
-        progress_detail="running grid batch pricing workflow",
+        progress_detail="running option grid pricing workflow",
     )
 
 
@@ -46,10 +46,10 @@ def run_model_vanilla_option_surface_pricing(
         native_method_name="run_vanilla_option_surface_pricing",
         native_execution_input=native_execution_input,
         result_parser=JaniformVanillaOptionSurfacePricingResult.from_mapping,
-        entrypoint="JaniformModel.price_option_surface",
+        entrypoint="JaniformModel.price_option_grid_surface",
         result_field_path="surface_pricing_result",
         progress=progress,
-        progress_detail="running surface pricing workflow",
+        progress_detail="running option grid surface pricing workflow",
     )
 
 
@@ -130,12 +130,14 @@ def update_cli_progress_from_pricing_native_event(
     detail: str,
 ) -> PricingProgressEvent:
     event = pricing_progress_event_from_mapping(raw_event)
+
     progress.update(
         detail=detail,
         subdetail=event.subdetail,
         completed_units=event.completed_units,
         total_units=event.total_units,
     )
+
     return event
 
 
@@ -150,6 +152,7 @@ def run_native_pricing_workflow_method(
         case "run_vanilla_option_grid_batch_pricing":
             if native_progress_callback is None:
                 return native.run_vanilla_option_grid_batch_pricing(native_execution_input)
+
             return native.run_vanilla_option_grid_batch_pricing_with_events(
                 native_execution_input,
                 native_progress_callback,
@@ -157,6 +160,7 @@ def run_native_pricing_workflow_method(
         case "run_vanilla_option_surface_pricing":
             if native_progress_callback is None:
                 return native.run_vanilla_option_surface_pricing(native_execution_input)
+
             return native.run_vanilla_option_surface_pricing_with_events(
                 native_execution_input,
                 native_progress_callback,

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import math
+import queue
+from copy import deepcopy
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -15,15 +17,19 @@ from pyarrow import parquet
 import janiform.calibration.fit.estimator as fit_estimator_module
 import janiform.calibration.fit.model as fit_model_module
 import janiform.calibration.fit._preparation.configuration as fit_preparation_configuration_module
+import janiform.calibration.fit._runtime.metadata as fit_runtime_metadata_module
 import janiform.calibration.fit._runtime.payloads as fit_runtime_payloads_module
 import janiform.calibration.fit._runtime.mean_reversion as fit_mean_reversion_runtime_module
 import janiform.calibration.fit._runtime.option_pricing.native as fit_pricing_native_module
 import janiform.calibration.fit._runtime.option_pricing.support as fit_pricing_support_module
+import janiform.calibration.fit._runtime.stage_reports as fit_stage_reports_module
 import janiform.calibration.fit._runtime.option_pricing.workflow as fit_pricing_workflow_module
 import janiform.calibration.fit._runtime.seasonality as fit_seasonality_runtime_module
 import janiform.calibration.fit._runtime.shared as fit_runtime_shared_module
 import janiform.calibration.fit._runtime.simulation.result as fit_simulation_result_module
 import janiform.calibration.fit._runtime.simulation.workflow as fit_simulation_workflow_module
+import janiform.calibration.fit.pricing.market_snapshot._workflow.pricing as fit_market_snapshot_pricing_workflow_module
+import janiform.calibration.fit.pricing.market_surface._workflow.progress as fit_market_surface_progress_module
 import janiform.calibration.fit.state._estimation as state_estimation_module
 import janiform.calibration.market_data.ingestion as market_data_ingestion_module
 import janiform.hourly_factors.workflow as hourly_factors_workflow_module
@@ -37,6 +43,7 @@ from janiform.calibration.fit import (
     JaniformSimulationResult,
 )
 from janiform.calibration.fit.pricing import (
+    JaniformObservedOptionSurfacePricingResult,
     JaniformVanillaOptionGrid,
     JaniformVanillaOptionGridBatch,
     JaniformVanillaOptionGridBatchPricingResult,
@@ -86,6 +93,7 @@ from janiform.mean_reversion import (
 from janiform.pricing import (
     AutoActivityCompressedPricingIntervalSchedulePolicy,
     AutoExactSparsePricingIntervalSchedulePolicy,
+    VanillaOptionPricingDiagnostics,
 )
 from janiform.pricing import (
     VanillaOptionImpliedVolatilityInversionStatus,
@@ -576,7 +584,7 @@ def test_prepare_fit_workflow_allows_inferred_option_quote_input_policy(
     assert request.normalization_policy.option_quote_input_policy is None
 
 
-def test_price_option_market_snapshot_returns_tidy_snapshot_and_surface_frame(
+def test_price_option_snapshot_returns_tidy_snapshot_and_surface_frame(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -607,8 +615,8 @@ def test_price_option_market_snapshot_returns_tidy_snapshot_and_surface_frame(
                 "quote_time,expiry_utc,strike_price,right,best_bid,best_ask",
                 "2026-02-03T15:00:00Z,2026-03-20T20:00:00Z,95.0,C,8.0,8.5",
                 "2026-02-03T15:00:00Z,2026-03-20T20:00:00Z,105.0,C,3.0,3.5",
-                "2026-02-03T15:00:00Z,2026-04-17T20:00:00Z,95.0,C,9.0,9.5",
-                "2026-02-03T15:00:00Z,2026-04-17T20:00:00Z,105.0,C,4.0,4.5",
+                "2026-02-03T14:59:00Z,2026-04-17T20:00:00Z,95.0,C,9.0,9.5",
+                "2026-02-03T14:59:00Z,2026-04-17T20:00:00Z,105.0,C,4.0,4.5",
                 "2026-02-03T16:00:00Z,2026-03-20T20:00:00Z,95.0,C,8.2,8.7",
             ]
         ),
@@ -617,8 +625,8 @@ def test_price_option_market_snapshot_returns_tidy_snapshot_and_surface_frame(
 
     captured_arguments: dict[str, Any] = {}
 
-    def _capture_price_option_grids(
-        self: JaniformModel,
+    def _capture_price_option_grid(
+        model: JaniformModel,
         *,
         valuation_time_utc: datetime,
         batch: JaniformVanillaOptionGridBatch,
@@ -629,11 +637,13 @@ def test_price_option_market_snapshot_returns_tidy_snapshot_and_surface_frame(
         cpu_count: Optional[int] = None,
         silent: bool = False,
         progress_mode: Any = fit_model_module.WorkflowProgressMode.AUTO,
+        progress: Any = None,
     ) -> JaniformVanillaOptionGridBatchPricingResult:
-        _ = self
+        _ = model
         _ = boundary_state
         _ = include_transform_diagnostics
         _ = include_integration_quality_diagnostics
+        _ = progress
         captured_arguments["valuation_time_utc"] = valuation_time_utc
         captured_arguments["batch"] = batch
         captured_arguments["observed_data"] = observed_data
@@ -680,12 +690,12 @@ def test_price_option_market_snapshot_returns_tidy_snapshot_and_surface_frame(
         )
 
     monkeypatch.setattr(
-        fit_model_module.JaniformModel,
-        "price_option_grids",
-        _capture_price_option_grids,
+        fit_market_snapshot_pricing_workflow_module,
+        "price_option_grid_for_model",
+        _capture_price_option_grid,
     )
 
-    result = model.price_option_market_snapshot(
+    result = model.price_option_snapshot(
         tick_data=tick_data_path,
         option_surface=option_surface_path,
         valuation_time_utc=datetime(2026, 2, 3, 15, 0, tzinfo=UTC),
@@ -727,17 +737,371 @@ def test_price_option_market_snapshot_returns_tidy_snapshot_and_surface_frame(
         "pricing_failure_stage",
         "pricing_failure_reason",
         "forward_price",
+        "log_forward_moneyness",
         "discount_factor",
         "boundary_state_norm",
     ]
     assert len(frame) == 4
     assert set(frame["observed_mid_price"]) == {3.25, 4.25, 8.25, 9.25}
+    assert set(frame["quote_timestamp_utc"]) == {
+        datetime(2026, 2, 3, 14, 59, tzinfo=UTC),
+        datetime(2026, 2, 3, 15, 0, tzinfo=UTC),
+    }
+    assert sorted(set(frame["log_forward_moneyness"])) == pytest.approx(
+        sorted(
+            [
+                math.log(95.0 / 100.0),
+                math.log(105.0 / 100.0),
+            ]
+        )
+    )
+    assert result.nodes[0].log_forward_moneyness is not None
 
     surface_frame = result.to_surface_frame()
     assert tuple(surface_frame.columns) == (95.0, 105.0)
     assert surface_frame.shape == (2, 2)
     assert surface_frame.iloc[0, 0] == pytest.approx(0.2)
     assert surface_frame.iloc[1, 1] == pytest.approx(0.26)
+
+
+def test_price_option_surface_returns_single_expiry_evolution_surface(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _build_full_workflow_model(
+        tmp_path,
+        monkeypatch,
+        run_id="high-level-observed-option-surface",
+    )
+
+    tick_data_path = tmp_path / "observed_ticks_surface.csv"
+    tick_data_path.write_text(
+        "\n".join(
+            [
+                "trade_time,trade_price,trade_side",
+                "2026-02-03T14:30:00Z,100.0,buy",
+                "2026-02-03T14:55:00Z,101.0,sell",
+                "2026-02-03T15:00:00Z,102.0,buy",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    option_surface_path = tmp_path / "observed_surface_single_expiry.csv"
+    option_surface_path.write_text(
+        "\n".join(
+            [
+                "quote_time,expiry_utc,strike_price,right,best_bid,best_ask",
+                "2026-02-03T14:55:00Z,2026-03-20T20:00:00Z,95.0,C,8.0,8.5",
+                "2026-02-03T14:55:00Z,2026-03-20T20:00:00Z,105.0,C,3.0,3.5",
+                "2026-02-03T15:00:00Z,2026-03-20T20:00:00Z,95.0,C,8.2,8.7",
+                "2026-02-03T15:00:00Z,2026-03-20T20:00:00Z,105.0,C,3.2,3.7",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    observed_valuation_times: list[datetime] = []
+
+    def _capture_price_option_grid(
+        model: JaniformModel,
+        *,
+        valuation_time_utc: datetime,
+        batch: JaniformVanillaOptionGridBatch,
+        observed_data: Optional[CurrentStateEstimationRequest] = None,
+        boundary_state: Any = None,
+        include_transform_diagnostics: bool = False,
+        include_integration_quality_diagnostics: bool = False,
+        cpu_count: Optional[int] = None,
+        silent: bool = False,
+        progress_mode: Any = fit_model_module.WorkflowProgressMode.AUTO,
+        progress: Any = None,
+    ) -> JaniformVanillaOptionGridBatchPricingResult:
+        _ = model
+        _ = observed_data
+        _ = boundary_state
+        _ = include_transform_diagnostics
+        _ = include_integration_quality_diagnostics
+        _ = cpu_count
+        _ = silent
+        _ = progress_mode
+        _ = progress
+        observed_valuation_times.append(valuation_time_utc)
+
+        forward_price = 100.0 if valuation_time_utc.minute == 55 else 102.0
+        volatility_level_shift = 0.0 if valuation_time_utc.minute == 55 else 0.05
+        grids = tuple(
+            JaniformVanillaOptionGridPricingResult(
+                payoff_type=grid.payoff_type,
+                risk_free_rate=grid.risk_free_rate,
+                dividend_yield=grid.dividend_yield,
+                strikes=grid.strikes,
+                maturity_intervals=(0.1,),
+                maturity_terminal_interval_indices=(0,),
+                price_grid=(tuple(1.0 + strike / 100.0 for strike in grid.strikes),),
+                implied_volatility_grid=(
+                    tuple(
+                        0.2 + 0.01 * strike_index + volatility_level_shift
+                        for strike_index, _strike in enumerate(grid.strikes)
+                    ),
+                ),
+                implied_volatility_inversion_status_grid=(
+                    tuple(
+                        VanillaOptionImpliedVolatilityInversionStatus.SUCCEEDED
+                        for _ in grid.strikes
+                    ),
+                ),
+                pricing_status_grid=(
+                    tuple(VanillaOptionPricingStatus.SUCCEEDED for _ in grid.strikes),
+                ),
+                pricing_failure_stage_grid=(tuple(None for _ in grid.strikes),),
+                pricing_failure_reason_grid=(tuple(None for _ in grid.strikes),),
+                forward_price_grid=(tuple(forward_price for _ in grid.strikes),),
+                discount_factor_grid=(tuple(1.0 for _ in grid.strikes),),
+                boundary_state_norm_grid=(tuple(0.3 for _ in grid.strikes),),
+                maturity_summaries=(None,),
+            )
+            for grid in batch.grids
+        )
+
+        return JaniformVanillaOptionGridBatchPricingResult(
+            spot=batch.spot,
+            grids=grids,
+            runtime_interval_schedule=build_runtime_interval_schedule((0.1, 0.1)),
+        )
+
+    monkeypatch.setattr(
+        fit_market_snapshot_pricing_workflow_module,
+        "price_option_grid_for_model",
+        _capture_price_option_grid,
+    )
+
+    result = model.price_option_surface(
+        tick_data=tick_data_path,
+        option_surface=option_surface_path,
+        valuation_time_utc=datetime(2026, 2, 3, 15, 0, tzinfo=UTC),
+        option_type="call",
+        valuation_count=2,
+        cpu_count=1,
+    )
+
+    assert isinstance(result, JaniformObservedOptionSurfacePricingResult)
+    assert observed_valuation_times == [
+        datetime(2026, 2, 3, 14, 55, tzinfo=UTC),
+        datetime(2026, 2, 3, 15, 0, tzinfo=UTC),
+    ]
+
+    frame = result.to_pandas()
+    assert tuple(sorted(frame["valuation_time_utc"].unique())) == (
+        datetime(2026, 2, 3, 14, 55, tzinfo=UTC),
+        datetime(2026, 2, 3, 15, 0, tzinfo=UTC),
+    )
+    assert frame["expiry_timestamp_utc"].nunique(dropna=False) == 1
+
+    surface_frame = result.to_surface_frame()
+    assert surface_frame.shape[0] == 2
+    assert surface_frame.shape[1] >= 1
+    assert surface_frame.iloc[0, 0] != surface_frame.iloc[1, 0]
+
+
+def test_single_expiry_surface_progress_panel_formats_slice_rows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        fit_market_surface_progress_module,
+        "monotonic",
+        lambda: 80.0,
+    )
+
+    running_row = fit_market_surface_progress_module.SingleExpirySurfaceSliceProgressRow(
+        valuation_time_utc=datetime(2026, 3, 27, 18, 42, tzinfo=UTC),
+        status="running",
+        detail="interval 193/957",
+        started_at_monotonic=0.0,
+        last_observed_elapsed_seconds=80.0,
+    )
+    completed_row = fit_market_surface_progress_module.SingleExpirySurfaceSliceProgressRow(
+        valuation_time_utc=datetime(2026, 3, 31, 20, 0, tzinfo=UTC),
+        status="done",
+        detail="strike 41/128",
+        completed_elapsed_seconds=185.0,
+    )
+
+    panel = fit_market_surface_progress_module.build_single_expiry_surface_progress_panel(
+        rows_by_time={
+            running_row.valuation_time_utc: running_row,
+            completed_row.valuation_time_utc: completed_row,
+        },
+        active_count=1,
+        surface_parallelism=22,
+        total_cpu_count=24,
+        pricing_cpu_count=1,
+    )
+
+    assert panel == "\n".join(
+        (
+            "active 1 | valuation workers 22/24 | pricing cpus per worker 1",
+            "  2026-03-27T18:42:00Z | running | interval 193/957 | 01:20",
+            "  2026-03-31T20:00:00Z | done    | strike 41/128 | 03:05",
+        )
+    )
+
+
+def test_normalize_single_expiry_surface_progress_detail_suppresses_redundant_prefixes() -> None:
+    assert (
+        fit_market_surface_progress_module.normalize_single_expiry_surface_slice_progress_detail(
+            "maturity 1/1 | strike 41/128"
+        )
+        == "strike 41/128"
+    )
+    assert (
+        fit_market_surface_progress_module.normalize_single_expiry_surface_slice_progress_detail(
+            "group 1/1"
+        )
+        is None
+    )
+    assert (
+        fit_market_surface_progress_module.normalize_single_expiry_surface_slice_progress_detail(
+            "interval 193/957"
+        )
+        == "interval 193/957"
+    )
+
+
+def test_single_expiry_surface_worker_progress_updates_rows_from_queue(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target_time = datetime(2026, 3, 31, 20, 0, tzinfo=UTC)
+    row = fit_market_surface_progress_module.SingleExpirySurfaceSliceProgressRow(
+        valuation_time_utc=target_time,
+    )
+    progress_queue: queue.Queue[Any] = queue.Queue()
+    monotonic_values = iter((100.0, 120.0))
+
+    monkeypatch.setattr(
+        fit_market_surface_progress_module,
+        "monotonic",
+        lambda: next(monotonic_values),
+    )
+
+    worker_progress = fit_market_surface_progress_module.SingleExpirySurfaceSliceWorkerProgress(
+        valuation_time_utc=target_time,
+        progress_queue=progress_queue,
+    )
+    worker_progress.notify_started()
+    worker_progress.update(
+        detail="running option grid pricing workflow",
+        subdetail="interval 193/957",
+    )
+
+    fit_market_surface_progress_module.drain_single_expiry_surface_progress_queue(
+        progress_queue=progress_queue,
+        rows_by_time={target_time: row},
+    )
+
+    assert row.status == "running"
+    assert row.detail == "interval 193/957"
+    assert row.last_observed_elapsed_seconds == pytest.approx(20.0)
+
+
+def test_single_expiry_surface_running_row_elapsed_label_advances_without_detail(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        fit_market_surface_progress_module,
+        "monotonic",
+        lambda: 125.0,
+    )
+    row = fit_market_surface_progress_module.SingleExpirySurfaceSliceProgressRow(
+        valuation_time_utc=datetime(2026, 3, 31, 20, 0, tzinfo=UTC),
+        status="running",
+        detail="-",
+        started_at_monotonic=5.0,
+    )
+
+    assert (
+        fit_market_surface_progress_module.single_expiry_surface_slice_row_elapsed_label(
+            row
+        )
+        == "02:00"
+    )
+
+
+def test_vanilla_option_pricing_diagnostics_exposes_log_forward_moneyness() -> None:
+    diagnostics = VanillaOptionPricingDiagnostics(
+        forward_price=100.0,
+        discount_factor=0.99,
+        maturity_interval=1.0,
+        boundary_state_norm=0.0,
+    )
+
+    assert diagnostics.log_forward_moneyness(strike=95.0) == pytest.approx(math.log(95.0 / 100.0))
+
+
+def test_grid_pricing_result_exposes_log_forward_moneyness_grid() -> None:
+    result = JaniformVanillaOptionGridPricingResult(
+        payoff_type=VanillaOptionPayoffType.CALL,
+        risk_free_rate=0.01,
+        dividend_yield=0.0,
+        strikes=(95.0, 105.0),
+        maturity_intervals=(1.0,),
+        maturity_terminal_interval_indices=(0,),
+        price_grid=((1.0, 2.0),),
+        implied_volatility_grid=((0.2, 0.21),),
+        implied_volatility_inversion_status_grid=((
+            VanillaOptionImpliedVolatilityInversionStatus.SUCCEEDED,
+            VanillaOptionImpliedVolatilityInversionStatus.SUCCEEDED,
+        ),),
+        pricing_status_grid=((
+            VanillaOptionPricingStatus.SUCCEEDED,
+            VanillaOptionPricingStatus.SUCCEEDED,
+        ),),
+        pricing_failure_stage_grid=((None, None),),
+        pricing_failure_reason_grid=((None, None),),
+        forward_price_grid=((100.0, 100.0),),
+        discount_factor_grid=((0.99, 0.99),),
+        boundary_state_norm_grid=((0.0, 0.0),),
+        maturity_summaries=(None,),
+    )
+
+    assert result.log_forward_moneyness_grid == ((
+        pytest.approx(math.log(95.0 / 100.0)),
+        pytest.approx(math.log(105.0 / 100.0)),
+    ),)
+
+
+def test_surface_pricing_result_exposes_log_forward_moneyness_grid() -> None:
+    result = JaniformVanillaOptionSurfacePricingResult(
+        spot=100.0,
+        strikes=(95.0, 105.0),
+        maturity_intervals=(1.0,),
+        payoff_type=VanillaOptionPayoffType.CALL,
+        risk_free_rate=0.01,
+        dividend_yield=0.0,
+        price_grid=((1.0, 2.0),),
+        implied_volatility_grid=((0.2, 0.21),),
+        implied_volatility_inversion_status_grid=((
+            VanillaOptionImpliedVolatilityInversionStatus.SUCCEEDED,
+            VanillaOptionImpliedVolatilityInversionStatus.SUCCEEDED,
+        ),),
+        pricing_status_grid=((
+            VanillaOptionPricingStatus.SUCCEEDED,
+            VanillaOptionPricingStatus.SUCCEEDED,
+        ),),
+        pricing_failure_stage_grid=((None, None),),
+        pricing_failure_reason_grid=((None, None),),
+        forward_price_grid=((100.0, 100.0),),
+        discount_factor_grid=((0.99, 0.99),),
+        boundary_state_norm_grid=((0.0, 0.0),),
+        maturity_summaries=(None,),
+        runtime_interval_schedule=build_runtime_interval_schedule((1.0,)),
+        maturity_terminal_interval_indices=(0,),
+    )
+
+    assert result.log_forward_moneyness_grid == ((
+        pytest.approx(math.log(95.0 / 100.0)),
+        pytest.approx(math.log(105.0 / 100.0)),
+    ),)
 
 
 def test_prepare_model_runtime_factors_uses_fitted_surprise_intensity_profile(
@@ -1530,8 +1894,6 @@ def test_run_model_native_pricing_workflow_reports_native_surface_progress(
                     "total_maturities": 2,
                     "current_interval_index": None,
                     "total_intervals": None,
-                    "current_transition_row_index": None,
-                    "total_transition_rows": None,
                     "current_strike_index": None,
                     "total_strikes": None,
                 }
@@ -1546,8 +1908,6 @@ def test_run_model_native_pricing_workflow_reports_native_surface_progress(
                     "total_maturities": 2,
                     "current_interval_index": None,
                     "total_intervals": None,
-                    "current_transition_row_index": None,
-                    "total_transition_rows": None,
                     "current_strike_index": 1,
                     "total_strikes": 3,
                 }
@@ -1569,10 +1929,10 @@ def test_run_model_native_pricing_workflow_reports_native_surface_progress(
         native_method_name="run_vanilla_option_surface_pricing",
         native_execution_input={"prepared": "surface"},
         result_parser=lambda payload, field_path: {"payload": payload, "field_path": field_path},
-        entrypoint="JaniformModel.price_option_surface",
+        entrypoint="JaniformModel.price_option_grid_surface",
         result_field_path="surface_pricing_result",
         progress=_CapturingProgress(),
-        progress_detail="running surface pricing workflow",
+        progress_detail="running option grid surface pricing workflow",
     )
 
     assert result == {
@@ -1580,13 +1940,80 @@ def test_run_model_native_pricing_workflow_reports_native_surface_progress(
         "field_path": "surface_pricing_result",
     }
     assert observed_progress_updates == [
-        ("running surface pricing workflow", "maturity 1/2", 0, 2),
+        ("running option grid surface pricing workflow", "maturity 1/2", 0, 2),
         (
-            "running surface pricing workflow",
+            "running option grid surface pricing workflow",
             "maturity 2/2 | strike 2/3",
             1,
             3,
         ),
+    ]
+
+
+def test_price_option_grid_for_model_reports_pre_native_progress_stages(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = _build_full_workflow_model(
+        tmp_path,
+        monkeypatch,
+        run_id="high-level-model-grid-batch-pre-native-progress",
+    )
+    observed_progress_updates: list[tuple[str | None, str | None, int | None, int | None]] = []
+    observed_result = object()
+
+    class _CapturingProgress:
+        def update(
+            self,
+            *,
+            detail: str | None = None,
+            subdetail: str | None = None,
+            completed_units: int | None = None,
+            total_units: int | None = None,
+            reset_progress_units: bool = False,
+            progress_fraction: float | None = None,
+        ) -> None:
+            del reset_progress_units, progress_fraction
+            observed_progress_updates.append(
+                (detail, subdetail, completed_units, total_units)
+            )
+
+    monkeypatch.setattr(
+        fit_pricing_workflow_module,
+        "run_model_vanilla_option_grid_batch_pricing",
+        lambda native_execution_input, *, progress=None: observed_result,
+    )
+
+    batch = JaniformVanillaOptionGridBatch(
+        spot=100.0,
+        grids=(
+            JaniformVanillaOptionGrid(
+                payoff_type=VanillaOptionPayoffType.CALL,
+                risk_free_rate=0.01,
+                dividend_yield=0.0,
+                strikes=(95.0,),
+                tenors=("1h",),
+            ),
+        ),
+    )
+
+    result = fit_pricing_workflow_module.price_option_grid_for_model(
+        model,
+        valuation_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
+        batch=batch,
+        progress=_CapturingProgress(),
+    )
+
+    assert result is observed_result
+    assert observed_progress_updates == [
+        ("running option grid pricing workflow", "resolve pricing maturity schedule", None, None),
+        ("running option grid pricing workflow", "prepare pricing runtime inputs", None, None),
+        ("running option grid pricing workflow", "prepare runtime factors", None, None),
+        ("running option grid pricing workflow", "build hourly factor contracts", None, None),
+        ("running option grid pricing workflow", "estimate pricing boundary state", None, None),
+        ("running option grid pricing workflow", "finalize runtime schedule", None, None),
+        ("running option grid pricing workflow", "assemble native pricing request", None, None),
+        ("running option grid pricing workflow", "materialize spectral pricing context", None, None),
     ]
 
 
@@ -3346,7 +3773,7 @@ def test_high_level_grid_batch_pricing_defaults_to_activity_compressed_runtime_s
     )
 
 
-def test_high_level_model_price_option_grids_dispatches_through_grid_batch_pricing_runner(
+def test_high_level_model_price_option_grid_dispatches_through_grid_batch_pricing_runner(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -3466,7 +3893,7 @@ def test_high_level_model_price_option_grids_dispatches_through_grid_batch_prici
         ),
     )
 
-    result = model.price_option_grids(
+    result = model.price_option_grid(
         valuation_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
         batch=batch,
     )
@@ -3474,7 +3901,7 @@ def test_high_level_model_price_option_grids_dispatches_through_grid_batch_prici
     assert result is observed_result
 
 
-def test_high_level_model_price_option_surface_dispatches_through_surface_pricing_runner(
+def test_high_level_model_price_option_grid_surface_dispatches_through_surface_pricing_runner(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -3572,7 +3999,7 @@ def test_high_level_model_price_option_surface_dispatches_through_surface_pricin
         ),
     )
 
-    result = model.price_option_surface(
+    result = model.price_option_grid_surface(
         valuation_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
         surface=surface,
     )
@@ -3600,7 +4027,7 @@ def test_high_level_model_reserved_cross_instrument_entrypoints_raise_not_implem
         model.price_instruments(contracts=("reserved",))
 
 
-def test_high_level_model_price_option_grids_matches_single_option_engine_on_shared_groups(
+def test_high_level_model_price_option_grid_matches_single_option_engine_on_shared_groups(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -3637,7 +4064,7 @@ def test_high_level_model_price_option_grids_matches_single_option_engine_on_sha
         ),
     )
 
-    batch_result = model.price_option_grids(
+    batch_result = model.price_option_grid(
         valuation_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
         batch=batch,
         boundary_state=boundary_state,
@@ -3701,7 +4128,7 @@ def test_high_level_model_price_option_grids_matches_single_option_engine_on_sha
         assert observed_summary.integration_quality == representative_single_result.run_diagnostics.integration_quality
 
 
-def test_high_level_model_price_option_surface_matches_single_option_engine_on_shared_grid(
+def test_high_level_model_price_option_grid_surface_matches_single_option_engine_on_shared_grid(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -3727,7 +4154,7 @@ def test_high_level_model_price_option_surface_matches_single_option_engine_on_s
         dividend_yield=0.0,
     )
 
-    surface_result = model.price_option_surface(
+    surface_result = model.price_option_grid_surface(
         valuation_time_utc=datetime(2026, 2, 2, 15, tzinfo=UTC),
         surface=surface,
         boundary_state=boundary_state,
@@ -4306,6 +4733,59 @@ def test_high_level_fit_report_returns_success_details_with_model(
     ]
 
 
+def test_resolved_stage_report_payloads_reconstruct_missing_resumed_stage_payloads_from_disk(
+    tmp_path: Path,
+) -> None:
+    run_id = "resumed-fit-stage-reconstruction"
+    _, full_raw_response = _successful_full_model_staged_runner_payload(run_id)
+    _write_stage_parameter_artifacts_for_stage_reports(
+        checkpoint_directory=tmp_path,
+        run_id=run_id,
+        raw_stage_reports=cast(list[dict[str, Any]], full_raw_response["stage_reports"]),
+    )
+
+    resumed_raw_response = dict(full_raw_response)
+    resumed_raw_response["stage_reports"] = [
+        {
+            "stage_report_kind": "joint_refinement",
+            "stage": "joint_refinement",
+            "status": "success",
+            "run_id": run_id,
+            "execution_mode": "disk",
+            "handoff_policy": "summary_only_resume_stage_report.v1",
+        }
+    ]
+
+    stage_report_payloads = fit_stage_reports_module.resolved_stage_report_payloads(
+        resumed_raw_response,
+        selected_stage_kinds=(
+            CalibrationStage.SEASONALITY,
+            CalibrationStage.HAWKES,
+            CalibrationStage.RETURN_COMPONENTS,
+            CalibrationStage.MEAN_REVERSION,
+            CalibrationStage.JOINT_REFINEMENT,
+        ),
+        run_id=run_id,
+        disk_checkpoint_directory=str(tmp_path),
+        require_complete_selection=True,
+    )
+
+    assert [stage_payload["stage_report_kind"] for stage_payload in stage_report_payloads] == [
+        "seasonality",
+        "hawkes",
+        "return_components",
+        "mean_reversion",
+        "joint_refinement",
+    ]
+    assert sorted(fit_runtime_metadata_module.extract_model_parameters(stage_report_payloads).keys()) == [
+        "hawkes",
+        "joint_refinement",
+        "mean_reversion",
+        "return_components",
+        "seasonality",
+    ]
+
+
 def test_high_level_fit_with_report_returns_failed_result_without_raising(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -4569,6 +5049,48 @@ def _capture_request(
 ) -> Any:
     captured_requests[key] = request
     return result
+
+
+def _write_stage_parameter_artifacts_for_stage_reports(
+    *,
+    checkpoint_directory: Path,
+    run_id: str,
+    raw_stage_reports: list[dict[str, Any]],
+) -> None:
+    artifact_directory = checkpoint_directory / "artifacts" / "runs" / run_id
+    artifact_directory.mkdir(parents=True, exist_ok=True)
+
+    for raw_stage_report in raw_stage_reports:
+        stage_kind = CalibrationStage(cast(str, raw_stage_report["stage_report_kind"]))
+        raw_stage_payload = (
+            raw_stage_report["normalized_stage_payload"]
+            if stage_kind == CalibrationStage.SEASONALITY
+            else raw_stage_report["fitted_stage_payload"]
+        )
+        stage_payload = deepcopy(cast(dict[str, Any], raw_stage_payload))
+        stage_payload.pop("schema_version", None)
+        artifact_payload = {
+            "schema_version": "calibration.artifact_registry.stage_parameter.v1",
+            "artifact_reference": f"artifact://{stage_kind.value}/{run_id}",
+            "run_id": run_id,
+            "execution_mode": "disk",
+            "stage": stage_kind.value,
+            "stage_output_schema_version": (
+                "calibration.orchestration.stage_output.seasonality.v1"
+                if stage_kind == CalibrationStage.SEASONALITY
+                else cast(str, raw_stage_report["fitted_stage_payload"]["schema_version"])
+            ),
+            "stage_parameters": {
+                "payload_kind": stage_kind.value,
+                "payload": stage_payload,
+            },
+        }
+        artifact_path = fit_stage_reports_module.stage_parameter_artifact_path(
+            checkpoint_directory=checkpoint_directory,
+            run_id=run_id,
+            stage_kind=stage_kind,
+        )
+        artifact_path.write_text(json.dumps(artifact_payload), encoding="utf-8")
 
 
 def _successful_staged_runner_payload(run_id: str) -> tuple[StagedCalibrationResponse, dict[str, Any]]:

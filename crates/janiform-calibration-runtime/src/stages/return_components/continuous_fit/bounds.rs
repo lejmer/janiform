@@ -1,22 +1,22 @@
 use janiform_foundations::low_discrepancy::van_der_corput;
-use janiform_foundations::numeric::{logistic, root_mean_square_or_infinity};
+use janiform_foundations::numeric::root_mean_square_or_infinity;
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
 use super::super::derived_contracts::return_components_stage_positive_domain_floor;
-use super::super::execution::{
-    round_negative_candidate_value, round_positive_candidate_value, round_signed_candidate_value,
-    theoretical_net_process_moments,
-};
+use super::super::execution::theoretical_net_process_moments;
 use super::constants::{
     RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_PROFILE_CONFIDENCE_Z_SCORE,
     RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_REGIME_COUNT,
 };
-use super::likelihood::{
-    maximum_open_beta_ratio, maximum_profiled_open_beta_ratio, minimum_open_beta_ratio,
-};
+use super::likelihood::maximum_profiled_open_beta_ratio;
 use super::profile::scale_aware_absolute_error;
 use super::sample::build_continuous_return_optimizer_context;
+pub(super) use super::shape_mapping::{
+    configuration_from_shape_search_point, coordinate_to_ratio, coordinate_to_share,
+    inferred_delta_center, ratio_to_coordinate, relative_share_from_beta_ratios,
+    sell_beta_ratio_from_relative_share, share_to_coordinate,
+};
 use super::types::{
     ContinuousMomentTargets, ContinuousReturnOptimizerContext, NigSearchRegime,
     NigShapeSearchBounds, NigShapeSearchPoint,
@@ -101,6 +101,7 @@ pub(super) fn build_moment_seed_candidates(
 
             let alpha =
                 alpha_interval.0 * (alpha_interval.1 / alpha_interval.0).powf(alpha_quantile);
+
             let buy_beta_ratio = beta_ratio_lower_bound
                 + (beta_ratio_upper_bound - beta_ratio_lower_bound) * buy_ratio_quantile;
             let sell_beta_ratio = beta_ratio_lower_bound
@@ -118,6 +119,7 @@ pub(super) fn build_moment_seed_candidates(
 
             let configuration =
                 configuration_from_shape_search_point(optimizer_context, search_point)?;
+
             let objective_score =
                 moment_seed_objective_score(configuration, optimizer_context, moment_targets)?;
 
@@ -227,38 +229,6 @@ pub(super) fn build_search_regimes_from_moment_seeds(
     profiled_search_regimes
 }
 
-pub(super) fn configuration_from_shape_search_point(
-    optimizer_context: &ContinuousReturnOptimizerContext,
-    shape_search_point: NigShapeSearchPoint,
-) -> Option<NigSharedPlusShiftConfiguration> {
-    let alpha = shape_search_point.log_alpha.exp();
-    if !alpha.is_finite() || alpha <= return_components_stage_positive_domain_floor() {
-        return None;
-    }
-
-    let buy_beta_ratio = coordinate_to_ratio(shape_search_point.buy_skew_coordinate);
-    let sell_relative_share = coordinate_to_share(shape_search_point.sell_relative_coordinate);
-
-    let sell_beta_ratio = sell_beta_ratio_from_relative_share(buy_beta_ratio, sell_relative_share);
-
-    let beta_0 = alpha * buy_beta_ratio;
-    let sell_beta = alpha * sell_beta_ratio;
-    let delta_beta = sell_beta - beta_0;
-
-    let delta_center = inferred_delta_center(optimizer_context, alpha, beta_0, delta_beta)?;
-
-    let delta = delta_center * shape_search_point.log_delta_offset.exp();
-
-    NigSharedPlusShiftConfiguration::try_new(
-        round_positive_candidate_value(alpha),
-        round_signed_candidate_value(beta_0),
-        round_positive_candidate_value(delta),
-        0.0,
-        round_negative_candidate_value(delta_beta),
-    )
-    .ok()
-}
-
 pub(super) fn theoretical_search_bounds(
     observed_profile: super::types::ContinuousReturnDistributionProfile,
     moment_candidate_count: usize,
@@ -323,43 +293,13 @@ pub(super) fn theoretical_alpha_bounds(
     (lower_alpha_bound, upper_alpha_bound)
 }
 
-fn inferred_delta_center(
-    optimizer_context: &ContinuousReturnOptimizerContext,
-    alpha: f64,
-    beta_0: f64,
-    delta_beta: f64,
-) -> Option<f64> {
-    let (_, variance_per_unit, _, _) = theoretical_net_process_moments(
-        NigSharedPlusShiftConfiguration {
-            alpha,
-            beta_0,
-            delta: 1.0,
-            mu: 0.0,
-            delta_beta,
-        },
-        optimizer_context.open_session_sell_share_proxy,
-    )?;
-
-    let target_variance = optimizer_context
-        .observed_return_volatility
-        .powi(2)
-        .max(return_components_stage_positive_domain_floor());
-    let mean_business_time_scale = optimizer_context
-        .mean_business_time_scale
-        .max(return_components_stage_positive_domain_floor());
-    let variance_per_unit = variance_per_unit.max(return_components_stage_positive_domain_floor());
-
-    Some(
-        (target_variance / (variance_per_unit * mean_business_time_scale))
-            .max(return_components_stage_positive_domain_floor()),
-    )
-}
-
 fn theoretical_log_delta_offset_bounds(
     observed_profile: super::types::ContinuousReturnDistributionProfile,
 ) -> (f64, f64) {
     let sample_count = observed_profile.sample_count.max(3) as f64;
+
     let degrees_of_freedom = (sample_count - 1.0).max(1.0);
+
     let lower_tail_quantile = approximate_chi_square_quantile(degrees_of_freedom, 0.025);
     let upper_tail_quantile = approximate_chi_square_quantile(degrees_of_freedom, 0.975);
 
@@ -433,47 +373,4 @@ fn standard_normal_quantile(probability_level: f64) -> f64 {
     } else {
         RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_PROFILE_CONFIDENCE_Z_SCORE
     }
-}
-
-pub(super) fn ratio_to_coordinate(ratio: f64) -> f64 {
-    let bounded_ratio = clamp_open_beta_ratio(ratio);
-    0.5 * ((1.0 + bounded_ratio) / (1.0 - bounded_ratio)).ln()
-}
-
-pub(super) fn share_to_coordinate(share: f64) -> f64 {
-    let bounded_share = share.clamp(0.0f64.next_up(), 1.0f64.next_down());
-    (bounded_share / (1.0 - bounded_share)).ln()
-}
-
-pub(super) fn coordinate_to_ratio(coordinate: f64) -> f64 {
-    clamp_open_beta_ratio(coordinate.tanh())
-}
-
-pub(super) fn coordinate_to_share(coordinate: f64) -> f64 {
-    logistic(coordinate).clamp(0.0f64.next_up(), 1.0f64.next_down())
-}
-
-pub(super) fn sell_beta_ratio_from_relative_share(buy_beta_ratio: f64, relative_share: f64) -> f64 {
-    let lower_bound = minimum_open_beta_ratio();
-    lower_bound + (buy_beta_ratio - lower_bound) * relative_share
-}
-
-pub(super) fn relative_share_from_beta_ratios(
-    buy_beta_ratio: f64,
-    sell_beta_ratio: f64,
-) -> Option<f64> {
-    let lower_bound = minimum_open_beta_ratio();
-    let denominator = buy_beta_ratio - lower_bound;
-    if !denominator.is_finite() || denominator <= 0.0 {
-        return None;
-    }
-
-    let share = (sell_beta_ratio - lower_bound) / denominator;
-    share
-        .is_finite()
-        .then_some(share.clamp(0.0f64.next_up(), 1.0f64.next_down()))
-}
-
-fn clamp_open_beta_ratio(value: f64) -> f64 {
-    value.clamp(minimum_open_beta_ratio(), maximum_open_beta_ratio())
 }

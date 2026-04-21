@@ -15,7 +15,6 @@ crate-type = ["cdylib"]
 [dependencies]
 chrono = { workspace = true }
 janiform = { path = "../janiform" }
-janiform-calibration-artifacts = { path = "../janiform-calibration-artifacts" }
 pyo3 = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

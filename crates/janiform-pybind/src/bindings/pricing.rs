@@ -56,6 +56,8 @@ struct PythonVanillaOptionGridBatchPricingExecutionInputPayload {
     hourly_factor_contract: PythonHourlyFactorContractPayload,
     #[serde(default)]
     optional_output_selection: VanillaOptionPricingOptionalOutputSelection,
+    #[serde(default)]
+    spectral_collocation_node_count_override: Option<usize>,
     cpu_count: Option<usize>,
 }
 
@@ -70,6 +72,8 @@ struct PythonVanillaOptionSurfacePricingExecutionInputPayload {
     hourly_factor_contract: PythonHourlyFactorContractPayload,
     #[serde(default)]
     optional_output_selection: VanillaOptionPricingOptionalOutputSelection,
+    #[serde(default)]
+    spectral_collocation_node_count_override: Option<usize>,
     cpu_count: Option<usize>,
 }
 
@@ -95,11 +99,13 @@ fn hourly_factor_contract_output_from_payload(
     payload: PythonHourlyFactorContractPayload,
 ) -> HourlyFactorContractOutput {
     let interval_count = payload.interval_start_utc_nanos.len();
+
     let first_interval_start_utc_nanos = payload
         .interval_start_utc_nanos
         .first()
         .copied()
         .unwrap_or_default();
+
     let last_interval_end_utc_nanos = payload
         .interval_end_utc_nanos
         .last()
@@ -190,6 +196,7 @@ fn derive_activity_compressed_pricing_interval_schedule(
 
     let hourly_factor_contract =
         hourly_factor_contract_output_from_payload(request.hourly_factor_contract);
+
     let derived_schedule = py
         .allow_threads(|| {
             derive_activity_compressed_pricing_interval_schedule_core(
@@ -280,6 +287,8 @@ fn run_vanilla_option_grid_batch_pricing(
         interval_delta: execution_input.interval_delta,
         interval_factors,
         optional_output_selection: execution_input.optional_output_selection,
+        spectral_collocation_node_count_override: execution_input
+            .spectral_collocation_node_count_override,
         cpu_count: execution_input.cpu_count,
     };
 
@@ -329,6 +338,7 @@ fn run_vanilla_option_grid_batch_pricing_with_events(
         interval_delta: payload.interval_delta,
         interval_factors,
         optional_output_selection: payload.optional_output_selection,
+        spectral_collocation_node_count_override: payload.spectral_collocation_node_count_override,
         cpu_count: payload.cpu_count,
     })
     .map_err(|source| {
@@ -390,6 +400,8 @@ fn run_vanilla_option_surface_pricing(
         interval_delta: execution_input.interval_delta,
         interval_factors,
         optional_output_selection: execution_input.optional_output_selection,
+        spectral_collocation_node_count_override: execution_input
+            .spectral_collocation_node_count_override,
         cpu_count: execution_input.cpu_count,
     };
 
@@ -439,6 +451,7 @@ fn run_vanilla_option_surface_pricing_with_events(
         interval_delta: payload.interval_delta,
         interval_factors,
         optional_output_selection: payload.optional_output_selection,
+        spectral_collocation_node_count_override: payload.spectral_collocation_node_count_override,
         cpu_count: payload.cpu_count,
     })
     .map_err(|source| {

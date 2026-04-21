@@ -168,7 +168,7 @@ def _extract_observed_tick_data_columns(
 def _extract_tick_data_column(
     observed_tick_data: pandas.DataFrame | Mapping[str, Sequence[Any]],
     *,
-    column_name: str | None,
+    column_name: Optional[str],
     field_path: str,
 ) -> tuple[Any, ...]:
     if column_name is None:

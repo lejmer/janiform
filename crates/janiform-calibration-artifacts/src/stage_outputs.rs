@@ -191,6 +191,8 @@ pub struct JointRefinementStageCarryInput {
 pub struct JointRefinementStageOptionSnapshotMetadata {
     pub valuation_time_utc_nanos: i64,
     pub node_count: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spectral_collocation_node_count: Option<usize>,
     pub pricing_interval_schedule: PricingIntervalSchedule,
     pub maturity_intervals: Vec<f64>,
     pub maturity_terminal_interval_indices: Vec<usize>,
@@ -267,6 +269,31 @@ pub struct JointRefinementStageOptionTierPricingDiagnostics {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct JointRefinementStageOptionReducedModelDiagnostics {
+    pub local_parameter_labels: Vec<String>,
+    pub weighted_residual_jacobian_row_count: usize,
+    pub weighted_residual_jacobian_column_count: usize,
+    pub weighted_residual_jacobian_singular_values: Vec<f64>,
+    pub cumulative_rank_energy: Vec<f64>,
+    pub effective_rank_at_90_percent_energy: usize,
+    pub effective_rank_at_95_percent_energy: usize,
+    pub effective_rank_at_99_percent_energy: usize,
+    pub current_search_evaluation_budget: usize,
+    pub predicted_local_linear_oracle_call_count: usize,
+    pub predicted_local_quadratic_oracle_call_count: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reference_oracle_call_wall_clock_millis: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub predicted_local_linear_wall_clock_millis: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub predicted_local_quadratic_wall_clock_millis: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub predicted_local_linear_wall_clock_saved_millis: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub predicted_local_quadratic_wall_clock_saved_millis: Option<f64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct JointRefinementStageOptionCalibrationDiagnostics {
     pub carry_input: JointRefinementStageCarryInput,
     pub quote_universe: JointRefinementStageOptionQuoteUniverseDiagnostics,
@@ -274,4 +301,6 @@ pub struct JointRefinementStageOptionCalibrationDiagnostics {
     pub selection_tier_pricing: JointRefinementStageOptionTierPricingDiagnostics,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub audit_tier_pricing: Option<JointRefinementStageOptionTierPricingDiagnostics>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reduced_model: Option<JointRefinementStageOptionReducedModelDiagnostics>,
 }

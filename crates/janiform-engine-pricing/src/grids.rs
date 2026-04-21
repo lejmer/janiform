@@ -56,17 +56,22 @@ impl VanillaOptionGridRequest {
         if self.strikes.is_empty() {
             return Err(VanillaOptionGridBatchPricingRequestError::EmptyStrikeAxis);
         }
+
         if self.maturity_intervals.is_empty() {
             return Err(VanillaOptionGridBatchPricingRequestError::EmptyMaturityAxis);
         }
+
         for strike in &self.strikes {
             validate_positive_finite("strikes", *strike)?;
         }
+
         for maturity_interval in &self.maturity_intervals {
             validate_positive_finite("maturity_intervals", *maturity_interval)?;
         }
+
         validate_finite("risk_free_rate", self.risk_free_rate)?;
         validate_finite("dividend_yield", self.dividend_yield)?;
+
         Ok(())
     }
 }
@@ -80,12 +85,15 @@ pub struct VanillaOptionGridBatchPricingRequest {
 impl VanillaOptionGridBatchPricingRequest {
     pub fn validate(&self) -> Result<(), VanillaOptionGridBatchPricingRequestError> {
         validate_positive_finite("spot", self.spot)?;
+
         if self.grids.is_empty() {
             return Err(VanillaOptionGridBatchPricingRequestError::EmptyGrids);
         }
+
         for grid in &self.grids {
             grid.validate()?;
         }
+
         Ok(())
     }
 }
@@ -137,6 +145,8 @@ pub struct VanillaOptionGridBatchPricingExecutionInput {
     pub interval_delta: f64,
     pub interval_factors: Vec<VanillaOptionPricingIntervalFactors>,
     pub optional_output_selection: VanillaOptionPricingOptionalOutputSelection,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spectral_collocation_node_count_override: Option<usize>,
     pub cpu_count: Option<usize>,
 }
 
@@ -145,12 +155,15 @@ impl VanillaOptionGridBatchPricingExecutionInput {
         self.request.validate().map_err(|source| {
             VanillaOptionGridBatchPricingExecutionInputError::InvalidRequest { source }
         })?;
+
         self.boundary_input.validate().map_err(|source| {
             VanillaOptionGridBatchPricingExecutionInputError::InvalidBoundaryInput { source }
         })?;
+
         self.model_parameters.validate().map_err(|source| {
             VanillaOptionGridBatchPricingExecutionInputError::InvalidModelParameters { source }
         })?;
+
         validate_positive_finite("interval_delta", self.interval_delta).map_err(|source| {
             VanillaOptionGridBatchPricingExecutionInputError::InvalidRequest { source }
         })?;
@@ -163,6 +176,7 @@ impl VanillaOptionGridBatchPricingExecutionInput {
                 message: "must contain at least one interval".to_string(),
             },
         )?;
+
         if self.boundary_input.interval_delta != self.interval_delta {
             return Err(
                 VanillaOptionGridBatchPricingExecutionInputError::BoundaryIntervalDeltaMismatch {
@@ -171,6 +185,7 @@ impl VanillaOptionGridBatchPricingExecutionInput {
                 },
             );
         }
+
         if self.interval_delta != first_runtime_interval_delta {
             return Err(
                 VanillaOptionGridBatchPricingExecutionInputError::InvalidRuntimeIntervalSchedule {
@@ -181,14 +196,17 @@ impl VanillaOptionGridBatchPricingExecutionInput {
                 },
             );
         }
+
         if self.interval_factors.is_empty() {
             return Err(VanillaOptionGridBatchPricingExecutionInputError::EmptyIntervalFactors);
         }
+
         for interval_factor in &self.interval_factors {
             interval_factor.validate().map_err(|source| {
                 VanillaOptionGridBatchPricingExecutionInputError::InvalidIntervalFactors { source }
             })?;
         }
+
         if self.interval_factors.len() != self.runtime_interval_schedule.interval_count() {
             return Err(
                 VanillaOptionGridBatchPricingExecutionInputError::IntervalFactorShapeMismatch {
@@ -197,11 +215,22 @@ impl VanillaOptionGridBatchPricingExecutionInput {
                 },
             );
         }
+
         if let Some(cpu_count) = self.cpu_count {
             if cpu_count == 0 {
                 return Err(
                     VanillaOptionGridBatchPricingExecutionInputError::InvalidCpuCount {
                         value: cpu_count,
+                    },
+                );
+            }
+        }
+
+        if let Some(collocation_node_count) = self.spectral_collocation_node_count_override {
+            if collocation_node_count == 0 {
+                return Err(
+                    VanillaOptionGridBatchPricingExecutionInputError::InvalidCollocationNodeCount {
+                        value: collocation_node_count,
                     },
                 );
             }
@@ -252,6 +281,9 @@ pub enum VanillaOptionGridBatchPricingExecutionInputError {
     InvalidCpuCount {
         value: usize,
     },
+    InvalidCollocationNodeCount {
+        value: usize,
+    },
 }
 
 impl Display for VanillaOptionGridBatchPricingExecutionInputError {
@@ -297,6 +329,10 @@ impl Display for VanillaOptionGridBatchPricingExecutionInputError {
             Self::InvalidCpuCount { value } => write!(
                 formatter,
                 "grid batch pricing cpu_count must be strictly positive when provided, found {value}"
+            ),
+            Self::InvalidCollocationNodeCount { value } => write!(
+                formatter,
+                "grid batch pricing spectral_collocation_node_count_override must be strictly positive when provided, found {value}"
             ),
         }
     }
@@ -406,6 +442,8 @@ pub struct VanillaOptionSurfacePricingExecutionInput {
     pub interval_delta: f64,
     pub interval_factors: Vec<VanillaOptionPricingIntervalFactors>,
     pub optional_output_selection: VanillaOptionPricingOptionalOutputSelection,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spectral_collocation_node_count_override: Option<usize>,
     pub cpu_count: Option<usize>,
 }
 
@@ -428,6 +466,7 @@ impl VanillaOptionSurfacePricingExecutionInput {
             interval_delta: self.interval_delta,
             interval_factors: self.interval_factors.clone(),
             optional_output_selection: self.optional_output_selection,
+            spectral_collocation_node_count_override: self.spectral_collocation_node_count_override,
             cpu_count: self.cpu_count,
         }
         .validate()
@@ -588,14 +627,18 @@ impl SpectralThetaWarmStartRowState {
         parameter_delta: Option<SpectralThetaWarmStartSensitivity>,
     ) -> Option<f64> {
         let theta_hint = self.theta_hint?;
+
         let Some(parameter_delta) = parameter_delta else {
             return Some(theta_hint);
         };
+
         let Some(local_theta_sensitivity) = self.local_theta_sensitivity else {
             return Some(theta_hint);
         };
+
         let predicted_theta =
             theta_hint + local_theta_sensitivity.predicted_theta_shift(parameter_delta);
+
         if predicted_theta.is_finite() {
             Some(predicted_theta)
         } else {
@@ -617,6 +660,7 @@ impl SpectralThetaWarmStartState {
         current_driver_configuration: SpectralThetaWarmStartDriverConfiguration,
     ) -> Vec<Option<f64>> {
         self.ensure_interval_shape(carry_group_key, interval_index, row_count);
+
         let parameter_delta = self
             .last_driver_configuration_by_carry_group
             .get(&carry_group_key)
@@ -624,6 +668,7 @@ impl SpectralThetaWarmStartState {
             .map(|previous_driver_configuration| {
                 current_driver_configuration.parameter_delta_from(previous_driver_configuration)
             });
+
         self.row_theta_states_by_carry_group[&carry_group_key][interval_index]
             .iter()
             .map(|row_state| row_state.predicted_theta(parameter_delta))
@@ -638,11 +683,14 @@ impl SpectralThetaWarmStartState {
         solved_row_states: impl IntoIterator<Item = SpectralThetaWarmStartRowState>,
     ) {
         let solved_row_states = solved_row_states.into_iter().collect::<Vec<_>>();
+
         self.ensure_interval_shape(carry_group_key, interval_index, solved_row_states.len());
+
         self.row_theta_states_by_carry_group
             .get_mut(&carry_group_key)
             .expect("carry-group theta warm-start storage should exist")[interval_index] =
             solved_row_states;
+
         self.last_driver_configuration_by_carry_group
             .insert(carry_group_key, current_driver_configuration);
     }
@@ -657,9 +705,11 @@ impl SpectralThetaWarmStartState {
             .row_theta_states_by_carry_group
             .entry(carry_group_key)
             .or_default();
+
         if row_theta_states_by_interval.len() <= interval_index {
             row_theta_states_by_interval.resize_with(interval_index + 1, Vec::new);
         }
+
         if row_theta_states_by_interval[interval_index].len() != row_count {
             row_theta_states_by_interval[interval_index] =
                 vec![SpectralThetaWarmStartRowState::default(); row_count];
@@ -677,16 +727,11 @@ pub fn run_vanilla_option_grid_batch_pricing_with_observer(
     execution_input: VanillaOptionGridBatchPricingExecutionInput,
     observer: Option<&mut dyn FnMut(PricingProgressEvent)>,
 ) -> Result<VanillaOptionGridBatchPricingRunResult, VanillaOptionGridBatchPricingRunError> {
-    super::spectral::run_grid_batch_pricing(execution_input, observer, None)
-}
-
-#[doc(hidden)]
-pub fn run_vanilla_option_grid_batch_pricing_with_observer_and_theta_warm_start_state(
-    execution_input: VanillaOptionGridBatchPricingExecutionInput,
-    observer: Option<&mut dyn FnMut(PricingProgressEvent)>,
-    theta_warm_start_state: Option<&mut SpectralThetaWarmStartState>,
-) -> Result<VanillaOptionGridBatchPricingRunResult, VanillaOptionGridBatchPricingRunError> {
-    super::spectral::run_grid_batch_pricing(execution_input, observer, theta_warm_start_state)
+    super::spectral::run_vanilla_option_grid_batch_pricing_with_observer_and_theta_warm_start_state(
+        execution_input,
+        observer,
+        None,
+    )
 }
 
 pub fn run_vanilla_option_surface_pricing(
@@ -725,6 +770,8 @@ pub fn run_vanilla_option_surface_pricing_with_observer(
             interval_delta: execution_input.interval_delta,
             interval_factors: execution_input.interval_factors,
             optional_output_selection: execution_input.optional_output_selection,
+            spectral_collocation_node_count_override: execution_input
+                .spectral_collocation_node_count_override,
             cpu_count: execution_input.cpu_count,
         },
         observer,
@@ -789,6 +836,7 @@ fn validate_positive_finite(
     if !value.is_finite() {
         return Err(VanillaOptionGridBatchPricingRequestError::InvalidFiniteField { field, value });
     }
+
     if value <= 0.0 {
         return Err(
             VanillaOptionGridBatchPricingRequestError::InvalidPositiveField { field, value },

@@ -9,6 +9,15 @@ from ._progress_policy import (
 )
 
 _RESTART_PROGRESS_PANEL_PHASE = "restart_optimization"
+_OPTION_SEARCH_PROGRESS_PANEL_PHASE = "option_search_tier_refinement"
+_OPTION_SELECTION_PROGRESS_PANEL_PHASE = "option_selection_tier_evaluation"
+_ACTIVE_CANDIDATE_PROGRESS_PANEL_PHASES = frozenset(
+    {
+        _RESTART_PROGRESS_PANEL_PHASE,
+        _OPTION_SEARCH_PROGRESS_PANEL_PHASE,
+        _OPTION_SELECTION_PROGRESS_PANEL_PHASE,
+    }
+)
 
 
 class StagedCalibrationProgressSink(Protocol):
@@ -71,13 +80,16 @@ def update_progress_from_staged_native_event(
 
 
 @dataclass(slots=True)
-class ActiveRestartProgressRow:
+class ActiveCandidateProgressRow:
     restart_id: str
+    progress_phase: Optional[str] = None
+    detail: Optional[str] = None
     parameter_block: Optional[str] = None
     current_outer_cycle: Optional[int] = None
     total_outer_cycles: Optional[int] = None
     evaluation_progress_percent: Optional[int] = None
     current_evaluation_count: Optional[int] = None
+    total_evaluation_budget: Optional[int] = None
     current_weighted_objective: Optional[float] = None
     candidate_best_weighted_objective: Optional[float] = None
 
@@ -94,7 +106,9 @@ class NativeStagedCalibrationProgressTracker:
     subtask_completed_units: Optional[int] = None
     subtask_total_units: Optional[int] = None
     subtask_progress_fraction_override: Optional[float] = None
-    active_restart_rows: dict[str, ActiveRestartProgressRow] = field(default_factory=dict)
+    active_candidate_rows: dict[str, ActiveCandidateProgressRow] = field(
+        default_factory=dict
+    )
 
     def update(self, raw_event: dict[str, Any]) -> CalibrationLiveProgressSnapshot:
         event_kind = _coerce_optional_string(raw_event.get("event_kind"))
@@ -130,7 +144,8 @@ class NativeStagedCalibrationProgressTracker:
                 self.subtask_completed_units = None
                 self.subtask_total_units = None
                 self.subtask_progress_fraction_override = None
-                self.active_restart_rows.clear()
+
+                self.active_candidate_rows.clear()
             case "stage_progress":
                 stage = _coerce_optional_string(raw_event.get("stage"))
                 progress_phase = _coerce_optional_string(raw_event.get("progress_phase"))
@@ -157,18 +172,21 @@ class NativeStagedCalibrationProgressTracker:
                     raw_event.get("completed_units")
                 )
                 self.subtask_total_units = _coerce_optional_integer(raw_event.get("total_units"))
+
                 aggregate_progress_percent = _coerce_optional_integer(
                     raw_event.get("aggregate_progress_percent")
                 )
+
                 self.subtask_progress_fraction_override = (
                     None
                     if aggregate_progress_percent is None
                     else min(max(aggregate_progress_percent, 0), 100) / 100.0
                 )
-                if progress_phase == _RESTART_PROGRESS_PANEL_PHASE:
-                    self._update_active_restart_rows(raw_event)
+
+                if _is_active_candidate_progress_panel_phase(progress_phase):
+                    self._update_active_candidate_rows(raw_event)
                 else:
-                    self.active_restart_rows.clear()
+                    self.active_candidate_rows.clear()
             case "stage_completed":
                 stage = _coerce_optional_string(raw_event.get("stage"))
                 stage_index = _coerce_optional_integer(raw_event.get("stage_index"))
@@ -188,7 +206,8 @@ class NativeStagedCalibrationProgressTracker:
                 self.subtask_completed_units = None
                 self.subtask_total_units = None
                 self.subtask_progress_fraction_override = None
-                self.active_restart_rows.clear()
+
+                self.active_candidate_rows.clear()
             case "run_completed":
                 self.status = "completed"
                 self.current_stage_is_complete = True
@@ -196,14 +215,16 @@ class NativeStagedCalibrationProgressTracker:
                 self.subtask_completed_units = None
                 self.subtask_total_units = None
                 self.subtask_progress_fraction_override = None
-                self.active_restart_rows.clear()
+
+                self.active_candidate_rows.clear()
             case "run_failed":
                 self.status = "failed"
                 self.current_subtask = None
                 self.subtask_completed_units = None
                 self.subtask_total_units = None
                 self.subtask_progress_fraction_override = None
-                self.active_restart_rows.clear()
+
+                self.active_candidate_rows.clear()
             case _:
                 return self.snapshot()
 
@@ -223,68 +244,39 @@ class NativeStagedCalibrationProgressTracker:
             subtask_progress_fraction_override=self.subtask_progress_fraction_override,
         )
 
-    def restart_progress_panel(self, stage_summary: str) -> str:
-        if not self.active_restart_rows:
+    def active_candidate_progress_panel(self, stage_summary: str) -> str:
+        if not self.active_candidate_rows:
             return stage_summary
 
-        restart_id_width = maximum_restart_progress_row_id_width(
-            self.active_restart_rows.values()
+        restart_id_width = maximum_active_candidate_progress_row_id_width(
+            self.active_candidate_rows.values()
         )
+
         rows = [
-            format_restart_progress_panel_row(row, restart_id_width=restart_id_width)
-            for row in self.active_restart_rows.values()
+            format_active_candidate_progress_panel_row(
+                row,
+                restart_id_width=restart_id_width,
+            )
+            for row in self.active_candidate_rows.values()
         ]
 
         return "\n".join((stage_summary, *rows))
 
-    def _update_active_restart_rows(self, raw_event: dict[str, Any]) -> None:
-        restart_id = _coerce_optional_string(raw_event.get("current_restart_id"))
-        if restart_id is None:
-            restart_id = _coerce_optional_string(raw_event.get("current_item_label"))
-
+    def _update_active_candidate_rows(self, raw_event: dict[str, Any]) -> None:
+        restart_id = _active_candidate_restart_id(raw_event)
         if restart_id is None:
             return
 
-        evaluation_progress_percent = _coerce_optional_integer(
-            raw_event.get("evaluation_progress_percent")
-        )
-        if evaluation_progress_percent == 100:
-            self.active_restart_rows.pop(restart_id, None)
+        if _should_clear_active_candidate_row(raw_event):
+            self.active_candidate_rows.pop(restart_id, None)
             return
 
-        row = self.active_restart_rows.get(restart_id)
+        row = self.active_candidate_rows.get(restart_id)
         if row is None:
-            row = ActiveRestartProgressRow(restart_id=restart_id)
-            self.active_restart_rows[restart_id] = row
+            row = ActiveCandidateProgressRow(restart_id=restart_id)
+            self.active_candidate_rows[restart_id] = row
 
-        parameter_block = _coerce_optional_string(raw_event.get("current_parameter_block"))
-        current_outer_cycle = _coerce_optional_integer(raw_event.get("current_outer_cycle"))
-        total_outer_cycles = _coerce_optional_integer(raw_event.get("total_outer_cycles"))
-        current_evaluation_count = _coerce_optional_integer(
-            raw_event.get("current_evaluation_count")
-        )
-
-        if parameter_block is not None:
-            row.parameter_block = parameter_block
-
-        if current_outer_cycle is not None:
-            row.current_outer_cycle = current_outer_cycle
-
-        if total_outer_cycles is not None:
-            row.total_outer_cycles = total_outer_cycles
-
-        if evaluation_progress_percent is not None:
-            row.evaluation_progress_percent = evaluation_progress_percent
-
-        if current_evaluation_count is not None:
-            row.current_evaluation_count = current_evaluation_count
-
-        row.current_weighted_objective = _coerce_optional_float(
-            raw_event.get("current_weighted_objective")
-        )
-        row.candidate_best_weighted_objective = _coerce_optional_float(
-            raw_event.get("current_restart_best_weighted_objective")
-        )
+        update_active_candidate_progress_row_from_event(row, raw_event)
 
 
 def update_cli_progress_from_staged_native_event(
@@ -314,26 +306,30 @@ def update_cli_progress_from_staged_native_event(
         case "stage_progress":
             raw_completed_units = _coerce_optional_integer(raw_event.get("completed_units"))
             raw_total_units = _coerce_optional_integer(raw_event.get("total_units"))
+
             subtask_is_complete = (
                 isinstance(raw_completed_units, int)
                 and isinstance(raw_total_units, int)
-                and raw_total_units > 0
-                and raw_completed_units >= raw_total_units
+                and 0 < raw_total_units <= raw_completed_units
             )
+
             display_units = progress_bar_display_units(
                 raw_completed_units,
                 raw_total_units,
                 is_complete=subtask_is_complete,
             )
+
             compact_detail = format_compact_staged_progress_event_detail(
                 raw_event,
                 completed_units=None if display_units is None else display_units[0],
                 total_units=None if display_units is None else display_units[1],
                 progress_percent_override=aggregate_progress_percent,
             )
+
             progress_phase = _coerce_optional_string(raw_event.get("progress_phase"))
+
             subdetail = (
-                tracker.restart_progress_panel(
+                tracker.active_candidate_progress_panel(
                     format_compact_staged_progress_phase_summary(
                         raw_event,
                         completed_units=None if display_units is None else display_units[0],
@@ -341,9 +337,10 @@ def update_cli_progress_from_staged_native_event(
                         progress_percent_override=aggregate_progress_percent,
                     )
                 )
-                if progress_phase == _RESTART_PROGRESS_PANEL_PHASE
+                if _is_active_candidate_progress_panel_phase(progress_phase)
                 else compact_detail
             )
+
             progress.update(
                 subdetail=subdetail,
                 completed_units=None if display_units is None else display_units[0],
@@ -380,13 +377,12 @@ def format_staged_progress_event_detail(
     current_outer_cycle = raw_event.get("current_outer_cycle")
     total_outer_cycles = raw_event.get("total_outer_cycles")
     current_evaluation_count = raw_event.get("current_evaluation_count")
+    total_evaluation_budget = raw_event.get("total_evaluation_budget")
     evaluation_progress_percent = raw_event.get("evaluation_progress_percent")
     valid_completed_units = raw_event.get("valid_completed_units")
     cumulative_local_evaluation_count = raw_event.get("cumulative_local_evaluation_count")
     current_weighted_objective = raw_event.get("current_weighted_objective")
-    current_restart_best_weighted_objective = raw_event.get(
-        "current_restart_best_weighted_objective"
-    )
+    current_restart_best_weighted_objective = raw_event.get("current_restart_best_weighted_objective")
     best_restart_id = _coerce_optional_string(raw_event.get("best_restart_id"))
     best_weighted_objective = raw_event.get("best_weighted_objective")
     current_coarse_consistency_fit = raw_event.get("current_coarse_consistency_fit")
@@ -423,14 +419,12 @@ def format_staged_progress_event_detail(
     elif isinstance(current_outer_cycle, int):
         detail_parts.append(f"cycle={current_outer_cycle}")
 
-    if isinstance(evaluation_progress_percent, int):
-        evaluation_label = (
-            "<1%"
-            if evaluation_progress_percent == 0
-            and isinstance(current_evaluation_count, int)
-            and current_evaluation_count > 0
-            else f"{evaluation_progress_percent}%"
-        )
+    evaluation_label = _format_stage_evaluation_label(
+        current_evaluation_count,
+        total_evaluation_budget,
+        evaluation_progress_percent,
+    )
+    if evaluation_label is not None:
         detail_parts.append(f"eval={evaluation_label}")
 
     if isinstance(valid_completed_units, int):
@@ -478,17 +472,17 @@ def format_compact_staged_progress_event_detail(
     current_outer_cycle = raw_event.get("current_outer_cycle")
     total_outer_cycles = raw_event.get("total_outer_cycles")
     current_evaluation_count = raw_event.get("current_evaluation_count")
+    total_evaluation_budget = raw_event.get("total_evaluation_budget")
     evaluation_progress_percent = raw_event.get("evaluation_progress_percent")
     current_weighted_objective = raw_event.get("current_weighted_objective")
-    current_restart_best_weighted_objective = raw_event.get(
-        "current_restart_best_weighted_objective"
-    )
+    current_restart_best_weighted_objective = raw_event.get("current_restart_best_weighted_objective")
     best_restart_id = _coerce_optional_string(raw_event.get("best_restart_id"))
     best_weighted_objective = raw_event.get("best_weighted_objective")
     current_coarse_consistency_fit = raw_event.get("current_coarse_consistency_fit")
     best_coarse_consistency_fit = raw_event.get("best_coarse_consistency_fit")
 
     detail = f"{stage} {_label_for_stage_progress_phase(progress_phase)}"
+
     if (
         isinstance(completed_units, int)
         and isinstance(total_units, int)
@@ -527,14 +521,12 @@ def format_compact_staged_progress_event_detail(
     elif isinstance(current_outer_cycle, int):
         detail_parts.append(f"cycle={current_outer_cycle}")
 
-    if isinstance(evaluation_progress_percent, int):
-        evaluation_label = (
-            "<1%"
-            if evaluation_progress_percent == 0
-            and isinstance(current_evaluation_count, int)
-            and current_evaluation_count > 0
-            else f"{evaluation_progress_percent}%"
-        )
+    evaluation_label = _format_stage_evaluation_label(
+        current_evaluation_count,
+        total_evaluation_budget,
+        evaluation_progress_percent,
+    )
+    if evaluation_label is not None:
         detail_parts.append(f"eval={evaluation_label}")
 
     if isinstance(current_weighted_objective, int | float):
@@ -574,7 +566,9 @@ def format_compact_staged_progress_phase_summary(
     progress_phase = _coerce_optional_string(raw_event.get("progress_phase"))
     best_restart_id = _coerce_optional_string(raw_event.get("best_restart_id"))
     best_weighted_objective = raw_event.get("best_weighted_objective")
+
     detail = f"{stage} {_label_for_stage_progress_phase(progress_phase)}"
+
     if (
         isinstance(completed_units, int)
         and isinstance(total_units, int)
@@ -585,9 +579,8 @@ def format_compact_staged_progress_phase_summary(
             if isinstance(progress_percent_override, int)
             else round(completed_units / total_units * 100.0)
         )
-        if progress_phase == _RESTART_PROGRESS_PANEL_PHASE and isinstance(
-            progress_percent_override, int
-        ):
+
+        if progress_phase == _RESTART_PROGRESS_PANEL_PHASE and isinstance(progress_percent_override, int):
             detail = f"{detail} [{progress_percent}%]"
         else:
             detail = f"{detail} [{progress_percent}%] ({completed_units}/{total_units})"
@@ -603,23 +596,49 @@ def format_compact_staged_progress_phase_summary(
     return " | ".join(detail_parts)
 
 
-def format_restart_progress_panel_row(
-    row: ActiveRestartProgressRow,
+def format_active_candidate_progress_panel_row(
+    row: ActiveCandidateProgressRow,
     *,
     restart_id_width: int,
 ) -> str:
+    if not _is_restart_like_active_candidate_progress_row(row):
+        detail = row.detail or "-"
+
+        evaluation_label = _format_active_candidate_progress_row_evaluation_label(row)
+
+        objective = (
+            f"{row.current_weighted_objective:.2f}"
+            if row.current_weighted_objective is not None
+            else "-"
+        )
+
+        candidate_best = (
+            f"{row.candidate_best_weighted_objective:.2f}"
+            if row.candidate_best_weighted_objective is not None
+            else "-"
+        )
+
+        return (
+            f"  {row.restart_id:<{restart_id_width}} {detail:<28.28}  "
+            f"eval {evaluation_label:>5}  obj {objective:>10}  best {candidate_best:>10}"
+        )
+
     block = row.parameter_block or "-"
+
     cycle = (
         f"{row.current_outer_cycle}/{row.total_outer_cycles}"
         if row.current_outer_cycle is not None and row.total_outer_cycles is not None
         else "-"
     )
-    evaluation_label = _format_restart_row_evaluation_label(row)
+
+    evaluation_label = _format_active_candidate_progress_row_evaluation_label(row)
+
     objective = (
         f"{row.current_weighted_objective:.2f}"
         if row.current_weighted_objective is not None
         else "-"
     )
+
     candidate_best = (
         f"{row.candidate_best_weighted_objective:.2f}"
         if row.candidate_best_weighted_objective is not None
@@ -632,8 +651,8 @@ def format_restart_progress_panel_row(
     )
 
 
-def maximum_restart_progress_row_id_width(
-    rows: Iterable[ActiveRestartProgressRow],
+def maximum_active_candidate_progress_row_id_width(
+    rows: Iterable[ActiveCandidateProgressRow],
 ) -> int:
     return max(
         22,
@@ -644,18 +663,114 @@ def maximum_restart_progress_row_id_width(
     )
 
 
-def _format_restart_row_evaluation_label(row: ActiveRestartProgressRow) -> str:
-    if row.evaluation_progress_percent is None:
+def _format_active_candidate_progress_row_evaluation_label(row: ActiveCandidateProgressRow) -> str:
+    evaluation_label = _format_stage_evaluation_label(
+        row.current_evaluation_count,
+        row.total_evaluation_budget,
+        row.evaluation_progress_percent,
+    )
+    if evaluation_label is None:
         return "-"
 
-    if (
-        row.evaluation_progress_percent == 0
-        and row.current_evaluation_count is not None
-        and row.current_evaluation_count > 0
-    ):
+    return evaluation_label
+
+
+def _is_restart_like_active_candidate_progress_row(row: ActiveCandidateProgressRow) -> bool:
+    return (
+        row.progress_phase == _RESTART_PROGRESS_PANEL_PHASE
+        or row.parameter_block is not None
+        or row.current_outer_cycle is not None
+        or row.total_outer_cycles is not None
+    )
+
+
+def _format_stage_evaluation_label(
+    current_evaluation_count: Any,
+    total_evaluation_budget: Any,
+    evaluation_progress_percent: Any,
+) -> Optional[str]:
+    if isinstance(current_evaluation_count, int) and isinstance(total_evaluation_budget, int):
+        return f"{current_evaluation_count}/{total_evaluation_budget}"
+
+    if not isinstance(evaluation_progress_percent, int):
+        return None
+
+    if evaluation_progress_percent == 0 and isinstance(current_evaluation_count, int) and current_evaluation_count > 0:
         return "<1%"
 
-    return f"{row.evaluation_progress_percent}%"
+    return f"{evaluation_progress_percent}%"
+
+
+def _is_active_candidate_progress_panel_phase(progress_phase: Optional[str]) -> bool:
+    return progress_phase in _ACTIVE_CANDIDATE_PROGRESS_PANEL_PHASES
+
+
+def _active_candidate_restart_id(raw_event: dict[str, Any]) -> Optional[str]:
+    restart_id = _coerce_optional_string(raw_event.get("current_restart_id"))
+    if restart_id is not None:
+        return restart_id
+
+    return _coerce_optional_string(raw_event.get("current_item_label"))
+
+
+def _should_clear_active_candidate_row(raw_event: dict[str, Any]) -> bool:
+    current_item_label = _coerce_optional_string(raw_event.get("current_item_label"))
+    if current_item_label == "resumed":
+        return True
+
+    evaluation_progress_percent = _coerce_optional_integer(
+        raw_event.get("evaluation_progress_percent")
+    )
+
+    return evaluation_progress_percent == 100
+
+
+def update_active_candidate_progress_row_from_event(
+    row: ActiveCandidateProgressRow,
+    raw_event: dict[str, Any],
+) -> None:
+    row.progress_phase = _coerce_optional_string(raw_event.get("progress_phase"))
+
+    current_item_label = _coerce_optional_string(raw_event.get("current_item_label"))
+    if current_item_label is not None and current_item_label != row.restart_id:
+        row.detail = current_item_label
+
+    parameter_block = _coerce_optional_string(raw_event.get("current_parameter_block"))
+    if parameter_block is not None:
+        row.parameter_block = parameter_block
+
+    current_outer_cycle = _coerce_optional_integer(raw_event.get("current_outer_cycle"))
+    if current_outer_cycle is not None:
+        row.current_outer_cycle = current_outer_cycle
+
+    total_outer_cycles = _coerce_optional_integer(raw_event.get("total_outer_cycles"))
+    if total_outer_cycles is not None:
+        row.total_outer_cycles = total_outer_cycles
+
+    evaluation_progress_percent = _coerce_optional_integer(
+        raw_event.get("evaluation_progress_percent")
+    )
+    if evaluation_progress_percent is not None:
+        row.evaluation_progress_percent = evaluation_progress_percent
+
+    current_evaluation_count = _coerce_optional_integer(
+        raw_event.get("current_evaluation_count")
+    )
+    if current_evaluation_count is not None:
+        row.current_evaluation_count = current_evaluation_count
+
+    total_evaluation_budget = _coerce_optional_integer(
+        raw_event.get("total_evaluation_budget")
+    )
+    if total_evaluation_budget is not None:
+        row.total_evaluation_budget = total_evaluation_budget
+
+    row.current_weighted_objective = _coerce_optional_float(
+        raw_event.get("current_weighted_objective")
+    )
+    row.candidate_best_weighted_objective = _coerce_optional_float(
+        raw_event.get("current_restart_best_weighted_objective")
+    )
 
 
 def subtask_for_stage_progress_event(
@@ -790,10 +905,13 @@ def _label_for_stage_progress_phase(progress_phase: Optional[str]) -> str:
 
 
 __all__ = [
+    "ActiveCandidateProgressRow",
     "detail_for_failed_native_run",
     "detail_for_stage_completed_event",
+    "format_active_candidate_progress_panel_row",
     "format_compact_staged_progress_event_detail",
     "format_staged_progress_event_detail",
+    "maximum_active_candidate_progress_row_id_width",
     "NativeStagedCalibrationProgressTracker",
     "subtask_for_stage_progress_event",
     "update_cli_progress_from_staged_native_event",

@@ -167,6 +167,7 @@ pub(super) fn run_joint_refinement_calibration_stage_internal(
             },
         );
     }
+
     if stage_input.option_refinement_candidate_count_override == Some(0) {
         return build_joint_refinement_stage_failure_report(
             run_spec,
@@ -177,6 +178,7 @@ pub(super) fn run_joint_refinement_calibration_stage_internal(
             },
         );
     }
+
     if stage_input.audit_option_pricing_enabled && stage_input.option_pricing_input.is_none() {
         return build_joint_refinement_stage_failure_report(
             run_spec,
@@ -193,6 +195,7 @@ pub(super) fn run_joint_refinement_calibration_stage_internal(
             Ok(payloads) => payloads,
             Err(failure) => return build_joint_refinement_stage_failure_report(run_spec, failure),
         };
+
     let mut resume_store = JointRefinementResumeStore::load(
         disk_checkpoint_directory,
         run_spec.run_id.as_str(),
@@ -245,6 +248,7 @@ pub(super) fn run_joint_refinement_calibration_stage_internal(
     ) {
         return build_joint_refinement_stage_failure_report(run_spec, failure);
     }
+
     if let Err(failure) = run_audit_option_pricing_if_enabled(
         &stage_input,
         &prepared_bootstrap.bootstrap_context,
@@ -289,10 +293,12 @@ fn resolve_stage_payloads<'a>(
         .hawkes_input
         .payload()
         .ok_or(JointRefinementStageExecutionFailure::MissingHawkesPayload)?;
+
     let return_components_payload = stage_input
         .return_components_input
         .payload()
         .ok_or(JointRefinementStageExecutionFailure::MissingReturnComponentsPayload)?;
+
     let mean_reversion_payload = stage_input
         .mean_reversion_input
         .payload()
@@ -380,8 +386,10 @@ fn return_components_fitted_parameters_with_mean_reversion(
     mean_reversion_payload: &MeanReversionStageFittedPayload,
 ) -> ReturnComponentsStageFittedParameters {
     let mut fitted_parameters = return_components_payload.fitted_parameters.clone();
+
     fitted_parameters.mean_reversion_fitted_parameters =
         mean_reversion_payload.fitted_parameters.clone();
+
     fitted_parameters
 }
 
@@ -513,6 +521,7 @@ fn prepare_parameterization(
         baseline_parameter_vector.as_slice(),
         baseline_15m_calibration_sample,
     );
+
     let option_pricing_refinement_enabled = false;
 
     let option_pricing_context = build_option_pricing_context(
@@ -878,6 +887,7 @@ fn ensure_valid_selected_restart_outcome(
         .invalid_reason
         .clone()
         .unwrap_or_else(|| "unknown_local_joint_refinement_failure".to_string());
+
     let final_reason = restart_search_artifacts
         .best_restart
         .final_evaluation
@@ -906,6 +916,7 @@ fn run_restart_search(
 ) -> Result<RestartSearchArtifacts, JointRefinementStageExecutionFailure> {
     let restart_search_plan =
         build_restart_search_plan(stage_input, resolved_stage_payloads, prepared_bootstrap);
+
     let persisted_restart_outcomes = restart_search_plan
         .restart_seeds
         .iter()
@@ -915,6 +926,7 @@ fn run_restart_search(
                 .map(|restart_outcome| (restart_id.clone(), restart_outcome))
         })
         .collect::<BTreeMap<_, _>>();
+
     let remaining_restart_seeds = restart_search_plan
         .restart_seeds
         .iter()
@@ -923,6 +935,7 @@ fn run_restart_search(
         .collect::<Vec<_>>();
 
     let restart_optimization_started_at = Instant::now();
+
     let remaining_restart_outcomes = if remaining_restart_seeds.is_empty() {
         Vec::new()
     } else {
@@ -935,6 +948,7 @@ fn run_restart_search(
             Some(resume_store),
         )
     };
+
     let restart_outcomes = restart_search_plan
         .restart_seeds
         .iter()
@@ -950,11 +964,13 @@ fn run_restart_search(
                 })
         })
         .collect::<Vec<_>>();
+
     let restart_optimization_wall_clock_millis = elapsed_millis(restart_optimization_started_at);
 
     ensure_simulation_infrastructure_available(&prepared_bootstrap.bootstrap_context)?;
 
     let valid_restart_count = count_valid_restart_outcomes(&restart_outcomes);
+
     let restart_selection_artifacts = select_restart_outcome(
         stage_input,
         prepared_bootstrap,
@@ -1062,6 +1078,7 @@ fn run_option_refinement_if_enabled(
                 Some(search_tier_artifact);
             restart_search_artifacts.selected_option_selection_tier_pricing_artifact =
                 Some(selection_tier_artifact);
+
             return Ok(());
         }
     }
@@ -1081,6 +1098,7 @@ fn run_option_refinement_if_enabled(
         Some(option_refinement_result.selected_search_tier_pricing_artifact);
     restart_search_artifacts.selected_option_selection_tier_pricing_artifact =
         Some(option_refinement_result.selected_selection_tier_pricing_artifact);
+
     if let (Some(search_artifact), Some(selection_artifact)) = (
         restart_search_artifacts
             .selected_option_search_tier_pricing_artifact
@@ -1095,6 +1113,7 @@ fn run_option_refinement_if_enabled(
             selection_artifact.as_ref(),
         );
     }
+
     Ok(())
 }
 
@@ -1108,6 +1127,7 @@ fn run_audit_option_pricing_if_enabled(
     if !stage_input.audit_option_pricing_enabled {
         return Ok(());
     }
+
     if let Some(audit_artifact) = resume_store.selected_audit_tier_pricing_artifact() {
         restart_search_artifacts.selected_option_audit_tier_pricing_artifact = Some(audit_artifact);
         return Ok(());
@@ -1123,6 +1143,7 @@ fn run_audit_option_pricing_if_enabled(
                         .to_string(),
             }
         })?;
+
     let audit_artifact = resolve_option_surface_tier_pricing_artifact(
         bootstrap_context,
         &restart_search_artifacts
@@ -1138,11 +1159,16 @@ fn run_audit_option_pricing_if_enabled(
             .cache_key
             .pricing_parameter_bits
             .as_slice(),
+        false,
         None,
         progress_sender,
         Some(JointRefinementStageProgressPhase::OptionAuditTierEvaluation),
         Some(0),
         Some(1),
+        None,
+        None,
+        None,
+        None,
         None,
         None,
         None,
@@ -1153,7 +1179,9 @@ fn run_audit_option_pricing_if_enabled(
 
     restart_search_artifacts.selected_option_audit_tier_pricing_artifact =
         Some(audit_artifact.clone());
+
     resume_store.record_audit_tier_pricing_artifact(audit_artifact.as_ref());
+
     Ok(())
 }
 
@@ -1171,6 +1199,7 @@ fn select_restart_outcome(
     );
 
     let coarse_consistency_started_at = Instant::now();
+
     let valid_selectable_restart_outcome_refs = selectable_restart_outcomes
         .iter()
         .filter(|restart_outcome| {
@@ -1252,6 +1281,7 @@ fn select_restart_outcome(
                 .baseline_restart_outcome
                 .clone()
         });
+
     let option_refinement_candidate_frontier = selection_artifacts
         .selected_restart_outcomes
         .iter()
@@ -1321,6 +1351,7 @@ fn assemble_final_stage_outputs(
     );
 
     let candidate_frontier_started_at = Instant::now();
+
     let candidate_frontier = build_joint_candidate_frontier_diagnostics(
         selectable_restart_outcomes.as_slice(),
         bootstrap_context,
@@ -1335,6 +1366,7 @@ fn assemble_final_stage_outputs(
     emit_final_assembly_progress(progress_sender, 1, 3, "candidate_frontier");
 
     let final_seed_evaluation_started_at = Instant::now();
+
     let finalist_seed_summaries = build_joint_finalist_seed_summaries(
         bootstrap_context,
         Some(
@@ -1356,6 +1388,7 @@ fn assemble_final_stage_outputs(
     let final_seed_evaluation_wall_clock_millis = elapsed_millis(final_seed_evaluation_started_at);
 
     let remaining_final_assembly_started_at = Instant::now();
+
     let simulation_summaries = build_joint_simulation_summaries(finalist_seed_summaries.as_slice());
 
     emit_final_assembly_progress(progress_sender, 2, 3, "simulation_summaries");
@@ -1369,11 +1402,55 @@ fn assemble_final_stage_outputs(
 
     emit_final_assembly_progress(progress_sender, 3, 3, "coarse_tick_consistency");
 
+    let selection_artifact_for_diagnostics = restart_search_artifacts
+        .selected_option_selection_tier_pricing_artifact
+        .as_deref()
+        .map(|selection_artifact| {
+            resolve_option_surface_tier_pricing_artifact(
+                bootstrap_context,
+                &restart_search_artifacts
+                    .best_restart
+                    .final_evaluation
+                    .fitted_parameters,
+                JointRefinementOptionSurfaceTierKind::Selection,
+                selection_artifact
+                    .cache_key
+                    .source_dynamics_parameter_bits
+                    .as_slice(),
+                selection_artifact
+                    .cache_key
+                    .pricing_parameter_bits
+                    .as_slice(),
+                true,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+            )
+        })
+        .transpose()
+        .map_err(|error_message| {
+            JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput { error_message }
+        })?;
+
     let option_calibration_diagnostics = build_option_calibration_diagnostics(
         bootstrap_context,
         restart_search_artifacts
-            .selected_option_selection_tier_pricing_artifact
+            .selected_option_search_tier_pricing_artifact
             .as_deref(),
+        selection_artifact_for_diagnostics
+            .as_deref()
+            .or(restart_search_artifacts
+                .selected_option_selection_tier_pricing_artifact
+                .as_deref()),
         restart_search_artifacts
             .selected_option_audit_tier_pricing_artifact
             .as_deref(),
@@ -1587,16 +1664,13 @@ fn emit_final_assembly_progress(
     total_units: usize,
     current_item_label: &str,
 ) {
-    if let Some(progress_sender) = progress_sender {
-        let _ = progress_sender.send(JointRefinementStageProgressUpdate {
-            current_item_label: Some(current_item_label.to_string()),
-            ..JointRefinementStageProgressUpdate::new(
-                JointRefinementStageProgressPhase::FinalAssembly,
-                completed_units,
-                total_units,
-            )
-        });
-    }
+    emit_joint_refinement_progress(
+        progress_sender,
+        JointRefinementStageProgressPhase::FinalAssembly,
+        completed_units,
+        total_units,
+        current_item_label,
+    );
 }
 
 fn emit_coarse_consistency_progress(
@@ -1605,11 +1679,27 @@ fn emit_coarse_consistency_progress(
     total_units: usize,
     current_item_label: &str,
 ) {
+    emit_joint_refinement_progress(
+        progress_sender,
+        JointRefinementStageProgressPhase::CoarseConsistencyEvaluation,
+        completed_units,
+        total_units,
+        current_item_label,
+    );
+}
+
+fn emit_joint_refinement_progress(
+    progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
+    progress_phase: JointRefinementStageProgressPhase,
+    completed_units: usize,
+    total_units: usize,
+    current_item_label: &str,
+) {
     if let Some(progress_sender) = progress_sender {
         let _ = progress_sender.send(JointRefinementStageProgressUpdate {
             current_item_label: Some(current_item_label.to_string()),
             ..JointRefinementStageProgressUpdate::new(
-                JointRefinementStageProgressPhase::CoarseConsistencyEvaluation,
+                progress_phase,
                 completed_units,
                 total_units,
             )

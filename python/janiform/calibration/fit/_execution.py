@@ -28,7 +28,8 @@ from ..staged.runtime import _run_staged_calibration_with_prepared_handle_resume
 from .model import JaniformModel
 from ._preparation.contracts import FitExecutionConfiguration, PreparedFitWorkflow
 from .report import JaniformFitReport
-from ._runtime.metadata import build_model_metadata, extract_model_parameters, raw_stage_report_payloads
+from ._runtime.metadata import build_model_metadata, extract_model_parameters
+from ._runtime.stage_reports import resolved_stage_report_payloads
 
 
 def fit_with_execution_configuration(
@@ -51,10 +52,12 @@ def fit_with_execution_configuration(
         tick_data_provenance_label=tick_data_provenance_label,
         option_surface_provenance_label=option_surface_provenance_label,
     )
+
     output_controller = _build_fit_output_controller(
         configuration.output_controller_factory,
         silent=configuration.silent,
     )
+
     prepared_workflow, staged_response, raw_response_payload = _run_fit_with_output_controller(
         configuration,
         output_controller=output_controller,
@@ -69,6 +72,7 @@ def fit_with_execution_configuration(
         option_surface_valuation_time_utc=option_surface_valuation_time_utc,
         carry=carry,
     )
+
     fit_report, model = _build_fit_outputs(
         configuration,
         prepared_workflow=prepared_workflow,
@@ -100,6 +104,7 @@ def _validate_fit_input_labels(
 ) -> None:
     if not tick_data_provenance_label.strip():
         raise calibration_error("tick_data_provenance_label", "must be a non-empty string")
+
     if not option_surface_provenance_label.strip():
         raise calibration_error("option_surface_provenance_label", "must be a non-empty string")
 
@@ -134,10 +139,12 @@ def _run_fit_with_output_controller(
     suppression_context = redirect_stdout(StringIO()) if configuration.silent else nullcontext()
     staged_response: Optional[Any] = None
     raw_response_payload: Optional[dict[str, Any]] = None
+
     with suppression_context:
         try:
             with output_controller.progress("fit", total_steps=configuration.progress_total_steps) as progress:
                 progress.update(detail="inferring workflow inputs")
+
                 prepared_workflow = configuration.prepare_fit_workflow(
                     run_id=run_id,
                     tick_data_path=tick_data_path,
@@ -154,6 +161,7 @@ def _run_fit_with_output_controller(
                     output_controller.warning(prepared_workflow.fit_warning)
 
                 progress.update(detail="running calibration")
+
                 staged_response, raw_response_payload = _run_prepared_fit_calibration(
                     configuration,
                     prepared_workflow=prepared_workflow,
@@ -166,6 +174,7 @@ def _run_fit_with_output_controller(
 
     if prepared_workflow is None:
         raise RuntimeError("Fit execution did not produce a PreparedFitWorkflow")
+
     if staged_response is None or raw_response_payload is None:
         raise RuntimeError("Fit execution did not produce a staged calibration response")
 
@@ -182,8 +191,10 @@ def _run_prepared_fit_calibration(
     calendar_registry = CalendarRegistry(
         prepared_workflow.prepared.session_resolution.resolved_session_definition_json
     )
+
     if resume_settings is not None:
         staged_progress_tracker = NativeStagedCalibrationProgressTracker()
+
         event_callback = (
             None
             if not (
@@ -214,6 +225,7 @@ def _run_prepared_fit_calibration(
 
     if isinstance(progress, SpinnerProgress | JsonLinesProgress) and configuration.use_default_prepared_runner:
         staged_progress_tracker = NativeStagedCalibrationProgressTracker()
+
         return configuration.evented_prepared_runner(
             prepared_workflow.prepared.prepared_handle,
             calendar_registry=calendar_registry,
@@ -238,6 +250,14 @@ def _build_fit_outputs(
     raw_response_payload: dict[str, Any],
     output_dir: Optional[str | Path],
 ) -> tuple[JaniformFitReport, Optional[JaniformModel]]:
+    stage_report_payloads = resolved_stage_report_payloads(
+        raw_response_payload,
+        selected_stage_kinds=prepared_workflow.prepared.staged_request.selected_stages,
+        run_id=prepared_workflow.run_id,
+        disk_checkpoint_directory=prepared_workflow.prepared.request.output_preferences.disk_checkpoint_directory,
+        require_complete_selection=staged_response.status == CalibrationStageExecutionStatus.SUCCESS,
+    )
+
     fit_report = JaniformFitReport(
         run_id=prepared_workflow.run_id,
         workflow_scope=prepared_workflow.workflow_scope,
@@ -251,7 +271,7 @@ def _build_fit_outputs(
         prepared_payload_path=prepared_workflow.prepared.prepared_payload_path,
         staged_execution_input_path=prepared_workflow.prepared.staged_execution_input_path,
         staged_response=staged_response,
-        stage_report_payloads=raw_stage_report_payloads(raw_response_payload),
+        stage_report_payloads=stage_report_payloads,
     )
 
     if staged_response.status != CalibrationStageExecutionStatus.SUCCESS:

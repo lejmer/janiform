@@ -5,6 +5,19 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any, Optional
 
+from ....._pricing_node_validation import validate_option_pricing_node_payload
+from .....contracts.collections import (
+    grid_of_non_negative_floats as shared_grid_of_non_negative_floats,
+    grid_of_optional_finite_floats as shared_grid_of_optional_finite_floats,
+    grid_of_positive_floats as shared_grid_of_positive_floats,
+    grid_of_scalars,
+    grid_shape as shared_grid_shape,
+    tuple_of_finite_floats as shared_tuple_of_finite_floats,
+    tuple_of_non_negative_floats as shared_tuple_of_non_negative_floats,
+    tuple_of_positive_floats as shared_tuple_of_positive_floats,
+    validate_aligned_count as shared_validate_aligned_count,
+    validate_matching_grid_shape as shared_validate_matching_grid_shape,
+)
 from .....contracts.base import (
     require_non_negative_finite_scalar,
     require_positive_finite_scalar,
@@ -16,18 +29,6 @@ from .....pricing import (
     VanillaOptionPricingStatus,
 )
 from .....pricing.contracts import _validate_optional_implied_volatility_inversion_outcome
-from .....pricing.surface.common import (
-    grid_of_non_negative_floats as _surface_grid_of_non_negative_floats,
-    grid_of_optional_finite_floats as _surface_grid_of_optional_finite_floats,
-    grid_of_positive_floats as _surface_grid_of_positive_floats,
-    grid_of_scalars,
-    grid_shape as _surface_grid_shape,
-    tuple_of_finite_floats as _surface_tuple_of_finite_floats,
-    tuple_of_non_negative_floats as _surface_tuple_of_non_negative_floats,
-    tuple_of_positive_floats as _surface_tuple_of_positive_floats,
-    validate_aligned_count as _surface_validate_aligned_node_count,
-    validate_matching_grid_shape as _surface_validate_matching_grid_shape,
-)
 from ....errors import calibration_error
 
 
@@ -37,7 +38,7 @@ def tuple_of_positive_floats(
     field_name: str,
     field_path: str,
 ) -> tuple[float, ...]:
-    return _surface_tuple_of_positive_floats(
+    return shared_tuple_of_positive_floats(
         raw_payload,
         field_name=field_name,
         field_path=field_path,
@@ -51,7 +52,7 @@ def tuple_of_non_negative_floats(
     field_name: str,
     field_path: str,
 ) -> tuple[float, ...]:
-    return _surface_tuple_of_non_negative_floats(
+    return shared_tuple_of_non_negative_floats(
         raw_payload,
         field_name=field_name,
         field_path=field_path,
@@ -65,7 +66,7 @@ def tuple_of_finite_floats(
     field_name: str,
     field_path: str,
 ) -> tuple[float, ...]:
-    return _surface_tuple_of_finite_floats(
+    return shared_tuple_of_finite_floats(
         raw_payload,
         field_name=field_name,
         field_path=field_path,
@@ -79,7 +80,7 @@ def grid_of_positive_floats(
     field_name: str,
     field_path: str,
 ) -> tuple[tuple[float, ...], ...]:
-    return _surface_grid_of_positive_floats(
+    return shared_grid_of_positive_floats(
         raw_payload,
         field_name=field_name,
         field_path=field_path,
@@ -93,7 +94,7 @@ def grid_of_non_negative_floats(
     field_name: str,
     field_path: str,
 ) -> tuple[tuple[float, ...], ...]:
-    return _surface_grid_of_non_negative_floats(
+    return shared_grid_of_non_negative_floats(
         raw_payload,
         field_name=field_name,
         field_path=field_path,
@@ -107,7 +108,7 @@ def grid_of_optional_finite_floats(
     field_name: str,
     field_path: str,
 ) -> tuple[tuple[Optional[float], ...], ...]:
-    return _surface_grid_of_optional_finite_floats(
+    return shared_grid_of_optional_finite_floats(
         raw_payload,
         field_name=field_name,
         field_path=field_path,
@@ -232,84 +233,51 @@ def validate_group_node_payload(
     boundary_state_norm: Optional[float],
     field_path: str,
 ) -> None:
-    if pricing_status is VanillaOptionPricingStatus.SUCCEEDED:
-        if pricing_failure_stage is not None:
-            raise calibration_error(
-                f"{field_path}.pricing_failure_stage",
-                "must be null when pricing_status=succeeded",
-            )
-        if pricing_failure_reason is not None:
-            raise calibration_error(
-                f"{field_path}.pricing_failure_reason",
-                "must be null when pricing_status=succeeded",
-            )
-        require_non_negative_finite_scalar(
-            model_price,
-            f"{field_path}.model_price",
-            calibration_error,
-        )
-        require_positive_finite_scalar(
-            forward_price,
-            f"{field_path}.forward_price",
-            calibration_error,
-        )
-        require_positive_finite_scalar(
-            discount_factor,
-            f"{field_path}.discount_factor",
-            calibration_error,
-        )
-        require_non_negative_finite_scalar(
-            boundary_state_norm,
-            f"{field_path}.boundary_state_norm",
-            calibration_error,
-        )
-        _validate_optional_implied_volatility_inversion_outcome(
-            implied_volatility=implied_volatility,
-            implied_volatility_inversion_status=implied_volatility_inversion_status,
-            field_path=field_path,
-        )
-        return
+    validate_option_pricing_node_payload(
+        pricing_status=pricing_status,
+        succeeded_pricing_status=VanillaOptionPricingStatus.SUCCEEDED,
+        pricing_failure_stage=pricing_failure_stage,
+        pricing_failure_reason=pricing_failure_reason,
+        model_price=model_price,
+        implied_volatility=implied_volatility,
+        implied_volatility_inversion_status=implied_volatility_inversion_status,
+        forward_price=forward_price,
+        discount_factor=discount_factor,
+        boundary_state_norm=boundary_state_norm,
+        field_path=field_path,
+        error_factory=calibration_error,
+        require_non_negative_finite_numeric_field=_require_non_negative_finite_numeric_field,
+        require_positive_finite_numeric_field=_require_positive_finite_numeric_field,
+        validate_optional_implied_volatility_inversion_outcome=(
+            _validate_optional_implied_volatility_inversion_outcome_for_group_node
+        ),
+    )
 
-    if pricing_failure_stage is None:
-        raise calibration_error(
-            f"{field_path}.pricing_failure_stage",
-            "must be present when pricing_status=failed",
-        )
-    if pricing_failure_reason is None or pricing_failure_reason.strip() == "":
-        raise calibration_error(
-            f"{field_path}.pricing_failure_reason",
-            "must be a non-empty string when pricing_status=failed",
-        )
-    if model_price is not None:
-        raise calibration_error(
-            f"{field_path}.model_price",
-            "must be null when pricing_status=failed",
-        )
-    if implied_volatility is not None:
-        raise calibration_error(
-            f"{field_path}.implied_volatility",
-            "must be null when pricing_status=failed",
-        )
-    if implied_volatility_inversion_status is not None:
-        raise calibration_error(
-            f"{field_path}.implied_volatility_inversion_status",
-            "must be null when pricing_status=failed",
-        )
-    if forward_price is not None:
-        raise calibration_error(
-            f"{field_path}.forward_price",
-            "must be null when pricing_status=failed",
-        )
-    if discount_factor is not None:
-        raise calibration_error(
-            f"{field_path}.discount_factor",
-            "must be null when pricing_status=failed",
-        )
-    if boundary_state_norm is not None:
-        raise calibration_error(
-            f"{field_path}.boundary_state_norm",
-            "must be null when pricing_status=failed",
-        )
+
+def _require_non_negative_finite_numeric_field(
+    value: Optional[float],
+    field_path: str,
+) -> None:
+    require_non_negative_finite_scalar(value, field_path, calibration_error)
+
+
+def _require_positive_finite_numeric_field(
+    value: Optional[float],
+    field_path: str,
+) -> None:
+    require_positive_finite_scalar(value, field_path, calibration_error)
+
+
+def _validate_optional_implied_volatility_inversion_outcome_for_group_node(
+    implied_volatility: Optional[float],
+    implied_volatility_inversion_status: Optional[VanillaOptionImpliedVolatilityInversionStatus],
+    field_path: str,
+) -> None:
+    _validate_optional_implied_volatility_inversion_outcome(
+        implied_volatility=implied_volatility,
+        implied_volatility_inversion_status=implied_volatility_inversion_status,
+        field_path=field_path,
+    )
 
 
 def validate_optional_tuple_pair(
@@ -331,7 +299,7 @@ def grid_shape(
     *,
     field_path: str,
 ) -> tuple[int, int]:
-    return _surface_grid_shape(
+    return shared_grid_shape(
         values,
         field_path=field_path,
         error_factory=calibration_error,
@@ -344,7 +312,7 @@ def validate_aligned_node_count(
     *,
     field_path: str,
 ) -> None:
-    _surface_validate_aligned_node_count(
+    shared_validate_aligned_count(
         values,
         expected_count,
         field_path=field_path,
@@ -358,7 +326,7 @@ def validate_matching_grid_shape(
     grid_shape_value: tuple[int, int],
     field_path: str,
 ) -> None:
-    _surface_validate_matching_grid_shape(
+    shared_validate_matching_grid_shape(
         values,
         grid_shape_value=grid_shape_value,
         field_path=field_path,

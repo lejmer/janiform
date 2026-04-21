@@ -54,6 +54,7 @@ fn transition_context_for_request(
 #[test]
 fn theta_warm_start_state_predicts_interval_hint_from_parameter_delta() {
     let carry_group_key = (0_u64, 0_u64);
+
     let previous_driver_configuration = SpectralThetaWarmStartDriverConfiguration {
         alpha: 2.0,
         beta_0: -0.1,
@@ -68,6 +69,7 @@ fn theta_warm_start_state_predicts_interval_hint_from_parameter_delta() {
         mu: 0.04,
         delta_beta: -0.25,
     };
+
     let mut warm_start_state = SpectralThetaWarmStartState::new();
 
     warm_start_state.record_interval_theta_states(
@@ -222,9 +224,12 @@ fn pure_imaginary_log_moment_recovery_rejects_zero_characteristic_factor() {
 #[test]
 fn grid_batch_pricing_reports_exact_node_price_alpha_sensitivity() {
     let mut model_parameters = valid_model_parameters();
+
     let execution_input = single_node_grid_execution_input(model_parameters.clone(), true);
+
     let pricing_result =
         run_vanilla_option_grid_batch_pricing(execution_input).expect("pricing run should succeed");
+
     let node_sensitivity = pricing_result.grids[0]
         .node_price_sensitivity_grid
         .as_ref()
@@ -245,6 +250,7 @@ fn grid_batch_pricing_reports_exact_node_price_alpha_sensitivity() {
             configuration.delta_beta,
         )
         .expect("positive alpha perturbation should stay valid");
+
     let positive_price = single_node_price(model_parameters.clone());
 
     model_parameters.nig_shared_plus_shift_configuration =
@@ -256,6 +262,7 @@ fn grid_batch_pricing_reports_exact_node_price_alpha_sensitivity() {
             configuration.delta_beta,
         )
         .expect("negative alpha perturbation should stay valid");
+
     let negative_price = single_node_price(model_parameters);
 
     let finite_difference = (positive_price - negative_price) / (2.0 * alpha_step);
@@ -307,6 +314,7 @@ fn single_node_grid_execution_input(
             include_calibration_hooks: false,
             include_node_price_sensitivities,
         },
+        spectral_collocation_node_count_override: None,
         cpu_count: Some(1),
     }
 }
@@ -324,6 +332,7 @@ fn single_node_price(model_parameters: crate::VanillaOptionPricingModelParameter
 #[test]
 fn expected_news_loading_inference_short_circuits_when_activity_coupling_is_zero() {
     let mut model_parameters = valid_model_parameters();
+
     model_parameters
         .news_process_configuration
         .known_component_mark_scales
@@ -361,6 +370,7 @@ fn expected_news_loading_inference_short_circuits_when_activity_coupling_is_zero
 
     let interval_factors = VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
         .expect("interval factors should construct");
+
     let expected_statistics =
         SufficientStatisticsExpectedIntervalStatistics::try_new(1.0, 1.0, 0.0, 0.0)
             .expect("expected statistics should construct");
@@ -368,6 +378,7 @@ fn expected_news_loading_inference_short_circuits_when_activity_coupling_is_zero
     let transition_context =
         LocalTransitionRequestContext::from_pricing_request(&request, interval_factors)
             .expect("transition context should construct");
+
     let transition_row = transition_context
         .build_row_state(request.boundary_input.observed_boundary_state.deviation)
         .expect("transition row should construct");
@@ -421,6 +432,7 @@ fn risk_neutral_anchor_materialization_accepts_zero_adjustment_nested_request() 
         VanillaOptionPricingIntervalFactors::try_new(1.0, 0.0, 0.0)
             .expect("second interval factors should construct"),
     ];
+
     let driver_parameters = request
         .model_parameters
         .nig_shared_plus_shift_configuration
@@ -458,12 +470,15 @@ fn risk_neutral_anchor_materialization_accepts_zero_adjustment_nested_request() 
 #[test]
 fn interval_tilt_curve_matches_direct_row_solver_across_ordered_rows() {
     let pricing_request = build_non_nested_transition_request();
+
     let transition_context = transition_context_for_request(&pricing_request);
+
     let driver_parameters = pricing_request
         .model_parameters
         .nig_shared_plus_shift_configuration
         .derive_driver_parameters()
         .expect("driver parameters should construct");
+
     let resolved_rows =
         build_resolved_non_nested_transition_rows(&transition_context, driver_parameters);
 
@@ -474,6 +489,7 @@ fn interval_tilt_curve_matches_direct_row_solver_across_ordered_rows() {
     let nested_row = transition_context
         .build_row_state(0.0)
         .expect("nested transition row should construct");
+
     let nested_direct = resolve_local_transition_theta_for_row_with_parallelism(
         &transition_context,
         &nested_row,
@@ -482,6 +498,7 @@ fn interval_tilt_curve_matches_direct_row_solver_across_ordered_rows() {
         None,
     )
     .expect("nested direct row solve should succeed");
+
     let nested_cached =
         resolve_local_transition_theta_for_row_with_curve(&mut interval_tilt_curve, &nested_row)
             .expect("nested curve-backed row solve should succeed");
@@ -501,17 +518,21 @@ fn interval_tilt_curve_matches_direct_row_solver_across_ordered_rows() {
 #[test]
 fn prepared_transition_row_kernel_matches_direct_row_expectations() {
     let pricing_request = build_non_nested_transition_request();
+
     let transition_context = transition_context_for_request(&pricing_request);
+
     let driver_parameters = pricing_request
         .model_parameters
         .nig_shared_plus_shift_configuration
         .derive_driver_parameters()
         .expect("driver parameters should construct");
+
     let (transition_row, direct_theta) =
         build_resolved_non_nested_transition_rows(&transition_context, driver_parameters)
             .into_iter()
             .next()
             .expect("at least one non-nested row should resolve");
+
     let direct_expectations =
         crate::runner::derive_local_tilted_interval_expectations_for_row_with_parallelism(
             &transition_context,
@@ -522,6 +543,7 @@ fn prepared_transition_row_kernel_matches_direct_row_expectations() {
             None,
         )
         .expect("direct expectations should succeed");
+
     let mut interval_tilt_curve =
         IntervalTiltCurve::try_new(&transition_context, driver_parameters, None, None)
             .expect("interval tilt curve should construct");
@@ -537,21 +559,27 @@ fn prepared_transition_row_kernel_matches_direct_row_expectations() {
 #[test]
 fn core_pure_imaginary_log_moment_plus_local_adjustment_matches_row_diagnostics() {
     let pricing_request = build_non_nested_transition_request();
+
     let transition_context = transition_context_for_request(&pricing_request);
+
     let driver_parameters = pricing_request
         .model_parameters
         .nig_shared_plus_shift_configuration
         .derive_driver_parameters()
         .expect("driver parameters should construct");
+
     let (transition_row, direct_theta) =
         build_resolved_non_nested_transition_rows(&transition_context, driver_parameters)
             .into_iter()
             .next()
             .expect("at least one non-nested row should resolve");
+
     let theta = direct_theta.0;
+
     let diagnostics = direct_theta
         .1
         .expect("non-nested row should return diagnostics");
+
     let core_evaluation = evaluate_core_pure_imaginary_log_moment_exponent_for_tilt(
         &transition_context,
         driver_parameters,
@@ -607,6 +635,7 @@ fn build_resolved_non_nested_transition_rows(
     (f64, Option<crate::AnchoredLocalTiltSolveDiagnostics>),
 )> {
     let candidate_deviations = [1.0e-8, 1.0e-7, 1.0e-6, 1.0e-5, 1.0e-4, 1.0e-3, 1.0e-2];
+
     let mut resolved_rows = Vec::new();
 
     for deviation in candidate_deviations {
@@ -701,11 +730,13 @@ fn nested_zero_adjustment_materialization_matches_first_moment_hawkes_update() {
 
     let interval_factors = VanillaOptionPricingIntervalFactors::try_new(1.2, 0.3, 0.15)
         .expect("interval factors should construct");
+
     let driver_parameters = request
         .model_parameters
         .nig_shared_plus_shift_configuration
         .derive_driver_parameters()
         .expect("driver parameters should derive");
+
     let mut observer = None;
 
     let materialization = build_pricing_risk_neutral_anchor_materialization(
@@ -724,6 +755,7 @@ fn nested_zero_adjustment_materialization_matches_first_moment_hawkes_update() {
         .gamma_severity_marks
         .expected_severity_mark()
         .expect("expected severity mark should evaluate");
+
     let expected_statistics = derive_expected_interval_statistics_from_first_moment_dynamics(
         build_pricing_equation_specification(&request),
         expected_severity_mark,
@@ -765,6 +797,7 @@ fn nested_zero_adjustment_materialization_matches_first_moment_hawkes_update() {
 #[test]
 fn nested_news_loading_inference_uses_exact_closed_form_with_activity_coupling() {
     let mut model_parameters = valid_model_parameters();
+
     model_parameters
         .news_process_configuration
         .known_component_mark_scales
@@ -796,6 +829,7 @@ fn nested_news_loading_inference_uses_exact_closed_form_with_activity_coupling()
 
     let interval_factors = VanillaOptionPricingIntervalFactors::try_new(1.2, 0.3, 0.15)
         .expect("interval factors should construct");
+
     let expected_statistics = derive_expected_interval_statistics_from_first_moment_dynamics(
         build_pricing_equation_specification(&request),
         request
@@ -884,8 +918,10 @@ fn near_origin_positive_real_characteristic_function_evaluation_remains_finite()
         .nig_shared_plus_shift_configuration
         .derive_driver_parameters()
         .expect("driver parameters should derive");
+
     let interval_factors = VanillaOptionPricingIntervalFactors::try_new(1.2, 0.3, 0.15)
         .expect("interval factors should construct");
+
     let news_intensity = interval_factors
         .news_intensity_input()
         .expect("news intensity should construct");

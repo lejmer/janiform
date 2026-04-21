@@ -690,6 +690,7 @@ dependencies = [
  "janiform-foundations",
  "janiform-market-time",
  "janiform-model-kernels",
+ "nalgebra",
  "parquet",
  "rayon",
  "serde",
@@ -820,7 +821,6 @@ version = "0.0.0"
 dependencies = [
  "chrono",
  "janiform",
- "janiform-calibration-artifacts",
  "pyo3",
  "serde",
  "serde_json",

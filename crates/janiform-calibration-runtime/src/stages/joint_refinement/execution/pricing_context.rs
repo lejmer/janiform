@@ -11,7 +11,8 @@ use janiform_engine_pricing::{
     AnchoredVanillaOptionPricingBoundaryInput, PricingIntervalSchedule,
     PricingIntervalSchedulePolicy, PricingProgressEvent, PricingProgressPhase,
     VanillaOptionGridBatchPricingExecutionInput, VanillaOptionGridBatchPricingRequest,
-    VanillaOptionGridBatchPricingRunResult, VanillaOptionGridRequest, VanillaOptionPayoffType,
+    VanillaOptionGridBatchPricingRunResult, VanillaOptionGridRequest,
+    VanillaOptionNodePriceSensitivity, VanillaOptionPayoffType,
     VanillaOptionPricingModelParameters, VanillaOptionPricingOptionalOutputSelection,
     derive_activity_compressed_pricing_interval_schedule, derive_pricing_interval_schedule,
     materialize_schedule_interval_factors_with_cpu_count,
@@ -48,6 +49,14 @@ use janiform_market_time::calendar::ExchangeCalendarRegistry;
 
 use super::super::objective::root_mean_square;
 use super::super::setup::build_surprise_multipliers_for_interval_grid;
+use super::option_objective_gradient::{
+    JointRefinementOptionNodeResidualSensitivity, differentiate_option_tier_root_mean_square_score,
+};
+use super::option_reduced_model::{
+    build_option_reduced_model_artifact, populate_reduced_model_runtime_estimates,
+    reduced_model_diagnostics_from_artifact,
+};
+use super::option_refinement::option_pricing_block_evaluation_budget;
 use super::state::{
     JointRefinementContext, JointRefinementOptionMaturityScoreArtifact,
     JointRefinementOptionNodeDefinition, JointRefinementOptionNodeLocation,
@@ -112,6 +121,7 @@ pub(crate) fn build_option_pricing_context(
     let Some(option_pricing_input) = stage_input.option_pricing_input.as_ref() else {
         return Ok(None);
     };
+
     let cleaned_option_pricing_input = clean_option_pricing_input(option_pricing_input)?;
 
     let horizon = resolve_option_pricing_horizon(&cleaned_option_pricing_input)?;
@@ -137,6 +147,7 @@ pub(crate) fn build_option_pricing_context(
         &hourly_factor_contract,
         false,
     )?;
+
     let interval_factors = materialize_schedule_interval_factors_with_cpu_count(
         &runtime_interval_schedule,
         &hourly_factor_contract,
@@ -161,6 +172,7 @@ pub(crate) fn build_option_pricing_context(
         &hourly_factor_contract,
         true,
     )?;
+
     let audit_interval_factors = if audit_runtime_interval_schedule == runtime_interval_schedule {
         interval_factors.clone()
     } else {
@@ -183,12 +195,14 @@ pub(crate) fn build_option_pricing_context(
             &cleaned_option_pricing_input,
             &runtime_interval_schedule,
         )?;
+
     let option_surface_tiers = build_option_surface_tiers(
         option_pricing_input,
         &cleaned_option_pricing_input,
         option_spot,
         &runtime_interval_schedule,
     )?;
+
     let tier_pricing_inputs = build_option_surface_tier_pricing_input_set(
         option_spot,
         &cleaned_option_pricing_input.carry_input,
@@ -596,6 +610,7 @@ fn build_option_bucket_definitions<'a>(
                 {
                     bucket.definition.strikes.push(resolved_node.node.strike);
                 }
+
                 bucket.nodes.push(resolved_node);
             }
             _ => {
@@ -695,6 +710,7 @@ fn run_option_grid_batch_pricing(
     context: &JointRefinementContext,
     fitted_parameters: &janiform_calibration_artifacts::JointRefinementStageFittedParameters,
     tier_inputs: &JointRefinementOptionTierPricingInputs,
+    include_node_price_sensitivities: bool,
     theta_warm_start_state: Option<&mut SpectralThetaWarmStartState>,
     progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
     progress_phase: Option<JointRefinementStageProgressPhase>,
@@ -703,14 +719,20 @@ fn run_option_grid_batch_pricing(
     current_restart_id: Option<&str>,
     best_restart_id: Option<&str>,
     best_weighted_objective: Option<f64>,
+    active_restart_count: Option<usize>,
+    current_evaluation_count: Option<usize>,
+    total_evaluation_budget: Option<usize>,
+    evaluation_progress_percent: Option<usize>,
 ) -> Result<VanillaOptionGridBatchPricingRunResult, String> {
     let Some(option_pricing_context) = context.option_pricing_context.as_ref() else {
         return Err("joint option pricing context is unavailable".to_string());
     };
 
     let started_at = std::time::Instant::now();
+
     let mut boundary_input = option_pricing_context.boundary_input.clone();
     boundary_input.interval_delta = tier_inputs.runtime_interval_schedule.interval_deltas_hours[0];
+
     let execution_input = VanillaOptionGridBatchPricingExecutionInput {
         request: tier_inputs.grid_batch_pricing_request.clone(),
         boundary_input,
@@ -729,8 +751,10 @@ fn run_option_grid_batch_pricing(
             include_transform_diagnostics: false,
             include_integration_quality_diagnostics: false,
             include_calibration_hooks: false,
-            include_node_price_sensitivities: false,
+            include_node_price_sensitivities,
         },
+        spectral_collocation_node_count_override: tier_inputs
+            .spectral_collocation_node_count_override,
         cpu_count: Some(option_pricing_context.cpu_count),
     };
 
@@ -749,6 +773,10 @@ fn run_option_grid_batch_pricing(
             let _ = progress_sender.send(JointRefinementStageProgressUpdate {
                 current_item_label: Some(format_option_pricing_progress_item(&event)),
                 current_restart_id: current_restart_id.map(str::to_string),
+                active_restart_count,
+                current_evaluation_count,
+                total_evaluation_budget,
+                evaluation_progress_percent,
                 best_restart_id: best_restart_id.map(str::to_string),
                 best_weighted_objective,
                 ..JointRefinementStageProgressUpdate::new(
@@ -785,6 +813,7 @@ pub(crate) fn resolve_option_surface_tier_pricing_artifact(
     tier_kind: JointRefinementOptionSurfaceTierKind,
     source_dynamics_parameter_bits: &[u64],
     pricing_parameter_bits: &[u64],
+    include_node_price_sensitivities: bool,
     theta_warm_start_state: Option<&mut SpectralThetaWarmStartState>,
     progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
     progress_phase: Option<JointRefinementStageProgressPhase>,
@@ -793,9 +822,14 @@ pub(crate) fn resolve_option_surface_tier_pricing_artifact(
     current_restart_id: Option<&str>,
     best_restart_id: Option<&str>,
     best_weighted_objective: Option<f64>,
+    active_restart_count: Option<usize>,
+    current_evaluation_count: Option<usize>,
+    total_evaluation_budget: Option<usize>,
+    evaluation_progress_percent: Option<usize>,
 ) -> Result<Arc<JointRefinementOptionTierPricingArtifact>, String> {
     let cache_key = super::JointRefinementOptionPricingCacheKey {
         tier_kind,
+        include_node_price_sensitivities,
         source_dynamics_parameter_bits: source_dynamics_parameter_bits.to_vec(),
         pricing_parameter_bits: pricing_parameter_bits.to_vec(),
     };
@@ -812,12 +846,15 @@ pub(crate) fn resolve_option_surface_tier_pricing_artifact(
     let Some(option_pricing_context) = context.option_pricing_context.as_ref() else {
         return Err("joint option pricing context is unavailable".to_string());
     };
+
     let valuation_time_utc_nanos = option_pricing_context.valuation_time_utc_nanos;
     let tier_inputs = option_pricing_context.tier_pricing_inputs.tier(tier_kind);
+
     let pricing_result = run_option_grid_batch_pricing(
         context,
         fitted_parameters,
         tier_inputs,
+        include_node_price_sensitivities,
         theta_warm_start_state,
         progress_sender,
         progress_phase,
@@ -826,6 +863,10 @@ pub(crate) fn resolve_option_surface_tier_pricing_artifact(
         current_restart_id,
         best_restart_id,
         best_weighted_objective,
+        active_restart_count,
+        current_evaluation_count,
+        total_evaluation_budget,
+        evaluation_progress_percent,
     );
 
     let resolved_artifact = pricing_result.and_then(|pricing_result| {
@@ -891,6 +932,7 @@ fn build_option_surface_tier_pricing_inputs(
     interval_factors: &[janiform_engine_pricing::VanillaOptionPricingIntervalFactors],
 ) -> Result<JointRefinementOptionTierPricingInputs, String> {
     let tier = option_surface_tier_by_kind(option_surface_tiers, tier_kind);
+
     let risk_free_rate = carry_input.discount_rate;
     let dividend_yield = carry_input.discount_rate - carry_input.carry_rate;
 
@@ -947,6 +989,7 @@ fn build_option_surface_tier_pricing_inputs(
         .iter()
         .map(|representative| representative.maturity_interval)
         .collect::<Vec<_>>();
+
     let maturity_terminal_interval_indices = tier
         .maturity_representatives
         .iter()
@@ -961,10 +1004,35 @@ fn build_option_surface_tier_pricing_inputs(
         runtime_interval_schedule: runtime_interval_schedule.clone(),
         interval_factors: interval_factors.to_vec(),
         grid_batch_pricing_request: VanillaOptionGridBatchPricingRequest { spot, grids },
+        spectral_collocation_node_count_override: reduced_tier_collocation_node_count_override(
+            option_surface_tiers,
+            tier_kind,
+        ),
         observed_nodes,
         maturity_intervals,
         maturity_terminal_interval_indices,
     })
+}
+
+fn reduced_tier_collocation_node_count_override(
+    option_surface_tiers: &crate::stages::joint_refinement::option_surface_tiering::JointRefinementOptionSurfaceTierSet,
+    tier_kind: JointRefinementOptionSurfaceTierKind,
+) -> Option<usize> {
+    reduced_tier_collocation_node_count(match tier_kind {
+        JointRefinementOptionSurfaceTierKind::Search => option_surface_tiers.search.maturity_count,
+        JointRefinementOptionSurfaceTierKind::Selection => {
+            option_surface_tiers.selection.maturity_count
+        }
+        JointRefinementOptionSurfaceTierKind::Audit => 0,
+    })
+}
+
+fn reduced_tier_collocation_node_count(retained_maturity_count: usize) -> Option<usize> {
+    if retained_maturity_count == 0 {
+        return None;
+    }
+
+    Some(retained_maturity_count.saturating_mul(2).saturating_add(1))
 }
 
 fn option_surface_tier_by_kind(
@@ -1016,9 +1084,17 @@ fn build_option_surface_tier_pricing_artifact(
     tier_inputs: &JointRefinementOptionTierPricingInputs,
 ) -> Result<JointRefinementOptionTierPricingArtifact, String> {
     let mut node_diagnostics = Vec::with_capacity(tier_inputs.observed_nodes.len());
+
     let mut maturity_bucket_residuals = BTreeMap::<String, Vec<f64>>::new();
     let mut strike_bucket_residuals = BTreeMap::<String, Vec<f64>>::new();
     let mut residuals_by_maturity = BTreeMap::<i64, OptionMaturityResidualBucket>::new();
+
+    let mut node_sensitivities: Option<Vec<JointRefinementOptionNodeResidualSensitivity>> =
+        pricing_result
+            .grids
+            .iter()
+            .any(|grid_result| grid_result.node_price_sensitivity_grid.is_some())
+            .then(Vec::new);
 
     for observed_node in &tier_inputs.observed_nodes {
         let model_price = resolve_model_option_price(
@@ -1026,8 +1102,29 @@ fn build_option_surface_tier_pricing_artifact(
             observed_node,
             "joint option pricing artifact returned a grid inconsistent with the selected option tier",
         )?;
+
         let spread_normalized_residual = (model_price - observed_node.observed_mid_price)
             / (observed_node.ask_price - observed_node.bid_price);
+
+        if node_sensitivities.is_some() {
+            match resolve_model_option_price_sensitivity(pricing_result, observed_node)? {
+                Some(model_price_sensitivity) => {
+                    if let Some(node_sensitivities) = node_sensitivities.as_mut() {
+                        node_sensitivities.push(JointRefinementOptionNodeResidualSensitivity {
+                            expiry_timestamp_utc_nanos: observed_node.expiry_timestamp_utc_nanos,
+                            maturity_weight: observed_node.maturity_weight,
+                            spread_normalized_residual,
+                            spread_normalized_residual_gradient:
+                                spread_normalized_residual_gradient(
+                                    model_price_sensitivity,
+                                    observed_node,
+                                ),
+                        });
+                    }
+                }
+                None => node_sensitivities = None,
+            }
+        }
 
         node_diagnostics.push(JointRefinementStageOptionNodeDiagnostic {
             quote_timestamp_utc_nanos: observed_node.quote_timestamp_utc_nanos,
@@ -1067,6 +1164,7 @@ fn build_option_surface_tier_pricing_artifact(
                         .to_string(),
                 );
             }
+
             bucket.residuals.push(spread_normalized_residual);
         } else {
             residuals_by_maturity.insert(
@@ -1085,9 +1183,11 @@ fn build_option_surface_tier_pricing_artifact(
 
     for (expiry_timestamp_utc_nanos, bucket) in residuals_by_maturity {
         let maturity_fit = root_mean_square(bucket.residuals.as_slice());
+
         weighted_squared_maturity_fit_sum +=
             bucket.maturity_weight as f64 * maturity_fit * maturity_fit;
         total_maturity_weight += bucket.maturity_weight;
+
         maturity_scores.push(JointRefinementOptionMaturityScoreArtifact {
             expiry_timestamp_utc_nanos,
             maturity_weight: bucket.maturity_weight,
@@ -1105,19 +1205,37 @@ fn build_option_surface_tier_pricing_artifact(
             / total_maturity_weight as f64)
             .sqrt(),
     };
+
     let aggregate_diagnostics =
         build_option_aggregate_diagnostics(maturity_bucket_residuals, strike_bucket_residuals);
+
     let tier_kind = cache_key.tier_kind;
+
+    let score_gradient_artifact = node_sensitivities
+        .as_ref()
+        .filter(|node_sensitivities| !node_sensitivities.is_empty())
+        .and_then(|node_sensitivities| {
+            differentiate_option_tier_root_mean_square_score(node_sensitivities.as_slice()).ok()
+        });
+
+    let reduced_model_artifact = node_sensitivities
+        .as_ref()
+        .filter(|node_sensitivities| !node_sensitivities.is_empty())
+        .and_then(|node_sensitivities| {
+            build_option_reduced_model_artifact(node_sensitivities.as_slice()).ok()
+        });
 
     Ok(JointRefinementOptionTierPricingArtifact {
         cache_key,
         tier_kind,
         runtime_interval_schedule: tier_inputs.runtime_interval_schedule.clone(),
+        spectral_collocation_node_count: tier_inputs.spectral_collocation_node_count_override,
         score,
         maturity_scores,
         node_diagnostics,
         aggregate_diagnostics,
-        score_gradient_artifact: None,
+        score_gradient_artifact,
+        reduced_model_artifact,
         maturity_intervals: tier_inputs.maturity_intervals.clone(),
         maturity_terminal_interval_indices: tier_inputs.maturity_terminal_interval_indices.clone(),
     })
@@ -1125,12 +1243,14 @@ fn build_option_surface_tier_pricing_artifact(
 
 pub(crate) fn build_option_calibration_diagnostics(
     context: &JointRefinementContext,
+    selected_search_tier_pricing_artifact: Option<&JointRefinementOptionTierPricingArtifact>,
     selected_selection_tier_pricing_artifact: Option<&JointRefinementOptionTierPricingArtifact>,
     audit_tier_pricing_artifact: Option<&JointRefinementOptionTierPricingArtifact>,
 ) -> Result<Option<JointRefinementStageOptionCalibrationDiagnostics>, String> {
     let Some(option_pricing_context) = context.option_pricing_context.as_ref() else {
         return Ok(None);
     };
+
     debug_assert_eq!(
         option_pricing_context
             .option_surface_tiers
@@ -1138,6 +1258,7 @@ pub(crate) fn build_option_calibration_diagnostics(
             .maturity_count,
         option_pricing_context.snapshot_maturity_intervals.len()
     );
+
     debug_assert_eq!(
         option_pricing_context
             .snapshot_maturity_terminal_interval_indices
@@ -1149,15 +1270,52 @@ pub(crate) fn build_option_calibration_diagnostics(
         "joint option calibration diagnostics require the selected selection-tier pricing artifact"
             .to_string()
     })?;
+
     validate_option_tier_pricing_artifact(
         selection_artifact,
         JointRefinementOptionSurfaceTierKind::Selection,
     )?;
+
     if let Some(audit_artifact) = audit_tier_pricing_artifact {
         validate_option_tier_pricing_artifact(
             audit_artifact,
             JointRefinementOptionSurfaceTierKind::Audit,
         )?;
+    }
+
+    let reference_oracle_call_wall_clock_millis = context
+        .profiling_state
+        .mean_option_pricing_run_wall_clock_millis();
+
+    let mut reduced_model = selection_artifact
+        .reduced_model_artifact
+        .as_ref()
+        .map(|reduced_model_artifact| {
+            reduced_model_diagnostics_from_artifact(
+                reduced_model_artifact,
+                option_pricing_block_evaluation_budget(
+                    context.active_parameter_layout.nig_block.len(),
+                ),
+            )
+        })
+        .or_else(|| {
+            selected_search_tier_pricing_artifact
+                .and_then(|artifact| artifact.reduced_model_artifact.as_ref())
+                .map(|reduced_model_artifact| {
+                    reduced_model_diagnostics_from_artifact(
+                        reduced_model_artifact,
+                        option_pricing_block_evaluation_budget(
+                            context.active_parameter_layout.nig_block.len(),
+                        ),
+                    )
+                })
+        });
+
+    if let Some(reduced_model_diagnostics) = reduced_model.as_mut() {
+        populate_reduced_model_runtime_estimates(
+            reduced_model_diagnostics,
+            reference_oracle_call_wall_clock_millis,
+        );
     }
 
     Ok(Some(JointRefinementStageOptionCalibrationDiagnostics {
@@ -1185,6 +1343,7 @@ pub(crate) fn build_option_calibration_diagnostics(
         audit_tier_pricing: audit_tier_pricing_artifact.map(|audit_artifact| {
             build_option_tier_pricing_diagnostics(option_pricing_context, audit_artifact)
         }),
+        reduced_model,
     }))
 }
 
@@ -1199,6 +1358,7 @@ fn validate_option_tier_pricing_artifact(
             "joint option calibration diagnostics require a `{expected_tier_kind:?}` pricing artifact"
         ));
     }
+
     for maturity_score in &artifact.maturity_scores {
         if maturity_score.maturity_weight == 0
             || maturity_score.quote_count == 0
@@ -1211,6 +1371,7 @@ fn validate_option_tier_pricing_artifact(
                     .to_string(),
             );
         }
+
         if !artifact.node_diagnostics.iter().any(|node| {
             node.expiry_timestamp_utc_nanos == maturity_score.expiry_timestamp_utc_nanos
         }) {
@@ -1271,6 +1432,7 @@ fn build_option_tier_pricing_diagnostics(
         snapshot_metadata: JointRefinementStageOptionSnapshotMetadata {
             valuation_time_utc_nanos: option_pricing_context.valuation_time_utc_nanos,
             node_count: artifact.node_diagnostics.len(),
+            spectral_collocation_node_count: artifact.spectral_collocation_node_count,
             pricing_interval_schedule: artifact.runtime_interval_schedule.clone(),
             maturity_intervals: artifact.maturity_intervals.clone(),
             maturity_terminal_interval_indices: artifact.maturity_terminal_interval_indices.clone(),
@@ -1312,29 +1474,24 @@ fn format_option_pricing_progress_item(event: &PricingProgressEvent) -> String {
         PricingProgressPhase::MaturityProgress => {
             let mut detail =
                 format_progress_counts("maturity", event.total_units, event.current_maturity_index);
+
             if let Some(total_maturities) = event.total_maturities {
                 detail.push_str(&format!(" of {total_maturities}"));
             }
+
             detail
         }
         PricingProgressPhase::IntervalProgress => {
             format_progress_counts("interval", event.total_units, event.current_interval_index)
         }
         PricingProgressPhase::TransitionRowProgress => {
-            let total_rows = event.total_transition_rows.unwrap_or(event.total_units);
             let mut detail = match event.total_intervals {
                 Some(total_intervals) => format!(
-                    "interval {}/{} transition_rows {}/{}",
+                    "interval {}/{}",
                     display_position(event.current_interval_index, event.completed_units),
                     total_intervals,
-                    event.completed_units.min(total_rows),
-                    total_rows
                 ),
-                None => format!(
-                    "transition_rows {}/{}",
-                    event.completed_units.min(total_rows),
-                    total_rows
-                ),
+                None => "interval".to_string(),
             };
 
             if let (
@@ -1399,7 +1556,9 @@ fn format_option_pricing_progress_item(event: &PricingProgressEvent) -> String {
         PricingProgressPhase::StrikePricingProgress => {
             let strike_index = display_position(event.current_strike_index, event.completed_units);
             let total_strikes = event.total_strikes.unwrap_or(event.total_units);
+
             let mut detail = format!("strike {strike_index}/{total_strikes}");
+
             if let Some(total_maturities) = event.total_maturities {
                 detail.push_str(&format!(
                     " maturity {}/{}",
@@ -1407,6 +1566,7 @@ fn format_option_pricing_progress_item(event: &PricingProgressEvent) -> String {
                     total_maturities
                 ));
             }
+
             detail
         }
     }
@@ -1526,6 +1686,7 @@ fn resolve_model_option_price(
         .and_then(|stage| *stage)
         .map(|stage| format!("{stage:?}"))
         .unwrap_or_else(|| "unknown".to_string());
+
     let failure_reason = grid
         .pricing_failure_reason_grid
         .get(observed_node.location.maturity_index)
@@ -1537,6 +1698,42 @@ fn resolve_model_option_price(
     Err(format!(
         "{error_message}: node pricing failed at stage={failure_stage} reason={failure_reason}"
     ))
+}
+
+fn resolve_model_option_price_sensitivity(
+    pricing_result: &VanillaOptionGridBatchPricingRunResult,
+    observed_node: &JointRefinementOptionNodeDefinition,
+) -> Result<Option<VanillaOptionNodePriceSensitivity>, String> {
+    let Some(grid) = pricing_result.grids.get(observed_node.location.grid_index) else {
+        return Err(
+            "joint option pricing artifact returned a sensitivity grid inconsistent with the selected option tier"
+                .to_string(),
+        );
+    };
+
+    let Some(node_price_sensitivity_grid) = grid.node_price_sensitivity_grid.as_ref() else {
+        return Ok(None);
+    };
+
+    Ok(node_price_sensitivity_grid
+        .get(observed_node.location.maturity_index)
+        .and_then(|row| row.get(observed_node.location.strike_index))
+        .copied()
+        .flatten())
+}
+
+fn spread_normalized_residual_gradient(
+    model_price_sensitivity: VanillaOptionNodePriceSensitivity,
+    observed_node: &JointRefinementOptionNodeDefinition,
+) -> Vec<f64> {
+    let spread_inverse = 1.0 / (observed_node.ask_price - observed_node.bid_price);
+
+    vec![
+        model_price_sensitivity.alpha_derivative * spread_inverse,
+        model_price_sensitivity.beta_0_derivative * spread_inverse,
+        model_price_sensitivity.delta_derivative * spread_inverse,
+        model_price_sensitivity.delta_beta_derivative * spread_inverse,
+    ]
 }
 
 #[cfg(test)]
@@ -1570,7 +1767,8 @@ mod tests {
         build_option_surface_tier_pricing_artifact, build_surprise_multipliers_for_interval_grid,
         derive_pricing_interval_schedule, estimate_option_pricing_current_state,
         format_option_pricing_progress_item, pricing_nig_configuration,
-        resolve_option_runtime_interval_schedule, validate_option_spot,
+        reduced_tier_collocation_node_count, resolve_option_runtime_interval_schedule,
+        validate_option_spot,
     };
     use crate::adapters::load_hourly_factor_contract_for_calibration;
     use crate::stages::hawkes::HawkesStageFittedPayload;
@@ -1670,6 +1868,7 @@ mod tests {
     ) -> JointRefinementStageOptionPricingInput {
         let mut option_pricing_input = sample_option_pricing_input();
         option_pricing_input.pricing_interval_schedule_policy = pricing_interval_schedule_policy;
+
         option_pricing_input
     }
 
@@ -1684,8 +1883,6 @@ mod tests {
             total_maturities: None,
             current_interval_index: Some(424),
             total_intervals: Some(1890),
-            current_transition_row_index: Some(0),
-            total_transition_rows: Some(65),
             current_strike_index: None,
             total_strikes: None,
             seed_exact_transition_row_count: None,
@@ -1702,8 +1899,15 @@ mod tests {
 
         assert_eq!(
             format_option_pricing_progress_item(&event),
-            "interval 425/1890 transition_rows 0/65"
+            "interval 425/1890"
         );
+    }
+
+    #[test]
+    fn reduced_tier_collocation_node_count_tracks_retained_maturity_resolution() {
+        assert_eq!(reduced_tier_collocation_node_count(0), None);
+        assert_eq!(reduced_tier_collocation_node_count(1), Some(3));
+        assert_eq!(reduced_tier_collocation_node_count(5), Some(11));
     }
 
     fn sample_option_runtime_interval_schedule(
@@ -1727,13 +1931,16 @@ mod tests {
         open_hour_flags: &[bool],
     ) -> HourlyFactorContractOutput {
         let interval_count = open_hour_flags.len();
+
         let interval_start_utc_nanos = (0..interval_count)
             .map(|interval_index| request_start_utc_nanos + interval_index as i64 * ONE_HOUR_NANOS)
             .collect::<Vec<_>>();
+
         let interval_end_utc_nanos = interval_start_utc_nanos
             .iter()
             .map(|interval_start_utc_nanos| interval_start_utc_nanos + ONE_HOUR_NANOS)
             .collect::<Vec<_>>();
+
         let last_interval_end_utc_nanos = interval_end_utc_nanos[interval_end_utc_nanos.len() - 1];
 
         HourlyFactorContractOutput {
@@ -1780,6 +1987,7 @@ mod tests {
         let option_pricing_input = sample_option_pricing_input_with_schedule_policy(
             PricingIntervalSchedulePolicy::AutoActivityCompressed,
         );
+
         let hourly_factor_contract = build_test_hourly_factor_contract(
             option_pricing_input.valuation_time_utc_nanos,
             &[true, true, true],
@@ -1791,6 +1999,7 @@ mod tests {
             false,
         )
         .expect("compressed runtime schedule should resolve");
+
         let exact_schedule = resolve_option_runtime_interval_schedule(
             &option_pricing_input,
             &hourly_factor_contract,
@@ -1873,11 +2082,14 @@ mod tests {
     fn option_tier_pricing_artifact_preserves_node_and_maturity_scores() {
         let runtime_interval_schedule =
             sample_option_runtime_interval_schedule(&sample_option_pricing_input());
+
         let cache_key = JointRefinementOptionPricingCacheKey {
             tier_kind: JointRefinementOptionSurfaceTierKind::Selection,
+            include_node_price_sensitivities: false,
             source_dynamics_parameter_bits: vec![1, 2, 3],
             pricing_parameter_bits: vec![4, 5],
         };
+
         let tier_inputs = JointRefinementOptionTierPricingInputs {
             runtime_interval_schedule: runtime_interval_schedule.clone(),
             interval_factors: Vec::new(),
@@ -1900,6 +2112,7 @@ mod tests {
                     },
                 ],
             },
+            spectral_collocation_node_count_override: None,
             observed_nodes: vec![
                 artifact_observed_node(
                     ONE_HOUR_NANOS,
@@ -1938,6 +2151,7 @@ mod tests {
             maturity_intervals: vec![1.0, 2.0],
             maturity_terminal_interval_indices: vec![0, 1],
         };
+
         let pricing_result = VanillaOptionGridBatchPricingRunResult {
             spot: 100.0,
             grids: vec![
@@ -1968,6 +2182,7 @@ mod tests {
         assert_eq!(artifact.node_diagnostics.len(), 3);
         assert_eq!(artifact.node_diagnostics[0].model_price, 1.4);
         assert_eq!(artifact.node_diagnostics[1].spread_normalized_residual, 1.0);
+
         let third_observed_node = &tier_inputs.observed_nodes[2];
         assert_eq!(
             artifact.node_diagnostics[2].spread_normalized_residual,
@@ -2012,6 +2227,7 @@ mod tests {
     fn option_pricing_cache_key_separates_tier_dynamics_and_pricing_bits() {
         let base_key = JointRefinementOptionPricingCacheKey {
             tier_kind: JointRefinementOptionSurfaceTierKind::Search,
+            include_node_price_sensitivities: false,
             source_dynamics_parameter_bits: vec![1, 2],
             pricing_parameter_bits: vec![3, 4],
         };
@@ -2020,6 +2236,7 @@ mod tests {
             base_key,
             JointRefinementOptionPricingCacheKey {
                 tier_kind: JointRefinementOptionSurfaceTierKind::Selection,
+                include_node_price_sensitivities: false,
                 source_dynamics_parameter_bits: vec![1, 2],
                 pricing_parameter_bits: vec![3, 4],
             }
@@ -2028,6 +2245,7 @@ mod tests {
             base_key,
             JointRefinementOptionPricingCacheKey {
                 tier_kind: JointRefinementOptionSurfaceTierKind::Search,
+                include_node_price_sensitivities: false,
                 source_dynamics_parameter_bits: vec![1, 5],
                 pricing_parameter_bits: vec![3, 4],
             }
@@ -2036,6 +2254,7 @@ mod tests {
             base_key,
             JointRefinementOptionPricingCacheKey {
                 tier_kind: JointRefinementOptionSurfaceTierKind::Search,
+                include_node_price_sensitivities: false,
                 source_dynamics_parameter_bits: vec![1, 2],
                 pricing_parameter_bits: vec![3, 6],
             }
@@ -2078,6 +2297,7 @@ mod tests {
         prices: Vec<f64>,
     ) -> VanillaOptionGridPricingResult {
         let strike_count = strikes.len();
+
         VanillaOptionGridPricingResult {
             payoff_type,
             risk_free_rate: 0.01,
@@ -2214,6 +2434,7 @@ mod tests {
         let prepared_payload_path = workspace_root.join(
             "scratch/prepared_joint_failure_debug/es_continuous_20260411T205815Z.prepared_calibration_payload.json",
         );
+
         let stage_payloads_path =
             workspace_root.join("scratch/joint_failure_stage_report_payloads.json");
 
@@ -2222,6 +2443,7 @@ mod tests {
                 .expect("prepared payload fixture should load"),
         )
         .expect("prepared payload fixture should deserialize");
+
         let stage_payloads: Vec<Value> = serde_json::from_str(
             &fs::read_to_string(stage_payloads_path).expect("stage payload fixture should load"),
         )
@@ -2254,6 +2476,7 @@ mod tests {
                 .clone(),
         )
         .expect("hawkes fitted parameters should deserialize");
+
         let return_components_fitted_parameters: ReturnComponentsStageFittedParameters =
             serde_json::from_value(
                 stage_payloads
@@ -2264,6 +2487,7 @@ mod tests {
                     .clone(),
             )
             .expect("return-components fitted parameters should deserialize");
+
         let mean_reversion_fitted_parameters = serde_json::from_value(
             stage_payloads
                 .iter()
@@ -2273,6 +2497,7 @@ mod tests {
                 .clone(),
         )
         .expect("mean-reversion fitted parameters should deserialize");
+
         let mean_reversion_diagnostics: MeanReversionStageDiagnostics = serde_json::from_value(
             stage_payloads
                 .iter()
@@ -2292,6 +2517,7 @@ mod tests {
             normalized_combined_factor_by_event: seasonality_fixture
                 .normalized_combined_factor_by_event,
         };
+
         let option_pricing_input = JointRefinementStageOptionPricingInput {
             valuation_time_utc_nanos: option_pricing_fixture.valuation_time_utc_nanos,
             pricing_interval_schedule_policy: option_pricing_fixture
@@ -2342,6 +2568,7 @@ mod tests {
                 })
                 .collect(),
         };
+
         let hawkes_payload = HawkesStageFittedPayload {
             schema_version: "debug_fixture",
             selected_candidate_id: "debug_fixture".to_string(),
@@ -2351,6 +2578,7 @@ mod tests {
             seasonality_dataset_id: None,
             seasonality_artifact_reference: None,
         };
+
         let return_components_payload = ReturnComponentsStageFittedPayload {
             schema_version: "debug_fixture",
             selected_candidate_id: "debug_fixture".to_string(),
@@ -2371,6 +2599,7 @@ mod tests {
             activity_selected_hawkes_candidate_id: None,
             activity_artifact_reference: None,
         };
+
         let mean_reversion_payload = MeanReversionStageFittedPayload {
             schema_version: "debug_fixture",
             fitted_parameters: mean_reversion_fitted_parameters,
@@ -2391,22 +2620,27 @@ mod tests {
         )
         .expect("runtime interval schedule should be valid")
         .schedule;
+
         let current_state_estimation_output = estimate_option_pricing_current_state(
             &option_pricing_input,
             &hawkes_payload,
             &mean_reversion_payload,
         )
         .expect("current-state estimation should succeed");
+
         let hourly_coverage_start_utc_nanos = janiform_foundations::time::floor_to_hour_utc_nanos(
             option_pricing_input.valuation_time_utc_nanos,
         );
+
         let hourly_coverage_end_utc_nanos = janiform_foundations::time::ceil_to_hour_utc_nanos(
             *horizon
                 .interval_end_timestamps_utc_nanos
                 .last()
                 .expect("schedule should contain intervals"),
         );
+
         let calendar_registry = debug_xcme_calendar_registry();
+
         let runtime_hourly_seasonality_factors =
             build_runtime_hourly_seasonality_factors_from_components(
                 &calendar_registry,
@@ -2420,9 +2654,11 @@ mod tests {
                 ONE_HOUR_NANOS,
             )
             .expect("runtime seasonality materialization should succeed");
+
         let hourly_coverage_interval_count = ((hourly_coverage_end_utc_nanos
             - hourly_coverage_start_utc_nanos)
             / ONE_HOUR_NANOS) as usize;
+
         let surprise_deterministic_time_multiplier_by_interval_index =
             build_surprise_multipliers_for_interval_grid(
                 chrono::DateTime::<chrono::Utc>::from_timestamp_nanos(
@@ -2436,6 +2672,7 @@ mod tests {
                     .weekly_hour_utc_multipliers
                     .as_slice(),
             );
+
         let hourly_factor_contract = load_hourly_factor_contract_for_calibration(
             &calendar_registry,
             HourlyFactorProviderRequest {
@@ -2472,15 +2709,19 @@ mod tests {
             },
         )
         .expect("hourly factor contract should materialize");
+
         let interval_factors =
             materialize_schedule_interval_factors(&horizon, &hourly_factor_contract)
                 .expect("interval factors should materialize");
+
         let zero_seasonality_interval_count = interval_factors
             .iter()
             .filter(|factors| factors.s_h == 0.0)
             .count();
+
         let option_spot =
             validate_option_spot(&option_pricing_input).expect("option spot should validate");
+
         let boundary_input: AnchoredVanillaOptionPricingBoundaryInput =
             build_option_boundary_input(
                 &mean_reversion_payload,
@@ -2488,10 +2729,12 @@ mod tests {
                 &horizon,
             )
             .expect("boundary input should build");
+
         let local_measure_uses_nested = boundary_input
             .local_martingale_deviation_adjustment()
             .expect("boundary input should yield local martingale deviation")
             == 0.0;
+
         let (grid_batch_pricing_request, _, _, _) =
             build_option_grid_batch_pricing_request(option_spot, &option_pricing_input, &horizon)
                 .expect("grid batch pricing request should build");
@@ -2521,6 +2764,7 @@ mod tests {
                 include_calibration_hooks: false,
                 include_node_price_sensitivities: false,
             },
+            spectral_collocation_node_count_override: None,
             cpu_count: Some(1),
         };
 
@@ -2531,11 +2775,13 @@ mod tests {
             .gamma_severity_marks
             .expected_severity_mark()
             .expect("expected severity mark should exist");
+
         let known_activity_coupling_scale = execution_input
             .model_parameters
             .news_process_configuration
             .known_component_mark_scales
             .activity_coupling_scale;
+
         let surprise_activity_coupling_scale = execution_input
             .model_parameters
             .news_process_configuration
@@ -2555,14 +2801,17 @@ mod tests {
                 .runtime_interval_schedule
                 .interval_delta_hours(interval_index)
                 .expect("runtime interval delta should exist");
+
             let expected_known_loading = interval_factor.nu_h_known
                 * interval_delta
                 * known_activity_coupling_scale
                 * expected_severity_mark;
+
             let expected_surprise_loading = interval_factor.nu_h_surprise
                 * interval_delta
                 * surprise_activity_coupling_scale
                 * expected_severity_mark;
+
             let total_expected_loading = expected_known_loading + expected_surprise_loading;
 
             if !expected_known_loading.is_finite()
@@ -2625,6 +2874,7 @@ mod tests {
                 interval_delta: execution_input.interval_delta,
                 interval_factors: execution_input.interval_factors.clone(),
                 optional_output_selection: execution_input.optional_output_selection,
+                spectral_collocation_node_count_override: None,
                 cpu_count: Some(1),
             };
 
@@ -2636,6 +2886,7 @@ mod tests {
                 .grids
                 .first()
                 .expect("single-node run should return one grid");
+
             let price = grid
                 .price_grid
                 .first()
