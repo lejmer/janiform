@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale.v1",
-  "approved_snapshot_sha256": "5ae2066822598ee94ef8eaa5045ce9363ff185372e4e0e0dfb6493b210e3085f",
+  "approved_snapshot_sha256": "697ef5fad8f9669595d112dd04ab23697c2fcf2cc19451513257e87b37e23c4f",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -1138,6 +1138,20 @@
         "janiform.calibration.fit.estimator",
         "janiform.calibration.market_data",
         "janiform.calibration.market_data.request"
+      ]
+    },
+    {
+      "approved_on": "2026-04-21",
+      "docs_updated": [],
+      "rationale": "The high-level calibration API now exposes resume settings and pricing-interval schedule policy on JaniformEstimator, simulation results use the shared SimulationKind discriminator, and fitted-model pricing adds public observed option-surface result types under janiform.calibration.fit.pricing and janiform.calibration.fit.pricing.market_surface.",
+      "snapshot_sha256": "697ef5fad8f9669595d112dd04ab23697c2fcf2cc19451513257e87b37e23c4f",
+      "summary": "Approve the resume-aware high-level calibration surface and public observed option-surface pricing results.",
+      "updated_surfaces": [
+        "janiform.calibration.fit",
+        "janiform.calibration.fit.estimator",
+        "janiform.calibration.fit.model",
+        "janiform.calibration.fit.pricing",
+        "janiform.calibration.fit.pricing.market_surface"
       ]
     }
   ],

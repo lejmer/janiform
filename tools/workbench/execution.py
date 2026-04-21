@@ -18,8 +18,8 @@ from janiform.calibration.fit._preparation.contracts import PreparedFitWorkflow
 from janiform.calibration.fit._runtime.metadata import (
     build_model_metadata,
     extract_model_parameters,
-    raw_stage_report_payloads,
 )
+from janiform.calibration.fit._runtime.stage_reports import raw_stage_report_payloads
 from janiform.calibration.fit.estimator import JaniformEstimator
 from janiform.calibration.fit.model import JaniformModel
 from janiform.calibration.fit.report import JaniformFitReport
