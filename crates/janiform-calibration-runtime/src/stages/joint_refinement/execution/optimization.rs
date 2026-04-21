@@ -701,10 +701,35 @@ fn restart_cycle_evaluation_budget(
     .into_iter()
     .filter(|block_indices| !block_indices.is_empty())
     .map(|block_indices| {
-        joint_refinement_restart_block_powell_settings(solver_settings, block_indices.len())
-            .evaluation_budget
+        restart_block_progress_evaluation_budget(solver_settings, block_indices.len())
     })
     .sum::<usize>()
+}
+
+fn restart_block_progress_evaluation_budget(
+    solver_settings: &CalibrationOptimizerSettings,
+    active_block_dimension: usize,
+) -> usize {
+    if active_block_dimension == 0 {
+        return 0;
+    }
+
+    let block_settings =
+        joint_refinement_restart_block_powell_settings(solver_settings, active_block_dimension);
+
+    debug_assert_eq!(block_settings.max_cycle_count, 1);
+
+    // The restart progress counter increments on every objective callback. Under the
+    // current one-cycle Powell configuration, the solver can consume the full block
+    // budget across the coordinate directions before it checks the budget guard. Each
+    // directional line search also probes the incumbent point once outside the
+    // optimizer's internal `evaluation_count`, so the display budget must include
+    // those bookkeeping callbacks to keep the terminal progress panel consistent.
+    1usize.saturating_add(
+        active_block_dimension.saturating_mul(
+            block_settings.line_search_evaluation_cap.saturating_add(1),
+        ),
+    )
 }
 
 fn emit_joint_refinement_progress(
@@ -962,7 +987,12 @@ impl RestartProgressCounters {
 mod tests {
     use std::sync::mpsc;
 
-    use super::{RestartCandidateProgress, RestartProgressCounters};
+    use janiform_calibration_artifacts::CalibrationOptimizerSettings;
+
+    use super::{
+        RestartCandidateProgress, RestartProgressCounters,
+        restart_block_progress_evaluation_budget,
+    };
 
     #[test]
     fn running_restart_evaluation_progress_is_capped_below_completion() {
@@ -1028,5 +1058,16 @@ mod tests {
             Some("halton_01")
         );
         assert_eq!(progress_update.best_weighted_objective, Some(4.0));
+    }
+
+    #[test]
+    fn restart_block_progress_budget_accounts_for_powell_callback_count() {
+        let solver_settings =
+            CalibrationOptimizerSettings::try_new("joint-test", 256, 4, 1.0e-6, 1.0e-6, 10.0)
+                .expect("solver settings should validate");
+
+        assert_eq!(restart_block_progress_evaluation_budget(&solver_settings, 4), 25);
+        assert_eq!(restart_block_progress_evaluation_budget(&solver_settings, 1), 4);
+        assert_eq!(restart_block_progress_evaluation_budget(&solver_settings, 0), 0);
     }
 }
