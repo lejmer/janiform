@@ -231,5 +231,175 @@ def test_workbench_loader_reads_fit_artifact_directory(tmp_path: Path) -> None:
     assert artifacts.selected_candidate_id == "candidate-003"
 
 
+def test_workbench_loader_reads_disk_fit_report_from_run_directory(tmp_path: Path) -> None:
+    _write_disk_artifact_store(
+        tmp_path,
+        run_id="run-005",
+        selected_candidate_id="candidate-005",
+    )
+    _write_json(
+        tmp_path / "fit_report.json",
+        {
+            "run_id": "run-005",
+            "staged_response": {
+                "run_id": "run-005",
+                "status": "success",
+                "execution_mode": "disk",
+                "diagnostic_artifact_references": [
+                    {
+                        "artifact_family": "selection_rationale",
+                        "relative_path": "diagnostics/selection_rationale.json",
+                    }
+                ],
+            },
+        },
+    )
+
+    artifacts = load_workbench_artifacts(tmp_path)
+
+    assert artifacts.source_path == tmp_path
+    assert artifacts.fit_report_payload is not None
+    assert artifacts.metadata["run_id"] == "run-005"
+    assert artifacts.metadata["execution_mode"] == "disk"
+    assert artifacts.selected_candidate_id == "candidate-005"
+
+
+def test_workbench_loader_reads_disk_fit_report_document(tmp_path: Path) -> None:
+    _write_disk_artifact_store(
+        tmp_path,
+        run_id="run-006",
+        selected_candidate_id="candidate-006",
+    )
+    report_path = tmp_path / "fit_report.json"
+    _write_json(
+        report_path,
+        {
+            "run_id": "run-006",
+            "staged_response": {
+                "run_id": "run-006",
+                "status": "success",
+                "execution_mode": "disk",
+                "diagnostic_artifact_references": [
+                    {
+                        "artifact_family": "selection_rationale",
+                        "relative_path": "diagnostics/selection_rationale.json",
+                    }
+                ],
+            },
+        },
+    )
+
+    artifacts = load_workbench_artifacts(report_path)
+
+    assert artifacts.source_path == report_path
+    assert artifacts.source_kind == "json_document"
+    assert artifacts.fit_report_payload is not None
+    assert artifacts.metadata["run_id"] == "run-006"
+    assert artifacts.metadata["execution_mode"] == "disk"
+    assert artifacts.selected_candidate_id == "candidate-006"
+
+
+def test_workbench_loader_reads_disk_artifact_store_run_directory(tmp_path: Path) -> None:
+    run_directory = tmp_path / "run-004"
+    _write_disk_artifact_store(
+        run_directory,
+        run_id="run-004",
+        selected_candidate_id="candidate-004",
+    )
+
+    artifacts = load_workbench_artifacts(run_directory)
+
+    assert artifacts.source_path == run_directory
+    assert artifacts.source_kind == "run_directory"
+    assert artifacts.fit_report_payload is None
+    assert artifacts.metadata["run_directory"] == str(run_directory)
+    assert artifacts.metadata["run_id"] == "run-004"
+    assert artifacts.metadata["execution_mode"] == "disk"
+    assert artifacts.selected_candidate_id == "candidate-004"
+
+
 def _write_json(path: Path, payload: dict[str, object]) -> None:
     path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+
+
+def _write_disk_artifact_store(
+    run_directory: Path,
+    *,
+    run_id: str,
+    selected_candidate_id: str,
+) -> None:
+    diagnostics_directory = run_directory / "artifacts" / "runs" / run_id / "diagnostics"
+    diagnostics_directory.mkdir(parents=True)
+
+    _write_json(
+        run_directory / "artifacts" / "runs" / run_id / "artifact_manifest.json",
+        {
+            "schema_version": "calibration.artifact_registry.manifest.v1",
+            "run_id": run_id,
+            "execution_mode": "disk",
+            "index_metadata": {
+                "exchange_code": "XCME",
+            },
+        },
+    )
+    _write_json(
+        diagnostics_directory / "observed_targets.json",
+        {
+            "schema_version": "calibration.diagnostics.observed_targets.v1",
+            "target_builder_version": "test",
+            "targets": [],
+        },
+    )
+    _write_json(
+        diagnostics_directory / "candidate_frontier.json",
+        {
+            "schema_version": "calibration.diagnostics.candidate_frontier.v1",
+            "frontier_entries": [],
+        },
+    )
+    _write_json(
+        diagnostics_directory / "coarse_tick_consistency.json",
+        {
+            "schema_version": "calibration.diagnostics.coarse_tick_consistency.v1",
+            "metrics": [],
+        },
+    )
+    _write_json(
+        diagnostics_directory / "selection_rationale.json",
+        {
+            "schema_version": "calibration.diagnostics.selection_rationale.v1",
+            "decision": {
+                "selection_stage": "joint_refinement",
+                "selected_candidate_id": selected_candidate_id,
+                "selection_policy": "test",
+                "validity_screened_candidate_count": 0,
+                "admissible_candidate_count": 0,
+                "pareto_frontier_count": 0,
+                "tie_break_candidate_count": 0,
+                "decisive_metric_ids": [],
+                "rationale": "test",
+            },
+        },
+    )
+    _write_json(
+        diagnostics_directory / "simulation_summary.json",
+        {
+            "schema_version": "calibration.diagnostics.simulation_summary.v1",
+            "summaries": [],
+        },
+    )
+    _write_json(
+        diagnostics_directory / "search_surface_manifest.json",
+        {
+            "schema_version": "calibration.diagnostics.search_surface_manifest.v1",
+            "surfaces": [],
+        },
+    )
+    _write_json(
+        diagnostics_directory / "runtime_profile.json",
+        {
+            "schema_version": "calibration.diagnostics.runtime_profile.v1",
+            "cpu_count": 24,
+            "entries": [],
+        },
+    )

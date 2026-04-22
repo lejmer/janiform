@@ -237,10 +237,7 @@ def build_model_metadata(
         },
         "diagnostic_artifacts": {
             "artifact_bundle_available": staged_response.diagnostic_artifact_bundle is not None,
-            "artifact_families": [
-                reference.artifact_family
-                for reference in staged_response.diagnostic_artifact_references
-            ],
+            "artifact_families": diagnostic_artifact_families(staged_response),
         },
         "input_inference": input_inference,
         "diagnostics": [
@@ -253,6 +250,16 @@ def build_model_metadata(
             for diagnostic in resolved_configuration.diagnostics
         ],
     }
+
+
+def diagnostic_artifact_families(staged_response: StagedCalibrationResponse) -> list[str]:
+    artifact_families: list[str] = []
+    for reference in staged_response.diagnostic_artifact_references:
+        artifact_family = reference.get("artifact_family")
+        if isinstance(artifact_family, str):
+            artifact_families.append(artifact_family)
+
+    return artifact_families
 
 
 def selected_candidate_ids(stage_report_payloads: tuple[dict[str, Any], ...]) -> dict[str, str]:

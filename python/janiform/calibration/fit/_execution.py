@@ -8,7 +8,7 @@ from io import StringIO
 from pathlib import Path
 from typing import Any, Optional, Union
 
-from ..._workflow_outputs import write_fit_artifacts
+from ..._workflow_outputs import write_fit_artifacts, write_fit_report_artifacts
 from ..._workflow_progress import (
     JaniformOutputController,
     JsonLinesProgress,
@@ -29,6 +29,7 @@ from .model import JaniformModel
 from ._preparation.contracts import FitExecutionConfiguration, PreparedFitWorkflow
 from .report import JaniformFitReport
 from ._runtime.metadata import build_model_metadata, extract_model_parameters
+from ._runtime.recovery import recover_committed_disk_run_from_duplicate_manifest_failure
 from ._runtime.stage_reports import resolved_stage_report_payloads
 
 
@@ -178,6 +179,15 @@ def _run_fit_with_output_controller(
     if staged_response is None or raw_response_payload is None:
         raise RuntimeError("Fit execution did not produce a staged calibration response")
 
+    recovered_staged_output = recover_committed_disk_run_from_duplicate_manifest_failure(
+        staged_response=staged_response,
+        raw_response_payload=raw_response_payload,
+        selected_stage_kinds=prepared_workflow.prepared.staged_request.selected_stages,
+        disk_checkpoint_directory=prepared_workflow.prepared.request.output_preferences.disk_checkpoint_directory,
+    )
+    if recovered_staged_output is not None:
+        staged_response, raw_response_payload = recovered_staged_output
+
     return prepared_workflow, staged_response, raw_response_payload
 
 
@@ -273,6 +283,13 @@ def _build_fit_outputs(
         staged_response=staged_response,
         stage_report_payloads=stage_report_payloads,
     )
+
+    if output_dir is not None:
+        write_fit_report_artifacts(
+            run_id=fit_report.run_id,
+            fit_report=fit_report,
+            output_dir=output_dir,
+        )
 
     if staged_response.status != CalibrationStageExecutionStatus.SUCCESS:
         return fit_report, None

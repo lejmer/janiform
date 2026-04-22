@@ -16,6 +16,7 @@ from pyarrow import parquet
 
 import janiform.calibration.fit.estimator as fit_estimator_module
 import janiform.calibration.fit.model as fit_model_module
+import janiform.calibration.fit._execution as fit_execution_module
 import janiform.calibration.fit._preparation.configuration as fit_preparation_configuration_module
 import janiform.calibration.fit._runtime.metadata as fit_runtime_metadata_module
 import janiform.calibration.fit._runtime.payloads as fit_runtime_payloads_module
@@ -60,6 +61,7 @@ from janiform.calibration.market_data import (
     CalibrationInputFileFormat,
     CalibrationMeanReversionConfiguration,
     CalibrationMarketDataNormalizationPolicy,
+    CalibrationMarketDataOutputPreferences,
     CalibrationMarketDataWorkflowScope,
     CalibrationOptionQuoteInputPolicy,
     CalibrationOptionSurfaceColumnMapping,
@@ -69,9 +71,12 @@ from janiform.calibration.market_data import (
     CalibrationTickDataColumnMapping,
     CalibrationTickPriceInputPolicy,
 )
+from janiform.calibration.market_data.contracts import CalibrationExecutionMode
 from janiform.calibration.presets import PresetCategory
 from janiform.calibration.staged import (
     CalibrationOptimizerSettings,
+    CalibrationResumeSettings,
+    CalibrationResumeSource,
     CalibrationStage,
     CalibrationStageSolverSettings,
     StagedCalibrationResponse,
@@ -1418,6 +1423,79 @@ def test_high_level_model_save_and_load_roundtrip_preserves_deterministic_metada
     assert "normalized_combined_factor_by_event" not in persisted_payload["parameters"]["seasonality"]
     assert first_path.read_text(encoding="utf-8").startswith("{\n  ")
     assert first_path.read_text(encoding="utf-8") == second_path.read_text(encoding="utf-8")
+
+
+def test_high_level_fit_records_diagnostic_artifact_families_from_staged_response_dicts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tick_data_path = tmp_path / "diagnostic-artifact-fit.csv"
+    tick_data_path.write_text(
+        "\n".join(
+            [
+                "timestamp_utc,trade_price,trade_sign",
+                "2026-02-02T14:30:00Z,100.0,buy",
+                "2026-02-02T15:00:00Z,101.0,sell",
+                "2026-02-02T20:59:00Z,102.0,buy",
+                "2026-02-03T14:30:00Z,99.0,sell",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    def successful_payload_with_diagnostics(
+        run_id: str,
+    ) -> tuple[StagedCalibrationResponse, dict[str, Any]]:
+        _, raw_response = _successful_full_model_staged_runner_payload(run_id)
+        raw_response["diagnostic_artifact_references"] = [
+            {
+                "artifact_family": "candidate_frontier",
+                "relative_path": "diagnostics/candidate_frontier.json",
+            },
+            {
+                "artifact_family": "coarse_tick_consistency",
+                "relative_path": "diagnostics/coarse_tick_consistency.json",
+            },
+        ]
+
+        return validate_staged_calibration_response(raw_response), raw_response
+
+    monkeypatch.setattr(
+        fit_estimator_module,
+        "run_prepared_staged_calibration_with_raw_payload",
+        lambda prepared_handle, **kwargs: successful_payload_with_diagnostics(
+            _prepared_runner_run_id(prepared_handle)
+        ),
+    )
+
+    estimator = JaniformEstimator(
+        workflow_scope=CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE,
+        tick_data_column_mapping=CalibrationTickDataColumnMapping(
+            timestamp_column="timestamp_utc",
+            price_column="trade_price",
+            trade_sign_column="trade_sign",
+        ),
+        normalization_policy=CalibrationMarketDataNormalizationPolicy(
+            timestamp_timezone="UTC",
+            sort_records_by_timestamp=True,
+            tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
+        ),
+        market_profile="us_equity_cash",
+    )
+
+    model = estimator.fit(
+        run_id="diagnostic-artifact-fit",
+        tick_data_path=tick_data_path,
+        tick_data_format=CalibrationInputFileFormat.CSV,
+    )
+
+    assert cast(dict[str, Any], model.metadata["diagnostic_artifacts"]) == {
+        "artifact_bundle_available": False,
+        "artifact_families": [
+            "candidate_frontier",
+            "coarse_tick_consistency",
+        ],
+    }
 
 
 def test_high_level_model_save_and_load_roundtrip_preserves_endogenous_mean_reversion_block(
@@ -4837,6 +4915,195 @@ def test_high_level_fit_with_report_returns_failed_result_without_raising(
     assert fit_result.report.success is False
 
 
+def test_high_level_fit_persists_fit_report_before_model_metadata_build(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tick_data_path = tmp_path / "ticks.csv"
+    tick_data_path.write_text(
+        "\n".join(
+            [
+                "timestamp_utc,trade_price,trade_sign",
+                "2026-02-02T14:30:00Z,100.0,buy",
+                "2026-02-02T15:00:00Z,100.5,sell",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    estimator = JaniformEstimator(
+        workflow_scope=CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE,
+        tick_data_column_mapping=CalibrationTickDataColumnMapping(
+            timestamp_column="timestamp_utc",
+            price_column="trade_price",
+            trade_sign_column="trade_sign",
+        ),
+        normalization_policy=CalibrationMarketDataNormalizationPolicy(
+            timestamp_timezone="UTC",
+            sort_records_by_timestamp=True,
+            tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
+        ),
+        market_profile="us_equity_cash",
+    )
+
+    monkeypatch.setattr(
+        fit_estimator_module,
+        "run_prepared_staged_calibration_with_raw_payload",
+        lambda prepared_handle, **kwargs: _successful_full_model_staged_runner_payload(
+            _prepared_runner_run_id(prepared_handle)
+        ),
+    )
+    monkeypatch.setattr(
+        fit_execution_module,
+        "build_model_metadata",
+        lambda **kwargs: (_ for _ in ()).throw(RuntimeError("metadata build failed")),
+    )
+
+    run_id = "high-level-fit-report-persistence"
+    with pytest.raises(RuntimeError, match="metadata build failed"):
+        estimator.fit(
+            run_id=run_id,
+            tick_data_path=tick_data_path,
+            tick_data_format=CalibrationInputFileFormat.CSV,
+            output_dir=tmp_path,
+        )
+
+    run_directory = tmp_path / run_id
+    assert (run_directory / "fit_report.json").is_file()
+    assert (run_directory / "run.json").is_file()
+    assert not (run_directory / "model.json").exists()
+
+
+def test_high_level_fit_resume_recovers_committed_disk_run_after_duplicate_manifest_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tick_data_path = tmp_path / "ticks.csv"
+    tick_data_path.write_text(
+        "\n".join(
+            [
+                "timestamp_utc,trade_price,trade_sign",
+                "2026-02-02T14:30:00Z,100.0,buy",
+                "2026-02-02T15:00:00Z,100.5,sell",
+                "2026-02-02T20:59:00Z,101.0,buy",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    checkpoint_directory = tmp_path / "checkpoints"
+    run_id = "high-level-fit-duplicate-manifest-recovery"
+    _, successful_raw_response = _successful_full_model_staged_runner_payload(run_id)
+    _write_stage_parameter_artifacts_for_stage_reports(
+        checkpoint_directory=checkpoint_directory,
+        run_id=run_id,
+        raw_stage_reports=cast(list[dict[str, Any]], successful_raw_response["stage_reports"]),
+    )
+    _write_diagnostic_artifacts_for_recovered_disk_run(
+        checkpoint_directory=checkpoint_directory,
+        run_id=run_id,
+    )
+    _write_artifact_manifest_for_recovered_disk_run(
+        checkpoint_directory=checkpoint_directory,
+        run_id=run_id,
+        selected_stage_kinds=(
+            CalibrationStage.SEASONALITY,
+            CalibrationStage.HAWKES,
+            CalibrationStage.RETURN_COMPONENTS,
+            CalibrationStage.MEAN_REVERSION,
+            CalibrationStage.JOINT_REFINEMENT,
+        ),
+    )
+
+    monkeypatch.setattr(
+        fit_estimator_module,
+        "_run_staged_calibration_with_prepared_handle_resume_and_events",
+        lambda prepared_handle, **kwargs: _duplicate_manifest_failure_staged_runner_payload(
+            _prepared_runner_run_id(prepared_handle)
+        ),
+    )
+
+    estimator = JaniformEstimator(
+        workflow_scope=CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE,
+        tick_data_column_mapping=CalibrationTickDataColumnMapping(
+            timestamp_column="timestamp_utc",
+            price_column="trade_price",
+            trade_sign_column="trade_sign",
+        ),
+        normalization_policy=CalibrationMarketDataNormalizationPolicy(
+            timestamp_timezone="UTC",
+            sort_records_by_timestamp=True,
+            tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
+        ),
+        output_preferences=CalibrationMarketDataOutputPreferences(
+            execution_mode=CalibrationExecutionMode.DISK,
+            disk_checkpoint_directory=str(checkpoint_directory),
+            emit_input_provenance_report=True,
+        ),
+        market_profile="us_equity_cash",
+    )
+
+    fit_result = estimator.fit_with_report(
+        run_id=run_id,
+        resume_settings=CalibrationResumeSettings(
+            source=CalibrationResumeSource.PERSISTED_CHECKPOINT_REFERENCE,
+            checkpoint_reference=f"checkpoint://{run_id}/last-success",
+        ),
+        tick_data_path=tick_data_path,
+        tick_data_format=CalibrationInputFileFormat.CSV,
+        output_dir=tmp_path,
+    )
+
+    run_directory = tmp_path / run_id
+
+    assert fit_result.succeeded is True
+    assert fit_result.model is not None
+    assert fit_result.report.success is True
+    assert fit_result.report.staged_response.status.value == "success"
+    assert fit_result.report.staged_response.execution_mode.value == "disk"
+    assert [stage_payload["stage_report_kind"] for stage_payload in fit_result.report.stage_report_payloads] == [
+        "seasonality",
+        "hawkes",
+        "return_components",
+        "mean_reversion",
+        "joint_refinement",
+    ]
+    assert fit_result.report.staged_response.diagnostic_artifact_references == (
+        {
+            "artifact_family": "observed_targets",
+            "relative_path": f"artifacts/runs/{run_id}/diagnostics/observed_targets.json",
+        },
+        {
+            "artifact_family": "candidate_frontier",
+            "relative_path": f"artifacts/runs/{run_id}/diagnostics/candidate_frontier.json",
+        },
+        {
+            "artifact_family": "coarse_tick_consistency",
+            "relative_path": f"artifacts/runs/{run_id}/diagnostics/coarse_tick_consistency.json",
+        },
+        {
+            "artifact_family": "selection_rationale",
+            "relative_path": f"artifacts/runs/{run_id}/diagnostics/selection_rationale.json",
+        },
+        {
+            "artifact_family": "simulation_summary",
+            "relative_path": f"artifacts/runs/{run_id}/diagnostics/simulation_summary.json",
+        },
+        {
+            "artifact_family": "search_surface_manifest",
+            "relative_path": f"artifacts/runs/{run_id}/diagnostics/search_surface_manifest.json",
+        },
+        {
+            "artifact_family": "runtime_profile",
+            "relative_path": f"artifacts/runs/{run_id}/diagnostics/runtime_profile.json",
+        },
+    )
+    assert (run_directory / "fit_report.json").is_file()
+    assert (run_directory / "run.json").is_file()
+    assert (run_directory / "model.json").is_file()
+    assert json.loads((run_directory / "fit_report.json").read_text(encoding="utf-8"))["success"] is True
+
+
 def test_high_level_fit_result_require_model_raises_for_failed_fit(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -5093,6 +5360,130 @@ def _write_stage_parameter_artifacts_for_stage_reports(
         artifact_path.write_text(json.dumps(artifact_payload), encoding="utf-8")
 
 
+def _write_artifact_manifest_for_recovered_disk_run(
+    *,
+    checkpoint_directory: Path,
+    run_id: str,
+    selected_stage_kinds: tuple[CalibrationStage, ...],
+) -> None:
+    artifact_directory = checkpoint_directory / "artifacts" / "runs" / run_id
+    artifact_directory.mkdir(parents=True, exist_ok=True)
+
+    artifact_references: list[dict[str, Any]] = [
+        {
+            "artifact_id": "dataset_snapshot",
+            "artifact_kind": "dataset_snapshot",
+            "artifact_reference": f"artifact://dataset_snapshot/{run_id}",
+        }
+    ]
+    artifact_references.extend(
+        {
+            "artifact_id": f"{stage_kind.value}_stage_output",
+            "artifact_kind": "stage_output",
+            "artifact_reference": f"artifact://{stage_kind.value}/{run_id}",
+            "stage": stage_kind.value,
+        }
+        for stage_kind in selected_stage_kinds
+    )
+    artifact_references.extend(
+        {
+            "artifact_id": f"{stage_kind.value}_checkpoint",
+            "artifact_kind": "stage_checkpoint",
+            "artifact_reference": f"checkpoint://{run_id}/{stage_kind.value}",
+            "stage": stage_kind.value,
+        }
+        for stage_kind in selected_stage_kinds
+    )
+    artifact_references.extend(
+        {
+            "artifact_id": f"diagnostics_{artifact_family}",
+            "artifact_kind": "diagnostics",
+            "artifact_reference": f"artifact://diagnostics/{run_id}/{artifact_family}",
+        }
+        for artifact_family in (
+            "observed_targets",
+            "candidate_frontier",
+            "coarse_tick_consistency",
+            "selection_rationale",
+            "simulation_summary",
+            "search_surface_manifest",
+            "runtime_profile",
+        )
+    )
+
+    artifact_manifest_payload = {
+        "schema_version": "calibration.artifact_registry.manifest.v1",
+        "run_id": run_id,
+        "execution_mode": "disk",
+        "artifact_references": artifact_references,
+        "index_metadata": {
+            "recovery_policy": "test.committed_disk_run_recovery.v1",
+        },
+    }
+    (artifact_directory / "artifact_manifest.json").write_text(
+        json.dumps(artifact_manifest_payload),
+        encoding="utf-8",
+    )
+
+
+def _write_diagnostic_artifacts_for_recovered_disk_run(
+    *,
+    checkpoint_directory: Path,
+    run_id: str,
+) -> None:
+    diagnostics_directory = checkpoint_directory / "artifacts" / "runs" / run_id / "diagnostics"
+    diagnostics_directory.mkdir(parents=True, exist_ok=True)
+
+    diagnostic_payloads = {
+        "observed_targets": {
+            "schema_version": "calibration.diagnostics.observed_targets.v1",
+            "target_builder_version": "test",
+            "targets": [],
+        },
+        "candidate_frontier": {
+            "schema_version": "calibration.diagnostics.candidate_frontier.v1",
+            "frontier_entries": [],
+        },
+        "coarse_tick_consistency": {
+            "schema_version": "calibration.diagnostics.coarse_tick_consistency.v1",
+            "metrics": [],
+        },
+        "selection_rationale": {
+            "schema_version": "calibration.diagnostics.selection_rationale.v1",
+            "decision": {
+                "selection_stage": "joint_refinement",
+                "selected_candidate_id": "joint_refinement_baseline",
+                "selection_policy": "test",
+                "validity_screened_candidate_count": 1,
+                "admissible_candidate_count": 1,
+                "pareto_frontier_count": 1,
+                "tie_break_candidate_count": 1,
+                "decisive_metric_ids": [],
+                "rationale": "test",
+            },
+        },
+        "simulation_summary": {
+            "schema_version": "calibration.diagnostics.simulation_summary.v1",
+            "summaries": [],
+        },
+        "search_surface_manifest": {
+            "schema_version": "calibration.diagnostics.search_surface_manifest.v1",
+            "surfaces": [],
+        },
+        "runtime_profile": {
+            "schema_version": "calibration.diagnostics.runtime_profile.v1",
+            "cpu_count": 1,
+            "entries": [],
+        },
+    }
+
+    for artifact_family, payload in diagnostic_payloads.items():
+        (diagnostics_directory / f"{artifact_family}.json").write_text(
+            json.dumps(payload),
+            encoding="utf-8",
+        )
+
+
 def _successful_staged_runner_payload(run_id: str) -> tuple[StagedCalibrationResponse, dict[str, Any]]:
     raw_response = {
         "schema_version": "calibration.orchestration.staged_run.report.v1",
@@ -5119,6 +5510,45 @@ def _successful_staged_runner_payload(run_id: str) -> tuple[StagedCalibrationRes
             }
         ],
         "emitted_checkpoints": [],
+    }
+
+    return validate_staged_calibration_response(raw_response), raw_response
+
+
+def _duplicate_manifest_failure_staged_runner_payload(
+    run_id: str,
+) -> tuple[StagedCalibrationResponse, dict[str, Any]]:
+    failure = {
+        "failure_kind": "artifact_manifest_persist_failed",
+        "stage": "joint_refinement",
+        "error_message": (
+            "committed artifact set already exists for run "
+            f"`{run_id}` in `/tmp/{run_id}/artifacts/runs/{run_id}`"
+        ),
+        "run_id": run_id,
+    }
+    raw_response = {
+        "schema_version": "calibration.orchestration.staged_run.report.v1",
+        "failure_triage_policy": "mode_aware_failure_kind_and_checkpoint_context.v1",
+        "run_id": run_id,
+        "execution_mode": "disk",
+        "status": "failure",
+        "failure": failure,
+        "stage_reports": [
+            {
+                "stage_report_kind": "joint_refinement",
+                "stage": "joint_refinement",
+                "status": "failure",
+                "run_id": run_id,
+                "execution_mode": "disk",
+                "handoff_policy": "summary_only_resume_stage_report.v1",
+                "failure": failure,
+            }
+        ],
+        "emitted_checkpoints": [],
+        "resumed_from_checkpoint_reference": f"checkpoint://{run_id}/last-success",
+        "resumed_from_last_successful_stage": "joint_refinement",
+        "started_from_stage": "joint_refinement",
     }
 
     return validate_staged_calibration_response(raw_response), raw_response
