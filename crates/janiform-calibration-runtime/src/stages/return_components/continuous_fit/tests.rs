@@ -17,7 +17,8 @@ use super::likelihood::{
     maximum_profiled_open_beta_ratio, profile_likelihood_score,
 };
 use super::optimization::{
-    build_broad_search_points, build_nig_search_candidates, score_search_points,
+    build_broad_search_points, build_nig_moment_seed_configurations, build_nig_search_candidates,
+    score_search_points,
 };
 use super::profile::{
     build_distribution_profile, build_scale_bucket_profiles, distribution_profile_fit_score,
@@ -700,4 +701,17 @@ fn test_optimizer_calibration_sample() -> ReturnComponentsStageContinuousReturnC
             sell_share_proxies.as_slice(),
         ),
     }
+}
+
+#[test]
+fn moment_seed_configurations_are_available_without_local_optimization() {
+    let calibration_sample = test_optimizer_calibration_sample();
+    let solver_settings =
+        CalibrationOptimizerSettings::try_new("return-components-test", 64, 1, 1.0e-6, 1.0e-6, 1.0)
+            .expect("test optimizer settings should be valid");
+
+    let configurations =
+        build_nig_moment_seed_configurations(&calibration_sample, &solver_settings);
+
+    assert!(!configurations.is_empty());
 }

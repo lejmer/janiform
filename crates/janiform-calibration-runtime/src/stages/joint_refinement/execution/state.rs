@@ -431,9 +431,26 @@ pub(crate) struct JointRefinementOptionPricingContext {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub(crate) struct JointRefinementRawAdmissibilityMetrics {
+    pub(crate) aggregated_likelihood_fit: f64,
+    pub(crate) aggregated_return_shape_fit: f64,
+    pub(crate) return_asymmetry_fit: f64,
+    pub(crate) tick_return_asymmetry_fit: f64,
+    pub(crate) aggregated_return_scale_fit: f64,
+    pub(crate) tick_return_scale_fit: f64,
+    pub(crate) business_time_return_scale_fit: f64,
+    pub(crate) intraday_return_level_fit: f64,
+    pub(crate) activity_shape_fit: f64,
+    pub(crate) activity_level_fit: f64,
+    pub(crate) rv_activity_coupling_fit: f64,
+    pub(crate) price_span_sanity_fit: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) struct JointRefinementCandidateEvaluation {
     pub(crate) fitted_parameters: JointRefinementStageFittedParameters,
     pub(crate) breakdown: JointRefinementStageObjectiveBreakdown,
+    pub(crate) raw_admissibility_metrics: JointRefinementRawAdmissibilityMetrics,
     pub(crate) objective_terms: Vec<JointRefinementStageObjectiveTermDiagnostic>,
     pub(crate) invalid_reason: Option<String>,
 }

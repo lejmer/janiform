@@ -12,8 +12,9 @@ use crate::stages::return_components::{
     NigShapeSearchPoint, ReturnComponentsStageCandidateDiagnostic,
     ReturnComponentsStageContinuousOptimizerBasinDiagnostic,
     ReturnComponentsStageContinuousReturnCalibrationSample, ReturnComponentsStageFittedPayload,
-    nig_configuration_from_search_point, nig_search_bounds_for_calibration_sample,
-    nig_search_point_from_configuration,
+    build_nig_moment_seed_configurations, nig_configuration_from_search_point,
+    nig_search_bounds_for_calibration_sample, nig_search_point_from_configuration,
+    rescale_continuous_return_calibration_sample_business_time_scales,
 };
 
 use super::contracts::{
@@ -350,10 +351,11 @@ pub(super) fn build_restart_seeds(
     baseline_15m_calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
     return_component_basin_diagnostics: &[ReturnComponentsStageContinuousOptimizerBasinDiagnostic],
     activity_log_shift: f64,
-    halton_validation_context: &JointRefinementContext,
+    joint_context: &JointRefinementContext,
+    solver_settings: &CalibrationOptimizerSettings,
     restart_count: usize,
 ) -> Vec<(String, Vec<f64>)> {
-    build_restart_seeds_with_halton_acceptance(
+    let mut restart_candidates = build_core_restart_seed_candidates(
         baseline_parameter_vector,
         active_parameter_layout,
         lower_bounds,
@@ -361,13 +363,29 @@ pub(super) fn build_restart_seeds(
         baseline_15m_calibration_sample,
         return_component_basin_diagnostics,
         activity_log_shift,
+    );
+    restart_candidates.extend(joint_tick_moment_restart_seeds(
+        baseline_parameter_vector,
+        active_parameter_layout,
+        lower_bounds,
+        upper_bounds,
+        activity_log_shift,
+        joint_context,
+        solver_settings,
+    ));
+
+    finalize_restart_seed_candidates(
+        restart_candidates,
+        baseline_parameter_vector,
+        active_parameter_layout,
+        lower_bounds,
+        upper_bounds,
         restart_count,
-        |halton_seed| {
-            parameter_vector_to_fitted_parameters(halton_seed, halton_validation_context).is_some()
-        },
+        |halton_seed| parameter_vector_to_fitted_parameters(halton_seed, joint_context).is_some(),
     )
 }
 
+#[cfg(test)]
 pub(super) fn build_restart_seeds_with_halton_acceptance<F>(
     baseline_parameter_vector: &[f64],
     active_parameter_layout: &JointRefinementActiveParameterLayout,
@@ -377,16 +395,50 @@ pub(super) fn build_restart_seeds_with_halton_acceptance<F>(
     return_component_basin_diagnostics: &[ReturnComponentsStageContinuousOptimizerBasinDiagnostic],
     activity_log_shift: f64,
     restart_count: usize,
-    mut halton_seed_is_accepted: F,
+    halton_seed_is_accepted: F,
 ) -> Vec<(String, Vec<f64>)>
 where
     F: FnMut(&[f64]) -> bool,
 {
+    let restart_candidates = build_core_restart_seed_candidates(
+        baseline_parameter_vector,
+        active_parameter_layout,
+        lower_bounds,
+        upper_bounds,
+        baseline_15m_calibration_sample,
+        return_component_basin_diagnostics,
+        activity_log_shift,
+    );
+
+    finalize_restart_seed_candidates(
+        restart_candidates,
+        baseline_parameter_vector,
+        active_parameter_layout,
+        lower_bounds,
+        upper_bounds,
+        restart_count,
+        halton_seed_is_accepted,
+    )
+}
+
+fn build_core_restart_seed_candidates(
+    baseline_parameter_vector: &[f64],
+    active_parameter_layout: &JointRefinementActiveParameterLayout,
+    lower_bounds: &[f64],
+    upper_bounds: &[f64],
+    baseline_15m_calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
+    return_component_basin_diagnostics: &[ReturnComponentsStageContinuousOptimizerBasinDiagnostic],
+    activity_log_shift: f64,
+) -> Vec<(String, Vec<f64>)> {
     let mut baseline = baseline_parameter_vector.to_vec();
     clamp_in_place(baseline.as_mut_slice(), lower_bounds, upper_bounds);
 
     let mut activity_aligned = baseline_parameter_vector.to_vec();
-    activity_aligned[active_parameter_layout.log_lambda_scale_index] = activity_log_shift;
+    apply_activity_alignment(
+        activity_aligned.as_mut_slice(),
+        active_parameter_layout,
+        activity_log_shift,
+    );
     clamp_in_place(activity_aligned.as_mut_slice(), lower_bounds, upper_bounds);
 
     let mut midpoint = lower_bounds
@@ -421,7 +473,21 @@ where
         activity_log_shift,
         2,
     ));
+    restart_candidates
+}
 
+fn finalize_restart_seed_candidates<F>(
+    restart_candidates: Vec<(String, Vec<f64>)>,
+    baseline_parameter_vector: &[f64],
+    active_parameter_layout: &JointRefinementActiveParameterLayout,
+    lower_bounds: &[f64],
+    upper_bounds: &[f64],
+    restart_count: usize,
+    mut halton_seed_is_accepted: F,
+) -> Vec<(String, Vec<f64>)>
+where
+    F: FnMut(&[f64]) -> bool,
+{
     let target_restart_count = restart_count.max(1);
     let mut deduplicated_candidates = deduplicate_restart_seed_candidates(restart_candidates)
         .into_iter()
@@ -460,6 +526,95 @@ where
     deduplicated_candidates
 }
 
+fn joint_tick_moment_restart_seeds(
+    baseline_parameter_vector: &[f64],
+    active_parameter_layout: &JointRefinementActiveParameterLayout,
+    lower_bounds: &[f64],
+    upper_bounds: &[f64],
+    activity_log_shift: f64,
+    joint_context: &JointRefinementContext,
+    solver_settings: &CalibrationOptimizerSettings,
+) -> Vec<(String, Vec<f64>)> {
+    let mut activity_aligned_parameter_vector = baseline_parameter_vector.to_vec();
+    apply_activity_alignment(
+        activity_aligned_parameter_vector.as_mut_slice(),
+        active_parameter_layout,
+        activity_log_shift,
+    );
+    clamp_in_place(
+        activity_aligned_parameter_vector.as_mut_slice(),
+        lower_bounds,
+        upper_bounds,
+    );
+
+    let Some(activity_aligned_fitted_parameters) = parameter_vector_to_fitted_parameters(
+        activity_aligned_parameter_vector.as_slice(),
+        joint_context,
+    ) else {
+        return Vec::new();
+    };
+
+    let Some(modeled_open_event_rate_per_hour) =
+        crate::stages::hawkes::stationary_open_event_rate_per_hour(
+            &activity_aligned_fitted_parameters.hawkes_fitted_parameters,
+        )
+    else {
+        return Vec::new();
+    };
+
+    if !joint_context
+        .baseline_modeled_open_event_rate_per_hour
+        .is_finite()
+        || joint_context.baseline_modeled_open_event_rate_per_hour <= 0.0
+    {
+        return Vec::new();
+    }
+
+    let aggregated_15m_sample = build_continuous_calibration_sample_from_aggregated_intervals(
+        joint_context
+            .observed_data
+            .observed_15m_intervals
+            .as_slice(),
+        modeled_open_event_rate_per_hour,
+        joint_context
+            .observed_data
+            .observed_open_event_rate_per_hour,
+        joint_context.observed_data.fallback_sell_share_proxy,
+    );
+    let tick_sample_business_time_scaled =
+        rescale_continuous_return_calibration_sample_business_time_scales(
+            &joint_context
+                .observed_data
+                .observed_tick_continuous_return_calibration_sample,
+            modeled_open_event_rate_per_hour
+                / joint_context.baseline_modeled_open_event_rate_per_hour,
+        );
+
+    build_nig_moment_seed_configurations(&tick_sample_business_time_scaled, solver_settings)
+        .into_iter()
+        .enumerate()
+        .filter_map(|(configuration_index, configuration)| {
+            let projected_search_point =
+                nig_search_point_from_configuration(&aggregated_15m_sample, configuration)?;
+            let mut restart_seed = activity_aligned_parameter_vector.clone();
+            apply_nig_search_point(
+                restart_seed.as_mut_slice(),
+                active_parameter_layout,
+                projected_search_point,
+            );
+            clamp_in_place(restart_seed.as_mut_slice(), lower_bounds, upper_bounds);
+
+            Some((
+                format!(
+                    "tick_moment_{:02}_activity_aligned",
+                    configuration_index + 1
+                ),
+                restart_seed,
+            ))
+        })
+        .collect()
+}
+
 fn joint_nig_basin_restart_seeds(
     baseline_parameter_vector: &[f64],
     active_parameter_layout: &JointRefinementActiveParameterLayout,
@@ -490,8 +645,11 @@ fn joint_nig_basin_restart_seeds(
             clamp_in_place(baseline_nig_seed.as_mut_slice(), lower_bounds, upper_bounds);
 
             let mut activity_aligned_nig_seed = baseline_nig_seed.clone();
-            activity_aligned_nig_seed[active_parameter_layout.log_lambda_scale_index] =
-                activity_log_shift;
+            apply_activity_alignment(
+                activity_aligned_nig_seed.as_mut_slice(),
+                active_parameter_layout,
+                activity_log_shift,
+            );
             clamp_in_place(
                 activity_aligned_nig_seed.as_mut_slice(),
                 lower_bounds,
@@ -542,8 +700,11 @@ fn joint_nig_alpha_delta_restart_seeds(
             clamp_in_place(alpha_delta_seed.as_mut_slice(), lower_bounds, upper_bounds);
 
             let mut activity_aligned_alpha_delta_seed = alpha_delta_seed.clone();
-            activity_aligned_alpha_delta_seed[active_parameter_layout.log_lambda_scale_index] =
-                activity_log_shift;
+            apply_activity_alignment(
+                activity_aligned_alpha_delta_seed.as_mut_slice(),
+                active_parameter_layout,
+                activity_log_shift,
+            );
             clamp_in_place(
                 activity_aligned_alpha_delta_seed.as_mut_slice(),
                 lower_bounds,
@@ -565,6 +726,26 @@ fn joint_nig_alpha_delta_restart_seeds(
             ]
         })
         .collect()
+}
+
+fn apply_activity_alignment(
+    parameter_vector: &mut [f64],
+    active_parameter_layout: &JointRefinementActiveParameterLayout,
+    activity_log_shift: f64,
+) {
+    parameter_vector[active_parameter_layout.log_lambda_scale_index] = activity_log_shift;
+
+    if let Some(index) = active_parameter_layout.known_activity_scale_index {
+        parameter_vector[index] = activity_log_shift;
+    }
+
+    if let Some(index) = active_parameter_layout.surprise_activity_scale_index {
+        parameter_vector[index] = activity_log_shift;
+    }
+
+    if let Some(index) = active_parameter_layout.surprise_baseline_scale_index {
+        parameter_vector[index] = activity_log_shift;
+    }
 }
 
 pub(super) fn selected_return_components_candidate(

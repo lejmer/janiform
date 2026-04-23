@@ -239,13 +239,13 @@ pub(crate) fn run_single_option_pricing(
         cpu_count: None,
     };
 
-    let run_result = run_vanilla_option_grid_batch_pricing_with_observer_and_theta_warm_start_state(
-        grid_execution_input,
-        None,
-        None,
-    )
-    .map_err(
-        |source| match source {
+    let run_result =
+        run_vanilla_option_grid_batch_pricing_with_observer_and_theta_warm_start_state(
+            grid_execution_input,
+            None,
+            None,
+        )
+        .map_err(|source| match source {
             VanillaOptionGridBatchPricingRunError::InvalidExecutionInput { source } => {
                 VanillaOptionPricingRunError::InternalNumericsFailure {
                     message: format!(
@@ -259,8 +259,7 @@ pub(crate) fn run_single_option_pricing(
             VanillaOptionGridBatchPricingRunError::NodePricingFailure { message } => {
                 VanillaOptionPricingRunError::InternalNumericsFailure { message }
             }
-        },
-    )?;
+        })?;
 
     let grid = run_result.grids.first().ok_or_else(|| {
         VanillaOptionPricingRunError::InternalNumericsFailure {
@@ -3149,15 +3148,9 @@ mod tests {
         )
         .expect("risk-neutral anchor materialization should succeed");
 
-        let spectral_domain = build_spectral_domain(
-            &pricing_request,
-            &materialization,
-            1,
-            1.0,
-            &[100.0],
-            None,
-        )
-        .expect("spectral domain should construct");
+        let spectral_domain =
+            build_spectral_domain(&pricing_request, &materialization, 1, 1.0, &[100.0], None)
+                .expect("spectral domain should construct");
 
         let collocation_nodes = spectral_domain.collocation_nodes();
 

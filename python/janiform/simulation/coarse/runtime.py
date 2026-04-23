@@ -65,13 +65,19 @@ def run_coarse_simulation(
             raise _simulation_execution_error(
                 "coarse simulation failed during native execution",
                 entrypoint="run_coarse_simulation",
-                context={"source_exception_type": type(e).__name__},
+                context={
+                    "source_exception_type": type(e).__name__,
+                    "source_exception_message": str(e),
+                },
             ) from e
 
         raise _simulation_execution_error(
             "coarse simulation failed during native execution",
             entrypoint="run_coarse_simulation",
-            context={"source_exception_type": type(e).__name__},
+            context={
+                "source_exception_type": type(e).__name__,
+                "source_exception_message": str(e),
+            },
         ) from e
 
     if not isinstance(raw_path, dict):

@@ -378,9 +378,9 @@ fn vanilla_option_grid_batch_pricing_matches_single_option_runner_on_rectangular
     )
     .expect("boundary input should construct");
 
-     let model_parameters = valid_model_parameters();
+    let model_parameters = valid_model_parameters();
 
-     let optional_output_selection =
+    let optional_output_selection =
         VanillaOptionPricingOptionalOutputSelection::new(false, false, false);
 
     let grid_batch_result =

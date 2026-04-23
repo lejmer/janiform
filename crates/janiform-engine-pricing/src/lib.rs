@@ -118,9 +118,7 @@ pub mod internal {
         FourierInversionPricingError, FourierInversionPricingResult,
         FourierInversionQuadratureRule, price_vanilla_option_via_fourier_inversion,
     };
-    pub use super::grids::{
-        SpectralThetaWarmStartState,
-    };
+    pub use super::grids::SpectralThetaWarmStartState;
     pub use super::spectral::run_vanilla_option_grid_batch_pricing_with_observer_and_theta_warm_start_state;
 }
 

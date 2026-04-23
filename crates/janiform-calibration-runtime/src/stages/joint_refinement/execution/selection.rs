@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::sync::mpsc::Sender;
 
-use janiform_calibration_artifacts::JointRefinementStageObjectiveBreakdown;
+use crate::stages::return_components::continuous_return_calibration_sample_observed_returns;
 
 use crate::stages::joint_refinement::contracts::{
     JointRefinementStageCandidateDiagnostic, JointRefinementStageProgressPhase,
@@ -16,7 +16,8 @@ use super::coarse_consistency::{
 };
 use super::{
     JointRefinementActiveParameterLayout, JointRefinementCoarseConsistencySummary,
-    JointRefinementContext, JointRefinementRestartOutcome, ordered_parameter_bits,
+    JointRefinementContext, JointRefinementRawAdmissibilityMetrics, JointRefinementRestartOutcome,
+    ordered_parameter_bits,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -24,7 +25,9 @@ pub(crate) struct JointRefinementAdmissibilityThresholds {
     pub(crate) aggregated_likelihood_fit: f64,
     pub(crate) aggregated_return_shape_fit: f64,
     pub(crate) return_asymmetry_fit: f64,
+    pub(crate) tick_return_asymmetry_fit: f64,
     pub(crate) aggregated_return_scale_fit: f64,
+    pub(crate) tick_return_scale_fit: f64,
     pub(crate) business_time_return_scale_fit: f64,
     pub(crate) intraday_return_level_fit: f64,
     pub(crate) activity_shape_fit: f64,
@@ -104,26 +107,41 @@ pub(crate) fn admissibility_threshold_from_sample_count(sample_count: usize) -> 
     1.0 + (sample_count.max(1) as f64).recip().sqrt()
 }
 
-pub(crate) fn joint_breakdown_is_admissible(
-    breakdown: &JointRefinementStageObjectiveBreakdown,
+pub(crate) fn joint_raw_metrics_are_admissible(
+    raw_metrics: &JointRefinementRawAdmissibilityMetrics,
     thresholds: JointRefinementAdmissibilityThresholds,
     coarse_consistency_summary: Option<&JointRefinementCoarseConsistencySummary>,
     coarse_consistency_required: bool,
 ) -> bool {
-    breakdown.aggregated_likelihood_fit <= thresholds.aggregated_likelihood_fit
-        && breakdown.aggregated_return_shape_fit <= thresholds.aggregated_return_shape_fit
-        && breakdown.return_asymmetry_fit <= thresholds.return_asymmetry_fit
-        && breakdown.aggregated_return_scale_fit <= thresholds.aggregated_return_scale_fit
-        && breakdown.business_time_return_scale_fit <= thresholds.business_time_return_scale_fit
-        && breakdown.intraday_return_level_fit <= thresholds.intraday_return_level_fit
-        && breakdown.activity_shape_fit <= thresholds.activity_shape_fit
-        && breakdown.activity_level_fit <= thresholds.activity_level_fit
-        && breakdown.rv_activity_coupling_fit <= thresholds.rv_activity_coupling_fit
-        && breakdown.price_span_sanity_fit <= thresholds.price_span_sanity_fit
+    raw_metrics.aggregated_likelihood_fit <= thresholds.aggregated_likelihood_fit
+        && raw_metrics.aggregated_return_shape_fit <= thresholds.aggregated_return_shape_fit
+        && raw_metrics.return_asymmetry_fit <= thresholds.return_asymmetry_fit
+        && raw_metrics.tick_return_asymmetry_fit <= thresholds.tick_return_asymmetry_fit
+        && raw_metrics.aggregated_return_scale_fit <= thresholds.aggregated_return_scale_fit
+        && raw_metrics.tick_return_scale_fit <= thresholds.tick_return_scale_fit
+        && raw_metrics.business_time_return_scale_fit <= thresholds.business_time_return_scale_fit
+        && raw_metrics.intraday_return_level_fit <= thresholds.intraday_return_level_fit
+        && raw_metrics.activity_shape_fit <= thresholds.activity_shape_fit
+        && raw_metrics.activity_level_fit <= thresholds.activity_level_fit
+        && raw_metrics.rv_activity_coupling_fit <= thresholds.rv_activity_coupling_fit
+        && raw_metrics.price_span_sanity_fit <= thresholds.price_span_sanity_fit
         && joint_coarse_consistency_is_admissible(
             coarse_consistency_summary,
             coarse_consistency_required,
         )
+}
+
+pub(crate) fn joint_raw_metrics_are_dynamics_feasible(
+    raw_metrics: &JointRefinementRawAdmissibilityMetrics,
+    thresholds: JointRefinementAdmissibilityThresholds,
+) -> bool {
+    raw_metrics.aggregated_likelihood_fit <= thresholds.aggregated_likelihood_fit
+        && raw_metrics.business_time_return_scale_fit <= thresholds.business_time_return_scale_fit
+        && raw_metrics.intraday_return_level_fit <= thresholds.intraday_return_level_fit
+        && raw_metrics.activity_shape_fit <= thresholds.activity_shape_fit
+        && raw_metrics.activity_level_fit <= thresholds.activity_level_fit
+        && raw_metrics.rv_activity_coupling_fit <= thresholds.rv_activity_coupling_fit
+        && raw_metrics.price_span_sanity_fit <= thresholds.price_span_sanity_fit
 }
 
 pub(crate) fn select_restart_outcomes_with_lazy_coarse_consistency<'a>(
@@ -137,10 +155,7 @@ pub(crate) fn select_restart_outcomes_with_lazy_coarse_consistency<'a>(
 
     let Some(baseline_artifacts) = baseline_artifacts else {
         return JointRefinementLazyCoarseConsistencySelection {
-            selected_restart_outcomes: select_restart_outcomes_without_admissibility(
-                restart_outcomes,
-                selected_restart_count,
-            ),
+            selected_restart_outcomes: Vec::new(),
             coarse_consistency_artifacts_by_restart_id: BTreeMap::new(),
         };
     };
@@ -263,13 +278,6 @@ pub(crate) fn select_restart_outcomes_with_lazy_coarse_consistency<'a>(
                 }
             }
         }
-    }
-
-    if selected_restart_outcomes.is_empty() {
-        selected_restart_outcomes = select_restart_outcomes_without_admissibility(
-            representative_restart_outcomes.as_slice(),
-            selected_restart_count,
-        );
     }
 
     for selected_restart_outcome in &selected_restart_outcomes {
@@ -424,7 +432,7 @@ fn ensure_selected_restart_artifacts(
     }
 }
 
-fn coarse_consistency_summary_is_admissible(
+pub(crate) fn coarse_consistency_summary_is_admissible(
     summary: &JointRefinementCoarseConsistencySummary,
 ) -> bool {
     summary.normalized_fit <= summary.admissibility_threshold
@@ -517,12 +525,18 @@ pub(crate) fn build_joint_candidate_frontier_diagnostics(
         .collect()
 }
 
-fn joint_refinement_admissibility_thresholds(
+pub(crate) fn joint_refinement_admissibility_thresholds(
     context: &JointRefinementContext,
 ) -> JointRefinementAdmissibilityThresholds {
     let fifteen_minute_sample_count = context.observed_data.observed_15m_intervals.len();
     let hourly_sample_count = context.observed_data.observed_hourly_tick_counts.len();
     let rv_sample_count = context.observed_data.observed_15m_intervals.len();
+    let observed_tick_sample_count = continuous_return_calibration_sample_observed_returns(
+        &context
+            .observed_data
+            .observed_tick_continuous_return_calibration_sample,
+    )
+    .len();
 
     JointRefinementAdmissibilityThresholds {
         aggregated_likelihood_fit: admissibility_threshold_from_sample_count(
@@ -534,8 +548,14 @@ fn joint_refinement_admissibility_thresholds(
         return_asymmetry_fit: admissibility_threshold_from_sample_count(
             fifteen_minute_sample_count,
         ),
+        tick_return_asymmetry_fit: admissibility_threshold_from_sample_count(
+            observed_tick_sample_count,
+        ),
         aggregated_return_scale_fit: admissibility_threshold_from_sample_count(
             fifteen_minute_sample_count,
+        ),
+        tick_return_scale_fit: admissibility_threshold_from_sample_count(
+            observed_tick_sample_count,
         ),
         business_time_return_scale_fit: admissibility_threshold_from_sample_count(
             fifteen_minute_sample_count / 4,
@@ -550,16 +570,14 @@ fn joint_refinement_admissibility_thresholds(
     }
 }
 
-fn joint_restart_outcome_is_admissible(
+pub(crate) fn joint_restart_outcome_is_admissible(
     restart_outcome: &JointRefinementRestartOutcome,
     thresholds: JointRefinementAdmissibilityThresholds,
     coarse_consistency_summary: Option<&JointRefinementCoarseConsistencySummary>,
     coarse_consistency_required: bool,
 ) -> bool {
-    let breakdown = &restart_outcome.final_evaluation.breakdown;
-
-    joint_breakdown_is_admissible(
-        breakdown,
+    joint_raw_metrics_are_admissible(
+        &restart_outcome.final_evaluation.raw_admissibility_metrics,
         thresholds,
         coarse_consistency_summary,
         coarse_consistency_required,
@@ -639,43 +657,6 @@ fn assign_coarse_consistency_artifacts_to_restart_group(
         coarse_consistency_artifacts_by_restart_id
             .insert(restart_outcome.restart_id.clone(), artifacts.clone());
     }
-}
-
-fn select_restart_outcomes_without_admissibility<'a>(
-    restart_outcomes: &[&'a JointRefinementRestartOutcome],
-    selected_restart_count: usize,
-) -> Vec<&'a JointRefinementRestartOutcome> {
-    if restart_outcomes.is_empty() {
-        return Vec::new();
-    }
-
-    let pareto_ranks = pareto_ranks(restart_outcomes);
-
-    let mut ranked_candidates = restart_outcomes
-        .iter()
-        .enumerate()
-        .map(|(position, restart_outcome)| (pareto_ranks[position], *restart_outcome))
-        .collect::<Vec<_>>();
-
-    ranked_candidates.sort_by(|left, right| {
-        compare_joint_candidate_breakdowns(
-            left.0,
-            &left.1.final_evaluation.breakdown,
-            false,
-            left.1.restart_id.as_str(),
-            right.0,
-            &right.1.final_evaluation.breakdown,
-            false,
-            right.1.restart_id.as_str(),
-            false,
-        )
-    });
-
-    ranked_candidates
-        .into_iter()
-        .take(selected_restart_count.max(1))
-        .map(|(_, outcome)| outcome)
-        .collect()
 }
 
 fn build_joint_candidate_ordering_states<'a>(

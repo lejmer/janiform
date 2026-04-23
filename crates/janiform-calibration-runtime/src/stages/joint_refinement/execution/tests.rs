@@ -10,11 +10,13 @@ use super::super::setup::{
 };
 use super::{
     JointRefinementActiveParameterLayout, JointRefinementAdmissibilityThresholds,
-    JointRefinementCoarseConsistencySummary, JointRefinementSeedSummary,
-    admissibility_threshold_from_sample_count, desired_joint_refinement_restart_count,
-    extend_joint_coarse_tick_consistency_metrics_for_seed, joint_breakdown_is_admissible,
-    joint_refinement_budget_schedule, joint_refinement_restart_block_powell_settings,
-    sampled_observed_tick_returns,
+    JointRefinementCandidateEvaluation, JointRefinementCoarseConsistencySummary,
+    JointRefinementRawAdmissibilityMetrics, JointRefinementRestartOutcome,
+    JointRefinementSeedSummary, admissibility_threshold_from_sample_count,
+    desired_joint_refinement_restart_count, ensure_valid_selected_restart_outcome,
+    extend_joint_coarse_tick_consistency_metrics_for_seed, joint_raw_metrics_are_admissible,
+    joint_raw_metrics_are_dynamics_feasible, joint_refinement_budget_schedule,
+    joint_refinement_restart_block_powell_settings, sampled_observed_tick_returns,
 };
 use crate::stages::joint_metrics::{
     JointRefinementAggregatedIntervalObservation,
@@ -28,8 +30,22 @@ use crate::stages::return_components::{
     build_continuous_return_calibration_sample_from_components,
 };
 use janiform_calibration_artifacts::{
-    CalibrationOptimizerSettings, JointRefinementStageObjectiveBreakdown,
+    CalibrationOptimizerSettings, HawkesStageFittedParameters,
+    JointRefinementStageFittedParameters, JointRefinementStageObjectiveBreakdown,
+    ReturnComponentsStageFittedParameters, SurpriseNewsDeterministicIntensityProfile,
 };
+use janiform_model_kernels::hawkes::{
+    HawkesKernelLoadings, HawkesKernelParameters, HawkesStructuredAlphaParameterization,
+    HawkesStructuredRhoParameterization,
+};
+use janiform_model_kernels::mean_reversion::MeanReversionFittedParameters;
+use janiform_model_kernels::news::{
+    CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
+    GammaSeverityMarkConfiguration, KnownNewsArrivalConfiguration, NewsArrivalConfiguration,
+    NewsComponentMarkScaleConfiguration, NewsProcessConfiguration, SharedNewsMarkLawConfiguration,
+    SurpriseNewsArrivalConfiguration,
+};
+use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 
 fn build_test_solver_settings(cpu_count: usize) -> CalibrationOptimizerSettings {
     CalibrationOptimizerSettings::try_new("joint-test", 256, cpu_count, 1.0e-6, 1.0e-6, 10.0)
@@ -120,13 +136,34 @@ fn build_test_admissibility_thresholds() -> JointRefinementAdmissibilityThreshol
         aggregated_likelihood_fit: 2.0,
         aggregated_return_shape_fit: 2.0,
         return_asymmetry_fit: 2.0,
+        tick_return_asymmetry_fit: 2.0,
         aggregated_return_scale_fit: 2.0,
+        tick_return_scale_fit: 2.0,
         business_time_return_scale_fit: 2.0,
         intraday_return_level_fit: 2.0,
         activity_shape_fit: 2.0,
         activity_level_fit: 2.0,
         rv_activity_coupling_fit: 2.0,
         price_span_sanity_fit: 2.0,
+    }
+}
+
+fn build_test_raw_admissibility_metrics(
+    breakdown: &JointRefinementStageObjectiveBreakdown,
+) -> JointRefinementRawAdmissibilityMetrics {
+    JointRefinementRawAdmissibilityMetrics {
+        aggregated_likelihood_fit: breakdown.aggregated_likelihood_fit,
+        aggregated_return_shape_fit: breakdown.aggregated_return_shape_fit,
+        return_asymmetry_fit: breakdown.return_asymmetry_fit,
+        tick_return_asymmetry_fit: breakdown.tick_return_asymmetry_fit,
+        aggregated_return_scale_fit: breakdown.aggregated_return_scale_fit,
+        tick_return_scale_fit: breakdown.tick_return_scale_fit,
+        business_time_return_scale_fit: breakdown.business_time_return_scale_fit,
+        intraday_return_level_fit: breakdown.intraday_return_level_fit,
+        activity_shape_fit: breakdown.activity_shape_fit,
+        activity_level_fit: breakdown.activity_level_fit,
+        rv_activity_coupling_fit: breakdown.rv_activity_coupling_fit,
+        price_span_sanity_fit: breakdown.price_span_sanity_fit,
     }
 }
 
@@ -143,6 +180,105 @@ fn build_test_interval_observation(
         log_return,
         tick_count,
         sell_share_proxy,
+    }
+}
+
+fn build_test_joint_fitted_parameters() -> JointRefinementStageFittedParameters {
+    let hawkes_fitted_parameters = HawkesStageFittedParameters {
+        kernel_parameters: HawkesKernelParameters {
+            lambda_bar: 1.0,
+            beta: 2.0,
+            alpha: HawkesKernelLoadings {
+                plus_plus: 0.2,
+                plus_minus: 0.1,
+                minus_plus: 0.1,
+                minus_minus: 0.2,
+            },
+            rho: HawkesKernelLoadings {
+                plus_plus: 0.05,
+                plus_minus: 0.02,
+                minus_plus: 0.02,
+                minus_minus: 0.05,
+            },
+        },
+        structured_alpha: HawkesStructuredAlphaParameterization::new(0.2, 0.1, 0.0, 0.0),
+        structured_rho: HawkesStructuredRhoParameterization::new(0.05, 0.02, 0.0, 0.0),
+        self_dominance_policy: None,
+        stability_numeric_tolerance: 0.0,
+    };
+
+    let return_components_fitted_parameters = ReturnComponentsStageFittedParameters {
+        nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration::try_new(
+            2.0, -0.2, 0.5, 0.0, -0.1,
+        )
+        .expect("test NIG configuration should be valid"),
+        news_process_configuration: NewsProcessConfiguration::try_new(
+            NewsArrivalConfiguration {
+                known: KnownNewsArrivalConfiguration {
+                    scheduled_event_timestamps_utc_nanos: Vec::new(),
+                },
+                surprise: SurpriseNewsArrivalConfiguration {
+                    baseline_intensity: 0.0,
+                },
+            },
+            SharedNewsMarkLawConfiguration {
+                gamma_severity_marks: GammaSeverityMarkConfiguration {
+                    shape_k: 1.5,
+                    scale_theta: 0.8,
+                },
+                double_exponential_base_shock: DoubleExponentialBaseShockConfiguration {
+                    probability_positive: 0.5,
+                    eta_plus: 1.2,
+                    eta_minus: 1.2,
+                },
+                coupled_gap_marks: CoupledGapMarkConfiguration { sigma_g: 0.2 },
+            },
+            NewsComponentMarkScaleConfiguration {
+                activity_coupling_scale: 0.0,
+                return_jump_scale: 0.0,
+            },
+            NewsComponentMarkScaleConfiguration {
+                activity_coupling_scale: 0.0,
+                return_jump_scale: 0.0,
+            },
+        )
+        .expect("test news process configuration should be valid"),
+        surprise_deterministic_intensity_profile: SurpriseNewsDeterministicIntensityProfile {
+            weekly_hour_utc_multipliers: vec![1.0; 24 * 7],
+            profile_resolution_hours: 1,
+            fit_policy: "test".to_string(),
+            normalization_policy: "test".to_string(),
+        },
+        mean_reversion_fitted_parameters:
+            MeanReversionFittedParameters::zero_kappa_flat_anchor_mean_reversion(),
+    };
+
+    JointRefinementStageFittedParameters {
+        hawkes_fitted_parameters,
+        return_components_fitted_parameters,
+        pricing_block_fitted_parameters: None,
+    }
+}
+
+fn build_test_restart_outcome(
+    restart_id: &str,
+    breakdown: JointRefinementStageObjectiveBreakdown,
+) -> JointRefinementRestartOutcome {
+    let evaluation = JointRefinementCandidateEvaluation {
+        fitted_parameters: build_test_joint_fitted_parameters(),
+        raw_admissibility_metrics: build_test_raw_admissibility_metrics(&breakdown),
+        breakdown,
+        objective_terms: Vec::new(),
+        invalid_reason: None,
+    };
+
+    JointRefinementRestartOutcome {
+        restart_id: restart_id.to_string(),
+        parameter_vector: vec![0.0; 11],
+        local_evaluation: evaluation.clone(),
+        final_evaluation: evaluation,
+        local_evaluation_count: 4,
+        stop_reason: "test".to_string(),
     }
 }
 
@@ -407,6 +543,24 @@ fn joint_refinement_restart_seeds_include_return_component_nig_basins() {
         restart_seeds[4].1[active_parameter_layout.log_lambda_scale_index],
         0.25
     );
+    assert_eq!(
+        restart_seeds[4].1[active_parameter_layout
+            .known_activity_scale_index
+            .expect("known activity scale should be present")],
+        0.25
+    );
+    assert_eq!(
+        restart_seeds[4].1[active_parameter_layout
+            .surprise_activity_scale_index
+            .expect("surprise activity scale should be present")],
+        0.25
+    );
+    assert_eq!(
+        restart_seeds[4].1[active_parameter_layout
+            .surprise_baseline_scale_index
+            .expect("surprise baseline scale should be present")],
+        0.25
+    );
     assert_eq!(restart_seeds[5].0, "nig_alpha_delta_skew_heavy");
     assert_eq!(
         restart_seeds[5].1[active_parameter_layout.nig_block[0]],
@@ -430,6 +584,24 @@ fn joint_refinement_restart_seeds_include_return_component_nig_basins() {
     );
     assert_eq!(
         restart_seeds[6].1[active_parameter_layout.log_lambda_scale_index],
+        0.25
+    );
+    assert_eq!(
+        restart_seeds[6].1[active_parameter_layout
+            .known_activity_scale_index
+            .expect("known activity scale should be present")],
+        0.25
+    );
+    assert_eq!(
+        restart_seeds[6].1[active_parameter_layout
+            .surprise_activity_scale_index
+            .expect("surprise activity scale should be present")],
+        0.25
+    );
+    assert_eq!(
+        restart_seeds[6].1[active_parameter_layout
+            .surprise_baseline_scale_index
+            .expect("surprise baseline scale should be present")],
         0.25
     );
 }
@@ -674,23 +846,47 @@ fn coarse_consistency_admissibility_is_baseline_relative() {
         admissibility_threshold,
     };
 
-    assert!(joint_breakdown_is_admissible(
-        &breakdown,
+    assert!(joint_raw_metrics_are_admissible(
+        &build_test_raw_admissibility_metrics(&breakdown),
         build_test_admissibility_thresholds(),
         Some(&admissible_summary),
         true,
     ));
-    assert!(!joint_breakdown_is_admissible(
-        &breakdown,
+    assert!(!joint_raw_metrics_are_admissible(
+        &build_test_raw_admissibility_metrics(&breakdown),
         build_test_admissibility_thresholds(),
         Some(&inadmissible_summary),
         true,
     ));
-    assert!(!joint_breakdown_is_admissible(
-        &breakdown,
+    assert!(!joint_raw_metrics_are_admissible(
+        &build_test_raw_admissibility_metrics(&breakdown),
         build_test_admissibility_thresholds(),
         None,
         true,
+    ));
+}
+
+#[test]
+fn dynamics_feasibility_targets_activity_and_runtime_families_only() {
+    let thresholds = build_test_admissibility_thresholds();
+    let dynamics_feasible_breakdown = JointRefinementStageObjectiveBreakdown {
+        aggregated_return_shape_fit: thresholds.aggregated_return_shape_fit + 0.5,
+        return_asymmetry_fit: thresholds.return_asymmetry_fit + 0.5,
+        aggregated_return_scale_fit: thresholds.aggregated_return_scale_fit + 0.5,
+        ..build_test_joint_breakdown(1.0, 1.0, 1.0)
+    };
+    let dynamics_infeasible_breakdown = JointRefinementStageObjectiveBreakdown {
+        activity_level_fit: thresholds.activity_level_fit + 0.5,
+        ..build_test_joint_breakdown(1.0, 1.0, 1.0)
+    };
+
+    assert!(joint_raw_metrics_are_dynamics_feasible(
+        &build_test_raw_admissibility_metrics(&dynamics_feasible_breakdown),
+        thresholds,
+    ));
+    assert!(!joint_raw_metrics_are_dynamics_feasible(
+        &build_test_raw_admissibility_metrics(&dynamics_infeasible_breakdown),
+        thresholds,
     ));
 }
 
@@ -737,4 +933,42 @@ fn coarse_tick_consistency_prefers_direct_fifteen_minute_coarse_path() {
 
     assert_eq!(direct_fifteen_minute_event_count_metric.coarse_value, 11.0);
     assert_eq!(direct_fifteen_minute_event_count_metric.tick_value, 7.0);
+}
+
+#[test]
+fn selected_restart_validation_rejects_inadmissible_candidate() {
+    let restart_outcome = build_test_restart_outcome(
+        "joint_refinement_midpoint",
+        build_test_joint_breakdown(1.0, 1.0, 0.8),
+    );
+    let coarse_consistency_summary = JointRefinementCoarseConsistencySummary {
+        raw_fit: 1.0,
+        normalized_fit: 3.0,
+        admissibility_threshold: 2.0,
+    };
+
+    let failure = ensure_valid_selected_restart_outcome(
+        &restart_outcome,
+        0,
+        0,
+        build_test_admissibility_thresholds(),
+        Some(&coarse_consistency_summary),
+    )
+    .expect_err("inadmissible selected restart should fail validation");
+
+    match failure {
+        crate::stages::joint_refinement::contracts::JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
+            error_message,
+        } => {
+            assert!(
+                error_message.contains("could not identify an admissible candidate"),
+                "unexpected failure message: {error_message}"
+            );
+            assert!(
+                error_message.contains("selected_restart=joint_refinement_midpoint"),
+                "unexpected failure message: {error_message}"
+            );
+        }
+        other => panic!("unexpected failure variant: {other:?}"),
+    }
 }

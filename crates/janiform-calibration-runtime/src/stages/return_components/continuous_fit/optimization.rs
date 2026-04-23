@@ -153,6 +153,32 @@ pub(crate) fn build_nig_search_candidates(
     })
 }
 
+pub(crate) fn build_nig_moment_seed_configurations(
+    calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
+    solver_settings: &CalibrationOptimizerSettings,
+) -> Vec<janiform_model_kernels::nig::NigSharedPlusShiftConfiguration> {
+    let optimizer_context = build_continuous_return_optimizer_context(calibration_sample);
+    let broad_candidate_count = solver_settings.max_iterations.clamp(
+        RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_MIN_BROAD_CANDIDATE_COUNT,
+        RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_MAX_BROAD_CANDIDATE_COUNT,
+    );
+    let moment_candidate_count = broad_candidate_count
+        .saturating_mul(RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_MOMENT_SEED_CANDIDATE_MULTIPLIER)
+        .max(RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_MIN_MOMENT_SEED_CANDIDATE_COUNT);
+    let search_bounds =
+        theoretical_search_bounds(calibration_sample.observed_profile, moment_candidate_count);
+
+    build_moment_seed_candidates(
+        &optimizer_context,
+        calibration_sample,
+        search_bounds,
+        moment_candidate_count,
+    )
+    .into_iter()
+    .map(|candidate| candidate.configuration)
+    .collect()
+}
+
 pub(crate) fn evaluate_continuous_nig_candidate(
     configuration: janiform_model_kernels::nig::NigSharedPlusShiftConfiguration,
     calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,

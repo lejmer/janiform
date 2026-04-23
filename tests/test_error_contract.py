@@ -10,6 +10,7 @@ import janiform.calibration.staged.runtime as calibration_staged_runtime_module
 import janiform.cli as cli_module
 import janiform.pricing.workflow as pricing_workflow_module
 import janiform.simulation as simulation_module
+import janiform.simulation.coarse.runtime as simulation_coarse_runtime_module
 import janiform.simulation.seeded.runtime as simulation_seeded_runtime_module
 from janiform._cli.context import CliCommandContext
 from janiform._timestamps import ONE_HOUR_NANOS
@@ -41,11 +42,16 @@ from janiform.pricing import (
     run_vanilla_option_pricing,
     run_vanilla_option_surface_pricing,
 )
+from janiform.risk import (
+    SufficientStatisticsRiskEquationSpecification,
+    SufficientStatisticsRiskModelInputs,
+)
 from janiform.simulation import (
     SeededTickSimulationValidationError,
     run_seeded_tick_event_simulation,
 )
 from janiform.simulation.coarse import (
+    CoarseSimulationRunRequest,
     CoupledGapMarkConfiguration,
     DoubleExponentialBaseShockConfiguration,
     KnownNewsArrivalConfiguration,
@@ -54,6 +60,7 @@ from janiform.simulation.coarse import (
     NewsProcessConfiguration,
     SharedNewsMarkLawConfiguration,
     SurpriseNewsArrivalConfiguration,
+    run_coarse_simulation,
 )
 from janiform.simulation.seeded import SeededTickSimulationRequest
 from janiform.simulation.shared import (
@@ -219,6 +226,36 @@ def test_simulation_run_maps_invalid_native_response_to_integration_error(
     assert captured_error.value.workflow == "simulation"
     assert captured_error.value.entrypoint == "run_seeded_tick_event_simulation"
     assert captured_error.value.context == {"source_error_id": "simulation.validation.contract"}
+
+
+def test_coarse_simulation_run_includes_native_failure_message_in_context(
+    calendar_registry: CalendarRegistry,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeSimulationExecutionError(Exception):
+        pass
+
+    class FakeNative:
+        SimulationExecutionError = FakeSimulationExecutionError
+
+        @staticmethod
+        def run_coarse_simulation(*args, **kwargs) -> NoReturn:
+            raise FakeSimulationExecutionError(
+                "interval 0 solver did not produce completed output"
+            )
+
+    monkeypatch.setattr(simulation_coarse_runtime_module, "native_module", lambda: FakeNative())
+
+    with pytest.raises(JaniformExecutionError) as captured_error:
+        run_coarse_simulation(_valid_coarse_simulation_request(calendar_registry))
+
+    assert captured_error.value.error_id == "simulation.execution.run_failed"
+    assert captured_error.value.workflow == "simulation"
+    assert captured_error.value.entrypoint == "run_coarse_simulation"
+    assert captured_error.value.context == {
+        "source_exception_type": "FakeSimulationExecutionError",
+        "source_exception_message": "interval 0 solver did not produce completed output",
+    }
 
 
 def test_simulation_run_maps_native_chunk_projection_failure_to_integration_error(
@@ -775,6 +812,48 @@ def _valid_simulation_request(calendar_registry: CalendarRegistry) -> SeededTick
         mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
         initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
+    )
+
+
+def _valid_coarse_simulation_request(
+    calendar_registry: CalendarRegistry,
+) -> CoarseSimulationRunRequest:
+    hourly_factor_contract = _valid_hourly_factor_contract(calendar_registry)
+    (
+        mean_reversion_fitted_parameters,
+        mean_reversion_runtime_interval_anchors,
+        initial_mean_reversion_boundary_state,
+    ) = build_endogenous_mean_reversion_runtime_contracts(interval_count=2)
+
+    return CoarseSimulationRunRequest.from_runtime_inputs(
+        seed=17,
+        start_time_utc=START_TIME_UTC,
+        horizon_interval_count=2,
+        interval_delta=1.0,
+        risk_model_inputs=SufficientStatisticsRiskModelInputs(
+            equation_specification=SufficientStatisticsRiskEquationSpecification(
+                hawkes_kernel_parameters=_valid_kernel_parameters(),
+                gamma_severity_mark_configuration=GammaSeverityMarkConfiguration(
+                    shape_k=1.5,
+                    scale_theta=0.9,
+                ),
+            ),
+            nig_shared_plus_shift_configuration=NigSharedPlusShiftConfiguration(
+                alpha=2.3,
+                beta_0=-0.8,
+                delta=0.7,
+                mu=0.1,
+                delta_beta=-0.2,
+            ),
+            initial_excitation_state=_valid_excitation_state(),
+            mean_reversion_fitted_parameters=mean_reversion_fitted_parameters,
+            mean_reversion_runtime_interval_anchors=mean_reversion_runtime_interval_anchors,
+            initial_mean_reversion_boundary_state=initial_mean_reversion_boundary_state,
+        ),
+        hourly_factor_contract=hourly_factor_contract,
+        news_process_configuration=_valid_news_process_configuration(),
+        calendar_registry=calendar_registry,
+        exchange_code="XNYS",
     )
 
 

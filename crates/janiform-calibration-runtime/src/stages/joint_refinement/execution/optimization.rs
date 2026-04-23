@@ -10,11 +10,13 @@ use crate::stages::joint_refinement::contracts::{
 use crate::stages::optimization::{PowellOptimizerSettings, optimize_bounded_powell};
 
 use super::super::objective::{
-    evaluate_joint_candidate, evaluate_joint_candidate_nig_block_search_objective,
+    dynamics_block_search_objective, evaluate_joint_candidate,
+    evaluate_joint_candidate_nig_block_search_objective,
 };
 use super::{
     JOINT_REFINEMENT_PARAMETER_BLOCK_COUNT, JointRefinementContext, JointRefinementFidelityTier,
-    JointRefinementRestartOutcome, option_pricing_execution_failure_message,
+    JointRefinementRestartOutcome, joint_raw_metrics_are_dynamics_feasible,
+    joint_refinement_admissibility_thresholds, option_pricing_execution_failure_message,
     simulation_infrastructure_failure_message,
 };
 pub(crate) const JOINT_REFINEMENT_DEFAULT_RESTART_COUNT: usize = 15;
@@ -345,6 +347,7 @@ fn optimize_single_restart(
     let mut current_vector = seed_vector.to_vec();
     let mut evaluation_count = 0usize;
     let mut stop_reason = "tolerance";
+    let admissibility_thresholds = joint_refinement_admissibility_thresholds(context);
 
     for outer_cycle_index in 0..budget_schedule.outer_cycle_count {
         if joint_refinement_has_fatal_execution_failure(context) {
@@ -387,7 +390,7 @@ fn optimize_single_restart(
             cycle_result.nig_stop_reason,
             cycle_result.coupling_stop_reason,
         );
-        if stop_reason != "tolerance" {
+        if stop_reason != "tolerance" && stop_reason != "dynamics_infeasible" {
             break;
         }
     }
@@ -407,6 +410,25 @@ fn optimize_single_restart(
             local_evaluation,
             local_evaluation_count: evaluation_count,
             stop_reason: stop_reason.to_string(),
+        };
+    }
+
+    if !joint_raw_metrics_are_dynamics_feasible(
+        &local_evaluation.raw_admissibility_metrics,
+        admissibility_thresholds,
+    ) {
+        restart_progress.emit_finished();
+        return JointRefinementRestartOutcome {
+            restart_id: restart_id.to_string(),
+            parameter_vector: current_vector,
+            final_evaluation: local_evaluation.clone(),
+            local_evaluation,
+            local_evaluation_count: evaluation_count,
+            stop_reason: if stop_reason == "tolerance" {
+                "local_dynamics_infeasible".to_string()
+            } else {
+                stop_reason.to_string()
+            },
         };
     }
 
@@ -460,30 +482,6 @@ fn optimize_restart_cycle(
     let mut updated_vector = current_vector.to_vec();
     let mut evaluation_count = 0usize;
 
-    let (updated_nig_vector, nig_stop_reason, nig_evaluations) = optimize_parameter_block(
-        updated_vector.as_slice(),
-        context.active_parameter_layout.nig_block.as_slice(),
-        context,
-        solver_settings,
-        "nig",
-        outer_cycle,
-        restart_progress,
-    );
-
-    updated_vector = updated_nig_vector;
-    evaluation_count += nig_evaluations;
-
-    if nig_stop_reason == "invalid_step" {
-        return RestartCycleResult {
-            updated_vector,
-            hawkes_stop_reason: "tolerance",
-            nig_stop_reason,
-            coupling_stop_reason: "tolerance",
-            invalid_step_stop_reason: Some(nig_stop_reason),
-            evaluation_count,
-        };
-    }
-
     let (updated_hawkes_vector, hawkes_stop_reason, hawkes_evaluations) = optimize_parameter_block(
         updated_vector.as_slice(),
         context.active_parameter_layout.hawkes_block.as_slice(),
@@ -501,7 +499,7 @@ fn optimize_restart_cycle(
         return RestartCycleResult {
             updated_vector,
             hawkes_stop_reason,
-            nig_stop_reason,
+            nig_stop_reason: "tolerance",
             coupling_stop_reason: "tolerance",
             invalid_step_stop_reason: Some(hawkes_stop_reason),
             evaluation_count,
@@ -522,13 +520,60 @@ fn optimize_restart_cycle(
     updated_vector = updated_coupling_vector;
     evaluation_count += coupling_evaluations;
 
+    let dynamics_evaluation = evaluate_joint_candidate(
+        updated_vector.as_slice(),
+        context,
+        JointRefinementFidelityTier::Local,
+        solver_settings,
+    );
+
+    if dynamics_evaluation.invalid_reason.is_some() {
+        return RestartCycleResult {
+            updated_vector,
+            hawkes_stop_reason,
+            nig_stop_reason: "tolerance",
+            coupling_stop_reason,
+            invalid_step_stop_reason: Some("invalid_step"),
+            evaluation_count,
+        };
+    }
+
+    let admissibility_thresholds = joint_refinement_admissibility_thresholds(context);
+    if !joint_raw_metrics_are_dynamics_feasible(
+        &dynamics_evaluation.raw_admissibility_metrics,
+        admissibility_thresholds,
+    ) {
+        return RestartCycleResult {
+            updated_vector,
+            hawkes_stop_reason,
+            nig_stop_reason: "dynamics_infeasible",
+            coupling_stop_reason,
+            invalid_step_stop_reason: None,
+            evaluation_count,
+        };
+    }
+
+    let (updated_nig_vector, nig_stop_reason, nig_evaluations) = optimize_parameter_block(
+        updated_vector.as_slice(),
+        context.active_parameter_layout.nig_block.as_slice(),
+        context,
+        solver_settings,
+        "nig",
+        outer_cycle,
+        restart_progress,
+    );
+
+    updated_vector = updated_nig_vector;
+    evaluation_count += nig_evaluations;
+
     RestartCycleResult {
         updated_vector,
         hawkes_stop_reason,
         nig_stop_reason,
         coupling_stop_reason,
         invalid_step_stop_reason: (coupling_stop_reason == "invalid_step")
-            .then_some(coupling_stop_reason),
+            .then_some(coupling_stop_reason)
+            .or((nig_stop_reason == "invalid_step").then_some(nig_stop_reason)),
         evaluation_count,
     }
 }
@@ -565,7 +610,7 @@ fn select_restart_stop_reason(
 ) -> &'static str {
     [coupling_stop_reason, nig_stop_reason, hawkes_stop_reason]
         .into_iter()
-        .find(|stop_reason| *stop_reason != "tolerance")
+        .find(|stop_reason| *stop_reason != "tolerance" && *stop_reason != "dynamics_infeasible")
         .unwrap_or("tolerance")
 }
 
@@ -613,10 +658,12 @@ fn optimize_parameter_block(
                     JointRefinementFidelityTier::Local,
                     solver_settings,
                 );
-                candidate_evaluation
-                    .invalid_reason
-                    .is_none()
-                    .then_some(candidate_evaluation.breakdown.weighted_objective)
+                candidate_evaluation.invalid_reason.is_none().then_some(
+                    dynamics_block_search_objective(
+                        &candidate_evaluation.raw_admissibility_metrics,
+                        joint_refinement_admissibility_thresholds(context),
+                    ),
+                )
             }
         };
         restart_progress.record_evaluation(parameter_block_label, outer_cycle, block_objective);
@@ -726,9 +773,8 @@ fn restart_block_progress_evaluation_budget(
     // optimizer's internal `evaluation_count`, so the display budget must include
     // those bookkeeping callbacks to keep the terminal progress panel consistent.
     1usize.saturating_add(
-        active_block_dimension.saturating_mul(
-            block_settings.line_search_evaluation_cap.saturating_add(1),
-        ),
+        active_block_dimension
+            .saturating_mul(block_settings.line_search_evaluation_cap.saturating_add(1)),
     )
 }
 
@@ -991,7 +1037,7 @@ mod tests {
 
     use super::{
         RestartCandidateProgress, RestartProgressCounters,
-        restart_block_progress_evaluation_budget,
+        restart_block_progress_evaluation_budget, select_restart_stop_reason,
     };
 
     #[test]
@@ -1066,8 +1112,25 @@ mod tests {
             CalibrationOptimizerSettings::try_new("joint-test", 256, 4, 1.0e-6, 1.0e-6, 10.0)
                 .expect("solver settings should validate");
 
-        assert_eq!(restart_block_progress_evaluation_budget(&solver_settings, 4), 25);
-        assert_eq!(restart_block_progress_evaluation_budget(&solver_settings, 1), 4);
-        assert_eq!(restart_block_progress_evaluation_budget(&solver_settings, 0), 0);
+        assert_eq!(
+            restart_block_progress_evaluation_budget(&solver_settings, 4),
+            25
+        );
+        assert_eq!(
+            restart_block_progress_evaluation_budget(&solver_settings, 1),
+            4
+        );
+        assert_eq!(
+            restart_block_progress_evaluation_budget(&solver_settings, 0),
+            0
+        );
+    }
+
+    #[test]
+    fn restart_stop_reason_ignores_deferred_dynamics_feasibility() {
+        assert_eq!(
+            select_restart_stop_reason("tolerance", "dynamics_infeasible", "tolerance"),
+            "tolerance"
+        );
     }
 }

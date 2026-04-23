@@ -38,6 +38,8 @@ pub(crate) use optimization::{
 pub(crate) use option_refinement::{
     desired_joint_refinement_option_refinement_candidate_count, run_option_refinement,
 };
+#[cfg(test)]
+pub(crate) use pipeline::ensure_valid_selected_restart_outcome;
 pub(crate) use pricing_context::{
     build_option_calibration_diagnostics, build_option_pricing_context,
     resolve_option_surface_tier_pricing_artifact,
@@ -49,14 +51,14 @@ pub(crate) use report::{
     simulation_infrastructure_failure_message,
 };
 pub(crate) use resume_state::{JointRefinementResumeStore, PersistedRestartSelectionArtifacts};
+pub(crate) use selection::{
+    JointRefinementAdmissibilityThresholds, build_joint_candidate_frontier_diagnostics,
+    joint_raw_metrics_are_dynamics_feasible, joint_refinement_admissibility_thresholds,
+    joint_restart_outcome_is_admissible, select_restart_outcomes_with_lazy_coarse_consistency,
+};
 #[cfg(test)]
 pub(crate) use selection::{
-    JointRefinementAdmissibilityThresholds, admissibility_threshold_from_sample_count,
-    joint_breakdown_is_admissible,
-};
-pub(crate) use selection::{
-    build_joint_candidate_frontier_diagnostics,
-    select_restart_outcomes_with_lazy_coarse_consistency,
+    admissibility_threshold_from_sample_count, joint_raw_metrics_are_admissible,
 };
 pub(crate) use shared::{
     build_exchange_calendar_registry_artifact, build_halton_restart_id, clamp_in_place,
@@ -71,6 +73,6 @@ pub(crate) use state::{
     JointRefinementDeterministicEvaluation, JointRefinementFidelityTier,
     JointRefinementObjectiveCacheKey, JointRefinementObservedData,
     JointRefinementOptionPricingCacheKey, JointRefinementOptionTierPricingArtifact,
-    JointRefinementProfilingState, JointRefinementRestartOutcome,
-    JointRefinementSeedSummaryCacheKey,
+    JointRefinementProfilingState, JointRefinementRawAdmissibilityMetrics,
+    JointRefinementRestartOutcome, JointRefinementSeedSummaryCacheKey,
 };
