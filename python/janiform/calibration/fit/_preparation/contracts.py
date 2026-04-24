@@ -58,7 +58,7 @@ class FitPreparationConfiguration:
     preprocessing_settings: Optional[CalibrationMarketDataPreprocessingSettings]
     mean_reversion: Optional[CalibrationMeanReversionConfiguration]
     pricing_interval_schedule_policy: PricingIntervalSchedulePolicy
-    dynamics_search_restart_count: Optional[int]
+    dynamics_search_restart_candidate_budget: Optional[int]
     default_endogenous_mean_reversion_configuration: CalibrationMeanReversionConfiguration
     market_profile_reference: Optional[MarketProfileReference]
     known_news_reference: Optional[KnownNewsPresetReference]

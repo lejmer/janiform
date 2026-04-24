@@ -1,14 +1,11 @@
 use janiform_foundations::low_discrepancy::van_der_corput;
 use janiform_foundations::numeric::root_mean_square_or_infinity;
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
-use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 use super::super::derived_contracts::return_components_stage_positive_domain_floor;
 use super::super::execution::theoretical_net_process_moments;
-use super::constants::{
-    RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_PROFILE_CONFIDENCE_Z_SCORE,
-    RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_REGIME_COUNT,
-};
+use super::constants::RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_PROFILE_CONFIDENCE_Z_SCORE;
 use super::likelihood::maximum_profiled_open_beta_ratio;
 use super::profile::scale_aware_absolute_error;
 use super::sample::build_continuous_return_optimizer_context;
@@ -18,7 +15,7 @@ pub(super) use super::shape_mapping::{
     sell_beta_ratio_from_relative_share, share_to_coordinate,
 };
 use super::types::{
-    ContinuousMomentTargets, ContinuousReturnOptimizerContext, NigSearchRegime,
+    BasinSeedFamily, ContinuousMomentTargets, ContinuousReturnOptimizerContext, NigSearchRegime,
     NigShapeSearchBounds, NigShapeSearchPoint,
     ReturnComponentsStageContinuousReturnCalibrationSample, ScoredNigCandidate,
 };
@@ -28,6 +25,7 @@ pub(crate) fn nig_search_point_from_configuration(
     configuration: NigSharedPlusShiftConfiguration,
 ) -> Option<NigShapeSearchPoint> {
     let optimizer_context = build_continuous_return_optimizer_context(calibration_sample);
+
     let alpha = configuration.alpha;
     if !alpha.is_finite() || alpha <= return_components_stage_positive_domain_floor() {
         return None;
@@ -35,13 +33,16 @@ pub(crate) fn nig_search_point_from_configuration(
 
     let buy_beta_ratio = configuration.beta_0 / alpha;
     let sell_beta_ratio = (configuration.beta_0 + configuration.delta_beta) / alpha;
+
     let relative_share = relative_share_from_beta_ratios(buy_beta_ratio, sell_beta_ratio)?;
+
     let delta_center = inferred_delta_center(
         &optimizer_context,
         configuration.alpha,
         configuration.beta_0,
         configuration.delta_beta,
     )?;
+
     let delta_offset = configuration.delta / delta_center;
     if !delta_offset.is_finite() || delta_offset <= return_components_stage_positive_domain_floor()
     {
@@ -131,36 +132,24 @@ pub(super) fn build_moment_seed_candidates(
         })
         .collect();
 
-    ranked_candidates.sort_by(|left, right| {
-        left.objective_score
-            .total_cmp(&right.objective_score)
-            .then_with(|| {
-                left.configuration
-                    .alpha
-                    .total_cmp(&right.configuration.alpha)
-            })
-            .then_with(|| {
-                left.configuration
-                    .beta_0
-                    .total_cmp(&right.configuration.beta_0)
-            })
-            .then_with(|| {
-                left.configuration
-                    .delta
-                    .total_cmp(&right.configuration.delta)
-            })
-            .then_with(|| {
-                left.configuration
-                    .delta_beta
-                    .total_cmp(&right.configuration.delta_beta)
-            })
-    });
+    ranked_candidates.sort_by(ScoredNigCandidate::compare_by_objective_and_configuration);
 
-    let deduplicated_candidates =
-        super::optimization::deduplicate_candidates_by_key(ranked_candidates, |candidate| {
-            super::optimization::candidate_configuration_key(candidate.configuration)
+    let retained_candidates = super::optimization::retain_diverse_scored_candidates(
+        ranked_candidates,
+        theoretical_search_bounds,
+        BasinSeedFamily::ALL.len(),
+    );
+    let retained_candidates =
+        super::optimization::deduplicate_candidates_by_key(retained_candidates, |candidate| {
+            format!(
+                "{}:{}:{}:{}",
+                candidate.search_point.log_alpha.to_bits(),
+                candidate.search_point.buy_skew_coordinate.to_bits(),
+                candidate.search_point.sell_relative_coordinate.to_bits(),
+                candidate.search_point.log_delta_offset.to_bits(),
+            )
         });
-    if deduplicated_candidates.is_empty() {
+    if retained_candidates.is_empty() {
         let midpoint_search_point = NigShapeSearchPoint {
             log_alpha: 0.5
                 * (theoretical_search_bounds.lower_bounds[0]
@@ -193,23 +182,20 @@ pub(super) fn build_moment_seed_candidates(
         }];
     }
 
-    deduplicated_candidates
-        .into_iter()
-        .take(RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_REGIME_COUNT)
-        .collect()
+    retained_candidates
 }
 
 pub(super) fn build_search_regimes_from_moment_seeds(
-    optimizer_context: &ContinuousReturnOptimizerContext,
+    _optimizer_context: &ContinuousReturnOptimizerContext,
     moment_seed_candidates: &[ScoredNigCandidate],
     theoretical_search_bounds: NigShapeSearchBounds,
 ) -> Vec<NigSearchRegime> {
     let mut profiled_search_regimes: Vec<NigSearchRegime> = moment_seed_candidates
-        .par_iter()
-        .filter_map(|moment_seed_candidate| {
-            super::optimization::build_profiled_search_regime(
-                optimizer_context,
+        .iter()
+        .map(|moment_seed_candidate| {
+            regime_from_seed_frontier(
                 moment_seed_candidate.search_point,
+                moment_seed_candidates,
                 theoretical_search_bounds,
             )
         })
@@ -227,6 +213,113 @@ pub(super) fn build_search_regimes_from_moment_seeds(
     });
 
     profiled_search_regimes
+}
+
+fn regime_from_seed_frontier(
+    seed_search_point: NigShapeSearchPoint,
+    moment_seed_candidates: &[ScoredNigCandidate],
+    theoretical_search_bounds: NigShapeSearchBounds,
+) -> NigSearchRegime {
+    let seed_vector = [
+        seed_search_point.log_alpha,
+        seed_search_point.buy_skew_coordinate,
+        seed_search_point.sell_relative_coordinate,
+        seed_search_point.log_delta_offset,
+    ];
+
+    let lower_bounds: [f64; 4] = std::array::from_fn(|coordinate_index| {
+        nearest_lower_coordinate(
+            seed_vector[coordinate_index],
+            coordinate_index,
+            moment_seed_candidates,
+            theoretical_search_bounds.lower_bounds[coordinate_index],
+        )
+    });
+    let upper_bounds: [f64; 4] = std::array::from_fn(|coordinate_index| {
+        nearest_upper_coordinate(
+            seed_vector[coordinate_index],
+            coordinate_index,
+            moment_seed_candidates,
+            theoretical_search_bounds.upper_bounds[coordinate_index],
+        )
+    });
+
+    NigSearchRegime {
+        log_alpha_center: seed_search_point.log_alpha,
+        buy_skew_center: seed_search_point.buy_skew_coordinate,
+        sell_relative_center: seed_search_point.sell_relative_coordinate,
+        log_delta_center: seed_search_point.log_delta_offset,
+        log_alpha_half_span: symmetric_regime_half_span(
+            seed_vector[0],
+            lower_bounds[0],
+            upper_bounds[0],
+        ),
+        buy_skew_half_span: symmetric_regime_half_span(
+            seed_vector[1],
+            lower_bounds[1],
+            upper_bounds[1],
+        ),
+        sell_relative_half_span: symmetric_regime_half_span(
+            seed_vector[2],
+            lower_bounds[2],
+            upper_bounds[2],
+        ),
+        log_delta_half_span: symmetric_regime_half_span(
+            seed_vector[3],
+            lower_bounds[3],
+            upper_bounds[3],
+        ),
+    }
+}
+
+fn nearest_lower_coordinate(
+    seed_coordinate: f64,
+    coordinate_index: usize,
+    moment_seed_candidates: &[ScoredNigCandidate],
+    theoretical_lower_bound: f64,
+) -> f64 {
+    let nearest_lower_seed = moment_seed_candidates
+        .iter()
+        .map(|candidate| coordinate_at_index(candidate.search_point, coordinate_index))
+        .filter(|candidate_coordinate| *candidate_coordinate < seed_coordinate)
+        .max_by(|left, right| left.total_cmp(right));
+
+    nearest_lower_seed
+        .map(|neighbor_coordinate| 0.5 * (seed_coordinate + neighbor_coordinate))
+        .unwrap_or(theoretical_lower_bound)
+}
+
+fn nearest_upper_coordinate(
+    seed_coordinate: f64,
+    coordinate_index: usize,
+    moment_seed_candidates: &[ScoredNigCandidate],
+    theoretical_upper_bound: f64,
+) -> f64 {
+    let nearest_upper_seed = moment_seed_candidates
+        .iter()
+        .map(|candidate| coordinate_at_index(candidate.search_point, coordinate_index))
+        .filter(|candidate_coordinate| *candidate_coordinate > seed_coordinate)
+        .min_by(|left, right| left.total_cmp(right));
+
+    nearest_upper_seed
+        .map(|neighbor_coordinate| 0.5 * (seed_coordinate + neighbor_coordinate))
+        .unwrap_or(theoretical_upper_bound)
+}
+
+fn coordinate_at_index(search_point: NigShapeSearchPoint, coordinate_index: usize) -> f64 {
+    match coordinate_index {
+        0 => search_point.log_alpha,
+        1 => search_point.buy_skew_coordinate,
+        2 => search_point.sell_relative_coordinate,
+        3 => search_point.log_delta_offset,
+        _ => unreachable!("NIG search point has exactly four coordinates"),
+    }
+}
+
+fn symmetric_regime_half_span(center: f64, lower_bound: f64, upper_bound: f64) -> f64 {
+    (center - lower_bound)
+        .abs()
+        .max((upper_bound - center).abs())
 }
 
 pub(super) fn theoretical_search_bounds(

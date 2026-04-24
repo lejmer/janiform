@@ -56,7 +56,7 @@ use super::{
     build_joint_simulation_summaries, build_observed_data, build_option_calibration_diagnostics,
     build_option_pricing_context, build_summary_simulation_session_context,
     desired_joint_refinement_option_refinement_candidate_count,
-    desired_joint_refinement_restart_count, joint_refinement_admissibility_thresholds,
+    desired_joint_refinement_restart_candidate_budget, joint_refinement_admissibility_thresholds,
     joint_refinement_budget_schedule, joint_restart_outcome_is_admissible, optimize_restart_seeds,
     ordered_parameter_bits, resolve_option_surface_tier_pricing_artifact, run_option_refinement,
     select_restart_outcomes_with_lazy_coarse_consistency,
@@ -159,12 +159,13 @@ pub(super) fn run_joint_refinement_calibration_stage_internal(
     progress_sender: Option<Sender<JointRefinementStageProgressUpdate>>,
     disk_checkpoint_directory: Option<&Path>,
 ) -> JointRefinementStageExecutionReport {
-    if stage_input.restart_count_override == Some(0) {
+    if stage_input.restart_candidate_budget_override == Some(0) {
         return build_joint_refinement_stage_failure_report(
             run_spec,
             JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
-                error_message: "joint refinement restart_count_override must be greater than zero"
-                    .to_string(),
+                error_message:
+                    "joint refinement restart_candidate_budget_override must be greater than zero"
+                        .to_string(),
             },
         );
     }
@@ -808,7 +809,7 @@ fn establish_baseline_evaluation(
     );
 
     let baseline_final_evaluation = evaluate_joint_fitted_parameters(
-        baseline_fitted_parameters,
+        baseline_fitted_parameters.clone(),
         Some(baseline_parameter_bits.as_slice()),
         bootstrap_context,
         JointRefinementFidelityTier::Final,
@@ -827,11 +828,43 @@ fn establish_baseline_evaluation(
     let baseline_candidate_is_valid = baseline_local_evaluation.invalid_reason.is_none()
         && baseline_final_evaluation.invalid_reason.is_none();
 
+    if let Ok(mut cache_guard) = bootstrap_context.objective_cache.lock() {
+        cache_guard.clear();
+    }
+
+    let normalized_baseline_local_evaluation = if baseline_candidate_is_valid {
+        evaluate_joint_fitted_parameters(
+            baseline_fitted_parameters.clone(),
+            Some(baseline_parameter_bits.as_slice()),
+            bootstrap_context,
+            JointRefinementFidelityTier::Local,
+            &resolved_stage_payloads.stage_solver_settings,
+            progress_sender,
+            Some(JointRefinementStageProgressPhase::BaselineLocalEvaluation),
+        )
+    } else {
+        baseline_local_evaluation.clone()
+    };
+
+    let normalized_baseline_final_evaluation = if baseline_candidate_is_valid {
+        evaluate_joint_fitted_parameters(
+            baseline_fitted_parameters,
+            Some(baseline_parameter_bits.as_slice()),
+            bootstrap_context,
+            JointRefinementFidelityTier::Final,
+            &resolved_stage_payloads.stage_solver_settings,
+            progress_sender,
+            Some(JointRefinementStageProgressPhase::BaselineFinalEvaluation),
+        )
+    } else {
+        baseline_final_evaluation.clone()
+    };
+
     let baseline_coarse_consistency_artifacts = if baseline_candidate_is_valid {
         emit_coarse_consistency_progress(progress_sender, 0, 1, "baseline coarse_consistency");
         build_joint_candidate_coarse_consistency_artifacts(
             bootstrap_context,
-            &baseline_final_evaluation.fitted_parameters,
+            &normalized_baseline_final_evaluation.fitted_parameters,
             Some(baseline_parameter_bits.as_slice()),
             None,
         )
@@ -845,8 +878,8 @@ fn establish_baseline_evaluation(
     let baseline_restart_outcome = JointRefinementRestartOutcome {
         restart_id: "baseline".to_string(),
         parameter_vector: baseline_parameter_vector.to_vec(),
-        local_evaluation: baseline_local_evaluation.clone(),
-        final_evaluation: baseline_final_evaluation.clone(),
+        local_evaluation: normalized_baseline_local_evaluation,
+        final_evaluation: normalized_baseline_final_evaluation,
         local_evaluation_count: 0,
         stop_reason: "baseline_incumbent".to_string(),
     };
@@ -1145,7 +1178,9 @@ fn build_restart_search_plan(
         ),
         &prepared_bootstrap.bootstrap_context,
         &resolved_stage_payloads.stage_solver_settings,
-        desired_joint_refinement_restart_count(stage_input.restart_count_override),
+        desired_joint_refinement_restart_candidate_budget(
+            stage_input.restart_candidate_budget_override,
+        ),
     );
 
     let budget_schedule = joint_refinement_budget_schedule(

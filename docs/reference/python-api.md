@@ -87,6 +87,9 @@ The high-level joint option path also exposes:
 - `option_surface_valuation_time_utc` to select the option snapshot being fit
 - `carry` for optional flat discount-rate and carry-rate input
 
+The `JaniformEstimator` constructor accepts `dynamics_search_restart_candidate_budget` to set the
+joint-refinement restart candidate budget used by the calibration dynamics search.
+
 `JaniformEstimator.fit_with_report(...)` returns `JaniformFitResult`, which carries both the fitted
 model and the fit report without changing the main `fit(...)` return shape. The returned
 `JaniformFitReport` also exposes staged execution summaries and the resolved stage-report payloads

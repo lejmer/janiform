@@ -9,8 +9,8 @@ use janiform_calibration_artifacts::{
     CalibrationResumeSettings, CalibrationStage, CalibrationStageSeedSource,
     calibration_artifact_manifest_path, calibration_dataset_snapshot_artifact_path,
     calibration_last_success_checkpoint_path, calibration_stage_checkpoint_path,
-    calibration_stage_parameter_artifact_path, derive_calibration_stage_seed_from_global_seed,
-    load_calibration_artifact_manifest_from_disk,
+    calibration_stage_parameter_artifact_path, calibration_stage_token,
+    derive_calibration_stage_seed_from_global_seed, load_calibration_artifact_manifest_from_disk,
     load_calibration_dataset_snapshot_artifact_from_disk,
     load_calibration_stage_parameter_artifact_from_disk,
 };
@@ -507,7 +507,9 @@ fn staged_runner_persists_dataset_snapshot_artifact_only_for_disk_mode_runs() {
         None,
         Some(disk_checkpoint_directory.as_path()),
     );
-    assert_eq!(disk_report.status, CalibrationStageExecutionStatus::Success);
+    if disk_report.status != CalibrationStageExecutionStatus::Success {
+        panic!("{disk_report:#?}");
+    }
 
     let disk_artifact_path = calibration_dataset_snapshot_artifact_path(
         disk_checkpoint_directory.as_path(),
@@ -566,7 +568,7 @@ fn staged_runner_persists_stage_parameter_artifacts_and_manifest_only_for_disk_m
 
     let disk_checkpoint_directory =
         temporary_checkpoint_directory("disk-stage-parameter-artifacts");
-    let disk_contract = build_run_contract_with_mode_and_resume(
+    let disk_contract = build_pre_joint_run_contract_with_mode_and_resume(
         "run-disk-stage-parameter-artifacts",
         CalibrationExecutionMode::Disk,
         None,
@@ -584,8 +586,6 @@ fn staged_runner_persists_stage_parameter_artifacts_and_manifest_only_for_disk_m
         CalibrationStage::Seasonality,
         CalibrationStage::Hawkes,
         CalibrationStage::ReturnComponents,
-        CalibrationStage::MeanReversion,
-        CalibrationStage::JointRefinement,
     ] {
         let artifact_path = calibration_stage_parameter_artifact_path(
             disk_checkpoint_directory.as_path(),
@@ -597,6 +597,18 @@ fn staged_runner_persists_stage_parameter_artifacts_and_manifest_only_for_disk_m
         assert_eq!(artifact.run_id, disk_contract.run_spec.run_id);
         assert_eq!(artifact.execution_mode, CalibrationExecutionMode::Disk);
         assert_eq!(artifact.stage, stage);
+        assert!(
+            disk_checkpoint_directory
+                .join("artifacts")
+                .join("runs")
+                .join(disk_contract.run_spec.run_id.as_str())
+                .join(format!(
+                    "{}.stage_report.json",
+                    calibration_stage_token(stage)
+                ))
+                .exists(),
+            "disk-mode run should persist stage report snapshot for {stage:?}"
+        );
     }
 
     let manifest_path = calibration_artifact_manifest_path(
@@ -614,7 +626,7 @@ fn staged_runner_persists_stage_parameter_artifacts_and_manifest_only_for_disk_m
             .filter(|artifact_reference| artifact_reference.artifact_kind
                 == CalibrationArtifactKind::StageOutput)
             .count(),
-        5
+        3
     );
     assert_eq!(
         manifest
@@ -623,12 +635,12 @@ fn staged_runner_persists_stage_parameter_artifacts_and_manifest_only_for_disk_m
             .filter(|artifact_reference| artifact_reference.artifact_kind
                 == CalibrationArtifactKind::StageCheckpoint)
             .count(),
-        5
+        3
     );
 
     let memory_checkpoint_directory =
         temporary_checkpoint_directory("memory-stage-parameter-artifacts");
-    let memory_contract = build_run_contract_with_mode_and_resume(
+    let memory_contract = build_pre_joint_run_contract_with_mode_and_resume(
         "run-memory-stage-parameter-artifacts",
         CalibrationExecutionMode::Memory,
         None,
@@ -650,6 +662,7 @@ fn staged_runner_persists_stage_parameter_artifacts_and_manifest_only_for_disk_m
         CalibrationStage::Seasonality,
         CalibrationStage::Hawkes,
         CalibrationStage::ReturnComponents,
+        CalibrationStage::MeanReversion,
         CalibrationStage::JointRefinement,
     ] {
         assert!(
@@ -1116,8 +1129,11 @@ fn staged_runner_resume_from_last_and_selected_stage_work_in_disk_mode() {
     let checkpoint_directory = temporary_checkpoint_directory("disk-resume");
     let calendar_registry = calibration_stage_test_registry();
 
-    let initial_run_contract =
-        build_run_contract_with_mode_and_resume(run_id, CalibrationExecutionMode::Disk, None);
+    let initial_run_contract = build_pre_joint_run_contract_with_mode_and_resume(
+        run_id,
+        CalibrationExecutionMode::Disk,
+        None,
+    );
     let initial_report = run_staged_calibration_with_checkpointing(
         &initial_run_contract,
         &calendar_registry,
@@ -1149,8 +1165,24 @@ fn staged_runner_resume_from_last_and_selected_stage_work_in_disk_mode() {
             .join(run_id)
             .exists()
     );
+    assert!(
+        checkpoint_directory
+            .join("artifacts")
+            .join("pending")
+            .join(run_id)
+            .join("seasonality.stage_report.json")
+            .exists()
+    );
+    assert!(
+        checkpoint_directory
+            .join("artifacts")
+            .join("pending")
+            .join(run_id)
+            .join("hawkes.stage_report.json")
+            .exists()
+    );
 
-    let resume_from_last_contract = build_run_contract_with_mode_and_resume(
+    let resume_from_last_contract = build_pre_joint_run_contract_with_mode_and_resume(
         run_id,
         CalibrationExecutionMode::Disk,
         Some(CalibrationResumeSettings::persisted_checkpoint_reference(
@@ -1175,7 +1207,8 @@ fn staged_runner_resume_from_last_and_selected_stage_work_in_disk_mode() {
         resume_from_last_report.started_from_stage,
         Some(CalibrationStage::ReturnComponents)
     );
-    assert_eq!(resume_from_last_report.stage_reports.len(), 3);
+    assert_eq!(resume_from_last_report.stage_reports.len(), 1);
+    assert_eq!(resume_from_last_report.emitted_checkpoints.len(), 1);
     assert!(calibration_artifact_manifest_path(checkpoint_directory.as_path(), run_id).exists());
     assert!(
         !checkpoint_directory
@@ -1184,10 +1217,21 @@ fn staged_runner_resume_from_last_and_selected_stage_work_in_disk_mode() {
             .join(run_id)
             .exists()
     );
+    assert!(
+        checkpoint_directory
+            .join("artifacts")
+            .join("runs")
+            .join(run_id)
+            .join("return_components.stage_report.json")
+            .exists()
+    );
 
     let second_checkpoint_directory = temporary_checkpoint_directory("disk-resume-selected-stage");
-    let second_initial_run_contract =
-        build_run_contract_with_mode_and_resume(run_id, CalibrationExecutionMode::Disk, None);
+    let second_initial_run_contract = build_pre_joint_run_contract_with_mode_and_resume(
+        run_id,
+        CalibrationExecutionMode::Disk,
+        None,
+    );
     let second_initial_report = run_staged_calibration_with_checkpointing(
         &second_initial_run_contract,
         &calendar_registry,
@@ -1200,7 +1244,7 @@ fn staged_runner_resume_from_last_and_selected_stage_work_in_disk_mode() {
         CalibrationStageExecutionStatus::Failure
     );
 
-    let resume_from_stage_contract = build_run_contract_with_mode_and_resume(
+    let resume_from_stage_contract = build_pre_joint_run_contract_with_mode_and_resume(
         run_id,
         CalibrationExecutionMode::Disk,
         Some(CalibrationResumeSettings::persisted_checkpoint_reference(

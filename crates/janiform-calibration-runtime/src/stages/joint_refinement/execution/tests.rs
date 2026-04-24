@@ -13,7 +13,7 @@ use super::{
     JointRefinementCandidateEvaluation, JointRefinementCoarseConsistencySummary,
     JointRefinementRawAdmissibilityMetrics, JointRefinementRestartOutcome,
     JointRefinementSeedSummary, admissibility_threshold_from_sample_count,
-    desired_joint_refinement_restart_count, ensure_valid_selected_restart_outcome,
+    desired_joint_refinement_restart_candidate_budget, ensure_valid_selected_restart_outcome,
     extend_joint_coarse_tick_consistency_metrics_for_seed, joint_raw_metrics_are_admissible,
     joint_raw_metrics_are_dynamics_feasible, joint_refinement_budget_schedule,
     joint_refinement_restart_block_powell_settings, sampled_observed_tick_returns,
@@ -321,17 +321,20 @@ fn build_test_seed_summary(
 }
 
 #[test]
-fn joint_refinement_desired_restart_count_defaults_to_fifteen() {
-    assert_eq!(desired_joint_refinement_restart_count(None), 15);
+fn joint_refinement_desired_restart_candidate_budget_defaults_to_fifteen() {
+    assert_eq!(desired_joint_refinement_restart_candidate_budget(None), 15);
 }
 
 #[test]
-fn joint_refinement_desired_restart_count_honors_override() {
-    assert_eq!(desired_joint_refinement_restart_count(Some(9)), 9);
+fn joint_refinement_desired_restart_candidate_budget_honors_override() {
+    assert_eq!(
+        desired_joint_refinement_restart_candidate_budget(Some(9)),
+        9
+    );
 }
 
 #[test]
-fn joint_refinement_restart_count_controls_frontier_width_and_search_depth() {
+fn joint_refinement_restart_candidate_budget_controls_frontier_width_and_search_depth() {
     let solver_settings = build_test_solver_settings(64);
 
     let single_restart_schedule = joint_refinement_budget_schedule(&solver_settings, 1);
@@ -419,7 +422,7 @@ fn joint_refinement_restart_seed_generation_counts_only_accepted_haltons() {
     let baseline_15m_calibration_sample = build_test_calibration_sample();
     let lower_bounds = vec![-1.0; baseline_parameter_vector.len()];
     let upper_bounds = vec![2.0; baseline_parameter_vector.len()];
-    let mut halton_attempt_count = 0usize;
+    let mut score_call_count = 0usize;
 
     let restart_seeds = build_restart_seeds_with_halton_acceptance(
         baseline_parameter_vector.as_slice(),
@@ -431,26 +434,25 @@ fn joint_refinement_restart_seed_generation_counts_only_accepted_haltons() {
         0.25,
         6,
         |_| {
-            halton_attempt_count += 1;
-            halton_attempt_count % 3 == 0
+            score_call_count += 1;
+            score_call_count % 3 == 0
         },
     );
 
-    assert_eq!(restart_seeds.len(), 6);
+    assert_eq!(restart_seeds.len(), 5);
     assert_eq!(restart_seeds[3].0, "halton_03");
     assert_eq!(restart_seeds[4].0, "halton_06");
-    assert_eq!(restart_seeds[5].0, "halton_09");
-    assert_eq!(halton_attempt_count, 9);
+    assert_eq!(score_call_count, 9);
 }
 
 #[test]
-fn joint_refinement_restart_seed_generation_stops_after_halton_attempt_cap() {
+fn joint_refinement_restart_seed_generation_uses_restart_candidate_exploration_budget() {
     let active_parameter_layout = build_test_active_parameter_layout();
     let baseline_parameter_vector = vec![0.0; active_parameter_layout.vector_length()];
     let baseline_15m_calibration_sample = build_test_calibration_sample();
     let lower_bounds = vec![-1.0; baseline_parameter_vector.len()];
     let upper_bounds = vec![2.0; baseline_parameter_vector.len()];
-    let mut halton_attempt_count = 0usize;
+    let mut score_call_count = 0usize;
 
     let restart_seeds = build_restart_seeds_with_halton_acceptance(
         baseline_parameter_vector.as_slice(),
@@ -462,13 +464,13 @@ fn joint_refinement_restart_seed_generation_stops_after_halton_attempt_cap() {
         0.25,
         6,
         |_| {
-            halton_attempt_count += 1;
+            score_call_count += 1;
             false
         },
     );
 
     assert_eq!(restart_seeds.len(), 3);
-    assert_eq!(halton_attempt_count, 48);
+    assert_eq!(score_call_count, 9);
 }
 
 #[test]

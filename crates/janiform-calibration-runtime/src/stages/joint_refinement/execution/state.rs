@@ -59,6 +59,8 @@ pub(crate) struct JointRefinementDeterministicCacheKey {
 pub(crate) struct JointRefinementDeterministicEvaluation {
     pub(crate) modeled_open_event_rate_per_hour: f64,
     pub(crate) raw_aggregated_likelihood_fit: f64,
+    pub(crate) raw_expected_activity_shape_fit: Option<f64>,
+    pub(crate) raw_expected_activity_level_fit: Option<f64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]

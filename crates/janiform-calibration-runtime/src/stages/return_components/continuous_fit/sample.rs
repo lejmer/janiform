@@ -13,14 +13,10 @@ use super::super::execution::{
     ReturnComponentsStageReturnDistributionSummary, ReturnComponentsStageSortedSignalInputs,
     summarize_return_distribution,
 };
-use super::constants::{
-    RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_LOCAL_SAMPLE_COUNT,
-    RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_MAX_SAMPLE_COUNT,
-    RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_SEED_SAMPLE_COUNT,
-};
 use super::profile::{build_distribution_profile, build_scale_bucket_profiles};
 use super::types::{
-    ContinuousReturnOptimizerContext, ReturnComponentsStageContinuousReturnCalibrationSample,
+    ContinuousLikelihoodFidelityTier, ContinuousReturnOptimizerContext,
+    ReturnComponentsStageContinuousReturnCalibrationSample,
 };
 
 pub(crate) fn build_continuous_return_calibration_sample(
@@ -31,7 +27,7 @@ pub(crate) fn build_continuous_return_calibration_sample(
     let aligned_pairs = build_equal_business_time_blocks(
         sorted_signals.continuous_fit_returns.as_slice(),
         continuous_fit_business_time_scales,
-        RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_MAX_SAMPLE_COUNT,
+        sorted_signals.continuous_fit_returns.len(),
     );
     let observed_returns: Vec<f64> = aligned_pairs
         .iter()
@@ -165,17 +161,23 @@ pub(super) fn build_continuous_return_optimizer_context(
             calibration_sample.observed_profile,
         ),
         open_session_sell_share_proxy: calibration_sample.open_session_sell_share_proxy,
-        seed_member_indices: deterministic_member_indices(
+        seed_member_indices: fidelity_member_indices(
             calibration_sample.observed_returns.len(),
-            RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_SEED_SAMPLE_COUNT,
+            calibration_sample.sell_share_proxies.as_slice(),
+            calibration_sample.scale_bucket_profiles.as_slice(),
+            ContinuousLikelihoodFidelityTier::Seed,
         ),
-        local_member_indices: deterministic_member_indices(
+        local_member_indices: fidelity_member_indices(
             calibration_sample.observed_returns.len(),
-            RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_LOCAL_SAMPLE_COUNT,
+            calibration_sample.sell_share_proxies.as_slice(),
+            calibration_sample.scale_bucket_profiles.as_slice(),
+            ContinuousLikelihoodFidelityTier::Local,
         ),
-        full_member_indices: deterministic_member_indices(
+        full_member_indices: fidelity_member_indices(
             calibration_sample.observed_returns.len(),
-            calibration_sample.observed_returns.len(),
+            calibration_sample.sell_share_proxies.as_slice(),
+            calibration_sample.scale_bucket_profiles.as_slice(),
+            ContinuousLikelihoodFidelityTier::Full,
         ),
         cache: Arc::new(Mutex::new(BTreeMap::new())),
     }
@@ -368,24 +370,76 @@ fn positive_business_time_floor(business_time_scales: &[f64]) -> f64 {
 fn log_likelihood_shift_from_observed_profile(
     observed_profile: super::types::ContinuousReturnDistributionProfile,
 ) -> f64 {
-    (-observed_profile.return_volatility.max(1.0e-8).ln()).max(1.0) + 4.0
+    -observed_profile
+        .return_volatility
+        .max(strictly_positive_machine_value())
+        .ln()
 }
 
-fn deterministic_member_indices(total_count: usize, target_count: usize) -> Vec<usize> {
-    if total_count <= target_count {
+fn fidelity_member_indices(
+    total_count: usize,
+    sell_share_proxies: &[f64],
+    scale_bucket_profiles: &[super::types::ContinuousReturnScaleBucketProfile],
+    fidelity_tier: ContinuousLikelihoodFidelityTier,
+) -> Vec<usize> {
+    if fidelity_tier == ContinuousLikelihoodFidelityTier::Full
+        || scale_bucket_profiles.is_empty()
+        || total_count <= scale_bucket_profiles.len()
+    {
         return (0..total_count).collect();
     }
 
-    let mut retained_indices = std::collections::BTreeSet::new();
-    for retained_position in 0..target_count {
-        let scaled_index = if target_count <= 1 {
-            0
-        } else {
-            (retained_position * (total_count - 1)) / (target_count - 1)
-        };
+    let sell_share_stratum_count = match fidelity_tier {
+        ContinuousLikelihoodFidelityTier::Seed => 1,
+        ContinuousLikelihoodFidelityTier::Local => scale_bucket_profiles.len(),
+        ContinuousLikelihoodFidelityTier::Full => unreachable!("full tier handled above"),
+    };
 
-        retained_indices.insert(scaled_index);
+    let mut selected_member_indices = Vec::new();
+
+    for scale_bucket_profile in scale_bucket_profiles {
+        let mut bucket_member_indices = scale_bucket_profile.member_indices.clone();
+        bucket_member_indices.sort_by(|left_member_index, right_member_index| {
+            sell_share_proxies[*left_member_index]
+                .total_cmp(&sell_share_proxies[*right_member_index])
+                .then_with(|| left_member_index.cmp(right_member_index))
+        });
+
+        selected_member_indices.extend(representative_member_indices_from_sorted_strata(
+            bucket_member_indices.as_slice(),
+            sell_share_stratum_count,
+        ));
     }
 
-    retained_indices.into_iter().collect()
+    selected_member_indices.sort_unstable();
+    selected_member_indices.dedup();
+
+    if selected_member_indices.is_empty() {
+        return (0..total_count).collect();
+    }
+
+    selected_member_indices
+}
+
+fn representative_member_indices_from_sorted_strata(
+    sorted_member_indices: &[usize],
+    target_stratum_count: usize,
+) -> Vec<usize> {
+    if sorted_member_indices.is_empty() || target_stratum_count == 0 {
+        return Vec::new();
+    }
+
+    let resolved_stratum_count = target_stratum_count.min(sorted_member_indices.len());
+
+    (0..resolved_stratum_count)
+        .filter_map(|stratum_index| {
+            let start_offset = stratum_index * sorted_member_indices.len() / resolved_stratum_count;
+            let end_offset = ((stratum_index + 1) * sorted_member_indices.len()
+                / resolved_stratum_count)
+                .max(start_offset + 1);
+            let median_offset = start_offset + (end_offset - start_offset - 1) / 2;
+
+            sorted_member_indices.get(median_offset).copied()
+        })
+        .collect()
 }

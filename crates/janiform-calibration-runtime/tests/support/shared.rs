@@ -2092,7 +2092,7 @@ pub(crate) fn staged_run_inputs(
         } else {
             None
         },
-        joint_refinement_restart_count_override: Some(1),
+        joint_refinement_restart_candidate_budget_override: Some(1),
         joint_refinement_option_refinement_candidate_count_override: Some(1),
         joint_refinement_audit_option_pricing_enabled: false,
         joint_refinement_option_pricing_input: None,
@@ -2525,7 +2525,7 @@ pub(crate) fn build_joint_refinement_stage_success_report() -> JointRefinementSt
                     },
                     candidate_generation_input:
                         return_components_stage_candidate_generation_fixture(),
-                    restart_count_override: Some(1),
+                    restart_candidate_budget_override: Some(1),
                     option_refinement_candidate_count_override: Some(1),
                     audit_option_pricing_enabled: false,
                     option_pricing_input: None,

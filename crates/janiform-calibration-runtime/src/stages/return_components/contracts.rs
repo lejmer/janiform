@@ -1683,6 +1683,58 @@ pub struct ReturnComponentsStageContinuousOptimizerBasinDiagnostic {
     pub fitted_skewness: f64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub enum ReturnComponentsStageExactLikelihoodFailureScope {
+    Global,
+    ConditionalScaleBucket,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub enum ReturnComponentsStageExactLikelihoodFailureReason {
+    NoEvaluatedBlocks,
+    InvalidObservedInputs,
+    InvalidBlockStandardDeviation,
+    InvalidStandardizedDecayScale,
+    InvalidInitialIntegrationUpperBound,
+    IntegrationStepCountOverflow,
+    InvalidCharacteristicExponent,
+    InvalidCharacteristicFunction,
+    InvalidIntegrand,
+    InvalidDensity,
+    LogDensityErrorNotCertified,
+    IntegrationBoundOverflow,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub enum ReturnComponentsStageExactLikelihoodEvaluatorKind {
+    ClosedFormSingleSideBuy,
+    ClosedFormSingleSideSell,
+    TiltedMixedInversion,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ReturnComponentsStageExactLikelihoodFailureDiagnostic {
+    pub scope: ReturnComponentsStageExactLikelihoodFailureScope,
+    pub scale_bucket_index: Option<usize>,
+    pub block_member_index: Option<usize>,
+    pub failure_reason: ReturnComponentsStageExactLikelihoodFailureReason,
+    pub evaluator_kind: Option<ReturnComponentsStageExactLikelihoodEvaluatorKind>,
+    pub observed_return: Option<f64>,
+    pub business_time_scale: Option<f64>,
+    pub sell_share_proxy: Option<f64>,
+    pub integrated_buy_intensity: Option<f64>,
+    pub integrated_sell_intensity: Option<f64>,
+    pub block_standard_deviation: Option<f64>,
+    pub standardized_return: Option<f64>,
+    pub tilt_theta: Option<f64>,
+    pub tilt_domain_lower_theta_exclusive: Option<f64>,
+    pub tilt_domain_upper_theta_exclusive: Option<f64>,
+    pub standardized_decay_scale: Option<f64>,
+    pub integration_upper_bound: Option<f64>,
+    pub log_density_resolution: Option<f64>,
+    pub scope_average_log_likelihood_error_upper_bound: Option<f64>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ReturnComponentsStageContinuousDistributionFitBreakdownDiagnostic {
     pub global_fit_score: f64,
@@ -1696,6 +1748,14 @@ pub struct ReturnComponentsStageContinuousDistributionFitBreakdownDiagnostic {
     pub optimizer_local_evaluation_count: usize,
     pub optimizer_stop_reason: String,
     pub optimizer_basin_diagnostics: Vec<ReturnComponentsStageContinuousOptimizerBasinDiagnostic>,
+    pub exact_likelihood_failures: Vec<ReturnComponentsStageExactLikelihoodFailureDiagnostic>,
+    pub exact_closed_form_single_side_buy_block_count: usize,
+    pub exact_closed_form_single_side_sell_block_count: usize,
+    pub exact_tilted_mixed_inversion_block_count: usize,
+    pub exact_structural_failure_count: usize,
+    pub exact_uncertified_scope_count: usize,
+    pub exact_global_average_log_likelihood_error_upper_bound: Option<f64>,
+    pub exact_conditional_average_log_likelihood_error_upper_bound: Option<f64>,
     pub mean_return_fit: f64,
     pub volatility_fit: f64,
     pub median_return_fit: f64,

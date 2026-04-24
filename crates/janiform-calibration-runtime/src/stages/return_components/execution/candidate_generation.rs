@@ -162,7 +162,8 @@ pub(super) fn generate_return_components_stage_candidate_inputs(
         fitted_price_range_sanity_policy.clone(),
     );
 
-    let candidate_family_counts = build_candidate_family_counts();
+    let candidate_family_counts =
+        build_candidate_family_counts(&candidate_family_sets.fitted_continuous_return_layer);
 
     let generated_candidates = enumerate_candidate_inputs(
         candidate_generation_input,
@@ -320,9 +321,11 @@ fn build_candidate_provenance_template(
     }
 }
 
-fn build_candidate_family_counts() -> ReturnComponentsStageCandidateFamilyCounts {
+fn build_candidate_family_counts(
+    fitted_continuous_return_layer: &continuous_layer_fit::FittedContinuousReturnLayer,
+) -> ReturnComponentsStageCandidateFamilyCounts {
     ReturnComponentsStageCandidateFamilyCounts {
-        nig_candidate_count: 1,
+        nig_candidate_count: fitted_continuous_return_layer.candidates.len(),
         known_news_arrival_family_count: 1,
         surprise_news_arrival_family_count: 1,
         return_jump_mark_scale_family_count: 1,
@@ -345,14 +348,6 @@ fn enumerate_candidate_inputs(
     Vec<ReturnComponentsStageCandidateInput>,
     ReturnComponentsStageCandidateGenerationInputError,
 > {
-    let nig_candidate = candidate_family_sets
-        .fitted_continuous_return_layer
-        .nig_configuration;
-
-    let continuous_return_evaluation = &candidate_family_sets
-        .fitted_continuous_return_layer
-        .evaluation;
-
     let known_arrival_family = candidate_family_sets
         .fitted_known_arrival_layer
         .as_candidate_family();
@@ -360,14 +355,6 @@ fn enumerate_candidate_inputs(
     let return_jump_family = &candidate_family_sets.fitted_return_jump_mark_layer;
     let activity_coupling_family = &candidate_family_sets.fitted_activity_coupling_layer;
 
-    let candidate_families = ReturnComponentsStageCandidateFamilies {
-        known_news_arrival_controls: known_arrival_family.clone(),
-        surprise_news_arrival_controls: surprise_arrival_family.clone(),
-        return_jump_mark_scale_controls: *return_jump_family,
-        news_to_hawkes_activity_coupling_controls: *activity_coupling_family,
-    };
-
-    let return_distribution_diagnostic = continuous_return_evaluation.diagnostic;
     let jump_diagnostic = build_jump_diagnostic(
         fitted_diagnostic_policy,
         summary_statistics,
@@ -391,62 +378,94 @@ fn enumerate_candidate_inputs(
         summary_statistics,
         activity_coupling_family,
     );
-    let price_range_sanity_diagnostic = build_price_range_sanity_diagnostic(
-        fitted_diagnostic_policy,
-        summary_statistics,
-        return_distribution_diagnostic,
-        surprise_arrival_family,
-        return_jump_family,
-        candidate_generation_input.shared_mark_law_template,
-        fitted_price_range_sanity_policy,
-    );
 
-    let objective_metric_buckets = objective_scoring_policy_fit::score_candidate_metric_buckets(
-        fitted_objective_scoring_policy,
-        continuous_return_evaluation.objective_score,
-        &surprise_arrival_diagnostic,
-        &jump_diagnostic,
-        &gap_diagnostic,
-        &activity_coupling_diagnostic,
-        &price_range_sanity_diagnostic,
-    );
+    candidate_family_sets
+        .fitted_continuous_return_layer
+        .candidates
+        .iter()
+        .enumerate()
+        .map(
+            |(nig_candidate_index, continuous_return_candidate)| -> Result<
+                ReturnComponentsStageCandidateInput,
+                ReturnComponentsStageCandidateGenerationInputError,
+            > {
+                let candidate_families = ReturnComponentsStageCandidateFamilies {
+                    known_news_arrival_controls: known_arrival_family.clone(),
+                    surprise_news_arrival_controls: surprise_arrival_family.clone(),
+                    return_jump_mark_scale_controls: *return_jump_family,
+                    news_to_hawkes_activity_coupling_controls: *activity_coupling_family,
+                };
 
-    let dominant_scale_driver =
-        objective_scoring_policy_fit::dominant_scale_driver_from_metric_buckets(
-            fitted_objective_scoring_policy,
-            objective_metric_buckets,
-        );
+                let return_distribution_diagnostic =
+                    continuous_return_candidate.evaluation.diagnostic;
+                let price_range_sanity_diagnostic = build_price_range_sanity_diagnostic(
+                    fitted_diagnostic_policy,
+                    summary_statistics,
+                    return_distribution_diagnostic,
+                    surprise_arrival_family,
+                    return_jump_family,
+                    candidate_generation_input.shared_mark_law_template,
+                    fitted_price_range_sanity_policy,
+                );
 
-    let objective_terms = objective_scoring_policy_fit::build_candidate_objective_terms(
-        candidate_generation_input.objective_metric_weights,
-        objective_metric_buckets,
-    );
+                let objective_metric_buckets =
+                    objective_scoring_policy_fit::score_candidate_metric_buckets(
+                        fitted_objective_scoring_policy,
+                        continuous_return_candidate.evaluation.objective_score,
+                        &surprise_arrival_diagnostic,
+                        &jump_diagnostic,
+                        &gap_diagnostic,
+                        &activity_coupling_diagnostic,
+                        &price_range_sanity_diagnostic,
+                    );
 
-    let news_process_configuration = build_news_process_configuration_from_candidate_families(
-        candidate_generation_input,
-        &known_arrival_family,
-        surprise_arrival_family,
-        return_jump_family,
-        activity_coupling_family,
-    )?;
+                let dominant_scale_driver =
+                    objective_scoring_policy_fit::dominant_scale_driver_from_metric_buckets(
+                        fitted_objective_scoring_policy,
+                        objective_metric_buckets,
+                    );
 
-    Ok(vec![ReturnComponentsStageCandidateInput {
-        candidate_id: "generated_nig_001_known_001_surprise_001_mark_001_coupling_001".to_string(),
-        nig_shared_plus_shift_configuration: nig_candidate,
-        news_process_configuration,
-        objective_metric_buckets,
-        return_distribution_diagnostic,
-        continuous_distribution_fit_breakdown: continuous_return_evaluation.fit_breakdown.clone(),
-        surprise_arrival_diagnostic,
-        jump_diagnostic,
-        gap_diagnostic,
-        activity_coupling_diagnostic,
-        price_range_sanity_diagnostic,
-        dominant_scale_driver,
-        objective_terms,
-        candidate_families,
-        candidate_provenance: candidate_provenance_template.clone(),
-    }])
+                let objective_terms = objective_scoring_policy_fit::build_candidate_objective_terms(
+                    candidate_generation_input.objective_metric_weights,
+                    objective_metric_buckets,
+                );
+
+                let news_process_configuration =
+                    build_news_process_configuration_from_candidate_families(
+                        candidate_generation_input,
+                        &known_arrival_family,
+                        surprise_arrival_family,
+                        return_jump_family,
+                        activity_coupling_family,
+                    )?;
+
+                Ok(ReturnComponentsStageCandidateInput {
+                    candidate_id: format!(
+                        "generated_nig_{:03}_known_001_surprise_001_mark_001_coupling_001",
+                        nig_candidate_index + 1
+                    ),
+                    nig_shared_plus_shift_configuration: continuous_return_candidate
+                        .nig_configuration,
+                    news_process_configuration,
+                    objective_metric_buckets,
+                    return_distribution_diagnostic,
+                    continuous_distribution_fit_breakdown: continuous_return_candidate
+                        .evaluation
+                        .fit_breakdown
+                        .clone(),
+                    surprise_arrival_diagnostic: surprise_arrival_diagnostic.clone(),
+                    jump_diagnostic: jump_diagnostic.clone(),
+                    gap_diagnostic: gap_diagnostic.clone(),
+                    activity_coupling_diagnostic: activity_coupling_diagnostic.clone(),
+                    price_range_sanity_diagnostic,
+                    dominant_scale_driver,
+                    objective_terms,
+                    candidate_families,
+                    candidate_provenance: candidate_provenance_template.clone(),
+                })
+            },
+        )
+        .collect()
 }
 
 fn build_news_process_configuration_from_candidate_families(

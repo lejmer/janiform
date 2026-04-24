@@ -22,11 +22,13 @@ use super::contracts::{
     JointRefinementStageProgressUpdate,
 };
 use super::execution::{
-    JOINT_REFINEMENT_HAWKES_SCALE_LOG_BOUND, JointRefinementActiveParameterLayout,
+    JOINT_REFINEMENT_HAWKES_SCALE_LOG_BOUND,
+    JOINT_REFINEMENT_THRESHOLD_RELATIVE_ADMISSIBILITY_SCORE, JointRefinementActiveParameterLayout,
     JointRefinementContext, JointRefinementSeedSummary, JointRefinementSeedSummaryCacheKey,
     build_halton_restart_id, clamp_in_place, deduplicate_restart_seed_candidates,
-    halton_parameter_vector,
+    halton_parameter_vector, precheck_seed_summary_workload,
 };
+use super::objective::evaluate_joint_candidate_restart_admission_score;
 use super::worker_runtime::JointRefinementSeedSummaryAcquisitionError;
 use janiform_calibration_artifacts::{
     CalibrationOptimizerSettings, JointRefinementStageFittedParameters,
@@ -353,7 +355,7 @@ pub(super) fn build_restart_seeds(
     activity_log_shift: f64,
     joint_context: &JointRefinementContext,
     solver_settings: &CalibrationOptimizerSettings,
-    restart_count: usize,
+    restart_candidate_budget: usize,
 ) -> Vec<(String, Vec<f64>)> {
     let mut restart_candidates = build_core_restart_seed_candidates(
         baseline_parameter_vector,
@@ -380,8 +382,8 @@ pub(super) fn build_restart_seeds(
         active_parameter_layout,
         lower_bounds,
         upper_bounds,
-        restart_count,
-        |halton_seed| parameter_vector_to_fitted_parameters(halton_seed, joint_context).is_some(),
+        restart_candidate_budget,
+        |halton_seed| screened_exploratory_restart_seed_score(halton_seed, joint_context),
     )
 }
 
@@ -394,12 +396,13 @@ pub(super) fn build_restart_seeds_with_halton_acceptance<F>(
     baseline_15m_calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
     return_component_basin_diagnostics: &[ReturnComponentsStageContinuousOptimizerBasinDiagnostic],
     activity_log_shift: f64,
-    restart_count: usize,
+    restart_candidate_budget: usize,
     halton_seed_is_accepted: F,
 ) -> Vec<(String, Vec<f64>)>
 where
     F: FnMut(&[f64]) -> bool,
 {
+    let mut halton_seed_is_accepted = halton_seed_is_accepted;
     let restart_candidates = build_core_restart_seed_candidates(
         baseline_parameter_vector,
         active_parameter_layout,
@@ -416,8 +419,8 @@ where
         active_parameter_layout,
         lower_bounds,
         upper_bounds,
-        restart_count,
-        halton_seed_is_accepted,
+        restart_candidate_budget,
+        |halton_seed| halton_seed_is_accepted(halton_seed).then_some(0.0),
     )
 }
 
@@ -482,25 +485,30 @@ fn finalize_restart_seed_candidates<F>(
     active_parameter_layout: &JointRefinementActiveParameterLayout,
     lower_bounds: &[f64],
     upper_bounds: &[f64],
-    restart_count: usize,
-    mut halton_seed_is_accepted: F,
+    restart_candidate_budget: usize,
+    mut halton_seed_score: F,
 ) -> Vec<(String, Vec<f64>)>
 where
-    F: FnMut(&[f64]) -> bool,
+    F: FnMut(&[f64]) -> Option<f64>,
 {
-    let target_restart_count = restart_count.max(1);
+    let target_restart_count = restart_candidate_budget.max(1);
     let mut deduplicated_candidates = deduplicate_restart_seed_candidates(restart_candidates)
         .into_iter()
         .take(target_restart_count)
         .collect::<Vec<_>>();
-    let mut halton_index = 1u64;
-    let mut halton_position = 1usize;
-    let halton_attempt_cap = 8 * target_restart_count;
+    if deduplicated_candidates.len() >= target_restart_count {
+        return deduplicated_candidates;
+    }
 
-    while deduplicated_candidates.len() < target_restart_count
-        && halton_position <= halton_attempt_cap
-    {
-        let mut halton_seed = halton_parameter_vector(halton_index, lower_bounds, upper_bounds);
+    let frontier_score_ceiling = exploratory_restart_frontier_score_ceiling(
+        deduplicated_candidates.as_slice(),
+        &mut halton_seed_score,
+    );
+    let mut screened_halton_candidates = Vec::new();
+
+    for halton_position in 1..=target_restart_count {
+        let mut halton_seed =
+            halton_parameter_vector(halton_position as u64, lower_bounds, upper_bounds);
         if halton_seed.len() >= baseline_parameter_vector.len() {
             halton_seed[active_parameter_layout.log_lambda_scale_index] =
                 halton_seed[active_parameter_layout.log_lambda_scale_index].clamp(
@@ -511,19 +519,62 @@ where
 
         clamp_in_place(halton_seed.as_mut_slice(), lower_bounds, upper_bounds);
 
-        if halton_seed_is_accepted(halton_seed.as_slice()) {
-            deduplicated_candidates = deduplicate_restart_seed_candidates({
-                let mut candidates = deduplicated_candidates;
-                candidates.push((build_halton_restart_id(halton_position), halton_seed));
-                candidates
-            });
+        let Some(score) = halton_seed_score(halton_seed.as_slice()) else {
+            continue;
+        };
+        if score <= frontier_score_ceiling {
+            screened_halton_candidates.push((
+                score,
+                build_halton_restart_id(halton_position),
+                halton_seed,
+            ));
         }
-
-        halton_index += 1;
-        halton_position += 1;
     }
 
-    deduplicated_candidates
+    screened_halton_candidates.sort_by(|left, right| {
+        left.0
+            .total_cmp(&right.0)
+            .then_with(|| left.1.cmp(&right.1))
+    });
+
+    deduplicated_candidates.extend(
+        screened_halton_candidates
+            .into_iter()
+            .map(|(_, restart_id, halton_seed)| (restart_id, halton_seed)),
+    );
+
+    deduplicate_restart_seed_candidates(deduplicated_candidates)
+        .into_iter()
+        .take(target_restart_count)
+        .collect()
+}
+
+fn exploratory_restart_frontier_score_ceiling<F>(
+    restart_candidates: &[(String, Vec<f64>)],
+    seed_score: &mut F,
+) -> f64
+where
+    F: FnMut(&[f64]) -> Option<f64>,
+{
+    restart_candidates
+        .iter()
+        .filter_map(|(_, seed)| seed_score(seed.as_slice()))
+        .fold(None, |best_score: Option<f64>, score| {
+            Some(best_score.map_or(score, |best_score| best_score.min(score)))
+        })
+        .map_or(
+            JOINT_REFINEMENT_THRESHOLD_RELATIVE_ADMISSIBILITY_SCORE,
+            |best_score| best_score.max(JOINT_REFINEMENT_THRESHOLD_RELATIVE_ADMISSIBILITY_SCORE),
+        )
+}
+
+fn screened_exploratory_restart_seed_score(
+    halton_seed: &[f64],
+    joint_context: &JointRefinementContext,
+) -> Option<f64> {
+    let fitted_parameters = parameter_vector_to_fitted_parameters(halton_seed, joint_context)?;
+    precheck_seed_summary_workload(&fitted_parameters, joint_context).ok()?;
+    evaluate_joint_candidate_restart_admission_score(halton_seed, joint_context).ok()
 }
 
 fn joint_tick_moment_restart_seeds(

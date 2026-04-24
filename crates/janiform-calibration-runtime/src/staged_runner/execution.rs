@@ -1,4 +1,6 @@
-use std::path::Path;
+use std::fs::{self, File};
+use std::io::Write;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use chrono::Utc;
@@ -642,6 +644,29 @@ pub fn run_staged_calibration_with_checkpointing_and_observer(
                 );
             }
 
+            if let Err(error_message) = persist_stage_report_snapshot_to_run_directory(
+                artifact_run_writer.pending_run_directory(),
+                &stage_report,
+            ) {
+                return build_staged_run_failure_report(
+                    run_contract,
+                    stage_reports,
+                    emitted_checkpoints,
+                    resumed_from_checkpoint_reference,
+                    resumed_from_last_successful_stage,
+                    started_from_stage,
+                    CalibrationStagedRunFailure::StageParameterArtifactIoFailed {
+                        stage,
+                        artifact_reference: format!(
+                            "artifact://stage_report/{}/{}",
+                            run_contract.run_spec.run_id,
+                            stage_report_snapshot_file_name(stage)
+                        ),
+                        error_message,
+                    },
+                );
+            }
+
             persisted_stage_parameter_artifacts.push(stage_parameter_artifact);
         }
 
@@ -881,6 +906,65 @@ pub fn run_staged_calibration_with_checkpointing_and_observer(
     );
 
     report
+}
+
+fn persist_stage_report_snapshot_to_run_directory(
+    run_directory: &Path,
+    stage_report: &CalibrationStagedRunStageReport,
+) -> Result<PathBuf, String> {
+    fs::create_dir_all(run_directory).map_err(|source| {
+        format!(
+            "unable to prepare stage report directory `{}`: {source}",
+            run_directory.display()
+        )
+    })?;
+
+    let artifact_path =
+        stage_report_snapshot_path_in_run_directory(run_directory, stage_report.stage());
+    let temporary_path = artifact_path.with_extension("json.tmp");
+    let serialized_payload =
+        serde_json::to_vec_pretty(stage_report).map_err(|source| source.to_string())?;
+
+    let mut temporary_file = File::create(temporary_path.as_path()).map_err(|source| {
+        format!(
+            "unable to create temporary stage report `{}`: {source}",
+            temporary_path.display()
+        )
+    })?;
+    temporary_file
+        .write_all(serialized_payload.as_slice())
+        .and_then(|_| temporary_file.flush())
+        .map_err(|source| {
+            format!(
+                "unable to write temporary stage report `{}`: {source}",
+                temporary_path.display()
+            )
+        })?;
+    fs::rename(temporary_path.as_path(), artifact_path.as_path()).map_err(|source| {
+        format!(
+            "unable to publish stage report `{}` from `{}`: {source}",
+            artifact_path.display(),
+            temporary_path.display()
+        )
+    })?;
+
+    Ok(artifact_path)
+}
+
+fn stage_report_snapshot_path_in_run_directory(
+    run_directory: &Path,
+    stage: janiform_calibration_artifacts::CalibrationStage,
+) -> PathBuf {
+    run_directory.join(stage_report_snapshot_file_name(stage))
+}
+
+fn stage_report_snapshot_file_name(
+    stage: janiform_calibration_artifacts::CalibrationStage,
+) -> String {
+    format!(
+        "{}.stage_report.json",
+        janiform_calibration_artifacts::calibration_stage_token(stage)
+    )
 }
 
 fn stage_execution_error_message(stage_report: &CalibrationStagedRunStageReport) -> Option<String> {

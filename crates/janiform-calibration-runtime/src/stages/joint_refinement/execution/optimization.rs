@@ -3,6 +3,11 @@ use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex};
 
 use janiform_calibration_artifacts::CalibrationOptimizerSettings;
+use janiform_calibration_artifacts::JointRefinementStageFittedParameters;
+use janiform_foundations::time::duration_nanos_to_hours;
+use janiform_model_kernels::hawkes::{
+    HawkesKernelLoadings, HawkesKernelParameters, spectral_radius_alpha_over_beta,
+};
 
 use crate::stages::joint_refinement::contracts::{
     JointRefinementStageProgressPhase, JointRefinementStageProgressUpdate,
@@ -11,15 +16,18 @@ use crate::stages::optimization::{PowellOptimizerSettings, optimize_bounded_powe
 
 use super::super::objective::{
     dynamics_block_search_objective, evaluate_joint_candidate,
-    evaluate_joint_candidate_nig_block_search_objective,
+    evaluate_joint_candidate_nig_block_search_objective, invalid_candidate_evaluation,
 };
+use super::super::setup::parameter_vector_to_fitted_parameters;
+use super::selection::admissibility_threshold_from_sample_count;
 use super::{
-    JOINT_REFINEMENT_PARAMETER_BLOCK_COUNT, JointRefinementContext, JointRefinementFidelityTier,
-    JointRefinementRestartOutcome, joint_raw_metrics_are_dynamics_feasible,
-    joint_refinement_admissibility_thresholds, option_pricing_execution_failure_message,
-    simulation_infrastructure_failure_message,
+    JOINT_REFINEMENT_PARAMETER_BLOCK_COUNT,
+    JOINT_REFINEMENT_THRESHOLD_RELATIVE_ADMISSIBILITY_SCORE, JointRefinementContext,
+    JointRefinementFidelityTier, JointRefinementRestartOutcome,
+    joint_raw_metrics_are_dynamics_feasible, joint_refinement_admissibility_thresholds,
+    option_pricing_execution_failure_message, simulation_infrastructure_failure_message,
 };
-pub(crate) const JOINT_REFINEMENT_DEFAULT_RESTART_COUNT: usize = 15;
+pub(crate) const JOINT_REFINEMENT_DEFAULT_RESTART_CANDIDATE_BUDGET: usize = 15;
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct JointRefinementBudgetSchedule {
@@ -292,12 +300,12 @@ pub(crate) fn joint_refinement_budget_schedule(
     }
 }
 
-pub(crate) fn desired_joint_refinement_restart_count(
-    restart_count_override: Option<usize>,
+pub(crate) fn desired_joint_refinement_restart_candidate_budget(
+    restart_candidate_budget_override: Option<usize>,
 ) -> usize {
-    restart_count_override
-        .filter(|restart_count| *restart_count > 0)
-        .unwrap_or(JOINT_REFINEMENT_DEFAULT_RESTART_COUNT)
+    restart_candidate_budget_override
+        .filter(|restart_candidate_budget| *restart_candidate_budget > 0)
+        .unwrap_or(JOINT_REFINEMENT_DEFAULT_RESTART_CANDIDATE_BUDGET)
 }
 
 pub(crate) fn joint_refinement_restart_block_powell_settings(
@@ -333,6 +341,16 @@ fn optimize_single_restart(
     progress_counters: &RestartProgressCounters,
     progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
 ) -> JointRefinementRestartOutcome {
+    if let Err(precheck_failure) = precheck_restart_seed(seed_vector, context) {
+        return build_precheck_rejected_restart_outcome(
+            restart_id,
+            seed_vector.to_vec(),
+            context,
+            solver_settings,
+            precheck_failure.as_str(),
+        );
+    }
+
     let mut restart_progress = RestartCandidateProgress::new(
         progress_sender,
         restart_id,
@@ -375,6 +393,16 @@ fn optimize_single_restart(
 
         if let Some(invalid_step_stop_reason) = cycle_result.invalid_step_stop_reason {
             restart_progress.emit_finished();
+            if invalid_step_stop_reason == "seed_summary_workload_infeasible" {
+                return build_precheck_rejected_restart_outcome(
+                    restart_id,
+                    current_vector,
+                    context,
+                    solver_settings,
+                    invalid_step_stop_reason,
+                );
+            }
+
             return build_short_circuited_restart_outcome(
                 restart_id,
                 current_vector,
@@ -463,6 +491,310 @@ fn optimize_single_restart(
     }
 }
 
+fn precheck_restart_seed(
+    seed_vector: &[f64],
+    context: &JointRefinementContext,
+) -> Result<(), String> {
+    precheck_restart_seed_vector_contract(
+        seed_vector,
+        context.lower_bounds.as_slice(),
+        context.upper_bounds.as_slice(),
+    )?;
+
+    let fitted_parameters = parameter_vector_to_fitted_parameters(seed_vector, context)
+        .ok_or_else(|| "model_construction_failed".to_string())?;
+
+    precheck_hawkes_structural_domain(&fitted_parameters)?;
+    precheck_nig_return_composition_domain(&fitted_parameters)?;
+    precheck_deterministic_intensity_scales(&fitted_parameters, context)?;
+    precheck_seed_summary_workload(&fitted_parameters, context)?;
+
+    Ok(())
+}
+
+fn precheck_restart_seed_vector_contract(
+    seed_vector: &[f64],
+    lower_bounds: &[f64],
+    upper_bounds: &[f64],
+) -> Result<(), String> {
+    if seed_vector.len() != lower_bounds.len() || seed_vector.len() != upper_bounds.len() {
+        return Err(format!(
+            "parameter_vector_length_mismatch vector={} lower_bounds={} upper_bounds={}",
+            seed_vector.len(),
+            lower_bounds.len(),
+            upper_bounds.len()
+        ));
+    }
+
+    for (parameter_index, (value, (lower_bound, upper_bound))) in seed_vector
+        .iter()
+        .zip(lower_bounds.iter().zip(upper_bounds.iter()))
+        .enumerate()
+    {
+        if !value.is_finite() || !lower_bound.is_finite() || !upper_bound.is_finite() {
+            return Err(format!(
+                "non_finite_parameter_or_bound parameter_index={parameter_index}"
+            ));
+        }
+        if lower_bound > upper_bound {
+            return Err(format!(
+                "invalid_parameter_bounds parameter_index={parameter_index}"
+            ));
+        }
+        if value < lower_bound || value > upper_bound {
+            return Err(format!(
+                "parameter_out_of_bounds parameter_index={parameter_index} value={value} lower_bound={lower_bound} upper_bound={upper_bound}"
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+fn precheck_hawkes_structural_domain(
+    fitted_parameters: &JointRefinementStageFittedParameters,
+) -> Result<(), String> {
+    let hawkes = &fitted_parameters.hawkes_fitted_parameters;
+    let report = HawkesKernelParameters::validate_structured_domain_with_stability_tolerance(
+        hawkes.kernel_parameters.lambda_bar,
+        hawkes.kernel_parameters.beta,
+        hawkes.structured_alpha,
+        hawkes.structured_rho,
+        hawkes.self_dominance_policy,
+        hawkes.stability_numeric_tolerance,
+    );
+
+    if report.is_valid() {
+        return Ok(());
+    }
+
+    let Some(violation) = report.first_violation() else {
+        return Err("hawkes_structural_domain_validation_failed".to_string());
+    };
+
+    Err(format!(
+        "hawkes_structural_domain_validation_failed field={} constraint={} value={}",
+        violation.field, violation.constraint, violation.value
+    ))
+}
+
+fn precheck_nig_return_composition_domain(
+    fitted_parameters: &JointRefinementStageFittedParameters,
+) -> Result<(), String> {
+    let nig_configuration = fitted_parameters
+        .pricing_block_fitted_parameters
+        .as_ref()
+        .map(|pricing_block| pricing_block.nig_shared_plus_shift_configuration)
+        .unwrap_or(
+            fitted_parameters
+                .return_components_fitted_parameters
+                .nig_shared_plus_shift_configuration,
+        );
+    let driver_parameters = nig_configuration
+        .derive_driver_parameters()
+        .map_err(|source| format!("nig_driver_parameter_domain_failed error={source}"))?;
+    let domain = driver_parameters.derive_return_composition_log_moment_domain();
+
+    if !domain.lower_theta_exclusive.is_finite()
+        || !domain.upper_theta_exclusive.is_finite()
+        || domain.lower_theta_exclusive >= 0.0
+        || domain.upper_theta_exclusive <= 0.0
+        || domain.lower_theta_exclusive >= domain.upper_theta_exclusive
+    {
+        return Err(format!(
+            "nig_return_composition_domain_invalid lower_theta_exclusive={} upper_theta_exclusive={}",
+            domain.lower_theta_exclusive, domain.upper_theta_exclusive
+        ));
+    }
+
+    driver_parameters
+        .evaluate_return_composition_log_moment(1.0, 1.0, 0.0)
+        .map_err(|source| format!("nig_return_composition_log_moment_failed error={source}"))?;
+    driver_parameters
+        .differentiate_return_composition_log_moment(1.0, 1.0, 0.0)
+        .map_err(|source| {
+            format!("nig_return_composition_log_moment_derivative_failed error={source}")
+        })?;
+
+    Ok(())
+}
+
+fn precheck_deterministic_intensity_scales(
+    fitted_parameters: &JointRefinementStageFittedParameters,
+    context: &JointRefinementContext,
+) -> Result<(), String> {
+    let modeled_open_event_rate_per_hour =
+        crate::stages::hawkes::stationary_open_event_rate_per_hour(
+            &fitted_parameters.hawkes_fitted_parameters,
+        )
+        .ok_or_else(|| "stationary_open_event_rate_unavailable".to_string())?;
+    if !modeled_open_event_rate_per_hour.is_finite() || modeled_open_event_rate_per_hour < 0.0 {
+        return Err(format!(
+            "stationary_open_event_rate_invalid value={modeled_open_event_rate_per_hour}"
+        ));
+    }
+
+    if context.runtime_hourly_seasonality_factors.is_empty() {
+        return Err("runtime_hourly_seasonality_factors_empty".to_string());
+    }
+    for (hour_index, factor) in context
+        .runtime_hourly_seasonality_factors
+        .iter()
+        .enumerate()
+    {
+        if !factor.is_finite() || *factor < 0.0 {
+            return Err(format!(
+                "runtime_hourly_seasonality_factor_invalid hour_index={hour_index} value={factor}"
+            ));
+        }
+        let hourly_activity_scale = modeled_open_event_rate_per_hour * *factor;
+        if !hourly_activity_scale.is_finite() || hourly_activity_scale < 0.0 {
+            return Err(format!(
+                "runtime_hourly_activity_scale_invalid hour_index={hour_index} value={hourly_activity_scale}"
+            ));
+        }
+    }
+
+    for (interval_index, interval) in context
+        .observed_data
+        .observed_15m_intervals
+        .iter()
+        .enumerate()
+    {
+        if interval.interval_end_utc_nanos < interval.interval_start_utc_nanos {
+            return Err(format!(
+                "observed_interval_duration_invalid interval_index={interval_index}"
+            ));
+        }
+        let duration_hours = duration_nanos_to_hours(
+            interval.interval_end_utc_nanos - interval.interval_start_utc_nanos,
+        );
+        if !duration_hours.is_finite() || duration_hours < 0.0 {
+            return Err(format!(
+                "observed_interval_duration_invalid interval_index={interval_index} value={duration_hours}"
+            ));
+        }
+
+        let integrated_activity_scale = modeled_open_event_rate_per_hour * duration_hours;
+        if !integrated_activity_scale.is_finite() || integrated_activity_scale < 0.0 {
+            return Err(format!(
+                "observed_interval_integrated_activity_scale_invalid interval_index={interval_index} value={integrated_activity_scale}"
+            ));
+        }
+    }
+
+    let news_process = &fitted_parameters
+        .return_components_fitted_parameters
+        .news_process_configuration;
+    let surprise_baseline_intensity = news_process.arrivals.surprise.baseline_intensity;
+    if !surprise_baseline_intensity.is_finite() || surprise_baseline_intensity < 0.0 {
+        return Err(format!(
+            "surprise_baseline_intensity_invalid value={surprise_baseline_intensity}"
+        ));
+    }
+
+    let surprise_weekly_hour_utc_multipliers = fitted_parameters
+        .return_components_fitted_parameters
+        .surprise_deterministic_intensity_profile
+        .weekly_hour_utc_multipliers
+        .as_slice();
+    if surprise_weekly_hour_utc_multipliers.is_empty() {
+        return Err("surprise_weekly_multipliers_empty".to_string());
+    }
+    for (bucket_index, multiplier) in surprise_weekly_hour_utc_multipliers.iter().enumerate() {
+        if !multiplier.is_finite() || *multiplier < 0.0 {
+            return Err(format!(
+                "surprise_weekly_multiplier_invalid bucket_index={bucket_index} value={multiplier}"
+            ));
+        }
+        let surprise_intensity = surprise_baseline_intensity * *multiplier;
+        if !surprise_intensity.is_finite() || surprise_intensity < 0.0 {
+            return Err(format!(
+                "surprise_intensity_scale_invalid bucket_index={bucket_index} value={surprise_intensity}"
+            ));
+        }
+    }
+
+    for (field_name, scale) in [
+        (
+            "known_component_mark_scales.activity_coupling_scale",
+            news_process
+                .known_component_mark_scales
+                .activity_coupling_scale,
+        ),
+        (
+            "surprise_component_mark_scales.activity_coupling_scale",
+            news_process
+                .surprise_component_mark_scales
+                .activity_coupling_scale,
+        ),
+    ] {
+        if !scale.is_finite() || scale < 0.0 {
+            return Err(format!(
+                "activity_coupling_scale_invalid field={field_name} value={scale}"
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+pub(crate) fn precheck_seed_summary_workload(
+    fitted_parameters: &JointRefinementStageFittedParameters,
+    context: &JointRefinementContext,
+) -> Result<(), String> {
+    if fitted_parameters_runtime_branching_workload_is_infeasible(fitted_parameters, context) {
+        return Err("seed_summary_workload_infeasible".to_string());
+    }
+
+    let workload_estimate = context
+        .summary_simulation_scheduler
+        .estimate_seed_summary_workload(fitted_parameters, context.local_simulation_seed)
+        .map_err(|source| format!("seed_summary_workload_estimate_failed error={source:?}"))?;
+    if summary_simulation_event_capacity_is_infeasible(
+        workload_estimate.estimated_event_capacity,
+        context.observed_data.observed_hourly_tick_counts.as_slice(),
+    ) {
+        return Err(format!(
+            "seed_summary_workload_infeasible estimated_event_capacity={} observed_hourly_tick_count_sum={}",
+            workload_estimate.estimated_event_capacity,
+            context
+                .observed_data
+                .observed_hourly_tick_counts
+                .iter()
+                .sum::<f64>()
+        ));
+    }
+
+    Ok(())
+}
+
+fn build_precheck_rejected_restart_outcome(
+    restart_id: &str,
+    current_vector: Vec<f64>,
+    context: &JointRefinementContext,
+    solver_settings: &CalibrationOptimizerSettings,
+    failure_reason: &str,
+) -> JointRefinementRestartOutcome {
+    let invalid_reason = format!("restart_seed_precheck_failed:{failure_reason}");
+    let local_evaluation = invalid_candidate_evaluation(
+        context,
+        &context.baseline_hawkes_fitted_parameters,
+        &context.baseline_return_components_fitted_parameters,
+        solver_settings.constraint_penalty_weight,
+        invalid_reason.as_str(),
+    );
+
+    JointRefinementRestartOutcome {
+        restart_id: restart_id.to_string(),
+        parameter_vector: current_vector,
+        final_evaluation: local_evaluation.clone(),
+        local_evaluation,
+        local_evaluation_count: 0,
+        stop_reason: "restart_seed_precheck_failed".to_string(),
+    }
+}
+
 struct RestartCycleResult {
     updated_vector: Vec<f64>,
     hawkes_stop_reason: &'static str,
@@ -481,6 +813,33 @@ fn optimize_restart_cycle(
 ) -> RestartCycleResult {
     let mut updated_vector = current_vector.to_vec();
     let mut evaluation_count = 0usize;
+
+    let (updated_nig_vector, nig_stop_reason, nig_evaluations) = optimize_parameter_block(
+        updated_vector.as_slice(),
+        context.active_parameter_layout.nig_block.as_slice(),
+        context,
+        solver_settings,
+        "nig",
+        outer_cycle,
+        restart_progress,
+    );
+
+    updated_vector = updated_nig_vector;
+    evaluation_count += nig_evaluations;
+
+    if nig_stop_reason == "invalid_step"
+        || nig_stop_reason == "threshold_admissible_best_already_available"
+    {
+        return RestartCycleResult {
+            updated_vector,
+            hawkes_stop_reason: "tolerance",
+            nig_stop_reason,
+            coupling_stop_reason: "tolerance",
+            invalid_step_stop_reason: (nig_stop_reason == "invalid_step")
+                .then_some(nig_stop_reason),
+            evaluation_count,
+        };
+    }
 
     let (updated_hawkes_vector, hawkes_stop_reason, hawkes_evaluations) = optimize_parameter_block(
         updated_vector.as_slice(),
@@ -552,19 +911,6 @@ fn optimize_restart_cycle(
             evaluation_count,
         };
     }
-
-    let (updated_nig_vector, nig_stop_reason, nig_evaluations) = optimize_parameter_block(
-        updated_vector.as_slice(),
-        context.active_parameter_layout.nig_block.as_slice(),
-        context,
-        solver_settings,
-        "nig",
-        outer_cycle,
-        restart_progress,
-    );
-
-    updated_vector = updated_nig_vector;
-    evaluation_count += nig_evaluations;
 
     RestartCycleResult {
         updated_vector,
@@ -641,31 +987,66 @@ fn optimize_parameter_block(
         .map(|index| context.upper_bounds[*index])
         .collect();
 
+    if restart_seed_summary_workload_is_infeasible(current_vector, context) {
+        return (
+            current_vector.to_vec(),
+            "seed_summary_workload_infeasible",
+            0,
+        );
+    }
+
+    let Some(initial_block_objective) = evaluate_parameter_block_objective(
+        current_vector,
+        block_indices,
+        initial_point.as_slice(),
+        context,
+        solver_settings,
+        parameter_block_label,
+    ) else {
+        restart_progress.record_evaluation(parameter_block_label, outer_cycle, None);
+        return (current_vector.to_vec(), "invalid_step", 1);
+    };
+    restart_progress.record_evaluation(
+        parameter_block_label,
+        outer_cycle,
+        Some(initial_block_objective),
+    );
+
+    if restart_block_initial_objective_is_noncompetitive(
+        initial_block_objective,
+        restart_progress.counters,
+    ) {
+        return (
+            current_vector.to_vec(),
+            "threshold_admissible_best_already_available",
+            1,
+        );
+    }
+
+    let mut pending_initial_block_objective = Some(initial_block_objective);
     let mut evaluate_block = |block_vector: &[f64]| -> Option<f64> {
         if joint_refinement_has_fatal_execution_failure(context) {
             return None;
         }
 
+        if let Some(initial_block_objective) = pending_initial_block_objective.take() {
+            return Some(initial_block_objective);
+        }
+
         let full_vector = substitute_block(current_vector, block_indices, block_vector);
-        let block_objective = match parameter_block_label {
-            "nig" => {
-                evaluate_joint_candidate_nig_block_search_objective(full_vector.as_slice(), context)
-            }
-            _ => {
-                let candidate_evaluation = evaluate_joint_candidate(
-                    full_vector.as_slice(),
-                    context,
-                    JointRefinementFidelityTier::Local,
-                    solver_settings,
-                );
-                candidate_evaluation.invalid_reason.is_none().then_some(
-                    dynamics_block_search_objective(
-                        &candidate_evaluation.raw_admissibility_metrics,
-                        joint_refinement_admissibility_thresholds(context),
-                    ),
-                )
-            }
-        };
+        if restart_seed_summary_workload_is_infeasible(full_vector.as_slice(), context) {
+            restart_progress.record_evaluation(parameter_block_label, outer_cycle, None);
+            return None;
+        }
+
+        let block_objective = evaluate_parameter_block_objective(
+            current_vector,
+            block_indices,
+            block_vector,
+            context,
+            solver_settings,
+            parameter_block_label,
+        );
         restart_progress.record_evaluation(parameter_block_label, outer_cycle, block_objective);
 
         block_objective
@@ -687,6 +1068,112 @@ fn optimize_parameter_block(
         ),
         None => (current_vector.to_vec(), "invalid_step", 0),
     }
+}
+
+fn evaluate_parameter_block_objective(
+    current_vector: &[f64],
+    block_indices: &[usize],
+    block_vector: &[f64],
+    context: &JointRefinementContext,
+    solver_settings: &CalibrationOptimizerSettings,
+    parameter_block_label: &'static str,
+) -> Option<f64> {
+    let full_vector = substitute_block(current_vector, block_indices, block_vector);
+    match parameter_block_label {
+        "nig" => {
+            evaluate_joint_candidate_nig_block_search_objective(full_vector.as_slice(), context)
+        }
+        _ => {
+            let candidate_evaluation = evaluate_joint_candidate(
+                full_vector.as_slice(),
+                context,
+                JointRefinementFidelityTier::Local,
+                solver_settings,
+            );
+            candidate_evaluation.invalid_reason.is_none().then_some(
+                dynamics_block_search_objective(
+                    &candidate_evaluation.raw_admissibility_metrics,
+                    joint_refinement_admissibility_thresholds(context),
+                ),
+            )
+        }
+    }
+}
+
+fn restart_block_initial_objective_is_noncompetitive(
+    initial_block_objective: f64,
+    progress_counters: &RestartProgressCounters,
+) -> bool {
+    let (_, Some(best_weighted_objective)) = progress_counters.display_best_snapshot() else {
+        return false;
+    };
+
+    best_weighted_objective <= JOINT_REFINEMENT_THRESHOLD_RELATIVE_ADMISSIBILITY_SCORE
+        && initial_block_objective > JOINT_REFINEMENT_THRESHOLD_RELATIVE_ADMISSIBILITY_SCORE
+}
+
+fn restart_seed_summary_workload_is_infeasible(
+    parameter_vector: &[f64],
+    context: &JointRefinementContext,
+) -> bool {
+    let Some(fitted_parameters) = parameter_vector_to_fitted_parameters(parameter_vector, context)
+    else {
+        return true;
+    };
+
+    precheck_seed_summary_workload(&fitted_parameters, context).is_err()
+}
+
+fn fitted_parameters_runtime_branching_workload_is_infeasible(
+    fitted_parameters: &JointRefinementStageFittedParameters,
+    context: &JointRefinementContext,
+) -> bool {
+    let Ok(derived_alpha) = HawkesKernelLoadings::try_from_structured_alpha(
+        fitted_parameters.hawkes_fitted_parameters.structured_alpha,
+    ) else {
+        return true;
+    };
+
+    let runtime_effective_branching_ratio = context.max_runtime_hourly_seasonality_factor
+        * spectral_radius_alpha_over_beta(
+            derived_alpha,
+            fitted_parameters
+                .hawkes_fitted_parameters
+                .kernel_parameters
+                .beta,
+        );
+
+    runtime_branching_workload_is_infeasible(
+        runtime_effective_branching_ratio,
+        context.observed_data.observed_hourly_tick_counts.len(),
+    )
+}
+
+fn runtime_branching_workload_is_infeasible(
+    runtime_effective_branching_ratio: f64,
+    hourly_sample_count: usize,
+) -> bool {
+    if !runtime_effective_branching_ratio.is_finite() || runtime_effective_branching_ratio >= 1.0 {
+        return true;
+    }
+
+    let minimum_branching_margin = (hourly_sample_count.max(1) as f64).recip().sqrt();
+    1.0 - runtime_effective_branching_ratio < minimum_branching_margin
+}
+
+fn summary_simulation_event_capacity_is_infeasible(
+    estimated_event_capacity: usize,
+    observed_hourly_tick_counts: &[f64],
+) -> bool {
+    let observed_tick_count_sum = observed_hourly_tick_counts.iter().sum::<f64>();
+    if !observed_tick_count_sum.is_finite() || observed_tick_count_sum < 0.0 {
+        return true;
+    }
+
+    let admissible_event_capacity = observed_tick_count_sum
+        * admissibility_threshold_from_sample_count(observed_hourly_tick_counts.len());
+
+    estimated_event_capacity as f64 > admissible_event_capacity
 }
 
 fn substitute_block(
@@ -1033,12 +1520,108 @@ impl RestartProgressCounters {
 mod tests {
     use std::sync::mpsc;
 
-    use janiform_calibration_artifacts::CalibrationOptimizerSettings;
+    use janiform_calibration_artifacts::{
+        CalibrationOptimizerSettings, HawkesStageFittedParameters,
+        JointRefinementStageFittedParameters, ReturnComponentsStageFittedParameters,
+        SurpriseNewsDeterministicIntensityProfile,
+    };
+    use janiform_model_kernels::hawkes::{
+        HawkesKernelLoadings, HawkesKernelParameters, HawkesStructuredAlphaParameterization,
+        HawkesStructuredRhoParameterization,
+    };
+    use janiform_model_kernels::mean_reversion::MeanReversionFittedParameters;
+    use janiform_model_kernels::news::{
+        CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
+        GammaSeverityMarkConfiguration, KnownNewsArrivalConfiguration, NewsArrivalConfiguration,
+        NewsComponentMarkScaleConfiguration, NewsProcessConfiguration,
+        SharedNewsMarkLawConfiguration, SurpriseNewsArrivalConfiguration,
+    };
+    use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 
     use super::{
-        RestartCandidateProgress, RestartProgressCounters,
-        restart_block_progress_evaluation_budget, select_restart_stop_reason,
+        RestartCandidateProgress, RestartProgressCounters, precheck_hawkes_structural_domain,
+        precheck_nig_return_composition_domain, precheck_restart_seed_vector_contract,
+        restart_block_initial_objective_is_noncompetitive,
+        restart_block_progress_evaluation_budget, runtime_branching_workload_is_infeasible,
+        select_restart_stop_reason, summary_simulation_event_capacity_is_infeasible,
     };
+
+    fn test_joint_fitted_parameters() -> JointRefinementStageFittedParameters {
+        let hawkes_fitted_parameters = HawkesStageFittedParameters {
+            kernel_parameters: HawkesKernelParameters::try_new(
+                1.0,
+                2.0,
+                HawkesKernelLoadings {
+                    plus_plus: 0.2,
+                    plus_minus: 0.1,
+                    minus_plus: 0.1,
+                    minus_minus: 0.2,
+                },
+                HawkesKernelLoadings {
+                    plus_plus: 0.05,
+                    plus_minus: 0.02,
+                    minus_plus: 0.02,
+                    minus_minus: 0.05,
+                },
+            )
+            .expect("test Hawkes parameters should validate"),
+            structured_alpha: HawkesStructuredAlphaParameterization::new(0.2, 0.1, 0.0, 0.0),
+            structured_rho: HawkesStructuredRhoParameterization::new(0.05, 0.02, 0.0, 0.0),
+            self_dominance_policy: None,
+            stability_numeric_tolerance: 0.0,
+        };
+        let return_components_fitted_parameters = ReturnComponentsStageFittedParameters {
+            nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration::try_new(
+                2.0, -0.2, 0.5, 0.0, -0.1,
+            )
+            .expect("test NIG configuration should validate"),
+            news_process_configuration: NewsProcessConfiguration::try_new(
+                NewsArrivalConfiguration {
+                    known: KnownNewsArrivalConfiguration {
+                        scheduled_event_timestamps_utc_nanos: Vec::new(),
+                    },
+                    surprise: SurpriseNewsArrivalConfiguration {
+                        baseline_intensity: 0.0,
+                    },
+                },
+                SharedNewsMarkLawConfiguration {
+                    gamma_severity_marks: GammaSeverityMarkConfiguration {
+                        shape_k: 1.5,
+                        scale_theta: 0.8,
+                    },
+                    double_exponential_base_shock: DoubleExponentialBaseShockConfiguration {
+                        probability_positive: 0.5,
+                        eta_plus: 1.2,
+                        eta_minus: 1.2,
+                    },
+                    coupled_gap_marks: CoupledGapMarkConfiguration { sigma_g: 0.2 },
+                },
+                NewsComponentMarkScaleConfiguration {
+                    activity_coupling_scale: 0.0,
+                    return_jump_scale: 0.0,
+                },
+                NewsComponentMarkScaleConfiguration {
+                    activity_coupling_scale: 0.0,
+                    return_jump_scale: 0.0,
+                },
+            )
+            .expect("test news process configuration should validate"),
+            surprise_deterministic_intensity_profile: SurpriseNewsDeterministicIntensityProfile {
+                weekly_hour_utc_multipliers: vec![1.0; 24 * 7],
+                profile_resolution_hours: 1,
+                fit_policy: "test".to_string(),
+                normalization_policy: "test".to_string(),
+            },
+            mean_reversion_fitted_parameters:
+                MeanReversionFittedParameters::zero_kappa_flat_anchor_mean_reversion(),
+        };
+
+        JointRefinementStageFittedParameters {
+            hawkes_fitted_parameters,
+            return_components_fitted_parameters,
+            pricing_block_fitted_parameters: None,
+        }
+    }
 
     #[test]
     fn running_restart_evaluation_progress_is_capped_below_completion() {
@@ -1132,5 +1715,107 @@ mod tests {
             select_restart_stop_reason("tolerance", "dynamics_infeasible", "tolerance"),
             "tolerance"
         );
+    }
+
+    #[test]
+    fn restart_block_initial_objective_is_noncompetitive_after_threshold_best_exists() {
+        let progress_counters = RestartProgressCounters::default();
+        progress_counters.record_display_best("activity_aligned", 0.8);
+
+        assert!(restart_block_initial_objective_is_noncompetitive(
+            1.2,
+            &progress_counters,
+        ));
+        assert!(!restart_block_initial_objective_is_noncompetitive(
+            0.9,
+            &progress_counters,
+        ));
+    }
+
+    #[test]
+    fn restart_block_initial_objective_keeps_search_before_threshold_best_exists() {
+        let progress_counters = RestartProgressCounters::default();
+        progress_counters.record_display_best("baseline", 1.2);
+
+        assert!(!restart_block_initial_objective_is_noncompetitive(
+            1.3,
+            &progress_counters,
+        ));
+    }
+
+    #[test]
+    fn runtime_branching_workload_guard_uses_hourly_sample_resolution() {
+        assert!(runtime_branching_workload_is_infeasible(0.95, 100));
+        assert!(!runtime_branching_workload_is_infeasible(0.89, 100));
+        assert!(runtime_branching_workload_is_infeasible(1.0, 100));
+    }
+
+    #[test]
+    fn summary_simulation_event_capacity_guard_uses_observed_activity_resolution() {
+        let observed_hourly_tick_counts = [100.0; 100];
+
+        assert!(!summary_simulation_event_capacity_is_infeasible(
+            10_900,
+            &observed_hourly_tick_counts,
+        ));
+        assert!(summary_simulation_event_capacity_is_infeasible(
+            11_001,
+            &observed_hourly_tick_counts,
+        ));
+    }
+
+    #[test]
+    fn restart_seed_vector_precheck_rejects_non_finite_parameters() {
+        let error =
+            precheck_restart_seed_vector_contract(&[0.0, f64::NAN], &[-1.0, -1.0], &[1.0, 1.0])
+                .expect_err("non-finite seed parameter should be rejected");
+
+        assert!(error.contains("non_finite_parameter_or_bound"));
+    }
+
+    #[test]
+    fn restart_seed_vector_precheck_rejects_out_of_bounds_parameters() {
+        let error = precheck_restart_seed_vector_contract(&[0.0, 2.0], &[-1.0, -1.0], &[1.0, 1.0])
+            .expect_err("out-of-bounds seed parameter should be rejected");
+
+        assert!(error.contains("parameter_out_of_bounds"));
+    }
+
+    #[test]
+    fn restart_seed_model_domain_prechecks_accept_valid_parameters() {
+        let fitted_parameters = test_joint_fitted_parameters();
+
+        precheck_hawkes_structural_domain(&fitted_parameters)
+            .expect("valid Hawkes parameters should pass precheck");
+        precheck_nig_return_composition_domain(&fitted_parameters)
+            .expect("valid NIG return-composition domain should pass precheck");
+    }
+
+    #[test]
+    fn restart_seed_hawkes_precheck_rejects_structural_domain_violations() {
+        let mut fitted_parameters = test_joint_fitted_parameters();
+        fitted_parameters
+            .hawkes_fitted_parameters
+            .structured_alpha
+            .delta_self = -0.1;
+
+        let error = precheck_hawkes_structural_domain(&fitted_parameters)
+            .expect_err("invalid structured Hawkes parameters should be rejected");
+
+        assert!(error.contains("hawkes_structural_domain_validation_failed"));
+    }
+
+    #[test]
+    fn restart_seed_nig_precheck_rejects_return_composition_domain_violations() {
+        let mut fitted_parameters = test_joint_fitted_parameters();
+        fitted_parameters
+            .return_components_fitted_parameters
+            .nig_shared_plus_shift_configuration
+            .delta_beta = 0.1;
+
+        let error = precheck_nig_return_composition_domain(&fitted_parameters)
+            .expect_err("invalid NIG return-composition domain should be rejected");
+
+        assert!(error.contains("nig_driver_parameter_domain_failed"));
     }
 }

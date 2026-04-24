@@ -13,7 +13,8 @@ use super::summary_simulation::{
     JOINT_REFINEMENT_SUMMARY_SIMULATION_WORKER_PROTOCOL_SCHEMA_VERSION,
     JointRefinementSummarySimulationSessionContext, JointRefinementSummarySimulationSessionState,
     JointRefinementSummarySimulationWorkerRequest, JointRefinementSummarySimulationWorkerResponse,
-    JointRefinementWorkerRequestedOutput, RunCandidateRequest, RunCandidateResponse,
+    JointRefinementSummarySimulationWorkloadEstimate, JointRefinementWorkerRequestedOutput,
+    RunCandidateRequest, RunCandidateResponse,
     initialize_joint_refinement_summary_simulation_session, read_joint_refinement_worker_frame,
     simulate_joint_refinement_seed_summary_in_process, write_joint_refinement_worker_frame,
 };
@@ -185,6 +186,24 @@ impl JointRefinementSummarySimulationScheduler {
         self.release_worker(worker, reusable);
 
         run_result
+    }
+
+    pub(crate) fn estimate_seed_summary_workload(
+        &self,
+        fitted_parameters: &JointRefinementStageFittedParameters,
+        requested_seed: u64,
+    ) -> Result<
+        JointRefinementSummarySimulationWorkloadEstimate,
+        JointRefinementSeedSummaryAcquisitionError,
+    > {
+        super::summary_simulation::estimate_summary_simulation_workload(
+            &self.session_state,
+            fitted_parameters,
+            requested_seed,
+        )
+        .map_err(|error_message| {
+            JointRefinementSeedSummaryAcquisitionError::SimulationFailure { error_message }
+        })
     }
 
     fn acquire_worker(

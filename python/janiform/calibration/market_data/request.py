@@ -65,7 +65,7 @@ class MarketDataCalibrationRequest(ContractModel):
     pricing_interval_schedule_policy: PricingIntervalSchedulePolicy = field(
         default_factory=default_pricing_interval_schedule_policy
     )
-    dynamics_search_restart_count: Optional[int] = None
+    dynamics_search_restart_candidate_budget: Optional[int] = None
     joint_refinement_option_refinement_candidate_count_override: Optional[int] = None
     joint_refinement_audit_option_pricing_enabled: bool = False
     known_news_inputs: Optional[CalibrationKnownNewsInput] = None
@@ -140,11 +140,11 @@ class MarketDataCalibrationRequest(ContractModel):
             )
 
         if (
-            self.dynamics_search_restart_count is not None
-            and self.dynamics_search_restart_count <= 0
+            self.dynamics_search_restart_candidate_budget is not None
+            and self.dynamics_search_restart_candidate_budget <= 0
         ):
             raise calibration_error(
-                "dynamics_search_restart_count",
+                "dynamics_search_restart_candidate_budget",
                 "must be greater than zero when provided",
             )
 
@@ -306,15 +306,15 @@ class MarketDataCalibrationRequest(ContractModel):
                 and raw_payload["pricing_interval_schedule_policy"] is not None
                 else default_pricing_interval_schedule_policy()
             ),
-            dynamics_search_restart_count=(
+            dynamics_search_restart_candidate_budget=(
                 require_positive_integer(
                     raw_payload,
-                    "dynamics_search_restart_count",
-                    "dynamics_search_restart_count",
+                    "dynamics_search_restart_candidate_budget",
+                    "dynamics_search_restart_candidate_budget",
                     calibration_error,
                 )
-                if "dynamics_search_restart_count" in raw_payload
-                and raw_payload["dynamics_search_restart_count"] is not None
+                if "dynamics_search_restart_candidate_budget" in raw_payload
+                and raw_payload["dynamics_search_restart_candidate_budget"] is not None
                 else None
             ),
             joint_refinement_option_refinement_candidate_count_override=(

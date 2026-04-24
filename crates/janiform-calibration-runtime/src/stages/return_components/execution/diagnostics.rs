@@ -18,9 +18,10 @@ use super::super::contracts::{
     ReturnComponentsActivityCouplingCandidateFamily,
     ReturnComponentsReturnJumpMarkScaleCandidateFamily,
     ReturnComponentsStageActivityCouplingDiagnostic, ReturnComponentsStageCandidateInput,
-    ReturnComponentsStageConstraintViolationDiagnostic, ReturnComponentsStageDiagnosticPolicy,
-    ReturnComponentsStageGapDiagnostic, ReturnComponentsStageJumpDiagnostic,
-    ReturnComponentsStageObservedSignalSummaryStatistics,
+    ReturnComponentsStageConstraintViolationDiagnostic,
+    ReturnComponentsStageContinuousDistributionFitBreakdownDiagnostic,
+    ReturnComponentsStageDiagnosticPolicy, ReturnComponentsStageGapDiagnostic,
+    ReturnComponentsStageJumpDiagnostic, ReturnComponentsStageObservedSignalSummaryStatistics,
     ReturnComponentsStagePriceRangeSanityDiagnostic, ReturnComponentsStagePriceRangeSanityPolicy,
     ReturnComponentsStageReturnDistributionDiagnostic,
     ReturnComponentsStageSurpriseArrivalDiagnostic,
@@ -384,7 +385,7 @@ pub(crate) fn summarize_return_distribution(
 pub(super) fn collect_return_components_stage_constraint_violations(
     candidate_input: &ReturnComponentsStageCandidateInput,
 ) -> Vec<ReturnComponentsStageConstraintViolationDiagnostic> {
-    collect_return_components_exact_candidate_constraint_violations(
+    let mut violations = collect_return_components_exact_candidate_constraint_violations(
         &ReturnComponentsStageFittedParameters {
             nig_shared_plus_shift_configuration: candidate_input
                 .nig_shared_plus_shift_configuration,
@@ -394,7 +395,14 @@ pub(super) fn collect_return_components_stage_constraint_violations(
             mean_reversion_fitted_parameters:
                 MeanReversionFittedParameters::zero_kappa_flat_anchor_mean_reversion(),
         },
-    )
+    );
+
+    violations.extend(
+        collect_return_components_exact_likelihood_constraint_violations(
+            &candidate_input.continuous_distribution_fit_breakdown,
+        ),
+    );
+    violations
 }
 
 pub(super) fn collect_return_components_exact_candidate_constraint_violations(
@@ -505,6 +513,30 @@ pub(super) fn collect_return_components_exact_candidate_constraint_violations(
     }
 
     violations
+}
+
+pub(crate) fn collect_return_components_exact_likelihood_constraint_violations(
+    fit_breakdown: &ReturnComponentsStageContinuousDistributionFitBreakdownDiagnostic,
+) -> Vec<ReturnComponentsStageConstraintViolationDiagnostic> {
+    if fit_breakdown.exact_structural_failure_count == 0 {
+        return Vec::new();
+    }
+
+    let first_failure = fit_breakdown.exact_likelihood_failures.first();
+    let first_failure_reason = first_failure
+        .map(|failure| format!("{:?}", failure.failure_reason))
+        .unwrap_or_else(|| "unknown".to_string());
+    let first_scope = first_failure
+        .map(|failure| format!("{:?}", failure.scope))
+        .unwrap_or_else(|| "unknown".to_string());
+
+    vec![ReturnComponentsStageConstraintViolationDiagnostic {
+        field: "continuous_distribution_fit_breakdown.exact_likelihood_failures".to_string(),
+        message: format!(
+            "exact likelihood produced {} structural failure(s); first failure scope={} reason={}",
+            fit_breakdown.exact_structural_failure_count, first_scope, first_failure_reason,
+        ),
+    }]
 }
 
 pub(crate) fn default_surprise_deterministic_intensity_profile()

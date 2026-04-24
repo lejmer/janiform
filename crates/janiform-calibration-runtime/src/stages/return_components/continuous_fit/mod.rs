@@ -1,12 +1,17 @@
 mod bounds;
+mod closed_form;
 mod constants;
+mod exact_block;
 mod likelihood;
 mod optimization;
 mod profile;
+mod proxy_em;
 mod sample;
+mod scoring;
 mod shape_mapping;
 #[cfg(test)]
 mod tests;
+mod tilted_mixed;
 mod types;
 
 pub(crate) use bounds::{

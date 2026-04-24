@@ -32,8 +32,8 @@ pub(crate) use inputs::{build_observed_data, build_summary_simulation_session_co
 #[cfg(test)]
 pub(crate) use optimization::joint_refinement_restart_block_powell_settings;
 pub(crate) use optimization::{
-    desired_joint_refinement_restart_count, joint_refinement_budget_schedule,
-    optimize_restart_seeds,
+    desired_joint_refinement_restart_candidate_budget, joint_refinement_budget_schedule,
+    optimize_restart_seeds, precheck_seed_summary_workload,
 };
 pub(crate) use option_refinement::{
     desired_joint_refinement_option_refinement_candidate_count, run_option_refinement,
@@ -52,6 +52,7 @@ pub(crate) use report::{
 };
 pub(crate) use resume_state::{JointRefinementResumeStore, PersistedRestartSelectionArtifacts};
 pub(crate) use selection::{
+    JOINT_REFINEMENT_THRESHOLD_RELATIVE_ADMISSIBILITY_SCORE,
     JointRefinementAdmissibilityThresholds, build_joint_candidate_frontier_diagnostics,
     joint_raw_metrics_are_dynamics_feasible, joint_refinement_admissibility_thresholds,
     joint_restart_outcome_is_admissible, select_restart_outcomes_with_lazy_coarse_consistency,

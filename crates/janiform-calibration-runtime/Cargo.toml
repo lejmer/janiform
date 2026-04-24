@@ -28,6 +28,7 @@ janiform-market-time = { path = "../janiform-market-time" }
 janiform-model-kernels = { path = "../janiform-model-kernels" }
 nalgebra = { workspace = true }
 parquet = { workspace = true }
+puruspe = { workspace = true }
 rayon = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

@@ -93,7 +93,7 @@ class JaniformEstimator:
     _preprocessing_settings: Optional[CalibrationMarketDataPreprocessingSettings]
     _mean_reversion: Optional[CalibrationMeanReversionConfiguration]
     _pricing_interval_schedule_policy: PricingIntervalSchedulePolicy
-    _dynamics_search_restart_count: Optional[int]
+    _dynamics_search_restart_candidate_budget: Optional[int]
     _market_profile_reference: Optional[MarketProfileReference]
     _session_reference: Optional[SessionPresetReference]
     _known_news_reference: Optional[KnownNewsPresetReference]
@@ -115,7 +115,7 @@ class JaniformEstimator:
         preprocessing_settings: Optional[CalibrationMarketDataPreprocessingSettings] = None,
         mean_reversion: Optional[CalibrationMeanReversionConfiguration] = None,
         pricing_interval_schedule_policy: Optional[PricingIntervalSchedulePolicy] = None,
-        dynamics_search_restart_count: Optional[int] = None,
+        dynamics_search_restart_candidate_budget: Optional[int] = None,
         market_profile: Optional[str | MarketProfileReference] = None,
         session: Optional[str | Path | SessionPresetReference] = None,
         known_news: Optional[str | KnownNewsPresetReference] = None,
@@ -152,11 +152,11 @@ class JaniformEstimator:
                 "must be a CalibrationMeanReversionConfiguration when provided",
             )
         if (
-            dynamics_search_restart_count is not None
-            and dynamics_search_restart_count <= 0
+            dynamics_search_restart_candidate_budget is not None
+            and dynamics_search_restart_candidate_budget <= 0
         ):
             raise calibration_error(
-                "dynamics_search_restart_count",
+                "dynamics_search_restart_candidate_budget",
                 "must be strictly positive when provided",
             )
 
@@ -173,7 +173,7 @@ class JaniformEstimator:
             if pricing_interval_schedule_policy is None
             else pricing_interval_schedule_policy
         )
-        self._dynamics_search_restart_count = dynamics_search_restart_count
+        self._dynamics_search_restart_candidate_budget = dynamics_search_restart_candidate_budget
         self._market_profile_reference = coerce_market_profile_reference(market_profile)
         self._session_reference = coerce_session_reference(session, exchange_code=exchange_code)
         self._known_news_reference = coerce_known_news_reference(known_news)
@@ -289,7 +289,7 @@ class JaniformEstimator:
                 if pricing_interval_schedule_policy is None
                 else pricing_interval_schedule_policy
             ),
-            dynamics_search_restart_count=self._dynamics_search_restart_count,
+            dynamics_search_restart_candidate_budget=self._dynamics_search_restart_candidate_budget,
             default_endogenous_mean_reversion_configuration=(
                 self._default_endogenous_mean_reversion_configuration()
             ),

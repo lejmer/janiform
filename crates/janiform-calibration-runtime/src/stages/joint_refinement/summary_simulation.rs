@@ -46,6 +46,13 @@ pub struct JointRefinementSummarySimulationMemoryEstimate {
     pub estimated_total_retained_bytes: usize,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct JointRefinementSummarySimulationWorkloadEstimate {
+    pub(crate) estimated_transition_capacity: usize,
+    pub(crate) estimated_event_capacity: usize,
+    pub(crate) memory_estimate: JointRefinementSummarySimulationMemoryEstimate,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct JointRefinementSummarySimulationSessionContext {
     pub calendar_registry_artifact: ExchangeCalendarRegistryArtifact,
@@ -594,17 +601,30 @@ pub(crate) fn estimate_summary_simulation_memory(
     fitted_parameters: &JointRefinementStageFittedParameters,
     simulation_seed: u64,
 ) -> Result<JointRefinementSummarySimulationMemoryEstimate, String> {
+    estimate_summary_simulation_workload(session_state, fitted_parameters, simulation_seed)
+        .map(|workload_estimate| workload_estimate.memory_estimate)
+}
+
+pub(crate) fn estimate_summary_simulation_workload(
+    session_state: &JointRefinementSummarySimulationSessionState,
+    fitted_parameters: &JointRefinementStageFittedParameters,
+    simulation_seed: u64,
+) -> Result<JointRefinementSummarySimulationWorkloadEstimate, String> {
     let run_config = build_seeded_summary_simulation_run_config(
         session_state,
         fitted_parameters,
         simulation_seed,
     )?;
-    let (_, estimated_event_capacity) = estimate_seeded_result_capacities(&run_config);
+    let (estimated_transition_capacity, estimated_event_capacity) =
+        estimate_seeded_result_capacities(&run_config);
+    let memory_estimate =
+        summary_simulation_memory_estimate_from_session(session_state, estimated_event_capacity);
 
-    Ok(summary_simulation_memory_estimate_from_session(
-        session_state,
+    Ok(JointRefinementSummarySimulationWorkloadEstimate {
+        estimated_transition_capacity,
         estimated_event_capacity,
-    ))
+        memory_estimate,
+    })
 }
 
 fn build_seeded_summary_simulation_run_config(

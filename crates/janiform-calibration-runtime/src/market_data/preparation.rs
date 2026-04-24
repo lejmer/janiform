@@ -156,7 +156,7 @@ pub struct CalibrationMarketDataPreparationRequest {
     #[serde(default)]
     pub pricing_interval_schedule_policy: PricingIntervalSchedulePolicy,
     #[serde(default)]
-    pub dynamics_search_restart_count: Option<usize>,
+    pub dynamics_search_restart_candidate_budget: Option<usize>,
     #[serde(default)]
     pub joint_refinement_option_refinement_candidate_count_override: Option<usize>,
     #[serde(default)]
@@ -247,12 +247,13 @@ fn validate_joint_refinement_option_refinement_candidate_count_override(
     Ok(())
 }
 
-fn validate_dynamics_search_restart_count(
+fn validate_dynamics_search_restart_candidate_budget(
     request: &CalibrationMarketDataPreparationRequest,
 ) -> Result<(), CalibrationMarketDataPreparationError> {
-    if request.dynamics_search_restart_count == Some(0) {
+    if request.dynamics_search_restart_candidate_budget == Some(0) {
         return Err(CalibrationMarketDataPreparationError::from(
-            "dynamics_search_restart_count must be greater than zero when provided".to_string(),
+            "dynamics_search_restart_candidate_budget must be greater than zero when provided"
+                .to_string(),
         ));
     }
 
@@ -295,7 +296,7 @@ pub fn prepare_market_data_calibration_plan(
     request: CalibrationMarketDataPreparationRequest,
     cpu_count: Option<usize>,
 ) -> Result<PreparedMarketDataCalibrationPlan, CalibrationMarketDataPreparationError> {
-    validate_dynamics_search_restart_count(&request)?;
+    validate_dynamics_search_restart_candidate_budget(&request)?;
     validate_joint_refinement_option_refinement_candidate_count_override(&request)?;
     validate_joint_refinement_audit_option_pricing(&request)?;
 
@@ -321,7 +322,7 @@ pub fn prepare_market_data_calibration_plan_from_phases(
     session_resolution: MarketDataSessionResolutionPayload,
     cpu_count: Option<usize>,
 ) -> Result<PreparedMarketDataCalibrationPlan, CalibrationMarketDataPreparationError> {
-    validate_dynamics_search_restart_count(&request)?;
+    validate_dynamics_search_restart_candidate_budget(&request)?;
     validate_joint_refinement_option_refinement_candidate_count_override(&request)?;
     validate_joint_refinement_audit_option_pricing(&request)?;
 
@@ -1345,7 +1346,8 @@ fn prepared_market_data_plan_from_loading_output(
             &selected_stages,
             &loading_output,
         )?,
-        joint_refinement_restart_count_override: request.dynamics_search_restart_count,
+        joint_refinement_restart_candidate_budget_override: request
+            .dynamics_search_restart_candidate_budget,
         joint_refinement_option_refinement_candidate_count_override: request
             .joint_refinement_option_refinement_candidate_count_override,
         joint_refinement_audit_option_pricing_enabled: request

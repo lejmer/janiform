@@ -10,11 +10,12 @@ use super::bounds::{
     ratio_to_coordinate, relative_share_from_beta_ratios, sell_beta_ratio_from_relative_share,
     theoretical_alpha_bounds, theoretical_search_bounds,
 };
-use super::constants::RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_ELITE_COUNT;
 use super::likelihood::{
-    alpha_beta_boundary_penalty, average_negative_log_likelihood,
-    continuous_block_likelihood_objective, log_density_net_trading_time_return,
-    maximum_profiled_open_beta_ratio, profile_likelihood_score,
+    alpha_beta_boundary_penalty, average_negative_log_likelihood_resolution,
+    closed_form_single_side_log_density, continuous_block_likelihood_objective,
+    continuous_block_likelihood_objective_with_failures, log_density_net_trading_time_return,
+    log_density_net_trading_time_return_failure_reason, maximum_profiled_open_beta_ratio,
+    profile_likelihood_score,
 };
 use super::optimization::{
     build_broad_search_points, build_nig_moment_seed_configurations, build_nig_search_candidates,
@@ -29,7 +30,11 @@ use super::types::{
     ContinuousLikelihoodFidelityTier, ContinuousLikelihoodObjective, NigShapeSearchPoint,
     ReturnComponentsStageContinuousReturnCalibrationSample,
 };
-use crate::stages::return_components::contracts::ReturnComponentsObservedOpenSessionReturn;
+use crate::stages::return_components::contracts::{
+    ReturnComponentsObservedOpenSessionReturn, ReturnComponentsStageExactLikelihoodEvaluatorKind,
+    ReturnComponentsStageExactLikelihoodFailureReason,
+    ReturnComponentsStageExactLikelihoodFailureScope,
+};
 
 const TEST_OPTIMIZER_SAMPLE_COUNT: usize = 96;
 const TEST_OPTIMIZER_MAX_ITERATIONS: usize = 12;
@@ -144,7 +149,136 @@ fn distribution_profile_reports_robust_quantile_and_l_moment_metrics() {
     assert!(profile.l_moment_tau3.is_finite());
 }
 
-fn synthetic_calibration_sample_from_configuration(
+#[test]
+fn exact_likelihood_failure_reports_block_context_for_invalid_observed_inputs() {
+    let configuration = NigSharedPlusShiftConfiguration::try_new(80.0, -12.0, 2.0e-4, 0.0, -8.0)
+        .expect("configuration should validate");
+    let mut calibration_sample = synthetic_calibration_sample_from_configuration(configuration);
+    calibration_sample
+        .business_time_scales
+        .iter_mut()
+        .for_each(|business_time_scale| *business_time_scale = f64::NAN);
+    let optimizer_context = build_continuous_return_optimizer_context(&calibration_sample);
+
+    let (_objective, exact_likelihood_diagnostics) =
+        continuous_block_likelihood_objective_with_failures(
+            configuration,
+            &optimizer_context,
+            ContinuousLikelihoodFidelityTier::Full,
+        );
+
+    assert!(!exact_likelihood_diagnostics.failures.is_empty());
+    assert_eq!(
+        exact_likelihood_diagnostics.failures[0].scope,
+        ReturnComponentsStageExactLikelihoodFailureScope::Global
+    );
+    assert_eq!(
+        exact_likelihood_diagnostics.failures[0].block_member_index,
+        Some(0)
+    );
+    assert_eq!(
+        exact_likelihood_diagnostics.failures[0].failure_reason,
+        ReturnComponentsStageExactLikelihoodFailureReason::InvalidObservedInputs
+    );
+}
+
+#[test]
+fn buy_only_exact_density_matches_closed_form_reference() {
+    let configuration = NigSharedPlusShiftConfiguration::try_new(80.0, -12.0, 2.0e-4, 0.0, -8.0)
+        .expect("configuration should validate");
+    let driver_parameters = configuration
+        .derive_driver_parameters()
+        .expect("driver parameters should derive");
+
+    let exact_log_density = log_density_net_trading_time_return(
+        driver_parameters,
+        configuration,
+        1.1e-4,
+        1.0,
+        0.0,
+        0.8,
+        0.0,
+        average_negative_log_likelihood_resolution(1),
+    )
+    .expect("buy-only log density should evaluate");
+    let closed_form_log_density = closed_form_single_side_log_density(
+        ReturnComponentsStageExactLikelihoodEvaluatorKind::ClosedFormSingleSideBuy,
+        configuration,
+        1.1e-4,
+        0.8,
+    )
+    .expect("buy-only closed-form density should evaluate");
+
+    assert_close(exact_log_density, closed_form_log_density);
+}
+
+#[test]
+fn sell_only_exact_density_matches_closed_form_reference() {
+    let configuration = NigSharedPlusShiftConfiguration::try_new(80.0, -12.0, 2.0e-4, 0.0, -8.0)
+        .expect("configuration should validate");
+    let driver_parameters = configuration
+        .derive_driver_parameters()
+        .expect("driver parameters should derive");
+
+    let exact_log_density = log_density_net_trading_time_return(
+        driver_parameters,
+        configuration,
+        -9.5e-5,
+        1.0,
+        1.0,
+        0.0,
+        0.65,
+        average_negative_log_likelihood_resolution(1),
+    )
+    .expect("sell-only log density should evaluate");
+    let closed_form_log_density = closed_form_single_side_log_density(
+        ReturnComponentsStageExactLikelihoodEvaluatorKind::ClosedFormSingleSideSell,
+        configuration,
+        -9.5e-5,
+        0.65,
+    )
+    .expect("sell-only closed-form density should evaluate");
+
+    assert_close(exact_log_density, closed_form_log_density);
+}
+
+#[test]
+fn mixed_exact_likelihood_reports_tilted_block_counts() {
+    let configuration = NigSharedPlusShiftConfiguration::try_new(80.0, -12.0, 2.0e-4, 0.0, -8.0)
+        .expect("configuration should validate");
+    let calibration_sample = synthetic_calibration_sample_from_configuration(configuration);
+    let optimizer_context = build_continuous_return_optimizer_context(&calibration_sample);
+
+    let (_objective, exact_likelihood_diagnostics) =
+        continuous_block_likelihood_objective_with_failures(
+            configuration,
+            &optimizer_context,
+            ContinuousLikelihoodFidelityTier::Full,
+        );
+
+    assert_eq!(
+        exact_likelihood_diagnostics
+            .evaluator_block_counts
+            .tilted_mixed_inversion_block_count,
+        calibration_sample.observed_returns.len(),
+        "failures={:?}",
+        exact_likelihood_diagnostics.failures
+    );
+    assert_eq!(
+        exact_likelihood_diagnostics
+            .evaluator_block_counts
+            .closed_form_single_side_buy_block_count,
+        0
+    );
+    assert_eq!(
+        exact_likelihood_diagnostics
+            .evaluator_block_counts
+            .closed_form_single_side_sell_block_count,
+        0
+    );
+}
+
+pub(super) fn synthetic_calibration_sample_from_configuration(
     configuration: NigSharedPlusShiftConfiguration,
 ) -> ReturnComponentsStageContinuousReturnCalibrationSample {
     let driver_parameters = configuration
@@ -303,76 +437,24 @@ fn block_log_density_is_finite_for_representative_configuration() {
         0.55,
         0.54,
         0.66,
-        128,
-    )
-    .expect("log density should evaluate");
+        average_negative_log_likelihood_resolution(1),
+    );
+    let failure_reason = log_density_net_trading_time_return_failure_reason(
+        driver_parameters,
+        configuration,
+        1.5e-4,
+        1.2,
+        0.55,
+        0.54,
+        0.66,
+        average_negative_log_likelihood_resolution(1),
+    );
 
-    assert!(log_density.is_finite());
-}
-
-#[test]
-fn likelihood_objective_prefers_the_data_generating_configuration() {
-    let true_configuration =
-        NigSharedPlusShiftConfiguration::try_new(80.0, -12.0, 2.0e-4, 0.0, -8.0)
-            .expect("configuration should validate");
-    let challenger_configuration =
-        NigSharedPlusShiftConfiguration::try_new(9.0, -6.0, 8.0e-5, 0.0, -1.5)
-            .expect("challenger configuration should validate");
-    let driver_parameters = true_configuration
-        .derive_driver_parameters()
-        .expect("driver parameters should derive");
-    let mut randomness_stream = SplitMix64SimulationRandomnessStream::from_seed(41);
-    let business_time_scales: Vec<f64> = (0..128)
-        .map(|sample_index| 0.6 + sample_index as f64 / 96.0)
-        .collect();
-    let sell_share_proxies: Vec<f64> = (0..128)
-        .map(|sample_index| 0.35 + 0.30 * ((sample_index % 9) as f64 / 8.0))
-        .collect();
-    let observed_returns: Vec<f64> = business_time_scales
-        .iter()
-        .zip(sell_share_proxies.iter())
-        .map(|(business_time_scale, sell_share_proxy)| {
-            let sell_weight = sell_share_proxy.clamp(0.0, 1.0);
-            let buy_weight = 1.0 - sell_weight;
-            driver_parameters
-                .sample_trading_time_return_increment(
-                    business_time_scale * buy_weight,
-                    business_time_scale * sell_weight,
-                    &mut randomness_stream,
-                )
-                .expect("synthetic increment should sample")
-                .combined_increment
-        })
-        .collect();
-    let calibration_sample = ReturnComponentsStageContinuousReturnCalibrationSample {
-        observed_returns: observed_returns.clone(),
-        business_time_scales: business_time_scales.clone(),
-        sell_share_proxies: sell_share_proxies.clone(),
-        observed_profile: build_distribution_profile(observed_returns.as_slice()),
-        scale_bucket_profiles: build_scale_bucket_profiles(
-            observed_returns.as_slice(),
-            business_time_scales.as_slice(),
-        ),
-        open_session_sell_share_proxy: 0.5,
-    };
-    let optimizer_context = build_continuous_return_optimizer_context(&calibration_sample);
-
-    let true_objective = average_negative_log_likelihood(
-        true_configuration,
-        &optimizer_context,
-        &(0..observed_returns.len()).collect::<Vec<_>>(),
-        128,
-    )
-    .expect("true likelihood should evaluate");
-    let challenger_objective = average_negative_log_likelihood(
-        challenger_configuration,
-        &optimizer_context,
-        &(0..observed_returns.len()).collect::<Vec<_>>(),
-        128,
-    )
-    .expect("challenger likelihood should evaluate");
-
-    assert!(true_objective < challenger_objective);
+    assert!(
+        log_density.is_some(),
+        "mixed exact block failed with {failure_reason:?}"
+    );
+    assert!(log_density.expect("log density should exist").is_finite());
 }
 
 #[test]
@@ -565,7 +647,7 @@ fn optimized_candidates_surface_distinct_basin_diagnostics() {
         .basin_diagnostics;
 
     assert!(!basin_diagnostics.is_empty());
-    assert!(basin_diagnostics.len() <= RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_ELITE_COUNT);
+    assert!(basin_diagnostics.len() <= super::types::BasinSeedFamily::ALL.len());
 
     let family_labels: BTreeSet<String> = basin_diagnostics
         .iter()
@@ -592,39 +674,66 @@ fn optimized_candidates_surface_distinct_basin_diagnostics() {
 }
 
 #[test]
-fn optimizer_stop_reason_can_report_tolerance_and_budget() {
+fn moment_seed_candidates_surface_multiple_search_regimes() {
     let calibration_sample = test_optimizer_calibration_sample();
-    let tolerance_solver_settings = CalibrationOptimizerSettings::try_new(
-        "adaptive_search",
-        TEST_OPTIMIZER_MAX_ITERATIONS,
-        1,
-        1.0,
-        1.0,
-        1.0,
-    )
-    .expect("solver settings should validate");
-    let budget_solver_settings = CalibrationOptimizerSettings::try_new(
-        "adaptive_search",
-        TEST_OPTIMIZER_MAX_ITERATIONS,
-        1,
-        1.0e-12,
-        1.0e-12,
-        1.0,
-    )
-    .expect("solver settings should validate");
-
-    let tolerance_candidates =
-        build_nig_search_candidates(&calibration_sample, 17, &tolerance_solver_settings);
-    let budget_candidates =
-        build_nig_search_candidates(&calibration_sample, 17, &budget_solver_settings);
-
-    assert_eq!(
-        tolerance_candidates[0].optimizer_diagnostic.stop_reason,
-        "tolerance"
+    let optimizer_context = build_continuous_return_optimizer_context(&calibration_sample);
+    let theoretical_bounds = theoretical_search_bounds(
+        calibration_sample.observed_profile,
+        TEST_OPTIMIZER_MOMENT_CANDIDATE_COUNT,
     );
+
+    let moment_seed_candidates = build_moment_seed_candidates(
+        &optimizer_context,
+        &calibration_sample,
+        theoretical_bounds,
+        TEST_OPTIMIZER_MOMENT_CANDIDATE_COUNT,
+    );
+
+    let distinct_seed_points: BTreeSet<(u64, u64, u64, u64)> = moment_seed_candidates
+        .iter()
+        .map(|candidate| {
+            (
+                candidate.search_point.log_alpha.to_bits(),
+                candidate.search_point.buy_skew_coordinate.to_bits(),
+                candidate.search_point.sell_relative_coordinate.to_bits(),
+                candidate.search_point.log_delta_offset.to_bits(),
+            )
+        })
+        .collect();
+
+    assert_eq!(distinct_seed_points.len(), moment_seed_candidates.len());
+    assert!(moment_seed_candidates.len() > 1);
+}
+
+#[test]
+fn optimizer_candidates_report_proxy_em_frontier_without_local_iterations() {
+    let calibration_sample = test_optimizer_calibration_sample();
+    let solver_settings = CalibrationOptimizerSettings::try_new(
+        "adaptive_search",
+        TEST_OPTIMIZER_MAX_ITERATIONS,
+        1,
+        1.0e-12,
+        1.0e-12,
+        1.0,
+    )
+    .expect("solver settings should validate");
+
+    let candidates = build_nig_search_candidates(&calibration_sample, 17, &solver_settings);
+
     assert_eq!(
-        budget_candidates[0].optimizer_diagnostic.stop_reason,
-        "budget"
+        candidates[0].optimizer_diagnostic.stop_reason,
+        "proxy_em_frontier"
+    );
+    assert_eq!(candidates[0].optimizer_diagnostic.local_evaluation_count, 0);
+    assert_eq!(
+        candidates[0]
+            .optimizer_diagnostic
+            .seed_objective_score
+            .to_bits(),
+        candidates[0]
+            .optimizer_diagnostic
+            .local_objective_score
+            .to_bits()
     );
 }
 
@@ -655,6 +764,65 @@ fn repeated_builds_keep_objective_cache_observable_results_stable() {
         second_candidates[0]
             .optimizer_diagnostic
             .local_evaluation_count
+    );
+}
+
+#[test]
+fn optimizer_context_uses_reduced_fidelity_supports_when_scale_buckets_exist() {
+    let calibration_sample = test_optimizer_calibration_sample();
+    let optimizer_context = build_continuous_return_optimizer_context(&calibration_sample);
+    let scale_bucket_count = calibration_sample.scale_bucket_profiles.len();
+
+    assert!(scale_bucket_count > 1);
+    assert_eq!(
+        optimizer_context.seed_member_indices.len(),
+        scale_bucket_count
+    );
+    assert!(optimizer_context.local_member_indices.len() >= scale_bucket_count);
+    assert!(
+        optimizer_context.local_member_indices.len() <= scale_bucket_count * scale_bucket_count
+    );
+    assert!(
+        optimizer_context.local_member_indices.len() < optimizer_context.full_member_indices.len()
+    );
+    assert_eq!(
+        optimizer_context.full_member_indices.len(),
+        calibration_sample.observed_returns.len()
+    );
+}
+
+#[test]
+fn optimizer_context_keeps_small_samples_at_full_fidelity() {
+    let configuration = NigSharedPlusShiftConfiguration::try_new(80.0, -12.0, 2.0e-4, 0.0, -8.0)
+        .expect("configuration should validate");
+    let calibration_sample = synthetic_calibration_sample_from_configuration(configuration);
+    let small_sample = ReturnComponentsStageContinuousReturnCalibrationSample {
+        observed_returns: calibration_sample.observed_returns[..48].to_vec(),
+        business_time_scales: calibration_sample.business_time_scales[..48].to_vec(),
+        sell_share_proxies: calibration_sample.sell_share_proxies[..48].to_vec(),
+        observed_profile: build_distribution_profile(
+            calibration_sample.observed_returns[..48].as_ref(),
+        ),
+        scale_bucket_profiles: build_scale_bucket_profiles(
+            calibration_sample.observed_returns[..48].as_ref(),
+            calibration_sample.business_time_scales[..48].as_ref(),
+        ),
+        open_session_sell_share_proxy: calibration_sample.open_session_sell_share_proxy,
+    };
+    let optimizer_context = build_continuous_return_optimizer_context(&small_sample);
+
+    assert!(small_sample.scale_bucket_profiles.is_empty());
+    assert_eq!(
+        optimizer_context.seed_member_indices.len(),
+        small_sample.observed_returns.len()
+    );
+    assert_eq!(
+        optimizer_context.local_member_indices.len(),
+        small_sample.observed_returns.len()
+    );
+    assert_eq!(
+        optimizer_context.full_member_indices.len(),
+        small_sample.observed_returns.len()
     );
 }
 

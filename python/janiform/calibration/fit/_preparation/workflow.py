@@ -103,7 +103,9 @@ def build_market_data_request(
         option_surface_valuation_time_utc=option_surface_valuation_time_utc,
         carry=carry,
         pricing_interval_schedule_policy=configuration.pricing_interval_schedule_policy,
-        dynamics_search_restart_count=configuration.dynamics_search_restart_count,
+        dynamics_search_restart_candidate_budget=(
+            configuration.dynamics_search_restart_candidate_budget
+        ),
         known_news_inputs=known_news_input,
         mean_reversion=(
             None
@@ -158,7 +160,9 @@ def infer_session_resolution(
         option_surface_valuation_time_utc=option_surface_valuation_time_utc,
         carry=carry,
         pricing_interval_schedule_policy=configuration.pricing_interval_schedule_policy,
-        dynamics_search_restart_count=configuration.dynamics_search_restart_count,
+        dynamics_search_restart_candidate_budget=(
+            configuration.dynamics_search_restart_candidate_budget
+        ),
     )
 
     progress.update(detail="resolving session from market data")

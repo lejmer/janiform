@@ -36,6 +36,7 @@ csv = "1.4.0"
 nalgebra = { version = "0.33.2", default-features = false, features = ["std"] }
 parquet = "56.2.0"
 pyo3 = { version = "0.24.2", features = ["abi3-py312", "extension-module"] }
+puruspe = "0.4.4"
 rayon = "1.11.0"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = { version = "1.0.145", features = ["float_roundtrip"] }

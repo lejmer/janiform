@@ -22,7 +22,7 @@ pub struct CalibrationStagedRunInputs {
     pub return_components_candidate_generation_input:
         Option<ReturnComponentsStageCandidateGenerationInput>,
     pub mean_reversion_stage_input: Option<MeanReversionStageExecutionInput>,
-    pub joint_refinement_restart_count_override: Option<usize>,
+    pub joint_refinement_restart_candidate_budget_override: Option<usize>,
     pub joint_refinement_option_refinement_candidate_count_override: Option<usize>,
     pub joint_refinement_audit_option_pricing_enabled: bool,
     pub joint_refinement_option_pricing_input: Option<JointRefinementStageOptionPricingInput>,

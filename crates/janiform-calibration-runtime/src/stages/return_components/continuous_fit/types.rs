@@ -1,4 +1,5 @@
 use std::{
+    cmp::Ordering,
     collections::BTreeMap,
     sync::{Arc, Mutex},
 };
@@ -145,6 +146,33 @@ pub(super) struct ScoredNigCandidate {
     pub(super) objective_score: f64,
 }
 
+impl ScoredNigCandidate {
+    pub(super) fn compare_by_objective_and_configuration(left: &Self, right: &Self) -> Ordering {
+        left.objective_score
+            .total_cmp(&right.objective_score)
+            .then_with(|| {
+                left.configuration
+                    .alpha
+                    .total_cmp(&right.configuration.alpha)
+            })
+            .then_with(|| {
+                left.configuration
+                    .beta_0
+                    .total_cmp(&right.configuration.beta_0)
+            })
+            .then_with(|| {
+                left.configuration
+                    .delta
+                    .total_cmp(&right.configuration.delta)
+            })
+            .then_with(|| {
+                left.configuration
+                    .delta_beta
+                    .total_cmp(&right.configuration.delta_beta)
+            })
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(super) enum BasinSeedFamily {
     Overall,
@@ -158,6 +186,17 @@ pub(super) enum BasinSeedFamily {
 }
 
 impl BasinSeedFamily {
+    pub(super) const ALL: [Self; 8] = [
+        Self::Overall,
+        Self::HighAlphaLowDelta,
+        Self::MediumAlphaMediumDelta,
+        Self::LowAlphaHighDelta,
+        Self::SkewLight,
+        Self::SkewHeavy,
+        Self::SymmetricLike,
+        Self::AsymmetricLike,
+    ];
+
     pub(super) fn label(self) -> &'static str {
         match self {
             Self::Overall => "overall",
@@ -237,18 +276,4 @@ pub(super) struct ContinuousReturnOptimizerContext {
             >,
         >,
     >,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub(super) struct LocalSearchOptimizationOutcome {
-    pub(super) best_point: NigShapeSearchPoint,
-    pub(super) local_objective_score: f64,
-    pub(super) local_evaluation_count: usize,
-    pub(super) stop_reason: &'static str,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub(super) enum ScanDirection {
-    Lower,
-    Upper,
 }

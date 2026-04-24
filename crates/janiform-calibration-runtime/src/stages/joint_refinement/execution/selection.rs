@@ -20,6 +20,8 @@ use super::{
     ordered_parameter_bits,
 };
 
+pub(crate) const JOINT_REFINEMENT_THRESHOLD_RELATIVE_ADMISSIBILITY_SCORE: f64 = 1.0;
+
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct JointRefinementAdmissibilityThresholds {
     pub(crate) aggregated_likelihood_fit: f64,
@@ -105,6 +107,24 @@ impl LazyCoarseConsistencyProgressState {
 
 pub(crate) fn admissibility_threshold_from_sample_count(sample_count: usize) -> f64 {
     1.0 + (sample_count.max(1) as f64).recip().sqrt()
+}
+
+fn baseline_relative_admissibility_threshold(
+    local_baseline_bucket: f64,
+    final_baseline_bucket: f64,
+    sample_count: usize,
+) -> f64 {
+    let unit_fit_reference = 1.0;
+    let baseline_reference = [
+        local_baseline_bucket,
+        final_baseline_bucket,
+        unit_fit_reference,
+    ]
+    .into_iter()
+    .filter(|value| value.is_finite() && *value > 0.0)
+    .fold(unit_fit_reference, f64::max);
+
+    baseline_reference * admissibility_threshold_from_sample_count(sample_count)
 }
 
 pub(crate) fn joint_raw_metrics_are_admissible(
@@ -539,32 +559,68 @@ pub(crate) fn joint_refinement_admissibility_thresholds(
     .len();
 
     JointRefinementAdmissibilityThresholds {
-        aggregated_likelihood_fit: admissibility_threshold_from_sample_count(
+        aggregated_likelihood_fit: baseline_relative_admissibility_threshold(
+            context.local_baseline_buckets.aggregated_likelihood_fit,
+            context.final_baseline_buckets.aggregated_likelihood_fit,
             fifteen_minute_sample_count,
         ),
-        aggregated_return_shape_fit: admissibility_threshold_from_sample_count(
+        aggregated_return_shape_fit: baseline_relative_admissibility_threshold(
+            context.local_baseline_buckets.aggregated_return_shape_fit,
+            context.final_baseline_buckets.aggregated_return_shape_fit,
             fifteen_minute_sample_count,
         ),
-        return_asymmetry_fit: admissibility_threshold_from_sample_count(
+        return_asymmetry_fit: baseline_relative_admissibility_threshold(
+            context.local_baseline_buckets.return_asymmetry_fit,
+            context.final_baseline_buckets.return_asymmetry_fit,
             fifteen_minute_sample_count,
         ),
-        tick_return_asymmetry_fit: admissibility_threshold_from_sample_count(
+        tick_return_asymmetry_fit: baseline_relative_admissibility_threshold(
+            context.local_baseline_buckets.tick_return_asymmetry_fit,
+            context.final_baseline_buckets.tick_return_asymmetry_fit,
             observed_tick_sample_count,
         ),
-        aggregated_return_scale_fit: admissibility_threshold_from_sample_count(
+        aggregated_return_scale_fit: baseline_relative_admissibility_threshold(
+            context.local_baseline_buckets.aggregated_return_scale_fit,
+            context.final_baseline_buckets.aggregated_return_scale_fit,
             fifteen_minute_sample_count,
         ),
-        tick_return_scale_fit: admissibility_threshold_from_sample_count(
+        tick_return_scale_fit: baseline_relative_admissibility_threshold(
+            context.local_baseline_buckets.tick_return_scale_fit,
+            context.final_baseline_buckets.tick_return_scale_fit,
             observed_tick_sample_count,
         ),
-        business_time_return_scale_fit: admissibility_threshold_from_sample_count(
+        business_time_return_scale_fit: baseline_relative_admissibility_threshold(
+            context
+                .local_baseline_buckets
+                .business_time_return_scale_fit,
+            context
+                .final_baseline_buckets
+                .business_time_return_scale_fit,
             fifteen_minute_sample_count / 4,
         ),
-        intraday_return_level_fit: admissibility_threshold_from_sample_count(hourly_sample_count),
-        activity_shape_fit: admissibility_threshold_from_sample_count(hourly_sample_count),
-        activity_level_fit: admissibility_threshold_from_sample_count(hourly_sample_count),
-        rv_activity_coupling_fit: admissibility_threshold_from_sample_count(rv_sample_count),
-        price_span_sanity_fit: admissibility_threshold_from_sample_count(
+        intraday_return_level_fit: baseline_relative_admissibility_threshold(
+            context.local_baseline_buckets.intraday_return_level_fit,
+            context.final_baseline_buckets.intraday_return_level_fit,
+            hourly_sample_count,
+        ),
+        activity_shape_fit: baseline_relative_admissibility_threshold(
+            context.local_baseline_buckets.activity_shape_fit,
+            context.final_baseline_buckets.activity_shape_fit,
+            hourly_sample_count,
+        ),
+        activity_level_fit: baseline_relative_admissibility_threshold(
+            context.local_baseline_buckets.activity_level_fit,
+            context.final_baseline_buckets.activity_level_fit,
+            hourly_sample_count,
+        ),
+        rv_activity_coupling_fit: baseline_relative_admissibility_threshold(
+            context.local_baseline_buckets.rv_activity_coupling_fit,
+            context.final_baseline_buckets.rv_activity_coupling_fit,
+            rv_sample_count,
+        ),
+        price_span_sanity_fit: baseline_relative_admissibility_threshold(
+            context.local_baseline_buckets.price_span_sanity_fit,
+            context.final_baseline_buckets.price_span_sanity_fit,
             fifteen_minute_sample_count / 8,
         ),
     }

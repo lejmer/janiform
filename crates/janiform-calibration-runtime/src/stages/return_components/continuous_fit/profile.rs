@@ -24,7 +24,7 @@ pub(super) fn distribution_profile_fit_breakdown(
     fitted_profile: ContinuousReturnDistributionProfile,
     observed_profile: ContinuousReturnDistributionProfile,
 ) -> ReturnComponentsStageContinuousDistributionFitBreakdownDiagnostic {
-    let central_scale = positive_scale_floor(
+    let central_scale = dominant_positive_scale(
         [
             (observed_profile.upper_quartile_return - observed_profile.lower_quartile_return).abs(),
             observed_profile.l_moment_lambda2.abs(),
@@ -32,7 +32,7 @@ pub(super) fn distribution_profile_fit_breakdown(
         .as_slice(),
     );
 
-    let tail_scale = positive_scale_floor(
+    let tail_scale = dominant_positive_scale(
         [
             observed_profile.extreme_right_tail_return_q99.abs(),
             observed_profile.extreme_left_tail_return_q01.abs(),
@@ -41,7 +41,7 @@ pub(super) fn distribution_profile_fit_breakdown(
         .as_slice(),
     );
 
-    let skew_shape_scale = positive_scale_floor(
+    let skew_shape_scale = dominant_positive_scale(
         [
             observed_profile.skewness_standard_error(),
             observed_profile.bowley_skewness.abs(),
@@ -193,6 +193,14 @@ pub(super) fn distribution_profile_fit_breakdown(
         optimizer_local_evaluation_count: 0,
         optimizer_stop_reason: "not_optimized".to_string(),
         optimizer_basin_diagnostics: Vec::new(),
+        exact_likelihood_failures: Vec::new(),
+        exact_closed_form_single_side_buy_block_count: 0,
+        exact_closed_form_single_side_sell_block_count: 0,
+        exact_tilted_mixed_inversion_block_count: 0,
+        exact_structural_failure_count: 0,
+        exact_uncertified_scope_count: 0,
+        exact_global_average_log_likelihood_error_upper_bound: None,
+        exact_conditional_average_log_likelihood_error_upper_bound: None,
         mean_return_fit,
         volatility_fit,
         median_return_fit,
@@ -267,7 +275,7 @@ pub(super) fn build_scale_bucket_profiles(
     bucket_member_indices
         .into_iter()
         .filter_map(|member_indices| {
-            if member_indices.len() < 24 {
+            if member_indices.is_empty() {
                 return None;
             }
 
@@ -336,6 +344,15 @@ pub(super) fn build_distribution_profile(returns: &[f64]) -> ContinuousReturnDis
 
 fn positive_scale_floor(values: &[f64]) -> f64 {
     smallest_positive_value(values).unwrap_or_else(strictly_positive_machine_value)
+}
+
+fn dominant_positive_scale(values: &[f64]) -> f64 {
+    values
+        .iter()
+        .copied()
+        .filter(|value| value.is_finite() && *value > 0.0)
+        .max_by(f64::total_cmp)
+        .unwrap_or_else(strictly_positive_machine_value)
 }
 
 fn distribution_shape_resolution_floor(

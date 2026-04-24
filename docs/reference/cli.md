@@ -34,6 +34,7 @@ This is a curated reference for the public CLI surface. Use `janiform <command> 
 | Persistence | `--output-dir`, `--output-path`, `--disk-checkpoint-directory` |
 | Data inputs | `--tick-data-path`, `--known-news-path`, `--option-surface-path`, `--calendar-registry-json` |
 | Workflow shape | `--workflow-scope`, `--execution-mode` |
+| Calibration search | `--dynamics-search-restart-candidate-budget` |
 
 ## Notes
 

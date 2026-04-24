@@ -20,7 +20,10 @@ use super::super::contracts::{
     ReturnComponentsReturnJumpMarkScaleCandidateFamily,
     ReturnComponentsStageCandidateGenerationInput,
     ReturnComponentsStageCandidateGenerationInputError,
-    ReturnComponentsStageObjectiveMetricWeights,
+    ReturnComponentsStageContinuousDistributionFitBreakdownDiagnostic,
+    ReturnComponentsStageExactLikelihoodFailureDiagnostic,
+    ReturnComponentsStageExactLikelihoodFailureReason,
+    ReturnComponentsStageExactLikelihoodFailureScope, ReturnComponentsStageObjectiveMetricWeights,
     ReturnComponentsStageObservedSignalSummaryStatistics, ReturnComponentsStageSignalSourceWindow,
     ReturnComponentsSurpriseNewsArrivalCandidateFamily,
 };
@@ -30,6 +33,8 @@ use super::super::objective_scoring_policy_fit;
 use super::super::price_range_policy_fit;
 use super::super::signal_partition_fit;
 use super::super::surprise_episode_selection_fit;
+use super::candidate_generation::generate_return_components_stage_candidate_inputs;
+use super::diagnostics::collect_return_components_exact_likelihood_constraint_violations;
 use super::{
     ReturnComponentsStageSortedSignalInputs, build_activity_coupling_diagnostic,
     build_gap_diagnostic, build_jump_diagnostic, build_price_range_sanity_diagnostic,
@@ -62,6 +67,81 @@ fn derived_close_open_gap_detection_filters_zero_gap_boundaries() {
     .expect("zero-gap boundary should validate");
 
     assert!(derived_candidates.is_empty());
+}
+
+#[test]
+fn exact_likelihood_structural_failures_are_treated_as_constraint_violations() {
+    let fit_breakdown = ReturnComponentsStageContinuousDistributionFitBreakdownDiagnostic {
+        global_fit_score: f64::NAN,
+        conditional_fit_score: 0.0,
+        boundary_penalty: 0.0,
+        profile_fit_score: 0.5,
+        log_likelihood_shift: 0.0,
+        optimizer_seed_objective: 0.0,
+        optimizer_local_objective: 0.0,
+        optimizer_final_objective: 0.0,
+        optimizer_local_evaluation_count: 0,
+        optimizer_stop_reason: "test".to_string(),
+        optimizer_basin_diagnostics: Vec::new(),
+        exact_likelihood_failures: vec![ReturnComponentsStageExactLikelihoodFailureDiagnostic {
+            scope: ReturnComponentsStageExactLikelihoodFailureScope::Global,
+            scale_bucket_index: None,
+            block_member_index: Some(3),
+            failure_reason:
+                ReturnComponentsStageExactLikelihoodFailureReason::InvalidBlockStandardDeviation,
+            evaluator_kind: None,
+            observed_return: Some(0.0),
+            business_time_scale: Some(1.0),
+            sell_share_proxy: Some(0.5),
+            integrated_buy_intensity: Some(0.5),
+            integrated_sell_intensity: Some(0.5),
+            block_standard_deviation: Some(0.0),
+            standardized_return: None,
+            tilt_theta: None,
+            tilt_domain_lower_theta_exclusive: None,
+            tilt_domain_upper_theta_exclusive: None,
+            standardized_decay_scale: None,
+            integration_upper_bound: None,
+            log_density_resolution: None,
+            scope_average_log_likelihood_error_upper_bound: None,
+        }],
+        exact_closed_form_single_side_buy_block_count: 0,
+        exact_closed_form_single_side_sell_block_count: 0,
+        exact_tilted_mixed_inversion_block_count: 0,
+        exact_structural_failure_count: 1,
+        exact_uncertified_scope_count: 0,
+        exact_global_average_log_likelihood_error_upper_bound: None,
+        exact_conditional_average_log_likelihood_error_upper_bound: None,
+        mean_return_fit: 0.0,
+        volatility_fit: 1.0,
+        median_return_fit: 0.0,
+        lower_quartile_fit: 0.0,
+        upper_quartile_fit: 0.0,
+        lower_tail_q05_fit: 0.0,
+        upper_tail_q95_fit: 0.0,
+        extreme_left_tail_q01_fit: 0.0,
+        extreme_right_tail_q99_fit: 0.0,
+        mean_abs_return_fit: 0.0,
+        median_abs_return_fit: 0.0,
+        abs_quantile_ratio_fit: 0.0,
+        bowley_skewness_fit: 0.0,
+        l_moment_lambda2_fit: 0.0,
+        l_moment_tau3_fit: 0.0,
+    };
+
+    let violations =
+        collect_return_components_exact_likelihood_constraint_violations(&fit_breakdown);
+
+    assert_eq!(violations.len(), 1);
+    assert_eq!(
+        violations[0].field,
+        "continuous_distribution_fit_breakdown.exact_likelihood_failures"
+    );
+    assert!(
+        violations[0]
+            .message
+            .contains("InvalidBlockStandardDeviation")
+    );
 }
 
 #[test]
@@ -371,6 +451,100 @@ fn zero_inflated_open_returns_keep_small_non_zero_moves_in_continuous_fit_sample
         retained_non_zero_returns,
         vec![1.0e-4, -2.0e-4, 3.0e-4, 5.0e-3]
     );
+}
+
+#[test]
+fn candidate_generation_preserves_multiple_nig_candidates() {
+    let candidate_generation_input = ReturnComponentsStageCandidateGenerationInput {
+        known_news_calendar: ReturnComponentsKnownNewsCalendarInput {
+            source_window: test_source_window(),
+            scheduled_event_timestamps_utc_nanos: Vec::new(),
+        },
+        realized_known_news_return_samples: Vec::new(),
+        observed_open_session_returns: vec![
+            ReturnComponentsObservedOpenSessionReturn {
+                return_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 14, 0, 0),
+                log_return: 1.0e-4,
+                post_shock_activity_lift: 1.0,
+                sell_share_proxy: 0.20,
+            },
+            ReturnComponentsObservedOpenSessionReturn {
+                return_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 14, 0, 1),
+                log_return: -0.7e-4,
+                post_shock_activity_lift: 1.0,
+                sell_share_proxy: 0.80,
+            },
+            ReturnComponentsObservedOpenSessionReturn {
+                return_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 14, 0, 2),
+                log_return: 1.5e-4,
+                post_shock_activity_lift: 1.0,
+                sell_share_proxy: 0.30,
+            },
+            ReturnComponentsObservedOpenSessionReturn {
+                return_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 14, 0, 3),
+                log_return: -1.2e-4,
+                post_shock_activity_lift: 1.0,
+                sell_share_proxy: 0.70,
+            },
+            ReturnComponentsObservedOpenSessionReturn {
+                return_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 14, 0, 4),
+                log_return: 0.8e-4,
+                post_shock_activity_lift: 1.0,
+                sell_share_proxy: 0.35,
+            },
+            ReturnComponentsObservedOpenSessionReturn {
+                return_timestamp_utc_nanos: utc_nanos(2026, 2, 2, 14, 0, 5),
+                log_return: -1.4e-4,
+                post_shock_activity_lift: 1.0,
+                sell_share_proxy: 0.65,
+            },
+        ],
+        detected_intraday_jump_candidates: Vec::new(),
+        observed_close_open_boundary_observations: Vec::new(),
+        close_open_gap_detection_policy: ReturnComponentsCloseOpenGapDetectionPolicy::new(0.005),
+        open_session_sell_share_proxy: 0.5,
+        shared_mark_law_template: SharedNewsMarkLawConfiguration {
+            gamma_severity_marks: GammaSeverityMarkConfiguration {
+                shape_k: 2.0,
+                scale_theta: 1.0e-4,
+            },
+            double_exponential_base_shock: DoubleExponentialBaseShockConfiguration {
+                probability_positive: 0.45,
+                eta_plus: 8.0,
+                eta_minus: 10.0,
+            },
+            coupled_gap_marks: CoupledGapMarkConfiguration { sigma_g: 0.001 },
+        },
+        objective_metric_weights: ReturnComponentsStageObjectiveMetricWeights {
+            continuous_distribution_fit_weight: 1.0,
+            surprise_arrival_fit_weight: 1.0,
+            jump_fit_weight: 1.0,
+            gap_fit_weight: 1.0,
+            activity_coupling_fit_weight: 1.0,
+            price_range_sanity_fit_weight: 0.1,
+        },
+    };
+    let solver_settings =
+        CalibrationOptimizerSettings::try_new("adaptive_search", 32, 1, 1.0e-8, 1.0e-8, 1.0)
+            .expect("solver settings should validate");
+
+    let generated_candidates = generate_return_components_stage_candidate_inputs(
+        &candidate_generation_input,
+        &[],
+        "test_filter",
+        None,
+        17,
+        &solver_settings,
+    )
+    .expect("candidate generation should succeed");
+
+    assert_eq!(
+        generated_candidates.candidate_inputs.len(),
+        generated_candidates
+            .candidate_family_counts
+            .nig_candidate_count
+    );
+    assert!(generated_candidates.candidate_inputs.len() > 1);
 }
 
 #[test]
