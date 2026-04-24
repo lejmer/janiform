@@ -5,12 +5,12 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any, Optional, cast
 
-from ..errors import calibration_error, calibration_error
+from ..errors import calibration_error
 from ..sessions.contracts import (
     MarketDataSessionRecurringClosedWindow,
     MarketDataSessionRegularWindow,
 )
-from ...contracts import (
+from ...contracts.base import (
     ContractModel,
     parse_json_object,
     require_datetime_utc,

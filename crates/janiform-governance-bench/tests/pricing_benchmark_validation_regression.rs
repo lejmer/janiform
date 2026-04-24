@@ -3,16 +3,19 @@ mod support;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 
+use janiform_engine_pricing::internal::{
+    FourierInversionContour, FourierInversionEngineSettings,
+    FourierInversionIntegrationStabilityControls, FourierInversionNumericQualityGate,
+    FourierInversionNumericSettings, FourierInversionPricingError, FourierInversionQuadratureRule,
+    price_vanilla_option_via_fourier_inversion,
+};
 use janiform_engine_pricing::{
-    FourierInversionContour, FourierInversionDiagnostics, FourierInversionEngineSettings,
-    FourierInversionIntegrationStabilityControls, FourierInversionNumericQualityDiagnostics,
-    FourierInversionNumericQualityGate, FourierInversionNumericSettings,
-    FourierInversionPricingError, FourierInversionQuadratureRule, INTRADAY_PRICING_HOURS_PER_YEAR,
-    VanillaOptionPayoffConfiguration, VanillaOptionPayoffType, VanillaOptionPricingMarketInputs,
+    FourierInversionDiagnostics, FourierInversionNumericQualityDiagnostics,
+    INTRADAY_PRICING_HOURS_PER_YEAR, VanillaOptionPayoffConfiguration, VanillaOptionPayoffType,
+    VanillaOptionPricingMarketInputs,
     intraday_black_scholes_log_return_characteristic_function as black_scholes_log_return_characteristic_function,
     intraday_black_scholes_no_arbitrage_price_bounds as no_arbitrage_price_bounds,
     intraday_black_scholes_price as black_scholes_price,
-    price_vanilla_option_via_fourier_inversion,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -177,17 +180,13 @@ impl PricingBenchmarkEngineSettingsFixture {
             )
         });
 
-        FourierInversionEngineSettings::try_new_with_stability_controls(
-            contour,
-            numeric_settings,
-            stability_controls,
-        )
-        .unwrap_or_else(|source| {
-            panic!(
-                "fixture {} has invalid engine settings: {}",
-                fixture_id, source
-            )
-        })
+        FourierInversionEngineSettings::try_new(contour, numeric_settings, stability_controls)
+            .unwrap_or_else(|source| {
+                panic!(
+                    "fixture {} has invalid engine settings: {}",
+                    fixture_id, source
+                )
+            })
     }
 }
 

@@ -8,7 +8,11 @@ import pandas
 
 from ...._native_api import native_module
 from ...._timestamps import datetime_to_utc_nanos
-from ....contracts import require_datetime_utc, require_positive_finite_scalar, require_timezone_aware_datetime
+from ....contracts.base import (
+    require_datetime_utc,
+    require_positive_finite_scalar,
+    require_timezone_aware_datetime,
+)
 from ....mean_reversion import MeanReversionBoundaryState
 from ....simulation import SeededTickEventSide, HawkesExcitationState
 from ...errors import calibration_error
@@ -164,7 +168,7 @@ def _extract_observed_tick_data_columns(
 def _extract_tick_data_column(
     observed_tick_data: pandas.DataFrame | Mapping[str, Sequence[Any]],
     *,
-    column_name: str | None,
+    column_name: Optional[str],
     field_path: str,
 ) -> tuple[Any, ...]:
     if column_name is None:

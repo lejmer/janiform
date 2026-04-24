@@ -1,3 +1,5 @@
+from math import log
+
 from janiform.pricing import (
     AnchoredVanillaOptionPricingBoundaryInput,
     GammaSeverityMarkConfiguration,
@@ -5,6 +7,8 @@ from janiform.pricing import (
     MeanReversionBoundaryState,
     MeanReversionFittedParameters,
     NigSharedPlusShiftConfiguration,
+    PricingIntervalSchedule,
+    PricingIntervalScheduleMetadata,
     VanillaOptionPayoffConfiguration,
     VanillaOptionPayoffType,
     VanillaOptionPricingExecutionInput,
@@ -27,12 +31,16 @@ from janiform.simulation.coarse import (
     SurpriseNewsArrivalConfiguration,
 )
 from tests.support.hourly_factor_contracts import build_hourly_factor_contract
+from tests.support.time import REFERENCE_PRICING_TIMESTAMP_UTC_NANOS
+
+TEST_REFERENCE_PRICE = 100.0
+TEST_SPOT_PRICE = 101.0
 
 
 def build_anchored_request_model() -> VanillaOptionPricingRequest:
     return VanillaOptionPricingRequest(
         market_inputs=VanillaOptionPricingMarketInputs(
-            spot=101.0,
+            spot=TEST_SPOT_PRICE,
             strikes=(100.0,),
             maturity_intervals=(1.0,),
             risk_free_rate=0.02,
@@ -60,6 +68,7 @@ def build_anchored_request_model() -> VanillaOptionPricingRequest:
             ),
         ),
         model_parameters=_build_model_parameters(),
+        interval_delta=1.0,
     )
 
 
@@ -84,16 +93,18 @@ def build_anchored_runtime_execution_input_model() -> VanillaOptionPricingExecut
                 ),
                 interval_delta=1.0,
                 observed_boundary_state=MeanReversionBoundaryState(
-                    observed_log_price=0.25,
-                    anchor_value=0.25,
+                    observed_log_price=_normalized_observed_log_price(TEST_SPOT_PRICE),
+                    anchor_value=_normalized_observed_log_price(TEST_SPOT_PRICE),
                     pressure_state=0.0,
                     deviation=0.0,
                 ),
             ),
             model_parameters=anchored_request.model_parameters,
+            interval_delta=anchored_request.interval_delta,
         ),
+        runtime_interval_schedule=build_runtime_interval_schedule((1.0,)),
         hourly_factor_contract=build_hourly_factor_contract(
-            request_start_utc_nanos=1_706_882_400_000_000_000,
+            request_start_utc_nanos=REFERENCE_PRICING_TIMESTAMP_UTC_NANOS,
             s_h=(1.0,),
             known_component_nu_h=(0.0,),
             surprise_component_nu_h=(0.0,),
@@ -128,6 +139,7 @@ def build_anchored_surface_request_model() -> VanillaOptionSurfacePricingRequest
             ),
         ),
         model_parameters=_build_model_parameters(),
+        interval_delta=1.0,
     )
 
 
@@ -146,9 +158,19 @@ def build_anchored_surface_execution_input_model() -> VanillaOptionSurfacePricin
                 dividend_yield=anchored_runtime_execution_input.request.market_inputs.dividend_yield,
             ),
             payoff=anchored_runtime_execution_input.request.payoff,
-            boundary_input=anchored_runtime_execution_input.request.boundary_input,
+            boundary_input=_disabled_boundary_input(
+                interval_delta=anchored_runtime_execution_input.request.interval_delta,
+                hawkes_boundary_state=HawkesExcitationState(
+                    y_plus_plus=0.0,
+                    y_plus_minus=0.0,
+                    y_minus_plus=0.0,
+                    y_minus_minus=0.0,
+                ),
+            ),
             model_parameters=anchored_runtime_execution_input.request.model_parameters,
+            interval_delta=anchored_runtime_execution_input.request.interval_delta,
         ),
+        runtime_interval_schedule=anchored_runtime_execution_input.runtime_interval_schedule,
         hourly_factor_contract=anchored_runtime_execution_input.hourly_factor_contract,
         optional_output_selection=anchored_runtime_execution_input.optional_output_selection,
         cpu_count=1,
@@ -206,6 +228,10 @@ def _disabled_boundary_input(
     )
 
 
+def _normalized_observed_log_price(spot: float) -> float:
+    return log(spot / TEST_REFERENCE_PRICE)
+
+
 def _build_news_process_configuration() -> NewsProcessConfiguration:
     return NewsProcessConfiguration(
         schema_version="news.process.configuration.v1",
@@ -240,3 +266,31 @@ def _build_news_process_configuration() -> NewsProcessConfiguration:
             return_jump_scale=1.0,
         ),
     )
+
+
+def build_runtime_interval_schedule(
+    interval_deltas_hours: tuple[float, ...],
+    *,
+    valuation_time_utc_nanos: int = REFERENCE_PRICING_TIMESTAMP_UTC_NANOS,
+) -> PricingIntervalSchedule:
+    interval_end_timestamps_utc_nanos: list[int] = []
+    current_endpoint_utc_nanos = valuation_time_utc_nanos
+
+    for interval_delta_hours in interval_deltas_hours:
+        current_endpoint_utc_nanos += int(interval_delta_hours * 3_600_000_000_000)
+        interval_end_timestamps_utc_nanos.append(current_endpoint_utc_nanos)
+
+    return PricingIntervalSchedule(
+        valuation_time_utc_nanos=valuation_time_utc_nanos,
+        metadata=PricingIntervalScheduleMetadata(
+            policy_id="explicit_interval_end_timestamps_utc.v1",
+            derivation_policy="tests.support.pricing.uniform_schedule.v1",
+            factor_assignment_policy="overlap_weighted_resampling_from_hourly_source_buckets.v1",
+        ),
+        interval_end_timestamps_utc_nanos=tuple(interval_end_timestamps_utc_nanos),
+        interval_deltas_hours=interval_deltas_hours,
+    )
+
+
+def _runtime_interval_schedule(interval_deltas_hours: tuple[float, ...]) -> PricingIntervalSchedule:
+    return build_runtime_interval_schedule(interval_deltas_hours)

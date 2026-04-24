@@ -5,19 +5,19 @@ use std::path::PathBuf;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::calendar::{
-    ExchangeCalendarRegistry, TimestampEventInputRecord, TimestampEventSessionFilter,
-};
-use crate::seasonality::{
-    DayOfWeekSeasonalityEstimatorSettings, DayOfYearSeasonalityEstimatorSettings,
-    IntradaySeasonalityEstimatorSettings, IntradaySmoothingKernel, ScheduledEventOverlayDefinition,
-};
 use janiform_calibration_artifacts::{
     CalibrationExecutionMode, CalibrationRunContract, CalibrationRunContractError,
     CalibrationRunSpec, CalibrationStage, CalibrationStageDependency, CalibrationStageGraph,
     JointRefinementStageCarryInput, ReturnComponentsStageFittedParameters,
 };
 use janiform_engine_pricing::VanillaOptionPayoffType;
+use janiform_market_time::calendar::{
+    ExchangeCalendarRegistry, TimestampEventInputRecord, TimestampEventSessionFilter,
+};
+use janiform_market_time::seasonality::{
+    DayOfWeekSeasonalityEstimatorSettings, DayOfYearSeasonalityEstimatorSettings,
+    IntradaySeasonalityEstimatorSettings, IntradaySmoothingKernel, ScheduledEventOverlayDefinition,
+};
 use janiform_model_kernels::hawkes::{
     HawkesEventSide, HawkesStructuredAlphaParameterization, HawkesStructuredRhoParameterization,
     HawkesStructuredRhoSelfDominancePolicy,
@@ -51,6 +51,7 @@ use super::stages::return_components::{
 use super::stages::seasonality::{
     SeasonalityStageExecutionInput, SeasonalityStageExecutionSettings,
 };
+use janiform_engine_pricing::PricingIntervalSchedulePolicy;
 
 pub const CALIBRATION_STAGED_EXECUTION_INPUT_SCHEMA_VERSION: &str =
     "calibration.orchestration.staged_execution_input.v1";
@@ -76,6 +77,12 @@ pub struct CalibrationStagedExecutionInput {
         Option<CalibrationReturnComponentsStageCandidateGenerationInput>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mean_reversion_stage_input: Option<CalibrationMeanReversionStageExecutionInput>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub joint_refinement_restart_candidate_budget_override: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub joint_refinement_option_refinement_candidate_count_override: Option<usize>,
+    #[serde(default)]
+    pub joint_refinement_audit_option_pricing_enabled: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub joint_refinement_option_pricing_input: Option<CalibrationJointRefinementOptionPricingInput>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -448,6 +455,8 @@ pub struct CalibrationJointRefinementCarryInput {
 #[serde(deny_unknown_fields)]
 pub struct CalibrationJointRefinementOptionPricingInput {
     pub valuation_time_utc_nanos: i64,
+    #[serde(default)]
+    pub pricing_interval_schedule_policy: PricingIntervalSchedulePolicy,
     pub carry_input: CalibrationJointRefinementCarryInput,
     pub current_state_estimation_input: CalibrationJointRefinementCurrentStateEstimationInput,
     pub option_snapshot_nodes: Vec<CalibrationJointRefinementOptionSnapshotNode>,
@@ -471,6 +480,9 @@ pub enum CalibrationStagedExecutionBridgeError {
     MissingDiskCheckpointDirectory,
     EmptyDiskCheckpointDirectory,
     UnexpectedDiskCheckpointDirectoryForMemoryMode,
+    InvalidJointRefinementRestartCandidateBudgetOverride,
+    InvalidJointRefinementOptionRefinementCandidateCountOverride,
+    AuditOptionPricingRequiresOptionInput,
     InvalidObservationTradeSide {
         trade_side: String,
     },
@@ -509,6 +521,18 @@ impl Display for CalibrationStagedExecutionBridgeError {
                 formatter,
                 "runtime_resources.disk_checkpoint_directory is only supported when execution_mode=`disk`"
             ),
+            Self::InvalidJointRefinementRestartCandidateBudgetOverride => write!(
+                formatter,
+                "joint_refinement_restart_candidate_budget_override must be greater than zero when provided"
+            ),
+            Self::InvalidJointRefinementOptionRefinementCandidateCountOverride => write!(
+                formatter,
+                "joint_refinement_option_refinement_candidate_count_override must be greater than zero when provided"
+            ),
+            Self::AuditOptionPricingRequiresOptionInput => write!(
+                formatter,
+                "joint_refinement_audit_option_pricing_enabled requires joint_refinement_option_pricing_input"
+            ),
             Self::InvalidObservationTradeSide { trade_side } => write!(
                 formatter,
                 "joint refinement current-state estimation input observation_trade_sides contains unsupported value `{trade_side}`"
@@ -541,6 +565,21 @@ impl CalibrationStagedExecutionInput {
 
         let request = self.request;
         let selected_stages = request.selected_stages.clone();
+        if self.joint_refinement_restart_candidate_budget_override == Some(0) {
+            return Err(
+                CalibrationStagedExecutionBridgeError::InvalidJointRefinementRestartCandidateBudgetOverride,
+            );
+        }
+        if self.joint_refinement_option_refinement_candidate_count_override == Some(0) {
+            return Err(CalibrationStagedExecutionBridgeError::InvalidJointRefinementOptionRefinementCandidateCountOverride);
+        }
+        if self.joint_refinement_audit_option_pricing_enabled
+            && self.joint_refinement_option_pricing_input.is_none()
+        {
+            return Err(
+                CalibrationStagedExecutionBridgeError::AuditOptionPricingRequiresOptionInput,
+            );
+        }
 
         let seasonality_selected = selected_stages.contains(&CalibrationStage::Seasonality);
         let hawkes_selected = selected_stages.contains(&CalibrationStage::Hawkes);
@@ -639,6 +678,12 @@ impl CalibrationStagedExecutionInput {
             mean_reversion_stage_input: self
                 .mean_reversion_stage_input
                 .map(CalibrationMeanReversionStageExecutionInput::into_core),
+            joint_refinement_restart_candidate_budget_override: self
+                .joint_refinement_restart_candidate_budget_override,
+            joint_refinement_option_refinement_candidate_count_override: self
+                .joint_refinement_option_refinement_candidate_count_override,
+            joint_refinement_audit_option_pricing_enabled: self
+                .joint_refinement_audit_option_pricing_enabled,
             joint_refinement_option_pricing_input: self
                 .joint_refinement_option_pricing_input
                 .map(CalibrationJointRefinementOptionPricingInput::try_into_core)
@@ -1124,6 +1169,7 @@ impl CalibrationJointRefinementOptionPricingInput {
         Ok(
             super::stages::joint_refinement::JointRefinementStageOptionPricingInput {
                 valuation_time_utc_nanos: self.valuation_time_utc_nanos,
+                pricing_interval_schedule_policy: self.pricing_interval_schedule_policy,
                 carry_input: self.carry_input.into_core(),
                 current_state_estimation_input: self
                     .current_state_estimation_input
@@ -1176,7 +1222,7 @@ mod tests {
         CalibrationRunSeedSettings, CalibrationRunSpec, CalibrationStage,
         CalibrationStageSeedOverride, CalibrationStageSolverSettings,
     };
-    use janiform_engine_pricing::VanillaOptionPayoffType;
+    use janiform_engine_pricing::{PricingIntervalSchedulePolicy, VanillaOptionPayoffType};
     use janiform_model_kernels::hawkes::{
         HawkesStructuredAlphaParameterization, HawkesStructuredRhoParameterization,
         HawkesStructuredRhoSelfDominancePolicy,
@@ -1387,6 +1433,9 @@ mod tests {
                     },
                 ],
             }),
+            joint_refinement_restart_candidate_budget_override: None,
+            joint_refinement_option_refinement_candidate_count_override: None,
+            joint_refinement_audit_option_pricing_enabled: false,
             joint_refinement_option_pricing_input: None,
             runtime_resources: match execution_mode {
                 CalibrationExecutionMode::Memory => None,
@@ -1459,11 +1508,57 @@ mod tests {
     }
 
     #[test]
+    fn execution_input_plan_rejects_zero_joint_refinement_restart_candidate_budget_override() {
+        let mut execution_input = valid_execution_input(CalibrationExecutionMode::Memory);
+        execution_input.joint_refinement_restart_candidate_budget_override = Some(0);
+
+        let error = execution_input
+            .build_execution_plan()
+            .expect_err("zero restart candidate budget override should fail");
+
+        assert_eq!(
+            error,
+            CalibrationStagedExecutionBridgeError::InvalidJointRefinementRestartCandidateBudgetOverride
+        );
+    }
+
+    #[test]
+    fn execution_input_plan_rejects_zero_joint_refinement_option_refinement_override() {
+        let mut execution_input = valid_execution_input(CalibrationExecutionMode::Memory);
+        execution_input.joint_refinement_option_refinement_candidate_count_override = Some(0);
+
+        let error = execution_input
+            .build_execution_plan()
+            .expect_err("zero option refinement override should fail");
+
+        assert_eq!(
+            error,
+            CalibrationStagedExecutionBridgeError::InvalidJointRefinementOptionRefinementCandidateCountOverride
+        );
+    }
+
+    #[test]
+    fn execution_input_plan_rejects_audit_option_pricing_without_option_input() {
+        let mut execution_input = valid_execution_input(CalibrationExecutionMode::Memory);
+        execution_input.joint_refinement_audit_option_pricing_enabled = true;
+
+        let error = execution_input
+            .build_execution_plan()
+            .expect_err("audit option pricing without option input should fail");
+
+        assert_eq!(
+            error,
+            CalibrationStagedExecutionBridgeError::AuditOptionPricingRequiresOptionInput
+        );
+    }
+
+    #[test]
     fn execution_input_plan_rejects_invalid_joint_refinement_trade_side() {
         let mut execution_input = valid_execution_input(CalibrationExecutionMode::Memory);
         execution_input.joint_refinement_option_pricing_input =
             Some(CalibrationJointRefinementOptionPricingInput {
                 valuation_time_utc_nanos: 1_770_042_600_000_000_000,
+                pricing_interval_schedule_policy: PricingIntervalSchedulePolicy::AutoExactSparse,
                 carry_input: CalibrationJointRefinementCarryInput {
                     discount_rate: 0.02,
                     carry_rate: 0.01,

@@ -10,16 +10,11 @@ use janiform_foundations::complex_math::complex_multiply;
 use janiform_foundations::numeric::validate_positive_number;
 
 use super::constants::{
-    DEFAULT_FOURIER_INVERSION_CONVERGENCE_ABSOLUTE_TOLERANCE,
-    DEFAULT_FOURIER_INVERSION_CONVERGENCE_RELATIVE_TOLERANCE,
-    DEFAULT_FOURIER_INVERSION_DAMPING_FACTOR, DEFAULT_FOURIER_INVERSION_STEP_COUNT,
-    DEFAULT_FOURIER_INVERSION_TERMINAL_INTEGRAND_ABSOLUTE_TOLERANCE,
-    DEFAULT_FOURIER_INVERSION_TERMINAL_INTEGRAND_RATIO_TOLERANCE,
-    DEFAULT_FOURIER_INVERSION_UPPER_INTEGRATION_BOUND, FOURIER_INVERSION_CONTOUR_POLICY,
-    FOURIER_INVERSION_CONVERGENCE_CHECK_POLICY, FOURIER_INVERSION_DIAGNOSTICS_SCHEMA_VERSION,
-    FOURIER_INVERSION_ENGINE_POLICY, FOURIER_INVERSION_INTEGRATION_STABILITY_POLICY,
-    FOURIER_INVERSION_NUMERIC_QUALITY_GATE_POLICY, FOURIER_INVERSION_NUMERIC_SETTINGS_POLICY,
-    FOURIER_INVERSION_TRUNCATION_CHECK_POLICY, FOURIER_NON_NEGATIVE_PRICE_CLAMP_TOLERANCE,
+    FOURIER_INVERSION_CONTOUR_POLICY, FOURIER_INVERSION_CONVERGENCE_CHECK_POLICY,
+    FOURIER_INVERSION_DIAGNOSTICS_SCHEMA_VERSION, FOURIER_INVERSION_ENGINE_POLICY,
+    FOURIER_INVERSION_INTEGRATION_STABILITY_POLICY, FOURIER_INVERSION_NUMERIC_QUALITY_GATE_POLICY,
+    FOURIER_INVERSION_NUMERIC_SETTINGS_POLICY, FOURIER_INVERSION_TRUNCATION_CHECK_POLICY,
+    FOURIER_NON_NEGATIVE_PRICE_CLAMP_TOLERANCE, INTERNAL_DIRECT_FOURIER_NUMERICS_SELECTION_POLICY,
 };
 use super::contracts::{
     VanillaOptionPayoffConfiguration, VanillaOptionPayoffType, VanillaOptionPricingMarketInputs,
@@ -69,12 +64,6 @@ impl FourierInversionContour {
 
     pub const fn policy() -> &'static str {
         FOURIER_INVERSION_CONTOUR_POLICY
-    }
-}
-
-impl Default for FourierInversionContour {
-    fn default() -> Self {
-        Self::new(DEFAULT_FOURIER_INVERSION_DAMPING_FACTOR)
     }
 }
 
@@ -154,16 +143,6 @@ impl FourierInversionNumericSettings {
 
     pub const fn policy() -> &'static str {
         FOURIER_INVERSION_NUMERIC_SETTINGS_POLICY
-    }
-}
-
-impl Default for FourierInversionNumericSettings {
-    fn default() -> Self {
-        Self::new(
-            DEFAULT_FOURIER_INVERSION_UPPER_INTEGRATION_BOUND,
-            DEFAULT_FOURIER_INVERSION_STEP_COUNT,
-            FourierInversionQuadratureRule::Midpoint,
-        )
     }
 }
 
@@ -284,18 +263,6 @@ impl FourierInversionIntegrationStabilityControls {
     }
 }
 
-impl Default for FourierInversionIntegrationStabilityControls {
-    fn default() -> Self {
-        Self::new(
-            DEFAULT_FOURIER_INVERSION_CONVERGENCE_ABSOLUTE_TOLERANCE,
-            DEFAULT_FOURIER_INVERSION_CONVERGENCE_RELATIVE_TOLERANCE,
-            DEFAULT_FOURIER_INVERSION_TERMINAL_INTEGRAND_ABSOLUTE_TOLERANCE,
-            DEFAULT_FOURIER_INVERSION_TERMINAL_INTEGRAND_RATIO_TOLERANCE,
-            FourierInversionNumericQualityGate::default(),
-        )
-    }
-}
-
 /// Validation errors for integration stability controls.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum FourierInversionIntegrationStabilityControlsError {
@@ -346,23 +313,6 @@ impl FourierInversionEngineSettings {
     pub const fn new(
         contour: FourierInversionContour,
         numeric_settings: FourierInversionNumericSettings,
-    ) -> Self {
-        Self::new_with_stability_controls(
-            contour,
-            numeric_settings,
-            FourierInversionIntegrationStabilityControls::new(
-                DEFAULT_FOURIER_INVERSION_CONVERGENCE_ABSOLUTE_TOLERANCE,
-                DEFAULT_FOURIER_INVERSION_CONVERGENCE_RELATIVE_TOLERANCE,
-                DEFAULT_FOURIER_INVERSION_TERMINAL_INTEGRAND_ABSOLUTE_TOLERANCE,
-                DEFAULT_FOURIER_INVERSION_TERMINAL_INTEGRAND_RATIO_TOLERANCE,
-                FourierInversionNumericQualityGate::DiagnosticsOnly,
-            ),
-        )
-    }
-
-    pub const fn new_with_stability_controls(
-        contour: FourierInversionContour,
-        numeric_settings: FourierInversionNumericSettings,
         stability_controls: FourierInversionIntegrationStabilityControls,
     ) -> Self {
         Self {
@@ -375,19 +325,9 @@ impl FourierInversionEngineSettings {
     pub fn try_new(
         contour: FourierInversionContour,
         numeric_settings: FourierInversionNumericSettings,
-    ) -> Result<Self, FourierInversionEngineSettingsError> {
-        let settings = Self::new(contour, numeric_settings);
-        settings.validate()?;
-        Ok(settings)
-    }
-
-    pub fn try_new_with_stability_controls(
-        contour: FourierInversionContour,
-        numeric_settings: FourierInversionNumericSettings,
         stability_controls: FourierInversionIntegrationStabilityControls,
     ) -> Result<Self, FourierInversionEngineSettingsError> {
-        let settings =
-            Self::new_with_stability_controls(contour, numeric_settings, stability_controls);
+        let settings = Self::new(contour, numeric_settings, stability_controls);
         settings.validate()?;
         Ok(settings)
     }
@@ -410,16 +350,6 @@ impl FourierInversionEngineSettings {
         FOURIER_INVERSION_ENGINE_POLICY
     }
 }
-
-impl Default for FourierInversionEngineSettings {
-    fn default() -> Self {
-        Self::new(
-            FourierInversionContour::default(),
-            FourierInversionNumericSettings::default(),
-        )
-    }
-}
-
 /// Validation errors for Fourier inversion engine settings.
 #[derive(Debug, Clone, PartialEq)]
 pub enum FourierInversionEngineSettingsError {
@@ -525,6 +455,9 @@ pub enum FourierInversionPricingError {
     InvalidSettings {
         source: FourierInversionEngineSettingsError,
     },
+    InternalSelectionFailure {
+        message: String,
+    },
     NonFiniteLogMoneyness {
         value: f64,
     },
@@ -574,6 +507,13 @@ impl Display for FourierInversionPricingError {
             }
             Self::InvalidSettings { source } => {
                 write!(formatter, "fourier settings are invalid: {source}")
+            }
+            Self::InternalSelectionFailure { message } => {
+                write!(
+                    formatter,
+                    "internal fourier numerics selection failed under policy `{}`: {message}",
+                    INTERNAL_DIRECT_FOURIER_NUMERICS_SELECTION_POLICY
+                )
             }
             Self::NonFiniteLogMoneyness { value } => {
                 write!(formatter, "log_moneyness must be finite, found {value}")
@@ -779,6 +719,9 @@ struct FourierIntegralStatistics {
     integral_estimate: f64,
     absolute_integral_estimate: f64,
     max_abs_integrand: f64,
+    penultimate_frequency: f64,
+    penultimate_abs_integrand: f64,
+    terminal_frequency: f64,
     terminal_abs_integrand: f64,
 }
 
@@ -876,6 +819,9 @@ where
     let mut weighted_integrand_sum: f64 = 0.0;
     let mut weighted_absolute_integrand_sum: f64 = 0.0;
     let mut max_abs_integrand: f64 = 0.0;
+    let mut penultimate_frequency: f64 = 0.0;
+    let mut penultimate_abs_integrand: f64 = 0.0;
+    let mut terminal_frequency: f64 = 0.0;
     let mut terminal_abs_integrand: f64 = 0.0;
     let mut integrand_evaluation_count = 0usize;
 
@@ -899,6 +845,9 @@ where
                 let absolute_integrand_value = integrand_value.abs();
                 weighted_absolute_integrand_sum += absolute_integrand_value;
                 max_abs_integrand = max_abs_integrand.max(absolute_integrand_value);
+                penultimate_frequency = terminal_frequency;
+                penultimate_abs_integrand = terminal_abs_integrand;
+                terminal_frequency = frequency;
                 terminal_abs_integrand = absolute_integrand_value;
                 integrand_evaluation_count += 1;
             }
@@ -928,6 +877,9 @@ where
                 let absolute_integrand_value = integrand_value.abs();
                 weighted_absolute_integrand_sum += integration_weight * absolute_integrand_value;
                 max_abs_integrand = max_abs_integrand.max(absolute_integrand_value);
+                penultimate_frequency = terminal_frequency;
+                penultimate_abs_integrand = terminal_abs_integrand;
+                terminal_frequency = frequency;
                 terminal_abs_integrand = absolute_integrand_value;
                 integrand_evaluation_count += 1;
             }
@@ -954,6 +906,9 @@ where
         integral_estimate,
         absolute_integral_estimate,
         max_abs_integrand,
+        penultimate_frequency,
+        penultimate_abs_integrand,
+        terminal_frequency,
         terminal_abs_integrand,
     })
 }
@@ -1249,7 +1204,6 @@ impl<'de> Deserialize<'de> for FourierInversionIntegrationStabilityControls {
 struct FourierInversionEngineSettingsPayload {
     contour: FourierInversionContour,
     numeric_settings: FourierInversionNumericSettings,
-    #[serde(default)]
     stability_controls: FourierInversionIntegrationStabilityControls,
 }
 
@@ -1259,7 +1213,7 @@ impl<'de> Deserialize<'de> for FourierInversionEngineSettings {
         D: serde::Deserializer<'de>,
     {
         let payload = FourierInversionEngineSettingsPayload::deserialize(deserializer)?;
-        Self::try_new_with_stability_controls(
+        Self::try_new(
             payload.contour,
             payload.numeric_settings,
             payload.stability_controls,

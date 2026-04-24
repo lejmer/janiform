@@ -3,7 +3,7 @@ use janiform::calibration::{
     MarketDataNormalizedTickOutput,
 };
 use pyo3::exceptions::PyValueError;
-use pyo3::{PyResult, pyclass, pymethods};
+use pyo3::{PyResult, Python, pyclass, pymethods};
 use std::sync::Arc;
 
 #[pyclass(module = "janiform._native", name = "CalibrationMemoryCheckpointStore")]
@@ -70,12 +70,13 @@ impl PyPreparedCalibrationExecutionHandle {
         &self.execution_input.request.run_id
     }
 
-    fn serialize_execution_input_json(&self) -> PyResult<String> {
-        serde_json::to_string(&self.execution_input).map_err(|source| {
-            PyValueError::new_err(format!(
-                "failed to serialize prepared calibration execution input: {source}"
-            ))
-        })
+    fn serialize_execution_input_json(&self, py: Python<'_>) -> PyResult<String> {
+        py.allow_threads(|| serde_json::to_string(&self.execution_input))
+            .map_err(|source| {
+                PyValueError::new_err(format!(
+                    "failed to serialize prepared calibration execution input: {source}"
+                ))
+            })
     }
 }
 
@@ -96,8 +97,9 @@ fn parse_calibration_stage(raw_stage: &str) -> PyResult<CalibrationStage> {
         "hawkes" => Ok(CalibrationStage::Hawkes),
         "return_components" => Ok(CalibrationStage::ReturnComponents),
         "mean_reversion" => Ok(CalibrationStage::MeanReversion),
+        "joint_refinement" => Ok(CalibrationStage::JointRefinement),
         _ => Err(PyValueError::new_err(
-            "stage must be one of: seasonality, hawkes, return_components, mean_reversion",
+            "stage must be one of: seasonality, hawkes, return_components, mean_reversion, joint_refinement",
         )),
     }
 }

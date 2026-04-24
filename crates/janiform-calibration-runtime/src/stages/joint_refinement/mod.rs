@@ -1,6 +1,8 @@
 mod contracts;
 mod execution;
+mod mean_reversion_runtime;
 mod objective;
+mod option_surface_tiering;
 mod setup;
 mod summary_simulation;
 mod worker_runtime;
@@ -18,7 +20,7 @@ pub use contracts::{
 };
 pub use execution::JointRefinementSeedSummary;
 pub use execution::run_joint_refinement_calibration_stage;
-pub(crate) use execution::run_joint_refinement_calibration_stage_with_progress_observer;
+pub(crate) use execution::run_joint_refinement_calibration_stage_with_progress_observer_and_persistence;
 pub(crate) use setup::build_surprise_multipliers_for_interval_grid;
 pub use summary_simulation::{
     CloseSessionRequest, CloseSessionResponse, InitializeSessionRequest, InitializeSessionResponse,

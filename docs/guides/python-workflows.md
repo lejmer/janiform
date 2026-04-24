@@ -50,16 +50,21 @@ When fitting with options, select the option snapshot through
 Optional flat `carry` is accepted on the same call and defaults to zero when omitted.
 
 For multi-node fitted-model pricing, stay on the same high-level surface with
-`model.price_option_grids(...)` or `model.price_option_surface(...)` instead of looping over
+`model.price_option_grid(...)` or `model.price_option_grid_surface(...)` instead of looping over
 `model.price_option(...)`. Those multi-node results include Janiform-computed implied
 volatilities, aligned pricing-status fields, and aligned failure-stage and failure-reason fields
 for each node.
 
 When the input is an observed option quote snapshot, prefer
-`model.price_option_market_snapshot(...)`. That helper loads the observed tick and option data,
-estimates the current state automatically, prices the retained option nodes in option grids,
-and returns both a tidy DataFrame view through `to_pandas()` and a strike-by-expiry matrix through
-`to_surface_frame()`.
+`model.price_option_snapshot(...)`. That helper loads the observed tick and option data,
+estimates the current state automatically, prices the retained option nodes in fitted-model option
+grids, and returns both a tidy DataFrame view through `to_pandas()` and a strike-by-expiry matrix
+through `to_surface_frame()`.
+
+When you want a higher-level observed quote surface result, use `model.price_option_surface(...)`.
+For multi-expiry retained quotes, it returns the observed snapshot as a surface result. When the
+retained history shares one expiry, it can also span multiple valuation times through
+`valuation_count` or `use_all_valuation_times`.
 
 ## When To Drop Lower
 

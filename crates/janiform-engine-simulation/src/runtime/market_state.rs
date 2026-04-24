@@ -6,9 +6,11 @@ use janiform_model_kernels::news::{
     SharedNewsEventMarketStateResolutionError, SharedNewsEventMarketStateResolver,
 };
 
-use crate::calendar::{ExchangeCalendarDefinition, ExchangeCalendarRegistry, MarketState};
 use crate::constants::ONE_SECOND_NANOS;
 use crate::error::SeededTickSimulationRunError;
+use janiform_market_time::calendar::{
+    ExchangeCalendarDefinition, ExchangeCalendarRegistry, MarketState,
+};
 
 pub(crate) struct SeededSimulationMarketStateResolver<'a> {
     pub(crate) definition: &'a ExchangeCalendarDefinition,
@@ -29,9 +31,9 @@ impl<'a> SeededSimulationMarketStateResolver<'a> {
                         exchange_code: exchange_code.to_string(),
                         timestamp_utc_nanos: 0,
                         source: match source {
-                            crate::calendar::ExchangeCalendarRegistryLookupError::MissingExchangeId {
+                            janiform_market_time::calendar::ExchangeCalendarRegistryLookupError::MissingExchangeId {
                                 exchange_code,
-                            } => crate::calendar::ExchangeCalendarResolveError::MissingExchangeId {
+                            } => janiform_market_time::calendar::ExchangeCalendarResolveError::MissingExchangeId {
                                 exchange_code,
                             },
                         },
@@ -42,7 +44,7 @@ impl<'a> SeededSimulationMarketStateResolver<'a> {
             SeededTickSimulationRunError::NewsMarketStateResolutionFailed {
                 exchange_code: exchange_code.to_string(),
                 timestamp_utc_nanos: 0,
-                source: crate::calendar::ExchangeCalendarResolveError::InvalidTimezoneName {
+                source: janiform_market_time::calendar::ExchangeCalendarResolveError::InvalidTimezoneName {
                     exchange_code: exchange_code.to_string(),
                     timezone_name: definition.timezone_name().to_string(),
                 },

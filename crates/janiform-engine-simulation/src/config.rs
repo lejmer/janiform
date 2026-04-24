@@ -6,8 +6,8 @@ use janiform_model_kernels::mean_reversion::{
 };
 use serde::Serialize;
 
-use crate::calendar::ExchangeCalendarRegistry;
-use crate::hourly_factors::HourlyFactorContractOutput;
+use janiform_market_time::calendar::ExchangeCalendarRegistry;
+use janiform_market_time::hourly_factors::HourlyFactorContractOutput;
 use janiform_model_kernels::hawkes::{HawkesExcitationState, HawkesKernelParameters};
 use janiform_model_kernels::news::NewsProcessConfiguration;
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;

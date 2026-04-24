@@ -1,6 +1,6 @@
 mod characteristic;
 mod contracts;
 mod fourier;
-mod probability_projection;
+mod news_loading_projection;
 mod runner;
-mod support;
+pub(crate) mod support;

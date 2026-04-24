@@ -12,7 +12,7 @@ Janiform is pre-v0.1. Install it from a source checkout with the local bootstrap
 
 ## Why The Name
 
-Janiform is named after Janus, the Roman god of duality, transitions, and thresholds. The name reflects the model's paired strucutre, natively incorporating buy and sell forces. The "form" part refers to the mathematical form of the model itself. Janiform is a two-sided functional form with invariant structure under transformation, designed to stay coherent across simulation, aggregation, and pricing.
+Janiform is named after Janus, the Roman god of duality, transitions, and thresholds. The name reflects the model's paired structure, natively incorporating buy and sell forces. The "form" part refers to the mathematical form of the model itself. Janiform is a two-sided functional form with invariant structure under transformation, designed to stay coherent across simulation, aggregation, and pricing.
 
 ## Quickstart
 

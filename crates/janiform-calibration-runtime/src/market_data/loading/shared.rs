@@ -4,12 +4,12 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::hash::Hash;
 
-pub(super) use crate::calendar::{
-    CalendarRuleMetadataArtifact, ExchangeCalendarArtifact, ExchangeCalendarRegistryArtifact,
-    RegularSessionArtifact, SessionWindowArtifact,
-};
 use crate::market_data::preprocessing::{
     MarketDataTranslationKnownNewsRecord, MarketDataTranslationTickRecord,
+};
+pub(super) use janiform_market_time::calendar::{
+    CalendarRuleMetadataArtifact, ExchangeCalendarArtifact, ExchangeCalendarRegistryArtifact,
+    RegularSessionArtifact, SessionWindowArtifact,
 };
 
 use super::contracts::{

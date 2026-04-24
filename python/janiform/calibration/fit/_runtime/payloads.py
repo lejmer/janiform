@@ -11,6 +11,7 @@ from ....mean_reversion import MeanReversionFittedParameters
 from ....pricing import GammaSeverityMarkConfiguration, NigSharedPlusShiftConfiguration
 from ....simulation.coarse import NewsProcessConfiguration
 from ....simulation.shared import HawkesKernelParameters
+from ...staged.contracts import CalibrationStage
 from ...errors import calibration_error
 from ...market_data.contracts import CalibrationMarketDataWorkflowScope, CalibrationTickDataColumnMapping
 from ..state import CurrentStateEstimationRequest
@@ -188,7 +189,7 @@ def hawkes_fitted_parameters_payload(model: JaniformModel) -> Mapping[str, Any]:
             refined_parameters = fitted_parameters.get("hawkes_fitted_parameters")
             if isinstance(refined_parameters, Mapping):
                 return refined_parameters
-    return fitted_parameters_from_model_parameters(model, stage_kind="hawkes")
+    return fitted_parameters_from_model_parameters(model, stage_kind=CalibrationStage.HAWKES)
 
 
 def return_components_fitted_parameters_payload(model: JaniformModel) -> Mapping[str, Any]:
@@ -199,7 +200,7 @@ def return_components_fitted_parameters_payload(model: JaniformModel) -> Mapping
             refined_parameters = fitted_parameters.get("return_components_fitted_parameters")
             if isinstance(refined_parameters, Mapping):
                 return refined_parameters
-    return fitted_parameters_from_model_parameters(model, stage_kind="return_components")
+    return fitted_parameters_from_model_parameters(model, stage_kind=CalibrationStage.RETURN_COMPONENTS)
 
 
 def pricing_nig_shared_plus_shift_configuration_payload(model: JaniformModel) -> Mapping[str, Any]:
@@ -220,13 +221,17 @@ def pricing_nig_shared_plus_shift_configuration_payload(model: JaniformModel) ->
     )
 
 
-def fitted_parameters_from_model_parameters(model: JaniformModel, *, stage_kind: str) -> Mapping[str, Any]:
-    stage_parameters = model.parameters.get(stage_kind)
+def fitted_parameters_from_model_parameters(
+    model: JaniformModel,
+    *,
+    stage_kind: CalibrationStage,
+) -> Mapping[str, Any]:
+    stage_parameters = model.parameters.get(stage_kind.value)
     if not isinstance(stage_parameters, Mapping):
-        raise RuntimeError(f"JaniformModel does not contain `{stage_kind}` parameters")
+        raise RuntimeError(f"JaniformModel does not contain `{stage_kind.value}` parameters")
     fitted_parameters = stage_parameters.get("fitted_parameters")
     if not isinstance(fitted_parameters, Mapping):
-        raise RuntimeError(f"JaniformModel is missing fitted parameters for stage `{stage_kind}`")
+        raise RuntimeError(f"JaniformModel is missing fitted parameters for stage `{stage_kind.value}`")
     return fitted_parameters
 
 

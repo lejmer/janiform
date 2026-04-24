@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use chrono::{DateTime, Utc};
 use janiform::calibration::{
     CalibrationMarketDataPreparationRequest as MarketDataPreparationRequestCore,
-    CalibrationReturnComponentsActivityContextPayload,
+    CalibrationResumeSettings, CalibrationReturnComponentsActivityContextPayload,
     CalibrationReturnComponentsStageCandidateGenerationInput, CalibrationStagedExecutionInput,
     CalibrationStagedRunObserverEvent, CalibrationStagedRunReport, CalibrationStagedRunStageReport,
     CurrentStateEstimationInput, MarketDataInputFileReference, MarketDataLoadingOutput,
@@ -489,6 +489,107 @@ fn run_prepared_staged_calibration_with_events(
 }
 
 #[pyfunction]
+#[pyo3(signature = (prepared_handle, calendar_registry, resume_settings, memory_checkpoint_store = None))]
+fn run_prepared_staged_calibration_with_resume(
+    py: Python<'_>,
+    prepared_handle: &PyPreparedCalibrationExecutionHandle,
+    calendar_registry: &PyCalendarRegistry,
+    resume_settings: &Bound<'_, PyAny>,
+    memory_checkpoint_store: Option<&mut PyCalibrationMemoryCheckpointStore>,
+) -> PyResult<Py<PyAny>> {
+    let resume_settings: CalibrationResumeSettings =
+        serde_json::from_value(py_any_to_json_value(resume_settings)?).map_err(|source| {
+            CalibrationExecutionError::new_err(format!(
+                "failed to deserialize calibration resume settings: {source}"
+            ))
+        })?;
+
+    let mut execution_input = prepared_handle.execution_input.clone();
+    execution_input.request.resume_settings = Some(resume_settings);
+
+    let report = py
+        .allow_threads(move || {
+            run_staged_calibration_from_execution_input(
+                execution_input,
+                &calendar_registry.registry,
+                memory_checkpoint_store.map(|store| &mut store.store),
+            )
+        })
+        .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
+
+    python_staged_calibration_report_to_py_object(py, &report)
+}
+
+#[pyfunction]
+#[pyo3(signature = (prepared_handle, calendar_registry, resume_settings, event_callback, memory_checkpoint_store = None))]
+fn run_prepared_staged_calibration_with_resume_and_events(
+    py: Python<'_>,
+    prepared_handle: &PyPreparedCalibrationExecutionHandle,
+    calendar_registry: &PyCalendarRegistry,
+    resume_settings: &Bound<'_, PyAny>,
+    event_callback: &Bound<'_, PyAny>,
+    memory_checkpoint_store: Option<&mut PyCalibrationMemoryCheckpointStore>,
+) -> PyResult<Py<PyAny>> {
+    let resume_settings: CalibrationResumeSettings =
+        serde_json::from_value(py_any_to_json_value(resume_settings)?).map_err(|source| {
+            CalibrationExecutionError::new_err(format!(
+                "failed to deserialize calibration resume settings: {source}"
+            ))
+        })?;
+    let event_callback = event_callback.clone().unbind();
+
+    let callback_error_message = Arc::new(Mutex::new(None::<String>));
+    let callback_error_message_for_observer = Arc::clone(&callback_error_message);
+
+    let mut execution_input = prepared_handle.execution_input.clone();
+    execution_input.request.resume_settings = Some(resume_settings);
+
+    let report = py
+        .allow_threads(move || {
+            let mut observer = |event: CalibrationStagedRunObserverEvent| {
+                if callback_error_message_for_observer
+                    .lock()
+                    .ok()
+                    .and_then(|guard| guard.clone())
+                    .is_some()
+                {
+                    return;
+                }
+
+                Python::with_gil(|py| {
+                    let callback_result = python_staged_calibration_event_to_py_object(py, &event)
+                        .and_then(|payload| event_callback.call1(py, (payload,)).map(|_| ()));
+                    if let Err(source) = callback_result {
+                        if let Ok(mut guard) = callback_error_message_for_observer.lock() {
+                            if guard.is_none() {
+                                *guard = Some(source.to_string());
+                            }
+                        }
+                    }
+                });
+            };
+
+            run_staged_calibration_from_execution_input_with_observer(
+                execution_input,
+                &calendar_registry.registry,
+                memory_checkpoint_store.map(|store| &mut store.store),
+                &mut observer,
+            )
+        })
+        .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
+
+    if let Ok(guard) = callback_error_message.lock() {
+        if let Some(error_message) = guard.as_ref() {
+            return Err(CalibrationExecutionError::new_err(format!(
+                "staged calibration event callback failed: {error_message}"
+            )));
+        }
+    }
+
+    python_staged_calibration_report_to_py_object(py, &report)
+}
+
+#[pyfunction]
 #[pyo3(signature = (execution_input, calendar_registry, memory_checkpoint_store = None))]
 fn run_staged_calibration(
     py: Python<'_>,
@@ -871,7 +972,7 @@ fn python_staged_calibration_event_to_py_object(
         }
     };
 
-    if let Some(stage_report) = serialized_event.get("stage_report") {
+    if serialized_event.contains_key("stage_report") {
         let flattened_stage_report = match event {
             CalibrationStagedRunObserverEvent::StageCompleted { stage_report, .. } => {
                 flatten_stage_report_for_python(stage_report)
@@ -883,8 +984,6 @@ fn python_staged_calibration_event_to_py_object(
                 "failed to flatten staged calibration observer event stage report: {source}"
             ))
         })?;
-
-        let _ = stage_report;
 
         serialized_event.insert("stage_report".to_string(), flattened_stage_report);
     }
@@ -953,6 +1052,14 @@ pub(super) fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(run_prepared_staged_calibration, module)?)?;
     module.add_function(wrap_pyfunction!(
         run_prepared_staged_calibration_with_events,
+        module
+    )?)?;
+    module.add_function(wrap_pyfunction!(
+        run_prepared_staged_calibration_with_resume,
+        module
+    )?)?;
+    module.add_function(wrap_pyfunction!(
+        run_prepared_staged_calibration_with_resume_and_events,
         module
     )?)?;
     module.add_function(wrap_pyfunction!(run_staged_calibration, module)?)?;

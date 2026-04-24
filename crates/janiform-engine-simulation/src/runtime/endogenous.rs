@@ -5,9 +5,9 @@ use janiform_model_kernels::hawkes::{
 };
 
 use crate::artifacts::SeededTickEventSide;
-use crate::calendar::MarketState;
 use crate::constants::{MAX_STOCHASTIC_UPDATES_PER_INTERVAL, ONE_HOUR_NANOS};
 use crate::error::SeededTickSimulationRunError;
+use janiform_market_time::calendar::MarketState;
 
 use super::buffers::{push_simulation_buffer_value, try_reserve_simulation_buffer};
 use super::market_state::SeededSimulationMarketStateResolver;
@@ -134,12 +134,11 @@ where
     while scheduling_state.simulated_timestamp_utc_nanos < segment_end_utc_nanos
         && endogenous_interval_updates.len() < MAX_STOCHASTIC_UPDATES_PER_INTERVAL as usize
     {
-        let (current_lambda_plus, current_lambda_minus, current_total_intensity) =
-            project_non_negative_intensities(
-                scheduling_state.simulated_state,
-                kernel_parameters.lambda_bar,
-                interval_seasonality_factor,
-            );
+        let (_, _, current_total_intensity) = project_non_negative_intensities(
+            scheduling_state.simulated_state,
+            kernel_parameters.lambda_bar,
+            interval_seasonality_factor,
+        );
         if current_total_intensity <= 0.0 {
             drift_state_to_timestamp(scheduling_state, kernel_parameters, segment_end_utc_nanos)?;
             break;
@@ -221,9 +220,7 @@ where
         } else {
             scheduling_state.simulated_state = candidate_state;
         }
-
         scheduling_state.simulated_timestamp_utc_nanos = candidate_timestamp_utc_nanos;
-        let _ = (current_lambda_plus, current_lambda_minus);
     }
 
     if scheduling_state.simulated_timestamp_utc_nanos < segment_end_utc_nanos {

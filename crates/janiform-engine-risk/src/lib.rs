@@ -1,42 +1,5 @@
 //! Risk-sampling adapters and public contracts for sufficient-statistics paths.
 
-mod calendar {
-    #[allow(unused_imports)]
-    pub use janiform_market_time::calendar::{
-        CalendarDate, CalendarRuleMetadata, CalendarRuleMetadataArtifact,
-        DAY_OF_WEEK_SEASONALITY_ESTIMATE_SCHEMA_VERSION,
-        DAY_OF_YEAR_SEASONALITY_ESTIMATE_SCHEMA_VERSION,
-        DETERMINISTIC_SEASONALITY_COMPOSITION_SCHEMA_VERSION, DayOfWeekSeasonalityDiagnostics,
-        DayOfWeekSeasonalityEstimateOutput, DayOfWeekSeasonalityEstimationError,
-        DayOfWeekSeasonalityEstimatorSettings, DayOfYearSeasonalityDiagnostics,
-        DayOfYearSeasonalityEstimateOutput, DayOfYearSeasonalityEstimationError,
-        DayOfYearSeasonalityEstimatorSettings, DeterministicSeasonalityCompositionDiagnostics,
-        DeterministicSeasonalityCompositionError, DeterministicSeasonalityCompositionOutput,
-        EarlyCloseSessionArtifact, ExchangeCalendarArtifact, ExchangeCalendarDefinition,
-        ExchangeCalendarRegistry, ExchangeCalendarRegistryArtifact,
-        ExchangeCalendarRegistryLoadError, ExchangeCalendarRegistryLoader,
-        ExchangeCalendarRegistryLookupError, ExchangeCalendarResolveError,
-        ExchangeCalendarValidationError, ExchangeMetadata,
-        INTRADAY_SEASONALITY_ESTIMATE_SCHEMA_VERSION, IntradaySeasonalityDiagnostics,
-        IntradaySeasonalityEstimateOutput, IntradaySeasonalityEstimationError,
-        IntradaySeasonalityEstimatorSettings, IntradaySmoothingKernel,
-        MARKET_STATE_RESOLUTION_POLICY, MarketState, PREPROCESSED_TIMESTAMP_EVENT_SCHEMA_VERSION,
-        RegularSessionArtifact, RegularSessionDefinition,
-        SEASONALITY_DIAGNOSTICS_BATCH_REPORT_SCHEMA_VERSION,
-        SEASONALITY_DIAGNOSTICS_REPORT_SCHEMA_VERSION, SESSION_WINDOW_BOUNDARY_POLICY,
-        ScheduledEventOverlayDefinition, ScheduledEventOverlayProvenanceMetadata,
-        SeasonalityDiagnosticsBatchReportOutput, SeasonalityDiagnosticsReportError,
-        SeasonalityDiagnosticsReportInput, SeasonalityDiagnosticsReportOutput, SessionTime,
-        SessionWindowArtifact, SessionWindowDefinition, TIMESTAMP_EVENT_INPUT_SCHEMA_VERSION,
-        TimestampEventInputRecord, TimestampEventPreprocessingDiagnostics,
-        TimestampEventPreprocessingError, TimestampEventPreprocessingOutput,
-        TimestampEventSessionFilter, TradingWeekday, compose_deterministic_seasonality_signal,
-        estimate_day_of_week_seasonality, estimate_day_of_year_seasonality,
-        estimate_intraday_seasonality, generate_seasonality_diagnostics_batch_report,
-        generate_seasonality_diagnostics_report,
-    };
-}
-
 mod path;
 mod request;
 mod returns;

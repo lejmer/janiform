@@ -9,10 +9,11 @@ pub const VANILLA_OPTION_RESPONSE_VALIDATION_POLICY: &str =
 pub const PRICING_MARTINGALE_CONDITION_VALIDATION_POLICY: &str = "trading_time_log_moment_under_esscher_tilt_must_match_r_minus_q_maturity_target_within_tolerance.v1";
 pub const PRICING_LOCAL_ANCHORED_TILT_SOLVE_POLICY: &str = "solve_state_dependent_local_tilt_on_exact_nig_domain_with_pure_imaginary_real_log_moment_evaluation_and_nearest_zero_admissible_root_selection.v1";
 pub const INTRADAY_PRICING_CONTINUOUS_RATE_TIME_SCALING_POLICY: &str = "continuous_risk_free_and_dividend_rates_are_annualized_and_scaled_by_interval_hours_over_365_point_25_days.v1";
-pub const ANCHORED_PRICING_DEVIATION_GRID_POLICY: &str =
-    "uniform_terminal_deviation_grid_with_explicit_tail_clamping_and_refinement_comparison.v1";
-pub const ANCHORED_PRICING_CONTINUATION_RECURSION_POLICY: &str = "backward_induction_over_deviation_grid_with_cell_probability_projection_and_linear_boundary_clamping.v1";
-pub const ANCHORED_PRICING_EXPECTED_HAWKES_STATE_UPDATE_POLICY: &str = "deterministic_interval_expected_state_path_from_projected_intensity_counts_and_mean_news_severity_first_moment_updates.v1";
+pub const SPECTRAL_PRICING_DEVIATION_DOMAIN_POLICY: &str = "strike_independent_terminal_deviation_domain_from_initial_deviation_anchor_excursion_and_explicit_maturity_envelope.v1";
+pub const SPECTRAL_PRICING_COLLOCATION_POLICY: &str = "uniform_cosine_collocation_with_explicit_fixed_default_node_count_and_contract_override_reserved.v1";
+pub const SPECTRAL_PRICING_INTEGRATION_COMPATIBILITY_POLICY: &str = "compatibility_integration_diagnostics_are_reported_from_spectral_collocation_residual_metadata.v1";
+pub const SPECTRAL_PRICING_INTERVAL_OPERATOR_POLICY: &str = "backward_interval_operator_application_over_cosine_coefficients_with_state_dependent_local_tilt_and_batched_frequency_characteristic_function_sampling.v1";
+pub const SPECTRAL_PRICING_EXPECTED_HAWKES_STATE_UPDATE_POLICY: &str = "deterministic_interval_expected_state_path_from_projected_intensity_counts_and_mean_news_severity_first_moment_updates.v1";
 pub const FOURIER_INVERSION_ENGINE_POLICY: &str =
     "carr_madan_damped_call_inversion_with_put_call_parity_extension.v1";
 pub const FOURIER_INVERSION_CONTOUR_POLICY: &str =
@@ -39,23 +40,27 @@ pub const VANILLA_OPTION_PRICING_RUN_OUTPUT_SCHEMA_METADATA_VERSION: &str =
     "pricing.vanilla_option.run_output_schema_metadata.v1";
 pub const VANILLA_OPTION_CALIBRATION_HOOK_POLICY: &str =
     "derive_option_surface_inputs_from_pricing_response_and_optional_run_diagnostics.v1";
+pub(crate) const INTERNAL_DIRECT_FOURIER_NUMERICS_SELECTION_POLICY: &str = "dyadic_contour_probe_and_midpoint_refinement_until_quadrature_and_tail_error_estimates_fall_below_cuberoot_machine_epsilon_call_bound.v1";
+pub(crate) const INTERNAL_AFFINE_TRANSFORM_STEP_SELECTION_POLICY: &str = "dyadic_runge_kutta_step_refinement_until_successive_solves_agree_within_order_four_richardson_error_and_cuberoot_machine_epsilon_relative_budget.v1";
 /// Public default pricing interval in hours, overrideable on the pricing request contract.
 pub const DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA: f64 = 1.0;
 /// Annualization convention for continuous rates in pricing, not a fitted model heuristic.
 pub const INTRADAY_PRICING_HOURS_PER_YEAR: f64 = 24.0 * 365.25;
 
-pub(crate) const VANILLA_OPTION_PRICING_RUN_RESULT_REQUIRED_FIELDS: [&str; 5] = [
+pub(crate) const VANILLA_OPTION_PRICING_RUN_RESULT_REQUIRED_FIELDS: [&str; 7] = [
     "schema_version",
     "output_schema_metadata",
     "response",
     "run_diagnostics",
     "calibration_hooks",
+    "runtime_interval_schedule",
+    "maturity_terminal_interval_indices",
 ];
 pub(crate) const VANILLA_OPTION_PRICING_RUN_DIAGNOSTICS_REQUIRED_FIELDS: [&str; 4] = [
     "schema_version",
     "transform",
     "integration_quality",
-    "anchored_recursion",
+    "spectral",
 ];
 pub(crate) const VANILLA_OPTION_PRICING_CALIBRATION_HOOKS_REQUIRED_FIELDS: [&str; 10] = [
     "schema_version",
@@ -70,18 +75,4 @@ pub(crate) const VANILLA_OPTION_PRICING_CALIBRATION_HOOKS_REQUIRED_FIELDS: [&str
     "integration_truncation_check_passed",
 ];
 
-// Public engine defaults for Fourier inversion, overrideable through `FourierInversionEngineSettings`.
-pub(crate) const DEFAULT_FOURIER_INVERSION_DAMPING_FACTOR: f64 = 1.5;
-// Public engine defaults for Fourier inversion, overrideable through `FourierInversionEngineSettings`.
-pub(crate) const DEFAULT_FOURIER_INVERSION_UPPER_INTEGRATION_BOUND: f64 = 150.0;
-// Public engine defaults for Fourier inversion, overrideable through `FourierInversionEngineSettings`.
-pub(crate) const DEFAULT_FOURIER_INVERSION_STEP_COUNT: usize = 4_096;
-// Public engine defaults for Fourier inversion, overrideable through `FourierInversionEngineSettings`.
-pub(crate) const DEFAULT_FOURIER_INVERSION_CONVERGENCE_ABSOLUTE_TOLERANCE: f64 = 1.0e-5;
-// Public engine defaults for Fourier inversion, overrideable through `FourierInversionEngineSettings`.
-pub(crate) const DEFAULT_FOURIER_INVERSION_CONVERGENCE_RELATIVE_TOLERANCE: f64 = 1.0e-4;
-// Public engine defaults for Fourier inversion, overrideable through `FourierInversionEngineSettings`.
-pub(crate) const DEFAULT_FOURIER_INVERSION_TERMINAL_INTEGRAND_ABSOLUTE_TOLERANCE: f64 = 5.0e-4;
-// Public engine defaults for Fourier inversion, overrideable through `FourierInversionEngineSettings`.
-pub(crate) const DEFAULT_FOURIER_INVERSION_TERMINAL_INTEGRAND_RATIO_TOLERANCE: f64 = 1.0e-2;
 pub(crate) const FOURIER_NON_NEGATIVE_PRICE_CLAMP_TOLERANCE: f64 = 1.0e-12;

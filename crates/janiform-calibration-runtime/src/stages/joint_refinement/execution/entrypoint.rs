@@ -1,30 +1,33 @@
+use std::path::Path;
 use std::sync::mpsc;
 
-use crate::calendar::ExchangeCalendarRegistry;
 use crate::stages::joint_refinement::contracts::{
     JointRefinementStageExecutionFailure, JointRefinementStageExecutionInput,
     JointRefinementStageExecutionReport, JointRefinementStageProgressUpdate,
 };
 use janiform_calibration_artifacts::CalibrationRunSpec;
+use janiform_market_time::calendar::ExchangeCalendarRegistry;
 
 pub fn run_joint_refinement_calibration_stage(
     run_spec: &CalibrationRunSpec,
     calendar_registry: &ExchangeCalendarRegistry,
     stage_input: JointRefinementStageExecutionInput,
 ) -> JointRefinementStageExecutionReport {
-    run_joint_refinement_calibration_stage_with_progress_observer(
+    run_joint_refinement_calibration_stage_with_progress_observer_and_persistence(
         run_spec,
         calendar_registry,
         stage_input,
         None,
+        None,
     )
 }
 
-pub(crate) fn run_joint_refinement_calibration_stage_with_progress_observer(
+pub(crate) fn run_joint_refinement_calibration_stage_with_progress_observer_and_persistence(
     run_spec: &CalibrationRunSpec,
     calendar_registry: &ExchangeCalendarRegistry,
     stage_input: JointRefinementStageExecutionInput,
     mut progress_observer: Option<&mut dyn FnMut(JointRefinementStageProgressUpdate)>,
+    disk_checkpoint_directory: Option<&Path>,
 ) -> JointRefinementStageExecutionReport {
     let Some(progress_observer) = progress_observer.as_deref_mut() else {
         return super::pipeline::run_joint_refinement_calibration_stage_internal(
@@ -32,6 +35,7 @@ pub(crate) fn run_joint_refinement_calibration_stage_with_progress_observer(
             calendar_registry,
             stage_input,
             None,
+            disk_checkpoint_directory,
         );
     };
 
@@ -45,6 +49,7 @@ pub(crate) fn run_joint_refinement_calibration_stage_with_progress_observer(
                 calendar_registry,
                 stage_input,
                 Some(progress_sender),
+                disk_checkpoint_directory,
             )
         });
 

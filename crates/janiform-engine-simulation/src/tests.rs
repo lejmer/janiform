@@ -16,12 +16,12 @@ use crate::{
     SEEDED_TICK_EVENT_STATE_SNAPSHOT_CAPTURE_POINT_POLICY,
     SEEDED_TICK_EVENT_STATE_SNAPSHOT_SCHEMA_VERSION,
     SEEDED_TICK_EVENT_TAPE_METADATA_SCHEMA_VERSION,
-    SEEDED_TICK_EVENT_TIMESTAMP_REPRESENTATION_POLICY, SeededTickEventDebugTraceTransitionKind,
-    SeededTickEventSide, SeededTickEventStateSnapshotCapture,
-    SeededTickSimulationDebugTraceOptions, SeededTickSimulationModelInputs,
-    SeededTickSimulationNewsEventMarketState, SeededTickSimulationRunConfig,
-    SeededTickSimulationRunError, SeededTickSimulationRunOptions, SimulationProgressEvent,
-    SimulationProgressPhase, run_seeded_tick_event_simulation,
+    SEEDED_TICK_EVENT_TIMESTAMP_REPRESENTATION_POLICY, SeededFinePathTransitionKind,
+    SeededTickEventDebugTraceTransitionKind, SeededTickEventSide,
+    SeededTickEventStateSnapshotCapture, SeededTickSimulationDebugTraceOptions,
+    SeededTickSimulationModelInputs, SeededTickSimulationNewsEventMarketState,
+    SeededTickSimulationRunConfig, SeededTickSimulationRunError, SeededTickSimulationRunOptions,
+    SimulationProgressEvent, SimulationProgressPhase, run_seeded_tick_event_simulation,
     run_seeded_tick_event_simulation_with_observer,
     run_seeded_tick_event_simulation_with_randomness_factory, sample_nig_trading_time_increment,
     sample_nig_trading_time_increment_with_edge_mode,
@@ -736,6 +736,88 @@ fn seeded_simulation_suppresses_endogenous_events_while_market_is_closed() {
 }
 
 #[test]
+fn seeded_simulation_hides_closed_boundary_drift_from_public_fine_path() {
+    let start_utc_nanos = 1_705_924_800_000_000_000;
+    let mut model_inputs = two_interval_zero_event_carryover_model_inputs();
+
+    model_inputs.hourly_factor_contract.request_start_utc_nanos = start_utc_nanos;
+    model_inputs.hourly_factor_contract.request_end_utc_nanos =
+        start_utc_nanos + 2 * ONE_HOUR_NANOS;
+
+    model_inputs.hourly_factor_contract.interval_start_utc_nanos =
+        vec![start_utc_nanos, start_utc_nanos + ONE_HOUR_NANOS];
+    model_inputs.hourly_factor_contract.interval_end_utc_nanos = vec![
+        start_utc_nanos + ONE_HOUR_NANOS,
+        start_utc_nanos + 2 * ONE_HOUR_NANOS,
+    ];
+
+    model_inputs
+        .hourly_factor_contract
+        .interval_start_exchange_local = vec![
+        "2024-01-22T07:00:00-05:00".to_string(),
+        "2024-01-22T08:00:00-05:00".to_string(),
+    ];
+    model_inputs
+        .hourly_factor_contract
+        .interval_end_exchange_local = vec![
+        "2024-01-22T08:00:00-05:00".to_string(),
+        "2024-01-22T09:00:00-05:00".to_string(),
+    ];
+
+    model_inputs
+        .hourly_factor_contract
+        .diagnostics
+        .first_interval_start_utc_nanos = start_utc_nanos;
+    model_inputs
+        .hourly_factor_contract
+        .diagnostics
+        .last_interval_end_utc_nanos = start_utc_nanos + 2 * ONE_HOUR_NANOS;
+
+    let run_config = SeededTickSimulationRunConfig::try_new(
+        8_115,
+        DateTime::<Utc>::from_timestamp_nanos(start_utc_nanos),
+        2,
+        model_inputs,
+        None,
+    )
+    .expect("two-interval closed-window run config should initialize");
+
+    let scripted_factory = ScriptedRandomnessFactory::new(
+        vec![0.0, 0.0],
+        vec![0.0, 0.0],
+        vec![],
+        vec![],
+        vec![0.0, 0.0],
+        vec![],
+        vec![],
+        vec![],
+    );
+
+    let run_result =
+        run_seeded_tick_event_simulation_with_randomness_factory(run_config, &scripted_factory)
+            .expect("two-interval closed-window run should complete");
+
+    assert_eq!(run_result.event_count(), 0);
+    assert_eq!(run_result.public_transition_count(), 1);
+
+    let public_fine_path =
+        run_result.public_fine_path_chunk(0, run_result.public_transition_count());
+    assert_eq!(public_fine_path.len(), 1);
+    assert_eq!(
+        public_fine_path[0].transition_kind,
+        SeededFinePathTransitionKind::IntervalBoundaryDrift
+    );
+    assert_eq!(
+        public_fine_path[0].market_state,
+        SeededTickSimulationNewsEventMarketState::Open
+    );
+    assert_eq!(
+        public_fine_path[0].timestamp_utc_nanos,
+        start_utc_nanos + 2 * ONE_HOUR_NANOS
+    );
+}
+
+#[test]
 fn exogenous_interval_news_scheduler_routes_surprise_news_into_closed_market_gap_channel() {
     let closed_interval_start_utc_nanos = 1_705_928_400_000_000_000;
     let mut model_inputs = one_interval_model_inputs(0.0, 0.0, 0.0);
@@ -1229,6 +1311,44 @@ fn seeded_simulation_positive_kappa_pulls_constant_anchor_path_toward_anchor() {
     assert_float_close(zero_kappa_observed_log_price, 3.0);
     assert!(positive_kappa_observed_log_price < zero_kappa_observed_log_price);
     assert!(positive_kappa_observed_log_price > 2.0);
+}
+
+#[test]
+fn seeded_simulation_does_not_decay_mean_reversion_during_closed_interval() {
+    let mut model_inputs = one_interval_closed_market_model_inputs();
+    model_inputs.hourly_factor_contract.s_h = vec![0.0];
+    model_inputs.hourly_factor_contract.nu_h = vec![0.0];
+    configure_mean_reversion_runtime_inputs(&mut model_inputs, 1.0, 2.0, &[2.0], 3.0);
+
+    let run_config = SeededTickSimulationRunConfig::try_new(
+        10_054,
+        DateTime::<Utc>::from_timestamp_nanos(1_705_928_400_000_000_000),
+        1,
+        model_inputs,
+        None,
+    )
+    .expect("closed-interval mean-reversion run config should initialize");
+
+    let scripted_factory = ScriptedRandomnessFactory::new(
+        vec![0.0],
+        vec![0.0],
+        vec![],
+        vec![],
+        vec![0.0],
+        vec![],
+        vec![],
+        vec![],
+    );
+
+    let run_result =
+        run_seeded_tick_event_simulation_with_randomness_factory(run_config, &scripted_factory)
+            .expect("closed-interval mean-reversion run should complete");
+
+    let public_fine_path =
+        run_result.public_fine_path_chunk(0, run_result.public_transition_count());
+    assert_eq!(public_fine_path.len(), 1);
+    assert_float_close(public_fine_path[0].observed_log_price, 3.0);
+    assert_float_close(public_fine_path[0].deviation_from_anchor, 1.0);
 }
 
 #[test]

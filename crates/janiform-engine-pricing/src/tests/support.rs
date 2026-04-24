@@ -1,16 +1,24 @@
+use crate::fourier::{
+    FourierInversionContour, FourierInversionDiagnostics, FourierInversionEngineSettings,
+    FourierInversionIntegrationStabilityControls, FourierInversionNumericQualityGate,
+    FourierInversionNumericSettings, FourierInversionQuadratureRule,
+    price_vanilla_option_via_fourier_inversion,
+};
 use crate::{
-    AnchoredVanillaOptionPricingBoundaryInput, FourierInversionDiagnostics,
-    FourierInversionEngineSettings, VanillaOptionPayoffConfiguration, VanillaOptionPayoffType,
+    AnchoredVanillaOptionPricingBoundaryInput, PricingIntervalSchedule,
+    PricingIntervalScheduleMetadata, VanillaOptionPayoffConfiguration, VanillaOptionPayoffType,
     VanillaOptionPricingDiagnostics, VanillaOptionPricingMarketInputs,
     VanillaOptionPricingModelParameters, VanillaOptionPricingRequest, VanillaOptionPricingResponse,
-    build_pricing_transform_input, price_vanilla_option_via_fourier_inversion,
-    solve_exponential_affine_transform,
+    build_pricing_transform_input, solve_exponential_affine_transform,
 };
 use janiform_affine_oracle::affine_oracle::{
     ExponentialAffineTransformDVector, ExponentialAffineTransformIntegrationResult,
-    ExponentialAffineTransformNewsIntensityInput, ExponentialAffineTransformOutput,
+    ExponentialAffineTransformIntegratorMethod, ExponentialAffineTransformNewsIntensityInput,
+    ExponentialAffineTransformOutput, ExponentialAffineTransformSolverSettings,
+    ExponentialAffineTransformTelemetryMode,
 };
 use janiform_foundations::complex_math::ComplexScalar;
+use janiform_foundations::time::ONE_HOUR_NANOS;
 use janiform_model_kernels::hawkes::{
     HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
 };
@@ -42,8 +50,66 @@ pub(super) fn build_valid_vanilla_option_request() -> VanillaOptionPricingReques
             },
         ),
         valid_model_parameters(),
+        1.0,
     )
     .expect("request should construct")
+}
+
+pub(super) fn build_reference_fourier_inversion_settings() -> FourierInversionEngineSettings {
+    FourierInversionEngineSettings::try_new(
+        FourierInversionContour::try_new(1.5).expect("reference contour settings should construct"),
+        FourierInversionNumericSettings::try_new(
+            150.0,
+            4_096,
+            FourierInversionQuadratureRule::Midpoint,
+        )
+        .expect("reference numeric settings should construct"),
+        FourierInversionIntegrationStabilityControls::try_new(
+            1.0e-5,
+            1.0e-4,
+            5.0e-4,
+            1.0e-2,
+            FourierInversionNumericQualityGate::DiagnosticsOnly,
+        )
+        .expect("reference stability controls should construct"),
+    )
+    .expect("reference Fourier engine settings should construct")
+}
+
+pub(super) fn build_reference_affine_transform_solver_settings()
+-> ExponentialAffineTransformSolverSettings {
+    ExponentialAffineTransformSolverSettings::try_new(
+        ExponentialAffineTransformIntegratorMethod::FourthOrderRungeKutta,
+        64,
+    )
+    .expect("reference affine solver settings should construct")
+    .with_telemetry_mode(ExponentialAffineTransformTelemetryMode::Disabled)
+}
+
+pub(crate) fn build_uniform_runtime_interval_schedule(
+    interval_count: usize,
+    interval_delta: f64,
+) -> PricingIntervalSchedule {
+    let interval_duration_nanos_float = interval_delta * ONE_HOUR_NANOS as f64;
+    let interval_duration_nanos = interval_duration_nanos_float as i64;
+    assert_eq!(
+        interval_duration_nanos as f64, interval_duration_nanos_float,
+        "test runtime interval schedule requires an exact nanosecond interval"
+    );
+
+    PricingIntervalSchedule::try_new(
+        0,
+        PricingIntervalScheduleMetadata {
+            policy_id: "explicit_interval_end_timestamps_utc.v1".to_string(),
+            derivation_policy: "test_uniform_schedule.v1".to_string(),
+            factor_assignment_policy: "overlap_weighted_resampling_from_hourly_source_buckets.v1"
+                .to_string(),
+        },
+        (1..=interval_count)
+            .map(|interval_index| interval_index as i64 * interval_duration_nanos)
+            .collect(),
+    )
+    .expect("uniform runtime interval schedule should construct")
 }
 
 pub(super) fn endogenous_boundary_input(
@@ -69,7 +135,7 @@ pub(super) fn disabled_boundary_input(
     endogenous_boundary_input(interval_delta, hawkes_boundary_state)
 }
 
-pub(super) fn valid_model_parameters() -> VanillaOptionPricingModelParameters {
+pub(crate) fn valid_model_parameters() -> VanillaOptionPricingModelParameters {
     VanillaOptionPricingModelParameters::try_new(
         HawkesKernelParameters::try_new(
             0.8,
@@ -156,7 +222,7 @@ pub(super) fn build_reference_pricing_response(
     .expect("reference response should construct")
 }
 
-pub(super) fn build_reference_transform_diagnostics_source()
+pub(crate) fn build_reference_transform_diagnostics_source()
 -> ExponentialAffineTransformIntegrationResult {
     let transform_input = build_pricing_transform_input(
         &build_valid_vanilla_option_request(),
@@ -170,8 +236,11 @@ pub(super) fn build_reference_transform_diagnostics_source()
     )
     .expect("pricing transform input should construct");
 
-    solve_exponential_affine_transform(transform_input)
-        .expect("reference transform solve should succeed")
+    solve_exponential_affine_transform(
+        transform_input,
+        build_reference_affine_transform_solver_settings(),
+    )
+    .expect("reference transform solve should succeed")
 }
 
 pub(super) fn build_reference_integration_diagnostics_source(
@@ -182,7 +251,7 @@ pub(super) fn build_reference_integration_diagnostics_source(
         VanillaOptionPayoffConfiguration {
             payoff_type: VanillaOptionPayoffType::Call,
         },
-        FourierInversionEngineSettings::default(),
+        build_reference_fourier_inversion_settings(),
         |argument| black_scholes_log_return_characteristic_function(market_inputs, 0.2, argument),
     )
     .expect("reference Fourier pricing run should succeed");

@@ -12,8 +12,8 @@ from ..staged.contracts import (
     CalibrationExecutionMode,
     _parse_calibration_execution_mode,
 )
-from ...contracts import (
-    ContractModel,
+from ...contracts import ContractModel
+from ...contracts.base import (
     require_boolean,
     require_datetime_utc,
     require_finite_number,

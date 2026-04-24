@@ -2,17 +2,6 @@ use chrono::{DateTime, Datelike, NaiveDate, Timelike, Utc};
 use chrono_tz::Tz;
 use serde::Serialize;
 
-use crate::calendar::{
-    ExchangeCalendarRegistry, TimestampEventInputRecord, TimestampEventSessionFilter,
-};
-use crate::seasonality::{
-    DayOfWeekSeasonalityEstimateOutput, DayOfWeekSeasonalityEstimatorSettings,
-    DayOfYearSeasonalityEstimateOutput, DayOfYearSeasonalityEstimatorSettings,
-    IntradaySeasonalityEstimatorSettings, ScheduledEventOverlayDefinition,
-    SeasonalityDiagnosticsReportOutput, compose_deterministic_seasonality_signal,
-    estimate_day_of_week_seasonality, estimate_day_of_year_seasonality,
-    estimate_intraday_seasonality, generate_seasonality_diagnostics_report,
-};
 use janiform_calibration_artifacts::{
     CALIBRATION_SEASONALITY_STAGE_DEFAULT_ESTIMATOR_VERSION,
     CALIBRATION_SEASONALITY_STAGE_EXECUTION_REPORT_SCHEMA_VERSION,
@@ -24,6 +13,17 @@ use janiform_calibration_artifacts::{
     stage_solver_settings_for_stage,
 };
 use janiform_foundations::numeric::arithmetic_mean;
+use janiform_market_time::calendar::{
+    ExchangeCalendarRegistry, TimestampEventInputRecord, TimestampEventSessionFilter,
+};
+use janiform_market_time::seasonality::{
+    DayOfWeekSeasonalityEstimateOutput, DayOfWeekSeasonalityEstimatorSettings,
+    DayOfYearSeasonalityEstimateOutput, DayOfYearSeasonalityEstimatorSettings,
+    IntradaySeasonalityEstimatorSettings, ScheduledEventOverlayDefinition,
+    SeasonalityDiagnosticsReportOutput, compose_deterministic_seasonality_signal,
+    estimate_day_of_week_seasonality, estimate_day_of_year_seasonality,
+    estimate_intraday_seasonality, generate_seasonality_diagnostics_report,
+};
 /// Configurable knobs for deterministic seasonality stage execution.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SeasonalityStageExecutionSettings {
@@ -596,7 +596,7 @@ pub fn run_seasonality_calibration_stage(
     };
 
     let diagnostics_report = match generate_seasonality_diagnostics_report(
-        crate::seasonality::SeasonalityDiagnosticsReportInput {
+        janiform_market_time::seasonality::SeasonalityDiagnosticsReportInput {
             dataset_id: &resolved_dataset_id,
             input_schema_version: preprocessed.input_schema_version,
             preprocessed_schema_version: preprocessed.schema_version,
@@ -845,7 +845,7 @@ fn neutralize_day_of_week_component_when_under_supported(
         day_of_week_log_component: vec![0.0; bucket_count],
         day_of_week_factor: vec![1.0; bucket_count],
         fallback_bucket_flags: vec![1; bucket_count],
-        diagnostics: crate::seasonality::DayOfWeekSeasonalityDiagnostics {
+        diagnostics: janiform_market_time::seasonality::DayOfWeekSeasonalityDiagnostics {
             fallback_bucket_count: bucket_count,
             ..estimate.diagnostics
         },
@@ -869,7 +869,7 @@ fn neutralize_day_of_year_component_when_under_supported(
         day_of_year_log_component: vec![0.0; bucket_count],
         day_of_year_factor: vec![1.0; bucket_count],
         fallback_bucket_flags: vec![1; bucket_count],
-        diagnostics: crate::seasonality::DayOfYearSeasonalityDiagnostics {
+        diagnostics: janiform_market_time::seasonality::DayOfYearSeasonalityDiagnostics {
             fallback_bucket_count: bucket_count,
             ..estimate.diagnostics
         },

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Optional
 
-from ..errors import calibration_error, calibration_error
+from ..errors import calibration_error
 from .contracts import (
     DEFAULT_PYTHON_IMPORTABLE_API_EXECUTION_MODE,
     CalibrationExecutionMode,
@@ -17,13 +17,13 @@ from .contracts import (
     CalibrationStageSolverSettings,
     _parse_calibration_execution_mode,
 )
-from ...contracts import (
+from ...contracts.base import (
     ContractModel,
     parse_json_object,
+    serialize_deterministic_json,
     require_mapping,
     require_non_empty_string,
     require_sequence,
-    serialize_deterministic_json,
 )
 
 

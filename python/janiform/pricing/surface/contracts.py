@@ -7,6 +7,7 @@ from typing import Any, Optional
 import numpy as np
 import pandas as pd
 
+from ..._pricing_node_validation import validate_option_pricing_node_payload
 from .common import (
     grid_of_optional_finite_floats,
     grid_of_scalars,
@@ -18,10 +19,8 @@ from .common import (
     validate_matching_grid_shape,
 )
 from ..contracts import (
-    DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA,
+    PricingIntervalSchedule,
     AnchoredVanillaOptionPricingBoundaryInput,
-    FourierInversionEngineSettings,
-    PRICING_ERROR_FACTORY,
     VanillaOptionImpliedVolatilityInversionStatus,
     VanillaOptionPayoffConfiguration,
     VanillaOptionPayoffType,
@@ -30,14 +29,30 @@ from ..contracts import (
     VanillaOptionPricingModelParameters,
     VanillaOptionPricingOptionalOutputSelection,
     VanillaOptionPricingStatus,
+    PRICING_ERROR_FACTORY,
     _validate_optional_implied_volatility_inversion_outcome,
     _pricing_error,
 )
-from ..._timestamps import hours_to_exact_nanoseconds
-from ...contracts import (
-    ContractModel,
+from ..._pricing_field_names import (
+    BOUNDARY_STATE_NORM_FIELD_NAME,
+    DISCOUNT_FACTOR_FIELD_NAME,
+    FORWARD_PRICE_FIELD_NAME,
+    IMPLIED_VOLATILITY_FIELD_NAME,
+    IMPLIED_VOLATILITY_INVERSION_STATUS_FIELD_NAME,
+    MATURITY_INTERVAL_FIELD_NAME,
+    MODEL_PRICE_FIELD_NAME,
+    OPTION_TYPE_FIELD_NAME,
+    PRICING_FAILURE_REASON_FIELD_NAME,
+    PRICING_FAILURE_STAGE_FIELD_NAME,
+    PRICING_STATUS_FIELD_NAME,
+    STRIKE_FIELD_NAME,
+)
+from ..._timestamps import ONE_HOUR_NANOS, hours_to_exact_nanoseconds
+from ...contracts import ContractModel
+from ...contracts.base import (
     require_finite_number,
     require_mapping,
+    require_non_negative_integer,
     require_non_negative_finite_number,
     require_positive_finite_number,
     require_positive_finite_scalar,
@@ -148,26 +163,26 @@ class VanillaOptionSurfacePricingNodeTable(ContractModel):
     def to_records(self) -> tuple[SurfaceNodeRecord, ...]:
         return tuple(
             {
-                "strike": self.strikes[node_index],
-                "maturity_interval": self.maturity_intervals[node_index],
-                "option_type": self.option_types[node_index].value,
-                "model_price": self.model_prices[node_index],
-                "implied_volatility": self.implied_volatilities[node_index],
-                "implied_volatility_inversion_status": (
+                STRIKE_FIELD_NAME: self.strikes[node_index],
+                MATURITY_INTERVAL_FIELD_NAME: self.maturity_intervals[node_index],
+                OPTION_TYPE_FIELD_NAME: self.option_types[node_index].value,
+                MODEL_PRICE_FIELD_NAME: self.model_prices[node_index],
+                IMPLIED_VOLATILITY_FIELD_NAME: self.implied_volatilities[node_index],
+                IMPLIED_VOLATILITY_INVERSION_STATUS_FIELD_NAME: (
                     self.implied_volatility_inversion_statuses[node_index].value
                     if self.implied_volatility_inversion_statuses[node_index] is not None
                     else None
                 ),
-                "pricing_status": self.pricing_statuses[node_index].value,
-                "pricing_failure_stage": (
+                PRICING_STATUS_FIELD_NAME: self.pricing_statuses[node_index].value,
+                PRICING_FAILURE_STAGE_FIELD_NAME: (
                     self.pricing_failure_stages[node_index].value
                     if self.pricing_failure_stages[node_index] is not None
                     else None
                 ),
-                "pricing_failure_reason": self.pricing_failure_reasons[node_index],
-                "forward_price": self.forward_prices[node_index],
-                "discount_factor": self.discount_factors[node_index],
-                "boundary_state_norm": self.boundary_state_norms[node_index],
+                PRICING_FAILURE_REASON_FIELD_NAME: self.pricing_failure_reasons[node_index],
+                FORWARD_PRICE_FIELD_NAME: self.forward_prices[node_index],
+                DISCOUNT_FACTOR_FIELD_NAME: self.discount_factors[node_index],
+                BOUNDARY_STATE_NORM_FIELD_NAME: self.boundary_state_norms[node_index],
             }
             for node_index in range(self.node_count)
         )
@@ -308,8 +323,7 @@ class VanillaOptionSurfacePricingRequest(ContractModel):
     payoff: VanillaOptionPayoffConfiguration
     boundary_input: AnchoredVanillaOptionPricingBoundaryInput
     model_parameters: VanillaOptionPricingModelParameters
-    interval_delta: float = DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA
-    fourier_inversion_settings: Optional[FourierInversionEngineSettings] = None
+    interval_delta: float
 
     def __post_init__(self) -> None:
         require_positive_finite_scalar(
@@ -339,15 +353,6 @@ class VanillaOptionSurfacePricingRequest(ContractModel):
                 "must be a VanillaOptionPricingModelParameters",
             )
 
-        if (
-            self.fourier_inversion_settings is not None
-            and not isinstance(self.fourier_inversion_settings, FourierInversionEngineSettings)
-        ):
-            raise _pricing_error(
-                "fourier_inversion_settings",
-                "must be a FourierInversionEngineSettings when provided",
-            )
-
         request_interval_duration_nanos = hours_to_exact_nanoseconds(self.interval_delta)
         boundary_interval_duration_nanos = hours_to_exact_nanoseconds(
             self.boundary_input.interval_delta
@@ -367,17 +372,6 @@ class VanillaOptionSurfacePricingRequest(ContractModel):
     ) -> VanillaOptionSurfacePricingRequest:
         if not isinstance(raw_payload, dict):
             raise _pricing_error("vanilla_option_surface_pricing_request", "must be an object")
-
-        interval_delta = (
-            require_positive_finite_number(
-                raw_payload,
-                "interval_delta",
-                "interval_delta",
-                PRICING_ERROR_FACTORY,
-            )
-            if "interval_delta" in raw_payload
-            else DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA
-        )
 
         try:
             return VanillaOptionSurfacePricingRequest(
@@ -417,20 +411,11 @@ class VanillaOptionSurfacePricingRequest(ContractModel):
                     ),
                     field_path="model_parameters",
                 ),
-                interval_delta=interval_delta,
-                fourier_inversion_settings=(
-                    FourierInversionEngineSettings.from_mapping(
-                        require_mapping(
-                            raw_payload,
-                            "fourier_inversion_settings",
-                            "fourier_inversion_settings",
-                            PRICING_ERROR_FACTORY,
-                        ),
-                        field_path="fourier_inversion_settings",
-                    )
-                    if "fourier_inversion_settings" in raw_payload
-                    and raw_payload["fourier_inversion_settings"] is not None
-                    else None
+                interval_delta=require_positive_finite_number(
+                    raw_payload,
+                    "interval_delta",
+                    "interval_delta",
+                    PRICING_ERROR_FACTORY,
                 ),
             )
         except JaniformValidationError as e:
@@ -440,6 +425,7 @@ class VanillaOptionSurfacePricingRequest(ContractModel):
 @dataclass(frozen=True, slots=True)
 class VanillaOptionSurfacePricingExecutionInput(ContractModel):
     request: VanillaOptionSurfacePricingRequest
+    runtime_interval_schedule: PricingIntervalSchedule
     hourly_factor_contract: HourlyFactorContract
     optional_output_selection: VanillaOptionPricingOptionalOutputSelection = field(
         default_factory=VanillaOptionPricingOptionalOutputSelection
@@ -451,6 +437,12 @@ class VanillaOptionSurfacePricingExecutionInput(ContractModel):
             raise _pricing_error(
                 "request",
                 "must be a VanillaOptionSurfacePricingRequest",
+            )
+
+        if not isinstance(self.runtime_interval_schedule, PricingIntervalSchedule):
+            raise _pricing_error(
+                "runtime_interval_schedule",
+                "must be a PricingIntervalSchedule",
             )
 
         if not isinstance(self.hourly_factor_contract, HourlyFactorContract):
@@ -480,46 +472,37 @@ class VanillaOptionSurfacePricingExecutionInput(ContractModel):
             if self.cpu_count <= 0:
                 raise _pricing_error("cpu_count", "must be strictly positive")
 
-        expected_interval_duration_nanos = hours_to_exact_nanoseconds(
-            self.request.interval_delta
-        )
-        if (
-            self.hourly_factor_contract.interval_duration_nanos
-            != expected_interval_duration_nanos
-        ):
+        if self.hourly_factor_contract.interval_duration_nanos != ONE_HOUR_NANOS:
             raise _pricing_error(
                 "hourly_factor_contract.interval_duration_nanos",
                 (
-                    "must match request.interval_delta exactly under explicit factor alignment "
-                    f"(request.interval_delta={self.request.interval_delta}, "
-                    "hourly_factor_contract.interval_duration_nanos="
+                    "must equal the canonical hourly source interval duration "
+                    "(hourly_factor_contract.interval_duration_nanos="
                     f"{self.hourly_factor_contract.interval_duration_nanos})"
                 ),
             )
 
-        expected_interval_count = max(
-            _surface_interval_count_from_maturity_interval(
-                maturity_interval,
-                interval_duration_nanos=expected_interval_duration_nanos,
-                field_path=(
-                    "request.market_inputs.maturity_intervals"
-                    f"[{maturity_index}]"
-                ),
-            )
-            for maturity_index, maturity_interval in enumerate(
-                self.request.market_inputs.maturity_intervals
-            )
-        )
-
-        if self.hourly_factor_contract.interval_count != expected_interval_count:
+        if self.request.interval_delta != self.runtime_interval_schedule.first_interval_delta_hours:
             raise _pricing_error(
-                "hourly_factor_contract.interval_count",
+                "request.interval_delta",
                 (
-                    "must equal the maximum maturity implied interval count "
-                    f"({expected_interval_count}), found "
-                    f"{self.hourly_factor_contract.interval_count}"
+                    "must equal runtime_interval_schedule.first_interval_delta_hours "
+                    f"({self.runtime_interval_schedule.first_interval_delta_hours})"
                 ),
             )
+
+        for maturity_index, maturity_interval in enumerate(
+            self.request.market_inputs.maturity_intervals
+        ):
+            try:
+                self.runtime_interval_schedule.terminal_interval_index_for_maturity_interval(
+                    maturity_interval
+                )
+            except JaniformValidationError as error:
+                raise _pricing_error(
+                    f"request.market_inputs.maturity_intervals[{maturity_index}]",
+                    error.failure.message,
+                ) from error
 
     @property
     def shape(self) -> tuple[int, int]:
@@ -841,12 +824,20 @@ class VanillaOptionSurfacePricingResponse(ContractModel):
 class VanillaOptionSurfacePricingRunResult(ContractModel):
     response: VanillaOptionSurfacePricingResponse
     maturity_summaries: tuple[Optional[dict[str, Any]], ...]
+    runtime_interval_schedule: PricingIntervalSchedule
+    maturity_terminal_interval_indices: tuple[int, ...]
 
     def __post_init__(self) -> None:
         if not isinstance(self.response, VanillaOptionSurfacePricingResponse):
             raise _pricing_error(
                 "response",
                 "must be a VanillaOptionSurfacePricingResponse",
+            )
+
+        if not isinstance(self.runtime_interval_schedule, PricingIntervalSchedule):
+            raise _pricing_error(
+                "runtime_interval_schedule",
+                "must be a PricingIntervalSchedule",
             )
 
     def to_records(self) -> tuple[SurfaceNodeRecord, ...]:
@@ -876,6 +867,12 @@ class VanillaOptionSurfacePricingRunResult(ContractModel):
             f"{field_path}.maturity_summaries",
             PRICING_ERROR_FACTORY,
         )
+        raw_maturity_terminal_interval_indices = require_sequence(
+            raw_payload,
+            "maturity_terminal_interval_indices",
+            f"{field_path}.maturity_terminal_interval_indices",
+            PRICING_ERROR_FACTORY,
+        )
 
         return VanillaOptionSurfacePricingRunResult(
             response=VanillaOptionSurfacePricingResponse.from_mapping(
@@ -897,6 +894,24 @@ class VanillaOptionSurfacePricingRunResult(ContractModel):
                     else None
                 )
                 for summary_index, raw_summary in enumerate(raw_maturity_summaries)
+            ),
+            runtime_interval_schedule=PricingIntervalSchedule.from_mapping(
+                require_mapping(
+                    raw_payload,
+                    "runtime_interval_schedule",
+                    f"{field_path}.runtime_interval_schedule",
+                    PRICING_ERROR_FACTORY,
+                ),
+                field_path=f"{field_path}.runtime_interval_schedule",
+            ),
+            maturity_terminal_interval_indices=tuple(
+                require_non_negative_integer(
+                    {"value": raw_index},
+                    "value",
+                    f"{field_path}.maturity_terminal_interval_indices[{index}]",
+                    PRICING_ERROR_FACTORY,
+                )
+                for index, raw_index in enumerate(raw_maturity_terminal_interval_indices)
             ),
         )
 
@@ -1029,9 +1044,9 @@ def _require_optional_failure_stage(
             "transform_output, characteristic_function_assembly, fourier_pricing, "
             "risk_neutral_characteristic_function, endogenous_anchor_materialization, "
             "expected_hawkes_state_update, anchored_local_tilt_solve, "
-            "anchored_recursion_observed_boundary_state, anchored_recursion_diagnostics, "
-            "grid_interpolation_shape, response_diagnostics, response_assembly, "
-            "run_result_assembly, forward_law, worker_execution"
+            "spectral_observed_boundary_state, spectral_diagnostics, "
+            "spectral_operator_assembly, response_diagnostics, response_assembly, "
+            "run_result_assembly, worker_execution"
         ),
     )
 
@@ -1049,99 +1064,61 @@ def _validate_surface_node_payload(
     boundary_state_norm: Optional[float],
     field_path: str,
 ) -> None:
-    if pricing_status is VanillaOptionPricingStatus.SUCCEEDED:
-        if pricing_failure_stage is not None:
-            raise _pricing_error(
-                f"{field_path}.pricing_failure_stage",
-                "must be null when pricing_status=succeeded",
-            )
+    validate_option_pricing_node_payload(
+        pricing_status=pricing_status,
+        succeeded_pricing_status=VanillaOptionPricingStatus.SUCCEEDED,
+        pricing_failure_stage=pricing_failure_stage,
+        pricing_failure_reason=pricing_failure_reason,
+        model_price=model_price,
+        implied_volatility=implied_volatility,
+        implied_volatility_inversion_status=implied_volatility_inversion_status,
+        forward_price=forward_price,
+        discount_factor=discount_factor,
+        boundary_state_norm=boundary_state_norm,
+        field_path=field_path,
+        error_factory=_pricing_error,
+        require_non_negative_finite_numeric_field=_require_non_negative_finite_numeric_field,
+        require_positive_finite_numeric_field=_require_positive_finite_numeric_field,
+        validate_optional_implied_volatility_inversion_outcome=(
+            _validate_optional_implied_volatility_inversion_outcome_for_surface_node
+        ),
+    )
 
-        if pricing_failure_reason is not None:
-            raise _pricing_error(
-                f"{field_path}.pricing_failure_reason",
-                "must be null when pricing_status=succeeded",
-            )
 
-        require_non_negative_finite_number(
-            {"value": model_price},
-            "value",
-            f"{field_path}.model_price",
-            PRICING_ERROR_FACTORY,
-        )
-        require_positive_finite_number(
-            {"value": forward_price},
-            "value",
-            f"{field_path}.forward_price",
-            PRICING_ERROR_FACTORY,
-        )
-        require_positive_finite_number(
-            {"value": discount_factor},
-            "value",
-            f"{field_path}.discount_factor",
-            PRICING_ERROR_FACTORY,
-        )
-        require_non_negative_finite_number(
-            {"value": boundary_state_norm},
-            "value",
-            f"{field_path}.boundary_state_norm",
-            PRICING_ERROR_FACTORY,
-        )
+def _require_non_negative_finite_numeric_field(
+    value: Optional[float],
+    field_path: str,
+) -> None:
+    require_non_negative_finite_number(
+        {"value": value},
+        "value",
+        field_path,
+        PRICING_ERROR_FACTORY,
+    )
 
-        _validate_optional_implied_volatility_inversion_outcome(
-            implied_volatility=implied_volatility,
-            implied_volatility_inversion_status=implied_volatility_inversion_status,
-            field_path=field_path,
-        )
 
-        return
+def _require_positive_finite_numeric_field(
+    value: Optional[float],
+    field_path: str,
+) -> None:
+    require_positive_finite_number(
+        {"value": value},
+        "value",
+        field_path,
+        PRICING_ERROR_FACTORY,
+    )
 
-    if pricing_failure_stage is None:
-        raise _pricing_error(
-            f"{field_path}.pricing_failure_stage",
-            "must be present when pricing_status=failed",
-        )
 
-    if pricing_failure_reason is None or pricing_failure_reason.strip() == "":
-        raise _pricing_error(
-            f"{field_path}.pricing_failure_reason",
-            "must be a non-empty string when pricing_status=failed",
-        )
-
-    if model_price is not None:
-        raise _pricing_error(
-            f"{field_path}.model_price",
-            "must be null when pricing_status=failed",
-        )
-
-    if implied_volatility is not None:
-        raise _pricing_error(
-            f"{field_path}.implied_volatility",
-            "must be null when pricing_status=failed",
-        )
-
-    if implied_volatility_inversion_status is not None:
-        raise _pricing_error(
-            f"{field_path}.implied_volatility_inversion_status",
-            "must be null when pricing_status=failed",
-        )
-
-    if forward_price is not None:
-        raise _pricing_error(
-            f"{field_path}.forward_price",
-            "must be null when pricing_status=failed",
-        )
-
-    if discount_factor is not None:
-        raise _pricing_error(
-            f"{field_path}.discount_factor",
-            "must be null when pricing_status=failed",
-        )
-
-    if boundary_state_norm is not None:
-        raise _pricing_error(
-            f"{field_path}.boundary_state_norm",
-            "must be null when pricing_status=failed",
-        )
+def _validate_optional_implied_volatility_inversion_outcome_for_surface_node(
+    implied_volatility: Optional[float],
+    implied_volatility_inversion_status: Optional[VanillaOptionImpliedVolatilityInversionStatus],
+    field_path: str,
+) -> None:
+    _validate_optional_implied_volatility_inversion_outcome(
+        implied_volatility=implied_volatility,
+        implied_volatility_inversion_status=implied_volatility_inversion_status,
+        field_path=field_path,
+    )
 
 def _require_mapping_value(
     raw_value: Any,
@@ -1166,7 +1143,7 @@ def _surface_interval_count_from_maturity_interval(
             field_path,
             (
                 "must be an exact positive multiple of request.interval_delta "
-                f"({maturity_interval} / {interval_duration_nanos / 3_600_000_000_000:.12g})"
+                f"({maturity_interval} / {interval_duration_nanos / ONE_HOUR_NANOS:.12g})"
             ),
         )
 

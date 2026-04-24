@@ -14,7 +14,7 @@ from .contracts import serialize_pretty_json
 from .calibration.fit.report import JaniformFitReport
 from .calendar import CalendarRegistry, MarketState
 from .pricing import VanillaOptionPricingRunResult
-from .simulation import CoarseSimulationPath, SeededTickSimulationResponse
+from .simulation import CoarseSimulationPath, SeededTickSimulationResponse, SimulationKind
 
 if TYPE_CHECKING:
     from .calibration.fit.model import JaniformModel
@@ -124,12 +124,13 @@ def write_fit_artifacts(
     fit_report: JaniformFitReport,
     output_dir: str | Path,
 ) -> WorkflowArtifactPaths:
-    paths = resolve_fit_artifact_paths(run_id=model.run_id, output_dir=output_dir)
-
-    ensure_artifact_directory(paths)
+    paths = write_fit_report_artifacts(
+        run_id=model.run_id,
+        fit_report=fit_report,
+        output_dir=output_dir,
+    )
 
     model.save(paths.primary_output_path)
-    fit_report.save(paths.report_path)
 
     write_json_document(
         paths.manifest_path,
@@ -140,6 +141,31 @@ def write_fit_artifacts(
             report_path=paths.report_path,
             run_directory=paths.run_directory,
             additional_artifacts={"model_path": str(paths.primary_output_path)},
+        ),
+    )
+    return paths
+
+
+def write_fit_report_artifacts(
+    *,
+    run_id: str,
+    fit_report: JaniformFitReport,
+    output_dir: str | Path,
+) -> WorkflowArtifactPaths:
+    paths = resolve_fit_artifact_paths(run_id=run_id, output_dir=output_dir)
+
+    ensure_artifact_directory(paths)
+
+    fit_report.save(paths.report_path)
+
+    write_json_document(
+        paths.manifest_path,
+        build_run_manifest(
+            workflow="fit",
+            run_id=paths.run_id,
+            primary_output_path=paths.primary_output_path,
+            report_path=paths.report_path,
+            run_directory=paths.run_directory,
         ),
     )
     return paths
@@ -171,7 +197,7 @@ def write_simulation_artifacts(
             preferences=preferences,
         )
         report_payload = build_simulation_report_payload(
-            simulation_kind="seeded_tick",
+            simulation_kind=SimulationKind.SEEDED_TICK,
             output_path=paths.primary_output_path,
             diagnostics=simulation_result.diagnostics.to_payload(),
         )
@@ -184,7 +210,7 @@ def write_simulation_artifacts(
             exchange_code=model.session_resolution.exchange_code,
         )
         report_payload = build_simulation_report_payload(
-            simulation_kind="coarse_interval",
+            simulation_kind=SimulationKind.COARSE_INTERVAL,
             output_path=paths.primary_output_path,
             diagnostics=simulation_result.diagnostics.to_payload(),
         )
@@ -414,7 +440,7 @@ def build_run_manifest(
 
 def build_simulation_report_payload(
     *,
-    simulation_kind: str,
+    simulation_kind: SimulationKind,
     output_path: Path,
     diagnostics: dict[str, Any],
 ) -> dict[str, Any]:

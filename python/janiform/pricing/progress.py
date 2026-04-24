@@ -30,8 +30,6 @@ class PricingProgressEvent:
     total_maturities: Optional[int]
     current_interval_index: Optional[int]
     total_intervals: Optional[int]
-    current_transition_row_index: Optional[int]
-    total_transition_rows: Optional[int]
     current_strike_index: Optional[int]
     total_strikes: Optional[int]
 
@@ -60,27 +58,13 @@ class PricingProgressEvent:
                     f"{self.total_intervals}"
                 )
             case PricingProgressPhase.TRANSITION_ROW_PROGRESS:
-                interval_detail = None
-                if self.current_interval_index is not None and self.total_intervals is not None:
-                    interval_detail = (
-                        f"interval {self.current_interval_index + 1}/{self.total_intervals}"
-                    )
+                if self.current_interval_index is None or self.total_intervals is None:
+                    return None
 
-                if (
-                    self.current_transition_row_index is None
-                    or self.total_transition_rows is None
-                ):
-                    return interval_detail
-
-                row_detail = (
-                    f"transition row "
-                    f"{self.current_transition_row_index + 1}/"
-                    f"{self.total_transition_rows}"
+                return (
+                    f"interval {self.current_interval_index + 1}/"
+                    f"{self.total_intervals}"
                 )
-                if interval_detail is None:
-                    return row_detail
-
-                return f"{interval_detail} | {row_detail}"
             case PricingProgressPhase.STRIKE_PRICING_PROGRESS:
                 strike_detail = None
                 if self.current_strike_index is not None and self.total_strikes is not None:
@@ -115,12 +99,14 @@ def pricing_progress_event_from_mapping(payload: Mapping[str, Any]) -> PricingPr
         "progress_event.completed_units",
         _pricing_error,
     )
+
     total_units = require_positive_integer(
         payload,
         "total_units",
         "progress_event.total_units",
         _pricing_error,
     )
+
     if completed_units > total_units:
         raise _pricing_error(
             "progress_event.completed_units",
@@ -132,41 +118,37 @@ def pricing_progress_event_from_mapping(payload: Mapping[str, Any]) -> PricingPr
         "progress_event.current_group_index",
         _pricing_error,
     )
+
     current_maturity_index = require_optional_non_negative_integer_value(
         payload.get("current_maturity_index"),
         "progress_event.current_maturity_index",
         _pricing_error,
     )
+
     total_maturities = require_optional_positive_integer_value(
         payload.get("total_maturities"),
         "progress_event.total_maturities",
         _pricing_error,
     )
+
     current_interval_index = require_optional_non_negative_integer_value(
         payload.get("current_interval_index"),
         "progress_event.current_interval_index",
         _pricing_error,
     )
+
     total_intervals = require_optional_positive_integer_value(
         payload.get("total_intervals"),
         "progress_event.total_intervals",
         _pricing_error,
     )
-    current_transition_row_index = require_optional_non_negative_integer_value(
-        payload.get("current_transition_row_index"),
-        "progress_event.current_transition_row_index",
-        _pricing_error,
-    )
-    total_transition_rows = require_optional_positive_integer_value(
-        payload.get("total_transition_rows"),
-        "progress_event.total_transition_rows",
-        _pricing_error,
-    )
+
     current_strike_index = require_optional_non_negative_integer_value(
         payload.get("current_strike_index"),
         "progress_event.current_strike_index",
         _pricing_error,
     )
+
     total_strikes = require_optional_positive_integer_value(
         payload.get("total_strikes"),
         "progress_event.total_strikes",
@@ -182,8 +164,6 @@ def pricing_progress_event_from_mapping(payload: Mapping[str, Any]) -> PricingPr
         total_maturities=total_maturities,
         current_interval_index=current_interval_index,
         total_intervals=total_intervals,
-        current_transition_row_index=current_transition_row_index,
-        total_transition_rows=total_transition_rows,
         current_strike_index=current_strike_index,
         total_strikes=total_strikes,
     )

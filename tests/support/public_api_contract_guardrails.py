@@ -42,6 +42,7 @@ PUBLIC_CONTRACT_MODULE_NAMES: tuple[str, ...] = (
     "janiform.calibration.fit.pricing.grids",
     "janiform.calibration.fit.pricing.market_snapshot",
     "janiform.calibration.fit.pricing.market_snapshot.inputs",
+    "janiform.calibration.fit.pricing.market_surface",
     "janiform.calibration.fit.pricing.summaries",
     "janiform.calibration.fit.pricing.surface",
     "janiform.calibration.fit.result",

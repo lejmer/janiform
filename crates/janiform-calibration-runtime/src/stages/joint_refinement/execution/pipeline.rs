@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::path::Path;
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -9,13 +10,12 @@ use janiform_calibration_artifacts::{
     CALIBRATION_JOINT_REFINEMENT_STAGE_OUTPUT_SCHEMA_VERSION,
     CALIBRATION_STAGE_SEED_DERIVATION_POLICY, CalibrationOptimizerSettings,
     CalibrationResolvedStageSeed, CalibrationRunSpec, CalibrationStage,
-    JointRefinementStageOptimizerDiagnostics, resolve_calibration_stage_seed_metadata,
-    stage_solver_settings_for_stage,
+    JointRefinementStageOptimizerDiagnostics, ReturnComponentsStageFittedParameters,
+    resolve_calibration_stage_seed_metadata, stage_solver_settings_for_stage,
 };
 use janiform_foundations::splitmix64_output_mixer;
 use janiform_foundations::time::ONE_HOUR_NANOS;
 
-use crate::calendar::ExchangeCalendarRegistry;
 use crate::optimizer_adapter::CalibrationOptimizerAdapterRunMetadata;
 use crate::stages::hawkes::{HawkesStageFittedPayload, stationary_open_event_rate_per_hour};
 use crate::stages::joint_metrics::build_continuous_calibration_sample_from_aggregated_intervals;
@@ -25,6 +25,7 @@ use crate::stages::joint_refinement::contracts::{
     JointRefinementStageFittedPayload, JointRefinementStageProgressPhase,
     JointRefinementStageProgressUpdate,
 };
+use crate::stages::joint_refinement::option_surface_tiering::JointRefinementOptionSurfaceTierKind;
 use crate::stages::mean_reversion::MeanReversionStageFittedPayload;
 use crate::stages::return_components::{
     ReturnComponentsStageFittedPayload,
@@ -35,6 +36,7 @@ use crate::stages::seasonality::{
     CalibrationStageExecutionStatus, build_runtime_hourly_seasonality_factors_from_components,
     maximum_realizable_runtime_hourly_seasonality_factor_from_components,
 };
+use janiform_market_time::calendar::ExchangeCalendarRegistry;
 
 use super::super::objective::evaluate_joint_fitted_parameters;
 use super::super::setup::{
@@ -45,17 +47,21 @@ use super::super::setup::{
 };
 use super::super::worker_runtime::JointRefinementSummarySimulationScheduler;
 use super::{
-    JointRefinementActiveParameterLayout, JointRefinementBaselineBuckets, JointRefinementContext,
-    JointRefinementFidelityTier, JointRefinementProfilingState, JointRefinementRestartOutcome,
-    baseline_buckets_from_evaluation, build_joint_candidate_coarse_consistency_artifacts,
-    build_joint_candidate_frontier_diagnostics, build_joint_finalist_seed_summaries,
-    build_joint_refinement_stage_failure_report, build_joint_restart_diagnostics,
-    build_joint_simulation_summaries, build_observed_data, build_option_calibration_diagnostics,
-    build_option_pricing_context, build_summary_simulation_session_context,
-    desired_joint_refinement_restart_count, joint_refinement_budget_schedule,
-    optimize_restart_seeds, ordered_parameter_bits,
-    select_best_restart_outcome_with_lazy_coarse_consistency,
-    simulation_infrastructure_failure_message,
+    JointRefinementActiveParameterLayout, JointRefinementBaselineBuckets,
+    JointRefinementCandidateEvaluation, JointRefinementContext, JointRefinementFidelityTier,
+    JointRefinementProfilingState, JointRefinementRestartOutcome, JointRefinementResumeStore,
+    PersistedRestartSelectionArtifacts, baseline_buckets_from_evaluation,
+    build_joint_candidate_coarse_consistency_artifacts, build_joint_candidate_frontier_diagnostics,
+    build_joint_finalist_seed_summaries, build_joint_refinement_stage_failure_report,
+    build_joint_restart_diagnostics, build_joint_simulation_summaries, build_observed_data,
+    build_option_calibration_diagnostics, build_option_pricing_context,
+    build_summary_simulation_session_context,
+    desired_joint_refinement_option_refinement_candidate_count,
+    desired_joint_refinement_restart_candidate_budget, joint_refinement_admissibility_thresholds,
+    joint_refinement_budget_schedule, joint_restart_outcome_is_admissible, optimize_restart_seeds,
+    ordered_parameter_bits, resolve_option_surface_tier_pricing_artifact, run_option_refinement,
+    select_restart_outcomes_with_lazy_coarse_consistency,
+    simulation_infrastructure_failure_message, with_joint_refinement_thread_pool,
 };
 
 const JOINT_REFINEMENT_SELECTION_POLICY: &str = "validity_then_admissibility_with_incumbent_baseline_and_direct_interval_coarse_consistency_then_pareto_then_lexicographic_tie_break.v1";
@@ -89,6 +95,7 @@ struct PreparedParameterization {
     baseline_parameter_vector: Vec<f64>,
     lower_bounds: Vec<f64>,
     upper_bounds: Vec<f64>,
+    option_pricing_refinement_enabled: bool,
     option_pricing_context: Option<super::state::JointRefinementOptionPricingContext>,
 }
 
@@ -102,6 +109,13 @@ struct RestartSearchArtifacts {
     restart_outcomes: Vec<JointRefinementRestartOutcome>,
     valid_restart_count: usize,
     best_restart: JointRefinementRestartOutcome,
+    option_refinement_candidate_frontier: Vec<JointRefinementRestartOutcome>,
+    selected_option_search_tier_pricing_artifact:
+        Option<Arc<super::state::JointRefinementOptionTierPricingArtifact>>,
+    selected_option_selection_tier_pricing_artifact:
+        Option<Arc<super::state::JointRefinementOptionTierPricingArtifact>>,
+    selected_option_audit_tier_pricing_artifact:
+        Option<Arc<super::state::JointRefinementOptionTierPricingArtifact>>,
     coarse_consistency_artifacts_by_restart_id:
         BTreeMap<String, super::coarse_consistency::JointRefinementCoarseConsistencyArtifacts>,
     selection_coarse_consistency_by_restart_id:
@@ -117,6 +131,7 @@ struct RestartSearchPlan {
 
 struct RestartSelectionArtifacts {
     best_restart: JointRefinementRestartOutcome,
+    option_refinement_candidate_frontier: Vec<JointRefinementRestartOutcome>,
     coarse_consistency_artifacts_by_restart_id:
         BTreeMap<String, super::coarse_consistency::JointRefinementCoarseConsistencyArtifacts>,
     selection_coarse_consistency_by_restart_id:
@@ -143,12 +158,52 @@ pub(super) fn run_joint_refinement_calibration_stage_internal(
     calendar_registry: &ExchangeCalendarRegistry,
     stage_input: JointRefinementStageExecutionInput,
     progress_sender: Option<Sender<JointRefinementStageProgressUpdate>>,
+    disk_checkpoint_directory: Option<&Path>,
 ) -> JointRefinementStageExecutionReport {
+    if stage_input.restart_candidate_budget_override == Some(0) {
+        return build_joint_refinement_stage_failure_report(
+            run_spec,
+            JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
+                error_message:
+                    "joint refinement restart_candidate_budget_override must be greater than zero"
+                        .to_string(),
+            },
+        );
+    }
+
+    if stage_input.option_refinement_candidate_count_override == Some(0) {
+        return build_joint_refinement_stage_failure_report(
+            run_spec,
+            JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
+                error_message:
+                    "joint refinement option_refinement_candidate_count_override must be greater than zero"
+                        .to_string(),
+            },
+        );
+    }
+
+    if stage_input.audit_option_pricing_enabled && stage_input.option_pricing_input.is_none() {
+        return build_joint_refinement_stage_failure_report(
+            run_spec,
+            JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
+                error_message:
+                    "joint refinement audit_option_pricing_enabled requires option_pricing_input"
+                        .to_string(),
+            },
+        );
+    }
+
     let resolved_stage_payloads =
         match resolve_stage_payloads(run_spec, calendar_registry, &stage_input) {
             Ok(payloads) => payloads,
             Err(failure) => return build_joint_refinement_stage_failure_report(run_spec, failure),
         };
+
+    let mut resume_store = JointRefinementResumeStore::load(
+        disk_checkpoint_directory,
+        run_spec.run_id.as_str(),
+        resolved_stage_payloads.resolved_stage_seed.stage_seed,
+    );
 
     let mut prepared_bootstrap = match prepare_bootstrap_context(
         run_spec,
@@ -164,20 +219,44 @@ pub(super) fn run_joint_refinement_calibration_stage_internal(
         &resolved_stage_payloads,
         &mut prepared_bootstrap.bootstrap_context,
         prepared_bootstrap.baseline_parameter_vector.as_slice(),
-    ) {
-        Ok(artifacts) => artifacts,
-        Err(failure) => return build_joint_refinement_stage_failure_report(run_spec, failure),
-    };
-
-    let restart_search_artifacts = match run_restart_search(
-        &resolved_stage_payloads,
-        &prepared_bootstrap,
-        &baseline_evaluation_artifacts,
         progress_sender.as_ref(),
     ) {
         Ok(artifacts) => artifacts,
         Err(failure) => return build_joint_refinement_stage_failure_report(run_spec, failure),
     };
+
+    let mut restart_search_artifacts = match run_restart_search(
+        &stage_input,
+        &resolved_stage_payloads,
+        &prepared_bootstrap,
+        &baseline_evaluation_artifacts,
+        progress_sender.as_ref(),
+        &mut resume_store,
+    ) {
+        Ok(artifacts) => artifacts,
+        Err(failure) => return build_joint_refinement_stage_failure_report(run_spec, failure),
+    };
+
+    if let Err(failure) = run_option_refinement_if_enabled(
+        &stage_input,
+        &resolved_stage_payloads,
+        &prepared_bootstrap.bootstrap_context,
+        &mut restart_search_artifacts,
+        progress_sender.as_ref(),
+        &mut resume_store,
+    ) {
+        return build_joint_refinement_stage_failure_report(run_spec, failure);
+    }
+
+    if let Err(failure) = run_audit_option_pricing_if_enabled(
+        &stage_input,
+        &prepared_bootstrap.bootstrap_context,
+        &mut restart_search_artifacts,
+        progress_sender.as_ref(),
+        &mut resume_store,
+    ) {
+        return build_joint_refinement_stage_failure_report(run_spec, failure);
+    }
 
     let final_assembly_artifacts = match assemble_final_stage_outputs(
         &prepared_bootstrap.bootstrap_context,
@@ -213,10 +292,12 @@ fn resolve_stage_payloads<'a>(
         .hawkes_input
         .payload()
         .ok_or(JointRefinementStageExecutionFailure::MissingHawkesPayload)?;
+
     let return_components_payload = stage_input
         .return_components_input
         .payload()
         .ok_or(JointRefinementStageExecutionFailure::MissingReturnComponentsPayload)?;
+
     let mean_reversion_payload = stage_input
         .mean_reversion_input
         .payload()
@@ -299,6 +380,18 @@ fn build_final_simulation_seeds(
         .collect()
 }
 
+fn return_components_fitted_parameters_with_mean_reversion(
+    return_components_payload: &ReturnComponentsStageFittedPayload,
+    mean_reversion_payload: &MeanReversionStageFittedPayload,
+) -> ReturnComponentsStageFittedParameters {
+    let mut fitted_parameters = return_components_payload.fitted_parameters.clone();
+
+    fitted_parameters.mean_reversion_fitted_parameters =
+        mean_reversion_payload.fitted_parameters.clone();
+
+    fitted_parameters
+}
+
 fn prepare_bootstrap_context(
     run_spec: &CalibrationRunSpec,
     calendar_registry: &ExchangeCalendarRegistry,
@@ -320,6 +413,7 @@ fn prepare_bootstrap_context(
         baseline_parameter_vector,
         lower_bounds,
         upper_bounds,
+        option_pricing_refinement_enabled,
         option_pricing_context,
     } = prepare_parameterization(
         run_spec,
@@ -329,14 +423,18 @@ fn prepare_bootstrap_context(
         &baseline_15m_calibration_sample,
     )?;
 
+    let baseline_return_components_fitted_parameters =
+        return_components_fitted_parameters_with_mean_reversion(
+            resolved_stage_payloads.return_components_payload,
+            resolved_stage_payloads.mean_reversion_payload,
+        );
+
     let runtime_materialization = materialize_runtime_state(
         run_spec,
         calendar_registry,
         stage_input,
         &observed_data,
-        &resolved_stage_payloads
-            .return_components_payload
-            .fitted_parameters,
+        &baseline_return_components_fitted_parameters,
     )?;
 
     let bootstrap_context = build_bootstrap_context(
@@ -347,8 +445,10 @@ fn prepare_bootstrap_context(
         active_parameter_layout,
         lower_bounds,
         upper_bounds,
+        option_pricing_refinement_enabled,
         option_pricing_context,
         runtime_materialization,
+        baseline_return_components_fitted_parameters,
     )?;
 
     Ok(PreparedBootstrapContext {
@@ -421,6 +521,8 @@ fn prepare_parameterization(
         baseline_15m_calibration_sample,
     );
 
+    let option_pricing_refinement_enabled = false;
+
     let option_pricing_context = build_option_pricing_context(
         run_spec,
         calendar_registry,
@@ -436,7 +538,7 @@ fn prepare_parameterization(
         baseline_parameter_vector.as_slice(),
         lower_bounds.as_mut_slice(),
         upper_bounds.as_mut_slice(),
-        option_pricing_context.is_some(),
+        option_pricing_refinement_enabled,
     );
 
     Ok(PreparedParameterization {
@@ -444,6 +546,7 @@ fn prepare_parameterization(
         baseline_parameter_vector,
         lower_bounds,
         upper_bounds,
+        option_pricing_refinement_enabled,
         option_pricing_context,
     })
 }
@@ -456,8 +559,10 @@ fn build_bootstrap_context(
     active_parameter_layout: JointRefinementActiveParameterLayout,
     lower_bounds: Vec<f64>,
     upper_bounds: Vec<f64>,
+    option_pricing_refinement_enabled: bool,
     option_pricing_context: Option<super::state::JointRefinementOptionPricingContext>,
     runtime_materialization: RuntimeMaterialization,
+    baseline_return_components_fitted_parameters: ReturnComponentsStageFittedParameters,
 ) -> Result<JointRefinementContext, JointRefinementStageExecutionFailure> {
     Ok(JointRefinementContext {
         stage_thread_pool: build_stage_thread_pool(
@@ -468,6 +573,7 @@ fn build_bootstrap_context(
             &runtime_materialization.summary_simulation_session_context,
         )?,
         simulation_infrastructure_failure: Arc::new(Mutex::new(None)),
+        option_pricing_execution_failure: Arc::new(Mutex::new(None)),
         calendar_registry: calendar_registry.clone(),
         exchange_code: run_spec.data_inputs.exchange_code.clone(),
         runtime_hourly_seasonality_factors: runtime_materialization
@@ -481,13 +587,15 @@ fn build_bootstrap_context(
             .hawkes_payload
             .fitted_parameters
             .clone(),
-        baseline_return_components_fitted_parameters: resolved_stage_payloads
-            .return_components_payload
+        baseline_return_components_fitted_parameters,
+        baseline_mean_reversion_fitted_parameters: resolved_stage_payloads
+            .mean_reversion_payload
             .fitted_parameters
             .clone(),
         active_parameter_layout,
         lower_bounds,
         upper_bounds,
+        option_pricing_refinement_enabled,
         local_simulation_seed: resolved_stage_payloads.resolved_stage_seed.stage_seed,
         final_simulation_seeds: resolved_stage_payloads.final_simulation_seeds.clone(),
         local_baseline_buckets: unit_baseline_buckets(),
@@ -495,6 +603,7 @@ fn build_bootstrap_context(
         objective_cache: Arc::new(Mutex::new(BTreeMap::new())),
         deterministic_evaluation_cache: Arc::new(Mutex::new(BTreeMap::new())),
         seed_summary_cache: Arc::new(Mutex::new(BTreeMap::new())),
+        option_pricing_cache: Arc::new(Mutex::new(BTreeMap::new())),
         option_pricing_context,
         profiling_state: Arc::new(JointRefinementProfilingState::default()),
     })
@@ -674,6 +783,7 @@ fn establish_baseline_evaluation(
     resolved_stage_payloads: &ResolvedStagePayloads<'_>,
     bootstrap_context: &mut JointRefinementContext,
     baseline_parameter_vector: &[f64],
+    progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
 ) -> Result<BaselineEvaluationArtifacts, JointRefinementStageExecutionFailure> {
     let baseline_fitted_parameters =
         janiform_calibration_artifacts::JointRefinementStageFittedParameters {
@@ -681,54 +791,74 @@ fn establish_baseline_evaluation(
                 .hawkes_payload
                 .fitted_parameters
                 .clone(),
-            return_components_fitted_parameters: resolved_stage_payloads
-                .return_components_payload
-                .fitted_parameters
+            return_components_fitted_parameters: bootstrap_context
+                .baseline_return_components_fitted_parameters
                 .clone(),
             pricing_block_fitted_parameters: None,
         };
 
     let baseline_parameter_bits = ordered_parameter_bits(baseline_parameter_vector);
 
-    let baseline_local_evaluation = evaluate_joint_fitted_parameters(
-        baseline_fitted_parameters.clone(),
-        Some(baseline_parameter_bits.as_slice()),
+    let (baseline_local_evaluation, baseline_final_evaluation) = evaluate_baseline_local_and_final(
+        &baseline_fitted_parameters,
+        baseline_parameter_bits.as_slice(),
         bootstrap_context,
-        JointRefinementFidelityTier::Local,
         &resolved_stage_payloads.stage_solver_settings,
-    );
-
-    let baseline_final_evaluation = evaluate_joint_fitted_parameters(
-        baseline_fitted_parameters,
-        Some(baseline_parameter_bits.as_slice()),
-        bootstrap_context,
-        JointRefinementFidelityTier::Final,
-        &resolved_stage_payloads.stage_solver_settings,
+        progress_sender,
     );
 
     ensure_simulation_infrastructure_available(bootstrap_context)?;
-
-    ensure_valid_baseline_candidate(&baseline_local_evaluation, &baseline_final_evaluation)?;
 
     bootstrap_context.local_baseline_buckets =
         baseline_buckets_from_evaluation(&baseline_local_evaluation);
     bootstrap_context.final_baseline_buckets =
         baseline_buckets_from_evaluation(&baseline_final_evaluation);
 
-    let baseline_coarse_consistency_artifacts = build_joint_candidate_coarse_consistency_artifacts(
-        bootstrap_context,
-        &baseline_final_evaluation.fitted_parameters,
-        Some(baseline_parameter_bits.as_slice()),
-        None,
-    );
+    let baseline_candidate_is_valid = baseline_local_evaluation.invalid_reason.is_none()
+        && baseline_final_evaluation.invalid_reason.is_none();
+
+    if let Ok(mut cache_guard) = bootstrap_context.objective_cache.lock() {
+        cache_guard.clear();
+    }
+
+    let (normalized_baseline_local_evaluation, normalized_baseline_final_evaluation) =
+        if baseline_candidate_is_valid {
+            evaluate_baseline_local_and_final(
+                &baseline_fitted_parameters,
+                baseline_parameter_bits.as_slice(),
+                bootstrap_context,
+                &resolved_stage_payloads.stage_solver_settings,
+                progress_sender,
+            )
+        } else {
+            (
+                baseline_local_evaluation.clone(),
+                baseline_final_evaluation.clone(),
+            )
+        };
+
+    let baseline_coarse_consistency_artifacts = if baseline_candidate_is_valid {
+        emit_coarse_consistency_progress(progress_sender, 0, 1, "baseline coarse_consistency");
+        build_joint_candidate_coarse_consistency_artifacts(
+            bootstrap_context,
+            &normalized_baseline_final_evaluation.fitted_parameters,
+            Some(baseline_parameter_bits.as_slice()),
+            None,
+        )
+        .inspect(|_| {
+            emit_coarse_consistency_progress(progress_sender, 1, 1, "baseline coarse_consistency");
+        })
+    } else {
+        None
+    };
 
     let baseline_restart_outcome = JointRefinementRestartOutcome {
         restart_id: "baseline".to_string(),
         parameter_vector: baseline_parameter_vector.to_vec(),
-        local_evaluation: baseline_local_evaluation.clone(),
-        final_evaluation: baseline_final_evaluation.clone(),
+        local_evaluation: normalized_baseline_local_evaluation,
+        final_evaluation: normalized_baseline_final_evaluation,
         local_evaluation_count: 0,
-        stop_reason: "baseline_incumbent",
+        stop_reason: "baseline_incumbent".to_string(),
     };
 
     if let Ok(mut cache_guard) = bootstrap_context.objective_cache.lock() {
@@ -741,67 +871,295 @@ fn establish_baseline_evaluation(
     })
 }
 
-fn ensure_valid_baseline_candidate(
-    baseline_local_evaluation: &super::JointRefinementCandidateEvaluation,
-    baseline_final_evaluation: &super::JointRefinementCandidateEvaluation,
+fn evaluate_baseline_local_and_final(
+    baseline_fitted_parameters: &janiform_calibration_artifacts::JointRefinementStageFittedParameters,
+    baseline_parameter_bits: &[u64],
+    bootstrap_context: &JointRefinementContext,
+    stage_solver_settings: &CalibrationOptimizerSettings,
+    progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
+) -> (
+    JointRefinementCandidateEvaluation,
+    JointRefinementCandidateEvaluation,
+) {
+    with_joint_refinement_thread_pool(bootstrap_context, || {
+        rayon::join(
+            || {
+                evaluate_joint_fitted_parameters(
+                    baseline_fitted_parameters.clone(),
+                    Some(baseline_parameter_bits),
+                    bootstrap_context,
+                    JointRefinementFidelityTier::Local,
+                    stage_solver_settings,
+                    progress_sender,
+                    Some(JointRefinementStageProgressPhase::BaselineLocalEvaluation),
+                )
+            },
+            || {
+                evaluate_joint_fitted_parameters(
+                    baseline_fitted_parameters.clone(),
+                    Some(baseline_parameter_bits),
+                    bootstrap_context,
+                    JointRefinementFidelityTier::Final,
+                    stage_solver_settings,
+                    progress_sender,
+                    Some(JointRefinementStageProgressPhase::BaselineFinalEvaluation),
+                )
+            },
+        )
+    })
+}
+
+pub(crate) fn ensure_valid_selected_restart_outcome(
+    best_restart: &JointRefinementRestartOutcome,
+    valid_restart_count: usize,
+    admissible_restart_count: usize,
+    thresholds: super::selection::JointRefinementAdmissibilityThresholds,
+    coarse_consistency_summary: Option<&super::JointRefinementCoarseConsistencySummary>,
 ) -> Result<(), JointRefinementStageExecutionFailure> {
-    if baseline_local_evaluation.invalid_reason.is_none()
-        && baseline_final_evaluation.invalid_reason.is_none()
+    if best_restart.local_evaluation.invalid_reason.is_some()
+        || best_restart.final_evaluation.invalid_reason.is_some()
     {
+        let local_reason = best_restart
+            .local_evaluation
+            .invalid_reason
+            .clone()
+            .unwrap_or_else(|| "unknown_local_joint_refinement_failure".to_string());
+
+        let final_reason = best_restart
+            .final_evaluation
+            .invalid_reason
+            .clone()
+            .unwrap_or_else(|| "unknown_final_joint_refinement_failure".to_string());
+
+        return Err(
+            JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
+                error_message: format!(
+                    "joint refinement could not identify a valid candidate after restart search: selected_restart={} valid_restart_count={} local={local_reason} final={final_reason}",
+                    best_restart.restart_id, valid_restart_count,
+                ),
+            },
+        );
+    }
+
+    if joint_restart_outcome_is_admissible(
+        best_restart,
+        thresholds,
+        coarse_consistency_summary,
+        true,
+    ) {
         return Ok(());
     }
 
-    let local_reason = baseline_local_evaluation
-        .invalid_reason
-        .clone()
-        .unwrap_or_else(|| "unknown_local_joint_refinement_failure".to_string());
-    let final_reason = baseline_final_evaluation
-        .invalid_reason
-        .clone()
-        .unwrap_or_else(|| "unknown_final_joint_refinement_failure".to_string());
+    let coarse_consistency_description = coarse_consistency_summary.map_or_else(
+        || "missing".to_string(),
+        |summary| {
+            format!(
+                "normalized_fit={} admissibility_threshold={}",
+                summary.normalized_fit, summary.admissibility_threshold,
+            )
+        },
+    );
+
+    let blocking_terms = blocking_admissibility_terms(
+        &best_restart.final_evaluation.raw_admissibility_metrics,
+        thresholds,
+    );
 
     Err(
         JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
             error_message: format!(
-                "joint refinement baseline candidate is invalid: local={local_reason} final={final_reason}"
+                "joint refinement could not identify an admissible candidate after restart search: selected_restart={} valid_restart_count={} admissible_restart_count={} coarse_consistency={} weighted_objective={} blocking_terms={}",
+                best_restart.restart_id,
+                valid_restart_count,
+                admissible_restart_count,
+                coarse_consistency_description,
+                best_restart.final_evaluation.breakdown.weighted_objective,
+                blocking_terms,
             ),
         },
     )
 }
 
+fn blocking_admissibility_terms(
+    raw_metrics: &super::JointRefinementRawAdmissibilityMetrics,
+    thresholds: super::selection::JointRefinementAdmissibilityThresholds,
+) -> String {
+    let mut blocking_terms = [
+        (
+            "aggregated_likelihood_fit",
+            raw_metrics.aggregated_likelihood_fit,
+            thresholds.aggregated_likelihood_fit,
+        ),
+        (
+            "aggregated_return_shape_fit",
+            raw_metrics.aggregated_return_shape_fit,
+            thresholds.aggregated_return_shape_fit,
+        ),
+        (
+            "return_asymmetry_fit",
+            raw_metrics.return_asymmetry_fit,
+            thresholds.return_asymmetry_fit,
+        ),
+        (
+            "tick_return_asymmetry_fit",
+            raw_metrics.tick_return_asymmetry_fit,
+            thresholds.tick_return_asymmetry_fit,
+        ),
+        (
+            "aggregated_return_scale_fit",
+            raw_metrics.aggregated_return_scale_fit,
+            thresholds.aggregated_return_scale_fit,
+        ),
+        (
+            "tick_return_scale_fit",
+            raw_metrics.tick_return_scale_fit,
+            thresholds.tick_return_scale_fit,
+        ),
+        (
+            "business_time_return_scale_fit",
+            raw_metrics.business_time_return_scale_fit,
+            thresholds.business_time_return_scale_fit,
+        ),
+        (
+            "intraday_return_level_fit",
+            raw_metrics.intraday_return_level_fit,
+            thresholds.intraday_return_level_fit,
+        ),
+        (
+            "activity_shape_fit",
+            raw_metrics.activity_shape_fit,
+            thresholds.activity_shape_fit,
+        ),
+        (
+            "activity_level_fit",
+            raw_metrics.activity_level_fit,
+            thresholds.activity_level_fit,
+        ),
+        (
+            "rv_activity_coupling_fit",
+            raw_metrics.rv_activity_coupling_fit,
+            thresholds.rv_activity_coupling_fit,
+        ),
+        (
+            "price_span_sanity_fit",
+            raw_metrics.price_span_sanity_fit,
+            thresholds.price_span_sanity_fit,
+        ),
+    ]
+    .into_iter()
+    .filter(|(_, metric_value, threshold)| *metric_value > *threshold)
+    .collect::<Vec<_>>();
+
+    blocking_terms.sort_by(|left, right| {
+        let left_excess = left.1 - left.2;
+        let right_excess = right.1 - right.2;
+
+        right_excess
+            .total_cmp(&left_excess)
+            .then_with(|| left.0.cmp(right.0))
+    });
+
+    if blocking_terms.is_empty() {
+        return "none".to_string();
+    }
+
+    blocking_terms
+        .into_iter()
+        .take(3)
+        .map(|(metric_id, metric_value, threshold)| {
+            format!("{metric_id}:{metric_value}>{threshold}")
+        })
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
 fn run_restart_search(
+    stage_input: &JointRefinementStageExecutionInput,
     resolved_stage_payloads: &ResolvedStagePayloads<'_>,
     prepared_bootstrap: &PreparedBootstrapContext,
     baseline_evaluation_artifacts: &BaselineEvaluationArtifacts,
     progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
+    resume_store: &mut JointRefinementResumeStore,
 ) -> Result<RestartSearchArtifacts, JointRefinementStageExecutionFailure> {
-    let restart_search_plan =
-        build_restart_search_plan(resolved_stage_payloads, prepared_bootstrap);
-
-    let restart_optimization_started_at = Instant::now();
-    let restart_outcomes = optimize_restart_seeds(
-        restart_search_plan.restart_seeds.as_slice(),
-        &prepared_bootstrap.bootstrap_context,
-        &resolved_stage_payloads.stage_solver_settings,
-        restart_search_plan.budget_schedule,
+    let restart_search_plan = build_restart_search_plan(
+        stage_input,
+        resolved_stage_payloads,
+        prepared_bootstrap,
         progress_sender,
     );
+
+    let persisted_restart_outcomes = restart_search_plan
+        .restart_seeds
+        .iter()
+        .filter_map(|(restart_id, _)| {
+            resume_store
+                .restart_outcome(restart_id.as_str())
+                .map(|restart_outcome| (restart_id.clone(), restart_outcome))
+        })
+        .collect::<BTreeMap<_, _>>();
+
+    let remaining_restart_seeds = restart_search_plan
+        .restart_seeds
+        .iter()
+        .filter(|(restart_id, _)| !persisted_restart_outcomes.contains_key(restart_id.as_str()))
+        .cloned()
+        .collect::<Vec<_>>();
+
+    let restart_optimization_started_at = Instant::now();
+
+    let remaining_restart_outcomes = if remaining_restart_seeds.is_empty() {
+        Vec::new()
+    } else {
+        optimize_restart_seeds(
+            remaining_restart_seeds.as_slice(),
+            &prepared_bootstrap.bootstrap_context,
+            &resolved_stage_payloads.stage_solver_settings,
+            restart_search_plan.budget_schedule,
+            progress_sender,
+            Some(resume_store),
+        )
+    };
+
+    let restart_outcomes = restart_search_plan
+        .restart_seeds
+        .iter()
+        .filter_map(|(restart_id, _)| {
+            persisted_restart_outcomes
+                .get(restart_id.as_str())
+                .cloned()
+                .or_else(|| {
+                    remaining_restart_outcomes
+                        .iter()
+                        .find(|restart_outcome| restart_outcome.restart_id == *restart_id)
+                        .cloned()
+                })
+        })
+        .collect::<Vec<_>>();
+
     let restart_optimization_wall_clock_millis = elapsed_millis(restart_optimization_started_at);
 
     ensure_simulation_infrastructure_available(&prepared_bootstrap.bootstrap_context)?;
 
     let valid_restart_count = count_valid_restart_outcomes(&restart_outcomes);
+
     let restart_selection_artifacts = select_restart_outcome(
+        stage_input,
         prepared_bootstrap,
         baseline_evaluation_artifacts,
         restart_outcomes.as_slice(),
         progress_sender,
-    );
+        resume_store,
+    )?;
 
     Ok(RestartSearchArtifacts {
         restart_outcomes,
         valid_restart_count,
         best_restart: restart_selection_artifacts.best_restart,
+        option_refinement_candidate_frontier: restart_selection_artifacts
+            .option_refinement_candidate_frontier,
+        selected_option_search_tier_pricing_artifact: None,
+        selected_option_selection_tier_pricing_artifact: None,
+        selected_option_audit_tier_pricing_artifact: None,
         coarse_consistency_artifacts_by_restart_id: restart_selection_artifacts
             .coarse_consistency_artifacts_by_restart_id,
         selection_coarse_consistency_by_restart_id: restart_selection_artifacts
@@ -813,8 +1171,10 @@ fn run_restart_search(
 }
 
 fn build_restart_search_plan(
+    stage_input: &JointRefinementStageExecutionInput,
     resolved_stage_payloads: &ResolvedStagePayloads<'_>,
     prepared_bootstrap: &PreparedBootstrapContext,
+    progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
 ) -> RestartSearchPlan {
     let restart_seeds = build_restart_seeds(
         prepared_bootstrap.baseline_parameter_vector.as_slice(),
@@ -837,7 +1197,12 @@ fn build_restart_search_plan(
                 .observed_open_event_rate_per_hour,
             resolved_stage_payloads.baseline_modeled_open_event_rate_per_hour,
         ),
-        desired_joint_refinement_restart_count(&resolved_stage_payloads.stage_solver_settings),
+        &prepared_bootstrap.bootstrap_context,
+        &resolved_stage_payloads.stage_solver_settings,
+        desired_joint_refinement_restart_candidate_budget(
+            stage_input.restart_candidate_budget_override,
+        ),
+        progress_sender,
     );
 
     let budget_schedule = joint_refinement_budget_schedule(
@@ -861,18 +1226,200 @@ fn count_valid_restart_outcomes(restart_outcomes: &[JointRefinementRestartOutcom
         .count()
 }
 
+fn count_admissible_restart_outcomes(
+    restart_outcomes: &[&JointRefinementRestartOutcome],
+    thresholds: super::selection::JointRefinementAdmissibilityThresholds,
+    coarse_consistency_by_restart_id: &BTreeMap<
+        String,
+        super::JointRefinementCoarseConsistencySummary,
+    >,
+) -> usize {
+    restart_outcomes
+        .iter()
+        .copied()
+        .filter(|restart_outcome| {
+            joint_restart_outcome_is_admissible(
+                restart_outcome,
+                thresholds,
+                coarse_consistency_by_restart_id.get(restart_outcome.restart_id.as_str()),
+                true,
+            )
+        })
+        .count()
+}
+
+fn filter_admissible_restart_outcomes<'a>(
+    restart_outcomes: &[&'a JointRefinementRestartOutcome],
+    thresholds: super::selection::JointRefinementAdmissibilityThresholds,
+    coarse_consistency_by_restart_id: &BTreeMap<
+        String,
+        super::JointRefinementCoarseConsistencySummary,
+    >,
+) -> Vec<&'a JointRefinementRestartOutcome> {
+    restart_outcomes
+        .iter()
+        .copied()
+        .filter(|restart_outcome| {
+            joint_restart_outcome_is_admissible(
+                restart_outcome,
+                thresholds,
+                coarse_consistency_by_restart_id.get(restart_outcome.restart_id.as_str()),
+                true,
+            )
+        })
+        .collect()
+}
+
+fn run_option_refinement_if_enabled(
+    stage_input: &JointRefinementStageExecutionInput,
+    resolved_stage_payloads: &ResolvedStagePayloads<'_>,
+    bootstrap_context: &JointRefinementContext,
+    restart_search_artifacts: &mut RestartSearchArtifacts,
+    progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
+    resume_store: &mut JointRefinementResumeStore,
+) -> Result<(), JointRefinementStageExecutionFailure> {
+    if stage_input.option_pricing_input.is_none() {
+        return Ok(());
+    }
+
+    if let (Some(selected_restart_id), Some(search_tier_artifact), Some(selection_tier_artifact)) = (
+        resume_store.selected_restart_id(),
+        resume_store.selected_search_tier_pricing_artifact(),
+        resume_store.selected_selection_tier_pricing_artifact(),
+    ) {
+        if let Some(selected_restart_outcome) = restart_search_artifacts
+            .option_refinement_candidate_frontier
+            .iter()
+            .find(|restart_outcome| restart_outcome.restart_id == selected_restart_id)
+            .cloned()
+        {
+            restart_search_artifacts.best_restart = selected_restart_outcome;
+            restart_search_artifacts.selected_option_search_tier_pricing_artifact =
+                Some(search_tier_artifact);
+            restart_search_artifacts.selected_option_selection_tier_pricing_artifact =
+                Some(selection_tier_artifact);
+
+            return Ok(());
+        }
+    }
+
+    let option_refinement_result = run_option_refinement(
+        bootstrap_context,
+        &resolved_stage_payloads.stage_solver_settings,
+        restart_search_artifacts
+            .option_refinement_candidate_frontier
+            .as_slice(),
+        progress_sender,
+        Some(resume_store),
+    )?;
+
+    restart_search_artifacts.best_restart = option_refinement_result.selected_restart_outcome;
+    restart_search_artifacts.selected_option_search_tier_pricing_artifact =
+        Some(option_refinement_result.selected_search_tier_pricing_artifact);
+    restart_search_artifacts.selected_option_selection_tier_pricing_artifact =
+        Some(option_refinement_result.selected_selection_tier_pricing_artifact);
+
+    if let (Some(search_artifact), Some(selection_artifact)) = (
+        restart_search_artifacts
+            .selected_option_search_tier_pricing_artifact
+            .as_ref(),
+        restart_search_artifacts
+            .selected_option_selection_tier_pricing_artifact
+            .as_ref(),
+    ) {
+        resume_store.record_selected_option_refinement(
+            restart_search_artifacts.best_restart.restart_id.as_str(),
+            search_artifact.as_ref(),
+            selection_artifact.as_ref(),
+        );
+    }
+
+    Ok(())
+}
+
+fn run_audit_option_pricing_if_enabled(
+    stage_input: &JointRefinementStageExecutionInput,
+    bootstrap_context: &JointRefinementContext,
+    restart_search_artifacts: &mut RestartSearchArtifacts,
+    progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
+    resume_store: &mut JointRefinementResumeStore,
+) -> Result<(), JointRefinementStageExecutionFailure> {
+    if !stage_input.audit_option_pricing_enabled {
+        return Ok(());
+    }
+
+    if let Some(audit_artifact) = resume_store.selected_audit_tier_pricing_artifact() {
+        restart_search_artifacts.selected_option_audit_tier_pricing_artifact = Some(audit_artifact);
+        return Ok(());
+    }
+
+    let selection_artifact = restart_search_artifacts
+        .selected_option_selection_tier_pricing_artifact
+        .as_ref()
+        .ok_or_else(|| {
+            JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput {
+                error_message:
+                    "joint option audit pricing requires the selected selection-tier pricing artifact"
+                        .to_string(),
+            }
+        })?;
+
+    let audit_artifact = resolve_option_surface_tier_pricing_artifact(
+        bootstrap_context,
+        &restart_search_artifacts
+            .best_restart
+            .final_evaluation
+            .fitted_parameters,
+        JointRefinementOptionSurfaceTierKind::Audit,
+        selection_artifact
+            .cache_key
+            .source_dynamics_parameter_bits
+            .as_slice(),
+        selection_artifact
+            .cache_key
+            .pricing_parameter_bits
+            .as_slice(),
+        false,
+        None,
+        progress_sender,
+        Some(JointRefinementStageProgressPhase::OptionAuditTierEvaluation),
+        Some(0),
+        Some(1),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    .map_err(|error_message| {
+        JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput { error_message }
+    })?;
+
+    restart_search_artifacts.selected_option_audit_tier_pricing_artifact =
+        Some(audit_artifact.clone());
+
+    resume_store.record_audit_tier_pricing_artifact(audit_artifact.as_ref());
+
+    Ok(())
+}
+
 fn select_restart_outcome(
+    stage_input: &JointRefinementStageExecutionInput,
     prepared_bootstrap: &PreparedBootstrapContext,
     baseline_evaluation_artifacts: &BaselineEvaluationArtifacts,
     restart_outcomes: &[JointRefinementRestartOutcome],
     progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
-) -> RestartSelectionArtifacts {
+    resume_store: &mut JointRefinementResumeStore,
+) -> Result<RestartSelectionArtifacts, JointRefinementStageExecutionFailure> {
     let selectable_restart_outcomes = build_selectable_restart_outcomes(
         restart_outcomes,
         &baseline_evaluation_artifacts.baseline_restart_outcome,
     );
 
     let coarse_consistency_started_at = Instant::now();
+
     let valid_selectable_restart_outcome_refs = selectable_restart_outcomes
         .iter()
         .filter(|restart_outcome| {
@@ -881,31 +1428,134 @@ fn select_restart_outcome(
         })
         .collect::<Vec<_>>();
 
-    let (best_restart, coarse_consistency_artifacts_by_restart_id) =
-        select_best_restart_outcome_with_lazy_coarse_consistency(
-            valid_selectable_restart_outcome_refs.as_slice(),
-            &prepared_bootstrap.bootstrap_context,
-            baseline_evaluation_artifacts
-                .baseline_coarse_consistency_artifacts
-                .as_ref(),
-            progress_sender,
-        );
+    let selected_restart_count = if prepared_bootstrap
+        .bootstrap_context
+        .option_pricing_context
+        .is_some()
+    {
+        desired_joint_refinement_option_refinement_candidate_count(
+            stage_input.option_refinement_candidate_count_override,
+        )
+    } else {
+        1
+    };
 
-    let selection_coarse_consistency_by_restart_id = coarse_consistency_artifacts_by_restart_id
+    let persisted_selection = resume_store
+        .restart_selection()
+        .cloned()
+        .filter(|selection| {
+            selection
+                .option_refinement_candidate_frontier_ids
+                .iter()
+                .all(|restart_id| {
+                    valid_selectable_restart_outcome_refs
+                        .iter()
+                        .any(|restart_outcome| restart_outcome.restart_id == *restart_id)
+                })
+                && valid_selectable_restart_outcome_refs
+                    .iter()
+                    .any(|restart_outcome| restart_outcome.restart_id == selection.best_restart_id)
+        });
+
+    let selection_artifacts = persisted_selection.map_or_else(
+        || {
+            select_restart_outcomes_with_lazy_coarse_consistency(
+                valid_selectable_restart_outcome_refs.as_slice(),
+                &prepared_bootstrap.bootstrap_context,
+                baseline_evaluation_artifacts
+                    .baseline_coarse_consistency_artifacts
+                    .as_ref(),
+                selected_restart_count,
+                progress_sender,
+            )
+        },
+        |selection| super::selection::JointRefinementLazyCoarseConsistencySelection {
+            selected_restart_outcomes: selection
+                .option_refinement_candidate_frontier_ids
+                .iter()
+                .filter_map(|restart_id| {
+                    valid_selectable_restart_outcome_refs
+                        .iter()
+                        .copied()
+                        .find(|restart_outcome| restart_outcome.restart_id == *restart_id)
+                })
+                .collect(),
+            coarse_consistency_artifacts_by_restart_id: selection
+                .coarse_consistency_artifacts_by_restart_id,
+        },
+    );
+
+    let selection_coarse_consistency_by_restart_id = selection_artifacts
+        .coarse_consistency_artifacts_by_restart_id
         .iter()
         .map(|(restart_id, artifacts)| (restart_id.clone(), artifacts.summary))
         .collect::<BTreeMap<_, _>>();
 
-    RestartSelectionArtifacts {
-        best_restart: best_restart.cloned().unwrap_or_else(|| {
+    let admissibility_thresholds =
+        joint_refinement_admissibility_thresholds(&prepared_bootstrap.bootstrap_context);
+
+    let admissible_selected_restart_outcomes = filter_admissible_restart_outcomes(
+        selection_artifacts.selected_restart_outcomes.as_slice(),
+        admissibility_thresholds,
+        &selection_coarse_consistency_by_restart_id,
+    );
+    let diagnostic_best_restart = selection_artifacts
+        .selected_restart_outcomes
+        .first()
+        .copied()
+        .cloned()
+        .unwrap_or_else(|| {
             baseline_evaluation_artifacts
                 .baseline_restart_outcome
                 .clone()
-        }),
-        coarse_consistency_artifacts_by_restart_id,
+        });
+
+    let best_restart = admissible_selected_restart_outcomes
+        .first()
+        .copied()
+        .cloned()
+        .unwrap_or_else(|| diagnostic_best_restart.clone());
+
+    ensure_valid_selected_restart_outcome(
+        &diagnostic_best_restart,
+        valid_selectable_restart_outcome_refs.len(),
+        count_admissible_restart_outcomes(
+            valid_selectable_restart_outcome_refs.as_slice(),
+            admissibility_thresholds,
+            &selection_coarse_consistency_by_restart_id,
+        ),
+        admissibility_thresholds,
+        selection_coarse_consistency_by_restart_id.get(diagnostic_best_restart.restart_id.as_str()),
+    )?;
+
+    let option_refinement_candidate_frontier = admissible_selected_restart_outcomes
+        .iter()
+        .copied()
+        .cloned()
+        .collect::<Vec<_>>();
+
+    resume_store.record_restart_selection(PersistedRestartSelectionArtifacts {
+        best_restart_id: best_restart.restart_id.clone(),
+        option_refinement_candidate_frontier_ids: option_refinement_candidate_frontier
+            .iter()
+            .map(|restart_outcome| restart_outcome.restart_id.clone())
+            .collect(),
+        coarse_consistency_artifacts_by_restart_id: selection_artifacts
+            .coarse_consistency_artifacts_by_restart_id
+            .clone(),
+        selection_coarse_consistency_by_restart_id: selection_coarse_consistency_by_restart_id
+            .clone(),
+        coarse_consistency_wall_clock_millis: elapsed_millis(coarse_consistency_started_at),
+    });
+
+    Ok(RestartSelectionArtifacts {
+        best_restart,
+        option_refinement_candidate_frontier,
+        coarse_consistency_artifacts_by_restart_id: selection_artifacts
+            .coarse_consistency_artifacts_by_restart_id,
         selection_coarse_consistency_by_restart_id,
         coarse_consistency_wall_clock_millis: elapsed_millis(coarse_consistency_started_at),
-    }
+    })
 }
 
 fn ensure_simulation_infrastructure_available(
@@ -946,6 +1596,9 @@ fn assemble_final_stage_outputs(
     );
 
     let candidate_frontier_started_at = Instant::now();
+
+    emit_final_assembly_progress(progress_sender, 0, 3, "candidate_frontier");
+
     let candidate_frontier = build_joint_candidate_frontier_diagnostics(
         selectable_restart_outcomes.as_slice(),
         bootstrap_context,
@@ -960,6 +1613,7 @@ fn assemble_final_stage_outputs(
     emit_final_assembly_progress(progress_sender, 1, 3, "candidate_frontier");
 
     let final_seed_evaluation_started_at = Instant::now();
+
     let finalist_seed_summaries = build_joint_finalist_seed_summaries(
         bootstrap_context,
         Some(
@@ -981,9 +1635,12 @@ fn assemble_final_stage_outputs(
     let final_seed_evaluation_wall_clock_millis = elapsed_millis(final_seed_evaluation_started_at);
 
     let remaining_final_assembly_started_at = Instant::now();
+
     let simulation_summaries = build_joint_simulation_summaries(finalist_seed_summaries.as_slice());
 
     emit_final_assembly_progress(progress_sender, 2, 3, "simulation_summaries");
+
+    emit_final_assembly_progress(progress_sender, 2, 3, "coarse_tick_consistency");
 
     let coarse_tick_consistency = resolve_selected_coarse_tick_consistency(
         bootstrap_context,
@@ -994,12 +1651,58 @@ fn assemble_final_stage_outputs(
 
     emit_final_assembly_progress(progress_sender, 3, 3, "coarse_tick_consistency");
 
+    let selection_artifact_for_diagnostics = restart_search_artifacts
+        .selected_option_selection_tier_pricing_artifact
+        .as_deref()
+        .map(|selection_artifact| {
+            resolve_option_surface_tier_pricing_artifact(
+                bootstrap_context,
+                &restart_search_artifacts
+                    .best_restart
+                    .final_evaluation
+                    .fitted_parameters,
+                JointRefinementOptionSurfaceTierKind::Selection,
+                selection_artifact
+                    .cache_key
+                    .source_dynamics_parameter_bits
+                    .as_slice(),
+                selection_artifact
+                    .cache_key
+                    .pricing_parameter_bits
+                    .as_slice(),
+                true,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+            )
+        })
+        .transpose()
+        .map_err(|error_message| {
+            JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput { error_message }
+        })?;
+
     let option_calibration_diagnostics = build_option_calibration_diagnostics(
         bootstrap_context,
-        &restart_search_artifacts
-            .best_restart
-            .final_evaluation
-            .fitted_parameters,
+        restart_search_artifacts
+            .selected_option_search_tier_pricing_artifact
+            .as_deref(),
+        selection_artifact_for_diagnostics
+            .as_deref()
+            .or(restart_search_artifacts
+                .selected_option_selection_tier_pricing_artifact
+                .as_deref()),
+        restart_search_artifacts
+            .selected_option_audit_tier_pricing_artifact
+            .as_deref(),
     )
     .map_err(|error_message| {
         JointRefinementStageExecutionFailure::InvalidCandidateGenerationInput { error_message }
@@ -1126,10 +1829,11 @@ fn build_fitted_stage_payload(
             .hawkes_payload
             .fitted_parameters
             .clone(),
-        baseline_return_components_fitted_parameters: resolved_stage_payloads
-            .return_components_payload
-            .fitted_parameters
-            .clone(),
+        baseline_return_components_fitted_parameters:
+            return_components_fitted_parameters_with_mean_reversion(
+                resolved_stage_payloads.return_components_payload,
+                resolved_stage_payloads.mean_reversion_payload,
+            ),
         objective_breakdown: restart_search_artifacts
             .best_restart
             .final_evaluation
@@ -1209,18 +1913,41 @@ fn emit_final_assembly_progress(
     total_units: usize,
     current_item_label: &str,
 ) {
+    emit_joint_refinement_progress(
+        progress_sender,
+        JointRefinementStageProgressPhase::FinalAssembly,
+        completed_units,
+        total_units,
+        current_item_label,
+    );
+}
+
+fn emit_coarse_consistency_progress(
+    progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
+    completed_units: usize,
+    total_units: usize,
+    current_item_label: &str,
+) {
+    emit_joint_refinement_progress(
+        progress_sender,
+        JointRefinementStageProgressPhase::BaselineCoarseConsistencyEvaluation,
+        completed_units,
+        total_units,
+        current_item_label,
+    );
+}
+
+fn emit_joint_refinement_progress(
+    progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
+    progress_phase: JointRefinementStageProgressPhase,
+    completed_units: usize,
+    total_units: usize,
+    current_item_label: &str,
+) {
     if let Some(progress_sender) = progress_sender {
         let _ = progress_sender.send(JointRefinementStageProgressUpdate {
-            phase: JointRefinementStageProgressPhase::FinalAssembly,
-            completed_units,
-            total_units,
             current_item_label: Some(current_item_label.to_string()),
-            valid_completed_units: None,
-            cumulative_local_evaluation_count: None,
-            current_weighted_objective: None,
-            best_weighted_objective: None,
-            current_coarse_consistency_fit: None,
-            best_coarse_consistency_fit: None,
+            ..JointRefinementStageProgressUpdate::new(progress_phase, completed_units, total_units)
         });
     }
 }
@@ -1239,6 +1966,5 @@ fn unit_baseline_buckets() -> JointRefinementBaselineBuckets {
         activity_level_fit: 1.0,
         rv_activity_coupling_fit: 1.0,
         price_span_sanity_fit: 1.0,
-        option_spread_normalized_price_fit: 1.0,
     }
 }

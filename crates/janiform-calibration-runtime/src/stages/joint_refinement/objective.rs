@@ -1,16 +1,20 @@
 use std::cmp::Ordering;
+use std::sync::mpsc::Sender;
 
 use janiform_foundations::numeric::{
     bowley_skewness_from_sorted, central_skewness_or_zero, relative_rmse, sorted_finite_values,
     standardized_path_distance,
 };
+use janiform_foundations::time::duration_nanos_to_hours;
 
 use super::execution::{
     JOINT_REFINEMENT_OBJECTIVE_NORMALIZATION_FLOOR, JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR,
-    JointRefinementBaselineBuckets, JointRefinementCandidateEvaluation, JointRefinementContext,
+    JointRefinementAdmissibilityThresholds, JointRefinementBaselineBuckets,
+    JointRefinementCandidateEvaluation, JointRefinementContext,
     JointRefinementDeterministicCacheKey, JointRefinementDeterministicEvaluation,
-    JointRefinementFidelityTier, JointRefinementObservedData, JointRefinementSeedSummary,
-    option_spread_normalized_price_fit, ordered_parameter_bits,
+    JointRefinementFidelityTier, JointRefinementObservedData,
+    JointRefinementRawAdmissibilityMetrics, JointRefinementSeedSummary,
+    joint_refinement_admissibility_thresholds, ordered_parameter_bits,
 };
 use super::setup::{
     cached_seed_summaries_for_candidate_seeds, compute_cumulative_log_price_span,
@@ -30,6 +34,8 @@ use janiform_calibration_artifacts::{
 };
 use janiform_model_kernels::hawkes::HawkesKernelParameters;
 
+use super::contracts::{JointRefinementStageProgressPhase, JointRefinementStageProgressUpdate};
+
 pub(super) use janiform_foundations::numeric::root_mean_square_or_infinity as root_mean_square;
 
 pub(super) fn evaluate_joint_candidate(
@@ -42,12 +48,14 @@ pub(super) fn evaluate_joint_candidate(
         fidelity_tier,
         parameter_bits: ordered_parameter_bits(parameter_vector),
     };
+
     if let Ok(cache_guard) = context.objective_cache.lock()
         && let Some(cached_value) = cache_guard.get(&cache_key)
     {
         context.profiling_state.record_objective_cache_hit();
         return cached_value.clone();
     }
+
     context.profiling_state.record_objective_cache_miss();
 
     let candidate_evaluation =
@@ -60,12 +68,148 @@ pub(super) fn evaluate_joint_candidate(
     candidate_evaluation
 }
 
+pub(super) fn evaluate_joint_candidate_nig_block_search_objective(
+    parameter_vector: &[f64],
+    context: &JointRefinementContext,
+) -> Option<f64> {
+    let fitted_parameters = parameter_vector_to_fitted_parameters(parameter_vector, context)?;
+    if violates_runtime_seasonality_scaled_stationarity(&fitted_parameters, context) {
+        context
+            .profiling_state
+            .record_invalid_candidate_evaluation();
+        return None;
+    }
+
+    let modeled_open_event_rate_per_hour =
+        modeled_open_event_rate_per_hour(&fitted_parameters, context);
+
+    let raw_aggregated_likelihood_fit = raw_aggregated_likelihood_fit_for_fidelity(
+        &fitted_parameters,
+        modeled_open_event_rate_per_hour,
+        context,
+        ContinuousLikelihoodFidelityTier::Local,
+    );
+
+    let thresholds = joint_refinement_admissibility_thresholds(context);
+
+    let likelihood_search_score = threshold_relative_likelihood_search_score(
+        raw_aggregated_likelihood_fit,
+        thresholds.aggregated_likelihood_fit,
+    );
+
+    likelihood_search_score
+        .is_finite()
+        .then_some(likelihood_search_score)
+}
+
+pub(super) fn evaluate_joint_fitted_candidate_restart_admission_score(
+    fitted_parameters: &JointRefinementStageFittedParameters,
+    context: &JointRefinementContext,
+) -> Result<f64, &'static str> {
+    if violates_runtime_seasonality_scaled_stationarity(fitted_parameters, context) {
+        context
+            .profiling_state
+            .record_invalid_candidate_evaluation();
+        return Err("seasonality_scaled_stationarity_failed");
+    }
+
+    let deterministic_evaluation =
+        build_restart_screening_deterministic_evaluation(fitted_parameters, context);
+    if let Some(failure_reason) =
+        deterministic_pre_simulation_dynamics_failure(&deterministic_evaluation, context)
+    {
+        return Err(failure_reason);
+    }
+
+    let thresholds = joint_refinement_admissibility_thresholds(context);
+
+    let mut threshold_relative_scores = vec![threshold_relative_likelihood_search_score(
+        deterministic_evaluation.raw_aggregated_likelihood_fit,
+        thresholds.aggregated_likelihood_fit,
+    )];
+
+    if let Some(activity_level_fit) = deterministic_evaluation.raw_expected_activity_level_fit {
+        threshold_relative_scores.push(threshold_relative_search_score(
+            activity_level_fit,
+            thresholds.activity_level_fit,
+        ));
+    }
+
+    if let Some(activity_shape_fit) = deterministic_evaluation.raw_expected_activity_shape_fit {
+        threshold_relative_scores.push(threshold_relative_search_score(
+            activity_shape_fit,
+            thresholds.activity_shape_fit,
+        ));
+    }
+
+    let admission_score = root_mean_square(threshold_relative_scores.as_slice());
+    if admission_score.is_finite() {
+        Ok(admission_score)
+    } else {
+        Err("deterministic_restart_admission_score_not_finite")
+    }
+}
+
+fn build_restart_screening_deterministic_evaluation(
+    fitted_parameters: &JointRefinementStageFittedParameters,
+    context: &JointRefinementContext,
+) -> JointRefinementDeterministicEvaluation {
+    // Screening intentionally uses seed fidelity and avoids the full-fidelity cache.
+    // The deterministic cache key does not encode likelihood fidelity.
+    build_deterministic_evaluation_for_fidelity(
+        fitted_parameters,
+        context,
+        ContinuousLikelihoodFidelityTier::Seed,
+    )
+}
+
+pub(super) fn dynamics_block_search_objective(
+    raw_metrics: &JointRefinementRawAdmissibilityMetrics,
+    thresholds: JointRefinementAdmissibilityThresholds,
+) -> f64 {
+    root_mean_square(
+        [
+            threshold_relative_likelihood_search_score(
+                raw_metrics.aggregated_likelihood_fit,
+                thresholds.aggregated_likelihood_fit,
+            ),
+            threshold_relative_search_score(
+                raw_metrics.business_time_return_scale_fit,
+                thresholds.business_time_return_scale_fit,
+            ),
+            threshold_relative_search_score(
+                raw_metrics.intraday_return_level_fit,
+                thresholds.intraday_return_level_fit,
+            ),
+            threshold_relative_search_score(
+                raw_metrics.activity_shape_fit,
+                thresholds.activity_shape_fit,
+            ),
+            threshold_relative_search_score(
+                raw_metrics.activity_level_fit,
+                thresholds.activity_level_fit,
+            ),
+            threshold_relative_search_score(
+                raw_metrics.rv_activity_coupling_fit,
+                thresholds.rv_activity_coupling_fit,
+            ),
+            threshold_relative_search_score(
+                raw_metrics.price_span_sanity_fit,
+                thresholds.price_span_sanity_fit,
+            ),
+        ]
+        .as_slice(),
+    )
+}
+
 pub(super) fn evaluate_joint_fitted_parameters(
     fitted_parameters: JointRefinementStageFittedParameters,
     parameter_bits: Option<&[u64]>,
     context: &JointRefinementContext,
     fidelity_tier: JointRefinementFidelityTier,
     solver_settings: &CalibrationOptimizerSettings,
+    progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
+    progress_phase: Option<JointRefinementStageProgressPhase>,
 ) -> JointRefinementCandidateEvaluation {
     build_joint_candidate_evaluation_for_fitted_parameters(
         fitted_parameters,
@@ -73,6 +217,8 @@ pub(super) fn evaluate_joint_fitted_parameters(
         context,
         fidelity_tier,
         solver_settings,
+        progress_sender,
+        progress_phase,
     )
 }
 
@@ -83,7 +229,7 @@ fn build_joint_candidate_evaluation(
     solver_settings: &CalibrationOptimizerSettings,
 ) -> JointRefinementCandidateEvaluation {
     let parameter_bits = ordered_parameter_bits(parameter_vector);
-    let simulation_parameter_bits = if context.option_pricing_context.is_some() {
+    let simulation_parameter_bits = if context.option_pricing_refinement_enabled {
         Some(&[][..])
     } else {
         Some(parameter_bits.as_slice())
@@ -106,6 +252,8 @@ fn build_joint_candidate_evaluation(
         context,
         fidelity_tier,
         solver_settings,
+        None,
+        None,
     )
 }
 
@@ -115,7 +263,15 @@ fn build_joint_candidate_evaluation_for_fitted_parameters(
     context: &JointRefinementContext,
     fidelity_tier: JointRefinementFidelityTier,
     solver_settings: &CalibrationOptimizerSettings,
+    progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
+    progress_phase: Option<JointRefinementStageProgressPhase>,
 ) -> JointRefinementCandidateEvaluation {
+    let simulation_seed_count = match fidelity_tier {
+        JointRefinementFidelityTier::Local => 1,
+        JointRefinementFidelityTier::Final => context.final_simulation_seeds.len(),
+    };
+    let total_progress_units = 1 + simulation_seed_count;
+
     if violates_runtime_seasonality_scaled_stationarity(&fitted_parameters, context) {
         return invalid_candidate_evaluation(
             context,
@@ -126,7 +282,15 @@ fn build_joint_candidate_evaluation_for_fitted_parameters(
         );
     }
 
-    let simulation_parameter_bits = if context.option_pricing_context.is_some() {
+    emit_joint_refinement_candidate_evaluation_progress(
+        progress_sender,
+        progress_phase,
+        0,
+        total_progress_units,
+        Some("deterministic_evaluation"),
+    );
+
+    let simulation_parameter_bits = if context.option_pricing_refinement_enabled {
         Some(&[][..])
     } else {
         parameter_bits
@@ -135,7 +299,27 @@ fn build_joint_candidate_evaluation_for_fitted_parameters(
     let deterministic_evaluation =
         resolve_deterministic_evaluation(&fitted_parameters, simulation_parameter_bits, context);
 
+    emit_joint_refinement_candidate_evaluation_progress(
+        progress_sender,
+        progress_phase,
+        1,
+        total_progress_units,
+        Some("deterministic_evaluation"),
+    );
+
     let raw_aggregated_likelihood_fit = deterministic_evaluation.raw_aggregated_likelihood_fit;
+
+    if let Some(failure_reason) =
+        deterministic_pre_simulation_dynamics_failure(&deterministic_evaluation, context)
+    {
+        return invalid_candidate_evaluation(
+            context,
+            &context.baseline_hawkes_fitted_parameters,
+            &context.baseline_return_components_fitted_parameters,
+            solver_settings.constraint_penalty_weight,
+            failure_reason,
+        );
+    }
 
     let simulation_seeds = match fidelity_tier {
         JointRefinementFidelityTier::Local => vec![context.local_simulation_seed],
@@ -147,8 +331,10 @@ fn build_joint_candidate_evaluation_for_fitted_parameters(
         &fitted_parameters,
         context,
         simulation_seeds.as_slice(),
-        None,
-        None,
+        progress_sender,
+        progress_phase,
+        1,
+        total_progress_units,
     ) {
         Ok(seed_summaries) => seed_summaries,
         Err(error_message) => {
@@ -236,31 +422,25 @@ fn build_joint_candidate_evaluation_for_fitted_parameters(
                 / context.observed_data.observed_log_price_span.max(1.0e-8)
         }));
 
-    let raw_option_spread_normalized_price_fit = if context.option_pricing_context.is_some() {
-        match option_spread_normalized_price_fit(context, &fitted_parameters) {
-            Ok(value) => value,
-            Err(error_message) => {
-                return invalid_candidate_evaluation(
-                    context,
-                    &context.baseline_hawkes_fitted_parameters,
-                    &context.baseline_return_components_fitted_parameters,
-                    solver_settings.constraint_penalty_weight,
-                    error_message.as_str(),
-                );
-            }
-        }
-    } else {
-        0.0
-    };
-
     let baseline_buckets = match fidelity_tier {
         JointRefinementFidelityTier::Local => &context.local_baseline_buckets,
         JointRefinementFidelityTier::Final => &context.final_baseline_buckets,
     };
 
-    let normalized_aggregated_likelihood_fit = normalize_bucket(
+    emit_joint_refinement_candidate_evaluation_progress(
+        progress_sender,
+        progress_phase,
+        total_progress_units,
+        total_progress_units,
+        Some("objective_normalization"),
+    );
+
+    let use_raw_bucket_values = baseline_bucket_values_are_unity(baseline_buckets);
+
+    let normalized_aggregated_likelihood_fit = likelihood_ratio_fit_score(
         raw_aggregated_likelihood_fit,
         baseline_buckets.aggregated_likelihood_fit,
+        use_raw_bucket_values,
     );
 
     let normalized_aggregated_return_shape_fit = normalize_bucket(
@@ -314,19 +494,28 @@ fn build_joint_candidate_evaluation_for_fitted_parameters(
         baseline_buckets.price_span_sanity_fit,
     );
 
-    let normalized_option_spread_normalized_price_fit = if context.option_pricing_context.is_some()
-    {
-        normalize_bucket(
-            raw_option_spread_normalized_price_fit,
-            baseline_buckets.option_spread_normalized_price_fit,
-        )
-    } else {
-        0.0
+    let raw_admissibility_metrics = JointRefinementRawAdmissibilityMetrics {
+        aggregated_likelihood_fit: raw_aggregated_likelihood_fit,
+        aggregated_return_shape_fit: raw_aggregated_return_shape_fit,
+        return_asymmetry_fit: raw_return_asymmetry_fit,
+        tick_return_asymmetry_fit: raw_tick_return_asymmetry_fit,
+        aggregated_return_scale_fit: raw_aggregated_return_scale_fit,
+        tick_return_scale_fit: raw_tick_return_scale_fit,
+        business_time_return_scale_fit: raw_business_time_return_scale_fit,
+        intraday_return_level_fit: raw_intraday_return_level_fit,
+        activity_shape_fit: raw_activity_shape_fit,
+        activity_level_fit: raw_activity_level_fit,
+        rv_activity_coupling_fit: raw_rv_activity_coupling_fit,
+        price_span_sanity_fit: raw_price_span_sanity_fit,
     };
 
-    let hard_constraint_penalty = 0.0;
+    let hard_constraint_penalty = admissibility_constraint_penalty(
+        &raw_admissibility_metrics,
+        joint_refinement_admissibility_thresholds(context),
+        solver_settings.constraint_penalty_weight,
+    );
 
-    let mut normalized_objective_terms = vec![
+    let normalized_objective_terms = vec![
         normalized_aggregated_likelihood_fit,
         normalized_aggregated_return_shape_fit,
         normalized_return_asymmetry_fit,
@@ -341,17 +530,20 @@ fn build_joint_candidate_evaluation_for_fitted_parameters(
         normalized_price_span_sanity_fit,
     ];
 
-    if context.option_pricing_context.is_some() {
-        normalized_objective_terms.push(normalized_option_spread_normalized_price_fit);
-    }
-
     let weighted_objective =
         root_mean_square(normalized_objective_terms.as_slice()) + hard_constraint_penalty;
 
-    let use_raw_bucket_values = baseline_bucket_values_are_unity(baseline_buckets);
+    emit_joint_refinement_candidate_evaluation_progress(
+        progress_sender,
+        progress_phase,
+        total_progress_units,
+        total_progress_units,
+        Some("objective_diagnostics"),
+    );
 
     JointRefinementCandidateEvaluation {
         fitted_parameters,
+        raw_admissibility_metrics,
         objective_terms: build_joint_objective_term_diagnostics(
             resolved_seed_summaries.as_slice(),
             &context.observed_data,
@@ -417,16 +609,31 @@ fn build_joint_candidate_evaluation_for_fitted_parameters(
                 raw_price_span_sanity_fit,
                 normalized_price_span_sanity_fit,
             ),
-            option_spread_normalized_price_fit: maybe_raw(
-                use_raw_bucket_values,
-                raw_option_spread_normalized_price_fit,
-                normalized_option_spread_normalized_price_fit,
-            ),
             weighted_objective,
             hard_constraint_penalty,
         },
         invalid_reason: None,
     }
+}
+
+fn emit_joint_refinement_candidate_evaluation_progress(
+    progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
+    progress_phase: Option<JointRefinementStageProgressPhase>,
+    completed_units: usize,
+    total_units: usize,
+    current_item_label: Option<&str>,
+) {
+    let Some(progress_sender) = progress_sender else {
+        return;
+    };
+    let Some(progress_phase) = progress_phase else {
+        return;
+    };
+
+    let _ = progress_sender.send(JointRefinementStageProgressUpdate {
+        current_item_label: current_item_label.map(str::to_string),
+        ..JointRefinementStageProgressUpdate::new(progress_phase, completed_units, total_units)
+    });
 }
 
 pub(super) fn joint_primary_metrics_from_breakdown(
@@ -444,7 +651,7 @@ pub(super) fn joint_primary_metrics_from_breakdown(
         breakdown.activity_shape_fit,
         breakdown.activity_level_fit,
         breakdown.rv_activity_coupling_fit,
-        breakdown.option_spread_normalized_price_fit,
+        breakdown.price_span_sanity_fit,
     ]
 }
 
@@ -596,6 +803,20 @@ fn normalize_bucket(raw_value: f64, baseline_bucket: f64) -> f64 {
     )
 }
 
+fn likelihood_ratio_fit_score(
+    raw_score: f64,
+    baseline_score: f64,
+    baseline_is_uninitialized: bool,
+) -> f64 {
+    if baseline_is_uninitialized {
+        return 1.0;
+    }
+
+    // Shifted average NLL differences cancel the sample-specific likelihood shift.
+    // The exponentiated difference is the geometric likelihood ratio to baseline.
+    (raw_score - baseline_score).exp()
+}
+
 fn maybe_raw(use_raw: bool, raw_value: f64, normalized_value: f64) -> f64 {
     if use_raw { raw_value } else { normalized_value }
 }
@@ -605,7 +826,90 @@ fn average_seed_score(values: impl Iterator<Item = f64>) -> f64 {
     collected.iter().sum::<f64>() / collected.len().max(1) as f64
 }
 
-fn invalid_candidate_evaluation(
+fn admissibility_constraint_penalty(
+    raw_metrics: &JointRefinementRawAdmissibilityMetrics,
+    thresholds: JointRefinementAdmissibilityThresholds,
+    constraint_penalty_weight: f64,
+) -> f64 {
+    let exceedance_terms = [
+        admissibility_threshold_exceedance(
+            raw_metrics.aggregated_likelihood_fit,
+            thresholds.aggregated_likelihood_fit,
+        ),
+        admissibility_threshold_exceedance(
+            raw_metrics.aggregated_return_shape_fit,
+            thresholds.aggregated_return_shape_fit,
+        ),
+        admissibility_threshold_exceedance(
+            raw_metrics.return_asymmetry_fit,
+            thresholds.return_asymmetry_fit,
+        ),
+        admissibility_threshold_exceedance(
+            raw_metrics.tick_return_asymmetry_fit,
+            thresholds.tick_return_asymmetry_fit,
+        ),
+        admissibility_threshold_exceedance(
+            raw_metrics.aggregated_return_scale_fit,
+            thresholds.aggregated_return_scale_fit,
+        ),
+        admissibility_threshold_exceedance(
+            raw_metrics.tick_return_scale_fit,
+            thresholds.tick_return_scale_fit,
+        ),
+        admissibility_threshold_exceedance(
+            raw_metrics.business_time_return_scale_fit,
+            thresholds.business_time_return_scale_fit,
+        ),
+        admissibility_threshold_exceedance(
+            raw_metrics.intraday_return_level_fit,
+            thresholds.intraday_return_level_fit,
+        ),
+        admissibility_threshold_exceedance(
+            raw_metrics.activity_shape_fit,
+            thresholds.activity_shape_fit,
+        ),
+        admissibility_threshold_exceedance(
+            raw_metrics.activity_level_fit,
+            thresholds.activity_level_fit,
+        ),
+        admissibility_threshold_exceedance(
+            raw_metrics.rv_activity_coupling_fit,
+            thresholds.rv_activity_coupling_fit,
+        ),
+        admissibility_threshold_exceedance(
+            raw_metrics.price_span_sanity_fit,
+            thresholds.price_span_sanity_fit,
+        ),
+    ];
+
+    constraint_penalty_weight * root_mean_square(exceedance_terms.as_slice())
+}
+
+fn admissibility_threshold_exceedance(metric_value: f64, threshold: f64) -> f64 {
+    (metric_value - threshold).max(0.0)
+}
+
+fn threshold_relative_search_score(metric_value: f64, threshold: f64) -> f64 {
+    let threshold_ratio = metric_value / threshold;
+
+    if threshold_ratio <= 1.0 {
+        threshold_ratio
+    } else {
+        1.0 + threshold_ratio.ln()
+    }
+}
+
+fn threshold_relative_likelihood_search_score(metric_value: f64, threshold: f64) -> f64 {
+    let log_ratio_to_threshold = metric_value - threshold;
+
+    if log_ratio_to_threshold <= 0.0 {
+        log_ratio_to_threshold.exp()
+    } else {
+        1.0 + log_ratio_to_threshold
+    }
+}
+
+pub(crate) fn invalid_candidate_evaluation(
     context: &JointRefinementContext,
     baseline_hawkes_fitted_parameters: &janiform_calibration_artifacts::HawkesStageFittedParameters,
     baseline_return_components_fitted_parameters: &janiform_calibration_artifacts::ReturnComponentsStageFittedParameters,
@@ -623,6 +927,20 @@ fn invalid_candidate_evaluation(
                 .clone(),
             pricing_block_fitted_parameters: None,
         },
+        raw_admissibility_metrics: JointRefinementRawAdmissibilityMetrics {
+            aggregated_likelihood_fit: 100.0,
+            aggregated_return_shape_fit: 100.0,
+            return_asymmetry_fit: 100.0,
+            tick_return_asymmetry_fit: 100.0,
+            aggregated_return_scale_fit: 100.0,
+            tick_return_scale_fit: 100.0,
+            business_time_return_scale_fit: 100.0,
+            intraday_return_level_fit: 100.0,
+            activity_shape_fit: 100.0,
+            activity_level_fit: 100.0,
+            rv_activity_coupling_fit: 100.0,
+            price_span_sanity_fit: 100.0,
+        },
         objective_terms: Vec::new(),
         breakdown: JointRefinementStageObjectiveBreakdown {
             aggregated_likelihood_fit: 100.0,
@@ -637,7 +955,6 @@ fn invalid_candidate_evaluation(
             activity_level_fit: 100.0,
             rv_activity_coupling_fit: 100.0,
             price_span_sanity_fit: 100.0,
-            option_spread_normalized_price_fit: 100.0,
             weighted_objective: 100.0 + constraint_penalty_weight,
             hard_constraint_penalty: constraint_penalty_weight,
         },
@@ -664,14 +981,292 @@ fn resolve_deterministic_evaluation(
 
     context.profiling_state.record_deterministic_cache_miss();
 
+    let deterministic_evaluation = build_deterministic_evaluation_for_fidelity(
+        fitted_parameters,
+        context,
+        ContinuousLikelihoodFidelityTier::Full,
+    );
+
+    if let Some(deterministic_cache_key) = cache_key
+        && let Ok(mut cache_guard) = context.deterministic_evaluation_cache.lock()
+    {
+        cache_guard.insert(deterministic_cache_key, deterministic_evaluation.clone());
+    }
+
+    deterministic_evaluation
+}
+
+fn build_deterministic_evaluation_for_fidelity(
+    fitted_parameters: &JointRefinementStageFittedParameters,
+    context: &JointRefinementContext,
+    likelihood_fidelity_tier: ContinuousLikelihoodFidelityTier,
+) -> JointRefinementDeterministicEvaluation {
     let deterministic_evaluation_started_at = std::time::Instant::now();
 
     let modeled_open_event_rate_per_hour =
-        crate::stages::hawkes::stationary_open_event_rate_per_hour(
-            &fitted_parameters.hawkes_fitted_parameters,
-        )
-        .unwrap_or(context.observed_data.observed_open_event_rate_per_hour);
+        modeled_open_event_rate_per_hour(fitted_parameters, context);
 
+    let raw_aggregated_likelihood_fit = raw_aggregated_likelihood_fit_for_fidelity(
+        fitted_parameters,
+        modeled_open_event_rate_per_hour,
+        context,
+        likelihood_fidelity_tier,
+    );
+
+    let expected_hourly_tick_counts =
+        expected_hourly_tick_counts(modeled_open_event_rate_per_hour, context);
+
+    let deterministic_evaluation = JointRefinementDeterministicEvaluation {
+        modeled_open_event_rate_per_hour,
+        raw_aggregated_likelihood_fit,
+        raw_expected_activity_shape_fit: expected_hourly_tick_counts.as_ref().map(
+            |expected_hourly_tick_counts| {
+                activity_shape_fit_for_counts(
+                    expected_hourly_tick_counts.as_slice(),
+                    context.observed_data.observed_hourly_tick_counts.as_slice(),
+                )
+            },
+        ),
+        raw_expected_activity_level_fit: expected_hourly_tick_counts.as_ref().map(
+            |expected_hourly_tick_counts| {
+                activity_level_fit_for_counts(
+                    expected_hourly_tick_counts.as_slice(),
+                    context.observed_data.observed_hourly_tick_counts.as_slice(),
+                )
+            },
+        ),
+    };
+
+    context
+        .profiling_state
+        .record_deterministic_evaluation_duration(
+            deterministic_evaluation_started_at
+                .elapsed()
+                .as_millis()
+                .min(u128::from(u64::MAX)) as u64,
+        );
+
+    deterministic_evaluation
+}
+
+fn deterministic_pre_simulation_dynamics_failure(
+    deterministic_evaluation: &JointRefinementDeterministicEvaluation,
+    context: &JointRefinementContext,
+) -> Option<&'static str> {
+    let thresholds = joint_refinement_admissibility_thresholds(context);
+
+    if !deterministic_evaluation
+        .raw_aggregated_likelihood_fit
+        .is_finite()
+    {
+        return Some("deterministic_pre_simulation_aggregated_likelihood_not_finite");
+    }
+
+    if deterministic_evaluation
+        .raw_expected_activity_level_fit
+        .is_some_and(|fit| fit > thresholds.activity_level_fit)
+    {
+        return Some("deterministic_pre_simulation_expected_activity_level_infeasible");
+    }
+
+    if deterministic_evaluation
+        .raw_expected_activity_shape_fit
+        .is_some_and(|fit| fit > thresholds.activity_shape_fit)
+    {
+        return Some("deterministic_pre_simulation_expected_activity_shape_infeasible");
+    }
+
+    None
+}
+
+fn expected_hourly_tick_counts(
+    modeled_open_event_rate_per_hour: f64,
+    context: &JointRefinementContext,
+) -> Option<Vec<f64>> {
+    if !modeled_open_event_rate_per_hour.is_finite()
+        || modeled_open_event_rate_per_hour < 0.0
+        || context.runtime_hourly_seasonality_factors.len()
+            != context
+                .observed_data
+                .simulated_hourly_interval_template
+                .len()
+    {
+        return None;
+    }
+
+    context
+        .observed_data
+        .simulated_hourly_interval_template
+        .iter()
+        .zip(context.runtime_hourly_seasonality_factors.iter())
+        .map(|(interval, hourly_factor)| {
+            if !hourly_factor.is_finite()
+                || *hourly_factor < 0.0
+                || interval.interval_end_utc_nanos < interval.interval_start_utc_nanos
+            {
+                return None;
+            }
+
+            let duration_hours = duration_nanos_to_hours(
+                interval.interval_end_utc_nanos - interval.interval_start_utc_nanos,
+            );
+            let expected_count = modeled_open_event_rate_per_hour * hourly_factor * duration_hours;
+
+            expected_count.is_finite().then_some(expected_count)
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        activity_level_fit_for_counts, activity_shape_fit_for_counts,
+        admissibility_constraint_penalty, dynamics_block_search_objective,
+        likelihood_ratio_fit_score, threshold_relative_likelihood_search_score,
+        threshold_relative_search_score,
+    };
+    use crate::stages::joint_refinement::execution::{
+        JointRefinementAdmissibilityThresholds, JointRefinementRawAdmissibilityMetrics,
+    };
+
+    fn test_thresholds() -> JointRefinementAdmissibilityThresholds {
+        JointRefinementAdmissibilityThresholds {
+            aggregated_likelihood_fit: 2.0,
+            aggregated_return_shape_fit: 2.0,
+            return_asymmetry_fit: 2.0,
+            tick_return_asymmetry_fit: 2.0,
+            aggregated_return_scale_fit: 2.0,
+            tick_return_scale_fit: 2.0,
+            business_time_return_scale_fit: 2.0,
+            intraday_return_level_fit: 2.0,
+            activity_shape_fit: 2.0,
+            activity_level_fit: 2.0,
+            rv_activity_coupling_fit: 2.0,
+            price_span_sanity_fit: 2.0,
+        }
+    }
+
+    fn test_metrics(value: f64) -> JointRefinementRawAdmissibilityMetrics {
+        JointRefinementRawAdmissibilityMetrics {
+            aggregated_likelihood_fit: value,
+            aggregated_return_shape_fit: value,
+            return_asymmetry_fit: value,
+            tick_return_asymmetry_fit: value,
+            aggregated_return_scale_fit: value,
+            tick_return_scale_fit: value,
+            business_time_return_scale_fit: value,
+            intraday_return_level_fit: value,
+            activity_shape_fit: value,
+            activity_level_fit: value,
+            rv_activity_coupling_fit: value,
+            price_span_sanity_fit: value,
+        }
+    }
+
+    #[test]
+    fn admissibility_constraint_penalty_is_zero_within_thresholds() {
+        let penalty = admissibility_constraint_penalty(&test_metrics(1.5), test_thresholds(), 10.0);
+
+        assert_eq!(penalty, 0.0);
+    }
+
+    #[test]
+    fn admissibility_constraint_penalty_scales_with_threshold_exceedance() {
+        let penalty = admissibility_constraint_penalty(&test_metrics(2.5), test_thresholds(), 10.0);
+
+        assert_eq!(penalty, 5.0);
+    }
+
+    #[test]
+    fn threshold_relative_search_score_matches_threshold_ratio_within_boundary() {
+        assert_eq!(threshold_relative_search_score(1.0, 2.0), 0.5);
+        assert_eq!(threshold_relative_search_score(2.0, 2.0), 1.0);
+    }
+
+    #[test]
+    fn threshold_relative_search_score_compresses_exceedance_above_boundary() {
+        assert_eq!(
+            threshold_relative_search_score(4.0, 2.0),
+            1.0 + 2.0_f64.ln()
+        );
+    }
+
+    #[test]
+    fn likelihood_ratio_fit_score_is_positive_and_baseline_centered() {
+        assert_eq!(likelihood_ratio_fit_score(-0.5, -0.5, false), 1.0);
+        assert!(likelihood_ratio_fit_score(-0.75, -0.5, false) < 1.0);
+        assert!(likelihood_ratio_fit_score(-0.25, -0.5, false) > 1.0);
+    }
+
+    #[test]
+    fn likelihood_ratio_fit_score_uses_unit_reference_before_baseline_is_established() {
+        assert_eq!(likelihood_ratio_fit_score(-0.5, 1.0, true), 1.0);
+    }
+
+    #[test]
+    fn threshold_relative_likelihood_search_score_is_positive_and_threshold_centered() {
+        assert_eq!(threshold_relative_likelihood_search_score(-0.5, -0.5), 1.0);
+        assert!(threshold_relative_likelihood_search_score(-0.75, -0.5) < 1.0);
+        assert_eq!(
+            threshold_relative_likelihood_search_score(-0.25, -0.5),
+            1.25
+        );
+    }
+
+    #[test]
+    fn dynamics_block_search_objective_uses_compressed_threshold_relative_terms() {
+        let raw_metrics = JointRefinementRawAdmissibilityMetrics {
+            aggregated_likelihood_fit: 4.0,
+            aggregated_return_shape_fit: 50.0,
+            return_asymmetry_fit: 50.0,
+            tick_return_asymmetry_fit: 50.0,
+            aggregated_return_scale_fit: 50.0,
+            tick_return_scale_fit: 50.0,
+            business_time_return_scale_fit: 2.0,
+            intraday_return_level_fit: 2.0,
+            activity_shape_fit: 2.0,
+            activity_level_fit: 2.0,
+            rv_activity_coupling_fit: 2.0,
+            price_span_sanity_fit: 2.0,
+        };
+
+        let objective = dynamics_block_search_objective(&raw_metrics, test_thresholds());
+        let expected = super::root_mean_square([3.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0].as_slice());
+
+        assert_eq!(objective, expected);
+    }
+
+    #[test]
+    fn expected_activity_fit_helpers_match_hourly_count_identity() {
+        let observed_counts = [10.0, 20.0, 30.0];
+
+        assert_eq!(
+            activity_shape_fit_for_counts(&observed_counts, &observed_counts),
+            0.0
+        );
+        assert_eq!(
+            activity_level_fit_for_counts(&observed_counts, &observed_counts),
+            0.0
+        );
+    }
+}
+
+fn modeled_open_event_rate_per_hour(
+    fitted_parameters: &JointRefinementStageFittedParameters,
+    context: &JointRefinementContext,
+) -> f64 {
+    crate::stages::hawkes::stationary_open_event_rate_per_hour(
+        &fitted_parameters.hawkes_fitted_parameters,
+    )
+    .unwrap_or(context.observed_data.observed_open_event_rate_per_hour)
+}
+
+fn raw_aggregated_likelihood_fit_for_fidelity(
+    fitted_parameters: &JointRefinementStageFittedParameters,
+    modeled_open_event_rate_per_hour: f64,
+    context: &JointRefinementContext,
+    fidelity_tier: ContinuousLikelihoodFidelityTier,
+) -> f64 {
     let observed_5m_sample =
         crate::stages::joint_metrics::build_continuous_calibration_sample_from_aggregated_intervals(
             context.observed_data.observed_5m_intervals.as_slice(),
@@ -697,13 +1292,13 @@ fn resolve_deterministic_evaluation(
                 .max(1.0e-8),
     );
 
-    let raw_aggregated_likelihood_fit = [
+    [
         evaluate_configuration_likelihood_objective(
             fitted_parameters
                 .return_components_fitted_parameters
                 .nig_shared_plus_shift_configuration,
             &observed_tick_sample,
-            ContinuousLikelihoodFidelityTier::Full,
+            fidelity_tier,
         )
         .shifted_objective_score,
         evaluate_configuration_likelihood_objective(
@@ -711,7 +1306,7 @@ fn resolve_deterministic_evaluation(
                 .return_components_fitted_parameters
                 .nig_shared_plus_shift_configuration,
             &observed_5m_sample,
-            ContinuousLikelihoodFidelityTier::Full,
+            fidelity_tier,
         )
         .shifted_objective_score,
         evaluate_configuration_likelihood_objective(
@@ -719,35 +1314,13 @@ fn resolve_deterministic_evaluation(
                 .return_components_fitted_parameters
                 .nig_shared_plus_shift_configuration,
             &observed_15m_sample,
-            ContinuousLikelihoodFidelityTier::Full,
+            fidelity_tier,
         )
         .shifted_objective_score,
     ]
     .into_iter()
     .sum::<f64>()
-        / 3.0;
-
-    let deterministic_evaluation = JointRefinementDeterministicEvaluation {
-        modeled_open_event_rate_per_hour,
-        raw_aggregated_likelihood_fit,
-    };
-
-    context
-        .profiling_state
-        .record_deterministic_evaluation_duration(
-            deterministic_evaluation_started_at
-                .elapsed()
-                .as_millis()
-                .min(u128::from(u64::MAX)) as u64,
-        );
-
-    if let Some(deterministic_cache_key) = cache_key
-        && let Ok(mut cache_guard) = context.deterministic_evaluation_cache.lock()
-    {
-        cache_guard.insert(deterministic_cache_key, deterministic_evaluation.clone());
-    }
-
-    deterministic_evaluation
+        / 3.0
 }
 
 fn baseline_bucket_values_are_unity(baseline_buckets: &JointRefinementBaselineBuckets) -> bool {
@@ -763,7 +1336,6 @@ fn baseline_bucket_values_are_unity(baseline_buckets: &JointRefinementBaselineBu
         && baseline_buckets.activity_level_fit == 1.0
         && baseline_buckets.rv_activity_coupling_fit == 1.0
         && baseline_buckets.price_span_sanity_fit == 1.0
-        && baseline_buckets.option_spread_normalized_price_fit == 1.0
 }
 
 fn aggregated_return_shape_fit(
@@ -775,11 +1347,13 @@ fn aggregated_return_shape_fit(
         observed_data.observed_5m_shape_returns.as_slice(),
     )
     .profile_fit_score;
+
     let shape_15m = crate::stages::return_components::distribution_profile_fit_score(
         seed_summary.simulated_15m_shape_returns.as_slice(),
         observed_data.observed_15m_shape_returns.as_slice(),
     )
     .profile_fit_score;
+
     let shape_tick = crate::stages::return_components::distribution_profile_fit_score(
         seed_summary.simulated_tick_shape_returns.as_slice(),
         observed_data.observed_tick_shape_returns.as_slice(),
@@ -797,10 +1371,12 @@ fn aggregated_return_scale_fit(
         seed_summary.simulated_15m_return_scale_summary,
         observed_data.observed_15m_return_scale_summary,
     );
+
     let fit_5m = return_scale_horizon_fit(
         seed_summary.simulated_5m_return_scale_summary,
         observed_data.observed_5m_return_scale_summary,
     );
+
     let fit_tick = return_scale_horizon_fit(
         seed_summary.simulated_tick_return_scale_summary,
         observed_data.observed_tick_return_scale_summary,
@@ -827,10 +1403,12 @@ fn return_asymmetry_fit(
         seed_summary.simulated_15m_shape_returns.as_slice(),
         observed_data.observed_15m_shape_returns.as_slice(),
     );
+
     let fit_5m = return_asymmetry_horizon_fit(
         seed_summary.simulated_5m_shape_returns.as_slice(),
         observed_data.observed_5m_shape_returns.as_slice(),
     );
+
     let fit_tick = return_asymmetry_horizon_fit(
         seed_summary.simulated_tick_shape_returns.as_slice(),
         observed_data.observed_tick_shape_returns.as_slice(),
@@ -857,6 +1435,7 @@ fn business_time_return_scale_fit(
         seed_summary.simulated_15m_business_time_return_scale_summaries,
         observed_data.observed_15m_business_time_return_scale_summaries,
     );
+
     let fit_5m = business_time_bucket_return_scale_fit(
         seed_summary.simulated_5m_business_time_return_scale_summaries,
         observed_data.observed_5m_business_time_return_scale_summaries,
@@ -877,6 +1456,7 @@ fn intraday_return_level_fit(
             .observed_tick_intraday_mean_absolute_returns
             .as_slice(),
     );
+
     let fit_15m = intraday_return_level_horizon_fit(
         seed_summary
             .simulated_15m_intraday_mean_absolute_returns
@@ -885,6 +1465,7 @@ fn intraday_return_level_fit(
             .observed_15m_intraday_mean_absolute_returns
             .as_slice(),
     );
+
     let fit_5m = intraday_return_level_horizon_fit(
         seed_summary
             .simulated_5m_intraday_mean_absolute_returns
@@ -906,11 +1487,13 @@ fn return_scale_horizon_fit(
         observed_summary.mean_absolute_return,
         JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR,
     );
+
     let realized_variance_fit = log_ratio_distance(
         candidate_summary.realized_variance,
         observed_summary.realized_variance,
         JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR,
     );
+
     let tail_fit = log_ratio_distance(
         candidate_summary.absolute_return_quantile_q90,
         observed_summary.absolute_return_quantile_q90,
@@ -936,14 +1519,15 @@ fn activity_shape_fit(
     seed_summary: &JointRefinementSeedSummary,
     observed_data: &JointRefinementObservedData,
 ) -> f64 {
-    let profile_fit = normalized_profile_distance(
+    activity_shape_fit_for_counts(
         seed_summary.simulated_hourly_tick_counts.as_slice(),
         observed_data.observed_hourly_tick_counts.as_slice(),
-    );
-    let path_fit = standardized_path_distance(
-        seed_summary.simulated_hourly_tick_counts.as_slice(),
-        observed_data.observed_hourly_tick_counts.as_slice(),
-    );
+    )
+}
+
+fn activity_shape_fit_for_counts(candidate_counts: &[f64], observed_counts: &[f64]) -> f64 {
+    let profile_fit = normalized_profile_distance(candidate_counts, observed_counts);
+    let path_fit = standardized_path_distance(candidate_counts, observed_counts);
 
     root_mean_square([profile_fit, path_fit].as_slice())
 }
@@ -952,9 +1536,13 @@ fn activity_level_fit(
     seed_summary: &JointRefinementSeedSummary,
     observed_data: &JointRefinementObservedData,
 ) -> f64 {
-    let candidate_counts = seed_summary.simulated_hourly_tick_counts.as_slice();
-    let observed_counts = observed_data.observed_hourly_tick_counts.as_slice();
+    activity_level_fit_for_counts(
+        seed_summary.simulated_hourly_tick_counts.as_slice(),
+        observed_data.observed_hourly_tick_counts.as_slice(),
+    )
+}
 
+fn activity_level_fit_for_counts(candidate_counts: &[f64], observed_counts: &[f64]) -> f64 {
     let candidate_total = candidate_counts.iter().sum::<f64>();
     let observed_total = observed_counts.iter().sum::<f64>();
 
@@ -969,16 +1557,19 @@ fn activity_level_fit(
         observed_total,
         JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR,
     );
+
     let mean_fit = log_ratio_distance(
         candidate_mean,
         observed_mean,
         JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR,
     );
+
     let peak_fit = log_ratio_distance(
         candidate_peak,
         observed_peak,
         JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR,
     );
+
     let path_fit = relative_rmse(
         candidate_counts,
         observed_counts,

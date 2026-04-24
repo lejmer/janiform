@@ -23,12 +23,13 @@ The supported fit ownership submodules also include:
 - `janiform.calibration.fit.state` for the public current-state estimation contracts
   used by `JaniformModel.estimate_current_state(...)`
 - `janiform.calibration.fit.pricing` for the public fitted-model option-pricing contracts used by
-  `JaniformModel.price_option_grids(...)`, `JaniformModel.price_option_surface(...)`, and
-  `JaniformModel.price_option_market_snapshot(...)`, including Janiform-computed
-  implied-volatility fields together with per-node pricing status and failure diagnostics on the
-  returned pricing artifacts
+  `JaniformModel.price_option_grid(...)`, `JaniformModel.price_option_grid_surface(...)`,
+  `JaniformModel.price_option_snapshot(...)`, and `JaniformModel.price_option_surface(...)`,
+  including Janiform-computed implied-volatility fields together with per-node pricing status and
+  failure diagnostics on the returned pricing artifacts
 - `janiform.calibration.fit.pricing.market_snapshot.inputs` for `TabularFrameInput`, the public
-  market-snapshot tabular input alias used by `JaniformModel.price_option_market_snapshot(...)`
+  market-data tabular input alias used by `JaniformModel.price_option_snapshot(...)` and
+  `JaniformModel.price_option_surface(...)`
 - `janiform.calibration.market_data` for market-data request, preparation, and workflow contracts
 - `janiform.calibration.presets` for preset references, preset registries, and preset resolution
 - `janiform.calibration.staged` for staged calibration request, input, runtime, and response contracts
@@ -38,9 +39,10 @@ The supported fit ownership submodules also include:
 
 - `JaniformModel.estimate_current_state(...)`
 - `JaniformModel.price_option(...)`
-- `JaniformModel.price_option_grids(...)`
+- `JaniformModel.price_option_grid(...)`
+- `JaniformModel.price_option_grid_surface(...)`
+- `JaniformModel.price_option_snapshot(...)`
 - `JaniformModel.price_option_surface(...)`
-- `JaniformModel.price_option_market_snapshot(...)`
 - `JaniformModel.simulate(...)`
 
 Current-state estimation is the default live-state path when observed data is supplied:
@@ -50,9 +52,12 @@ Current-state estimation is the default live-state path when observed data is su
 - `price_option(..., observed_data=...)` uses that estimator automatically before pricing
 - `simulate(..., continuation_data=...)` uses that estimator automatically before continuing the
   path
-- `price_option_market_snapshot(...)` loads observed tick data, estimates the current state,
-  prices the selected quote snapshot in option grids, and returns both tidy rows and a
+- `price_option_snapshot(...)` loads observed tick data, estimates the current state, prices the
+  retained observed quote snapshot in fitted-model option grids, and returns both tidy rows and a
   strike-by-expiry surface frame
+- `price_option_surface(...)` extends the observed quote workflow to a surface result, either for
+  the retained multi-expiry snapshot or across valuation times when the retained quotes share one
+  expiry
 - when no observed data is supplied, Janiform falls back to the stationary Hawkes state
 - explicit `initial_excitation_state` and `initial_mean_reversion_boundary_state` overrides remain
   available for diagnostic workflows
@@ -82,8 +87,13 @@ The high-level joint option path also exposes:
 - `option_surface_valuation_time_utc` to select the option snapshot being fit
 - `carry` for optional flat discount-rate and carry-rate input
 
+The `JaniformEstimator` constructor accepts `dynamics_search_restart_candidate_budget` to set the
+joint-refinement restart candidate budget used by the calibration dynamics search.
+
 `JaniformEstimator.fit_with_report(...)` returns `JaniformFitResult`, which carries both the fitted
-model and the fit report without changing the main `fit(...)` return shape.
+model and the fit report without changing the main `fit(...)` return shape. The returned
+`JaniformFitReport` also exposes staged execution summaries and the resolved stage-report payloads
+through `report.stage_report_payloads`.
 
 When fitting with options, one fit run targets one option quote timestamp, tick data remains
 mandatory, and the option surface must contain bid and ask quote data together with prices.
@@ -210,5 +220,8 @@ Representative public symbols include:
 Shared contract models and serialization helpers. Representative public symbols include:
 
 - `ContractModel`
+- `require_mapping`
+- `require_non_empty_string`
+- `require_optional_finite_scalar`
 - `serialize_deterministic_json`
 - `serialize_pretty_json`

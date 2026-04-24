@@ -6,7 +6,6 @@ mod observer;
 mod payload_state;
 mod reporting;
 
-pub(super) use crate::calendar::ExchangeCalendarRegistry;
 pub(super) use crate::checkpointing::CalibrationInMemoryStagePayloadState;
 pub(super) use crate::diagnostics::types::{
     CalibrationDiagnosticArtifactBundle, CalibrationDiagnosticArtifactReference,
@@ -21,8 +20,7 @@ pub(super) use crate::stages::joint_refinement::{
     JointRefinementStageExecutionReport, JointRefinementStageHawkesInput,
     JointRefinementStageProgressPhase, JointRefinementStageProgressUpdate,
     JointRefinementStageReturnComponentsInput, JointRefinementStageSeasonalityFactorsInput,
-    run_joint_refinement_calibration_stage,
-    run_joint_refinement_calibration_stage_with_progress_observer,
+    run_joint_refinement_calibration_stage_with_progress_observer_and_persistence,
 };
 pub(super) use crate::stages::mean_reversion::{
     MeanReversionStageExecutionInput, MeanReversionStageExecutionMetadata,
@@ -32,7 +30,9 @@ pub(super) use crate::stages::mean_reversion::{
 pub(super) use crate::stages::return_components::{
     ReturnComponentsStageActivityInput, ReturnComponentsStageCandidateGenerationInput,
     ReturnComponentsStageExecutionInput, ReturnComponentsStageExecutionMetadata,
-    ReturnComponentsStageExecutionReport, run_return_components_calibration_stage,
+    ReturnComponentsStageExecutionReport, ReturnComponentsStageProgressPhase,
+    ReturnComponentsStageProgressUpdate, run_return_components_calibration_stage,
+    run_return_components_calibration_stage_with_progress_observer,
 };
 pub(super) use crate::stages::seasonality::{
     CalibrationStageExecutionStatus, SeasonalityStageExecutionInput,
@@ -53,10 +53,11 @@ pub(super) use janiform_calibration_artifacts::{
     CalibrationStageParameterOptimizerStateInput, CalibrationStageParameterPayload,
     CalibrationStageSeedSource, stage_output_artifact_references_for_stage,
 };
+pub(super) use janiform_market_time::calendar::ExchangeCalendarRegistry;
 
 pub use contracts::{
-    CalibrationStagedRunFailure, CalibrationStagedRunInputs, CalibrationStagedRunObserverEvent,
-    CalibrationStagedRunReport, CalibrationStagedRunStageReport,
+    CalibrationStageProgressPhase, CalibrationStagedRunFailure, CalibrationStagedRunInputs,
+    CalibrationStagedRunObserverEvent, CalibrationStagedRunReport, CalibrationStagedRunStageReport,
     calibration_checkpoint_reference_for_stage, calibration_last_success_checkpoint_reference,
 };
 pub use execution::{

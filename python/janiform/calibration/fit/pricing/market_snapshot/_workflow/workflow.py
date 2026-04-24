@@ -5,39 +5,22 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
-import pandas
-
 from ......_workflow_progress import WorkflowProgressMode
-from ......contracts import require_finite_scalar
+from ......contracts.base import require_finite_scalar
 from ......pricing import VanillaOptionPayoffType
 from .....errors import calibration_error
 from .....market_data.contracts import CalibrationOptionSurfaceColumnMapping
-from ...._runtime.payloads import current_state_tick_data_column_mapping_for_model
-from ....state import CurrentStateEstimationRequest
-from ...grids import (
-    JaniformVanillaOptionGrid,
-    JaniformVanillaOptionGridBatch,
-)
+from .context import prepare_observed_option_market_context
+from .pricing import price_prepared_snapshot_groups_for_model
+from .preparation import prepare_snapshot_groups
 from ..result import JaniformObservedOptionSnapshotPricingResult
-from .loading import (
-    TabularFrameInput,
-    filter_observed_tick_data,
-    load_option_surface_frame,
-    load_tick_data_frame,
-    normalize_requested_option_type,
-    observed_spot_from_tick_data,
-    resolve_snapshot_valuation_time_utc,
-)
-from .preparation import (
-    build_observed_option_snapshot_pricing_result,
-    prepare_snapshot_groups,
-)
 
 if TYPE_CHECKING:
     from ....model import JaniformModel
+    from ..inputs import TabularFrameInput
 
 
-def price_option_market_snapshot_for_model(
+def price_option_snapshot_for_model(
     model: JaniformModel,
     *,
     tick_data: TabularFrameInput,
@@ -54,72 +37,32 @@ def price_option_market_snapshot_for_model(
     require_finite_scalar(risk_free_rate, "risk_free_rate", calibration_error)
     require_finite_scalar(dividend_yield, "dividend_yield", calibration_error)
 
-    tick_column_mapping = current_state_tick_data_column_mapping_for_model(
+    context = prepare_observed_option_market_context(
         model,
-        request=CurrentStateEstimationRequest(observed_tick_data=pandas.DataFrame()),
-    )
-
-    tick_data_frame, resolved_tick_column_mapping = load_tick_data_frame(
-        tick_data,
-        tick_column_mapping=tick_column_mapping,
-    )
-    option_surface_frame, resolved_option_columns = load_option_surface_frame(
-        option_surface,
+        tick_data=tick_data,
+        option_surface=option_surface,
+        valuation_time_utc=valuation_time_utc,
+        option_type=option_type,
         option_surface_column_mapping=option_surface_column_mapping,
     )
 
-    effective_valuation_time_utc = resolve_snapshot_valuation_time_utc(
-        option_surface_frame=option_surface_frame,
-        quote_timestamp_column=resolved_option_columns.quote_timestamp_column,
-        valuation_time_utc=valuation_time_utc,
-    )
-    normalized_option_type = normalize_requested_option_type(option_type)
-
-    filtered_tick_data = filter_observed_tick_data(
-        tick_data_frame=tick_data_frame,
-        timestamp_column=resolved_tick_column_mapping.timestamp_column,
-        valuation_time_utc=effective_valuation_time_utc,
-    )
-    spot = observed_spot_from_tick_data(
-        filtered_tick_data,
-        price_column=resolved_tick_column_mapping.price_column,
-    )
-
     prepared_snapshot_groups = prepare_snapshot_groups(
-        option_surface_frame=option_surface_frame,
-        resolved_option_columns=resolved_option_columns,
-        valuation_time_utc=effective_valuation_time_utc,
-        option_type=normalized_option_type,
+        option_surface_frame=context.option_surface_frame,
+        resolved_option_columns=context.resolved_option_columns,
+        valuation_time_utc=context.valuation_time_utc,
+        option_type=context.option_type,
     )
 
-    pricing_result = model.price_option_grids(
-        valuation_time_utc=effective_valuation_time_utc,
-        batch=JaniformVanillaOptionGridBatch(
-            spot=spot,
-            grids=tuple(
-                JaniformVanillaOptionGrid(
-                    payoff_type=group.payoff_type,
-                    risk_free_rate=risk_free_rate,
-                    dividend_yield=dividend_yield,
-                    strikes=group.strikes,
-                    expiry_timestamps_utc=(group.expiry_timestamp_utc,),
-                )
-                for group in prepared_snapshot_groups
-            ),
-        ),
-        observed_data=CurrentStateEstimationRequest(
-            observed_tick_data=filtered_tick_data,
-            tick_data_column_mapping=resolved_tick_column_mapping,
-            observed_price=spot,
-        ),
+    return price_prepared_snapshot_groups_for_model(
+        model,
+        valuation_time_utc=context.valuation_time_utc,
+        spot=context.spot,
+        prepared_snapshot_groups=prepared_snapshot_groups,
+        filtered_tick_data=context.filtered_tick_data,
+        resolved_tick_column_mapping=context.resolved_tick_column_mapping,
+        risk_free_rate=risk_free_rate,
+        dividend_yield=dividend_yield,
         cpu_count=cpu_count,
         silent=silent,
         progress_mode=progress_mode,
-    )
-
-    return build_observed_option_snapshot_pricing_result(
-        valuation_time_utc=effective_valuation_time_utc,
-        spot=spot,
-        prepared_snapshot_groups=prepared_snapshot_groups,
-        pricing_result=pricing_result,
     )

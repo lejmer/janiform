@@ -4,7 +4,6 @@ use std::fmt::{Display, Formatter};
 use janiform_foundations::time::duration_nanos_to_hours;
 use serde::{Deserialize, Serialize};
 
-use crate::calendar::MarketState;
 use crate::objective::{
     CalibrationObjectiveTermDiagnostic, HawkesStageObjectiveTermInput,
     HawkesStageObjectiveTermInputError,
@@ -17,6 +16,7 @@ use janiform_calibration_artifacts::{
     CalibrationStageHandoffTransport, CalibrationStageSeedSource,
     ReturnComponentsStageFittedParameters,
 };
+use janiform_market_time::calendar::MarketState;
 use janiform_model_kernels::news::{
     CoupledGapMarkConfiguration, KnownNewsArrivalConfiguration,
     NewsComponentMarkScaleConfiguration, NewsProcessConfiguration, SharedNewsMarkLawConfiguration,
@@ -38,6 +38,69 @@ pub type ReturnComponentsStageObjectiveTermInput = HawkesStageObjectiveTermInput
 
 /// One weighted objective-term diagnostic emitted by return-components-stage evaluation.
 pub type ReturnComponentsStageObjectiveTermDiagnostic = CalibrationObjectiveTermDiagnostic;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReturnComponentsStageProgressPhase {
+    InputPreflight,
+    CloseOpenGapPreparation,
+    SignalPartitionFit,
+    SurpriseEpisodeSelectionFit,
+    CandidateInputValidation,
+    SignalSorting,
+    SignalSummary,
+    QuantileBinningPolicyFit,
+    SurpriseArrivalFit,
+    ReturnJumpMarkFit,
+    ActivityCouplingFit,
+    ObjectivePolicyFit,
+    ContinuousReturnLayerFit,
+    ContinuousNigMomentSeedGeneration,
+    ContinuousNigProxyEmSeedGeneration,
+    ContinuousNigSeedScoring,
+    ContinuousNigSearchRegimeGeneration,
+    ContinuousNigBasinSeedGeneration,
+    ContinuousNigBasinOptimization,
+    ContinuousNigBasinDiagnostics,
+    ContinuousNigFinalEvaluation,
+    CandidateEnumeration,
+    CandidateConstraintEvaluation,
+    CandidateSelection,
+    ReportAssembly,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReturnComponentsStageProgressUpdate {
+    pub phase: ReturnComponentsStageProgressPhase,
+    pub completed_units: usize,
+    pub total_units: usize,
+    pub aggregate_progress_percent: Option<usize>,
+    pub current_item_label: Option<String>,
+    pub current_evaluation_count: Option<usize>,
+    pub total_evaluation_budget: Option<usize>,
+    pub evaluation_progress_percent: Option<usize>,
+    pub current_convergence_ratio: Option<f64>,
+}
+
+impl ReturnComponentsStageProgressUpdate {
+    pub(crate) fn new(
+        phase: ReturnComponentsStageProgressPhase,
+        completed_units: usize,
+        total_units: usize,
+    ) -> Self {
+        Self {
+            phase,
+            completed_units,
+            total_units,
+            aggregate_progress_percent: None,
+            current_item_label: None,
+            current_evaluation_count: None,
+            total_evaluation_budget: None,
+            evaluation_progress_percent: None,
+            current_convergence_ratio: None,
+        }
+    }
+}
 
 /// Canonical source window for candidate-generation signal extraction.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -84,6 +147,7 @@ impl ReturnComponentsKnownNewsCalendarInput {
         let known_arrival_configuration = KnownNewsArrivalConfiguration {
             scheduled_event_timestamps_utc_nanos: self.scheduled_event_timestamps_utc_nanos.clone(),
         };
+
         known_arrival_configuration.validate().map_err(|source| {
             ReturnComponentsStageCandidateGenerationInputError::InvalidKnownNewsCalendar {
                 error_message: source.to_string(),
@@ -134,6 +198,7 @@ impl ReturnComponentsRealizedKnownNewsReturnSample {
                 },
             );
         }
+
         if let Some(attributed_open_return_timestamp_utc_nanos) =
             self.attributed_open_return_timestamp_utc_nanos
         {
@@ -149,6 +214,7 @@ impl ReturnComponentsRealizedKnownNewsReturnSample {
                     },
                 );
             }
+
             if attributed_open_return_timestamp_utc_nanos < self.event_timestamp_utc_nanos {
                 return Err(
                     ReturnComponentsStageCandidateGenerationInputError::KnownNewsAttributedOpenReturnPrecedesEvent {
@@ -158,6 +224,7 @@ impl ReturnComponentsRealizedKnownNewsReturnSample {
                 );
             }
         }
+
         if !self.open_window_jump_return.is_finite() {
             return Err(
                 ReturnComponentsStageCandidateGenerationInputError::InvalidKnownNewsOpenJumpReturn {
@@ -166,6 +233,7 @@ impl ReturnComponentsRealizedKnownNewsReturnSample {
                 },
             );
         }
+
         if !self.closed_window_gap_return.is_finite() {
             return Err(
                 ReturnComponentsStageCandidateGenerationInputError::InvalidKnownNewsClosedGapReturn {
@@ -174,6 +242,7 @@ impl ReturnComponentsRealizedKnownNewsReturnSample {
                 },
             );
         }
+
         if !self.post_shock_activity_lift.is_finite() || self.post_shock_activity_lift < 0.0 {
             return Err(
                 ReturnComponentsStageCandidateGenerationInputError::InvalidKnownNewsActivityLift {
@@ -212,6 +281,7 @@ impl ReturnComponentsObservedOpenSessionReturn {
                 },
             );
         }
+
         if !self.log_return.is_finite() {
             return Err(
                 ReturnComponentsStageCandidateGenerationInputError::InvalidObservedOpenSessionReturn {
@@ -220,6 +290,7 @@ impl ReturnComponentsObservedOpenSessionReturn {
                 },
             );
         }
+
         if !self.post_shock_activity_lift.is_finite() || self.post_shock_activity_lift < 0.0 {
             return Err(
                 ReturnComponentsStageCandidateGenerationInputError::InvalidObservedOpenSessionActivityLift {
@@ -228,6 +299,7 @@ impl ReturnComponentsObservedOpenSessionReturn {
                 },
             );
         }
+
         if !self.sell_share_proxy.is_finite() || !(0.0..=1.0).contains(&self.sell_share_proxy) {
             return Err(
                 ReturnComponentsStageCandidateGenerationInputError::InvalidObservedOpenSessionSellShareProxy {
@@ -265,6 +337,7 @@ impl ReturnComponentsDetectedIntradayJumpCandidate {
                 },
             );
         }
+
         if !self.jump_return.is_finite() {
             return Err(
                 ReturnComponentsStageCandidateGenerationInputError::InvalidIntradayJumpReturn {
@@ -273,6 +346,7 @@ impl ReturnComponentsDetectedIntradayJumpCandidate {
                 },
             );
         }
+
         if !self.post_shock_activity_lift.is_finite() || self.post_shock_activity_lift < 0.0 {
             return Err(
                 ReturnComponentsStageCandidateGenerationInputError::InvalidIntradayActivityLift {
@@ -320,6 +394,7 @@ impl ReturnComponentsDetectedCloseOpenGapCandidate {
                 },
             );
         }
+
         if self.open_timestamp_utc_nanos <= self.close_timestamp_utc_nanos {
             return Err(
                 ReturnComponentsStageCandidateGenerationInputError::NonIncreasingCloseOpenGapWindow {
@@ -328,6 +403,7 @@ impl ReturnComponentsDetectedCloseOpenGapCandidate {
                 },
             );
         }
+
         if !self.gap_return.is_finite() {
             return Err(
                 ReturnComponentsStageCandidateGenerationInputError::InvalidCloseOpenGapReturn {
@@ -337,6 +413,7 @@ impl ReturnComponentsDetectedCloseOpenGapCandidate {
                 },
             );
         }
+
         if !self.post_shock_activity_lift.is_finite() || self.post_shock_activity_lift < 0.0 {
             return Err(
                 ReturnComponentsStageCandidateGenerationInputError::InvalidCloseOpenActivityLift {
@@ -378,6 +455,7 @@ impl ReturnComponentsObservedCloseOpenBoundaryObservation {
                 },
             );
         }
+
         if self.open_timestamp_utc_nanos <= self.close_timestamp_utc_nanos {
             return Err(
                 ReturnComponentsStageCandidateGenerationInputError::NonIncreasingCloseOpenBoundaryWindow {
@@ -386,6 +464,7 @@ impl ReturnComponentsObservedCloseOpenBoundaryObservation {
                 },
             );
         }
+
         if !self.close_price.is_finite() || self.close_price <= 0.0 {
             return Err(
                 ReturnComponentsStageCandidateGenerationInputError::InvalidCloseBoundaryPrice {
@@ -394,6 +473,7 @@ impl ReturnComponentsObservedCloseOpenBoundaryObservation {
                 },
             );
         }
+
         if !self.open_price.is_finite() || self.open_price <= 0.0 {
             return Err(
                 ReturnComponentsStageCandidateGenerationInputError::InvalidOpenBoundaryPrice {
@@ -402,6 +482,7 @@ impl ReturnComponentsObservedCloseOpenBoundaryObservation {
                 },
             );
         }
+
         if !self.post_shock_activity_lift.is_finite() || self.post_shock_activity_lift < 0.0 {
             return Err(
                 ReturnComponentsStageCandidateGenerationInputError::InvalidCloseOpenBoundaryActivityLift {
@@ -484,6 +565,7 @@ impl ReturnComponentsStageObjectiveMetricWeights {
                 },
             );
         }
+
         if !self.surprise_arrival_fit_weight.is_finite() || self.surprise_arrival_fit_weight < 0.0 {
             return Err(
                 ReturnComponentsStageCandidateGenerationInputError::InvalidSurpriseArrivalFitWeight {
@@ -491,6 +573,7 @@ impl ReturnComponentsStageObjectiveMetricWeights {
                 },
             );
         }
+
         if !self.jump_fit_weight.is_finite() || self.jump_fit_weight < 0.0 {
             return Err(
                 ReturnComponentsStageCandidateGenerationInputError::InvalidOpenJumpFitWeight {
@@ -498,6 +581,7 @@ impl ReturnComponentsStageObjectiveMetricWeights {
                 },
             );
         }
+
         if !self.gap_fit_weight.is_finite() || self.gap_fit_weight < 0.0 {
             return Err(
                 ReturnComponentsStageCandidateGenerationInputError::InvalidClosedGapFitWeight {
@@ -505,6 +589,7 @@ impl ReturnComponentsStageObjectiveMetricWeights {
                 },
             );
         }
+
         if !self.activity_coupling_fit_weight.is_finite() || self.activity_coupling_fit_weight < 0.0
         {
             return Err(
@@ -513,6 +598,7 @@ impl ReturnComponentsStageObjectiveMetricWeights {
                 },
             );
         }
+
         if !self.price_range_sanity_fit_weight.is_finite()
             || self.price_range_sanity_fit_weight < 0.0
         {
@@ -557,12 +643,15 @@ impl ReturnComponentsStageCandidateGenerationInput {
         for sample in &self.realized_known_news_return_samples {
             sample.validate(self.known_news_calendar.source_window)?;
         }
+
         for observed_return in &self.observed_open_session_returns {
             observed_return.validate(self.known_news_calendar.source_window)?;
         }
+
         for jump_candidate in &self.detected_intraday_jump_candidates {
             jump_candidate.validate(self.known_news_calendar.source_window)?;
         }
+
         for boundary_observation in &self.observed_close_open_boundary_observations {
             boundary_observation.validate(self.known_news_calendar.source_window)?;
         }
@@ -1040,6 +1129,7 @@ impl ReturnComponentsKnownNewsArrivalCandidateFamily {
                 .retained_known_event_timestamps_utc_nanos
                 .clone(),
         };
+
         known_arrivals.validate().map_err(|source| {
             ReturnComponentsStageCandidateInputError::InvalidKnownArrivalFamily {
                 error_message: source.to_string(),
@@ -1265,6 +1355,7 @@ impl ReturnComponentsStageCandidateProvenance {
                     error_message,
                 }
             })?;
+
         self.quantile_binning_policy
             .validate()
             .map_err(|error_message| {
@@ -1272,9 +1363,11 @@ impl ReturnComponentsStageCandidateProvenance {
                     error_message,
                 }
             })?;
+
         self.diagnostic_policy.validate().map_err(|error_message| {
             ReturnComponentsStageCandidateInputError::InvalidDiagnosticPolicy { error_message }
         })?;
+
         self.objective_scoring_policy
             .validate()
             .map_err(|error_message| {
@@ -1282,6 +1375,7 @@ impl ReturnComponentsStageCandidateProvenance {
                     error_message,
                 }
             })?;
+
         self.price_range_sanity_policy
             .validate()
             .map_err(|error_message| {
@@ -1291,6 +1385,7 @@ impl ReturnComponentsStageCandidateProvenance {
             })?;
 
         let summary_statistics = self.summary_statistics;
+
         for metric_value in [
             summary_statistics.open_session_sell_share_proxy,
             summary_statistics.continuous_return_volatility,
@@ -1363,6 +1458,7 @@ impl ReturnComponentsStageObjectiveScoringPolicy {
         if self.dominant_scale_driver_order.is_empty() {
             return Err("dominant_scale_driver_order must be non-empty".to_string());
         }
+
         for (field_name, value) in [
             (
                 "arrival_frequency_zero_floor",
@@ -1381,6 +1477,7 @@ impl ReturnComponentsStageObjectiveScoringPolicy {
                 return Err(format!("{field_name} must be finite and strictly positive"));
             }
         }
+
         if self
             .dominant_scale_driver_order
             .iter()
@@ -1542,6 +1639,7 @@ impl ReturnComponentsStagePriceRangeSanityPolicy {
                 return Err(format!("{field_name} must be finite and non-negative"));
             }
         }
+
         if self.maximum_representable_log_price_span <= 0.0 {
             return Err(
                 "maximum_representable_log_price_span must be finite and strictly positive"
@@ -1683,6 +1781,58 @@ pub struct ReturnComponentsStageContinuousOptimizerBasinDiagnostic {
     pub fitted_skewness: f64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub enum ReturnComponentsStageExactLikelihoodFailureScope {
+    Global,
+    ConditionalScaleBucket,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub enum ReturnComponentsStageExactLikelihoodFailureReason {
+    NoEvaluatedBlocks,
+    InvalidObservedInputs,
+    InvalidBlockStandardDeviation,
+    InvalidStandardizedDecayScale,
+    InvalidInitialIntegrationUpperBound,
+    IntegrationStepCountOverflow,
+    InvalidCharacteristicExponent,
+    InvalidCharacteristicFunction,
+    InvalidIntegrand,
+    InvalidDensity,
+    LogDensityErrorNotCertified,
+    IntegrationBoundOverflow,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub enum ReturnComponentsStageExactLikelihoodEvaluatorKind {
+    ClosedFormSingleSideBuy,
+    ClosedFormSingleSideSell,
+    TiltedMixedInversion,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ReturnComponentsStageExactLikelihoodFailureDiagnostic {
+    pub scope: ReturnComponentsStageExactLikelihoodFailureScope,
+    pub scale_bucket_index: Option<usize>,
+    pub block_member_index: Option<usize>,
+    pub failure_reason: ReturnComponentsStageExactLikelihoodFailureReason,
+    pub evaluator_kind: Option<ReturnComponentsStageExactLikelihoodEvaluatorKind>,
+    pub observed_return: Option<f64>,
+    pub business_time_scale: Option<f64>,
+    pub sell_share_proxy: Option<f64>,
+    pub integrated_buy_intensity: Option<f64>,
+    pub integrated_sell_intensity: Option<f64>,
+    pub block_standard_deviation: Option<f64>,
+    pub standardized_return: Option<f64>,
+    pub tilt_theta: Option<f64>,
+    pub tilt_domain_lower_theta_exclusive: Option<f64>,
+    pub tilt_domain_upper_theta_exclusive: Option<f64>,
+    pub standardized_decay_scale: Option<f64>,
+    pub integration_upper_bound: Option<f64>,
+    pub log_density_resolution: Option<f64>,
+    pub scope_average_log_likelihood_error_upper_bound: Option<f64>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ReturnComponentsStageContinuousDistributionFitBreakdownDiagnostic {
     pub global_fit_score: f64,
@@ -1696,6 +1846,14 @@ pub struct ReturnComponentsStageContinuousDistributionFitBreakdownDiagnostic {
     pub optimizer_local_evaluation_count: usize,
     pub optimizer_stop_reason: String,
     pub optimizer_basin_diagnostics: Vec<ReturnComponentsStageContinuousOptimizerBasinDiagnostic>,
+    pub exact_likelihood_failures: Vec<ReturnComponentsStageExactLikelihoodFailureDiagnostic>,
+    pub exact_closed_form_single_side_buy_block_count: usize,
+    pub exact_closed_form_single_side_sell_block_count: usize,
+    pub exact_tilted_mixed_inversion_block_count: usize,
+    pub exact_structural_failure_count: usize,
+    pub exact_uncertified_scope_count: usize,
+    pub exact_global_average_log_likelihood_error_upper_bound: Option<f64>,
+    pub exact_conditional_average_log_likelihood_error_upper_bound: Option<f64>,
     pub mean_return_fit: f64,
     pub volatility_fit: f64,
     pub median_return_fit: f64,
@@ -1920,21 +2078,26 @@ impl ReturnComponentsStageCandidateInput {
             {
                 has_continuous_distribution_term = true;
             }
+
             if objective_term.term_id == RETURN_COMPONENTS_STAGE_OBJECTIVE_TERM_SURPRISE_ARRIVAL_FIT
             {
                 has_surprise_arrival_term = true;
             }
+
             if objective_term.term_id == RETURN_COMPONENTS_STAGE_OBJECTIVE_TERM_OPEN_JUMP_FIT {
                 has_open_jump_term = true;
             }
+
             if objective_term.term_id == RETURN_COMPONENTS_STAGE_OBJECTIVE_TERM_CLOSED_GAP_FIT {
                 has_closed_gap_term = true;
             }
+
             if objective_term.term_id
                 == RETURN_COMPONENTS_STAGE_OBJECTIVE_TERM_ACTIVITY_COUPLING_FIT
             {
                 has_activity_coupling_term = true;
             }
+
             if objective_term.term_id
                 == RETURN_COMPONENTS_STAGE_OBJECTIVE_TERM_PRICE_RANGE_SANITY_FIT
             {
@@ -1949,6 +2112,7 @@ impl ReturnComponentsStageCandidateInput {
                 },
             );
         }
+
         if !has_open_jump_term {
             return Err(
                 ReturnComponentsStageCandidateInputError::MissingObjectiveMetricBucketTerm {
@@ -1956,6 +2120,7 @@ impl ReturnComponentsStageCandidateInput {
                 },
             );
         }
+
         if !has_surprise_arrival_term {
             return Err(
                 ReturnComponentsStageCandidateInputError::MissingObjectiveMetricBucketTerm {
@@ -1963,6 +2128,7 @@ impl ReturnComponentsStageCandidateInput {
                 },
             );
         }
+
         if !has_closed_gap_term {
             return Err(
                 ReturnComponentsStageCandidateInputError::MissingObjectiveMetricBucketTerm {
@@ -1970,6 +2136,7 @@ impl ReturnComponentsStageCandidateInput {
                 },
             );
         }
+
         if !has_activity_coupling_term {
             return Err(
                 ReturnComponentsStageCandidateInputError::MissingObjectiveMetricBucketTerm {
@@ -1977,6 +2144,7 @@ impl ReturnComponentsStageCandidateInput {
                 },
             );
         }
+
         if !has_price_range_sanity_term {
             return Err(
                 ReturnComponentsStageCandidateInputError::MissingObjectiveMetricBucketTerm {

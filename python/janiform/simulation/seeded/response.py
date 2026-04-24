@@ -26,7 +26,7 @@ from ..shared.errors import (
     _simulation_error,
     _simulation_integration_error,
 )
-from ...contracts import (
+from ...contracts.base import (
     ContractModel,
     parse_json_object,
     require_mapping,

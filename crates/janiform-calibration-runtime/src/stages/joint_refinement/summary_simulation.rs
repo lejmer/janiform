@@ -26,11 +26,12 @@ use janiform_market_time::hourly_factors::{
     HourlySeasonalityFactorSource,
 };
 use janiform_model_kernels::hawkes::HawkesExcitationState;
-use janiform_model_kernels::mean_reversion::{
-    MeanReversionBoundaryState, MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors,
-};
 
 use super::execution::JointRefinementSeedSummary;
+use super::mean_reversion_runtime::{
+    endogenous_interval_factors_from_hourly_contract,
+    materialize_joint_refinement_mean_reversion_runtime_inputs,
+};
 use super::setup::build_surprise_multipliers_for_interval_grid;
 
 pub const JOINT_REFINEMENT_SUMMARY_SIMULATION_WORKER_PROTOCOL_SCHEMA_VERSION: &str =
@@ -43,6 +44,13 @@ pub struct JointRefinementSummarySimulationMemoryEstimate {
     pub estimated_hourly_statistics_bytes: usize,
     pub estimated_trade_return_capacity_bytes: usize,
     pub estimated_total_retained_bytes: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct JointRefinementSummarySimulationWorkloadEstimate {
+    pub(crate) estimated_transition_capacity: usize,
+    pub(crate) estimated_event_capacity: usize,
+    pub(crate) memory_estimate: JointRefinementSummarySimulationMemoryEstimate,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -593,17 +601,30 @@ pub(crate) fn estimate_summary_simulation_memory(
     fitted_parameters: &JointRefinementStageFittedParameters,
     simulation_seed: u64,
 ) -> Result<JointRefinementSummarySimulationMemoryEstimate, String> {
+    estimate_summary_simulation_workload(session_state, fitted_parameters, simulation_seed)
+        .map(|workload_estimate| workload_estimate.memory_estimate)
+}
+
+pub(crate) fn estimate_summary_simulation_workload(
+    session_state: &JointRefinementSummarySimulationSessionState,
+    fitted_parameters: &JointRefinementStageFittedParameters,
+    simulation_seed: u64,
+) -> Result<JointRefinementSummarySimulationWorkloadEstimate, String> {
     let run_config = build_seeded_summary_simulation_run_config(
         session_state,
         fitted_parameters,
         simulation_seed,
     )?;
-    let (_, estimated_event_capacity) = estimate_seeded_result_capacities(&run_config);
+    let (estimated_transition_capacity, estimated_event_capacity) =
+        estimate_seeded_result_capacities(&run_config);
+    let memory_estimate =
+        summary_simulation_memory_estimate_from_session(session_state, estimated_event_capacity);
 
-    Ok(summary_simulation_memory_estimate_from_session(
-        session_state,
+    Ok(JointRefinementSummarySimulationWorkloadEstimate {
+        estimated_transition_capacity,
         estimated_event_capacity,
-    ))
+        memory_estimate,
+    })
 }
 
 fn build_seeded_summary_simulation_run_config(
@@ -637,6 +658,22 @@ fn build_seeded_summary_simulation_run_config(
     hourly_factor_contract.surprise_component_nu_h = surprise_component_nu_h;
     hourly_factor_contract.nu_h = nu_h;
 
+    let initial_excitation_state = HawkesExcitationState {
+        y_plus_plus: 0.0,
+        y_plus_minus: 0.0,
+        y_minus_plus: 0.0,
+        y_minus_minus: 0.0,
+    };
+    let endogenous_interval_factors =
+        endogenous_interval_factors_from_hourly_contract(&hourly_factor_contract)?;
+    let (mean_reversion_runtime_interval_anchors, initial_mean_reversion_boundary_state) =
+        materialize_joint_refinement_mean_reversion_runtime_inputs(
+            hourly_factor_contract.metadata.interval_alignment_policy,
+            fitted_parameters,
+            initial_excitation_state,
+            endogenous_interval_factors.as_slice(),
+        )?;
+
     janiform_engine_simulation::SeededTickSimulationRunConfig::try_new(
         simulation_seed,
         session_state.hourly_simulation_start_utc,
@@ -650,30 +687,13 @@ fn build_seeded_summary_simulation_run_config(
                 .return_components_fitted_parameters
                 .news_process_configuration
                 .clone(),
-            initial_excitation_state: HawkesExcitationState {
-                y_plus_plus: 0.0,
-                y_plus_minus: 0.0,
-                y_minus_plus: 0.0,
-                y_minus_minus: 0.0,
-            },
-            mean_reversion_fitted_parameters:
-                MeanReversionFittedParameters::zero_kappa_flat_anchor_mean_reversion(),
-            mean_reversion_runtime_interval_anchors: MeanReversionRuntimeIntervalAnchors::try_new(
-                hourly_factor_contract.metadata.interval_alignment_policy,
-                0.0,
-                0.0,
-                vec![0.0; session_state.hourly_simulation_interval_count],
-                vec![0.0; session_state.hourly_simulation_interval_count],
-                vec![
-                    hourly_factor_contract.interval_duration_nanos as f64 / ONE_HOUR_NANOS as f64;
-                    session_state.hourly_simulation_interval_count
-                ],
-            )
-            .map_err(|source| source.to_string())?,
-            initial_mean_reversion_boundary_state: MeanReversionBoundaryState::try_new(
-                0.0, 0.0, 0.0, 0.0,
-            )
-            .map_err(|source| source.to_string())?,
+            initial_excitation_state,
+            mean_reversion_fitted_parameters: fitted_parameters
+                .return_components_fitted_parameters
+                .mean_reversion_fitted_parameters
+                .clone(),
+            mean_reversion_runtime_interval_anchors,
+            initial_mean_reversion_boundary_state,
             hourly_factor_contract,
             calendar_registry: session_state.calendar_registry.clone(),
         },
@@ -752,9 +772,6 @@ pub(crate) mod tests {
         initialize_joint_refinement_summary_simulation_session, read_joint_refinement_worker_frame,
         simulate_joint_refinement_seed_summary_in_process, write_joint_refinement_worker_frame,
     };
-    use crate::calendar::{
-        ExchangeCalendarRegistry, ExchangeCalendarRegistryLoader, TimestampEventInputRecord,
-    };
     use crate::load_hourly_factor_contract_for_calibration;
     use crate::stages::hawkes::{
         HawkesStageCandidateInput, HawkesStageDirectionalLabelDiagnostics,
@@ -799,6 +816,9 @@ pub(crate) mod tests {
     };
     use janiform_engine_simulation::run_seeded_tick_event_simulation;
     use janiform_foundations::time::{ONE_HOUR_NANOS, utc_nanos};
+    use janiform_market_time::calendar::{
+        ExchangeCalendarRegistry, ExchangeCalendarRegistryLoader, TimestampEventInputRecord,
+    };
     use janiform_market_time::hourly_factors::{
         HourlyFactorProviderRequest, HourlyNewsIntensityFactorSource, HourlySeasonalityFactorSource,
     };
@@ -806,6 +826,7 @@ pub(crate) mod tests {
         HawkesStructuredAlphaParameterization, HawkesStructuredRhoParameterization,
         HawkesStructuredRhoSelfDominancePolicy,
     };
+    use janiform_model_kernels::mean_reversion::MeanReversionFittedParameters;
     use janiform_model_kernels::news::{
         CoupledGapMarkConfiguration, DoubleExponentialBaseShockConfiguration,
         GammaSeverityMarkConfiguration, SharedNewsMarkLawConfiguration,
@@ -1001,6 +1022,33 @@ pub(crate) mod tests {
             }
             _ => panic!("run-candidate request should return a run-candidate response"),
         }
+    }
+
+    #[test]
+    fn run_config_preserves_candidate_mean_reversion_parameters() {
+        let mut fixture = joint_refinement_summary_fixture();
+        let mean_reversion_fitted_parameters =
+            MeanReversionFittedParameters::endogenous_core_pressure_level(0.25, 1.0, 0.5, 1.25)
+                .expect("mean-reversion fixture parameters should validate");
+        fixture
+            .fitted_parameters
+            .return_components_fitted_parameters
+            .mean_reversion_fitted_parameters = mean_reversion_fitted_parameters.clone();
+        let session_state =
+            initialize_joint_refinement_summary_simulation_session(&fixture.session_context)
+                .expect("summary simulation session should initialize");
+
+        let run_config = build_seeded_summary_simulation_run_config(
+            &session_state,
+            &fixture.fitted_parameters,
+            fixture.simulation_seed,
+        )
+        .expect("summary simulation run config should build");
+
+        assert_eq!(
+            run_config.model_inputs.mean_reversion_fitted_parameters,
+            mean_reversion_fitted_parameters
+        );
     }
 
     #[test]

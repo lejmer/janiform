@@ -5,8 +5,8 @@ use std::fmt::{Display, Formatter};
 
 use chrono::{DateTime, Utc};
 
-use crate::calendar::ExchangeCalendarResolveError;
-use crate::risk::SufficientStatisticsRiskReturnComponentsError;
+use janiform_affine_oracle::sufficient_statistics::SufficientStatisticsRiskReturnComponentsError;
+use janiform_market_time::calendar::ExchangeCalendarResolveError;
 use janiform_model_kernels::hawkes::HawkesTransitionError;
 use janiform_model_kernels::mean_reversion::{
     MeanReversionBoundaryStateValidationError, MeanReversionFittedParametersValidationError,

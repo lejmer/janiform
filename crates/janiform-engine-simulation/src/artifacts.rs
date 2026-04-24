@@ -4,8 +4,8 @@ use chrono::{DateTime, Utc};
 use serde::Serialize;
 use std::mem::size_of;
 
-use crate::calendar::MarketState;
-use crate::risk::SufficientStatisticsRiskReturnComponents;
+use janiform_affine_oracle::sufficient_statistics::SufficientStatisticsRiskReturnComponents;
+use janiform_market_time::calendar::MarketState;
 use janiform_model_kernels::hawkes::HawkesExcitationState;
 use janiform_model_kernels::news::{NewsArrivalComponent, NewsReturnJumpRoutingTarget};
 
@@ -298,11 +298,9 @@ pub trait SeededTickSimulationTransitionConsumer {
     /// Reserve retained storage using the simulator's deterministic capacity estimate.
     fn reserve_transition_capacity(
         &mut self,
-        estimated_transition_capacity: usize,
-        estimated_event_capacity: usize,
+        _estimated_transition_capacity: usize,
+        _estimated_event_capacity: usize,
     ) -> Result<(), crate::error::SeededTickSimulationRunError> {
-        let _ = estimated_transition_capacity;
-        let _ = estimated_event_capacity;
         Ok(())
     }
 

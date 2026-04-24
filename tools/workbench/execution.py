@@ -18,8 +18,8 @@ from janiform.calibration.fit._preparation.contracts import PreparedFitWorkflow
 from janiform.calibration.fit._runtime.metadata import (
     build_model_metadata,
     extract_model_parameters,
-    raw_stage_report_payloads,
 )
+from janiform.calibration.fit._runtime.stage_reports import raw_stage_report_payloads
 from janiform.calibration.fit.estimator import JaniformEstimator
 from janiform.calibration.fit.model import JaniformModel
 from janiform.calibration.fit.report import JaniformFitReport
@@ -439,6 +439,9 @@ class WorkbenchExecutionWorker(QObject):
                         "detail": format_staged_progress_event_detail(raw_event),
                         "completed_units": raw_event.get("completed_units"),
                         "total_units": raw_event.get("total_units"),
+                        "aggregate_progress_percent": raw_event.get(
+                            "aggregate_progress_percent"
+                        ),
                         "progress_phase": progress_phase,
                         "current_item_label": raw_event.get("current_item_label"),
                         "valid_completed_units": raw_event.get("valid_completed_units"),
@@ -448,6 +451,7 @@ class WorkbenchExecutionWorker(QObject):
                         "current_weighted_objective": raw_event.get(
                             "current_weighted_objective"
                         ),
+                        "best_restart_id": raw_event.get("best_restart_id"),
                         "best_weighted_objective": raw_event.get("best_weighted_objective"),
                         "current_coarse_consistency_fit": raw_event.get(
                             "current_coarse_consistency_fit"

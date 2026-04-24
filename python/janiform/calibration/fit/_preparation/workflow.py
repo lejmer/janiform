@@ -102,6 +102,10 @@ def build_market_data_request(
         option_surface_source=option_surface_source,
         option_surface_valuation_time_utc=option_surface_valuation_time_utc,
         carry=carry,
+        pricing_interval_schedule_policy=configuration.pricing_interval_schedule_policy,
+        dynamics_search_restart_candidate_budget=(
+            configuration.dynamics_search_restart_candidate_budget
+        ),
         known_news_inputs=known_news_input,
         mean_reversion=(
             None
@@ -155,6 +159,10 @@ def infer_session_resolution(
         option_surface_source=option_surface_source,
         option_surface_valuation_time_utc=option_surface_valuation_time_utc,
         carry=carry,
+        pricing_interval_schedule_policy=configuration.pricing_interval_schedule_policy,
+        dynamics_search_restart_candidate_budget=(
+            configuration.dynamics_search_restart_candidate_budget
+        ),
     )
 
     progress.update(detail="resolving session from market data")
@@ -222,7 +230,7 @@ def prepare_fit_workflow(
             require_hawkes=(workflow_scope != CalibrationMarketDataWorkflowScope.SEASONALITY_ONLY),
         )
 
-        effective_progress.update(detail="resolve session")
+        effective_progress.update(detail="infer session")
         inferred_session_resolution = infer_session_resolution(
             configuration,
             run_id=input_inference.run_id,
@@ -267,7 +275,7 @@ def prepare_fit_workflow(
             working_directory=working_directory,
         )
 
-        effective_progress.update(detail="resolve session")
+        effective_progress.update(detail="resolve final session")
         session_resolution = resolve_market_data_session_method(
             session_configuration=request.session_configuration,
             normalized_market_data=normalized_market_data,

@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use super::payload_state::joint_refinement_seasonality_factors_from_payload;
 use super::{
     CalibrationExecutionMode, CalibrationInMemoryStagePayloadState, CalibrationRunSpec,
@@ -7,8 +9,10 @@ use super::{
     JointRefinementStageExecutionInput, JointRefinementStageHawkesInput,
     JointRefinementStageReturnComponentsInput, MeanReversionStageReturnComponentsInput,
     ReturnComponentsStageActivityInput, ReturnComponentsStageExecutionInput,
-    run_hawkes_calibration_stage, run_joint_refinement_calibration_stage_with_progress_observer,
+    run_hawkes_calibration_stage,
+    run_joint_refinement_calibration_stage_with_progress_observer_and_persistence,
     run_mean_reversion_calibration_stage, run_return_components_calibration_stage,
+    run_return_components_calibration_stage_with_progress_observer,
     run_seasonality_calibration_stage, stage_output_artifact_references_for_stage,
 };
 use crate::JointRefinementStageMeanReversionInput;
@@ -16,6 +20,7 @@ use crate::JointRefinementStageMeanReversionInput;
 pub(super) fn run_stage_for_staged_execution(
     run_spec: &CalibrationRunSpec,
     calendar_registry: &ExchangeCalendarRegistry,
+    disk_checkpoint_directory: Option<&Path>,
     stage: CalibrationStage,
     stage_index: usize,
     stage_count: usize,
@@ -148,14 +153,63 @@ pub(super) fn run_stage_for_staged_execution(
                 }
             };
 
+            let stage_input = ReturnComponentsStageExecutionInput {
+                activity_input,
+                candidate_generation_input,
+            };
+
+            if observer.is_none() {
+                return Ok(CalibrationStagedRunStageReport::ReturnComponents(
+                    run_return_components_calibration_stage(
+                        run_spec,
+                        calendar_registry,
+                        stage_input,
+                    ),
+                ));
+            }
+
+            let mut progress_forwarder =
+                |progress_update: super::ReturnComponentsStageProgressUpdate| {
+                    if let Some(observer) = observer.as_deref_mut() {
+                        observer(CalibrationStagedRunObserverEvent::StageProgress {
+                            run_id: run_spec.run_id.clone(),
+                            stage: CalibrationStage::ReturnComponents,
+                            stage_index,
+                            stage_count,
+                            progress_phase: progress_update.phase.into(),
+                            completed_units: progress_update.completed_units,
+                            total_units: progress_update.total_units,
+                            stage_progress_percent: None,
+                            aggregate_progress_percent: progress_update.aggregate_progress_percent,
+                            current_item_label: progress_update.current_item_label,
+                            current_restart_id: None,
+                            active_restart_count: None,
+                            current_parameter_block: None,
+                            completed_outer_cycles: None,
+                            total_outer_cycles: None,
+                            current_evaluation_count: progress_update.current_evaluation_count,
+                            total_evaluation_budget: progress_update.total_evaluation_budget,
+                            evaluation_progress_percent: progress_update
+                                .evaluation_progress_percent,
+                            valid_completed_units: None,
+                            cumulative_local_evaluation_count: None,
+                            current_weighted_objective: None,
+                            current_restart_best_weighted_objective: None,
+                            best_restart_id: None,
+                            best_weighted_objective: None,
+                            current_coarse_consistency_fit: None,
+                            best_coarse_consistency_fit: None,
+                            current_convergence_ratio: progress_update.current_convergence_ratio,
+                        });
+                    }
+                };
+
             Ok(CalibrationStagedRunStageReport::ReturnComponents(
-                run_return_components_calibration_stage(
+                run_return_components_calibration_stage_with_progress_observer(
                     run_spec,
                     calendar_registry,
-                    ReturnComponentsStageExecutionInput {
-                        activity_input,
-                        candidate_generation_input,
-                    },
+                    stage_input,
+                    Some(&mut progress_forwarder),
                 ),
             ))
         }
@@ -349,6 +403,12 @@ pub(super) fn run_stage_for_staged_execution(
                 return_components_input,
                 mean_reversion_input,
                 candidate_generation_input,
+                restart_candidate_budget_override: staged_run_inputs
+                    .joint_refinement_restart_candidate_budget_override,
+                option_refinement_candidate_count_override: staged_run_inputs
+                    .joint_refinement_option_refinement_candidate_count_override,
+                audit_option_pricing_enabled: staged_run_inputs
+                    .joint_refinement_audit_option_pricing_enabled,
                 option_pricing_input: staged_run_inputs
                     .joint_refinement_option_pricing_input
                     .clone(),
@@ -356,10 +416,12 @@ pub(super) fn run_stage_for_staged_execution(
 
             if observer.is_none() {
                 return Ok(CalibrationStagedRunStageReport::JointRefinement(
-                    super::run_joint_refinement_calibration_stage(
+                    run_joint_refinement_calibration_stage_with_progress_observer_and_persistence(
                         run_spec,
                         calendar_registry,
                         stage_input,
+                        None,
+                        disk_checkpoint_directory,
                     ),
                 ));
             }
@@ -372,29 +434,45 @@ pub(super) fn run_stage_for_staged_execution(
                             stage: CalibrationStage::JointRefinement,
                             stage_index,
                             stage_count,
-                            progress_phase: progress_update.phase,
+                            progress_phase: progress_update.phase.into(),
                             completed_units: progress_update.completed_units,
                             total_units: progress_update.total_units,
+                            stage_progress_percent: Some(progress_update.stage_progress_percent()),
+                            aggregate_progress_percent: progress_update.aggregate_progress_percent,
                             current_item_label: progress_update.current_item_label,
+                            current_restart_id: progress_update.current_restart_id,
+                            active_restart_count: progress_update.active_restart_count,
+                            current_parameter_block: progress_update.current_parameter_block,
+                            completed_outer_cycles: progress_update.completed_outer_cycles,
+                            total_outer_cycles: progress_update.total_outer_cycles,
+                            current_evaluation_count: progress_update.current_evaluation_count,
+                            total_evaluation_budget: progress_update.total_evaluation_budget,
+                            evaluation_progress_percent: progress_update
+                                .evaluation_progress_percent,
                             valid_completed_units: progress_update.valid_completed_units,
                             cumulative_local_evaluation_count: progress_update
                                 .cumulative_local_evaluation_count,
                             current_weighted_objective: progress_update.current_weighted_objective,
+                            current_restart_best_weighted_objective: progress_update
+                                .current_restart_best_weighted_objective,
+                            best_restart_id: progress_update.best_restart_id,
                             best_weighted_objective: progress_update.best_weighted_objective,
                             current_coarse_consistency_fit: progress_update
                                 .current_coarse_consistency_fit,
                             best_coarse_consistency_fit: progress_update
                                 .best_coarse_consistency_fit,
+                            current_convergence_ratio: None,
                         });
                     }
                 };
 
             Ok(CalibrationStagedRunStageReport::JointRefinement(
-                run_joint_refinement_calibration_stage_with_progress_observer(
+                run_joint_refinement_calibration_stage_with_progress_observer_and_persistence(
                     run_spec,
                     calendar_registry,
                     stage_input,
                     Some(&mut progress_forwarder),
+                    disk_checkpoint_directory,
                 ),
             ))
         }

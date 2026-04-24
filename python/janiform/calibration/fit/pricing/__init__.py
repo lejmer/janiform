@@ -10,9 +10,12 @@ from .market_snapshot import (
     JaniformObservedOptionSnapshotNode,
     JaniformObservedOptionSnapshotPricingResult,
 )
+from .market_surface import (
+    JaniformObservedOptionSurfaceNode,
+    JaniformObservedOptionSurfacePricingResult,
+)
 from .summaries import (
     JaniformVanillaOptionMaturityIntervalSummary,
-    JaniformVanillaOptionMaturityPricingEngineKind,
     JaniformVanillaOptionMaturitySummary,
 )
 from .surface import (
@@ -27,8 +30,9 @@ __all__ = [
     "JaniformVanillaOptionGridPricingResult",
     "JaniformObservedOptionSnapshotNode",
     "JaniformObservedOptionSnapshotPricingResult",
+    "JaniformObservedOptionSurfaceNode",
+    "JaniformObservedOptionSurfacePricingResult",
     "JaniformVanillaOptionMaturityIntervalSummary",
-    "JaniformVanillaOptionMaturityPricingEngineKind",
     "JaniformVanillaOptionMaturitySummary",
     "JaniformVanillaOptionSurface",
     "JaniformVanillaOptionSurfacePricingResult",

@@ -109,39 +109,29 @@ def _load_from_run_directory(run_directory: Path) -> WorkbenchArtifacts:
     model_payload = _load_json_file(model_path) if model_path.is_file() else None
     if fit_report_path.is_file():
         payload = _load_json_file(fit_report_path)
-
-        bundle = _extract_diagnostic_bundle(payload)
-        if bundle is None:
-            raise ValueError(
-                "fit_report.json does not contain a diagnostic_artifact_bundle for workbench loading"
-            )
-
-        metadata = _extract_metadata_from_document(payload)
-        metadata["run_directory"] = str(run_directory)
-
-        return _build_workbench_artifacts(
+        return _build_workbench_artifacts_from_fit_report(
             source_path=run_directory,
             source_kind="run_directory",
-            metadata=metadata,
+            run_directory=run_directory,
             fit_report_payload=payload,
             model_payload=model_payload,
-            bundle=bundle,
         )
 
-    diagnostics_directory = (
-        run_directory / "diagnostics"
-        if (run_directory / "diagnostics").is_dir()
-        else run_directory
-    )
+    diagnostics_directory = _resolve_diagnostics_directory(run_directory)
     bundle = {
         artifact_family: _load_json_file(diagnostics_directory / file_name)
         for artifact_family, file_name in ARTIFACT_FILE_NAMES.items()
     }
+    metadata = {"run_directory": str(run_directory)}
+
+    artifact_manifest = _load_artifact_manifest(run_directory)
+    if artifact_manifest is not None:
+        metadata.update(_extract_metadata_from_artifact_manifest(artifact_manifest))
 
     return _build_workbench_artifacts(
         source_path=run_directory,
         source_kind="run_directory",
-        metadata={"run_directory": str(run_directory)},
+        metadata=metadata,
         fit_report_payload=None,
         model_payload=model_payload,
         bundle=bundle,
@@ -159,6 +149,15 @@ def _load_from_document(document_path: Path) -> WorkbenchArtifacts:
             fit_report_payload=payload,
             model_payload=None,
             bundle=bundle,
+        )
+
+    if document_path.name == "fit_report.json":
+        return _build_workbench_artifacts_from_fit_report(
+            source_path=document_path,
+            source_kind="json_document",
+            run_directory=document_path.parent,
+            fit_report_payload=payload,
+            model_payload=None,
         )
 
     if document_path.name in ARTIFACT_FILE_NAMES.values():
@@ -200,6 +199,36 @@ def _build_workbench_artifacts(
     )
 
 
+def _build_workbench_artifacts_from_fit_report(
+    *,
+    source_path: Path,
+    source_kind: str,
+    run_directory: Path,
+    fit_report_payload: dict[str, Any],
+    model_payload: Optional[dict[str, Any]],
+) -> WorkbenchArtifacts:
+    run_id = _extract_run_id_from_fit_report(fit_report_payload)
+    bundle = _extract_diagnostic_bundle(fit_report_payload)
+    if bundle is None:
+        bundle = _load_bundle_from_run_directory(run_directory, run_id=run_id)
+
+    metadata = _extract_metadata_from_document(fit_report_payload)
+    metadata["run_directory"] = str(run_directory)
+
+    artifact_manifest = _load_artifact_manifest(run_directory, run_id=run_id)
+    if artifact_manifest is not None:
+        metadata.update(_extract_metadata_from_artifact_manifest(artifact_manifest))
+
+    return _build_workbench_artifacts(
+        source_path=source_path,
+        source_kind=source_kind,
+        metadata=metadata,
+        fit_report_payload=fit_report_payload,
+        model_payload=model_payload,
+        bundle=bundle,
+    )
+
+
 def _extract_diagnostic_bundle(payload: dict[str, Any]) -> Optional[dict[str, Any]]:
     if all(artifact_family in payload for artifact_family in ARTIFACT_FILE_NAMES):
         return payload
@@ -213,6 +242,22 @@ def _extract_diagnostic_bundle(payload: dict[str, Any]) -> Optional[dict[str, An
         staged_response_bundle = staged_response.get("diagnostic_artifact_bundle")
         if isinstance(staged_response_bundle, dict):
             return staged_response_bundle
+
+    return None
+
+
+def _extract_run_id_from_fit_report(payload: dict[str, Any]) -> Optional[str]:
+    run_id = payload.get("run_id")
+    if isinstance(run_id, str):
+        return run_id
+
+    staged_response = payload.get("staged_response")
+    if not isinstance(staged_response, dict):
+        return None
+
+    staged_run_id = staged_response.get("run_id")
+    if isinstance(staged_run_id, str):
+        return staged_run_id
 
     return None
 
@@ -239,6 +284,79 @@ def _extract_metadata_from_document(payload: dict[str, Any]) -> dict[str, Any]:
             metadata["status"] = status
         if isinstance(execution_mode, str):
             metadata["execution_mode"] = execution_mode
+
+    return metadata
+
+
+def _resolve_diagnostics_directory(run_directory: Path, *, run_id: Optional[str] = None) -> Path:
+    direct_diagnostics_directory = run_directory / "diagnostics"
+    if direct_diagnostics_directory.is_dir():
+        return direct_diagnostics_directory
+
+    artifact_store_run_directory = run_directory / "artifacts" / "runs" / run_directory.name
+    artifact_store_diagnostics_directory = artifact_store_run_directory / "diagnostics"
+    if artifact_store_diagnostics_directory.is_dir():
+        return artifact_store_diagnostics_directory
+
+    if run_id is not None:
+        fit_report_run_directory = run_directory / "artifacts" / "runs" / run_id
+        fit_report_diagnostics_directory = fit_report_run_directory / "diagnostics"
+        if fit_report_diagnostics_directory.is_dir():
+            return fit_report_diagnostics_directory
+
+    return run_directory
+
+
+def _load_bundle_from_run_directory(
+    run_directory: Path,
+    *,
+    run_id: Optional[str] = None,
+) -> dict[str, Any]:
+    diagnostics_directory = _resolve_diagnostics_directory(run_directory, run_id=run_id)
+    return {
+        artifact_family: _load_json_file(diagnostics_directory / file_name)
+        for artifact_family, file_name in ARTIFACT_FILE_NAMES.items()
+    }
+
+
+def _load_artifact_manifest(
+    run_directory: Path,
+    *,
+    run_id: Optional[str] = None,
+) -> Optional[dict[str, Any]]:
+    manifest_candidates = [
+        run_directory / "artifacts" / "runs" / run_directory.name / "artifact_manifest.json"
+    ]
+    if run_id is not None:
+        manifest_candidates.append(
+            run_directory / "artifacts" / "runs" / run_id / "artifact_manifest.json"
+        )
+
+    for artifact_manifest_path in manifest_candidates:
+        if artifact_manifest_path.is_file():
+            return _load_json_file(artifact_manifest_path)
+
+    return None
+
+
+def _extract_metadata_from_artifact_manifest(payload: dict[str, Any]) -> dict[str, Any]:
+    metadata: dict[str, Any] = {}
+
+    run_id = payload.get("run_id")
+    if isinstance(run_id, str):
+        metadata["run_id"] = run_id
+
+    execution_mode = payload.get("execution_mode")
+    if isinstance(execution_mode, str):
+        metadata["execution_mode"] = execution_mode
+
+    schema_version = payload.get("schema_version")
+    if isinstance(schema_version, str):
+        metadata["artifact_manifest_schema_version"] = schema_version
+
+    index_metadata = payload.get("index_metadata")
+    if isinstance(index_metadata, dict):
+        metadata["artifact_index_metadata"] = index_metadata
 
     return metadata
 

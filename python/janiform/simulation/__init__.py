@@ -13,6 +13,7 @@ from .coarse import (
     NewsProcessConfiguration,
     run_coarse_simulation,
 )
+from .kinds import SimulationKind
 from .progress import (
     SimulationProgressEvent,
     SimulationProgressPhase,
@@ -59,6 +60,7 @@ __all__ = [
     "SeededTickSimulationResponse",
     "SeededTickSimulationValidationError",
     "SeededTickSimulationValidationFailure",
+    "SimulationKind",
     "SimulationProgressEvent",
     "SimulationProgressPhase",
     "build_endogenous_seeded_mean_reversion_runtime_inputs",

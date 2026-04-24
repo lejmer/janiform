@@ -11,7 +11,10 @@ from typing import Any, Optional
 import pandas
 from pyarrow import parquet as pyarrow_parquet
 
-from ......contracts import require_positive_finite_scalar, require_timezone_aware_datetime
+from ......contracts.base import (
+    require_positive_finite_scalar,
+    require_timezone_aware_datetime,
+)
 from ......pricing import VanillaOptionPayoffType
 from .....errors import calibration_error
 from .....market_data.contracts import CalibrationOptionSurfaceColumnMapping, CalibrationTickDataColumnMapping

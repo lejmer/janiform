@@ -1,3 +1,5 @@
+use std::sync::mpsc::Sender;
+
 use janiform_calibration_artifacts::{
     CalibrationOptimizerSettings, SurpriseNewsDeterministicIntensityProfile,
 };
@@ -23,7 +25,8 @@ use super::super::contracts::{
     ReturnComponentsStageDeterministicSeedMetadata, ReturnComponentsStageDiagnosticPolicy,
     ReturnComponentsStageObjectiveScoringPolicy,
     ReturnComponentsStageObservedSignalSummaryStatistics,
-    ReturnComponentsStagePriceRangeSanityPolicy, ReturnComponentsStageQuantileBinningPolicy,
+    ReturnComponentsStagePriceRangeSanityPolicy, ReturnComponentsStageProgressPhase,
+    ReturnComponentsStageProgressUpdate, ReturnComponentsStageQuantileBinningPolicy,
     ReturnComponentsStageSurpriseEpisodeSelectionPolicy,
     ReturnComponentsSurpriseNewsArrivalCandidateFamily,
 };
@@ -44,6 +47,7 @@ use super::signals::{
     ReturnComponentsStageActivityCalibrationContext, sort_candidate_generation_signals,
     summarize_candidate_generation_signals,
 };
+use crate::stages::return_components::progress::send_return_components_progress;
 
 pub(super) struct ReturnComponentsStageCandidateGenerationOutput {
     pub(super) candidate_inputs: Vec<ReturnComponentsStageCandidateInput>,
@@ -68,10 +72,19 @@ pub(super) fn generate_return_components_stage_candidate_inputs(
     activity_calibration_context: Option<ReturnComponentsStageActivityCalibrationContext>,
     stage_seed: u64,
     stage_solver_settings: &CalibrationOptimizerSettings,
+    progress_sender: Option<&Sender<ReturnComponentsStageProgressUpdate>>,
 ) -> Result<
     ReturnComponentsStageCandidateGenerationOutput,
     ReturnComponentsStageCandidateGenerationInputError,
 > {
+    send_return_components_progress(
+        progress_sender,
+        ReturnComponentsStageProgressPhase::SignalPartitionFit,
+        0,
+        1,
+        Some("fit signal partition"),
+    );
+
     let fitted_signal_partition_layer = signal_partition_fit::fit_signal_partition_layer(
         candidate_generation_input
             .observed_open_session_returns
@@ -84,6 +97,22 @@ pub(super) fn generate_return_components_stage_candidate_inputs(
             .as_slice(),
     );
 
+    send_return_components_progress(
+        progress_sender,
+        ReturnComponentsStageProgressPhase::SignalPartitionFit,
+        1,
+        1,
+        Some("signal partition fitted"),
+    );
+
+    send_return_components_progress(
+        progress_sender,
+        ReturnComponentsStageProgressPhase::SurpriseEpisodeSelectionFit,
+        0,
+        1,
+        Some("fit surprise episode selection"),
+    );
+
     let fitted_surprise_episode_selection_layer =
         surprise_episode_selection_fit::fit_surprise_episode_selection_layer(
             candidate_generation_input
@@ -92,13 +121,61 @@ pub(super) fn generate_return_components_stage_candidate_inputs(
             fitted_signal_partition_layer.continuous_return_filter_threshold,
         );
 
+    send_return_components_progress(
+        progress_sender,
+        ReturnComponentsStageProgressPhase::SurpriseEpisodeSelectionFit,
+        1,
+        1,
+        Some("surprise episode selection fitted"),
+    );
+
+    send_return_components_progress(
+        progress_sender,
+        ReturnComponentsStageProgressPhase::CandidateInputValidation,
+        0,
+        1,
+        Some("validate candidate generation input"),
+    );
+
     candidate_generation_input.validate()?;
+
+    send_return_components_progress(
+        progress_sender,
+        ReturnComponentsStageProgressPhase::CandidateInputValidation,
+        1,
+        1,
+        Some("candidate generation input valid"),
+    );
+
+    send_return_components_progress(
+        progress_sender,
+        ReturnComponentsStageProgressPhase::SignalSorting,
+        0,
+        1,
+        Some("sort observed signals"),
+    );
 
     let sorted_signals = sort_candidate_generation_signals(
         candidate_generation_input,
         derived_close_open_gap_candidates,
         fitted_signal_partition_layer,
         &fitted_surprise_episode_selection_layer,
+    );
+
+    send_return_components_progress(
+        progress_sender,
+        ReturnComponentsStageProgressPhase::SignalSorting,
+        1,
+        1,
+        Some("observed signals sorted"),
+    );
+
+    send_return_components_progress(
+        progress_sender,
+        ReturnComponentsStageProgressPhase::SignalSummary,
+        0,
+        1,
+        Some("summarize observed signals"),
     );
 
     let (summary_statistics, continuous_return_calibration_sample) =
@@ -108,9 +185,41 @@ pub(super) fn generate_return_components_stage_candidate_inputs(
             activity_calibration_context,
         );
 
+    send_return_components_progress(
+        progress_sender,
+        ReturnComponentsStageProgressPhase::SignalSummary,
+        1,
+        1,
+        Some("observed signals summarized"),
+    );
+
+    send_return_components_progress(
+        progress_sender,
+        ReturnComponentsStageProgressPhase::QuantileBinningPolicyFit,
+        0,
+        1,
+        Some("fit quantile binning policy"),
+    );
+
     let fitted_quantile_binning_policy = quantile_binning_fit::fit_quantile_binning_policy(
         sorted_signals.surprise_open_jump_magnitudes.as_slice(),
         sorted_signals.combined_gap_magnitudes.as_slice(),
+    );
+
+    send_return_components_progress(
+        progress_sender,
+        ReturnComponentsStageProgressPhase::QuantileBinningPolicyFit,
+        1,
+        1,
+        Some("quantile binning policy fitted"),
+    );
+
+    send_return_components_progress(
+        progress_sender,
+        ReturnComponentsStageProgressPhase::SurpriseArrivalFit,
+        0,
+        1,
+        Some("fit surprise arrival layer"),
     );
 
     let fitted_surprise_arrival_layer = surprise_intensity_fit::fit_surprise_news_arrival_layer(
@@ -122,24 +231,118 @@ pub(super) fn generate_return_components_stage_candidate_inputs(
             .map(|episode| episode.terminal_timestamp_utc_nanos)
             .collect::<Vec<_>>(),
     );
+
+    send_return_components_progress(
+        progress_sender,
+        ReturnComponentsStageProgressPhase::SurpriseArrivalFit,
+        1,
+        1,
+        Some("surprise arrival layer fitted"),
+    );
+
+    send_return_components_progress(
+        progress_sender,
+        ReturnComponentsStageProgressPhase::ReturnJumpMarkFit,
+        0,
+        1,
+        Some("fit return jump mark layer"),
+    );
+
     let fitted_return_jump_mark_layer = mark_layer_fit::fit_return_jump_mark_layer(
         candidate_generation_input.shared_mark_law_template,
         summary_statistics,
     );
+
+    send_return_components_progress(
+        progress_sender,
+        ReturnComponentsStageProgressPhase::ReturnJumpMarkFit,
+        1,
+        1,
+        Some("return jump mark layer fitted"),
+    );
+
+    send_return_components_progress(
+        progress_sender,
+        ReturnComponentsStageProgressPhase::ActivityCouplingFit,
+        0,
+        1,
+        Some("fit activity coupling layer"),
+    );
+
     let fitted_activity_coupling_layer =
         activity_coupling_fit::fit_activity_coupling_layer(summary_statistics);
+
+    send_return_components_progress(
+        progress_sender,
+        ReturnComponentsStageProgressPhase::ActivityCouplingFit,
+        1,
+        1,
+        Some("activity coupling layer fitted"),
+    );
+
+    send_return_components_progress(
+        progress_sender,
+        ReturnComponentsStageProgressPhase::ContinuousReturnLayerFit,
+        0,
+        1,
+        Some("fit continuous return layer"),
+    );
+
     let fitted_continuous_return_layer = continuous_layer_fit::fit_continuous_return_layer(
         summary_statistics,
         &continuous_return_calibration_sample,
         stage_seed,
         stage_solver_settings,
+        progress_sender,
     )?;
 
+    send_return_components_progress(
+        progress_sender,
+        ReturnComponentsStageProgressPhase::ContinuousReturnLayerFit,
+        1,
+        1,
+        Some("continuous return layer fitted"),
+    );
+
+    send_return_components_progress(
+        progress_sender,
+        ReturnComponentsStageProgressPhase::ObjectivePolicyFit,
+        0,
+        3,
+        Some("fit diagnostic policy"),
+    );
+
     let fitted_diagnostic_policy = diagnostic_policy_fit::fit_diagnostic_policy();
+
+    send_return_components_progress(
+        progress_sender,
+        ReturnComponentsStageProgressPhase::ObjectivePolicyFit,
+        1,
+        3,
+        Some("fit objective scoring policy"),
+    );
+
     let fitted_objective_scoring_policy =
         objective_scoring_policy_fit::fit_objective_scoring_policy(summary_statistics);
+
+    send_return_components_progress(
+        progress_sender,
+        ReturnComponentsStageProgressPhase::ObjectivePolicyFit,
+        2,
+        3,
+        Some("fit price range sanity policy"),
+    );
+
     let fitted_price_range_sanity_policy =
         price_range_policy_fit::fit_price_range_sanity_policy(summary_statistics);
+
+    send_return_components_progress(
+        progress_sender,
+        ReturnComponentsStageProgressPhase::ObjectivePolicyFit,
+        3,
+        3,
+        Some("objective policies fitted"),
+    );
 
     let candidate_family_sets = build_candidate_family_sets(
         candidate_generation_input,
@@ -162,7 +365,8 @@ pub(super) fn generate_return_components_stage_candidate_inputs(
         fitted_price_range_sanity_policy.clone(),
     );
 
-    let candidate_family_counts = build_candidate_family_counts();
+    let candidate_family_counts =
+        build_candidate_family_counts(&candidate_family_sets.fitted_continuous_return_layer);
 
     let generated_candidates = enumerate_candidate_inputs(
         candidate_generation_input,
@@ -175,6 +379,7 @@ pub(super) fn generate_return_components_stage_candidate_inputs(
         &fitted_diagnostic_policy,
         &fitted_objective_scoring_policy,
         &fitted_price_range_sanity_policy,
+        progress_sender,
     )?;
 
     Ok(ReturnComponentsStageCandidateGenerationOutput {
@@ -320,9 +525,11 @@ fn build_candidate_provenance_template(
     }
 }
 
-fn build_candidate_family_counts() -> ReturnComponentsStageCandidateFamilyCounts {
+fn build_candidate_family_counts(
+    fitted_continuous_return_layer: &continuous_layer_fit::FittedContinuousReturnLayer,
+) -> ReturnComponentsStageCandidateFamilyCounts {
     ReturnComponentsStageCandidateFamilyCounts {
-        nig_candidate_count: 1,
+        nig_candidate_count: fitted_continuous_return_layer.candidates.len(),
         known_news_arrival_family_count: 1,
         surprise_news_arrival_family_count: 1,
         return_jump_mark_scale_family_count: 1,
@@ -341,18 +548,11 @@ fn enumerate_candidate_inputs(
     fitted_diagnostic_policy: &ReturnComponentsStageDiagnosticPolicy,
     fitted_objective_scoring_policy: &ReturnComponentsStageObjectiveScoringPolicy,
     fitted_price_range_sanity_policy: &ReturnComponentsStagePriceRangeSanityPolicy,
+    progress_sender: Option<&Sender<ReturnComponentsStageProgressUpdate>>,
 ) -> Result<
     Vec<ReturnComponentsStageCandidateInput>,
     ReturnComponentsStageCandidateGenerationInputError,
 > {
-    let nig_candidate = candidate_family_sets
-        .fitted_continuous_return_layer
-        .nig_configuration;
-
-    let continuous_return_evaluation = &candidate_family_sets
-        .fitted_continuous_return_layer
-        .evaluation;
-
     let known_arrival_family = candidate_family_sets
         .fitted_known_arrival_layer
         .as_candidate_family();
@@ -360,14 +560,6 @@ fn enumerate_candidate_inputs(
     let return_jump_family = &candidate_family_sets.fitted_return_jump_mark_layer;
     let activity_coupling_family = &candidate_family_sets.fitted_activity_coupling_layer;
 
-    let candidate_families = ReturnComponentsStageCandidateFamilies {
-        known_news_arrival_controls: known_arrival_family.clone(),
-        surprise_news_arrival_controls: surprise_arrival_family.clone(),
-        return_jump_mark_scale_controls: *return_jump_family,
-        news_to_hawkes_activity_coupling_controls: *activity_coupling_family,
-    };
-
-    let return_distribution_diagnostic = continuous_return_evaluation.diagnostic;
     let jump_diagnostic = build_jump_diagnostic(
         fitted_diagnostic_policy,
         summary_statistics,
@@ -391,62 +583,119 @@ fn enumerate_candidate_inputs(
         summary_statistics,
         activity_coupling_family,
     );
-    let price_range_sanity_diagnostic = build_price_range_sanity_diagnostic(
-        fitted_diagnostic_policy,
-        summary_statistics,
-        return_distribution_diagnostic,
-        surprise_arrival_family,
-        return_jump_family,
-        candidate_generation_input.shared_mark_law_template,
-        fitted_price_range_sanity_policy,
+
+    let total_candidate_count = candidate_family_sets
+        .fitted_continuous_return_layer
+        .candidates
+        .len();
+
+    send_return_components_progress(
+        progress_sender,
+        ReturnComponentsStageProgressPhase::CandidateEnumeration,
+        0,
+        total_candidate_count,
+        Some("enumerate generated candidates"),
     );
 
-    let objective_metric_buckets = objective_scoring_policy_fit::score_candidate_metric_buckets(
-        fitted_objective_scoring_policy,
-        continuous_return_evaluation.objective_score,
-        &surprise_arrival_diagnostic,
-        &jump_diagnostic,
-        &gap_diagnostic,
-        &activity_coupling_diagnostic,
-        &price_range_sanity_diagnostic,
-    );
+    candidate_family_sets
+        .fitted_continuous_return_layer
+        .candidates
+        .iter()
+        .enumerate()
+        .map(
+            |(nig_candidate_index, continuous_return_candidate)| -> Result<
+                ReturnComponentsStageCandidateInput,
+                ReturnComponentsStageCandidateGenerationInputError,
+            > {
+                let candidate_families = ReturnComponentsStageCandidateFamilies {
+                    known_news_arrival_controls: known_arrival_family.clone(),
+                    surprise_news_arrival_controls: surprise_arrival_family.clone(),
+                    return_jump_mark_scale_controls: *return_jump_family,
+                    news_to_hawkes_activity_coupling_controls: *activity_coupling_family,
+                };
 
-    let dominant_scale_driver =
-        objective_scoring_policy_fit::dominant_scale_driver_from_metric_buckets(
-            fitted_objective_scoring_policy,
-            objective_metric_buckets,
-        );
+                let return_distribution_diagnostic =
+                    continuous_return_candidate.evaluation.diagnostic;
+                let price_range_sanity_diagnostic = build_price_range_sanity_diagnostic(
+                    fitted_diagnostic_policy,
+                    summary_statistics,
+                    return_distribution_diagnostic,
+                    surprise_arrival_family,
+                    return_jump_family,
+                    candidate_generation_input.shared_mark_law_template,
+                    fitted_price_range_sanity_policy,
+                );
 
-    let objective_terms = objective_scoring_policy_fit::build_candidate_objective_terms(
-        candidate_generation_input.objective_metric_weights,
-        objective_metric_buckets,
-    );
+                let objective_metric_buckets =
+                    objective_scoring_policy_fit::score_candidate_metric_buckets(
+                        fitted_objective_scoring_policy,
+                        continuous_return_candidate.evaluation.objective_score,
+                        &surprise_arrival_diagnostic,
+                        &jump_diagnostic,
+                        &gap_diagnostic,
+                        &activity_coupling_diagnostic,
+                        &price_range_sanity_diagnostic,
+                    );
 
-    let news_process_configuration = build_news_process_configuration_from_candidate_families(
-        candidate_generation_input,
-        &known_arrival_family,
-        surprise_arrival_family,
-        return_jump_family,
-        activity_coupling_family,
-    )?;
+                let dominant_scale_driver =
+                    objective_scoring_policy_fit::dominant_scale_driver_from_metric_buckets(
+                        fitted_objective_scoring_policy,
+                        objective_metric_buckets,
+                    );
 
-    Ok(vec![ReturnComponentsStageCandidateInput {
-        candidate_id: "generated_nig_001_known_001_surprise_001_mark_001_coupling_001".to_string(),
-        nig_shared_plus_shift_configuration: nig_candidate,
-        news_process_configuration,
-        objective_metric_buckets,
-        return_distribution_diagnostic,
-        continuous_distribution_fit_breakdown: continuous_return_evaluation.fit_breakdown.clone(),
-        surprise_arrival_diagnostic,
-        jump_diagnostic,
-        gap_diagnostic,
-        activity_coupling_diagnostic,
-        price_range_sanity_diagnostic,
-        dominant_scale_driver,
-        objective_terms,
-        candidate_families,
-        candidate_provenance: candidate_provenance_template.clone(),
-    }])
+                let objective_terms = objective_scoring_policy_fit::build_candidate_objective_terms(
+                    candidate_generation_input.objective_metric_weights,
+                    objective_metric_buckets,
+                );
+
+                let news_process_configuration =
+                    build_news_process_configuration_from_candidate_families(
+                        candidate_generation_input,
+                        &known_arrival_family,
+                        surprise_arrival_family,
+                        return_jump_family,
+                        activity_coupling_family,
+                    )?;
+
+                let candidate_id = format!(
+                    "generated_nig_{:03}_known_001_surprise_001_mark_001_coupling_001",
+                    nig_candidate_index + 1
+                );
+
+                let candidate_input = ReturnComponentsStageCandidateInput {
+                    candidate_id: candidate_id.clone(),
+                    nig_shared_plus_shift_configuration: continuous_return_candidate
+                        .nig_configuration,
+                    news_process_configuration,
+                    objective_metric_buckets,
+                    return_distribution_diagnostic,
+                    continuous_distribution_fit_breakdown: continuous_return_candidate
+                        .evaluation
+                        .fit_breakdown
+                        .clone(),
+                    surprise_arrival_diagnostic: surprise_arrival_diagnostic.clone(),
+                    jump_diagnostic: jump_diagnostic.clone(),
+                    gap_diagnostic: gap_diagnostic.clone(),
+                    activity_coupling_diagnostic: activity_coupling_diagnostic.clone(),
+                    price_range_sanity_diagnostic,
+                    objective_terms,
+                    candidate_families,
+                    candidate_provenance: candidate_provenance_template.clone(),
+                    dominant_scale_driver,
+                };
+
+                send_return_components_progress(
+                    progress_sender,
+                    ReturnComponentsStageProgressPhase::CandidateEnumeration,
+                    nig_candidate_index + 1,
+                    total_candidate_count,
+                    Some(candidate_id.as_str()),
+                );
+
+                Ok(candidate_input)
+            },
+        )
+        .collect()
 }
 
 fn build_news_process_configuration_from_candidate_families(

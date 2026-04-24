@@ -4,9 +4,9 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, Optional
 
-from ..errors import calibration_error, calibration_error
-from ...contracts import (
-    ContractModel,
+from ..errors import calibration_error
+from ...contracts import ContractModel
+from ...contracts.base import (
     require_mapping,
     require_non_empty_string,
     require_non_negative_finite_number,

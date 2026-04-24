@@ -54,6 +54,7 @@ from ..market_data.translation import (
 from ..market_data.workflow import (
     _prepare_market_data_calibration_from_translation_result,
 )
+from ...pricing import PricingIntervalSchedulePolicy, default_pricing_interval_schedule_policy
 from ..presets.references import (
     KnownNewsPresetReference,
     MarketProfileExplicitConfiguration,
@@ -64,9 +65,13 @@ from ..presets.references import (
 from ..presets.registry import PresetCategory, PresetRegistry
 from ..presets.resolution import ResolvedPresetWorkflowConfiguration, resolve_preset_workflow_configuration
 from ..sessions.contracts import MarketDataSessionResolution
-from ..staged import CalibrationStageSolverSettings
+from ..staged import CalibrationResumeSettings, CalibrationStageSolverSettings
 from ..staged import runtime as staged_runtime_module
-from ..staged.runtime import run_prepared_staged_calibration_with_raw_payload, run_staged_calibration_with_prepared_handle_and_events
+from ..staged.runtime import (
+    _run_staged_calibration_with_prepared_handle_resume_and_events,
+    run_prepared_staged_calibration_with_raw_payload,
+    run_staged_calibration_with_prepared_handle_and_events,
+)
 from ..._workflow_progress import AbstractProgress, NullProgress
 from ..._workflow_progress import JaniformOutputController
 
@@ -87,6 +92,8 @@ class JaniformEstimator:
     _optimizer_settings_by_stage: tuple[CalibrationStageSolverSettings, ...]
     _preprocessing_settings: Optional[CalibrationMarketDataPreprocessingSettings]
     _mean_reversion: Optional[CalibrationMeanReversionConfiguration]
+    _pricing_interval_schedule_policy: PricingIntervalSchedulePolicy
+    _dynamics_search_restart_candidate_budget: Optional[int]
     _market_profile_reference: Optional[MarketProfileReference]
     _session_reference: Optional[SessionPresetReference]
     _known_news_reference: Optional[KnownNewsPresetReference]
@@ -107,6 +114,8 @@ class JaniformEstimator:
         optimizer_settings_by_stage: tuple[CalibrationStageSolverSettings, ...] = (),
         preprocessing_settings: Optional[CalibrationMarketDataPreprocessingSettings] = None,
         mean_reversion: Optional[CalibrationMeanReversionConfiguration] = None,
+        pricing_interval_schedule_policy: Optional[PricingIntervalSchedulePolicy] = None,
+        dynamics_search_restart_candidate_budget: Optional[int] = None,
         market_profile: Optional[str | MarketProfileReference] = None,
         session: Optional[str | Path | SessionPresetReference] = None,
         known_news: Optional[str | KnownNewsPresetReference] = None,
@@ -142,6 +151,14 @@ class JaniformEstimator:
                 "mean_reversion",
                 "must be a CalibrationMeanReversionConfiguration when provided",
             )
+        if (
+            dynamics_search_restart_candidate_budget is not None
+            and dynamics_search_restart_candidate_budget <= 0
+        ):
+            raise calibration_error(
+                "dynamics_search_restart_candidate_budget",
+                "must be strictly positive when provided",
+            )
 
         self._workflow_scope_override = workflow_scope
         self._tick_data_column_mapping = tick_data_column_mapping
@@ -151,6 +168,12 @@ class JaniformEstimator:
         self._optimizer_settings_by_stage = optimizer_settings_by_stage
         self._preprocessing_settings = preprocessing_settings
         self._mean_reversion = mean_reversion
+        self._pricing_interval_schedule_policy = (
+            default_pricing_interval_schedule_policy()
+            if pricing_interval_schedule_policy is None
+            else pricing_interval_schedule_policy
+        )
+        self._dynamics_search_restart_candidate_budget = dynamics_search_restart_candidate_budget
         self._market_profile_reference = coerce_market_profile_reference(market_profile)
         self._session_reference = coerce_session_reference(session, exchange_code=exchange_code)
         self._known_news_reference = coerce_known_news_reference(known_news)
@@ -164,6 +187,7 @@ class JaniformEstimator:
         self,
         *,
         run_id: Optional[str] = None,
+        resume_settings: Optional[CalibrationResumeSettings] = None,
         tick_data_path: str | Path,
         tick_data_format: Optional[CalibrationInputFileFormat] = None,
         tick_data_provenance_label: str = "tick_data",
@@ -172,12 +196,17 @@ class JaniformEstimator:
         option_surface_provenance_label: str = "option_surface",
         option_surface_valuation_time_utc: Optional[datetime] = None,
         carry: Optional[CalibrationFlatCarryInput] = None,
+        pricing_interval_schedule_policy: Optional[PricingIntervalSchedulePolicy] = None,
         output_dir: Optional[str | Path] = None,
         silent: Optional[bool] = None,
     ) -> JaniformModel:
         return fit_with_execution_configuration(
-            self._build_execution_configuration(silent=silent),
+            self._build_execution_configuration(
+                silent=silent,
+                pricing_interval_schedule_policy=pricing_interval_schedule_policy,
+            ),
             run_id=run_id,
+            resume_settings=resume_settings,
             tick_data_path=tick_data_path,
             tick_data_format=tick_data_format,
             tick_data_provenance_label=tick_data_provenance_label,
@@ -194,6 +223,7 @@ class JaniformEstimator:
         self,
         *,
         run_id: Optional[str] = None,
+        resume_settings: Optional[CalibrationResumeSettings] = None,
         tick_data_path: str | Path,
         tick_data_format: Optional[CalibrationInputFileFormat] = None,
         tick_data_provenance_label: str = "tick_data",
@@ -202,12 +232,17 @@ class JaniformEstimator:
         option_surface_provenance_label: str = "option_surface",
         option_surface_valuation_time_utc: Optional[datetime] = None,
         carry: Optional[CalibrationFlatCarryInput] = None,
+        pricing_interval_schedule_policy: Optional[PricingIntervalSchedulePolicy] = None,
         output_dir: Optional[str | Path] = None,
         silent: Optional[bool] = None,
     ) -> JaniformFitResult:
         model, fit_report = fit_with_execution_configuration(
-            self._build_execution_configuration(silent=silent),
+            self._build_execution_configuration(
+                silent=silent,
+                pricing_interval_schedule_policy=pricing_interval_schedule_policy,
+            ),
             run_id=run_id,
+            resume_settings=resume_settings,
             tick_data_path=tick_data_path,
             tick_data_format=tick_data_format,
             tick_data_provenance_label=tick_data_provenance_label,
@@ -229,6 +264,15 @@ class JaniformEstimator:
         return fit_progress_total_steps(self._build_preparation_configuration())
 
     def _build_preparation_configuration(self) -> FitPreparationConfiguration:
+        return self._build_preparation_configuration_with_override(
+            pricing_interval_schedule_policy=None,
+        )
+
+    def _build_preparation_configuration_with_override(
+        self,
+        *,
+        pricing_interval_schedule_policy: Optional[PricingIntervalSchedulePolicy],
+    ) -> FitPreparationConfiguration:
         resolved_market_profile_configuration = self._resolve_market_profile_configuration()
         requires_session_inference = self._requires_session_inference()
         return FitPreparationConfiguration(
@@ -240,6 +284,12 @@ class JaniformEstimator:
             optimizer_settings_by_stage=self._optimizer_settings_by_stage,
             preprocessing_settings=self._preprocessing_settings,
             mean_reversion=self._mean_reversion,
+            pricing_interval_schedule_policy=(
+                self._pricing_interval_schedule_policy
+                if pricing_interval_schedule_policy is None
+                else pricing_interval_schedule_policy
+            ),
+            dynamics_search_restart_candidate_budget=self._dynamics_search_restart_candidate_budget,
             default_endogenous_mean_reversion_configuration=(
                 self._default_endogenous_mean_reversion_configuration()
             ),
@@ -260,8 +310,11 @@ class JaniformEstimator:
         self,
         *,
         silent: Optional[bool],
+        pricing_interval_schedule_policy: Optional[PricingIntervalSchedulePolicy],
     ) -> FitExecutionConfiguration:
-        preparation_configuration = self._build_preparation_configuration()
+        preparation_configuration = self._build_preparation_configuration_with_override(
+            pricing_interval_schedule_policy=pricing_interval_schedule_policy,
+        )
         effective_silent = self._silent if silent is None else silent
         prepared_staged_runner = run_prepared_staged_calibration_with_raw_payload
         return FitExecutionConfiguration(
@@ -288,6 +341,9 @@ class JaniformEstimator:
                 prepared_staged_runner is staged_runtime_module.run_prepared_staged_calibration_with_raw_payload
             ),
             evented_prepared_runner=run_staged_calibration_with_prepared_handle_and_events,
+            resume_evented_prepared_runner=(
+                _run_staged_calibration_with_prepared_handle_resume_and_events
+            ),
             build_fit_inference_metadata=self._build_fit_inference_metadata,
         )
 

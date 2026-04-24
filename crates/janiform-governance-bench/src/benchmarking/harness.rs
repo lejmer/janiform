@@ -9,10 +9,13 @@ use janiform_affine_oracle::affine_oracle::{
     ExponentialAffineTransformSolverSettingsError,
     solve_exponential_affine_transform_with_settings,
 };
-use janiform_engine_pricing::{
+use janiform_engine_pricing::internal::{
     FourierInversionEngineSettingsError, FourierInversionPricingError,
+    price_vanilla_option_via_fourier_inversion,
+};
+use janiform_engine_pricing::{
     VanillaOptionPayoffConfiguration, VanillaOptionPayoffType,
-    VanillaOptionPricingMarketInputsError, price_vanilla_option_via_fourier_inversion,
+    VanillaOptionPricingMarketInputsError,
 };
 use janiform_engine_risk::{
     SufficientStatisticsTransformSliceContextError,

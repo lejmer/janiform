@@ -2,12 +2,12 @@ use std::collections::{BTreeMap, HashSet};
 
 use arrow_array::RecordBatch;
 
-use crate::calendar::ExchangeCalendarRegistryLoader;
 use crate::execution_bridge::CalibrationHawkesDirectionalLabelDiagnostics;
 use crate::market_data::preprocessing::{
     MarketDataTranslationPreprocessingRequest, MarketDataTranslationTickRecord,
     preprocess_market_data_translation_request,
 };
+use janiform_market_time::calendar::ExchangeCalendarRegistryLoader;
 
 use super::column_resolution::resolve_tick_data_column_mapping;
 use super::contracts::{
@@ -807,7 +807,9 @@ fn tick_price_policy_string(policy: MarketDataTickPriceInputPolicy) -> String {
 mod tests {
     use std::sync::Arc;
 
-    use arrow_array::{ArrayRef, Float64Array, StringArray, TimestampNanosecondArray};
+    use arrow_array::{
+        ArrayRef, Decimal128Array, Float64Array, StringArray, TimestampNanosecondArray,
+    };
     use arrow_schema::{DataType, Field, Schema, TimeUnit};
 
     use super::{
@@ -878,5 +880,65 @@ mod tests {
         assert_eq!(normalized.tick_data_summary.source_row_count, 2);
         assert_eq!(normalized.tick_data_summary.retained_row_count, 2);
         assert_eq!(normalized.reference_price, Some(11.0));
+    }
+
+    #[test]
+    fn normalize_market_data_source_reads_projected_decimal_parquet_prices() {
+        let parquet_path = unique_test_path("decimal-tick-source.parquet");
+        let schema = Arc::new(Schema::new(vec![
+            Field::new(
+                "event_time",
+                DataType::Timestamp(TimeUnit::Nanosecond, None),
+                false,
+            ),
+            Field::new("trade_price", DataType::Decimal128(6, 5), false),
+            Field::new("trade_side", DataType::Utf8, false),
+        ]));
+
+        write_parquet_record_batch(
+            parquet_path.as_path(),
+            schema,
+            vec![
+                Arc::new(TimestampNanosecondArray::from(vec![
+                    1_711_957_600_000_000_000_i64,
+                    1_711_957_601_000_000_000_i64,
+                ])) as ArrayRef,
+                Arc::new(
+                    Decimal128Array::from_iter_values([109_125_i128, 109_250_i128])
+                        .with_precision_and_scale(6, 5)
+                        .expect("test decimal scale must match schema"),
+                ) as ArrayRef,
+                Arc::new(StringArray::from(vec!["buy", "sell"])) as ArrayRef,
+            ],
+        );
+
+        let normalized = normalize_market_data_source(
+            &MarketDataInputFileReference {
+                path: parquet_path.to_string_lossy().into_owned(),
+                file_format: MarketDataInputFileFormat::Parquet,
+                provenance_label: "ticks".to_string(),
+            },
+            &MarketDataTickDataColumnMapping {
+                timestamp_column: Some("event_time".to_string()),
+                price_column: Some("trade_price".to_string()),
+                trade_sign_column: Some("trade_side".to_string()),
+                bid_column: None,
+                ask_column: None,
+            },
+            &MarketDataNormalizationPolicy {
+                timestamp_timezone: "UTC".to_string(),
+                sort_records_by_timestamp: true,
+                duplicate_record_policy: None,
+                tick_price_input_policy: Some(MarketDataTickPriceInputPolicy::ExplicitPriceColumn),
+                option_quote_input_policy: None,
+            },
+            false,
+        )
+        .expect("projected decimal parquet tick normalization should succeed");
+
+        assert_eq!(normalized.tick_records.len(), 2);
+        assert_eq!(normalized.tick_records[0].price, Some(1.09125));
+        assert_eq!(normalized.tick_records[1].price, Some(1.0925));
+        assert_eq!(normalized.reference_price, Some(1.0925));
     }
 }

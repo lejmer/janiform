@@ -4,9 +4,11 @@ use std::collections::BTreeSet;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
+use janiform_engine_pricing::internal::{
+    FourierInversionEngineSettings, price_vanilla_option_via_fourier_inversion,
+};
 use janiform_engine_pricing::{
-    FourierInversionEngineSettings, VanillaOptionPayoffConfiguration, VanillaOptionPayoffType,
-    VanillaOptionPricingMarketInputs, price_vanilla_option_via_fourier_inversion,
+    VanillaOptionPayoffConfiguration, VanillaOptionPayoffType, VanillaOptionPricingMarketInputs,
 };
 use janiform_engine_risk::{
     SufficientStatisticsTransformSliceContext, SufficientStatisticsTransformSliceSettings,

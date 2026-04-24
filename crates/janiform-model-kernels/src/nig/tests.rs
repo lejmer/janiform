@@ -288,6 +288,17 @@ fn characteristic_exponent_is_deterministic_for_repeated_calls() {
 }
 
 #[test]
+fn characteristic_exponent_returns_exact_zero_at_origin() {
+    let parameters = NigParameters::try_new(2.3, -0.8, 0.7, 0.1)
+        .expect("interior NIG parameters should construct");
+
+    assert_eq!(
+        parameters.characteristic_exponent(ComplexScalar::new(0.0, 0.0)),
+        ComplexScalar::new(0.0, 0.0)
+    );
+}
+
+#[test]
 fn characteristic_exponent_is_finite_for_representative_pricing_grid_arguments() {
     let parameters = NigParameters::try_new(1.000001, 1.0, 0.2, -0.03)
         .expect("near-boundary but valid parameters should construct");

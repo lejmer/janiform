@@ -383,20 +383,20 @@ def render_price_human_output(run_result_payload: dict[str, Any]) -> str:
     ]
 
     run_diagnostics = cast(Optional[dict[str, Any]], run_result_payload.get("run_diagnostics"))
-    anchored_recursion = (
-        cast(Optional[dict[str, Any]], run_diagnostics.get("anchored_recursion"))
+    spectral = (
+        cast(Optional[dict[str, Any]], run_diagnostics.get("spectral"))
         if isinstance(run_diagnostics, dict)
         else None
     )
-    if isinstance(anchored_recursion, dict):
-        interval_diagnostics = anchored_recursion.get("interval_diagnostics")
+    if isinstance(spectral, dict):
+        interval_diagnostics = spectral.get("interval_diagnostics")
         interval_count = len(interval_diagnostics) if isinstance(interval_diagnostics, list) else 0
         lines.append(
             (
-                "anchored_diagnostics: "
-                f"deviation_grid_node_count={anchored_recursion.get('deviation_grid_node_count')} "
-                "refined_deviation_grid_node_count="
-                f"{anchored_recursion.get('refined_deviation_grid_node_count')} "
+                "spectral_diagnostics: "
+                f"collocation_node_count={spectral.get('collocation_node_count')} "
+                f"deviation_domain_lower_bound={spectral.get('deviation_domain_lower_bound')} "
+                f"deviation_domain_upper_bound={spectral.get('deviation_domain_upper_bound')} "
                 f"interval_count={interval_count}"
             )
         )

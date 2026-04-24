@@ -79,7 +79,7 @@ impl PricingNodeProgress {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct PricingProgressEvent {
     pub phase: PricingProgressPhase,
     pub completed_units: usize,
@@ -89,10 +89,18 @@ pub struct PricingProgressEvent {
     pub total_maturities: Option<usize>,
     pub current_interval_index: Option<usize>,
     pub total_intervals: Option<usize>,
-    pub current_transition_row_index: Option<usize>,
-    pub total_transition_rows: Option<usize>,
     pub current_strike_index: Option<usize>,
     pub total_strikes: Option<usize>,
+    pub seed_exact_transition_row_count: Option<usize>,
+    pub shared_theta_transition_row_count: Option<usize>,
+    pub certified_transition_row_count: Option<usize>,
+    pub fallback_exact_transition_row_count: Option<usize>,
+    pub theta_search_elapsed_millis: Option<u64>,
+    pub theta_certification_elapsed_millis: Option<u64>,
+    pub row_batch_elapsed_millis: Option<u64>,
+    pub average_buy_shift_configuration_gradient_norm: Option<f64>,
+    pub average_sell_shift_configuration_gradient_norm: Option<f64>,
+    pub average_core_log_moment_shift_configuration_gradient_norm: Option<f64>,
 }
 
 impl PricingProgressEvent {
@@ -110,10 +118,18 @@ impl PricingProgressEvent {
             total_maturities: None,
             current_interval_index: None,
             total_intervals: None,
-            current_transition_row_index: None,
-            total_transition_rows: None,
             current_strike_index: None,
             total_strikes: None,
+            seed_exact_transition_row_count: None,
+            shared_theta_transition_row_count: None,
+            certified_transition_row_count: None,
+            fallback_exact_transition_row_count: None,
+            theta_search_elapsed_millis: None,
+            theta_certification_elapsed_millis: None,
+            row_batch_elapsed_millis: None,
+            average_buy_shift_configuration_gradient_norm: None,
+            average_sell_shift_configuration_gradient_norm: None,
+            average_core_log_moment_shift_configuration_gradient_norm: None,
         }
     }
 
@@ -132,10 +148,18 @@ impl PricingProgressEvent {
             total_maturities: Some(total_maturities),
             current_interval_index: None,
             total_intervals: None,
-            current_transition_row_index: None,
-            total_transition_rows: None,
             current_strike_index: None,
             total_strikes: None,
+            seed_exact_transition_row_count: None,
+            shared_theta_transition_row_count: None,
+            certified_transition_row_count: None,
+            fallback_exact_transition_row_count: None,
+            theta_search_elapsed_millis: None,
+            theta_certification_elapsed_millis: None,
+            row_batch_elapsed_millis: None,
+            average_buy_shift_configuration_gradient_norm: None,
+            average_sell_shift_configuration_gradient_norm: None,
+            average_core_log_moment_shift_configuration_gradient_norm: None,
         }
     }
 
@@ -154,10 +178,18 @@ impl PricingProgressEvent {
             total_maturities: None,
             current_interval_index,
             total_intervals: Some(total_intervals),
-            current_transition_row_index: None,
-            total_transition_rows: None,
             current_strike_index: None,
             total_strikes: None,
+            seed_exact_transition_row_count: None,
+            shared_theta_transition_row_count: None,
+            certified_transition_row_count: None,
+            fallback_exact_transition_row_count: None,
+            theta_search_elapsed_millis: None,
+            theta_certification_elapsed_millis: None,
+            row_batch_elapsed_millis: None,
+            average_buy_shift_configuration_gradient_norm: None,
+            average_sell_shift_configuration_gradient_norm: None,
+            average_core_log_moment_shift_configuration_gradient_norm: None,
         }
     }
 
@@ -166,8 +198,6 @@ impl PricingProgressEvent {
         total_units: usize,
         current_interval_index: Option<usize>,
         total_intervals: Option<usize>,
-        current_transition_row_index: Option<usize>,
-        total_transition_rows: usize,
     ) -> Self {
         Self {
             phase: PricingProgressPhase::TransitionRowProgress,
@@ -178,10 +208,18 @@ impl PricingProgressEvent {
             total_maturities: None,
             current_interval_index,
             total_intervals,
-            current_transition_row_index,
-            total_transition_rows: Some(total_transition_rows),
             current_strike_index: None,
             total_strikes: None,
+            seed_exact_transition_row_count: None,
+            shared_theta_transition_row_count: None,
+            certified_transition_row_count: None,
+            fallback_exact_transition_row_count: None,
+            theta_search_elapsed_millis: None,
+            theta_certification_elapsed_millis: None,
+            row_batch_elapsed_millis: None,
+            average_buy_shift_configuration_gradient_norm: None,
+            average_sell_shift_configuration_gradient_norm: None,
+            average_core_log_moment_shift_configuration_gradient_norm: None,
         }
     }
 
@@ -202,11 +240,49 @@ impl PricingProgressEvent {
             total_maturities,
             current_interval_index: None,
             total_intervals: None,
-            current_transition_row_index: None,
-            total_transition_rows: None,
             current_strike_index,
             total_strikes: Some(total_strikes),
+            seed_exact_transition_row_count: None,
+            shared_theta_transition_row_count: None,
+            certified_transition_row_count: None,
+            fallback_exact_transition_row_count: None,
+            theta_search_elapsed_millis: None,
+            theta_certification_elapsed_millis: None,
+            row_batch_elapsed_millis: None,
+            average_buy_shift_configuration_gradient_norm: None,
+            average_sell_shift_configuration_gradient_norm: None,
+            average_core_log_moment_shift_configuration_gradient_norm: None,
         }
+    }
+
+    pub fn with_transition_row_solve_diagnostics(
+        mut self,
+        seed_exact_transition_row_count: usize,
+        shared_theta_transition_row_count: usize,
+        certified_transition_row_count: usize,
+        fallback_exact_transition_row_count: usize,
+        theta_search_elapsed_millis: u64,
+        theta_certification_elapsed_millis: u64,
+        row_batch_elapsed_millis: u64,
+        average_buy_shift_configuration_gradient_norm: f64,
+        average_sell_shift_configuration_gradient_norm: f64,
+        average_core_log_moment_shift_configuration_gradient_norm: f64,
+    ) -> Self {
+        self.seed_exact_transition_row_count = Some(seed_exact_transition_row_count);
+        self.shared_theta_transition_row_count = Some(shared_theta_transition_row_count);
+        self.certified_transition_row_count = Some(certified_transition_row_count);
+        self.fallback_exact_transition_row_count = Some(fallback_exact_transition_row_count);
+        self.theta_search_elapsed_millis = Some(theta_search_elapsed_millis);
+        self.theta_certification_elapsed_millis = Some(theta_certification_elapsed_millis);
+        self.row_batch_elapsed_millis = Some(row_batch_elapsed_millis);
+        self.average_buy_shift_configuration_gradient_norm =
+            Some(average_buy_shift_configuration_gradient_norm);
+        self.average_sell_shift_configuration_gradient_norm =
+            Some(average_sell_shift_configuration_gradient_norm);
+        self.average_core_log_moment_shift_configuration_gradient_norm =
+            Some(average_core_log_moment_shift_configuration_gradient_norm);
+
+        self
     }
 }
 

@@ -68,6 +68,7 @@ def test_public_and_internal_module_intent_is_explicit() -> None:
         "janiform.calibration.fit.pricing.grids",
         "janiform.calibration.fit.pricing.market_snapshot",
         "janiform.calibration.fit.pricing.market_snapshot.inputs",
+        "janiform.calibration.fit.pricing.market_surface",
         "janiform.calibration.fit.pricing.summaries",
         "janiform.calibration.fit.pricing.surface",
         "janiform.calibration.fit.state",
@@ -672,6 +673,9 @@ def test_calibration_fit_public_ownership_submodules_are_supported_domain_import
     calibration_fit_pricing_market_snapshot_inputs_module = import_module(
         "janiform.calibration.fit.pricing.market_snapshot.inputs"
     )
+    calibration_fit_pricing_market_surface_module = import_module(
+        "janiform.calibration.fit.pricing.market_surface"
+    )
     calibration_fit_pricing_summaries_module = import_module("janiform.calibration.fit.pricing.summaries")
     calibration_fit_pricing_surface_module = import_module("janiform.calibration.fit.pricing.surface")
     calibration_fit_result_module = import_module("janiform.calibration.fit.result")
@@ -690,8 +694,9 @@ def test_calibration_fit_public_ownership_submodules_are_supported_domain_import
         "JaniformVanillaOptionGridPricingResult",
         "JaniformObservedOptionSnapshotNode",
         "JaniformObservedOptionSnapshotPricingResult",
+        "JaniformObservedOptionSurfaceNode",
+        "JaniformObservedOptionSurfacePricingResult",
         "JaniformVanillaOptionMaturityIntervalSummary",
-        "JaniformVanillaOptionMaturityPricingEngineKind",
         "JaniformVanillaOptionMaturitySummary",
         "JaniformVanillaOptionSurface",
         "JaniformVanillaOptionSurfacePricingResult",
@@ -707,9 +712,12 @@ def test_calibration_fit_public_ownership_submodules_are_supported_domain_import
         "JaniformObservedOptionSnapshotPricingResult",
     }
     assert set(calibration_fit_pricing_market_snapshot_inputs_module.__all__) == {"TabularFrameInput"}
+    assert set(calibration_fit_pricing_market_surface_module.__all__) == {
+        "JaniformObservedOptionSurfaceNode",
+        "JaniformObservedOptionSurfacePricingResult",
+    }
     assert set(calibration_fit_pricing_summaries_module.__all__) == {
         "JaniformVanillaOptionMaturityIntervalSummary",
-        "JaniformVanillaOptionMaturityPricingEngineKind",
         "JaniformVanillaOptionMaturitySummary",
     }
     assert set(calibration_fit_pricing_surface_module.__all__) == {

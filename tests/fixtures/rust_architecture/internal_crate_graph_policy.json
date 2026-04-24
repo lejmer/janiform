@@ -101,6 +101,7 @@
       "kind": "production",
       "layer": "calibration_artifacts",
       "allowed_internal_dependencies": [
+        "janiform-engine-pricing",
         "janiform-foundations",
         "janiform-model-kernels",
         "janiform-market-time"

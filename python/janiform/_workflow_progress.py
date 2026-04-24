@@ -1,4 +1,5 @@
 import json
+import os
 import shutil
 import sys
 from abc import abstractmethod
@@ -6,8 +7,9 @@ from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
+from io import UnsupportedOperation
 from threading import Event, Lock, Thread
-from time import monotonic, sleep
+from time import monotonic
 from typing import Final, Optional, TextIO, override
 
 
@@ -16,10 +18,11 @@ _COMPLETED_STAGE_MARKER: Final[str] = "✓"
 _ELLIPSIS: Final[str]  = "..."
 
 
-def _format_elapsed_seconds(elapsed_seconds: float) -> str:
+def format_elapsed_seconds(elapsed_seconds: float) -> str:
     whole_seconds = max(0, int(elapsed_seconds))
     minutes, seconds = divmod(whole_seconds, 60)
     hours, minutes = divmod(minutes, 60)
+
     if hours > 0:
         return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
 
@@ -27,10 +30,6 @@ def _format_elapsed_seconds(elapsed_seconds: float) -> str:
 
 
 def _resolve_stream_render_width(stream: TextIO) -> Optional[int]:
-    is_tty = getattr(stream, "isatty", None)
-    if not callable(is_tty) or not is_tty():
-        return None
-
     terminal_size = shutil.get_terminal_size(fallback=(0, 0))
     if terminal_size.columns <= 0:
         return None
@@ -117,7 +116,10 @@ class SpinnerProgress(AbstractProgress):
         self._current_step_index: int = 0
         self._lock = Lock()
         self._last_rendered_width: int = 0
+        self._last_rendered_line_count: int = 0
         self._stop_event = Event()
+        self._render_requested = Event()
+        self._pending_final_lines: list[str] = []
         self._render_thread: Optional[Thread] = None
         self._total_started_at: float = monotonic()
 
@@ -154,7 +156,7 @@ class SpinnerProgress(AbstractProgress):
             detail_changed = next_detail != self._detail
 
             if detail_changed:
-                self._finalize_current_stage_locked(status="done")
+                self._queue_current_stage_finalization_locked(status="done")
                 self._detail = next_detail
                 self._subdetail = subdetail
                 self._completed_units = completed_units
@@ -162,52 +164,70 @@ class SpinnerProgress(AbstractProgress):
                 self._progress_fraction = progress_fraction
                 self._current_step_index += 1
                 self._stage_started_at = monotonic()
-                self._render_active_stage_locked(frame=_SPINNER_FRAMES[0])
+                self._request_render_locked(frame=_SPINNER_FRAMES[0])
                 return
 
+            state_changed = False
             if subdetail is not None:
-                self._subdetail = subdetail
+                if subdetail != self._subdetail:
+                    self._subdetail = subdetail
+                    state_changed = True
 
             if reset_progress_units:
-                self._completed_units = None
-                self._total_units = None
+                if self._completed_units is not None or self._total_units is not None:
+                    self._completed_units = None
+                    self._total_units = None
+                    state_changed = True
 
             if progress_fraction is not None:
-                self._progress_fraction = progress_fraction
+                if progress_fraction != self._progress_fraction:
+                    self._progress_fraction = progress_fraction
+                    state_changed = True
 
             if completed_units is not None:
-                self._completed_units = completed_units
+                if completed_units != self._completed_units:
+                    self._completed_units = completed_units
+                    state_changed = True
 
             if total_units is not None:
-                self._total_units = total_units
+                if total_units != self._total_units:
+                    self._total_units = total_units
+                    state_changed = True
 
-            if self._detail is not None and self._stage_started_at is not None:
-                self._render_active_stage_locked(frame=_SPINNER_FRAMES[0])
+            if state_changed and self._detail is not None and self._stage_started_at is not None:
+                self._request_render_locked(frame=_SPINNER_FRAMES[0])
 
     def _render_loop(self) -> None:
         frame_index = 0
         while not self._stop_event.is_set():
+            render_requested = self._render_requested.wait(timeout=0.1)
+
+            self._render_requested.clear()
+
             with self._lock:
-                if self._detail is not None and self._stage_started_at is not None:
-                    self._render_active_stage_locked(
-                        frame=_SPINNER_FRAMES[frame_index % len(_SPINNER_FRAMES)]
-                    )
+                if not render_requested and not self._should_animate_locked():
+                    continue
+
+                self._drain_pending_output_locked(
+                    frame=_SPINNER_FRAMES[frame_index % len(_SPINNER_FRAMES)]
+                )
 
             frame_index += 1
-
-            sleep(0.1)
 
     def __exit__(self, exc_type, exc, exc_tb) -> None:
         if not self._enabled:
             return None
 
         self._stop_event.set()
+        self._render_requested.set()
+
         if self._render_thread is not None:
             self._render_thread.join(timeout=1.0)
 
-        total_elapsed = _format_elapsed_seconds(monotonic() - self._total_started_at)
+        total_elapsed = format_elapsed_seconds(monotonic() - self._total_started_at)
 
         with self._lock:
+            self._flush_pending_final_lines_locked()
             self._finalize_current_stage_locked(
                 status="done" if exc_type is None else "failed"
             )
@@ -238,17 +258,75 @@ class SpinnerProgress(AbstractProgress):
         self._progress_fraction = None
         self._stage_started_at = None
 
+    def _queue_current_stage_finalization_locked(self, *, status: str) -> None:
+        if self._detail is None or self._stage_started_at is None:
+            return
+
+        self._pending_final_lines.append(
+            self._build_stage_line(
+                indicator=_COMPLETED_STAGE_MARKER if status == "done" else status,
+                elapsed_seconds=monotonic() - self._stage_started_at,
+                detail=self._detail,
+            )
+        )
+
+        self._detail = None
+        self._subdetail = None
+        self._completed_units = None
+        self._total_units = None
+        self._progress_fraction = None
+        self._stage_started_at = None
+
     def _render_active_stage_locked(self, *, frame: str) -> None:
         if self._detail is None or self._stage_started_at is None:
             return
 
-        line = self._build_stage_line(
+        lines = self._build_stage_lines(
             indicator=frame,
             elapsed_seconds=monotonic() - self._stage_started_at,
             detail=self._detail,
         )
 
-        self._write_transient_line_locked(line)
+        self._write_transient_lines_locked(lines)
+
+    def _flush_pending_final_lines_locked(self) -> None:
+        while self._pending_final_lines:
+            self._write_final_line_locked(self._pending_final_lines.pop(0))
+
+    def _drain_pending_output_locked(self, *, frame: str) -> None:
+        self._flush_pending_final_lines_locked()
+        if self._detail is not None and self._stage_started_at is not None:
+            self._render_active_stage_locked(frame=frame)
+
+    def _request_render_locked(self, *, frame: str) -> None:
+        self._render_requested.set()
+        if not self._background_render_available():
+            self._drain_pending_output_locked(frame=frame)
+
+    def _background_render_available(self) -> bool:
+        is_alive = getattr(self._render_thread, "is_alive", None)
+        return callable(is_alive) and bool(is_alive())
+
+    def _build_stage_lines(
+        self,
+        *,
+        indicator: str,
+        elapsed_seconds: float,
+        detail: str,
+    ) -> list[str]:
+        line = self._build_stage_line(
+            indicator=indicator,
+            elapsed_seconds=elapsed_seconds,
+            detail=detail,
+        )
+        if self._subdetail is None:
+            return [line]
+
+        subdetail_lines = self._subdetail.splitlines()
+        if len(subdetail_lines) <= 1:
+            return [line]
+
+        return [line, *subdetail_lines[1:]]
 
     def _build_stage_line(
         self,
@@ -259,14 +337,16 @@ class SpinnerProgress(AbstractProgress):
     ) -> str:
         progress_segment = self._progress_segment()
         timing_segment = self._timing_segment(elapsed_seconds)
+        subdetail_summary = self._subdetail_summary()
+
         if self._progress_fraction is not None:
             detail_segment = (
                 f"{detail}{progress_segment}"
                 if progress_segment
                 else detail
             )
-            if self._subdetail is not None:
-                detail_segment = f"{detail_segment} | {self._subdetail}"
+            if subdetail_summary is not None:
+                detail_segment = f"{detail_segment} | {subdetail_summary}"
 
             return (
                 f"{indicator} {self._label}{self._step_segment()} "
@@ -275,8 +355,8 @@ class SpinnerProgress(AbstractProgress):
 
         detail_segment = (
             detail
-            if self._subdetail is None
-            else f"{detail} | {self._subdetail}"
+            if subdetail_summary is None
+            else f"{detail} | {subdetail_summary}"
         )
         if progress_segment:
             return (
@@ -285,6 +365,12 @@ class SpinnerProgress(AbstractProgress):
             )
 
         return f"{indicator} {self._label}{self._step_segment()} {timing_segment} {detail_segment}"
+
+    def _subdetail_summary(self) -> Optional[str]:
+        if self._subdetail is None:
+            return None
+
+        return self._subdetail.splitlines()[0]
 
     def _progress_segment(self) -> str:
         if self._progress_fraction is not None:
@@ -303,7 +389,7 @@ class SpinnerProgress(AbstractProgress):
         return f" [{progress_percent}% {self._completed_units}/{self._total_units}]"
 
     def _timing_segment(self, elapsed_seconds: float) -> str:
-        elapsed = _format_elapsed_seconds(elapsed_seconds)
+        elapsed = format_elapsed_seconds(elapsed_seconds)
 
         if (
             self._progress_fraction is not None
@@ -311,7 +397,7 @@ class SpinnerProgress(AbstractProgress):
             and elapsed_seconds > 0.0
         ):
             eta_seconds = elapsed_seconds * (1.0 - self._progress_fraction) / self._progress_fraction
-            return f"[{elapsed}, ETA {_format_elapsed_seconds(eta_seconds)}]"
+            return f"[{elapsed}, ETA {format_elapsed_seconds(eta_seconds)}]"
 
         if (
             self._completed_units is None
@@ -327,7 +413,7 @@ class SpinnerProgress(AbstractProgress):
         remaining_units = self._total_units - self._completed_units
         eta_seconds = remaining_units / rate_units_per_second
 
-        return f"[{elapsed}, ETA {_format_elapsed_seconds(eta_seconds)}]"
+        return f"[{elapsed}, ETA {format_elapsed_seconds(eta_seconds)}]"
 
     def _step_segment(self) -> str:
         if self._total_steps is None:
@@ -344,9 +430,50 @@ class SpinnerProgress(AbstractProgress):
         self._stream.flush()
 
         self._last_rendered_width = len(rendered_line)
+        self._last_rendered_line_count = 1
+
+    def _write_transient_lines_locked(self, lines: list[str]) -> None:
+        if not self._supports_cursor_control():
+            if len(lines) == 1:
+                self._write_transient_line_locked(lines[0])
+                return
+
+            self._write_multiline_snapshot_locked(lines)
+            return
+
+        rendered_lines = [self._fit_line_to_stream_width(line) for line in lines]
+        self._rewrite_cursor_control_lines_locked(rendered_lines)
+
+    def _write_multiline_snapshot_locked(self, lines: list[str]) -> None:
+        rendered_lines = [self._fit_line_to_stream_width(line) for line in lines]
+        if self._last_rendered_width > 0:
+            first_line = rendered_lines[0]
+            padding = " " * max(0, self._last_rendered_width - len(first_line))
+
+            self._stream.write(f"\r{first_line}{padding}\n")
+
+            if len(rendered_lines) > 1:
+                self._stream.write("\n".join(rendered_lines[1:]))
+        else:
+            self._stream.write("\n".join(rendered_lines))
+
+        self._stream.write("\n")
+        self._stream.flush()
+
+        self._last_rendered_width = 0
+        self._last_rendered_line_count = 0
 
     def _write_final_line_locked(self, line: str) -> None:
         rendered_line = self._fit_line_to_stream_width(line)
+
+        if self._supports_cursor_control():
+            self._rewrite_cursor_control_lines_locked([rendered_line])
+            self._stream.write("\n")
+            self._stream.flush()
+            self._last_rendered_width = 0
+            self._last_rendered_line_count = 0
+
+            return
 
         padding = " " * max(0, self._last_rendered_width - len(rendered_line))
 
@@ -354,16 +481,77 @@ class SpinnerProgress(AbstractProgress):
         self._stream.flush()
 
         self._last_rendered_width = 0
+        self._last_rendered_line_count = 0
+
+    def _rewrite_cursor_control_lines_locked(self, rendered_lines: list[str]) -> None:
+        if self._last_rendered_line_count > 1:
+            self._stream.write(f"\x1b[{self._last_rendered_line_count - 1}A\r")
+        else:
+            self._stream.write("\r")
+
+        for line_number, rendered_line in enumerate(rendered_lines):
+            self._stream.write("\x1b[2K")
+            self._stream.write(rendered_line)
+
+            if line_number + 1 < len(rendered_lines):
+                self._stream.write("\n")
+
+        if self._last_rendered_line_count > len(rendered_lines):
+            extra_line_count = self._last_rendered_line_count - len(rendered_lines)
+            for _ in range(extra_line_count):
+                self._stream.write("\n\x1b[2K")
+
+            self._stream.write(f"\x1b[{extra_line_count}A\r")
+
+        self._stream.flush()
+
+        self._last_rendered_width = len(rendered_lines[-1])
+        self._last_rendered_line_count = len(rendered_lines)
 
     def _fit_line_to_stream_width(self, line: str) -> str:
         render_width = _resolve_stream_render_width(self._stream)
-        if render_width is None or len(line) <= render_width:
+        if render_width is None or render_width <= 1:
             return line
 
-        if render_width <= len(_ELLIPSIS):
-            return line[:render_width]
+        safe_render_width = render_width - 1
+        if len(line) <= safe_render_width:
+            return line
 
-        return f"{line[: render_width - len(_ELLIPSIS)]}{_ELLIPSIS}"
+        if safe_render_width <= len(_ELLIPSIS):
+            return line[:safe_render_width]
+
+        return f"{line[: safe_render_width - len(_ELLIPSIS)]}{_ELLIPSIS}"
+
+    def _supports_cursor_control(self) -> bool:
+        is_tty = getattr(self._stream, "isatty", None)
+        if callable(is_tty):
+            try:
+                if is_tty():
+                    return True
+            except OSError:
+                return False
+
+        fileno = getattr(self._stream, "fileno", None)
+        if not callable(fileno):
+            return False
+
+        try:
+            return os.isatty(fileno())
+        except (OSError, UnsupportedOperation, ValueError):
+            return False
+
+    def _should_animate_locked(self) -> bool:
+        if self._detail is None or self._stage_started_at is None:
+            return False
+
+        if (
+            self._subdetail is not None
+            and len(self._subdetail.splitlines()) > 1
+            and not self._supports_cursor_control()
+        ):
+            return False
+
+        return True
 
 
 class JsonLinesProgress(AbstractProgress):
@@ -439,6 +627,7 @@ class JsonLinesProgress(AbstractProgress):
             return
 
         elapsed_seconds = monotonic() - self._stage_started_at
+
         payload = {
             "event": "workflow_progress",
             "label": self._label,

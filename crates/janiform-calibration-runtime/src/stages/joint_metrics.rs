@@ -1,7 +1,6 @@
 use chrono::{DateTime, Timelike, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::calendar::{ExchangeCalendarRegistry, MarketState};
 use crate::stages::return_components::{
     ReturnComponentsObservedOpenSessionReturn,
     ReturnComponentsStageContinuousReturnCalibrationSample,
@@ -15,6 +14,7 @@ use janiform_foundations::numeric::{
     standardized_path_distance,
 };
 use janiform_foundations::time::{ceil_to_interval_utc_nanos, floor_to_interval_utc_nanos};
+use janiform_market_time::calendar::{ExchangeCalendarRegistry, MarketState};
 
 pub(crate) const JOINT_REFINEMENT_ROLLING_ACTIVITY_WINDOW_INTERVAL_COUNT: usize = 96;
 const JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR: f64 = 1.0e-8;

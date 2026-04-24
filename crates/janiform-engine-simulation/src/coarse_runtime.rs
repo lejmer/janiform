@@ -1,7 +1,8 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
-use crate::risk::{
+use janiform_affine_oracle::affine_oracle::ExponentialAffineTransformNewsIntensityInput;
+use janiform_affine_oracle::sufficient_statistics::{
     SufficientStatisticsBoundaryStateUpdateError, SufficientStatisticsBoundaryStateUpdateSnapshot,
     SufficientStatisticsRiskReturnComponents, SufficientStatisticsRiskReturnComponentsError,
     SufficientStatisticsTransformSliceContext, SufficientStatisticsTransformSliceSamplingError,
@@ -9,7 +10,6 @@ use crate::risk::{
     sample_interval_statistics_from_transform_slices_with_randomness_factory,
     solve_sufficient_statistics_transform_slices, update_boundary_state_from_interval_statistics,
 };
-use janiform_affine_oracle::affine_oracle::ExponentialAffineTransformNewsIntensityInput;
 use janiform_foundations::randomness::{
     SimulationRandomnessFactory, SimulationRandomnessSubstreamDomain,
     SplitMix64SimulationRandomnessFactory,
@@ -28,8 +28,10 @@ use janiform_model_kernels::return_decomposition::{ReturnDecomposition, ReturnDe
 use super::coarse::{CoarseSimulationPath, CoarseSimulationPathError, CoarseSimulationPathRecord};
 use super::progress::{SimulationProgressEvent, SimulationProgressPhase, emit_progress_event};
 use super::runtime::{
+    SeededSimulationMarketStateResolver, build_interval_open_market_segments,
     build_timestamped_news_event_input, derive_known_news_interval_slice_bounds,
-    sample_count_from_expectation, sample_interval_timestamp_utc_nanos,
+    integrate_open_market_elapsed_hours, sample_count_from_expectation,
+    sample_interval_timestamp_utc_nanos,
 };
 use super::{CoarseSimulationRunRequest, CoarseSimulationRunRequestError};
 
@@ -132,6 +134,39 @@ where
         .mean_reversion_fitted_parameters
         .kappa;
 
+    let market_state_resolver =
+        SeededSimulationMarketStateResolver::new(&calendar_registry, &model_inputs.exchange_code)
+            .map_err(
+            |source| CoarseSimulationRunError::OpenMarketExposureResolutionFailure { source },
+        )?;
+
+    let interval_start_utc_nanos = (0..run_request.horizon_interval_count)
+        .map(|interval_index| {
+            run_request
+                .start_time_utc_nanos
+                .checked_add((interval_index as i64).saturating_mul(interval_delta_nanos))
+                .ok_or(CoarseSimulationRunError::IntervalBoundaryOverflow { interval_index })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let interval_end_utc_nanos = interval_start_utc_nanos
+        .iter()
+        .copied()
+        .enumerate()
+        .map(|(interval_index, interval_start_utc_nanos)| {
+            interval_start_utc_nanos
+                .checked_add(interval_delta_nanos)
+                .ok_or(CoarseSimulationRunError::IntervalBoundaryOverflow { interval_index })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let interval_open_market_segments = build_interval_open_market_segments(
+        &market_state_resolver,
+        interval_start_utc_nanos.as_slice(),
+        interval_end_utc_nanos.as_slice(),
+    )
+    .map_err(|source| CoarseSimulationRunError::OpenMarketExposureResolutionFailure { source })?;
+
     emit_progress_event(
         &mut observer,
         SimulationProgressEvent::new(
@@ -142,14 +177,8 @@ where
     );
 
     for interval_index in 0..run_request.horizon_interval_count {
-        let interval_start_utc_nanos = run_request
-            .start_time_utc_nanos
-            .checked_add((interval_index as i64).saturating_mul(interval_delta_nanos))
-            .ok_or(CoarseSimulationRunError::IntervalBoundaryOverflow { interval_index })?;
-
-        let interval_end_utc_nanos = interval_start_utc_nanos
-            .checked_add(interval_delta_nanos)
-            .ok_or(CoarseSimulationRunError::IntervalBoundaryOverflow { interval_index })?;
+        let interval_start_utc_nanos = interval_start_utc_nanos[interval_index];
+        let interval_end_utc_nanos = interval_end_utc_nanos[interval_index];
 
         let interval_settings = adaptive_transform_slice_settings(
             kernel_parameters.lambda_bar,
@@ -294,7 +323,11 @@ where
             evolve_mean_reversion_boundary_state_on_interval_grid(
                 observed_boundary_state.clone(),
                 mean_reversion_kappa,
-                run_request.interval_delta,
+                integrate_open_market_elapsed_hours(
+                    interval_open_market_segments[interval_index].as_slice(),
+                    interval_start_utc_nanos,
+                    interval_end_utc_nanos,
+                ),
                 total_return,
                 model_inputs
                     .risk_model_inputs
@@ -389,7 +422,7 @@ pub enum CoarseSimulationRunError {
         source: CoarseSimulationRunRequestError,
     },
     CalendarRegistryLoadFailure {
-        source: crate::calendar::ExchangeCalendarRegistryLoadError,
+        source: janiform_market_time::calendar::ExchangeCalendarRegistryLoadError,
     },
     InvalidNigDriverConfiguration {
         source: janiform_model_kernels::nig::NigSharedPlusShiftConfigurationError,
@@ -402,7 +435,7 @@ pub enum CoarseSimulationRunError {
     },
     InvalidTransformSliceContext {
         interval_index: usize,
-        source: crate::risk::SufficientStatisticsTransformSliceContextError,
+        source: janiform_affine_oracle::sufficient_statistics::SufficientStatisticsTransformSliceContextError,
     },
     TransformSliceSolveFailure {
         interval_index: usize,
@@ -448,6 +481,9 @@ pub enum CoarseSimulationRunError {
     MeanReversionBoundaryStateUpdateFailure {
         interval_index: usize,
         source: janiform_model_kernels::mean_reversion::MeanReversionBoundaryStateEvolutionError,
+    },
+    OpenMarketExposureResolutionFailure {
+        source: super::error::SeededTickSimulationRunError,
     },
     BoundaryStateUpdateFailure {
         interval_index: usize,
@@ -574,6 +610,10 @@ impl Display for CoarseSimulationRunError {
                 formatter,
                 "interval {interval_index} mean-reversion observed-state update failed: {source}"
             ),
+            Self::OpenMarketExposureResolutionFailure { source } => write!(
+                formatter,
+                "failed to resolve coarse open-market exposure: {source}"
+            ),
             Self::BoundaryStateUpdateFailure {
                 interval_index,
                 source,
@@ -616,6 +656,7 @@ impl Error for CoarseSimulationRunError {
             Self::InvalidReturnComponents { source, .. } => Some(source),
             Self::InvalidPathRecord { source, .. } => Some(source),
             Self::MeanReversionBoundaryStateUpdateFailure { source, .. } => Some(source),
+            Self::OpenMarketExposureResolutionFailure { source } => Some(source),
             Self::BoundaryStateUpdateFailure { source, .. } => Some(source),
             Self::NewsBoundaryStateUpdateFailure { source, .. } => Some(source),
             Self::InvalidPathArtifact { source } => Some(source),
@@ -634,7 +675,7 @@ struct IntervalDirectJumpTotals {
 
 fn sample_interval_direct_jump_totals<F>(
     run_request: &CoarseSimulationRunRequest,
-    calendar_registry: &crate::calendar::ExchangeCalendarRegistry,
+    calendar_registry: &janiform_market_time::calendar::ExchangeCalendarRegistry,
     interval_index: usize,
     interval_start_utc_nanos: i64,
     interval_end_utc_nanos: i64,
@@ -828,7 +869,33 @@ fn endogenous_statistics_news_intensity_input() -> ExponentialAffineTransformNew
 
 #[cfg(test)]
 mod tests {
-    use super::{adaptive_transform_slice_settings, endogenous_statistics_news_intensity_input};
+    use super::{
+        adaptive_transform_slice_settings, endogenous_statistics_news_intensity_input,
+        run_coarse_simulation,
+    };
+    use crate::coarse::{CoarseSimulationModelInputs, CoarseSimulationRunRequest};
+    use janiform_affine_oracle::affine_oracle::ExponentialAffineTransformEquationSpecification;
+    use janiform_affine_oracle::sufficient_statistics::{
+        SufficientStatisticsRiskIntervalFactors, SufficientStatisticsRiskModelInputs,
+    };
+    use janiform_market_time::calendar::{
+        CalendarRuleMetadataArtifact, ExchangeCalendarArtifact, ExchangeCalendarRegistryArtifact,
+        RegularSessionArtifact, SessionWindowArtifact, TradingWeekday,
+    };
+    use janiform_model_kernels::hawkes::{
+        HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
+    };
+    use janiform_model_kernels::mean_reversion::{
+        MeanReversionBoundaryState, MeanReversionFittedParameters,
+        MeanReversionRuntimeIntervalAnchors,
+    };
+    use janiform_model_kernels::news::DoubleExponentialBaseShockConfiguration;
+    use janiform_model_kernels::news::{
+        CoupledGapMarkConfiguration, GammaSeverityMarkConfiguration, KnownNewsArrivalConfiguration,
+        NewsArrivalConfiguration, NewsComponentMarkScaleConfiguration, NewsProcessConfiguration,
+        SharedNewsMarkLawConfiguration, SurpriseNewsArrivalConfiguration,
+    };
+    use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 
     #[test]
     fn adaptive_transform_slice_settings_stay_linear_for_high_intensity_regimes() {
@@ -861,5 +928,137 @@ mod tests {
 
         assert_eq!(input.known_nu_h, 0.0);
         assert_eq!(input.surprise_nu_h, 0.0);
+    }
+
+    #[test]
+    fn coarse_simulation_does_not_decay_mean_reversion_during_closed_interval() {
+        let equation_specification = ExponentialAffineTransformEquationSpecification::try_new(
+            HawkesKernelParameters::try_new(
+                0.8,
+                1.6,
+                HawkesKernelLoadings {
+                    plus_plus: 0.0,
+                    plus_minus: 0.0,
+                    minus_plus: 0.0,
+                    minus_minus: 0.0,
+                },
+                HawkesKernelLoadings {
+                    plus_plus: 0.0,
+                    plus_minus: 0.0,
+                    minus_plus: 0.0,
+                    minus_minus: 0.0,
+                },
+            )
+            .expect("kernel parameters should construct"),
+            GammaSeverityMarkConfiguration::try_new(1.8, 0.7)
+                .expect("gamma marks should construct"),
+        )
+        .expect("equation specification should construct");
+
+        let risk_model_inputs = SufficientStatisticsRiskModelInputs::try_new(
+            equation_specification,
+            NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
+                .expect("nig configuration should construct"),
+            HawkesExcitationState {
+                y_plus_plus: 0.0,
+                y_plus_minus: 0.0,
+                y_minus_plus: 0.0,
+                y_minus_minus: 0.0,
+            },
+            MeanReversionFittedParameters::flat_anchor_mean_reversion(1.0)
+                .expect("positive-kappa mean reversion should construct"),
+            MeanReversionRuntimeIntervalAnchors::try_new(
+                "explicit_runtime_interval_grid_alignment.v1",
+                2.0,
+                0.0,
+                vec![2.0],
+                vec![0.0],
+                vec![1.0],
+            )
+            .expect("mean-reversion runtime anchors should construct"),
+            MeanReversionBoundaryState::try_new(3.0, 2.0, 0.0, 1.0)
+                .expect("mean-reversion boundary state should construct"),
+        )
+        .expect("risk model inputs should construct");
+
+        let model_inputs = CoarseSimulationModelInputs::try_new(
+            risk_model_inputs,
+            NewsProcessConfiguration::try_new(
+                NewsArrivalConfiguration {
+                    known: KnownNewsArrivalConfiguration {
+                        scheduled_event_timestamps_utc_nanos: vec![],
+                    },
+                    surprise: SurpriseNewsArrivalConfiguration {
+                        baseline_intensity: 0.0,
+                    },
+                },
+                SharedNewsMarkLawConfiguration {
+                    gamma_severity_marks: GammaSeverityMarkConfiguration::try_new(1.4, 0.6)
+                        .expect("gamma marks should construct"),
+                    double_exponential_base_shock:
+                        DoubleExponentialBaseShockConfiguration::try_new(0.45, 1.2, 1.1)
+                            .expect("base shock configuration should construct"),
+                    coupled_gap_marks: CoupledGapMarkConfiguration::new(0.8),
+                },
+                NewsComponentMarkScaleConfiguration {
+                    activity_coupling_scale: 0.7,
+                    return_jump_scale: 1.1,
+                },
+                NewsComponentMarkScaleConfiguration {
+                    activity_coupling_scale: 0.5,
+                    return_jump_scale: 0.9,
+                },
+            )
+            .expect("news process configuration should construct"),
+            ExchangeCalendarRegistryArtifact {
+                schema_version: "calendar.registry.v1".to_string(),
+                artifact_date: "2024-01-02".to_string(),
+                exchanges: vec![ExchangeCalendarArtifact {
+                    schema_version: "calendar.v1".to_string(),
+                    exchange_code: "XNYS".to_string(),
+                    exchange_name: "New York Stock Exchange".to_string(),
+                    timezone_name: Some("America/New_York".to_string()),
+                    rule_metadata: CalendarRuleMetadataArtifact {
+                        holiday_calendar_code: "US_EQUITIES".to_string(),
+                        early_close_rule_set: None,
+                    },
+                    regular_sessions: vec![RegularSessionArtifact {
+                        weekday: TradingWeekday::Monday,
+                        windows: vec![SessionWindowArtifact {
+                            label: "regular".to_string(),
+                            open_time: "09:30".to_string(),
+                            close_time: "16:00".to_string(),
+                        }],
+                    }],
+                    holiday_dates: vec![],
+                    early_close_sessions: vec![],
+                }],
+            },
+            "XNYS",
+        )
+        .expect("coarse model inputs should construct");
+
+        let run_request = CoarseSimulationRunRequest::try_new(
+            17,
+            1_705_930_200_000_000_000,
+            1,
+            1.0,
+            model_inputs,
+            SufficientStatisticsRiskIntervalFactors::try_new(
+                vec![0.0],
+                vec![0.0],
+                vec![0.0],
+                Some(1.0),
+            )
+            .expect("interval factors should construct"),
+        )
+        .expect("coarse simulation request should construct");
+
+        let coarse_path = run_coarse_simulation(run_request).expect("coarse simulation should run");
+
+        assert_eq!(coarse_path.records.len(), 1);
+        assert_eq!(coarse_path.records[0].observed_interval_return, 0.0);
+        assert_eq!(coarse_path.records[0].observed_log_price_end, 3.0);
+        assert_eq!(coarse_path.records[0].deviation_from_anchor_end, 1.0);
     }
 }

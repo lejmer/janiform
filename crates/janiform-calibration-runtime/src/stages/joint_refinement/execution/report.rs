@@ -67,7 +67,7 @@ pub(crate) fn build_joint_restart_diagnostics(
         stop_reason_frequencies: build_labeled_count_frequencies(
             restart_outcomes
                 .iter()
-                .map(|restart_outcome| restart_outcome.stop_reason.to_string()),
+                .map(|restart_outcome| restart_outcome.stop_reason.clone()),
         ),
         invalid_reason_frequencies: build_labeled_count_frequencies(
             restart_outcomes.iter().filter_map(|restart_outcome| {
@@ -94,6 +94,8 @@ pub(crate) fn build_joint_finalist_seed_summaries(
         context.final_simulation_seeds.as_slice(),
         progress_sender,
         Some(JointRefinementStageProgressPhase::FinalSeedEvaluation),
+        0,
+        context.final_simulation_seeds.len(),
     )
     .unwrap_or_default()
 }
@@ -157,7 +159,6 @@ pub(crate) fn baseline_buckets_from_evaluation(
         activity_level_fit: breakdown.activity_level_fit,
         rv_activity_coupling_fit: breakdown.rv_activity_coupling_fit,
         price_span_sanity_fit: breakdown.price_span_sanity_fit,
-        option_spread_normalized_price_fit: breakdown.option_spread_normalized_price_fit,
     }
 }
 
@@ -166,6 +167,16 @@ pub(crate) fn simulation_infrastructure_failure_message(
 ) -> Option<String> {
     context
         .simulation_infrastructure_failure
+        .lock()
+        .ok()
+        .and_then(|guard| guard.clone())
+}
+
+pub(crate) fn option_pricing_execution_failure_message(
+    context: &JointRefinementContext,
+) -> Option<String> {
+    context
+        .option_pricing_execution_failure
         .lock()
         .ok()
         .and_then(|guard| guard.clone())

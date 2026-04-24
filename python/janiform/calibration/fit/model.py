@@ -15,9 +15,9 @@ from ._runtime.shared import (
     MODEL_PERSISTENCE_SCHEMA_VERSION as _MODEL_PERSISTENCE_SCHEMA_VERSION,
 )
 from ._runtime.option_pricing.workflow import (
-    price_option_grids_for_model,
+    price_option_grid_for_model,
     price_option_for_model,
-    price_option_surface_for_model,
+    price_option_grid_surface_for_model,
 )
 from ._runtime.simulation.result import (
     JaniformSimulationResult,
@@ -29,9 +29,11 @@ from .pricing.grids import (
     JaniformVanillaOptionGridBatch,
     JaniformVanillaOptionGridBatchPricingResult,
 )
-from .pricing.market_snapshot._workflow.workflow import price_option_market_snapshot_for_model
+from .pricing.market_snapshot._workflow.workflow import price_option_snapshot_for_model
 from .pricing.market_snapshot.inputs import TabularFrameInput
 from .pricing.market_snapshot.result import JaniformObservedOptionSnapshotPricingResult
+from .pricing.market_surface._workflow.workflow import price_option_surface_for_model
+from .pricing.market_surface.result import JaniformObservedOptionSurfacePricingResult
 from .pricing.surface import (
     JaniformVanillaOptionSurface,
     JaniformVanillaOptionSurfacePricingResult,
@@ -43,9 +45,15 @@ from ..market_data.contracts import CalibrationMarketDataWorkflowScope, Calibrat
 from ..presets.resolution import ResolvedPresetWorkflowConfiguration
 from ..sessions.contracts import MarketDataSessionResolution
 from ..._workflow_progress import WorkflowProgressMode
+from ...contracts.base import require_non_empty_string
 from ...mean_reversion import MeanReversionBoundaryState
-from ...pricing import VanillaOptionPayoffType, VanillaOptionPricingRunResult
+from ...pricing import (
+    PricingIntervalSchedulePolicy,
+    VanillaOptionPayoffType,
+    VanillaOptionPricingRunResult,
+)
 from ...simulation.shared import HawkesExcitationState, SeededTickEventStateSnapshotCapture
+
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,6 +73,7 @@ class JaniformModel:
     def summary(self) -> dict[str, Any]:
         summary = deepcopy(self.metadata)
         summary["fitted_parameters"] = deepcopy(self.parameters)
+
         return summary
 
     def simulate(
@@ -124,6 +133,7 @@ class JaniformModel:
         include_transform_diagnostics: bool = False,
         include_integration_quality_diagnostics: bool = False,
         include_calibration_hooks: bool = False,
+        pricing_interval_schedule_policy: Optional[PricingIntervalSchedulePolicy] = None,
         output_path: Optional[str | Path] = None,
         silent: bool = False,
         progress_mode: WorkflowProgressMode | str = WorkflowProgressMode.AUTO,
@@ -144,12 +154,13 @@ class JaniformModel:
             include_transform_diagnostics=include_transform_diagnostics,
             include_integration_quality_diagnostics=include_integration_quality_diagnostics,
             include_calibration_hooks=include_calibration_hooks,
+            pricing_interval_schedule_policy=pricing_interval_schedule_policy,
             output_path=output_path,
             silent=silent,
             progress_mode=progress_mode,
         )
 
-    def price_option_grids(
+    def price_option_grid(
         self,
         *,
         valuation_time_utc: datetime,
@@ -158,11 +169,12 @@ class JaniformModel:
         boundary_state: Optional[HawkesExcitationState] = None,
         include_transform_diagnostics: bool = False,
         include_integration_quality_diagnostics: bool = False,
+        pricing_interval_schedule_policy: Optional[PricingIntervalSchedulePolicy] = None,
         cpu_count: Optional[int] = None,
         silent: bool = False,
         progress_mode: WorkflowProgressMode | str = WorkflowProgressMode.AUTO,
     ) -> JaniformVanillaOptionGridBatchPricingResult:
-        return price_option_grids_for_model(
+        return price_option_grid_for_model(
             self,
             valuation_time_utc=valuation_time_utc,
             batch=batch,
@@ -170,6 +182,7 @@ class JaniformModel:
             boundary_state=boundary_state,
             include_transform_diagnostics=include_transform_diagnostics,
             include_integration_quality_diagnostics=include_integration_quality_diagnostics,
+            pricing_interval_schedule_policy=pricing_interval_schedule_policy,
             cpu_count=cpu_count,
             silent=silent,
             progress_mode=progress_mode,
@@ -190,7 +203,7 @@ class JaniformModel:
         _ = kwargs
         raise NotImplementedError("JaniformModel.price_instruments is reserved but not implemented yet")
 
-    def price_option_surface(
+    def price_option_grid_surface(
         self,
         *,
         valuation_time_utc: datetime,
@@ -199,11 +212,12 @@ class JaniformModel:
         boundary_state: Optional[HawkesExcitationState] = None,
         include_transform_diagnostics: bool = False,
         include_integration_quality_diagnostics: bool = False,
+        pricing_interval_schedule_policy: Optional[PricingIntervalSchedulePolicy] = None,
         cpu_count: Optional[int] = None,
         silent: bool = False,
         progress_mode: WorkflowProgressMode | str = WorkflowProgressMode.AUTO,
     ) -> JaniformVanillaOptionSurfacePricingResult:
-        return price_option_surface_for_model(
+        return price_option_grid_surface_for_model(
             self,
             valuation_time_utc=valuation_time_utc,
             surface=surface,
@@ -211,12 +225,13 @@ class JaniformModel:
             boundary_state=boundary_state,
             include_transform_diagnostics=include_transform_diagnostics,
             include_integration_quality_diagnostics=include_integration_quality_diagnostics,
+            pricing_interval_schedule_policy=pricing_interval_schedule_policy,
             cpu_count=cpu_count,
             silent=silent,
             progress_mode=progress_mode,
         )
 
-    def price_option_market_snapshot(
+    def price_option_snapshot(
         self,
         *,
         tick_data: TabularFrameInput,
@@ -230,7 +245,7 @@ class JaniformModel:
         silent: bool = False,
         progress_mode: WorkflowProgressMode | str = WorkflowProgressMode.AUTO,
     ) -> JaniformObservedOptionSnapshotPricingResult:
-        return price_option_market_snapshot_for_model(
+        return price_option_snapshot_for_model(
             self,
             tick_data=tick_data,
             option_surface=option_surface,
@@ -239,6 +254,38 @@ class JaniformModel:
             option_surface_column_mapping=option_surface_column_mapping,
             risk_free_rate=risk_free_rate,
             dividend_yield=dividend_yield,
+            cpu_count=cpu_count,
+            silent=silent,
+            progress_mode=progress_mode,
+        )
+
+    def price_option_surface(
+        self,
+        *,
+        tick_data: TabularFrameInput,
+        option_surface: TabularFrameInput,
+        valuation_time_utc: Optional[datetime] = None,
+        option_type: Optional[VanillaOptionPayoffType | str] = None,
+        option_surface_column_mapping: Optional[CalibrationOptionSurfaceColumnMapping] = None,
+        risk_free_rate: float = 0.0,
+        dividend_yield: float = 0.0,
+        valuation_count: Optional[int] = None,
+        use_all_valuation_times: bool = False,
+        cpu_count: Optional[int] = None,
+        silent: bool = False,
+        progress_mode: WorkflowProgressMode | str = WorkflowProgressMode.AUTO,
+    ) -> JaniformObservedOptionSurfacePricingResult:
+        return price_option_surface_for_model(
+            self,
+            tick_data=tick_data,
+            option_surface=option_surface,
+            valuation_time_utc=valuation_time_utc,
+            option_type=option_type,
+            option_surface_column_mapping=option_surface_column_mapping,
+            risk_free_rate=risk_free_rate,
+            dividend_yield=dividend_yield,
+            valuation_count=valuation_count,
+            use_all_valuation_times=use_all_valuation_times,
             cpu_count=cpu_count,
             silent=silent,
             progress_mode=progress_mode,
@@ -320,8 +367,6 @@ class JaniformModel:
                 "workflow_scope",
                 "must be a valid CalibrationMarketDataWorkflowScope value",
             ) from error
-
-        from ...contracts import require_non_empty_string
 
         return JaniformModel(
             run_id=require_non_empty_string(payload, "run_id", "run_id", calibration_error),

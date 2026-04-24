@@ -462,7 +462,7 @@ fn validate_fixture_document(
         })?;
         fixture_case.tolerances.validate(&fixture_case.fixture_id)?;
 
-        let _ = fixture_case
+        fixture_case
             .solver_settings
             .to_core(&fixture_case.fixture_id);
 

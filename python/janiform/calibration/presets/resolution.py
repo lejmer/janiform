@@ -33,8 +33,13 @@ from .registry import (
 )
 from ..errors import calibration_error
 from ..sessions.contracts import MarketDataSessionResolution
-from ...contracts.base import require_boolean
-from ...contracts import ContractModel, require_mapping, require_non_empty_string, require_sequence
+from ...contracts.base import (
+    require_boolean,
+    require_mapping,
+    require_non_empty_string,
+    require_sequence,
+    ContractModel,
+)
 
 
 # Public preset-resolution default that callers can replace with an explicit preset name.

@@ -13,7 +13,8 @@ use super::summary_simulation::{
     JOINT_REFINEMENT_SUMMARY_SIMULATION_WORKER_PROTOCOL_SCHEMA_VERSION,
     JointRefinementSummarySimulationSessionContext, JointRefinementSummarySimulationSessionState,
     JointRefinementSummarySimulationWorkerRequest, JointRefinementSummarySimulationWorkerResponse,
-    JointRefinementWorkerRequestedOutput, RunCandidateRequest, RunCandidateResponse,
+    JointRefinementSummarySimulationWorkloadEstimate, JointRefinementWorkerRequestedOutput,
+    RunCandidateRequest, RunCandidateResponse,
     initialize_joint_refinement_summary_simulation_session, read_joint_refinement_worker_frame,
     simulate_joint_refinement_seed_summary_in_process, write_joint_refinement_worker_frame,
 };
@@ -185,6 +186,24 @@ impl JointRefinementSummarySimulationScheduler {
         self.release_worker(worker, reusable);
 
         run_result
+    }
+
+    pub(crate) fn estimate_seed_summary_workload(
+        &self,
+        fitted_parameters: &JointRefinementStageFittedParameters,
+        requested_seed: u64,
+    ) -> Result<
+        JointRefinementSummarySimulationWorkloadEstimate,
+        JointRefinementSeedSummaryAcquisitionError,
+    > {
+        super::summary_simulation::estimate_summary_simulation_workload(
+            &self.session_state,
+            fitted_parameters,
+            requested_seed,
+        )
+        .map_err(|error_message| {
+            JointRefinementSeedSummaryAcquisitionError::SimulationFailure { error_message }
+        })
     }
 
     fn acquire_worker(
@@ -626,12 +645,9 @@ fn resolve_backend_from_preference(
     worker_executable: Option<PathBuf>,
 ) -> Result<JointRefinementSummarySimulationBackend, String> {
     match backend_preference {
-        JointRefinementSummarySimulationBackendPreference::Auto => Ok(match worker_executable {
-            Some(worker_executable) => {
-                JointRefinementSummarySimulationBackend::ProcessWorker { worker_executable }
-            }
-            None => JointRefinementSummarySimulationBackend::InProcess,
-        }),
+        JointRefinementSummarySimulationBackendPreference::Auto => {
+            Ok(JointRefinementSummarySimulationBackend::InProcess)
+        }
         JointRefinementSummarySimulationBackendPreference::InProcess => {
             Ok(JointRefinementSummarySimulationBackend::InProcess)
         }
@@ -775,6 +791,20 @@ mod tests {
             None,
         )
         .expect("automatic backend selection should succeed");
+
+        assert!(matches!(
+            backend,
+            JointRefinementSummarySimulationBackend::InProcess
+        ));
+    }
+
+    #[test]
+    fn automatic_backend_selection_ignores_incidental_worker_executable() {
+        let backend = resolve_backend_from_preference(
+            JointRefinementSummarySimulationBackendPreference::Auto,
+            Some(PathBuf::from("janiform-joint-refinement-worker-test")),
+        )
+        .expect("automatic backend selection should not depend on build artifacts");
 
         assert!(matches!(
             backend,

@@ -25,6 +25,7 @@ from ...presets.references import (
 from ...presets.registry import PresetRegistry
 from ...presets.resolution import ResolvedPresetWorkflowConfiguration
 from ...staged import CalibrationStageSolverSettings
+from ....pricing import PricingIntervalSchedulePolicy
 from .._inference import FitInference
 
 
@@ -56,6 +57,8 @@ class FitPreparationConfiguration:
     optimizer_settings_by_stage: tuple[CalibrationStageSolverSettings, ...]
     preprocessing_settings: Optional[CalibrationMarketDataPreprocessingSettings]
     mean_reversion: Optional[CalibrationMeanReversionConfiguration]
+    pricing_interval_schedule_policy: PricingIntervalSchedulePolicy
+    dynamics_search_restart_candidate_budget: Optional[int]
     default_endogenous_mean_reversion_configuration: CalibrationMeanReversionConfiguration
     market_profile_reference: Optional[MarketProfileReference]
     known_news_reference: Optional[KnownNewsPresetReference]
@@ -78,4 +81,5 @@ class FitExecutionConfiguration:
     prepared_staged_runner: Callable[..., tuple[Any, dict[str, Any]]]
     use_default_prepared_runner: bool
     evented_prepared_runner: Callable[..., tuple[Any, dict[str, Any]]]
+    resume_evented_prepared_runner: Callable[..., tuple[Any, dict[str, Any]]]
     build_fit_inference_metadata: Callable[[PreparedFitWorkflow], dict[str, Any]]

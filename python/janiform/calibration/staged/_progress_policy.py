@@ -15,13 +15,6 @@ _CALIBRATION_TOTAL_PROGRESS_STAGE_WEIGHT_POLICY_V1: dict[str, float] = {
 
 _CALIBRATION_TOTAL_PROGRESS_COMPLETION_RESERVE_V1: float = 0.01
 
-_CALIBRATION_JOINT_REFINEMENT_PROGRESS_PHASE_WEIGHT_POLICY_V1: dict[str, float] = {
-    "restart_optimization": 0.90,
-    "coarse_consistency_evaluation": 0.05,
-    "final_seed_evaluation": 0.03,
-    "final_assembly": 0.02,
-}
-
 
 @dataclass(frozen=True, slots=True)
 class CalibrationLiveProgressSnapshot:
@@ -34,9 +27,26 @@ class CalibrationLiveProgressSnapshot:
     current_stage_is_complete: bool = False
     subtask_completed_units: Optional[int] = None
     subtask_total_units: Optional[int] = None
+    subtask_progress_fraction_override: Optional[float] = None
+    stage_progress_fraction_override: Optional[float] = None
+    total_progress_fraction_floor: Optional[float] = None
 
 
 def calibration_total_progress_fraction(
+    snapshot: CalibrationLiveProgressSnapshot,
+) -> Optional[float]:
+    progress_fraction = _calibration_total_progress_fraction_raw(snapshot)
+    progress_fraction_floor = snapshot.total_progress_fraction_floor
+    if progress_fraction is None:
+        return progress_fraction_floor
+
+    if isinstance(progress_fraction_floor, float):
+        return max(progress_fraction, progress_fraction_floor)
+
+    return progress_fraction
+
+
+def _calibration_total_progress_fraction_raw(
     snapshot: CalibrationLiveProgressSnapshot,
 ) -> Optional[float]:
     if snapshot.status == "completed":
@@ -46,14 +56,16 @@ def calibration_total_progress_fraction(
     if not isinstance(stage_index, int) or stage_index <= 0:
         return None
 
-    stage_weights = _stage_weights_for_run_stage_sequence(snapshot.stage_sequence)
-    if stage_weights is not None and stage_index <= len(stage_weights):
-        completed_weight = sum(stage_weights[: max(stage_index - 1, 0)])
+    stage_weight_context = _stage_weight_context(snapshot)
+    if stage_weight_context is not None:
+        stage_weights, active_stage_index = stage_weight_context
+        completed_weight = sum(stage_weights[:active_stage_index])
         if snapshot.current_stage_is_complete:
             stage_execution_fraction = min(
-                max(completed_weight + stage_weights[stage_index - 1], 0.0),
+                max(completed_weight + stage_weights[active_stage_index], 0.0),
                 1.0,
             )
+
             return (
                 1.0 - _CALIBRATION_TOTAL_PROGRESS_COMPLETION_RESERVE_V1
             ) * stage_execution_fraction
@@ -61,7 +73,11 @@ def calibration_total_progress_fraction(
         current_stage_fraction = _calibration_current_stage_progress_fraction(snapshot)
 
         stage_execution_fraction = min(
-            max(completed_weight + current_stage_fraction * stage_weights[stage_index - 1], 0.0),
+            max(
+                completed_weight
+                + current_stage_fraction * stage_weights[active_stage_index],
+                0.0,
+            ),
             1.0,
         )
 
@@ -92,11 +108,14 @@ def calibration_total_progress_fraction(
 def _calibration_current_stage_progress_fraction(
     snapshot: CalibrationLiveProgressSnapshot,
 ) -> float:
-    joint_refinement_phase_progress_fraction = _joint_refinement_phase_progress_fraction(
-        snapshot
-    )
-    if joint_refinement_phase_progress_fraction is not None:
-        return joint_refinement_phase_progress_fraction
+    if isinstance(snapshot.stage_progress_fraction_override, float):
+        return min(max(snapshot.stage_progress_fraction_override, 0.0), 1.0)
+
+    if snapshot.current_stage == "joint_refinement":
+        return 0.0
+
+    if isinstance(snapshot.subtask_progress_fraction_override, float):
+        return min(max(snapshot.subtask_progress_fraction_override, 0.0), 1.0)
 
     subtask_progress_fraction = _progress_bar_fraction(
         snapshot.subtask_completed_units,
@@ -155,54 +174,6 @@ def _progress_bar_fraction(
     )
 
 
-def _joint_refinement_phase_progress_fraction(
-    snapshot: CalibrationLiveProgressSnapshot,
-) -> Optional[float]:
-    if snapshot.current_stage != "joint_refinement":
-        return None
-
-    if snapshot.current_stage_is_complete:
-        return 1.0
-
-    current_subtask = snapshot.current_subtask
-    if not isinstance(current_subtask, str) or not current_subtask.startswith(
-        "joint_refinement."
-    ):
-        return 0.0
-
-    progress_phase = current_subtask.split(".", 1)[1]
-    phase_weights = _joint_refinement_phase_weights()
-    if phase_weights is None or progress_phase not in phase_weights:
-        return None
-
-    phase_names = tuple(phase_weights.keys())
-    phase_index = phase_names.index(progress_phase)
-
-    current_phase_fraction = _progress_bar_fraction(
-        snapshot.subtask_completed_units,
-        snapshot.subtask_total_units,
-    )
-    if current_phase_fraction is None:
-        current_phase_fraction = 0.0
-
-    completed_phase_weight = sum(
-        phase_weights[phase_name] for phase_name in phase_names[:phase_index]
-    )
-
-    return completed_phase_weight + current_phase_fraction * phase_weights[progress_phase]
-
-
-def _joint_refinement_phase_weights() -> Optional[dict[str, float]]:
-    total_weight = sum(_CALIBRATION_JOINT_REFINEMENT_PROGRESS_PHASE_WEIGHT_POLICY_V1.values())
-    if total_weight <= 0.0:
-        return None
-
-    return {
-        phase_name: phase_weight / total_weight
-        for phase_name, phase_weight in _CALIBRATION_JOINT_REFINEMENT_PROGRESS_PHASE_WEIGHT_POLICY_V1.items()
-    }
-
-
 def _stage_weights_for_run_stage_sequence(
     stage_sequence: tuple[str, ...],
 ) -> Optional[tuple[float, ...]]:
@@ -225,3 +196,37 @@ def _stage_weights_for_run_stage_sequence(
         for weight in raw_stage_weights
         if weight is not None
     )
+
+
+def _stage_weight_context(
+    snapshot: CalibrationLiveProgressSnapshot,
+) -> Optional[tuple[tuple[float, ...], int]]:
+    stage_weights = _stage_weights_for_run_stage_sequence(snapshot.stage_sequence)
+    current_stage = snapshot.current_stage
+    if (
+        stage_weights is not None
+        and isinstance(current_stage, str)
+        and current_stage in snapshot.stage_sequence
+    ):
+        return stage_weights, snapshot.stage_sequence.index(current_stage)
+
+    if not isinstance(current_stage, str):
+        stage_index = snapshot.stage_index
+        if (
+            stage_weights is not None
+            and isinstance(stage_index, int)
+            and 0 < stage_index <= len(stage_weights)
+        ):
+            return stage_weights, stage_index - 1
+
+        return None
+
+    canonical_stage_sequence = tuple(_CALIBRATION_TOTAL_PROGRESS_STAGE_WEIGHT_POLICY_V1.keys())
+    if current_stage not in canonical_stage_sequence:
+        return None
+
+    canonical_stage_weights = _stage_weights_for_run_stage_sequence(canonical_stage_sequence)
+    if canonical_stage_weights is None:
+        return None
+
+    return canonical_stage_weights, canonical_stage_sequence.index(current_stage)

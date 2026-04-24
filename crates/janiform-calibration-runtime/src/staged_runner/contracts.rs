@@ -9,11 +9,11 @@ use super::{
     MeanReversionStageExecutionInput, MeanReversionStageExecutionMetadata,
     MeanReversionStageExecutionReport, ReturnComponentsStageCandidateGenerationInput,
     ReturnComponentsStageExecutionMetadata, ReturnComponentsStageExecutionReport,
-    SeasonalityStageExecutionInput, SeasonalityStageExecutionMetadata,
-    SeasonalityStageExecutionReport,
+    ReturnComponentsStageProgressPhase, SeasonalityStageExecutionInput,
+    SeasonalityStageExecutionMetadata, SeasonalityStageExecutionReport,
 };
 use crate::JointRefinementStageOptionPricingInput;
-use serde::Serialize;
+use serde::{Serialize, Serializer};
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct CalibrationStagedRunInputs {
@@ -22,6 +22,9 @@ pub struct CalibrationStagedRunInputs {
     pub return_components_candidate_generation_input:
         Option<ReturnComponentsStageCandidateGenerationInput>,
     pub mean_reversion_stage_input: Option<MeanReversionStageExecutionInput>,
+    pub joint_refinement_restart_candidate_budget_override: Option<usize>,
+    pub joint_refinement_option_refinement_candidate_count_override: Option<usize>,
+    pub joint_refinement_audit_option_pricing_enabled: bool,
     pub joint_refinement_option_pricing_input: Option<JointRefinementStageOptionPricingInput>,
 }
 
@@ -320,6 +323,36 @@ pub struct CalibrationStagedRunReport {
     pub failure: Option<CalibrationStagedRunFailure>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CalibrationStageProgressPhase {
+    ReturnComponents(ReturnComponentsStageProgressPhase),
+    JointRefinement(JointRefinementStageProgressPhase),
+}
+
+impl From<ReturnComponentsStageProgressPhase> for CalibrationStageProgressPhase {
+    fn from(phase: ReturnComponentsStageProgressPhase) -> Self {
+        Self::ReturnComponents(phase)
+    }
+}
+
+impl From<JointRefinementStageProgressPhase> for CalibrationStageProgressPhase {
+    fn from(phase: JointRefinementStageProgressPhase) -> Self {
+        Self::JointRefinement(phase)
+    }
+}
+
+impl Serialize for CalibrationStageProgressPhase {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            Self::ReturnComponents(phase) => phase.serialize(serializer),
+            Self::JointRefinement(phase) => phase.serialize(serializer),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "event_kind", rename_all = "snake_case")]
 pub enum CalibrationStagedRunObserverEvent {
@@ -354,11 +387,31 @@ pub enum CalibrationStagedRunObserverEvent {
         stage: CalibrationStage,
         stage_index: usize,
         stage_count: usize,
-        progress_phase: JointRefinementStageProgressPhase,
+        progress_phase: CalibrationStageProgressPhase,
         completed_units: usize,
         total_units: usize,
         #[serde(skip_serializing_if = "Option::is_none")]
+        stage_progress_percent: Option<usize>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        aggregate_progress_percent: Option<usize>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         current_item_label: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        current_restart_id: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        active_restart_count: Option<usize>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        current_parameter_block: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        completed_outer_cycles: Option<usize>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        total_outer_cycles: Option<usize>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        current_evaluation_count: Option<usize>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        total_evaluation_budget: Option<usize>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        evaluation_progress_percent: Option<usize>,
         #[serde(skip_serializing_if = "Option::is_none")]
         valid_completed_units: Option<usize>,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -366,11 +419,17 @@ pub enum CalibrationStagedRunObserverEvent {
         #[serde(skip_serializing_if = "Option::is_none")]
         current_weighted_objective: Option<f64>,
         #[serde(skip_serializing_if = "Option::is_none")]
+        current_restart_best_weighted_objective: Option<f64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        best_restart_id: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         best_weighted_objective: Option<f64>,
         #[serde(skip_serializing_if = "Option::is_none")]
         current_coarse_consistency_fit: Option<f64>,
         #[serde(skip_serializing_if = "Option::is_none")]
         best_coarse_consistency_fit: Option<f64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        current_convergence_ratio: Option<f64>,
     },
     RunCompleted {
         run_id: String,

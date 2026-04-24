@@ -13,6 +13,13 @@ from ..mean_reversion import (
 )
 from ..contracts import (
     ContractModel,
+    validate_exact_integer,
+    validate_exact_number,
+    validate_exact_optional_integer,
+    validate_exact_string,
+    validate_required_field_list,
+)
+from ..contracts.base import (
     require_finite_number,
     require_mapping,
     require_non_negative_finite_number,
@@ -20,11 +27,6 @@ from ..contracts import (
     require_positive_finite_number,
     require_positive_integer,
     require_sequence,
-    validate_exact_integer,
-    validate_exact_number,
-    validate_exact_optional_integer,
-    validate_exact_string,
-    validate_required_field_list,
 )
 from ..errors import JaniformValidationError
 from ..hourly_factors import (

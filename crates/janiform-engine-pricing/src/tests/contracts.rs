@@ -1,7 +1,7 @@
 use serde_json::json;
 
 use crate::{
-    DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA, VANILLA_OPTION_CALIBRATION_HOOK_POLICY,
+    VANILLA_OPTION_CALIBRATION_HOOK_POLICY,
     VANILLA_OPTION_PRICING_CALIBRATION_HOOKS_SCHEMA_VERSION,
     VANILLA_OPTION_PRICING_RUN_DIAGNOSTICS_SCHEMA_VERSION,
     VANILLA_OPTION_PRICING_RUN_OUTPUT_SCHEMA_METADATA_VERSION,
@@ -21,7 +21,8 @@ use janiform_model_kernels::hawkes::HawkesExcitationState;
 use super::support::{
     build_reference_integration_diagnostics_source, build_reference_market_inputs,
     build_reference_pricing_response, build_reference_transform_diagnostics_source,
-    build_valid_vanilla_option_request, disabled_boundary_input, valid_model_parameters,
+    build_uniform_runtime_interval_schedule, build_valid_vanilla_option_request,
+    disabled_boundary_input, valid_model_parameters,
 };
 #[test]
 fn vanilla_option_request_roundtrip_serialization_preserves_contract_fields() {
@@ -33,14 +34,11 @@ fn vanilla_option_request_roundtrip_serialization_preserves_contract_fields() {
         .expect("serialized request payload should deserialize");
 
     assert_eq!(parsed_request, request);
-    assert_eq!(
-        parsed_request.interval_delta,
-        DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA
-    );
+    assert_eq!(parsed_request.interval_delta, request.interval_delta);
 }
 
 #[test]
-fn vanilla_option_request_deserialization_defaults_interval_delta_to_hourly() {
+fn vanilla_option_request_deserialization_requires_interval_delta() {
     let model_parameters_payload =
         serde_json::to_value(valid_model_parameters()).expect("model parameters should serialize");
 
@@ -82,19 +80,19 @@ fn vanilla_option_request_deserialization_defaults_interval_delta_to_hourly() {
         "model_parameters": model_parameters_payload
     });
 
-    let parsed_request: VanillaOptionPricingRequest =
-        serde_json::from_value(payload_without_interval_delta)
-            .expect("payload without interval_delta should deserialize");
+    let error =
+        serde_json::from_value::<VanillaOptionPricingRequest>(payload_without_interval_delta)
+            .expect_err("payload without interval_delta should fail deserialization");
 
-    assert_eq!(
-        parsed_request.interval_delta,
-        DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA
+    assert!(
+        error.to_string().contains("interval_delta"),
+        "unexpected deserialization error: {error}"
     );
 }
 
 #[test]
 fn vanilla_option_request_accepts_explicit_non_hourly_interval_delta() {
-    let request = VanillaOptionPricingRequest::try_new_with_interval_delta(
+    let request = VanillaOptionPricingRequest::try_new(
         VanillaOptionPricingMarketInputs::try_new_single_node(101.0, 100.0, 0.5, 0.02, 0.01)
             .expect("market inputs should construct"),
         VanillaOptionPayoffConfiguration {
@@ -121,6 +119,7 @@ fn vanilla_option_request_accepts_explicit_non_hourly_interval_delta() {
 fn vanilla_option_pricing_execution_input_roundtrip_serialization_preserves_split_news_intensity() {
     let execution_input = VanillaOptionPricingExecutionInput::try_new(
         build_valid_vanilla_option_request(),
+        build_uniform_runtime_interval_schedule(1, 1.0),
         vec![
             VanillaOptionPricingIntervalFactors::try_new(1.1, 0.03, 0.05)
                 .expect("interval factors should construct"),
@@ -175,6 +174,7 @@ fn vanilla_option_pricing_execution_input_deserialization_requires_split_news_fi
 fn vanilla_option_pricing_execution_input_rejects_negative_surprise_news_intensity() {
     let error = VanillaOptionPricingExecutionInput::try_new(
         build_valid_vanilla_option_request(),
+        build_uniform_runtime_interval_schedule(1, 1.0),
         vec![VanillaOptionPricingIntervalFactors::new(1.0, 0.03, -0.01)],
         VanillaOptionPricingOptionalOutputSelection::default(),
     )
@@ -190,7 +190,7 @@ fn vanilla_option_pricing_execution_input_rejects_negative_surprise_news_intensi
 
 #[test]
 fn vanilla_option_request_rejects_non_positive_interval_delta() {
-    let error = VanillaOptionPricingRequest::try_new_with_interval_delta(
+    let error = VanillaOptionPricingRequest::try_new(
         VanillaOptionPricingMarketInputs::try_new_single_node(101.0, 100.0, 0.5, 0.02, 0.01)
             .expect("market inputs should construct"),
         VanillaOptionPayoffConfiguration {
@@ -259,6 +259,7 @@ fn vanilla_option_request_rejects_invalid_market_input_with_structured_error() {
             },
         ),
         valid_model_parameters(),
+        1.0,
     )
     .expect_err("negative strike should fail request validation");
 
@@ -404,6 +405,8 @@ fn pricing_run_output_selection_defaults_to_base_response_only() {
         Some(transform_diagnostics),
         Some(integration_quality),
         None,
+        build_uniform_runtime_interval_schedule(1, 1.0),
+        vec![0],
     )
     .expect("default output selection should emit base response only");
 
@@ -429,6 +432,8 @@ fn pricing_run_output_selection_can_emit_diagnostics_and_calibration_hooks() {
         Some(transform_diagnostics),
         Some(integration_quality),
         None,
+        build_uniform_runtime_interval_schedule(1, 1.0),
+        vec![0],
     )
     .expect("full output selection should include diagnostics and hooks");
 
@@ -470,6 +475,8 @@ fn pricing_run_output_schema_metadata_is_machine_readable_with_required_fields()
         Some(transform_diagnostics),
         Some(integration_quality),
         None,
+        build_uniform_runtime_interval_schedule(1, 1.0),
+        vec![0],
     )
     .expect("full output selection should construct");
 
@@ -540,6 +547,8 @@ fn pricing_run_output_builder_reports_missing_selected_optional_sources() {
         None,
         None,
         None,
+        build_uniform_runtime_interval_schedule(1, 1.0),
+        vec![0],
     )
     .expect_err("transform diagnostics selection without source must fail");
     assert!(matches!(
@@ -554,6 +563,8 @@ fn pricing_run_output_builder_reports_missing_selected_optional_sources() {
         None,
         None,
         None,
+        build_uniform_runtime_interval_schedule(1, 1.0),
+        vec![0],
     )
     .expect_err("integration diagnostics selection without source must fail");
     assert!(matches!(
@@ -568,6 +579,8 @@ fn pricing_run_output_builder_reports_missing_selected_optional_sources() {
         None,
         None,
         None,
+        build_uniform_runtime_interval_schedule(1, 1.0),
+        vec![0],
     )
     .expect_err("calibration hooks selection without market inputs must fail");
     assert!(matches!(
@@ -589,6 +602,8 @@ fn calibration_hooks_reject_invalid_market_inputs_with_actionable_error() {
         None,
         None,
         None,
+        build_uniform_runtime_interval_schedule(1, 1.0),
+        vec![0],
     )
     .expect_err("invalid market inputs should fail calibration hook construction");
 

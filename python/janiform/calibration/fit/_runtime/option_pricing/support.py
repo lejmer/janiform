@@ -1,14 +1,16 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from math import log
 from typing import TYPE_CHECKING, Any, Mapping, cast
 
-from .....contracts import require_positive_finite_scalar
+from ....._timestamps import ONE_HOUR_NANOS, datetime_to_utc_nanos
+from .....contracts.base import require_positive_finite_scalar
 from .....hourly_factors import (
     HourlyNewsIntensityProviderMaterializedSource,
     provide_hourly_factor_contract,
 )
+from .....pricing import PricingIntervalSchedule
 from ....errors import calibration_error
 from ..payloads import resolved_known_news_event_timestamps, surprise_baseline_intensity
 from ..seasonality import (
@@ -24,20 +26,21 @@ def build_model_pricing_hourly_factor_contract(
     model: JaniformModel,
     *,
     runtime_factors: Any,
-    valuation_time_utc: datetime,
+    range_start_utc: datetime,
+    range_end_utc: datetime,
 ) -> Any:
     return provide_hourly_factor_contract(
         calendar_registry=runtime_factors.calendar_registry,
         exchange_code=runtime_factors.exchange_code,
-        range_start_utc=valuation_time_utc,
-        range_end_utc=runtime_factors.range_end_utc,
+        range_start_utc=range_start_utc,
+        range_end_utc=range_end_utc,
         interval="1h",
         seasonality_source=build_runtime_hourly_seasonality_source_from_model(
             model,
             calendar_registry=runtime_factors.calendar_registry,
             exchange_code=runtime_factors.exchange_code,
-            range_start_utc=valuation_time_utc,
-            range_end_utc=runtime_factors.range_end_utc,
+            range_start_utc=range_start_utc,
+            range_end_utc=range_end_utc,
             interval="1h",
         ),
         news_intensity_source=HourlyNewsIntensityProviderMaterializedSource(
@@ -46,8 +49,8 @@ def build_model_pricing_hourly_factor_contract(
             surprise_deterministic_time_multiplier_by_interval_index=(
                 surprise_deterministic_time_multiplier_by_interval_index(
                     model,
-                    range_start_utc=valuation_time_utc,
-                    range_end_utc=runtime_factors.range_end_utc,
+                    range_start_utc=range_start_utc,
+                    range_end_utc=range_end_utc,
                     interval_duration_nanos=runtime_factors.interval_duration_nanos,
                 )
             ),
@@ -75,31 +78,44 @@ def model_reference_price(model: JaniformModel) -> float:
     )
 
 
-def pricing_interval_count_from_maturity_interval(
-    maturity_interval: float,
-    *,
-    field_path: str,
-) -> int:
-    horizon_interval_count_float = maturity_interval / 1.0
-    horizon_interval_count = int(horizon_interval_count_float)
-    if horizon_interval_count <= 0 or float(horizon_interval_count) != horizon_interval_count_float:
+def runtime_schedule_hourly_factor_contract_coverage(
+    valuation_time_utc: datetime,
+    runtime_interval_schedule: PricingIntervalSchedule,
+) -> tuple[datetime, datetime]:
+    valuation_time_utc_nanos = datetime_to_utc_nanos(valuation_time_utc)
+    coverage_start_utc_nanos = valuation_time_utc_nanos - (
+        valuation_time_utc_nanos % ONE_HOUR_NANOS
+    )
+
+    terminal_interval_end_utc_nanos = (
+        runtime_interval_schedule.interval_end_timestamps_utc_nanos[-1]
+    )
+
+    coverage_end_utc_nanos = (
+        (terminal_interval_end_utc_nanos + ONE_HOUR_NANOS - 1) // ONE_HOUR_NANOS
+    ) * ONE_HOUR_NANOS
+
+    return (
+        _runtime_datetime_from_utc_nanos(coverage_start_utc_nanos),
+        _runtime_datetime_from_utc_nanos(coverage_end_utc_nanos),
+    )
+
+
+def hourly_interval_count(range_start_utc: datetime, range_end_utc: datetime) -> int:
+    interval_count = (
+        datetime_to_utc_nanos(range_end_utc) - datetime_to_utc_nanos(range_start_utc)
+    ) // ONE_HOUR_NANOS
+    if interval_count <= 0:
         raise calibration_error(
-            field_path,
-            "must be a positive exact multiple of the pricing runtime interval 1.0",
+            "runtime_interval_schedule",
+            "must span at least one canonical hourly source interval",
         )
-    return horizon_interval_count
+
+    return int(interval_count)
 
 
-def native_pricing_interval_factors(
-    hourly_factor_contract: Any,
-    *,
-    horizon_interval_count: int,
-) -> list[dict[str, float]]:
-    return [
-        {
-            "s_h": float(hourly_factor_contract.s_h[interval_index]),
-            "nu_h_known": float(hourly_factor_contract.known_component_nu_h[interval_index]),
-            "nu_h_surprise": float(hourly_factor_contract.surprise_component_nu_h[interval_index]),
-        }
-        for interval_index in range(horizon_interval_count)
-    ]
+def _runtime_datetime_from_utc_nanos(timestamp_utc_nanos: int) -> datetime:
+    whole_seconds, remainder_nanos = divmod(timestamp_utc_nanos, 1_000_000_000)
+    return datetime.fromtimestamp(whole_seconds, tz=UTC).replace(
+        microsecond=remainder_nanos // 1_000
+    )

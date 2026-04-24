@@ -242,17 +242,36 @@ def test_stage_progress_detail_summarizes_joint_refinement_runtime_state() -> No
             "current_item_label": "halton_03",
             "valid_completed_units": 2,
             "cumulative_local_evaluation_count": 117,
+            "best_restart_id": "baseline",
             "best_weighted_objective": 0.123456789,
         }
     )
 
     assert detail == (
-        "joint_refinement restart optimization 3/8 | latest=halton_03 | valid=2 "
-        "| local_evaluations=117 | best_objective=0.123457"
+        "joint_refinement restart optimization 3/8 | item=halton_03 | valid=2 "
+        "| local_evaluations=117 | best_candidate=baseline | best_objective=0.123457"
     )
 
 
 def test_stage_progress_detail_labels_post_restart_joint_refinement_phases() -> None:
+    seed_generation_detail = format_staged_progress_event_detail(
+        {
+            "stage": "joint_refinement",
+            "progress_phase": "restart_seed_generation",
+            "completed_units": 1,
+            "total_units": 2,
+            "current_item_label": "tick_moment_seed_generation",
+        }
+    )
+    screening_detail = format_staged_progress_event_detail(
+        {
+            "stage": "joint_refinement",
+            "progress_phase": "restart_candidate_screening",
+            "completed_units": 4,
+            "total_units": 18,
+            "current_item_label": "halton_01",
+        }
+    )
     coarse_detail = format_staged_progress_event_detail(
         {
             "stage": "joint_refinement",
@@ -276,12 +295,18 @@ def test_stage_progress_detail_labels_post_restart_joint_refinement_phases() -> 
         }
     )
 
+    assert seed_generation_detail == (
+        "joint_refinement restart seed generation 1/2 | item=tick_moment_seed_generation"
+    )
+    assert screening_detail == (
+        "joint_refinement restart candidate screening 4/18 | item=halton_01"
+    )
     assert coarse_detail == (
-        "joint_refinement coarse consistency evaluation 7/12 | latest=halton_07 "
+        "joint_refinement coarse consistency evaluation 7/12 | item=halton_07 "
         "| objective=0.117000 | best_objective=0.101000 | coarse_fit=1.042000 "
         "| best_coarse_fit=0.998000"
     )
-    assert final_detail == "joint_refinement final assembly 2/3 | latest=simulation_summaries"
+    assert final_detail == "joint_refinement final assembly 2/3 | item=simulation_summaries"
 
 
 def test_workbench_execution_worker_forwards_stage_progress_native_events() -> None:

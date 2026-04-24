@@ -25,7 +25,7 @@ use super::signals::{
     ReturnComponentsStageActivityCalibrationContext, derive_continuous_fit_business_time_scales,
     sort_candidate_generation_signals, summarize_candidate_generation_signals,
 };
-use crate::calendar::ExchangeCalendarRegistry;
+use janiform_market_time::calendar::ExchangeCalendarRegistry;
 
 pub(crate) fn prepare_observed_signal_inputs_for_joint_refinement(
     exchange_code: &str,

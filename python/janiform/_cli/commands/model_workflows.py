@@ -509,11 +509,19 @@ def configure_cli_fit_command(
         entrypoint=entrypoint,
         error_id=error_id,
     )
+    dynamics_search_restart_candidate_budget = (
+        dynamics_search_restart_candidate_budget_from_arguments(
+            command_arguments,
+            entrypoint=entrypoint,
+            error_id=error_id,
+        )
+    )
 
     preliminary_estimator = JaniformEstimator(
         workflow_scope=workflow_scope,
         option_surface_column_mapping=option_surface_column_mapping,
         output_preferences=output_preferences,
+        dynamics_search_restart_candidate_budget=dynamics_search_restart_candidate_budget,
         market_profile=market_profile,
         session=session_reference,
         known_news=known_news_reference,
@@ -545,6 +553,7 @@ def configure_cli_fit_command(
         option_surface_column_mapping=option_surface_column_mapping,
         output_preferences=output_preferences,
         mean_reversion=mean_reversion,
+        dynamics_search_restart_candidate_budget=dynamics_search_restart_candidate_budget,
         market_profile=market_profile,
         session=session_reference,
         known_news=known_news_reference,
@@ -623,6 +632,27 @@ def cpu_count_from_arguments(
     return require_positive_integer_cli_argument(
         raw_cpu_count,
         field_path="cpu_count",
+        error_id=error_id,
+        entrypoint=entrypoint,
+    )
+
+
+def dynamics_search_restart_candidate_budget_from_arguments(
+    command_arguments: CliCommandArguments,
+    *,
+    entrypoint: str,
+    error_id: str,
+) -> Optional[int]:
+    raw_restart_candidate_budget = cast(
+        Optional[int],
+        command_arguments.get("dynamics_search_restart_candidate_budget"),
+    )
+    if raw_restart_candidate_budget is None:
+        return None
+
+    return require_positive_integer_cli_argument(
+        raw_restart_candidate_budget,
+        field_path="dynamics_search_restart_candidate_budget",
         error_id=error_id,
         entrypoint=entrypoint,
     )
@@ -1455,6 +1485,14 @@ def model_workflow_fit_options(
                 "Default: derived from retained session-open boundary observations."
             ),
             value_type=float,
+        ),
+        command_option(
+            "--dynamics-search-restart-candidate-budget",
+            help_text=(
+                "Optional restart candidate budget for calibration dynamics search. "
+                "Default: Janiform policy default."
+            ),
+            value_type=int,
         ),
         *(
             [

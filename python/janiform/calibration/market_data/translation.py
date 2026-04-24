@@ -119,19 +119,22 @@ class MarketDataTranslationResult:
 def translate_market_data_request_to_prepared_calibration(
     request: MarketDataCalibrationRequest,
     *,
-    cpu_count: int | None = None,
+    cpu_count: Optional[int] = None,
 ) -> MarketDataTranslationResult:
     if not isinstance(request, MarketDataCalibrationRequest):
         raise _translation_error("request", "must be a MarketDataCalibrationRequest")
 
     normalized_request = MarketDataCalibrationRequest.from_mapping(request.to_payload())
+
     require_hawkes = normalized_request.workflow_scope != CalibrationMarketDataWorkflowScope.SEASONALITY_ONLY
+
     normalized_market_data = normalize_market_data_source(
         tick_data_source=normalized_request.tick_data_source,
         tick_data_column_mapping=normalized_request.column_mapping.tick_data,
         normalization_policy=normalized_request.normalization_policy,
         require_hawkes=require_hawkes,
     )
+
     session_resolution = resolve_market_data_session(
         session_configuration=normalized_request.session_configuration,
         normalized_market_data=normalized_market_data,
@@ -150,10 +153,11 @@ def translate_market_data_request_to_prepared_calibration_from_phases(
     request: MarketDataCalibrationRequest,
     normalized_market_data: NormalizedMarketDataSource,
     session_resolution: MarketDataSessionResolution,
-    cpu_count: int | None = None,
+    cpu_count: Optional[int] = None,
 ) -> MarketDataTranslationResult:
     if not isinstance(request, MarketDataCalibrationRequest):
         raise _translation_error("request", "must be a MarketDataCalibrationRequest")
+
     native = _native_market_data_module()
 
     try:

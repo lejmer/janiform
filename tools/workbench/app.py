@@ -69,7 +69,12 @@ from .lab import (
     WorkbenchReevaluationWorker,
     apply_reevaluation_request,
 )
-from .loading import WorkbenchLoadWorker, workbench_startup_tasks
+from .loading import (
+    WorkbenchLoadWorker,
+    workbench_activity_tasks,
+    workbench_observed_simulation_refresh_task,
+    workbench_startup_tasks,
+)
 from .parameters import flatten_parameter_tree, parse_parameter_value
 from .plot_manifest import WorkbenchPlotManifestEntry, workbench_plot_manifest
 from .plots import (
@@ -95,6 +100,10 @@ from .plots import (
     summary_statistics_rows,
 )
 from .reducers import apply_workbench_event
+from .resimulation import (
+    WorkbenchObservedSimulationRefreshResult,
+    WorkbenchObservedSimulationRefreshWorker,
+)
 from .setup import WorkbenchSetupWidget
 from .events import WorkbenchEventType
 from .state import (
@@ -145,6 +154,11 @@ class WorkbenchWindow(QMainWindow):
         self._execution_worker: Optional[WorkbenchExecutionWorker] = None
         self._export_thread: Optional[QThread] = None
         self._export_worker: Optional[WorkbenchPlotExportWorker] = None
+        self._observed_simulation_refresh_thread: Optional[QThread] = None
+        self._observed_simulation_refresh_worker: Optional[
+            WorkbenchObservedSimulationRefreshWorker
+        ] = None
+        self._observed_simulation_refresh_in_progress = False
 
         self._setup_widget = WorkbenchSetupWidget()
         self._root_tabs = QTabWidget()
@@ -353,7 +367,7 @@ class WorkbenchWindow(QMainWindow):
         self._activity_detail_label.setText(
             "Open an existing run or launch a calibration to populate diagnostics."
         )
-        self._overall_progress_bar.setRange(0, len(workbench_startup_tasks()))
+        self._overall_progress_bar.setRange(0, len(workbench_activity_tasks()))
         self._overall_progress_bar.setValue(0)
         self._current_task_progress_bar.setRange(0, 1)
         self._current_task_progress_bar.setValue(0)
@@ -366,7 +380,7 @@ class WorkbenchWindow(QMainWindow):
         self._activity_table.setColumnCount(3)
         self._activity_table.setHorizontalHeaderLabels(["State", "Task", "Detail"])
 
-        task_definitions = workbench_startup_tasks()
+        task_definitions = workbench_activity_tasks()
 
         self._activity_table.setRowCount(len(task_definitions))
 
@@ -846,6 +860,14 @@ class WorkbenchWindow(QMainWindow):
         if plot_container is None:
             return
 
+        manifest_entry = self._plot_manifest_by_task_id.get(task_id)
+        if (
+            manifest_entry is not None
+            and manifest_entry.uses_observed_simulation_comparison
+            and self._observed_simulation_refresh_in_progress
+        ):
+            return
+
         try:
             native_panel = self._build_native_plot_panel(task_id)
             if native_panel is not None:
@@ -1115,9 +1137,13 @@ class WorkbenchWindow(QMainWindow):
         seed_input = QLineEdit(str(self._observed_simulation_seed))
         seed_input.setPlaceholderText("1")
         seed_input.setMaximumWidth(120)
+        seed_input.setEnabled(not self._observed_simulation_refresh_in_progress)
         controls_layout.addWidget(seed_input)
 
         resimulate_button = QPushButton("Resimulate")
+        resimulate_button.setEnabled(not self._observed_simulation_refresh_in_progress)
+        if self._observed_simulation_refresh_in_progress:
+            resimulate_button.setText("Resimulating...")
         resimulate_button.clicked.connect(
             lambda _checked=False, task_id=task_id, seed_input=seed_input: self._resimulate_observed_simulation_plots(
                 task_id,
@@ -1143,29 +1169,142 @@ class WorkbenchWindow(QMainWindow):
 
         self._observed_simulation_seed = selected_seed
         self._observed_simulation_comparison_cache.clear()
+        selected_task_id = self._selected_plot_task_id() or task_id
+        self._observed_simulation_refresh_in_progress = True
+        self._refresh_observed_simulation_plot_placeholders(
+            selected_seed=selected_seed,
+            active_task_id=selected_task_id,
+        )
 
+        self.statusBar().showMessage(
+            f"Refreshing observed-versus-simulated plots with seed {selected_seed}",
+            5000,
+        )
+        self._start_observed_simulation_refresh(selected_seed)
+
+    def _refresh_observed_simulation_plot_placeholders(
+        self,
+        *,
+        selected_seed: int,
+        active_task_id: str,
+    ) -> None:
         for manifest_entry in self._plot_manifest_by_task_id.values():
-            if manifest_entry.uses_observed_simulation_comparison:
-                self._plot_canvas_ready_by_task_id[manifest_entry.task_id] = False
+            if not manifest_entry.uses_observed_simulation_comparison:
+                continue
 
-        plot_container = self._plot_container_by_task_id.get(task_id)
-        if plot_container is not None:
+            self._plot_canvas_ready_by_task_id[manifest_entry.task_id] = False
+
+            plot_container = self._plot_container_by_task_id.get(manifest_entry.task_id)
+            if plot_container is None:
+                continue
+
+            if manifest_entry.task_id == active_task_id:
+                placeholder_title = "Resimulating"
+                placeholder_detail = (
+                    f"Refreshing observed-versus-simulated diagnostics with seed {selected_seed}."
+                )
+            else:
+                placeholder_title = "Refresh Pending"
+                placeholder_detail = (
+                    f"This plot is ready to refresh with seed {selected_seed}. Open the tab to render it."
+                )
+
             self._set_widget_contents(
                 plot_container,
                 self._build_plot_tab_contents(
-                    task_id,
+                    manifest_entry.task_id,
                     _build_placeholder_panel(
-                        "Resimulating",
-                        f"Refreshing observed-versus-simulated diagnostics with seed {selected_seed}.",
+                        placeholder_title,
+                        placeholder_detail,
                     ),
                 ),
             )
 
-        self.statusBar().showMessage(
-            f"Observed-versus-simulated plots updated to seed {selected_seed}",
-            5000,
+    def _start_observed_simulation_refresh(self, seed: int) -> None:
+        artifacts = self._artifacts
+        if artifacts is None:
+            self._observed_simulation_refresh_in_progress = False
+            return
+
+        self._stop_observed_simulation_refresh_worker()
+
+        self._observed_simulation_refresh_in_progress = True
+        self._observed_simulation_refresh_thread = QThread(self)
+        self._observed_simulation_refresh_worker = WorkbenchObservedSimulationRefreshWorker(
+            artifacts,
+            seed,
         )
-        self._render_plot_canvas(task_id)
+        self._observed_simulation_refresh_worker.moveToThread(
+            self._observed_simulation_refresh_thread
+        )
+
+        self._observed_simulation_refresh_thread.started.connect(
+            self._observed_simulation_refresh_worker.run
+        )
+        self._observed_simulation_refresh_worker.activity_changed.connect(
+            self._on_activity_changed
+        )
+        self._observed_simulation_refresh_worker.task_state_changed.connect(
+            self._on_task_state_changed
+        )
+        self._observed_simulation_refresh_worker.completed.connect(
+            self._on_observed_simulation_refresh_completed
+        )
+        self._observed_simulation_refresh_worker.error_raised.connect(self._on_load_error)
+        self._observed_simulation_refresh_worker.finished.connect(
+            self._observed_simulation_refresh_thread.quit
+        )
+        self._observed_simulation_refresh_worker.finished.connect(
+            self._observed_simulation_refresh_worker.deleteLater
+        )
+        self._observed_simulation_refresh_thread.finished.connect(
+            self._observed_simulation_refresh_thread.deleteLater
+        )
+        self._observed_simulation_refresh_thread.finished.connect(
+            self._on_observed_simulation_refresh_thread_finished
+        )
+
+        self._observed_simulation_refresh_thread.start()
+
+    def _on_observed_simulation_refresh_completed(self, result: Any) -> None:
+        if not isinstance(result, WorkbenchObservedSimulationRefreshResult):
+            return
+
+        self._observed_simulation_refresh_in_progress = False
+        refresh_task = workbench_observed_simulation_refresh_task()
+
+        if result.comparison_available:
+            self._on_activity_changed(
+                refresh_task.title,
+                f"Observed-versus-simulated plots refreshed to seed {result.seed}.",
+            )
+            self.statusBar().showMessage(
+                f"Observed-versus-simulated plots refreshed to seed {result.seed}",
+                5000,
+            )
+        else:
+            self._on_activity_changed(
+                refresh_task.title,
+                "Observed-versus-simulated diagnostics are unavailable for this run.",
+            )
+            self.statusBar().showMessage(
+                "Observed-versus-simulated diagnostics are unavailable for this run.",
+                5000,
+            )
+
+        selected_task_id = self._selected_plot_task_id()
+        if selected_task_id is not None:
+            manifest_entry = self._plot_manifest_by_task_id.get(selected_task_id)
+            if (
+                manifest_entry is not None
+                and manifest_entry.uses_observed_simulation_comparison
+            ):
+                self._render_plot_canvas(selected_task_id)
+
+    def _on_observed_simulation_refresh_thread_finished(self) -> None:
+        self._observed_simulation_refresh_in_progress = False
+        self._observed_simulation_refresh_worker = None
+        self._observed_simulation_refresh_thread = None
 
     def _show_plot_help(self, task_id: str) -> None:
         manifest_entry = self._plot_manifest_by_task_id.get(task_id)
@@ -1285,6 +1424,7 @@ class WorkbenchWindow(QMainWindow):
         message_box.exec()
 
     def _apply_artifacts(self, artifacts: WorkbenchArtifacts) -> None:
+        self._stop_observed_simulation_refresh_worker()
         self._artifacts = artifacts
         self._observed_simulation_comparison_cache.clear()
         self._candidate_store = None
@@ -1672,6 +1812,7 @@ class WorkbenchWindow(QMainWindow):
         self._artifact_materialization_timer.stop()
         self._candidate_population_timer.stop()
         self._stop_live_run_elapsed_timer()
+        self._stop_observed_simulation_refresh_worker()
         self._stop_export_worker()
         self._stop_load_worker()
         self._stop_lab_worker()
@@ -1688,6 +1829,19 @@ class WorkbenchWindow(QMainWindow):
 
         self._load_worker = None
         self._load_thread = None
+
+    def _stop_observed_simulation_refresh_worker(self) -> None:
+        observed_simulation_refresh_worker = self._observed_simulation_refresh_worker
+        observed_simulation_refresh_thread = self._observed_simulation_refresh_thread
+
+        if not _qt_object_deleted(observed_simulation_refresh_worker):
+            observed_simulation_refresh_worker.cancel()
+
+        _stop_qthread(observed_simulation_refresh_thread)
+
+        self._observed_simulation_refresh_in_progress = False
+        self._observed_simulation_refresh_worker = None
+        self._observed_simulation_refresh_thread = None
 
     def _stop_lab_worker(self) -> None:
         lab_worker = self._lab_worker

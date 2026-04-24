@@ -4,7 +4,11 @@ from dataclasses import dataclass
 from collections.abc import Mapping
 from typing import Any, Optional
 
-from ...contracts import ContractModel, require_non_empty_string, require_sequence
+from ...contracts import ContractModel
+from ...contracts.base import (
+    require_non_empty_string,
+    require_sequence,
+)
 from ..errors import calibration_error
 
 

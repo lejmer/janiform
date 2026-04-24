@@ -5,7 +5,9 @@ use janiform_market_time::calendar::{
     RegularSessionArtifact, SessionWindowArtifact,
 };
 
-use crate::calendar::ExchangeCalendarRegistry;
+use janiform_market_time::calendar::ExchangeCalendarRegistry;
+
+use super::state::JointRefinementContext;
 
 pub(crate) fn ordered_parameter_bits(parameter_vector: &[f64]) -> Vec<u64> {
     parameter_vector
@@ -22,6 +24,7 @@ pub(crate) fn deduplicate_restart_seed_candidates(
 
     for (restart_id, candidate_vector) in restart_candidates {
         let parameter_bits = ordered_parameter_bits(candidate_vector.as_slice());
+
         if seen_parameter_bits
             .iter()
             .any(|seen_bits: &Vec<u64>| seen_bits == &parameter_bits)
@@ -68,6 +71,34 @@ pub(crate) fn clamp_in_place(values: &mut [f64], lower_bounds: &[f64], upper_bou
     {
         *value = value.clamp(*lower_bound, *upper_bound);
     }
+}
+
+pub(crate) fn with_joint_refinement_thread_pool<T, F>(
+    context: &JointRefinementContext,
+    operation: F,
+) -> T
+where
+    T: Send,
+    F: FnOnce() -> T + Send,
+{
+    match context.stage_thread_pool.as_ref() {
+        Some(thread_pool) => thread_pool.install(operation),
+        None => operation(),
+    }
+}
+
+pub(crate) fn joint_refinement_parallel_worker_count(context: &JointRefinementContext) -> usize {
+    context
+        .stage_thread_pool
+        .as_ref()
+        .map(|thread_pool| thread_pool.current_num_threads())
+        .unwrap_or(1)
+}
+
+pub(crate) fn joint_refinement_has_parallel_worker_capacity(
+    context: &JointRefinementContext,
+) -> bool {
+    joint_refinement_parallel_worker_count(context) > 1
 }
 
 pub(crate) fn build_exchange_calendar_registry_artifact(

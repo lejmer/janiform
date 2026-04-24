@@ -148,7 +148,7 @@ If you want the derived live state directly, call `model.estimate_current_state(
 request contract.
 
 To price several strike-by-maturity grids from the same fitted-model snapshot without writing a
-loop, use `model.price_option_grids(...)` with `JaniformVanillaOptionGridBatch`.
+loop, use `model.price_option_grid(...)` with `JaniformVanillaOptionGridBatch`.
 
 ```python
 from datetime import UTC, datetime
@@ -156,7 +156,7 @@ from datetime import UTC, datetime
 from janiform.calibration.fit.pricing.grids import JaniformVanillaOptionGrid, JaniformVanillaOptionGridBatch
 from janiform.pricing import VanillaOptionPayoffType
 
-grid_result = model.price_option_grids(
+grid_result = model.price_option_grid(
     valuation_time_utc=datetime(2026, 2, 2, 15, 0, tzinfo=UTC),
     batch=JaniformVanillaOptionGridBatch(
         spot=1.0850,
@@ -174,7 +174,7 @@ grid_result = model.price_option_grids(
 ```
 
 When your nodes already form a strike-by-expiry grid, use
-`model.price_option_surface(...)` with `JaniformVanillaOptionSurface`.
+`model.price_option_grid_surface(...)` with `JaniformVanillaOptionSurface`.
 
 ```python
 from datetime import UTC, datetime
@@ -182,7 +182,7 @@ from datetime import UTC, datetime
 from janiform.calibration.fit.pricing.surface import JaniformVanillaOptionSurface
 from janiform.pricing import VanillaOptionPayoffType
 
-surface_result = model.price_option_surface(
+surface_result = model.price_option_grid_surface(
     valuation_time_utc=datetime(2026, 2, 2, 15, 0, tzinfo=UTC),
     surface=JaniformVanillaOptionSurface(
         spot=1.0850,
@@ -197,6 +197,17 @@ surface_result = model.price_option_surface(
 
 Both workflows return Janiform prices together with Janiform-computed implied volatility outputs,
 per-node pricing statuses, and failure diagnostics for any nodes that do not price successfully.
+
+When your input is an observed option quote file instead of a synthetic pricing grid, use
+`model.price_option_snapshot(...)` for one retained quote snapshot. That workflow loads the
+observed tick and option data, estimates the current state, prices the retained snapshot, and
+returns both tidy rows through `to_pandas()` and a strike-by-expiry frame through
+`to_surface_frame()`.
+
+Use `model.price_option_surface(...)` when you want the observed quote workflow returned as a
+surface result. For multi-expiry retained quotes, it returns the retained snapshot in the same
+surface-oriented result type. When the retained history shares one expiry, it can also span
+multiple valuation times through `valuation_count` or `use_all_valuation_times`.
 
 ## Related Example
 

@@ -17,6 +17,7 @@
 mod constants;
 mod contracts;
 mod rhs;
+mod sensitivities;
 mod serde_impls;
 mod solver;
 
@@ -51,6 +52,11 @@ pub use rhs::{
     ExponentialAffineTransformHamiltonians, ExponentialAffineTransformOdeRhs,
     evaluate_exponential_affine_transform_hamiltonians,
     evaluate_exponential_affine_transform_ode_rhs,
+};
+pub use sensitivities::{
+    ExponentialAffineTransformInputSensitivityError,
+    ExponentialAffineTransformInputSensitivityOutput, ExponentialAffineTransformOutputSensitivity,
+    solve_exponential_affine_transform_input_sensitivities_with_settings,
 };
 pub use solver::{
     EXPONENTIAL_AFFINE_TRANSFORM_INTEGRATION_OUTPUT_SCHEMA_METADATA,

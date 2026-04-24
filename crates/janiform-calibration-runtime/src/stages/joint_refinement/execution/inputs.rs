@@ -4,7 +4,6 @@ use janiform_foundations::time::{
     floor_to_hour_utc_nanos,
 };
 
-use crate::calendar::ExchangeCalendarRegistry;
 use crate::stages::joint_metrics::{
     JointRefinementBusinessTimeBucketThresholds, build_observed_open_session_interval_observations,
     business_time_bucket_thresholds, mean_absolute_observed_return_by_utc_hour,
@@ -19,6 +18,7 @@ use crate::stages::return_components::{
     continuous_return_calibration_sample_observed_returns,
 };
 use janiform_calibration_artifacts::ReturnComponentsStageFittedParameters;
+use janiform_market_time::calendar::ExchangeCalendarRegistry;
 
 use super::super::setup::{
     build_surprise_multipliers_for_interval_grid, compute_cumulative_log_price_span,

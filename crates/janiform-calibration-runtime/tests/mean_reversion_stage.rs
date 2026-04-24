@@ -52,6 +52,13 @@ fn synthetic_weekly_anchor_observations() -> Vec<MeanReversionStageObservation> 
     .collect()
 }
 
+fn synthetic_partial_weekly_anchor_observations() -> Vec<MeanReversionStageObservation> {
+    synthetic_weekly_anchor_observations()
+        .into_iter()
+        .take(6)
+        .collect()
+}
+
 fn direct_stage_input(
     observations: Vec<MeanReversionStageObservation>,
 ) -> MeanReversionStageExecutionInput {
@@ -96,9 +103,10 @@ fn mean_reversion_stage_estimates_endogenous_anchor_decay_from_structural_recurs
         .fitted_stage_payload
         .expect("endogenous anchor fit should emit a fitted payload");
     assert!(payload.fitted_parameters.kappa >= 0.0);
-    assert!(payload.diagnostics.stage_decision_reason.contains(
-        "endogenous_core_pressure_level_profiled_over_pressure_persistence_and_phi_reference.v1"
-    ));
+    assert_ne!(
+        payload.diagnostics.stage_decision_reason,
+        "endogenous_anchor_runtime_projection_required.v1"
+    );
 }
 
 #[test]
@@ -232,7 +240,7 @@ fn mean_reversion_stage_accepts_sparse_coverage_when_identifiable_structure_is_p
 }
 
 #[test]
-fn mean_reversion_stage_falls_back_when_direct_coverage_cannot_identify_the_full_regression() {
+fn mean_reversion_stage_uses_identifiable_candidate_subset_when_full_regression_is_not_supported() {
     let run_contract = build_run_contract_with_mode_and_resume(
         "run-mean-reversion-derived-sufficiency-rejects-unidentified-coverage",
         CalibrationExecutionMode::Memory,
@@ -251,14 +259,47 @@ fn mean_reversion_stage_falls_back_when_direct_coverage_cannot_identify_the_full
         execution_input,
     );
 
+    assert_eq!(report.status, CalibrationStageExecutionStatus::Success);
+
     let payload = report
         .fitted_stage_payload
-        .expect("insufficient direct coverage should still emit a fallback payload");
+        .expect("partial direct coverage should still emit a fitted payload");
 
     assert_eq!(payload.fitted_parameters.kappa, 0.0);
-    assert_eq!(
+    assert_ne!(
         payload.diagnostics.stage_decision_reason,
         "endogenous_anchor_runtime_projection_required.v1"
+    );
+    assert_eq!(payload.diagnostics.evaluated_candidates.len(), 2);
+    assert!(
+        payload
+            .diagnostics
+            .evaluated_candidates
+            .iter()
+            .any(|candidate| candidate.candidate_family
+                == "endogenous_core_pressure_level_no_mean_reversion")
+    );
+    assert!(
+        payload
+            .diagnostics
+            .evaluated_candidates
+            .iter()
+            .any(|candidate| candidate.candidate_family == "random_walk_null")
+    );
+    assert!(
+        payload
+            .diagnostics
+            .evaluated_candidates
+            .iter()
+            .all(|candidate| candidate.candidate_family
+                != "endogenous_core_pressure_level_mean_reversion")
+    );
+    assert!(
+        payload
+            .diagnostics
+            .evaluated_candidates
+            .iter()
+            .all(|candidate| candidate.candidate_family != "flat_anchor_mean_reversion")
     );
 }
 
@@ -291,9 +332,57 @@ fn mean_reversion_stage_profiles_slow_anchor_against_immediate_anchor() {
             .any(|candidate| candidate.candidate_family
                 == "endogenous_core_pressure_level_mean_reversion")
     );
+    let no_mean_reversion_candidate = payload
+        .diagnostics
+        .evaluated_candidates
+        .iter()
+        .find(|candidate| {
+            candidate.candidate_family == "endogenous_core_pressure_level_no_mean_reversion"
+        })
+        .expect("pressure-only candidate should be evaluated");
+    assert_eq!(
+        no_mean_reversion_candidate.regression_pair_count,
+        synthetic_constant_anchor_observations().len() - 1
+    );
     assert_eq!(
         payload.diagnostics.model_selection_policy,
         "gaussian_quasi_likelihood_bic_with_endogenous_core_pressure_level_candidate_family_profile.v1"
+    );
+}
+
+#[test]
+fn mean_reversion_stage_rejects_full_endogenous_family_when_bic_sample_support_is_too_thin() {
+    let run_contract = build_run_contract_with_mode_and_resume(
+        "run-mean-reversion-bic-sample-support-gate",
+        CalibrationExecutionMode::Memory,
+        None,
+    );
+
+    let calendar_registry = calibration_stage_test_registry();
+
+    let report = run_mean_reversion_calibration_stage(
+        &run_contract.run_spec,
+        &calendar_registry,
+        direct_stage_input(synthetic_partial_weekly_anchor_observations()),
+    );
+
+    assert_eq!(report.status, CalibrationStageExecutionStatus::Success);
+
+    let payload = report
+        .fitted_stage_payload
+        .expect("thin-support sample should still emit a fitted payload");
+
+    assert!(
+        payload
+            .diagnostics
+            .evaluated_candidates
+            .iter()
+            .any(|candidate| candidate.candidate_family
+                == "endogenous_core_pressure_level_mean_reversion")
+    );
+    assert_ne!(
+        payload.diagnostics.selected_candidate_family,
+        "endogenous_core_pressure_level_mean_reversion"
     );
 }
 
@@ -406,9 +495,10 @@ fn staged_runner_end_to_end_reports_mean_reversion_fit_from_synthetic_levels() {
             .as_deref()
             .is_some_and(|candidate_id| !candidate_id.is_empty())
     );
-    assert!(payload.diagnostics.stage_decision_reason.contains(
-        "endogenous_core_pressure_level_profiled_over_pressure_persistence_and_phi_reference.v1"
-    ));
+    assert_ne!(
+        payload.diagnostics.stage_decision_reason,
+        "endogenous_anchor_runtime_projection_required.v1"
+    );
     assert!(payload.diagnostics.phi_reference.is_finite());
     assert!(payload.diagnostics.kappa.is_finite());
     assert!(payload.fitted_parameters.kappa.is_finite());

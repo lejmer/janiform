@@ -260,19 +260,30 @@ def test_translate_market_data_request_materializes_mean_reversion_on_interval_g
         "coverage_ratio",
         "observations",
     }
-    assert mean_reversion_stage_input["source_observation_count"] == 2
-    assert mean_reversion_stage_input["coverage_ratio"] == pytest.approx(2.0 / 3.0)
-    assert mean_reversion_stage_input["calibration_grid_interval_hours"] == pytest.approx(24.0)
-    assert mean_reversion_stage_input["calibration_grid_kind"].startswith(
-        "market_data_open_session_log_price_interval_grid.v1"
+    assert mean_reversion_stage_input["source_observation_count"] == 3
+    assert mean_reversion_stage_input["coverage_ratio"] == pytest.approx(0.25)
+    assert mean_reversion_stage_input["calibration_grid_interval_hours"] == pytest.approx(6.5)
+    assert mean_reversion_stage_input["calibration_grid_kind"] == (
+        "market_data_open_session_log_price_interval_grid.v1:"
+        "last_observed_open_session_log_price_per_complete_utc_interval.v1:"
+        "median_observed_session_duration_hours_from_retained_open_session_ticks.v1"
     )
     assert tuple(
         observation["observation_timestamp_utc_nanos"]
         for observation in mean_reversion_stage_input["observations"]
     ) == (
-        _utc_nanos("2026-02-03T14:30:00Z"),
-        _utc_nanos("2026-02-04T14:30:00Z"),
-        _utc_nanos("2026-02-05T14:30:00Z"),
+        _utc_nanos("2026-02-02T21:00:00Z"),
+        _utc_nanos("2026-02-03T03:30:00Z"),
+        _utc_nanos("2026-02-03T10:00:00Z"),
+        _utc_nanos("2026-02-03T16:30:00Z"),
+        _utc_nanos("2026-02-03T23:00:00Z"),
+        _utc_nanos("2026-02-04T05:30:00Z"),
+        _utc_nanos("2026-02-04T12:00:00Z"),
+        _utc_nanos("2026-02-04T18:30:00Z"),
+        _utc_nanos("2026-02-05T01:00:00Z"),
+        _utc_nanos("2026-02-05T07:30:00Z"),
+        _utc_nanos("2026-02-05T14:00:00Z"),
+        _utc_nanos("2026-02-05T20:30:00Z"),
     )
     assert tuple(
         observation["observed_log_price"]
@@ -281,7 +292,16 @@ def test_translate_market_data_request_materializes_mean_reversion_on_interval_g
         (
             math.log(101.0 / 107.0),
             math.log(101.0 / 107.0),
+            math.log(101.0 / 107.0),
+            math.log(101.0 / 107.0),
+            math.log(101.0 / 107.0),
+            math.log(101.0 / 107.0),
+            math.log(101.0 / 107.0),
             math.log(104.0 / 107.0),
+            math.log(104.0 / 107.0),
+            math.log(104.0 / 107.0),
+            math.log(104.0 / 107.0),
+            math.log(106.0 / 107.0),
         )
     )
 
