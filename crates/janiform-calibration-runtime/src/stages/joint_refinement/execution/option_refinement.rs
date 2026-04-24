@@ -89,7 +89,10 @@ struct OptionRefinementSharedProgressState {
 
 impl OptionRefinementSharedProgressState {
     fn snapshot(&self) -> OptionRefinementSharedProgressSnapshot {
-        let best_candidate_guard = self.best_completed_candidate.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let best_candidate_guard = self
+            .best_completed_candidate
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
 
         let (best_restart_id, best_weighted_objective) = best_candidate_guard
             .as_ref()
@@ -117,7 +120,10 @@ impl OptionRefinementSharedProgressState {
         weighted_objective: Option<f64>,
     ) -> OptionRefinementSharedProgressSnapshot {
         if let Some(weighted_objective) = weighted_objective {
-            let mut best_candidate_guard = self.best_completed_candidate.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+            let mut best_candidate_guard = self
+                .best_completed_candidate
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
 
             let should_replace_best = best_candidate_guard
                 .as_ref()
@@ -141,7 +147,10 @@ impl OptionRefinementSharedProgressState {
         restart_id: &str,
         weighted_objective: f64,
     ) -> OptionRefinementSharedProgressSnapshot {
-        let mut best_candidate_guard = self.best_completed_candidate.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let mut best_candidate_guard = self
+            .best_completed_candidate
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
 
         let should_replace_best = best_candidate_guard
             .as_ref()

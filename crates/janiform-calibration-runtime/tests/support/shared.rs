@@ -334,6 +334,15 @@ pub(crate) fn normalize_joint_refinement_runtime_profile_for_reproducibility(
     runtime_profile.coarse_consistency_wall_clock_millis = 0;
     runtime_profile.final_seed_evaluation_wall_clock_millis = 0;
     runtime_profile.final_assembly_wall_clock_millis = 0;
+    runtime_profile.objective_cache_hit_count = 0;
+    runtime_profile.objective_cache_miss_count = 0;
+    runtime_profile.deterministic_cache_hit_count = 0;
+    runtime_profile.deterministic_cache_miss_count = 0;
+    runtime_profile.seed_summary_cache_hit_count = 0;
+    runtime_profile.seed_summary_cache_miss_count = 0;
+    runtime_profile.option_pricing_cache_hit_count = 0;
+    runtime_profile.option_pricing_cache_miss_count = 0;
+    runtime_profile.option_pricing_run_count = 0;
     runtime_profile.cumulative_deterministic_evaluation_millis = 0;
     runtime_profile.cumulative_seed_summary_simulation_millis = 0;
     runtime_profile.cumulative_option_pricing_millis = 0;

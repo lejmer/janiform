@@ -15,11 +15,11 @@ use janiform_calibration_artifacts::{
     load_calibration_stage_parameter_artifact_from_disk,
 };
 use janiform_calibration_runtime::{
-    CalibrationMemoryCheckpointStore, CalibrationStageExecutionStatus, CalibrationStagedRunFailure,
-    CalibrationStagedRunObserverEvent, CalibrationStagedRunReport, CalibrationStagedRunStageReport,
-    HawkesStageExecutionFailure, JointRefinementStageProgressPhase,
-    calibration_checkpoint_reference_for_stage, calibration_last_success_checkpoint_reference,
-    run_staged_calibration_with_checkpointing,
+    CalibrationMemoryCheckpointStore, CalibrationStageExecutionStatus,
+    CalibrationStageProgressPhase, CalibrationStagedRunFailure, CalibrationStagedRunObserverEvent,
+    CalibrationStagedRunReport, CalibrationStagedRunStageReport, HawkesStageExecutionFailure,
+    JointRefinementStageProgressPhase, calibration_checkpoint_reference_for_stage,
+    calibration_last_success_checkpoint_reference, run_staged_calibration_with_checkpointing,
     run_staged_calibration_with_checkpointing_and_observer,
 };
 use support::shared::{
@@ -76,7 +76,9 @@ fn staged_runner_skips_option_pricing_progress_during_baseline_search() {
                 ..
             } if *stage == CalibrationStage::JointRefinement
                 && *progress_phase
-                    == JointRefinementStageProgressPhase::BaselineLocalEvaluation =>
+                    == CalibrationStageProgressPhase::JointRefinement(
+                        JointRefinementStageProgressPhase::BaselineLocalEvaluation,
+                    ) =>
             {
                 current_item_label.as_deref()
             }
@@ -105,7 +107,9 @@ fn staged_runner_skips_option_pricing_progress_during_baseline_search() {
                 ..
             } if *stage == CalibrationStage::JointRefinement
                 && *progress_phase
-                    == JointRefinementStageProgressPhase::BaselineFinalEvaluation =>
+                    == CalibrationStageProgressPhase::JointRefinement(
+                        JointRefinementStageProgressPhase::BaselineFinalEvaluation,
+                    ) =>
             {
                 current_item_label.as_deref()
             }
@@ -138,7 +142,9 @@ fn staged_runner_skips_option_pricing_progress_during_baseline_search() {
                 ..
             } if *stage == CalibrationStage::JointRefinement
                 && *progress_phase
-                    == JointRefinementStageProgressPhase::BaselineFinalEvaluation =>
+                    == CalibrationStageProgressPhase::JointRefinement(
+                        JointRefinementStageProgressPhase::BaselineFinalEvaluation,
+                    ) =>
             {
                 current_item_label.as_deref()
             }
@@ -187,7 +193,9 @@ fn staged_runner_skips_option_pricing_progress_during_baseline_search() {
                 ..
             } if *stage == CalibrationStage::JointRefinement
                 && *progress_phase
-                    == JointRefinementStageProgressPhase::CoarseConsistencyEvaluation =>
+                    == CalibrationStageProgressPhase::JointRefinement(
+                        JointRefinementStageProgressPhase::BaselineCoarseConsistencyEvaluation,
+                    ) =>
             {
                 current_item_label.as_deref()
             }

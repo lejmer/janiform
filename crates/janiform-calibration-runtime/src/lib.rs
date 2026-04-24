@@ -110,8 +110,8 @@ pub use runtime_seasonality::{
     RuntimeStructuralSeasonalityMaterializationOutput, materialize_runtime_structural_seasonality,
 };
 pub use staged_runner::{
-    CalibrationStagedRunFailure, CalibrationStagedRunInputs, CalibrationStagedRunObserverEvent,
-    CalibrationStagedRunReport, CalibrationStagedRunStageReport,
+    CalibrationStageProgressPhase, CalibrationStagedRunFailure, CalibrationStagedRunInputs,
+    CalibrationStagedRunObserverEvent, CalibrationStagedRunReport, CalibrationStagedRunStageReport,
     calibration_checkpoint_reference_for_stage, calibration_last_success_checkpoint_reference,
     run_staged_calibration_with_checkpointing,
     run_staged_calibration_with_checkpointing_and_observer,
