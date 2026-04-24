@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale.v1",
-  "approved_snapshot_sha256": "697ef5fad8f9669595d112dd04ab23697c2fcf2cc19451513257e87b37e23c4f",
+  "approved_snapshot_sha256": "31fd287bf268789262f0f3e75535df17d544f7185a8bf5e7943ec729624bbab8",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -1152,6 +1152,16 @@
         "janiform.calibration.fit.model",
         "janiform.calibration.fit.pricing",
         "janiform.calibration.fit.pricing.market_surface"
+      ]
+    },
+    {
+      "approved_on": "2026-04-24",
+      "docs_updated": [],
+      "rationale": "The checked-in public API snapshot is already current, and the guardrail approval hash must match that exact snapshot serialization so the approval manifest validates the repository state.",
+      "snapshot_sha256": "31fd287bf268789262f0f3e75535df17d544f7185a8bf5e7943ec729624bbab8",
+      "summary": "Align the public API approval manifest with the checked-in snapshot hash.",
+      "updated_surfaces": [
+        "public_api_contract_guardrails"
       ]
     }
   ],

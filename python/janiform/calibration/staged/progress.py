@@ -85,7 +85,7 @@ class ActiveCandidateProgressRow:
     progress_phase: Optional[str] = None
     detail: Optional[str] = None
     parameter_block: Optional[str] = None
-    current_outer_cycle: Optional[int] = None
+    completed_outer_cycles: Optional[int] = None
     total_outer_cycles: Optional[int] = None
     evaluation_progress_percent: Optional[int] = None
     current_evaluation_count: Optional[int] = None
@@ -106,9 +106,9 @@ class NativeStagedCalibrationProgressTracker:
     subtask_completed_units: Optional[int] = None
     subtask_total_units: Optional[int] = None
     subtask_progress_fraction_override: Optional[float] = None
-    active_candidate_rows: dict[str, ActiveCandidateProgressRow] = field(
-        default_factory=dict
-    )
+    stage_progress_fraction_override: Optional[float] = None
+    total_progress_fraction_floor: Optional[float] = None
+    active_candidate_rows: dict[str, ActiveCandidateProgressRow] = field(default_factory=dict)
 
     def update(self, raw_event: dict[str, Any]) -> CalibrationLiveProgressSnapshot:
         event_kind = _coerce_optional_string(raw_event.get("event_kind"))
@@ -125,6 +125,17 @@ class NativeStagedCalibrationProgressTracker:
 
                 self.stage_count = _coerce_optional_integer(raw_event.get("stage_count"))
                 self.status = "running"
+                self.stage_index = None
+                self.current_stage = None
+                self.current_subtask = None
+                self.current_stage_is_complete = False
+                self.subtask_completed_units = None
+                self.subtask_total_units = None
+                self.subtask_progress_fraction_override = None
+                self.stage_progress_fraction_override = None
+                self.total_progress_fraction_floor = None
+
+                self.active_candidate_rows.clear()
             case "stage_started":
                 stage = _coerce_optional_string(raw_event.get("stage"))
                 stage_index = _coerce_optional_integer(raw_event.get("stage_index"))
@@ -144,6 +155,7 @@ class NativeStagedCalibrationProgressTracker:
                 self.subtask_completed_units = None
                 self.subtask_total_units = None
                 self.subtask_progress_fraction_override = None
+                self.stage_progress_fraction_override = None
 
                 self.active_candidate_rows.clear()
             case "stage_progress":
@@ -183,6 +195,16 @@ class NativeStagedCalibrationProgressTracker:
                     else min(max(aggregate_progress_percent, 0), 100) / 100.0
                 )
 
+                stage_progress_percent = _coerce_optional_integer(
+                    raw_event.get("stage_progress_percent")
+                )
+
+                self.stage_progress_fraction_override = (
+                    None
+                    if stage_progress_percent is None
+                    else min(max(stage_progress_percent, 0), 100) / 100.0
+                )
+
                 if _is_active_candidate_progress_panel_phase(progress_phase):
                     self._update_active_candidate_rows(raw_event)
                 else:
@@ -206,6 +228,7 @@ class NativeStagedCalibrationProgressTracker:
                 self.subtask_completed_units = None
                 self.subtask_total_units = None
                 self.subtask_progress_fraction_override = None
+                self.stage_progress_fraction_override = None
 
                 self.active_candidate_rows.clear()
             case "run_completed":
@@ -215,6 +238,7 @@ class NativeStagedCalibrationProgressTracker:
                 self.subtask_completed_units = None
                 self.subtask_total_units = None
                 self.subtask_progress_fraction_override = None
+                self.stage_progress_fraction_override = None
 
                 self.active_candidate_rows.clear()
             case "run_failed":
@@ -223,10 +247,16 @@ class NativeStagedCalibrationProgressTracker:
                 self.subtask_completed_units = None
                 self.subtask_total_units = None
                 self.subtask_progress_fraction_override = None
+                self.stage_progress_fraction_override = None
 
                 self.active_candidate_rows.clear()
             case _:
                 return self.snapshot()
+
+        snapshot = self.snapshot()
+        progress_fraction = calibration_total_progress_fraction(snapshot)
+        if isinstance(progress_fraction, float):
+            self.total_progress_fraction_floor = progress_fraction
 
         return self.snapshot()
 
@@ -242,6 +272,8 @@ class NativeStagedCalibrationProgressTracker:
             subtask_completed_units=self.subtask_completed_units,
             subtask_total_units=self.subtask_total_units,
             subtask_progress_fraction_override=self.subtask_progress_fraction_override,
+            stage_progress_fraction_override=self.stage_progress_fraction_override,
+            total_progress_fraction_floor=self.total_progress_fraction_floor,
         )
 
     def active_candidate_progress_panel(self, stage_summary: str) -> str:
@@ -374,7 +406,7 @@ def format_staged_progress_event_detail(
     current_restart_id = _coerce_optional_string(raw_event.get("current_restart_id"))
     active_restart_count = raw_event.get("active_restart_count")
     current_parameter_block = _coerce_optional_string(raw_event.get("current_parameter_block"))
-    current_outer_cycle = raw_event.get("current_outer_cycle")
+    completed_outer_cycles = raw_event.get("completed_outer_cycles")
     total_outer_cycles = raw_event.get("total_outer_cycles")
     current_evaluation_count = raw_event.get("current_evaluation_count")
     total_evaluation_budget = raw_event.get("total_evaluation_budget")
@@ -387,6 +419,7 @@ def format_staged_progress_event_detail(
     best_weighted_objective = raw_event.get("best_weighted_objective")
     current_coarse_consistency_fit = raw_event.get("current_coarse_consistency_fit")
     best_coarse_consistency_fit = raw_event.get("best_coarse_consistency_fit")
+    current_convergence_ratio = raw_event.get("current_convergence_ratio")
 
     phase_label = _label_for_stage_progress_phase(progress_phase)
     detail = f"{stage} {phase_label}"
@@ -414,10 +447,10 @@ def format_staged_progress_event_detail(
     if current_parameter_block is not None:
         detail_parts.append(f"block={current_parameter_block}")
 
-    if isinstance(current_outer_cycle, int) and isinstance(total_outer_cycles, int):
-        detail_parts.append(f"cycle={current_outer_cycle}/{total_outer_cycles}")
-    elif isinstance(current_outer_cycle, int):
-        detail_parts.append(f"cycle={current_outer_cycle}")
+    if isinstance(completed_outer_cycles, int) and isinstance(total_outer_cycles, int):
+        detail_parts.append(f"cycle={completed_outer_cycles}/{total_outer_cycles}")
+    elif isinstance(completed_outer_cycles, int):
+        detail_parts.append(f"cycle={completed_outer_cycles}")
 
     evaluation_label = _format_stage_evaluation_label(
         current_evaluation_count,
@@ -437,9 +470,7 @@ def format_staged_progress_event_detail(
         detail_parts.append(f"objective={current_weighted_objective:.6f}")
 
     if isinstance(current_restart_best_weighted_objective, int | float):
-        detail_parts.append(
-            f"candidate_best_objective={current_restart_best_weighted_objective:.6f}"
-        )
+        detail_parts.append(f"candidate_best_objective={current_restart_best_weighted_objective:.6f}")
 
     if best_restart_id is not None:
         detail_parts.append(f"best_candidate={best_restart_id}")
@@ -452,6 +483,9 @@ def format_staged_progress_event_detail(
 
     if isinstance(best_coarse_consistency_fit, int | float):
         detail_parts.append(f"best_coarse_fit={best_coarse_consistency_fit:.6f}")
+
+    if isinstance(current_convergence_ratio, int | float):
+        detail_parts.append(f"convergence={current_convergence_ratio:.2f}x")
 
     return " | ".join(detail_parts)
 
@@ -469,7 +503,7 @@ def format_compact_staged_progress_event_detail(
     current_restart_id = _coerce_optional_string(raw_event.get("current_restart_id"))
     active_restart_count = raw_event.get("active_restart_count")
     current_parameter_block = _coerce_optional_string(raw_event.get("current_parameter_block"))
-    current_outer_cycle = raw_event.get("current_outer_cycle")
+    completed_outer_cycles = raw_event.get("completed_outer_cycles")
     total_outer_cycles = raw_event.get("total_outer_cycles")
     current_evaluation_count = raw_event.get("current_evaluation_count")
     total_evaluation_budget = raw_event.get("total_evaluation_budget")
@@ -480,6 +514,7 @@ def format_compact_staged_progress_event_detail(
     best_weighted_objective = raw_event.get("best_weighted_objective")
     current_coarse_consistency_fit = raw_event.get("current_coarse_consistency_fit")
     best_coarse_consistency_fit = raw_event.get("best_coarse_consistency_fit")
+    current_convergence_ratio = raw_event.get("current_convergence_ratio")
 
     detail = f"{stage} {_label_for_stage_progress_phase(progress_phase)}"
 
@@ -493,9 +528,7 @@ def format_compact_staged_progress_event_detail(
             if isinstance(progress_percent_override, int)
             else round(completed_units / total_units * 100.0)
         )
-        if progress_phase == _RESTART_PROGRESS_PANEL_PHASE and isinstance(
-            progress_percent_override, int
-        ):
+        if progress_phase == _RESTART_PROGRESS_PANEL_PHASE and isinstance(progress_percent_override, int):
             detail = f"{detail} [{progress_percent}%]"
         else:
             detail = f"{detail} [{progress_percent}%] ({completed_units}/{total_units})"
@@ -516,10 +549,10 @@ def format_compact_staged_progress_event_detail(
     if current_parameter_block is not None:
         detail_parts.append(f"block={current_parameter_block}")
 
-    if isinstance(current_outer_cycle, int) and isinstance(total_outer_cycles, int):
-        detail_parts.append(f"cycle={current_outer_cycle}/{total_outer_cycles}")
-    elif isinstance(current_outer_cycle, int):
-        detail_parts.append(f"cycle={current_outer_cycle}")
+    if isinstance(completed_outer_cycles, int) and isinstance(total_outer_cycles, int):
+        detail_parts.append(f"cycle={completed_outer_cycles}/{total_outer_cycles}")
+    elif isinstance(completed_outer_cycles, int):
+        detail_parts.append(f"cycle={completed_outer_cycles}")
 
     evaluation_label = _format_stage_evaluation_label(
         current_evaluation_count,
@@ -551,6 +584,9 @@ def format_compact_staged_progress_event_detail(
 
     if isinstance(best_coarse_consistency_fit, int | float):
         detail_parts.append(f"best_coarse={best_coarse_consistency_fit:.6f}")
+
+    if isinstance(current_convergence_ratio, int | float):
+        detail_parts.append(f"conv={current_convergence_ratio:.2f}x")
 
     return " | ".join(detail_parts)
 
@@ -626,8 +662,8 @@ def format_active_candidate_progress_panel_row(
     block = row.parameter_block or "-"
 
     cycle = (
-        f"{row.current_outer_cycle}/{row.total_outer_cycles}"
-        if row.current_outer_cycle is not None and row.total_outer_cycles is not None
+        f"{row.completed_outer_cycles}/{row.total_outer_cycles}"
+        if row.completed_outer_cycles is not None and row.total_outer_cycles is not None
         else "-"
     )
 
@@ -679,7 +715,7 @@ def _is_restart_like_active_candidate_progress_row(row: ActiveCandidateProgressR
     return (
         row.progress_phase == _RESTART_PROGRESS_PANEL_PHASE
         or row.parameter_block is not None
-        or row.current_outer_cycle is not None
+        or row.completed_outer_cycles is not None
         or row.total_outer_cycles is not None
     )
 
@@ -693,7 +729,7 @@ def _format_stage_evaluation_label(
         return f"{current_evaluation_count}/{total_evaluation_budget}"
 
     if not isinstance(evaluation_progress_percent, int):
-        return None
+        return str(current_evaluation_count) if isinstance(current_evaluation_count, int) else None
 
     if evaluation_progress_percent == 0 and isinstance(current_evaluation_count, int) and current_evaluation_count > 0:
         return "<1%"
@@ -718,9 +754,7 @@ def _should_clear_active_candidate_row(raw_event: dict[str, Any]) -> bool:
     if current_item_label == "resumed":
         return True
 
-    evaluation_progress_percent = _coerce_optional_integer(
-        raw_event.get("evaluation_progress_percent")
-    )
+    evaluation_progress_percent = _coerce_optional_integer(raw_event.get("evaluation_progress_percent"))
 
     return evaluation_progress_percent == 100
 
@@ -739,9 +773,9 @@ def update_active_candidate_progress_row_from_event(
     if parameter_block is not None:
         row.parameter_block = parameter_block
 
-    current_outer_cycle = _coerce_optional_integer(raw_event.get("current_outer_cycle"))
-    if current_outer_cycle is not None:
-        row.current_outer_cycle = current_outer_cycle
+    completed_outer_cycles = _coerce_optional_integer(raw_event.get("completed_outer_cycles"))
+    if completed_outer_cycles is not None:
+        row.completed_outer_cycles = completed_outer_cycles
 
     total_outer_cycles = _coerce_optional_integer(raw_event.get("total_outer_cycles"))
     if total_outer_cycles is not None:
@@ -892,14 +926,76 @@ def _label_for_stage_progress_phase(progress_phase: Optional[str]) -> str:
             return "baseline local evaluation"
         case "baseline_final_evaluation":
             return "baseline final evaluation"
+        case "baseline_coarse_consistency_evaluation":
+            return "baseline coarse consistency evaluation"
+        case "restart_seed_generation":
+            return "restart seed generation"
+        case "restart_candidate_screening":
+            return "restart candidate screening"
         case "restart_optimization":
             return "restart optimization"
         case "coarse_consistency_evaluation":
             return "coarse consistency evaluation"
+        case "option_search_tier_refinement":
+            return "option search tier refinement"
+        case "option_selection_tier_evaluation":
+            return "option selection tier evaluation"
+        case "option_audit_tier_evaluation":
+            return "option audit tier evaluation"
         case "final_seed_evaluation":
             return "final seed evaluation"
         case "final_assembly":
             return "final assembly"
+        case "input_preflight":
+            return "input preflight"
+        case "close_open_gap_preparation":
+            return "close-open gap preparation"
+        case "signal_partition_fit":
+            return "signal partition fit"
+        case "surprise_episode_selection_fit":
+            return "surprise episode selection fit"
+        case "candidate_input_validation":
+            return "candidate input validation"
+        case "signal_sorting":
+            return "signal sorting"
+        case "signal_summary":
+            return "signal summary"
+        case "quantile_binning_policy_fit":
+            return "quantile binning policy fit"
+        case "surprise_arrival_fit":
+            return "surprise arrival fit"
+        case "return_jump_mark_fit":
+            return "return jump mark fit"
+        case "activity_coupling_fit":
+            return "activity coupling fit"
+        case "objective_policy_fit":
+            return "objective policy fit"
+        case "continuous_return_layer_fit":
+            return "continuous return layer fit"
+        case "continuous_nig_moment_seed_generation":
+            return "continuous NIG moment seed generation"
+        case "continuous_nig_proxy_em_seed_generation":
+            return "continuous NIG proxy EM seed generation"
+        case "continuous_nig_seed_scoring":
+            return "continuous NIG seed scoring"
+        case "continuous_nig_search_regime_generation":
+            return "continuous NIG search regime generation"
+        case "continuous_nig_basin_seed_generation":
+            return "continuous NIG basin seed generation"
+        case "continuous_nig_basin_optimization":
+            return "continuous NIG basin optimization"
+        case "continuous_nig_basin_diagnostics":
+            return "continuous NIG basin diagnostics"
+        case "continuous_nig_final_evaluation":
+            return "continuous NIG final evaluation"
+        case "candidate_enumeration":
+            return "candidate enumeration"
+        case "candidate_constraint_evaluation":
+            return "candidate constraint evaluation"
+        case "candidate_selection":
+            return "candidate selection"
+        case "report_assembly":
+            return "report assembly"
         case _:
             return progress_phase or "progress"
 

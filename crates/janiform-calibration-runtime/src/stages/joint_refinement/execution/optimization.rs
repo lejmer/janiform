@@ -25,7 +25,8 @@ use super::{
     JOINT_REFINEMENT_THRESHOLD_RELATIVE_ADMISSIBILITY_SCORE, JointRefinementContext,
     JointRefinementFidelityTier, JointRefinementRestartOutcome,
     joint_raw_metrics_are_dynamics_feasible, joint_refinement_admissibility_thresholds,
-    option_pricing_execution_failure_message, simulation_infrastructure_failure_message,
+    joint_refinement_has_parallel_worker_capacity, option_pricing_execution_failure_message,
+    simulation_infrastructure_failure_message, with_joint_refinement_thread_pool,
 };
 pub(crate) const JOINT_REFINEMENT_DEFAULT_RESTART_CANDIDATE_BUDGET: usize = 15;
 
@@ -77,8 +78,8 @@ pub(crate) fn optimize_restart_seeds(
     progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
     completed_restart_store: Option<&mut super::JointRefinementResumeStore>,
 ) -> Vec<JointRefinementRestartOutcome> {
-    debug_assert_eq!(restart_seeds.len().max(1), budget_schedule.restart_count);
-
+    debug_assert!(budget_schedule.restart_count > 0);
+    // Resume passes only pending restart seeds while retaining the original search depth.
     let total_units = restart_seeds.len();
 
     emit_joint_refinement_progress(
@@ -147,9 +148,11 @@ fn optimize_restart_seeds_sequential(
         );
 
         progress_state.record(&restart_outcome);
+
         progress_counters
             .completed_units
             .store(progress_state.completed_units, Ordering::Relaxed);
+
         progress_counters.record_display_best(
             restart_outcome.restart_id.as_str(),
             restart_outcome
@@ -199,6 +202,7 @@ fn optimize_restart_seeds_parallel(
     with_joint_refinement_thread_pool(context, || {
         let (result_sender, result_receiver) =
             mpsc::channel::<(usize, JointRefinementRestartOutcome)>();
+
         let result_receiver = Arc::new(Mutex::new(result_receiver));
         let progress_counters = Arc::new(RestartProgressCounters::default());
 
@@ -206,6 +210,7 @@ fn optimize_restart_seeds_parallel(
             for (restart_position, (restart_id, seed_vector)) in restart_seeds.iter().enumerate() {
                 let result_sender_for_restart = result_sender.clone();
                 let progress_counters_for_restart = Arc::clone(&progress_counters);
+
                 scope.spawn(move |_| {
                     let outcome = optimize_single_restart(
                         restart_id.as_str(),
@@ -233,12 +238,15 @@ fn optimize_restart_seeds_parallel(
                 let Ok((restart_position, restart_outcome)) = receiver_guard.recv() else {
                     break;
                 };
+
                 drop(receiver_guard);
 
                 progress_state.record(&restart_outcome);
+
                 progress_counters
                     .completed_units
                     .store(progress_state.completed_units, Ordering::Relaxed);
+
                 progress_counters.record_display_best(
                     restart_outcome.restart_id.as_str(),
                     restart_outcome
@@ -246,6 +254,7 @@ fn optimize_restart_seeds_parallel(
                         .breakdown
                         .weighted_objective,
                 );
+
                 emit_restart_progress(
                     progress_sender,
                     total_units,
@@ -267,9 +276,11 @@ fn optimize_restart_seeds_parallel(
                         .unwrap_or(0)
                         .min(100),
                 );
+
                 if let Some(resume_store) = completed_restart_store.as_deref_mut() {
                     resume_store.record_restart_outcome(&restart_outcome);
                 }
+
                 ordered_outcomes[restart_position] = Some(restart_outcome);
             }
 
@@ -313,6 +324,7 @@ pub(crate) fn joint_refinement_restart_block_powell_settings(
     active_block_dimension: usize,
 ) -> PowellOptimizerSettings {
     let line_search_evaluation_cap = active_block_dimension.saturating_add(1).max(1);
+
     PowellOptimizerSettings {
         absolute_tolerance: solver_settings.absolute_tolerance,
         relative_tolerance: solver_settings.relative_tolerance,
@@ -360,11 +372,13 @@ fn optimize_single_restart(
         context,
         solver_settings,
     );
+
     restart_progress.emit_started();
 
     let mut current_vector = seed_vector.to_vec();
     let mut evaluation_count = 0usize;
     let mut stop_reason = "tolerance";
+
     let admissibility_thresholds = joint_refinement_admissibility_thresholds(context);
 
     for outer_cycle_index in 0..budget_schedule.outer_cycle_count {
@@ -384,7 +398,7 @@ fn optimize_single_restart(
             current_vector.as_slice(),
             context,
             solver_settings,
-            outer_cycle_index + 1,
+            outer_cycle_index,
             &mut restart_progress,
         );
 
@@ -431,6 +445,7 @@ fn optimize_single_restart(
     );
     if local_evaluation.invalid_reason.is_some() {
         restart_progress.emit_finished();
+
         return JointRefinementRestartOutcome {
             restart_id: restart_id.to_string(),
             parameter_vector: current_vector,
@@ -446,6 +461,7 @@ fn optimize_single_restart(
         admissibility_thresholds,
     ) {
         restart_progress.emit_finished();
+
         return JointRefinementRestartOutcome {
             restart_id: restart_id.to_string(),
             parameter_vector: current_vector,
@@ -462,6 +478,7 @@ fn optimize_single_restart(
 
     if joint_refinement_has_fatal_execution_failure(context) {
         restart_progress.emit_finished();
+
         return JointRefinementRestartOutcome {
             restart_id: restart_id.to_string(),
             parameter_vector: current_vector,
@@ -536,11 +553,13 @@ fn precheck_restart_seed_vector_contract(
                 "non_finite_parameter_or_bound parameter_index={parameter_index}"
             ));
         }
+
         if lower_bound > upper_bound {
             return Err(format!(
                 "invalid_parameter_bounds parameter_index={parameter_index}"
             ));
         }
+
         if value < lower_bound || value > upper_bound {
             return Err(format!(
                 "parameter_out_of_bounds parameter_index={parameter_index} value={value} lower_bound={lower_bound} upper_bound={upper_bound}"
@@ -555,6 +574,7 @@ fn precheck_hawkes_structural_domain(
     fitted_parameters: &JointRefinementStageFittedParameters,
 ) -> Result<(), String> {
     let hawkes = &fitted_parameters.hawkes_fitted_parameters;
+
     let report = HawkesKernelParameters::validate_structured_domain_with_stability_tolerance(
         hawkes.kernel_parameters.lambda_bar,
         hawkes.kernel_parameters.beta,
@@ -590,9 +610,11 @@ fn precheck_nig_return_composition_domain(
                 .return_components_fitted_parameters
                 .nig_shared_plus_shift_configuration,
         );
+
     let driver_parameters = nig_configuration
         .derive_driver_parameters()
         .map_err(|source| format!("nig_driver_parameter_domain_failed error={source}"))?;
+
     let domain = driver_parameters.derive_return_composition_log_moment_domain();
 
     if !domain.lower_theta_exclusive.is_finite()
@@ -610,6 +632,7 @@ fn precheck_nig_return_composition_domain(
     driver_parameters
         .evaluate_return_composition_log_moment(1.0, 1.0, 0.0)
         .map_err(|source| format!("nig_return_composition_log_moment_failed error={source}"))?;
+
     driver_parameters
         .differentiate_return_composition_log_moment(1.0, 1.0, 0.0)
         .map_err(|source| {
@@ -637,6 +660,7 @@ fn precheck_deterministic_intensity_scales(
     if context.runtime_hourly_seasonality_factors.is_empty() {
         return Err("runtime_hourly_seasonality_factors_empty".to_string());
     }
+
     for (hour_index, factor) in context
         .runtime_hourly_seasonality_factors
         .iter()
@@ -647,6 +671,7 @@ fn precheck_deterministic_intensity_scales(
                 "runtime_hourly_seasonality_factor_invalid hour_index={hour_index} value={factor}"
             ));
         }
+
         let hourly_activity_scale = modeled_open_event_rate_per_hour * *factor;
         if !hourly_activity_scale.is_finite() || hourly_activity_scale < 0.0 {
             return Err(format!(
@@ -666,6 +691,7 @@ fn precheck_deterministic_intensity_scales(
                 "observed_interval_duration_invalid interval_index={interval_index}"
             ));
         }
+
         let duration_hours = duration_nanos_to_hours(
             interval.interval_end_utc_nanos - interval.interval_start_utc_nanos,
         );
@@ -686,6 +712,7 @@ fn precheck_deterministic_intensity_scales(
     let news_process = &fitted_parameters
         .return_components_fitted_parameters
         .news_process_configuration;
+
     let surprise_baseline_intensity = news_process.arrivals.surprise.baseline_intensity;
     if !surprise_baseline_intensity.is_finite() || surprise_baseline_intensity < 0.0 {
         return Err(format!(
@@ -701,12 +728,14 @@ fn precheck_deterministic_intensity_scales(
     if surprise_weekly_hour_utc_multipliers.is_empty() {
         return Err("surprise_weekly_multipliers_empty".to_string());
     }
+
     for (bucket_index, multiplier) in surprise_weekly_hour_utc_multipliers.iter().enumerate() {
         if !multiplier.is_finite() || *multiplier < 0.0 {
             return Err(format!(
                 "surprise_weekly_multiplier_invalid bucket_index={bucket_index} value={multiplier}"
             ));
         }
+
         let surprise_intensity = surprise_baseline_intensity * *multiplier;
         if !surprise_intensity.is_finite() || surprise_intensity < 0.0 {
             return Err(format!(
@@ -777,6 +806,7 @@ fn build_precheck_rejected_restart_outcome(
     failure_reason: &str,
 ) -> JointRefinementRestartOutcome {
     let invalid_reason = format!("restart_seed_precheck_failed:{failure_reason}");
+
     let local_evaluation = invalid_candidate_evaluation(
         context,
         &context.baseline_hawkes_fitted_parameters,
@@ -972,16 +1002,19 @@ fn optimize_parameter_block(
     if block_indices.is_empty() {
         return (current_vector.to_vec(), "fixed_block", 0);
     }
+
     restart_progress.emit_block_started(parameter_block_label, outer_cycle);
 
     let initial_point: Vec<f64> = block_indices
         .iter()
         .map(|index| current_vector[*index])
         .collect();
+
     let lower_bounds: Vec<f64> = block_indices
         .iter()
         .map(|index| context.lower_bounds[*index])
         .collect();
+
     let upper_bounds: Vec<f64> = block_indices
         .iter()
         .map(|index| context.upper_bounds[*index])
@@ -1006,6 +1039,7 @@ fn optimize_parameter_block(
         restart_progress.record_evaluation(parameter_block_label, outer_cycle, None);
         return (current_vector.to_vec(), "invalid_step", 1);
     };
+
     restart_progress.record_evaluation(
         parameter_block_label,
         outer_cycle,
@@ -1079,6 +1113,7 @@ fn evaluate_parameter_block_objective(
     parameter_block_label: &'static str,
 ) -> Option<f64> {
     let full_vector = substitute_block(current_vector, block_indices, block_vector);
+
     match parameter_block_label {
         "nig" => {
             evaluate_joint_candidate_nig_block_search_objective(full_vector.as_slice(), context)
@@ -1090,6 +1125,7 @@ fn evaluate_parameter_block_objective(
                 JointRefinementFidelityTier::Local,
                 solver_settings,
             );
+
             candidate_evaluation.invalid_reason.is_none().then_some(
                 dynamics_block_search_objective(
                     &candidate_evaluation.raw_admissibility_metrics,
@@ -1187,24 +1223,6 @@ fn substitute_block(
     }
 
     updated
-}
-
-fn with_joint_refinement_thread_pool<T, F>(context: &JointRefinementContext, operation: F) -> T
-where
-    T: Send,
-    F: FnOnce() -> T + Send,
-{
-    match context.stage_thread_pool.as_ref() {
-        Some(thread_pool) => thread_pool.install(operation),
-        None => operation(),
-    }
-}
-
-fn joint_refinement_has_parallel_worker_capacity(context: &JointRefinementContext) -> bool {
-    context
-        .stage_thread_pool
-        .as_ref()
-        .is_some_and(|thread_pool| thread_pool.current_num_threads() > 1)
 }
 
 fn joint_refinement_has_fatal_execution_failure(context: &JointRefinementContext) -> bool {
@@ -1308,22 +1326,25 @@ impl<'a> RestartCandidateProgress<'a> {
             .active_restart_count
             .fetch_add(1, Ordering::Relaxed)
             + 1;
+
         self.emit_progress(None, None, None, Some(active_restart_count), None);
     }
 
     fn record_evaluation(
         &mut self,
         parameter_block_label: &'static str,
-        outer_cycle: usize,
+        completed_outer_cycles: usize,
         weighted_objective: Option<f64>,
     ) {
         self.current_evaluation_count = self.current_evaluation_count.saturating_add(1);
+
         if let Some(weighted_objective) = weighted_objective {
             self.current_restart_best_weighted_objective = Some(
                 self.current_restart_best_weighted_objective
                     .map(|current_best| current_best.min(weighted_objective))
                     .unwrap_or(weighted_objective),
             );
+
             self.counters
                 .record_display_best(self.restart_id, weighted_objective);
         }
@@ -1334,20 +1355,25 @@ impl<'a> RestartCandidateProgress<'a> {
         }
 
         self.record_progress_percent(progress_percent);
+
         self.last_evaluation_progress_percent = Some(progress_percent);
         self.emit_progress(
             Some(parameter_block_label),
-            Some(outer_cycle),
+            Some(completed_outer_cycles),
             Some(progress_percent),
             Some(self.counters.active_restart_count.load(Ordering::Relaxed)),
             weighted_objective,
         );
     }
 
-    fn emit_block_started(&self, parameter_block_label: &'static str, outer_cycle: usize) {
+    fn emit_block_started(
+        &self,
+        parameter_block_label: &'static str,
+        completed_outer_cycles: usize,
+    ) {
         self.emit_progress(
             Some(parameter_block_label),
-            Some(outer_cycle),
+            Some(completed_outer_cycles),
             None,
             Some(self.counters.active_restart_count.load(Ordering::Relaxed)),
             None,
@@ -1360,8 +1386,10 @@ impl<'a> RestartCandidateProgress<'a> {
         }
 
         self.record_progress_percent(100);
+
         self.last_evaluation_progress_percent = Some(100);
         self.finished = true;
+
         self.counters
             .active_restart_count
             .fetch_sub(1, Ordering::Relaxed);
@@ -1399,12 +1427,13 @@ impl<'a> RestartCandidateProgress<'a> {
     fn emit_progress(
         &self,
         parameter_block_label: Option<&str>,
-        outer_cycle: Option<usize>,
+        completed_outer_cycles: Option<usize>,
         evaluation_progress_percent: Option<usize>,
         active_restart_count: Option<usize>,
         current_weighted_objective: Option<f64>,
     ) {
         let (best_restart_id, best_weighted_objective) = self.counters.display_best_snapshot();
+
         emit_joint_refinement_progress(
             self.progress_sender,
             JointRefinementStageProgressUpdate {
@@ -1413,7 +1442,7 @@ impl<'a> RestartCandidateProgress<'a> {
                 current_restart_id: Some(self.restart_id.to_string()),
                 active_restart_count,
                 current_parameter_block: parameter_block_label.map(str::to_string),
-                current_outer_cycle: outer_cycle,
+                completed_outer_cycles,
                 total_outer_cycles: Some(self.total_outer_cycles),
                 current_evaluation_count: Some(self.current_evaluation_count),
                 total_evaluation_budget: Some(self.total_evaluation_budget),
@@ -1458,6 +1487,7 @@ fn emit_restart_progress(
 ) {
     let completed_units = progress_state.completed_units;
     let (best_restart_id, best_weighted_objective) = progress_counters.display_best_snapshot();
+
     emit_joint_refinement_progress(
         progress_sender,
         JointRefinementStageProgressUpdate {
@@ -1570,6 +1600,7 @@ mod tests {
             self_dominance_policy: None,
             stability_numeric_tolerance: 0.0,
         };
+
         let return_components_fitted_parameters = ReturnComponentsStageFittedParameters {
             nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration::try_new(
                 2.0, -0.2, 0.5, 0.0, -0.1,
@@ -1627,6 +1658,7 @@ mod tests {
     fn running_restart_evaluation_progress_is_capped_below_completion() {
         let (progress_sender, _progress_receiver) = mpsc::channel();
         let progress_counters = RestartProgressCounters::default();
+
         let mut restart_progress = RestartCandidateProgress {
             progress_sender: Some(&progress_sender),
             restart_id: "halton_09",
@@ -1651,6 +1683,7 @@ mod tests {
     fn running_restart_progress_emits_live_global_best_objective() {
         let (progress_sender, progress_receiver) = mpsc::channel();
         let progress_counters = RestartProgressCounters::default();
+
         let mut baseline_progress = RestartCandidateProgress {
             progress_sender: Some(&progress_sender),
             restart_id: "baseline",
@@ -1663,6 +1696,7 @@ mod tests {
             current_restart_best_weighted_objective: None,
             finished: false,
         };
+
         let mut halton_progress = RestartCandidateProgress {
             progress_sender: Some(&progress_sender),
             restart_id: "halton_01",
@@ -1680,6 +1714,7 @@ mod tests {
         progress_receiver.recv().unwrap();
 
         halton_progress.record_evaluation("nig", 1, Some(4.0));
+
         let progress_update = progress_receiver.recv().unwrap();
 
         assert_eq!(
@@ -1794,6 +1829,7 @@ mod tests {
     #[test]
     fn restart_seed_hawkes_precheck_rejects_structural_domain_violations() {
         let mut fitted_parameters = test_joint_fitted_parameters();
+
         fitted_parameters
             .hawkes_fitted_parameters
             .structured_alpha
@@ -1808,6 +1844,7 @@ mod tests {
     #[test]
     fn restart_seed_nig_precheck_rejects_return_composition_domain_violations() {
         let mut fitted_parameters = test_joint_fitted_parameters();
+
         fitted_parameters
             .return_components_fitted_parameters
             .nig_shared_plus_shift_configuration

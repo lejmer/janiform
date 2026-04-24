@@ -190,6 +190,9 @@ pub struct JointRefinementStageExecutionInput {
 pub enum JointRefinementStageProgressPhase {
     BaselineLocalEvaluation,
     BaselineFinalEvaluation,
+    BaselineCoarseConsistencyEvaluation,
+    RestartSeedGeneration,
+    RestartCandidateScreening,
     RestartOptimization,
     CoarseConsistencyEvaluation,
     OptionSearchTierRefinement,
@@ -198,6 +201,63 @@ pub enum JointRefinementStageProgressPhase {
     FinalSeedEvaluation,
     FinalAssembly,
 }
+
+#[cfg(test)]
+const JOINT_REFINEMENT_PROGRESS_PHASES: &[JointRefinementStageProgressPhase] = &[
+    JointRefinementStageProgressPhase::BaselineLocalEvaluation,
+    JointRefinementStageProgressPhase::BaselineFinalEvaluation,
+    JointRefinementStageProgressPhase::BaselineCoarseConsistencyEvaluation,
+    JointRefinementStageProgressPhase::RestartSeedGeneration,
+    JointRefinementStageProgressPhase::RestartCandidateScreening,
+    JointRefinementStageProgressPhase::RestartOptimization,
+    JointRefinementStageProgressPhase::CoarseConsistencyEvaluation,
+    JointRefinementStageProgressPhase::OptionSearchTierRefinement,
+    JointRefinementStageProgressPhase::OptionSelectionTierEvaluation,
+    JointRefinementStageProgressPhase::OptionAuditTierEvaluation,
+    JointRefinementStageProgressPhase::FinalSeedEvaluation,
+    JointRefinementStageProgressPhase::FinalAssembly,
+];
+
+// UI-facing stage progress contract. Units describe the expected share of the
+// joint-refinement stage for each phase and must cover every progress phase.
+const JOINT_REFINEMENT_PROGRESS_WEIGHT_UNITS_V1: &[(JointRefinementStageProgressPhase, usize)] = &[
+    (
+        JointRefinementStageProgressPhase::BaselineLocalEvaluation,
+        4,
+    ),
+    (
+        JointRefinementStageProgressPhase::BaselineFinalEvaluation,
+        8,
+    ),
+    (
+        JointRefinementStageProgressPhase::BaselineCoarseConsistencyEvaluation,
+        4,
+    ),
+    (JointRefinementStageProgressPhase::RestartSeedGeneration, 4),
+    (
+        JointRefinementStageProgressPhase::RestartCandidateScreening,
+        4,
+    ),
+    (JointRefinementStageProgressPhase::RestartOptimization, 56),
+    (
+        JointRefinementStageProgressPhase::CoarseConsistencyEvaluation,
+        4,
+    ),
+    (
+        JointRefinementStageProgressPhase::OptionSearchTierRefinement,
+        8,
+    ),
+    (
+        JointRefinementStageProgressPhase::OptionSelectionTierEvaluation,
+        4,
+    ),
+    (
+        JointRefinementStageProgressPhase::OptionAuditTierEvaluation,
+        2,
+    ),
+    (JointRefinementStageProgressPhase::FinalSeedEvaluation, 1),
+    (JointRefinementStageProgressPhase::FinalAssembly, 1),
+];
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct JointRefinementStageProgressUpdate {
@@ -209,7 +269,7 @@ pub struct JointRefinementStageProgressUpdate {
     pub current_restart_id: Option<String>,
     pub active_restart_count: Option<usize>,
     pub current_parameter_block: Option<String>,
-    pub current_outer_cycle: Option<usize>,
+    pub completed_outer_cycles: Option<usize>,
     pub total_outer_cycles: Option<usize>,
     pub current_evaluation_count: Option<usize>,
     pub total_evaluation_budget: Option<usize>,
@@ -239,7 +299,7 @@ impl JointRefinementStageProgressUpdate {
             current_restart_id: None,
             active_restart_count: None,
             current_parameter_block: None,
-            current_outer_cycle: None,
+            completed_outer_cycles: None,
             total_outer_cycles: None,
             current_evaluation_count: None,
             total_evaluation_budget: None,
@@ -253,6 +313,117 @@ impl JointRefinementStageProgressUpdate {
             current_coarse_consistency_fit: None,
             best_coarse_consistency_fit: None,
         }
+    }
+
+    pub(crate) fn stage_progress_percent(&self) -> usize {
+        joint_refinement_stage_progress_percent(
+            self.phase,
+            self.completed_units,
+            self.total_units,
+            self.aggregate_progress_percent,
+        )
+    }
+}
+
+fn joint_refinement_stage_progress_percent(
+    phase: JointRefinementStageProgressPhase,
+    completed_units: usize,
+    total_units: usize,
+    aggregate_progress_percent: Option<usize>,
+) -> usize {
+    let total_weight_units = JOINT_REFINEMENT_PROGRESS_WEIGHT_UNITS_V1
+        .iter()
+        .map(|(_, weight_units)| *weight_units)
+        .sum::<usize>();
+    if total_weight_units == 0 {
+        return 0;
+    }
+
+    let mut completed_weight_units = 0usize;
+
+    for (progress_phase, weight_units) in JOINT_REFINEMENT_PROGRESS_WEIGHT_UNITS_V1 {
+        if *progress_phase == phase {
+            let phase_progress_percent = aggregate_progress_percent
+                .unwrap_or_else(|| progress_percent(completed_units, total_units))
+                .min(100);
+
+            let progress_units =
+                completed_weight_units.saturating_mul(100) + weight_units * phase_progress_percent;
+
+            return progress_units
+                .checked_div(total_weight_units)
+                .unwrap_or(0)
+                .min(100);
+        }
+
+        completed_weight_units = completed_weight_units.saturating_add(*weight_units);
+    }
+
+    0
+}
+
+fn progress_percent(completed_units: usize, total_units: usize) -> usize {
+    if total_units == 0 {
+        return 0;
+    }
+
+    completed_units
+        .min(total_units)
+        .saturating_mul(100)
+        .checked_div(total_units)
+        .unwrap_or(0)
+        .min(100)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        JOINT_REFINEMENT_PROGRESS_PHASES, JOINT_REFINEMENT_PROGRESS_WEIGHT_UNITS_V1,
+        JointRefinementStageProgressPhase, JointRefinementStageProgressUpdate,
+    };
+
+    #[test]
+    fn joint_refinement_stage_progress_weight_policy_covers_all_progress_phases() {
+        for phase in JOINT_REFINEMENT_PROGRESS_PHASES {
+            assert!(
+                JOINT_REFINEMENT_PROGRESS_WEIGHT_UNITS_V1
+                    .iter()
+                    .any(|(weighted_phase, _)| weighted_phase == phase)
+            );
+        }
+    }
+
+    #[test]
+    fn joint_refinement_stage_progress_orders_baseline_coarse_before_restart_seed_generation() {
+        let baseline_coarse_progress = JointRefinementStageProgressUpdate::new(
+            JointRefinementStageProgressPhase::BaselineCoarseConsistencyEvaluation,
+            1,
+            1,
+        )
+        .stage_progress_percent();
+
+        let restart_seed_progress = JointRefinementStageProgressUpdate::new(
+            JointRefinementStageProgressPhase::RestartSeedGeneration,
+            0,
+            1,
+        )
+        .stage_progress_percent();
+
+        assert_eq!(baseline_coarse_progress, 16);
+        assert_eq!(restart_seed_progress, 16);
+    }
+
+    #[test]
+    fn joint_refinement_stage_progress_uses_restart_aggregate_percent() {
+        let mut progress_update = JointRefinementStageProgressUpdate::new(
+            JointRefinementStageProgressPhase::RestartOptimization,
+            18,
+            22,
+        );
+
+        progress_update.aggregate_progress_percent = Some(2);
+
+        assert_eq!(progress_update.stage_progress_percent(), 25);
     }
 }
 

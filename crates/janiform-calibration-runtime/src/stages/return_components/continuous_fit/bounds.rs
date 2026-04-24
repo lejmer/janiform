@@ -1,10 +1,17 @@
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::mpsc::Sender;
+
 use janiform_foundations::low_discrepancy::van_der_corput;
 use janiform_foundations::numeric::root_mean_square_or_infinity;
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
+use super::super::contracts::{
+    ReturnComponentsStageProgressPhase, ReturnComponentsStageProgressUpdate,
+};
 use super::super::derived_contracts::return_components_stage_positive_domain_floor;
 use super::super::execution::theoretical_net_process_moments;
+use super::super::progress::send_return_components_evaluation_progress;
 use super::constants::RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_PROFILE_CONFIDENCE_Z_SCORE;
 use super::likelihood::maximum_profiled_open_beta_ratio;
 use super::profile::scale_aware_absolute_error;
@@ -80,9 +87,11 @@ pub(super) fn build_moment_seed_candidates(
     calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
     theoretical_search_bounds: NigShapeSearchBounds,
     moment_candidate_count: usize,
+    progress_sender: Option<&Sender<ReturnComponentsStageProgressUpdate>>,
 ) -> Vec<ScoredNigCandidate> {
     let moment_targets = ContinuousMomentTargets::from_profile(calibration_sample.observed_profile);
     let alpha_interval = theoretical_alpha_bounds(calibration_sample.observed_profile);
+    let completed_candidate_count = AtomicUsize::new(0);
 
     let relative_share_lower_bound = coordinate_to_share(theoretical_search_bounds.lower_bounds[2]);
     let relative_share_upper_bound = coordinate_to_share(theoretical_search_bounds.upper_bounds[2]);
@@ -124,6 +133,19 @@ pub(super) fn build_moment_seed_candidates(
             let objective_score =
                 moment_seed_objective_score(configuration, optimizer_context, moment_targets)?;
 
+            let completed_count = completed_candidate_count.fetch_add(1, Ordering::Relaxed) + 1;
+            let candidate_label = format!("moment_seed_{:03}", candidate_index + 1);
+
+            send_return_components_evaluation_progress(
+                progress_sender,
+                ReturnComponentsStageProgressPhase::ContinuousNigMomentSeedGeneration,
+                completed_count,
+                moment_candidate_count,
+                Some(candidate_label.as_str()),
+                completed_count,
+                moment_candidate_count,
+            );
+
             Some(ScoredNigCandidate {
                 search_point,
                 configuration,
@@ -139,6 +161,7 @@ pub(super) fn build_moment_seed_candidates(
         theoretical_search_bounds,
         BasinSeedFamily::ALL.len(),
     );
+
     let retained_candidates =
         super::optimization::deduplicate_candidates_by_key(retained_candidates, |candidate| {
             format!(
@@ -149,6 +172,7 @@ pub(super) fn build_moment_seed_candidates(
                 candidate.search_point.log_delta_offset.to_bits(),
             )
         });
+
     if retained_candidates.is_empty() {
         let midpoint_search_point = NigShapeSearchPoint {
             log_alpha: 0.5
@@ -235,6 +259,7 @@ fn regime_from_seed_frontier(
             theoretical_search_bounds.lower_bounds[coordinate_index],
         )
     });
+
     let upper_bounds: [f64; 4] = std::array::from_fn(|coordinate_index| {
         nearest_upper_coordinate(
             seed_vector[coordinate_index],

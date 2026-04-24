@@ -254,6 +254,24 @@ def test_stage_progress_detail_summarizes_joint_refinement_runtime_state() -> No
 
 
 def test_stage_progress_detail_labels_post_restart_joint_refinement_phases() -> None:
+    seed_generation_detail = format_staged_progress_event_detail(
+        {
+            "stage": "joint_refinement",
+            "progress_phase": "restart_seed_generation",
+            "completed_units": 1,
+            "total_units": 2,
+            "current_item_label": "tick_moment_seed_generation",
+        }
+    )
+    screening_detail = format_staged_progress_event_detail(
+        {
+            "stage": "joint_refinement",
+            "progress_phase": "restart_candidate_screening",
+            "completed_units": 4,
+            "total_units": 18,
+            "current_item_label": "halton_01",
+        }
+    )
     coarse_detail = format_staged_progress_event_detail(
         {
             "stage": "joint_refinement",
@@ -277,6 +295,12 @@ def test_stage_progress_detail_labels_post_restart_joint_refinement_phases() -> 
         }
     )
 
+    assert seed_generation_detail == (
+        "joint_refinement restart seed generation 1/2 | item=tick_moment_seed_generation"
+    )
+    assert screening_detail == (
+        "joint_refinement restart candidate screening 4/18 | item=halton_01"
+    )
     assert coarse_detail == (
         "joint_refinement coarse consistency evaluation 7/12 | item=halton_07 "
         "| objective=0.117000 | best_objective=0.101000 | coarse_fit=1.042000 "

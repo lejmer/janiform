@@ -535,6 +535,7 @@ fn candidate_generation_preserves_multiple_nig_candidates() {
         None,
         17,
         &solver_settings,
+        None,
     )
     .expect("candidate generation should succeed");
 

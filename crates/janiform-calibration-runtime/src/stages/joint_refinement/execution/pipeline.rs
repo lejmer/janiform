@@ -47,20 +47,21 @@ use super::super::setup::{
 };
 use super::super::worker_runtime::JointRefinementSummarySimulationScheduler;
 use super::{
-    JointRefinementActiveParameterLayout, JointRefinementBaselineBuckets, JointRefinementContext,
-    JointRefinementFidelityTier, JointRefinementProfilingState, JointRefinementRestartOutcome,
-    JointRefinementResumeStore, PersistedRestartSelectionArtifacts,
-    baseline_buckets_from_evaluation, build_joint_candidate_coarse_consistency_artifacts,
-    build_joint_candidate_frontier_diagnostics, build_joint_finalist_seed_summaries,
-    build_joint_refinement_stage_failure_report, build_joint_restart_diagnostics,
-    build_joint_simulation_summaries, build_observed_data, build_option_calibration_diagnostics,
-    build_option_pricing_context, build_summary_simulation_session_context,
+    JointRefinementActiveParameterLayout, JointRefinementBaselineBuckets,
+    JointRefinementCandidateEvaluation, JointRefinementContext, JointRefinementFidelityTier,
+    JointRefinementProfilingState, JointRefinementRestartOutcome, JointRefinementResumeStore,
+    PersistedRestartSelectionArtifacts, baseline_buckets_from_evaluation,
+    build_joint_candidate_coarse_consistency_artifacts, build_joint_candidate_frontier_diagnostics,
+    build_joint_finalist_seed_summaries, build_joint_refinement_stage_failure_report,
+    build_joint_restart_diagnostics, build_joint_simulation_summaries, build_observed_data,
+    build_option_calibration_diagnostics, build_option_pricing_context,
+    build_summary_simulation_session_context,
     desired_joint_refinement_option_refinement_candidate_count,
     desired_joint_refinement_restart_candidate_budget, joint_refinement_admissibility_thresholds,
     joint_refinement_budget_schedule, joint_restart_outcome_is_admissible, optimize_restart_seeds,
     ordered_parameter_bits, resolve_option_surface_tier_pricing_artifact, run_option_refinement,
     select_restart_outcomes_with_lazy_coarse_consistency,
-    simulation_infrastructure_failure_message,
+    simulation_infrastructure_failure_message, with_joint_refinement_thread_pool,
 };
 
 const JOINT_REFINEMENT_SELECTION_POLICY: &str = "validity_then_admissibility_with_incumbent_baseline_and_direct_interval_coarse_consistency_then_pareto_then_lexicographic_tie_break.v1";
@@ -798,24 +799,12 @@ fn establish_baseline_evaluation(
 
     let baseline_parameter_bits = ordered_parameter_bits(baseline_parameter_vector);
 
-    let baseline_local_evaluation = evaluate_joint_fitted_parameters(
-        baseline_fitted_parameters.clone(),
-        Some(baseline_parameter_bits.as_slice()),
+    let (baseline_local_evaluation, baseline_final_evaluation) = evaluate_baseline_local_and_final(
+        &baseline_fitted_parameters,
+        baseline_parameter_bits.as_slice(),
         bootstrap_context,
-        JointRefinementFidelityTier::Local,
         &resolved_stage_payloads.stage_solver_settings,
         progress_sender,
-        Some(JointRefinementStageProgressPhase::BaselineLocalEvaluation),
-    );
-
-    let baseline_final_evaluation = evaluate_joint_fitted_parameters(
-        baseline_fitted_parameters.clone(),
-        Some(baseline_parameter_bits.as_slice()),
-        bootstrap_context,
-        JointRefinementFidelityTier::Final,
-        &resolved_stage_payloads.stage_solver_settings,
-        progress_sender,
-        Some(JointRefinementStageProgressPhase::BaselineFinalEvaluation),
     );
 
     ensure_simulation_infrastructure_available(bootstrap_context)?;
@@ -832,33 +821,21 @@ fn establish_baseline_evaluation(
         cache_guard.clear();
     }
 
-    let normalized_baseline_local_evaluation = if baseline_candidate_is_valid {
-        evaluate_joint_fitted_parameters(
-            baseline_fitted_parameters.clone(),
-            Some(baseline_parameter_bits.as_slice()),
-            bootstrap_context,
-            JointRefinementFidelityTier::Local,
-            &resolved_stage_payloads.stage_solver_settings,
-            progress_sender,
-            Some(JointRefinementStageProgressPhase::BaselineLocalEvaluation),
-        )
-    } else {
-        baseline_local_evaluation.clone()
-    };
-
-    let normalized_baseline_final_evaluation = if baseline_candidate_is_valid {
-        evaluate_joint_fitted_parameters(
-            baseline_fitted_parameters,
-            Some(baseline_parameter_bits.as_slice()),
-            bootstrap_context,
-            JointRefinementFidelityTier::Final,
-            &resolved_stage_payloads.stage_solver_settings,
-            progress_sender,
-            Some(JointRefinementStageProgressPhase::BaselineFinalEvaluation),
-        )
-    } else {
-        baseline_final_evaluation.clone()
-    };
+    let (normalized_baseline_local_evaluation, normalized_baseline_final_evaluation) =
+        if baseline_candidate_is_valid {
+            evaluate_baseline_local_and_final(
+                &baseline_fitted_parameters,
+                baseline_parameter_bits.as_slice(),
+                bootstrap_context,
+                &resolved_stage_payloads.stage_solver_settings,
+                progress_sender,
+            )
+        } else {
+            (
+                baseline_local_evaluation.clone(),
+                baseline_final_evaluation.clone(),
+            )
+        };
 
     let baseline_coarse_consistency_artifacts = if baseline_candidate_is_valid {
         emit_coarse_consistency_progress(progress_sender, 0, 1, "baseline coarse_consistency");
@@ -891,6 +868,44 @@ fn establish_baseline_evaluation(
     Ok(BaselineEvaluationArtifacts {
         baseline_restart_outcome,
         baseline_coarse_consistency_artifacts,
+    })
+}
+
+fn evaluate_baseline_local_and_final(
+    baseline_fitted_parameters: &janiform_calibration_artifacts::JointRefinementStageFittedParameters,
+    baseline_parameter_bits: &[u64],
+    bootstrap_context: &JointRefinementContext,
+    stage_solver_settings: &CalibrationOptimizerSettings,
+    progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
+) -> (
+    JointRefinementCandidateEvaluation,
+    JointRefinementCandidateEvaluation,
+) {
+    with_joint_refinement_thread_pool(bootstrap_context, || {
+        rayon::join(
+            || {
+                evaluate_joint_fitted_parameters(
+                    baseline_fitted_parameters.clone(),
+                    Some(baseline_parameter_bits),
+                    bootstrap_context,
+                    JointRefinementFidelityTier::Local,
+                    stage_solver_settings,
+                    progress_sender,
+                    Some(JointRefinementStageProgressPhase::BaselineLocalEvaluation),
+                )
+            },
+            || {
+                evaluate_joint_fitted_parameters(
+                    baseline_fitted_parameters.clone(),
+                    Some(baseline_parameter_bits),
+                    bootstrap_context,
+                    JointRefinementFidelityTier::Final,
+                    stage_solver_settings,
+                    progress_sender,
+                    Some(JointRefinementStageProgressPhase::BaselineFinalEvaluation),
+                )
+            },
+        )
     })
 }
 
@@ -944,6 +959,7 @@ pub(crate) fn ensure_valid_selected_restart_outcome(
             )
         },
     );
+
     let blocking_terms = blocking_admissibility_terms(
         &best_restart.final_evaluation.raw_admissibility_metrics,
         thresholds,
@@ -1065,8 +1081,12 @@ fn run_restart_search(
     progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
     resume_store: &mut JointRefinementResumeStore,
 ) -> Result<RestartSearchArtifacts, JointRefinementStageExecutionFailure> {
-    let restart_search_plan =
-        build_restart_search_plan(stage_input, resolved_stage_payloads, prepared_bootstrap);
+    let restart_search_plan = build_restart_search_plan(
+        stage_input,
+        resolved_stage_payloads,
+        prepared_bootstrap,
+        progress_sender,
+    );
 
     let persisted_restart_outcomes = restart_search_plan
         .restart_seeds
@@ -1154,6 +1174,7 @@ fn build_restart_search_plan(
     stage_input: &JointRefinementStageExecutionInput,
     resolved_stage_payloads: &ResolvedStagePayloads<'_>,
     prepared_bootstrap: &PreparedBootstrapContext,
+    progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
 ) -> RestartSearchPlan {
     let restart_seeds = build_restart_seeds(
         prepared_bootstrap.baseline_parameter_vector.as_slice(),
@@ -1181,6 +1202,7 @@ fn build_restart_search_plan(
         desired_joint_refinement_restart_candidate_budget(
             stage_input.restart_candidate_budget_override,
         ),
+        progress_sender,
     );
 
     let budget_schedule = joint_refinement_budget_schedule(
@@ -1575,6 +1597,8 @@ fn assemble_final_stage_outputs(
 
     let candidate_frontier_started_at = Instant::now();
 
+    emit_final_assembly_progress(progress_sender, 0, 3, "candidate_frontier");
+
     let candidate_frontier = build_joint_candidate_frontier_diagnostics(
         selectable_restart_outcomes.as_slice(),
         bootstrap_context,
@@ -1615,6 +1639,8 @@ fn assemble_final_stage_outputs(
     let simulation_summaries = build_joint_simulation_summaries(finalist_seed_summaries.as_slice());
 
     emit_final_assembly_progress(progress_sender, 2, 3, "simulation_summaries");
+
+    emit_final_assembly_progress(progress_sender, 2, 3, "coarse_tick_consistency");
 
     let coarse_tick_consistency = resolve_selected_coarse_tick_consistency(
         bootstrap_context,
@@ -1904,7 +1930,7 @@ fn emit_coarse_consistency_progress(
 ) {
     emit_joint_refinement_progress(
         progress_sender,
-        JointRefinementStageProgressPhase::CoarseConsistencyEvaluation,
+        JointRefinementStageProgressPhase::BaselineCoarseConsistencyEvaluation,
         completed_units,
         total_units,
         current_item_label,

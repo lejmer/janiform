@@ -6,7 +6,9 @@ use super::super::objective::{
     return_asymmetry_horizon_fit, root_mean_square,
 };
 use super::super::setup::{
-    build_restart_seeds_with_halton_acceptance, project_basin_diagnostic_into_joint_nig_coordinates,
+    build_restart_seeds_with_halton_acceptance,
+    project_basin_diagnostic_into_joint_nig_coordinates,
+    restart_candidate_screening_max_parallelism_for_test,
 };
 use super::{
     JointRefinementActiveParameterLayout, JointRefinementAdmissibilityThresholds,
@@ -442,7 +444,7 @@ fn joint_refinement_restart_seed_generation_counts_only_accepted_haltons() {
     assert_eq!(restart_seeds.len(), 5);
     assert_eq!(restart_seeds[3].0, "halton_03");
     assert_eq!(restart_seeds[4].0, "halton_06");
-    assert_eq!(score_call_count, 9);
+    assert_eq!(score_call_count, 6);
 }
 
 #[test]
@@ -470,7 +472,14 @@ fn joint_refinement_restart_seed_generation_uses_restart_candidate_exploration_b
     );
 
     assert_eq!(restart_seeds.len(), 3);
-    assert_eq!(score_call_count, 9);
+    assert_eq!(score_call_count, 6);
+}
+
+#[test]
+fn joint_refinement_restart_candidate_screening_uses_configured_parallelism() {
+    let max_parallelism = restart_candidate_screening_max_parallelism_for_test(4, 8);
+
+    assert!(max_parallelism > 1);
 }
 
 #[test]

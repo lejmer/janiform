@@ -127,6 +127,25 @@ fn baseline_relative_admissibility_threshold(
     baseline_reference * admissibility_threshold_from_sample_count(sample_count)
 }
 
+fn likelihood_admissibility_threshold(
+    local_baseline_score: f64,
+    final_baseline_score: f64,
+    sample_count: usize,
+) -> f64 {
+    let baseline_reference = [local_baseline_score, final_baseline_score]
+        .into_iter()
+        .filter(|value| value.is_finite())
+        .fold(f64::NEG_INFINITY, f64::max);
+
+    if !baseline_reference.is_finite() {
+        return f64::INFINITY;
+    }
+
+    // Average NLL differences are log likelihood ratios, so the sample-count
+    // admissibility band is additive in the raw likelihood score.
+    baseline_reference + admissibility_threshold_from_sample_count(sample_count).ln()
+}
+
 pub(crate) fn joint_raw_metrics_are_admissible(
     raw_metrics: &JointRefinementRawAdmissibilityMetrics,
     thresholds: JointRefinementAdmissibilityThresholds,
@@ -253,6 +272,18 @@ pub(crate) fn select_restart_outcomes_with_lazy_coarse_consistency<'a>(
             .final_evaluation
             .breakdown
             .weighted_objective;
+
+        emit_coarse_consistency_progress(
+            progress_sender,
+            progress_state.completed_units,
+            total_ranked_restart_groups,
+            Some(candidate_state.restart_outcome.restart_id.as_str()),
+            Some(current_weighted_objective),
+            progress_state.best_restart_id.as_deref(),
+            progress_state.best_weighted_objective,
+            None,
+            progress_state.best_coarse_consistency_fit,
+        );
 
         let current_artifacts = resolve_restart_group_coarse_consistency(
             &mut coarse_consistency_cache,
@@ -559,7 +590,7 @@ pub(crate) fn joint_refinement_admissibility_thresholds(
     .len();
 
     JointRefinementAdmissibilityThresholds {
-        aggregated_likelihood_fit: baseline_relative_admissibility_threshold(
+        aggregated_likelihood_fit: likelihood_admissibility_threshold(
             context.local_baseline_buckets.aggregated_likelihood_fit,
             context.final_baseline_buckets.aggregated_likelihood_fit,
             fifteen_minute_sample_count,
@@ -661,6 +692,7 @@ fn joint_restart_outcome_dominates(
         .iter()
         .zip(right_metrics.iter())
         .all(|(left_value, right_value)| left_value <= right_value);
+
     let any_strictly_better = left_metrics
         .iter()
         .zip(right_metrics.iter())
@@ -815,9 +847,11 @@ fn named_joint_parameter_coordinates(
     if let Some(index) = active_parameter_layout.known_activity_scale_index {
         coordinates.push((index, "known_activity_scale".to_string()));
     }
+
     if let Some(index) = active_parameter_layout.surprise_activity_scale_index {
         coordinates.push((index, "surprise_activity_scale".to_string()));
     }
+
     if let Some(index) = active_parameter_layout.surprise_baseline_scale_index {
         coordinates.push((index, "surprise_baseline_scale".to_string()));
     }
@@ -860,5 +894,24 @@ fn emit_coarse_consistency_progress(
                 total_units,
             )
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{admissibility_threshold_from_sample_count, likelihood_admissibility_threshold};
+
+    #[test]
+    fn likelihood_admissibility_threshold_uses_log_margin_above_baseline_score() {
+        let sample_count = 400;
+        let baseline_score = -0.5;
+
+        let threshold =
+            likelihood_admissibility_threshold(baseline_score, baseline_score - 0.25, sample_count);
+
+        assert_eq!(
+            threshold,
+            baseline_score + admissibility_threshold_from_sample_count(sample_count).ln()
+        );
     }
 }

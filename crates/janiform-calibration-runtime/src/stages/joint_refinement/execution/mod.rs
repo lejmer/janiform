@@ -63,7 +63,9 @@ pub(crate) use selection::{
 };
 pub(crate) use shared::{
     build_exchange_calendar_registry_artifact, build_halton_restart_id, clamp_in_place,
-    deduplicate_restart_seed_candidates, halton_parameter_vector, ordered_parameter_bits,
+    deduplicate_restart_seed_candidates, halton_parameter_vector,
+    joint_refinement_has_parallel_worker_capacity, joint_refinement_parallel_worker_count,
+    ordered_parameter_bits, with_joint_refinement_thread_pool,
 };
 pub(crate) use state::{
     JOINT_REFINEMENT_HAWKES_SCALE_LOG_BOUND, JOINT_REFINEMENT_OBJECTIVE_NORMALIZATION_FLOOR,

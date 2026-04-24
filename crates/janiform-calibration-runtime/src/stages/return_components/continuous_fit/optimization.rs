@@ -1,8 +1,7 @@
 use std::collections::BTreeSet;
+use std::sync::mpsc::Sender;
 
 use janiform_calibration_artifacts::CalibrationOptimizerSettings;
-#[cfg(test)]
-use janiform_foundations::low_discrepancy::van_der_corput;
 use janiform_foundations::numeric::{
     sample_adjusted_excess_kurtosis, sample_adjusted_skewness, sample_standard_deviation,
 };
@@ -12,7 +11,13 @@ use super::super::contracts::{
     ReturnComponentsStageObservedSignalSummaryStatistics,
     ReturnComponentsStageReturnDistributionDiagnostic,
 };
+use super::super::contracts::{
+    ReturnComponentsStageProgressPhase, ReturnComponentsStageProgressUpdate,
+};
 use super::super::execution::arithmetic_mean_signed;
+use super::super::progress::{
+    send_return_components_evaluation_progress, send_return_components_progress,
+};
 use super::bounds::{
     build_moment_seed_candidates, build_search_regimes_from_moment_seeds,
     configuration_from_shape_search_point, theoretical_search_bounds,
@@ -33,10 +38,20 @@ use super::types::{
     ReturnComponentsStageContinuousReturnCalibrationSample, ScoredNigCandidate, SeededNigCandidate,
 };
 
+#[cfg(test)]
 pub(crate) fn build_nig_search_candidates(
     calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
     stage_seed: u64,
     solver_settings: &CalibrationOptimizerSettings,
+) -> Vec<OptimizedNigCandidate> {
+    build_nig_search_candidates_with_progress(calibration_sample, stage_seed, solver_settings, None)
+}
+
+pub(crate) fn build_nig_search_candidates_with_progress(
+    calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
+    stage_seed: u64,
+    solver_settings: &CalibrationOptimizerSettings,
+    progress_sender: Option<&Sender<ReturnComponentsStageProgressUpdate>>,
 ) -> Vec<OptimizedNigCandidate> {
     let optimizer_context = build_continuous_return_optimizer_context(calibration_sample);
 
@@ -44,45 +59,145 @@ pub(crate) fn build_nig_search_candidates(
         let candidate_budget = solver_settings
             .max_iterations
             .max(BasinSeedFamily::ALL.len());
+
         let moment_candidate_count =
             family_aligned_candidate_count(candidate_budget, BasinSeedFamily::ALL.len());
 
         let theoretical_search_bounds =
             theoretical_search_bounds(calibration_sample.observed_profile, moment_candidate_count);
 
+        send_return_components_progress(
+            progress_sender,
+            ReturnComponentsStageProgressPhase::ContinuousNigMomentSeedGeneration,
+            0,
+            moment_candidate_count,
+            Some("build moment seed candidates"),
+        );
+
         let moment_seed_candidates = build_moment_seed_candidates(
             &optimizer_context,
             calibration_sample,
             theoretical_search_bounds,
             moment_candidate_count,
+            progress_sender,
+        );
+
+        send_return_components_progress(
+            progress_sender,
+            ReturnComponentsStageProgressPhase::ContinuousNigMomentSeedGeneration,
+            moment_candidate_count,
+            moment_candidate_count,
+            Some("moment seed candidates ready"),
+        );
+
+        send_return_components_progress(
+            progress_sender,
+            ReturnComponentsStageProgressPhase::ContinuousNigProxyEmSeedGeneration,
+            0,
+            1,
+            Some("build proxy EM search points"),
         );
 
         let em_search_points = build_effective_nig_em_search_points(
             calibration_sample,
             moment_seed_candidates.as_slice(),
             solver_settings,
+            progress_sender,
         );
+
+        send_return_components_progress(
+            progress_sender,
+            ReturnComponentsStageProgressPhase::ContinuousNigProxyEmSeedGeneration,
+            1,
+            1,
+            Some("proxy EM search points ready"),
+        );
+
+        send_return_components_progress(
+            progress_sender,
+            ReturnComponentsStageProgressPhase::ContinuousNigSeedScoring,
+            0,
+            em_search_points.len(),
+            Some("score proxy EM search points"),
+        );
+
         let em_scored_candidates = score_search_points(
             &optimizer_context,
             em_search_points.as_slice(),
             ContinuousLikelihoodFidelityTier::Seed,
+            Some(ReturnComponentsStageProgressPhase::ContinuousNigSeedScoring),
+            progress_sender,
         );
+
         let seed_frontier_candidates =
             merge_seed_frontier_candidates(moment_seed_candidates, em_scored_candidates);
+
+        send_return_components_progress(
+            progress_sender,
+            ReturnComponentsStageProgressPhase::ContinuousNigSearchRegimeGeneration,
+            0,
+            1,
+            Some("build search regimes"),
+        );
+
         let broad_search_regimes = build_search_regimes_from_moment_seeds(
             &optimizer_context,
             seed_frontier_candidates.as_slice(),
             theoretical_search_bounds,
         );
+
         let search_bounds = search_bounds_from_regimes(broad_search_regimes.as_slice());
+
+        send_return_components_progress(
+            progress_sender,
+            ReturnComponentsStageProgressPhase::ContinuousNigSearchRegimeGeneration,
+            1,
+            1,
+            Some("search regimes ready"),
+        );
+
+        send_return_components_progress(
+            progress_sender,
+            ReturnComponentsStageProgressPhase::ContinuousNigBasinSeedGeneration,
+            0,
+            1,
+            Some("build basin seed candidates"),
+        );
 
         let seed_candidates = build_basin_seed_candidates(
             seed_frontier_candidates.as_slice(),
             broad_search_regimes.as_slice(),
         );
 
-        let optimized_seed_candidates =
-            optimize_seed_candidates(&optimizer_context, seed_candidates.as_slice());
+        send_return_components_progress(
+            progress_sender,
+            ReturnComponentsStageProgressPhase::ContinuousNigBasinSeedGeneration,
+            1,
+            1,
+            Some("basin seed candidates ready"),
+        );
+
+        send_return_components_progress(
+            progress_sender,
+            ReturnComponentsStageProgressPhase::ContinuousNigBasinOptimization,
+            0,
+            seed_candidates.len(),
+            Some("optimize basin seed candidates"),
+        );
+
+        let optimized_seed_candidates = optimize_seed_candidates(
+            &optimizer_context,
+            seed_candidates.as_slice(),
+            progress_sender,
+        );
+
+        send_return_components_progress(
+            progress_sender,
+            ReturnComponentsStageProgressPhase::ContinuousNigBasinOptimization,
+            seed_candidates.len(),
+            seed_candidates.len(),
+            Some("basin seed optimization complete"),
+        );
 
         let retained_basin_candidates = retain_distinct_basin_candidates(
             optimized_seed_candidates,
@@ -90,10 +205,26 @@ pub(crate) fn build_nig_search_candidates(
             BasinSeedFamily::ALL.len(),
         );
 
+        send_return_components_progress(
+            progress_sender,
+            ReturnComponentsStageProgressPhase::ContinuousNigBasinDiagnostics,
+            0,
+            1,
+            Some("build basin diagnostics"),
+        );
+
         let basin_diagnostics = build_optimizer_basin_diagnostics(
             retained_basin_candidates.as_slice(),
             calibration_sample,
             stage_seed,
+        );
+
+        send_return_components_progress(
+            progress_sender,
+            ReturnComponentsStageProgressPhase::ContinuousNigBasinDiagnostics,
+            1,
+            1,
+            Some("basin diagnostics ready"),
         );
 
         let mut optimized_candidates: Vec<OptimizedNigCandidate> = retained_basin_candidates
@@ -145,6 +276,7 @@ fn merge_seed_frontier_candidates(
     em_scored_candidates: Vec<ScoredNigCandidate>,
 ) -> Vec<ScoredNigCandidate> {
     let mut combined_candidates = moment_seed_candidates;
+
     combined_candidates.extend(em_scored_candidates);
     combined_candidates.sort_by(ScoredNigCandidate::compare_by_objective_and_configuration);
 
@@ -157,24 +289,30 @@ pub(crate) fn build_nig_moment_seed_configurations(
     calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
     solver_settings: &CalibrationOptimizerSettings,
 ) -> Vec<janiform_model_kernels::nig::NigSharedPlusShiftConfiguration> {
-    let optimizer_context = build_continuous_return_optimizer_context(calibration_sample);
-    let broad_candidate_count = solver_settings
-        .max_iterations
-        .max(BasinSeedFamily::ALL.len());
-    let moment_candidate_count =
-        family_aligned_candidate_count(broad_candidate_count, BasinSeedFamily::ALL.len());
-    let search_bounds =
-        theoretical_search_bounds(calibration_sample.observed_profile, moment_candidate_count);
+    with_continuous_fit_thread_pool(solver_settings.cpu_count, || {
+        let optimizer_context = build_continuous_return_optimizer_context(calibration_sample);
 
-    build_moment_seed_candidates(
-        &optimizer_context,
-        calibration_sample,
-        search_bounds,
-        moment_candidate_count,
-    )
-    .into_iter()
-    .map(|candidate| candidate.configuration)
-    .collect()
+        let broad_candidate_count = solver_settings
+            .max_iterations
+            .max(BasinSeedFamily::ALL.len());
+
+        let moment_candidate_count =
+            family_aligned_candidate_count(broad_candidate_count, BasinSeedFamily::ALL.len());
+
+        let search_bounds =
+            theoretical_search_bounds(calibration_sample.observed_profile, moment_candidate_count);
+
+        build_moment_seed_candidates(
+            &optimizer_context,
+            calibration_sample,
+            search_bounds,
+            moment_candidate_count,
+            None,
+        )
+        .into_iter()
+        .map(|candidate| candidate.configuration)
+        .collect()
+    })
 }
 
 pub(crate) fn evaluate_continuous_nig_candidate(
@@ -190,11 +328,13 @@ pub(crate) fn evaluate_continuous_nig_candidate(
         &optimizer_context,
         ContinuousLikelihoodFidelityTier::Seed,
     );
+
     let local_objective = continuous_block_likelihood_objective(
         configuration,
         &optimizer_context,
         ContinuousLikelihoodFidelityTier::Local,
     );
+
     let (likelihood_objective, exact_likelihood_diagnostics) =
         continuous_block_likelihood_objective_with_failures(
             configuration,
@@ -204,15 +344,21 @@ pub(crate) fn evaluate_continuous_nig_candidate(
 
     let fitted_returns =
         simulate_matched_scale_returns(configuration, calibration_sample, stage_seed);
+
     let fitted_profile = build_distribution_profile(fitted_returns.as_slice());
+
     let profile_fit_breakdown =
         distribution_profile_fit_breakdown(fitted_profile, calibration_sample.observed_profile);
 
     let fitted_mean_return = arithmetic_mean_signed(fitted_returns.as_slice());
+
     let fitted_return_volatility = sample_standard_deviation(fitted_returns.as_slice());
+
     let fitted_skewness = sample_adjusted_skewness(fitted_returns.as_slice()).unwrap_or(0.0);
+
     let fitted_excess_kurtosis =
         sample_adjusted_excess_kurtosis(fitted_returns.as_slice()).unwrap_or(0.0);
+
     let fit_breakdown =
         super::super::contracts::ReturnComponentsStageContinuousDistributionFitBreakdownDiagnostic {
             global_fit_score: likelihood_objective.global_negative_log_likelihood,
@@ -278,17 +424,43 @@ pub(super) fn score_search_points(
     optimizer_context: &ContinuousReturnOptimizerContext,
     search_points: &[NigShapeSearchPoint],
     fidelity_tier: ContinuousLikelihoodFidelityTier,
+    progress_phase: Option<ReturnComponentsStageProgressPhase>,
+    progress_sender: Option<&Sender<ReturnComponentsStageProgressUpdate>>,
 ) -> Vec<ScoredNigCandidate> {
+    let completed_search_point_count = std::sync::atomic::AtomicUsize::new(0);
+    let total_search_point_count = search_points.len();
+
     search_points
         .par_iter()
         .filter_map(|search_point| {
-            evaluate_cached_search_point(optimizer_context, *search_point, fidelity_tier).map(
-                |cached_evaluation| ScoredNigCandidate {
-                    search_point: *search_point,
-                    configuration: cached_evaluation.configuration,
-                    objective_score: cached_evaluation.objective.shifted_objective_score,
-                },
-            )
+            let scored_candidate =
+                evaluate_cached_search_point(optimizer_context, *search_point, fidelity_tier).map(
+                    |cached_evaluation| ScoredNigCandidate {
+                        search_point: *search_point,
+                        configuration: cached_evaluation.configuration,
+                        objective_score: cached_evaluation.objective.shifted_objective_score,
+                    },
+                );
+
+            if let Some(progress_phase) = progress_phase {
+                let completed_count = completed_search_point_count
+                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+                    + 1;
+
+                let search_point_label = format!("search_point_{completed_count:03}");
+
+                send_return_components_evaluation_progress(
+                    progress_sender,
+                    progress_phase,
+                    completed_count,
+                    total_search_point_count,
+                    Some(search_point_label.as_str()),
+                    completed_count,
+                    total_search_point_count,
+                );
+            }
+
+            scored_candidate
         })
         .collect()
 }
@@ -369,39 +541,6 @@ pub(super) fn candidate_configuration_key(
     )
 }
 
-#[cfg(test)]
-pub(super) fn build_broad_search_points(
-    regimes: &[NigSearchRegime],
-    broad_candidate_count: usize,
-) -> Vec<NigShapeSearchPoint> {
-    if regimes.is_empty() {
-        return Vec::new();
-    }
-
-    let mut search_points: Vec<NigShapeSearchPoint> = regimes
-        .iter()
-        .map(|regime| NigShapeSearchPoint {
-            log_alpha: regime.log_alpha_center,
-            buy_skew_coordinate: regime.buy_skew_center,
-            sell_relative_coordinate: regime.sell_relative_center,
-            log_delta_offset: regime.log_delta_center,
-        })
-        .collect();
-    let extra_point_count = broad_candidate_count.saturating_sub(search_points.len());
-
-    for sequence_index in 0..extra_point_count {
-        let regime_index = sequence_index % regimes.len();
-        let regime_sample_index = sequence_index / regimes.len();
-        search_points.push(sample_regime_search_point(
-            regimes[regime_index],
-            regime_sample_index,
-            regime_index,
-        ));
-    }
-
-    search_points
-}
-
 fn family_aligned_candidate_count(candidate_budget: usize, family_count: usize) -> usize {
     if family_count == 0 {
         return candidate_budget.max(1);
@@ -412,50 +551,6 @@ fn family_aligned_candidate_count(candidate_budget: usize, family_count: usize) 
         ((requested_budget + family_count - 1) / family_count).saturating_mul(family_count);
 
     rounded_family_count.max(family_count)
-}
-
-#[cfg(test)]
-fn sample_regime_search_point(
-    regime: NigSearchRegime,
-    regime_sample_index: usize,
-    regime_index: usize,
-) -> NigShapeSearchPoint {
-    let sequence_index = regime_sample_index * BasinSeedFamily::ALL.len() + regime_index;
-
-    NigShapeSearchPoint {
-        log_alpha: regime.log_alpha_center
-            + regime.log_alpha_half_span
-                * centered_low_discrepancy_perturbation(sequence_index, &[2, 3, 5]),
-        buy_skew_coordinate: regime.buy_skew_center
-            + regime.buy_skew_half_span
-                * centered_low_discrepancy_perturbation(
-                    sequence_index + regime_index + 1,
-                    &[7, 11, 13],
-                ),
-        sell_relative_coordinate: regime.sell_relative_center
-            + regime.sell_relative_half_span
-                * centered_low_discrepancy_perturbation(
-                    sequence_index + 2 * (regime_index + 1),
-                    &[17, 19, 23],
-                ),
-        log_delta_offset: regime.log_delta_center
-            + regime.log_delta_half_span
-                * centered_low_discrepancy_perturbation(
-                    sequence_index + 3 * (regime_index + 1),
-                    &[29, 31, 37],
-                ),
-    }
-}
-
-#[cfg(test)]
-fn centered_low_discrepancy_perturbation(sequence_index: usize, prime_bases: &[u64]) -> f64 {
-    let sequence_number = sequence_index as u64 + 1;
-    let perturbation_sum: f64 = prime_bases
-        .iter()
-        .map(|prime_base| van_der_corput(sequence_number, *prime_base))
-        .sum();
-
-    perturbation_sum - 0.5 * prime_bases.len() as f64
 }
 
 fn build_basin_seed_candidates(
@@ -570,16 +665,19 @@ impl BroadSeedFeatureThresholds {
             .iter()
             .map(|candidate| candidate.search_point.log_alpha)
             .collect();
+
         let mut log_delta_values: Vec<f64> = candidates
             .iter()
             .map(|candidate| candidate.search_point.log_delta_offset)
             .collect();
+
         let mut skew_magnitudes: Vec<f64> = candidates
             .iter()
             .filter_map(|candidate| {
                 basin_candidate_features(candidate.search_point).map(|(_, value)| value)
             })
             .collect();
+
         let mut skew_asymmetries: Vec<f64> = candidates
             .iter()
             .filter_map(|candidate| {
@@ -746,6 +844,7 @@ fn search_bounds_from_regimes(search_regimes: &[NigSearchRegime]) -> NigShapeSea
             search_regime.sell_relative_center - search_regime.sell_relative_half_span,
             search_regime.log_delta_center - search_regime.log_delta_half_span,
         ];
+
         let regime_upper_bounds = [
             search_regime.log_alpha_center + search_regime.log_alpha_half_span,
             search_regime.buy_skew_center + search_regime.buy_skew_half_span,
@@ -802,7 +901,11 @@ fn nearest_search_regime_index(
 fn optimize_seed_candidates(
     optimizer_context: &ContinuousReturnOptimizerContext,
     seed_candidates: &[SeededNigCandidate],
+    progress_sender: Option<&Sender<ReturnComponentsStageProgressUpdate>>,
 ) -> Vec<OptimizedNigSearchCandidate> {
+    let completed_seed_candidate_count = std::sync::atomic::AtomicUsize::new(0);
+    let total_seed_candidate_count = seed_candidates.len();
+
     seed_candidates
         .par_iter()
         .filter_map(|seed_candidate| {
@@ -812,7 +915,7 @@ fn optimize_seed_candidates(
                 ContinuousLikelihoodFidelityTier::Full,
             )?;
 
-            Some(OptimizedNigSearchCandidate {
+            let optimized_candidate = OptimizedNigSearchCandidate {
                 configuration: final_evaluation.configuration,
                 family: seed_candidate.family,
                 seed_search_point: seed_candidate.scored_candidate.search_point,
@@ -825,7 +928,25 @@ fn optimize_seed_candidates(
                     stop_reason: "proxy_em_frontier",
                     basin_diagnostics: Vec::new(),
                 },
-            })
+            };
+
+            let completed_count = completed_seed_candidate_count
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+                + 1;
+
+            let seed_label = format!("basin_seed_{completed_count:03}");
+
+            send_return_components_evaluation_progress(
+                progress_sender,
+                ReturnComponentsStageProgressPhase::ContinuousNigBasinOptimization,
+                completed_count,
+                total_seed_candidate_count,
+                Some(seed_label.as_str()),
+                completed_count,
+                total_seed_candidate_count,
+            );
+
+            Some(optimized_candidate)
         })
         .collect()
 }

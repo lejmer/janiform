@@ -3,6 +3,7 @@ use janiform_foundations::numeric::arithmetic_mean_or_zero as arithmetic_mean;
 use janiform_foundations::randomness::SplitMix64SimulationRandomnessStream;
 use janiform_foundations::splitmix64_output_mixer;
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use super::super::contracts::{
     ReturnComponentsStageExactLikelihoodEvaluatorKind,
@@ -67,6 +68,12 @@ enum ExactLikelihoodScopeFailure {
         diagnostic: ReturnComponentsStageExactLikelihoodFailureDiagnostic,
         scope_evaluation: ExactLikelihoodScopeEvaluation,
     },
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ExactLikelihoodBlockContribution {
+    member_index: usize,
+    block_evaluation: ExactBlockLikelihoodEvaluation,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -154,16 +161,19 @@ pub(super) fn continuous_block_likelihood_objective_with_failures(
         ReturnComponentsStageExactLikelihoodFailureScope::Global,
         None,
     );
+
     let global_negative_log_likelihood = match global_scope_evaluation {
         Ok(scope_evaluation) => {
             diagnostics_summary.global_average_log_likelihood_error_upper_bound =
                 Some(scope_evaluation.average_log_likelihood_error_upper_bound);
             diagnostics_summary.evaluator_block_counts = scope_evaluation.evaluator_block_counts;
+
             scope_evaluation.average_negative_log_likelihood_estimate
         }
         Err(ExactLikelihoodScopeFailure::Structural(failure)) => {
             diagnostics_summary.failures.push(failure);
             diagnostics_summary.structural_failure_count += 1;
+
             f64::INFINITY
         }
         Err(ExactLikelihoodScopeFailure::Uncertified {
@@ -171,10 +181,13 @@ pub(super) fn continuous_block_likelihood_objective_with_failures(
             scope_evaluation,
         }) => {
             diagnostics_summary.failures.push(diagnostic);
+
             diagnostics_summary.global_average_log_likelihood_error_upper_bound =
                 Some(scope_evaluation.average_log_likelihood_error_upper_bound);
             diagnostics_summary.evaluator_block_counts = scope_evaluation.evaluator_block_counts;
+
             diagnostics_summary.uncertified_scope_count += 1;
+
             f64::INFINITY
         }
     };
@@ -185,6 +198,7 @@ pub(super) fn continuous_block_likelihood_objective_with_failures(
     {
         diagnostics_summary.conditional_average_log_likelihood_error_upper_bound =
             diagnostics_summary.global_average_log_likelihood_error_upper_bound;
+
         global_negative_log_likelihood
     } else {
         arithmetic_mean(
@@ -224,11 +238,13 @@ pub(super) fn continuous_block_likelihood_objective_with_failures(
                                     None => scope_evaluation
                                         .average_log_likelihood_error_upper_bound,
                                 });
+
                             scope_evaluation.average_negative_log_likelihood_estimate
                         }
                         Err(ExactLikelihoodScopeFailure::Structural(failure)) => {
                             diagnostics_summary.structural_failure_count += 1;
                             diagnostics_summary.failures.push(failure);
+
                             f64::INFINITY
                         }
                         Err(ExactLikelihoodScopeFailure::Uncertified {
@@ -236,7 +252,9 @@ pub(super) fn continuous_block_likelihood_objective_with_failures(
                             scope_evaluation,
                         }) => {
                             diagnostics_summary.uncertified_scope_count += 1;
+
                             diagnostics_summary.failures.push(diagnostic);
+
                             diagnostics_summary.conditional_average_log_likelihood_error_upper_bound =
                                 Some(match diagnostics_summary
                                     .conditional_average_log_likelihood_error_upper_bound
@@ -248,6 +266,7 @@ pub(super) fn continuous_block_likelihood_objective_with_failures(
                                     None => scope_evaluation
                                         .average_log_likelihood_error_upper_bound,
                                 });
+
                             f64::INFINITY
                         }
                     })
@@ -269,11 +288,13 @@ pub(super) fn continuous_block_likelihood_objective_with_failures(
                     == ReturnComponentsStageExactLikelihoodFailureReason::LogDensityErrorNotCertified
             })
             .count();
+
         diagnostics_summary.structural_failure_count =
             diagnostics_summary.failures.len() - diagnostics_summary.uncertified_scope_count;
     }
 
     let log_likelihood_shift = optimizer_context.log_likelihood_shift;
+
     let blended_negative_log_likelihood = arithmetic_mean(
         [
             global_negative_log_likelihood,
@@ -304,6 +325,7 @@ fn average_negative_log_likelihood_with_failures(
     scale_bucket_index: Option<usize>,
 ) -> Result<ExactLikelihoodScopeEvaluation, ExactLikelihoodScopeFailure> {
     let log_density_resolution = average_negative_log_likelihood_resolution(member_indices.len());
+
     let driver_parameters = configuration.derive_driver_parameters().map_err(|_| {
         ExactLikelihoodScopeFailure::Structural(build_exact_likelihood_failure_diagnostic(
             scope,
@@ -314,6 +336,7 @@ fn average_negative_log_likelihood_with_failures(
             None,
         ))
     })?;
+
     if member_indices.is_empty() {
         return Err(ExactLikelihoodScopeFailure::Structural(
             build_exact_likelihood_failure_diagnostic(
@@ -327,130 +350,26 @@ fn average_negative_log_likelihood_with_failures(
         ));
     }
 
+    let block_contributions = exact_likelihood_block_contributions(
+        configuration,
+        driver_parameters,
+        optimizer_context,
+        member_indices,
+        scope,
+        scale_bucket_index,
+        log_density_resolution,
+    );
+
     let mut log_likelihood_sum = 0.0;
     let mut log_likelihood_error_upper_bound_sum = 0.0;
     let mut evaluator_block_counts = ExactEvaluatorBlockCounts::default();
     let mut worst_block_member_index = None;
     let mut worst_block_evaluation: Option<ExactBlockLikelihoodEvaluation> = None;
 
-    for member_index in member_indices {
-        let Some(observed_return) = optimizer_context
-            .observed_returns
-            .get(*member_index)
-            .copied()
-        else {
-            return Err(ExactLikelihoodScopeFailure::Structural(
-                build_exact_likelihood_failure_diagnostic(
-                    scope,
-                    scale_bucket_index,
-                    Some(*member_index),
-                    ReturnComponentsStageExactLikelihoodFailureReason::InvalidObservedInputs,
-                    None,
-                    None,
-                ),
-            ));
-        };
-        let Some(business_time_scale) = optimizer_context
-            .business_time_scales
-            .get(*member_index)
-            .copied()
-        else {
-            return Err(ExactLikelihoodScopeFailure::Structural(
-                build_exact_likelihood_failure_diagnostic(
-                    scope,
-                    scale_bucket_index,
-                    Some(*member_index),
-                    ReturnComponentsStageExactLikelihoodFailureReason::InvalidObservedInputs,
-                    None,
-                    None,
-                ),
-            ));
-        };
-        let Some(sell_share_proxy) = optimizer_context
-            .sell_share_proxies
-            .get(*member_index)
-            .copied()
-        else {
-            return Err(ExactLikelihoodScopeFailure::Structural(
-                build_exact_likelihood_failure_diagnostic(
-                    scope,
-                    scale_bucket_index,
-                    Some(*member_index),
-                    ReturnComponentsStageExactLikelihoodFailureReason::InvalidObservedInputs,
-                    None,
-                    None,
-                ),
-            ));
-        };
-        let Some(integrated_buy_intensity) = optimizer_context
-            .integrated_buy_intensities
-            .get(*member_index)
-            .copied()
-        else {
-            return Err(ExactLikelihoodScopeFailure::Structural(
-                build_exact_likelihood_failure_diagnostic(
-                    scope,
-                    scale_bucket_index,
-                    Some(*member_index),
-                    ReturnComponentsStageExactLikelihoodFailureReason::InvalidObservedInputs,
-                    None,
-                    None,
-                ),
-            ));
-        };
-        let Some(integrated_sell_intensity) = optimizer_context
-            .integrated_sell_intensities
-            .get(*member_index)
-            .copied()
-        else {
-            return Err(ExactLikelihoodScopeFailure::Structural(
-                build_exact_likelihood_failure_diagnostic(
-                    scope,
-                    scale_bucket_index,
-                    Some(*member_index),
-                    ReturnComponentsStageExactLikelihoodFailureReason::InvalidObservedInputs,
-                    None,
-                    None,
-                ),
-            ));
-        };
-
-        let block_input = build_exact_block_input(
-            configuration,
-            observed_return,
-            business_time_scale,
-            sell_share_proxy,
-            integrated_buy_intensity,
-            integrated_sell_intensity,
-            *member_index,
-            log_density_resolution,
-        )
-        .map_err(|failure| {
-            ExactLikelihoodScopeFailure::Structural(build_exact_likelihood_failure_diagnostic(
-                scope,
-                scale_bucket_index,
-                Some(failure.block_member_index),
-                failure.failure_reason,
-                Some(failure.context),
-                None,
-            ))
-        })?;
-        let block_evaluation = evaluate_exact_block_likelihood(
-            configuration,
-            driver_parameters,
-            block_input,
-            log_density_resolution,
-        )
-        .map_err(|failure| {
-            ExactLikelihoodScopeFailure::Structural(build_exact_likelihood_failure_diagnostic(
-                scope,
-                scale_bucket_index,
-                Some(failure.block_member_index),
-                failure.failure_reason,
-                Some(failure.context),
-                None,
-            ))
-        })?;
+    for block_contribution in block_contributions {
+        let block_contribution = block_contribution?;
+        let member_index = block_contribution.member_index;
+        let block_evaluation = block_contribution.block_evaluation;
 
         match block_evaluation.evaluator_kind {
             ReturnComponentsStageExactLikelihoodEvaluatorKind::ClosedFormSingleSideBuy => {
@@ -475,16 +394,19 @@ fn average_negative_log_likelihood_with_failures(
             None => true,
         };
         if should_replace_worst_block {
-            worst_block_member_index = Some(*member_index);
+            worst_block_member_index = Some(member_index);
             worst_block_evaluation = Some(block_evaluation);
         }
     }
 
     let evaluated_block_count = member_indices.len();
+
     let average_negative_log_likelihood_estimate =
         -log_likelihood_sum / evaluated_block_count as f64;
+
     let average_log_likelihood_error_upper_bound =
         log_likelihood_error_upper_bound_sum / evaluated_block_count as f64;
+
     let scope_evaluation = ExactLikelihoodScopeEvaluation {
         average_negative_log_likelihood_estimate,
         average_log_likelihood_error_upper_bound,
@@ -562,6 +484,140 @@ fn average_negative_log_likelihood_with_failures(
     Ok(scope_evaluation)
 }
 
+fn exact_likelihood_block_contributions(
+    configuration: NigSharedPlusShiftConfiguration,
+    driver_parameters: janiform_model_kernels::nig::NigBuySellDriverParameters,
+    optimizer_context: &ContinuousReturnOptimizerContext,
+    member_indices: &[usize],
+    scope: ReturnComponentsStageExactLikelihoodFailureScope,
+    scale_bucket_index: Option<usize>,
+    log_density_resolution: f64,
+) -> Vec<Result<ExactLikelihoodBlockContribution, ExactLikelihoodScopeFailure>> {
+    let evaluate_member = |member_index: &usize| {
+        exact_likelihood_block_contribution(
+            configuration,
+            driver_parameters,
+            optimizer_context,
+            *member_index,
+            scope,
+            scale_bucket_index,
+            log_density_resolution,
+        )
+    };
+
+    if member_indices.len() > 1 {
+        return member_indices.par_iter().map(evaluate_member).collect();
+    }
+
+    member_indices.iter().map(evaluate_member).collect()
+}
+
+fn exact_likelihood_block_contribution(
+    configuration: NigSharedPlusShiftConfiguration,
+    driver_parameters: janiform_model_kernels::nig::NigBuySellDriverParameters,
+    optimizer_context: &ContinuousReturnOptimizerContext,
+    member_index: usize,
+    scope: ReturnComponentsStageExactLikelihoodFailureScope,
+    scale_bucket_index: Option<usize>,
+    log_density_resolution: f64,
+) -> Result<ExactLikelihoodBlockContribution, ExactLikelihoodScopeFailure> {
+    let observed_return = exact_likelihood_member_value(
+        optimizer_context.observed_returns.as_slice(),
+        member_index,
+        scope,
+        scale_bucket_index,
+    )?;
+
+    let business_time_scale = exact_likelihood_member_value(
+        optimizer_context.business_time_scales.as_slice(),
+        member_index,
+        scope,
+        scale_bucket_index,
+    )?;
+
+    let sell_share_proxy = exact_likelihood_member_value(
+        optimizer_context.sell_share_proxies.as_slice(),
+        member_index,
+        scope,
+        scale_bucket_index,
+    )?;
+
+    let integrated_buy_intensity = exact_likelihood_member_value(
+        optimizer_context.integrated_buy_intensities.as_slice(),
+        member_index,
+        scope,
+        scale_bucket_index,
+    )?;
+
+    let integrated_sell_intensity = exact_likelihood_member_value(
+        optimizer_context.integrated_sell_intensities.as_slice(),
+        member_index,
+        scope,
+        scale_bucket_index,
+    )?;
+
+    let block_input = build_exact_block_input(
+        configuration,
+        observed_return,
+        business_time_scale,
+        sell_share_proxy,
+        integrated_buy_intensity,
+        integrated_sell_intensity,
+        member_index,
+        log_density_resolution,
+    )
+    .map_err(|failure| {
+        ExactLikelihoodScopeFailure::Structural(build_exact_likelihood_failure_diagnostic(
+            scope,
+            scale_bucket_index,
+            Some(failure.block_member_index),
+            failure.failure_reason,
+            Some(failure.context),
+            None,
+        ))
+    })?;
+
+    let block_evaluation = evaluate_exact_block_likelihood(
+        configuration,
+        driver_parameters,
+        block_input,
+        log_density_resolution,
+    )
+    .map_err(|failure| {
+        ExactLikelihoodScopeFailure::Structural(build_exact_likelihood_failure_diagnostic(
+            scope,
+            scale_bucket_index,
+            Some(failure.block_member_index),
+            failure.failure_reason,
+            Some(failure.context),
+            None,
+        ))
+    })?;
+
+    Ok(ExactLikelihoodBlockContribution {
+        member_index,
+        block_evaluation,
+    })
+}
+
+fn exact_likelihood_member_value(
+    values: &[f64],
+    member_index: usize,
+    scope: ReturnComponentsStageExactLikelihoodFailureScope,
+    scale_bucket_index: Option<usize>,
+) -> Result<f64, ExactLikelihoodScopeFailure> {
+    values.get(member_index).copied().ok_or_else(|| {
+        ExactLikelihoodScopeFailure::Structural(build_exact_likelihood_failure_diagnostic(
+            scope,
+            scale_bucket_index,
+            Some(member_index),
+            ReturnComponentsStageExactLikelihoodFailureReason::InvalidObservedInputs,
+            None,
+            None,
+        ))
+    })
+}
+
 pub(super) fn average_negative_log_likelihood_resolution(sample_count: usize) -> f64 {
     RETURN_COMPONENTS_STAGE_CONTINUOUS_FIT_PROFILE_LIKELIHOOD_CHI_SQUARE_95
         / (2.0 * sample_count.max(1) as f64)
@@ -589,6 +645,7 @@ pub(super) fn log_density_net_trading_time_return(
         log_density_resolution,
     )
     .ok()?;
+
     evaluate_exact_block_likelihood(
         configuration,
         driver_parameters,
@@ -621,6 +678,7 @@ pub(super) fn log_density_net_trading_time_return_failure_reason(
         log_density_resolution,
     )
     .ok()?;
+
     evaluate_exact_block_likelihood(
         configuration,
         driver_parameters,
@@ -669,6 +727,7 @@ pub(super) fn simulate_matched_scale_returns(
     let mut randomness_stream = SplitMix64SimulationRandomnessStream::from_seed(
         candidate_sampling_seed(stage_seed, configuration),
     );
+
     let mut synthetic_returns = Vec::with_capacity(calibration_sample.business_time_scales.len());
 
     for (business_time_scale, sell_share_proxy) in calibration_sample
@@ -773,6 +832,7 @@ fn coarse_transform_probe_gamma_floor() -> f64 {
 
 fn candidate_sampling_seed(stage_seed: u64, configuration: NigSharedPlusShiftConfiguration) -> u64 {
     let mut mixed = stage_seed ^ 0xC6A4_A793_5BD1_E995;
+
     for parameter_bits in [
         configuration.alpha.to_bits(),
         configuration.beta_0.to_bits(),
@@ -794,6 +854,7 @@ pub(super) fn closed_form_single_side_log_density(
     integrated_intensity: f64,
 ) -> Option<f64> {
     let driver_parameters = configuration.derive_driver_parameters().ok()?;
+
     match evaluator_kind {
         ReturnComponentsStageExactLikelihoodEvaluatorKind::ClosedFormSingleSideBuy => {
             super::closed_form::closed_form_nig_log_density(

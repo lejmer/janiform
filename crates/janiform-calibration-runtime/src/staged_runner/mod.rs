@@ -30,7 +30,9 @@ pub(super) use crate::stages::mean_reversion::{
 pub(super) use crate::stages::return_components::{
     ReturnComponentsStageActivityInput, ReturnComponentsStageCandidateGenerationInput,
     ReturnComponentsStageExecutionInput, ReturnComponentsStageExecutionMetadata,
-    ReturnComponentsStageExecutionReport, run_return_components_calibration_stage,
+    ReturnComponentsStageExecutionReport, ReturnComponentsStageProgressPhase,
+    ReturnComponentsStageProgressUpdate, run_return_components_calibration_stage,
+    run_return_components_calibration_stage_with_progress_observer,
 };
 pub(super) use crate::stages::seasonality::{
     CalibrationStageExecutionStatus, SeasonalityStageExecutionInput,

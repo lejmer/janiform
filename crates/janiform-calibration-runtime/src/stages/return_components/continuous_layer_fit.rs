@@ -1,14 +1,22 @@
+use std::sync::mpsc::Sender;
+
 use janiform_calibration_artifacts::CalibrationOptimizerSettings;
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 
+#[cfg(test)]
+use super::continuous_fit::build_nig_search_candidates;
 use super::continuous_fit::{
     ContinuousReturnCandidateEvaluation, OptimizedNigCandidate,
-    ReturnComponentsStageContinuousReturnCalibrationSample, build_nig_search_candidates,
-    evaluate_continuous_nig_candidate,
+    ReturnComponentsStageContinuousReturnCalibrationSample,
+    build_nig_search_candidates_with_progress, evaluate_continuous_nig_candidate,
 };
 use super::contracts::{
     ReturnComponentsStageCandidateGenerationInputError,
-    ReturnComponentsStageObservedSignalSummaryStatistics,
+    ReturnComponentsStageObservedSignalSummaryStatistics, ReturnComponentsStageProgressPhase,
+    ReturnComponentsStageProgressUpdate,
+};
+use super::progress::{
+    send_return_components_evaluation_progress, send_return_components_progress,
 };
 
 #[derive(Debug, Clone)]
@@ -27,9 +35,14 @@ pub(crate) fn fit_continuous_return_layer(
     calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
     stage_seed: u64,
     solver_settings: &CalibrationOptimizerSettings,
+    progress_sender: Option<&Sender<ReturnComponentsStageProgressUpdate>>,
 ) -> Result<FittedContinuousReturnLayer, ReturnComponentsStageCandidateGenerationInputError> {
-    let optimized_candidates =
-        build_nig_search_candidates(calibration_sample, stage_seed, solver_settings);
+    let optimized_candidates = build_nig_search_candidates_with_progress(
+        calibration_sample,
+        stage_seed,
+        solver_settings,
+        progress_sender,
+    );
 
     if optimized_candidates.is_empty() {
         return Err(
@@ -37,13 +50,27 @@ pub(crate) fn fit_continuous_return_layer(
         );
     }
 
+    let total_optimized_candidate_count = optimized_candidates.len();
+
+    send_return_components_progress(
+        progress_sender,
+        ReturnComponentsStageProgressPhase::ContinuousNigFinalEvaluation,
+        0,
+        total_optimized_candidate_count,
+        Some("evaluate optimized NIG candidates"),
+    );
+
     let fitted_candidates = optimized_candidates
         .into_iter()
+        .enumerate()
         .map(
-            |OptimizedNigCandidate {
-                 configuration: nig_configuration,
-                 optimizer_diagnostic,
-             }| {
+            |(
+                optimized_candidate_index,
+                OptimizedNigCandidate {
+                    configuration: nig_configuration,
+                    optimizer_diagnostic,
+                },
+            )| {
                 let mut evaluation = evaluate_continuous_nig_candidate(
                     nig_configuration,
                     calibration_sample,
@@ -64,6 +91,18 @@ pub(crate) fn fit_continuous_return_layer(
                 evaluation.fit_breakdown.optimizer_basin_diagnostics =
                     optimizer_diagnostic.basin_diagnostics.clone();
                 evaluation.optimizer_diagnostic = optimizer_diagnostic;
+
+                let candidate_label = format!("nig_candidate_{:03}", optimized_candidate_index + 1);
+
+                send_return_components_evaluation_progress(
+                    progress_sender,
+                    ReturnComponentsStageProgressPhase::ContinuousNigFinalEvaluation,
+                    optimized_candidate_index + 1,
+                    total_optimized_candidate_count,
+                    Some(candidate_label.as_str()),
+                    optimized_candidate_index + 1,
+                    total_optimized_candidate_count,
+                );
 
                 FittedContinuousReturnCandidate {
                     nig_configuration,
@@ -159,6 +198,7 @@ mod tests {
             &calibration_sample,
             17,
             &solver_settings,
+            None,
         )
         .expect("continuous layer fit should produce a NIG candidate");
 
@@ -275,6 +315,7 @@ mod tests {
             &calibration_sample,
             17,
             &solver_settings,
+            None,
         )
         .expect("continuous layer fit should preserve optimized candidates");
 

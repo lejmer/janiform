@@ -13,6 +13,7 @@ use janiform_market_time::hourly_factors::{
     HourlySeasonalityFactorSource,
 };
 use janiform_model_kernels::hawkes::HawkesExcitationState;
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 
 use crate::adapters::load_hourly_factor_contract_for_calibration;
@@ -34,7 +35,28 @@ use super::super::setup::{
 use super::{
     JOINT_REFINEMENT_OBJECTIVE_NORMALIZATION_FLOOR, JointRefinementCoarseConsistencySummary,
     JointRefinementContext, JointRefinementSeedSummary, build_exchange_calendar_registry_artifact,
+    joint_refinement_has_parallel_worker_capacity, with_joint_refinement_thread_pool,
 };
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum JointRefinementCoarseConsistencyHorizon {
+    FiveMinute,
+    FifteenMinute,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct JointRefinementCoarseConsistencyTask {
+    seed_position: usize,
+    simulation_seed: u64,
+    horizon: JointRefinementCoarseConsistencyHorizon,
+}
+
+#[derive(Debug)]
+struct JointRefinementCoarseConsistencyTaskOutput {
+    seed_position: usize,
+    horizon: JointRefinementCoarseConsistencyHorizon,
+    intervals: Option<Vec<JointRefinementAggregatedIntervalObservation>>,
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) struct JointRefinementCoarseConsistencyArtifacts {
@@ -47,6 +69,14 @@ pub(crate) fn build_joint_coarse_tick_consistency_metrics(
     fitted_parameters: &janiform_calibration_artifacts::JointRefinementStageFittedParameters,
     tick_seed_summaries: &[(u64, JointRefinementSeedSummary)],
 ) -> Vec<JointRefinementStageCoarseTickConsistencyMetric> {
+    if joint_refinement_has_parallel_worker_capacity(context) && !tick_seed_summaries.is_empty() {
+        return build_joint_coarse_tick_consistency_metrics_parallel(
+            context,
+            fitted_parameters,
+            tick_seed_summaries,
+        );
+    }
+
     let mut metrics = Vec::new();
 
     for (simulation_seed, tick_summary) in tick_seed_summaries {
@@ -60,6 +90,7 @@ pub(crate) fn build_joint_coarse_tick_consistency_metrics(
                 .simulated_5m_interval_template
                 .as_slice(),
         );
+
         let coarse_15m_intervals = build_joint_coarse_interval_observations(
             context,
             fitted_parameters,
@@ -81,6 +112,113 @@ pub(crate) fn build_joint_coarse_tick_consistency_metrics(
     }
 
     metrics
+}
+
+fn build_joint_coarse_tick_consistency_metrics_parallel(
+    context: &JointRefinementContext,
+    fitted_parameters: &janiform_calibration_artifacts::JointRefinementStageFittedParameters,
+    tick_seed_summaries: &[(u64, JointRefinementSeedSummary)],
+) -> Vec<JointRefinementStageCoarseTickConsistencyMetric> {
+    let tasks = tick_seed_summaries
+        .iter()
+        .enumerate()
+        .flat_map(|(seed_position, (simulation_seed, _))| {
+            [
+                JointRefinementCoarseConsistencyTask {
+                    seed_position,
+                    simulation_seed: *simulation_seed,
+                    horizon: JointRefinementCoarseConsistencyHorizon::FiveMinute,
+                },
+                JointRefinementCoarseConsistencyTask {
+                    seed_position,
+                    simulation_seed: *simulation_seed,
+                    horizon: JointRefinementCoarseConsistencyHorizon::FifteenMinute,
+                },
+            ]
+        })
+        .collect::<Vec<_>>();
+
+    let task_outputs = with_joint_refinement_thread_pool(context, || {
+        tasks
+            .into_par_iter()
+            .map(|task| JointRefinementCoarseConsistencyTaskOutput {
+                seed_position: task.seed_position,
+                horizon: task.horizon,
+                intervals: build_joint_coarse_interval_observations(
+                    context,
+                    fitted_parameters,
+                    task.simulation_seed,
+                    task.horizon.interval_duration_nanos(),
+                    task.horizon.template(context),
+                ),
+            })
+            .collect::<Vec<_>>()
+    });
+
+    let mut intervals_by_seed: Vec<(
+        Option<Vec<JointRefinementAggregatedIntervalObservation>>,
+        Option<Vec<JointRefinementAggregatedIntervalObservation>>,
+    )> = (0..tick_seed_summaries.len())
+        .map(|_| (None, None))
+        .collect();
+
+    for task_output in task_outputs {
+        let Some((coarse_5m_intervals, coarse_15m_intervals)) =
+            intervals_by_seed.get_mut(task_output.seed_position)
+        else {
+            continue;
+        };
+
+        match task_output.horizon {
+            JointRefinementCoarseConsistencyHorizon::FiveMinute => {
+                *coarse_5m_intervals = task_output.intervals;
+            }
+            JointRefinementCoarseConsistencyHorizon::FifteenMinute => {
+                *coarse_15m_intervals = task_output.intervals;
+            }
+        }
+    }
+
+    let mut metrics = Vec::new();
+
+    for ((simulation_seed, tick_summary), (coarse_5m_intervals, coarse_15m_intervals)) in
+        tick_seed_summaries.iter().zip(intervals_by_seed.iter())
+    {
+        extend_joint_coarse_tick_consistency_metrics_for_seed(
+            &mut metrics,
+            *simulation_seed,
+            coarse_5m_intervals.as_deref(),
+            coarse_15m_intervals.as_deref(),
+            tick_summary,
+        );
+    }
+
+    metrics
+}
+
+impl JointRefinementCoarseConsistencyHorizon {
+    const fn interval_duration_nanos(self) -> i64 {
+        match self {
+            Self::FiveMinute => FIVE_MINUTES_NANOS,
+            Self::FifteenMinute => 3 * FIVE_MINUTES_NANOS,
+        }
+    }
+
+    fn template(
+        self,
+        context: &JointRefinementContext,
+    ) -> &[JointRefinementAggregatedIntervalObservation] {
+        match self {
+            Self::FiveMinute => context
+                .observed_data
+                .simulated_5m_interval_template
+                .as_slice(),
+            Self::FifteenMinute => context
+                .observed_data
+                .simulated_15m_interval_template
+                .as_slice(),
+        }
+    }
 }
 
 pub(crate) fn extend_joint_coarse_tick_consistency_metrics_for_seed(
@@ -412,8 +550,10 @@ fn build_joint_coarse_model_inputs(
         y_minus_plus: 0.0,
         y_minus_minus: 0.0,
     };
+
     let endogenous_interval_factors =
         endogenous_interval_factors_from_hourly_contract(hourly_factor_contract).ok()?;
+
     let (mean_reversion_runtime_interval_anchors, initial_mean_reversion_boundary_state) =
         materialize_joint_refinement_mean_reversion_runtime_inputs(
             hourly_factor_contract.metadata.interval_alignment_policy,

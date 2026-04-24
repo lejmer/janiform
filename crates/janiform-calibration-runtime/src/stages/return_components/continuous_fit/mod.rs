@@ -19,8 +19,10 @@ pub(crate) use bounds::{
     nig_search_point_from_configuration,
 };
 pub(crate) use likelihood::evaluate_configuration_likelihood_objective;
+#[cfg(test)]
+pub(crate) use optimization::build_nig_search_candidates;
 pub(crate) use optimization::{
-    build_nig_moment_seed_configurations, build_nig_search_candidates,
+    build_nig_moment_seed_configurations, build_nig_search_candidates_with_progress,
     evaluate_continuous_nig_candidate,
 };
 pub(crate) use profile::distribution_profile_fit_score;

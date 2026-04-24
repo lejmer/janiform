@@ -27,8 +27,9 @@ use super::super::setup::parameter_vector_to_fitted_parameters;
 use super::selection::admissibility_threshold_from_sample_count;
 use super::{
     JointRefinementContext, JointRefinementOptionTierPricingArtifact,
-    JointRefinementRestartOutcome, JointRefinementResumeStore, ordered_parameter_bits,
-    resolve_option_surface_tier_pricing_artifact,
+    JointRefinementRestartOutcome, JointRefinementResumeStore,
+    joint_refinement_parallel_worker_count, ordered_parameter_bits,
+    resolve_option_surface_tier_pricing_artifact, with_joint_refinement_thread_pool,
 };
 
 pub(crate) const JOINT_REFINEMENT_DEFAULT_OPTION_REFINEMENT_CANDIDATE_COUNT: usize = 5;
@@ -88,10 +89,7 @@ struct OptionRefinementSharedProgressState {
 
 impl OptionRefinementSharedProgressState {
     fn snapshot(&self) -> OptionRefinementSharedProgressSnapshot {
-        let best_candidate_guard = match self.best_completed_candidate.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => poisoned.into_inner(),
-        };
+        let best_candidate_guard = self.best_completed_candidate.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
 
         let (best_restart_id, best_weighted_objective) = best_candidate_guard
             .as_ref()
@@ -119,10 +117,7 @@ impl OptionRefinementSharedProgressState {
         weighted_objective: Option<f64>,
     ) -> OptionRefinementSharedProgressSnapshot {
         if let Some(weighted_objective) = weighted_objective {
-            let mut best_candidate_guard = match self.best_completed_candidate.lock() {
-                Ok(guard) => guard,
-                Err(poisoned) => poisoned.into_inner(),
-            };
+            let mut best_candidate_guard = self.best_completed_candidate.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
 
             let should_replace_best = best_candidate_guard
                 .as_ref()
@@ -146,10 +141,7 @@ impl OptionRefinementSharedProgressState {
         restart_id: &str,
         weighted_objective: f64,
     ) -> OptionRefinementSharedProgressSnapshot {
-        let mut best_candidate_guard = match self.best_completed_candidate.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => poisoned.into_inner(),
-        };
+        let mut best_candidate_guard = self.best_completed_candidate.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
 
         let should_replace_best = best_candidate_guard
             .as_ref()
@@ -314,17 +306,6 @@ fn option_refinement_selection_score_ceiling(
         * admissibility_threshold_from_sample_count(effective_sample_count.max(1))
 }
 
-fn with_option_refinement_thread_pool<T, F>(context: &JointRefinementContext, operation: F) -> T
-where
-    T: Send,
-    F: FnOnce() -> T + Send,
-{
-    match context.stage_thread_pool.as_ref() {
-        Some(thread_pool) => thread_pool.install(operation),
-        None => operation(),
-    }
-}
-
 fn resolved_option_refinement_candidate_parallelism(
     available_stage_thread_count: usize,
     total_pricing_cpu_count: usize,
@@ -351,12 +332,6 @@ fn option_refinement_candidate_parallelism(
     context: &JointRefinementContext,
     candidate_count: usize,
 ) -> usize {
-    let available_stage_thread_count = context
-        .stage_thread_pool
-        .as_ref()
-        .map(|thread_pool| thread_pool.current_num_threads())
-        .unwrap_or(1);
-
     let total_pricing_cpu_count = context
         .option_pricing_context
         .as_ref()
@@ -364,7 +339,7 @@ fn option_refinement_candidate_parallelism(
         .unwrap_or(1);
 
     resolved_option_refinement_candidate_parallelism(
-        available_stage_thread_count,
+        joint_refinement_parallel_worker_count(context),
         total_pricing_cpu_count,
         candidate_count,
     )
@@ -469,7 +444,7 @@ fn refine_search_tier_candidates(
         option_refinement_candidate_parallelism(context, unresolved_candidates.len());
     let pricing_cpu_count =
         option_refinement_candidate_pricing_cpu_count(context, candidate_parallelism);
-    let unresolved_results = with_option_refinement_thread_pool(context, || {
+    let unresolved_results = with_joint_refinement_thread_pool(context, || {
         if unresolved_candidates.len() > 1 && candidate_parallelism > 1 {
             unresolved_candidates
                 .par_iter()
@@ -678,6 +653,7 @@ fn optimize_pricing_block(
         .iter()
         .map(|parameter_index| refinement_context.lower_bounds[*parameter_index])
         .collect::<Vec<_>>();
+
     let upper_bounds = block_indices
         .iter()
         .map(|parameter_index| refinement_context.upper_bounds[*parameter_index])
@@ -690,14 +666,17 @@ fn optimize_pricing_block(
         initial_point.as_slice(),
         search_coordinate_scaling.as_slice(),
     );
+
     let scaled_lower_bounds = scale_pricing_block_coordinates(
         lower_bounds.as_slice(),
         search_coordinate_scaling.as_slice(),
     );
+
     let scaled_upper_bounds = scale_pricing_block_coordinates(
         upper_bounds.as_slice(),
         search_coordinate_scaling.as_slice(),
     );
+
     let scaled_trust_region_settings = scale_trust_region_settings_for_pricing_block(
         option_pricing_block_trust_region_settings(solver_settings, block_indices.len()),
         search_coordinate_scaling.as_slice(),
@@ -708,11 +687,13 @@ fn optimize_pricing_block(
             scaled_block_vector,
             search_coordinate_scaling.as_slice(),
         );
+
         let pricing_vector = substitute_pricing_block(
             dynamics_candidate.parameter_vector.as_slice(),
             block_indices,
             block_vector.as_slice(),
         );
+
         scored_pricing_vector(
             refinement_context,
             dynamics_candidate,
@@ -943,7 +924,7 @@ fn evaluate_selection_tier_candidates(
     let pricing_cpu_count =
         option_refinement_candidate_pricing_cpu_count(context, candidate_parallelism);
 
-    let unresolved_results = with_option_refinement_thread_pool(context, || {
+    let unresolved_results = with_joint_refinement_thread_pool(context, || {
         if unresolved_candidates.len() > 1 && candidate_parallelism > 1 {
             unresolved_candidates
                 .par_iter()
@@ -1192,17 +1173,20 @@ fn pricing_block_refinement_context(
         .fitted_parameters
         .hawkes_fitted_parameters
         .clone();
+
     refinement_context.baseline_return_components_fitted_parameters = dynamics_candidate
         .final_evaluation
         .fitted_parameters
         .return_components_fitted_parameters
         .clone();
+
     refinement_context.baseline_mean_reversion_fitted_parameters = dynamics_candidate
         .final_evaluation
         .fitted_parameters
         .return_components_fitted_parameters
         .mean_reversion_fitted_parameters
         .clone();
+
     refinement_context.option_pricing_refinement_enabled = true;
 
     refinement_context

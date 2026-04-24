@@ -20,6 +20,7 @@ pub(crate) use evaluation::{
 pub(crate) use signals::ReturnComponentsStageSortedSignalInputs;
 pub(crate) use signals::resolve_activity_calibration_context;
 pub use stage::run_return_components_calibration_stage;
+pub(crate) use stage::run_return_components_calibration_stage_with_progress_observer;
 
 #[cfg(test)]
 pub(crate) use close_open_gap::derive_close_open_gap_candidates;

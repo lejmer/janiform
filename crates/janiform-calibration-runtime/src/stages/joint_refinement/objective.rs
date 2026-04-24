@@ -48,12 +48,14 @@ pub(super) fn evaluate_joint_candidate(
         fidelity_tier,
         parameter_bits: ordered_parameter_bits(parameter_vector),
     };
+
     if let Ok(cache_guard) = context.objective_cache.lock()
         && let Some(cached_value) = cache_guard.get(&cache_key)
     {
         context.profiling_state.record_objective_cache_hit();
         return cached_value.clone();
     }
+
     context.profiling_state.record_objective_cache_miss();
 
     let candidate_evaluation =
@@ -80,47 +82,39 @@ pub(super) fn evaluate_joint_candidate_nig_block_search_objective(
 
     let modeled_open_event_rate_per_hour =
         modeled_open_event_rate_per_hour(&fitted_parameters, context);
+
     let raw_aggregated_likelihood_fit = raw_aggregated_likelihood_fit_for_fidelity(
         &fitted_parameters,
         modeled_open_event_rate_per_hour,
         context,
         ContinuousLikelihoodFidelityTier::Local,
     );
-    let normalized_likelihood_fit = normalize_bucket(
-        raw_aggregated_likelihood_fit,
-        context.local_baseline_buckets.aggregated_likelihood_fit,
-    );
+
     let thresholds = joint_refinement_admissibility_thresholds(context);
 
-    normalized_likelihood_fit
+    let likelihood_search_score = threshold_relative_likelihood_search_score(
+        raw_aggregated_likelihood_fit,
+        thresholds.aggregated_likelihood_fit,
+    );
+
+    likelihood_search_score
         .is_finite()
-        .then_some(threshold_relative_search_score(
-            normalized_likelihood_fit,
-            thresholds.aggregated_likelihood_fit,
-        ))
+        .then_some(likelihood_search_score)
 }
 
-pub(super) fn evaluate_joint_candidate_restart_admission_score(
-    parameter_vector: &[f64],
+pub(super) fn evaluate_joint_fitted_candidate_restart_admission_score(
+    fitted_parameters: &JointRefinementStageFittedParameters,
     context: &JointRefinementContext,
 ) -> Result<f64, &'static str> {
-    let Some(fitted_parameters) = parameter_vector_to_fitted_parameters(parameter_vector, context)
-    else {
-        return Err("invalid_parameter_vector");
-    };
-    if violates_runtime_seasonality_scaled_stationarity(&fitted_parameters, context) {
+    if violates_runtime_seasonality_scaled_stationarity(fitted_parameters, context) {
         context
             .profiling_state
             .record_invalid_candidate_evaluation();
         return Err("seasonality_scaled_stationarity_failed");
     }
 
-    let parameter_bits = ordered_parameter_bits(parameter_vector);
-    let deterministic_evaluation = resolve_deterministic_evaluation(
-        &fitted_parameters,
-        Some(parameter_bits.as_slice()),
-        context,
-    );
+    let deterministic_evaluation =
+        build_restart_screening_deterministic_evaluation(fitted_parameters, context);
     if let Some(failure_reason) =
         deterministic_pre_simulation_dynamics_failure(&deterministic_evaluation, context)
     {
@@ -128,16 +122,19 @@ pub(super) fn evaluate_joint_candidate_restart_admission_score(
     }
 
     let thresholds = joint_refinement_admissibility_thresholds(context);
-    let mut threshold_relative_scores = vec![threshold_relative_search_score(
+
+    let mut threshold_relative_scores = vec![threshold_relative_likelihood_search_score(
         deterministic_evaluation.raw_aggregated_likelihood_fit,
         thresholds.aggregated_likelihood_fit,
     )];
+
     if let Some(activity_level_fit) = deterministic_evaluation.raw_expected_activity_level_fit {
         threshold_relative_scores.push(threshold_relative_search_score(
             activity_level_fit,
             thresholds.activity_level_fit,
         ));
     }
+
     if let Some(activity_shape_fit) = deterministic_evaluation.raw_expected_activity_shape_fit {
         threshold_relative_scores.push(threshold_relative_search_score(
             activity_shape_fit,
@@ -153,13 +150,26 @@ pub(super) fn evaluate_joint_candidate_restart_admission_score(
     }
 }
 
+fn build_restart_screening_deterministic_evaluation(
+    fitted_parameters: &JointRefinementStageFittedParameters,
+    context: &JointRefinementContext,
+) -> JointRefinementDeterministicEvaluation {
+    // Screening intentionally uses seed fidelity and avoids the full-fidelity cache.
+    // The deterministic cache key does not encode likelihood fidelity.
+    build_deterministic_evaluation_for_fidelity(
+        fitted_parameters,
+        context,
+        ContinuousLikelihoodFidelityTier::Seed,
+    )
+}
+
 pub(super) fn dynamics_block_search_objective(
     raw_metrics: &JointRefinementRawAdmissibilityMetrics,
     thresholds: JointRefinementAdmissibilityThresholds,
 ) -> f64 {
     root_mean_square(
         [
-            threshold_relative_search_score(
+            threshold_relative_likelihood_search_score(
                 raw_metrics.aggregated_likelihood_fit,
                 thresholds.aggregated_likelihood_fit,
             ),
@@ -425,9 +435,12 @@ fn build_joint_candidate_evaluation_for_fitted_parameters(
         Some("objective_normalization"),
     );
 
-    let normalized_aggregated_likelihood_fit = normalize_bucket(
+    let use_raw_bucket_values = baseline_bucket_values_are_unity(baseline_buckets);
+
+    let normalized_aggregated_likelihood_fit = likelihood_ratio_fit_score(
         raw_aggregated_likelihood_fit,
         baseline_buckets.aggregated_likelihood_fit,
+        use_raw_bucket_values,
     );
 
     let normalized_aggregated_return_shape_fit = normalize_bucket(
@@ -519,8 +532,6 @@ fn build_joint_candidate_evaluation_for_fitted_parameters(
 
     let weighted_objective =
         root_mean_square(normalized_objective_terms.as_slice()) + hard_constraint_penalty;
-
-    let use_raw_bucket_values = baseline_bucket_values_are_unity(baseline_buckets);
 
     emit_joint_refinement_candidate_evaluation_progress(
         progress_sender,
@@ -792,6 +803,20 @@ fn normalize_bucket(raw_value: f64, baseline_bucket: f64) -> f64 {
     )
 }
 
+fn likelihood_ratio_fit_score(
+    raw_score: f64,
+    baseline_score: f64,
+    baseline_is_uninitialized: bool,
+) -> f64 {
+    if baseline_is_uninitialized {
+        return 1.0;
+    }
+
+    // Shifted average NLL differences cancel the sample-specific likelihood shift.
+    // The exponentiated difference is the geometric likelihood ratio to baseline.
+    (raw_score - baseline_score).exp()
+}
+
 fn maybe_raw(use_raw: bool, raw_value: f64, normalized_value: f64) -> f64 {
     if use_raw { raw_value } else { normalized_value }
 }
@@ -874,6 +899,16 @@ fn threshold_relative_search_score(metric_value: f64, threshold: f64) -> f64 {
     }
 }
 
+fn threshold_relative_likelihood_search_score(metric_value: f64, threshold: f64) -> f64 {
+    let log_ratio_to_threshold = metric_value - threshold;
+
+    if log_ratio_to_threshold <= 0.0 {
+        log_ratio_to_threshold.exp()
+    } else {
+        1.0 + log_ratio_to_threshold
+    }
+}
+
 pub(crate) fn invalid_candidate_evaluation(
     context: &JointRefinementContext,
     baseline_hawkes_fitted_parameters: &janiform_calibration_artifacts::HawkesStageFittedParameters,
@@ -946,15 +981,36 @@ fn resolve_deterministic_evaluation(
 
     context.profiling_state.record_deterministic_cache_miss();
 
+    let deterministic_evaluation = build_deterministic_evaluation_for_fidelity(
+        fitted_parameters,
+        context,
+        ContinuousLikelihoodFidelityTier::Full,
+    );
+
+    if let Some(deterministic_cache_key) = cache_key
+        && let Ok(mut cache_guard) = context.deterministic_evaluation_cache.lock()
+    {
+        cache_guard.insert(deterministic_cache_key, deterministic_evaluation.clone());
+    }
+
+    deterministic_evaluation
+}
+
+fn build_deterministic_evaluation_for_fidelity(
+    fitted_parameters: &JointRefinementStageFittedParameters,
+    context: &JointRefinementContext,
+    likelihood_fidelity_tier: ContinuousLikelihoodFidelityTier,
+) -> JointRefinementDeterministicEvaluation {
     let deterministic_evaluation_started_at = std::time::Instant::now();
 
     let modeled_open_event_rate_per_hour =
         modeled_open_event_rate_per_hour(fitted_parameters, context);
+
     let raw_aggregated_likelihood_fit = raw_aggregated_likelihood_fit_for_fidelity(
         fitted_parameters,
         modeled_open_event_rate_per_hour,
         context,
-        ContinuousLikelihoodFidelityTier::Full,
+        likelihood_fidelity_tier,
     );
 
     let expected_hourly_tick_counts =
@@ -989,12 +1045,6 @@ fn resolve_deterministic_evaluation(
                 .as_millis()
                 .min(u128::from(u64::MAX)) as u64,
         );
-
-    if let Some(deterministic_cache_key) = cache_key
-        && let Ok(mut cache_guard) = context.deterministic_evaluation_cache.lock()
-    {
-        cache_guard.insert(deterministic_cache_key, deterministic_evaluation.clone());
-    }
 
     deterministic_evaluation
 }
@@ -1072,6 +1122,7 @@ mod tests {
     use super::{
         activity_level_fit_for_counts, activity_shape_fit_for_counts,
         admissibility_constraint_penalty, dynamics_block_search_objective,
+        likelihood_ratio_fit_score, threshold_relative_likelihood_search_score,
         threshold_relative_search_score,
     };
     use crate::stages::joint_refinement::execution::{
@@ -1141,6 +1192,28 @@ mod tests {
     }
 
     #[test]
+    fn likelihood_ratio_fit_score_is_positive_and_baseline_centered() {
+        assert_eq!(likelihood_ratio_fit_score(-0.5, -0.5, false), 1.0);
+        assert!(likelihood_ratio_fit_score(-0.75, -0.5, false) < 1.0);
+        assert!(likelihood_ratio_fit_score(-0.25, -0.5, false) > 1.0);
+    }
+
+    #[test]
+    fn likelihood_ratio_fit_score_uses_unit_reference_before_baseline_is_established() {
+        assert_eq!(likelihood_ratio_fit_score(-0.5, 1.0, true), 1.0);
+    }
+
+    #[test]
+    fn threshold_relative_likelihood_search_score_is_positive_and_threshold_centered() {
+        assert_eq!(threshold_relative_likelihood_search_score(-0.5, -0.5), 1.0);
+        assert!(threshold_relative_likelihood_search_score(-0.75, -0.5) < 1.0);
+        assert_eq!(
+            threshold_relative_likelihood_search_score(-0.25, -0.5),
+            1.25
+        );
+    }
+
+    #[test]
     fn dynamics_block_search_objective_uses_compressed_threshold_relative_terms() {
         let raw_metrics = JointRefinementRawAdmissibilityMetrics {
             aggregated_likelihood_fit: 4.0,
@@ -1158,8 +1231,7 @@ mod tests {
         };
 
         let objective = dynamics_block_search_objective(&raw_metrics, test_thresholds());
-        let expected =
-            super::root_mean_square([1.0 + 2.0_f64.ln(), 1.0, 1.0, 1.0, 1.0, 1.0, 1.0].as_slice());
+        let expected = super::root_mean_square([3.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0].as_slice());
 
         assert_eq!(objective, expected);
     }
@@ -1275,11 +1347,13 @@ fn aggregated_return_shape_fit(
         observed_data.observed_5m_shape_returns.as_slice(),
     )
     .profile_fit_score;
+
     let shape_15m = crate::stages::return_components::distribution_profile_fit_score(
         seed_summary.simulated_15m_shape_returns.as_slice(),
         observed_data.observed_15m_shape_returns.as_slice(),
     )
     .profile_fit_score;
+
     let shape_tick = crate::stages::return_components::distribution_profile_fit_score(
         seed_summary.simulated_tick_shape_returns.as_slice(),
         observed_data.observed_tick_shape_returns.as_slice(),
@@ -1297,10 +1371,12 @@ fn aggregated_return_scale_fit(
         seed_summary.simulated_15m_return_scale_summary,
         observed_data.observed_15m_return_scale_summary,
     );
+
     let fit_5m = return_scale_horizon_fit(
         seed_summary.simulated_5m_return_scale_summary,
         observed_data.observed_5m_return_scale_summary,
     );
+
     let fit_tick = return_scale_horizon_fit(
         seed_summary.simulated_tick_return_scale_summary,
         observed_data.observed_tick_return_scale_summary,
@@ -1327,10 +1403,12 @@ fn return_asymmetry_fit(
         seed_summary.simulated_15m_shape_returns.as_slice(),
         observed_data.observed_15m_shape_returns.as_slice(),
     );
+
     let fit_5m = return_asymmetry_horizon_fit(
         seed_summary.simulated_5m_shape_returns.as_slice(),
         observed_data.observed_5m_shape_returns.as_slice(),
     );
+
     let fit_tick = return_asymmetry_horizon_fit(
         seed_summary.simulated_tick_shape_returns.as_slice(),
         observed_data.observed_tick_shape_returns.as_slice(),
@@ -1357,6 +1435,7 @@ fn business_time_return_scale_fit(
         seed_summary.simulated_15m_business_time_return_scale_summaries,
         observed_data.observed_15m_business_time_return_scale_summaries,
     );
+
     let fit_5m = business_time_bucket_return_scale_fit(
         seed_summary.simulated_5m_business_time_return_scale_summaries,
         observed_data.observed_5m_business_time_return_scale_summaries,
@@ -1377,6 +1456,7 @@ fn intraday_return_level_fit(
             .observed_tick_intraday_mean_absolute_returns
             .as_slice(),
     );
+
     let fit_15m = intraday_return_level_horizon_fit(
         seed_summary
             .simulated_15m_intraday_mean_absolute_returns
@@ -1385,6 +1465,7 @@ fn intraday_return_level_fit(
             .observed_15m_intraday_mean_absolute_returns
             .as_slice(),
     );
+
     let fit_5m = intraday_return_level_horizon_fit(
         seed_summary
             .simulated_5m_intraday_mean_absolute_returns
@@ -1406,11 +1487,13 @@ fn return_scale_horizon_fit(
         observed_summary.mean_absolute_return,
         JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR,
     );
+
     let realized_variance_fit = log_ratio_distance(
         candidate_summary.realized_variance,
         observed_summary.realized_variance,
         JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR,
     );
+
     let tail_fit = log_ratio_distance(
         candidate_summary.absolute_return_quantile_q90,
         observed_summary.absolute_return_quantile_q90,
@@ -1474,16 +1557,19 @@ fn activity_level_fit_for_counts(candidate_counts: &[f64], observed_counts: &[f6
         observed_total,
         JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR,
     );
+
     let mean_fit = log_ratio_distance(
         candidate_mean,
         observed_mean,
         JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR,
     );
+
     let peak_fit = log_ratio_distance(
         candidate_peak,
         observed_peak,
         JOINT_REFINEMENT_POSITIVE_METRIC_FLOOR,
     );
+
     let path_fit = relative_rmse(
         candidate_counts,
         observed_counts,

@@ -1,8 +1,17 @@
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::mpsc::Sender;
+
 use janiform_calibration_artifacts::CalibrationOptimizerSettings;
 use janiform_model_kernels::nig::{NigParameters, NigSharedPlusShiftConfiguration};
 use puruspe::Inu_Knu;
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
+use super::super::contracts::{
+    ReturnComponentsStageProgressPhase, ReturnComponentsStageProgressUpdate,
+};
+use super::super::progress::{
+    send_return_components_convergence_progress, send_return_components_progress,
+};
 use super::bounds::{
     nig_search_point_from_configuration, relative_share_from_beta_ratios,
     sell_beta_ratio_from_relative_share,
@@ -15,27 +24,64 @@ use crate::stages::return_components::execution::{
     round_negative_candidate_value, round_positive_candidate_value, round_signed_candidate_value,
 };
 
+struct ProxyEmProgressContext<'a> {
+    progress_sender: Option<&'a Sender<ReturnComponentsStageProgressUpdate>>,
+    completed_seed_count: &'a AtomicUsize,
+    total_seed_count: usize,
+    seed_label: String,
+}
+
 pub(super) fn build_effective_nig_em_search_points(
     calibration_sample: &ReturnComponentsStageContinuousReturnCalibrationSample,
     moment_seed_candidates: &[ScoredNigCandidate],
     solver_settings: &CalibrationOptimizerSettings,
+    progress_sender: Option<&Sender<ReturnComponentsStageProgressUpdate>>,
 ) -> Vec<NigShapeSearchPoint> {
+    let completed_seed_count = AtomicUsize::new(0);
+    let total_seed_count = moment_seed_candidates.len();
+
     let mut refined_search_points: Vec<NigShapeSearchPoint> = moment_seed_candidates
         .par_iter()
+        .enumerate()
         .filter_map(|moment_seed_candidate| {
+            let (moment_seed_index, moment_seed_candidate) = moment_seed_candidate;
+
             let initial_parameters = proxy_initial_parameters(moment_seed_candidate.configuration)?;
+
+            let seed_label = format!("proxy_em_seed_{:03}", moment_seed_index + 1);
+
+            let progress_context = ProxyEmProgressContext {
+                progress_sender,
+                completed_seed_count: &completed_seed_count,
+                total_seed_count,
+                seed_label,
+            };
+
             let refined_parameters = fit_effective_zero_drift_nig_via_em(
                 calibration_sample.observed_returns.as_slice(),
                 calibration_sample.business_time_scales.as_slice(),
                 initial_parameters,
                 solver_settings,
+                Some(&progress_context),
             )?;
 
-            shared_search_point_from_effective_parameters(
+            let search_point = shared_search_point_from_effective_parameters(
                 calibration_sample,
                 moment_seed_candidate.configuration,
                 refined_parameters,
-            )
+            )?;
+
+            let completed_count = completed_seed_count.fetch_add(1, Ordering::Relaxed) + 1;
+
+            send_return_components_progress(
+                progress_sender,
+                ReturnComponentsStageProgressPhase::ContinuousNigProxyEmSeedGeneration,
+                completed_count,
+                total_seed_count,
+                Some(progress_context.seed_label.as_str()),
+            );
+
+            Some(search_point)
         })
         .collect();
 
@@ -82,6 +128,7 @@ fn fit_effective_zero_drift_nig_via_em(
     business_time_scales: &[f64],
     initial_parameters: NigParameters,
     solver_settings: &CalibrationOptimizerSettings,
+    progress_context: Option<&ProxyEmProgressContext>,
 ) -> Option<NigParameters> {
     if observed_returns.is_empty() || business_time_scales.is_empty() {
         return None;
@@ -103,7 +150,8 @@ fn fit_effective_zero_drift_nig_via_em(
         aligned_business_time_scales,
     )?;
 
-    for _ in 0..solver_settings.max_iterations.max(1) {
+    let maximum_iteration_count = solver_settings.max_iterations.max(1);
+    for iteration_index in 0..maximum_iteration_count {
         let e_step_statistics = build_e_step_statistics(
             current_parameters,
             aligned_observed_returns,
@@ -125,7 +173,24 @@ fn fit_effective_zero_drift_nig_via_em(
         let objective_tolerance = solver_settings
             .absolute_tolerance
             .max(solver_settings.relative_tolerance * current_objective.abs().max(1.0));
-        if current_objective - next_objective <= objective_tolerance {
+
+        let objective_improvement = current_objective - next_objective;
+
+        if let Some(progress_context) = progress_context {
+            send_return_components_convergence_progress(
+                progress_context.progress_sender,
+                ReturnComponentsStageProgressPhase::ContinuousNigProxyEmSeedGeneration,
+                progress_context
+                    .completed_seed_count
+                    .load(Ordering::Relaxed),
+                progress_context.total_seed_count,
+                Some(progress_context.seed_label.as_str()),
+                iteration_index + 1,
+                convergence_ratio(objective_improvement, objective_tolerance),
+            );
+        }
+
+        if objective_improvement <= objective_tolerance {
             return Some(next_parameters);
         }
 
@@ -134,6 +199,17 @@ fn fit_effective_zero_drift_nig_via_em(
     }
 
     Some(current_parameters)
+}
+
+fn convergence_ratio(objective_improvement: f64, objective_tolerance: f64) -> Option<f64> {
+    if !objective_improvement.is_finite()
+        || !objective_tolerance.is_finite()
+        || objective_tolerance <= 0.0
+    {
+        return None;
+    }
+
+    Some(objective_improvement / objective_tolerance)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -255,6 +331,7 @@ fn effective_zero_drift_negative_log_likelihood(
     }
 
     let gamma = gamma_squared.sqrt();
+
     let mut negative_log_likelihood = 0.0;
 
     for (observed_return, business_time_scale) in
@@ -425,6 +502,7 @@ mod tests {
             business_time_scales.as_slice(),
             initial_parameters,
             &solver_settings,
+            None,
         )
         .expect("em fit should converge");
 
@@ -458,6 +536,7 @@ mod tests {
             &calibration_sample,
             theoretical_bounds,
             BasinSeedFamily::ALL.len(),
+            None,
         );
 
         let solver_settings =
@@ -468,6 +547,7 @@ mod tests {
             &calibration_sample,
             moment_seed_candidates.as_slice(),
             &solver_settings,
+            None,
         );
 
         assert!(!search_points.is_empty());

@@ -5,22 +5,18 @@ use janiform_foundations::randomness::SplitMix64SimulationRandomnessStream;
 use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 
 use super::bounds::{
-    build_moment_seed_candidates, build_search_regimes_from_moment_seeds, coordinate_to_ratio,
-    coordinate_to_share, nig_configuration_from_search_point, nig_search_point_from_configuration,
-    ratio_to_coordinate, relative_share_from_beta_ratios, sell_beta_ratio_from_relative_share,
-    theoretical_alpha_bounds, theoretical_search_bounds,
+    build_moment_seed_candidates, coordinate_to_ratio, coordinate_to_share,
+    nig_configuration_from_search_point, nig_search_point_from_configuration, ratio_to_coordinate,
+    relative_share_from_beta_ratios, sell_beta_ratio_from_relative_share, theoretical_alpha_bounds,
+    theoretical_search_bounds,
 };
 use super::likelihood::{
     alpha_beta_boundary_penalty, average_negative_log_likelihood_resolution,
-    closed_form_single_side_log_density, continuous_block_likelihood_objective,
-    continuous_block_likelihood_objective_with_failures, log_density_net_trading_time_return,
-    log_density_net_trading_time_return_failure_reason, maximum_profiled_open_beta_ratio,
-    profile_likelihood_score,
+    closed_form_single_side_log_density, continuous_block_likelihood_objective_with_failures,
+    log_density_net_trading_time_return, log_density_net_trading_time_return_failure_reason,
+    maximum_profiled_open_beta_ratio, profile_likelihood_score,
 };
-use super::optimization::{
-    build_broad_search_points, build_nig_moment_seed_configurations, build_nig_search_candidates,
-    score_search_points,
-};
+use super::optimization::{build_nig_moment_seed_configurations, build_nig_search_candidates};
 use super::profile::{
     build_distribution_profile, build_scale_bucket_profiles, distribution_profile_fit_score,
 };
@@ -39,7 +35,6 @@ use crate::stages::return_components::contracts::{
 const TEST_OPTIMIZER_SAMPLE_COUNT: usize = 96;
 const TEST_OPTIMIZER_MAX_ITERATIONS: usize = 12;
 const TEST_OPTIMIZER_MOMENT_CANDIDATE_COUNT: usize = 24;
-const TEST_OPTIMIZER_BROAD_SEARCH_POINT_COUNT: usize = 16;
 
 #[test]
 fn skew_ratio_coordinate_round_trip_stays_inside_open_domain() {
@@ -568,66 +563,6 @@ fn broad_search_is_deterministic_across_parallel_cpu_counts() {
 }
 
 #[test]
-fn optimized_candidate_is_no_worse_than_best_broad_seed() {
-    let calibration_sample = test_optimizer_calibration_sample();
-    let optimizer_context = build_continuous_return_optimizer_context(&calibration_sample);
-    let solver_settings = CalibrationOptimizerSettings::try_new(
-        "adaptive_search",
-        TEST_OPTIMIZER_MAX_ITERATIONS,
-        1,
-        1.0e-8,
-        1.0e-6,
-        1.0,
-    )
-    .expect("solver settings should validate");
-    let theoretical_bounds = theoretical_search_bounds(
-        calibration_sample.observed_profile,
-        TEST_OPTIMIZER_MOMENT_CANDIDATE_COUNT,
-    );
-    let moment_seed_candidates = build_moment_seed_candidates(
-        &optimizer_context,
-        &calibration_sample,
-        theoretical_bounds,
-        TEST_OPTIMIZER_MOMENT_CANDIDATE_COUNT,
-    );
-    let broad_search_regimes = build_search_regimes_from_moment_seeds(
-        &optimizer_context,
-        moment_seed_candidates.as_slice(),
-        theoretical_bounds,
-    );
-
-    let broad_search_points = build_broad_search_points(
-        broad_search_regimes.as_slice(),
-        TEST_OPTIMIZER_BROAD_SEARCH_POINT_COUNT,
-    );
-    let broad_seed_candidates = score_search_points(
-        &optimizer_context,
-        broad_search_points.as_slice(),
-        ContinuousLikelihoodFidelityTier::Seed,
-    );
-    let best_broad_seed = broad_seed_candidates
-        .iter()
-        .map(|candidate| {
-            continuous_block_likelihood_objective(
-                candidate.configuration,
-                &optimizer_context,
-                ContinuousLikelihoodFidelityTier::Full,
-            )
-            .shifted_objective_score
-        })
-        .fold(f64::INFINITY, f64::min);
-    let optimized_candidates =
-        build_nig_search_candidates(&calibration_sample, 17, &solver_settings);
-
-    assert!(
-        optimized_candidates[0]
-            .optimizer_diagnostic
-            .final_objective_score
-            <= best_broad_seed + 1.0e-10
-    );
-}
-
-#[test]
 fn optimized_candidates_surface_distinct_basin_diagnostics() {
     let calibration_sample = test_optimizer_calibration_sample();
     let solver_settings = CalibrationOptimizerSettings::try_new(
@@ -687,6 +622,7 @@ fn moment_seed_candidates_surface_multiple_search_regimes() {
         &calibration_sample,
         theoretical_bounds,
         TEST_OPTIMIZER_MOMENT_CANDIDATE_COUNT,
+        None,
     );
 
     let distinct_seed_points: BTreeSet<(u64, u64, u64, u64)> = moment_seed_candidates
