@@ -4448,7 +4448,7 @@ def test_high_level_fit_reuses_single_load_and_translation_pass_when_session_is_
 
     normalize_call_count = 0
     translate_call_count = 0
-    captured_dynamics_search_restart_counts: list[int | None] = []
+    captured_dynamics_search_restart_candidate_budgets: list[int | None] = []
 
     original_normalize_source = fit_estimator_module.normalize_market_data_source
 
@@ -4464,8 +4464,8 @@ def test_high_level_fit_reuses_single_load_and_translation_pass_when_session_is_
     def counting_translate_request(*args, **kwargs):
         nonlocal translate_call_count
         translate_call_count += 1
-        captured_dynamics_search_restart_counts.append(
-            kwargs["request"].dynamics_search_restart_count
+        captured_dynamics_search_restart_candidate_budgets.append(
+            kwargs["request"].dynamics_search_restart_candidate_budget
         )
         return original_translate_request(*args, **kwargs)
 
@@ -4494,7 +4494,7 @@ def test_high_level_fit_reuses_single_load_and_translation_pass_when_session_is_
             timestamp_timezone="UTC",
             sort_records_by_timestamp=True,
         ),
-        dynamics_search_restart_count=12,
+        dynamics_search_restart_candidate_budget=12,
         session="XNYS",
         known_news="none",
     )
@@ -4507,14 +4507,17 @@ def test_high_level_fit_reuses_single_load_and_translation_pass_when_session_is_
 
     assert normalize_call_count == 1
     assert translate_call_count == 1
-    assert captured_dynamics_search_restart_counts == [12]
+    assert captured_dynamics_search_restart_candidate_budgets == [12]
 
 
-def test_high_level_estimator_rejects_zero_dynamics_search_restart_count() -> None:
+def test_high_level_estimator_rejects_zero_dynamics_search_restart_candidate_budget() -> None:
     with pytest.raises(CalibrationValidationError) as captured_error:
-        JaniformEstimator(dynamics_search_restart_count=0)
+        JaniformEstimator(dynamics_search_restart_candidate_budget=0)
 
-    assert captured_error.value.failure.field_path == "dynamics_search_restart_count"
+    assert (
+        captured_error.value.failure.field_path
+        == "dynamics_search_restart_candidate_budget"
+    )
     assert "strictly positive" in captured_error.value.failure.message
 
 
