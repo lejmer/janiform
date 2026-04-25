@@ -1,0 +1,20 @@
+[package]
+name = "janiform-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Native Rust command-line shell for Janiform."
+readme = "README.md"
+
+[lib]
+name = "janiform_cli"
+path = "src/lib.rs"
+doctest = false
+
+[[bin]]
+name = "janiform"
+path = "src/main.rs"
+
+[dependencies]
+clap = { workspace = true }
