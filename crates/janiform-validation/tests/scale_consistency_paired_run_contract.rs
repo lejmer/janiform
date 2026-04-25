@@ -1,7 +1,7 @@
 use janiform_affine_oracle::affine_oracle::ExponentialAffineTransformEquationSpecification;
 use janiform_calibration_artifacts::CalibrationExecutionMode;
-use janiform_engine_risk::{
-    SufficientStatisticsRiskIntervalFactors, SufficientStatisticsRiskModelInputs,
+use janiform_engine_sufficient_statistics::{
+    SufficientStatisticsIntervalFactors, SufficientStatisticsModelInputs,
 };
 use janiform_foundations::randomness::{
     SimulationRandomnessStream, SplitMix64SimulationRandomnessStream,
@@ -312,7 +312,7 @@ fn build_parameter_set() -> janiform_validation::ScaleConsistencyExperimentParam
     janiform_validation::ScaleConsistencyExperimentParameterSet {
         parameter_set_id: "baseline_regime".to_string(),
         model_inputs: build_model_inputs(),
-        fine_interval_factors: SufficientStatisticsRiskIntervalFactors::try_new(
+        fine_interval_factors: SufficientStatisticsIntervalFactors::try_new(
             vec![1.0, 1.1, 0.9, 1.0, 1.2, 1.0, 0.95, 1.05],
             vec![0.2, 0.25, 0.15, 0.2, 0.3, 0.25, 0.2, 0.2],
             vec![0.05, 0.04, 0.03, 0.02, 0.05, 0.05, 0.04, 0.03],
@@ -322,7 +322,7 @@ fn build_parameter_set() -> janiform_validation::ScaleConsistencyExperimentParam
     }
 }
 
-fn build_model_inputs() -> SufficientStatisticsRiskModelInputs {
+fn build_model_inputs() -> SufficientStatisticsModelInputs {
     let hawkes_kernel_parameters = HawkesKernelParameters::try_new(
         0.8,
         1.5,
@@ -349,7 +349,7 @@ fn build_model_inputs() -> SufficientStatisticsRiskModelInputs {
     let nig_configuration = NigSharedPlusShiftConfiguration::try_new(1.6, 0.15, 0.5, 0.0, -0.1)
         .expect("nig configuration should validate");
 
-    SufficientStatisticsRiskModelInputs::try_new(
+    SufficientStatisticsModelInputs::try_new(
         equation_specification,
         nig_configuration,
         HawkesExcitationState {

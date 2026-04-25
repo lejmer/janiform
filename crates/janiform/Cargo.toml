@@ -19,7 +19,7 @@ janiform-affine-oracle = { path = "../janiform-affine-oracle" }
 janiform-calibration-artifacts = { path = "../janiform-calibration-artifacts" }
 janiform-calibration-runtime = { path = "../janiform-calibration-runtime" }
 janiform-engine-pricing = { path = "../janiform-engine-pricing" }
-janiform-engine-risk = { path = "../janiform-engine-risk" }
+janiform-engine-sufficient-statistics = { path = "../janiform-engine-sufficient-statistics" }
 janiform-engine-simulation = { path = "../janiform-engine-simulation" }
 janiform-foundations = { path = "../janiform-foundations" }
 janiform-governance = { path = "../janiform-governance" }

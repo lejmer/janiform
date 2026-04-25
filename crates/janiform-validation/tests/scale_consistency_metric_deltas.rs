@@ -1,6 +1,6 @@
-use janiform_engine_risk::{
-    SufficientStatisticsIntervalStatistics, SufficientStatisticsRiskPath,
-    SufficientStatisticsRiskPathRecord, SufficientStatisticsRiskReturnComponents,
+use janiform_engine_sufficient_statistics::{
+    SufficientStatisticsIntervalStatistics, SufficientStatisticsPath,
+    SufficientStatisticsPathRecord, SufficientStatisticsReturnComponents,
 };
 use janiform_model_kernels::hawkes::HawkesExcitationState;
 use janiform_validation::{
@@ -8,7 +8,8 @@ use janiform_validation::{
     SCALE_CONSISTENCY_METRIC_DELTA_ORDERING_POLICY, ScaleConsistencyMetricComputationStatus,
     ScaleConsistencyMetricDatasetRole, ScaleConsistencyMetricDeltaBatchRequest,
     ScaleConsistencyMetricFailureReasonCode, ScaleConsistencyMetricScenarioInput,
-    ScaleConsistencyMetricSpecification, aggregate_fine_risk_path_to_coarse_intervals,
+    ScaleConsistencyMetricSpecification,
+    aggregate_fine_sufficient_statistics_path_to_coarse_intervals,
     calculate_scale_consistency_metric_deltas,
 };
 
@@ -333,7 +334,7 @@ fn build_scenario_input(
             (1.1, 1.2, 11, 12, 0.5, -0.6, -3.5, 3.0, 3.0, 2.5),
         ],
     );
-    let aligned_fine_path = aggregate_fine_risk_path_to_coarse_intervals(
+    let aligned_fine_path = aggregate_fine_sufficient_statistics_path_to_coarse_intervals(
         &fine_path,
         1.0,
         janiform_validation::ScaleConsistencyFinePathPartialWindowPolicy::Reject,
@@ -370,7 +371,7 @@ fn build_sparse_scenario_input(
             (0.1, 0.1, 1, 1, 0.0, 0.0, 0.1, 0.0, 0.0, 0.1),
         ],
     );
-    let aligned_fine_path = aggregate_fine_risk_path_to_coarse_intervals(
+    let aligned_fine_path = aggregate_fine_sufficient_statistics_path_to_coarse_intervals(
         &fine_path,
         0.5,
         janiform_validation::ScaleConsistencyFinePathPartialWindowPolicy::Reject,
@@ -391,14 +392,14 @@ fn build_sparse_scenario_input(
 fn build_coarse_path(
     interval_delta: f64,
     records: &[(f64, f64, u64, u64, f64, f64, f64, f64, f64, f64)],
-) -> SufficientStatisticsRiskPath {
+) -> SufficientStatisticsPath {
     build_path(29, interval_delta, records)
 }
 
 fn build_fine_path(
     interval_delta: f64,
     records: &[(f64, f64, u64, u64, f64, f64, f64, f64, f64, f64)],
-) -> SufficientStatisticsRiskPath {
+) -> SufficientStatisticsPath {
     build_path(31, interval_delta, records)
 }
 
@@ -406,14 +407,14 @@ fn build_path(
     seed: u64,
     interval_delta: f64,
     records: &[(f64, f64, u64, u64, f64, f64, f64, f64, f64, f64)],
-) -> SufficientStatisticsRiskPath {
+) -> SufficientStatisticsPath {
     let records = records
         .iter()
         .enumerate()
         .map(|(interval_index, record)| build_record(interval_index, *record))
         .collect::<Vec<_>>();
 
-    SufficientStatisticsRiskPath::try_new(
+    SufficientStatisticsPath::try_new(
         seed,
         interval_delta,
         records.len(),
@@ -427,7 +428,7 @@ fn build_path(
 fn build_record(
     interval_index: usize,
     record: (f64, f64, u64, u64, f64, f64, f64, f64, f64, f64),
-) -> SufficientStatisticsRiskPathRecord {
+) -> SufficientStatisticsPathRecord {
     let (
         a_plus,
         a_minus,
@@ -444,7 +445,7 @@ fn build_record(
     let sufficient_statistics =
         SufficientStatisticsIntervalStatistics::try_new(a_plus, a_minus, n_plus, n_minus)
             .expect("interval statistics should validate");
-    let return_components = SufficientStatisticsRiskReturnComponents::try_new(
+    let return_components = SufficientStatisticsReturnComponents::try_new(
         buy_side_return,
         sell_side_return,
         trading_time_return,
@@ -454,7 +455,7 @@ fn build_record(
     )
     .expect("return components should validate");
 
-    SufficientStatisticsRiskPathRecord::try_new(
+    SufficientStatisticsPathRecord::try_new(
         interval_index,
         sufficient_statistics,
         return_components,
@@ -465,7 +466,7 @@ fn build_record(
         0.0,
         total_return,
     )
-    .expect("risk path record should validate")
+    .expect("sufficient-statistics path record should validate")
 }
 
 fn build_state() -> HawkesExcitationState {

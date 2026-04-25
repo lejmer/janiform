@@ -2,10 +2,6 @@ use chrono::{DateTime, Utc};
 use serde_json::Value;
 
 use janiform_affine_oracle::affine_oracle::ExponentialAffineTransformEquationSpecification;
-use janiform_engine_risk::{
-    SufficientStatisticsRiskIntervalFactors, SufficientStatisticsRiskModelInputs,
-    SufficientStatisticsRiskReturnComponents,
-};
 use janiform_engine_simulation::{
     CoarseSimulationModelInputs, CoarseSimulationPath, CoarseSimulationPathRecord,
     CoarseSimulationRunRequest, MeanReversionBoundaryState, MeanReversionFittedParameters,
@@ -13,6 +9,10 @@ use janiform_engine_simulation::{
     SeededTickSimulationDebugTraceOptions, SeededTickSimulationModelInputs,
     SeededTickSimulationRunConfig, SeededTickSimulationRunOptions, run_coarse_simulation,
     run_seeded_tick_event_simulation,
+};
+use janiform_engine_sufficient_statistics::{
+    SufficientStatisticsIntervalFactors, SufficientStatisticsModelInputs,
+    SufficientStatisticsReturnComponents,
 };
 use janiform_market_time::calendar::{
     CalendarRuleMetadataArtifact, ExchangeCalendarArtifact, ExchangeCalendarRegistry,
@@ -456,7 +456,7 @@ fn build_paired_path(
 struct IntervalFixture {
     fine_interval_count: usize,
     hourly_factor_contract: HourlyFactorContractOutput,
-    coarse_interval_factors: SufficientStatisticsRiskIntervalFactors,
+    coarse_interval_factors: SufficientStatisticsIntervalFactors,
 }
 
 fn build_interval_fixture(
@@ -569,7 +569,7 @@ fn build_interval_fixture(
                 repeated_local_hour_interval_count: 0,
             },
         },
-        coarse_interval_factors: SufficientStatisticsRiskIntervalFactors::try_new(
+        coarse_interval_factors: SufficientStatisticsIntervalFactors::try_new(
             vec![1.0; coarse_interval_count],
             coarse_nu_known,
             vec![surprise_intensity; coarse_interval_count],
@@ -585,7 +585,7 @@ fn build_coarse_model_inputs(
     interval_delta: f64,
 ) -> CoarseSimulationModelInputs {
     CoarseSimulationModelInputs::try_new(
-        build_risk_model_inputs(interval_count, interval_delta),
+        build_sufficient_statistics_model_inputs(interval_count, interval_delta),
         build_news_process_configuration(known_news_timestamps_utc_nanos),
         build_calendar_registry_artifact(),
         "XNYS",
@@ -651,15 +651,15 @@ fn disabled_mean_reversion_runtime_inputs(
     )
 }
 
-fn build_risk_model_inputs(
+fn build_sufficient_statistics_model_inputs(
     interval_count: usize,
     interval_delta: f64,
-) -> SufficientStatisticsRiskModelInputs {
-    SufficientStatisticsRiskModelInputs::try_new(
+) -> SufficientStatisticsModelInputs {
+    SufficientStatisticsModelInputs::try_new(
         ExponentialAffineTransformEquationSpecification::try_new(
             build_kernel_parameters(),
             GammaSeverityMarkConfiguration::try_new(1.8, 0.7)
-                .expect("risk gamma severity configuration should construct"),
+                .expect("sufficient-statistics gamma severity configuration should construct"),
         )
         .expect("equation specification should construct"),
         NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
@@ -679,7 +679,7 @@ fn build_risk_model_inputs(
         MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0, 0.0)
             .expect("disabled mean-reversion boundary state should construct"),
     )
-    .expect("risk model inputs should construct")
+    .expect("sufficient-statistics model inputs should construct")
 }
 
 fn build_news_process_configuration(
@@ -820,7 +820,7 @@ fn with_open_jump_override(
         + open_jump_return
         + original_components.closed_gap_return;
 
-    let updated_return_components = SufficientStatisticsRiskReturnComponents::try_new(
+    let updated_return_components = SufficientStatisticsReturnComponents::try_new(
         original_components.buy_side_return,
         original_components.sell_side_return,
         original_components.trading_time_return,

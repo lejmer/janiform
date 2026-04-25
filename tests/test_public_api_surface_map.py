@@ -11,7 +11,7 @@ import janiform.errors as errors_module
 import janiform.hourly_factors as hourly_factors_module
 import janiform.mean_reversion as mean_reversion_module
 import janiform.pricing as pricing_module
-import janiform.risk as risk_module
+import janiform.sufficient_statistics as sufficient_statistics_module
 import janiform.seasonality as seasonality_module
 import janiform.stylized_facts as stylized_facts_module
 import janiform.simulation as simulation_module
@@ -28,7 +28,7 @@ def test_package_root_surface_is_intentionally_minimal() -> None:
 
     assert "run_seeded_tick_event_simulation" not in root_exports
     assert "load_hourly_factor_contract_for_pricing" not in root_exports
-    assert "validate_sufficient_statistics_risk_run_request" not in root_exports
+    assert "validate_sufficient_statistics_run_request" not in root_exports
     assert "native_module" not in root_exports
 
 
@@ -81,8 +81,8 @@ def test_public_and_internal_module_intent_is_explicit() -> None:
         "janiform.mean_reversion.contracts",
         "janiform.pricing",
         "janiform.pricing.contracts",
-        "janiform.risk",
-        "janiform.risk.contracts",
+        "janiform.sufficient_statistics",
+        "janiform.sufficient_statistics.contracts",
         "janiform.seasonality",
         "janiform.seasonality.contracts",
         "janiform.simulation",
@@ -408,45 +408,45 @@ def test_pricing_contract_submodule_is_supported_domain_import() -> None:
     assert pricing_module.VanillaOptionPricingRunResult is pricing_contracts_module.VanillaOptionPricingRunResult
 
 
-def test_risk_public_symbols_live_in_risk_module() -> None:
-    assert hasattr(risk_module, "__path__")
+def test_sufficient_statistics_public_symbols_live_in_sufficient_statistics_module() -> None:
+    assert hasattr(sufficient_statistics_module, "__path__")
 
     expected_exports = {
-        "SUFFICIENT_STATISTICS_RISK_INTERVAL_FACTOR_POLICY",
-        "SufficientStatisticsRiskEquationSpecification",
-        "SufficientStatisticsRiskModelInputs",
-        "SufficientStatisticsRiskRunRequest",
+        "SUFFICIENT_STATISTICS_INTERVAL_FACTOR_POLICY",
+        "SufficientStatisticsEquationSpecification",
+        "SufficientStatisticsModelInputs",
+        "SufficientStatisticsRunRequest",
         "SufficientStatisticsIntervalStatistics",
-        "SufficientStatisticsRiskReturnComponents",
-        "SufficientStatisticsRiskPathRecord",
-        "SufficientStatisticsRiskPath",
-        "SufficientStatisticsRiskValidationError",
-        "validate_sufficient_statistics_risk_run_request",
-        "validate_sufficient_statistics_risk_path",
-        "serialize_sufficient_statistics_risk_run_request",
-        "serialize_sufficient_statistics_risk_path",
-        "deserialize_sufficient_statistics_risk_run_request",
-        "deserialize_sufficient_statistics_risk_path",
+        "SufficientStatisticsReturnComponents",
+        "SufficientStatisticsPathRecord",
+        "SufficientStatisticsPath",
+        "SufficientStatisticsValidationError",
+        "validate_sufficient_statistics_run_request",
+        "validate_sufficient_statistics_path",
+        "serialize_sufficient_statistics_run_request",
+        "serialize_sufficient_statistics_path",
+        "deserialize_sufficient_statistics_run_request",
+        "deserialize_sufficient_statistics_path",
     }
 
-    assert expected_exports <= set(risk_module.__all__)
-    assert expected_exports <= set(dir(risk_module))
+    assert expected_exports <= set(sufficient_statistics_module.__all__)
+    assert expected_exports <= set(dir(sufficient_statistics_module))
 
 
-def test_risk_contract_submodule_is_supported_domain_import() -> None:
-    risk_contracts_module = import_module("janiform.risk.contracts")
+def test_sufficient_statistics_contract_submodule_is_supported_domain_import() -> None:
+    sufficient_statistics_contracts_module = import_module("janiform.sufficient_statistics.contracts")
 
     expected_exports = {
-        "SUFFICIENT_STATISTICS_RISK_INTERVAL_FACTOR_POLICY",
-        "SufficientStatisticsRiskEquationSpecification",
-        "SufficientStatisticsRiskModelInputs",
-        "SufficientStatisticsRiskPath",
-        "SufficientStatisticsRiskRunRequest",
+        "SUFFICIENT_STATISTICS_INTERVAL_FACTOR_POLICY",
+        "SufficientStatisticsEquationSpecification",
+        "SufficientStatisticsModelInputs",
+        "SufficientStatisticsPath",
+        "SufficientStatisticsRunRequest",
     }
 
-    assert expected_exports <= set(risk_contracts_module.__all__)
-    assert expected_exports <= set(dir(risk_contracts_module))
-    assert risk_module.SufficientStatisticsRiskPath is risk_contracts_module.SufficientStatisticsRiskPath
+    assert expected_exports <= set(sufficient_statistics_contracts_module.__all__)
+    assert expected_exports <= set(dir(sufficient_statistics_contracts_module))
+    assert sufficient_statistics_module.SufficientStatisticsPath is sufficient_statistics_contracts_module.SufficientStatisticsPath
 
 
 def test_hourly_factor_support_symbols_live_in_hourly_factor_module() -> None:

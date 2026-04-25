@@ -3,7 +3,7 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
-use janiform_engine_risk::SufficientStatisticsRiskPathError;
+use janiform_engine_sufficient_statistics::SufficientStatisticsPathError;
 use serde::{Deserialize, Serialize};
 
 use super::super::aggregation::{
@@ -31,7 +31,7 @@ pub struct ScaleConsistencyMetricScenarioInput {
     pub scenario_id: String,
     pub parameter_set_id: String,
     pub horizon_label: String,
-    pub coarse_path: janiform_engine_risk::SufficientStatisticsRiskPath,
+    pub coarse_path: janiform_engine_sufficient_statistics::SufficientStatisticsPath,
     pub aligned_fine_path: ScaleConsistencyAlignedRiskPath,
 }
 
@@ -253,10 +253,10 @@ pub enum ScaleConsistencyMetricScenarioInputError {
     MissingParameterSetId,
     MissingHorizonLabel,
     InvalidCoarsePath {
-        source: SufficientStatisticsRiskPathError,
+        source: SufficientStatisticsPathError,
     },
     InvalidAlignedFinePath {
-        source: SufficientStatisticsRiskPathError,
+        source: SufficientStatisticsPathError,
     },
     InvalidAlignmentMetadataSchemaVersion {
         actual: String,

@@ -14,15 +14,15 @@ use janiform_model_kernels::nig::{
 };
 
 use super::constants::{
-    DEFAULT_INTRADAY_RISK_INTERVAL_DELTA, NEWS_INTENSITY_COMPONENT_SUM_TOLERANCE,
-    SUFFICIENT_STATISTICS_RISK_INTERVAL_FACTOR_POLICY,
+    DEFAULT_INTRADAY_SUFFICIENT_STATISTICS_INTERVAL_DELTA, NEWS_INTENSITY_COMPONENT_SUM_TOLERANCE,
+    SUFFICIENT_STATISTICS_INTERVAL_FACTOR_POLICY,
 };
 use super::validation::validate_excitation_state;
 
 const MEAN_REVERSION_ALIGNMENT_TOLERANCE: f64 = 1.0e-12;
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum SufficientStatisticsRiskIntervalFactorsError {
+pub enum SufficientStatisticsIntervalFactorsError {
     MissingIntervals,
     FieldLengthMismatch {
         field: &'static str,
@@ -56,7 +56,7 @@ pub enum SufficientStatisticsRiskIntervalFactorsError {
     },
 }
 
-impl std::fmt::Display for SufficientStatisticsRiskIntervalFactorsError {
+impl std::fmt::Display for SufficientStatisticsIntervalFactorsError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::MissingIntervals => write!(
@@ -116,11 +116,11 @@ impl std::fmt::Display for SufficientStatisticsRiskIntervalFactorsError {
     }
 }
 
-impl std::error::Error for SufficientStatisticsRiskIntervalFactorsError {}
+impl std::error::Error for SufficientStatisticsIntervalFactorsError {}
 
 /// Per-interval deterministic factors used by sufficient-statistics workflows.
 #[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct SufficientStatisticsRiskIntervalFactors {
+pub struct SufficientStatisticsIntervalFactors {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub interval_delta: Option<f64>,
     pub s_h: Box<[f64]>,
@@ -130,19 +130,19 @@ pub struct SufficientStatisticsRiskIntervalFactors {
     pub nu_h_surprise: Box<[f64]>,
 }
 
-impl SufficientStatisticsRiskIntervalFactors {
+impl SufficientStatisticsIntervalFactors {
     pub fn try_new(
         s_h: Vec<f64>,
         nu_h_known: Vec<f64>,
         nu_h_surprise: Vec<f64>,
         interval_delta: Option<f64>,
-    ) -> Result<Self, SufficientStatisticsRiskIntervalFactorsError> {
+    ) -> Result<Self, SufficientStatisticsIntervalFactorsError> {
         if s_h.is_empty() {
-            return Err(SufficientStatisticsRiskIntervalFactorsError::MissingIntervals);
+            return Err(SufficientStatisticsIntervalFactorsError::MissingIntervals);
         }
         if nu_h_known.len() != s_h.len() {
             return Err(
-                SufficientStatisticsRiskIntervalFactorsError::FieldLengthMismatch {
+                SufficientStatisticsIntervalFactorsError::FieldLengthMismatch {
                     field: "nu_h_known",
                     expected_length: s_h.len(),
                     actual_length: nu_h_known.len(),
@@ -151,7 +151,7 @@ impl SufficientStatisticsRiskIntervalFactors {
         }
         if nu_h_surprise.len() != s_h.len() {
             return Err(
-                SufficientStatisticsRiskIntervalFactorsError::FieldLengthMismatch {
+                SufficientStatisticsIntervalFactorsError::FieldLengthMismatch {
                     field: "nu_h_surprise",
                     expected_length: s_h.len(),
                     actual_length: nu_h_surprise.len(),
@@ -175,16 +175,16 @@ impl SufficientStatisticsRiskIntervalFactors {
         Ok(interval_factors)
     }
 
-    pub fn validate(&self) -> Result<(), SufficientStatisticsRiskIntervalFactorsError> {
+    pub fn validate(&self) -> Result<(), SufficientStatisticsIntervalFactorsError> {
         let interval_count = self.s_h.len();
         if interval_count == 0 {
-            return Err(SufficientStatisticsRiskIntervalFactorsError::MissingIntervals);
+            return Err(SufficientStatisticsIntervalFactorsError::MissingIntervals);
         }
 
         for (interval_index, value) in self.s_h.iter().copied().enumerate() {
             if !value.is_finite() || value < 0.0 {
                 return Err(
-                    SufficientStatisticsRiskIntervalFactorsError::InvalidSeasonalityFactor {
+                    SufficientStatisticsIntervalFactorsError::InvalidSeasonalityFactor {
                         interval_index,
                         value,
                     },
@@ -195,7 +195,7 @@ impl SufficientStatisticsRiskIntervalFactors {
         for (interval_index, value) in self.nu_h.iter().copied().enumerate() {
             if !value.is_finite() || value < 0.0 {
                 return Err(
-                    SufficientStatisticsRiskIntervalFactorsError::InvalidNewsIntensityFactor {
+                    SufficientStatisticsIntervalFactorsError::InvalidNewsIntensityFactor {
                         interval_index,
                         value,
                     },
@@ -205,7 +205,7 @@ impl SufficientStatisticsRiskIntervalFactors {
 
         if self.nu_h_known.len() != interval_count {
             return Err(
-                SufficientStatisticsRiskIntervalFactorsError::FieldLengthMismatch {
+                SufficientStatisticsIntervalFactorsError::FieldLengthMismatch {
                     field: "nu_h_known",
                     expected_length: interval_count,
                     actual_length: self.nu_h_known.len(),
@@ -214,7 +214,7 @@ impl SufficientStatisticsRiskIntervalFactors {
         }
         if self.nu_h_surprise.len() != interval_count {
             return Err(
-                SufficientStatisticsRiskIntervalFactorsError::FieldLengthMismatch {
+                SufficientStatisticsIntervalFactorsError::FieldLengthMismatch {
                     field: "nu_h_surprise",
                     expected_length: interval_count,
                     actual_length: self.nu_h_surprise.len(),
@@ -223,7 +223,7 @@ impl SufficientStatisticsRiskIntervalFactors {
         }
         if self.nu_h.len() != interval_count {
             return Err(
-                SufficientStatisticsRiskIntervalFactorsError::FieldLengthMismatch {
+                SufficientStatisticsIntervalFactorsError::FieldLengthMismatch {
                     field: "nu_h",
                     expected_length: interval_count,
                     actual_length: self.nu_h.len(),
@@ -235,7 +235,7 @@ impl SufficientStatisticsRiskIntervalFactors {
             let known_nu_h = self.nu_h_known[interval_index];
             if !known_nu_h.is_finite() || known_nu_h < 0.0 {
                 return Err(
-                    SufficientStatisticsRiskIntervalFactorsError::InvalidKnownNewsIntensityFactor {
+                    SufficientStatisticsIntervalFactorsError::InvalidKnownNewsIntensityFactor {
                         interval_index,
                         value: known_nu_h,
                     },
@@ -245,7 +245,7 @@ impl SufficientStatisticsRiskIntervalFactors {
             let surprise_nu_h = self.nu_h_surprise[interval_index];
             if !surprise_nu_h.is_finite() || surprise_nu_h < 0.0 {
                 return Err(
-                    SufficientStatisticsRiskIntervalFactorsError::InvalidSurpriseNewsIntensityFactor {
+                    SufficientStatisticsIntervalFactorsError::InvalidSurpriseNewsIntensityFactor {
                         interval_index,
                         value: surprise_nu_h,
                     },
@@ -258,7 +258,7 @@ impl SufficientStatisticsRiskIntervalFactors {
                 || (component_sum - total_nu_h).abs() > NEWS_INTENSITY_COMPONENT_SUM_TOLERANCE
             {
                 return Err(
-                    SufficientStatisticsRiskIntervalFactorsError::InconsistentNewsIntensityAggregation {
+                    SufficientStatisticsIntervalFactorsError::InconsistentNewsIntensityAggregation {
                         interval_index,
                         nu_h_total: total_nu_h,
                         nu_h_known: known_nu_h,
@@ -272,7 +272,7 @@ impl SufficientStatisticsRiskIntervalFactors {
             && (!interval_delta.is_finite() || interval_delta <= 0.0)
         {
             return Err(
-                SufficientStatisticsRiskIntervalFactorsError::InvalidIntervalDelta {
+                SufficientStatisticsIntervalFactorsError::InvalidIntervalDelta {
                     value: interval_delta,
                 },
             );
@@ -282,12 +282,12 @@ impl SufficientStatisticsRiskIntervalFactors {
     }
 
     pub const fn policy() -> &'static str {
-        SUFFICIENT_STATISTICS_RISK_INTERVAL_FACTOR_POLICY
+        SUFFICIENT_STATISTICS_INTERVAL_FACTOR_POLICY
     }
 
     pub fn resolved_interval_delta(&self) -> f64 {
         self.interval_delta
-            .unwrap_or(DEFAULT_INTRADAY_RISK_INTERVAL_DELTA)
+            .unwrap_or(DEFAULT_INTRADAY_SUFFICIENT_STATISTICS_INTERVAL_DELTA)
     }
 
     pub fn news_intensity_input_at(
@@ -309,7 +309,7 @@ impl SufficientStatisticsRiskIntervalFactors {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum SufficientStatisticsRiskModelInputsError {
+pub enum SufficientStatisticsModelInputsError {
     InvalidEquationSpecification {
         source: crate::affine_oracle::ExponentialAffineTransformEquationSpecificationError,
     },
@@ -335,7 +335,7 @@ pub enum SufficientStatisticsRiskModelInputsError {
     },
 }
 
-impl std::fmt::Display for SufficientStatisticsRiskModelInputsError {
+impl std::fmt::Display for SufficientStatisticsModelInputsError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::InvalidEquationSpecification { source } => {
@@ -375,7 +375,7 @@ impl std::fmt::Display for SufficientStatisticsRiskModelInputsError {
     }
 }
 
-impl std::error::Error for SufficientStatisticsRiskModelInputsError {
+impl std::error::Error for SufficientStatisticsModelInputsError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::InvalidEquationSpecification { source } => Some(source),
@@ -389,7 +389,7 @@ impl std::error::Error for SufficientStatisticsRiskModelInputsError {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct SufficientStatisticsRiskModelInputs {
+pub struct SufficientStatisticsModelInputs {
     pub equation_specification: ExponentialAffineTransformEquationSpecification,
     pub nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,
     pub initial_excitation_state: HawkesExcitationState,
@@ -398,7 +398,7 @@ pub struct SufficientStatisticsRiskModelInputs {
     pub initial_mean_reversion_boundary_state: MeanReversionBoundaryState,
 }
 
-impl SufficientStatisticsRiskModelInputs {
+impl SufficientStatisticsModelInputs {
     pub fn try_new(
         equation_specification: ExponentialAffineTransformEquationSpecification,
         nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,
@@ -406,7 +406,7 @@ impl SufficientStatisticsRiskModelInputs {
         mean_reversion_fitted_parameters: MeanReversionFittedParameters,
         mean_reversion_runtime_interval_anchors: MeanReversionRuntimeIntervalAnchors,
         initial_mean_reversion_boundary_state: MeanReversionBoundaryState,
-    ) -> Result<Self, SufficientStatisticsRiskModelInputsError> {
+    ) -> Result<Self, SufficientStatisticsModelInputsError> {
         let model_inputs = Self {
             equation_specification,
             nig_shared_plus_shift_configuration,
@@ -421,43 +421,41 @@ impl SufficientStatisticsRiskModelInputs {
         Ok(model_inputs)
     }
 
-    pub fn validate(&self) -> Result<(), SufficientStatisticsRiskModelInputsError> {
+    pub fn validate(&self) -> Result<(), SufficientStatisticsModelInputsError> {
         self.equation_specification.validate().map_err(|source| {
-            SufficientStatisticsRiskModelInputsError::InvalidEquationSpecification { source }
+            SufficientStatisticsModelInputsError::InvalidEquationSpecification { source }
         })?;
 
         self.nig_shared_plus_shift_configuration
             .derive_driver_parameters()
             .map_err(|source| {
-                SufficientStatisticsRiskModelInputsError::InvalidNigSharedPlusShiftConfiguration {
+                SufficientStatisticsModelInputsError::InvalidNigSharedPlusShiftConfiguration {
                     source,
                 }
             })?;
 
         validate_excitation_state(self.initial_excitation_state).map_err(|(field, value)| {
-            SufficientStatisticsRiskModelInputsError::InvalidInitialState { field, value }
+            SufficientStatisticsModelInputsError::InvalidInitialState { field, value }
         })?;
 
         self.mean_reversion_fitted_parameters
             .validate()
             .map_err(|source| {
-                SufficientStatisticsRiskModelInputsError::InvalidMeanReversionFittedParameters {
+                SufficientStatisticsModelInputsError::InvalidMeanReversionFittedParameters {
                     source,
                 }
             })?;
         self.mean_reversion_runtime_interval_anchors
             .validate()
             .map_err(|source| {
-                SufficientStatisticsRiskModelInputsError::InvalidMeanReversionRuntimeIntervalAnchors {
+                SufficientStatisticsModelInputsError::InvalidMeanReversionRuntimeIntervalAnchors {
                     source,
                 }
             })?;
         self.initial_mean_reversion_boundary_state
             .validate()
             .map_err(|source| {
-                SufficientStatisticsRiskModelInputsError::InvalidMeanReversionBoundaryState {
-                    source,
-                }
+                SufficientStatisticsModelInputsError::InvalidMeanReversionBoundaryState { source }
             })?;
 
         if (self.initial_mean_reversion_boundary_state.anchor_value
@@ -468,7 +466,7 @@ impl SufficientStatisticsRiskModelInputs {
             > MEAN_REVERSION_ALIGNMENT_TOLERANCE
         {
             return Err(
-                SufficientStatisticsRiskModelInputsError::MeanReversionBoundaryStateStartAnchorMismatch {
+                SufficientStatisticsModelInputsError::MeanReversionBoundaryStateStartAnchorMismatch {
                     boundary_anchor_value: self.initial_mean_reversion_boundary_state.anchor_value,
                     runtime_start_anchor_value: self
                         .mean_reversion_runtime_interval_anchors
@@ -484,7 +482,7 @@ impl SufficientStatisticsRiskModelInputs {
             > MEAN_REVERSION_ALIGNMENT_TOLERANCE
         {
             return Err(
-                SufficientStatisticsRiskModelInputsError::MeanReversionBoundaryStateStartAnchorMismatch {
+                SufficientStatisticsModelInputsError::MeanReversionBoundaryStateStartAnchorMismatch {
                     boundary_anchor_value: self.initial_mean_reversion_boundary_state.pressure_state,
                     runtime_start_anchor_value: self
                         .mean_reversion_runtime_interval_anchors
@@ -499,7 +497,7 @@ impl SufficientStatisticsRiskModelInputs {
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct SufficientStatisticsRiskIntervalFactorsPayload {
+struct SufficientStatisticsIntervalFactorsPayload {
     #[serde(default)]
     interval_delta: Option<f64>,
     s_h: Vec<f64>,
@@ -507,12 +505,12 @@ struct SufficientStatisticsRiskIntervalFactorsPayload {
     nu_h_surprise: Vec<f64>,
 }
 
-impl<'de> Deserialize<'de> for SufficientStatisticsRiskIntervalFactors {
+impl<'de> Deserialize<'de> for SufficientStatisticsIntervalFactors {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
-        let payload = SufficientStatisticsRiskIntervalFactorsPayload::deserialize(deserializer)?;
+        let payload = SufficientStatisticsIntervalFactorsPayload::deserialize(deserializer)?;
 
         Self::try_new(
             payload.s_h,
@@ -526,7 +524,7 @@ impl<'de> Deserialize<'de> for SufficientStatisticsRiskIntervalFactors {
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct SufficientStatisticsRiskModelInputsPayload {
+struct SufficientStatisticsModelInputsPayload {
     equation_specification: ExponentialAffineTransformEquationSpecification,
     nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration,
     initial_excitation_state: HawkesExcitationState,
@@ -535,12 +533,12 @@ struct SufficientStatisticsRiskModelInputsPayload {
     initial_mean_reversion_boundary_state: MeanReversionBoundaryState,
 }
 
-impl<'de> Deserialize<'de> for SufficientStatisticsRiskModelInputs {
+impl<'de> Deserialize<'de> for SufficientStatisticsModelInputs {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
-        let payload = SufficientStatisticsRiskModelInputsPayload::deserialize(deserializer)?;
+        let payload = SufficientStatisticsModelInputsPayload::deserialize(deserializer)?;
 
         Self::try_new(
             payload.equation_specification,

@@ -2,7 +2,7 @@
 Package root for Janiform.
 
 Import workflow APIs from task-oriented modules such as `janiform.simulation`,
-`janiform.pricing`, and `janiform.risk`.
+`janiform.pricing`, and `janiform.sufficient_statistics`.
 """
 
 from importlib.metadata import PackageNotFoundError, version

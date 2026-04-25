@@ -16,7 +16,7 @@ The Python package gives you the public API and CLI. The Rust workspace runs the
 
 Janiform exists to cover a gap between two common extremes.
 
-One extreme is a very detailed tick model that can generate realistic event flow but is too expensive or awkward to reuse for pricing and large-scale risk work. The other extreme is a coarse-time return model that is easy to price or simulate but throws away too much of the microstructure that matters for calibration and path realism.
+One extreme is a very detailed tick model that can generate realistic event flow but is too expensive or awkward to reuse for pricing and large-scale sufficient-statistics work. The other extreme is a coarse-time return model that is easy to price or simulate but throws away too much of the microstructure that matters for calibration and path realism.
 
 Janiform is built to sit between those extremes. The same fitted model is meant to support:
 
@@ -49,9 +49,9 @@ Seeded-tick simulation is for fine-grained event paths when you want replayable 
 
 ## Why Pricing Belongs Here
 
-Pricing is part of Janiform because the project is not only about generating plausible paths. It is also about making the fitted model usable for option valuation and risk work without forcing a full fine-scale replay every time.
+Pricing is part of Janiform because the project is not only about generating plausible paths. It is also about making the fitted model usable for option valuation and sufficient-statistics work without forcing a full fine-scale replay every time.
 
-That is why the codebase includes direct pricing and sufficient-statistics risk workflows alongside calibration and simulation.
+That is why the codebase includes direct pricing and sufficient-statistics workflows alongside calibration and simulation.
 
 ## Why The Name
 

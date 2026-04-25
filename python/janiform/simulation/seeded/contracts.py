@@ -37,7 +37,7 @@ from ..._timestamps import ONE_HOUR_NANOS
 from ...calendar import MarketState
 from ...hourly_factors import HourlyFactorContract
 from ...pricing import NigSharedPlusShiftConfiguration
-from ...risk import SufficientStatisticsRiskReturnComponents
+from ...sufficient_statistics import SufficientStatisticsReturnComponents
 
 
 _MEAN_REVERSION_ALIGNMENT_TOLERANCE: Final[float] = 1e-12
@@ -824,7 +824,7 @@ class SeededFinePathRecord(ContractModel):
     side: Optional[SeededTickEventSide]
     news_arrival_component: Optional[SeededFinePathNewsArrivalComponent]
     market_state: MarketState
-    return_components: SufficientStatisticsRiskReturnComponents
+    return_components: SufficientStatisticsReturnComponents
     core_total_return_increment: float
     observed_log_price: float
     anchor_value: float
@@ -929,7 +929,7 @@ class SeededFinePathRecord(ContractModel):
             side=side,
             news_arrival_component=news_arrival_component,
             market_state=market_state,
-            return_components=SufficientStatisticsRiskReturnComponents.from_mapping(
+            return_components=SufficientStatisticsReturnComponents.from_mapping(
                 require_mapping(
                     raw_payload,
                     "return_components",

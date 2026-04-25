@@ -24,7 +24,7 @@ use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 
 use crate::runner::{
     IntervalTiltCurve, LocalTransitionRequestContext,
-    build_pricing_risk_neutral_anchor_materialization,
+    build_pricing_sufficient_statistics_neutral_anchor_materialization,
     evaluate_core_pure_imaginary_log_moment_exponent_for_tilt,
     evaluate_pricing_log_return_characteristic_function,
     infer_expected_news_loading_under_local_measure_for_row,
@@ -441,7 +441,7 @@ fn risk_neutral_anchor_materialization_accepts_zero_adjustment_nested_request() 
 
     let mut observer = None;
 
-    let materialization = build_pricing_risk_neutral_anchor_materialization(
+    let materialization = build_pricing_sufficient_statistics_neutral_anchor_materialization(
         &request,
         &build_uniform_runtime_interval_schedule(2, 1.0),
         interval_factors.as_slice(),
@@ -739,7 +739,7 @@ fn nested_zero_adjustment_materialization_matches_first_moment_hawkes_update() {
 
     let mut observer = None;
 
-    let materialization = build_pricing_risk_neutral_anchor_materialization(
+    let materialization = build_pricing_sufficient_statistics_neutral_anchor_materialization(
         &request,
         &build_uniform_runtime_interval_schedule(1, 1.0),
         &[interval_factors],

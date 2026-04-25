@@ -1,34 +1,35 @@
 use serde::Serialize;
 
 pub use janiform_affine_oracle::sufficient_statistics::{
-    SufficientStatisticsRiskIntervalFactors, SufficientStatisticsRiskModelInputs,
+    SufficientStatisticsIntervalFactors, SufficientStatisticsModelInputs,
 };
 
 use super::constants::{
-    DEFAULT_INTRADAY_RISK_INTERVAL_DELTA, SUFFICIENT_STATISTICS_RISK_RUN_REQUEST_SCHEMA_VERSION,
+    DEFAULT_INTRADAY_SUFFICIENT_STATISTICS_INTERVAL_DELTA,
+    SUFFICIENT_STATISTICS_RUN_REQUEST_SCHEMA_VERSION,
 };
-use super::errors::SufficientStatisticsRiskRunRequestError;
+use super::errors::SufficientStatisticsRunRequestError;
 
 const MEAN_REVERSION_ALIGNMENT_TOLERANCE: f64 = 1.0e-12;
 
-/// Public run request contract for sufficient-statistics risk simulation.
+/// Public run request contract for sufficient-statistics simulation.
 #[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct SufficientStatisticsRiskRunRequest {
+pub struct SufficientStatisticsRunRequest {
     pub seed: u64,
     pub horizon_interval_count: usize,
     pub interval_delta: f64,
-    pub model_inputs: SufficientStatisticsRiskModelInputs,
-    pub interval_factors: SufficientStatisticsRiskIntervalFactors,
+    pub model_inputs: SufficientStatisticsModelInputs,
+    pub interval_factors: SufficientStatisticsIntervalFactors,
 }
 
-impl SufficientStatisticsRiskRunRequest {
+impl SufficientStatisticsRunRequest {
     pub fn try_new(
         seed: u64,
         horizon_interval_count: usize,
         interval_delta: f64,
-        model_inputs: SufficientStatisticsRiskModelInputs,
-        interval_factors: SufficientStatisticsRiskIntervalFactors,
-    ) -> Result<Self, SufficientStatisticsRiskRunRequestError> {
+        model_inputs: SufficientStatisticsModelInputs,
+        interval_factors: SufficientStatisticsIntervalFactors,
+    ) -> Result<Self, SufficientStatisticsRunRequestError> {
         let run_request = Self {
             seed,
             horizon_interval_count,
@@ -40,33 +41,31 @@ impl SufficientStatisticsRiskRunRequest {
         Ok(run_request)
     }
 
-    pub fn validate(&self) -> Result<(), SufficientStatisticsRiskRunRequestError> {
+    pub fn validate(&self) -> Result<(), SufficientStatisticsRunRequestError> {
         if self.horizon_interval_count == 0 {
             return Err(
-                SufficientStatisticsRiskRunRequestError::InvalidHorizonIntervalCount { value: 0 },
+                SufficientStatisticsRunRequestError::InvalidHorizonIntervalCount { value: 0 },
             );
         }
 
         if !self.interval_delta.is_finite() || self.interval_delta <= 0.0 {
-            return Err(
-                SufficientStatisticsRiskRunRequestError::InvalidIntervalDelta {
-                    value: self.interval_delta,
-                },
-            );
+            return Err(SufficientStatisticsRunRequestError::InvalidIntervalDelta {
+                value: self.interval_delta,
+            });
         }
 
-        self.model_inputs.validate().map_err(|source| {
-            SufficientStatisticsRiskRunRequestError::InvalidModelInputs { source }
-        })?;
+        self.model_inputs
+            .validate()
+            .map_err(|source| SufficientStatisticsRunRequestError::InvalidModelInputs { source })?;
 
         self.interval_factors.validate().map_err(|source| {
-            SufficientStatisticsRiskRunRequestError::InvalidIntervalFactors { source }
+            SufficientStatisticsRunRequestError::InvalidIntervalFactors { source }
         })?;
 
         let resolved_factor_interval_delta = self.interval_factors.resolved_interval_delta();
         if self.interval_delta != resolved_factor_interval_delta {
             return Err(
-                SufficientStatisticsRiskRunRequestError::IntervalDeltaFactorMismatch {
+                SufficientStatisticsRunRequestError::IntervalDeltaFactorMismatch {
                     requested_interval_delta: self.interval_delta,
                     available_factor_interval_delta: resolved_factor_interval_delta,
                 },
@@ -76,7 +75,7 @@ impl SufficientStatisticsRiskRunRequest {
         let available_interval_count = self.interval_factors.s_h.len();
         if self.horizon_interval_count > available_interval_count {
             return Err(
-                SufficientStatisticsRiskRunRequestError::HorizonExceedsAvailableIntervals {
+                SufficientStatisticsRunRequestError::HorizonExceedsAvailableIntervals {
                     requested_interval_count: self.horizon_interval_count,
                     available_interval_count,
                 },
@@ -86,7 +85,7 @@ impl SufficientStatisticsRiskRunRequest {
         let runtime_interval_anchors = &self.model_inputs.mean_reversion_runtime_interval_anchors;
         if runtime_interval_anchors.end_anchor_values.len() != self.horizon_interval_count {
             return Err(
-                SufficientStatisticsRiskRunRequestError::MeanReversionRuntimeAnchorIntervalCountMismatch {
+                SufficientStatisticsRunRequestError::MeanReversionRuntimeAnchorIntervalCountMismatch {
                     expected_interval_count: self.horizon_interval_count,
                     observed_interval_count: runtime_interval_anchors.end_anchor_values.len(),
                 },
@@ -103,7 +102,7 @@ impl SufficientStatisticsRiskRunRequest {
                 > MEAN_REVERSION_ALIGNMENT_TOLERANCE
             {
                 return Err(
-                    SufficientStatisticsRiskRunRequestError::MeanReversionRuntimeAnchorIntervalDeltaMismatch {
+                    SufficientStatisticsRunRequestError::MeanReversionRuntimeAnchorIntervalDeltaMismatch {
                         interval_index,
                         expected_interval_delta: self.interval_delta,
                         observed_interval_delta,
@@ -120,10 +119,10 @@ impl SufficientStatisticsRiskRunRequest {
     }
 
     pub const fn schema_version() -> &'static str {
-        SUFFICIENT_STATISTICS_RISK_RUN_REQUEST_SCHEMA_VERSION
+        SUFFICIENT_STATISTICS_RUN_REQUEST_SCHEMA_VERSION
     }
 
     pub const fn default_interval_delta() -> f64 {
-        DEFAULT_INTRADAY_RISK_INTERVAL_DELTA
+        DEFAULT_INTRADAY_SUFFICIENT_STATISTICS_INTERVAL_DELTA
     }
 }

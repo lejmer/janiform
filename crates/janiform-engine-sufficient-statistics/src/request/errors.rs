@@ -2,11 +2,11 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 
 pub use janiform_affine_oracle::sufficient_statistics::{
-    SufficientStatisticsRiskIntervalFactorsError, SufficientStatisticsRiskModelInputsError,
+    SufficientStatisticsIntervalFactorsError, SufficientStatisticsModelInputsError,
 };
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum SufficientStatisticsRiskRunRequestError {
+pub enum SufficientStatisticsRunRequestError {
     InvalidHorizonIntervalCount {
         value: usize,
     },
@@ -14,10 +14,10 @@ pub enum SufficientStatisticsRiskRunRequestError {
         value: f64,
     },
     InvalidModelInputs {
-        source: SufficientStatisticsRiskModelInputsError,
+        source: SufficientStatisticsModelInputsError,
     },
     InvalidIntervalFactors {
-        source: SufficientStatisticsRiskIntervalFactorsError,
+        source: SufficientStatisticsIntervalFactorsError,
     },
     IntervalDeltaFactorMismatch {
         requested_interval_delta: f64,
@@ -38,7 +38,7 @@ pub enum SufficientStatisticsRiskRunRequestError {
     },
 }
 
-impl Display for SufficientStatisticsRiskRunRequestError {
+impl Display for SufficientStatisticsRunRequestError {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::InvalidHorizonIntervalCount { value } => write!(
@@ -88,7 +88,7 @@ impl Display for SufficientStatisticsRiskRunRequestError {
     }
 }
 
-impl Error for SufficientStatisticsRiskRunRequestError {
+impl Error for SufficientStatisticsRunRequestError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::InvalidModelInputs { source } => Some(source),

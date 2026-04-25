@@ -2202,7 +2202,7 @@ def test_high_level_model_simulate_uses_estimated_current_state_when_continuatio
         captured_requests["seeded"].initial_mean_reversion_boundary_state
         == estimated_state.mean_reversion_boundary_state
     )
-    coarse_model_inputs = captured_requests["coarse"].model_inputs.risk_model_inputs
+    coarse_model_inputs = captured_requests["coarse"].model_inputs.sufficient_statistics_model_inputs
     assert coarse_model_inputs.initial_excitation_state == estimated_state.hawkes_excitation_state
     assert (
         coarse_model_inputs.initial_mean_reversion_boundary_state
@@ -2604,7 +2604,7 @@ def test_high_level_model_simulation_materializes_mean_reversion_runtime_inputs(
     )
     coarse_end_anchor_values = tuple(
         float(anchor_value)
-        for anchor_value in coarse_request.model_inputs.risk_model_inputs.mean_reversion_runtime_interval_anchors.end_anchor_values
+        for anchor_value in coarse_request.model_inputs.sufficient_statistics_model_inputs.mean_reversion_runtime_interval_anchors.end_anchor_values
     )
 
     assert seeded_request.mean_reversion_fitted_parameters.to_payload() == mean_reversion_payload
@@ -2616,7 +2616,7 @@ def test_high_level_model_simulation_materializes_mean_reversion_runtime_inputs(
     assert seeded_request.initial_mean_reversion_boundary_state.pressure_state == pytest.approx(0.0)
     assert seeded_request.initial_mean_reversion_boundary_state.deviation == pytest.approx(0.0)
 
-    coarse_model_inputs = coarse_request.model_inputs.risk_model_inputs
+    coarse_model_inputs = coarse_request.model_inputs.sufficient_statistics_model_inputs
     assert coarse_model_inputs.mean_reversion_fitted_parameters.to_payload() == mean_reversion_payload
     assert coarse_model_inputs.mean_reversion_runtime_interval_anchors.start_anchor_value == pytest.approx(0.0)
     assert len(coarse_end_anchor_values) == 2
@@ -2812,7 +2812,7 @@ def test_high_level_model_materializes_endogenous_mean_reversion_runtime_inputs_
     assert seeded_request.initial_mean_reversion_boundary_state.pressure_state == pytest.approx(0.0)
     assert seeded_request.initial_mean_reversion_boundary_state.deviation == pytest.approx(0.0)
 
-    coarse_model_inputs = coarse_request.model_inputs.risk_model_inputs
+    coarse_model_inputs = coarse_request.model_inputs.sufficient_statistics_model_inputs
     assert coarse_model_inputs.mean_reversion_runtime_interval_anchors.end_anchor_values == pytest.approx(
         (0.1, 0.3)
     )

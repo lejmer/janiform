@@ -4,10 +4,10 @@ use std::collections::BTreeSet;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
-use janiform_engine_risk::{
+use janiform_engine_sufficient_statistics::{
     SufficientStatisticsBoundaryStateUpdateError, SufficientStatisticsBoundaryStateUpdateSnapshot,
-    SufficientStatisticsIntervalStatistics, SufficientStatisticsRiskRunRequest,
-    SufficientStatisticsRiskRunRequestError, SufficientStatisticsTransformSliceContext,
+    SufficientStatisticsIntervalStatistics, SufficientStatisticsRunRequest,
+    SufficientStatisticsRunRequestError, SufficientStatisticsTransformSliceContext,
     SufficientStatisticsTransformSliceSamplingError, SufficientStatisticsTransformSliceSettings,
     SufficientStatisticsTransformSliceSolveError, SufficientStatisticsTransformSlices,
     derive_sufficient_statistics_batch_path_seed, sample_interval_statistics_from_transform_slices,
@@ -78,7 +78,7 @@ impl Display for SufficientStatisticsValidationHorizonCategory {
 pub struct SufficientStatisticsMultiIntervalValidationScenario {
     pub scenario_id: String,
     pub horizon_category: SufficientStatisticsValidationHorizonCategory,
-    pub run_request: SufficientStatisticsRiskRunRequest,
+    pub run_request: SufficientStatisticsRunRequest,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -280,7 +280,7 @@ pub enum SufficientStatisticsMultiIntervalValidationError {
     },
     InvalidRunRequest {
         scenario_id: String,
-        source: SufficientStatisticsRiskRunRequestError,
+        source: SufficientStatisticsRunRequestError,
     },
     TransformSliceSolveFailure {
         scenario_id: String,

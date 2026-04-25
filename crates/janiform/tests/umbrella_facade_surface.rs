@@ -1,7 +1,7 @@
 use janiform::{
     affine_oracle, benchmarking, calendar, calibration, complex_math, hawkes, hourly_factors, news,
-    nig, pricing, randomness, return_decomposition, risk, risk_neutral, seasonality, simulation,
-    verification,
+    nig, pricing, randomness, return_decomposition, risk_neutral, seasonality, simulation,
+    sufficient_statistics, verification,
 };
 
 #[test]
@@ -23,10 +23,10 @@ fn janiform_keeps_the_curated_top_level_module_roots() {
             "pricing",
             "randomness",
             "return_decomposition",
-            "risk",
             "risk_neutral",
             "seasonality",
             "simulation",
+            "sufficient_statistics",
             "verification",
         ]
     );
@@ -35,7 +35,7 @@ fn janiform_keeps_the_curated_top_level_module_roots() {
 #[test]
 fn janiform_exposes_representative_facade_imports_used_during_migration() {
     let _ = std::mem::size_of::<affine_oracle::ExponentialAffineTransformEquationSpecification>();
-    let _ = std::mem::size_of::<benchmarking::OraclePricerRiskBenchmarkPolicy>();
+    let _ = std::mem::size_of::<benchmarking::OraclePricerSufficientStatisticsBenchmarkPolicy>();
     let _ = std::mem::size_of::<calendar::ExchangeCalendarRegistry>();
     let _ = std::mem::size_of::<calendar::TimestampEventPreprocessingOutput>();
     let _ = std::mem::size_of::<calibration::CalibrationStagedExecutionInput>();
@@ -48,18 +48,18 @@ fn janiform_exposes_representative_facade_imports_used_during_migration() {
     let _ = std::mem::size_of::<pricing::VanillaOptionPricingExecutionInput>();
     let _ = std::mem::size_of::<randomness::SplitMix64SimulationRandomnessStream>();
     let _ = std::mem::size_of::<return_decomposition::ReturnDecompositionInput>();
-    let _ = std::mem::size_of::<risk::SufficientStatisticsRiskRunRequest>();
+    let _ = std::mem::size_of::<sufficient_statistics::SufficientStatisticsRunRequest>();
     let _ = std::mem::size_of::<risk_neutral::NigEsscherTransformationInput>();
     let _ = std::mem::size_of::<seasonality::IntradaySeasonalityEstimatorSettings>();
     let _ = std::mem::size_of::<simulation::CoarseSimulationRunRequest>();
     let _ =
         std::mem::size_of::<verification::StylizedFactHorizonComparisonReportGeneratorRequest>();
 
-    let _ = benchmarking::run_oracle_pricer_risk_benchmark_harness;
+    let _ = benchmarking::run_oracle_pricer_sufficient_statistics_benchmark_harness;
     let _ = calibration::preprocess_market_data_translation_request;
     let _ = hourly_factors::provide_hourly_factor_contract;
     let _ = pricing::run_vanilla_option_pricing;
-    let _ = risk::solve_sufficient_statistics_transform_slices;
+    let _ = sufficient_statistics::solve_sufficient_statistics_transform_slices;
     let _ = seasonality::estimate_intraday_seasonality;
     let _ = simulation::run_coarse_simulation;
     let _ = simulation::run_seeded_tick_event_simulation;

@@ -1,9 +1,9 @@
 use janiform_governance::{
-    ORACLE_PRICER_RISK_PERFORMANCE_BASELINE_COMPARISON_POLICY,
-    ORACLE_PRICER_RISK_PERFORMANCE_BASELINE_COMPARISON_REPORT_SCHEMA_VERSION,
-    OraclePricerRiskPerformanceBaselineComparisonComponentEntry,
-    OraclePricerRiskPerformanceBaselineComparisonReport,
-    OraclePricerRiskPerformanceBaselineComparisonSummary,
+    ORACLE_PRICER_SUFFICIENT_STATISTICS_PERFORMANCE_BASELINE_COMPARISON_POLICY,
+    ORACLE_PRICER_SUFFICIENT_STATISTICS_PERFORMANCE_BASELINE_COMPARISON_REPORT_SCHEMA_VERSION,
+    OraclePricerSufficientStatisticsPerformanceBaselineComparisonComponentEntry,
+    OraclePricerSufficientStatisticsPerformanceBaselineComparisonReport,
+    OraclePricerSufficientStatisticsPerformanceBaselineComparisonSummary,
     REGRESSION_DRIFT_ATTRIBUTION_CLASSIFICATION_POLICY,
     REGRESSION_DRIFT_ATTRIBUTION_OUTPUT_SCHEMA_METADATA_VERSION,
     REGRESSION_DRIFT_ATTRIBUTION_PERFORMANCE_LATENCY_THRESHOLD_ID,
@@ -40,7 +40,7 @@ fn regression_drift_report_schema_lists_required_fields_and_is_renderable() {
                 "scenario_a",
                 vec![
                     build_metric_delta("oracle_c_at_delta_absolute_difference", false, 0.25, 0.31),
-                    build_metric_delta("risk_mean_a_plus", true, 0.01, 0.02),
+                    build_metric_delta("sufficient_statistics_mean_a_plus", true, 0.01, 0.02),
                 ],
             ),
             build_scenario_report(
@@ -70,7 +70,7 @@ fn regression_drift_report_schema_lists_required_fields_and_is_renderable() {
     );
 
     let performance_comparison_report = build_performance_comparison_report(vec![
-        OraclePricerRiskPerformanceBaselineComparisonComponentEntry {
+        OraclePricerSufficientStatisticsPerformanceBaselineComparisonComponentEntry {
             profile_id: "scenario_a".to_string(),
             workload_scale: BenchmarkWorkloadScale::Small,
             component_id: "characteristic_function_pricer".to_string(),
@@ -164,13 +164,13 @@ fn regression_drift_classification_rules_are_deterministic_and_boundary_inclusiv
             "scenario_boundary",
             vec![
                 build_metric_delta("pricing_vanilla_option_price", false, 0.12, 0.18),
-                build_metric_delta("risk_mean_n_plus", true, 0.00, 0.00),
+                build_metric_delta("sufficient_statistics_mean_n_plus", true, 0.00, 0.00),
             ],
         )],
     );
 
     let performance_comparison_report = build_performance_comparison_report(vec![
-        OraclePricerRiskPerformanceBaselineComparisonComponentEntry {
+        OraclePricerSufficientStatisticsPerformanceBaselineComparisonComponentEntry {
             profile_id: "scenario_boundary".to_string(),
             workload_scale: BenchmarkWorkloadScale::Medium,
             component_id: "characteristic_function_pricer".to_string(),
@@ -224,11 +224,21 @@ fn regression_drift_report_compares_against_prior_baseline_runs_with_scenario_se
         vec![
             build_scenario_report(
                 "scenario_existing",
-                vec![build_metric_delta("risk_mean_a_plus", true, 0.00, 0.00)],
+                vec![build_metric_delta(
+                    "sufficient_statistics_mean_a_plus",
+                    true,
+                    0.00,
+                    0.00,
+                )],
             ),
             build_scenario_report(
                 "scenario_new",
-                vec![build_metric_delta("risk_mean_a_minus", true, 0.00, 0.00)],
+                vec![build_metric_delta(
+                    "sufficient_statistics_mean_a_minus",
+                    true,
+                    0.00,
+                    0.00,
+                )],
             ),
         ],
     );
@@ -239,20 +249,30 @@ fn regression_drift_report_compares_against_prior_baseline_runs_with_scenario_se
         vec![
             build_scenario_report(
                 "scenario_existing",
-                vec![build_metric_delta("risk_mean_a_plus", true, 0.00, 0.00)],
+                vec![build_metric_delta(
+                    "sufficient_statistics_mean_a_plus",
+                    true,
+                    0.00,
+                    0.00,
+                )],
             ),
             build_scenario_report(
                 "scenario_removed",
-                vec![build_metric_delta("risk_mean_a_minus", true, 0.00, 0.00)],
+                vec![build_metric_delta(
+                    "sufficient_statistics_mean_a_minus",
+                    true,
+                    0.00,
+                    0.00,
+                )],
             ),
         ],
     );
 
     let performance_comparison_report = build_performance_comparison_report(vec![
-        OraclePricerRiskPerformanceBaselineComparisonComponentEntry {
+        OraclePricerSufficientStatisticsPerformanceBaselineComparisonComponentEntry {
             profile_id: "scenario_existing".to_string(),
             workload_scale: BenchmarkWorkloadScale::Large,
-            component_id: "sufficient_statistics_risk_sampler".to_string(),
+            component_id: "sufficient_statistics_sampler".to_string(),
             reference_mean_latency_seconds: 1.0,
             candidate_mean_latency_seconds: 1.3,
             mean_latency_seconds_delta: 0.3,
@@ -404,26 +424,26 @@ fn build_scenario_report(
             profile_seed: 1,
             oracle_component_seed: 2,
             pricing_component_seed: 3,
-            risk_component_seed: 4,
+            sufficient_statistics_component_seed: 4,
             coarse_interval_delta: 1.0,
             fine_interval_delta: 0.25,
             horizon_interval_count: 2,
             fine_subinterval_count_per_coarse_interval: 4,
-            paired_risk_path_count: 32,
+            paired_sufficient_statistics_path_count: 32,
             fine_pricing_reference_path_count: 128,
             fine_pricing_reference_step_count: 8,
         },
         summary: CoarseFineConsistencyScenarioSummary {
             coarse_pricing_value: 1.0,
             fine_pricing_reference_value: 1.0,
-            coarse_risk_mean_a_plus: 1.0,
-            fine_risk_mean_a_plus: 1.0,
-            coarse_risk_mean_a_minus: 1.0,
-            fine_risk_mean_a_minus: 1.0,
-            coarse_risk_mean_n_plus: 1.0,
-            fine_risk_mean_n_plus: 1.0,
-            coarse_risk_mean_n_minus: 1.0,
-            fine_risk_mean_n_minus: 1.0,
+            coarse_sufficient_statistics_mean_a_plus: 1.0,
+            fine_sufficient_statistics_mean_a_plus: 1.0,
+            coarse_sufficient_statistics_mean_a_minus: 1.0,
+            fine_sufficient_statistics_mean_a_minus: 1.0,
+            coarse_sufficient_statistics_mean_n_plus: 1.0,
+            fine_sufficient_statistics_mean_n_plus: 1.0,
+            coarse_sufficient_statistics_mean_n_minus: 1.0,
+            fine_sufficient_statistics_mean_n_minus: 1.0,
         },
         metric_deltas,
     }
@@ -449,8 +469,10 @@ fn build_metric_delta(
 }
 
 fn build_performance_comparison_report(
-    component_entries: Vec<OraclePricerRiskPerformanceBaselineComparisonComponentEntry>,
-) -> OraclePricerRiskPerformanceBaselineComparisonReport {
+    component_entries: Vec<
+        OraclePricerSufficientStatisticsPerformanceBaselineComparisonComponentEntry,
+    >,
+) -> OraclePricerSufficientStatisticsPerformanceBaselineComparisonReport {
     let profile_count = component_entries
         .iter()
         .map(|entry| entry.profile_id.as_str())
@@ -458,17 +480,17 @@ fn build_performance_comparison_report(
         .len();
     let component_entry_count = component_entries.len();
 
-    OraclePricerRiskPerformanceBaselineComparisonReport {
-        schema_version: ORACLE_PRICER_RISK_PERFORMANCE_BASELINE_COMPARISON_REPORT_SCHEMA_VERSION,
-        comparison_policy: ORACLE_PRICER_RISK_PERFORMANCE_BASELINE_COMPARISON_POLICY,
-        baseline_id: "oracle_pricer_risk_ci_performance_baseline".to_string(),
+    OraclePricerSufficientStatisticsPerformanceBaselineComparisonReport {
+        schema_version: ORACLE_PRICER_SUFFICIENT_STATISTICS_PERFORMANCE_BASELINE_COMPARISON_REPORT_SCHEMA_VERSION,
+        comparison_policy: ORACLE_PRICER_SUFFICIENT_STATISTICS_PERFORMANCE_BASELINE_COMPARISON_POLICY,
+        baseline_id: "oracle_pricer_sufficient_statistics_ci_performance_baseline".to_string(),
         reference_baseline_version: "1.0.0".to_string(),
         candidate_baseline_version: "1.1.0".to_string(),
         catalog_id: "benchmark_catalog".to_string(),
         catalog_version: "1.0.0".to_string(),
         policy_id: "benchmark_policy".to_string(),
         policy_version: "1.0.0".to_string(),
-        summary: OraclePricerRiskPerformanceBaselineComparisonSummary {
+        summary: OraclePricerSufficientStatisticsPerformanceBaselineComparisonSummary {
             profile_count,
             component_entry_count,
         },

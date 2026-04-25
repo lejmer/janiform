@@ -9,7 +9,7 @@ Janiform is a mixed Python and Rust workspace. The Python package owns the user-
 | `python/janiform/` | Public Python package, CLI assembly, workflow adapters |
 | `crates/janiform/` | Umbrella Rust facade |
 | `crates/janiform-pybind/` | PyO3 boundary crate |
-| Engine crates | Pricing, risk, and simulation runtime implementations |
+| Engine crates | Pricing, sufficient_statistics, and simulation runtime implementations |
 | Calibration crates | Calibration orchestration and artifact persistence |
 | Validation and governance crates | Regression harnesses and benchmark governance |
 
@@ -20,7 +20,7 @@ Janiform is a mixed Python and Rust workspace. The Python package owns the user-
 | `janiform` | Umbrella Rust facade |
 | `janiform-pybind` | Python binding boundary |
 | `janiform-engine-pricing` | Pricing engine |
-| `janiform-engine-risk` | Risk engine |
+| `janiform-engine-sufficient-statistics` | Sufficient-statistics engine |
 | `janiform-engine-simulation` | Simulation engine |
 | `janiform-calibration-runtime` | Calibration orchestration |
 | `janiform-calibration-artifacts` | Calibration artifact contracts and persistence |

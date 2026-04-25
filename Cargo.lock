@@ -622,8 +622,8 @@ dependencies = [
  "janiform-calibration-artifacts",
  "janiform-calibration-runtime",
  "janiform-engine-pricing",
- "janiform-engine-risk",
  "janiform-engine-simulation",
+ "janiform-engine-sufficient-statistics",
  "janiform-foundations",
  "janiform-governance",
  "janiform-governance-bench",
@@ -716,18 +716,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "janiform-engine-risk"
-version = "0.0.0"
-dependencies = [
- "janiform-affine-oracle",
- "janiform-foundations",
- "janiform-market-time",
- "janiform-model-kernels",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "janiform-engine-simulation"
 version = "0.0.0"
 dependencies = [
@@ -740,6 +728,18 @@ dependencies = [
  "serde",
  "serde_json",
  "tracing",
+]
+
+[[package]]
+name = "janiform-engine-sufficient-statistics"
+version = "0.0.0"
+dependencies = [
+ "janiform-affine-oracle",
+ "janiform-foundations",
+ "janiform-market-time",
+ "janiform-model-kernels",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -773,8 +773,8 @@ dependencies = [
  "criterion",
  "janiform-affine-oracle",
  "janiform-engine-pricing",
- "janiform-engine-risk",
  "janiform-engine-simulation",
+ "janiform-engine-sufficient-statistics",
  "janiform-foundations",
  "janiform-market-time",
  "janiform-model-kernels",
@@ -847,8 +847,8 @@ dependencies = [
  "janiform-analytics-stylized-facts",
  "janiform-calibration-artifacts",
  "janiform-engine-pricing",
- "janiform-engine-risk",
  "janiform-engine-simulation",
+ "janiform-engine-sufficient-statistics",
  "janiform-foundations",
  "janiform-governance-bench",
  "janiform-market-time",

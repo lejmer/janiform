@@ -133,7 +133,7 @@ COARSE_SIMULATION_REQUIRED_DIAGNOSTICS_FIELDS: tuple[str, ...] = (
 
 _MEAN_REVERSION_ALIGNMENT_TOLERANCE = 1e-12
 
-_SUFFICIENT_STATISTICS_RISK_INTERVAL_FACTOR_POLICY = (
+_SUFFICIENT_STATISTICS_INTERVAL_FACTOR_POLICY = (
     "explicit_interval_aligned_s_h_and_news_intensity_inputs_without_implicit_resampling.v1"
 )
 _SUFFICIENT_STATISTICS_TRANSFORM_SLICE_SAMPLING_POLICY = (
@@ -155,7 +155,7 @@ _SUFFICIENT_STATISTICS_BATCH_SEED_PARTITION_POLICY = (
 
 @dataclass(frozen=True, slots=True)
 class CoarseSimulationModelInputs(ContractModel):
-    risk_model_inputs: Any
+    sufficient_statistics_model_inputs: Any
     news_process_configuration: NewsProcessConfiguration
     calendar_registry_artifact: dict[str, Any]
     exchange_code: str
@@ -178,29 +178,29 @@ class CoarseSimulationModelInputs(ContractModel):
         if not isinstance(raw_payload, dict):
             raise _simulation_error(field_path, "must be an object")
 
-        from ...risk import SufficientStatisticsRiskModelInputs, SufficientStatisticsRiskValidationError
+        from ...sufficient_statistics import SufficientStatisticsModelInputs, SufficientStatisticsValidationError
 
         try:
-            risk_model_inputs = SufficientStatisticsRiskModelInputs.from_mapping(
+            sufficient_statistics_model_inputs = SufficientStatisticsModelInputs.from_mapping(
                 require_mapping(
                     raw_payload,
-                    "risk_model_inputs",
-                    f"{field_path}.risk_model_inputs",
+                    "sufficient_statistics_model_inputs",
+                    f"{field_path}.sufficient_statistics_model_inputs",
                     SIMULATION_ERROR_FACTORY,
                 )
             )
-        except SufficientStatisticsRiskValidationError as e:
+        except SufficientStatisticsValidationError as e:
             raise _simulation_error(
                 _prefix_nested_field_path(
                     e.failure.field_path,
-                    prefix=f"{field_path}.risk_model_inputs",
+                    prefix=f"{field_path}.sufficient_statistics_model_inputs",
                     strip_prefix="model_inputs.",
                 ),
                 e.failure.message,
             ) from e
 
         return CoarseSimulationModelInputs(
-            risk_model_inputs=risk_model_inputs,
+            sufficient_statistics_model_inputs=sufficient_statistics_model_inputs,
             news_process_configuration=NewsProcessConfiguration.from_mapping(
                 require_mapping(
                     raw_payload,
@@ -284,10 +284,10 @@ class CoarseSimulationRunRequest(ContractModel):
                 ),
             )
 
-        runtime_interval_anchors = self.model_inputs.risk_model_inputs.mean_reversion_runtime_interval_anchors
+        runtime_interval_anchors = self.model_inputs.sufficient_statistics_model_inputs.mean_reversion_runtime_interval_anchors
         if len(runtime_interval_anchors.end_anchor_values) != self.horizon_interval_count:
             raise _simulation_error(
-                "model_inputs.risk_model_inputs.mean_reversion_runtime_interval_anchors.end_anchor_values",
+                "model_inputs.sufficient_statistics_model_inputs.mean_reversion_runtime_interval_anchors.end_anchor_values",
                 f"must contain {self.horizon_interval_count} values",
             )
 
@@ -296,7 +296,7 @@ class CoarseSimulationRunRequest(ContractModel):
         ):
             if abs(observed_interval_delta - self.interval_delta) > _MEAN_REVERSION_ALIGNMENT_TOLERANCE:
                 raise _simulation_error(
-                    f"model_inputs.risk_model_inputs.mean_reversion_runtime_interval_anchors.interval_deltas[{interval_index}]",
+                    f"model_inputs.sufficient_statistics_model_inputs.mean_reversion_runtime_interval_anchors.interval_deltas[{interval_index}]",
                     f"must equal interval_delta ({self.interval_delta}), found {observed_interval_delta}",
                 )
 
@@ -307,7 +307,7 @@ class CoarseSimulationRunRequest(ContractModel):
         start_time_utc: datetime,
         horizon_interval_count: int,
         interval_delta: float,
-        risk_model_inputs: Any,
+        sufficient_statistics_model_inputs: Any,
         hourly_factor_contract: HourlyFactorContract,
         news_process_configuration: NewsProcessConfiguration,
         calendar_registry: CalendarRegistry,
@@ -326,7 +326,7 @@ class CoarseSimulationRunRequest(ContractModel):
             horizon_interval_count=horizon_interval_count,
             interval_delta=interval_delta,
             model_inputs=CoarseSimulationModelInputs(
-                risk_model_inputs=risk_model_inputs,
+                sufficient_statistics_model_inputs=sufficient_statistics_model_inputs,
                 news_process_configuration=news_process_configuration,
                 calendar_registry_artifact=dict(calendar_registry._registry_payload),
                 exchange_code=exchange_code,
@@ -463,10 +463,10 @@ class CoarseSimulationPathRecord(ContractModel):
                 f"must equal {expected_interval_index}",
             )
 
-        from ...risk import (
+        from ...sufficient_statistics import (
             SufficientStatisticsIntervalStatistics,
-            SufficientStatisticsRiskReturnComponents,
-            SufficientStatisticsRiskValidationError,
+            SufficientStatisticsReturnComponents,
+            SufficientStatisticsValidationError,
         )
 
         try:
@@ -479,7 +479,7 @@ class CoarseSimulationPathRecord(ContractModel):
                 ),
                 field_path=f"{field_path}.sufficient_statistics",
             )
-            return_components = SufficientStatisticsRiskReturnComponents.from_mapping(
+            return_components = SufficientStatisticsReturnComponents.from_mapping(
                 require_mapping(
                     raw_payload,
                     "return_components",
@@ -488,7 +488,7 @@ class CoarseSimulationPathRecord(ContractModel):
                 ),
                 field_path=f"{field_path}.return_components",
             )
-        except SufficientStatisticsRiskValidationError as e:
+        except SufficientStatisticsValidationError as e:
             raise _simulation_error(e.failure.field_path, e.failure.message) from e
 
         return CoarseSimulationPathRecord(
@@ -783,7 +783,7 @@ def _build_coarse_simulation_path_provenance() -> CoarseSimulationPathProvenance
         interval_identifier_policy=COARSE_SIMULATION_INTERVAL_IDENTIFIER_POLICY,
         interval_factor_alignment_policy=COARSE_SIMULATION_INTERVAL_FACTOR_ALIGNMENT_POLICY,
         compatible_interval_grid_policy=COARSE_SIMULATION_COMPATIBLE_INTERVAL_GRID_POLICY,
-        interval_factor_policy=_SUFFICIENT_STATISTICS_RISK_INTERVAL_FACTOR_POLICY,
+        interval_factor_policy=_SUFFICIENT_STATISTICS_INTERVAL_FACTOR_POLICY,
         transform_slice_sampling_policy=_SUFFICIENT_STATISTICS_TRANSFORM_SLICE_SAMPLING_POLICY,
         boundary_state_update_policy=_SUFFICIENT_STATISTICS_BOUNDARY_STATE_UPDATE_POLICY,
         interval_return_generation_policy=_SUFFICIENT_STATISTICS_INTERVAL_RETURN_GENERATION_POLICY,

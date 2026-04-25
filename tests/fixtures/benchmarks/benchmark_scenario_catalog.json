@@ -47,14 +47,14 @@
       "component_workload": {
         "oracle_requests_per_iteration": 24,
         "pricing_requests_per_iteration": 24,
-        "risk_paths_per_iteration": 128
+        "sufficient_statistics_paths_per_iteration": 128
       },
       "tags": [
         "ci",
         "small",
         "hourly"
       ],
-      "description": "Small hourly profile for quick smoke-level benchmark checks across oracle, pricing, and risk sampler paths."
+      "description": "Small hourly profile for quick smoke-level benchmark checks across oracle, pricing, and sufficient-statistics sampler paths."
     },
     {
       "profile_id": "medium_half_hour_balanced",
@@ -90,7 +90,7 @@
       "component_workload": {
         "oracle_requests_per_iteration": 96,
         "pricing_requests_per_iteration": 96,
-        "risk_paths_per_iteration": 512
+        "sufficient_statistics_paths_per_iteration": 512
       },
       "tags": [
         "ci",
@@ -133,7 +133,7 @@
       "component_workload": {
         "oracle_requests_per_iteration": 96,
         "pricing_requests_per_iteration": 96,
-        "risk_paths_per_iteration": 512
+        "sufficient_statistics_paths_per_iteration": 512
       },
       "tags": [
         "ci",
@@ -176,7 +176,7 @@
       "component_workload": {
         "oracle_requests_per_iteration": 384,
         "pricing_requests_per_iteration": 384,
-        "risk_paths_per_iteration": 2048
+        "sufficient_statistics_paths_per_iteration": 2048
       },
       "tags": [
         "release",

@@ -29,7 +29,7 @@ These examples stay on the curated workflow surface and show preset resolution, 
 - `python -m examples.low_level.simulation_requests`
 - `python -m examples.low_level.hourly_factor_contract`
 - `python -m examples.low_level.vanilla_option_pricing_request`
-- `python -m examples.low_level.risk_request_contract`
+- `python -m examples.low_level.sufficient_statistics_request_contract`
 - `python -m examples.low_level.validation_harness`
 - `python -m examples.low_level.stylized_fact_report`
 

@@ -1,24 +1,24 @@
 pub use janiform_affine_oracle::sufficient_statistics::{
-    DEFAULT_INTRADAY_RISK_INTERVAL_DELTA, SUFFICIENT_STATISTICS_RISK_INTERVAL_FACTOR_POLICY,
+    DEFAULT_INTRADAY_SUFFICIENT_STATISTICS_INTERVAL_DELTA,
+    SUFFICIENT_STATISTICS_INTERVAL_FACTOR_POLICY,
 };
 
-pub const SUFFICIENT_STATISTICS_RISK_RUN_REQUEST_SCHEMA_VERSION: &str =
-    "risk.sufficient_statistics.run_request.v1";
-pub const SUFFICIENT_STATISTICS_RISK_PATH_SCHEMA_VERSION: &str =
-    "risk.sufficient_statistics.path.v1";
-pub const SUFFICIENT_STATISTICS_RISK_PATH_RECORD_SCHEMA_VERSION: &str =
-    "risk.sufficient_statistics.path_record.v1";
-pub const SUFFICIENT_STATISTICS_RISK_PATH_OUTPUT_SCHEMA_METADATA_VERSION: &str =
-    "risk.sufficient_statistics.path_output_schema_metadata.v1";
-pub const SUFFICIENT_STATISTICS_RISK_PATH_PROVENANCE_SCHEMA_VERSION: &str =
-    "risk.sufficient_statistics.path_provenance.v1";
-pub const SUFFICIENT_STATISTICS_RISK_PATH_DIAGNOSTICS_SCHEMA_VERSION: &str =
-    "risk.sufficient_statistics.path_diagnostics.v1";
-pub const SUFFICIENT_STATISTICS_RISK_PATH_ARTIFACT_WORKFLOW_POLICY: &str =
+pub const SUFFICIENT_STATISTICS_RUN_REQUEST_SCHEMA_VERSION: &str =
+    "sufficient_statistics.run_request.v1";
+pub const SUFFICIENT_STATISTICS_PATH_SCHEMA_VERSION: &str = "sufficient_statistics.path.v1";
+pub const SUFFICIENT_STATISTICS_PATH_RECORD_SCHEMA_VERSION: &str =
+    "sufficient_statistics.path_record.v1";
+pub const SUFFICIENT_STATISTICS_PATH_OUTPUT_SCHEMA_METADATA_VERSION: &str =
+    "sufficient_statistics.path_output_schema_metadata.v1";
+pub const SUFFICIENT_STATISTICS_PATH_PROVENANCE_SCHEMA_VERSION: &str =
+    "sufficient_statistics.path_provenance.v1";
+pub const SUFFICIENT_STATISTICS_PATH_DIAGNOSTICS_SCHEMA_VERSION: &str =
+    "sufficient_statistics.path_diagnostics.v1";
+pub const SUFFICIENT_STATISTICS_PATH_ARTIFACT_WORKFLOW_POLICY: &str =
     "compatible_with_calibration_and_validation_artifact_workflows.v1";
-pub const SUFFICIENT_STATISTICS_RISK_PATH_ENVIRONMENT_METADATA_POLICY: &str =
+pub const SUFFICIENT_STATISTICS_PATH_ENVIRONMENT_METADATA_POLICY: &str =
     "exclude_environment_specific_metadata.v1";
-pub(crate) const SUFFICIENT_STATISTICS_RISK_PATH_REQUIRED_FIELDS: [&str; 11] = [
+pub(crate) const SUFFICIENT_STATISTICS_PATH_REQUIRED_FIELDS: [&str; 11] = [
     "schema_version",
     "run_request_schema_version",
     "output_schema_metadata",
@@ -31,7 +31,7 @@ pub(crate) const SUFFICIENT_STATISTICS_RISK_PATH_REQUIRED_FIELDS: [&str; 11] = [
     "terminal_excitation_state",
     "records",
 ];
-pub(crate) const SUFFICIENT_STATISTICS_RISK_PATH_REQUIRED_PROVENANCE_FIELDS: [&str; 10] = [
+pub(crate) const SUFFICIENT_STATISTICS_PATH_REQUIRED_PROVENANCE_FIELDS: [&str; 10] = [
     "schema_version",
     "artifact_workflow_policy",
     "environment_metadata_policy",
@@ -43,7 +43,7 @@ pub(crate) const SUFFICIENT_STATISTICS_RISK_PATH_REQUIRED_PROVENANCE_FIELDS: [&s
     "batch_seed_partition_policy",
     "artifact_workflow_tags",
 ];
-pub(crate) const SUFFICIENT_STATISTICS_RISK_PATH_REQUIRED_DIAGNOSTICS_FIELDS: [&str; 17] = [
+pub(crate) const SUFFICIENT_STATISTICS_PATH_REQUIRED_DIAGNOSTICS_FIELDS: [&str; 17] = [
     "schema_version",
     "simulated_interval_count",
     "first_interval_index",
@@ -62,5 +62,5 @@ pub(crate) const SUFFICIENT_STATISTICS_RISK_PATH_REQUIRED_DIAGNOSTICS_FIELDS: [&
     "terminal_observed_log_price",
     "terminal_deviation_from_anchor",
 ];
-pub(crate) const SUFFICIENT_STATISTICS_RISK_PATH_ARTIFACT_WORKFLOW_TAGS: [&str; 2] =
+pub(crate) const SUFFICIENT_STATISTICS_PATH_ARTIFACT_WORKFLOW_TAGS: [&str; 2] =
     ["calibration", "validation"];

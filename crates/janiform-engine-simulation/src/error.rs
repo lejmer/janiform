@@ -5,7 +5,7 @@ use std::fmt::{Display, Formatter};
 
 use chrono::{DateTime, Utc};
 
-use janiform_affine_oracle::sufficient_statistics::SufficientStatisticsRiskReturnComponentsError;
+use janiform_affine_oracle::sufficient_statistics::SufficientStatisticsReturnComponentsError;
 use janiform_market_time::calendar::ExchangeCalendarResolveError;
 use janiform_model_kernels::hawkes::HawkesTransitionError;
 use janiform_model_kernels::mean_reversion::{
@@ -149,7 +149,7 @@ pub enum SeededTickSimulationRunError {
     },
     InvalidReturnComponents {
         interval_index: usize,
-        source: SufficientStatisticsRiskReturnComponentsError,
+        source: SufficientStatisticsReturnComponentsError,
     },
     InvalidTransitionStep {
         source: HawkesTransitionError,

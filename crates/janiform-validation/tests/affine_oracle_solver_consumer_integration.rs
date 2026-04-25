@@ -10,9 +10,9 @@ use janiform_engine_pricing::{
     VanillaOptionPricingModelParameters, VanillaOptionPricingRequest,
     build_pricing_transform_input, solve_exponential_affine_transform,
 };
-use janiform_engine_risk::{
-    solve_exponential_affine_transform_for_risk_sampling,
-    solve_exponential_affine_transform_for_risk_sampling_with_settings,
+use janiform_engine_sufficient_statistics::{
+    solve_exponential_affine_transform_for_sufficient_statistics_sampling,
+    solve_exponential_affine_transform_for_sufficient_statistics_sampling_with_settings,
 };
 use janiform_foundations::complex_math::ComplexScalar;
 use janiform_model_kernels::hawkes::{
@@ -29,7 +29,7 @@ use janiform_model_kernels::news::{
 };
 
 #[test]
-fn solver_api_contract_is_compatible_across_pricing_and_risk_consumers() {
+fn solver_api_contract_is_compatible_across_pricing_and_sufficient_statistics_consumers() {
     let transform_input = build_transform_input(1.0);
     let solver_settings = ExponentialAffineTransformSolverSettings::try_new(
         ExponentialAffineTransformIntegratorMethod::FourthOrderRungeKutta,
@@ -39,10 +39,11 @@ fn solver_api_contract_is_compatible_across_pricing_and_risk_consumers() {
 
     let pricing_result = solve_exponential_affine_transform(transform_input, solver_settings)
         .expect("pricing consumer solve should succeed");
-    let risk_result = solve_exponential_affine_transform_for_risk_sampling(transform_input)
-        .expect("risk consumer solve should succeed");
+    let sufficient_statistics_result =
+        solve_exponential_affine_transform_for_sufficient_statistics_sampling(transform_input)
+            .expect("sufficient-statistics consumer solve should succeed");
 
-    assert_eq!(pricing_result, risk_result);
+    assert_eq!(pricing_result, sufficient_statistics_result);
     assert_eq!(
         pricing_result.status,
         ExponentialAffineTransformIntegrationStatus::Completed
@@ -79,25 +80,27 @@ fn pricing_consumer_calls_shared_solver_entrypoint() {
 }
 
 #[test]
-fn risk_consumer_calls_shared_solver_entrypoint_with_interval_parametric_delta() {
+fn sufficient_statistics_consumer_calls_shared_solver_entrypoint_with_interval_parametric_delta() {
     let short_interval_input = build_transform_input(0.5);
     let long_interval_input = build_transform_input(1.5);
     let solver_settings = ExponentialAffineTransformSolverSettings::try_new(
         ExponentialAffineTransformIntegratorMethod::FourthOrderRungeKutta,
         64,
     )
-    .expect("risk integration settings should construct");
+    .expect("sufficient-statistics integration settings should construct");
 
-    let short_interval_result = solve_exponential_affine_transform_for_risk_sampling_with_settings(
-        short_interval_input,
-        solver_settings,
-    )
-    .expect("risk solve for short interval should succeed");
-    let long_interval_result = solve_exponential_affine_transform_for_risk_sampling_with_settings(
-        long_interval_input,
-        solver_settings,
-    )
-    .expect("risk solve for long interval should succeed");
+    let short_interval_result =
+        solve_exponential_affine_transform_for_sufficient_statistics_sampling_with_settings(
+            short_interval_input,
+            solver_settings,
+        )
+        .expect("sufficient-statistics solve for short interval should succeed");
+    let long_interval_result =
+        solve_exponential_affine_transform_for_sufficient_statistics_sampling_with_settings(
+            long_interval_input,
+            solver_settings,
+        )
+        .expect("sufficient-statistics solve for long interval should succeed");
 
     let short_interval_shared_result = solve_exponential_affine_transform_with_optional_settings(
         short_interval_input,

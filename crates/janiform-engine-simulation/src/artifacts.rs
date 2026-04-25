@@ -4,7 +4,7 @@ use chrono::{DateTime, Utc};
 use serde::Serialize;
 use std::mem::size_of;
 
-use janiform_affine_oracle::sufficient_statistics::SufficientStatisticsRiskReturnComponents;
+use janiform_affine_oracle::sufficient_statistics::SufficientStatisticsReturnComponents;
 use janiform_market_time::calendar::MarketState;
 use janiform_model_kernels::hawkes::HawkesExcitationState;
 use janiform_model_kernels::news::{NewsArrivalComponent, NewsReturnJumpRoutingTarget};
@@ -95,7 +95,7 @@ pub struct SeededFinePathRecord {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub news_arrival_component: Option<NewsArrivalComponent>,
     pub market_state: SeededTickSimulationNewsEventMarketState,
-    pub return_components: SufficientStatisticsRiskReturnComponents,
+    pub return_components: SufficientStatisticsReturnComponents,
     pub core_total_return_increment: f64,
     pub observed_log_price: f64,
     pub anchor_value: f64,

@@ -23,31 +23,42 @@ pub use catalog::{
     load_benchmark_scenario_catalog_from_json,
 };
 pub use harness::{
-    OraclePricerRiskBenchmarkHarnessError, run_oracle_pricer_risk_benchmark_harness,
+    OraclePricerSufficientStatisticsBenchmarkHarnessError,
+    run_oracle_pricer_sufficient_statistics_benchmark_harness,
 };
 pub use microbench::{
     MICROBENCHMARK_REPRODUCIBILITY_SEED, MicrobenchmarkFixtureError, MicrobenchmarkFixtureSet,
     ORACLE_SOLVER_MICROBENCHMARK_PROFILE_ID, PRICING_KERNEL_MICROBENCHMARK_PROFILE_ID,
     PreparedOracleSolverBenchmarkCase, PreparedPricingKernelBenchmarkCase,
     PreparedRiskSamplingBenchmarkCase, PreparedSimulationPrimitiveBenchmarkCase,
-    RISK_SAMPLING_MICROBENCHMARK_PROFILE_ID, SIMULATION_PRIMITIVE_MICROBENCHMARK_PROFILE_ID,
-    load_microbenchmark_fixture_set,
+    SIMULATION_PRIMITIVE_MICROBENCHMARK_PROFILE_ID,
+    SUFFICIENT_STATISTICS_SAMPLING_MICROBENCHMARK_PROFILE_ID, load_microbenchmark_fixture_set,
 };
 pub use policy::{
-    ORACLE_PRICER_RISK_BENCHMARK_POLICY_SCHEMA_VERSION, OraclePricerRiskBenchmarkExecutionConfig,
-    OraclePricerRiskBenchmarkExecutionConfigError, OraclePricerRiskBenchmarkModelParameters,
-    OraclePricerRiskBenchmarkOracleSolverProbes, OraclePricerRiskBenchmarkPolicy,
-    OraclePricerRiskBenchmarkPolicyLoadError, OraclePricerRiskBenchmarkPolicyRationale,
-    OraclePricerRiskBenchmarkPolicyValidationError, OraclePricerRiskBenchmarkPricingInputRanges,
-    OraclePricerRiskBenchmarkSeedPartition, load_oracle_pricer_risk_benchmark_policy_from_json,
+    ORACLE_PRICER_SUFFICIENT_STATISTICS_BENCHMARK_POLICY_SCHEMA_VERSION,
+    OraclePricerSufficientStatisticsBenchmarkExecutionConfig,
+    OraclePricerSufficientStatisticsBenchmarkExecutionConfigError,
+    OraclePricerSufficientStatisticsBenchmarkModelParameters,
+    OraclePricerSufficientStatisticsBenchmarkOracleSolverProbes,
+    OraclePricerSufficientStatisticsBenchmarkPolicy,
+    OraclePricerSufficientStatisticsBenchmarkPolicyLoadError,
+    OraclePricerSufficientStatisticsBenchmarkPolicyRationale,
+    OraclePricerSufficientStatisticsBenchmarkPolicyValidationError,
+    OraclePricerSufficientStatisticsBenchmarkPricingInputRanges,
+    OraclePricerSufficientStatisticsBenchmarkSeedPartition,
+    load_oracle_pricer_sufficient_statistics_benchmark_policy_from_json,
 };
 pub use report::{
-    ORACLE_PRICER_RISK_BENCHMARK_DETERMINISM_POLICY, ORACLE_PRICER_RISK_BENCHMARK_EXECUTION_POLICY,
-    ORACLE_PRICER_RISK_BENCHMARK_METRIC_POLICY,
-    ORACLE_PRICER_RISK_BENCHMARK_OUTPUT_SCHEMA_METADATA_VERSION,
-    ORACLE_PRICER_RISK_BENCHMARK_REPORT_SCHEMA_VERSION, OraclePricerRiskBenchmarkComponentMetrics,
-    OraclePricerRiskBenchmarkOutputSchemaMetadata, OraclePricerRiskBenchmarkProfileReport,
-    OraclePricerRiskBenchmarkReport, OraclePricerRiskBenchmarkSummary,
+    ORACLE_PRICER_SUFFICIENT_STATISTICS_BENCHMARK_DETERMINISM_POLICY,
+    ORACLE_PRICER_SUFFICIENT_STATISTICS_BENCHMARK_EXECUTION_POLICY,
+    ORACLE_PRICER_SUFFICIENT_STATISTICS_BENCHMARK_METRIC_POLICY,
+    ORACLE_PRICER_SUFFICIENT_STATISTICS_BENCHMARK_OUTPUT_SCHEMA_METADATA_VERSION,
+    ORACLE_PRICER_SUFFICIENT_STATISTICS_BENCHMARK_REPORT_SCHEMA_VERSION,
+    OraclePricerSufficientStatisticsBenchmarkComponentMetrics,
+    OraclePricerSufficientStatisticsBenchmarkOutputSchemaMetadata,
+    OraclePricerSufficientStatisticsBenchmarkProfileReport,
+    OraclePricerSufficientStatisticsBenchmarkReport,
+    OraclePricerSufficientStatisticsBenchmarkSummary,
 };
 
 pub use builders::{
@@ -56,8 +67,9 @@ pub use builders::{
 };
 pub use catalog::{CanonicalProfileRecord, sort_profile_records_canonically};
 pub use report::{
-    ORACLE_PRICER_RISK_COMPONENT_ORACLE, ORACLE_PRICER_RISK_COMPONENT_PRICING,
-    ORACLE_PRICER_RISK_COMPONENT_RISK,
+    ORACLE_PRICER_SUFFICIENT_STATISTICS_COMPONENT_ORACLE,
+    ORACLE_PRICER_SUFFICIENT_STATISTICS_COMPONENT_PRICING,
+    ORACLE_PRICER_SUFFICIENT_STATISTICS_COMPONENT_RISK,
 };
 pub use utilities::{
     derive_invocation_seed, fnv1a_64, interpolate_range, splitmix64, unit_interval_from_seed,

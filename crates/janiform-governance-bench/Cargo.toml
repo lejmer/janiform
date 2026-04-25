@@ -15,7 +15,7 @@ doctest = false
 [dependencies]
 janiform-affine-oracle = { path = "../janiform-affine-oracle" }
 janiform-engine-pricing = { path = "../janiform-engine-pricing" }
-janiform-engine-risk = { path = "../janiform-engine-risk" }
+janiform-engine-sufficient-statistics = { path = "../janiform-engine-sufficient-statistics" }
 janiform-foundations = { path = "../janiform-foundations" }
 janiform-model-kernels = { path = "../janiform-model-kernels" }
 serde = { workspace = true }

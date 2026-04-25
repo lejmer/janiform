@@ -1253,7 +1253,7 @@ pub(crate) fn recover_pure_imaginary_log_moment_exponent(
     Ok(log_moment_exponent)
 }
 
-pub(crate) fn build_pricing_risk_neutral_anchor_materialization(
+pub(crate) fn build_pricing_sufficient_statistics_neutral_anchor_materialization(
     pricing_request: &VanillaOptionPricingRequest,
     runtime_interval_schedule: &PricingIntervalSchedule,
     interval_factors: &[VanillaOptionPricingIntervalFactors],

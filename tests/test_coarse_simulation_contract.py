@@ -5,9 +5,9 @@ import pytest
 
 from janiform._native_api import native_module
 from janiform.pricing import GammaSeverityMarkConfiguration, NigSharedPlusShiftConfiguration
-from janiform.risk import (
-    SufficientStatisticsRiskEquationSpecification,
-    SufficientStatisticsRiskModelInputs,
+from janiform.sufficient_statistics import (
+    SufficientStatisticsEquationSpecification,
+    SufficientStatisticsModelInputs,
 )
 from janiform.simulation import (
     HawkesExcitationState,
@@ -114,8 +114,8 @@ def _build_coarse_run_request(calendar_registry) -> CoarseSimulationRunRequest:
         start_time_utc=datetime.fromtimestamp(1704205800, tz=UTC),
         horizon_interval_count=1,
         interval_delta=0.5,
-        risk_model_inputs=SufficientStatisticsRiskModelInputs(
-            equation_specification=SufficientStatisticsRiskEquationSpecification(
+        sufficient_statistics_model_inputs=SufficientStatisticsModelInputs(
+            equation_specification=SufficientStatisticsEquationSpecification(
                 hawkes_kernel_parameters=HawkesKernelParameters(
                     lambda_bar=0.8,
                     beta=1.6,

@@ -36,7 +36,7 @@ from ...contracts.base import (
     serialize_deterministic_json,
 )
 from ...calendar import MarketState
-from ...risk import SufficientStatisticsRiskReturnComponents
+from ...sufficient_statistics import SufficientStatisticsReturnComponents
 
 
 class _SeededTickSimulationMaterializationTracker:
@@ -391,7 +391,7 @@ def _parse_seeded_fine_path_chunk_columns(
                 else None
             ),
             market_state=MarketState(market_state_column[chunk_offset]),
-            return_components=SufficientStatisticsRiskReturnComponents(
+            return_components=SufficientStatisticsReturnComponents(
                 buy_side_return=buy_side_return_column[chunk_offset],
                 sell_side_return=sell_side_return_column[chunk_offset],
                 trading_time_return=trading_time_return_column[chunk_offset],

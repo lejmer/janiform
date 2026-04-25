@@ -775,7 +775,7 @@ mod tests {
         sampled_return_values, sampled_trade_returns, scale_normalized_returns,
         zeroed_interval_observation_template,
     };
-    use janiform_affine_oracle::sufficient_statistics::SufficientStatisticsRiskReturnComponents;
+    use janiform_affine_oracle::sufficient_statistics::SufficientStatisticsReturnComponents;
     use janiform_engine_simulation::{
         SeededFinePathRecord, SeededFinePathTransitionKind, SeededTickEventSide,
         SeededTickSimulationNewsEventMarketState,
@@ -797,7 +797,7 @@ mod tests {
             side,
             news_arrival_component: None,
             market_state: SeededTickSimulationNewsEventMarketState::Open,
-            return_components: SufficientStatisticsRiskReturnComponents {
+            return_components: SufficientStatisticsReturnComponents {
                 buy_side_return: total_return.max(0.0),
                 sell_side_return: total_return.min(0.0),
                 trading_time_return: total_return,

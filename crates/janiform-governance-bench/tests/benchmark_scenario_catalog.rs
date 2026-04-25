@@ -96,7 +96,12 @@ fn benchmark_scenario_catalog_parses_valid_fixture_profiles() {
         assert!(profile.run_length.measured_iteration_count > 0);
         assert!(profile.component_workload.oracle_requests_per_iteration > 0);
         assert!(profile.component_workload.pricing_requests_per_iteration > 0);
-        assert!(profile.component_workload.risk_paths_per_iteration > 0);
+        assert!(
+            profile
+                .component_workload
+                .sufficient_statistics_paths_per_iteration
+                > 0
+        );
     }
 }
 

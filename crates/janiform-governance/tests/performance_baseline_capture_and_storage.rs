@@ -3,12 +3,13 @@ mod support;
 use std::fs;
 
 use janiform_governance::{
-    OraclePricerRiskPerformanceBaselineArtifact, OraclePricerRiskPerformanceBaselineCaptureConfig,
-    OraclePricerRiskPerformanceBaselineComponentMetrics,
-    capture_oracle_pricer_risk_performance_baseline_artifact,
-    compare_oracle_pricer_risk_performance_baseline_versions,
-    load_oracle_pricer_risk_performance_baseline_from_json,
-    serialize_oracle_pricer_risk_performance_baseline_to_json,
+    OraclePricerSufficientStatisticsPerformanceBaselineArtifact,
+    OraclePricerSufficientStatisticsPerformanceBaselineCaptureConfig,
+    OraclePricerSufficientStatisticsPerformanceBaselineComponentMetrics,
+    capture_oracle_pricer_sufficient_statistics_performance_baseline_artifact,
+    compare_oracle_pricer_sufficient_statistics_performance_baseline_versions,
+    load_oracle_pricer_sufficient_statistics_performance_baseline_from_json,
+    serialize_oracle_pricer_sufficient_statistics_performance_baseline_to_json,
 };
 use janiform_governance_bench::benchmarking::{
     BENCHMARK_SCENARIO_CATALOG_CONTENT_HASH_ALGORITHM_POLICY,
@@ -21,8 +22,9 @@ use janiform_governance_bench::benchmarking::{
     BenchmarkScenarioComponentWorkload, BenchmarkScenarioIntervalSettings,
     BenchmarkScenarioModelState, BenchmarkScenarioPortfolioShape, BenchmarkScenarioRunLength,
     BenchmarkScenarioSharedNewsState, BenchmarkScenarioWorkloadProfile, BenchmarkWorkloadScale,
-    OraclePricerRiskBenchmarkExecutionConfig, load_oracle_pricer_risk_benchmark_policy_from_json,
-    run_oracle_pricer_risk_benchmark_harness,
+    OraclePricerSufficientStatisticsBenchmarkExecutionConfig,
+    load_oracle_pricer_sufficient_statistics_benchmark_policy_from_json,
+    run_oracle_pricer_sufficient_statistics_benchmark_harness,
 };
 use janiform_model_kernels::hawkes::HawkesExcitationState;
 use serde_json::{Value, json};
@@ -33,24 +35,24 @@ use support::validation_fixture::fixtures_root_path;
 fn performance_baseline_capture_round_trip_is_lossless() {
     let benchmark_catalog = build_bounded_catalog_fixture();
     let benchmark_policy = load_benchmark_policy_fixture();
-    let execution_config = OraclePricerRiskBenchmarkExecutionConfig {
+    let execution_config = OraclePricerSufficientStatisticsBenchmarkExecutionConfig {
         warmup_iteration_count_override: Some(0),
         measured_iteration_count_override: Some(1),
         reproducibility_seed: 23,
     };
 
-    let benchmark_report = run_oracle_pricer_risk_benchmark_harness(
+    let benchmark_report = run_oracle_pricer_sufficient_statistics_benchmark_harness(
         &benchmark_catalog,
         &benchmark_policy,
         execution_config,
     )
     .expect("benchmark harness should run with bounded fixture");
-    let baseline = capture_oracle_pricer_risk_performance_baseline_artifact(
+    let baseline = capture_oracle_pricer_sufficient_statistics_performance_baseline_artifact(
         &benchmark_report,
-        OraclePricerRiskPerformanceBaselineCaptureConfig {
-            baseline_id: "oracle_pricer_risk_ci_performance_baseline".to_string(),
+        OraclePricerSufficientStatisticsPerformanceBaselineCaptureConfig {
+            baseline_id: "oracle_pricer_sufficient_statistics_ci_performance_baseline".to_string(),
             baseline_version: "2.0.0".to_string(),
-            owner_team: "coarse_time_pricing_and_risk_engines".to_string(),
+            owner_team: "coarse_time_pricing_and_sufficient_statistics_engines".to_string(),
             owner_oncall: "janiform-owners".to_string(),
             refresh_process:
                 "tests/fixtures/benchmarks/README.md#performance-baseline-refresh-process"
@@ -59,10 +61,11 @@ fn performance_baseline_capture_round_trip_is_lossless() {
     )
     .expect("capturing performance baseline from report should succeed");
 
-    let baseline_payload = serialize_oracle_pricer_risk_performance_baseline_to_json(&baseline)
-        .expect("captured baseline should serialize");
+    let baseline_payload =
+        serialize_oracle_pricer_sufficient_statistics_performance_baseline_to_json(&baseline)
+            .expect("captured baseline should serialize");
     let reloaded_baseline =
-        load_oracle_pricer_risk_performance_baseline_from_json(&baseline_payload)
+        load_oracle_pricer_sufficient_statistics_performance_baseline_from_json(&baseline_payload)
             .expect("serialized baseline payload should load");
 
     assert_baseline_round_trip_close(&baseline, &reloaded_baseline);
@@ -73,48 +76,52 @@ fn performance_baseline_capture_round_trip_is_lossless() {
 fn performance_baseline_interval_matrix_profiles_are_versioned_and_comparable() {
     let benchmark_catalog = build_interval_matrix_bounded_catalog_fixture();
     let benchmark_policy = load_benchmark_policy_fixture();
-    let execution_config = OraclePricerRiskBenchmarkExecutionConfig {
+    let execution_config = OraclePricerSufficientStatisticsBenchmarkExecutionConfig {
         warmup_iteration_count_override: Some(0),
         measured_iteration_count_override: Some(1),
         reproducibility_seed: 23,
     };
 
-    let benchmark_report = run_oracle_pricer_risk_benchmark_harness(
+    let benchmark_report = run_oracle_pricer_sufficient_statistics_benchmark_harness(
         &benchmark_catalog,
         &benchmark_policy,
         execution_config,
     )
     .expect("interval-matrix benchmark harness run should succeed");
 
-    let reference_baseline = capture_oracle_pricer_risk_performance_baseline_artifact(
-        &benchmark_report,
-        OraclePricerRiskPerformanceBaselineCaptureConfig {
-            baseline_id: "oracle_pricer_risk_ci_performance_baseline".to_string(),
-            baseline_version: "2.0.0-matrix".to_string(),
-            owner_team: "coarse_time_pricing_and_risk_engines".to_string(),
-            owner_oncall: "janiform-owners".to_string(),
-            refresh_process:
-                "tests/fixtures/benchmarks/README.md#performance-baseline-refresh-process"
+    let reference_baseline =
+        capture_oracle_pricer_sufficient_statistics_performance_baseline_artifact(
+            &benchmark_report,
+            OraclePricerSufficientStatisticsPerformanceBaselineCaptureConfig {
+                baseline_id: "oracle_pricer_sufficient_statistics_ci_performance_baseline"
                     .to_string(),
-        },
-    )
-    .expect("capturing reference interval-matrix baseline should succeed");
+                baseline_version: "2.0.0-matrix".to_string(),
+                owner_team: "coarse_time_pricing_and_sufficient_statistics_engines".to_string(),
+                owner_oncall: "janiform-owners".to_string(),
+                refresh_process:
+                    "tests/fixtures/benchmarks/README.md#performance-baseline-refresh-process"
+                        .to_string(),
+            },
+        )
+        .expect("capturing reference interval-matrix baseline should succeed");
 
-    let candidate_baseline = capture_oracle_pricer_risk_performance_baseline_artifact(
-        &benchmark_report,
-        OraclePricerRiskPerformanceBaselineCaptureConfig {
-            baseline_id: "oracle_pricer_risk_ci_performance_baseline".to_string(),
-            baseline_version: "2.1.0-matrix".to_string(),
-            owner_team: "coarse_time_pricing_and_risk_engines".to_string(),
-            owner_oncall: "janiform-owners".to_string(),
-            refresh_process:
-                "tests/fixtures/benchmarks/README.md#performance-baseline-refresh-process"
+    let candidate_baseline =
+        capture_oracle_pricer_sufficient_statistics_performance_baseline_artifact(
+            &benchmark_report,
+            OraclePricerSufficientStatisticsPerformanceBaselineCaptureConfig {
+                baseline_id: "oracle_pricer_sufficient_statistics_ci_performance_baseline"
                     .to_string(),
-        },
-    )
-    .expect("capturing candidate interval-matrix baseline should succeed");
+                baseline_version: "2.1.0-matrix".to_string(),
+                owner_team: "coarse_time_pricing_and_sufficient_statistics_engines".to_string(),
+                owner_oncall: "janiform-owners".to_string(),
+                refresh_process:
+                    "tests/fixtures/benchmarks/README.md#performance-baseline-refresh-process"
+                        .to_string(),
+            },
+        )
+        .expect("capturing candidate interval-matrix baseline should succeed");
 
-    let comparison = compare_oracle_pricer_risk_performance_baseline_versions(
+    let comparison = compare_oracle_pricer_sufficient_statistics_performance_baseline_versions(
         &reference_baseline,
         &candidate_baseline,
     )
@@ -137,39 +144,43 @@ fn performance_baseline_interval_matrix_profiles_are_versioned_and_comparable() 
 
 #[test]
 fn performance_baseline_loader_rejects_invalid_schema_version() {
-    let baseline_payload = load_fixture_payload("oracle_pricer_risk_performance_baseline_v1.json");
+    let baseline_payload =
+        load_fixture_payload("oracle_pricer_sufficient_statistics_performance_baseline_v1.json");
     let mut baseline_value: Value =
         serde_json::from_str(&baseline_payload).expect("baseline payload should parse as JSON");
     baseline_value["schema_version"] =
-        json!("benchmark.oracle_pricer_risk.performance_baseline.v0");
+        json!("benchmark.oracle_pricer_sufficient_statistics.performance_baseline.v0");
 
     let mutated_payload =
         serde_json::to_string(&baseline_value).expect("mutated baseline payload should serialize");
-    let error_text = load_oracle_pricer_risk_performance_baseline_from_json(&mutated_payload)
-        .expect_err("invalid schema_version must fail")
-        .to_string();
+    let error_text =
+        load_oracle_pricer_sufficient_statistics_performance_baseline_from_json(&mutated_payload)
+            .expect_err("invalid schema_version must fail")
+            .to_string();
 
     assert!(error_text.contains("schema_version"));
 }
 
 #[test]
 fn performance_baseline_comparison_reports_cross_version_component_deltas() {
-    let reference_payload = load_fixture_payload("oracle_pricer_risk_performance_baseline_v1.json");
+    let reference_payload =
+        load_fixture_payload("oracle_pricer_sufficient_statistics_performance_baseline_v1.json");
     let candidate_payload =
-        load_fixture_payload("oracle_pricer_risk_performance_baseline_v1_1.json");
+        load_fixture_payload("oracle_pricer_sufficient_statistics_performance_baseline_v1_1.json");
 
     let reference_baseline =
-        load_oracle_pricer_risk_performance_baseline_from_json(&reference_payload)
+        load_oracle_pricer_sufficient_statistics_performance_baseline_from_json(&reference_payload)
             .expect("reference baseline fixture should load");
     let candidate_baseline =
-        load_oracle_pricer_risk_performance_baseline_from_json(&candidate_payload)
+        load_oracle_pricer_sufficient_statistics_performance_baseline_from_json(&candidate_payload)
             .expect("candidate baseline fixture should load");
 
-    let comparison_report = compare_oracle_pricer_risk_performance_baseline_versions(
-        &reference_baseline,
-        &candidate_baseline,
-    )
-    .expect("comparing two compatible baseline versions should succeed");
+    let comparison_report =
+        compare_oracle_pricer_sufficient_statistics_performance_baseline_versions(
+            &reference_baseline,
+            &candidate_baseline,
+        )
+        .expect("comparing two compatible baseline versions should succeed");
 
     assert_eq!(
         comparison_report.reference_baseline_version,
@@ -197,9 +208,10 @@ fn performance_baseline_comparison_reports_cross_version_component_deltas() {
 }
 
 fn load_benchmark_policy_fixture()
--> janiform_governance_bench::benchmarking::OraclePricerRiskBenchmarkPolicy {
-    let policy_payload = load_fixture_payload("oracle_pricer_risk_benchmark_policy.json");
-    load_oracle_pricer_risk_benchmark_policy_from_json(&policy_payload)
+-> janiform_governance_bench::benchmarking::OraclePricerSufficientStatisticsBenchmarkPolicy {
+    let policy_payload =
+        load_fixture_payload("oracle_pricer_sufficient_statistics_benchmark_policy.json");
+    load_oracle_pricer_sufficient_statistics_benchmark_policy_from_json(&policy_payload)
         .expect("benchmark policy fixture should parse")
 }
 
@@ -239,7 +251,7 @@ fn build_bounded_catalog_fixture() -> BenchmarkScenarioCatalog {
                 BenchmarkScenarioComponentWorkload {
                     oracle_requests_per_iteration: 2,
                     pricing_requests_per_iteration: 3,
-                    risk_paths_per_iteration: 2,
+                    sufficient_statistics_paths_per_iteration: 2,
                 },
             ),
             build_profile(
@@ -249,7 +261,7 @@ fn build_bounded_catalog_fixture() -> BenchmarkScenarioCatalog {
                 BenchmarkScenarioComponentWorkload {
                     oracle_requests_per_iteration: 3,
                     pricing_requests_per_iteration: 2,
-                    risk_paths_per_iteration: 3,
+                    sufficient_statistics_paths_per_iteration: 3,
                 },
             ),
             build_profile(
@@ -259,7 +271,7 @@ fn build_bounded_catalog_fixture() -> BenchmarkScenarioCatalog {
                 BenchmarkScenarioComponentWorkload {
                     oracle_requests_per_iteration: 4,
                     pricing_requests_per_iteration: 4,
-                    risk_paths_per_iteration: 3,
+                    sufficient_statistics_paths_per_iteration: 3,
                 },
             ),
         ],
@@ -293,7 +305,7 @@ fn build_interval_matrix_bounded_catalog_fixture() -> BenchmarkScenarioCatalog {
                 BenchmarkScenarioComponentWorkload {
                     oracle_requests_per_iteration: 1,
                     pricing_requests_per_iteration: 1,
-                    risk_paths_per_iteration: 1,
+                    sufficient_statistics_paths_per_iteration: 1,
                 },
             ),
             build_profile_with_interval(
@@ -304,7 +316,7 @@ fn build_interval_matrix_bounded_catalog_fixture() -> BenchmarkScenarioCatalog {
                 BenchmarkScenarioComponentWorkload {
                     oracle_requests_per_iteration: 1,
                     pricing_requests_per_iteration: 1,
-                    risk_paths_per_iteration: 1,
+                    sufficient_statistics_paths_per_iteration: 1,
                 },
             ),
             build_profile(
@@ -314,7 +326,7 @@ fn build_interval_matrix_bounded_catalog_fixture() -> BenchmarkScenarioCatalog {
                 BenchmarkScenarioComponentWorkload {
                     oracle_requests_per_iteration: 2,
                     pricing_requests_per_iteration: 2,
-                    risk_paths_per_iteration: 2,
+                    sufficient_statistics_paths_per_iteration: 2,
                 },
             ),
             build_profile(
@@ -324,7 +336,7 @@ fn build_interval_matrix_bounded_catalog_fixture() -> BenchmarkScenarioCatalog {
                 BenchmarkScenarioComponentWorkload {
                     oracle_requests_per_iteration: 2,
                     pricing_requests_per_iteration: 2,
-                    risk_paths_per_iteration: 2,
+                    sufficient_statistics_paths_per_iteration: 2,
                 },
             ),
         ],
@@ -387,8 +399,8 @@ fn build_profile_with_interval(
 }
 
 fn assert_baseline_round_trip_close(
-    baseline: &OraclePricerRiskPerformanceBaselineArtifact,
-    reloaded_baseline: &OraclePricerRiskPerformanceBaselineArtifact,
+    baseline: &OraclePricerSufficientStatisticsPerformanceBaselineArtifact,
+    reloaded_baseline: &OraclePricerSufficientStatisticsPerformanceBaselineArtifact,
 ) {
     assert_eq!(baseline.schema_version, reloaded_baseline.schema_version);
     assert_eq!(baseline.baseline_id, reloaded_baseline.baseline_id);
@@ -436,15 +448,15 @@ fn assert_baseline_round_trip_close(
             reloaded_profile.pricing_metrics,
         );
         assert_component_metrics_close(
-            baseline_profile.risk_sampling_metrics,
-            reloaded_profile.risk_sampling_metrics,
+            baseline_profile.sufficient_statistics_sampling_metrics,
+            reloaded_profile.sufficient_statistics_sampling_metrics,
         );
     }
 }
 
 fn assert_component_metrics_close(
-    baseline_metrics: OraclePricerRiskPerformanceBaselineComponentMetrics,
-    reloaded_metrics: OraclePricerRiskPerformanceBaselineComponentMetrics,
+    baseline_metrics: OraclePricerSufficientStatisticsPerformanceBaselineComponentMetrics,
+    reloaded_metrics: OraclePricerSufficientStatisticsPerformanceBaselineComponentMetrics,
 ) {
     assert_float_close(
         baseline_metrics.mean_latency_seconds,

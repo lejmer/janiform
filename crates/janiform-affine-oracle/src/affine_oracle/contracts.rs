@@ -9,7 +9,7 @@ use janiform_model_kernels::hawkes::{
 };
 use janiform_model_kernels::news::{GammaSeverityMarkConfiguration, NewsMarkConfigurationError};
 
-/// Canonical equation specification shared by pricing and risk solver consumers.
+/// Canonical equation specification shared by pricing and sufficient-statistics solver consumers.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 pub struct ExponentialAffineTransformEquationSpecification {
     /// Hawkes parameters that provide `lambda_bar`, `beta`, `alpha`, and `rho`.

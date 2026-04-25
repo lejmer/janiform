@@ -182,7 +182,7 @@ pub use scale_consistency::{
     ScaleConsistencyThresholdPolicyChangeLogEntry,
     ScaleConsistencyThresholdPolicyChangeLogEntryError, ScaleConsistencyThresholdPolicyError,
     ScaleConsistencyThresholdPolicyLoadError, ScaleConsistencyVarianceReductionPolicy,
-    aggregate_fine_risk_path_to_coarse_intervals, build_scale_consistency_report,
+    aggregate_fine_sufficient_statistics_path_to_coarse_intervals, build_scale_consistency_report,
     calculate_scale_consistency_metric_deltas, load_scale_consistency_threshold_policy_from_json,
     render_scale_consistency_report_summary, run_scale_consistency_batch_orchestrator,
     run_scale_consistency_threshold_decision_engine,

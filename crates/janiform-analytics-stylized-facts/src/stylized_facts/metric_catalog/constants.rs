@@ -100,7 +100,7 @@ pub(crate) const STYLIZED_FACT_METRIC_CLASS_VOCABULARY: [&str; 2] =
     ["primary_robust", "secondary_moment"];
 pub(crate) const STYLIZED_FACT_METRIC_FAMILY_VOCABULARY: [&str; 5] = [
     "quantile_shape",
-    "tail_risk",
+    "tail_sufficient_statistics",
     "distribution_distance",
     "l_moment",
     "central_moment",

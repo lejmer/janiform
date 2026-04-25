@@ -4,7 +4,7 @@ use std::fmt::{Display, Formatter};
 use janiform_affine_oracle::affine_oracle::ExponentialAffineTransformNewsIntensityInput;
 use janiform_affine_oracle::sufficient_statistics::{
     SufficientStatisticsBoundaryStateUpdateError, SufficientStatisticsBoundaryStateUpdateSnapshot,
-    SufficientStatisticsRiskReturnComponents, SufficientStatisticsRiskReturnComponentsError,
+    SufficientStatisticsReturnComponents, SufficientStatisticsReturnComponentsError,
     SufficientStatisticsTransformSliceContext, SufficientStatisticsTransformSliceSamplingError,
     SufficientStatisticsTransformSliceSettings, SufficientStatisticsTransformSliceSolveError,
     sample_interval_statistics_from_transform_slices_with_randomness_factory,
@@ -104,11 +104,11 @@ where
         .map_err(|source| CoarseSimulationRunError::CalendarRegistryLoadFailure { source })?;
 
     let kernel_parameters = model_inputs
-        .risk_model_inputs
+        .sufficient_statistics_model_inputs
         .equation_specification
         .hawkes_kernel_parameters;
     let driver_parameters = model_inputs
-        .risk_model_inputs
+        .sufficient_statistics_model_inputs
         .nig_shared_plus_shift_configuration
         .derive_driver_parameters()
         .map_err(|source| CoarseSimulationRunError::InvalidNigDriverConfiguration { source })?;
@@ -117,10 +117,12 @@ where
         .interval_delta_nanos()
         .map_err(|source| CoarseSimulationRunError::InvalidIntervalDelta { source })?;
 
-    let mut terminal_state = model_inputs.risk_model_inputs.initial_excitation_state;
+    let mut terminal_state = model_inputs
+        .sufficient_statistics_model_inputs
+        .initial_excitation_state;
 
     let mut observed_boundary_state = model_inputs
-        .risk_model_inputs
+        .sufficient_statistics_model_inputs
         .initial_mean_reversion_boundary_state
         .clone();
 
@@ -130,7 +132,7 @@ where
         Vec::with_capacity(run_request.horizon_interval_count);
 
     let mean_reversion_kappa = model_inputs
-        .risk_model_inputs
+        .sufficient_statistics_model_inputs
         .mean_reversion_fitted_parameters
         .kappa;
 
@@ -201,7 +203,9 @@ where
         )?;
 
         let solved_transform_slices = solve_sufficient_statistics_transform_slices(
-            model_inputs.risk_model_inputs.equation_specification,
+            model_inputs
+                .sufficient_statistics_model_inputs
+                .equation_specification,
             current_statistics_context,
             interval_settings,
         )
@@ -306,7 +310,7 @@ where
             + interval_direct_jump_totals.open_jump_return
             + interval_direct_jump_totals.closed_gap_return;
 
-        let return_components = SufficientStatisticsRiskReturnComponents::try_new(
+        let return_components = SufficientStatisticsReturnComponents::try_new(
             buy_side_return,
             sell_side_return,
             trading_time_return,
@@ -330,11 +334,11 @@ where
                 ),
                 total_return,
                 model_inputs
-                    .risk_model_inputs
+                    .sufficient_statistics_model_inputs
                     .mean_reversion_runtime_interval_anchors
                     .end_anchor_values[interval_index],
                 model_inputs
-                    .risk_model_inputs
+                    .sufficient_statistics_model_inputs
                     .mean_reversion_runtime_interval_anchors
                     .end_pressure_states[interval_index],
             )
@@ -409,7 +413,9 @@ where
         run_request.start_time_utc_nanos,
         run_request.interval_delta,
         run_request.horizon_interval_count,
-        model_inputs.risk_model_inputs.initial_excitation_state,
+        model_inputs
+            .sufficient_statistics_model_inputs
+            .initial_excitation_state,
         terminal_state,
         records,
     )
@@ -472,7 +478,7 @@ pub enum CoarseSimulationRunError {
     },
     InvalidReturnComponents {
         interval_index: usize,
-        source: SufficientStatisticsRiskReturnComponentsError,
+        source: SufficientStatisticsReturnComponentsError,
     },
     InvalidPathRecord {
         interval_index: usize,
@@ -876,7 +882,7 @@ mod tests {
     use crate::coarse::{CoarseSimulationModelInputs, CoarseSimulationRunRequest};
     use janiform_affine_oracle::affine_oracle::ExponentialAffineTransformEquationSpecification;
     use janiform_affine_oracle::sufficient_statistics::{
-        SufficientStatisticsRiskIntervalFactors, SufficientStatisticsRiskModelInputs,
+        SufficientStatisticsIntervalFactors, SufficientStatisticsModelInputs,
     };
     use janiform_market_time::calendar::{
         CalendarRuleMetadataArtifact, ExchangeCalendarArtifact, ExchangeCalendarRegistryArtifact,
@@ -955,7 +961,7 @@ mod tests {
         )
         .expect("equation specification should construct");
 
-        let risk_model_inputs = SufficientStatisticsRiskModelInputs::try_new(
+        let sufficient_statistics_model_inputs = SufficientStatisticsModelInputs::try_new(
             equation_specification,
             NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
                 .expect("nig configuration should construct"),
@@ -979,10 +985,10 @@ mod tests {
             MeanReversionBoundaryState::try_new(3.0, 2.0, 0.0, 1.0)
                 .expect("mean-reversion boundary state should construct"),
         )
-        .expect("risk model inputs should construct");
+        .expect("sufficient-statistics model inputs should construct");
 
         let model_inputs = CoarseSimulationModelInputs::try_new(
-            risk_model_inputs,
+            sufficient_statistics_model_inputs,
             NewsProcessConfiguration::try_new(
                 NewsArrivalConfiguration {
                     known: KnownNewsArrivalConfiguration {
@@ -1044,7 +1050,7 @@ mod tests {
             1,
             1.0,
             model_inputs,
-            SufficientStatisticsRiskIntervalFactors::try_new(
+            SufficientStatisticsIntervalFactors::try_new(
                 vec![0.0],
                 vec![0.0],
                 vec![0.0],

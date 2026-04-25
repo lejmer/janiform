@@ -3,10 +3,10 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
-use janiform_engine_risk::{
-    SufficientStatisticsIntervalStatistics, SufficientStatisticsRiskPath,
-    SufficientStatisticsRiskPathError, SufficientStatisticsRiskPathRecord,
-    SufficientStatisticsRiskPathRecordError, SufficientStatisticsRiskReturnComponents,
+use janiform_engine_sufficient_statistics::{
+    SufficientStatisticsIntervalStatistics, SufficientStatisticsPath,
+    SufficientStatisticsPathError, SufficientStatisticsPathRecord,
+    SufficientStatisticsPathRecordError, SufficientStatisticsReturnComponents,
 };
 use serde::{Deserialize, Serialize};
 
@@ -52,17 +52,17 @@ pub struct ScaleConsistencyFinePathAlignmentMetadata {
     pub trailing_partial_fine_interval_count: usize,
 }
 
-/// Aggregated coarse-grid view derived deterministically from one fine risk path.
+/// Aggregated coarse-grid view derived deterministically from one fine sufficient-statistics path.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ScaleConsistencyAlignedRiskPath {
     pub alignment_metadata: ScaleConsistencyFinePathAlignmentMetadata,
-    pub aggregated_path: SufficientStatisticsRiskPath,
+    pub aggregated_path: SufficientStatisticsPath,
 }
 
-/// Aggregate a fine-grid risk path onto a coarser interval grid for later metric comparison.
-pub fn aggregate_fine_risk_path_to_coarse_intervals(
-    fine_path: &SufficientStatisticsRiskPath,
+/// Aggregate a fine-grid sufficient-statistics path onto a coarser interval grid for later metric comparison.
+pub fn aggregate_fine_sufficient_statistics_path_to_coarse_intervals(
+    fine_path: &SufficientStatisticsPath,
     coarse_interval_delta: f64,
     partial_window_policy: ScaleConsistencyFinePathPartialWindowPolicy,
 ) -> Result<ScaleConsistencyAlignedRiskPath, ScaleConsistencyFinePathAggregationError> {
@@ -111,7 +111,7 @@ pub fn aggregate_fine_risk_path_to_coarse_intervals(
         );
     }
 
-    let mut aggregated_records: Vec<SufficientStatisticsRiskPathRecord> =
+    let mut aggregated_records: Vec<SufficientStatisticsPathRecord> =
         Vec::with_capacity(aggregated_coarse_interval_count);
 
     for coarse_interval_index in 0..aggregated_coarse_interval_count {
@@ -133,7 +133,7 @@ pub fn aggregate_fine_risk_path_to_coarse_intervals(
         aggregated_records.push(aggregated_record);
     }
 
-    let aggregated_path = SufficientStatisticsRiskPath::try_new(
+    let aggregated_path = SufficientStatisticsPath::try_new(
         fine_path.seed,
         coarse_interval_delta,
         aggregated_coarse_interval_count,
@@ -166,7 +166,7 @@ pub fn aggregate_fine_risk_path_to_coarse_intervals(
 #[derive(Debug, PartialEq)]
 pub enum ScaleConsistencyFinePathAggregationError {
     InvalidFinePath {
-        source: SufficientStatisticsRiskPathError,
+        source: SufficientStatisticsPathError,
     },
     InvalidCoarseIntervalDelta {
         value: f64,
@@ -195,10 +195,10 @@ pub enum ScaleConsistencyFinePathAggregationError {
     },
     InvalidAggregatedRecord {
         coarse_interval_index: usize,
-        source: SufficientStatisticsRiskPathRecordError,
+        source: SufficientStatisticsPathRecordError,
     },
     InvalidAggregatedPath {
-        source: SufficientStatisticsRiskPathError,
+        source: SufficientStatisticsPathError,
     },
 }
 
@@ -303,8 +303,8 @@ fn map_interval_pair_error(
 
 fn aggregate_fine_records_to_coarse_interval(
     coarse_interval_index: usize,
-    fine_records: &[SufficientStatisticsRiskPathRecord],
-) -> Result<SufficientStatisticsRiskPathRecord, SufficientStatisticsRiskPathRecordError> {
+    fine_records: &[SufficientStatisticsPathRecord],
+) -> Result<SufficientStatisticsPathRecord, SufficientStatisticsPathRecordError> {
     let aggregated_statistics = SufficientStatisticsIntervalStatistics {
         a_plus: fine_records
             .iter()
@@ -324,7 +324,7 @@ fn aggregate_fine_records_to_coarse_interval(
             .sum(),
     };
 
-    let aggregated_return_components = SufficientStatisticsRiskReturnComponents {
+    let aggregated_return_components = SufficientStatisticsReturnComponents {
         buy_side_return: fine_records
             .iter()
             .map(|record| record.return_components.buy_side_return)
@@ -352,7 +352,7 @@ fn aggregate_fine_records_to_coarse_interval(
     };
     let last_record = &fine_records[fine_records.len() - 1];
 
-    SufficientStatisticsRiskPathRecord::try_new(
+    SufficientStatisticsPathRecord::try_new(
         coarse_interval_index,
         aggregated_statistics,
         aggregated_return_components,

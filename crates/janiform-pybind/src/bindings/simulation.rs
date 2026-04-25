@@ -7,7 +7,6 @@ use janiform::affine_oracle::{
 use janiform::hawkes::{HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters};
 use janiform::news::NewsProcessConfiguration;
 use janiform::nig::NigSharedPlusShiftConfiguration;
-use janiform::risk::SufficientStatisticsRiskIntervalFactors;
 use janiform::simulation::{
     CoarseSimulationModelInputs, CoarseSimulationRunRequest, MeanReversionBoundaryState,
     MeanReversionFittedParameters, MeanReversionRuntimeIntervalAnchors,
@@ -20,6 +19,7 @@ use janiform::simulation::{
     run_seeded_tick_event_simulation as run_seeded_tick_event_simulation_core,
     run_seeded_tick_event_simulation_with_observer as run_seeded_tick_event_simulation_core_with_observer,
 };
+use janiform::sufficient_statistics::SufficientStatisticsIntervalFactors;
 use pyo3::prelude::{Bound, Py, PyErr, PyResult, Python};
 use pyo3::types::{PyAny, PyAnyMethods, PyMapping, PyMappingMethods, PyModule, PyModuleMethods};
 use pyo3::{pyfunction, wrap_pyfunction};
@@ -178,7 +178,7 @@ fn run_coarse_simulation(
             ))
         })?;
 
-    let interval_factors = SufficientStatisticsRiskIntervalFactors::try_new(
+    let interval_factors = SufficientStatisticsIntervalFactors::try_new(
         hourly_factor_contract.output.s_h.clone(),
         hourly_factor_contract.output.known_component_nu_h.clone(),
         hourly_factor_contract

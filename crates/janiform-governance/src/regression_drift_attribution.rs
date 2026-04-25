@@ -5,13 +5,14 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 
 use janiform_governance_bench::benchmarking::{
-    ORACLE_PRICER_RISK_COMPONENT_ORACLE, ORACLE_PRICER_RISK_COMPONENT_PRICING,
-    ORACLE_PRICER_RISK_COMPONENT_RISK,
+    ORACLE_PRICER_SUFFICIENT_STATISTICS_COMPONENT_ORACLE,
+    ORACLE_PRICER_SUFFICIENT_STATISTICS_COMPONENT_PRICING,
+    ORACLE_PRICER_SUFFICIENT_STATISTICS_COMPONENT_RISK,
 };
 use janiform_validation::CoarseFineConsistencyRegressionReport;
 use serde::{Deserialize, Serialize};
 
-use super::performance_baseline::OraclePricerRiskPerformanceBaselineComparisonReport;
+use super::performance_baseline::OraclePricerSufficientStatisticsPerformanceBaselineComparisonReport;
 
 pub const REGRESSION_DRIFT_ATTRIBUTION_REPORT_SCHEMA_VERSION: &str =
     "benchmark.regression_drift_attribution.report.v1";
@@ -226,7 +227,9 @@ impl Error for RegressionDriftAttributionBuildError {
 pub fn build_regression_drift_attribution_report(
     current_report: &CoarseFineConsistencyRegressionReport,
     reference_report: Option<&CoarseFineConsistencyRegressionReport>,
-    performance_comparison_report: Option<&OraclePricerRiskPerformanceBaselineComparisonReport>,
+    performance_comparison_report: Option<
+        &OraclePricerSufficientStatisticsPerformanceBaselineComparisonReport,
+    >,
     performance_thresholds: RegressionDriftAttributionPerformanceThresholds,
 ) -> Result<RegressionDriftAttributionReport, RegressionDriftAttributionBuildError> {
     performance_thresholds.validate().map_err(|source| {
@@ -502,13 +505,13 @@ pub fn render_regression_drift_attribution_report(
 
 fn map_component_id_from_coarse_fine_metric(metric_id: &str) -> &'static str {
     if metric_id.starts_with("oracle_") {
-        return ORACLE_PRICER_RISK_COMPONENT_ORACLE;
+        return ORACLE_PRICER_SUFFICIENT_STATISTICS_COMPONENT_ORACLE;
     }
     if metric_id.starts_with("pricing_") {
-        return ORACLE_PRICER_RISK_COMPONENT_PRICING;
+        return ORACLE_PRICER_SUFFICIENT_STATISTICS_COMPONENT_PRICING;
     }
-    if metric_id.starts_with("risk_") {
-        return ORACLE_PRICER_RISK_COMPONENT_RISK;
+    if metric_id.starts_with("sufficient_statistics_") {
+        return ORACLE_PRICER_SUFFICIENT_STATISTICS_COMPONENT_RISK;
     }
 
     "coarse_fine_consistency_harness"

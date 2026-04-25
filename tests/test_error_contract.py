@@ -42,9 +42,9 @@ from janiform.pricing import (
     run_vanilla_option_pricing,
     run_vanilla_option_surface_pricing,
 )
-from janiform.risk import (
-    SufficientStatisticsRiskEquationSpecification,
-    SufficientStatisticsRiskModelInputs,
+from janiform.sufficient_statistics import (
+    SufficientStatisticsEquationSpecification,
+    SufficientStatisticsModelInputs,
 )
 from janiform.simulation import (
     SeededTickSimulationValidationError,
@@ -830,8 +830,8 @@ def _valid_coarse_simulation_request(
         start_time_utc=START_TIME_UTC,
         horizon_interval_count=2,
         interval_delta=1.0,
-        risk_model_inputs=SufficientStatisticsRiskModelInputs(
-            equation_specification=SufficientStatisticsRiskEquationSpecification(
+        sufficient_statistics_model_inputs=SufficientStatisticsModelInputs(
+            equation_specification=SufficientStatisticsEquationSpecification(
                 hawkes_kernel_parameters=_valid_kernel_parameters(),
                 gamma_severity_mark_configuration=GammaSeverityMarkConfiguration(
                     shape_k=1.5,

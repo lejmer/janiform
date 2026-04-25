@@ -14,10 +14,12 @@ use janiform_governance_bench::benchmarking::{
     BenchmarkScenarioComponentWorkload, BenchmarkScenarioIntervalSettings,
     BenchmarkScenarioModelState, BenchmarkScenarioPortfolioShape, BenchmarkScenarioRunLength,
     BenchmarkScenarioSharedNewsState, BenchmarkScenarioWorkloadProfile, BenchmarkWorkloadScale,
-    ORACLE_PRICER_RISK_BENCHMARK_POLICY_SCHEMA_VERSION,
-    ORACLE_PRICER_RISK_BENCHMARK_REPORT_SCHEMA_VERSION, OraclePricerRiskBenchmarkExecutionConfig,
-    OraclePricerRiskBenchmarkHarnessError, load_oracle_pricer_risk_benchmark_policy_from_json,
-    run_oracle_pricer_risk_benchmark_harness,
+    ORACLE_PRICER_SUFFICIENT_STATISTICS_BENCHMARK_POLICY_SCHEMA_VERSION,
+    ORACLE_PRICER_SUFFICIENT_STATISTICS_BENCHMARK_REPORT_SCHEMA_VERSION,
+    OraclePricerSufficientStatisticsBenchmarkExecutionConfig,
+    OraclePricerSufficientStatisticsBenchmarkHarnessError,
+    load_oracle_pricer_sufficient_statistics_benchmark_policy_from_json,
+    run_oracle_pricer_sufficient_statistics_benchmark_harness,
 };
 use janiform_model_kernels::hawkes::HawkesExcitationState;
 use serde_json::Value;
@@ -27,12 +29,13 @@ use support::validation_fixture::fixtures_root_path;
 #[test]
 fn benchmark_policy_fixture_is_data_driven_and_documents_rationale() {
     let policy_payload = load_policy_fixture_payload();
-    let policy = load_oracle_pricer_risk_benchmark_policy_from_json(&policy_payload)
-        .expect("benchmark policy fixture should parse");
+    let policy =
+        load_oracle_pricer_sufficient_statistics_benchmark_policy_from_json(&policy_payload)
+            .expect("benchmark policy fixture should parse");
 
     assert_eq!(
         policy.schema_version,
-        ORACLE_PRICER_RISK_BENCHMARK_POLICY_SCHEMA_VERSION
+        ORACLE_PRICER_SUFFICIENT_STATISTICS_BENCHMARK_POLICY_SCHEMA_VERSION
     );
     assert!(!policy.policy_id.trim().is_empty());
     assert!(!policy.policy_version.trim().is_empty());
@@ -46,19 +49,22 @@ fn benchmark_policy_fixture_is_data_driven_and_documents_rationale() {
 fn benchmark_harness_output_schema_is_stable_and_machine_readable() {
     let catalog = build_bounded_catalog_fixture();
     let benchmark_policy = load_benchmark_policy_fixture();
-    let execution_config = OraclePricerRiskBenchmarkExecutionConfig {
+    let execution_config = OraclePricerSufficientStatisticsBenchmarkExecutionConfig {
         warmup_iteration_count_override: Some(0),
         measured_iteration_count_override: Some(1),
         reproducibility_seed: 17,
     };
 
-    let report =
-        run_oracle_pricer_risk_benchmark_harness(&catalog, &benchmark_policy, execution_config)
-            .expect("benchmark harness should run with bounded fixture catalog");
+    let report = run_oracle_pricer_sufficient_statistics_benchmark_harness(
+        &catalog,
+        &benchmark_policy,
+        execution_config,
+    )
+    .expect("benchmark harness should run with bounded fixture catalog");
 
     assert_eq!(
         report.schema_version,
-        ORACLE_PRICER_RISK_BENCHMARK_REPORT_SCHEMA_VERSION
+        ORACLE_PRICER_SUFFICIENT_STATISTICS_BENCHMARK_REPORT_SCHEMA_VERSION
     );
     assert_eq!(report.profile_reports.len(), 3);
 
@@ -111,7 +117,7 @@ fn benchmark_harness_output_schema_is_stable_and_machine_readable() {
         for component_field in [
             "oracle_solver_metrics",
             "pricing_metrics",
-            "risk_sampling_metrics",
+            "sufficient_statistics_sampling_metrics",
         ] {
             let component_metrics = profile_report[component_field]
                 .as_object()
@@ -133,28 +139,34 @@ fn benchmark_harness_output_schema_is_stable_and_machine_readable() {
 fn benchmark_harness_validates_config_and_invocation_wiring_per_component() {
     let catalog = build_bounded_catalog_fixture();
     let benchmark_policy = load_benchmark_policy_fixture();
-    let invalid_config = OraclePricerRiskBenchmarkExecutionConfig {
+    let invalid_config = OraclePricerSufficientStatisticsBenchmarkExecutionConfig {
         warmup_iteration_count_override: Some(0),
         measured_iteration_count_override: Some(0),
         reproducibility_seed: 5,
     };
 
-    let invalid_error =
-        run_oracle_pricer_risk_benchmark_harness(&catalog, &benchmark_policy, invalid_config)
-            .expect_err("measured_iteration_count_override equal to zero must fail");
+    let invalid_error = run_oracle_pricer_sufficient_statistics_benchmark_harness(
+        &catalog,
+        &benchmark_policy,
+        invalid_config,
+    )
+    .expect_err("measured_iteration_count_override equal to zero must fail");
     assert!(matches!(
         invalid_error,
-        OraclePricerRiskBenchmarkHarnessError::InvalidExecutionConfig { .. }
+        OraclePricerSufficientStatisticsBenchmarkHarnessError::InvalidExecutionConfig { .. }
     ));
 
-    let execution_config = OraclePricerRiskBenchmarkExecutionConfig {
+    let execution_config = OraclePricerSufficientStatisticsBenchmarkExecutionConfig {
         warmup_iteration_count_override: Some(1),
         measured_iteration_count_override: Some(2),
         reproducibility_seed: 5,
     };
-    let report =
-        run_oracle_pricer_risk_benchmark_harness(&catalog, &benchmark_policy, execution_config)
-            .expect("benchmark harness should run with bounded fixture catalog");
+    let report = run_oracle_pricer_sufficient_statistics_benchmark_harness(
+        &catalog,
+        &benchmark_policy,
+        execution_config,
+    )
+    .expect("benchmark harness should run with bounded fixture catalog");
 
     let profile_report_by_id: BTreeMap<&str, _> = report
         .profile_reports
@@ -164,7 +176,7 @@ fn benchmark_harness_validates_config_and_invocation_wiring_per_component() {
 
     let mut expected_oracle_total_operation_count: usize = 0;
     let mut expected_pricing_total_operation_count: usize = 0;
-    let mut expected_risk_total_operation_count: usize = 0;
+    let mut expected_sufficient_statistics_total_operation_count: usize = 0;
 
     for profile in &catalog.profiles {
         let profile_report = profile_report_by_id
@@ -175,8 +187,9 @@ fn benchmark_harness_validates_config_and_invocation_wiring_per_component() {
             2 * profile.component_workload.oracle_requests_per_iteration;
         let expected_pricing_measured_operation_count =
             2 * profile.component_workload.pricing_requests_per_iteration;
-        let expected_risk_measured_operation_count =
-            2 * profile.component_workload.risk_paths_per_iteration;
+        let expected_sufficient_statistics_measured_operation_count = 2 * profile
+            .component_workload
+            .sufficient_statistics_paths_per_iteration;
 
         assert_eq!(profile_report.warmup_iteration_count, 1);
         assert_eq!(profile_report.measured_iteration_count, 2);
@@ -192,9 +205,9 @@ fn benchmark_harness_validates_config_and_invocation_wiring_per_component() {
         );
         assert_eq!(
             profile_report
-                .risk_sampling_metrics
+                .sufficient_statistics_sampling_metrics
                 .measured_operation_count,
-            expected_risk_measured_operation_count,
+            expected_sufficient_statistics_measured_operation_count,
         );
         assert_eq!(
             profile_report
@@ -210,14 +223,18 @@ fn benchmark_harness_validates_config_and_invocation_wiring_per_component() {
         );
         assert_eq!(
             profile_report
-                .risk_sampling_metrics
+                .sufficient_statistics_sampling_metrics
                 .invocation_count_including_warmup,
-            profile.component_workload.risk_paths_per_iteration * 3,
+            profile
+                .component_workload
+                .sufficient_statistics_paths_per_iteration
+                * 3,
         );
 
         expected_oracle_total_operation_count += expected_oracle_measured_operation_count;
         expected_pricing_total_operation_count += expected_pricing_measured_operation_count;
-        expected_risk_total_operation_count += expected_risk_measured_operation_count;
+        expected_sufficient_statistics_total_operation_count +=
+            expected_sufficient_statistics_measured_operation_count;
     }
 
     assert_eq!(
@@ -229,8 +246,10 @@ fn benchmark_harness_validates_config_and_invocation_wiring_per_component() {
         expected_pricing_total_operation_count,
     );
     assert_eq!(
-        report.summary.risk_sampling_total_operation_count,
-        expected_risk_total_operation_count,
+        report
+            .summary
+            .sufficient_statistics_sampling_total_operation_count,
+        expected_sufficient_statistics_total_operation_count,
     );
 }
 
@@ -239,15 +258,18 @@ fn benchmark_harness_reports_metrics_for_interval_profiles_and_preserves_profile
 {
     let catalog = build_interval_matrix_bounded_catalog_fixture();
     let benchmark_policy = load_benchmark_policy_fixture();
-    let execution_config = OraclePricerRiskBenchmarkExecutionConfig {
+    let execution_config = OraclePricerSufficientStatisticsBenchmarkExecutionConfig {
         warmup_iteration_count_override: Some(0),
         measured_iteration_count_override: Some(1),
         reproducibility_seed: 11,
     };
 
-    let report =
-        run_oracle_pricer_risk_benchmark_harness(&catalog, &benchmark_policy, execution_config)
-            .expect("interval matrix benchmark run should complete");
+    let report = run_oracle_pricer_sufficient_statistics_benchmark_harness(
+        &catalog,
+        &benchmark_policy,
+        execution_config,
+    )
+    .expect("interval matrix benchmark run should complete");
 
     assert_eq!(report.profile_reports.len(), catalog.profiles.len());
 
@@ -311,7 +333,7 @@ fn build_bounded_catalog_fixture() -> BenchmarkScenarioCatalog {
                 BenchmarkScenarioComponentWorkload {
                     oracle_requests_per_iteration: 2,
                     pricing_requests_per_iteration: 3,
-                    risk_paths_per_iteration: 2,
+                    sufficient_statistics_paths_per_iteration: 2,
                 },
             ),
             build_profile(
@@ -321,7 +343,7 @@ fn build_bounded_catalog_fixture() -> BenchmarkScenarioCatalog {
                 BenchmarkScenarioComponentWorkload {
                     oracle_requests_per_iteration: 3,
                     pricing_requests_per_iteration: 2,
-                    risk_paths_per_iteration: 3,
+                    sufficient_statistics_paths_per_iteration: 3,
                 },
             ),
             build_profile(
@@ -331,7 +353,7 @@ fn build_bounded_catalog_fixture() -> BenchmarkScenarioCatalog {
                 BenchmarkScenarioComponentWorkload {
                     oracle_requests_per_iteration: 4,
                     pricing_requests_per_iteration: 4,
-                    risk_paths_per_iteration: 3,
+                    sufficient_statistics_paths_per_iteration: 3,
                 },
             ),
         ],
@@ -365,7 +387,7 @@ fn build_interval_matrix_bounded_catalog_fixture() -> BenchmarkScenarioCatalog {
                 BenchmarkScenarioComponentWorkload {
                     oracle_requests_per_iteration: 2,
                     pricing_requests_per_iteration: 2,
-                    risk_paths_per_iteration: 2,
+                    sufficient_statistics_paths_per_iteration: 2,
                 },
             ),
             build_profile_with_interval(
@@ -376,7 +398,7 @@ fn build_interval_matrix_bounded_catalog_fixture() -> BenchmarkScenarioCatalog {
                 BenchmarkScenarioComponentWorkload {
                     oracle_requests_per_iteration: 1,
                     pricing_requests_per_iteration: 1,
-                    risk_paths_per_iteration: 1,
+                    sufficient_statistics_paths_per_iteration: 1,
                 },
             ),
             build_profile(
@@ -386,7 +408,7 @@ fn build_interval_matrix_bounded_catalog_fixture() -> BenchmarkScenarioCatalog {
                 BenchmarkScenarioComponentWorkload {
                     oracle_requests_per_iteration: 3,
                     pricing_requests_per_iteration: 2,
-                    risk_paths_per_iteration: 3,
+                    sufficient_statistics_paths_per_iteration: 3,
                 },
             ),
             build_profile(
@@ -396,7 +418,7 @@ fn build_interval_matrix_bounded_catalog_fixture() -> BenchmarkScenarioCatalog {
                 BenchmarkScenarioComponentWorkload {
                     oracle_requests_per_iteration: 4,
                     pricing_requests_per_iteration: 4,
-                    risk_paths_per_iteration: 3,
+                    sufficient_statistics_paths_per_iteration: 3,
                 },
             ),
         ],
@@ -459,15 +481,17 @@ fn build_profile(
 }
 
 fn load_benchmark_policy_fixture()
--> janiform_governance_bench::benchmarking::OraclePricerRiskBenchmarkPolicy {
-    load_oracle_pricer_risk_benchmark_policy_from_json(&load_policy_fixture_payload())
-        .expect("benchmark policy fixture should parse")
+-> janiform_governance_bench::benchmarking::OraclePricerSufficientStatisticsBenchmarkPolicy {
+    load_oracle_pricer_sufficient_statistics_benchmark_policy_from_json(
+        &load_policy_fixture_payload(),
+    )
+    .expect("benchmark policy fixture should parse")
 }
 
 fn load_policy_fixture_payload() -> String {
     let fixture_path = fixtures_root_path()
         .join("benchmarks")
-        .join("oracle_pricer_risk_benchmark_policy.json");
+        .join("oracle_pricer_sufficient_statistics_benchmark_policy.json");
 
     fs::read_to_string(&fixture_path).unwrap_or_else(|source| {
         panic!(

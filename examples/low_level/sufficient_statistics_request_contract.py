@@ -2,13 +2,13 @@ from datetime import UTC, datetime
 
 from janiform.calendar import CalendarRegistry
 from janiform.hourly_factors import HourlyFactorContract, build_hourly_factor_contract
-from janiform.risk import (
-    SufficientStatisticsRiskRunRequest,
-    serialize_sufficient_statistics_risk_run_request,
-    validate_sufficient_statistics_risk_run_request,
+from janiform.sufficient_statistics import (
+    SufficientStatisticsRunRequest,
+    serialize_sufficient_statistics_run_request,
+    validate_sufficient_statistics_run_request,
 )
 
-from examples._contracts import build_risk_model_inputs
+from examples._contracts import build_sufficient_statistics_model_inputs
 from examples._shared import calendar_registry_json
 
 
@@ -22,17 +22,17 @@ def main() -> None:
         seasonality_hourly_factors=[1.1, 0.9],
         news_intensity_hourly_factors=[0.2, 0.1],
     )
-    request: SufficientStatisticsRiskRunRequest = SufficientStatisticsRiskRunRequest(
+    request: SufficientStatisticsRunRequest = SufficientStatisticsRunRequest(
         seed=17,
         horizon_interval_count=2,
         interval_delta=1.0,
-        model_inputs=build_risk_model_inputs(interval_count=2),
+        model_inputs=build_sufficient_statistics_model_inputs(interval_count=2),
         hourly_factor_contract=hourly_factor_contract,
     )
-    validated_request: SufficientStatisticsRiskRunRequest = validate_sufficient_statistics_risk_run_request(
+    validated_request: SufficientStatisticsRunRequest = validate_sufficient_statistics_run_request(
         request.to_payload(),
     )
-    serialized_request: str = serialize_sufficient_statistics_risk_run_request(validated_request)
+    serialized_request: str = serialize_sufficient_statistics_run_request(validated_request)
 
     print(
         "validated request:",

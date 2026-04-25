@@ -584,7 +584,7 @@ impl StylizedFactMinimumSampleSufficiencyRequirements {
                         StylizedFactMetricCatalogValidationError::InvalidMetricSampleSufficiency {
                             metric_id: metric_id.to_string(),
                             field_name: "sample_sufficiency.minimum_tail_observation_count",
-                            details: "tail_risk metrics require minimum_tail_observation_count"
+                            details: "tail_sufficient-statistics metrics require minimum_tail_observation_count"
                                 .to_string(),
                         },
                     );

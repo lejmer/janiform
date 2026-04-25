@@ -17,8 +17,8 @@ This version is `0.0.0`. The source for this crate lives [here](https://github.c
 - [janiform-calibration-artifacts](https://github.com/lejmer/janiform/blob/main/crates/janiform-calibration-artifacts): Calibration artifact contracts and persistence for Janiform.
 - [janiform-calibration-runtime](https://github.com/lejmer/janiform/blob/main/crates/janiform-calibration-runtime): Calibration runtime orchestration for Janiform.
 - [janiform-engine-pricing](https://github.com/lejmer/janiform/blob/main/crates/janiform-engine-pricing): Pricing runtime engine for Janiform.
-- [janiform-engine-risk](https://github.com/lejmer/janiform/blob/main/crates/janiform-engine-risk): Risk runtime engine for Janiform.
 - [janiform-engine-simulation](https://github.com/lejmer/janiform/blob/main/crates/janiform-engine-simulation): Simulation runtime engine for Janiform.
+- [janiform-engine-sufficient-statistics](https://github.com/lejmer/janiform/blob/main/crates/janiform-engine-sufficient-statistics): Sufficient-statistics runtime engine for Janiform.
 - [janiform-foundations](https://github.com/lejmer/janiform/blob/main/crates/janiform-foundations): Low-level shared foundation primitives for Janiform.
 - [janiform-governance](https://github.com/lejmer/janiform/blob/main/crates/janiform-governance): Governance and regression orchestration for Janiform.
 - [janiform-governance-bench](https://github.com/lejmer/janiform/blob/main/crates/janiform-governance-bench): Benchmark governance support for Janiform.

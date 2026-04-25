@@ -211,7 +211,7 @@ def build_price_command(*, environment: Optional[Mapping[str, str]] = None) -> c
             command_option(
                 "--risk-free-rate",
                 default=0.0,
-                help_text="Risk-free rate. Default: 0.0.",
+                help_text="SufficientStatistics-free rate. Default: 0.0.",
                 value_type=float,
             ),
             command_option(

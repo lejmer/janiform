@@ -8,7 +8,7 @@ pub use janiform_affine_oracle::sufficient_statistics::{
     SUFFICIENT_STATISTICS_INTERVAL_RETURN_COMPONENT_ROUTING_POLICY,
     SUFFICIENT_STATISTICS_INTERVAL_RETURN_GENERATION_POLICY,
     SufficientStatisticsIntervalStatistics, SufficientStatisticsIntervalStatisticsError,
-    SufficientStatisticsRiskReturnComponents, SufficientStatisticsRiskReturnComponentsError,
+    SufficientStatisticsReturnComponents, SufficientStatisticsReturnComponentsError,
 };
 use janiform_foundations::randomness::SimulationRandomnessStream;
 use janiform_market_time::calendar::MarketState;
@@ -21,17 +21,17 @@ use janiform_model_kernels::return_decomposition::{
 
 /// Optional controls for interval return generation from sampled sufficient statistics.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct SufficientStatisticsRiskReturnGenerationOptions {
+pub struct SufficientStatisticsReturnGenerationOptions {
     pub include_component_breakdown: bool,
 }
 
-impl SufficientStatisticsRiskReturnGenerationOptions {
+impl SufficientStatisticsReturnGenerationOptions {
     pub const fn component_breakdown_policy() -> &'static str {
         SUFFICIENT_STATISTICS_INTERVAL_RETURN_COMPONENT_BREAKDOWN_POLICY
     }
 }
 
-impl Default for SufficientStatisticsRiskReturnGenerationOptions {
+impl Default for SufficientStatisticsReturnGenerationOptions {
     fn default() -> Self {
         Self {
             include_component_breakdown: false,
@@ -43,7 +43,7 @@ impl Default for SufficientStatisticsRiskReturnGenerationOptions {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct SufficientStatisticsGeneratedIntervalReturn {
     pub total_return: f64,
-    pub component_breakdown: Option<SufficientStatisticsRiskReturnComponents>,
+    pub component_breakdown: Option<SufficientStatisticsReturnComponents>,
 }
 
 impl SufficientStatisticsGeneratedIntervalReturn {
@@ -57,7 +57,7 @@ impl SufficientStatisticsGeneratedIntervalReturn {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum SufficientStatisticsRiskReturnGenerationError {
+pub enum SufficientStatisticsReturnGenerationError {
     InvalidSampledStatistics {
         source: SufficientStatisticsIntervalStatisticsError,
     },
@@ -74,14 +74,14 @@ pub enum SufficientStatisticsRiskReturnGenerationError {
         source: NigTradingTimeIncrementSamplingError,
     },
     InvalidReturnComponents {
-        source: SufficientStatisticsRiskReturnComponentsError,
+        source: SufficientStatisticsReturnComponentsError,
     },
     InvalidTotalReturn {
         value: f64,
     },
 }
 
-impl Display for SufficientStatisticsRiskReturnGenerationError {
+impl Display for SufficientStatisticsReturnGenerationError {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::InvalidSampledStatistics { source } => {
@@ -127,7 +127,7 @@ impl Display for SufficientStatisticsRiskReturnGenerationError {
     }
 }
 
-impl Error for SufficientStatisticsRiskReturnGenerationError {
+impl Error for SufficientStatisticsReturnGenerationError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::InvalidSampledStatistics { source } => Some(source),
@@ -152,28 +152,25 @@ pub fn generate_interval_return_from_sampled_statistics<R>(
     open_jump_return: f64,
     closed_gap_return: f64,
     randomness_stream: &mut R,
-    options: Option<SufficientStatisticsRiskReturnGenerationOptions>,
-) -> Result<
-    SufficientStatisticsGeneratedIntervalReturn,
-    SufficientStatisticsRiskReturnGenerationError,
->
+    options: Option<SufficientStatisticsReturnGenerationOptions>,
+) -> Result<SufficientStatisticsGeneratedIntervalReturn, SufficientStatisticsReturnGenerationError>
 where
     R: SimulationRandomnessStream,
 {
     sampled_statistics.validate().map_err(|source| {
-        SufficientStatisticsRiskReturnGenerationError::InvalidSampledStatistics { source }
+        SufficientStatisticsReturnGenerationError::InvalidSampledStatistics { source }
     })?;
 
     if !open_jump_return.is_finite() {
         return Err(
-            SufficientStatisticsRiskReturnGenerationError::InvalidOpenJumpReturn {
+            SufficientStatisticsReturnGenerationError::InvalidOpenJumpReturn {
                 value: open_jump_return,
             },
         );
     }
     if !closed_gap_return.is_finite() {
         return Err(
-            SufficientStatisticsRiskReturnGenerationError::InvalidClosedGapReturn {
+            SufficientStatisticsReturnGenerationError::InvalidClosedGapReturn {
                 value: closed_gap_return,
             },
         );
@@ -188,13 +185,13 @@ where
         closed_gap: effective_closed_gap_return,
     })
     .map_err(|source| {
-        SufficientStatisticsRiskReturnGenerationError::InvalidReturnDecomposition { source }
+        SufficientStatisticsReturnGenerationError::InvalidReturnDecomposition { source }
     })?;
 
     let trading_time_contributions = return_decomposition
         .sample_nig_trading_time_increment(driver_parameters, randomness_stream)
         .map_err(|source| {
-            SufficientStatisticsRiskReturnGenerationError::TradingTimeSamplingFailure { source }
+            SufficientStatisticsReturnGenerationError::TradingTimeSamplingFailure { source }
         })?;
 
     let buy_side_return = trading_time_contributions.buy_side_increment;
@@ -204,7 +201,7 @@ where
         trading_time_return + effective_open_jump_return + effective_closed_gap_return;
     if !total_return.is_finite() {
         return Err(
-            SufficientStatisticsRiskReturnGenerationError::InvalidTotalReturn {
+            SufficientStatisticsReturnGenerationError::InvalidTotalReturn {
                 value: total_return,
             },
         );
@@ -213,7 +210,7 @@ where
     let include_component_breakdown = options.unwrap_or_default().include_component_breakdown;
     let component_breakdown = if include_component_breakdown {
         Some(
-            SufficientStatisticsRiskReturnComponents::try_new(
+            SufficientStatisticsReturnComponents::try_new(
                 buy_side_return,
                 sell_side_return,
                 trading_time_return,
@@ -222,7 +219,7 @@ where
                 total_return,
             )
             .map_err(|source| {
-                SufficientStatisticsRiskReturnGenerationError::InvalidReturnComponents { source }
+                SufficientStatisticsReturnGenerationError::InvalidReturnComponents { source }
             })?,
         )
     } else {

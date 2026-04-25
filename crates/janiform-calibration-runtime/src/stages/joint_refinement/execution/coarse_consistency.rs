@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use janiform_affine_oracle::affine_oracle::ExponentialAffineTransformEquationSpecification;
 use janiform_affine_oracle::sufficient_statistics::{
-    SufficientStatisticsRiskIntervalFactors, SufficientStatisticsRiskModelInputs,
+    SufficientStatisticsIntervalFactors, SufficientStatisticsModelInputs,
 };
 use janiform_engine_simulation::{
     CoarseSimulationModelInputs, CoarseSimulationRunRequest, run_coarse_simulation,
@@ -492,7 +492,7 @@ fn build_coarse_interval_factors_from_hourly_contract(
     hourly_factor_contract: &HourlyFactorContractOutput,
     known_news_timestamps_utc_nanos: &[i64],
     interval_delta: f64,
-) -> Option<SufficientStatisticsRiskIntervalFactors> {
+) -> Option<SufficientStatisticsIntervalFactors> {
     let nu_h_known = hourly_factor_contract
         .interval_start_utc_nanos
         .iter()
@@ -516,7 +516,7 @@ fn build_coarse_interval_factors_from_hourly_contract(
         })
         .collect::<Vec<_>>();
 
-    SufficientStatisticsRiskIntervalFactors::try_new(
+    SufficientStatisticsIntervalFactors::try_new(
         hourly_factor_contract.s_h.clone(),
         nu_h_known,
         nu_h_surprise,
@@ -563,7 +563,7 @@ fn build_joint_coarse_model_inputs(
         )
         .ok()?;
 
-    let risk_model_inputs = SufficientStatisticsRiskModelInputs::try_new(
+    let sufficient_statistics_model_inputs = SufficientStatisticsModelInputs::try_new(
         ExponentialAffineTransformEquationSpecification::try_new(
             fitted_parameters.hawkes_fitted_parameters.kernel_parameters,
             fitted_parameters
@@ -587,7 +587,7 @@ fn build_joint_coarse_model_inputs(
     .ok()?;
 
     CoarseSimulationModelInputs::try_new(
-        risk_model_inputs,
+        sufficient_statistics_model_inputs,
         fitted_parameters
             .return_components_fitted_parameters
             .news_process_configuration

@@ -13,7 +13,8 @@ use janiform_governance_bench::benchmarking::{
     BenchmarkScenarioComponentWorkload, BenchmarkScenarioIntervalSettings,
     BenchmarkScenarioModelState, BenchmarkScenarioPortfolioShape, BenchmarkScenarioRunLength,
     BenchmarkScenarioSharedNewsState, BenchmarkScenarioWorkloadProfile, BenchmarkWorkloadScale,
-    OraclePricerRiskBenchmarkPolicy, load_oracle_pricer_risk_benchmark_policy_from_json,
+    OraclePricerSufficientStatisticsBenchmarkPolicy,
+    load_oracle_pricer_sufficient_statistics_benchmark_policy_from_json,
 };
 use janiform_model_kernels::hawkes::HawkesExcitationState;
 use janiform_validation::{
@@ -41,7 +42,7 @@ fn coarse_fine_harness_runs_paired_scenarios_and_emits_metric_deltas() {
     let execution_config = CoarseFineConsistencyRegressionExecutionConfig {
         reproducibility_seed: 19,
         fine_subinterval_count_per_coarse_interval: 2,
-        paired_risk_path_count: 8,
+        paired_sufficient_statistics_path_count: 8,
         fine_pricing_reference_path_count: 256,
         fine_pricing_reference_step_count: 8,
     };
@@ -148,10 +149,10 @@ fn coarse_fine_harness_runs_paired_scenarios_and_emits_metric_deltas() {
                 "oracle_d_component_max_absolute_difference",
                 "oracle_transform_value_absolute_difference",
                 "pricing_vanilla_option_price",
-                "risk_mean_a_plus",
-                "risk_mean_a_minus",
-                "risk_mean_n_plus",
-                "risk_mean_n_minus",
+                "sufficient_statistics_mean_a_plus",
+                "sufficient_statistics_mean_a_minus",
+                "sufficient_statistics_mean_n_plus",
+                "sufficient_statistics_mean_n_minus",
             ]
         );
         assert!(scenario_report.max_absolute_delta.is_finite());
@@ -238,7 +239,7 @@ fn coarse_fine_harness_threshold_boundaries_and_failures_are_deterministic() {
     let execution_config = CoarseFineConsistencyRegressionExecutionConfig {
         reproducibility_seed: 7,
         fine_subinterval_count_per_coarse_interval: 2,
-        paired_risk_path_count: 4,
+        paired_sufficient_statistics_path_count: 4,
         fine_pricing_reference_path_count: 32,
         fine_pricing_reference_step_count: 4,
     };
@@ -256,10 +257,10 @@ fn coarse_fine_harness_threshold_boundaries_and_failures_are_deterministic() {
     let mut oracle_transform_abs_max = 0.0_f64;
     let mut pricing_abs_max = 0.0_f64;
     let mut pricing_rel_max = 0.0_f64;
-    let mut risk_integrated_abs_max = 0.0_f64;
-    let mut risk_integrated_rel_max = 0.0_f64;
-    let mut risk_event_abs_max = 0.0_f64;
-    let mut risk_event_rel_max = 0.0_f64;
+    let mut sufficient_statistics_integrated_abs_max = 0.0_f64;
+    let mut sufficient_statistics_integrated_rel_max = 0.0_f64;
+    let mut sufficient_statistics_event_abs_max = 0.0_f64;
+    let mut sufficient_statistics_event_rel_max = 0.0_f64;
     let mut max_observed_metric = baseline_report.scenario_reports[0].metric_deltas[0].clone();
 
     for scenario_report in &baseline_report.scenario_reports {
@@ -283,15 +284,17 @@ fn coarse_fine_harness_threshold_boundaries_and_failures_are_deterministic() {
                     pricing_abs_max = pricing_abs_max.max(metric_delta.absolute_delta);
                     pricing_rel_max = pricing_rel_max.max(metric_delta.relative_delta);
                 }
-                "risk_mean_a_plus" | "risk_mean_a_minus" => {
-                    risk_integrated_abs_max =
-                        risk_integrated_abs_max.max(metric_delta.absolute_delta);
-                    risk_integrated_rel_max =
-                        risk_integrated_rel_max.max(metric_delta.relative_delta);
+                "sufficient_statistics_mean_a_plus" | "sufficient_statistics_mean_a_minus" => {
+                    sufficient_statistics_integrated_abs_max =
+                        sufficient_statistics_integrated_abs_max.max(metric_delta.absolute_delta);
+                    sufficient_statistics_integrated_rel_max =
+                        sufficient_statistics_integrated_rel_max.max(metric_delta.relative_delta);
                 }
-                "risk_mean_n_plus" | "risk_mean_n_minus" => {
-                    risk_event_abs_max = risk_event_abs_max.max(metric_delta.absolute_delta);
-                    risk_event_rel_max = risk_event_rel_max.max(metric_delta.relative_delta);
+                "sufficient_statistics_mean_n_plus" | "sufficient_statistics_mean_n_minus" => {
+                    sufficient_statistics_event_abs_max =
+                        sufficient_statistics_event_abs_max.max(metric_delta.absolute_delta);
+                    sufficient_statistics_event_rel_max =
+                        sufficient_statistics_event_rel_max.max(metric_delta.relative_delta);
                 }
                 metric_id => panic!("unexpected metric id in report: {metric_id}"),
             }
@@ -305,10 +308,10 @@ fn coarse_fine_harness_threshold_boundaries_and_failures_are_deterministic() {
         oracle_transform_abs_max,
         pricing_abs_max,
         pricing_rel_max,
-        risk_integrated_abs_max,
-        risk_integrated_rel_max,
-        risk_event_abs_max,
-        risk_event_rel_max,
+        sufficient_statistics_integrated_abs_max,
+        sufficient_statistics_integrated_rel_max,
+        sufficient_statistics_event_abs_max,
+        sufficient_statistics_event_rel_max,
     );
     let boundary_report = run_coarse_fine_consistency_regression_harness(
         &catalog,
@@ -354,19 +357,21 @@ fn coarse_fine_harness_threshold_boundaries_and_failures_are_deterministic() {
                     decrement_tolerance(max_observed_metric.relative_delta);
             }
         }
-        "risk_mean_a_plus" | "risk_mean_a_minus" => {
+        "sufficient_statistics_mean_a_plus" | "sufficient_statistics_mean_a_minus" => {
             for tolerance_band in &mut strict_tolerance.interval_tolerance_bands {
-                tolerance_band.risk_integrated_intensity_mean_absolute_delta_tolerance =
+                tolerance_band
+                    .sufficient_statistics_integrated_intensity_mean_absolute_delta_tolerance =
                     decrement_tolerance(max_observed_metric.absolute_delta);
-                tolerance_band.risk_integrated_intensity_mean_relative_delta_tolerance =
+                tolerance_band
+                    .sufficient_statistics_integrated_intensity_mean_relative_delta_tolerance =
                     decrement_tolerance(max_observed_metric.relative_delta);
             }
         }
-        "risk_mean_n_plus" | "risk_mean_n_minus" => {
+        "sufficient_statistics_mean_n_plus" | "sufficient_statistics_mean_n_minus" => {
             for tolerance_band in &mut strict_tolerance.interval_tolerance_bands {
-                tolerance_band.risk_event_count_mean_absolute_delta_tolerance =
+                tolerance_band.sufficient_statistics_event_count_mean_absolute_delta_tolerance =
                     decrement_tolerance(max_observed_metric.absolute_delta);
-                tolerance_band.risk_event_count_mean_relative_delta_tolerance =
+                tolerance_band.sufficient_statistics_event_count_mean_relative_delta_tolerance =
                     decrement_tolerance(max_observed_metric.relative_delta);
             }
         }
@@ -391,7 +396,7 @@ fn coarse_fine_harness_report_is_repeatable() {
     let execution_config = CoarseFineConsistencyRegressionExecutionConfig {
         reproducibility_seed: 31,
         fine_subinterval_count_per_coarse_interval: 2,
-        paired_risk_path_count: 8,
+        paired_sufficient_statistics_path_count: 8,
         fine_pricing_reference_path_count: 128,
         fine_pricing_reference_step_count: 8,
     };
@@ -423,14 +428,14 @@ fn assert_summary_values_finite(summary: &CoarseFineConsistencyScenarioSummary) 
     let values = [
         summary.coarse_pricing_value,
         summary.fine_pricing_reference_value,
-        summary.coarse_risk_mean_a_plus,
-        summary.fine_risk_mean_a_plus,
-        summary.coarse_risk_mean_a_minus,
-        summary.fine_risk_mean_a_minus,
-        summary.coarse_risk_mean_n_plus,
-        summary.fine_risk_mean_n_plus,
-        summary.coarse_risk_mean_n_minus,
-        summary.fine_risk_mean_n_minus,
+        summary.coarse_sufficient_statistics_mean_a_plus,
+        summary.fine_sufficient_statistics_mean_a_plus,
+        summary.coarse_sufficient_statistics_mean_a_minus,
+        summary.fine_sufficient_statistics_mean_a_minus,
+        summary.coarse_sufficient_statistics_mean_n_plus,
+        summary.fine_sufficient_statistics_mean_n_plus,
+        summary.coarse_sufficient_statistics_mean_n_minus,
+        summary.fine_sufficient_statistics_mean_n_minus,
     ];
     for value in values {
         assert!(value.is_finite());
@@ -468,10 +473,10 @@ fn tolerance_policy_with_uniform_thresholds(
     oracle_transform_value_absolute_tolerance: f64,
     pricing_price_absolute_delta_tolerance: f64,
     pricing_price_relative_delta_tolerance: f64,
-    risk_integrated_intensity_mean_absolute_delta_tolerance: f64,
-    risk_integrated_intensity_mean_relative_delta_tolerance: f64,
-    risk_event_count_mean_absolute_delta_tolerance: f64,
-    risk_event_count_mean_relative_delta_tolerance: f64,
+    sufficient_statistics_integrated_intensity_mean_absolute_delta_tolerance: f64,
+    sufficient_statistics_integrated_intensity_mean_relative_delta_tolerance: f64,
+    sufficient_statistics_event_count_mean_absolute_delta_tolerance: f64,
+    sufficient_statistics_event_count_mean_relative_delta_tolerance: f64,
 ) -> CoarseFineConsistencyRegressionToleranceConfig {
     let mut tolerance_policy = load_tolerance_policy_fixture();
     tolerance_policy.policy_id = policy_id.to_string();
@@ -487,14 +492,16 @@ fn tolerance_policy_with_uniform_thresholds(
             pricing_price_absolute_delta_tolerance;
         interval_tolerance_band.pricing_price_relative_delta_tolerance =
             pricing_price_relative_delta_tolerance;
-        interval_tolerance_band.risk_integrated_intensity_mean_absolute_delta_tolerance =
-            risk_integrated_intensity_mean_absolute_delta_tolerance;
-        interval_tolerance_band.risk_integrated_intensity_mean_relative_delta_tolerance =
-            risk_integrated_intensity_mean_relative_delta_tolerance;
-        interval_tolerance_band.risk_event_count_mean_absolute_delta_tolerance =
-            risk_event_count_mean_absolute_delta_tolerance;
-        interval_tolerance_band.risk_event_count_mean_relative_delta_tolerance =
-            risk_event_count_mean_relative_delta_tolerance;
+        interval_tolerance_band
+            .sufficient_statistics_integrated_intensity_mean_absolute_delta_tolerance =
+            sufficient_statistics_integrated_intensity_mean_absolute_delta_tolerance;
+        interval_tolerance_band
+            .sufficient_statistics_integrated_intensity_mean_relative_delta_tolerance =
+            sufficient_statistics_integrated_intensity_mean_relative_delta_tolerance;
+        interval_tolerance_band.sufficient_statistics_event_count_mean_absolute_delta_tolerance =
+            sufficient_statistics_event_count_mean_absolute_delta_tolerance;
+        interval_tolerance_band.sufficient_statistics_event_count_mean_relative_delta_tolerance =
+            sufficient_statistics_event_count_mean_relative_delta_tolerance;
     }
 
     tolerance_policy
@@ -527,7 +534,7 @@ fn build_bounded_catalog_fixture() -> BenchmarkScenarioCatalog {
                 BenchmarkScenarioComponentWorkload {
                     oracle_requests_per_iteration: 2,
                     pricing_requests_per_iteration: 3,
-                    risk_paths_per_iteration: 2,
+                    sufficient_statistics_paths_per_iteration: 2,
                 },
             ),
             build_profile(
@@ -538,7 +545,7 @@ fn build_bounded_catalog_fixture() -> BenchmarkScenarioCatalog {
                 BenchmarkScenarioComponentWorkload {
                     oracle_requests_per_iteration: 3,
                     pricing_requests_per_iteration: 2,
-                    risk_paths_per_iteration: 3,
+                    sufficient_statistics_paths_per_iteration: 3,
                 },
             ),
             build_profile(
@@ -549,7 +556,7 @@ fn build_bounded_catalog_fixture() -> BenchmarkScenarioCatalog {
                 BenchmarkScenarioComponentWorkload {
                     oracle_requests_per_iteration: 4,
                     pricing_requests_per_iteration: 4,
-                    risk_paths_per_iteration: 3,
+                    sufficient_statistics_paths_per_iteration: 3,
                 },
             ),
         ],
@@ -600,15 +607,17 @@ fn build_profile(
     }
 }
 
-fn load_benchmark_policy_fixture() -> OraclePricerRiskBenchmarkPolicy {
-    load_oracle_pricer_risk_benchmark_policy_from_json(&load_benchmark_policy_fixture_payload())
-        .expect("benchmark policy fixture should parse")
+fn load_benchmark_policy_fixture() -> OraclePricerSufficientStatisticsBenchmarkPolicy {
+    load_oracle_pricer_sufficient_statistics_benchmark_policy_from_json(
+        &load_benchmark_policy_fixture_payload(),
+    )
+    .expect("benchmark policy fixture should parse")
 }
 
 fn load_benchmark_policy_fixture_payload() -> String {
     let fixture_path = fixtures_root_path()
         .join("benchmarks")
-        .join("oracle_pricer_risk_benchmark_policy.json");
+        .join("oracle_pricer_sufficient_statistics_benchmark_policy.json");
 
     fs::read_to_string(&fixture_path).unwrap_or_else(|source| {
         panic!(

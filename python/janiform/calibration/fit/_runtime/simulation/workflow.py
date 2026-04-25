@@ -22,7 +22,7 @@ from .....hourly_factors import (
     load_hourly_factor_contract_payload,
 )
 from .....mean_reversion import MeanReversionBoundaryState
-from .....risk import SufficientStatisticsRiskEquationSpecification, SufficientStatisticsRiskModelInputs
+from .....sufficient_statistics import SufficientStatisticsEquationSpecification, SufficientStatisticsModelInputs
 from .....simulation.coarse import CoarseSimulationPath, CoarseSimulationRunRequest, run_coarse_simulation
 from .....simulation.kinds import SimulationKind
 from .....simulation.progress import SimulationProgressEvent
@@ -290,8 +290,8 @@ def prepare_model_coarse_interval_simulation_request(
         start_time_utc=start_time_utc,
         horizon_interval_count=horizon_interval_count,
         interval_delta=runtime_input.runtime_factors.interval_delta,
-        risk_model_inputs=SufficientStatisticsRiskModelInputs(
-            equation_specification=SufficientStatisticsRiskEquationSpecification(
+        sufficient_statistics_model_inputs=SufficientStatisticsModelInputs(
+            equation_specification=SufficientStatisticsEquationSpecification(
                 hawkes_kernel_parameters=runtime_input.runtime_factors.kernel_parameters,
                 gamma_severity_mark_configuration=runtime_input.runtime_factors.gamma_severity_mark_configuration,
             ),

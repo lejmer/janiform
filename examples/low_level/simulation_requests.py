@@ -13,7 +13,7 @@ from janiform.simulation import (
     run_coarse_simulation,
     run_seeded_tick_event_simulation,
 )
-from janiform.risk import SufficientStatisticsRiskModelInputs
+from janiform.sufficient_statistics import SufficientStatisticsModelInputs
 from janiform.simulation.coarse import (
     COARSE_SIMULATION_RUN_REQUEST_SCHEMA_VERSION,
 )
@@ -24,7 +24,7 @@ from examples._contracts import (
     build_mean_reversion_runtime_contracts,
     build_news_process_configuration,
     build_nig_shared_plus_shift_configuration,
-    build_risk_model_inputs,
+    build_sufficient_statistics_model_inputs,
 )
 from examples._shared import calendar_registry_json, calendar_registry_payload
 
@@ -57,7 +57,7 @@ def main() -> None:
         news_intensity_hourly_factors=[0.2, 0.1],
     )
 
-    risk_model_inputs: SufficientStatisticsRiskModelInputs = build_risk_model_inputs(
+    sufficient_statistics_model_inputs: SufficientStatisticsModelInputs = build_sufficient_statistics_model_inputs(
         interval_count=SIMULATION_INTERVAL_COUNT,
         interval_delta_hours=SIMULATION_INTERVAL_DELTA,
     )
@@ -69,7 +69,7 @@ def main() -> None:
         horizon_interval_count=SIMULATION_INTERVAL_COUNT,
         interval_delta=SIMULATION_INTERVAL_DELTA,
         model_inputs=CoarseSimulationModelInputs(
-            risk_model_inputs=risk_model_inputs,
+            sufficient_statistics_model_inputs=sufficient_statistics_model_inputs,
             news_process_configuration=build_news_process_configuration(),
             calendar_registry_artifact=calendar_registry_payload(),
             exchange_code="XNYS",
