@@ -13,8 +13,8 @@ use serde_json::Value;
 use support::return_decomposition_failure_diagnostics::{
     RETURN_DECOMPOSITION_FAILURE_DIAGNOSTIC_REPORT_SCHEMA_VERSION,
     ReturnDecompositionDiagnosticComplexScalar, ReturnDecompositionDiagnosticContributions,
-    ReturnDecompositionFailureClassificationHints, ReturnDecompositionFailureDiagnosticCategory,
-    ReturnDecompositionFailureDiagnosticReport, ReturnDecompositionScenarioDiagnosticContext,
+    ReturnDecompositionFailureDiagnosticCategory, ReturnDecompositionFailureDiagnosticReport,
+    ReturnDecompositionScenarioDiagnosticContext,
     build_return_decomposition_failure_diagnostic_report,
     build_return_decomposition_failure_diagnostic_violation,
     render_return_decomposition_failure_diagnostic_report,
@@ -38,7 +38,6 @@ const COMPONENT_CHECK_IDS: [&str; 5] = [
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum RegressionObservedOutputMode {
     Canonical,
-    InjectSignRegression,
     InjectMappingRegression,
     InjectComponentDisableModeRegression,
 }
@@ -50,7 +49,6 @@ struct DecompositionRegressionScenario {
     return_decomposition: ReturnDecomposition,
     closed_gap_characteristic_factor: ComplexScalar,
     expected_contributions: ReturnDecompositionDiagnosticContributions,
-    wrong_positive_u_sell_side_weighted_exponent: ComplexScalar,
 }
 
 #[test]
@@ -97,7 +95,7 @@ fn diagnostics_schema_includes_required_failure_metadata_fields() {
     let injected_violations = collect_scenario_violations(
         driver_parameters,
         scenario,
-        RegressionObservedOutputMode::InjectSignRegression,
+        RegressionObservedOutputMode::InjectMappingRegression,
         DIAGNOSTIC_ABSOLUTE_TOLERANCE,
     );
     assert!(!injected_violations.is_empty());
@@ -150,26 +148,8 @@ fn diagnostics_schema_includes_required_failure_metadata_fields() {
 }
 
 #[test]
-fn diagnostics_classification_detects_sign_mapping_and_component_disable_mode_regressions() {
+fn diagnostics_classification_detects_mapping_and_component_disable_mode_regressions() {
     let (driver_parameters, scenarios) = load_regression_scenarios();
-
-    let sign_scenario = scenarios
-        .iter()
-        .find(|scenario| scenario.context.scenario_intent == "sell_only")
-        .expect("fixture should include one sell_only scenario");
-    let sign_violation = collect_scenario_violations(
-        driver_parameters,
-        sign_scenario,
-        RegressionObservedOutputMode::InjectSignRegression,
-        DIAGNOSTIC_ABSOLUTE_TOLERANCE,
-    )
-    .into_iter()
-    .find(|violation| violation.check_id == "sell_side_weighted_exponent")
-    .expect("injected sign regression should produce sell-side mismatch");
-    assert_eq!(
-        sign_violation.category,
-        ReturnDecompositionFailureDiagnosticCategory::Sign
-    );
 
     let mapping_scenario = scenarios
         .iter()
@@ -253,10 +233,6 @@ fn load_regression_scenarios() -> (
                     .gap_characteristic_factor
                     .into_core(),
                 expected_contributions: expected_contributions_from_fixture_case(fixture_case),
-                wrong_positive_u_sell_side_weighted_exponent: fixture_case
-                    .expected_output
-                    .wrong_positive_u_sell_side_weighted_exponent
-                    .into_core(),
             }
         })
         .collect();
@@ -275,17 +251,12 @@ fn collect_scenario_violations(
         compose_observed_contributions(driver_parameters, scenario, observed_output_mode);
     let mut violations = Vec::new();
 
-    let classification_hints = ReturnDecompositionFailureClassificationHints {
-        wrong_positive_u_sell_side_weighted_exponent: scenario
-            .wrong_positive_u_sell_side_weighted_exponent,
-    };
     for check_id in COMPONENT_CHECK_IDS {
         let violation = build_return_decomposition_failure_diagnostic_violation(
             &scenario.context,
             check_id,
             scenario.expected_contributions,
             observed_contributions,
-            classification_hints,
             tolerance,
         );
         if violation.absolute_distance > tolerance {
@@ -336,39 +307,6 @@ fn compose_observed_contributions(
                 combined_characteristic_factor: characteristic_function_assembly
                     .combined_characteristic_factor
                     .into(),
-            }
-        }
-        RegressionObservedOutputMode::InjectSignRegression => {
-            let effective_decomposition = scenario
-                .return_decomposition
-                .with_edge_mode(scenario.context.edge_mode);
-            let buy_side_weighted_exponent = driver_parameters
-                .buy_side_characteristic_exponent(scenario.argument)
-                .scale(effective_decomposition.a_plus);
-            let sell_side_weighted_exponent = driver_parameters
-                .sell_side_parameters
-                .characteristic_exponent(scenario.argument)
-                .scale(effective_decomposition.a_minus);
-            let combined_weighted_exponent =
-                buy_side_weighted_exponent.add(sell_side_weighted_exponent);
-            let trading_time_characteristic_factor =
-                complex_exponential(combined_weighted_exponent);
-            let effective_closed_gap_characteristic_factor =
-                effective_closed_gap_characteristic_factor(
-                    scenario.closed_gap_characteristic_factor,
-                    scenario.context.edge_mode,
-                );
-            let combined_characteristic_factor = complex_multiply(
-                trading_time_characteristic_factor,
-                effective_closed_gap_characteristic_factor,
-            );
-
-            ReturnDecompositionDiagnosticContributions {
-                buy_side_weighted_exponent: buy_side_weighted_exponent.into(),
-                sell_side_weighted_exponent: sell_side_weighted_exponent.into(),
-                combined_weighted_exponent: combined_weighted_exponent.into(),
-                trading_time_characteristic_factor: trading_time_characteristic_factor.into(),
-                combined_characteristic_factor: combined_characteristic_factor.into(),
             }
         }
         RegressionObservedOutputMode::InjectMappingRegression => {

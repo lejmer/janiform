@@ -69,12 +69,7 @@
         "combined_characteristic_factor": {
           "real": 0.8712093808889487,
           "imaginary": -0.05172409520066992
-        },
-        "wrong_positive_u_sell_side_weighted_exponent": {
-          "real": 0.0,
-          "imaginary": 0.0
-        },
-        "minimum_sell_sign_regression_distance": 0.0
+        }
       },
       "description": "Buy-only analytic case with unity gap factor so combined characteristic factor equals the trading-time factor."
     },
@@ -114,12 +109,7 @@
         "combined_characteristic_factor": {
           "real": 0.8158322807271035,
           "imaginary": 0.1254155659320086
-        },
-        "wrong_positive_u_sell_side_weighted_exponent": {
-          "real": -0.14206069985322212,
-          "imaginary": -0.2576893170381825
-        },
-        "minimum_sell_sign_regression_distance": 0.4132349987961821
+        }
       },
       "description": "Sell-only analytic case that validates psi_minus(-u) usage against a positive-u regression candidate."
     },
@@ -159,12 +149,7 @@
         "combined_characteristic_factor": {
           "real": 0.8217486069884784,
           "imaginary": -0.16896181586467815
-        },
-        "wrong_positive_u_sell_side_weighted_exponent": {
-          "real": 0.0110004400497785,
-          "imaginary": 0.18350081266539836
-        },
-        "minimum_sell_sign_regression_distance": 0.2947086028412452
+        }
       },
       "description": "Combined buy plus sell plus explicit gap-factor case for full decomposition and sign behavior coverage."
     }

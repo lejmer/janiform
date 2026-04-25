@@ -29,6 +29,7 @@ fn calibration_run_spec_round_trip_serialization_preserves_contract_fields() {
     );
 
     let serialized = serde_json::to_value(&run_spec).expect("run spec should serialize");
+
     assert_eq!(serialized["run_id"], json!("run-001"));
     assert_eq!(serialized["execution_mode"], json!("memory"));
     assert_eq!(serialized["selected_stages"][0], json!("seasonality"));
@@ -37,11 +38,30 @@ fn calibration_run_spec_round_trip_serialization_preserves_contract_fields() {
         json!("hawkes")
     );
     assert_eq!(serialized["seed_settings"]["global_seed"], json!(17));
-    assert!(serialized.get("stage_handoffs").is_none());
-    assert!(serialized.get("resume_settings").is_none());
+
+    let mut serialized_field_names: Vec<&str> = serialized
+        .as_object()
+        .expect("run spec should serialize as an object")
+        .keys()
+        .map(String::as_str)
+        .collect();
+    serialized_field_names.sort_unstable();
+
+    assert_eq!(
+        serialized_field_names,
+        [
+            "data_inputs",
+            "execution_mode",
+            "optimizer_settings_by_stage",
+            "run_id",
+            "seed_settings",
+            "selected_stages",
+        ]
+    );
 
     let parsed: CalibrationRunSpec =
         serde_json::from_value(serialized).expect("run spec should deserialize");
+
     assert_eq!(parsed, run_spec);
 }
 
@@ -58,12 +78,15 @@ fn calibration_run_spec_deserialization_rejects_invalid_execution_mode() {
 #[test]
 fn calibration_stage_seed_derivation_is_deterministic_and_honors_overrides() {
     let run_spec_with_overrides = build_valid_run_spec();
+
     let seasonality_seed = resolve_calibration_stage_seed_metadata(
         &run_spec_with_overrides,
         CalibrationStage::Seasonality,
     );
+
     let hawkes_seed =
         resolve_calibration_stage_seed_metadata(&run_spec_with_overrides, CalibrationStage::Hawkes);
+
     let return_seed_with_overrides = resolve_calibration_stage_seed_metadata(
         &run_spec_with_overrides,
         CalibrationStage::ReturnComponents,
@@ -112,10 +135,12 @@ fn calibration_stage_seed_derivation_is_deterministic_and_honors_overrides() {
         &run_spec_without_overrides,
         CalibrationStage::Seasonality,
     );
+
     let derived_hawkes_seed = resolve_calibration_stage_seed_metadata(
         &run_spec_without_overrides,
         CalibrationStage::Hawkes,
     );
+
     let derived_return_seed = resolve_calibration_stage_seed_metadata(
         &run_spec_without_overrides,
         CalibrationStage::ReturnComponents,
@@ -197,6 +222,7 @@ fn calibration_run_spec_for_caller_surface_applies_default_execution_mode() {
         build_solver_settings_for_seasonality_and_hawkes(),
     )
     .expect("cli default run spec should validate");
+
     assert_eq!(cli_spec.execution_mode, CalibrationExecutionMode::Disk);
 
     let python_spec = CalibrationRunSpec::try_new(
@@ -211,6 +237,7 @@ fn calibration_run_spec_for_caller_surface_applies_default_execution_mode() {
         build_solver_settings_for_seasonality_and_hawkes(),
     )
     .expect("python default run spec should validate");
+
     assert_eq!(python_spec.execution_mode, CalibrationExecutionMode::Memory);
 }
 
@@ -235,6 +262,7 @@ fn calibration_run_spec_mode_extensions_support_valid_memory_and_disk_configurat
     )))
     .build()
     .expect("memory mode with in-memory handoff and same-process resume should validate");
+
     assert_eq!(
         memory_run_spec.execution_mode,
         CalibrationExecutionMode::Memory
@@ -260,6 +288,7 @@ fn calibration_run_spec_mode_extensions_support_valid_memory_and_disk_configurat
     ))
     .build()
     .expect("disk mode with persisted handoff and persisted resume should validate");
+
     assert_eq!(disk_run_spec.execution_mode, CalibrationExecutionMode::Disk);
 }
 
@@ -380,8 +409,10 @@ fn calibration_stage_graph_validation_resolves_explicit_execution_order() {
 
     let serialized_graph =
         serde_json::to_value(&stage_graph).expect("stage graph should serialize");
+
     let parsed_graph: CalibrationStageGraph =
         serde_json::from_value(serialized_graph).expect("stage graph should deserialize");
+
     assert_eq!(parsed_graph, stage_graph);
 
     let execution_order = resolve_calibration_stage_execution_order(&run_spec, &stage_graph)
@@ -408,6 +439,7 @@ fn calibration_stage_graph_rejects_unsupported_dependency_when_stage_is_unselect
         build_solver_settings_for_seasonality_and_hawkes(),
     )
     .expect("run spec should validate");
+
     let stage_graph = CalibrationStageGraph::new(vec![CalibrationStageDependency {
         stage: CalibrationStage::ReturnComponents,
         depends_on: CalibrationStage::Seasonality,
@@ -415,6 +447,7 @@ fn calibration_stage_graph_rejects_unsupported_dependency_when_stage_is_unselect
 
     let error = resolve_calibration_stage_execution_order(&run_spec, &stage_graph)
         .expect_err("graph with unselected dependency stage must fail");
+
     assert!(matches!(
         error,
         CalibrationRunContractError::InvalidStageGraph {
@@ -460,6 +493,7 @@ fn calibration_stage_graph_rejects_cycles() {
 
     let error = resolve_calibration_stage_execution_order(&run_spec, &stage_graph)
         .expect_err("cyclic graph must fail");
+
     assert!(matches!(
         error,
         CalibrationRunContractError::InvalidStageGraph {
@@ -471,6 +505,7 @@ fn calibration_stage_graph_rejects_cycles() {
 #[test]
 fn calibration_run_contract_captures_solver_settings_for_auditability() {
     let run_spec = build_valid_run_spec();
+
     let stage_graph = CalibrationStageGraph::new(vec![
         CalibrationStageDependency {
             stage: CalibrationStage::Hawkes,
@@ -500,6 +535,7 @@ fn calibration_run_contract_captures_solver_settings_for_auditability() {
 
     let run_contract = CalibrationRunContract::try_new(run_spec.clone(), stage_graph)
         .expect("valid run contract should build");
+
     assert_eq!(
         run_contract.schema_version,
         CALIBRATION_RUN_CONTRACT_SCHEMA_VERSION
@@ -524,6 +560,7 @@ fn calibration_run_contract_captures_solver_settings_for_auditability() {
     );
 
     let serialized = serde_json::to_value(&run_contract).expect("run contract should serialize");
+
     assert_eq!(
         serialized["stage_solver_settings"]
             .as_array()
@@ -554,8 +591,10 @@ fn calibration_run_contract_construction_supports_memory_and_disk_modes() {
         CalibrationExecutionMode::Disk,
     ] {
         let run_spec = build_valid_run_spec_with_mode(execution_mode);
+
         let run_contract = CalibrationRunContract::try_new(run_spec, stage_graph.clone())
             .expect("run contract should build for both execution modes");
+
         assert_eq!(run_contract.run_spec.execution_mode, execution_mode);
     }
 }

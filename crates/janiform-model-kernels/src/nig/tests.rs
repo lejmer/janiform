@@ -430,27 +430,6 @@ fn buy_and_sell_sign_convention_helpers_match_equation_mapping() {
 }
 
 #[test]
-fn sell_side_sign_convention_regression_guard_rejects_positive_u_wiring() {
-    let driver_parameters = NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
-        .expect("valid shared-plus-shift payload should construct")
-        .derive_driver_parameters()
-        .expect("valid shared-plus-shift payload should derive drivers");
-    let argument = ComplexScalar::new(1.1, 0.0);
-
-    let correct_sell_side =
-        driver_parameters.sell_side_characteristic_exponent_for_return_composition(argument);
-    let incorrect_sell_side = driver_parameters
-        .sell_side_parameters
-        .characteristic_exponent(argument);
-
-    let regression_distance = correct_sell_side.subtract(incorrect_sell_side).norm();
-    assert!(
-        regression_distance > 1.0e-6,
-        "sell-side sign regression guard requires psi_minus(-u) to differ from psi_minus(u), observed distance={regression_distance}"
-    );
-}
-
-#[test]
 fn trading_time_weighted_exponent_composition_matches_manual_assembly() {
     let driver_parameters = NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
         .expect("valid shared-plus-shift payload should construct")

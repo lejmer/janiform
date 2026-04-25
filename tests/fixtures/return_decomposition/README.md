@@ -32,9 +32,3 @@ one explicit `gap_characteristic_factor`, and one `expected_output` payload.
 - `combined_weighted_exponent`
 - `trading_time_characteristic_factor`
 - `combined_characteristic_factor`
-- `wrong_positive_u_sell_side_weighted_exponent`
-- `minimum_sell_sign_regression_distance`
-
-The `wrong_positive_u_sell_side_weighted_exponent` and
-`minimum_sell_sign_regression_distance` fields support regression checks that
-detect accidental replacement of `psi_minus(-u)` with `psi_minus(u)`.

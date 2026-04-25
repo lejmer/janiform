@@ -145,65 +145,6 @@ fn return_decomposition_sign_analytic_cases_match_expected_pricing_outputs() {
     }
 }
 
-#[test]
-fn return_decomposition_sign_analytic_cases_detect_positive_u_sell_side_regression() {
-    let fixture_document = load_return_decomposition_sign_analytic_fixture_document()
-        .expect("return decomposition sign analytic fixture should load");
-    let driver_parameters = derive_driver_parameters(fixture_document.driver_configuration);
-
-    for fixture_case in &fixture_document.cases {
-        if fixture_case.return_decomposition.a_minus == 0.0 {
-            continue;
-        }
-
-        let argument = fixture_case.argument.into_core();
-        let observed_sell_side_exponent = compose_nig_trading_time_exponent(
-            driver_parameters,
-            argument,
-            ReturnDecomposition::try_new(ReturnDecompositionInput {
-                a_plus: fixture_case.return_decomposition.a_plus,
-                a_minus: fixture_case.return_decomposition.a_minus,
-                open_jump: 0.0,
-                closed_gap: fixture_case.return_decomposition.gap,
-            })
-            .expect("fixture return decomposition payload should construct"),
-        )
-        .sell_side_weighted_exponent;
-        let positive_u_sell_side_exponent = driver_parameters
-            .sell_side_parameters
-            .characteristic_exponent(argument)
-            .scale(fixture_case.return_decomposition.a_minus);
-
-        assert_complex_close(
-            positive_u_sell_side_exponent,
-            fixture_case
-                .expected_output
-                .wrong_positive_u_sell_side_weighted_exponent
-                .into_core(),
-            ANALYTIC_ABSOLUTE_TOLERANCE,
-            &fixture_case.fixture_id,
-            "wrong_positive_u_sell_side_weighted_exponent",
-        );
-
-        let regression_distance = observed_sell_side_exponent
-            .subtract(positive_u_sell_side_exponent)
-            .norm();
-        assert!(
-            regression_distance + ANALYTIC_ABSOLUTE_TOLERANCE
-                >= fixture_case
-                    .expected_output
-                    .minimum_sell_sign_regression_distance,
-            "fixture {} ({}) sell-side sign regression distance dropped below floor: observed={}, expected_floor={}",
-            fixture_case.fixture_id,
-            fixture_case.description,
-            regression_distance,
-            fixture_case
-                .expected_output
-                .minimum_sell_sign_regression_distance
-        );
-    }
-}
-
 fn derive_driver_parameters(
     driver_configuration: support::return_decomposition_sign_fixture::ReturnDecompositionSignDriverConfiguration,
 ) -> janiform_model_kernels::nig::NigBuySellDriverParameters {

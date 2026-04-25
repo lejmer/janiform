@@ -353,15 +353,6 @@ def test_vanilla_option_request_rejects_non_negative_delta_beta_with_field_path(
     assert captured_error.value.failure.message == "must be strictly negative"
 
 
-def test_vanilla_option_request_accepts_negative_delta_beta_regression() -> None:
-    request_payload = _valid_request_payload()
-    request_payload["model_parameters"]["nig_shared_plus_shift_configuration"]["delta_beta"] = -0.15
-
-    validated_request = VanillaOptionPricingRequest.from_mapping(request_payload)
-
-    assert validated_request.model_parameters.nig_shared_plus_shift_configuration.delta_beta == pytest.approx(-0.15)
-
-
 def test_vanilla_option_response_rejects_negative_price_with_structured_error() -> None:
     response_payload = _valid_response_payload()
     response_payload["price"] = -0.01

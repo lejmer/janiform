@@ -83,9 +83,12 @@ def test_translate_market_data_request_seasonality_only_selects_only_seasonality
     assert translation.staged_request.selected_stages == (
         CalibrationStage.SEASONALITY,
     )
-    assert "seasonality_stage_input" in prepared_payload
-    assert "hawkes_candidate_inputs" not in prepared_payload
-    assert "return_components_candidate_generation_input" not in prepared_payload
+    assert set(prepared_payload) == {
+        "schema_version",
+        "request",
+        "seasonality_stage_input",
+        "joint_refinement_audit_option_pricing_enabled",
+    }
     assert translation.diagnostics.tick_record_count == 3
 
 
@@ -1128,7 +1131,19 @@ def test_prepare_market_data_calibration_returns_public_diagnostics_and_provenan
     assert prepared.prepared_data_reference is None
     assert prepared.prepared_payload_path is None
     assert prepared.staged_execution_input_path is None
-    assert "execution_input" not in prepared.to_payload()
+    assert set(prepared.to_payload()) == {
+        "schema_version",
+        "request",
+        "staged_request",
+        "diagnostics",
+        "provenance",
+        "session_resolution",
+        "fit_warning",
+        "reference_price",
+        "prepared_data_reference",
+        "prepared_payload_path",
+        "staged_execution_input_path",
+    }
     assert prepared.staged_request.selected_stages == (
         CalibrationStage.SEASONALITY,
         CalibrationStage.HAWKES,

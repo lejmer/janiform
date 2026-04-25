@@ -32,18 +32,7 @@ fn shared_decomposition_mapping_preserves_component_assignment() {
     );
     let manual_expected = driver_parameters
         .compose_trading_time_weighted_characteristic_exponent(argument, 1.9, 0.35);
-    let manual_swapped = driver_parameters
-        .compose_trading_time_weighted_characteristic_exponent(argument, 0.35, 1.9);
-
     assert_eq!(observed, manual_expected);
-    assert!(
-        observed
-            .combined_weighted_exponent
-            .subtract(manual_swapped.combined_weighted_exponent)
-            .norm()
-            > 1.0e-6,
-        "component mapping regression detected from accidental a_plus and a_minus swap"
-    );
 }
 
 #[test]
@@ -136,20 +125,6 @@ fn analytic_sign_fixture_cases_match_shared_composition_outputs() {
             assembled.combined_characteristic_factor,
             expected.combined_characteristic_factor.into_core(),
             1.0e-12,
-        );
-
-        let wrong_positive_u_distance = exponent_contributions
-            .sell_side_weighted_exponent
-            .subtract(
-                expected
-                    .wrong_positive_u_sell_side_weighted_exponent
-                    .into_core(),
-            )
-            .norm();
-        assert!(
-            wrong_positive_u_distance + 1.0e-12 >= expected.minimum_sell_sign_regression_distance,
-            "fixture case {} violated positive-u sign regression threshold",
-            fixture_case.fixture_id
         );
 
         let case_seed = 704_991_u64

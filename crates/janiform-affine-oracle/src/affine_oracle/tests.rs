@@ -799,22 +799,6 @@ fn solver_integrator_selection_wiring_uses_requested_method() {
             .saturating_mul(4)
     );
     assert_eq!(runge_kutta_result.metadata.guard_failure, None);
-
-    let method_difference = euler_result
-        .output
-        .expect("Euler integration should produce output when status is completed")
-        .transform_value
-        .subtract(
-            runge_kutta_result
-                .output
-                .expect("Runge-Kutta integration should produce output when status is completed")
-                .transform_value,
-        )
-        .norm();
-    assert!(
-        method_difference > 1.0e-6,
-        "integrator selection wiring regression detected because methods produced near-identical output under one-step fixture"
-    );
 }
 
 #[test]

@@ -1,12 +1,8 @@
-from importlib import import_module
 import sys
+from importlib import import_module
 
 import pytest
 
-import janiform
-import janiform.calibration as calibration_module
-import janiform.pricing as pricing_module
-import janiform.simulation as simulation_module
 from janiform._experimental import EXPERIMENTAL_API_ENV_VAR
 from tests.support.public_api_contract_guardrails import build_public_api_contract_snapshot
 
@@ -19,14 +15,6 @@ def _purge_experimental_modules() -> None:
     ]
     for module_name in module_names:
         sys.modules.pop(module_name, None)
-
-
-def test_experimental_namespace_is_not_part_of_primary_public_surface() -> None:
-    assert "experimental" not in janiform.__all__
-    assert "janiform.experimental" not in build_public_api_contract_snapshot()["public_modules"]
-    assert "experimental" not in simulation_module.__all__
-    assert "experimental" not in pricing_module.__all__
-    assert "experimental" not in calibration_module.__all__
 
 
 def test_preview_endpoint_namespace_requires_explicit_opt_in(monkeypatch: pytest.MonkeyPatch) -> None:

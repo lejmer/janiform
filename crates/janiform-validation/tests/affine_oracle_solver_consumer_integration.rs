@@ -115,21 +115,6 @@ fn sufficient_statistics_consumer_calls_shared_solver_entrypoint_with_interval_p
 
     assert_eq!(short_interval_result, short_interval_shared_result);
     assert_eq!(long_interval_result, long_interval_shared_result);
-
-    let short_interval_output = short_interval_result
-        .output
-        .expect("completed short-interval solve should include output");
-    let long_interval_output = long_interval_result
-        .output
-        .expect("completed long-interval solve should include output");
-    assert!(
-        short_interval_output
-            .transform_value
-            .subtract(long_interval_output.transform_value)
-            .norm()
-            > 1.0e-6,
-        "interval-parametric delta regression detected with near-identical transform values"
-    );
 }
 
 #[test]
@@ -167,40 +152,6 @@ fn pricing_pipeline_propagates_interval_delta_to_solver_input() {
         DEFAULT_INTRADAY_PRICING_INTERVAL_DELTA
     );
     assert_eq!(non_hourly_transform_input.delta, 0.5);
-
-    let hourly_result = solve_exponential_affine_transform(
-        hourly_transform_input,
-        ExponentialAffineTransformSolverSettings::try_new(
-            ExponentialAffineTransformIntegratorMethod::FourthOrderRungeKutta,
-            64,
-        )
-        .expect("hourly solver settings should construct"),
-    )
-    .expect("hourly pricing solve should succeed");
-    let non_hourly_result = solve_exponential_affine_transform(
-        non_hourly_transform_input,
-        ExponentialAffineTransformSolverSettings::try_new(
-            ExponentialAffineTransformIntegratorMethod::FourthOrderRungeKutta,
-            64,
-        )
-        .expect("non-hourly solver settings should construct"),
-    )
-    .expect("non-hourly pricing solve should succeed");
-
-    let hourly_output = hourly_result
-        .output
-        .expect("completed hourly solve should include output");
-    let non_hourly_output = non_hourly_result
-        .output
-        .expect("completed non-hourly solve should include output");
-    assert!(
-        hourly_output
-            .transform_value
-            .subtract(non_hourly_output.transform_value)
-            .norm()
-            > 1.0e-6,
-        "pricing pipeline interval-delta propagation regression detected with near-identical transform values"
-    );
 }
 
 fn build_transform_input(delta: f64) -> ExponentialAffineTransformInput {

@@ -57,6 +57,7 @@ from ..contracts import (
 from ..contracts.base import (
     require_finite_number,
     require_mapping,
+    require_negative_finite_number,
     require_non_negative_finite_number,
     require_non_negative_integer,
     require_positive_finite_number,
@@ -280,15 +281,12 @@ class NigSharedPlusShiftConfiguration(ContractModel):
             PRICING_ERROR_FACTORY,
         )
         require_finite_number({"mu": self.mu}, "mu", "mu", PRICING_ERROR_FACTORY)
-        require_finite_number(
+        require_negative_finite_number(
             {"delta_beta": self.delta_beta},
             "delta_beta",
             "delta_beta",
             PRICING_ERROR_FACTORY,
         )
-
-        if self.delta_beta >= 0.0:
-            raise _pricing_error("delta_beta", "must be strictly negative")
 
         if self.alpha <= abs(self.beta_0):
             raise _pricing_error("alpha", "must be strictly greater than abs(beta_0)")
@@ -331,15 +329,12 @@ class NigSharedPlusShiftConfiguration(ContractModel):
 
         mu = require_finite_number(raw_payload, "mu", f"{field_path}.mu", PRICING_ERROR_FACTORY)
 
-        delta_beta = require_finite_number(
+        delta_beta = require_negative_finite_number(
             raw_payload,
             "delta_beta",
             f"{field_path}.delta_beta",
             PRICING_ERROR_FACTORY,
         )
-
-        if delta_beta >= 0.0:
-            raise _pricing_error(f"{field_path}.delta_beta", "must be strictly negative")
 
         if alpha <= abs(beta_0):
             raise _pricing_error(

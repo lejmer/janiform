@@ -523,6 +523,19 @@ def require_positive_finite_number(
     return value
 
 
+def require_negative_finite_number(
+    mapping: Mapping[str, Any],
+    field_name: str,
+    field_path: str,
+    error_factory: ValidationErrorFactory,
+) -> float:
+    value = require_finite_number(mapping, field_name, field_path, error_factory)
+    if value >= 0.0:
+        raise error_factory(field_path, "must be strictly negative")
+
+    return value
+
+
 def require_non_negative_finite_number(
     mapping: Mapping[str, Any],
     field_name: str,

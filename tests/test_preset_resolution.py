@@ -200,7 +200,7 @@ def test_resolution_does_not_flag_explicit_automatic_session_selection_as_confli
 
     assert resolved_configuration.session.source_kind == ResolvedWorkflowComponentSource.INFERRED
     assert resolved_configuration.session.inferred_from_data is True
-    assert "conflicting_override" not in diagnostic_codes
+    assert diagnostic_codes == []
 
 
 def test_resolution_emits_conflicting_override_diagnostic_when_known_news_replaces_profile_default() -> None:
@@ -271,7 +271,7 @@ def test_resolution_does_not_flag_matching_known_news_selection_as_conflict() ->
 
     assert resolved_configuration.known_news.selected_preset is not None
     assert resolved_configuration.known_news.selected_preset.preset_name == "us_macro_core"
-    assert "conflicting_override" not in diagnostic_codes
+    assert diagnostic_codes == []
 
 
 def _build_inferred_session_resolution(

@@ -24,13 +24,6 @@ def test_package_root_surface_is_intentionally_minimal() -> None:
     assert janiform.__all__ == ["__version__"]
     assert "__version__" in janiform.__dict__
 
-    root_exports = set(janiform.__all__)
-
-    assert "run_seeded_tick_event_simulation" not in root_exports
-    assert "load_hourly_factor_contract_for_pricing" not in root_exports
-    assert "validate_sufficient_statistics_run_request" not in root_exports
-    assert "native_module" not in root_exports
-
 
 def test_cli_public_module_is_a_thin_module_with_curated_root_exports() -> None:
     assert not hasattr(cli_module, "__path__")
@@ -55,9 +48,6 @@ def test_cli_public_module_is_a_thin_module_with_curated_root_exports() -> None:
         "CLI_SIMULATE_RESULT_SCHEMA_VERSION",
         "CliExitCode",
     }
-    assert "main" not in cli_module.__dict__
-    assert "_build_parser" not in cli_module.__dict__
-    assert "_parse_cli_arguments" not in cli_module.__dict__
 
 
 def test_public_and_internal_module_intent_is_explicit() -> None:
@@ -117,8 +107,6 @@ def test_public_and_internal_module_intent_is_explicit() -> None:
     for module_name in public_modules:
         module = import_module(module_name)
         assert isinstance(module.__doc__, str) and module.__doc__.strip()
-        assert "internal" not in module.__doc__.lower()
-        assert "private" not in module.__doc__.lower()
 
     for module_name in internal_modules:
         module = import_module(module_name)
@@ -328,7 +316,6 @@ def test_simulation_root_and_seeded_submodule_share_supported_symbols() -> None:
         simulation_module.run_seeded_tick_event_simulation
         is simulation_seeded_module.run_seeded_tick_event_simulation
     )
-    assert "GammaSeverityMarkConfiguration" not in simulation_module.__all__
 
     with pytest.raises(AttributeError):
         simulation_module.GammaSeverityMarkConfiguration
@@ -521,8 +508,6 @@ def test_seasonality_contract_submodule_is_supported_domain_import() -> None:
 
 
 def test_private_modules_are_not_exposed_through_public_exports() -> None:
-    assert "native_module" not in validation_module.__all__
-    assert "harness" not in validation_module.__all__
     assert import_module("janiform.contracts").__name__ == "janiform.contracts"
     assert import_module("janiform.mean_reversion").__name__ == "janiform.mean_reversion"
     assert import_module("janiform.mean_reversion.contracts").__name__ == "janiform.mean_reversion.contracts"
@@ -632,13 +617,6 @@ def test_calibration_public_symbols_live_in_calibration_module() -> None:
     assert set(calibration_module.__all__) == expected_exports
     assert expected_exports <= set(dir(calibration_module))
 
-    root_exports = set(calibration_module.__all__)
-
-    assert "CalibrationCheckpointMetadata" not in root_exports
-    assert "CurrentStateEstimationRequest" not in root_exports
-    assert "JaniformVanillaOptionGridBatch" not in root_exports
-    assert "serialize_preset_artifact" not in root_exports
-
 
 def test_calibration_public_module_is_a_package() -> None:
     calibration_module = import_module("janiform.calibration")
@@ -657,11 +635,6 @@ def test_calibration_fit_public_submodule_is_supported_domain_import() -> None:
         "JaniformSimulationResult",
     }
     assert set(calibration_fit_module.__all__) == expected_exports
-
-    fit_exports = set(calibration_fit_module.__all__)
-    assert "CurrentStateEstimationRequest" not in fit_exports
-    assert "JaniformVanillaOptionGridBatch" not in fit_exports
-    assert "JaniformVanillaOptionSurface" not in fit_exports
 
 
 def test_calibration_fit_public_ownership_submodules_are_supported_domain_imports() -> None:
