@@ -6,6 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 description = "Calibration artifact contracts and persistence for Janiform."
 readme = "README.md"
+autotests = false
 
 [lib]
 name = "janiform_calibration_artifacts"
@@ -19,3 +20,35 @@ janiform-engine-pricing = { path = "../janiform-engine-pricing" }
 janiform-model-kernels = { path = "../janiform-model-kernels" }
 serde = { workspace = true }
 serde_json = { workspace = true }
+
+[[test]]
+name = "artifact_manifest"
+path = "tests/artifact_manifest.rs"
+
+[[test]]
+name = "artifact_writer"
+path = "tests/artifact_writer.rs"
+
+[[test]]
+name = "checkpointing"
+path = "tests/checkpointing.rs"
+
+[[test]]
+name = "dataset_snapshot_artifact"
+path = "tests/dataset_snapshot_artifact.rs"
+
+[[test]]
+name = "mean_reversion_contracts"
+path = "tests/mean_reversion_contracts.rs"
+
+[[test]]
+name = "reload"
+path = "tests/reload.rs"
+
+[[test]]
+name = "run_spec_and_contracts"
+path = "tests/run_spec_and_contracts.rs"
+
+[[test]]
+name = "validation_metric_artifact"
+path = "tests/validation_metric_artifact.rs"
