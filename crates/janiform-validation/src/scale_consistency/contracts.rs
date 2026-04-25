@@ -5,9 +5,9 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 
 use janiform_calibration_artifacts::CalibrationExecutionMode;
-use janiform_engine_risk::{
-    SufficientStatisticsRiskIntervalFactors, SufficientStatisticsRiskIntervalFactorsError,
-    SufficientStatisticsRiskModelInputs, SufficientStatisticsRiskModelInputsError,
+use janiform_engine_sufficient_statistics::{
+    SufficientStatisticsIntervalFactors, SufficientStatisticsIntervalFactorsError,
+    SufficientStatisticsModelInputs, SufficientStatisticsModelInputsError,
 };
 use janiform_foundations::randomness::{
     SimulationRandomnessSubstreamDomain, derive_simulation_substream_seed,
@@ -82,8 +82,8 @@ impl Error for ScaleConsistencyArtifactOutputConfigError {}
 #[serde(deny_unknown_fields)]
 pub struct ScaleConsistencyExperimentParameterSet {
     pub parameter_set_id: String,
-    pub model_inputs: SufficientStatisticsRiskModelInputs,
-    pub fine_interval_factors: SufficientStatisticsRiskIntervalFactors,
+    pub model_inputs: SufficientStatisticsModelInputs,
+    pub fine_interval_factors: SufficientStatisticsIntervalFactors,
 }
 
 impl ScaleConsistencyExperimentParameterSet {
@@ -114,10 +114,10 @@ impl ScaleConsistencyExperimentParameterSet {
 pub enum ScaleConsistencyExperimentParameterSetError {
     MissingParameterSetId,
     InvalidModelInputs {
-        source: SufficientStatisticsRiskModelInputsError,
+        source: SufficientStatisticsModelInputsError,
     },
     InvalidFineIntervalFactors {
-        source: SufficientStatisticsRiskIntervalFactorsError,
+        source: SufficientStatisticsIntervalFactorsError,
     },
     MissingFineIntervalFactorDelta,
 }

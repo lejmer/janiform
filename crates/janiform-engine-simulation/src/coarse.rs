@@ -10,14 +10,14 @@ use serde::{Deserialize, Serialize};
 use janiform_affine_oracle::sufficient_statistics::{
     SUFFICIENT_STATISTICS_BATCH_SEED_PARTITION_POLICY,
     SUFFICIENT_STATISTICS_BOUNDARY_STATE_UPDATE_POLICY,
+    SUFFICIENT_STATISTICS_INTERVAL_FACTOR_POLICY,
     SUFFICIENT_STATISTICS_INTERVAL_RETURN_COMPONENT_ROUTING_POLICY,
     SUFFICIENT_STATISTICS_INTERVAL_RETURN_GENERATION_POLICY,
-    SUFFICIENT_STATISTICS_RISK_INTERVAL_FACTOR_POLICY,
-    SUFFICIENT_STATISTICS_TRANSFORM_SLICE_SAMPLING_POLICY, SufficientStatisticsIntervalStatistics,
-    SufficientStatisticsIntervalStatisticsError, SufficientStatisticsRiskIntervalFactors,
-    SufficientStatisticsRiskIntervalFactorsError, SufficientStatisticsRiskModelInputs,
-    SufficientStatisticsRiskModelInputsError, SufficientStatisticsRiskReturnComponents,
-    SufficientStatisticsRiskReturnComponentsError,
+    SUFFICIENT_STATISTICS_TRANSFORM_SLICE_SAMPLING_POLICY, SufficientStatisticsIntervalFactors,
+    SufficientStatisticsIntervalFactorsError, SufficientStatisticsIntervalStatistics,
+    SufficientStatisticsIntervalStatisticsError, SufficientStatisticsModelInputs,
+    SufficientStatisticsModelInputsError, SufficientStatisticsReturnComponents,
+    SufficientStatisticsReturnComponentsError,
 };
 use janiform_market_time::calendar::{
     ExchangeCalendarRegistry, ExchangeCalendarRegistryArtifact, ExchangeCalendarRegistryLoadError,
@@ -122,11 +122,11 @@ const COARSE_SIMULATION_PATH_REQUIRED_DIAGNOSTICS_FIELDS: [&str; 19] = [
     "terminal_deviation_from_anchor",
 ];
 
-/// Simulation-specific coarse model inputs that extend the shared risk sampler state
+/// Simulation-specific coarse model inputs that extend the shared sufficient-statistics sampler state
 /// with canonical news-process and calendar-routing configuration.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct CoarseSimulationModelInputs {
-    pub risk_model_inputs: SufficientStatisticsRiskModelInputs,
+    pub sufficient_statistics_model_inputs: SufficientStatisticsModelInputs,
     pub news_process_configuration: NewsProcessConfiguration,
     pub calendar_registry_artifact: ExchangeCalendarRegistryArtifact,
     pub exchange_code: String,
@@ -134,13 +134,13 @@ pub struct CoarseSimulationModelInputs {
 
 impl CoarseSimulationModelInputs {
     pub fn try_new(
-        risk_model_inputs: SufficientStatisticsRiskModelInputs,
+        sufficient_statistics_model_inputs: SufficientStatisticsModelInputs,
         news_process_configuration: NewsProcessConfiguration,
         calendar_registry_artifact: ExchangeCalendarRegistryArtifact,
         exchange_code: impl Into<String>,
     ) -> Result<Self, CoarseSimulationModelInputsError> {
         let model_inputs = Self {
-            risk_model_inputs,
+            sufficient_statistics_model_inputs,
             news_process_configuration,
             calendar_registry_artifact,
             exchange_code: exchange_code.into(),
@@ -150,9 +150,11 @@ impl CoarseSimulationModelInputs {
     }
 
     pub fn validate(&self) -> Result<(), CoarseSimulationModelInputsError> {
-        self.risk_model_inputs.validate().map_err(|source| {
-            CoarseSimulationModelInputsError::InvalidRiskModelInputs { source }
-        })?;
+        self.sufficient_statistics_model_inputs
+            .validate()
+            .map_err(|source| {
+                CoarseSimulationModelInputsError::InvalidSufficientStatisticsModelInputs { source }
+            })?;
         self.news_process_configuration
             .validate()
             .map_err(|source| {
@@ -189,8 +191,8 @@ impl CoarseSimulationModelInputs {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum CoarseSimulationModelInputsError {
-    InvalidRiskModelInputs {
-        source: SufficientStatisticsRiskModelInputsError,
+    InvalidSufficientStatisticsModelInputs {
+        source: SufficientStatisticsModelInputsError,
     },
     InvalidNewsProcessConfiguration {
         source: NewsProcessConfigurationError,
@@ -210,8 +212,11 @@ pub enum CoarseSimulationModelInputsError {
 impl Display for CoarseSimulationModelInputsError {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::InvalidRiskModelInputs { source } => {
-                write!(formatter, "risk_model_inputs are invalid: {source}")
+            Self::InvalidSufficientStatisticsModelInputs { source } => {
+                write!(
+                    formatter,
+                    "sufficient_statistics_model_inputs are invalid: {source}"
+                )
             }
             Self::InvalidNewsProcessConfiguration { source } => {
                 write!(formatter, "news_process_configuration is invalid: {source}")
@@ -239,7 +244,7 @@ impl Display for CoarseSimulationModelInputsError {
 impl Error for CoarseSimulationModelInputsError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
-            Self::InvalidRiskModelInputs { source } => Some(source),
+            Self::InvalidSufficientStatisticsModelInputs { source } => Some(source),
             Self::InvalidNewsProcessConfiguration { source } => Some(source),
             Self::InvalidCalendarRegistry { source } => Some(source),
             Self::ExchangeCodeMissingFromCalendarRegistry { source, .. } => Some(source),
@@ -251,7 +256,7 @@ impl Error for CoarseSimulationModelInputsError {
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct CoarseSimulationModelInputsPayload {
-    risk_model_inputs: SufficientStatisticsRiskModelInputs,
+    sufficient_statistics_model_inputs: SufficientStatisticsModelInputs,
     news_process_configuration: NewsProcessConfiguration,
     calendar_registry_artifact: ExchangeCalendarRegistryArtifact,
     exchange_code: String,
@@ -264,7 +269,7 @@ impl<'de> Deserialize<'de> for CoarseSimulationModelInputs {
     {
         let payload = CoarseSimulationModelInputsPayload::deserialize(deserializer)?;
         Self::try_new(
-            payload.risk_model_inputs,
+            payload.sufficient_statistics_model_inputs,
             payload.news_process_configuration,
             payload.calendar_registry_artifact,
             payload.exchange_code,
@@ -283,7 +288,7 @@ pub struct CoarseSimulationRunRequest {
     pub horizon_interval_count: usize,
     pub interval_delta: f64,
     pub model_inputs: CoarseSimulationModelInputs,
-    pub interval_factors: SufficientStatisticsRiskIntervalFactors,
+    pub interval_factors: SufficientStatisticsIntervalFactors,
 }
 
 impl CoarseSimulationRunRequest {
@@ -293,7 +298,7 @@ impl CoarseSimulationRunRequest {
         horizon_interval_count: usize,
         interval_delta: f64,
         model_inputs: CoarseSimulationModelInputs,
-        interval_factors: SufficientStatisticsRiskIntervalFactors,
+        interval_factors: SufficientStatisticsIntervalFactors,
     ) -> Result<Self, CoarseSimulationRunRequestError> {
         let request = Self {
             schema_version: COARSE_SIMULATION_RUN_REQUEST_SCHEMA_VERSION.to_string(),
@@ -371,7 +376,7 @@ impl CoarseSimulationRunRequest {
 
         let runtime_interval_anchors = &self
             .model_inputs
-            .risk_model_inputs
+            .sufficient_statistics_model_inputs
             .mean_reversion_runtime_interval_anchors;
         if runtime_interval_anchors.end_anchor_values.len() != self.horizon_interval_count {
             return Err(
@@ -408,7 +413,7 @@ impl CoarseSimulationRunRequest {
             effective_branching_ratio,
         )) = compute_max_effective_endogenous_branching_ratio(
             self.model_inputs
-                .risk_model_inputs
+                .sufficient_statistics_model_inputs
                 .equation_specification
                 .hawkes_kernel_parameters,
             &self.interval_factors.s_h[..self.horizon_interval_count],
@@ -464,7 +469,7 @@ pub enum CoarseSimulationRunRequestError {
         source: CoarseSimulationModelInputsError,
     },
     InvalidIntervalFactors {
-        source: SufficientStatisticsRiskIntervalFactorsError,
+        source: SufficientStatisticsIntervalFactorsError,
     },
     IntervalDeltaFactorMismatch {
         requested_interval_delta: f64,
@@ -543,7 +548,7 @@ impl Display for CoarseSimulationRunRequestError {
                 observed_interval_count,
             } => write!(
                 formatter,
-                "model_inputs.risk_model_inputs.mean_reversion_runtime_interval_anchors.end_anchor_values must contain {expected_interval_count} entries for the requested horizon, found {observed_interval_count}"
+                "model_inputs.sufficient_statistics_model_inputs.mean_reversion_runtime_interval_anchors.end_anchor_values must contain {expected_interval_count} entries for the requested horizon, found {observed_interval_count}"
             ),
             Self::MeanReversionRuntimeAnchorIntervalDeltaMismatch {
                 interval_index,
@@ -551,7 +556,7 @@ impl Display for CoarseSimulationRunRequestError {
                 observed_interval_delta,
             } => write!(
                 formatter,
-                "model_inputs.risk_model_inputs.mean_reversion_runtime_interval_anchors.interval_deltas[{interval_index}] must equal interval_delta ({expected_interval_delta}), found {observed_interval_delta}"
+                "model_inputs.sufficient_statistics_model_inputs.mean_reversion_runtime_interval_anchors.interval_deltas[{interval_index}] must equal interval_delta ({expected_interval_delta}), found {observed_interval_delta}"
             ),
             Self::SeasonalityScaledEndogenousInstability {
                 max_seasonality_factor,
@@ -593,7 +598,7 @@ pub struct CoarseSimulationPathRecord {
     pub interval_start_utc_nanos: i64,
     pub interval_end_utc_nanos: i64,
     pub sufficient_statistics: SufficientStatisticsIntervalStatistics,
-    pub return_components: SufficientStatisticsRiskReturnComponents,
+    pub return_components: SufficientStatisticsReturnComponents,
     pub core_total_return: f64,
     pub observed_interval_return: f64,
     pub observed_log_price_end: f64,
@@ -609,7 +614,7 @@ impl CoarseSimulationPathRecord {
         interval_start_utc_nanos: i64,
         interval_end_utc_nanos: i64,
         sufficient_statistics: SufficientStatisticsIntervalStatistics,
-        return_components: SufficientStatisticsRiskReturnComponents,
+        return_components: SufficientStatisticsReturnComponents,
         core_total_return: f64,
         observed_interval_return: f64,
         observed_log_price_end: f64,
@@ -689,7 +694,7 @@ pub enum CoarseSimulationPathRecordError {
         source: SufficientStatisticsIntervalStatisticsError,
     },
     InvalidReturnComponents {
-        source: SufficientStatisticsRiskReturnComponentsError,
+        source: SufficientStatisticsReturnComponentsError,
     },
     CoreTotalReturnMismatch {
         expected_core_total_return: f64,
@@ -1487,7 +1492,7 @@ fn build_coarse_simulation_path_provenance() -> CoarseSimulationPathProvenance {
             .to_string(),
         compatible_interval_grid_policy: COARSE_SIMULATION_COMPATIBLE_INTERVAL_GRID_POLICY
             .to_string(),
-        interval_factor_policy: SUFFICIENT_STATISTICS_RISK_INTERVAL_FACTOR_POLICY.to_string(),
+        interval_factor_policy: SUFFICIENT_STATISTICS_INTERVAL_FACTOR_POLICY.to_string(),
         transform_slice_sampling_policy: SUFFICIENT_STATISTICS_TRANSFORM_SLICE_SAMPLING_POLICY
             .to_string(),
         boundary_state_update_policy: SUFFICIENT_STATISTICS_BOUNDARY_STATE_UPDATE_POLICY
@@ -1920,8 +1925,8 @@ mod tests {
 
     use janiform_affine_oracle::affine_oracle::ExponentialAffineTransformEquationSpecification;
     use janiform_affine_oracle::sufficient_statistics::{
-        SufficientStatisticsIntervalStatistics, SufficientStatisticsRiskIntervalFactors,
-        SufficientStatisticsRiskModelInputs, SufficientStatisticsRiskReturnComponents,
+        SufficientStatisticsIntervalFactors, SufficientStatisticsIntervalStatistics,
+        SufficientStatisticsModelInputs, SufficientStatisticsReturnComponents,
     };
     use janiform_market_time::calendar::{
         CalendarRuleMetadataArtifact, ExchangeCalendarArtifact, ExchangeCalendarRegistryArtifact,
@@ -2111,7 +2116,7 @@ mod tests {
     fn coarse_run_request_rejects_seasonality_scaled_supercritical_hawkes_inputs() {
         let mut model_inputs = build_model_inputs();
         model_inputs
-            .risk_model_inputs
+            .sufficient_statistics_model_inputs
             .equation_specification
             .hawkes_kernel_parameters = HawkesKernelParameters::try_new(
             0.8,
@@ -2131,7 +2136,7 @@ mod tests {
         )
         .expect("supercritical guard fixture should be valid in kernel domain");
 
-        let interval_factors = SufficientStatisticsRiskIntervalFactors::try_new(
+        let interval_factors = SufficientStatisticsIntervalFactors::try_new(
             vec![1.2, 1.2],
             vec![0.12, 0.03],
             vec![0.08, 0.07],
@@ -2212,7 +2217,7 @@ mod tests {
             1_704_070_800_000_000_000,
             SufficientStatisticsIntervalStatistics::try_new(0.7, 0.5, 3, 2)
                 .expect("statistics should be valid"),
-            SufficientStatisticsRiskReturnComponents::try_new(0.04, -0.03, 0.01, 0.0, -0.02, -0.01)
+            SufficientStatisticsReturnComponents::try_new(0.04, -0.03, 0.01, 0.0, -0.02, -0.01)
                 .expect("return components should be valid"),
             -0.01,
             -0.01,
@@ -2228,7 +2233,7 @@ mod tests {
             1_704_074_400_000_000_000,
             SufficientStatisticsIntervalStatistics::try_new(0.6, 0.4, 1, 1)
                 .expect("statistics should be valid"),
-            SufficientStatisticsRiskReturnComponents::try_new(0.01, -0.01, 0.0, 0.01, 0.0, 0.01)
+            SufficientStatisticsReturnComponents::try_new(0.01, -0.01, 0.0, 0.01, 0.0, 0.01)
                 .expect("return components should be valid"),
             0.01,
             0.01,
@@ -2286,7 +2291,7 @@ mod tests {
         )
         .expect("equation specification should construct");
 
-        let risk_model_inputs = SufficientStatisticsRiskModelInputs::try_new(
+        let sufficient_statistics_model_inputs = SufficientStatisticsModelInputs::try_new(
             equation_specification,
             NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
                 .expect("nig configuration should construct"),
@@ -2305,10 +2310,10 @@ mod tests {
             MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0, 0.0)
                 .expect("disabled mean-reversion boundary state should construct"),
         )
-        .expect("risk model inputs should construct");
+        .expect("sufficient-statistics model inputs should construct");
 
         CoarseSimulationModelInputs::try_new(
-            risk_model_inputs,
+            sufficient_statistics_model_inputs,
             build_news_process_configuration(),
             build_calendar_registry_artifact(),
             "XNYS",
@@ -2316,10 +2321,8 @@ mod tests {
         .expect("coarse model inputs should construct")
     }
 
-    fn build_interval_factors(
-        interval_delta: Option<f64>,
-    ) -> SufficientStatisticsRiskIntervalFactors {
-        SufficientStatisticsRiskIntervalFactors::try_new(
+    fn build_interval_factors(interval_delta: Option<f64>) -> SufficientStatisticsIntervalFactors {
+        SufficientStatisticsIntervalFactors::try_new(
             vec![1.1, 0.9],
             vec![0.12, 0.03],
             vec![0.08, 0.07],

@@ -1,4 +1,4 @@
-//! Risk-neutral Esscher tilt utilities shared by pricing and calibration paths.
+//! SufficientStatistics-neutral Esscher tilt utilities shared by pricing and calibration paths.
 
 use std::error::Error;
 use std::fmt::{Display, Formatter};

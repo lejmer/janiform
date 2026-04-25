@@ -14,7 +14,7 @@ Janiform keeps the public package root intentionally small. Import task-oriented
 | `janiform.calibration.fit.state` | Current-state estimation contracts for fitted-model runtime methods |
 | `janiform.simulation` | Coarse and seeded simulation workflows |
 | `janiform.pricing` | Vanilla option pricing contracts and runtime |
-| `janiform.risk` | Sufficient-statistics risk path contracts |
+| `janiform.sufficient_statistics` | Sufficient-statistics sufficient-statistics path contracts |
 | `janiform.hourly_factors` | Hourly factor materialization and contract helpers |
 | `janiform.validation` | Deterministic and leakage regression harnesses |
 | `janiform.contracts` | Shared contract models and serialization helpers |

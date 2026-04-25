@@ -23,7 +23,7 @@ use crate::constants::{
 };
 use crate::error::SeededTickSimulationRunError;
 use crate::progress::{SimulationProgressEvent, SimulationProgressPhase, emit_progress_event};
-use janiform_affine_oracle::sufficient_statistics::SufficientStatisticsRiskReturnComponents;
+use janiform_affine_oracle::sufficient_statistics::SufficientStatisticsReturnComponents;
 
 use super::debug_trace::{
     SeededTickEventDebugTraceCaptureInput, SeededTickEventDebugTraceCollector,
@@ -467,7 +467,7 @@ where
     let total_return =
         trading_time_return.trading_time_return + open_jump_return + closed_gap_return;
 
-    let return_components = SufficientStatisticsRiskReturnComponents::try_new(
+    let return_components = SufficientStatisticsReturnComponents::try_new(
         trading_time_return.buy_side_return,
         trading_time_return.sell_side_return,
         trading_time_return.trading_time_return,
@@ -624,7 +624,7 @@ where
     let total_return =
         trading_time_return.trading_time_return + open_jump_return + closed_gap_return;
 
-    let return_components = SufficientStatisticsRiskReturnComponents::try_new(
+    let return_components = SufficientStatisticsReturnComponents::try_new(
         trading_time_return.buy_side_return,
         trading_time_return.sell_side_return,
         trading_time_return.trading_time_return,

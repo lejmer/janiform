@@ -84,7 +84,7 @@ impl SufficientStatisticsTransformSliceContext {
     }
 }
 
-/// Probe settings for transform-slice extraction used by the risk sampler.
+/// Probe settings for transform-slice extraction used by the sufficient-statistics sampler.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 pub struct SufficientStatisticsTransformSliceSettings {
     pub a_plus_u: f64,

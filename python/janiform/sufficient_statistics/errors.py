@@ -1,4 +1,4 @@
-"""Public risk error types."""
+"""Public sufficient-statistics error types."""
 
 from __future__ import annotations
 
@@ -7,25 +7,25 @@ from typing import Optional
 from ..contracts import ValidationErrorFactory
 from ..errors import ContractValidationFailure, JaniformValidationError
 
-RISK_VALIDATION_ERROR_ID = "risk.validation.contract"
+SUFFICIENT_STATISTICS_VALIDATION_ERROR_ID = "sufficient_statistics.validation.contract"
 
 
-class SufficientStatisticsRiskValidationError(JaniformValidationError):
+class SufficientStatisticsValidationError(JaniformValidationError):
     pass
 
 
-def _risk_error(
+def _sufficient_statistics_error(
     field_path: str,
     message: str,
     *,
     entrypoint: str = "contract",
-    error_id: str = RISK_VALIDATION_ERROR_ID,
+    error_id: str = SUFFICIENT_STATISTICS_VALIDATION_ERROR_ID,
     context: Optional[dict[str, Optional[str | int | float | bool]]] = None,
-) -> SufficientStatisticsRiskValidationError:
-    return SufficientStatisticsRiskValidationError(
+) -> SufficientStatisticsValidationError:
+    return SufficientStatisticsValidationError(
         ContractValidationFailure.from_context(
             error_id=error_id,
-            workflow="risk",
+            workflow="sufficient_statistics",
             entrypoint=entrypoint,
             field_path=field_path,
             message=message,
@@ -34,4 +34,4 @@ def _risk_error(
     )
 
 
-RISK_ERROR_FACTORY: ValidationErrorFactory = _risk_error
+SUFFICIENT_STATISTICS_ERROR_FACTORY: ValidationErrorFactory = _sufficient_statistics_error

@@ -10,9 +10,9 @@ from janiform.pricing import (
     VanillaOptionPricingMarketInputs,
     VanillaOptionPricingModelParameters,
 )
-from janiform.risk import (
-    SufficientStatisticsRiskEquationSpecification,
-    SufficientStatisticsRiskModelInputs,
+from janiform.sufficient_statistics import (
+    SufficientStatisticsEquationSpecification,
+    SufficientStatisticsModelInputs,
 )
 from janiform.simulation import (
     HawkesExcitationState,
@@ -182,11 +182,11 @@ def build_pricing_payoff() -> VanillaOptionPayoffConfiguration:
     )
 
 
-def build_risk_model_inputs(
+def build_sufficient_statistics_model_inputs(
     *,
     interval_count: int,
     interval_delta_hours: float = 1.0,
-) -> SufficientStatisticsRiskModelInputs:
+) -> SufficientStatisticsModelInputs:
     (
         mean_reversion_fitted_parameters,
         mean_reversion_runtime_interval_anchors,
@@ -198,8 +198,8 @@ def build_risk_model_inputs(
         observed_log_price=0.0,
     )
 
-    return SufficientStatisticsRiskModelInputs(
-        equation_specification=SufficientStatisticsRiskEquationSpecification(
+    return SufficientStatisticsModelInputs(
+        equation_specification=SufficientStatisticsEquationSpecification(
             hawkes_kernel_parameters=build_kernel_parameters(),
             gamma_severity_mark_configuration=GammaSeverityMarkConfiguration(
                 shape_k=1.8,

@@ -7,12 +7,13 @@ mod return_components;
 mod validation;
 
 pub use constants::{
-    DEFAULT_INTRADAY_RISK_INTERVAL_DELTA, SUFFICIENT_STATISTICS_BATCH_SEED_PARTITION_POLICY,
+    DEFAULT_INTRADAY_SUFFICIENT_STATISTICS_INTERVAL_DELTA,
+    SUFFICIENT_STATISTICS_BATCH_SEED_PARTITION_POLICY,
     SUFFICIENT_STATISTICS_BOUNDARY_STATE_UPDATE_POLICY,
+    SUFFICIENT_STATISTICS_INTERVAL_FACTOR_POLICY,
     SUFFICIENT_STATISTICS_INTERVAL_RETURN_COMPONENT_BREAKDOWN_POLICY,
     SUFFICIENT_STATISTICS_INTERVAL_RETURN_COMPONENT_ROUTING_POLICY,
     SUFFICIENT_STATISTICS_INTERVAL_RETURN_GENERATION_POLICY,
-    SUFFICIENT_STATISTICS_RISK_INTERVAL_FACTOR_POLICY,
     SUFFICIENT_STATISTICS_STREAMING_CHUNKING_POLICY,
     SUFFICIENT_STATISTICS_TRANSFORM_SLICE_EXPECTATION_ESTIMATION_POLICY,
     SUFFICIENT_STATISTICS_TRANSFORM_SLICE_RANDOMNESS_SUBSTREAM_POLICY,
@@ -44,8 +45,8 @@ pub use execution::{
     sample_interval_statistics_from_transform_slices_with_randomness_factory,
     sample_interval_statistics_multi_path_batch_from_transform_slices,
     sample_interval_statistics_multi_path_batch_from_transform_slices_with_randomness_factory,
-    solve_exponential_affine_transform_for_risk_sampling,
-    solve_exponential_affine_transform_for_risk_sampling_with_settings,
+    solve_exponential_affine_transform_for_sufficient_statistics_sampling,
+    solve_exponential_affine_transform_for_sufficient_statistics_sampling_with_settings,
     solve_sufficient_statistics_transform_slices,
     solve_sufficient_statistics_transform_slices_with_solver_settings,
     stream_interval_statistics_from_transform_slices,
@@ -56,10 +57,10 @@ pub use execution::{
     update_boundary_state_from_interval_statistics,
 };
 pub use inputs::{
-    SufficientStatisticsRiskIntervalFactors, SufficientStatisticsRiskIntervalFactorsError,
-    SufficientStatisticsRiskModelInputs, SufficientStatisticsRiskModelInputsError,
+    SufficientStatisticsIntervalFactors, SufficientStatisticsIntervalFactorsError,
+    SufficientStatisticsModelInputs, SufficientStatisticsModelInputsError,
 };
 pub use return_components::{
-    SufficientStatisticsRiskReturnComponents, SufficientStatisticsRiskReturnComponentsError,
+    SufficientStatisticsReturnComponents, SufficientStatisticsReturnComponentsError,
 };
 pub use validation::validate_excitation_state;

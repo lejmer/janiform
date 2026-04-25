@@ -4,7 +4,7 @@ Status: Archived
 
 ## Multi-scale tick generator with tractable coarse-time pricing/simulation
 
-> **Purpose:** A tractable, calibratable model that generates **realistic financial price paths** (and optionally tapes) while matching stylized facts across time scales, and enabling **risk simulation** and **options pricing** without simulating billions of ticks.
+> **Purpose:** A tractable, calibratable model that generates **realistic financial price paths** (and optionally tapes) while matching stylized facts across time scales, and enabling **sufficient-statistics simulation** and **options pricing** without simulating billions of ticks.
 >
 > This document reconstructs the full brainstorming session: **all decisions**, **equations**, and **reasoning**. It should be sufficient for a quant dev to implement and for a researcher to draft a white paper.
 
@@ -57,7 +57,7 @@ Status: Archived
 
 ### Scope note (explicit)
 - **Tick-event generation is in scope and primary.** The canonical fine-scale model is the bivariate buy/sell trade point process with stochastic intensity and exogenous shocks.
-- **Coarse-time pricing/simulation is derived for tractability.** For any chosen interval length \(\Delta\), we use transforms/sufficient-statistics to avoid generating all ticks when the use case is pricing or large-scale risk simulation.
+- **Coarse-time pricing/simulation is derived for tractability.** For any chosen interval length \(\Delta\), we use transforms/sufficient-statistics to avoid generating all ticks when the use case is pricing or large-scale sufficient-statistics simulation.
 
 We commit to (projective/semigroup consistency):
 > The model must admit an explicit coarse-time transition / transform so that **coarse-interval (e.g., hourly) simulation and option pricing** are feasible without tick simulation.
@@ -399,7 +399,7 @@ A^-\,\psi_{\text{NIG}}(-u;\alpha,\beta_0+\Delta_\beta,\delta,\mu)
 
 ---
 
-## 8. Risk-neutral measure and pricing philosophy (final)
+## 8. SufficientStatistics-neutral measure and pricing philosophy (final)
 
 **Decision:** Use an **Esscher tilt** for the Lévy part under \(Q\), while keeping Hawkes structure under \(Q\) unchanged (optional tilt of exogenous news intensity if later needed).
 
@@ -422,7 +422,7 @@ Martingale condition under \(Q\):
 ### 9.1 Engine A: Pricing (CF engine)
 Computes coarse-interval (e.g., hourly) CF of returns conditional on hour boundary state \(\mathbf Y_h\), then prices via Fourier methods.
 
-### 9.2 Engine B: Risk simulation (sufficient-statistics sampler)
+### 9.2 Engine B: SufficientStatistics simulation (sufficient-statistics sampler)
 Samples sufficient statistics \((A^+,A^-,N^+,N^-)\) per interval and updates \(\mathbf Y\) at hour boundaries; then samples NIG increments conditional on \(A^\pm\), applies direct open-window news jumps \(M\), and applies closed-window gap jumps \(G\).
 
 **Final decision:** Use **sufficient statistics** (not cluster simulation).
@@ -538,7 +538,7 @@ with
 \psi_-(u)=\psi_{\text{NIG}}(u;\alpha,\beta_0+\Delta_\beta,\delta,\mu).
 \]
 
-Risk sampling uses slices of \(F\) to sample \((N^+,N^-)\) and \((A^+,A^-)\) without simulating clusters/ticks.
+SufficientStatistics sampling uses slices of \(F\) to sample \((N^+,N^-)\) and \((A^+,A^-)\) without simulating clusters/ticks.
 
 ---
 

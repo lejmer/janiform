@@ -3,40 +3,39 @@ use serde::Deserialize;
 use janiform_model_kernels::hawkes::HawkesExcitationState;
 
 use super::super::request::{
-    DEFAULT_INTRADAY_RISK_INTERVAL_DELTA, SUFFICIENT_STATISTICS_RISK_PATH_RECORD_SCHEMA_VERSION,
-    SUFFICIENT_STATISTICS_RISK_PATH_SCHEMA_VERSION,
-    SUFFICIENT_STATISTICS_RISK_RUN_REQUEST_SCHEMA_VERSION, SufficientStatisticsRiskIntervalFactors,
-    SufficientStatisticsRiskModelInputs, SufficientStatisticsRiskRunRequest,
+    DEFAULT_INTRADAY_SUFFICIENT_STATISTICS_INTERVAL_DELTA,
+    SUFFICIENT_STATISTICS_PATH_RECORD_SCHEMA_VERSION, SUFFICIENT_STATISTICS_PATH_SCHEMA_VERSION,
+    SUFFICIENT_STATISTICS_RUN_REQUEST_SCHEMA_VERSION, SufficientStatisticsIntervalFactors,
+    SufficientStatisticsModelInputs, SufficientStatisticsRunRequest,
 };
-use super::super::returns::SufficientStatisticsRiskReturnComponents;
+use super::super::returns::SufficientStatisticsReturnComponents;
 use super::super::transform_sampling::SufficientStatisticsIntervalStatistics;
 use super::contracts::{
-    SUFFICIENT_STATISTICS_RISK_PATH_OUTPUT_SCHEMA_METADATA,
-    SUFFICIENT_STATISTICS_RISK_PATH_PROVENANCE, SufficientStatisticsRiskPath,
-    SufficientStatisticsRiskPathDiagnostics, SufficientStatisticsRiskPathRecord,
+    SUFFICIENT_STATISTICS_PATH_OUTPUT_SCHEMA_METADATA, SUFFICIENT_STATISTICS_PATH_PROVENANCE,
+    SufficientStatisticsPath, SufficientStatisticsPathDiagnostics, SufficientStatisticsPathRecord,
 };
 
-const fn default_intraday_risk_interval_delta() -> f64 {
-    DEFAULT_INTRADAY_RISK_INTERVAL_DELTA
+const fn default_intraday_sufficient_statistics_interval_delta() -> f64 {
+    DEFAULT_INTRADAY_SUFFICIENT_STATISTICS_INTERVAL_DELTA
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct SufficientStatisticsRiskRunRequestPayload {
+struct SufficientStatisticsRunRequestPayload {
     seed: u64,
     horizon_interval_count: usize,
-    #[serde(default = "default_intraday_risk_interval_delta")]
+    #[serde(default = "default_intraday_sufficient_statistics_interval_delta")]
     interval_delta: f64,
-    model_inputs: SufficientStatisticsRiskModelInputs,
-    interval_factors: SufficientStatisticsRiskIntervalFactors,
+    model_inputs: SufficientStatisticsModelInputs,
+    interval_factors: SufficientStatisticsIntervalFactors,
 }
 
-impl<'de> Deserialize<'de> for SufficientStatisticsRiskRunRequest {
+impl<'de> Deserialize<'de> for SufficientStatisticsRunRequest {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
-        let payload = SufficientStatisticsRiskRunRequestPayload::deserialize(deserializer)?;
+        let payload = SufficientStatisticsRunRequestPayload::deserialize(deserializer)?;
         Self::try_new(
             payload.seed,
             payload.horizon_interval_count,
@@ -50,12 +49,12 @@ impl<'de> Deserialize<'de> for SufficientStatisticsRiskRunRequest {
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct SufficientStatisticsRiskPathRecordPayload {
+struct SufficientStatisticsPathRecordPayload {
     #[serde(default)]
     schema_version: Option<String>,
     interval_index: usize,
     sufficient_statistics: SufficientStatisticsIntervalStatistics,
-    return_components: SufficientStatisticsRiskReturnComponents,
+    return_components: SufficientStatisticsReturnComponents,
     core_total_return: f64,
     observed_interval_return: f64,
     observed_log_price_end: f64,
@@ -64,19 +63,19 @@ struct SufficientStatisticsRiskPathRecordPayload {
     deviation_from_anchor_end: f64,
 }
 
-impl<'de> Deserialize<'de> for SufficientStatisticsRiskPathRecord {
+impl<'de> Deserialize<'de> for SufficientStatisticsPathRecord {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
-        let payload = SufficientStatisticsRiskPathRecordPayload::deserialize(deserializer)?;
+        let payload = SufficientStatisticsPathRecordPayload::deserialize(deserializer)?;
 
         if let Some(schema_version) = payload.schema_version.as_deref()
-            && schema_version != SUFFICIENT_STATISTICS_RISK_PATH_RECORD_SCHEMA_VERSION
+            && schema_version != SUFFICIENT_STATISTICS_PATH_RECORD_SCHEMA_VERSION
         {
             return Err(serde::de::Error::custom(format!(
                 "schema_version must be {}, found {schema_version}",
-                SUFFICIENT_STATISTICS_RISK_PATH_RECORD_SCHEMA_VERSION
+                SUFFICIENT_STATISTICS_PATH_RECORD_SCHEMA_VERSION
             )));
         }
 
@@ -97,28 +96,28 @@ impl<'de> Deserialize<'de> for SufficientStatisticsRiskPathRecord {
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct SufficientStatisticsRiskPathPayload {
+struct SufficientStatisticsPathPayload {
     #[serde(default)]
     schema_version: Option<String>,
     #[serde(default)]
     run_request_schema_version: Option<String>,
     #[serde(default)]
-    output_schema_metadata: Option<SufficientStatisticsRiskPathOutputSchemaMetadataPayload>,
+    output_schema_metadata: Option<SufficientStatisticsPathOutputSchemaMetadataPayload>,
     #[serde(default)]
-    provenance: Option<SufficientStatisticsRiskPathProvenancePayload>,
+    provenance: Option<SufficientStatisticsPathProvenancePayload>,
     #[serde(default)]
-    diagnostics: Option<SufficientStatisticsRiskPathDiagnosticsPayload>,
+    diagnostics: Option<SufficientStatisticsPathDiagnosticsPayload>,
     seed: u64,
     interval_delta: f64,
     simulated_interval_count: usize,
     initial_excitation_state: HawkesExcitationState,
     terminal_excitation_state: HawkesExcitationState,
-    records: Vec<SufficientStatisticsRiskPathRecord>,
+    records: Vec<SufficientStatisticsPathRecord>,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct SufficientStatisticsRiskPathOutputSchemaMetadataPayload {
+struct SufficientStatisticsPathOutputSchemaMetadataPayload {
     schema_version: String,
     provenance_schema_version: String,
     diagnostics_schema_version: String,
@@ -131,7 +130,7 @@ struct SufficientStatisticsRiskPathOutputSchemaMetadataPayload {
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct SufficientStatisticsRiskPathProvenancePayload {
+struct SufficientStatisticsPathProvenancePayload {
     schema_version: String,
     artifact_workflow_policy: String,
     environment_metadata_policy: String,
@@ -146,7 +145,7 @@ struct SufficientStatisticsRiskPathProvenancePayload {
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct SufficientStatisticsRiskPathDiagnosticsPayload {
+struct SufficientStatisticsPathDiagnosticsPayload {
     schema_version: String,
     simulated_interval_count: usize,
     first_interval_index: Option<usize>,
@@ -166,28 +165,28 @@ struct SufficientStatisticsRiskPathDiagnosticsPayload {
     terminal_deviation_from_anchor: f64,
 }
 
-impl<'de> Deserialize<'de> for SufficientStatisticsRiskPath {
+impl<'de> Deserialize<'de> for SufficientStatisticsPath {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
-        let payload = SufficientStatisticsRiskPathPayload::deserialize(deserializer)?;
+        let payload = SufficientStatisticsPathPayload::deserialize(deserializer)?;
 
         if let Some(schema_version) = payload.schema_version.as_deref()
-            && schema_version != SUFFICIENT_STATISTICS_RISK_PATH_SCHEMA_VERSION
+            && schema_version != SUFFICIENT_STATISTICS_PATH_SCHEMA_VERSION
         {
             return Err(serde::de::Error::custom(format!(
                 "schema_version must be {}, found {schema_version}",
-                SUFFICIENT_STATISTICS_RISK_PATH_SCHEMA_VERSION
+                SUFFICIENT_STATISTICS_PATH_SCHEMA_VERSION
             )));
         }
 
         if let Some(run_request_schema_version) = payload.run_request_schema_version.as_deref()
-            && run_request_schema_version != SUFFICIENT_STATISTICS_RISK_RUN_REQUEST_SCHEMA_VERSION
+            && run_request_schema_version != SUFFICIENT_STATISTICS_RUN_REQUEST_SCHEMA_VERSION
         {
             return Err(serde::de::Error::custom(format!(
                 "run_request_schema_version must be {}, found {run_request_schema_version}",
-                SUFFICIENT_STATISTICS_RISK_RUN_REQUEST_SCHEMA_VERSION
+                SUFFICIENT_STATISTICS_RUN_REQUEST_SCHEMA_VERSION
             )));
         }
 
@@ -220,9 +219,9 @@ impl<'de> Deserialize<'de> for SufficientStatisticsRiskPath {
 }
 
 fn validate_path_output_schema_metadata_payload(
-    payload: &SufficientStatisticsRiskPathOutputSchemaMetadataPayload,
+    payload: &SufficientStatisticsPathOutputSchemaMetadataPayload,
 ) -> Result<(), String> {
-    let expected = SUFFICIENT_STATISTICS_RISK_PATH_OUTPUT_SCHEMA_METADATA;
+    let expected = SUFFICIENT_STATISTICS_PATH_OUTPUT_SCHEMA_METADATA;
 
     if payload.schema_version != expected.schema_version {
         return Err(format!(
@@ -275,9 +274,9 @@ fn validate_path_output_schema_metadata_payload(
 }
 
 fn validate_path_provenance_payload(
-    payload: &SufficientStatisticsRiskPathProvenancePayload,
+    payload: &SufficientStatisticsPathProvenancePayload,
 ) -> Result<(), String> {
-    let expected = SUFFICIENT_STATISTICS_RISK_PATH_PROVENANCE;
+    let expected = SUFFICIENT_STATISTICS_PATH_PROVENANCE;
 
     if payload.schema_version != expected.schema_version {
         return Err(format!(
@@ -347,8 +346,8 @@ fn validate_path_provenance_payload(
 }
 
 fn validate_path_diagnostics_payload(
-    payload: &SufficientStatisticsRiskPathDiagnosticsPayload,
-    expected: SufficientStatisticsRiskPathDiagnostics,
+    payload: &SufficientStatisticsPathDiagnosticsPayload,
+    expected: SufficientStatisticsPathDiagnostics,
 ) -> Result<(), String> {
     if payload.schema_version != expected.schema_version {
         return Err(format!(

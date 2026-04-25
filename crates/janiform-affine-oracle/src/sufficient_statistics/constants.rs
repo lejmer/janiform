@@ -1,7 +1,7 @@
 use janiform_foundations::randomness::SimulationRandomnessSubstreamDomain;
 use janiform_model_kernels::news::SHARED_NEWS_EVENT_DISPATCH_RETURN_ROUTING_POLICY;
 
-pub const SUFFICIENT_STATISTICS_RISK_INTERVAL_FACTOR_POLICY: &str =
+pub const SUFFICIENT_STATISTICS_INTERVAL_FACTOR_POLICY: &str =
     "explicit_interval_aligned_s_h_and_news_intensity_inputs_without_implicit_resampling.v1";
 pub const SUFFICIENT_STATISTICS_TRANSFORM_SLICE_SETTINGS_POLICY: &str =
     "positive_u_probes_and_positive_non_unit_z_probes_for_oracle_slice_sampling.v1";
@@ -19,11 +19,11 @@ pub const SUFFICIENT_STATISTICS_BOUNDARY_STATE_UPDATE_POLICY: &str =
 pub const SUFFICIENT_STATISTICS_INTERVAL_RETURN_GENERATION_POLICY: &str =
     "sample_trading_time_increment_from_sampled_statistics_via_shared_return_decomposition.v1";
 pub const SUFFICIENT_STATISTICS_INTERVAL_RETURN_COMPONENT_BREAKDOWN_POLICY: &str =
-    "optional_component_breakdown_toggle_for_risk_interval_return_generation.v1";
+    "optional_component_breakdown_toggle_for_sufficient_statistics_interval_return_generation.v1";
 pub const SUFFICIENT_STATISTICS_INTERVAL_RETURN_COMPONENT_ROUTING_POLICY: &str =
     SHARED_NEWS_EVENT_DISPATCH_RETURN_ROUTING_POLICY;
-/// Public default risk interval in hours, overrideable on the risk request contract.
-pub const DEFAULT_INTRADAY_RISK_INTERVAL_DELTA: f64 = 1.0;
+/// Public default sufficient-statistics interval in hours, overrideable on the sufficient-statistics request contract.
+pub const DEFAULT_INTRADAY_SUFFICIENT_STATISTICS_INTERVAL_DELTA: f64 = 1.0;
 
 // Public default transform probe for positive `a + u`, overrideable via slice settings.
 pub(crate) const DEFAULT_TRANSFORM_SLICE_A_PLUS_U: f64 = 1.0e-3;

@@ -1,12 +1,12 @@
 {
-  "schema_version": "benchmark.oracle_pricer_risk.policy.v1",
-  "policy_id": "oracle_pricer_risk_benchmark_policy_v1",
+  "schema_version": "benchmark.oracle_pricer_sufficient_statistics.policy.v1",
+  "policy_id": "oracle_pricer_sufficient_statistics_benchmark_policy_v1",
   "policy_version": "1.0.0",
   "rationale": {
-    "model_parameters": "Use one stable Hawkes-Gamma benchmark kernel with explicit spectral-radius margin so oracle, pricing, and risk benchmarks measure throughput and latency under valid dynamics rather than domain failures.",
+    "model_parameters": "Use one stable Hawkes-Gamma benchmark kernel with explicit spectral-radius margin so oracle, pricing, and sufficient-statistics benchmarks measure throughput and latency under valid dynamics rather than domain failures.",
     "oracle_solver_probes": "Use low-amplitude positive u probes and near-unity z probes to keep transform evaluations in a numerically stable region while still varying workload across invocations.",
     "pricing_input_ranges": "Use bounded spot, strike, maturity, rate, and volatility ranges that remain realistic for vanilla option workloads and reduce CI flakiness from extreme Fourier inversion pathologies.",
-    "seed_partition": "Use fixed pairwise-distinct seed salts so oracle, pricing, and risk benchmarks remain reproducible while avoiding cross-component random-stream coupling."
+    "seed_partition": "Use fixed pairwise-distinct seed salts so oracle, pricing, and sufficient-statistics benchmarks remain reproducible while avoiding cross-component random-stream coupling."
   },
   "model_parameters": {
     "hawkes_beta": 1.35,
@@ -55,6 +55,6 @@
   "seed_partition": {
     "oracle_component_seed_salt": 11914039502158642961,
     "pricing_component_seed_salt": 2110907764627670569,
-    "risk_component_seed_salt": 4346409906557363443
+    "sufficient_statistics_component_seed_salt": 4346409906557363443
   }
 }

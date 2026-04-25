@@ -104,7 +104,7 @@ def test_rust_benchmark_governance_smoke_workflow_has_manual_trigger_and_artifac
     assert "timeout-minutes: 60" in workflow_text
     assert "Run Rust benchmark governance smoke workloads" in workflow_text
     assert "--test benchmark_scenario_catalog" in workflow_text
-    assert "--test oracle_pricer_risk_benchmark_harness" in workflow_text
+    assert "--test oracle_pricer_sufficient_statistics_benchmark_harness" in workflow_text
     assert "--test performance_baseline_capture_and_storage" in workflow_text
     assert "--test regression_drift_attribution_reports" in workflow_text
     assert "scripts/ci/write_benchmark_artifact_index.py" in workflow_text
@@ -228,7 +228,7 @@ def test_benchmark_artifact_index_hook_emits_links() -> None:
             "--scenario-path",
             "tests/fixtures/benchmarks/benchmark_scenario_catalog.json",
             "--baseline-path",
-            "tests/fixtures/benchmarks/oracle_pricer_risk_performance_baseline_v1_1.json",
+            "tests/fixtures/benchmarks/oracle_pricer_sufficient_statistics_performance_baseline_v1_1.json",
         ]
 
         process = subprocess.run(

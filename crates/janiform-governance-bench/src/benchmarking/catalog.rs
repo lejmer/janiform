@@ -127,7 +127,7 @@ pub struct BenchmarkScenarioRunLength {
 pub struct BenchmarkScenarioComponentWorkload {
     pub oracle_requests_per_iteration: usize,
     pub pricing_requests_per_iteration: usize,
-    pub risk_paths_per_iteration: usize,
+    pub sufficient_statistics_paths_per_iteration: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -551,8 +551,10 @@ fn validate_profile(
     )?;
     validate_positive_count_field(
         profile,
-        "component_workload.risk_paths_per_iteration",
-        profile.component_workload.risk_paths_per_iteration,
+        "component_workload.sufficient_statistics_paths_per_iteration",
+        profile
+            .component_workload
+            .sufficient_statistics_paths_per_iteration,
     )?;
 
     let shape_capacity = profile

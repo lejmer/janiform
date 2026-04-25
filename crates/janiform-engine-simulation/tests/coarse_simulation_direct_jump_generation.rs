@@ -1,6 +1,6 @@
 use janiform_affine_oracle::affine_oracle::ExponentialAffineTransformEquationSpecification;
 use janiform_affine_oracle::sufficient_statistics::{
-    SufficientStatisticsRiskIntervalFactors, SufficientStatisticsRiskModelInputs,
+    SufficientStatisticsIntervalFactors, SufficientStatisticsModelInputs,
 };
 use janiform_engine_simulation::{
     COARSE_SIMULATION_RUN_REQUEST_SCHEMA_VERSION, CoarseSimulationModelInputs,
@@ -193,7 +193,7 @@ fn coarse_simulation_rejects_known_news_factor_misalignment_at_runner_boundary()
 #[test]
 fn coarse_simulation_surfaces_transform_slice_solver_failures() {
     let model_inputs = build_model_inputs_with_components(
-        build_risk_model_inputs(
+        build_sufficient_statistics_model_inputs(
             HawkesKernelParameters::try_new(
                 0.8,
                 1.0e308,
@@ -229,13 +229,8 @@ fn coarse_simulation_surfaces_transform_slice_solver_failures() {
         1_704_205_800_000_000_000,
         1.0,
         model_inputs,
-        SufficientStatisticsRiskIntervalFactors::try_new(
-            vec![1.0],
-            vec![0.0],
-            vec![0.2],
-            Some(1.0),
-        )
-        .expect("solver-failure interval factors should construct"),
+        SufficientStatisticsIntervalFactors::try_new(vec![1.0], vec![0.0], vec![0.2], Some(1.0))
+            .expect("solver-failure interval factors should construct"),
     );
 
     let error = run_coarse_simulation(run_request)
@@ -253,7 +248,7 @@ fn coarse_simulation_surfaces_transform_slice_solver_failures() {
 #[test]
 fn coarse_simulation_surfaces_boundary_state_update_failures() {
     let model_inputs = build_model_inputs_with_components(
-        build_risk_model_inputs(
+        build_sufficient_statistics_model_inputs(
             HawkesKernelParameters::try_new(
                 0.8,
                 1.6,
@@ -292,13 +287,8 @@ fn coarse_simulation_surfaces_boundary_state_update_failures() {
         1_704_205_800_000_000_000,
         1.0,
         model_inputs,
-        SufficientStatisticsRiskIntervalFactors::try_new(
-            vec![1.0],
-            vec![1.0],
-            vec![0.0],
-            Some(1.0),
-        )
-        .expect("boundary-failure interval factors should construct"),
+        SufficientStatisticsIntervalFactors::try_new(vec![1.0], vec![1.0], vec![0.0], Some(1.0))
+            .expect("boundary-failure interval factors should construct"),
     );
 
     let error = run_coarse_simulation(run_request)
@@ -374,7 +364,7 @@ fn build_run_request(
             horizon_interval_count,
             interval_delta,
         ),
-        SufficientStatisticsRiskIntervalFactors::try_new(
+        SufficientStatisticsIntervalFactors::try_new(
             vec![1.0; horizon_interval_count],
             nu_h_known,
             nu_h_surprise,
@@ -389,7 +379,7 @@ fn build_run_request_with_model_inputs(
     start_time_utc_nanos: i64,
     interval_delta: f64,
     model_inputs: CoarseSimulationModelInputs,
-    interval_factors: SufficientStatisticsRiskIntervalFactors,
+    interval_factors: SufficientStatisticsIntervalFactors,
 ) -> CoarseSimulationRunRequest {
     CoarseSimulationRunRequest::try_new(
         seed,
@@ -408,7 +398,7 @@ fn build_model_inputs(
     interval_delta: f64,
 ) -> CoarseSimulationModelInputs {
     build_model_inputs_with_components(
-        build_risk_model_inputs(
+        build_sufficient_statistics_model_inputs(
             HawkesKernelParameters::try_new(
                 0.8,
                 1.6,
@@ -442,11 +432,11 @@ fn build_model_inputs(
 }
 
 fn build_model_inputs_with_components(
-    risk_model_inputs: SufficientStatisticsRiskModelInputs,
+    sufficient_statistics_model_inputs: SufficientStatisticsModelInputs,
     news_process_configuration: NewsProcessConfiguration,
 ) -> CoarseSimulationModelInputs {
     CoarseSimulationModelInputs::try_new(
-        risk_model_inputs,
+        sufficient_statistics_model_inputs,
         news_process_configuration,
         build_calendar_registry_artifact(),
         "XNYS",
@@ -454,13 +444,13 @@ fn build_model_inputs_with_components(
     .expect("coarse simulation model inputs should construct")
 }
 
-fn build_risk_model_inputs(
+fn build_sufficient_statistics_model_inputs(
     kernel_parameters: HawkesKernelParameters,
     gamma_severity_configuration: GammaSeverityMarkConfiguration,
     interval_count: usize,
     interval_delta: f64,
-) -> SufficientStatisticsRiskModelInputs {
-    SufficientStatisticsRiskModelInputs::try_new(
+) -> SufficientStatisticsModelInputs {
+    SufficientStatisticsModelInputs::try_new(
         ExponentialAffineTransformEquationSpecification::try_new(
             kernel_parameters,
             gamma_severity_configuration,
@@ -483,7 +473,7 @@ fn build_risk_model_inputs(
         MeanReversionBoundaryState::try_new(0.0, 0.0, 0.0, 0.0)
             .expect("disabled mean-reversion boundary state should construct"),
     )
-    .expect("risk model inputs should construct")
+    .expect("sufficient-statistics model inputs should construct")
 }
 
 fn build_news_process_configuration(

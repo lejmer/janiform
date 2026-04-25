@@ -11,7 +11,7 @@ pub use aggregation::{
     SCALE_CONSISTENCY_FINE_PATH_ALIGNMENT_METADATA_SCHEMA_VERSION, ScaleConsistencyAlignedRiskPath,
     ScaleConsistencyFinePathAggregationError, ScaleConsistencyFinePathAlignmentMetadata,
     ScaleConsistencyFinePathAlignmentStatus, ScaleConsistencyFinePathPartialWindowPolicy,
-    aggregate_fine_risk_path_to_coarse_intervals,
+    aggregate_fine_sufficient_statistics_path_to_coarse_intervals,
 };
 pub use batch::{
     SCALE_CONSISTENCY_BATCH_ARTIFACT_PERSISTENCE_POLICY,

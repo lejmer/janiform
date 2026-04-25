@@ -9,7 +9,7 @@ use janiform_engine_pricing::internal::FourierInversionEngineSettings;
 use janiform_engine_pricing::{
     VanillaOptionPayoffConfiguration, VanillaOptionPayoffType, VanillaOptionPricingMarketInputs,
 };
-use janiform_engine_risk::SufficientStatisticsTransformSlices;
+use janiform_engine_sufficient_statistics::SufficientStatisticsTransformSlices;
 use janiform_foundations::complex_math::{ComplexScalar, complex_exponential};
 use janiform_model_kernels::hawkes::{
     HawkesEventSide, HawkesExcitationState, HawkesKernelParameters, HawkesTransitionStep,
@@ -17,16 +17,17 @@ use janiform_model_kernels::hawkes::{
 
 use super::builders::{
     build_equation_specification, build_oracle_transform_input, build_pricing_engine_settings,
-    build_pricing_market_inputs, build_risk_transform_slices,
+    build_pricing_market_inputs, build_sufficient_statistics_transform_slices,
 };
 use super::catalog::{
     BenchmarkScenarioCatalog, BenchmarkScenarioCatalogLoadError, BenchmarkScenarioWorkloadProfile,
     load_benchmark_scenario_catalog_from_json,
 };
-use super::harness::OraclePricerRiskBenchmarkHarnessError;
+use super::harness::OraclePricerSufficientStatisticsBenchmarkHarnessError;
 use super::policy::{
-    OraclePricerRiskBenchmarkPolicy, OraclePricerRiskBenchmarkPolicyLoadError,
-    load_oracle_pricer_risk_benchmark_policy_from_json,
+    OraclePricerSufficientStatisticsBenchmarkPolicy,
+    OraclePricerSufficientStatisticsBenchmarkPolicyLoadError,
+    load_oracle_pricer_sufficient_statistics_benchmark_policy_from_json,
 };
 use super::utilities::{derive_invocation_seed, fnv1a_64, splitmix64, unit_interval_from_seed};
 
@@ -36,13 +37,13 @@ const CANONICAL_BENCHMARK_SCENARIO_CATALOG_JSON: &str = include_str!(concat!(
 ));
 const CANONICAL_BENCHMARK_POLICY_JSON: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../tests/fixtures/benchmarks/oracle_pricer_risk_benchmark_policy.json"
+    "/../../tests/fixtures/benchmarks/oracle_pricer_sufficient_statistics_benchmark_policy.json"
 ));
 
 pub const MICROBENCHMARK_REPRODUCIBILITY_SEED: u64 = 17;
 pub const ORACLE_SOLVER_MICROBENCHMARK_PROFILE_ID: &str = "small_hourly_baseline";
 pub const PRICING_KERNEL_MICROBENCHMARK_PROFILE_ID: &str = "medium_hourly_balanced";
-pub const RISK_SAMPLING_MICROBENCHMARK_PROFILE_ID: &str = "small_hourly_baseline";
+pub const SUFFICIENT_STATISTICS_SAMPLING_MICROBENCHMARK_PROFILE_ID: &str = "small_hourly_baseline";
 pub const SIMULATION_PRIMITIVE_MICROBENCHMARK_PROFILE_ID: &str = "medium_half_hour_balanced";
 
 #[derive(Debug, Clone, PartialEq)]
@@ -51,7 +52,7 @@ pub enum MicrobenchmarkFixtureError {
         source: BenchmarkScenarioCatalogLoadError,
     },
     InvalidBenchmarkPolicy {
-        source: OraclePricerRiskBenchmarkPolicyLoadError,
+        source: OraclePricerSufficientStatisticsBenchmarkPolicyLoadError,
     },
     MissingProfile {
         profile_id: String,
@@ -61,7 +62,7 @@ pub enum MicrobenchmarkFixtureError {
         source: ExponentialAffineTransformSolverSettingsError,
     },
     InvalidPreparedWorkload {
-        source: OraclePricerRiskBenchmarkHarnessError,
+        source: OraclePricerSufficientStatisticsBenchmarkHarnessError,
     },
 }
 
@@ -107,7 +108,7 @@ impl Error for MicrobenchmarkFixtureError {
 #[derive(Debug, Clone, PartialEq)]
 pub struct MicrobenchmarkFixtureSet {
     pub catalog: BenchmarkScenarioCatalog,
-    pub policy: OraclePricerRiskBenchmarkPolicy,
+    pub policy: OraclePricerSufficientStatisticsBenchmarkPolicy,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -156,9 +157,10 @@ pub fn load_microbenchmark_fixture_set()
     let catalog =
         load_benchmark_scenario_catalog_from_json(CANONICAL_BENCHMARK_SCENARIO_CATALOG_JSON)
             .map_err(|source| MicrobenchmarkFixtureError::InvalidScenarioCatalog { source })?;
-    let policy =
-        load_oracle_pricer_risk_benchmark_policy_from_json(CANONICAL_BENCHMARK_POLICY_JSON)
-            .map_err(|source| MicrobenchmarkFixtureError::InvalidBenchmarkPolicy { source })?;
+    let policy = load_oracle_pricer_sufficient_statistics_benchmark_policy_from_json(
+        CANONICAL_BENCHMARK_POLICY_JSON,
+    )
+    .map_err(|source| MicrobenchmarkFixtureError::InvalidBenchmarkPolicy { source })?;
 
     Ok(MicrobenchmarkFixtureSet { catalog, policy })
 }
@@ -207,7 +209,7 @@ impl MicrobenchmarkFixtureSet {
         let market_inputs = build_pricing_market_inputs(profile, &self.policy, invocation_seed)
             .map_err(
                 |source| MicrobenchmarkFixtureError::InvalidPreparedWorkload {
-                    source: OraclePricerRiskBenchmarkHarnessError::InvalidPricingMarketInputs {
+                    source: OraclePricerSufficientStatisticsBenchmarkHarnessError::InvalidPricingMarketInputs {
                         profile_id: profile.profile_id.clone(),
                         source,
                     },
@@ -224,7 +226,7 @@ impl MicrobenchmarkFixtureSet {
 
         let maturity_interval = market_inputs.single_maturity_interval().map_err(|source| {
             MicrobenchmarkFixtureError::InvalidPreparedWorkload {
-                source: OraclePricerRiskBenchmarkHarnessError::InvalidPricingMarketInputs {
+                source: OraclePricerSufficientStatisticsBenchmarkHarnessError::InvalidPricingMarketInputs {
                     profile_id: profile.profile_id.clone(),
                     source,
                 },
@@ -247,7 +249,7 @@ impl MicrobenchmarkFixtureSet {
         })
     }
 
-    pub fn prepare_risk_sampling_case(
+    pub fn prepare_sufficient_statistics_sampling_case(
         &self,
         profile_id: &'static str,
     ) -> Result<PreparedRiskSamplingBenchmarkCase, MicrobenchmarkFixtureError> {
@@ -255,20 +257,24 @@ impl MicrobenchmarkFixtureSet {
         let equation_specification = build_equation_specification(profile, &self.policy)
             .map_err(|source| MicrobenchmarkFixtureError::InvalidPreparedWorkload { source })?;
         let solver_settings = self.oracle_solver_settings(profile)?;
-        let risk_seed =
-            self.component_seed(profile, self.policy.seed_partition.risk_component_seed_salt);
-        let solved_slices = build_risk_transform_slices(
+        let sufficient_statistics_seed = self.component_seed(
+            profile,
+            self.policy
+                .seed_partition
+                .sufficient_statistics_component_seed_salt,
+        );
+        let solved_slices = build_sufficient_statistics_transform_slices(
             profile,
             &self.policy,
             equation_specification,
             solver_settings,
-            risk_seed,
+            sufficient_statistics_seed,
         )
         .map_err(|source| MicrobenchmarkFixtureError::InvalidPreparedWorkload { source })?;
 
         Ok(PreparedRiskSamplingBenchmarkCase {
             profile_id,
-            sampling_seed: derive_invocation_seed(risk_seed, 1),
+            sampling_seed: derive_invocation_seed(sufficient_statistics_seed, 1),
             solved_slices,
         })
     }
@@ -289,15 +295,19 @@ impl MicrobenchmarkFixtureSet {
         )
         .map_err(
             |source| MicrobenchmarkFixtureError::InvalidPreparedWorkload {
-                source: OraclePricerRiskBenchmarkHarnessError::InvalidModelKernelParameters {
+                source: OraclePricerSufficientStatisticsBenchmarkHarnessError::InvalidModelKernelParameters {
                     profile_id: profile.profile_id.clone(),
                     source,
                 },
             },
         )?;
         let simulation_seed = splitmix64(
-            self.component_seed(profile, self.policy.seed_partition.risk_component_seed_salt)
-                ^ 0x5A,
+            self.component_seed(
+                profile,
+                self.policy
+                    .seed_partition
+                    .sufficient_statistics_component_seed_salt,
+            ) ^ 0x5A,
         );
         let transition_step = HawkesTransitionStep::new(
             profile.interval_settings.interval_delta,
@@ -365,7 +375,7 @@ fn profile_seed(profile: &BenchmarkScenarioWorkloadProfile) -> u64 {
 }
 
 fn interpolate_pricing_volatility(
-    policy: &OraclePricerRiskBenchmarkPolicy,
+    policy: &OraclePricerSufficientStatisticsBenchmarkPolicy,
     invocation_seed: u64,
 ) -> f64 {
     let noise = unit_interval_from_seed(invocation_seed ^ 0x51);

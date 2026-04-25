@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale.v1",
-  "approved_snapshot_sha256": "31fd287bf268789262f0f3e75535df17d544f7185a8bf5e7943ec729624bbab8",
+  "approved_snapshot_sha256": "ac908c602553dc879df212a115fe096416728400c133c0d3d41fc59b29a642b9",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -524,9 +524,9 @@
       "docs_updated": [
         "docs/reference/python-api.md"
       ],
-      "rationale": "The anchor-deviation rollout now surfaces observed-state end-of-interval fields on the public coarse simulation and sufficient-statistics risk contracts, so the approved Python API snapshot must record those fields explicitly instead of preserving the earlier core-return-only shapes.",
+      "rationale": "The anchor-deviation rollout now surfaces observed-state end-of-interval fields on the public coarse simulation and sufficient-statistics contracts, so the approved Python API snapshot must record those fields explicitly instead of preserving the earlier core-return-only shapes.",
       "snapshot_sha256": "3d6c532819eec4f7b38ad93f055ae06c08c0d00866b2b42679d1696fb911de13",
-      "summary": "Approve observed-state coarse simulation and risk contract fields in the public Python API snapshot."
+      "summary": "Approve observed-state coarse simulation and sufficient-statistics contract fields in the public Python API snapshot."
     },
     {
       "approved_on": "2026-03-25",
@@ -603,9 +603,9 @@
         "docs/reference/python-api.md",
         "docs/reference/python-api.md"
       ],
-      "rationale": "Pricing, risk, and coarse simulation now consume native-backed hourly-factor artifacts instead of Python tuple-owned interval-factor contracts, so the approved Python snapshot must remove the old execution-input tuple helpers and record the artifact-backed request fields and signatures.",
+      "rationale": "Pricing, sufficient_statistics, and coarse simulation now consume native-backed hourly-factor artifacts instead of Python tuple-owned interval-factor contracts, so the approved Python snapshot must remove the old execution-input tuple helpers and record the artifact-backed request fields and signatures.",
       "snapshot_sha256": "89a2d46feb2407e2f37719d89c51573be79ea2cf8d7d6a8f526191082a50d270",
-      "summary": "Approve the hourly-factor artifact boundary reset for pricing, risk, and coarse simulation."
+      "summary": "Approve the hourly-factor artifact boundary reset for pricing, sufficient_statistics, and coarse simulation."
     },
     {
       "approved_on": "2026-03-27",
@@ -747,7 +747,7 @@
       "docs_updated": [
         "docs/reference/python-api.md"
       ],
-      "rationale": "Mean-reversion models are a domain surface used across calibration, pricing, risk, and simulation, so the public Python API now owns them under janiform.mean_reversion and its contracts submodule instead of treating them as generic helpers under janiform.contracts.",
+      "rationale": "Mean-reversion models are a domain surface used across calibration, pricing, sufficient_statistics, and simulation, so the public Python API now owns them under janiform.mean_reversion and its contracts submodule instead of treating them as generic helpers under janiform.contracts.",
       "snapshot_sha256": "02c0e7993977faf6bad13a335eccc04de17ca5bc243cdc80b4e7c71c94ea08f0",
       "summary": "Move mean-reversion contracts from janiform.contracts into the janiform.mean_reversion package."
     },
@@ -818,22 +818,22 @@
       "docs_updated": [
         "docs/reference/python-api.md"
       ],
-      "rationale": "Sufficient-statistics risk now follows the same package-owned surface pattern as other domains: contract dataclasses live in janiform.risk.contracts, validation errors live in janiform.risk.errors, and workflow serialization and validation entrypoints live outside the contract definitions so the root package is a curated re-export surface instead of one monolithic module.",
+      "rationale": "Sufficient-statistics now follows the same package-owned surface pattern as other domains: contract dataclasses live in janiform.sufficient_statistics.contracts, validation errors live in janiform.sufficient_statistics.errors, and workflow serialization and validation entrypoints live outside the contract definitions so the root package is a curated re-export surface instead of one monolithic module.",
       "snapshot_sha256": "42f67b00fb4031e1be5d5d1245266f1fb042ad60f400b83fc7c77dd914e5dff0",
-      "summary": "Approve the package-owned risk contracts submodule and split the risk monolith.",
+      "summary": "Approve the package-owned sufficient-statistics contracts submodule and split the sufficient-statistics monolith.",
       "updated_surfaces": [
-        "janiform.risk",
-        "janiform.risk.contracts"
+        "janiform.sufficient_statistics",
+        "janiform.sufficient_statistics.contracts"
       ]
     },
     {
       "approved_on": "2026-04-03",
       "docs_updated": [],
-      "rationale": "The risk surface does not own a distinct validation-failure contract and the previous alias only renamed ContractValidationFailure without adding behavior or type distinction, so the approved snapshot now removes that redundant public symbol.",
+      "rationale": "The sufficient-statistics surface does not own a distinct validation-failure contract and the previous alias only renamed ContractValidationFailure without adding behavior or type distinction, so the approved snapshot now removes that redundant public symbol.",
       "snapshot_sha256": "e8819ca6af84acdaec92507e757fcc06df65e6934eee4304d7567283d3b8cda6",
-      "summary": "Remove the redundant risk validation-failure alias.",
+      "summary": "Remove the redundant sufficient-statistics validation-failure alias.",
       "updated_surfaces": [
-        "janiform.risk"
+        "janiform.sufficient_statistics"
       ]
     },
     {
@@ -852,7 +852,7 @@
     {
       "approved_on": "2026-04-03",
       "docs_updated": [],
-      "rationale": "The mean-reversion surface has exactly one supported anchor-model shape, so the public Python contracts and calibration configuration no longer carry a selector field or exported kind enum. The approved snapshot must therefore remove those discriminator-shaped fields and signatures from the shared mean-reversion, calibration, pricing, risk, and simulation surfaces instead of preserving a fake extensibility point.",
+      "rationale": "The mean-reversion surface has exactly one supported anchor-model shape, so the public Python contracts and calibration configuration no longer carry a selector field or exported kind enum. The approved snapshot must therefore remove those discriminator-shaped fields and signatures from the shared mean-reversion, calibration, pricing, sufficient_statistics, and simulation surfaces instead of preserving a fake extensibility point.",
       "snapshot_sha256": "64ae9efa3023d3e64c398bafdfb9ac9b9665c15c7f1f7a867f698d425946d437",
       "summary": "Remove the mean-reversion discriminator and exported kind enum from the public Python API surface.",
       "updated_surfaces": [
@@ -862,8 +862,8 @@
         "janiform.calibration.market_data.contracts",
         "janiform.pricing",
         "janiform.pricing.contracts",
-        "janiform.risk",
-        "janiform.risk.contracts",
+        "janiform.sufficient_statistics",
+        "janiform.sufficient_statistics.contracts",
         "janiform.simulation",
         "janiform.simulation.shared"
       ]
@@ -1162,6 +1162,19 @@
       "summary": "Align the public API approval manifest with the checked-in snapshot hash.",
       "updated_surfaces": [
         "public_api_contract_guardrails"
+      ]
+    },
+    {
+      "approved_on": "2026-04-25",
+      "docs_updated": [
+        "docs/reference/python-api.md"
+      ],
+      "rationale": "The sufficient-statistics contracts are now owned by janiform.sufficient_statistics instead of janiform.risk, with the old public type names replaced directly because the package is pre-v0.1 and does not carry compatibility aliases.",
+      "snapshot_sha256": "ac908c602553dc879df212a115fe096416728400c133c0d3d41fc59b29a642b9",
+      "summary": "Approve the sufficient-statistics package rename.",
+      "updated_surfaces": [
+        "janiform.sufficient_statistics",
+        "janiform.sufficient_statistics.contracts"
       ]
     }
   ],

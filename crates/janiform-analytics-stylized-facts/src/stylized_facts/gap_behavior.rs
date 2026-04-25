@@ -1580,15 +1580,18 @@ fn compute_abs_tail_expected_shortfall_ratio(
     let mut sorted_values: Vec<f64> = interval_abs_series.to_vec();
     sorted_values.sort_by(f64::total_cmp);
 
-    let value_at_risk = compute_sorted_quantile(&sorted_values, TAIL_QUANTILE_LEVEL);
-    if !value_at_risk.is_finite() || value_at_risk <= MINIMUM_DENOMINATOR_MAGNITUDE {
+    let value_at_sufficient_statistics =
+        compute_sorted_quantile(&sorted_values, TAIL_QUANTILE_LEVEL);
+    if !value_at_sufficient_statistics.is_finite()
+        || value_at_sufficient_statistics <= MINIMUM_DENOMINATOR_MAGNITUDE
+    {
         return None;
     }
 
     let tail_values: Vec<f64> = sorted_values
         .iter()
         .copied()
-        .filter(|value| *value >= value_at_risk)
+        .filter(|value| *value >= value_at_sufficient_statistics)
         .collect();
     if tail_values.is_empty() {
         return None;
@@ -1599,7 +1602,7 @@ fn compute_abs_tail_expected_shortfall_ratio(
         return None;
     }
 
-    let ratio = expected_shortfall / value_at_risk;
+    let ratio = expected_shortfall / value_at_sufficient_statistics;
     if !ratio.is_finite() {
         return None;
     }

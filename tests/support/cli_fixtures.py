@@ -104,7 +104,7 @@ STYLIZED_FACT_METRIC_CLASS_VOCABULARY: tuple[str, ...] = (
 )
 STYLIZED_FACT_METRIC_FAMILY_VOCABULARY: tuple[str, ...] = (
     "quantile_shape",
-    "tail_risk",
+    "tail_sufficient_statistics",
     "distribution_distance",
     "l_moment",
     "central_moment",
@@ -144,7 +144,7 @@ def build_coarse_simulation_request(calendar_registry: CalendarRegistry) -> Coar
         "horizon_interval_count": horizon_interval_count,
         "interval_delta": interval_delta,
         "model_inputs": {
-            "risk_model_inputs": {
+            "sufficient_statistics_model_inputs": {
                 "equation_specification": {
                     "hawkes_kernel_parameters": _build_simulation_hawkes_kernel_parameters().to_payload(),
                     "gamma_severity_mark_configuration": GammaSeverityMarkConfiguration(

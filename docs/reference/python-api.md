@@ -134,18 +134,18 @@ The public contract submodule is:
 
 - `janiform.pricing.contracts`
 
-### `janiform.risk`
+### `janiform.sufficient_statistics`
 
-Sufficient-statistics risk path contracts. Representative public symbols include:
+Sufficient-statistics sufficient-statistics path contracts. Representative public symbols include:
 
-- `SufficientStatisticsRiskRunRequest`
-- `SufficientStatisticsRiskPath`
-- `SufficientStatisticsRiskPathDiagnostics`
-- `validate_sufficient_statistics_risk_run_request`
+- `SufficientStatisticsRunRequest`
+- `SufficientStatisticsPath`
+- `SufficientStatisticsPathDiagnostics`
+- `validate_sufficient_statistics_run_request`
 
 The public contract submodule is:
 
-- `janiform.risk.contracts`
+- `janiform.sufficient_statistics.contracts`
 
 ### `janiform.hourly_factors`
 

@@ -1,7 +1,7 @@
 use janiform_governance_bench::benchmarking::{
     ORACLE_SOLVER_MICROBENCHMARK_PROFILE_ID, PRICING_KERNEL_MICROBENCHMARK_PROFILE_ID,
-    RISK_SAMPLING_MICROBENCHMARK_PROFILE_ID, SIMULATION_PRIMITIVE_MICROBENCHMARK_PROFILE_ID,
-    load_microbenchmark_fixture_set,
+    SIMULATION_PRIMITIVE_MICROBENCHMARK_PROFILE_ID,
+    SUFFICIENT_STATISTICS_SAMPLING_MICROBENCHMARK_PROFILE_ID, load_microbenchmark_fixture_set,
 };
 
 #[test]
@@ -15,7 +15,7 @@ fn microbenchmark_fixture_loader_exposes_expected_checked_in_profiles() {
     );
     assert_eq!(
         fixture_set.policy.policy_id,
-        "oracle_pricer_risk_benchmark_policy_v1"
+        "oracle_pricer_sufficient_statistics_benchmark_policy_v1"
     );
     assert!(
         fixture_set
@@ -36,7 +36,8 @@ fn microbenchmark_fixture_loader_exposes_expected_checked_in_profiles() {
             .catalog
             .profiles
             .iter()
-            .any(|profile| profile.profile_id == RISK_SAMPLING_MICROBENCHMARK_PROFILE_ID)
+            .any(|profile| profile.profile_id
+                == SUFFICIENT_STATISTICS_SAMPLING_MICROBENCHMARK_PROFILE_ID)
     );
     assert!(
         fixture_set
@@ -79,14 +80,16 @@ fn microbenchmark_cases_prepare_deterministic_component_inputs() {
     );
     assert!(pricing_case.variance.is_finite());
 
-    let risk_case = fixture_set
-        .prepare_risk_sampling_case(RISK_SAMPLING_MICROBENCHMARK_PROFILE_ID)
-        .expect("risk case should prepare");
+    let sufficient_statistics_case = fixture_set
+        .prepare_sufficient_statistics_sampling_case(
+            SUFFICIENT_STATISTICS_SAMPLING_MICROBENCHMARK_PROFILE_ID,
+        )
+        .expect("sufficient-statistics case should prepare");
     assert_eq!(
-        risk_case.profile_id,
-        RISK_SAMPLING_MICROBENCHMARK_PROFILE_ID
+        sufficient_statistics_case.profile_id,
+        SUFFICIENT_STATISTICS_SAMPLING_MICROBENCHMARK_PROFILE_ID
     );
-    assert!(!risk_case.solved_slices.is_empty());
+    assert!(!sufficient_statistics_case.solved_slices.is_empty());
 
     let simulation_case = fixture_set
         .prepare_simulation_primitive_case(SIMULATION_PRIMITIVE_MICROBENCHMARK_PROFILE_ID)

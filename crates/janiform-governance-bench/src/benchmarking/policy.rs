@@ -9,12 +9,12 @@ use janiform_model_kernels::hawkes::{
 };
 use janiform_model_kernels::news::{GammaSeverityMarkConfiguration, NewsMarkConfigurationError};
 
-pub const ORACLE_PRICER_RISK_BENCHMARK_POLICY_SCHEMA_VERSION: &str =
-    "benchmark.oracle_pricer_risk.policy.v1";
+pub const ORACLE_PRICER_SUFFICIENT_STATISTICS_BENCHMARK_POLICY_SCHEMA_VERSION: &str =
+    "benchmark.oracle_pricer_sufficient_statistics.policy.v1";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct OraclePricerRiskBenchmarkPolicyRationale {
+pub struct OraclePricerSufficientStatisticsBenchmarkPolicyRationale {
     pub model_parameters: String,
     pub oracle_solver_probes: String,
     pub pricing_input_ranges: String,
@@ -23,7 +23,7 @@ pub struct OraclePricerRiskBenchmarkPolicyRationale {
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct OraclePricerRiskBenchmarkModelParameters {
+pub struct OraclePricerSufficientStatisticsBenchmarkModelParameters {
     pub hawkes_beta: f64,
     pub hawkes_alpha: HawkesKernelLoadings,
     pub hawkes_rho: HawkesKernelLoadings,
@@ -33,7 +33,7 @@ pub struct OraclePricerRiskBenchmarkModelParameters {
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct OraclePricerRiskBenchmarkOracleSolverProbes {
+pub struct OraclePricerSufficientStatisticsBenchmarkOracleSolverProbes {
     pub u_probe_min: f64,
     pub u_probe_max: f64,
     pub z_probe_min: f64,
@@ -46,7 +46,7 @@ pub struct OraclePricerRiskBenchmarkOracleSolverProbes {
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct OraclePricerRiskBenchmarkPricingInputRanges {
+pub struct OraclePricerSufficientStatisticsBenchmarkPricingInputRanges {
     pub integration_upper_bound: f64,
     pub minimum_integration_step_count: usize,
     pub spot_base: f64,
@@ -66,34 +66,34 @@ pub struct OraclePricerRiskBenchmarkPricingInputRanges {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct OraclePricerRiskBenchmarkSeedPartition {
+pub struct OraclePricerSufficientStatisticsBenchmarkSeedPartition {
     pub oracle_component_seed_salt: u64,
     pub pricing_component_seed_salt: u64,
-    pub risk_component_seed_salt: u64,
+    pub sufficient_statistics_component_seed_salt: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct OraclePricerRiskBenchmarkPolicy {
+pub struct OraclePricerSufficientStatisticsBenchmarkPolicy {
     pub schema_version: String,
     pub policy_id: String,
     pub policy_version: String,
-    pub rationale: OraclePricerRiskBenchmarkPolicyRationale,
-    pub model_parameters: OraclePricerRiskBenchmarkModelParameters,
-    pub oracle_solver_probes: OraclePricerRiskBenchmarkOracleSolverProbes,
-    pub pricing_input_ranges: OraclePricerRiskBenchmarkPricingInputRanges,
-    pub seed_partition: OraclePricerRiskBenchmarkSeedPartition,
+    pub rationale: OraclePricerSufficientStatisticsBenchmarkPolicyRationale,
+    pub model_parameters: OraclePricerSufficientStatisticsBenchmarkModelParameters,
+    pub oracle_solver_probes: OraclePricerSufficientStatisticsBenchmarkOracleSolverProbes,
+    pub pricing_input_ranges: OraclePricerSufficientStatisticsBenchmarkPricingInputRanges,
+    pub seed_partition: OraclePricerSufficientStatisticsBenchmarkSeedPartition,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct OraclePricerRiskBenchmarkExecutionConfig {
+pub struct OraclePricerSufficientStatisticsBenchmarkExecutionConfig {
     pub warmup_iteration_count_override: Option<usize>,
     pub measured_iteration_count_override: Option<usize>,
     pub reproducibility_seed: u64,
 }
 
-impl Default for OraclePricerRiskBenchmarkExecutionConfig {
+impl Default for OraclePricerSufficientStatisticsBenchmarkExecutionConfig {
     fn default() -> Self {
         Self {
             warmup_iteration_count_override: None,
@@ -103,11 +103,13 @@ impl Default for OraclePricerRiskBenchmarkExecutionConfig {
     }
 }
 
-impl OraclePricerRiskBenchmarkExecutionConfig {
-    pub fn validate(self) -> Result<(), OraclePricerRiskBenchmarkExecutionConfigError> {
+impl OraclePricerSufficientStatisticsBenchmarkExecutionConfig {
+    pub fn validate(
+        self,
+    ) -> Result<(), OraclePricerSufficientStatisticsBenchmarkExecutionConfigError> {
         if self.measured_iteration_count_override == Some(0) {
             return Err(
-                OraclePricerRiskBenchmarkExecutionConfigError::InvalidMeasuredIterationCountOverride {
+                OraclePricerSufficientStatisticsBenchmarkExecutionConfigError::InvalidMeasuredIterationCountOverride {
                     value: 0,
                 },
             );
@@ -118,11 +120,11 @@ impl OraclePricerRiskBenchmarkExecutionConfig {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum OraclePricerRiskBenchmarkExecutionConfigError {
+pub enum OraclePricerSufficientStatisticsBenchmarkExecutionConfigError {
     InvalidMeasuredIterationCountOverride { value: usize },
 }
 
-impl Display for OraclePricerRiskBenchmarkExecutionConfigError {
+impl Display for OraclePricerSufficientStatisticsBenchmarkExecutionConfigError {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::InvalidMeasuredIterationCountOverride { value } => write!(
@@ -133,23 +135,31 @@ impl Display for OraclePricerRiskBenchmarkExecutionConfigError {
     }
 }
 
-impl Error for OraclePricerRiskBenchmarkExecutionConfigError {}
+impl Error for OraclePricerSufficientStatisticsBenchmarkExecutionConfigError {}
 
-impl OraclePricerRiskBenchmarkPolicy {
-    pub fn validate(&self) -> Result<(), OraclePricerRiskBenchmarkPolicyValidationError> {
-        if self.schema_version != ORACLE_PRICER_RISK_BENCHMARK_POLICY_SCHEMA_VERSION {
+impl OraclePricerSufficientStatisticsBenchmarkPolicy {
+    pub fn validate(
+        &self,
+    ) -> Result<(), OraclePricerSufficientStatisticsBenchmarkPolicyValidationError> {
+        if self.schema_version
+            != ORACLE_PRICER_SUFFICIENT_STATISTICS_BENCHMARK_POLICY_SCHEMA_VERSION
+        {
             return Err(
-                OraclePricerRiskBenchmarkPolicyValidationError::UnsupportedSchemaVersion {
-                    expected: ORACLE_PRICER_RISK_BENCHMARK_POLICY_SCHEMA_VERSION,
+                OraclePricerSufficientStatisticsBenchmarkPolicyValidationError::UnsupportedSchemaVersion {
+                    expected: ORACLE_PRICER_SUFFICIENT_STATISTICS_BENCHMARK_POLICY_SCHEMA_VERSION,
                     actual: self.schema_version.clone(),
                 },
             );
         }
         if self.policy_id.trim().is_empty() {
-            return Err(OraclePricerRiskBenchmarkPolicyValidationError::EmptyPolicyId);
+            return Err(
+                OraclePricerSufficientStatisticsBenchmarkPolicyValidationError::EmptyPolicyId,
+            );
         }
         if self.policy_version.trim().is_empty() {
-            return Err(OraclePricerRiskBenchmarkPolicyValidationError::EmptyPolicyVersion);
+            return Err(
+                OraclePricerSufficientStatisticsBenchmarkPolicyValidationError::EmptyPolicyVersion,
+            );
         }
 
         validate_non_empty_rationale_field(
@@ -177,14 +187,14 @@ impl OraclePricerRiskBenchmarkPolicy {
             model_parameters.hawkes_rho,
         )
         .map_err(|source| {
-            OraclePricerRiskBenchmarkPolicyValidationError::InvalidHawkesParameters { source }
+            OraclePricerSufficientStatisticsBenchmarkPolicyValidationError::InvalidHawkesParameters { source }
         })?;
         GammaSeverityMarkConfiguration::try_new(
             model_parameters.gamma_shape_k,
             model_parameters.gamma_scale_theta,
         )
         .map_err(|source| {
-            OraclePricerRiskBenchmarkPolicyValidationError::InvalidGammaMarkConfiguration { source }
+            OraclePricerSufficientStatisticsBenchmarkPolicyValidationError::InvalidGammaMarkConfiguration { source }
         })?;
 
         let solver_probes = self.oracle_solver_probes;
@@ -220,7 +230,7 @@ impl OraclePricerRiskBenchmarkPolicy {
         )?;
         if pricing_ranges.minimum_integration_step_count == 0 {
             return Err(
-                OraclePricerRiskBenchmarkPolicyValidationError::InvalidPositiveCountField {
+                OraclePricerSufficientStatisticsBenchmarkPolicyValidationError::InvalidPositiveCountField {
                     field_name: "pricing_input_ranges.minimum_integration_step_count",
                     value: pricing_ranges.minimum_integration_step_count,
                 },
@@ -273,10 +283,12 @@ impl OraclePricerRiskBenchmarkPolicy {
 
         let seed_partition = self.seed_partition;
         if seed_partition.oracle_component_seed_salt == seed_partition.pricing_component_seed_salt
-            || seed_partition.oracle_component_seed_salt == seed_partition.risk_component_seed_salt
-            || seed_partition.pricing_component_seed_salt == seed_partition.risk_component_seed_salt
+            || seed_partition.oracle_component_seed_salt
+                == seed_partition.sufficient_statistics_component_seed_salt
+            || seed_partition.pricing_component_seed_salt
+                == seed_partition.sufficient_statistics_component_seed_salt
         {
-            return Err(OraclePricerRiskBenchmarkPolicyValidationError::DuplicateSeedSaltValues);
+            return Err(OraclePricerSufficientStatisticsBenchmarkPolicyValidationError::DuplicateSeedSaltValues);
         }
 
         Ok(())
@@ -284,7 +296,7 @@ impl OraclePricerRiskBenchmarkPolicy {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum OraclePricerRiskBenchmarkPolicyValidationError {
+pub enum OraclePricerSufficientStatisticsBenchmarkPolicyValidationError {
     UnsupportedSchemaVersion {
         expected: &'static str,
         actual: String,
@@ -324,7 +336,7 @@ pub enum OraclePricerRiskBenchmarkPolicyValidationError {
     DuplicateSeedSaltValues,
 }
 
-impl Display for OraclePricerRiskBenchmarkPolicyValidationError {
+impl Display for OraclePricerSufficientStatisticsBenchmarkPolicyValidationError {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::UnsupportedSchemaVersion { expected, actual } => write!(
@@ -383,7 +395,7 @@ impl Display for OraclePricerRiskBenchmarkPolicyValidationError {
     }
 }
 
-impl Error for OraclePricerRiskBenchmarkPolicyValidationError {
+impl Error for OraclePricerSufficientStatisticsBenchmarkPolicyValidationError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::InvalidHawkesParameters { source } => Some(source),
@@ -394,31 +406,31 @@ impl Error for OraclePricerRiskBenchmarkPolicyValidationError {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum OraclePricerRiskBenchmarkPolicyLoadError {
+pub enum OraclePricerSufficientStatisticsBenchmarkPolicyLoadError {
     InvalidJson {
         source: String,
     },
     InvalidPolicy {
-        source: OraclePricerRiskBenchmarkPolicyValidationError,
+        source: OraclePricerSufficientStatisticsBenchmarkPolicyValidationError,
     },
 }
 
-impl Display for OraclePricerRiskBenchmarkPolicyLoadError {
+impl Display for OraclePricerSufficientStatisticsBenchmarkPolicyLoadError {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::InvalidJson { source } => write!(
                 formatter,
-                "oracle pricer risk benchmark policy payload must be valid JSON: {source}"
+                "oracle pricer sufficient-statistics benchmark policy payload must be valid JSON: {source}"
             ),
             Self::InvalidPolicy { source } => write!(
                 formatter,
-                "oracle pricer risk benchmark policy payload is invalid: {source}"
+                "oracle pricer sufficient-statistics benchmark policy payload is invalid: {source}"
             ),
         }
     }
 }
 
-impl Error for OraclePricerRiskBenchmarkPolicyLoadError {
+impl Error for OraclePricerSufficientStatisticsBenchmarkPolicyLoadError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::InvalidPolicy { source } => Some(source),
@@ -427,19 +439,22 @@ impl Error for OraclePricerRiskBenchmarkPolicyLoadError {
     }
 }
 
-pub fn load_oracle_pricer_risk_benchmark_policy_from_json(
+pub fn load_oracle_pricer_sufficient_statistics_benchmark_policy_from_json(
     policy_payload: &str,
-) -> Result<OraclePricerRiskBenchmarkPolicy, OraclePricerRiskBenchmarkPolicyLoadError> {
-    let policy: OraclePricerRiskBenchmarkPolicy =
+) -> Result<
+    OraclePricerSufficientStatisticsBenchmarkPolicy,
+    OraclePricerSufficientStatisticsBenchmarkPolicyLoadError,
+> {
+    let policy: OraclePricerSufficientStatisticsBenchmarkPolicy =
         serde_json::from_str(policy_payload).map_err(|source| {
-            OraclePricerRiskBenchmarkPolicyLoadError::InvalidJson {
+            OraclePricerSufficientStatisticsBenchmarkPolicyLoadError::InvalidJson {
                 source: source.to_string(),
             }
         })?;
 
-    policy
-        .validate()
-        .map_err(|source| OraclePricerRiskBenchmarkPolicyLoadError::InvalidPolicy { source })?;
+    policy.validate().map_err(|source| {
+        OraclePricerSufficientStatisticsBenchmarkPolicyLoadError::InvalidPolicy { source }
+    })?;
 
     Ok(policy)
 }
@@ -453,10 +468,12 @@ enum RangeValidationPolicy {
 fn validate_non_empty_rationale_field(
     field_name: &'static str,
     value: &str,
-) -> Result<(), OraclePricerRiskBenchmarkPolicyValidationError> {
+) -> Result<(), OraclePricerSufficientStatisticsBenchmarkPolicyValidationError> {
     if value.trim().is_empty() {
         return Err(
-            OraclePricerRiskBenchmarkPolicyValidationError::EmptyRationaleField { field_name },
+            OraclePricerSufficientStatisticsBenchmarkPolicyValidationError::EmptyRationaleField {
+                field_name,
+            },
         );
     }
 
@@ -468,10 +485,10 @@ fn validate_range(
     min_value: f64,
     max_value: f64,
     policy: RangeValidationPolicy,
-) -> Result<(), OraclePricerRiskBenchmarkPolicyValidationError> {
+) -> Result<(), OraclePricerSufficientStatisticsBenchmarkPolicyValidationError> {
     if !min_value.is_finite() {
         return Err(
-            OraclePricerRiskBenchmarkPolicyValidationError::InvalidFiniteField {
+            OraclePricerSufficientStatisticsBenchmarkPolicyValidationError::InvalidFiniteField {
                 field_name,
                 value: min_value,
             },
@@ -479,7 +496,7 @@ fn validate_range(
     }
     if !max_value.is_finite() {
         return Err(
-            OraclePricerRiskBenchmarkPolicyValidationError::InvalidFiniteField {
+            OraclePricerSufficientStatisticsBenchmarkPolicyValidationError::InvalidFiniteField {
                 field_name,
                 value: max_value,
             },
@@ -491,7 +508,7 @@ fn validate_range(
         RangeValidationPolicy::NonNegative => {
             if min_value < 0.0 {
                 return Err(
-                    OraclePricerRiskBenchmarkPolicyValidationError::InvalidNonNegativeFiniteField {
+                    OraclePricerSufficientStatisticsBenchmarkPolicyValidationError::InvalidNonNegativeFiniteField {
                         field_name,
                         value: min_value,
                     },
@@ -499,7 +516,7 @@ fn validate_range(
             }
             if max_value < 0.0 {
                 return Err(
-                    OraclePricerRiskBenchmarkPolicyValidationError::InvalidNonNegativeFiniteField {
+                    OraclePricerSufficientStatisticsBenchmarkPolicyValidationError::InvalidNonNegativeFiniteField {
                         field_name,
                         value: max_value,
                     },
@@ -509,7 +526,7 @@ fn validate_range(
         RangeValidationPolicy::StrictlyPositive => {
             if min_value <= 0.0 {
                 return Err(
-                    OraclePricerRiskBenchmarkPolicyValidationError::InvalidPositiveFiniteField {
+                    OraclePricerSufficientStatisticsBenchmarkPolicyValidationError::InvalidPositiveFiniteField {
                         field_name,
                         value: min_value,
                     },
@@ -517,7 +534,7 @@ fn validate_range(
             }
             if max_value <= 0.0 {
                 return Err(
-                    OraclePricerRiskBenchmarkPolicyValidationError::InvalidPositiveFiniteField {
+                    OraclePricerSufficientStatisticsBenchmarkPolicyValidationError::InvalidPositiveFiniteField {
                         field_name,
                         value: max_value,
                     },
@@ -528,7 +545,7 @@ fn validate_range(
 
     if min_value > max_value {
         return Err(
-            OraclePricerRiskBenchmarkPolicyValidationError::InvalidRangeField {
+            OraclePricerSufficientStatisticsBenchmarkPolicyValidationError::InvalidRangeField {
                 field_name,
                 min_value,
                 max_value,
@@ -542,9 +559,9 @@ fn validate_range(
 fn validate_positive_finite_policy_field(
     field_name: &'static str,
     value: f64,
-) -> Result<(), OraclePricerRiskBenchmarkPolicyValidationError> {
+) -> Result<(), OraclePricerSufficientStatisticsBenchmarkPolicyValidationError> {
     validate_positive_number(value, field_name).map_err(|source| {
-        OraclePricerRiskBenchmarkPolicyValidationError::InvalidPositiveFiniteField {
+        OraclePricerSufficientStatisticsBenchmarkPolicyValidationError::InvalidPositiveFiniteField {
             field_name: source.field,
             value: source.value,
         }
@@ -554,9 +571,9 @@ fn validate_positive_finite_policy_field(
 fn validate_non_negative_finite_policy_field(
     field_name: &'static str,
     value: f64,
-) -> Result<(), OraclePricerRiskBenchmarkPolicyValidationError> {
+) -> Result<(), OraclePricerSufficientStatisticsBenchmarkPolicyValidationError> {
     validate_non_negative_number(value, field_name).map_err(|source| {
-        OraclePricerRiskBenchmarkPolicyValidationError::InvalidNonNegativeFiniteField {
+        OraclePricerSufficientStatisticsBenchmarkPolicyValidationError::InvalidNonNegativeFiniteField {
             field_name: source.field,
             value: source.value,
         }

@@ -18,8 +18,7 @@ pub const NIG_CHARACTERISTIC_EXPONENT_GUARDRAIL_REPORT_SCHEMA_VERSION: &str =
     "nig.characteristic_exponent.guardrail_report.v1";
 pub const NIG_CHARACTERISTIC_EXPONENT_GUARDRAIL_DETERMINISM_POLICY: &str =
     "stable_check_order_with_explicit_threshold_metadata.v1";
-pub const NIG_CHARACTERISTIC_EXPONENT_STABILITY_POLICY: &str =
-    "gamma_minus_sqrt_term_uses_rationalized_difference_when_cancellation_risk_is_detected.v1";
+pub const NIG_CHARACTERISTIC_EXPONENT_STABILITY_POLICY: &str = "gamma_minus_sqrt_term_uses_rationalized_difference_when_cancellation_sufficient_statistics_is_detected.v1";
 
 pub(crate) const NIG_ALPHA_BETA_MARGIN_WARNING_RELATIVE_THRESHOLD: f64 = 1.0e-10;
 pub(crate) const NIG_RADICAND_WARNING_RELATIVE_THRESHOLD: f64 = 1.0e-12;

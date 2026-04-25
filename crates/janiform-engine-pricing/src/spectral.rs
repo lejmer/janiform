@@ -28,7 +28,7 @@ use crate::runner::{
     LocalTransitionRowState, PricingCharacteristicFunctionSharedPlusShiftSensitivity,
     RiskNeutralAnchorMaterialization, VanillaOptionPricingExecutionInput,
     VanillaOptionPricingIntervalFactors, VanillaOptionPricingRunError,
-    build_pricing_risk_neutral_anchor_materialization,
+    build_pricing_sufficient_statistics_neutral_anchor_materialization,
     build_spectral_compatibility_integration_diagnostics,
     certify_local_transition_theta_for_row_with_parallelism,
     differentiate_core_local_tilt_theta_for_tilt,
@@ -388,7 +388,7 @@ fn prepare_carry_group_contexts(
 
         let mut no_observer = None;
 
-        let materialization = build_pricing_risk_neutral_anchor_materialization(
+        let materialization = build_pricing_sufficient_statistics_neutral_anchor_materialization(
             &base_request,
             &execution_input.runtime_interval_schedule,
             execution_input.interval_factors.as_slice(),
@@ -3084,7 +3084,7 @@ mod tests {
     };
     use crate::runner::{
         LocalTransitionRequestContext, VanillaOptionPricingIntervalFactors,
-        build_pricing_risk_neutral_anchor_materialization,
+        build_pricing_sufficient_statistics_neutral_anchor_materialization,
         certify_local_transition_theta_for_row_with_parallelism,
     };
     use crate::tests::support::{build_uniform_runtime_interval_schedule, valid_model_parameters};
@@ -3139,7 +3139,7 @@ mod tests {
 
         let mut no_observer = None;
 
-        let materialization = build_pricing_risk_neutral_anchor_materialization(
+        let materialization = build_pricing_sufficient_statistics_neutral_anchor_materialization(
             &pricing_request,
             &runtime_interval_schedule,
             interval_factors.as_slice(),

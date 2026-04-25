@@ -11,7 +11,7 @@ use janiform_engine_pricing::internal::{
 use janiform_engine_pricing::{
     VanillaOptionPricingMarketInputs, VanillaOptionPricingMarketInputsError,
 };
-use janiform_engine_risk::{
+use janiform_engine_sufficient_statistics::{
     SufficientStatisticsTransformSliceContext, SufficientStatisticsTransformSliceContextError,
     SufficientStatisticsTransformSliceSettings, SufficientStatisticsTransformSlices,
     solve_sufficient_statistics_transform_slices_with_solver_settings,
@@ -21,15 +21,17 @@ use janiform_model_kernels::hawkes::HawkesKernelParameters;
 use janiform_model_kernels::news::GammaSeverityMarkConfiguration;
 
 use super::catalog::BenchmarkScenarioWorkloadProfile;
-use super::harness::OraclePricerRiskBenchmarkHarnessError;
-use super::policy::OraclePricerRiskBenchmarkPolicy;
+use super::harness::OraclePricerSufficientStatisticsBenchmarkHarnessError;
+use super::policy::OraclePricerSufficientStatisticsBenchmarkPolicy;
 use super::utilities::{derive_invocation_seed, interpolate_range, unit_interval_from_seed};
 
 pub fn build_equation_specification(
     profile: &BenchmarkScenarioWorkloadProfile,
-    benchmark_policy: &OraclePricerRiskBenchmarkPolicy,
-) -> Result<ExponentialAffineTransformEquationSpecification, OraclePricerRiskBenchmarkHarnessError>
-{
+    benchmark_policy: &OraclePricerSufficientStatisticsBenchmarkPolicy,
+) -> Result<
+    ExponentialAffineTransformEquationSpecification,
+    OraclePricerSufficientStatisticsBenchmarkHarnessError,
+> {
     let model_parameters = benchmark_policy.model_parameters;
     let hawkes_kernel_parameters = HawkesKernelParameters::try_new(
         profile
@@ -39,18 +41,18 @@ pub fn build_equation_specification(
         model_parameters.hawkes_alpha,
         model_parameters.hawkes_rho,
     )
-    .map_err(
-        |source| OraclePricerRiskBenchmarkHarnessError::InvalidModelKernelParameters {
+    .map_err(|source| {
+        OraclePricerSufficientStatisticsBenchmarkHarnessError::InvalidModelKernelParameters {
             profile_id: profile.profile_id.clone(),
             source,
-        },
-    )?;
+        }
+    })?;
     let gamma_mark_configuration = GammaSeverityMarkConfiguration::try_new(
         model_parameters.gamma_shape_k,
         model_parameters.gamma_scale_theta,
     )
     .map_err(|source| {
-        OraclePricerRiskBenchmarkHarnessError::InvalidModelGammaMarkConfiguration {
+        OraclePricerSufficientStatisticsBenchmarkHarnessError::InvalidModelGammaMarkConfiguration {
             profile_id: profile.profile_id.clone(),
             source,
         }
@@ -64,10 +66,10 @@ pub fn build_equation_specification(
 
 pub fn build_pricing_engine_settings(
     profile: &BenchmarkScenarioWorkloadProfile,
-    benchmark_policy: &OraclePricerRiskBenchmarkPolicy,
-) -> Result<FourierInversionEngineSettings, OraclePricerRiskBenchmarkHarnessError> {
+    benchmark_policy: &OraclePricerSufficientStatisticsBenchmarkPolicy,
+) -> Result<FourierInversionEngineSettings, OraclePricerSufficientStatisticsBenchmarkHarnessError> {
     let contour = FourierInversionContour::try_new(1.5).map_err(|source| {
-        OraclePricerRiskBenchmarkHarnessError::InvalidPricingEngineSettings {
+        OraclePricerSufficientStatisticsBenchmarkHarnessError::InvalidPricingEngineSettings {
             profile_id: profile.profile_id.clone(),
             source: FourierInversionEngineSettingsError::InvalidContour { source },
         }
@@ -84,12 +86,12 @@ pub fn build_pricing_engine_settings(
         integration_step_count,
         FourierInversionQuadratureRule::Midpoint,
     )
-    .map_err(
-        |source| OraclePricerRiskBenchmarkHarnessError::InvalidPricingEngineSettings {
+    .map_err(|source| {
+        OraclePricerSufficientStatisticsBenchmarkHarnessError::InvalidPricingEngineSettings {
             profile_id: profile.profile_id.clone(),
             source: FourierInversionEngineSettingsError::InvalidNumericSettings { source },
-        },
-    )?;
+        }
+    })?;
     let stability_controls = FourierInversionIntegrationStabilityControls::try_new(
         1.0e-5,
         1.0e-4,
@@ -97,27 +99,30 @@ pub fn build_pricing_engine_settings(
         1.0e-2,
         FourierInversionNumericQualityGate::DiagnosticsOnly,
     )
-    .map_err(
-        |source| OraclePricerRiskBenchmarkHarnessError::InvalidPricingEngineSettings {
+    .map_err(|source| {
+        OraclePricerSufficientStatisticsBenchmarkHarnessError::InvalidPricingEngineSettings {
             profile_id: profile.profile_id.clone(),
             source: FourierInversionEngineSettingsError::InvalidStabilityControls { source },
-        },
-    )?;
+        }
+    })?;
 
     FourierInversionEngineSettings::try_new(contour, numeric_settings, stability_controls).map_err(
-        |source| OraclePricerRiskBenchmarkHarnessError::InvalidPricingEngineSettings {
-            profile_id: profile.profile_id.clone(),
-            source,
+        |source| {
+            OraclePricerSufficientStatisticsBenchmarkHarnessError::InvalidPricingEngineSettings {
+                profile_id: profile.profile_id.clone(),
+                source,
+            }
         },
     )
 }
 
 pub fn build_oracle_transform_input(
     profile: &BenchmarkScenarioWorkloadProfile,
-    benchmark_policy: &OraclePricerRiskBenchmarkPolicy,
+    benchmark_policy: &OraclePricerSufficientStatisticsBenchmarkPolicy,
     equation_specification: ExponentialAffineTransformEquationSpecification,
     invocation_seed: u64,
-) -> Result<ExponentialAffineTransformInput, OraclePricerRiskBenchmarkHarnessError> {
+) -> Result<ExponentialAffineTransformInput, OraclePricerSufficientStatisticsBenchmarkHarnessError>
+{
     let noise = unit_interval_from_seed(invocation_seed);
     let complementary_noise = 1.0 - noise;
     let solver_probes = benchmark_policy.oracle_solver_probes;
@@ -133,12 +138,12 @@ pub fn build_oracle_transform_input(
         known_news_intensity_factor,
         surprise_news_intensity_factor,
     )
-    .map_err(
-        |source| OraclePricerRiskBenchmarkHarnessError::InvalidOracleTransformInput {
+    .map_err(|source| {
+        OraclePricerSufficientStatisticsBenchmarkHarnessError::InvalidOracleTransformInput {
             profile_id: profile.profile_id.clone(),
             source: ExponentialAffineTransformInputError::InvalidNewsIntensityInput { source },
-        },
-    )?;
+        }
+    })?;
 
     ExponentialAffineTransformInput::try_new(
         equation_specification,
@@ -175,17 +180,17 @@ pub fn build_oracle_transform_input(
         profile.interval_settings.interval_delta,
         profile.model_state.initial_excitation_state,
     )
-    .map_err(
-        |source| OraclePricerRiskBenchmarkHarnessError::InvalidOracleTransformInput {
+    .map_err(|source| {
+        OraclePricerSufficientStatisticsBenchmarkHarnessError::InvalidOracleTransformInput {
             profile_id: profile.profile_id.clone(),
             source,
-        },
-    )
+        }
+    })
 }
 
 pub fn build_pricing_market_inputs(
     profile: &BenchmarkScenarioWorkloadProfile,
-    benchmark_policy: &OraclePricerRiskBenchmarkPolicy,
+    benchmark_policy: &OraclePricerSufficientStatisticsBenchmarkPolicy,
     invocation_seed: u64,
 ) -> Result<VanillaOptionPricingMarketInputs, VanillaOptionPricingMarketInputsError> {
     let spot_noise = unit_interval_from_seed(invocation_seed ^ 0x91);
@@ -228,13 +233,16 @@ pub fn build_pricing_market_inputs(
     )
 }
 
-pub(crate) fn build_risk_transform_slices(
+pub(crate) fn build_sufficient_statistics_transform_slices(
     profile: &BenchmarkScenarioWorkloadProfile,
-    benchmark_policy: &OraclePricerRiskBenchmarkPolicy,
+    benchmark_policy: &OraclePricerSufficientStatisticsBenchmarkPolicy,
     equation_specification: ExponentialAffineTransformEquationSpecification,
     solver_settings: ExponentialAffineTransformSolverSettings,
     component_seed: u64,
-) -> Result<Vec<SufficientStatisticsTransformSlices>, OraclePricerRiskBenchmarkHarnessError> {
+) -> Result<
+    Vec<SufficientStatisticsTransformSlices>,
+    OraclePricerSufficientStatisticsBenchmarkHarnessError,
+> {
     let mut slices_by_interval: Vec<SufficientStatisticsTransformSlices> =
         Vec::with_capacity(profile.interval_settings.horizon_interval_count);
     let sampling_settings = SufficientStatisticsTransformSliceSettings::default();
@@ -263,7 +271,7 @@ pub(crate) fn build_risk_transform_slices(
             surprise_news_intensity_factor,
         )
         .map_err(|source| {
-            OraclePricerRiskBenchmarkHarnessError::InvalidRiskSliceContext {
+            OraclePricerSufficientStatisticsBenchmarkHarnessError::InvalidRiskSliceContext {
                 profile_id: profile.profile_id.clone(),
                 interval_index,
                 source: SufficientStatisticsTransformSliceContextError::InvalidNewsIntensity {
@@ -281,7 +289,7 @@ pub(crate) fn build_risk_transform_slices(
             profile.model_state.initial_excitation_state,
         )
         .map_err(|source| {
-            OraclePricerRiskBenchmarkHarnessError::InvalidRiskSliceContext {
+            OraclePricerSufficientStatisticsBenchmarkHarnessError::InvalidRiskSliceContext {
                 profile_id: profile.profile_id.clone(),
                 interval_index,
                 source,
@@ -295,7 +303,7 @@ pub(crate) fn build_risk_transform_slices(
             Some(solver_settings),
         )
         .map_err(|source| {
-            OraclePricerRiskBenchmarkHarnessError::RiskSliceSolveFailure {
+            OraclePricerSufficientStatisticsBenchmarkHarnessError::SufficientStatisticsSliceSolveFailure {
                 profile_id: profile.profile_id.clone(),
                 interval_index,
                 source,

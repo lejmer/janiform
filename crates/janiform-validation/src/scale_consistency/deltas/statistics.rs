@@ -1,5 +1,5 @@
 use janiform_analytics_stylized_facts::stylized_facts::return_series_shared::compute_lag_autocorrelation;
-use janiform_engine_risk::SufficientStatisticsRiskPath;
+use janiform_engine_sufficient_statistics::SufficientStatisticsPath;
 use janiform_foundations::numeric::compute_sorted_quantile;
 
 use super::contracts::{
@@ -50,7 +50,7 @@ struct ScalarMetricFailureTemplate {
 }
 
 pub(super) fn compute_returns_central_variance(
-    path: &SufficientStatisticsRiskPath,
+    path: &SufficientStatisticsPath,
 ) -> ScalarMetricResult {
     let series = path
         .records
@@ -78,7 +78,7 @@ pub(super) fn compute_returns_central_variance(
 }
 
 pub(super) fn compute_open_jump_abs_tail_expected_shortfall_ratio(
-    path: &SufficientStatisticsRiskPath,
+    path: &SufficientStatisticsPath,
 ) -> ScalarMetricResult {
     let series = path
         .records
@@ -106,7 +106,7 @@ pub(super) fn compute_open_jump_abs_tail_expected_shortfall_ratio(
 }
 
 pub(super) fn compute_closed_gap_abs_tail_expected_shortfall_ratio(
-    path: &SufficientStatisticsRiskPath,
+    path: &SufficientStatisticsPath,
 ) -> ScalarMetricResult {
     let series = path
         .records
@@ -134,7 +134,7 @@ pub(super) fn compute_closed_gap_abs_tail_expected_shortfall_ratio(
 }
 
 pub(super) fn compute_closed_gap_vs_open_jump_wasserstein_distance(
-    path: &SufficientStatisticsRiskPath,
+    path: &SufficientStatisticsPath,
 ) -> ScalarMetricResult {
     let open_jump_series = path
         .records
@@ -173,8 +173,8 @@ pub(super) fn compute_closed_gap_vs_open_jump_wasserstein_distance(
 }
 
 pub(super) fn compute_return_distribution_wasserstein_distance(
-    coarse_path: &SufficientStatisticsRiskPath,
-    fine_path: &SufficientStatisticsRiskPath,
+    coarse_path: &SufficientStatisticsPath,
+    fine_path: &SufficientStatisticsPath,
 ) -> PairwiseMetricResult {
     let coarse_returns = coarse_path
         .records
@@ -209,8 +209,8 @@ pub(super) fn compute_return_distribution_wasserstein_distance(
 }
 
 pub(super) fn compute_abs_return_acf_distribution_distance(
-    coarse_path: &SufficientStatisticsRiskPath,
-    fine_path: &SufficientStatisticsRiskPath,
+    coarse_path: &SufficientStatisticsPath,
+    fine_path: &SufficientStatisticsPath,
     lag_interval_counts: &[usize],
 ) -> PairwiseMetricResult {
     let coarse_abs_returns = coarse_path
@@ -309,22 +309,25 @@ fn compute_abs_tail_expected_shortfall_ratio(series: &[f64]) -> Option<f64> {
     let mut sorted_values = series.to_vec();
     sorted_values.sort_by(f64::total_cmp);
 
-    let value_at_risk = compute_sorted_quantile(&sorted_values, TAIL_QUANTILE_LEVEL);
-    if !value_at_risk.is_finite() || value_at_risk <= MINIMUM_DENOMINATOR_MAGNITUDE {
+    let value_at_sufficient_statistics =
+        compute_sorted_quantile(&sorted_values, TAIL_QUANTILE_LEVEL);
+    if !value_at_sufficient_statistics.is_finite()
+        || value_at_sufficient_statistics <= MINIMUM_DENOMINATOR_MAGNITUDE
+    {
         return None;
     }
 
     let tail_values = sorted_values
         .iter()
         .copied()
-        .filter(|value| *value >= value_at_risk)
+        .filter(|value| *value >= value_at_sufficient_statistics)
         .collect::<Vec<_>>();
     if tail_values.is_empty() {
         return None;
     }
 
     let expected_shortfall = tail_values.iter().sum::<f64>() / tail_values.len() as f64;
-    let ratio = expected_shortfall / value_at_risk;
+    let ratio = expected_shortfall / value_at_sufficient_statistics;
 
     ratio.is_finite().then_some(ratio)
 }

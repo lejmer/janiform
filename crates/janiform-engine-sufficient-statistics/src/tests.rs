@@ -19,22 +19,21 @@ use std::error::Error;
 use super::{
     SUFFICIENT_STATISTICS_BATCH_SEED_PARTITION_POLICY,
     SUFFICIENT_STATISTICS_BOUNDARY_STATE_UPDATE_POLICY,
+    SUFFICIENT_STATISTICS_INTERVAL_FACTOR_POLICY,
     SUFFICIENT_STATISTICS_INTERVAL_RETURN_COMPONENT_ROUTING_POLICY,
-    SUFFICIENT_STATISTICS_RISK_INTERVAL_FACTOR_POLICY,
-    SUFFICIENT_STATISTICS_RISK_PATH_DIAGNOSTICS_SCHEMA_VERSION,
-    SUFFICIENT_STATISTICS_RISK_PATH_OUTPUT_SCHEMA_METADATA_VERSION,
-    SUFFICIENT_STATISTICS_RISK_PATH_PROVENANCE_SCHEMA_VERSION,
-    SUFFICIENT_STATISTICS_RISK_PATH_RECORD_SCHEMA_VERSION,
-    SUFFICIENT_STATISTICS_RISK_PATH_SCHEMA_VERSION,
-    SUFFICIENT_STATISTICS_RISK_RUN_REQUEST_SCHEMA_VERSION,
+    SUFFICIENT_STATISTICS_PATH_DIAGNOSTICS_SCHEMA_VERSION,
+    SUFFICIENT_STATISTICS_PATH_OUTPUT_SCHEMA_METADATA_VERSION,
+    SUFFICIENT_STATISTICS_PATH_PROVENANCE_SCHEMA_VERSION,
+    SUFFICIENT_STATISTICS_PATH_RECORD_SCHEMA_VERSION, SUFFICIENT_STATISTICS_PATH_SCHEMA_VERSION,
+    SUFFICIENT_STATISTICS_RUN_REQUEST_SCHEMA_VERSION,
     SUFFICIENT_STATISTICS_STREAMING_CHUNKING_POLICY, SufficientStatisticsBoundaryStateUpdateError,
     SufficientStatisticsBoundaryStateUpdateSnapshot, SufficientStatisticsGeneratedIntervalReturn,
-    SufficientStatisticsIntervalStatistics, SufficientStatisticsRiskIntervalFactors,
-    SufficientStatisticsRiskIntervalFactorsError, SufficientStatisticsRiskModelInputs,
-    SufficientStatisticsRiskPath, SufficientStatisticsRiskPathError,
-    SufficientStatisticsRiskPathRecord, SufficientStatisticsRiskReturnComponents,
-    SufficientStatisticsRiskReturnGenerationOptions, SufficientStatisticsRiskRunRequest,
-    SufficientStatisticsRiskRunRequestError, SufficientStatisticsStreamingChunkingSettings,
+    SufficientStatisticsIntervalFactors, SufficientStatisticsIntervalFactorsError,
+    SufficientStatisticsIntervalStatistics, SufficientStatisticsModelInputs,
+    SufficientStatisticsPath, SufficientStatisticsPathError, SufficientStatisticsPathRecord,
+    SufficientStatisticsReturnComponents, SufficientStatisticsReturnGenerationOptions,
+    SufficientStatisticsRunRequest, SufficientStatisticsRunRequestError,
+    SufficientStatisticsStreamingChunkingSettings,
     SufficientStatisticsStreamingChunkingSettingsError, SufficientStatisticsTransformSliceContext,
     SufficientStatisticsTransformSliceExecutionError,
     SufficientStatisticsTransformSliceSamplingError, SufficientStatisticsTransformSliceSettings,
@@ -59,22 +58,22 @@ fn run_request_round_trip_serialization_preserves_contract_shape() {
     assert_eq!(serialized["horizon_interval_count"], serde_json::json!(2));
     assert_eq!(serialized["interval_delta"], serde_json::json!(1.0));
     assert_eq!(
-        SufficientStatisticsRiskRunRequest::schema_version(),
-        SUFFICIENT_STATISTICS_RISK_RUN_REQUEST_SCHEMA_VERSION
+        SufficientStatisticsRunRequest::schema_version(),
+        SUFFICIENT_STATISTICS_RUN_REQUEST_SCHEMA_VERSION
     );
     assert_eq!(
-        SufficientStatisticsRiskIntervalFactors::policy(),
-        SUFFICIENT_STATISTICS_RISK_INTERVAL_FACTOR_POLICY
+        SufficientStatisticsIntervalFactors::policy(),
+        SUFFICIENT_STATISTICS_INTERVAL_FACTOR_POLICY
     );
 
-    let parsed: SufficientStatisticsRiskRunRequest =
+    let parsed: SufficientStatisticsRunRequest =
         serde_json::from_value(serialized).expect("serialized payload should deserialize");
     assert_eq!(parsed, run_request);
 }
 
 #[test]
 fn interval_factors_component_news_intensity_round_trip_and_context_consistency() {
-    let factors = SufficientStatisticsRiskIntervalFactors::try_new(
+    let factors = SufficientStatisticsIntervalFactors::try_new(
         vec![1.1, 0.9],
         vec![0.12, 0.03],
         vec![0.08, 0.07],
@@ -94,14 +93,14 @@ fn interval_factors_component_news_intensity_round_trip_and_context_consistency(
     assert_eq!(serialized["nu_h_known"], serde_json::json!([0.12, 0.03]));
     assert_eq!(serialized["nu_h_surprise"], serde_json::json!([0.08, 0.07]));
 
-    let parsed: SufficientStatisticsRiskIntervalFactors =
+    let parsed: SufficientStatisticsIntervalFactors =
         serde_json::from_value(serialized).expect("serialized interval factors should parse");
     assert_eq!(parsed, factors);
 }
 
 #[test]
 fn interval_factors_reject_inconsistent_total_and_component_news_intensity() {
-    let factors = SufficientStatisticsRiskIntervalFactors {
+    let factors = SufficientStatisticsIntervalFactors {
         interval_delta: Some(1.0),
         s_h: vec![1.1].into_boxed_slice(),
         nu_h: vec![0.3].into_boxed_slice(),
@@ -113,7 +112,7 @@ fn interval_factors_reject_inconsistent_total_and_component_news_intensity() {
         .expect_err("inconsistent total and component intensities must fail validation");
     assert!(matches!(
         error,
-        SufficientStatisticsRiskIntervalFactorsError::InconsistentNewsIntensityAggregation {
+        SufficientStatisticsIntervalFactorsError::InconsistentNewsIntensityAggregation {
             interval_index: 0,
             ..
         }
@@ -122,15 +121,15 @@ fn interval_factors_reject_inconsistent_total_and_component_news_intensity() {
 
 #[test]
 fn path_round_trip_serialization_preserves_interval_statistics_and_return_components() {
-    let record = build_risk_path_record(
+    let record = build_sufficient_statistics_path_record(
         0,
         SufficientStatisticsIntervalStatistics::try_new(0.7, 0.5, 3, 2)
             .expect("statistics should be valid"),
-        SufficientStatisticsRiskReturnComponents::try_new(0.04, -0.03, 0.01, 0.0, -0.02, -0.01)
+        SufficientStatisticsReturnComponents::try_new(0.04, -0.03, 0.01, 0.0, -0.02, -0.01)
             .expect("return components should be valid"),
         -0.01,
     );
-    let path = SufficientStatisticsRiskPath::try_new(
+    let path = SufficientStatisticsPath::try_new(
         17,
         1.0,
         1,
@@ -143,11 +142,11 @@ fn path_round_trip_serialization_preserves_interval_statistics_and_return_compon
     let serialized = serde_json::to_value(&path).expect("path payload should serialize");
     assert_eq!(
         serialized["schema_version"],
-        serde_json::json!(SUFFICIENT_STATISTICS_RISK_PATH_SCHEMA_VERSION)
+        serde_json::json!(SUFFICIENT_STATISTICS_PATH_SCHEMA_VERSION)
     );
     assert_eq!(
         serialized["records"][0]["schema_version"],
-        serde_json::json!(SUFFICIENT_STATISTICS_RISK_PATH_RECORD_SCHEMA_VERSION)
+        serde_json::json!(SUFFICIENT_STATISTICS_PATH_RECORD_SCHEMA_VERSION)
     );
     assert_eq!(
         serialized["records"][0]["sufficient_statistics"]["n_plus"],
@@ -159,37 +158,37 @@ fn path_round_trip_serialization_preserves_interval_statistics_and_return_compon
     );
     assert_eq!(
         serialized["output_schema_metadata"]["schema_version"],
-        serde_json::json!(SUFFICIENT_STATISTICS_RISK_PATH_OUTPUT_SCHEMA_METADATA_VERSION)
+        serde_json::json!(SUFFICIENT_STATISTICS_PATH_OUTPUT_SCHEMA_METADATA_VERSION)
     );
     assert_eq!(
         serialized["provenance"]["schema_version"],
-        serde_json::json!(SUFFICIENT_STATISTICS_RISK_PATH_PROVENANCE_SCHEMA_VERSION)
+        serde_json::json!(SUFFICIENT_STATISTICS_PATH_PROVENANCE_SCHEMA_VERSION)
     );
     assert_eq!(
         serialized["diagnostics"]["schema_version"],
-        serde_json::json!(SUFFICIENT_STATISTICS_RISK_PATH_DIAGNOSTICS_SCHEMA_VERSION)
+        serde_json::json!(SUFFICIENT_STATISTICS_PATH_DIAGNOSTICS_SCHEMA_VERSION)
     );
     assert_eq!(
         serialized["diagnostics"]["cumulative_n_plus"],
         serde_json::json!(3)
     );
 
-    let parsed: SufficientStatisticsRiskPath =
+    let parsed: SufficientStatisticsPath =
         serde_json::from_value(serialized).expect("serialized path should deserialize");
     assert_eq!(parsed, path);
 }
 
 #[test]
-fn risk_path_diagnostics_schema_metadata_exposes_required_fields() {
-    let record = build_risk_path_record(
+fn sufficient_statistics_path_diagnostics_schema_metadata_exposes_required_fields() {
+    let record = build_sufficient_statistics_path_record(
         0,
         SufficientStatisticsIntervalStatistics::try_new(0.9, 0.4, 2, 1)
             .expect("statistics should be valid"),
-        SufficientStatisticsRiskReturnComponents::try_new(0.03, -0.02, 0.01, 0.0, -0.01, 0.0)
+        SufficientStatisticsReturnComponents::try_new(0.03, -0.02, 0.01, 0.0, -0.01, 0.0)
             .expect("return components should be valid"),
         0.0,
     );
-    let path = SufficientStatisticsRiskPath::try_new(
+    let path = SufficientStatisticsPath::try_new(
         19,
         1.0,
         1,
@@ -241,16 +240,16 @@ fn risk_path_diagnostics_schema_metadata_exposes_required_fields() {
 }
 
 #[test]
-fn risk_path_deserialization_rejects_incorrect_diagnostics_with_field_context() {
-    let record = build_risk_path_record(
+fn sufficient_statistics_path_deserialization_rejects_incorrect_diagnostics_with_field_context() {
+    let record = build_sufficient_statistics_path_record(
         0,
         SufficientStatisticsIntervalStatistics::try_new(0.7, 0.5, 3, 2)
             .expect("statistics should be valid"),
-        SufficientStatisticsRiskReturnComponents::try_new(0.04, -0.03, 0.01, 0.0, -0.02, -0.01)
+        SufficientStatisticsReturnComponents::try_new(0.04, -0.03, 0.01, 0.0, -0.02, -0.01)
             .expect("return components should be valid"),
         -0.01,
     );
-    let path = SufficientStatisticsRiskPath::try_new(
+    let path = SufficientStatisticsPath::try_new(
         17,
         1.0,
         1,
@@ -263,7 +262,7 @@ fn risk_path_deserialization_rejects_incorrect_diagnostics_with_field_context() 
     let mut serialized = serde_json::to_value(path).expect("path payload should serialize");
     serialized["diagnostics"]["cumulative_n_plus"] = serde_json::json!(5);
 
-    let error = serde_json::from_value::<SufficientStatisticsRiskPath>(serialized)
+    let error = serde_json::from_value::<SufficientStatisticsPath>(serialized)
         .expect_err("mismatched diagnostics should fail deserialization");
     assert!(
         error
@@ -273,16 +272,16 @@ fn risk_path_deserialization_rejects_incorrect_diagnostics_with_field_context() 
 }
 
 #[test]
-fn risk_path_metadata_values_are_deterministic_across_repeated_runs() {
-    let record = build_risk_path_record(
+fn sufficient_statistics_path_metadata_values_are_deterministic_across_repeated_runs() {
+    let record = build_sufficient_statistics_path_record(
         0,
         SufficientStatisticsIntervalStatistics::try_new(0.7, 0.5, 3, 2)
             .expect("statistics should be valid"),
-        SufficientStatisticsRiskReturnComponents::try_new(0.04, -0.03, 0.01, 0.0, -0.02, -0.01)
+        SufficientStatisticsReturnComponents::try_new(0.04, -0.03, 0.01, 0.0, -0.02, -0.01)
             .expect("return components should be valid"),
         -0.01,
     );
-    let first_path = SufficientStatisticsRiskPath::try_new(
+    let first_path = SufficientStatisticsPath::try_new(
         17,
         1.0,
         1,
@@ -291,7 +290,7 @@ fn risk_path_metadata_values_are_deterministic_across_repeated_runs() {
         vec![record.clone()],
     )
     .expect("first path should be valid");
-    let second_path = SufficientStatisticsRiskPath::try_new(
+    let second_path = SufficientStatisticsPath::try_new(
         17,
         1.0,
         1,
@@ -311,7 +310,7 @@ fn risk_path_metadata_values_are_deterministic_across_repeated_runs() {
 
 #[test]
 fn run_request_validation_rejects_invalid_values_with_structured_errors() {
-    let invalid_horizon = SufficientStatisticsRiskRunRequest::try_new(
+    let invalid_horizon = SufficientStatisticsRunRequest::try_new(
         7,
         0,
         1.0,
@@ -321,10 +320,10 @@ fn run_request_validation_rejects_invalid_values_with_structured_errors() {
     .expect_err("zero horizon must fail validation");
     assert_eq!(
         invalid_horizon,
-        SufficientStatisticsRiskRunRequestError::InvalidHorizonIntervalCount { value: 0 }
+        SufficientStatisticsRunRequestError::InvalidHorizonIntervalCount { value: 0 }
     );
 
-    let invalid_interval_delta = SufficientStatisticsRiskRunRequest::try_new(
+    let invalid_interval_delta = SufficientStatisticsRunRequest::try_new(
         7,
         1,
         0.0,
@@ -334,10 +333,10 @@ fn run_request_validation_rejects_invalid_values_with_structured_errors() {
     .expect_err("non-positive interval delta must fail validation");
     assert_eq!(
         invalid_interval_delta,
-        SufficientStatisticsRiskRunRequestError::InvalidIntervalDelta { value: 0.0 }
+        SufficientStatisticsRunRequestError::InvalidIntervalDelta { value: 0.0 }
     );
 
-    let unsupported_non_hourly = SufficientStatisticsRiskRunRequest::try_new(
+    let unsupported_non_hourly = SufficientStatisticsRunRequest::try_new(
         7,
         1,
         0.5,
@@ -347,13 +346,13 @@ fn run_request_validation_rejects_invalid_values_with_structured_errors() {
     .expect_err("non-hourly interval delta without compatible factor metadata must fail");
     assert_eq!(
         unsupported_non_hourly,
-        SufficientStatisticsRiskRunRequestError::IntervalDeltaFactorMismatch {
+        SufficientStatisticsRunRequestError::IntervalDeltaFactorMismatch {
             requested_interval_delta: 0.5,
             available_factor_interval_delta: 1.0,
         }
     );
 
-    let supported_sub_hour = SufficientStatisticsRiskRunRequest::try_new(
+    let supported_sub_hour = SufficientStatisticsRunRequest::try_new(
         7,
         1,
         0.5,
@@ -377,7 +376,7 @@ fn deserialization_rejects_incomplete_or_malformed_request_payloads() {
         }
     });
     let missing_model_inputs_error =
-        serde_json::from_value::<SufficientStatisticsRiskRunRequest>(missing_model_inputs_payload)
+        serde_json::from_value::<SufficientStatisticsRunRequest>(missing_model_inputs_payload)
             .expect_err("missing model_inputs must fail deserialization");
 
     assert!(
@@ -398,7 +397,7 @@ fn deserialization_rejects_incomplete_or_malformed_request_payloads() {
         }
     });
     let malformed_factors_error =
-        serde_json::from_value::<SufficientStatisticsRiskRunRequest>(malformed_factors_payload)
+        serde_json::from_value::<SufficientStatisticsRunRequest>(malformed_factors_payload)
             .expect_err("mismatched interval_factors lengths must fail deserialization");
 
     assert!(
@@ -421,12 +420,12 @@ fn run_request_deserialization_defaults_interval_delta_to_hourly() {
         }
     });
 
-    let parsed_request: SufficientStatisticsRiskRunRequest =
+    let parsed_request: SufficientStatisticsRunRequest =
         serde_json::from_value(payload_without_interval_delta)
             .expect("payload without interval_delta should deserialize");
     assert_eq!(
         parsed_request.interval_delta,
-        SufficientStatisticsRiskRunRequest::default_interval_delta()
+        SufficientStatisticsRunRequest::default_interval_delta()
     );
 }
 
@@ -443,7 +442,7 @@ fn run_request_deserialization_accepts_component_only_news_intensity_factors() {
         }
     });
 
-    let parsed_request: SufficientStatisticsRiskRunRequest = serde_json::from_value(payload)
+    let parsed_request: SufficientStatisticsRunRequest = serde_json::from_value(payload)
         .expect("component-only news-intensity payload should parse");
     assert_eq!(parsed_request.interval_factors.nu_h.as_ref(), &[0.2, 0.1]);
     assert_eq!(
@@ -455,16 +454,16 @@ fn run_request_deserialization_accepts_component_only_news_intensity_factors() {
 
 #[test]
 fn path_validation_rejects_non_sequential_interval_indices() {
-    let first_record = build_risk_path_record(
+    let first_record = build_sufficient_statistics_path_record(
         1,
         SufficientStatisticsIntervalStatistics::try_new(0.7, 0.5, 3, 2)
             .expect("statistics should be valid"),
-        SufficientStatisticsRiskReturnComponents::try_new(0.04, -0.03, 0.01, 0.0, -0.02, -0.01)
+        SufficientStatisticsReturnComponents::try_new(0.04, -0.03, 0.01, 0.0, -0.02, -0.01)
             .expect("return components should be valid"),
         -0.01,
     );
 
-    let error = SufficientStatisticsRiskPath::try_new(
+    let error = SufficientStatisticsPath::try_new(
         17,
         1.0,
         1,
@@ -475,7 +474,7 @@ fn path_validation_rejects_non_sequential_interval_indices() {
     .expect_err("non-sequential interval index must fail validation");
     assert_eq!(
         error,
-        SufficientStatisticsRiskPathError::NonSequentialIntervalIndex {
+        SufficientStatisticsPathError::NonSequentialIntervalIndex {
             record_position: 0,
             record_interval_index: 1,
         }
@@ -499,7 +498,7 @@ fn interval_return_generator_open_window_routes_open_jump_and_suppresses_closed_
         open_jump_return,
         closed_gap_return,
         &mut observed_stream,
-        Some(SufficientStatisticsRiskReturnGenerationOptions {
+        Some(SufficientStatisticsReturnGenerationOptions {
             include_component_breakdown: true,
         }),
     )
@@ -563,7 +562,7 @@ fn interval_return_generator_closed_window_routes_closed_gap_and_supports_option
         open_jump_return,
         closed_gap_return,
         &mut stream_with_breakdown,
-        Some(SufficientStatisticsRiskReturnGenerationOptions {
+        Some(SufficientStatisticsReturnGenerationOptions {
             include_component_breakdown: true,
         }),
     )
@@ -575,7 +574,7 @@ fn interval_return_generator_closed_window_routes_closed_gap_and_supports_option
         open_jump_return,
         closed_gap_return,
         &mut stream_without_breakdown,
-        Some(SufficientStatisticsRiskReturnGenerationOptions {
+        Some(SufficientStatisticsReturnGenerationOptions {
             include_component_breakdown: false,
         }),
     )
@@ -599,7 +598,7 @@ fn interval_return_generator_is_seed_deterministic_across_repeated_runs() {
     let sampled_statistics = SufficientStatisticsIntervalStatistics::try_new(1.0, 0.4, 1, 2)
         .expect("sampled statistics should be valid");
     let driver_parameters = valid_nig_driver_parameters();
-    let options = Some(SufficientStatisticsRiskReturnGenerationOptions {
+    let options = Some(SufficientStatisticsReturnGenerationOptions {
         include_component_breakdown: true,
     });
     let mut first_stream = SplitMix64SimulationRandomnessStream::from_seed(44_003);
@@ -1210,8 +1209,8 @@ fn transform_slice_settings_rejects_invalid_probe_values() {
     );
 }
 
-fn build_valid_run_request() -> SufficientStatisticsRiskRunRequest {
-    SufficientStatisticsRiskRunRequest::try_new(
+fn build_valid_run_request() -> SufficientStatisticsRunRequest {
+    SufficientStatisticsRunRequest::try_new(
         17,
         2,
         1.0,
@@ -1266,15 +1265,15 @@ fn build_equation_specification() -> ExponentialAffineTransformEquationSpecifica
     .expect("equation specification should be valid")
 }
 
-fn build_model_inputs() -> SufficientStatisticsRiskModelInputs {
+fn build_model_inputs() -> SufficientStatisticsModelInputs {
     build_model_inputs_for_grid(2, 1.0)
 }
 
 fn build_model_inputs_for_grid(
     interval_count: usize,
     interval_delta: f64,
-) -> SufficientStatisticsRiskModelInputs {
-    SufficientStatisticsRiskModelInputs::try_new(
+) -> SufficientStatisticsModelInputs {
+    SufficientStatisticsModelInputs::try_new(
         build_equation_specification(),
         NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
             .expect("nig configuration should be valid"),
@@ -1300,13 +1299,13 @@ fn build_model_inputs_payload() -> serde_json::Value {
     serde_json::to_value(build_model_inputs()).expect("model inputs payload should serialize")
 }
 
-fn build_risk_path_record(
+fn build_sufficient_statistics_path_record(
     interval_index: usize,
     sufficient_statistics: SufficientStatisticsIntervalStatistics,
-    return_components: SufficientStatisticsRiskReturnComponents,
+    return_components: SufficientStatisticsReturnComponents,
     observed_log_price_end: f64,
-) -> SufficientStatisticsRiskPathRecord {
-    SufficientStatisticsRiskPathRecord::try_new(
+) -> SufficientStatisticsPathRecord {
+    SufficientStatisticsPathRecord::try_new(
         interval_index,
         sufficient_statistics,
         return_components.clone(),
@@ -1327,8 +1326,8 @@ fn valid_nig_driver_parameters() -> janiform_model_kernels::nig::NigBuySellDrive
         .expect("nig driver parameters should derive from shared-plus-shift configuration")
 }
 
-fn build_interval_factors() -> SufficientStatisticsRiskIntervalFactors {
-    SufficientStatisticsRiskIntervalFactors::try_new(
+fn build_interval_factors() -> SufficientStatisticsIntervalFactors {
+    SufficientStatisticsIntervalFactors::try_new(
         vec![1.1, 0.9],
         vec![0.12, 0.03],
         vec![0.08, 0.07],
@@ -1339,8 +1338,8 @@ fn build_interval_factors() -> SufficientStatisticsRiskIntervalFactors {
 
 fn build_interval_factors_with_interval_delta(
     interval_delta: f64,
-) -> SufficientStatisticsRiskIntervalFactors {
-    SufficientStatisticsRiskIntervalFactors::try_new(
+) -> SufficientStatisticsIntervalFactors {
+    SufficientStatisticsIntervalFactors::try_new(
         vec![1.1, 0.9],
         vec![0.12, 0.03],
         vec![0.08, 0.07],

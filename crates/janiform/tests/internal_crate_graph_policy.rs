@@ -60,7 +60,7 @@ fn rust_internal_crate_graph_policy_fixture_declares_required_crates_and_facade_
         "janiform-affine-oracle",
         "janiform-market-time",
         "janiform-engine-pricing",
-        "janiform-engine-risk",
+        "janiform-engine-sufficient-statistics",
         "janiform-engine-simulation",
         "janiform-calibration-artifacts",
         "janiform-calibration-runtime",
@@ -92,10 +92,10 @@ fn rust_internal_crate_graph_policy_fixture_declares_required_crates_and_facade_
         "pricing",
         "randomness",
         "return_decomposition",
-        "risk",
         "risk_neutral",
         "seasonality",
         "simulation",
+        "sufficient_statistics",
         "verification",
     ]
     .into_iter()
@@ -114,7 +114,10 @@ fn rust_internal_crate_graph_policy_fixture_declares_required_crates_and_facade_
     assert_eq!(policy.crates["janiform-model-kernels"].status, "existing");
     assert_eq!(policy.crates["janiform-affine-oracle"].status, "existing");
     assert_eq!(policy.crates["janiform-engine-pricing"].status, "existing");
-    assert_eq!(policy.crates["janiform-engine-risk"].status, "existing");
+    assert_eq!(
+        policy.crates["janiform-engine-sufficient-statistics"].status,
+        "existing"
+    );
     assert_eq!(
         policy.crates["janiform-engine-simulation"].status,
         "existing"

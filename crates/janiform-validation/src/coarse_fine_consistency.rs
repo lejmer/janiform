@@ -10,7 +10,7 @@ use janiform_engine_pricing::internal::{
 use janiform_engine_pricing::{
     VanillaOptionPayoffConfiguration, VanillaOptionPayoffType, VanillaOptionPricingMarketInputs,
 };
-use janiform_engine_risk::{
+use janiform_engine_sufficient_statistics::{
     SufficientStatisticsTransformSliceContext, SufficientStatisticsTransformSliceSettings,
     SufficientStatisticsTransformSlices, sample_interval_statistics_batch_from_transform_slices,
     solve_sufficient_statistics_transform_slices_with_solver_settings,
@@ -27,10 +27,10 @@ use janiform_foundations::complex_math::ComplexScalar;
 use janiform_foundations::complex_math::complex_exponential;
 use janiform_governance_bench::benchmarking::{
     BenchmarkScenarioCatalog, BenchmarkScenarioCatalogLoadError, BenchmarkScenarioWorkloadProfile,
-    OraclePricerRiskBenchmarkPolicy, OraclePricerRiskBenchmarkPolicyValidationError,
-    build_equation_specification, build_oracle_transform_input, build_pricing_engine_settings,
-    build_pricing_market_inputs, derive_invocation_seed, fnv1a_64, interpolate_range, splitmix64,
-    unit_interval_from_seed,
+    OraclePricerSufficientStatisticsBenchmarkPolicy,
+    OraclePricerSufficientStatisticsBenchmarkPolicyValidationError, build_equation_specification,
+    build_oracle_transform_input, build_pricing_engine_settings, build_pricing_market_inputs,
+    derive_invocation_seed, fnv1a_64, interpolate_range, splitmix64, unit_interval_from_seed,
 };
 use janiform_model_kernels::hawkes::HawkesExcitationState;
 
@@ -40,8 +40,7 @@ pub const COARSE_FINE_CONSISTENCY_REGRESSION_REPORT_SCHEMA_VERSION: &str =
     "benchmark.coarse_fine_consistency.report.v1";
 pub const COARSE_FINE_CONSISTENCY_REGRESSION_DETERMINISM_POLICY: &str =
     "canonical_profile_order_and_reproducibility_seed_partitioning.v1";
-pub const COARSE_FINE_CONSISTENCY_REGRESSION_VARIANCE_CONTROL_POLICY: &str =
-    "paired_path_seed_reuse_for_risk_statistics_and_fixed_seeded_fine_pricing_reference.v1";
+pub const COARSE_FINE_CONSISTENCY_REGRESSION_VARIANCE_CONTROL_POLICY: &str = "paired_path_seed_reuse_for_sufficient_statistics_statistics_and_fixed_seeded_fine_pricing_reference.v1";
 pub const COARSE_FINE_CONSISTENCY_REGRESSION_METRIC_POLICY: &str =
     "absolute_and_relative_metric_delta_thresholds_with_inclusive_pass_boundaries.v1";
 
@@ -96,12 +95,12 @@ const COARSE_FINE_CONSISTENCY_REQUIRED_RUN_METADATA_FIELDS: [&str; 12] = [
     "profile_seed",
     "oracle_component_seed",
     "pricing_component_seed",
-    "risk_component_seed",
+    "sufficient_statistics_component_seed",
     "coarse_interval_delta",
     "fine_interval_delta",
     "horizon_interval_count",
     "fine_subinterval_count_per_coarse_interval",
-    "paired_risk_path_count",
+    "paired_sufficient_statistics_path_count",
     "fine_pricing_reference_path_count",
     "fine_pricing_reference_step_count",
 ];
@@ -111,7 +110,7 @@ const COARSE_FINE_CONSISTENCY_REQUIRED_RUN_METADATA_FIELDS: [&str; 12] = [
 pub struct CoarseFineConsistencyRegressionExecutionConfig {
     pub reproducibility_seed: u64,
     pub fine_subinterval_count_per_coarse_interval: usize,
-    pub paired_risk_path_count: usize,
+    pub paired_sufficient_statistics_path_count: usize,
     pub fine_pricing_reference_path_count: usize,
     pub fine_pricing_reference_step_count: usize,
 }
@@ -121,7 +120,7 @@ impl Default for CoarseFineConsistencyRegressionExecutionConfig {
         Self {
             reproducibility_seed: 0,
             fine_subinterval_count_per_coarse_interval: 4,
-            paired_risk_path_count: 128,
+            paired_sufficient_statistics_path_count: 128,
             fine_pricing_reference_path_count: 2_048,
             fine_pricing_reference_step_count: 16,
         }
@@ -137,10 +136,10 @@ impl CoarseFineConsistencyRegressionExecutionConfig {
                 },
             );
         }
-        if self.paired_risk_path_count == 0 {
+        if self.paired_sufficient_statistics_path_count == 0 {
             return Err(
                 CoarseFineConsistencyRegressionExecutionConfigError::InvalidRiskPathCount {
-                    value: self.paired_risk_path_count,
+                    value: self.paired_sufficient_statistics_path_count,
                 },
             );
         }
@@ -180,7 +179,7 @@ impl Display for CoarseFineConsistencyRegressionExecutionConfigError {
             ),
             Self::InvalidRiskPathCount { value } => write!(
                 formatter,
-                "execution_config.paired_risk_path_count must be greater than 0, found {value}"
+                "execution_config.paired_sufficient_statistics_path_count must be greater than 0, found {value}"
             ),
             Self::InvalidFinePricingPathCount { value } => write!(
                 formatter,
@@ -261,10 +260,10 @@ pub struct CoarseFineConsistencyRegressionIntervalToleranceBand {
     pub oracle_transform_value_absolute_tolerance: f64,
     pub pricing_price_absolute_delta_tolerance: f64,
     pub pricing_price_relative_delta_tolerance: f64,
-    pub risk_integrated_intensity_mean_absolute_delta_tolerance: f64,
-    pub risk_integrated_intensity_mean_relative_delta_tolerance: f64,
-    pub risk_event_count_mean_absolute_delta_tolerance: f64,
-    pub risk_event_count_mean_relative_delta_tolerance: f64,
+    pub sufficient_statistics_integrated_intensity_mean_absolute_delta_tolerance: f64,
+    pub sufficient_statistics_integrated_intensity_mean_relative_delta_tolerance: f64,
+    pub sufficient_statistics_event_count_mean_absolute_delta_tolerance: f64,
+    pub sufficient_statistics_event_count_mean_relative_delta_tolerance: f64,
 }
 
 impl CoarseFineConsistencyRegressionIntervalToleranceBand {
@@ -306,20 +305,20 @@ impl CoarseFineConsistencyRegressionIntervalToleranceBand {
                 self.pricing_price_relative_delta_tolerance,
             ),
             (
-                "risk_integrated_intensity_mean_absolute_delta_tolerance",
-                self.risk_integrated_intensity_mean_absolute_delta_tolerance,
+                "sufficient_statistics_integrated_intensity_mean_absolute_delta_tolerance",
+                self.sufficient_statistics_integrated_intensity_mean_absolute_delta_tolerance,
             ),
             (
-                "risk_integrated_intensity_mean_relative_delta_tolerance",
-                self.risk_integrated_intensity_mean_relative_delta_tolerance,
+                "sufficient_statistics_integrated_intensity_mean_relative_delta_tolerance",
+                self.sufficient_statistics_integrated_intensity_mean_relative_delta_tolerance,
             ),
             (
-                "risk_event_count_mean_absolute_delta_tolerance",
-                self.risk_event_count_mean_absolute_delta_tolerance,
+                "sufficient_statistics_event_count_mean_absolute_delta_tolerance",
+                self.sufficient_statistics_event_count_mean_absolute_delta_tolerance,
             ),
             (
-                "risk_event_count_mean_relative_delta_tolerance",
-                self.risk_event_count_mean_relative_delta_tolerance,
+                "sufficient_statistics_event_count_mean_relative_delta_tolerance",
+                self.sufficient_statistics_event_count_mean_relative_delta_tolerance,
             ),
         ];
 
@@ -397,15 +396,15 @@ impl Default for CoarseFineConsistencyRegressionToleranceConfig {
                 oracle_transform_value_absolute_tolerance: 0.005,
                 pricing_price_absolute_delta_tolerance: 0.20,
                 pricing_price_relative_delta_tolerance: 0.15,
-                risk_integrated_intensity_mean_absolute_delta_tolerance: 0.65,
-                risk_integrated_intensity_mean_relative_delta_tolerance: 0.65,
-                risk_event_count_mean_absolute_delta_tolerance: 0.75,
-                risk_event_count_mean_relative_delta_tolerance: 0.75,
+                sufficient_statistics_integrated_intensity_mean_absolute_delta_tolerance: 0.65,
+                sufficient_statistics_integrated_intensity_mean_relative_delta_tolerance: 0.65,
+                sufficient_statistics_event_count_mean_absolute_delta_tolerance: 0.75,
+                sufficient_statistics_event_count_mean_relative_delta_tolerance: 0.75,
             }],
             change_log: vec![CoarseFineConsistencyRegressionTolerancePolicyChangeLogEntry {
                 policy_version: "1.0.0".to_string(),
                 recorded_at_utc: "2026-02-27T00:00:00Z".to_string(),
-                rationale: "Default engine-level benchmark and regression thresholds covering oracle outputs, pricing outputs, and risk summary metrics.".to_string(),
+                rationale: "Default engine-level benchmark and regression thresholds covering oracle outputs, pricing outputs, and sufficient-statistics summary metrics.".to_string(),
             }],
         }
     }
@@ -731,12 +730,12 @@ pub struct CoarseFineConsistencyScenarioRunMetadata {
     pub profile_seed: u64,
     pub oracle_component_seed: u64,
     pub pricing_component_seed: u64,
-    pub risk_component_seed: u64,
+    pub sufficient_statistics_component_seed: u64,
     pub coarse_interval_delta: f64,
     pub fine_interval_delta: f64,
     pub horizon_interval_count: usize,
     pub fine_subinterval_count_per_coarse_interval: usize,
-    pub paired_risk_path_count: usize,
+    pub paired_sufficient_statistics_path_count: usize,
     pub fine_pricing_reference_path_count: usize,
     pub fine_pricing_reference_step_count: usize,
 }
@@ -758,14 +757,14 @@ pub struct CoarseFineConsistencyMetricDelta {
 pub struct CoarseFineConsistencyScenarioSummary {
     pub coarse_pricing_value: f64,
     pub fine_pricing_reference_value: f64,
-    pub coarse_risk_mean_a_plus: f64,
-    pub fine_risk_mean_a_plus: f64,
-    pub coarse_risk_mean_a_minus: f64,
-    pub fine_risk_mean_a_minus: f64,
-    pub coarse_risk_mean_n_plus: f64,
-    pub fine_risk_mean_n_plus: f64,
-    pub coarse_risk_mean_n_minus: f64,
-    pub fine_risk_mean_n_minus: f64,
+    pub coarse_sufficient_statistics_mean_a_plus: f64,
+    pub fine_sufficient_statistics_mean_a_plus: f64,
+    pub coarse_sufficient_statistics_mean_a_minus: f64,
+    pub fine_sufficient_statistics_mean_a_minus: f64,
+    pub coarse_sufficient_statistics_mean_n_plus: f64,
+    pub fine_sufficient_statistics_mean_n_plus: f64,
+    pub coarse_sufficient_statistics_mean_n_minus: f64,
+    pub fine_sufficient_statistics_mean_n_minus: f64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -813,7 +812,7 @@ pub enum CoarseFineConsistencyRegressionHarnessError {
         source: BenchmarkScenarioCatalogLoadError,
     },
     InvalidBenchmarkPolicy {
-        source: OraclePricerRiskBenchmarkPolicyValidationError,
+        source: OraclePricerSufficientStatisticsBenchmarkPolicyValidationError,
     },
     InvalidExecutionConfig {
         source: CoarseFineConsistencyRegressionExecutionConfigError,
@@ -882,7 +881,7 @@ struct CoarseFineScenarioSeeds {
     profile_seed: u64,
     oracle_component_seed: u64,
     pricing_component_seed: u64,
-    risk_component_seed: u64,
+    sufficient_statistics_component_seed: u64,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -976,7 +975,7 @@ impl CoarseFineRiskMetricAccumulator {
 
 pub fn run_coarse_fine_consistency_regression_harness(
     catalog: &BenchmarkScenarioCatalog,
-    benchmark_policy: &OraclePricerRiskBenchmarkPolicy,
+    benchmark_policy: &OraclePricerSufficientStatisticsBenchmarkPolicy,
     tolerance_config: CoarseFineConsistencyRegressionToleranceConfig,
     execution_config: CoarseFineConsistencyRegressionExecutionConfig,
 ) -> Result<CoarseFineConsistencyRegressionReport, CoarseFineConsistencyRegressionHarnessError> {
@@ -1066,7 +1065,7 @@ pub fn run_coarse_fine_consistency_regression_harness(
 
 fn run_coarse_fine_consistency_scenario(
     profile: &BenchmarkScenarioWorkloadProfile,
-    benchmark_policy: &OraclePricerRiskBenchmarkPolicy,
+    benchmark_policy: &OraclePricerSufficientStatisticsBenchmarkPolicy,
     tolerance_config: &CoarseFineConsistencyRegressionToleranceConfig,
     execution_config: CoarseFineConsistencyRegressionExecutionConfig,
 ) -> Result<CoarseFineConsistencyScenarioReport, CoarseFineConsistencyRegressionHarnessError> {
@@ -1080,14 +1079,18 @@ fn run_coarse_fine_consistency_scenario(
     let oracle_experiment = run_coarse_fine_oracle_experiment(profile, benchmark_policy, &setup)?;
     let pricing_experiment =
         run_coarse_fine_pricing_experiment(profile, benchmark_policy, execution_config, &setup)?;
-    let risk_experiment =
-        run_coarse_fine_risk_experiment(profile, benchmark_policy, execution_config, &setup)?;
+    let sufficient_statistics_experiment = run_coarse_fine_sufficient_statistics_experiment(
+        profile,
+        benchmark_policy,
+        execution_config,
+        &setup,
+    )?;
 
     let metric_deltas = build_coarse_fine_metric_deltas(
         &setup.tolerance_band,
         oracle_experiment,
         pricing_experiment,
-        risk_experiment,
+        sufficient_statistics_experiment,
     );
 
     Ok(build_coarse_fine_scenario_report(
@@ -1095,14 +1098,14 @@ fn run_coarse_fine_consistency_scenario(
         execution_config,
         &setup,
         pricing_experiment,
-        risk_experiment,
+        sufficient_statistics_experiment,
         metric_deltas,
     ))
 }
 
 fn build_coarse_fine_scenario_setup(
     profile: &BenchmarkScenarioWorkloadProfile,
-    benchmark_policy: &OraclePricerRiskBenchmarkPolicy,
+    benchmark_policy: &OraclePricerSufficientStatisticsBenchmarkPolicy,
     tolerance_config: &CoarseFineConsistencyRegressionToleranceConfig,
     execution_config: CoarseFineConsistencyRegressionExecutionConfig,
 ) -> Result<CoarseFineScenarioSetup, CoarseFineConsistencyRegressionHarnessError> {
@@ -1136,7 +1139,7 @@ fn build_coarse_fine_scenario_setup(
 
 fn build_coarse_fine_scenario_seeds(
     profile: &BenchmarkScenarioWorkloadProfile,
-    benchmark_policy: &OraclePricerRiskBenchmarkPolicy,
+    benchmark_policy: &OraclePricerSufficientStatisticsBenchmarkPolicy,
     execution_config: CoarseFineConsistencyRegressionExecutionConfig,
 ) -> CoarseFineScenarioSeeds {
     let profile_seed = splitmix64(
@@ -1153,8 +1156,11 @@ fn build_coarse_fine_scenario_seeds(
         pricing_component_seed: splitmix64(
             profile_seed ^ benchmark_policy.seed_partition.pricing_component_seed_salt,
         ),
-        risk_component_seed: splitmix64(
-            profile_seed ^ benchmark_policy.seed_partition.risk_component_seed_salt,
+        sufficient_statistics_component_seed: splitmix64(
+            profile_seed
+                ^ benchmark_policy
+                    .seed_partition
+                    .sufficient_statistics_component_seed_salt,
         ),
     }
 }
@@ -1209,7 +1215,7 @@ fn build_coarse_fine_oracle_solver_settings(
 fn build_scenario_equation_specification(
     scenario_id: &str,
     profile: &BenchmarkScenarioWorkloadProfile,
-    benchmark_policy: &OraclePricerRiskBenchmarkPolicy,
+    benchmark_policy: &OraclePricerSufficientStatisticsBenchmarkPolicy,
 ) -> Result<
     ExponentialAffineTransformEquationSpecification,
     CoarseFineConsistencyRegressionHarnessError,
@@ -1224,7 +1230,7 @@ fn build_scenario_equation_specification(
 
 fn run_coarse_fine_oracle_experiment(
     profile: &BenchmarkScenarioWorkloadProfile,
-    benchmark_policy: &OraclePricerRiskBenchmarkPolicy,
+    benchmark_policy: &OraclePricerSufficientStatisticsBenchmarkPolicy,
     setup: &CoarseFineScenarioSetup,
 ) -> Result<CoarseFineOracleExperiment, CoarseFineConsistencyRegressionHarnessError> {
     let equation_specification =
@@ -1283,7 +1289,7 @@ fn run_coarse_fine_oracle_experiment(
 
 fn run_coarse_fine_pricing_experiment(
     profile: &BenchmarkScenarioWorkloadProfile,
-    benchmark_policy: &OraclePricerRiskBenchmarkPolicy,
+    benchmark_policy: &OraclePricerSufficientStatisticsBenchmarkPolicy,
     execution_config: CoarseFineConsistencyRegressionExecutionConfig,
     setup: &CoarseFineScenarioSetup,
 ) -> Result<CoarseFinePricingExperiment, CoarseFineConsistencyRegressionHarnessError> {
@@ -1344,7 +1350,7 @@ fn run_coarse_fine_pricing_experiment(
 fn build_coarse_fine_pricing_inputs(
     scenario_id: &str,
     pricing_market_inputs: &VanillaOptionPricingMarketInputs,
-    benchmark_policy: &OraclePricerRiskBenchmarkPolicy,
+    benchmark_policy: &OraclePricerSufficientStatisticsBenchmarkPolicy,
     pricing_invocation_seed: u64,
 ) -> Result<CoarseFinePricingInputs, CoarseFineConsistencyRegressionHarnessError> {
     let strike = pricing_market_inputs.single_strike().map_err(|source| {
@@ -1416,54 +1422,59 @@ fn price_coarse_fine_benchmark_vanilla_option(
     Ok(coarse_pricing_result.price)
 }
 
-fn run_coarse_fine_risk_experiment(
+fn run_coarse_fine_sufficient_statistics_experiment(
     profile: &BenchmarkScenarioWorkloadProfile,
-    benchmark_policy: &OraclePricerRiskBenchmarkPolicy,
+    benchmark_policy: &OraclePricerSufficientStatisticsBenchmarkPolicy,
     execution_config: CoarseFineConsistencyRegressionExecutionConfig,
     setup: &CoarseFineScenarioSetup,
 ) -> Result<CoarseFineRiskExperiment, CoarseFineConsistencyRegressionHarnessError> {
-    let coarse_risk_factor_series =
-        build_coarse_risk_factor_series(profile, benchmark_policy, setup.seeds.risk_component_seed);
+    let coarse_sufficient_statistics_factor_series =
+        build_coarse_sufficient_statistics_factor_series(
+            profile,
+            benchmark_policy,
+            setup.seeds.sufficient_statistics_component_seed,
+        );
 
-    let fine_risk_factor_series = expand_risk_factor_series_for_fine_reference(
-        &coarse_risk_factor_series,
-        execution_config.fine_subinterval_count_per_coarse_interval,
-    );
+    let fine_sufficient_statistics_factor_series =
+        expand_sufficient_statistics_factor_series_for_fine_reference(
+            &coarse_sufficient_statistics_factor_series,
+            execution_config.fine_subinterval_count_per_coarse_interval,
+        );
     let equation_specification =
         build_scenario_equation_specification(&setup.scenario_id, profile, benchmark_policy)?;
 
-    let coarse_risk_slices = solve_coarse_fine_risk_slices(
+    let coarse_sufficient_statistics_slices = solve_coarse_fine_sufficient_statistics_slices(
         &setup.scenario_id,
         equation_specification,
         setup.oracle_solver_settings,
         profile.model_state.initial_excitation_state,
         profile.interval_settings.interval_delta,
-        &coarse_risk_factor_series,
+        &coarse_sufficient_statistics_factor_series,
     )?;
 
-    let fine_risk_slices = solve_coarse_fine_risk_slices(
+    let fine_sufficient_statistics_slices = solve_coarse_fine_sufficient_statistics_slices(
         &setup.scenario_id,
         equation_specification,
         setup.oracle_solver_settings,
         profile.model_state.initial_excitation_state,
         setup.fine_interval_delta,
-        &fine_risk_factor_series,
+        &fine_sufficient_statistics_factor_series,
     )?;
 
-    let coarse_metric_means = sample_coarse_risk_metric_means(
+    let coarse_metric_means = sample_coarse_sufficient_statistics_metric_means(
         &setup.scenario_id,
-        setup.seeds.risk_component_seed,
-        execution_config.paired_risk_path_count,
-        &coarse_risk_slices,
+        setup.seeds.sufficient_statistics_component_seed,
+        execution_config.paired_sufficient_statistics_path_count,
+        &coarse_sufficient_statistics_slices,
     )?;
 
-    let fine_metric_means = sample_fine_risk_reference_metric_means(
+    let fine_metric_means = sample_fine_sufficient_statistics_reference_metric_means(
         &setup.scenario_id,
-        setup.seeds.risk_component_seed,
-        execution_config.paired_risk_path_count,
+        setup.seeds.sufficient_statistics_component_seed,
+        execution_config.paired_sufficient_statistics_path_count,
         profile.interval_settings.horizon_interval_count,
         execution_config.fine_subinterval_count_per_coarse_interval,
-        &fine_risk_slices,
+        &fine_sufficient_statistics_slices,
     )?;
 
     Ok(CoarseFineRiskExperiment {
@@ -1476,7 +1487,7 @@ fn build_coarse_fine_metric_deltas(
     tolerance_band: &CoarseFineConsistencyRegressionIntervalToleranceBand,
     oracle_experiment: CoarseFineOracleExperiment,
     pricing_experiment: CoarseFinePricingExperiment,
-    risk_experiment: CoarseFineRiskExperiment,
+    sufficient_statistics_experiment: CoarseFineRiskExperiment,
 ) -> Vec<CoarseFineConsistencyMetricDelta> {
     vec![
         build_coarse_fine_metric_delta(
@@ -1521,36 +1532,52 @@ fn build_coarse_fine_metric_deltas(
             tolerance_band.pricing_price_relative_delta_tolerance,
         ),
         build_coarse_fine_metric_delta(
-            "risk_mean_a_plus",
+            "sufficient_statistics_mean_a_plus",
             VerificationSemanticBucket::ActivityCoupling,
-            risk_experiment.coarse_metric_means.mean_a_plus,
-            risk_experiment.fine_metric_means.mean_a_plus,
-            tolerance_band.risk_integrated_intensity_mean_absolute_delta_tolerance,
-            tolerance_band.risk_integrated_intensity_mean_relative_delta_tolerance,
+            sufficient_statistics_experiment
+                .coarse_metric_means
+                .mean_a_plus,
+            sufficient_statistics_experiment
+                .fine_metric_means
+                .mean_a_plus,
+            tolerance_band.sufficient_statistics_integrated_intensity_mean_absolute_delta_tolerance,
+            tolerance_band.sufficient_statistics_integrated_intensity_mean_relative_delta_tolerance,
         ),
         build_coarse_fine_metric_delta(
-            "risk_mean_a_minus",
+            "sufficient_statistics_mean_a_minus",
             VerificationSemanticBucket::ActivityCoupling,
-            risk_experiment.coarse_metric_means.mean_a_minus,
-            risk_experiment.fine_metric_means.mean_a_minus,
-            tolerance_band.risk_integrated_intensity_mean_absolute_delta_tolerance,
-            tolerance_band.risk_integrated_intensity_mean_relative_delta_tolerance,
+            sufficient_statistics_experiment
+                .coarse_metric_means
+                .mean_a_minus,
+            sufficient_statistics_experiment
+                .fine_metric_means
+                .mean_a_minus,
+            tolerance_band.sufficient_statistics_integrated_intensity_mean_absolute_delta_tolerance,
+            tolerance_band.sufficient_statistics_integrated_intensity_mean_relative_delta_tolerance,
         ),
         build_coarse_fine_metric_delta(
-            "risk_mean_n_plus",
+            "sufficient_statistics_mean_n_plus",
             VerificationSemanticBucket::ActivityCoupling,
-            risk_experiment.coarse_metric_means.mean_n_plus,
-            risk_experiment.fine_metric_means.mean_n_plus,
-            tolerance_band.risk_event_count_mean_absolute_delta_tolerance,
-            tolerance_band.risk_event_count_mean_relative_delta_tolerance,
+            sufficient_statistics_experiment
+                .coarse_metric_means
+                .mean_n_plus,
+            sufficient_statistics_experiment
+                .fine_metric_means
+                .mean_n_plus,
+            tolerance_band.sufficient_statistics_event_count_mean_absolute_delta_tolerance,
+            tolerance_band.sufficient_statistics_event_count_mean_relative_delta_tolerance,
         ),
         build_coarse_fine_metric_delta(
-            "risk_mean_n_minus",
+            "sufficient_statistics_mean_n_minus",
             VerificationSemanticBucket::ActivityCoupling,
-            risk_experiment.coarse_metric_means.mean_n_minus,
-            risk_experiment.fine_metric_means.mean_n_minus,
-            tolerance_band.risk_event_count_mean_absolute_delta_tolerance,
-            tolerance_band.risk_event_count_mean_relative_delta_tolerance,
+            sufficient_statistics_experiment
+                .coarse_metric_means
+                .mean_n_minus,
+            sufficient_statistics_experiment
+                .fine_metric_means
+                .mean_n_minus,
+            tolerance_band.sufficient_statistics_event_count_mean_absolute_delta_tolerance,
+            tolerance_band.sufficient_statistics_event_count_mean_relative_delta_tolerance,
         ),
     ]
 }
@@ -1560,7 +1587,7 @@ fn build_coarse_fine_scenario_report(
     execution_config: CoarseFineConsistencyRegressionExecutionConfig,
     setup: &CoarseFineScenarioSetup,
     pricing_experiment: CoarseFinePricingExperiment,
-    risk_experiment: CoarseFineRiskExperiment,
+    sufficient_statistics_experiment: CoarseFineRiskExperiment,
     metric_deltas: Vec<CoarseFineConsistencyMetricDelta>,
 ) -> CoarseFineConsistencyScenarioReport {
     let failed_metric_count = metric_deltas
@@ -1590,27 +1617,44 @@ fn build_coarse_fine_scenario_report(
             profile_seed: setup.seeds.profile_seed,
             oracle_component_seed: setup.seeds.oracle_component_seed,
             pricing_component_seed: setup.seeds.pricing_component_seed,
-            risk_component_seed: setup.seeds.risk_component_seed,
+            sufficient_statistics_component_seed: setup.seeds.sufficient_statistics_component_seed,
             coarse_interval_delta: profile.interval_settings.interval_delta,
             fine_interval_delta: setup.fine_interval_delta,
             horizon_interval_count: profile.interval_settings.horizon_interval_count,
             fine_subinterval_count_per_coarse_interval: execution_config
                 .fine_subinterval_count_per_coarse_interval,
-            paired_risk_path_count: execution_config.paired_risk_path_count,
+            paired_sufficient_statistics_path_count: execution_config
+                .paired_sufficient_statistics_path_count,
             fine_pricing_reference_path_count: execution_config.fine_pricing_reference_path_count,
             fine_pricing_reference_step_count: execution_config.fine_pricing_reference_step_count,
         },
         summary: CoarseFineConsistencyScenarioSummary {
             coarse_pricing_value: pricing_experiment.coarse_value,
             fine_pricing_reference_value: pricing_experiment.fine_reference_value,
-            coarse_risk_mean_a_plus: risk_experiment.coarse_metric_means.mean_a_plus,
-            fine_risk_mean_a_plus: risk_experiment.fine_metric_means.mean_a_plus,
-            coarse_risk_mean_a_minus: risk_experiment.coarse_metric_means.mean_a_minus,
-            fine_risk_mean_a_minus: risk_experiment.fine_metric_means.mean_a_minus,
-            coarse_risk_mean_n_plus: risk_experiment.coarse_metric_means.mean_n_plus,
-            fine_risk_mean_n_plus: risk_experiment.fine_metric_means.mean_n_plus,
-            coarse_risk_mean_n_minus: risk_experiment.coarse_metric_means.mean_n_minus,
-            fine_risk_mean_n_minus: risk_experiment.fine_metric_means.mean_n_minus,
+            coarse_sufficient_statistics_mean_a_plus: sufficient_statistics_experiment
+                .coarse_metric_means
+                .mean_a_plus,
+            fine_sufficient_statistics_mean_a_plus: sufficient_statistics_experiment
+                .fine_metric_means
+                .mean_a_plus,
+            coarse_sufficient_statistics_mean_a_minus: sufficient_statistics_experiment
+                .coarse_metric_means
+                .mean_a_minus,
+            fine_sufficient_statistics_mean_a_minus: sufficient_statistics_experiment
+                .fine_metric_means
+                .mean_a_minus,
+            coarse_sufficient_statistics_mean_n_plus: sufficient_statistics_experiment
+                .coarse_metric_means
+                .mean_n_plus,
+            fine_sufficient_statistics_mean_n_plus: sufficient_statistics_experiment
+                .fine_metric_means
+                .mean_n_plus,
+            coarse_sufficient_statistics_mean_n_minus: sufficient_statistics_experiment
+                .coarse_metric_means
+                .mean_n_minus,
+            fine_sufficient_statistics_mean_n_minus: sufficient_statistics_experiment
+                .fine_metric_means
+                .mean_n_minus,
         },
         metric_deltas,
     }
@@ -1718,15 +1762,16 @@ fn build_coarse_fine_metric_delta(
     }
 }
 
-fn build_coarse_risk_factor_series(
+fn build_coarse_sufficient_statistics_factor_series(
     profile: &BenchmarkScenarioWorkloadProfile,
-    benchmark_policy: &OraclePricerRiskBenchmarkPolicy,
-    risk_component_seed: u64,
+    benchmark_policy: &OraclePricerSufficientStatisticsBenchmarkPolicy,
+    sufficient_statistics_component_seed: u64,
 ) -> Vec<(f64, f64)> {
     let mut factor_series: Vec<(f64, f64)> =
         Vec::with_capacity(profile.interval_settings.horizon_interval_count);
     for interval_index in 0..profile.interval_settings.horizon_interval_count {
-        let interval_seed = derive_invocation_seed(risk_component_seed, interval_index + 1);
+        let interval_seed =
+            derive_invocation_seed(sufficient_statistics_component_seed, interval_index + 1);
 
         let factor_noise = unit_interval_from_seed(interval_seed);
 
@@ -1752,7 +1797,7 @@ fn build_coarse_risk_factor_series(
     factor_series
 }
 
-fn expand_risk_factor_series_for_fine_reference(
+fn expand_sufficient_statistics_factor_series_for_fine_reference(
     coarse_factor_series: &[(f64, f64)],
     fine_subinterval_count_per_coarse_interval: usize,
 ) -> Vec<(f64, f64)> {
@@ -1768,7 +1813,7 @@ fn expand_risk_factor_series_for_fine_reference(
     fine_factor_series
 }
 
-fn solve_coarse_fine_risk_slices(
+fn solve_coarse_fine_sufficient_statistics_slices(
     scenario_id: &str,
     equation_specification: ExponentialAffineTransformEquationSpecification,
     solver_settings: ExponentialAffineTransformSolverSettings,
@@ -1796,7 +1841,7 @@ fn solve_coarse_fine_risk_slices(
             coarse_fine_scenario_error(
                 scenario_id,
                 format!(
-                    "interval {interval_index} risk slice news_intensity validation failed: {source}"
+                    "interval {interval_index} sufficient-statistics slice news_intensity validation failed: {source}"
                 ),
             )
         })?;
@@ -1811,7 +1856,7 @@ fn solve_coarse_fine_risk_slices(
         .map_err(|source| {
             coarse_fine_scenario_error(
                 scenario_id,
-                format!("interval {interval_index} risk slice context validation failed: {source}"),
+                format!("interval {interval_index} sufficient-statistics slice context validation failed: {source}"),
             )
         })?;
 
@@ -1824,7 +1869,9 @@ fn solve_coarse_fine_risk_slices(
         .map_err(|source| {
             coarse_fine_scenario_error(
                 scenario_id,
-                format!("interval {interval_index} risk slice solve failed: {source}"),
+                format!(
+                    "interval {interval_index} sufficient-statistics slice solve failed: {source}"
+                ),
             )
         })?;
 
@@ -1834,23 +1881,24 @@ fn solve_coarse_fine_risk_slices(
     Ok(slices_by_interval)
 }
 
-fn sample_coarse_risk_metric_means(
+fn sample_coarse_sufficient_statistics_metric_means(
     scenario_id: &str,
-    risk_component_seed: u64,
-    paired_risk_path_count: usize,
+    sufficient_statistics_component_seed: u64,
+    paired_sufficient_statistics_path_count: usize,
     slices_by_interval: &[SufficientStatisticsTransformSlices],
 ) -> Result<CoarseFineRiskMetricMeans, CoarseFineConsistencyRegressionHarnessError> {
     let mut accumulator = CoarseFineRiskMetricAccumulator::default();
 
-    for path_index in 0..paired_risk_path_count {
-        let path_seed = derive_invocation_seed(risk_component_seed, path_index + 1);
+    for path_index in 0..paired_sufficient_statistics_path_count {
+        let path_seed =
+            derive_invocation_seed(sufficient_statistics_component_seed, path_index + 1);
 
         let sampled_statistics =
             sample_interval_statistics_batch_from_transform_slices(path_seed, slices_by_interval)
                 .map_err(|source| {
                 coarse_fine_scenario_error(
                     scenario_id,
-                    format!("coarse risk slice sampling failed: {source}"),
+                    format!("coarse sufficient-statistics slice sampling failed: {source}"),
                 )
             })?;
 
@@ -1869,17 +1917,17 @@ fn sample_coarse_risk_metric_means(
     let metric_means = accumulator.finalize().ok_or_else(|| {
         coarse_fine_scenario_error(
             scenario_id,
-            "coarse risk metric aggregation produced no observations".to_string(),
+            "coarse sufficient-statistics metric aggregation produced no observations".to_string(),
         )
     })?;
 
-    validate_risk_metric_means(scenario_id, "coarse", metric_means)
+    validate_sufficient_statistics_metric_means(scenario_id, "coarse", metric_means)
 }
 
-fn sample_fine_risk_reference_metric_means(
+fn sample_fine_sufficient_statistics_reference_metric_means(
     scenario_id: &str,
-    risk_component_seed: u64,
-    paired_risk_path_count: usize,
+    sufficient_statistics_component_seed: u64,
+    paired_sufficient_statistics_path_count: usize,
     coarse_interval_count: usize,
     fine_subinterval_count_per_coarse_interval: usize,
     slices_by_interval: &[SufficientStatisticsTransformSlices],
@@ -1898,15 +1946,16 @@ fn sample_fine_risk_reference_metric_means(
 
     let mut accumulator = CoarseFineRiskMetricAccumulator::default();
 
-    for path_index in 0..paired_risk_path_count {
-        let path_seed = derive_invocation_seed(risk_component_seed, path_index + 1);
+    for path_index in 0..paired_sufficient_statistics_path_count {
+        let path_seed =
+            derive_invocation_seed(sufficient_statistics_component_seed, path_index + 1);
 
         let sampled_statistics =
             sample_interval_statistics_batch_from_transform_slices(path_seed, slices_by_interval)
                 .map_err(|source| {
                 coarse_fine_scenario_error(
                     scenario_id,
-                    format!("fine risk slice sampling failed: {source}"),
+                    format!("fine sufficient-statistics slice sampling failed: {source}"),
                 )
             })?;
         if sampled_statistics.len() != expected_fine_interval_count {
@@ -1951,14 +2000,14 @@ fn sample_fine_risk_reference_metric_means(
     let metric_means = accumulator.finalize().ok_or_else(|| {
         coarse_fine_scenario_error(
             scenario_id,
-            "fine risk metric aggregation produced no observations".to_string(),
+            "fine sufficient-statistics metric aggregation produced no observations".to_string(),
         )
     })?;
 
-    validate_risk_metric_means(scenario_id, "fine", metric_means)
+    validate_sufficient_statistics_metric_means(scenario_id, "fine", metric_means)
 }
 
-fn validate_risk_metric_means(
+fn validate_sufficient_statistics_metric_means(
     scenario_id: &str,
     label: &str,
     metric_means: CoarseFineRiskMetricMeans,
@@ -1973,7 +2022,9 @@ fn validate_risk_metric_means(
         if !value.is_finite() {
             return Err(coarse_fine_scenario_error(
                 scenario_id,
-                format!("{label} risk metric `{field_name}` is non-finite: {value}"),
+                format!(
+                    "{label} sufficient-statistics metric `{field_name}` is non-finite: {value}"
+                ),
             ));
         }
     }

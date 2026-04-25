@@ -62,7 +62,7 @@ def test_criterion_benchmark_targets_are_discoverable_via_cargo_bench_list() -> 
     assert process.returncode == 0, process.stderr
     assert "oracle_solver_inner_path" in process.stdout
     assert "pricing_kernel_hot_path" in process.stdout
-    assert "risk_sampling_kernel" in process.stdout
+    assert "sufficient_statistics_sampling_kernel" in process.stdout
     assert "simulation_transition_primitive" in process.stdout
 
 

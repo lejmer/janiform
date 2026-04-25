@@ -1,4 +1,4 @@
-"""Public sufficient-statistics risk contracts."""
+"""Public sufficient-statistics contracts."""
 
 from __future__ import annotations
 
@@ -36,8 +36,8 @@ from ..hourly_factors import (
 )
 from .._timestamps import hours_to_exact_nanoseconds
 from .errors import (
-    RISK_ERROR_FACTORY,
-    _risk_error,
+    SUFFICIENT_STATISTICS_ERROR_FACTORY,
+    _sufficient_statistics_error,
 )
 
 if TYPE_CHECKING:
@@ -85,25 +85,25 @@ def _parse_hawkes_excitation_state(
     return HawkesExcitationState.from_mapping(raw_payload, field_path=field_path)
 
 
-SUFFICIENT_STATISTICS_RISK_INTERVAL_FACTOR_POLICY = (
+SUFFICIENT_STATISTICS_INTERVAL_FACTOR_POLICY = (
     "explicit_interval_aligned_s_h_and_news_intensity_inputs_without_implicit_resampling.v1"
 )
-SUFFICIENT_STATISTICS_RISK_RUN_REQUEST_SCHEMA_VERSION = "risk.sufficient_statistics.run_request.v1"
-SUFFICIENT_STATISTICS_RISK_PATH_SCHEMA_VERSION = "risk.sufficient_statistics.path.v1"
-SUFFICIENT_STATISTICS_RISK_PATH_RECORD_SCHEMA_VERSION = "risk.sufficient_statistics.path_record.v1"
-SUFFICIENT_STATISTICS_RISK_PATH_OUTPUT_SCHEMA_METADATA_VERSION = (
-    "risk.sufficient_statistics.path_output_schema_metadata.v1"
+SUFFICIENT_STATISTICS_RUN_REQUEST_SCHEMA_VERSION = "sufficient_statistics.run_request.v1"
+SUFFICIENT_STATISTICS_PATH_SCHEMA_VERSION = "sufficient_statistics.path.v1"
+SUFFICIENT_STATISTICS_PATH_RECORD_SCHEMA_VERSION = "sufficient_statistics.path_record.v1"
+SUFFICIENT_STATISTICS_PATH_OUTPUT_SCHEMA_METADATA_VERSION = (
+    "sufficient_statistics.path_output_schema_metadata.v1"
 )
-SUFFICIENT_STATISTICS_RISK_PATH_PROVENANCE_SCHEMA_VERSION = (
-    "risk.sufficient_statistics.path_provenance.v1"
+SUFFICIENT_STATISTICS_PATH_PROVENANCE_SCHEMA_VERSION = (
+    "sufficient_statistics.path_provenance.v1"
 )
-SUFFICIENT_STATISTICS_RISK_PATH_DIAGNOSTICS_SCHEMA_VERSION = (
-    "risk.sufficient_statistics.path_diagnostics.v1"
+SUFFICIENT_STATISTICS_PATH_DIAGNOSTICS_SCHEMA_VERSION = (
+    "sufficient_statistics.path_diagnostics.v1"
 )
-SUFFICIENT_STATISTICS_RISK_PATH_ARTIFACT_WORKFLOW_POLICY = (
+SUFFICIENT_STATISTICS_PATH_ARTIFACT_WORKFLOW_POLICY = (
     "compatible_with_calibration_and_validation_artifact_workflows.v1"
 )
-SUFFICIENT_STATISTICS_RISK_PATH_ENVIRONMENT_METADATA_POLICY = (
+SUFFICIENT_STATISTICS_PATH_ENVIRONMENT_METADATA_POLICY = (
     "exclude_environment_specific_metadata.v1"
 )
 SUFFICIENT_STATISTICS_TRANSFORM_SLICE_SAMPLING_POLICY = (
@@ -121,7 +121,7 @@ SUFFICIENT_STATISTICS_INTERVAL_RETURN_COMPONENT_ROUTING_POLICY = (
 SUFFICIENT_STATISTICS_BATCH_SEED_PARTITION_POLICY = (
     "path_seed_partitioned_from_root_seed_and_path_index_with_shared_substream_mixer.v1"
 )
-SUFFICIENT_STATISTICS_RISK_PATH_REQUIRED_FIELDS: tuple[str, ...] = (
+SUFFICIENT_STATISTICS_PATH_REQUIRED_FIELDS: tuple[str, ...] = (
     "schema_version",
     "run_request_schema_version",
     "output_schema_metadata",
@@ -134,7 +134,7 @@ SUFFICIENT_STATISTICS_RISK_PATH_REQUIRED_FIELDS: tuple[str, ...] = (
     "terminal_excitation_state",
     "records",
 )
-SUFFICIENT_STATISTICS_RISK_PATH_REQUIRED_PROVENANCE_FIELDS: tuple[str, ...] = (
+SUFFICIENT_STATISTICS_PATH_REQUIRED_PROVENANCE_FIELDS: tuple[str, ...] = (
     "schema_version",
     "artifact_workflow_policy",
     "environment_metadata_policy",
@@ -146,7 +146,7 @@ SUFFICIENT_STATISTICS_RISK_PATH_REQUIRED_PROVENANCE_FIELDS: tuple[str, ...] = (
     "batch_seed_partition_policy",
     "artifact_workflow_tags",
 )
-SUFFICIENT_STATISTICS_RISK_PATH_REQUIRED_DIAGNOSTICS_FIELDS: tuple[str, ...] = (
+SUFFICIENT_STATISTICS_PATH_REQUIRED_DIAGNOSTICS_FIELDS: tuple[str, ...] = (
     "schema_version",
     "simulated_interval_count",
     "first_interval_index",
@@ -165,18 +165,18 @@ SUFFICIENT_STATISTICS_RISK_PATH_REQUIRED_DIAGNOSTICS_FIELDS: tuple[str, ...] = (
     "terminal_observed_log_price",
     "terminal_deviation_from_anchor",
 )
-SUFFICIENT_STATISTICS_RISK_PATH_ARTIFACT_WORKFLOW_TAGS: tuple[str, ...] = (
+SUFFICIENT_STATISTICS_PATH_ARTIFACT_WORKFLOW_TAGS: tuple[str, ...] = (
     "calibration",
     "validation",
 )
 
-# Public risk-request default in hours, and callers can override it on the request payload.
-DEFAULT_INTRADAY_RISK_INTERVAL_DELTA = 1.0
+# Public sufficient-statistics request default in hours, and callers can override it on the request payload.
+DEFAULT_INTRADAY_SUFFICIENT_STATISTICS_INTERVAL_DELTA = 1.0
 _MEAN_REVERSION_ALIGNMENT_TOLERANCE = 1e-12
 
 
 @dataclass(frozen=True, slots=True)
-class SufficientStatisticsRiskEquationSpecification(ContractModel):
+class SufficientStatisticsEquationSpecification(ContractModel):
     hawkes_kernel_parameters: HawkesKernelParameters
     gamma_severity_mark_configuration: GammaSeverityMarkConfiguration
 
@@ -185,17 +185,17 @@ class SufficientStatisticsRiskEquationSpecification(ContractModel):
         raw_payload: dict[str, Any] | Any,
         *,
         field_path: str,
-    ) -> SufficientStatisticsRiskEquationSpecification:
+    ) -> SufficientStatisticsEquationSpecification:
         if not isinstance(raw_payload, dict):
-            raise _risk_error(field_path, "must be an object")
+            raise _sufficient_statistics_error(field_path, "must be an object")
 
-        return SufficientStatisticsRiskEquationSpecification(
+        return SufficientStatisticsEquationSpecification(
             hawkes_kernel_parameters=_parse_hawkes_kernel_parameters(
                 require_mapping(
                     raw_payload,
                     "hawkes_kernel_parameters",
                     f"{field_path}.hawkes_kernel_parameters",
-                    RISK_ERROR_FACTORY,
+                    SUFFICIENT_STATISTICS_ERROR_FACTORY,
                 ),
                 field_path=f"{field_path}.hawkes_kernel_parameters",
             ),
@@ -204,7 +204,7 @@ class SufficientStatisticsRiskEquationSpecification(ContractModel):
                     raw_payload,
                     "gamma_severity_mark_configuration",
                     f"{field_path}.gamma_severity_mark_configuration",
-                    RISK_ERROR_FACTORY,
+                    SUFFICIENT_STATISTICS_ERROR_FACTORY,
                 ),
                 field_path=f"{field_path}.gamma_severity_mark_configuration",
             ),
@@ -212,8 +212,8 @@ class SufficientStatisticsRiskEquationSpecification(ContractModel):
 
 
 @dataclass(frozen=True, slots=True)
-class SufficientStatisticsRiskModelInputs(ContractModel):
-    equation_specification: SufficientStatisticsRiskEquationSpecification
+class SufficientStatisticsModelInputs(ContractModel):
+    equation_specification: SufficientStatisticsEquationSpecification
     nig_shared_plus_shift_configuration: NigSharedPlusShiftConfiguration
     initial_excitation_state: HawkesExcitationState
     mean_reversion_fitted_parameters: MeanReversionFittedParameters
@@ -228,7 +228,7 @@ class SufficientStatisticsRiskModelInputs(ContractModel):
             )
             > _MEAN_REVERSION_ALIGNMENT_TOLERANCE
         ):
-            raise _risk_error(
+            raise _sufficient_statistics_error(
                 "model_inputs.initial_mean_reversion_boundary_state.anchor_value",
                 (
                     "must match model_inputs.mean_reversion_runtime_interval_anchors."
@@ -237,18 +237,18 @@ class SufficientStatisticsRiskModelInputs(ContractModel):
             )
 
     @staticmethod
-    def from_mapping(raw_payload: dict[str, Any] | Any) -> SufficientStatisticsRiskModelInputs:
+    def from_mapping(raw_payload: dict[str, Any] | Any) -> SufficientStatisticsModelInputs:
         if not isinstance(raw_payload, dict):
-            raise _risk_error("model_inputs", "must be an object")
+            raise _sufficient_statistics_error("model_inputs", "must be an object")
 
         try:
-            return SufficientStatisticsRiskModelInputs(
-                equation_specification=SufficientStatisticsRiskEquationSpecification.from_mapping(
+            return SufficientStatisticsModelInputs(
+                equation_specification=SufficientStatisticsEquationSpecification.from_mapping(
                     require_mapping(
                         raw_payload,
                         "equation_specification",
                         "model_inputs.equation_specification",
-                        RISK_ERROR_FACTORY,
+                        SUFFICIENT_STATISTICS_ERROR_FACTORY,
                     ),
                     field_path="model_inputs.equation_specification",
                 ),
@@ -257,7 +257,7 @@ class SufficientStatisticsRiskModelInputs(ContractModel):
                         raw_payload,
                         "nig_shared_plus_shift_configuration",
                         "model_inputs.nig_shared_plus_shift_configuration",
-                        RISK_ERROR_FACTORY,
+                        SUFFICIENT_STATISTICS_ERROR_FACTORY,
                     ),
                     field_path="model_inputs.nig_shared_plus_shift_configuration",
                 ),
@@ -266,7 +266,7 @@ class SufficientStatisticsRiskModelInputs(ContractModel):
                         raw_payload,
                         "initial_excitation_state",
                         "model_inputs.initial_excitation_state",
-                        RISK_ERROR_FACTORY,
+                        SUFFICIENT_STATISTICS_ERROR_FACTORY,
                     ),
                     field_path="model_inputs.initial_excitation_state",
                 ),
@@ -275,7 +275,7 @@ class SufficientStatisticsRiskModelInputs(ContractModel):
                         raw_payload,
                         "mean_reversion_fitted_parameters",
                         "model_inputs.mean_reversion_fitted_parameters",
-                        RISK_ERROR_FACTORY,
+                        SUFFICIENT_STATISTICS_ERROR_FACTORY,
                     ),
                     field_path="model_inputs.mean_reversion_fitted_parameters",
                 ),
@@ -284,7 +284,7 @@ class SufficientStatisticsRiskModelInputs(ContractModel):
                         raw_payload,
                         "mean_reversion_runtime_interval_anchors",
                         "model_inputs.mean_reversion_runtime_interval_anchors",
-                        RISK_ERROR_FACTORY,
+                        SUFFICIENT_STATISTICS_ERROR_FACTORY,
                     ),
                     field_path="model_inputs.mean_reversion_runtime_interval_anchors",
                 ),
@@ -293,48 +293,48 @@ class SufficientStatisticsRiskModelInputs(ContractModel):
                         raw_payload,
                         "initial_mean_reversion_boundary_state",
                         "model_inputs.initial_mean_reversion_boundary_state",
-                        RISK_ERROR_FACTORY,
+                        SUFFICIENT_STATISTICS_ERROR_FACTORY,
                     ),
                     field_path="model_inputs.initial_mean_reversion_boundary_state",
                 ),
             )
         except JaniformValidationError as e:
-            raise _risk_error(e.failure.field_path, e.failure.message) from e
+            raise _sufficient_statistics_error(e.failure.field_path, e.failure.message) from e
 
 
 @dataclass(frozen=True, slots=True)
-class SufficientStatisticsRiskRunRequest(ContractModel):
+class SufficientStatisticsRunRequest(ContractModel):
     seed: int
     horizon_interval_count: int
-    interval_delta: float = DEFAULT_INTRADAY_RISK_INTERVAL_DELTA
-    model_inputs: Optional[SufficientStatisticsRiskModelInputs] = None
+    interval_delta: float = DEFAULT_INTRADAY_SUFFICIENT_STATISTICS_INTERVAL_DELTA
+    model_inputs: Optional[SufficientStatisticsModelInputs] = None
     hourly_factor_contract: Optional[HourlyFactorContract] = None
 
     def __post_init__(self) -> None:
         if self.seed < 0:
-            raise _risk_error("seed", "must be non-negative")
+            raise _sufficient_statistics_error("seed", "must be non-negative")
         if self.horizon_interval_count <= 0:
-            raise _risk_error("horizon_interval_count", "must be strictly positive")
+            raise _sufficient_statistics_error("horizon_interval_count", "must be strictly positive")
         if self.interval_delta <= 0.0:
-            raise _risk_error("interval_delta", "must be strictly positive")
+            raise _sufficient_statistics_error("interval_delta", "must be strictly positive")
         if self.model_inputs is None:
-            raise _risk_error("model_inputs", "is required")
+            raise _sufficient_statistics_error("model_inputs", "is required")
         if self.hourly_factor_contract is None:
-            raise _risk_error("hourly_factor_contract", "is required")
+            raise _sufficient_statistics_error("hourly_factor_contract", "is required")
 
         available_interval_count = self.hourly_factor_contract.interval_count
         try:
             expected_interval_duration_nanos = hours_to_exact_nanoseconds(self.interval_delta)
         except ValueError as e:
-            raise _risk_error("interval_delta", str(e)) from e
+            raise _sufficient_statistics_error("interval_delta", str(e)) from e
 
         if self.horizon_interval_count > available_interval_count:
-            raise _risk_error(
+            raise _sufficient_statistics_error(
                 "horizon_interval_count",
                 f"must not exceed available hourly factor interval count ({available_interval_count})",
             )
         if self.hourly_factor_contract.interval_duration_nanos != expected_interval_duration_nanos:
-            raise _risk_error(
+            raise _sufficient_statistics_error(
                 "hourly_factor_contract.interval_duration_nanos",
                 (
                     "must match interval_delta exactly under explicit factor alignment without implicit "
@@ -346,7 +346,7 @@ class SufficientStatisticsRiskRunRequest(ContractModel):
 
         runtime_interval_anchors = self.model_inputs.mean_reversion_runtime_interval_anchors
         if len(runtime_interval_anchors.end_anchor_values) != self.horizon_interval_count:
-            raise _risk_error(
+            raise _sufficient_statistics_error(
                 "model_inputs.mean_reversion_runtime_interval_anchors.end_anchor_values",
                 f"must contain {self.horizon_interval_count} values",
             )
@@ -355,25 +355,25 @@ class SufficientStatisticsRiskRunRequest(ContractModel):
             runtime_interval_anchors.interval_deltas[: self.horizon_interval_count]
         ):
             if abs(observed_interval_delta - self.interval_delta) > _MEAN_REVERSION_ALIGNMENT_TOLERANCE:
-                raise _risk_error(
+                raise _sufficient_statistics_error(
                     f"model_inputs.mean_reversion_runtime_interval_anchors.interval_deltas[{interval_index}]",
                     f"must equal interval_delta ({self.interval_delta}), found {observed_interval_delta}",
                 )
 
     @staticmethod
-    def from_mapping(raw_payload: dict[str, Any] | Any) -> SufficientStatisticsRiskRunRequest:
+    def from_mapping(raw_payload: dict[str, Any] | Any) -> SufficientStatisticsRunRequest:
         if not isinstance(raw_payload, dict):
-            raise _risk_error("risk_run_request", "must be an object")
+            raise _sufficient_statistics_error("sufficient_statistics_run_request", "must be an object")
 
         interval_delta = (
             require_positive_finite_number(
                 raw_payload,
                 "interval_delta",
                 "interval_delta",
-                RISK_ERROR_FACTORY,
+                SUFFICIENT_STATISTICS_ERROR_FACTORY,
             )
             if "interval_delta" in raw_payload
-            else DEFAULT_INTRADAY_RISK_INTERVAL_DELTA
+            else DEFAULT_INTRADAY_SUFFICIENT_STATISTICS_INTERVAL_DELTA
         )
 
         try:
@@ -382,30 +382,30 @@ class SufficientStatisticsRiskRunRequest(ContractModel):
                     raw_payload,
                     "hourly_factor_contract",
                     "hourly_factor_contract",
-                    RISK_ERROR_FACTORY,
+                    SUFFICIENT_STATISTICS_ERROR_FACTORY,
                 )
             )
         except SeasonalityInputValidationError as e:
-            raise _risk_error("hourly_factor_contract", str(e)) from e
+            raise _sufficient_statistics_error("hourly_factor_contract", str(e)) from e
 
-        return SufficientStatisticsRiskRunRequest(
-            seed=require_non_negative_integer(raw_payload, "seed", "seed", RISK_ERROR_FACTORY),
+        return SufficientStatisticsRunRequest(
+            seed=require_non_negative_integer(raw_payload, "seed", "seed", SUFFICIENT_STATISTICS_ERROR_FACTORY),
             horizon_interval_count=require_positive_integer(
                 raw_payload,
                 "horizon_interval_count",
                 "horizon_interval_count",
-                RISK_ERROR_FACTORY,
+                SUFFICIENT_STATISTICS_ERROR_FACTORY,
             ),
             interval_delta=interval_delta,
-            model_inputs=SufficientStatisticsRiskModelInputs.from_mapping(
-                require_mapping(raw_payload, "model_inputs", "model_inputs", RISK_ERROR_FACTORY)
+            model_inputs=SufficientStatisticsModelInputs.from_mapping(
+                require_mapping(raw_payload, "model_inputs", "model_inputs", SUFFICIENT_STATISTICS_ERROR_FACTORY)
             ),
             hourly_factor_contract=hourly_factor_contract,
         )
 
     def to_payload(self) -> dict[str, Any]:
         if self.model_inputs is None or self.hourly_factor_contract is None:
-            raise _risk_error("risk_run_request", "must be fully initialized before serialization")
+            raise _sufficient_statistics_error("sufficient_statistics_run_request", "must be fully initialized before serialization")
 
         return {
             "seed": self.seed,
@@ -430,38 +430,38 @@ class SufficientStatisticsIntervalStatistics(ContractModel):
         field_path: str,
     ) -> SufficientStatisticsIntervalStatistics:
         if not isinstance(raw_payload, dict):
-            raise _risk_error(field_path, "must be an object")
+            raise _sufficient_statistics_error(field_path, "must be an object")
 
         return SufficientStatisticsIntervalStatistics(
             a_plus=require_non_negative_finite_number(
                 raw_payload,
                 "a_plus",
                 f"{field_path}.a_plus",
-                RISK_ERROR_FACTORY,
+                SUFFICIENT_STATISTICS_ERROR_FACTORY,
             ),
             a_minus=require_non_negative_finite_number(
                 raw_payload,
                 "a_minus",
                 f"{field_path}.a_minus",
-                RISK_ERROR_FACTORY,
+                SUFFICIENT_STATISTICS_ERROR_FACTORY,
             ),
             n_plus=require_non_negative_integer(
                 raw_payload,
                 "n_plus",
                 f"{field_path}.n_plus",
-                RISK_ERROR_FACTORY,
+                SUFFICIENT_STATISTICS_ERROR_FACTORY,
             ),
             n_minus=require_non_negative_integer(
                 raw_payload,
                 "n_minus",
                 f"{field_path}.n_minus",
-                RISK_ERROR_FACTORY,
+                SUFFICIENT_STATISTICS_ERROR_FACTORY,
             ),
         )
 
 
 @dataclass(frozen=True, slots=True)
-class SufficientStatisticsRiskReturnComponents(ContractModel):
+class SufficientStatisticsReturnComponents(ContractModel):
     buy_side_return: float
     sell_side_return: float
     trading_time_return: float
@@ -474,55 +474,55 @@ class SufficientStatisticsRiskReturnComponents(ContractModel):
         raw_payload: dict[str, Any] | Any,
         *,
         field_path: str,
-    ) -> SufficientStatisticsRiskReturnComponents:
+    ) -> SufficientStatisticsReturnComponents:
         if not isinstance(raw_payload, dict):
-            raise _risk_error(field_path, "must be an object")
+            raise _sufficient_statistics_error(field_path, "must be an object")
 
-        return SufficientStatisticsRiskReturnComponents(
+        return SufficientStatisticsReturnComponents(
             buy_side_return=require_finite_number(
                 raw_payload,
                 "buy_side_return",
                 f"{field_path}.buy_side_return",
-                RISK_ERROR_FACTORY,
+                SUFFICIENT_STATISTICS_ERROR_FACTORY,
             ),
             sell_side_return=require_finite_number(
                 raw_payload,
                 "sell_side_return",
                 f"{field_path}.sell_side_return",
-                RISK_ERROR_FACTORY,
+                SUFFICIENT_STATISTICS_ERROR_FACTORY,
             ),
             trading_time_return=require_finite_number(
                 raw_payload,
                 "trading_time_return",
                 f"{field_path}.trading_time_return",
-                RISK_ERROR_FACTORY,
+                SUFFICIENT_STATISTICS_ERROR_FACTORY,
             ),
             open_jump_return=require_finite_number(
                 raw_payload,
                 "open_jump_return",
                 f"{field_path}.open_jump_return",
-                RISK_ERROR_FACTORY,
+                SUFFICIENT_STATISTICS_ERROR_FACTORY,
             ),
             closed_gap_return=require_finite_number(
                 raw_payload,
                 "closed_gap_return",
                 f"{field_path}.closed_gap_return",
-                RISK_ERROR_FACTORY,
+                SUFFICIENT_STATISTICS_ERROR_FACTORY,
             ),
             total_return=require_finite_number(
                 raw_payload,
                 "total_return",
                 f"{field_path}.total_return",
-                RISK_ERROR_FACTORY,
+                SUFFICIENT_STATISTICS_ERROR_FACTORY,
             ),
         )
 
 
 @dataclass(frozen=True, slots=True)
-class SufficientStatisticsRiskPathRecord(ContractModel):
+class SufficientStatisticsPathRecord(ContractModel):
     interval_index: int
     sufficient_statistics: SufficientStatisticsIntervalStatistics
-    return_components: SufficientStatisticsRiskReturnComponents
+    return_components: SufficientStatisticsReturnComponents
     core_total_return: float
     observed_interval_return: float
     observed_log_price_end: float
@@ -532,7 +532,7 @@ class SufficientStatisticsRiskPathRecord(ContractModel):
 
     def __post_init__(self) -> None:
         if self.core_total_return != self.return_components.total_return:
-            raise _risk_error(
+            raise _sufficient_statistics_error(
                 "core_total_return",
                 (
                     "must equal return_components.total_return "
@@ -553,48 +553,48 @@ class SufficientStatisticsRiskPathRecord(ContractModel):
         *,
         field_path: str,
         expected_interval_index: int,
-    ) -> SufficientStatisticsRiskPathRecord:
+    ) -> SufficientStatisticsPathRecord:
         if not isinstance(raw_payload, dict):
-            raise _risk_error(field_path, "must be an object")
+            raise _sufficient_statistics_error(field_path, "must be an object")
 
         if "schema_version" in raw_payload:
             validate_exact_string(
                 raw_payload,
                 "schema_version",
                 f"{field_path}.schema_version",
-                SUFFICIENT_STATISTICS_RISK_PATH_RECORD_SCHEMA_VERSION,
-                RISK_ERROR_FACTORY,
+                SUFFICIENT_STATISTICS_PATH_RECORD_SCHEMA_VERSION,
+                SUFFICIENT_STATISTICS_ERROR_FACTORY,
             )
 
         interval_index = require_non_negative_integer(
             raw_payload,
             "interval_index",
             f"{field_path}.interval_index",
-            RISK_ERROR_FACTORY,
+            SUFFICIENT_STATISTICS_ERROR_FACTORY,
         )
         if interval_index != expected_interval_index:
-            raise _risk_error(
+            raise _sufficient_statistics_error(
                 f"{field_path}.interval_index",
                 f"must equal {expected_interval_index}",
             )
 
-        return SufficientStatisticsRiskPathRecord(
+        return SufficientStatisticsPathRecord(
             interval_index=interval_index,
             sufficient_statistics=SufficientStatisticsIntervalStatistics.from_mapping(
                 require_mapping(
                     raw_payload,
                     "sufficient_statistics",
                     f"{field_path}.sufficient_statistics",
-                    RISK_ERROR_FACTORY,
+                    SUFFICIENT_STATISTICS_ERROR_FACTORY,
                 ),
                 field_path=f"{field_path}.sufficient_statistics",
             ),
-            return_components=SufficientStatisticsRiskReturnComponents.from_mapping(
+            return_components=SufficientStatisticsReturnComponents.from_mapping(
                 require_mapping(
                     raw_payload,
                     "return_components",
                     f"{field_path}.return_components",
-                    RISK_ERROR_FACTORY,
+                    SUFFICIENT_STATISTICS_ERROR_FACTORY,
                 ),
                 field_path=f"{field_path}.return_components",
             ),
@@ -602,43 +602,43 @@ class SufficientStatisticsRiskPathRecord(ContractModel):
                 raw_payload,
                 "core_total_return",
                 f"{field_path}.core_total_return",
-                RISK_ERROR_FACTORY,
+                SUFFICIENT_STATISTICS_ERROR_FACTORY,
             ),
             observed_interval_return=require_finite_number(
                 raw_payload,
                 "observed_interval_return",
                 f"{field_path}.observed_interval_return",
-                RISK_ERROR_FACTORY,
+                SUFFICIENT_STATISTICS_ERROR_FACTORY,
             ),
             observed_log_price_end=require_finite_number(
                 raw_payload,
                 "observed_log_price_end",
                 f"{field_path}.observed_log_price_end",
-                RISK_ERROR_FACTORY,
+                SUFFICIENT_STATISTICS_ERROR_FACTORY,
             ),
             anchor_value_end=require_finite_number(
                 raw_payload,
                 "anchor_value_end",
                 f"{field_path}.anchor_value_end",
-                RISK_ERROR_FACTORY,
+                SUFFICIENT_STATISTICS_ERROR_FACTORY,
             ),
             pressure_state_end=require_finite_number(
                 raw_payload,
                 "pressure_state_end",
                 f"{field_path}.pressure_state_end",
-                RISK_ERROR_FACTORY,
+                SUFFICIENT_STATISTICS_ERROR_FACTORY,
             ),
             deviation_from_anchor_end=require_finite_number(
                 raw_payload,
                 "deviation_from_anchor_end",
                 f"{field_path}.deviation_from_anchor_end",
-                RISK_ERROR_FACTORY,
+                SUFFICIENT_STATISTICS_ERROR_FACTORY,
             ),
         )
 
 
 @dataclass(frozen=True, slots=True)
-class SufficientStatisticsRiskPathOutputSchemaMetadata(ContractModel):
+class SufficientStatisticsPathOutputSchemaMetadata(ContractModel):
     schema_version: str
     provenance_schema_version: str
     diagnostics_schema_version: str
@@ -650,7 +650,7 @@ class SufficientStatisticsRiskPathOutputSchemaMetadata(ContractModel):
 
 
 @dataclass(frozen=True, slots=True)
-class SufficientStatisticsRiskPathProvenance(ContractModel):
+class SufficientStatisticsPathProvenance(ContractModel):
     schema_version: str
     artifact_workflow_policy: str
     environment_metadata_policy: str
@@ -664,7 +664,7 @@ class SufficientStatisticsRiskPathProvenance(ContractModel):
 
 
 @dataclass(frozen=True, slots=True)
-class SufficientStatisticsRiskPathDiagnostics(ContractModel):
+class SufficientStatisticsPathDiagnostics(ContractModel):
     schema_version: str
     simulated_interval_count: int
     first_interval_index: Optional[int]
@@ -685,46 +685,46 @@ class SufficientStatisticsRiskPathDiagnostics(ContractModel):
 
 
 @dataclass(frozen=True, slots=True)
-class SufficientStatisticsRiskPath(ContractModel):
+class SufficientStatisticsPath(ContractModel):
     schema_version: str
     run_request_schema_version: str
-    output_schema_metadata: SufficientStatisticsRiskPathOutputSchemaMetadata
-    provenance: SufficientStatisticsRiskPathProvenance
-    diagnostics: SufficientStatisticsRiskPathDiagnostics
+    output_schema_metadata: SufficientStatisticsPathOutputSchemaMetadata
+    provenance: SufficientStatisticsPathProvenance
+    diagnostics: SufficientStatisticsPathDiagnostics
     seed: int
     interval_delta: float
     simulated_interval_count: int
     initial_excitation_state: HawkesExcitationState
     terminal_excitation_state: HawkesExcitationState
-    records: tuple[SufficientStatisticsRiskPathRecord, ...]
+    records: tuple[SufficientStatisticsPathRecord, ...]
 
     @staticmethod
-    def from_mapping(raw_payload: dict[str, Any] | Any) -> SufficientStatisticsRiskPath:
+    def from_mapping(raw_payload: dict[str, Any] | Any) -> SufficientStatisticsPath:
         if not isinstance(raw_payload, dict):
-            raise _risk_error("risk_path", "must be an object")
+            raise _sufficient_statistics_error("sufficient_statistics_path", "must be an object")
 
-        seed = require_non_negative_integer(raw_payload, "seed", "seed", RISK_ERROR_FACTORY)
+        seed = require_non_negative_integer(raw_payload, "seed", "seed", SUFFICIENT_STATISTICS_ERROR_FACTORY)
 
         interval_delta = require_positive_finite_number(
             raw_payload,
             "interval_delta",
             "interval_delta",
-            RISK_ERROR_FACTORY,
+            SUFFICIENT_STATISTICS_ERROR_FACTORY,
         )
 
         simulated_interval_count = require_positive_integer(
             raw_payload,
             "simulated_interval_count",
             "simulated_interval_count",
-            RISK_ERROR_FACTORY,
+            SUFFICIENT_STATISTICS_ERROR_FACTORY,
         )
 
-        records_payload = require_sequence(raw_payload, "records", "records", RISK_ERROR_FACTORY)
+        records_payload = require_sequence(raw_payload, "records", "records", SUFFICIENT_STATISTICS_ERROR_FACTORY)
         if len(records_payload) != simulated_interval_count:
-            raise _risk_error("records", f"must contain exactly {simulated_interval_count} records")
+            raise _sufficient_statistics_error("records", f"must contain exactly {simulated_interval_count} records")
 
         records = tuple(
-            SufficientStatisticsRiskPathRecord.from_mapping(
+            SufficientStatisticsPathRecord.from_mapping(
                 raw_record,
                 field_path=f"records[{record_position}]",
                 expected_interval_index=record_position,
@@ -732,25 +732,25 @@ class SufficientStatisticsRiskPath(ContractModel):
             for record_position, raw_record in enumerate(records_payload)
         )
 
-        output_schema_metadata = _build_risk_path_output_schema_metadata()
-        provenance = _build_risk_path_provenance()
-        diagnostics = _build_risk_path_diagnostics(records, simulated_interval_count)
+        output_schema_metadata = _build_sufficient_statistics_path_output_schema_metadata()
+        provenance = _build_sufficient_statistics_path_provenance()
+        diagnostics = _build_sufficient_statistics_path_diagnostics(records, simulated_interval_count)
 
         if "schema_version" in raw_payload:
             validate_exact_string(
                 raw_payload,
                 "schema_version",
                 "schema_version",
-                SUFFICIENT_STATISTICS_RISK_PATH_SCHEMA_VERSION,
-                RISK_ERROR_FACTORY,
+                SUFFICIENT_STATISTICS_PATH_SCHEMA_VERSION,
+                SUFFICIENT_STATISTICS_ERROR_FACTORY,
             )
         if "run_request_schema_version" in raw_payload:
             validate_exact_string(
                 raw_payload,
                 "run_request_schema_version",
                 "run_request_schema_version",
-                SUFFICIENT_STATISTICS_RISK_RUN_REQUEST_SCHEMA_VERSION,
-                RISK_ERROR_FACTORY,
+                SUFFICIENT_STATISTICS_RUN_REQUEST_SCHEMA_VERSION,
+                SUFFICIENT_STATISTICS_ERROR_FACTORY,
             )
         if "output_schema_metadata" in raw_payload:
             _validate_output_schema_metadata(
@@ -758,26 +758,26 @@ class SufficientStatisticsRiskPath(ContractModel):
                     raw_payload,
                     "output_schema_metadata",
                     "output_schema_metadata",
-                    RISK_ERROR_FACTORY,
+                    SUFFICIENT_STATISTICS_ERROR_FACTORY,
                 ),
                 output_schema_metadata,
             )
         if "provenance" in raw_payload:
             _validate_path_provenance(
-                require_mapping(raw_payload, "provenance", "provenance", RISK_ERROR_FACTORY),
+                require_mapping(raw_payload, "provenance", "provenance", SUFFICIENT_STATISTICS_ERROR_FACTORY),
                 provenance,
             )
         if "diagnostics" in raw_payload:
             _validate_path_diagnostics(
-                require_mapping(raw_payload, "diagnostics", "diagnostics", RISK_ERROR_FACTORY),
+                require_mapping(raw_payload, "diagnostics", "diagnostics", SUFFICIENT_STATISTICS_ERROR_FACTORY),
                 diagnostics,
                 simulated_interval_count,
             )
 
         try:
-            return SufficientStatisticsRiskPath(
-                schema_version=SUFFICIENT_STATISTICS_RISK_PATH_SCHEMA_VERSION,
-                run_request_schema_version=SUFFICIENT_STATISTICS_RISK_RUN_REQUEST_SCHEMA_VERSION,
+            return SufficientStatisticsPath(
+                schema_version=SUFFICIENT_STATISTICS_PATH_SCHEMA_VERSION,
+                run_request_schema_version=SUFFICIENT_STATISTICS_RUN_REQUEST_SCHEMA_VERSION,
                 output_schema_metadata=output_schema_metadata,
                 provenance=provenance,
                 diagnostics=diagnostics,
@@ -789,7 +789,7 @@ class SufficientStatisticsRiskPath(ContractModel):
                         raw_payload,
                         "initial_excitation_state",
                         "initial_excitation_state",
-                        RISK_ERROR_FACTORY,
+                        SUFFICIENT_STATISTICS_ERROR_FACTORY,
                     ),
                     field_path="initial_excitation_state",
                 ),
@@ -798,48 +798,48 @@ class SufficientStatisticsRiskPath(ContractModel):
                         raw_payload,
                         "terminal_excitation_state",
                         "terminal_excitation_state",
-                        RISK_ERROR_FACTORY,
+                        SUFFICIENT_STATISTICS_ERROR_FACTORY,
                     ),
                     field_path="terminal_excitation_state",
                 ),
                 records=records,
             )
         except JaniformValidationError as e:
-            raise _risk_error(e.failure.field_path, e.failure.message) from e
+            raise _sufficient_statistics_error(e.failure.field_path, e.failure.message) from e
 
 
-def _build_risk_path_output_schema_metadata() -> SufficientStatisticsRiskPathOutputSchemaMetadata:
-    return SufficientStatisticsRiskPathOutputSchemaMetadata(
-        schema_version=SUFFICIENT_STATISTICS_RISK_PATH_OUTPUT_SCHEMA_METADATA_VERSION,
-        provenance_schema_version=SUFFICIENT_STATISTICS_RISK_PATH_PROVENANCE_SCHEMA_VERSION,
-        diagnostics_schema_version=SUFFICIENT_STATISTICS_RISK_PATH_DIAGNOSTICS_SCHEMA_VERSION,
-        artifact_workflow_policy=SUFFICIENT_STATISTICS_RISK_PATH_ARTIFACT_WORKFLOW_POLICY,
-        environment_metadata_policy=SUFFICIENT_STATISTICS_RISK_PATH_ENVIRONMENT_METADATA_POLICY,
-        required_path_fields=SUFFICIENT_STATISTICS_RISK_PATH_REQUIRED_FIELDS,
-        required_provenance_fields=SUFFICIENT_STATISTICS_RISK_PATH_REQUIRED_PROVENANCE_FIELDS,
-        required_diagnostics_fields=SUFFICIENT_STATISTICS_RISK_PATH_REQUIRED_DIAGNOSTICS_FIELDS,
+def _build_sufficient_statistics_path_output_schema_metadata() -> SufficientStatisticsPathOutputSchemaMetadata:
+    return SufficientStatisticsPathOutputSchemaMetadata(
+        schema_version=SUFFICIENT_STATISTICS_PATH_OUTPUT_SCHEMA_METADATA_VERSION,
+        provenance_schema_version=SUFFICIENT_STATISTICS_PATH_PROVENANCE_SCHEMA_VERSION,
+        diagnostics_schema_version=SUFFICIENT_STATISTICS_PATH_DIAGNOSTICS_SCHEMA_VERSION,
+        artifact_workflow_policy=SUFFICIENT_STATISTICS_PATH_ARTIFACT_WORKFLOW_POLICY,
+        environment_metadata_policy=SUFFICIENT_STATISTICS_PATH_ENVIRONMENT_METADATA_POLICY,
+        required_path_fields=SUFFICIENT_STATISTICS_PATH_REQUIRED_FIELDS,
+        required_provenance_fields=SUFFICIENT_STATISTICS_PATH_REQUIRED_PROVENANCE_FIELDS,
+        required_diagnostics_fields=SUFFICIENT_STATISTICS_PATH_REQUIRED_DIAGNOSTICS_FIELDS,
     )
 
 
-def _build_risk_path_provenance() -> SufficientStatisticsRiskPathProvenance:
-    return SufficientStatisticsRiskPathProvenance(
-        schema_version=SUFFICIENT_STATISTICS_RISK_PATH_PROVENANCE_SCHEMA_VERSION,
-        artifact_workflow_policy=SUFFICIENT_STATISTICS_RISK_PATH_ARTIFACT_WORKFLOW_POLICY,
-        environment_metadata_policy=SUFFICIENT_STATISTICS_RISK_PATH_ENVIRONMENT_METADATA_POLICY,
-        interval_factor_policy=SUFFICIENT_STATISTICS_RISK_INTERVAL_FACTOR_POLICY,
+def _build_sufficient_statistics_path_provenance() -> SufficientStatisticsPathProvenance:
+    return SufficientStatisticsPathProvenance(
+        schema_version=SUFFICIENT_STATISTICS_PATH_PROVENANCE_SCHEMA_VERSION,
+        artifact_workflow_policy=SUFFICIENT_STATISTICS_PATH_ARTIFACT_WORKFLOW_POLICY,
+        environment_metadata_policy=SUFFICIENT_STATISTICS_PATH_ENVIRONMENT_METADATA_POLICY,
+        interval_factor_policy=SUFFICIENT_STATISTICS_INTERVAL_FACTOR_POLICY,
         transform_slice_sampling_policy=SUFFICIENT_STATISTICS_TRANSFORM_SLICE_SAMPLING_POLICY,
         boundary_state_update_policy=SUFFICIENT_STATISTICS_BOUNDARY_STATE_UPDATE_POLICY,
         interval_return_generation_policy=SUFFICIENT_STATISTICS_INTERVAL_RETURN_GENERATION_POLICY,
         interval_return_component_routing_policy=SUFFICIENT_STATISTICS_INTERVAL_RETURN_COMPONENT_ROUTING_POLICY,
         batch_seed_partition_policy=SUFFICIENT_STATISTICS_BATCH_SEED_PARTITION_POLICY,
-        artifact_workflow_tags=SUFFICIENT_STATISTICS_RISK_PATH_ARTIFACT_WORKFLOW_TAGS,
+        artifact_workflow_tags=SUFFICIENT_STATISTICS_PATH_ARTIFACT_WORKFLOW_TAGS,
     )
 
 
-def _build_risk_path_diagnostics(
-    records: Sequence[SufficientStatisticsRiskPathRecord],
+def _build_sufficient_statistics_path_diagnostics(
+    records: Sequence[SufficientStatisticsPathRecord],
     simulated_interval_count: int,
-) -> SufficientStatisticsRiskPathDiagnostics:
+) -> SufficientStatisticsPathDiagnostics:
     cumulative_a_plus: float = 0.0
     cumulative_a_minus: float = 0.0
     cumulative_n_plus: int = 0
@@ -871,8 +871,8 @@ def _build_risk_path_diagnostics(
     first_interval_index: Optional[int] = records[0].interval_index if records else None
     last_interval_index: Optional[int] = records[-1].interval_index if records else None
 
-    return SufficientStatisticsRiskPathDiagnostics(
-        schema_version=SUFFICIENT_STATISTICS_RISK_PATH_DIAGNOSTICS_SCHEMA_VERSION,
+    return SufficientStatisticsPathDiagnostics(
+        schema_version=SUFFICIENT_STATISTICS_PATH_DIAGNOSTICS_SCHEMA_VERSION,
         simulated_interval_count=simulated_interval_count,
         first_interval_index=first_interval_index,
         last_interval_index=last_interval_index,
@@ -894,145 +894,145 @@ def _build_risk_path_diagnostics(
 
 def _validate_output_schema_metadata(
     raw_payload: dict[str, Any] | Any,
-    expected_metadata: SufficientStatisticsRiskPathOutputSchemaMetadata,
+    expected_metadata: SufficientStatisticsPathOutputSchemaMetadata,
 ) -> None:
     validate_exact_string(
         raw_payload,
         "schema_version",
         "output_schema_metadata.schema_version",
         expected_metadata.schema_version,
-        RISK_ERROR_FACTORY,
+        SUFFICIENT_STATISTICS_ERROR_FACTORY,
     )
     validate_exact_string(
         raw_payload,
         "provenance_schema_version",
         "output_schema_metadata.provenance_schema_version",
         expected_metadata.provenance_schema_version,
-        RISK_ERROR_FACTORY,
+        SUFFICIENT_STATISTICS_ERROR_FACTORY,
     )
     validate_exact_string(
         raw_payload,
         "diagnostics_schema_version",
         "output_schema_metadata.diagnostics_schema_version",
         expected_metadata.diagnostics_schema_version,
-        RISK_ERROR_FACTORY,
+        SUFFICIENT_STATISTICS_ERROR_FACTORY,
     )
     validate_exact_string(
         raw_payload,
         "artifact_workflow_policy",
         "output_schema_metadata.artifact_workflow_policy",
         expected_metadata.artifact_workflow_policy,
-        RISK_ERROR_FACTORY,
+        SUFFICIENT_STATISTICS_ERROR_FACTORY,
     )
     validate_exact_string(
         raw_payload,
         "environment_metadata_policy",
         "output_schema_metadata.environment_metadata_policy",
         expected_metadata.environment_metadata_policy,
-        RISK_ERROR_FACTORY,
+        SUFFICIENT_STATISTICS_ERROR_FACTORY,
     )
     validate_required_field_list(
         raw_payload,
         "required_path_fields",
         "output_schema_metadata.required_path_fields",
         expected_metadata.required_path_fields,
-        RISK_ERROR_FACTORY,
+        SUFFICIENT_STATISTICS_ERROR_FACTORY,
     )
     validate_required_field_list(
         raw_payload,
         "required_provenance_fields",
         "output_schema_metadata.required_provenance_fields",
         expected_metadata.required_provenance_fields,
-        RISK_ERROR_FACTORY,
+        SUFFICIENT_STATISTICS_ERROR_FACTORY,
     )
     validate_required_field_list(
         raw_payload,
         "required_diagnostics_fields",
         "output_schema_metadata.required_diagnostics_fields",
         expected_metadata.required_diagnostics_fields,
-        RISK_ERROR_FACTORY,
+        SUFFICIENT_STATISTICS_ERROR_FACTORY,
     )
 
 
 def _validate_path_provenance(
     raw_payload: dict[str, Any] | Any,
-    expected_provenance: SufficientStatisticsRiskPathProvenance,
+    expected_provenance: SufficientStatisticsPathProvenance,
 ) -> None:
     validate_exact_string(
         raw_payload,
         "schema_version",
         "provenance.schema_version",
         expected_provenance.schema_version,
-        RISK_ERROR_FACTORY,
+        SUFFICIENT_STATISTICS_ERROR_FACTORY,
     )
     validate_exact_string(
         raw_payload,
         "artifact_workflow_policy",
         "provenance.artifact_workflow_policy",
         expected_provenance.artifact_workflow_policy,
-        RISK_ERROR_FACTORY,
+        SUFFICIENT_STATISTICS_ERROR_FACTORY,
     )
     validate_exact_string(
         raw_payload,
         "environment_metadata_policy",
         "provenance.environment_metadata_policy",
         expected_provenance.environment_metadata_policy,
-        RISK_ERROR_FACTORY,
+        SUFFICIENT_STATISTICS_ERROR_FACTORY,
     )
     validate_exact_string(
         raw_payload,
         "interval_factor_policy",
         "provenance.interval_factor_policy",
         expected_provenance.interval_factor_policy,
-        RISK_ERROR_FACTORY,
+        SUFFICIENT_STATISTICS_ERROR_FACTORY,
     )
     validate_exact_string(
         raw_payload,
         "transform_slice_sampling_policy",
         "provenance.transform_slice_sampling_policy",
         expected_provenance.transform_slice_sampling_policy,
-        RISK_ERROR_FACTORY,
+        SUFFICIENT_STATISTICS_ERROR_FACTORY,
     )
     validate_exact_string(
         raw_payload,
         "boundary_state_update_policy",
         "provenance.boundary_state_update_policy",
         expected_provenance.boundary_state_update_policy,
-        RISK_ERROR_FACTORY,
+        SUFFICIENT_STATISTICS_ERROR_FACTORY,
     )
     validate_exact_string(
         raw_payload,
         "interval_return_generation_policy",
         "provenance.interval_return_generation_policy",
         expected_provenance.interval_return_generation_policy,
-        RISK_ERROR_FACTORY,
+        SUFFICIENT_STATISTICS_ERROR_FACTORY,
     )
     validate_exact_string(
         raw_payload,
         "interval_return_component_routing_policy",
         "provenance.interval_return_component_routing_policy",
         expected_provenance.interval_return_component_routing_policy,
-        RISK_ERROR_FACTORY,
+        SUFFICIENT_STATISTICS_ERROR_FACTORY,
     )
     validate_exact_string(
         raw_payload,
         "batch_seed_partition_policy",
         "provenance.batch_seed_partition_policy",
         expected_provenance.batch_seed_partition_policy,
-        RISK_ERROR_FACTORY,
+        SUFFICIENT_STATISTICS_ERROR_FACTORY,
     )
     validate_required_field_list(
         raw_payload,
         "artifact_workflow_tags",
         "provenance.artifact_workflow_tags",
         expected_provenance.artifact_workflow_tags,
-        RISK_ERROR_FACTORY,
+        SUFFICIENT_STATISTICS_ERROR_FACTORY,
     )
 
 
 def _validate_path_diagnostics(
     raw_payload: dict[str, Any] | Any,
-    expected_diagnostics: SufficientStatisticsRiskPathDiagnostics,
+    expected_diagnostics: SufficientStatisticsPathDiagnostics,
     simulated_interval_count: int,
 ) -> None:
     validate_exact_string(
@@ -1040,35 +1040,35 @@ def _validate_path_diagnostics(
         "schema_version",
         "diagnostics.schema_version",
         expected_diagnostics.schema_version,
-        RISK_ERROR_FACTORY,
+        SUFFICIENT_STATISTICS_ERROR_FACTORY,
     )
     validate_exact_integer(
         raw_payload,
         "simulated_interval_count",
         "diagnostics.simulated_interval_count",
         expected_diagnostics.simulated_interval_count,
-        RISK_ERROR_FACTORY,
+        SUFFICIENT_STATISTICS_ERROR_FACTORY,
     )
     validate_exact_optional_integer(
         raw_payload,
         "first_interval_index",
         "diagnostics.first_interval_index",
         expected_diagnostics.first_interval_index,
-        RISK_ERROR_FACTORY,
+        SUFFICIENT_STATISTICS_ERROR_FACTORY,
     )
     validate_exact_optional_integer(
         raw_payload,
         "last_interval_index",
         "diagnostics.last_interval_index",
         expected_diagnostics.last_interval_index,
-        RISK_ERROR_FACTORY,
+        SUFFICIENT_STATISTICS_ERROR_FACTORY,
     )
     validate_exact_number(
         raw_payload,
         "cumulative_a_plus",
         "diagnostics.cumulative_a_plus",
         expected_diagnostics.cumulative_a_plus,
-        RISK_ERROR_FACTORY,
+        SUFFICIENT_STATISTICS_ERROR_FACTORY,
         context_suffix=f"simulated_interval_count={simulated_interval_count}",
     )
     validate_exact_number(
@@ -1076,7 +1076,7 @@ def _validate_path_diagnostics(
         "cumulative_a_minus",
         "diagnostics.cumulative_a_minus",
         expected_diagnostics.cumulative_a_minus,
-        RISK_ERROR_FACTORY,
+        SUFFICIENT_STATISTICS_ERROR_FACTORY,
         context_suffix=f"simulated_interval_count={simulated_interval_count}",
     )
     validate_exact_integer(
@@ -1084,7 +1084,7 @@ def _validate_path_diagnostics(
         "cumulative_n_plus",
         "diagnostics.cumulative_n_plus",
         expected_diagnostics.cumulative_n_plus,
-        RISK_ERROR_FACTORY,
+        SUFFICIENT_STATISTICS_ERROR_FACTORY,
         context_suffix=f"simulated_interval_count={simulated_interval_count}",
     )
     validate_exact_integer(
@@ -1092,7 +1092,7 @@ def _validate_path_diagnostics(
         "cumulative_n_minus",
         "diagnostics.cumulative_n_minus",
         expected_diagnostics.cumulative_n_minus,
-        RISK_ERROR_FACTORY,
+        SUFFICIENT_STATISTICS_ERROR_FACTORY,
         context_suffix=f"simulated_interval_count={simulated_interval_count}",
     )
     validate_exact_number(
@@ -1100,7 +1100,7 @@ def _validate_path_diagnostics(
         "cumulative_trading_time_return",
         "diagnostics.cumulative_trading_time_return",
         expected_diagnostics.cumulative_trading_time_return,
-        RISK_ERROR_FACTORY,
+        SUFFICIENT_STATISTICS_ERROR_FACTORY,
         context_suffix=f"simulated_interval_count={simulated_interval_count}",
     )
     validate_exact_number(
@@ -1108,7 +1108,7 @@ def _validate_path_diagnostics(
         "cumulative_open_jump_return",
         "diagnostics.cumulative_open_jump_return",
         expected_diagnostics.cumulative_open_jump_return,
-        RISK_ERROR_FACTORY,
+        SUFFICIENT_STATISTICS_ERROR_FACTORY,
         context_suffix=f"simulated_interval_count={simulated_interval_count}",
     )
     validate_exact_number(
@@ -1116,7 +1116,7 @@ def _validate_path_diagnostics(
         "cumulative_closed_gap_return",
         "diagnostics.cumulative_closed_gap_return",
         expected_diagnostics.cumulative_closed_gap_return,
-        RISK_ERROR_FACTORY,
+        SUFFICIENT_STATISTICS_ERROR_FACTORY,
         context_suffix=f"simulated_interval_count={simulated_interval_count}",
     )
     validate_exact_number(
@@ -1124,7 +1124,7 @@ def _validate_path_diagnostics(
         "cumulative_total_return",
         "diagnostics.cumulative_total_return",
         expected_diagnostics.cumulative_total_return,
-        RISK_ERROR_FACTORY,
+        SUFFICIENT_STATISTICS_ERROR_FACTORY,
         context_suffix=f"simulated_interval_count={simulated_interval_count}",
     )
     validate_exact_number(
@@ -1132,7 +1132,7 @@ def _validate_path_diagnostics(
         "cumulative_observed_return",
         "diagnostics.cumulative_observed_return",
         expected_diagnostics.cumulative_observed_return,
-        RISK_ERROR_FACTORY,
+        SUFFICIENT_STATISTICS_ERROR_FACTORY,
         context_suffix=f"simulated_interval_count={simulated_interval_count}",
     )
     validate_exact_number(
@@ -1140,7 +1140,7 @@ def _validate_path_diagnostics(
         "max_abs_total_return",
         "diagnostics.max_abs_total_return",
         expected_diagnostics.max_abs_total_return,
-        RISK_ERROR_FACTORY,
+        SUFFICIENT_STATISTICS_ERROR_FACTORY,
         context_suffix=f"simulated_interval_count={simulated_interval_count}",
     )
     validate_exact_number(
@@ -1148,7 +1148,7 @@ def _validate_path_diagnostics(
         "max_abs_deviation_from_anchor",
         "diagnostics.max_abs_deviation_from_anchor",
         expected_diagnostics.max_abs_deviation_from_anchor,
-        RISK_ERROR_FACTORY,
+        SUFFICIENT_STATISTICS_ERROR_FACTORY,
         context_suffix=f"simulated_interval_count={simulated_interval_count}",
     )
     validate_exact_number(
@@ -1156,7 +1156,7 @@ def _validate_path_diagnostics(
         "terminal_observed_log_price",
         "diagnostics.terminal_observed_log_price",
         expected_diagnostics.terminal_observed_log_price,
-        RISK_ERROR_FACTORY,
+        SUFFICIENT_STATISTICS_ERROR_FACTORY,
         context_suffix=f"simulated_interval_count={simulated_interval_count}",
     )
     validate_exact_number(
@@ -1164,24 +1164,24 @@ def _validate_path_diagnostics(
         "terminal_deviation_from_anchor",
         "diagnostics.terminal_deviation_from_anchor",
         expected_diagnostics.terminal_deviation_from_anchor,
-        RISK_ERROR_FACTORY,
+        SUFFICIENT_STATISTICS_ERROR_FACTORY,
         context_suffix=f"simulated_interval_count={simulated_interval_count}",
     )
 
 
 __all__ = [
-    "SUFFICIENT_STATISTICS_RISK_PATH_DIAGNOSTICS_SCHEMA_VERSION",
-    "SUFFICIENT_STATISTICS_RISK_PATH_OUTPUT_SCHEMA_METADATA_VERSION",
-    "SUFFICIENT_STATISTICS_RISK_PATH_PROVENANCE_SCHEMA_VERSION",
-    "SUFFICIENT_STATISTICS_RISK_INTERVAL_FACTOR_POLICY",
+    "SUFFICIENT_STATISTICS_PATH_DIAGNOSTICS_SCHEMA_VERSION",
+    "SUFFICIENT_STATISTICS_PATH_OUTPUT_SCHEMA_METADATA_VERSION",
+    "SUFFICIENT_STATISTICS_PATH_PROVENANCE_SCHEMA_VERSION",
+    "SUFFICIENT_STATISTICS_INTERVAL_FACTOR_POLICY",
     "SufficientStatisticsIntervalStatistics",
-    "SufficientStatisticsRiskPathDiagnostics",
-    "SufficientStatisticsRiskEquationSpecification",
-    "SufficientStatisticsRiskModelInputs",
-    "SufficientStatisticsRiskPath",
-    "SufficientStatisticsRiskPathOutputSchemaMetadata",
-    "SufficientStatisticsRiskPathProvenance",
-    "SufficientStatisticsRiskPathRecord",
-    "SufficientStatisticsRiskReturnComponents",
-    "SufficientStatisticsRiskRunRequest",
+    "SufficientStatisticsPathDiagnostics",
+    "SufficientStatisticsEquationSpecification",
+    "SufficientStatisticsModelInputs",
+    "SufficientStatisticsPath",
+    "SufficientStatisticsPathOutputSchemaMetadata",
+    "SufficientStatisticsPathProvenance",
+    "SufficientStatisticsPathRecord",
+    "SufficientStatisticsReturnComponents",
+    "SufficientStatisticsRunRequest",
 ]

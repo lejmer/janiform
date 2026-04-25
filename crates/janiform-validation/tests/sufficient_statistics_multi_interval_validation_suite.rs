@@ -1,7 +1,7 @@
 use janiform_affine_oracle::affine_oracle::ExponentialAffineTransformEquationSpecification;
-use janiform_engine_risk::{
-    SufficientStatisticsRiskIntervalFactors, SufficientStatisticsRiskModelInputs,
-    SufficientStatisticsRiskRunRequest,
+use janiform_engine_sufficient_statistics::{
+    SufficientStatisticsIntervalFactors, SufficientStatisticsModelInputs,
+    SufficientStatisticsRunRequest,
 };
 use janiform_model_kernels::hawkes::{
     HawkesExcitationState, HawkesKernelLoadings, HawkesKernelParameters,
@@ -248,10 +248,7 @@ fn build_validation_scenarios() -> Vec<SufficientStatisticsMultiIntervalValidati
     ]
 }
 
-fn build_run_request(
-    seed: u64,
-    horizon_interval_count: usize,
-) -> SufficientStatisticsRiskRunRequest {
+fn build_run_request(seed: u64, horizon_interval_count: usize) -> SufficientStatisticsRunRequest {
     let kernel_parameters = HawkesKernelParameters::try_new(
         0.9,
         1.1,
@@ -277,7 +274,7 @@ fn build_run_request(
     )
     .expect("fixture equation specification should construct");
 
-    let model_inputs = SufficientStatisticsRiskModelInputs::try_new(
+    let model_inputs = SufficientStatisticsModelInputs::try_new(
         equation_specification,
         NigSharedPlusShiftConfiguration::try_new(2.4, -0.75, 0.8, 0.12, -0.18)
             .expect("fixture NIG configuration should construct"),
@@ -305,10 +302,10 @@ fn build_run_request(
 
     let (s_h, nu_h_known, nu_h_surprise) = build_interval_factors(horizon_interval_count);
     let interval_factors =
-        SufficientStatisticsRiskIntervalFactors::try_new(s_h, nu_h_known, nu_h_surprise, Some(1.0))
+        SufficientStatisticsIntervalFactors::try_new(s_h, nu_h_known, nu_h_surprise, Some(1.0))
             .expect("interval factors should construct");
 
-    SufficientStatisticsRiskRunRequest::try_new(
+    SufficientStatisticsRunRequest::try_new(
         seed,
         horizon_interval_count,
         1.0,

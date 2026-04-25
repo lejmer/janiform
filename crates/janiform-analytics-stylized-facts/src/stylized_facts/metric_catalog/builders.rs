@@ -174,7 +174,7 @@ pub fn build_stylized_fact_metric_catalog() -> StylizedFactMetricCatalog {
                     minimum_tail_observation_count: Some(35),
                     minimum_horizon_coverage_ratio: 0.8,
                 },
-                &["activity", "clustering", "tail_risk"],
+                &["activity", "clustering", "tail_sufficient_statistics"],
             ),
             build_primary_metric(
                 "returns_abs_quantile_shape_ratio_q99_q95",
@@ -208,7 +208,7 @@ pub fn build_stylized_fact_metric_catalog() -> StylizedFactMetricCatalog {
                     minimum_tail_observation_count: Some(40),
                     minimum_horizon_coverage_ratio: 0.85,
                 },
-                &["returns", "heavy_tails", "tail_risk"],
+                &["returns", "heavy_tails", "tail_sufficient_statistics"],
             ),
             build_primary_metric(
                 "returns_distribution_wasserstein_distance",
@@ -259,7 +259,7 @@ pub fn build_stylized_fact_metric_catalog() -> StylizedFactMetricCatalog {
                     minimum_tail_observation_count: Some(45),
                     minimum_horizon_coverage_ratio: 0.85,
                 },
-                &["returns", "skew", "tail_risk"],
+                &["returns", "skew", "tail_sufficient_statistics"],
             ),
             build_primary_metric(
                 "volatility_abs_return_acf_distribution_distance",
@@ -293,7 +293,7 @@ pub fn build_stylized_fact_metric_catalog() -> StylizedFactMetricCatalog {
                     minimum_tail_observation_count: Some(25),
                     minimum_horizon_coverage_ratio: 0.7,
                 },
-                &["open_jump", "tail_risk", "returns"],
+                &["open_jump", "tail_sufficient_statistics", "returns"],
             ),
             build_primary_metric(
                 "closed_gap_abs_tail_expected_shortfall_ratio",
@@ -310,7 +310,7 @@ pub fn build_stylized_fact_metric_catalog() -> StylizedFactMetricCatalog {
                     minimum_tail_observation_count: Some(20),
                     minimum_horizon_coverage_ratio: 0.6,
                 },
-                &["closed_gap", "tail_risk", "returns"],
+                &["closed_gap", "tail_sufficient_statistics", "returns"],
             ),
             build_primary_metric(
                 "closed_gap_vs_open_jump_wasserstein_distance",
