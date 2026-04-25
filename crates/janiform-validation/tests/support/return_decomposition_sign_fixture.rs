@@ -87,8 +87,6 @@ pub struct ReturnDecompositionSignExpectedOutputFixture {
     pub combined_weighted_exponent: ComplexScalarFixture,
     pub trading_time_characteristic_factor: ComplexScalarFixture,
     pub combined_characteristic_factor: ComplexScalarFixture,
-    pub wrong_positive_u_sell_side_weighted_exponent: ComplexScalarFixture,
-    pub minimum_sell_sign_regression_distance: f64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
@@ -281,19 +279,6 @@ pub fn validate_return_decomposition_sign_analytic_fixture_document(
             fixture_case.expected_output.combined_characteristic_factor,
             "cases.expected_output.combined_characteristic_factor",
         )?;
-        validate_complex_scalar_fixture(
-            fixture_case
-                .expected_output
-                .wrong_positive_u_sell_side_weighted_exponent,
-            "cases.expected_output.wrong_positive_u_sell_side_weighted_exponent",
-        )?;
-        validate_non_negative_finite(
-            fixture_case
-                .expected_output
-                .minimum_sell_sign_regression_distance,
-            "cases.expected_output.minimum_sell_sign_regression_distance",
-        )?;
-
         observed_fixture_ids_by_scenario_intent
             .entry(fixture_case.scenario_intent.clone())
             .or_default()

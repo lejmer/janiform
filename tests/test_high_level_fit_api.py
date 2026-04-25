@@ -1342,16 +1342,27 @@ def test_high_level_fit_does_not_retain_raw_market_data_paths_on_model(
         tick_data_path=tick_data_path,
         tick_data_format=CalibrationInputFileFormat.CSV,
     )
-    serialized_model = json.dumps(
-        {
-            "parameters": model.parameters,
-            "metadata": model.metadata,
-        },
-        sort_keys=True,
-    )
+    input_inference = cast(dict[str, Any], model.metadata["input_inference"])
 
-    assert str(tick_data_path) not in serialized_model
-    assert not hasattr(estimator, "_tick_data_path")
+    assert set(input_inference) == {
+        "available_columns",
+        "candidate_columns",
+        "default_calibration_hint_ids",
+        "known_news",
+        "market_profile",
+        "run_id",
+        "session_source_kind",
+        "tick_data_format",
+        "tick_price_columns",
+        "tick_price_input_policy",
+        "timestamp_column",
+        "timestamp_timezone",
+        "timestamp_timezone_source",
+        "workflow_scope",
+    }
+    assert input_inference["run_id"] == "high-level-fit-no-retention"
+    assert input_inference["tick_data_format"] == "csv"
+    assert input_inference["timestamp_column"] == "timestamp_utc"
 
 
 def test_high_level_model_summary_exposes_fitted_parameters_and_provenance(
@@ -1407,8 +1418,15 @@ def test_high_level_model_save_and_load_roundtrip_preserves_deterministic_metada
     assert loaded_model.parameters == model.parameters
     assert loaded_model.metadata == model.metadata
     assert loaded_model.summary() == model.summary()
-    assert "execution_input" not in persisted_payload
-    assert "stage_report_payloads" not in persisted_payload
+    assert set(persisted_payload) == {
+        "schema_version",
+        "run_id",
+        "workflow_scope",
+        "parameters",
+        "metadata",
+        "resolved_configuration",
+        "session_resolution",
+    }
     assert (
         persisted_payload["parameters"]["return_components"]["fitted_parameters"][
             "mean_reversion_fitted_parameters"
@@ -1419,8 +1437,14 @@ def test_high_level_model_save_and_load_roundtrip_preserves_deterministic_metada
         persisted_payload["parameters"]["mean_reversion"]["fitted_parameters"]
         == build_zero_kappa_endogenous_mean_reversion_fitted_parameters_payload()
     )
-    assert "timestamp_utc_nanos" not in persisted_payload["parameters"]["seasonality"]
-    assert "normalized_combined_factor_by_event" not in persisted_payload["parameters"]["seasonality"]
+    assert set(persisted_payload["parameters"]["seasonality"]) == {
+        "schema_version",
+        "exchange_code",
+        "intraday_minutes_per_bin",
+        "intraday_factor_by_bin",
+        "day_of_week_factor",
+        "day_of_year_factor",
+    }
     assert first_path.read_text(encoding="utf-8").startswith("{\n  ")
     assert first_path.read_text(encoding="utf-8") == second_path.read_text(encoding="utf-8")
 
@@ -4426,7 +4450,21 @@ def test_high_level_fit_routes_through_prepared_staged_runner(
     assert hasattr(captured_input, "serialize_execution_input_json")
     assert _prepared_runner_run_id(captured_input) == fit_report.run_id
     assert fit_report.staged_request.run_id == fit_report.run_id
-    assert "execution_input" not in fit_report.to_payload()
+    assert set(fit_report.to_payload()) == {
+        "schema_version",
+        "run_id",
+        "workflow_scope",
+        "success",
+        "summary",
+        "resolved_configuration",
+        "session_resolution",
+        "preparation_diagnostics",
+        "preparation_provenance",
+        "prepared_data_reference",
+        "prepared_payload_path",
+        "staged_execution_input_path",
+        "staged_response",
+    }
 
 
 def test_high_level_fit_reuses_single_load_and_translation_pass_when_session_is_explicit(

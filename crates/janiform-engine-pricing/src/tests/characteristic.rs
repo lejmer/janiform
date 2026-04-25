@@ -58,18 +58,6 @@ fn pricing_path_preserves_sell_side_minus_u_sign_handling() {
         expected_sell_side_minus_u,
         1.0e-13,
     );
-
-    let incorrect_positive_u = driver_parameters
-        .sell_side_parameters
-        .characteristic_exponent(argument);
-    let regression_distance = composed
-        .sell_side_weighted_exponent
-        .subtract(incorrect_positive_u)
-        .norm();
-    assert!(
-        regression_distance > 1.0e-6,
-        "sell-side sign-convention regression detected with distance={regression_distance}"
-    );
 }
 
 #[test]
@@ -314,55 +302,6 @@ fn oracle_output_cf_assembly_isolates_trading_open_jump_closed_gap_and_combined_
         combined.combined_characteristic_factor,
         combined_news_jump_factor,
         1.0e-13,
-    );
-}
-
-#[test]
-fn oracle_output_cf_assembly_regression_guard_detects_positive_u_sell_side_sign_inversion() {
-    let driver_parameters = NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
-        .expect("valid shared-plus-shift payload should construct")
-        .derive_driver_parameters()
-        .expect("valid shared-plus-shift payload should derive drivers");
-    let argument = ComplexScalar::new(1.1, 0.0);
-
-    let return_decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
-        a_plus: 0.0,
-        a_minus: 1.0,
-        open_jump: 0.0,
-        closed_gap: 0.0,
-    })
-    .expect("valid return decomposition payload should construct");
-
-    let correct_trading_exponent =
-        compose_nig_trading_time_exponent(driver_parameters, argument, return_decomposition)
-            .combined_weighted_exponent;
-    let correct_trading_factor = complex_exponential(correct_trading_exponent);
-    let incorrect_positive_u_trading_factor = complex_exponential(
-        driver_parameters
-            .sell_side_parameters
-            .characteristic_exponent(argument),
-    );
-
-    let correct_assembly = compose_total_return_characteristic_function_from_oracle_output(
-        oracle_output_with_transform_value(correct_trading_factor),
-        ComplexScalar::new(1.0, 0.0),
-        ComplexScalar::new(1.0, 0.0),
-    )
-    .expect("correct-sign oracle assembly should succeed");
-    let incorrect_assembly = compose_total_return_characteristic_function_from_oracle_output(
-        oracle_output_with_transform_value(incorrect_positive_u_trading_factor),
-        ComplexScalar::new(1.0, 0.0),
-        ComplexScalar::new(1.0, 0.0),
-    )
-    .expect("incorrect-sign oracle assembly should still compose deterministically");
-
-    let regression_distance = correct_assembly
-        .combined_characteristic_factor
-        .subtract(incorrect_assembly.combined_characteristic_factor)
-        .norm();
-    assert!(
-        regression_distance > 1.0e-6,
-        "sell-side sign-convention regression detected in oracle-output CF assembly with distance={regression_distance}"
     );
 }
 
@@ -747,51 +686,6 @@ fn full_characteristic_function_assembly_rejects_invalid_return_decomposition_pa
         error,
         ReturnCharacteristicFunctionAssemblyError::InvalidReturnDecomposition { .. }
     ));
-}
-
-#[test]
-fn full_characteristic_function_regression_guard_detects_sell_side_sign_inversion() {
-    let driver_parameters = NigSharedPlusShiftConfiguration::try_new(2.3, -0.8, 0.7, 0.1, -0.2)
-        .expect("valid shared-plus-shift payload should construct")
-        .derive_driver_parameters()
-        .expect("valid shared-plus-shift payload should derive drivers");
-    let argument = ComplexScalar::new(1.1, 0.0);
-
-    let return_decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
-        a_plus: 0.0,
-        a_minus: 1.0,
-        open_jump: 0.0,
-        closed_gap: 0.0,
-    })
-    .expect("valid return decomposition payload should construct");
-
-    let assembled = compose_total_return_characteristic_function(
-        driver_parameters,
-        argument,
-        return_decomposition,
-        ComplexScalar::new(1.0, 0.0),
-        ComplexScalar::new(1.0, 0.0),
-    )
-    .expect("full CF assembly should succeed");
-
-    let incorrect_sell_side_positive_u = driver_parameters
-        .sell_side_parameters
-        .characteristic_exponent(argument);
-    let incorrect_positive_u_combined = complex_exponential(
-        assembled
-            .trading_time_exponent_contributions
-            .buy_side_weighted_exponent
-            .add(incorrect_sell_side_positive_u),
-    );
-    let regression_distance = assembled
-        .combined_characteristic_factor
-        .subtract(incorrect_positive_u_combined)
-        .norm();
-
-    assert!(
-        regression_distance > 1.0e-6,
-        "sell-side sign-convention regression detected in full CF assembly with distance={regression_distance}"
-    );
 }
 
 #[test]

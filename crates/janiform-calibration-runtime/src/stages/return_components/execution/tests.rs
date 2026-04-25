@@ -641,8 +641,13 @@ fn continuous_fit_excludes_exact_known_news_attributed_open_return_timestamps() 
         .map(|observation| observation.return_timestamp_utc_nanos)
         .collect();
 
-    assert!(retained_timestamps.contains(&utc_nanos(2026, 2, 2, 14, 0, 1)));
-    assert!(!retained_timestamps.contains(&utc_nanos(2026, 2, 2, 14, 0, 2)));
+    assert_eq!(
+        retained_timestamps,
+        vec![
+            utc_nanos(2026, 2, 2, 14, 0, 1),
+            utc_nanos(2026, 2, 2, 14, 0, 3),
+        ]
+    );
 }
 
 #[test]

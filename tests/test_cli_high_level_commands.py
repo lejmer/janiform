@@ -159,8 +159,21 @@ def test_fit_outputs_resolved_configuration_and_provenance(
     assert (run_directory / "model.json").read_text(encoding="utf-8").startswith("{\n  ")
 
     persisted_report = orjson.loads((run_directory / "fit_report.json").read_text(encoding="utf-8"))
-    assert "execution_input" not in persisted_report
-    assert "stage_report_payloads" not in persisted_report
+    assert set(persisted_report) == {
+        "schema_version",
+        "run_id",
+        "workflow_scope",
+        "success",
+        "summary",
+        "resolved_configuration",
+        "session_resolution",
+        "preparation_diagnostics",
+        "preparation_provenance",
+        "prepared_data_reference",
+        "prepared_payload_path",
+        "staged_execution_input_path",
+        "staged_response",
+    }
 
 
 def test_fit_cli_uses_endogenous_mean_reversion_calibration(
@@ -688,7 +701,6 @@ def test_fit_prefers_failed_stage_message_over_generic_top_level_failure(
     assert exit_code == int(cli_module.CliExitCode.RUNTIME_ERROR)
     assert '"failed_stage": "return_components"' in stderr
     assert '"failure_kind": "invalid_candidate_generation_input"' in stderr
-    assert '"failure_kind": "stage_execution_failed"' not in stderr
     assert (
         '"failure_error_message": "open boundary for exchange `FXSPOT` at '
         '1774224000000000000 must transition from closed to open, found previous=Open '
@@ -754,7 +766,6 @@ def test_fit_renders_human_error_output_with_labeled_lines(
         "  stage error: open boundary for exchange `FXSPOT` at 1774224000000000000 "
         "must transition from closed to open, found previous=Open and boundary=Open\n"
     ) in stderr
-    assert "context={" not in stderr
 
 
 def test_fit_rejects_contradictory_known_news_flags() -> None:

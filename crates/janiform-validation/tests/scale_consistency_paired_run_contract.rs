@@ -48,7 +48,17 @@ fn scale_consistency_run_spec_round_trip_serialization_preserves_contract_fields
         serialized["scenarios"][0]["random_seed_policy"]["kind"],
         json!("shared_random_control")
     );
-    assert!(serialized.get("artifact_output").is_none());
+    let mut serialized_field_names: Vec<&str> = serialized
+        .as_object()
+        .expect("run spec should serialize as an object")
+        .keys()
+        .map(String::as_str)
+        .collect();
+    serialized_field_names.sort_unstable();
+    assert_eq!(
+        serialized_field_names,
+        ["execution_mode", "run_id", "scenarios"]
+    );
 
     let parsed: ScaleConsistencyPairedRunSpec =
         serde_json::from_value(serialized).expect("run spec should deserialize");

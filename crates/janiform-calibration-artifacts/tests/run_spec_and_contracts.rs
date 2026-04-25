@@ -37,8 +37,24 @@ fn calibration_run_spec_round_trip_serialization_preserves_contract_fields() {
         json!("hawkes")
     );
     assert_eq!(serialized["seed_settings"]["global_seed"], json!(17));
-    assert!(serialized.get("stage_handoffs").is_none());
-    assert!(serialized.get("resume_settings").is_none());
+    let mut serialized_field_names: Vec<&str> = serialized
+        .as_object()
+        .expect("run spec should serialize as an object")
+        .keys()
+        .map(String::as_str)
+        .collect();
+    serialized_field_names.sort_unstable();
+    assert_eq!(
+        serialized_field_names,
+        [
+            "data_inputs",
+            "execution_mode",
+            "optimizer_settings_by_stage",
+            "run_id",
+            "seed_settings",
+            "selected_stages",
+        ]
+    );
 
     let parsed: CalibrationRunSpec =
         serde_json::from_value(serialized).expect("run spec should deserialize");

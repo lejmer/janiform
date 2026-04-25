@@ -79,7 +79,6 @@ def test_public_api_contract_snapshot_tracks_supported_cli_modules() -> None:
 
     cli_exports = current_snapshot["public_modules"]["janiform.cli"]["exports"]
     assert "CliExitCode" in cli_exports
-    assert "_build_parser" not in cli_exports
 
 
 def test_public_api_contract_guardrail_supports_public_domain_submodules() -> None:

@@ -60,6 +60,16 @@ use janiform_model_kernels::return_decomposition::{
 };
 
 const SEEDED_TEST_START_UTC_NANOS: i64 = 1_705_932_000_000_000_000;
+const EVENT_TAPE_RECORD_FIELDS_WITHOUT_SNAPSHOT: [&str; 8] = [
+    "anchor_value",
+    "core_total_return_increment",
+    "deviation_from_anchor",
+    "event_index",
+    "observed_log_price",
+    "pressure_state",
+    "side",
+    "timestamp_utc_nanos",
+];
 
 #[test]
 fn trading_time_assembler_buy_only_edge_mode_keeps_sell_and_gap_components_zero() {
@@ -2653,25 +2663,10 @@ fn seeded_simulation_event_tape_schema_exposes_required_and_optional_fields() {
         .expect("event_tape must serialize as an array");
     assert_eq!(serialized_events_without_snapshot.len(), 1);
 
-    let first_event_without_snapshot = serialized_events_without_snapshot[0]
-        .as_object()
-        .expect("event record must serialize as an object");
-
-    for required_field in [
-        "event_index",
-        "timestamp_utc_nanos",
-        "side",
-        "core_total_return_increment",
-        "observed_log_price",
-        "anchor_value",
-        "pressure_state",
-        "deviation_from_anchor",
-    ] {
-        assert!(first_event_without_snapshot.contains_key(required_field));
-    }
-
-    assert!(!first_event_without_snapshot.contains_key("state_snapshot"));
-    assert!(!first_event_without_snapshot.contains_key("interval_index"));
+    assert_eq!(
+        sorted_json_object_field_names(&serialized_events_without_snapshot[0]),
+        EVENT_TAPE_RECORD_FIELDS_WITHOUT_SNAPSHOT
+    );
 
     let run_config_with_snapshot = SeededTickSimulationRunConfig::try_new(
         8_048,
@@ -2803,7 +2798,10 @@ fn seeded_simulation_tied_and_near_tied_timestamps_serialize_deterministically()
         first_payload["metadata"]["timestamp_representation_policy"],
         SEEDED_TICK_EVENT_TIMESTAMP_REPRESENTATION_POLICY
     );
-    assert!(first_events[0].get("interval_index").is_none());
+    assert_eq!(
+        sorted_json_object_field_names(&first_events[0]),
+        EVENT_TAPE_RECORD_FIELDS_WITHOUT_SNAPSHOT
+    );
 
     let second_run_config = SeededTickSimulationRunConfig::try_new(
         10_051,
@@ -2853,16 +2851,19 @@ fn seeded_simulation_tied_and_near_tied_timestamps_serialize_deterministically()
 
     assert_ne!(first_timestamp, second_timestamp);
     assert_eq!(second_events[0]["side"], "buy");
-    assert!(
-        !first_events[0]
-            .as_object()
-            .is_some_and(|entry| entry.contains_key("bucket"))
+    assert_eq!(
+        sorted_json_object_field_names(&second_events[0]),
+        EVENT_TAPE_RECORD_FIELDS_WITHOUT_SNAPSHOT
     );
-    assert!(
-        !second_events[0]
-            .as_object()
-            .is_some_and(|entry| entry.contains_key("bucket"))
-    );
+}
+
+fn sorted_json_object_field_names(value: &Value) -> Vec<&str> {
+    let object = value
+        .as_object()
+        .expect("JSON value must serialize as an object");
+    let mut field_names: Vec<&str> = object.keys().map(String::as_str).collect();
+    field_names.sort_unstable();
+    field_names
 }
 
 fn is_non_decreasing_timestamp_path(run_result: &super::SeededTickSimulationRunResult) -> bool {

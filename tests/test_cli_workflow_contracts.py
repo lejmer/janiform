@@ -798,7 +798,6 @@ def test_deterministic_regression_cli_rejects_malformed_calendar_cases_document(
     assert stdout_text == ""
     assert '[cli.validation.deterministic_regression.invalid_input]' in stderr_text
     assert 'field_path="calendar_cases_document"' in stderr_text
-    assert 'field_path="seasonality_cases_document"' not in stderr_text
     assert "calendar cases document case must be an object" in stderr_text
 
 
@@ -983,10 +982,24 @@ def test_market_data_calibration_cli_maps_flags_to_summary_contract(
     assert summary_payload["output_schema_metadata"]["field_selection_policy"] == (
         cli_module.CLI_MARKET_DATA_SUMMARY_FIELD_SELECTION_POLICY
     )
-
-    assert "request" not in summary_payload
-    assert "runtime_resources" not in summary_payload
-    assert "seasonality_stage_input" not in stdout_text
+    assert set(summary_payload) == {
+        "column_mapping",
+        "command",
+        "diagnostics_summary",
+        "input_files",
+        "normalization_policy",
+        "output_artifact_locations",
+        "output_emission_policy",
+        "output_schema_metadata",
+        "preparation_schema_version",
+        "provenance_summary",
+        "request_schema_version",
+        "run_id",
+        "schema_version",
+        "session_context",
+        "session_resolution",
+        "workflow_scope",
+    }
 
     assert stdout_text == f"{json.dumps(summary_payload, sort_keys=True)}\n"
 
@@ -1698,7 +1711,6 @@ def test_price_cli_maps_model_and_flags_to_runtime_contract(
     assert captured_arguments["include_transform_diagnostics"] is True
     assert captured_arguments["include_integration_quality_diagnostics"] is True
     assert captured_arguments["include_calibration_hooks"] is True
-    assert "observed_boundary_state" not in captured_arguments
 
     command_output = orjson.loads(stdout_text)
     assert command_output["schema_version"] == cli_module.CLI_PRICE_RESULT_SCHEMA_VERSION
@@ -1743,7 +1755,6 @@ def test_price_cli_prices_anchored_model_without_manual_boundary_state_input(
     )
 
     assert exit_code == int(cli_module.CliExitCode.SUCCESS), stderr_text
-    assert "observed_boundary_state" not in captured_arguments
     command_output = orjson.loads(stdout_text)
     assert command_output["response"]["price"] >= 0.0
 

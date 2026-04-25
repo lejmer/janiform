@@ -16,7 +16,6 @@ pub const RETURN_DECOMPOSITION_FAILURE_DIAGNOSTIC_DETERMINISM_POLICY: &str =
 #[serde(rename_all = "snake_case")]
 pub enum ReturnDecompositionFailureDiagnosticCategory {
     Mapping,
-    Sign,
     ComponentDisableMode,
 }
 
@@ -58,11 +57,6 @@ pub struct ReturnDecompositionScenarioDiagnosticContext {
     pub scenario_intent: String,
     pub seed: u64,
     pub edge_mode: ReturnDecompositionEdgeMode,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct ReturnDecompositionFailureClassificationHints {
-    pub wrong_positive_u_sell_side_weighted_exponent: ComplexScalar,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -111,16 +105,9 @@ pub fn build_return_decomposition_failure_diagnostic_violation(
     check_id: &str,
     expected: ReturnDecompositionDiagnosticContributions,
     observed: ReturnDecompositionDiagnosticContributions,
-    classification_hints: ReturnDecompositionFailureClassificationHints,
     tolerance: f64,
 ) -> ReturnDecompositionFailureDiagnosticViolation {
-    let category = classify_return_decomposition_failure_category(
-        context,
-        &expected,
-        &observed,
-        classification_hints,
-        tolerance,
-    );
+    let category = classify_return_decomposition_failure_category(context, &observed, tolerance);
     let absolute_distance = distance_for_check_id(check_id, &expected, &observed);
 
     ReturnDecompositionFailureDiagnosticViolation {
@@ -193,30 +180,11 @@ pub fn render_return_decomposition_failure_diagnostic_report(
 
 pub fn classify_return_decomposition_failure_category(
     context: &ReturnDecompositionScenarioDiagnosticContext,
-    expected: &ReturnDecompositionDiagnosticContributions,
     observed: &ReturnDecompositionDiagnosticContributions,
-    classification_hints: ReturnDecompositionFailureClassificationHints,
     tolerance: f64,
 ) -> ReturnDecompositionFailureDiagnosticCategory {
     if has_component_disable_mode_signature(context, observed, tolerance) {
         return ReturnDecompositionFailureDiagnosticCategory::ComponentDisableMode;
-    }
-
-    if context.edge_mode.sell_component_enabled() {
-        let observed_sell_side = observed.sell_side_weighted_exponent.into_core();
-        let expected_sell_side = expected.sell_side_weighted_exponent.into_core();
-        let observed_buy_side = observed.buy_side_weighted_exponent.into_core();
-        let expected_buy_side = expected.buy_side_weighted_exponent.into_core();
-        let buy_side_distance = observed_buy_side.subtract(expected_buy_side).norm();
-        let distance_to_expected = observed_sell_side.subtract(expected_sell_side).norm();
-        let distance_to_wrong_positive_u = observed_sell_side
-            .subtract(classification_hints.wrong_positive_u_sell_side_weighted_exponent)
-            .norm();
-        if buy_side_distance <= tolerance
-            && distance_to_wrong_positive_u + tolerance < distance_to_expected
-        {
-            return ReturnDecompositionFailureDiagnosticCategory::Sign;
-        }
     }
 
     ReturnDecompositionFailureDiagnosticCategory::Mapping

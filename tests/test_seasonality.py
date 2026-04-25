@@ -562,7 +562,7 @@ def test_compose_deterministic_seasonality_signal_applies_overlay_precedence_whe
         if day_of_week == 1
     ]
     assert monday_event_positions
-    assert "low_priority" not in composition.applied_overlay_ids_in_order
+    assert composition.applied_overlay_ids_in_order == ["high_priority", "high_priority_peer"]
 
     for event_position in monday_event_positions:
         assert composition.special_log_component_by_event[event_position] == pytest.approx(0.5)
