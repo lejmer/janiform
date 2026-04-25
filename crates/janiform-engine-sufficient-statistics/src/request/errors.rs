@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
-pub use janiform_affine_oracle::sufficient_statistics::{
+use janiform_affine_oracle::sufficient_statistics::{
     SufficientStatisticsIntervalFactorsError, SufficientStatisticsModelInputsError,
 };
 

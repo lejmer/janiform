@@ -1,13 +1,11 @@
 use serde::Serialize;
 
-pub use janiform_affine_oracle::sufficient_statistics::{
-    SufficientStatisticsIntervalFactors, SufficientStatisticsModelInputs,
+use janiform_affine_oracle::sufficient_statistics::{
+    DEFAULT_INTRADAY_SUFFICIENT_STATISTICS_INTERVAL_DELTA, SufficientStatisticsIntervalFactors,
+    SufficientStatisticsModelInputs,
 };
 
-use super::constants::{
-    DEFAULT_INTRADAY_SUFFICIENT_STATISTICS_INTERVAL_DELTA,
-    SUFFICIENT_STATISTICS_RUN_REQUEST_SCHEMA_VERSION,
-};
+use super::constants::SUFFICIENT_STATISTICS_RUN_REQUEST_SCHEMA_VERSION;
 use super::errors::SufficientStatisticsRunRequestError;
 
 const MEAN_REVERSION_ALIGNMENT_TOLERANCE: f64 = 1.0e-12;

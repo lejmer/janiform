@@ -1,8 +1,3 @@
-pub use janiform_affine_oracle::sufficient_statistics::{
-    DEFAULT_INTRADAY_SUFFICIENT_STATISTICS_INTERVAL_DELTA,
-    SUFFICIENT_STATISTICS_INTERVAL_FACTOR_POLICY,
-};
-
 pub const SUFFICIENT_STATISTICS_RUN_REQUEST_SCHEMA_VERSION: &str =
     "sufficient_statistics.run_request.v1";
 pub const SUFFICIENT_STATISTICS_PATH_SCHEMA_VERSION: &str = "sufficient_statistics.path.v1";
