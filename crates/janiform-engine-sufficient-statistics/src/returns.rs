@@ -3,7 +3,7 @@ use std::fmt::{Display, Formatter};
 
 use serde::Serialize;
 
-pub use janiform_affine_oracle::sufficient_statistics::{
+use janiform_affine_oracle::sufficient_statistics::{
     SUFFICIENT_STATISTICS_INTERVAL_RETURN_COMPONENT_BREAKDOWN_POLICY,
     SUFFICIENT_STATISTICS_INTERVAL_RETURN_COMPONENT_ROUTING_POLICY,
     SUFFICIENT_STATISTICS_INTERVAL_RETURN_GENERATION_POLICY,
@@ -168,6 +168,7 @@ where
             },
         );
     }
+
     if !closed_gap_return.is_finite() {
         return Err(
             SufficientStatisticsReturnGenerationError::InvalidClosedGapReturn {
@@ -178,6 +179,7 @@ where
 
     let (effective_open_jump_return, effective_closed_gap_return) =
         market_state_routed_return_jumps(market_state, open_jump_return, closed_gap_return);
+
     let return_decomposition = ReturnDecomposition::try_new(ReturnDecompositionInput {
         a_plus: sampled_statistics.a_plus,
         a_minus: sampled_statistics.a_minus,
@@ -197,6 +199,7 @@ where
     let buy_side_return = trading_time_contributions.buy_side_increment;
     let sell_side_return = -trading_time_contributions.sell_side_increment;
     let trading_time_return = trading_time_contributions.combined_increment;
+
     let total_return =
         trading_time_return + effective_open_jump_return + effective_closed_gap_return;
     if !total_return.is_finite() {
@@ -208,6 +211,7 @@ where
     }
 
     let include_component_breakdown = options.unwrap_or_default().include_component_breakdown;
+
     let component_breakdown = if include_component_breakdown {
         Some(
             SufficientStatisticsReturnComponents::try_new(

@@ -2,14 +2,17 @@ use serde::Deserialize;
 
 use janiform_model_kernels::hawkes::HawkesExcitationState;
 
-use super::super::request::{
-    DEFAULT_INTRADAY_SUFFICIENT_STATISTICS_INTERVAL_DELTA,
-    SUFFICIENT_STATISTICS_PATH_RECORD_SCHEMA_VERSION, SUFFICIENT_STATISTICS_PATH_SCHEMA_VERSION,
-    SUFFICIENT_STATISTICS_RUN_REQUEST_SCHEMA_VERSION, SufficientStatisticsIntervalFactors,
-    SufficientStatisticsModelInputs, SufficientStatisticsRunRequest,
+use janiform_affine_oracle::sufficient_statistics::{
+    DEFAULT_INTRADAY_SUFFICIENT_STATISTICS_INTERVAL_DELTA, SufficientStatisticsIntervalFactors,
+    SufficientStatisticsIntervalStatistics, SufficientStatisticsModelInputs,
+    SufficientStatisticsReturnComponents,
 };
-use super::super::returns::SufficientStatisticsReturnComponents;
-use super::super::transform_sampling::SufficientStatisticsIntervalStatistics;
+
+use super::super::request::constants::{
+    SUFFICIENT_STATISTICS_PATH_RECORD_SCHEMA_VERSION, SUFFICIENT_STATISTICS_PATH_SCHEMA_VERSION,
+    SUFFICIENT_STATISTICS_RUN_REQUEST_SCHEMA_VERSION,
+};
+use super::super::request::contracts::SufficientStatisticsRunRequest;
 use super::contracts::{
     SUFFICIENT_STATISTICS_PATH_OUTPUT_SCHEMA_METADATA, SUFFICIENT_STATISTICS_PATH_PROVENANCE,
     SufficientStatisticsPath, SufficientStatisticsPathDiagnostics, SufficientStatisticsPathRecord,
