@@ -6,6 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 description = "Calibration runtime orchestration for Janiform."
 readme = "README.md"
+autotests = false
 
 [lib]
 name = "janiform_calibration_runtime"
@@ -36,3 +37,51 @@ sysinfo = { workspace = true }
 
 [dev-dependencies]
 janiform-engine-simulation = { path = "../janiform-engine-simulation" }
+
+[[test]]
+name = "artifact_regression_suite"
+path = "tests/artifact_regression_suite.rs"
+
+[[test]]
+name = "core_adapters"
+path = "tests/core_adapters.rs"
+
+[[test]]
+name = "current_state_estimation"
+path = "tests/current_state_estimation.rs"
+
+[[test]]
+name = "experiment_index"
+path = "tests/experiment_index.rs"
+
+[[test]]
+name = "joint_refinement_diagnostics"
+path = "tests/joint_refinement_diagnostics.rs"
+
+[[test]]
+name = "market_time_cross_crate_integration"
+path = "tests/market_time_cross_crate_integration.rs"
+
+[[test]]
+name = "mean_reversion_stage"
+path = "tests/mean_reversion_stage.rs"
+
+[[test]]
+name = "pricing_calibration_hook_consumer_integration"
+path = "tests/pricing_calibration_hook_consumer_integration.rs"
+
+[[test]]
+name = "reload_resolver"
+path = "tests/reload_resolver.rs"
+
+[[test]]
+name = "stage_execution"
+path = "tests/stage_execution.rs"
+
+[[test]]
+name = "stage_parameter_artifact"
+path = "tests/stage_parameter_artifact.rs"
+
+[[test]]
+name = "staged_runner"
+path = "tests/staged_runner.rs"
