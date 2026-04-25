@@ -11,8 +11,6 @@
 - Prefer clarity and maintainability over cleverness.
 - Do not introduce global state.
 - Must work on both Windows and Linux (never hardcode Linux paths)
-- Do not use regression tests as a substitute for stronger API or contract design. When a bug exposes an invalid state, first make that state hard or impossible to express through typed contracts, shared constructors, validators, or narrower public methods. Add or keep a regression test only when the invalid behavior remains genuinely easy to reintroduce after the API shape has been fixed, and document why that test is still necessary.
-- Do not write tests or assertions whose only purpose is to prove that old code, old text, old fields, or removed behavior are absent. Prefer exact positive contract assertions or stronger API shapes that make the unwanted state impossible to express.
 
 ### Before finishing a task
 
@@ -132,8 +130,11 @@ In the `crates/` folder where the Rust code is located:
   - boundary conversions (pybind)
   - numerical stability (if relevant)
 - Benchmarks (criterion) for performance-critical kernels. Optimize based on measurement.
+- Do not use regression tests as a substitute for stronger API or contract design. When a bug exposes an invalid state, first make that state hard or impossible to express through typed contracts, shared constructors, validators, or narrower public methods. Add or keep a regression test only when the invalid behavior remains genuinely easy to reintroduce after the API shape has been fixed, and document why that test is still necessary.
+- Do not write tests or assertions whose only purpose is to prove that old code, old text, old fields, or removed behavior are absent. Prefer exact positive contract assertions or stronger API shapes that make the unwanted state impossible to express.
 
 ### Expensive runs
+
 If you run an expensive command, test or run (e.g. pricing or calibration):
   - run one command at a time
   - for tests: always use a 120 second timeout for the process
