@@ -12,6 +12,11 @@
 - Do not introduce global state.
 - Must work on both Windows and Linux (never hardcode Linux paths)
 
+## Important Regression Test Policy
+
+- Do not use regression tests as a substitute for stronger API or contract design. When a bug exposes an invalid state, first make that state hard or impossible to express through typed contracts, shared constructors, validators, or narrower public methods. Add or keep a regression test only when the invalid behavior remains genuinely easy to reintroduce after the API shape has been fixed, and document why that test is still necessary.
+- Do not write tests or assertions whose only purpose is to prove that old code, old text, old fields, or removed behavior are absent. Prefer exact positive contract assertions or stronger API shapes that make the unwanted state impossible to express.
+
 ### Before finishing a task
 
 - You avoid changing public APIs unintentionally.
@@ -130,8 +135,6 @@ In the `crates/` folder where the Rust code is located:
   - boundary conversions (pybind)
   - numerical stability (if relevant)
 - Benchmarks (criterion) for performance-critical kernels. Optimize based on measurement.
-- Do not use regression tests as a substitute for stronger API or contract design. When a bug exposes an invalid state, first make that state hard or impossible to express through typed contracts, shared constructors, validators, or narrower public methods. Add or keep a regression test only when the invalid behavior remains genuinely easy to reintroduce after the API shape has been fixed, and document why that test is still necessary.
-- Do not write tests or assertions whose only purpose is to prove that old code, old text, old fields, or removed behavior are absent. Prefer exact positive contract assertions or stronger API shapes that make the unwanted state impossible to express.
 
 ### Expensive runs
 
@@ -206,11 +209,13 @@ In the `python/janiform/` folder where the Python code is located:
 Read and follow `docs/contributing/python-style.md`. Agents must adhere to it strictly when writing Python code.
 
 ## Comments
+
 - Comments should only explain what the code doesn't clearly state, or help us understand the structure when the code is complex or is made up of many steps.
 - Do not use ";" in comments. It is almost never used by humans, especially coders. AI agents tend to overuse this in comments. Here we have a hard rule: NEVER USE THEM!
 - Only standard keyboard symbols. Absolutely **no** emojis :)
 
 ## Available Tooling
+
 - `./scripts/bootstrap-linux.sh .venv-linux` for Linux/WSL-based bootstrapping (if no venv exists)
 - `./scripts/bootstrap-win.ps1 .venv` for Windows-based bootstrapping (if no venv exists)
 - `./scripts/build-linux.sh .venv-linux` for Linux/WSL-based building
