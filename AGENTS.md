@@ -80,7 +80,7 @@ Implementations are Rust first for most things (unless specified otherwise or ob
 
 In the `crates/` folder where the Rust code is located:
 
-- `mod.rs` and `lib.rs` files must be thin and never include any declarations.
+- `lib.rs` files must be thin and never include any declarations.
 - Never use wildcard importing (`::*`). Always be explicit with everything you import.
 - When introducing a new concept/feature/API, consider whether:
   - There is an existing crate  that is an appropriate place for your new code to live.
