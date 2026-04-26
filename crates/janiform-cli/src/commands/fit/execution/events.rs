@@ -5,12 +5,12 @@ use janiform::calibration::{
     CalibrationStagedRunObserverEvent, CalibrationStagedRunReport,
     JointRefinementStageProgressPhase, ReturnComponentsStageProgressPhase,
 };
-use janiform_cli_ui::{ProgressEvent, ProgressMeasure as UiProgressMeasure};
 use janiform_event_log::{
     EventDeliveryPriority, ProgressMeasure as EventProgressMeasure, RunArtifactEvent,
     RunErrorEvent, RunEvent, RunEventLogWriter, RunEventPayload, RunLifecycleEvent, RunPhaseRef,
     RunProgressEvent, RunStageRef, WorkflowRef,
 };
+use janiform_terminal_ui::{ProgressEvent, ProgressMeasure as UiProgressMeasure};
 
 use crate::commands::fit::labels::stage_label;
 use crate::error::CliError;

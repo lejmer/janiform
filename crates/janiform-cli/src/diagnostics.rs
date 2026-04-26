@@ -24,9 +24,10 @@ pub(crate) fn write_error_without_context(
 ) -> io::Result<()> {
     match output_mode_from_options(options) {
         OutputMode::Json => write_json_error(error),
-        OutputMode::Human | OutputMode::Quiet | OutputMode::Silent => {
-            write_terminal_error(error, janiform_cli_ui::TerminalRenderer::new(false, None))
-        }
+        OutputMode::Human | OutputMode::Quiet | OutputMode::Silent => write_terminal_error(
+            error,
+            janiform_terminal_ui::TerminalRenderer::new(false, None),
+        ),
     }
 }
 
@@ -37,17 +38,20 @@ pub(crate) fn write_error_for_parse_failure(
     if requested_json {
         write_json_error(error)
     } else {
-        write_terminal_error(error, janiform_cli_ui::TerminalRenderer::new(false, None))
+        write_terminal_error(
+            error,
+            janiform_terminal_ui::TerminalRenderer::new(false, None),
+        )
     }
 }
 
 fn write_terminal_error(
     error: CliError,
-    renderer: janiform_cli_ui::TerminalRenderer,
+    renderer: janiform_terminal_ui::TerminalRenderer,
 ) -> io::Result<()> {
     let report = miette::Report::new(error);
 
-    let block = janiform_cli_ui::FailureBlock {
+    let block = janiform_terminal_ui::FailureBlock {
         title: "Error".to_string(),
         reason: report.to_string(),
         details: Vec::new(),

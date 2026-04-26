@@ -1,4 +1,4 @@
-//! Semantic terminal rendering and progress adapters for the Janiform CLI.
+//! Shared semantic terminal rendering and progress adapters for Janiform.
 
 #![forbid(unsafe_code)]
 

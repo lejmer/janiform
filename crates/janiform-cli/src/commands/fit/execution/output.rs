@@ -4,7 +4,7 @@ use std::time::Duration;
 use janiform::calibration::{
     CalibrationStageExecutionStatus, CalibrationStagedExecutionInput, CalibrationStagedRunReport,
 };
-use janiform_cli_ui::{
+use janiform_terminal_ui::{
     CompletionSummary, CompletionSummaryStatus, FailureBlock, KeyValueRow, StartSummary,
     format_artifact_path, format_path,
 };

@@ -1,4 +1,6 @@
-use janiform_cli_ui::{ProgressAdapter, ProgressContractError, ProgressEvent, ProgressMeasure};
+use janiform_terminal_ui::{
+    ProgressAdapter, ProgressContractError, ProgressEvent, ProgressMeasure,
+};
 
 #[test]
 fn bounded_progress_requires_real_positive_totals() {

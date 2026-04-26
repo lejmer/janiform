@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use janiform::calibration::CalibrationExecutionMode;
-use janiform_cli_ui::{
+use janiform_terminal_ui::{
     ArtifactPathGroup, KeyValueRow, StageChecklist, StageChecklistItem, StageChecklistStatus,
     StartSummary, WarningBlock, format_artifact_path, format_path,
 };

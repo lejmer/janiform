@@ -8,7 +8,7 @@ use janiform::calibration::{
     PreparedMarketDataCalibrationPlan, ResolvedMarketProfile, infer_market_data_run_id_from_path,
     prepare_market_data_calibration_plan,
 };
-use janiform_cli_ui::format_path;
+use janiform_terminal_ui::format_path;
 
 use super::labels::{
     market_data_file_format_label, tick_price_policy_label, workflow_scope_argument_label,

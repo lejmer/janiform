@@ -202,10 +202,10 @@
       "layer": "event_log",
       "allowed_internal_dependencies": []
     },
-    "janiform-cli-ui": {
+    "janiform-terminal-ui": {
       "status": "existing",
       "kind": "production",
-      "layer": "cli_ui",
+      "layer": "terminal_ui",
       "allowed_internal_dependencies": []
     },
     "janiform-cli": {
@@ -215,7 +215,7 @@
       "allowed_internal_dependencies": [
         "janiform-foundations",
         "janiform-event-log",
-        "janiform-cli-ui",
+        "janiform-terminal-ui",
         "janiform"
       ]
     },

@@ -187,7 +187,7 @@ pub enum CliError {
     #[diagnostic(code(janiform_cli::output_progress))]
     OutputProgress {
         #[source]
-        source: janiform_cli_ui::ProgressContractError,
+        source: janiform_terminal_ui::ProgressContractError,
     },
 
     #[error("failed to inspect run directory `{}`", run_directory.display())]

@@ -1,4 +1,4 @@
-use janiform_cli_ui::{
+use janiform_terminal_ui::{
     ArtifactPathGroup, CompactTable, CompletionSummary, CompletionSummaryStatus, FailureBlock,
     KeyValueRow, SemanticStyle, StageChecklist, StageChecklistItem, StageChecklistStatus,
     StartSummary, TerminalRenderer, WarningBlock, format_count, format_duration_seconds,

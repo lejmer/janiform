@@ -12,7 +12,7 @@ use janiform::calibration::{
     resolve_market_data_session_configuration,
     run_staged_calibration_from_execution_input_with_observer,
 };
-use janiform_cli_ui::{ProgressAdapter, format_path};
+use janiform_terminal_ui::{ProgressAdapter, format_path};
 use serde_json::Value;
 use serde_json::json;
 
