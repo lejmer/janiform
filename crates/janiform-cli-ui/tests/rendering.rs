@@ -102,7 +102,7 @@ fn stage_checklist_and_artifact_groups_are_plain_text_meaningful() {
 
     assert_eq!(
         checklist.render(&renderer),
-        "stages\n✓ seasonality\n-> hawkes"
+        "stages\n✓ seasonality\n→ hawkes"
     );
     assert_eq!(
         artifacts.render(&renderer),

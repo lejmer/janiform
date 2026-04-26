@@ -49,7 +49,7 @@ impl PyCalendarRegistry {
         let parsed_session_filter = parse_session_filter(session_filter)?;
 
         let output = py
-            .allow_threads(|| {
+            .detach(|| {
                 self.registry.preprocess_timestamp_events(
                     exchange_code,
                     parsed_records,
@@ -134,7 +134,7 @@ fn parse_timestamp_event_records(
 
     for (record_position, record_value_result) in iterator.enumerate() {
         let record_value = record_value_result?;
-        let record_mapping = record_value.downcast::<PyMapping>().map_err(|_| {
+        let record_mapping = record_value.cast::<PyMapping>().map_err(|_| {
             SeasonalityInputValidationError::new_err(format!(
                 "event record at position {record_position} must be a mapping"
             ))

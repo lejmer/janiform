@@ -13,14 +13,19 @@ pub(crate) struct PyCalibrationMemoryCheckpointStore {
 
 #[pyclass(
     module = "janiform._native",
-    name = "PreparedCalibrationExecutionHandle"
+    name = "PreparedCalibrationExecutionHandle",
+    skip_from_py_object
 )]
 #[derive(Clone)]
 pub(crate) struct PyPreparedCalibrationExecutionHandle {
     pub(crate) execution_input: CalibrationStagedExecutionInput,
 }
 
-#[pyclass(module = "janiform._native", name = "NormalizedMarketDataHandle")]
+#[pyclass(
+    module = "janiform._native",
+    name = "NormalizedMarketDataHandle",
+    skip_from_py_object
+)]
 #[derive(Clone)]
 pub(crate) struct PyNormalizedMarketDataHandle {
     pub(crate) normalized_output: Arc<MarketDataNormalizedTickOutput>,
@@ -71,7 +76,7 @@ impl PyPreparedCalibrationExecutionHandle {
     }
 
     fn serialize_execution_input_json(&self, py: Python<'_>) -> PyResult<String> {
-        py.allow_threads(|| serde_json::to_string(&self.execution_input))
+        py.detach(|| serde_json::to_string(&self.execution_input))
             .map_err(|source| {
                 PyValueError::new_err(format!(
                     "failed to serialize prepared calibration execution input: {source}"

@@ -51,9 +51,7 @@ fn estimate_intraday_seasonality(
     };
 
     let output = py
-        .allow_threads(|| {
-            estimate_intraday_seasonality_core(&minute_of_day_values, estimator_settings)
-        })
+        .detach(|| estimate_intraday_seasonality_core(&minute_of_day_values, estimator_settings))
         .map_err(map_intraday_estimation_error)?;
 
     Ok(PyIntradaySeasonalityEstimateResult { output })
@@ -79,9 +77,7 @@ fn estimate_day_of_week_seasonality(
     };
 
     let output = py
-        .allow_threads(|| {
-            estimate_day_of_week_seasonality_core(&day_of_week_values, estimator_settings)
-        })
+        .detach(|| estimate_day_of_week_seasonality_core(&day_of_week_values, estimator_settings))
         .map_err(map_day_of_week_estimation_error)?;
 
     Ok(PyDayOfWeekSeasonalityEstimateResult { output })
@@ -107,9 +103,7 @@ fn estimate_day_of_year_seasonality(
     };
 
     let output = py
-        .allow_threads(|| {
-            estimate_day_of_year_seasonality_core(&day_of_year_values, estimator_settings)
-        })
+        .detach(|| estimate_day_of_year_seasonality_core(&day_of_year_values, estimator_settings))
         .map_err(map_day_of_year_estimation_error)?;
 
     Ok(PyDayOfYearSeasonalityEstimateResult { output })
@@ -174,7 +168,7 @@ fn compose_deterministic_seasonality_signal(
     let overlay_definitions = parse_scheduled_event_overlay_definitions(scheduled_event_overlays)?;
 
     let output = py
-        .allow_threads(|| {
+        .detach(|| {
             compose_deterministic_seasonality_signal_core(
                 &timestamp_utc_nanos_values,
                 &minute_of_day_values,
@@ -205,7 +199,7 @@ fn generate_seasonality_diagnostics_report(
     estimator_version: &str,
 ) -> PyResult<String> {
     let report_output = py
-        .allow_threads(|| {
+        .detach(|| {
             generate_seasonality_diagnostics_report_core(SeasonalityDiagnosticsReportInput {
                 dataset_id,
                 input_schema_version: preprocessed_events.output.input_schema_version,
@@ -257,7 +251,7 @@ fn parse_scheduled_event_overlay_definitions(
 
     for (overlay_position, overlay_record_result) in overlay_iterator.enumerate() {
         let overlay_record = overlay_record_result?;
-        let overlay_mapping = overlay_record.downcast::<PyMapping>().map_err(|_| {
+        let overlay_mapping = overlay_record.cast::<PyMapping>().map_err(|_| {
             SeasonalityInputValidationError::new_err(format!(
                 "scheduled_event_overlay at position {overlay_position} must be a mapping"
             ))

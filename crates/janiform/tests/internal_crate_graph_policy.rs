@@ -55,22 +55,24 @@ fn rust_internal_crate_graph_policy_fixture_declares_required_crates_and_facade_
     assert_eq!(policy.pybind_boundary_crate, "janiform-pybind");
 
     let required_crates = [
-        "janiform-foundations",
-        "janiform-model-kernels",
         "janiform-affine-oracle",
-        "janiform-market-time",
-        "janiform-engine-pricing",
-        "janiform-engine-sufficient-statistics",
-        "janiform-engine-simulation",
+        "janiform-analytics-stylized-facts",
         "janiform-calibration-artifacts",
         "janiform-calibration-runtime",
-        "janiform-joint-refinement-worker",
-        "janiform-analytics-stylized-facts",
-        "janiform-validation",
+        "janiform-cli",
+        "janiform-cli-ui",
+        "janiform-engine-pricing",
+        "janiform-engine-simulation",
+        "janiform-engine-sufficient-statistics",
+        "janiform-foundations",
         "janiform-governance",
         "janiform-governance-bench",
-        "janiform",
+        "janiform-joint-refinement-worker",
+        "janiform-market-time",
+        "janiform-model-kernels",
         "janiform-pybind",
+        "janiform-validation",
+        "janiform",
     ];
     for required_crate in required_crates {
         assert!(

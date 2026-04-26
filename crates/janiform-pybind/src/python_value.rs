@@ -11,11 +11,11 @@ pub(crate) fn py_any_to_json_value(value: &Bound<'_, PyAny>) -> PyResult<Value> 
         return Ok(Value::Null);
     }
 
-    if let Ok(boolean_value) = value.downcast::<PyBool>() {
+    if let Ok(boolean_value) = value.cast::<PyBool>() {
         return Ok(Value::Bool(boolean_value.extract::<bool>()?));
     }
 
-    if let Ok(integer_value) = value.downcast::<PyInt>() {
+    if let Ok(integer_value) = value.cast::<PyInt>() {
         if let Ok(parsed_value) = integer_value.extract::<i64>() {
             return Ok(Value::Number(Number::from(parsed_value)));
         }
@@ -24,7 +24,7 @@ pub(crate) fn py_any_to_json_value(value: &Bound<'_, PyAny>) -> PyResult<Value> 
         }
     }
 
-    if let Ok(float_value) = value.downcast::<PyFloat>() {
+    if let Ok(float_value) = value.cast::<PyFloat>() {
         let parsed_value = float_value.extract::<f64>()?;
 
         let number = Number::from_f64(parsed_value).ok_or_else(|| {
@@ -36,16 +36,16 @@ pub(crate) fn py_any_to_json_value(value: &Bound<'_, PyAny>) -> PyResult<Value> 
         return Ok(Value::Number(number));
     }
 
-    if let Ok(string_value) = value.downcast::<PyString>() {
+    if let Ok(string_value) = value.cast::<PyString>() {
         return Ok(Value::String(string_value.to_str()?.to_owned()));
     }
 
-    if let Ok(dict_value) = value.downcast::<PyDict>() {
+    if let Ok(dict_value) = value.cast::<PyDict>() {
         let mut mapped_value = Map::with_capacity(dict_value.len());
 
         for (raw_key, raw_item) in dict_value.iter() {
             let key = raw_key
-                .downcast::<PyString>()
+                .cast::<PyString>()
                 .map_err(|_| {
                     PyErr::new::<pyo3::exceptions::PyTypeError, _>(
                         "mapping payload keys must be strings",
@@ -59,7 +59,7 @@ pub(crate) fn py_any_to_json_value(value: &Bound<'_, PyAny>) -> PyResult<Value> 
         return Ok(Value::Object(mapped_value));
     }
 
-    if let Ok(list_value) = value.downcast::<PyList>() {
+    if let Ok(list_value) = value.cast::<PyList>() {
         let mut items = Vec::with_capacity(list_value.len());
 
         for raw_item in list_value.iter() {
@@ -69,7 +69,7 @@ pub(crate) fn py_any_to_json_value(value: &Bound<'_, PyAny>) -> PyResult<Value> 
         return Ok(Value::Array(items));
     }
 
-    if let Ok(tuple_value) = value.downcast::<PyTuple>() {
+    if let Ok(tuple_value) = value.cast::<PyTuple>() {
         let mut items = Vec::with_capacity(tuple_value.len());
 
         for raw_item in tuple_value.iter() {

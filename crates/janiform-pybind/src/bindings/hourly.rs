@@ -85,7 +85,7 @@ fn build_hourly_factor_contract(
         })?;
 
     let output = py
-        .allow_threads(|| {
+        .detach(|| {
             build_hourly_factor_contract_core(
                 &calendar_registry.registry,
                 exchange_code,
@@ -189,7 +189,7 @@ fn materialize_hourly_seasonality_factors(
     }
 
     let output = py
-        .allow_threads(|| {
+        .detach(|| {
             materialize_hourly_seasonality_factors_core(
                 &calendar_registry.registry,
                 exchange_code,
@@ -287,7 +287,7 @@ fn materialize_hourly_news_intensity_factors(
         };
 
     let output = py
-        .allow_threads(|| {
+        .detach(|| {
             materialize_hourly_news_intensity_factors_core(
                 &calendar_registry.registry,
                 exchange_code,
@@ -345,7 +345,7 @@ fn provide_hourly_factor_contract(
         };
 
     let output = py
-        .allow_threads(move || {
+        .detach(move || {
             let provider_seasonality_source = match &parsed_seasonality_source {
                 Some(ParsedHourlyProviderSeasonalitySource::Explicit {
                     hourly_factors,
@@ -415,13 +415,11 @@ fn provide_hourly_factor_contract(
 pub(super) fn parse_hourly_provider_seasonality_source(
     raw_seasonality_source: &Bound<'_, PyAny>,
 ) -> PyResult<ParsedHourlyProviderSeasonalitySource> {
-    let source_mapping = raw_seasonality_source
-        .downcast::<PyMapping>()
-        .map_err(|_| {
-            SeasonalityInputValidationError::new_err(
-                "seasonality_source must be a mapping with source_kind and source fields",
-            )
-        })?;
+    let source_mapping = raw_seasonality_source.cast::<PyMapping>().map_err(|_| {
+        SeasonalityInputValidationError::new_err(
+            "seasonality_source must be a mapping with source_kind and source fields",
+        )
+    })?;
 
     let source_kind_value = source_mapping
         .contains("source_kind")?
@@ -597,13 +595,11 @@ pub(super) fn parse_hourly_provider_seasonality_source(
 pub(super) fn parse_hourly_provider_news_intensity_source(
     raw_news_intensity_source: &Bound<'_, PyAny>,
 ) -> PyResult<ParsedHourlyProviderNewsIntensitySource> {
-    let source_mapping = raw_news_intensity_source
-        .downcast::<PyMapping>()
-        .map_err(|_| {
-            SeasonalityInputValidationError::new_err(
-                "news_intensity_source must be a mapping with source_kind and source fields",
-            )
-        })?;
+    let source_mapping = raw_news_intensity_source.cast::<PyMapping>().map_err(|_| {
+        SeasonalityInputValidationError::new_err(
+            "news_intensity_source must be a mapping with source_kind and source fields",
+        )
+    })?;
 
     let source_kind_value = source_mapping
         .contains("source_kind")?
