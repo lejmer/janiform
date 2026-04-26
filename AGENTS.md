@@ -124,6 +124,7 @@ In the `crates/` folder where the Rust code is located:
   - Never hold the GIL longer than necessary. Avoid long CPU work while holding GIL.
     - Release GIL for heavy work (e.g., `Python::allow_threads`) when safe.
   - Ensure types exposed to Python are stable and documented. Do not leak internal Rust structs by default.
+- Crate README's are never written manually. They are generated from crate metadata from the canonical script `scripts/generate_crate_readmes.py`.
 
 ### Testing
 
