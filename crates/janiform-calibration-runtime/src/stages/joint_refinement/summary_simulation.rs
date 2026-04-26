@@ -181,8 +181,7 @@ pub fn write_joint_refinement_worker_frame<T: Serialize>(
     writer: &mut impl Write,
     message: &T,
 ) -> Result<(), String> {
-    let payload = bincode::serialize(message)
-        .map_err(|source| format!("failed to serialize worker frame: {source}"))?;
+    let payload = serialize_joint_refinement_worker_payload(message)?;
     let frame_length = u64::try_from(payload.len())
         .map_err(|_| "worker frame payload length exceeds u64".to_string())?;
 
@@ -220,8 +219,18 @@ pub fn read_joint_refinement_worker_frame<T: DeserializeOwned>(
         .read_exact(payload.as_mut_slice())
         .map_err(|source| format!("failed to read worker frame payload: {source}"))?;
 
-    bincode::deserialize(payload.as_slice())
-        .map(Some)
+    deserialize_joint_refinement_worker_payload(payload.as_slice()).map(Some)
+}
+
+fn serialize_joint_refinement_worker_payload<T: Serialize>(message: &T) -> Result<Vec<u8>, String> {
+    postcard::to_allocvec(message)
+        .map_err(|source| format!("failed to serialize worker frame: {source}"))
+}
+
+fn deserialize_joint_refinement_worker_payload<T: DeserializeOwned>(
+    payload: &[u8],
+) -> Result<T, String> {
+    postcard::from_bytes(payload)
         .map_err(|source| format!("failed to deserialize worker frame payload: {source}"))
 }
 
@@ -769,7 +778,9 @@ pub(crate) mod tests {
         JointRefinementSummarySimulationWorkerRequest,
         JointRefinementSummarySimulationWorkerResponse, JointRefinementWorkerRequestedOutput,
         RunCandidateRequest, RunCandidateResponse, build_seeded_summary_simulation_run_config,
+        deserialize_joint_refinement_worker_payload,
         initialize_joint_refinement_summary_simulation_session, read_joint_refinement_worker_frame,
+        serialize_joint_refinement_worker_payload,
         simulate_joint_refinement_seed_summary_in_process, write_joint_refinement_worker_frame,
     };
     use crate::load_hourly_factor_contract_for_calibration;
@@ -884,10 +895,10 @@ pub(crate) mod tests {
             requested_seed: fixture.simulation_seed,
             requested_output: JointRefinementWorkerRequestedOutput::ExactSummaryWithDiagnostics,
         };
-        let serialized_request = bincode::serialize(&run_candidate_request)
+        let serialized_request = serialize_joint_refinement_worker_payload(&run_candidate_request)
             .expect("summary simulation run-candidate request should serialize");
         let round_tripped_request: RunCandidateRequest =
-            bincode::deserialize(serialized_request.as_slice())
+            deserialize_joint_refinement_worker_payload(serialized_request.as_slice())
                 .expect("summary simulation run-candidate request should deserialize");
         assert_eq!(round_tripped_request, run_candidate_request);
 
@@ -1160,10 +1171,14 @@ pub(crate) mod tests {
             requested_output: JointRefinementWorkerRequestedOutput::ExactSummaryOnly,
         };
 
-        let initialize_request_size = bincode::serialized_size(&initialize_request)
-            .expect("initialize-session request size should resolve");
-        let run_candidate_request_size = bincode::serialized_size(&run_candidate_request)
-            .expect("run-candidate request size should resolve");
+        let initialize_request_size =
+            serialize_joint_refinement_worker_payload(&initialize_request)
+                .expect("initialize-session request should serialize")
+                .len();
+        let run_candidate_request_size =
+            serialize_joint_refinement_worker_payload(&run_candidate_request)
+                .expect("run-candidate request should serialize")
+                .len();
         assert!(
             run_candidate_request_size < initialize_request_size,
             "run-candidate request should stay smaller than initialize-session request",
