@@ -16,6 +16,7 @@ This version is `0.0.0`. The source for this crate lives [here](https://github.c
 - [janiform-analytics-stylized-facts](https://github.com/lejmer/janiform/blob/main/crates/janiform-analytics-stylized-facts): Stylized-fact analytics for Janiform.
 - [janiform-calibration-artifacts](https://github.com/lejmer/janiform/blob/main/crates/janiform-calibration-artifacts): Calibration artifact contracts and persistence for Janiform.
 - [janiform-calibration-runtime](https://github.com/lejmer/janiform/blob/main/crates/janiform-calibration-runtime): Calibration runtime orchestration for Janiform.
+- [janiform-cli](https://github.com/lejmer/janiform/blob/main/crates/janiform-cli): Native Rust command shell with shared configuration, output, path, and diagnostic boundary for Janiform.
 - [janiform-engine-pricing](https://github.com/lejmer/janiform/blob/main/crates/janiform-engine-pricing): Pricing runtime engine for Janiform.
 - [janiform-engine-simulation](https://github.com/lejmer/janiform/blob/main/crates/janiform-engine-simulation): Simulation runtime engine for Janiform.
 - [janiform-engine-sufficient-statistics](https://github.com/lejmer/janiform/blob/main/crates/janiform-engine-sufficient-statistics): Sufficient-statistics runtime engine for Janiform.

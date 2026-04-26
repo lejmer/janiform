@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "Native Rust command-line shell for Janiform."
+description = "Native Rust command shell with shared configuration, output, path, and diagnostic boundary for Janiform."
 readme = "README.md"
 
 [lib]
@@ -18,3 +18,10 @@ path = "src/main.rs"
 
 [dependencies]
 clap = { workspace = true }
+miette = { version = "7.6.0", features = ["derive"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = "2.0.17"
+toml = "0.9.8"
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.22", features = ["fmt", "json"] }
