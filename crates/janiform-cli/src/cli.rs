@@ -11,6 +11,7 @@ use crate::commands::reporting::ReportCommand;
 use crate::commands::seasonality::SeasonalityCommand;
 use crate::commands::simulation::SimulateCommand;
 use crate::commands::stylized_facts::StylizedFactsCommand;
+use crate::context::GlobalCliOptions;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -21,6 +22,9 @@ use crate::commands::stylized_facts::StylizedFactsCommand;
     arg_required_else_help = true
 )]
 pub(crate) struct Cli {
+    #[command(flatten)]
+    pub(crate) global: GlobalCliOptions,
+
     #[command(subcommand)]
     pub(crate) command: RootCommand,
 }

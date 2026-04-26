@@ -2,13 +2,20 @@ use std::ffi::OsStr;
 use std::ffi::OsString;
 
 pub(crate) fn rewrite_beginner_fit_arguments(arguments: Vec<OsString>) -> Vec<OsString> {
-    if arguments.len() < 3 || arguments.get(1).map(OsString::as_os_str) != Some(OsStr::new("fit")) {
+    let Some(fit_argument_position) = root_fit_argument_position(&arguments) else {
+        return arguments;
+    };
+
+    if arguments.len() <= fit_argument_position + 1 {
         return arguments;
     }
 
-    match arguments.get(2).map(OsString::as_os_str) {
+    match arguments
+        .get(fit_argument_position + 1)
+        .map(OsString::as_os_str)
+    {
         Some(command) if command == OsStr::new("inspect") => {
-            rewrite_fit_inspect_arguments(arguments)
+            rewrite_fit_inspect_arguments(arguments, fit_argument_position)
         }
         Some(command)
             if command == OsStr::new("plan")
@@ -17,21 +24,53 @@ pub(crate) fn rewrite_beginner_fit_arguments(arguments: Vec<OsString>) -> Vec<Os
         {
             arguments
         }
-        Some(_) => rewrite_fit_arguments(arguments),
+        Some(_) => rewrite_fit_arguments(arguments, fit_argument_position),
         None => arguments,
     }
 }
 
-fn rewrite_fit_arguments(arguments: Vec<OsString>) -> Vec<OsString> {
+fn root_fit_argument_position(arguments: &[OsString]) -> Option<usize> {
+    let mut argument_position = 1;
+    while argument_position < arguments.len() {
+        let argument = arguments.get(argument_position)?.as_os_str();
+        if argument == OsStr::new("fit") {
+            return Some(argument_position);
+        }
+
+        if !argument.as_encoded_bytes().starts_with(b"-") {
+            return None;
+        }
+
+        if global_option_requires_value(argument) {
+            argument_position += 2;
+        } else {
+            argument_position += 1;
+        }
+    }
+
+    None
+}
+
+fn global_option_requires_value(argument: &OsStr) -> bool {
+    if argument.as_encoded_bytes().contains(&b'=') {
+        return false;
+    }
+
+    argument == OsStr::new("--config")
+        || argument == OsStr::new("--color")
+        || argument == OsStr::new("--events")
+}
+
+fn rewrite_fit_arguments(arguments: Vec<OsString>, fit_argument_position: usize) -> Vec<OsString> {
     let mut rewritten_arguments = Vec::with_capacity(arguments.len() + 1);
     let mut argument_iterator = arguments.into_iter();
 
-    if let Some(program_name) = argument_iterator.next() {
-        rewritten_arguments.push(program_name);
+    for _ in 0..=fit_argument_position {
+        if let Some(argument) = argument_iterator.next() {
+            rewritten_arguments.push(argument);
+        }
     }
-    if let Some(fit_command) = argument_iterator.next() {
-        rewritten_arguments.push(fit_command);
-    }
+
     if let Some(tick_data_path) = argument_iterator.next() {
         rewritten_arguments.push(OsString::from("--tick-data-path"));
         rewritten_arguments.push(tick_data_path);
@@ -41,26 +80,29 @@ fn rewrite_fit_arguments(arguments: Vec<OsString>) -> Vec<OsString> {
     rewritten_arguments
 }
 
-fn rewrite_fit_inspect_arguments(arguments: Vec<OsString>) -> Vec<OsString> {
-    if arguments.len() < 4 {
+fn rewrite_fit_inspect_arguments(
+    arguments: Vec<OsString>,
+    fit_argument_position: usize,
+) -> Vec<OsString> {
+    if arguments.len() <= fit_argument_position + 2 {
         return arguments;
     }
 
-    match arguments.get(3).map(OsString::as_os_str) {
+    match arguments
+        .get(fit_argument_position + 2)
+        .map(OsString::as_os_str)
+    {
         Some(command) if command.as_encoded_bytes().starts_with(b"-") => arguments,
         Some(_) => {
             let mut rewritten_arguments = Vec::with_capacity(arguments.len() + 1);
             let mut argument_iterator = arguments.into_iter();
 
-            if let Some(program_name) = argument_iterator.next() {
-                rewritten_arguments.push(program_name);
+            for _ in 0..=(fit_argument_position + 1) {
+                if let Some(argument) = argument_iterator.next() {
+                    rewritten_arguments.push(argument);
+                }
             }
-            if let Some(fit_command) = argument_iterator.next() {
-                rewritten_arguments.push(fit_command);
-            }
-            if let Some(inspect_command) = argument_iterator.next() {
-                rewritten_arguments.push(inspect_command);
-            }
+
             if let Some(tick_data_path) = argument_iterator.next() {
                 rewritten_arguments.push(OsString::from("--tick-data-path"));
                 rewritten_arguments.push(tick_data_path);
@@ -130,6 +172,29 @@ mod tests {
                 OsString::from("fit"),
                 OsString::from("staged"),
                 OsString::from("input.json"),
+            ],
+        );
+    }
+
+    #[test]
+    fn rewrites_fit_path_after_root_global_options() {
+        assert_eq!(
+            rewrite(&[
+                "janiform",
+                "--json",
+                "--color",
+                "never",
+                "fit",
+                "ticks.parquet"
+            ]),
+            vec![
+                OsString::from("janiform"),
+                OsString::from("--json"),
+                OsString::from("--color"),
+                OsString::from("never"),
+                OsString::from("fit"),
+                OsString::from("--tick-data-path"),
+                OsString::from("ticks.parquet"),
             ],
         );
     }

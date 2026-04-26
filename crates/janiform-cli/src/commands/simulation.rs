@@ -3,15 +3,11 @@ use std::path::PathBuf;
 use clap::Args;
 use clap::Subcommand;
 
-use crate::commands::options::CliBoundaryOptions;
 use crate::commands::options::ModelPathOptions;
 use crate::commands::options::OutputPathOptions;
 
 #[derive(Debug, Args)]
 pub(crate) struct SimulateCommand {
-    #[command(flatten)]
-    pub(crate) boundary: CliBoundaryOptions,
-
     #[command(flatten)]
     pub(crate) model: ModelPathOptions,
 
@@ -37,9 +33,6 @@ pub(crate) enum SimulateSubcommand {
 #[derive(Debug, Args)]
 pub(crate) struct SeededTicksCommand {
     #[command(flatten)]
-    pub(crate) boundary: CliBoundaryOptions,
-
-    #[command(flatten)]
     pub(crate) model: ModelPathOptions,
 
     #[command(flatten)]
@@ -51,9 +44,6 @@ pub(crate) struct SeededTicksCommand {
 
 #[derive(Debug, Args)]
 pub(crate) struct CoarseIntervalCommand {
-    #[command(flatten)]
-    pub(crate) boundary: CliBoundaryOptions,
-
     #[command(flatten)]
     pub(crate) model: ModelPathOptions,
 

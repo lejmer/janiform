@@ -3,7 +3,6 @@ use std::path::PathBuf;
 use clap::Args;
 use clap::Subcommand;
 
-use crate::commands::options::CliBoundaryOptions;
 use crate::commands::options::OutputPathOptions;
 
 #[derive(Debug, Args)]
@@ -38,9 +37,6 @@ pub(crate) enum RegressionSubcommand {
 
 #[derive(Debug, Args)]
 pub(crate) struct DeterministicRegressionCommand {
-    #[command(flatten)]
-    pub(crate) boundary: CliBoundaryOptions,
-
     #[arg(long, value_name = "PATH", help = "Regression baseline path.")]
     pub(crate) baseline_path: Option<PathBuf>,
 
@@ -50,9 +46,6 @@ pub(crate) struct DeterministicRegressionCommand {
 
 #[derive(Debug, Args)]
 pub(crate) struct OpenClosedGapLeakageRegressionCommand {
-    #[command(flatten)]
-    pub(crate) boundary: CliBoundaryOptions,
-
     #[arg(long, value_name = "PATH", help = "Regression fixture path.")]
     pub(crate) fixture_path: Option<PathBuf>,
 

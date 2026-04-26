@@ -1,4 +1,3 @@
-use crate::cli::Cli;
 use crate::cli::RootCommand;
 use crate::commands::dev::DevSubcommand;
 use crate::commands::dev::RegressionSubcommand;
@@ -12,10 +11,17 @@ use crate::commands::reporting::ReportSubcommand;
 use crate::commands::seasonality::SeasonalitySubcommand;
 use crate::commands::simulation::SimulateSubcommand;
 use crate::commands::stylized_facts::StylizedFactsSubcommand;
+use crate::context::CommandContext;
 use crate::error::CliError;
 
-pub(crate) fn dispatch(cli: Cli) -> Result<(), CliError> {
-    match cli.command {
+pub(crate) fn dispatch(context: &CommandContext, command: RootCommand) -> Result<(), CliError> {
+    tracing::debug!(
+        output_mode = ?context.output_mode(),
+        event_stream = ?context.event_settings().stream_format,
+        "dispatching parsed CLI command"
+    );
+
+    match command {
         RootCommand::Fit(command) => dispatch_fit(command.command),
         RootCommand::Inspect(command) => match command.command {
             InspectSubcommand::Run(_) => not_implemented("inspect run"),

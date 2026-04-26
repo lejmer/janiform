@@ -4,20 +4,6 @@ use clap::Args;
 use clap::ValueEnum;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
-pub(crate) enum OutputMode {
-    Human,
-    Json,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
-pub(crate) enum ProgressMode {
-    Auto,
-    Human,
-    Jsonl,
-    None,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
 pub(crate) enum ExecutionMode {
     Memory,
     Disk,
@@ -28,18 +14,6 @@ pub(crate) enum WorkflowScope {
     Full,
     SeasonalityOnly,
     MarketDataOnly,
-}
-
-#[derive(Debug, Args)]
-pub(crate) struct CliBoundaryOptions {
-    #[arg(long, value_name = "PATH", help = "Command configuration document.")]
-    pub(crate) config: Option<PathBuf>,
-
-    #[arg(long, value_enum, default_value_t = OutputMode::Human, help = "Final output format.")]
-    pub(crate) output: OutputMode,
-
-    #[arg(long, value_enum, default_value_t = ProgressMode::Auto, help = "Live progress output policy.")]
-    pub(crate) progress: ProgressMode,
 }
 
 #[derive(Debug, Args)]

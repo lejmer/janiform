@@ -4,8 +4,6 @@ use clap::Args;
 use clap::Subcommand;
 use clap::ValueEnum;
 
-use crate::commands::options::CliBoundaryOptions;
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
 pub(crate) enum PresetKind {
     MarketProfile,
@@ -40,9 +38,6 @@ pub(crate) enum PresetsSubcommand {
 
 #[derive(Debug, Args)]
 pub(crate) struct PresetsListCommand {
-    #[command(flatten)]
-    pub(crate) boundary: CliBoundaryOptions,
-
     #[arg(long, value_enum, help = "Restrict output to one preset kind.")]
     pub(crate) kind: Option<PresetKind>,
 
@@ -52,9 +47,6 @@ pub(crate) struct PresetsListCommand {
 
 #[derive(Debug, Args)]
 pub(crate) struct PresetsShowCommand {
-    #[command(flatten)]
-    pub(crate) boundary: CliBoundaryOptions,
-
     #[arg(value_enum, help = "Preset kind.")]
     pub(crate) kind: PresetKind,
 
@@ -67,9 +59,6 @@ pub(crate) struct PresetsShowCommand {
 
 #[derive(Debug, Args)]
 pub(crate) struct PresetsExportCommand {
-    #[command(flatten)]
-    pub(crate) boundary: CliBoundaryOptions,
-
     #[arg(value_enum, help = "Preset kind.")]
     pub(crate) kind: PresetKind,
 

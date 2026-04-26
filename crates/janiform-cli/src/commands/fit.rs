@@ -3,7 +3,6 @@ use std::path::PathBuf;
 use clap::Args;
 use clap::Subcommand;
 
-use crate::commands::options::CliBoundaryOptions;
 use crate::commands::options::ExecutionMode;
 use crate::commands::options::RunIdentityOptions;
 use crate::commands::options::TickDataOptions;
@@ -11,9 +10,6 @@ use crate::commands::options::WorkflowScope;
 
 #[derive(Debug, Args)]
 pub(crate) struct FitCommand {
-    #[command(flatten)]
-    pub(crate) boundary: CliBoundaryOptions,
-
     #[command(flatten)]
     pub(crate) inputs: TickDataOptions,
 
@@ -42,9 +38,6 @@ pub(crate) enum FitSubcommand {
 #[derive(Debug, Args)]
 pub(crate) struct FitInspectCommand {
     #[command(flatten)]
-    pub(crate) boundary: CliBoundaryOptions,
-
-    #[command(flatten)]
     pub(crate) inputs: TickDataOptions,
 
     #[command(flatten)]
@@ -53,9 +46,6 @@ pub(crate) struct FitInspectCommand {
 
 #[derive(Debug, Args)]
 pub(crate) struct FitPlanCommand {
-    #[command(flatten)]
-    pub(crate) boundary: CliBoundaryOptions,
-
     #[command(flatten)]
     pub(crate) inputs: TickDataOptions,
 
@@ -76,9 +66,6 @@ pub(crate) struct FitPlanCommand {
 #[derive(Debug, Args)]
 pub(crate) struct FitStagedCommand {
     #[command(flatten)]
-    pub(crate) boundary: CliBoundaryOptions,
-
-    #[command(flatten)]
     pub(crate) staged: StagedExecutionOptions,
 
     #[command(subcommand)]
@@ -97,9 +84,6 @@ pub(crate) enum FitStagedSubcommand {
 #[derive(Debug, Args)]
 pub(crate) struct FitStagedPlanCommand {
     #[command(flatten)]
-    pub(crate) boundary: CliBoundaryOptions,
-
-    #[command(flatten)]
     pub(crate) inputs: TickDataOptions,
 
     #[command(flatten)]
@@ -115,9 +99,6 @@ pub(crate) struct FitStagedPlanCommand {
 
 #[derive(Debug, Args)]
 pub(crate) struct FitStagedRunCommand {
-    #[command(flatten)]
-    pub(crate) boundary: CliBoundaryOptions,
-
     #[command(flatten)]
     pub(crate) staged: StagedExecutionOptions,
 }

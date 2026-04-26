@@ -3,7 +3,6 @@ use std::path::PathBuf;
 use clap::Args;
 use clap::Subcommand;
 
-use crate::commands::options::CliBoundaryOptions;
 use crate::commands::options::ExecutionMode;
 use crate::commands::options::OutputPathOptions;
 
@@ -24,9 +23,6 @@ pub(crate) enum StylizedFactsSubcommand {
 
 #[derive(Debug, Args)]
 pub(crate) struct HorizonComparisonCommand {
-    #[command(flatten)]
-    pub(crate) boundary: CliBoundaryOptions,
-
     #[arg(
         long,
         value_name = "PATH",

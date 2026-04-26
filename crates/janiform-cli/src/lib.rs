@@ -1,9 +1,21 @@
 mod application;
 mod cli;
 mod commands;
+mod config;
+mod context;
+mod diagnostics;
 mod dispatch;
 mod error;
+mod logging;
+mod paths;
 mod rewrite;
 
 pub use application::run;
+pub use context::ColorChoice;
+pub use context::CommandContext;
+pub use context::EventSettings;
+pub use context::EventStreamFormat;
+pub use context::OutputMode;
+pub use error::CliError;
 pub use error::CliExitCode;
+pub use paths::PathResolver;

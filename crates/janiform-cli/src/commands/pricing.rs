@@ -3,15 +3,11 @@ use std::path::PathBuf;
 use clap::Args;
 use clap::Subcommand;
 
-use crate::commands::options::CliBoundaryOptions;
 use crate::commands::options::ModelPathOptions;
 use crate::commands::options::OutputPathOptions;
 
 #[derive(Debug, Args)]
 pub(crate) struct PriceCommand {
-    #[command(flatten)]
-    pub(crate) boundary: CliBoundaryOptions,
-
     #[command(flatten)]
     pub(crate) model: ModelPathOptions,
 
@@ -43,9 +39,6 @@ pub(crate) enum PriceSubcommand {
 #[derive(Debug, Args)]
 pub(crate) struct FittedModelPricingCommand {
     #[command(flatten)]
-    pub(crate) boundary: CliBoundaryOptions,
-
-    #[command(flatten)]
     pub(crate) model: ModelPathOptions,
 
     #[command(flatten)]
@@ -57,9 +50,6 @@ pub(crate) struct FittedModelPricingCommand {
 
 #[derive(Debug, Args)]
 pub(crate) struct ObservedOptionPricingCommand {
-    #[command(flatten)]
-    pub(crate) boundary: CliBoundaryOptions,
-
     #[command(flatten)]
     pub(crate) model: ModelPathOptions,
 

@@ -3,7 +3,6 @@ use std::path::PathBuf;
 use clap::Args;
 use clap::Subcommand;
 
-use crate::commands::options::CliBoundaryOptions;
 use crate::commands::options::OutputPathOptions;
 
 #[derive(Debug, Args)]
@@ -36,9 +35,6 @@ pub(crate) enum HourlyFactorsSubcommand {
 #[derive(Debug, Args)]
 pub(crate) struct MaterializeSeasonalityCommand {
     #[command(flatten)]
-    pub(crate) boundary: CliBoundaryOptions,
-
-    #[command(flatten)]
     pub(crate) inputs: HourlyFactorInputOptions,
 
     #[command(flatten)]
@@ -48,9 +44,6 @@ pub(crate) struct MaterializeSeasonalityCommand {
 #[derive(Debug, Args)]
 pub(crate) struct MaterializeNewsIntensityCommand {
     #[command(flatten)]
-    pub(crate) boundary: CliBoundaryOptions,
-
-    #[command(flatten)]
     pub(crate) inputs: HourlyFactorInputOptions,
 
     #[command(flatten)]
@@ -59,9 +52,6 @@ pub(crate) struct MaterializeNewsIntensityCommand {
 
 #[derive(Debug, Args)]
 pub(crate) struct BuildHourlyFactorContractCommand {
-    #[command(flatten)]
-    pub(crate) boundary: CliBoundaryOptions,
-
     #[command(flatten)]
     pub(crate) inputs: HourlyFactorInputOptions,
 

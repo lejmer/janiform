@@ -3,7 +3,6 @@ use std::path::PathBuf;
 use clap::Args;
 use clap::Subcommand;
 
-use crate::commands::options::CliBoundaryOptions;
 use crate::commands::options::OutputPathOptions;
 
 #[derive(Debug, Args)]
@@ -20,9 +19,6 @@ pub(crate) enum ReportSubcommand {
 
 #[derive(Debug, Args)]
 pub(crate) struct ReportFitCommand {
-    #[command(flatten)]
-    pub(crate) boundary: CliBoundaryOptions,
-
     #[command(flatten)]
     pub(crate) output_path: OutputPathOptions,
 

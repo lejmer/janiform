@@ -3,7 +3,6 @@ use std::path::PathBuf;
 use clap::Args;
 use clap::Subcommand;
 
-use crate::commands::options::CliBoundaryOptions;
 use crate::commands::options::OutputPathOptions;
 
 #[derive(Debug, Args)]
@@ -26,9 +25,6 @@ pub(crate) enum SeasonalitySubcommand {
 
 #[derive(Debug, Args)]
 pub(crate) struct PreprocessTimestampsCommand {
-    #[command(flatten)]
-    pub(crate) boundary: CliBoundaryOptions,
-
     #[arg(long, value_name = "PATH", help = "Input data path.")]
     pub(crate) input_path: Option<PathBuf>,
 
@@ -41,9 +37,6 @@ pub(crate) struct PreprocessTimestampsCommand {
 
 #[derive(Debug, Args)]
 pub(crate) struct SeasonalityDiagnosticsCommand {
-    #[command(flatten)]
-    pub(crate) boundary: CliBoundaryOptions,
-
     #[arg(long, value_name = "PATH", help = "Input data path.")]
     pub(crate) input_path: Option<PathBuf>,
 
