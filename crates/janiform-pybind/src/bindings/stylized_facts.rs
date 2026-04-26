@@ -24,9 +24,7 @@ fn run_stylized_fact_horizon_comparison_report_generator(
     })?;
 
     let report_bundle = py
-        .allow_threads(|| {
-            run_stylized_fact_horizon_comparison_report_generator_core(generator_request)
-        })
+        .detach(|| run_stylized_fact_horizon_comparison_report_generator_core(generator_request))
         .map_err(|source| {
             SeasonalityInputValidationError::new_err(format!(
                 "stylized fact report generation failed: {source}"

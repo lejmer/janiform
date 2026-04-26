@@ -92,6 +92,7 @@ jobs:
           ./scripts/test-rust-linux.sh .venv-linux
           ./scripts/test-python-linux.sh .venv-linux
           ./.venv-linux/bin/python scripts/generate_crate_readmes.py --check
+          ./.venv-linux/bin/python scripts/generate_internal_crate_graph_policy.py --check
           ./.venv-linux/bin/python scripts/generate_third_party_notices.py --check
 
       - name: Build Linux wheel artifacts

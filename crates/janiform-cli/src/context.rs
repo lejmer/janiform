@@ -1,9 +1,9 @@
-use std::io::IsTerminal;
 use std::path::PathBuf;
 
 use clap::ArgAction;
 use clap::Args;
 use clap::ValueEnum;
+use janiform_cli_ui::TerminalRenderer;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -11,7 +11,7 @@ use crate::config::CliConfiguration;
 use crate::error::CliError;
 use crate::paths::PathResolver;
 
-/// ANSI color selection for human-facing CLI output.
+/// ANSI color selection for terminal CLI output.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ValueEnum)]
 #[serde(rename_all = "kebab-case")]
 pub enum ColorChoice {
@@ -67,7 +67,7 @@ pub(crate) struct GlobalCliOptions {
         global = true,
         value_enum,
         value_name = "WHEN",
-        help = "ANSI color policy for human diagnostics."
+        help = "ANSI color policy for terminal diagnostics."
     )]
     pub(crate) color: Option<ColorChoice>,
 
@@ -95,7 +95,7 @@ pub(crate) struct GlobalCliOptions {
         global = true,
         action = ArgAction::Count,
         conflicts_with_all = ["silent", "quiet"],
-        help = "Increase human diagnostic verbosity."
+        help = "Increase terminal diagnostic verbosity."
     )]
     pub(crate) verbose: u8,
 
@@ -216,6 +216,16 @@ impl CommandContext {
     pub(crate) fn color_policy(&self) -> ColorPolicy {
         self.color
     }
+
+    /// Semantic renderer for final terminal summaries written to stdout.
+    pub const fn stdout_renderer(&self) -> TerminalRenderer {
+        TerminalRenderer::new(self.color.stdout_ansi, None)
+    }
+
+    /// Semantic renderer for terminal diagnostics and live progress written to stderr.
+    pub const fn stderr_renderer(&self) -> TerminalRenderer {
+        TerminalRenderer::new(self.color.stderr_ansi, None)
+    }
 }
 
 pub(crate) fn output_mode_from_options(options: &GlobalCliOptions) -> OutputMode {
@@ -260,18 +270,18 @@ fn resolve_color_policy(choice: ColorChoice, output_mode: OutputMode) -> ColorPo
     let ansi_allowed = match choice {
         ColorChoice::Always => !machine_output,
         ColorChoice::Never => false,
-        ColorChoice::Auto => !machine_output && std::env::var_os("NO_COLOR").is_none(),
+        ColorChoice::Auto => !machine_output,
     };
 
     let stdout_ansi = match choice {
         ColorChoice::Always => ansi_allowed,
-        ColorChoice::Auto => ansi_allowed && std::io::stdout().is_terminal(),
+        ColorChoice::Auto => ansi_allowed && TerminalRenderer::stdout_color_enabled(),
         ColorChoice::Never => false,
     };
 
     let stderr_ansi = match choice {
         ColorChoice::Always => ansi_allowed,
-        ColorChoice::Auto => ansi_allowed && std::io::stderr().is_terminal(),
+        ColorChoice::Auto => ansi_allowed && TerminalRenderer::stderr_color_enabled(),
         ColorChoice::Never => false,
     };
 

@@ -40,6 +40,12 @@ Generated crate `README.md` files are checked in. Verify them with:
 ./.venv-linux/bin/python scripts/generate_crate_readmes.py --check
 ```
 
+The internal Rust crate graph policy fixture is checked in. Verify it with:
+
+```bash
+python scripts/generate_internal_crate_graph_policy.py --check
+```
+
 ## Generation Scripts
 
 With the repo environment active, run these after changing the source inputs they own, then review the checked-in outputs in the same change.
@@ -62,6 +68,18 @@ Regenerate or verify crate-local `README.md` files after changing crate descript
 python scripts/generate_crate_readmes.py
 python scripts/generate_crate_readmes.py --check
 ```
+
+### Internal Rust crate graph policy
+
+Regenerate or verify the internal crate graph policy fixture after adding, removing, reclassifying,
+or rewiring workspace crates:
+
+```bash
+python scripts/generate_internal_crate_graph_policy.py
+python scripts/generate_internal_crate_graph_policy.py --check
+```
+
+This rewrites `tests/fixtures/rust_architecture/internal_crate_graph_policy.json`.
 
 ### Public API contract snapshot
 

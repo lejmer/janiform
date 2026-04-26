@@ -198,7 +198,7 @@ fn derive_activity_compressed_pricing_interval_schedule(
         hourly_factor_contract_output_from_payload(request.hourly_factor_contract);
 
     let derived_schedule = py
-        .allow_threads(|| {
+        .detach(|| {
             derive_activity_compressed_pricing_interval_schedule_core(
                 request.valuation_time_utc_nanos,
                 request.expiry_timestamps_utc_nanos.as_slice(),
@@ -246,7 +246,7 @@ fn run_vanilla_option_pricing(
     .map_err(|source| PricingExecutionError::new_err(source.to_string()))?;
 
     let run_result = py
-        .allow_threads(|| run_vanilla_option_pricing_core(execution_input))
+        .detach(|| run_vanilla_option_pricing_core(execution_input))
         .map_err(|source| PricingExecutionError::new_err(source.to_string()))?;
 
     let serialized_run_result = serde_json::to_value(&run_result).map_err(|source| {
@@ -293,7 +293,7 @@ fn run_vanilla_option_grid_batch_pricing(
     };
 
     let run_result = py
-        .allow_threads(|| run_vanilla_option_grid_batch_pricing_core(execution_input))
+        .detach(|| run_vanilla_option_grid_batch_pricing_core(execution_input))
         .map_err(|source| PricingExecutionError::new_err(source.to_string()))?;
 
     let serialized_run_result = serde_json::to_value(&run_result).map_err(|source| {
@@ -406,7 +406,7 @@ fn run_vanilla_option_surface_pricing(
     };
 
     let run_result = py
-        .allow_threads(|| run_vanilla_option_surface_pricing_core(execution_input))
+        .detach(|| run_vanilla_option_surface_pricing_core(execution_input))
         .map_err(|source| PricingExecutionError::new_err(source.to_string()))?;
 
     let serialized_run_result = serde_json::to_value(&run_result).map_err(|source| {
@@ -514,7 +514,7 @@ where
     let callback_error_message_for_observer = Arc::clone(&callback_error_message);
 
     let run_result = py
-        .allow_threads(move || {
+        .detach(move || {
             let (progress_sender, progress_receiver) = mpsc::channel::<PricingProgressEvent>();
 
             std::thread::scope(|scope| {
@@ -545,7 +545,7 @@ where
                     last_emitted_event = Some(event.clone());
                     last_emitted_at = Some(Instant::now());
 
-                    Python::with_gil(|py| {
+                    Python::attach(|py| {
                         let callback_result = python_pricing_progress_event_to_py_object(
                             py, &event,
                         )

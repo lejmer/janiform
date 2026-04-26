@@ -41,7 +41,7 @@ fn run_deterministic_regression_harness(
     };
 
     let report = py
-        .allow_threads(|| {
+        .detach(|| {
             run_deterministic_regression_harness_core(
                 &calendar_registry.registry,
                 &parsed_calendar_cases,
@@ -74,7 +74,7 @@ fn run_open_closed_gap_leakage_regression_harness(
     };
 
     let report = py
-        .allow_threads(|| {
+        .detach(|| {
             run_open_closed_gap_leakage_regression_harness_core(
                 &calendar_registry.registry,
                 &parsed_gap_behavior_cases,
@@ -104,7 +104,7 @@ fn parse_regression_calendar_cases(
     for (case_position, raw_case) in calendar_case_iter.enumerate() {
         let raw_case = raw_case?;
 
-        let case_mapping = raw_case.downcast::<PyMapping>().map_err(|_| {
+        let case_mapping = raw_case.cast::<PyMapping>().map_err(|_| {
             SeasonalityInputValidationError::new_err(format!(
                 "calendar_cases[{case_position}] must be a mapping",
             ))
@@ -166,7 +166,7 @@ fn parse_regression_seasonality_cases(
     for (case_position, raw_case) in seasonality_case_iter.enumerate() {
         let raw_case = raw_case?;
 
-        let case_mapping = raw_case.downcast::<PyMapping>().map_err(|_| {
+        let case_mapping = raw_case.cast::<PyMapping>().map_err(|_| {
             SeasonalityInputValidationError::new_err(format!(
                 "seasonality_cases[{case_position}] must be a mapping",
             ))
@@ -276,7 +276,7 @@ fn parse_open_closed_gap_leakage_regression_cases(
     for (case_position, raw_case) in gap_behavior_case_iter.enumerate() {
         let raw_case = raw_case?;
 
-        let case_mapping = raw_case.downcast::<PyMapping>().map_err(|_| {
+        let case_mapping = raw_case.cast::<PyMapping>().map_err(|_| {
             SeasonalityInputValidationError::new_err(format!(
                 "gap_behavior_cases[{case_position}] must be a mapping",
             ))
@@ -380,7 +380,7 @@ fn parse_open_closed_gap_leakage_regression_cases(
 
         for (event_position, raw_event) in injected_event_iter.enumerate() {
             let raw_event = raw_event?;
-            let event_mapping = raw_event.downcast::<PyMapping>().map_err(|_| {
+            let event_mapping = raw_event.cast::<PyMapping>().map_err(|_| {
                 SeasonalityInputValidationError::new_err(format!(
                     "gap_behavior_cases[{case_position}].injected_events[{event_position}] must be a mapping"
                 ))
@@ -621,7 +621,7 @@ fn parse_deterministic_replay_metadata(
         "deterministic_replay_metadata",
     )?;
 
-    let replay_mapping = replay_mapping_value.downcast::<PyMapping>().map_err(|_| {
+    let replay_mapping = replay_mapping_value.cast::<PyMapping>().map_err(|_| {
         SeasonalityInputValidationError::new_err(format!(
             "{context} field 'deterministic_replay_metadata' must be a mapping",
         ))
@@ -701,7 +701,7 @@ fn parse_issue_traceability_metadata(
         "issue_traceability",
     )?;
 
-    let issue_mapping = issue_mapping_value.downcast::<PyMapping>().map_err(|_| {
+    let issue_mapping = issue_mapping_value.cast::<PyMapping>().map_err(|_| {
         SeasonalityInputValidationError::new_err(format!(
             "{context} field 'issue_traceability' must be a mapping",
         ))

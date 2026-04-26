@@ -44,6 +44,7 @@ struct CargoDependency {
 #[test]
 fn rust_internal_crate_graph_policy_fixture_declares_required_crates_and_facade_roots() {
     let policy = load_policy();
+    let metadata = load_cargo_metadata();
 
     assert_eq!(policy.schema_version, "v1");
     assert_eq!(
@@ -54,54 +55,14 @@ fn rust_internal_crate_graph_policy_fixture_declares_required_crates_and_facade_
     assert_eq!(policy.umbrella_facade_crate, "janiform");
     assert_eq!(policy.pybind_boundary_crate, "janiform-pybind");
 
-    let required_crates = [
-        "janiform-foundations",
-        "janiform-model-kernels",
-        "janiform-affine-oracle",
-        "janiform-market-time",
-        "janiform-engine-pricing",
-        "janiform-engine-sufficient-statistics",
-        "janiform-engine-simulation",
-        "janiform-calibration-artifacts",
-        "janiform-calibration-runtime",
-        "janiform-joint-refinement-worker",
-        "janiform-analytics-stylized-facts",
-        "janiform-validation",
-        "janiform-governance",
-        "janiform-governance-bench",
-        "janiform",
-        "janiform-pybind",
-    ];
-    for required_crate in required_crates {
-        assert!(
-            policy.crates.contains_key(required_crate),
-            "policy fixture must define crate `{required_crate}`",
-        );
-    }
+    let workspace_package_names = workspace_package_names(&metadata);
+    let policy_package_names: BTreeSet<String> = policy.crates.keys().cloned().collect();
+    assert_eq!(
+        policy_package_names, workspace_package_names,
+        "policy fixture must define exactly the workspace crates from cargo metadata",
+    );
 
-    let expected_facade_roots = vec![
-        "affine_oracle",
-        "benchmarking",
-        "calendar",
-        "calibration",
-        "complex_math",
-        "hawkes",
-        "hourly_factors",
-        "news",
-        "nig",
-        "pricing",
-        "randomness",
-        "return_decomposition",
-        "risk_neutral",
-        "seasonality",
-        "simulation",
-        "sufficient_statistics",
-        "verification",
-    ]
-    .into_iter()
-    .map(str::to_string)
-    .collect::<Vec<_>>();
-    assert_eq!(policy.curated_facade_module_roots, expected_facade_roots);
+    assert_eq!(policy.curated_facade_module_roots, facade_module_roots());
     assert_eq!(
         policy.transitional_facade_module_roots,
         vec!["benchmarking".to_string(), "verification".to_string()]
@@ -149,8 +110,7 @@ fn cargo_metadata_workspace_dependencies_must_follow_internal_crate_graph_policy
         .iter()
         .map(|package| (package.name.clone(), package))
         .collect();
-    let workspace_package_names: BTreeSet<String> =
-        workspace_packages_by_name.keys().cloned().collect();
+    let workspace_package_names = workspace_package_names(&metadata);
     let policy_package_names: BTreeSet<String> = policy.crates.keys().cloned().collect();
 
     assert!(
@@ -241,6 +201,36 @@ fn load_cargo_metadata() -> CargoMetadata {
 
     serde_json::from_slice(&command_output.stdout)
         .expect("cargo metadata output should deserialize")
+}
+
+fn workspace_package_names(metadata: &CargoMetadata) -> BTreeSet<String> {
+    metadata
+        .packages
+        .iter()
+        .map(|package| package.name.clone())
+        .collect()
+}
+
+fn facade_module_roots() -> Vec<String> {
+    let crate_root = fs::read_to_string(
+        repository_root()
+            .join("crates")
+            .join("janiform")
+            .join("src")
+            .join("lib.rs"),
+    )
+    .expect("janiform facade crate root should exist");
+
+    crate_root
+        .lines()
+        .filter_map(|line| {
+            let trimmed_line = line.trim();
+            trimmed_line
+                .strip_prefix("pub mod ")
+                .and_then(|module_root| module_root.strip_suffix(';'))
+                .map(str::to_string)
+        })
+        .collect()
 }
 
 fn repository_root() -> PathBuf {

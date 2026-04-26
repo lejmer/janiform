@@ -16,7 +16,6 @@ doctest = false
 [dependencies]
 arrow-array = { workspace = true }
 arrow-schema = { workspace = true }
-bincode = { workspace = true }
 chrono = { workspace = true }
 chrono-tz = { workspace = true }
 csv = { workspace = true }
@@ -29,6 +28,7 @@ janiform-market-time = { path = "../janiform-market-time" }
 janiform-model-kernels = { path = "../janiform-model-kernels" }
 nalgebra = { workspace = true }
 parquet = { workspace = true }
+postcard = { workspace = true }
 puruspe = { workspace = true }
 rayon = { workspace = true }
 serde = { workspace = true }

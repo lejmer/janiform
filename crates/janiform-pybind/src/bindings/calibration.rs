@@ -57,7 +57,7 @@ fn preprocess_market_data_translation_request(
         })?;
 
     let preprocessing_output = py
-        .allow_threads(|| {
+        .detach(|| {
             preprocess_market_data_translation_request_native(
                 preprocessing_request,
                 &calendar_registry.registry,
@@ -88,9 +88,7 @@ fn load_and_preprocess_market_data_translation_request(
         })?;
 
     let loading_output = py
-        .allow_threads(|| {
-            load_and_preprocess_market_data_translation_request_native(loading_request)
-        })
+        .detach(|| load_and_preprocess_market_data_translation_request_native(loading_request))
         .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
 
     market_data_loading_output_to_py_object(py, &loading_output).map_err(|source| {
@@ -114,7 +112,7 @@ fn probe_market_data_source(
         })?;
 
     let source_probe = py
-        .allow_threads(|| probe_market_data_source_native(&tick_data_source))
+        .detach(|| probe_market_data_source_native(&tick_data_source))
         .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
 
     market_data_source_probe_to_py_object(py, &source_probe).map_err(|source| {
@@ -157,7 +155,7 @@ fn normalize_market_data_source(
         })?;
 
     let normalized_output = py
-        .allow_threads(|| {
+        .detach(|| {
             normalize_market_data_source_native(
                 &tick_data_source,
                 &tick_data_column_mapping,
@@ -227,7 +225,7 @@ fn resolve_market_data_session(
         })?;
 
     let session_resolution = py
-        .allow_threads(|| {
+        .detach(|| {
             resolve_market_data_session_configuration_native(
                 session_configuration,
                 normalized_market_data_handle.map(|handle| handle.normalized_output.as_ref()),
@@ -265,7 +263,7 @@ fn prepare_market_data_calibration_plan_from_phases(
         })?;
 
     let loading_output = py
-        .allow_threads(|| {
+        .detach(|| {
             prepare_market_data_calibration_plan_from_phases_core(
                 request,
                 normalized_market_data_handle.normalized_output.as_ref(),
@@ -402,7 +400,7 @@ fn prepare_market_data_calibration_plan(
         })?;
 
     let prepared_plan = py
-        .allow_threads(|| prepare_market_data_calibration_plan_core(request, cpu_count))
+        .detach(|| prepare_market_data_calibration_plan_core(request, cpu_count))
         .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
 
     prepared_market_data_plan_to_py_object(py, prepared_plan)
@@ -417,7 +415,7 @@ fn run_prepared_staged_calibration(
     memory_checkpoint_store: Option<&mut PyCalibrationMemoryCheckpointStore>,
 ) -> PyResult<Py<PyAny>> {
     let report = py
-        .allow_threads(|| {
+        .detach(|| {
             run_staged_calibration_from_execution_input(
                 prepared_handle.execution_input.clone(),
                 &calendar_registry.registry,
@@ -444,7 +442,7 @@ fn run_prepared_staged_calibration_with_events(
     let callback_error_message_for_observer = Arc::clone(&callback_error_message);
 
     let report = py
-        .allow_threads(move || {
+        .detach(move || {
             let mut observer = |event: CalibrationStagedRunObserverEvent| {
                 if callback_error_message_for_observer
                     .lock()
@@ -455,7 +453,7 @@ fn run_prepared_staged_calibration_with_events(
                     return;
                 }
 
-                Python::with_gil(|py| {
+                Python::attach(|py| {
                     let callback_result = python_staged_calibration_event_to_py_object(py, &event)
                         .and_then(|payload| event_callback.call1(py, (payload,)).map(|_| ()));
                     if let Err(source) = callback_result {
@@ -508,7 +506,7 @@ fn run_prepared_staged_calibration_with_resume(
     execution_input.request.resume_settings = Some(resume_settings);
 
     let report = py
-        .allow_threads(move || {
+        .detach(move || {
             run_staged_calibration_from_execution_input(
                 execution_input,
                 &calendar_registry.registry,
@@ -545,7 +543,7 @@ fn run_prepared_staged_calibration_with_resume_and_events(
     execution_input.request.resume_settings = Some(resume_settings);
 
     let report = py
-        .allow_threads(move || {
+        .detach(move || {
             let mut observer = |event: CalibrationStagedRunObserverEvent| {
                 if callback_error_message_for_observer
                     .lock()
@@ -556,7 +554,7 @@ fn run_prepared_staged_calibration_with_resume_and_events(
                     return;
                 }
 
-                Python::with_gil(|py| {
+                Python::attach(|py| {
                     let callback_result = python_staged_calibration_event_to_py_object(py, &event)
                         .and_then(|payload| event_callback.call1(py, (payload,)).map(|_| ()));
                     if let Err(source) = callback_result {
@@ -605,7 +603,7 @@ fn run_staged_calibration(
         })?;
 
     let report = py
-        .allow_threads(move || {
+        .detach(move || {
             run_staged_calibration_from_execution_input(
                 execution_input,
                 &calendar_registry.registry,
@@ -639,7 +637,7 @@ fn run_staged_calibration_with_events(
     let callback_error_message_for_observer = Arc::clone(&callback_error_message);
 
     let report = py
-        .allow_threads(move || {
+        .detach(move || {
             let mut observer = |event: CalibrationStagedRunObserverEvent| {
                 if callback_error_message_for_observer
                     .lock()
@@ -650,7 +648,7 @@ fn run_staged_calibration_with_events(
                     return;
                 }
 
-                Python::with_gil(|py| {
+                Python::attach(|py| {
                     let callback_result = python_staged_calibration_event_to_py_object(py, &event)
                         .and_then(|payload| event_callback.call1(py, (payload,)).map(|_| ()));
                     if let Err(source) = callback_result {
@@ -731,7 +729,7 @@ fn evaluate_return_components_candidate(
             })?;
 
     let evaluation = py
-        .allow_threads(|| {
+        .detach(|| {
             evaluate_return_components_exact_candidate_from_bridge(
                 candidate_generation_input,
                 activity_context_payload,
@@ -893,7 +891,7 @@ fn materialize_runtime_structural_seasonality(
     })?;
 
     let materialization = py
-        .allow_threads(|| {
+        .detach(|| {
             materialize_runtime_structural_seasonality_core(
                 &calendar_registry.registry,
                 RuntimeStructuralSeasonalityMaterializationInput {

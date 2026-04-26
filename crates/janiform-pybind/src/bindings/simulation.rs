@@ -207,7 +207,7 @@ fn run_coarse_simulation(
         "running coarse simulation",
         SimulationExecutionError::new_err,
         || {
-            py.allow_threads(move || match event_callback {
+            py.detach(move || match event_callback {
                 None => run_coarse_simulation_core(run_request)
                     .map_err(|source| SimulationExecutionError::new_err(source.to_string())),
                 Some(event_callback) => {
@@ -221,7 +221,7 @@ fn run_coarse_simulation(
                             return;
                         }
 
-                        Python::with_gil(|py| {
+                        Python::attach(|py| {
                             let callback_result = python_simulation_progress_event_to_py_object(
                                 py, &event,
                             )
@@ -363,7 +363,7 @@ fn run_seeded_tick_event_simulation(
         "running seeded tick-event simulation",
         SimulationExecutionError::new_err,
         || {
-            py.allow_threads(move || match event_callback {
+            py.detach(move || match event_callback {
                 None => run_seeded_tick_event_simulation_core(run_config)
                     .map_err(map_seeded_tick_simulation_run_error),
                 Some(event_callback) => {
@@ -377,7 +377,7 @@ fn run_seeded_tick_event_simulation(
                             return;
                         }
 
-                        Python::with_gil(|py| {
+                        Python::attach(|py| {
                             let callback_result = python_simulation_progress_event_to_py_object(
                                 py, &event,
                             )
@@ -519,10 +519,9 @@ fn parse_required_numeric_sequence(
 fn parse_seeded_simulation_kernel_parameters(
     raw_kernel_parameters: &Bound<'_, PyAny>,
 ) -> PyResult<HawkesKernelParameters> {
-    let kernel_parameters_mapping =
-        raw_kernel_parameters.downcast::<PyMapping>().map_err(|_| {
-            SeasonalityInputValidationError::new_err("kernel_parameters must be a mapping")
-        })?;
+    let kernel_parameters_mapping = raw_kernel_parameters.cast::<PyMapping>().map_err(|_| {
+        SeasonalityInputValidationError::new_err("kernel_parameters must be a mapping")
+    })?;
 
     let lambda_bar = parse_required_float_field_from_mapping(
         &kernel_parameters_mapping,
@@ -556,7 +555,7 @@ fn parse_seeded_simulation_initial_excitation_state(
     raw_initial_excitation_state: &Bound<'_, PyAny>,
 ) -> PyResult<HawkesExcitationState> {
     let state_mapping = raw_initial_excitation_state
-        .downcast::<PyMapping>()
+        .cast::<PyMapping>()
         .map_err(|_| {
             SeasonalityInputValidationError::new_err("initial_excitation_state must be a mapping")
         })?;
@@ -588,7 +587,7 @@ fn parse_seeded_simulation_initial_excitation_state(
 fn parse_seeded_simulation_nig_shared_plus_shift_configuration(
     raw_configuration: &Bound<'_, PyAny>,
 ) -> PyResult<NigSharedPlusShiftConfiguration> {
-    let configuration_mapping = raw_configuration.downcast::<PyMapping>().map_err(|_| {
+    let configuration_mapping = raw_configuration.cast::<PyMapping>().map_err(|_| {
         SeasonalityInputValidationError::new_err(
             "nig_shared_plus_shift_configuration must be a mapping",
         )
@@ -680,7 +679,7 @@ fn parse_required_mapping_field<'py>(
 ) -> PyResult<Bound<'py, PyMapping>> {
     let field_value = parse_required_field(parent_mapping, parent_context, field_name)?;
 
-    let field_mapping = field_value.downcast::<PyMapping>().map_err(|_| {
+    let field_mapping = field_value.cast::<PyMapping>().map_err(|_| {
         SeasonalityInputValidationError::new_err(format!(
             "{parent_context}.{field_name} must be a mapping"
         ))

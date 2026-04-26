@@ -40,6 +40,7 @@ jobs:
       - name: Verify generated artifacts
         run: |
           ./.venv-linux/bin/python scripts/generate_crate_readmes.py --check
+          ./.venv-linux/bin/python scripts/generate_internal_crate_graph_policy.py --check
           ./.venv-linux/bin/python scripts/generate_third_party_notices.py --check
 
       - name: Run fast repository contract checks

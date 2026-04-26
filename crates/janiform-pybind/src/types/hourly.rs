@@ -5,7 +5,11 @@ use janiform::hourly_factors::{
 };
 use pyo3::{pyclass, pymethods};
 
-#[pyclass(module = "janiform._native", name = "HourlyFactorContractResult")]
+#[pyclass(
+    module = "janiform._native",
+    name = "HourlyFactorContractResult",
+    skip_from_py_object
+)]
 #[derive(Clone)]
 pub(crate) struct PyHourlyFactorContractResult {
     pub(crate) output: HourlyFactorContractOutput,
@@ -14,7 +18,8 @@ pub(crate) struct PyHourlyFactorContractResult {
 
 #[pyclass(
     module = "janiform._native",
-    name = "HourlySeasonalityMaterializationResult"
+    name = "HourlySeasonalityMaterializationResult",
+    skip_from_py_object
 )]
 #[derive(Clone)]
 pub(crate) struct PyHourlySeasonalityMaterializationResult {
@@ -23,7 +28,8 @@ pub(crate) struct PyHourlySeasonalityMaterializationResult {
 
 #[pyclass(
     module = "janiform._native",
-    name = "HourlyNewsIntensityMaterializationResult"
+    name = "HourlyNewsIntensityMaterializationResult",
+    skip_from_py_object
 )]
 #[derive(Clone)]
 pub(crate) struct PyHourlyNewsIntensityMaterializationResult {

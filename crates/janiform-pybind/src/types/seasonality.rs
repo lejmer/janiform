@@ -7,7 +7,8 @@ use pyo3::{pyclass, pymethods};
 
 #[pyclass(
     module = "janiform._native",
-    name = "TimestampEventPreprocessingResult"
+    name = "TimestampEventPreprocessingResult",
+    skip_from_py_object
 )]
 #[derive(Clone)]
 pub(crate) struct PyTimestampEventPreprocessingResult {
@@ -16,7 +17,8 @@ pub(crate) struct PyTimestampEventPreprocessingResult {
 
 #[pyclass(
     module = "janiform._native",
-    name = "IntradaySeasonalityEstimateResult"
+    name = "IntradaySeasonalityEstimateResult",
+    skip_from_py_object
 )]
 #[derive(Clone)]
 pub(crate) struct PyIntradaySeasonalityEstimateResult {
@@ -25,7 +27,8 @@ pub(crate) struct PyIntradaySeasonalityEstimateResult {
 
 #[pyclass(
     module = "janiform._native",
-    name = "DayOfWeekSeasonalityEstimateResult"
+    name = "DayOfWeekSeasonalityEstimateResult",
+    skip_from_py_object
 )]
 #[derive(Clone)]
 pub(crate) struct PyDayOfWeekSeasonalityEstimateResult {
@@ -34,7 +37,8 @@ pub(crate) struct PyDayOfWeekSeasonalityEstimateResult {
 
 #[pyclass(
     module = "janiform._native",
-    name = "DayOfYearSeasonalityEstimateResult"
+    name = "DayOfYearSeasonalityEstimateResult",
+    skip_from_py_object
 )]
 #[derive(Clone)]
 pub(crate) struct PyDayOfYearSeasonalityEstimateResult {
@@ -43,7 +47,8 @@ pub(crate) struct PyDayOfYearSeasonalityEstimateResult {
 
 #[pyclass(
     module = "janiform._native",
-    name = "DeterministicSeasonalityCompositionResult"
+    name = "DeterministicSeasonalityCompositionResult",
+    skip_from_py_object
 )]
 #[derive(Clone)]
 pub(crate) struct PyDeterministicSeasonalityCompositionResult {

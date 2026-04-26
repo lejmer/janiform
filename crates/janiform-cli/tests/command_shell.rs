@@ -192,7 +192,7 @@ fn json_mode_writes_one_final_json_error_to_stdout() {
     );
     assert!(
         output.stderr.is_empty(),
-        "json mode should not write human diagnostics to stderr: `{}`",
+        "json mode should not write terminal diagnostics to stderr: `{}`",
         String::from_utf8_lossy(&output.stderr)
     );
 
@@ -204,6 +204,37 @@ fn json_mode_writes_one_final_json_error_to_stdout() {
     assert_eq!(
         payload["exit_code"],
         CliExitCode::UnimplementedCommand as u8
+    );
+}
+
+#[test]
+fn terminal_diagnostics_follow_color_policy() {
+    let forced_color = janiform_command()
+        .args(["--color", "always", "fit", "ticks.parquet"])
+        .output()
+        .expect("janiform command should execute");
+
+    assert_eq!(
+        forced_color.status.code(),
+        Some(CliExitCode::UnimplementedCommand as i32)
+    );
+    assert!(
+        String::from_utf8_lossy(&forced_color.stderr).contains("\u{1b}["),
+        "forced color should emit ANSI styling in terminal diagnostics"
+    );
+
+    let disabled_color = janiform_command()
+        .args(["--color", "never", "fit", "ticks.parquet"])
+        .output()
+        .expect("janiform command should execute");
+
+    assert_eq!(
+        disabled_color.status.code(),
+        Some(CliExitCode::UnimplementedCommand as i32)
+    );
+    assert!(
+        !String::from_utf8_lossy(&disabled_color.stderr).contains("\u{1b}["),
+        "disabled color should not emit ANSI styling in terminal diagnostics"
     );
 }
 
@@ -223,6 +254,7 @@ fn global_output_modes_have_explicit_conflicts() {
 #[test]
 fn toml_configuration_supplies_cli_boundary_defaults() {
     let config_path = temporary_config_path();
+
     std::fs::write(&config_path, "[output]\njson = true\n")
         .expect("test should be able to write CLI config");
 
@@ -244,7 +276,7 @@ fn toml_configuration_supplies_cli_boundary_defaults() {
     );
     assert!(
         output.stderr.is_empty(),
-        "configured json mode should not write human diagnostics to stderr: `{}`",
+        "configured json mode should not write terminal diagnostics to stderr: `{}`",
         String::from_utf8_lossy(&output.stderr)
     );
 
