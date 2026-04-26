@@ -3,6 +3,8 @@ use crate::commands::dev::DevSubcommand;
 use crate::commands::dev::RegressionSubcommand;
 use crate::commands::fit::FitStagedSubcommand;
 use crate::commands::fit::FitSubcommand;
+use crate::commands::fit::execution::run_fit_execution;
+use crate::commands::fit::execution::run_fit_staged_execution;
 use crate::commands::fit::planning::run_fit_inspect;
 use crate::commands::fit::planning::run_fit_plan;
 use crate::commands::fit::planning::run_fit_staged_plan;
@@ -26,7 +28,7 @@ pub(crate) fn dispatch(context: &CommandContext, command: RootCommand) -> Result
     );
 
     match command {
-        RootCommand::Fit(command) => dispatch_fit(context, command.command),
+        RootCommand::Fit(command) => dispatch_fit(context, command),
         RootCommand::Inspect(command) => match command.command {
             InspectSubcommand::Run(command) => run_inspect_run(context, command),
             InspectSubcommand::Model(_) => not_implemented("inspect model"),
@@ -86,16 +88,21 @@ pub(crate) fn dispatch(context: &CommandContext, command: RootCommand) -> Result
     }
 }
 
-fn dispatch_fit(context: &CommandContext, command: Option<FitSubcommand>) -> Result<(), CliError> {
-    match command {
+fn dispatch_fit(
+    context: &CommandContext,
+    mut command: crate::commands::fit::FitCommand,
+) -> Result<(), CliError> {
+    match command.command.take() {
         Some(FitSubcommand::Inspect(command)) => run_fit_inspect(context, command),
         Some(FitSubcommand::Plan(command)) => run_fit_plan(context, command),
         Some(FitSubcommand::Staged(command)) => match command.command {
             Some(FitStagedSubcommand::Plan(command)) => run_fit_staged_plan(context, command),
-            Some(FitStagedSubcommand::Run(_)) => not_implemented("fit staged run"),
-            None => not_implemented("fit staged"),
+            Some(FitStagedSubcommand::Run(command)) => {
+                run_fit_staged_execution(context, command.staged)
+            }
+            None => run_fit_staged_execution(context, command.staged),
         },
-        None => not_implemented("fit"),
+        None => run_fit_execution(context, command),
     }
 }
 

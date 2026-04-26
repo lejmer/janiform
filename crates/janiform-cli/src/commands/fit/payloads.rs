@@ -5,13 +5,22 @@ use serde_json::json;
 
 use super::preparation::{PreparedFitPreview, fit_warnings};
 
+pub(crate) const FIT_PLAN_SCHEMA_VERSION: &str = "cli.fit_plan.v1";
+pub(crate) const FIT_PLAN_COMMAND_ID: &str = "fit.plan";
+pub(crate) const FIT_INSPECT_SCHEMA_VERSION: &str = "cli.fit_inspect.v1";
+pub(crate) const FIT_INSPECT_COMMAND_ID: &str = "fit.inspect";
+pub(crate) const FIT_STAGED_PLAN_SCHEMA_VERSION: &str = "cli.fit_staged_plan.v1";
+pub(crate) const FIT_STAGED_PLAN_COMMAND_ID: &str = "fit.staged.plan";
+pub(crate) const FIT_RUN_SCHEMA_VERSION: &str = "cli.fit_run.v1";
+pub(crate) const FIT_RUN_COMMAND_ID: &str = "fit";
+
 pub(crate) fn plan_json(
     prepared: &PreparedFitPreview,
     staged_artifact_path: Option<&Path>,
 ) -> Value {
     json!({
-        "schema_version": "cli.fit_plan.v1",
-        "command_id": "fit.plan",
+        "schema_version": FIT_PLAN_SCHEMA_VERSION,
+        "command_id": FIT_PLAN_COMMAND_ID,
         "run_id": prepared.request.run_id,
         "workflow_scope": prepared.request.workflow_scope,
         "input_files": input_files_json(prepared),
@@ -28,8 +37,8 @@ pub(crate) fn plan_json(
 
 pub(crate) fn inspect_json(prepared: &PreparedFitPreview) -> Value {
     json!({
-        "schema_version": "cli.fit_inspect.v1",
-        "command_id": "fit.inspect",
+        "schema_version": FIT_INSPECT_SCHEMA_VERSION,
+        "command_id": FIT_INSPECT_COMMAND_ID,
         "run_id": prepared.request.run_id,
         "explicit_user_inputs": pairs_json(&prepared.explicit_values),
         "inferred_values": pairs_json(&prepared.inferred_values),
@@ -53,8 +62,8 @@ pub(crate) fn staged_plan_json(
     staged_artifact_path: Option<&Path>,
 ) -> Value {
     json!({
-        "schema_version": "cli.fit_staged_plan.v1",
-        "command_id": "fit.staged.plan",
+        "schema_version": FIT_STAGED_PLAN_SCHEMA_VERSION,
+        "command_id": FIT_STAGED_PLAN_COMMAND_ID,
         "run_id": prepared.request.run_id,
         "preparation_request": prepared.request,
         "staged_execution_input": prepared.plan.execution_input,

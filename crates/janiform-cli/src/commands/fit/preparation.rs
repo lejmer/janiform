@@ -1,5 +1,3 @@
-use std::fs;
-use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::time::SystemTime;
@@ -22,6 +20,7 @@ use crate::commands::options;
 use crate::commands::options::TickDataOptions;
 use crate::commands::options::WorkflowScope;
 use crate::commands::shared::market_data::prepare_market_data_command_inputs;
+use crate::commands::shared::output::write_pretty_json_file;
 use crate::commands::shared::output_paths::default_run_output_directory;
 use crate::context::CommandContext;
 use crate::error::CliError;
@@ -265,25 +264,11 @@ pub(crate) fn write_staged_execution_input(
 
     let resolved_path = context.paths().resolve_process_path(output_path);
 
-    if let Some(parent) = resolved_path.parent() {
-        fs::create_dir_all(parent).map_err(|source| CliError::StagedExecutionInputWrite {
+    write_pretty_json_file(&resolved_path, &plan.execution_input, |_, source| {
+        CliError::StagedExecutionInputWrite {
             path: resolved_path.clone(),
             source,
-        })?;
-    }
-
-    let mut file =
-        fs::File::create(&resolved_path).map_err(|source| CliError::StagedExecutionInputWrite {
-            path: resolved_path.clone(),
-            source,
-        })?;
-
-    serde_json::to_writer_pretty(&mut file, &plan.execution_input)
-        .map_err(|source| CliError::OutputSerialize { source })?;
-
-    writeln!(file).map_err(|source| CliError::StagedExecutionInputWrite {
-        path: resolved_path.clone(),
-        source,
+        }
     })?;
 
     Ok(Some(resolved_path))

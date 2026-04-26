@@ -11,6 +11,7 @@ use janiform_event_log::default_run_event_paths;
 use janiform_event_log::load_run_state_snapshot;
 use janiform_event_log::replay_event_log;
 
+use crate::commands::shared::output::write_json_payload;
 use crate::context::CommandContext;
 use crate::context::OutputMode;
 use crate::error::CliError;
@@ -53,7 +54,9 @@ pub(crate) fn run_inspect_run(
     command: InspectRunCommand,
 ) -> Result<(), CliError> {
     let run_directory = context.paths().resolve_process_path(&command.run_directory);
+
     let event_paths = default_run_event_paths(&run_directory);
+
     let state = load_run_state_snapshot(&event_paths.latest_state_snapshot_path)
         .or_else(|_| replay_event_log(&event_paths.event_log_path))
         .map_err(|source| CliError::RunInspectionFailed {
@@ -62,7 +65,7 @@ pub(crate) fn run_inspect_run(
         })?;
 
     match context.output_mode() {
-        OutputMode::Json => write_json_state(&state),
+        OutputMode::Json => write_json_payload(&state),
         OutputMode::Silent => Ok(()),
         OutputMode::Human | OutputMode::Quiet => {
             let rendered = render_run_state(
@@ -80,15 +83,6 @@ pub(crate) fn run_inspect_run(
     }
 }
 
-fn write_json_state(state: &RunStateSnapshot) -> Result<(), CliError> {
-    let mut stdout = std::io::stdout().lock();
-
-    serde_json::to_writer(&mut stdout, state)
-        .map_err(|source| CliError::OutputSerialize { source })?;
-    use std::io::Write;
-    writeln!(stdout).map_err(|source| CliError::OutputWrite { source })
-}
-
 fn render_run_state(
     state: &RunStateSnapshot,
     run_directory: &std::path::Path,
@@ -97,6 +91,7 @@ fn render_run_state(
     renderer: &janiform_cli_ui::TerminalRenderer,
 ) -> String {
     let mut sections = Vec::new();
+
     let mut rows = vec![
         janiform_cli_ui::KeyValueRow::new("Run", state.run_id.clone()),
         janiform_cli_ui::KeyValueRow::new(
@@ -143,6 +138,7 @@ fn render_run_state(
             )
         })
         .collect::<Vec<String>>();
+
     if !artifact_paths.is_empty() {
         sections.push(
             janiform_cli_ui::ArtifactPathGroup {
@@ -158,12 +154,14 @@ fn render_run_state(
             "Available",
             state.checkpoints.available_count.to_string(),
         )];
+
         if let Some(latest_path) = &state.checkpoints.latest_path {
             checkpoint_rows.push(janiform_cli_ui::KeyValueRow::new(
                 "Latest",
                 display_run_relative_path(run_directory, latest_path),
             ));
         }
+
         sections.push(
             janiform_cli_ui::StartSummary {
                 title: "Checkpoints".to_string(),
@@ -195,18 +193,21 @@ fn render_run_state(
                 display_path_relative_to(run_directory, event_log_path),
             ),
         ];
+
         if let Some(first_event_timestamp) = &state.first_event_timestamp_utc {
             event_rows.push(janiform_cli_ui::KeyValueRow::new(
                 "First",
                 first_event_timestamp.clone(),
             ));
         }
+
         if let Some(latest_event_timestamp) = &state.latest_event_timestamp_utc {
             event_rows.push(janiform_cli_ui::KeyValueRow::new(
                 "Latest",
                 latest_event_timestamp.clone(),
             ));
         }
+
         sections.push(
             janiform_cli_ui::StartSummary {
                 title: "Event log".to_string(),
@@ -224,18 +225,21 @@ fn render_current_state(
     renderer: &janiform_cli_ui::TerminalRenderer,
 ) -> String {
     let mut rows = Vec::new();
+
     if let Some(stage) = &state.active_stage {
         rows.push(janiform_cli_ui::KeyValueRow::new(
             "Stage",
             stage_label(stage),
         ));
     }
+
     if let Some(phase) = &state.latest_phase {
         rows.push(janiform_cli_ui::KeyValueRow::new(
             "Phase",
             phase_label(phase),
         ));
     }
+
     if !state.latest_progress.is_empty() {
         rows.push(janiform_cli_ui::KeyValueRow::new(
             "Progress",

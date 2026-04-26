@@ -18,6 +18,15 @@ pub(crate) enum WorkflowScope {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+pub(crate) enum CalibrationStageOption {
+    Seasonality,
+    Hawkes,
+    ReturnComponents,
+    MeanReversion,
+    JointRefinement,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
 pub(crate) enum InputFileFormat {
     Csv,
     Parquet,
