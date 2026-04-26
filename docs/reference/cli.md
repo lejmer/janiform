@@ -29,12 +29,29 @@ This is a curated reference for the public CLI surface. Use `janiform <command> 
 
 | Area | Representative flags |
 | --- | --- |
-| Output | `--output {human,json}` |
-| Progress | `--progress {auto,human,jsonl,none}` |
+| Output | `--json`, `--silent`, `--quiet` |
+| Diagnostics | `--color {auto,always,never}`, `--verbose`, `--config` |
+| Events | `--events jsonl`, `--trace-events` |
 | Persistence | `--output-dir`, `--output-path`, `--disk-checkpoint-directory` |
 | Data inputs | `--tick-data-path`, `--known-news-path`, `--option-surface-path`, `--calendar-registry-json` |
 | Workflow shape | `--workflow-scope`, `--execution-mode` |
 | Calibration search | `--dynamics-search-restart-candidate-budget` |
+
+## Shared CLI Boundary
+
+Root-level options are available to every command.
+
+| Option | Contract |
+| --- | --- |
+| `--json` | Writes one final JSON object on stdout and keeps human progress off stdout. |
+| `--silent` | Suppresses normal output while preserving warnings and errors. |
+| `--quiet` | Limits human output to final status and artifact paths. |
+| `--events jsonl` | Writes machine events to stderr as JSONL. |
+| `--trace-events` | Enables trace-level records and requires an event stream. |
+| `--color auto\|always\|never` | Controls ANSI styling for human diagnostics. Automatic color respects `NO_COLOR` and terminal capability. JSON and JSONL outputs do not contain ANSI styling. |
+| `--config PATH` | Loads TOML configuration for CLI boundary values only, such as output and diagnostic defaults. Model behavior, numerical policy, and workflow-specific calibration defaults remain in typed Rust contracts. |
+
+`--json`, `--silent`, and `--quiet` are mutually exclusive where their contracts would conflict.
 
 ## Notes
 

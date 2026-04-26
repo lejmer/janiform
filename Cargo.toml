@@ -4,6 +4,7 @@ members = [
     "crates/janiform-analytics-stylized-facts",
     "crates/janiform-calibration-artifacts",
     "crates/janiform-calibration-runtime",
+    "crates/janiform-cli",
     "crates/janiform-engine-pricing",
     "crates/janiform-engine-sufficient-statistics",
     "crates/janiform-engine-simulation",
@@ -32,6 +33,7 @@ arrow-schema = "56.2.0"
 bincode = "1.3.3"
 chrono = { version = "0.4.42", default-features = false, features = ["clock", "std"] }
 chrono-tz = "0.10.4"
+clap = { version = "=4.5.55", features = ["derive"] }
 csv = "1.4.0"
 nalgebra = { version = "0.33.2", default-features = false, features = ["std"] }
 parquet = "56.2.0"

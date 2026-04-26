@@ -74,5 +74,8 @@ else {
 # Build/install the Rust extension into the venv
 python -m maturin develop
 
+# Build the native Rust CLI executable
+cargo build -p janiform-cli
+
 # Smoke test
 python -c "import janiform; print('janiform installed correctly.')"

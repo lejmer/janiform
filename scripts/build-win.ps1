@@ -50,4 +50,6 @@ else {
 
 python -m maturin develop
 
+cargo build -p janiform-cli
+
 python -c "import janiform; print('janiform built correctly.')"
