@@ -9,13 +9,18 @@ use crate::market_data::preprocessing::{
 };
 use janiform_market_time::calendar::ExchangeCalendarRegistryLoader;
 
-use super::column_resolution::resolve_tick_data_column_mapping;
+use super::column_resolution::{
+    resolve_option_surface_column_mapping, resolve_option_surface_quote_input_policy,
+    resolve_tick_data_column_mapping, resolve_tick_price_input_policy,
+};
 use super::contracts::{
     MarketDataDuplicateRecordPolicy, MarketDataInputFileFormat, MarketDataInputFileReference,
     MarketDataLoadingError, MarketDataLoadingOutput, MarketDataLoadingRequest,
-    MarketDataNormalizationPolicy, MarketDataNormalizedTickOutput, MarketDataSessionConfiguration,
-    MarketDataSessionResolutionPayload, MarketDataSourceProbePayload, MarketDataSourceSummary,
-    MarketDataTickDataColumnMapping, MarketDataTickPriceInputPolicy,
+    MarketDataNormalizationPolicy, MarketDataNormalizedTickOutput,
+    MarketDataOptionQuoteInputPolicy, MarketDataOptionSurfaceColumnMapping,
+    MarketDataSessionConfiguration, MarketDataSessionResolutionPayload,
+    MarketDataSourceProbePayload, MarketDataSourceSummary, MarketDataTickDataColumnMapping,
+    MarketDataTickPriceInputPolicy,
 };
 use super::known_news::load_known_news_records;
 use super::normalization::{normalize_tick_row, normalize_tick_values};
@@ -63,6 +68,63 @@ pub fn probe_market_data_source(
         available_columns: load_source_columns(source, "tick_data_source")?,
         source_row_count_estimate: probe_source_row_count_estimate(source, "tick_data_source")?,
     })
+}
+
+pub fn infer_market_data_tick_price_input_policy(
+    source: &MarketDataInputFileReference,
+    column_mapping: &MarketDataTickDataColumnMapping,
+) -> Result<Option<MarketDataTickPriceInputPolicy>, MarketDataLoadingError> {
+    let available_columns = load_source_columns(source, "tick_data_source")?;
+
+    Ok(resolve_tick_price_input_policy(
+        available_columns.as_slice(),
+        column_mapping,
+    ))
+}
+
+pub fn resolve_market_data_tick_data_column_mapping_for_source(
+    source: &MarketDataInputFileReference,
+    column_mapping: &MarketDataTickDataColumnMapping,
+    normalization_policy: &MarketDataNormalizationPolicy,
+) -> Result<MarketDataTickDataColumnMapping, MarketDataLoadingError> {
+    let available_columns = load_source_columns(source, "tick_data_source")?;
+
+    resolve_tick_data_column_mapping(
+        available_columns.as_slice(),
+        column_mapping,
+        normalization_policy,
+        &source.path,
+    )
+}
+
+pub fn infer_market_data_option_quote_input_policy(
+    source: &MarketDataInputFileReference,
+    column_mapping: &MarketDataOptionSurfaceColumnMapping,
+    normalization_policy: &MarketDataNormalizationPolicy,
+) -> Result<MarketDataOptionQuoteInputPolicy, MarketDataLoadingError> {
+    let available_columns = load_source_columns(source, "option_surface_input.source")?;
+
+    resolve_option_surface_quote_input_policy(
+        available_columns.as_slice(),
+        column_mapping,
+        normalization_policy,
+        &source.path,
+    )
+}
+
+pub fn resolve_market_data_option_surface_column_mapping_for_source(
+    source: &MarketDataInputFileReference,
+    column_mapping: &MarketDataOptionSurfaceColumnMapping,
+    normalization_policy: &MarketDataNormalizationPolicy,
+) -> Result<MarketDataOptionSurfaceColumnMapping, MarketDataLoadingError> {
+    let available_columns = load_source_columns(source, "option_surface_input.source")?;
+
+    resolve_option_surface_column_mapping(
+        available_columns.as_slice(),
+        column_mapping,
+        normalization_policy,
+        &source.path,
+    )
 }
 
 pub fn normalize_market_data_source(

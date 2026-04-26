@@ -933,8 +933,10 @@ name = "janiform-cli"
 version = "0.0.0"
 dependencies = [
  "clap",
+ "janiform",
  "janiform-cli-ui",
  "janiform-event-log",
+ "janiform-foundations",
  "miette",
  "serde",
  "serde_json",

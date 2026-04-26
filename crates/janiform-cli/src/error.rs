@@ -89,6 +89,40 @@ pub enum CliError {
         path: PathBuf,
     },
 
+    #[error("missing required argument `{argument_name}`")]
+    #[diagnostic(code(janiform_cli::missing_required_argument))]
+    MissingRequiredArgument { argument_name: &'static str },
+
+    #[error("invalid argument `{argument_name}`: {message}")]
+    #[diagnostic(code(janiform_cli::invalid_command_argument))]
+    InvalidCommandArgument {
+        argument_name: &'static str,
+        message: String,
+    },
+
+    #[error("conflicting arguments `{first_argument}` and `{second_argument}`: {message}")]
+    #[diagnostic(code(janiform_cli::conflicting_command_arguments))]
+    ConflictingCommandArguments {
+        first_argument: &'static str,
+        second_argument: &'static str,
+        message: String,
+    },
+
+    #[error("failed to prepare fit plan")]
+    #[diagnostic(code(janiform_cli::fit_preparation_failed))]
+    FitPreparationFailed {
+        #[source]
+        source: janiform::calibration::CalibrationMarketDataPreparationError,
+    },
+
+    #[error("failed to write staged execution input `{}`", path.display())]
+    #[diagnostic(code(janiform_cli::staged_execution_input_write))]
+    StagedExecutionInputWrite {
+        path: PathBuf,
+        #[source]
+        source: io::Error,
+    },
+
     #[error("`--trace-events` requires an event stream selected with `--events jsonl`")]
     #[diagnostic(code(janiform_cli::trace_events_without_event_stream))]
     TraceEventsWithoutEventStream,
@@ -131,6 +165,11 @@ impl CliError {
             | Self::CurrentDirectory { .. }
             | Self::RepositoryRootUnavailable { .. }
             | Self::MissingInputFile { .. }
+            | Self::MissingRequiredArgument { .. }
+            | Self::InvalidCommandArgument { .. }
+            | Self::ConflictingCommandArguments { .. }
+            | Self::FitPreparationFailed { .. }
+            | Self::StagedExecutionInputWrite { .. }
             | Self::TraceEventsWithoutEventStream
             | Self::OutputWrite { .. }
             | Self::OutputSerialize { .. }
@@ -148,6 +187,11 @@ impl CliError {
             Self::CurrentDirectory { .. } => "current_directory",
             Self::RepositoryRootUnavailable { .. } => "repository_root_unavailable",
             Self::MissingInputFile { .. } => "missing_input_file",
+            Self::MissingRequiredArgument { .. } => "missing_required_argument",
+            Self::InvalidCommandArgument { .. } => "invalid_command_argument",
+            Self::ConflictingCommandArguments { .. } => "conflicting_command_arguments",
+            Self::FitPreparationFailed { .. } => "fit_preparation_failed",
+            Self::StagedExecutionInputWrite { .. } => "staged_execution_input_write",
             Self::TraceEventsWithoutEventStream => "trace_events_without_event_stream",
             Self::OutputWrite { .. } => "output_write",
             Self::OutputSerialize { .. } => "output_serialize",

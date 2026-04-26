@@ -3,6 +3,9 @@ use crate::commands::dev::DevSubcommand;
 use crate::commands::dev::RegressionSubcommand;
 use crate::commands::fit::FitStagedSubcommand;
 use crate::commands::fit::FitSubcommand;
+use crate::commands::fit::planning::run_fit_inspect;
+use crate::commands::fit::planning::run_fit_plan;
+use crate::commands::fit::planning::run_fit_staged_plan;
 use crate::commands::hourly_factors::HourlyFactorsSubcommand;
 use crate::commands::inspection::InspectSubcommand;
 use crate::commands::inspection::run_inspect_run;
@@ -23,7 +26,7 @@ pub(crate) fn dispatch(context: &CommandContext, command: RootCommand) -> Result
     );
 
     match command {
-        RootCommand::Fit(command) => dispatch_fit(command.command),
+        RootCommand::Fit(command) => dispatch_fit(context, command.command),
         RootCommand::Inspect(command) => match command.command {
             InspectSubcommand::Run(command) => run_inspect_run(context, command),
             InspectSubcommand::Model(_) => not_implemented("inspect model"),
@@ -83,12 +86,12 @@ pub(crate) fn dispatch(context: &CommandContext, command: RootCommand) -> Result
     }
 }
 
-fn dispatch_fit(command: Option<FitSubcommand>) -> Result<(), CliError> {
+fn dispatch_fit(context: &CommandContext, command: Option<FitSubcommand>) -> Result<(), CliError> {
     match command {
-        Some(FitSubcommand::Inspect(_)) => not_implemented("fit inspect"),
-        Some(FitSubcommand::Plan(_)) => not_implemented("fit plan"),
+        Some(FitSubcommand::Inspect(command)) => run_fit_inspect(context, command),
+        Some(FitSubcommand::Plan(command)) => run_fit_plan(context, command),
         Some(FitSubcommand::Staged(command)) => match command.command {
-            Some(FitStagedSubcommand::Plan(_)) => not_implemented("fit staged plan"),
+            Some(FitStagedSubcommand::Plan(command)) => run_fit_staged_plan(context, command),
             Some(FitStagedSubcommand::Run(_)) => not_implemented("fit staged run"),
             None => not_implemented("fit staged"),
         },
