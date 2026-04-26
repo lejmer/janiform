@@ -15,20 +15,32 @@ use janiform::calibration::{
     PreparedMarketDataCalibrationPlan as PreparedMarketDataPlanCore,
     ReturnComponentsStageFittedParameters, ReturnComponentsStageObservedSignalSummaryStatistics,
     RuntimeStructuralSeasonalityMaterializationInput,
+    built_in_preset_registry_index as built_in_preset_registry_index_native,
+    compute_preset_artifact_content_hash as compute_preset_artifact_content_hash_native,
+    deserialize_preset_artifact_json as deserialize_preset_artifact_json_native,
     estimate_current_state_from_observed_data as estimate_current_state_from_observed_data_core,
     evaluate_return_components_exact_candidate_from_bridge,
+    exchange_code_from_market_profile_reference as exchange_code_from_market_profile_reference_native,
+    exchange_code_from_session_reference as exchange_code_from_session_reference_native,
+    export_resolved_preset as export_resolved_preset_native,
     infer_bundled_market_profile_from_tick_data_path,
     infer_market_data_fit_inputs as infer_market_data_fit_inputs_native,
     load_and_preprocess_market_data_translation_request as load_and_preprocess_market_data_translation_request_native,
     materialize_runtime_structural_seasonality as materialize_runtime_structural_seasonality_core,
     normalize_market_data_source as normalize_market_data_source_native,
+    normalize_preset_artifact as normalize_preset_artifact_native,
     prepare_market_data_calibration_plan as prepare_market_data_calibration_plan_core,
     prepare_market_data_calibration_plan_from_phases as prepare_market_data_calibration_plan_from_phases_core,
     preprocess_market_data_translation_request as preprocess_market_data_translation_request_native,
+    preset_registry_index as preset_registry_index_native,
     probe_market_data_source as probe_market_data_source_native,
     resolve_market_data_session_configuration as resolve_market_data_session_configuration_native,
+    resolve_market_profile_configuration as resolve_market_profile_configuration_native,
+    resolve_preset_artifact as resolve_preset_artifact_native,
+    resolve_preset_workflow_configuration as resolve_preset_workflow_configuration_native,
     run_staged_calibration_from_execution_input,
     run_staged_calibration_from_execution_input_with_observer,
+    serialize_preset_artifact as serialize_preset_artifact_native,
 };
 use janiform::hawkes::{HawkesEventSide, HawkesKernelParameters};
 use janiform::simulation::MeanReversionFittedParameters;
@@ -88,6 +100,213 @@ fn infer_market_data_fit_inputs(
     })?;
 
     json_value_to_py_object(py, &raw_value)
+}
+
+#[pyfunction]
+#[pyo3(signature = (_request))]
+fn built_in_preset_registry_index(
+    py: Python<'_>,
+    _request: &Bound<'_, PyAny>,
+) -> PyResult<Py<PyAny>> {
+    let index_payload = py
+        .detach(built_in_preset_registry_index_native)
+        .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
+
+    json_value_to_py_object(py, &index_payload)
+}
+
+#[pyfunction]
+#[pyo3(signature = (index_request))]
+fn preset_registry_index(py: Python<'_>, index_request: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
+    let index_request = py_any_to_json_value(index_request)?;
+
+    let index_payload = py
+        .detach(|| preset_registry_index_native(index_request))
+        .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
+
+    json_value_to_py_object(py, &index_payload)
+}
+
+#[pyfunction]
+#[pyo3(signature = (resolution_request))]
+fn resolve_preset_artifact(
+    py: Python<'_>,
+    resolution_request: &Bound<'_, PyAny>,
+) -> PyResult<Py<PyAny>> {
+    let resolution_request = py_any_to_json_value(resolution_request)?;
+
+    let resolved_artifact = py
+        .detach(|| resolve_preset_artifact_native(resolution_request))
+        .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
+
+    json_value_to_py_object(py, &resolved_artifact)
+}
+
+#[pyfunction]
+#[pyo3(signature = (export_request))]
+fn export_resolved_preset(
+    py: Python<'_>,
+    export_request: &Bound<'_, PyAny>,
+) -> PyResult<Py<PyAny>> {
+    let export_request = py_any_to_json_value(export_request)?;
+
+    let export_payload = py
+        .detach(|| export_resolved_preset_native(export_request))
+        .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
+
+    json_value_to_py_object(py, &export_payload)
+}
+
+#[pyfunction]
+#[pyo3(signature = (artifact_request))]
+fn serialize_preset_artifact(
+    py: Python<'_>,
+    artifact_request: &Bound<'_, PyAny>,
+) -> PyResult<String> {
+    let artifact = preset_artifact_from_request(artifact_request)?;
+
+    py.detach(|| serialize_preset_artifact_native(artifact))
+        .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))
+}
+
+#[pyfunction]
+#[pyo3(signature = (artifact_request))]
+fn deserialize_preset_artifact(
+    py: Python<'_>,
+    artifact_request: &Bound<'_, PyAny>,
+) -> PyResult<Py<PyAny>> {
+    let request = py_any_to_json_value(artifact_request)?;
+    let payload_json = preset_artifact_json_from_request(request)?;
+
+    let artifact = py
+        .detach(|| deserialize_preset_artifact_json_native(payload_json.as_str()))
+        .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
+
+    json_value_to_py_object(py, &artifact)
+}
+
+#[pyfunction]
+#[pyo3(signature = (artifact_request))]
+fn normalize_preset_artifact(
+    py: Python<'_>,
+    artifact_request: &Bound<'_, PyAny>,
+) -> PyResult<Py<PyAny>> {
+    let artifact = preset_artifact_from_request(artifact_request)?;
+
+    let normalized_artifact = py
+        .detach(|| normalize_preset_artifact_native(artifact))
+        .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
+
+    json_value_to_py_object(py, &normalized_artifact)
+}
+
+#[pyfunction]
+#[pyo3(signature = (artifact_request))]
+fn compute_preset_artifact_content_hash(
+    py: Python<'_>,
+    artifact_request: &Bound<'_, PyAny>,
+) -> PyResult<String> {
+    let artifact = preset_artifact_from_request(artifact_request)?;
+
+    py.detach(|| compute_preset_artifact_content_hash_native(artifact))
+        .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))
+}
+
+fn preset_artifact_from_request(artifact_request: &Bound<'_, PyAny>) -> PyResult<Value> {
+    let request = py_any_to_json_value(artifact_request)?;
+    let mut request = match request {
+        Value::Object(request) => request,
+        _ => {
+            return Err(CalibrationExecutionError::new_err(
+                "preset artifact request must be an object",
+            ));
+        }
+    };
+
+    request
+        .remove("artifact")
+        .ok_or_else(|| CalibrationExecutionError::new_err("artifact is required"))
+}
+
+fn preset_artifact_json_from_request(request: Value) -> PyResult<String> {
+    let mut request = match request {
+        Value::Object(request) => request,
+        _ => {
+            return Err(CalibrationExecutionError::new_err(
+                "preset artifact request must be an object",
+            ));
+        }
+    };
+
+    match request.remove("payload_json") {
+        Some(Value::String(payload_json)) => Ok(payload_json),
+        Some(_) => Err(CalibrationExecutionError::new_err(
+            "payload_json must be a string",
+        )),
+        None => Err(CalibrationExecutionError::new_err(
+            "payload_json is required",
+        )),
+    }
+}
+
+#[pyfunction]
+#[pyo3(signature = (resolution_request))]
+fn resolve_preset_workflow_configuration(
+    py: Python<'_>,
+    resolution_request: &Bound<'_, PyAny>,
+) -> PyResult<Py<PyAny>> {
+    let resolution_request = py_any_to_json_value(resolution_request)?;
+
+    let resolved_configuration = py
+        .detach(|| resolve_preset_workflow_configuration_native(resolution_request))
+        .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
+
+    json_value_to_py_object(py, &resolved_configuration)
+}
+
+#[pyfunction]
+#[pyo3(signature = (resolution_request))]
+fn resolve_market_profile_configuration(
+    py: Python<'_>,
+    resolution_request: &Bound<'_, PyAny>,
+) -> PyResult<Py<PyAny>> {
+    let resolution_request = py_any_to_json_value(resolution_request)?;
+
+    let resolved_configuration = py
+        .detach(|| resolve_market_profile_configuration_native(resolution_request))
+        .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
+
+    let raw_value = serde_json::to_value(resolved_configuration).map_err(|source| {
+        CalibrationExecutionError::new_err(format!(
+            "failed to serialize market-profile configuration: {source}"
+        ))
+    })?;
+
+    json_value_to_py_object(py, &raw_value)
+}
+
+#[pyfunction]
+#[pyo3(signature = (exchange_code_request))]
+fn exchange_code_from_session_reference(
+    py: Python<'_>,
+    exchange_code_request: &Bound<'_, PyAny>,
+) -> PyResult<String> {
+    let exchange_code_request = py_any_to_json_value(exchange_code_request)?;
+
+    py.detach(|| exchange_code_from_session_reference_native(exchange_code_request))
+        .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))
+}
+
+#[pyfunction]
+#[pyo3(signature = (exchange_code_request))]
+fn exchange_code_from_market_profile_reference(
+    py: Python<'_>,
+    exchange_code_request: &Bound<'_, PyAny>,
+) -> PyResult<String> {
+    let exchange_code_request = py_any_to_json_value(exchange_code_request)?;
+
+    py.detach(|| exchange_code_from_market_profile_reference_native(exchange_code_request))
+        .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))
 }
 
 #[pyfunction]
@@ -1028,6 +1247,33 @@ pub(super) fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
         module
     )?)?;
     module.add_function(wrap_pyfunction!(infer_market_data_fit_inputs, module)?)?;
+    module.add_function(wrap_pyfunction!(built_in_preset_registry_index, module)?)?;
+    module.add_function(wrap_pyfunction!(preset_registry_index, module)?)?;
+    module.add_function(wrap_pyfunction!(resolve_preset_artifact, module)?)?;
+    module.add_function(wrap_pyfunction!(export_resolved_preset, module)?)?;
+    module.add_function(wrap_pyfunction!(serialize_preset_artifact, module)?)?;
+    module.add_function(wrap_pyfunction!(deserialize_preset_artifact, module)?)?;
+    module.add_function(wrap_pyfunction!(normalize_preset_artifact, module)?)?;
+    module.add_function(wrap_pyfunction!(
+        compute_preset_artifact_content_hash,
+        module
+    )?)?;
+    module.add_function(wrap_pyfunction!(
+        resolve_preset_workflow_configuration,
+        module
+    )?)?;
+    module.add_function(wrap_pyfunction!(
+        resolve_market_profile_configuration,
+        module
+    )?)?;
+    module.add_function(wrap_pyfunction!(
+        exchange_code_from_session_reference,
+        module
+    )?)?;
+    module.add_function(wrap_pyfunction!(
+        exchange_code_from_market_profile_reference,
+        module
+    )?)?;
     module.add_function(wrap_pyfunction!(
         preprocess_market_data_translation_request,
         module

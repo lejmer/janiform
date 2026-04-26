@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
-from typing import Any, Optional, cast
+from typing import Any, Optional
 
 from ..errors import calibration_error
 from ..sessions.contracts import (
@@ -16,9 +16,12 @@ from ...contracts.base import (
     require_datetime_utc,
     require_field,
     require_non_empty_string,
+    require_non_empty_string_value,
     require_sequence,
     require_string,
     serialize_deterministic_json,
+    validate_non_empty_string_values,
+    validate_unique_string_values,
 )
 
 
@@ -138,7 +141,7 @@ class SessionExplicitConfiguration(ContractModel):
                 )
                 for window_index, raw_window in enumerate(raw_recurring_closed_windows)
             ),
-            exchange_name=cast(Optional[str], raw_exchange_name),
+            exchange_name=raw_exchange_name,
         )
 
 
@@ -203,7 +206,7 @@ class SessionConfigurationOverridePatch(ContractModel):
             )
 
         return SessionConfigurationOverridePatch(
-            timezone_name=cast(Optional[str], raw_timezone_name),
+            timezone_name=raw_timezone_name,
             regular_session_windows=(
                 tuple(
                     MarketDataSessionRegularWindow.from_mapping(
@@ -296,7 +299,7 @@ class KnownNewsEvent(ContractModel):
                 f"{field_path}.scheduled_at",
                 calibration_error,
             ),
-            event_name=cast(Optional[str], raw_event_name),
+            event_name=raw_event_name,
             tags=parsed_tags,
         )
 
@@ -346,7 +349,7 @@ class KnownNewsExplicitConfiguration(ContractModel):
                 )
                 for event_index, raw_event in enumerate(raw_events)
             ),
-            calendar_timezone_name=cast(Optional[str], raw_calendar_timezone_name),
+            calendar_timezone_name=raw_calendar_timezone_name,
         )
 
 
@@ -425,7 +428,7 @@ class KnownNewsConfigurationOverridePatch(ContractModel):
             )
 
         return KnownNewsConfigurationOverridePatch(
-            calendar_timezone_name=cast(Optional[str], raw_calendar_timezone_name),
+            calendar_timezone_name=raw_calendar_timezone_name,
             additional_events=tuple(
                 KnownNewsEvent.from_mapping(
                     raw_event,
@@ -624,7 +627,7 @@ class SessionPresetReference(ContractModel):
                 raw_registry_scope,
                 field_path=f"{field_path}.registry_scope",
             ),
-            preset_name=cast(Optional[str], raw_preset_name),
+            preset_name=raw_preset_name,
             configuration=(
                 SessionExplicitConfiguration.from_mapping(
                     raw_payload["configuration"],
@@ -641,8 +644,8 @@ class SessionPresetReference(ContractModel):
                 if "override_patch" in raw_payload and raw_payload["override_patch"] is not None
                 else None
             ),
-            exchange_code_hint=cast(Optional[str], raw_exchange_code_hint),
-            timezone_name_hint=cast(Optional[str], raw_timezone_name_hint),
+            exchange_code_hint=raw_exchange_code_hint,
+            timezone_name_hint=raw_timezone_name_hint,
         )
 
 
@@ -732,7 +735,7 @@ class KnownNewsPresetReference(ContractModel):
                 raw_registry_scope,
                 field_path=f"{field_path}.registry_scope",
             ),
-            preset_name=cast(Optional[str], raw_preset_name),
+            preset_name=raw_preset_name,
             configuration=(
                 KnownNewsExplicitConfiguration.from_mapping(
                     raw_payload["configuration"],
@@ -859,7 +862,7 @@ class MarketProfileExplicitConfiguration(ContractModel):
                 field_path=f"{field_path}.known_news_policy",
                 default_value=MarketProfileKnownNewsPolicy.SUGGEST_ONLY,
             ),
-            timestamp_timezone_name=cast(Optional[str], raw_timestamp_timezone_name),
+            timestamp_timezone_name=raw_timestamp_timezone_name,
             column_alias_hints=tuple(
                 MarketProfileColumnAliasHint.from_mapping(
                     raw_hint,
@@ -987,7 +990,7 @@ class MarketProfileOverridePatch(ContractModel):
                 if "known_news_policy" in raw_payload and raw_payload["known_news_policy"] is not None
                 else None
             ),
-            timestamp_timezone_name=cast(Optional[str], raw_timestamp_timezone_name),
+            timestamp_timezone_name=raw_timestamp_timezone_name,
             column_alias_hints=(
                 tuple(
                     MarketProfileColumnAliasHint.from_mapping(
@@ -1099,7 +1102,7 @@ class MarketProfileReference(ContractModel):
                 raw_registry_scope,
                 field_path=f"{field_path}.registry_scope",
             ),
-            preset_name=cast(Optional[str], raw_preset_name),
+            preset_name=raw_preset_name,
             configuration=(
                 MarketProfileExplicitConfiguration.from_mapping(
                     raw_payload["configuration"],
@@ -1226,10 +1229,7 @@ def _parse_optional_registry_scope(
 
 
 def _require_non_empty_string_value(raw_value: object, field_path: str) -> str:
-    if not isinstance(raw_value, str) or not raw_value.strip():
-        raise calibration_error(field_path, "must be a non-empty string")
-
-    return raw_value
+    return require_non_empty_string_value(raw_value, field_path, calibration_error)
 
 
 def _validate_optional_raw_string(raw_value: object, field_path: str) -> None:
@@ -1243,12 +1243,7 @@ def _validate_optional_non_empty_string(raw_value: Optional[str], *, field_path:
 
 
 def _validate_non_empty_strings(values: tuple[str, ...], *, field_path: str) -> None:
-    for value_index, value in enumerate(values):
-        if not value.strip():
-            raise calibration_error(
-                f"{field_path}[{value_index}]",
-                "must be a non-empty string",
-            )
+    validate_non_empty_string_values(values, field_path, calibration_error)
 
 
 def _validate_unique_string_keys(
@@ -1257,12 +1252,12 @@ def _validate_unique_string_keys(
     field_path: str,
     duplicate_message: str,
 ) -> None:
-    observed_values: set[str] = set()
-    for value in values:
-        if value in observed_values:
-            raise calibration_error(field_path, duplicate_message)
-
-        observed_values.add(value)
+    validate_unique_string_values(
+        values=values,
+        field_path=field_path,
+        duplicate_message=duplicate_message,
+        error_factory=calibration_error,
+    )
 
 
 __all__ = [

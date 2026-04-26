@@ -6,8 +6,6 @@ import pytest
 
 from janiform.calibration import CalibrationValidationError
 from janiform.calibration.presets import (
-    BUNDLED_PRESET_INDEX_SCHEMA_VERSION,
-    BuiltInPresetRegistry,
     KnownNewsEvent,
     KnownNewsExplicitConfiguration,
     KnownNewsPresetArtifact,
@@ -26,7 +24,6 @@ from janiform.calibration.presets import (
     SessionExplicitConfiguration,
     SessionPresetArtifact,
     SessionPresetReference,
-    UserPresetRegistry,
     deserialize_preset_artifact,
     serialize_preset_artifact,
 )
@@ -43,25 +40,25 @@ BUNDLED_PRESET_ROOT = (
 
 
 def test_bundled_registry_loads_minimal_v1_preset_set_and_fx_session_hours() -> None:
-    built_in_registry = BuiltInPresetRegistry.load_default()
+    registry = PresetRegistry()
 
-    assert {entry.preset_name for entry in built_in_registry.list_presets(category=PresetCategory.SESSION)} == {
+    assert {entry.preset_name for entry in registry.list_presets(category=PresetCategory.SESSION)} == {
         "XCME",
         "XNAS",
         "XNYS",
         "crypto_24_7",
         "fx_spot_24_5",
     }
-    assert {entry.preset_name for entry in built_in_registry.list_presets(category=PresetCategory.KNOWN_NEWS)} == {
+    assert {entry.preset_name for entry in registry.list_presets(category=PresetCategory.KNOWN_NEWS)} == {
         "eu_us_macro_fx_core",
         "none",
         "us_macro_core",
     }
     assert {
-        entry.preset_name for entry in built_in_registry.list_presets(category=PresetCategory.MARKET_PROFILE)
+        entry.preset_name for entry in registry.list_presets(category=PresetCategory.MARKET_PROFILE)
     } == {"btcusd_spot", "es_futures_globex", "eurusd_spot", "us_equity_cash"}
 
-    fx_session = built_in_registry.resolve(PresetCategory.SESSION, "fx_spot_24_5")
+    _, fx_session = registry.resolve(category=PresetCategory.SESSION, preset_name="fx_spot_24_5")
 
     assert fx_session.configuration.timezone_name == "UTC"
     assert fx_session.configuration.recurring_closed_windows == (
@@ -76,68 +73,27 @@ def test_bundled_registry_loads_minimal_v1_preset_set_and_fx_session_hours() -> 
 
 
 def test_bundled_registry_runtime_artifacts_match_checked_in_snapshots() -> None:
-    built_in_registry = BuiltInPresetRegistry.load_default()
+    registry = PresetRegistry()
+    expected_index = json.loads((BUNDLED_PRESET_ROOT / "index.json").read_text(encoding="utf-8"))
+    observed_entries = [
+        entry.to_payload()
+        for entry in registry.list_presets(include_user_registered=False)
+    ]
 
-    assert json.loads(built_in_registry.export_index_json()) == json.loads(
-        (BUNDLED_PRESET_ROOT / "index.json").read_text(encoding="utf-8")
-    )
+    assert observed_entries == expected_index["entries"]
 
-    for entry in built_in_registry.list_presets():
-        artifact = built_in_registry.resolve(entry.category, entry.preset_name)
+    for entry in registry.list_presets(include_user_registered=False):
+        _, artifact = registry.resolve(
+            category=entry.category,
+            preset_name=entry.preset_name,
+            registry_scope=PresetRegistryScope.BUILT_IN,
+        )
         artifact_path = entry.artifact_path
 
         assert artifact_path is not None
         assert json.loads(serialize_preset_artifact(artifact)) == json.loads(
             (BUNDLED_PRESET_ROOT / artifact_path).read_text(encoding="utf-8")
         )
-
-
-def test_bundled_registry_rejects_duplicate_index_entries() -> None:
-    xnas_json = (BUNDLED_PRESET_ROOT / "sessions" / "XNAS.json").read_text(encoding="utf-8")
-    xnys_json = (BUNDLED_PRESET_ROOT / "sessions" / "XNYS.json").read_text(encoding="utf-8")
-    index_json = json.dumps(
-        {
-            "schema_version": BUNDLED_PRESET_INDEX_SCHEMA_VERSION,
-            "bundle_id": "janiform_bundled_presets",
-            "bundle_version": "v1",
-            "generated_on": "2026-03-12",
-            "entries": [
-                {
-                    "artifact_path": "sessions/XNYS.json",
-                    "category": "session",
-                    "content_hash": json.loads(xnys_json)["metadata"]["provenance"]["content_hash"],
-                    "description": json.loads(xnys_json)["metadata"]["description"],
-                    "display_name": json.loads(xnys_json)["metadata"]["display_name"],
-                    "preset_name": "XNYS",
-                    "registry_scope": "built_in",
-                    "version_label": json.loads(xnys_json)["metadata"]["version_label"],
-                },
-                {
-                    "artifact_path": "sessions/XNAS.json",
-                    "category": "session",
-                    "content_hash": json.loads(xnas_json)["metadata"]["provenance"]["content_hash"],
-                    "description": json.loads(xnas_json)["metadata"]["description"],
-                    "display_name": json.loads(xnas_json)["metadata"]["display_name"],
-                    "preset_name": "XNYS",
-                    "registry_scope": "built_in",
-                    "version_label": json.loads(xnas_json)["metadata"]["version_label"],
-                },
-            ],
-        },
-        sort_keys=True,
-    )
-
-    with pytest.raises(CalibrationValidationError) as captured_error:
-        BuiltInPresetRegistry.from_runtime_artifacts(
-            index_json=index_json,
-            artifact_json_by_path={
-                "sessions/XNAS.json": xnas_json,
-                "sessions/XNYS.json": xnys_json,
-            },
-        )
-
-    assert captured_error.value.failure.field_path == "entries"
-    assert "duplicate" in captured_error.value.failure.message
 
 
 def test_user_registry_can_shadow_built_in_name_without_mutating_built_in_store() -> None:
@@ -163,12 +119,12 @@ def test_user_registry_can_shadow_built_in_name_without_mutating_built_in_store(
     with pytest.raises(CalibrationValidationError) as captured_error:
         registry.register_user_preset(user_session)
 
-    assert captured_error.value.failure.field_path == "user_registered_presets"
+    assert captured_error.value.failure.field_path == "registry.user_registered_presets[1]"
     assert "duplicate" in captured_error.value.failure.message
 
 
 def test_user_preset_json_load_normalizes_order_and_exports_deterministically() -> None:
-    registry = PresetRegistry(user_registered=UserPresetRegistry())
+    registry = PresetRegistry()
     user_known_news = KnownNewsPresetArtifact(
         schema_version="preset.artifact.known_news.v1",
         category=PresetCategory.KNOWN_NEWS,
@@ -222,7 +178,7 @@ def test_user_preset_json_load_normalizes_order_and_exports_deterministically() 
 
 
 def test_user_preset_json_rejects_malformed_payload_and_dangling_market_profile_reference() -> None:
-    registry = PresetRegistry(user_registered=UserPresetRegistry())
+    registry = PresetRegistry()
 
     with pytest.raises(CalibrationValidationError) as malformed_error:
         registry.register_user_preset(deserialize_preset_artifact("[]"))
@@ -257,12 +213,18 @@ def test_user_preset_json_rejects_malformed_payload_and_dangling_market_profile_
         "preset_name": "missing_news",
     }
 
+    registry.register_user_preset(
+        deserialize_preset_artifact(json.dumps(dangling_profile_payload, sort_keys=True))
+    )
+
     with pytest.raises(CalibrationValidationError) as dangling_error:
-        registry.register_user_preset(
-            deserialize_preset_artifact(json.dumps(dangling_profile_payload, sort_keys=True))
+        registry.export_resolved_preset(
+            category=PresetCategory.MARKET_PROFILE,
+            preset_name="desk_fx_profile",
+            registry_scope=PresetRegistryScope.USER_REGISTERED,
         )
 
-    assert dangling_error.value.failure.field_path == "preset_name"
+    assert dangling_error.value.failure.field_path == "preset_resolution"
     assert "missing_news" in dangling_error.value.failure.message
 
 

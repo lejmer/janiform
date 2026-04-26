@@ -738,6 +738,8 @@ def test_calibration_market_data_public_submodule_is_supported_domain_import() -
         "NormalizedMarketDataSource",
         "PreparedMarketDataCalibration",
         "deserialize_market_data_calibration_request",
+        "infer_bundled_market_profile_for_tick_data_path",
+        "infer_market_data_fit_inputs",
         "normalize_market_data_source",
         "prepare_market_data_calibration",
         "probe_market_data_source",
@@ -781,6 +783,7 @@ def test_calibration_market_data_public_ownership_submodules_are_supported_domai
         "MarketDataTranslationProvenance",
         "MarketDataTranslationResult",
         "NormalizedMarketDataSource",
+        "infer_bundled_market_profile_for_tick_data_path",
         "normalize_market_data_source",
         "probe_market_data_source",
         "resolve_market_data_session",
@@ -881,19 +884,25 @@ def test_calibration_presets_public_submodule_is_supported_domain_import() -> No
 
 
 def test_calibration_presets_public_ownership_submodules_are_supported_domain_imports() -> None:
+    calibration_presets_artifacts_module = import_module("janiform.calibration.presets.artifacts")
     calibration_presets_references_module = import_module("janiform.calibration.presets.references")
     calibration_presets_registry_module = import_module("janiform.calibration.presets.registry")
     calibration_presets_resolution_module = import_module("janiform.calibration.presets.resolution")
 
+    assert {
+        "PresetCategory",
+        "SessionPresetArtifact",
+        "serialize_preset_artifact",
+    } <= set(calibration_presets_artifacts_module.__all__)
     assert {
         "MarketProfileReference",
         "PresetReferenceUsageMode",
         "SessionPresetReference",
     } <= set(calibration_presets_references_module.__all__)
     assert {
-        "PresetCategory",
+        "BundledPresetRegistryIndex",
         "PresetRegistry",
-        "serialize_preset_artifact",
+        "ResolvedPresetExport",
     } <= set(calibration_presets_registry_module.__all__)
     assert {
         "ResolvedPresetWorkflowConfiguration",

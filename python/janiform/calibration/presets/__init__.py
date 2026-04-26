@@ -23,30 +23,30 @@ from .references import (
     validate_market_profile_reference,
     validate_session_preset_reference,
 )
-from .registry import (
-    BUNDLED_PRESET_INDEX_SCHEMA_VERSION,
+from .artifacts import (
     KNOWN_NEWS_PRESET_ARTIFACT_SCHEMA_VERSION,
-    MARKET_PROFILE_PRESET_ARTIFACT_SCHEMA_VERSION,
-    PRESET_CONTENT_HASH_ALGORITHM,
-    RESOLVED_PRESET_EXPORT_SCHEMA_VERSION,
-    SESSION_PRESET_ARTIFACT_SCHEMA_VERSION,
-    BundledPresetRegistryIndex,
-    BuiltInPresetRegistry,
     KnownNewsPresetArtifact,
+    MARKET_PROFILE_PRESET_ARTIFACT_SCHEMA_VERSION,
     MarketProfilePresetArtifact,
+    PRESET_CONTENT_HASH_ALGORITHM,
     PresetArtifactMetadata,
     PresetArtifactProvenance,
     PresetCategory,
-    PresetIndexEntry,
-    PresetRegistry,
     PresetUpstreamSourceVersion,
-    ResolvedPresetExport,
+    SESSION_PRESET_ARTIFACT_SCHEMA_VERSION,
     SessionPresetArtifact,
-    UserPresetRegistry,
     compute_preset_artifact_content_hash,
     deserialize_preset_artifact,
     normalize_preset_artifact,
     serialize_preset_artifact,
+)
+from .registry import (
+    BUNDLED_PRESET_INDEX_SCHEMA_VERSION,
+    RESOLVED_PRESET_EXPORT_SCHEMA_VERSION,
+    BundledPresetRegistryIndex,
+    PresetIndexEntry,
+    PresetRegistry,
+    ResolvedPresetExport,
 )
 from .resolution import (
     DEFAULT_HIGH_LEVEL_KNOWN_NEWS_PRESET_NAME,
@@ -65,7 +65,6 @@ from .resolution import (
 
 __all__ = [
     "BUNDLED_PRESET_INDEX_SCHEMA_VERSION",
-    "BuiltInPresetRegistry",
     "DEFAULT_HIGH_LEVEL_KNOWN_NEWS_PRESET_NAME",
     "KNOWN_NEWS_PRESET_ARTIFACT_SCHEMA_VERSION",
     "KnownNewsConfigurationOverridePatch",
@@ -106,7 +105,6 @@ __all__ = [
     "SessionExplicitConfiguration",
     "SessionPresetArtifact",
     "SessionPresetReference",
-    "UserPresetRegistry",
     "compute_preset_artifact_content_hash",
     "deserialize_known_news_preset_reference",
     "deserialize_market_profile_reference",

@@ -16,6 +16,7 @@ from ._preparation.configuration import (
     coerce_session_reference,
     exchange_code_from_market_profile_reference,
     exchange_code_from_session_reference,
+    resolve_market_profile_configuration,
 )
 from ._preparation.contracts import (
     FitExecutionConfiguration,
@@ -62,7 +63,7 @@ from ..presets.references import (
     PresetReferenceUsageMode,
     SessionPresetReference,
 )
-from ..presets.registry import PresetCategory, PresetRegistry
+from ..presets.registry import PresetRegistry
 from ..presets.resolution import ResolvedPresetWorkflowConfiguration, resolve_preset_workflow_configuration
 from ..sessions.contracts import MarketDataSessionResolution
 from ..staged import CalibrationResumeSettings, CalibrationStageSolverSettings
@@ -484,35 +485,10 @@ class JaniformEstimator:
         if self._market_profile_reference is None:
             return None
 
-        if self._market_profile_reference.usage_mode == PresetReferenceUsageMode.EXPLICIT:
-            configuration = self._market_profile_reference.configuration
-            if configuration is None:
-                raise calibration_error(
-                    "market_profile.configuration",
-                    "is required when usage_mode=explicit",
-                )
-
-            return configuration
-
-        if self._market_profile_reference.preset_name is None:
-            raise calibration_error(
-                "market_profile.preset_name",
-                "is required for named market-profile references",
-            )
-
-        if self._market_profile_reference.registry_scope is None:
-            raise calibration_error(
-                "market_profile.registry_scope",
-                "is required for named market-profile references",
-            )
-
-        _, artifact = self._registry.resolve(
-            category=PresetCategory.MARKET_PROFILE,
-            preset_name=self._market_profile_reference.preset_name,
-            registry_scope=self._market_profile_reference.registry_scope,
+        return resolve_market_profile_configuration(
+            self._market_profile_reference,
+            self._registry,
         )
-
-        return artifact.configuration
 
     def _resolve_exchange_code_for_inference(self) -> str:
         exchange_code = self._optional_exchange_code_for_inference()

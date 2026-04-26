@@ -24,7 +24,8 @@ from janiform.calibration.market_data.contracts import (
     CalibrationMarketDataWorkflowScope,
     CalibrationTickPriceInputPolicy,
 )
-from janiform.calibration.presets.registry import PresetCategory, PresetRegistry
+from janiform.calibration.presets.artifacts import PresetCategory
+from janiform.calibration.presets.registry import PresetRegistry
 
 from .state import (
     DEFAULT_WORKBENCH_FALLBACK_EXCHANGE_CODE,

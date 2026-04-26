@@ -4,7 +4,7 @@ from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Any, Callable, Optional, cast
+from typing import Any, Callable, Optional
 
 from ...._workflow_progress import AbstractProgress, NullProgress
 from ...errors import calibration_error
@@ -160,7 +160,7 @@ def infer_session_resolution(
         return None
 
     if configuration.exchange_code_for_inference is None:
-        raise RuntimeError("FitPreparationConfiguration must define exchange_code_for_inference when session inference is required")
+        raise _missing_automatic_session_exchange_context_error()
 
     request = MarketDataCalibrationRequest(
         schema_version="calibration.market_data.request.v1",
@@ -201,9 +201,14 @@ def configuration_with_native_market_profile_inference(
     *,
     tick_data_path: Path,
 ) -> FitPreparationConfiguration:
+    session_reference_blocks_market_profile_inference = (
+        configuration.effective_session_reference is not None
+        and configuration.effective_session_reference.usage_mode != PresetReferenceUsageMode.AUTOMATIC
+    )
+
     if (
         configuration.market_profile_reference is not None
-        or configuration.effective_session_reference is not None
+        or session_reference_blocks_market_profile_inference
         or configuration.exchange_code_for_inference is not None
     ):
         return configuration
@@ -214,13 +219,7 @@ def configuration_with_native_market_profile_inference(
             configuration.requires_session_inference
             and configuration.exchange_code_for_inference is None
         ):
-            raise calibration_error(
-                "exchange_code",
-                (
-                    "is required for automatic session inference when no session preset, market "
-                    "profile, or native tick-data profile inference provides the exchange baseline"
-                ),
-            )
+            raise _missing_automatic_session_exchange_context_error()
 
         return configuration
 
@@ -235,6 +234,16 @@ def configuration_with_native_market_profile_inference(
         resolved_market_profile_configuration=market_profile_reference.configuration,
         requires_session_inference=False,
         exchange_code_for_inference=None,
+    )
+
+
+def _missing_automatic_session_exchange_context_error() -> Exception:
+    return calibration_error(
+        "exchange_code",
+        (
+            "is required for automatic session inference when no session preset, market "
+            "profile, or native tick-data profile inference provides the exchange baseline"
+        ),
     )
 
 
@@ -286,7 +295,7 @@ def _market_profile_configuration_from_native_payload(
         known_news_policy=MarketProfileKnownNewsPolicy(
             raw_known_news_policy or MarketProfileKnownNewsPolicy.SUGGEST_ONLY
         ),
-        timestamp_timezone_name=cast(Optional[str], raw_profile.get("timestamp_timezone_name")),
+        timestamp_timezone_name=raw_profile.get("timestamp_timezone_name"),
         column_alias_hints=tuple(
             MarketProfileColumnAliasHint.from_mapping(
                 raw_hint,

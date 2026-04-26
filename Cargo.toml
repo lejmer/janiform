@@ -48,6 +48,7 @@ puruspe = "0.4.4"
 rayon = "1.11.0"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = { version = "1.0.145", features = ["float_roundtrip"] }
+sha2 = "0.10.9"
 statrs = "0.18.0"
 sysinfo = "0.38.4"
 textwrap = "0.16.2"
