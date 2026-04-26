@@ -87,13 +87,11 @@ pub(crate) fn render_inspect_human(
             ],
         }
         .render(&renderer),
-
         value_section("Explicit user inputs", &prepared.explicit_values).render(&renderer),
         value_section("Inferred values", &prepared.inferred_values).render(&renderer),
         value_section("Preset defaults", &prepared.preset_defaults).render(&renderer),
         value_section("Recommended defaults", &prepared.recommended_defaults).render(&renderer),
         value_section("Derived values", &prepared.derived_values).render(&renderer),
-
         session_summary(prepared).render(&renderer),
     ];
 

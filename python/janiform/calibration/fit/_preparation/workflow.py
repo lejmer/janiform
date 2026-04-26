@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, cast
 
 from ...._workflow_progress import AbstractProgress, NullProgress
+from ...errors import calibration_error
 from .._inference import (
     column_overrides_from_mapping,
     infer_fit_inputs,
@@ -23,20 +25,41 @@ from ...market_data.contracts import (
     CalibrationMarketDataColumnMapping,
     CalibrationMarketDataNormalizationPolicy,
     CalibrationMarketDataWorkflowScope,
-    CalibrationTickDataColumnMapping,
     CalibrationSessionConfigurationInput,
+    CalibrationTickDataColumnMapping,
 )
 from ...market_data.request import MarketDataCalibrationRequest
 from ...market_data.translation import (
     NormalizedMarketDataSource,
+    infer_bundled_market_profile_for_tick_data_path,
     normalize_market_data_source,
     resolve_market_data_session,
     translate_market_data_request_to_prepared_calibration_from_phases,
 )
-from ...market_data.workflow import _prepare_market_data_calibration_from_translation_result, PreparedMarketDataCalibration
-from ...presets.resolution import ResolvedPresetWorkflowConfiguration, resolve_preset_workflow_configuration
+from ...market_data.workflow import (
+    PreparedMarketDataCalibration,
+    _prepare_market_data_calibration_from_translation_result,
+)
+from ...presets.references import (
+    KnownNewsPresetReference,
+    MarketProfileColumnAliasHint,
+    MarketProfileExplicitConfiguration,
+    MarketProfileKnownNewsPolicy,
+    MarketProfileReference,
+    PresetReferenceUsageMode,
+    PresetRegistryScope,
+    SessionPresetReference,
+)
+from ...presets.resolution import (
+    ResolvedPresetWorkflowConfiguration,
+    resolve_preset_workflow_configuration,
+)
 from ...sessions.contracts import MarketDataSessionResolution
-from .configuration import build_known_news_input, build_session_configuration_input, resolved_configuration_requires_materialization
+from .configuration import (
+    build_known_news_input,
+    build_session_configuration_input,
+    resolved_configuration_requires_materialization,
+)
 
 
 def fit_progress_total_steps(configuration: FitPreparationConfiguration) -> int:
@@ -173,6 +196,110 @@ def infer_session_resolution(
     )
 
 
+def configuration_with_native_market_profile_inference(
+    configuration: FitPreparationConfiguration,
+    *,
+    tick_data_path: Path,
+) -> FitPreparationConfiguration:
+    if (
+        configuration.market_profile_reference is not None
+        or configuration.effective_session_reference is not None
+        or configuration.exchange_code_for_inference is not None
+    ):
+        return configuration
+
+    raw_profile = infer_bundled_market_profile_for_tick_data_path(tick_data_path)
+    if raw_profile is None:
+        if (
+            configuration.requires_session_inference
+            and configuration.exchange_code_for_inference is None
+        ):
+            raise calibration_error(
+                "exchange_code",
+                (
+                    "is required for automatic session inference when no session preset, market "
+                    "profile, or native tick-data profile inference provides the exchange baseline"
+                ),
+            )
+
+        return configuration
+
+    market_profile_reference = MarketProfileReference(
+        usage_mode=PresetReferenceUsageMode.EXPLICIT,
+        configuration=_market_profile_configuration_from_native_payload(raw_profile),
+    )
+
+    return replace(
+        configuration,
+        market_profile_reference=market_profile_reference,
+        resolved_market_profile_configuration=market_profile_reference.configuration,
+        requires_session_inference=False,
+        exchange_code_for_inference=None,
+    )
+
+
+def _market_profile_configuration_from_native_payload(
+    raw_profile: dict[str, Any],
+) -> MarketProfileExplicitConfiguration:
+    known_news_preset_name = raw_profile.get("known_news_preset_name")
+
+    raw_column_alias_hints = raw_profile.get("column_alias_hints", ())
+
+    raw_default_calibration_hint_ids = raw_profile.get(
+        "default_calibration_hint_ids",
+        (),
+    )
+
+    raw_known_news_policy = raw_profile.get(
+        "known_news_policy",
+        MarketProfileKnownNewsPolicy.SUGGEST_ONLY,
+    )
+
+    if not isinstance(raw_column_alias_hints, list | tuple):
+        raise calibration_error(
+            "market_profile.column_alias_hints",
+            "must be a sequence in the native market-profile inference payload",
+        )
+
+    if not isinstance(raw_default_calibration_hint_ids, list | tuple):
+        raise calibration_error(
+            "market_profile.default_calibration_hint_ids",
+            "must be a sequence in the native market-profile inference payload",
+        )
+
+    return MarketProfileExplicitConfiguration(
+        profile_name=str(raw_profile["profile_name"]),
+        session_reference=SessionPresetReference(
+            usage_mode=PresetReferenceUsageMode.NAMED,
+            registry_scope=PresetRegistryScope.BUILT_IN,
+            preset_name=str(raw_profile["session_preset_name"]),
+        ),
+        known_news_reference=(
+            KnownNewsPresetReference(
+                usage_mode=PresetReferenceUsageMode.NAMED,
+                registry_scope=PresetRegistryScope.BUILT_IN,
+                preset_name=str(known_news_preset_name),
+            )
+            if known_news_preset_name is not None
+            else None
+        ),
+        known_news_policy=MarketProfileKnownNewsPolicy(
+            raw_known_news_policy or MarketProfileKnownNewsPolicy.SUGGEST_ONLY
+        ),
+        timestamp_timezone_name=cast(Optional[str], raw_profile.get("timestamp_timezone_name")),
+        column_alias_hints=tuple(
+            MarketProfileColumnAliasHint.from_mapping(
+                raw_hint,
+                field_path=f"market_profile.column_alias_hints[{hint_index}]",
+            )
+            for hint_index, raw_hint in enumerate(raw_column_alias_hints)
+        ),
+        default_calibration_hint_ids=tuple(
+            str(hint_id) for hint_id in raw_default_calibration_hint_ids
+        ),
+    )
+
+
 def prepare_fit_workflow(
     configuration: FitPreparationConfiguration,
     *,
@@ -194,13 +321,20 @@ def prepare_fit_workflow(
     prepare_market_data_calibration_from_translation_result_method: Callable[..., PreparedMarketDataCalibration] = _prepare_market_data_calibration_from_translation_result,
 ) -> PreparedFitWorkflow:
     effective_progress = NullProgress() if progress is None else progress
+    tick_data_path = Path(tick_data_path)
+
+    configuration = configuration_with_native_market_profile_inference(
+        configuration,
+        tick_data_path=tick_data_path,
+    )
+
     workflow_scope = effective_workflow_scope(
         configuration,
         option_surface_path=option_surface_path,
     )
 
     input_inference = infer_fit_inputs(
-        tick_data_path=Path(tick_data_path),
+        tick_data_path=tick_data_path,
         tick_data_format=tick_data_format,
         tick_data_provenance_label=tick_data_provenance_label,
         workflow_scope=workflow_scope,

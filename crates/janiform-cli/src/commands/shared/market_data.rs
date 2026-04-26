@@ -2,9 +2,11 @@ use std::path::PathBuf;
 
 use janiform::calibration::{
     CalibrationMarketDataColumnMapping, CalibrationMarketDataKnownNewsInput,
+    CalibrationMarketDataWorkflowScope, DEFAULT_MARKET_DATA_TIMESTAMP_TIMEZONE,
     MarketDataInputFileReference, MarketDataKnownNewsColumnMapping, MarketDataNormalizationPolicy,
     MarketDataOptionSurfaceColumnMapping, MarketDataSessionConfiguration,
-    MarketDataTickDataColumnMapping, infer_market_data_option_quote_input_policy,
+    MarketDataTickDataColumnMapping, ResolvedMarketProfile,
+    infer_bundled_market_profile_from_tick_data_path, infer_market_data_option_quote_input_policy,
     infer_market_data_tick_price_input_policy,
     resolve_market_data_option_surface_column_mapping_for_source,
     resolve_market_data_tick_data_column_mapping_for_source,
@@ -21,7 +23,6 @@ use crate::commands::shared::inputs::required_input_file;
 use crate::context::CommandContext;
 use crate::error::CliError;
 
-const DEFAULT_TIMESTAMP_TIMEZONE: &str = "UTC";
 const DEFAULT_KNOWN_NEWS_TIMESTAMP_COLUMN: &str = "event_timestamp_utc";
 
 #[derive(Debug)]
@@ -33,6 +34,7 @@ pub(crate) struct PreparedMarketDataCommandInputs {
     pub(crate) tick_data_source: MarketDataInputFileReference,
     pub(crate) option_surface_source: Option<MarketDataInputFileReference>,
     pub(crate) known_news_inputs: Option<CalibrationMarketDataKnownNewsInput>,
+    pub(crate) market_profile: Option<ResolvedMarketProfile>,
     pub(crate) session_configuration: MarketDataSessionConfiguration,
     pub(crate) column_mapping: CalibrationMarketDataColumnMapping,
     pub(crate) normalization_policy: MarketDataNormalizationPolicy,
@@ -41,11 +43,26 @@ pub(crate) struct PreparedMarketDataCommandInputs {
 pub(crate) fn prepare_market_data_command_inputs(
     context: &CommandContext,
     inputs: &TickDataOptions,
+    workflow_scope: CalibrationMarketDataWorkflowScope,
 ) -> Result<PreparedMarketDataCommandInputs, CliError> {
     validate_option_arguments(inputs)?;
     validate_known_news_arguments(inputs)?;
 
     let tick_data_path = required_input_file(context, "--tick-data-path", &inputs.tick_data_path)?;
+
+    let inferred_market_profile = if inputs.exchange_code.is_none()
+        && inputs.session_definition_path.is_none()
+        && inputs.session_timezone.is_none()
+    {
+        infer_bundled_market_profile_from_tick_data_path(&tick_data_path).map_err(|source| {
+            CliError::InvalidCommandArgument {
+                argument_name: "--tick-data-path",
+                message: source.to_string(),
+            }
+        })?
+    } else {
+        None
+    };
 
     let tick_data_source = market_data_input_file_reference(
         "--tick-data-path",
@@ -63,9 +80,10 @@ pub(crate) fn prepare_market_data_command_inputs(
         ask_column: inputs.tick_ask_column.clone(),
     };
 
-    let tick_price_input_policy = match inputs.tick_price_input_policy {
-        Some(policy) => Some(tick_price_input_policy(policy)),
-        None => {
+    let tick_price_input_policy = match (workflow_scope, inputs.tick_price_input_policy) {
+        (CalibrationMarketDataWorkflowScope::SeasonalityOnly, _) => None,
+        (_, Some(policy)) => Some(tick_price_input_policy(policy)),
+        (_, None) => {
             infer_market_data_tick_price_input_policy(&tick_data_source, &unresolved_tick_mapping)
                 .map_err(|source| CliError::InvalidCommandArgument {
                 argument_name: "--tick-data-path",
@@ -78,7 +96,12 @@ pub(crate) fn prepare_market_data_command_inputs(
         timestamp_timezone: inputs
             .timestamp_timezone
             .clone()
-            .unwrap_or_else(|| DEFAULT_TIMESTAMP_TIMEZONE.to_string()),
+            .or_else(|| {
+                inferred_market_profile
+                    .as_ref()
+                    .and_then(|profile| profile.timestamp_timezone_name.clone())
+            })
+            .unwrap_or_else(|| DEFAULT_MARKET_DATA_TIMESTAMP_TIMEZONE.to_string()),
         sort_records_by_timestamp: !inputs.keep_tick_source_order,
         duplicate_record_policy: inputs.duplicate_record_policy.map(duplicate_record_policy),
         tick_price_input_policy,
@@ -141,12 +164,15 @@ pub(crate) fn prepare_market_data_command_inputs(
         None => None,
     };
 
-    let exchange_code = inputs
-        .exchange_code
-        .clone()
-        .ok_or(CliError::MissingRequiredArgument {
-            argument_name: "--exchange-code",
-        })?;
+    let exchange_code = match inputs.exchange_code.clone() {
+        Some(exchange_code) => exchange_code,
+        None => inferred_market_profile
+            .as_ref()
+            .map(|profile| profile.exchange_code.clone())
+            .ok_or(CliError::MissingRequiredArgument {
+                argument_name: "--exchange-code",
+            })?,
+    };
 
     Ok(PreparedMarketDataCommandInputs {
         tick_data_path,
@@ -156,6 +182,7 @@ pub(crate) fn prepare_market_data_command_inputs(
         tick_data_source,
         option_surface_source,
         known_news_inputs,
+        market_profile: inferred_market_profile,
         session_configuration: MarketDataSessionConfiguration {
             exchange_code,
             session_definition_source,

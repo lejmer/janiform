@@ -169,29 +169,18 @@ fn recognized_commands_parse_and_stop_at_unimplemented_boundary() {
 #[test]
 fn fit_json_runs_seasonality_and_writes_artifacts() {
     let workspace = temporary_run_directory("fit-run");
-    let output_directory = workspace.join("out");
     std::fs::create_dir_all(&workspace).expect("temporary workspace should be created");
-    let tick_data_path = workspace.join("ticks.csv");
-    write_tick_csv(&tick_data_path);
+    let tick_data_path = workspace.join("EURUSD_ticks.csv");
+    write_fx_tick_csv(&tick_data_path);
 
     let output = janiform_command()
+        .current_dir(&workspace)
         .args([
             "--json",
             "fit",
-            "--tick-data-path",
-            tick_data_path
-                .to_str()
-                .expect("tick path should be valid UTF-8"),
-            "--exchange-code",
-            "XNYS",
+            "EURUSD_ticks.csv",
             "--workflow-scope",
             "seasonality-only",
-            "--run-id",
-            "fit-run-test",
-            "--output-dir",
-            output_directory
-                .to_str()
-                .expect("output directory should be valid UTF-8"),
         ])
         .output()
         .expect("janiform command should execute");
@@ -203,21 +192,40 @@ fn fit_json_runs_seasonality_and_writes_artifacts() {
         serde_json::from_str(&stdout).expect("stdout should contain one JSON object");
     assert_eq!(payload["command_id"], "fit");
     assert_eq!(payload["status"], "success");
+    assert!(
+        payload["run_id"]
+            .as_str()
+            .expect("run id should be a JSON string")
+            .starts_with("eurusd_ticks_")
+    );
     assert_eq!(payload["checkpoint_count"], 1);
+
+    let model_path = std::path::PathBuf::from(
+        payload["model_path"]
+            .as_str()
+            .expect("model path should be a JSON string"),
+    );
+    let report_path = std::path::PathBuf::from(
+        payload["report_path"]
+            .as_str()
+            .expect("report path should be a JSON string"),
+    );
+    let event_log_path = std::path::PathBuf::from(
+        payload["event_log_path"]
+            .as_str()
+            .expect("event log path should be a JSON string"),
+    );
+
+    assert!(model_path.is_file());
+    assert!(report_path.is_file());
+    assert!(event_log_path.is_file());
     assert!(
-        output_directory
-            .join("artifacts")
-            .join("model.jf")
+        event_log_path
+            .parent()
+            .expect("event log should have a parent directory")
+            .join("latest-state.json")
             .is_file()
     );
-    assert!(
-        output_directory
-            .join("artifacts")
-            .join("report.json")
-            .is_file()
-    );
-    assert!(output_directory.join("events.jsonl").is_file());
-    assert!(output_directory.join("latest-state.json").is_file());
 
     std::fs::remove_dir_all(workspace).expect("temporary workspace should be removable");
 }
@@ -226,8 +234,8 @@ fn fit_json_runs_seasonality_and_writes_artifacts() {
 fn fit_plan_json_prepares_seasonality_without_running_calibration() {
     let workspace = temporary_run_directory("fit-plan");
     std::fs::create_dir_all(&workspace).expect("temporary workspace should be created");
-    let tick_data_path = workspace.join("ticks.csv");
-    write_tick_csv(&tick_data_path);
+    let tick_data_path = workspace.join("EURUSD_ticks.csv");
+    write_fx_tick_csv(&tick_data_path);
 
     let output = janiform_command()
         .args([
@@ -238,8 +246,6 @@ fn fit_plan_json_prepares_seasonality_without_running_calibration() {
             tick_data_path
                 .to_str()
                 .expect("tick path should be valid UTF-8"),
-            "--exchange-code",
-            "XNYS",
             "--workflow-scope",
             "seasonality-only",
             "--run-id",
@@ -261,11 +267,13 @@ fn fit_plan_json_prepares_seasonality_without_running_calibration() {
     assert_eq!(payload["command_id"], "fit.plan");
     assert_eq!(payload["run_id"], "plan-test");
     assert_eq!(payload["workflow_scope"], "seasonality_only");
+    assert_eq!(payload["market_profile"]["profile_name"], "eurusd_spot");
+    assert_eq!(payload["session_resolution"]["exchange_code"], "FXSPOT");
     assert_eq!(
         payload["diagnostics"]["selected_stages"],
         serde_json::json!(["seasonality"])
     );
-    assert_eq!(payload["diagnostics"]["tick_record_count"], 3);
+    assert_eq!(payload["diagnostics"]["tick_record_count"], 5);
     assert_eq!(payload["staged_artifacts_written"], false);
 
     std::fs::remove_dir_all(workspace).expect("temporary workspace should be removable");
@@ -635,4 +643,19 @@ fn write_tick_csv(path: &std::path::Path) {
         "timestamp,price,side\n2026-04-20T14:30:00Z,10.0,buy\n2026-04-20T14:31:00Z,10.1,sell\n2026-04-20T14:32:00Z,10.2,buy\n",
     )
     .expect("tick CSV should be writable");
+}
+
+fn write_fx_tick_csv(path: &std::path::Path) {
+    std::fs::write(
+        path,
+        concat!(
+            "timestamp,price,side\n",
+            "2026-04-20T14:30:00Z,1.1000,buy\n",
+            "2026-04-21T14:30:00Z,1.1005,sell\n",
+            "2026-04-22T14:30:00Z,1.1010,buy\n",
+            "2026-04-23T14:30:00Z,1.1015,sell\n",
+            "2026-04-24T14:30:00Z,1.1020,buy\n",
+        ),
+    )
+    .expect("FX tick CSV should be writable");
 }

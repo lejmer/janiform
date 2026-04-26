@@ -274,7 +274,9 @@ class JaniformEstimator:
         pricing_interval_schedule_policy: Optional[PricingIntervalSchedulePolicy],
     ) -> FitPreparationConfiguration:
         resolved_market_profile_configuration = self._resolve_market_profile_configuration()
+
         requires_session_inference = self._requires_session_inference()
+
         return FitPreparationConfiguration(
             workflow_scope_override=self._workflow_scope_override,
             tick_data_column_mapping=self._tick_data_column_mapping,
@@ -299,7 +301,7 @@ class JaniformEstimator:
             effective_session_reference=self._effective_session_reference(),
             requires_session_inference=requires_session_inference,
             exchange_code_for_inference=(
-                self._resolve_exchange_code_for_inference() if requires_session_inference else None
+                self._optional_exchange_code_for_inference() if requires_session_inference else None
             ),
             session_timezone=self._session_timezone,
             registry=self._registry,
@@ -315,8 +317,11 @@ class JaniformEstimator:
         preparation_configuration = self._build_preparation_configuration_with_override(
             pricing_interval_schedule_policy=pricing_interval_schedule_policy,
         )
+
         effective_silent = self._silent if silent is None else silent
+
         prepared_staged_runner = run_prepared_staged_calibration_with_raw_payload
+
         return FitExecutionConfiguration(
             silent=effective_silent,
             progress_total_steps=fit_progress_total_steps(preparation_configuration),
@@ -510,6 +515,19 @@ class JaniformEstimator:
         return artifact.configuration
 
     def _resolve_exchange_code_for_inference(self) -> str:
+        exchange_code = self._optional_exchange_code_for_inference()
+        if exchange_code is not None:
+            return exchange_code
+
+        raise calibration_error(
+            "exchange_code",
+            (
+                "is required for automatic session inference when no session preset or market "
+                "profile provides the exchange baseline"
+            ),
+        )
+
+    def _optional_exchange_code_for_inference(self) -> Optional[str]:
         if self._exchange_code is not None:
             return self._exchange_code
 
@@ -522,13 +540,7 @@ class JaniformEstimator:
                 self._registry,
             )
 
-        raise calibration_error(
-            "exchange_code",
-            (
-                "is required for automatic session inference when no session preset or market "
-                "profile provides the exchange baseline"
-            ),
-        )
+        return None
 
     def _stdout_suppression_context(
         self,
@@ -561,7 +573,11 @@ class JaniformEstimator:
                     prepared_workflow.resolved_configuration.market_profile is not None
                     and prepared_workflow.resolved_configuration.market_profile.selected_preset is not None
                 )
-                else None
+                else (
+                    prepared_workflow.resolved_configuration.market_profile.configuration.profile_name
+                    if prepared_workflow.resolved_configuration.market_profile is not None
+                    else None
+                )
             ),
             known_news_preset_name=(
                 prepared_workflow.resolved_configuration.known_news.selected_preset.preset_name

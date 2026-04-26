@@ -1,8 +1,17 @@
+pub(crate) mod fit_inference;
 pub(crate) mod loading;
 pub(crate) mod preparation;
 pub(crate) mod preprocessing;
+pub(crate) mod presets;
 pub(crate) mod solver_settings;
 
+pub use fit_inference::{
+    DEFAULT_MARKET_DATA_TIMESTAMP_TIMEZONE, MarketDataFitInputInferenceError,
+    MarketDataFitInputInferenceOutput, MarketDataFitInputInferenceRequest,
+    MarketDataFitMarketProfileDefaults, MarketDataFitNormalizationOverrides,
+    MarketDataTickColumnCandidatesPayload, infer_market_data_fit_inputs,
+    infer_market_data_input_file_format_from_path, infer_market_data_run_id_from_path,
+};
 pub use loading::{
     CalibrationDirectionalLabelDiagnosticsPayload, MarketDataDuplicateRecordPolicy,
     MarketDataInputFileFormat, MarketDataInputFileReference, MarketDataKnownNewsColumnMapping,
@@ -36,4 +45,8 @@ pub use preprocessing::{
     MarketDataTranslationReturnComponentsPreprocessingSettings,
     MarketDataTranslationSeasonalityPreprocessingSettings, MarketDataTranslationTickRecord,
     preprocess_market_data_translation_request,
+};
+pub use presets::{
+    MarketDataColumnAliasHint, MarketDataPresetInferenceError, ResolvedMarketProfile,
+    infer_bundled_market_profile_from_tick_data_path,
 };

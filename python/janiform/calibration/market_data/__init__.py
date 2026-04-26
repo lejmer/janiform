@@ -40,6 +40,8 @@ from .workflow import (
 from .translation import (
     MarketDataSourceProbe,
     NormalizedMarketDataSource,
+    infer_bundled_market_profile_for_tick_data_path,
+    infer_market_data_fit_inputs,
     normalize_market_data_source,
     probe_market_data_source,
     resolve_market_data_session,
@@ -75,6 +77,8 @@ __all__ = [
     "NormalizedMarketDataSource",
     "PreparedMarketDataCalibration",
     "deserialize_market_data_calibration_request",
+    "infer_bundled_market_profile_for_tick_data_path",
+    "infer_market_data_fit_inputs",
     "normalize_market_data_source",
     "prepare_market_data_calibration",
     "probe_market_data_source",

@@ -137,7 +137,11 @@ def build_model_metadata(
             resolved_configuration.market_profile is not None
             and resolved_configuration.market_profile.selected_preset is not None
         )
-        else None
+        else (
+            resolved_configuration.market_profile.configuration.profile_name
+            if resolved_configuration.market_profile is not None
+            else None
+        )
     )
 
     session_preset_name = (

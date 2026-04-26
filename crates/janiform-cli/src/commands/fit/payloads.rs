@@ -24,6 +24,7 @@ pub(crate) fn plan_json(
         "run_id": prepared.request.run_id,
         "workflow_scope": prepared.request.workflow_scope,
         "input_files": input_files_json(prepared),
+        "market_profile": market_profile_json(prepared),
         "column_mapping": prepared.request.column_mapping,
         "normalization_policy": prepared.request.normalization_policy,
         "session_resolution": prepared.plan.session_resolution,
@@ -45,9 +46,7 @@ pub(crate) fn inspect_json(prepared: &PreparedFitPreview) -> Value {
         "preset_defaults": pairs_json(&prepared.preset_defaults),
         "recommended_defaults": pairs_json(&prepared.recommended_defaults),
         "derived_values": pairs_json(&prepared.derived_values),
-        "market_profile": {
-            "source": "not_selected"
-        },
+        "market_profile": market_profile_json(prepared),
         "session_resolution": prepared.plan.session_resolution,
         "tick_source_details": prepared.plan.provenance.tick_data_summary,
         "output_directory": prepared.paths.output_directory,
@@ -66,6 +65,7 @@ pub(crate) fn staged_plan_json(
         "command_id": FIT_STAGED_PLAN_COMMAND_ID,
         "run_id": prepared.request.run_id,
         "preparation_request": prepared.request,
+        "market_profile": market_profile_json(prepared),
         "staged_execution_input": prepared.plan.execution_input,
         "diagnostics": prepared.plan.diagnostics,
         "provenance": prepared.plan.provenance,
@@ -92,6 +92,21 @@ fn outputs_json(prepared: &PreparedFitPreview, staged_artifact_path: Option<&Pat
         "checkpoint_directory": prepared.paths.checkpoint_directory,
         "staged_execution_input": staged_artifact_path,
     })
+}
+
+fn market_profile_json(prepared: &PreparedFitPreview) -> Value {
+    match &prepared.inputs.market_profile {
+        Some(market_profile) => json!({
+            "source": "bundled_inference",
+            "profile_name": market_profile.profile_name,
+            "session_preset_name": market_profile.session_preset_name,
+            "known_news_preset_name": market_profile.known_news_preset_name,
+            "known_news_policy": market_profile.known_news_policy,
+        }),
+        None => json!({
+            "source": "not_selected"
+        }),
+    }
 }
 
 fn pairs_json(values: &[(String, String)]) -> Value {

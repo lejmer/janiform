@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from types import ModuleType
 from typing import Any, Optional, cast
 
@@ -89,6 +90,44 @@ class NormalizedMarketDataSource:
     tick_data_summary: LoadedMarketDataSourceSummary
     reference_price: Optional[float]
     fit_warning: Optional[str]
+
+
+def infer_bundled_market_profile_for_tick_data_path(
+    tick_data_path: str | Path,
+) -> Optional[dict[str, Any]]:
+    native = _native_market_data_module()
+
+    try:
+        raw_payload = native.infer_bundled_market_profile_for_tick_data_path(str(tick_data_path))
+    except RuntimeError as error:
+        if native_exception_matches(native, error, "CalibrationExecutionError"):
+            raise calibration_integration_error(str(error)) from error
+
+        raise
+
+    if raw_payload is None:
+        return None
+    if not isinstance(raw_payload, dict):
+        raise calibration_integration_error("native market-profile inference returned a non-object payload")
+
+    return dict(raw_payload)
+
+
+def infer_market_data_fit_inputs(inference_request: dict[str, Any]) -> dict[str, Any]:
+    native = _native_market_data_module()
+
+    try:
+        raw_payload = native.infer_market_data_fit_inputs(inference_request)
+    except RuntimeError as error:
+        if native_exception_matches(native, error, "CalibrationExecutionError"):
+            raise calibration_integration_error(str(error)) from error
+
+        raise
+
+    if not isinstance(raw_payload, dict):
+        raise calibration_integration_error("native fit-input inference returned a non-object payload")
+
+    return dict(raw_payload)
 
 
 @dataclass(frozen=True, slots=True)
@@ -542,6 +581,7 @@ __all__ = [
     "NormalizedMarketDataSource",
     "normalize_market_data_source",
     "probe_market_data_source",
+    "infer_bundled_market_profile_for_tick_data_path",
     "resolve_market_data_session",
     "translate_market_data_request_to_prepared_calibration",
     "translate_market_data_request_to_prepared_calibration_from_phases",
