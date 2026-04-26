@@ -79,11 +79,14 @@ pub use market_data::{
     MarketDataTranslationPreprocessingSettings,
     MarketDataTranslationReturnComponentsPreprocessingSettings,
     MarketDataTranslationSeasonalityPreprocessingSettings, MarketDataTranslationTickRecord,
-    PreparedMarketDataCalibrationPlan, load_and_preprocess_market_data_translation_request,
+    PreparedMarketDataCalibrationPlan, infer_market_data_option_quote_input_policy,
+    infer_market_data_tick_price_input_policy, load_and_preprocess_market_data_translation_request,
     normalize_market_data_source, prepare_market_data_calibration_plan,
     prepare_market_data_calibration_plan_from_phases, prepare_market_data_loading_from_phases,
     preprocess_market_data_translation_request, probe_market_data_source,
+    resolve_market_data_option_surface_column_mapping_for_source,
     resolve_market_data_session_configuration,
+    resolve_market_data_tick_data_column_mapping_for_source,
 };
 pub use objective::{
     CALIBRATION_CONSTRAINED_OPTIMIZER_ADAPTER_BOUNDS_POLICY,

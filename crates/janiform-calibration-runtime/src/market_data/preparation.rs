@@ -8,6 +8,7 @@ use janiform_calibration_artifacts::{
     CalibrationRunSpec, CalibrationStage, CalibrationStageSolverSettings,
 };
 use janiform_engine_pricing::{PricingIntervalSchedulePolicy, VanillaOptionPayoffType};
+use janiform_foundations::identifiers::sanitize_ascii_identifier_component;
 use janiform_foundations::numeric::coverage_ratio;
 use janiform_foundations::time::{ONE_HOUR_NANOS_F64, duration_nanos_to_hours};
 use serde::{Deserialize, Serialize};
@@ -373,31 +374,11 @@ fn selected_stages_for_scope(
 fn build_dataset_reference(run_id: &str, dataset_role: &str, provenance_label: &str) -> String {
     format!(
         "market_data://{}/{}/{}",
-        sanitize_reference_component(run_id),
+        sanitize_ascii_identifier_component(run_id).unwrap_or_else(|| "unknown".to_string()),
         dataset_role,
-        sanitize_reference_component(provenance_label)
+        sanitize_ascii_identifier_component(provenance_label)
+            .unwrap_or_else(|| "unknown".to_string())
     )
-}
-
-fn sanitize_reference_component(value: &str) -> String {
-    let sanitized = value
-        .trim()
-        .chars()
-        .map(|character| {
-            if character.is_ascii_alphanumeric() {
-                character.to_ascii_lowercase()
-            } else {
-                '_'
-            }
-        })
-        .collect::<String>();
-
-    let trimmed = sanitized.trim_matches('_');
-    if trimmed.is_empty() {
-        "unknown".to_string()
-    } else {
-        trimmed.to_string()
-    }
 }
 
 fn stable_seed_from_run_id(run_id: &str) -> u64 {

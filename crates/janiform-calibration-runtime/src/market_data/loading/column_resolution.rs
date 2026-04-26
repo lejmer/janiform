@@ -210,6 +210,37 @@ pub(super) fn resolve_tick_data_column_mapping(
     })
 }
 
+pub(super) fn resolve_tick_price_input_policy(
+    available_columns: &[String],
+    column_mapping: &MarketDataTickDataColumnMapping,
+) -> Option<MarketDataTickPriceInputPolicy> {
+    let available_by_normalized = normalized_source_columns(available_columns);
+    let price_column = resolve_optional_column(
+        column_mapping.price_column.as_deref(),
+        &available_by_normalized,
+        TICK_PRICE_ALIASES.as_slice(),
+    );
+    if price_column.is_some() {
+        return Some(MarketDataTickPriceInputPolicy::ExplicitPriceColumn);
+    }
+
+    let bid_column = resolve_optional_column(
+        column_mapping.bid_column.as_deref(),
+        &available_by_normalized,
+        TICK_BID_ALIASES.as_slice(),
+    );
+    let ask_column = resolve_optional_column(
+        column_mapping.ask_column.as_deref(),
+        &available_by_normalized,
+        TICK_ASK_ALIASES.as_slice(),
+    );
+    if bid_column.is_some() && ask_column.is_some() {
+        return Some(MarketDataTickPriceInputPolicy::BidAskMidpoint);
+    }
+
+    None
+}
+
 pub(super) fn resolve_option_surface_column_mapping(
     available_columns: &[String],
     column_mapping: &MarketDataOptionSurfaceColumnMapping,

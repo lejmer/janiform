@@ -57,10 +57,7 @@ fn root_help_shows_primary_command_tree() {
 fn recognized_commands_parse_and_stop_at_unimplemented_boundary() {
     for arguments in [
         &["fit", "ticks.parquet"][..],
-        &["fit", "inspect", "ticks.parquet"][..],
-        &["fit", "plan", "--tick-data-path", "ticks.parquet"][..],
         &["fit", "staged", "--execution-input-path", "stage.json"][..],
-        &["fit", "staged", "plan", "--tick-data-path", "ticks.parquet"][..],
         &[
             "fit",
             "staged",
@@ -176,6 +173,158 @@ fn recognized_commands_parse_and_stop_at_unimplemented_boundary() {
             String::from_utf8_lossy(&output.stderr)
         );
     }
+}
+
+#[test]
+fn fit_plan_json_prepares_seasonality_without_running_calibration() {
+    let workspace = temporary_run_directory("fit-plan");
+    std::fs::create_dir_all(&workspace).expect("temporary workspace should be created");
+    let tick_data_path = workspace.join("ticks.csv");
+    write_tick_csv(&tick_data_path);
+
+    let output = janiform_command()
+        .args([
+            "--json",
+            "fit",
+            "plan",
+            "--tick-data-path",
+            tick_data_path
+                .to_str()
+                .expect("tick path should be valid UTF-8"),
+            "--exchange-code",
+            "XNYS",
+            "--workflow-scope",
+            "seasonality-only",
+            "--run-id",
+            "plan-test",
+        ])
+        .output()
+        .expect("janiform command should execute");
+
+    assert_eq!(output.status.code(), Some(CliExitCode::Success as i32));
+    assert!(
+        output.stderr.is_empty(),
+        "json fit plan should not write progress to stderr: `{}`",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8(output.stdout).expect("json output should be UTF-8");
+    let payload: serde_json::Value =
+        serde_json::from_str(&stdout).expect("stdout should contain one JSON object");
+    assert_eq!(payload["command_id"], "fit.plan");
+    assert_eq!(payload["run_id"], "plan-test");
+    assert_eq!(payload["workflow_scope"], "seasonality_only");
+    assert_eq!(
+        payload["diagnostics"]["selected_stages"],
+        serde_json::json!(["seasonality"])
+    );
+    assert_eq!(payload["diagnostics"]["tick_record_count"], 3);
+    assert_eq!(payload["staged_artifacts_written"], false);
+
+    std::fs::remove_dir_all(workspace).expect("temporary workspace should be removable");
+}
+
+#[test]
+fn fit_inspect_human_separates_user_inputs_and_inference() {
+    let workspace = temporary_run_directory("fit-inspect");
+    std::fs::create_dir_all(&workspace).expect("temporary workspace should be created");
+    let tick_data_path = workspace.join("ticks.csv");
+    write_tick_csv(&tick_data_path);
+
+    let output = janiform_command()
+        .args([
+            "--color",
+            "never",
+            "fit",
+            "inspect",
+            "--tick-data-path",
+            tick_data_path
+                .to_str()
+                .expect("tick path should be valid UTF-8"),
+            "--exchange-code",
+            "XNYS",
+            "--workflow-scope",
+            "seasonality-only",
+            "--run-id",
+            "inspect-test",
+        ])
+        .output()
+        .expect("janiform command should execute");
+
+    assert_eq!(output.status.code(), Some(CliExitCode::Success as i32));
+
+    let stdout = String::from_utf8(output.stdout).expect("human output should be UTF-8");
+    for expected in [
+        "Janiform fit inspect",
+        "Explicit user inputs",
+        "Inferred values",
+        "Preset defaults",
+        "Recommended defaults",
+        "Derived values",
+        "Session",
+    ] {
+        assert!(
+            stdout.contains(expected),
+            "missing `{expected}` in inspect output:\n{stdout}"
+        );
+    }
+
+    std::fs::remove_dir_all(workspace).expect("temporary workspace should be removable");
+}
+
+#[test]
+fn fit_staged_plan_writes_prepared_execution_input() {
+    let workspace = temporary_run_directory("fit-staged-plan");
+    std::fs::create_dir_all(&workspace).expect("temporary workspace should be created");
+    let tick_data_path = workspace.join("ticks.csv");
+    let staged_output_path = workspace.join("staged-input.json");
+    write_tick_csv(&tick_data_path);
+
+    let output = janiform_command()
+        .args([
+            "--json",
+            "fit",
+            "staged",
+            "plan",
+            "--tick-data-path",
+            tick_data_path
+                .to_str()
+                .expect("tick path should be valid UTF-8"),
+            "--exchange-code",
+            "XNYS",
+            "--workflow-scope",
+            "seasonality-only",
+            "--run-id",
+            "staged-plan-test",
+            "--execution-input-output-path",
+            staged_output_path
+                .to_str()
+                .expect("staged output path should be valid UTF-8"),
+        ])
+        .output()
+        .expect("janiform command should execute");
+
+    assert_eq!(output.status.code(), Some(CliExitCode::Success as i32));
+    assert!(staged_output_path.is_file());
+
+    let stdout = String::from_utf8(output.stdout).expect("json output should be UTF-8");
+    let payload: serde_json::Value =
+        serde_json::from_str(&stdout).expect("stdout should contain one JSON object");
+    assert_eq!(payload["command_id"], "fit.staged.plan");
+    assert_eq!(payload["staged_artifacts_written"], true);
+    assert_eq!(
+        payload["staged_execution_input"]["request"]["selected_stages"],
+        serde_json::json!(["seasonality"])
+    );
+
+    let staged_payload: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(&staged_output_path)
+            .expect("staged execution input should be readable"),
+    )
+    .expect("staged execution input should be JSON");
+    assert_eq!(staged_payload["request"]["run_id"], "staged-plan-test");
+
+    std::fs::remove_dir_all(workspace).expect("temporary workspace should be removable");
 }
 
 #[test]
@@ -360,4 +509,12 @@ fn temporary_run_directory(label: &str) -> std::path::PathBuf {
         "janiform-cli-{label}-{}-{timestamp}",
         std::process::id()
     ))
+}
+
+fn write_tick_csv(path: &std::path::Path) {
+    std::fs::write(
+        path,
+        "timestamp,price,side\n2026-04-20T14:30:00Z,10.0,buy\n2026-04-20T14:31:00Z,10.1,sell\n2026-04-20T14:32:00Z,10.2,buy\n",
+    )
+    .expect("tick CSV should be writable");
 }

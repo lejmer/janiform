@@ -73,6 +73,8 @@ This codebase is pre-v0.1 and has no external users.
   - Prefer adding focused helpers over growing large functions even larger.
   - Target functions under 100 LoC (tests don't have this limit).
   - If a function exceeds roughly 200 LoC, add new functionality in a new function or helper instead of growing the existing function body.
+- Use blank lines to separate logical blocks of statements so code reads in phases, especially after setup, validation, transformation, I/O, and before returning constructed values. Do not compress unrelated statements together just to minimize vertical space.
+- Do not add blank lines inside argument lists, parameter lists, struct literals, enum variants, match cases, or chains of near-identical statements. Keep tightly related assignment plus immediate guard/check together when the assignment is short and the guard directly validates it.
 
 ## Rust
 
