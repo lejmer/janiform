@@ -1303,7 +1303,7 @@ def test_market_data_cli_missing_tick_file_returns_validation_exit_code(
 
     assert exit_code == int(cli_module.CliExitCode.VALIDATION_ERROR)
     assert stdout_text == ""
-    assert 'field_path="tick_data_source"' in stderr_text
+    assert 'field_path="tick_data_source.path"' in stderr_text
     assert "tick_data_source.path" in stderr_text
     assert "(os error 2)" in stderr_text
     assert (
@@ -1357,7 +1357,7 @@ def test_market_data_cli_ambiguous_timestamp_reports_file_field_and_normalizatio
 
     assert exit_code == int(cli_module.CliExitCode.VALIDATION_ERROR)
     assert stdout_text == ""
-    assert 'field_path="tick_data_source"' in stderr_text
+    assert 'field_path="tick_data_source.rows[' in stderr_text
     assert str(market_data_paths["tick_data"]) in stderr_text
 
     if _timezone_key_is_available("America/New_York"):
@@ -1417,7 +1417,7 @@ def test_market_data_cli_missing_required_column_reports_source_file_and_normali
 
     assert exit_code == int(cli_module.CliExitCode.VALIDATION_ERROR)
     assert stdout_text == ""
-    assert 'field_path="tick_data_source"' in stderr_text
+    assert 'field_path="column_mapping.tick_data"' in stderr_text
     assert "Missing columns: trade_price" in stderr_text
     assert str(market_data_paths["tick_data"]) in stderr_text
 
@@ -1476,7 +1476,7 @@ def test_market_data_cli_invalid_session_definition_returns_validation_exit_code
 
     assert exit_code == int(cli_module.CliExitCode.VALIDATION_ERROR)
     assert stdout_text == ""
-    assert 'field_path="session_configuration"' in stderr_text
+    assert 'field_path="session_configuration.session_definition_source.path"' in stderr_text
     assert "session_configuration.session_definition_source.path" in stderr_text
     assert "valid calendar registry" in stderr_text
 

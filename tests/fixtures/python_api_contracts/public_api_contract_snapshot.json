@@ -1285,7 +1285,7 @@
         },
         "prepare_market_data_calibration": {
           "kind": "function",
-          "signature": "(request: 'MarketDataCalibrationRequest') -> 'PreparedMarketDataCalibration'"
+          "signature": "(request: 'MarketDataCalibrationRequest', *, cpu_count: 'Optional[int]' = None) -> 'PreparedMarketDataCalibration'"
         },
         "probe_market_data_source": {
           "kind": "function",
@@ -1902,7 +1902,7 @@
         },
         "prepare_market_data_calibration": {
           "kind": "function",
-          "signature": "(request: 'MarketDataCalibrationRequest') -> 'PreparedMarketDataCalibration'"
+          "signature": "(request: 'MarketDataCalibrationRequest', *, cpu_count: 'Optional[int]' = None) -> 'PreparedMarketDataCalibration'"
         },
         "run_market_data_calibration": {
           "kind": "function",

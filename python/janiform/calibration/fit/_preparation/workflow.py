@@ -34,11 +34,10 @@ from ...market_data.translation import (
     infer_bundled_market_profile_for_tick_data_path,
     normalize_market_data_source,
     resolve_market_data_session,
-    translate_market_data_request_to_prepared_calibration_from_phases,
 )
 from ...market_data.workflow import (
     PreparedMarketDataCalibration,
-    _prepare_market_data_calibration_from_translation_result,
+    prepare_market_data_calibration,
 )
 from ...presets.references import (
     KnownNewsPresetReference,
@@ -64,9 +63,9 @@ from .configuration import (
 
 def fit_progress_total_steps(configuration: FitPreparationConfiguration) -> int:
     if configuration.requires_session_inference:
-        return 9
+        return 7
 
-    return 8
+    return 5
 
 
 def effective_workflow_scope(
@@ -323,11 +322,18 @@ def prepare_fit_workflow(
     carry: Optional[CalibrationFlatCarryInput] = None,
     progress: Optional[AbstractProgress] = None,
     temporary_directory_factory: Callable[..., TemporaryDirectory[str]] = TemporaryDirectory,
-    normalize_market_data_source_method: Callable[..., NormalizedMarketDataSource] = normalize_market_data_source,
-    resolve_market_data_session_method: Callable[..., MarketDataSessionResolution] = resolve_market_data_session,
-    resolve_preset_workflow_configuration_method: Callable[..., ResolvedPresetWorkflowConfiguration] = resolve_preset_workflow_configuration,
-    translate_market_data_request_to_prepared_calibration_from_phases_method: Callable[..., Any] = translate_market_data_request_to_prepared_calibration_from_phases,
-    prepare_market_data_calibration_from_translation_result_method: Callable[..., PreparedMarketDataCalibration] = _prepare_market_data_calibration_from_translation_result,
+    normalize_market_data_source_method: Callable[
+        ...,
+        NormalizedMarketDataSource,
+    ] = normalize_market_data_source,
+    resolve_preset_workflow_configuration_method: Callable[
+        ...,
+        ResolvedPresetWorkflowConfiguration,
+    ] = resolve_preset_workflow_configuration,
+    prepare_market_data_calibration_method: Callable[
+        ...,
+        PreparedMarketDataCalibration,
+    ] = prepare_market_data_calibration,
 ) -> PreparedFitWorkflow:
     effective_progress = NullProgress() if progress is None else progress
     tick_data_path = Path(tick_data_path)
@@ -349,7 +355,9 @@ def prepare_fit_workflow(
         workflow_scope=workflow_scope,
         run_id=run_id,
         column_overrides=column_overrides_from_mapping(configuration.tick_data_column_mapping),
-        normalization_overrides=normalization_overrides_from_policy(configuration.normalization_policy),
+        normalization_overrides=normalization_overrides_from_policy(
+            configuration.normalization_policy
+        ),
         market_profile_configuration=configuration.resolved_market_profile_configuration,
     )
 
@@ -365,28 +373,33 @@ def prepare_fit_workflow(
 
     temporary_directory: Optional[TemporaryDirectory[str]] = None
     try:
-        effective_progress.update(detail="normalize source")
-        normalized_market_data = normalize_market_data_source_method(
-            tick_data_source=input_inference.tick_data_source,
-            tick_data_column_mapping=input_inference.tick_data_column_mapping,
-            normalization_policy=input_inference.normalization_policy,
-            require_hawkes=(workflow_scope != CalibrationMarketDataWorkflowScope.SEASONALITY_ONLY),
-        )
+        if configuration.requires_session_inference:
+            effective_progress.update(detail="normalize source")
+            normalized_market_data = normalize_market_data_source_method(
+                tick_data_source=input_inference.tick_data_source,
+                tick_data_column_mapping=input_inference.tick_data_column_mapping,
+                normalization_policy=input_inference.normalization_policy,
+                require_hawkes=(
+                    workflow_scope != CalibrationMarketDataWorkflowScope.SEASONALITY_ONLY
+                ),
+            )
 
-        effective_progress.update(detail="infer session")
-        inferred_session_resolution = infer_session_resolution(
-            configuration,
-            run_id=input_inference.run_id,
-            workflow_scope=workflow_scope,
-            tick_data_source=input_inference.tick_data_source,
-            option_surface_source=option_surface_source,
-            option_surface_valuation_time_utc=option_surface_valuation_time_utc,
-            carry=carry,
-            tick_data_column_mapping=input_inference.tick_data_column_mapping,
-            normalization_policy=input_inference.normalization_policy,
-            normalized_market_data=normalized_market_data,
-            progress=effective_progress,
-        )
+            effective_progress.update(detail="infer session")
+            inferred_session_resolution = infer_session_resolution(
+                configuration,
+                run_id=input_inference.run_id,
+                workflow_scope=workflow_scope,
+                tick_data_source=input_inference.tick_data_source,
+                option_surface_source=option_surface_source,
+                option_surface_valuation_time_utc=option_surface_valuation_time_utc,
+                carry=carry,
+                tick_data_column_mapping=input_inference.tick_data_column_mapping,
+                normalization_policy=input_inference.normalization_policy,
+                normalized_market_data=normalized_market_data,
+                progress=effective_progress,
+            )
+        else:
+            inferred_session_resolution = None
 
         effective_progress.update(detail="resolve presets")
         resolved_configuration = resolve_preset_workflow_configuration_method(
@@ -418,23 +431,10 @@ def prepare_fit_workflow(
             working_directory=working_directory,
         )
 
-        effective_progress.update(detail="resolve final session")
-        session_resolution = resolve_market_data_session_method(
-            session_configuration=request.session_configuration,
-            normalized_market_data=normalized_market_data,
-        )
-
-        effective_progress.update(detail="prepare stage inputs")
-        translation_result = translate_market_data_request_to_prepared_calibration_from_phases_method(
-            request=request,
-            normalized_market_data=normalized_market_data,
-            session_resolution=session_resolution,
+        effective_progress.update(detail="prepare market data")
+        prepared = prepare_market_data_calibration_method(
+            request,
             cpu_count=configuration.cpu_count,
-        )
-
-        prepared = prepare_market_data_calibration_from_translation_result_method(
-            request=request,
-            translation_result=translation_result,
         )
     except Exception:
         if temporary_directory is not None:
@@ -448,7 +448,7 @@ def prepare_fit_workflow(
         prepared=prepared,
         resolved_configuration=resolved_configuration,
         input_inference=input_inference,
-        fit_warning=translation_result.fit_warning,
-        reference_price=translation_result.reference_price,
+        fit_warning=prepared.fit_warning,
+        reference_price=prepared.reference_price,
         temporary_directory=temporary_directory,
     )

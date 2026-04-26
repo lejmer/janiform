@@ -57,17 +57,18 @@ from janiform.calibration.fit.state import (
 )
 from janiform.calibration.market_data import (
     CalibrationInputFileFormat,
-    CalibrationMeanReversionConfiguration,
     CalibrationMarketDataNormalizationPolicy,
     CalibrationMarketDataOutputPreferences,
-    CalibrationMarketDataWorkflowScope,
-    CalibrationOptionQuoteInputPolicy,
-    CalibrationOptionSurfaceColumnMapping,
     CalibrationMarketDataPreprocessingSettings,
     CalibrationMarketDataReturnComponentsPreprocessingSettings,
     CalibrationMarketDataSeasonalityPreprocessingSettings,
+    CalibrationMarketDataWorkflowScope,
+    CalibrationMeanReversionConfiguration,
+    CalibrationOptionQuoteInputPolicy,
+    CalibrationOptionSurfaceColumnMapping,
     CalibrationTickDataColumnMapping,
     CalibrationTickPriceInputPolicy,
+    MarketDataCalibrationRequest,
 )
 from janiform.calibration.market_data.contracts import CalibrationExecutionMode
 from janiform.calibration.presets import PresetCategory
@@ -234,7 +235,7 @@ def test_prepare_fit_workflow_uses_column_only_parquet_schema_discovery(
     monkeypatch.setattr(market_data_ingestion_module.parquet, "read_table", _unexpected_read_table)
     monkeypatch.setattr(
         fit_estimator_module,
-        "translate_market_data_request_to_prepared_calibration_from_phases",
+        "prepare_market_data_calibration",
         _stop_after_inference,
     )
 
@@ -252,7 +253,7 @@ def test_prepare_fit_workflow_uses_column_only_parquet_schema_discovery(
         )
 
 
-def test_prepare_fit_workflow_passes_explicit_mean_reversion_request_to_translation(
+def test_prepare_fit_workflow_passes_explicit_mean_reversion_request_to_preparation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -270,19 +271,22 @@ def test_prepare_fit_workflow_passes_explicit_mean_reversion_request_to_translat
         encoding="utf-8",
     )
 
-    class _StopAfterTranslation(Exception):
+    class _StopAfterPreparation(Exception):
         pass
 
-    captured_request: dict[str, Any] = {}
+    captured_request: dict[str, MarketDataCalibrationRequest] = {}
 
-    def _capture_request(request, **kwargs):
+    def _capture_request(
+        request: MarketDataCalibrationRequest,
+        **kwargs: Any,
+    ) -> NoReturn:
         captured_request["request"] = request
         del kwargs
-        raise _StopAfterTranslation()
+        raise _StopAfterPreparation()
 
     monkeypatch.setattr(
         fit_estimator_module,
-        "translate_market_data_request_to_prepared_calibration_from_phases",
+        "prepare_market_data_calibration",
         _capture_request,
     )
 
@@ -293,7 +297,7 @@ def test_prepare_fit_workflow_passes_explicit_mean_reversion_request_to_translat
         ),
     )
 
-    with pytest.raises(_StopAfterTranslation):
+    with pytest.raises(_StopAfterPreparation):
         estimator._prepare_fit_workflow(
             run_id="high-level-mean-reversion-request",
             tick_data_path=tick_data_path,
@@ -309,7 +313,7 @@ def test_prepare_fit_workflow_passes_explicit_mean_reversion_request_to_translat
     assert request.mean_reversion.calibration_grid_interval_hours == pytest.approx(36.0)
 
 
-def test_prepare_fit_workflow_passes_optimizer_settings_by_stage_to_translation(
+def test_prepare_fit_workflow_passes_optimizer_settings_by_stage_to_preparation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -327,19 +331,22 @@ def test_prepare_fit_workflow_passes_optimizer_settings_by_stage_to_translation(
         encoding="utf-8",
     )
 
-    class _StopAfterTranslation(Exception):
+    class _StopAfterPreparation(Exception):
         pass
 
-    captured_request: dict[str, Any] = {}
+    captured_request: dict[str, MarketDataCalibrationRequest] = {}
 
-    def _capture_request(request, **kwargs):
+    def _capture_request(
+        request: MarketDataCalibrationRequest,
+        **kwargs: Any,
+    ) -> NoReturn:
         captured_request["request"] = request
         del kwargs
-        raise _StopAfterTranslation()
+        raise _StopAfterPreparation()
 
     monkeypatch.setattr(
         fit_estimator_module,
-        "translate_market_data_request_to_prepared_calibration_from_phases",
+        "prepare_market_data_calibration",
         _capture_request,
     )
 
@@ -361,7 +368,7 @@ def test_prepare_fit_workflow_passes_optimizer_settings_by_stage_to_translation(
         optimizer_settings_by_stage=optimizer_settings_by_stage,
     )
 
-    with pytest.raises(_StopAfterTranslation):
+    with pytest.raises(_StopAfterPreparation):
         estimator._prepare_fit_workflow(
             run_id="high-level-optimizer-settings-request",
             tick_data_path=tick_data_path,
@@ -376,7 +383,7 @@ def test_prepare_fit_workflow_passes_optimizer_settings_by_stage_to_translation(
     assert request.optimizer_settings_by_stage == optimizer_settings_by_stage
 
 
-def test_prepare_fit_workflow_passes_preprocessing_settings_to_translation(
+def test_prepare_fit_workflow_passes_preprocessing_settings_to_preparation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -394,19 +401,22 @@ def test_prepare_fit_workflow_passes_preprocessing_settings_to_translation(
         encoding="utf-8",
     )
 
-    class _StopAfterTranslation(Exception):
+    class _StopAfterPreparation(Exception):
         pass
 
-    captured_request: dict[str, Any] = {}
+    captured_request: dict[str, MarketDataCalibrationRequest] = {}
 
-    def _capture_request(request, **kwargs):
+    def _capture_request(
+        request: MarketDataCalibrationRequest,
+        **kwargs: Any,
+    ) -> NoReturn:
         captured_request["request"] = request
         del kwargs
-        raise _StopAfterTranslation()
+        raise _StopAfterPreparation()
 
     monkeypatch.setattr(
         fit_estimator_module,
-        "translate_market_data_request_to_prepared_calibration_from_phases",
+        "prepare_market_data_calibration",
         _capture_request,
     )
 
@@ -432,7 +442,7 @@ def test_prepare_fit_workflow_passes_preprocessing_settings_to_translation(
         preprocessing_settings=preprocessing_settings,
     )
 
-    with pytest.raises(_StopAfterTranslation):
+    with pytest.raises(_StopAfterPreparation):
         estimator._prepare_fit_workflow(
             run_id="high-level-preprocessing-settings-request",
             tick_data_path=tick_data_path,
@@ -466,19 +476,22 @@ def test_prepare_fit_workflow_passes_option_surface_inputs_to_session_inference(
     )
     option_surface_path = tmp_path / "options.parquet"
 
-    class _StopAfterTranslation(Exception):
+    class _StopAfterPreparation(Exception):
         pass
 
-    captured_request: dict[str, Any] = {}
+    captured_request: dict[str, MarketDataCalibrationRequest] = {}
 
-    def _capture_request(request, **kwargs):
+    def _capture_request(
+        request: MarketDataCalibrationRequest,
+        **kwargs: Any,
+    ) -> NoReturn:
         captured_request["request"] = request
         del kwargs
-        raise _StopAfterTranslation()
+        raise _StopAfterPreparation()
 
     monkeypatch.setattr(
         fit_estimator_module,
-        "translate_market_data_request_to_prepared_calibration_from_phases",
+        "prepare_market_data_calibration",
         _capture_request,
     )
 
@@ -505,7 +518,7 @@ def test_prepare_fit_workflow_passes_option_surface_inputs_to_session_inference(
         market_profile="us_equity_cash",
     )
 
-    with pytest.raises(_StopAfterTranslation):
+    with pytest.raises(_StopAfterPreparation):
         estimator._prepare_fit_workflow(
             run_id="high-level-option-session-inference",
             tick_data_path=tick_data_path,
@@ -547,19 +560,22 @@ def test_prepare_fit_workflow_allows_inferred_option_quote_input_policy(
     )
     option_surface_path = tmp_path / "options.parquet"
 
-    class _StopAfterTranslation(Exception):
+    class _StopAfterPreparation(Exception):
         pass
 
-    captured_request: dict[str, Any] = {}
+    captured_request: dict[str, MarketDataCalibrationRequest] = {}
 
-    def _capture_request(request, **kwargs):
+    def _capture_request(
+        request: MarketDataCalibrationRequest,
+        **kwargs: Any,
+    ) -> NoReturn:
         captured_request["request"] = request
         del kwargs
-        raise _StopAfterTranslation()
+        raise _StopAfterPreparation()
 
     monkeypatch.setattr(
         fit_estimator_module,
-        "translate_market_data_request_to_prepared_calibration_from_phases",
+        "prepare_market_data_calibration",
         _capture_request,
     )
 
@@ -567,7 +583,7 @@ def test_prepare_fit_workflow_allows_inferred_option_quote_input_policy(
         market_profile="us_equity_cash",
     )
 
-    with pytest.raises(_StopAfterTranslation):
+    with pytest.raises(_StopAfterPreparation):
         estimator._prepare_fit_workflow(
             run_id="high-level-inferred-option-policy-request",
             tick_data_path=tick_data_path,
@@ -4445,7 +4461,7 @@ def test_high_level_fit_routes_through_prepared_staged_runner(
     }
 
 
-def test_high_level_fit_reuses_single_load_and_translation_pass_when_session_is_explicit(
+def test_high_level_fit_reuses_single_native_preparation_pass_when_session_is_explicit(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -4463,27 +4479,33 @@ def test_high_level_fit_reuses_single_load_and_translation_pass_when_session_is_
     )
 
     normalize_call_count = 0
-    translate_call_count = 0
+    prepare_call_count = 0
     captured_dynamics_search_restart_candidate_budgets: list[int | None] = []
 
     original_normalize_source = fit_estimator_module.normalize_market_data_source
 
-    original_translate_request = (
-        fit_estimator_module.translate_market_data_request_to_prepared_calibration_from_phases
+    original_prepare_market_data_calibration = (
+        fit_estimator_module.prepare_market_data_calibration
     )
 
-    def counting_normalize_source(*args, **kwargs):
+    def counting_normalize_source(*args: Any, **kwargs: Any) -> Any:
         nonlocal normalize_call_count
         normalize_call_count += 1
         return original_normalize_source(*args, **kwargs)
 
-    def counting_translate_request(*args, **kwargs):
-        nonlocal translate_call_count
-        translate_call_count += 1
+    def counting_prepare_market_data_calibration(
+        *args: Any,
+        **kwargs: Any,
+    ) -> Any:
+        nonlocal prepare_call_count
+        prepare_call_count += 1
+
+        request = cast(MarketDataCalibrationRequest, args[0])
         captured_dynamics_search_restart_candidate_budgets.append(
-            kwargs["request"].dynamics_search_restart_candidate_budget
+            request.dynamics_search_restart_candidate_budget
         )
-        return original_translate_request(*args, **kwargs)
+
+        return original_prepare_market_data_calibration(*args, **kwargs)
 
     monkeypatch.setattr(
         fit_estimator_module,
@@ -4492,8 +4514,8 @@ def test_high_level_fit_reuses_single_load_and_translation_pass_when_session_is_
     )
     monkeypatch.setattr(
         fit_estimator_module,
-        "translate_market_data_request_to_prepared_calibration_from_phases",
-        counting_translate_request,
+        "prepare_market_data_calibration",
+        counting_prepare_market_data_calibration,
     )
     patch_fit_workflow_runner(
         monkeypatch,
@@ -4520,8 +4542,8 @@ def test_high_level_fit_reuses_single_load_and_translation_pass_when_session_is_
         tick_data_format=CalibrationInputFileFormat.CSV,
     )
 
-    assert normalize_call_count == 1
-    assert translate_call_count == 1
+    assert normalize_call_count == 0
+    assert prepare_call_count == 1
     assert captured_dynamics_search_restart_candidate_budgets == [12]
 
 
@@ -4554,20 +4576,23 @@ def test_high_level_estimator_forwards_pricing_interval_schedule_policy(
     )
 
     captured_policies: list[str] = []
-    original_translate_request = (
-        fit_estimator_module.translate_market_data_request_to_prepared_calibration_from_phases
+    original_prepare_market_data_calibration = (
+        fit_estimator_module.prepare_market_data_calibration
     )
 
-    def counting_translate_request(*args, **kwargs):
-        captured_policies.append(
-            kwargs["request"].pricing_interval_schedule_policy.policy
-        )
-        return original_translate_request(*args, **kwargs)
+    def counting_prepare_market_data_calibration(
+        *args: Any,
+        **kwargs: Any,
+    ) -> Any:
+        request = cast(MarketDataCalibrationRequest, args[0])
+        captured_policies.append(request.pricing_interval_schedule_policy.policy)
+
+        return original_prepare_market_data_calibration(*args, **kwargs)
 
     monkeypatch.setattr(
         fit_estimator_module,
-        "translate_market_data_request_to_prepared_calibration_from_phases",
-        counting_translate_request,
+        "prepare_market_data_calibration",
+        counting_prepare_market_data_calibration,
     )
     patch_fit_workflow_runner(
         monkeypatch,
@@ -4615,27 +4640,35 @@ def test_high_level_fit_named_built_in_session_does_not_require_materialization(
         encoding="utf-8",
     )
 
-    translate_call_count = 0
-    original_translate_request = (
-        fit_estimator_module.translate_market_data_request_to_prepared_calibration_from_phases
+    prepare_call_count = 0
+    original_prepare_market_data_calibration = (
+        fit_estimator_module.prepare_market_data_calibration
     )
 
-    def counting_translate_request(*args, **kwargs):
-        nonlocal translate_call_count
-        translate_call_count += 1
-        return original_translate_request(*args, **kwargs)
+    def counting_prepare_market_data_calibration(
+        *args: Any,
+        **kwargs: Any,
+    ) -> Any:
+        nonlocal prepare_call_count
+        prepare_call_count += 1
+
+        return original_prepare_market_data_calibration(*args, **kwargs)
 
     monkeypatch.setattr(
         fit_estimator_module,
-        "translate_market_data_request_to_prepared_calibration_from_phases",
-        counting_translate_request,
+        "prepare_market_data_calibration",
+        counting_prepare_market_data_calibration,
     )
     patch_fit_workflow_runner(
         monkeypatch,
-        lambda *args, **kwargs: _successful_staged_runner_payload("high-level-fit-built-in-session"),
+        lambda *args, **kwargs: _successful_staged_runner_payload(
+            "high-level-fit-built-in-session"
+        ),
     )
 
-    def fail_if_called(*args, **kwargs):
+    def fail_if_called(*args: Any, **kwargs: Any) -> NoReturn:
+        del args, kwargs
+
         raise AssertionError("TemporaryDirectory should not be used for built-in session presets")
 
     monkeypatch.setattr(fit_estimator_module, "TemporaryDirectory", fail_if_called)
@@ -4659,10 +4692,10 @@ def test_high_level_fit_named_built_in_session_does_not_require_materialization(
         tick_data_format=CalibrationInputFileFormat.CSV,
     )
 
-    assert translate_call_count == 1
+    assert prepare_call_count == 1
 
 
-def test_high_level_fit_progress_splits_loading_and_translation_steps(
+def test_high_level_fit_nonhuman_progress_uses_native_preparation_step(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -4716,7 +4749,7 @@ def test_high_level_fit_progress_splits_loading_and_translation_steps(
         total_steps: int | None = None,
     ) -> _CapturingProgress:
         assert label == "fit"
-        assert total_steps == 8
+        assert total_steps == 5
 
         return _CapturingProgress()
 
@@ -4741,6 +4774,7 @@ def test_high_level_fit_progress_splits_loading_and_translation_steps(
         ),
         session="XNYS",
         known_news="none",
+        silent=True,
     )
 
     estimator.fit(
@@ -4751,14 +4785,79 @@ def test_high_level_fit_progress_splits_loading_and_translation_steps(
 
     assert progress_details == [
         "inferring workflow inputs",
-        "normalize source",
-        "infer session",
         "resolve presets",
         "build market-data request",
-        "resolve final session",
-        "prepare stage inputs",
+        "prepare market data",
         "running calibration",
     ]
+
+
+def test_high_level_fit_human_progress_uses_native_terminal_ui_only(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tick_data_path = tmp_path / "ticks.csv"
+    tick_data_path.write_text(
+        "\n".join(
+            [
+                "timestamp_utc",
+                "2026-02-02T14:30:00Z",
+                "2026-02-02T15:00:00Z",
+                "2026-02-02T20:59:00Z",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    progress_call_count = 0
+
+    def fail_if_python_progress_is_used(
+        self: Any,
+        label: str,
+        *,
+        total_steps: int | None = None,
+    ) -> NoReturn:
+        nonlocal progress_call_count
+        progress_call_count += 1
+
+        _ = self
+        _ = label
+        _ = total_steps
+
+        raise AssertionError("Python fit progress must not render in human mode")
+
+    monkeypatch.setattr(
+        fit_estimator_module.JaniformOutputController,
+        "progress",
+        fail_if_python_progress_is_used,
+    )
+    patch_fit_workflow_runner(
+        monkeypatch,
+        lambda *args, **kwargs: _successful_staged_runner_payload(
+            "high-level-fit-native-progress"
+        ),
+    )
+
+    estimator = JaniformEstimator(
+        workflow_scope=CalibrationMarketDataWorkflowScope.SEASONALITY_ONLY,
+        tick_data_column_mapping=CalibrationTickDataColumnMapping(
+            timestamp_column="timestamp_utc",
+        ),
+        normalization_policy=CalibrationMarketDataNormalizationPolicy(
+            timestamp_timezone="UTC",
+            sort_records_by_timestamp=True,
+        ),
+        session="XNYS",
+        known_news="none",
+    )
+
+    estimator.fit(
+        run_id="high-level-fit-native-progress",
+        tick_data_path=tick_data_path,
+        tick_data_format=CalibrationInputFileFormat.CSV,
+    )
+
+    assert progress_call_count == 0
 
 
 def test_high_level_fit_report_returns_success_details_with_model(

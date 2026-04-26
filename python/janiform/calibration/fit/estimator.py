@@ -49,11 +49,9 @@ from ..market_data.request import MarketDataCalibrationRequest
 from ..market_data.translation import (
     NormalizedMarketDataSource,
     normalize_market_data_source,
-    resolve_market_data_session,
-    translate_market_data_request_to_prepared_calibration_from_phases,
 )
 from ..market_data.workflow import (
-    _prepare_market_data_calibration_from_translation_result,
+    prepare_market_data_calibration,
 )
 from ...pricing import PricingIntervalSchedulePolicy, default_pricing_interval_schedule_policy
 from ..presets.references import (
@@ -255,9 +253,6 @@ class JaniformEstimator:
             report=fit_report,
         )
 
-    def _fit_progress_total_steps(self) -> int:
-        return fit_progress_total_steps(self._build_preparation_configuration())
-
     def _build_preparation_configuration(self) -> FitPreparationConfiguration:
         return self._build_preparation_configuration_with_override(
             pricing_interval_schedule_policy=None,
@@ -325,14 +320,8 @@ class JaniformEstimator:
                 **kwargs,
                 temporary_directory_factory=TemporaryDirectory,
                 normalize_market_data_source_method=normalize_market_data_source,
-                resolve_market_data_session_method=resolve_market_data_session,
                 resolve_preset_workflow_configuration_method=resolve_preset_workflow_configuration,
-                translate_market_data_request_to_prepared_calibration_from_phases_method=(
-                    translate_market_data_request_to_prepared_calibration_from_phases
-                ),
-                prepare_market_data_calibration_from_translation_result_method=(
-                    _prepare_market_data_calibration_from_translation_result
-                ),
+                prepare_market_data_calibration_method=prepare_market_data_calibration,
             ),
             build_fit_inference_metadata=self._build_fit_inference_metadata,
         )
@@ -393,14 +382,8 @@ class JaniformEstimator:
             progress=progress,
             temporary_directory_factory=TemporaryDirectory,
             normalize_market_data_source_method=normalize_market_data_source,
-            resolve_market_data_session_method=resolve_market_data_session,
             resolve_preset_workflow_configuration_method=resolve_preset_workflow_configuration,
-            translate_market_data_request_to_prepared_calibration_from_phases_method=(
-                translate_market_data_request_to_prepared_calibration_from_phases
-            ),
-            prepare_market_data_calibration_from_translation_result_method=(
-                _prepare_market_data_calibration_from_translation_result
-            ),
+            prepare_market_data_calibration_method=prepare_market_data_calibration,
         )
 
     def _effective_session_reference(self) -> Optional[SessionPresetReference]:

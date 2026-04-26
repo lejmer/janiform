@@ -253,19 +253,27 @@ def _build_market_data_session_resolution(
     session_resolution: MarketDataSessionResolution,
 ) -> MarketDataSessionResolution:
     if not isinstance(session_resolution, MarketDataSessionResolution):
-        raise calibration_error("session_resolution", "must be a MarketDataSessionResolution")
+        raise calibration_error(
+            "session_resolution",
+            "must be a MarketDataSessionResolution",
+        )
 
     return session_resolution
 
 
 def prepare_market_data_calibration(
     request: MarketDataCalibrationRequest,
+    *,
+    cpu_count: Optional[int] = None,
 ) -> PreparedMarketDataCalibration:
     if not isinstance(request, MarketDataCalibrationRequest):
         raise calibration_error("request", "must be a MarketDataCalibrationRequest")
 
     normalized_request = validate_market_data_calibration_request(request.to_payload())
-    translation_result = translate_market_data_request_to_prepared_calibration(normalized_request)
+    translation_result = translate_market_data_request_to_prepared_calibration(
+        normalized_request,
+        cpu_count=cpu_count,
+    )
 
     return _prepare_market_data_calibration_from_translation_result(
         request=normalized_request,
@@ -284,7 +292,9 @@ def _prepare_market_data_calibration_from_translation_result(
         staged_request=translation_result.staged_request,
         diagnostics=_build_market_data_preparation_diagnostics(translation_result.diagnostics),
         provenance=_build_market_data_preparation_provenance(translation_result.provenance),
-        session_resolution=_build_market_data_session_resolution(translation_result.session_resolution),
+        session_resolution=_build_market_data_session_resolution(
+            translation_result.session_resolution
+        ),
         fit_warning=translation_result.fit_warning,
         reference_price=translation_result.reference_price,
         prepared_data_reference=(

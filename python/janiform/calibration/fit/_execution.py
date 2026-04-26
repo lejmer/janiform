@@ -9,7 +9,9 @@ from pathlib import Path
 from typing import Any, Optional, Union
 
 from ..._workflow_progress import (
+    AbstractProgress,
     JaniformOutputController,
+    NullProgress,
     WorkflowProgressMode,
     resolve_workflow_progress_mode,
 )
@@ -155,7 +157,11 @@ def _run_fit_with_output_controller(
 
     with suppression_context:
         try:
-            with output_controller.progress("fit", total_steps=configuration.progress_total_steps) as progress:
+            with _fit_preparation_progress(
+                output_controller,
+                resolved_progress_mode=resolved_progress_mode,
+                total_steps=configuration.progress_total_steps,
+            ) as progress:
                 progress.update(detail="inferring workflow inputs")
 
                 prepared_workflow = configuration.prepare_fit_workflow(
@@ -200,6 +206,18 @@ def _run_fit_with_output_controller(
     return prepared_workflow, staged_response, raw_response_payload, native_output.model_payload
 
 
+def _fit_preparation_progress(
+    output_controller: JaniformOutputController,
+    *,
+    resolved_progress_mode: WorkflowProgressMode,
+    total_steps: int,
+) -> AbstractProgress:
+    if resolved_progress_mode is WorkflowProgressMode.HUMAN:
+        return NullProgress()
+
+    return output_controller.progress("fit", total_steps=total_steps)
+
+
 def _build_fit_outputs(
     prepared_workflow: PreparedFitWorkflow,
     staged_response: Any,
@@ -213,8 +231,12 @@ def _build_fit_outputs(
         raw_response_payload,
         selected_stage_kinds=prepared_workflow.prepared.staged_request.selected_stages,
         run_id=prepared_workflow.run_id,
-        disk_checkpoint_directory=prepared_workflow.prepared.request.output_preferences.disk_checkpoint_directory,
-        require_complete_selection=staged_response.status == CalibrationStageExecutionStatus.SUCCESS,
+        disk_checkpoint_directory=(
+            prepared_workflow.prepared.request.output_preferences.disk_checkpoint_directory
+        ),
+        require_complete_selection=(
+            staged_response.status == CalibrationStageExecutionStatus.SUCCESS
+        ),
     )
 
     fit_report = JaniformFitReport(

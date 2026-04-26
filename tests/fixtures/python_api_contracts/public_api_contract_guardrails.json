@@ -1,6 +1,6 @@
 {
   "approval_policy": "public_api_contract_snapshot_changes_require_explicit_rationale.v1",
-  "approved_snapshot_sha256": "fcafb0adca4830ac3f3244b001a318be620a160d862356503c8e9ae030db2b73",
+  "approved_snapshot_sha256": "36f333355ba26ac1aac0f6dbc4d43396402de077146576e58b4d0ed17af240c6",
   "change_log": [
     {
       "approved_on": "2026-03-08",
@@ -1198,6 +1198,17 @@
         "janiform.calibration.presets",
         "janiform.calibration.presets.artifacts",
         "janiform.calibration.presets.registry"
+      ]
+    },
+    {
+      "approved_on": "2026-04-26",
+      "docs_updated": [],
+      "rationale": "Market-data preparation now accepts the native worker-count override at the Python boundary so high-level fitting and direct market-data preparation use the same Rust preparation path.",
+      "snapshot_sha256": "36f333355ba26ac1aac0f6dbc4d43396402de077146576e58b4d0ed17af240c6",
+      "summary": "Approve the Rust-backed market-data preparation boundary.",
+      "updated_surfaces": [
+        "janiform.calibration.market_data",
+        "janiform.calibration.market_data.workflow"
       ]
     }
   ],

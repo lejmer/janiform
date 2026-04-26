@@ -4,7 +4,7 @@ from collections.abc import Callable
 from types import ModuleType
 from typing import Any, Optional
 
-from ..._native_api import native_exception_matches
+from ..._native_api import native_error_parts, native_exception_matches
 from ..errors import (
     CALIBRATION_INTEGRATION_RESPONSE_ERROR_ID,
     calibration_error,
@@ -82,7 +82,10 @@ def _call_native_preset_function(
     # name and re-raise unknown exceptions unchanged.
     except Exception as error:
         if native_exception_matches(native_module, error, "CalibrationExecutionError"):
-            field_path, message = _native_preset_error_parts(str(error))
+            field_path, message = native_error_parts(
+                str(error),
+                default_field_path="preset_resolution",
+            )
 
             raise calibration_error(
                 field_path,
@@ -93,14 +96,6 @@ def _call_native_preset_function(
         raise
 
     return raw_payload
-
-
-def _native_preset_error_parts(raw_message: str) -> tuple[str, str]:
-    field_path, separator, message = raw_message.partition(": ")
-    if separator and field_path.strip() and message.strip():
-        return field_path, message
-
-    return "preset_resolution", raw_message
 
 
 def _require_native_preset_object(raw_payload: Any, *, function_label: str) -> dict[str, Any]:
