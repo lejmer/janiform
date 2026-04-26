@@ -213,8 +213,10 @@
       "kind": "boundary",
       "layer": "cli_boundary",
       "allowed_internal_dependencies": [
+        "janiform-foundations",
         "janiform-event-log",
-        "janiform-cli-ui"
+        "janiform-cli-ui",
+        "janiform"
       ]
     },
     "janiform": {
