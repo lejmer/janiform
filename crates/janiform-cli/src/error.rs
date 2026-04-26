@@ -92,6 +92,28 @@ pub enum CliError {
     #[error("`--trace-events` requires an event stream selected with `--events jsonl`")]
     #[diagnostic(code(janiform_cli::trace_events_without_event_stream))]
     TraceEventsWithoutEventStream,
+
+    #[error("failed to write command output")]
+    #[diagnostic(code(janiform_cli::output_write))]
+    OutputWrite {
+        #[source]
+        source: io::Error,
+    },
+
+    #[error("failed to serialize command output")]
+    #[diagnostic(code(janiform_cli::output_serialize))]
+    OutputSerialize {
+        #[source]
+        source: serde_json::Error,
+    },
+
+    #[error("failed to inspect run directory `{}`", run_directory.display())]
+    #[diagnostic(code(janiform_cli::run_inspection_failed))]
+    RunInspectionFailed {
+        run_directory: PathBuf,
+        #[source]
+        source: janiform_event_log::EventLogError,
+    },
 }
 
 impl CliError {
@@ -109,7 +131,10 @@ impl CliError {
             | Self::CurrentDirectory { .. }
             | Self::RepositoryRootUnavailable { .. }
             | Self::MissingInputFile { .. }
-            | Self::TraceEventsWithoutEventStream => CliExitCode::CommandLineUsage,
+            | Self::TraceEventsWithoutEventStream
+            | Self::OutputWrite { .. }
+            | Self::OutputSerialize { .. }
+            | Self::RunInspectionFailed { .. } => CliExitCode::CommandLineUsage,
         }
     }
 
@@ -124,6 +149,9 @@ impl CliError {
             Self::RepositoryRootUnavailable { .. } => "repository_root_unavailable",
             Self::MissingInputFile { .. } => "missing_input_file",
             Self::TraceEventsWithoutEventStream => "trace_events_without_event_stream",
+            Self::OutputWrite { .. } => "output_write",
+            Self::OutputSerialize { .. } => "output_serialize",
+            Self::RunInspectionFailed { .. } => "run_inspection_failed",
         }
     }
 }

@@ -13,6 +13,7 @@ engines, shared contracts, and most performance-sensitive implementation.
 | `crates/janiform-pybind/` | PyO3 boundary crate |
 | `crates/janiform-cli/` | Native Rust command shell |
 | `crates/janiform-cli-ui/` | Shared semantic terminal rendering for the command shell |
+| `crates/janiform-event-log/` | Run event logs, latest-state snapshots, and replay support |
 | Engine crates | Pricing, sufficient-statistics, and simulation runtime implementations |
 | Calibration crates | Calibration orchestration and artifact persistence |
 | Analytics, validation, and governance crates | Analytical reports, regression harnesses, and benchmark governance |
@@ -32,6 +33,7 @@ engines, shared contracts, and most performance-sensitive implementation.
 | `janiform-engine-pricing` | Pricing runtime engine |
 | `janiform-engine-simulation` | Simulation runtime engine |
 | `janiform-engine-sufficient-statistics` | Sufficient-statistics runtime engine |
+| `janiform-event-log` | Structured run event logs, latest-state snapshots, and replay support |
 | `janiform-foundations` | Low-level shared foundation primitives |
 | `janiform-governance` | Governance and regression orchestration |
 | `janiform-governance-bench` | Benchmark governance support |

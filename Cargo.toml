@@ -9,6 +9,7 @@ members = [
     "crates/janiform-engine-pricing",
     "crates/janiform-engine-sufficient-statistics",
     "crates/janiform-engine-simulation",
+    "crates/janiform-event-log",
     "crates/janiform-foundations",
     "crates/janiform-governance",
     "crates/janiform-governance-bench",
@@ -36,6 +37,7 @@ chrono-tz = "0.10.4"
 clap = { version = "=4.5.55", features = ["derive"] }
 comfy-table = { version = "7.2.1", default-features = false }
 console = "0.16.3"
+crossbeam-channel = "0.5.15"
 csv = "1.4.0"
 indicatif = "0.18.4"
 nalgebra = { version = "0.34.2", default-features = false, features = ["std"] }
