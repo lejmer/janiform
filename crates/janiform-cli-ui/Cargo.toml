@@ -1,0 +1,20 @@
+[package]
+name = "janiform-cli-ui"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Semantic terminal rendering and progress adapters for the Janiform CLI."
+readme = "README.md"
+
+[lib]
+name = "janiform_cli_ui"
+path = "src/lib.rs"
+doctest = false
+
+[dependencies]
+comfy-table = { workspace = true }
+console = { workspace = true }
+indicatif = { workspace = true }
+textwrap = { workspace = true }
+thiserror = "2.0.17"

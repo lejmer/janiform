@@ -18,6 +18,7 @@ path = "src/main.rs"
 
 [dependencies]
 clap = { workspace = true }
+janiform-cli-ui = { path = "../janiform-cli-ui" }
 miette = { version = "7.6.0", features = ["derive"] }
 serde = { workspace = true }
 serde_json = { workspace = true }

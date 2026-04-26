@@ -13,7 +13,7 @@ pub(crate) fn write_error(error: CliError, context: &CommandContext) -> io::Resu
     match context.output_mode() {
         OutputMode::Json => write_json_error(error),
         OutputMode::Human | OutputMode::Quiet | OutputMode::Silent => {
-            write_human_error(error, context.color_policy().stderr_ansi)
+            write_terminal_error(error, context.stderr_renderer())
         }
     }
 }
@@ -25,7 +25,7 @@ pub(crate) fn write_error_without_context(
     match output_mode_from_options(options) {
         OutputMode::Json => write_json_error(error),
         OutputMode::Human | OutputMode::Quiet | OutputMode::Silent => {
-            write_human_error(error, false)
+            write_terminal_error(error, janiform_cli_ui::TerminalRenderer::new(false, None))
         }
     }
 }
@@ -37,22 +37,23 @@ pub(crate) fn write_error_for_parse_failure(
     if requested_json {
         write_json_error(error)
     } else {
-        write_human_error(error, false)
+        write_terminal_error(error, janiform_cli_ui::TerminalRenderer::new(false, None))
     }
 }
 
-fn write_human_error(error: CliError, ansi: bool) -> io::Result<()> {
+fn write_terminal_error(
+    error: CliError,
+    renderer: janiform_cli_ui::TerminalRenderer,
+) -> io::Result<()> {
     let report = miette::Report::new(error);
 
-    let mut stderr = io::stderr().lock();
+    let block = janiform_cli_ui::FailureBlock {
+        title: "Error".to_string(),
+        reason: report.to_string(),
+        details: Vec::new(),
+    };
 
-    if ansi {
-        writeln!(stderr, "\u{1b}[31merror\u{1b}[0m: {report}")?;
-    } else {
-        writeln!(stderr, "error: {report}")?;
-    }
-
-    Ok(())
+    renderer.write_stderr(&block.render(&renderer))
 }
 
 fn write_json_error(error: CliError) -> io::Result<()> {
