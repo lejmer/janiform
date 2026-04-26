@@ -68,7 +68,6 @@ fn recognized_commands_parse_and_stop_at_unimplemented_boundary() {
             "--execution-input-path",
             "stage.json",
         ][..],
-        &["inspect", "run", ".janiform/runs/example"][..],
         &["inspect", "model", "model.jf", "--parameters"][..],
         &["report", "fit", ".janiform/runs/example"][..],
         &[
@@ -177,6 +176,57 @@ fn recognized_commands_parse_and_stop_at_unimplemented_boundary() {
             String::from_utf8_lossy(&output.stderr)
         );
     }
+}
+
+#[test]
+fn inspect_run_reads_latest_state_snapshot_as_json() {
+    let run_directory = temporary_run_directory("inspect-run");
+    let event_paths = janiform_event_log::default_run_event_paths(&run_directory);
+    let workflow = janiform_event_log::WorkflowRef::labeled("fit", "Fit");
+    let mut writer = janiform_event_log::RunEventLogWriter::create(
+        &event_paths.event_log_path,
+        Some(&event_paths.latest_state_snapshot_path),
+        "run-001",
+        workflow.clone(),
+    )
+    .expect("event writer should be created");
+    writer
+        .append_event(&janiform_event_log::RunEvent::at(
+            "2026-04-26T10:00:00Z",
+            "run-001",
+            workflow,
+            janiform_event_log::EventDeliveryPriority::Required,
+            janiform_event_log::RunEventPayload::Lifecycle(
+                janiform_event_log::RunLifecycleEvent::RunCompleted {
+                    total_runtime_seconds: 1.0,
+                },
+            ),
+        ))
+        .expect("event should write");
+    writer.flush().expect("event log should flush");
+
+    let output = janiform_command()
+        .args([
+            "--json",
+            "inspect",
+            "run",
+            run_directory
+                .to_str()
+                .expect("temporary run path should be valid UTF-8"),
+        ])
+        .output()
+        .expect("janiform command should execute");
+
+    assert_eq!(output.status.code(), Some(CliExitCode::Success as i32));
+
+    let stdout = String::from_utf8(output.stdout).expect("json output should be UTF-8");
+    let payload: serde_json::Value =
+        serde_json::from_str(&stdout).expect("stdout should contain one JSON object");
+    assert_eq!(payload["run_id"], "run-001");
+    assert_eq!(payload["status"], "completed");
+    assert_eq!(payload["event_count"], 1);
+
+    std::fs::remove_dir_all(run_directory).expect("temporary run directory should be removable");
 }
 
 #[test]
@@ -296,6 +346,18 @@ fn temporary_config_path() -> std::path::PathBuf {
 
     std::env::temp_dir().join(format!(
         "janiform-cli-config-{}-{timestamp}.toml",
+        std::process::id()
+    ))
+}
+
+fn temporary_run_directory(label: &str) -> std::path::PathBuf {
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock should be after UNIX epoch")
+        .as_nanos();
+
+    std::env::temp_dir().join(format!(
+        "janiform-cli-{label}-{}-{timestamp}",
         std::process::id()
     ))
 }

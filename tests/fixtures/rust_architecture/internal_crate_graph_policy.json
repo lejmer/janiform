@@ -196,6 +196,12 @@
         "janiform-validation"
       ]
     },
+    "janiform-event-log": {
+      "status": "existing",
+      "kind": "production",
+      "layer": "event_log",
+      "allowed_internal_dependencies": []
+    },
     "janiform-cli-ui": {
       "status": "existing",
       "kind": "production",
@@ -207,6 +213,7 @@
       "kind": "boundary",
       "layer": "cli_boundary",
       "allowed_internal_dependencies": [
+        "janiform-event-log",
         "janiform-cli-ui"
       ]
     },

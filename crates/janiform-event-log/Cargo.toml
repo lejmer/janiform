@@ -1,0 +1,25 @@
+[package]
+name = "janiform-event-log"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Structured run event logs, latest-state snapshots, and replay support for Janiform."
+readme = "README.md"
+autotests = false
+
+[lib]
+name = "janiform_event_log"
+path = "src/lib.rs"
+doctest = false
+
+[dependencies]
+chrono = { workspace = true }
+crossbeam-channel = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = "2.0.17"
+
+[[test]]
+name = "event_log"
+path = "tests/event_log.rs"

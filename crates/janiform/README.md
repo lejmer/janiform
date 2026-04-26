@@ -21,6 +21,7 @@ This version is `0.0.0`. The source for this crate lives [here](https://github.c
 - [janiform-engine-pricing](https://github.com/lejmer/janiform/blob/main/crates/janiform-engine-pricing): Pricing runtime engine for Janiform.
 - [janiform-engine-simulation](https://github.com/lejmer/janiform/blob/main/crates/janiform-engine-simulation): Simulation runtime engine for Janiform.
 - [janiform-engine-sufficient-statistics](https://github.com/lejmer/janiform/blob/main/crates/janiform-engine-sufficient-statistics): Sufficient-statistics runtime engine for Janiform.
+- [janiform-event-log](https://github.com/lejmer/janiform/blob/main/crates/janiform-event-log): Structured run event logs, latest-state snapshots, and replay support for Janiform.
 - [janiform-foundations](https://github.com/lejmer/janiform/blob/main/crates/janiform-foundations): Low-level shared foundation primitives for Janiform.
 - [janiform-governance](https://github.com/lejmer/janiform/blob/main/crates/janiform-governance): Governance and regression orchestration for Janiform.
 - [janiform-governance-bench](https://github.com/lejmer/janiform/blob/main/crates/janiform-governance-bench): Benchmark governance support for Janiform.

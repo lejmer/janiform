@@ -5,6 +5,7 @@ use crate::commands::fit::FitStagedSubcommand;
 use crate::commands::fit::FitSubcommand;
 use crate::commands::hourly_factors::HourlyFactorsSubcommand;
 use crate::commands::inspection::InspectSubcommand;
+use crate::commands::inspection::run_inspect_run;
 use crate::commands::presets::PresetsSubcommand;
 use crate::commands::pricing::PriceSubcommand;
 use crate::commands::reporting::ReportSubcommand;
@@ -24,7 +25,7 @@ pub(crate) fn dispatch(context: &CommandContext, command: RootCommand) -> Result
     match command {
         RootCommand::Fit(command) => dispatch_fit(command.command),
         RootCommand::Inspect(command) => match command.command {
-            InspectSubcommand::Run(_) => not_implemented("inspect run"),
+            InspectSubcommand::Run(command) => run_inspect_run(context, command),
             InspectSubcommand::Model(_) => not_implemented("inspect model"),
         },
         RootCommand::Report(command) => match command.command {
