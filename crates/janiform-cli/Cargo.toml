@@ -22,6 +22,7 @@ janiform = { path = "../janiform" }
 janiform-terminal-ui = { path = "../janiform-terminal-ui" }
 janiform-event-log = { path = "../janiform-event-log" }
 janiform-foundations = { path = "../janiform-foundations" }
+janiform-workflows = { path = "../janiform-workflows" }
 miette = { version = "7.6.0", features = ["derive"] }
 serde = { workspace = true }
 serde_json = { workspace = true }

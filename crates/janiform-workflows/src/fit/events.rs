@@ -1,9 +1,10 @@
 use std::path::Path;
 
-use janiform::calibration::{
-    CalibrationStage, CalibrationStageProgressPhase, CalibrationStagedRunFailure,
-    CalibrationStagedRunObserverEvent, CalibrationStagedRunReport,
-    JointRefinementStageProgressPhase, ReturnComponentsStageProgressPhase,
+use janiform_calibration_artifacts::CalibrationStage;
+use janiform_calibration_runtime::{
+    CalibrationStageProgressPhase, CalibrationStagedRunFailure, CalibrationStagedRunObserverEvent,
+    CalibrationStagedRunReport, JointRefinementStageProgressPhase,
+    ReturnComponentsStageProgressPhase,
 };
 use janiform_event_log::{
     EventDeliveryPriority, ProgressMeasure as EventProgressMeasure, RunArtifactEvent,
@@ -12,17 +13,19 @@ use janiform_event_log::{
 };
 use janiform_terminal_ui::{ProgressEvent, ProgressMeasure as UiProgressMeasure};
 
-use crate::commands::fit::labels::stage_label;
-use crate::error::CliError;
+use crate::error::WorkflowError;
 
-pub(super) fn run_events_from_staged_event(
+use super::labels::stage_label;
+
+/// Convert a staged runtime observer event into durable run events.
+pub fn run_events_from_staged_event(
     event: &CalibrationStagedRunObserverEvent,
     workflow: WorkflowRef,
     scope_id: &str,
     scope_label: &str,
     input_paths: &[String],
     output_directory: &str,
-) -> Result<Vec<RunEvent>, CliError> {
+) -> Result<Vec<RunEvent>, WorkflowError> {
     let run_events = match event {
         CalibrationStagedRunObserverEvent::RunStarted {
             run_id,
@@ -153,9 +156,10 @@ pub(super) fn run_events_from_staged_event(
     Ok(run_events)
 }
 
-pub(super) fn progress_event_from_staged_event(
+/// Convert a staged runtime observer event into a terminal progress event.
+pub fn progress_event_from_staged_event(
     event: &CalibrationStagedRunObserverEvent,
-) -> Result<Option<ProgressEvent>, CliError> {
+) -> Result<Option<ProgressEvent>, WorkflowError> {
     let progress_event = match event {
         CalibrationStagedRunObserverEvent::RunStarted { run_id, .. } => {
             Some(ProgressEvent::RunStarted {
@@ -189,7 +193,7 @@ pub(super) fn progress_event_from_staged_event(
         } => Some(ProgressEvent::StageProgress {
             phase: phase_label(progress_phase).to_string(),
             measure: UiProgressMeasure::bounded(*completed_units, *total_units)
-                .map_err(|source| CliError::OutputProgress { source })?,
+                .map_err(|source| WorkflowError::OutputProgress { source })?,
             latest_signal: progress_signal(
                 current_item_label.as_deref(),
                 *current_evaluation_count,
@@ -219,14 +223,14 @@ pub(super) fn progress_event_from_staged_event(
     Ok(progress_event)
 }
 
-pub(super) fn append_artifact_event(
+pub(crate) fn append_artifact_event(
     event_writer: &mut RunEventLogWriter,
     workflow: WorkflowRef,
     run_id: &str,
     artifact_kind: &str,
     path: &Path,
     stage: Option<CalibrationStage>,
-) -> Result<(), CliError> {
+) -> Result<(), WorkflowError> {
     event_writer
         .append_event(&RunEvent::new(
             run_id.to_string(),
@@ -240,17 +244,19 @@ pub(super) fn append_artifact_event(
                 label: None,
             }),
         ))
-        .map_err(|source| CliError::FitEventLog { source })
+        .map_err(|source| WorkflowError::FitEventLog { source })
 }
 
-pub(super) fn failure_reason(report: &CalibrationStagedRunReport) -> Result<String, CliError> {
+/// Resolve a user-facing failure reason from a staged run report.
+pub fn failure_reason(report: &CalibrationStagedRunReport) -> Result<String, WorkflowError> {
     match report.failure.as_ref() {
         Some(failure) => serialized_failure_reason(failure),
         None => Ok("staged calibration did not complete successfully".to_string()),
     }
 }
 
-pub(super) fn failed_stage_label(report: &CalibrationStagedRunReport) -> String {
+/// Resolve the failed stage label for a staged run report.
+pub fn failed_stage_label(report: &CalibrationStagedRunReport) -> String {
     match report.failure.as_ref() {
         Some(CalibrationStagedRunFailure::MissingStageInput { stage })
         | Some(CalibrationStagedRunFailure::MissingInMemoryUpstreamPayload {
@@ -266,7 +272,8 @@ pub(super) fn failed_stage_label(report: &CalibrationStagedRunReport) -> String 
     }
 }
 
-pub(super) fn resume_availability(report: &CalibrationStagedRunReport) -> String {
+/// Resolve the latest available resume checkpoint label.
+pub fn resume_availability(report: &CalibrationStagedRunReport) -> String {
     report
         .emitted_checkpoints
         .last()
@@ -274,8 +281,10 @@ pub(super) fn resume_availability(report: &CalibrationStagedRunReport) -> String
         .unwrap_or_else(|| "not available".to_string())
 }
 
-fn serialized_failure_reason(failure: &CalibrationStagedRunFailure) -> Result<String, CliError> {
-    serde_json::to_string(failure).map_err(|source| CliError::OutputSerialize { source })
+fn serialized_failure_reason(
+    failure: &CalibrationStagedRunFailure,
+) -> Result<String, WorkflowError> {
+    serde_json::to_string(failure).map_err(|source| WorkflowError::OutputSerialize { source })
 }
 
 fn progress_signal(

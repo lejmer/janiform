@@ -5,10 +5,9 @@ use janiform_terminal_ui::{
     ArtifactPathGroup, KeyValueRow, StageChecklist, StageChecklistItem, StageChecklistStatus,
     StartSummary, WarningBlock, format_artifact_path, format_path,
 };
+use janiform_workflows::fit::{market_data_file_format_label, stage_label, workflow_scope_label};
 
-use super::labels::{
-    market_data_file_format_label, optional_label, stage_label, workflow_scope_label,
-};
+use super::labels::optional_label;
 use super::preparation::{PreparedFitPreview, fit_warnings};
 use crate::context::CommandContext;
 

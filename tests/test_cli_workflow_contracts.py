@@ -48,7 +48,7 @@ from tests.support.cli import (
     write_json_path as _write_json_path,
     write_market_data_input_files as _write_market_data_input_files,
 )
-from tests.support.high_level_workflows import build_full_workflow_model
+from tests.support.fit.workflows import build_full_workflow_model
 
 
 def test_simulation_cli_help_documents_required_contract_inputs() -> None:

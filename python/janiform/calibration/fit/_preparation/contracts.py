@@ -78,8 +78,4 @@ class FitExecutionConfiguration:
     preparation: FitPreparationConfiguration
     output_controller_factory: Callable[..., Any]
     prepare_fit_workflow: Callable[..., PreparedFitWorkflow]
-    prepared_staged_runner: Callable[..., tuple[Any, dict[str, Any]]]
-    use_default_prepared_runner: bool
-    evented_prepared_runner: Callable[..., tuple[Any, dict[str, Any]]]
-    resume_evented_prepared_runner: Callable[..., tuple[Any, dict[str, Any]]]
     build_fit_inference_metadata: Callable[[PreparedFitWorkflow], dict[str, Any]]

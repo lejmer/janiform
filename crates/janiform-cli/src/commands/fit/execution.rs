@@ -1,44 +1,31 @@
 use std::fs;
-use std::path::Path;
+use std::io::Write;
 use std::path::PathBuf;
-use std::time::Duration;
-use std::time::Instant;
 
-use janiform::calendar::{ExchangeCalendarRegistry, ExchangeCalendarRegistryLoader};
 use janiform::calibration::{
-    CalibrationResumeSettings, CalibrationStageExecutionStatus, CalibrationStagedExecutionInput,
-    CalibrationStagedExecutionRuntimeResources, CalibrationStagedRunObserverEvent,
-    CalibrationStagedRunReport, MarketDataSessionConfiguration,
-    resolve_market_data_session_configuration,
-    run_staged_calibration_from_execution_input_with_observer,
+    CalibrationStageExecutionStatus, CalibrationStagedExecutionInput,
+    CalibrationStagedExecutionRuntimeResources,
 };
+use janiform_event_log::RunEvent;
 use janiform_terminal_ui::{ProgressAdapter, format_path};
+use janiform_workflows::error::WorkflowError;
+use janiform_workflows::fit::{
+    FitCompletionView, FitExecutionObserver, FitExecutionOutput, FitExecutionRequest,
+    FitWorkflowPaths, apply_resume_settings as apply_fit_resume_settings, failure_reason,
+    fit_completion_json_payload, fit_completion_view, fit_start_summary,
+    run_fit_execution as run_shared_fit_execution,
+    staged_execution_paths as shared_staged_execution_paths,
+};
 use serde_json::Value;
 use serde_json::json;
 
-mod artifacts;
-mod events;
-mod output;
-mod scope;
-
-use artifacts::{build_fit_report_payload, build_model_payload, write_pretty_json};
-use events::{
-    append_artifact_event, failure_reason, progress_event_from_staged_event,
-    run_events_from_staged_event,
-};
-use janiform_event_log::{RunEventLogWriter, WorkflowRef, default_run_event_paths};
-use output::{emit_completion_output, emit_start_summary};
-use scope::workflow_scope_label_for_input;
-
 use super::args::FitCommand;
 use super::args::StagedExecutionOptions;
-use super::preparation::{
-    FitPreparationOverrides, FitPreviewPaths, PreparedFitPreview, prepare_fit_preview,
-};
+use super::preparation::{FitPreparationOverrides, PreparedFitPreview, prepare_fit_preview};
 use crate::commands::options::CalibrationStageOption;
 use crate::commands::shared::calibration::calibration_execution_mode;
 use crate::commands::shared::calibration::calibration_stage;
-use crate::commands::shared::output::write_json_event;
+use crate::commands::shared::output::write_json_payload;
 use crate::commands::shared::output_paths::default_run_output_directory;
 use crate::context::CommandContext;
 use crate::context::EventStreamFormat;
@@ -135,15 +122,13 @@ impl ExecutionArtifacts<'_> {
         &self,
         context: &CommandContext,
         execution_input: &CalibrationStagedExecutionInput,
-    ) -> FitPreviewPaths {
+    ) -> FitWorkflowPaths {
         match self {
-            Self::PreparedFit(prepared) => FitPreviewPaths {
-                output_directory: prepared.paths.output_directory.clone(),
-                model_path: prepared.paths.model_path.clone(),
-                report_path: prepared.paths.report_path.clone(),
-                checkpoint_directory: prepared.paths.checkpoint_directory.clone(),
-            },
-            Self::StagedInput { .. } => staged_execution_paths(context, execution_input),
+            Self::PreparedFit(prepared) => prepared.paths.clone(),
+            Self::StagedInput { .. } => shared_staged_execution_paths(
+                execution_input,
+                default_run_output_directory(context, &execution_input.request.run_id),
+            ),
         }
     }
 
@@ -194,40 +179,25 @@ impl ExecutionArtifacts<'_> {
         }
     }
 
-    fn staged_execution_input_path(&self) -> Option<&Path> {
+    fn staged_execution_input_path(&self) -> Option<PathBuf> {
         match self {
             Self::PreparedFit(_) => None,
             Self::StagedInput {
                 execution_input_path,
-            } => Some(execution_input_path.as_path()),
+            } => Some(execution_input_path.clone()),
         }
     }
 
-    fn session_definition_json(
-        &self,
-        execution_input: &CalibrationStagedExecutionInput,
-    ) -> Result<String, CliError> {
+    fn session_definition_json(&self) -> Option<String> {
         match self {
-            Self::PreparedFit(prepared) => Ok(prepared
-                .plan
-                .session_resolution
-                .resolved_session_definition_json
-                .clone()),
-            Self::StagedInput { .. } => {
-                let session_resolution = resolve_market_data_session_configuration(
-                    MarketDataSessionConfiguration {
-                        exchange_code: execution_input.request.data_inputs.exchange_code.clone(),
-                        session_definition_source: None,
-                        session_timezone: None,
-                    },
-                    None,
-                )
-                .map_err(|source| CliError::FitExecutionFailed {
-                    message: format!("failed to resolve staged calendar registry: {source}"),
-                })?;
-
-                Ok(session_resolution.resolved_session_definition_json)
-            }
+            Self::PreparedFit(prepared) => Some(
+                prepared
+                    .plan
+                    .session_resolution
+                    .resolved_session_definition_json
+                    .clone(),
+            ),
+            Self::StagedInput { .. } => None,
         }
     }
 }
@@ -237,288 +207,133 @@ fn run_execution_input(
     execution_input: CalibrationStagedExecutionInput,
     artifacts: ExecutionArtifacts<'_>,
 ) -> Result<(), CliError> {
-    let _execution_plan = execution_input
-        .clone()
-        .build_execution_plan()
-        .map_err(|source| CliError::StagedExecutionPlanFailed { source })?;
-
-    let session_definition_json = artifacts.session_definition_json(&execution_input)?;
-
-    let calendar_registry = ExchangeCalendarRegistryLoader::load_from_json(
-        session_definition_json.as_str(),
-    )
-    .map_err(|source| CliError::FitExecutionFailed {
-        message: format!("failed to load resolved calendar registry: {source}"),
-    })?;
-
     let paths = artifacts.paths(context, &execution_input);
-
-    fs::create_dir_all(paths.output_directory.as_path()).map_err(|source| {
-        CliError::FitArtifactWrite {
-            path: paths.output_directory.clone(),
-            source,
-        }
-    })?;
-
-    let event_paths = default_run_event_paths(paths.output_directory.as_path());
-
-    let workflow = WorkflowRef::labeled("fit", "Fit");
-
-    let mut event_writer = RunEventLogWriter::create(
-        &event_paths.event_log_path,
-        Some(&event_paths.latest_state_snapshot_path),
-        execution_input.request.run_id.clone(),
-        workflow.clone(),
-    )
-    .map_err(|source| CliError::FitEventLog { source })?;
-
     let input_paths = artifacts.input_paths(&execution_input);
 
     emit_start_summary(context, &execution_input, input_paths.as_slice(), &paths)?;
 
-    let output_directory = format_path(paths.output_directory.as_path());
+    let mut progress_adapter = match context.output_mode() {
+        OutputMode::Human | OutputMode::Quiet => Some(ProgressAdapter::stderr()),
+        OutputMode::Json | OutputMode::Silent => None,
+    };
+    let mut machine_event_sink = write_machine_event;
 
-    let (report, execution_duration) = run_staged_with_observer(
-        context,
-        &execution_input,
-        &calendar_registry,
-        &mut event_writer,
-        &workflow,
-        input_paths.as_slice(),
-        output_directory.as_str(),
+    // Completion rendering happens after the shared runner consumes the request.
+    // Keep boundary copies here rather than making the workflow API borrow CLI state.
+    let completion_execution_input = execution_input.clone();
+    let completion_paths = paths.clone();
+
+    let output = run_shared_fit_execution(
+        FitExecutionRequest {
+            execution_input,
+            paths,
+            input_paths,
+            preparation_payload: artifacts.preparation_payload(),
+            staged_execution_input_path: artifacts.staged_execution_input_path(),
+            session_definition_json: artifacts.session_definition_json(),
+        },
+        FitExecutionObserver {
+            progress_adapter: progress_adapter.as_mut(),
+            machine_event_sink: machine_event_sink_for_context(context, &mut machine_event_sink),
+        },
     )?;
-
-    write_execution_artifacts(
-        &paths,
-        &execution_input,
-        &report,
-        &artifacts,
-        &mut event_writer,
-        &workflow,
-    )?;
-
-    event_writer
-        .flush()
-        .map_err(|source| CliError::FitEventLog { source })?;
 
     emit_completion_output(
         context,
-        &execution_input,
-        &report,
-        &paths,
-        event_paths.event_log_path.as_path(),
-        execution_duration,
+        &completion_execution_input,
+        &completion_paths,
+        &output,
     )?;
 
-    if report.status != CalibrationStageExecutionStatus::Success {
+    if output.report.status != CalibrationStageExecutionStatus::Success {
         return Err(CliError::FitExecutionFailed {
-            message: failure_reason(&report)?,
+            message: failure_reason(&output.report)?,
         });
     }
 
     Ok(())
 }
 
-fn run_staged_with_observer(
+fn emit_start_summary(
     context: &CommandContext,
     execution_input: &CalibrationStagedExecutionInput,
-    calendar_registry: &ExchangeCalendarRegistry,
-    event_writer: &mut RunEventLogWriter,
-    workflow: &WorkflowRef,
     input_paths: &[String],
-    output_directory: &str,
-) -> Result<(CalibrationStagedRunReport, Duration), CliError> {
-    let mut progress_adapter = match context.output_mode() {
-        OutputMode::Human | OutputMode::Quiet => Some(ProgressAdapter::stderr()),
-        OutputMode::Json | OutputMode::Silent => None,
-    };
-
-    let emit_machine_events =
-        context.event_settings().stream_format == Some(EventStreamFormat::Jsonl);
-
-    let scope_id = scope::workflow_scope_id(execution_input);
-
-    let scope_label = workflow_scope_label_for_input(execution_input);
-
-    let mut observer_error: Option<CliError> = None;
-
-    let mut observer = |event: CalibrationStagedRunObserverEvent| {
-        if observer_error.is_some() {
-            return;
-        }
-
-        if let Err(error) = observe_progress(&mut progress_adapter, &event) {
-            observer_error = Some(error);
-            return;
-        }
-
-        if let Err(error) = observe_run_events(
-            event_writer,
-            workflow,
-            scope_id.as_str(),
-            scope_label,
-            input_paths,
-            output_directory,
-            emit_machine_events,
-            &event,
-        ) {
-            observer_error = Some(error);
-        }
-    };
-
-    let execution_started_at = Instant::now();
-
-    let run_result = run_staged_calibration_from_execution_input_with_observer(
-        execution_input.clone(),
-        calendar_registry,
-        None,
-        &mut observer,
-    );
-
-    let execution_duration = execution_started_at.elapsed();
-
-    drop(observer);
-
-    if let Some(observer_error) = observer_error {
-        return Err(observer_error);
-    }
-
-    let report = run_result.map_err(|source| CliError::StagedExecutionPlanFailed { source })?;
-
-    Ok((report, execution_duration))
-}
-
-fn observe_progress(
-    progress_adapter: &mut Option<ProgressAdapter>,
-    event: &CalibrationStagedRunObserverEvent,
+    paths: &FitWorkflowPaths,
 ) -> Result<(), CliError> {
-    let Some(progress_event) = progress_event_from_staged_event(event)? else {
-        return Ok(());
-    };
-
-    let Some(progress_adapter) = progress_adapter.as_mut() else {
-        return Ok(());
-    };
-
-    progress_adapter.observe(progress_event);
-    progress_adapter
-        .draw_latest()
-        .map_err(|source| CliError::OutputProgress { source })
-}
-
-fn observe_run_events(
-    event_writer: &mut RunEventLogWriter,
-    workflow: &WorkflowRef,
-    scope_id: &str,
-    scope_label: &str,
-    input_paths: &[String],
-    output_directory: &str,
-    emit_machine_events: bool,
-    event: &CalibrationStagedRunObserverEvent,
-) -> Result<(), CliError> {
-    let run_events = run_events_from_staged_event(
-        event,
-        workflow.clone(),
-        scope_id,
-        scope_label,
-        input_paths,
-        output_directory,
-    )?;
-
-    for run_event in run_events {
-        event_writer
-            .append_event(&run_event)
-            .map_err(|source| CliError::FitEventLog { source })?;
-        if emit_machine_events {
-            write_json_event(&run_event)?;
-        }
-    }
-
-    Ok(())
-}
-
-fn write_execution_artifacts(
-    paths: &FitPreviewPaths,
-    execution_input: &CalibrationStagedExecutionInput,
-    report: &CalibrationStagedRunReport,
-    artifacts: &ExecutionArtifacts<'_>,
-    event_writer: &mut RunEventLogWriter,
-    workflow: &WorkflowRef,
-) -> Result<(), CliError> {
-    let report_payload = build_fit_report_payload(
-        execution_input,
-        report,
-        artifacts.preparation_payload(),
-        artifacts.staged_execution_input_path(),
-    )?;
-
-    write_pretty_json(paths.report_path.as_path(), &report_payload)?;
-
-    append_artifact_event(
-        event_writer,
-        workflow.clone(),
-        execution_input.request.run_id.as_str(),
-        "fit_report",
-        paths.report_path.as_path(),
-        None,
-    )?;
-
-    if report.status != CalibrationStageExecutionStatus::Success {
+    if context.output_mode() != OutputMode::Human {
         return Ok(());
     }
 
-    let model_payload = build_model_payload(execution_input, report, &report_payload)?;
+    let rendered =
+        fit_start_summary(execution_input, input_paths, paths).render(&context.stdout_renderer());
 
-    write_pretty_json(paths.model_path.as_path(), &model_payload)?;
-
-    append_artifact_event(
-        event_writer,
-        workflow.clone(),
-        execution_input.request.run_id.as_str(),
-        "model",
-        paths.model_path.as_path(),
-        None,
-    )
+    context
+        .stdout_renderer()
+        .write_stdout(&rendered)
+        .map_err(|source| CliError::OutputWrite { source })
 }
 
-fn staged_execution_paths(
+fn emit_completion_output(
     context: &CommandContext,
     execution_input: &CalibrationStagedExecutionInput,
-) -> FitPreviewPaths {
-    let checkpoint_directory = execution_input
-        .runtime_resources
-        .as_ref()
-        .and_then(|resources| resources.disk_checkpoint_directory.as_ref())
-        .map(PathBuf::from);
+    paths: &FitWorkflowPaths,
+    output: &FitExecutionOutput,
+) -> Result<(), CliError> {
+    match context.output_mode() {
+        OutputMode::Json => write_json_payload(&fit_completion_json_payload(
+            execution_input,
+            &output.report,
+            paths,
+            output.event_log_path.as_path(),
+        )),
+        OutputMode::Silent => Ok(()),
+        OutputMode::Human | OutputMode::Quiet => {
+            let rendered = match fit_completion_view(
+                &output.report,
+                paths,
+                output.event_log_path.as_path(),
+                output.execution_duration,
+            )? {
+                FitCompletionView::Success(summary) => summary.render(&context.stdout_renderer()),
+                FitCompletionView::Failure(summary) => summary.render(&context.stdout_renderer()),
+            };
 
-    let output_directory = checkpoint_directory
-        .as_ref()
-        .and_then(|path| path.parent().map(Path::to_path_buf))
-        .unwrap_or_else(|| default_run_output_directory(context, &execution_input.request.run_id));
-
-    let checkpoint_directory =
-        checkpoint_directory.unwrap_or_else(|| output_directory.join("checkpoints"));
-
-    FitPreviewPaths {
-        model_path: output_directory.join("artifacts").join("model.jf"),
-        report_path: output_directory.join("artifacts").join("report.json"),
-        checkpoint_directory,
-        output_directory,
+            context
+                .stdout_renderer()
+                .write_stdout(&rendered)
+                .map_err(|source| CliError::OutputWrite { source })
+        }
     }
+}
+
+fn machine_event_sink_for_context<'a>(
+    context: &CommandContext,
+    machine_event_sink: &'a mut dyn FnMut(&RunEvent) -> Result<(), WorkflowError>,
+) -> Option<&'a mut dyn FnMut(&RunEvent) -> Result<(), WorkflowError>> {
+    if context.event_settings().stream_format == Some(EventStreamFormat::Jsonl) {
+        return Some(machine_event_sink);
+    }
+
+    None
+}
+
+fn write_machine_event(event: &RunEvent) -> Result<(), WorkflowError> {
+    let mut stderr = std::io::stderr().lock();
+
+    serde_json::to_writer(&mut stderr, event)
+        .map_err(|source| WorkflowError::OutputSerialize { source })?;
+
+    writeln!(stderr).map_err(|source| WorkflowError::OutputWrite { source })
 }
 
 fn apply_resume_settings(
-    mut execution_input: CalibrationStagedExecutionInput,
+    execution_input: CalibrationStagedExecutionInput,
     checkpoint_reference: Option<&str>,
     resume_from_stage: Option<CalibrationStageOption>,
 ) -> CalibrationStagedExecutionInput {
-    if let Some(checkpoint_reference) = checkpoint_reference {
-        execution_input.request.resume_settings =
-            Some(CalibrationResumeSettings::persisted_checkpoint_reference(
-                checkpoint_reference.to_string(),
-                resume_from_stage.map(calibration_stage),
-            ));
-    }
-
-    execution_input
+    apply_fit_resume_settings(
+        execution_input,
+        checkpoint_reference,
+        resume_from_stage.map(calibration_stage),
+    )
 }

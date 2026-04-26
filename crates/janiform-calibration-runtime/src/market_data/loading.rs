@@ -5,13 +5,13 @@ mod contracts;
 mod known_news;
 mod normalization;
 mod option_surface;
+mod pipeline;
 mod rows;
 mod session_gap_spectrum;
 mod session_resolution;
 mod shared;
 #[cfg(test)]
 mod test_support;
-mod workflow;
 
 pub use contracts::{
     MarketDataDuplicateRecordPolicy, MarketDataInputFileFormat, MarketDataInputFileReference,
@@ -24,8 +24,7 @@ pub use contracts::{
     MarketDataSourceProbePayload, MarketDataSourceSummary, MarketDataTickDataColumnMapping,
     MarketDataTickPriceInputPolicy,
 };
-pub use shared::CalibrationDirectionalLabelDiagnosticsPayload;
-pub use workflow::{
+pub use pipeline::{
     infer_market_data_option_quote_input_policy, infer_market_data_tick_price_input_policy,
     load_and_preprocess_market_data_translation_request, normalize_market_data_source,
     prepare_market_data_loading_from_phases, probe_market_data_source,
@@ -33,3 +32,4 @@ pub use workflow::{
     resolve_market_data_session_configuration,
     resolve_market_data_tick_data_column_mapping_for_source,
 };
+pub use shared::CalibrationDirectionalLabelDiagnosticsPayload;

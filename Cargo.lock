@@ -986,6 +986,7 @@ dependencies = [
  "janiform-event-log",
  "janiform-foundations",
  "janiform-terminal-ui",
+ "janiform-workflows",
  "miette",
  "serde",
  "serde_json",
@@ -1129,6 +1130,9 @@ version = "0.0.0"
 dependencies = [
  "chrono",
  "janiform",
+ "janiform-event-log",
+ "janiform-terminal-ui",
+ "janiform-workflows",
  "pyo3",
  "serde",
  "serde_json",
@@ -1174,6 +1178,20 @@ dependencies = [
  "janiform-test-support",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "janiform-workflows"
+version = "0.0.0"
+dependencies = [
+ "janiform-calibration-artifacts",
+ "janiform-calibration-runtime",
+ "janiform-event-log",
+ "janiform-market-time",
+ "janiform-terminal-ui",
+ "serde",
+ "serde_json",
+ "thiserror",
 ]
 
 [[package]]

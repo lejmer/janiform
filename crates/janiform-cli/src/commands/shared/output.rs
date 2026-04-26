@@ -3,7 +3,6 @@ use std::io;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
-use std::time::Duration;
 
 use serde::Serialize;
 
@@ -19,22 +18,6 @@ where
         .map_err(|source| CliError::OutputSerialize { source })?;
 
     writeln!(stdout).map_err(|source| CliError::OutputWrite { source })
-}
-
-pub(crate) fn write_json_event<T>(event: &T) -> Result<(), CliError>
-where
-    T: Serialize + ?Sized,
-{
-    let mut stderr = std::io::stderr().lock();
-
-    serde_json::to_writer(&mut stderr, event)
-        .map_err(|source| CliError::OutputSerialize { source })?;
-
-    writeln!(stderr).map_err(|source| CliError::OutputWrite { source })
-}
-
-pub(crate) fn format_elapsed_duration(duration: Duration) -> String {
-    format!("{}s", duration.as_secs())
 }
 
 pub(crate) fn write_pretty_json_file<T, F>(

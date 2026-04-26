@@ -67,12 +67,6 @@ from ..presets.registry import PresetRegistry
 from ..presets.resolution import ResolvedPresetWorkflowConfiguration, resolve_preset_workflow_configuration
 from ..sessions.contracts import MarketDataSessionResolution
 from ..staged import CalibrationResumeSettings, CalibrationStageSolverSettings
-from ..staged import runtime as staged_runtime_module
-from ..staged.runtime import (
-    _run_staged_calibration_with_prepared_handle_resume_and_events,
-    run_prepared_staged_calibration_with_raw_payload,
-    run_staged_calibration_with_prepared_handle_and_events,
-)
 from ..._workflow_progress import AbstractProgress, NullProgress
 from ..._workflow_progress import JaniformOutputController
 
@@ -321,8 +315,6 @@ class JaniformEstimator:
 
         effective_silent = self._silent if silent is None else silent
 
-        prepared_staged_runner = run_prepared_staged_calibration_with_raw_payload
-
         return FitExecutionConfiguration(
             silent=effective_silent,
             progress_total_steps=fit_progress_total_steps(preparation_configuration),
@@ -335,20 +327,12 @@ class JaniformEstimator:
                 normalize_market_data_source_method=normalize_market_data_source,
                 resolve_market_data_session_method=resolve_market_data_session,
                 resolve_preset_workflow_configuration_method=resolve_preset_workflow_configuration,
-            translate_market_data_request_to_prepared_calibration_from_phases_method=(
-                translate_market_data_request_to_prepared_calibration_from_phases
-            ),
+                translate_market_data_request_to_prepared_calibration_from_phases_method=(
+                    translate_market_data_request_to_prepared_calibration_from_phases
+                ),
                 prepare_market_data_calibration_from_translation_result_method=(
                     _prepare_market_data_calibration_from_translation_result
                 ),
-            ),
-            prepared_staged_runner=prepared_staged_runner,
-            use_default_prepared_runner=(
-                prepared_staged_runner is staged_runtime_module.run_prepared_staged_calibration_with_raw_payload
-            ),
-            evented_prepared_runner=run_staged_calibration_with_prepared_handle_and_events,
-            resume_evented_prepared_runner=(
-                _run_staged_calibration_with_prepared_handle_resume_and_events
             ),
             build_fit_inference_metadata=self._build_fit_inference_metadata,
         )

@@ -1053,6 +1053,12 @@ def resolve_market_data_session(
 ) -> object: ...
 
 
+def run_prepared_fit_workflow(
+    prepared_handle: PreparedCalibrationExecutionHandle,
+    request: object,
+) -> object: ...
+
+
 def run_coarse_simulation(
     seed: int,
     start_time_utc_nanos: int,

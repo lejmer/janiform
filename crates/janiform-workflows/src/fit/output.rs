@@ -1,43 +1,49 @@
 use std::path::Path;
 use std::time::Duration;
 
-use janiform::calibration::{
+use janiform_calibration_runtime::{
     CalibrationStageExecutionStatus, CalibrationStagedExecutionInput, CalibrationStagedRunReport,
 };
 use janiform_terminal_ui::{
     CompletionSummary, CompletionSummaryStatus, FailureBlock, KeyValueRow, StartSummary,
-    format_artifact_path, format_path,
+    format_artifact_path, format_duration_seconds, format_path,
 };
+use serde_json::Value;
 use serde_json::json;
 
-use super::events::{failed_stage_label, failure_reason, resume_availability};
-use super::scope::workflow_scope_label_for_input;
-use crate::commands::fit::payloads::FIT_RUN_COMMAND_ID;
-use crate::commands::fit::payloads::FIT_RUN_SCHEMA_VERSION;
-use crate::commands::fit::preparation::FitPreviewPaths;
-use crate::commands::shared::output::format_elapsed_duration;
-use crate::commands::shared::output::write_json_payload;
-use crate::context::CommandContext;
-use crate::context::OutputMode;
-use crate::error::CliError;
+use crate::error::WorkflowError;
 
-pub(super) fn emit_start_summary(
-    context: &CommandContext,
+use super::events::{failed_stage_label, failure_reason, resume_availability};
+use super::execution::FitWorkflowPaths;
+use super::scope::workflow_scope_label_for_input;
+
+const FIT_RUN_SCHEMA_VERSION: &str = "janiform.fit_run.v1";
+const FIT_RUN_COMMAND_ID: &str = "fit";
+
+/// Human completion view for a fit workflow.
+#[derive(Debug)]
+pub enum FitCompletionView {
+    /// Successful completion summary.
+    Success(CompletionSummary),
+    /// Failed completion summary.
+    Failure(FailureBlock),
+}
+
+/// Build the human start summary for a fit workflow.
+pub fn fit_start_summary(
     execution_input: &CalibrationStagedExecutionInput,
     input_paths: &[String],
-    paths: &FitPreviewPaths,
-) -> Result<(), CliError> {
-    if context.output_mode() != OutputMode::Human {
-        return Ok(());
-    }
-
+    paths: &FitWorkflowPaths,
+) -> StartSummary {
     let mut rows = vec![
         KeyValueRow::new("Run", execution_input.request.run_id.clone()),
         KeyValueRow::new("Scope", workflow_scope_label_for_input(execution_input)),
     ];
+
     for input in input_paths {
         rows.push(KeyValueRow::new("Input", input.clone()));
     }
+
     rows.push(KeyValueRow::new(
         "Known news",
         known_news_participation(execution_input),
@@ -51,63 +57,63 @@ pub(super) fn emit_start_summary(
         format_path(paths.output_directory.as_path()),
     ));
 
-    let rendered = StartSummary {
+    StartSummary {
         title: "Janiform fit".to_string(),
         rows,
     }
-    .render(&context.stdout_renderer());
-
-    context
-        .stdout_renderer()
-        .write_stdout(&rendered)
-        .map_err(|source| CliError::OutputWrite { source })
 }
 
-pub(super) fn emit_completion_output(
-    context: &CommandContext,
+/// Build the machine completion payload for a fit workflow.
+pub fn fit_completion_json_payload(
     execution_input: &CalibrationStagedExecutionInput,
     report: &CalibrationStagedRunReport,
-    paths: &FitPreviewPaths,
+    paths: &FitWorkflowPaths,
+    event_log_path: &Path,
+) -> Value {
+    json!({
+        "schema_version": FIT_RUN_SCHEMA_VERSION,
+        "command_id": FIT_RUN_COMMAND_ID,
+        "run_id": execution_input.request.run_id,
+        "status": report.status,
+        "model_path": (report.status == CalibrationStageExecutionStatus::Success).then_some(&paths.model_path),
+        "report_path": paths.report_path,
+        "event_log_path": event_log_path,
+        "checkpoint_count": report.emitted_checkpoints.len(),
+        "resume": {
+            "resumed_from_checkpoint_reference": report.resumed_from_checkpoint_reference,
+            "resumed_from_last_successful_stage": report.resumed_from_last_successful_stage,
+            "started_from_stage": report.started_from_stage,
+        },
+        "failure": report.failure,
+    })
+}
+
+/// Build the human completion view for a fit workflow.
+pub fn fit_completion_view(
+    report: &CalibrationStagedRunReport,
+    paths: &FitWorkflowPaths,
     event_log_path: &Path,
     execution_duration: Duration,
-) -> Result<(), CliError> {
-    match context.output_mode() {
-        OutputMode::Json => write_json_payload(&json!({
-            "schema_version": FIT_RUN_SCHEMA_VERSION,
-            "command_id": FIT_RUN_COMMAND_ID,
-            "run_id": execution_input.request.run_id,
-            "status": report.status,
-            "model_path": (report.status == CalibrationStageExecutionStatus::Success).then_some(&paths.model_path),
-            "report_path": paths.report_path,
-            "event_log_path": event_log_path,
-            "checkpoint_count": report.emitted_checkpoints.len(),
-            "resume": {
-                "resumed_from_checkpoint_reference": report.resumed_from_checkpoint_reference,
-                "resumed_from_last_successful_stage": report.resumed_from_last_successful_stage,
-                "started_from_stage": report.started_from_stage,
-            },
-            "failure": report.failure,
-        })),
-        OutputMode::Silent => Ok(()),
-        OutputMode::Human | OutputMode::Quiet => {
-            let rendered = if report.status == CalibrationStageExecutionStatus::Success {
-                success_summary(report, paths, event_log_path, execution_duration)
-                    .render(&context.stdout_renderer())
-            } else {
-                failure_summary(report, paths, event_log_path)?.render(&context.stdout_renderer())
-            };
-
-            context
-                .stdout_renderer()
-                .write_stdout(&rendered)
-                .map_err(|source| CliError::OutputWrite { source })
-        }
+) -> Result<FitCompletionView, WorkflowError> {
+    if report.status == CalibrationStageExecutionStatus::Success {
+        return Ok(FitCompletionView::Success(success_summary(
+            report,
+            paths,
+            event_log_path,
+            execution_duration,
+        )));
     }
+
+    Ok(FitCompletionView::Failure(failure_summary(
+        report,
+        paths,
+        event_log_path,
+    )?))
 }
 
 fn success_summary(
     report: &CalibrationStagedRunReport,
-    paths: &FitPreviewPaths,
+    paths: &FitWorkflowPaths,
     event_log_path: &Path,
     execution_duration: Duration,
 ) -> CompletionSummary {
@@ -115,7 +121,7 @@ fn success_summary(
         status: CompletionSummaryStatus::Succeeded,
         title: format!(
             "Fit completed in {}",
-            format_elapsed_duration(execution_duration)
+            format_duration_seconds(execution_duration)
         ),
         rows: vec![
             KeyValueRow::new("Model", format_artifact_path(paths.model_path.as_path())),
@@ -136,9 +142,9 @@ fn success_summary(
 
 fn failure_summary(
     report: &CalibrationStagedRunReport,
-    paths: &FitPreviewPaths,
+    paths: &FitWorkflowPaths,
     event_log_path: &Path,
-) -> Result<FailureBlock, CliError> {
+) -> Result<FailureBlock, WorkflowError> {
     Ok(FailureBlock {
         title: "Fit failed".to_string(),
         reason: failure_reason(report)?,

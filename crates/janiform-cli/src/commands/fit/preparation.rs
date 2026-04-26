@@ -9,11 +9,12 @@ use janiform::calibration::{
     prepare_market_data_calibration_plan,
 };
 use janiform_terminal_ui::format_path;
-
-use super::labels::{
-    market_data_file_format_label, tick_price_policy_label, workflow_scope_argument_label,
+use janiform_workflows::fit::{
+    FitWorkflowPaths, fit_workflow_paths, market_data_file_format_label, tick_price_policy_label,
     workflow_scope_label,
 };
+
+use super::labels::workflow_scope_argument_label;
 use crate::commands::options;
 use crate::commands::options::TickDataOptions;
 use crate::commands::options::WorkflowScope;
@@ -35,21 +36,13 @@ pub(crate) struct FitPreparationOverrides {
 pub(crate) struct PreparedFitPreview {
     pub(crate) request: CalibrationMarketDataPreparationRequest,
     pub(crate) plan: PreparedMarketDataCalibrationPlan,
-    pub(crate) paths: FitPreviewPaths,
+    pub(crate) paths: FitWorkflowPaths,
     pub(crate) inputs: FitPreviewInputs,
     pub(crate) explicit_values: Vec<(String, String)>,
     pub(crate) inferred_values: Vec<(String, String)>,
     pub(crate) preset_defaults: Vec<(String, String)>,
     pub(crate) recommended_defaults: Vec<(String, String)>,
     pub(crate) derived_values: Vec<(String, String)>,
-}
-
-#[derive(Debug)]
-pub(crate) struct FitPreviewPaths {
-    pub(crate) output_directory: PathBuf,
-    pub(crate) model_path: PathBuf,
-    pub(crate) report_path: PathBuf,
-    pub(crate) checkpoint_directory: PathBuf,
 }
 
 #[derive(Debug)]
@@ -91,12 +84,7 @@ pub(crate) fn prepare_fit_preview(
         None => default_run_output_directory(context, &run_id),
     };
 
-    let paths = FitPreviewPaths {
-        output_directory: output_directory.clone(),
-        model_path: output_directory.join("artifacts").join("model.jf"),
-        report_path: output_directory.join("artifacts").join("report.json"),
-        checkpoint_directory: output_directory.join("checkpoints"),
-    };
+    let paths = fit_workflow_paths(output_directory.clone());
 
     let explicit_option_surface_value = if inputs.option_surface_path.is_some() {
         Some(

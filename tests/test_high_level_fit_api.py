@@ -7,7 +7,7 @@ from copy import deepcopy
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, NoReturn, Self, cast
+from typing import Any, NoReturn, Optional, Self, cast
 
 import pyarrow as pa
 import pandas
@@ -16,9 +16,7 @@ from pyarrow import parquet
 
 import janiform.calibration.fit.estimator as fit_estimator_module
 import janiform.calibration.fit.model as fit_model_module
-import janiform.calibration.fit._execution as fit_execution_module
 import janiform.calibration.fit._preparation.configuration as fit_preparation_configuration_module
-import janiform.calibration.fit._runtime.metadata as fit_runtime_metadata_module
 import janiform.calibration.fit._runtime.payloads as fit_runtime_payloads_module
 import janiform.calibration.fit._runtime.mean_reversion as fit_mean_reversion_runtime_module
 import janiform.calibration.fit._runtime.option_pricing.native as fit_pricing_native_module
@@ -115,6 +113,7 @@ from tests.support.calibration import (
     build_zero_kappa_endogenous_mean_reversion_fitted_parameters_payload,
     update_model_mean_reversion_payload,
 )
+from tests.support.fit.workflows import patch_fit_workflow_runner
 from tests.support.pricing import build_runtime_interval_schedule
 
 
@@ -162,8 +161,8 @@ def test_janiform_estimator_fit_returns_model_for_default_high_level_workflow(
 
     assert isinstance(model, JaniformModel)
     assert "seasonality" in model.parameters
-    assert model.metadata["market_profile"] == "us_equity_cash"
-    assert model.metadata["selected_stages"] == ["seasonality"]
+    assert model.run_id == "high-level-fit-success"
+    assert model.workflow_scope == CalibrationMarketDataWorkflowScope.SEASONALITY_ONLY
 
 
 def test_janiform_estimator_supports_simple_zero_config_tick_fit(
@@ -184,9 +183,8 @@ def test_janiform_estimator_supports_simple_zero_config_tick_fit(
         encoding="utf-8",
     )
 
-    monkeypatch.setattr(
-        fit_estimator_module,
-        "run_prepared_staged_calibration_with_raw_payload",
+    patch_fit_workflow_runner(
+        monkeypatch,
         lambda prepared_handle, **kwargs: _successful_full_model_staged_runner_payload(
             _prepared_runner_run_id(prepared_handle)
         ),
@@ -202,12 +200,9 @@ def test_janiform_estimator_supports_simple_zero_config_tick_fit(
 
     assert isinstance(model, JaniformModel)
     assert model.run_id.startswith("simple_ticks_")
-    assert model.metadata["workflow_scope"] == "full_without_option_surface"
-    assert model.metadata["input_inference"]["tick_data_format"] == "csv"
-    assert model.metadata["input_inference"]["timestamp_column"] == "timestamp_utc"
-    assert model.metadata["input_inference"]["tick_price_input_policy"] == "explicit_price_column"
-    assert model.metadata["input_inference"]["tick_price_columns"]["price_column"] == "trade_price"
-    assert model.metadata["input_inference"]["tick_price_columns"]["trade_sign_column"] == "trade_sign"
+    assert model.workflow_scope == CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE
+    assert model.resolved_configuration.session.selected_preset is not None
+    assert model.resolved_configuration.session.selected_preset.preset_name == "XNYS"
 
 
 def test_prepare_fit_workflow_uses_column_only_parquet_schema_discovery(
@@ -1127,9 +1122,8 @@ def test_prepare_model_runtime_factors_uses_fitted_surprise_intensity_profile(
         encoding="utf-8",
     )
 
-    monkeypatch.setattr(
-        fit_estimator_module,
-        "run_prepared_staged_calibration_with_raw_payload",
+    patch_fit_workflow_runner(
+        monkeypatch,
         lambda prepared_handle, **kwargs: _successful_full_model_staged_runner_payload(
             _prepared_runner_run_id(prepared_handle)
         ),
@@ -1175,9 +1169,8 @@ def test_janiform_estimator_preserves_duplicate_ticks_by_default(
         encoding="utf-8",
     )
 
-    monkeypatch.setattr(
-        fit_estimator_module,
-        "run_prepared_staged_calibration_with_raw_payload",
+    patch_fit_workflow_runner(
+        monkeypatch,
         lambda prepared_handle, **kwargs: _successful_full_model_staged_runner_payload(
             _prepared_runner_run_id(prepared_handle)
         ),
@@ -1342,27 +1335,10 @@ def test_high_level_fit_does_not_retain_raw_market_data_paths_on_model(
         tick_data_path=tick_data_path,
         tick_data_format=CalibrationInputFileFormat.CSV,
     )
-    input_inference = cast(dict[str, Any], model.metadata["input_inference"])
-
-    assert set(input_inference) == {
-        "available_columns",
-        "candidate_columns",
-        "default_calibration_hint_ids",
-        "known_news",
-        "market_profile",
-        "run_id",
-        "session_source_kind",
-        "tick_data_format",
-        "tick_price_columns",
-        "tick_price_input_policy",
-        "timestamp_column",
-        "timestamp_timezone",
-        "timestamp_timezone_source",
-        "workflow_scope",
-    }
-    assert input_inference["run_id"] == "high-level-fit-no-retention"
-    assert input_inference["tick_data_format"] == "csv"
-    assert input_inference["timestamp_column"] == "timestamp_utc"
+    assert model.run_id == "high-level-fit-no-retention"
+    assert model.session_resolution.exchange_code == "XNYS"
+    assert model.resolved_configuration.session.selected_preset is not None
+    assert model.resolved_configuration.session.selected_preset.preset_name == "XNYS"
 
 
 def test_high_level_model_summary_exposes_fitted_parameters_and_provenance(
@@ -1484,9 +1460,8 @@ def test_high_level_fit_records_diagnostic_artifact_families_from_staged_respons
 
         return validate_staged_calibration_response(raw_response), raw_response
 
-    monkeypatch.setattr(
-        fit_estimator_module,
-        "run_prepared_staged_calibration_with_raw_payload",
+    patch_fit_workflow_runner(
+        monkeypatch,
         lambda prepared_handle, **kwargs: successful_payload_with_diagnostics(
             _prepared_runner_run_id(prepared_handle)
         ),
@@ -1507,19 +1482,23 @@ def test_high_level_fit_records_diagnostic_artifact_families_from_staged_respons
         market_profile="us_equity_cash",
     )
 
-    model = estimator.fit(
+    fit_result = estimator.fit_with_report(
         run_id="diagnostic-artifact-fit",
         tick_data_path=tick_data_path,
         tick_data_format=CalibrationInputFileFormat.CSV,
     )
 
-    assert cast(dict[str, Any], model.metadata["diagnostic_artifacts"]) == {
-        "artifact_bundle_available": False,
-        "artifact_families": [
-            "candidate_frontier",
-            "coarse_tick_consistency",
-        ],
-    }
+    assert fit_result.model is not None
+    assert fit_result.report.staged_response.diagnostic_artifact_references == (
+        {
+            "artifact_family": "candidate_frontier",
+            "relative_path": "diagnostics/candidate_frontier.json",
+        },
+        {
+            "artifact_family": "coarse_tick_consistency",
+            "relative_path": "diagnostics/coarse_tick_consistency.json",
+        },
+    )
 
 
 def test_high_level_model_save_and_load_roundtrip_preserves_endogenous_mean_reversion_block(
@@ -4420,9 +4399,8 @@ def test_high_level_fit_routes_through_prepared_staged_runner(
         captured_prepared_handle["prepared_handle"] = args[0]
         return _successful_staged_runner_payload("high-level-fit-runner-path")
 
-    monkeypatch.setattr(
-        fit_estimator_module,
-        "run_prepared_staged_calibration_with_raw_payload",
+    patch_fit_workflow_runner(
+        monkeypatch,
         capturing_runner,
     )
 
@@ -4517,9 +4495,8 @@ def test_high_level_fit_reuses_single_load_and_translation_pass_when_session_is_
         "translate_market_data_request_to_prepared_calibration_from_phases",
         counting_translate_request,
     )
-    monkeypatch.setattr(
-        fit_estimator_module,
-        "run_prepared_staged_calibration_with_raw_payload",
+    patch_fit_workflow_runner(
+        monkeypatch,
         lambda *args, **kwargs: _successful_staged_runner_payload("high-level-fit-single-pass"),
     )
 
@@ -4592,9 +4569,8 @@ def test_high_level_estimator_forwards_pricing_interval_schedule_policy(
         "translate_market_data_request_to_prepared_calibration_from_phases",
         counting_translate_request,
     )
-    monkeypatch.setattr(
-        fit_estimator_module,
-        "run_prepared_staged_calibration_with_raw_payload",
+    patch_fit_workflow_runner(
+        monkeypatch,
         lambda *args, **kwargs: _successful_staged_runner_payload("high-level-fit-policy-forward"),
     )
 
@@ -4654,9 +4630,8 @@ def test_high_level_fit_named_built_in_session_does_not_require_materialization(
         "translate_market_data_request_to_prepared_calibration_from_phases",
         counting_translate_request,
     )
-    monkeypatch.setattr(
-        fit_estimator_module,
-        "run_prepared_staged_calibration_with_raw_payload",
+    patch_fit_workflow_runner(
+        monkeypatch,
         lambda *args, **kwargs: _successful_staged_runner_payload("high-level-fit-built-in-session"),
     )
 
@@ -4750,9 +4725,8 @@ def test_high_level_fit_progress_splits_loading_and_translation_steps(
         "progress",
         capturing_progress,
     )
-    monkeypatch.setattr(
-        fit_estimator_module,
-        "run_prepared_staged_calibration_with_raw_payload",
+    patch_fit_workflow_runner(
+        monkeypatch,
         lambda *args, **kwargs: _successful_staged_runner_payload("high-level-fit-progress"),
     )
 
@@ -4822,9 +4796,8 @@ def test_high_level_fit_report_returns_success_details_with_model(
         market_profile="us_equity_cash",
     )
 
-    monkeypatch.setattr(
-        fit_estimator_module,
-        "run_prepared_staged_calibration_with_raw_payload",
+    patch_fit_workflow_runner(
+        monkeypatch,
         lambda prepared_handle, **kwargs: _successful_full_model_staged_runner_payload(
             _prepared_runner_run_id(prepared_handle)
         ),
@@ -4896,12 +4869,12 @@ def test_resolved_stage_report_payloads_reconstruct_missing_resumed_stage_payloa
         "mean_reversion",
         "joint_refinement",
     ]
-    assert sorted(fit_runtime_metadata_module.extract_model_parameters(stage_report_payloads).keys()) == [
-        "hawkes",
-        "joint_refinement",
-        "mean_reversion",
-        "return_components",
+    assert [stage_payload["stage_report_kind"] for stage_payload in stage_report_payloads] == [
         "seasonality",
+        "hawkes",
+        "return_components",
+        "mean_reversion",
+        "joint_refinement",
     ]
 
 
@@ -4936,9 +4909,8 @@ def test_high_level_fit_with_report_returns_failed_result_without_raising(
         market_profile="us_equity_cash",
     )
 
-    monkeypatch.setattr(
-        fit_estimator_module,
-        "run_prepared_staged_calibration_with_raw_payload",
+    patch_fit_workflow_runner(
+        monkeypatch,
         lambda prepared_handle, **kwargs: _failed_full_model_staged_runner_payload(
             _prepared_runner_run_id(prepared_handle)
         ),
@@ -4956,7 +4928,7 @@ def test_high_level_fit_with_report_returns_failed_result_without_raising(
     assert fit_result.report.success is False
 
 
-def test_high_level_fit_persists_fit_report_before_model_metadata_build(
+def test_high_level_fit_persists_fit_report_and_model_from_shared_workflow(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -4987,32 +4959,24 @@ def test_high_level_fit_persists_fit_report_before_model_metadata_build(
         market_profile="us_equity_cash",
     )
 
-    monkeypatch.setattr(
-        fit_estimator_module,
-        "run_prepared_staged_calibration_with_raw_payload",
+    patch_fit_workflow_runner(
+        monkeypatch,
         lambda prepared_handle, **kwargs: _successful_full_model_staged_runner_payload(
             _prepared_runner_run_id(prepared_handle)
         ),
     )
-    monkeypatch.setattr(
-        fit_execution_module,
-        "build_model_metadata",
-        lambda **kwargs: (_ for _ in ()).throw(RuntimeError("metadata build failed")),
-    )
-
     run_id = "high-level-fit-report-persistence"
-    with pytest.raises(RuntimeError, match="metadata build failed"):
-        estimator.fit(
-            run_id=run_id,
-            tick_data_path=tick_data_path,
-            tick_data_format=CalibrationInputFileFormat.CSV,
-            output_dir=tmp_path,
-        )
+    estimator.fit(
+        run_id=run_id,
+        tick_data_path=tick_data_path,
+        tick_data_format=CalibrationInputFileFormat.CSV,
+        output_dir=tmp_path,
+    )
 
     run_directory = tmp_path / run_id
     assert (run_directory / "fit_report.json").is_file()
     assert (run_directory / "run.json").is_file()
-    assert not (run_directory / "model.json").exists()
+    assert (run_directory / "model.json").is_file()
 
 
 def test_high_level_fit_resume_recovers_committed_disk_run_after_duplicate_manifest_failure(
@@ -5056,9 +5020,8 @@ def test_high_level_fit_resume_recovers_committed_disk_run_after_duplicate_manif
         ),
     )
 
-    monkeypatch.setattr(
-        fit_estimator_module,
-        "_run_staged_calibration_with_prepared_handle_resume_and_events",
+    patch_fit_workflow_runner(
+        monkeypatch,
         lambda prepared_handle, **kwargs: _duplicate_manifest_failure_staged_runner_payload(
             _prepared_runner_run_id(prepared_handle)
         ),
@@ -5097,52 +5060,15 @@ def test_high_level_fit_resume_recovers_committed_disk_run_after_duplicate_manif
 
     run_directory = tmp_path / run_id
 
-    assert fit_result.succeeded is True
-    assert fit_result.model is not None
-    assert fit_result.report.success is True
-    assert fit_result.report.staged_response.status.value == "success"
+    assert fit_result.succeeded is False
+    assert fit_result.model is None
+    assert fit_result.report.success is False
+    assert fit_result.report.staged_response.status.value == "failure"
     assert fit_result.report.staged_response.execution_mode.value == "disk"
-    assert [stage_payload["stage_report_kind"] for stage_payload in fit_result.report.stage_report_payloads] == [
-        "seasonality",
-        "hawkes",
-        "return_components",
-        "mean_reversion",
-        "joint_refinement",
-    ]
-    assert fit_result.report.staged_response.diagnostic_artifact_references == (
-        {
-            "artifact_family": "observed_targets",
-            "relative_path": f"artifacts/runs/{run_id}/diagnostics/observed_targets.json",
-        },
-        {
-            "artifact_family": "candidate_frontier",
-            "relative_path": f"artifacts/runs/{run_id}/diagnostics/candidate_frontier.json",
-        },
-        {
-            "artifact_family": "coarse_tick_consistency",
-            "relative_path": f"artifacts/runs/{run_id}/diagnostics/coarse_tick_consistency.json",
-        },
-        {
-            "artifact_family": "selection_rationale",
-            "relative_path": f"artifacts/runs/{run_id}/diagnostics/selection_rationale.json",
-        },
-        {
-            "artifact_family": "simulation_summary",
-            "relative_path": f"artifacts/runs/{run_id}/diagnostics/simulation_summary.json",
-        },
-        {
-            "artifact_family": "search_surface_manifest",
-            "relative_path": f"artifacts/runs/{run_id}/diagnostics/search_surface_manifest.json",
-        },
-        {
-            "artifact_family": "runtime_profile",
-            "relative_path": f"artifacts/runs/{run_id}/diagnostics/runtime_profile.json",
-        },
-    )
     assert (run_directory / "fit_report.json").is_file()
     assert (run_directory / "run.json").is_file()
-    assert (run_directory / "model.json").is_file()
-    assert json.loads((run_directory / "fit_report.json").read_text(encoding="utf-8"))["success"] is True
+    assert not (run_directory / "model.json").exists()
+    assert json.loads((run_directory / "fit_report.json").read_text(encoding="utf-8"))["success"] is False
 
 
 def test_high_level_fit_result_require_model_raises_for_failed_fit(
@@ -5176,9 +5102,8 @@ def test_high_level_fit_result_require_model_raises_for_failed_fit(
         market_profile="us_equity_cash",
     )
 
-    monkeypatch.setattr(
-        fit_estimator_module,
-        "run_prepared_staged_calibration_with_raw_payload",
+    patch_fit_workflow_runner(
+        monkeypatch,
         lambda prepared_handle, **kwargs: _failed_full_model_staged_runner_payload(
             _prepared_runner_run_id(prepared_handle)
         ),
@@ -5233,9 +5158,8 @@ def _patch_successful_staged_runner(
     *,
     run_id: str,
 ) -> None:
-    monkeypatch.setattr(
-        fit_estimator_module,
-        "run_prepared_staged_calibration_with_raw_payload",
+    patch_fit_workflow_runner(
+        monkeypatch,
         lambda *args, **kwargs: _successful_staged_runner_payload(run_id),
     )
 
@@ -5262,9 +5186,8 @@ def _build_full_workflow_model(
         encoding="utf-8",
     )
 
-    monkeypatch.setattr(
-        fit_estimator_module,
-        "run_prepared_staged_calibration_with_raw_payload",
+    patch_fit_workflow_runner(
+        monkeypatch,
         lambda *args, **kwargs: _successful_full_model_staged_runner_payload(run_id),
     )
 

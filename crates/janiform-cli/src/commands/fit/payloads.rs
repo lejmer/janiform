@@ -11,8 +11,6 @@ pub(crate) const FIT_INSPECT_SCHEMA_VERSION: &str = "cli.fit_inspect.v1";
 pub(crate) const FIT_INSPECT_COMMAND_ID: &str = "fit.inspect";
 pub(crate) const FIT_STAGED_PLAN_SCHEMA_VERSION: &str = "cli.fit_staged_plan.v1";
 pub(crate) const FIT_STAGED_PLAN_COMMAND_ID: &str = "fit.staged.plan";
-pub(crate) const FIT_RUN_SCHEMA_VERSION: &str = "cli.fit_run.v1";
-pub(crate) const FIT_RUN_COMMAND_ID: &str = "fit";
 
 pub(crate) fn plan_json(
     prepared: &PreparedFitPreview,

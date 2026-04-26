@@ -1,0 +1,23 @@
+[package]
+name = "janiform-workflows"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Shared workflow orchestration for Janiform entrypoints."
+readme = "README.md"
+
+[lib]
+name = "janiform_workflows"
+path = "src/lib.rs"
+doctest = false
+
+[dependencies]
+janiform-calibration-artifacts = { path = "../janiform-calibration-artifacts" }
+janiform-calibration-runtime = { path = "../janiform-calibration-runtime" }
+janiform-event-log = { path = "../janiform-event-log" }
+janiform-market-time = { path = "../janiform-market-time" }
+janiform-terminal-ui = { path = "../janiform-terminal-ui" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = "2.0.17"

@@ -92,7 +92,12 @@ fn rust_internal_crate_graph_policy_fixture_declares_required_crates_and_facade_
     assert_eq!(policy.crates["janiform-pybind"].layer, "python_boundary");
     assert_eq!(
         policy.crates["janiform-pybind"].allowed_internal_dependencies,
-        vec!["janiform".to_string()]
+        vec![
+            "janiform-event-log".to_string(),
+            "janiform-terminal-ui".to_string(),
+            "janiform-workflows".to_string(),
+            "janiform".to_string()
+        ]
     );
     assert_eq!(
         policy.crates["janiform-governance-bench"].kind,

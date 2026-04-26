@@ -1,18 +1,24 @@
-use janiform::calibration::{
-    CalibrationMarketDataWorkflowScope, CalibrationStage, CalibrationStagedExecutionInput,
+use janiform_calibration_artifacts::CalibrationStage;
+use janiform_calibration_runtime::{
+    CalibrationMarketDataWorkflowScope, CalibrationStagedExecutionInput,
 };
 
-use crate::commands::fit::labels::workflow_scope_label;
+use super::labels::workflow_scope_label;
 
+/// Stable workflow-scope identifier used by fit artifacts and events.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum WorkflowScopeId {
+pub enum WorkflowScopeId {
+    /// Only the seasonality stage is selected.
     SeasonalityOnly,
+    /// Underlying calibration without option-surface refinement.
     FullWithoutOptionSurface,
+    /// Full calibration with option-surface refinement.
     FullWithOptionSurface,
 }
 
 impl WorkflowScopeId {
-    pub(super) const fn as_str(self) -> &'static str {
+    /// Stable serialized identifier.
+    pub const fn as_str(self) -> &'static str {
         match self {
             Self::SeasonalityOnly => "seasonality_only",
             Self::FullWithoutOptionSurface => "full_without_option_surface",
@@ -20,7 +26,8 @@ impl WorkflowScopeId {
         }
     }
 
-    pub(super) const fn workflow_scope(self) -> CalibrationMarketDataWorkflowScope {
+    /// Typed workflow scope.
+    pub const fn workflow_scope(self) -> CalibrationMarketDataWorkflowScope {
         match self {
             Self::SeasonalityOnly => CalibrationMarketDataWorkflowScope::SeasonalityOnly,
             Self::FullWithoutOptionSurface => {
@@ -32,14 +39,14 @@ impl WorkflowScopeId {
         }
     }
 
-    pub(super) fn label(self) -> &'static str {
+    /// Human-readable workflow scope.
+    pub const fn label(self) -> &'static str {
         workflow_scope_label(self.workflow_scope())
     }
 }
 
-pub(super) fn workflow_scope_id(
-    execution_input: &CalibrationStagedExecutionInput,
-) -> WorkflowScopeId {
+/// Resolve the workflow-scope identifier represented by a staged execution input.
+pub fn workflow_scope_id(execution_input: &CalibrationStagedExecutionInput) -> WorkflowScopeId {
     if execution_input.request.selected_stages == [CalibrationStage::Seasonality] {
         return WorkflowScopeId::SeasonalityOnly;
     }
@@ -56,7 +63,8 @@ pub(super) fn workflow_scope_id(
     WorkflowScopeId::FullWithoutOptionSurface
 }
 
-pub(super) fn workflow_scope_label_for_input(
+/// Resolve the human-readable workflow scope for a staged execution input.
+pub fn workflow_scope_label_for_input(
     execution_input: &CalibrationStagedExecutionInput,
 ) -> &'static str {
     workflow_scope_id(execution_input).label()

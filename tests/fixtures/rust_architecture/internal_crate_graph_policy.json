@@ -208,6 +208,18 @@
       "layer": "terminal_ui",
       "allowed_internal_dependencies": []
     },
+    "janiform-workflows": {
+      "status": "existing",
+      "kind": "production",
+      "layer": "workflow_orchestration",
+      "allowed_internal_dependencies": [
+        "janiform-market-time",
+        "janiform-calibration-artifacts",
+        "janiform-calibration-runtime",
+        "janiform-event-log",
+        "janiform-terminal-ui"
+      ]
+    },
     "janiform-cli": {
       "status": "existing",
       "kind": "boundary",
@@ -216,6 +228,7 @@
         "janiform-foundations",
         "janiform-event-log",
         "janiform-terminal-ui",
+        "janiform-workflows",
         "janiform"
       ]
     },
@@ -245,6 +258,9 @@
       "kind": "boundary",
       "layer": "python_boundary",
       "allowed_internal_dependencies": [
+        "janiform-event-log",
+        "janiform-terminal-ui",
+        "janiform-workflows",
         "janiform"
       ]
     }

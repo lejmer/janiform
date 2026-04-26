@@ -15,6 +15,9 @@ crate-type = ["cdylib"]
 [dependencies]
 chrono = { workspace = true }
 janiform = { path = "../janiform" }
+janiform-event-log = { path = "../janiform-event-log" }
+janiform-terminal-ui = { path = "../janiform-terminal-ui" }
+janiform-workflows = { path = "../janiform-workflows" }
 pyo3 = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

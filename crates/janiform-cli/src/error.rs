@@ -262,3 +262,32 @@ impl CliError {
         }
     }
 }
+
+impl From<janiform_workflows::error::WorkflowError> for CliError {
+    fn from(value: janiform_workflows::error::WorkflowError) -> Self {
+        match value {
+            janiform_workflows::error::WorkflowError::StagedExecutionPlanFailed { source } => {
+                Self::StagedExecutionPlanFailed { source }
+            }
+            janiform_workflows::error::WorkflowError::CalendarRegistryLoadFailed { message }
+            | janiform_workflows::error::WorkflowError::FitExecutionFailed { message } => {
+                Self::FitExecutionFailed { message }
+            }
+            janiform_workflows::error::WorkflowError::FitArtifactWrite { path, source } => {
+                Self::FitArtifactWrite { path, source }
+            }
+            janiform_workflows::error::WorkflowError::FitEventLog { source } => {
+                Self::FitEventLog { source }
+            }
+            janiform_workflows::error::WorkflowError::OutputSerialize { source } => {
+                Self::OutputSerialize { source }
+            }
+            janiform_workflows::error::WorkflowError::OutputWrite { source } => {
+                Self::OutputWrite { source }
+            }
+            janiform_workflows::error::WorkflowError::OutputProgress { source } => {
+                Self::OutputProgress { source }
+            }
+        }
+    }
+}

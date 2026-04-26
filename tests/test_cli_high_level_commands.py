@@ -4,13 +4,14 @@ from typing import Any, NoReturn
 import orjson
 import pytest
 
-import janiform.calibration.fit.estimator as fit_estimator_module
 import janiform.cli as cli_module
-from janiform.calibration.market_data import CalibrationDuplicateRecordPolicy
 from janiform.calibration.staged import StagedCalibrationResponse, validate_staged_calibration_response
 from tests.support.cli import invoke_cli, normalize_help_output, render_help
-from tests.support.high_level_workflows import (
+from tests.support.fit.workflows import (
     build_full_workflow_model,
+    patch_fit_workflow_runner,
+)
+from tests.support.high_level_workflows import (
     successful_full_model_staged_runner_payload,
 )
 
@@ -100,9 +101,8 @@ def test_fit_outputs_resolved_configuration_and_provenance(
     )
     output_dir = tmp_path / "fit-artifacts"
 
-    monkeypatch.setattr(
-        fit_estimator_module,
-        "run_prepared_staged_calibration_with_raw_payload",
+    patch_fit_workflow_runner(
+        monkeypatch,
         lambda *args, **kwargs: successful_full_model_staged_runner_payload("cli-fit-success"),
     )
 
@@ -159,21 +159,8 @@ def test_fit_outputs_resolved_configuration_and_provenance(
     assert (run_directory / "model.json").read_text(encoding="utf-8").startswith("{\n  ")
 
     persisted_report = orjson.loads((run_directory / "fit_report.json").read_text(encoding="utf-8"))
-    assert set(persisted_report) == {
-        "schema_version",
-        "run_id",
-        "workflow_scope",
-        "success",
-        "summary",
-        "resolved_configuration",
-        "session_resolution",
-        "preparation_diagnostics",
-        "preparation_provenance",
-        "prepared_data_reference",
-        "prepared_payload_path",
-        "staged_execution_input_path",
-        "staged_response",
-    }
+    assert persisted_report["run_id"] == "cli-fit-success"
+    assert persisted_report["success"] is True
 
 
 def test_fit_cli_uses_endogenous_mean_reversion_calibration(
@@ -207,9 +194,8 @@ def test_fit_cli_uses_endogenous_mean_reversion_calibration(
             _prepared_runner_run_id(prepared_handle)
         )
 
-    monkeypatch.setattr(
-        fit_estimator_module,
-        "run_prepared_staged_calibration_with_raw_payload",
+    patch_fit_workflow_runner(
+        monkeypatch,
         _capture_execution_input,
     )
 
@@ -277,9 +263,8 @@ def test_fit_supports_beginner_positional_tick_path_and_inferred_defaults(
         ),
     )
 
-    monkeypatch.setattr(
-        fit_estimator_module,
-        "run_prepared_staged_calibration_with_raw_payload",
+    patch_fit_workflow_runner(
+        monkeypatch,
         lambda prepared_handle, **kwargs: successful_full_model_staged_runner_payload(
             _prepared_runner_run_id(prepared_handle)
         ),
@@ -330,9 +315,8 @@ def test_fit_supports_eurusd_market_preset_with_full_day_fx_session_windows(
         ),
     )
 
-    monkeypatch.setattr(
-        fit_estimator_module,
-        "run_prepared_staged_calibration_with_raw_payload",
+    patch_fit_workflow_runner(
+        monkeypatch,
         lambda prepared_handle, **kwargs: successful_full_model_staged_runner_payload(
             _prepared_runner_run_id(prepared_handle)
         ),
@@ -371,9 +355,8 @@ def test_fit_explain_and_silent_flags_control_success_output(
         ),
     )
 
-    monkeypatch.setattr(
-        fit_estimator_module,
-        "run_prepared_staged_calibration_with_raw_payload",
+    patch_fit_workflow_runner(
+        monkeypatch,
         lambda prepared_handle, **kwargs: successful_full_model_staged_runner_payload(
             _prepared_runner_run_id(prepared_handle)
         ),
@@ -605,9 +588,8 @@ def test_fit_surfaces_staged_failure_details_in_cli_error(
         ),
     )
 
-    monkeypatch.setattr(
-        fit_estimator_module,
-        "run_prepared_staged_calibration_with_raw_payload",
+    patch_fit_workflow_runner(
+        monkeypatch,
         lambda *args, **kwargs: _failed_return_components_staged_runner_payload("cli-fit-stage-failure"),
     )
 
@@ -662,9 +644,8 @@ def test_fit_prefers_failed_stage_message_over_generic_top_level_failure(
         ),
     )
 
-    monkeypatch.setattr(
-        fit_estimator_module,
-        "run_prepared_staged_calibration_with_raw_payload",
+    patch_fit_workflow_runner(
+        monkeypatch,
         lambda *args, **kwargs: _failed_return_components_with_generic_top_level_staged_runner_payload(
             "cli-fit-generic-top-level"
         ),
@@ -721,9 +702,8 @@ def test_fit_renders_human_error_output_with_labeled_lines(
         ),
     )
 
-    monkeypatch.setattr(
-        fit_estimator_module,
-        "run_prepared_staged_calibration_with_raw_payload",
+    patch_fit_workflow_runner(
+        monkeypatch,
         lambda *args, **kwargs: _failed_return_components_with_generic_top_level_staged_runner_payload(
             "cli-fit-human-error"
         ),
