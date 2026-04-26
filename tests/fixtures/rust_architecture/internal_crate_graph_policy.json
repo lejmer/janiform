@@ -101,10 +101,9 @@
       "kind": "production",
       "layer": "calibration_artifacts",
       "allowed_internal_dependencies": [
-        "janiform-engine-pricing",
         "janiform-foundations",
         "janiform-model-kernels",
-        "janiform-market-time"
+        "janiform-engine-pricing"
       ]
     },
     "janiform-calibration-runtime": {
@@ -117,7 +116,6 @@
         "janiform-affine-oracle",
         "janiform-market-time",
         "janiform-engine-pricing",
-        "janiform-engine-sufficient-statistics",
         "janiform-engine-simulation",
         "janiform-calibration-artifacts"
       ]
@@ -169,11 +167,6 @@
         "janiform-foundations",
         "janiform-model-kernels",
         "janiform-market-time",
-        "janiform-engine-pricing",
-        "janiform-engine-sufficient-statistics",
-        "janiform-engine-simulation",
-        "janiform-calibration-artifacts",
-        "janiform-analytics-stylized-facts",
         "janiform-validation",
         "janiform-governance-bench",
         "janiform-test-support"
@@ -191,7 +184,6 @@
         "janiform-engine-pricing",
         "janiform-engine-sufficient-statistics",
         "janiform-engine-simulation",
-        "janiform-calibration-artifacts",
         "janiform-test-support"
       ]
     },
@@ -202,6 +194,20 @@
       "allowed_internal_dependencies": [
         "janiform-market-time",
         "janiform-validation"
+      ]
+    },
+    "janiform-cli-ui": {
+      "status": "existing",
+      "kind": "production",
+      "layer": "cli_ui",
+      "allowed_internal_dependencies": []
+    },
+    "janiform-cli": {
+      "status": "existing",
+      "kind": "boundary",
+      "layer": "cli_boundary",
+      "allowed_internal_dependencies": [
+        "janiform-cli-ui"
       ]
     },
     "janiform": {

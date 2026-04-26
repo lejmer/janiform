@@ -1,6 +1,8 @@
 # Architecture Overview
 
-Janiform is a mixed Python and Rust workspace. The Python package owns the user-facing API and CLI. The Rust workspace owns the numerical engines, shared contracts, and most performance-sensitive implementation.
+Janiform is a mixed Python and Rust workspace. The Python package owns the public Python API and
+Python-facing workflow adapters. The Rust workspace owns the native command shell, numerical
+engines, shared contracts, and most performance-sensitive implementation.
 
 ## High-Level Shape
 
@@ -9,24 +11,36 @@ Janiform is a mixed Python and Rust workspace. The Python package owns the user-
 | `python/janiform/` | Public Python package, CLI assembly, workflow adapters |
 | `crates/janiform/` | Umbrella Rust facade |
 | `crates/janiform-pybind/` | PyO3 boundary crate |
-| Engine crates | Pricing, sufficient_statistics, and simulation runtime implementations |
+| `crates/janiform-cli/` | Native Rust command shell |
+| `crates/janiform-cli-ui/` | Shared semantic terminal rendering for the command shell |
+| Engine crates | Pricing, sufficient-statistics, and simulation runtime implementations |
 | Calibration crates | Calibration orchestration and artifact persistence |
-| Validation and governance crates | Regression harnesses and benchmark governance |
+| Analytics, validation, and governance crates | Analytical reports, regression harnesses, and benchmark governance |
+| Worker and support crates | Process-isolated worker binaries and shared test fixtures |
 
 ## Important Workspace Crates
 
 | Crate | Responsibility |
 | --- | --- |
 | `janiform` | Umbrella Rust facade |
-| `janiform-pybind` | Python binding boundary |
-| `janiform-engine-pricing` | Pricing engine |
-| `janiform-engine-sufficient-statistics` | Sufficient-statistics engine |
-| `janiform-engine-simulation` | Simulation engine |
-| `janiform-calibration-runtime` | Calibration orchestration |
+| `janiform-affine-oracle` | Shared affine-oracle solver contracts and implementation |
+| `janiform-analytics-stylized-facts` | Stylized-fact analytics |
 | `janiform-calibration-artifacts` | Calibration artifact contracts and persistence |
-| `janiform-validation` | Validation domains and regression harnesses |
-| `janiform-foundations` | Shared low-level primitives |
+| `janiform-calibration-runtime` | Calibration runtime orchestration |
+| `janiform-cli` | Native Rust command shell with shared configuration, output, path, and diagnostic boundary |
+| `janiform-cli-ui` | Semantic terminal rendering and progress adapters for the command shell |
+| `janiform-engine-pricing` | Pricing runtime engine |
+| `janiform-engine-simulation` | Simulation runtime engine |
+| `janiform-engine-sufficient-statistics` | Sufficient-statistics runtime engine |
+| `janiform-foundations` | Low-level shared foundation primitives |
+| `janiform-governance` | Governance and regression orchestration |
+| `janiform-governance-bench` | Benchmark governance support |
+| `janiform-joint-refinement-worker` | Process-isolated joint-refinement summary simulation worker |
+| `janiform-market-time` | Shared market-time infrastructure |
 | `janiform-model-kernels` | Shared model-kernel domains |
+| `janiform-pybind` | Python binding boundary |
+| `janiform-test-support` | Shared Rust test support for workspace fixtures |
+| `janiform-validation` | Validation domains and regression harnesses |
 
 ## Documentation Layout
 
