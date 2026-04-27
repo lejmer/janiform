@@ -22,8 +22,6 @@ use crate::simulation::direct::{
     CoarseIntervalExportSettings, DirectSimulationJob, SeededTickExportSettings,
 };
 
-const MEAN_REVERSION_RUNTIME_INTERVAL_ALIGNMENT_POLICY: &str =
-    "explicit_runtime_interval_grid_alignment.v1";
 const DEFAULT_MEAN_REVERSION_START_PRESSURE_STATE: f64 = 0.0;
 const DEFAULT_INITIAL_MEAN_REVERSION_DEVIATION: f64 = 0.0;
 
@@ -208,8 +206,10 @@ fn materialize_mean_reversion_runtime_inputs(
         )
         .map_err(|source| validation_error("hourly_factor_contract", source))?;
 
+    let interval_alignment_policy = hourly_factor_contract.metadata.interval_alignment_policy;
+
     let anchor_materialization = materialize_endogenous_anchor_path(
-        MEAN_REVERSION_RUNTIME_INTERVAL_ALIGNMENT_POLICY,
+        interval_alignment_policy,
         start_anchor_value,
         ExponentialAffineTransformEquationSpecification::try_new(
             context.hawkes_fitted_parameters.kernel_parameters,
@@ -241,7 +241,7 @@ fn materialize_mean_reversion_runtime_inputs(
 
     let runtime_interval_anchors =
         materialize_mean_reversion_runtime_interval_anchors_from_core_expected_increments(
-            MEAN_REVERSION_RUNTIME_INTERVAL_ALIGNMENT_POLICY,
+            interval_alignment_policy,
             start_anchor_value,
             DEFAULT_MEAN_REVERSION_START_PRESSURE_STATE,
             &context

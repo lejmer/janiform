@@ -12,6 +12,8 @@ pub struct SimulationOutputPreferences {
     pub output_columns: SimulationOutputColumns,
     /// Reference price used to convert simulated log prices.
     pub reference_price: f64,
+    /// Default artifact file format for simulation exports.
+    pub default_file_format: &'static str,
 }
 
 /// Derive simulation output settings from a persisted fitted-model payload.
@@ -34,6 +36,7 @@ pub fn simulation_output_preferences_from_model_payload(
     let price_column = simulation_output_price_column(metadata)?;
     let side_column = simulation_output_side_column(metadata)?;
     let reference_price = simulation_output_reference_price(metadata)?;
+    let default_file_format = default_simulation_output_file_format(metadata)?;
 
     Ok(SimulationOutputPreferences {
         output_columns: SimulationOutputColumns {
@@ -42,7 +45,22 @@ pub fn simulation_output_preferences_from_model_payload(
             side_column,
         },
         reference_price,
+        default_file_format,
     })
+}
+
+fn default_simulation_output_file_format(metadata: &Value) -> Result<&'static str, WorkflowError> {
+    let raw_file_format = optional_string(
+        metadata,
+        &["input_inference", "tick_data_source", "file_format"],
+        "model_payload.metadata.input_inference.tick_data_source.file_format",
+    )?;
+
+    match raw_file_format.as_deref() {
+        Some("csv") => Ok("csv"),
+        Some("parquet") => Ok("parquet"),
+        _ => Ok("parquet"),
+    }
 }
 
 fn simulation_output_price_column(metadata: &Value) -> Result<String, WorkflowError> {

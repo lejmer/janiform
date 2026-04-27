@@ -34,9 +34,16 @@ pub(crate) struct SimulateCommand {
     #[arg(
         long,
         value_name = "INTERVAL",
-        help = "Optional coarse simulation interval such as `1min`, `15min`, `1h`, or `1D`. When omitted, Janiform runs the default seeded tick simulation path."
+        default_value = "1h",
+        help = "Horizon interval duration such as `1min`, `15min`, `1h`, or `1D`."
     )]
-    pub(crate) interval: Option<String>,
+    pub(crate) interval: String,
+
+    #[arg(
+        long,
+        help = "Generate a coarse interval path instead of the default seeded tick path."
+    )]
+    pub(crate) coarse: bool,
 
     #[arg(
         long,
@@ -180,16 +187,24 @@ pub(crate) struct SimulationExportBatchOptions {
 
 #[derive(Debug, Args)]
 pub(crate) struct SimulationHorizonOptions {
-    #[arg(long, value_name = "SEED", help = "Simulation random seed.")]
+    #[arg(
+        long,
+        value_name = "SEED",
+        help = "Simulation random seed. Default: 0."
+    )]
     pub(crate) seed: Option<u64>,
 
-    #[arg(long, value_name = "UTC", help = "Simulation start timestamp.")]
+    #[arg(
+        long,
+        value_name = "UTC",
+        help = "Simulation start timestamp. Default: current UTC time."
+    )]
     pub(crate) start_time_utc: Option<String>,
 
     #[arg(
         long,
         value_name = "COUNT",
-        help = "Number of horizon intervals to simulate."
+        help = "Number of horizon intervals to simulate, using the duration from --interval."
     )]
     pub(crate) horizon_interval_count: Option<u64>,
 

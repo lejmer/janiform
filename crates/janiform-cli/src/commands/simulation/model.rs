@@ -1,5 +1,4 @@
 use chrono::{DateTime, Utc};
-use janiform::hourly_factors::ONE_HOUR_NANOS;
 use janiform::simulation::SeededTickEventStateSnapshotCapture;
 use janiform_foundations::time::parse_duration_spec_nanos;
 use janiform_workflows::simulation::{
@@ -11,13 +10,15 @@ use super::SimulateCommand;
 use super::execution::{
     complete_progress, completed_diagnostics, completed_raw_payload, direct_simulation_run_id,
     emit_completion, emit_start_summary, progress_adapter_for_context,
-    required_horizon_interval_count, required_input_path, resolve_optional_output_path,
-    simulation_progress_observer, write_report_and_manifest,
+    required_horizon_interval_count, required_input_path, simulation_progress_observer,
+    write_report_and_manifest,
 };
 use crate::commands::shared::artifact_documents::load_json_artifact;
+use crate::commands::shared::output_paths::default_run_output_directory;
 use crate::context::CommandContext;
 use crate::error::CliError;
 
+const DEFAULT_MODEL_SIMULATION_SEED: u64 = 0;
 const MODEL_SEEDED_TICK_SCOPE_LABEL: &str = "model seeded tick simulation";
 const MODEL_COARSE_INTERVAL_SCOPE_LABEL: &str = "model coarse interval simulation";
 
@@ -25,50 +26,50 @@ pub(crate) fn run_simulate_model(
     context: &CommandContext,
     command: SimulateCommand,
 ) -> Result<(), CliError> {
-    let seed = required_value("--seed", command.simulation.seed)?;
+    let seed = command
+        .simulation
+        .seed
+        .unwrap_or(DEFAULT_MODEL_SIMULATION_SEED);
 
-    let start_time_utc =
-        parse_start_time_utc(
-            command.simulation.start_time_utc.as_deref().ok_or(
-                CliError::MissingRequiredArgument {
-                    argument_name: "--start-time-utc",
-                },
-            )?,
-            "--start-time-utc",
-        )?;
+    let start_time_utc = match command.simulation.start_time_utc.as_deref() {
+        Some(start_time_utc) => parse_start_time_utc(start_time_utc, "--start-time-utc")?,
+        None => Utc::now(),
+    };
 
     let horizon_interval_count =
         required_horizon_interval_count(command.simulation.horizon_interval_count)?;
 
-    let interval_duration_nanos = model_interval_duration_nanos(command.interval.as_deref())?;
+    let interval_duration_nanos = model_interval_duration_nanos(command.interval.as_str())?;
 
-    let simulation_kind = if command.interval.is_some() {
+    let simulation_kind = if command.coarse {
         ModelSimulationKind::CoarseInterval
     } else {
         ModelSimulationKind::SeededTick
     };
 
+    let run_id = direct_simulation_run_id("model");
     let model_path = required_input_path(context, "--model-path", command.model.model_path)?;
-    let output_path = resolve_optional_output_path(context, command.output_path.output_path);
-
     let model_payload = load_json_artifact(&model_path, "model")?;
-
     let output_preferences = simulation_output_preferences_from_model_payload(&model_payload)?;
+    let output_path = resolve_model_output_path(
+        context,
+        command.output_path.output_path,
+        &run_id,
+        output_preferences.default_file_format,
+    );
 
     let scope_label = model_simulation_scope_label(simulation_kind);
-
-    let run_id = direct_simulation_run_id("model");
 
     emit_start_summary(
         context,
         &run_id,
         scope_label,
         &model_path,
-        output_path.as_deref(),
+        Some(output_path.as_path()),
     )?;
 
     let mut progress_adapter =
-        progress_adapter_for_context(context, &run_id, output_path.as_deref())?;
+        progress_adapter_for_context(context, &run_id, Some(output_path.as_path()))?;
 
     let mut progress_error = None;
 
@@ -82,7 +83,7 @@ pub(crate) fn run_simulate_model(
             start_time_utc,
             horizon_interval_count,
             interval_duration_nanos,
-            output_path: output_path.clone(),
+            output_path: Some(output_path.clone()),
             output_columns: output_preferences.output_columns,
             reference_price: output_preferences.reference_price,
             export_batch_size: command.export_batch.output_batch_size,
@@ -105,14 +106,12 @@ pub(crate) fn run_simulate_model(
 
     complete_progress(progress_adapter.as_mut())?;
 
-    if let Some(output_path) = output_path.as_deref() {
-        write_report_and_manifest(
-            output_path,
-            &run_id,
-            model_simulation_report_kind(simulation_kind),
-            completed_diagnostics(&output.completed, output.export_summary.as_ref()),
-        )?;
-    }
+    write_report_and_manifest(
+        output_path.as_path(),
+        &run_id,
+        model_simulation_report_kind(simulation_kind),
+        completed_diagnostics(&output.completed, output.export_summary.as_ref()),
+    )?;
 
     let completion = output.completed.completion();
     let elapsed = output.execution_duration;
@@ -120,16 +119,12 @@ pub(crate) fn run_simulate_model(
     emit_completion(
         context,
         scope_label,
-        output_path.as_deref(),
+        Some(output_path.as_path()),
         output.export_summary.as_ref(),
         elapsed,
         completion,
         || completed_raw_payload(&output.completed),
     )
-}
-
-fn required_value<T>(argument_name: &'static str, value: Option<T>) -> Result<T, CliError> {
-    value.ok_or(CliError::MissingRequiredArgument { argument_name })
 }
 
 fn parse_start_time_utc(
@@ -144,11 +139,26 @@ fn parse_start_time_utc(
         })
 }
 
-fn model_interval_duration_nanos(interval: Option<&str>) -> Result<i64, CliError> {
-    let Some(interval) = interval else {
-        return Ok(ONE_HOUR_NANOS);
+fn resolve_model_output_path(
+    context: &CommandContext,
+    output_path: Option<std::path::PathBuf>,
+    run_id: &str,
+    default_file_format: &str,
+) -> std::path::PathBuf {
+    let Some(output_path) = output_path else {
+        return default_run_output_directory(context, run_id)
+            .join(format!("simulation.{default_file_format}"));
     };
 
+    let mut resolved_path = context.paths().resolve_process_path(&output_path);
+    if resolved_path.extension().is_none() {
+        resolved_path.set_extension(default_file_format);
+    }
+
+    resolved_path
+}
+
+fn model_interval_duration_nanos(interval: &str) -> Result<i64, CliError> {
     parse_duration_spec_nanos(interval).map_err(|source| CliError::InvalidCommandArgument {
         argument_name: "--interval",
         message: source.to_string(),
