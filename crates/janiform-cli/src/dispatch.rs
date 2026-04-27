@@ -10,10 +10,12 @@ use crate::commands::fit::planning::run_fit_plan;
 use crate::commands::fit::planning::run_fit_staged_plan;
 use crate::commands::hourly_factors::HourlyFactorsSubcommand;
 use crate::commands::inspection::InspectSubcommand;
+use crate::commands::inspection::run_inspect_model;
 use crate::commands::inspection::run_inspect_run;
 use crate::commands::presets::PresetsSubcommand;
 use crate::commands::pricing::PriceSubcommand;
 use crate::commands::reporting::ReportSubcommand;
+use crate::commands::reporting::run_report_fit;
 use crate::commands::seasonality::SeasonalitySubcommand;
 use crate::commands::simulation::SimulateSubcommand;
 use crate::commands::stylized_facts::StylizedFactsSubcommand;
@@ -31,10 +33,10 @@ pub(crate) fn dispatch(context: &CommandContext, command: RootCommand) -> Result
         RootCommand::Fit(command) => dispatch_fit(context, command),
         RootCommand::Inspect(command) => match command.command {
             InspectSubcommand::Run(command) => run_inspect_run(context, command),
-            InspectSubcommand::Model(_) => not_implemented("inspect model"),
+            InspectSubcommand::Model(command) => run_inspect_model(context, command),
         },
         RootCommand::Report(command) => match command.command {
-            ReportSubcommand::Fit(_) => not_implemented("report fit"),
+            ReportSubcommand::Fit(command) => run_report_fit(context, command),
         },
         RootCommand::Price(command) => match command.command {
             Some(PriceSubcommand::FittedModel(_)) => not_implemented("price fitted-model"),

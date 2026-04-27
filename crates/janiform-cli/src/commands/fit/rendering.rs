@@ -2,13 +2,15 @@ use std::path::Path;
 
 use janiform::calibration::CalibrationExecutionMode;
 use janiform_terminal_ui::{
-    ArtifactPathGroup, KeyValueRow, StageChecklist, StageChecklistItem, StageChecklistStatus,
-    StartSummary, WarningBlock, format_artifact_path, format_path,
+    KeyValueRow, StageChecklist, StageChecklistItem, StageChecklistStatus, StartSummary,
+    TerminalRenderer, WarningBlock, format_artifact_path, format_path,
 };
 use janiform_workflows::fit::{market_data_file_format_label, stage_label, workflow_scope_label};
 
 use super::labels::optional_label;
 use super::preparation::{PreparedFitPreview, fit_warnings};
+use crate::commands::shared::artifact_documents::ArtifactListItem;
+use crate::commands::shared::artifact_documents::render_artifact_list;
 use crate::context::CommandContext;
 
 pub(crate) fn render_plan_human(
@@ -66,7 +68,7 @@ pub(crate) fn render_plan_human(
 
     sections.push(inferred_summary(prepared).render(&renderer));
     sections.push(stage_checklist(prepared).render(&renderer));
-    sections.push(output_paths(prepared, staged_artifact_path).render(&renderer));
+    sections.push(output_paths(prepared, staged_artifact_path, &renderer));
 
     sections.join("\n\n")
 }
@@ -255,37 +257,29 @@ fn stage_checklist(prepared: &PreparedFitPreview) -> StageChecklist {
 fn output_paths(
     prepared: &PreparedFitPreview,
     staged_artifact_path: Option<&Path>,
-) -> ArtifactPathGroup {
-    let mut paths = vec![
-        format!(
-            "run: {}",
-            format_artifact_path(&prepared.paths.output_directory)
+    renderer: &TerminalRenderer,
+) -> String {
+    let mut artifacts = vec![
+        ArtifactListItem::new(
+            "run",
+            format_artifact_path(&prepared.paths.output_directory),
         ),
-        format!(
-            "model: {}",
-            format_artifact_path(&prepared.paths.model_path)
-        ),
-        format!(
-            "report: {}",
-            format_artifact_path(&prepared.paths.report_path)
-        ),
-        format!(
-            "staged artifacts: {}",
+        ArtifactListItem::new("model", format_artifact_path(&prepared.paths.model_path)),
+        ArtifactListItem::new("report", format_artifact_path(&prepared.paths.report_path)),
+        ArtifactListItem::new(
+            "staged artifacts",
             staged_artifact_path
                 .map(format_path)
-                .unwrap_or_else(|| "not written".to_string())
+                .unwrap_or_else(|| "not written".to_string()),
         ),
     ];
 
     if prepared.request.output_preferences.execution_mode == CalibrationExecutionMode::Disk {
-        paths.push(format!(
-            "checkpoints: {}",
-            format_artifact_path(&prepared.paths.checkpoint_directory)
+        artifacts.push(ArtifactListItem::new(
+            "checkpoints",
+            format_artifact_path(&prepared.paths.checkpoint_directory),
         ));
     }
 
-    ArtifactPathGroup {
-        title: "Outputs".to_string(),
-        paths,
-    }
+    render_artifact_list("Outputs", artifacts, renderer).unwrap_or_else(|| "Outputs".to_string())
 }

@@ -18,7 +18,16 @@ use crate::context::GlobalCliOptions;
     name = "janiform",
     version,
     about = "Native Janiform command shell.",
-    long_about = "Primary workflows are fit, simulate, and price. Supporting commands inspect presets, prepare seasonality and hourly-factor contracts, run stylized-fact reports, and launch developer regression harnesses.",
+    long_about = "Primary workflows are the fit, simulate, and price commands.
+
+Use the fit command to fit a Janiform model from market data.
+Use the simulate command to simulate from a persisted Janiform model.
+Use the price command to price options from a persisted Janiform model.
+
+See also:
+  janiform fit --help
+  janiform simulate --help
+  janiform price --help",
     arg_required_else_help = true
 )]
 pub(crate) struct Cli {

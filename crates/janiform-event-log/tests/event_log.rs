@@ -1,12 +1,14 @@
 use std::fs;
+use std::io::Write;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
 use janiform_event_log::{
-    EventDeliveryOutcome, EventDeliveryPriority, ProgressMeasure, RunArtifactEvent, RunEvent,
-    RunEventLogWriter, RunEventPayload, RunLifecycleEvent, RunPhaseRef, RunProgressEvent,
-    RunStageRef, RunStatus, RunWarningEvent, WorkflowRef, bounded_event_channel,
-    default_run_event_paths, load_run_state_snapshot, replay_event_log,
+    EventDeliveryOutcome, EventDeliveryPriority, EventLogError, ProgressMeasure, RunArtifactEvent,
+    RunEvent, RunEventLogWriter, RunEventPayload, RunLifecycleEvent, RunPhaseRef, RunProgressEvent,
+    RunStageRef, RunStatus, RunWarningEvent, WorkflowRef, append_event_to_log,
+    bounded_event_channel, default_run_event_paths, load_run_state_snapshot, replay_event_log,
+    replay_event_log_allowing_trailing_partial,
 };
 
 #[test]
@@ -198,6 +200,71 @@ fn bounded_channel_drops_only_droppable_volatile_events() {
         "required backpressure should surface as an error"
     );
     assert!(receiver.try_recv().is_ok());
+}
+
+#[test]
+fn live_replay_ignores_only_malformed_unterminated_trailing_line() {
+    let run_directory = temporary_run_directory("live-replay-partial-line");
+    fs::create_dir_all(&run_directory).expect("temporary run directory should be created");
+    let paths = default_run_event_paths(&run_directory);
+    let workflow = WorkflowRef::labeled("fit", "Fit");
+    let event = RunEvent::at(
+        "2026-04-26T10:00:00Z",
+        "run-001",
+        workflow,
+        EventDeliveryPriority::Required,
+        RunEventPayload::Lifecycle(RunLifecycleEvent::RunStarted {
+            scope_id: "seasonality_only".to_string(),
+            scope_label: Some("seasonality only".to_string()),
+            inputs: vec!["ticks.csv".to_string()],
+            output_directory: Some(run_directory.display().to_string()),
+            stage_sequence: Vec::new(),
+        }),
+    );
+
+    let mut file = fs::File::create(&paths.event_log_path).expect("event log should be created");
+    append_event_to_log(&mut file, &paths.event_log_path, &event)
+        .expect("complete event should write");
+    write!(file, "{{\"schema_version\":\"janiform.run_event.v1\"")
+        .expect("partial event should write");
+    file.flush().expect("event log should flush");
+
+    let live_replayed = replay_event_log_allowing_trailing_partial(&paths.event_log_path)
+        .expect("live replay should ignore trailing partial row");
+    assert_eq!(live_replayed.event_count, 1);
+    assert_eq!(live_replayed.status, RunStatus::Running);
+
+    assert!(
+        matches!(
+            replay_event_log(&paths.event_log_path),
+            Err(EventLogError::ParseEventLogLine { line_number: 2, .. })
+        ),
+        "strict replay should still reject the partial row"
+    );
+
+    fs::remove_dir_all(run_directory).expect("temporary run directory should be removable");
+}
+
+#[test]
+fn live_replay_rejects_malformed_terminated_line() {
+    let run_directory = temporary_run_directory("live-replay-malformed-line");
+    fs::create_dir_all(&run_directory).expect("temporary run directory should be created");
+    let paths = default_run_event_paths(&run_directory);
+
+    let mut file = fs::File::create(&paths.event_log_path).expect("event log should be created");
+    writeln!(file, "{{\"schema_version\":\"janiform.run_event.v1\"")
+        .expect("malformed event should write");
+    file.flush().expect("event log should flush");
+
+    assert!(
+        matches!(
+            replay_event_log_allowing_trailing_partial(&paths.event_log_path),
+            Err(EventLogError::ParseEventLogLine { line_number: 1, .. })
+        ),
+        "live replay should reject malformed rows once they are line-terminated"
+    );
+
+    fs::remove_dir_all(run_directory).expect("temporary run directory should be removable");
 }
 
 fn temporary_run_directory(label: &str) -> std::path::PathBuf {
