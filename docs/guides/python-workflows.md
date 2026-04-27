@@ -66,6 +66,14 @@ For multi-expiry retained quotes, it returns the observed snapshot as a surface 
 retained history shares one expiry, it can also span multiple valuation times through
 `valuation_count` or `use_all_valuation_times`.
 
+`model.simulate(...)` defaults to a seeded-tick path with a `1h` horizon interval. Pass
+`interval="15min"` or another duration to change the horizon unit. Add `coarse=True` when you want
+a direct coarse-interval path instead. The optional `progress_callback` receives typed
+`SimulationProgressEvent` values from the Rust workflow.
+
+`JaniformEstimator.fit(...)` and `fit_with_report(...)` also accept `progress_callback`; those
+callbacks receive typed `FitProgressEvent` values from the Rust fit workflow.
+
 ## When To Drop Lower
 
 - Use `janiform.calibration.staged` when you need explicit staged orchestration contracts.
