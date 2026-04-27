@@ -29,6 +29,33 @@ Choose seeded ticks when you need event replay or fine-path output. Choose coars
 
 `janiform price` prices a vanilla option from a persisted model and derives the pricing state from the model plus the valuation inputs.
 
+## Inspect
+
+- `janiform inspect run RUN_DIR` shows the current or completed state of a persisted run.
+- `janiform inspect model MODEL_PATH` shows model identity, provenance, fitted components,
+  capabilities, and fitted parameter summaries.
+
+Use `inspect run` while a fit is running or after it completes when you need a status-oriented view
+of the run directory. The command reads `latest-state.json` first and falls back to replaying
+`events.jsonl` only when the snapshot is missing or stale. The replay path tolerates a trailing
+in-progress JSONL row so a concurrent event write does not make inspection fail.
+
+Use `inspect model` when you already have a `model.jf` artifact and need to understand what was fit
+and what workflows the model supports. Add `--parameters` for fuller parameter summaries that stay
+compact enough for terminal output.
+
+## Report
+
+- `janiform report fit RUN_OR_REPORT_PATH` summarizes a fit report from a run directory or from a
+  `report.json` artifact.
+- `janiform report fit RUN_OR_REPORT_PATH --html` writes a structured HTML report.
+- `janiform --json report fit RUN_OR_REPORT_PATH` writes a machine-readable report view.
+
+Use `report fit` after a fit run when the natural question is "what did this calibration produce?"
+rather than "what is the run doing right now?" The default terminal view stays concise. JSON and
+HTML outputs include presentation-only parameter fits extracted from the sibling model artifact
+when available. Those parameter fits are not written back into `report.json`.
+
 ## Presets
 
 Use `janiform presets list`, `show`, and `export` to inspect bundled or user-registered presets before fitting.

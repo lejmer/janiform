@@ -9,6 +9,8 @@ This is a curated reference for the public CLI surface. Use `janiform <command> 
 | `janiform fit` | Fit a Janiform model from market data |
 | `janiform simulate` | Simulate from a persisted model |
 | `janiform price` | Price a vanilla option from a persisted model |
+| `janiform inspect` | Inspect persisted runs and fitted model artifacts |
+| `janiform report` | Build artifact-oriented reports from persisted runs |
 | `janiform presets` | Inspect bundled and user-registered presets |
 | `janiform seasonality` | Seasonality preprocessing workflows |
 | `janiform hourly-factors` | Hourly factor materialization and contract-building workflows |
@@ -24,6 +26,9 @@ This is a curated reference for the public CLI surface. Use `janiform <command> 
 | Run the default seeded simulation workflow | `janiform simulate` |
 | Run the explicit coarse path | `janiform simulate coarse-interval` |
 | Run the explicit seeded path | `janiform simulate seeded-ticks` |
+| Inspect a fit run directory | `janiform inspect run RUN_DIR` |
+| Inspect a fitted model artifact | `janiform inspect model MODEL_PATH` |
+| Render a fit report | `janiform report fit RUN_OR_REPORT_PATH --html` |
 
 ## Common Flags
 
@@ -52,6 +57,18 @@ Root-level options are available to every command.
 | `--config PATH` | Loads TOML configuration for CLI boundary values only, such as output and diagnostic defaults. Model behavior, numerical policy, and workflow-specific calibration defaults remain in typed Rust contracts. |
 
 `--json`, `--silent`, and `--quiet` are mutually exclusive where their contracts would conflict.
+
+## Inspection And Reports
+
+| Command | Contract |
+| --- | --- |
+| `janiform inspect run RUN_DIR` | Shows run state, stages, artifacts, checkpoints, and warnings from a persisted run directory. Add `--include-events` for event-log metadata. |
+| `janiform inspect model MODEL_PATH` | Shows model identity, provenance, fitted components, capabilities, and main fitted parameter families. Add `--parameters` for fuller compact parameter summaries. |
+| `janiform report fit RUN_OR_REPORT_PATH` | Shows a concise fit report from a run directory or `report.json`. Add `--html` or `--output-path PATH` for a structured HTML artifact. |
+
+`inspect` and `report` read persisted artifacts only. `report fit --json` and `report fit --html`
+include presentation-only `parameter_fits` from the model artifact when available and do not rewrite
+the source `report.json`.
 
 ## Notes
 
