@@ -22,6 +22,7 @@ janiform-calibration-artifacts = { path = "../janiform-calibration-artifacts" }
 janiform-calibration-runtime = { path = "../janiform-calibration-runtime" }
 janiform-engine-pricing = { path = "../janiform-engine-pricing" }
 janiform-event-log = { path = "../janiform-event-log" }
+janiform-foundations = { path = "../janiform-foundations" }
 janiform-market-time = { path = "../janiform-market-time" }
 janiform-terminal-ui = { path = "../janiform-terminal-ui" }
 parquet = { workspace = true }

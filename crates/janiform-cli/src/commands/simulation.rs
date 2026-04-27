@@ -7,11 +7,13 @@ use crate::commands::options::ModelPathOptions;
 use crate::commands::options::OutputPathOptions;
 
 mod execution;
+mod model;
 mod rendering;
 mod requests;
 
 pub(crate) use execution::run_simulate_coarse_interval;
 pub(crate) use execution::run_simulate_seeded_ticks;
+pub(crate) use model::run_simulate_model;
 
 use janiform_workflows::simulation::DEFAULT_SIMULATION_EXPORT_BATCH_SIZE;
 
@@ -25,6 +27,38 @@ pub(crate) struct SimulateCommand {
 
     #[command(flatten)]
     pub(crate) output_path: OutputPathOptions,
+
+    #[command(flatten)]
+    pub(crate) export_batch: SimulationExportBatchOptions,
+
+    #[arg(
+        long,
+        value_name = "INTERVAL",
+        help = "Optional coarse simulation interval such as `1min`, `15min`, `1h`, or `1D`. When omitted, Janiform runs the default seeded tick simulation path."
+    )]
+    pub(crate) interval: Option<String>,
+
+    #[arg(
+        long,
+        help = "Enable seeded-tick debug tracing for the seeded simulation path."
+    )]
+    pub(crate) debug_trace_enabled: bool,
+
+    #[arg(
+        long,
+        value_name = "N",
+        default_value_t = 1,
+        help = "Keep every nth transition in the seeded-tick trace."
+    )]
+    pub(crate) sample_every_nth_transition: u64,
+
+    #[arg(
+        long,
+        value_name = "ROWS",
+        default_value_t = 1024,
+        help = "Maximum seeded-tick records emitted per chunk."
+    )]
+    pub(crate) max_records_per_chunk: usize,
 
     #[command(subcommand)]
     pub(crate) command: Option<SimulateSubcommand>,

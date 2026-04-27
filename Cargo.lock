@@ -1194,6 +1194,7 @@ dependencies = [
  "janiform-calibration-runtime",
  "janiform-engine-pricing",
  "janiform-event-log",
+ "janiform-foundations",
  "janiform-market-time",
  "janiform-terminal-ui",
  "parquet",

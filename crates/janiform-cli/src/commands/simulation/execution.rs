@@ -175,7 +175,7 @@ fn execute_direct_simulation(
     )
 }
 
-fn completed_diagnostics(
+pub(super) fn completed_diagnostics(
     completed: &DirectSimulationCompleted,
     export_summary: Option<&SimulationExportSummary>,
 ) -> Value {
@@ -189,7 +189,9 @@ fn completed_diagnostics(
     }
 }
 
-fn completed_raw_payload(completed: &DirectSimulationCompleted) -> Result<Value, CliError> {
+pub(super) fn completed_raw_payload(
+    completed: &DirectSimulationCompleted,
+) -> Result<Value, CliError> {
     match completed {
         DirectSimulationCompleted::SeededTick { result, .. } => {
             Ok(seeded_tick_payload_json(result))
@@ -200,7 +202,7 @@ fn completed_raw_payload(completed: &DirectSimulationCompleted) -> Result<Value,
     }
 }
 
-fn required_input_path(
+pub(super) fn required_input_path(
     context: &CommandContext,
     argument_name: &'static str,
     path: Option<PathBuf>,
@@ -210,14 +212,33 @@ fn required_input_path(
     context.paths().input_file(argument_name, &path)
 }
 
-fn resolve_optional_output_path(
+pub(super) fn required_horizon_interval_count(value: Option<u64>) -> Result<usize, CliError> {
+    let value = required_value("--horizon-interval-count", value)?;
+    if value == 0 {
+        return Err(CliError::InvalidCommandArgument {
+            argument_name: "--horizon-interval-count",
+            message: "must be a positive integer".to_string(),
+        });
+    }
+
+    usize::try_from(value).map_err(|source| CliError::InvalidCommandArgument {
+        argument_name: "--horizon-interval-count",
+        message: format!("does not fit in memory on this platform: {source}"),
+    })
+}
+
+fn required_value<T>(argument_name: &'static str, value: Option<T>) -> Result<T, CliError> {
+    value.ok_or(CliError::MissingRequiredArgument { argument_name })
+}
+
+pub(super) fn resolve_optional_output_path(
     context: &CommandContext,
     path: Option<PathBuf>,
 ) -> Option<PathBuf> {
     path.map(|path| context.paths().resolve_process_path(&path))
 }
 
-fn progress_adapter_for_context(
+pub(super) fn progress_adapter_for_context(
     context: &CommandContext,
     run_id: &str,
     output_path: Option<&Path>,
@@ -244,7 +265,7 @@ fn progress_adapter_for_context(
     }
 }
 
-fn simulation_progress_observer<'a>(
+pub(super) fn simulation_progress_observer<'a>(
     progress_adapter: Option<&'a mut ProgressAdapter>,
     progress_error: &'a mut Option<CliError>,
 ) -> impl FnMut(SimulationProgressEvent) + 'a {
@@ -281,7 +302,9 @@ fn simulation_progress_observer<'a>(
     }
 }
 
-fn complete_progress(progress_adapter: Option<&mut ProgressAdapter>) -> Result<(), CliError> {
+pub(super) fn complete_progress(
+    progress_adapter: Option<&mut ProgressAdapter>,
+) -> Result<(), CliError> {
     let Some(progress_adapter) = progress_adapter else {
         return Ok(());
     };
@@ -299,7 +322,7 @@ fn complete_progress(progress_adapter: Option<&mut ProgressAdapter>) -> Result<(
         .map_err(|source| CliError::OutputWrite { source })
 }
 
-fn emit_start_summary(
+pub(super) fn emit_start_summary(
     context: &CommandContext,
     run_id: &str,
     simulation_kind: &str,
@@ -319,7 +342,7 @@ fn emit_start_summary(
         .map_err(|source| CliError::OutputWrite { source })
 }
 
-fn emit_completion(
+pub(super) fn emit_completion(
     context: &CommandContext,
     simulation_kind: &str,
     output_path: Option<&Path>,
@@ -366,7 +389,7 @@ fn emit_completion(
     }
 }
 
-fn write_report_and_manifest(
+pub(super) fn write_report_and_manifest(
     output_path: &Path,
     run_id: &str,
     simulation_kind: &str,
@@ -453,7 +476,7 @@ fn export_summary_json(summary: &SimulationExportSummary) -> Value {
     })
 }
 
-fn direct_simulation_run_id(prefix: &str) -> String {
+pub(super) fn direct_simulation_run_id(prefix: &str) -> String {
     format!(
         "simulate_{prefix}_{}",
         chrono::Utc::now().format("%Y%m%dT%H%M%SZ")

@@ -386,7 +386,7 @@ fn timestamp_from_nanos(timestamp_utc_nanos: i64) -> DateTime<Utc> {
     DateTime::<Utc>::from_timestamp_nanos(timestamp_utc_nanos)
 }
 
-fn validation_error(field: &'static str, message: impl Into<String>) -> WorkflowError {
+pub(super) fn validation_error(field: &'static str, message: impl Into<String>) -> WorkflowError {
     WorkflowError::SimulationValidationFailed {
         field,
         message: message.into(),

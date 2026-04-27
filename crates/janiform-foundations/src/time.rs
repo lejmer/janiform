@@ -1,6 +1,10 @@
 //! Shared UTC nanosecond time quantization helpers.
 
-use chrono::{TimeZone, Utc};
+use std::error::Error;
+use std::fmt::{Display, Formatter};
+
+use chrono::{DateTime, TimeZone, Utc};
+use serde::{Deserialize, Deserializer};
 
 /// Exact five-minute UTC duration expressed in nanoseconds.
 pub const FIVE_MINUTES_NANOS: i64 = 5 * 60 * 1_000_000_000;
@@ -13,9 +17,179 @@ pub const ONE_HOUR_NANOS_F64: f64 = ONE_HOUR_NANOS as f64;
 /// Exact reciprocal conversion from nanoseconds to hours derived from `ONE_HOUR_NANOS_F64`.
 pub const HOURS_PER_NANOSECOND: f64 = 1.0 / ONE_HOUR_NANOS_F64;
 
+const NANOS_PER_MICROSECOND: i64 = 1_000;
+const NANOS_PER_MILLISECOND: i64 = 1_000_000;
+const NANOS_PER_SECOND: i64 = 1_000_000_000;
+const NANOS_PER_MINUTE: i64 = 60 * NANOS_PER_SECOND;
+const NANOS_PER_DAY: i64 = 24 * ONE_HOUR_NANOS;
+
+/// Error returned when a duration spec cannot be represented as UTC nanoseconds.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum DurationSpecParseError {
+    /// The spec does not match the accepted `<number><unit>` shape.
+    InvalidShape,
+    /// The numeric value is invalid.
+    InvalidNumericValue,
+    /// The unit is not supported.
+    UnsupportedUnit { unit: String },
+    /// The computed duration is not an integer number of nanoseconds.
+    FractionalNanoseconds,
+    /// The computed duration is zero or negative.
+    NonPositive,
+    /// The computed duration does not fit in `i64` nanoseconds.
+    OutOfRange,
+}
+
+impl Display for DurationSpecParseError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidShape => {
+                formatter.write_str("must be a duration string like `1h` or `15min`")
+            }
+            Self::InvalidNumericValue => {
+                formatter.write_str("contains an invalid numeric interval value")
+            }
+            Self::UnsupportedUnit { unit } => {
+                write!(formatter, "uses unsupported interval unit `{unit}`")
+            }
+            Self::FractionalNanoseconds => {
+                formatter.write_str("must map exactly to an integer UTC nanosecond duration")
+            }
+            Self::NonPositive => formatter.write_str("must be strictly positive"),
+            Self::OutOfRange => formatter.write_str("does not fit in signed 64-bit nanoseconds"),
+        }
+    }
+}
+
+impl Error for DurationSpecParseError {}
+
 /// Convert a fixed-width UTC nanosecond duration to hours.
 pub fn duration_nanos_to_hours(duration_nanos: i64) -> f64 {
     duration_nanos as f64 * HOURS_PER_NANOSECOND
+}
+
+/// Parse a pandas-style duration spec into an exact UTC nanosecond duration.
+///
+/// Accepted units are nanoseconds, microseconds, milliseconds, seconds,
+/// minutes, hours, and days, including common abbreviations such as `15min`,
+/// `1h`, and `1D`.
+pub fn parse_duration_spec_nanos(value: &str) -> Result<i64, DurationSpecParseError> {
+    let trimmed = value.trim();
+    let (raw_number, raw_unit) = split_duration_spec(trimmed)?;
+
+    let unit_nanos = duration_unit_nanos(raw_unit)?;
+    let (mantissa, scale) = parse_decimal_number(raw_number)?;
+    let scaled_nanos = mantissa
+        .checked_mul(unit_nanos as u128)
+        .ok_or(DurationSpecParseError::OutOfRange)?;
+
+    if scaled_nanos % scale != 0 {
+        return Err(DurationSpecParseError::FractionalNanoseconds);
+    }
+
+    let nanos = scaled_nanos / scale;
+    if nanos == 0 {
+        return Err(DurationSpecParseError::NonPositive);
+    }
+
+    i64::try_from(nanos).map_err(|_| DurationSpecParseError::OutOfRange)
+}
+
+/// Deserialize an RFC 3339 timestamp string as a UTC `DateTime`.
+pub fn deserialize_utc_datetime<'de, D>(deserializer: D) -> Result<DateTime<Utc>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = String::deserialize(deserializer)?;
+    DateTime::parse_from_rfc3339(value.as_str())
+        .map(|timestamp| timestamp.with_timezone(&Utc))
+        .map_err(serde::de::Error::custom)
+}
+
+fn split_duration_spec(value: &str) -> Result<(&str, &str), DurationSpecParseError> {
+    if value.is_empty() {
+        return Err(DurationSpecParseError::InvalidShape);
+    }
+
+    let mut unit_start = value.len();
+    for (position, character) in value.char_indices() {
+        if character.is_ascii_alphabetic() {
+            unit_start = position;
+            break;
+        }
+
+        if !character.is_ascii_digit() && character != '.' && !character.is_ascii_whitespace() {
+            return Err(DurationSpecParseError::InvalidShape);
+        }
+    }
+
+    if unit_start == 0 || unit_start == value.len() {
+        return Err(DurationSpecParseError::InvalidShape);
+    }
+
+    let number = value[..unit_start].trim();
+    let unit = value[unit_start..].trim();
+    if number.is_empty()
+        || unit.is_empty()
+        || !unit
+            .chars()
+            .all(|character| character.is_ascii_alphabetic())
+    {
+        return Err(DurationSpecParseError::InvalidShape);
+    }
+
+    Ok((number, unit))
+}
+
+fn parse_decimal_number(value: &str) -> Result<(u128, u128), DurationSpecParseError> {
+    let mut mantissa = 0_u128;
+    let mut scale = 1_u128;
+    let mut saw_digit = false;
+    let mut saw_decimal_point = false;
+
+    for character in value.chars() {
+        match character {
+            '0'..='9' => {
+                saw_digit = true;
+                mantissa = mantissa
+                    .checked_mul(10)
+                    .and_then(|current| current.checked_add(u128::from(character as u8 - b'0')))
+                    .ok_or(DurationSpecParseError::OutOfRange)?;
+
+                if saw_decimal_point {
+                    scale = scale
+                        .checked_mul(10)
+                        .ok_or(DurationSpecParseError::OutOfRange)?;
+                }
+            }
+            '.' if !saw_decimal_point => {
+                saw_decimal_point = true;
+            }
+            _ => return Err(DurationSpecParseError::InvalidNumericValue),
+        }
+    }
+
+    if !saw_digit {
+        return Err(DurationSpecParseError::InvalidNumericValue);
+    }
+
+    Ok((mantissa, scale))
+}
+
+fn duration_unit_nanos(unit: &str) -> Result<i64, DurationSpecParseError> {
+    let normalized = unit.to_ascii_lowercase();
+    let nanos = match normalized.as_str() {
+        "ns" | "nanosecond" | "nanoseconds" => 1,
+        "us" | "microsecond" | "microseconds" => NANOS_PER_MICROSECOND,
+        "ms" | "millisecond" | "milliseconds" => NANOS_PER_MILLISECOND,
+        "s" | "sec" | "secs" | "second" | "seconds" => NANOS_PER_SECOND,
+        "m" | "min" | "mins" | "minute" | "minutes" => NANOS_PER_MINUTE,
+        "h" | "hr" | "hrs" | "hour" | "hours" => ONE_HOUR_NANOS,
+        "d" | "day" | "days" => NANOS_PER_DAY,
+        _ => return Err(DurationSpecParseError::UnsupportedUnit { unit: normalized }),
+    };
+
+    Ok(nanos)
 }
 
 /// Convert a UTC calendar timestamp to UTC nanoseconds since the Unix epoch.
@@ -63,7 +237,8 @@ pub fn ceil_to_hour_utc_nanos(timestamp_utc_nanos: i64) -> i64 {
 mod tests {
     use super::{
         ONE_HOUR_NANOS, ceil_to_hour_utc_nanos, ceil_to_interval_utc_nanos,
-        duration_nanos_to_hours, floor_to_hour_utc_nanos, floor_to_interval_utc_nanos, utc_nanos,
+        duration_nanos_to_hours, floor_to_hour_utc_nanos, floor_to_interval_utc_nanos,
+        parse_duration_spec_nanos, utc_nanos,
     };
 
     #[test]
@@ -95,6 +270,19 @@ mod tests {
     fn duration_nanos_to_hours_matches_hour_boundary_constant() {
         assert_eq!(duration_nanos_to_hours(ONE_HOUR_NANOS), 1.0);
         assert_eq!(duration_nanos_to_hours(ONE_HOUR_NANOS / 4), 0.25);
+    }
+
+    #[test]
+    fn parse_duration_spec_nanos_accepts_supported_units() {
+        assert_eq!(parse_duration_spec_nanos("15min"), Ok(900_000_000_000));
+        assert_eq!(parse_duration_spec_nanos("1h"), Ok(ONE_HOUR_NANOS));
+        assert_eq!(parse_duration_spec_nanos("1D"), Ok(24 * ONE_HOUR_NANOS));
+        assert_eq!(parse_duration_spec_nanos("0.5s"), Ok(500_000_000));
+    }
+
+    #[test]
+    fn parse_duration_spec_nanos_rejects_fractional_nanoseconds() {
+        assert!(parse_duration_spec_nanos("0.1ns").is_err());
     }
 
     #[test]
