@@ -90,8 +90,6 @@ class JaniformModel:
         sample_every_nth_transition: int = 1,
         max_records_per_chunk: int = 1024,
         state_snapshot_capture: SeededTickEventStateSnapshotCapture = SeededTickEventStateSnapshotCapture.DISABLED,
-        silent: bool = False,
-        progress_mode: WorkflowProgressMode | str = WorkflowProgressMode.AUTO,
         progress_callback: Optional[Any] = None,
     ) -> JaniformSimulationResult:
         return simulate_model(
@@ -109,8 +107,6 @@ class JaniformModel:
             sample_every_nth_transition=sample_every_nth_transition,
             max_records_per_chunk=max_records_per_chunk,
             state_snapshot_capture=state_snapshot_capture,
-            silent=silent,
-            progress_mode=progress_mode,
             progress_callback=progress_callback,
         )
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import asdict
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -21,7 +22,6 @@ from ....._workflow_outputs import (
     simulation_output_price_column,
     write_json_document,
 )
-from ....._workflow_progress import JaniformOutputController, WorkflowProgressMode
 from .....calendar import CalendarRegistry
 from .....mean_reversion import MeanReversionBoundaryState
 from .....simulation.coarse import CoarseSimulationPath
@@ -56,8 +56,6 @@ def simulate_model(
     sample_every_nth_transition: int = 1,
     max_records_per_chunk: int = 1024,
     state_snapshot_capture: SeededTickEventStateSnapshotCapture = SeededTickEventStateSnapshotCapture.DISABLED,
-    silent: bool = False,
-    progress_mode: WorkflowProgressMode | str = WorkflowProgressMode.AUTO,
     progress_callback: Optional[Any] = None,
 ) -> JaniformSimulationResult:
     if output_path is not None and sink is not None:
@@ -95,29 +93,19 @@ def simulate_model(
         state_snapshot_capture=state_snapshot_capture,
     )
 
-    output_controller = JaniformOutputController(
-        suppress_info_output=silent,
-        progress_mode=WorkflowProgressMode.NONE if silent else progress_mode,
-        default_progress_mode=(WorkflowProgressMode.NONE if silent else WorkflowProgressMode.HUMAN),
-    )
-
-    with output_controller.progress("simulate") as progress:
+    callback = progress_callback
+    native_progress_callback: Callable[[dict[str, Any]], None] | None = None
+    if callback is not None:
         def emit_simulation_progress(raw_event: dict[str, Any]) -> None:
             event = simulation_progress_event_from_mapping(raw_event)
+            callback(event)
 
-            progress.update(
-                detail=event.detail,
-                completed_units=event.completed_units,
-                total_units=event.total_units,
-            )
+        native_progress_callback = emit_simulation_progress
 
-            if progress_callback is not None:
-                progress_callback(event)
-
-        raw_output = native_module().run_model_simulation_workflow(
-            request_payload,
-            emit_simulation_progress,
-        )
+    raw_output = native_module().run_model_simulation_workflow(
+        request_payload,
+        native_progress_callback,
+    )
 
     simulation_result = _adapt_native_simulation_output(
         raw_output,

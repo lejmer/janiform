@@ -1209,10 +1209,6 @@ def build_cli_simulate_result_payload(
         interval_label=None if interval_value is None else interval_value,
     )
 
-    resolved_progress_mode = _resolved_cli_progress_mode(
-        output_mode=output_mode,
-        command_arguments=command_arguments,
-    )
     output_controller = _build_cli_output_controller(
         output_mode=output_mode,
         command_arguments=command_arguments,
@@ -1232,8 +1228,6 @@ def build_cli_simulate_result_payload(
         debug_trace_enabled=bool(command_arguments.get("debug_trace_enabled")),
         sample_every_nth_transition=sample_every_nth_transition,
         max_records_per_chunk=max_records_per_chunk,
-        silent=bool(command_arguments.get("silent")),
-        progress_mode=resolved_progress_mode,
     )
 
     return {
