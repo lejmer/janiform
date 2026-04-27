@@ -1,6 +1,8 @@
 import ast
 from pathlib import Path
 
+from janiform._native_api import native_error_parts
+
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PYTHON_SOURCE_ROOT = REPO_ROOT / "python" / "janiform"
@@ -46,6 +48,27 @@ def test_type_checking_imports_used_in_annotations_require_deferred_annotations(
         "Files that use TYPE_CHECKING-only imports in runtime annotations must enable "
         f"deferred annotations: {violating_files}"
     )
+
+
+def test_native_error_parts_preserves_direct_field_path() -> None:
+    assert native_error_parts(
+        "session_configuration: must define a session",
+        default_field_path="request",
+    ) == ("session_configuration", "must define a session")
+
+
+def test_native_error_parts_preserves_direct_legacy_display_field_path() -> None:
+    assert native_error_parts(
+        "preset artifact: must be a JSON object",
+        default_field_path="preset_resolution",
+    ) == ("preset artifact", "must be a JSON object")
+
+
+def test_native_error_parts_preserves_wrapped_field_path() -> None:
+    assert native_error_parts(
+        "failed to resolve market-data session: session_configuration: must define a session",
+        default_field_path="request",
+    ) == ("session_configuration", "must define a session")
 
 
 def _module_imports_private_native_module(module_tree: ast.Module) -> bool:

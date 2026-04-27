@@ -3,12 +3,10 @@ from types import SimpleNamespace
 from typing import Any, Optional
 
 from janiform.calibration.market_data.contracts import CalibrationMarketDataWorkflowScope
-from janiform.calibration.staged.contracts import CalibrationStageExecutionStatus
 from janiform.calibration.staged.progress import format_staged_progress_event_detail
 from tools.workbench.execution import (
     RESOURCE_SNAPSHOT_INTERVAL_SECONDS,
     WorkbenchExecutionWorker,
-    _live_stage_report_payload,
     _mean_reversion_configuration_from_setup,
 )
 from tools.workbench.state import DEFAULT_WORKBENCH_SESSION_PRESET_NAME, WorkbenchRunSetup
@@ -50,7 +48,7 @@ def test_workbench_execution_omits_mean_reversion_for_seasonality_only_runs() ->
     assert _mean_reversion_configuration_from_setup(run_setup) is None
 
 
-def test_workbench_execution_worker_uses_prepared_handle_runner_and_current_fit_report_fields(
+def test_workbench_execution_worker_uses_shared_fit_workflow_entrypoint(
     monkeypatch,
 ) -> None:
     run_setup = WorkbenchRunSetup(
@@ -59,7 +57,7 @@ def test_workbench_execution_worker_uses_prepared_handle_runner_and_current_fit_
         output_directory=Path("output"),
     )
     worker = WorkbenchExecutionWorker(run_setup)
-    recorded_runner_call: dict[str, Any] = {}
+    recorded_fit_call: dict[str, Any] = {}
     recorded_estimator_kwargs: dict[str, Any] = {}
     emitted_errors: list[str] = []
     completed_results: list[Any] = []
@@ -67,33 +65,11 @@ def test_workbench_execution_worker_uses_prepared_handle_runner_and_current_fit_
     worker.error_raised.connect(emitted_errors.append)
     worker.execution_completed.connect(completed_results.append)
 
-    prepared = SimpleNamespace(
-        prepared_handle="prepared-handle",
-        session_resolution=SimpleNamespace(resolved_session_definition_json={}),
-        diagnostics=SimpleNamespace(),
-        provenance=SimpleNamespace(),
-        staged_request="staged-request",
-        prepared_data_reference="prepared-data-reference",
-        prepared_payload_path="prepared-payload-path",
-        staged_execution_input_path="staged-execution-input-path",
-    )
-    prepared_workflow = SimpleNamespace(
-        run_id="workbench-run",
-        prepared=prepared,
-        resolved_configuration=SimpleNamespace(
-            market_profile=None,
-            known_news=SimpleNamespace(
-                selected_preset=None,
-                recommended_reference=None,
-                recommendation_applied=False,
-                source_kind=SimpleNamespace(value="none"),
-            ),
-            session=SimpleNamespace(source_kind=SimpleNamespace(value="automatic")),
-        ),
-        input_inference=SimpleNamespace(),
-        fit_warning=None,
-        reference_price=None,
-        temporary_directory=None,
+    model = SimpleNamespace(run_id="workbench-run")
+    fit_report = SimpleNamespace(run_id="workbench-run")
+    fit_result = SimpleNamespace(
+        report=fit_report,
+        require_model=lambda: model,
     )
 
     class _FakeEstimator:
@@ -104,25 +80,9 @@ def test_workbench_execution_worker_uses_prepared_handle_runner_and_current_fit_
         def _resolve_market_profile_configuration(self) -> None:
             return None
 
-        def _prepare_fit_workflow(self, **_: Any) -> Any:
-            return prepared_workflow
-
-    def _fake_runner(
-        prepared_handle: Any,
-        *,
-        calendar_registry: Any,
-        event_callback: Any,
-    ) -> tuple[Any, dict[str, Any]]:
-        recorded_runner_call["prepared_handle"] = prepared_handle
-        recorded_runner_call["calendar_registry"] = calendar_registry
-        recorded_runner_call["event_callback"] = event_callback
-        return (
-            SimpleNamespace(
-                status=CalibrationStageExecutionStatus.SUCCESS,
-                failure=None,
-            ),
-            {"staged_response": {"stage_reports": []}},
-        )
+        def fit_with_report(self, **kwargs: Any) -> Any:
+            recorded_fit_call.update(kwargs)
+            return fit_result
 
     monkeypatch.setattr("tools.workbench.execution.JaniformEstimator", _FakeEstimator)
     monkeypatch.setattr(
@@ -137,99 +97,22 @@ def test_workbench_execution_worker_uses_prepared_handle_runner_and_current_fit_
         lambda **_: {"run_id": "workbench-run"},
     )
     monkeypatch.setattr(
-        "tools.workbench.execution.run_staged_calibration_with_prepared_handle_and_events",
-        _fake_runner,
-    )
-    monkeypatch.setattr(
-        "tools.workbench.execution.raw_stage_report_payloads",
-        lambda payload: tuple(payload["staged_response"]["stage_reports"]),
-    )
-    monkeypatch.setattr(
-        "tools.workbench.execution.JaniformFitReport",
-        lambda **kwargs: SimpleNamespace(**kwargs),
-    )
-    monkeypatch.setattr(
-        "tools.workbench.execution.extract_model_parameters",
-        lambda stage_report_payloads: {"stage_report_count": len(stage_report_payloads)},
-    )
-    monkeypatch.setattr(
-        "tools.workbench.execution.build_model_metadata",
-        lambda **_: {"metadata": "ok"},
-    )
-    monkeypatch.setattr(
-        "tools.workbench.execution.JaniformModel",
-        lambda **kwargs: SimpleNamespace(**kwargs),
-    )
-    monkeypatch.setattr(
-        "tools.workbench.execution.write_fit_artifacts",
+        "tools.workbench.execution.resolve_fit_artifact_paths",
         lambda **_: SimpleNamespace(run_directory=Path("output/workbench-run")),
     )
     monkeypatch.setattr(
         "tools.workbench.execution.load_workbench_artifacts",
         lambda path: SimpleNamespace(source_path=path),
     )
-    monkeypatch.setattr(
-        "tools.workbench.execution.CalendarRegistry",
-        lambda payload: SimpleNamespace(payload=payload),
-    )
-
     worker.run()
 
     assert emitted_errors == []
-    assert recorded_runner_call["prepared_handle"] == "prepared-handle"
+    assert recorded_fit_call["run_id"] == "workbench-run"
+    assert recorded_fit_call["output_dir"] == Path("output")
     assert recorded_estimator_kwargs["session"] == DEFAULT_WORKBENCH_SESSION_PRESET_NAME
-    assert callable(recorded_runner_call["event_callback"])
     assert len(completed_results) == 1
-    assert completed_results[0].fit_report.staged_request == "staged-request"
-    assert completed_results[0].fit_report.prepared_data_reference == "prepared-data-reference"
-
-
-def test_live_stage_report_payload_omits_non_live_stage_reports() -> None:
-    assert _live_stage_report_payload(
-        {
-            "stage_report_kind": "seasonality",
-            "status": "success",
-            "normalized_stage_payload": {
-                "timestamp_utc_nanos": [1, 2, 3],
-            },
-        }
-    ) is None
-
-
-def test_live_stage_report_payload_keeps_candidate_diagnostics_only() -> None:
-    payload = _live_stage_report_payload(
-        {
-            "stage_report_kind": "hawkes",
-            "status": "success",
-            "fitted_stage_payload": {
-                "selected_candidate_id": "hawkes-001",
-                "candidate_diagnostics": [
-                    {
-                        "candidate_id": "hawkes-001",
-                        "penalized_objective_value": 1.25,
-                    }
-                ],
-                "observed_interarrival_times": [1.0, 2.0, 3.0],
-            },
-            "normalized_stage_payload": {
-                "tick_event_timestamps": [1, 2, 3],
-            },
-        }
-    )
-
-    assert payload == {
-        "stage_report_kind": "hawkes",
-        "status": "success",
-        "fitted_stage_payload": {
-            "selected_candidate_id": "hawkes-001",
-            "candidate_diagnostics": [
-                {
-                    "candidate_id": "hawkes-001",
-                    "penalized_objective_value": 1.25,
-                }
-            ],
-        },
-    }
+    assert completed_results[0].model is model
+    assert completed_results[0].fit_report is fit_report
 
 
 def test_stage_progress_detail_summarizes_joint_refinement_runtime_state() -> None:
@@ -307,72 +190,6 @@ def test_stage_progress_detail_labels_post_restart_joint_refinement_phases() -> 
         "| best_coarse_fit=0.998000"
     )
     assert final_detail == "joint_refinement final assembly 2/3 | item=simulation_summaries"
-
-
-def test_workbench_execution_worker_forwards_stage_progress_native_events() -> None:
-    run_setup = WorkbenchRunSetup(
-        dataset_path=Path("ticks.csv"),
-        workflow_scope=CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE,
-        output_directory=Path("output"),
-    )
-    worker = WorkbenchExecutionWorker(run_setup)
-    emitted_events: list[Any] = []
-    worker.event_emitted.connect(emitted_events.append)
-
-    worker._forward_native_event(
-        {
-            "event_kind": "stage_progress",
-            "stage": "joint_refinement",
-            "progress_phase": "restart_optimization",
-            "completed_units": 2,
-            "total_units": 8,
-            "current_item_label": "activity_aligned",
-        }
-    )
-
-    assert len(emitted_events) == 1
-    emitted_event = emitted_events[0]
-    assert emitted_event.event_type.value == "subtask.started"
-    assert emitted_event.subtask == "joint_refinement.restart_optimization"
-    assert emitted_event.payload["completed_units"] == 2
-    assert emitted_event.payload["total_units"] == 8
-
-
-def test_workbench_execution_worker_forwards_run_started_stage_sequence() -> None:
-    run_setup = WorkbenchRunSetup(
-        dataset_path=Path("ticks.csv"),
-        workflow_scope=CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE,
-        output_directory=Path("output"),
-    )
-    worker = WorkbenchExecutionWorker(run_setup)
-    emitted_events: list[Any] = []
-    worker.event_emitted.connect(emitted_events.append)
-
-    worker._forward_native_event(
-        {
-            "event_kind": "run_started",
-            "stage_count": 5,
-            "stage_sequence": [
-                "seasonality",
-                "hawkes",
-                "return_components",
-                "mean_reversion",
-                "joint_refinement",
-            ],
-            "execution_mode": "memory",
-        }
-    )
-
-    assert len(emitted_events) == 1
-    emitted_event = emitted_events[0]
-    assert emitted_event.event_type.value == "run.started"
-    assert emitted_event.payload["stage_sequence"] == [
-        "seasonality",
-        "hawkes",
-        "return_components",
-        "mean_reversion",
-        "joint_refinement",
-    ]
 
 
 def test_workbench_execution_heartbeat_uses_resource_snapshot_interval(

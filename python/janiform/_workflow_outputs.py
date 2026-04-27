@@ -10,14 +10,14 @@ from typing import TYPE_CHECKING, Any, Optional, Protocol, cast
 import pyarrow as pyarrow
 from pyarrow import parquet
 
-from .contracts import serialize_pretty_json
-from .calibration.fit.report import JaniformFitReport
 from .calendar import CalendarRegistry, MarketState
+from .contracts import serialize_pretty_json
 from .pricing import VanillaOptionPricingRunResult
 from .simulation import CoarseSimulationPath, SeededTickSimulationResponse, SimulationKind
 
 if TYPE_CHECKING:
     from .calibration.fit.model import JaniformModel
+    from .calibration.fit.report import JaniformFitReport
 
 
 class SimulationArtifactSink(Protocol):
@@ -264,22 +264,26 @@ def write_pricing_artifacts(
 
 
 def simulation_output_preferences_from_model(model: JaniformModel) -> SimulationOutputPreferences:
-    input_inference = cast(dict[str, Any], model.metadata["input_inference"])
-    price_columns = cast(dict[str, Any], input_inference["tick_price_columns"])
+    # Deferred because fitted-model runtime modules import this artifact module.
+    from .calibration.fit._runtime.input_inference import (
+        tick_data_input_inference_from_model_metadata,
+    )
+
+    input_inference = tick_data_input_inference_from_model_metadata(model.metadata)
     reference_price = cast(
         Optional[float],
         cast(dict[str, Any], model.metadata.get("simulation_output_preferences", {})).get("reference_price"),
     )
 
     return SimulationOutputPreferences(
-        file_format=cast(str, input_inference["tick_data_format"]),
-        timestamp_column=cast(str, input_inference["timestamp_column"]),
-        timestamp_timezone=cast(str, input_inference["timestamp_timezone"]),
-        tick_price_input_policy=cast(Optional[str], input_inference["tick_price_input_policy"]),
-        price_column=cast(Optional[str], price_columns["price_column"]),
-        trade_sign_column=cast(Optional[str], price_columns["trade_sign_column"]),
-        bid_column=cast(Optional[str], price_columns["bid_column"]),
-        ask_column=cast(Optional[str], price_columns["ask_column"]),
+        file_format=input_inference.file_format,
+        timestamp_column=input_inference.timestamp_column,
+        timestamp_timezone=input_inference.timestamp_timezone,
+        tick_price_input_policy=input_inference.tick_price_input_policy,
+        price_column=input_inference.price_column,
+        trade_sign_column=input_inference.trade_sign_column,
+        bid_column=input_inference.bid_column,
+        ask_column=input_inference.ask_column,
         reference_price=1.0 if reference_price is None else reference_price,
     )
 

@@ -6,20 +6,13 @@ from typing import Any, Optional, Protocol
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
-from janiform._workflow_outputs import write_fit_artifacts
-from janiform.calendar import CalendarRegistry
+from janiform._workflow_outputs import resolve_fit_artifact_paths
 from janiform.calibration.fit._inference import (
     NormalizationPolicyOverrides,
     TickDataColumnOverrides,
     build_fit_inference_payload,
     infer_fit_inputs,
 )
-from janiform.calibration.fit._preparation.contracts import PreparedFitWorkflow
-from janiform.calibration.fit._runtime.metadata import (
-    build_model_metadata,
-    extract_model_parameters,
-)
-from janiform.calibration.fit._runtime.stage_reports import raw_stage_report_payloads
 from janiform.calibration.fit.estimator import JaniformEstimator
 from janiform.calibration.fit.model import JaniformModel
 from janiform.calibration.fit.report import JaniformFitReport
@@ -28,17 +21,6 @@ from janiform.calibration.market_data.contracts import (
     CalibrationMarketDataNormalizationPolicy,
     CalibrationMarketDataWorkflowScope,
     CalibrationTickDataColumnMapping,
-)
-from janiform.calibration.staged.contracts import CalibrationStageExecutionStatus
-from janiform.calibration.staged.progress import (
-    detail_for_failed_native_run,
-    detail_for_stage_completed_event,
-    format_staged_progress_event_detail,
-    subtask_for_stage_progress_event,
-)
-from janiform.calibration.staged.results import format_staged_failure_summary
-from janiform.calibration.staged.runtime import (
-    run_staged_calibration_with_prepared_handle_and_events,
 )
 
 from .artifacts import load_workbench_artifacts
@@ -68,30 +50,6 @@ class _WorkbenchEventEmitter(Protocol):
     ) -> None: ...
 
 
-class _WorkbenchProgressAdapter:
-    _worker: _WorkbenchEventEmitter
-
-    def __init__(self, worker: _WorkbenchEventEmitter) -> None:
-        self._worker: _WorkbenchEventEmitter = worker
-
-    def update(self, *, detail: Optional[str] = None) -> None:
-        if detail is None:
-            return
-
-        self._worker._emit_event(
-            WorkbenchEventType.SUBTASK_STARTED,
-            payload={"detail": detail},
-            subtask=detail,
-        )
-
-    def __exit__(self, exc_type, exc_value, traceback) -> None:
-        _ = exc_type
-        _ = exc_value
-        _ = traceback
-
-        return None
-
-
 class WorkbenchExecutionWorker(QObject):
     event_emitted = pyqtSignal(object)
     execution_completed = pyqtSignal(object)
@@ -112,7 +70,7 @@ class WorkbenchExecutionWorker(QObject):
         self._heartbeat_stop: Event = Event()
 
     def run(self) -> None:
-        prepared_workflow: Optional[PreparedFitWorkflow] = None
+        heartbeat_thread: Optional[Thread] = None
 
         try:
             session_argument: Optional[str | Path] = None
@@ -177,120 +135,26 @@ class WorkbenchExecutionWorker(QObject):
                 },
             )
 
-            progress = _WorkbenchProgressAdapter(self)
+            self._emit_event(
+                WorkbenchEventType.SUBTASK_STARTED,
+                payload={"detail": "Running fit workflow"},
+                subtask="fit_workflow",
+            )
 
-            prepared_workflow = estimator._prepare_fit_workflow(
+            heartbeat_thread = self._start_heartbeat()
+            fit_result = estimator.fit_with_report(
                 run_id=self._run_id,
                 tick_data_path=self._run_setup.dataset_path,
                 tick_data_format=self._run_setup.file_format,
-                tick_data_provenance_label="tick_data",
-                option_surface_path=None,
-                option_surface_format=self._run_setup.file_format or initial_inference.tick_data_source.file_format,
-                option_surface_provenance_label="option_surface",
-                progress=progress,
+                output_dir=self._run_setup.output_directory,
             )
 
-            if prepared_workflow.fit_warning is not None:
-                self._emit_event(
-                    WorkbenchEventType.ALERT_EMITTED,
-                    payload={
-                        "severity": "warning",
-                        "alert_code": "fit_warning",
-                        "message": prepared_workflow.fit_warning,
-                    },
-                )
+            self._stop_heartbeat(heartbeat_thread)
 
-            self._emit_event(
-                WorkbenchEventType.SUBTASK_STARTED,
-                payload={"detail": "Running staged calibration"},
-                subtask="staged_calibration",
-            )
-
-            heartbeat_thread: Optional[Thread] = self._start_heartbeat()
-
-            staged_response, raw_response_payload = (
-                run_staged_calibration_with_prepared_handle_and_events(
-                    prepared_workflow.prepared.prepared_handle,
-                    calendar_registry=CalendarRegistry(
-                        prepared_workflow.prepared.session_resolution.resolved_session_definition_json
-                    ),
-                    event_callback=self._forward_native_event,
-                )
-            )
-
-            self._heartbeat_stop.set()
-
-            if heartbeat_thread.is_alive():
-                heartbeat_thread.join(timeout=1.0)
-
-            fit_report = JaniformFitReport(
-                run_id=prepared_workflow.run_id,
-                workflow_scope=self._run_setup.workflow_scope,
-                success=staged_response.status == CalibrationStageExecutionStatus.SUCCESS,
-                resolved_configuration=prepared_workflow.resolved_configuration,
-                session_resolution=prepared_workflow.prepared.session_resolution,
-                preparation_diagnostics=prepared_workflow.prepared.diagnostics,
-                preparation_provenance=prepared_workflow.prepared.provenance,
-                staged_request=prepared_workflow.prepared.staged_request,
-                prepared_data_reference=prepared_workflow.prepared.prepared_data_reference,
-                prepared_payload_path=prepared_workflow.prepared.prepared_payload_path,
-                staged_execution_input_path=prepared_workflow.prepared.staged_execution_input_path,
-                staged_response=staged_response,
-                stage_report_payloads=raw_stage_report_payloads(raw_response_payload),
-            )
-
-            if staged_response.status != CalibrationStageExecutionStatus.SUCCESS:
-                raise RuntimeError(
-                    f"Janiform fit failed for run_id `{prepared_workflow.run_id}`: "
-                    f"{format_staged_failure_summary(staged_response)}"
-                )
-
-            model = JaniformModel(
-                run_id=prepared_workflow.run_id,
-                workflow_scope=self._run_setup.workflow_scope,
-                parameters=extract_model_parameters(fit_report.stage_report_payloads),
-                metadata=build_model_metadata(
-                    resolved_configuration=prepared_workflow.resolved_configuration,
-                    prepared=prepared_workflow.prepared,
-                    staged_response=staged_response,
-                    stage_report_payloads=fit_report.stage_report_payloads,
-                    input_inference=build_fit_inference_payload(
-                        inference=prepared_workflow.input_inference,
-                        workflow_scope=self._run_setup.workflow_scope,
-                        market_profile_name=(
-                            prepared_workflow.resolved_configuration.market_profile.selected_preset.preset_name
-                            if (
-                                prepared_workflow.resolved_configuration.market_profile is not None
-                                and prepared_workflow.resolved_configuration.market_profile.selected_preset is not None
-                            )
-                            else None
-                        ),
-                        known_news_preset_name=(
-                            prepared_workflow.resolved_configuration.known_news.selected_preset.preset_name
-                            if prepared_workflow.resolved_configuration.known_news.selected_preset is not None
-                            else None
-                        ),
-                        known_news_recommended_name=(
-                            prepared_workflow.resolved_configuration.known_news.recommended_reference.preset_name
-                            if prepared_workflow.resolved_configuration.known_news.recommended_reference is not None
-                            else None
-                        ),
-                        known_news_recommendation_applied=(
-                            prepared_workflow.resolved_configuration.known_news.recommendation_applied
-                        ),
-                        session_source_kind=prepared_workflow.resolved_configuration.session.source_kind.value,
-                        known_news_source_kind=prepared_workflow.resolved_configuration.known_news.source_kind.value,
-                    ),
-                    reference_price=prepared_workflow.reference_price,
-                ),
-                resolved_configuration=prepared_workflow.resolved_configuration,
-                session_resolution=prepared_workflow.prepared.session_resolution,
-                _stage_report_payloads=fit_report.stage_report_payloads,
-            )
-
-            artifact_paths = write_fit_artifacts(
-                model=model,
-                fit_report=fit_report,
+            model = fit_result.require_model()
+            fit_report = fit_result.report
+            artifact_paths = resolve_fit_artifact_paths(
+                run_id=fit_report.run_id,
                 output_dir=self._run_setup.output_directory,
             )
 
@@ -319,7 +183,7 @@ class WorkbenchExecutionWorker(QObject):
                 payload={"detail": "Calibration completed"},
             )
         except Exception as error:
-            self._heartbeat_stop.set()
+            self._stop_heartbeat(heartbeat_thread)
 
             self._emit_event(
                 WorkbenchEventType.RUN_FAILED,
@@ -328,9 +192,6 @@ class WorkbenchExecutionWorker(QObject):
 
             self.error_raised.emit(str(error))
         finally:
-            if prepared_workflow is not None and prepared_workflow.temporary_directory is not None:
-                prepared_workflow.temporary_directory.cleanup()
-
             self.finished.emit()
 
     def _start_heartbeat(self) -> Thread:
@@ -354,6 +215,12 @@ class WorkbenchExecutionWorker(QObject):
 
         return thread
 
+    def _stop_heartbeat(self, heartbeat_thread: Optional[Thread]) -> None:
+        self._heartbeat_stop.set()
+
+        if heartbeat_thread is not None and heartbeat_thread.is_alive():
+            heartbeat_thread.join(timeout=1.0)
+
     def _emit_event(
         self,
         event_type: WorkbenchEventType,
@@ -376,113 +243,6 @@ class WorkbenchExecutionWorker(QObject):
                 evaluation_tier=evaluation_tier,
             )
         )
-
-    def _forward_native_event(self, raw_event: Any) -> None:
-        if not isinstance(raw_event, dict):
-            return
-
-        event_kind = raw_event.get("event_kind")
-        if not isinstance(event_kind, str):
-            return
-
-        match event_kind:
-            case "run_started":
-                self._emit_event(
-                    WorkbenchEventType.RUN_STARTED,
-                    payload={
-                        "detail": "Running staged calibration",
-                        "stage_count": raw_event.get("stage_count"),
-                        "stage_sequence": raw_event.get("stage_sequence"),
-                        "execution_mode": raw_event.get("execution_mode"),
-                    },
-                )
-            case "stage_started":
-                stage = _coerce_optional_string(raw_event.get("stage"))
-
-                self._emit_event(
-                    WorkbenchEventType.STAGE_STARTED,
-                    payload={
-                        "stage_index": raw_event.get("stage_index"),
-                        "stage_count": raw_event.get("stage_count"),
-                        "stage_label": stage or "stage",
-                        "detail": f"Running {stage or 'stage'}",
-                    },
-                    stage=stage,
-                    evaluation_tier=_evaluation_tier_for_stage(stage),
-                )
-            case "stage_completed":
-                stage = _coerce_optional_string(raw_event.get("stage"))
-                stage_report = _coerce_optional_payload_dict(raw_event.get("stage_report"))
-                live_stage_report = _live_stage_report_payload(stage_report)
-
-                self._emit_event(
-                    WorkbenchEventType.STAGE_COMPLETED,
-                    payload={
-                        "stage_index": raw_event.get("stage_index"),
-                        "stage_count": raw_event.get("stage_count"),
-                        "stage_label": stage or "stage",
-                        "detail": detail_for_stage_completed_event(stage, stage_report),
-                        "runtime_seconds": raw_event.get("runtime_seconds"),
-                        "stage_report": live_stage_report,
-                    },
-                    stage=stage,
-                    evaluation_tier=_evaluation_tier_for_stage(stage),
-                )
-            case "stage_progress":
-                stage = _coerce_optional_string(raw_event.get("stage"))
-                progress_phase = _coerce_optional_string(raw_event.get("progress_phase"))
-                subtask = subtask_for_stage_progress_event(stage, progress_phase)
-
-                self._emit_event(
-                    WorkbenchEventType.SUBTASK_STARTED,
-                    payload={
-                        "detail": format_staged_progress_event_detail(raw_event),
-                        "completed_units": raw_event.get("completed_units"),
-                        "total_units": raw_event.get("total_units"),
-                        "aggregate_progress_percent": raw_event.get(
-                            "aggregate_progress_percent"
-                        ),
-                        "progress_phase": progress_phase,
-                        "current_item_label": raw_event.get("current_item_label"),
-                        "valid_completed_units": raw_event.get("valid_completed_units"),
-                        "cumulative_local_evaluation_count": raw_event.get(
-                            "cumulative_local_evaluation_count"
-                        ),
-                        "current_weighted_objective": raw_event.get(
-                            "current_weighted_objective"
-                        ),
-                        "best_restart_id": raw_event.get("best_restart_id"),
-                        "best_weighted_objective": raw_event.get("best_weighted_objective"),
-                        "current_coarse_consistency_fit": raw_event.get(
-                            "current_coarse_consistency_fit"
-                        ),
-                        "best_coarse_consistency_fit": raw_event.get(
-                            "best_coarse_consistency_fit"
-                        ),
-                    },
-                    stage=stage,
-                    subtask=subtask,
-                    evaluation_tier=_evaluation_tier_for_stage(stage),
-                )
-            case "run_failed":
-                failure_payload = raw_event.get("failure")
-
-                self._emit_event(
-                    WorkbenchEventType.RUN_FAILED,
-                    payload={
-                        "message": detail_for_failed_native_run(failure_payload),
-                        "failure": failure_payload,
-                    },
-                )
-            case "run_completed":
-                self._emit_event(
-                    WorkbenchEventType.SUBTASK_COMPLETED,
-                    payload={"detail": "Native calibration completed, writing artifacts"},
-                    subtask="artifact_write",
-                )
-            case _:
-                return
-
 
 def _column_mapping_from_setup(
     run_setup: WorkbenchRunSetup,
@@ -554,69 +314,6 @@ def _session_source_kind_from_setup(run_setup: WorkbenchRunSetup) -> str:
             return "automatic"
         case _:
             return "automatic"
-
-
-def _coerce_optional_string(value: Any) -> Optional[str]:
-    if isinstance(value, str):
-        return value
-
-    return None
-
-
-def _coerce_optional_payload_dict(value: Any) -> Optional[dict[str, Any]]:
-    if isinstance(value, dict):
-        return value
-
-    return None
-
-
-def _evaluation_tier_for_stage(stage: Optional[str]) -> Optional[str]:
-    match stage:
-        case "hawkes" | "return_components":
-            return "exact_block"
-        case "joint_refinement":
-            return "tick_joint"
-        case _:
-            return None
-
-
-def _live_stage_report_payload(
-    stage_report: Optional[dict[str, Any]],
-) -> Optional[dict[str, Any]]:
-    if stage_report is None:
-        return None
-
-    stage_report_kind = _coerce_optional_string(stage_report.get("stage_report_kind"))
-    if stage_report_kind not in {"hawkes", "return_components", "joint_refinement"}:
-        return None
-
-    fitted_stage_payload = stage_report.get("fitted_stage_payload")
-    if not isinstance(fitted_stage_payload, dict):
-        return {
-            "stage_report_kind": stage_report_kind,
-            "status": stage_report.get("status"),
-        }
-
-    slim_fitted_stage_payload: dict[str, Any] = {}
-    selected_candidate_id = _coerce_optional_string(
-        fitted_stage_payload.get("selected_candidate_id")
-    )
-    if selected_candidate_id is not None:
-        slim_fitted_stage_payload["selected_candidate_id"] = selected_candidate_id
-
-    candidate_diagnostics = fitted_stage_payload.get("candidate_diagnostics")
-    if isinstance(candidate_diagnostics, list):
-        slim_fitted_stage_payload["candidate_diagnostics"] = candidate_diagnostics
-
-    candidate_frontier = fitted_stage_payload.get("candidate_frontier")
-    if isinstance(candidate_frontier, list):
-        slim_fitted_stage_payload["candidate_frontier"] = candidate_frontier
-
-    return {
-        "stage_report_kind": stage_report_kind,
-        "status": stage_report.get("status"),
-        "fitted_stage_payload": slim_fitted_stage_payload,
-    }
 
 
 __all__ = [

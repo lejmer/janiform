@@ -11,10 +11,14 @@ from ....mean_reversion import MeanReversionFittedParameters
 from ....pricing import GammaSeverityMarkConfiguration, NigSharedPlusShiftConfiguration
 from ....simulation.coarse import NewsProcessConfiguration
 from ....simulation.shared import HawkesKernelParameters
-from ...staged.contracts import CalibrationStage
 from ...errors import calibration_error
-from ...market_data.contracts import CalibrationMarketDataWorkflowScope, CalibrationTickDataColumnMapping
+from ...market_data.contracts import (
+    CalibrationMarketDataWorkflowScope,
+    CalibrationTickDataColumnMapping,
+)
+from ...staged.contracts import CalibrationStage
 from ..state import CurrentStateEstimationRequest
+from .input_inference import tick_data_input_inference_from_model_metadata
 from .shared import PreparedModelRuntimeFactors
 
 if TYPE_CHECKING:
@@ -136,36 +140,33 @@ def current_state_tick_data_column_mapping_for_model(
     if request.tick_data_column_mapping is not None:
         column_mapping = request.tick_data_column_mapping
     else:
-        input_inference = cast(Mapping[str, Any], model.metadata.get("input_inference", {}))
-        tick_price_columns = cast(Mapping[str, Any], input_inference.get("tick_price_columns", {}))
-        timestamp_column = input_inference.get("timestamp_column")
-        price_column = tick_price_columns.get("price_column")
-        trade_sign_column = tick_price_columns.get("trade_sign_column")
+        input_inference = tick_data_input_inference_from_model_metadata(model.metadata)
+        price_column = input_inference.price_column
+        trade_sign_column = input_inference.trade_sign_column
 
-        if not isinstance(timestamp_column, str) or not timestamp_column.strip():
+        if price_column is None:
             raise calibration_error(
-                "metadata.input_inference.timestamp_column",
-                "must be present so current-state estimation can read observed tick timestamps",
-            )
-        if not isinstance(price_column, str) or not price_column.strip():
-            raise calibration_error(
-                "metadata.input_inference.tick_price_columns.price_column",
+                "metadata.input_inference.tick_data_column_mapping.price_column",
                 "must be present so current-state estimation can read observed tick prices",
             )
-        if not isinstance(trade_sign_column, str) or not trade_sign_column.strip():
+        if trade_sign_column is None:
             raise calibration_error(
-                "metadata.input_inference.tick_price_columns.trade_sign_column",
+                "metadata.input_inference.tick_data_column_mapping.trade_sign_column",
                 "must be present so current-state estimation can read observed trade signs",
             )
 
         column_mapping = CalibrationTickDataColumnMapping(
-            timestamp_column=timestamp_column,
+            timestamp_column=input_inference.timestamp_column,
             price_column=price_column,
             trade_sign_column=trade_sign_column,
         )
 
     if column_mapping.price_column is None:
-        raise calibration_error("tick_data_column_mapping.price_column", "is required for current-state estimation")
+        raise calibration_error(
+            "tick_data_column_mapping.price_column",
+            "is required for current-state estimation",
+        )
+
     if column_mapping.trade_sign_column is None:
         raise calibration_error(
             "tick_data_column_mapping.trade_sign_column",

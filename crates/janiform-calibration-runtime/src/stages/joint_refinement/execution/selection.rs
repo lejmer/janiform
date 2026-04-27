@@ -12,7 +12,8 @@ use super::super::objective::{
     compare_joint_candidate_breakdowns, joint_primary_metrics_from_breakdown,
 };
 use super::coarse_consistency::{
-    JointRefinementCoarseConsistencyArtifacts, build_joint_candidate_coarse_consistency_artifacts,
+    JointRefinementCoarseConsistencyArtifacts, JointRefinementCoarseConsistencyProgress,
+    build_joint_candidate_coarse_consistency_artifacts,
 };
 use super::{
     JointRefinementActiveParameterLayout, JointRefinementCoarseConsistencySummary,
@@ -290,6 +291,7 @@ pub(crate) fn select_restart_outcomes_with_lazy_coarse_consistency<'a>(
             context,
             restart_group,
             baseline_artifacts,
+            progress_sender,
         );
 
         let current_coarse_consistency_fit = progress_state.record(
@@ -338,6 +340,7 @@ pub(crate) fn select_restart_outcomes_with_lazy_coarse_consistency<'a>(
             restart_groups.as_slice(),
             Some(selected_restart_outcome),
             baseline_artifacts,
+            progress_sender,
         );
     }
 
@@ -406,6 +409,7 @@ fn resolve_restart_group_coarse_consistency(
     context: &JointRefinementContext,
     restart_group: &JointRefinementRestartOutcomeGroup<'_>,
     baseline_artifacts: &JointRefinementCoarseConsistencyArtifacts,
+    progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
 ) -> Option<JointRefinementCoarseConsistencyArtifacts> {
     if let Some(artifacts) = coarse_consistency_cache
         .artifacts_by_parameter_bits
@@ -429,6 +433,11 @@ fn resolve_restart_group_coarse_consistency(
             .fitted_parameters,
         Some(restart_group.parameter_bits.as_slice()),
         Some(baseline_artifacts.summary.raw_fit),
+        Some(JointRefinementCoarseConsistencyProgress {
+            sender: progress_sender,
+            phase: JointRefinementStageProgressPhase::CoarseConsistencyEvaluation,
+            current_item_label: Some(restart_group.representative.restart_id.as_str()),
+        }),
     )?;
 
     coarse_consistency_cache.artifacts_by_parameter_bits.insert(
@@ -451,6 +460,7 @@ fn ensure_selected_restart_artifacts(
     restart_groups: &[JointRefinementRestartOutcomeGroup<'_>],
     selected_restart_outcome: Option<&JointRefinementRestartOutcome>,
     baseline_artifacts: &JointRefinementCoarseConsistencyArtifacts,
+    progress_sender: Option<&Sender<JointRefinementStageProgressUpdate>>,
 ) {
     let Some(selected_restart_outcome) = selected_restart_outcome else {
         return;
@@ -474,6 +484,11 @@ fn ensure_selected_restart_artifacts(
         &selected_restart_outcome.final_evaluation.fitted_parameters,
         Some(selected_restart_group.parameter_bits.as_slice()),
         Some(baseline_artifacts.summary.raw_fit),
+        Some(JointRefinementCoarseConsistencyProgress {
+            sender: progress_sender,
+            phase: JointRefinementStageProgressPhase::CoarseConsistencyEvaluation,
+            current_item_label: Some(selected_restart_outcome.restart_id.as_str()),
+        }),
     ) {
         assign_coarse_consistency_artifacts_to_restart_group(
             &mut coarse_consistency_cache.artifacts_by_restart_id,

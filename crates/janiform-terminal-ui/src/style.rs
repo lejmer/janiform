@@ -3,6 +3,8 @@ use console::Style;
 /// Semantic style names used by command implementations.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SemanticStyle {
+    /// Bright section heading text.
+    Heading,
     /// Dim label text.
     Label,
     /// Dim secondary metadata text.
@@ -25,12 +27,13 @@ pub enum SemanticStyle {
 
 pub(crate) fn style_contract(style: SemanticStyle) -> Style {
     match style {
+        SemanticStyle::Heading => Style::new().bright(),
         SemanticStyle::Label | SemanticStyle::Metadata => Style::new().dim(),
-        SemanticStyle::Value => Style::new(),
-        SemanticStyle::ImportantPath | SemanticStyle::ActiveStage => Style::new().cyan(),
+        SemanticStyle::Value | SemanticStyle::ImportantPath => Style::new().bright(),
+        SemanticStyle::ActiveStage => Style::new().cyan(),
         SemanticStyle::CompletedMarker => Style::new().green(),
         SemanticStyle::WarningMarker => Style::new().yellow(),
         SemanticStyle::FailureMarker => Style::new().red(),
-        SemanticStyle::TableHeader => Style::new().bold(),
+        SemanticStyle::TableHeader => Style::new().dim(),
     }
 }

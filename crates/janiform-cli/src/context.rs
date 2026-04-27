@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use clap::ArgAction;
 use clap::Args;
 use clap::ValueEnum;
-use janiform_cli_ui::TerminalRenderer;
+use janiform_terminal_ui::TerminalRenderer;
 use serde::Deserialize;
 use serde::Serialize;
 

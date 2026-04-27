@@ -1,14 +1,13 @@
 use std::path::Path;
 
 use janiform::calibration::CalibrationExecutionMode;
-use janiform_cli_ui::{
+use janiform_terminal_ui::{
     ArtifactPathGroup, KeyValueRow, StageChecklist, StageChecklistItem, StageChecklistStatus,
     StartSummary, WarningBlock, format_artifact_path, format_path,
 };
+use janiform_workflows::fit::{market_data_file_format_label, stage_label, workflow_scope_label};
 
-use super::labels::{
-    market_data_file_format_label, optional_label, stage_label, workflow_scope_label,
-};
+use super::labels::optional_label;
 use super::preparation::{PreparedFitPreview, fit_warnings};
 use crate::context::CommandContext;
 
@@ -87,13 +86,11 @@ pub(crate) fn render_inspect_human(
             ],
         }
         .render(&renderer),
-
         value_section("Explicit user inputs", &prepared.explicit_values).render(&renderer),
         value_section("Inferred values", &prepared.inferred_values).render(&renderer),
         value_section("Preset defaults", &prepared.preset_defaults).render(&renderer),
         value_section("Recommended defaults", &prepared.recommended_defaults).render(&renderer),
         value_section("Derived values", &prepared.derived_values).render(&renderer),
-
         session_summary(prepared).render(&renderer),
     ];
 

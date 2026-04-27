@@ -75,7 +75,17 @@ from ...calibration.fit import (
     JaniformFitReport,
     JaniformModel,
 )
+from ...calibration.fit._inference import (
+    FitInference,
+    NormalizationPolicyOverrides,
+    TickDataColumnOverrides,
+    build_fit_inference_payload,
+    infer_fit_inputs,
+)
 from ...calibration.fit._preparation.configuration import load_explicit_session_configuration
+from ...calibration.fit._runtime.input_inference import (
+    tick_data_input_inference_from_model_metadata,
+)
 from ...calibration.market_data import (
     CalibrationDuplicateRecordPolicy,
     CalibrationInputFileFormat,
@@ -97,13 +107,7 @@ from ...calibration.presets import (
     SessionPresetReference,
     deserialize_preset_artifact,
 )
-from ...calibration.fit._inference import (
-    FitInference,
-    NormalizationPolicyOverrides,
-    TickDataColumnOverrides,
-    build_fit_inference_payload,
-    infer_fit_inputs,
-)
+from ...calibration.presets.resolution import ResolvedPresetWorkflowConfiguration
 from ...calibration.staged import CalibrationExecutionMode
 from ...calibration.staged.results import build_staged_failure_context
 from ...errors import (
@@ -731,33 +735,48 @@ def build_normalization_overrides_from_arguments(
 
 
 def build_cli_fit_input_inference_payload(prepared_workflow: Any) -> dict[str, Any]:
+    resolved_configuration = prepared_workflow.resolved_configuration
+
     return build_fit_inference_payload(
         inference=prepared_workflow.input_inference,
         workflow_scope=prepared_workflow.prepared.request.workflow_scope,
-        market_profile_name=(
-            prepared_workflow.resolved_configuration.market_profile.selected_preset.preset_name
-            if (
-                prepared_workflow.resolved_configuration.market_profile is not None
-                and prepared_workflow.resolved_configuration.market_profile.selected_preset is not None
-            )
-            else None
-        ),
-        known_news_preset_name=(
-            prepared_workflow.resolved_configuration.known_news.selected_preset.preset_name
-            if prepared_workflow.resolved_configuration.known_news.selected_preset is not None
-            else None
-        ),
-        known_news_recommended_name=(
-            prepared_workflow.resolved_configuration.known_news.recommended_reference.preset_name
-            if prepared_workflow.resolved_configuration.known_news.recommended_reference is not None
-            else None
-        ),
-        known_news_recommendation_applied=(
-            prepared_workflow.resolved_configuration.known_news.recommendation_applied
-        ),
-        session_source_kind=prepared_workflow.resolved_configuration.session.source_kind.value,
-        known_news_source_kind=prepared_workflow.resolved_configuration.known_news.source_kind.value,
+        market_profile_name=resolved_market_profile_preset_name(resolved_configuration),
+        known_news_preset_name=resolved_known_news_preset_name(resolved_configuration),
+        known_news_recommended_name=resolved_known_news_recommended_name(resolved_configuration),
+        known_news_recommendation_applied=resolved_configuration.known_news.recommendation_applied,
+        session_source_kind=resolved_configuration.session.source_kind.value,
+        known_news_source_kind=resolved_configuration.known_news.source_kind.value,
     )
+
+
+def resolved_market_profile_preset_name(
+    resolved_configuration: ResolvedPresetWorkflowConfiguration,
+) -> Optional[str]:
+    market_profile = resolved_configuration.market_profile
+    if market_profile is None or market_profile.selected_preset is None:
+        return None
+
+    return market_profile.selected_preset.preset_name
+
+
+def resolved_known_news_preset_name(
+    resolved_configuration: ResolvedPresetWorkflowConfiguration,
+) -> Optional[str]:
+    selected_preset = resolved_configuration.known_news.selected_preset
+    if selected_preset is None:
+        return None
+
+    return selected_preset.preset_name
+
+
+def resolved_known_news_recommended_name(
+    resolved_configuration: ResolvedPresetWorkflowConfiguration,
+) -> Optional[str]:
+    recommended_reference = resolved_configuration.known_news.recommended_reference
+    if recommended_reference is None:
+        return None
+
+    return recommended_reference.preset_name
 
 
 def execute_cli_fit(
@@ -1088,7 +1107,7 @@ def build_cli_fit_result_payload(
         "report_path": str(artifact_paths.report_path),
         "manifest_path": str(artifact_paths.manifest_path),
         "model_summary": model.summary(),
-        "input_inference": cast(dict[str, Any], model.summary()["input_inference"]),
+        "input_inference": build_cli_fit_model_input_inference_payload(model),
         "explain_requested": explain_requested,
         "fit_report_summary": fit_report.summary(),
         "resolved_configuration": fit_report.resolved_configuration.to_payload(),
@@ -1096,6 +1115,44 @@ def build_cli_fit_result_payload(
         "preparation_diagnostics": fit_report.preparation_diagnostics.to_payload(),
         "preparation_provenance": fit_report.preparation_provenance.to_payload(),
         "staged_status": fit_report.staged_response.status.value,
+    }
+
+
+def build_cli_fit_model_input_inference_payload(model: JaniformModel) -> dict[str, Any]:
+    input_inference = tick_data_input_inference_from_model_metadata(model.metadata)
+    resolved_configuration = model.resolved_configuration
+
+    return {
+        "run_id": model.run_id,
+        "workflow_scope": model.workflow_scope.value,
+        "tick_data_format": input_inference.file_format,
+        "available_columns": [],
+        "timestamp_column": input_inference.timestamp_column,
+        "tick_price_input_policy": input_inference.tick_price_input_policy,
+        "tick_price_columns": {
+            "price_column": input_inference.price_column,
+            "trade_sign_column": input_inference.trade_sign_column,
+            "bid_column": input_inference.bid_column,
+            "ask_column": input_inference.ask_column,
+        },
+        "timestamp_timezone": input_inference.timestamp_timezone,
+        "timestamp_timezone_source": input_inference.timestamp_timezone_source,
+        "market_profile": resolved_market_profile_preset_name(resolved_configuration),
+        "default_calibration_hint_ids": [],
+        "session_source_kind": resolved_configuration.session.source_kind.value,
+        "known_news": {
+            "selected_preset": resolved_known_news_preset_name(resolved_configuration),
+            "recommended_preset": resolved_known_news_recommended_name(resolved_configuration),
+            "recommendation_applied": resolved_configuration.known_news.recommendation_applied,
+            "source_kind": resolved_configuration.known_news.source_kind.value,
+        },
+        "candidate_columns": {
+            "timestamp": [],
+            "price": [],
+            "trade_sign": [],
+            "bid": [],
+            "ask": [],
+        },
     }
 
 

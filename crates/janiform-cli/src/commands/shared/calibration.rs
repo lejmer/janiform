@@ -1,15 +1,26 @@
 use janiform::calibration::{
-    CalibrationExecutionMode, MarketDataDuplicateRecordPolicy, MarketDataInputFileFormat,
-    MarketDataOptionQuoteInputPolicy, MarketDataTickPriceInputPolicy,
+    CalibrationExecutionMode, CalibrationStage, MarketDataDuplicateRecordPolicy,
+    MarketDataInputFileFormat, MarketDataOptionQuoteInputPolicy, MarketDataTickPriceInputPolicy,
 };
 
 use crate::commands::options;
+use crate::commands::options::CalibrationStageOption;
 use crate::commands::options::InputFileFormat;
 
 pub(crate) fn calibration_execution_mode(mode: options::ExecutionMode) -> CalibrationExecutionMode {
     match mode {
         options::ExecutionMode::Memory => CalibrationExecutionMode::Memory,
         options::ExecutionMode::Disk => CalibrationExecutionMode::Disk,
+    }
+}
+
+pub(crate) fn calibration_stage(stage: CalibrationStageOption) -> CalibrationStage {
+    match stage {
+        CalibrationStageOption::Seasonality => CalibrationStage::Seasonality,
+        CalibrationStageOption::Hawkes => CalibrationStage::Hawkes,
+        CalibrationStageOption::ReturnComponents => CalibrationStage::ReturnComponents,
+        CalibrationStageOption::MeanReversion => CalibrationStage::MeanReversion,
+        CalibrationStageOption::JointRefinement => CalibrationStage::JointRefinement,
     }
 }
 

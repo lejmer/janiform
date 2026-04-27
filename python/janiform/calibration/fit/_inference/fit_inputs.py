@@ -13,20 +13,10 @@ from ...market_data.contracts import (
     CalibrationTickDataColumnMapping,
     CalibrationTickPriceInputPolicy,
 )
-from ...market_data.ingestion import _load_source_columns
-from ...presets.references import MarketProfileExplicitConfiguration
-from .tick_data import (
-    alias_map_for_market_profile,
-    build_tick_data_column_mapping,
-    format_candidate_list,
-    infer_tick_data_format_from_path,
-    ordered_candidates,
-    resolve_run_id,
-    resolve_tick_price_input_policy,
-    resolve_timestamp_timezone,
-    select_optional_candidate,
-    select_required_candidate,
+from ...market_data.translation import (
+    infer_market_data_fit_inputs as infer_market_data_fit_inputs_native,
 )
+from ...presets.references import MarketProfileExplicitConfiguration
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,6 +67,13 @@ class FitInference:
     timestamp_timezone_source: str
     default_calibration_hint_ids: tuple[str, ...]
 
+    @staticmethod
+    def from_mapping(raw_payload: Any) -> FitInference:
+        if not isinstance(raw_payload, dict):
+            raise calibration_error("input_inference", "must be a mapping")
+
+        return _fit_inference_from_mapping(raw_payload)
+
 
 def infer_fit_inputs(
     *,
@@ -95,130 +92,173 @@ def infer_fit_inputs(
             "must be a non-empty string",
         )
 
+    raw_inference = infer_market_data_fit_inputs_native(
+        {
+            "tick_data_path": str(tick_data_path),
+            "tick_data_format": (
+                None
+                if tick_data_format is None
+                else tick_data_format.value
+            ),
+            "tick_data_provenance_label": tick_data_provenance_label,
+            "workflow_scope": workflow_scope.value,
+            "run_id": run_id,
+            "column_overrides": _column_overrides_payload(column_overrides),
+            "normalization_overrides": _normalization_overrides_payload(
+                normalization_overrides
+            ),
+            "market_profile_defaults": _market_profile_defaults_payload(
+                market_profile_configuration
+            ),
+        }
+    )
+
+    return _fit_inference_from_mapping(raw_inference)
+
+
+def _fit_inference_from_mapping(raw_inference: dict[str, Any]) -> FitInference:
+    tick_data_source = CalibrationInputFileReference.from_mapping(
+        _require_mapping(raw_inference, "tick_data_source"),
+        field_path="tick_data_source",
+    )
+    tick_data_column_mapping = CalibrationTickDataColumnMapping.from_mapping(
+        _require_mapping(raw_inference, "tick_data_column_mapping"),
+        field_path="tick_data_column_mapping",
+    )
+
+    normalization_policy = CalibrationMarketDataNormalizationPolicy.from_mapping(
+        _require_mapping(raw_inference, "normalization_policy"),
+        field_path="normalization_policy",
+    )
+
+    source_probe = _require_mapping(raw_inference, "source_probe")
+    candidate_columns = _require_mapping(raw_inference, "candidate_columns")
+
+    raw_available_columns = source_probe.get("available_columns", ())
+    if not isinstance(raw_available_columns, list | tuple):
+        raise calibration_error(
+            "source_probe.available_columns",
+            "must be a sequence in the native fit-input inference payload",
+        )
+
+    raw_default_calibration_hint_ids = raw_inference.get(
+        "default_calibration_hint_ids",
+        (),
+    )
+    if not isinstance(raw_default_calibration_hint_ids, list | tuple):
+        raise calibration_error(
+            "default_calibration_hint_ids",
+            "must be a sequence in the native fit-input inference payload",
+        )
+
+    return FitInference(
+        run_id=str(raw_inference["run_id"]),
+        tick_data_source=tick_data_source,
+        tick_data_column_mapping=tick_data_column_mapping,
+        normalization_policy=normalization_policy,
+        available_columns=tuple(str(column_name) for column_name in raw_available_columns),
+        timestamp_candidates=_candidate_columns(candidate_columns, "timestamp"),
+        price_candidates=_candidate_columns(candidate_columns, "price"),
+        trade_sign_candidates=_candidate_columns(candidate_columns, "trade_sign"),
+        bid_candidates=_candidate_columns(candidate_columns, "bid"),
+        ask_candidates=_candidate_columns(candidate_columns, "ask"),
+        timestamp_timezone_source=str(raw_inference["timestamp_timezone_source"]),
+        default_calibration_hint_ids=tuple(
+            str(hint_id) for hint_id in raw_default_calibration_hint_ids
+        ),
+    )
+
+
+def _column_overrides_payload(
+    column_overrides: Optional[TickDataColumnOverrides],
+) -> dict[str, Optional[str]]:
     effective_column_overrides = (
         TickDataColumnOverrides() if column_overrides is None else column_overrides
     )
+
+    return {
+        "timestamp_column": effective_column_overrides.timestamp_column,
+        "price_column": effective_column_overrides.price_column,
+        "trade_sign_column": effective_column_overrides.trade_sign_column,
+        "bid_column": effective_column_overrides.bid_column,
+        "ask_column": effective_column_overrides.ask_column,
+    }
+
+
+def _normalization_overrides_payload(
+    normalization_overrides: Optional[NormalizationPolicyOverrides],
+) -> dict[str, Any]:
     effective_normalization_overrides = (
         NormalizationPolicyOverrides()
         if normalization_overrides is None
         else normalization_overrides
     )
 
-    resolved_tick_data_format = (
-        tick_data_format
-        if tick_data_format is not None
-        else infer_tick_data_format_from_path(tick_data_path)
-    )
+    return {
+        "timestamp_timezone": effective_normalization_overrides.timestamp_timezone,
+        "sort_records_by_timestamp": effective_normalization_overrides.sort_records_by_timestamp,
+        "duplicate_record_policy": (
+            None
+            if effective_normalization_overrides.duplicate_record_policy is None
+            else effective_normalization_overrides.duplicate_record_policy.value
+        ),
+        "tick_price_input_policy": (
+            None
+            if effective_normalization_overrides.tick_price_input_policy is None
+            else effective_normalization_overrides.tick_price_input_policy.value
+        ),
+        "option_quote_input_policy": (
+            None
+            if effective_normalization_overrides.option_quote_input_policy is None
+            else effective_normalization_overrides.option_quote_input_policy.value
+        ),
+    }
 
-    tick_data_source = CalibrationInputFileReference(
-        path=str(tick_data_path),
-        file_format=resolved_tick_data_format,
-        provenance_label=tick_data_provenance_label,
-    )
 
-    available_columns = _load_source_columns(
-        tick_data_source,
-        field_path="tick_data_source",
-    )
+def _market_profile_defaults_payload(
+    market_profile_configuration: Optional[MarketProfileExplicitConfiguration],
+) -> Optional[dict[str, Any]]:
+    if market_profile_configuration is None:
+        return None
 
-    alias_map = alias_map_for_market_profile(market_profile_configuration)
+    return {
+        "timestamp_timezone_name": market_profile_configuration.timestamp_timezone_name,
+        "column_alias_hints": [
+            {
+                "canonical_name": alias_hint.canonical_name,
+                "aliases": list(alias_hint.aliases),
+            }
+            for alias_hint in market_profile_configuration.column_alias_hints
+        ],
+        "default_calibration_hint_ids": list(
+            market_profile_configuration.default_calibration_hint_ids
+        ),
+    }
 
-    timestamp_candidates = ordered_candidates(
-        available_columns=available_columns,
-        aliases=alias_map["timestamp"],
-    )
-    price_candidates = ordered_candidates(
-        available_columns=available_columns,
-        aliases=alias_map["price"],
-    )
-    trade_sign_candidates = ordered_candidates(
-        available_columns=available_columns,
-        aliases=alias_map["trade_sign"],
-    )
-    bid_candidates = ordered_candidates(
-        available_columns=available_columns,
-        aliases=alias_map["bid"],
-    )
-    ask_candidates = ordered_candidates(
-        available_columns=available_columns,
-        aliases=alias_map["ask"],
-    )
 
-    timestamp_column = (
-        effective_column_overrides.timestamp_column
-        if effective_column_overrides.timestamp_column is not None
-        else select_required_candidate(
-            candidates=timestamp_candidates,
-            field_path="column_mapping.tick_data.timestamp_column",
-            failure_message=(
-                "could not infer a timestamp column. "
-                f"Found timestamp candidates: {format_candidate_list(timestamp_candidates)}. "
-                "Please set a timestamp-column override explicitly."
-            ),
+def _require_mapping(raw_payload: dict[str, Any], field_name: str) -> dict[str, Any]:
+    raw_value = raw_payload.get(field_name)
+    if not isinstance(raw_value, dict):
+        raise calibration_error(
+            field_name,
+            "must be an object in the native fit-input inference payload",
         )
-    )
-    trade_sign_column = (
-        effective_column_overrides.trade_sign_column
-        if effective_column_overrides.trade_sign_column is not None
-        else select_optional_candidate(trade_sign_candidates)
-    )
 
-    tick_price_input_policy = resolve_tick_price_input_policy(
-        workflow_scope=workflow_scope,
-        explicit_policy=effective_normalization_overrides.tick_price_input_policy,
-        explicit_price_column=effective_column_overrides.price_column,
-        explicit_bid_column=effective_column_overrides.bid_column,
-        explicit_ask_column=effective_column_overrides.ask_column,
-        price_candidates=price_candidates,
-        bid_candidates=bid_candidates,
-        ask_candidates=ask_candidates,
-    )
+    return raw_value
 
-    tick_data_column_mapping = build_tick_data_column_mapping(
-        timestamp_column=timestamp_column,
-        tick_price_input_policy=tick_price_input_policy,
-        column_overrides=effective_column_overrides,
-        trade_sign_column=trade_sign_column,
-        price_candidates=price_candidates,
-        bid_candidates=bid_candidates,
-        ask_candidates=ask_candidates,
-    )
 
-    timestamp_timezone, timestamp_timezone_source = resolve_timestamp_timezone(
-        normalization_overrides=effective_normalization_overrides,
-        market_profile_configuration=market_profile_configuration,
-    )
+def _candidate_columns(
+    raw_payload: dict[str, Any],
+    field_name: str,
+) -> tuple[str, ...]:
+    raw_value = raw_payload.get(field_name, ())
+    if not isinstance(raw_value, list | tuple):
+        raise calibration_error(
+            f"candidate_columns.{field_name}",
+            "must be a sequence in the native fit-input inference payload",
+        )
 
-    normalization_policy = CalibrationMarketDataNormalizationPolicy(
-        timestamp_timezone=timestamp_timezone,
-        sort_records_by_timestamp=(
-            True
-            if effective_normalization_overrides.sort_records_by_timestamp is None
-            else effective_normalization_overrides.sort_records_by_timestamp
-        ),
-        duplicate_record_policy=effective_normalization_overrides.duplicate_record_policy,
-        tick_price_input_policy=tick_price_input_policy,
-        option_quote_input_policy=effective_normalization_overrides.option_quote_input_policy,
-    )
-
-    return FitInference(
-        run_id=resolve_run_id(run_id=run_id, tick_data_path=tick_data_path),
-        tick_data_source=tick_data_source,
-        tick_data_column_mapping=tick_data_column_mapping,
-        normalization_policy=normalization_policy,
-        available_columns=available_columns,
-        timestamp_candidates=timestamp_candidates,
-        price_candidates=price_candidates,
-        trade_sign_candidates=trade_sign_candidates,
-        bid_candidates=bid_candidates,
-        ask_candidates=ask_candidates,
-        timestamp_timezone_source=timestamp_timezone_source,
-        default_calibration_hint_ids=(
-            ()
-            if market_profile_configuration is None
-            else market_profile_configuration.default_calibration_hint_ids
-        ),
-    )
+    return tuple(str(column_name) for column_name in raw_value)
 
 
 def column_overrides_from_mapping(

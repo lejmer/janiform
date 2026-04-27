@@ -700,11 +700,6 @@ pub(crate) fn build_seasonality_stage_parameter_artifact_fixture(
                 intraday_factor_by_bin: vec![0.9, 1.1],
                 day_of_week_factor: vec![1.0, 0.98, 1.01, 1.02, 0.99],
                 day_of_year_factor: vec![0.97, 1.03],
-                timestamp_utc_nanos: vec![
-                    utc_nanos(2026, 3, 4, 14, 30, 0),
-                    utc_nanos(2026, 3, 4, 15, 30, 0),
-                ],
-                normalized_combined_factor_by_event: vec![0.99, 1.01],
                 normalization_metadata: SeasonalityStageNormalizationMetadata {
                     normalization_policy: "unit_mean_rescaling_with_log_offset_guard.v1"
                         .to_string(),

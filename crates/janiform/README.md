@@ -17,7 +17,6 @@ This version is `0.0.0`. The source for this crate lives [here](https://github.c
 - [janiform-calibration-artifacts](https://github.com/lejmer/janiform/blob/main/crates/janiform-calibration-artifacts): Calibration artifact contracts and persistence for Janiform.
 - [janiform-calibration-runtime](https://github.com/lejmer/janiform/blob/main/crates/janiform-calibration-runtime): Calibration runtime orchestration for Janiform.
 - [janiform-cli](https://github.com/lejmer/janiform/blob/main/crates/janiform-cli): Native Rust command shell with shared configuration, output, path, and diagnostic boundary for Janiform.
-- [janiform-cli-ui](https://github.com/lejmer/janiform/blob/main/crates/janiform-cli-ui): Semantic terminal rendering and progress adapters for the Janiform CLI.
 - [janiform-engine-pricing](https://github.com/lejmer/janiform/blob/main/crates/janiform-engine-pricing): Pricing runtime engine for Janiform.
 - [janiform-engine-simulation](https://github.com/lejmer/janiform/blob/main/crates/janiform-engine-simulation): Simulation runtime engine for Janiform.
 - [janiform-engine-sufficient-statistics](https://github.com/lejmer/janiform/blob/main/crates/janiform-engine-sufficient-statistics): Sufficient-statistics runtime engine for Janiform.
@@ -29,8 +28,10 @@ This version is `0.0.0`. The source for this crate lives [here](https://github.c
 - [janiform-market-time](https://github.com/lejmer/janiform/blob/main/crates/janiform-market-time): Shared market-time infrastructure for Janiform.
 - [janiform-model-kernels](https://github.com/lejmer/janiform/blob/main/crates/janiform-model-kernels): Shared model-kernel domains for Janiform.
 - [janiform-pybind](https://github.com/lejmer/janiform/blob/main/crates/janiform-pybind): PyO3 bindings for Janiform.
+- [janiform-terminal-ui](https://github.com/lejmer/janiform/blob/main/crates/janiform-terminal-ui): Shared semantic terminal rendering and progress adapters for Janiform.
 - [janiform-test-support](https://github.com/lejmer/janiform/blob/main/crates/janiform-test-support): Shared Rust test support for Janiform workspace fixtures. Not published independently.
 - [janiform-validation](https://github.com/lejmer/janiform/blob/main/crates/janiform-validation): Validation and regression domains for Janiform.
+- [janiform-workflows](https://github.com/lejmer/janiform/blob/main/crates/janiform-workflows): Shared workflow orchestration for Janiform entrypoints.
 
 Most Janiform workspace crates are internal implementation details and evolve together inside this
 repository.

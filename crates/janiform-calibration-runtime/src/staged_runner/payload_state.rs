@@ -15,8 +15,6 @@ pub(super) fn joint_refinement_seasonality_factors_from_payload(
         intraday_factor_by_bin: payload.intraday_factor_by_bin.clone(),
         day_of_week_factor: payload.day_of_week_factor.clone(),
         day_of_year_factor: payload.day_of_year_factor.clone(),
-        timestamp_utc_nanos: payload.timestamp_utc_nanos.clone(),
-        normalized_combined_factor_by_event: payload.normalized_combined_factor_by_event.clone(),
     }
 }
 
@@ -41,10 +39,6 @@ pub(super) fn restore_in_memory_payload_state_from_stage_parameter_artifact(
                     intraday_factor_by_bin: payload.intraday_factor_by_bin.clone(),
                     day_of_week_factor: payload.day_of_week_factor.clone(),
                     day_of_year_factor: payload.day_of_year_factor.clone(),
-                    timestamp_utc_nanos: payload.timestamp_utc_nanos.clone(),
-                    normalized_combined_factor_by_event: payload
-                        .normalized_combined_factor_by_event
-                        .clone(),
                 });
         }
         CalibrationStageParameterPayload::Hawkes(payload) => {
@@ -150,6 +144,7 @@ pub(super) fn update_in_memory_payload_state(
         }
         CalibrationStagedRunStageReport::Hawkes(report) => {
             payload_state.hawkes_stage_payload = report.fitted_stage_payload.clone();
+            payload_state.seasonality_stage_payload = None;
         }
         CalibrationStagedRunStageReport::ReturnComponents(report) => {
             payload_state.return_components_stage_payload = report.fitted_stage_payload.clone();

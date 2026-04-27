@@ -27,6 +27,17 @@ pub struct KeyValueRow {
     pub value: String,
     /// Semantic style applied to the value.
     pub value_style: SemanticStyle,
+    /// Layout mode used for the row.
+    pub layout: KeyValueRowLayout,
+}
+
+/// Layout mode for a semantic label/value row.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum KeyValueRowLayout {
+    /// Render label and first value line on the same row.
+    Inline,
+    /// Render label as a group heading and value lines below it.
+    Block,
 }
 
 impl KeyValueRow {
@@ -36,6 +47,7 @@ impl KeyValueRow {
             label: label.into(),
             value: value.into(),
             value_style: SemanticStyle::Value,
+            layout: KeyValueRowLayout::Inline,
         }
     }
 
@@ -49,6 +61,17 @@ impl KeyValueRow {
             label: label.into(),
             value: value.into(),
             value_style,
+            layout: KeyValueRowLayout::Inline,
+        }
+    }
+
+    /// Create a label/value row that renders the value on indented child rows.
+    pub fn block(label: impl Into<String>, value: impl Into<String>) -> Self {
+        Self {
+            label: label.into(),
+            value: value.into(),
+            value_style: SemanticStyle::Value,
+            layout: KeyValueRowLayout::Block,
         }
     }
 }
@@ -310,9 +333,9 @@ impl ArtifactPathGroup {
 }
 
 fn render_section(renderer: &TerminalRenderer, title: &str, rows: &[KeyValueRow]) -> String {
-    let heading = renderer.style_text(SemanticStyle::Label, title);
+    let heading = renderer.style_text(SemanticStyle::Heading, title);
     let rendered_rows = render_rows(renderer, rows);
-    format!("{heading}\n{rendered_rows}")
+    format!("{heading}\n\n{rendered_rows}")
 }
 
 fn render_rows(renderer: &TerminalRenderer, rows: &[KeyValueRow]) -> String {
@@ -330,6 +353,18 @@ fn render_rows(renderer: &TerminalRenderer, rows: &[KeyValueRow]) -> String {
 
     let mut lines = Vec::new();
     for row in rows {
+        if row.layout == KeyValueRowLayout::Block {
+            let label = renderer.style_text(SemanticStyle::Label, &format!("{}:", row.label));
+            lines.push(label);
+
+            for value_line in split_lines(&row.value) {
+                let rendered_value = renderer.style_text(row.value_style, &value_line);
+                lines.push(format!("  {rendered_value}"));
+            }
+
+            continue;
+        }
+
         let label = pad_str(&row.label, label_width, Alignment::Left, None).into_owned();
         let rendered_label = renderer.style_text(SemanticStyle::Label, &label);
         let value_lines = wrap_text(&row.value, value_width);
@@ -352,16 +387,31 @@ fn render_rows(renderer: &TerminalRenderer, rows: &[KeyValueRow]) -> String {
 
 fn wrap_text(text: &str, max_width: Option<usize>) -> Vec<String> {
     let Some(max_width) = max_width else {
-        return vec![text.to_string()];
+        return split_lines(text);
     };
     if max_width == 0 {
-        return vec![text.to_string()];
+        return split_lines(text);
     }
 
-    let lines = textwrap::wrap(text, &Options::new(max_width).break_words(true))
-        .into_iter()
-        .map(|line| line.into_owned())
+    let lines = text
+        .lines()
+        .flat_map(|line| {
+            textwrap::wrap(line, &Options::new(max_width).break_words(true))
+                .into_iter()
+                .map(|line| line.into_owned())
+                .collect::<Vec<String>>()
+        })
         .collect::<Vec<String>>();
+
+    if lines.is_empty() {
+        vec![String::new()]
+    } else {
+        lines
+    }
+}
+
+fn split_lines(text: &str) -> Vec<String> {
+    let lines = text.lines().map(str::to_string).collect::<Vec<String>>();
 
     if lines.is_empty() {
         vec![String::new()]

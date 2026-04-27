@@ -47,6 +47,36 @@ class MarketDataCalibrationSourceSummary(ContractModel):
     canonical_value_field: Optional[str] = None
     value_mapping_policy: Optional[str] = None
 
+    @staticmethod
+    def from_mapping(raw_payload: dict[str, Any] | Any) -> MarketDataCalibrationSourceSummary:
+        if not isinstance(raw_payload, dict):
+            raise calibration_error("source_summary", "must be an object")
+
+        return MarketDataCalibrationSourceSummary(
+            path=str(raw_payload["path"]),
+            file_format=CalibrationInputFileFormat(str(raw_payload["file_format"])),
+            provenance_label=str(raw_payload["provenance_label"]),
+            source_row_count=int(raw_payload["source_row_count"]),
+            retained_row_count=int(raw_payload["retained_row_count"]),
+            dropped_duplicate_row_count=int(raw_payload["dropped_duplicate_row_count"]),
+            sort_records_by_timestamp=bool(raw_payload["sort_records_by_timestamp"]),
+            applied_timestamp_timezone=(
+                str(raw_payload["applied_timestamp_timezone"])
+                if raw_payload.get("applied_timestamp_timezone") is not None
+                else None
+            ),
+            canonical_value_field=(
+                str(raw_payload["canonical_value_field"])
+                if raw_payload.get("canonical_value_field") is not None
+                else None
+            ),
+            value_mapping_policy=(
+                str(raw_payload["value_mapping_policy"])
+                if raw_payload.get("value_mapping_policy") is not None
+                else None
+            ),
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class MarketDataCalibrationPreparationDiagnostics(ContractModel):
@@ -68,6 +98,41 @@ class MarketDataCalibrationPreparationDiagnostics(ContractModel):
     close_open_boundary_observation_count: int
     material_close_open_gap_count: int
 
+    @staticmethod
+    def from_mapping(raw_payload: dict[str, Any] | Any) -> MarketDataCalibrationPreparationDiagnostics:
+        if not isinstance(raw_payload, dict):
+            raise calibration_error("preparation_diagnostics", "must be an object")
+
+        return MarketDataCalibrationPreparationDiagnostics(
+            workflow_scope=CalibrationMarketDataWorkflowScope(str(raw_payload["workflow_scope"])),
+            selected_stages=tuple(
+                CalibrationStage(str(stage))
+                for stage in raw_payload["selected_stages"]
+            ),
+            executed_preprocessing_steps=tuple(
+                str(step)
+                for step in raw_payload["executed_preprocessing_steps"]
+            ),
+            tick_record_count=int(raw_payload["tick_record_count"]),
+            option_surface_record_count=int(raw_payload["option_surface_record_count"]),
+            known_news_event_count=int(raw_payload["known_news_event_count"]),
+            known_news_events_outside_source_window_count=int(
+                raw_payload["known_news_events_outside_source_window_count"]
+            ),
+            session_open_tick_count=int(raw_payload["session_open_tick_count"]),
+            session_closed_tick_count=int(raw_payload["session_closed_tick_count"]),
+            known_news_open_event_count=int(raw_payload["known_news_open_event_count"]),
+            known_news_closed_event_count=int(raw_payload["known_news_closed_event_count"]),
+            seasonality_overlay_count=int(raw_payload["seasonality_overlay_count"]),
+            hawkes_candidate_count=int(raw_payload["hawkes_candidate_count"]),
+            known_news_return_sample_count=int(raw_payload["known_news_return_sample_count"]),
+            intraday_jump_candidate_count=int(raw_payload["intraday_jump_candidate_count"]),
+            close_open_boundary_observation_count=int(
+                raw_payload["close_open_boundary_observation_count"]
+            ),
+            material_close_open_gap_count=int(raw_payload["material_close_open_gap_count"]),
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class MarketDataCalibrationPreparationProvenance(ContractModel):
@@ -82,6 +147,58 @@ class MarketDataCalibrationPreparationProvenance(ContractModel):
     derived_option_surface_data_reference: Optional[str]
     derivation_policies: tuple[str, ...]
     deterministic_defaults_applied: tuple[str, ...]
+
+    @staticmethod
+    def from_mapping(raw_payload: dict[str, Any] | Any) -> MarketDataCalibrationPreparationProvenance:
+        if not isinstance(raw_payload, dict):
+            raise calibration_error("preparation_provenance", "must be an object")
+
+        return MarketDataCalibrationPreparationProvenance(
+            tick_data_summary=MarketDataCalibrationSourceSummary.from_mapping(
+                raw_payload["tick_data_summary"]
+            ),
+            option_surface_summary=(
+                MarketDataCalibrationSourceSummary.from_mapping(
+                    raw_payload["option_surface_summary"]
+                )
+                if raw_payload.get("option_surface_summary") is not None
+                else None
+            ),
+            known_news_summary=(
+                MarketDataCalibrationSourceSummary.from_mapping(
+                    raw_payload["known_news_summary"]
+                )
+                if raw_payload.get("known_news_summary") is not None
+                else None
+            ),
+            normalization_policy=CalibrationMarketDataNormalizationPolicy.from_mapping(
+                raw_payload["normalization_policy"],
+                field_path="preparation_provenance.normalization_policy",
+            ),
+            workflow_scope=CalibrationMarketDataWorkflowScope(str(raw_payload["workflow_scope"])),
+            selected_stages=tuple(
+                CalibrationStage(str(stage))
+                for stage in raw_payload["selected_stages"]
+            ),
+            session_definition_path=(
+                str(raw_payload["session_definition_path"])
+                if raw_payload.get("session_definition_path") is not None
+                else None
+            ),
+            derived_trade_events_data_reference=str(
+                raw_payload["derived_trade_events_data_reference"]
+            ),
+            derived_option_surface_data_reference=(
+                str(raw_payload["derived_option_surface_data_reference"])
+                if raw_payload.get("derived_option_surface_data_reference") is not None
+                else None
+            ),
+            derivation_policies=tuple(str(policy) for policy in raw_payload["derivation_policies"]),
+            deterministic_defaults_applied=tuple(
+                str(default_id)
+                for default_id in raw_payload["deterministic_defaults_applied"]
+            ),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -143,7 +260,9 @@ class PreparedMarketDataCalibration(ContractModel):
         output_dir.mkdir(parents=True, exist_ok=True)
 
         prepared_payload_path = output_dir / f"{self.request.run_id}.prepared_calibration_payload.json"
+
         serialized_payload = self.prepared_handle.serialize_execution_input_json()
+
         prepared_payload_path.write_text(serialized_payload, encoding="utf-8")
 
         staged_execution_input = StagedCalibrationExecutionInput(
@@ -160,7 +279,9 @@ class PreparedMarketDataCalibration(ContractModel):
                 else None
             ),
         )
+
         staged_execution_input_path = output_dir / f"{self.request.run_id}.staged_execution_input.json"
+
         staged_execution_input_path.write_text(
             serialize_pretty_json(staged_execution_input.to_payload()),
             encoding="utf-8",
@@ -253,19 +374,27 @@ def _build_market_data_session_resolution(
     session_resolution: MarketDataSessionResolution,
 ) -> MarketDataSessionResolution:
     if not isinstance(session_resolution, MarketDataSessionResolution):
-        raise calibration_error("session_resolution", "must be a MarketDataSessionResolution")
+        raise calibration_error(
+            "session_resolution",
+            "must be a MarketDataSessionResolution",
+        )
 
     return session_resolution
 
 
 def prepare_market_data_calibration(
     request: MarketDataCalibrationRequest,
+    *,
+    cpu_count: Optional[int] = None,
 ) -> PreparedMarketDataCalibration:
     if not isinstance(request, MarketDataCalibrationRequest):
         raise calibration_error("request", "must be a MarketDataCalibrationRequest")
 
     normalized_request = validate_market_data_calibration_request(request.to_payload())
-    translation_result = translate_market_data_request_to_prepared_calibration(normalized_request)
+    translation_result = translate_market_data_request_to_prepared_calibration(
+        normalized_request,
+        cpu_count=cpu_count,
+    )
 
     return _prepare_market_data_calibration_from_translation_result(
         request=normalized_request,
@@ -284,7 +413,9 @@ def _prepare_market_data_calibration_from_translation_result(
         staged_request=translation_result.staged_request,
         diagnostics=_build_market_data_preparation_diagnostics(translation_result.diagnostics),
         provenance=_build_market_data_preparation_provenance(translation_result.provenance),
-        session_resolution=_build_market_data_session_resolution(translation_result.session_resolution),
+        session_resolution=_build_market_data_session_resolution(
+            translation_result.session_resolution
+        ),
         fit_warning=translation_result.fit_warning,
         reference_price=translation_result.reference_price,
         prepared_data_reference=(

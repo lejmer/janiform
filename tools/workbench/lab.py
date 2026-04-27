@@ -144,7 +144,6 @@ def _clone_model_with_updated_parameters(
         metadata=metadata,
         resolved_configuration=source_model.resolved_configuration,
         session_resolution=source_model.session_resolution,
-        _stage_report_payloads=source_model._stage_report_payloads,
     )
 
 

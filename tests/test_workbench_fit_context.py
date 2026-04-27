@@ -85,15 +85,20 @@ def test_workbench_comparison_reloads_training_ticks_and_simulates_training_wind
     class _FakeModel:
         metadata = {
             "input_inference": {
-                "tick_data_format": "csv",
-                "timestamp_column": "timestamp_utc",
-                "timestamp_timezone": "UTC",
-                "tick_price_input_policy": "explicit_price_column",
-                "tick_price_columns": {
+                "timestamp_timezone_source": "explicit",
+                "tick_data_source": {
+                    "file_format": "csv",
+                },
+                "tick_data_column_mapping": {
+                    "timestamp_column": "timestamp_utc",
                     "price_column": "trade_price",
                     "trade_sign_column": "trade_sign",
                     "bid_column": None,
                     "ask_column": None,
+                },
+                "normalization_policy": {
+                    "timestamp_timezone": "UTC",
+                    "tick_price_input_policy": "explicit_price_column",
                 },
             },
             "simulation_output_preferences": {
@@ -215,15 +220,20 @@ def test_workbench_comparison_reuses_persisted_cache_for_same_model_seed_and_ran
     class _FakeModel:
         metadata = {
             "input_inference": {
-                "tick_data_format": "csv",
-                "timestamp_column": "timestamp_utc",
-                "timestamp_timezone": "UTC",
-                "tick_price_input_policy": "explicit_price_column",
-                "tick_price_columns": {
+                "timestamp_timezone_source": "explicit",
+                "tick_data_source": {
+                    "file_format": "csv",
+                },
+                "tick_data_column_mapping": {
+                    "timestamp_column": "timestamp_utc",
                     "price_column": "trade_price",
                     "trade_sign_column": None,
                     "bid_column": None,
                     "ask_column": None,
+                },
+                "normalization_policy": {
+                    "timestamp_timezone": "UTC",
+                    "tick_price_input_policy": "explicit_price_column",
                 },
             },
             "simulation_output_preferences": {
@@ -323,15 +333,20 @@ def test_workbench_comparison_cache_does_not_apply_to_edited_models(
     class _PersistedModel:
         metadata = {
             "input_inference": {
-                "tick_data_format": "csv",
-                "timestamp_column": "timestamp_utc",
-                "timestamp_timezone": "UTC",
-                "tick_price_input_policy": "explicit_price_column",
-                "tick_price_columns": {
+                "timestamp_timezone_source": "explicit",
+                "tick_data_source": {
+                    "file_format": "csv",
+                },
+                "tick_data_column_mapping": {
+                    "timestamp_column": "timestamp_utc",
                     "price_column": "trade_price",
                     "trade_sign_column": None,
                     "bid_column": None,
                     "ask_column": None,
+                },
+                "normalization_policy": {
+                    "timestamp_timezone": "UTC",
+                    "tick_price_input_policy": "explicit_price_column",
                 },
             },
             "simulation_output_preferences": {
@@ -449,15 +464,20 @@ def test_workbench_comparison_uses_canonical_bid_ask_simulation_output_columns(
     class _FakeModel:
         metadata = {
             "input_inference": {
-                "tick_data_format": "csv",
-                "timestamp_column": "datetime",
-                "timestamp_timezone": "UTC",
-                "tick_price_input_policy": "bid_ask_midpoint",
-                "tick_price_columns": {
+                "timestamp_timezone_source": "explicit",
+                "tick_data_source": {
+                    "file_format": "csv",
+                },
+                "tick_data_column_mapping": {
+                    "timestamp_column": "datetime",
                     "price_column": None,
                     "trade_sign_column": None,
                     "bid_column": "bid_price",
                     "ask_column": "ask_price",
+                },
+                "normalization_policy": {
+                    "timestamp_timezone": "UTC",
+                    "tick_price_input_policy": "bid_ask_midpoint",
                 },
             },
             "simulation_output_preferences": {
@@ -544,15 +564,20 @@ def test_workbench_comparison_replays_exact_hour_endpoints_over_covering_hours(
     class _FakeModel:
         metadata = {
             "input_inference": {
-                "tick_data_format": "csv",
-                "timestamp_column": "timestamp_utc",
-                "timestamp_timezone": "UTC",
-                "tick_price_input_policy": "explicit_price_column",
-                "tick_price_columns": {
+                "timestamp_timezone_source": "explicit",
+                "tick_data_source": {
+                    "file_format": "csv",
+                },
+                "tick_data_column_mapping": {
+                    "timestamp_column": "timestamp_utc",
                     "price_column": "trade_price",
                     "trade_sign_column": "trade_sign",
                     "bid_column": None,
                     "ask_column": None,
+                },
+                "normalization_policy": {
+                    "timestamp_timezone": "UTC",
+                    "tick_price_input_policy": "explicit_price_column",
                 },
             },
             "simulation_output_preferences": {
@@ -705,15 +730,20 @@ def test_workbench_comparison_uses_full_observed_range_without_anchor_clipping()
     class _FakeModel:
         metadata = {
             "input_inference": {
-                "tick_data_format": "csv",
-                "timestamp_column": "timestamp_utc",
-                "timestamp_timezone": "UTC",
-                "tick_price_input_policy": "explicit_price_column",
-                "tick_price_columns": {
+                "timestamp_timezone_source": "explicit",
+                "tick_data_source": {
+                    "file_format": "csv",
+                },
+                "tick_data_column_mapping": {
+                    "timestamp_column": "timestamp_utc",
                     "price_column": "trade_price",
                     "trade_sign_column": None,
                     "bid_column": None,
                     "ask_column": None,
+                },
+                "normalization_policy": {
+                    "timestamp_timezone": "UTC",
+                    "tick_price_input_policy": "explicit_price_column",
                 },
             },
             "simulation_output_preferences": {
@@ -840,15 +870,20 @@ def test_workbench_comparison_uses_full_observed_range_for_large_inputs() -> Non
     class _FakeModel:
         metadata = {
             "input_inference": {
-                "tick_data_format": "csv",
-                "timestamp_column": "timestamp_utc",
-                "timestamp_timezone": "UTC",
-                "tick_price_input_policy": "explicit_price_column",
-                "tick_price_columns": {
+                "timestamp_timezone_source": "explicit",
+                "tick_data_source": {
+                    "file_format": "csv",
+                },
+                "tick_data_column_mapping": {
+                    "timestamp_column": "timestamp_utc",
                     "price_column": "trade_price",
                     "trade_sign_column": None,
                     "bid_column": None,
                     "ask_column": None,
+                },
+                "normalization_policy": {
+                    "timestamp_timezone": "UTC",
+                    "tick_price_input_policy": "explicit_price_column",
                 },
             },
             "simulation_output_preferences": {
@@ -1417,15 +1452,20 @@ def test_workbench_comparison_builds_seeded_15m_series_from_raw_path(
     class _FakeModel:
         metadata = {
             "input_inference": {
-                "tick_data_format": "csv",
-                "timestamp_column": "timestamp_utc",
-                "timestamp_timezone": "UTC",
-                "tick_price_input_policy": "explicit_price_column",
-                "tick_price_columns": {
+                "timestamp_timezone_source": "explicit",
+                "tick_data_source": {
+                    "file_format": "csv",
+                },
+                "tick_data_column_mapping": {
+                    "timestamp_column": "timestamp_utc",
                     "price_column": "trade_price",
                     "trade_sign_column": "trade_sign",
                     "bid_column": None,
                     "ask_column": None,
+                },
+                "normalization_policy": {
+                    "timestamp_timezone": "UTC",
+                    "tick_price_input_policy": "explicit_price_column",
                 },
             },
             "simulation_output_preferences": {
@@ -1522,15 +1562,20 @@ def test_workbench_plot_export_includes_observed_simulated_comparison(
     class _FakeModel:
         metadata = {
             "input_inference": {
-                "tick_data_format": "csv",
-                "timestamp_column": "timestamp_utc",
-                "timestamp_timezone": "UTC",
-                "tick_price_input_policy": "explicit_price_column",
-                "tick_price_columns": {
+                "timestamp_timezone_source": "explicit",
+                "tick_data_source": {
+                    "file_format": "csv",
+                },
+                "tick_data_column_mapping": {
+                    "timestamp_column": "timestamp_utc",
                     "price_column": "trade_price",
                     "trade_sign_column": "trade_sign",
                     "bid_column": None,
                     "ask_column": None,
+                },
+                "normalization_policy": {
+                    "timestamp_timezone": "UTC",
+                    "tick_price_input_policy": "explicit_price_column",
                 },
             },
             "simulation_output_preferences": {
@@ -2197,15 +2242,20 @@ def test_workbench_fit_context_reads_parquet_ticks_with_column_batches(
     class _FakeModel:
         metadata = {
             "input_inference": {
-                "tick_data_format": "parquet",
-                "timestamp_column": "timestamp_utc",
-                "timestamp_timezone": "UTC",
-                "tick_price_input_policy": "explicit_price_column",
-                "tick_price_columns": {
+                "timestamp_timezone_source": "explicit",
+                "tick_data_source": {
+                    "file_format": "parquet",
+                },
+                "tick_data_column_mapping": {
+                    "timestamp_column": "timestamp_utc",
                     "price_column": "trade_price",
                     "trade_sign_column": "trade_sign",
                     "bid_column": None,
                     "ask_column": None,
+                },
+                "normalization_policy": {
+                    "timestamp_timezone": "UTC",
+                    "tick_price_input_policy": "explicit_price_column",
                 },
             },
         }
@@ -2262,15 +2312,20 @@ def test_workbench_fit_context_keeps_last_duplicate_across_parquet_batch_boundar
     class _FakeModel:
         metadata = {
             "input_inference": {
-                "tick_data_format": "parquet",
-                "timestamp_column": "timestamp_utc",
-                "timestamp_timezone": "UTC",
-                "tick_price_input_policy": "explicit_price_column",
-                "tick_price_columns": {
+                "timestamp_timezone_source": "explicit",
+                "tick_data_source": {
+                    "file_format": "parquet",
+                },
+                "tick_data_column_mapping": {
+                    "timestamp_column": "timestamp_utc",
                     "price_column": "trade_price",
                     "trade_sign_column": "trade_sign",
                     "bid_column": None,
                     "ask_column": None,
+                },
+                "normalization_policy": {
+                    "timestamp_timezone": "UTC",
+                    "tick_price_input_policy": "explicit_price_column",
                 },
             },
         }
@@ -2341,15 +2396,20 @@ def test_workbench_plot_export_builds_observed_simulation_comparison_once(
     class _FakeModel:
         metadata = {
             "input_inference": {
-                "tick_data_format": "csv",
-                "timestamp_column": "timestamp_utc",
-                "timestamp_timezone": "UTC",
-                "tick_price_input_policy": "explicit_price_column",
-                "tick_price_columns": {
+                "timestamp_timezone_source": "explicit",
+                "tick_data_source": {
+                    "file_format": "csv",
+                },
+                "tick_data_column_mapping": {
+                    "timestamp_column": "timestamp_utc",
                     "price_column": "trade_price",
                     "trade_sign_column": None,
                     "bid_column": None,
                     "ask_column": None,
+                },
+                "normalization_policy": {
+                    "timestamp_timezone": "UTC",
+                    "tick_price_input_policy": "explicit_price_column",
                 },
             },
         }
@@ -2423,15 +2483,20 @@ def test_workbench_plot_export_accepts_mismatched_return_series_lengths(
     class _FakeModel:
         metadata = {
             "input_inference": {
-                "tick_data_format": "csv",
-                "timestamp_column": "timestamp_utc",
-                "timestamp_timezone": "UTC",
-                "tick_price_input_policy": "explicit_price_column",
-                "tick_price_columns": {
+                "timestamp_timezone_source": "explicit",
+                "tick_data_source": {
+                    "file_format": "csv",
+                },
+                "tick_data_column_mapping": {
+                    "timestamp_column": "timestamp_utc",
                     "price_column": "trade_price",
                     "trade_sign_column": None,
                     "bid_column": None,
                     "ask_column": None,
+                },
+                "normalization_policy": {
+                    "timestamp_timezone": "UTC",
+                    "tick_price_input_policy": "explicit_price_column",
                 },
             },
         }
@@ -2501,15 +2566,20 @@ def test_workbench_plot_export_accepts_time_as_timestamp_key(
     class _FakeModel:
         metadata = {
             "input_inference": {
-                "tick_data_format": "csv",
-                "timestamp_column": "time",
-                "timestamp_timezone": "UTC",
-                "tick_price_input_policy": "explicit_price_column",
-                "tick_price_columns": {
+                "timestamp_timezone_source": "explicit",
+                "tick_data_source": {
+                    "file_format": "csv",
+                },
+                "tick_data_column_mapping": {
+                    "timestamp_column": "time",
                     "price_column": "close",
                     "trade_sign_column": None,
                     "bid_column": None,
                     "ask_column": None,
+                },
+                "normalization_policy": {
+                    "timestamp_timezone": "UTC",
+                    "tick_price_input_policy": "explicit_price_column",
                 },
             },
             "simulation_output_preferences": {
@@ -2582,15 +2652,20 @@ def test_workbench_plot_export_accepts_time_microseconds_timestamp_key(
     class _FakeModel:
         metadata = {
             "input_inference": {
-                "tick_data_format": "csv",
-                "timestamp_column": "time_microseconds",
-                "timestamp_timezone": "UTC",
-                "tick_price_input_policy": "explicit_price_column",
-                "tick_price_columns": {
+                "timestamp_timezone_source": "explicit",
+                "tick_data_source": {
+                    "file_format": "csv",
+                },
+                "tick_data_column_mapping": {
+                    "timestamp_column": "time_microseconds",
                     "price_column": "close",
                     "trade_sign_column": None,
                     "bid_column": None,
                     "ask_column": None,
+                },
+                "normalization_policy": {
+                    "timestamp_timezone": "UTC",
+                    "tick_price_input_policy": "explicit_price_column",
                 },
             },
             "simulation_output_preferences": {

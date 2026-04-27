@@ -4,6 +4,7 @@ from datetime import UTC
 from pathlib import Path
 from typing import Any, Optional, cast
 
+from ...._native_api import native_module
 from ....calendar import CalendarRegistry
 from ...errors import calibration_error
 from ...market_data.contracts import (
@@ -15,13 +16,15 @@ from ...market_data.contracts import (
 from ...presets.references import (
     KnownNewsExplicitConfiguration,
     KnownNewsPresetReference,
+    MarketProfileExplicitConfiguration,
     MarketProfileReference,
     PresetReferenceUsageMode,
     PresetRegistryScope,
     SessionExplicitConfiguration,
     SessionPresetReference,
 )
-from ...presets.registry import PresetCategory, PresetRegistry
+from ...presets.native import call_native_optional_preset_object, call_native_preset_string
+from ...presets.registry import PresetRegistry
 from ...presets.resolution import ResolvedSessionComponent, ResolvedWorkflowComponentSource
 from ...sessions._resolution import (
     SessionTemplate,
@@ -167,50 +170,54 @@ def load_explicit_session_configuration(
 
 
 def exchange_code_from_session_reference(session_reference: SessionPresetReference, registry: PresetRegistry) -> str:
-    match session_reference.usage_mode:
-        case PresetReferenceUsageMode.AUTOMATIC:
-            if session_reference.exchange_code_hint is None:
-                raise calibration_error("exchange_code", "is required for automatic session inference")
+    native = native_module()
 
-            return session_reference.exchange_code_hint
-        case PresetReferenceUsageMode.NAMED:
-            if session_reference.preset_name is None or session_reference.registry_scope is None:
-                raise calibration_error("session", "named session references require preset_name and registry_scope")
-
-            _, artifact = registry.resolve(
-                category=PresetCategory.SESSION,
-                preset_name=session_reference.preset_name,
-                registry_scope=session_reference.registry_scope,
-            )
-
-            return artifact.configuration.exchange_code
-        case PresetReferenceUsageMode.EXPLICIT:
-            if session_reference.configuration is None:
-                raise calibration_error("session.configuration", "is required when usage_mode=explicit")
-
-            return session_reference.configuration.exchange_code
+    return call_native_preset_string(
+        native,
+        native.exchange_code_from_session_reference,
+        {
+            "registry": registry.native_resolution_payload(),
+            "session_reference": session_reference.to_payload(),
+        },
+        function_label="exchange_code_from_session_reference",
+    )
 
 
 def exchange_code_from_market_profile_reference(market_profile_reference: MarketProfileReference, registry: PresetRegistry) -> str:
-    if market_profile_reference.usage_mode == PresetReferenceUsageMode.EXPLICIT:
-        if market_profile_reference.configuration is None:
-            raise calibration_error("market_profile.configuration", "is required when usage_mode=explicit")
+    native = native_module()
 
-        return exchange_code_from_session_reference(
-            market_profile_reference.configuration.session_reference,
-            registry,
-        )
-
-    if market_profile_reference.preset_name is None or market_profile_reference.registry_scope is None:
-        raise calibration_error("market_profile", "named market-profile references require preset_name and registry_scope")
-
-    _, artifact = registry.resolve(
-        category=PresetCategory.MARKET_PROFILE,
-        preset_name=market_profile_reference.preset_name,
-        registry_scope=market_profile_reference.registry_scope,
+    return call_native_preset_string(
+        native,
+        native.exchange_code_from_market_profile_reference,
+        {
+            "registry": registry.native_resolution_payload(),
+            "market_profile_reference": market_profile_reference.to_payload(),
+        },
+        function_label="exchange_code_from_market_profile_reference",
     )
 
-    return exchange_code_from_session_reference(artifact.configuration.session_reference, registry)
+
+def resolve_market_profile_configuration(
+    market_profile_reference: MarketProfileReference,
+    registry: PresetRegistry,
+) -> MarketProfileExplicitConfiguration:
+    native = native_module()
+    raw_payload = call_native_optional_preset_object(
+        native,
+        native.resolve_market_profile_configuration,
+        {
+            "registry": registry.native_resolution_payload(),
+            "market_profile_reference": market_profile_reference.to_payload(),
+        },
+        function_label="resolve_market_profile_configuration",
+    )
+    if raw_payload is None:
+        raise calibration_error("market_profile", "could not resolve market-profile configuration")
+
+    return MarketProfileExplicitConfiguration.from_mapping(
+        raw_payload,
+        field_path="market_profile.configuration",
+    )
 
 
 def build_session_configuration_input(

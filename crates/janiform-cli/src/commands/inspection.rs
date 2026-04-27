@@ -11,6 +11,7 @@ use janiform_event_log::default_run_event_paths;
 use janiform_event_log::load_run_state_snapshot;
 use janiform_event_log::replay_event_log;
 
+use crate::commands::shared::output::write_json_payload;
 use crate::context::CommandContext;
 use crate::context::OutputMode;
 use crate::error::CliError;
@@ -53,7 +54,9 @@ pub(crate) fn run_inspect_run(
     command: InspectRunCommand,
 ) -> Result<(), CliError> {
     let run_directory = context.paths().resolve_process_path(&command.run_directory);
+
     let event_paths = default_run_event_paths(&run_directory);
+
     let state = load_run_state_snapshot(&event_paths.latest_state_snapshot_path)
         .or_else(|_| replay_event_log(&event_paths.event_log_path))
         .map_err(|source| CliError::RunInspectionFailed {
@@ -62,7 +65,7 @@ pub(crate) fn run_inspect_run(
         })?;
 
     match context.output_mode() {
-        OutputMode::Json => write_json_state(&state),
+        OutputMode::Json => write_json_payload(&state),
         OutputMode::Silent => Ok(()),
         OutputMode::Human | OutputMode::Quiet => {
             let rendered = render_run_state(
@@ -80,41 +83,33 @@ pub(crate) fn run_inspect_run(
     }
 }
 
-fn write_json_state(state: &RunStateSnapshot) -> Result<(), CliError> {
-    let mut stdout = std::io::stdout().lock();
-
-    serde_json::to_writer(&mut stdout, state)
-        .map_err(|source| CliError::OutputSerialize { source })?;
-    use std::io::Write;
-    writeln!(stdout).map_err(|source| CliError::OutputWrite { source })
-}
-
 fn render_run_state(
     state: &RunStateSnapshot,
     run_directory: &std::path::Path,
     include_events: bool,
     event_log_path: &std::path::Path,
-    renderer: &janiform_cli_ui::TerminalRenderer,
+    renderer: &janiform_terminal_ui::TerminalRenderer,
 ) -> String {
     let mut sections = Vec::new();
+
     let mut rows = vec![
-        janiform_cli_ui::KeyValueRow::new("Run", state.run_id.clone()),
-        janiform_cli_ui::KeyValueRow::new(
+        janiform_terminal_ui::KeyValueRow::new("Run", state.run_id.clone()),
+        janiform_terminal_ui::KeyValueRow::new(
             "Workflow",
             ref_label_or_id(state.workflow.label.as_deref(), &state.workflow.workflow_id),
         ),
-        janiform_cli_ui::KeyValueRow::new("Status", run_status_label(state.status)),
+        janiform_terminal_ui::KeyValueRow::new("Status", run_status_label(state.status)),
     ];
 
     if let Some(latest_event_timestamp) = &state.latest_event_timestamp_utc {
-        rows.push(janiform_cli_ui::KeyValueRow::new(
+        rows.push(janiform_terminal_ui::KeyValueRow::new(
             "Latest event",
             latest_event_timestamp.clone(),
         ));
     }
 
     sections.push(
-        janiform_cli_ui::StartSummary {
+        janiform_terminal_ui::StartSummary {
             title: "Run".to_string(),
             rows,
         }
@@ -143,9 +138,10 @@ fn render_run_state(
             )
         })
         .collect::<Vec<String>>();
+
     if !artifact_paths.is_empty() {
         sections.push(
-            janiform_cli_ui::ArtifactPathGroup {
+            janiform_terminal_ui::ArtifactPathGroup {
                 title: "Artifacts".to_string(),
                 paths: artifact_paths,
             }
@@ -154,18 +150,20 @@ fn render_run_state(
     }
 
     if state.checkpoints.available_count > 0 {
-        let mut checkpoint_rows = vec![janiform_cli_ui::KeyValueRow::new(
+        let mut checkpoint_rows = vec![janiform_terminal_ui::KeyValueRow::new(
             "Available",
             state.checkpoints.available_count.to_string(),
         )];
+
         if let Some(latest_path) = &state.checkpoints.latest_path {
-            checkpoint_rows.push(janiform_cli_ui::KeyValueRow::new(
+            checkpoint_rows.push(janiform_terminal_ui::KeyValueRow::new(
                 "Latest",
                 display_run_relative_path(run_directory, latest_path),
             ));
         }
+
         sections.push(
-            janiform_cli_ui::StartSummary {
+            janiform_terminal_ui::StartSummary {
                 title: "Checkpoints".to_string(),
                 rows: checkpoint_rows,
             }
@@ -175,7 +173,7 @@ fn render_run_state(
 
     if !state.warnings.is_empty() {
         sections.push(
-            janiform_cli_ui::WarningBlock {
+            janiform_terminal_ui::WarningBlock {
                 title: format!("Warnings: {}", state.warnings.len()),
                 warnings: state
                     .warnings
@@ -189,26 +187,29 @@ fn render_run_state(
 
     if include_events {
         let mut event_rows = vec![
-            janiform_cli_ui::KeyValueRow::new("Events", state.event_count.to_string()),
-            janiform_cli_ui::KeyValueRow::new(
+            janiform_terminal_ui::KeyValueRow::new("Events", state.event_count.to_string()),
+            janiform_terminal_ui::KeyValueRow::new(
                 "Log",
                 display_path_relative_to(run_directory, event_log_path),
             ),
         ];
+
         if let Some(first_event_timestamp) = &state.first_event_timestamp_utc {
-            event_rows.push(janiform_cli_ui::KeyValueRow::new(
+            event_rows.push(janiform_terminal_ui::KeyValueRow::new(
                 "First",
                 first_event_timestamp.clone(),
             ));
         }
+
         if let Some(latest_event_timestamp) = &state.latest_event_timestamp_utc {
-            event_rows.push(janiform_cli_ui::KeyValueRow::new(
+            event_rows.push(janiform_terminal_ui::KeyValueRow::new(
                 "Latest",
                 latest_event_timestamp.clone(),
             ));
         }
+
         sections.push(
-            janiform_cli_ui::StartSummary {
+            janiform_terminal_ui::StartSummary {
                 title: "Event log".to_string(),
                 rows: event_rows,
             }
@@ -221,29 +222,32 @@ fn render_run_state(
 
 fn render_current_state(
     state: &RunStateSnapshot,
-    renderer: &janiform_cli_ui::TerminalRenderer,
+    renderer: &janiform_terminal_ui::TerminalRenderer,
 ) -> String {
     let mut rows = Vec::new();
+
     if let Some(stage) = &state.active_stage {
-        rows.push(janiform_cli_ui::KeyValueRow::new(
+        rows.push(janiform_terminal_ui::KeyValueRow::new(
             "Stage",
             stage_label(stage),
         ));
     }
+
     if let Some(phase) = &state.latest_phase {
-        rows.push(janiform_cli_ui::KeyValueRow::new(
+        rows.push(janiform_terminal_ui::KeyValueRow::new(
             "Phase",
             phase_label(phase),
         ));
     }
+
     if !state.latest_progress.is_empty() {
-        rows.push(janiform_cli_ui::KeyValueRow::new(
+        rows.push(janiform_terminal_ui::KeyValueRow::new(
             "Progress",
             format!("{} metric updates", state.latest_progress.len()),
         ));
     }
 
-    janiform_cli_ui::StartSummary {
+    janiform_terminal_ui::StartSummary {
         title: "Current".to_string(),
         rows,
     }
@@ -252,14 +256,14 @@ fn render_current_state(
 
 fn render_stage_state(
     state: &RunStateSnapshot,
-    renderer: &janiform_cli_ui::TerminalRenderer,
+    renderer: &janiform_terminal_ui::TerminalRenderer,
 ) -> String {
-    janiform_cli_ui::StageChecklist {
+    janiform_terminal_ui::StageChecklist {
         title: "Stages".to_string(),
         stages: state
             .stage_states
             .iter()
-            .map(|stage| janiform_cli_ui::StageChecklistItem {
+            .map(|stage| janiform_terminal_ui::StageChecklistItem {
                 name: stage_label(&stage.stage),
                 status: stage_status(stage.status),
             })
@@ -276,12 +280,12 @@ fn run_status_label(status: RunStatus) -> &'static str {
     }
 }
 
-fn stage_status(status: RunStageStatus) -> janiform_cli_ui::StageChecklistStatus {
+fn stage_status(status: RunStageStatus) -> janiform_terminal_ui::StageChecklistStatus {
     match status {
-        RunStageStatus::Pending => janiform_cli_ui::StageChecklistStatus::Pending,
-        RunStageStatus::Running => janiform_cli_ui::StageChecklistStatus::Active,
-        RunStageStatus::Completed => janiform_cli_ui::StageChecklistStatus::Completed,
-        RunStageStatus::Failed => janiform_cli_ui::StageChecklistStatus::Failed,
+        RunStageStatus::Pending => janiform_terminal_ui::StageChecklistStatus::Pending,
+        RunStageStatus::Running => janiform_terminal_ui::StageChecklistStatus::Active,
+        RunStageStatus::Completed => janiform_terminal_ui::StageChecklistStatus::Completed,
+        RunStageStatus::Failed => janiform_terminal_ui::StageChecklistStatus::Failed,
     }
 }
 

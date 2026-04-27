@@ -30,7 +30,6 @@ class JaniformFitReport:
     prepared_payload_path: Optional[str]
     staged_execution_input_path: Optional[str]
     staged_response: StagedCalibrationResponse
-    stage_report_payloads: tuple[dict[str, Any], ...]
 
     def to_payload(self) -> dict[str, Any]:
         return {

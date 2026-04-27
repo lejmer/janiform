@@ -1,67 +1,9 @@
-from pathlib import Path
 from typing import Any
 
-import pytest
-
-import janiform.calibration.fit.estimator as fit_estimator_module
-from janiform.calibration.fit import JaniformEstimator, JaniformModel
-from janiform.calibration.market_data import (
-    CalibrationInputFileFormat,
-    CalibrationMarketDataNormalizationPolicy,
-    CalibrationMarketDataWorkflowScope,
-    CalibrationTickDataColumnMapping,
-    CalibrationTickPriceInputPolicy,
-)
 from janiform.calibration.staged import StagedCalibrationResponse, validate_staged_calibration_response
 from tests.support.calibration import (
     build_zero_kappa_endogenous_mean_reversion_fitted_parameters_payload,
 )
-
-
-def build_full_workflow_model(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    *,
-    run_id: str,
-) -> JaniformModel:
-    tick_data_path = _write_tick_data(
-        tmp_path / f"{run_id}.csv",
-        rows=(
-            "2026-02-02T14:30:00Z,100.0,buy",
-            "2026-02-02T15:00:00Z,101.0,sell",
-            "2026-02-02T20:59:00Z,102.0,buy",
-            "2026-02-03T14:30:00Z,99.0,sell",
-            "2026-02-03T20:59:00Z,98.0,buy",
-            "2026-02-04T14:30:00Z,97.0,sell",
-        ),
-    )
-
-    monkeypatch.setattr(
-        fit_estimator_module,
-        "run_prepared_staged_calibration_with_raw_payload",
-        lambda *args, **kwargs: successful_full_model_staged_runner_payload(run_id),
-    )
-
-    estimator = JaniformEstimator(
-        workflow_scope=CalibrationMarketDataWorkflowScope.FULL_WITHOUT_OPTION_SURFACE,
-        tick_data_column_mapping=CalibrationTickDataColumnMapping(
-            timestamp_column="timestamp_utc",
-            price_column="trade_price",
-            trade_sign_column="trade_sign",
-        ),
-        normalization_policy=CalibrationMarketDataNormalizationPolicy(
-            timestamp_timezone="UTC",
-            sort_records_by_timestamp=True,
-            tick_price_input_policy=CalibrationTickPriceInputPolicy.EXPLICIT_PRICE_COLUMN,
-        ),
-        market_profile="us_equity_cash",
-    )
-
-    return estimator.fit(
-        run_id=run_id,
-        tick_data_path=tick_data_path,
-        tick_data_format=CalibrationInputFileFormat.CSV,
-    )
 
 
 def successful_full_model_staged_runner_payload(
@@ -484,16 +426,3 @@ def successful_full_model_staged_runner_payload(
     }
 
     return validate_staged_calibration_response(raw_response), raw_response
-
-
-def _write_tick_data(path: Path, *, rows: tuple[str, ...]) -> Path:
-    path.write_text(
-        "\n".join(
-            [
-                "timestamp_utc,trade_price,trade_sign",
-                *rows,
-            ]
-        ),
-        encoding="utf-8",
-    )
-    return path

@@ -1,8 +1,6 @@
-use std::io::Write;
 use std::path::Path;
 
 use janiform::calibration::CalibrationExecutionMode;
-use serde_json::Value;
 
 use super::payloads::{inspect_json, plan_json, staged_plan_json};
 use super::preparation::{
@@ -13,6 +11,7 @@ use crate::commands::fit::FitInspectCommand;
 use crate::commands::fit::FitPlanCommand;
 use crate::commands::fit::FitStagedPlanCommand;
 use crate::commands::shared::calibration::calibration_execution_mode;
+use crate::commands::shared::output::write_json_payload;
 use crate::context::CommandContext;
 use crate::context::OutputMode;
 use crate::error::CliError;
@@ -144,15 +143,6 @@ fn emit_staged_plan_output(
                 .map_err(|source| CliError::OutputWrite { source })
         }
     }
-}
-
-fn write_json_payload(payload: &Value) -> Result<(), CliError> {
-    let mut stdout = std::io::stdout().lock();
-
-    serde_json::to_writer(&mut stdout, payload)
-        .map_err(|source| CliError::OutputSerialize { source })?;
-
-    writeln!(stdout).map_err(|source| CliError::OutputWrite { source })
 }
 
 fn emit_progress(context: &CommandContext, message: &str) -> Result<(), CliError> {

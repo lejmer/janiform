@@ -7,7 +7,7 @@ import pytest
 import janiform.cli as cli_module
 from tests.support.cli import invoke_cli, normalize_help_output, render_help
 from tests.support.cli_documentation import write_cli_documentation_inputs
-from tests.support.high_level_workflows import build_full_workflow_model
+from tests.support.fit.workflows import build_full_workflow_model
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 

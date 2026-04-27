@@ -13,6 +13,7 @@ use super::{
     SeasonalityStageExecutionMetadata, SeasonalityStageExecutionReport,
 };
 use crate::JointRefinementStageOptionPricingInput;
+use crate::stages::joint_refinement::JointRefinementProgressCandidateAssessment;
 use serde::{Serialize, Serializer};
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -398,6 +399,8 @@ pub enum CalibrationStagedRunObserverEvent {
         current_item_label: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         current_restart_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        planned_work_item_labels: Vec<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         active_restart_count: Option<usize>,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -420,6 +423,8 @@ pub enum CalibrationStagedRunObserverEvent {
         current_weighted_objective: Option<f64>,
         #[serde(skip_serializing_if = "Option::is_none")]
         current_restart_best_weighted_objective: Option<f64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        current_candidate_assessment: Option<JointRefinementProgressCandidateAssessment>,
         #[serde(skip_serializing_if = "Option::is_none")]
         best_restart_id: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]

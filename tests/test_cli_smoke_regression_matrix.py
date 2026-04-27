@@ -20,7 +20,7 @@ from tests.support.cli import (
     write_json_path,
     write_market_data_input_files,
 )
-from tests.support.high_level_workflows import build_full_workflow_model
+from tests.support.fit.workflows import build_full_workflow_model
 
 
 @dataclass(frozen=True, slots=True)

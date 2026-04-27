@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex};
@@ -15,7 +16,7 @@ use crate::stages::joint_refinement::contracts::{
 use crate::stages::optimization::{PowellOptimizerSettings, optimize_bounded_powell};
 
 use super::super::objective::{
-    dynamics_block_search_objective, evaluate_joint_candidate,
+    compressed_final_objective, dynamics_block_search_objective, evaluate_joint_candidate,
     evaluate_joint_candidate_nig_block_search_objective, invalid_candidate_evaluation,
 };
 use super::super::setup::parameter_vector_to_fitted_parameters;
@@ -47,6 +48,7 @@ struct RestartProgressState {
 struct RestartDisplayBestState {
     best_restart_id: Option<String>,
     best_weighted_objective: Option<f64>,
+    best_weighted_objective_by_restart_id: BTreeMap<String, f64>,
 }
 
 #[derive(Debug, Default)]
@@ -54,6 +56,8 @@ struct RestartProgressCounters {
     completed_units: AtomicUsize,
     active_restart_count: AtomicUsize,
     aggregate_progress_percent_sum: AtomicUsize,
+    cumulative_local_evaluation_count: AtomicUsize,
+    valid_completed_units: AtomicUsize,
     display_best_state: Mutex<RestartDisplayBestState>,
 }
 
@@ -81,11 +85,20 @@ pub(crate) fn optimize_restart_seeds(
     debug_assert!(budget_schedule.restart_count > 0);
     // Resume passes only pending restart seeds while retaining the original search depth.
     let total_units = restart_seeds.len();
+    let planned_work_item_labels = restart_seeds
+        .iter()
+        .map(|(restart_id, _)| restart_id.clone())
+        .collect::<Vec<_>>();
+    let total_evaluation_budget =
+        restart_candidate_total_evaluation_budget(context, solver_settings, budget_schedule);
 
     emit_joint_refinement_progress(
         progress_sender,
         JointRefinementStageProgressUpdate {
             aggregate_progress_percent: Some(0),
+            planned_work_item_labels,
+            current_evaluation_count: Some(0),
+            total_evaluation_budget: Some(total_evaluation_budget),
             valid_completed_units: Some(0),
             cumulative_local_evaluation_count: Some(0),
             ..JointRefinementStageProgressUpdate::new(
@@ -152,6 +165,7 @@ fn optimize_restart_seeds_sequential(
         progress_counters
             .completed_units
             .store(progress_state.completed_units, Ordering::Relaxed);
+        progress_counters.record_completed_progress_state(&progress_state);
 
         progress_counters.record_display_best(
             restart_outcome.restart_id.as_str(),
@@ -167,6 +181,7 @@ fn optimize_restart_seeds_sequential(
             &progress_state,
             &restart_outcome,
             &progress_counters,
+            context,
             progress_counters
                 .active_restart_count
                 .load(Ordering::Relaxed),
@@ -246,6 +261,7 @@ fn optimize_restart_seeds_parallel(
                 progress_counters
                     .completed_units
                     .store(progress_state.completed_units, Ordering::Relaxed);
+                progress_counters.record_completed_progress_state(&progress_state);
 
                 progress_counters.record_display_best(
                     restart_outcome.restart_id.as_str(),
@@ -261,6 +277,7 @@ fn optimize_restart_seeds_parallel(
                     &progress_state,
                     &restart_outcome,
                     progress_counters.as_ref(),
+                    context,
                     progress_counters
                         .active_restart_count
                         .load(Ordering::Relaxed),
@@ -1433,6 +1450,11 @@ impl<'a> RestartCandidateProgress<'a> {
         current_weighted_objective: Option<f64>,
     ) {
         let (best_restart_id, best_weighted_objective) = self.counters.display_best_snapshot();
+        let completed_progress_state = self.counters.completed_progress_state();
+        let completed_progress_totals = (completed_progress_state.completed_units > 0).then_some((
+            completed_progress_state.valid_completed_units,
+            completed_progress_state.cumulative_local_evaluation_count,
+        ));
 
         emit_joint_refinement_progress(
             self.progress_sender,
@@ -1447,6 +1469,11 @@ impl<'a> RestartCandidateProgress<'a> {
                 current_evaluation_count: Some(self.current_evaluation_count),
                 total_evaluation_budget: Some(self.total_evaluation_budget),
                 evaluation_progress_percent,
+                valid_completed_units: completed_progress_totals
+                    .map(|(valid_completed_units, _)| valid_completed_units),
+                cumulative_local_evaluation_count: completed_progress_totals.map(
+                    |(_, cumulative_local_evaluation_count)| cumulative_local_evaluation_count,
+                ),
                 current_weighted_objective,
                 current_restart_best_weighted_objective: self
                     .current_restart_best_weighted_objective,
@@ -1481,12 +1508,17 @@ fn emit_restart_progress(
     progress_state: &RestartProgressState,
     restart_outcome: &JointRefinementRestartOutcome,
     progress_counters: &RestartProgressCounters,
+    context: &JointRefinementContext,
     active_restart_count: usize,
     total_evaluation_budget: usize,
     aggregate_progress_percent: usize,
 ) {
     let completed_units = progress_state.completed_units;
     let (best_restart_id, best_weighted_objective) = progress_counters.display_best_snapshot();
+    let final_display_objective = compressed_final_objective(
+        &restart_outcome.final_evaluation.raw_admissibility_metrics,
+        joint_refinement_admissibility_thresholds(context),
+    );
 
     emit_joint_refinement_progress(
         progress_sender,
@@ -1502,12 +1534,10 @@ fn emit_restart_progress(
             cumulative_local_evaluation_count: Some(
                 progress_state.cumulative_local_evaluation_count,
             ),
-            current_weighted_objective: Some(
-                restart_outcome
-                    .final_evaluation
-                    .breakdown
-                    .weighted_objective,
-            ),
+            current_weighted_objective: Some(final_display_objective),
+            current_restart_best_weighted_objective: progress_counters
+                .restart_best_weighted_objective(restart_outcome.restart_id.as_str()),
+            current_candidate_assessment: None,
             best_restart_id,
             best_weighted_objective,
             ..JointRefinementStageProgressUpdate::new(
@@ -1520,10 +1550,42 @@ fn emit_restart_progress(
 }
 
 impl RestartProgressCounters {
+    fn record_completed_progress_state(&self, progress_state: &RestartProgressState) {
+        self.valid_completed_units
+            .store(progress_state.valid_completed_units, Ordering::Relaxed);
+        self.cumulative_local_evaluation_count.store(
+            progress_state.cumulative_local_evaluation_count,
+            Ordering::Relaxed,
+        );
+    }
+
+    fn completed_progress_state(&self) -> RestartProgressState {
+        RestartProgressState {
+            completed_units: self.completed_units.load(Ordering::Relaxed),
+            cumulative_local_evaluation_count: self
+                .cumulative_local_evaluation_count
+                .load(Ordering::Relaxed),
+            valid_completed_units: self.valid_completed_units.load(Ordering::Relaxed),
+        }
+    }
+
     fn record_display_best(&self, restart_id: &str, weighted_objective: f64) {
         let Ok(mut display_best_state) = self.display_best_state.lock() else {
             return;
         };
+
+        match display_best_state
+            .best_weighted_objective_by_restart_id
+            .get(restart_id)
+            .copied()
+        {
+            Some(current_best) if weighted_objective >= current_best => {}
+            _ => {
+                display_best_state
+                    .best_weighted_objective_by_restart_id
+                    .insert(restart_id.to_string(), weighted_objective);
+            }
+        }
 
         match display_best_state.best_weighted_objective {
             Some(current_best) if weighted_objective >= current_best => {}
@@ -1544,10 +1606,22 @@ impl RestartProgressCounters {
             display_best_state.best_weighted_objective,
         )
     }
+
+    fn restart_best_weighted_objective(&self, restart_id: &str) -> Option<f64> {
+        let Ok(display_best_state) = self.display_best_state.lock() else {
+            return None;
+        };
+
+        display_best_state
+            .best_weighted_objective_by_restart_id
+            .get(restart_id)
+            .copied()
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::Ordering;
     use std::sync::mpsc;
 
     use janiform_calibration_artifacts::{
@@ -1569,9 +1643,9 @@ mod tests {
     use janiform_model_kernels::nig::NigSharedPlusShiftConfiguration;
 
     use super::{
-        RestartCandidateProgress, RestartProgressCounters, precheck_hawkes_structural_domain,
-        precheck_nig_return_composition_domain, precheck_restart_seed_vector_contract,
-        restart_block_initial_objective_is_noncompetitive,
+        RestartCandidateProgress, RestartProgressCounters, RestartProgressState,
+        precheck_hawkes_structural_domain, precheck_nig_return_composition_domain,
+        precheck_restart_seed_vector_contract, restart_block_initial_objective_is_noncompetitive,
         restart_block_progress_evaluation_budget, runtime_branching_workload_is_infeasible,
         select_restart_stop_reason, summary_simulation_event_capacity_is_infeasible,
     };
@@ -1722,6 +1796,60 @@ mod tests {
             Some("halton_01")
         );
         assert_eq!(progress_update.best_weighted_objective, Some(4.0));
+        assert_eq!(progress_update.valid_completed_units, None);
+    }
+
+    #[test]
+    fn running_restart_progress_preserves_completed_candidate_totals() {
+        let (progress_sender, progress_receiver) = mpsc::channel();
+        let progress_counters = RestartProgressCounters::default();
+        progress_counters
+            .completed_units
+            .store(2, Ordering::Relaxed);
+        progress_counters.record_completed_progress_state(&RestartProgressState {
+            completed_units: 2,
+            cumulative_local_evaluation_count: 41,
+            valid_completed_units: 1,
+        });
+
+        let mut restart_progress = RestartCandidateProgress {
+            progress_sender: Some(&progress_sender),
+            restart_id: "halton_03",
+            total_units: 5,
+            counters: &progress_counters,
+            total_outer_cycles: 1,
+            total_evaluation_budget: 10,
+            current_evaluation_count: 0,
+            last_evaluation_progress_percent: None,
+            current_restart_best_weighted_objective: None,
+            finished: false,
+        };
+
+        restart_progress.record_evaluation("nig", 1, Some(3.0));
+
+        let progress_update = progress_receiver.recv().unwrap();
+
+        assert_eq!(progress_update.valid_completed_units, Some(1));
+        assert_eq!(progress_update.cumulative_local_evaluation_count, Some(41));
+    }
+
+    #[test]
+    fn restart_progress_counters_track_best_objective_by_restart() {
+        let progress_counters = RestartProgressCounters::default();
+
+        progress_counters.record_display_best("baseline", 10.0);
+        progress_counters.record_display_best("halton_01", 4.0);
+        progress_counters.record_display_best("baseline", 8.0);
+        progress_counters.record_display_best("baseline", 12.0);
+
+        assert_eq!(
+            progress_counters.restart_best_weighted_objective("baseline"),
+            Some(8.0)
+        );
+        assert_eq!(
+            progress_counters.restart_best_weighted_objective("halton_01"),
+            Some(4.0)
+        );
     }
 
     #[test]

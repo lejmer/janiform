@@ -239,6 +239,34 @@ def require_non_empty_string_value(
     return value
 
 
+def validate_non_empty_string_values(
+    values: Sequence[str],
+    field_path: str,
+    error_factory: ValidationErrorFactory,
+) -> None:
+    for value_index, value in enumerate(values):
+        if not value.strip():
+            raise error_factory(
+                f"{field_path}[{value_index}]",
+                "must be a non-empty string",
+            )
+
+
+def validate_unique_string_values(
+    *,
+    values: Sequence[str],
+    field_path: str,
+    duplicate_message: str,
+    error_factory: ValidationErrorFactory,
+) -> None:
+    observed_values: set[str] = set()
+    for value in values:
+        if value in observed_values:
+            raise error_factory(field_path, duplicate_message)
+
+        observed_values.add(value)
+
+
 def require_string_sequence(
     mapping: Mapping[str, Any],
     field_name: str,

@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use clap::Args;
 use clap::Subcommand;
 
+use crate::commands::options::CalibrationStageOption;
 use crate::commands::options::ExecutionMode;
 use crate::commands::options::RunIdentityOptions;
 use crate::commands::options::TickDataOptions;
@@ -18,6 +19,49 @@ pub(crate) struct FitCommand {
 
     #[arg(long, value_enum, help = "High-level calibration workflow scope.")]
     pub(crate) workflow_scope: Option<WorkflowScope>,
+
+    #[arg(
+        long,
+        value_enum,
+        help = "Execution policy for generated fit artifacts."
+    )]
+    pub(crate) execution_mode: Option<ExecutionMode>,
+
+    #[arg(
+        long,
+        value_name = "COUNT",
+        help = "CPU count available to calibration preparation."
+    )]
+    pub(crate) cpu_count: Option<usize>,
+
+    #[arg(
+        long,
+        value_name = "HOURS",
+        help = "Mean-reversion calibration grid interval in hours."
+    )]
+    pub(crate) mean_reversion_grid_interval_hours: Option<f64>,
+
+    #[arg(
+        long,
+        value_name = "COUNT",
+        help = "Joint refinement restart candidate budget."
+    )]
+    pub(crate) dynamics_search_restart_candidate_budget: Option<usize>,
+
+    #[arg(
+        long,
+        value_name = "REFERENCE",
+        help = "Resume disk execution from a persisted checkpoint reference."
+    )]
+    pub(crate) resume_checkpoint_reference: Option<String>,
+
+    #[arg(
+        long,
+        requires = "resume_checkpoint_reference",
+        value_enum,
+        help = "Stage to start from when resuming a compatible checkpoint."
+    )]
+    pub(crate) resume_from_stage: Option<CalibrationStageOption>,
 
     #[command(subcommand)]
     pub(crate) command: Option<FitSubcommand>,
@@ -162,4 +206,19 @@ pub(crate) struct StagedExecutionOptions {
 
     #[arg(long, value_name = "DIR", help = "Directory for disk checkpoints.")]
     pub(crate) disk_checkpoint_directory: Option<PathBuf>,
+
+    #[arg(
+        long,
+        value_name = "REFERENCE",
+        help = "Resume disk execution from a persisted checkpoint reference."
+    )]
+    pub(crate) resume_checkpoint_reference: Option<String>,
+
+    #[arg(
+        long,
+        requires = "resume_checkpoint_reference",
+        value_enum,
+        help = "Stage to start from when resuming a compatible checkpoint."
+    )]
+    pub(crate) resume_from_stage: Option<CalibrationStageOption>,
 }

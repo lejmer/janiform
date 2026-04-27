@@ -54,6 +54,7 @@ fn materialize_endogenous_mean_reversion_runtime_interval_anchors(
         parse_seeded_simulation_nig_shared_plus_shift_configuration(
             nig_shared_plus_shift_configuration,
         )?;
+
     let parsed_news_process_configuration = serde_json::from_value::<NewsProcessConfiguration>(
         py_any_to_json_value(news_process_configuration)?,
     )
@@ -65,6 +66,7 @@ fn materialize_endogenous_mean_reversion_runtime_interval_anchors(
 
     let parsed_initial_excitation_state =
         parse_seeded_simulation_initial_excitation_state(initial_excitation_state)?;
+
     let parsed_mean_reversion_fitted_parameters =
         parse_seeded_simulation_mean_reversion_fitted_parameters(mean_reversion_fitted_parameters)?;
 
@@ -134,6 +136,7 @@ fn materialize_endogenous_mean_reversion_runtime_interval_anchors(
         .iter()
         .map(|expectation| expectation.core_expected_increment)
         .collect();
+
     let runtime_interval_anchors =
         materialize_mean_reversion_runtime_interval_anchors_from_core_expected_increments(
             interval_alignment_policy,
@@ -199,57 +202,20 @@ fn run_coarse_simulation(
     )
     .map_err(|source| SimulationExecutionError::new_err(source.to_string()))?;
 
-    let callback_error_message = Arc::new(Mutex::new(None::<String>));
-    let callback_error_message_for_observer = Arc::clone(&callback_error_message);
-    let event_callback = event_callback.map(|callback| callback.clone().unbind());
-
-    let coarse_path = panic_to_pyresult(
+    let coarse_path = run_simulation_with_optional_progress_events(
+        py,
         "running coarse simulation",
-        SimulationExecutionError::new_err,
-        || {
-            py.detach(move || match event_callback {
-                None => run_coarse_simulation_core(run_request)
-                    .map_err(|source| SimulationExecutionError::new_err(source.to_string())),
-                Some(event_callback) => {
-                    let mut observer = |event: SimulationProgressEvent| {
-                        if callback_error_message_for_observer
-                            .lock()
-                            .ok()
-                            .and_then(|guard| guard.clone())
-                            .is_some()
-                        {
-                            return;
-                        }
-
-                        Python::attach(|py| {
-                            let callback_result = python_simulation_progress_event_to_py_object(
-                                py, &event,
-                            )
-                            .and_then(|payload| event_callback.call1(py, (payload,)).map(|_| ()));
-                            if let Err(source) = callback_result {
-                                if let Ok(mut guard) = callback_error_message_for_observer.lock() {
-                                    if guard.is_none() {
-                                        *guard = Some(source.to_string());
-                                    }
-                                }
-                            }
-                        });
-                    };
-
-                    run_coarse_simulation_core_with_observer(run_request, &mut observer)
-                        .map_err(|source| SimulationExecutionError::new_err(source.to_string()))
-                }
-            })
+        run_request,
+        event_callback,
+        |run_request| {
+            run_coarse_simulation_core(run_request)
+                .map_err(|source| SimulationExecutionError::new_err(source.to_string()))
+        },
+        |run_request, observer| {
+            run_coarse_simulation_core_with_observer(run_request, observer)
+                .map_err(|source| SimulationExecutionError::new_err(source.to_string()))
         },
     )?;
-
-    if let Ok(guard) = callback_error_message.lock() {
-        if let Some(error_message) = guard.as_ref() {
-            return Err(SimulationExecutionError::new_err(format!(
-                "simulation progress callback failed: {error_message}"
-            )));
-        }
-    }
 
     let serialized_coarse_path = serde_json::to_value(&coarse_path).map_err(|source| {
         SimulationExecutionError::new_err(format!(
@@ -355,59 +321,124 @@ fn run_seeded_tick_event_simulation(
     )
     .map_err(map_seeded_tick_simulation_run_error)?;
 
+    let run_result = run_simulation_with_optional_progress_events(
+        py,
+        "running seeded tick-event simulation",
+        run_config,
+        event_callback,
+        |run_config| {
+            run_seeded_tick_event_simulation_core(run_config)
+                .map_err(map_seeded_tick_simulation_run_error)
+        },
+        |run_config, observer| {
+            run_seeded_tick_event_simulation_core_with_observer(run_config, observer)
+                .map_err(map_seeded_tick_simulation_run_error)
+        },
+    )?;
+
+    Ok(PySeededTickSimulationNativeResult { output: run_result })
+}
+
+fn run_simulation_with_optional_progress_events<TInput, TOutput, TRun, TRunWithObserver>(
+    py: Python<'_>,
+    panic_context: &'static str,
+    run_input: TInput,
+    event_callback: Option<&Bound<'_, PyAny>>,
+    run_without_observer: TRun,
+    run_with_observer: TRunWithObserver,
+) -> PyResult<TOutput>
+where
+    TInput: Send + 'static,
+    TOutput: Send + 'static,
+    TRun: FnOnce(TInput) -> PyResult<TOutput> + Send + 'static,
+    TRunWithObserver: FnOnce(TInput, &mut dyn FnMut(SimulationProgressEvent)) -> PyResult<TOutput>
+        + Send
+        + 'static,
+{
     let callback_error_message = Arc::new(Mutex::new(None::<String>));
     let callback_error_message_for_observer = Arc::clone(&callback_error_message);
     let event_callback = event_callback.map(|callback| callback.clone().unbind());
 
-    let run_result = panic_to_pyresult(
-        "running seeded tick-event simulation",
-        SimulationExecutionError::new_err,
-        || {
-            py.detach(move || match event_callback {
-                None => run_seeded_tick_event_simulation_core(run_config)
-                    .map_err(map_seeded_tick_simulation_run_error),
-                Some(event_callback) => {
-                    let mut observer = |event: SimulationProgressEvent| {
-                        if callback_error_message_for_observer
-                            .lock()
-                            .ok()
-                            .and_then(|guard| guard.clone())
-                            .is_some()
-                        {
-                            return;
-                        }
+    let run_output = panic_to_pyresult(panic_context, SimulationExecutionError::new_err, || {
+        py.detach(move || match event_callback {
+            None => run_without_observer(run_input),
+            Some(event_callback) => {
+                let mut observer = simulation_progress_observer(
+                    event_callback,
+                    callback_error_message_for_observer,
+                );
 
-                        Python::attach(|py| {
-                            let callback_result = python_simulation_progress_event_to_py_object(
-                                py, &event,
-                            )
-                            .and_then(|payload| event_callback.call1(py, (payload,)).map(|_| ()));
-                            if let Err(source) = callback_result {
-                                if let Ok(mut guard) = callback_error_message_for_observer.lock() {
-                                    if guard.is_none() {
-                                        *guard = Some(source.to_string());
-                                    }
-                                }
-                            }
-                        });
-                    };
+                run_with_observer(run_input, &mut observer)
+            }
+        })
+    })?;
 
-                    run_seeded_tick_event_simulation_core_with_observer(run_config, &mut observer)
-                        .map_err(map_seeded_tick_simulation_run_error)
-                }
-            })
-        },
-    )?;
+    raise_simulation_progress_callback_error(&callback_error_message)?;
 
-    if let Ok(guard) = callback_error_message.lock() {
-        if let Some(error_message) = guard.as_ref() {
-            return Err(SimulationExecutionError::new_err(format!(
-                "simulation progress callback failed: {error_message}"
-            )));
+    Ok(run_output)
+}
+
+fn simulation_progress_observer(
+    event_callback: Py<PyAny>,
+    callback_error_message: Arc<Mutex<Option<String>>>,
+) -> impl FnMut(SimulationProgressEvent) {
+    move |event: SimulationProgressEvent| {
+        if simulation_progress_callback_failed(&callback_error_message) {
+            return;
         }
+
+        Python::attach(|py| {
+            let callback_result = python_simulation_progress_event_to_py_object(py, &event)
+                .and_then(|payload| event_callback.call1(py, (payload,)).map(|_| ()));
+
+            if let Err(source) = callback_result {
+                record_simulation_progress_callback_error(
+                    &callback_error_message,
+                    source.to_string(),
+                );
+            }
+        });
+    }
+}
+
+fn simulation_progress_callback_failed(
+    callback_error_message: &Arc<Mutex<Option<String>>>,
+) -> bool {
+    callback_error_message
+        .lock()
+        .map(|guard| guard.is_some())
+        .unwrap_or(false)
+}
+
+fn record_simulation_progress_callback_error(
+    callback_error_message: &Arc<Mutex<Option<String>>>,
+    error_message: String,
+) {
+    let Ok(mut guard) = callback_error_message.lock() else {
+        return;
+    };
+
+    if guard.is_some() {
+        return;
     }
 
-    Ok(PySeededTickSimulationNativeResult { output: run_result })
+    *guard = Some(error_message);
+}
+
+fn raise_simulation_progress_callback_error(
+    callback_error_message: &Arc<Mutex<Option<String>>>,
+) -> PyResult<()> {
+    let Ok(guard) = callback_error_message.lock() else {
+        return Ok(());
+    };
+
+    let Some(error_message) = guard.as_ref() else {
+        return Ok(());
+    };
+
+    Err(SimulationExecutionError::new_err(format!(
+        "simulation progress callback failed: {error_message}"
+    )))
 }
 
 fn python_simulation_progress_event_to_py_object(
@@ -528,16 +559,19 @@ fn parse_seeded_simulation_kernel_parameters(
         "kernel_parameters",
         "lambda_bar",
     )?;
+
     let beta = parse_required_float_field_from_mapping(
         &kernel_parameters_mapping,
         "kernel_parameters",
         "beta",
     )?;
+
     let alpha = parse_required_hawkes_kernel_loadings_field(
         &kernel_parameters_mapping,
         "kernel_parameters",
         "alpha",
     )?;
+
     let rho = parse_required_hawkes_kernel_loadings_field(
         &kernel_parameters_mapping,
         "kernel_parameters",
@@ -646,6 +680,7 @@ fn parse_required_hawkes_kernel_loadings_field(
 ) -> PyResult<HawkesKernelLoadings> {
     let loadings_mapping =
         parse_required_mapping_field(parent_mapping, parent_context, field_name)?;
+
     let loadings_context = format!("{parent_context}.{field_name}");
 
     Ok(HawkesKernelLoadings {

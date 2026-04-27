@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use crate::market_data::presets::MarketDataColumnAliasHint;
+
 use super::contracts::{
     MarketDataLoadingError, MarketDataNormalizationPolicy, MarketDataOptionQuoteInputPolicy,
     MarketDataOptionSurfaceColumnMapping, MarketDataTickDataColumnMapping,
@@ -148,24 +150,92 @@ const OPTION_IMPLIED_VOLATILITY_ALIASES: [&str; 7] = [
     "volatility",
 ];
 
+pub(in crate::market_data) struct TickColumnCandidates {
+    pub(in crate::market_data) timestamp: Vec<String>,
+    pub(in crate::market_data) price: Vec<String>,
+    pub(in crate::market_data) trade_sign: Vec<String>,
+    pub(in crate::market_data) bid: Vec<String>,
+    pub(in crate::market_data) ask: Vec<String>,
+}
+
+pub(in crate::market_data) fn tick_column_candidates(
+    available_columns: &[String],
+    alias_hints: &[MarketDataColumnAliasHint],
+) -> TickColumnCandidates {
+    TickColumnCandidates {
+        timestamp: ordered_candidates(
+            available_columns,
+            TICK_TIMESTAMP_ALIASES.as_slice(),
+            alias_hints,
+            "timestamp",
+        ),
+        price: ordered_candidates(
+            available_columns,
+            TICK_PRICE_ALIASES.as_slice(),
+            alias_hints,
+            "price",
+        ),
+        trade_sign: ordered_candidates(
+            available_columns,
+            TICK_TRADE_SIGN_ALIASES.as_slice(),
+            alias_hints,
+            "trade_sign",
+        ),
+        bid: ordered_candidates(
+            available_columns,
+            TICK_BID_ALIASES.as_slice(),
+            alias_hints,
+            "bid",
+        ),
+        ask: ordered_candidates(
+            available_columns,
+            TICK_ASK_ALIASES.as_slice(),
+            alias_hints,
+            "ask",
+        ),
+    }
+}
+
 pub(super) fn resolve_tick_data_column_mapping(
     available_columns: &[String],
     column_mapping: &MarketDataTickDataColumnMapping,
     normalization_policy: &MarketDataNormalizationPolicy,
     source_path: &str,
 ) -> Result<MarketDataTickDataColumnMapping, MarketDataLoadingError> {
+    resolve_tick_data_column_mapping_with_alias_hints(
+        available_columns,
+        column_mapping,
+        normalization_policy,
+        source_path,
+        &[],
+    )
+}
+
+pub(in crate::market_data) fn resolve_tick_data_column_mapping_with_alias_hints(
+    available_columns: &[String],
+    column_mapping: &MarketDataTickDataColumnMapping,
+    normalization_policy: &MarketDataNormalizationPolicy,
+    source_path: &str,
+    alias_hints: &[MarketDataColumnAliasHint],
+) -> Result<MarketDataTickDataColumnMapping, MarketDataLoadingError> {
     let available_by_normalized = normalized_source_columns(available_columns);
     let timestamp_column = Some(resolve_required_column(
         column_mapping.timestamp_column.as_deref(),
         &available_by_normalized,
-        TICK_TIMESTAMP_ALIASES.as_slice(),
+        aliases_for_canonical_name(TICK_TIMESTAMP_ALIASES.as_slice(), alias_hints, "timestamp")
+            .as_slice(),
         "column_mapping.tick_data.timestamp_column",
         source_path,
     )?);
     let trade_sign_column = resolve_optional_column(
         column_mapping.trade_sign_column.as_deref(),
         &available_by_normalized,
-        TICK_TRADE_SIGN_ALIASES.as_slice(),
+        aliases_for_canonical_name(
+            TICK_TRADE_SIGN_ALIASES.as_slice(),
+            alias_hints,
+            "trade_sign",
+        )
+        .as_slice(),
     );
 
     let (price_column, bid_column, ask_column) = match normalization_policy.tick_price_input_policy
@@ -174,7 +244,8 @@ pub(super) fn resolve_tick_data_column_mapping(
             Some(resolve_required_column(
                 column_mapping.price_column.as_deref(),
                 &available_by_normalized,
-                TICK_PRICE_ALIASES.as_slice(),
+                aliases_for_canonical_name(TICK_PRICE_ALIASES.as_slice(), alias_hints, "price")
+                    .as_slice(),
                 "column_mapping.tick_data.price_column",
                 source_path,
             )?),
@@ -186,14 +257,16 @@ pub(super) fn resolve_tick_data_column_mapping(
             Some(resolve_required_column(
                 column_mapping.bid_column.as_deref(),
                 &available_by_normalized,
-                TICK_BID_ALIASES.as_slice(),
+                aliases_for_canonical_name(TICK_BID_ALIASES.as_slice(), alias_hints, "bid")
+                    .as_slice(),
                 "column_mapping.tick_data.bid_column",
                 source_path,
             )?),
             Some(resolve_required_column(
                 column_mapping.ask_column.as_deref(),
                 &available_by_normalized,
-                TICK_ASK_ALIASES.as_slice(),
+                aliases_for_canonical_name(TICK_ASK_ALIASES.as_slice(), alias_hints, "ask")
+                    .as_slice(),
                 "column_mapping.tick_data.ask_column",
                 source_path,
             )?),
@@ -408,10 +481,10 @@ pub(super) fn resolve_option_surface_quote_input_policy(
     })
 }
 
-fn resolve_required_column(
+fn resolve_required_column<S: AsRef<str>>(
     explicit_column: Option<&str>,
     available_by_normalized: &HashMap<String, String>,
-    aliases: &[&str],
+    aliases: &[S],
     field_path: &str,
     source_path: &str,
 ) -> Result<String, MarketDataLoadingError> {
@@ -424,34 +497,36 @@ fn resolve_required_column(
             field_path: field_path.to_string(),
             message: format!(
                 "could not resolve a source column from common aliases [{}]. source_path={source_path}",
-                aliases.join(", ")
+                alias_list_label(aliases)
             ),
         }
     })
 }
 
-fn resolve_optional_column(
+fn resolve_optional_column<S: AsRef<str>>(
     explicit_column: Option<&str>,
     available_by_normalized: &HashMap<String, String>,
-    aliases: &[&str],
+    aliases: &[S],
 ) -> Option<String> {
     explicit_column
         .map(ToOwned::to_owned)
         .or_else(|| first_alias_match(available_by_normalized, aliases))
 }
 
-fn first_alias_match(
+fn first_alias_match<S: AsRef<str>>(
     available_by_normalized: &HashMap<String, String>,
-    aliases: &[&str],
+    aliases: &[S],
 ) -> Option<String> {
     aliases.iter().find_map(|alias| {
         available_by_normalized
-            .get(&normalize_identifier(alias))
+            .get(&normalize_identifier(alias.as_ref()))
             .cloned()
     })
 }
 
 fn normalized_source_columns(available_columns: &[String]) -> HashMap<String, String> {
+    // Resolution outputs own column names, so lookup maps copy names from the
+    // short-lived source-column slice.
     let mut normalized = HashMap::new();
     for column_name in available_columns {
         normalized
@@ -460,6 +535,82 @@ fn normalized_source_columns(available_columns: &[String]) -> HashMap<String, St
     }
 
     normalized
+}
+
+fn ordered_candidates(
+    available_columns: &[String],
+    default_aliases: &[&str],
+    alias_hints: &[MarketDataColumnAliasHint],
+    canonical_name: &str,
+) -> Vec<String> {
+    let available_by_normalized = normalized_source_columns_by_all_matches(available_columns);
+    let aliases = aliases_for_canonical_name(default_aliases, alias_hints, canonical_name);
+    let mut candidates = Vec::new();
+
+    for alias in aliases {
+        if let Some(matched_columns) = available_by_normalized.get(&normalize_identifier(&alias)) {
+            for column_name in matched_columns {
+                if !candidates.contains(column_name) {
+                    candidates.push(column_name.clone());
+                }
+            }
+        }
+    }
+
+    candidates
+}
+
+fn aliases_for_canonical_name(
+    default_aliases: &[&str],
+    alias_hints: &[MarketDataColumnAliasHint],
+    canonical_name: &str,
+) -> Vec<String> {
+    // The merged alias list owns profile aliases and generic aliases so callers
+    // can use one ordered list independent of the profile payload lifetime.
+    let mut aliases = Vec::new();
+
+    if let Some(alias_hint) = alias_hints
+        .iter()
+        .find(|hint| hint.canonical_name == canonical_name)
+    {
+        for alias in &alias_hint.aliases {
+            if !aliases.contains(alias) {
+                aliases.push(alias.clone());
+            }
+        }
+    }
+
+    for alias in default_aliases {
+        let alias = alias.to_string();
+        if !aliases.contains(&alias) {
+            aliases.push(alias);
+        }
+    }
+
+    aliases
+}
+
+fn normalized_source_columns_by_all_matches(
+    available_columns: &[String],
+) -> HashMap<String, Vec<String>> {
+    // Candidate payloads own column names and preserve all matches per alias.
+    let mut normalized = HashMap::new();
+    for column_name in available_columns {
+        normalized
+            .entry(normalize_identifier(column_name))
+            .or_insert_with(Vec::new)
+            .push(column_name.clone());
+    }
+
+    normalized
+}
+
+fn alias_list_label<S: AsRef<str>>(aliases: &[S]) -> String {
+    aliases
+        .iter()
+        .map(AsRef::as_ref)
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 fn normalize_identifier(identifier: &str) -> String {

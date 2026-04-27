@@ -12,8 +12,9 @@ engines, shared contracts, and most performance-sensitive implementation.
 | `crates/janiform/` | Umbrella Rust facade |
 | `crates/janiform-pybind/` | PyO3 boundary crate |
 | `crates/janiform-cli/` | Native Rust command shell |
-| `crates/janiform-cli-ui/` | Shared semantic terminal rendering for the command shell |
 | `crates/janiform-event-log/` | Run event logs, latest-state snapshots, and replay support |
+| `crates/janiform-terminal-ui/` | Shared semantic terminal rendering and progress adapters |
+| `crates/janiform-workflows/` | Shared workflow orchestration for entrypoints |
 | Engine crates | Pricing, sufficient-statistics, and simulation runtime implementations |
 | Calibration crates | Calibration orchestration and artifact persistence |
 | Analytics, validation, and governance crates | Analytical reports, regression harnesses, and benchmark governance |
@@ -29,7 +30,6 @@ engines, shared contracts, and most performance-sensitive implementation.
 | `janiform-calibration-artifacts` | Calibration artifact contracts and persistence |
 | `janiform-calibration-runtime` | Calibration runtime orchestration |
 | `janiform-cli` | Native Rust command shell with shared configuration, output, path, and diagnostic boundary |
-| `janiform-cli-ui` | Semantic terminal rendering and progress adapters for the command shell |
 | `janiform-engine-pricing` | Pricing runtime engine |
 | `janiform-engine-simulation` | Simulation runtime engine |
 | `janiform-engine-sufficient-statistics` | Sufficient-statistics runtime engine |
@@ -41,8 +41,10 @@ engines, shared contracts, and most performance-sensitive implementation.
 | `janiform-market-time` | Shared market-time infrastructure |
 | `janiform-model-kernels` | Shared model-kernel domains |
 | `janiform-pybind` | Python binding boundary |
+| `janiform-terminal-ui` | Shared semantic terminal rendering and progress adapters |
 | `janiform-test-support` | Shared Rust test support for workspace fixtures |
 | `janiform-validation` | Validation domains and regression harnesses |
+| `janiform-workflows` | Shared workflow orchestration for Janiform entrypoints |
 
 ## Documentation Layout
 

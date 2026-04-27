@@ -123,6 +123,48 @@ pub enum CliError {
         source: io::Error,
     },
 
+    #[error("failed to read staged execution input `{}`", path.display())]
+    #[diagnostic(code(janiform_cli::staged_execution_input_read))]
+    StagedExecutionInputRead {
+        path: PathBuf,
+        #[source]
+        source: io::Error,
+    },
+
+    #[error("failed to parse staged execution input `{}`", path.display())]
+    #[diagnostic(code(janiform_cli::staged_execution_input_parse))]
+    StagedExecutionInputParse {
+        path: PathBuf,
+        #[source]
+        source: serde_json::Error,
+    },
+
+    #[error("failed to build staged execution plan")]
+    #[diagnostic(code(janiform_cli::staged_execution_plan_failed))]
+    StagedExecutionPlanFailed {
+        #[source]
+        source: janiform::calibration::CalibrationStagedExecutionBridgeError,
+    },
+
+    #[error("fit execution failed: {message}")]
+    #[diagnostic(code(janiform_cli::fit_execution_failed))]
+    FitExecutionFailed { message: String },
+
+    #[error("failed to write fit artifact `{}`", path.display())]
+    #[diagnostic(code(janiform_cli::fit_artifact_write))]
+    FitArtifactWrite {
+        path: PathBuf,
+        #[source]
+        source: io::Error,
+    },
+
+    #[error("failed to write fit event log")]
+    #[diagnostic(code(janiform_cli::fit_event_log))]
+    FitEventLog {
+        #[source]
+        source: janiform_event_log::EventLogError,
+    },
+
     #[error("`--trace-events` requires an event stream selected with `--events jsonl`")]
     #[diagnostic(code(janiform_cli::trace_events_without_event_stream))]
     TraceEventsWithoutEventStream,
@@ -139,6 +181,13 @@ pub enum CliError {
     OutputSerialize {
         #[source]
         source: serde_json::Error,
+    },
+
+    #[error("failed to render command progress")]
+    #[diagnostic(code(janiform_cli::output_progress))]
+    OutputProgress {
+        #[source]
+        source: janiform_terminal_ui::ProgressContractError,
     },
 
     #[error("failed to inspect run directory `{}`", run_directory.display())]
@@ -170,9 +219,16 @@ impl CliError {
             | Self::ConflictingCommandArguments { .. }
             | Self::FitPreparationFailed { .. }
             | Self::StagedExecutionInputWrite { .. }
+            | Self::StagedExecutionInputRead { .. }
+            | Self::StagedExecutionInputParse { .. }
+            | Self::StagedExecutionPlanFailed { .. }
+            | Self::FitExecutionFailed { .. }
+            | Self::FitArtifactWrite { .. }
+            | Self::FitEventLog { .. }
             | Self::TraceEventsWithoutEventStream
             | Self::OutputWrite { .. }
             | Self::OutputSerialize { .. }
+            | Self::OutputProgress { .. }
             | Self::RunInspectionFailed { .. } => CliExitCode::CommandLineUsage,
         }
     }
@@ -192,10 +248,53 @@ impl CliError {
             Self::ConflictingCommandArguments { .. } => "conflicting_command_arguments",
             Self::FitPreparationFailed { .. } => "fit_preparation_failed",
             Self::StagedExecutionInputWrite { .. } => "staged_execution_input_write",
+            Self::StagedExecutionInputRead { .. } => "staged_execution_input_read",
+            Self::StagedExecutionInputParse { .. } => "staged_execution_input_parse",
+            Self::StagedExecutionPlanFailed { .. } => "staged_execution_plan_failed",
+            Self::FitExecutionFailed { .. } => "fit_execution_failed",
+            Self::FitArtifactWrite { .. } => "fit_artifact_write",
+            Self::FitEventLog { .. } => "fit_event_log",
             Self::TraceEventsWithoutEventStream => "trace_events_without_event_stream",
             Self::OutputWrite { .. } => "output_write",
             Self::OutputSerialize { .. } => "output_serialize",
+            Self::OutputProgress { .. } => "output_progress",
             Self::RunInspectionFailed { .. } => "run_inspection_failed",
+        }
+    }
+}
+
+impl From<janiform_workflows::error::WorkflowError> for CliError {
+    fn from(value: janiform_workflows::error::WorkflowError) -> Self {
+        match value {
+            janiform_workflows::error::WorkflowError::StagedExecutionPlanFailed { source } => {
+                Self::StagedExecutionPlanFailed { source }
+            }
+            janiform_workflows::error::WorkflowError::CalendarRegistryLoadFailed { message }
+            | janiform_workflows::error::WorkflowError::FitExecutionFailed { message }
+            | janiform_workflows::error::WorkflowError::OutputPayloadInvalid { message } => {
+                Self::FitExecutionFailed { message }
+            }
+            janiform_workflows::error::WorkflowError::FitValidationFailed { field, message } => {
+                Self::InvalidCommandArgument {
+                    argument_name: field,
+                    message,
+                }
+            }
+            janiform_workflows::error::WorkflowError::FitArtifactWrite { path, source } => {
+                Self::FitArtifactWrite { path, source }
+            }
+            janiform_workflows::error::WorkflowError::FitEventLog { source } => {
+                Self::FitEventLog { source }
+            }
+            janiform_workflows::error::WorkflowError::OutputSerialize { source } => {
+                Self::OutputSerialize { source }
+            }
+            janiform_workflows::error::WorkflowError::OutputWrite { source } => {
+                Self::OutputWrite { source }
+            }
+            janiform_workflows::error::WorkflowError::OutputProgress { source } => {
+                Self::OutputProgress { source }
+            }
         }
     }
 }

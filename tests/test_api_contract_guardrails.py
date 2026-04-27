@@ -188,13 +188,17 @@ def test_public_api_contract_guardrail_supports_public_domain_submodules() -> No
                 "PresetRegistry",
                 "resolve_preset_workflow_configuration",
             ],
+            "janiform.calibration.presets.artifacts": [
+                "PresetCategory",
+                "serialize_preset_artifact",
+            ],
             "janiform.calibration.presets.references": [
                 "MarketProfileReference",
                 "SessionPresetReference",
             ],
             "janiform.calibration.presets.registry": [
                 "PresetRegistry",
-                "serialize_preset_artifact",
+                "ResolvedPresetExport",
             ],
             "janiform.calibration.presets.resolution": [
                 "ResolvedPresetWorkflowConfiguration",
@@ -295,6 +299,7 @@ def test_public_api_contract_guardrail_supports_public_domain_submodules() -> No
         "janiform.calibration.market_data.translation",
         "janiform.calibration.market_data.workflow",
         "janiform.calibration.presets",
+        "janiform.calibration.presets.artifacts",
         "janiform.calibration.presets.references",
         "janiform.calibration.presets.registry",
         "janiform.calibration.presets.resolution",

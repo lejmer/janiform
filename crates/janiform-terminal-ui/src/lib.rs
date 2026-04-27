@@ -1,4 +1,4 @@
-//! Semantic terminal rendering and progress adapters for the Janiform CLI.
+//! Shared semantic terminal rendering and progress adapters for Janiform.
 
 #![forbid(unsafe_code)]
 
@@ -13,6 +13,7 @@ pub use color::ColorMode;
 pub use formatting::format_artifact_path;
 pub use formatting::format_count;
 pub use formatting::format_duration_seconds;
+pub use formatting::format_elapsed_label;
 pub use formatting::format_path;
 pub use formatting::format_selected_candidate;
 pub use formatting::format_status_label;
@@ -24,6 +25,7 @@ pub use layout::CompletionSummary;
 pub use layout::CompletionSummaryStatus;
 pub use layout::FailureBlock;
 pub use layout::KeyValueRow;
+pub use layout::KeyValueRowLayout;
 pub use layout::StageChecklist;
 pub use layout::StageChecklistItem;
 pub use layout::StageChecklistStatus;
@@ -34,5 +36,7 @@ pub use progress::ProgressContractError;
 pub use progress::ProgressEvent;
 pub use progress::ProgressMeasure;
 pub use progress::ProgressSnapshot;
+pub use progress::ProgressWorkItemColumn;
+pub use progress::ProgressWorkItemMetric;
 pub use renderer::TerminalRenderer;
 pub use style::SemanticStyle;

@@ -1,3 +1,4 @@
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use chrono::{DateTime, Utc};
@@ -6,26 +7,40 @@ use janiform::calibration::{
     CalibrationResumeSettings, CalibrationReturnComponentsActivityContextPayload,
     CalibrationReturnComponentsStageCandidateGenerationInput, CalibrationStagedExecutionInput,
     CalibrationStagedRunObserverEvent, CalibrationStagedRunReport, CalibrationStagedRunStageReport,
-    CurrentStateEstimationInput, MarketDataInputFileReference, MarketDataLoadingOutput,
-    MarketDataLoadingRequest, MarketDataNormalizationPolicy, MarketDataSessionConfiguration,
-    MarketDataSessionResolutionPayload, MarketDataSourceProbePayload,
-    MarketDataTickDataColumnMapping, MarketDataTranslationPreprocessingOutput,
-    MarketDataTranslationPreprocessingRequest,
+    CurrentStateEstimationInput, MarketDataFitInputInferenceRequest, MarketDataInputFileReference,
+    MarketDataLoadingOutput, MarketDataLoadingRequest, MarketDataNormalizationPolicy,
+    MarketDataSessionConfiguration, MarketDataSessionResolutionPayload,
+    MarketDataSourceProbePayload, MarketDataTickDataColumnMapping,
+    MarketDataTranslationPreprocessingOutput, MarketDataTranslationPreprocessingRequest,
     PreparedMarketDataCalibrationPlan as PreparedMarketDataPlanCore,
     ReturnComponentsStageFittedParameters, ReturnComponentsStageObservedSignalSummaryStatistics,
     RuntimeStructuralSeasonalityMaterializationInput,
+    built_in_preset_registry_index as built_in_preset_registry_index_native,
+    compute_preset_artifact_content_hash as compute_preset_artifact_content_hash_native,
+    deserialize_preset_artifact_json as deserialize_preset_artifact_json_native,
     estimate_current_state_from_observed_data as estimate_current_state_from_observed_data_core,
     evaluate_return_components_exact_candidate_from_bridge,
+    exchange_code_from_market_profile_reference as exchange_code_from_market_profile_reference_native,
+    exchange_code_from_session_reference as exchange_code_from_session_reference_native,
+    export_resolved_preset as export_resolved_preset_native,
+    infer_bundled_market_profile_from_tick_data_path,
+    infer_market_data_fit_inputs as infer_market_data_fit_inputs_native,
     load_and_preprocess_market_data_translation_request as load_and_preprocess_market_data_translation_request_native,
     materialize_runtime_structural_seasonality as materialize_runtime_structural_seasonality_core,
     normalize_market_data_source as normalize_market_data_source_native,
+    normalize_preset_artifact as normalize_preset_artifact_native,
     prepare_market_data_calibration_plan as prepare_market_data_calibration_plan_core,
     prepare_market_data_calibration_plan_from_phases as prepare_market_data_calibration_plan_from_phases_core,
     preprocess_market_data_translation_request as preprocess_market_data_translation_request_native,
+    preset_registry_index as preset_registry_index_native,
     probe_market_data_source as probe_market_data_source_native,
     resolve_market_data_session_configuration as resolve_market_data_session_configuration_native,
+    resolve_market_profile_configuration as resolve_market_profile_configuration_native,
+    resolve_preset_artifact as resolve_preset_artifact_native,
+    resolve_preset_workflow_configuration as resolve_preset_workflow_configuration_native,
     run_staged_calibration_from_execution_input,
     run_staged_calibration_from_execution_input_with_observer,
+    serialize_preset_artifact as serialize_preset_artifact_native,
 };
 use janiform::hawkes::{HawkesEventSide, HawkesKernelParameters};
 use janiform::simulation::MeanReversionFittedParameters;
@@ -41,6 +56,258 @@ use crate::types::{
     PyCalendarRegistry, PyCalibrationMemoryCheckpointStore, PyNormalizedMarketDataHandle,
     PyPreparedCalibrationExecutionHandle,
 };
+
+#[pyfunction]
+#[pyo3(signature = (tick_data_path))]
+fn infer_bundled_market_profile_for_tick_data_path(
+    py: Python<'_>,
+    tick_data_path: &str,
+) -> PyResult<Py<PyAny>> {
+    let inferred_profile =
+        infer_bundled_market_profile_from_tick_data_path(Path::new(tick_data_path))
+            .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
+
+    let raw_value = serde_json::to_value(inferred_profile).map_err(|source| {
+        CalibrationExecutionError::new_err(format!(
+            "failed to serialize inferred market profile: {source}"
+        ))
+    })?;
+
+    json_value_to_py_object(py, &raw_value)
+}
+
+#[pyfunction]
+#[pyo3(signature = (inference_request))]
+fn infer_market_data_fit_inputs(
+    py: Python<'_>,
+    inference_request: &Bound<'_, PyAny>,
+) -> PyResult<Py<PyAny>> {
+    let inference_request: MarketDataFitInputInferenceRequest =
+        serde_json::from_value(py_any_to_json_value(inference_request)?).map_err(|source| {
+            CalibrationExecutionError::new_err(format!(
+                "failed to deserialize market-data fit inference request: {source}"
+            ))
+        })?;
+
+    let inference_output = py
+        .detach(|| infer_market_data_fit_inputs_native(inference_request))
+        .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
+
+    let raw_value = serde_json::to_value(inference_output).map_err(|source| {
+        CalibrationExecutionError::new_err(format!(
+            "failed to serialize market-data fit inference output: {source}"
+        ))
+    })?;
+
+    json_value_to_py_object(py, &raw_value)
+}
+
+#[pyfunction]
+#[pyo3(signature = (_request))]
+fn built_in_preset_registry_index(
+    py: Python<'_>,
+    _request: &Bound<'_, PyAny>,
+) -> PyResult<Py<PyAny>> {
+    let index_payload = py
+        .detach(built_in_preset_registry_index_native)
+        .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
+
+    json_value_to_py_object(py, &index_payload)
+}
+
+#[pyfunction]
+#[pyo3(signature = (index_request))]
+fn preset_registry_index(py: Python<'_>, index_request: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
+    let index_request = py_any_to_json_value(index_request)?;
+
+    let index_payload = py
+        .detach(|| preset_registry_index_native(index_request))
+        .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
+
+    json_value_to_py_object(py, &index_payload)
+}
+
+#[pyfunction]
+#[pyo3(signature = (resolution_request))]
+fn resolve_preset_artifact(
+    py: Python<'_>,
+    resolution_request: &Bound<'_, PyAny>,
+) -> PyResult<Py<PyAny>> {
+    let resolution_request = py_any_to_json_value(resolution_request)?;
+
+    let resolved_artifact = py
+        .detach(|| resolve_preset_artifact_native(resolution_request))
+        .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
+
+    json_value_to_py_object(py, &resolved_artifact)
+}
+
+#[pyfunction]
+#[pyo3(signature = (export_request))]
+fn export_resolved_preset(
+    py: Python<'_>,
+    export_request: &Bound<'_, PyAny>,
+) -> PyResult<Py<PyAny>> {
+    let export_request = py_any_to_json_value(export_request)?;
+
+    let export_payload = py
+        .detach(|| export_resolved_preset_native(export_request))
+        .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
+
+    json_value_to_py_object(py, &export_payload)
+}
+
+#[pyfunction]
+#[pyo3(signature = (artifact_request))]
+fn serialize_preset_artifact(
+    py: Python<'_>,
+    artifact_request: &Bound<'_, PyAny>,
+) -> PyResult<String> {
+    let artifact = preset_artifact_from_request(artifact_request)?;
+
+    py.detach(|| serialize_preset_artifact_native(artifact))
+        .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))
+}
+
+#[pyfunction]
+#[pyo3(signature = (artifact_request))]
+fn deserialize_preset_artifact(
+    py: Python<'_>,
+    artifact_request: &Bound<'_, PyAny>,
+) -> PyResult<Py<PyAny>> {
+    let request = py_any_to_json_value(artifact_request)?;
+    let payload_json = preset_artifact_json_from_request(request)?;
+
+    let artifact = py
+        .detach(|| deserialize_preset_artifact_json_native(payload_json.as_str()))
+        .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
+
+    json_value_to_py_object(py, &artifact)
+}
+
+#[pyfunction]
+#[pyo3(signature = (artifact_request))]
+fn normalize_preset_artifact(
+    py: Python<'_>,
+    artifact_request: &Bound<'_, PyAny>,
+) -> PyResult<Py<PyAny>> {
+    let artifact = preset_artifact_from_request(artifact_request)?;
+
+    let normalized_artifact = py
+        .detach(|| normalize_preset_artifact_native(artifact))
+        .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
+
+    json_value_to_py_object(py, &normalized_artifact)
+}
+
+#[pyfunction]
+#[pyo3(signature = (artifact_request))]
+fn compute_preset_artifact_content_hash(
+    py: Python<'_>,
+    artifact_request: &Bound<'_, PyAny>,
+) -> PyResult<String> {
+    let artifact = preset_artifact_from_request(artifact_request)?;
+
+    py.detach(|| compute_preset_artifact_content_hash_native(artifact))
+        .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))
+}
+
+fn preset_artifact_from_request(artifact_request: &Bound<'_, PyAny>) -> PyResult<Value> {
+    let request = py_any_to_json_value(artifact_request)?;
+    let mut request = match request {
+        Value::Object(request) => request,
+        _ => {
+            return Err(CalibrationExecutionError::new_err(
+                "preset artifact request must be an object",
+            ));
+        }
+    };
+
+    request
+        .remove("artifact")
+        .ok_or_else(|| CalibrationExecutionError::new_err("artifact is required"))
+}
+
+fn preset_artifact_json_from_request(request: Value) -> PyResult<String> {
+    let mut request = match request {
+        Value::Object(request) => request,
+        _ => {
+            return Err(CalibrationExecutionError::new_err(
+                "preset artifact request must be an object",
+            ));
+        }
+    };
+
+    match request.remove("payload_json") {
+        Some(Value::String(payload_json)) => Ok(payload_json),
+        Some(_) => Err(CalibrationExecutionError::new_err(
+            "payload_json must be a string",
+        )),
+        None => Err(CalibrationExecutionError::new_err(
+            "payload_json is required",
+        )),
+    }
+}
+
+#[pyfunction]
+#[pyo3(signature = (resolution_request))]
+fn resolve_preset_workflow_configuration(
+    py: Python<'_>,
+    resolution_request: &Bound<'_, PyAny>,
+) -> PyResult<Py<PyAny>> {
+    let resolution_request = py_any_to_json_value(resolution_request)?;
+
+    let resolved_configuration = py
+        .detach(|| resolve_preset_workflow_configuration_native(resolution_request))
+        .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
+
+    json_value_to_py_object(py, &resolved_configuration)
+}
+
+#[pyfunction]
+#[pyo3(signature = (resolution_request))]
+fn resolve_market_profile_configuration(
+    py: Python<'_>,
+    resolution_request: &Bound<'_, PyAny>,
+) -> PyResult<Py<PyAny>> {
+    let resolution_request = py_any_to_json_value(resolution_request)?;
+
+    let resolved_configuration = py
+        .detach(|| resolve_market_profile_configuration_native(resolution_request))
+        .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
+
+    let raw_value = serde_json::to_value(resolved_configuration).map_err(|source| {
+        CalibrationExecutionError::new_err(format!(
+            "failed to serialize market-profile configuration: {source}"
+        ))
+    })?;
+
+    json_value_to_py_object(py, &raw_value)
+}
+
+#[pyfunction]
+#[pyo3(signature = (exchange_code_request))]
+fn exchange_code_from_session_reference(
+    py: Python<'_>,
+    exchange_code_request: &Bound<'_, PyAny>,
+) -> PyResult<String> {
+    let exchange_code_request = py_any_to_json_value(exchange_code_request)?;
+
+    py.detach(|| exchange_code_from_session_reference_native(exchange_code_request))
+        .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))
+}
+
+#[pyfunction]
+#[pyo3(signature = (exchange_code_request))]
+fn exchange_code_from_market_profile_reference(
+    py: Python<'_>,
+    exchange_code_request: &Bound<'_, PyAny>,
+) -> PyResult<String> {
+    let exchange_code_request = py_any_to_json_value(exchange_code_request)?;
+
+    py.detach(|| exchange_code_from_market_profile_reference_native(exchange_code_request))
+        .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))
+}
 
 #[pyfunction]
 #[pyo3(signature = (preprocessing_request, calendar_registry))]
@@ -255,6 +522,7 @@ fn prepare_market_data_calibration_plan_from_phases(
                 "failed to deserialize market-data calibration request: {source}"
             ))
         })?;
+
     let session_resolution: MarketDataSessionResolutionPayload =
         serde_json::from_value(py_any_to_json_value(session_resolution)?).map_err(|source| {
             CalibrationExecutionError::new_err(format!(
@@ -427,11 +695,9 @@ fn run_prepared_staged_calibration(
     python_staged_calibration_report_to_py_object(py, &report)
 }
 
-#[pyfunction]
-#[pyo3(signature = (prepared_handle, calendar_registry, event_callback, memory_checkpoint_store = None))]
-fn run_prepared_staged_calibration_with_events(
+fn run_staged_calibration_with_python_events(
     py: Python<'_>,
-    prepared_handle: &PyPreparedCalibrationExecutionHandle,
+    execution_input: CalibrationStagedExecutionInput,
     calendar_registry: &PyCalendarRegistry,
     event_callback: &Bound<'_, PyAny>,
     memory_checkpoint_store: Option<&mut PyCalibrationMemoryCheckpointStore>,
@@ -456,6 +722,7 @@ fn run_prepared_staged_calibration_with_events(
                 Python::attach(|py| {
                     let callback_result = python_staged_calibration_event_to_py_object(py, &event)
                         .and_then(|payload| event_callback.call1(py, (payload,)).map(|_| ()));
+
                     if let Err(source) = callback_result {
                         if let Ok(mut guard) = callback_error_message_for_observer.lock() {
                             if guard.is_none() {
@@ -467,7 +734,7 @@ fn run_prepared_staged_calibration_with_events(
             };
 
             run_staged_calibration_from_execution_input_with_observer(
-                prepared_handle.execution_input.clone(),
+                execution_input,
                 &calendar_registry.registry,
                 memory_checkpoint_store.map(|store| &mut store.store),
                 &mut observer,
@@ -484,6 +751,26 @@ fn run_prepared_staged_calibration_with_events(
     }
 
     python_staged_calibration_report_to_py_object(py, &report)
+}
+
+#[pyfunction]
+#[pyo3(signature = (prepared_handle, calendar_registry, event_callback, memory_checkpoint_store = None))]
+fn run_prepared_staged_calibration_with_events(
+    py: Python<'_>,
+    prepared_handle: &PyPreparedCalibrationExecutionHandle,
+    calendar_registry: &PyCalendarRegistry,
+    event_callback: &Bound<'_, PyAny>,
+    memory_checkpoint_store: Option<&mut PyCalibrationMemoryCheckpointStore>,
+) -> PyResult<Py<PyAny>> {
+    let execution_input = prepared_handle.execution_input.clone();
+
+    run_staged_calibration_with_python_events(
+        py,
+        execution_input,
+        calendar_registry,
+        event_callback,
+        memory_checkpoint_store,
+    )
 }
 
 #[pyfunction]
@@ -534,57 +821,17 @@ fn run_prepared_staged_calibration_with_resume_and_events(
                 "failed to deserialize calibration resume settings: {source}"
             ))
         })?;
-    let event_callback = event_callback.clone().unbind();
-
-    let callback_error_message = Arc::new(Mutex::new(None::<String>));
-    let callback_error_message_for_observer = Arc::clone(&callback_error_message);
 
     let mut execution_input = prepared_handle.execution_input.clone();
     execution_input.request.resume_settings = Some(resume_settings);
 
-    let report = py
-        .detach(move || {
-            let mut observer = |event: CalibrationStagedRunObserverEvent| {
-                if callback_error_message_for_observer
-                    .lock()
-                    .ok()
-                    .and_then(|guard| guard.clone())
-                    .is_some()
-                {
-                    return;
-                }
-
-                Python::attach(|py| {
-                    let callback_result = python_staged_calibration_event_to_py_object(py, &event)
-                        .and_then(|payload| event_callback.call1(py, (payload,)).map(|_| ()));
-                    if let Err(source) = callback_result {
-                        if let Ok(mut guard) = callback_error_message_for_observer.lock() {
-                            if guard.is_none() {
-                                *guard = Some(source.to_string());
-                            }
-                        }
-                    }
-                });
-            };
-
-            run_staged_calibration_from_execution_input_with_observer(
-                execution_input,
-                &calendar_registry.registry,
-                memory_checkpoint_store.map(|store| &mut store.store),
-                &mut observer,
-            )
-        })
-        .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
-
-    if let Ok(guard) = callback_error_message.lock() {
-        if let Some(error_message) = guard.as_ref() {
-            return Err(CalibrationExecutionError::new_err(format!(
-                "staged calibration event callback failed: {error_message}"
-            )));
-        }
-    }
-
-    python_staged_calibration_report_to_py_object(py, &report)
+    run_staged_calibration_with_python_events(
+        py,
+        execution_input,
+        calendar_registry,
+        event_callback,
+        memory_checkpoint_store,
+    )
 }
 
 #[pyfunction]
@@ -631,54 +878,13 @@ fn run_staged_calibration_with_events(
             ))
         })?;
 
-    let event_callback = event_callback.clone().unbind();
-
-    let callback_error_message = Arc::new(Mutex::new(None::<String>));
-    let callback_error_message_for_observer = Arc::clone(&callback_error_message);
-
-    let report = py
-        .detach(move || {
-            let mut observer = |event: CalibrationStagedRunObserverEvent| {
-                if callback_error_message_for_observer
-                    .lock()
-                    .ok()
-                    .and_then(|guard| guard.clone())
-                    .is_some()
-                {
-                    return;
-                }
-
-                Python::attach(|py| {
-                    let callback_result = python_staged_calibration_event_to_py_object(py, &event)
-                        .and_then(|payload| event_callback.call1(py, (payload,)).map(|_| ()));
-                    if let Err(source) = callback_result {
-                        if let Ok(mut guard) = callback_error_message_for_observer.lock() {
-                            if guard.is_none() {
-                                *guard = Some(source.to_string());
-                            }
-                        }
-                    }
-                });
-            };
-
-            run_staged_calibration_from_execution_input_with_observer(
-                execution_input,
-                &calendar_registry.registry,
-                memory_checkpoint_store.map(|store| &mut store.store),
-                &mut observer,
-            )
-        })
-        .map_err(|source| CalibrationExecutionError::new_err(source.to_string()))?;
-
-    if let Ok(guard) = callback_error_message.lock() {
-        if let Some(error_message) = guard.as_ref() {
-            return Err(CalibrationExecutionError::new_err(format!(
-                "staged calibration event callback failed: {error_message}"
-            )));
-        }
-    }
-
-    python_staged_calibration_report_to_py_object(py, &report)
+    run_staged_calibration_with_python_events(
+        py,
+        execution_input,
+        calendar_registry,
+        event_callback,
+        memory_checkpoint_store,
+    )
 }
 
 #[pyfunction]
@@ -766,6 +972,7 @@ fn estimate_current_state_from_observed_data(
                 "failed to deserialize current-state kernel parameters: {source}"
             ))
         })?;
+
     let parsed_mean_reversion_fitted_parameters: MeanReversionFittedParameters =
         serde_json::from_value(py_any_to_json_value(mean_reversion_fitted_parameters)?).map_err(
             |source| {
@@ -774,18 +981,21 @@ fn estimate_current_state_from_observed_data(
                 ))
             },
         )?;
+
     let parsed_observation_timestamps_utc: Vec<String> =
         observation_timestamps_utc.extract().map_err(|_| {
             CalibrationExecutionError::new_err(
                 "current-state observation_timestamps_utc must be an iterable of RFC3339 UTC timestamp strings",
             )
         })?;
+
     let parsed_observation_trade_prices: Vec<f64> =
         observation_trade_prices.extract().map_err(|_| {
             CalibrationExecutionError::new_err(
                 "current-state observation_trade_prices must be an iterable of float values",
             )
         })?;
+
     let parsed_observation_trade_sides: Vec<String> =
         observation_trade_sides.extract().map_err(|_| {
             CalibrationExecutionError::new_err(
@@ -861,17 +1071,20 @@ fn materialize_runtime_structural_seasonality(
 ) -> PyResult<Py<PyAny>> {
     let parsed_range_start_utc = parse_timestamp_utc(range_start_utc)?;
     let parsed_range_end_utc = parse_timestamp_utc(range_end_utc)?;
+
     let parsed_intraday_factor_by_bin: Vec<f64> =
         intraday_factor_by_bin.extract().map_err(|_| {
             CalibrationExecutionError::new_err(
                 "runtime seasonality intraday_factor_by_bin must be an iterable of float values",
             )
         })?;
+
     let parsed_day_of_week_factor: Vec<f64> = day_of_week_factor.extract().map_err(|_| {
         CalibrationExecutionError::new_err(
             "runtime seasonality day_of_week_factor must be an iterable of float values",
         )
     })?;
+
     let parsed_day_of_year_factor: Vec<f64> = day_of_year_factor.extract().map_err(|_| {
         CalibrationExecutionError::new_err(
             "runtime seasonality day_of_year_factor must be an iterable of float values",
@@ -884,6 +1097,7 @@ fn materialize_runtime_structural_seasonality(
                 "runtime seasonality range_start_utc is outside the supported nanosecond timestamp range",
             )
         })?;
+
     let parsed_range_end_utc_nanos = parsed_range_end_utc.timestamp_nanos_opt().ok_or_else(|| {
         CalibrationExecutionError::new_err(
             "runtime seasonality range_end_utc is outside the supported nanosecond timestamp range",
@@ -1028,6 +1242,38 @@ fn flatten_stage_report_for_python(
 }
 
 pub(super) fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
+    module.add_function(wrap_pyfunction!(
+        infer_bundled_market_profile_for_tick_data_path,
+        module
+    )?)?;
+    module.add_function(wrap_pyfunction!(infer_market_data_fit_inputs, module)?)?;
+    module.add_function(wrap_pyfunction!(built_in_preset_registry_index, module)?)?;
+    module.add_function(wrap_pyfunction!(preset_registry_index, module)?)?;
+    module.add_function(wrap_pyfunction!(resolve_preset_artifact, module)?)?;
+    module.add_function(wrap_pyfunction!(export_resolved_preset, module)?)?;
+    module.add_function(wrap_pyfunction!(serialize_preset_artifact, module)?)?;
+    module.add_function(wrap_pyfunction!(deserialize_preset_artifact, module)?)?;
+    module.add_function(wrap_pyfunction!(normalize_preset_artifact, module)?)?;
+    module.add_function(wrap_pyfunction!(
+        compute_preset_artifact_content_hash,
+        module
+    )?)?;
+    module.add_function(wrap_pyfunction!(
+        resolve_preset_workflow_configuration,
+        module
+    )?)?;
+    module.add_function(wrap_pyfunction!(
+        resolve_market_profile_configuration,
+        module
+    )?)?;
+    module.add_function(wrap_pyfunction!(
+        exchange_code_from_session_reference,
+        module
+    )?)?;
+    module.add_function(wrap_pyfunction!(
+        exchange_code_from_market_profile_reference,
+        module
+    )?)?;
     module.add_function(wrap_pyfunction!(
         preprocess_market_data_translation_request,
         module

@@ -138,8 +138,6 @@ pub struct JointRefinementStageSeasonalityFactorsInput {
     pub intraday_factor_by_bin: Vec<f64>,
     pub day_of_week_factor: Vec<f64>,
     pub day_of_year_factor: Vec<f64>,
-    pub timestamp_utc_nanos: Vec<i64>,
-    pub normalized_combined_factor_by_event: Vec<f64>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -267,6 +265,7 @@ pub struct JointRefinementStageProgressUpdate {
     pub aggregate_progress_percent: Option<usize>,
     pub current_item_label: Option<String>,
     pub current_restart_id: Option<String>,
+    pub planned_work_item_labels: Vec<String>,
     pub active_restart_count: Option<usize>,
     pub current_parameter_block: Option<String>,
     pub completed_outer_cycles: Option<usize>,
@@ -278,6 +277,7 @@ pub struct JointRefinementStageProgressUpdate {
     pub cumulative_local_evaluation_count: Option<usize>,
     pub current_weighted_objective: Option<f64>,
     pub current_restart_best_weighted_objective: Option<f64>,
+    pub current_candidate_assessment: Option<JointRefinementProgressCandidateAssessment>,
     pub best_restart_id: Option<String>,
     pub best_weighted_objective: Option<f64>,
     pub current_coarse_consistency_fit: Option<f64>,
@@ -297,6 +297,7 @@ impl JointRefinementStageProgressUpdate {
             aggregate_progress_percent: None,
             current_item_label: None,
             current_restart_id: None,
+            planned_work_item_labels: Vec::new(),
             active_restart_count: None,
             current_parameter_block: None,
             completed_outer_cycles: None,
@@ -308,6 +309,7 @@ impl JointRefinementStageProgressUpdate {
             cumulative_local_evaluation_count: None,
             current_weighted_objective: None,
             current_restart_best_weighted_objective: None,
+            current_candidate_assessment: None,
             best_restart_id: None,
             best_weighted_objective: None,
             current_coarse_consistency_fit: None,
@@ -323,6 +325,20 @@ impl JointRefinementStageProgressUpdate {
             self.aggregate_progress_percent,
         )
     }
+}
+
+/// User-facing classification for a joint-refinement candidate progress row.
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum JointRefinementProgressCandidateAssessment {
+    /// Candidate is currently the leading restart among admissible candidates.
+    Champion,
+    /// Candidate completed final checks inside the admissibility contract.
+    Admissible,
+    /// Candidate completed but missed at least one admissibility threshold.
+    Inadmissible,
+    /// Candidate could not produce a valid local or final evaluation.
+    Invalid,
 }
 
 fn joint_refinement_stage_progress_percent(

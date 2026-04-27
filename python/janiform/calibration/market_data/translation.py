@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from types import ModuleType
 from typing import Any, Optional, cast
 
@@ -27,7 +28,7 @@ from ..sessions.contracts import (
 )
 from ..staged.contracts import CalibrationStage
 from ..staged.request import StagedCalibrationRequest
-from ..._native_api import native_exception_matches, native_module
+from ..._native_api import native_error_parts, native_exception_matches, native_module
 from ..._native_types import (
     NormalizedMarketDataHandleProtocol,
     PreparedCalibrationExecutionHandleProtocol,
@@ -91,6 +92,44 @@ class NormalizedMarketDataSource:
     fit_warning: Optional[str]
 
 
+def infer_bundled_market_profile_for_tick_data_path(
+    tick_data_path: str | Path,
+) -> Optional[dict[str, Any]]:
+    native = _native_market_data_module()
+
+    try:
+        raw_payload = native.infer_bundled_market_profile_for_tick_data_path(str(tick_data_path))
+    except RuntimeError as error:
+        if native_exception_matches(native, error, "CalibrationExecutionError"):
+            raise calibration_integration_error(str(error)) from error
+
+        raise
+
+    if raw_payload is None:
+        return None
+    if not isinstance(raw_payload, dict):
+        raise calibration_integration_error("native market-profile inference returned a non-object payload")
+
+    return dict(raw_payload)
+
+
+def infer_market_data_fit_inputs(inference_request: dict[str, Any]) -> dict[str, Any]:
+    native = _native_market_data_module()
+
+    try:
+        raw_payload = native.infer_market_data_fit_inputs(inference_request)
+    except RuntimeError as error:
+        if native_exception_matches(native, error, "CalibrationExecutionError"):
+            raise calibration_integration_error(str(error)) from error
+
+        raise
+
+    if not isinstance(raw_payload, dict):
+        raise calibration_integration_error("native fit-input inference returned a non-object payload")
+
+    return dict(raw_payload)
+
+
 @dataclass(frozen=True, slots=True)
 class MarketDataTranslationResult:
     staged_request: StagedCalibrationRequest
@@ -126,26 +165,39 @@ def translate_market_data_request_to_prepared_calibration(
 
     normalized_request = MarketDataCalibrationRequest.from_mapping(request.to_payload())
 
-    require_hawkes = normalized_request.workflow_scope != CalibrationMarketDataWorkflowScope.SEASONALITY_ONLY
+    native = _native_market_data_module()
 
-    normalized_market_data = normalize_market_data_source(
-        tick_data_source=normalized_request.tick_data_source,
-        tick_data_column_mapping=normalized_request.column_mapping.tick_data,
-        normalization_policy=normalized_request.normalization_policy,
-        require_hawkes=require_hawkes,
-    )
+    try:
+        raw_payload = native.prepare_market_data_calibration_plan(
+            normalized_request.to_payload(),
+            cpu_count,
+        )
+    except Exception as e:
+        if native_exception_matches(native, e, "CalibrationExecutionError"):
+            field_path, message = native_error_parts(
+                str(e),
+                default_field_path="request",
+            )
 
-    session_resolution = resolve_market_data_session(
-        session_configuration=normalized_request.session_configuration,
-        normalized_market_data=normalized_market_data,
-    )
+            raise _translation_error(
+                field_path,
+                f"market-data preparation failed: {message}",
+            ) from e
 
-    return translate_market_data_request_to_prepared_calibration_from_phases(
-        request=normalized_request,
-        normalized_market_data=normalized_market_data,
-        session_resolution=session_resolution,
-        cpu_count=cpu_count,
-    )
+        raise _translation_error(
+            "request",
+            f"market-data preparation failed: {e}",
+        ) from e
+
+    if not isinstance(raw_payload, dict):
+        raise calibration_integration_error(
+            "market-data preparation returned an invalid response payload",
+            entrypoint=CALIBRATION_MARKET_DATA_TRANSLATION_ENTRYPOINT,
+            error_id=CALIBRATION_INTEGRATION_RESPONSE_ERROR_ID,
+            context={"returned_type": type(raw_payload).__name__},
+        )
+
+    return _market_data_translation_result_from_payload(raw_payload)
 
 
 def translate_market_data_request_to_prepared_calibration_from_phases(
@@ -542,6 +594,7 @@ __all__ = [
     "NormalizedMarketDataSource",
     "normalize_market_data_source",
     "probe_market_data_source",
+    "infer_bundled_market_profile_for_tick_data_path",
     "resolve_market_data_session",
     "translate_market_data_request_to_prepared_calibration",
     "translate_market_data_request_to_prepared_calibration_from_phases",

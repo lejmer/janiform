@@ -202,19 +202,35 @@
       "layer": "event_log",
       "allowed_internal_dependencies": []
     },
-    "janiform-cli-ui": {
+    "janiform-terminal-ui": {
       "status": "existing",
       "kind": "production",
-      "layer": "cli_ui",
+      "layer": "terminal_ui",
       "allowed_internal_dependencies": []
+    },
+    "janiform-workflows": {
+      "status": "existing",
+      "kind": "production",
+      "layer": "workflow_orchestration",
+      "allowed_internal_dependencies": [
+        "janiform-market-time",
+        "janiform-engine-pricing",
+        "janiform-calibration-artifacts",
+        "janiform-calibration-runtime",
+        "janiform-event-log",
+        "janiform-terminal-ui"
+      ]
     },
     "janiform-cli": {
       "status": "existing",
       "kind": "boundary",
       "layer": "cli_boundary",
       "allowed_internal_dependencies": [
+        "janiform-foundations",
         "janiform-event-log",
-        "janiform-cli-ui"
+        "janiform-terminal-ui",
+        "janiform-workflows",
+        "janiform"
       ]
     },
     "janiform": {
@@ -243,6 +259,9 @@
       "kind": "boundary",
       "layer": "python_boundary",
       "allowed_internal_dependencies": [
+        "janiform-event-log",
+        "janiform-terminal-ui",
+        "janiform-workflows",
         "janiform"
       ]
     }

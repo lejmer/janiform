@@ -93,3 +93,32 @@ pub(super) fn diagnostic_runtime_profile_entry_for_stage_report(
         }
     }
 }
+
+pub(super) fn retained_stage_report(
+    stage_report: &CalibrationStagedRunStageReport,
+) -> CalibrationStagedRunStageReport {
+    match stage_report {
+        CalibrationStagedRunStageReport::Seasonality(report) => {
+            let normalized_stage_payload = report
+                .normalized_stage_payload
+                .as_ref()
+                .map(|payload| payload.without_event_level_vectors());
+
+            CalibrationStagedRunStageReport::Seasonality(
+                crate::stages::seasonality::SeasonalityStageExecutionReport {
+                    schema_version: report.schema_version,
+                    stage: report.stage,
+                    status: report.status,
+                    run_id: report.run_id.clone(),
+                    execution_mode: report.execution_mode,
+                    handoff_policy: report.handoff_policy,
+                    handoffs: report.handoffs.clone(),
+                    normalized_stage_payload,
+                    metadata: report.metadata.clone(),
+                    failure: report.failure.clone(),
+                },
+            )
+        }
+        _ => stage_report.clone(),
+    }
+}

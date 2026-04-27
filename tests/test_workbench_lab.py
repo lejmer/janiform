@@ -108,18 +108,22 @@ def test_apply_reevaluation_request_updates_loaded_model_parameters(
         resolved_configuration = {}
         session_resolution = {}
         _execution_input = None
-        _stage_report_payloads = ()
         metadata = {
             "input_inference": {
-                "tick_data_format": "csv",
-                "timestamp_column": "timestamp_utc",
-                "timestamp_timezone": "UTC",
-                "tick_price_input_policy": "explicit_price_column",
-                "tick_price_columns": {
+                "timestamp_timezone_source": "explicit",
+                "tick_data_source": {
+                    "file_format": "csv",
+                },
+                "tick_data_column_mapping": {
+                    "timestamp_column": "timestamp_utc",
                     "price_column": "trade_price",
                     "trade_sign_column": None,
                     "bid_column": None,
                     "ask_column": None,
+                },
+                "normalization_policy": {
+                    "timestamp_timezone": "UTC",
+                    "tick_price_input_policy": "explicit_price_column",
                 },
             },
         }
@@ -191,18 +195,22 @@ def test_lab_tab_populates_editable_parameter_rows_when_opened(
         resolved_configuration = {}
         session_resolution = {}
         _execution_input = None
-        _stage_report_payloads = ()
         metadata = {
             "input_inference": {
-                "tick_data_format": "csv",
-                "timestamp_column": "timestamp_utc",
-                "timestamp_timezone": "UTC",
-                "tick_price_input_policy": "explicit_price_column",
-                "tick_price_columns": {
+                "timestamp_timezone_source": "explicit",
+                "tick_data_source": {
+                    "file_format": "csv",
+                },
+                "tick_data_column_mapping": {
+                    "timestamp_column": "timestamp_utc",
                     "price_column": "trade_price",
                     "trade_sign_column": None,
                     "bid_column": None,
                     "ask_column": None,
+                },
+                "normalization_policy": {
+                    "timestamp_timezone": "UTC",
+                    "tick_price_input_policy": "explicit_price_column",
                 },
             },
         }

@@ -108,21 +108,63 @@ pub struct SeasonalityStageNormalizedPayload {
     pub day_of_week_estimate_schema_version: String,
     pub day_of_year_estimate_schema_version: String,
     pub composition_schema_version: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub source_record_positions: Vec<u64>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub timestamp_utc_nanos: Vec<i64>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub exchange_local_minute_of_day: Vec<u16>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub exchange_local_day_of_week: Vec<u8>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub exchange_local_day_of_year: Vec<u16>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub market_state_codes: Vec<u8>,
     pub intraday_minutes_per_bin: u16,
     pub intraday_factor_by_bin: Vec<f64>,
     pub day_of_week_factor: Vec<f64>,
     pub day_of_year_factor: Vec<f64>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub normalized_combined_log_component_by_event: Vec<f64>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub normalized_combined_factor_by_event: Vec<f64>,
     pub normalization_metadata: SeasonalityStageNormalizationMetadata,
     pub overlay_metadata: SeasonalityStageOverlayMetadata,
     pub diagnostics_report: SeasonalityDiagnosticsReportOutput,
+}
+
+impl SeasonalityStageNormalizedPayload {
+    pub(crate) fn without_event_level_vectors(&self) -> Self {
+        Self {
+            schema_version: self.schema_version,
+            dataset_id: self.dataset_id.clone(),
+            exchange_code: self.exchange_code.clone(),
+            trade_events_data_reference: self.trade_events_data_reference.clone(),
+            timestamp_event_input_schema_version: self.timestamp_event_input_schema_version.clone(),
+            timestamp_event_preprocessed_schema_version: self
+                .timestamp_event_preprocessed_schema_version
+                .clone(),
+            intraday_estimate_schema_version: self.intraday_estimate_schema_version.clone(),
+            day_of_week_estimate_schema_version: self.day_of_week_estimate_schema_version.clone(),
+            day_of_year_estimate_schema_version: self.day_of_year_estimate_schema_version.clone(),
+            composition_schema_version: self.composition_schema_version.clone(),
+            source_record_positions: Vec::new(),
+            timestamp_utc_nanos: Vec::new(),
+            exchange_local_minute_of_day: Vec::new(),
+            exchange_local_day_of_week: Vec::new(),
+            exchange_local_day_of_year: Vec::new(),
+            market_state_codes: Vec::new(),
+            intraday_minutes_per_bin: self.intraday_minutes_per_bin,
+            intraday_factor_by_bin: self.intraday_factor_by_bin.clone(),
+            day_of_week_factor: self.day_of_week_factor.clone(),
+            day_of_year_factor: self.day_of_year_factor.clone(),
+            normalized_combined_log_component_by_event: Vec::new(),
+            normalized_combined_factor_by_event: Vec::new(),
+            normalization_metadata: self.normalization_metadata.clone(),
+            overlay_metadata: self.overlay_metadata.clone(),
+            diagnostics_report: self.diagnostics_report.clone(),
+        }
+    }
 }
 
 /// Stage-handoff transfer output resolved from the run-spec contract.
